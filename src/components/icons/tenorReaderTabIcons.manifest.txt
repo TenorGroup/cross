@@ -1,0 +1,4 @@
+# Reader tabs, same 3-unit Lucide strokes as Tenor Home.
+tenor_reader_position = bookmark
+tenor_reader_reading = book-open
+tenor_reader_tools = wrench

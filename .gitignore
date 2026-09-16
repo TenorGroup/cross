@@ -1,0 +1,54 @@
+# Build outputs and local configuration
+.pio/
+.cache/
+.dummy/
+managed_components/
+build/
+outputs/
+fs_/
+.crosspoint/
+*.log
+*.local*
+sdkconfig.*
+/CMakeLists.txt
+/dependencies.lock
+compile_commands.json
+__pycache__/
+.venv/
+.DS_Store
+.vscode/
+.idea/
+.history/
+# Private project operations
+/exploration/
+/debate/
+/research/
+/AGENTS.md
+/CLAUDE.md
+/SESSION_HANDOFF.md
+/ROADMAP.md
+.skills/
+.claude/
+.codex/
+.env
+.env.*
+*.key
+*.pem
+# Device data and locally generated fixtures
+*.epub
+*.cpfont
+*.bin
+*.elf
+*.map
+*.zip
+*.bmp
+# Generated source
+*.generated.h
+lib/I18n/I18nKeys.h
+lib/I18n/I18nStrings.h
+lib/I18n/I18nStrings.cpp
+lib/FreeTypeLite/vendor/
+lib/EpdFont/fontsrc/
+lib/EpdFont/scripts/downloaded_fonts/
+lib/EpdFont/scripts/instanced_fonts/
+lib/EpdFont/scripts/output/

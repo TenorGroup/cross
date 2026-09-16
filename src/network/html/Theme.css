@@ -1,0 +1,101 @@
+/* tenor-brand-version: 1.3.0 */
+/* TENOR_WEB_TOKENS */
+/* TENOR_WEB_FONT */
+:root{--font-color:var(--giay);--bg:var(--muc);--title-color:var(--giay);--card-bg:var(--muc);--label-color:color-mix(in srgb,var(--giay) 65%,var(--muc));--border-color:color-mix(in srgb,var(--giay) 16%,var(--muc));--accent-color:var(--giay);--accent-color-10:#ffffff0d;--accent-hover-color:var(--xuong);--signal:var(--tin-hieu);color-scheme:dark}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body.tenor-transfer{font-family:var(--chu-tay);font-size:15px;line-height:1.6;max-width:1120px;padding:0 48px 40px;margin:auto;background:var(--bg);color:var(--font-color);-webkit-font-smoothing:antialiased}
+.tenor-masthead{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:76px;border-bottom:1px solid var(--border-color)}
+.tenor-identity{font-size:22px;font-weight:500;letter-spacing:var(--gian-chat);white-space:nowrap;color:var(--font-color);text-decoration:none}
+.hieu-khong-gian{opacity:var(--mo-khong-gian-ten)}.hieu-gach{opacity:var(--mo-gach-cheo)}.hieu-ten{opacity:var(--mo-tieu-diem)}
+.tenor-local{font-size:12px;color:var(--label-color)}
+body.tenor-transfer h2{font-size:32px;line-height:1.2;letter-spacing:-.035em;font-weight:500;color:var(--font-color);margin:0 0 24px}
+body.tenor-transfer h3{font-size:19px;font-weight:500;letter-spacing:-.02em;color:var(--font-color)}
+body.tenor-transfer .nav-links{display:flex;gap:32px;margin:0 0 36px;border-bottom:1px solid var(--border-color)}
+body.tenor-transfer .nav-links a{display:flex;align-items:center;justify-content:center;padding:18px 0;margin:0;border-radius:0;border:0;border-bottom:1px solid transparent;text-decoration:none;font-size:14px;font-weight:400;color:var(--label-color);background:transparent;text-align:center;white-space:nowrap}
+body.tenor-transfer .nav-links a.active{color:var(--font-color);background:transparent;border-bottom-color:var(--font-color)}
+body.tenor-transfer .nav-links a:hover{color:var(--font-color);background:transparent}
+body.tenor-transfer .card{padding:24px 0;margin:24px 0;border:0;border-top:1px solid var(--border-color);box-shadow:none;border-radius:0;background:transparent}
+body.tenor-transfer .info-row{padding:16px 0;gap:24px}.info-row .value{overflow-wrap:anywhere;text-align:right}
+body.tenor-transfer .label{font-weight:400}
+body.tenor-transfer .status{background:transparent;color:var(--font-color);padding:0;border-radius:0;font-weight:400}
+body.tenor-transfer button,body.tenor-transfer input,body.tenor-transfer select,body.tenor-transfer textarea{font:inherit}
+body.tenor-transfer button,body.tenor-transfer .btn,body.tenor-transfer input::file-selector-button{border-radius:2px;min-height:44px;padding:10px 16px;box-shadow:none}
+body.tenor-transfer button{border:1px solid var(--border-color);color:var(--font-color);background:transparent;cursor:pointer}
+body.tenor-transfer .btn-primary,body.tenor-transfer .upload-action-btn,body.tenor-transfer .upload-btn,body.tenor-transfer button[type=submit],body.tenor-transfer .save-btn,body.tenor-transfer .folder-btn{background:var(--giay);color:var(--muc);border:1px solid var(--giay)}
+body.tenor-transfer input:not([type=checkbox]):not([type=radio]),body.tenor-transfer select,body.tenor-transfer textarea{max-width:100%;border:1px solid var(--border-color);border-radius:2px;padding:10px 12px;background:var(--than-chi);color:var(--font-color)}
+body.tenor-transfer input[type=checkbox]{accent-color:var(--giay);width:18px;height:18px;margin:0;vertical-align:middle}
+body.tenor-transfer .folder-action-btn,body.tenor-transfer .action-btn:not(.upload-action-btn),body.tenor-transfer .btn-danger,body.tenor-transfer .btn-delete{background:transparent;color:var(--font-color);border:1px solid var(--border-color)}
+body.tenor-transfer button:hover:not(:disabled){border-color:var(--label-color)}
+body.tenor-transfer .delete-btn:hover,body.tenor-transfer .delete-action-btn:hover,body.tenor-transfer .btn-danger:hover{color:var(--phai-sua);background:transparent;border-color:var(--phai-sua)}
+body.tenor-transfer .modal{background:var(--muc);border:1px solid var(--thep);border-radius:4px;box-shadow:0 16px 64px #0008;max-height:90vh;overflow:auto}
+body.tenor-transfer .modal-overlay{background:#000a;backdrop-filter:blur(4px)}
+body.tenor-transfer .modal-close{border:0}
+body.tenor-transfer .file-table{width:100%;table-layout:auto}
+body.tenor-transfer .file-table th{font-size:12px;font-weight:400;background:transparent;padding:14px 12px;color:var(--label-color)}
+body.tenor-transfer .file-table td{padding:20px 12px;border-bottom:1px solid var(--border-color);word-break:normal;overflow-wrap:anywhere}
+body.tenor-transfer .file-table td:nth-child(2){min-width:0}
+body.tenor-transfer .file-table tr:hover{background:var(--accent-color-10)}
+body.tenor-transfer .file-table tr:first-child:hover{background:transparent}
+body.tenor-transfer .folder-link,body.tenor-transfer .file-link{color:var(--font-color);font-weight:400;text-decoration:none}
+body.tenor-transfer .action-buttons{gap:8px;flex-wrap:wrap}
+body.tenor-transfer .page-header{gap:16px;margin-bottom:24px;align-items:center}
+body.tenor-transfer .page-header h2{margin:0}
+body.tenor-transfer .upload-form{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+body.tenor-transfer .upload-form input[type=file]{flex:1;min-width:0}
+body.tenor-transfer .family-meta,body.tenor-transfer .empty,body.tenor-transfer .no-files{color:var(--label-color)}
+body.tenor-transfer .family{padding:20px 0;gap:16px}
+body.tenor-transfer .family-info{min-width:0;overflow-wrap:anywhere}
+body.tenor-transfer :focus-visible{outline:2px solid var(--signal);outline-offset:3px}
+body.tenor-transfer button:disabled{opacity:.35;cursor:not-allowed}
+body.tenor-transfer .epub-badge,body.tenor-transfer .folder-badge{background:transparent;color:var(--label-color);border:0;padding:0;font-size:12px;font-weight:400;border-radius:0;letter-spacing:0}
+body.tenor-transfer .action-icon-group{gap:0;justify-content:flex-end}
+body.tenor-transfer .action-icon-group button{padding:10px;min-width:44px;min-height:44px;border:0;color:var(--label-color);background:transparent}
+body.tenor-transfer .action-icon-group button:hover{color:var(--font-color);background:var(--accent-color-10)}
+body.tenor-transfer .action-icon-group .delete-btn:hover{color:var(--phai-sua)}
+body.tenor-transfer .file-icon{display:inline-flex;vertical-align:middle;margin-right:10px;color:var(--label-color)}
+.tc-icon{display:inline-block;width:20px;height:20px;vertical-align:middle;background:currentColor;mask:var(--icon) center/contain no-repeat;-webkit-mask:var(--icon) center/contain no-repeat}
+body.tenor-transfer .contents-header{gap:12px;align-items:baseline;flex-wrap:wrap;margin-bottom:12px}
+body.tenor-transfer .breadcrumb-inline{font-size:14px;min-width:0;overflow-wrap:anywhere}
+body.tenor-transfer .breadcrumb-inline a,body.tenor-transfer .breadcrumb-inline .current{color:var(--font-color);font-weight:400}
+body.tenor-transfer .summary-inline{font-size:12px;color:var(--label-color)}
+.tenor-footer{display:flex;gap:16px;justify-content:space-between;align-items:center;border-top:1px solid var(--border-color);padding-top:20px;margin-top:48px;font-size:12px;color:var(--label-color)}
+.tenor-footer a{color:inherit;text-decoration:none}
+body.tenor-transfer .save-container{background:var(--muc);border-color:var(--border-color)}
+body.tenor-transfer .message.success,body.tenor-transfer .status-ok{color:var(--da-duyet);background:var(--lot-da-duyet);border:1px solid var(--da-duyet)}
+body.tenor-transfer .message.error,body.tenor-transfer .status-err{color:var(--phai-sua);background:var(--than-chi);border:1px solid var(--phai-sua)}
+@media(max-width:640px){
+body.tenor-transfer{padding:0 20px 32px}.tenor-masthead{min-height:68px}.tenor-identity{font-size:20px}.tenor-local{font-size:11px}
+body.tenor-transfer h2{font-size:30px}body.tenor-transfer .nav-links{gap:0;justify-content:space-between;margin-bottom:28px}body.tenor-transfer .nav-links a{font-size:13px;padding:16px 2px}
+body.tenor-transfer .card{padding:16px 0;margin:20px 0}body.tenor-transfer .page-header{align-items:flex-start;flex-direction:column;gap:20px}
+body.tenor-transfer .action-buttons{width:100%;display:grid;grid-template-columns:1fr 1fr auto;gap:8px}body.tenor-transfer .action-buttons button{font-size:13px;padding:10px 12px}
+body.tenor-transfer .modal{width:calc(100% - 24px);max-width:calc(100% - 24px);padding:24px 20px}
+body.tenor-transfer .info-row{gap:12px}
+body.tenor-transfer .file-table tr{display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px 12px;padding:20px 0;border-bottom:1px solid var(--border-color)}
+body.tenor-transfer .file-table th,body.tenor-transfer .file-table td{width:auto!important;max-width:none!important;min-width:0;padding:0;border:0;display:block}
+body.tenor-transfer .file-table tr:first-child{padding:12px 0;align-items:center}
+body.tenor-transfer .file-table th:nth-child(n+3){display:none}
+body.tenor-transfer .file-table th:nth-child(2){text-align:left}
+body.tenor-transfer .file-table td:nth-child(1){grid-column:1;grid-row:1/4;padding-top:3px}
+body.tenor-transfer .file-table td:nth-child(2){grid-column:2;grid-row:1;display:flex;gap:10px;align-items:flex-start;font-size:16px;line-height:1.5}
+body.tenor-transfer .file-table td:nth-child(2) a{min-width:0;overflow-wrap:anywhere}
+body.tenor-transfer .file-icon{flex-shrink:0;margin:2px 0 0}
+body.tenor-transfer .file-table td:nth-child(3){grid-column:2;grid-row:2;font-size:12px;align-self:center;color:var(--label-color);padding-left:30px}
+body.tenor-transfer .file-table td:nth-child(4){grid-column:2;grid-row:3;align-self:center;font-size:12px;color:var(--label-color);padding-left:30px}
+body.tenor-transfer .file-table td:nth-child(5){grid-column:2;grid-row:3;justify-self:end}
+body.tenor-transfer .action-icon-group{margin:-12px 0 -12px -8px}
+body.tenor-transfer .contents-header{flex-direction:column;gap:4px}
+}
+.tc-folder{--icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M3%207h7l2-3h8a1%201%200%200%201%201%201v14a1%201%200%200%201-1%201H4a1%201%200%200%201-1-1V7Z%22/%3E%3C/svg%3E")}
+.tc-book{--icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M5%203h14v18H7a2%202%200%200%201-2-2V5a2%202%200%200%201%202-2M5%2017h14M9%207h6%22/%3E%3C/svg%3E")}
+.tc-file{--icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M5%203h9l5%205v13H5V3Zm9%200v6h5M9%2013h6M9%2017h6%22/%3E%3C/svg%3E")}
+.tc-image{--icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%3Crect%20x%3D%223%22%20y%3D%223%22%20width%3D%2218%22%20height%3D%2218%22%20rx%3D%221%22/%3E%3Cpath%20d%3D%22m3%2017%206-6%204%204%203-3%205%205%22/%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%228%22%20r%3D%221%22/%3E%3C/svg%3E")}
+.tc-move{--icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M3%209V5h7l2%202h9v13H3v-3M2%2013h12m-4-4%204%204-4%204%22/%3E%3C/svg%3E")}
+.tc-edit{--icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22m4%2016%2012-12%204%204L8%2020H4v-4Zm9-9%204%204%22/%3E%3C/svg%3E")}
+.tc-delete{--icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M3%206h18M9%206V3h6v3M5%206l1%2015h12l1-15M10%2010v7M14%2010v7%22/%3E%3C/svg%3E")}
+.tc-upload{--icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M12%2016V3m-5%205%205-5%205%205M4%2015v6h16v-6%22/%3E%3C/svg%3E")}
+
+body.tenor-transfer .drop-zone{border-color:var(--thep);background:var(--than-chi);border-radius:2px;width:100%;padding:24px 16px}
+body.tenor-transfer .drop-zone-hint{color:var(--label-color);font-size:13px}
+body.tenor-transfer .failed-uploads-banner{color:var(--dang-duyet);background:var(--lot-dang-duyet);border-color:var(--dang-duyet)}
+body.tenor-transfer .failed-uploads-title,body.tenor-transfer .failed-file-name{color:inherit}

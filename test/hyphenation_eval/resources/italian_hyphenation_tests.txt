@@ -1,0 +1,14 @@
+# Independently selected technical vocabulary. No book text or frequency data.
+# Pyphen 0.17.2 annotations; word|hyphenation|uniform weight
+computer|com=pu=ter|1
+lettura|let=tu=ra|1
+biblioteca|bi=blio=te=ca|1
+navigazione|na=vi=ga=zio=ne|1
+dizionario|di=zio=na=rio|1
+sviluppo|svi=lup=po|1
+configurazione|con=fi=gu=ra=zio=ne|1
+tipografia|ti=po=gra=fia|1
+generazione|ge=ne=ra=zio=ne|1
+informazione|in=for=ma=zio=ne|1
+paragrafo|pa=ra=gra=fo|1
+carattere|ca=rat=te=re|1

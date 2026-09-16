@@ -1,0 +1,256 @@
+follow=0 side=0 orientation=Portrait
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageBack NavPrevious ScreenUp
+  hw DOWN -> Down PageForward NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=0 orientation=LandscapeCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageBack NavPrevious ScreenUp
+  hw DOWN -> Down PageForward NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=0 orientation=PortraitInverted
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageBack NavPrevious ScreenUp
+  hw DOWN -> Down PageForward NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=0 orientation=LandscapeCCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageBack NavPrevious ScreenUp
+  hw DOWN -> Down PageForward NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=1 orientation=Portrait
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageForward NavPrevious ScreenUp
+  hw DOWN -> Down PageBack NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=1 orientation=LandscapeCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageForward NavPrevious ScreenUp
+  hw DOWN -> Down PageBack NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=1 orientation=PortraitInverted
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageForward NavPrevious ScreenUp
+  hw DOWN -> Down PageBack NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=1 orientation=LandscapeCCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageForward NavPrevious ScreenUp
+  hw DOWN -> Down PageBack NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=2 orientation=Portrait
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up NavPrevious ScreenUp
+  hw DOWN -> Down NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=2 orientation=LandscapeCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up NavPrevious ScreenUp
+  hw DOWN -> Down NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=2 orientation=PortraitInverted
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up NavPrevious ScreenUp
+  hw DOWN -> Down NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=2 orientation=LandscapeCCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up NavPrevious ScreenUp
+  hw DOWN -> Down NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=3 orientation=Portrait
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageForward NavPrevious ScreenUp
+  hw DOWN -> Down PageForward NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=3 orientation=LandscapeCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageForward NavPrevious ScreenUp
+  hw DOWN -> Down PageForward NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=3 orientation=PortraitInverted
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageForward NavPrevious ScreenUp
+  hw DOWN -> Down PageForward NavNext ScreenDown
+  hw POWER -> Power
+follow=0 side=3 orientation=LandscapeCCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageForward NavPrevious ScreenUp
+  hw DOWN -> Down PageForward NavNext ScreenDown
+  hw POWER -> Power
+follow=1 side=0 orientation=Portrait
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageBack NavPrevious ScreenUp
+  hw DOWN -> Down PageForward NavNext ScreenDown
+  hw POWER -> Power
+follow=1 side=0 orientation=LandscapeCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenUp
+  hw RIGHT -> Right NavNext ScreenDown
+  hw UP -> Up PageBack NavPrevious ScreenRight
+  hw DOWN -> Down PageForward NavNext ScreenLeft
+  hw POWER -> Power
+follow=1 side=0 orientation=PortraitInverted
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavNext ScreenRight
+  hw RIGHT -> Right NavPrevious ScreenLeft
+  hw UP -> Up PageForward NavNext ScreenDown
+  hw DOWN -> Down PageBack NavPrevious ScreenUp
+  hw POWER -> Power
+follow=1 side=0 orientation=LandscapeCCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavNext ScreenDown
+  hw RIGHT -> Right NavPrevious ScreenUp
+  hw UP -> Up PageForward NavNext ScreenLeft
+  hw DOWN -> Down PageBack NavPrevious ScreenRight
+  hw POWER -> Power
+follow=1 side=1 orientation=Portrait
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageForward NavPrevious ScreenUp
+  hw DOWN -> Down PageBack NavNext ScreenDown
+  hw POWER -> Power
+follow=1 side=1 orientation=LandscapeCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenUp
+  hw RIGHT -> Right NavNext ScreenDown
+  hw UP -> Up PageForward NavPrevious ScreenRight
+  hw DOWN -> Down PageBack NavNext ScreenLeft
+  hw POWER -> Power
+follow=1 side=1 orientation=PortraitInverted
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavNext ScreenRight
+  hw RIGHT -> Right NavPrevious ScreenLeft
+  hw UP -> Up PageBack NavNext ScreenDown
+  hw DOWN -> Down PageForward NavPrevious ScreenUp
+  hw POWER -> Power
+follow=1 side=1 orientation=LandscapeCCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavNext ScreenDown
+  hw RIGHT -> Right NavPrevious ScreenUp
+  hw UP -> Up PageBack NavNext ScreenLeft
+  hw DOWN -> Down PageForward NavPrevious ScreenRight
+  hw POWER -> Power
+follow=1 side=2 orientation=Portrait
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up NavPrevious ScreenUp
+  hw DOWN -> Down NavNext ScreenDown
+  hw POWER -> Power
+follow=1 side=2 orientation=LandscapeCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenUp
+  hw RIGHT -> Right NavNext ScreenDown
+  hw UP -> Up NavPrevious ScreenRight
+  hw DOWN -> Down NavNext ScreenLeft
+  hw POWER -> Power
+follow=1 side=2 orientation=PortraitInverted
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavNext ScreenRight
+  hw RIGHT -> Right NavPrevious ScreenLeft
+  hw UP -> Up NavNext ScreenDown
+  hw DOWN -> Down NavPrevious ScreenUp
+  hw POWER -> Power
+follow=1 side=2 orientation=LandscapeCCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavNext ScreenDown
+  hw RIGHT -> Right NavPrevious ScreenUp
+  hw UP -> Up NavNext ScreenLeft
+  hw DOWN -> Down NavPrevious ScreenRight
+  hw POWER -> Power
+follow=1 side=3 orientation=Portrait
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenLeft
+  hw RIGHT -> Right NavNext ScreenRight
+  hw UP -> Up PageForward NavPrevious ScreenUp
+  hw DOWN -> Down PageForward NavNext ScreenDown
+  hw POWER -> Power
+follow=1 side=3 orientation=LandscapeCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavPrevious ScreenUp
+  hw RIGHT -> Right NavNext ScreenDown
+  hw UP -> Up PageForward NavPrevious ScreenRight
+  hw DOWN -> Down PageForward NavNext ScreenLeft
+  hw POWER -> Power
+follow=1 side=3 orientation=PortraitInverted
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavNext ScreenRight
+  hw RIGHT -> Right NavPrevious ScreenLeft
+  hw UP -> Up PageForward NavNext ScreenDown
+  hw DOWN -> Down PageForward NavPrevious ScreenUp
+  hw POWER -> Power
+follow=1 side=3 orientation=LandscapeCCW
+  hw BACK -> Back
+  hw CONFIRM -> Confirm
+  hw LEFT -> Left NavNext ScreenDown
+  hw RIGHT -> Right NavPrevious ScreenUp
+  hw UP -> Up PageForward NavNext ScreenLeft
+  hw DOWN -> Down PageForward NavPrevious ScreenRight
+  hw POWER -> Power

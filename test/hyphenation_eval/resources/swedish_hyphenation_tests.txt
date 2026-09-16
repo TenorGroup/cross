@@ -1,0 +1,14 @@
+# Independently selected technical vocabulary. No book text or frequency data.
+# Pyphen 0.17.2 annotations; word|hyphenation|uniform weight
+dator|da=tor|1
+läsning|läs=ning|1
+bibliotek|bib=li=o=tek|1
+navigering|na=vi=ge=ring|1
+ordbok|ord=bok|1
+utveckling|ut=veck=ling|1
+konfiguration|kon=fi=gu=ra=tion|1
+typografi|ty=po=gra=fi|1
+information|in=for=ma=tion|1
+paragraf|pa=ra=graf|1
+tangentbord|tan=gent=bord|1
+bildskärm|bild=skärm|1
