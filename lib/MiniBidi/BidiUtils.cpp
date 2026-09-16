@@ -37,7 +37,7 @@ bool isNaturalDirectionClass(const uchar cls) {
 // Visual-reorder scratch shared by applyBidiVisual() and
 // computeVisualWordOrder(). Neither function calls the other, and bidiMutex
 // already serialises both, so a single buffer serves both instead of a
-// per-function static — saving ~1.5 KB of always-resident RAM.
+// per-function static - saving ~1.5 KB of always-resident RAM.
 bidi_char sharedBidiLine[BIDI_MAX_LINE];
 
 }  // namespace
@@ -134,7 +134,7 @@ bool applyBidiVisual(const char* utf8, std::string& out, int paragraphLevel) {
   const int level = autodir ? 0 : (paragraphLevel & 1);
 
   // Order matters (mintty does the same): do_bidi() first to obtain visual
-  // order, then do_shape() — contextual forms are resolved from *visual*
+  // order, then do_shape() - contextual forms are resolved from *visual*
   // adjacency, and shaping presentation forms must never be reordered.
   do_bidi(autodir, level, line, count);
   do_shape(line, shaped, count);

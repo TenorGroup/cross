@@ -1,4 +1,4 @@
-/* bidiclasses.t — bidi class table for CrossPoint RTL (Hebrew/Arabic) epub.
+/* bidiclasses.t - bidi class table for CrossPoint RTL (Hebrew/Arabic) epub.
  *
  * Coverage rationale:
  *   Hebrew and Arabic-script languages (Arabic, Farsi, Urdu, Sindhi, Pashto,
@@ -7,9 +7,9 @@
  *   fall through to ON) to avoid regression when they appear adjacent to
  *   RTL runs.
  *
- *   Scripts NOT in this table fall through to ON — correct per UAX#9 for
+ *   Scripts NOT in this table fall through to ON - correct per UAX#9 for
  *   scripts CrossPoint's fonts don't support (CJK, Devanagari, etc.)
- *   ON is the right class for "unknown" — it behaves neutrally.
+ *   ON is the right class for "unknown" - it behaves neutrally.
  *
  *   Arabic ranges are sourced from Unicode UCD extracted/DerivedBidiClass.txt
  *   (values verified against Unicode 17.0.0).
@@ -91,7 +91,7 @@
 /* ── Arabic / Perso-Arabic (DerivedBidiClass.txt) ───────────────────── */
 /* Letters are AL (Arabic Letter), harakat/marks are NSM, Arabic-Indic
    digits are AN, extended (Farsi/Urdu) digits are EN.
-   0x0606-0x0607, 0x060E-0x060F, 0x06DE, 0x06E9 are ON — fall through. */
+   0x0606-0x0607, 0x060E-0x060F, 0x06DE, 0x06E9 are ON - fall through. */
 {0x0600, 0x0605, AN},   /* Arabic number signs (Cf) */
 {0x0608, 0x0608, AL},   /* Arabic ray */
 {0x0609, 0x060A, ET},   /* per mille / per ten thousand */
@@ -115,7 +115,7 @@
 {0x06E7, 0x06E8, NSM},
 {0x06EA, 0x06ED, NSM},
 {0x06EE, 0x06EF, AL},   /* dal/reh with inverted V */
-{0x06F0, 0x06F9, EN},   /* extended Arabic-Indic digits ۰-۹ (Farsi/Urdu) — EN per UCD */
+{0x06F0, 0x06F9, EN},   /* extended Arabic-Indic digits ۰-۹ (Farsi/Urdu) - EN per UCD */
 {0x06FA, 0x06FF, AL},
 
 /* ── Latin Extended Additional (L) ─────────────────────────────────── */
@@ -124,7 +124,7 @@
 {0x1E00, 0x1EFF, L},
 
 /* ── Unicode directional format characters ─────────────────────────── */
-/* All must be present — UBA X-rules depend on them */
+/* All must be present - UBA X-rules depend on them */
 {0x200B, 0x200D, BN},   /* ZWSP, ZWNJ, ZWJ */
 {0x200E, 0x200E, L},    /* LEFT-TO-RIGHT MARK */
 {0x200F, 0x200F, R},    /* RIGHT-TO-LEFT MARK */
@@ -147,7 +147,7 @@
 /* ── Arabic presentation forms (output of do_shape()) ───────────────── */
 /* Contextual/ligature forms emitted by the shaper must classify as AL so
    a reshaped line still resolves RTL. Ranges per DerivedBidiClass.txt;
-   0xFBC3-0xFBD2 are ON — fall through. */
+   0xFBC3-0xFBD2 are ON - fall through. */
 {0xFB50, 0xFBC2, AL},   /* Presentation Forms-A: Perso-Arabic contextual forms */
 {0xFBD3, 0xFBFF, AL},   /* Presentation Forms-A: NG … Farsi Yeh forms */
 {0xFE70, 0xFE74, AL},   /* Presentation Forms-B: harakat isolated forms */

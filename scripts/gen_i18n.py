@@ -691,7 +691,7 @@ def generate_strings_cpp(
                     "15-bit offset limit (32767)"
                 )
 
-        # Flat string data blob — all strings concatenated with \0 separators.
+        # Flat string data blob - all strings concatenated with \0 separators.
         lines.append(f"const char STRINGS_{code}_DATA[] =")
         for text in blob_strings:
             _append_string_data_entry(lines, text)
@@ -700,7 +700,7 @@ def generate_strings_cpp(
         lines.append(";")
         lines.append("")
 
-        # Offset table — one uint16_t per StrId
+        # Offset table - one uint16_t per StrId
         lines.append(f"const uint16_t OFFSETS_{code}[] = {{")
         chunk_size = 12
         for i in range(0, len(offsets), chunk_size):

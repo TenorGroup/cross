@@ -44,7 +44,7 @@ bool FontInstaller::isValidCpfontFilename(const char* name) {
   if (strcmp(name + nameLen - kExtLen, kExt) != 0) return false;
 
   // Basename (before .cpfont) must be alphanumeric + hyphen + underscore only.
-  // No additional dots — keeps stray "Foo.cpfont.tmp"-style names out.
+  // No additional dots - keeps stray "Foo.cpfont.tmp"-style names out.
   size_t baseLen = nameLen - kExtLen;
   for (size_t i = 0; i < baseLen; ++i) {
     char c = name[i];

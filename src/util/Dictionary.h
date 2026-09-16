@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-// Result of an index search — file location of a definition without reading it.
+// Result of an index search - file location of a definition without reading it.
 struct DictLocation {
   uint32_t offset = 0;  // byte offset in .dict data
   uint32_t size = 0;    // byte length in .dict data
@@ -29,7 +29,7 @@ struct DictLocation {
 // no index is held in RAM.
 class Dictionary {
  public:
-  // Why a lookup did not return a definition — so the UI can tell a genuine
+  // Why a lookup did not return a definition - so the UI can tell a genuine
   // miss apart from a real failure, and name the failure.
   enum class LookupResult : uint8_t {
     Found,       // hit — definition filled
@@ -37,9 +37,9 @@ class Dictionary {
     LowMemory,   // found, but an allocation failed: the ~32KB .dict.dz inflate
                  // window / chunk buffer, or the definition text buffer, couldn't
                  // be obtained from the fragmented heap. THIS is the "stopped
-                 // finding words until restart" case — definitively memory.
+                 // finding words until restart" case - definitively memory.
     Decompress,  // found, but decompression genuinely failed (corrupt/truncated
-                 // .dict.dz — a read/inflate error, not a memory shortage)
+                 // .dict.dz - a read/inflate error, not a memory shortage)
     ReadError,   // found, but a file open/bounds/IO error prevented reading it
   };
 
@@ -49,16 +49,16 @@ class Dictionary {
   bool isOpen() const { return !basePath.empty(); }
 
   // True when the .qidx sidecar (or the .sidx sidecar of a present .syn) is
-  // missing or stale — call buildIndex() first so the UI can show an
+  // missing or stale - call buildIndex() first so the UI can show an
   // "Indexing…" message for the slow first pass.
 
-  // True when the .ifo declares sametypesequence=h — definitions are HTML and
+  // True when the .ifo declares sametypesequence=h - definitions are HTML and
   // the viewer may lay them out through the EPUB rendering pipeline.
   bool definitionsAreHtml() const { return htmlDefinitions; }
 
   bool needsIndex();
 
-  // Why an index build failed — the scan buffer is a heap allocation, so the
+  // Why an index build failed - the scan buffer is a heap allocation, so the
   // same fragmentation that breaks lookups can break indexing, and it deserves
   // the same "Not enough memory" rather than a generic error.
   enum class IndexResult : uint8_t {
@@ -93,7 +93,7 @@ class Dictionary {
 
   // Longest "<basePath><suffix>" the lookup path builds, rounded up. basePath is
   // "/dictionaries/<folder>/<stem>" (14 fixed chars) and the longest suffix is
-  // ".dict.dz", leaving ~137 chars for folder + stem — far beyond any real
+  // ".dict.dz", leaving ~137 chars for folder + stem - far beyond any real
   // dictionary. open() rejects anything that would not fit, so the hot path
   // cannot fail on length. Kept under the 256-byte stack-local guideline.
   static constexpr size_t PATH_BUF_BYTES = 160;
@@ -104,7 +104,7 @@ class Dictionary {
 
   // Compose "<basePath><suffix>" into a caller-supplied stack buffer. The
   // lookup path runs this instead of `basePath + suffix` so path construction
-  // costs no transient heap — see LookupSession. (A lookup still allocates
+  // costs no transient heap - see LookupSession. (A lookup still allocates
   // elsewhere: cleanWord(), stemVariants() and the matched headword.) False
   // (and logs) when the path would not fit, which open() has already ruled out.
   bool buildPath(char* buf, size_t bufSize, const char* suffix) const;
@@ -114,7 +114,7 @@ class Dictionary {
   // ~10 SD opens and ~10 std::string path temporaries per word, churning the
   // same heap whose fragmentation makes lookups fail mid-session. Opened once
   // per lookup instead, with the paths built via buildPath(). The .syn / .sidx
-  // handles are opened lazily by locateSynonym() — only an exact miss consults
+  // handles are opened lazily by locateSynonym() - only an exact miss consults
   // them, so a hit never pays for two extra SD opens.
   struct LookupSession {
     HalFile idx;
@@ -133,12 +133,12 @@ class Dictionary {
     bool synFailed = false;
   };
 
-  // Open .idx (required) and .qidx (optional — locate() falls back to a full
+  // Open .idx (required) and .qidx (optional - locate() falls back to a full
   // scan without it). False when the dictionary is closed or .idx won't open.
   bool openSession(LookupSession& session);
 
   // Open .syn / .sidx into the session on first use. Idempotent; returns false
-  // when there is no usable synonym index — either because no .syn exists, or
+  // when there is no usable synonym index - either because no .syn exists, or
   // because it couldn't be opened / its .sidx is unusable, which sets
   // session.synFailed and releases both handles (an unindexed .syn is never
   // scanned linearly).
@@ -147,7 +147,7 @@ class Dictionary {
   // Bisect a sampled-offset sidecar (.qidx over .idx, .sidx over .syn) to the
   // byte offset of the last sampled entry whose word is <= target, so the caller
   // only has to linear-scan at most SAMPLE_INTERVAL entries from there. Returns
-  // 0 — scan source from the start — when sampleCount is 0 or a sample is
+  // 0 - scan source from the start - when sampleCount is 0 or a sample is
   // unreadable. Clobbers wordBuf.
   uint32_t bisectSamples(HalFile& sidecar, HalFile& source, uint32_t sampleCount, const char* target);
 

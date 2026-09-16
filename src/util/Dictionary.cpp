@@ -64,7 +64,7 @@ uint32_t readBe32(const uint8_t* p) {
 // continuation/lead byte, so accented words keep their edges.
 bool isWordByte(unsigned char c) { return c >= 0x80 || std::isalnum(c) != 0; }
 
-// Facts read from the .ifo at open time. Only the first 2KB is scanned — .ifo
+// Facts read from the .ifo at open time. Only the first 2KB is scanned - .ifo
 // headers are tiny and both keys always appear early when present.
 struct IfoFacts {
   bool offsets64 = false;        // idxoffsetbits=64 (unsupported)
@@ -143,7 +143,7 @@ bool Dictionary::buildPath(char* buf, size_t bufSize, const char* suffix) const 
 // A sidecar is stale when it is missing, unreadable, the wrong version, or built
 // from a different source size. Missing source returns false (not stale): the
 // dictionary is unusable without its .idx, and a vanished .syn degrades to no
-// synonyms — neither is fixable by re-indexing here. This is the same rule
+// synonyms - neither is fixable by re-indexing here. This is the same rule
 // openSession() applies to .qidx (a successful build always writes at least
 // entry 0, so sampleCount == 0 means absent, stale or corrupt), expressed over a
 // path so it can cover the .syn/.sidx pair too.
@@ -172,7 +172,7 @@ bool Dictionary::buildIndex(void (*yieldFn)(void*), void* ctx, IndexResult* outR
   if (outResult) *outResult = IndexResult::Ok;
   if (!isOpen()) return fail(IndexResult::ReadError);
 
-  // The .idx sidecar is mandatory — lookups binary-search it. Rebuild only when
+  // The .idx sidecar is mandatory - lookups binary-search it. Rebuild only when
   // stale so a .syn-only change doesn't force a needless rescan of the (much
   // larger) .idx, and vice versa.
   if (sidecarIsStale(basePath + ".idx", basePath + ".qidx", QIDX_MAGIC) &&
@@ -182,7 +182,7 @@ bool Dictionary::buildIndex(void (*yieldFn)(void*), void* ctx, IndexResult* outR
 
   // The synonym sidecar is best-effort: a failure here (e.g. transient OOM)
   // leaves synonym lookups disabled but the dictionary otherwise usable, so it
-  // does not fail the build or overwrite *outResult. hasSyn is left alone — it
+  // does not fail the build or overwrite *outResult. hasSyn is left alone - it
   // means "a .syn file exists", so needsIndex() keeps reporting the sidecar
   // stale and a later build retries. openSynonyms() is what declines the
   // synonym path while the sidecar is unusable.
@@ -287,7 +287,7 @@ int Dictionary::readWordInto(HalFile& file, char* buf, size_t bufSize) {
     }
     buf[i++] = static_cast<char>(ch);
   }
-  // Word too long for buffer — consume remaining bytes to stay in sync
+  // Word too long for buffer - consume remaining bytes to stay in sync
   buf[bufSize - 1] = '\0';
   int ch;
   do {
@@ -299,7 +299,7 @@ int Dictionary::readWordInto(HalFile& file, char* buf, size_t bufSize) {
 bool Dictionary::openSession(LookupSession& session) {
   if (!isOpen()) return false;
 
-  // One buffer reused for both paths — no transient heap on the lookup path.
+  // One buffer reused for both paths - no transient heap on the lookup path.
   char path[PATH_BUF_BYTES];
   if (!buildPath(path, sizeof(path), ".idx")) return false;
   if (!Storage.openFileForRead("DICT", path, session.idx)) return false;
@@ -557,7 +557,7 @@ bool Dictionary::readDefinition(const DictLocation& location, std::string& out, 
   }
   out.assign(size, '\0');
   // The bounds check above guarantees the bytes exist, so a short read is an IO
-  // failure — surface it instead of returning a silently truncated definition.
+  // failure - surface it instead of returning a silently truncated definition.
   if (dict.read(&out[0], size) != static_cast<int>(size)) {
     out.clear();
     return fail(LookupResult::ReadError);
@@ -672,13 +672,13 @@ bool Dictionary::lookup(const char* word, std::string& definitionOut, std::strin
   }
   if (!location.found) {
     // A search that never reached a verdict (couldn't open or seek .idx) is a
-    // read failure, not a miss — reporting "Not found" is the bug this PR exists
+    // read failure, not a miss - reporting "Not found" is the bug this PR exists
     // for. Otherwise the word is genuinely not in the dictionary.
     if (searchFailed) setResult(LookupResult::ReadError);
     return false;
   }
 
-  // Found in the index — propagate the precise failure reason from readDefinition
+  // Found in the index - propagate the precise failure reason from readDefinition
   // (decompression / low memory / read error) so the caller can name it.
   if (readDefinition(location, definitionOut, outResult)) {
     setResult(LookupResult::Found);

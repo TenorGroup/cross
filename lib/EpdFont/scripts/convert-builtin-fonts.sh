@@ -32,13 +32,13 @@ UI_FONT_SIZES=(10 12)
 UI_FONT_STYLES=("Regular" "Bold")
 
 # Arabic glyphs for UI text (menus, file browser titles). The built-in fonts
-# must cover the *output* of MiniBidi's do_shape() — contextual presentation
-# forms — not base letters, or shaped UI text silently drops glyphs.
+# must cover the *output* of MiniBidi's do_shape() - contextual presentation
+# forms - not base letters, or shaped UI text silently drops glyphs.
 # Curated for firmware-size budget: core Arabic (Presentation Forms-B,
 # incl. the Lam-Alef ligature forms) plus the Farsi/Urdu extra letters'
 # Presentation Forms-A blocks, the few characters shaping leaves at their
 # base codepoint, Arabic punctuation, and both digit sets. No harakat and
-# no Sindhi/Pashto/Kurdish forms — book text gets those from SD-card fonts.
+# no Sindhi/Pashto/Kurdish forms - book text gets those from SD-card fonts.
 ARABIC_INTERVALS=(
   --additional-intervals 0x060C,0x060C  # Arabic comma
   --additional-intervals 0x061B,0x061B  # Arabic semicolon
@@ -49,7 +49,7 @@ ARABIC_INTERVALS=(
   --additional-intervals 0x0660,0x0669  # Arabic-Indic digits
   --additional-intervals 0x06BA,0x06BA  # noon ghunna base (initial/medial keep base cp)
   --additional-intervals 0x06D4,0x06D4  # Urdu full stop
-  --additional-intervals 0x06D5,0x06D5  # ae (isolated; Kurdish/Uyghur/Ottoman) — has no presentation form
+  --additional-intervals 0x06D5,0x06D5  # ae (isolated; Kurdish/Uyghur/Ottoman) - has no presentation form
   --additional-intervals 0x06F0,0x06F9  # extended Arabic-Indic digits (Farsi/Urdu)
   --additional-intervals 0xFB56,0xFB59  # peh (Farsi)
   --additional-intervals 0xFB66,0xFB69  # tteh (Urdu)

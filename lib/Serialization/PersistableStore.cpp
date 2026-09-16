@@ -51,7 +51,7 @@ std::string PersistableStoreBase::extractPassword(JsonVariantConst doc, bool& ne
     return "";
   }
   if (!ok) {
-    // Deobfuscation failed — fall back to legacy plaintext password.
+    // Deobfuscation failed - fall back to legacy plaintext password.
     const char* legacyPassword = doc["password"] | "";
     const size_t legacyLength = strlen(legacyPassword);
     if (legacyLength > maxLength) {

@@ -270,7 +270,7 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
         if (caching) cw.writePixel(outX, dithered);
       }
 
-      // Interior (no X boundary checks — lx0 and lx0+1 guaranteed in bounds)
+      // Interior (no X boundary checks - lx0 and lx0+1 guaranteed in bounds)
       for (int dstX = safeXStart; dstX < safeXEnd; dstX++) {
         const int outX = cfgX + dstX;
         const int32_t srcFxFP = dstX * invScaleFPX;

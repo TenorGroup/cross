@@ -20,9 +20,9 @@ inside that tape via 12-bit offsets, so no additional pointers are required.
 
 Every node starts with a single control byte:
 
-- Bit 7 – set when the node stores scores (`levels`).
-- Bits 5-6 – stride of the target deltas (1, 2, or 3 bytes, big-endian).
-- Bits 0-4 – transition count (values ≥ 31 spill into an extra byte).
+- Bit 7 - set when the node stores scores (`levels`).
+- Bits 5-6 - stride of the target deltas (1, 2, or 3 bytes, big-endian).
+- Bits 0-4 - transition count (values ≥ 31 spill into an extra byte).
 
 If the `levels` flag is set, two more bytes follow. Together they encode a
 12-bit offset into the global `levels` tape and a 4-bit length. Each byte in the

@@ -5,7 +5,7 @@
 #include "activities/Activity.h"
 
 /**
- * Activity for testing KOReader credentials, or — in sign-up mode — creating a
+ * Activity for testing KOReader credentials, or - in sign-up mode - creating a
  * new account on the sync server with the entered username/password.
  * Connects to WiFi, then authenticates or registers.
  */

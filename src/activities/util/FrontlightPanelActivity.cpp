@@ -61,7 +61,7 @@ void FrontlightPanelActivity::onEnter() {
 
   // A stored 0% predates the 1% floor (or came from the web settings): show it
   // as the floor rather than a level the slider can no longer produce. onExit
-  // persists that, which is the intent — 0 is not a brightness any more.
+  // persists that, which is the intent - 0 is not a brightness any more.
   brightness = std::max(MIN_BRIGHTNESS, Frontlight.brightness());
   warmth = Frontlight.warmth();
   lightOn = Frontlight.isOn();
@@ -86,7 +86,7 @@ void FrontlightPanelActivity::onEnter() {
 
 void FrontlightPanelActivity::persistLightSettings() {
   // brightness/warmth are always restored unconditionally on boot (see
-  // main.cpp), so they never diverge from SETTINGS at onEnter() — comparing
+  // main.cpp), so they never diverge from SETTINGS at onEnter() - comparing
   // against SETTINGS here only fires on a genuine user change. lightOn has
   // no such guarantee (see lightOnChanged's declaration), so it's gated on
   // the user actually having touched it this session instead.
@@ -240,7 +240,7 @@ void FrontlightPanelActivity::loop() {
     // panelBottom > 0 guards the frame the sheet opens in: the release that
     // opened it (a status-bar tap) is still in the input snapshot when the panel
     // runs its first loop(), and panelBottom is only known once render() has
-    // measured the layout — so at 0 that release read as "tapped below the
+    // measured the layout - so at 0 that release read as "tapped below the
     // sheet" and closed it again before it was ever drawn.
     if (touch.snap.touchReleased && !draggingSlider && panelBottom > 0 && touch.snap.touchY >= panelBottom) {
       close();
@@ -306,7 +306,7 @@ void FrontlightPanelActivity::addSliderRow(UiScreen& screen, const char* label, 
   snprintf(pct, sizeof(pct), "%u%%", static_cast<unsigned>(value));
 
   // rowProps is a member (fui::SliderRowProps embeds a 324-byte StyleSet, well
-  // past the 256-byte budget a local gets — AGENTS.md). Every field that
+  // past the 256-byte budget a local gets - AGENTS.md). Every field that
   // varies between the two rows is reassigned here; the rest keep their
   // constructed defaults, which already match the panel's card language.
   rowProps.label = label;
@@ -328,7 +328,7 @@ void FrontlightPanelActivity::addSliderRow(UiScreen& screen, const char* label, 
   }
   screen.sliderRow(rowProps, kSliderRowHeight);
   // The wrapper's own trailing gap is one spaceMd; double it so the rows
-  // breathe — a control band this tall reads cramped at the list cadence.
+  // breathe - a control band this tall reads cramped at the list cadence.
   screen.spacer(screen.theme().spaceMd);
 }
 
@@ -373,7 +373,7 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
 
   // Quick-setting tiles. Two columns of finger-sized cards; a tile whose
   // setting is currently on draws filled (StateChecked -> selected style).
-  // Touch boards only — the tiles are touch targets.
+  // Touch boards only - the tiles are touch targets.
   if (mappedInput.hasTouch()) {
     static constexpr StrId kOrientNames[4] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW,
                                               StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW};
@@ -390,7 +390,7 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
     const char* labels[kTileCount] = {tr(STR_NIGHT_MODE), tr(STR_FORCE_REFRESH), orientLabel, touchLabel};
     const fui::State states[kTileCount] = {SETTINGS.screenInverted ? fui::StateChecked : fui::StateNormal,
                                            fui::StateNormal, fui::StateNormal,
-                                           // Filled when touch reader controls are OFF — the non-default,
+                                           // Filled when touch reader controls are OFF - the non-default,
                                            // attention-worthy state.
                                            touchOn ? fui::StateNormal : fui::StateChecked};
 

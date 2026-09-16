@@ -2,7 +2,7 @@
 """
 Generate a small EPUB with prose that exercises kerning and ligature edge cases.
 
-Kerning pairs targeted (Basic Latin — "western" scope, ASCII):
+Kerning pairs targeted (Basic Latin - "western" scope, ASCII):
   AV, AW, AY, AT, AC, AG, AO, AQ, AU
   FA, FO, Fe, Fo, Fr, Fy
   LT, LV, LW, LY
@@ -17,13 +17,13 @@ Kerning pairs targeted (Basic Latin — "western" scope, ASCII):
   "r." "r," (right-side space after r)
   f., f,
 
-Kerning pairs targeted (Latin-1 Supplement — "western" scope, non-ASCII):
+Kerning pairs targeted (Latin-1 Supplement - "western" scope, non-ASCII):
   Tö, Tü, Tä (German: Töchter, Türkei, Tänzer)
   Vö, Vä (German: Vögel, Väter)
   Wü, Wö (German: Würde, Wörter)
   Fü, Fé, Fê (German/French: Für, Février, Fête)
   Äu (German: Äußerst)
-  Öf (German: Öffnung — also exercises ff ligature)
+  Öf (German: Öffnung - also exercises ff ligature)
   Üb (German: Über)
   Àl, Àp (French: À la, À propos)
   Pè, Pé (French: Père, Pétanque)
@@ -39,7 +39,7 @@ Kerning pairs targeted (Latin-1 Supplement — "western" scope, non-ASCII):
   „G, ‚W (German-style low-9 quotation marks)
   …" (horizontal ellipsis adjacent to quotes)
 
-Kerning pairs targeted (Latin Extended-A — "latin" scope additions):
+Kerning pairs targeted (Latin Extended-A - "latin" scope additions):
   Tě, Tř (Czech: Těšín, Třebíč)
   Vě (Czech: Věra, věda)
   Př (Czech: Příbram, příroda)
@@ -74,7 +74,7 @@ Ligature sequences in Latin Extended-A context:
   œ (U+0153): cœur, sœur, œuvre, bœuf, manœuvre
   ĳ (U+0133): ĳzer, vrĳ, bĳzonder, ĳverig
 
-Kerning pairs targeted (Latin Extended-B — U+0180–024F):
+Kerning pairs targeted (Latin Extended-B - U+0180-024F):
   Ța, Țe, Țo, Țu (Romanian: T-comma overhang, like T)
   Șa, Șe, Și (Romanian: S-comma descender)
   Tș, Vș (Latin T/V followed by Romanian s-comma)
@@ -84,7 +84,7 @@ Kerning pairs targeted (Latin Extended-B — U+0180–024F):
   Tǎ, Tǒ, Tǔ (Pinyin: caron vowels under T overhang)
   Tǖ, Tǘ, Tǚ, Tǜ (Pinyin: u-diaeresis with tone marks)
 
-Kerning pairs targeted (Greek & Coptic — U+0370–03FF):
+Kerning pairs targeted (Greek & Coptic - U+0370-03FF):
   Γα, Γε, Γο, Γυ, Γρ (Γ overhang, like Latin T / Cyrillic Г)
   Τα, Τε, Το, Τυ, Τρ (Τ overhang, identical to Latin T)
   Αυ, Αν, Ατ, Αδ (Α diagonal, like Latin A)
@@ -95,12 +95,12 @@ Kerning pairs targeted (Greek & Coptic — U+0370–03FF):
   Λα, Λε, Λο (Λ inverted-V)
   «Γ, «Τ, ε», ο» (guillemets in Greek context)
 
-Kerning pairs targeted (Cyrillic — U+0400–04FF):
+Kerning pairs targeted (Cyrillic - U+0400-04FF):
   Ге, Го, Гу, Га, Гр (Г has overhanging crossbar like T/F)
   Та, Те, То, Ту, Тр, Ті, Тя (Т = Latin T shape)
   Ра, Ре, Ро, Ру (Р = Latin P shape)
   Ау, Ав, Ат, Ад (А = Latin A shape)
-  Ув, Уд, Ук, Ум (У = Latin Y shape — diagonal)
+  Ув, Уд, Ук, Ум (У = Latin Y shape - diagonal)
   Фа, Фо, Фу (Ф = wide circular letter)
   Да, Де, До, Ду (Д has descending serifs)
   Ла, Ле, Ло, Лу (Л = inverted V shape)
@@ -109,7 +109,7 @@ Kerning pairs targeted (Cyrillic — U+0400–04FF):
   Ukrainian: Її, Єв, Ґа
   Bulgarian: Щу, Жа, Юл
 
-Combining marks targeted (U+0300–U+036F — Combining Diacritical Marks):
+Combining marks targeted (U+0300-U+036F - Combining Diacritical Marks):
   U+0300 grave, U+0301 acute, U+0302 circumflex, U+0303 tilde
   U+0304 macron, U+0306 breve, U+0307 dot above, U+0308 diaeresis
   U+030A ring above, U+030B double acute, U+030C caron
@@ -223,7 +223,7 @@ CHAPTER_1 = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
-<head><title>Chapter 1 – The Typographer's Affliction</title>
+<head><title>Chapter 1 - The Typographer's Affliction</title>
 <link rel="stylesheet" type="text/css" href="style.css"/></head>
 <body>
 <h1>Chapter 1<br/>The Typographer&#x2019;s Affliction</h1>
@@ -273,7 +273,7 @@ CHAPTER_2 = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
-<head><title>Chapter 2 – Ligatures in the Afflicted Offices</title>
+<head><title>Chapter 2 - Ligatures in the Afflicted Offices</title>
 <link rel="stylesheet" type="text/css" href="style.css"/></head>
 <body>
 <h1>Chapter 2<br/>Ligatures in the Afflicted Offices</h1>
@@ -322,7 +322,7 @@ CHAPTER_3 = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
-<head><title>Chapter 3 – The Proof of the Pudding</title>
+<head><title>Chapter 3 - The Proof of the Pudding</title>
 <link rel="stylesheet" type="text/css" href="style.css"/></head>
 <body>
 <h1>Chapter 3<br/>The Proof of the Pudding</h1>
@@ -378,7 +378,7 @@ CHAPTER_4 = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
-<head><title>Chapter 4 – Punctuation and Numerals</title>
+<head><title>Chapter 4 - Punctuation and Numerals</title>
 <link rel="stylesheet" type="text/css" href="style.css"/></head>
 <body>
 <h1>Chapter 4<br/>Punctuation and Numerals</h1>
@@ -431,7 +431,7 @@ CHAPTER_5 = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
-<head><title>Chapter 5 – A Glossary of Troublesome Pairs</title>
+<head><title>Chapter 5 - A Glossary of Troublesome Pairs</title>
 <link rel="stylesheet" type="text/css" href="style.css"/></head>
 <body>
 <h1>Chapter 5<br/>A Glossary of Troublesome Pairs</h1>

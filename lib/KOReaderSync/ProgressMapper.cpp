@@ -830,7 +830,7 @@ std::optional<CrossPointPosition> ProgressMapper::fromRichPosition(const std::sh
 
   const int remotePages = rich.totalPages > 0 ? rich.totalPages : 1;
   if (result.totalPages == remotePages) {
-    // Identical layout (same render settings) — the page transfers losslessly.
+    // Identical layout (same render settings) - the page transfers losslessly.
     result.pageNumber = std::min<int>(rich.pageNumber, result.totalPages - 1);
     result.hasMappedPage = true;
     LOG_DBG("PM", "Rich position exact: spine=%d page=%d/%d", result.spineIndex, result.pageNumber, result.totalPages);

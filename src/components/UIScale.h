@@ -3,7 +3,7 @@
 
 // FreeInkUI font slots. Row heights, header height, and touch sizes are not
 // chosen here: FreeInkApp derives all metric tokens from the body font's line
-// height (themeTokensForLineHeight). One fixed tier for every board — the
+// height (themeTokensForLineHeight). One fixed tier for every board - the
 // user-facing UI-scale setting was removed.
 struct UIScaleSpec {
   int smallFontId;

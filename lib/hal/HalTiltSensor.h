@@ -57,7 +57,7 @@ class HalTiltSensor {
   void update(const uint8_t mode, const uint8_t orientation, const bool inReader);
 
   // Returns true once per tilt-forward gesture (next page direction).
-  // Consumed on read — subsequent calls return false until next gesture.
+  // Consumed on read - subsequent calls return false until next gesture.
   bool wasTiltedForward();
 
   // Returns true once per tilt-back gesture (previous page direction).

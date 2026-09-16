@@ -10,7 +10,7 @@
 
 // On-disk binary format version for .cpfont files. Defined as a preprocessor
 // macro (rather than a constexpr) so it can be stringified into the SD-fonts
-// release URL — see FONT_MANIFEST_URL in FontDownloadActivity.h. No integer
+// release URL - see FONT_MANIFEST_URL in FontDownloadActivity.h. No integer
 // suffix because stringification would include it (e.g. `4U` → `"4U"`).
 //
 // The canonical version for the build tooling lives in
@@ -29,7 +29,7 @@ class SdCardFont {
 
   SdCardFont() = default;
   ~SdCardFont();
-  // Owns raw buffers freed in dtor — no shallow-copy semantics. Make any
+  // Owns raw buffers freed in dtor - no shallow-copy semantics. Make any
   // accidental pass-by-value or move a compile-time error.
   SdCardFont(const SdCardFont&) = delete;
   SdCardFont& operator=(const SdCardFont&) = delete;
@@ -53,7 +53,7 @@ class SdCardFont {
 
   // Multi-string variant: extracts codepoints from `textCount` strings fetched
   // one at a time through `getter` (C-style callback: no std::function bloat,
-  // and callers never build a concatenated copy — a heap-tight screen aborting
+  // and callers never build a concatenated copy - a heap-tight screen aborting
   // in a bare-new string append is exactly what this avoids). A null getter
   // result skips that index. Unique codepoints cap at MAX_PAGE_GLYPHS.
   // loadKernLig=false skips kern/ligature loading and the mini kern matrix:
@@ -184,7 +184,7 @@ class SdCardFont {
     bool intervalsAreBmp16 = false;
 
     // Persistent kern-class + ligature tables (lazy-loaded on first prewarm).
-    // The full kern MATRIX is NOT resident — on Literata-class fonts a single
+    // The full kern MATRIX is NOT resident - on Literata-class fonts a single
     // style's matrix is ~36-42KB contiguous, and 4 styles' worth won't fit
     // alongside bitmaps + framebuffer on a 380KB device. Only kernLeftClasses
     // and kernRightClasses (small codepoint→classId tables, ~3KB each) stay
@@ -199,7 +199,7 @@ class SdCardFont {
 
     // Mini EpdFontData built during prewarm. Buffers are kept-if-fits across pages
     // (capacities below track allocated sizes): freeing and reallocating slightly
-    // different sizes on every page turn was a primary heap fragmenter — each page's
+    // different sizes on every page turn was a primary heap fragmenter - each page's
     // freed hole rarely fit the next page's need, so maxAlloc eroded all session.
     // The per-render PrewarmScope calls clearCache() -> resetStyleMiniData(), which
     // keeps both the allocations AND the loaded data. Buffers: reuse means
@@ -242,7 +242,7 @@ class SdCardFont {
     // used on the current page to renumbered class IDs (1..miniKern*ClassCount).
     // miniKernMatrix is a small miniKernLeftClassCount × miniKernRightClassCount
     // flat matrix. Typical Latin page: ~25×25 matrix = ~625 bytes per style vs
-    // ~36KB for the full Literata matrix — ~50× reduction.
+    // ~36KB for the full Literata matrix - ~50× reduction.
     EpdKernClassEntry* miniKernLeftClasses = nullptr;
     EpdKernClassEntry* miniKernRightClasses = nullptr;
     uint16_t miniKernLeftEntryCount = 0;

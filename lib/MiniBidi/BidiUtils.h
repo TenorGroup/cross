@@ -17,7 +17,7 @@ int detectParagraphLevel(const char* utf8, int fallbackLevel = 0, int maxStrongC
 // harakat and Quranic annotation): zero-width for measurement, transparent for
 // Arabic joining, and rendered as overlays on the preceding base glyph when
 // the active font carries their glyphs (SD fonts; built-in fonts don't).
-// Latin combining marks (U+0300-U+036F) intentionally return false — they are
+// Latin combining marks (U+0300-U+036F) intentionally return false - they are
 // handled by the utf8IsCombiningMark() rendering path.
 bool isTransparentMark(uint32_t cp);
 

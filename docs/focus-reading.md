@@ -1,6 +1,6 @@
 # Focus Reading
 
-Focus Reading is a reading aid that bolds the first portion of each word, guiding your eyes to natural fixation points and helping you read faster with less effort. Some readers — particularly those with ADHD — find it helps them stay engaged with the text and reduces mind-wandering. It is inspired by the Bionic Reading technique.
+Focus Reading is a reading aid that bolds the first portion of each word, guiding your eyes to natural fixation points and helping you read faster with less effort. Some readers - particularly those with ADHD - find it helps them stay engaged with the text and reduces mind-wandering. It is inspired by the Bionic Reading technique.
 
 <img src="./images/focus-reading/focus-reading.jpg" height="500" alt="Comparison of the same page with and without Focus Reading enabled" />
 
@@ -30,4 +30,4 @@ Toggling the setting invalidates affected EPUB section caches for the current la
 ## Notes
 
 - Focus Reading only applies to regular body text. Already-bold text (headings, emphasis) is left unchanged.
-- The setting is per-device, not per-book — it applies to all books while enabled.
+- The setting is per-device, not per-book - it applies to all books while enabled.

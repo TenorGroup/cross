@@ -443,7 +443,7 @@ bool Xtc::generateThumbBmp(int height) const {
                 const uint8_t bit1 = (plane1[byteOffset] >> bitInByte) & 1;
                 const uint8_t bit2 = (plane2[byteOffset] >> bitInByte) & 1;
                 const uint8_t pixelValue = (bit1 << 1) | bit2;
-                // pixelValue: 0=white, 1=dark gray, 2=light gray, 3=black —
+                // pixelValue: 0=white, 1=dark gray, 2=light gray, 3=black -
                 // same semantics as the cover's kXthToBmp mapping above
                 static constexpr uint8_t kXthToGray[4] = {255, 85, 170, 0};
                 grayValue = kXthToGray[pixelValue];

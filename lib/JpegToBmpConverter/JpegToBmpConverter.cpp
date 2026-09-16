@@ -191,7 +191,7 @@ void* bmpJpegOpen(const char* /*filename*/, int32_t* size) {
 }
 
 void bmpJpegClose(void* /*handle*/) {
-  // Caller owns the file — do not close it here
+  // Caller owns the file - do not close it here
 }
 
 int32_t bmpJpegRead(JPEGFILE* pFile, uint8_t* pBuf, int32_t len) {
@@ -429,7 +429,7 @@ static void flushScaledRow(BmpConvertCtx* ctx) {
   yieldDuringDecode(ctx);
 }
 
-// JPEGDEC draw callback — receives one MCU-width × MCU-height block at a time,
+// JPEGDEC draw callback - receives one MCU-width × MCU-height block at a time,
 // in left-to-right, top-to-bottom order (baseline JPEG).
 // Accumulates columns into mcuBuf; once the last column arrives (completing the MCU
 // row), applies scaling + dithering and writes packed BMP rows to bmpOut.
@@ -472,7 +472,7 @@ int bmpDrawCallback(JPEGDRAW* pDraw) {
     if (ctx->smoothUpscale) {
       processSmoothSourceRow(ctx, srcRow, y);
     } else if (!ctx->needsScaling) {
-      // 1:1 — outWidth == srcWidth, write directly
+      // 1:1 - outWidth == srcWidth, write directly
       writeOutputRow(ctx, srcRow, y);
     } else {
       // Fixed-point area averaging on X axis

@@ -27,7 +27,7 @@ int utf8SafeTruncateBuffer(const char* buf, int len);
 
 // Returns true for CJK characters that allow line breaks on either side without hyphenation.
 // Covers CJK Unified Ideographs, Hiragana, Katakana, Hangul Syllables, CJK punctuation,
-// and fullwidth forms — the ranges where word boundaries are implicit per character.
+// and fullwidth forms - the ranges where word boundaries are implicit per character.
 inline bool utf8IsCjkBreakable(const uint32_t cp) {
   return (cp >= 0x1100 && cp <= 0x11FF)        // Hangul Jamo
          || (cp >= 0x3000 && cp <= 0x303F)     // CJK Symbols and Punctuation
@@ -48,7 +48,7 @@ inline bool utf8IsCjkBreakable(const uint32_t cp) {
 
 // Returns true for any codepoint in a CJK script block (Han, Kana, Hangul, Bopomofo,
 // radicals, and CJK punctuation/compatibility/enclosed forms). Used for fallback font
-// selection — deliberately broader than utf8IsCjkBreakable, whose ranges are tuned to
+// selection - deliberately broader than utf8IsCjkBreakable, whose ranges are tuned to
 // implicit line-break opportunities and must not grow without rethinking layout.
 inline bool utf8IsCjkCodepoint(const uint32_t cp) {
   return (cp >= 0x1100 && cp <= 0x11FF)        // Hangul Jamo

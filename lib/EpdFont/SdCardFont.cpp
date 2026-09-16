@@ -223,7 +223,7 @@ void SdCardFont::clearOverflow() {
 
 void SdCardFont::applyKernLigaturePointers(PerStyle& s, EpdFontData& data) const {
   // Kern data uses the per-page mini tables (renumbered class IDs). The full
-  // kern matrix is never resident — see PerStyle::miniKernMatrix comment.
+  // kern matrix is never resident - see PerStyle::miniKernMatrix comment.
   data.kernLeftClasses = s.miniKernLeftClasses;
   data.kernRightClasses = s.miniKernRightClasses;
   // Packed class maps and dense matrix, as stored in the .cpfont and mapped in place; the split
@@ -313,7 +313,7 @@ bool SdCardFont::loadStyleKernLigatureData(PerStyle& s) {
   s.kernLigLoaded = true;
 
   // Make ligatures visible to the stub (used when no mini data built yet).
-  // Kern stays nullptr on the stub — it is only wired in miniData via
+  // Kern stays nullptr on the stub - it is only wired in miniData via
   // applyKernLigaturePointers() after buildMiniKernMatrix() runs.
   s.stubData.ligaturePairs = s.ligaturePairs;
   s.stubData.ligaturePairCount = s.header.ligaturePairCount;
@@ -342,7 +342,7 @@ static uint8_t miniLookupKernClass(const EpdKernClassEntry* entries, uint16_t co
 // Latin page: ~25×25 bytes) instead of the font's full ~180×200 (~36KB).
 //
 // Correctness: EpdFont::getKerning only touches `kernLeftClasses` /
-// `kernRightClasses` / `kernMatrix` / the count fields — we swap all of them to
+// `kernRightClasses` / `kernMatrix` / the count fields - we swap all of them to
 // the mini versions together in applyKernLigaturePointers, so a codepoint not
 // on this page simply returns class 0 (no kerning), which was the pre-existing
 // behavior for any codepoint outside the kern classes.
@@ -423,7 +423,7 @@ bool SdCardFont::buildMiniKernMatrix(PerStyle& s, const uint32_t* codepoints, ui
   }
 
   // Step 5: populate mini class tables. `codepoints` is already sorted (see
-  // prewarm()) so the output is sorted by codepoint — required for binary
+  // prewarm()) so the output is sorted by codepoint - required for binary
   // search in lookupKernClass during render.
   uint16_t lIdx = 0, rIdx = 0;
   for (uint32_t i = 0; i < cpCount; i++) {
@@ -783,7 +783,7 @@ int SdCardFont::prewarm(TextGetter getter, const void* ctx, uint32_t textCount, 
   // full mini arena (glyph structs + bitmaps, working headroom left over).
   // Multi-string batches only: a several-hundred-chapter CJK table of
   // contents would otherwise extract up to MAX_PAGE_GLYPHS and fail the whole
-  // arena allocation — better to load the first screens' worth and let
+  // arena allocation - better to load the first screens' worth and let
   // scrolling union-in the rest page by page. Per-string requests are small
   // and already bounded by the union gate in prewarmStyle (running the check
   // there would also log per draw call); metadata-only prewarms load no
@@ -816,7 +816,7 @@ int SdCardFont::prewarm(TextGetter getter, const void* ctx, uint32_t textCount, 
   if (cpBudget == 0) return -1;
 
   // Step 1: Extract unique codepoints from the UTF-8 texts (shared across all styles).
-  // Dedup uses O(n^2) linear scan — worst case is MAX_PAGE_GLYPHS (512) unique codepoints
+  // Dedup uses O(n^2) linear scan - worst case is MAX_PAGE_GLYPHS (512) unique codepoints
   // = ~131K comparisons, but in practice pages contain far fewer unique codepoints so the
   // actual cost is much lower. This is dwarfed by SD I/O that follows. Alternatives (hash
   // set, bitmap) exceed the 256-byte stack limit or add template bloat.
@@ -1077,7 +1077,7 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
 
   // Build mini intervals from sorted codepoints. Reset counts and fall back to the
   // stub until the rebuild completes, but KEEP the existing buffers (keep-if-fits
-  // reuse) — the free-and-realloc-per-page pattern here was a primary fragmenter.
+  // reuse) - the free-and-realloc-per-page pattern here was a primary fragmenter.
   s.miniIntervalCount = 0;
   s.miniGlyphCount = 0;
   s.miniKernLeftEntryCount = 0;
@@ -1141,7 +1141,7 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
   // Read glyph metadata. lastReadIndex tracks sequential reads to skip redundant
   // seeks; INT32_MIN guarantees the first iteration always seeks to the correct
   // offset (otherwise when gIdx == 0, the "gIdx != lastReadIndex + 1" check would
-  // be false and we'd read from the file's current position — the header — which
+  // be false and we'd read from the file's current position - the header - which
   // decodes to a garbage EpdGlyph with a massive advanceX, inflating any word
   // containing that codepoint beyond page width).
   int32_t lastReadIndex = INT32_MIN;
@@ -1238,9 +1238,9 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
   delete[] mappings;
 
   // Full render prewarm: load the persistent kern classes + ligatures (one-time
-  // per style, small — the big matrix is NOT loaded here) and then build the
+  // per style, small - the big matrix is NOT loaded here) and then build the
   // per-page mini kern matrix restricted to class pairs reachable from this
-  // page's codepoints. Skip during metadata-only prewarm — layout only needs
+  // page's codepoints. Skip during metadata-only prewarm - layout only needs
   // advanceX and the mini kern would be thrown away before rendering.
   bool kernLigOk = false;
   if (!metadataOnly && loadKernLig) {
@@ -1329,7 +1329,7 @@ void SdCardFont::mergeIntoAdvanceTable(uint8_t styleIdx, const AdvanceEntry* sor
   if (oldSize >= ADVANCE_CACHE_LIMIT) return;  // already full
 
   // Cap the merged size at ADVANCE_CACHE_LIMIT. Anything past the cap is
-  // dropped from the tail of the sorted merge — a deterministic, bounded loss
+  // dropped from the tail of the sorted merge - a deterministic, bounded loss
   // that doesn't bias which codepoints get cached on subsequent passes.
   uint32_t mergedCap = oldSize + newCount;
   if (mergedCap > ADVANCE_CACHE_LIMIT) mergedCap = ADVANCE_CACHE_LIMIT;
@@ -1393,7 +1393,7 @@ int SdCardFont::fetchAdvancesForCodepoints(uint32_t* codepoints, uint32_t cpCoun
     if (!(styleMask & (1 << si)) || !styles_[si].present) continue;
     const auto& s = styles_[si];
 
-    // Stop fetching once the cache is full — further inserts would be dropped
+    // Stop fetching once the cache is full - further inserts would be dropped
     // by the merge anyway. The renderer fast path tolerates missing entries
     // (returns 0); the slow path is still correct for those codepoints.
     if (advanceTableSize_[si] >= ADVANCE_CACHE_LIMIT) continue;
@@ -1656,7 +1656,7 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
     }
   }
 
-  // All reads succeeded — commit to slot and advance ring buffer
+  // All reads succeeded - commit to slot and advance ring buffer
   if (wasAtCapacity) {
     delete[] self->overflow_[slot].bitmap;
   } else {

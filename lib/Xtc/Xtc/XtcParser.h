@@ -106,7 +106,7 @@ class XtcParser {
   XtcError readChapters();
   bool readPageTableEntry(uint32_t pageIndex, PageInfo& info);
 
-  // File handle management — reopen on demand, close after use
+  // File handle management - reopen on demand, close after use
   bool ensureFileOpen();
   void closeFile();
 };

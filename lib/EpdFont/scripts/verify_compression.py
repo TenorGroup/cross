@@ -161,7 +161,7 @@ def verify_font_file(filepath):
         if len(chunk) != group['compressedSize']:
             return (font_name, False, f"group {gi}: compressed data truncated (expected {group['compressedSize']}, got {len(chunk)})")
 
-        # Decompress with raw DEFLATE — result is byte-aligned data
+        # Decompress with raw DEFLATE - result is byte-aligned data
         try:
             decompressed = zlib.decompress(chunk, -15)
         except zlib.error as e:

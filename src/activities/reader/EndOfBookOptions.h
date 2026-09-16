@@ -22,7 +22,7 @@ class EndOfBookOptions : private UiAppHost {
   explicit EndOfBookOptions(GfxRenderer& renderer);
 
   // Scans the book's folder for suggestions; no-op when already loaded. Call ONLY from
-  // the reader's render() (the render task, serialized by RenderLock) — the loaded flag
+  // the reader's render() (the render task, serialized by RenderLock) - the loaded flag
   // is the release/acquire publication point that lets the main task read the finished
   // list safely.
   void loadOnce(const std::string& currentBookPath);
@@ -58,7 +58,7 @@ class EndOfBookOptions : private UiAppHost {
   std::atomic<bool> isLoaded{false};
 
   // Row storage, built once in loadOnce() (same acquire/release publication
-  // point as names — see isLoaded above) rather than per-render in
+  // point as names - see isLoaded above) rather than per-render in
   // buildListScreen(): names.size() is capped at MAX_SUGGESTIONS and never
   // changes afterward, so a fixed-capacity array avoids any heap allocation
   // for the row list, both at load time and every subsequent repaint.

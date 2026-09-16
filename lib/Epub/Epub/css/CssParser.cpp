@@ -73,7 +73,7 @@ constexpr bool iequalsAscii(std::string_view value, std::string_view lowercaseKe
 
 // Walk s and invoke fn(token) for each non-empty run between delimiters.
 // Tokens are boundary-trimmed and yielded as string_views into s; no
-// allocation. Runs of consecutive delimiters coalesce — no empty tokens are
+// allocation. Runs of consecutive delimiters coalesce - no empty tokens are
 // emitted. `isDelimiter` is invoked once per character.
 template <typename Pred, typename F>
 void forEachDelimitedToken(std::string_view s, Pred isDelimiter, F&& fn) {

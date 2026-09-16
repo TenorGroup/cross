@@ -7,7 +7,7 @@
 // partition, then switch otadata so the X3/X4 stock bootloader picks it up
 // on next boot. Mirrors the web flasher: raw esp_partition_erase_range +
 // esp_partition_write + ota_boot::switchTo (no Arduino Update class, no
-// esp_image_verify — those reject our patched image on X4 silicon).
+// esp_image_verify - those reject our patched image on X4 silicon).
 //
 // Both the SD update activity and the OTA path land here. OTA first
 // downloads the firmware to an SD-card cache file, then calls this.

@@ -92,7 +92,7 @@ def inject_version(env):
     print(f'CrossPoint build version: {version_string}')
 
 
-# PlatformIO/SCons entry point — Import and env are SCons builtins injected at runtime.
+# PlatformIO/SCons entry point - Import and env are SCons builtins injected at runtime.
 # When run directly with Python (e.g. for validation), a lightweight fake env is used
 # so the git/version logic can be exercised without a full build.
 try:

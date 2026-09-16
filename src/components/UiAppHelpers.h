@@ -28,7 +28,7 @@
 // always builds the new tokens into whichever pool slot the cell does NOT
 // currently reference, then does one atomic store. Every app sharing the
 // cell picks up the change on its next theme() call, and nothing ever
-// dereferences an instance mid-overwrite — unlike a plain
+// dereferences an instance mid-overwrite - unlike a plain
 // `sharedTokens = uiThemeTokens(target);` in-place assignment, which a
 // render task reading theme().rowHeight/etc. field-by-field on another task
 // could observe as a torn mix of old and new fields.

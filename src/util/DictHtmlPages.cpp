@@ -238,7 +238,7 @@ bool buildDictionaryHtmlPages(GfxRenderer& renderer, const std::string& definiti
   size_t retainedElements = 0;
   {
     const std::string tmpPath = TMP_HTML_PATH;  // the parser stores a reference
-    // Heap-allocated as Section does — the parser object is far too large for
+    // Heap-allocated as Section does - the parser object is far too large for
     // a stack local. Null epub is safe: imageRendering=2 suppresses <img>
     // handling, the only path that dereferences it.
     auto parser = makeUniqueNoThrow<ChapterHtmlSlimParser>(
