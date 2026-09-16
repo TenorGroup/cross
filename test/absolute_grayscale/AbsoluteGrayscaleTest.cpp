@@ -97,3 +97,25 @@ TEST(AbsoluteGrayscale, TransparentPassesRetainBackgroundWithoutClearingBetweenP
   EXPECT_EQ(planes[0] & 0x0f, 0x0a);
   EXPECT_EQ(planes[1] & 0x0f, 0x0a);
 }
+
+TEST(AbsoluteGrayscale, PackedRowsMatchPixelMappingInEveryOrientation) {
+  uint8_t levels[4] = {0x1b, 0xe4, 0x55, 0xaa};
+  uint8_t lsb[64], msb[64], expectedLsb[64], expectedMsb[64];
+  const int starts[] = {7, 31, 480, 15};
+  const int steps[] = {1, -1, -32, 32};
+  for (int direction = 0; direction < 4; ++direction) {
+    for (int i = 0; i < 64; ++i) lsb[i] = msb[i] = expectedLsb[i] = expectedMsb[i] = 0xff;
+    writeAbsoluteGrayRow(levels, 16, starts[direction], steps[direction], lsb, msb);
+    for (int x = 0; x < 16; ++x) {
+      const int bit = starts[direction] + x * steps[direction];
+      const uint8_t mask = 0x80 >> (bit % 8);
+      const int value = (levels[x / 4] >> (6 - (x % 4) * 2)) & 3;
+      if (grayPlanePixel(value, false, true).black) expectedLsb[bit / 8] &= ~mask;
+      if (grayPlanePixel(value, true, true).black) expectedMsb[bit / 8] &= ~mask;
+    }
+    for (int i = 0; i < 64; ++i) {
+      EXPECT_EQ(lsb[i], expectedLsb[i]);
+      EXPECT_EQ(msb[i], expectedMsb[i]);
+    }
+  }
+}

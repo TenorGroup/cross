@@ -34,15 +34,15 @@
 namespace board_tag {
 
 namespace {
-// The magic's first character must not recur inside it — the scanner restarts
+// The magic's first character must not recur inside it - the scanner restarts
 // a failed match with a single-byte lookback, which is only exact then.
 constexpr size_t MAGIC_LEN = sizeof("CROSSPOINT-BOARD-V1:") - 1;
 }  // namespace
 
-const char TAG[] = "CROSSPOINT-BOARD-V1:" CROSSPOINT_BOARD_NAME ";";
+const char TAG[] = "CROSSPOINT-BOARD-V1:" CROSSPOINT_BOARD_NAME ";TENOR-CROSS-VERSION-V1:" CROSSPOINT_VERSION ";";
 
 const char* boardName() { return TAG + MAGIC_LEN; }
-size_t boardNameLen() { return sizeof(TAG) - 1 - MAGIC_LEN - 1; }  // strip magic and ';'
+size_t boardNameLen() { return sizeof(CROSSPOINT_BOARD_NAME) - 1; }
 
 void Scanner::feed(const uint8_t* data, size_t len) {
   if (mismatchFound) return;
@@ -56,6 +56,7 @@ void Scanner::feed(const uint8_t* data, size_t len) {
           mismatchFound = true;
           return;
         }
+        matchingTagFound = true;
       } else if (nameLen < MAX_NAME && c > 0x20 && c < 0x7F) {
         captured[nameLen++] = c;
       } else {

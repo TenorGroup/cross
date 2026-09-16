@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Settings - CrossPoint Reader</title>
+  <title>Settings - tenor/cross</title>
   <style>
     :root {
       --font-color: #333;
@@ -277,15 +277,16 @@
       }
     }
   </style>
+<link rel="stylesheet" href="/theme.css" />
 </head>
-<body>
-  <h1>📚 CrossPoint Reader</h1>
+<body class="tenor-transfer">
+  <!--TENOR_BRAND-->
 
   <div class="nav-links">
-    <a href="/">Home</a>
-    <a href="/files">File Manager</a>
-    <a href="/settings" class="active">Settings</a>
-    <a href="/fonts">Fonts</a>
+    <a href="/">Thiết bị</a>
+    <a href="/files">Tệp</a>
+    <a href="/settings" class="active">Cài đặt</a>
+    <a href="/fonts">Font chữ</a>
   </div>
 
   <div id="message" class="message"></div>
@@ -297,17 +298,13 @@
   </div>
 
   <div class="save-container" id="save-container" style="display:none;">
-    <button class="save-btn" id="saveBtn" onclick="saveSettings()">Save Settings</button>
+    <button class="save-btn" id="saveBtn" onclick="saveSettings()">Lưu cài đặt</button>
   </div>
 
   <div id="wifi-container"></div>
   <div id="opds-container"></div>
 
-  <div class="card">
-    <p style="text-align: center; color: #95a5a6; margin: 0;">
-      CrossPoint E-Reader • Open Source
-    </p>
-  </div>
+  <footer class="tenor-footer"><span>Thư viện trên thiết bị</span><a href="https://cross.tenor.vn" target="_blank" rel="noopener noreferrer">cross.tenor.vn ↗</a></footer>
 
 <script>
   let allSettings = [];
@@ -620,18 +617,18 @@
       '</div>' +
       lastConnected +
       '<div class="opds-actions">' +
-        '<button class="btn-small btn-save-server" onclick="saveWifiNetwork(' + idx + ')">Save</button>' +
-        (isNew ? '' : '<button class="btn-small btn-delete" onclick="deleteWifiNetwork(' + idx + ')">Delete</button>') +
+        '<button class="btn-small btn-save-server" onclick="saveWifiNetwork(' + idx + ')">Lưu</button>' +
+        (isNew ? '' : '<button class="btn-small btn-delete" onclick="deleteWifiNetwork(' + idx + ')">Xóa</button>') +
       '</div>' +
     '</div>';
   }
 
   function renderWifiSection() {
     const container = document.getElementById('wifi-container');
-    let html = '<div class="card"><h2>Wi-Fi Networks</h2>';
+    let html = '<div class="card"><h2>Mạng Wi-Fi</h2>';
 
     if (wifiNetworks.length === 0) {
-      html += '<p style="color:var(--label-color);text-align:center;">No Wi-Fi networks saved</p>';
+      html += '<p style="color:var(--label-color);text-align:center;">Chưa lưu mạng Wi-Fi</p>';
     } else {
       wifiNetworks.forEach(function(net, idx) {
         html += renderWifiNetwork(net, idx);
@@ -639,7 +636,7 @@
     }
 
     html += '<div style="margin-top:12px;text-align:center;">' +
-      '<button class="btn-small btn-add" onclick="addWifiNetwork()">+ Add Network</button>' +
+      '<button class="btn-small btn-add" onclick="addWifiNetwork()">Thêm mạng</button>' +
     '</div></div>';
     container.innerHTML = html;
   }
@@ -736,15 +733,15 @@
         '<span class="setting-control"><input type="password" id="opds-pass-' + id + '" placeholder="' + (srv.hasPassword ? '(unchanged)' : '') + '"></span>' +
       '</div>' +
       '<div class="opds-actions">' +
-        '<button class="btn-small btn-save-server" onclick="saveOpdsServer(' + idx + ')">Save</button>' +
-        (isNew ? '' : '<button class="btn-small btn-delete" onclick="deleteOpdsServer(' + idx + ')">Delete</button>') +
+        '<button class="btn-small btn-save-server" onclick="saveOpdsServer(' + idx + ')">Lưu</button>' +
+        (isNew ? '' : '<button class="btn-small btn-delete" onclick="deleteOpdsServer(' + idx + ')">Xóa</button>') +
       '</div>' +
     '</div>';
   }
 
   function renderOpdsSection() {
     const container = document.getElementById('opds-container');
-    let html = '<div class="card"><h2>OPDS Servers</h2>';
+    let html = '<div class="card"><h2>Máy chủ OPDS</h2>';
 
     if (opdsServers.length === 0) {
       html += '<p style="color:var(--label-color);text-align:center;">No OPDS servers configured</p>';
@@ -755,7 +752,7 @@
     }
 
     html += '<div style="margin-top:12px;text-align:center;">' +
-      '<button class="btn-small btn-add" onclick="addOpdsServer()">+ Add Server</button>' +
+      '<button class="btn-small btn-add" onclick="addOpdsServer()">Thêm máy chủ</button>' +
     '</div></div>';
     container.innerHTML = html;
   }

@@ -7,11 +7,11 @@
 #include <cstring>
 #include <memory>
 
-#include "ClockOffsetActivity.h"
-#include "ClockSyncActivity.h"
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "MenuFavorites.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
@@ -27,10 +27,7 @@ enum MenuItem {
   ITEM_TITLE,
   ITEM_BATTERY,
   ITEM_XTC_STATUS_BAR,
-  ITEM_CLOCK,             // X3 only
-  ITEM_CLOCK_FORMAT,      // X3 only
-  ITEM_CLOCK_UTC_OFFSET,  // X3 only, launches ClockOffsetActivity
-  ITEM_CLOCK_SYNC,        // X3 only, launches ClockSyncActivity
+  ITEM_CLOCK,  // X3 only: VI TRI dong ho tren thanh. Bon dong cau hinh dong ho o man Dong ho.
   ITEM_COUNT
 };
 
@@ -48,26 +45,7 @@ const StrId menuNames[FULL_MENU_ITEMS] = {
     StrId::STR_BATTERY,
     StrId::STR_XTC_STATUS_BAR,
     StrId::STR_CLOCK,
-    StrId::STR_CLOCK_FORMAT,
-    StrId::STR_CLOCK_UTC_OFFSET,
-    StrId::STR_CLOCK_SYNC_NOW,
 };
-
-constexpr int CLOCK_FORMAT_ITEMS = 2;
-const StrId clockFormatNames[CLOCK_FORMAT_ITEMS] = {StrId::STR_CLOCK_FORMAT_24H, StrId::STR_CLOCK_FORMAT_12H};
-
-std::string formatUtcOffset(uint8_t biasedQ) {
-  // biasedQ is in quarter-hour steps, biased by 48 (so 48 = UTC+0).
-  if (biasedQ > 104) biasedQ = 48;
-  int totalMinutes = (static_cast<int>(biasedQ) - 48) * 15;
-  bool neg = totalMinutes < 0;
-  int absMinutes = neg ? -totalMinutes : totalMinutes;
-  int hours = absMinutes / 60;
-  int mins = absMinutes % 60;
-  char buf[16];
-  snprintf(buf, sizeof(buf), "UTC%c%d:%02d", neg ? '-' : '+', hours, mins);
-  return buf;
-}
 constexpr int PROGRESS_BAR_ITEMS = 3;
 const StrId progressBarNames[PROGRESS_BAR_ITEMS] = {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE};
 
@@ -93,7 +71,9 @@ StatusBarSettingsActivity::StatusBarSettingsActivity(GfxRenderer& renderer, Mapp
 void StatusBarSettingsActivity::onEnter() {
   UiListActivity::onEnter();
 
-  visibleItemCount = halClock.isAvailable() ? FULL_MENU_ITEMS : BASE_MENU_ITEMS;
+  visibleItemCount = SETTINGS.uiTheme == CrossPointSettings::TENOR_UI
+                         ? 1
+                         : (halClock.isAvailable() ? FULL_MENU_ITEMS : BASE_MENU_ITEMS);
 
   // Clamp statusBarProgressBar and statusBarTitle in case of corrupt/migrated data
   if (SETTINGS.statusBarProgressBar >= PROGRESS_BAR_ITEMS) {
@@ -112,14 +92,6 @@ void StatusBarSettingsActivity::onEnter() {
     SETTINGS.xtcStatusBarMode = CrossPointSettings::XTC_STATUS_BAR_MODE::XTC_STATUS_BAR_HIDE;
   }
 
-  if (SETTINGS.clockUtcOffsetQ > 104) {
-    SETTINGS.clockUtcOffsetQ = 48;  // Default to UTC+0
-  }
-
-  if (SETTINGS.clockFormat >= CLOCK_FORMAT_ITEMS) {
-    SETTINGS.clockFormat = 0;
-  }
-
   if (SETTINGS.statusBarClock >= STATUS_BAR_CLOCK_ITEMS) {
     SETTINGS.statusBarClock = CrossPointSettings::STATUS_BAR_CLOCK_MODE::STATUS_BAR_CLOCK_HIDE;
   }
@@ -127,7 +99,8 @@ void StatusBarSettingsActivity::onEnter() {
   // Labels never change (unlike the values, which track live SETTINGS
   // state), so they're set once here rather than every buildScreen() call.
   for (int i = 0; i < visibleItemCount; i++) {
-    rowItems_[i].label = I18N.get(menuNames[i]);
+    rowItems_[i].label =
+        SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? tr(STR_STATUS_CORNERS) : I18N.get(menuNames[i]);
     rowItems_[i].actionValue = static_cast<int16_t>(i);
   }
 }
@@ -147,6 +120,13 @@ void StatusBarSettingsActivity::activateIndex(const int index) {
 }
 
 void StatusBarSettingsActivity::handleSelection() {
+  if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI) {
+    SETTINGS.statusBarClock = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT
+                                  ? CrossPointSettings::STATUS_BAR_CLOCK_RIGHT
+                                  : CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
+    SETTINGS.saveToFile();
+    return;
+  }
   switch (nav.selected) {
     case ITEM_CHAPTER_PAGE_COUNT:
       SETTINGS.statusBarChapterPageCount = (SETTINGS.statusBarChapterPageCount + 1) % 2;
@@ -155,48 +135,24 @@ void StatusBarSettingsActivity::handleSelection() {
       SETTINGS.statusBarBookProgressPercentage = (SETTINGS.statusBarBookProgressPercentage + 1) % 2;
       break;
     case ITEM_PROGRESS_BAR:
-      optionPopup.show(StrId::STR_PROGRESS_BAR, progressBarNames, PROGRESS_BAR_ITEMS, SETTINGS.statusBarProgressBar,
-                       [this](int idx) {
-                         SETTINGS.statusBarProgressBar = idx;
-                         SETTINGS.saveToFile();
-                       });
-      return;
+      SETTINGS.statusBarProgressBar = (SETTINGS.statusBarProgressBar + 1) % PROGRESS_BAR_ITEMS;
+      break;
     case ITEM_PROGRESS_BAR_THICKNESS:
-      optionPopup.show(StrId::STR_PROGRESS_BAR_THICKNESS, progressBarThicknessNames, PROGRESS_BAR_THICKNESS_ITEMS,
-                       SETTINGS.statusBarProgressBarThickness, [this](int idx) {
-                         SETTINGS.statusBarProgressBarThickness = idx;
-                         SETTINGS.saveToFile();
-                       });
-      return;
+      SETTINGS.statusBarProgressBarThickness =
+          (SETTINGS.statusBarProgressBarThickness + 1) % PROGRESS_BAR_THICKNESS_ITEMS;
+      break;
     case ITEM_TITLE:
-      optionPopup.show(StrId::STR_TITLE, titleNames, TITLE_ITEMS, SETTINGS.statusBarTitle, [this](int idx) {
-        SETTINGS.statusBarTitle = idx;
-        SETTINGS.saveToFile();
-      });
-      return;
+      SETTINGS.statusBarTitle = (SETTINGS.statusBarTitle + 1) % TITLE_ITEMS;
+      break;
     case ITEM_BATTERY:
       SETTINGS.statusBarBattery = (SETTINGS.statusBarBattery + 1) % 2;
       break;
     case ITEM_XTC_STATUS_BAR:
-      optionPopup.show(StrId::STR_XTC_STATUS_BAR, xtcStatusBarNames, XTC_STATUS_BAR_ITEMS, SETTINGS.xtcStatusBarMode,
-                       [this](int idx) {
-                         SETTINGS.xtcStatusBarMode = idx;
-                         SETTINGS.saveToFile();
-                       });
-      return;
+      SETTINGS.xtcStatusBarMode = (SETTINGS.xtcStatusBarMode + 1) % XTC_STATUS_BAR_ITEMS;
+      break;
     case ITEM_CLOCK:
       SETTINGS.statusBarClock = (SETTINGS.statusBarClock + 1) % STATUS_BAR_CLOCK_ITEMS;
       break;
-    case ITEM_CLOCK_FORMAT:
-      SETTINGS.clockFormat = (SETTINGS.clockFormat + 1) % CLOCK_FORMAT_ITEMS;
-      break;
-    case ITEM_CLOCK_UTC_OFFSET:
-      // Launch the dedicated offset picker. It saves on exit, no result handler needed.
-      startActivityForResult(std::make_unique<ClockOffsetActivity>(renderer, mappedInput), nullptr);
-      return;
-    case ITEM_CLOCK_SYNC:
-      startActivityForResult(std::make_unique<ClockSyncActivity>(renderer, mappedInput), nullptr);
-      return;
     default:
       return;
   }
@@ -204,6 +160,9 @@ void StatusBarSettingsActivity::handleSelection() {
 }
 
 std::string StatusBarSettingsActivity::rowValueText(const int index) {
+  if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI)
+    return SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT ? tr(STR_CLOCK_LEFT_BATTERY_RIGHT)
+                                                                                : tr(STR_BATTERY_LEFT_CLOCK_RIGHT);
   switch (index) {
     case ITEM_CHAPTER_PAGE_COUNT:
       return SETTINGS.statusBarChapterPageCount ? tr(STR_SHOW) : tr(STR_HIDE);
@@ -221,14 +180,6 @@ std::string StatusBarSettingsActivity::rowValueText(const int index) {
       return I18N.get(xtcStatusBarNames[SETTINGS.xtcStatusBarMode]);
     case ITEM_CLOCK:
       return I18N.get(statusBarClockNames[SETTINGS.statusBarClock]);
-    case ITEM_CLOCK_FORMAT: {
-      const uint8_t fmt = SETTINGS.clockFormat < CLOCK_FORMAT_ITEMS ? SETTINGS.clockFormat : 0;
-      return std::string(I18N.get(clockFormatNames[fmt]));
-    }
-    case ITEM_CLOCK_UTC_OFFSET:
-      return formatUtcOffset(SETTINGS.clockUtcOffsetQ);
-    case ITEM_CLOCK_SYNC:
-      return SETTINGS.clockHasBeenSynced ? tr(STR_CLOCK_SYNCED) : tr(STR_NOT_SET);
     default:
       return tr(STR_HIDE);
   }
@@ -242,7 +193,9 @@ void StatusBarSettingsActivity::buildScreen(UiScreen& screen) {
   // is just the bar + its label, not a floating gap.
   const int statusBarHeight = UITheme::getInstance().getStatusBarHeight();
   const auto previewFooter =
-      static_cast<int16_t>(statusBarHeight + verticalPreviewTextPadding + metrics.verticalSpacing);
+      static_cast<int16_t>(SETTINGS.uiTheme == CrossPointSettings::TENOR_UI
+                               ? 0
+                               : statusBarHeight + verticalPreviewTextPadding + metrics.verticalSpacing);
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
                                                 static_cast<int16_t>(metrics.buttonHintsHeight + previewFooter), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
@@ -262,7 +215,7 @@ void StatusBarSettingsActivity::buildScreen(UiScreen& screen) {
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;               // air between the value and the row edge
-  props.labelText = screen.theme().smallText;
+  props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;  // also the explicitly-set marker, see SettingsActivity
   syncListViewport(screen, props);
   screen.list(props);
@@ -278,17 +231,21 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
 
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the list renders through the app; the preview stays raw.
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_CUSTOMISE_STATUS_BAR));
+  drawNavigationHeader(tr(STR_CUSTOMISE_STATUS_BAR));
 
   renderUi();
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TOGGLE), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI) {
+    renderer.displayBuffer();
+    return;
+  }
 
   std::string title;
-  if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
+  if (SETTINGS.statusBarSpec().titleMode == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
     title = tr(STR_EXAMPLE_BOOK);
-  } else if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
+  } else if (SETTINGS.statusBarSpec().titleMode == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
     title = tr(STR_EXAMPLE_CHAPTER);
   }
 
@@ -301,4 +258,8 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
                             tr(STR_PREVIEW));
 
   renderer.displayBuffer();
+}
+
+std::string StatusBarSettingsActivity::favoriteKey(int row) const {
+  return menufavorites::keyFor("status", 0, SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? 7 : row);
 }

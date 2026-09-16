@@ -1,4 +1,6 @@
 #pragma once
+#include <I18n.h>
+
 #include <string>
 
 #include "activities/UiListActivity.h"
@@ -9,14 +11,17 @@ class StatusBarSettingsActivity final : public UiListActivity {
  public:
   explicit StatusBarSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
-  // Must equal ITEM_COUNT in the .cpp (static_assert'd there) — the max
+  // Must equal ITEM_COUNT in the .cpp (static_assert'd there) - the max
   // possible row count (RTC-equipped devices show all of them).
-  static constexpr int MAX_STATUS_BAR_ITEMS = 11;
+  static constexpr int MAX_STATUS_BAR_ITEMS = 8;
 
   void onEnter() override;
+  std::string navigationLabel() const override { return I18N.get(StrId::STR_CUSTOMISE_STATUS_BAR); }
   void render(RenderLock&&) override;
 
  private:
+  bool supportsFavorites() const override { return true; }
+  std::string favoriteKey(int row) const override;
   OptionPopup optionPopup;
 
   // Decided in onEnter() based on halClock.isAvailable() so clock entries are hidden on X4.

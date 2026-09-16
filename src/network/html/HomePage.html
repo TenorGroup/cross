@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CrossPoint Reader</title>
+    <title>tenor/cross</title>
     <style>
       :root {
         --font-color: #333;
@@ -96,46 +96,43 @@
         color: white;
       }
     </style>
-  </head>
-  <body>
-    <h1>📚 CrossPoint Reader</h1>
+  <link rel="stylesheet" href="/theme.css" />
+</head>
+  <body class="tenor-transfer">
+    <!--TENOR_BRAND-->
 
     <div class="nav-links">
-      <a href="/" class="active">Home</a>
-      <a href="/files">File Manager</a>
-      <a href="/settings">Settings</a>
-      <a href="/fonts">Fonts</a>
+      <a href="/" class="active">Thiết bị</a>
+      <a href="/files">Tệp</a>
+      <a href="/settings">Cài đặt</a>
+      <a href="/fonts">Font chữ</a>
     </div>
 
     <div class="card">
-      <h2>Device Status</h2>
+      <h2>Thiết bị</h2>
       <div class="info-row">
-        <span class="label">Serial #</span>
+        <span class="label">Số máy</span>
         <span class="value" id="serial"></span>
       </div>
       <div class="info-row">
-        <span class="label">Version</span>
+        <span class="label">Phiên bản</span>
         <span class="value" id="version"></span>
       </div>
       <div class="info-row">
-        <span class="label">WiFi Status</span>
-        <span class="status">Connected</span>
+        <span class="label">Kết nối Wi-Fi</span>
+        <span class="status">Đã kết nối</span>
       </div>
       <div class="info-row">
-        <span class="label">IP Address</span>
+        <span class="label">Địa chỉ IP</span>
         <span class="value" id="ip-address"></span>
       </div>
       <div class="info-row">
-        <span class="label">Free Memory</span>
+        <span class="label">Bộ nhớ trống</span>
         <span class="value" id="free-heap"></span>
       </div>
     </div>
 
-    <div class="card">
-      <p style="text-align: center; color: #95a5a6; margin: 0">
-        CrossPoint E-Reader • Open Source
-      </p>
-    </div>
+    <footer class="tenor-footer"><span>Thư viện trên thiết bị</span><a href="https://cross.tenor.vn" target="_blank" rel="noopener noreferrer">cross.tenor.vn ↗</a></footer>
   <script>
     async function fetchStatus() {
       try {

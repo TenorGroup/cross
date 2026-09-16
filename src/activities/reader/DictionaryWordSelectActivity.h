@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 
+#include "QuoteStore.h"
 #include "activities/Activity.h"
 #include "util/Dictionary.h"
 
@@ -22,6 +23,11 @@ class DictionaryWordSelectActivity final : public Activity {
         marginLeft(marginLeft),
         marginTop(marginTop) {}
 
+  void selectQuotation(QuoteRecord context) {
+    quoteMode = true;
+    quote = std::move(context);
+    name = "QuoteSelect";
+  }
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;
@@ -40,6 +46,10 @@ class DictionaryWordSelectActivity final : public Activity {
 
   enum class Popup : uint8_t { None, Busy, NotFound, Error };
 
+  bool quoteMode = false;
+  QuoteRecord quote;
+  int anchor = -1;
+  void confirmQuotation();
   void extractWords();
   int closestInRow(uint16_t row, int centerX) const;
   int wordAt(int x, int y) const;

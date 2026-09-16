@@ -5,7 +5,9 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 
 namespace fui = freeink::ui;
 
@@ -114,7 +116,7 @@ void ButtonRemapActivity::render(RenderLock&&) {
 
   renderer.clearScreen();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_REMAP_FRONT_BUTTONS));
+  drawNavigationHeader(tr(STR_REMAP_FRONT_BUTTONS));
   GUI.drawSubHeader(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight},
                     tr(STR_REMAP_PROMPT));
 
@@ -128,13 +130,8 @@ void ButtonRemapActivity::render(RenderLock&&) {
                      errorMessage.c_str());
   }
 
-  // Provide side button actions at the bottom of the screen (split across two lines).
-  GUI.drawHelpText(renderer,
-                   Rect{0, topOffset + 4 * metrics.listRowHeight + 4 * metrics.verticalSpacing, pageWidth, 20},
-                   tr(STR_REMAP_RESET_HINT));
-  GUI.drawHelpText(renderer,
-                   Rect{0, topOffset + 4 * metrics.listRowHeight + 5 * metrics.verticalSpacing + 20, pageWidth, 20},
-                   tr(STR_REMAP_CANCEL_HINT));
+  tenorchrome::drawTip(renderer, tr(STR_REMAP_RESET_HINT), 1);
+  tenorchrome::drawTip(renderer, tr(STR_REMAP_CANCEL_HINT));
 
   // Live preview of logical labels under front buttons.
   // This mirrors the on-device front button order: Back, Confirm, Left, Right.
@@ -175,7 +172,7 @@ void ButtonRemapActivity::buildScreen(UiScreen& screen) {
   }
   // Label at the value's font size: both sides of the row read as one unit.
   // maxLines=2 also marks the style caller-owned (see textStyleUnset).
-  props.labelText = screen.theme().smallText;
+  props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
   screen.list(props);
 }
@@ -201,17 +198,8 @@ bool ButtonRemapActivity::validateUnassigned(const uint8_t pressedButton) {
 }
 
 const char* ButtonRemapActivity::getRoleName(const uint8_t roleIndex) {
-  switch (roleIndex) {
-    case 0:
-      return tr(STR_BACK);
-    case 1:
-      return tr(STR_CONFIRM);
-    case 2:
-      return tr(STR_DIR_LEFT);
-    case 3:
-    default:
-      return tr(STR_DIR_RIGHT);
-  }
+  static const char* labels[] = {"", "", "", ""};
+  return labels[roleIndex < kRoleCount ? roleIndex : kRoleCount - 1];
 }
 
 const char* ButtonRemapActivity::getHardwareName(const uint8_t buttonIndex) const {

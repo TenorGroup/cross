@@ -13,14 +13,47 @@
 // supply the data: item count, screen content, and what activating a row does.
 //
 // Screens that are not a single list (sliders, tab layouts, state machines)
-// should NOT derive from this — they use UiAppHost directly.
+// should NOT derive from this - they use UiAppHost directly.
 class UiListActivity : public Activity, protected UiAppHost {
  public:
   void onEnter() override;
+  std::string navigationLabel() const override {
+    const auto* title = headerTitle();
+    return title ? title : "";
+  }
+  bool remembersNavigation() const override { return true; }
+  void captureNavigation(MenuNavigationState& state) const override;
+  void restoreNavigation(const MenuNavigationState& state) override;
   void loop() override;
   void render(RenderLock&&) override;
 
+  // Kep con tro ve trong so dong dang co.
+  //
+  // ListNav::scrollBy() mang chu thich "clamp to range" nhung no chi kep `top`, con
+  // `selected` di thang ra props. Man nao nap lai du lieu ma danh sach ngan di duoi chan
+  // con tro dang nho thi chi so tro ra ngoai.
+  //
+  // Do 14/09/2026: hau qua chi la KHONG DONG NAO duoc to, vi ham list() chi DOI CHIEU
+  // selectedIndex voi chi so dong chu khong lay no lam chi so mang, va duong bam co chot
+  // chan rieng. Tuc loi tham my, khong phai doc ra ngoai bo nho.
+  //
+  // Dat o mot cho vi ca hai lop con deu can: ban co the va ban khong the. Public de bai
+  // kiem goi thang duoc; no thuan nen khong giu trang thai gi.
+  static int kepConTro(int chon, int soDong);
+
+  void launchFavorite(const std::string& key, bool activate = true) {
+    pendingFavorite = key;
+    favoriteOrigin = key;
+    activateFavorite = activate;
+  }
+  std::string navigationMemoryKey() const override {
+    return favoriteOrigin.empty() ? Activity::navigationMemoryKey() : "favorite:" + favoriteOrigin;
+  }
+
  protected:
+  void renderUi();
+  bool tabBandDrawn = false;
+  void reserveFixedMenuContent(UiScreen& screen);
   // Base-owned row action; subclass-registered actions start at ACTION_USER.
   static constexpr freeink::ui::ActionId ACTION_ROW = 1;
   static constexpr freeink::ui::ActionId ACTION_USER = 2;
@@ -48,11 +81,20 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Bounds-checked ACTION_ROW dispatch. Default: selection follows the tapped
   // row, then long-press/activate. UiTabListActivity remaps row -> ring.
   virtual void onRowAction(const freeink::ui::ActionEvent& event);
-  // The button-navigation tail of loop(): release steps the selection, hold
-  // jumps by page. UiTabListActivity replaces it with the ring walk.
+  // The button-navigation tail of loop(): front taps step one row, edge taps
+  // page the viewport, and holds select the first/last visible row. UiTabListActivity replaces it with the ring walk.
   virtual void navigateButtons();
   // First hook in loop(); return true when the pass is consumed (popups, extra
   // buttons, gestures). Runs before the base button handling.
+  virtual bool supportsFavorites() const { return false; }
+  virtual std::string favoriteKey(int row) const { return {}; }
+  virtual int favoriteSelectedRow() { return activeNav().selected; }
+  virtual int focusFavorite(const std::string& key);
+  virtual void favoritesChanged() {}
+  virtual bool toggleFavorite(int row);
+  virtual bool rowIsPinned(int row) const;
+  void decoratePinnedRows(freeink::ui::ListProps& props);
+  void reserveFavoriteHint(UiScreen& screen);
   virtual bool handleCustomInput() { return false; }
   // Back/Confirm handling; override wholesale for press/release or hold
   // variants. Return true when a button consumed the pass.
@@ -73,8 +115,22 @@ class UiListActivity : public Activity, protected UiAppHost {
   // hardware the denser override below uses the theme's *-with-subtitle row
   // height instead of its single-line one (see syncListViewport()).
   void syncListViewport(UiScreen& screen, freeink::ui::ListProps& props, bool hasSubtitle = false);
+
+  // Kep con tro ve trong so dong dang co.
+  //
+  // ListNav::scrollBy() mang chu thich "clamp to range" nhung no chi kep `top`, con
+  // `selected` di thang ra props. Man nao nap lai du lieu ma danh sach ngan di duoi chan
+  // con tro dang nho thi chi so tro ra ngoai.
+  //
+  // Do 14/09/2026: hau qua chi la KHONG DONG NAO duoc to, vi ham list() chi DOI CHIEU
+  // selectedIndex voi chi so dong chu khong lay no lam chi so mang, va duong bam co chot
+  // chan rieng. Tuc loi tham my, khong phai doc ra ngoai bo nho.
+  //
+
   // Move the selection to index and pull the viewport to it.
   void moveSelectionTo(int index);
+  void moveListPage(int direction);
+  void moveToVisibleBoundary(bool last, bool ring = false);
 
   // --- shared state ----------------------------------------------------------
   // Selection + viewport (selected/top/visibleRows/followOnBuild). Access via
@@ -89,5 +145,11 @@ class UiListActivity : public Activity, protected UiAppHost {
   // (not name-hidden) to subclasses with extra touch surfaces.
   bool routeListTouch();
 
+  void drawPageHints();
   const bool wantsTouchLongPress;
+  std::string pendingFavorite;
+  std::string favoriteOrigin;
+  bool activateFavorite = true;
+  bool favoriteSaveFailed = false;
+  int favoriteHintY = -1;
 };

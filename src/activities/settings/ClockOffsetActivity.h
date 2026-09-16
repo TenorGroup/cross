@@ -1,6 +1,6 @@
 #pragma once
-
 #include <GfxRenderer.h>
+#include <I18n.h>
 
 #include "activities/Activity.h"
 #include "components/UiAppHost.h"
@@ -18,6 +18,7 @@ class ClockOffsetActivity final : public Activity, private UiAppHost {
   explicit ClockOffsetActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   void onEnter() override;
+  std::string navigationLabel() const override { return I18N.get(StrId::STR_CLOCK_UTC_OFFSET); }
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;

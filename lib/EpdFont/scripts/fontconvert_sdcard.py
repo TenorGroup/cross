@@ -30,6 +30,8 @@ import os
 import re
 import math
 import argparse
+import json
+import hashlib
 from collections import namedtuple
 
 from cpfont_version import CPFONT_VERSION
@@ -259,7 +261,7 @@ def _extract_pairpos_subtable(subtable, glyph_to_cp, raw_kern):
                     key = (coverage_glyph, pvr.SecondGlyph)
                     raw_kern[key] = raw_kern.get(key, 0) + xa
     elif subtable.Format == 2:
-        # Class-based pairs — iterate by class, not by glyph, to avoid
+        # Class-based pairs - iterate by class, not by glyph, to avoid
         # O(glyphs²) explosion for CJK fonts with many requested glyphs.
         class_def1 = subtable.ClassDef1.classDefs if subtable.ClassDef1 else {}
         class_def2 = subtable.ClassDef2.classDefs if subtable.ClassDef2 else {}
@@ -525,8 +527,8 @@ def extract_ligatures_fonttools(font_path, codepoints):
     #
     # The on-disk format packs each component as a uint16 (the 3+ chained
     # path packs `intermediate_cp << 16 | last_cp`, where `intermediate_cp`
-    # is the lig_cp of the prefix). Dropping any seq with an SMP cp here —
-    # plus any lig_cp > 0xFFFF — means every cp that reaches `packed = … <<
+    # is the lig_cp of the prefix). Dropping any seq with an SMP cp here -
+    # plus any lig_cp > 0xFFFF - means every cp that reaches `packed = … <<
     # 16 | …` below is already 16-bit safe, including the chained path
     # (intermediate_cp = filtered[prefix] is filtered too).
     codepoints_set = set(codepoints)
@@ -562,15 +564,20 @@ def extract_ligatures_fonttools(font_path, codepoints):
                   f"({', '.join(f'U+{cp:04X}' for cp in seq)}) -> U+{lig_cp:04X}: "
                   f"no intermediate ligature for prefix", file=sys.stderr)
 
-    # Sort by packed pair key — on-device lookup uses binary search
+    # Sort by packed pair key - on-device lookup uses binary search
     pairs.sort(key=lambda p: p[0])
     return pairs
 
 
 def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=False,
-                         fallback_fontfile=None):
+                         fallback_fontfile=None, embolden_px=0.0):
     """Rasterize all glyphs for one font style. Returns StyleRasterData."""
     import freetype
+    import ctypes
+
+    if not math.isfinite(embolden_px) or not 0 <= embolden_px <= 0.5:
+        raise ValueError("embolden_px must be finite and between 0 and 0.5 pixels")
+    strength = round(embolden_px * 64)
 
     style_names = {0: "regular", 1: "bold", 2: "italic", 3: "bolditalic"}
     style_label = style_names.get(style_id, str(style_id))
@@ -587,26 +594,37 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
         fallback_face = freetype.Face(fallback_fontfile)
         fallback_face.set_char_size(size << 6, size << 6, 150, 150)
 
-    load_flags = freetype.FT_LOAD_RENDER
+    load_flags = freetype.FT_LOAD_NO_BITMAP if strength else freetype.FT_LOAD_RENDER
     if force_autohint:
         load_flags |= freetype.FT_LOAD_FORCE_AUTOHINT
+
+    def render_glyph(target, glyph_index):
+        target.load_glyph(glyph_index, load_flags)
+        if strength:
+            if target.glyph.format != freetype.FT_GLYPH_FORMAT_OUTLINE:
+                raise ValueError("Emboldening requires an outline font")
+            outline = ctypes.byref(target.glyph.outline._FT_Outline)
+            error = freetype.FT_Outline_EmboldenXY(outline, strength, strength)
+            if error:
+                raise RuntimeError(f"FreeType embolden error {error}")
+            freetype.FT_Outline_Translate(outline, -(strength // 2), -(strength // 2))
+            target.glyph.render(freetype.FT_RENDER_MODE_NORMAL)
+        return target
 
     def load_glyph(code_point):
         glyph_index = face.get_char_index(code_point)
         if glyph_index == 0:
             glyph_index = ligature_glyph_indices.get(code_point, 0)
         if glyph_index > 0:
-            face.load_glyph(glyph_index, load_flags)
-            return face
+            return render_glyph(face, glyph_index)
         if fallback_face:
             fallback_glyph_index = fallback_face.get_char_index(code_point)
             if fallback_glyph_index > 0:
-                fallback_face.load_glyph(fallback_glyph_index, load_flags)
-                return fallback_face
+                return render_glyph(fallback_face, fallback_glyph_index)
         return None
 
     # Validate intervals: remove codepoints not present in the font.
-    # Only check glyph existence via get_char_index — do NOT call
+    # Only check glyph existence via get_char_index - do NOT call
     # load_glyph here, as that triggers FT_LOAD_RENDER at the target
     # DPI and doubles total rasterization time for no benefit.
     print(f"  [{style_label}] Validating intervals against font...", file=sys.stderr)
@@ -646,11 +664,11 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
             # FreeType returns the buffer with bitmap.pitch as the row stride
             # in bytes, which can be negative when the bitmap is stored
             # bottom-up. Iterating bitmap.buffer linearly assumes
-            # pitch == width and a top-down layout — that holds in the common
+            # pitch == width and a top-down layout - that holds in the common
             # case but breaks on padded or flipped bitmaps and corrupts the
             # output. Walk by (row, col) using the real pitch instead.
             #
-            # Cache bitmap.buffer in a local — ctypes struct field access
+            # Cache bitmap.buffer in a local - ctypes struct field access
             # creates a new Python wrapper object each time, so re-evaluating
             # it per pixel is catastrophically slow.
             pixels4g = []
@@ -827,7 +845,7 @@ def style_sections_total_size(sections):
 # --- File writers ---
 
 def generate_cpfont_multistyle(style_fonts, size, intervals, output_path,
-                               force_autohint=False, fallback_style_fonts=None):
+                               force_autohint=False, fallback_style_fonts=None, embolden_px=0.0, style_intervals=None):
     """Generate a multi-style v4 .cpfont file.
 
     style_fonts: dict of {style_id: fontfile_path} e.g. {0: "Regular.ttf", 2: "Italic.ttf"}
@@ -847,9 +865,9 @@ def generate_cpfont_multistyle(style_fonts, size, intervals, output_path,
         fallback_fontfile = fallback_style_fonts.get(style_id)
         print(f"  Rasterizing style {style_id}...", file=sys.stderr)
         raster_data[style_id] = rasterize_font_style(
-            fontfile, size, intervals, style_id=style_id,
+            fontfile, size, (style_intervals or {}).get(style_id, intervals), style_id=style_id,
             force_autohint=force_autohint,
-            fallback_fontfile=fallback_fontfile)
+            fallback_fontfile=fallback_fontfile, embolden_px=embolden_px)
 
     # Pack binary sections for each style
     packed_sections = {}  # style_id -> tuple of section bytearrays
@@ -944,6 +962,10 @@ def main():
                         help="Font family name for output filenames (default: derived from font filename).")
     parser.add_argument("--force-autohint", dest="force_autohint", action="store_true",
                         help="Force FreeType auto-hinter instead of native font hinting.")
+    parser.add_argument("--trial-weights", action="store_true",
+                        help="Build base plus two experimental weight packs, default sizes 12 to 26.")
+    parser.add_argument("--embolden-px", type=float, default=0.0,
+                        help="Experimental outline strength in pixels, 0 to 0.5 (default: unchanged).")
     parser.add_argument("-o", "--output", dest="output",
                         help="Output file path (for single-size mode).")
     parser.add_argument("--output-dir", dest="output_dir",
@@ -1015,6 +1037,8 @@ def main():
         sizes = [int(s.strip()) for s in args.sizes.split(",")]
     elif args.size:
         sizes = [args.size]
+    elif args.trial_weights:
+        sizes = list(range(12, 27, 2))
     else:
         print("Error: --size or --sizes is required", file=sys.stderr)
         sys.exit(1)
@@ -1051,24 +1075,47 @@ def main():
         style_map = {"regular": 0, "bold": 1, "italic": 2, "bolditalic": 3}
         style_fonts[style_map[args.style]] = fontfile
 
+    if args.trial_weights and (args.output or args.embolden_px != 0):
+        parser.error("--trial-weights uses --output-dir and its own strength levels")
+    if not all(1 <= sz <= 255 for sz in sizes):
+        parser.error("sizes must be between 1 and 255")
+
     # Always generate v4 format
     if args.output and len(sizes) != 1:
         print("Error: --output can only be used with a single size", file=sys.stderr)
         sys.exit(1)
     output_dir = args.output_dir if args.output_dir else f"{font_name}/"
+    levels = (0.0, 0.2, 0.35) if args.trial_weights else (args.embolden_px,)
+    manifest = {"recipe": "outline-v1", "dpi": 150, "freetype": None,
+                "force_autohint": args.force_autohint, "sizes": sizes,
+                "sources": {}, "files": []}
+    import freetype
+    manifest["freetype"] = list(freetype.version())
+    for label, paths in (("primary", style_fonts), ("fallback", fallback_style_fonts)):
+        for style, path in paths.items():
+            with open(path, "rb") as source:
+                manifest["sources"][f"{label}-{style}"] = hashlib.sha256(source.read()).hexdigest()
     total_size = 0
-    for sz in sizes:
-        if args.output and len(sizes) == 1:
-            output_path = args.output
-        else:
-            filename = f"{font_name}_{sz}.cpfont"
-            output_path = os.path.join(output_dir, filename)
-        print(f"Generating {output_path} (size {sz}, {len(style_fonts)} style(s), v4)...", file=sys.stderr)
-        total_size += generate_cpfont_multistyle(
-            style_fonts, sz, intervals, output_path,
-            force_autohint=args.force_autohint,
-            fallback_style_fonts=fallback_style_fonts)
-    print(f"\nTotal: {len(sizes)} files, {total_size / 1024 / 1024:.2f} MB", file=sys.stderr)
+    for weight, strength in enumerate(levels):
+        folder = os.path.join(output_dir, f"weight-{weight}") if weight else output_dir
+        for sz in sizes:
+            output_path = args.output if args.output else os.path.join(folder, f"{font_name}_{sz}.cpfont")
+            print(f"Generating {output_path} (size {sz}, outline {strength}px)...", file=sys.stderr)
+            total_size += generate_cpfont_multistyle(
+                style_fonts, sz, intervals, output_path,
+                force_autohint=args.force_autohint,
+                fallback_style_fonts=fallback_style_fonts, embolden_px=strength)
+            with open(output_path, "rb") as built:
+                digest = hashlib.sha256(built.read()).hexdigest()
+            manifest["files"].append({"path": os.path.relpath(output_path, output_dir),
+                                      "weight": weight, "strength_26_6": round(strength * 64),
+                                      "sha256": digest})
+    if args.trial_weights:
+        with open(os.path.join(output_dir, ".weight-recipe.json"), "w", encoding="utf-8") as recipe:
+            json.dump(manifest, recipe, indent=2)
+            recipe.write("\n")
+    print(f"\nTotal: {len(sizes) * len(levels)} files, {total_size / 1024 / 1024:.2f} MB", file=sys.stderr)
+
 
 
 if __name__ == "__main__":

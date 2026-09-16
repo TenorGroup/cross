@@ -9,15 +9,17 @@
 #include "KOReaderAuthActivity.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
+#include "MenuFavorites.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 
 namespace fui = freeink::ui;
 
 namespace {
 const StrId menuNames[KOReaderSettingsActivity::MENU_ITEMS] = {
     StrId::STR_USERNAME,      StrId::STR_PASSWORD,      StrId::STR_SYNC_SERVER_URL, StrId::STR_DOCUMENT_MATCHING,
-    StrId::STR_SEND_METADATA, StrId::STR_SYNC_BEHAVIOR, StrId::STR_SIGN_UP,         StrId::STR_AUTHENTICATE};
+    StrId::STR_SEND_METADATA, StrId::STR_SYNC_BEHAVIOR, StrId::STR_AUTHENTICATE,    StrId::STR_SIGN_UP};
 }  // namespace
 
 KOReaderSettingsActivity::KOReaderSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -96,7 +98,7 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
     KOREADER_STORE.setSyncBehavior(newBehavior);
     KOREADER_STORE.saveToFile();
     requestUpdate();
-  } else if (index == 6) {
+  } else if (index == 7) {
     // Sign Up - create a new account on the sync server with the entered credentials
     if (!KOREADER_STORE.hasCredentials()) {
       return;
@@ -104,8 +106,8 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
     startActivityForResult(
         std::make_unique<KOReaderAuthActivity>(renderer, mappedInput, KOReaderAuthActivity::Mode::SIGN_UP),
         [](const ActivityResult&) {});
-  } else if (index == 7) {
-    // Authenticate
+  } else if (index == 6) {
+    // Log in
     if (!KOREADER_STORE.hasCredentials()) {
       // Can't authenticate without credentials - just show message briefly
       return;
@@ -153,7 +155,11 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
     } else {
       rowValues_[i] = KOREADER_STORE.hasCredentials() ? "" : std::string("[") + tr(STR_SET_CREDENTIALS_FIRST) + "]";
     }
-    rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
+    // Account actions have a full-width label. Their prerequisite belongs
+    // below it, so the longer Vietnamese hint cannot squeeze Log in/Sign up.
+    const bool accountAction = i >= 6;
+    rowItems_[i].value = accountAction || rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
+    rowItems_[i].subtitle = accountAction && !rowValues_[i].empty() ? rowValues_[i].c_str() : nullptr;
   }
 
   fui::ListProps props;
@@ -164,8 +170,11 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
   props.valueInset = 8;               // air between the value and the row edge
   // Label at the value's font size: both sides of the row read as one unit.
   // maxLines=2 also marks the style caller-owned (see textStyleUnset).
-  props.labelText = screen.theme().smallText;
+  props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
+  props.subtitleText = screen.theme().smallText;
   syncListViewport(screen, props);
   screen.list(props);
 }
+
+std::string KOReaderSettingsActivity::favoriteKey(int row) const { return menufavorites::keyFor("kosync", 0, row); }

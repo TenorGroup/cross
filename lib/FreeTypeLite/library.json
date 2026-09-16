@@ -1,0 +1,9 @@
+{
+  "name": "FreeTypeLite",
+  "version": "2.13.2",
+  "description": "FreeType cat con, chi doc duong cong TrueType, dung de do chi phi to chu TTF ngay tren X3",
+  "build": {
+    "flags": ["-Icfg", "-Ivendor/include"],
+    "srcFilter": ["+<*.c>", "+<*.cpp>"]
+  }
+}

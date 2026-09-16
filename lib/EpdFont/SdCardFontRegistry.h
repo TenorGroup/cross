@@ -5,12 +5,14 @@
 #include <vector>
 
 struct SdCardFontFileInfo {
-  std::string path;   // v4 on-disk naming: "/<root>/<Family>/<Family>_<size>.cpfont"
-                      // where <root> is "/.fonts" (preferred, hidden) or "/fonts" (visible).
-                      // e.g. "/.fonts/NotoSansCJK/NotoSansCJK_14.cpfont"
-  uint8_t pointSize;  // parsed from filename: 14
-  uint8_t style;      // always 0 in v4 (all 4 styles bundled in one file);
-                      // kept for potential future formats
+  std::string path;        // v4 on-disk naming: "/<root>/<Family>/<Family>_<size>.cpfont"
+                           // where <root> is "/.fonts" (preferred, hidden) or "/fonts" (visible).
+                           // e.g. "/.fonts/NotoSansCJK/NotoSansCJK_14.cpfont"
+  uint8_t pointSize;       // parsed from filename: 14
+  uint8_t style;           // always 0 in v4 (all 4 styles bundled in one file);
+                           // kept for potential future formats
+  uint8_t weightMask = 1;  // bit 0: base, bits 1/2: installed experimental outlines
+  std::string weightPath(uint8_t weight) const;
 };
 
 struct SdCardFontFamilyInfo {

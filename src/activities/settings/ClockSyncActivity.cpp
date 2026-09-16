@@ -1,5 +1,6 @@
 #include "ClockSyncActivity.h"
 
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <I18n.h>
@@ -14,6 +15,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/TimezoneLookup.h"
 
 void ClockSyncActivity::onEnter() {
   Activity::onEnter();
@@ -41,7 +43,7 @@ void ClockSyncActivity::onExit() {
 
 void ClockSyncActivity::launchWifiSelection() {
   LOG_INF("CLK", "Manual sync requested without WiFi, launching WiFi selection");
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, true, false),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
 
@@ -64,6 +66,10 @@ void ClockSyncActivity::runSync() {
     return;
   }
 
+  {
+    RenderLock lock(*this);
+    if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
+  }
   const bool ok = halClock.syncFromNTP();
   if (!ok) {
     state = FAILED;
@@ -72,6 +78,7 @@ void ClockSyncActivity::runSync() {
   }
 
   // Mark as synced so the auto-sync hook stops firing on future WiFi connects.
+  const bool timezoneOk = !SETTINGS.clockAutoTimezone || timezone_lookup::updateOffset();
   SETTINGS.clockHasBeenSynced = 1;
   SETTINGS.saveToFile();
 
@@ -80,7 +87,7 @@ void ClockSyncActivity::runSync() {
   if (halClock.formatTime(buf, sizeof(buf), SETTINGS.clockUtcOffsetQ, SETTINGS.clockFormat == 1)) {
     snprintf(syncedTime, sizeof(syncedTime), "%s", buf);
   }
-  state = SUCCESS;
+  state = timezoneOk ? SUCCESS : TIMEZONE_FAILED;
   requestUpdate();
 }
 
@@ -129,7 +136,11 @@ void ClockSyncActivity::render(RenderLock&&) {
     }
     case NO_WIFI:
       renderer.drawCenteredText(UI_12_FONT_ID, midY - 20, tr(STR_CLOCK_SYNC_NO_WIFI), true, EpdFontFamily::BOLD);
-      renderer.drawCenteredText(UI_10_FONT_ID, midY + 10, tr(STR_CLOCK_SYNC_NO_WIFI_HINT));
+      renderer.drawCenteredText(SMALL_FONT_ID, midY + 10, tr(STR_CLOCK_SYNC_NO_WIFI_HINT));
+      break;
+    case TIMEZONE_FAILED:
+      renderer.drawCenteredText(UI_12_FONT_ID, midY - 20, tr(STR_CLOCK_SYNC_OK));
+      renderer.drawCenteredText(UI_10_FONT_ID, midY + 10, tr(STR_CLOCK_TIMEZONE_FAILED));
       break;
     case FAILED:
       renderer.drawCenteredText(UI_12_FONT_ID, midY - 20, tr(STR_CLOCK_SYNC_FAIL), true, EpdFontFamily::BOLD);

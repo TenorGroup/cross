@@ -6,6 +6,14 @@
 #include <algorithm>
 #include <cstring>
 
+std::string SdCardFontFileInfo::weightPath(const uint8_t weight) const {
+  if (weight == 0) return path;
+  if (weight > 2) return {};
+  const auto slash = path.rfind('/');
+  if (slash == std::string::npos) return {};
+  return path.substr(0, slash) + "/weight-" + static_cast<char>('0' + weight) + path.substr(slash);
+}
+
 // --- SdCardFontFamilyInfo helpers ---
 
 const SdCardFontFileInfo* SdCardFontFamilyInfo::findFile(uint8_t size, uint8_t style) const {
@@ -137,13 +145,16 @@ void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo
     info.path = std::string(dirPath) + "/" + nameBuffer;
     info.pointSize = size;
     info.style = style;
+    for (uint8_t weight = 1; weight <= 2; ++weight) {
+      if (Storage.exists(info.weightPath(weight).c_str())) info.weightMask |= 1u << weight;
+    }
     family.files.push_back(std::move(info));
   }
 }
 
 // Scan a single root (e.g. "/.fonts") and append its families to `out`.
 // Skips families whose names already exist in `out` (de-duplicates between
-// the hidden and visible roots — first scan wins).
+// the hidden and visible roots - first scan wins).
 void SdCardFontRegistry::scanRoot(const char* rootPath, std::vector<SdCardFontFamilyInfo>& out) {
   HalFile root = Storage.open(rootPath);
   if (!root) {

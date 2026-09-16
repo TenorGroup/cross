@@ -212,7 +212,4 @@ When editing related source assets, regenerate via normal build steps/scripts.
 
 ## Scope guardrails
 
-Before implementing larger ideas, check:
-
-- [SCOPE.md](../../SCOPE.md)
-- [GOVERNANCE.md](../../GOVERNANCE.md)
+Keep proposed changes focused on the reading experience and the available device resources. Discuss larger changes with the maintainers before implementation.

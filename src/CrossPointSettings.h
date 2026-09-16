@@ -22,6 +22,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     BLANK = 5,
     QUICK_RESUME = 6,
     TRANSPARENT_CUSTOM = 7,
+    // Man ngu mac dinh cua tenor/cross, nen thang vao firmware. THEM VAO CUOI, vi so thu
+    // tu nay duoc luu xuong settings.json: chen vao giua la moi ban ghi cu hieu nham.
+    TENOR = 8,
+    STATS = 9,
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
@@ -88,13 +92,22 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
 
   // Side button layout options
   // Default: Up = Previous, Down = Next
-  enum SIDE_BUTTON_LAYOUT { PREV_NEXT = 0, NEXT_PREV = 1, SIDE_BUTTONS_DISABLED = 2, SIDE_BUTTON_LAYOUT_COUNT };
+  // NEXT_NEXT is appended rather than slotted in beside its siblings: the value is
+  // persisted as a number, so inserting would silently change what an existing
+  // save means.
+  enum SIDE_BUTTON_LAYOUT {
+    PREV_NEXT = 0,
+    NEXT_PREV = 1,
+    SIDE_BUTTONS_DISABLED = 2,
+    NEXT_NEXT = 3,
+    SIDE_BUTTON_LAYOUT_COUNT
+  };
 
   // Font family options (built-in fonts only; SD card fonts use sdFontFamilyName)
   enum FONT_FAMILY { NOTOSERIF = 0, NOTOSANS = 1, FONT_FAMILY_COUNT };
   static constexpr uint8_t LEGACY_OPENDYSLEXIC = 2;
   static constexpr uint8_t BUILTIN_FONT_COUNT = FONT_FAMILY_COUNT;
-  // Reader font size is a point size, not an enum slot — see fontPointSize.
+  // Reader font size is a point size, not an enum slot - see fontPointSize.
   // Legacy 1.4-and-earlier files stored a 0..3 SMALL/MEDIUM/LARGE/EXTRA_LARGE
   // slot; fromJson() folds that range up (see LEGACY_FONT_SIZE_MAX).
   static constexpr uint8_t LEGACY_FONT_SIZE_MAX = 3;
@@ -162,11 +175,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     OFF = 0,
     CHAPTER_SKIP = 1,
     ORIENTATION_CHANGE = 2,
+    FONT_SIZE_STEP = 3,  // giu nut tien = co chu to mot nac, giu nut lui = nho mot nac (14/09/2026)
     LONG_PRESS_BUTTON_BEHAVIOR_COUNT
   };
 
   // UI Theme
-  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3 };
+  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3, TENOR_UI = 4 };
 
   // Image rendering in EPUB reader
   enum IMAGE_RENDERING { IMAGES_DISPLAY = 0, IMAGES_PLACEHOLDER = 1, IMAGES_SUPPRESS = 2, IMAGE_RENDERING_COUNT };
@@ -197,7 +211,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   };
 
   // Sleep screen settings
-  uint8_t sleepScreen = DARK;
+  // tenor/cross bay an pham cua chinh no khi ngu, khong bat ai phai chep file vao the.
+  uint8_t sleepScreen = TENOR;
   // Night mode: inverted output polarity, applied to every activity per
   // render by ActivityManager. The sleep screen opts out itself.
   uint8_t screenInverted = 0;
@@ -221,14 +236,18 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t clockUtcOffsetQ = 48;
   // Clock display format: 0 = 24-hour, 1 = 12-hour
   uint8_t clockFormat = 0;
+  uint8_t clockAutoTimezone = 1;
   // Set once an NTP sync succeeds. Used to skip re-syncing on every WiFi connect.
   // Resetting to 0 (e.g. via the web UI) forces a re-sync on next WiFi connect.
   uint8_t clockHasBeenSynced = 0;
   // Text rendering settings
   uint8_t extraParagraphSpacing = 1;
+  // 0 = automatic (legacy spacing/CSS behavior), 1 = on, 2 = off.
+  uint8_t paragraphIndent = 0;
   uint8_t textAntiAliasing = 1;
   // Short power button click behaviour
   uint8_t shortPwrBtn = IGNORE;
+  uint8_t wakeButtons = 0;  // X3: power, power/right side, power/both sides, all.
   // EPUB reading orientation settings
   // 0 = portrait (default), 1 = landscape clockwise, 2 = inverted, 3 = landscape counter-clockwise
   uint8_t orientation = PORTRAIT;
@@ -236,6 +255,23 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t frontButtonLayout = BACK_CONFIRM_LEFT_RIGHT;
   uint8_t sideButtonLayout = PREV_NEXT;
   uint8_t frontButtonFollowOrientation = 0;
+  uint8_t keyboardAxisSwapped = 1;
+  uint8_t keyboardAligned = 1;
+  // Ten thiet bi do nguoi dung dat, dung cho hostname Wi-Fi, ten mDNS va ten
+  // diem phat. De trong thi giu ten mac dinh. Doc qua deviceNetworkName().
+  // Tab Yeu thich cua menu doc: cac muc nguoi doc tu ghim, THEO DUNG THU TU ho xep.
+  // Giu o day de no song qua lan tat may. Moi o la mot readermenu::Action, luu bang so
+  // chu khong bang ten, nen them muc moi phai THEM VAO CUOI enum do (xem ReaderMenuLayout.h).
+  // Tran 8 phai khop readermenu::TOI_DA_GHIM; CrossPointSettings.cpp co static_assert giu.
+  static constexpr uint8_t READER_FAVORITE_MAX = 8;
+  uint8_t readerFavorites[READER_FAVORITE_MAX] = {};
+  uint8_t readerFavoriteCount = 0;
+  // Nguoi doc da tung tu xep danh sach nay chua. Phai tach khoi readerFavoriteCount == 0,
+  // vi danh sach RONG la mot lua chon that: go het moi muc ra thi tab Yeu thich phai
+  // rong, chu khong tu moc lai ban mac dinh o lan mo sau.
+  uint8_t readerFavoritesDaDat = 0;
+
+  char deviceName[32] = "";
   // Front button remap (logical -> hardware)
   // Used by MappedInputManager to translate logical buttons into physical front buttons.
   uint8_t frontButtonBack = FRONT_HW_BACK;
@@ -248,6 +284,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
   // available size (and persists the snap) whenever the family changes.
   uint8_t fontPointSize = DEFAULT_FONT_POINT_SIZE;
+  uint8_t readerInkWeight = 0;
   uint8_t lineSpacing = NORMAL;
   uint8_t paragraphAlignment = JUSTIFIED;
   // Auto-sleep timeout setting (default 10 minutes). Legacy sleepTimeout enum values are migration-only.
@@ -277,7 +314,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Defaults to Disabled so shortcut-based bookmark toggling remains opt-in.
   uint8_t longPressMenuFunction = LP_MENU_DISABLED;
   // UI Theme
-  uint8_t uiTheme = LYRA;
+  uint8_t uiTheme = TENOR_UI;
+  // Tenor-only appearance preferences; existing themes retain their own hints.
+  uint8_t tenorButtonSymbols = 1;
+  uint8_t tenorSideArrows = 1;
   // Sunlight fading compensation
   uint8_t fadingFix = 0;
   // Power button return from footnotes (1 = enabled, 0 = disabled)
@@ -287,8 +327,13 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Focus Reading - emphasizes the first part of words with bold
   uint8_t focusReadingEnabled = 0;
   uint8_t readerMenuStyle = READER_MENU_LIST;
-  // SD card font family name (empty = use built-in fontFamily)
-  char sdFontFamilyName[32] = "";
+  // SD card font family name (empty = use built-in fontFamily).
+  // Bokerlam is the reader font this firmware ships as its default choice. It lives on the
+  // card, not in flash, so a card without /.fonts/Bokerlam falls back on its own:
+  // SdCardFontSystem::begin() clears the name and the built-in fontFamily takes over.
+  // A settings file that already exists wins over this - loadFromFile() reads the stored
+  // name (blank included), so nobody's saved font choice gets overwritten by an upgrade.
+  char sdFontFamilyName[32] = "Bokerlam";
   // Dictionary folder name under /dictionaries (empty = no dictionary)
   char dictionaryName[32] = "";
   // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)
@@ -301,7 +346,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t backShortToFileBrowser = 0;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
-  // Tilt-based page turning (X3 only — requires QMI8658 IMU)
+  // Tilt-based page turning (X3 only - requires QMI8658 IMU)
   uint8_t tiltPageTurn = TILT_OFF;
   // Touch screen reader zones/gestures on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_SWIPE;
@@ -345,7 +390,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
 
   // Drop the SD font selection and fall back to the built-in family. The reader
   // point size comes back into BUILTIN_READER_POINT_SIZES with it, since that is
-  // the only set a built-in family ships — otherwise the settings UI would keep
+  // the only set a built-in family ships - otherwise the settings UI would keep
   // offering a size nothing renders at. Both fields are persisted in one write.
   void clearSdFontFamily();
 
@@ -353,7 +398,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // editors read the raw fields.
   //
   // Deliberately NOT built under storeMutex: every field it reads is a single
-  // byte, so a concurrent settings write can never produce a corrupt value —
+  // byte, so a concurrent settings write can never produce a corrupt value -
   // only a snapshot mixing pre- and post-change fields. That costs at most one
   // e-ink frame drawn with a mixed status bar, which self-corrects on the next
   // refresh. Locking here would instead put a mutex on the render path and
@@ -384,7 +429,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   StatusBarSpec statusBarSpec() const;
 
   // Resolved text-rendering configuration for the Epub layout engine. The
-  // viewport is renderer/orientation-derived, so the caller supplies it —
+  // viewport is renderer/orientation-derived, so the caller supplies it -
   // passing it in keeps a spec from ever existing in a half-filled state.
   // Unlocked for the same reason as statusBarSpec(); see the note above.
   ReaderRenderSpec readerRenderSpec(uint16_t viewportWidth, uint16_t viewportHeight) const;

@@ -12,10 +12,14 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "MenuFavorites.h"
+#include "ReaderFontChon.h"
 #include "ReaderFontSizes.h"
 #include "SdCardFontSystem.h"
 #include "TextSettingsPreview.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
@@ -25,27 +29,15 @@ namespace {
 constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_LAYOUT, StrId::STR_STYLE};
 
 constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING, StrId::STR_EXTRA_SPACING, StrId::STR_ALIGNMENT,
-                                         StrId::STR_SCREEN_MARGIN};
+                                         StrId::STR_SCREEN_MARGIN, StrId::STR_PARAGRAPH_INDENT};
 constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING, StrId::STR_HYPHENATION, StrId::STR_EMBEDDED_STYLE,
-                                        StrId::STR_TEXT_AA};
+                                        StrId::STR_TEXT_AA, StrId::STR_READER_INK_WEIGHT};
 
-int findCurrentFontIndex(const SdCardFontRegistry* registry, const char* sdFontFamilyName, uint8_t fontFamily) {
-  if (sdFontFamilyName[0] != '\0' && registry) {
-    const auto& families = registry->getFamilies();
-    const auto family = std::find_if(families.begin(), families.end(), [sdFontFamilyName](const auto& candidate) {
-      return candidate.name == sdFontFamilyName;
-    });
-    if (family != families.end()) {
-      return CrossPointSettings::BUILTIN_FONT_COUNT + static_cast<int>(family - families.begin());
-    }
-  }
-
-  return fontFamily < CrossPointSettings::BUILTIN_FONT_COUNT ? fontFamily : 0;
-}
-
+constexpr StrId INK_WEIGHT_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_INK_LIGHT, StrId::STR_INK_STRONG};
 constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE};
 constexpr StrId ALIGNMENT_IDS[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                    StrId::STR_BOOK_S_STYLE};
+constexpr StrId INDENT_IDS[] = {StrId::STR_INDENT_AUTO, StrId::STR_STATE_ON, StrId::STR_STATE_OFF};
 constexpr int MARGIN_MIN = CrossPointSettings::SCREEN_MARGIN_MIN;
 constexpr int MARGIN_MAX = CrossPointSettings::SCREEN_MARGIN_MAX;
 constexpr int MARGIN_STEP = CrossPointSettings::SCREEN_MARGIN_STEP;
@@ -61,37 +53,27 @@ void TextSettingsActivity::onEnter() {
   UiTabListActivity::onEnter();
 
   metrics_ = UITheme::getInstance().getMetrics();
-  afterHeader = metrics_.topPadding + metrics_.headerHeight + metrics_.verticalSpacing;
+  afterHeader = tenorchrome::enabled() ? tenorchrome::CONTENT_TOP
+                                       : metrics_.topPadding + metrics_.headerHeight + metrics_.verticalSpacing;
   bottomReserved = metrics_.buttonHintsHeight + metrics_.verticalSpacing;
   usableHeight = renderer.getScreenHeight() - afterHeader - bottomReserved;
   previewHeight = usableHeight * metrics_.previewHeightPercent / 100;
 
+  // Danh sach ho va ho dang dung lay tu fontdoc, cung mot cho voi menu doc va giu nut.
   fonts_.clear();
-  fonts_.reserve(CrossPointSettings::BUILTIN_FONT_COUNT + (registry_ ? registry_->getFamilyCount() : 0));
-  fonts_.push_back({I18N.get(StrId::STR_NOTO_SERIF), true, static_cast<uint8_t>(CrossPointSettings::NOTOSERIF)});
-  fonts_.push_back({I18N.get(StrId::STR_NOTO_SANS), true, static_cast<uint8_t>(CrossPointSettings::NOTOSANS)});
-  if (registry_) {
-    const auto& families = registry_->getFamilies();
-    for (int i = 0; i < static_cast<int>(families.size()); i++) {
-      fonts_.push_back({families[i].name, false, static_cast<uint8_t>(CrossPointSettings::BUILTIN_FONT_COUNT + i)});
-    }
-  }
+  for (const auto& h : fontdoc::danhSachHo(registry_)) fonts_.push_back({h.ten, h.builtin, h.chiSo});
 
   rebuildSizeList();
 
-  currentFamilyIndex_ = findCurrentFontIndex(registry_, SETTINGS.sdFontFamilyName, SETTINGS.fontFamily);
-  // Per-tab ring positions (0 = tab bar, 1..N = row). The base reset each
-  // tab's nav with followOnBuild armed, so each tab's first build shows its
-  // remembered selection (Family/Size open on the current item).
+  currentFamilyIndex_ = fontdoc::hoDangDung(registry_);
   for (auto& n : tabNavs) n.selected = 1;  // default to the first list row
   tabNavs[static_cast<int>(Tab::Family)].selected = currentFamilyIndex_ + 1;
   tabNavs[static_cast<int>(Tab::Size)].selected = currentSizeIndex_ + 1;
-  tabNavs[static_cast<int>(tab_)].selected = 0;  // screen opens with the tab bar focused, not a list row
 
   rebuildRowItems();
 }
 
-// Rebuilds rowItems_ (label + actionValue) for the active tab. Structural —
+// Rebuilds rowItems_ (label + actionValue) for the active tab. Structural -
 // call only when tab_ or its backing data (fonts_/sizes_) changes, never from
 // buildScreen(), which just refreshes rowValues_/rowItems_[].value in place.
 void TextSettingsActivity::rebuildRowItems() {
@@ -124,12 +106,12 @@ void TextSettingsActivity::rebuildRowItems() {
 
 // The selectable sizes belong to the active family, so this runs on entry and
 // again after every family change. A family change goes through ensureLoaded(),
-// which snaps SETTINGS.fontPointSize into the new family's set — but entry does
+// which snaps SETTINGS.fontPointSize into the new family's set - but entry does
 // not, so the highlight is resolved by snapping rather than by exact match.
 void TextSettingsActivity::rebuildSizeList() {
   const std::vector<uint8_t> points = readerFontPointSizes(registry_, SETTINGS.sdFontFamilyName);
 
-  // The stored size can still sit outside this family's set — e.g. the family
+  // The stored size can still sit outside this family's set - e.g. the family
   // was deleted while selected, or the card was swapped. Highlight the size the
   // reader actually renders, which getReaderFontId() resolves the same way.
   const uint8_t selectedPt = snapToNearestPointSize(points, SETTINGS.fontPointSize);
@@ -150,10 +132,11 @@ void TextSettingsActivity::rebuildSizeList() {
 void TextSettingsActivity::onTabAction(const int index) {
   if (optionPopup_.isActive()) return;
   if (tab_ != static_cast<Tab>(index)) {
+    RenderLock lock(*this);
     tab_ = static_cast<Tab>(index);
     rebuildRowItems();
     auto& n = activeNav();
-    n.selected = 0;          // tab taps land with the tab bar focused (legacy tap behavior)
+    if (!mappedInput.hasTouch() && listCount() > 0 && n.selected <= 0) n.selected = 1;
     n.followOnBuild = true;  // pull the new tab's viewport to its remembered selection
     requestUpdate();
   }
@@ -176,13 +159,14 @@ bool TextSettingsActivity::handleCustomInput() {
 
 bool TextSettingsActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    // Roi man mot nhip (chot 14/09/2026 dem), nhu menu doc va man Cai dat.
     finish();
     return true;
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (ringPos() == 0) {
-      switchTab();
+      moveRingTo(1);  // cung luat voi ba man the kia: Chon o thanh the buoc xuong dong dau
     } else {
       activateRow(ringPos() - 1);
     }
@@ -195,12 +179,13 @@ bool TextSettingsActivity::handleButtons() {
 void TextSettingsActivity::buildScreen(UiScreen& screen) {
   // Content sits below the preview pane (render() draws header + preview
   // directly) and above the caption band + button hints.
-  const int tabTop = afterHeader + previewHeight;
+  const int tabTop = tenorchrome::enabled() ? tenorchrome::TAB_TOP : afterHeader + previewHeight;
   const int captionHeight = renderer.getTextHeight(UI_10_FONT_ID) + metrics_.verticalSpacing;
   screen.setContentMarginFromScreen(
       fui::Insets{static_cast<int16_t>(tabTop), 0, static_cast<int16_t>(bottomReserved + captionHeight), 0});
 
   buildTabBar(screen);
+  if (tenorchrome::enabled()) screen.takeTop(static_cast<int16_t>(previewHeight));
 
   // rowItems_ (label/actionValue) was built by rebuildRowItems() when the tab
   // was last switched; only the live value text needs refreshing here, by
@@ -236,23 +221,23 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
   // Titles match the value's font size (smallText) so both sides of a row
   // read as one unit; labels that still don't fit wrap onto a second line.
   // maxLines=2 also marks the style explicitly set (see SettingsActivity).
-  props.labelText = screen.theme().smallText;
+  props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
   syncTabListViewport(screen, props);
   screen.list(props);
 }
 
 const char* TextSettingsActivity::confirmLabelText() const {
-  if (ringPos() == 0) {
-    // Confirm on the tab bar advances to the next tab.
-    return I18N.get(TAB_NAME_IDS[(static_cast<int>(tab_) + 1) % static_cast<int>(Tab::Count)]);
-  }
+  if (ringPos() == 0) return tr(STR_SELECT);
   switch (tab_) {
     case Tab::Layout:
       // Extra Paragraph Spacing toggles; the rest open a picker
-      return ringPos() - 1 == static_cast<int>(LayoutRow::ParaSpacing) ? tr(STR_TOGGLE) : tr(STR_SELECT);
+      return ringPos() - 1 == static_cast<int>(LayoutRow::ParaSpacing) ||
+                     ringPos() - 1 == static_cast<int>(LayoutRow::ParaIndent)
+                 ? tr(STR_TOGGLE)
+                 : tr(STR_SELECT);
     case Tab::Style:
-      return tr(STR_TOGGLE);
+      return ringPos() - 1 == static_cast<int>(StyleRow::InkWeight) ? tr(STR_SELECT) : tr(STR_TOGGLE);
     default:
       return tr(STR_SELECT);
   }
@@ -265,7 +250,7 @@ void TextSettingsActivity::render(RenderLock&&) {
 
   const auto pageWidth = renderer.getScreenWidth();
 
-  GUI.drawHeader(renderer, Rect{0, metrics_.topPadding, pageWidth, metrics_.headerHeight}, tr(STR_TEXT_SETTINGS));
+  drawNavigationHeader(tr(STR_TEXT_SETTINGS));
 
   const char* familyName = (currentFamilyIndex_ >= 0 && currentFamilyIndex_ < static_cast<int>(fonts_.size()))
                                ? fonts_[currentFamilyIndex_].name.c_str()
@@ -294,28 +279,12 @@ void TextSettingsActivity::render(RenderLock&&) {
 // Font switching runs on the main task from loop(), which deliberately holds no
 // RenderLock. ensureLoaded() deletes the resident SdCardFont before loading the
 // next one, and the render task walks that same object inside the preview's
-// prewarmCache() — so without this lock a font switch can free the mini glyph
+// prewarmCache() - so without this lock a font switch can free the mini glyph
 // arrays out from under prewarmStyle() (crash: null s.miniGlyphs mid-read/sort).
 void TextSettingsActivity::applyFamily(int listIndex) {
   RenderLock lock;
-  const auto& font = fonts_[listIndex];
-  if (font.isBuiltin) {
-    SETTINGS.fontFamily = font.settingIndex;
-    SETTINGS.sdFontFamilyName[0] = '\0';
-    sdFontSystem.ensureLoaded(renderer);  // unloads the previously resident SD font
-    currentFamilyIndex_ = listIndex;
-  } else if (registry_) {
-    const int sdIdx = font.settingIndex - CrossPointSettings::BUILTIN_FONT_COUNT;
-    const auto& families = registry_->getFamilies();
-    if (sdIdx < static_cast<int>(families.size())) {
-      strncpy(SETTINGS.sdFontFamilyName, families[sdIdx].name.c_str(), sizeof(SETTINGS.sdFontFamilyName) - 1);
-      SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
-      sdFontSystem.ensureLoaded(renderer);
-      currentFamilyIndex_ = listIndex;
-    }
-  }
-
-  if (currentFamilyIndex_ != listIndex) return;  // switch failed — keep the old size list
+  if (!fontdoc::apHo(renderer, registry_, listIndex)) return;  // switch failed, keep the old size list
+  currentFamilyIndex_ = listIndex;
 
   // The new family ships its own set of point sizes, and ensureLoaded() may have
   // snapped the selection into it, so the Size tab's list and its nav position
@@ -325,6 +294,7 @@ void TextSettingsActivity::applyFamily(int listIndex) {
 }
 
 void TextSettingsActivity::activateRow(int row) {
+  commitTabNavigation();
   switch (tab_) {
     case Tab::Family:
       if (row != currentFamilyIndex_) {
@@ -362,14 +332,17 @@ void TextSettingsActivity::activateRow(int row) {
 // file, which frees and replaces the SdCardFont the render task may be reading.
 void TextSettingsActivity::applySize(int listIndex) {
   RenderLock lock;
-
   currentSizeIndex_ = listIndex;
-  SETTINGS.fontPointSize = sizes_[listIndex].pointSize;
-  sdFontSystem.ensureLoaded(renderer);
+  fontdoc::apCo(renderer, sizes_[listIndex].pointSize);
 }
 
 void TextSettingsActivity::confirmLayoutRow(int row) {
   switch (static_cast<LayoutRow>(row)) {
+    case LayoutRow::ParaIndent:
+      SETTINGS.paragraphIndent = (SETTINGS.paragraphIndent + 1) % std::size(INDENT_IDS);
+      SETTINGS.saveToFile();
+      requestUpdate();
+      break;
     case LayoutRow::ParaSpacing:
       SETTINGS.extraParagraphSpacing = !SETTINGS.extraParagraphSpacing;
       SETTINGS.saveToFile();
@@ -409,8 +382,10 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
   }
 }
 
-std::string TextSettingsActivity::layoutValueText(int row) const {
+std::string TextSettingsActivity::layoutValueText(int row) {
   switch (static_cast<LayoutRow>(row)) {
+    case LayoutRow::ParaIndent:
+      return I18N.get(INDENT_IDS[SETTINGS.paragraphIndent < std::size(INDENT_IDS) ? SETTINGS.paragraphIndent : 0]);
     case LayoutRow::LineSpacing: {
       const uint8_t v = SETTINGS.lineSpacing;
       return v < std::size(LINE_SPACING_IDS) ? I18N.get(LINE_SPACING_IDS[v]) : I18N.get(StrId::STR_NORMAL);
@@ -431,6 +406,25 @@ std::string TextSettingsActivity::layoutValueText(int row) const {
 
 void TextSettingsActivity::confirmStyleRow(int row) {
   switch (static_cast<StyleRow>(row)) {
+    case StyleRow::InkWeight: {
+      const uint8_t mask = sdFontSystem.availableWeightMask();
+      const uint8_t current = SETTINGS.readerInkWeight;
+      uint8_t next = current;
+      for (int step = 1; step <= 3; ++step) {
+        const auto candidate = static_cast<uint8_t>((current + step) % 3);
+        if (mask & (1u << candidate)) {
+          next = candidate;
+          break;
+        }
+      }
+      if (next == current) return;
+      {
+        RenderLock lock;
+        SETTINGS.readerInkWeight = next;
+        sdFontSystem.ensureLoaded(renderer);
+      }
+      break;
+    }
     case StyleRow::FocusReading:
       SETTINGS.focusReadingEnabled = !SETTINGS.focusReadingEnabled;
       break;
@@ -451,8 +445,11 @@ void TextSettingsActivity::confirmStyleRow(int row) {
   requestUpdate();
 }
 
-std::string TextSettingsActivity::styleValueText(int row) const {
+std::string TextSettingsActivity::styleValueText(int row) {
   switch (static_cast<StyleRow>(row)) {
+    case StyleRow::InkWeight:
+      if (sdFontSystem.availableWeightMask() == 1) return tr(STR_INK_UNAVAILABLE);
+      return I18N.get(INK_WEIGHT_IDS[SETTINGS.readerInkWeight <= 2 ? SETTINGS.readerInkWeight : 0]);
     case StyleRow::FocusReading:
       return SETTINGS.focusReadingEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     case StyleRow::Hyphenation:
@@ -476,12 +473,10 @@ bool TextSettingsActivity::focusedRowHasNoPreview() const {
 }
 
 void TextSettingsActivity::switchTab(const int direction) {
-  const bool onTabBar = ringPos() == 0;
-  constexpr int count = static_cast<int>(Tab::Count);
-  tab_ = static_cast<Tab>((static_cast<int>(tab_) + direction + count) % count);
+  tab_ = static_cast<Tab>(adjacentTab(direction));
   rebuildRowItems();
   auto& n = activeNav();
-  if (onTabBar) n.selected = 0;
+  if (!mappedInput.hasTouch() && listCount() > 0 && n.selected <= 0) n.selected = 1;
   n.followOnBuild = true;  // pull the new tab's viewport to its remembered selection
   requestUpdate();
 }
@@ -500,4 +495,28 @@ int TextSettingsActivity::listCount() const {
     default:
       return 0;
   }
+}
+
+std::string TextSettingsActivity::favoriteKey(int row) const {
+  if (row < 0 || row >= listCount()) return {};
+  return menufavorites::keyFor("text", activeTab(), tab_ == Tab::Family || tab_ == Tab::Size ? 0 : row);
+}
+int TextSettingsActivity::focusFavorite(const std::string& key) {
+  const auto* route = menufavorites::find(key);
+  if (!route || std::string(route->screen) != "text") return -1;
+  onTabAction(route->tab);
+  if (tab_ == Tab::Family || tab_ == Tab::Size) {
+    RenderLock lock(*this);
+    activeNav().selected = (tab_ == Tab::Family ? currentFamilyIndex_ : currentSizeIndex_) + 1;
+    activeNav().followOnBuild = true;
+    return ringPos() - 1;
+  }
+  for (int row = 0; row < listCount(); ++row)
+    if (favoriteKey(row) == key) {
+      RenderLock lock(*this);
+      activeNav().selected = row + 1;
+      activeNav().followOnBuild = true;
+      return row;
+    }
+  return -1;
 }

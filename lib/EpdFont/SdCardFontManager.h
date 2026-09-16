@@ -20,7 +20,7 @@ class SdCardFontManager {
   // that exact size is not installed. Only one .cpfont file is loaded; other
   // sizes remain on disk. This keeps resident interval + kern/ligature tables to
   // one size's worth of memory. Returns true on success.
-  bool loadFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, uint8_t pointSize);
+  bool loadFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, uint8_t pointSize, uint8_t weight = 0);
 
   // Additively load the .cpfont of `family` at the exact physical `pointSize`
   // (used for size-matched CJK UI fallback alongside the reader-size font).
@@ -43,19 +43,23 @@ class SdCardFontManager {
   // 0 if nothing loaded.
   uint8_t currentPointSize() const { return loadedPointSize_; };
 
+  uint8_t currentWeight() const { return loadedWeight_; }
+
  private:
   struct LoadedFont {
     SdCardFont* font;  // heap-allocated, owned
     int fontId;
     uint8_t size;
+    uint8_t weight;
   };
-  static int computeFontId(uint32_t contentHash, const char* familyName, uint8_t pointSize);
+  static int computeFontId(uint32_t contentHash, const char* familyName, uint8_t pointSize, uint8_t weight);
 
   // Load+register a single .cpfont file and append it to loaded_.
   // Returns the font id, or 0 on failure (allocation, read, or id collision).
-  int loadFile(const SdCardFontFileInfo& file, const char* familyName, GfxRenderer& renderer);
+  int loadFile(const SdCardFontFileInfo& file, const char* familyName, GfxRenderer& renderer, uint8_t weight = 0);
 
   std::string loadedFamilyName_;
   uint8_t loadedPointSize_ = 0;
+  uint8_t loadedWeight_ = 0;
   std::vector<LoadedFont> loaded_;
 };

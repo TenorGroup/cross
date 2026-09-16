@@ -9,6 +9,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "MenuFavorites.h"
 #include "OpdsServerStore.h"
 #include "OpdsSettingsActivity.h"
 #include "activities/ActivityManager.h"
@@ -66,7 +67,7 @@ void OpdsServerListActivity::onEnter() {
 }
 
 // Rebuilds rowItems_ (labels/actionValue, server subtitles) from OPDS_STORE.
-// Structural — call only when the server list actually reloads, not from
+// Structural - call only when the server list actually reloads, not from
 // buildScreen(). The folder/format rows' live subtitle is refreshed in place
 // by buildScreen() every render instead, since those track live SETTINGS
 // values that can change without a server-list reload.
@@ -218,7 +219,7 @@ void OpdsServerListActivity::buildScreen(UiScreen& screen) {
   // rowItems_ (labels/actionValue, server subtitles) was built by
   // rebuildRowItems() when the server list last reloaded; only the
   // folder/format rows' live subtitle needs refreshing here (pointer
-  // reassignment onto already-owned strings — no allocation).
+  // reassignment onto already-owned strings - no allocation).
   if (!pickerMode) {
     const auto serverCount = static_cast<int>(OPDS_STORE.getServers().size());
     rowItems_[serverCount + 1].subtitle =
@@ -241,4 +242,9 @@ void OpdsServerListActivity::render(RenderLock&& lock) {
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the rest of the screen renders through the base skeleton.
   UiListActivity::render(std::move(lock));
+}
+
+std::string OpdsServerListActivity::favoriteKey(int row) const {
+  if (pickerMode) return {};
+  return menufavorites::keyFor("opds", 0, row - static_cast<int>(OPDS_STORE.getCount()));
 }

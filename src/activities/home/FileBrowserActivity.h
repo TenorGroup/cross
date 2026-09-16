@@ -19,11 +19,14 @@ class FileBrowserActivity final : public UiListActivity {
 
   // Files state
   std::string basepath = "/";
+  std::string entryPath;
+  void rememberDirectory();
+  void restoreDirectory();
   std::vector<std::string> files;
   std::unique_ptr<char[]> fileNameBuffer;
 
   // Per-row render buffers, derived from `files` and rebuilt only when it
-  // changes (loadFiles()) rather than on every repaint — buildScreen() used to
+  // changes (loadFiles()) rather than on every repaint - buildScreen() used to
   // rebuild a name/extension string and a ListItem per file on every render
   // (cursor move, tap flash, ...), which meant a 500-file directory allocated
   // 500 strings per repaint instead of once per directory load.
@@ -46,6 +49,9 @@ class FileBrowserActivity final : public UiListActivity {
   // root), and Confirm activates on RELEASE (a hold is "delete").
   bool handleCustomInput() override;
   bool handleButtons() override;
+  bool supportsFavorites() const override { return mode == Mode::Books; }
+  std::string favoriteKey(int row) const override;
+  bool toggleFavorite(int row) override;
   // Header shows the current folder name (battery indicator via GUI.drawHeader);
   // footer labels depend on path depth and picker mode.
   void drawChrome() override;
@@ -62,5 +68,9 @@ class FileBrowserActivity final : public UiListActivity {
   explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/",
                                Mode mode = Mode::Books);
   void onEnter() override;
+  bool remembersNavigation() const override { return mode == Mode::Books; }
+  std::string navigationMemoryKey() const override { return "FileBrowserEntry:" + entryPath; }
+  void captureNavigation(MenuNavigationState& state) const override;
+  void restoreNavigation(const MenuNavigationState& state) override;
   void onExit() override;
 };

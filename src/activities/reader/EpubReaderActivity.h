@@ -125,7 +125,10 @@ class EpubReaderActivity final : public ReaderActivity {
   void rememberCurrentContentOffset();
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
   void jumpToPercent(int percent);
-  void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
+  void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action, const MenuResult& menu);
+  // Vo hieu section de dan lai trang voi chu moi, giu dung doan dang doc. GOI DUOI RenderLock.
+  void danLaiTrang();
+  bool docCoChuMotNac(int huong) override;
   // Live section position, or the values cached before a child screen
   // released the section.
   ChapterPosition chapterPosition() const;
@@ -154,7 +157,7 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string moreRowName(int row) const;
   std::string moreRowValue(int row) const;
   void activateMoreRow(int row);
-  void openDictionaryWordSelect();
+  void openDictionaryWordSelect(bool quotation = false);
   bool launchKOReaderSync();
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
@@ -177,6 +180,7 @@ class EpubReaderActivity final : public ReaderActivity {
   uint8_t appliedOrientation = 0;
 
   bool loadBook() override;
+  bool readingPageVisible() const override;
   std::string getBookTitle() const override { return epub ? epub->getTitle() : ""; }
   std::string getBookAuthor() const override { return epub ? epub->getAuthor() : ""; }
   std::string getBookThumbBmpPath() const override { return epub ? epub->getThumbBmpPath() : ""; }
@@ -188,10 +192,11 @@ class EpubReaderActivity final : public ReaderActivity {
                               bool allowFastInitialRefresh)
       : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
   ~EpubReaderActivity() override;
+  void onExit() override;
 
   void loop() override;
 
-  bool pageTurn(bool isForward) override;
+  bool latTrangThat(bool isForward) override;
   bool skipPages(int amount) override;
   bool isAtEndOfBook() const override;
   void onReturnFromEndOfBook() override;

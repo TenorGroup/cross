@@ -9,6 +9,7 @@
 
 #include "KeyboardLayoutSet.h"
 #include "MappedInputManager.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -189,13 +190,18 @@ void KeyboardEntryActivity::clampSelection() {
 void KeyboardEntryActivity::moveSelectionRow(const int delta) {
   const fui::KeyboardLayout& layout = currentLayout();
   if (layout.rowCount == 0) return;
-  const int oldCols = selRow < layout.rowCount ? layout.rows[selRow].count : 1;
+  if (colAnchorWidth <= 0) {
+    setColumnAnchor();
+  }
   selRow = (selRow + delta + layout.rowCount) % layout.rowCount;
   const int newCols = layout.rows[selRow].count;
-  // Proportional column mapping keeps vertical travel intuitive between rows
-  // of different key counts (e.g. a 10-key letter row over a 6-key bottom row).
-  if (oldCols > 0 && newCols > 0 && oldCols != newCols) {
-    selCol = selCol * newCols / oldCols;
+  // Proportional mapping keeps vertical travel intuitive between rows of
+  // different key counts, and it maps from the anchor so a round trip returns
+  // to the key it started on. Rounds to nearest rather than truncating.
+  if (colAnchorWidth > 0 && newCols > 0) {
+    selCol = SETTINGS.keyboardAligned && colAnchorAligned && newCols >= 7
+                 ? colAnchor
+                 : (colAnchor * newCols + colAnchorWidth / 2) / colAnchorWidth;
   }
   clampSelection();
 }
@@ -206,6 +212,15 @@ void KeyboardEntryActivity::moveSelectionCol(const int delta) {
   const int cols = layout.rows[selRow].count;
   if (cols <= 0) return;
   selCol = (selCol + delta + cols) % cols;
+  setColumnAnchor();
+}
+
+void KeyboardEntryActivity::setColumnAnchor() {
+  const fui::KeyboardLayout& layout = currentLayout();
+  if (selRow < 0 || selRow >= layout.rowCount) return;
+  colAnchor = selCol;
+  colAnchorWidth = layout.rows[selRow].count;
+  colAnchorAligned = colAnchorWidth >= 7;
 }
 
 bool KeyboardEntryActivity::syncSelectionToValue(const int16_t value) {
@@ -215,6 +230,7 @@ bool KeyboardEntryActivity::syncSelectionToValue(const int16_t value) {
       if (layout.rows[r].keys[c].value == value) {
         selRow = r;
         selCol = c;
+        setColumnAnchor();
         return true;
       }
     }
@@ -515,13 +531,19 @@ fui::Rect KeyboardEntryActivity::keyboardRect() const {
   const int height = rows * metrics.keyboardKeyHeight + (rows > 1 ? (rows - 1) * gap : 0);
   const int width = pageWidth * metrics.keyboardWidthPercent / 100;
   const int x = (pageWidth - width) / 2;
-  const int y =
-      pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing - height + metrics.keyboardVerticalOffset;
+  const int y = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing - height +
+                metrics.keyboardVerticalOffset -
+                (tenorchrome::enabled() ? 28 + 6 * renderer.getLineHeight(SMALL_FONT_ID) : 0);
   return fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(width),
                    static_cast<int16_t>(height)};
 }
 
 void KeyboardEntryActivity::loop() {
+  const bool swapAxis = SETTINGS.keyboardAxisSwapped != 0;
+  const auto kRowPrev = swapAxis ? MappedInputManager::Button::Left : MappedInputManager::Button::Up;
+  const auto kRowNext = swapAxis ? MappedInputManager::Button::Right : MappedInputManager::Button::Down;
+  const auto kColPrev = swapAxis ? MappedInputManager::Button::Up : MappedInputManager::Button::Left;
+  const auto kColNext = swapAxis ? MappedInputManager::Button::Down : MappedInputManager::Button::Right;
   int tx = 0;
   int ty = 0;
 
@@ -568,13 +590,12 @@ void KeyboardEntryActivity::loop() {
     }
   }
 
-  if (!cursorMode && mappedInput.wasPressed(MappedInputManager::Button::Up)) {
+  if (!cursorMode && mappedInput.wasPressed(kRowPrev)) {
     upHeld = true;
     upLongHandled = false;
   }
 
-  if (upHeld && !upLongHandled && mappedInput.isPressed(MappedInputManager::Button::Up) &&
-      mappedInput.getHeldTime() > LONG_PRESS_MS) {
+  if (upHeld && !upLongHandled && mappedInput.isPressed(kRowPrev) && mappedInput.getHeldTime() > LONG_PRESS_MS) {
     cursorMode = true;
     upLongHandled = true;
     hintVisible = true;
@@ -582,7 +603,7 @@ void KeyboardEntryActivity::loop() {
     requestUpdate();
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+  if (mappedInput.wasReleased(kRowPrev)) {
     if (upHeld && !upLongHandled && !cursorMode) {
       moveSelectionRow(-1);
       requestUpdate();
@@ -591,7 +612,7 @@ void KeyboardEntryActivity::loop() {
     upLongHandled = false;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Down)) {
+  if (mappedInput.wasPressed(kRowNext)) {
     downHeld = true;
     if (cursorMode) {
       togglePos = false;
@@ -605,7 +626,7 @@ void KeyboardEntryActivity::loop() {
     }
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+  if (mappedInput.wasReleased(kRowNext)) {
     if (downHeld && !downLongHandled && !cursorMode) {
       moveSelectionRow(1);
       requestUpdate();
@@ -614,15 +635,33 @@ void KeyboardEntryActivity::loop() {
     downLongHandled = false;
   }
 
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] {
-    if (cursorMode) return;
-    moveSelectionCol(-1);
-    requestUpdate();
-  });
+  // A tap steps one key on the keyboard and one character in cursor mode; a hold
+  // deletes backwards in both, so a typo found while walking the cursor can be
+  // fixed on the spot. The hold replaces the old continuous column repeat: one
+  // gesture cannot both scan across keys and fire an edit.
+  if (mappedInput.wasPressed(kColPrev)) {
+    colPrevHeld = true;
+    colPrevLongHandled = false;
+  }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-    if (cursorMode) {
-      if (togglePos) {
+  if (colPrevHeld && !colPrevLongHandled && mappedInput.isPressed(kColPrev) &&
+      mappedInput.getHeldTime() > LONG_PRESS_MS) {
+    if (backspaceUtf8()) {
+      requestUpdate();
+    }
+    colPrevLongHandled = true;
+  }
+
+  if (mappedInput.wasReleased(kColPrev)) {
+    const bool wasHeld = colPrevHeld;
+    const bool edited = colPrevLongHandled;
+    colPrevHeld = false;
+    colPrevLongHandled = false;
+    if (wasHeld && !edited) {
+      if (!cursorMode) {
+        moveSelectionCol(-1);
+        requestUpdate();
+      } else if (togglePos) {
         cursorPos = savedCursorPos;
         togglePos = false;
         requestUpdate();
@@ -633,7 +672,9 @@ void KeyboardEntryActivity::loop() {
     }
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Right)) {
+  if (mappedInput.wasPressed(kColNext)) {
+    colNextHeld = true;
+    colNextLongHandled = false;
     if (cursorMode && inputType == InputType::Password && !togglePos) {
       rightHeld = true;
       rightLongHandled = false;
@@ -641,34 +682,40 @@ void KeyboardEntryActivity::loop() {
     }
   }
 
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] {
-    if (cursorMode) return;
-    moveSelectionCol(1);
-    requestUpdate();
-  });
-
-  if (rightHeld && !rightLongHandled && mappedInput.isPressed(MappedInputManager::Button::Right) &&
+  // Hold inserts a space: the space bar sits two rows away from the letters, so
+  // typing a multi-word name meant crossing the layout for every gap, and cursor
+  // mode had no way to add one at all. A password field keeps this gesture for
+  // its reveal instead.
+  if (colNextHeld && !colNextLongHandled && mappedInput.isPressed(kColNext) &&
       mappedInput.getHeldTime() > LONG_PRESS_MS) {
-    if (cursorMode && inputType == InputType::Password && !togglePos) {
+    if (rightHeld && !rightLongHandled) {
       savedCursorPos = rightStartCursorPos;
       togglePos = true;
       rightLongHandled = true;
-      requestUpdate();
+    } else {
+      insertUtf8(" ");
     }
+    colNextLongHandled = true;
+    requestUpdate();
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-    if (cursorMode && inputType == InputType::Password) {
-      rightHeld = false;
-      rightLongHandled = false;
-    }
-    if (cursorMode && !togglePos && cursorPos < text.length()) {
-      cursorPos = utf8Next(text, cursorPos);
-      requestUpdate();
-    }
-    if (cursorMode) return;
+  if (mappedInput.wasReleased(kColNext)) {
+    const bool wasHeld = colNextHeld;
+    const bool edited = colNextLongHandled;
+    colNextHeld = false;
+    colNextLongHandled = false;
     rightHeld = false;
     rightLongHandled = false;
+    if (wasHeld && !edited) {
+      if (!cursorMode) {
+        moveSelectionCol(1);
+        requestUpdate();
+      } else if (!togglePos && cursorPos < text.length()) {
+        cursorPos = utf8Next(text, cursorPos);
+        requestUpdate();
+      }
+    }
+    if (cursorMode) return;
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
@@ -707,8 +754,15 @@ void KeyboardEntryActivity::loop() {
     confirmLongHandled = false;
   }
 
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    backHeld = true;
+    backLongHandled = false;
+  }
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    onCancel();
+    backHeld = false;
+    backLongHandled = false;
+    onComplete(text);
   }
 
   if (hintVisible && !cursorMode && millis() - hintShowTime > 4000) {
@@ -910,11 +964,12 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   } else if (symbols) {
     tipCount = !text.empty() ? 1 : 0;
   } else {
-    tipCount = 1 + (inputType == InputType::Url ? 1 : 0) + (!text.empty() ? 1 : 0);
+    tipCount = 5 + (inputType == InputType::Url ? 1 : 0);
   }
 
   if (tipCount > 0) {
-    int y = (underlineBottom + kbRect.y) / 2 - (tipCount + 1) * tipsLh / 2;
+    int y = tenorchrome::enabled() ? tenorchrome::tipY(renderer) - tipCount * tipsLh
+                                   : (underlineBottom + kbRect.y) / 2 - (tipCount + 1) * tipsLh / 2;
     drawTip(tr(STR_KB_TIPS), y);
     y += tipsLh;
     if (cursorMode) {
@@ -940,20 +995,26 @@ void KeyboardEntryActivity::render(RenderLock&&) {
       }
       drawTip(altCharTip, y);
       y += tipsLh;
+      drawTip(tr(STR_KB_HINT_QUICK_SPACE), y);
+      y += tipsLh;
+      drawTip(tr(STR_KB_HINT_QUICK_BACKSPACE), y);
+      y += tipsLh;
+      drawTip(tr(STR_KB_HINT_EDIT_ENTRY), y);
+      y += tipsLh;
       if (inputType == InputType::Url) {
         drawTip(tr(STR_KB_HINT_URL_SNIPPETS), y);
         y += tipsLh;
       }
-      if (!text.empty()) {
-        drawTip(tr(STR_KB_HINT_CLEAR_TEXT), y);
-      }
+      // Always shown: a tap on Back saves, and that is the one thing a reader
+      // must know before typing, empty field or not.
+      drawTip(tr(STR_KB_HINT_CLEAR_TEXT), y);
     }
   }
 
   // The FreeInkUI keyboard draws the keys and registers their hit rects into
   // `interactions`; loop() (the main task) routes touch snapshots against
   // that table via TouchHoldRouter, which reads the published generation
-  // (routePublished()/publishedData()) — beginPublishCycle() here makes this
+  // (routePublished()/publishedData()) - beginPublishCycle() here makes this
   // render build into the OTHER generation, so loop() never sees a
   // half-rebuilt table no matter when it runs relative to this.
   interactions.beginPublishCycle();
@@ -967,9 +1028,10 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   fui::KeyboardProps props;
   const fui::KeyboardLayout& layout = currentLayout();
   props.layout = &layout;
+  props.alignedColumns = SETTINGS.keyboardAligned != 0;
   props.keyAction = ACTION_KEY;  // one action id; loop() dispatches on key value
   props.okLabel = tr(STR_OK_BUTTON);
-  props.shiftLabel = tr(STR_KEY_SHIFT);
+  props.shiftLabel = SETTINGS.keyboardAligned ? tr(STR_KEY_CASE_SHORT) : tr(STR_KEY_SHIFT);
   // Match the label to the layer the mode key leads back from: the symbols
   // layer and the URL snippet panel both label it "abc" in the static tables.
   props.modeLabel =
@@ -981,17 +1043,27 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   props.gap = static_cast<int16_t>(metrics.keyboardKeySpacing);
   props.padding = fui::Insets{0, 0, 0, 0};
   // Fingers land low on the bottom row (occlusion) and there is no key below
-  // to catch the miss — extend its hit band down to the button hints bar.
+  // to catch the miss - extend its hit band down to the button hints bar.
   const int hintsTop = renderer.getScreenHeight() - metrics.buttonHintsHeight;
   props.bottomHitOverflow = static_cast<int16_t>(std::max(0, hintsTop - (kbRect.y + kbRect.height)));
   fui::keyboard(frame, kbRect, props);
   interactions.publish();
   interactionsReady = true;
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+  // Hints follow the live axis, not the button names: with keyboardAxisSwapped
+  // the front pair walks rows and the edge buttons walk columns. On the X3 the
+  // edge buttons sit left and right even though the code calls them Up/Down,
+  // and drawSideButtonHints draws its first argument on the left edge.
+  const bool swapAxis = SETTINGS.keyboardAxisSwapped != 0;
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), swapAxis ? tr(STR_DIR_UP) : tr(STR_DIR_LEFT),
+                                            swapAxis ? tr(STR_DIR_DOWN) : tr(STR_DIR_RIGHT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
-  GUI.drawSideButtonHints(renderer, ">", "<");
+  // Side hints are drawn rotated, so the glyph handed over is not the glyph the
+  // reader sees: passing "^" shows "<" and passing "v" shows ">". Measured off
+  // the panel on 13/09/2026 rather than derived, the rotation helper reads as
+  // clockwise but lands counter-clockwise on this board.
+  GUI.drawSideButtonHints(renderer, swapAxis ? "^" : ">", swapAxis ? "v" : "<");
 
   renderer.displayBuffer();
 }

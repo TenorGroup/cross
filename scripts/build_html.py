@@ -2,6 +2,7 @@ import os
 import re
 import gzip
 import hashlib
+import base64
 
 SRC_DIR = "src"
 
@@ -49,11 +50,21 @@ def sanitize_identifier(name: str) -> str:
 
 for root, _, files in os.walk(SRC_DIR):
     for file in files:
-        if file.endswith(".html") or file.endswith(".js"):
+        if file.endswith((".html", ".js", ".css")):
             file_path = os.path.join(root, file)
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
+            if "<!--TENOR_BRAND-->" in content:
+                with open("src/network/html/BrandHeader.inc", encoding="utf-8") as brand:
+                    content = content.replace("<!--TENOR_BRAND-->", brand.read())
+            if "/* TENOR_WEB_TOKENS */" in content:
+                with open("src/network/html/assets/BrandTokens.css.inc", encoding="utf-8") as tokens:
+                    content = content.replace("/* TENOR_WEB_TOKENS */", tokens.read())
+            if "/* TENOR_WEB_FONT */" in content:
+                with open("src/network/html/assets/Geist.woff2", "rb") as font:
+                    data = base64.b64encode(font.read()).decode("ascii")
+                content = content.replace("/* TENOR_WEB_FONT */", "@font-face{font-family:Geist;src:url(data:font/woff2;base64," + data + ") format('woff2');font-weight:100 900;font-display:swap}")
             # Only minify HTML files; JS files are typically pre-minified (e.g., jszip.min.js)
             if file.endswith(".html"):
                 processed = minify_html(content)
@@ -67,7 +78,7 @@ for root, _, files in os.walk(SRC_DIR):
 
             # Create valid C identifier from filename
             # Use appropriate suffix based on file type
-            suffix = "Html" if file.endswith(".html") else "Js"
+            suffix = "Html" if file.endswith(".html") else "Css" if file.endswith(".css") else "Js"
             base_name = sanitize_identifier(f"{os.path.splitext(file)[0]}{suffix}")
             header_path = os.path.join(root, f"{base_name}.generated.h")
 

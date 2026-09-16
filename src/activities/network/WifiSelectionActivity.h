@@ -58,7 +58,7 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   size_t realNetworkCount = 0;
 
   // Row buffers derived from `networks`, rebuilt only when it changes
-  // (processWifiScanResults()) instead of on every repaint — buildListScreen()
+  // (processWifiScanResults()) instead of on every repaint - buildListScreen()
   // used to re-derive a "+ * ||||" status string per network on every render
   // (cursor move, tap flash, ...).
   std::vector<std::string> networkStatuses;
@@ -84,6 +84,7 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
 
   // Whether to attempt auto-connect on entry
   const bool allowAutoConnect;
+  const bool syncClockOnConnect;
 
   // Whether we are attempting to auto-connect or auto-scan saved networks.
   bool autoConnecting = false;
@@ -100,7 +101,7 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
 
   // Connection timeout
   static constexpr unsigned long CONNECTION_TIMEOUT_MS = 15000;
-  static constexpr unsigned long AUTO_CONNECTION_TIMEOUT_MS = 7000;
+  static constexpr unsigned long AUTO_CONNECTION_TIMEOUT_MS = CONNECTION_TIMEOUT_MS;
   unsigned long connectionStartTime = 0;
 
   // The UiAppHost app hosts the network list and the save/forget prompts
@@ -141,7 +142,8 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   void onComplete(bool connected);
 
  public:
-  explicit WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool autoConnect = true);
+  explicit WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool autoConnect = true,
+                                 bool syncClock = true);
   void onEnter() override;
   void onExit() override;
   void loop() override;

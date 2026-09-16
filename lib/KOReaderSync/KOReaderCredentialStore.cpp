@@ -5,17 +5,18 @@
 #include <ObfuscationUtils.h>
 
 namespace {
-// Default sync server URL. crosspoint-sync speaks the full KOSync protocol, so
+// Tenor sync speaks KOSync and the optional rich-position protocol, so
 // pointing at any other kosync server (e.g. https://sync.koreader.rocks:443)
 // still works via the custom server URL setting.
-constexpr char DEFAULT_SERVER_URL[] = "https://sync.crosspointreader.com";
+constexpr char DEFAULT_SERVER_URL[] = "https://kosync.tenor.vn";
+constexpr char CROSSPOINT_SERVER_URL[] = "https://sync.crosspointreader.com";
 
 // Default before config version 2. Configs saved without a version stamp and an
-// empty serverUrl were implicitly syncing here — they get pinned on upgrade.
+// empty serverUrl were implicitly syncing here - they get pinned on upgrade.
 constexpr char LEGACY_DEFAULT_SERVER_URL[] = "https://sync.koreader.rocks:443";
 
 // Bumped when a change to defaults would alter behavior for existing configs.
-constexpr uint8_t CONFIG_VERSION = 2;
+constexpr uint8_t CONFIG_VERSION = 3;
 }  // namespace
 
 void KOReaderCredentialStore::toJson(JsonDocument& doc) const {
@@ -39,11 +40,11 @@ bool KOReaderCredentialStore::fromJson(JsonVariantConst doc) {
 
   // The default server changed in config v2 (sync.koreader.rocks -> crosspoint-sync).
   // A pre-v2 config with credentials and no explicit URL was actively syncing
-  // against the old default — pin that URL so the upgrade doesn't switch servers
+  // against the old default - pin that URL so the upgrade doesn't switch servers
   // out from under the user. Fresh setups get the new default.
   const uint8_t cfgVersion = doc["cfgVersion"] | (uint8_t)1;
   if (cfgVersion < CONFIG_VERSION) {
-    if (getServerUrl().empty() && hasCredentials()) {
+    if (cfgVersion < 2 && getServerUrl().empty() && hasCredentials()) {
       LOG_DBG("KRS", "Pre-v2 config used the old default server; pinning %s", LEGACY_DEFAULT_SERVER_URL);
       setServerUrl(LEGACY_DEFAULT_SERVER_URL);
     }
@@ -132,7 +133,11 @@ std::string KOReaderCredentialStore::getBaseUrl() const {
   return url;
 }
 
-bool KOReaderCredentialStore::usesCrossPointSyncServer() const { return getBaseUrl() == DEFAULT_SERVER_URL; }
+bool KOReaderCredentialStore::usesCrossPointSyncServer() const {
+  const auto url = getBaseUrl();
+  // Both servers implement the same optional rich-position protocol.
+  return url == DEFAULT_SERVER_URL || url == CROSSPOINT_SERVER_URL;
+}
 
 void KOReaderCredentialStore::setMatchMethod(DocumentMatchMethod method) {
   matchMethod = method;

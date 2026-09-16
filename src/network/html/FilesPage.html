@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Files - CrossPoint Reader</title>
+  <title>Files - tenor/cross</title>
   <script src="/js/jszip.min.js"></script>
   <style>
     :root {
@@ -1499,37 +1499,38 @@
       color: #f39c12;
     }
   </style>
+<link rel="stylesheet" href="/theme.css" />
 </head>
-<body>
-<h1>📚 CrossPoint Reader</h1>
+<body class="tenor-transfer">
+<!--TENOR_BRAND-->
 
 <div class="nav-links">
-  <a href="/">Home</a>
-  <a href="/files" class="active">File Manager</a>
-  <a href="/settings">Settings</a>
-  <a href="/fonts">Fonts</a>
+  <a href="/">Thiết bị</a>
+  <a href="/files" class="active">Tệp</a>
+  <a href="/settings">Cài đặt</a>
+  <a href="/fonts">Font chữ</a>
 </div>
 
 <div class="page-header">
   <div class="page-header-left">
-    <h2>📁 File Manager</h2>
+    <h2>Tệp của bạn</h2>
   </div>
 
   <div class="action-buttons">
-    <button class="action-btn upload-action-btn" onclick="openUploadModal()">📤 Upload</button>
-    <button class="action-btn folder-action-btn" onclick="openFolderModal()">📁 New Folder</button>
-    <button class="action-btn delete-action-btn" onclick="openDeleteSelectedModal()">🗑️ Delete Selected</button>
+    <button class="action-btn upload-action-btn" onclick="openUploadModal()">Gửi tệp</button>
+    <button class="action-btn folder-action-btn" onclick="openFolderModal()">Thư mục mới</button>
+    <button class="action-btn delete-action-btn" onclick="openDeleteSelectedModal()" aria-label="Xóa mục đã chọn" title="Xóa mục đã chọn"><span class="tc-icon tc-delete" aria-hidden="true"></span></button>
   </div>
 </div>
 
 <!-- Failed Uploads Banner -->
 <div class="failed-uploads-banner" id="failedUploadsBanner">
   <div class="failed-uploads-header">
-    <h3 class="failed-uploads-title">⚠️ Some files failed to upload</h3>
+    <h3 class="failed-uploads-title">Một số tệp gửi chưa thành công</h3>
     <button class="dismiss-btn" onclick="dismissFailedUploads()" title="Dismiss">&times;</button>
   </div>
   <div id="failedFilesList"></div>
-  <button class="retry-all-btn" onclick="retryAllFailedUploads()">Retry All Failed Uploads</button>
+  <button class="retry-all-btn" onclick="retryAllFailedUploads()">Gửi lại các tệp lỗi</button>
 </div>
 
 <div class="card">
@@ -1545,34 +1546,30 @@
   </div>
 </div>
 
-<div class="card">
-  <p style="text-align: center; color: #95a5a6; margin: 0;">
-    CrossPoint E-Reader • Open Source
-  </p>
-</div>
+<footer class="tenor-footer"><span>Thư viện trên thiết bị</span><a href="https://cross.tenor.vn" target="_blank" rel="noopener noreferrer">cross.tenor.vn ↗</a></footer>
 
 <!-- Upload Modal -->
 <div class="modal-overlay" id="uploadModal">
   <div class="modal">
     <button class="modal-close" id="uploadModalClose" onclick="closeUploadModal()">&times;</button>
-    <h3>📤 Upload file</h3>
+    <h3>Gửi tệp</h3>
     <div class="upload-form">
-      <p class="file-info">Select a file to upload to <strong id="uploadPathDisplay"></strong></p>
+      <p class="file-info">Chọn tệp để gửi vào <strong id="uploadPathDisplay"></strong></p>
       <div class="drop-zone" id="dropZone">
-        <input type="file" id="fileInput" onchange="validateFile()" multiple>
-        <p class="drop-zone-hint">⬇ Drop files here — or click to browse</p>
+        <input type="file" id="fileInput" aria-label="Chọn tệp để gửi" onchange="validateFile()" multiple>
+        <p class="drop-zone-hint">Kéo tệp vào đây hoặc bấm để chọn</p>
       </div>
       <div class="picker-columns" id="pickerColumns">
         <div class="convert-options" id="convertOptions" style="display:none;">
           <div class="convert-row">
             <label class="convert-checkbox">
               <input type="checkbox" id="convertBeforeUpload" onchange="toggleConvertOptions()">
-              <span>Optimize EPUB</span>
+              <span>Tối ưu EPUB</span>
             </label>
             <span class="convert-separator">—</span>
             <span class="advanced-options-toggle" id="advancedOptionsToggle" onclick="toggleAdvancedOptions()">
               <span class="advanced-options-arrow" id="advancedOptionsArrow">▶</span>
-              <span class="advanced-options-text">Advanced Mode</span>
+              <span class="advanced-options-text">Tùy chọn nâng cao</span>
             </span>
           </div>
 
@@ -1748,9 +1745,9 @@
         Please back up or disable sync before proceeding.
       </div>
       <!-- Optimize & Upload button - shown when picker is visible, replaces Upload -->
-      <button id="startConversionBtn" class="upload-btn optimize" style="display:none;" onclick="startConversionWithImageStates()">Optimize & Upload</button>
-      <button id="uploadBtn" class="upload-btn" onclick="uploadFile()" disabled>Upload</button>
-      <button class="delete-btn-cancel" onclick="handleCancelUploadModal()">Cancel</button>
+      <button id="startConversionBtn" class="upload-btn optimize" style="display:none;" onclick="startConversionWithImageStates()">Tối ưu và gửi</button>
+      <button id="uploadBtn" class="upload-btn" onclick="uploadFile()" disabled>Gửi tệp</button>
+      <button class="delete-btn-cancel" onclick="handleCancelUploadModal()">Hủy</button>
       <div id="progress-container">
         <div id="progress-bar"><div id="progress-fill"></div></div>
         <div id="progress-text"></div>
@@ -1769,12 +1766,12 @@
 <div class="modal-overlay" id="folderModal">
   <div class="modal">
     <button class="modal-close" onclick="closeFolderModal()">&times;</button>
-    <h3>📁 New Folder</h3>
+    <h3>Thư mục mới</h3>
     <div class="folder-form">
       <p class="file-info">Create a new folder in <strong id="folderPathDisplay"></strong></p>
       <input type="text" id="folderName" class="folder-input" placeholder="Folder name..." oninput="document.getElementById('createFolderBtn').disabled = !this.value.trim();">
-      <button class="folder-btn" id="createFolderBtn" onclick="createFolder()" disabled>Create Folder</button>
-      <button class="delete-btn-cancel" onclick="closeFolderModal()">Cancel</button>
+      <button class="folder-btn" id="createFolderBtn" onclick="createFolder()" disabled>Tạo thư mục</button>
+      <button class="delete-btn-cancel" onclick="closeFolderModal()">Hủy</button>
     </div>
   </div>
 </div>
@@ -1783,13 +1780,13 @@
 <div class="modal-overlay" id="deleteModal">
   <div class="modal">
     <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
-    <h3>🗑️ Delete Item(s)</h3>
+    <h3>Xóa mục đã chọn</h3>
     <div class="folder-form">
       <p class="delete-warning">⚠️ This action cannot be undone!</p>
       <p class="file-info">Are you sure you want to delete the following item(s)?</p>
       <div id="deleteItemList" style="max-height:240px; overflow:auto; margin-bottom:10px;"></div>
-      <button class="delete-btn-confirm" onclick="confirmDelete()">Delete</button>
-      <button class="delete-btn-cancel" onclick="closeDeleteModal()">Cancel</button>
+      <button class="delete-btn-confirm" onclick="confirmDelete()">Xóa</button>
+      <button class="delete-btn-cancel" onclick="closeDeleteModal()">Hủy</button>
     </div>
   </div>
 </div>
@@ -1798,13 +1795,13 @@
 <div class="modal-overlay" id="renameModal">
   <div class="modal">
     <button class="modal-close" onclick="closeRenameModal()">&times;</button>
-    <h3>✏️ Rename File</h3>
+    <h3>Đổi tên tệp</h3>
     <div class="folder-form">
       <p class="file-info">Renaming <strong id="renameItemName"></strong></p>
       <input type="text" id="renameNewName" class="folder-input" placeholder="New file name...">
       <input type="hidden" id="renameItemPath">
-      <button class="rename-btn-confirm" onclick="confirmRename()">Rename</button>
-      <button class="delete-btn-cancel" onclick="closeRenameModal()">Cancel</button>
+      <button class="rename-btn-confirm" onclick="confirmRename()">Đổi tên</button>
+      <button class="delete-btn-cancel" onclick="closeRenameModal()">Hủy</button>
     </div>
   </div>
 </div>
@@ -1813,14 +1810,14 @@
 <div class="modal-overlay" id="moveModal">
   <div class="modal">
     <button class="modal-close" onclick="closeMoveModal()">&times;</button>
-    <h3>📂 Move File</h3>
+    <h3>Di chuyển tệp</h3>
     <div class="folder-form">
       <p class="file-info">Moving <strong id="moveItemName"></strong></p>
       <input type="text" id="moveDestPath" class="folder-input" list="moveFolderOptions" placeholder="/Destination/Folder">
       <datalist id="moveFolderOptions"></datalist>
       <input type="hidden" id="moveItemPath">
-      <button class="move-btn-confirm" onclick="confirmMove()">Move</button>
-      <button class="delete-btn-cancel" onclick="closeMoveModal()">Cancel</button>
+      <button class="move-btn-confirm" onclick="confirmMove()">Di chuyển</button>
+      <button class="delete-btn-cancel" onclick="closeMoveModal()">Hủy</button>
     </div>
   </div>
 </div>
@@ -1829,7 +1826,7 @@
 <div class="modal-overlay" id="imagePreviewModal">
   <div class="modal image-preview-mode">
     <button class="modal-close" onclick="closeImagePreview()">&times;</button>
-    <h3>🖼️ Preview</h3>
+    <h3>Xem ảnh</h3>
     <div class="folder-form">
       <p class="file-info"><strong id="imagePreviewName"></strong></p>
       <div class="image-preview-stage">
@@ -1846,7 +1843,7 @@
 
   if (currentPath !== '/') {
     const leaf = currentPath.split('/').filter(Boolean).pop();
-    if (leaf) document.title = leaf + ' - Files - CrossPoint Reader';
+    if (leaf) document.title = leaf + ' - Files - tenor/cross';
   }
 
   // Network status monitoring
@@ -1981,9 +1978,9 @@
     };
 
     if (segments.length === 0) {
-      appendCurrent('🏠 Home');
+      appendCurrent('Thẻ nhớ');
     } else {
-      appendLink('🏠 Home', '/files');
+      appendLink('Thẻ nhớ', '/files');
       segments.forEach(function(segment, index) {
         appendSep();
         if (index === segments.length - 1) {
@@ -2016,17 +2013,17 @@
     });
 
     const fileCount = files.length - folderCount;
-    const folderLabel = folderCount === 1 ? 'folder' : 'folders';
-    const fileLabel = fileCount === 1 ? 'file' : 'files';
+    const folderLabel = folderCount === 1 ? 'thư mục' : 'thư mục';
+    const fileLabel = fileCount === 1 ? 'tệp' : 'tệp';
     document.getElementById('folder-summary').innerHTML = `${folderCount} ${folderLabel}, ${fileCount} ${fileLabel}, ${formatFileSize(totalSize)}`;
 
     if (files.length === 0) {
-      fileTable.innerHTML = '<div class="no-files">This folder is empty</div>';
+      fileTable.innerHTML = '<div class="no-files">Thư mục trống</div>';
     } else {
       let fileTableContent = '<table class="file-table">';
 
 				// Add select-all checkbox column
-      fileTableContent += '<tr><th style="width:40px"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)"></th><th>Name</th><th>Type</th><th>Size</th><th class="actions-col">Actions</th></tr>';
+      fileTableContent += '<tr><th style="width:40px"><input type="checkbox" id="selectAllCheckbox" aria-label="Chọn tất cả" onchange="toggleSelectAll(this)"></th><th><label for="selectAllCheckbox">Chọn tất cả</label></th><th>Loại</th><th>Dung lượng</th><th class="actions-col">Thao tác</th></tr>';
 
 
       const sortedFiles = files.sort((a, b) => {
@@ -2046,11 +2043,11 @@
 
          // Checkbox cell + folder row
           fileTableContent += `<tr class="folder-row">`;
-          fileTableContent += `<td><input type="checkbox" class="select-item" data-path="${encodeURIComponent(folderPath)}" data-name="${escapeHtml(file.name)}" data-type="folder"></td>`;
-          fileTableContent += `<td><span class="file-icon">📁</span><a href="/files?path=${encodeURIComponent(folderPath)}" class="folder-link">${escapeHtml(file.name)}</a></td>`;
-          fileTableContent += '<td><span class="folder-badge">FOLDER</span></td>';
+          fileTableContent += `<td><input type="checkbox" class="select-item" aria-label="Chọn ${escapeHtml(file.name)}" data-path="${encodeURIComponent(folderPath)}" data-name="${escapeHtml(file.name)}" data-type="folder"></td>`;
+          fileTableContent += `<td><span class="file-icon tc-icon tc-folder" aria-hidden="true"></span><a href="/files?path=${encodeURIComponent(folderPath)}" class="folder-link">${escapeHtml(file.name)}</a></td>`;
+          fileTableContent += '<td><span class="folder-badge">Thư mục</span></td>';
           fileTableContent += '<td>-</td>';
-          fileTableContent += `<td class="actions-col"><div class="action-icon-group"><button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(folderPath)}" data-folder="true" title="Delete folder">🗑️</button></div></td>`;
+          fileTableContent += `<td class="actions-col"><div class="action-icon-group"><button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(folderPath)}" data-folder="true" title="Xóa thư mục" aria-label="Xóa thư mục"><span class="tc-icon tc-delete" aria-hidden="true"></span></button></div></td>`;
           fileTableContent += '</tr>';
         } else {
           let filePath = currentPath;
@@ -2059,9 +2056,9 @@
 
           // Checkbox cell + file row
           fileTableContent += `<tr class="${file.isEpub ? 'epub-file' : ''}">`;
-          fileTableContent += `<td><input type="checkbox" class="select-item" data-path="${encodeURIComponent(filePath)}" data-name="${escapeHtml(file.name)}" data-type="file"></td>`;
+          fileTableContent += `<td><input type="checkbox" class="select-item" aria-label="Chọn ${escapeHtml(file.name)}" data-path="${encodeURIComponent(filePath)}" data-name="${escapeHtml(file.name)}" data-type="file"></td>`;
           const fileIsImage = isImageFile(file.name);
-          fileTableContent += `<td><span class="file-icon">${file.isEpub ? '📗' : (fileIsImage ? '🖼️' : '📄')}</span>`;
+          fileTableContent += `<td><span class="file-icon tc-icon tc-${file.isEpub ? 'book' : (fileIsImage ? 'image' : 'file')}" aria-hidden="true"></span>`;
           if (fileIsImage) {
             fileTableContent += `<a href="${downloadUrl(filePath)}" class="file-link image-preview-link">${escapeHtml(file.name)}</a>`;
           } else {
@@ -2071,9 +2068,9 @@
           fileTableContent += file.isEpub ? '<td><span class="epub-badge">EPUB</span></td>' : `<td>${escapeHtml(file.name.split('.').pop().toUpperCase())}</td>`;
           fileTableContent += `<td>${formatFileSize(file.size)}</td>`;
           fileTableContent += `<td class="actions-col"><div class="action-icon-group">`;
-          fileTableContent += `<button class="move-btn" data-action="move" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Move file">📂</button>`;
-          fileTableContent += `<button class="rename-btn" data-action="rename" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Rename file">✏️</button>`;
-          fileTableContent += `<button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" data-folder="false" title="Delete file">🗑️</button>`;
+          fileTableContent += `<button class="move-btn" data-action="move" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Di chuyển tệp" aria-label="Di chuyển tệp"><span class="tc-icon tc-move" aria-hidden="true"></span></button>`;
+          fileTableContent += `<button class="rename-btn" data-action="rename" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Đổi tên tệp" aria-label="Đổi tên tệp"><span class="tc-icon tc-edit" aria-hidden="true"></span></button>`;
+          fileTableContent += `<button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" data-folder="false" title="Xóa tệp" aria-label="Xóa tệp"><span class="tc-icon tc-delete" aria-hidden="true"></span></button>`;
           fileTableContent += `</div></td>`;
           fileTableContent += '</tr>';
         }
@@ -2125,7 +2122,7 @@
     const logContainer = document.getElementById('log-container');
     if (logContainer) logContainer.innerHTML = '';
 
-    document.getElementById('uploadPathDisplay').textContent = currentPath === '/' ? '/ 🏠' : currentPath;
+    document.getElementById('uploadPathDisplay').textContent = currentPath === '/' ? '/' : currentPath;
     document.getElementById('uploadModal').classList.add('open');
   }
 
@@ -2171,7 +2168,7 @@
     const uploadBtn = document.getElementById('uploadBtn');
     uploadBtn.disabled = true;
     uploadBtn.style.display = 'block';
-    uploadBtn.textContent = 'Upload';
+    uploadBtn.textContent = 'Gửi tệp';
     uploadBtn.classList.remove('optimize');
     document.getElementById('startConversionBtn').style.display = 'none';
     document.getElementById('progress-container').style.display = 'none';
@@ -2221,7 +2218,7 @@
       uploadBtn.textContent = 'Optimize & Upload';
       uploadBtn.classList.add('optimize');
     } else {
-      uploadBtn.textContent = 'Upload';
+      uploadBtn.textContent = 'Gửi tệp';
       uploadBtn.classList.remove('optimize');
       // Clear image picker when unchecking
       clearImagePicker();
@@ -3038,7 +3035,7 @@
   });
 
   function openFolderModal() {
-    document.getElementById('folderPathDisplay').textContent = currentPath === '/' ? '/ 🏠' : currentPath;
+    document.getElementById('folderPathDisplay').textContent = currentPath === '/' ? '/' : currentPath;
     document.getElementById('folderModal').classList.add('open');
     document.getElementById('folderName').value = '';
     setTimeout(() => document.getElementById('folderName').focus(), 50);
@@ -3093,7 +3090,7 @@
     items.forEach(it => {
       const div = document.createElement('div');
       div.style.marginBottom = '6px';
-      div.textContent = (it.isFolder ? '📁 ' : '📄 ') + it.path;
+      div.textContent = it.path;
       listEl.appendChild(div);
     });
     document.getElementById('deleteModal').classList.add('open');
@@ -3246,7 +3243,7 @@
       toggleConvertOptions();
     } else {
       convertOptions.style.display = 'none';
-      uploadBtn.textContent = 'Upload';
+      uploadBtn.textContent = 'Gửi tệp';
       uploadBtn.classList.remove('optimize');
       document.getElementById('convertInfo').style.display = 'none';
       document.getElementById('convertWarning').style.display = 'none';
@@ -3770,7 +3767,7 @@ function exportLogToFile(filename = null, isBatch = false) {
   }
   // Extract text from log entries
   const entries = logContainer.querySelectorAll('.log-entry');
-  let logText = `CrossPoint Reader ${crosspointVersion} - EPUB Conversion Log\n`;
+  let logText = `tenor/cross ${crosspointVersion} - EPUB Conversion Log\n`;
   logText += `Generated: ${new Date().toLocaleString()}\n`;
   logText += `${'='.repeat(60)}\n\n`;
 
@@ -5915,7 +5912,7 @@ function showFailedUploadsBanner() {
     item.className = 'failed-file-item';
     item.innerHTML = `
       <div class="failed-file-info">
-        <div class="failed-file-name">📄 ${escapeHtml(failedFile.name)}</div>
+        <div class="failed-file-name">${escapeHtml(failedFile.name)}</div>
         <div class="failed-file-error">Error: ${escapeHtml(failedFile.error)}</div>
       </div>
       <button class="retry-btn" onclick="retrySingleUpload(${index})">Retry</button>
@@ -6020,7 +6017,7 @@ function retryAllFailedUploads() {
 
   // Rename functions
   function openRenameModal(name, path) {
-    document.getElementById('renameItemName').textContent = '📄 ' + name;
+    document.getElementById('renameItemName').textContent = name;
     document.getElementById('renameItemPath').value = path;
     document.getElementById('renameNewName').value = name;
     document.getElementById('renameModal').classList.add('open');
@@ -6135,7 +6132,7 @@ function retryAllFailedUploads() {
   }
 
   function openMoveModal(name, path) {
-    document.getElementById('moveItemName').textContent = '📄 ' + name;
+    document.getElementById('moveItemName').textContent = name;
     document.getElementById('moveItemPath').value = path;
     document.getElementById('moveDestPath').value = currentPath === '/' ? '/' : currentPath;
     document.getElementById('moveModal').classList.add('open');

@@ -66,7 +66,7 @@ class BookMetadataCache {
   // Cumulative spine sizes, cached in RAM at load() so progress/percent lookups are
   // O(1) instead of 2 seeks + a heap-allocating SpineEntry read per access (4 bytes
   // per spine item; <1KB for typical books).
-  std::vector<uint32_t> cumulativeSizes;
+  std::unique_ptr<uint32_t[]> cumulativeSizes;
 
   // Index for fast href→spineIndex lookup (used only for large EPUBs)
   struct SpineHrefIndexEntry {
@@ -114,6 +114,23 @@ class BookMetadataCache {
 
   // Post-processing to update mappings and sizes
   bool buildBookBin(const std::string& epubPath, const BookMetadata& metadata);
+
+  // Independent sequential stream: random lookups cannot disturb its position.
+  // One 2 KB buffer exists only for the lifetime of a chapter search.
+  class TocCursor {
+   public:
+    TocCursor(const std::string& path, uint32_t lut, int start, uint16_t spine, uint16_t toc);
+    bool next(TocEntry& entry);
+    bool failed() const { return error; }
+
+   private:
+    HalFile file;
+    std::unique_ptr<serialization::BufferedFileReader> stream;
+    size_t end = 0;
+    uint16_t index = 0, spineCount = 0, tocCount = 0;
+    bool error = true;
+  };
+  std::unique_ptr<TocCursor> openTocCursor(int start = 0) const;
 
   // Reading phase (read mode)
   bool load();

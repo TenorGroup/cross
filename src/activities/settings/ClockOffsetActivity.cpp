@@ -82,6 +82,7 @@ void ClockOffsetActivity::saveToSettings() const {
   const uint8_t encoded = encodeOffset(sign, hours, minutesQuarter);
   if (encoded == SETTINGS.clockUtcOffsetQ) return;
   SETTINGS.clockUtcOffsetQ = encoded;
+  SETTINGS.clockAutoTimezone = 0;
   SETTINGS.saveToFile();
 }
 
@@ -136,7 +137,7 @@ void ClockOffsetActivity::getFieldRects(Rect& signRect, Rect& hoursRect, Rect& m
   const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
   const int fieldHeight = lineHeight + 2;
 
-  const int labelWidth = widthOf("UTC");
+  const int labelWidth = widthOf("GMT");
   const int signBoxW = std::max(widthOf("+"), widthOf("-")) + fieldPaddingX * 2;
   const int hoursBoxW = std::max(widthOf("14"), widthOf("12")) + fieldPaddingX * 2;
   const int colonWidth = widthOf(":");
@@ -163,7 +164,7 @@ void ClockOffsetActivity::getTouchControlRects(Rect& minusRect, Rect& plusRect) 
   constexpr int colonGap = 5;
   const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
   const int fieldHeight = lineHeight + 2;
-  const int labelWidth = widthOf("UTC");
+  const int labelWidth = widthOf("GMT");
   const int signBoxW = std::max(widthOf("+"), widthOf("-")) + fieldPaddingX * 2;
   const int hoursBoxW = std::max(widthOf("14"), widthOf("12")) + fieldPaddingX * 2;
   const int colonWidth = widthOf(":");
@@ -288,7 +289,7 @@ void ClockOffsetActivity::render(RenderLock&&) {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_CLOCK_UTC_OFFSET));
+  drawNavigationHeader(tr(STR_CLOCK_UTC_OFFSET));
 
   const int centreY = pageHeight / 2 - 40;
   auto widthOf = [&](const char* s) { return renderer.getTextWidth(UI_12_FONT_ID, s, EpdFontFamily::BOLD); };
@@ -305,7 +306,7 @@ void ClockOffsetActivity::render(RenderLock&&) {
   char minutesStr[8];
   snprintf(minutesStr, sizeof(minutesStr), "%02d", minutesQuarter * MINUTES_PER_QUARTER);
 
-  const int labelWidth = widthOf("UTC");
+  const int labelWidth = widthOf("GMT");
   const int signBoxW = std::max(widthOf("+"), widthOf("-")) + fieldPaddingX * 2;
   const int hoursBoxW = std::max(widthOf("14"), widthOf("12")) + fieldPaddingX * 2;
   const int colonWidth = widthOf(":");
@@ -314,7 +315,7 @@ void ClockOffsetActivity::render(RenderLock&&) {
       labelWidth + labelGap + signBoxW + fieldGap + hoursBoxW + colonGap + colonWidth + colonGap + minutesBoxW;
 
   int x = (pageWidth - totalWidth) / 2;
-  renderer.drawText(UI_12_FONT_ID, x, centreY, "UTC", true, EpdFontFamily::BOLD);
+  renderer.drawText(UI_12_FONT_ID, x, centreY, "GMT", true, EpdFontFamily::BOLD);
   x += labelWidth + labelGap;
 
   auto drawField = [&](const char* text, const int boxX, const int boxWidth, const Field field) {

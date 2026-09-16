@@ -159,7 +159,7 @@ class OptionPopup {
 
     // Builds into the generation handleInput()'s routePublished()/
     // publishedData() aren't currently reading, so the loop task never sees
-    // this table mid-rebuild — see publish() below and
+    // this table mid-rebuild - see publish() below and
     // InteractionBuffer::beginPublishCycle().
     interactions.beginPublishCycle();
     fui::Frame<INTERACTION_CAPACITY> frame(target, device, noInput, interactions);
@@ -228,6 +228,38 @@ class OptionPopup {
   }
 
   bool isActive() const { return active; }
+
+  bool vuaMan(const GfxRenderer& renderer, const std::vector<std::string>& options) const {
+    namespace fui = freeink::ui;
+    const int total = static_cast<int>(options.size());
+    if (total <= 0 || total > MAX_OPTIONS) return false;
+    fui::GfxRendererTarget target = makeUiTarget(renderer);
+    const fui::DeviceContext device = target.deviceContext();
+    const auto& metrics = UITheme::getInstance().getMetrics();
+    fui::DialogOption opts[MAX_OPTIONS];
+    for (int i = 0; i < total; ++i) {
+      opts[i].label = options[i].c_str();
+      opts[i].action = ACTION_OPTION;
+      opts[i].value = static_cast<int16_t>(i);
+    }
+    fui::OptionDialogProps props;
+    props.title = options[0].c_str();  // mot dong tieu de, noi dung khong doi chieu cao
+    props.options = opts;
+    props.optionCount = static_cast<uint8_t>(total);
+    props.verticalOptions = true;
+    props.titleText.font = fui::GfxRendererTarget::FONT_BODY;
+    props.titleText.bold = true;
+    props.buttonText.font = fui::GfxRendererTarget::FONT_BODY;
+    const int16_t innerPadding = static_cast<int16_t>(metrics.optionPopupInnerPadding);
+    props.padding = fui::Insets{innerPadding, innerPadding, innerPadding, innerPadding};
+    props.gap = static_cast<int16_t>(metrics.optionPopupItemSpacing);
+    props.buttonHeight =
+        fui::clampI16(target.lineHeight(fui::GfxRendererTarget::FONT_BODY) + metrics.optionPopupSelectionVPadding * 2);
+    const fui::Rect screen = device.screen();
+    const int16_t width =
+        fui::clampI16(std::min<int>(screen.width * 3 / 4, screen.width - metrics.optionPopupDialogSideMargin * 2));
+    return fui::optionDialogHeight(target, props, width) <= screen.height;
+  }
 
   // Close without firing the callback (the surface under the popup is going
   // away, e.g. its host screen closes from outside the popup's own input).

@@ -90,6 +90,13 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 46
+
+Adds one `uint8_t paragraphIndent` immediately after `extraParagraphSpacing` in
+the section header (0 = automatic, 1 = on, 2 = off). Changing this choice rebuilds
+layout. The matching partial-cache sentinel is 236. Book progress stays in its
+separate store; only the section layout cache is regenerated.
+
 ### Version 45
 
 Version 45 keeps the version 44 serialized layout unchanged. It was bumped

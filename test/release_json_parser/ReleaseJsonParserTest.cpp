@@ -650,3 +650,113 @@ TEST(ReleaseJsonParser, ChunkedRealisticEveryBoundary) {
     EXPECT_EQ(p.getFirmwareSize(), 9999u) << "split=" << split;
   }
 }
+
+TEST(ReleaseJsonParserOta, CompleteDigestWithAssetsBeforeVersion) {
+  const std::string json =
+      R"({"assets":[{"name":"tenor-cross-x3-x4.bin","size":5766768,"digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","browser_download_url":"https://cross.tenor.vn/firmware/0.1.0/tenor-cross-x3-x4.bin"}],"tag_name":"0.1.0"})";
+  for (size_t chunk : {1u, 7u, 64u, 4096u}) {
+    ReleaseJsonParser parser;
+    parser.setFirmwareAssetName("tenor-cross-x3-x4.bin");
+    for (size_t i = 0; i < json.size(); i += chunk) parser.feed(json.data() + i, std::min(chunk, json.size() - i));
+    EXPECT_TRUE(parser.complete());
+    EXPECT_TRUE(parser.foundFirmware());
+    EXPECT_EQ(parser.getFirmwareSize(), 5766768u);
+    EXPECT_STREQ(parser.getFirmwareDigest(), "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  }
+}
+TEST(ReleaseJsonParserOta, TruncatedDocumentNeverComplete) {
+  const std::string json = R"({"tag_name":"0.1.0","assets":[{"name":"firmware.bin","size":1234}]})";
+  for (size_t n = 0; n < json.size(); ++n) {
+    ReleaseJsonParser parser;
+    parser.feed(json.data(), n);
+    EXPECT_FALSE(parser.complete()) << n;
+  }
+}
+TEST(ReleaseJsonParserOta, RejectInvalidSizes) {
+  for (const char* size : {"-1", "1.5", "1e6", "18446744073709551616"}) {
+    const std::string json =
+        std::string(R"({"tag_name":"0.1.0","assets":[{"name":"firmware.bin","size":)") + size + "}]}";
+    ReleaseJsonParser parser;
+    parser.feed(json.data(), json.size());
+    EXPECT_FALSE(parser.complete()) << size;
+  }
+}
+TEST(ReleaseJsonParserOta, ResetClearsDigestAndCompletion) {
+  const std::string json =
+      R"({"tag_name":"0.1.0","assets":[{"name":"firmware.bin","size":1234,"digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}]})";
+  ReleaseJsonParser parser;
+  parser.feed(json.data(), json.size());
+  ASSERT_TRUE(parser.complete());
+  parser.reset();
+  EXPECT_FALSE(parser.complete());
+  EXPECT_STREQ(parser.getFirmwareDigest(), "");
+}
+#include "src/network/OtaPolicy.h"
+TEST(OtaPolicy, VersionIsStrictAndMonotonic) {
+  EXPECT_TRUE(ota_policy::stableIsNewer("0.1.0", "0.1.1"));
+  EXPECT_TRUE(ota_policy::stableIsNewer("v0.1.0-rc+abc", "0.1.0"));
+  EXPECT_TRUE(ota_policy::stableIsNewer("0.1.9", "v0.2.0"));
+  EXPECT_FALSE(ota_policy::stableIsNewer("0.1.0", "0.1.0"));
+  EXPECT_FALSE(ota_policy::stableIsNewer("0.2.0", "0.1.9"));
+  EXPECT_FALSE(ota_policy::stableIsNewer("0.1.0", "1.0.0-rc"));
+  for (const char* bad : {"", "x", "1", "1.0", "-1.0.0", "01.0.0", "1.0.0z", "999999999999.0.0"}) {
+    EXPECT_FALSE(ota_policy::stableIsNewer("0.1.0", bad)) << bad;
+  }
+}
+TEST(OtaPolicy, UrlPinsHttpsHostAndDirectory) {
+  EXPECT_TRUE(ota_policy::firmwareUrlAllowed("https://cross.tenor.vn/firmware/0.1.0/tenor-cross-x3-x4.bin"));
+  for (const char* url : {"http://cross.tenor.vn/firmware/a.bin", "https://cross.tenor.vn.evil.test/firmware/a.bin",
+                          "https://cross.tenor.vn@evil.test/firmware/a.bin", "https://cross.tenor.vn/firmware/../a.bin",
+                          "https://cross.tenor.vn/firmware/%2e%2e/a.bin", "https://cross.tenor.vn/firmware/a.bin?q=x",
+                          "https://cross.tenor.vn/firmware/"})
+    EXPECT_FALSE(ota_policy::firmwareUrlAllowed(url)) << url;
+}
+TEST(OtaPolicy, DigestRequiresAllBytesAndAlgorithm) {
+  uint8_t digest[32];
+  EXPECT_TRUE(
+      ota_policy::decodeDigest("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", digest));
+  EXPECT_EQ(digest[0], 1);
+  EXPECT_EQ(digest[31], 239);
+  EXPECT_FALSE(ota_policy::decodeDigest("sha256:1234", digest));
+  EXPECT_FALSE(ota_policy::decodeDigest("md5:0123456789abcdef0123456789abcdef", digest));
+  EXPECT_FALSE(
+      ota_policy::decodeDigest("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg", digest));
+}
+
+TEST(ReleaseJsonParserOta, RejectMalformedJsonGrammar) {
+  for (const char* json :
+       {R"({"tag_name":"0.1.0" "assets":[]})", R"({"tag_name" "0.1.0","assets":[]})",
+        R"({"tag_name":"0.1.0","assets":[],})", R"({"tag_name":"0.1.0","assets":[,]})",
+        R"({"tag_name":"0.1.0","assets":[]]})", R"({"tag_name":"0.1.0","assets":[]}garbage)",
+        R"({"tag_name":"0.1.0","assets":[]} {})", R"({"tag_name":"0.1.0","unknown":01,"assets":[]})",
+        R"({"tag_name":"0.1.0","unknown":1.,"assets":[]})", R"({"tag_name":"0.1.0","unknown":1e,"assets":[]})",
+        R"({"tag_name":"0.1.0","unknown":"\q","assets":[]})", R"({"tag_name":"0.1.0","unknown":"\uQQQQ","assets":[]})",
+        R"([{"tag_name":"0.1.0","assets":[]}])"}) {
+    ReleaseJsonParser parser;
+    feedChunked(parser, json, 1);
+    EXPECT_FALSE(parser.complete()) << json;
+  }
+}
+TEST(ReleaseJsonParserOta, CompleteValidNestedUnknownValues) {
+  const char* json = R"({"tag_name":"0.1.0","unknown":[{},[],0,-2.5e+12,true,false,null,"\u1234\n"],"assets":[]})";
+  for (size_t chunk : {1u, 7u, 128u}) {
+    ReleaseJsonParser parser;
+    feedChunked(parser, json, chunk);
+    EXPECT_TRUE(parser.complete());
+  }
+}
+
+TEST(ReleaseJsonParserOta, RejectAmbiguousDuplicateFields) {
+  for (
+      const char* json :
+      {R"({"tag_name":"0.1.0","tag_name":"0.2.0","assets":[]})", R"({"tag_name":"0.1.0","assets":[],"assets":[]})",
+       R"({"tag_name":"0.1.0","assets":[{"name":"firmware.bin","name":"other.bin"}]})",
+       R"({"tag_name":"0.1.0","assets":[{"name":"firmware.bin","size":10,"size":20}]})",
+       R"({"tag_name":"0.1.0","assets":[{"name":"firmware.bin","digest":"a","digest":"b"}]})",
+       R"({"tag_name":"0.1.0","assets":[{"name":"firmware.bin","browser_download_url":"a","browser_download_url":"b"}]})",
+       R"({"tag_name":"0.1.0","assets":[{"name":"firmware.bin"},{"name":"firmware.bin"}]})"}) {
+    ReleaseJsonParser parser;
+    feedChunked(parser, json, 1);
+    EXPECT_FALSE(parser.complete()) << json;
+  }
+}

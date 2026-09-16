@@ -2,6 +2,7 @@
 #include <GfxRenderer.h>
 
 #include "MappedInputManager.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "components/UiAppHost.h"
@@ -71,7 +72,7 @@ inline void buildSliderDialogScreen(UiAppHost::UiScreen& screen, const GfxRender
 
   if (mappedInput.hasTouch()) {
     // Touch devices drive the slider directly and confirm/cancel on screen; the
-    // physical-button step hints are hidden there — same rule as GUI.drawButtonHints.
+    // physical-button step hints are hidden there - same rule as GUI.drawButtonHints.
     addDialogCancelOk(screen, spec.cancelAction, spec.okAction);
     return;
   }
@@ -79,9 +80,6 @@ inline void buildSliderDialogScreen(UiAppHost::UiScreen& screen, const GfxRender
   // Two-line step hint (front buttons = fine step, side buttons = coarse step),
   // preformatted by the caller so the layout doesn't depend on a separator
   // hidden in translated text.
-  fui::TextStyle hint = theme.smallText;
-  hint.align = fui::TextAlign::Center;
-  const int16_t hintLh = screen.target().lineHeight(hint.font);
-  if (spec.hintLine1) screen.target().text(screen.takeTop(hintLh, theme.spaceSm), spec.hintLine1, hint);
-  if (spec.hintLine2) screen.target().text(screen.takeTop(hintLh), spec.hintLine2, hint);
+  if (spec.hintLine1) tenorchrome::drawTip(renderer, spec.hintLine1, spec.hintLine2 ? 1 : 0);
+  if (spec.hintLine2) tenorchrome::drawTip(renderer, spec.hintLine2);
 }

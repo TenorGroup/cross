@@ -96,7 +96,7 @@ void begin() {
   } else {
     // Panic reboot: preserve logs and panic info, but clamp logHead in case the
     // panic occurred before begin() ever ran (e.g. in a static constructor).
-    // If logHead was out of range, logMessages is also garbage — clear it so
+    // If logHead was out of range, logMessages is also garbage - clear it so
     // getLastLogs() does not dump corrupt data into the crash report.
     if (sanitizeLogHead()) {
       clearLastLogs();
@@ -165,7 +165,7 @@ std::string getPanicInfo(bool full) {
   } else {
     std::string info;
 
-    info += "CrossPoint version: " CROSSPOINT_VERSION;
+    info += "tenor/cross version: " CROSSPOINT_VERSION;
     // A lockup or hardware watchdog resets without running any panic hook, so
     // the reason and stack come back empty; the reset cause is then the only
     // way to tell those apart from a true panic.

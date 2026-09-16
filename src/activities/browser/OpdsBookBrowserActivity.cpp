@@ -15,6 +15,7 @@
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/icons/search32.h"
@@ -211,6 +212,13 @@ void OpdsBookBrowserActivity::rootScreen(UiScreen& screen, void* user) {
 // Shared chrome for every state: reserve the firmware's button-hint band and
 // draw the themed header (padding, centering, and rule come from the theme).
 void OpdsBookBrowserActivity::screenHeader(UiScreen& screen, const bool withSearch) {
+  if (tenorchrome::enabled()) {
+    drawNavigationHeader(server.name.empty() ? tr(STR_OPDS_BROWSER) : server.name.c_str());
+    screen.setContentMarginFromScreen(fui::Insets{
+        tenorchrome::CONTENT_TOP, 0, static_cast<int16_t>(UITheme::getInstance().getMetrics().buttonHintsHeight), 0});
+    return;
+  }
+
   screen.takeBottom(static_cast<int16_t>(UITheme::getInstance().getMetrics().buttonHintsHeight));
   // Same top offset as every GUI.drawHeader caller, so the band lines up with
   // the rest of the firmware's screens.
@@ -469,7 +477,7 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
   // Build full download URL relative to the current feed, not the root server URL
   const std::string feedUrl = UrlUtils::buildUrl(server.url, currentPath);
   std::string downloadUrl = UrlUtils::buildUrl(feedUrl, book.href);
-  // opdsDownloadFolder is already a null-terminated char[64]; use it directly —
+  // opdsDownloadFolder is already a null-terminated char[64]; use it directly -
   // no std::string copy. exists()/mkdir() take const char*.
   const char* folder = SETTINGS.opdsDownloadFolder;  // "" => SD root
   bool haveFolder = folder[0] != '\0';
@@ -498,7 +506,7 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
 
   // Rebuildable SD-font caches can hold tens of KB the TLS session needs for
   // a multi-MB book; release them up front (they repopulate on demand) and
-  // refuse to start below the floor — a doomed transfer otherwise dies
+  // refuse to start below the floor - a doomed transfer otherwise dies
   // mid-stream with MEMORY_E, or abort()s on an interior allocation.
   if (auto* fcm = renderer.getFontCacheManager()) {
     fcm->releaseSdFontCaches();
@@ -527,7 +535,7 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
         // This update() consumes the one-shot home event before the central
         // ActivityManager dispatch can see it, so honor it here: abort the
         // download, then exit to home once the abort unwinds.
-        if (mappedInput.wasHomeGesture()) {
+        if (mappedInput.wasLongPressed(MappedInputManager::Button::Back, 1000) || mappedInput.wasHomeGesture()) {
           cancelDownload = true;
           goHomeAfterCancel = true;
         }

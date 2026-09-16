@@ -14,6 +14,7 @@
 
 #include "I18n.h"
 #include "RecentBooksStore.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -151,7 +152,7 @@ void BaseTheme::drawHintLabel(const GfxRenderer& renderer, const int fontId, con
     return;
   }
 
-  // Spaced by the glyph height, not getLineHeight() — that returns the font's
+  // Spaced by the glyph height, not getLineHeight() - that returns the font's
   // full advanceY (leading included), which stacks two lines taller than the
   // button and clips the second one.
   constexpr int lineGap = 2;
@@ -318,8 +319,8 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   // Shared-line headers with the battery on the right: the header component
   // places rightLabel inside the battery reserve, so it sits mid-band next to
   // the icon and shifts with the percent label's width. Draw it manually below
-  // instead, pinned at the fixed side inset in the band's lower half — the
-  // same corner the detached (Lyra) layout puts it — so the label holds one
+  // instead, pinned at the fixed side inset in the band's lower half - the
+  // same corner the detached (Lyra) layout puts it - so the label holds one
   // position across themes and battery states.
   const bool manualRightLabel = subtitle != nullptr && !batteryDetached && !batteryLeft;
   if (manualRightLabel) {
@@ -366,7 +367,7 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   battery.gap = batteryPercentSpacing;
   // Detached: hug the corner (12px, the legacy inset) within the battery
   // strip; shared line: sit on the content grid. Both anchor to the band's top
-  // strip (batteryBarHeight) — the legacy shared-line headers drew the battery
+  // strip (batteryBarHeight) - the legacy shared-line headers drew the battery
   // at the top edge, and it keeps the lower-right corner free for the manual
   // right label below.
   const int16_t batteryEdgeInset = batteryDetached ? 12 : tokens.headerSidePadding;
@@ -725,6 +726,11 @@ void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layou
 void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage,
                               const int pageCount, std::string title, const int paddingBottom, const int textYOffset,
                               const bool fillMargin, const bool isPageBookmarked, const bool pageCountEstimated) {
+  if (tenorchrome::enabled()) {
+    tenorchrome::drawStatus(renderer, title.c_str(), currentPage, pageCount, bookProgress, paddingBottom,
+                            pageCountEstimated, isPageBookmarked);
+    return;
+  }
   auto metrics = UITheme::getInstance().getMetrics();
   int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
   renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
@@ -808,7 +814,8 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     leftClusterWidth += batteryWidth;
   }
 
-  // Draw Clock (X3 only — DS3231 RTC)
+  // Read the clock only as part of an existing page/status-bar render.
+  // A minute change must not schedule its own e-paper refresh.
   if (sb.showsClock() && halClock.isAvailable()) {
     char timeBuf[9];
     if (halClock.formatTime(timeBuf, sizeof(timeBuf), sb.clockUtcOffsetQ, sb.clock12h)) {

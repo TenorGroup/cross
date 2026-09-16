@@ -56,7 +56,7 @@ void ActivityManager::renderTaskLoop() {
     // Acquire the lock before reading currentActivity to avoid a TOCTOU race
     // where the main task deletes the activity between the null-check and render().
     RenderLock lock;
-    if (currentActivity) {
+    if (currentActivity && !sleepTransition) {
       HalPowerManager::Lock powerLock;  // Ensure we don't go into low-power mode while rendering
       // Night mode is a global output polarity applied to every activity.
       // The sleep screen forces normal polarity itself (SleepActivity).
@@ -89,9 +89,15 @@ void ActivityManager::loop() {
     return;
   }
 
-  if (currentActivity) {
-    if (!currentActivity->isHomeActivity() && mappedInput.wasHomeGesture()) {
+  if (currentActivity && !sleepTransition) {
+    const bool heldBack = mappedInput.wasLongPressed(MappedInputManager::Button::Back, 1000);
+    if (!currentActivity->isHomeActivity() && (heldBack || mappedInput.wasHomeGesture())) {
+      if (currentActivity->saveInputBeforeHome()) {
+        homeAfterInput = true;
+        return;
+      }
       if (currentActivity->handleHomeGesture()) {
+        if (heldBack) homeAfterInput = true;
         return;
       }
       goHome();
@@ -116,6 +122,7 @@ void ActivityManager::loop() {
     }
 
     // Note: do not hold a lock here, the loop() method must be responsible for acquire one if needed
+    currentActivity->onTick();
     currentActivity->loop();
   }
 
@@ -146,6 +153,7 @@ void ActivityManager::loop() {
         currentActivity = std::move(stackActivities.back());
         stackActivities.pop_back();
         LOG_DBG("ACT", "Popped from activity stack, new size = %zu", stackActivities.size());
+        currentActivity->onResume();
         // Handle result if necessary
         if (currentActivity->resultHandler) {
           LOG_DBG("ACT", "Handling result for popped activity");
@@ -155,6 +163,17 @@ void ActivityManager::loop() {
           currentActivity->resultHandler = nullptr;
           lock.unlock();  // Handler may acquire its own lock
           handler(pendingResult);
+        }
+
+        if (homeAfterInput) {
+          homeAfterInput = false;
+          lock.unlock();
+          goHome();
+          continue;
+        }
+        if (pendingAction == PendingAction::None) {
+          lock.unlock();
+          currentActivity->openPendingSettingsSibling();
         }
 
         // Request an update to ensure the popped activity gets re-rendered
@@ -180,6 +199,10 @@ void ActivityManager::loop() {
         }
       } else if (pendingAction == PendingAction::Push) {
         // Move current activity to stack
+        if (currentActivity) {
+          saveNavigation(*currentActivity);
+          currentActivity->onPause();
+        }
         stackActivities.push_back(std::move(currentActivity));
         LOG_DBG("ACT", "Pushed to activity stack, new size = %zu", stackActivities.size());
       }
@@ -188,6 +211,7 @@ void ActivityManager::loop() {
 
       lock.unlock();  // onEnter may acquire its own lock
       currentActivity->onEnter();
+      restoreNavigation();
 
       // onEnter may request another pending action, we will handle it in the next loop iteration
       continue;
@@ -203,15 +227,69 @@ void ActivityManager::loop() {
   }
 }
 
+HomeMenuItem ActivityManager::homeMenuOrigin() const {
+  MenuNavigationState state;
+  bool found = navigationMemory.load("Home", state);
+  for (const auto& activity : stackActivities) {
+    if (activity && activity->isHomeActivity()) {
+      activity->captureNavigation(state);
+      found = true;
+      break;
+    }
+  }
+  if (currentActivity && currentActivity->isHomeActivity()) {
+    currentActivity->captureNavigation(state);
+    found = true;
+  }
+  if (!found) return HomeMenuItem::NONE;
+  switch (state.tab) {
+    case 1:
+      return HomeMenuItem::FILE_BROWSER;
+    case 2:
+      return HomeMenuItem::STATS_TAB;
+    case 3:
+      return HomeMenuItem::SETTINGS_MENU;
+    case 4:
+      return HomeMenuItem::FAVORITES_TAB;
+    default:
+      return HomeMenuItem::RECENTS;
+  }
+}
+
+void ActivityManager::saveNavigation(Activity& activity) {
+  if (!activity.remembersNavigation()) return;
+  MenuNavigationState state;
+  activity.captureNavigation(state);
+  navigationMemory.save(activity.navigationMemoryKey(), state);
+}
+
 void ActivityManager::exitActivity(const RenderLock& lock) {
   // Note: lock must be held by the caller
   if (currentActivity) {
+    saveNavigation(*currentActivity);
+    const uint32_t started = millis();
     currentActivity->onExit();
     currentActivity.reset();
+    if (sleepTransition) LOG_INF("SLP", "Timing close-activity=%lu ms", static_cast<unsigned long>(millis() - started));
+  }
+}
+
+void ActivityManager::restoreNavigation() {
+  if (!currentActivity || !currentActivity->remembersNavigation()) return;
+  MenuNavigationState state;
+  if (navigationMemory.load(currentActivity->navigationMemoryKey(), state)) {
+    currentActivity->restoreNavigation(state);
+    LOG_DBG("NAV", "Restored %s tab=%d row=%d", currentActivity->navigationMemoryKey().c_str(), state.tab,
+            state.tab >= 0 && state.tab < state.count ? state.cursors[state.tab].selected : 0);
+    requestUpdate();
   }
 }
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
+  if (currentActivity && newActivity && currentActivity->remembersNavigation() && !newActivity->isHomeActivity() &&
+      newActivity->name != "Sleep") {
+    navigationMemory.enter(currentActivity->navigationMemoryKey(), newActivity->navigationMemoryKey());
+  }
   // Note: no lock here, this is usually called by loop() and we may run into deadlock
   if (currentActivity) {
     // Defer launch if we're currently in an activity, to avoid deleting the current activity
@@ -222,6 +300,7 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
     // No current activity, safe to launch immediately
     currentActivity = std::move(newActivity);
     currentActivity->onEnter();
+    restoreNavigation();
   }
 }
 
@@ -242,7 +321,9 @@ void ActivityManager::goToUsbDrive() {
 #endif
 }
 
-void ActivityManager::goToSettings() { replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput)); }
+void ActivityManager::goToSettings(const int theBanDau) {
+  replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput, theBanDau));
+}
 
 void ActivityManager::goToFileBrowser(std::string path) {
   replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)));
@@ -285,6 +366,14 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
 }
 
 void ActivityManager::goToSleep(bool fromTimeout) {
+  const uint32_t started = millis();
+  {
+    RenderLock lock;
+    sleepTransition = true;
+    requestedUpdate = false;
+    SleepActivity::showEnteringSleep(renderer);
+    LOG_INF("SLP", "Timing notice-and-lock=%lu ms", static_cast<unsigned long>(millis() - started));
+  }
   replaceActivity(std::make_unique<SleepActivity>(renderer, mappedInput, fromTimeout));
   loop();  // Important: sleep screen must be rendered immediately, the caller will go to sleep right after this returns
 }
@@ -296,6 +385,7 @@ void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::
 }
 
 void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefresh) {
+  if (initialMenuItem == HomeMenuItem::NONE) initialMenuItem = homeMenuOrigin();
   if (initialMenuItem == HomeMenuItem::NONE && currentActivity) {
     const auto& activityName = currentActivity->name;
     if (activityName == "FileBrowser") {
@@ -314,11 +404,33 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
 }
 void ActivityManager::goToCrashReport() { replaceActivity(std::make_unique<CrashActivity>(renderer, mappedInput)); }
 
+bool ActivityManager::switchSettingsSibling(const int direction) {
+  if (!currentActivity || stackActivities.empty() || pendingAction != PendingAction::None) return false;
+  if (!stackActivities.back()->selectSettingsSibling(direction)) return false;
+  popActivity();
+  return true;
+}
+
 void ActivityManager::pushActivity(std::unique_ptr<Activity>&& activity) {
+  if (activity && currentActivity) {
+    activity->navigationPrefix = currentActivity->navigationPrefix;
+    const auto label = currentActivity->navigationLabel();
+    if (!label.empty()) {
+      if (!activity->navigationPrefix.empty()) activity->navigationPrefix += "/";
+      activity->navigationPrefix += label;
+    }
+  }
+  if (!activity) {
+    LOG_ERR("ACT", "Cannot push an unallocated activity");
+    return;
+  }
   if (pendingActivity) {
     // Should never happen in practice
     LOG_ERR("ACT", "pendingActivity while pushActivity is not expected");
     pendingActivity.reset();
+  }
+  if (currentActivity) {
+    navigationMemory.enter(currentActivity->navigationMemoryKey(), activity->navigationMemoryKey());
   }
   pendingActivity = std::move(activity);
   pendingAction = PendingAction::Push;

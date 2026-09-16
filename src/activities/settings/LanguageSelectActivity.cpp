@@ -10,6 +10,7 @@
 #include "I18nKeys.h"
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 
 namespace fui = freeink::ui;
 
@@ -80,7 +81,7 @@ void LanguageSelectActivity::buildScreen(UiScreen& screen) {
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   // Label at the value's font size: both sides of the row read as one unit.
   // maxLines=2 also marks the style caller-owned (see textStyleUnset).
-  props.labelText = screen.theme().smallText;
+  props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
   syncListViewport(screen, props);
   screen.list(props);

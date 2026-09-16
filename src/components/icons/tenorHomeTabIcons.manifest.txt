@@ -1,0 +1,6 @@
+# Tenor Home icons, Lucide geometry with 3-unit strokes. Other themes retain the original assets.
+tenor_home_recent = clock
+tenor_home_folder = folder
+tenor_home_stats = chart-column
+tenor_home_settings = settings
+tenor_home_favorites = star

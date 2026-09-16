@@ -212,8 +212,8 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
 
     // SUP/SUB shift the baseline passed to drawText; the glyph is also scaled 50% inside
     // drawText, so these offsets are chosen relative to the full-size ascender:
-    //   SUP: raise by 40% of ascender — sits clearly above the cap-height
-    //   SUB: lower by 25% of ascender — descends below baseline without clashing with ascenders below
+    //   SUP: raise by 40% of ascender - sits clearly above the cap-height
+    //   SUB: lower by 25% of ascender - descends below baseline without clashing with ascenders below
     int wordY = y + rubyShift;
     if ((currentStyle & EpdFontFamily::SUP) != 0) {
       wordY -= ascender * 2 / 5;
@@ -223,7 +223,9 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
 
     const int drawX = wordX;
 
-    if (boundary > 0) {
+    if ((currentStyle & EpdFontFamily::DROP_CAP) && dropCapHeight) {
+      renderer.drawDropCapWord(fontId, drawX, wordY, word, currentStyle, dropCapHeight);
+    } else if (boundary > 0) {
       // Focus split: draw bold prefix, then the regular suffix at a pre-computed x offset.
       // The bold prefix is bounded to 9 codepoints by the clamp on targetBoldChars in
       // ParsedText::addWord; 9 UTF-8 codepoints occupy at most 9 * 4 = 36 bytes, +1 for null = 37.
@@ -258,7 +260,9 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
 
     if (EpdFontFamily::hasTextDecoration(currentStyle)) {
       int lineStartX = drawX;
-      int lineWidth = renderer.getTextWidth(fontId, word, currentStyle, baseDir);
+      int lineWidth = (currentStyle & EpdFontFamily::DROP_CAP) && dropCapHeight
+                          ? renderer.getDropCapWordWidth(fontId, word, currentStyle, dropCapHeight)
+                          : renderer.getTextWidth(fontId, word, currentStyle, baseDir);
 
       if ((currentStyle & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0) {
         lineWidth = (lineWidth + 1) / 2;
@@ -310,6 +314,7 @@ bool TextBlock::serialize(HalFile& file) const {
   serialization::writePod(file, numWords);
   serialization::writePod(file, static_cast<uint8_t>(focusPresent ? 1 : 0));
   serialization::writePod(file, textBytes);
+  serialization::writePod(file, dropCapHeight);
   if (numWords > 0) {
     const size_t size = arenaSize(numWords, focusPresent, textBytes);
     if (file.write(arena.get(), size) != size) {
@@ -346,9 +351,12 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   uint16_t wc;
   uint8_t hasFocus;
   uint16_t textBytes;
+  uint16_t dropHeight = 0;
   serialization::readPod(file, wc);
   serialization::readPod(file, hasFocus);
   serialization::readPod(file, textBytes);
+  serialization::readPod(file, dropHeight);
+  if (dropHeight > 256) return nullptr;
 
   // Sanity checks: cap the arena allocation and reject impossible geometry
   // (every word carries at least its NUL terminator).
@@ -366,6 +374,7 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
     LOG_ERR("TXB", "OOM: TextBlock");
     return nullptr;
   }
+  block->dropCapHeight = dropHeight;
   block->numWords = wc;
   block->textBytes = textBytes;
   block->focusPresent = hasFocus != 0;

@@ -52,6 +52,7 @@ class TextBlock final : public Block {
   uint16_t numWords = 0;
   uint16_t textBytes = 0;  // total size of the text region, including NULs
   bool focusPresent = false;
+  uint16_t dropCapHeight = 0;
   bool isValid = true;
   // The ONLY allocation: makeUniqueNoThrow, so OOM yields an invalid block
   // instead of abort() (bare new is not nothrow with -fno-exceptions).
@@ -100,6 +101,8 @@ class TextBlock final : public Block {
   EpdFontFamily::Style wordStyle(const uint16_t i) const { return static_cast<EpdFontFamily::Style>(stylesArr[i]); }
   uint8_t focusBoundary(const uint16_t i) const { return focusPresent ? focusBoundaryArr[i] : 0; }
   uint16_t focusSuffixX(const uint16_t i) const { return focusPresent ? focusSuffixXArr[i] : 0; }
+  void setDropCapHeight(uint16_t height) { dropCapHeight = height; }
+  uint16_t getDropCapHeight() const { return dropCapHeight; }
   bool hasRuby() const;
   int getRubyShift(int ascender) const { return hasRuby() ? (ascender / 2) : 0; }
   const std::vector<std::string>& getRubyTexts() const { return rubyTexts; }

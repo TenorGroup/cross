@@ -345,3 +345,13 @@ class FloydSteinbergDitherer {
   int16_t* errorNextRow;
   const bool originalThresholds;
 };
+// Packed levels are 0=black through 3=white. Destination indexes are in bits.
+inline void writeAbsoluteGrayRow(const uint8_t* levels, int width, int firstBit, int stepBits, uint8_t* lsb,
+                                 uint8_t* msb) {
+  for (int x = 0, bit = firstBit; x < width; ++x, bit += stepBits) {
+    const uint8_t level = (levels[x / 4] >> (6 - (x % 4) * 2)) & 3;
+    const uint8_t mask = 0x80 >> (bit % 8);
+    if (!(level & 1)) lsb[bit / 8] &= ~mask;
+    if (!(level & 2)) msb[bit / 8] &= ~mask;
+  }
+}

@@ -11,10 +11,15 @@ class HalClock {
   mutable Rtc _sdkRtc;
   mutable uint8_t _cachedHour = 0;
   mutable uint8_t _cachedMinute = 0;
+  // Ngay thang cua lan doc gan nhat. RTC tra ca ngay, truoc 14/09/2026 lop nay doc ca ngay
+  // roi vut di, nen may khong tra loi duoc cau "hom nay la ngay may".
+  mutable uint16_t _cachedYear = 2000;
+  mutable uint8_t _cachedMonth = 1;
+  mutable uint8_t _cachedDay = 1;
   mutable bool _hasCachedTime = false;
   mutable unsigned long _lastPollMs = 0;
 
-  static constexpr unsigned long CLOCK_POLL_MS = 10000;  // 10 seconds
+  static constexpr unsigned long CLOCK_POLL_MS = 1000;  // One-second date boundary sampling
 
  public:
   // Call after BoardConfig has selected the active device.
@@ -26,6 +31,12 @@ class HalClock {
   // Get current hour (0-23) and minute (0-59).
   // Returns false if RTC is not available.
   bool getTime(uint8_t& hour, uint8_t& minute) const;
+
+  // Ngay gio UTC day du. Cung nhip doc va cung bo dem voi getTime().
+  // Gio o day la GIO UTC: muon ngay dia phuong thi cong mui vao bang
+  // ngaygio::doiSangDiaPhuong(), vi cong mui co the lam ngay nhay sang hom truoc hoac
+  // hom sau. Tra false khi may khong co RTC hoac doc hong.
+  bool getDateTime(uint16_t& year, uint8_t& month, uint8_t& day, uint8_t& hour, uint8_t& minute) const;
 
   // Format time into a caller-provided buffer.
   // 24h mode produces "HH:MM" (needs >=6 bytes); 12h mode produces "H:MM AM"/"HH:MM PM" (needs >=9 bytes).

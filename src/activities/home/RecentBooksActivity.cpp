@@ -7,18 +7,15 @@
 #include <algorithm>
 #include <memory>
 
+#include "FileFavorites.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 
 namespace fui = freeink::ui;
-
-namespace {
-// Hold threshold for the long-press "remove from list" action (firmware convention).
-constexpr unsigned long LONG_PRESS_MS = 1000;
-}  // namespace
 
 RecentBooksActivity::RecentBooksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiListActivity("RecentBooks", renderer, mappedInput, /*wantsTouchLongPress=*/true) {}
@@ -45,7 +42,7 @@ void RecentBooksActivity::rebuildRowItems() {
 
   // One SD pass for every CJK title/author on the screen; repaints then hit
   // the resident tables instead of re-reading per-string. Titles draw bold
-  // (see buildScreen), authors regular — separate per-style prewarms. Getter
+  // (see buildScreen), authors regular - separate per-style prewarms. Getter
   // form: no concatenated copy (a bare-new string append aborts under heap
   // pressure). See GfxRenderer::prewarmFallbackText().
   const auto count = static_cast<uint32_t>(recentBooks.size());
@@ -103,11 +100,7 @@ void RecentBooksActivity::onRowLongPress(const int index) {
 bool RecentBooksActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (!recentBooks.empty() && nav.selected < listCount()) {
-      if (mappedInput.getHeldTime() >= LONG_PRESS_MS) {
-        promptRemoveBook(recentBooks[nav.selected].path, recentBooks[nav.selected].title);
-      } else {
-        activateIndex(nav.selected);
-      }
+      activateIndex(nav.selected);
       return true;
     }
   }
@@ -173,7 +166,7 @@ void RecentBooksActivity::buildScreen(UiScreen& screen) {
   // textStyleUnset and Screen::list() would substitute bodyText back
   // (FONT_SLOT_SMALL is 0). No maxLines=2 here: on subtitle rows the label
   // band is one line tall and a wrapped title would collide with the author.
-  fui::TextStyle label = screen.theme().smallText;
+  fui::TextStyle label = uiMenuLabelText(screen.theme());
   label.bold = true;
   props.labelText = label;
   syncListViewport(screen, props, /*hasSubtitle=*/true);
@@ -186,4 +179,11 @@ void RecentBooksActivity::drawFooter() {
   const auto labels = mappedInput.mapLabels(tr(STR_HOME), empty ? "" : tr(STR_OPEN), empty ? "" : tr(STR_DIR_UP),
                                             empty ? "" : tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+std::string RecentBooksActivity::favoriteKey(int row) const {
+  return row >= 0 && row < listCount() ? filefavorites::keyFor(recentBooks[row].path, false) : "";
+}
+bool RecentBooksActivity::toggleFavorite(int row) {
+  return row >= 0 && row < listCount() && filefavorites::toggle(recentBooks[row].path, false);
 }

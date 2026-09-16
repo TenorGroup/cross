@@ -14,6 +14,9 @@ class RecentBooksActivity final : public UiListActivity {
   void onExit() override;
 
  private:
+  bool supportsFavorites() const override { return true; }
+  std::string favoriteKey(int row) const override;
+  bool toggleFavorite(int row) override;
   int listCount() const override { return static_cast<int>(recentBooks.size()); }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;

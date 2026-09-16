@@ -34,7 +34,7 @@ void ClearCacheActivity::render(RenderLock&&) {
 
   renderer.clearScreen();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_CLEAR_READING_CACHE));
+  drawNavigationHeader(tr(STR_CLEAR_READING_CACHE));
 
   if (state == WARNING) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 60, tr(STR_CLEAR_CACHE_WARNING_1), true);

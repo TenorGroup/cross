@@ -1,0 +1,18 @@
+# Bieu tuong bon the cua MAN CHINH. Chu may chot 14/09/2026: man chinh dung bieu tuong
+# don sac, vao trong cac menu moi dung chu.
+#
+# Sinh lai:
+#   python3 freeink-sdk/libs/assets/Icons/tools/gen_icons.py \
+#     --manifest src/components/icons/homeTabIcons.manifest.txt \
+#     --svgdir freeink-sdk/libs/assets/Icons/lucide/icons \
+#     --sizes 24 --out src/components/icons/homeTabIcons.h
+#
+# Vi sao dung nhung hinh nay, do that o 1 bit co 24 px ngay 14/09:
+#   clock      sach, doc ro. `history` bi bet thanh mot khoi o goc trai, nen loai.
+#   folder     sach, khong the nham voi gi.
+#   chart-column co truc nen doc ra "so lieu"; `chart-no-axes-column` chi con ba cot roi.
+#   settings   banh rang, rang tach ro o 24 px, va la hinh ai cung hieu.
+home_recent   = clock
+home_folder   = folder
+home_stats    = chart-column
+home_settings = settings

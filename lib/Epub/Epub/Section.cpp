@@ -25,7 +25,7 @@ namespace {
 //      Hangul words survive again; ruby element boundaries carry the continuation flag
 //      instead. Invalidates v33 caches, whose word positions have the spaces collapsed.
 
-// v34: <br> handling changed layout — a <br> after text is now a margin-stripped
+// v34: <br> handling changed layout - a <br> after text is now a margin-stripped
 //      line break (browser-like) and only a <br> whose block stays empty injects
 //      the scene-break gap, so cached pages laid out by older versions no longer
 //      match. Keeps <br>-per-paragraph books (common CJK formatting) from
@@ -33,7 +33,7 @@ namespace {
 // v35: Persist a uint32_t visible-text start offset for every page.
 // v36: Ruby and CJK justification layout changes invalidate cached word positions.
 // v37: Footnote href records grew from 96 to 256 bytes.
-// v38: Focus Reading line breaking changed — a visible hyphen/dash inside a word is now a
+// v38: Focus Reading line breaking changed - a visible hyphen/dash inside a word is now a
 //      break opportunity, and hyphenation of a focus-split word considers the whole word
 //      instead of only its regular-weight suffix. Pages cached by older versions were laid
 //      out with the previous, more restrictive break set and no longer match.
@@ -47,7 +47,8 @@ namespace {
 // v43: Paragraph base direction excludes direction changes from inline elements.
 // v44: Persist internal-link rectangles with each page for touch navigation.
 // v45: Internal EPUB links preserve CSS superscript/subscript positioning.
-constexpr uint8_t SECTION_FILE_VERSION = 45;
+// v46: Independent first-line indentation mode in the render-spec cache key.
+constexpr uint8_t SECTION_FILE_VERSION = 47;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
@@ -65,10 +66,10 @@ constexpr uint8_t SECTION_FILE_INCOMPLETE_VERSION = 0;
 // only fails (noisily, via the block-decode error path) when a page is loaded.
 // Derived so the pairing can't be forgotten: 0xFE for v28, 0xFD for v29, ...
 constexpr uint8_t SECTION_FILE_PARTIAL_VERSION = 0xFE - (SECTION_FILE_VERSION - 28);
-constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(bool) + sizeof(uint8_t) +
-                                 sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
-                                 sizeof(uint8_t) + sizeof(bool) + sizeof(uint32_t) + sizeof(uint32_t) +
-                                 sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t);
+constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(bool) +
+                                 sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) +
+                                 sizeof(bool) + sizeof(bool) + sizeof(uint8_t) + sizeof(bool) + sizeof(uint32_t) +
+                                 sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t);
 }  // namespace
 
 // Out-of-line so the unique_ptr<ChapterHtmlSlimParser> in BuildContext can be
@@ -112,11 +113,12 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
     return;
   }
   static_assert(HEADER_SIZE == sizeof(SECTION_FILE_VERSION) + sizeof(spec.fontId) + sizeof(spec.lineCompression) +
-                                   sizeof(spec.extraParagraphSpacing) + sizeof(spec.paragraphAlignment) +
-                                   sizeof(spec.viewportWidth) + sizeof(spec.viewportHeight) + sizeof(pageCount) +
-                                   sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) +
-                                   sizeof(spec.imageRendering) + sizeof(spec.focusReadingEnabled) + sizeof(uint32_t) +
-                                   sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t),
+                                   sizeof(spec.extraParagraphSpacing) + sizeof(spec.paragraphIndent) +
+                                   sizeof(spec.paragraphAlignment) + sizeof(spec.viewportWidth) +
+                                   sizeof(spec.viewportHeight) + sizeof(pageCount) + sizeof(spec.hyphenationEnabled) +
+                                   sizeof(spec.embeddedStyle) + sizeof(spec.imageRendering) +
+                                   sizeof(spec.focusReadingEnabled) + sizeof(uint32_t) + sizeof(uint32_t) +
+                                   sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t),
                 "Header size mismatch");
   // Written as the incomplete sentinel; finalizeBuild() patches it to
   // SECTION_FILE_VERSION as the last step, committing the file.
@@ -124,6 +126,7 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
   serialization::writePod(file, spec.fontId);
   serialization::writePod(file, spec.lineCompression);
   serialization::writePod(file, spec.extraParagraphSpacing);
+  serialization::writePod(file, spec.paragraphIndent);
   serialization::writePod(file, spec.paragraphAlignment);
   serialization::writePod(file, spec.viewportWidth);
   serialization::writePod(file, spec.viewportHeight);
@@ -162,6 +165,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     uint16_t fileViewportWidth, fileViewportHeight;
     float fileLineCompression;
     bool fileExtraParagraphSpacing;
+    uint8_t fileParagraphIndent;
     uint8_t fileParagraphAlignment;
     bool fileHyphenationEnabled;
     bool fileEmbeddedStyle;
@@ -170,6 +174,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     serialization::readPod(file, fileFontId);
     serialization::readPod(file, fileLineCompression);
     serialization::readPod(file, fileExtraParagraphSpacing);
+    serialization::readPod(file, fileParagraphIndent);
     serialization::readPod(file, fileParagraphAlignment);
     serialization::readPod(file, fileViewportWidth);
     serialization::readPod(file, fileViewportHeight);
@@ -179,10 +184,11 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     serialization::readPod(file, fileFocusReadingEnabled);
 
     if (spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
-        spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.paragraphAlignment != fileParagraphAlignment ||
-        spec.viewportWidth != fileViewportWidth || spec.viewportHeight != fileViewportHeight ||
-        spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
-        spec.imageRendering != fileImageRendering || spec.focusReadingEnabled != fileFocusReadingEnabled) {
+        spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.paragraphIndent != fileParagraphIndent ||
+        spec.paragraphAlignment != fileParagraphAlignment || spec.viewportWidth != fileViewportWidth ||
+        spec.viewportHeight != fileViewportHeight || spec.hyphenationEnabled != fileHyphenationEnabled ||
+        spec.embeddedStyle != fileEmbeddedStyle || spec.imageRendering != fileImageRendering ||
+        spec.focusReadingEnabled != fileFocusReadingEnabled) {
       file.close();
       LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
       clearCache();
@@ -421,7 +427,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
             {this->onPageComplete(std::move(page)), paragraphIndex, listItemIndex, visibleTextOffset});
       },
       spec.embeddedStyle, ctxPtr->contentBase, ctxPtr->imageBasePath, spec.imageRendering, std::move(tocAnchors),
-      popupFn, ctxPtr->cssParser);
+      popupFn, ctxPtr->cssParser, spec.paragraphIndent);
   if (!ctx->parser) {
     LOG_ERR("SCT", "OOM: ChapterHtmlSlimParser");
     if (ctx->cssParser) ctx->cssParser->clear();

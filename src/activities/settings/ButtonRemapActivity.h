@@ -1,4 +1,5 @@
 #pragma once
+#include <I18n.h>
 
 #include <string>
 
@@ -11,6 +12,7 @@ class ButtonRemapActivity final : public Activity, private UiAppHost {
       : Activity("ButtonRemap", renderer, mappedInput), UiAppHost(renderer) {}
 
   void onEnter() override;
+  std::string navigationLabel() const override { return I18N.get(StrId::STR_REMAP_FRONT_BUTTONS); }
   void loop() override;
   void render(RenderLock&&) override;
 

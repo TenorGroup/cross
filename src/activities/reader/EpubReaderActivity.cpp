@@ -35,6 +35,7 @@
 #include "ProgressMapper.h"
 #include "QrDisplayActivity.h"
 #include "ReaderActivity.h"
+#include "ReaderFontChon.h"
 #include "ReaderFontSizes.h"
 #include "ReaderToolbarUi.h"
 #include "ReaderUtils.h"
@@ -45,9 +46,40 @@
 #include "fontIds.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
+#include "util/ReadingExcerpt.h"
 #include "util/ScreenshotUtil.h"
 
 namespace {
+// Anh chup cac cai dat lam thay doi cach dan trang. So truoc va sau khi mo man Cai dat van ban
+// de biet co phai dan lai hay khong.
+struct AnhChupChu {
+  uint8_t fontFamily, fontPointSize, lineSpacing, screenMargin, paragraphAlignment, extraParagraphSpacing,
+      paragraphIndent, focusReadingEnabled, hyphenationEnabled, embeddedStyle, textAntiAliasing, readerInkWeight;
+  std::string sdFontFamilyName;
+  static AnhChupChu chup() {
+    return {SETTINGS.fontFamily,
+            SETTINGS.fontPointSize,
+            SETTINGS.lineSpacing,
+            SETTINGS.screenMargin,
+            SETTINGS.paragraphAlignment,
+            SETTINGS.extraParagraphSpacing,
+            SETTINGS.paragraphIndent,
+            SETTINGS.focusReadingEnabled,
+            SETTINGS.hyphenationEnabled,
+            SETTINGS.embeddedStyle,
+            SETTINGS.textAntiAliasing,
+            SETTINGS.readerInkWeight,
+            std::string(SETTINGS.sdFontFamilyName)};
+  }
+  bool operator==(const AnhChupChu& o) const {
+    return fontFamily == o.fontFamily && fontPointSize == o.fontPointSize && lineSpacing == o.lineSpacing &&
+           screenMargin == o.screenMargin && paragraphAlignment == o.paragraphAlignment &&
+           extraParagraphSpacing == o.extraParagraphSpacing && paragraphIndent == o.paragraphIndent &&
+           focusReadingEnabled == o.focusReadingEnabled && hyphenationEnabled == o.hyphenationEnabled &&
+           embeddedStyle == o.embeddedStyle && textAntiAliasing == o.textAntiAliasing &&
+           sdFontFamilyName == o.sdFontFamilyName && readerInkWeight == o.readerInkWeight;
+  }
+};
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
 // (that helper also gates power management). Overlay refresh choices are per-panel:
 // this family runs the grayscale anti-aliasing pass, so chrome painted over a
@@ -204,7 +236,7 @@ bool EpubReaderActivity::loadBook() {
   epub->setupCacheDir();
 
   HalFile f;
-  if (Storage.openFileForRead("ERS", epub->getCachePath() + "/progress.bin", f)) {
+  if (!preview && Storage.openFileForRead("ERS", epub->getCachePath() + "/progress.bin", f)) {
     uint8_t data[10];
     int dataSize = f.read(data, sizeof(data));
     if (dataSize == 4 || dataSize == 6 || dataSize == 10) {
@@ -289,7 +321,7 @@ void EpubReaderActivity::openReaderMenu() {
         toggleAutoPageTurn(menu.pageTurnOption);
 
         if (!result.isCancelled) {
-          onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
+          onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action), menu);
         }
       });
 }
@@ -308,8 +340,8 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
   buildPopupPending = false;
 }
 
-void EpubReaderActivity::openDictionaryWordSelect() {
-  if (SETTINGS.dictionaryName[0] == '\0') {
+void EpubReaderActivity::openDictionaryWordSelect(const bool quotation) {
+  if (!quotation && SETTINGS.dictionaryName[0] == '\0') {
     showDictionaryMessage = true;
     dictionaryMessageTime = millis();
     requestUpdate();
@@ -320,14 +352,13 @@ void EpubReaderActivity::openDictionaryWordSelect() {
   if (!page) return;
 
   int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
-  renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
-                                   &orientedMarginLeft);
-  orientedMarginTop += SETTINGS.screenMargin;
-  orientedMarginLeft += SETTINGS.screenMargin;
+  readingMargins(orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
 
-  startActivityForResult(std::make_unique<DictionaryWordSelectActivity>(renderer, mappedInput, std::move(page),
-                                                                        orientedMarginLeft, orientedMarginTop),
-                         [this](const ActivityResult&) { requestUpdate(); });
+  auto selector = makeUniqueNoThrow<DictionaryWordSelectActivity>(renderer, mappedInput, std::move(page),
+                                                                  orientedMarginLeft, orientedMarginTop);
+  if (!selector) return;
+  if (quotation) selector->selectQuotation({bookPath, getBookTitle(), "", currentSpineIndex, section->currentPage, 0});
+  startActivityForResult(std::move(selector), [this](const ActivityResult&) { requestUpdate(); });
 }
 
 void EpubReaderActivity::loop() {
@@ -398,6 +429,8 @@ void EpubReaderActivity::loop() {
       }
     }
   }
+
+  if (handlePreviewInput()) return;
 
   const bool atEndOfBook = currentSpineIndex > 0 && currentSpineIndex >= epub->getSpineItemsCount();
   clearEndOfBookOptionsIfNeeded();
@@ -637,6 +670,13 @@ void EpubReaderActivity::loop() {
 
   const unsigned long heldMs = (touch.prev || touch.next) ? touch.heldMs : mappedInput.getHeldTime();
   const bool longPress = !fromTilt && heldMs >= ReaderUtils::SKIP_HOLD_MS;
+  // Giu nut lat trang = Co chu: mot lan giu, mot nac, KEP o bien; cu release da bi
+  // wasLongPressed nuot nen khong lat trang du. Nghieng (fromTilt) va nut nguon khong toi day.
+  if (longPress && SETTINGS.longPressButtonBehavior == SETTINGS.FONT_SIZE_STEP) {
+    if (docCoChuMotNac(nextTriggered ? 1 : -1)) requestUpdate();
+    return;
+  }
+
   if (longPress && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP) {
     skipPages(nextTriggered ? 1 : -1);
     requestUpdate();
@@ -713,7 +753,7 @@ void EpubReaderActivity::jumpToPercent(int percent) {
   requestUpdate();
 }
 
-void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
+void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuAction action, const MenuResult& menu) {
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
     loadCachedBookmarks();
     if (result.isCancelled) {
@@ -819,22 +859,42 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
                              });
       break;
     }
-    case EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS: {
-      startActivityForResult(std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(),
-                                                                    TextSettingsActivity::Tab::Family),
-                             [this](const ActivityResult&) {
-                               {
-                                 RenderLock lock;
-                                 if (section) {
-                                   rememberCurrentContentOffset();
-                                   cachedSpineIndex = currentSpineIndex;
-                                   cachedChapterTotalPageCount = section->pageCount;
-                                   nextPageNumber = section->currentPage;
-                                 }
-                                 section.reset();
-                               }
-                               openReaderMenu();
-                             });
+    case EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS:
+    case EpubReaderMenuActivity::MenuAction::FONT_SIZE:
+    case EpubReaderMenuActivity::MenuAction::FONT_FAMILY: {
+      // Menu da chon xong tai cho (trinh chon hoac doi tai cho): ap MOT lan, dan lai mot lan,
+      // luu ngoai khoa. Khong mo man nao.
+      if (action == EpubReaderMenuActivity::MenuAction::FONT_SIZE && menu.coChu > 0) {
+        if (menu.coChu == SETTINGS.fontPointSize) break;
+        {
+          RenderLock lock;
+          fontdoc::apCo(renderer, menu.coChu);
+          danLaiTrang();
+        }
+        SETTINGS.saveToFile();
+        break;
+      }
+      if (action == EpubReaderMenuActivity::MenuAction::FONT_FAMILY && menu.hoFont >= 0) {
+        bool daDoi = false;
+        {
+          RenderLock lock;
+          daDoi = fontdoc::apHo(renderer, &sdFontSystem.registry(), menu.hoFont);
+          if (daDoi) danLaiTrang();
+        }
+        if (daDoi) SETTINGS.saveToFile();
+        break;
+      }
+      const auto tab = action == EpubReaderMenuActivity::MenuAction::FONT_SIZE     ? TextSettingsActivity::Tab::Size
+                       : action == EpubReaderMenuActivity::MenuAction::FONT_FAMILY ? TextSettingsActivity::Tab::Family
+                                                                                   : TextSettingsActivity::Tab::Layout;
+      const AnhChupChu truoc = AnhChupChu::chup();
+      startActivityForResult(
+          std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(), tab),
+          [this, truoc](const ActivityResult&) {
+            if (truoc == AnhChupChu::chup()) return;
+            RenderLock lock;
+            danLaiTrang();
+          });
       break;
     }
     case EpubReaderMenuActivity::MenuAction::NIGHT_MODE:
@@ -857,6 +917,9 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
           });
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::SAVE_QUOTE:
+      openDictionaryWordSelect(true);
+      break;
     case EpubReaderMenuActivity::MenuAction::DICTIONARY: {
       openDictionaryWordSelect();
       break;
@@ -988,7 +1051,7 @@ void EpubReaderActivity::applyInitialOrientation() {
 
 void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
   // Also runs when SETTINGS already holds the new value but this layout was
-  // built for the old one — that is what an external change looks like here.
+  // built for the old one - that is what an external change looks like here.
   if (SETTINGS.orientation == orientation && appliedOrientation == orientation) {
     return;
   }
@@ -1020,7 +1083,7 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
   pageTurnDuration = (1UL * 60 * 1000) / PAGE_TURN_RATES[selectedPageTurnOption];
   automaticPageTurnActive = true;
 
-  const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
+  const uint8_t statusBarHeight = readerStatusBarHeight();
   if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
     RenderLock lock;
     if (section) {
@@ -1033,7 +1096,7 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
   }
 }
 
-bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
+bool EpubReaderActivity::latTrangThat(bool isForwardTurn) {
   if (!section) return false;
   {
     RenderLock lock;
@@ -1136,21 +1199,16 @@ void EpubReaderActivity::renderBook() {
   }
 
   int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
-  renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
-                                   &orientedMarginLeft);
-  orientedMarginTop += SETTINGS.screenMargin;
-  orientedMarginLeft += SETTINGS.screenMargin;
-  orientedMarginRight += SETTINGS.screenMargin;
+  readingMargins(orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
 
-  const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
+  const uint8_t statusBarHeight = readerStatusBarHeight();
 
   if (automaticPageTurnActive &&
       (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
     orientedMarginBottom +=
         std::max(SETTINGS.screenMargin,
-                 static_cast<uint8_t>(statusBarHeight + UITheme::getInstance().getMetrics().statusBarVerticalMargin));
-  } else {
-    orientedMarginBottom += std::max(SETTINGS.screenMargin, statusBarHeight);
+                 static_cast<uint8_t>(statusBarHeight + UITheme::getInstance().getMetrics().statusBarVerticalMargin)) -
+        std::max(SETTINGS.screenMargin, statusBarHeight);
   }
 
   const uint16_t viewportWidth = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight;
@@ -1487,6 +1545,7 @@ void EpubReaderActivity::clearDeferredReposition() {
 }
 
 bool EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageCount) {
+  if (preview) return true;
   std::optional<uint32_t> offset;
   if (section && spineIndex == currentSpineIndex && currentPage >= 0 && currentPage < section->pageCount) {
     offset = (currentPage == section->currentPage && currentPageVisibleOffset.has_value())
@@ -1539,7 +1598,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool tiledGrayscale = needsAnyGrayscale && grayscale.stripUploads;
   // Paper Mono only (no other panel combines): defer the B/W base activation so
   // the gray planes join it in a single waveform. Displaying the base
-  // separately makes the gray pass re-drive the whole text body — a visible
+  // separately makes the gray pass re-drive the whole text body - a visible
   // flash on every AA page.
   const bool combinedGrayscaleBase =
       tiledGrayscale && !pageHasImages && grayscale.base == HalDisplay::GrayscaleBase::Combined;
@@ -1750,6 +1809,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 }
 
 void EpubReaderActivity::renderStatusBar() const {
+  if (preview) {
+    drawPreviewFooter();
+    return;
+  }
   const int currentPage = section ? section->currentPage + 1 : 1;
   const float pageCount = section ? section->estimatedTotalPages() : 1;
   const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
@@ -1761,7 +1824,7 @@ void EpubReaderActivity::renderStatusBar() const {
 
   if (automaticPageTurnActive) {
     title = tr(STR_AUTO_TURN_ENABLED) + std::to_string(60 * 1000 / pageTurnDuration);
-    const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
+    const uint8_t statusBarHeight = readerStatusBarHeight();
     if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
       textYOffset += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
     }
@@ -1796,6 +1859,8 @@ constexpr int kTextRowCount = static_cast<int>(std::size(kTextRowNames));
 static_assert(std::size(kSpacingIds) == CrossPointSettings::LINE_COMPRESSION_COUNT, "line spacing labels");
 static_assert(std::size(kAlignIds) == CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, "alignment labels");
 }  // namespace
+
+bool EpubReaderActivity::readingPageVisible() const { return section && overlay == Overlay::None && !isAtEndOfBook(); }
 
 bool EpubReaderActivity::usesToolbarMenu() const {
   // Touch-first chrome: button boards always get the classic list menu, even
@@ -2329,6 +2394,33 @@ void EpubReaderActivity::paintOverlayPopup() {
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
 
+void EpubReaderActivity::danLaiTrang() {
+  if (section) {
+    rememberCurrentContentOffset();
+    cachedSpineIndex = currentSpineIndex;
+    cachedChapterTotalPageCount = section->pageCount;
+    nextPageNumber = section->currentPage;
+  }
+  section.reset();  // dan lai trang voi chu moi o lan ve tiep theo
+}
+
+bool EpubReaderActivity::docCoChuMotNac(const int huong) {
+  const std::vector<uint8_t> sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
+  if (sizes.empty()) return false;
+  const int cur = fontdoc::coDangDung(sizes);
+  int moi = cur + huong;
+  if (moi < 0) moi = 0;
+  if (moi >= static_cast<int>(sizes.size())) moi = static_cast<int>(sizes.size()) - 1;
+  if (moi == cur) return false;  // da o bien: nhip giu bi tieu, khong lat trang, khong doi gi
+  {
+    RenderLock lock;
+    fontdoc::apCo(renderer, sizes[moi]);
+    danLaiTrang();
+  }
+  SETTINGS.saveToFile();
+  return true;
+}
+
 void EpubReaderActivity::applyReaderTextSettings() {
   SETTINGS.saveToFile();
   // (Re)load or unload the selected SD-card font for the current family/size.
@@ -2348,13 +2440,7 @@ void EpubReaderActivity::applyReaderTextSettings() {
 // The More panel carries everything the classic list menu offers except the
 // two entries that have their own tool (chapters -> Contents, text -> Text).
 void EpubReaderActivity::buildMoreActions() {
-  using MA = EpubReaderMenuActivity::MenuAction;
-  EpubReaderMenuActivity::buildMenuItems(moreItems, !currentPageFootnotes.empty(), !cachedBookmarks.empty());
-  moreItems.erase(std::remove_if(moreItems.begin(), moreItems.end(),
-                                 [](const auto& item) {
-                                   return item.action == MA::SELECT_CHAPTER || item.action == MA::TEXT_SETTINGS;
-                                 }),
-                  moreItems.end());
+  readermenu::buildMoreItems(moreItems, !currentPageFootnotes.empty(), !cachedBookmarks.empty(), Frontlight.present());
 }
 
 std::string EpubReaderActivity::moreRowName(int row) const {
@@ -2449,7 +2535,9 @@ void EpubReaderActivity::activateMoreRow(int row) {
     requestUpdate();
     return;
   }
-  onReaderMenuConfirm(action);
+  // Bang More cua thanh cong cu cham: khong co lua chon tai cho, nen Co chu va Font chu di
+  // duong mo man Cai dat van ban (coChu 0, hoFont -1).
+  onReaderMenuConfirm(action, MenuResult{});
   // Actions that neither open a screen nor leave the reader (a sync with no
   // credentials, say) would otherwise leave the closed panel on screen.
   if (action != MA::GO_HOME && action != MA::DELETE_CACHE) requestUpdate();
@@ -2636,4 +2724,22 @@ CrossPointPosition EpubReaderActivity::getCurrentPosition() const {
     localPos.hasParagraphIndex = true;
   }
   return localPos;
+}
+
+void EpubReaderActivity::onExit() {
+  if (!preview && !recentsEntryRemoved && section && pageReady.load(std::memory_order_acquire)) {
+    // One existing page cache read on exit, no EPUB scan and no page-turn overhead.
+    auto page = section->loadPage(section->currentPage);
+    auto excerpt = makeUniqueNoThrow<readingexcerpt::Builder>();
+    if (page && excerpt) {
+      for (const auto& element : page->elements) {
+        if (element->getTag() != TAG_PageLine) continue;
+        const auto* block = static_cast<const PageLine&>(*element).getBlock();
+        if (!block || !block->valid()) continue;
+        for (uint16_t i = 0; i < block->wordCount(); ++i) excerpt->word(block->wordText(i));
+      }
+      RECENT_BOOKS.rememberExcerpt(bookPath, excerpt->result());
+    }
+  }
+  ReaderActivity::onExit();
 }

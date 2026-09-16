@@ -28,7 +28,7 @@ bool XtcReaderActivity::loadBook() {
   }
   xtc = std::move(loadedXtc);
   xtc->setupCacheDir();
-  loadProgress();
+  if (!preview) loadProgress();
   return true;
 }
 
@@ -97,6 +97,10 @@ XtcReaderActivity::StatusBarInfo XtcReaderActivity::getStatusBarInfo() const {
 }
 
 void XtcReaderActivity::renderStatusBarOverlay(GfxRenderer& renderer, const StatusBarOverlayPosition position) const {
+  if (preview) {
+    if (position == StatusBarOverlayPosition::Bottom) drawPreviewFooter();
+    return;
+  }
   const auto sb = SETTINGS.statusBarSpec();
   const bool drawBottom = sb.xtcMode == CrossPointSettings::XTC_STATUS_BAR_MODE::XTC_STATUS_BAR_BOTTOM &&
                           position == StatusBarOverlayPosition::Bottom;
@@ -276,7 +280,7 @@ void XtcReaderActivity::renderPage() {
 
   free(pageBuffer);
 
-  if (SETTINGS.statusBarSpec().xtcMode == CrossPointSettings::XTC_STATUS_BAR_MODE::XTC_STATUS_BAR_TOP) {
+  if (!preview && SETTINGS.statusBarSpec().xtcMode == CrossPointSettings::XTC_STATUS_BAR_MODE::XTC_STATUS_BAR_TOP) {
     renderStatusBarOverlay(renderer, StatusBarOverlayPosition::Top);
   } else {
     renderStatusBarOverlay(renderer, StatusBarOverlayPosition::Bottom);
@@ -287,7 +291,7 @@ void XtcReaderActivity::renderPage() {
   LOG_DBG("XTR", "Rendered page %lu/%lu (%u-bit)", currentPage + 1, xtc->getPageCount(), bitDepth);
 }
 
-bool XtcReaderActivity::pageTurn(bool isForward) {
+bool XtcReaderActivity::latTrangThat(bool isForward) {
   if (!xtc) return false;
   if (isForward) {
     if (currentPage < xtc->getPageCount()) {
@@ -326,6 +330,7 @@ void XtcReaderActivity::onReturnFromEndOfBook() {
 }
 
 void XtcReaderActivity::saveProgress() const {
+  if (preview) return;
   if (!xtc) return;
   uint8_t data[4];
   data[0] = currentPage & 0xFF;

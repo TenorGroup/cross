@@ -90,12 +90,13 @@ class CrossPointWebServer {
 
   // Request handlers
   void handleRoot() const;
+  void handleTheme() const;
   void handleJszip() const;
   void handleNotFound() const;
   void handleStatus() const;
   void handleFileList() const;
   void handleFileListData() const;
-  void handleDownload() const;
+  void handleDownload();
   void handleUpload(UploadState& state) const;
   void handleUploadPost(UploadState& state) const;
   void handleCreateFolder() const;
@@ -110,7 +111,7 @@ class CrossPointWebServer {
 
   // Font management handlers
   void handleFontsPage() const;
-  void handleFontList() const;
+  void handleFontList();
   void handleFontUpload();
   void handleFontUploadData();
   void handleFontDelete();
@@ -123,11 +124,7 @@ class CrossPointWebServer {
     bool valid = false;
     bool magicChecked = false;
     size_t bytesWritten = 0;
-    static constexpr size_t BUFFER_SIZE = 4096;
-    std::vector<uint8_t> buffer;
     size_t bufferPos = 0;
-
-    FontUploadState() { buffer.resize(BUFFER_SIZE); }
   } fontUpload;
 
   // OPDS server handlers

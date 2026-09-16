@@ -37,8 +37,10 @@ void relayout(PreviewLayout& layout, const GfxRenderer& renderer, int fontId, in
   style.alignment = toCssAlign(SETTINGS.paragraphAlignment);
   style.textAlignDefined = true;  // honor the user's choice; RTL auto-detected from text
 
-  ParsedText parsed(SETTINGS.extraParagraphSpacing != 0, SETTINGS.hyphenationEnabled != 0,
-                    SETTINGS.focusReadingEnabled != 0, style);
+  ParsedText parsed(SETTINGS.extraParagraphSpacing != 0, SETTINGS.hyphenationEnabled != 0, false, style,
+                    SETTINGS.paragraphIndent);
+  if (SETTINGS.focusReadingEnabled)
+    parsed.enableDropCap(renderer.getLineHeight(fontId, SETTINGS.getReaderLineCompression()) * 2 - 4);
 
   // Feed one space-separated word at a time; addWord handles NFC/CJK/RTL/focus splitting
   const char* text = I18N.get(StrId::STR_FONT_PREVIEW_TEXT);
@@ -94,7 +96,7 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
   // geometry changed; else reuse the cache. The prewarm inputs are (fontId, constant
   // sample text, styleMask<-focusReading), all of which are key fields, so a matching
   // key means an identical prewarm call. This relies on nothing else evicting the SD
-  // glyph cache while this activity is up — true today: the only evictor is
+  // glyph cache while this activity is up - true today: the only evictor is
   // FontCacheManager::PrewarmScope, used solely by the reader/dictionary activities.
   const PreviewKey key{.fontId = fontId,
                        .fontPointSize = SETTINGS.fontPointSize,
@@ -103,6 +105,7 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
                        .lineCompression = compression,
                        .alignment = SETTINGS.paragraphAlignment,
                        .extraParagraphSpacing = SETTINGS.extraParagraphSpacing != 0,
+                       .paragraphIndent = SETTINGS.paragraphIndent,
                        .focusReading = SETTINGS.focusReadingEnabled != 0,
                        .hyphenation = SETTINGS.hyphenationEnabled != 0};
   if (key != layout.key) {
@@ -116,7 +119,7 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
   // Draw the sample twice so the paragraph gap is visible
   int y = top + previewPadding;
   const int textBottomLimit = top + height - labelReserved;
-  for (int paragraph = 0; paragraph < 2; paragraph++) {
+  for (int paragraph = 0; paragraph < (SETTINGS.focusReadingEnabled ? 1 : 2); paragraph++) {
     for (const auto& line : layout.lines) {
       if (y + lineH > textBottomLimit) return;
       line->render(renderer, fontId, textLeft, y);

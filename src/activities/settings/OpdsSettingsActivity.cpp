@@ -8,6 +8,7 @@
 #include "OpdsServerStore.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 
 namespace fui = freeink::ui;
 
@@ -49,7 +50,7 @@ void OpdsSettingsActivity::onEnter() {
     if (server) {
       editServer = *server;
     } else {
-      // Server was deleted between navigation and entering this screen — treat as new
+      // Server was deleted between navigation and entering this screen - treat as new
       isNewServer = true;
       serverIndex = -1;
     }
@@ -195,7 +196,7 @@ void OpdsSettingsActivity::buildScreen(UiScreen& screen) {
   props.valueInset = 8;               // air between the value and the row edge
   // Label at the value's font size: both sides of the row read as one unit.
   // maxLines=2 also marks the style caller-owned (see textStyleUnset).
-  props.labelText = screen.theme().smallText;
+  props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
   syncListViewport(screen, props);
   screen.list(props);

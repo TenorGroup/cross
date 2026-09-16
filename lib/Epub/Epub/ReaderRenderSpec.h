@@ -8,12 +8,13 @@
 // Build one via CrossPointSettings::readerRenderSpec(width, height), which
 // fills every field: the settings-derived ones from the store, the viewport
 // from the caller. Taking the viewport as arguments is what keeps a spec from
-// existing in a half-filled state — the 0 defaults below are a last-resort
+// existing in a half-filled state - the 0 defaults below are a last-resort
 // backstop (a 0x0 viewport lays out nothing), not an invitation to omit it.
 struct ReaderRenderSpec {
   int fontId = 0;
   float lineCompression = 1.0f;
   bool extraParagraphSpacing = false;
+  uint8_t paragraphIndent = 0;
   uint8_t paragraphAlignment = 0;
   uint16_t viewportWidth = 0;
   uint16_t viewportHeight = 0;

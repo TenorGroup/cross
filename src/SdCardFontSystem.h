@@ -21,6 +21,12 @@ class SdCardFontSystem {
   /// Call before entering the reader or after settings change.
   /// Also re-discovers if the registry has been marked dirty (e.g. by web upload).
   void ensureLoaded(GfxRenderer& renderer);
+  uint8_t availableWeightMask() const;
+
+  // OTA uses built-in UI fonts and reboots on exit. Release SD font metadata
+  // and the discovery catalog before TLS; settings and card files stay intact.
+  // Caller holds RenderLock. ensureLoaded() discovers and loads them again.
+  void releaseForOta(GfxRenderer& renderer);
 
   /// Resolve an SD card font ID from family name + reader point size.
   /// Returns 0 if not found. Used by CrossPointSettings::getReaderFontId().

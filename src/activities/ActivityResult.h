@@ -21,6 +21,11 @@ struct MenuResult {
   int action = -1;
   uint8_t orientation = 0;
   uint8_t pageTurnOption = 0;
+  // Hai dong Co chu va Font chu cua menu doc chon NGAY trong menu (chot 14/09/2026 dem):
+  // coChu > 0 la co (pt) da chon; hoFont >= 0 la chi so ho font da chon. Gia tri mac dinh nghia
+  // la menu khong chon duoc tai cho, trinh doc mo man Cai dat van ban.
+  uint8_t coChu = 0;
+  int8_t hoFont = -1;
 };
 
 struct ChapterResult {

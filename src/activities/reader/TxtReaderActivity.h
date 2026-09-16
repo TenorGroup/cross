@@ -51,9 +51,11 @@ class TxtReaderActivity final : public ReaderActivity {
                              bool allowFastInitialRefresh)
       : ReaderActivity("TxtReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
   ~TxtReaderActivity() override = default;
+  void onExit() override;
 
-  bool pageTurn(bool isForward) override;
+  bool latTrangThat(bool isForward) override;
   bool skipPages(int amount) override;
+  bool docCoChuMotNac(int huong) override;
   bool isAtEndOfBook() const override;
   void onReturnFromEndOfBook() override;
 

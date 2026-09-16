@@ -33,6 +33,9 @@ class CrossPointWebServerActivity final : public Activity {
   // Network mode
   NetworkMode networkMode = NetworkMode::JOIN_NETWORK;
   bool isApMode = false;
+#ifdef TENOR_UI_ACCEPTANCE
+  bool autoJoinForTest = false;
+#endif
 
   // Web server - owned by this activity
   std::unique_ptr<CrossPointWebServer> webServer;
@@ -61,6 +64,9 @@ class CrossPointWebServerActivity final : public Activity {
   void startWebServer();
 
  public:
+#ifdef TENOR_UI_ACCEPTANCE
+  void requestAutoJoinForTest() { autoJoinForTest = true; }
+#endif
   explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("CrossPointWebServer", renderer, mappedInput) {}
   void onEnter() override;

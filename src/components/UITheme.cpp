@@ -4,13 +4,17 @@
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
 #include <Logging.h>
+#include <Memory.h>
 
 #include <algorithm>
 #include <memory>
 
+#include "ButtonSymbols.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "TenorMenuChrome.h"
 #include "components/themes/BaseTheme.h"
+#include "components/themes/TenorTheme.h"
 #include "components/themes/lyra/Lyra3CoversTheme.h"
 #include "components/themes/lyra/LyraTheme.h"
 #include "components/themes/roundedraff/RoundedRaffTheme.h"
@@ -28,7 +32,19 @@ void UITheme::reload() {
 }
 
 void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
+  buttonSymbols::install();
   switch (type) {
+    case CrossPointSettings::UI_THEME::TENOR_UI: {
+      LOG_DBG("UI", "Using tenor/cross theme");
+      auto next = makeUniqueNoThrow<TenorTheme>();
+      if (!next) {
+        LOG_ERR("UI", "Unable to allocate tenor/cross theme");
+        return;
+      }
+      currentTheme = std::move(next);
+      currentMetrics = &TenorMetrics::values;
+      break;
+    }
     case CrossPointSettings::UI_THEME::CLASSIC:
       LOG_DBG("UI", "Using Classic theme");
       currentTheme = std::make_unique<BaseTheme>();
@@ -127,6 +143,7 @@ UIIcon UITheme::getFileIcon(const std::string& filename) {
 }
 
 int UITheme::getStatusBarHeight() {
+  if (tenorchrome::enabled()) return tenorchrome::STATUS_HEIGHT;
   const ThemeMetrics metrics = UITheme::getInstance().getMetrics();
   const auto sb = SETTINGS.statusBarSpec();
 

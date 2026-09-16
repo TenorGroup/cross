@@ -102,7 +102,7 @@ class GfxRenderer {
   // before a per-glyph measure/draw loop runs. Called when resolveTextFontId
   // redirected a string to the SD fallback: UI screens (file browser, home)
   // draw those strings without the reader's PrewarmScope, and every glyph
-  // would otherwise fault through SdCardFont::onGlyphMiss — one .cpfont file
+  // would otherwise fault through SdCardFont::onGlyphMiss - one .cpfont file
   // open + seek + read per glyph, per redraw, through an 8-slot overflow ring
   // (#2725). One prewarm per string costs a single file open; re-measuring or
   // re-drawing resident glyphs is a RAM-only subset check. No-op for built-in
@@ -118,7 +118,7 @@ class GfxRenderer {
   void fillArc(int maxRadius, int cx, int cy, int xDir, int yDir) const;
   // Byte-aligned, orientation-specialized rectangle fill. Rotates the rect's
   // two opposing corners into physical-framebuffer space once, then walks each
-  // physical row with head-mask / middle memset / tail-mask byte writes — no
+  // physical row with head-mask / middle memset / tail-mask byte writes - no
   // per-pixel rotation, no per-pixel RMW.
   template <Color color>
   void fillRectImpl(int x, int y, int width, int height) const;
@@ -144,11 +144,11 @@ class GfxRenderer {
   // Batch-prewarm CJK fallback glyphs for a screenful of static strings in ONE
   // SD pass. List screens redraw every visible row on each repaint; without an
   // up-front batch each row's draw prewarms per-string, and under heap
-  // pressure (union merge disabled) each string evicts the previous one — SD
+  // pressure (union merge disabled) each string evicts the previous one - SD
   // reads on every repaint forever. Call once when the screen's strings are
   // known (data load); later measures/draws become RAM-only subset hits.
   // No-op when nothing routes to an SD fallback.
-  // The getter form fetches strings one at a time (allocation-free — callers
+  // The getter form fetches strings one at a time (allocation-free - callers
   // must NOT build a concatenated std::string: its bare-new growth aborts on
   // the heap-tight screens this exists for). A null getter result skips that
   // index.
@@ -270,6 +270,7 @@ class GfxRenderer {
                        bool roundBottomLeft, bool roundBottomRight, Color color) const;
   void drawImage(const uint8_t bitmap[], int x, int y, int width, int height) const;
   void drawIcon(const uint8_t bitmap[], int x, int y, int size) const;
+  bool drawBitmapAbsolutePlanes(const Bitmap& bitmap) const;
   bool drawBitmap(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight, float cropX = 0,
                   float cropY = 0) const;
   bool drawBitmap1Bit(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight) const;
@@ -289,13 +290,13 @@ class GfxRenderer {
 
   // Text
   int getTextWidth(int fontId, const char* text, EpdFontFamily::Style style = EpdFontFamily::REGULAR,
-                   BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO) const;
+                   BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO, int letterSpacing = 0) const;
   void drawCenteredText(int fontId, int y, const char* text, bool black = true,
                         EpdFontFamily::Style style = EpdFontFamily::REGULAR,
                         BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO) const;
   void drawText(int fontId, int x, int y, const char* text, bool black = true,
                 EpdFontFamily::Style style = EpdFontFamily::REGULAR,
-                BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO) const;
+                BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO, int letterSpacing = 0) const;
   int getSpaceWidth(int fontId, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   /// Returns the total inter-word advance: fp4::toPixel(spaceAdvance + kern(leftCp,' ') + kern(' ',rightCp)).
   /// Using a single snap avoids the +/-1 px rounding error that arises when space advance and kern are
@@ -304,11 +305,14 @@ class GfxRenderer {
   /// Returns the kerning adjustment between two adjacent codepoints.
   int getKerning(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const;
   int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style) const;
+  int getDropCapAdvance(int fontId, const char* text, EpdFontFamily::Style style, int height) const;
+  int getDropCapWordWidth(int fontId, const char* text, EpdFontFamily::Style style, int height) const;
+  void drawDropCapWord(int fontId, int x, int y, const char* text, EpdFontFamily::Style style, int height) const;
   int getFontAscenderSize(int fontId) const;
   int getLineHeight(int fontId) const;
   int getLineHeight(int fontId, float compression) const;
   std::string truncatedText(int fontId, const char* text, int maxWidth,
-                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
+                            EpdFontFamily::Style style = EpdFontFamily::REGULAR, int letterSpacing = 0) const;
   /// Word-wrap \p text into at most \p maxLines lines, each no wider than
   /// \p maxWidth pixels. Overflowing words and excess lines are UTF-8-safely
   /// truncated with an ellipsis (U+2026).
@@ -351,7 +355,7 @@ class GfxRenderer {
   bool combinesGrayscaleBase() const;
   bool storeBwBuffer();  // Returns true if buffer was stored successfully
   // Restore and free the stored buffer. resyncPanelBaseline rewrites the
-  // controller's differential baseline to the restored frame — correct after
+  // controller's differential baseline to the restored frame - correct after
   // a grayscale render (the glass matches the stored BW plane), WRONG when
   // the glass shows content painted after the store (overlay chrome): the
   // next differential would treat that content as already erased and leave
@@ -368,7 +372,7 @@ class GfxRenderer {
   // Lend the 48 KB framebuffer's bytes to a memory-hungry phase (chapter
   // builds) WITHOUT freeing the allocation, so it never moves and repeated
   // loans cannot fragment the heap. Between release and restore NOTHING may
-  // draw or display — the panel keeps showing its last refreshed image. The
+  // draw or display - the panel keeps showing its last refreshed image. The
   // lent bytes are published via buildscratch::claim() for consumers like
   // InflateStream. restore returns the buffer white, so the caller must
   // redraw the full screen; it cannot fail (no allocation involved).

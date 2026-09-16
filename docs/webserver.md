@@ -45,7 +45,7 @@ After connection, the reader shows:
 
 - The connected SSID
 - A QR code for the web URL
-- The direct IP URL, for example `http://192.168.1.102/`
+- The direct IP URL, for example `http://192.0.2.10/`
 - The mDNS fallback URL, usually `http://crosspoint.local/`
 
 Use either URL from a phone, tablet, or computer on the same network.

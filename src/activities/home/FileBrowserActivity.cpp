@@ -10,9 +10,14 @@
 #include <algorithm>
 
 #include "CrossPointSettings.h"
+#include "DocThuMuc.h"
+#include "FileFavorites.h"
 #include "MappedInputManager.h"
+#include "activities/reader/ReaderActivity.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
@@ -31,52 +36,21 @@ FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManag
                                          std::string initialPath, const Mode mode)
     : UiListActivity("FileBrowser", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       mode(mode),
-      basepath(initialPath.empty() ? "/" : std::move(initialPath)) {}
+      basepath(initialPath.empty() ? "/" : std::move(initialPath)),
+      entryPath(basepath) {}
 
 void FileBrowserActivity::loadFiles() {
-  files.clear();
-
-  auto root = Storage.open(basepath.c_str());
-  if (!root || !root.isDirectory()) {
-    rebuildRowItems();  // files is empty; also drops any now-stale cached rows
-    return;
-  }
-
-  root.rewindDirectory();
-
   if (!fileNameBuffer) {
     LOG_ERR("FileBrowser", "fileNameBuffer not allocated");
-    root.close();
-    rebuildRowItems();
+    files.clear();
+    rebuildRowItems();  // also drops any now-stale cached rows
     return;
   }
-
-  for (auto file = root.openNextFile(); file; file = root.openNextFile()) {
-    file.getName(fileNameBuffer.get(), NAME_BUFFER_SIZE);
-    const bool isDirectory = file.isDirectory();
-    if ((!SETTINGS.showHiddenFiles && fileNameBuffer[0] == '.') ||
-        strcmp(fileNameBuffer.get(), "System Volume Information") == 0) {
-      continue;
-    }
-
-    if (isDirectory) {
-      files.emplace_back(std::string(fileNameBuffer.get()) + "/");
-    } else {
-      std::string_view filename{fileNameBuffer.get()};
-      if (mode == Mode::PickFirmware) {
-        // Firmware picker: only show .bin files.
-        if (FsHelpers::checkFileExtension(filename, ".bin")) {
-          files.emplace_back(filename);
-        }
-      } else if (FsHelpers::hasEpubExtension(filename) || FsHelpers::hasXtcExtension(filename) ||
-                 FsHelpers::hasTxtExtension(filename) || FsHelpers::hasMarkdownExtension(filename) ||
-                 FsHelpers::hasBmpExtension(filename) || FsHelpers::hasPngExtension(filename)) {
-        files.emplace_back(filename);
-      }
-    }
-  }
-  root.close();
-  FsHelpers::sortFileList(files);
+  // Cai gi la muc doc duoc, cai gi bi giau, thu tu sap xep: chot o docthumuc, dung chung
+  // voi the Folder cua man chinh.
+  docthumuc::doc(basepath.c_str(), SETTINGS.showHiddenFiles,
+                 mode == Mode::PickFirmware ? docthumuc::Loc::Firmware : docthumuc::Loc::Sach, fileNameBuffer.get(),
+                 NAME_BUFFER_SIZE, files);
   rebuildRowItems();
 }
 
@@ -96,7 +70,7 @@ void FileBrowserActivity::rebuildRowItems() {
     fui::ListItem item;
     item.label = rowNames[i].c_str();
     if (!rowExtensions[i].empty()) item.value = rowExtensions[i].c_str();
-    item.icon = listIconFor(UITheme::getFileIcon(files[i]));
+    item.icon = listIconFor(UITheme::getFileIcon(files[i]), SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? 32 : 0);
     item.actionValue = static_cast<int16_t>(i);
     rowItems.push_back(item);
   }
@@ -113,7 +87,7 @@ void FileBrowserActivity::rebuildRowItems() {
     const std::string* path;
   } prewarmCtx{&rowNames, &basepath};
   renderer.prewarmFallbackText(
-      uiScaleSpec().smallFontId,
+      SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? uiScaleSpec().bodyFontId : uiScaleSpec().smallFontId,
       [](const void* ctx, uint32_t i) -> const char* {
         const auto* c = static_cast<const PrewarmCtx*>(ctx);
         return i < c->names->size() ? (*c->names)[i].c_str() : c->path->c_str();
@@ -149,6 +123,7 @@ void FileBrowserActivity::onEnter() {
 }
 
 void FileBrowserActivity::onExit() {
+  rememberDirectory();
   Activity::onExit();
   files.clear();
   rowNames.clear();
@@ -274,7 +249,7 @@ void FileBrowserActivity::activateSelected(const bool forceDelete) {
     return;
   }
 
-  if (mode == Mode::Books && (forceDelete || mappedInput.getHeldTime() >= GO_HOME_MS)) {
+  if (mode == Mode::Books && forceDelete) {
     // --- LONG PRESS ACTION: DELETE FILE OR DIRECTORY ---
     std::string cleanBasePath = basepath;
     if (cleanBasePath.back() != '/') cleanBasePath += "/";
@@ -319,17 +294,22 @@ void FileBrowserActivity::activateSelected(const bool forceDelete) {
     // ListItem label/value pointers into rowNames/rowExtensions that
     // rebuildRowItems() frees; mutate only under the render lock.
     RenderLock lock(*this);
-    if (basepath.back() != '/') basepath += "/";
-
     if (isDirectory) {
+      rememberDirectory();
+      const std::string parent = "BrowserDir:" + basepath;
+      if (basepath.back() != '/') basepath += "/";
       basepath += entry.substr(0, entry.length() - 1);
       loadFiles();
       nav.selected = 0;
       nav.top = 0;
+      if (mode == Mode::Books) {
+        activityManager.menuNavigationMemory().enter(parent, "BrowserDir:" + basepath);
+        restoreDirectory();
+      }
       lock.unlock();
       requestUpdate();
     } else {
-      const std::string fullPath = basepath + entry;
+      const std::string fullPath = basepath + (basepath.back() == '/' ? "" : "/") + entry;
       lock.unlock();  // onSelectBook launches an activity; don't hold the lock across it
       onSelectBook(fullPath);
     }
@@ -338,20 +318,22 @@ void FileBrowserActivity::activateSelected(const bool forceDelete) {
 }
 
 bool FileBrowserActivity::handleCustomInput() {
-  // Long press BACK (1s+) goes to root folder (Books mode only).
-  // In firmware-pick mode we keep navigation simple: short Back = up dir / cancel.
-  if (mode == Mode::Books && mappedInput.wasReleased(MappedInputManager::Button::Back) &&
-      mappedInput.getHeldTime() >= GO_HOME_MS && basepath != "/") {
-    {
-      // buildScreen() runs on the render task and reads basepath plus the
-      // row caches rebuildRowItems() frees; mutate only under the render lock.
-      RenderLock lock(*this);
-      basepath = "/";
-      loadFiles();
-      nav.selected = 0;
-      nav.top = 0;
+  if (mode == Mode::Books && mappedInput.wasLongPressed(MappedInputManager::Button::PageBack, 700)) {
+    activateSelected(true);
+    return true;
+  }
+  if (mode == Mode::Books && mappedInput.wasLongPressed(MappedInputManager::Button::PageForward, 400)) {
+    if (nav.selected >= 0 && nav.selected < listCount() && files[nav.selected].back() != '/') {
+      const auto path = basepath + (basepath.back() == '/' ? "" : "/") + files[nav.selected];
+      if (FsHelpers::hasEpubExtension(path) || FsHelpers::hasTxtExtension(path) ||
+          FsHelpers::hasMarkdownExtension(path) || FsHelpers::hasXtcExtension(path))
+        startActivityForResult(ReaderActivity::create(renderer, mappedInput, path, false, true), nullptr);
     }
-    requestUpdate();
+    return true;
+  }
+  // A hold leaves the browser directly; consume its release before Home handles input.
+  if (mode == Mode::Books && mappedInput.wasLongPressed(MappedInputManager::Button::Back, GO_HOME_MS)) {
+    activityManager.goHome(HomeMenuItem::FILE_BROWSER);
     return true;
   }
 
@@ -359,6 +341,26 @@ bool FileBrowserActivity::handleCustomInput() {
 }
 
 bool FileBrowserActivity::handleButtons() {
+  using Button = MappedInputManager::Button;
+  if (mode == Mode::Books && basepath != "/" &&
+      (mappedInput.wasReleased(Button::Up) || mappedInput.wasReleased(Button::Down))) {
+    const int direction = mappedInput.wasReleased(Button::Down) ? 1 : -1;
+    {
+      RenderLock lock(*this);
+      const auto next =
+          docthumuc::neighbor(basepath, SETTINGS.showHiddenFiles, direction, fileNameBuffer.get(), NAME_BUFFER_SIZE);
+      if (!next.empty() && next != basepath) {
+        rememberDirectory();
+        basepath = next;
+        loadFiles();
+        nav.reset();
+        restoreDirectory();
+        nav.followOnBuild = true;
+      }
+    }
+    requestUpdate();
+    return true;
+  }
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     activateSelected();
     return true;
@@ -374,6 +376,7 @@ bool FileBrowserActivity::handleButtons() {
           // buildScreen() runs on the render task and reads basepath plus the
           // row caches rebuildRowItems() frees; mutate only under the render lock.
           RenderLock lock(*this);
+          rememberDirectory();
           basepath.replace(basepath.find_last_of('/'), std::string::npos, "");
           if (basepath.empty()) basepath = "/";
           loadFiles();
@@ -403,7 +406,7 @@ bool FileBrowserActivity::handleButtons() {
 }
 
 std::string getFileName(std::string filename) {
-  // Display copy only — `files[]` keeps the raw directory-entry bytes, because
+  // Display copy only - `files[]` keeps the raw directory-entry bytes, because
   // FAT long-filename lookup is byte-exact: an NFC-normalized path would fail
   // to open the NFD entry macOS wrote. Composing here fixes rendering (fonts
   // carry precomposed syllables / letters only) without touching paths.
@@ -433,6 +436,11 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
                                                 static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+
+  if (mode == Mode::Books) {
+    const int actions = tenorchrome::tipHeight(renderer, tr(STR_FILE_SIDE_ACTIONS), 3);
+    screen.takeBottom(static_cast<int16_t>(28 + actions));
+  }
 
   // Full path band at the bottom: separator on top, left-truncated so the
   // deepest directory stays visible.
@@ -490,7 +498,7 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   // text. maxLines=2 doubles as the caller-owned marker: an all-default
   // smallText fails textStyleUnset and Screen::list() would substitute
   // bodyText back (FONT_SLOT_SMALL is 0).
-  fui::TextStyle label = screen.theme().smallText;
+  fui::TextStyle label = uiMenuLabelText(screen.theme());
   label.maxLines = 2;
   props.labelText = label;
   // The trailing value here is just the short extension: skip the balanced
@@ -508,17 +516,22 @@ void FileBrowserActivity::drawChrome() {
   const auto pageWidth = renderer.getScreenWidth();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
-  std::string folderName =
-      (mode == Mode::PickFirmware)
-          ? std::string(tr(STR_SELECT_FIRMWARE_FILE))
-          : ((basepath == "/") ? std::string(tr(STR_SD_CARD)) : basepath.substr(basepath.rfind('/') + 1));
-  // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
-  // indicator; the rest of the screen renders through the app.
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, folderName.c_str());
+  const std::string label = tr(STR_HOME_TAB_FOLDER);
+  const bool root = basepath == "/";
+  const std::string folderName = mode == Mode::PickFirmware ? tr(STR_SELECT_FIRMWARE_FILE)
+                                                            : (root ? label : basepath.substr(basepath.rfind('/') + 1));
+  const std::string prefix = mode == Mode::Books && !root ? label + basepath.substr(0, basepath.rfind('/')) : "";
+  if (tenorchrome::enabled()) {
+    tenorchrome::drawHeader(renderer, folderName.c_str(), prefix.c_str());
+  } else {
+    const std::string title = prefix.empty() ? folderName : prefix + "/" + folderName;
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, title.c_str());
+  }
 }
 
 void FileBrowserActivity::drawFooter() {
-  const char* backLabel = (basepath == "/") ? (mode == Mode::PickFirmware ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
+  if (mode == Mode::Books && !files.empty()) tenorchrome::drawTip(renderer, tr(STR_FILE_SIDE_ACTIONS), 1, 3);
+  const char* backLabel = tr(STR_BACK);
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
   const bool selectingFirmwareFile = mode == Mode::PickFirmware && !files.empty() && nav.selected >= 0 &&
@@ -532,4 +545,57 @@ void FileBrowserActivity::drawFooter() {
 size_t FileBrowserActivity::findEntry(const std::string& name) const {
   const auto entry = std::find(files.begin(), files.end(), name);
   return entry != files.end() ? static_cast<size_t>(entry - files.begin()) : 0;
+}
+
+void FileBrowserActivity::captureNavigation(MenuNavigationState& state) const {
+  UiListActivity::captureNavigation(state);
+  state.location = basepath;
+  if (nav.selected >= 0 && nav.selected < listCount()) state.selection = files[nav.selected];
+}
+void FileBrowserActivity::restoreNavigation(const MenuNavigationState& state) {
+  if (mode != Mode::Books || state.location.empty()) return;
+  RenderLock lock(*this);
+  // The explicit destination wins over a previous visit's final directory.
+  if (state.location != basepath) {
+    restoreDirectory();
+    return;
+  }
+  nav.selected = kepConTro(state.cursors[0].selected, listCount());
+  if (!state.selection.empty()) {
+    const auto it = std::find(files.begin(), files.end(), state.selection);
+    if (it != files.end()) nav.selected = static_cast<int>(it - files.begin());
+  }
+  nav.top = state.cursors[0].top;
+  nav.followOnBuild = true;
+}
+void FileBrowserActivity::rememberDirectory() {
+  if (mode != Mode::Books) return;
+  MenuNavigationState state;
+  captureNavigation(state);
+  activityManager.menuNavigationMemory().save("BrowserDir:" + basepath, state);
+}
+void FileBrowserActivity::restoreDirectory() {
+  // Caller already holds RenderLock and loaded this directory.
+  MenuNavigationState state;
+  if (!activityManager.menuNavigationMemory().load("BrowserDir:" + basepath, state)) return;
+  const auto it = std::find(files.begin(), files.end(), state.selection);
+  nav.selected =
+      it != files.end() ? static_cast<int>(it - files.begin()) : kepConTro(state.cursors[0].selected, listCount());
+  nav.top = state.cursors[0].top;
+  nav.followOnBuild = true;
+}
+
+std::string FileBrowserActivity::favoriteKey(int row) const {
+  if (mode != Mode::Books || row < 0 || row >= listCount()) return {};
+  auto name = files[row];
+  const bool folder = !name.empty() && name.back() == '/';
+  if (folder) name.pop_back();
+  return filefavorites::keyFor(basepath + (basepath.back() == '/' ? "" : "/") + name, folder);
+}
+bool FileBrowserActivity::toggleFavorite(int row) {
+  if (row < 0 || row >= listCount()) return false;
+  auto name = files[row];
+  const bool folder = name.back() == '/';
+  if (folder) name.pop_back();
+  return filefavorites::toggle(basepath + (basepath.back() == '/' ? "" : "/") + name, folder);
 }

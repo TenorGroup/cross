@@ -1,10 +1,13 @@
 #include "OtaUpdateActivity.h"
 
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Memory.h>
 #include <WiFi.h>
 
 #include "MappedInputManager.h"
+#include "SdCardFontSystem.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
@@ -18,6 +21,13 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     return;
   }
 
+  {
+    RenderLock lock(*this);
+    const auto before = ESP.getFreeHeap();
+    sdFontSystem.releaseForOta(renderer);
+    LOG_INF("OTA", "Released SD font catalog heap=%u -> %u largest=%u", before, ESP.getFreeHeap(),
+            ESP.getMaxAllocHeap());
+  }
   LOG_DBG("OTA", "WiFi connected, checking for update");
 
   {
@@ -26,9 +36,15 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   }
   requestUpdateAndWait();
 
+  {
+    RenderLock lock(*this);
+    if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
+  }
+  LOG_INF("OTA", "Manifest start heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   const auto res = updater.checkForUpdate();
+  LOG_INF("OTA", "Manifest check result=%d heap=%u", res, ESP.getFreeHeap());
   // NO_UPDATE here means the release carries no firmware asset for this board
-  // (expected until per-board assets are published) — not a failure.
+  // (expected until per-board assets are published) - not a failure.
   if (res == OtaUpdater::NO_UPDATE) {
     LOG_DBG("OTA", "No firmware asset for this board in latest release");
     {
@@ -55,6 +71,11 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     return;
   }
 
+#ifdef TENOR_OTA_ACCEPTANCE
+  // Dedicated USB-triggered lab build; stable builds always show confirmation.
+  runUpdateInstall();
+  return;
+#endif
   {
     RenderLock lock(*this);
     state = WAITING_CONFIRMATION;
@@ -81,7 +102,7 @@ void OtaUpdateActivity::onEnter() {
 
   // Launch WiFi selection subactivity
   LOG_DBG("OTA", "Launching WifiSelectionActivity...");
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+  startActivityForResult(makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, true, false),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
 
@@ -162,7 +183,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state == FINISHED) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_UPDATE_COMPLETE), true, EpdFontFamily::BOLD);
-    renderer.drawCenteredText(UI_10_FONT_ID, top + height + metrics.verticalSpacing, tr(STR_POWER_ON_HINT));
+    renderer.drawCenteredText(SMALL_FONT_ID, top + height + metrics.verticalSpacing, tr(STR_POWER_ON_HINT));
   }
 
   renderer.displayBuffer();
@@ -175,6 +196,11 @@ void OtaUpdateActivity::runUpdateInstall() {
     state = UPDATE_IN_PROGRESS;
   }
   requestUpdateAndWait();
+  {
+    RenderLock lock(*this);
+    if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
+  }
+  LOG_INF("OTA", "Install start heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   const auto res = updater.installUpdate(
       [](void* ctx) {
         // immediate=true notifies the render task directly. The default deferred path only
@@ -184,6 +210,7 @@ void OtaUpdateActivity::runUpdateInstall() {
       },
       this);
 
+  LOG_INF("OTA", "Install result=%d bytes=%u", res, static_cast<unsigned>(updater.getProcessedSize()));
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update failed: %d", res);
     {

@@ -9,6 +9,7 @@
 
 #include <cstddef>
 
+#include "DeviceName.h"
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
 #include "SilentRestart.h"
@@ -21,9 +22,23 @@
 
 namespace {
 // AP Mode configuration
-constexpr const char* AP_SSID = "CrossPoint-Reader";
+constexpr const char* AP_SSID_DEFAULT = "tenor-cross";
 constexpr const char* AP_PASSWORD = nullptr;  // Open network for ease of use
-constexpr const char* AP_HOSTNAME = "crosspoint";
+constexpr const char* AP_HOSTNAME_DEFAULT = "tenor-cross";
+
+// The access-point SSID and the mDNS label both follow the user's device name,
+// so a reader renamed in settings is recognisable from a phone's Wi-Fi list.
+const char* apSsid() {
+  static char buf[64];
+  deviceNetworkName(buf, sizeof(buf), AP_SSID_DEFAULT);
+  return buf;
+}
+
+const char* apHostname() {
+  static char buf[64];
+  deviceNetworkName(buf, sizeof(buf), AP_HOSTNAME_DEFAULT);
+  return buf;
+}
 constexpr uint8_t AP_CHANNEL = 1;
 constexpr uint8_t AP_MAX_CONNECTIONS = 4;
 constexpr int QR_CODE_WIDTH = 198;
@@ -64,12 +79,12 @@ int barsForRssi(int rssi, int currentBars) {
 void CrossPointWebServerActivity::onEnter() {
   Activity::onEnter();
 
-  LOG_DBG("WEBACT", "Free heap at onEnter: %d bytes", ESP.getFreeHeap());
+  LOG_INF("WEBACT", "Enter after reader closed heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
   // Heap-critical transition: WiFi (~45KB) plus the web server have to fit in
   // what's left of the ~380KB parts. SD-font caches retained for the CJK UI
   // fallback (mini glyph/kern arenas, kern class tables) are rebuildable on
-  // demand — release them up front instead of aborting in startWebServer()
+  // demand - release them up front instead of aborting in startWebServer()
   // when the heap comes up short (observed on X3 with a Korean SD font).
   if (auto* fcm = renderer.getFontCacheManager()) {
     fcm->releaseSdFontCaches();
@@ -84,6 +99,14 @@ void CrossPointWebServerActivity::onEnter() {
   connectedSSID.clear();
   lastHandleClientTime = 0;
   requestUpdate();
+
+#ifdef TENOR_UI_ACCEPTANCE
+  if (autoJoinForTest) {
+    autoJoinForTest = false;
+    onNetworkModeSelected(NetworkMode::JOIN_NETWORK);
+    return;
+  }
+#endif
 
   // Launch network mode selection subactivity
   LOG_DBG("WEBACT", "Launching NetworkModeSelectionActivity...");
@@ -167,7 +190,7 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
 
     state = WebServerActivityState::WIFI_SELECTION;
     LOG_DBG("WEBACT", "Launching WifiSelectionActivity...");
-    startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+    startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, true, false),
                            [this](const ActivityResult& result) {
                              if (!result.isCancelled) {
                                const auto& wifi = std::get<WifiResult>(result.data);
@@ -191,8 +214,9 @@ void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) 
     // Get connection info before exiting subactivity
     isApMode = false;
 
+    LOG_INF("WEBACT", "mDNS begin");
     // Start mDNS for hostname resolution
-    restartMdns(AP_HOSTNAME, "WEBACT");
+    restartMdns(apHostname(), "WEBACT");
 
     // Start the web server
     startWebServer();
@@ -222,10 +246,10 @@ void CrossPointWebServerActivity::startAccessPoint() {
   // Start soft AP
   bool apStarted;
   if (AP_PASSWORD && strlen(AP_PASSWORD) >= 8) {
-    apStarted = WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
+    apStarted = WiFi.softAP(apSsid(), AP_PASSWORD, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
   } else {
     // Open network (no password)
-    apStarted = WiFi.softAP(AP_SSID, nullptr, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
+    apStarted = WiFi.softAP(apSsid(), nullptr, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
   }
 
   if (!apStarted) {
@@ -241,14 +265,14 @@ void CrossPointWebServerActivity::startAccessPoint() {
   char ipStr[16];
   snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
   connectedIP = ipStr;
-  connectedSSID = AP_SSID;
+  connectedSSID = apSsid();
 
   LOG_DBG("WEBACT", "Access Point started!");
-  LOG_DBG("WEBACT", "SSID: %s", AP_SSID);
+  LOG_DBG("WEBACT", "SSID: %s", apSsid());
   LOG_DBG("WEBACT", "IP: %s", connectedIP.c_str());
 
   // Start mDNS for hostname resolution
-  restartMdns(AP_HOSTNAME, "WEBACT");
+  restartMdns(apHostname(), "WEBACT");
 
   // Start DNS server for captive portal behavior
   // This redirects all DNS queries to our IP, making any domain typed resolve to us
@@ -265,7 +289,7 @@ void CrossPointWebServerActivity::startAccessPoint() {
 }
 
 void CrossPointWebServerActivity::startWebServer() {
-  LOG_DBG("WEBACT", "Starting web server...");
+  LOG_INF("WEBACT", "Server begin heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
   // Repeat the release right before the allocation: the WiFi selection screen
   // rendered since onEnter(), and a CJK SSID repopulates the SD-font caches.
@@ -281,7 +305,7 @@ void CrossPointWebServerActivity::startWebServer() {
 
   if (webServer->isRunning()) {
     state = WebServerActivityState::SERVER_RUNNING;
-    LOG_DBG("WEBACT", "Web server started successfully");
+    LOG_INF("WEBACT", "Server ready heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     lastWifiBars = isApMode ? 0 : barsForRssi(WiFi.RSSI(), 0);
 
     // Force an immediate render since we're transitioning from a subactivity
@@ -435,7 +459,7 @@ void CrossPointWebServerActivity::renderServerRunning() const {
   int height10 = renderer.getLineHeight(UI_10_FONT_ID);
   if (isApMode) {
     // AP mode display
-    renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, startY, tr(STR_CONNECT_WIFI_HINT), true,
+    renderer.drawText(SMALL_FONT_ID, metrics.contentSidePadding, startY, tr(STR_CONNECT_WIFI_HINT), true,
                       EpdFontFamily::BOLD);
     startY += height10 + metrics.verticalSpacing * 2;
 
@@ -452,11 +476,11 @@ void CrossPointWebServerActivity::renderServerRunning() const {
     startY += QR_CODE_HEIGHT + 2 * metrics.verticalSpacing;
 
     // Show primary URL (hostname)
-    renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, startY, tr(STR_OPEN_URL_HINT), true,
+    renderer.drawText(SMALL_FONT_ID, metrics.contentSidePadding, startY, tr(STR_OPEN_URL_HINT), true,
                       EpdFontFamily::BOLD);
     startY += height10 + metrics.verticalSpacing * 2;
 
-    std::string hostnameUrl = std::string("http://") + AP_HOSTNAME + ".local/";
+    std::string hostnameUrl = std::string("http://") + apHostname() + ".local/";
     std::string ipUrl = tr(STR_OR_HTTP_PREFIX) + connectedIP + "/";
 
     // Show QR code for URL
@@ -473,9 +497,9 @@ void CrossPointWebServerActivity::renderServerRunning() const {
 
     // STA mode display (original behavior)
     // std::string ipInfo = "IP Address: " + connectedIP;
-    renderer.drawCenteredText(UI_10_FONT_ID, startY, tr(STR_OPEN_URL_HINT), true, EpdFontFamily::BOLD);
+    renderer.drawCenteredText(SMALL_FONT_ID, startY, tr(STR_OPEN_URL_HINT), true, EpdFontFamily::BOLD);
     startY += height10;
-    renderer.drawCenteredText(UI_10_FONT_ID, startY, tr(STR_SCAN_QR_HINT), true, EpdFontFamily::BOLD);
+    renderer.drawCenteredText(SMALL_FONT_ID, startY, tr(STR_SCAN_QR_HINT), true, EpdFontFamily::BOLD);
     startY += height10 + metrics.verticalSpacing * 2;
 
     // Show QR code for URL
@@ -489,7 +513,7 @@ void CrossPointWebServerActivity::renderServerRunning() const {
     startY += height10 + 5;
 
     // Also show hostname URL
-    std::string hostnameUrl = std::string(tr(STR_OR_HTTP_PREFIX)) + AP_HOSTNAME + ".local/";
+    std::string hostnameUrl = std::string(tr(STR_OR_HTTP_PREFIX)) + apHostname() + ".local/";
     renderer.drawCenteredText(SMALL_FONT_ID, startY, hostnameUrl.c_str(), true);
   }
 

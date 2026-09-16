@@ -9,7 +9,7 @@
 // S3 boards (sticky, x4pro, papermono, ...) share a chip_id, so the existing
 // esp_image_header chip check cannot tell them apart.
 //
-// The tag is "CROSSPOINT-BOARD-V1:<board>;" stored once in .rodata — the
+// The tag is "CROSSPOINT-BOARD-V1:<board>;" stored once in .rodata - the
 // scanner's needle references the same array, so a CrossPoint image contains
 // exactly one occurrence. Images without a tag (other projects, forks, older
 // releases) are allowed: the guard only rejects a tag naming a DIFFERENT
@@ -21,7 +21,7 @@ namespace board_tag {
 extern const char TAG[];
 
 // Board name of the running firmware (pointer into TAG; not null-terminated at
-// the name boundary — always pair with boardNameLen()).
+// the name boundary - always pair with boardNameLen()).
 const char* boardName();
 size_t boardNameLen();
 
@@ -34,6 +34,7 @@ class Scanner {
   // True once a tag naming a different board has been seen. Valid mid-stream:
   // callers may abort a download as soon as this turns true.
   bool mismatch() const { return mismatchFound; }
+  bool matched() const { return matchingTagFound && !mismatchFound; }
   // Board name from the offending tag, for logging (empty until mismatch()).
   const char* foundName() const { return mismatchFound ? captured : ""; }
 
@@ -44,6 +45,7 @@ class Scanner {
   size_t magicMatched = 0;
   bool capturing = false;
   bool mismatchFound = false;
+  bool matchingTagFound = false;
 };
 
 }  // namespace board_tag

@@ -14,9 +14,9 @@ fi
 set -euo pipefail
 
 GIT_LS_FILES_FLAGS=""
-# -g scopes formatting to tracked files currently modified in git status.
+# -g scopes formatting to modified and new files in git status.
 if [[ "${1:-}" == "-g" ]]; then
-  GIT_LS_FILES_FLAGS="--modified"
+  GIT_LS_FILES_FLAGS="--modified --others"
 fi
 
 CLANG_FORMAT_VERSION_RAW="$(${CLANG_FORMAT_BIN} --version)"

@@ -130,3 +130,46 @@ TEST_F(InflateStreamTest, OccupiedScratchIsNotOverwrittenOnHeapFailure) {
   EXPECT_EQ(allocationAttempts, 1u);
 }
 }  // namespace
+
+#include "../../src/components/X3BrandAssets.h"
+#include "../../src/components/X3BrandCodec.h"
+namespace {
+uint32_t planeCrc(const uint8_t* data, size_t size) {
+  uint32_t crc = 0xffffffffU;
+  while (size--) {
+    crc ^= *data++;
+    for (int i = 0; i < 8; ++i) crc = (crc >> 1) ^ (0xedb88320U & (0U - (crc & 1U)));
+  }
+  return ~crc;
+}
+TEST_F(InflateStreamTest, BrandPlanesDecodeExactlyWithOneAllocation) {
+  std::array<uint8_t, x3brand::PLANE_BYTES> out;
+  const uint8_t* sources[] = {x3brand::BOOT_LSB, x3brand::BOOT_MSB, x3brand::SLEEP_LSB, x3brand::SLEEP_MSB};
+  const size_t sizes[] = {sizeof(x3brand::BOOT_LSB), sizeof(x3brand::BOOT_MSB), sizeof(x3brand::SLEEP_LSB),
+                          sizeof(x3brand::SLEEP_MSB)};
+  const uint32_t crcs[] = {x3brand::BOOT_LSB_CRC, x3brand::BOOT_MSB_CRC, x3brand::SLEEP_LSB_CRC,
+                           x3brand::SLEEP_MSB_CRC};
+  for (size_t i = 0; i < 4; ++i) {
+    ASSERT_TRUE(decodeX3BrandPlane(sources[i], sizes[i], out.data(), out.size()));
+    EXPECT_EQ(planeCrc(out.data(), out.size()), crcs[i]);
+    EXPECT_EQ(allocationAttempts, i + 1);
+    EXPECT_EQ(liveAllocations, 0u);
+  }
+}
+TEST_F(InflateStreamTest, BrandPlaneRejectsTruncatedAndCorruptInput) {
+  std::array<uint8_t, x3brand::PLANE_BYTES> out;
+  EXPECT_FALSE(decodeX3BrandPlane(x3brand::BOOT_LSB, sizeof(x3brand::BOOT_LSB) - 1, out.data(), out.size()));
+  std::array<uint8_t, sizeof(x3brand::BOOT_LSB)> bad;
+  std::copy(std::begin(x3brand::BOOT_LSB), std::end(x3brand::BOOT_LSB), bad.begin());
+  bad.back() ^= 1;
+  EXPECT_FALSE(decodeX3BrandPlane(bad.data(), bad.size(), out.data(), out.size()));
+  EXPECT_FALSE(decodeX3BrandPlane(x3brand::BOOT_LSB, sizeof(x3brand::BOOT_LSB), out.data(), out.size() - 1));
+}
+TEST_F(InflateStreamTest, BrandPlaneAllocationFailureLeavesNoLeakAndCanRetry) {
+  std::array<uint8_t, x3brand::PLANE_BYTES> out;
+  failOnAttempt = 1;
+  EXPECT_FALSE(decodeX3BrandPlane(x3brand::BOOT_LSB, sizeof(x3brand::BOOT_LSB), out.data(), out.size()));
+  EXPECT_EQ(liveAllocations, 0u);
+  EXPECT_TRUE(decodeX3BrandPlane(x3brand::BOOT_LSB, sizeof(x3brand::BOOT_LSB), out.data(), out.size()));
+}
+}  // namespace

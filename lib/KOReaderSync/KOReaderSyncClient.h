@@ -17,7 +17,7 @@ struct KOReaderMetadata {
 /**
  * Rich CrossPoint position sent alongside progress uploads. Maps 1:1 onto the
  * crosspoint-sync extended `position` object (see crosspoint-sync docs/API.md).
- * It is only transmitted to sync.crosspointreader.com. These fields remain
+ * It is transmitted to kosync.tenor.vn or sync.crosspointreader.com. These fields remain
  * layout-dependent compatibility hints; the standard XPath is the content anchor.
  */
 struct KOReaderRichPosition {
@@ -46,7 +46,7 @@ struct KOReaderProgress {
 /**
  * HTTP client for KOReader sync API.
  *
- * Base URL: https://sync.koreader.rocks:443/
+ * Default base URL: https://kosync.tenor.vn/
  *
  * API Endpoints:
  *   GET /users/auth - Authenticate (validate credentials)
@@ -79,7 +79,7 @@ class KOReaderSyncClient {
 
   /**
    * Register a new account on the sync server using the stored credentials
-   * (POST /users/create with the MD5 auth key — the server never sees the
+   * (POST /users/create with the MD5 auth key - the server never sees the
    * plain password).
    * @return OK on success, USER_EXISTS if the username is taken
    */

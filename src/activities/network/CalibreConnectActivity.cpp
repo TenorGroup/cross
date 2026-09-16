@@ -34,7 +34,7 @@ void CalibreConnectActivity::onEnter() {
   exitRequested = false;
 
   if (WiFi.status() != WL_CONNECTED) {
-    startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+    startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, true, false),
                            [this](const ActivityResult& result) {
                              if (!result.isCancelled) {
                                const auto& wifi = std::get<WifiResult>(result.data);
@@ -82,7 +82,7 @@ void CalibreConnectActivity::startWebServer() {
   }
 
   // Heap-critical allocation: SD-font caches retained for the CJK UI fallback
-  // are rebuildable — release them (again: the WiFi selection screen may have
+  // are rebuildable - release them (again: the WiFi selection screen may have
   // repopulated them rendering a CJK SSID) so the server object doesn't abort
   // on OOM. See CrossPointWebServerActivity::startWebServer().
   if (auto* fcm = renderer.getFontCacheManager()) {

@@ -11,6 +11,7 @@ class SleepActivity final : public Activity {
   explicit SleepActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool fromTimeout = false)
       : Activity("Sleep", renderer, mappedInput), fromTimeout(fromTimeout) {}
   void onEnter() override;
+  static void showEnteringSleep(GfxRenderer& renderer);
 
  private:
   void renderDefaultSleepScreen() const;
@@ -23,6 +24,9 @@ class SleepActivity final : public Activity {
   void renderLastScreenSleepScreen() const;
   void renderTransparentCustomSleepScreen() const;
   void renderBlankSleepScreen() const;
+  // Man ngu mac dinh cua tenor/cross, an pham nen thang vao firmware.
+  void renderTenorSleepScreen() const;
+  void renderStatsSleepScreen() const;
 
   bool fromTimeout = false;
 };

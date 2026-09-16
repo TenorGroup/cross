@@ -12,12 +12,23 @@
 
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
+#include "MenuNavigationMemory.h"
 #include "util/ScreenshotInfo.h"
 
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 
-enum class HomeMenuItem { NONE, FILE_BROWSER, RECENTS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
+enum class HomeMenuItem {
+  NONE,
+  FILE_BROWSER,
+  RECENTS,
+  OPDS_BROWSER,
+  FILE_TRANSFER,
+  SETTINGS_MENU,
+  STATS_TAB,
+  FAVORITES_TAB,
+  RECENT_CONTINUE
+};
 
 /**
  * ActivityManager
@@ -65,6 +76,11 @@ class ActivityManager {
   // Whether to trigger a render after the current loop()
   // This variable must only be set by the main loop, to avoid race conditions
   std::atomic<bool> requestedUpdate{false};
+  bool sleepTransition = false;
+  bool homeAfterInput = false;
+  MenuNavigationMemory navigationMemory;
+  void restoreNavigation();
+  void saveNavigation(Activity& activity);
 
  public:
   explicit ActivityManager(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -74,6 +90,9 @@ class ActivityManager {
   }
   ~ActivityManager() { assert(false); /* should never be called */ };
 
+  MenuNavigationMemory& menuNavigationMemory() { return navigationMemory; }
+
+  HomeMenuItem homeMenuOrigin() const;
   void begin();
   void loop();
 
@@ -83,7 +102,9 @@ class ActivityManager {
   // goTo... functions are convenient wrapper for replaceActivity()
   void goToFileTransfer();
   void goToUsbDrive();
-  void goToSettings();
+  // theBanDau: the mo san cua man Cai dat. Man chinh bay cac nhom thanh dong nen no
+  // goi thang vao dung the, khoi bat nguoi ta nhay the lai tu dau.
+  void goToSettings(int theBanDau = 0);
   void goToFileBrowser(std::string path = {});
   void goToRecentBooks();
   void goToBrowser();
@@ -100,6 +121,7 @@ class ActivityManager {
   // Remove the currentActivity, returning the last one on stack
   // Note: if popActivity() on last activity on the stack, we will goHome()
   void popActivity();
+  bool switchSettingsSibling(int direction);
 
   bool preventAutoSleep() const;
   bool requiresExclusiveStorageLoop() const;

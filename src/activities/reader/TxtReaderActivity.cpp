@@ -12,9 +12,14 @@
 #include "CrossPointSettings.h"
 #include "ProgressFile.h"
 #include "ReaderActivity.h"
+#include "ReaderFontChon.h"
+#include "ReaderFontSizes.h"
 #include "ReaderUtils.h"
+#include "RecentBooksStore.h"
+#include "SdCardFontSystem.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/ReadingExcerpt.h"
 
 namespace {
 constexpr size_t CHUNK_SIZE = 8 * 1024;  // 8KB chunk for reading
@@ -22,6 +27,36 @@ constexpr size_t CHUNK_SIZE = 8 * 1024;  // 8KB chunk for reading
 constexpr uint32_t CACHE_MAGIC = 0x54585449;  // "TXTI"
 constexpr uint8_t CACHE_VERSION = 3;          // Increment when cache format changes
 }  // namespace
+
+// Doi co chu roi dung lai chi muc trang, giu dung doan dang doc: trang moi la trang chua
+// offset dau trang cu. initializeReader() doc lai font, so dong moi trang va chi muc (cache
+// lech font thi tu dung lai).
+bool TxtReaderActivity::docCoChuMotNac(const int huong) {
+  const std::vector<uint8_t> sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
+  if (sizes.empty()) return false;
+  const int cur = fontdoc::coDangDung(sizes);
+  int moi = cur + huong;
+  if (moi < 0) moi = 0;
+  if (moi >= static_cast<int>(sizes.size())) moi = static_cast<int>(sizes.size()) - 1;
+  if (moi == cur) return false;
+
+  const size_t offsetCu =
+      (currentPage >= 0 && currentPage < static_cast<int>(pageOffsets.size())) ? pageOffsets[currentPage] : 0;
+  {
+    RenderLock lock;
+    fontdoc::apCo(renderer, sizes[moi]);
+    initialized = false;
+    initializeReader(renderer);
+    int trang = 0;
+    for (size_t i = 0; i < pageOffsets.size(); i++) {
+      if (pageOffsets[i] <= offsetCu) trang = static_cast<int>(i);
+    }
+    currentPage = trang;
+    currentPageLines.clear();
+  }
+  SETTINGS.saveToFile();
+  return true;
+}
 
 bool TxtReaderActivity::loadBook() {
   txt = makeUniqueNoThrow<Txt>(bookPath, "/.crosspoint");
@@ -48,13 +83,8 @@ void TxtReaderActivity::initializeReader(GfxRenderer& renderer) {
   cachedParagraphAlignment = SETTINGS.paragraphAlignment;
 
   // Calculate viewport dimensions
-  renderer.getOrientedViewableTRBL(&cachedOrientedMarginTop, &cachedOrientedMarginRight, &cachedOrientedMarginBottom,
-                                   &cachedOrientedMarginLeft);
-  cachedOrientedMarginTop += cachedScreenMargin;
-  cachedOrientedMarginLeft += cachedScreenMargin;
-  cachedOrientedMarginRight += cachedScreenMargin;
-  cachedOrientedMarginBottom +=
-      std::max(cachedScreenMargin, static_cast<uint8_t>(UITheme::getInstance().getStatusBarHeight()));
+  readingMargins(cachedOrientedMarginTop, cachedOrientedMarginRight, cachedOrientedMarginBottom,
+                 cachedOrientedMarginLeft);
 
   viewportWidth = renderer.getScreenWidth() - cachedOrientedMarginLeft - cachedOrientedMarginRight;
   const int viewportHeight = renderer.getScreenHeight() - cachedOrientedMarginTop - cachedOrientedMarginBottom;
@@ -74,7 +104,7 @@ void TxtReaderActivity::initializeReader(GfxRenderer& renderer) {
   }
 
   // Load saved progress
-  loadProgress();
+  if (!preview) loadProgress();
 
   initialized = true;
 }
@@ -331,6 +361,10 @@ void TxtReaderActivity::renderPage(GfxRenderer& renderer) {
 }
 
 void TxtReaderActivity::renderStatusBar() const {
+  if (preview) {
+    drawPreviewFooter();
+    return;
+  }
   const float progress = totalPages > 0 ? (currentPage + 1) * 100.0f / totalPages : 0;
   std::string title;
   if (SETTINGS.statusBarSpec().showsTitle()) {
@@ -339,7 +373,7 @@ void TxtReaderActivity::renderStatusBar() const {
   GUI.drawStatusBar(renderer, progress, currentPage + 1, totalPages, title);
 }
 
-bool TxtReaderActivity::pageTurn(bool isForward) {
+bool TxtReaderActivity::latTrangThat(bool isForward) {
   // Ignore paging until initializeReader has established the page index
   if (!initialized) {
     return false;
@@ -380,6 +414,7 @@ bool TxtReaderActivity::isAtEndOfBook() const { return initialized && currentPag
 void TxtReaderActivity::onReturnFromEndOfBook() { currentPage = totalPages > 0 ? totalPages - 1 : 0; }
 
 void TxtReaderActivity::saveProgress() const {
+  if (preview) return;
   uint8_t data[4];
   data[0] = currentPage & 0xFF;
   data[1] = (currentPage >> 8) & 0xFF;
@@ -525,4 +560,15 @@ ScreenshotInfo TxtReaderActivity::getScreenshotInfo() const {
   info.progressPercent = totalPages > 0 ? static_cast<int>((currentPage + 1) * 100.0f / totalPages + 0.5f) : 0;
   if (info.progressPercent > 100) info.progressPercent = 100;
   return info;
+}
+
+void TxtReaderActivity::onExit() {
+  if (!preview && pageReady.load(std::memory_order_acquire)) {
+    auto excerpt = makeUniqueNoThrow<readingexcerpt::Builder>();
+    if (excerpt) {
+      for (const auto& line : currentPageLines) excerpt->line(line);
+      RECENT_BOOKS.rememberExcerpt(bookPath, excerpt->result());
+    }
+  }
+  ReaderActivity::onExit();
 }

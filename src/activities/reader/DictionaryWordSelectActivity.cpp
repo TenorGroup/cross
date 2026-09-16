@@ -6,12 +6,15 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include <algorithm>
 #include <cctype>
 #include <climits>
 #include <cstdlib>
+#include <cstring>
 
 #include "CrossPointSettings.h"
 #include "DictionaryDefinitionActivity.h"
+#include "ReadingStatsStore.h"
 #include "components/UITheme.h"
 
 namespace {
@@ -48,7 +51,7 @@ void DictionaryWordSelectActivity::onEnter() {
   // No null check: a failed allocation just disables the differential
   // fast path (drawHighlightWithSnapshot skips the read), keeping the
   // full-repaint path as the fallback.
-  snapshot = makeUniqueNoThrow<uint8_t[]>(SNAPSHOT_CAPACITY);
+  if (!quoteMode) snapshot = makeUniqueNoThrow<uint8_t[]>(SNAPSHOT_CAPACITY);
   extractWords();
   // Start on the middle row's word nearest mid-screen instead of top-left:
   // any word on the page is then at most half a page of moves away.
@@ -84,7 +87,7 @@ void DictionaryWordSelectActivity::extractWords() {
     const int rubyShift = block->getRubyShift(ascender);
     for (uint16_t i = 0; i < block->wordCount(); i++) {
       const char* text = block->wordText(i);
-      if (!isSelectableToken(text)) continue;
+      if (quoteMode ? !*text : !isSelectableToken(text)) continue;
 
       WordBox box;
       box.x = static_cast<int16_t>(line->xPos + block->wordXpos(i) + marginLeft);
@@ -186,12 +189,12 @@ void DictionaryWordSelectActivity::performLookup() {
     return;
   }
   // Name the failure: a genuine miss is "Not found"; a word that WAS found but
-  // couldn't be read is a real error — and we distinguish decompression from a
+  // couldn't be read is a real error - and we distinguish decompression from a
   // low-memory allocation from a generic read error.
   if (!ok) {
     popup = Popup::Error;
     // An index build allocates a scan buffer, so it fails the same way lookups
-    // do on a fragmented heap — name that rather than a generic error.
+    // do on a fragmented heap - name that rather than a generic error.
     switch (indexResult) {
       case Dictionary::IndexResult::LowMemory:
         popupMsg = StrId::STR_DICT_LOW_MEMORY;
@@ -229,6 +232,38 @@ void DictionaryWordSelectActivity::performLookup() {
   requestUpdate();
 }
 
+void DictionaryWordSelectActivity::confirmQuotation() {
+  if (anchor < 0) {
+    anchor = selected;
+    requestUpdate();
+    return;
+  }
+  quote.text.clear();
+  quote.text.reserve(quotes::MAX_BYTES);
+  const int first = std::min(anchor, selected), last = std::max(anchor, selected);
+  for (int i = first; i <= last; ++i) {
+    const size_t length = strlen(words[i].text);
+    if (quote.text.size() + length + (i > first ? 1 : 0) > quotes::MAX_BYTES) {
+      popup = Popup::Error;
+      popupMsg = StrId::STR_QUOTES_TOO_LONG;
+      popupTime = millis();
+      requestUpdate();
+      return;
+    }
+    if (i > first) quote.text += ' ';
+    quote.text += words[i].text;
+  }
+  quote.day = ReadingStatsStore::currentDay();
+  if (quotes::save(quote)) {
+    finish();
+    return;
+  }
+  popup = Popup::Error;
+  popupMsg = StrId::STR_QUOTES_SAVE_FAILED;
+  popupTime = millis();
+  requestUpdate();
+}
+
 void DictionaryWordSelectActivity::loop() {
   if (popup == Popup::NotFound || popup == Popup::Error) {
     if (millis() - popupTime >= POPUP_DURATION_MS) {
@@ -239,11 +274,19 @@ void DictionaryWordSelectActivity::loop() {
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (quoteMode && anchor >= 0) {
+      anchor = -1;
+      requestUpdate();
+      return;
+    }
     finish();
     return;
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) && !words.empty()) {
-    performLookup();
+    if (quoteMode)
+      confirmQuotation();
+    else
+      performLookup();
     return;
   }
 
@@ -265,7 +308,10 @@ void DictionaryWordSelectActivity::loop() {
     const int hit = wordAt(tx, ty);
     if (hit >= 0) {
       selected = hit;
-      performLookup();
+      if (quoteMode)
+        confirmQuotation();
+      else
+        performLookup();
     }
     return;
   }
@@ -295,7 +341,7 @@ void DictionaryWordSelectActivity::loop() {
 
 // Saves the pixels under words[selected]'s highlight box, then draws the
 // highlight over them. Returns false when the pixels could not be saved
-// (no buffer / oversize box) — the highlight is drawn regardless, but the
+// (no buffer / oversize box) - the highlight is drawn regardless, but the
 // next cursor move must do a full repaint.
 bool DictionaryWordSelectActivity::drawHighlightWithSnapshot() {
   const WordBox& word = words[selected];
@@ -342,8 +388,9 @@ void DictionaryWordSelectActivity::drawHints() const {
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     return;
   }
-  const auto labels = mappedInput.mapDirectionalLabels(tr(STR_BACK), tr(STR_LOOKUP), tr(STR_DIR_LEFT),
-                                                       tr(STR_DIR_RIGHT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  const auto labels = mappedInput.mapDirectionalLabels(
+      tr(STR_BACK), quoteMode ? (anchor < 0 ? tr(STR_QUOTES_START) : tr(STR_QUOTES_SAVE)) : tr(STR_LOOKUP),
+      tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
@@ -351,8 +398,8 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
   // Differential fast path: only the highlight moved and the framebuffer
   // still holds a clean page (no popup or sub-activity since the last full
   // repaint). Restore the pixels under the old highlight, draw the new one,
-  // and push — skipping the two-pass page render entirely.
-  if (popup == Popup::None && snapshotIdx >= 0 && !words.empty() && selected != snapshotIdx) {
+  // and push - skipping the two-pass page render entirely.
+  if (!quoteMode && popup == Popup::None && snapshotIdx >= 0 && !words.empty() && selected != snapshotIdx) {
     renderer.writeFramebufferRegion(snapshotX, snapshotY, snapshotW, snapshotH, snapshot.get());
     // The full path's PrewarmScope cleared the glyph cache on exit; batch-load
     // just the highlighted word's glyphs before drawing them white-on-black.
@@ -363,7 +410,7 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
       renderer.displayBuffer(HalDisplay::FAST_REFRESH);
       return;
     }
-    // Snapshot failed (oversize box) — fall through to a full repaint.
+    // Snapshot failed (oversize box) - fall through to a full repaint.
   }
 
   renderer.clearScreen();
@@ -377,14 +424,21 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
   page->render(renderer, fontId, marginLeft, marginTop);
 
   if (!words.empty()) {
-    drawHighlightWithSnapshot();
+    if (quoteMode && anchor >= 0) {
+      for (int i = std::min(anchor, selected); i <= std::max(anchor, selected); ++i) {
+        const auto& word = words[i];
+        renderer.fillRect(word.x - 1, word.y - 1, word.width + 2, lineHeight + 2);
+        renderer.drawText(fontId, word.x, word.y, word.text, false, word.style);
+      }
+    } else
+      drawHighlightWithSnapshot();
   }
 
   drawHints();
 
   if (popup != Popup::None) {
     // The popup overdraws the page, so the snapshot no longer matches the
-    // framebuffer — force the next render onto the full-repaint path.
+    // framebuffer - force the next render onto the full-repaint path.
     snapshotIdx = -1;
     // drawPopup overlays the framebuffer and refreshes the display itself.
     // I18N.get directly: tr() only accepts literal key names.

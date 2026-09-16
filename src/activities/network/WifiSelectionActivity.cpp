@@ -1,7 +1,9 @@
 #include "WifiSelectionActivity.h"
 
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
+#include <HalPowerManager.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <WiFi.h>
@@ -10,11 +12,13 @@
 #include <algorithm>
 
 #include "CrossPointSettings.h"
+#include "DeviceName.h"
 #include "MappedInputManager.h"
 #include "WifiCredentialStore.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/TimezoneLookup.h"
 
 namespace fui = freeink::ui;
 
@@ -25,8 +29,11 @@ constexpr fui::ActionId ACTION_PROMPT = 3;
 }  // namespace
 
 WifiSelectionActivity::WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                             const bool autoConnect)
-    : Activity("WifiSelection", renderer, mappedInput), UiAppHost(renderer), allowAutoConnect(autoConnect) {}
+                                             const bool autoConnect, const bool syncClock)
+    : Activity("WifiSelection", renderer, mappedInput),
+      UiAppHost(renderer),
+      allowAutoConnect(autoConnect),
+      syncClockOnConnect(syncClock) {}
 
 void WifiSelectionActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<WifiSelectionActivity*>(user);
@@ -87,11 +94,16 @@ void WifiSelectionActivity::onPromptEvent(const fui::ActionEvent& event, void* u
 
 void WifiSelectionActivity::onEnter() {
   Activity::onEnter();
+  // WiFi initialization requires the normal APB clock even when entry was
+  // triggered by a timer or serial command during idle power saving.
+  powerManager.setPowerSaving(false);
+  LOG_INF("WIFI", "Starting network selection");
 
   // Load saved WiFi credentials - SD card operations need lock as we use SPI
   // for both
   {
     RenderLock lock(*this);
+    if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
     WIFI_STORE.loadFromFile();
   }
 
@@ -217,7 +229,7 @@ void WifiSelectionActivity::processWifiScanResults() {
     return;
   }
 
-  // Scan complete, process results — deduplicate in-place, keeping strongest signal
+  // Scan complete, process results - deduplicate in-place, keeping strongest signal
   networks.clear();
   networks.reserve(scanResult);
 
@@ -463,23 +475,28 @@ void WifiSelectionActivity::attemptConnection() {
   connectionError.clear();
   requestUpdate();
 
+  LOG_INF("WIFI", "Connect begin heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   WiFi.persistent(false);  // Credentials are managed by WifiCredentialStore; suppress SDK NVS auto-connect
   WiFi.mode(WIFI_STA);
+  LOG_INF("WIFI", "STA ready");
   WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
   delay(100);
+  LOG_INF("WIFI", "Previous connection cleared");
 
   // Scan all channels so networks with multiple APs use the strongest matching
   // BSSID instead of the first match found by the framework's default fast scan.
   WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
   WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
 
-  // Set hostname so routers show "CrossPoint-Reader-AABBCCDDEEFF" instead of "esp32-XXXXXXXXXXXX"
+  // Set hostname so routers show "tenor-cross-AABBCCDDEEFF" instead of "esp32-XXXXXXXXXXXX"
   uint8_t mac[6] = {};
   const esp_err_t macResult = esp_read_mac(mac, ESP_MAC_WIFI_STA);
   if (macResult == ESP_OK) {
-    char hostname[sizeof("CrossPoint-Reader-") + 12];
-    snprintf(hostname, sizeof(hostname), "CrossPoint-Reader-%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3],
-             mac[4], mac[5]);
+    char fallback[sizeof("tenor-cross-") + 12];
+    snprintf(fallback, sizeof(fallback), "tenor-cross-%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3], mac[4],
+             mac[5]);
+    char hostname[64];
+    deviceNetworkName(hostname, sizeof(hostname), fallback);
     WiFi.setHostname(hostname);
   } else {
     LOG_ERR("WIFI", "Failed to read station MAC for hostname (err=%d)", static_cast<int>(macResult));
@@ -500,6 +517,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
   const wl_status_t status = WiFi.status();
 
   if (status == WL_CONNECTED) {
+    LOG_INF("WIFI", "Associated heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     // Successfully connected
     IPAddress ip = WiFi.localIP();
     char ipStr[16];
@@ -520,13 +538,27 @@ void WifiSelectionActivity::checkConnectionStatus() {
     // Sync RTC from NTP on the first successful WiFi connection only. The DS3231
     // drifts ~2 ppm so one sync is enough; users can force a re-sync from
     // Settings > Customise Status Bar > Sync clock now.
-    if (halClock.isAvailable() && !SETTINGS.clockHasBeenSynced) {
+    if (syncClockOnConnect && halClock.isAvailable() && !SETTINGS.clockHasBeenSynced) {
+      LOG_INF("WIFI", "NTP begin");
       if (halClock.syncFromNTP()) {
         SETTINGS.clockHasBeenSynced = 1;
         SETTINGS.saveToFile();
       }
     }
 
+    if (syncClockOnConnect && halClock.isAvailable() && SETTINGS.clockAutoTimezone) {
+      {
+        RenderLock lock(*this);
+        if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
+      }
+      LOG_INF("WIFI", "Timezone begin heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+      const auto previousOffset = SETTINGS.clockUtcOffsetQ;
+      if (timezone_lookup::updateOffset() && SETTINGS.clockUtcOffsetQ != previousOffset) SETTINGS.saveToFile();
+      LOG_INF("WIFI", "Timezone done");
+    }
+
+    if (!syncClockOnConnect) LOG_INF("WIFI", "Local connection: keeping saved clock and timezone");
+    LOG_INF("WIFI", "Connection services done");
     // Save this as the last connected network - SD card operations need lock as
     // we use SPI for both
     {
@@ -551,6 +583,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
   }
 
   if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL) {
+    LOG_INF("WIFI", "Connection failed with status %d", static_cast<int>(status));
     connectionError = tr(STR_ERROR_GENERAL_FAILURE);
     if (status == WL_NO_SSID_AVAIL) {
       connectionError = tr(STR_ERROR_NETWORK_NOT_FOUND);
@@ -567,6 +600,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
   // Check for timeout
   const unsigned long timeoutMs = autoConnecting ? AUTO_CONNECTION_TIMEOUT_MS : CONNECTION_TIMEOUT_MS;
   if (millis() - connectionStartTime > timeoutMs) {
+    LOG_INF("WIFI", "Connection timed out after %lu ms, status %d", timeoutMs, static_cast<int>(status));
     WiFi.disconnect();
     connectionError = tr(STR_ERROR_CONNECTION_TIMEOUT);
     if (autoConnecting) {

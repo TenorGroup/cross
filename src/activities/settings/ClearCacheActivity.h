@@ -1,4 +1,5 @@
 #pragma once
+#include <I18n.h>
 
 #include <functional>
 
@@ -11,6 +12,7 @@ class ClearCacheActivity final : public Activity {
       : Activity("ClearCache", renderer, mappedInput) {}
 
   void onEnter() override;
+  std::string navigationLabel() const override { return I18N.get(StrId::STR_CLEAR_READING_CACHE); }
   void onExit() override;
   void loop() override;
   bool skipLoopDelay() override { return true; }  // Prevent power-saving mode

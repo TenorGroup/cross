@@ -3,15 +3,19 @@
 #include <BidiUtils.h>
 #include <BoardConfig.h>
 #include <BuildScratch.h>
+#include <DropCap.h>
 #include <FontDecompressor.h>
 #include <HalGPIO.h>
 #include <Logging.h>
+#include <Memory.h>
 #include <SdCardFont.h>
 #include <Utf8.h>
 
 #include <algorithm>
 
+#include "CjkTextWrap.h"
 #include "FontCacheManager.h"
+#include "InlineSymbols.h"
 
 namespace {
 
@@ -30,7 +34,7 @@ const char* resolveVisualText(const char* text, std::string& visualBuffer, BidiU
 // Appends the shaped visual form of every RTL token in `text` to `shapedOut`.
 // getTextAdvanceX() measures the bidi-reordered, Arabic-shaped codepoint stream,
 // so the SD advance table must be warmed with the presentation forms as well as
-// the logical codepoints — otherwise every RTL word measurement misses the fast
+// the logical codepoints - otherwise every RTL word measurement misses the fast
 // path and falls through to onGlyphMiss(), which opens the .cpfont and reads
 // glyph metadata + bitmap into the 8-slot overflow ring, once per glyph.
 // Tokens without RTL lead bytes (0xD6-0xDB) are skipped with a byte scan, so
@@ -67,7 +71,7 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
     }
     uint32_t glyphIndex = static_cast<uint32_t>(glyph - fontData->glyph);
     // For page-buffer hits the pointer is stable for the page lifetime.
-    // For hot-group hits it is valid only until the next getBitmap() call — callers
+    // For hot-group hits it is valid only until the next getBitmap() call - callers
     // must consume it (draw the glyph) before requesting another bitmap.
     return fd->getBitmap(fontData, glyph, glyphIndex);
   }
@@ -264,7 +268,7 @@ void GfxRenderer::ensureSdGlyphsResident(const int fontId, const char* text, con
   if (sdIt == sdCardFonts_.end()) {
     return;
   }
-  // SUP/SUB bits don't select a distinct .cpfont style bitstream — mask to the
+  // SUP/SUB bits don't select a distinct .cpfont style bitstream - mask to the
   // base style. resolveStyleMask() inside prewarm folds absent styles.
   // loadKernLig=false: redirected fallback strings (CJK titles, filenames)
   // have no useful kern pairs, and the ~3KB class-table load plus per-rebuild
@@ -593,11 +597,13 @@ void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
 }
 
 int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontFamily::Style style,
-                              const BidiUtils::BidiBaseDir baseDir) const {
+                              const BidiUtils::BidiBaseDir baseDir, const int letterSpacing) const {
   if (text == nullptr || *text == '\0') {
     return 0;
   }
 
+  const int inlineWidth = inlineSymbols::text(*this, fontId, 0, 0, text, false, true, style, letterSpacing);
+  if (inlineWidth >= 0) return inlineWidth;
   // Measure with the same font drawText would render with (see resolveTextFontId)
   // so wrapping, truncation and centering of CJK strings stay consistent.
   const int resolvedFontId = resolveTextFontId(fontId, text, style);
@@ -619,6 +625,17 @@ int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontF
 
   int w = 0, h = 0;
   fontIt->second.getTextDimensions(renderedText, &w, &h, style);
+  if (letterSpacing != 0) {
+    // Count the same shaped base glyphs as drawText. Marks stay on their base.
+    const char* cursor = renderedText;
+    int bases = 0;
+    while (const uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&cursor))) {
+      if (utf8IsCombiningMark(cp) || BidiUtils::isTransparentMark(cp)) continue;
+      fontIt->second.applyLigatures(cp, cursor, style);
+      ++bases;
+    }
+    w += std::max(0, bases - 1) * letterSpacing;
+  }
   return w;
 }
 
@@ -629,12 +646,14 @@ void GfxRenderer::drawCenteredText(const int fontId, const int y, const char* te
 }
 
 void GfxRenderer::drawText(const int fontId, const int x, const int y, const char* text, const bool black,
-                           const EpdFontFamily::Style style, const BidiUtils::BidiBaseDir baseDir) const {
+                           const EpdFontFamily::Style style, const BidiUtils::BidiBaseDir baseDir,
+                           const int letterSpacing) const {
   // cannot draw a NULL / empty string
   if (text == nullptr || *text == '\0') {
     return;
   }
 
+  if (inlineSymbols::text(*this, fontId, x, y, text, true, black, style, letterSpacing) >= 0) return;
   // Route CJK-bearing strings to the fallback font when the requested font
   // lacks the glyphs (e.g. Chinese book titles drawn with a Latin UI font).
   const int resolvedFontId = resolveTextFontId(fontId, text, style);
@@ -684,7 +703,7 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
     // emits base-then-marks per UAX#9 L3). anchorFor pins position-sensitive
     // niqqud (dagesh, shin/sin dots, holam) to their spot on the base; other
     // marks stay centered, raised above the base or (kasra) at their
-    // font-native position. Fonts without their glyphs — the built-ins — miss
+    // font-native position. Fonts without their glyphs - the built-ins - miss
     // the getGlyph lookup and skip them, as before.
     if (utf8IsCombiningMark(cp) || BidiUtils::isTransparentMark(cp)) {
       const EpdGlyph* combiningGlyph = font.getGlyph(cp, style);
@@ -704,8 +723,8 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
     // identical character pairs always produce the same pixel step regardless of
     // where they fall on the line.
     if (prevCp != 0) {
-      const auto kernFP = font.getKerning(prevCp, cp, style);  // 4.4 fixed-point kern
-      lastBaseX += fp4::toPixel(prevAdvanceFP + kernFP);       // snap 12.4 fixed-point to nearest pixel
+      const auto kernFP = font.getKerning(prevCp, cp, style);             // 4.4 fixed-point kern
+      lastBaseX += fp4::toPixel(prevAdvanceFP + kernFP) + letterSpacing;  // snap 12.4 fixed-point to nearest pixel
     }
 
     const EpdGlyph* glyph = font.getGlyph(cp, style);
@@ -775,7 +794,7 @@ void GfxRenderer::drawLine(int x1, int y1, int x2, int y2, const bool state) con
       drawPixel(x, y1, state);
     }
   } else {
-    // Bresenham's line algorithm — integer arithmetic only
+    // Bresenham's line algorithm - integer arithmetic only
     int dx = x2 - x1;
     int dy = y2 - y1;
     int sx = (dx > 0) ? 1 : -1;
@@ -997,7 +1016,7 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
   if (lx0 >= lx1 || ly0 >= ly1) return;
 
   // Rotate the two opposing logical corners into physical-framebuffer space.
-  // The bounding rect in physical space is the rect we need to fill — rotation
+  // The bounding rect in physical space is the rect we need to fill - rotation
   // is rigid (no shear/stretch) so the bbox of the two corners IS the rect.
   int paX, paY, pbX, pbY;
   rotateCoordinates(orientation, lx0, ly0, &paX, &paY, panelWidth, panelHeight);
@@ -1055,7 +1074,7 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
   } else {
     // Dither (LightGray / DarkGray). Both patterns have period 2 in logical
     // (x, y), so per physical row we precompute one byte that represents the
-    // pattern across an 8-pixel stretch — every full byte in the row uses
+    // pattern across an 8-pixel stretch - every full byte in the row uses
     // that same value.
     //
     // dlxPerPhyX / dlyPerPhyX: how logical (x, y) change as phyX increments
@@ -1127,7 +1146,7 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
       const uint8_t whiteMask = static_cast<uint8_t>(~blackMask);
 
       // Dither writes BOTH inks (the slow path called drawPixel for every
-      // pixel — setting or clearing — so we must do the same). Inside the
+      // pixel - setting or clearing - so we must do the same). Inside the
       // rect mask: write whiteMask (1s where white, 0s where black). Outside
       // the rect mask: leave the framebuffer untouched.
       uint8_t* row = target + static_cast<int32_t>(py - originY) * panelStride;
@@ -1341,8 +1360,37 @@ void GfxRenderer::drawIcon(const uint8_t bitmap[], const int x, const int y, con
   }
 }
 
+bool GfxRenderer::drawBitmapAbsolutePlanes(const Bitmap& bitmap) const {
+  if (!absoluteGrayPlanes || _stripActive || bitmap.getWidth() != getScreenWidth() ||
+      bitmap.getHeight() != getScreenHeight() || (fontCacheManager_ && fontCacheManager_->isScanning()))
+    return false;
+  // One optional 1bpp plane saves a second SD decode. Allocation failure keeps
+  // the existing two-pass path; no full RGB or 2bpp image is retained in RAM.
+  auto lsb = makeUniqueNoThrow<uint8_t[]>(getBufferSize());
+  auto row = makeUniqueNoThrow<uint8_t[]>(bitmap.getRowBytes());
+  auto levels = makeUniqueNoThrow<uint8_t[]>((bitmap.getWidth() + 3) / 4);
+  if (!lsb || !row || !levels || bitmap.rewindToData() != BmpReaderError::Ok) return false;
+  memset(lsb.get(), 0xff, getBufferSize());
+  memset(frameBuffer, 0xff, getBufferSize());
+  for (int sourceY = 0; sourceY < bitmap.getHeight(); ++sourceY) {
+    if (bitmap.readNextRow(levels.get(), row.get()) != BmpReaderError::Ok) return false;
+    const int y = bitmap.isTopDown() ? sourceY : bitmap.getHeight() - 1 - sourceY;
+    int x0, y0, x1, y1;
+    rotateCoordinates(orientation, 0, y, &x0, &y0, panelWidth, panelHeight);
+    rotateCoordinates(orientation, 1, y, &x1, &y1, panelWidth, panelHeight);
+    const int firstBit = y0 * panelWidth + x0;
+    const int stepBits = (y1 - y0) * panelWidth + x1 - x0;
+    writeAbsoluteGrayRow(levels.get(), bitmap.getWidth(), firstBit, stepBits, lsb.get(), frameBuffer);
+  }
+  display.copyGrayscaleLsbBuffers(lsb.get());
+  display.copyGrayscaleMsbBuffers(frameBuffer);
+  return true;
+}
+
 bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, const int maxWidth, const int maxHeight,
                              const float cropX, const float cropY) const {
+  const uint32_t started = micros();
+  uint32_t readUs = 0;
   if (fontCacheManager_ && fontCacheManager_->isScanning()) return false;
   // For 1-bit bitmaps, use optimized 1-bit rendering path (no crop support for 1-bit)
   if (bitmap.is1Bit() && cropX == 0.0f && cropY == 0.0f) {
@@ -1403,7 +1451,10 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
       break;
     }
 
-    if (bitmap.readNextRow(outputRow, rowBytes) != BmpReaderError::Ok) {
+    const uint32_t readStart = micros();
+    const auto rowResult = bitmap.readNextRow(outputRow, rowBytes);
+    readUs += micros() - readStart;
+    if (rowResult != BmpReaderError::Ok) {
       LOG_ERR("GFX", "Failed to read row %d from bitmap", bmpY);
       free(outputRow);
       free(rowBytes);
@@ -1451,6 +1502,8 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
   const int renderedWidth = isScaled ? static_cast<int>(std::floor((sourceWidth - 1) * scale)) + 1 : sourceWidth;
   const int renderedHeight = isScaled ? static_cast<int>(std::floor((sourceHeight - 1) * scale)) + 1 : sourceHeight;
   preserveImagePolarity(x, y, renderedWidth, renderedHeight);
+  LOG_INF("BMP", "Timing bpp=%u mode=%u decode=%lu total=%lu ms", bitmap.getBpp(), renderMode,
+          static_cast<unsigned long>(readUs / 1000), static_cast<unsigned long>((micros() - started) / 1000));
   return true;
 }
 
@@ -1683,8 +1736,8 @@ HalDisplay::RefreshMode GfxRenderer::applyPromotedRefresh(const HalDisplay::Refr
 
 void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
   auto elapsed = millis() - start_ms;
-  LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   refreshMode = applyPromotedRefresh(refreshMode);
+  LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer, mode=%d", elapsed, static_cast<int>(refreshMode));
   display.displayBuffer(refreshMode, fadingFix);
 }
 
@@ -1745,19 +1798,20 @@ void GfxRenderer::writeFramebufferRegion(int x, int y, int w, int h, const uint8
 }
 
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
-                                       const EpdFontFamily::Style style) const {
+                                       const EpdFontFamily::Style style, const int letterSpacing) const {
   if (!text || maxWidth <= 0) return "";
 
   std::string item = text;
   // U+2026 HORIZONTAL ELLIPSIS (UTF-8: 0xE2 0x80 0xA6)
   const char* ellipsis = "\xe2\x80\xa6";
-  int textWidth = getTextWidth(fontId, item.c_str(), style);
+  int textWidth = getTextWidth(fontId, item.c_str(), style, BidiUtils::BidiBaseDir::AUTO, letterSpacing);
   if (textWidth <= maxWidth) {
     // Text fits, return as is
     return item;
   }
 
-  while (!item.empty() && getTextWidth(fontId, (item + ellipsis).c_str(), style) >= maxWidth) {
+  while (!item.empty() && getTextWidth(fontId, (item + ellipsis).c_str(), style, BidiUtils::BidiBaseDir::AUTO,
+                                       letterSpacing) >= maxWidth) {
     utf8RemoveLastChar(item);
   }
 
@@ -1769,6 +1823,11 @@ std::vector<std::string> GfxRenderer::wrappedText(const int fontId, const char* 
   std::vector<std::string> lines;
 
   if (!text || maxWidth <= 0 || maxLines <= 0) return lines;
+  if (cjkTextWrap::containsCjk(text)) {
+    return cjkTextWrap::wrap(
+        text, maxWidth, maxLines, [&](const char* line) { return getTextWidth(fontId, line, style); },
+        [&](const char* line, int width) { return truncatedText(fontId, line, width, style); });
+  }
 
   std::string remaining = text;
   std::string currentLine;
@@ -1802,7 +1861,7 @@ std::vector<std::string> GfxRenderer::wrappedText(const int fontId, const char* 
       if (!currentLine.empty()) {
         lines.push_back(currentLine);
         // If the carried-over word itself exceeds maxWidth, truncate it and
-        // push it as a complete line immediately — storing it in currentLine
+        // push it as a complete line immediately - storing it in currentLine
         // would allow a subsequent short word to be appended after the ellipsis.
         if (getTextWidth(fontId, word.c_str(), style) > maxWidth) {
           lines.push_back(truncatedText(fontId, word.c_str(), maxWidth, style));
@@ -2025,13 +2084,13 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
   // Arabic-shaped (contextual presentation forms, Lam-Alef collapse).
   // Measuring the raw logical text counts the Alef a ligature absorbs and
   // uses base-letter advances instead of presentation-form advances, so RTL
-  // lines come out wider than they draw — uneven word gaps and a ragged
+  // lines come out wider than they draw - uneven word gaps and a ragged
   // right margin.
   std::string visual;
   text = resolveVisualText(text, visual, BidiUtils::BidiBaseDir::AUTO);
 
   // Advance table fast-path for SD card fonts during layout.
-  // No kerning/ligature lookup — consistent with previous metadataOnly behavior
+  // No kerning/ligature lookup - consistent with previous metadataOnly behavior
   // where kern/lig data was not loaded.
   auto sdIt = sdCardFonts_.find(resolvedFontId);
   if (sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable()) {
@@ -2045,7 +2104,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
     }
     const auto& font = fontIt->second;
     while (uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
-      // RTL vowel marks (niqqud/harakat) are zero-advance overlays in drawText — no width.
+      // RTL vowel marks (niqqud/harakat) are zero-advance overlays in drawText - no width.
       if (BidiUtils::isTransparentMark(cp)) {
         continue;
       }
@@ -2071,7 +2130,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
   int32_t prevAdvanceFP = 0;  // 12.4 fixed-point: prev glyph's advance + next kern for snap
   const auto& font = fontIt->second;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
-    // RTL vowel marks (niqqud/harakat) are zero-advance overlays in drawText — no width.
+    // RTL vowel marks (niqqud/harakat) are zero-advance overlays in drawText - no width.
     if (BidiUtils::isTransparentMark(cp)) {
       continue;
     }
@@ -2167,7 +2226,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
     // emits base-then-marks per UAX#9 L3). anchorFor pins position-sensitive
     // niqqud (dagesh, shin/sin dots, holam) to their spot on the base; other
     // marks stay centered, raised above the base or (kasra) at their
-    // font-native position. Fonts without their glyphs — the built-ins — miss
+    // font-native position. Fonts without their glyphs - the built-ins - miss
     // the getGlyph lookup and skip them, as before.
     if (utf8IsCombiningMark(cp) || BidiUtils::isTransparentMark(cp)) {
       const EpdGlyph* combiningGlyph = font.getGlyph(cp, style);
@@ -2212,6 +2271,7 @@ size_t GfxRenderer::getBufferSize() const { return frameBufferSize; }
 
 void GfxRenderer::displayGrayscaleBase(HalDisplay::RefreshMode fallback) const {
   absoluteGrayPlanes = false;
+  LOG_DBG("GFX", "displayGrayscaleBase, mode=%d", static_cast<int>(fallback));
   display.displayGrayscaleBase(fallback, fadingFix);
 }
 
@@ -2388,4 +2448,82 @@ void GfxRenderer::getOrientedViewableTRBL(int* outTop, int* outRight, int* outBo
       *outLeft = vi.top;
       break;
   }
+}
+
+int GfxRenderer::getDropCapAdvance(int fontId, const char* text, EpdFontFamily::Style style, int height) const {
+  const auto initial = dropcap::initial(text);
+  const auto it = fontMap.find(fontId);
+  if (!initial.codepoint || height <= 0 || it == fontMap.end()) return 0;
+  const auto capStyle = static_cast<EpdFontFamily::Style>((style & 3) | EpdFontFamily::BOLD);
+  const auto* glyph = it->second.getGlyph(initial.codepoint, capStyle);
+  if (!glyph || !glyph->width || !glyph->height) return 0;
+  const int width = (glyph->width * height + glyph->height / 2) / glyph->height;
+  char prefix[16] = {};
+  memcpy(prefix, text, initial.prefixBytes);
+  return getTextAdvanceX(fontId, prefix, style) + width + std::max(3, getSpaceWidth(fontId, style) / 2);
+}
+
+int GfxRenderer::getDropCapWordWidth(int fontId, const char* text, EpdFontFamily::Style style, int height) const {
+  const auto initial = dropcap::initial(text);
+  const int advance = getDropCapAdvance(fontId, text, style, height);
+  return advance ? advance + getTextAdvanceX(fontId, text + initial.endBytes, style)
+                 : getTextAdvanceX(fontId, text, style);
+}
+
+void GfxRenderer::drawDropCapWord(int fontId, int x, int y, const char* text, EpdFontFamily::Style style,
+                                  int height) const {
+  const auto initial = dropcap::initial(text);
+  const int advance = getDropCapAdvance(fontId, text, style, height);
+  if (!advance) {
+    drawText(fontId, x, y, text, true, style);
+    return;
+  }
+  const auto capStyle = static_cast<EpdFontFamily::Style>((style & 3) | EpdFontFamily::BOLD);
+  char prefix[16] = {};
+  memcpy(prefix, text, initial.prefixBytes);
+  char cap[8] = {};
+  memcpy(cap, text + initial.prefixBytes, initial.endBytes - initial.prefixBytes);
+  if (isFontCacheScanning()) {
+    drawText(fontId, x, y, text, true, style);
+    drawText(fontId, x, y, cap, true, capStyle);
+    return;
+  }
+  const int capX = x + getTextAdvanceX(fontId, prefix, style);
+  drawText(fontId, x, y, prefix, true, style);
+  const auto& font = fontMap.at(fontId);
+  const auto* glyph = font.getGlyph(initial.codepoint, capStyle);
+  if (!glyph) return;
+  const int sw = glyph->width, sh = glyph->height;
+  const int width = (sw * height + sh / 2) / sh;
+  const auto* data = font.getData(capStyle);
+  const auto* bitmap = getGlyphBitmap(data, glyph);
+  // Consume the bitmap before rendering the suffix, which can evict its SD cache slot.
+  if (bitmap && glyphIntersectsStrip(capX, y + 2, capX + width - 1, y + height + 1)) {
+    const auto sample = [&](int sx, int sy) -> int {
+      if (sx < 0 || sy < 0 || sx >= sw || sy >= sh) return 0;
+      const int pos = sy * sw + sx;
+      return data->is2Bit ? ((bitmap[pos >> 2] >> ((3 - (pos & 3)) * 2)) & 3)
+                          : (((bitmap[pos >> 3] >> (7 - (pos & 7))) & 1) * 3);
+    };
+    const auto mode = grayPlanesAreAbsolute() ? BW : renderMode;
+    // Fixed-point bilinear sampling retains the four-level text pipeline without a second bitmap.
+    for (int dy = 0; dy < height; ++dy) {
+      const int fy = ((2 * dy + 1) * sh * 128 / height) - 128;
+      const int sy = fy >= 0 ? fy / 256 : -1, wy = fy - sy * 256;
+      for (int dx = 0; dx < width; ++dx) {
+        const int fx = ((2 * dx + 1) * sw * 128 / width) - 128;
+        const int sx = fx >= 0 ? fx / 256 : -1, wx = fx - sx * 256;
+        const int ink = (sample(sx, sy) * (256 - wx) * (256 - wy) + sample(sx + 1, sy) * wx * (256 - wy) +
+                         sample(sx, sy + 1) * (256 - wx) * wy + sample(sx + 1, sy + 1) * wx * wy + 32768) /
+                        65536;
+        if (mode == BW && ink)
+          drawPixel(capX + dx, y + 2 + dy, true);
+        else if (mode == GRAYSCALE_MSB && (ink == 1 || ink == 2))
+          drawPixel(capX + dx, y + 2 + dy, false);
+        else if (mode == GRAYSCALE_LSB && ink == 2)
+          drawPixel(capX + dx, y + 2 + dy, false);
+      }
+    }
+  }
+  drawText(fontId, x + advance, y, text + initial.endBytes, true, style);
 }

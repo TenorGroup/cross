@@ -219,7 +219,7 @@ void KOReaderSyncActivity::performSync() {
     return;
   }
 
-  // Epub was released before sync to free RAM for the TLS handshake — reload it now.
+  // Epub was released before sync to free RAM for the TLS handshake - reload it now.
   hasRemoteProgress = true;
   ensureEpubLoaded();
   if (!epub) {
@@ -608,7 +608,7 @@ void KOReaderSyncActivity::render(RenderLock&&) {
   if (state == NO_CREDENTIALS) {
     UITheme::drawCenteredText(renderer, screen, UI_10_FONT_ID, top, tr(STR_NO_CREDENTIALS_MSG), true,
                               EpdFontFamily::BOLD);
-    UITheme::drawCenteredText(renderer, screen, UI_10_FONT_ID, top + 40, tr(STR_KOREADER_SETUP_HINT), true,
+    UITheme::drawCenteredText(renderer, screen, SMALL_FONT_ID, top + 40, tr(STR_KOREADER_SETUP_HINT), true,
                               EpdFontFamily::BOLD);
 
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");

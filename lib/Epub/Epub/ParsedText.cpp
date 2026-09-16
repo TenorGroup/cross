@@ -197,7 +197,7 @@ int computeJustifyExtra(const int spareSpace, const size_t gapCount) {
   // Distribute the spare space evenly across gaps. Do NOT bail out to 0 when the
   // per-gap stretch is large: a sparse line (few words on a wide page) legitimately
   // needs big gaps to reach the margin. Returning 0 there disables justification for
-  // that line, leaving it right-aligned (RTL) / left-aligned (LTR) — the mismatched
+  // that line, leaving it right-aligned (RTL) / left-aligned (LTR) - the mismatched
   // alignment bug. Match the un-capped behavior of the old code.
   return spareSpace / static_cast<int>(gapCount);
 }
@@ -666,6 +666,13 @@ int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer
   if (!isFirstLine || !isNaturalAlign) {
     return 0;
   }
+  if (paragraphIndent == 2) return 0;
+  if (paragraphIndent == 1) {
+    return blockStyle.textIndentDefined && blockStyle.textIndent > 0
+               ? blockStyle.textIndent
+               : renderer.getSpaceWidth(fontId, EpdFontFamily::REGULAR) * 3;
+  }
+  // Automatic retains the existing CSS/paragraph-spacing interaction.
   if (blockStyle.textIndentDefined) {
     if (blockStyle.textIndent < 0 || !extraParagraphSpacing) {
       return blockStyle.textIndent;
@@ -704,7 +711,7 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
 
   // Ensure SD card font glyph metrics are loaded before measuring word widths.
   // For flash-based fonts isSdCardFont() returns false and this block is skipped
-  // entirely — no heap allocation. For SD card fonts this reads glyph metadata
+  // entirely - no heap allocation. For SD card fonts this reads glyph metadata
   // (advanceX only, no bitmaps) for all unique codepoints in this paragraph so
   // that calculateWordWidths() can measure text without on-demand SD I/O.
   if (renderer.isSdCardFont(fontId)) {
@@ -720,10 +727,23 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   }
 
   const int pageWidth = viewportWidth;
+  if (dropCapHeight && !dropCapPrepared && !words.empty()) {
+    dropCapPrepared = true;
+    if (!blockStyle.isRtl && !hasRtlWord && rubyTexts.empty() &&
+        (blockStyle.alignment == CssTextAlign::Left || blockStyle.alignment == CssTextAlign::Justify) &&
+        !(wordStyles[0] & (EpdFontFamily::SUP | EpdFontFamily::SUB))) {
+      const int capWidth = renderer.getDropCapWordWidth(fontId, words[0].c_str(), wordStyles[0], dropCapHeight);
+      const int inset = renderer.getDropCapAdvance(fontId, words[0].c_str(), wordStyles[0], dropCapHeight);
+      if (inset > 0 && inset < pageWidth / 2 && capWidth <= pageWidth) {
+        dropCapInset = inset;
+        wordStyles[0] = static_cast<EpdFontFamily::Style>(wordStyles[0] | EpdFontFamily::DROP_CAP);
+      }
+    }
+  }
   auto wordWidths = calculateWordWidths(renderer, fontId);
 
   std::vector<size_t> lineBreakIndices;
-  if (hyphenationEnabled) {
+  if (hyphenationEnabled || dropCapInset) {
     // Use greedy layout that can split words mid-loop when a hyphenated prefix fits.
     lineBreakIndices =
         computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
@@ -736,6 +756,8 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
     extractLine(i, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore, lineBreakIndices, processLine, renderer,
                 fontId);
   }
+
+  extractedLines += lineCount;
 
   // Remove consumed words so size() reflects only remaining words
   if (lineCount > 0) {
@@ -834,7 +856,9 @@ std::vector<uint16_t> ParsedText::calculateWordWidths(const GfxRenderer& rendere
   wordWidths.reserve(words.size());
 
   for (size_t i = 0; i < words.size(); ++i) {
-    wordWidths.push_back(measureFocusWordWidth(renderer, fontId, words[i], wordStyles[i], wordFocusBoundary[i]));
+    wordWidths.push_back((wordStyles[i] & EpdFontFamily::DROP_CAP)
+                             ? renderer.getDropCapWordWidth(fontId, words[i].c_str(), wordStyles[i], dropCapHeight)
+                             : measureFocusWordWidth(renderer, fontId, words[i], wordStyles[i], wordFocusBoundary[i]));
   }
 
   // Adjust widths for ruby groups to comply with JLReq standards
@@ -1067,18 +1091,15 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
                                                             const int pageWidth, std::vector<uint16_t>& wordWidths,
                                                             std::vector<bool>& continuesVec,
                                                             std::vector<bool>& noSpaceBeforeVec) {
-  const int firstLineIndent = resolveFirstLineIndent(true, renderer, fontId);
-
   std::vector<size_t> lineBreakIndices;
   size_t currentIndex = 0;
-  bool isFirstLine = true;
 
   while (currentIndex < wordWidths.size()) {
     const size_t lineStart = currentIndex;
     int lineWidth = 0;
 
     // First line has reduced width due to text-indent
-    const int effectivePageWidth = isFirstLine ? pageWidth - firstLineIndent : pageWidth;
+    const int effectivePageWidth = pageWidth - lineIndent(lineBreakIndices.size(), renderer, fontId);
 
     // Consume as many words as possible for current line, splitting when prefixes fit
     while (currentIndex < wordWidths.size()) {
@@ -1103,11 +1124,12 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
         continue;
       }
 
-      // Word would overflow — try to split based on hyphenation points
+      // Word would overflow - try to split based on hyphenation points
       const int availableWidth = effectivePageWidth - lineWidth - spacing;
       const bool allowFallbackBreaks = isFirstWord;  // Only for first word on line
 
-      if (availableWidth > 0 &&
+      if (availableWidth > 0 && (hyphenationEnabled || allowFallbackBreaks) &&
+          !(wordStyles[currentIndex] & EpdFontFamily::DROP_CAP) &&
           hyphenateWordAtIndex(currentIndex, availableWidth, renderer, fontId, wordWidths, allowFallbackBreaks)) {
         // Prefix now fits; append it to this line and move to next line
         lineWidth += spacing + wordWidths[currentIndex];
@@ -1131,7 +1153,6 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
     }
 
     lineBreakIndices.push_back(currentIndex);
-    isFirstLine = false;
   }
 
   return lineBreakIndices;
@@ -1235,12 +1256,12 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
   // After splitting "Quadratkilometer" at "Quadrat-" / "kilometer":
   //   [0] "200"         continues=false
   //   [1] " "           continues=true
-  //   [2] "Quadrat-"    continues=true   (KEPT — still attached to the no-break group)
-  //   [3] "kilometer"   continues=false  (NEW — starts fresh on the next line)
+  //   [2] "Quadrat-"    continues=true   (KEPT - still attached to the no-break group)
+  //   [3] "kilometer"   continues=false  (NEW - starts fresh on the next line)
   //
   // This lets the backtracking loop keep the entire prefix group ("200 Quadrat-") on one
   // line, while "kilometer" moves to the next line.
-  // wordContinues[wordIndex] is intentionally left unchanged — the prefix keeps its original attachment.
+  // wordContinues[wordIndex] is intentionally left unchanged - the prefix keeps its original attachment.
   wordContinues.insert(wordContinues.begin() + wordIndex + 1, false);
   wordNoSpaceBefore.insert(wordNoSpaceBefore.begin() + wordIndex + 1, false);
 
@@ -1262,7 +1283,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
   const size_t lineWordCount = lineBreak - lastBreakAt;
   const uint32_t lineVisibleOffset = visibleOffsetAt(lastBreakAt);
 
-  const int firstLineIndent = resolveFirstLineIndent(breakIndex == 0, renderer, fontId);
+  const int firstLineIndent = lineIndent(breakIndex, renderer, fontId);
 
   std::vector<std::string> lineRubyTexts(lineWordCount);
   if (!rubyTexts.empty() && lastBreakAt < rubyTexts.size()) {
@@ -1486,7 +1507,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
           // Cross-boundary kerning for continuation words
           int advance = renderer.getKerning(fontId, lastCodepoint(lineWords[wordIdx]),
                                             firstCodepoint(lineWords[wordIdx + 1]), lineWordStyles[wordIdx]);
-          // wordIdx > 0: see the LTR branch — a leading no-break space is not a justifiable gap.
+          // wordIdx > 0: see the LTR branch - a leading no-break space is not a justifiable gap.
           if (wordIdx > 0 && lineWords[wordIdx] == " " && continuesVec[lastBreakAt + wordIdx] &&
               effectiveAlignment == CssTextAlign::Justify && !isLastLine) {
             advance += justifyExtra;
@@ -1607,6 +1628,8 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
       LOG_ERR("PTX", "Dropping line: TextBlock or arena allocation failed");
       return;
     }
+    if (!lineWordStyles.empty() && (lineWordStyles[0] & EpdFontFamily::DROP_CAP))
+      block->setDropCapHeight(dropCapHeight);
     processLine(std::move(block), lineVisibleOffset);
     return;
   }
@@ -1631,4 +1654,9 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     return;
   }
   processLine(std::move(block), lineVisibleOffset);
+}
+
+int ParsedText::lineIndent(size_t line, const GfxRenderer& renderer, int fontId) const {
+  if (dropCapInset) return extractedLines + line == 1 ? dropCapInset : 0;
+  return resolveFirstLineIndent(line == 0, renderer, fontId);
 }

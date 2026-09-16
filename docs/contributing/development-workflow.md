@@ -1,45 +1,9 @@
-# Development Workflow
+# Development workflow
 
-This page defines the expected local workflow before opening a pull request.
+1. Fork the repository and create a focused branch from `main`.
+2. Keep changes scoped to one fix or feature. Discuss larger work with the maintainers.
+3. Follow the build and host-test commands in the root README. Use `./bin/clang-format-fix` for C/C++ formatting.
+4. Open a pull request against `main`, describing the problem, the change and the checks you ran.
+5. Include device and orientation details for hardware reports. Share synthetic books or minimal examples that you have permission to distribute.
 
-## 1) Fork and create a focused branch
-
-- Fork the repository to your own GitHub account
-- Clone your fork locally and add the upstream repository if needed
-- Enable repo hooks once per clone: `git config core.hooksPath .githooks && chmod +x .githooks/pre-commit`
-
-- Branch from `develop`
-- Keep each PR focused on one fix or feature area
-
-## 2) Implement with scope in mind
-
-- Confirm your idea is in project scope: [SCOPE.md](../../SCOPE.md)
-- Prefer incremental changes over broad refactors
-
-## 3) Run local checks
-
-```sh
-./bin/clang-format-fix
-pio check --fail-on-defect low --fail-on-defect medium --fail-on-defect high
-pio run
-```
-
-CI enforces formatting, static analysis, and build checks.
-Use clang-format 21+ locally to match CI.
-If `clang-format` is missing or too old locally, see [Getting Started](./getting-started.md).
-
-## 4) Open the PR
-
-- Target `develop` (the repository's default branch)
-- Use a semantic title (example: `fix: avoid crash when opening malformed epub`)
-- Fill out `.github/PULL_REQUEST_TEMPLATE.md`
-- Describe the problem, approach, and any tradeoffs
-- Include reproduction and verification steps for bug fixes
-
-## 5) Review etiquette
-
-- Be explicit and concise in responses
-- Keep discussions technical and respectful
-- Assume good intent and focus on code-level feedback
-
-For community expectations, see [GOVERNANCE.md](../../GOVERNANCE.md).
+Keep private device data, credentials, logs and books out of commits. The root ignore file excludes common local outputs.

@@ -7,6 +7,7 @@
 
 #include "../../util/BookmarkFile.h"
 #include "MappedInputManager.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
@@ -169,7 +170,7 @@ void EpubReaderBookmarksActivity::showDeleteConfirmation() {
 void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
   bookmarks.erase(bookmarks.begin() + nav.selected);
   // Deleting shifts every later bookmark's index, so the cached subtitles and
-  // actionValues must be re-derived, not just trimmed — and before the SD
+  // actionValues must be re-derived, not just trimmed - and before the SD
   // save, so the render task never sees rows aliasing the erased storage.
   rebuildBookmarkRowItems();
   if (!BookmarkFile::save(epubPath, bookmarks)) {
@@ -211,10 +212,9 @@ void EpubReaderBookmarksActivity::buildScreen(UiScreen& screen) {
   // "Hold Open to Delete" names a physical button; on touch boards the row
   // long-press covers deletion, so the hint would be wrong there.
   if (!mappedInput.hasTouch()) {
-    const int helpLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
-    const fui::Rect band = screen.takeBottom(static_cast<int16_t>(helpLineHeight + metrics.verticalSpacing));
-    GUI.drawHelpText(renderer, Rect{band.x, band.y + metrics.verticalSpacing, band.width, helpLineHeight},
-                     tr(STR_HOLD_OPEN_TO_DELETE));
+    const int reserved = screen.body().y + screen.body().height - tenorchrome::tipY(renderer) + 2;
+    if (reserved > 0) screen.takeBottom(static_cast<int16_t>(reserved));
+    tenorchrome::drawTip(renderer, tr(STR_HOLD_OPEN_TO_DELETE));
   }
 
   // bookmarkSubtitles/bookmarkRowItems are built once whenever `bookmarks`

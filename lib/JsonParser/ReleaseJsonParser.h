@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "StreamingJsonParser.h"
+#include "StrictJsonValidator.h"
 
 class ReleaseJsonParser {
  public:
@@ -23,6 +24,8 @@ class ReleaseJsonParser {
   const char* getTagName() const;
   const char* getFirmwareUrl() const;
   size_t getFirmwareSize() const;
+  const char* getFirmwareDigest() const { return firmwareDigest; }
+  bool complete() const { return rootClosed && !invalid && !parser.hasError() && syntax.complete(); }
 
  private:
   enum class Position : uint8_t {
@@ -38,6 +41,7 @@ class ReleaseJsonParser {
     ASSET_NAME,
     ASSET_URL,
     ASSET_SIZE,
+    ASSET_DIGEST,
   };
 
   static void sOnKey(void* ctx, const char* key, size_t len);
@@ -53,12 +57,19 @@ class ReleaseJsonParser {
   void commitAsset();
 
   StreamingJsonParser parser;
+  StrictJsonValidator syntax;
 
   Position position;
   LastKey lastKey;
   uint8_t depth;
   uint8_t assetDepth;
 
+  uint8_t rootKeys = 0;
+  uint8_t assetKeys = 0;
+  bool rootClosed = false;
+  bool invalid = false;
+  char firmwareDigest[72] = {};
+  char currentAssetDigest[72] = {};
   char tagName[32];
   char firmwareUrl[512];
   size_t firmwareSize;

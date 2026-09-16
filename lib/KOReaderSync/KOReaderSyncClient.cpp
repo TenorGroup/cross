@@ -14,7 +14,7 @@ int KOReaderSyncClient::lastHttpCode = 0;
 
 namespace {
 // Device identifier for CrossPoint reader
-constexpr char DEVICE_NAME[] = "CrossPoint";
+constexpr char DEVICE_NAME[] = "tenor/cross";
 constexpr char DEVICE_ID[] = "crosspoint-reader";
 
 // wolfSSL uses the default allocator, which can use PSRAM on supported builds.
@@ -75,7 +75,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::authenticate() {
   if (httpCode <= 0) return NETWORK_ERROR;
   // Any 2xx is success. The reference kosync server answers 200, but
   // KOSync-compatible implementations differ (BookLore/grimmory is a Spring
-  // service and uses the idiomatic codes) — see issue #2876.
+  // service and uses the idiomatic codes) - see issue #2876.
   if (httpCode >= 200 && httpCode < 300) return OK;
   if (httpCode == 401) return AUTH_FAILED;
   return SERVER_ERROR;
@@ -150,7 +150,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
   // 204 = success with no stored progress for this document (Spring-style
   // KOSync implementations; the reference server answers 200 with an empty
   // object instead). Map it to the same graceful no-remote-progress path as
-  // 404 rather than falling through to SERVER_ERROR — see issue #2876.
+  // 404 rather than falling through to SERVER_ERROR - see issue #2876.
   if (httpCode == 204) {
     http.end();
     return NOT_FOUND;
@@ -262,7 +262,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
   // Any 2xx accepts the progress. The reference kosync server answers 200,
   // but Spring-based KOSync implementations (BookLore/grimmory) answer a PUT
   // with the idiomatic 201/204, which used to land in SERVER_ERROR and made
-  // every sync against them fail after a successful pull — issue #2876.
+  // every sync against them fail after a successful pull - issue #2876.
   if (httpCode >= 200 && httpCode < 300) return OK;
   if (httpCode == 401) return AUTH_FAILED;
   return SERVER_ERROR;

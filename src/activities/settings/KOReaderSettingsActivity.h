@@ -15,6 +15,8 @@ class KOReaderSettingsActivity final : public UiListActivity {
   static constexpr int MENU_ITEMS = 8;
 
  private:
+  bool supportsFavorites() const override { return true; }
+  std::string favoriteKey(int row) const override;
   int listCount() const override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;

@@ -6,14 +6,14 @@ features which both firmwares support.
 
 ## EPUB reading
 
-![](./images/comparison/reading-1.jpg)
 
-![](./images/comparison/reading-2.jpg)
 
-![](./images/comparison/reading-3.jpg)
+
+
+
 
 ## Menus
 
-![](./images/comparison/menu.jpg)
 
-![](./images/comparison/chapter-menu.jpg)
+
+

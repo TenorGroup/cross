@@ -183,7 +183,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     return false;
   }
 
-  // HTTP client is now closed — TLS buffers freed. Parse JSON from file.
+  // HTTP client is now closed - TLS buffers freed. Parse JSON from file.
   HalFile manifestFile;
   if (!Storage.openFileForRead("FONT", MANIFEST_TMP, manifestFile)) {
     LOG_ERR("FONT", "Failed to open temp manifest");
@@ -350,7 +350,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
             break;
           }
         } else {
-          // File missing on disk but family dir exists — treat as update
+          // File missing on disk but family dir exists - treat as update
           family.hasUpdate = true;
           break;
         }
@@ -585,7 +585,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
           // This update() consumes the one-shot home event before the central
           // ActivityManager dispatch can see it, so honor it here: abort the
           // download, then exit to home once the abort unwinds.
-          if (mappedInput.wasHomeGesture()) {
+          if (mappedInput.wasLongPressed(MappedInputManager::Button::Back, 1000) || mappedInput.wasHomeGesture()) {
             cancelRequested_ = true;
             goHomeRequested_ = true;
           }

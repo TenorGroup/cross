@@ -24,10 +24,13 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "ReadingStatsStore.h"
 #include "activities/reader/ReaderUtils.h"
+#include "components/ManNguTenor.h"
+#include "components/ReadingStatsView.h"
 #include "components/UITheme.h"
+#include "components/X3BrandScreen.h"
 #include "fontIds.h"
-#include "images/Logo120.h"
 #include "images/MoonIcon.h"
 
 namespace {
@@ -495,7 +498,15 @@ void releaseSdFontCachesForDecode(const GfxRenderer& renderer) {
 
 }  // namespace
 
+void SleepActivity::showEnteringSleep(GfxRenderer& renderer) {
+  if (drawSleepPopupPreservingFrame(renderer)) {
+    LOG_INF("SLP", "Sleep transition notice shown");
+  }
+}
+
 void SleepActivity::onEnter() {
+  READING_STATS.markHabitsSleep();
+  LOG_INF("SLP", "Timing entered-image-render at=%lu", static_cast<unsigned long>(millis()));
   Activity::onEnter();
 
   const bool frameWasInverted = display.isInverted();
@@ -509,6 +520,7 @@ void SleepActivity::onEnter() {
       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
       (fromTimeout &&
        SETTINGS.quickResumeSleepScreen == CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_AFTER_TIMEOUT);
+  LOG_INF("SLP", "Sleep screen mode=%u, quick=%u", SETTINGS.sleepScreen, renderQuickResume);
 
   if (renderQuickResume) {
     return renderLastScreenSleepScreen();
@@ -522,7 +534,7 @@ void SleepActivity::onEnter() {
     if (APP_STATE.lastSleepFromReader) {
       ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
     }
-    drawSleepPopupPreservingFrame(renderer);
+
     if (APP_STATE.lastSleepFromReader) {
       renderer.setOrientation(GfxRenderer::Orientation::Portrait);
     }
@@ -530,15 +542,7 @@ void SleepActivity::onEnter() {
     return renderTransparentCustomSleepScreen();
   }
 
-  // Show popup with reader orientation only when going to sleep from reader
-  if (APP_STATE.lastSleepFromReader) {
-    ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
-    GUI.drawPopup(renderer, tr(STR_ENTERING_SLEEP));
-    renderer.setOrientation(GfxRenderer::Orientation::Portrait);
-  } else {
-    GUI.drawPopup(renderer, tr(STR_ENTERING_SLEEP));
-  }
-
+  // These modes replace the whole screen. Paint only the completed sleep frame.
   switch (SETTINGS.sleepScreen) {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::BLANK):
       return renderBlankSleepScreen();
@@ -552,12 +556,56 @@ void SleepActivity::onEnter() {
       } else {
         return renderCustomSleepScreen();
       }
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::STATS):
+      return renderStatsSleepScreen();
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::TENOR):
+      return renderTenorSleepScreen();
     default:
       return renderDefaultSleepScreen();
   }
 }
 
+// Man ngu mac dinh cua tenor/cross: an pham branding nen thang vao firmware, nen khong ai
+// phai chep file vao the nho moi co man ngu tu te.
+//
+// Du lieu la RLE hai byte mot doan, so diem roi toi muc, chay theo hang tu trai sang phai
+// va tu tren xuong. Xem scripts/sinh_man_ngu.py.
+void SleepActivity::renderTenorSleepScreen() const {
+  releaseSdFontCachesForDecode(renderer);
+  if (renderX3BrandScreen(renderer, false)) return;
+  // X3 artwork has a fixed pixel grid. Other panels retain the text fallback.
+  if (!gpio.deviceIsX3()) {
+    renderDefaultSleepScreen();
+    return;
+  }
+  renderer.clearScreen();
+
+  static constexpr Color MUC[4] = {Color::Black, Color::DarkGray, Color::LightGray, Color::White};
+  int x = 0;
+  int y = 0;
+  for (size_t i = 0; i + 1 < sizeof(mannogu::DU_LIEU); i += 2) {
+    int con = mannogu::DU_LIEU[i];
+    const uint8_t muc = mannogu::DU_LIEU[i + 1];
+    while (con > 0 && y < mannogu::CAO) {
+      const int trongHang = mannogu::RONG - x;
+      const int ve = con < trongHang ? con : trongHang;
+      // Nen da trang san sau clearScreen(), nen doan trang khong phai ve lai. Bo qua chung
+      // cat phan lon so lenh ve: an pham nay 85% dien tich la nen trang.
+      if (muc != 3) renderer.fillRectDither(x, y, ve, 1, MUC[muc]);
+      x += ve;
+      con -= ve;
+      if (x >= mannogu::RONG) {
+        x = 0;
+        y++;
+      }
+    }
+  }
+
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+}
+
 void SleepActivity::renderCustomSleepScreen() const {
+  releaseSdFontCachesForDecode(renderer);
   // Look for sleep.bmp on the root of the sd card to determine if we should
   // render a custom sleep screen instead of the default.
   // This takes priority over the /sleep folder.
@@ -611,7 +659,6 @@ void SleepActivity::renderDefaultSleepScreen() const {
   const auto pageHeight = renderer.getScreenHeight();
 
   renderer.clearScreen();
-  renderer.drawImage(Logo120, (pageWidth - 120) / 2, (pageHeight - 120) / 2, 120, 120);
   renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 70, tr(STR_CROSSPOINT), true, EpdFontFamily::BOLD);
   renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 95, tr(STR_SLEEPING));
 
@@ -624,6 +671,7 @@ void SleepActivity::renderDefaultSleepScreen() const {
 }
 
 void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool preserveBackground) const {
+  const uint32_t started = millis();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
   const auto placement = calculateBitmapPlacement(bitmap.getWidth(), bitmap.getHeight(), renderer);
@@ -639,8 +687,13 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
   const bool hasGreyscale =
       bitmap.hasGreyscale() && (preserveBackground || SETTINGS.sleepScreenCoverFilter ==
                                                           CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
+  const auto absoluteCaps = renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute);
+  const bool absolute = hasGreyscale && !preserveBackground && absoluteCaps.supported();
+  const bool combined = absolute && absoluteCaps.base == HalDisplay::GrayscaleBase::Combined;
+  LOG_INF("SLP", "Sleep image %dx%d, absolute=%u, combined=%u", bitmap.getWidth(), bitmap.getHeight(), absolute,
+          combined);
 
-  if (!renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY)) {
+  if (!combined && !renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY)) {
     renderer.displayBuffer(HalDisplay::HALF_REFRESH);
     return;
   }
@@ -650,8 +703,6 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
     renderer.invertScreen();
   }
 
-  const bool absolute = hasGreyscale && !preserveBackground &&
-                        renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
   if (absolute) {
     if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute)) return;
   } else if (hasGreyscale) {
@@ -664,6 +715,17 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
     renderer.displayBuffer(HalDisplay::HALF_REFRESH);
   }
 
+  LOG_INF("SLP", "Timing bitmap-base=%lu ms", static_cast<unsigned long>(millis() - started));
+  if (absolute && x == 0 && y == 0 && cropX == 0 && cropY == 0) {
+    if (renderer.drawBitmapAbsolutePlanes(bitmap)) {
+      LOG_INF("SLP", "Timing one-pass-planes=%lu ms", static_cast<unsigned long>(millis() - started));
+      renderer.displayGrayBuffer();
+      renderer.setRenderMode(GfxRenderer::BW);
+      LOG_INF("SLP", "Timing bitmap-visible=%lu ms", static_cast<unsigned long>(millis() - started));
+      return;
+    }
+    if (bitmap.rewindToData() != BmpReaderError::Ok) return;
+  }
   if (hasGreyscale) {
     bool ready = true;
     for (const auto plane : {GfxRenderer::GRAYSCALE_LSB, GfxRenderer::GRAYSCALE_MSB}) {
@@ -682,12 +744,14 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
       else
         renderer.copyGrayscaleMsbBuffers();
     }
+    LOG_INF("SLP", "Timing bitmap-planes=%lu ms", static_cast<unsigned long>(millis() - started));
     if (ready)
       renderer.displayGrayBuffer();
     else
       LOG_ERR("SLP", "Incomplete grayscale image; keeping the current display");
     renderer.setRenderMode(GfxRenderer::BW);
   }
+  LOG_INF("SLP", "Timing bitmap-visible=%lu ms", static_cast<unsigned long>(millis() - started));
 }
 
 bool SleepActivity::renderSleepOverlayFile(HalFile& file, const char* pathForLog) const {
@@ -880,5 +944,13 @@ void SleepActivity::renderLastScreenSleepScreen() const {
 
 void SleepActivity::renderBlankSleepScreen() const {
   renderer.clearScreen();
+  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+}
+
+void SleepActivity::renderStatsSleepScreen() const {
+  releaseSdFontCachesForDecode(renderer);
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+  renderer.clearScreen();
+  readingstatsview::drawSleep(renderer);
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 }

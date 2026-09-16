@@ -1,3 +1,9 @@
+#ifdef TENOR_UI_ACCEPTANCE
+#include "activities/network/CrossPointWebServerActivity.h"
+#endif
+#ifdef TENOR_OTA_ACCEPTANCE
+#include "activities/settings/OtaUpdateActivity.h"
+#endif
 #include <Arduino.h>
 #include <BoardConfig.h>
 #include <Epub.h>
@@ -23,21 +29,33 @@
 #include <esp_sntp.h>
 #endif
 
+#include <Memory.h>
+#include <TtfProbe.h>
+
 #include <cstring>
+#ifndef SIMULATOR
+#include <esp_heap_caps.h>
+#include <esp_ota_ops.h>
+#endif
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
+#include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "activities/home/BookStatsActivity.h"
+#include "activities/home/QuotesActivity.h"
+#include "activities/settings/ClockSyncActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
+#include "activities/settings/SettingsActivity.h"
+#include "activities/settings/StatusBarSettingsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "images/LoadingIcon.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
@@ -59,6 +77,7 @@ constexpr unsigned long X4PRO_POWER_CLICK_MAX_HOLD_MS = 300;
 // A wake hold must never become an in-app power-button action.  Boot may continue
 // while the button is held; swallow the one release that ends that wake gesture.
 static bool wakePowerReleasePending = false;
+static uint8_t wakeSideReleasePending = 0;
 
 // Fonts
 EpdFont notoserif14RegularFont(&notoserif_14_regular);
@@ -114,20 +133,23 @@ EpdFontFamily notosans18FontFamily(&notosans18RegularFont, &notosans18BoldFont, 
 
 #endif  // OMIT_FONTS
 
-EpdFont smallFont(&notosans_8_regular);
+// Font he thong: Geist cam tieu de, Be Vietnam Pro cam chu than va nhan nut.
+// Ca hai deu du dau tieng Viet; do 14/09 tren 44 ky tu nguyen am hai dau.
+EpdFont smallFont(&bevietnampro_8_regular);
 EpdFontFamily smallFontFamily(&smallFont);
 
-EpdFont ui10RegularFont(&ubuntu_10_regular);
-EpdFont ui10BoldFont(&ubuntu_10_bold);
+EpdFont ui10RegularFont(&bevietnampro_10_regular);
+EpdFont ui10BoldFont(&bevietnampro_10_bold);
 EpdFontFamily ui10FontFamily(&ui10RegularFont, &ui10BoldFont);
 
-EpdFont ui12RegularFont(&ubuntu_12_regular);
-EpdFont ui12BoldFont(&ubuntu_12_bold);
+EpdFont ui12RegularFont(&geist_12_regular);
+EpdFont ui12BoldFont(&geist_12_bold);
 EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 
 // Definitions for SilentRestart.h. RTC_NOINIT survives ESP.restart() but not power loss.
 RTC_NOINIT_ATTR uint32_t silentRebootMagic;
 RTC_NOINIT_ATTR uint32_t silentRebootTarget;
+RTC_NOINIT_ATTR uint32_t silentRebootHomeMenu;
 constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
 constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
 constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
@@ -171,6 +193,7 @@ void silentRestart() {
   if (finishWifiSessionWithoutRestart()) return;
 #endif
   silentRebootTarget = SILENT_REBOOT_TARGET_HOME;
+  silentRebootHomeMenu = static_cast<uint32_t>(activityManager.homeMenuOrigin());
   silentRebootMagic = SILENT_REBOOT_MAGIC;
   LOG_DBG("MAIN", "Silent restart (target=home)");
   // E-ink retains the previous frame until Home's first paint lands (~2-3s).
@@ -198,6 +221,7 @@ void silentRestartToReader() {
 void restartToHomeAfterStorageHandoff() {
   if (deepSleepInProgress) return;  // sleeping supersedes the storage handoff reboot
   silentRebootTarget = SILENT_REBOOT_TARGET_HOME;
+  silentRebootHomeMenu = static_cast<uint32_t>(activityManager.homeMenuOrigin());
   silentRebootMagic = SILENT_REBOOT_MAGIC;
   LOG_DBG("MAIN", "Restart after storage handoff (target=home)");
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
@@ -236,8 +260,12 @@ constexpr char SLEEP_FRAME_FILE[] = "/.crosspoint/sleep_frame.bin";
 static void saveSleepFrameBuffer() {
   HalFile file;
   if (!Storage.openFileForWrite("SLP", SLEEP_FRAME_FILE, file)) return;
-  file.write(renderer.getFrameBuffer(), renderer.getBufferSize());
+  const size_t written = file.write(renderer.getFrameBuffer(), renderer.getBufferSize());
   file.close();
+  if (written != renderer.getBufferSize()) {
+    LOG_ERR("SLP", "Incomplete sleep frame: %u bytes", static_cast<unsigned>(written));
+    Storage.remove(SLEEP_FRAME_FILE);
+  }
 }
 
 static bool loadSleepFrameBuffer() {
@@ -254,8 +282,17 @@ static bool loadSleepFrameBuffer() {
   return true;
 }
 
+static void sleepWithConfiguredButtons() {
+#ifndef SIMULATOR
+  powerManager.startDeepSleep(gpio, SETTINGS.wakeButtons);
+#else
+  powerManager.startDeepSleep(gpio);
+#endif
+}
+
 // Enter deep sleep mode
 void enterDeepSleep(bool fromTimeout = false) {
+  const uint32_t sleepStarted = millis();
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
 
@@ -272,15 +309,24 @@ void enterDeepSleep(bool fromTimeout = false) {
   // Commit to sleeping before goToSleep() runs the outgoing activity's onExit():
   // a WiFi activity would otherwise silentRestart() here and reboot instead.
   deepSleepInProgress = true;
+  LOG_INF("SLP", "Timing save-state=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
   activityManager.goToSleep(fromTimeout);
+  LOG_INF("SLP", "Timing image-ready=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
+  const uint32_t retainedStarted = millis();
 
-  if (isQuickResumeSleep) {
+  // Absolute gray images leave their MSB plane, a B/W threshold of the final
+  // image. X3 can restore that baseline before its first clean wake refresh.
+  // Overlay gray masks do not represent the whole image.
+  const bool absoluteSleepFrame = gpio.deviceIsX3() && display.getController() == HalDisplay::Controller::UC8279 &&
+                                  SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT_CUSTOM;
+  if (isQuickResumeSleep || absoluteSleepFrame ||
+      SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TENOR) {
     saveSleepFrameBuffer();
   } else if (Storage.exists(SLEEP_FRAME_FILE)) {
-    // A stale Quick Resume frame must not replace the selected sleep screen during wake.
     Storage.remove(SLEEP_FRAME_FILE);
   }
 
+  LOG_INF("SLP", "Timing retained-frame=%lu ms", static_cast<unsigned long>(millis() - retainedStarted));
   // Tear down WiFi so the modem power domain isn't held alive across deep sleep.
   // Wake from deep sleep is effectively a chip reset, so no state needs to survive.
   if (WiFi.getMode() != WIFI_MODE_NULL) {
@@ -291,9 +337,10 @@ void enterDeepSleep(bool fromTimeout = false) {
   halTiltSensor.deepSleep();
   display.deepSleep();
   Storage.prepareForDeepSleep();
+  LOG_INF("SLP", "Timing ready-to-sleep=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
   LOG_DBG("MAIN", "Entering deep sleep");
 
-  powerManager.startDeepSleep(gpio);
+  sleepWithConfiguredButtons();
 }
 
 void setupDisplayAndFonts(bool seamless = false) {
@@ -363,29 +410,34 @@ void setup() {
   const bool rebootedFromPanic = HalSystem::isRebootFromPanic();
 
   // Read-and-clear so a panic later in setup() doesn't loop into silent reboot.
-  // Bound the target range too — RTC_NOINIT memory is uninitialized on cold boot.
+  // Bound the target range too - RTC_NOINIT memory is uninitialized on cold boot.
   const bool isSilentReboot = (silentRebootMagic == SILENT_REBOOT_MAGIC);
   const uint32_t snapshotTarget =
       (isSilentReboot && silentRebootTarget <= SILENT_REBOOT_TARGET_READER) ? silentRebootTarget : 0;
+  const HomeMenuItem snapshotHomeMenu =
+      isSilentReboot && silentRebootHomeMenu <= static_cast<uint32_t>(HomeMenuItem::FAVORITES_TAB)
+          ? static_cast<HomeMenuItem>(silentRebootHomeMenu)
+          : HomeMenuItem::NONE;
   silentRebootMagic = 0;
   silentRebootTarget = 0;
+  silentRebootHomeMenu = 0;
 
   gpio.begin();
   powerManager.begin();
 
   const auto wakeupReason = gpio.getWakeupReason();
-  // Sample the wake hold now — a click wake is released within milliseconds of
-  // boot — but defer the sleep-or-boot decision until SETTINGS is loaded below:
+  // Sample the wake hold now - a click wake is released within milliseconds of
+  // boot - but defer the sleep-or-boot decision until SETTINGS is loaded below:
   // click-to-wake is a setting, and an X4 battery power-off cuts all power, so
   // only SD state survives to the next boot.
   const bool wakeHoldVerified = wakeupReason != HalGPIO::WakeupReason::PowerButton || gpio.verifyPowerButtonWakeup();
 
-  // X4 Pro and X4 Classic both map BTN_UP to GPIO0 — an ESP32-S3 boot strap — so
+  // X4 Pro and X4 Classic both map BTN_UP to GPIO0 - an ESP32-S3 boot strap - so
   // gate recovery on the non-strap Down key (GPIO7) to avoid a stuck-in-recovery loop.
   const auto recoveryButton = (BoardConfig::isX4Pro() || BoardConfig::isX4Classic()) ? MappedInputManager::Button::Down
                                                                                      : MappedInputManager::Button::Up;
   const bool recoveryFirmwareMode = wakeupReason == HalGPIO::WakeupReason::PowerButton && !BoardConfig::isPaperMono() &&
-                                    mappedInputManager.isPressed(recoveryButton);
+                                    gpio.isPressed(HalGPIO::BTN_POWER) && mappedInputManager.isPressed(recoveryButton);
 
   halTiltSensor.begin();
   halClock.begin();
@@ -425,6 +477,7 @@ void setup() {
   }
   SETTINGS.loadFromFile();
   RECENT_BOOKS.loadFromFile();
+  READING_STATS.loadFromFile();
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   KOREADER_STORE.loadFromFile();
   OPDS_STORE.loadFromFile();
@@ -441,12 +494,16 @@ void setup() {
     case HalGPIO::WakeupReason::PowerButton:
       // With Short Power Button Press = Sleep, a single click wakes on any
       // device; otherwise the button must still be held (ghost-wake debounce).
-      if (!wakeHoldVerified && SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::SLEEP) {
+      if (!wakeHoldVerified && (gpio.deviceIsX3() || SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::SLEEP)) {
         LOG_DBG("MAIN", "Power-button wake not held through verification, sleeping");
+        halTiltSensor.deepSleep();
         Storage.prepareForDeepSleep();
-        powerManager.startDeepSleep(gpio);
+        sleepWithConfiguredButtons();
       }
       wakePowerReleasePending = true;
+#ifndef SIMULATOR
+      wakeSideReleasePending = gpio.validatedWakeButton() & ~(1u << HalGPIO::BTN_POWER);
+#endif
       break;
     case HalGPIO::WakeupReason::AfterUSBPower:
       // Most devices return to sleep after a USB-powered cold boot.
@@ -460,8 +517,9 @@ void setup() {
       // the device in a USB-replug boot loop (or sleep right after a flash).
       break;
 #else
+      halTiltSensor.deepSleep();
       Storage.prepareForDeepSleep();
-      powerManager.startDeepSleep(gpio);
+      sleepWithConfiguredButtons();
       break;
 #endif
     case HalGPIO::WakeupReason::AfterFlash:
@@ -471,18 +529,15 @@ void setup() {
       break;
   }
 
-  LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
+  LOG_DBG("MAIN", "Starting tenor/cross version " CROSSPOINT_VERSION);
 
-  // Resolve the single boot-presentation decision. Skipping the splash also
-  // skips the panel-clearing pass and the X3 initial-full-sync arming (see
-  // HalDisplay::begin), so the first paint is FAST_REFRESH (~500ms) over the
-  // retained frame and input dispatches against a visible UI.
+  // Resolve the boot presentation. A splashless wake cleans the retained sleep
+  // image on its first useful paint; subsequent paints use the normal cadence.
   // Only a verified deep-sleep wake may use the one-shot persisted flag.
   // Otherwise a stale flag could suppress the splash on a cold boot.
   const BootResume resume = isSilentReboot         ? BootResume::Silent
                             : isPersistedSleepWake ? BootResume::SplashlessWake
                                                    : BootResume::Splash;
-  bool allowFastInitialReaderRefresh = false;
   bool needsWakeRefresh = false;
 
   setupDisplayAndFonts(resume != BootResume::Splash);
@@ -499,26 +554,14 @@ void setup() {
       APP_STATE.showBootScreen = true;
       APP_STATE.saveToFile();
       if (Storage.exists(SLEEP_FRAME_FILE) && loadSleepFrameBuffer()) {
-        const bool useDifferentialRefresh = gpio.deviceIsX3();
-        if (useDifferentialRefresh) {
-          // begin() clears the X3 controller RAM, so restore the saved frame as
-          // the baseline before replacing the moon with the loading icon.
+        if (gpio.deviceIsX3()) {
+          // Restore controller RAM without activating a waveform. The first
+          // Home/Reader paint cleans directly from this retained sleep frame.
           renderer.cleanupGrayscaleWithFrameBuffer();
         }
-
-        const auto pageHeight = renderer.getScreenHeight();
-        renderer.drawImage(LoadingIcon, 0, pageHeight - LOADINGICON_HEIGHT, LOADINGICON_WIDTH, LOADINGICON_HEIGHT);
-        if (useDifferentialRefresh) {
-          renderer.displayGrayscaleBase(HalDisplay::FAST_REFRESH);
-          allowFastInitialReaderRefresh = true;
-        } else {
-          renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-        }
-      } else {
-        // The first Home/Reader paint is followed by an explicit clean refresh
-        // because the panel still physically shows the sleep image.
-        needsWakeRefresh = true;
+        LOG_DBG("MAIN", "Restored sleep frame baseline");
       }
+      needsWakeRefresh = true;
       break;
     case BootResume::Splash:
       activityManager.goToBoot();
@@ -539,10 +582,10 @@ void setup() {
              !APP_STATE.openEpubPath.empty()) {
     activityManager.goToReader(APP_STATE.openEpubPath);
   } else if (resume == BootResume::Silent) {
-    // target == home (or reader with no open book): land on home — don't fall
+    // target == home (or reader with no open book): land on home - don't fall
     // through to the sleep-wake "resume reader" logic, which fires on stale
     // openEpubPath + lastSleepFromReader from a prior session.
-    activityManager.goHome();
+    activityManager.goHome(snapshotHomeMenu);
   } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
              mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
     // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
@@ -554,7 +597,7 @@ void setup() {
     APP_STATE.openEpubPath = "";
     APP_STATE.readerActivityLoadCount++;
     APP_STATE.saveToFile();
-    activityManager.goToReader(path, allowFastInitialReaderRefresh);
+    activityManager.goToReader(path);
   }
 
   if (resume == BootResume::Silent) {
@@ -574,6 +617,16 @@ void setup() {
     gpio.update();
   }
 
+#ifndef SIMULATOR
+  esp_ota_img_states_t otaState;
+  if (esp_ota_get_state_partition(esp_ota_get_running_partition(), &otaState) == ESP_OK &&
+      otaState == ESP_OTA_IMG_PENDING_VERIFY) {
+    // SD, settings and activity startup succeeded. Wait for the first physical paint.
+    activityManager.requestUpdateAndWait();
+    const esp_err_t verified = esp_ota_mark_app_valid_cancel_rollback();
+    LOG_INF("OTA", "Boot self-check complete: %s", esp_err_to_name(verified));
+  }
+#endif
   allowSleepAt = millis() + 2000;
 }
 
@@ -622,6 +675,7 @@ void loop() {
   if (logSerial.available() > 0) {
     String line = logSerial.readStringUntil('\n');
     if (line.startsWith("CMD:")) {
+      powerManager.setPowerSaving(false);
       String cmd = line.substring(4);
       cmd.trim();
       if (cmd == "SCREENSHOT") {
@@ -630,6 +684,107 @@ void loop() {
         uint8_t* buf = display.getFrameBuffer();
         logSerial.write(buf, bufferSize);
         logSerial.printf("SCREENSHOT_END\n");
+#ifdef TENOR_OTA_ACCEPTANCE
+      } else if (cmd == "OTA_ACCEPTANCE") {
+        activityManager.pushActivity(makeUniqueNoThrow<OtaUpdateActivity>(renderer, mappedInputManager));
+#endif
+#ifdef TENOR_UI_ACCEPTANCE
+      } else if (cmd == "FILE_TRANSFER_AUTOCONNECT") {
+        auto activity = makeUniqueNoThrow<CrossPointWebServerActivity>(renderer, mappedInputManager);
+        if (activity) {
+          activity->requestAutoJoinForTest();
+          activityManager.replaceActivity(std::move(activity));
+          logSerial.printf("UI_TRANSFER:STARTING\n");
+        } else {
+          logSerial.printf("UI_TRANSFER:LOW_MEMORY\n");
+        }
+      } else if (cmd == "LANGUAGE_ZH") {
+        // In-memory only: a reset restores the user's saved language.
+        I18N.setLanguage(Language::ZH_HANS);
+        activityManager.goHome();
+        logSerial.printf("UI_LANGUAGE:ZH_HANS\n");
+      } else if (cmd == "LANGUAGE_RESTORE") {
+        I18N.setLanguage(static_cast<Language>(SETTINGS.language));
+        activityManager.goHome();
+        logSerial.printf("UI_LANGUAGE:RESTORED\n");
+#endif
+      } else if (cmd == "HOME") {
+        activityManager.goHome();
+      } else if (cmd == "SLEEP") {
+        enterDeepSleep();
+      } else if (cmd == "READ_RECENT") {
+        const auto& books = RECENT_BOOKS.getBooks();
+        if (!books.empty()) activityManager.goToReader(books.front().path);
+      } else if (cmd == "BOOK_STATS") {
+        const auto& books = RECENT_BOOKS.getBooks();
+        if (!books.empty())
+          activityManager.pushActivity(makeUniqueNoThrow<BookStatsActivity>(renderer, mappedInputManager,
+                                                                            books.front().path, books.front().title));
+      } else if (cmd == "QUOTES") {
+        activityManager.pushActivity(makeUniqueNoThrow<QuotesActivity>(renderer, mappedInputManager));
+      } else if (cmd == "CLOCK_SYNC") {
+        activityManager.pushActivity(makeUniqueNoThrow<ClockSyncActivity>(renderer, mappedInputManager));
+      } else if (cmd == "SETTINGS_READER") {
+        activityManager.pushActivity(makeUniqueNoThrow<SettingsActivity>(
+            renderer, mappedInputManager, static_cast<int>(settingstabs::Tab::READER), true));
+      } else if (cmd == "STATUS_BAR_SETTINGS") {
+        activityManager.pushActivity(makeUniqueNoThrow<StatusBarSettingsActivity>(renderer, mappedInputManager));
+      } else if (cmd == "MEMORY") {
+        logSerial.printf("MEMORY:%u,%u,%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+      } else if (cmd == "NETWORK") {
+        logSerial.printf("NETWORK:status=%d,rssi=%d,ip=%s,heap=%u,largest=%u\n", static_cast<int>(WiFi.status()),
+                         WiFi.RSSI(), WiFi.localIP().toString().c_str(), ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#ifndef SIMULATOR
+        logSerial.printf("NETWORK:gateway=%s,dns0=%s,dns1=%s\n", WiFi.gatewayIP().toString().c_str(),
+                         WiFi.dnsIP(0).toString().c_str(), WiFi.dnsIP(1).toString().c_str());
+      } else if (cmd == "HEAP") {
+        logSerial.printf("HEAP_START\n");
+        heap_caps_dump(MALLOC_CAP_8BIT);
+        logSerial.printf("HEAP_END\n");
+#endif
+      } else if (cmd.startsWith("TTF_PROBE ")) {
+        // CMD:TTF_PROBE <duong/dan.ttf> <pt> <so byte bo dem doc>
+        // Do chi phi to chu TTF ngay tren chip nay. Khong dinh gi toi duong doc sach.
+        String phanConLai = cmd.substring(10);
+        phanConLai.trim();
+        // Hai muc cuoi la co chu va be rong bo dem; phan dau la duong dan, va duong dan
+        // co the co khoang trang, nen do nguoc tu cuoi len. Ban gia lap khong co
+        // lastIndexOf hai tham so, nen di tay.
+        const int khoangTrangCuoi = phanConLai.lastIndexOf(' ');
+        int khoangTrangGiua = -1;
+        for (int i = khoangTrangCuoi - 1; i >= 0; --i) {
+          if (phanConLai.charAt(i) == ' ') {
+            khoangTrangGiua = i;
+            break;
+          }
+        }
+        if (khoangTrangGiua <= 0) {
+          logSerial.printf("TTF_PROBE_ERR:thieu tham so\n");
+        } else {
+          const String duongDan = phanConLai.substring(0, khoangTrangGiua);
+          const int pt = phanConLai.substring(khoangTrangGiua + 1, khoangTrangCuoi).toInt();
+          const int demRong = phanConLai.substring(khoangTrangCuoi + 1).toInt();
+          const auto kq =
+              ttfprobe::chayTrenTaskRieng(duongDan.c_str(), static_cast<uint8_t>(pt), static_cast<uint16_t>(demRong));
+          if (!kq.moDuoc) {
+            logSerial.printf("TTF_PROBE_ERR:%s\n", kq.loi ? kq.loi : "khong ro");
+          } else {
+            logSerial.printf(
+                "TTF_PROBE:font=%s,pt=%d,dem=%d,to=%u,thieu=%u,diemanh=%u,"
+                "ms_mo=%u,ms_co=%u,ms_to=%u,ms_tong=%u,nhuong=%u,"
+                "dinh_ft=%u,heap_truoc=%u,heap_thap=%u,heap_sau=%u,"
+                "ngan_xep_cap=%u,ngan_xep_con=%u,doc_the=%u,byte_the=%u\n",
+                duongDan.c_str(), pt, demRong, kq.soChuToDuoc, kq.soChuThieu, kq.tongDiemAnh, kq.msMoFont, kq.msDatCo,
+                kq.msToChu, kq.msTong, kq.soLanNhuong, kq.dinhBoNhoFt, kq.heapTruoc, kq.heapThapNhat, kq.heapSau,
+                kq.nganXepCap, kq.nganXepConDu, kq.soLanDocThe, kq.soByteDocThe);
+          }
+        }
+#ifndef SIMULATOR
+      } else if (cmd == "BUTTON_ADC") {
+        int group1, group2;
+        gpio.readButtonAdc(group1, group2);
+        logSerial.printf("BUTTON_ADC:%d,%d\n", group1, group2);
+#endif
       }
     }
   }
@@ -645,6 +800,17 @@ void loop() {
   // Let wake continue as soon as its hold has been verified. The release can
   // arrive after setup, so consume that one input frame rather than making it
   // a page turn, refresh, or other short power-button action.
+  if (wakeSideReleasePending) {
+    uint8_t pressed = 0;
+    for (uint8_t index = 0; index < 7; ++index) {
+      if (gpio.isPressed(index)) pressed |= 1u << index;
+    }
+    // An independently pressed power key remains available if a side key sticks.
+    if ((pressed & wakeSideReleasePending) == 0 || (pressed & (1u << HalGPIO::BTN_POWER))) {
+      wakeSideReleasePending = 0;
+    }
+    return;
+  }
   if (wakePowerReleasePending && !gpio.isPressed(HalGPIO::BTN_POWER)) {
     wakePowerReleasePending = false;
     return;

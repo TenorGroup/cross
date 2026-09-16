@@ -5,11 +5,13 @@
 #include <PowerManager.h>
 #include <WiFi.h>
 #include <esp_sleep.h>
+#include <esp_timer.h>
 #include <soc/soc_caps.h>
 
 #include <cassert>
 
 #include "HalGPIO.h"
+#include "WakeButtons.h"
 
 #if FREEINK_DEVICE_PAPERMONO
 #include <M5Pm1.h>
@@ -23,7 +25,9 @@ HalPowerManager powerManager;  // Singleton instance
 static constexpr gpio_num_t XTEINK_C3_GPIO13 = GPIO_NUM_13;
 
 void HalPowerManager::begin() {
-  if (BoardConfig::ACTIVE.batteryAdc >= 0) {
+  // Gauge boards never sample batteryAdc. On X3 its placeholder GPIO0 is I2C SCL;
+  // changing it to a GPIO input detaches the bus initialized by HalGPIO.
+  if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr == 0 && BoardConfig::ACTIVE.batteryAdc >= 0) {
     pinMode(BoardConfig::ACTIVE.batteryAdc, INPUT);
   }
   normalFreq = getCpuFrequencyMhz();
@@ -66,7 +70,7 @@ void HalPowerManager::setPowerSaving(bool enabled) {
   // Otherwise, no change needed
 }
 
-void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
+void HalPowerManager::startDeepSleep(HalGPIO& gpio, uint8_t wakeMode) const {
 #ifdef ENABLE_SERIAL_LOG
   // Tear down HWCDC so the host sees a clean disconnect and the peripheral
   // doesn't hold power domains that interfere with USB-powered GPIO wake.
@@ -77,8 +81,8 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
 
 #if !SOC_PM_SUPPORT_EXT1_WAKEUP
   if (gpio.isXteinkDevice()) {
-    // GPIO13 gates the battery MOSFET on both Xteink C3 boards; driving it low
-    // is the battery power-off (the SDK wake source still handles USB power).
+    // GPIO13 cuts the X4 battery latch and the X3 SD rail. X3 retains its
+    // processor supply for GPIO deep-sleep wake.
     // Release any surviving pad hold first: hold_en survives deep sleep via
     // the SDK's deepSleep() (esp_sleep_config_gpio_isolate +
     // gpio_deep_sleep_hold_en), and a held pad silently ignores the drive.
@@ -93,7 +97,7 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
   // keep-alive enables (the X4 Pro's master peripheral rail on GPIO1, the
   // Sticky's PWR_HOLD/PWR_LOCK): deepSleep() isolates all pads
   // (esp_sleep_config_gpio_isolate), so a latch without an armed hold loses its
-  // output driver and floats — on the X4 Pro the latch drops as soon as
+  // output driver and floats - on the X4 Pro the latch drops as soon as
   // external power leaves (serial/pogo adapter unplugged), and the next power-
   // button press cold-boots instead of fast-waking. holdPowerRails() asserted
   // the latches at boot but arms no sleep hold; arm it here instead. Skips
@@ -111,13 +115,41 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
   }
 
   // Cut the gated peripheral rails (touch/SD/EPD on boards like the Sticky) and
-  // hold the enables off through deep sleep — otherwise the GT911 and SD card
+  // hold the enables off through deep sleep - otherwise the GT911 and SD card
   // stay powered all through "off" and drain the battery. No-op on boards with
   // no switched rails (X4/X3). Trade-off: no touch-to-wake; wake is the power
   // button. Must run after display.deepSleep() so the panel controller gets its
   // deep-sleep command while its rail is still up (enterDeepSleep() in main.cpp
   // guarantees that ordering).
   freeink::PowerManager::powerDownRailsForSleep();
+
+  if (gpio.deviceIsX3() && wakeMode > 0 && wakeMode <= 3) {
+    wakebuttons::HoldFilter filter;
+    const uint8_t allowed = wakebuttons::allowedMask(wakeMode);
+    uint8_t failures = 0;
+    // ADC ladders have several valid high-voltage bands. Periodic light sleep
+    // retains the ADC input configuration and permits every selected band.
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+    while (true) {
+      if (filter.sample(gpio.readWakeButtons(), allowed, millis())) {
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+        if (esp_sleep_enable_timer_wakeup(1000) == ESP_OK) {
+          HalGPIO::markValidatedButtonWake(filter.acceptedButton());
+          freeink::PowerManager::deepSleep();
+        }
+        break;
+      }
+      delay(1);  // Allow idle/watchdog tasks to run between samples.
+      const int64_t started = esp_timer_get_time();
+      const esp_err_t armed = esp_sleep_enable_timer_wakeup(100000);
+      const esp_err_t result = armed == ESP_OK ? esp_light_sleep_start() : armed;
+      const bool slept = result == ESP_OK && esp_timer_get_time() - started >= 80000;
+      failures = slept ? 0 : failures + 1;
+      if (failures >= 3) break;
+    }
+    // A rejected or repeatedly short light sleep must not turn into a hot loop.
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+  }
 
 #if FREEINK_DEVICE_PAPERMONO
   // Its power button is behind the M5PM1 PMIC rather than an ESP GPIO, so

@@ -10,6 +10,7 @@
 #include "ActivityResult.h"
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
+#include "MenuNavigationMemory.h"
 #include "RenderLock.h"
 #include "util/ScreenshotInfo.h"
 
@@ -23,6 +24,8 @@ class Activity {
 
   ActivityResultHandler resultHandler;
   ActivityResult result;
+  std::string navigationPrefix;
+  void drawNavigationHeader(const char* title);
 
  public:
   explicit Activity(std::string name, GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -31,6 +34,18 @@ class Activity {
   virtual void onEnter();
   virtual void onExit();
   virtual void loop() {}
+  virtual void onTick() {}
+  virtual void onPause() {}
+  virtual void onResume() {}
+  virtual std::string navigationLabel() const { return {}; }
+  virtual bool selectSettingsSibling(int) { return false; }
+  virtual bool openPendingSettingsSibling() { return false; }
+  virtual bool saveInputBeforeHome() { return false; }
+
+  virtual std::string navigationMemoryKey() const { return name; }
+  virtual bool remembersNavigation() const { return false; }
+  virtual void captureNavigation(MenuNavigationState&) const {}
+  virtual void restoreNavigation(const MenuNavigationState&) {}
 
   virtual void render(RenderLock&&) {}
 

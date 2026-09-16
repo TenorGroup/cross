@@ -1,5 +1,5 @@
 #pragma once
-
+#include <I18n.h>
 #include <SdCardFontRegistry.h>
 
 #include <cstdint>
@@ -18,19 +18,22 @@
 // names for the Font/Style tabs.)
 class TextSettingsActivity final : public UiTabListActivity {
  public:
+  static std::string layoutValueText(int row);
+  static std::string styleValueText(int row);
   enum class Tab : uint8_t { Family, Size, Layout, Style, Count };
 
   TextSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const SdCardFontRegistry* registry,
                        Tab initialTab = Tab::Family);
 
   void onEnter() override;
+  std::string navigationLabel() const override { return I18N.get(StrId::STR_TEXT_SETTINGS); }
   void render(RenderLock&&) override;
 
  private:
   // Row indices per tab. enum class (not plain enum) so a LayoutRow can't be
   // silently confused with a StyleRow of equal value.
-  enum class LayoutRow { LineSpacing, ParaSpacing, Alignment, ScreenMargin, Count };
-  enum class StyleRow { FocusReading, Hyphenation, EmbeddedStyle, AntiAliasing, Count };
+  enum class LayoutRow { LineSpacing, ParaSpacing, Alignment, ScreenMargin, ParaIndent, Count };
+  enum class StyleRow { FocusReading, Hyphenation, EmbeddedStyle, AntiAliasing, InkWeight, Count };
 
   // --- UiTabListActivity contract ---
   int listCount() const override;
@@ -43,6 +46,9 @@ class TextSettingsActivity final : public UiTabListActivity {
   void stepTab(int direction) override { switchTab(direction); }
   bool handleButtons() override;
   bool handleCustomInput() override;
+  bool supportsFavorites() const override { return true; }
+  std::string favoriteKey(int row) const override;
+  int focusFavorite(const std::string& key) override;
 
   void applyFamily(int listIndex);
   void applySize(int listIndex);
@@ -54,8 +60,6 @@ class TextSettingsActivity final : public UiTabListActivity {
   // Applies the row at the given list index for the active tab (Confirm and tap share this).
   void activateRow(int row);
 
-  std::string layoutValueText(int row) const;
-  std::string styleValueText(int row) const;
   // Button-hint label for Confirm at the current ring position.
   const char* confirmLabelText() const;
   // True when the focused list row is a setting the preview cannot reflect.

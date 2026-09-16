@@ -175,7 +175,7 @@ inline void displayWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntil
 
 // Display the B/W base of a page whose grayscale pass follows. Panels that
 // combine the base (Paper Mono) defer the activation so base + gray planes go
-// out as one waveform — displaying the base separately makes the gray pass
+// out as one waveform - displaying the base separately makes the gray pass
 // re-drive the whole text body (a visible flash). Other panels display
 // normally. Same refresh-cadence bookkeeping as displayWithRefreshCycle.
 inline void displayBaseWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntilFullRefresh) {
@@ -193,7 +193,7 @@ inline void displayBaseWithRefreshCycle(const GfxRenderer& renderer, int& pagesU
 }
 
 // Grayscale anti-aliasing pass. Renders content twice (LSB + MSB) to build
-// the grayscale buffer. Only the content callback is re-rendered — status bars
+// the grayscale buffer. Only the content callback is re-rendered - status bars
 // and other overlays should be drawn before calling this.
 // Kept as a template to avoid std::function overhead; instantiated once per reader type.
 template <typename RenderFn>
@@ -223,20 +223,8 @@ void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn) {
   renderer.restoreBwBuffer();
 }
 
-struct BackNavCallback {
-  void* ctx;
-  void (*fn)(void*);
-};
-
-// Returns true if the back button was consumed (caller should return).
-// Long press (>= GO_BACK_OR_HOME_MS):
-// - default: go to file browser
-// - with backShortToFileBrowser: go home
-// Short press (< GO_BACK_OR_HOME_MS):
-// - default: go home
-// - with backShortToFileBrowser: go to file browser.
-inline bool handleBackNavigation(const MappedInputManager& mappedInput, ActivityManager& activityManager,
-                                 const char* filePath, BackNavCallback goHome) {
+// A short Back returns to Recent/Continue. Holding Back keeps the global Home gesture.
+inline bool handleBackNavigation(const MappedInputManager& mappedInput, ActivityManager& activityManager) {
   // The reading surface deliberately has no left-edge swipe-to-exit path: in
   // swipe page-turn mode a right swipe must page back instead. Home remains
   // available through the board's dedicated Home gesture/key. Back swipes stay
@@ -252,11 +240,7 @@ inline bool handleBackNavigation(const MappedInputManager& mappedInput, Activity
   if (!backTriggered) return false;
 
   const bool longPress = mappedInput.getHeldTime() >= GO_BACK_OR_HOME_MS;
-  if (longPress != SETTINGS.backShortToFileBrowser) {
-    activityManager.goToFileBrowser(filePath);
-  } else {
-    goHome.fn(goHome.ctx);
-  }
+  activityManager.goHome(longPress ? HomeMenuItem::NONE : HomeMenuItem::RECENT_CONTINUE);
   return true;
 }
 

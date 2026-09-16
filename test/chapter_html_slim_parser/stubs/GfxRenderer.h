@@ -1,5 +1,6 @@
 #pragma once
 
+#include <DropCap.h>
 #include <EpdFontFamily.h>
 
 #include <deque>
@@ -11,6 +12,15 @@ enum class BidiBaseDir : signed char { AUTO = -1, LTR = 0, RTL = 1 };
 
 class GfxRenderer {
  public:
+  int getDropCapAdvance(int, const char* text, EpdFontFamily::Style, int height) const {
+    return dropcap::initial(text).codepoint ? height / 2 + 4 : 0;
+  }
+  int getDropCapWordWidth(int f, const char* text, EpdFontFamily::Style s, int h) const {
+    auto c = dropcap::initial(text);
+    return c.codepoint ? getDropCapAdvance(f, text, s, h) + getTextAdvanceX(f, text + c.endBytes, s)
+                       : getTextAdvanceX(f, text, s);
+  }
+  void drawDropCapWord(int, int, int, const char*, EpdFontFamily::Style, int) const {}
   bool isFontCacheScanning() const { return false; }
   void drawLine(int, int, int, int, int, bool) const {}
   void drawText(int, int, int, const char*, bool, EpdFontFamily::Style,

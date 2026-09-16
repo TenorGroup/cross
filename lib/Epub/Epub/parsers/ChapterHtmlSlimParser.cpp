@@ -299,6 +299,7 @@ void ChapterHtmlSlimParser::flushPendingAnchor() {
   // If the pending anchor is a TOC chapter boundary, force a page break after the previous
   // block is flushed so the chapter starts on a fresh page.
   if (std::find(tocAnchors.begin(), tocAnchors.end(), pendingAnchorId) != tocAnchors.end()) {
+    chapterInitialPending = true;
     if (currentPage && !currentPage->elements.empty()) {
       completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex, currentPageVisibleOffset);
       completedPageCount++;
@@ -362,6 +363,7 @@ void ChapterHtmlSlimParser::flushPartWordBuffer() {
     }
     linkId = currentFootnoteLinkId;
   }
+  if (wordBytes && currentTextBlock->wantsDropCap()) chapterInitialPending = false;
   currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues, partWordVisibleOffset, linkId);
   if (insideTableCell && !tableRowStacked) {
     tableCellTextBytes += wordBytes;
@@ -380,6 +382,7 @@ void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
   if (currentTextBlock) {
     // already have a text block running and it is empty - just reuse it
     if (currentTextBlock->isEmpty()) {
+      currentTextBlock->resetDropCap();
       // The stack accumulates horizontal margins and text properties from ancestors.
       // Vertical margins are per-element and not inherited through the stack, but
       // container elements deposit their vertical margins on the empty block when they
@@ -417,7 +420,7 @@ void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
   // If the pending anchor is a TOC chapter boundary, force a page break after the previous
   // block is flushed so the chapter starts on a fresh page.
   flushPendingAnchor();
-  currentTextBlock.reset(new ParsedText(extraParagraphSpacing, hyphenationEnabled, focusReadingEnabled, blockStyle));
+  currentTextBlock.reset(new ParsedText(extraParagraphSpacing, hyphenationEnabled, false, blockStyle, paragraphIndent));
   wordsExtractedInBlock = 0;
   listItemBulletOnly = false;
 }
@@ -466,6 +469,7 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
       return;
     }
     currentPageNextY = 0;
+    dropCapBottom = 0;
     currentPageVisibleOffsetSet = false;
   }
 
@@ -873,8 +877,8 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
       tableCellBlockStyle.isRtl = cssStyle.direction == CssTextDirection::Rtl;
     }
 
-    self->currentTextBlock = makeUniqueNoThrow<ParsedText>(self->extraParagraphSpacing, self->hyphenationEnabled,
-                                                           self->focusReadingEnabled, tableCellBlockStyle);
+    self->currentTextBlock = makeUniqueNoThrow<ParsedText>(self->extraParagraphSpacing, self->hyphenationEnabled, false,
+                                                           tableCellBlockStyle, self->paragraphIndent);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: table cell");
       self->skipUntilDepth = self->depth;
@@ -967,7 +971,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
 
             {
               // Probe the dimensions from the entry's first bytes (early-aborted
-              // inflate, a few KB) instead of extracting the whole image now —
+              // inflate, a few KB) instead of extracting the whole image now -
               // extraction is deferred to the first render of the page (see
               // ImageBlock's lazy extractor). This is what keeps first-open of an
               // image-heavy chapter from stalling for seconds per image.
@@ -977,7 +981,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
               bool gotDimensions = headerProbe.getDimensions(dims);
 
               if (!gotDimensions) {
-                // No header within the stream (rare) — fall back to extracting the
+                // No header within the stream (rare) - fall back to extracting the
                 // whole image and probing the file. That can take seconds, so
                 // surface the indexing popup first (single-shot per parser).
                 if (self->popupFn && !self->imagePopupFired) {
@@ -1315,7 +1319,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
       self->inlineStyleStack.push_back(entry);
       self->updateEffectiveInlineStyle();
 
-      // Skip CSS resolution — we already handled styling for this <a> tag
+      // Skip CSS resolution - we already handled styling for this <a> tag
       self->depth += 1;
       return;
     }
@@ -1355,6 +1359,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
         self->blockStyleStack.back().getCombinedBlockStyle(headerBlockStyle, BlockStyle::CombineAxis::Horizontal);
     self->blockStyleStack.push_back(accumulated);
     self->startNewTextBlock(accumulated.withoutBottom());
+    self->currentTextBlock->enableDropCap(0);
     self->boldUntilDepth = std::min(self->boldUntilDepth, self->depth);
     self->updateEffectiveInlineStyle();
   } else if (matches(name, BLOCK_TAGS, std::size(BLOCK_TAGS))) {
@@ -1387,6 +1392,10 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                                                                                   BlockStyle::CombineAxis::Horizontal);
       self->blockStyleStack.push_back(accumulated);
       self->startNewTextBlock(accumulated.withoutBottom());
+      if (strcmp(name, "p") == 0 && self->focusReadingEnabled && self->chapterInitialPending && self->tableDepth == 0) {
+        self->currentTextBlock->enableDropCap(self->renderer.getLineHeight(self->fontId, self->lineCompression) * 2 -
+                                              4);
+      }
       self->updateEffectiveInlineStyle();
 
       if (strcmp(name, "li") == 0) {
@@ -1547,8 +1556,8 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
   if (!self->currentTextBlock) {
     const BlockStyle flowStyle =
         self->blockStyleStack.empty() ? BlockStyle() : self->blockStyleStack.back().withoutBottom();
-    self->currentTextBlock = makeUniqueNoThrow<ParsedText>(self->extraParagraphSpacing, self->hyphenationEnabled,
-                                                           self->focusReadingEnabled, flowStyle);
+    self->currentTextBlock = makeUniqueNoThrow<ParsedText>(self->extraParagraphSpacing, self->hyphenationEnabled, false,
+                                                           flowStyle, self->paragraphIndent);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: text block for character data");
       return;
@@ -1596,7 +1605,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       if (self->partWordBufferIndex > 0) {
         self->flushPartWordBuffer();
       }
-      // Whitespace is a real word boundary — reset continuation state
+      // Whitespace is a real word boundary - reset continuation state
       self->nextWordContinues = false;
       // Skip the whitespace char
       continue;
@@ -1638,7 +1647,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       continue;
     }
 
-    // U+202F (narrow no-break space) — identical logic to U+00A0 above.
+    // U+202F (narrow no-break space) - identical logic to U+00A0 above.
     if (static_cast<uint8_t>(s[i]) == 0xE2 && i + 2 < len && static_cast<uint8_t>(s[i + 1]) == 0x80 &&
         static_cast<uint8_t>(s[i + 2]) == 0xAF) {
       if (self->partWordBufferIndex > 0) {
@@ -1681,7 +1690,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       int safeLen = utf8SafeTruncateBuffer(self->partWordBuffer, self->partWordBufferIndex);
 
       if (safeLen < self->partWordBufferIndex && safeLen > 0) {
-        // Incomplete UTF-8 sequence at the end — save it before flushing
+        // Incomplete UTF-8 sequence at the end - save it before flushing
         int overflow = self->partWordBufferIndex - safeLen;
         uint32_t overflowVisibleOffset = self->partWordVisibleOffset;
         const unsigned char* offsetPtr = reinterpret_cast<const unsigned char*>(self->partWordBuffer);
@@ -1856,7 +1865,7 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
 
   self->depth -= 1;
 
-  // Closing a footnote link — create entry from collected text and href
+  // Closing a footnote link - create entry from collected text and href
   if (self->insideFootnoteLink && self->depth == self->footnoteLinkDepth) {
     if (self->currentFootnote.number[0] != '\0' && self->currentFootnote.href[0] != '\0') {
       FootnoteEntry entry;
@@ -1903,8 +1912,8 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
 
     const BlockStyle flowStyle =
         self->blockStyleStack.empty() ? BlockStyle() : self->blockStyleStack.back().withoutBottom();
-    self->currentTextBlock = makeUniqueNoThrow<ParsedText>(self->extraParagraphSpacing, self->hyphenationEnabled,
-                                                           self->focusReadingEnabled, flowStyle);
+    self->currentTextBlock = makeUniqueNoThrow<ParsedText>(self->extraParagraphSpacing, self->hyphenationEnabled, false,
+                                                           flowStyle, self->paragraphIndent);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: text block after table");
     }
@@ -1933,7 +1942,7 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
     self->currentCssStyle.reset();
     self->updateEffectiveInlineStyle();
 
-    // br is self-closing and not a container — it doesn't push/pop the stack.
+    // br is self-closing and not a container - it doesn't push/pop the stack.
     if (strcmp(name, "br") != 0 && self->blockStyleStack.size() > 1) {
       // Apply closing element's bottom margin to the current text block so
       // container spacing appears after the element's content (on the last child),
@@ -1969,6 +1978,8 @@ ChapterHtmlSlimParser::~ChapterHtmlSlimParser() { abortParse(); }
 
 bool ChapterHtmlSlimParser::beginParse() {
   htmlEnded_ = false;
+  chapterInitialPending = true;
+  dropCapBottom = 0;
   // Initialize block style stack with a root entry representing "no ancestor block elements".
   // The user's paragraph alignment is set as the default so child elements without explicit
   // text-align inherit it correctly through getCombinedBlockStyle.
@@ -2115,15 +2126,18 @@ void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
   if (!currentPage) {
     currentPage.reset(new Page());
     currentPageNextY = 0;
+    dropCapBottom = 0;
     currentPageVisibleOffsetSet = false;
   }
 
-  if (currentPageNextY + lineHeight > viewportHeight) {
+  const int requiredHeight = std::max(lineHeight, static_cast<int>(line->getDropCapHeight()) + 4);
+  if (currentPageNextY + requiredHeight > viewportHeight) {
     setCurrentPageVisibleOffset(visibleOffset);
     completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex, currentPageVisibleOffset);
     completedPageCount++;
     currentPage.reset(new Page());
     currentPageNextY = 0;
+    dropCapBottom = 0;
     currentPageVisibleOffsetSet = false;
   }
   setCurrentPageVisibleOffset(visibleOffset);
@@ -2148,6 +2162,7 @@ void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
       LOG_DBG("EHP", "Dropped page link: %.48s", link.href);
     }
   }
+  if (line->getDropCapHeight()) dropCapBottom = currentPageNextY + requiredHeight;
   auto pageLine = makeUniqueNoThrow<PageLine>(std::move(line), xOffset, currentPageNextY);
   if (!pageLine) {
     LOG_ERR("EHP", "OOM: PageLine");
@@ -2166,6 +2181,7 @@ void ChapterHtmlSlimParser::makePages() {
   if (!currentPage) {
     currentPage.reset(new Page());
     currentPageNextY = 0;
+    dropCapBottom = 0;
     currentPageVisibleOffsetSet = false;
   }
 
@@ -2185,10 +2201,14 @@ void ChapterHtmlSlimParser::makePages() {
   const uint16_t effectiveWidth =
       (horizontalInset < viewportWidth) ? static_cast<uint16_t>(viewportWidth - horizontalInset) : viewportWidth;
 
+  if (!currentTextBlock->isEmpty() && currentTextBlock->wantsDropCap()) chapterInitialPending = false;
   currentTextBlock->layoutAndExtractLines(renderer, fontId, effectiveWidth,
                                           [this](std::unique_ptr<TextBlock> textBlock, const uint32_t offset) {
                                             addLineToPage(std::move(textBlock), offset);
                                           });
+
+  currentPageNextY = std::max<int>(currentPageNextY, dropCapBottom);
+  dropCapBottom = 0;
 
   // Fallback: transfer any remaining pending footnotes to current page.
   // Normally addLineToPage handles this via word-index tracking, but this catches

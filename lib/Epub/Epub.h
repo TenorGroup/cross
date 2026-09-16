@@ -68,6 +68,9 @@ class Epub {
   BookMetadataCache::TocEntry getTocItem(int tocIndex) const;
   int getSpineItemsCount() const;
   int getTocItemsCount() const;
+  std::unique_ptr<BookMetadataCache::TocCursor> openTocCursor(int start = 0) const {
+    return bookMetadataCache ? bookMetadataCache->openTocCursor(start) : nullptr;
+  }
   int getSpineIndexForTocIndex(int tocIndex) const;
   int getTocIndexForSpineIndex(int spineIndex) const;
   size_t getCumulativeSpineItemSize(int spineIndex) const;

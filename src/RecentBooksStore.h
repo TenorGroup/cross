@@ -10,6 +10,7 @@ struct RecentBook {
   std::string title;
   std::string author;
   std::string coverBmpPath;
+  std::string excerpt;
 
   bool operator==(const RecentBook& other) const { return path == other.path; }
 };
@@ -34,6 +35,7 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
   void addBook(const std::string& path, const std::string& title, const std::string& author,
                const std::string& coverBmpPath);
 
+  bool rememberExcerpt(const std::string& path, const std::string& text);
   void updateBook(const std::string& path, const std::string& title, const std::string& author,
                   const std::string& coverBmpPath);
 
@@ -52,7 +54,7 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
   static bool isMissing(const RecentBook& book);
 
   // Remove entries whose backing file is no longer on the SD card.
-  // Returns true if any entry was removed. Does not persist — caller decides.
+  // Returns true if any entry was removed. Does not persist - caller decides.
   bool pruneMissing();
 
   // Get the list of recent books (most recent first)

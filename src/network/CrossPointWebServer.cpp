@@ -5,6 +5,7 @@
 #include <FsHelpers.h>
 #include <HalGPIO.h>
 #include <HalStorage.h>
+#include <InlineButtonText.h>
 #include <Logging.h>
 #include <WiFi.h>
 #include <esp_efuse.h>
@@ -24,6 +25,7 @@
 #include "html/FontsPageHtml.generated.h"
 #include "html/HomePageHtml.generated.h"
 #include "html/SettingsPageHtml.generated.h"
+#include "html/ThemeCss.generated.h"
 #include "html/js/jszip_minJs.generated.h"
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
@@ -143,6 +145,7 @@ void CrossPointWebServer::begin() {
   LOG_DBG("WEB", "Setting up routes...");
   server->on("/", HTTP_GET, [this] { handleRoot(); });
   server->on("/files", HTTP_GET, [this] { handleFileList(); });
+  server->on("/theme.css", HTTP_GET, [this] { handleTheme(); });
   server->on("/js/jszip.min.js", HTTP_GET, [this] { handleJszip(); });
 
   server->on("/api/status", HTTP_GET, [this] { handleStatus(); });
@@ -304,7 +307,9 @@ void CrossPointWebServer::handleClient() {
 
   // Print debug every 10 seconds to confirm handleClient is being called
   if (millis() - lastDebugPrint > 10000) {
-    LOG_DBG("WEB", "handleClient active, server running on port %d", port);
+    LOG_INF("WEB", "Alive port=%u heap=%u largest=%u stack=%u wifi=%d rssi=%d", port, ESP.getFreeHeap(),
+            ESP.getMaxAllocHeap(), static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)),
+            static_cast<int>(WiFi.status()), WiFi.RSSI());
     lastDebugPrint = millis();
   }
 
@@ -364,9 +369,13 @@ static void sendStaticContent(WebServer* server, const char* data, size_t len, c
   server->sendHeader("Content-Encoding", "gzip");
   server->sendHeader("ETag", etag);
   // no-cache: the browser may cache, but must revalidate (conditional GET)
-  // before reuse — this is what unlocks 304 responses.
+  // before reuse - this is what unlocks 304 responses.
   server->sendHeader("Cache-Control", "no-cache");
   server->send_P(200, contentType, data, len);
+}
+
+void CrossPointWebServer::handleTheme() const {
+  sendStaticContent(server.get(), ThemeCss, ThemeCssCompressedSize, ThemeCssETag, "text/css; charset=utf-8");
 }
 
 void CrossPointWebServer::handleRoot() const {
@@ -550,7 +559,7 @@ void CrossPointWebServer::handleFileListData() const {
   LOG_DBG("WEB", "Served file listing page for path: %s", currentPath.c_str());
 }
 
-void CrossPointWebServer::handleDownload() const {
+void CrossPointWebServer::handleDownload() {
   if (!server->hasArg("path")) {
     server->send(400, "text/plain", "Missing path");
     return;
@@ -606,10 +615,15 @@ void CrossPointWebServer::handleDownload() const {
   server->send(200, contentType.c_str(), "");
 
   NetworkClient client = server->client();
-  const size_t chunkSize = 4096;
-  uint8_t buffer[chunkSize];
-
-  bool downloadOk = true;
+  // HTTP handlers run serially; reuse the upload arena instead of spending
+  // half of loopTask's stack on a second transfer buffer.
+  auto* buffer = upload.buffer.data();
+  const size_t chunkSize = upload.buffer.size();
+  const uint32_t started = millis();
+  size_t sent = 0;
+  LOG_INF("WEB", "Download begin bytes=%u heap=%u stack=%u", static_cast<unsigned>(file.size()), ESP.getFreeHeap(),
+          static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+  bool downloadOk = chunkSize > 0;
   while (downloadOk && file.available()) {
     int result = file.read(buffer, chunkSize);
     if (result <= 0) break;
@@ -623,10 +637,14 @@ void CrossPointWebServer::handleDownload() const {
         break;
       }
       totalWritten += wrote;
+      sent += wrote;
     }
   }
   client.clear();
   file.close();
+  LOG_INF("WEB", "Download end ok=%d sent=%u elapsed=%lu heap=%u stack=%u", downloadOk, static_cast<unsigned>(sent),
+          static_cast<unsigned long>(millis() - started), ESP.getFreeHeap(),
+          static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
 }
 
 // Diagnostic counters for upload performance analysis
@@ -696,7 +714,8 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
       state.path = "/";
     }
 
-    LOG_DBG("WEB", "[UPLOAD] START: %s to path: %s", state.fileName.c_str(), state.path.c_str());
+    LOG_INF("WEB", "Upload begin name=%s heap=%u largest=%u stack=%u", state.fileName.c_str(), ESP.getFreeHeap(),
+            ESP.getMaxAllocHeap(), static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     LOG_DBG("WEB", "[UPLOAD] Free heap: %d bytes", ESP.getFreeHeap());
 
     String filePath = state.path;
@@ -771,7 +790,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
         const unsigned long elapsed = millis() - uploadStartTime;
         const float avgKbps = (elapsed > 0) ? (state.size / 1024.0) / (elapsed / 1000.0) : 0;
         const float writePercent = (elapsed > 0) ? (totalWriteTime * 100.0 / elapsed) : 0;
-        LOG_DBG("WEB", "[UPLOAD] Complete: %s (%d bytes in %lu ms, avg %.1f KB/s)", state.fileName.c_str(), state.size,
+        LOG_INF("WEB", "[UPLOAD] Complete: %s (%d bytes in %lu ms, avg %.1f KB/s)", state.fileName.c_str(), state.size,
                 elapsed, avgKbps);
         LOG_DBG("WEB", "[UPLOAD] Diagnostics: %d writes, total write time: %lu ms (%.1f%%)", writeCount, totalWriteTime,
                 writePercent);
@@ -1134,7 +1153,7 @@ void CrossPointWebServer::handleDelete() const {
       f.close();
       success = Storage.rmdir(itemPath.c_str());
     } else {
-      // It's a file (or couldn't open as dir) — remove file
+      // It's a file (or couldn't open as dir) - remove file
       if (f) f.close();
       success = Storage.remove(itemPath.c_str());
       clearBookCache(itemPath.c_str());
@@ -1160,7 +1179,7 @@ void CrossPointWebServer::handleSettingsPage() const {
 
 void CrossPointWebServer::handleGetSettings() const {
   // Pass the SD font registry so the fontFamily setting's enumStringValues
-  // includes SD-resident families — otherwise the web API only exposes the
+  // includes SD-resident families - otherwise the web API only exposes the
   // three built-in fonts.
   const auto& settings = getSettingsList(&sdFontSystem.registry());
 
@@ -1178,7 +1197,7 @@ void CrossPointWebServer::handleGetSettings() const {
 
     doc.clear();
     doc["key"] = s.key;
-    doc["name"] = I18N.get(s.nameId);
+    doc["name"] = plainButtonText(I18N.get(s.nameId));
     doc["category"] = I18N.get(s.category);
 
     switch (s.type) {
@@ -1288,6 +1307,9 @@ void CrossPointWebServer::handlePostSettings() {
                                                       : static_cast<int>(s.enumStringValues.size());
         if (val >= 0 && val < maxVal) {
           if (s.valuePtr) {
+            if (s.valuePtr == &CrossPointSettings::clockUtcOffsetQ && SETTINGS.clockUtcOffsetQ != val) {
+              SETTINGS.clockAutoTimezone = 0;
+            }
             SETTINGS.*(s.valuePtr) = static_cast<uint8_t>(val);
           } else if (s.valueSetter) {
             s.valueSetter(static_cast<uint8_t>(val));
@@ -1349,7 +1371,7 @@ void CrossPointWebServer::handleGetOpdsServers() const {
     doc["name"] = servers[i].name;
     doc["url"] = servers[i].url;
     doc["username"] = servers[i].username;
-    // Never expose passwords over the API — only indicate whether one is set
+    // Never expose passwords over the API - only indicate whether one is set
     doc["hasPassword"] = !servers[i].password.empty();
 
     const size_t written = serializeJson(doc, output, outputSize);
@@ -1386,7 +1408,7 @@ void CrossPointWebServer::handlePostOpdsServer() {
   opdsServer.username = doc["username"] | std::string("");
 
   // The password field is optional in the JSON payload. When absent (vs. present but empty),
-  // we preserve the existing password — the web UI omits it when the user hasn't changed it.
+  // we preserve the existing password - the web UI omits it when the user hasn't changed it.
   bool hasPasswordField = doc["password"].is<const char*>() || doc["password"].is<std::string>();
   std::string password = doc["password"] | std::string("");
 
@@ -1465,7 +1487,7 @@ void CrossPointWebServer::handleGetWifiNetworks() const {
     doc.clear();
     doc["index"] = i;
     doc["ssid"] = credentials[i].ssid;
-    // Never expose Wi-Fi passwords over the API — only indicate whether one is set
+    // Never expose Wi-Fi passwords over the API - only indicate whether one is set
     doc["hasPassword"] = credentials[i].hasPassword;
     doc["isLastConnected"] = credentials[i].isLastConnected;
 
@@ -1782,45 +1804,97 @@ void CrossPointWebServer::handleFontsPage() const {
   LOG_DBG("WEB", "Served fonts page");
 }
 
-void CrossPointWebServer::handleFontList() const {
+void CrossPointWebServer::handleFontList() {
   // Pick up any uploads/deletes that happened since the last reader load.
   const_cast<SdCardFontSystem&>(sdFontSystem).refreshIfDirty();
   const auto& families = sdFontSystem.registry().getFamilies();
 
+  // The synchronous HTTP handler reuses the transfer arena. Coalesce small
+  // JSON fragments so TCP does not queue hundreds of tiny chunked writes.
+  size_t buffered = 0;
+  const auto flush = [&]() -> bool {
+    if (buffered == 0) return true;
+    server->sendContent(reinterpret_cast<const char*>(upload.buffer.data()), buffered);
+    buffered = 0;
+    resetTaskWatchdogIfSubscribed();
+    return server->client().connected();
+  };
+  const auto append = [&](const char* text) -> bool {
+    size_t remaining = strlen(text);
+    while (remaining > 0) {
+      const size_t count = std::min(remaining, upload.buffer.size() - buffered);
+      memcpy(upload.buffer.data() + buffered, text, count);
+      buffered += count;
+      text += count;
+      remaining -= count;
+      if (buffered == upload.buffer.size() && !flush()) return false;
+    }
+    return true;
+  };
+
+  // Keep only one name or file record in RAM, regardless of catalog size.
   JsonDocument doc;
-  JsonArray arr = doc["families"].to<JsonArray>();
-  doc["maxFamilies"] = SdCardFontRegistry::MAX_SD_FAMILIES;
-
-  for (const auto& family : families) {
-    JsonObject fObj = arr.add<JsonObject>();
-    fObj["name"] = family.name;
-
-    JsonArray sizes = fObj["sizes"].to<JsonArray>();
-    for (uint8_t s : family.availableSizes()) {
-      sizes.add(s);
-    }
-
-    JsonArray files = fObj["files"].to<JsonArray>();
-    for (const auto& file : family.files) {
-      JsonObject fileObj = files.add<JsonObject>();
-      // Extract filename from full path
-      const char* name = strrchr(file.path.c_str(), '/');
-      fileObj["name"] = name ? name + 1 : file.path.c_str();
-
-      // Stat the file for size
-      HalFile f;
-      if (Storage.openFileForRead("WEB", file.path.c_str(), f)) {
-        fileObj["size"] = static_cast<unsigned long>(f.size());
-        f.close();
-      } else {
-        fileObj["size"] = 0;
-      }
-    }
-  }
-
   String json;
-  serializeJson(doc, json);
-  server->send(200, "application/json", json);
+  const auto sendRecord = [&]() -> bool {
+    json = "";
+    const size_t length = measureJson(doc);
+    bool allocated = !doc.overflowed();
+#ifndef SIMULATOR
+    allocated = allocated && json.reserve(length);
+#endif
+    if (!allocated) {
+      LOG_ERR("WEB", "Font catalog response allocation failed");
+      server->client().stop();
+      return false;
+    }
+    if (serializeJson(doc, json) != length) {
+      server->client().stop();
+      return false;
+    }
+    return append(json.c_str());
+  };
+  server->setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server->send(200, "application/json", "");
+  if (!append("{\"families\":[")) return;
+  bool firstFamily = true;
+  char value[64];
+  for (const auto& family : families) {
+    if (!firstFamily && !append(",")) return;
+    firstFamily = false;
+    if (!append("{\"name\":")) return;
+    doc.clear();
+    doc.set(family.name.c_str());
+    if (!sendRecord()) return;
+    if (!append(",\"sizes\":[")) return;
+    bool firstSize = true;
+    for (const uint8_t size : family.availableSizes()) {
+      snprintf(value, sizeof(value), "%s%u", firstSize ? "" : ",", static_cast<unsigned>(size));
+      firstSize = false;
+      if (!append(value)) return;
+    }
+    if (!append("],\"files\":[")) return;
+    bool firstFile = true;
+    for (const auto& file : family.files) {
+      if (!firstFile && !append(",")) return;
+      firstFile = false;
+      doc.clear();
+      const char* name = strrchr(file.path.c_str(), '/');
+      doc["name"] = name ? name + 1 : file.path.c_str();
+      HalFile font;
+      const bool opened = Storage.openFileForRead("WEB", file.path.c_str(), font);
+      doc["size"] = opened ? static_cast<unsigned long>(font.size()) : 0;
+      if (opened) font.close();
+      if (!sendRecord()) return;
+      resetTaskWatchdogIfSubscribed();
+    }
+    if (!append("]}")) return;
+  }
+  snprintf(value, sizeof(value), "],\"maxFamilies\":%d}", SdCardFontRegistry::MAX_SD_FAMILIES);
+  if (!append(value)) return;
+  if (!flush()) return;
+  server->sendContent("");
+  LOG_INF("WEB", "Font catalog streamed families=%u heap=%u largest=%u", static_cast<unsigned>(families.size()),
+          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 }
 
 void CrossPointWebServer::handleFontUploadData() {
@@ -1891,19 +1965,19 @@ void CrossPointWebServer::handleFontUploadData() {
         fontUpload.magicChecked = true;
       }
 
-      // Buffer writes for efficiency
+      // Font and general uploads share the serial HTTP handler's arena.
       size_t remaining = upload.currentSize;
       const uint8_t* src = upload.buf;
       while (remaining > 0) {
-        size_t space = FontUploadState::BUFFER_SIZE - fontUpload.bufferPos;
+        size_t space = UploadState::UPLOAD_BUFFER_SIZE - fontUpload.bufferPos;
         size_t chunk = (remaining < space) ? remaining : space;
-        memcpy(fontUpload.buffer.data() + fontUpload.bufferPos, src, chunk);
+        memcpy(this->upload.buffer.data() + fontUpload.bufferPos, src, chunk);
         fontUpload.bufferPos += chunk;
         src += chunk;
         remaining -= chunk;
 
-        if (fontUpload.bufferPos >= FontUploadState::BUFFER_SIZE) {
-          fontUpload.file.write(fontUpload.buffer.data(), fontUpload.bufferPos);
+        if (fontUpload.bufferPos >= UploadState::UPLOAD_BUFFER_SIZE) {
+          fontUpload.file.write(this->upload.buffer.data(), fontUpload.bufferPos);
           fontUpload.bytesWritten += fontUpload.bufferPos;
           fontUpload.bufferPos = 0;
           resetTaskWatchdogIfSubscribed();
@@ -1915,7 +1989,7 @@ void CrossPointWebServer::handleFontUploadData() {
     case UPLOAD_FILE_END: {
       // Flush remaining buffer
       if (fontUpload.valid && fontUpload.bufferPos > 0) {
-        fontUpload.file.write(fontUpload.buffer.data(), fontUpload.bufferPos);
+        fontUpload.file.write(this->upload.buffer.data(), fontUpload.bufferPos);
         fontUpload.bytesWritten += fontUpload.bufferPos;
         fontUpload.bufferPos = 0;
       }

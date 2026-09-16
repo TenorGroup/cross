@@ -16,7 +16,7 @@
 
 void SdFirmwareUpdateActivity::onEnter() {
   Activity::onEnter();
-  // Build-identity marker — confirms which firmware build owns the SD update flow.
+  // Build-identity marker - confirms which firmware build owns the SD update flow.
   LOG_INF("FW", "SdFirmwareUpdateActivity build=%s %s recovery=%d", __DATE__, __TIME__, recoveryMode ? 1 : 0);
   state = State::PICKING;
   launchPicker();
@@ -248,7 +248,7 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
     const int hintY = top + lineHeight + metrics.verticalSpacing;
     const Rect hintBounds{metrics.contentSidePadding, hintY, pageWidth - metrics.contentSidePadding * 2,
                           pageHeight - hintY};
-    UITheme::drawCenteredWrappedText(renderer, hintBounds, UI_10_FONT_ID, tr(STR_RESTARTING_HINT), 3, true,
+    UITheme::drawCenteredWrappedText(renderer, hintBounds, SMALL_FONT_ID, tr(STR_RESTARTING_HINT), 3, true,
                                      EpdFontFamily::REGULAR, UITheme::TextVerticalAlignment::TOP);
   } else if (state == State::FAILED) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_UPDATE_FAILED), true, EpdFontFamily::BOLD);
@@ -260,7 +260,7 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
   } else {
     // PICKING / CONFIRMING: a sub-activity is on top, nothing to draw.
     if (recoveryMode) {
-      renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_RECOVERY_MODE_HINT));
+      renderer.drawCenteredText(SMALL_FONT_ID, top, tr(STR_RECOVERY_MODE_HINT));
     }
   }
 

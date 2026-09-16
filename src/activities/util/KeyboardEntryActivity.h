@@ -28,6 +28,10 @@ class KeyboardEntryActivity : public Activity {
         inputType(inputType) {}
 
   void onEnter() override;
+  bool saveInputBeforeHome() override {
+    onComplete(text);
+    return true;
+  }
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
@@ -89,7 +93,7 @@ class KeyboardEntryActivity : public Activity {
   // table on the render task; render() opts `interactions` into the SDK's
   // double-buffered publish cycle (beginPublishCycle()/publish()) so
   // TouchHoldRouter's routePublished()-based reads in loop() always see a
-  // complete, previously-published table, never one mid-rebuild — no taps
+  // complete, previously-published table, never one mid-rebuild - no taps
   // dropped for that reason anymore. interactionsReady itself gates only
   // before the very first publish (nothing registered yet). Do not clear it
   // for later renders: the point of retaining the published generation is
@@ -107,7 +111,7 @@ class KeyboardEntryActivity : public Activity {
   bool cursorPositionFromPoint(int x, int y, size_t& position) const;
   std::string displayTextForCurrentState() const;
   // Advance of s[start, end) measured in place by temporarily null-terminating
-  // at `end` — avoids a substr temporary per measurement.
+  // at `end` - avoids a substr temporary per measurement.
   int measureRange(std::string& s, int start, int end) const;
   bool rangeIsRtl(std::string& s, int start, int end) const;
   // Largest line end in (start, s.length()] whose advance fits maxWidth.
@@ -120,6 +124,21 @@ class KeyboardEntryActivity : public Activity {
   int selectedLogicalIndex() const;
   void clampSelection();
   void moveSelectionRow(int delta);
+  // Column the user last picked on purpose, and the row width it was picked in.
+  // Vertical travel maps from this anchor instead of from the current column:
+  // remapping per hop truncates every time, so j -> up -> down used to land on h.
+  void setColumnAnchor();
+  // Back hold clears the field; the release must then not also cancel.
+  bool backHeld = false;
+  bool backLongHandled = false;
+  // Edge-button hold: tap steps one key, hold edits the text.
+  bool colPrevHeld = false;
+  bool colPrevLongHandled = false;
+  bool colNextHeld = false;
+  bool colNextLongHandled = false;
+  int colAnchor = 0;
+  int colAnchorWidth = 0;
+  bool colAnchorAligned = false;
   void moveSelectionCol(int delta);
   bool syncSelectionToValue(int16_t value);
   // Handles one key activation (by stable key id). Returns true when the

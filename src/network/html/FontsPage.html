@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CrossPoint Reader - Fonts</title>
+    <title>tenor/cross - Fonts</title>
     <style>
       :root {
         --font-color: #333;
@@ -121,27 +121,28 @@
       .status-err { background: #f8d7da; color: #721c24; display: block !important; }
       .empty { color: var(--label-color); text-align: center; padding: 20px; }
     </style>
-  </head>
-  <body>
-    <h1>📚 CrossPoint Reader</h1>
+  <link rel="stylesheet" href="/theme.css" />
+</head>
+  <body class="tenor-transfer">
+    <!--TENOR_BRAND-->
 
     <div class="nav-links">
-      <a href="/">Home</a>
-      <a href="/files">File Manager</a>
-      <a href="/settings">Settings</a>
-      <a href="/fonts" class="active">Fonts</a>
+      <a href="/">Thiết bị</a>
+      <a href="/files">Tệp</a>
+      <a href="/settings">Cài đặt</a>
+      <a href="/fonts" class="active">Font chữ</a>
     </div>
 
     <div class="card">
-      <h2>Installed Fonts</h2>
+      <h2>Font đã cài</h2>
       <div id="families"><p class="empty">Loading...</p></div>
     </div>
 
     <div class="card">
-      <h2>Upload Font</h2>
+      <h2>Thêm font chữ</h2>
       <form class="upload-form" id="uploadForm">
         <input type="file" id="fontFiles" webkitdirectory directory multiple required />
-        <button type="submit" class="btn btn-primary">Upload</button>
+        <button type="submit" class="btn btn-primary">Gửi font</button>
       </form>
       <p id="pickedInfo" class="family-meta" style="margin: 8px 0 0;"></p>
       <div id="status"></div>
@@ -188,7 +189,7 @@
 
           const btn = document.createElement('button');
           btn.className = 'btn btn-danger';
-          btn.textContent = 'Delete';
+          btn.textContent = 'Xóa';
           // Capture name in the closure rather than interpolating into onclick.
           const familyName = f.name;
           btn.addEventListener('click', () => deleteFamily(familyName));

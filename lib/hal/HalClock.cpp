@@ -3,6 +3,7 @@
 #include <Logging.h>
 #include <WiFi.h>
 #include <esp_sntp.h>
+#include <sys/time.h>
 #include <time.h>
 
 HalClock halClock;  // Singleton instance
@@ -10,6 +11,21 @@ HalClock halClock;  // Singleton instance
 void HalClock::begin() {
   _available = _sdkRtc.begin();
   LOG_INF("CLK", _available ? "SDK RTC found" : "RTC not found");
+  Rtc::DateTime dt;
+  if (_available && _sdkRtc.now(dt) && dt.year >= 2020 && dt.year <= 2099 && dt.month >= 1 && dt.month <= 12 &&
+      dt.day >= 1 && dt.day <= 31 && dt.hour <= 23 && dt.minute <= 59 && dt.second <= 59) {
+    struct tm utc = {};
+    utc.tm_year = dt.year - 1900;
+    utc.tm_mon = dt.month - 1;
+    utc.tm_mday = dt.day;
+    utc.tm_hour = dt.hour;
+    utc.tm_min = dt.minute;
+    utc.tm_sec = dt.second;
+    setenv("TZ", "UTC0", 1);
+    tzset();
+    const struct timeval systemTime = {mktime(&utc), 0};
+    settimeofday(&systemTime, nullptr);
+  }
 }
 
 bool HalClock::getTime(uint8_t& hour, uint8_t& minute) const {
@@ -32,10 +48,23 @@ bool HalClock::getTime(uint8_t& hour, uint8_t& minute) const {
   }
   _cachedHour = dt.hour;
   _cachedMinute = dt.minute;
+  _cachedYear = dt.year;
+  _cachedMonth = dt.month;
+  _cachedDay = dt.day;
   _lastPollMs = now;
   _hasCachedTime = true;
   hour = _cachedHour;
   minute = _cachedMinute;
+  return true;
+}
+
+bool HalClock::getDateTime(uint16_t& year, uint8_t& month, uint8_t& day, uint8_t& hour, uint8_t& minute) const {
+  // Di qua getTime() de dung chung bo dem va nhip doc 10 giay; no da nap ngay thang vao
+  // bo dem roi, o day chi viec doc ra.
+  if (!getTime(hour, minute)) return false;
+  year = _cachedYear;
+  month = _cachedMonth;
+  day = _cachedDay;
   return true;
 }
 

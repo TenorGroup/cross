@@ -55,8 +55,14 @@ class ParsedText {
   std::deque<std::string> rubyTexts;
   BlockStyle blockStyle;
   bool extraParagraphSpacing;
+  uint8_t paragraphIndent;  // 0 = automatic, 1 = on, 2 = off
   bool hyphenationEnabled;
   bool focusReadingEnabled;
+  uint16_t dropCapHeight = 0;
+  int dropCapInset = 0;
+  size_t extractedLines = 0;
+  bool dropCapPrepared = false;
+  int lineIndent(size_t line, const GfxRenderer& renderer, int fontId) const;
   bool isNaturalAlign;
   bool hasRtlWord;
   std::vector<std::string> reorderedWordsScratch;
@@ -93,15 +99,27 @@ class ParsedText {
 
  public:
   explicit ParsedText(const bool extraParagraphSpacing, const bool hyphenationEnabled = false,
-                      const bool focusReadingEnabled = false, const BlockStyle& blockStyle = BlockStyle())
+                      const bool focusReadingEnabled = false, const BlockStyle& blockStyle = BlockStyle(),
+                      const uint8_t paragraphIndent = 0)
       : blockStyle(blockStyle),
         extraParagraphSpacing(extraParagraphSpacing),
+        paragraphIndent(paragraphIndent),
         hyphenationEnabled(hyphenationEnabled),
         focusReadingEnabled(focusReadingEnabled),
         isNaturalAlign(false),
         hasRtlWord(false) {}
   ~ParsedText() = default;
 
+  void resetDropCap() {
+    dropCapHeight = 0;
+    dropCapInset = 0;
+    extractedLines = 0;
+    dropCapPrepared = false;
+  }
+  void enableDropCap(uint16_t height) {
+    if (!dropCapPrepared) dropCapHeight = height;
+  }
+  bool wantsDropCap() const { return dropCapHeight != 0; }
   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false,
                uint32_t visibleTextOffset = 0, uint8_t linkId = 0);
   uint8_t addLinkTarget(const char* href);

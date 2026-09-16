@@ -92,6 +92,7 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
           return (gpio.*fn)(isNavDirectionSwapped() ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP);
         case CrossPointSettings::NEXT_PREV:
           return (gpio.*fn)(isNavDirectionSwapped() ? HalGPIO::BTN_UP : HalGPIO::BTN_DOWN);
+        case CrossPointSettings::NEXT_NEXT:
         case CrossPointSettings::SIDE_BUTTONS_DISABLED:
         default:
           return false;
@@ -103,6 +104,10 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
           return (gpio.*fn)(isNavDirectionSwapped() ? HalGPIO::BTN_UP : HalGPIO::BTN_DOWN);
         case CrossPointSettings::NEXT_PREV:
           return (gpio.*fn)(isNavDirectionSwapped() ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP);
+        case CrossPointSettings::NEXT_NEXT:
+          // Both edge buttons turn forward: readers who hold the device either
+          // way keep one thumb on "next" without thinking about which side.
+          return (gpio.*fn)(HalGPIO::BTN_UP) || (gpio.*fn)(HalGPIO::BTN_DOWN);
         case CrossPointSettings::SIDE_BUTTONS_DISABLED:
         default:
           return false;
@@ -170,7 +175,7 @@ bool MappedInputManager::wasScreenLongPress(int& x, int& y) const {
 }
 
 bool MappedInputManager::isScreenTouchHeld(int& x, int& y) const {
-  // Live contact position while the finger is down (no tap-slop gate) — drag tracking.
+  // Live contact position while the finger is down (no tap-slop gate) - drag tracking.
   float nx = 0.0f;
   float ny = 0.0f;
   if (!gpio.isTouchHeldAt(nx, ny)) return false;
@@ -256,8 +261,8 @@ MappedInputManager::SwipeDir MappedInputManager::wasSwipe() const {
 }
 
 // Edge classification (which swipe counts as an edge gesture) lives in the
-// SDK; only the MEANING of each edge — back, menu, home, light panel, and the
-// home-key remap — is decided here.
+// SDK; only the MEANING of each edge - back, menu, home, light panel, and the
+// home-key remap - is decided here.
 bool MappedInputManager::wasEdgeSwipe(const freeink::ui::ScreenEdge edge) const {
   int sx = 0;
   int sy = 0;

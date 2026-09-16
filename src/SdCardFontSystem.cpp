@@ -14,6 +14,12 @@ namespace {
 // Point the reader font size at a size the given family actually ships, and
 // persist the change so the settings UI and the loaded font never disagree.
 // Guarded by the value-change check: a no-op snap must not write SPIFFS.
+void snapInkWeightTo(const uint8_t weight) {
+  if (SETTINGS.readerInkWeight == weight) return;
+  SETTINGS.readerInkWeight = weight;
+  SETTINGS.saveToFile();
+}
+
 void snapFontPointSizeTo(const uint8_t availablePointSize) {
   if (availablePointSize == 0 || availablePointSize == SETTINGS.fontPointSize) return;
   LOG_DBG("SDFS", "Font size %u unavailable, snapping to %u", SETTINGS.fontPointSize, availablePointSize);
@@ -50,8 +56,9 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
   if (SETTINGS.sdFontFamilyName[0] != '\0') {
     const auto* family = registry_.findFamily(SETTINGS.sdFontFamilyName);
     if (family) {
-      if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize)) {
+      if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize, SETTINGS.readerInkWeight)) {
         snapFontPointSizeTo(manager_.currentPointSize());
+        snapInkWeightTo(manager_.currentWeight());
         setupUiFallbacks(renderer);
         LOG_DBG("SDFS", "Loaded SD card font family: %s", SETTINGS.sdFontFamilyName);
       } else {
@@ -67,10 +74,16 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
   LOG_DBG("SDFS", "SD font system ready (%d families discovered)", registry_.getFamilyCount());
 }
 
+void SdCardFontSystem::releaseForOta(GfxRenderer& renderer) {
+  manager_.unloadAll(renderer);
+  registry_ = SdCardFontRegistry{};
+  registryDirty_.store(true, std::memory_order_release);
+}
+
 void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   // If the web server (or another task) installed/deleted fonts, re-discover.
   // Track whether we just re-discovered so we can force a reload below even
-  // when the wanted family/size still maps to the same point size — the file
+  // when the wanted family/size still maps to the same point size - the file
   // contents on disk may have changed (e.g. user re-uploaded a new build).
   const bool registryWasDirty = registryDirty_.exchange(false, std::memory_order_acquire);
   if (registryWasDirty) {
@@ -82,6 +95,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   const std::string& currentFamily = manager_.currentFamilyName();
 
   if (wantedFamily[0] == '\0') {
+    snapInkWeightTo(0);
     if (!currentFamily.empty()) {
       manager_.unloadAll(renderer);
     }
@@ -109,7 +123,10 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     // Snap before the early return: the wanted size can already be loaded while
     // the setting still names a size this family does not ship.
     snapFontPointSizeTo(wantedPt);
-    if (!registryWasDirty && wantedPt == manager_.currentPointSize()) return;
+    uint8_t weight = SETTINGS.readerInkWeight;
+    if (weight > 2 || !selected || !(selected->weightMask & (1u << weight))) weight = 0;
+    snapInkWeightTo(weight);
+    if (!registryWasDirty && wantedPt == manager_.currentPointSize() && weight == manager_.currentWeight()) return;
     LOG_DBG("SDFS", "Reloading %s: size %u -> %u%s", wantedFamily, manager_.currentPointSize(), wantedPt,
             registryWasDirty ? " [registry dirty]" : "");
   }
@@ -120,8 +137,9 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
 
   const auto* family = registry_.findFamily(wantedFamily);
   if (family) {
-    if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize)) {
+    if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize, SETTINGS.readerInkWeight)) {
       snapFontPointSizeTo(manager_.currentPointSize());
+      snapInkWeightTo(manager_.currentWeight());
       setupUiFallbacks(renderer);
       LOG_DBG("SDFS", "Loaded SD font family: %s", wantedFamily);
     } else {
@@ -172,7 +190,13 @@ void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {
 
 int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t /*pointSize*/) const {
   // The manager holds exactly one reader-size font, already selected for
-  // SETTINGS.fontPointSize, so the size argument is implicit — always return
+  // SETTINGS.fontPointSize, so the size argument is implicit - always return
   // that font's ID. ensureLoaded() must have run for the current settings first.
   return manager_.getFontId(familyName);
+}
+
+uint8_t SdCardFontSystem::availableWeightMask() const {
+  const auto* family = registry_.findFamily(SETTINGS.sdFontFamilyName);
+  const auto* file = family ? family->findNearestSize(SETTINGS.fontPointSize) : nullptr;
+  return file ? file->weightMask : 1;
 }

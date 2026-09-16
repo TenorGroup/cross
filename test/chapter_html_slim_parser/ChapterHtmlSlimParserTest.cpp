@@ -199,3 +199,183 @@ TEST_F(ChapterHtmlSlimParserTest, DivWithHiddenAttributeContentShouldBeSkipped) 
 }
 
 }  // namespace
+
+TEST_F(ChapterHtmlSlimParserTest, ForcedIndentCoexistsWithParagraphSpacingAndOnlyIndentsFirstLine) {
+  BlockStyle style;
+  style.alignment = CssTextAlign::Left;
+  style.textAlignDefined = true;
+  style.textIndentDefined = true;
+  style.textIndent = 0;
+  for (const bool spacing : {false, true}) {
+    ParsedText text(spacing, false, false, style, 1);
+    for (int i = 0; i < 15; ++i) text.addWord("word", EpdFontFamily::REGULAR);
+    unsigned lines = 0;
+    text.layoutAndExtractLines(renderer, 0, 100, [&](std::unique_ptr<TextBlock> line, auto) {
+      ASSERT_GT(line->wordCount(), 0u);
+      EXPECT_EQ(line->wordXpos(0), lines == 0 ? 12 : 0);
+      ++lines;
+    });
+    EXPECT_GT(lines, 2u);
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, IndentModesKeepLegacyCssAndAllowAnExplicitOverride) {
+  BlockStyle style;
+  style.alignment = CssTextAlign::Left;
+  style.textAlignDefined = true;
+  style.textIndentDefined = true;
+  for (const int cssIndent : {-8, 0, 20}) {
+    style.textIndent = cssIndent;
+    for (const bool spacing : {false, true}) {
+      for (const uint8_t mode : {0, 1, 2}) {
+        ParsedText text(spacing, false, false, style, mode);
+        text.addWord("word", EpdFontFamily::REGULAR);
+        int expected = mode == 2   ? 0
+                       : mode == 1 ? (cssIndent > 0 ? cssIndent : 12)
+                                   : (!spacing || cssIndent < 0 ? cssIndent : 0);
+        text.layoutAndExtractLines(renderer, 0, 100, [&](std::unique_ptr<TextBlock> line, auto) {
+          ASSERT_EQ(line->wordCount(), 1u);
+          EXPECT_EQ(line->wordXpos(0), expected) << "mode=" << +mode << " css=" << cssIndent << " spacing=" << spacing;
+        });
+      }
+    }
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, IndentPreservesCenteredTextAndUsesRtlLeadingEdge) {
+  BlockStyle style;
+  style.textAlignDefined = true;
+  style.directionDefined = true;
+  style.alignment = CssTextAlign::Center;
+  for (const uint8_t mode : {0, 1, 2}) {
+    ParsedText text(true, false, false, style, mode);
+    text.addWord("word", EpdFontFamily::REGULAR);
+    text.layoutAndExtractLines(renderer, 0, 100,
+                               [&](std::unique_ptr<TextBlock> line, auto) { EXPECT_EQ(line->wordXpos(0), 34); });
+  }
+  style.isRtl = true;
+  style.alignment = CssTextAlign::Right;
+  ParsedText text(true, false, false, style, 1);
+  text.addWord("word", EpdFontFamily::REGULAR);
+  text.layoutAndExtractLines(renderer, 0, 100, [&](std::unique_ptr<TextBlock> line, auto) {
+    EXPECT_EQ(line->wordXpos(0) + renderer.getTextWidth(0, "word", EpdFontFamily::REGULAR), 88);
+  });
+}
+
+TEST_F(ChapterHtmlSlimParserTest, ParserPropagatesIndentChoiceToNewParagraphs) {
+  parser.paragraphIndent = 1;
+  parser.extraParagraphSpacing = true;
+  BlockStyle style;
+  style.alignment = CssTextAlign::Left;
+  style.textAlignDefined = true;
+  parser.startNewTextBlock(style);
+  ASSERT_NE(parser.currentTextBlock, nullptr);
+  parser.currentTextBlock->addWord("word", EpdFontFamily::REGULAR);
+  parser.currentTextBlock->layoutAndExtractLines(
+      renderer, 0, 100, [&](std::unique_ptr<TextBlock> line, auto) { EXPECT_EQ(line->wordXpos(0), 12); });
+}
+
+TEST_F(ChapterHtmlSlimParserTest, OpeningParagraphUsesOneLargeInitialInsteadOfWordPrefixes) {
+  parser.focusReadingEnabled = true;
+  parser.viewportWidth = 160;
+  parser.currentTextBlock.reset();
+  parser.blockStyleStack.push_back(BlockStyle());
+  ChapterHtmlSlimParser::startElement(&parser, "p", nullptr);
+  for (int i = 0; i < 20; ++i) parser.currentTextBlock->addWord(i == 0 ? "Alpha" : "word", EpdFontFamily::REGULAR);
+  parser.makePages();
+  ASSERT_TRUE(parser.currentPage);
+  ASSERT_GE(parser.currentPage->elements.size(), 3u);
+  const auto& first = *static_cast<PageLine&>(*parser.currentPage->elements[0]).getBlock();
+  EXPECT_NE(first.wordStyle(0) & 128, 0);
+  for (const auto& element : parser.currentPage->elements) {
+    const auto& block = *static_cast<PageLine&>(*element).getBlock();
+    for (uint16_t i = 0; i < block.wordCount(); ++i) EXPECT_EQ(block.focusBoundary(i), 0);
+  }
+  const auto& second = *static_cast<PageLine&>(*parser.currentPage->elements[1]).getBlock();
+  const auto& third = *static_cast<PageLine&>(*parser.currentPage->elements[2]).getBlock();
+  EXPECT_GT(second.wordXpos(0), third.wordXpos(0));
+}
+
+TEST_F(ChapterHtmlSlimParserTest, DropCapDoesNotRepeatAndTocResetsIt) {
+  parser.focusReadingEnabled = true;
+  parser.currentTextBlock.reset();
+  parser.blockStyleStack.push_back(BlockStyle());
+  auto paragraph = [&](const char* tag, const char* text) {
+    ChapterHtmlSlimParser::startElement(&parser, tag, nullptr);
+    ChapterHtmlSlimParser::characterData(&parser, text, strlen(text));
+    ChapterHtmlSlimParser::endElement(&parser, tag);
+  };
+  paragraph("h1", "Chapter One");
+  paragraph("p", "");
+  paragraph("p", "Alpha");
+  paragraph("p", "Beta");
+  ASSERT_EQ(parser.currentPage->elements.size(), 3u);
+  auto block = [&](int i) -> const TextBlock& {
+    return *static_cast<PageLine&>(*parser.currentPage->elements[i]).getBlock();
+  };
+  EXPECT_EQ(block(0).getDropCapHeight(), 0);
+  EXPECT_GT(block(1).getDropCapHeight(), 0);
+  EXPECT_EQ(block(2).getDropCapHeight(), 0);
+  EXPECT_GE(parser.currentPage->elements[2]->yPos - parser.currentPage->elements[1]->yPos, 32);
+  parser.tocAnchors.push_back("next");
+  parser.pendingAnchorId = "next";
+  parser.completePageFn = [](auto, auto, auto, auto) {};
+  paragraph("p", "Gamma");
+  ASSERT_EQ(parser.currentPage->elements.size(), 1u);
+  EXPECT_GT(block(0).getDropCapHeight(), 0);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, DropCapKeepsTwoLinesOnSamePage) {
+  parser.focusReadingEnabled = true;
+  parser.viewportHeight = 64;
+  parser.viewportWidth = 160;
+  parser.currentPage = std::make_unique<Page>();
+  parser.currentPageNextY = 48;
+  parser.currentTextBlock.reset();
+  parser.blockStyleStack.push_back(BlockStyle());
+  unsigned completed = 0;
+  parser.completePageFn = [&](auto, auto, auto, auto) { ++completed; };
+  ChapterHtmlSlimParser::startElement(&parser, "p", nullptr);
+  for (int i = 0; i < 6; ++i) parser.currentTextBlock->addWord("Alpha", EpdFontFamily::REGULAR);
+  parser.makePages();
+  EXPECT_EQ(completed, 1u);
+  ASSERT_TRUE(parser.currentPage);
+  EXPECT_EQ(parser.currentPage->elements.front()->yPos, 0);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, DropCapStreamingRetainsSecondLineInsetAndWholeText) {
+  ParsedText text(false);
+  text.enableDropCap(28);
+  text.addWord("Alpha", EpdFontFamily::REGULAR);
+  text.addWord("word", EpdFontFamily::REGULAR);
+  text.addWord("word", EpdFontFamily::REGULAR);
+  std::vector<std::unique_ptr<TextBlock>> lines;
+  auto emit = [&](auto line, auto) { lines.push_back(std::move(line)); };
+  text.layoutAndExtractLines(renderer, 0, 100, emit, false);
+  ASSERT_EQ(lines.size(), 1u);
+  for (int i = 0; i < 10; ++i) text.addWord("word", EpdFontFamily::REGULAR);
+  text.layoutAndExtractLines(renderer, 0, 100, emit);
+  ASSERT_GE(lines.size(), 3u);
+  EXPECT_GT(lines[1]->wordXpos(0), lines[2]->wordXpos(0));
+  size_t words = 0, caps = 0;
+  for (auto& line : lines) {
+    words += line->wordCount();
+    caps += line->getDropCapHeight() > 0;
+  }
+  EXPECT_EQ(words, 13u);
+  EXPECT_EQ(caps, 1u);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, DropCapNormalizesVietnameseAndLeavesUnsupportedClusterWhole) {
+  ParsedText text(false);
+  text.enableDropCap(28);
+  text.addWord("A\u0302\u0301n", EpdFontFamily::REGULAR);
+  text.layoutAndExtractLines(renderer, 0, 200, [&](auto line, auto) {
+    EXPECT_STREQ(line->wordText(0), "Ấn");
+    EXPECT_GT(line->getDropCapHeight(), 0);
+  });
+  EXPECT_EQ(dropcap::initial("\"Đêm").codepoint, 0x110u);
+  EXPECT_EQ(dropcap::initial("123").codepoint, 0u);
+  EXPECT_EQ(dropcap::initial("日").codepoint, 0u);
+  EXPECT_EQ(dropcap::initial("A\u035c").codepoint, 0u);
+}

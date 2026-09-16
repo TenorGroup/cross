@@ -17,6 +17,7 @@ void RecentBooksStore::toJson(JsonDocument& doc) const {
     obj["title"] = book.title;
     obj["author"] = book.author;
     obj["coverBmpPath"] = book.coverBmpPath;
+    if (!book.excerpt.empty()) obj["excerpt"] = book.excerpt;
   }
 }
 
@@ -33,6 +34,8 @@ bool RecentBooksStore::fromJson(JsonVariantConst doc) {
     book.title = obj["title"] | "";
     book.author = obj["author"] | "";
     book.coverBmpPath = obj["coverBmpPath"] | "";
+    const char* excerpt = obj["excerpt"] | "";
+    if (strlen(excerpt) <= 384) book.excerpt = excerpt;
     recentBooks.push_back(book);
   }
 
@@ -48,12 +51,14 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
   // Remove existing entry if present
   auto it =
       std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
+  std::string excerpt;
   if (it != recentBooks.end()) {
+    excerpt = std::move(it->excerpt);
     recentBooks.erase(it);
   }
 
-  // Add to front
-  recentBooks.insert(recentBooks.begin(), {path, title, author, coverBmpPath});
+  // Add to front, preserving the excerpt for this exact book.
+  recentBooks.insert(recentBooks.begin(), {path, title, author, coverBmpPath, std::move(excerpt)});
 
   // Trim to max size
   if (recentBooks.size() > MAX_RECENT_BOOKS) {
@@ -137,4 +142,13 @@ RecentBook RecentBooksStore::getDataFromBook(std::string path) const {
     return RecentBook{path, lastBookFileName, "", ""};
   }
   return RecentBook{path, "", "", ""};
+}
+
+bool RecentBooksStore::rememberExcerpt(const std::string& path, const std::string& text) {
+  if (text.empty() || text.size() > 384) return false;
+  const auto found =
+      std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& b) { return b.path == path; });
+  if (found == recentBooks.end() || found->excerpt == text) return false;
+  found->excerpt = text;
+  return saveToFile();
 }
