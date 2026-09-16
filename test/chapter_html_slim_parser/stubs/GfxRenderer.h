@@ -12,31 +12,34 @@ enum class BidiBaseDir : signed char { AUTO = -1, LTR = 0, RTL = 1 };
 
 class GfxRenderer {
  public:
-  int getDropCapAdvance(int, const char* text, EpdFontFamily::Style, int height) const {
+  int getDropCapAdvance(int, const char* text, EpdFontFamily::Style, int height, int = 0) const {
     return dropcap::initial(text).codepoint ? height / 2 + 4 : 0;
   }
-  int getDropCapWordWidth(int f, const char* text, EpdFontFamily::Style s, int h) const {
+  int getDropCapWordWidth(int f, const char* text, EpdFontFamily::Style s, int h, int = 0) const {
     auto c = dropcap::initial(text);
     return c.codepoint ? getDropCapAdvance(f, text, s, h) + getTextAdvanceX(f, text + c.endBytes, s)
                        : getTextAdvanceX(f, text, s);
   }
-  void drawDropCapWord(int, int, int, const char*, EpdFontFamily::Style, int) const {}
+  void drawDropCapWord(int, int, int, const char*, EpdFontFamily::Style, int, int = 0) const {}
   bool isFontCacheScanning() const { return false; }
   void drawLine(int, int, int, int, int, bool) const {}
   void drawText(int, int, int, const char*, bool, EpdFontFamily::Style,
-                BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO) const {}
+                BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO, int = 0) const {}
   int getTextWidth(int font, const char* text, EpdFontFamily::Style style,
-                   BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO) const {
-    return getTextAdvanceX(font, text, style);
+                   BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO, int spacing = 0) const {
+    return getTextAdvanceX(font, text, style, spacing);
   }
   int getScreenWidth() const { return 480; }
   int getScreenHeight() const { return 800; }
   int getLineHeight(int, float = 1.0f) const { return 16; }
   int getFontAscenderSize(int) const { return 12; }
   int getSpaceWidth(int, EpdFontFamily::Style) const { return 4; }
-  int getTextAdvanceX(int, const char* text, EpdFontFamily::Style) const {
+  int getTextAdvanceX(int, const char* text, EpdFontFamily::Style, int spacing = 0) const {
     int width = 0;
-    while (*text++) width += 8;
+    while (*text++) {
+      if (width) width += spacing;
+      width += 8;
+    }
     return width;
   }
   int getKerning(int, uint32_t, uint32_t, EpdFontFamily::Style) const { return 0; }

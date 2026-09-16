@@ -441,3 +441,8 @@ STR_FIRMWARE_WRITE_FAILED: "Échec de l'écriture du firmware"
 STR_FIRMWARE_UPDATE_DO_NOT_POWER_OFF: "Ne pas éteindre l'appareil !"
 STR_RECOVERY_MODE: "Mode Récupération"
 STR_RECOVERY_MODE_HINT: "Placez firmware.bin à la racine de la carte SD et sélectionnez-le"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

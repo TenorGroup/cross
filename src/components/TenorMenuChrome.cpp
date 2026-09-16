@@ -48,6 +48,7 @@ void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char
 // One text lane shared by every menu and reader. Only an existing render reads the clock.
 void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int currentPage, int pageCount,
                              float bookProgress, int paddingBottom, bool estimated, bool bookmarked) {
+  if (SETTINGS.hideGlobalStatusBar || (title && SETTINGS.hideReaderStatusBar)) return;
   const int width = r.getScreenWidth();
   const int y = r.getScreenHeight() - 24 - paddingBottom;
   constexpr int inset = 12, batteryWidth = 26, batteryHeight = 14;

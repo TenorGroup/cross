@@ -2,6 +2,7 @@
 
 #include <EpdFontFamily.h>
 #include <Epub/ParsedText.h>
+#include <Epub/ReaderSpacing.h>
 #include <Epub/blocks/BlockStyle.h>
 #include <Epub/blocks/TextBlock.h>
 #include <FontCacheManager.h>
@@ -38,7 +39,7 @@ void relayout(PreviewLayout& layout, const GfxRenderer& renderer, int fontId, in
   style.textAlignDefined = true;  // honor the user's choice; RTL auto-detected from text
 
   ParsedText parsed(SETTINGS.extraParagraphSpacing != 0, SETTINGS.hyphenationEnabled != 0, false, style,
-                    SETTINGS.paragraphIndent);
+                    SETTINGS.paragraphIndent, readerSpacing::letterPixels(SETTINGS.letterSpacing));
   if (SETTINGS.focusReadingEnabled)
     parsed.enableDropCap(renderer.getLineHeight(fontId, SETTINGS.getReaderLineCompression()) * 2 - 4);
 
@@ -90,7 +91,7 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
 
   const float compression = SETTINGS.getReaderLineCompression();
   const int lineAdvance = std::max(1, renderer.getLineHeight(fontId, compression));
-  const int paragraphGap = SETTINGS.extraParagraphSpacing ? lineAdvance / 2 : 0;
+  const int paragraphGap = readerSpacing::paragraphGap(SETTINGS.extraParagraphSpacing, lineAdvance);
 
   // Re-lay-out (and re-prewarm glyphs) only when a layout-affecting setting or the
   // geometry changed; else reuse the cache. The prewarm inputs are (fontId, constant
@@ -104,12 +105,14 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
                        .textWidth = textWidth,
                        .lineCompression = compression,
                        .alignment = SETTINGS.paragraphAlignment,
-                       .extraParagraphSpacing = SETTINGS.extraParagraphSpacing != 0,
+                       .extraParagraphSpacing = SETTINGS.extraParagraphSpacing,
                        .paragraphIndent = SETTINGS.paragraphIndent,
+                       .letterSpacing = SETTINGS.letterSpacing,
                        .focusReading = SETTINGS.focusReadingEnabled != 0,
                        .hyphenation = SETTINGS.hyphenationEnabled != 0};
   if (key != layout.key) {
     if (auto* fcm = renderer.getFontCacheManager()) {
+      fcm->clearCache();
       fcm->prewarmCache(fontId, I18N.get(StrId::STR_FONT_PREVIEW_TEXT), SETTINGS.focusReadingEnabled ? 0x03 : 0x01);
     }
     relayout(layout, renderer, fontId, textWidth);

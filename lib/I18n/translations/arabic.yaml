@@ -453,3 +453,8 @@ STR_FIRMWARE_WRITE_FAILED: "فشلت كتابة البرنامج الثابت"
 STR_FIRMWARE_UPDATE_DO_NOT_POWER_OFF: "لا تطفئ الجهاز!"
 STR_RECOVERY_MODE: "وضع الاستعادة"
 STR_RECOVERY_MODE_HINT: "ضع الملف firmware.bin في المجلد الرئيسي لبطاقة SD ثم اختره"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

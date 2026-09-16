@@ -20,9 +20,8 @@ class HalPowerManager {
   mutable int _batteryCachedPercent = 0;         // Last read battery percentage (0-100)
   mutable unsigned long _batteryLastPollMs = 0;  // Timestamp of last battery read in milliseconds
 
-  enum LockMode { None, NormalSpeed };
-  LockMode currentLockMode = None;
-  SemaphoreHandle_t modeMutex = nullptr;  // Protect access to currentLockMode
+  uint16_t normalSpeedLocks = 0;
+  SemaphoreHandle_t modeMutex = nullptr;  // Protect the lock count and CPU-frequency transition
 
  public:
 #if BOARD_HAS_PSRAM
@@ -39,7 +38,7 @@ class HalPowerManager {
   void setPowerSaving(bool enabled);
 
   // Setup wake up GPIO and enter deep sleep
-  // Should be called inside main loop() to handle the currentLockMode
+  // Should be called inside main loop() to respect active normal-speed locks
   void startDeepSleep(HalGPIO& gpio, uint8_t wakeMode = 0) const;
 
   // Get battery percentage (range 0-100)

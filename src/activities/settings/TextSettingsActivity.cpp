@@ -28,16 +28,19 @@ namespace {
 // Tab labels for Font | Size | Layout | Style.
 constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_LAYOUT, StrId::STR_STYLE};
 
-constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING, StrId::STR_EXTRA_SPACING, StrId::STR_ALIGNMENT,
-                                         StrId::STR_SCREEN_MARGIN, StrId::STR_PARAGRAPH_INDENT};
+constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING,     StrId::STR_EXTRA_SPACING,
+                                         StrId::STR_ALIGNMENT,        StrId::STR_SCREEN_MARGIN,
+                                         StrId::STR_PARAGRAPH_INDENT, StrId::STR_LETTER_SPACING};
 constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING, StrId::STR_HYPHENATION, StrId::STR_EMBEDDED_STYLE,
                                         StrId::STR_TEXT_AA, StrId::STR_READER_INK_WEIGHT};
 
+constexpr StrId LETTER_SPACING_IDS[] = {StrId::STR_TIGHT, StrId::STR_INK_DEFAULT, StrId::STR_WIDE};
+constexpr StrId PARAGRAPH_SPACING_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_SPACING_LARGE, StrId::STR_SPACING_LARGER};
 constexpr StrId INK_WEIGHT_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_INK_LIGHT, StrId::STR_INK_STRONG};
-constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE};
+constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_TIGHT, StrId::STR_INK_DEFAULT, StrId::STR_WIDE};
 constexpr StrId ALIGNMENT_IDS[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                    StrId::STR_BOOK_S_STYLE};
-constexpr StrId INDENT_IDS[] = {StrId::STR_INDENT_AUTO, StrId::STR_STATE_ON, StrId::STR_STATE_OFF};
+constexpr StrId INDENT_IDS[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_WIDE};
 constexpr int MARGIN_MIN = CrossPointSettings::SCREEN_MARGIN_MIN;
 constexpr int MARGIN_MAX = CrossPointSettings::SCREEN_MARGIN_MAX;
 constexpr int MARGIN_STEP = CrossPointSettings::SCREEN_MARGIN_STEP;
@@ -231,9 +234,11 @@ const char* TextSettingsActivity::confirmLabelText() const {
   if (ringPos() == 0) return tr(STR_SELECT);
   switch (tab_) {
     case Tab::Layout:
-      // Extra Paragraph Spacing toggles; the rest open a picker
-      return ringPos() - 1 == static_cast<int>(LayoutRow::ParaSpacing) ||
-                     ringPos() - 1 == static_cast<int>(LayoutRow::ParaIndent)
+      // Inline choices cycle directly; the other rows open a picker.
+      return ringPos() - 1 == static_cast<int>(LayoutRow::LineSpacing) ||
+                     ringPos() - 1 == static_cast<int>(LayoutRow::ParaSpacing) ||
+                     ringPos() - 1 == static_cast<int>(LayoutRow::ParaIndent) ||
+                     ringPos() - 1 == static_cast<int>(LayoutRow::LetterSpacing)
                  ? tr(STR_TOGGLE)
                  : tr(STR_SELECT);
     case Tab::Style:
@@ -264,10 +269,13 @@ void TextSettingsActivity::render(RenderLock&&) {
   // Tab bar + active tab's list draw inside the screen builder.
   renderUi();
 
-  if (focusedRowHasNoPreview()) {
+  const bool weightUnavailable = tab_ == Tab::Style && ringPos() - 1 == static_cast<int>(StyleRow::InkWeight) &&
+                                 sdFontSystem.availableWeightMask() == 1;
+  if (weightUnavailable || focusedRowHasNoPreview()) {
     const int captionHeight = renderer.getTextHeight(UI_10_FONT_ID) + metrics_.verticalSpacing;
     const int capY = afterHeader + usableHeight - captionHeight + metrics_.verticalSpacing;
-    renderer.drawText(UI_10_FONT_ID, metrics_.previewPadding, capY, tr(STR_NOT_IN_PREVIEW));
+    renderer.drawText(UI_10_FONT_ID, metrics_.previewPadding, capY,
+                      weightUnavailable ? tr(STR_INK_UNAVAILABLE) : tr(STR_NOT_IN_PREVIEW));
   }
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabelText(), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
@@ -338,22 +346,24 @@ void TextSettingsActivity::applySize(int listIndex) {
 
 void TextSettingsActivity::confirmLayoutRow(int row) {
   switch (static_cast<LayoutRow>(row)) {
+    case LayoutRow::LetterSpacing:
+      SETTINGS.letterSpacing = (SETTINGS.letterSpacing + 1) % 3;
+      SETTINGS.saveToFile();
+      requestUpdate();
+      break;
     case LayoutRow::ParaIndent:
       SETTINGS.paragraphIndent = (SETTINGS.paragraphIndent + 1) % std::size(INDENT_IDS);
       SETTINGS.saveToFile();
       requestUpdate();
       break;
     case LayoutRow::ParaSpacing:
-      SETTINGS.extraParagraphSpacing = !SETTINGS.extraParagraphSpacing;
+      SETTINGS.extraParagraphSpacing = (SETTINGS.extraParagraphSpacing + 1) % 3;
       SETTINGS.saveToFile();
       requestUpdate();
       break;
     case LayoutRow::LineSpacing:
-      optionPopup_.show(StrId::STR_LINE_SPACING, LINE_SPACING_IDS, static_cast<int>(std::size(LINE_SPACING_IDS)),
-                        SETTINGS.lineSpacing, [](int idx) {
-                          SETTINGS.lineSpacing = static_cast<uint8_t>(idx);
-                          SETTINGS.saveToFile();
-                        });
+      SETTINGS.lineSpacing = (SETTINGS.lineSpacing + 1) % CrossPointSettings::LINE_COMPRESSION_COUNT;
+      SETTINGS.saveToFile();
       requestUpdate();
       break;
     case LayoutRow::Alignment:
@@ -384,14 +394,16 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
 
 std::string TextSettingsActivity::layoutValueText(int row) {
   switch (static_cast<LayoutRow>(row)) {
+    case LayoutRow::LetterSpacing:
+      return I18N.get(LETTER_SPACING_IDS[SETTINGS.letterSpacing < 3 ? SETTINGS.letterSpacing : 1]);
     case LayoutRow::ParaIndent:
       return I18N.get(INDENT_IDS[SETTINGS.paragraphIndent < std::size(INDENT_IDS) ? SETTINGS.paragraphIndent : 0]);
     case LayoutRow::LineSpacing: {
       const uint8_t v = SETTINGS.lineSpacing;
-      return v < std::size(LINE_SPACING_IDS) ? I18N.get(LINE_SPACING_IDS[v]) : I18N.get(StrId::STR_NORMAL);
+      return v < std::size(LINE_SPACING_IDS) ? I18N.get(LINE_SPACING_IDS[v]) : I18N.get(StrId::STR_INK_DEFAULT);
     }
     case LayoutRow::ParaSpacing:
-      return SETTINGS.extraParagraphSpacing ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+      return I18N.get(PARAGRAPH_SPACING_IDS[SETTINGS.extraParagraphSpacing < 3 ? SETTINGS.extraParagraphSpacing : 0]);
     case LayoutRow::Alignment: {
       const uint8_t v = SETTINGS.paragraphAlignment;
       return v < std::size(ALIGNMENT_IDS) ? I18N.get(ALIGNMENT_IDS[v]) : I18N.get(StrId::STR_JUSTIFY);
@@ -408,7 +420,8 @@ void TextSettingsActivity::confirmStyleRow(int row) {
   switch (static_cast<StyleRow>(row)) {
     case StyleRow::InkWeight: {
       const uint8_t mask = sdFontSystem.availableWeightMask();
-      const uint8_t current = SETTINGS.readerInkWeight;
+      if (mask == 1) return;
+      const uint8_t current = sdFontSystem.effectiveWeight();
       uint8_t next = current;
       for (int step = 1; step <= 3; ++step) {
         const auto candidate = static_cast<uint8_t>((current + step) % 3);
@@ -448,8 +461,7 @@ void TextSettingsActivity::confirmStyleRow(int row) {
 std::string TextSettingsActivity::styleValueText(int row) {
   switch (static_cast<StyleRow>(row)) {
     case StyleRow::InkWeight:
-      if (sdFontSystem.availableWeightMask() == 1) return tr(STR_INK_UNAVAILABLE);
-      return I18N.get(INK_WEIGHT_IDS[SETTINGS.readerInkWeight <= 2 ? SETTINGS.readerInkWeight : 0]);
+      return I18N.get(INK_WEIGHT_IDS[sdFontSystem.effectiveWeight()]);
     case StyleRow::FocusReading:
       return SETTINGS.focusReadingEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     case StyleRow::Hyphenation:
@@ -464,8 +476,7 @@ std::string TextSettingsActivity::styleValueText(int row) {
   }
 }
 
-// Only Focus Reading shows in the preview (bold prefixes); the other Style rows
-// have no distinct preview.
+// The chapter drop cap is visible in the preview; these book-specific settings are not.
 bool TextSettingsActivity::focusedRowHasNoPreview() const {
   if (ringPos() == 0 || tab_ != Tab::Style) return false;
   const StyleRow row = static_cast<StyleRow>(ringPos() - 1);

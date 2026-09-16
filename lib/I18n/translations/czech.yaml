@@ -441,3 +441,8 @@ STR_UPDATE_AVAILABLE: "Aktualizace"
 STR_USERNAME_TAKEN: "Uživatelské jméno je již zaregistrováno"
 STR_VALIDATING_FIRMWARE: "Ověřování firmwaru..."
 STR_XTC_STATUS_BAR: "Stavový řádek XTC"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

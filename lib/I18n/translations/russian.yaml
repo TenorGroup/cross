@@ -463,3 +463,8 @@ STR_FIRMWARE_WRITE_FAILED: "Ошибка записи прошивки"
 STR_FIRMWARE_UPDATE_DO_NOT_POWER_OFF: "Не выключайте питание!"
 STR_RECOVERY_MODE: "Режим восстановления"
 STR_RECOVERY_MODE_HINT: "Выберите firmware.bin в корне SD-карты"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

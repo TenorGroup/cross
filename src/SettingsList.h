@@ -257,7 +257,12 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Toggle(StrId::STR_NIGHT_MODE, &CrossPointSettings::screenInverted, "screenInverted",
                             StrId::STR_CAT_DISPLAY),
 
+        SettingInfo::Toggle(StrId::STR_HIDE_GLOBAL_STATUS_BAR, &CrossPointSettings::hideGlobalStatusBar,
+                            "hideGlobalStatusBar", StrId::STR_CAT_DISPLAY),
+
         // --- Reader ---
+        SettingInfo::Toggle(StrId::STR_HIDE_READER_STATUS_BAR, &CrossPointSettings::hideReaderStatusBar,
+                            "hideReaderStatusBar", StrId::STR_CAT_READER),
         // Built-in font-family entry. Replaced per-call with a registry-aware
         // version when SD fonts are installed.
         SettingInfo::Enum(StrId::STR_FONT_FAMILY, &CrossPointSettings::fontFamily,
@@ -268,7 +273,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         // fixes the setting's position in the Reader category.
         SettingInfo::Enum(StrId::STR_FONT_SIZE, nullptr, {}, "fontSize", StrId::STR_CAT_READER).withTextSettings(),
         SettingInfo::Enum(StrId::STR_LINE_SPACING, &CrossPointSettings::lineSpacing,
-                          {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE}, "lineSpacing",
+                          {StrId::STR_TIGHT, StrId::STR_INK_DEFAULT, StrId::STR_WIDE}, "lineSpacing",
                           StrId::STR_CAT_READER)
             .withTextSettings(),
         SettingInfo::Value(StrId::STR_SCREEN_MARGIN, &CrossPointSettings::screenMargin,
@@ -294,11 +299,16 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
             StrId::STR_ORIENTATION, &CrossPointSettings::orientation,
             {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW},
             "orientation", StrId::STR_CAT_READER),
-        SettingInfo::Toggle(StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing,
-                            "extraParagraphSpacing", StrId::STR_CAT_READER)
+        SettingInfo::Enum(StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing,
+                          {StrId::STR_INK_DEFAULT, StrId::STR_SPACING_LARGE, StrId::STR_SPACING_LARGER},
+                          "extraParagraphSpacing", StrId::STR_CAT_READER)
             .withTextSettings(),
         SettingInfo::Enum(StrId::STR_PARAGRAPH_INDENT, &CrossPointSettings::paragraphIndent,
-                          {StrId::STR_INDENT_AUTO, StrId::STR_STATE_ON, StrId::STR_STATE_OFF}, "paragraphIndent",
+                          {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_WIDE}, "paragraphIndent",
+                          StrId::STR_CAT_READER)
+            .withTextSettings(),
+        SettingInfo::Enum(StrId::STR_LETTER_SPACING, &CrossPointSettings::letterSpacing,
+                          {StrId::STR_TIGHT, StrId::STR_INK_DEFAULT, StrId::STR_WIDE}, "letterSpacing",
                           StrId::STR_CAT_READER)
             .withTextSettings(),
         SettingInfo::Enum(StrId::STR_READER_INK_WEIGHT, &CrossPointSettings::readerInkWeight,

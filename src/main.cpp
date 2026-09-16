@@ -586,18 +586,8 @@ void setup() {
     // through to the sleep-wake "resume reader" logic, which fires on stale
     // openEpubPath + lastSleepFromReader from a prior session.
     activityManager.goHome(snapshotHomeMenu);
-  } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
-             mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
-    // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
-    // crashed (indicated by readerActivityLoadCount > 0)
-    activityManager.goHome(HomeMenuItem::NONE, needsWakeRefresh);
   } else {
-    // Clear app state to avoid getting into a boot loop if the epub doesn't load
-    const auto path = APP_STATE.openEpubPath;
-    APP_STATE.openEpubPath = "";
-    APP_STATE.readerActivityLoadCount++;
-    APP_STATE.saveToFile();
-    activityManager.goToReader(path);
+    activityManager.goHome(HomeMenuItem::RECENT_CONTINUE, needsWakeRefresh);
   }
 
   if (resume == BootResume::Silent) {
@@ -697,6 +687,27 @@ void loop() {
           logSerial.printf("UI_TRANSFER:STARTING\n");
         } else {
           logSerial.printf("UI_TRANSFER:LOW_MEMORY\n");
+        }
+      } else if (cmd == "HOME_NEXT" || cmd == "HOME_PREV") {
+        activityManager.stepHomeForTest(cmd == "HOME_NEXT" ? 1 : -1);
+      } else if (cmd.startsWith("FONT_TEST ")) {
+        char family[32] = {};
+        unsigned point = 0, weight = 0;
+        if (sscanf(cmd.c_str() + 10, "%31s %u %u", family, &point, &weight) == 3 && point >= 12 && point <= 26 &&
+            weight <= 2 && sdFontSystem.registry().findFamily(family)) {
+          const uint32_t started = millis();
+          {
+            RenderLock lock;
+            snprintf(SETTINGS.sdFontFamilyName, sizeof(SETTINGS.sdFontFamilyName), "%s", family);
+            SETTINGS.fontPointSize = point;
+            SETTINGS.readerInkWeight = weight;
+            sdFontSystem.ensureLoaded(renderer);
+          }
+          logSerial.printf("FONT_TEST:family=%s,pt=%u,requested=%u,effective=%u,ms=%u,heap=%u,largest=%u\n", family,
+                           point, weight, sdFontSystem.effectiveWeight(), millis() - started, ESP.getFreeHeap(),
+                           ESP.getMaxAllocHeap());
+        } else {
+          logSerial.printf("FONT_TEST:INVALID\n");
         }
       } else if (cmd == "LANGUAGE_ZH") {
         // In-memory only: a reset restores the user's saved language.

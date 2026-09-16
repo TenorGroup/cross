@@ -1,5 +1,6 @@
 #include "CrossPointSettings.h"
 
+#include <Epub/ReaderSpacing.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <ObfuscationUtils.h>
@@ -68,6 +69,8 @@ static_assert(CrossPointSettings::READER_FAVORITE_MAX == readermenu::TOI_DA_GHIM
               "tran danh sach yeu thich lech giua CrossPointSettings va readermenu");
 
 void CrossPointSettings::toJson(JsonDocument& doc) const {
+  doc["textSpacingVersion"] = 2;
+  doc["paragraphIndentVersion"] = 1;
   const CrossPointSettings& s = *this;
 
   for (const auto& info : getSettingsList()) {
@@ -99,9 +102,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["fontFamily"] = fontFamily;
   doc["fontSize"] = fontPointSize;
   // SD card font family name - not in SettingsList, save manually
-  if (sdFontFamilyName[0] != '\0') {
-    doc["sdFontFamilyName"] = sdFontFamilyName;
-  }
+  doc["sdFontFamilyName"] = sdFontFamilyName;
   // Dictionary folder name - uses dynamic getter/setter in SettingsList, save manually
   if (dictionaryName[0] != '\0') {
     doc["dictionaryName"] = dictionaryName;
@@ -206,6 +207,19 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     sleepTimeoutMinutes = sleepTimeoutEnumToMinutes(legacyValue);
     needsResave = true;
   }
+  if ((doc["textSpacingVersion"] | 0) < 2 && !doc["extraParagraphSpacing"].isNull()) {
+    const auto previous = doc["extraParagraphSpacing"].as<uint8_t>();
+    extraParagraphSpacing = doc["textSpacingVersion"].isNull() ? (previous != 0 ? 1 : 0) : (previous == 2 ? 1 : 0);
+    needsResave = true;
+  }
+  if (doc["paragraphIndentVersion"].isNull() && !doc["paragraphIndent"].isNull()) {
+    paragraphIndent = doc["paragraphIndent"].as<uint8_t>() == 2 ? 0 : 1;
+    needsResave = true;
+  }
+  if ((doc["lineSpacing"] | uint8_t{NORMAL}) == 3) {
+    lineSpacing = WIDE;
+    needsResave = true;
+  }
   // Front button remap - managed by RemapFrontButtons sub-activity, not in SettingsList.
   frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
   frontButtonConfirm =
@@ -286,6 +300,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
 
 CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
   StatusBarSpec spec;
+  if (readerStatusBarHidden()) return spec;
   spec.showChapterPageCount = statusBarChapterPageCount != 0;
   spec.showBookProgressPercent = statusBarBookProgressPercentage != 0;
   spec.titleMode = statusBarTitle;
@@ -317,8 +332,9 @@ ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWid
   ReaderRenderSpec spec;
   spec.fontId = getReaderFontId();
   spec.lineCompression = getReaderLineCompression();
-  spec.extraParagraphSpacing = extraParagraphSpacing != 0;
+  spec.extraParagraphSpacing = extraParagraphSpacing;
   spec.paragraphIndent = paragraphIndent;
+  spec.letterSpacing = readerSpacing::letterPixels(letterSpacing);
   spec.paragraphAlignment = paragraphAlignment;
   spec.viewportWidth = viewportWidth;
   spec.viewportHeight = viewportHeight;
@@ -340,8 +356,6 @@ float CrossPointSettings::getReaderLineCompression() const {
         return 1.0f;
       case WIDE:
         return 1.1f;
-      case EXTRA_WIDE:
-        return 1.2f;
     }
   }
 
@@ -356,8 +370,6 @@ float CrossPointSettings::getReaderLineCompression() const {
           return 1.0f;
         case WIDE:
           return 1.1f;
-        case EXTRA_WIDE:
-          return 1.2f;
       }
     case NOTOSANS:
       switch (lineSpacing) {
@@ -368,8 +380,6 @@ float CrossPointSettings::getReaderLineCompression() const {
           return 0.95f;
         case WIDE:
           return 1.0f;
-        case EXTRA_WIDE:
-          return 1.05f;
       }
   }
 }
@@ -403,7 +413,6 @@ int CrossPointSettings::getRefreshFrequency() const {
 
 void CrossPointSettings::clearSdFontFamily() {
   sdFontFamilyName[0] = '\0';
-  readerInkWeight = 0;
   fontPointSize =
       snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES), fontPointSize);
   saveToFile();

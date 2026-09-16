@@ -46,26 +46,27 @@ void HalPowerManager::setPowerSaving(bool enabled) {
     enabled = false;
   }
 
-  // Note: We don't use mutex here to avoid too much overhead,
-  // it's not very important if we read a slightly stale value for currentLockMode
-  const LockMode mode = currentLockMode;
-
-  if (mode == None && enabled && !isLowPower) {
+  xSemaphoreTake(modeMutex, portMAX_DELAY);
+  if (normalSpeedLocks == 0 && enabled && !isLowPower) {
     LOG_DBG("PWR", "Going to low-power mode");
     if (!setCpuFrequencyMhz(LOW_POWER_FREQ)) {
       LOG_DBG("PWR", "Failed to set CPU frequency = %d MHz", LOW_POWER_FREQ);
+      xSemaphoreGive(modeMutex);
       return;
     }
     isLowPower = true;
 
-  } else if ((!enabled || mode != None) && isLowPower) {
+  } else if ((!enabled || normalSpeedLocks != 0) && isLowPower) {
     LOG_DBG("PWR", "Restoring normal CPU frequency");
     if (!setCpuFrequencyMhz(normalFreq)) {
       LOG_DBG("PWR", "Failed to set CPU frequency = %d MHz", normalFreq);
+      xSemaphoreGive(modeMutex);
       return;
     }
     isLowPower = false;
   }
+
+  xSemaphoreGive(modeMutex);
 
   // Otherwise, no change needed
 }
@@ -193,14 +194,8 @@ uint16_t HalPowerManager::getBatteryPercentage() const {
 
 HalPowerManager::Lock::Lock() {
   xSemaphoreTake(powerManager.modeMutex, portMAX_DELAY);
-  // Current limitation: only one lock at a time
-  if (powerManager.currentLockMode != None) {
-    LOG_ERR("PWR", "Lock already held, ignore");
-    valid = false;
-  } else {
-    powerManager.currentLockMode = NormalSpeed;
-    valid = true;
-  }
+  ++powerManager.normalSpeedLocks;
+  valid = true;
   xSemaphoreGive(powerManager.modeMutex);
   if (valid) {
     // Immediately restore normal CPU frequency if currently in low-power mode
@@ -211,7 +206,8 @@ HalPowerManager::Lock::Lock() {
 HalPowerManager::Lock::~Lock() {
   xSemaphoreTake(powerManager.modeMutex, portMAX_DELAY);
   if (valid) {
-    powerManager.currentLockMode = None;
+    assert(powerManager.normalSpeedLocks > 0);
+    --powerManager.normalSpeedLocks;
   }
   xSemaphoreGive(powerManager.modeMutex);
 }

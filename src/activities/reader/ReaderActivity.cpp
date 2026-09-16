@@ -212,9 +212,12 @@ void ReaderActivity::readingMargins(int& top, int& right, int& bottom, int& left
   if (tenorchrome::enabled()) {
     // tenor/cross uses the physical page edges, matching the fixed footer.
     // Default text inset is 5 px; preserve an explicitly larger reader margin.
-    top = left = margin;
-    right = margin + 1;  // Reserve the emboldened glyph edge beyond its advance.
-    bottom = std::max(margin, preview ? static_cast<int>(PREVIEW_FOOTER_HEIGHT) : 28);
+    left = margin;
+    top = margin + 1;    // Vietnamese accents can exceed the font ascender by one pixel.
+    right = margin + 3;  // Reserve ink overhang beyond the final glyph advance.
+    bottom = std::max(margin, preview                            ? static_cast<int>(PREVIEW_FOOTER_HEIGHT)
+                              : SETTINGS.readerStatusBarHidden() ? 0
+                                                                 : 28);
     return;
   }
   top += margin;

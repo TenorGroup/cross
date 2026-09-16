@@ -43,6 +43,7 @@ constexpr Descriptor ITEMS[] = {
     {"text/paragraphAlignment", StrId::STR_PARA_ALIGNMENT, "text", 2, 2},
     {"text/screenMargin", StrId::STR_SCREEN_MARGIN, "text", 2, 3},
     {"text/paragraphIndent", StrId::STR_PARAGRAPH_INDENT, "text", 2, 4},
+    {"text/letterSpacing", StrId::STR_LETTER_SPACING, "text", 2, 5},
     {"text/focusReadingEnabled", StrId::STR_FOCUS_READING, "text", 3, 0},
     {"text/hyphenationEnabled", StrId::STR_HYPHENATION, "text", 3, 1},
     {"text/embeddedStyle", StrId::STR_EMBEDDED_STYLE, "text", 3, 2},

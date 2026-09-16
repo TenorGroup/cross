@@ -304,10 +304,13 @@ class GfxRenderer {
   int getSpaceAdvance(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const;
   /// Returns the kerning adjustment between two adjacent codepoints.
   int getKerning(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const;
-  int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style) const;
-  int getDropCapAdvance(int fontId, const char* text, EpdFontFamily::Style style, int height) const;
-  int getDropCapWordWidth(int fontId, const char* text, EpdFontFamily::Style style, int height) const;
-  void drawDropCapWord(int fontId, int x, int y, const char* text, EpdFontFamily::Style style, int height) const;
+  int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style, int letterSpacing = 0) const;
+  int getDropCapAdvance(int fontId, const char* text, EpdFontFamily::Style style, int height,
+                        int letterSpacing = 0) const;
+  int getDropCapWordWidth(int fontId, const char* text, EpdFontFamily::Style style, int height,
+                          int letterSpacing = 0) const;
+  void drawDropCapWord(int fontId, int x, int y, const char* text, EpdFontFamily::Style style, int height,
+                       int letterSpacing = 0) const;
   int getFontAscenderSize(int fontId) const;
   int getLineHeight(int fontId) const;
   int getLineHeight(int fontId, float compression) const;
@@ -323,6 +326,8 @@ class GfxRenderer {
   void drawTextRotated90CW(int fontId, int x, int y, const char* text, bool black = true,
                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   int getTextHeight(int fontId) const;
+  int getTextInkBottom(int fontId, const char* text, EpdFontFamily::Style style) const;
+  bool drawBitmapCover(const Bitmap& bitmap, int x, int y, int width, int height) const;
 
   // Grayscale functions
   void setRenderMode(RenderMode mode);

@@ -17,8 +17,9 @@ struct PreviewKey {
   int textWidth = -1;
   float lineCompression = -1.0f;
   uint8_t alignment = 0xFF;
-  bool extraParagraphSpacing = false;
+  uint8_t extraParagraphSpacing = 0;
   uint8_t paragraphIndent = 0;
+  uint8_t letterSpacing = 1;
   bool focusReading = false;
   bool hyphenation = false;
   bool operator==(const PreviewKey&) const = default;

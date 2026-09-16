@@ -143,6 +143,7 @@ UIIcon UITheme::getFileIcon(const std::string& filename) {
 }
 
 int UITheme::getStatusBarHeight() {
+  if (SETTINGS.readerStatusBarHidden()) return 0;
   if (tenorchrome::enabled()) return tenorchrome::STATUS_HEIGHT;
   const ThemeMetrics metrics = UITheme::getInstance().getMetrics();
   const auto sb = SETTINGS.statusBarSpec();

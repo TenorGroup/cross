@@ -327,3 +327,8 @@ STR_AUTO_TURN_PAGES_PER_MIN: "Autom. omslaan (pagina's per minuut)"
 STR_TILT_PAGE_TURN: "Kantel om te bladeren"
 STR_ADD_HIDDEN_NETWORK: "Verborgen netwerk toevoegen..."
 STR_ENTER_WIFI_SSID: "Voer netwerknaam in (SSID)"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

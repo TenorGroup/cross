@@ -297,3 +297,8 @@ STR_STEP_HINT_SIDE: "Sivupainikkeet:"
 STR_TILT_PAGE_TURN: "Sivunkääntö kallistamalla"
 STR_ADD_HIDDEN_NETWORK: "Lisää piilotettu verkko..."
 STR_ENTER_WIFI_SSID: "Anna verkon nimi (SSID)"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

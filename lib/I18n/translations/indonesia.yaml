@@ -441,3 +441,8 @@ STR_FIRMWARE_WRITE_FAILED: "Penulisan firmware gagal"
 STR_FIRMWARE_UPDATE_DO_NOT_POWER_OFF: "Jangan matikan daya!"
 STR_RECOVERY_MODE: "Mode Pemulihan"
 STR_RECOVERY_MODE_HINT: "Tempatkan firmware.bin di akar kartu SD lalu pilih"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

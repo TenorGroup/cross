@@ -464,3 +464,8 @@ STR_FIRMWARE_WRITE_FAILED: "خطا در نصب Firmware"
 STR_FIRMWARE_UPDATE_DO_NOT_POWER_OFF: "دستگاه را خاموش نکنید!"
 STR_RECOVERY_MODE: "حالت بازیابی"
 STR_RECOVERY_MODE_HINT: "فایل firmware.bin را در پوشه‌ی اصلی کارت حافظه قرار دهید و انتخابش کنید"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"
