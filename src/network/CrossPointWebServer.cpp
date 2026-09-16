@@ -7,6 +7,7 @@
 #include <HalStorage.h>
 #include <InlineButtonText.h>
 #include <Logging.h>
+#include <Memory.h>
 #include <WiFi.h>
 #include <esp_efuse.h>
 #include <esp_efuse_table.h>
@@ -15,11 +16,13 @@
 #include <cctype>
 
 #include "CrossPointSettings.h"
+#include "DeviceName.h"
 #include "FontInstaller.h"
 #include "OpdsServerStore.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
 #include "WebDAVHandler.h"
+#include "WebPathPolicy.h"
 #include "WifiCredentialStore.h"
 #include "html/FilesPageHtml.generated.h"
 #include "html/FontsPageHtml.generated.h"
@@ -33,7 +36,6 @@
 namespace {
 // Folders/files to hide from the web interface file browser
 // Note: Items starting with "." are automatically hidden
-constexpr const char* HIDDEN_ITEMS[] = {"System Volume Information", "XTCache"};
 constexpr uint16_t UDP_PORTS[] = {54982, 48123, 39001, 44044, 59678};
 constexpr uint16_t LOCAL_UDP_PORT = 8134;
 
@@ -47,6 +49,7 @@ String wsUploadPath;
 size_t wsUploadSize = 0;
 size_t wsUploadReceived = 0;
 unsigned long wsUploadStartTime = 0;
+unsigned long wsLastActivityTime = 0;
 bool wsUploadInProgress = false;
 uint8_t wsUploadClientNum = 255;  // 255 = no active upload client
 size_t wsLastProgressSent = 0;
@@ -55,6 +58,7 @@ size_t wsLastCompleteSize = 0;
 unsigned long wsLastCompleteAt = 0;
 
 String normalizeWebPath(const String& inputPath) {
+  if (!web_path::allowed(std::string_view(inputPath.c_str(), inputPath.length()))) return "";
   if (inputPath.isEmpty() || inputPath == "/") {
     return "/";
   }
@@ -73,15 +77,7 @@ String normalizeWebPath(const String& inputPath) {
 }
 
 bool isProtectedItemName(const String& name) {
-  if (name.startsWith(".")) {
-    return true;
-  }
-  for (const auto* item : HIDDEN_ITEMS) {
-    if (name.equals(item)) {
-      return true;
-    }
-  }
-  return false;
+  return !web_path::allowed(std::string_view(name.c_str(), name.length()));
 }
 
 }  // namespace
@@ -112,6 +108,13 @@ void CrossPointWebServer::begin() {
 
   // Store AP mode flag for later use (e.g., in handleStatus)
   apMode = isInApMode;
+  char hostname[64];
+  deviceNetworkName(hostname, sizeof(hostname), "tenor-cross");
+#ifdef SIMULATOR
+  auth.configure("127.0.0.1", hostname);
+#else
+  auth.configure(apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString(), hostname);
+#endif
 
   LOG_DBG("WEB", "[MEM] Free heap before begin: %d bytes", ESP.getFreeHeap());
   LOG_DBG("WEB", "Network mode: %s", apMode ? "AP" : "STA");
@@ -136,67 +139,133 @@ void CrossPointWebServer::begin() {
     return;
   }
 
-  // Add Access-Control-Allow-* headers to every response so web-based clients
-  // and PWAs on other origins can use the HTTP API. Preflight OPTIONS requests
-  // are answered in handleNotFound().
-  server->enableCORS(true);
+  server->enableCORS(false);
 
   // Setup routes
   LOG_DBG("WEB", "Setting up routes...");
-  server->on("/", HTTP_GET, [this] { handleRoot(); });
-  server->on("/files", HTTP_GET, [this] { handleFileList(); });
-  server->on("/theme.css", HTTP_GET, [this] { handleTheme(); });
-  server->on("/js/jszip.min.js", HTTP_GET, [this] { handleJszip(); });
+  server->on("/", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleRoot();
+  });
+  server->on("/files", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleFileList();
+  });
+  server->on("/theme.css", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleTheme();
+  });
+  server->on("/js/jszip.min.js", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleJszip();
+  });
 
-  server->on("/api/status", HTTP_GET, [this] { handleStatus(); });
-  server->on("/api/files", HTTP_GET, [this] { handleFileListData(); });
-  server->on("/download", HTTP_GET, [this] { handleDownload(); });
+  server->on("/api/status", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleStatus();
+  });
+  server->on("/api/files", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleFileListData();
+  });
+  server->on("/download", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleDownload();
+  });
 
   // Upload endpoint with special handling for multipart form data
-  server->on("/upload", HTTP_POST, [this] { handleUploadPost(upload); }, [this] { handleUpload(upload); });
+  server->on(
+      "/upload", HTTP_POST,
+      [this] {
+        if (auth.authorize(*server)) handleUploadPost(upload);
+      },
+      [this] {
+        if (auth.authorize(*server, false)) handleUpload(upload);
+      });
 
   // Create folder endpoint
-  server->on("/mkdir", HTTP_POST, [this] { handleCreateFolder(); });
+  server->on("/mkdir", HTTP_POST, [this] {
+    if (auth.authorize(*server)) handleCreateFolder();
+  });
 
   // Rename file endpoint
-  server->on("/rename", HTTP_POST, [this] { handleRename(); });
+  server->on("/rename", HTTP_POST, [this] {
+    if (auth.authorize(*server)) handleRename();
+  });
 
   // Move file endpoint
-  server->on("/move", HTTP_POST, [this] { handleMove(); });
+  server->on("/move", HTTP_POST, [this] {
+    if (auth.authorize(*server)) handleMove();
+  });
 
   // Delete file/folder endpoint
-  server->on("/delete", HTTP_POST, [this] { handleDelete(); });
+  server->on("/delete", HTTP_POST, [this] {
+    if (auth.authorize(*server)) handleDelete();
+  });
 
   // Settings endpoints
-  server->on("/settings", HTTP_GET, [this] { handleSettingsPage(); });
-  server->on("/api/settings", HTTP_GET, [this] { handleGetSettings(); });
-  server->on("/api/settings", HTTP_POST, [this] { handlePostSettings(); });
+  server->on("/settings", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleSettingsPage();
+  });
+  server->on("/api/settings", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleGetSettings();
+  });
+  server->on("/api/settings", HTTP_POST, [this] {
+    if (auth.authorize(*server)) handlePostSettings();
+  });
 
   // Font management endpoints
-  server->on("/fonts", HTTP_GET, [this] { handleFontsPage(); });
-  server->on("/api/fonts", HTTP_GET, [this] { handleFontList(); });
-  server->on("/api/fonts/upload", HTTP_POST, [this] { handleFontUpload(); }, [this] { handleFontUploadData(); });
-  server->on("/api/fonts/delete", HTTP_POST, [this] { handleFontDelete(); });
+  server->on("/fonts", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleFontsPage();
+  });
+  server->on("/api/fonts", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleFontList();
+  });
+  server->on(
+      "/api/fonts/upload", HTTP_POST,
+      [this] {
+        if (auth.authorize(*server)) handleFontUpload();
+      },
+      [this] {
+        if (auth.authorize(*server, false)) handleFontUploadData();
+      });
+  server->on("/api/fonts/delete", HTTP_POST, [this] {
+    if (auth.authorize(*server)) handleFontDelete();
+  });
 
   // OPDS server endpoints
-  server->on("/api/opds", HTTP_GET, [this] { handleGetOpdsServers(); });
-  server->on("/api/opds", HTTP_POST, [this] { handlePostOpdsServer(); });
-  server->on("/api/opds/delete", HTTP_POST, [this] { handleDeleteOpdsServer(); });
+  server->on("/api/opds", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleGetOpdsServers();
+  });
+  server->on("/api/opds", HTTP_POST, [this] {
+    if (auth.authorize(*server)) handlePostOpdsServer();
+  });
+  server->on("/api/opds/delete", HTTP_POST, [this] {
+    if (auth.authorize(*server)) handleDeleteOpdsServer();
+  });
 
   // Wi-Fi credential endpoints
-  server->on("/api/wifi", HTTP_GET, [this] { handleGetWifiNetworks(); });
-  server->on("/api/wifi", HTTP_POST, [this] { handlePostWifiNetwork(); });
-  server->on("/api/wifi/delete", HTTP_POST, [this] { handleDeleteWifiNetwork(); });
+  server->on("/api/wifi", HTTP_GET, [this] {
+    if (auth.authorize(*server)) handleGetWifiNetworks();
+  });
+  server->on("/api/wifi", HTTP_POST, [this] {
+    if (auth.authorize(*server)) handlePostWifiNetwork();
+  });
+  server->on("/api/wifi/delete", HTTP_POST, [this] {
+    if (auth.authorize(*server)) handleDeleteWifiNetwork();
+  });
 
-  server->onNotFound([this] { handleNotFound(); });
+  server->on("/api/session", HTTP_GET, [this] {
+    if (!auth.authorize(*server)) return;
+    server->sendHeader("Cache-Control", "no-store");
+    server->send(200, "text/plain", auth.token());
+  });
+
+  server->onNotFound([this] {
+    if (auth.authorize(*server)) handleNotFound();
+  });
   LOG_DBG("WEB", "[MEM] Free heap after route setup: %d bytes", ESP.getFreeHeap());
 
   // Collect WebDAV headers and register handler
   // If-None-Match is collected so the static-page handlers can answer conditional GETs with 304
-  const char* collectedHeaders[] = {"Depth",      "Destination", "Overwrite",    "If",
-                                    "Lock-Token", "Timeout",     "If-None-Match"};
-  server->collectHeaders(collectedHeaders, 7);
-  server->addHandler(new WebDAVHandler());  // Note: WebDAVHandler will be deleted by WebServer when server is stopped
+  const char* collectedHeaders[] = {"Depth",   "Destination",   "Overwrite", "If",     "Lock-Token",
+                                    "Timeout", "If-None-Match", "Host",      "Origin", "Authorization"};
+  server->collectHeaders(collectedHeaders, 10);
+  server->addHandler(
+      new WebDAVHandler(auth));  // Note: WebDAVHandler will be deleted by WebServer when server is stopped
   LOG_DBG("WEB", "WebDAV handler initialized");
 
   server->begin();
@@ -205,6 +274,12 @@ void CrossPointWebServer::begin() {
   LOG_DBG("WEB", "Starting WebSocket server on port %d...", wsPort);
   wsServer.reset(new WebSocketsServer(wsPort));
   wsInstance = const_cast<CrossPointWebServer*>(this);
+  const char* requiredHeaders[] = {"Origin"};
+  wsServer->onValidateHttpHeader(
+      [this](String name, String value) {
+        return !web_path::equalsFolded(name.c_str(), "Origin") || auth.originAllowed(value.c_str());
+      },
+      requiredHeaders, 1);
   wsServer->begin();
   wsServer->onEvent(wsEventCallback);
   LOG_DBG("WEB", "WebSocket server started");
@@ -313,6 +388,11 @@ void CrossPointWebServer::handleClient() {
     lastDebugPrint = millis();
   }
 
+  if (wsUploadInProgress && millis() - wsLastActivityTime > 30000) {
+    const auto owner = wsUploadClientNum;
+    abortWsUpload("WS");
+    if (wsServer) wsServer->disconnect(owner);
+  }
   server->handleClient();
 
   // Handle WebSocket events
@@ -390,7 +470,7 @@ void CrossPointWebServer::handleJszip() const {
 
 void CrossPointWebServer::handleNotFound() const {
   // CORS preflight: routes are registered per-method, so OPTIONS requests land
-  // here. The Access-Control-Allow-* headers are added by enableCORS().
+  // here. Only same-origin browser requests are allowed by the auth gate.
   if (server->method() == HTTP_OPTIONS) {
     server->send(204, "text/plain", "");
     return;
@@ -475,17 +555,7 @@ void CrossPointWebServer::scanFiles(const char* path, const std::function<void(F
     auto fileName = String(name);
 
     // Skip hidden items (starting with ".")
-    bool shouldHide = !SETTINGS.showHiddenFiles && fileName.startsWith(".");
-
-    // Check against explicitly hidden items list
-    if (!shouldHide) {
-      for (const auto* item : HIDDEN_ITEMS) {
-        if (fileName.equals(item)) {
-          shouldHide = true;
-          break;
-        }
-      }
-    }
+    bool shouldHide = isProtectedItemName(fileName);
 
     if (!shouldHide) {
       FileInfo info;
@@ -522,6 +592,11 @@ void CrossPointWebServer::handleFileListData() const {
   String currentPath = "/";
   if (server->hasArg("path")) {
     currentPath = normalizeWebPath(server->arg("path"));
+  }
+
+  if (currentPath.isEmpty()) {
+    server->send(403, "text/plain", "Protected path");
+    return;
   }
 
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
@@ -569,18 +644,6 @@ void CrossPointWebServer::handleDownload() {
   if (itemPath.isEmpty() || itemPath == "/") {
     server->send(400, "text/plain", "Invalid path");
     return;
-  }
-
-  const String itemName = itemPath.substring(itemPath.lastIndexOf('/') + 1);
-  if (itemName.startsWith(".")) {
-    server->send(403, "text/plain", "Cannot access system files");
-    return;
-  }
-  for (const auto* item : HIDDEN_ITEMS) {
-    if (itemName.equals(item)) {
-      server->send(403, "text/plain", "Cannot access protected items");
-      return;
-    }
   }
 
   if (!Storage.exists(itemPath.c_str())) {
@@ -699,7 +762,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
     totalWriteTime = 0;
     writeCount = 0;
 
-    if (!FsHelpers::isSafePathComponent(state.fileName)) {
+    if (!FsHelpers::isSafePathComponent(state.fileName) || isProtectedItemName(state.fileName)) {
       state.error = "Invalid file name";
       LOG_DBG("WEB", "[UPLOAD] Rejected unsafe filename: %s", state.fileName.c_str());
       return;
@@ -712,6 +775,11 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
       state.path = normalizeWebPath(server->arg("path"));
     } else {
       state.path = "/";
+    }
+
+    if (state.path.isEmpty()) {
+      state.error = "Protected path";
+      return;
     }
 
     LOG_INF("WEB", "Upload begin name=%s heap=%u largest=%u stack=%u", state.fileName.c_str(), ESP.getFreeHeap(),
@@ -855,6 +923,11 @@ void CrossPointWebServer::handleCreateFolder() const {
   String parentPath = "/";
   if (server->hasArg("path")) {
     parentPath = normalizeWebPath(server->arg("path"));
+  }
+
+  if (parentPath.isEmpty()) {
+    server->send(403, "text/plain", "Protected path");
+    return;
   }
 
   // Build full folder path
@@ -1092,6 +1165,13 @@ void CrossPointWebServer::handleDelete() const {
     return;
   }
 
+  for (const auto& p : paths) {
+    if (!p.is<const char*>() || normalizeWebPath(p.as<String>()).isEmpty() || p.as<String>() == "/") {
+      server->send(403, "text/plain", "Protected path");
+      return;
+    }
+  }
+
   // Iterate over paths and delete each item
   bool allSuccess = true;
   String failedItems;
@@ -1102,30 +1182,6 @@ void CrossPointWebServer::handleDelete() const {
     // Validate path
     if (itemPath.isEmpty() || itemPath == "/") {
       failedItems += itemPath + " (cannot delete root); ";
-      allSuccess = false;
-      continue;
-    }
-
-    // Security check: prevent deletion of protected items
-    const String itemName = itemPath.substring(itemPath.lastIndexOf('/') + 1);
-
-    // Hidden/system files are protected
-    if (itemName.startsWith(".")) {
-      failedItems += itemPath + " (hidden/system file); ";
-      allSuccess = false;
-      continue;
-    }
-
-    // Check against explicitly protected items
-    bool isProtected = false;
-    for (const auto* item : HIDDEN_ITEMS) {
-      if (itemName.equals(item)) {
-        isProtected = true;
-        break;
-      }
-    }
-    if (isProtected) {
-      failedItems += itemPath + " (protected file); ";
       allSuccess = false;
       continue;
     }
@@ -1421,7 +1477,9 @@ void CrossPointWebServer::handlePostOpdsServer() {
     // Preserve existing password if not explicitly provided
     if (!hasPasswordField) {
       const auto* existing = OPDS_STORE.getServer(static_cast<size_t>(idx));
-      if (existing) password = existing->password;
+      if (existing && existing->url == opdsServer.url && existing->username == opdsServer.username) {
+        password = existing->password;
+      }
     }
     opdsServer.password = password;
     OPDS_STORE.updateServer(static_cast<size_t>(idx), opdsServer);
@@ -1625,6 +1683,17 @@ void CrossPointWebServer::wsEventCallback(uint8_t num, WStype_t type, uint8_t* p
 //   3. Server sends TEXT "PROGRESS:<received>:<total>" after each chunk
 //   4. Server sends TEXT "DONE" or "ERROR:<message>" when complete
 void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
+  if (type == WStype_CONNECTED || type == WStype_DISCONNECTED) wsAuthenticated[num] = false;
+  if (type != WStype_CONNECTED && type != WStype_DISCONNECTED && !wsAuthenticated[num]) {
+    const std::string_view text(reinterpret_cast<const char*>(payload), length);
+    if (type == WStype_TEXT && text.substr(0, 5) == "AUTH:" && auth.tokenMatches(text.substr(5))) {
+      wsAuthenticated[num] = true;
+      wsServer->sendTXT(num, "AUTHENTICATED");
+    } else {
+      wsServer->disconnect(num);
+    }
+    return;
+  }
   switch (type) {
     case WStype_DISCONNECTED:
       LOG_DBG("WS", "Client %u disconnected", num);
@@ -1643,8 +1712,8 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
 
     case WStype_TEXT: {
       // Parse control messages
-      String msg = String((char*)payload);
-      LOG_DBG("WS", "Text from client %u: %s", num, msg.c_str());
+      String msg;
+      msg.concat(reinterpret_cast<const char*>(payload), length);
 
       if (msg.startsWith("START:")) {
         // Reject any START while an upload is already active to prevent
@@ -1660,7 +1729,7 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
 
         if (firstColon > 0 && secondColon > 0) {
           wsUploadFileName = msg.substring(6, firstColon);
-          if (!FsHelpers::isSafePathComponent(wsUploadFileName)) {
+          if (!FsHelpers::isSafePathComponent(wsUploadFileName) || isProtectedItemName(wsUploadFileName)) {
             LOG_DBG("WS", "START rejected: invalid filename '%s'", wsUploadFileName.c_str());
             wsServer->sendTXT(num, "ERROR:Invalid file name");
             return;
@@ -1679,9 +1748,13 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
           }
           wsUploadSize = sizeToken.toInt();
           wsUploadPath = normalizeWebPath(msg.substring(secondColon + 1));
+          if (wsUploadPath.isEmpty()) {
+            wsServer->sendTXT(num, "ERROR:Protected path");
+            return;
+          }
           wsUploadReceived = 0;
           wsLastProgressSent = 0;
-          wsUploadStartTime = millis();
+          wsUploadStartTime = wsLastActivityTime = millis();
 
           String filePath = wsUploadPath;
           if (!filePath.endsWith("/")) filePath += "/";
@@ -1755,6 +1828,7 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
       }
 
       wsUploadReceived += written;
+      wsLastActivityTime = millis();
 
       // Send progress update (every 64KB or at end)
       if (wsUploadReceived - wsLastProgressSent >= 65536 || wsUploadReceived >= wsUploadSize) {
@@ -1939,6 +2013,10 @@ void CrossPointWebServer::handleFontUploadData() {
 
       char path[128];
       FontInstaller::buildFontPath(family.c_str(), filename.c_str(), path, sizeof(path));
+      if (Storage.exists(path)) {
+        LOG_ERR("WEB", "Font file already exists");
+        break;
+      }
       fontUpload.filePath = path;
 
       if (!Storage.openFileForWrite("WEB", path, fontUpload.file)) {
@@ -1955,15 +2033,16 @@ void CrossPointWebServer::handleFontUploadData() {
       if (!fontUpload.valid) break;
       resetTaskWatchdogIfSubscribed();
 
-      // Validate magic bytes on first chunk only
-      if (!fontUpload.magicChecked && upload.currentSize >= 8) {
-        if (memcmp(upload.buf, "CPFONT\0\0", 8) != 0) {
-          LOG_ERR("WEB", "Invalid .cpfont magic bytes");
+      const size_t received = fontUpload.bytesWritten + fontUpload.bufferPos;
+      constexpr char magic[] = "CPFONT\0\0";
+      for (size_t i = 0; i < upload.currentSize && received + i < 8; ++i) {
+        if (upload.buf[i] != static_cast<uint8_t>(magic[received + i])) {
           fontUpload.valid = false;
           break;
         }
-        fontUpload.magicChecked = true;
       }
+      if (!fontUpload.valid) break;
+      if (received + upload.currentSize >= 8) fontUpload.magicChecked = true;
 
       // Font and general uploads share the serial HTTP handler's arena.
       size_t remaining = upload.currentSize;
@@ -1977,7 +2056,10 @@ void CrossPointWebServer::handleFontUploadData() {
         remaining -= chunk;
 
         if (fontUpload.bufferPos >= UploadState::UPLOAD_BUFFER_SIZE) {
-          fontUpload.file.write(this->upload.buffer.data(), fontUpload.bufferPos);
+          if (fontUpload.file.write(this->upload.buffer.data(), fontUpload.bufferPos) != fontUpload.bufferPos) {
+            fontUpload.valid = false;
+            break;
+          }
           fontUpload.bytesWritten += fontUpload.bufferPos;
           fontUpload.bufferPos = 0;
           resetTaskWatchdogIfSubscribed();
@@ -1987,13 +2069,17 @@ void CrossPointWebServer::handleFontUploadData() {
     }
 
     case UPLOAD_FILE_END: {
+      fontUpload.valid = fontUpload.valid && fontUpload.magicChecked;
       // Flush remaining buffer
       if (fontUpload.valid && fontUpload.bufferPos > 0) {
-        fontUpload.file.write(this->upload.buffer.data(), fontUpload.bufferPos);
+        if (fontUpload.file.write(this->upload.buffer.data(), fontUpload.bufferPos) != fontUpload.bufferPos) {
+          fontUpload.valid = false;
+        }
         fontUpload.bytesWritten += fontUpload.bufferPos;
         fontUpload.bufferPos = 0;
       }
       if (fontUpload.file.isOpen()) {
+        if (fontUpload.valid && !fontUpload.file.sync()) fontUpload.valid = false;
         fontUpload.file.close();
       }
 

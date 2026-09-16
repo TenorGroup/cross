@@ -5,6 +5,7 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Memory.h>
 #include <WiFi.h>
 
 #include <cstddef>
@@ -23,7 +24,6 @@
 namespace {
 // AP Mode configuration
 constexpr const char* AP_SSID_DEFAULT = "tenor-cross";
-constexpr const char* AP_PASSWORD = nullptr;  // Open network for ease of use
 constexpr const char* AP_HOSTNAME_DEFAULT = "tenor-cross";
 
 // The access-point SSID and the mDNS label both follow the user's device name,
@@ -243,14 +243,12 @@ void CrossPointWebServerActivity::startAccessPoint() {
   WiFi.mode(WIFI_AP);
   delay(100);
 
-  // Start soft AP
-  bool apStarted;
-  if (AP_PASSWORD && strlen(AP_PASSWORD) >= 8) {
-    apStarted = WiFi.softAP(apSsid(), AP_PASSWORD, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
-  } else {
-    // Open network (no password)
-    apStarted = WiFi.softAP(apSsid(), nullptr, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
+  webServer = makeUniqueNoThrow<CrossPointWebServer>();
+  if (!webServer) {
+    onGoHome();
+    return;
   }
+  const bool apStarted = WiFi.softAP(apSsid(), webServer->transferPassword(), AP_CHANNEL, false, AP_MAX_CONNECTIONS);
 
   if (!apStarted) {
     LOG_ERR("WEBACT", "ERROR: Failed to start Access Point!");
@@ -300,7 +298,11 @@ void CrossPointWebServerActivity::startWebServer() {
   }
 
   // Create the web server instance
-  webServer.reset(new CrossPointWebServer());
+  if (!webServer) webServer = makeUniqueNoThrow<CrossPointWebServer>();
+  if (!webServer) {
+    onGoHome();
+    return;
+  }
   webServer->begin();
 
   if (webServer->isRunning()) {
@@ -465,13 +467,18 @@ void CrossPointWebServerActivity::renderServerRunning() const {
 
     // Show QR code for Wifi
     // follows spec at https://github.com/zxing/zxing/wiki/Barcode-Contents#wi-fi-network-config-android-ios-11
-    const std::string wifiConfig = std::string("WIFI:T:nopass;S:") + connectedSSID + ";;";
+    const std::string wifiConfig =
+        std::string("WIFI:T:WPA;S:") + connectedSSID + ";P:" + webServer->transferPassword() + ";;";
     const Rect qrBoundsWifi(metrics.contentSidePadding, startY, QR_CODE_WIDTH, QR_CODE_HEIGHT);
     QrUtils::drawQrCode(renderer, qrBoundsWifi, wifiConfig);
 
     // Show network name
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding + QR_CODE_WIDTH + metrics.verticalSpacing, startY + 80,
                       connectedSSID.c_str());
+    renderer.drawText(SMALL_FONT_ID, metrics.contentSidePadding + QR_CODE_WIDTH + metrics.verticalSpacing, startY + 110,
+                      tr(STR_PASSWORD));
+    renderer.drawText(SMALL_FONT_ID, metrics.contentSidePadding + QR_CODE_WIDTH + metrics.verticalSpacing, startY + 132,
+                      webServer->transferPassword());
 
     startY += QR_CODE_HEIGHT + 2 * metrics.verticalSpacing;
 
@@ -492,6 +499,9 @@ void CrossPointWebServerActivity::renderServerRunning() const {
                       hostnameUrl.c_str());
     renderer.drawText(SMALL_FONT_ID, metrics.contentSidePadding + QR_CODE_WIDTH + metrics.verticalSpacing, startY + 100,
                       ipUrl.c_str());
+    const std::string loginLine = std::string(tr(STR_USERNAME)) + ": tenor";
+    renderer.drawText(SMALL_FONT_ID, metrics.contentSidePadding + QR_CODE_WIDTH + metrics.verticalSpacing, startY + 125,
+                      loginLine.c_str());
   } else {
     startY += metrics.verticalSpacing * 2;
 
@@ -515,6 +525,12 @@ void CrossPointWebServerActivity::renderServerRunning() const {
     // Also show hostname URL
     std::string hostnameUrl = std::string(tr(STR_OR_HTTP_PREFIX)) + apHostname() + ".local/";
     renderer.drawCenteredText(SMALL_FONT_ID, startY, hostnameUrl.c_str(), true);
+    startY += height10 + 5;
+    const std::string loginLine = std::string(tr(STR_USERNAME)) + ": tenor";
+    renderer.drawCenteredText(SMALL_FONT_ID, startY, loginLine.c_str());
+    startY += height10 + 5;
+    const std::string passwordLine = std::string(tr(STR_PASSWORD)) + ": " + webServer->transferPassword();
+    renderer.drawCenteredText(SMALL_FONT_ID, startY, passwordLine.c_str());
   }
 
   const auto labels = mappedInput.mapLabels(tr(STR_EXIT), "", "", "");

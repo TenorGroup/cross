@@ -1,0 +1,12 @@
+{
+  "name": "Arduino-wolfSSL",
+  "version": "5.9.2",
+  "license": "GPL-3.0-or-later",
+  "build": {
+    "srcFilter": [
+      "+<*>",
+      "-<wolfssl-arduino.cpp>",
+      "-<examples/>"
+    ]
+  }
+}

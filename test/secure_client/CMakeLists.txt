@@ -1,0 +1,5 @@
+add_executable(SecureClientLifecycleTest SecureClientTest.cpp ${REPO_ROOT}/freeink-sdk/libs/network/SecureNet/src/SecureClient.cpp)
+target_include_directories(SecureClientLifecycleTest BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/stubs ${REPO_ROOT}/test/secure_http/stubs ${REPO_ROOT}/freeink-sdk/libs/network/SecureNet/include)
+target_compile_definitions(SecureClientLifecycleTest PRIVATE FREEINK_NET_WOLFSSL=1)
+target_link_libraries(SecureClientLifecycleTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(SecureClientLifecycleTest)

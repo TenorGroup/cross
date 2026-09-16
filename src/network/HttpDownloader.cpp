@@ -1,11 +1,14 @@
 #include "HttpDownloader.h"
 
 #include <Arduino.h>
+#include <HalClock.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <NetworkTrust.h>
 #include <base64.h>
 #include <esp_wifi.h>
 
+#include <ctime>
 #include <functional>
 #include <string>
 
@@ -67,32 +70,36 @@ struct WifiPowerSaveGuard {
 HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std::string& username,
                                          const std::string& password, Sink& sink, bool downgradeRedirectsToHttp,
                                          const char* rootCA, bool allowRedirects) {
+  if (downgradeRedirectsToHttp) return HttpDownloader::HTTP_ERROR;
   WifiPowerSaveGuard psGuard;
   std::string url = startUrl;
 
   for (int hop = 0; hop <= MAX_REDIRECTS; ++hop) {
+    freeink::http_url::Parts parsed;
+    if (!freeink::http_url::parse(url, parsed)) return HttpDownloader::HTTP_ERROR;
+    if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return HttpDownloader::HTTP_ERROR;
     freeink::SecureHttpClient http;
     http.setTimeout(rootCA ? 10000 : HTTP_TIMEOUT_MS);
     if (rootCA) {
       if (url.rfind("https://", 0) != 0) return HttpDownloader::HTTP_ERROR;
       http.setCACert(rootCA);
     } else
-      http.setInsecure();
+      http.setCACert(network_trust::forUrl(url));
     if (!http.begin(url)) {
-      LOG_ERR("HTTP", "wolfSSL bad URL: %s", url.c_str());
+      LOG_ERR("HTTP", "wolfSSL bad URL");
       return HttpDownloader::HTTP_ERROR;
     }
     // setUserAgent replaces SecureHttpClient's built-in UA; addHeader would
     // append a second User-Agent header, which strict servers reject (aiohttp
     // answers 400 "Duplicate 'User-Agent' header found").
     http.setUserAgent("CrossPoint-ESP32-" CROSSPOINT_VERSION);
-    if (!username.empty() && !password.empty()) {
+    if (!username.empty() && !password.empty() && freeink::http_url::sameOrigin(startUrl, url)) {
       const std::string credentials = username + ":" + password;
       const String encoded = base64::encode(credentials.c_str());
       http.addHeader("Authorization", std::string("Basic ") + encoded.c_str());
     }
 
-    LOG_DBG("HTTP", "wolfSSL GET: %s", url.c_str());
+    LOG_DBG("HTTP", "wolfSSL GET");
     const int status = http.GET(
         [&http, &sink](const uint8_t* data, size_t len) {
           if (http.getStatus() != 200) return true;
@@ -106,23 +113,19 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
 
     if (http.aborted()) return HttpDownloader::ABORTED;
     if (status < 0) {
-      LOG_ERR("HTTP", "wolfSSL request failed: %s", url.c_str());
+      LOG_ERR("HTTP", "wolfSSL request failed");
       return HttpDownloader::HTTP_ERROR;
     }
     if (isRedirect(status)) {
       if (!allowRedirects) return HttpDownloader::HTTP_ERROR;
       const std::string location = http.getHeader("location");
-      if (location.empty() || !freeink::SecureHttpClient::resolveUrl(url, location, url)) {
+      std::string nextUrl;
+      if (location.empty() || !freeink::SecureHttpClient::resolveUrl(url, location, nextUrl) ||
+          !freeink::http_url::redirectAllowed(url, nextUrl)) {
         LOG_ERR("HTTP", "wolfSSL bad redirect: %d", status);
         return HttpDownloader::HTTP_ERROR;
       }
-      if (downgradeRedirectsToHttp && url.rfind("https://", 0) == 0) {
-        // Fetch the redirect target over plain HTTP. GitHub's release-asset
-        // CDN serves its signed URLs on both schemes, and skipping the second
-        // TLS session removes its ~17KB record buffer - the MEMORY_E /
-        // OOM-abort site on C3 heaps that sit near 45KB free.
-        url.replace(0, 8, "http://");
-      }
+      url = std::move(nextUrl);
       continue;
     }
     if (status != 200) {
@@ -193,7 +196,9 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   }
   int64_t contentLength = esp_http_client_fetch_headers(client);
   int status = esp_http_client_get_status_code(client);
-  for (int hop = 0; allowRedirects && isRedirect(status) && hop < MAX_REDIRECTS; ++hop) {
+  for (int hop = 0;
+       allowRedirects && username.empty() && url.rfind("http://", 0) == 0 && isRedirect(status) && hop < MAX_REDIRECTS;
+       ++hop) {
     if (esp_http_client_set_redirection(client) != ESP_OK) break;
     esp_http_client_close(client);
     err = esp_http_client_open(client, 0);
@@ -261,12 +266,10 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
                                            const std::string& password, Sink& sink,
                                            bool downgradeRedirectsToHttp = false, const char* rootCA = nullptr,
                                            bool allowRedirects = true) {
+  if (downgradeRedirectsToHttp) return HttpDownloader::HTTP_ERROR;
 #if defined(FREEINK_NET_WOLFSSL)
   return runGetWolf(url, username, password, sink, downgradeRedirectsToHttp, rootCA, allowRedirects);
 #else
-  // esp_http_client follows redirects internally; the downgrade only exists on
-  // the wolfSSL path, where the manual hop loop exposes the Location URL.
-  (void)downgradeRedirectsToHttp;
   return runGet(url, username, password, sink, rootCA, allowRedirects);
 #endif
 }
@@ -274,7 +277,7 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
 
 bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const std::string& username,
                               const std::string& password) {
-  LOG_DBG("HTTP", "Fetching: %s", url.c_str());
+  LOG_DBG("HTTP", "Fetching");
   Sink sink;
   sink.write = [&outContent](const uint8_t* data, size_t len) { return outContent.write(data, len) == len; };
   return runGetSecure(url, username, password, sink) == OK;
@@ -282,10 +285,16 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
 
 bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent, const std::string& username,
                               const std::string& password) {
-  LOG_DBG("HTTP", "Fetching: %s", url.c_str());
+  LOG_DBG("HTTP", "Fetching");
   outContent.clear();  // start clean; the sink appends, so don't carry prior content
   Sink sink;
   sink.write = [&outContent](const uint8_t* data, size_t len) {
+    constexpr size_t MAX_BUFFERED_RESPONSE = 64 * 1024;
+    if (len > MAX_BUFFERED_RESPONSE - outContent.size()) return false;
+#ifndef SIMULATOR
+    if (len > outContent.capacity() - outContent.size() && ESP.getMaxAllocHeap() < 2 * (outContent.size() + len) + 8192)
+      return false;
+#endif
     outContent.append(reinterpret_cast<const char*>(data), len);
     return true;
   };
@@ -294,7 +303,7 @@ bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent, c
 
 bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username,
                               const std::string& password, const char* rootCA, bool allowRedirects) {
-  LOG_DBG("HTTP", "Fetching: %s", url.c_str());
+  LOG_DBG("HTTP", "Fetching");
   Sink sink;
   sink.write = onData;
   return runGetSecure(url, username, password, sink, false, rootCA, allowRedirects) == OK;
@@ -304,7 +313,7 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
                                                              ProgressCallback progress, bool* cancelFlag,
                                                              const std::string& username, const std::string& password,
                                                              bool downgradeRedirectsToHttp) {
-  LOG_DBG("HTTP", "Downloading: %s -> %s", url.c_str(), destPath.c_str());
+  LOG_DBG("HTTP", "Downloading file");
 
   if (Storage.exists(destPath.c_str())) {
     Storage.remove(destPath.c_str());
@@ -321,13 +330,14 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   sink.write = [&file](const uint8_t* data, size_t len) { return file.write(data, len) == len; };
 
   const DownloadError result = runGetSecure(url, username, password, sink, downgradeRedirectsToHttp);
+  const bool synced = result == OK && file.sync();
   // Close before any remove() on the same path; DESTRUCTOR_CLOSES_FILE would
   // otherwise close only after the remove.
   file.close();
 
-  if (result != OK) {
+  if (result != OK || !synced) {
     Storage.remove(destPath.c_str());
-    return result;
+    return result != OK ? result : FILE_ERROR;
   }
   if (sink.downloaded == 0) {
     LOG_ERR("HTTP", "no data received");

@@ -1,0 +1,3 @@
+add_executable(WebDavReplaceTest WebDavReplaceTest.cpp)
+target_link_libraries(WebDavReplaceTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(WebDavReplaceTest)

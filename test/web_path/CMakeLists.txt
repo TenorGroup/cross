@@ -1,0 +1,3 @@
+add_executable(WebPathTest WebPathTest.cpp)
+target_link_libraries(WebPathTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(WebPathTest)

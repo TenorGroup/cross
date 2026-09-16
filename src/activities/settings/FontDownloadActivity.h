@@ -30,6 +30,9 @@ class FontDownloadActivity final : public UiListActivity {
  public:
   explicit FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
+#ifdef FREEINK_TLS_AUDIT
+  void setAuditDownload() { auditDownload_ = true; }
+#endif
   void onEnter() override;
   void onExit() override;
   void render(RenderLock&&) override;
@@ -43,6 +46,9 @@ class FontDownloadActivity final : public UiListActivity {
   bool skipLoopDelay() override { return true; }
 
  private:
+#ifdef FREEINK_TLS_AUDIT
+  bool auditDownload_ = false;
+#endif
   enum State {
     WIFI_SELECTION,
     LOADING_MANIFEST,
