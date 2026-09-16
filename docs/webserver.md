@@ -1,6 +1,6 @@
 # Web Server Guide
 
-This guide explains how to use CrossPoint Reader's built-in web server for file
+This guide explains how to use tenor/cross's built-in web server for file
 transfer, device settings, Wi-Fi/OPDS management, and SD-card font management.
 
 ## Overview
@@ -15,8 +15,7 @@ The web server is available while the device is in **File Transfer** or
 - Upload and delete `.cpfont` SD-card font families
 - Accept WebDAV clients and Calibre wireless uploads
 
-The server does not require authentication. Use it only on trusted private
-networks or in hotspot mode when you control who is connected.
+The server requires the username `tenor` and the temporary password displayed on the reader. A new File Transfer session creates a new password. Use a trusted private network or the password-protected hotspot.
 
 ## Starting File Transfer
 
@@ -27,7 +26,7 @@ networks or in hotspot mode when you control who is connected.
 |------|----------|
 | **Join Network** | You want the reader to join an existing Wi-Fi network. |
 | **Calibre Wireless** | You want to receive books from the CrossPoint Calibre plugin workflow. |
-| **Create Hotspot** | You want the reader to create its own open Wi-Fi network. |
+| **Create Hotspot** | You want the reader to create its own WPA2-protected Wi-Fi network. |
 
 ## Join Network Mode
 
@@ -46,20 +45,20 @@ After connection, the reader shows:
 - The connected SSID
 - A QR code for the web URL
 - The direct IP URL, for example `http://192.0.2.10/`
-- The mDNS fallback URL, usually `http://crosspoint.local/`
+- The mDNS fallback URL, usually `http://tenor-cross.local/`
 
-Use either URL from a phone, tablet, or computer on the same network.
+Use either URL from a phone, tablet, or computer on the same network. Enter username `tenor` and the password shown on the reader when your browser requests sign-in.
 
 ## Create Hotspot Mode
 
 1. Select **Create Hotspot**.
-2. Connect your phone or computer to the open Wi-Fi network:
+2. Connect your phone or computer to the WPA2 Wi-Fi network shown on the reader, using its displayed password:
 
 ```text
-CrossPoint-Reader
+tenor-cross
 ```
 
-3. Open the URL shown on the reader. `http://crosspoint.local/` is preferred
+3. Open the URL shown on the reader. `http://tenor-cross.local/` is preferred
    when supported; the fallback IP is typically `http://192.168.4.1/`.
 
 The reader displays one QR code for joining the hotspot and another QR code for
@@ -69,8 +68,7 @@ opening the web interface.
 
 Calibre Wireless starts the same web server in station mode, then displays setup
 instructions and upload progress on the reader. Use this mode with the
-CrossPoint Calibre plugin or other clients that speak the documented WebSocket
-upload protocol.
+clients that support the authenticated WebSocket upload protocol below. Older clients that send START immediately must first add the session-token exchange.
 
 For Calibre OPDS browsing, add `/opds` to the catalog URL when configuring an
 OPDS server.
@@ -116,7 +114,7 @@ not returned by the API.
 The Fonts page lists installed SD-card font families and lets you upload
 `.cpfont` files. Upload files from one font family at a time. The server validates
 the font family name, filename, and `.cpfont` magic bytes before accepting the
-upload.
+upload. A duplicate font filename is rejected and the existing file is preserved.
 
 Installed fonts appear in **Settings > Reader > Font Family** after the font
 registry refreshes.
@@ -132,15 +130,17 @@ Endpoint details are documented in [webserver-endpoints.md](./webserver-endpoint
 
 - The HTTP server runs on port 80.
 - The WebSocket upload server runs on port 81.
-- There is no authentication.
-- Anyone on the same network can access the web interface while it is running.
+- HTTP and WebDAV require HTTP Basic sign-in for each transfer session. WebSocket uploads require a session token and a matching Origin.
+- HTTP does not encrypt traffic on a joined LAN. Use a trusted network; the password gate does not protect against packet capture.
+- Internal dot directories, device state, cache, FAT aliases and replacement backup files are blocked from web access.
+- File uploads over WebSocket are removed after disconnect, error or 30 seconds without upload data.
 - The server stops when you exit File Transfer or Calibre Wireless mode.
-- Hotspot mode creates an open network for connectivity fallback; disconnect when done.
+- Hotspot mode uses WPA2 with the displayed temporary password; disconnect when done.
 
 ## Tips
 
 1. Use **Create Hotspot** when no trusted network is available.
-2. Prefer `crosspoint.local` when available, but keep the displayed IP address as a fallback.
+2. Prefer `tenor-cross.local` when available, but keep the displayed IP address as a fallback.
 3. Move closer to the router if upload progress stalls in Join Network mode.
 4. Upload custom fonts through the Fonts page or copy them to `/.fonts/` or `/fonts/` on the SD card.
 5. Exit File Transfer mode when finished to conserve battery.

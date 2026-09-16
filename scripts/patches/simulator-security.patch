@@ -1,0 +1,110 @@
+--- a/src/WebServer.h
++++ b/src/WebServer.h
+@@ -72,9 +72,8 @@
+   ~WebServer();
+   void begin();
+   void handleClient();
+-  void enableCORS(bool /*enabled*/) {
+-    // Host responses already include Access-Control-Allow-Origin.
+-  }
++  void enableCORS(bool enabled);
++
+   void on(const char *uri, int method, std::function<void()> handler);
+   void on(const char *uri, int method, std::function<void()> handler,
+           std::function<void()> uploadHandler);
+--- a/src/WebServer.cpp
++++ b/src/WebServer.cpp
+@@ -278,6 +278,7 @@
+       : port(crosspoint_simulator::mapFirmwarePort(serverPort)) {}
+ 
+   int port;
++  bool corsEnabled = false;
+   int fd = -1;
+   std::atomic<bool> active{false};
+   std::thread worker;
+@@ -402,8 +403,8 @@
+       out << "Connection: close\r\n";
+     }
+     out << "Content-Type: " << (contentType ? contentType : "text/plain")
+-        << "\r\n"
+-        << "Access-Control-Allow-Origin: *\r\n";
++        << "\r\n";
++    if (corsEnabled) out << "Access-Control-Allow-Origin: *\r\n";
+     for (const auto &header : pendingHeaders) {
+       out << header.first.c_str() << ": " << header.second.c_str() << "\r\n";
+     }
+@@ -808,3 +809,5 @@
+   return static_cast<long>(impl_->requestContentLength);
+ }
+ HTTPUpload &WebServer::upload() { return impl_->currentUpload; }
++
++void WebServer::enableCORS(bool enabled) { impl_->corsEnabled = enabled; }
+--- a/src/WebSocketsServer.h
++++ b/src/WebSocketsServer.h
+@@ -2,6 +2,8 @@
+ 
+ #include <functional>
+ #include <memory>
++#include <vector>
++#include <string>
+ 
+ #include "WString.h"
+ 
+@@ -32,6 +34,8 @@
+   void sendTXT(uint8_t num, const String &txt);
+   void sendTXT(uint8_t num, const char *txt);
+   void close();
++  void disconnect(uint8_t num);
++  void onValidateHttpHeader(std::function<bool(String, String)> validator, const char* mandatory[], size_t count);
+ 
+ private:
+   using EventCallback =
+@@ -40,4 +44,6 @@
+   struct Impl;
+   std::unique_ptr<Impl> impl_;
+   EventCallback callback_;
++  std::function<bool(String, String)> validator_;
++  std::vector<std::string> mandatory_;
+ };
+--- a/src/WebSocketsServer.cpp
++++ b/src/WebSocketsServer.cpp
+@@ -406,6 +406,13 @@
+           headers[lower(line.substr(0, colon))] = trim(line.substr(colon + 1));
+         }
+ 
++        bool valid = true;
++        for (const auto& name : mandatory_) if (!headers.count(lower(name))) valid = false;
++        for (const auto& h : headers) {
++          if (validator_ && !validator_(String(h.first.c_str()), String(h.second.c_str()))) valid = false;
++        }
++        if (!valid) { ::close(client); return; }
++
+         const auto keyIt = headers.find("sec-websocket-key");
+         if (keyIt == headers.end()) {
+           ::close(client);
+@@ -512,3 +519,13 @@
+   }
+   impl_->drainEvents();
+ }
++
++void WebSocketsServer::disconnect(uint8_t num) {
++  const int fd = impl_->clientFd(num);
++  if (fd >= 0) ::shutdown(fd, SHUT_RDWR);
++}
++void WebSocketsServer::onValidateHttpHeader(std::function<bool(String, String)> validator, const char* mandatory[], size_t count) {
++  validator_ = std::move(validator);
++  mandatory_.clear();
++  for (size_t i = 0; i < count; ++i) mandatory_.emplace_back(mandatory[i]);
++}
+--- a/src/HalStorage.cpp
++++ b/src/HalStorage.cpp
+@@ -224,6 +224,9 @@
+ size_t HalFile::write(const void *buf, size_t count) {
+   if (!impl || impl->fd < 0)
+     return 0;
++  const char* shortWrite = std::getenv("CROSSPOINT_SIM_SHORT_WRITE_FILE");
++  if (shortWrite && count > 0 && impl->path.substr(impl->path.rfind('/') + 1) == shortWrite)
++    --count;
+   ssize_t n = ::write(impl->fd, buf, count);
+   return n < 0 ? 0 : (size_t)n;
+ }

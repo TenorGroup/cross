@@ -1,3 +1,11 @@
+#ifdef FREEINK_TLS_AUDIT
+#include <SecureClient.h>
+#include <sys/time.h>
+
+#include "activities/network/WifiSelectionActivity.h"
+#include "activities/settings/FontDownloadActivity.h"
+#include "network/HttpDownloader.h"
+#endif
 #ifdef TENOR_UI_ACCEPTANCE
 #include "activities/network/CrossPointWebServerActivity.h"
 #endif
@@ -59,6 +67,26 @@
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
+
+#ifdef FREEINK_TLS_AUDIT
+// Diagnostic parent avoids retaining the font manifest or resuming the Home cover.
+class TlsAuditActivity final : public Activity {
+ public:
+  TlsAuditActivity(GfxRenderer& r, MappedInputManager& input) : Activity("TlsAudit", r, input) {}
+  void onEnter() override {
+    Activity::onEnter();
+    if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
+    WiFi.mode(WIFI_STA);
+    startActivityForResult(makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, true, false),
+                           [](const ActivityResult&) {});
+  }
+  bool preventAutoSleep() override { return true; }
+  void render(RenderLock&&) override {
+    renderer.clearScreen();
+    renderer.displayBuffer();
+  }
+};
+#endif
 
 GfxRenderer renderer(display);
 MappedInputManager mappedInputManager(gpio, renderer);
@@ -674,6 +702,74 @@ void loop() {
         uint8_t* buf = display.getFrameBuffer();
         logSerial.write(buf, bufferSize);
         logSerial.printf("SCREENSHOT_END\n");
+#ifdef FREEINK_TLS_AUDIT
+      } else if (cmd == "TLS_AUDIT_JOIN") {
+        activityManager.pushActivity(makeUniqueNoThrow<TlsAuditActivity>(renderer, mappedInputManager));
+      } else if (cmd == "TLS_AUDIT_NO_CA") {
+        const uint32_t before = ESP.getFreeHeap();
+        unsigned accepted = 0;
+        for (int i = 0; i < 32; ++i) {
+          freeink::SecureClient client;
+          accepted += client.connect("self-signed.badssl.com", 443) != 0;
+        }
+        logSerial.printf("TLS_AUDIT_NO_CA:accepted=%u,before=%u,after=%u\n", accepted, before, ESP.getFreeHeap());
+      } else if (cmd == "TLS_AUDIT_FONT_DOWNLOAD") {
+        auto activity = makeUniqueNoThrow<FontDownloadActivity>(renderer, mappedInputManager);
+        if (activity) {
+          activity->setAuditDownload();
+          activityManager.pushActivity(std::move(activity));
+        }
+      } else if (cmd == "TLS_AUDIT_FONTS") {
+        activityManager.pushActivity(makeUniqueNoThrow<FontDownloadActivity>(renderer, mappedInputManager));
+      } else if (cmd.startsWith("TLS_AUDIT ")) {
+        const String name = cmd.substring(10);
+        const char* url = nullptr;
+        if (name == "github" || name == "expired-clock")
+          url = "https://github.com/robots.txt";
+        else if (name == "cdn")
+          url = "https://release-assets.githubusercontent.com/";
+        else if (name == "cross")
+          url = "https://cross.tenor.vn/";
+        else if (name == "kosync")
+          url = "https://sync.koreader.rocks/";
+        else if (name == "valid")
+          url = "https://sha256.badssl.com/";
+        else if (name == "selfsigned")
+          url = "https://self-signed.badssl.com/";
+        else if (name == "hostname")
+          url = "https://wrong.host.badssl.com/";
+        else if (name == "expired")
+          url = "https://expired.badssl.com/";
+        if (url && (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
+                    ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC)) {
+          logSerial.printf("TLS_AUDIT:LOW_MEMORY,heap=%u,largest=%u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+        } else if (url) {
+          const time_t clockBefore = time(nullptr);
+          const uint32_t probeStart = millis();
+          if (name == "expired-clock") {
+            timeval future{clockBefore + 2 * 365 * 86400, 0};
+            settimeofday(&future, nullptr);
+          }
+          size_t bytes = 0;
+          logSerial.printf("TLS_AUDIT_START:%s,heap=%u,largest=%u\n", name.c_str(), ESP.getFreeHeap(),
+                           ESP.getMaxAllocHeap());
+          const bool ok = HttpDownloader::fetchUrl(
+              url,
+              [&bytes](const uint8_t*, size_t len) {
+                bytes += len;
+                return bytes <= 65536;
+              },
+              "", "", nullptr, false);
+          if (name == "expired-clock") {
+            timeval restored{clockBefore + static_cast<time_t>((millis() - probeStart) / 1000), 0};
+            settimeofday(&restored, nullptr);
+          }
+          logSerial.printf("TLS_AUDIT_END:%s,ok=%d,bytes=%u,heap=%u,largest=%u\n", name.c_str(), ok, (unsigned)bytes,
+                           ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+        } else {
+          logSerial.printf("TLS_AUDIT:INVALID_FIXTURE\n");
+        }
+#endif
 #ifdef TENOR_OTA_ACCEPTANCE
       } else if (cmd == "OTA_ACCEPTANCE") {
         activityManager.pushActivity(makeUniqueNoThrow<OtaUpdateActivity>(renderer, mappedInputManager));

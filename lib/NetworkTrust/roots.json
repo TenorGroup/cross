@@ -1,0 +1,71 @@
+{
+  "source": "Mozilla CA certificates distributed by certifi",
+  "certifi_version": "2026.07.22",
+  "roots": [
+    {
+      "name": "DigiCert Global Root G2",
+      "expires": "Jan 15 12:00:00 2038 GMT",
+      "der_sha256": "cb3ccbb76031e5e0138f8dd39a23f9de47ffc35e43c1144cea27d46a5ab1cb5f"
+    },
+    {
+      "name": "USERTrust RSA Certification Authority",
+      "expires": "Jan 18 23:59:59 2038 GMT",
+      "der_sha256": "e793c9b02fd8aa13e21c31228accb08119643b749c898964b1746d46c3d4cbd2"
+    },
+    {
+      "name": "ISRG Root X1",
+      "expires": "Jun  4 11:04:38 2035 GMT",
+      "der_sha256": "96bcec06264976f37460779acf28c5a7cfe8a3c0aae11a8ffcee05c0bddf08c6"
+    },
+    {
+      "name": "ISRG Root X2",
+      "expires": "Sep 17 16:00:00 2040 GMT",
+      "der_sha256": "69729b8e15a86efc177a57afb7171dfc64add28c2fca8cf1507e34453ccb1470"
+    },
+    {
+      "name": "GTS Root R1",
+      "expires": "Jun 22 00:00:00 2036 GMT",
+      "der_sha256": "d947432abde7b7fa90fc2e6b59101b1280e0e1c7e4e40fa3c6887fff57a7f4cf"
+    },
+    {
+      "name": "GTS Root R4",
+      "expires": "Jun 22 00:00:00 2036 GMT",
+      "der_sha256": "349dfa4058c5e263123b398ae795573c4e1313c83fe68f93556cd5e8031b3c7d"
+    },
+    {
+      "name": "Sectigo Public Server Authentication Root E46",
+      "expires": "Mar 21 23:59:59 2046 GMT",
+      "der_sha256": "c90f26f0fb1b4018b22227519b5ca2b53e2ca5b3be5cf18efe1bef47380c5383"
+    },
+    {
+      "name": "Sectigo Public Server Authentication Root R46",
+      "expires": "Mar 21 23:59:59 2046 GMT",
+      "der_sha256": "7bb647a62aeeac88bf257aa522d01ffea395e0ab45c73f93f65654ec38f25a06"
+    }
+  ],
+  "policies": {
+    "gts": [
+      "GTS Root R4",
+      "GTS Root R1"
+    ],
+    "isrg1": [
+      "ISRG Root X1",
+      "ISRG Root X2"
+    ],
+    "sectigo": [
+      "Sectigo Public Server Authentication Root E46",
+      "Sectigo Public Server Authentication Root R46",
+      "USERTrust RSA Certification Authority"
+    ],
+    "roots": [
+      "DigiCert Global Root G2",
+      "ISRG Root X1",
+      "ISRG Root X2",
+      "GTS Root R4",
+      "GTS Root R1",
+      "Sectigo Public Server Authentication Root E46",
+      "Sectigo Public Server Authentication Root R46",
+      "USERTrust RSA Certification Authority"
+    ]
+  }
+}

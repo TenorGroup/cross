@@ -74,3 +74,13 @@ add_subdirectory(reading_habits)
 add_subdirectory(wake_buttons)
 
 add_subdirectory(book_metadata_cache)
+
+add_subdirectory(web_path)
+
+add_subdirectory(http_url)
+
+add_subdirectory(webdav_replace)
+
+add_subdirectory(secure_http)
+
+add_subdirectory(secure_client)

@@ -22,6 +22,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
+#include "network/WebDavReplace.h"
 
 namespace fui = freeink::ui;
 
@@ -72,6 +73,17 @@ void FontDownloadActivity::onBackButton() {
 
 void FontDownloadActivity::onEnter() {
   UiListActivity::onEnter();
+  // This screen reads installation state directly from SD. Drop the rebuildable
+  // registry before TLS/JSON allocations fragment the heap; keep loaded fonts
+  // and CJK UI fallback pointers alive. Leaving Wi-Fi already restarts the app.
+  {
+    RenderLock lock(*this);
+    const uint32_t before = ESP.getFreeHeap();
+    sdFontSystem.registry() = SdCardFontRegistry{};
+    sdFontSystem.markRegistryDirty();
+    LOG_INF("FONT", "Download registry released=%u heap=%u largest=%u",
+            before <= ESP.getFreeHeap() ? ESP.getFreeHeap() - before : 0u, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  }
   WiFi.mode(WIFI_STA);
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
@@ -110,6 +122,29 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
     }
     return;
   }
+
+#ifdef FREEINK_TLS_AUDIT
+  if (auditDownload_) {
+    ManifestFamily* selected = nullptr;
+    for (auto& family : families_) {
+      if (!family.installed && family.fileCount && (!selected || family.totalSize < selected->totalSize))
+        selected = &family;
+    }
+    if (selected) {
+      LOG_INF("TLS_AUDIT", "Production font download family=%s files=%u bytes=%u", str(selected->name),
+              selected->fileCount, selected->totalSize);
+      currentFileIndex_ = 0;
+      currentFileTotal_ = selected->fileCount;
+      downloadFamily(*selected);
+      LOG_INF("TLS_AUDIT", "Production font result complete=%d files=%u/%u free=%u largest=%u min=%u",
+              state_ == COMPLETE, (unsigned)currentFileIndex_, (unsigned)currentFileTotal_, ESP.getFreeHeap(),
+              ESP.getMaxAllocHeap(), ESP.getMinFreeHeap());
+      requestUpdate();
+      return;
+    }
+    LOG_INF("TLS_AUDIT", "No uninstalled font family available");
+  }
+#endif
 
   if (!hasGroupScreen()) buildFilteredIndices(0);
 
@@ -229,7 +264,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   baseUrl_ = doc["baseUrl"] | "";
   downloadUrl_.reserve(baseUrl_.size() + 128);
   clearManifest();
-  fontInstaller_.refreshRegistry();
+  sdFontSystem.markRegistryDirty();
 
   JsonArray groupsArr = doc["scriptGroups"].as<JsonArray>();
   JsonArray familiesArr = doc["families"].as<JsonArray>();
@@ -292,6 +327,10 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   filteredIndices_.reserve(familiesArr.size());
 
   for (JsonObject fObj : familiesArr) {
+    if (!FontInstaller::isValidFamilyName(fObj["name"] | "")) {
+      errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+      return false;
+    }
     ManifestFamily family;
     if (!internString(fObj["name"] | "", family.name) || !internString(fObj["description"] | "", family.description)) {
       errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
@@ -313,6 +352,10 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
     family.fileStart = fileEntryCount_;
     for (JsonObject fileObj : fObj["files"].as<JsonArray>()) {
+      if (!FontInstaller::isValidCpfontFilename(fileObj["name"] | "")) {
+        errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+        return false;
+      }
       ManifestFile file;
       if (!internString(fileObj["name"] | "", file.name)) {
         errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
@@ -332,7 +375,9 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     }
     family.fileCount = fileEntryCount_ - family.fileStart;
 
-    family.installed = fontInstaller_.isFamilyInstalled(str(family.name));
+    // A directory with missing files is an incomplete installation; the size
+    // checks below mark it for repair without retaining the whole SD registry.
+    family.installed = SdCardFontRegistry::findFamilyRoot(str(family.name)) != nullptr;
 
     // Detect updates by comparing manifest file sizes with files on disk.
     // Not a checksum, but a size mismatch reliably indicates a rebuild in practice.
@@ -520,6 +565,7 @@ bool FontDownloadActivity::computeFileCrc32(const char* path, uint32_t& outCrc) 
 }
 
 void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
+  const bool wasInstalled = family.installed;
   {
     RenderLock lock(*this);
     state_ = DOWNLOADING;
@@ -572,95 +618,70 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
 
     downloadUrl_.assign(baseUrl_).append(str(file.name));
 
-    auto result = HttpDownloader::downloadToFile(
-        downloadUrl_, destPath,
-        [this](size_t downloaded, size_t total) {
-          fileProgress_ = downloaded;
-          fileTotal_ = total;
-          mappedInput.update();
-          if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
-              mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-            cancelRequested_ = true;
-          }
-          // This update() consumes the one-shot home event before the central
-          // ActivityManager dispatch can see it, so honor it here: abort the
-          // download, then exit to home once the abort unwinds.
-          if (mappedInput.wasLongPressed(MappedInputManager::Button::Back, 1000) || mappedInput.wasHomeGesture()) {
-            cancelRequested_ = true;
-            goHomeRequested_ = true;
-          }
-          requestUpdate(true);
+    auto downloadResult = HttpDownloader::HTTP_ERROR;
+    const auto installResult = webdav::installVerifiedFile(
+        Storage, destPath,
+        [&](const char* staging) {
+          downloadResult = HttpDownloader::downloadToFile(
+              downloadUrl_, staging,
+              [this](size_t downloaded, size_t total) {
+                fileProgress_ = downloaded;
+                fileTotal_ = total;
+                mappedInput.update();
+                if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
+                    mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+                  cancelRequested_ = true;
+                }
+                // This update() consumes the one-shot home event before the central
+                // ActivityManager dispatch can see it, so honor it here: abort the
+                // download, then exit to home once the abort unwinds.
+                if (mappedInput.wasLongPressed(MappedInputManager::Button::Back, 1000) ||
+                    mappedInput.wasHomeGesture()) {
+                  cancelRequested_ = true;
+                  goHomeRequested_ = true;
+                }
+                requestUpdate(true);
+              },
+              &cancelRequested_, "", "");
+          return downloadResult == HttpDownloader::OK;
         },
-        // Bulk font transfers follow GitHub's release-asset redirect over plain
-        // HTTP: the CRC check below (manifest fetched over TLS) covers
-        // integrity, and skipping the second TLS session keeps the C3 heap out
-        // of MEMORY_E territory.
-        &cancelRequested_, "", "", /*downgradeRedirectsToHttp=*/true);
+        [&](const char* staging) {
+          uint32_t actualCrc = 0;
+          if (!computeFileCrc32(staging, actualCrc) || actualCrc != file.crc32) {
+            LOG_ERR("FONT", "CRC32 validation failed: %s got=%08x expected=%08x", str(file.name), actualCrc,
+                    file.crc32);
+            return false;
+          }
+          return fontInstaller_.validateCpfontFile(staging);
+        });
 
-    if (result == HttpDownloader::ABORTED) {
-      fontInstaller_.deleteFamily(str(family.name));
-      family.installed = false;
-      family.hasUpdate = false;
-      if (goHomeRequested_) {
-        onGoHome();
-        return;
-      }
-      {
+    if (installResult != webdav::InstallResult::OK) {
+      // Completed files remain usable; a retry can replace them independently.
+      family.installed = wasInstalled;
+      family.hasUpdate = wasInstalled;
+      if (downloadResult == HttpDownloader::ABORTED) {
+        if (goHomeRequested_) {
+          onGoHome();
+          return;
+        }
         RenderLock lock(*this);
         state_ = FAMILY_LIST;
-        rowsDirty_ = true;  // installed/hasUpdate just changed above
+        rowsDirty_ = true;
+        return;
       }
-      return;
-    }
-
-    if (result != HttpDownloader::OK) {
-      LOG_ERR("FONT", "Download failed: %s (%d)", str(file.name), result);
-      fontInstaller_.deleteFamily(str(family.name));
-      family.installed = false;
-      family.hasUpdate = false;
+      LOG_ERR("FONT", "Font install failed: %s download=%d stage=%d", str(file.name), downloadResult,
+              static_cast<int>(installResult));
       RenderLock lock(*this);
       state_ = ERROR;
       errorMessage_ = std::string("Download failed: ") + str(file.name);
       return;
     }
+    LOG_DBG("FONT", "Downloaded %s (size=%u crc32=%08x)", str(file.name), file.size, file.crc32);
 
-    uint32_t actualCrc = 0;
-    if (!computeFileCrc32(destPath, actualCrc)) {
-      LOG_ERR("FONT", "Failed to open file for CRC check: %s", destPath);
-      fontInstaller_.deleteFamily(str(family.name));
-      family.installed = false;
-      family.hasUpdate = false;
-      RenderLock lock(*this);
-      state_ = ERROR;
-      errorMessage_ = std::string("Failed to compute checksum: ") + str(file.name);
-      return;
-    }
-    if (actualCrc != file.crc32) {
-      LOG_ERR("FONT", "CRC32 mismatch for %s: got %08x expected %08x", str(file.name), actualCrc, file.crc32);
-      fontInstaller_.deleteFamily(str(family.name));
-      family.installed = false;
-      family.hasUpdate = false;
-      RenderLock lock(*this);
-      state_ = ERROR;
-      errorMessage_ = std::string("Checksum mismatch: ") + str(file.name);
-      return;
-    }
-    LOG_DBG("FONT", "Downloaded %s (size=%u crc32=%08x)", str(file.name), file.size, actualCrc);
-
-    if (!fontInstaller_.validateCpfontFile(destPath)) {
-      LOG_ERR("FONT", "Invalid .cpfont: %s", destPath);
-      fontInstaller_.deleteFamily(str(family.name));
-      family.installed = false;
-      family.hasUpdate = false;
-      RenderLock lock(*this);
-      state_ = ERROR;
-      errorMessage_ = std::string("Invalid font file: ") + str(file.name);
-      return;
-    }
     currentFileIndex_++;
   }
 
-  fontInstaller_.refreshRegistry();
+  sdFontSystem.markRegistryDirty();
   family.installed = true;
   family.hasUpdate = false;
 
@@ -701,7 +722,7 @@ void FontDownloadActivity::onDeleteConfirmationResult(const ActivityResult& resu
     state_ = ERROR;
     errorMessage_ = "Failed to delete font";
   } else {
-    fontInstaller_.refreshRegistry();
+    sdFontSystem.markRegistryDirty();
     family.installed = false;
     family.hasUpdate = false;
     // Unlike the other family_ mutations, this one stays in FAMILY_LIST (no

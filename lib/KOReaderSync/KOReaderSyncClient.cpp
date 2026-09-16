@@ -1,11 +1,14 @@
 #include "KOReaderSyncClient.h"
 
 #include <ArduinoJson.h>
+#include <HalClock.h>
 #include <HalMemory.h>
 #include <Logging.h>
+#include <NetworkTrust.h>
 #include <SecureHttpClient.h>
 #include <base64.h>
 
+#include <ctime>
 #include <string>
 
 #include "KOReaderCredentialStore.h"
@@ -56,13 +59,16 @@ KOReaderSyncClient::Error KOReaderSyncClient::authenticate() {
   }
 
   const std::string url = KOREADER_STORE.getBaseUrl() + "/users/auth";
-  LOG_DBG("KOSync", "Authenticating: %s (heap: %u)", url.c_str(), (unsigned)ESP.getFreeHeap());
+  LOG_DBG("KOSync", "Authenticating (heap: %u)", (unsigned)ESP.getFreeHeap());
   if (insufficientHeap()) return LOW_MEMORY;
 
   freeink::SecureHttpClient http;
-  http.setInsecure();
+  freeink::http_url::Parts parsed;
+  if (!freeink::http_url::parse(url, parsed)) return NETWORK_ERROR;
+  if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return NETWORK_ERROR;
+  http.setCACert(network_trust::forUrl(url));
   if (!http.begin(url)) {
-    LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
+    LOG_ERR("KOSync", "Bad URL");
     return NETWORK_ERROR;
   }
   applyAuthHeaders(http);
@@ -89,7 +95,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::createUser() {
   }
 
   const std::string url = KOREADER_STORE.getBaseUrl() + "/users/create";
-  LOG_DBG("KOSync", "Creating account: %s (heap: %u)", url.c_str(), (unsigned)ESP.getFreeHeap());
+  LOG_DBG("KOSync", "Creating account (heap: %u)", (unsigned)ESP.getFreeHeap());
   if (insufficientHeap()) return LOW_MEMORY;
 
   JsonDocument doc;
@@ -99,9 +105,12 @@ KOReaderSyncClient::Error KOReaderSyncClient::createUser() {
   serializeJson(doc, body);
 
   freeink::SecureHttpClient http;
-  http.setInsecure();
+  freeink::http_url::Parts parsed;
+  if (!freeink::http_url::parse(url, parsed)) return NETWORK_ERROR;
+  if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return NETWORK_ERROR;
+  http.setCACert(network_trust::forUrl(url));
   if (!http.begin(url)) {
-    LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
+    LOG_ERR("KOSync", "Bad URL");
     return NETWORK_ERROR;
   }
   http.addHeader("Accept", "application/vnd.koreader.v1+json");
@@ -127,13 +136,16 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
   }
 
   const std::string url = KOREADER_STORE.getBaseUrl() + "/syncs/progress/" + documentHash;
-  LOG_DBG("KOSync", "Getting progress: %s (heap: %u)", url.c_str(), (unsigned)ESP.getFreeHeap());
+  LOG_DBG("KOSync", "Getting progress (heap: %u)", (unsigned)ESP.getFreeHeap());
   if (insufficientHeap()) return LOW_MEMORY;
 
   freeink::SecureHttpClient http;
-  http.setInsecure();
+  freeink::http_url::Parts parsed;
+  if (!freeink::http_url::parse(url, parsed)) return NETWORK_ERROR;
+  if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return NETWORK_ERROR;
+  http.setCACert(network_trust::forUrl(url));
   if (!http.begin(url)) {
-    LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
+    LOG_ERR("KOSync", "Bad URL");
     return NETWORK_ERROR;
   }
   applyAuthHeaders(http);
@@ -210,7 +222,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
   }
 
   const std::string url = KOREADER_STORE.getBaseUrl() + "/syncs/progress";
-  LOG_DBG("KOSync", "Updating progress: %s (heap: %u)", url.c_str(), (unsigned)ESP.getFreeHeap());
+  LOG_DBG("KOSync", "Updating progress (heap: %u)", (unsigned)ESP.getFreeHeap());
   if (insufficientHeap()) return LOW_MEMORY;
 
   // Build JSON body
@@ -245,9 +257,12 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
   LOG_DBG("KOSync", "Request body: %s", body.c_str());
 
   freeink::SecureHttpClient http;
-  http.setInsecure();
+  freeink::http_url::Parts parsed;
+  if (!freeink::http_url::parse(url, parsed)) return NETWORK_ERROR;
+  if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return NETWORK_ERROR;
+  http.setCACert(network_trust::forUrl(url));
   if (!http.begin(url)) {
-    LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
+    LOG_ERR("KOSync", "Bad URL");
     return NETWORK_ERROR;
   }
   applyAuthHeaders(http);

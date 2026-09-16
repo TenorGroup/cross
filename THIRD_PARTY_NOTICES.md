@@ -4,7 +4,7 @@ The root MIT licence applies to the application code covered by that licence. It
 
 - CrossPoint Reader: copyright Dave Allie and contributors, MIT. Original notices in source files remain.
 - FreeInk SDK: MIT, copyright FreeInk. The SDK NOTICE preserves the Open X4 E-Paper Contributors attribution. Lucide icons retain their ISC and MIT notices in the nested submodule.
-- Arduino-wolfSSL 5.7.2: its COPYING contains GPL version 2, and LICENSING and source headers permit GPL version 2 or any later version, or a separate commercial licence. Copies are in `licenses/dependencies/Arduino-wolfSSL/`. This project provides no commercial licence grant. A combined firmware distributed using wolfSSL's GPL option must satisfy the applicable GPL conditions, including corresponding source and build material. The MIT licence for the application remains available for those files.
+- wolfSSL 5.9.2: GPL version 3 or any later version, or a separately obtained commercial licence. The exact upstream commit, source, COPYING and LICENSING are retained in `third_party/wolfssl/`. This project provides no commercial licence grant. Linked firmware distributed using the GPL option must satisfy the GPL conditions, including complete corresponding source and build material. The application and SDK files remain available under their own MIT licences.
 - ArduinoJson and QRCode: MIT, retained in `licenses/dependencies/`.
 - SdFat: retained upstream notice in `licenses/dependencies/SdFat/`.
 - JPEGDEC and PNGdec: Apache License 2.0, retained in `licenses/dependencies/`.
@@ -15,7 +15,7 @@ The root MIT licence applies to the application code covered by that licence. It
 - Ubuntu fonts: retain the Ubuntu Font Licence in the font source directory.
 - ESP-IDF, Arduino-ESP32 and platform toolchain components are fetched by PlatformIO and retain their package licences. Their licences also apply to redistributable portions incorporated in firmware.
 
-The complete licence obligations of a compiled image depend on its linked components. Distribution under GPLv2 alone requires special care with Apache-2.0 components. wolfSSL 5.7.2's later-version permission is material to that assessment. This source tree does not certify compliance of previously distributed binaries or provide a legal opinion.
+The complete licence obligations of a compiled image depend on its linked components. Firmware built with the bundled wolfSSL uses the GPLv3 distribution route; the root MIT licence does not relicense those dependencies. Release source archives must include the linked sources, build scripts and configuration described in the release manifest. Historical binaries require a separate source/version match.
 
 Official references: [wolfSSL licensing](https://www.wolfssl.com/license/), [GNU linking FAQ](https://www.gnu.org/licenses/gpl-faq.html#GPLStaticVsDynamic), [GNU GPL compatibility](https://www.gnu.org/licenses/license-list.html#apache2).
 

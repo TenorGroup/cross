@@ -348,6 +348,14 @@ void HomeActivity::activateIndex(const int index) {
 }
 
 bool HomeActivity::handleButtons() {
+  // Continue reading stays above the independently scrolled older books.
+  // Its row is the visible top even when the older viewport starts at book 4.
+  if (activeTabId == Tab::RECENT && tenorchrome::enabled() &&
+      mappedInput.wasLongPressed(MappedInputManager::Button::Left, 700)) {
+    RenderLock lock(*this);
+    moveRingTo(listCount() > 0 ? 1 : 0);
+    return true;
+  }
   if (mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700)) {
     const int index = ringPos() - 1;
     // Giu Chon tren THANH THE Folder: mo trinh duyet tep tai goc the nho. Nhip giu nay truoc

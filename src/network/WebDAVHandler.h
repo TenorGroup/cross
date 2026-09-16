@@ -3,8 +3,11 @@
 #include <HalStorage.h>
 #include <WebServer.h>
 
+#include "WebTransferAuth.h"
+
 class WebDAVHandler : public RequestHandler {
  public:
+  explicit WebDAVHandler(const WebTransferAuth& access) : auth(access) {}
   // RequestHandler interface
   bool canHandle(WebServer& server, HTTPMethod method, const String& uri) override;
   bool canRaw(WebServer& server, const String& uri) override;
@@ -12,6 +15,7 @@ class WebDAVHandler : public RequestHandler {
   bool handle(WebServer& server, HTTPMethod method, const String& uri) override;
 
  private:
+  const WebTransferAuth& auth;
   // PUT streaming state (raw() is called in chunks)
   HalFile _putFile;
   String _putPath;
