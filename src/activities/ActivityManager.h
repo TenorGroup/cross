@@ -122,6 +122,9 @@ class ActivityManager {
   // Note: if popActivity() on last activity on the stack, we will goHome()
   void popActivity();
   bool switchSettingsSibling(int direction);
+#ifdef TENOR_UI_ACCEPTANCE
+  void stepHomeForTest(int direction);
+#endif
 
   bool preventAutoSleep() const;
   bool requiresExclusiveStorageLoop() const;

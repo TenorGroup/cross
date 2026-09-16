@@ -54,22 +54,18 @@ namespace {
 // de biet co phai dan lai hay khong.
 struct AnhChupChu {
   uint8_t fontFamily, fontPointSize, lineSpacing, screenMargin, paragraphAlignment, extraParagraphSpacing,
-      paragraphIndent, focusReadingEnabled, hyphenationEnabled, embeddedStyle, textAntiAliasing, readerInkWeight;
+      paragraphIndent, focusReadingEnabled, hyphenationEnabled, embeddedStyle, textAntiAliasing, readerInkWeight,
+      letterSpacing, hideReaderStatusBar, hideGlobalStatusBar;
   std::string sdFontFamilyName;
   static AnhChupChu chup() {
-    return {SETTINGS.fontFamily,
-            SETTINGS.fontPointSize,
-            SETTINGS.lineSpacing,
-            SETTINGS.screenMargin,
-            SETTINGS.paragraphAlignment,
-            SETTINGS.extraParagraphSpacing,
-            SETTINGS.paragraphIndent,
-            SETTINGS.focusReadingEnabled,
-            SETTINGS.hyphenationEnabled,
-            SETTINGS.embeddedStyle,
-            SETTINGS.textAntiAliasing,
-            SETTINGS.readerInkWeight,
-            std::string(SETTINGS.sdFontFamilyName)};
+    return {SETTINGS.fontFamily,          SETTINGS.fontPointSize,
+            SETTINGS.lineSpacing,         SETTINGS.screenMargin,
+            SETTINGS.paragraphAlignment,  SETTINGS.extraParagraphSpacing,
+            SETTINGS.paragraphIndent,     SETTINGS.focusReadingEnabled,
+            SETTINGS.hyphenationEnabled,  SETTINGS.embeddedStyle,
+            SETTINGS.textAntiAliasing,    SETTINGS.readerInkWeight,
+            SETTINGS.letterSpacing,       SETTINGS.hideReaderStatusBar,
+            SETTINGS.hideGlobalStatusBar, std::string(SETTINGS.sdFontFamilyName)};
   }
   bool operator==(const AnhChupChu& o) const {
     return fontFamily == o.fontFamily && fontPointSize == o.fontPointSize && lineSpacing == o.lineSpacing &&
@@ -77,7 +73,9 @@ struct AnhChupChu {
            extraParagraphSpacing == o.extraParagraphSpacing && paragraphIndent == o.paragraphIndent &&
            focusReadingEnabled == o.focusReadingEnabled && hyphenationEnabled == o.hyphenationEnabled &&
            embeddedStyle == o.embeddedStyle && textAntiAliasing == o.textAntiAliasing &&
-           sdFontFamilyName == o.sdFontFamilyName && readerInkWeight == o.readerInkWeight;
+           sdFontFamilyName == o.sdFontFamilyName && readerInkWeight == o.readerInkWeight &&
+           letterSpacing == o.letterSpacing && hideReaderStatusBar == o.hideReaderStatusBar &&
+           hideGlobalStatusBar == o.hideGlobalStatusBar;
   }
 };
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
@@ -1176,6 +1174,9 @@ bool EpubReaderActivity::skipLoopDelay() {
 }
 
 void EpubReaderActivity::renderBook() {
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_INF("ERS", "Render CPU=%uMHz heap=%u", getCpuFrequencyMhz(), ESP.getFreeHeap());
+#endif
   currentPageLinks.clear();
   if (!epub) return;
 
@@ -1852,7 +1853,7 @@ void EpubReaderActivity::renderStatusBar() const {
 namespace {
 constexpr StrId kTextRowNames[] = {StrId::STR_FONT, StrId::STR_FONT_SIZE, StrId::STR_LINE_SPACING,
                                    StrId::STR_PARA_ALIGNMENT, StrId::STR_FOCUS_READING};
-constexpr StrId kSpacingIds[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE};
+constexpr StrId kSpacingIds[] = {StrId::STR_TIGHT, StrId::STR_INK_DEFAULT, StrId::STR_WIDE};
 constexpr StrId kAlignIds[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                StrId::STR_BOOK_S_STYLE};
 constexpr int kTextRowCount = static_cast<int>(std::size(kTextRowNames));
@@ -2426,8 +2427,8 @@ void EpubReaderActivity::applyReaderTextSettings() {
   // (Re)load or unload the selected SD-card font for the current family/size.
   // The reader otherwise only loads SD fonts on book open, so without this an
   // in-reader font change wouldn't take effect until re-opening the book.
-  sdFontSystem.ensureLoaded(renderer);
   RenderLock lock;
+  sdFontSystem.ensureLoaded(renderer);
   if (section) {
     rememberCurrentContentOffset();
     cachedSpineIndex = currentSpineIndex;

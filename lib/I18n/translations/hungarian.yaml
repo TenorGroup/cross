@@ -441,3 +441,8 @@ STR_FIRMWARE_WRITE_FAILED: "A firmware írása sikertelen"
 STR_FIRMWARE_UPDATE_DO_NOT_POWER_OFF: "Ne kapcsold ki!"
 STR_RECOVERY_MODE: "Helyreállítási mód"
 STR_RECOVERY_MODE_HINT: "Helyezd a firmware.bin fájlt az SD-kártya gyökerébe, majd válaszd ki"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

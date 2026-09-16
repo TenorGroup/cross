@@ -3,6 +3,7 @@ They use Python plus Pillow for image comparisons and take about five minutes.
 
 ```sh
 pio run -e simulator_x3_uc8279
+python3 scripts/generate_test_epubs.py
 python3 -m unittest discover -s test/reading_stats_simulator -v
 ```
 
@@ -47,3 +48,19 @@ unchanged, then returning to the same page must update only the footer. Set
 `CROSSPOINT_TEST_ARTIFACTS` to a temporary output directory to retain these images.
 
 Font boundary coverage uses the existing converter and bundled Noto Sans to create a temporary ASCII cpfont. Install `freetype-py` in the Python test environment. It exercises 16, 17 and 130 total families through discovery, editor navigation, applying the final font and returning to the book. It also verifies that selecting the sole size, or confirming the current popup size and returning, does not reload the EPUB section.
+
+
+### v1.0.2: boot and font preference
+
+Run with a built X3 simulator and freetype-py installed. `TEST_PROGRAM` may point to
+an archived simulator executable. `test_font_preference.py` builds its small font
+fixture from the repository's OFL Noto Sans, then exercises base-only, built-in,
+weighted and corrupt variant round trips. `test_boot_home.py` checks recent,
+missing and empty books at startup. Neither test needs the user's SD card.
+
+```sh
+python test/reading_stats_simulator/test_font_preference.py
+python test/reading_stats_simulator/test_boot_home.py
+```
+
+`test_reader_defaults.py` checks reader defaults, migrations and direct three-choice cycling. The simulator EPUB fixtures are generated from original test text by `scripts/generate_test_epubs.py`.

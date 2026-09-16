@@ -2077,7 +2077,8 @@ int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint3
   return fp4::toPixel(kernFP);                                           // snap 4.4 fixed-point to nearest pixel
 }
 
-int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFamily::Style style) const {
+int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFamily::Style style,
+                                 const int letterSpacing) const {
   // Match the font drawText would use for CJK-bearing strings (see resolveTextFontId).
   const int resolvedFontId = resolveTextFontId(fontId, text, style);
   // Measure the exact codepoint stream drawText renders: bidi-reordered and
@@ -2095,6 +2096,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
   auto sdIt = sdCardFonts_.find(resolvedFontId);
   if (sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable()) {
     int32_t widthFP = 0;
+    int bases = 0;
     const bool isSupSub = (style & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0;
     const uint8_t styleIdx = resolveSdCardStyle(*sdIt->second, style);
     const auto fontIt = fontMap.find(resolvedFontId);
@@ -2113,9 +2115,10 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
         const EpdGlyph* glyph = font.getGlyph(cp, style);
         advFP = glyph ? glyph->advanceX : 0;
       }
+      if (!utf8IsCombiningMark(cp) && bases++ > 0) widthFP += letterSpacing * 16;
       widthFP += isSupSub ? (advFP + 1) / 2 : advFP;
     }
-    return fp4::toPixel(widthFP);
+    return std::max(0, fp4::toPixel(widthFP));
   }
 
   const auto fontIt = fontMap.find(resolvedFontId);
@@ -2142,8 +2145,8 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
     // Differential rounding: snap (previous advance + current kern) together,
     // matching drawText so measurement and rendering agree exactly.
     if (prevCp != 0) {
-      const auto kernFP = font.getKerning(prevCp, cp, style);  // 4.4 fixed-point kern
-      widthPx += fp4::toPixel(prevAdvanceFP + kernFP);         // snap 12.4 fixed-point to nearest pixel
+      const auto kernFP = font.getKerning(prevCp, cp, style);           // 4.4 fixed-point kern
+      widthPx += fp4::toPixel(prevAdvanceFP + kernFP) + letterSpacing;  // snap 12.4 fixed-point to nearest pixel
     }
 
     const EpdGlyph* glyph = font.getGlyph(cp, style);
@@ -2154,7 +2157,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
     prevCp = cp;
   }
   widthPx += fp4::toPixel(prevAdvanceFP);  // final glyph's advance
-  return widthPx;
+  return std::max(0, widthPx);
 }
 
 int GfxRenderer::getFontAscenderSize(const int fontId) const {
@@ -2179,6 +2182,62 @@ int GfxRenderer::getLineHeight(const int fontId) const {
 
 int GfxRenderer::getLineHeight(const int fontId, const float compression) const {
   return static_cast<int>(getLineHeight(fontId) * compression + 0.5f);
+}
+
+int GfxRenderer::getTextInkBottom(int fontId, const char* text, EpdFontFamily::Style style) const {
+  const int resolved = resolveTextFontId(fontId, text, style);
+  const auto it = fontMap.find(resolved);
+  if (it == fontMap.end()) return getTextHeight(fontId);
+  const int baseline =
+      getFontAscenderSize(resolved) + (resolved == fontId ? 0 : (getLineHeight(fontId) - getLineHeight(resolved)) / 2);
+  std::string visual;
+  text = resolveVisualText(text, visual, BidiUtils::BidiBaseDir::AUTO);
+  int bottom = 0;
+  while (uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
+    cp = it->second.applyLigatures(cp, text, style);
+    const auto* glyph = it->second.getGlyph(cp, style);
+    if (glyph && glyph->width && glyph->height) bottom = std::max(bottom, baseline - glyph->top + glyph->height);
+  }
+  return bottom;
+}
+
+// Stream a cover into exact bounds, cropping centrally to preserve its aspect ratio.
+// Duplicate destination pixels during enlargement; no second dither and no full-image allocation.
+bool GfxRenderer::drawBitmapCover(const Bitmap& bitmap, int x, int y, int width, int height) const {
+  if (width <= 0 || height <= 0 || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) return false;
+  const int sourceW = bitmap.getWidth(), sourceH = bitmap.getHeight();
+  const float scale = std::max(float(width) / sourceW, float(height) / sourceH);
+  const float cropX = (sourceW - width / scale) / 2;
+  const float cropY = (sourceH - height / scale) / 2;
+  auto* pixels = static_cast<uint8_t*>(malloc((sourceW + 3) / 4));
+  auto* row = static_cast<uint8_t*>(malloc(bitmap.getRowBytes()));
+  if (!pixels || !row) {
+    free(pixels);
+    free(row);
+    return false;
+  }
+  int destY = bitmap.isTopDown() ? 0 : height - 1;
+  const int step = bitmap.isTopDown() ? 1 : -1;
+  for (int sourceRow = 0; sourceRow < sourceH && destY >= 0 && destY < height; ++sourceRow) {
+    if (bitmap.readNextRow(pixels, row) != BmpReaderError::Ok) {
+      free(pixels);
+      free(row);
+      return false;
+    }
+    const int sy = bitmap.isTopDown() ? sourceRow : sourceH - 1 - sourceRow;
+    while (destY >= 0 && destY < height && std::min(sourceH - 1, int(cropY + destY / scale)) == sy) {
+      for (int dx = 0; dx < width; ++dx) {
+        const int sx = std::min(sourceW - 1, int(cropX + dx / scale));
+        const auto value = (pixels[sx / 4] >> (6 - (sx % 4) * 2)) & 3;
+        drawPixel(x + dx, y + destY, value < 2);
+      }
+      destY += step;
+    }
+  }
+  free(pixels);
+  free(row);
+  preserveImagePolarity(x, y, width, height);
+  return true;
 }
 
 int GfxRenderer::getTextHeight(const int fontId) const {
@@ -2450,7 +2509,8 @@ void GfxRenderer::getOrientedViewableTRBL(int* outTop, int* outRight, int* outBo
   }
 }
 
-int GfxRenderer::getDropCapAdvance(int fontId, const char* text, EpdFontFamily::Style style, int height) const {
+int GfxRenderer::getDropCapAdvance(int fontId, const char* text, EpdFontFamily::Style style, int height,
+                                   int letterSpacing) const {
   const auto initial = dropcap::initial(text);
   const auto it = fontMap.find(fontId);
   if (!initial.codepoint || height <= 0 || it == fontMap.end()) return 0;
@@ -2460,22 +2520,23 @@ int GfxRenderer::getDropCapAdvance(int fontId, const char* text, EpdFontFamily::
   const int width = (glyph->width * height + glyph->height / 2) / glyph->height;
   char prefix[16] = {};
   memcpy(prefix, text, initial.prefixBytes);
-  return getTextAdvanceX(fontId, prefix, style) + width + std::max(3, getSpaceWidth(fontId, style) / 2);
+  return getTextAdvanceX(fontId, prefix, style, letterSpacing) + width + std::max(3, getSpaceWidth(fontId, style) / 2);
 }
 
-int GfxRenderer::getDropCapWordWidth(int fontId, const char* text, EpdFontFamily::Style style, int height) const {
+int GfxRenderer::getDropCapWordWidth(int fontId, const char* text, EpdFontFamily::Style style, int height,
+                                     int letterSpacing) const {
   const auto initial = dropcap::initial(text);
-  const int advance = getDropCapAdvance(fontId, text, style, height);
-  return advance ? advance + getTextAdvanceX(fontId, text + initial.endBytes, style)
-                 : getTextAdvanceX(fontId, text, style);
+  const int advance = getDropCapAdvance(fontId, text, style, height, letterSpacing);
+  return advance ? advance + getTextAdvanceX(fontId, text + initial.endBytes, style, letterSpacing)
+                 : getTextAdvanceX(fontId, text, style, letterSpacing);
 }
 
-void GfxRenderer::drawDropCapWord(int fontId, int x, int y, const char* text, EpdFontFamily::Style style,
-                                  int height) const {
+void GfxRenderer::drawDropCapWord(int fontId, int x, int y, const char* text, EpdFontFamily::Style style, int height,
+                                  int letterSpacing) const {
   const auto initial = dropcap::initial(text);
-  const int advance = getDropCapAdvance(fontId, text, style, height);
+  const int advance = getDropCapAdvance(fontId, text, style, height, letterSpacing);
   if (!advance) {
-    drawText(fontId, x, y, text, true, style);
+    drawText(fontId, x, y, text, true, style, BidiUtils::BidiBaseDir::AUTO, letterSpacing);
     return;
   }
   const auto capStyle = static_cast<EpdFontFamily::Style>((style & 3) | EpdFontFamily::BOLD);
@@ -2484,12 +2545,12 @@ void GfxRenderer::drawDropCapWord(int fontId, int x, int y, const char* text, Ep
   char cap[8] = {};
   memcpy(cap, text + initial.prefixBytes, initial.endBytes - initial.prefixBytes);
   if (isFontCacheScanning()) {
-    drawText(fontId, x, y, text, true, style);
+    drawText(fontId, x, y, text, true, style, BidiUtils::BidiBaseDir::AUTO, letterSpacing);
     drawText(fontId, x, y, cap, true, capStyle);
     return;
   }
-  const int capX = x + getTextAdvanceX(fontId, prefix, style);
-  drawText(fontId, x, y, prefix, true, style);
+  const int capX = x + getTextAdvanceX(fontId, prefix, style, letterSpacing);
+  drawText(fontId, x, y, prefix, true, style, BidiUtils::BidiBaseDir::AUTO, letterSpacing);
   const auto& font = fontMap.at(fontId);
   const auto* glyph = font.getGlyph(initial.codepoint, capStyle);
   if (!glyph) return;
@@ -2525,5 +2586,5 @@ void GfxRenderer::drawDropCapWord(int fontId, int x, int y, const char* text, Ep
       }
     }
   }
-  drawText(fontId, x + advance, y, text + initial.endBytes, true, style);
+  drawText(fontId, x + advance, y, text + initial.endBytes, true, style, BidiUtils::BidiBaseDir::AUTO, letterSpacing);
 }

@@ -41,12 +41,12 @@ class FontWeightTest(unittest.TestCase):
     def test_missing_variant_preserves_family(self):
         (self.sd/'.fonts/Trial/weight-2/Trial_26.cpfont').unlink()
         saved,log=self.run_sim('1000:CONFIRM;1700:CONFIRM;8500:QUIT')
-        self.assertEqual((saved['sdFontFamilyName'],saved['fontSize'],saved['readerInkWeight']),('Trial',26,0))
+        self.assertEqual((saved['sdFontFamilyName'],saved['fontSize'],saved['readerInkWeight']),('Trial',26,2))
 
     def test_corrupt_variant_preserves_family(self):
         (self.sd/'.fonts/Trial/weight-2/Trial_26.cpfont').write_bytes(b'broken')
         saved,log=self.run_sim('1000:CONFIRM;1700:CONFIRM;8500:QUIT')
-        self.assertEqual((saved['sdFontFamilyName'],saved['readerInkWeight']),('Trial',0))
+        self.assertEqual((saved['sdFontFamilyName'],saved['readerInkWeight']),('Trial',2))
 
     def test_weight_change_returns_to_book(self):
         self.settings.update(fontSize=16,readerInkWeight=0)

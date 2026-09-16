@@ -29,6 +29,9 @@ class HomeActivity final : public UiTabListActivity {
   void onPause() override;
   void render(RenderLock&&) override;
   bool isHomeActivity() const override { return true; }
+#ifdef TENOR_UI_ACCEPTANCE
+  void stepForTest(int direction) { moveRingTo((ringPos() + direction + listCount() + 1) % (listCount() + 1)); }
+#endif
 
  private:
   // --- UiTabListActivity contract ---
@@ -89,6 +92,7 @@ class HomeActivity final : public UiTabListActivity {
   bool restoreCoverBuffer();
   void freeCoverBuffer();
 
+  int recentOlderTop = 0;
   int recentCardHeight() const;
   void drawRecentCard();
   const char* habitSuggestion() const;

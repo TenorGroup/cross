@@ -463,3 +463,8 @@ STR_WIFI_CONN_FAILED: "Connessione Wi-Fi non riuscita"
 STR_WIFI_NETWORKS: "Reti Wi-Fi"
 STR_XTC_STATUS_BAR: "Barra di stato XTC"
 STR_YES: "Sì"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

@@ -2,7 +2,12 @@
 
 E-reader firmware for Xteink X3 and X4, based on [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) and [FreeInk SDK](https://github.com/Free-Ink/freeink-sdk).
 
-Version 1.0.1 adds Vietnamese navigation, Simplified Chinese interface text, reading statistics, quotations, custom fonts and chapter search. The published X3/X4 firmware and installation guidance are available from [cross.tenor.vn](https://cross.tenor.vn/) and [release v1.0.1](https://github.com/TenorGroup/cross-releases/releases/tag/v1.0.1). Other device profiles in the source remain experimental for this release.
+Version 1.0.2 includes reader typography controls, font-weight preference fixes, faster TXT wrapping, Home startup and a five-book recent list. Reader defaults use 16 pt, justified text and the Bokerlam family when it is installed on the SD card. An absent SD font falls back to the built-in family. Existing saved choices are retained. X4 Pro profiles are experimental and require separate hardware validation.
+
+## Links
+
+- [Repository](https://github.com/TenorGroup/cross)
+- [Releases](https://github.com/TenorGroup/cross-releases/releases)
 
 ## Build
 
@@ -51,4 +56,4 @@ Application code is distributed under the [MIT licence](LICENSE), preserving the
 
 ## Source provenance
 
-The release source was recovered against the recorded v1.0.1 file hashes. Public sanitation removes private operational material, local machine paths and fixtures without clear redistribution provenance. Third-party copyright notices are retained. Source and dependency changes made for portability are documented in [SOURCE_CHANGES.md](SOURCE_CHANGES.md). A rebuilt firmware is a new build; byte identity with the published image must be measured separately.
+This tree contains the v1.0.2 application and a pinned SDK submodule. Public preparation removes private operational material, local machine paths and fixtures without clear redistribution provenance. Third-party copyright notices are retained. Build and sanitation changes are documented in [SOURCE_CHANGES.md](SOURCE_CHANGES.md). Check a release asset's SHA-256 against the manifest supplied with that release.

@@ -55,7 +55,8 @@ class ParsedText {
   std::deque<std::string> rubyTexts;
   BlockStyle blockStyle;
   bool extraParagraphSpacing;
-  uint8_t paragraphIndent;  // 0 = automatic, 1 = on, 2 = off
+  int8_t letterSpacing = 0;
+  uint8_t paragraphIndent;  // 0 = off, 1 = normal, 2 = wide
   bool hyphenationEnabled;
   bool focusReadingEnabled;
   uint16_t dropCapHeight = 0;
@@ -100,9 +101,10 @@ class ParsedText {
  public:
   explicit ParsedText(const bool extraParagraphSpacing, const bool hyphenationEnabled = false,
                       const bool focusReadingEnabled = false, const BlockStyle& blockStyle = BlockStyle(),
-                      const uint8_t paragraphIndent = 0)
+                      const uint8_t paragraphIndent = 0, const int8_t letterSpacing = 0)
       : blockStyle(blockStyle),
         extraParagraphSpacing(extraParagraphSpacing),
+        letterSpacing(letterSpacing),
         paragraphIndent(paragraphIndent),
         hyphenationEnabled(hyphenationEnabled),
         focusReadingEnabled(focusReadingEnabled),

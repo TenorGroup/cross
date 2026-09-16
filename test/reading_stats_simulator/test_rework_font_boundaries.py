@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 REPO = Path(__file__).resolve().parents[2]
-PROGRAM = REPO / '.pio/build/simulator_x3_uc8279/program'
+PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 
 
 class ReworkFontBoundariesTest(unittest.TestCase):

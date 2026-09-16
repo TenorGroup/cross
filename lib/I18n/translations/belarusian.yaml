@@ -441,3 +441,8 @@ STR_RECOVERY_MODE: "Рэжым аднаўлення"
 STR_RECOVERY_MODE_HINT: "Змясціце firmware.bin у корань SD-карты і абярыце яго"
 STR_ADD_HIDDEN_NETWORK: "Дадаць схаваную сетку..."
 STR_ENTER_WIFI_SSID: "Увядзіце назву сеткі (SSID)"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

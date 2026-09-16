@@ -111,8 +111,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Legacy 1.4-and-earlier files stored a 0..3 SMALL/MEDIUM/LARGE/EXTRA_LARGE
   // slot; fromJson() folds that range up (see LEGACY_FONT_SIZE_MAX).
   static constexpr uint8_t LEGACY_FONT_SIZE_MAX = 3;
-  static constexpr uint8_t DEFAULT_FONT_POINT_SIZE = 14;
-  enum LINE_COMPRESSION { TIGHT = 0, NORMAL = 1, WIDE = 2, EXTRA_WIDE = 3, LINE_COMPRESSION_COUNT };
+  static constexpr uint8_t DEFAULT_FONT_POINT_SIZE = 16;
+  enum LINE_COMPRESSION { TIGHT = 0, NORMAL = 1, WIDE = 2, LINE_COMPRESSION_COUNT };
   enum PARAGRAPH_ALIGNMENT {
     JUSTIFIED = 0,
     LEFT_ALIGN = 1,
@@ -221,6 +221,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Sleep screen cover filter
   uint8_t sleepScreenCoverFilter = NO_FILTER;
   // Status bar settings
+  uint8_t hideReaderStatusBar = 0;
+  uint8_t hideGlobalStatusBar = 0;
+  bool readerStatusBarHidden() const { return hideGlobalStatusBar || hideReaderStatusBar; }
   uint8_t statusBarChapterPageCount = 1;
   uint8_t statusBarBookProgressPercentage = 1;
   uint8_t statusBarProgressBar = HIDE_PROGRESS;
@@ -241,9 +244,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Resetting to 0 (e.g. via the web UI) forces a re-sync on next WiFi connect.
   uint8_t clockHasBeenSynced = 0;
   // Text rendering settings
-  uint8_t extraParagraphSpacing = 1;
-  // 0 = automatic (legacy spacing/CSS behavior), 1 = on, 2 = off.
-  uint8_t paragraphIndent = 0;
+  uint8_t extraParagraphSpacing = 0;
+  uint8_t letterSpacing = 1;
+  // 0 = off, 1 = default, 2 = wide.
+  uint8_t paragraphIndent = 1;
   uint8_t textAntiAliasing = 1;
   // Short power button click behaviour
   uint8_t shortPwrBtn = IGNORE;
@@ -284,6 +288,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
   // available size (and persists the snap) whenever the family changes.
   uint8_t fontPointSize = DEFAULT_FONT_POINT_SIZE;
+  // User preference; a family without the variant temporarily renders at weight 0.
   uint8_t readerInkWeight = 0;
   uint8_t lineSpacing = NORMAL;
   uint8_t paragraphAlignment = JUSTIFIED;
@@ -324,8 +329,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t pwrBtnFootnoteBack = 1;
   // Use book's embedded CSS styles for EPUB rendering (1 = enabled, 0 = disabled)
   uint8_t embeddedStyle = 1;
-  // Focus Reading - emphasizes the first part of words with bold
-  uint8_t focusReadingEnabled = 0;
+  // Enlarge the opening character of the first paragraph in a chapter.
+  uint8_t focusReadingEnabled = 1;
   uint8_t readerMenuStyle = READER_MENU_LIST;
   // SD card font family name (empty = use built-in fontFamily).
   // Bokerlam is the reader font this firmware ships as its default choice. It lives on the

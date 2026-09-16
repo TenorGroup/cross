@@ -449,3 +449,8 @@ STR_OPDS_FILENAME_FORMAT: "Format nazwy pliku"
 STR_FMT_AUTHOR_TITLE: "Autor - Tytuł"
 STR_FMT_TITLE_AUTHOR: "Tytuł - Autor"
 STR_FMT_TITLE: "Tytuł"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

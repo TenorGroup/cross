@@ -1,6 +1,7 @@
 #include "TxtReaderActivity.h"
 
 #include <BidiUtils.h>
+#include <Epub/ReaderSpacing.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -25,7 +26,7 @@ namespace {
 constexpr size_t CHUNK_SIZE = 8 * 1024;  // 8KB chunk for reading
 // Cache file magic and version
 constexpr uint32_t CACHE_MAGIC = 0x54585449;  // "TXTI"
-constexpr uint8_t CACHE_VERSION = 3;          // Increment when cache format changes
+constexpr uint8_t CACHE_VERSION = 5;          // Increment when cache format changes
 }  // namespace
 
 // Doi co chu roi dung lai chi muc trang, giu dung doan dang doc: trang moi la trang chua
@@ -87,11 +88,20 @@ void TxtReaderActivity::initializeReader(GfxRenderer& renderer) {
                  cachedOrientedMarginLeft);
 
   viewportWidth = renderer.getScreenWidth() - cachedOrientedMarginLeft - cachedOrientedMarginRight;
-  const int viewportHeight = renderer.getScreenHeight() - cachedOrientedMarginTop - cachedOrientedMarginBottom;
-  const int lineHeight = renderer.getLineHeight(cachedFontId);
+  viewportHeight = renderer.getScreenHeight() - cachedOrientedMarginTop - cachedOrientedMarginBottom;
+  const int lineHeight = std::max(1, renderer.getLineHeight(cachedFontId, SETTINGS.getReaderLineCompression()));
 
+  cachedLineHeight = lineHeight;
+  cachedParagraphGap = readerSpacing::paragraphGap(SETTINGS.extraParagraphSpacing, lineHeight);
+  cachedLetterSpacing = readerSpacing::letterPixels(SETTINGS.letterSpacing);
   linesPerPage = viewportHeight / lineHeight;
   if (linesPerPage < 1) linesPerPage = 1;
+  currentPageLineY.reserve(linesPerPage);
+  currentPageLineIndent.reserve(linesPerPage);
+  cachedIndent =
+      std::min(viewportWidth / 4, renderer.getSpaceWidth(cachedFontId) * (SETTINGS.paragraphIndent == 2   ? 6
+                                                                          : SETTINGS.paragraphIndent == 1 ? 3
+                                                                                                          : 0));
 
   LOG_DBG("TRS", "Viewport: %dx%d, lines per page: %d", viewportWidth, viewportHeight, linesPerPage);
 
@@ -149,8 +159,21 @@ void TxtReaderActivity::buildPageIndex(GfxRenderer& renderer) {
 }
 
 bool TxtReaderActivity::loadPageAtOffset(const GfxRenderer& renderer, size_t offset, std::vector<std::string>& outLines,
-                                         size_t& nextOffset) {
+                                         size_t& nextOffset, std::vector<uint16_t>* lineY,
+                                         std::vector<uint16_t>* lineIndent) {
   outLines.clear();
+  outLines.reserve(linesPerPage);
+  if (lineY) lineY->clear();
+  if (lineIndent) lineIndent->clear();
+  int indent = 0;
+  int y = 0;
+  const auto fits = [&]() { return outLines.empty() || y + cachedLineHeight <= viewportHeight; };
+  const auto addLine = [&](std::string value) {
+    if (lineY) lineY->push_back(static_cast<uint16_t>(y));
+    if (lineIndent) lineIndent->push_back(static_cast<uint16_t>(indent));
+    outLines.push_back(std::move(value));
+    y += cachedLineHeight;
+  };
   const size_t fileSize = txt->getFileSize();
 
   if (offset >= fileSize) {
@@ -177,8 +200,10 @@ bool TxtReaderActivity::loadPageAtOffset(const GfxRenderer& renderer, size_t off
 
   // Parse lines from buffer
   size_t pos = 0;
+  uint8_t previous = 0;
+  const bool startsParagraph = offset == 0 || (txt->readContent(&previous, offset - 1, 1) && previous == '\n');
 
-  while (pos < chunkSize && static_cast<int>(outLines.size()) < linesPerPage) {
+  while (pos < chunkSize && fits()) {
     // Find end of line
     size_t lineEnd = pos;
     while (lineEnd < chunkSize && buffer[lineEnd] != '\n') {
@@ -199,44 +224,59 @@ bool TxtReaderActivity::loadPageAtOffset(const GfxRenderer& renderer, size_t off
 
     std::string line(reinterpret_cast<char*>(buffer + pos), displayLen);
     size_t lineBytePos = 0;
+    const bool naturalAlign = cachedParagraphAlignment == CrossPointSettings::LEFT_ALIGN ||
+                              cachedParagraphAlignment == CrossPointSettings::JUSTIFIED;
+    const bool paragraphStart = pos > 0 || startsParagraph;
 
     do {
+      indent = naturalAlign && paragraphStart && lineBytePos == 0 && !line.empty() ? cachedIndent : 0;
+      const int lineWidthLimit = viewportWidth - indent;
       if (line.empty()) {
-        outLines.emplace_back();
+        addLine({});
         break;
       }
 
-      int lineWidth = renderer.getTextAdvanceX(cachedFontId, line.c_str(), EpdFontFamily::REGULAR);
-
-      if (lineWidth <= viewportWidth) {
-        outLines.push_back(line);
+      // Grow one screen line from the start. Walking backwards from the end of
+      // a long paragraph repeatedly measured nearly the entire paragraph.
+      // Temporary termination avoids allocating a substring for each width check.
+      const auto prefixFits = [&](size_t length) {
+        const char saved = line[length];
+        line[length] = '\0';
+        const int width =
+            renderer.getTextAdvanceX(cachedFontId, line.c_str(), EpdFontFamily::REGULAR, cachedLetterSpacing);
+        line[length] = saved;
+        return width <= lineWidthLimit;
+      };
+      size_t breakPos = 0;
+      size_t candidate = line.find(' ', 1);
+      while (true) {
+        if (candidate == std::string::npos) candidate = line.size();
+        if (!prefixFits(candidate)) break;
+        breakPos = candidate;
+        if (candidate == line.size()) break;
+        candidate = line.find(' ', candidate + 1);
+      }
+      if (breakPos == line.size()) {
+        addLine(line);
         lineBytePos = displayLen;
         line.clear();
         break;
       }
-
-      // Find break point
-      size_t breakPos = line.length();
-      while (breakPos > 0 && renderer.getTextAdvanceX(cachedFontId, line.substr(0, breakPos).c_str(),
-                                                      EpdFontFamily::REGULAR) > viewportWidth) {
-        // Try to break at space
-        size_t spacePos = line.rfind(' ', breakPos - 1);
-        if (spacePos != std::string::npos && spacePos > 0) {
-          breakPos = spacePos;
-        } else {
-          // Break at character boundary for UTF-8
-          breakPos--;
-          while (breakPos > 0 && (line[breakPos] & 0xC0) == 0x80) {
-            breakPos--;
+      if (breakPos == 0) {
+        // A word wider than the viewport is split only at UTF-8 boundaries.
+        size_t next = 0;
+        while (next < line.size()) {
+          ++next;
+          while (next < line.size() && (line[next] & 0xC0) == 0x80) ++next;
+          if (!prefixFits(next)) {
+            if (breakPos == 0) breakPos = next;
+            break;
           }
+          breakPos = next;
         }
       }
 
-      if (breakPos == 0) {
-        breakPos = 1;
-      }
-
-      outLines.push_back(line.substr(0, breakPos));
+      addLine(line.substr(0, breakPos));
 
       size_t skipChars = breakPos;
       if (breakPos < line.length() && line[breakPos] == ' ') {
@@ -244,10 +284,11 @@ bool TxtReaderActivity::loadPageAtOffset(const GfxRenderer& renderer, size_t off
       }
       lineBytePos += skipChars;
       line = line.substr(skipChars);
-    } while (!line.empty() && static_cast<int>(outLines.size()) < linesPerPage);
+    } while (!line.empty() && fits());
 
     if (line.empty()) {
-      pos = lineEnd + 1;
+      if (displayLen > 0) y += cachedParagraphGap;
+      pos = lineEnd + (lineEnd < chunkSize && buffer[lineEnd] == '\n' ? 1 : 0);
     } else {
       pos = pos + lineBytePos;
       break;
@@ -291,7 +332,7 @@ void TxtReaderActivity::renderBook() {
   size_t offset = pageOffsets[currentPage];
   size_t nextOffset;
   currentPageLines.clear();
-  loadPageAtOffset(renderer, offset, currentPageLines, nextOffset);
+  loadPageAtOffset(renderer, offset, currentPageLines, nextOffset, &currentPageLineY, &currentPageLineIndent);
 
   renderer.clearScreen();
   renderPage(renderer);
@@ -301,13 +342,14 @@ void TxtReaderActivity::renderBook() {
 }
 
 void TxtReaderActivity::renderPage(GfxRenderer& renderer) {
-  const int lineHeight = renderer.getLineHeight(cachedFontId);
   const int contentWidth = viewportWidth;
 
   // Render text lines with alignment
   auto renderLines = [&]() {
-    int y = cachedOrientedMarginTop;
+    size_t row = 0;
     for (const auto& line : currentPageLines) {
+      const int indent = currentPageLineIndent[row];
+      const int y = cachedOrientedMarginTop + currentPageLineY[row++];
       if (!line.empty()) {
         int x = cachedOrientedMarginLeft;
         const bool lineIsRtl = BidiUtils::startsWithRtl(line.c_str(), BidiUtils::RTL_PARAGRAPH_PROBE_DEPTH);
@@ -316,7 +358,8 @@ void TxtReaderActivity::renderPage(GfxRenderer& renderer) {
                           effectiveAlignment == CrossPointSettings::JUSTIFIED)) {
           effectiveAlignment = CrossPointSettings::RIGHT_ALIGN;
         }
-        const int textWidth = renderer.getTextAdvanceX(cachedFontId, line.c_str(), EpdFontFamily::REGULAR);
+        const int textWidth =
+            renderer.getTextAdvanceX(cachedFontId, line.c_str(), EpdFontFamily::REGULAR, cachedLetterSpacing);
 
         // Apply text alignment
         switch (effectiveAlignment) {
@@ -335,9 +378,10 @@ void TxtReaderActivity::renderPage(GfxRenderer& renderer) {
             break;
         }
 
-        renderer.drawText(cachedFontId, x, y, line.c_str());
+        x += lineIsRtl ? -indent : indent;
+        renderer.drawText(cachedFontId, x, y, line.c_str(), true, EpdFontFamily::REGULAR, BidiUtils::BidiBaseDir::AUTO,
+                          cachedLetterSpacing);
       }
-      y += lineHeight;
     }
   };
 
@@ -506,6 +550,19 @@ bool TxtReaderActivity::loadPageIndexCache() {
     return false;
   }
 
+  int32_t height, lineHeight, paragraphGap;
+  int8_t spacing;
+  serialization::readPod(f, height);
+  serialization::readPod(f, lineHeight);
+  serialization::readPod(f, paragraphGap);
+  serialization::readPod(f, spacing);
+  uint16_t indent;
+  serialization::readPod(f, indent);
+  if (indent != cachedIndent) return false;
+  if (height != viewportHeight || lineHeight != cachedLineHeight || paragraphGap != cachedParagraphGap ||
+      spacing != cachedLetterSpacing)
+    return false;
+
   uint32_t numPages;
   serialization::readPod(f, numPages);
 
@@ -539,6 +596,11 @@ void TxtReaderActivity::savePageIndexCache() const {
   serialization::writePod(f, static_cast<int32_t>(cachedFontId));
   serialization::writePod(f, static_cast<int32_t>(cachedScreenMargin));
   serialization::writePod(f, cachedParagraphAlignment);
+  serialization::writePod(f, static_cast<int32_t>(viewportHeight));
+  serialization::writePod(f, static_cast<int32_t>(cachedLineHeight));
+  serialization::writePod(f, static_cast<int32_t>(cachedParagraphGap));
+  serialization::writePod(f, cachedLetterSpacing);
+  serialization::writePod(f, cachedIndent);
   serialization::writePod(f, static_cast<uint32_t>(pageOffsets.size()));
 
   for (size_t offset : pageOffsets) {

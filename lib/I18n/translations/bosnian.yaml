@@ -440,3 +440,8 @@ STR_FIRMWARE_WRITE_FAILED: "Upisivanje firmvera nije uspjelo"
 STR_FIRMWARE_UPDATE_DO_NOT_POWER_OFF: "Ne isključuj napajanje!"
 STR_RECOVERY_MODE: "Način oporavka"
 STR_RECOVERY_MODE_HINT: "Stavi firmware.bin u korijenski direktorij SD kartice i odaberi ga"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

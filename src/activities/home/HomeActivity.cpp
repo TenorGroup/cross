@@ -525,17 +525,59 @@ void HomeActivity::buildScreen(UiScreen& screen) {
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
+  if (activeTabId == Tab::RECENT && tenorchrome::enabled() && !rowItems.empty()) {
+    reserveFixedMenuContent(screen);
+    reserveFavoriteHint(screen);
+    decoratePinnedRows(props);
+    props.labelText.maxLines = 1;
+    props.rowHeight = metrics.listRowHeight;
+    props.rowGap = metrics.listRowGap;
+    auto& n = activeNav();
+    if (n.followOnBuild) {
+      recentOlderTop = n.top;
+      n.followOnBuild = false;
+    }
+    n.selected = std::clamp(n.selected, 0, static_cast<int>(rowItems.size()));
+    n.visibleRows = 3;
+    n.drawnRows = 3;
+    n.drawnCount = rowItems.size();
+    props.count = 1;
+    props.selectedIndex = n.selected == 1 ? 0 : -1;
+    props.scrollIndicator = false;
+    screen.list(props, metrics.listRowHeight);
+    screen.takeTop(12);
+    const int olderCount = rowItems.size() - 1;
+    if (olderCount > 0) {
+      recentOlderTop = fui::listTopIndexFor(std::max(0, n.selected - 2), std::max(0, recentOlderTop), 2, olderCount);
+      n.top = recentOlderTop;
+      props.items = rowItems.data() + 1;
+      props.count = olderCount;
+      props.topIndex = recentOlderTop;
+      props.selectedIndex = n.selected > 1 ? n.selected - 2 : -1;
+      props.scrollIndicator = true;
+      screen.list(props, 2 * metrics.listRowHeight + metrics.listRowGap);
+    }
+    return;
+  }
   syncTabListViewport(screen, props);
   screen.list(props);
 }
 
 void HomeActivity::render(RenderLock&&) {
+  const uint32_t started = millis();
   renderer.clearScreen();
   drawChrome();
   renderUi();
+  for (int pass = 0; activeNav().consumeRebuildNeeded() && pass < 5; ++pass) {
+    renderer.clearScreen();
+    drawChrome();
+    renderUi();
+  }
   drawFooter();
   renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
   cleanInitialRefresh = false;
+  LOG_INF("HOME", "Frame row=%d top=%d total=%lums heap=%u", ringPos(), activeNav().top,
+          static_cast<unsigned long>(millis() - started), ESP.getFreeHeap());
 }
 
 bool HomeActivity::storeCoverBuffer() {
@@ -577,11 +619,12 @@ void HomeActivity::freeCoverBuffer() {
 void HomeActivity::loadRecentBooks() {
   recentBooks.clear();
   const auto& books = RECENT_BOOKS.getBooks();
-  // The store bounds this snapshot to ten books. Themes limit cover tiles separately.
-  recentBooks.reserve(books.size());
+  constexpr size_t RECENT_LIMIT = 5;
+  recentBooks.reserve(std::min(books.size(), RECENT_LIMIT));
   for (const RecentBook& book : books) {
     if (RecentBooksStore::isMissing(book)) continue;
     recentBooks.push_back(book);
+    if (recentBooks.size() == RECENT_LIMIT) break;
   }
 }
 
@@ -651,87 +694,84 @@ bool HomeActivity::toggleFavorite(int row) {
 }
 
 int HomeActivity::recentCardHeight() const {
-  return tenorchrome::enabled() ? (recentBooks.empty() ? 96 : 248)
+  return tenorchrome::enabled() ? (recentBooks.empty() ? 96 : (renderer.getScreenHeight() >= 700 ? 328 : 180))
                                 : UITheme::getInstance().getMetrics().homeCoverTileHeight;
 }
 void HomeActivity::drawRecentCard() {
+  if (coverBufferStored && restoreCoverBuffer()) return;
   const uint32_t started = millis();
-  coverRectX = 0;
-  coverRectY = coverTileTop();
-  coverRectW = renderer.getScreenWidth();
-  coverRectH = recentCardHeight();
-  if (coverBufferStored && restoreCoverBuffer()) {
-    LOG_DBG("HOME", "Recent card cached %lums", static_cast<unsigned long>(millis() - started));
-    return;
-  }
-  const int top = coverRectY + 6;
-  const int right = coverRectW - 24;
+  const int top = coverTileTop() + 6;
+  const int right = renderer.getScreenWidth() - 24;
   if (recentBooks.empty()) {
     renderer.drawText(UI_12_FONT_ID, 24, top + 20, tr(STR_NO_RECENT_BOOKS));
     return;
   }
   const auto& book = recentBooks.front();
   renderer.drawText(UI_10_FONT_ID, 24, top, tr(STR_RECENT_LATEST));
-  constexpr int coverX = 24, coverW = 124, coverH = 184;
-  const int coverY = top + 34, textX = 168, textWidth = right - textX;
+  const bool tall = renderer.getScreenHeight() >= 700;
+  const int coverX = 24, coverW = tall ? 176 : 88, coverH = tall ? 264 : 132;
+  const int coverY = top + 34, textX = coverX + coverW + 20, textWidth = right - textX;
+  int y = coverY;
+  const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
+  for (const auto& line :
+       renderer.wrappedText(UI_12_FONT_ID, title.c_str(), textWidth, tall ? 3 : 2, EpdFontFamily::BOLD)) {
+    renderer.drawText(UI_12_FONT_ID, textX, y, line.c_str(), true, EpdFontFamily::BOLD);
+    y += 29;
+  }
+  y = coverY + (tall ? 98 : 62);
+  renderer.drawText(
+      UI_10_FONT_ID, textX, y,
+      renderer
+          .truncatedText(UI_10_FONT_ID, book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str(), textWidth)
+          .c_str());
+  const int quoteFont = book.excerpt.empty() ? SMALL_FONT_ID : NOTOSERIF_12_FONT_ID;
+  const auto quoteStyle = book.excerpt.empty() ? EpdFontFamily::REGULAR : EpdFontFamily::ITALIC;
+  const auto quote =
+      book.excerpt.empty() ? std::string(tr(STR_RECENT_NO_EXCERPT)) : std::string("“") + book.excerpt + "”";
+  auto lines = renderer.wrappedText(quoteFont, quote.c_str(), textWidth, tall ? 4 : 1, quoteStyle);
+  if (!lines.empty()) {
+    auto& last = lines.back();
+    const std::string closing = "”";
+    if (!book.excerpt.empty() &&
+        (last.size() < closing.size() || last.compare(last.size() - closing.size(), closing.size(), closing) != 0))
+      last = renderer.truncatedText(quoteFont, last.c_str(),
+                                    textWidth - renderer.getTextWidth(quoteFont, closing.c_str(), quoteStyle) - 2,
+                                    quoteStyle) +
+             closing;
+    y = coverY + coverH - renderer.getTextInkBottom(quoteFont, last.c_str(), quoteStyle) -
+        (lines.size() - 1) * renderer.getLineHeight(quoteFont);
+    for (const auto& line : lines) {
+      renderer.drawText(quoteFont, textX, y, line.c_str(), true, quoteStyle);
+      y += renderer.getLineHeight(quoteFont);
+    }
+  }
   bool image = false;
-  // A failed allocation keeps navigation responsive using the cheap fallback.
-  if (!coverRendered && !book.coverBmpPath.empty()) {
+  if (!book.coverBmpPath.empty()) {
     const auto path =
         UITheme::getCoverThumbPath(book.coverBmpPath, UITheme::getInstance().getMetrics().homeCoverHeight);
     HalFile file;
     if (Storage.openFileForRead("HOME", path, file)) {
       Bitmap bitmap(file);
       if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0)
-        image = renderer.drawBitmap(bitmap, coverX + 2, coverY + 2, coverW - 4, coverH - 4);
+        image = renderer.drawBitmapCover(bitmap, coverX, coverY, coverW, coverH);
     }
   }
   if (!image) {
-    // Already encoded for the menu. drawPixel applies the current orientation.
-    for (int y = 0; y < sleepcover::HEIGHT; ++y)
-      for (int x = 0; x < sleepcover::WIDTH; ++x) {
-        const int bit = y * sleepcover::WIDTH + x;
+    for (int yy = 0; yy < coverH; ++yy)
+      for (int xx = 0; xx < coverW; ++xx) {
+        const int sx = xx * sleepcover::WIDTH / coverW;
+        const int sy = yy * sleepcover::HEIGHT / coverH;
+        const int bit = sy * sleepcover::WIDTH + sx;
         const bool white = (sleepcover::PIXELS[bit / 8] >> (7 - bit % 8)) & 1;
-        renderer.drawPixel(coverX + 2 + x, coverY + 2 + y, !white);
+        renderer.drawPixel(coverX + xx, coverY + yy, !white);
       }
   }
-  renderer.drawRect(coverX, coverY, coverW, coverH);
-  int y = coverY;
-  const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
-  for (const auto& line : renderer.wrappedText(UI_12_FONT_ID, title.c_str(), textWidth, 2, EpdFontFamily::BOLD)) {
-    renderer.drawText(UI_12_FONT_ID, textX, y, line.c_str(), true, EpdFontFamily::BOLD);
-    y += 29;
-  }
-  y = coverY + 66;
-  renderer.drawText(
-      UI_10_FONT_ID, textX, y,
-      renderer
-          .truncatedText(UI_10_FONT_ID, book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str(), textWidth)
-          .c_str());
-  y = coverY + 102;
-  if (book.excerpt.empty()) {
-    for (const auto& line : renderer.wrappedText(SMALL_FONT_ID, tr(STR_RECENT_NO_EXCERPT), textWidth, 2)) {
-      renderer.drawText(SMALL_FONT_ID, textX, y, line.c_str());
-      y += renderer.getLineHeight(SMALL_FONT_ID);
-    }
-  } else {
-    const auto quote = std::string("“") + book.excerpt + "”";
-    auto lines = renderer.wrappedText(NOTOSERIF_12_FONT_ID, quote.c_str(), textWidth, 3, EpdFontFamily::ITALIC);
-    if (!lines.empty()) {
-      auto& last = lines.back();
-      const std::string closing = "”";
-      if (last.size() < closing.size() || last.compare(last.size() - closing.size(), closing.size(), closing) != 0)
-        last = renderer.truncatedText(
-                   NOTOSERIF_12_FONT_ID, last.c_str(),
-                   textWidth - renderer.getTextWidth(NOTOSERIF_12_FONT_ID, closing.c_str(), EpdFontFamily::ITALIC) - 2,
-                   EpdFontFamily::ITALIC) +
-               closing;
-    }
-    for (const auto& line : lines) {
-      renderer.drawText(NOTOSERIF_12_FONT_ID, textX, y, line.c_str(), true, EpdFontFamily::ITALIC);
-      y += renderer.getLineHeight(NOTOSERIF_12_FONT_ID);
-    }
-  }
+  // Cache the whole fixed card, including typography, only while Home owns it.
+  // onPause/onExit release this bounded region before a book or network screen opens.
+  coverRectX = 24;
+  coverRectY = top;
+  coverRectW = right - 24;
+  coverRectH = coverY + coverH - top;
   coverBufferStored = storeCoverBuffer();
   coverRendered = true;
   LOG_INF("HOME", "Recent card build=%lums cache=%u", static_cast<unsigned long>(millis() - started),

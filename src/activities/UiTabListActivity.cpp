@@ -158,7 +158,8 @@ void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& pr
     // wrapped items per-row, so the dense height stays for the rest.
     props.rowHeight = rowHeight;
   }
-  const uint16_t rows = fui::listVisibleRows(screen.body(), rowHeight, screen.theme().listRowGap);
+  const uint16_t rows =
+      fui::listVisibleRows(screen.body(), rowHeight, props.rowGap >= 0 ? props.rowGap : screen.theme().listRowGap);
   n.visibleRows = rows > 0 ? rows : 1;
   if (n.followOnBuild) {
     // Screen entry / tab switch: show the tab's remembered selection, or the

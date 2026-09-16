@@ -219,7 +219,7 @@ TEST_F(ChapterHtmlSlimParserTest, ForcedIndentCoexistsWithParagraphSpacingAndOnl
   }
 }
 
-TEST_F(ChapterHtmlSlimParserTest, IndentModesKeepLegacyCssAndAllowAnExplicitOverride) {
+TEST_F(ChapterHtmlSlimParserTest, IndentSizesOverrideCssAndParagraphGap) {
   BlockStyle style;
   style.alignment = CssTextAlign::Left;
   style.textAlignDefined = true;
@@ -230,9 +230,7 @@ TEST_F(ChapterHtmlSlimParserTest, IndentModesKeepLegacyCssAndAllowAnExplicitOver
       for (const uint8_t mode : {0, 1, 2}) {
         ParsedText text(spacing, false, false, style, mode);
         text.addWord("word", EpdFontFamily::REGULAR);
-        int expected = mode == 2   ? 0
-                       : mode == 1 ? (cssIndent > 0 ? cssIndent : 12)
-                                   : (!spacing || cssIndent < 0 ? cssIndent : 0);
+        int expected = mode == 2 ? 24 : mode == 1 ? 12 : 0;
         text.layoutAndExtractLines(renderer, 0, 100, [&](std::unique_ptr<TextBlock> line, auto) {
           ASSERT_EQ(line->wordCount(), 1u);
           EXPECT_EQ(line->wordXpos(0), expected) << "mode=" << +mode << " css=" << cssIndent << " spacing=" << spacing;
@@ -263,6 +261,7 @@ TEST_F(ChapterHtmlSlimParserTest, IndentPreservesCenteredTextAndUsesRtlLeadingEd
 }
 
 TEST_F(ChapterHtmlSlimParserTest, ParserPropagatesIndentChoiceToNewParagraphs) {
+  parser.currentTextBlock.reset();
   parser.paragraphIndent = 1;
   parser.extraParagraphSpacing = true;
   BlockStyle style;
@@ -378,4 +377,34 @@ TEST_F(ChapterHtmlSlimParserTest, DropCapNormalizesVietnameseAndLeavesUnsupporte
   EXPECT_EQ(dropcap::initial("123").codepoint, 0u);
   EXPECT_EQ(dropcap::initial("日").codepoint, 0u);
   EXPECT_EQ(dropcap::initial("A\u035c").codepoint, 0u);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, LetterSpacingChangesLineBreaksAndIsCarriedIntoEachLine) {
+  BlockStyle style;
+  style.textAlignDefined = true;
+  style.alignment = CssTextAlign::Left;
+  for (const int8_t spacing : {-1, 0, 1}) {
+    ParsedText text(true, false, false, style, 0, spacing);
+    text.addWord("aaaaa", EpdFontFamily::REGULAR);
+    text.addWord("bbbbb", EpdFontFamily::REGULAR);
+    size_t count = 0;
+    text.layoutAndExtractLines(renderer, 0, 84, [&](std::unique_ptr<TextBlock> line, auto) {
+      ++count;
+      EXPECT_EQ(line->getLetterSpacing(), spacing);
+      if (line->wordCount() == 2) EXPECT_EQ(line->wordXpos(1), 44 + 6 * spacing);
+    });
+    EXPECT_EQ(count, spacing == 1 ? 2u : 1u);
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, ParagraphModesAddThreeDistinctGaps) {
+  for (const uint8_t mode : {0, 1, 2}) {
+    parser.extraParagraphSpacing = mode;
+    parser.currentPageNextY = 0;
+    parser.currentPage.reset();
+    parser.currentTextBlock = std::make_unique<ParsedText>(true);
+    parser.currentTextBlock->addWord("word", EpdFontFamily::REGULAR);
+    parser.makePages();
+    EXPECT_EQ(parser.currentPageNextY, mode == 0 ? 20 : mode == 1 ? 24 : 32);
+  }
 }

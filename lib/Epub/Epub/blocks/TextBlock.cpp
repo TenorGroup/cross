@@ -224,7 +224,7 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
     const int drawX = wordX;
 
     if ((currentStyle & EpdFontFamily::DROP_CAP) && dropCapHeight) {
-      renderer.drawDropCapWord(fontId, drawX, wordY, word, currentStyle, dropCapHeight);
+      renderer.drawDropCapWord(fontId, drawX, wordY, word, currentStyle, dropCapHeight, letterSpacing);
     } else if (boundary > 0) {
       // Focus split: draw bold prefix, then the regular suffix at a pre-computed x offset.
       // The bold prefix is bounded to 9 codepoints by the clamp on targetBoldChars in
@@ -239,11 +239,11 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
           std::min<size_t>({static_cast<size_t>(boundary), static_cast<size_t>(wordTextLen(i)), sizeof(boldBuf) - 1});
       memcpy(boldBuf, word, boldLen);
       boldBuf[boldLen] = '\0';
-      renderer.drawText(fontId, drawX, wordY, boldBuf, true, boldStyle, baseDir);
+      renderer.drawText(fontId, drawX, wordY, boldBuf, true, boldStyle, baseDir, letterSpacing);
       const int suffixX = drawX + focusSuffixXArr[i];
-      renderer.drawText(fontId, suffixX, wordY, word + boldLen, true, currentStyle, baseDir);
+      renderer.drawText(fontId, suffixX, wordY, word + boldLen, true, currentStyle, baseDir, letterSpacing);
     } else {
-      renderer.drawText(fontId, drawX, wordY, word, true, currentStyle, baseDir);
+      renderer.drawText(fontId, drawX, wordY, word, true, currentStyle, baseDir, letterSpacing);
     }
 
     // Horizontal ruby text rendering
@@ -261,8 +261,8 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
     if (EpdFontFamily::hasTextDecoration(currentStyle)) {
       int lineStartX = drawX;
       int lineWidth = (currentStyle & EpdFontFamily::DROP_CAP) && dropCapHeight
-                          ? renderer.getDropCapWordWidth(fontId, word, currentStyle, dropCapHeight)
-                          : renderer.getTextWidth(fontId, word, currentStyle, baseDir);
+                          ? renderer.getDropCapWordWidth(fontId, word, currentStyle, dropCapHeight, letterSpacing)
+                          : renderer.getTextWidth(fontId, word, currentStyle, baseDir, letterSpacing);
 
       if ((currentStyle & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0) {
         lineWidth = (lineWidth + 1) / 2;
@@ -273,7 +273,7 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
           static_cast<uint8_t>(word[2]) == 0x83) {
         const char* visibleText = word + 3;
         lineStartX += renderer.getTextAdvanceX(fontId, "\xe2\x80\x83", currentStyle);
-        lineWidth = renderer.getTextWidth(fontId, visibleText, currentStyle, baseDir);
+        lineWidth = renderer.getTextWidth(fontId, visibleText, currentStyle, baseDir, letterSpacing);
         if ((currentStyle & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0) {
           lineWidth = (lineWidth + 1) / 2;
         }
@@ -315,6 +315,7 @@ bool TextBlock::serialize(HalFile& file) const {
   serialization::writePod(file, static_cast<uint8_t>(focusPresent ? 1 : 0));
   serialization::writePod(file, textBytes);
   serialization::writePod(file, dropCapHeight);
+  serialization::writePod(file, letterSpacing);
   if (numWords > 0) {
     const size_t size = arenaSize(numWords, focusPresent, textBytes);
     if (file.write(arena.get(), size) != size) {
@@ -352,10 +353,13 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   uint8_t hasFocus;
   uint16_t textBytes;
   uint16_t dropHeight = 0;
+  int8_t spacing = 0;
   serialization::readPod(file, wc);
   serialization::readPod(file, hasFocus);
   serialization::readPod(file, textBytes);
   serialization::readPod(file, dropHeight);
+  serialization::readPod(file, spacing);
+  if (spacing < -1 || spacing > 1) return nullptr;
   if (dropHeight > 256) return nullptr;
 
   // Sanity checks: cap the arena allocation and reject impossible geometry
@@ -378,6 +382,7 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   block->numWords = wc;
   block->textBytes = textBytes;
   block->focusPresent = hasFocus != 0;
+  block->letterSpacing = spacing;
 
   if (wc > 0) {
     const size_t size = arenaSize(wc, block->focusPresent, textBytes);

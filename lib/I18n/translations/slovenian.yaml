@@ -441,3 +441,8 @@ STR_FIRMWARE_WRITE_FAILED: "Zapisovanje vdelane programske opreme ni uspelo"
 STR_FIRMWARE_UPDATE_DO_NOT_POWER_OFF: "Ne izklapljaj naprave!"
 STR_RECOVERY_MODE: "Obnovitveni način"
 STR_RECOVERY_MODE_HINT: "Postavi firmware.bin v koren kartice SD in ga izberi"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"

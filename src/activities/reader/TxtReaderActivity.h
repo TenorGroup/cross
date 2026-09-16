@@ -20,6 +20,13 @@ class TxtReaderActivity final : public ReaderActivity {
   std::vector<std::string> currentPageLines;
   int linesPerPage = 0;
   int viewportWidth = 0;
+  int viewportHeight = 0;
+  int cachedLineHeight = 0;
+  int cachedParagraphGap = 0;
+  int8_t cachedLetterSpacing = 0;
+  std::vector<uint16_t> currentPageLineY;
+  std::vector<uint16_t> currentPageLineIndent;
+  uint16_t cachedIndent = 0;
   bool initialized = false;
 
   // Cached settings for cache validation
@@ -34,7 +41,8 @@ class TxtReaderActivity final : public ReaderActivity {
   void renderPage(GfxRenderer& renderer);
   void initializeReader(GfxRenderer& renderer);
   bool loadPageAtOffset(const GfxRenderer& renderer, size_t offset, std::vector<std::string>& outLines,
-                        size_t& nextOffset);
+                        size_t& nextOffset, std::vector<uint16_t>* lineY = nullptr,
+                        std::vector<uint16_t>* lineIndent = nullptr);
   void buildPageIndex(GfxRenderer& renderer);
   bool loadPageIndexCache();
   void savePageIndexCache() const;

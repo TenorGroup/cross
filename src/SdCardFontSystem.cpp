@@ -11,15 +11,6 @@
 
 namespace {
 
-// Point the reader font size at a size the given family actually ships, and
-// persist the change so the settings UI and the loaded font never disagree.
-// Guarded by the value-change check: a no-op snap must not write SPIFFS.
-void snapInkWeightTo(const uint8_t weight) {
-  if (SETTINGS.readerInkWeight == weight) return;
-  SETTINGS.readerInkWeight = weight;
-  SETTINGS.saveToFile();
-}
-
 void snapFontPointSizeTo(const uint8_t availablePointSize) {
   if (availablePointSize == 0 || availablePointSize == SETTINGS.fontPointSize) return;
   LOG_DBG("SDFS", "Font size %u unavailable, snapping to %u", SETTINGS.fontPointSize, availablePointSize);
@@ -58,7 +49,7 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
     if (family) {
       if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize, SETTINGS.readerInkWeight)) {
         snapFontPointSizeTo(manager_.currentPointSize());
-        snapInkWeightTo(manager_.currentWeight());
+        loadedRequestWeight_ = SETTINGS.readerInkWeight;
         setupUiFallbacks(renderer);
         LOG_DBG("SDFS", "Loaded SD card font family: %s", SETTINGS.sdFontFamilyName);
       } else {
@@ -95,7 +86,6 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   const std::string& currentFamily = manager_.currentFamilyName();
 
   if (wantedFamily[0] == '\0') {
-    snapInkWeightTo(0);
     if (!currentFamily.empty()) {
       manager_.unloadAll(renderer);
     }
@@ -123,10 +113,11 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     // Snap before the early return: the wanted size can already be loaded while
     // the setting still names a size this family does not ship.
     snapFontPointSizeTo(wantedPt);
-    uint8_t weight = SETTINGS.readerInkWeight;
-    if (weight > 2 || !selected || !(selected->weightMask & (1u << weight))) weight = 0;
-    snapInkWeightTo(weight);
-    if (!registryWasDirty && wantedPt == manager_.currentPointSize() && weight == manager_.currentWeight()) return;
+    // Cache the request as well as the effective weight: a missing or damaged
+    // variant falls back once and must not be reopened on every preview.
+    if (!registryWasDirty && wantedPt == manager_.currentPointSize() &&
+        SETTINGS.readerInkWeight == loadedRequestWeight_)
+      return;
     LOG_DBG("SDFS", "Reloading %s: size %u -> %u%s", wantedFamily, manager_.currentPointSize(), wantedPt,
             registryWasDirty ? " [registry dirty]" : "");
   }
@@ -139,7 +130,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   if (family) {
     if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize, SETTINGS.readerInkWeight)) {
       snapFontPointSizeTo(manager_.currentPointSize());
-      snapInkWeightTo(manager_.currentWeight());
+      loadedRequestWeight_ = SETTINGS.readerInkWeight;
       setupUiFallbacks(renderer);
       LOG_DBG("SDFS", "Loaded SD font family: %s", wantedFamily);
     } else {

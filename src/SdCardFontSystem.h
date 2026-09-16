@@ -22,6 +22,7 @@ class SdCardFontSystem {
   /// Also re-discovers if the registry has been marked dirty (e.g. by web upload).
   void ensureLoaded(GfxRenderer& renderer);
   uint8_t availableWeightMask() const;
+  uint8_t effectiveWeight() const { return manager_.currentWeight(); }
 
   // OTA uses built-in UI fonts and reboots on exit. Release SD font metadata
   // and the discovery catalog before TLS; settings and card files stay intact.
@@ -61,6 +62,7 @@ class SdCardFontSystem {
 
   SdCardFontRegistry registry_;
   SdCardFontManager manager_;
+  uint8_t loadedRequestWeight_ = 0;
   std::atomic<bool> registryDirty_{false};
 };
 

@@ -387,3 +387,7 @@ if (parsedSize != fileSize) {
     std::warning(std::format("Unparsed data detected: {} bytes remaining at offset 0x{:X}", fileSize - parsedSize, parsedSize));
 }
 ```
+
+## tenor/cross v1.0.2 typography
+
+EPUB section cache version 50 includes letter spacing and uses the revised paragraph-gap semantics. Settings use `textSpacingVersion: 2`: paragraph modes 0/1/2 are Default/Large/Larger. Version 1 Off/Narrow/Wide maps to Default/Default/Large. Older Boolean Off/On maps to Default/Large. Line spacing uses 0/1/2 for Narrow/Default/Wide; legacy Extra Wide maps to Wide. `paragraphIndentVersion: 1` retains Off/Default/Wide independently.

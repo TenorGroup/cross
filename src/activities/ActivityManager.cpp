@@ -543,3 +543,11 @@ void RenderLock::unlock() {
  *
  */
 bool RenderLock::peek() { return xQueuePeek(activityManager.renderingMutex, NULL, 0) != pdTRUE; };
+
+#ifdef TENOR_UI_ACCEPTANCE
+void ActivityManager::stepHomeForTest(int direction) {
+  RenderLock lock;
+  if (currentActivity && currentActivity->isHomeActivity())
+    static_cast<HomeActivity*>(currentActivity.get())->stepForTest(direction);
+}
+#endif

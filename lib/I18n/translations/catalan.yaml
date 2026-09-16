@@ -464,3 +464,8 @@ STR_RECOVERY_MODE: "Mode de recuperació"
 STR_RECOVERY_MODE_HINT: "Posa firmware.bin a l'arrel de la targeta SD i selecciona'l"
 STR_ADD_HIDDEN_NETWORK: "Afegeix una xarxa oculta..."
 STR_ENTER_WIFI_SSID: "Introdueix el nom de la xarxa (SSID)"
+
+STR_LETTER_SPACING: "Letter spacing"
+
+STR_HIDE_READER_STATUS_BAR: "Hide reader status bar"
+STR_HIDE_GLOBAL_STATUS_BAR: "Hide status bar everywhere"
