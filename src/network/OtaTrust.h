@@ -3,6 +3,6 @@
 #include <NetworkTrust.h>
 
 namespace ota_trust {
-// OTA stays restricted to cross.tenor.vn by OtaPolicy. Accept its RSA/ECDSA roots.
-static constexpr const char* ROOT_CA = network_trust::gts;
+// OtaPolicy restricts the host; the full bundle supports CDN CA rotation.
+static constexpr const char* ROOT_CA = network_trust::roots;
 }  // namespace ota_trust

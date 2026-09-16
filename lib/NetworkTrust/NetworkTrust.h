@@ -372,7 +372,9 @@ inline const char* forUrl(std::string_view url) {
   freeink::http_url::Parts parsed;
   if (!freeink::http_url::parse(url, parsed)) return roots;
   using freeink::http_url::equalFolded;
-  if (equalFolded(parsed.host, "cross.tenor.vn") || equalFolded(parsed.host, "sync.koreader.rocks")) return gts;
+  // The OTA CDN may rotate certificate authorities between renewals.
+  if (equalFolded(parsed.host, "cross.tenor.vn")) return roots;
+  if (equalFolded(parsed.host, "sync.koreader.rocks")) return gts;
   if (equalFolded(parsed.host, "github.com")) return sectigo;
   if (equalFolded(parsed.host, "release-assets.githubusercontent.com")) return isrg1;
   return roots;
