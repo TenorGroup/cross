@@ -2,6 +2,19 @@
 
 The root MIT licence applies to the application code covered by that licence. It grants no replacement licence for dependencies, fonts or other separately licensed material.
 
+## Which release these notices cover
+
+The dependency list below describes v1.0.2. Match notices to the firmware release you downloaded; library versions changed between releases.
+
+| Firmware release | wolfSSL version | Bundled COPYING | Source licence notice |
+| --- | --- | --- | --- |
+| v1.0.1 | Arduino-wolfSSL 5.7.2 | GNU GPL version 2 | GPL version 2 or any later version, or a separate commercial licence |
+| v1.0.2 | wolfSSL 5.9.2 | GNU GPL version 3 | GPL version 3 or any later version, or a separate commercial licence |
+
+For v1.0.1, see the [licence archive supplied with that release](https://github.com/TenorGroup/cross-releases/releases/download/v1.0.1/tenor-cross-v1.0.1-licenses.zip). For v1.0.2, see [COPYING](third_party/wolfssl/COPYING), [LICENSING](third_party/wolfssl/LICENSING) and [source provenance](third_party/wolfssl/PROVENANCE.md). The GPL v2 COPYING in the v1.0.1 archive is retained for its original dependency version.
+
+## Dependencies in v1.0.2
+
 - CrossPoint Reader: copyright Dave Allie and contributors, MIT. Original notices in source files remain.
 - FreeInk SDK: MIT, copyright FreeInk. The SDK NOTICE preserves the Open X4 E-Paper Contributors attribution. Lucide icons retain their ISC and MIT notices in the nested submodule.
 - wolfSSL 5.9.2: GPL version 3 or any later version, or a separately obtained commercial licence. The exact upstream commit, source, COPYING and LICENSING are retained in `third_party/wolfssl/`. This project provides no commercial licence grant. Linked firmware distributed using the GPL option must satisfy the GPL conditions, including complete corresponding source and build material. The application and SDK files remain available under their own MIT licences.
