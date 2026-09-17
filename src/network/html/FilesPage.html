@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Files - tenor/cross</title>
+  <title data-i18n="files.docTitle">Tệp - tenor/cross</title>
   <script src="/js/jszip.min.js"></script>
   <style>
     :root {
@@ -1505,32 +1505,33 @@
 <!--TENOR_BRAND-->
 
 <div class="nav-links">
-  <a href="/">Thiết bị</a>
-  <a href="/files" class="active">Tệp</a>
-  <a href="/settings">Cài đặt</a>
-  <a href="/fonts">Font chữ</a>
+  <a href="/" data-i18n="nav.device">Thiết bị</a>
+  <a href="/files" class="active" data-i18n="nav.files">Tệp</a>
+  <a href="/settings" data-i18n="nav.settings">Cài đặt</a>
+  <a href="/fonts" data-i18n="nav.fonts">Font chữ</a>
+  <div class="tenor-lang-slot" data-tenor-lang-selector></div>
 </div>
 
 <div class="page-header">
   <div class="page-header-left">
-    <h2>Tệp của bạn</h2>
+    <h2 data-i18n="files.yourFiles">Tệp của bạn</h2>
   </div>
 
   <div class="action-buttons">
-    <button class="action-btn upload-action-btn" onclick="openUploadModal()">Gửi tệp</button>
-    <button class="action-btn folder-action-btn" onclick="openFolderModal()">Thư mục mới</button>
-    <button class="action-btn delete-action-btn" onclick="openDeleteSelectedModal()" aria-label="Xóa mục đã chọn" title="Xóa mục đã chọn"><span class="tc-icon tc-delete" aria-hidden="true"></span></button>
+    <button class="action-btn upload-action-btn" onclick="openUploadModal()" data-i18n="files.upload">Gửi tệp</button>
+    <button class="action-btn folder-action-btn" onclick="openFolderModal()" data-i18n="files.newFolder">Thư mục mới</button>
+    <button class="action-btn delete-action-btn" onclick="openDeleteSelectedModal()" aria-label="Xóa mục đã chọn" title="Xóa mục đã chọn" data-i18n-aria-label="files.deleteSelected" data-i18n-title="files.deleteSelected"><span class="tc-icon tc-delete" aria-hidden="true"></span></button>
   </div>
 </div>
 
 <!-- Failed Uploads Banner -->
 <div class="failed-uploads-banner" id="failedUploadsBanner">
   <div class="failed-uploads-header">
-    <h3 class="failed-uploads-title">Một số tệp gửi chưa thành công</h3>
-    <button class="dismiss-btn" onclick="dismissFailedUploads()" title="Dismiss">&times;</button>
+    <h3 class="failed-uploads-title" data-i18n="files.failedUploadsTitle">Một số tệp gửi chưa thành công</h3>
+    <button class="dismiss-btn" onclick="dismissFailedUploads()" title="Dismiss" data-i18n-title="files.dismiss" aria-label="Dismiss" data-i18n-aria-label="files.dismiss">&times;</button>
   </div>
   <div id="failedFilesList"></div>
-  <button class="retry-all-btn" onclick="retryAllFailedUploads()">Gửi lại các tệp lỗi</button>
+  <button class="retry-all-btn" onclick="retryAllFailedUploads()" data-i18n="files.retryFailed">Gửi lại các tệp lỗi</button>
 </div>
 
 <div class="card">
@@ -1546,30 +1547,30 @@
   </div>
 </div>
 
-<footer class="tenor-footer"><span>Thư viện trên thiết bị</span><a href="https://cross.tenor.vn" target="_blank" rel="noopener noreferrer">cross.tenor.vn ↗</a></footer>
+<footer class="tenor-footer"><span data-i18n="home.footerLibrary">Thư viện trên thiết bị</span><a href="https://cross.tenor.vn" target="_blank" rel="noopener noreferrer">cross.tenor.vn ↗</a></footer>
 
 <!-- Upload Modal -->
 <div class="modal-overlay" id="uploadModal">
   <div class="modal">
     <button class="modal-close" id="uploadModalClose" onclick="closeUploadModal()">&times;</button>
-    <h3>Gửi tệp</h3>
+    <h3 data-i18n="files.upload">Gửi tệp</h3>
     <div class="upload-form">
-      <p class="file-info">Chọn tệp để gửi vào <strong id="uploadPathDisplay"></strong></p>
+      <p class="file-info"><span data-i18n="files.chooseFilesInto">Chọn tệp để gửi vào</span> <strong id="uploadPathDisplay"></strong></p>
       <div class="drop-zone" id="dropZone">
-        <input type="file" id="fileInput" aria-label="Chọn tệp để gửi" onchange="validateFile()" multiple>
-        <p class="drop-zone-hint">Kéo tệp vào đây hoặc bấm để chọn</p>
+        <input type="file" id="fileInput" data-i18n-aria-label="files.chooseFilesLabel" aria-label="Chọn tệp để gửi" onchange="validateFile()" multiple>
+        <p class="drop-zone-hint" data-i18n="files.dropHint">Kéo tệp vào đây hoặc bấm để chọn</p>
       </div>
       <div class="picker-columns" id="pickerColumns">
         <div class="convert-options" id="convertOptions" style="display:none;">
           <div class="convert-row">
             <label class="convert-checkbox">
               <input type="checkbox" id="convertBeforeUpload" onchange="toggleConvertOptions()">
-              <span>Tối ưu EPUB</span>
+              <span data-i18n="files.optimizeEpub">Tối ưu EPUB</span>
             </label>
-            <span class="convert-separator">—</span>
+            <span class="convert-separator">-</span>
             <span class="advanced-options-toggle" id="advancedOptionsToggle" onclick="toggleAdvancedOptions()">
               <span class="advanced-options-arrow" id="advancedOptionsArrow">▶</span>
-              <span class="advanced-options-text">Tùy chọn nâng cao</span>
+              <span class="advanced-options-text" data-i18n="files.advancedOptions">Tùy chọn nâng cao</span>
             </span>
           </div>
 
@@ -1578,8 +1579,8 @@
 
           <div class="advanced-setting-row">
             <div class="setting-label">
-              <div class="setting-title">Rename from Book Metadata</div>
-              <div class="setting-desc">Use Title - Author.epub when available</div>
+              <div class="setting-title" data-i18n="files.renameFromMetadata">Rename from Book Metadata</div>
+              <div class="setting-desc" data-i18n="files.renameFromMetadataDesc">Use Title - Author.epub when available</div>
             </div>
             <div class="setting-controls">
               <label class="toggle-switch">
@@ -1590,23 +1591,23 @@
           </div>
 
           <div class="convert-settings" id="convertSettings" style="display:block;">
-            <span>⚫ True-Grayscale</span>
-          <span id="convertSizeSummary">📏 Max 480×800px</span>
-          <span>📦 85% JPEG</span>
-          <span>🔧 Fix SVG</span>
+            <span data-i18n="files.trueGrayscale">⚫ True-Grayscale</span>
+            <span id="convertSizeSummary">📏 Max 480×800px</span>
+          <span id="qualityDisplaySimple">📦 85% JPEG</span>
+          <span data-i18n="files.fixSvg">🔧 Fix SVG</span>
         </div>
         <!-- Advanced Settings Content -->
         <div class="advanced-settings-content" id="advancedSettingsContent">
           <!-- JPEG Quality -->
           <div class="advanced-setting-row quality-row">
-            <div class="setting-title">📦 JPEG Quality</div>
+            <div class="setting-title" data-i18n="files.jpegQuality">📦 JPEG Quality</div>
             <div class="quality-presets">
-              <button class="quality-preset" data-value="30" onclick="setQualityPreset(30)" title="Minimum quality">30%</button>
-              <button class="quality-preset" data-value="45" onclick="setQualityPreset(45)" title="Low quality">45%</button>
-              <button class="quality-preset" data-value="60" onclick="setQualityPreset(60)" title="Medium-low quality">60%</button>
-              <button class="quality-preset" data-value="75" onclick="setQualityPreset(75)" title="Medium quality">75%</button>
-              <button class="quality-preset active" data-value="85" onclick="setQualityPreset(85)" title="High quality">85%</button>
-              <button class="quality-preset" data-value="95" onclick="setQualityPreset(95)" title="Maximum quality">95%</button>
+              <button class="quality-preset" data-value="30" onclick="setQualityPreset(30)" data-i18n-title="files.qualityMin" title="Minimum quality">30%</button>
+              <button class="quality-preset" data-value="45" onclick="setQualityPreset(45)" data-i18n-title="files.qualityLow" title="Low quality">45%</button>
+              <button class="quality-preset" data-value="60" onclick="setQualityPreset(60)" data-i18n-title="files.qualityMediumLow" title="Medium-low quality">60%</button>
+              <button class="quality-preset" data-value="75" onclick="setQualityPreset(75)" data-i18n-title="files.qualityMedium" title="Medium quality">75%</button>
+              <button class="quality-preset active" data-value="85" onclick="setQualityPreset(85)" data-i18n-title="files.qualityHigh" title="High quality">85%</button>
+              <button class="quality-preset" data-value="95" onclick="setQualityPreset(95)" data-i18n-title="files.qualityMax" title="Maximum quality">95%</button>
             </div>
             <!-- Hidden inputs to maintain compatibility -->
             <input type="hidden" id="qualitySlider" value="85">
@@ -1629,8 +1630,8 @@
           <!-- Auto-crop Margins -->
           <div class="advanced-setting-row">
             <div class="setting-label">
-              <div class="setting-title">✂ Auto-crop Margins</div>
-              <div class="setting-desc">Trim uniform borders and scale image content to fit</div>
+              <div class="setting-title" data-i18n="files.autoCrop">✂ Auto-crop Margins</div>
+              <div class="setting-desc" data-i18n="files.autoCropDesc">Trim uniform borders and scale image content to fit</div>
             </div>
             <div class="setting-controls">
               <label class="toggle-switch">
@@ -1641,7 +1642,7 @@
           </div>
           <!-- Target Device -->
           <div class="advanced-setting-row" id="deviceSettingRow">
-            <div class="setting-title">📱 Target Device</div>
+            <div class="setting-title" data-i18n="files.targetDevice">📱 Target Device</div>
             <div class="setting-controls">
               <div class="rotation-buttons">
                 <button class="rotation-btn device-btn active" data-value="auto" onclick="setDeviceTarget('auto')">
@@ -1654,21 +1655,21 @@
           </div>
           <!-- Rotation Direction -->
           <div class="advanced-setting-row" id="rotationSettingRow">
-            <div class="setting-title">↻ Rotation Direction</div>
+            <div class="setting-title" data-i18n="files.rotationDirection">↻ Rotation Direction</div>
             <div class="setting-controls">
               <div class="rotation-buttons">
                 <button class="rotation-btn" id="rotationCCW" onclick="setHandedness('left')">
-                  <span class="rot-icon">↺</span> CCW
+                  <span class="rot-icon">↺</span> <span data-i18n="files.rotationCcw">CCW</span>
                 </button>
                 <button class="rotation-btn active" id="rotationCW" onclick="setHandedness('right')">
-                  <span class="rot-icon">↻</span> CW
+                  <span class="rot-icon">↻</span> <span data-i18n="files.rotationCw">CW</span>
                 </button>
               </div>
             </div>
           </div>
           <!-- Overlap Settings -->
           <div class="advanced-setting-row" id="overlapSettingRow">
-            <div class="setting-title">📐 Min Overlap</div>
+            <div class="setting-title" data-i18n="files.minOverlap">📐 Min Overlap</div>
             <div class="setting-controls">
               <div class="overlap-selector">
                 <button class="overlap-btn active" data-value="5" onclick="setOverlap(5)">5%</button>
@@ -1680,8 +1681,8 @@
           <!-- Conversion Log Export -->
           <div class="advanced-setting-row">
             <div class="setting-label">
-              <div class="setting-title">📥 Auto-download Log</div>
-              <div class="setting-desc">Export detailed log with statistics</div>
+              <div class="setting-title" data-i18n="files.autoDownloadLog">📥 Auto-download Log</div>
+              <div class="setting-desc" data-i18n="files.autoDownloadLogDesc">Export detailed log with statistics</div>
             </div>
             <div class="setting-controls">
               <label class="toggle-switch">
@@ -1692,8 +1693,8 @@
           </div>
           <div class="advanced-setting-row">
             <div class="setting-label">
-              <div class="setting-title">Remember Settings</div>
-              <div class="setting-desc">Store these upload options in this browser</div>
+              <div class="setting-title" data-i18n="files.rememberSettings">Remember Settings</div>
+              <div class="setting-desc" data-i18n="files.rememberSettingsDesc">Store these upload options in this browser</div>
             </div>
             <div class="setting-controls">
               <label class="toggle-switch">
@@ -1707,33 +1708,33 @@
       <!-- Image Picker Section - in picker-columns for two-column layout -->
       <div class="image-picker-section" id="imagePickerSection" style="display:none;">
         <div class="image-picker-header">
-          <span class="image-picker-title">🖼️ Image Processing Options</span>
+          <span class="image-picker-title" data-i18n="files.imageOptions">🖼️ Image Processing Options</span>
           <span class="image-picker-count" id="imagePickerCount">0 images</span>
         </div>
         <div class="state-legend">
           <div class="legend-item locked">
             <span>🔒</span>
-            <span>Cover</span>
+            <span data-i18n="files.legendCover">Cover</span>
           </div>
           <div class="legend-item locked">
             <span style="color:#1abc9c">✦</span>
-            <span>Separator</span>
+            <span data-i18n="files.legendSeparator">Separator</span>
           </div>
           <button class="legend-btn" style="--btn-color:var(--label-color)" onclick="applyStateToAll(0)">
             <div class="legend-color"></div>
-            <span>Normal</span>
+            <span data-i18n="files.stateNormal">Normal</span>
           </button>
           <button class="legend-btn" style="--btn-color:#3498db" onclick="applyStateToAll(1)">
             <div class="legend-color"></div>
-            <span>H-Split</span>
+            <span data-i18n="files.stateHSplit">H-Split</span>
           </button>
           <button class="legend-btn" style="--btn-color:#e74c3c" onclick="applyStateToAll(2)">
             <div class="legend-color"></div>
-            <span>V-Split</span>
+            <span data-i18n="files.stateVSplit">V-Split</span>
           </button>
           <button class="legend-btn" style="--btn-color:#9b59b6" onclick="applyStateToAll(3)">
             <div class="legend-color"></div>
-            <span>Rotate</span>
+            <span data-i18n="files.stateRotate">Rotate</span>
           </button>
         </div>
         <div class="image-grid" id="imageGrid"></div>
@@ -1741,20 +1742,20 @@
       </div><!-- end picker-columns -->
       <!-- Sync compatibility warning - outside picker-columns -->
       <div class="convert-warning" id="convertWarning" style="display:none;" role="alert" aria-live="polite">
-        ⚠️ Converting will modify files and can break hash‑based sync. ⚠️<br>
-        Please back up or disable sync before proceeding.
+        ⚠️ <span data-i18n="files.convertWarning">Converting will modify files and can break hash-based sync.</span> ⚠️<br>
+        <span data-i18n="files.convertWarningBackup">Please back up or disable sync before proceeding.</span>
       </div>
       <!-- Optimize & Upload button - shown when picker is visible, replaces Upload -->
-      <button id="startConversionBtn" class="upload-btn optimize" style="display:none;" onclick="startConversionWithImageStates()">Tối ưu và gửi</button>
-      <button id="uploadBtn" class="upload-btn" onclick="uploadFile()" disabled>Gửi tệp</button>
-      <button class="delete-btn-cancel" onclick="handleCancelUploadModal()">Hủy</button>
+      <button id="startConversionBtn" class="upload-btn optimize" style="display:none;" onclick="startConversionWithImageStates()" data-i18n="files.optimizeAndUpload">Tối ưu và gửi</button>
+      <button id="uploadBtn" class="upload-btn" onclick="uploadFile()" disabled data-i18n="files.upload">Gửi tệp</button>
+      <button class="delete-btn-cancel" onclick="handleCancelUploadModal()" data-i18n="files.cancel">Hủy</button>
       <div id="progress-container">
         <div id="progress-bar"><div id="progress-fill"></div></div>
         <div id="progress-text"></div>
       </div>
       <div class="log-section" id="log-section">
         <div class="log-header">
-          <div class="log-title">📋 Conversion Log</div>
+          <div class="log-title" data-i18n="files.conversionLog">📋 Conversion Log</div>
         </div>
         <div class="log-container" id="log-container"></div>
       </div>
@@ -1766,12 +1767,12 @@
 <div class="modal-overlay" id="folderModal">
   <div class="modal">
     <button class="modal-close" onclick="closeFolderModal()">&times;</button>
-    <h3>Thư mục mới</h3>
+    <h3 data-i18n="files.newFolder">Thư mục mới</h3>
     <div class="folder-form">
-      <p class="file-info">Create a new folder in <strong id="folderPathDisplay"></strong></p>
-      <input type="text" id="folderName" class="folder-input" placeholder="Folder name..." oninput="document.getElementById('createFolderBtn').disabled = !this.value.trim();">
-      <button class="folder-btn" id="createFolderBtn" onclick="createFolder()" disabled>Tạo thư mục</button>
-      <button class="delete-btn-cancel" onclick="closeFolderModal()">Hủy</button>
+      <p class="file-info"><span data-i18n="files.createFolderIn">Create a new folder in</span> <strong id="folderPathDisplay"></strong></p>
+      <input type="text" id="folderName" class="folder-input" data-i18n-placeholder="files.folderNamePlaceholder" placeholder="Folder name..." oninput="document.getElementById('createFolderBtn').disabled = !this.value.trim();">
+      <button class="folder-btn" id="createFolderBtn" onclick="createFolder()" disabled data-i18n="files.createFolder">Tạo thư mục</button>
+      <button class="delete-btn-cancel" onclick="closeFolderModal()" data-i18n="files.cancel">Hủy</button>
     </div>
   </div>
 </div>
@@ -1780,13 +1781,13 @@
 <div class="modal-overlay" id="deleteModal">
   <div class="modal">
     <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
-    <h3>Xóa mục đã chọn</h3>
+    <h3 data-i18n="files.deleteSelected">Xóa mục đã chọn</h3>
     <div class="folder-form">
-      <p class="delete-warning">⚠️ This action cannot be undone!</p>
-      <p class="file-info">Are you sure you want to delete the following item(s)?</p>
+      <p class="delete-warning" data-i18n="files.deleteWarning">⚠️ This action cannot be undone!</p>
+      <p class="file-info" data-i18n="files.deleteConfirmText">Are you sure you want to delete the following item(s)?</p>
       <div id="deleteItemList" style="max-height:240px; overflow:auto; margin-bottom:10px;"></div>
-      <button class="delete-btn-confirm" onclick="confirmDelete()">Xóa</button>
-      <button class="delete-btn-cancel" onclick="closeDeleteModal()">Hủy</button>
+      <button class="delete-btn-confirm" onclick="confirmDelete()" data-i18n="files.delete">Xóa</button>
+      <button class="delete-btn-cancel" onclick="closeDeleteModal()" data-i18n="files.cancel">Hủy</button>
     </div>
   </div>
 </div>
@@ -1795,13 +1796,13 @@
 <div class="modal-overlay" id="renameModal">
   <div class="modal">
     <button class="modal-close" onclick="closeRenameModal()">&times;</button>
-    <h3>Đổi tên tệp</h3>
+    <h3 data-i18n="files.renameTitle">Đổi tên tệp</h3>
     <div class="folder-form">
-      <p class="file-info">Renaming <strong id="renameItemName"></strong></p>
-      <input type="text" id="renameNewName" class="folder-input" placeholder="New file name...">
+      <p class="file-info"><span data-i18n="files.renaming">Renaming</span> <strong id="renameItemName"></strong></p>
+      <input type="text" id="renameNewName" class="folder-input" data-i18n-placeholder="files.newNamePlaceholder" placeholder="New file name...">
       <input type="hidden" id="renameItemPath">
-      <button class="rename-btn-confirm" onclick="confirmRename()">Đổi tên</button>
-      <button class="delete-btn-cancel" onclick="closeRenameModal()">Hủy</button>
+      <button class="rename-btn-confirm" onclick="confirmRename()" data-i18n="files.rename">Đổi tên</button>
+      <button class="delete-btn-cancel" onclick="closeRenameModal()" data-i18n="files.cancel">Hủy</button>
     </div>
   </div>
 </div>
@@ -1810,14 +1811,14 @@
 <div class="modal-overlay" id="moveModal">
   <div class="modal">
     <button class="modal-close" onclick="closeMoveModal()">&times;</button>
-    <h3>Di chuyển tệp</h3>
+    <h3 data-i18n="files.moveTitle">Di chuyển tệp</h3>
     <div class="folder-form">
-      <p class="file-info">Moving <strong id="moveItemName"></strong></p>
-      <input type="text" id="moveDestPath" class="folder-input" list="moveFolderOptions" placeholder="/Destination/Folder">
+      <p class="file-info"><span data-i18n="files.moving">Moving</span> <strong id="moveItemName"></strong></p>
+      <input type="text" id="moveDestPath" class="folder-input" list="moveFolderOptions" data-i18n-placeholder="files.moveDestPlaceholder" placeholder="/Destination/Folder">
       <datalist id="moveFolderOptions"></datalist>
       <input type="hidden" id="moveItemPath">
-      <button class="move-btn-confirm" onclick="confirmMove()">Di chuyển</button>
-      <button class="delete-btn-cancel" onclick="closeMoveModal()">Hủy</button>
+      <button class="move-btn-confirm" onclick="confirmMove()" data-i18n="files.move">Di chuyển</button>
+      <button class="delete-btn-cancel" onclick="closeMoveModal()" data-i18n="files.cancel">Hủy</button>
     </div>
   </div>
 </div>
@@ -1826,25 +1827,34 @@
 <div class="modal-overlay" id="imagePreviewModal">
   <div class="modal image-preview-mode">
     <button class="modal-close" onclick="closeImagePreview()">&times;</button>
-    <h3>Xem ảnh</h3>
+    <h3 data-i18n="files.imagePreview">Xem ảnh</h3>
     <div class="folder-form">
       <p class="file-info"><strong id="imagePreviewName"></strong></p>
       <div class="image-preview-stage">
         <img id="imagePreviewImg" alt="">
       </div>
-      <a id="imagePreviewDownload" class="move-btn-confirm" rel="noopener noreferrer" target="_blank" href="#">Download</a>
+      <a id="imagePreviewDownload" class="move-btn-confirm" rel="noopener noreferrer" target="_blank" href="#" data-i18n="files.download">Download</a>
     </div>
   </div>
 </div>
 
 <script>
+/* TENOR_WEB_I18N */
+  // The shared masthead tagline (BrandHeader.inc) carries its own data-i18n
+  // marker, so it needs no binding here.
+  TenorI18n.init();
+
   // get current path from query parameter
   const currentPath = decodeURIComponent(new URLSearchParams(window.location.search).get('path') || '/');
 
-  if (currentPath !== '/') {
+  // Title is the current folder plus the shared page title; re-applied after a
+  // locale change so the suffix follows the chosen language.
+  function applyDocumentTitle() {
     const leaf = currentPath.split('/').filter(Boolean).pop();
-    if (leaf) document.title = leaf + ' - Files - tenor/cross';
+    document.title = leaf ? leaf + ' - ' + TenorI18n.t('files.docTitle') : TenorI18n.t('files.docTitle');
   }
+
+  applyDocumentTitle();
 
   // Network status monitoring
   let isNetworkOnline = navigator.onLine;
@@ -1853,13 +1863,13 @@
   window.addEventListener('online', () => {
     console.log('[Network] Online event fired');
     isNetworkOnline = true;
-    showNotification('Network connection restored', 'success');
+    showNotification(TenorI18n.t('files.networkRestored'), 'success');
   });
 
   window.addEventListener('offline', () => {
     console.log('[Network] Offline event fired');
     isNetworkOnline = false;
-    showNotification('Network connection lost', 'warning');
+    showNotification(TenorI18n.t('files.networkLost'), 'warning');
   });
 
   // Initialize network status
@@ -1963,45 +1973,50 @@
       breadcrumbs.appendChild(sep);
     };
 
-    const appendLink = function(label, href) {
+    // `key` marks chrome that must follow a locale change; folder names are
+    // user data and are never translated or annotated.
+    const appendLink = function(label, href, key) {
       const link = document.createElement('a');
       link.href = href;
+      if (key) link.setAttribute('data-i18n', key);
       link.textContent = label;
       breadcrumbs.appendChild(link);
     };
 
-    const appendCurrent = function(label) {
+    const appendCurrent = function(label, key) {
       const current = document.createElement('span');
       current.className = 'current';
+      if (key) current.setAttribute('data-i18n', key);
       current.textContent = label;
       breadcrumbs.appendChild(current);
     };
 
     if (segments.length === 0) {
-      appendCurrent('Thẻ nhớ');
+      appendCurrent(TenorI18n.t('files.memoryCard'), 'files.memoryCard');
     } else {
-      appendLink('Thẻ nhớ', '/files');
+      appendLink(TenorI18n.t('files.memoryCard'), TenorI18n.apiUrl('/files'), 'files.memoryCard');
       segments.forEach(function(segment, index) {
         appendSep();
         if (index === segments.length - 1) {
           appendCurrent(segment);
         } else {
           const path = '/' + segments.slice(0, index + 1).join('/');
-          appendLink(segment, '/files?path=' + encodeURIComponent(path));
+          appendLink(segment, TenorI18n.apiUrl('/files?path=' + encodeURIComponent(path)));
         }
       });
     }
 
     let files = [];
     try {
-      const response = await fetch('/api/files?path=' + encodeURIComponent(currentPath) + '&_=' + Date.now());
+      const response = await fetch(TenorI18n.apiUrl('/api/files?path=' + encodeURIComponent(currentPath) + '&_=' + Date.now()));
       if (!response.ok) {
         throw new Error('Failed to load files: ' + response.status + ' ' + response.statusText);
       }
       files = await response.json();
     } catch (e) {
       console.error(e);
-      fileTable.innerHTML = '<div class="no-files">An error occurred while loading the files</div>';
+      fileTable.innerHTML = '<div class="no-files" data-i18n="files.loadError">Đã xảy ra lỗi khi tải danh sách tệp</div>';
+      TenorI18n.apply(fileTable);
       return;
     }
 
@@ -2013,17 +2028,16 @@
     });
 
     const fileCount = files.length - folderCount;
-    const folderLabel = folderCount === 1 ? 'thư mục' : 'thư mục';
-    const fileLabel = fileCount === 1 ? 'tệp' : 'tệp';
-    document.getElementById('folder-summary').innerHTML = `${folderCount} ${folderLabel}, ${fileCount} ${fileLabel}, ${formatFileSize(totalSize)}`;
+    summaryState = { folders: folderCount, files: fileCount, size: formatFileSize(totalSize) };
+    renderSummary();
 
     if (files.length === 0) {
-      fileTable.innerHTML = '<div class="no-files">Thư mục trống</div>';
+      fileTable.innerHTML = '<div class="no-files" data-i18n="files.emptyFolder">Thư mục trống</div>';
     } else {
       let fileTableContent = '<table class="file-table">';
 
 				// Add select-all checkbox column
-      fileTableContent += '<tr><th style="width:40px"><input type="checkbox" id="selectAllCheckbox" aria-label="Chọn tất cả" onchange="toggleSelectAll(this)"></th><th><label for="selectAllCheckbox">Chọn tất cả</label></th><th>Loại</th><th>Dung lượng</th><th class="actions-col">Thao tác</th></tr>';
+      fileTableContent += '<tr><th style="width:40px"><input type="checkbox" id="selectAllCheckbox" aria-label="Chọn tất cả" data-i18n-aria-label="files.selectAll" onchange="toggleSelectAll(this)"></th><th><label for="selectAllCheckbox" data-i18n="files.selectAll">Chọn tất cả</label></th><th data-i18n="files.type">Loại</th><th data-i18n="files.sizeColumn">Dung lượng</th><th class="actions-col" data-i18n="files.actions">Thao tác</th></tr>';
 
 
       const sortedFiles = files.sort((a, b) => {
@@ -2043,11 +2057,11 @@
 
          // Checkbox cell + folder row
           fileTableContent += `<tr class="folder-row">`;
-          fileTableContent += `<td><input type="checkbox" class="select-item" aria-label="Chọn ${escapeHtml(file.name)}" data-path="${encodeURIComponent(folderPath)}" data-name="${escapeHtml(file.name)}" data-type="folder"></td>`;
-          fileTableContent += `<td><span class="file-icon tc-icon tc-folder" aria-hidden="true"></span><a href="/files?path=${encodeURIComponent(folderPath)}" class="folder-link">${escapeHtml(file.name)}</a></td>`;
-          fileTableContent += '<td><span class="folder-badge">Thư mục</span></td>';
+          fileTableContent += `<td><input type="checkbox" class="select-item" aria-label="${escapeHtml(TenorI18n.t('files.selectItem', { name: file.name }))}" data-path="${encodeURIComponent(folderPath)}" data-name="${escapeHtml(file.name)}" data-type="folder"></td>`;
+          fileTableContent += `<td><span class="file-icon tc-icon tc-folder" aria-hidden="true"></span><a href="${TenorI18n.apiUrl('/files?path=' + encodeURIComponent(folderPath))}" class="folder-link">${escapeHtml(file.name)}</a></td>`;
+          fileTableContent += '<td><span class="folder-badge" data-i18n="files.folderBadge">Thư mục</span></td>';
           fileTableContent += '<td>-</td>';
-          fileTableContent += `<td class="actions-col"><div class="action-icon-group"><button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(folderPath)}" data-folder="true" title="Xóa thư mục" aria-label="Xóa thư mục"><span class="tc-icon tc-delete" aria-hidden="true"></span></button></div></td>`;
+          fileTableContent += `<td class="actions-col"><div class="action-icon-group"><button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(folderPath)}" data-folder="true" title="Xóa thư mục" data-i18n-title="files.deleteFolderTitle" aria-label="Xóa thư mục" data-i18n-aria-label="files.deleteFolderTitle"><span class="tc-icon tc-delete" aria-hidden="true"></span></button></div></td>`;
           fileTableContent += '</tr>';
         } else {
           let filePath = currentPath;
@@ -2056,7 +2070,7 @@
 
           // Checkbox cell + file row
           fileTableContent += `<tr class="${file.isEpub ? 'epub-file' : ''}">`;
-          fileTableContent += `<td><input type="checkbox" class="select-item" aria-label="Chọn ${escapeHtml(file.name)}" data-path="${encodeURIComponent(filePath)}" data-name="${escapeHtml(file.name)}" data-type="file"></td>`;
+          fileTableContent += `<td><input type="checkbox" class="select-item" aria-label="${escapeHtml(TenorI18n.t('files.selectItem', { name: file.name }))}" data-path="${encodeURIComponent(filePath)}" data-name="${escapeHtml(file.name)}" data-type="file"></td>`;
           const fileIsImage = isImageFile(file.name);
           fileTableContent += `<td><span class="file-icon tc-icon tc-${file.isEpub ? 'book' : (fileIsImage ? 'image' : 'file')}" aria-hidden="true"></span>`;
           if (fileIsImage) {
@@ -2068,9 +2082,9 @@
           fileTableContent += file.isEpub ? '<td><span class="epub-badge">EPUB</span></td>' : `<td>${escapeHtml(file.name.split('.').pop().toUpperCase())}</td>`;
           fileTableContent += `<td>${formatFileSize(file.size)}</td>`;
           fileTableContent += `<td class="actions-col"><div class="action-icon-group">`;
-          fileTableContent += `<button class="move-btn" data-action="move" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Di chuyển tệp" aria-label="Di chuyển tệp"><span class="tc-icon tc-move" aria-hidden="true"></span></button>`;
-          fileTableContent += `<button class="rename-btn" data-action="rename" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Đổi tên tệp" aria-label="Đổi tên tệp"><span class="tc-icon tc-edit" aria-hidden="true"></span></button>`;
-          fileTableContent += `<button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" data-folder="false" title="Xóa tệp" aria-label="Xóa tệp"><span class="tc-icon tc-delete" aria-hidden="true"></span></button>`;
+          fileTableContent += `<button class="move-btn" data-action="move" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Di chuyển tệp" data-i18n-title="files.moveFileTitle" aria-label="Di chuyển tệp" data-i18n-aria-label="files.moveFileTitle"><span class="tc-icon tc-move" aria-hidden="true"></span></button>`;
+          fileTableContent += `<button class="rename-btn" data-action="rename" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" title="Đổi tên tệp" data-i18n-title="files.renameFileTitle" aria-label="Đổi tên tệp" data-i18n-aria-label="files.renameFileTitle"><span class="tc-icon tc-edit" aria-hidden="true"></span></button>`;
+          fileTableContent += `<button class="delete-btn" data-action="delete" data-name="${escapeHtml(file.name)}" data-path="${escapeHtml(filePath)}" data-folder="false" title="Xóa tệp" data-i18n-title="files.deleteFileTitle" aria-label="Xóa tệp" data-i18n-aria-label="files.deleteFileTitle"><span class="tc-icon tc-delete" aria-hidden="true"></span></button>`;
           fileTableContent += `</div></td>`;
           fileTableContent += '</tr>';
         }
@@ -2078,6 +2092,71 @@
 
       fileTableContent += '</table>';
       fileTable.innerHTML = fileTableContent;
+      // Table chrome is annotated with data-i18n as it is generated, so the
+      // freshly inserted nodes are translated and their links localised here.
+      TenorI18n.apply(fileTable);
+    }
+  }
+
+  // Directory summary counts are kept so a locale change re-renders the label
+  // from numbers already on screen instead of refetching the listing.
+  let summaryState = null; // { folders, files, size }
+
+  function renderSummary() {
+    const el = document.getElementById('folder-summary');
+    if (!summaryState) {
+      el.textContent = '';
+      return;
+    }
+    el.textContent = TenorI18n.t('files.folderSummary', {
+      folders: TenorI18n.tPlural('files.folderCount', summaryState.folders),
+      files: TenorI18n.tPlural('files.fileCount', summaryState.files),
+      // Sizes keep the existing byte formatting verbatim.
+      size: summaryState.size
+    });
+  }
+
+  // A locale change re-renders the chrome that carries interpolated values (page
+  // title, directory summary, per-row checkbox names) from data already on
+  // screen. It never refetches, never rebuilds the table (which would drop the
+  // user's ticked rows) and never interrupts a transfer in progress.
+  function applyLocaleToDynamicChrome() {
+    applyDocumentTitle();
+    renderSummary();
+    updateConversionUiLabels();
+    document.querySelectorAll('#file-table .select-item').forEach(function(box) {
+      box.setAttribute('aria-label', TenorI18n.t('files.selectItem', { name: box.getAttribute('data-name') }));
+    });
+    updateImagePickerCount();
+    if (isImagePickerVisible()) {
+      renderImageGrid();
+    }
+  }
+
+  function updateConversionUiLabels() {
+    const size = document.getElementById('convertSizeSummary');
+    if (size && typeof MAX_WIDTH === 'number' && typeof MAX_HEIGHT === 'number') {
+      size.textContent = TenorI18n.t('files.maxSize', { width: MAX_WIDTH, height: MAX_HEIGHT });
+    }
+    const quality = document.getElementById('qualityDisplaySimple');
+    if (quality) {
+      const value = document.getElementById('qualitySlider');
+      quality.textContent = TenorI18n.t('files.jpegSummary', {
+        quality: value ? value.value : JPEG_QUALITY
+      });
+    }
+    const autoLabel = document.getElementById('deviceAutoLabel');
+    if (autoLabel) {
+      autoLabel.textContent = DETECTED_DEVICE
+        ? TenorI18n.t('files.autoWith', { device: DETECTED_DEVICE })
+        : TenorI18n.t('files.auto');
+    }
+    const uploadBtn = document.getElementById('uploadBtn');
+    const convertToggle = document.getElementById('convertBeforeUpload');
+    if (uploadBtn && !isUploadInProgress) {
+      uploadBtn.textContent = convertToggle && convertToggle.checked
+        ? TenorI18n.t('files.optimizeAndUpload')
+        : TenorI18n.t('files.upload');
     }
   }
 
@@ -2087,7 +2166,7 @@
   }
 
   function downloadUrl(filePath) {
-    return `/download?path=${encodeURIComponent(filePath)}`;
+    return TenorI18n.apiUrl(`/download?path=${encodeURIComponent(filePath)}`);
   }
 
   function openImagePreview(url, name) {
@@ -2149,7 +2228,7 @@
     progressFill.style.width = '0%';
     progressFill.style.backgroundColor = '#e74c3c';
     progressText.style.color = '#e74c3c';
-    progressText.textContent = 'Upload cancelled by User!';
+    progressText.textContent = TenorI18n.t('files.uploadCancelled');
     // Re-enable the action button (uploadBtn is always visible at this point;
     // its text is already "Upload" or "Optimize & Upload" depending on checkbox state)
     document.getElementById('uploadBtn').disabled = false;
@@ -2168,7 +2247,7 @@
     const uploadBtn = document.getElementById('uploadBtn');
     uploadBtn.disabled = true;
     uploadBtn.style.display = 'block';
-    uploadBtn.textContent = 'Gửi tệp';
+    uploadBtn.textContent = TenorI18n.t('files.upload');
     uploadBtn.classList.remove('optimize');
     document.getElementById('startConversionBtn').style.display = 'none';
     document.getElementById('progress-container').style.display = 'none';
@@ -2215,10 +2294,10 @@
     document.getElementById('convertInfo').style.display = checked ? 'block' : 'none';
     // Update button text and style
     if (checked) {
-      uploadBtn.textContent = 'Optimize & Upload';
+      uploadBtn.textContent = TenorI18n.t('files.optimizeAndUpload');
       uploadBtn.classList.add('optimize');
     } else {
-      uploadBtn.textContent = 'Gửi tệp';
+      uploadBtn.textContent = TenorI18n.t('files.upload');
       uploadBtn.classList.remove('optimize');
       // Clear image picker when unchecking
       clearImagePicker();
@@ -2286,7 +2365,7 @@
     // Update displays (if element exists)
     const qualityDisplay = document.getElementById('qualityDisplaySimple');
     if (qualityDisplay) {
-      qualityDisplay.textContent = '📦 ' + quality + '% JPEG';
+      qualityDisplay.textContent = TenorI18n.t('files.jpegSummary', { quality: quality });
     }
 
     // Update converter variables (used by processImage and applyGrayscale)
@@ -2710,11 +2789,37 @@
   /**
    * Show image picker after EPUB file selection
    */
+  function updateImagePickerCount() {
+    const countDisplay = document.getElementById('imagePickerCount');
+    if (!countDisplay) return;
+    const images = Array.isArray(epubImagesCache) ? epubImagesCache : [];
+    const coverCount = images.filter(img => img.isCover).length;
+    const separatorCount = images.filter(img => img.isSeparator).length;
+    const lockedCount = coverCount + separatorCount;
+    const selectableCount = images.length - lockedCount;
+    if (lockedCount > 0) {
+      const lockedParts = [];
+      if (coverCount > 0) {
+        lockedParts.push(TenorI18n.tPlural('files.coverCount', coverCount));
+      }
+      if (separatorCount > 0) {
+        lockedParts.push(TenorI18n.tPlural('files.separatorCount', separatorCount));
+      }
+      countDisplay.textContent = TenorI18n.t('files.imageCountSelectable', {
+        count: images.length,
+        selectable: selectableCount,
+        locked: lockedParts.join(', ')
+      });
+    } else {
+      countDisplay.textContent = TenorI18n.t('files.imageCountAllSelectable', { count: images.length });
+    }
+  }
+
   async function showImagePicker(file) {
     // Check if JSZip is available
     if (typeof JSZip === 'undefined') {
       console.error('JSZip not loaded');
-      alert('JSZip library not available. Conversion will proceed without image picker.');
+      alert(TenorI18n.t('files.jsZipMissing'));
       startConversionWithImageStates();
       return;
     }
@@ -2747,20 +2852,8 @@
       // Build UI
       renderImageGrid();
 
-      // Count images - covers and separators are locked
-      const coverCount = images.filter(img => img.isCover).length;
-      const separatorCount = images.filter(img => img.isSeparator).length;
-      const lockedCount = coverCount + separatorCount;
-      const selectableCount = images.length - lockedCount;
-      
-      if (lockedCount > 0) {
-        const lockedParts = [];
-        if (coverCount > 0) lockedParts.push(`${coverCount} cover`);
-        if (separatorCount > 0) lockedParts.push(`${separatorCount} separator${separatorCount !== 1 ? 's' : ''}`);
-        countDisplay.textContent = `${images.length} images (${selectableCount} selectable, ${lockedParts.join(', ')})`;
-      } else {
-        countDisplay.textContent = `${images.length} image${images.length !== 1 ? 's' : ''} (all selectable)`;
-      }
+      // Count images - covers and separators are locked.
+      updateImagePickerCount();
 
       // Show picker, hide upload button, show start conversion button
       pickerSection.style.display = 'block';
@@ -2772,7 +2865,7 @@
 
     } catch (error) {
       console.error('Failed to extract images:', error);
-      alert('Failed to preview images: ' + error.message + '\n\nConversion will proceed normally.');
+      alert(TenorI18n.t('files.previewFailed', { message: error.message }));
       // Fallback: start conversion directly
       startConversionWithImageStates();
     }
@@ -2785,7 +2878,7 @@
     const imageGrid = document.getElementById('imageGrid');
     imageGrid.innerHTML = '';
 
-    const stateLabels = ['', 'H-Split', 'V-Split', 'Rotate'];
+    const stateKeys = ['', 'files.stateHSplit', 'files.stateVSplit', 'files.stateRotate'];
     const stateClasses = ['state-0', 'state-1', 'state-2', 'state-3'];
 
     epubImagesCache.forEach(img => {
@@ -2799,7 +2892,7 @@
       if (isCover) {
         // Cover image - locked, cannot be split
         item.className = 'image-item cover-locked';
-        item.title = `${img.width}×${img.height} - Cover image (locked)`;
+        item.title = TenorI18n.t('files.imageCoverLocked', { width: img.width, height: img.height });
         item.innerHTML = `
           <span class="image-state-badge cover-badge">🔒</span>
           <img src="${img.dataUrl}" alt="${img.name}" loading="lazy">
@@ -2808,7 +2901,7 @@
       } else if (isSeparator) {
         // Separator/ornament - locked, cannot be split
         item.className = 'image-item separator-locked';
-        item.title = `${img.width}×${img.height} - Separator (locked)`;
+        item.title = TenorI18n.t('files.imageSeparatorLocked', { width: img.width, height: img.height });
         item.innerHTML = `
           <span class="image-state-badge separator-badge">✦</span>
           <img src="${img.dataUrl}" alt="${img.name}" loading="lazy">
@@ -2855,17 +2948,20 @@
         }
         
         // Build tooltip
-        const stateText = stateLabels[state] || 'Normal';
-        const partsText = numParts > 1 ? ` (${numParts} parts)` : '';
+        const stateText = stateKeys[state] ? TenorI18n.t(stateKeys[state]) : TenorI18n.t('files.stateNormal');
+        const partsText = numParts > 1 ? TenorI18n.t('files.partsCount', { count: numParts }) : '';
         const showCropPreview = ENABLE_AUTO_CROP && img.autoCropPreview;
         const previewSrc = showCropPreview ? img.autoCropPreview.dataUrl : img.dataUrl;
-        const cropText = showCropPreview ? ` | Auto-crop: ${img.autoCropPreview.width}×${img.autoCropPreview.height}` : '';
+        const cropText = showCropPreview ? TenorI18n.t('files.autoCropSize', {
+          width: img.autoCropPreview.width,
+          height: img.autoCropPreview.height
+        }) : '';
         
         item.className = `image-item ${stateClasses[state]} ${rotateClass} ${showCropPreview ? 'crop-preview' : ''}`.trim();
         item.onclick = () => cycleImageState(img.path);
         item.title = `${img.width}×${img.height} - ${stateText}${partsText}${cropText}`;
         item.innerHTML = `
-          <span class="image-state-badge">${showCropPreview ? '✂' : (stateLabels[state] || '•')}</span>
+          <span class="image-state-badge">${showCropPreview ? '✂' : (state === 0 ? '•' : stateText)}</span>
           <div class="image-preview-overlay">
             ${splitLinesHtml}
           </div>
@@ -2959,8 +3055,8 @@
    * Get state label for logging
    */
   function getStateLabel(state) {
-    const labels = ['Normal', 'H-Split', 'V-Split', 'Rotate'];
-    return labels[state] || 'Normal';
+    const keys = ['files.stateNormal', 'files.stateHSplit', 'files.stateVSplit', 'files.stateRotate'];
+    return TenorI18n.t(keys[state] || 'files.stateNormal');
   }
 
   // Initialize quality settings handlers
@@ -3070,7 +3166,7 @@
   function openDeleteSelectedModal() {
     const items = getSelectedItems();
     if (items.length === 0) {
-      alert('Please select at least one item to delete.');
+      alert(TenorI18n.t('files.selectItemToDelete'));
       return;
     }
     openDeleteModalForItems(items);
@@ -3114,7 +3210,7 @@
     });
 
     const body = 'paths=' + encodeURIComponent(JSON.stringify(paths));
-    fetch('/delete', {
+    fetch(TenorI18n.apiUrl('/delete'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body
@@ -3123,11 +3219,11 @@
         window.location.reload();
       } else {
         const text = await res.text();
-        alert('Failed to delete: ' + text);
+        alert(TenorI18n.t('files.deleteFailed', { message: text }));
         closeDeleteModal();
       }
     }).catch(() => {
-      alert('Failed to delete - network error');
+      alert(TenorI18n.t('files.deleteNetworkError'));
       closeDeleteModal();
     });
   }
@@ -3243,7 +3339,7 @@
       toggleConvertOptions();
     } else {
       convertOptions.style.display = 'none';
-      uploadBtn.textContent = 'Gửi tệp';
+      uploadBtn.textContent = TenorI18n.t('files.upload');
       uploadBtn.classList.remove('optimize');
       document.getElementById('convertInfo').style.display = 'none';
       document.getElementById('convertWarning').style.display = 'none';
@@ -3426,7 +3522,7 @@ let crosspointVersion = 'Unknown';
 // Fetch version from API
 async function fetchVersion() {
   try {
-    const response = await fetch('/api/status');
+    const response = await fetch(TenorI18n.apiUrl('/api/status'));
     if (response.ok) {
       const data = await response.json();
       crosspointVersion = data.version || 'Unknown';
@@ -3450,14 +3546,16 @@ function applyDeviceTarget() {
 
   const summary = document.getElementById('convertSizeSummary');
   if (summary) {
-    summary.textContent = `📏 Max ${profile.width}×${profile.height}px`;
+    summary.textContent = TenorI18n.t('files.maxSize', { width: profile.width, height: profile.height });
   }
   document.querySelectorAll('.device-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.value === DEVICE_TARGET);
   });
   const autoLabel = document.getElementById('deviceAutoLabel');
   if (autoLabel) {
-    autoLabel.textContent = DETECTED_DEVICE ? `Auto (${DETECTED_DEVICE})` : 'Auto';
+    autoLabel.textContent = DETECTED_DEVICE
+      ? TenorI18n.t('files.autoWith', { device: DETECTED_DEVICE })
+      : TenorI18n.t('files.auto');
   }
 
   // Recompute picker classification with new dimensions, then refresh grid.
@@ -3541,9 +3639,9 @@ function logImage(name, origW, origH, origFormat, origSize, newW, newH, newSize,
   const newDims = `${newW}×${newH}`;
 
   // Get state label and color
-  const stateLabels = ['', 'H-Split', 'V-Split', 'Rotate'];
+  const stateKeys = ['', 'files.stateHSplit', 'files.stateVSplit', 'files.stateRotate'];
   const stateColors = ['', '#3498db', '#e74c3c', '#9b59b6'];
-  const stateLabel = stateLabels[imageState] || '';
+  const stateLabel = stateKeys[imageState] ? TenorI18n.t(stateKeys[imageState]) : '';
   const stateColor = stateColors[imageState] || '';
 
   if (wasSplit) {
@@ -3559,7 +3657,7 @@ function logImage(name, origW, origH, origFormat, origSize, newW, newH, newSize,
     }
     const savedInfo = saved > 0 ? `, <span style="color:#27ae60">-${savedPct}%</span>` : '';
     const stateIndicator = imageState > 0 ? ` <span style="color:${stateColor};font-weight:600;">[${stateLabel}]</span>` : '';
-    log(`<strong>${escapeHtml(name)}</strong>${stateIndicator} <span class="log-detail">(${dims} ${origFormat.toUpperCase()}, ${formatBytes(origSize)}) → ${splitCount} parts${savedInfo}</span>`, '', 'SPLIT');
+    log(`<strong>${escapeHtml(name)}</strong>${stateIndicator} <span class="log-detail">(${dims} ${origFormat.toUpperCase()}, ${formatBytes(origSize)}) → ${TenorI18n.t('files.logPartsCount', { count: splitCount })}${savedInfo}</span>`, '', 'SPLIT');
     if (partsDetail) {
       log(`<span class="log-detail" style="margin-left: 20px;">↳ ${partsDetail}</span>`, '', '');
     }
@@ -3597,19 +3695,25 @@ function logSummary(originalSize, newSize, timeElapsed) {
   const savedPct = ((saved / originalSize) * 100).toFixed(1);
   const totalImages = conversionStats.images + conversionStats.splits;
   const totalOutput = conversionStats.images + conversionStats.splitParts;
+  const splitExtra = conversionStats.splitParts > conversionStats.splits
+    ? ` (+${conversionStats.splitParts - conversionStats.splits} ${TenorI18n.t('files.logSplitInto', { count: conversionStats.splitParts - conversionStats.splits })})`
+    : '';
+  const fixesText = conversionStats.fixes > 0
+    ? TenorI18n.t('files.logFixesApplied', { count: conversionStats.fixes })
+    : TenorI18n.t('files.logNoneNeeded');
 
   const summaryHtml = `
     <div class="log-summary">
-      <div class="log-summary-title">📊 Conversion Summary</div>
+      <div class="log-summary-title">${TenorI18n.t('files.logSummaryTitle')}</div>
       <table class="log-summary-table">
-        <tr><td>Images found</td><td class="highlight">${totalImages}</td></tr>
-        <tr><td>Images processed</td><td>${totalOutput}${conversionStats.splitParts > conversionStats.splits ? ` (+${conversionStats.splitParts - conversionStats.splits} from splits)` : ''}</td></tr>
-        <tr><td>EPUB repairs</td><td>${conversionStats.fixes > 0 ? conversionStats.fixes + ' fixes applied' : 'None needed'}</td></tr>
-        ${conversionStats.errors > 0 ? `<tr><td>Errors</td><td style="color:#e74c3c">${conversionStats.errors}</td></tr>` : ''}
-        <tr><td>Original size</td><td>${formatBytes(originalSize)}</td></tr>
-        <tr><td>Optimized size</td><td>${formatBytes(newSize)}</td></tr>
-        <tr><td>Saved</td><td class="${saved > 0 ? 'saved' : 'increased'}">${saved > 0 ? formatBytes(saved) + ' (' + savedPct + '%)' : '+' + formatBytes(-saved)}</td></tr>
-        <tr><td>Time</td><td>${timeElapsed.toFixed(1)}s</td></tr>
+        <tr><td>${TenorI18n.t('files.logImagesFound')}</td><td class="highlight">${totalImages}</td></tr>
+        <tr><td>${TenorI18n.t('files.logImagesProcessed')}</td><td>${totalOutput}${splitExtra}</td></tr>
+        <tr><td>${TenorI18n.t('files.logRepairs')}</td><td>${fixesText}</td></tr>
+        ${conversionStats.errors > 0 ? `<tr><td>${TenorI18n.t('files.logErrors')}</td><td style="color:#e74c3c">${conversionStats.errors}</td></tr>` : ''}
+        <tr><td>${TenorI18n.t('files.logOriginalSize')}</td><td>${formatBytes(originalSize)}</td></tr>
+        <tr><td>${TenorI18n.t('files.logOptimizedSize')}</td><td>${formatBytes(newSize)}</td></tr>
+        <tr><td>${TenorI18n.t('files.logSaved')}</td><td class="${saved > 0 ? 'saved' : 'increased'}">${saved > 0 ? formatBytes(saved) + ' (' + savedPct + '%)' : '+' + formatBytes(-saved)}</td></tr>
+        <tr><td>${TenorI18n.t('files.logTime')}</td><td>${timeElapsed.toFixed(1)}s</td></tr>
       </table>
     </div>
   `;
@@ -3632,7 +3736,7 @@ function startBatchLog(fileCount) {
   batchStats = { filesProcessed: 0, filesSucceeded: 0, filesFailed: 0, totalImages: 0, totalSplits: 0, totalFixes: 0, totalErrors: 0, totalOriginalSize: 0, totalNewSize: 0 };
   clearLog();
   logContainer.innerHTML = ''; // Clear display
-  log(`Starting batch conversion: ${fileCount} file(s)`, '', 'INFO');
+  log(TenorI18n.t('files.logStartingBatch', { count: fileCount }), '', 'INFO');
 }
 
 // Save current file's log to batch entries
@@ -3676,7 +3780,7 @@ function finalizeBatchLog() {
 
   // Build consolidated log display
   logContainer.innerHTML = '';
-  log(`Starting batch conversion: ${batchStats.filesProcessed} file(s)`, '', 'INFO');
+  log(TenorI18n.t('files.logStartingBatch', { count: batchStats.filesProcessed }), '', 'INFO');
 
   // Add all file entries
   batchLogEntries.forEach((fileLog, index) => {
@@ -3685,7 +3789,7 @@ function finalizeBatchLog() {
     fileHeader.style.marginTop = index > 0 ? '15px' : '5px';
     fileHeader.style.borderTop = index > 0 ? '1px solid var(--border-color)' : 'none';
     fileHeader.style.paddingTop = index > 0 ? '10px' : '0';
-    fileHeader.innerHTML = `<span class="log-timestamp"></span><span class="log-message"><strong>${escapeHtml(fileLog.fileName)}</strong> — ${fileLog.succeeded ? '<span style="color:#27ae60">✓ Success</span>' : '<span style="color:#e74c3c">✗ Failed</span>'}</span>`;
+    fileHeader.innerHTML = `<span class="log-timestamp"></span><span class="log-message"><strong>${escapeHtml(fileLog.fileName)}</strong> - ${fileLog.succeeded ? `<span style="color:#27ae60">✓ ${TenorI18n.t('files.logSuccessful')}</span>` : `<span style="color:#e74c3c">✗ ${TenorI18n.t('files.logFailed')}</span>`}</span>`;
     logContainer.appendChild(fileHeader);
 
     fileLog.entries.forEach(entry => {
@@ -3702,9 +3806,9 @@ function finalizeBatchLog() {
     ? ((totalSaved / batchStats.totalOriginalSize) * 100).toFixed(1)
     : '0.0';
   const sizeRowsHtml = batchStats.totalOriginalSize > 0 ? `
-        <tr><td>Total original</td><td>${formatBytes(batchStats.totalOriginalSize)}</td></tr>
-        <tr><td>Total optimised</td><td>${formatBytes(batchStats.totalNewSize)}</td></tr>
-        <tr><td>Total saved</td><td class="${totalSaved > 0 ? 'saved' : 'increased'}">${
+        <tr><td>${TenorI18n.t('files.logTotalOriginal')}</td><td>${formatBytes(batchStats.totalOriginalSize)}</td></tr>
+        <tr><td>${TenorI18n.t('files.logTotalOptimized')}</td><td>${formatBytes(batchStats.totalNewSize)}</td></tr>
+        <tr><td>${TenorI18n.t('files.logTotalSaved')}</td><td class="${totalSaved > 0 ? 'saved' : 'increased'}">${
           totalSaved > 0
             ? `${formatBytes(totalSaved)} (${totalSavedPct}%)`
             : `+${formatBytes(-totalSaved)}`
@@ -3713,16 +3817,16 @@ function finalizeBatchLog() {
   // Add batch summary
   const batchSummaryHtml = `
     <div class="log-summary">
-      <div class="log-summary-title">📊 Batch Conversion Summary</div>
+      <div class="log-summary-title">${TenorI18n.t('files.logBatchSummaryTitle')}</div>
       <table class="log-summary-table">
-        <tr><td>Files processed</td><td class="highlight">${batchStats.filesProcessed}</td></tr>
-        <tr><td>Successful</td><td style="color:#27ae60">${batchStats.filesSucceeded}</td></tr>
-        <tr><td>Failed</td><td style="${batchStats.filesFailed > 0 ? '#e74c3c' : '#7f8c8d'}">${batchStats.filesFailed}</td></tr>
-        <tr><td>Total images processed</td><td>${batchStats.totalImages}</td></tr>
-        <tr><td>Total splits</td><td>${batchStats.totalSplits}</td></tr>
-        <tr><td>Total fixes applied</td><td>${batchStats.totalFixes}</td></tr>
-        ${batchStats.totalErrors > 0 ? `<tr><td>Total errors</td><td style="color:#e74c3c">${batchStats.totalErrors}</td></tr>` : ''}${sizeRowsHtml}
-        <tr><td>Total time</td><td>${batchTime.toFixed(1)}s</td></tr>
+        <tr><td>${TenorI18n.t('files.logFilesProcessed')}</td><td class="highlight">${batchStats.filesProcessed}</td></tr>
+        <tr><td>${TenorI18n.t('files.logSuccessful')}</td><td style="color:#27ae60">${batchStats.filesSucceeded}</td></tr>
+        <tr><td>${TenorI18n.t('files.logFailed')}</td><td style="color:${batchStats.filesFailed > 0 ? '#e74c3c' : '#7f8c8d'}">${batchStats.filesFailed}</td></tr>
+        <tr><td>${TenorI18n.t('files.logTotalImages')}</td><td>${batchStats.totalImages}</td></tr>
+        <tr><td>${TenorI18n.t('files.logTotalSplits')}</td><td>${batchStats.totalSplits}</td></tr>
+        <tr><td>${TenorI18n.t('files.logTotalFixes')}</td><td>${batchStats.totalFixes}</td></tr>
+        ${batchStats.totalErrors > 0 ? `<tr><td>${TenorI18n.t('files.logTotalErrors')}</td><td style="color:#e74c3c">${batchStats.totalErrors}</td></tr>` : ''}${sizeRowsHtml}
+        <tr><td>${TenorI18n.t('files.logTotalTime')}</td><td>${batchTime.toFixed(1)}s</td></tr>
       </table>
     </div>
   `;
@@ -3767,8 +3871,8 @@ function exportLogToFile(filename = null, isBatch = false) {
   }
   // Extract text from log entries
   const entries = logContainer.querySelectorAll('.log-entry');
-  let logText = `tenor/cross ${crosspointVersion} - EPUB Conversion Log\n`;
-  logText += `Generated: ${new Date().toLocaleString()}\n`;
+  let logText = `tenor/cross ${crosspointVersion} - ${TenorI18n.t('files.conversionLog')}\n`;
+  logText += `${TenorI18n.t('files.logGenerated', { date: new Date().toLocaleString() })}\n`;
   logText += `${'='.repeat(60)}\n\n`;
 
   entries.forEach(entry => {
@@ -3787,7 +3891,7 @@ function exportLogToFile(filename = null, isBatch = false) {
   const summary = logContainer.querySelector('.log-summary');
   if (summary) {
     logText += `\n${'='.repeat(60)}\n`;
-    const title = summary.querySelector('.log-summary-title')?.textContent || 'Summary';
+    const title = summary.querySelector('.log-summary-title')?.textContent || TenorI18n.t('files.logSummaryTitle');
     logText += `${title}\n`;
     logText += `${'-'.repeat(40)}\n`;
 
@@ -3976,7 +4080,7 @@ function reserveAvailableUploadFilename(fileName, usedFileNames) {
 }
 
 async function fetchExistingUploadNames() {
-  const response = await fetch('/api/files?path=' + encodeURIComponent(currentPath) + '&_=' + Date.now());
+  const response = await fetch(TenorI18n.apiUrl('/api/files?path=' + encodeURIComponent(currentPath) + '&_=' + Date.now()));
   if (!response.ok) {
     throw new Error(response.status + ' ' + response.statusText);
   }
@@ -5056,8 +5160,14 @@ async function convertEpubFile(file, progressCallback) {
   // Initialize logging
   clearLog();
   showLog();
-  log(`<strong>${file.name}</strong> <span class="log-detail">(${formatBytes(originalSize)})</span>`, '', 'INFO');
-  log(`Quality: ${JPEG_QUALITY}% | Overlap: ${OVERLAP_PERCENT}% | Rotation: ${HANDEDNESS === 'right' ? 'CW' : 'CCW'} | Grayscale: ${ENABLE_GRAYSCALE ? 'ON' : 'OFF'} | Auto-crop: ${ENABLE_AUTO_CROP ? 'ON' : 'OFF'}`, '', 'INFO');
+  log(`<strong>${escapeHtml(file.name)}</strong> <span class="log-detail">(${formatBytes(originalSize)})</span>`, '', 'INFO');
+  log(TenorI18n.t('files.logSettingsLine', {
+    quality: JPEG_QUALITY,
+    overlap: OVERLAP_PERCENT,
+    rotation: TenorI18n.t(HANDEDNESS === 'right' ? 'files.rotationCw' : 'files.rotationCcw'),
+    grayscale: TenorI18n.t(ENABLE_GRAYSCALE ? 'files.on' : 'files.off'),
+    crop: TenorI18n.t(ENABLE_AUTO_CROP ? 'files.on' : 'files.off')
+  }), '', 'INFO');
 
   const zip = await JSZip.loadAsync(file);
   const renamed = {};
@@ -5098,7 +5208,9 @@ async function convertEpubFile(file, progressCallback) {
       } catch (imageError) {
         // Log error but continue with original image
         console.error(`Failed to process image ${path}:`, imageError);
-        log(`Warning: Failed to process ${path.split('/').pop()}, using original`, 'warning', 'IMG-ERR');
+        log(TenorI18n.t('files.logImageFailed', {
+          file: escapeHtml(path.split('/').pop())
+        }), 'warning', 'IMG-ERR');
 
         // Use original image data as fallback
         result = {
@@ -5190,14 +5302,20 @@ async function convertEpubFile(file, progressCallback) {
     const stripped = stripComments(t);
     if (stripped.count) {
       t = stripped.text;
-      logFix(`Comments (${stripped.count}, ${formatBytes(stripped.bytes)})`, xhtmlPath.split('/').pop());
+      logFix(TenorI18n.t('files.logFixComments', {
+        count: stripped.count,
+        size: formatBytes(stripped.bytes)
+      }), escapeHtml(xhtmlPath.split('/').pop()));
     }
 
     const r = fixSvgCover(t);
-    if (r.fixed) { t = r.c; logFix('SVG cover', xhtmlPath.split('/').pop()); }
+    if (r.fixed) { t = r.c; logFix(TenorI18n.t('files.logFixSvgCover'), escapeHtml(xhtmlPath.split('/').pop())); }
 
     const r2 = fixSvgWrappedImages(t);
-    if (r2.fixed) { t = r2.c; logFix(`SVG images (${r2.count})`, xhtmlPath.split('/').pop()); }
+    if (r2.fixed) {
+      t = r2.c;
+      logFix(TenorI18n.t('files.logFixSvgImages', { count: r2.count }), escapeHtml(xhtmlPath.split('/').pop()));
+    }
 
     // Use DOMParser for all img modifications: remove width/height and handle split images
     try {
@@ -5347,7 +5465,10 @@ async function convertEpubFile(file, progressCallback) {
       if (!ff.count) return m;
       removedFontFaceRules += ff.count;
       removedFontBytes += new TextEncoder().encode(css).length - new TextEncoder().encode(ff.css).length;
-      logFix('@font-face', `${ff.count} rule(s) removed from ${escapeHtml(xhtmlPath.split('/').pop())}`);
+      logFix('@font-face', TenorI18n.t('files.logFixFontFaceRules', {
+        count: ff.count,
+        file: escapeHtml(xhtmlPath.split('/').pop())
+      }));
       return open + ff.css + close;
     });
 
@@ -5372,7 +5493,7 @@ async function convertEpubFile(file, progressCallback) {
     }
     const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/')) : '';
     t = fixOPF(t, opfContent, opfDir, splitImages, fontPaths);
-    if (t !== opfContent) logFix('OPF', 'manifest updated');
+    if (t !== opfContent) logFix('OPF', TenorI18n.t('files.logFixOpfDetail'));
     out.file(opfPath, t, { compression: 'DEFLATE', compressionOptions: { level: 8 }, createFolders: false });
   }
 
@@ -5387,7 +5508,10 @@ async function convertEpubFile(file, progressCallback) {
       const fontData = await fileObj.async('arraybuffer');
       removedFontCount++;
       removedFontBytes += fontData.byteLength;
-      log(`${escapeHtml(path.split('/').pop())} <span class="log-detail">(${formatBytes(fontData.byteLength)})</span>`, 'success', 'REMOVE');
+      log(TenorI18n.t('files.logRemovedFontFile', {
+        file: escapeHtml(path.split('/').pop()),
+        size: formatBytes(fontData.byteLength)
+      }), 'success', 'REMOVE');
       continue;
     }
 
@@ -5402,7 +5526,10 @@ async function convertEpubFile(file, progressCallback) {
         removedFontFaceRules += ff.count;
         removedFontBytes += new TextEncoder().encode(t).length - new TextEncoder().encode(ff.css).length;
         t = ff.css;
-        logFix('@font-face', `${ff.count} rule(s) removed from ${escapeHtml(path.split('/').pop())}`);
+        logFix('@font-face', TenorI18n.t('files.logFixFontFaceRules', {
+          count: ff.count,
+          file: escapeHtml(path.split('/').pop())
+        }));
       }
       data = new TextEncoder().encode(t);
     } else if (path === 'META-INF/encryption.xml' && fontPaths.size) {
@@ -5410,14 +5537,14 @@ async function convertEpubFile(file, progressCallback) {
       const enc = stripFontEncryptionEntries(t, fontPaths);
       if (enc.dropFile) {
         removedFontBytes += data.byteLength;
-        logFix('encryption.xml', 'removed (contained only font obfuscation entries)');
+        logFix('encryption.xml', TenorI18n.t('files.logFixEncryptionDropped'));
         continue;
       }
       if (enc.modified) {
         const encoded = new TextEncoder().encode(enc.xml);
         removedFontBytes += Math.max(0, data.byteLength - encoded.length);
         data = encoded;
-        logFix('encryption.xml', 'font obfuscation entries removed');
+        logFix('encryption.xml', TenorI18n.t('files.logFixEncryptionObfuscated'));
       }
     } else if (low.endsWith('.ncx')) {
       let t = await safeReadText(fileObj);
@@ -5426,14 +5553,18 @@ async function convertEpubFile(file, progressCallback) {
       }
       const oldT = t;
       t = syncNCXIdentifier(t, mainIdentifier);
-      if (t !== oldT) logFix('NCX identifier', 'Synced with OPF');
+      if (t !== oldT) logFix('NCX identifier', TenorI18n.t('files.logFixNcxDetail'));
       data = new TextEncoder().encode(t);
     }
     out.file(path, data, { compression: 'DEFLATE', compressionOptions: { level: 8 }, createFolders: false });
   }
 
   if (removedFontCount > 0 || removedFontFaceRules > 0) {
-    log(`Removed ${removedFontCount} embedded font(s) and ${removedFontFaceRules} @font-face rule(s), ${formatBytes(removedFontBytes)} of font data`, '', 'INFO');
+    log(TenorI18n.t('files.logRemovedFonts', {
+      fonts: removedFontCount,
+      rules: removedFontFaceRules,
+      size: formatBytes(removedFontBytes)
+    }), '', 'INFO');
   }
 
   if (progressCallback) progressCallback(100);
@@ -5444,7 +5575,7 @@ async function convertEpubFile(file, progressCallback) {
   const timeElapsed = (Date.now() - startTime) / 1000;
 
   // Log completion
-  log('Conversion complete!', 'success', 'DONE');
+  log(TenorI18n.t('files.logConversionComplete'), 'success', 'DONE');
   logSummary(originalSize, newSize, timeElapsed);
 
   // Auto-export only if NOT in batch mode (batch mode exports at the end)
@@ -5465,7 +5596,7 @@ function getWsUrl() {
 
 // Upload file via WebSocket (faster, binary protocol)
 async function uploadFileWebSocket(file, onProgress, onComplete, onError) {
-  const session = await fetch("/api/session", {cache: "no-store"});
+  const session = await fetch(TenorI18n.apiUrl("/api/session"), {cache: "no-store"});
   if (!session.ok) throw new Error("Authentication required");
   const token = await session.text();
   return new Promise((resolve, reject) => {
@@ -5587,7 +5718,7 @@ function uploadFileHTTP(file, onProgress, onComplete, onError) {
 
     const xhr = new XMLHttpRequest();
     currentUploadXhr = xhr;
-    xhr.open('POST', '/upload?path=' + encodeURIComponent(currentPath), true);
+    xhr.open('POST', TenorI18n.apiUrl('/upload?path=' + encodeURIComponent(currentPath)), true);
 
     xhr.upload.onprogress = function(e) {
       if (e.lengthComputable && onProgress) {
@@ -5631,7 +5762,7 @@ async function uploadFile() {
   const convertEnabled = document.getElementById('convertBeforeUpload').checked;
 
   if (files.length === 0) {
-    alert('Please select at least one file!');
+    alert(TenorI18n.t('files.selectAtLeastOneFile'));
     return;
   }
 
@@ -5641,7 +5772,7 @@ async function uploadFile() {
     usedFileNames = await fetchExistingUploadNames();
   } catch (error) {
     isUploadInProgress = false;
-    alert('Failed to check existing files: ' + error.message);
+    alert(TenorI18n.t('files.checkExistingFailed', { message: error.message }));
     return;
   }
 
@@ -5678,7 +5809,7 @@ async function uploadFile() {
       // All files processed - show summary
       if (failedFiles.length === 0) {
         progressFill.style.backgroundColor = '#4caf50';
-        progressText.textContent = 'All uploads complete!';
+        progressText.textContent = TenorI18n.t('files.allUploadsComplete');
 
         // Finalize batch log if in batch mode
         if (useBatchLog) {
@@ -5694,12 +5825,18 @@ async function uploadFile() {
       } else {
         progressFill.style.backgroundColor = '#e74c3c';
         const failedList = failedFiles.map(f => f.name).join(', ');
-        progressText.textContent = `${files.length - failedFiles.length}/${files.length} uploaded. Failed: ${failedList}`;
+        progressText.textContent = TenorI18n.t('files.uploadedPartial', {
+          done: files.length - failedFiles.length,
+          total: files.length,
+          failed: failedList
+        });
 
         // Add upload errors to batch log
         if (useBatchLog) {
           failedFiles.forEach(ff => {
-            logError(`Upload failed for ${ff.name}: ${ff.error}`);
+            logError(TenorI18n.t('files.logUploadFailed', {
+              message: escapeHtml(`${ff.name}: ${ff.error}`)
+            }));
           });
           finalizeBatchLog();
         }
@@ -5739,7 +5876,11 @@ async function uploadFile() {
     if (isEpub && document.getElementById('renameFromMetadataToggle').checked) {
       const originalName = file.name;
       progressText.style.color = '';
-      progressText.textContent = `Reading metadata for ${file.name} (${currentIndex + 1}/${files.length})...`;
+      progressText.textContent = TenorI18n.t('files.readingMetadata', {
+        file: file.name,
+        index: currentIndex + 1,
+        total: files.length
+      });
       file = await maybeRenameEbookFile(file);
       if (file.name !== originalName) {
         console.log(`[Upload] Renamed from metadata: ${originalName} -> ${file.name}`);
@@ -5756,17 +5897,34 @@ async function uploadFile() {
     }
 
     const methodText = useWebSocket ? ' [WS]' : ' [HTTP]';
-    const stageText = needsConversion ? 'Converting & uploading' : 'Uploading';
+    const stageText = needsConversion
+      ? TenorI18n.t('files.stageConverting')
+      : TenorI18n.t('files.stageUploading');
     progressText.style.color = '';
-    progressText.textContent = `${stageText} ${file.name} (${currentIndex + 1}/${files.length})${methodText}`;
+    progressText.textContent = TenorI18n.t('files.uploadingFile', {
+      stage: stageText,
+      file: file.name,
+      index: currentIndex + 1,
+      total: files.length,
+      method: methodText
+    });
 
     const onProgress = (loaded, total) => {
       const uploadPercent = Math.round((loaded / total) * 100);
       // If conversion succeeded, display goes from 50-100%, otherwise 0-100%
       const displayPercent = conversionSucceeded ? 50 + Math.round(uploadPercent / 2) : uploadPercent;
       progressFill.style.width = displayPercent + '%';
-      const prefix = conversionSucceeded ? 'Converting & uploading' : 'Uploading';
-      progressText.textContent = `${prefix} ${file.name} (${currentIndex + 1}/${files.length})${methodText} — ${uploadPercent}%`;
+      const prefix = conversionSucceeded
+        ? TenorI18n.t('files.stageConverting')
+        : TenorI18n.t('files.stageUploading');
+      progressText.textContent = TenorI18n.t('files.uploadingFileProgress', {
+        stage: prefix,
+        file: file.name,
+        index: currentIndex + 1,
+        total: files.length,
+        method: methodText,
+        percent: uploadPercent
+      });
     };
 
     const onComplete = () => {
@@ -5784,7 +5942,7 @@ async function uploadFile() {
     const onError = (error) => {
       // Save failed file log to batch if in batch mode
       if (useBatchLog && needsConversion) {
-        logError(`Upload failed: ${error}`);
+        logError(TenorI18n.t('files.logUploadFailed', { message: escapeHtml(error) }));
         // Preserve conversion size totals when the convert step succeeded but
         // the upload failed; otherwise nothing was produced and 0/0 is correct.
         saveToFileBatchLog(file.name, false, convOriginalSize, convNewSize);
@@ -5800,9 +5958,10 @@ async function uploadFile() {
         // Add all remaining files to failed list
         const remainingFiles = files.slice(currentIndex + 1);
         remainingFiles.forEach(remainingFile => {
-          failedFiles.push({
+        failedFiles.push({
             name: remainingFile.name,
             error: 'Network error - upload interrupted',
+            messageKey: 'files.networkErrorInterrupted',
             file: remainingFile
           });
         });
@@ -5824,7 +5983,11 @@ async function uploadFile() {
       // Convert EPUB if needed
       if (needsConversion) {
         progressFill.style.backgroundColor = '#9b59b6'; // Purple for conversion
-        progressText.textContent = `Converting ${file.name} (${currentIndex + 1}/${files.length})...`;
+        progressText.textContent = TenorI18n.t('files.convertingFile', {
+          file: file.name,
+          index: currentIndex + 1,
+          total: files.length
+        });
 
         // Clear log for single file mode, or just add separator for batch mode
         if (!useBatchLog) {
@@ -5852,8 +6015,8 @@ async function uploadFile() {
           if (operationCancelled) { if (uploadGeneration === myGeneration) restoreAfterCancel(); return; }
           console.error('Conversion error:', convError);
           // Log the error
-          logError(`Conversion failed: ${convError.message}`);
-          log('Uploading original file instead...', 'warning', 'INFO');
+          logError(TenorI18n.t('files.logConversionFailed', { message: escapeHtml(convError.message) }));
+          log(TenorI18n.t('files.logUploadOriginal'), 'warning', 'INFO');
           conversionFailed = true;
 
           // In single file mode, export error log
@@ -5864,7 +6027,7 @@ async function uploadFile() {
           }
 
           // If conversion fails, try uploading original file
-          progressText.textContent = `Conversion failed, uploading original ${file.name}...`;
+          progressText.textContent = TenorI18n.t('files.conversionFailedUploadOriginal', { file: file.name });
           progressFill.style.backgroundColor = '#e67e22'; // Orange for fallback
           // Reset progress bar to 0% for original file upload
           progressFill.style.width = '0%';
@@ -5878,14 +6041,14 @@ async function uploadFile() {
       }
       // Ensure progress bar shows 100% before moving to next file
       progressFill.style.width = '100%';
-      progressText.textContent = `Upload complete: ${file.name}`;
+      progressText.textContent = TenorI18n.t('files.uploadComplete', { file: file.name });
       onComplete();
     } catch (error) {
       if (operationCancelled) { if (uploadGeneration === myGeneration) restoreAfterCancel(); return; }
       console.error('Upload error:', error);
       // Log upload error if conversion succeeded but upload failed
       if (conversionSucceeded) {
-        logError(`Upload failed: ${error.message}`);
+        logError(TenorI18n.t('files.logUploadFailed', { message: escapeHtml(error.message) }));
       }
 
       if (useWebSocket && error.message === 'WebSocket connection failed') {
@@ -5917,12 +6080,18 @@ function showFailedUploadsBanner() {
   failedUploadsGlobal.forEach((failedFile, index) => {
     const item = document.createElement('div');
     item.className = 'failed-file-item';
+    const errorText = failedFile.messageKey
+      ? TenorI18n.t(failedFile.messageKey)
+      : TenorI18n.t('files.failedFileError', { message: escapeHtml(String(failedFile.error || '')) });
+    const renderedError = failedFile.messageKey
+      ? TenorI18n.t('files.failedFileError', { message: escapeHtml(errorText) })
+      : errorText;
     item.innerHTML = `
       <div class="failed-file-info">
         <div class="failed-file-name">${escapeHtml(failedFile.name)}</div>
-        <div class="failed-file-error">Error: ${escapeHtml(failedFile.error)}</div>
+        <div class="failed-file-error">${renderedError}</div>
       </div>
-      <button class="retry-btn" onclick="retrySingleUpload(${index})">Retry</button>
+      <button class="retry-btn" onclick="retrySingleUpload(${index})">${TenorI18n.t('files.retry')}</button>
     `;
     filesList.appendChild(item);
   });
@@ -5989,14 +6158,14 @@ function retryAllFailedUploads() {
     const folderName = document.getElementById('folderName').value.trim();
 
     if (!folderName) {
-      alert('Please enter a folder name!');
+      alert(TenorI18n.t('files.folderNameRequired'));
       return;
     }
 
     // Validate folder name
     const validName = /^(?!\.{1,2}$)[^"*:<>?\/\\|]+$/.test(folderName);
     if (!validName) {
-      alert('Folder name cannot contain \" * : < > ? / \\ | and must not be . or ..');
+      alert(TenorI18n.t('files.folderNameInvalid'));
       return;
     }
 
@@ -6005,18 +6174,18 @@ function retryAllFailedUploads() {
     formData.append('path', currentPath);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/mkdir', true);
+    xhr.open('POST', TenorI18n.apiUrl('/mkdir'), true);
 
     xhr.onload = function() {
       if (xhr.status === 200) {
         window.location.reload();
       } else {
-        alert('Failed to create folder: ' + xhr.responseText);
+        alert(TenorI18n.t('files.createFolderFailed', { message: xhr.responseText }));
       }
     };
 
     xhr.onerror = function() {
-      alert('Failed to create folder - network error');
+      alert(TenorI18n.t('files.createFolderNetworkError'));
     };
 
     xhr.send(formData);
@@ -6044,11 +6213,11 @@ function retryAllFailedUploads() {
     const newName = document.getElementById('renameNewName').value.trim();
 
     if (!newName) {
-      alert('Please enter a new name.');
+      alert(TenorI18n.t('files.newNameRequired'));
       return;
     }
     if (newName.includes('/') || newName.includes('\\')) {
-      alert('File name cannot include slashes.');
+      alert(TenorI18n.t('files.nameNoSlashes'));
       return;
     }
 
@@ -6057,19 +6226,19 @@ function retryAllFailedUploads() {
     formData.append('name', newName);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/rename', true);
+    xhr.open('POST', TenorI18n.apiUrl('/rename'), true);
 
     xhr.onload = function() {
       if (xhr.status === 200) {
         window.location.reload();
       } else {
-        alert('Failed to rename: ' + xhr.responseText);
+        alert(TenorI18n.t('files.renameFailed', { message: xhr.responseText }));
       }
       closeRenameModal();
     };
 
     xhr.onerror = function() {
-      alert('Failed to rename - network error');
+      alert(TenorI18n.t('files.renameNetworkError'));
       closeRenameModal();
     };
 
@@ -6102,7 +6271,7 @@ function retryAllFailedUploads() {
 
     async function fetchFolders(path) {
       try {
-        const response = await fetch('/api/files?path=' + encodeURIComponent(path));
+        const response = await fetch(TenorI18n.apiUrl('/api/files?path=' + encodeURIComponent(path)));
         if (!response.ok) return [];
         return await response.json();
       } catch (e) {
@@ -6158,7 +6327,7 @@ function retryAllFailedUploads() {
     const destPath = normalizePath(document.getElementById('moveDestPath').value);
 
     if (!destPath) {
-      alert('Please enter a destination folder.');
+      alert(TenorI18n.t('files.moveDestRequired'));
       return;
     }
 
@@ -6167,24 +6336,28 @@ function retryAllFailedUploads() {
     formData.append('dest', destPath);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/move', true);
+    xhr.open('POST', TenorI18n.apiUrl('/move'), true);
 
     xhr.onload = function() {
       if (xhr.status === 200) {
         window.location.reload();
       } else {
-        alert('Failed to move: ' + xhr.responseText);
+        alert(TenorI18n.t('files.moveFailed', { message: xhr.responseText }));
       }
       closeMoveModal();
     };
 
     xhr.onerror = function() {
-      alert('Failed to move - network error');
+      alert(TenorI18n.t('files.moveNetworkError'));
       closeMoveModal();
     };
 
     xhr.send(formData);
   }
+  updateConversionUiLabels();
+  updateImagePickerCount();
+  TenorI18n.onChange(applyLocaleToDynamicChrome);
+
   hydrate();
 </script>
 </body>

@@ -54,6 +54,7 @@ class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
   // Set when the cancel came from the home gesture (consumed by the download
   // callback's own input pump); exit to home after the abort unwinds.
   bool goHomeAfterCancel = false;
+  bool runtimeStarted = false;
 
   // Single screen fn dispatching on `state`: every state shares the themed
   // header and gets built through FreeInkUI.

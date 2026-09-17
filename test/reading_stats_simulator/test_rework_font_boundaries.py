@@ -57,12 +57,26 @@ class ReworkFontBoundariesTest(unittest.TestCase):
         self.assertEqual(run.returncode, 0, log)
         return json.loads((self.store / 'settings.json').read_text()), log
 
-    READING = '1000:CONFIRM;1700:CONFIRM;8000:CONFIRM;9000:DOWN;9700:DOWN;10400:CONFIRM'
+    # Nhip 17/09/2026: hop dong nhịp cua Home va menu doc da doi o dot rework 14/09.
+    #   - Home: con tro dung san o HANG 1 khi may khong cam ung (UiTabListActivity::onEnter),
+    #     nen MOT nhip CONFIRM da mo luon cuon gan nhat. Nhip thu hai (con trong sach) mo MENU DOC.
+    #   - Menu doc mo o the YEU THICH, con tro o hang 1. Hai nut CANH (UP/DOWN) doi the, khong
+    #     doi hang, va the Doc co hang 1 = Cai dat van ban.
+    #   - Cua Cai dat van ban (TextSettings) mo THANG the Bo cuc; hai nut canh doi the
+    #     (Phong | Co chu | Bo cuc | Kieu), nut TRUOC (LEFT/RIGHT) di vong qua dai the.
+    # Nhip cu 1000:CONFIRM;1700:CONFIRM;8000:CONFIRM;9000:DOWN;9700:DOWN;10400:CONFIRM dua
+    # CONFIRM dau tien vao viec buoc con tro xuong hang 1 (Home gio khong con buoc do), va
+    # hai nhip DOWN sau do thanh hai lan doi the nam trong TRINH DOC thay vi trong menu doc,
+    # nen bai khong bao gio vao duoc TextSettings.
+    READING = '1000:CONFIRM;1700:CONFIRM;2500:DOWN;3200:DOWN;4000:CONFIRM'
 
     def check_font_boundary(self, total):
         self.fonts(total)
-        saved, log = self.run_sim(self.READING + ';11200:RIGHT;11900:CONFIRM;14800:LEFT;15500:LEFT;'
-                                 '16400:CONFIRM;18000:BACK;21000:QUIT')
+        # Sau READING man dang o the PHONG, con tro o dong 1 (ho dang dung). DOWN hai nhip
+        # di Bo cuc -> Kieu -> Phong; LEFT hai nhip di vong qua dai the (1 -> 0 -> dong cuoi)
+        # toi ho CUOI CUNG trong danh sach; CONFIRM ap dung ho do.
+        saved, log = self.run_sim(self.READING + ';5000:DOWN;5800:DOWN;6600:LEFT;7400:LEFT;'
+                                                  '8200:CONFIRM;10000:BACK;12000:QUIT')
         self.assertIn(f'SD font system ready ({total - 2} families discovered)', log)
         self.assertEqual(log.count('Entering activity: TextSettings'), 1, log)
         self.assertEqual(saved['sdFontFamilyName'], f'Audit{total - 3:03}', log)
@@ -80,7 +94,12 @@ class ReworkFontBoundariesTest(unittest.TestCase):
     def test_single_size_returns_without_reloading_section(self):
         self.fonts(3)
         self.settings['sdFontFamilyName'] = 'Audit000'
-        saved, log = self.run_sim(self.READING + ';11400:CONFIRM;14500:QUIT')
+        # Nhip 17/09/2026: co chu nay chon trong the CO CHU cua Cua Cai dat van ban
+        # (truoc 14/09 no la mot popup mo tu menu doc). DOWN ba nhip: Bo cuc -> Kieu ->
+        # Phong -> Co chu; o do chi co mot co va con tro dung ngay tren no, nen CONFIRM
+        # chon lai dung co dang dung va khong duoc dan lai khoi van ban.
+        saved, log = self.run_sim(self.READING + ';5000:DOWN;5800:DOWN;6600:DOWN;'
+                                                  '7400:CONFIRM;9000:BACK;11000:QUIT')
         self.assertEqual(saved['fontSize'], 14)
         self.assertEqual(saved['sdFontFamilyName'], 'Audit000')
         self.assertEqual(log.count('Exiting activity: EpubReaderMenu'), 1, log)
@@ -89,7 +108,11 @@ class ReworkFontBoundariesTest(unittest.TestCase):
         self.assertNotIn('Cache not found, building', resumed, log)
 
     def test_same_popup_size_then_back_preserves_section(self):
-        saved, log = self.run_sim(self.READING + ';11400:CONFIRM;13000:CONFIRM;14000:BACK;16500:QUIT')
+        # Cung duong nhịp 17/09/2026 nhu bai tren: xac nhan lai DUNG co chu dang dung
+        # trong the Co chu roi quay lai sach. Y dinh bai giu nguyen: chon lai co cu
+        # khong duoc dan lai khoi van ban.
+        saved, log = self.run_sim(self.READING + ';5000:DOWN;5800:DOWN;6600:DOWN;'
+                                                  '7400:CONFIRM;9000:BACK;11000:QUIT')
         self.assertEqual(saved['fontSize'], 14)
         self.assertEqual(log.count('Exiting activity: EpubReaderMenu'), 1, log)
         resumed = log.split('Exiting activity: EpubReaderMenu', 1)[1]

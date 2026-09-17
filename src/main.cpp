@@ -38,7 +38,9 @@
 #endif
 
 #include <Memory.h>
+#ifdef TENOR_TTF_PROBE
 #include <TtfProbe.h>
+#endif
 
 #include <cstring>
 #ifndef SIMULATOR
@@ -47,6 +49,8 @@
 #endif
 
 #include "CrossPointSettings.h"
+#include "BlePageTurnerRuntime.h"
+#include "SettingsList.h"
 #include "CrossPointState.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
@@ -58,6 +62,15 @@
 #include "activities/ActivityManager.h"
 #include "activities/home/BookStatsActivity.h"
 #include "activities/home/QuotesActivity.h"
+
+// Page turner BLE: chi lien ket host cua SDK khi capability duoc bat (xem env x3-ble).
+#include "FileTransferState.h"
+#if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
+#include <BleKeyboardHost.h>
+#define CROSSPOINT_BLE_HID_HOST 1
+#else
+#define CROSSPOINT_BLE_HID_HOST 0
+#endif
 #include "activities/settings/ClockSyncActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "activities/settings/SettingsActivity.h"
@@ -75,7 +88,10 @@ class TlsAuditActivity final : public Activity {
   TlsAuditActivity(GfxRenderer& r, MappedInputManager& input) : Activity("TlsAudit", r, input) {}
   void onEnter() override {
     Activity::onEnter();
-    if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
+    {
+      RenderLock lock;
+      if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
+    }
     WiFi.mode(WIFI_STA);
     startActivityForResult(makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, true, false),
                            [](const ActivityResult&) {});
@@ -648,6 +664,24 @@ void setup() {
   allowSleepAt = millis() + 2000;
 }
 
+#ifdef TENOR_UI_ACCEPTANCE
+template <typename Visitor>
+static bool visitDiagnosticSetting(const String& key, Visitor&& visitor) {
+  if (key == "blePageTurnerEnabled") {
+    SettingInfo info;
+    info.key = "blePageTurnerEnabled";
+    info.valuePtr = &CrossPointSettings::blePageTurnerEnabled;
+    return visitor(info);
+  }
+  if (key == "fontFamily") return visitor(buildFontFamilySetting(&sdFontSystem.registry()));
+  if (key == "fontSize") return visitor(buildFontSizeSetting(&sdFontSystem.registry()));
+  for (const auto& info : getBaseSettingsList()) {
+    if (info.key != nullptr && key.equals(info.key)) return visitor(info);
+  }
+  return false;
+}
+#endif
+
 void loop() {
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
@@ -655,6 +689,26 @@ void loop() {
 
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   mappedInputManager.update();
+
+#if CROSSPOINT_BLE_HID_HOST
+  // Resolve the radio handoff before USB's early return. Activity onEnter() can
+  // already have done blocking storage or Wi-Fi work before this loop resumes.
+  static bool coLuotCho = false;
+  static bool luotChoTien = true;
+  static bool bleReaderBeginAttempted = false;
+  static uint32_t bleReaderGeneration = 0;
+  auto& bleHid = freeink::BleKeyboardHost::getInstance();
+  static uint32_t lastBleCleanupMs = 0;
+  if (bleHid.isStopping() && millis() - lastBleCleanupMs >= 250) {
+    lastBleCleanupMs = millis();
+    bleHid.end(0);  // Poll cancellation without blocking the input loop.
+  }
+  const bool dangChiemStorage = activityManager.requiresExclusiveStorageLoop() || filetransfer::isActive();
+  if (dangChiemStorage) {
+    bleHid.end(0);
+    coLuotCho = false;
+  }
+#endif
 
   if (activityManager.requiresExclusiveStorageLoop()) {
     // USB Drive handed the raw SD card to the host. Do not run screenshots,
@@ -673,6 +727,54 @@ void loop() {
   }
 
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+
+#if CROSSPOINT_BLE_HID_HOST
+  // Page turner BLE: chi nhan khi dang o TRINH DOC va nguoi dung da bat. Callback cua host chi day
+  // su kien vao hang doi; vong lap chinh lay ra, doi usage thanh hanh dong, va giu TOI DA MOT luot
+  // cho moi vong lap (bam don dap khi dang ve khong tich thanh nhieu luot lat). Roi trinh doc hoac
+  // host khong chay (ngat ket noi / tat) thi xoa luot cho. Su kien co modifier khong tinh.
+  {
+    // A saved opt-in starts only after the foreground reader has produced a
+    // page. Home needs its own cover/font memory before we can assess BLE's
+    // headroom. Each reader visit gets one attempt, avoiding allocation churn
+    // after a low-memory rejection. Pairing remains an explicit settings action.
+    const bool foregroundReader = activityManager.isForegroundReaderActivity();
+    const uint32_t generation = activityManager.activityGeneration();
+    if (!foregroundReader || !SETTINGS.blePageTurnerEnabled || generation != bleReaderGeneration) {
+      bleReaderBeginAttempted = false;
+    }
+    bleReaderGeneration = generation;
+    if (dangChiemStorage || !SETTINGS.blePageTurnerEnabled) {
+      if (bleHid.isRunning() || bleHid.isStopping()) bleHid.end(0);
+      coLuotCho = false;
+    } else {
+      if (foregroundReader && activityManager.isForegroundReaderReady() && !bleReaderBeginAttempted &&
+          !bleHid.isStopping()) {
+        bleReaderBeginAttempted = true;
+        if (!bleHid.isRunning() && !freeink::ble::beginAsync(renderer)) {
+          LOG_ERR("BLE", "Reader BLE start deferred: insufficient memory or unavailable radio");
+        }
+      }
+      if (foregroundReader && bleHid.isRunning()) {
+        bleHid.poll();
+        freeink::KeyEvent ev;
+        while (bleHid.popKey(ev)) {
+          const auto hanhDong = SETTINGS.blePageActionFor(ev.keycode, ev.mods);
+          if (hanhDong == CrossPointSettings::BlePageAction::PreviousPage) {
+            coLuotCho = true;
+            luotChoTien = false;
+          } else if (hanhDong == CrossPointSettings::BlePageAction::NextPage) {
+            coLuotCho = true;
+            luotChoTien = true;
+          }
+        }
+        if (coLuotCho && activityManager.pageTurn(luotChoTien)) coLuotCho = false;
+      } else {
+        coLuotCho = false;
+      }
+    }
+  }
+#endif
 
   renderer.setFadingFix(SETTINGS.fadingFix);
 
@@ -775,6 +877,25 @@ void loop() {
         activityManager.pushActivity(makeUniqueNoThrow<OtaUpdateActivity>(renderer, mappedInputManager));
 #endif
 #ifdef TENOR_UI_ACCEPTANCE
+#if CROSSPOINT_BLE_HID_HOST
+      } else if (cmd == "BLE_TEST_BEGIN") {
+        // In-memory only. A reset restores the saved user preference.
+        SETTINGS.blePageTurnerEnabled = 1;
+        const bool ok = freeink::ble::begin(renderer);
+        logSerial.printf("BLE_TEST:begin=%d,heap=%u,largest=%u\n", ok, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+      } else if (cmd == "BLE_TEST_END") {
+        SETTINGS.blePageTurnerEnabled = 0;
+        const bool ended = freeink::BleKeyboardHost::getInstance().end();
+        logSerial.printf("BLE_TEST:end=%d,heap=%u,largest=%u\n", ended, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+      } else if (cmd == "BLE_TEST_SCAN") {
+        auto& host = freeink::BleKeyboardHost::getInstance();
+        if (host.isRunning()) host.startScan(5000);
+      } else if (cmd == "BLE_TEST_STATUS") {
+        const auto& host = freeink::BleKeyboardHost::getInstance();
+        logSerial.printf("BLE_TEST:enabled=%u,running=%d,scanning=%d,connected=%d,heap=%u,largest=%u\n",
+                         SETTINGS.blePageTurnerEnabled, host.isRunning(), host.isScanning(), host.isConnected(),
+                         ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
       } else if (cmd == "FILE_TRANSFER_AUTOCONNECT") {
         auto activity = makeUniqueNoThrow<CrossPointWebServerActivity>(renderer, mappedInputManager);
         if (activity) {
@@ -786,6 +907,51 @@ void loop() {
         }
       } else if (cmd == "HOME_NEXT" || cmd == "HOME_PREV") {
         activityManager.stepHomeForTest(cmd == "HOME_NEXT" ? 1 : -1);
+      } else if (cmd.startsWith("HOME_TAB ")) {
+        activityManager.tabHomeForTest(cmd.substring(9).toInt());
+      } else if (cmd.startsWith("SET ")) {
+        // CMD:SET <ten-json>=<so>: dat mot cai dat so nguyen bang dung ten JSON
+        // cua no (SettingsList.h), luu xuong the va tra ve gia tri da ghi. Chi
+        // ton tai trong ban nghiem thu qua USB, khong nam trong ban phat hanh.
+        const String kv = cmd.substring(4);
+        const int bang = kv.indexOf('=');
+        bool dat = false;
+        if (bang > 0) {
+          const String ten = kv.substring(0, bang);
+          const long so = kv.substring(bang + 1).toInt();
+          dat = visitDiagnosticSetting(ten, [so](const SettingInfo& info) {
+            if (info.valuePtr != nullptr) {
+              SETTINGS.*(info.valuePtr) = static_cast<uint8_t>(so);
+              return true;
+            }
+            if (info.valueSetter) {
+              info.valueSetter(static_cast<uint8_t>(so));
+              return true;
+            }
+            return false;
+          });
+        }
+        if (dat) {
+          SETTINGS.saveToFile();
+          logSerial.printf("SET:%s\n", kv.c_str());
+        } else {
+          logSerial.printf("SET:INVALID:%s\n", kv.c_str());
+        }
+      } else if (cmd.startsWith("GET ")) {
+        // CMD:GET <ten-json>: doc lai dung gia tri dang giu trong RAM.
+        const String ten = cmd.substring(4);
+        const bool found = visitDiagnosticSetting(ten, [](const SettingInfo& info) {
+          if (info.valuePtr != nullptr) {
+            logSerial.printf("GET:%s=%u\n", info.key, SETTINGS.*(info.valuePtr));
+            return true;
+          }
+          if (info.valueGetter) {
+            logSerial.printf("GET:%s=%u\n", info.key, info.valueGetter());
+            return true;
+          }
+          return false;
+        });
+        if (!found) logSerial.printf("GET:INVALID:%s\n", ten.c_str());
       } else if (cmd.startsWith("FONT_TEST ")) {
         char family[32] = {};
         unsigned point = 0, weight = 0;
@@ -819,6 +985,16 @@ void loop() {
         activityManager.goHome();
       } else if (cmd == "SLEEP") {
         enterDeepSleep();
+      } else if (cmd.startsWith("OPEN_BOOK ")) {
+        // CMD:OPEN_BOOK <duong/dan>: mo dung mot cuon de nghiem thu (chi co trong
+        // ban nghiem thu qua USB). Duong dan tinh tu goc the nho.
+        const String duongDan = cmd.substring(10);
+        if (duongDan.startsWith("/")) {
+          activityManager.goToReader(duongDan.c_str());
+          logSerial.printf("OPEN_BOOK:%s\n", duongDan.c_str());
+        } else {
+          logSerial.printf("OPEN_BOOK:INVALID\n");
+        }
       } else if (cmd == "READ_RECENT") {
         const auto& books = RECENT_BOOKS.getBooks();
         if (!books.empty()) activityManager.goToReader(books.front().path);
@@ -849,6 +1025,7 @@ void loop() {
         heap_caps_dump(MALLOC_CAP_8BIT);
         logSerial.printf("HEAP_END\n");
 #endif
+#ifdef TENOR_TTF_PROBE
       } else if (cmd.startsWith("TTF_PROBE ")) {
         // CMD:TTF_PROBE <duong/dan.ttf> <pt> <so byte bo dem doc>
         // Do chi phi to chu TTF ngay tren chip nay. Khong dinh gi toi duong doc sach.
@@ -886,6 +1063,7 @@ void loop() {
                 kq.nganXepCap, kq.nganXepConDu, kq.soLanDocThe, kq.soByteDocThe);
           }
         }
+#endif  // TENOR_TTF_PROBE
 #ifndef SIMULATOR
       } else if (cmd == "BUTTON_ADC") {
         int group1, group2;

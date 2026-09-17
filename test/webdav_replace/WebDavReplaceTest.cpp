@@ -65,6 +65,79 @@ TEST(WebDavReplace, CreatesNewDestination) {
   EXPECT_TRUE(webdav::replaceFile(s, "temp", "book"));
   EXPECT_EQ(s.files.at("book"), "new");
 }
+TEST(WebDavReplace, ReportsPendingCleanupWhenBackupRemovalFails) {
+  Store s;
+  s.failRemove = true;
+  bool pending = false;
+  EXPECT_TRUE(webdav::replaceFile(s, "temp", "book", &pending));
+  EXPECT_TRUE(pending);
+  EXPECT_EQ(s.files.at("book"), "new");
+  EXPECT_EQ(s.files.at("book.davbak"), "original");
+}
+TEST(WebDavReplace, ClearsFlagWhenBackupIsRemoved) {
+  Store s;
+  bool pending = true;
+  EXPECT_TRUE(webdav::replaceFile(s, "temp", "book", &pending));
+  EXPECT_FALSE(pending);
+  EXPECT_FALSE(s.files.count("book.davbak"));
+}
+TEST(WebDavReplace, ClearsFlagForNewDestinationWithoutBackup) {
+  Store s;
+  s.files.erase("book");
+  bool pending = true;
+  EXPECT_TRUE(webdav::replaceFile(s, "temp", "book", &pending));
+  EXPECT_FALSE(pending);
+}
+TEST(WebDavReplace, ClearsFlagWhenExistingBackupBlocksReplacement) {
+  Store s;
+  s.files["book.davbak"] = "recoverable";
+  bool pending = true;
+  EXPECT_FALSE(webdav::replaceFile(s, "temp", "book", &pending));
+  EXPECT_FALSE(pending);
+}
+TEST(WebDavReplace, ClearsFlagWhenBackupRenameFails) {
+  Store s;
+  s.failedRenames.insert("book");
+  bool pending = true;
+  EXPECT_FALSE(webdav::replaceFile(s, "temp", "book", &pending));
+  EXPECT_FALSE(pending);
+}
+TEST(WebDavReplace, ClearsFlagWhenCommitAndRestoreBothFail) {
+  Store s;
+  s.failedRenames = {"temp", "book.davbak"};
+  bool pending = true;
+  EXPECT_FALSE(webdav::replaceFile(s, "temp", "book", &pending));
+  EXPECT_FALSE(pending);
+  EXPECT_EQ(s.files.at("book.davbak"), "original");
+}
+TEST(WebDavReplace, RetainedBackupBlocksNextReplacement) {
+  Store s;
+  s.failRemove = true;
+  bool pending = false;
+  ASSERT_TRUE(webdav::replaceFile(s, "temp", "book", &pending));
+  ASSERT_TRUE(pending);
+  s.failRemove = false;
+  s.files["temp"] = "second";
+  bool secondPending = true;
+  EXPECT_FALSE(webdav::replaceFile(s, "temp", "book", &secondPending));
+  EXPECT_FALSE(secondPending);
+  EXPECT_EQ(s.files.at("book"), "new");
+  EXPECT_EQ(s.files.at("book.davbak"), "original");
+  EXPECT_EQ(s.files.at("temp"), "second");
+}
+TEST(WebDavReplace, ReusedFlagIsResetOnNextCall) {
+  Store s;
+  s.failRemove = true;
+  bool pending = false;
+  ASSERT_TRUE(webdav::replaceFile(s, "temp", "book", &pending));
+  ASSERT_TRUE(pending);
+  s.failRemove = false;
+  s.files.erase("book.davbak");
+  s.files["temp"] = "third";
+  EXPECT_TRUE(webdav::replaceFile(s, "temp", "book", &pending));
+  EXPECT_FALSE(pending);
+  EXPECT_EQ(s.files.at("book"), "third");
+}
 
 TEST(VerifiedFileInstall, InterruptedDownloadPreservesOldFile) {
   Store s;
@@ -127,4 +200,59 @@ TEST(VerifiedFileInstall, FailedCommitRestoresOldFile) {
   EXPECT_EQ(result, webdav::InstallResult::REPLACE_FAILED);
   EXPECT_EQ(s.files.at("book"), "original");
   EXPECT_FALSE(s.files.count("book.davtmp"));
+}
+TEST(VerifiedFileInstall, InstallReportsPendingCleanup) {
+  Store s;
+  s.failRemove = true;
+  bool pending = false;
+  const auto result = webdav::installVerifiedFile(
+      s, "book",
+      [&](const char* p) {
+        s.files[p] = "valid";
+        return true;
+      },
+      [&](const char*) { return true; }, &pending);
+  EXPECT_EQ(result, webdav::InstallResult::OK);
+  EXPECT_TRUE(pending);
+  EXPECT_EQ(s.files.at("book"), "valid");
+  EXPECT_EQ(s.files.at("book.davbak"), "original");
+  EXPECT_FALSE(s.files.count("book.davtmp"));
+}
+TEST(VerifiedFileInstall, DownloadFailureClearsPendingFlag) {
+  Store s;
+  bool pending = true;
+  const auto result = webdav::installVerifiedFile(
+      s, "book", [&](const char*) { return false; }, [&](const char*) { return true; }, &pending);
+  EXPECT_EQ(result, webdav::InstallResult::DOWNLOAD_FAILED);
+  EXPECT_FALSE(pending);
+  EXPECT_EQ(s.files.at("book"), "original");
+}
+TEST(VerifiedFileInstall, ValidationFailureClearsPendingFlag) {
+  Store s;
+  bool pending = true;
+  const auto result = webdav::installVerifiedFile(
+      s, "book",
+      [&](const char* p) {
+        s.files[p] = "corrupt";
+        return true;
+      },
+      [&](const char*) { return false; }, &pending);
+  EXPECT_EQ(result, webdav::InstallResult::VALIDATION_FAILED);
+  EXPECT_FALSE(pending);
+  EXPECT_EQ(s.files.at("book"), "original");
+}
+TEST(VerifiedFileInstall, ReplacementFailureClearsPendingFlag) {
+  Store s;
+  s.failedRenames.insert("book.davtmp");
+  bool pending = true;
+  const auto result = webdav::installVerifiedFile(
+      s, "book",
+      [&](const char* p) {
+        s.files[p] = "valid";
+        return true;
+      },
+      [&](const char*) { return true; }, &pending);
+  EXPECT_EQ(result, webdav::InstallResult::REPLACE_FAILED);
+  EXPECT_FALSE(pending);
+  EXPECT_EQ(s.files.at("book"), "original");
 }

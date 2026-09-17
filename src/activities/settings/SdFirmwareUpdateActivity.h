@@ -32,6 +32,7 @@ class SdFirmwareUpdateActivity : public Activity {
       : Activity("SdFirmwareUpdate", renderer, mappedInput), recoveryMode(recoveryMode) {}
 
   void onEnter() override;
+  void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
   bool preventAutoSleep() override { return state == State::UPDATING || state == State::VALIDATING; }
@@ -40,6 +41,7 @@ class SdFirmwareUpdateActivity : public Activity {
  private:
   State state = State::PICKING;
   bool recoveryMode = false;
+  bool runtimeStarted = false;
 
   std::string firmwarePath;
   size_t firmwareSize = 0;

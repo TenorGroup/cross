@@ -7,6 +7,7 @@
 
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncClient.h"
+#include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -55,6 +56,14 @@ void KOReaderAuthActivity::performAuthentication() {
 }
 
 void KOReaderAuthActivity::onEnter() {
+  runtimeStarted = false;
+  // Keep BLE stopped for Wi-Fi selection and the blocking auth request.
+  if (!filetransfer::acquire()) {
+    LOG_ERR("KORAUTH", "BLE teardown incomplete; leaving KOReader auth");
+    finish();
+    return;
+  }
+  runtimeStarted = true;
   Activity::onEnter();
 
   // Check if already connected
@@ -71,11 +80,15 @@ void KOReaderAuthActivity::onEnter() {
 void KOReaderAuthActivity::onExit() {
   Activity::onExit();
 
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
-    WiFi.disconnect(false);
-    delay(30);
-    silentRestart();
+  if (runtimeStarted) {
+    if (WiFi.getMode() != WIFI_MODE_NULL) {
+      WiFi.disconnect(false);
+      delay(30);
+      silentRestart();
+    }
   }
+
+  filetransfer::release();
 }
 
 void KOReaderAuthActivity::render(RenderLock&&) {

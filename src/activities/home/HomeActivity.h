@@ -30,7 +30,27 @@ class HomeActivity final : public UiTabListActivity {
   void render(RenderLock&&) override;
   bool isHomeActivity() const override { return true; }
 #ifdef TENOR_UI_ACCEPTANCE
-  void stepForTest(int direction) { moveRingTo((ringPos() + direction + listCount() + 1) % (listCount() + 1)); }
+  void stepForTest(int direction) {
+    const int count = listCount();
+    if (count <= 0) {
+      moveRingTo(0);
+      return;
+    }
+    const int ring = ringPos();
+    if (direction > 0) {
+      moveRingTo(ring <= 0 || ring >= count ? 1 : ring + 1);
+    } else if (direction < 0) {
+      moveRingTo(ring <= 1 || ring > count ? count : ring - 1);
+    }
+  }
+  // Doi thang sang the thu `index` de nghiem thu chup du anh tung man. CHI co trong ban nghiem thu USB
+  // (#ifdef TENOR_UI_ACCEPTANCE) - khong vao ban phat hanh, giu lai de con chup du sau man.
+  void tabForTest(int index) {
+    if (index < 0 || index >= TAB_COUNT) return;
+    // selectTab da tu lay RenderLock; goi thang mot lan thay vi lap stepTab de moi lan doi chi mot lan rebuild.
+    if (static_cast<int>(activeTabId) != index) selectTab(static_cast<Tab>(index));
+    requestUpdate();
+  }
 #endif
 
  private:

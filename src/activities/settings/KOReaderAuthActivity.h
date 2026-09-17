@@ -27,6 +27,7 @@ class KOReaderAuthActivity final : public Activity {
 
   Mode mode = Mode::AUTHENTICATE;
   State state = WIFI_SELECTION;
+  bool runtimeStarted = false;
   std::string statusMessage;
   std::string errorMessage;
 

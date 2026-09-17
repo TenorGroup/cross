@@ -104,6 +104,8 @@ void LyraTheme::drawSubHeader(const GfxRenderer& renderer, Rect rect, const char
 
 void LyraTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                                 const char* btn4) const {
+  // Tat thanh trang thai ngoai trinh doc thi khong con nhan nut.
+  if (SETTINGS.globalStatusBarHidden()) return;
   if (gpio.hasTouch()) {
     return;
   }

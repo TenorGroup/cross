@@ -33,6 +33,7 @@ class CrossPointWebServerActivity final : public Activity {
   // Network mode
   NetworkMode networkMode = NetworkMode::JOIN_NETWORK;
   bool isApMode = false;
+  bool runtimeStarted = false;
 #ifdef TENOR_UI_ACCEPTANCE
   bool autoJoinForTest = false;
 #endif

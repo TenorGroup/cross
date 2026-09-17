@@ -7,6 +7,7 @@
 #include <WiFi.h>
 
 #include "MappedInputManager.h"
+#include "FileTransferState.h"
 #include "SdCardFontSystem.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -94,6 +95,15 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 }
 
 void OtaUpdateActivity::onEnter() {
+  runtimeStarted = false;
+  // Claim the radio before Wi-Fi startup or the render wait below. This also
+  // covers the auto-connect callback, which can block inside this transition.
+  if (!filetransfer::acquire()) {
+    LOG_ERR("OTA", "BLE teardown incomplete; leaving OTA update");
+    finish();
+    return;
+  }
+  runtimeStarted = true;
   Activity::onEnter();
 
   // Turn on WiFi immediately
@@ -113,11 +123,16 @@ void OtaUpdateActivity::onExit() {
   // (loop() above) so the new firmware boots normally. Back-out paths land
   // here with wifi still active; silent-restart to free the LWIP/mbedTLS
   // fragmentation, same as the other wifi activities.
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
-    WiFi.disconnect(false);
-    delay(30);
-    silentRestart();
+  if (runtimeStarted) {
+    if (WiFi.getMode() != WIFI_MODE_NULL) {
+      WiFi.disconnect(false);
+      delay(30);
+      silentRestart();
+    }
   }
+  // Release after Wi-Fi teardown. The main loop may resume BLE once this owner
+  // and any nested owner have both gone away.
+  filetransfer::release();
 }
 
 void OtaUpdateActivity::render(RenderLock&&) {

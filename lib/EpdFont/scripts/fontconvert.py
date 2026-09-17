@@ -14,16 +14,16 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 # Originally from https://github.com/vroland/epdiy
 
-parser = argparse.ArgumentParser(description="Generate a header file from a font to be used with epdiy.")
-parser.add_argument("name", action="store", help="name of the font.")
-parser.add_argument("size", type=int, help="font size to use.")
-parser.add_argument("fontstack", action="store", nargs='+', help="list of font files, ordered by descending priority.")
-parser.add_argument("--2bit", dest="is2Bit", action="store_true", help="generate 2-bit greyscale bitmap instead of 1-bit black and white.")
-parser.add_argument("--additional-intervals", dest="additional_intervals", action="append", help="Additional code point intervals to export as min,max. This argument can be repeated.")
-parser.add_argument("--compress", dest="compress", action="store_true", help="Compress glyph bitmaps using DEFLATE with group-based compression.")
-parser.add_argument("--zopfli", dest="zopfli", action="store_true", help="Use Zopfli for the DEFLATE backend instead of zlib. Produces standard raw-DEFLATE streams (decoded unchanged by the on-device uzlib inflater), typically a few percent smaller than zlib -9, at the cost of much slower compression. Requires --compress and the 'zopfli' package.")
-parser.add_argument("--force-autohint", dest="force_autohint", action="store_true", help="Force FreeType auto-hinter instead of native font hinting. Improves stem width consistency for fonts with weak or no native TrueType hints.")
-parser.add_argument("--pnum", dest="pnum", action="store_true", help="Use proportional numerals (pnum OpenType feature) instead of default tabular figures. Reduces visual gaps between digits in running prose.")
+parser = argparse.ArgumentParser(description="Sinh file header từ một font để dùng với epdiy.")
+parser.add_argument("name", action="store", help="tên font.")
+parser.add_argument("size", type=int, help="cỡ chữ dùng để raster.")
+parser.add_argument("fontstack", action="store", nargs='+', help="danh sách file font, xếp theo thứ tự ưu tiên giảm dần.")
+parser.add_argument("--2bit", dest="is2Bit", action="store_true", help="sinh bitmap xám 2 bit thay cho đen trắng 1 bit.")
+parser.add_argument("--additional-intervals", dest="additional_intervals", action="append", help="Khoảng điểm mã bổ sung cần xuất dạng min,max. Có thể lặp lại tham số này.")
+parser.add_argument("--compress", dest="compress", action="store_true", help="Nén bitmap glyph bằng DEFLATE theo nhóm.")
+parser.add_argument("--zopfli", dest="zopfli", action="store_true", help="Use Zopfli for the DEFLATE backend instead of zlib. Tạo luồng raw-DEFLATE chuẩn (bộ giải nén uzlib trên máy đọc được nguyên vẹn), thường nhỏ hơn zlib -9 vài phần trăm nhưng nén chậm hơn nhiều. Cần --compress và gói 'zopfli'.")
+parser.add_argument("--force-autohint", dest="force_autohint", action="store_true", help="Buộc dùng auto-hinter của FreeType thay cho hinting gốc. Giúp độ dày nét đều hơn với font có hinting TrueType yếu hoặc không có.")
+parser.add_argument("--pnum", dest="pnum", action="store_true", help="Dùng chữ số tỉ lệ (tính năng pnum của OpenType) thay cho chữ số tabular mặc định. Giảm khoảng trống giữa các chữ số trong dòng chữ.")
 args = parser.parse_args()
 
 import freetype
@@ -254,7 +254,7 @@ if args.pnum:
                     count += 1
         tt_font.close()
         if count > 0:
-            print(f"pnum: {count} glyph substitutions from {font_path}", file=sys.stderr)
+            print(f"pnum: {count} glyph được thay thế từ {font_path}", file=sys.stderr)
 
 def load_glyph(code_point):
     face_index = 0
@@ -534,7 +534,7 @@ for face_idx, cps in face_idx_cps.items():
     subs = pnum_kern_subs.get(face_idx) if args.pnum else None
     kern_map.update(extract_kerning_fonttools(font_path, cps, ppem, pnum_subs=subs))
 
-print(f"kerning: {len(kern_map)} pairs extracted", file=sys.stderr)
+print(f"kerning: trích được {len(kern_map)} cặp", file=sys.stderr)
 
 # --- Derive class-based kerning from pairs ---
 kern_left_classes = []   # list of (codepoint, classId)
@@ -576,7 +576,7 @@ if kern_map:
     kern_right_class_count = right_class_id - 1
 
     if kern_left_class_count > 255 or kern_right_class_count > 255:
-        print(f"WARNING: kerning class count exceeds uint8_t range "
+        print(f"CẢNH BÁO: số lớp kerning vượt phạm vi uint8_t "
               f"(left={kern_left_class_count}, right={kern_right_class_count})",
               file=sys.stderr)
 
@@ -593,7 +593,7 @@ if kern_map:
 
     matrix_size = kern_left_class_count * kern_right_class_count
     entries_size = (len(kern_left_classes) + len(kern_right_classes)) * 3
-    print(f"kerning: {kern_left_class_count} left classes, {kern_right_class_count} right classes, "
+    print(f"kerning: {kern_left_class_count} lớp trái, {kern_right_class_count} lớp phải, "
           f"{matrix_size + entries_size} bytes", file=sys.stderr)
 
 # --- Ligature pair extraction ---
@@ -685,9 +685,9 @@ def extract_ligatures_fonttools(font_path, codepoints):
                             lig_cp = STANDARD_LIGATURE_MAP[seq]
                         else:
                             seq_str = ', '.join(f'U+{cp:04X}' for cp in seq)
-                            print(f"ligatures: WARNING: dropping ligature ({seq_str}) -> "
-                                  f"glyph '{lig.LigGlyph}': output glyph has no cmap entry "
-                                  f"and input sequence is not in STANDARD_LIGATURE_MAP",
+                            print(f"ligatures: CẢNH BÁO: bỏ ligature ({seq_str}) -> "
+                                  f"glyph '{lig.LigGlyph}': glyph đầu ra không có mục trong cmap "
+                                  f"và chuỗi đầu vào không có trong STANDARD_LIGATURE_MAP",
                                   file=sys.stderr)
                             continue
                         raw_ligatures[seq] = lig_cp
@@ -728,9 +728,9 @@ def extract_ligatures_fonttools(font_path, codepoints):
             packed = (intermediate_cp << 16) | last_cp
             pairs.append((packed, lig_cp))
         else:
-            print(f"ligatures: skipping {len(seq)}-char ligature "
+            print(f"ligatures: bỏ qua ligature {len(seq)} ký tự "
                   f"({', '.join(f'U+{cp:04X}' for cp in seq)}) -> U+{lig_cp:04X}: "
-                  f"no intermediate ligature for prefix", file=sys.stderr)
+                  f"không có ligature trung gian cho tiền tố", file=sys.stderr)
 
     return pairs
 
@@ -763,7 +763,7 @@ for packed, lig_cp in ligature_pairs:
         seen_lig_keys.add(packed)
         unique_ligature_pairs.append((packed, lig_cp))
 ligature_pairs = sorted(unique_ligature_pairs, key=lambda p: p[0])
-print(f"ligatures: {len(ligature_pairs)} pairs extracted", file=sys.stderr)
+print(f"ligatures: trích được {len(ligature_pairs)} cặp", file=sys.stderr)
 
 compress = args.compress
 
@@ -797,7 +797,7 @@ def to_byte_aligned(packed, width, height):
 
 # Build groups for compression
 if compress and not is2Bit:
-    print("Error: --compress requires --2bit (byte-aligned compression only supports 2-bit format)", file=sys.stderr)
+    print("Lỗi: --compress cần --2bit (nén theo byte chỉ hỗ trợ định dạng 2 bit)", file=sys.stderr)
     sys.exit(1)
 if compress:
     # Script-based grouping: glyphs that co-occur in typical text rendering
@@ -999,10 +999,10 @@ if kern_map:
                 sparse_vals.append(v)
     row_offsets.append(len(sparse_cols))
     if len(sparse_cols) > 0xFFFF:
-        print(f"Error: {len(sparse_cols)} kern entries exceed the uint16 row-offset range", file=sys.stderr)
+        print(f"Lỗi: {len(sparse_cols)} mục kern vượt phạm vi offset dòng của uint16", file=sys.stderr)
         sys.exit(1)
     if kern_right_class_count > 256:
-        print(f"Error: {kern_right_class_count} right classes exceed the uint8 column range", file=sys.stderr)
+        print(f"Lỗi: {kern_right_class_count} lớp phải vượt phạm vi cột của uint8", file=sys.stderr)
         sys.exit(1)
     dense_bytes = kern_left_class_count * kern_right_class_count
     sparse_bytes = len(row_offsets) * 2 + len(sparse_cols) * 2

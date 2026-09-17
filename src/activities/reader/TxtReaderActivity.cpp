@@ -26,7 +26,7 @@ namespace {
 constexpr size_t CHUNK_SIZE = 8 * 1024;  // 8KB chunk for reading
 // Cache file magic and version
 constexpr uint32_t CACHE_MAGIC = 0x54585449;  // "TXTI"
-constexpr uint8_t CACHE_VERSION = 5;          // Increment when cache format changes
+constexpr uint8_t CACHE_VERSION = 6;          // Increment when cache format changes
 }  // namespace
 
 // Doi co chu roi dung lai chi muc trang, giu dung doan dang doc: trang moi la trang chua
@@ -94,14 +94,14 @@ void TxtReaderActivity::initializeReader(GfxRenderer& renderer) {
   cachedLineHeight = lineHeight;
   cachedParagraphGap = readerSpacing::paragraphGap(SETTINGS.extraParagraphSpacing, lineHeight);
   cachedLetterSpacing = readerSpacing::letterPixels(SETTINGS.letterSpacing);
+  cachedWordSpacing = SETTINGS.wordSpacing;
   linesPerPage = viewportHeight / lineHeight;
   if (linesPerPage < 1) linesPerPage = 1;
   currentPageLineY.reserve(linesPerPage);
   currentPageLineIndent.reserve(linesPerPage);
-  cachedIndent =
-      std::min(viewportWidth / 4, renderer.getSpaceWidth(cachedFontId) * (SETTINGS.paragraphIndent == 2   ? 6
-                                                                          : SETTINGS.paragraphIndent == 1 ? 3
-                                                                                                          : 0));
+  cachedIndent = std::min(viewportWidth / 4,
+                          renderer.getSpaceWidth(cachedFontId, EpdFontFamily::REGULAR, cachedWordSpacing) *
+                              readerSpacing::indentSpaces(SETTINGS.paragraphIndent));
 
   LOG_DBG("TRS", "Viewport: %dx%d, lines per page: %d", viewportWidth, viewportHeight, linesPerPage);
 
@@ -243,7 +243,8 @@ bool TxtReaderActivity::loadPageAtOffset(const GfxRenderer& renderer, size_t off
         const char saved = line[length];
         line[length] = '\0';
         const int width =
-            renderer.getTextAdvanceX(cachedFontId, line.c_str(), EpdFontFamily::REGULAR, cachedLetterSpacing);
+            renderer.getTextAdvanceX(cachedFontId, line.c_str(), EpdFontFamily::REGULAR, cachedLetterSpacing,
+                                                       cachedWordSpacing);
         line[length] = saved;
         return width <= lineWidthLimit;
       };
@@ -359,7 +360,8 @@ void TxtReaderActivity::renderPage(GfxRenderer& renderer) {
           effectiveAlignment = CrossPointSettings::RIGHT_ALIGN;
         }
         const int textWidth =
-            renderer.getTextAdvanceX(cachedFontId, line.c_str(), EpdFontFamily::REGULAR, cachedLetterSpacing);
+            renderer.getTextAdvanceX(cachedFontId, line.c_str(), EpdFontFamily::REGULAR, cachedLetterSpacing,
+                                                       cachedWordSpacing);
 
         // Apply text alignment
         switch (effectiveAlignment) {
@@ -380,7 +382,7 @@ void TxtReaderActivity::renderPage(GfxRenderer& renderer) {
 
         x += lineIsRtl ? -indent : indent;
         renderer.drawText(cachedFontId, x, y, line.c_str(), true, EpdFontFamily::REGULAR, BidiUtils::BidiBaseDir::AUTO,
-                          cachedLetterSpacing);
+                          cachedLetterSpacing, cachedWordSpacing);
       }
     }
   };
@@ -552,15 +554,17 @@ bool TxtReaderActivity::loadPageIndexCache() {
 
   int32_t height, lineHeight, paragraphGap;
   int8_t spacing;
+  uint8_t wordSpacing;
   serialization::readPod(f, height);
   serialization::readPod(f, lineHeight);
   serialization::readPod(f, paragraphGap);
   serialization::readPod(f, spacing);
+  serialization::readPod(f, wordSpacing);
   uint16_t indent;
   serialization::readPod(f, indent);
   if (indent != cachedIndent) return false;
   if (height != viewportHeight || lineHeight != cachedLineHeight || paragraphGap != cachedParagraphGap ||
-      spacing != cachedLetterSpacing)
+      spacing != cachedLetterSpacing || wordSpacing != cachedWordSpacing)
     return false;
 
   uint32_t numPages;
@@ -600,6 +604,7 @@ void TxtReaderActivity::savePageIndexCache() const {
   serialization::writePod(f, static_cast<int32_t>(cachedLineHeight));
   serialization::writePod(f, static_cast<int32_t>(cachedParagraphGap));
   serialization::writePod(f, cachedLetterSpacing);
+  serialization::writePod(f, cachedWordSpacing);
   serialization::writePod(f, cachedIndent);
   serialization::writePod(f, static_cast<uint32_t>(pageOffsets.size()));
 

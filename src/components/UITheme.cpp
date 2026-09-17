@@ -70,49 +70,50 @@ void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
 }
 
 const ThemeMetrics& UITheme::getMetrics() const {
-  // hasTouch() can flip once touch init completes after static construction, so the
-  // cached copy is refreshed when the flag differs instead of copying the struct per call.
+  // Touch capability and footer visibility can change after the first layout.
+  // Refresh the cached metrics when either input changes.
   const bool touch = gpio.hasTouch();
-  if (!metricsValid || touch != metricsForTouch) {
+  const bool statusBarHidden = SETTINGS.globalStatusBarHidden();
+  if (!metricsValid || touch != metricsForTouch || statusBarHidden != metricsForHiddenStatusBar) {
     adjustedMetrics = *currentMetrics;
-    if (touch) {
+    if (touch || statusBarHidden) {
+      // Tat thanh trang thai ngoai trinh doc thi khong con nhan nut, nen dai nhan
+      // nut tra ve 0 va vung an toan lay lai dung phan do.
       adjustedMetrics.buttonHintsHeight = 0;
     }
     metricsForTouch = touch;
+    metricsForHiddenStatusBar = statusBarHidden;
     metricsValid = true;
   }
   return adjustedMetrics;
 }
 
 // Screen area excluding the button hints
-Rect UITheme::getScreenSafeArea(const GfxRenderer& renderer, bool hasFrontButtonHints, bool hasSideButtonHints) {
+Rect UITheme::getScreenSafeArea(const GfxRenderer& renderer, bool hasFrontButtonHints, bool hasSideButtonHints,
+                                StatusBarScope scope) {
   auto orientation = renderer.getOrientation();
   const int screenWidth = renderer.getScreenWidth();
   const int screenHeight = renderer.getScreenHeight();
   Rect safeArea = Rect{0, 0, screenWidth, screenHeight};
   const ThemeMetrics metrics = getMetrics();
+  // Dai day that = max(nhan nut, lan trang thai cua pham vi nay). Khi thanh Tat thi
+  // ca hai deu 0 va vung noi dung lay lai dung phan do.
+  const int daiDay =
+      hasFrontButtonHints ? std::max<int>(metrics.buttonHintsHeight, getStatusBarHeight(scope)) : 0;
   switch (orientation) {
     case GfxRenderer::Orientation::Portrait:
-      if (hasFrontButtonHints) {
-        safeArea.height -= metrics.buttonHintsHeight;
-      }
+      safeArea.height -= daiDay;
       break;
     case GfxRenderer::Orientation::LandscapeClockwise:
-      if (hasFrontButtonHints) {
-        safeArea.x += metrics.buttonHintsHeight;
-        safeArea.width -= metrics.buttonHintsHeight;
-      }
+      safeArea.x += daiDay;
+      safeArea.width -= daiDay;
       break;
     case GfxRenderer::Orientation::PortraitInverted:
-      if (hasFrontButtonHints) {
-        safeArea.y += metrics.buttonHintsHeight;
-        safeArea.height -= metrics.buttonHintsHeight;
-      }
+      safeArea.y += daiDay;
+      safeArea.height -= daiDay;
       break;
     case GfxRenderer::Orientation::LandscapeCounterClockwise:
-      if (hasFrontButtonHints) {
-        safeArea.width -= metrics.buttonHintsHeight;
-      }
+      safeArea.width -= daiDay;
       break;
   }
   return safeArea;
@@ -142,9 +143,17 @@ UIIcon UITheme::getFileIcon(const std::string& filename) {
   return File;
 }
 
-int UITheme::getStatusBarHeight() {
-  if (SETTINGS.readerStatusBarHidden()) return 0;
-  if (tenorchrome::enabled()) return tenorchrome::STATUS_HEIGHT;
+int UITheme::getStatusBarHeight(StatusBarScope scope) {
+  if (scope == StatusBarScope::Reader) {
+    // Trong trinh doc: muc 0 la Tat, nam muc con lai cung mot chieu cao nen doi
+    // muc chi ve lai thanh, khong dan lai trang.
+    if (SETTINGS.readerStatusBarHidden()) return 0;
+    if (tenorchrome::enabled()) return tenorchrome::STATUS_HEIGHT;
+  } else if (SETTINGS.globalStatusBarHidden()) {
+    return 0;
+  } else if (tenorchrome::enabled()) {
+    return SETTINGS.globalStatusBarLarge() ? tenorchrome::STATUS_HEIGHT_LARGE : tenorchrome::STATUS_HEIGHT;
+  }
   const ThemeMetrics metrics = UITheme::getInstance().getMetrics();
   const auto sb = SETTINGS.statusBarSpec();
 

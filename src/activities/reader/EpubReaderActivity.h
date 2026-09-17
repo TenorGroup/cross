@@ -22,9 +22,21 @@ class EpubReaderActivity final : public ReaderActivity {
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
   int currentSpineIndex = 0;
+  // Khoang muc TOC nam trong spine dang doc, tinh MOT lan cho moi spine. Khong co no thi moi lan
+  // giu nut phai quet lai bang muc luc (getTocItem doc cache metadata tung muc) — do la chi phi
+  // N lan goi cho moi nhip giu. Xoa cache trong loadBook() khi mo sach khac.
+  int tocSpineCached = -1;
+  int tocDauTrongSpine = -1;
+  int tocCuoiTrongSpine = -1;
+  int tocTruocTrongSpine = -1;
   int nextPageNumber = 0;
   std::optional<uint16_t> pendingPageJump;
   std::string pendingAnchor;
+  struct ChapterHoldOrigin {
+    int spineIndex = -1;
+    int pageNumber = 0;
+    std::string pendingAnchor;
+  };
   int cachedSpineIndex = 0;
   int cachedChapterTotalPageCount = 0;
   std::optional<uint32_t> cachedVisibleTextOffset;
@@ -33,6 +45,12 @@ class EpubReaderActivity final : public ReaderActivity {
   unsigned long lastPageTurnTime = 0UL;
   unsigned long pageTurnDuration = 0UL;
   int8_t pendingManualTurn = 0;
+  std::optional<ChapterHoldOrigin> chapterHoldPrevOrigin;
+  std::optional<ChapterHoldOrigin> chapterHoldNextOrigin;
+  // Turbo hold: sau nắc chương đầu (long-press), nút vẫn giữ thì tiếp tục nắc
+  // theo nhịp cố định tới khi thả. Nguồn nhớ từ lần nắc gần nhất.
+  int8_t turboHoldDirection = 0;
+  unsigned long turboNextJumpMs = 0UL;
   bool pendingPercentJump = false;
   float pendingSpineProgress = 0.0f;
   bool pendingScreenshot = false;
@@ -123,6 +141,11 @@ class EpubReaderActivity final : public ReaderActivity {
   bool applyDeferredReposition();
   void clearDeferredReposition();
   void rememberCurrentContentOffset();
+  int logicalTocIndexForPosition(const ChapterHoldOrigin& origin, int huong);
+  void rememberChapterHoldOrigin(int huong);
+  // Doi dung mot muc muc luc theo huong +1/-1, dung lai dung duong ma man Chon chuong
+  // van dung (spine + anchor). Tra ve false khi khong co muc luc hoac da o dau/cuoi.
+  bool nhayChuongMotBac(int huong, std::optional<int> logicalOrigin = std::nullopt);
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action, const MenuResult& menu);

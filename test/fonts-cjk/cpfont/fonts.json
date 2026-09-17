@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "baseUrl": "http://127.0.0.1:8000/",
+  "scriptGroups": [],
+  "families": [
+    {
+      "name": "NotoSansSC",
+      "description": "NotoSansSC",
+      "styles": [
+        "regular"
+      ],
+      "scripts": [],
+      "files": [
+        {
+          "name": "NotoSansSC_12.cpfont",
+          "size": 3403611,
+          "crc32": 1690722923
+        },
+        {
+          "name": "NotoSansSC_18.cpfont",
+          "size": 6974052,
+          "crc32": 268158750
+        }
+      ]
+    }
+  ]
+}

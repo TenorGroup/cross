@@ -4,72 +4,78 @@
 
 #include <algorithm>
 
-void EpdFont::getTextBounds(const char* string, const int startX, const int startY, int* minX, int* minY, int* maxX,
-                            int* maxY) const {
-  *minX = startX;
-  *minY = startY;
-  *maxX = startX;
-  *maxY = startY;
+EpdFont::TextBoundsState EpdFont::beginTextBounds(const int startX, const int startY) {
+  TextBoundsState state;
+  state.minX = startX;
+  state.minY = startY;
+  state.maxX = startX;
+  state.maxY = startY;
+  state.startY = startY;
+  state.lastBaseX = startX;
+  return state;
+}
 
-  if (*string == '\0') {
+void EpdFont::appendTextBounds(TextBoundsState& state, uint32_t cp, const char*& text) const {
+  const bool isCombining = utf8IsCombiningMark(cp);
+
+  if (!isCombining) {
+    cp = applyLigatures(cp, text);
+  }
+
+  const EpdGlyph* glyph = getGlyph(cp);
+  if (!glyph) {
+    // Keep cursor movement stable when a base glyph is missing, but don't attach subsequent
+    // combining marks to stale base metrics.
+    if (!isCombining) {
+      state.lastBaseX += fp4::toPixel(state.prevAdvanceFP);  // flush pending advance before resetting
+      state.prevCp = 0;
+      state.prevAdvanceFP = 0;
+      state.lastBaseLeft = 0;
+      state.lastBaseWidth = 0;
+      state.lastBaseTop = 0;
+    }
     return;
   }
 
-  int lastBaseX = startX;
-  int lastBaseLeft = 0;
-  int lastBaseWidth = 0;
-  int lastBaseTop = 0;
-  int32_t prevAdvanceFP = 0;  // 12.4 fixed-point: prev glyph's advance + next kern for snap
-  uint32_t cp;
-  uint32_t prevCp = 0;
-  while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&string)))) {
-    const bool isCombining = utf8IsCombiningMark(cp);
+  const combiningMark::Anchor anchor = combiningMark::anchorFor(cp);
+  const int raiseBy =
+      isCombining ? combiningMark::raiseAboveBase(anchor, glyph->top, glyph->height, state.lastBaseTop) : 0;
 
-    if (!isCombining) {
-      cp = applyLigatures(cp, string);
-    }
-
-    const EpdGlyph* glyph = getGlyph(cp);
-    if (!glyph) {
-      // Keep cursor movement stable when a base glyph is missing, but don't attach subsequent
-      // combining marks to stale base metrics.
-      if (!isCombining) {
-        lastBaseX += fp4::toPixel(prevAdvanceFP);  // flush pending advance before resetting
-        prevCp = 0;
-        prevAdvanceFP = 0;
-        lastBaseLeft = 0;
-        lastBaseWidth = 0;
-        lastBaseTop = 0;
-      }
-      continue;
-    }
-
-    const combiningMark::Anchor anchor = combiningMark::anchorFor(cp);
-    const int raiseBy = isCombining ? combiningMark::raiseAboveBase(anchor, glyph->top, glyph->height, lastBaseTop) : 0;
-
-    if (!isCombining && prevCp != 0) {
-      const auto kernFP = getKerning(prevCp, cp);  // 4.4 fixed-point kern
-      lastBaseX += fp4::toPixel(prevAdvanceFP + kernFP);
-    }
-
-    const int glyphBaseX = isCombining ? combiningMark::anchorOver(anchor, lastBaseX, lastBaseLeft, lastBaseWidth,
-                                                                   glyph->left, glyph->width)
-                                       : lastBaseX;
-    const int glyphBaseY = startY - raiseBy;
-
-    *minX = std::min(*minX, glyphBaseX + glyph->left);
-    *maxX = std::max(*maxX, glyphBaseX + glyph->left + glyph->width);
-    *minY = std::min(*minY, glyphBaseY + glyph->top - glyph->height);
-    *maxY = std::max(*maxY, glyphBaseY + glyph->top);
-
-    if (!isCombining) {
-      lastBaseLeft = glyph->left;
-      lastBaseWidth = glyph->width;
-      lastBaseTop = glyph->top;
-      prevAdvanceFP = glyph->advanceX;  // 12.4 fixed-point
-      prevCp = cp;
-    }
+  if (!isCombining && state.prevCp != 0) {
+    const auto kernFP = getKerning(state.prevCp, cp);  // 4.4 fixed-point kern
+    state.lastBaseX += fp4::toPixel(state.prevAdvanceFP + kernFP);
   }
+
+  const int glyphBaseX = isCombining ? combiningMark::anchorOver(anchor, state.lastBaseX, state.lastBaseLeft,
+                                                                  state.lastBaseWidth, glyph->left, glyph->width)
+                                     : state.lastBaseX;
+  const int glyphBaseY = state.startY - raiseBy;
+
+  state.minX = std::min(state.minX, glyphBaseX + glyph->left);
+  state.maxX = std::max(state.maxX, glyphBaseX + glyph->left + glyph->width);
+  state.minY = std::min(state.minY, glyphBaseY + glyph->top - glyph->height);
+  state.maxY = std::max(state.maxY, glyphBaseY + glyph->top);
+
+  if (!isCombining) {
+    state.lastBaseLeft = glyph->left;
+    state.lastBaseWidth = glyph->width;
+    state.lastBaseTop = glyph->top;
+    state.prevAdvanceFP = glyph->advanceX;  // 12.4 fixed-point
+    state.prevCp = cp;
+  }
+}
+
+void EpdFont::getTextBounds(const char* string, const int startX, const int startY, int* minX, int* minY, int* maxX,
+                            int* maxY) const {
+  TextBoundsState state = beginTextBounds(startX, startY);
+  while (const uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&string))) {
+    appendTextBounds(state, cp, string);
+  }
+
+  *minX = state.minX;
+  *minY = state.minY;
+  *maxX = state.maxX;
+  *maxY = state.maxY;
 }
 
 void EpdFont::getTextDimensions(const char* string, int* w, int* h) const {

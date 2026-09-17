@@ -24,7 +24,7 @@ class GfxRenderer {
   bool isFontCacheScanning() const { return false; }
   void drawLine(int, int, int, int, int, bool) const {}
   void drawText(int, int, int, const char*, bool, EpdFontFamily::Style,
-                BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO, int = 0) const {}
+                BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO, int = 0, uint8_t = 0) const {}
   int getTextWidth(int font, const char* text, EpdFontFamily::Style style,
                    BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO, int spacing = 0) const {
     return getTextAdvanceX(font, text, style, spacing);
@@ -33,8 +33,10 @@ class GfxRenderer {
   int getScreenHeight() const { return 800; }
   int getLineHeight(int, float = 1.0f) const { return 16; }
   int getFontAscenderSize(int) const { return 12; }
-  int getSpaceWidth(int, EpdFontFamily::Style) const { return 4; }
-  int getTextAdvanceX(int, const char* text, EpdFontFamily::Style, int spacing = 0) const {
+  // wordSpacing is a readerSpacing::Level; the stub keeps a fixed gap so the
+  // parser tests measure line breaks, not the space delta.
+  int getSpaceWidth(int, EpdFontFamily::Style, uint8_t = 0) const { return 4; }
+  int getTextAdvanceX(int, const char* text, EpdFontFamily::Style, int spacing = 0, uint8_t = 0) const {
     int width = 0;
     while (*text++) {
       if (width) width += spacing;
@@ -43,7 +45,7 @@ class GfxRenderer {
     return width;
   }
   int getKerning(int, uint32_t, uint32_t, EpdFontFamily::Style) const { return 0; }
-  int getSpaceAdvance(int, uint32_t, uint32_t, EpdFontFamily::Style) const { return 4; }
+  int getSpaceAdvance(int, uint32_t, uint32_t, EpdFontFamily::Style, uint8_t = 0) const { return 4; }
   bool isSdCardFont(int) const { return false; }
   void ensureSdCardFontReady(int, const std::deque<std::string>&, bool, uint8_t) const {}
 };

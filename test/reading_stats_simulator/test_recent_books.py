@@ -9,11 +9,11 @@ import unittest
 
 
 REPO = Path(__file__).resolve().parents[2]
-PROGRAM = REPO / ".pio/build/simulator_x3_uc8279/program"
+PROGRAM = Path(os.environ.get("TEST_PROGRAM", REPO / ".pio/build/simulator_x3_uc8279/program"))
 
 
 class RecentBooksSimulatorTest(unittest.TestCase):
-    def test_last_recent_is_one_backward_step_from_tab(self):
+    def test_last_recent_is_one_backward_step_from_first_row(self):
         with tempfile.TemporaryDirectory(prefix="cross-recent-books-") as directory:
             sd = Path(directory)
             store = sd / ".crosspoint"
@@ -31,10 +31,15 @@ class RecentBooksSimulatorTest(unittest.TestCase):
             for key in list(env):
                 if key.startswith("CROSSPOINT_SIM_"):
                     del env[key]
+            # Ky vong 17/09 theo quyet dinh founder: man chinh chi hien NAM sach gan nhat
+            # (truoc day bai nay cho ca muoi cuon). Tep thieu khong chiem mot hang.
+            # Front previous wraps directly from the first row to the last row.
+            # Fixture: mot tep thieu roi book2..book10 -> nam hang hien ra la book2..book6,
+            # nen hang cuoi la book6.
             env.update(
                 SDL_VIDEODRIVER="dummy",
                 CROSSPOINT_SIM_SD=str(sd),
-                CROSSPOINT_SIM_INPUT_SCRIPT="1200:LEFT;2200:CONFIRM;4500:BACK;6000:QUIT",
+                CROSSPOINT_SIM_INPUT_SCRIPT="1200:LEFT;1800:CONFIRM;4500:BACK;6000:QUIT",
             )
             run = subprocess.run(
                 [str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=20
@@ -42,7 +47,7 @@ class RecentBooksSimulatorTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             self.assertIn("Entering activity: TxtReader", run.stdout + run.stderr)
             state = json.loads((store / "state.json").read_text())
-            self.assertEqual(state["openEpubPath"], "/book10.txt")
+            self.assertEqual(state["openEpubPath"], "/book6.txt")
 
 
 if __name__ == "__main__":

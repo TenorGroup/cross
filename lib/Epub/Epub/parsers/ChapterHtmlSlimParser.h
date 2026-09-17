@@ -50,13 +50,18 @@ class ChapterHtmlSlimParser {
   int fontId;
   float lineCompression;
   uint8_t extraParagraphSpacing;
+  // Da xep trang it nhat mot khoi chua? Dung de khoi DAU TIEN cua chuong khong nhan khoang ngan doan
+  // (khoang ngan doan thuoc ranh gioi giua hai khoi, cong o dau khoi ke tiep).
+  bool khoiTruocDaXepTrang = false;
   int8_t letterSpacing = 0;
+  // readerSpacing::Level on the U+0020 advance; forwarded to every ParsedText.
+  uint8_t wordSpacing = 0;
   uint8_t paragraphIndent;
   uint8_t paragraphAlignment;
   uint16_t viewportWidth;
   uint16_t viewportHeight;
   bool hyphenationEnabled;
-  bool focusReadingEnabled;
+  uint8_t dropCapMode;
   bool chapterInitialPending = true;
   int dropCapBottom = 0;
   const CssParser* cssParser;
@@ -173,12 +178,12 @@ class ChapterHtmlSlimParser {
       std::shared_ptr<Epub> epub, const std::string& filepath, GfxRenderer& renderer, const int fontId,
       const float lineCompression, const uint8_t extraParagraphSpacing, const uint8_t paragraphAlignment,
       const uint16_t viewportWidth, const uint16_t viewportHeight, const bool hyphenationEnabled,
-      const bool focusReadingEnabled,
+      const uint8_t dropCapMode,
       const std::function<void(std::unique_ptr<Page>, uint16_t, uint16_t, uint32_t)>& completePageFn,
       const bool embeddedStyle, const std::string& contentBase, const std::string& imageBasePath,
       const uint8_t imageRendering = 0, std::vector<std::string> tocAnchors = {},
       const std::function<void()>& popupFn = nullptr, const CssParser* cssParser = nullptr,
-      const uint8_t paragraphIndent = 0, const int8_t letterSpacing = 0)
+      const uint8_t paragraphIndent = 0, const int8_t letterSpacing = 0, const uint8_t wordSpacing = 0)
 
       : epub(epub),
         filepath(filepath),
@@ -187,12 +192,13 @@ class ChapterHtmlSlimParser {
         lineCompression(lineCompression),
         extraParagraphSpacing(extraParagraphSpacing),
         letterSpacing(letterSpacing),
+        wordSpacing(wordSpacing),
         paragraphIndent(paragraphIndent),
         paragraphAlignment(paragraphAlignment),
         viewportWidth(viewportWidth),
         viewportHeight(viewportHeight),
         hyphenationEnabled(hyphenationEnabled),
-        focusReadingEnabled(focusReadingEnabled),
+        dropCapMode(dropCapMode),
         completePageFn(completePageFn),
         popupFn(popupFn),
         cssParser(cssParser),

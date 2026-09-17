@@ -13,6 +13,7 @@ enum class Action {
   FOOTNOTES,
   TEXT_SETTINGS,
   NIGHT_MODE,
+  STATUS_BAR,  // doi muc thanh trang thai trong trinh doc
   FRONTLIGHT,
   GO_TO_PERCENT,
   AUTO_PAGE_TURN,

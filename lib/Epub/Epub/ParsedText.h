@@ -56,11 +56,14 @@ class ParsedText {
   BlockStyle blockStyle;
   bool extraParagraphSpacing;
   int8_t letterSpacing = 0;
+  // readerSpacing::Level on the U+0020 advance; see readerSpacing::wordPixels.
+  uint8_t wordSpacing = 0;
   uint8_t paragraphIndent;  // 0 = off, 1 = normal, 2 = wide
   bool hyphenationEnabled;
   bool focusReadingEnabled;
   uint16_t dropCapHeight = 0;
   int dropCapInset = 0;
+  float lineCompression = 1.0f;
   size_t extractedLines = 0;
   bool dropCapPrepared = false;
   int lineIndent(size_t line, const GfxRenderer& renderer, int fontId) const;
@@ -101,10 +104,12 @@ class ParsedText {
  public:
   explicit ParsedText(const bool extraParagraphSpacing, const bool hyphenationEnabled = false,
                       const bool focusReadingEnabled = false, const BlockStyle& blockStyle = BlockStyle(),
-                      const uint8_t paragraphIndent = 0, const int8_t letterSpacing = 0)
+                      const uint8_t paragraphIndent = 0, const int8_t letterSpacing = 0,
+                      const uint8_t wordSpacing = 0)
       : blockStyle(blockStyle),
         extraParagraphSpacing(extraParagraphSpacing),
         letterSpacing(letterSpacing),
+        wordSpacing(wordSpacing),
         paragraphIndent(paragraphIndent),
         hyphenationEnabled(hyphenationEnabled),
         focusReadingEnabled(focusReadingEnabled),
@@ -121,6 +126,10 @@ class ParsedText {
   void enableDropCap(uint16_t height) {
     if (!dropCapPrepared) dropCapHeight = height;
   }
+  // He so gian dong cua trang (readerSpacing::lineFactor). Parser dat dong bang
+  // getLineHeight(fontId, lineCompression) nen buoc dong THAT cua trang la round(base * he so); vung
+  // chua chu lon phai tinh theo buoc that do, khong phai buoc goc cua font.
+  void setLineCompression(const float value) { lineCompression = value > 0.0f ? value : 1.0f; }
   bool wantsDropCap() const { return dropCapHeight != 0; }
   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false,
                uint32_t visibleTextOffset = 0, uint8_t linkId = 0);

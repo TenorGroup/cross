@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "BlePageTurnerActivity.h"
 #include "ButtonRemapActivity.h"
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
@@ -93,7 +94,14 @@ void SettingsActivity::rebuildSettingsLists() {
         (setting.valuePtr == &CrossPointSettings::tenorButtonSymbols ||
          setting.valuePtr == &CrossPointSettings::tenorSideArrows))
       continue;
-    if (setting.category == StrId::STR_CAT_DISPLAY) {
+    if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && halClock.isAvailable() &&
+        setting.valuePtr == &CrossPointSettings::statusBarClock) {
+      const auto afterLabels = std::find_if(displaySettings.begin(), displaySettings.end(), [](const SettingInfo& row) {
+        return row.valuePtr == &CrossPointSettings::tenorButtonSymbols;
+      });
+      displaySettings.insert(afterLabels == displaySettings.end() ? afterLabels : afterLabels + 1,
+                             buildTenorClockPlacementSetting(setting));
+    } else if (setting.category == StrId::STR_CAT_DISPLAY) {
       // The sunlight fading fix is a grayscale-waveform compensation that does
       // not apply on the X4 Pro / X4 Classic (plain OTP waveform, same panels).
       if (setting.valuePtr == &CrossPointSettings::fadingFix &&
@@ -129,10 +137,10 @@ void SettingsActivity::rebuildSettingsLists() {
     StrId nhan;
     SettingAction viec;
   } DONG_HANH_DONG[] = {
+      {StrId::STR_LANGUAGE, SettingAction::Language},
       {StrId::STR_DEVICE_NAME, SettingAction::DeviceName},
       {StrId::STR_WIFI_NETWORKS, SettingAction::Network},
-      {StrId::STR_LANGUAGE, SettingAction::Language},
-      {StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts},
+      {StrId::STR_BLE_PAGE_TURNER, SettingAction::BlePageTurner},
       {StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync},
       {StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser},
       {StrId::STR_OPDS_BROWSER, SettingAction::BrowseOPDS},
@@ -143,17 +151,30 @@ void SettingsActivity::rebuildSettingsLists() {
   for (const auto& dong : DONG_HANH_DONG) {
     danhSachCuaThe(settingstabs::nhaCua(dong.viec)).push_back(SettingInfo::Action(dong.nhan, dong.viec));
   }
-  // Cua Dong ho chi co nghia tren may co RTC (X3). Noi sau cung de nam CUOI nhom He thong.
+  keyboardSettings.insert(keyboardSettings.begin(),
+                          SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
+  // Sleep, wake and clock precede file-management preferences.
   if (halClock.isAvailable()) {
-    danhSachCuaThe(settingstabs::nhaCua(SettingAction::Clock))
-        .push_back(SettingInfo::Action(StrId::STR_CLOCK, SettingAction::Clock));
+    const auto files = std::find_if(systemSettings.begin(), systemSettings.end(), [](const SettingInfo& row) {
+      return row.valuePtr == &CrossPointSettings::showHiddenFiles;
+    });
+    systemSettings.insert(files, SettingInfo::Action(StrId::STR_CLOCK, SettingAction::Clock));
   }
   readerSettings.insert(readerSettings.begin(),
                         SettingInfo::Action(StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings));
   readerSettings.insert(readerSettings.begin() + 1,
                         SettingInfo::Action(StrId::STR_MANAGE_FONTS, SettingAction::DownloadFonts));
-  readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
+  if (SETTINGS.uiTheme != CrossPointSettings::TENOR_UI) {
+    readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
+  }
 
+  // A theme or conditional row can shorten an inactive category as well.
+  for (size_t tab = 0; tab < tabNavs.size(); ++tab) {
+    const int count = static_cast<int>(danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).size());
+    auto& cursor = tabNavs[tab];
+    cursor.selected = count == 0 ? 0 : std::clamp(cursor.selected, mappedInput.hasTouch() ? 0 : 1, count);
+    cursor.followOnBuild = true;
+  }
   currentSettings = &danhSachCuaThe(static_cast<settingstabs::Tab>(selectedCategoryIndex));
   settingsCount = static_cast<int>(currentSettings->size());
   rebuildRowItems();
@@ -190,7 +211,7 @@ void SettingsActivity::selectCategory(const int categoryIndex) {
   settingsCount = static_cast<int>(currentSettings->size());
   // Pull the viewport to this tab's remembered row. UiTabListActivity owns the
   // remember/forget rule for every tab screen; see rowTab there.
-  activeNav().followOnBuild = true;
+  dapXuongNhom();
   rebuildRowItems();
 }
 
@@ -269,7 +290,7 @@ void SettingsActivity::stepTab(const int direction) {
 
 void SettingsActivity::dapXuongNhom() {
   auto& n = activeNav();
-  if (n.selected <= 0 && settingsCount > 0) n.selected = 1;
+  n.selected = settingsCount <= 0 ? 0 : std::clamp(n.selected, mappedInput.hasTouch() ? 0 : 1, settingsCount);
   n.followOnBuild = true;
 }
 
@@ -325,6 +346,7 @@ void SettingsActivity::toggleCurrentSetting() {
   }
 
   const auto& setting = (*currentSettings)[selectedSetting];
+  const auto changedValuePtr = setting.valuePtr;
   const bool sleepScreenChanged = setting.valuePtr == &CrossPointSettings::sleepScreen;
   const bool quickResumeTimeoutChanged = setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;
 
@@ -405,6 +427,9 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::BrowseOPDS:
         activityManager.goToBrowser();
         break;
+      case SettingAction::BlePageTurner:
+        startActivityForResult(std::make_unique<BlePageTurnerActivity>(renderer, mappedInput), resultHandler);
+        break;
       case SettingAction::DeviceName:
         startActivityForResult(std::make_unique<KeyboardEntryActivity>(
                                    renderer, mappedInput, tr(STR_DEVICE_NAME), std::string(SETTINGS.deviceName),
@@ -477,8 +502,7 @@ void SettingsActivity::toggleCurrentSetting() {
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
   SETTINGS.saveToFile();
   rebuildSettingsLists();
-  applyUiSettingChange(setting.valuePtr);
-  activeNav().selected = std::min(ringPos(), settingsCount);
+  applyUiSettingChange(changedValuePtr);
 }
 
 void SettingsActivity::syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged) {
@@ -521,6 +545,9 @@ void SettingsActivity::openSleepTimeoutPicker() {
 
 std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
   if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
+    if (setting.valuePtr == &CrossPointSettings::keyboardAxisSwapped) {
+      return SETTINGS.keyboardAxisSwapped ? tr(STR_KEYBOARD_MOVE_VERTICAL) : tr(STR_KEYBOARD_MOVE_HORIZONTAL);
+    }
     return SETTINGS.*(setting.valuePtr) ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
   }
   if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
@@ -562,7 +589,10 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
       static_cast<int16_t>(
           metrics.buttonHintsHeight +
-          (selectedCategoryIndex == static_cast<int>(settingstabs::Tab::SYSTEM) && gpio.deviceIsX3() ? 26 : 0)),
+          (selectedCategoryIndex == static_cast<int>(settingstabs::Tab::SYSTEM) && gpio.deviceIsX3() &&
+                   !SETTINGS.globalStatusBarHidden()
+               ? 26
+               : 0)),
       0});
 
   // Khong con thanh 7 the o day (S1): bo 7 nhom da hien mot lan o man chinh, hien lai lan nua
@@ -680,6 +710,10 @@ void SettingsActivity::render(RenderLock&&) {
 
   renderUi();
 
+  if (tenorchrome::enabled() && tabCount() > 1) {
+    tenorchrome::drawSiblingDestinations(renderer, tabLabel(adjacentTab(-1)), tabLabel(adjacentTab(1)));
+  }
+
   if (selectedCategoryIndex == static_cast<int>(settingstabs::Tab::SYSTEM) && gpio.deviceIsX3()) {
     tenorchrome::drawTip(renderer, tr(STR_WAKE_POWER_HINT), 1);
   }
@@ -708,13 +742,17 @@ std::string SettingsActivity::favoriteKey(const int row) const {
   return {};
 }
 int SettingsActivity::focusFavorite(const std::string& key) {
+  // Existing action pins keep their key after the Tenor-only child is removed.
+  const std::string target = SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && key == "action/2"
+                                 ? "settings/statusBarClock"
+                                 : key;
   for (int tab = 0; tab < categoryCount; ++tab) {
     const auto& items = danhSachCuaThe(static_cast<settingstabs::Tab>(tab));
     for (size_t row = 0; row < items.size(); ++row) {
       const auto& item = items[row];
       const std::string candidate =
           item.key ? std::string("settings/") + item.key : "action/" + std::to_string(static_cast<int>(item.action));
-      if (candidate != key) continue;
+      if (candidate != target) continue;
       selectCategory(tab);
       {
         RenderLock lock(*this);

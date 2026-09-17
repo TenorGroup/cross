@@ -102,55 +102,73 @@
     <!--TENOR_BRAND-->
 
     <div class="nav-links">
-      <a href="/" class="active">Thiết bị</a>
-      <a href="/files">Tệp</a>
-      <a href="/settings">Cài đặt</a>
-      <a href="/fonts">Font chữ</a>
+      <a href="/" class="active" data-i18n="nav.device">Thiết bị</a>
+      <a href="/files" data-i18n="nav.files">Tệp</a>
+      <a href="/settings" data-i18n="nav.settings">Cài đặt</a>
+      <a href="/fonts" data-i18n="nav.fonts">Font chữ</a>
+      <div class="tenor-lang-slot" data-tenor-lang-selector></div>
     </div>
 
     <div class="card">
-      <h2>Thiết bị</h2>
+      <h2 data-i18n="home.device">Thiết bị</h2>
       <div class="info-row">
-        <span class="label">Số máy</span>
+        <span class="label" data-i18n="home.serial">Số máy</span>
         <span class="value" id="serial"></span>
       </div>
       <div class="info-row">
-        <span class="label">Phiên bản</span>
+        <span class="label" data-i18n="home.version">Phiên bản</span>
         <span class="value" id="version"></span>
       </div>
       <div class="info-row">
-        <span class="label">Kết nối Wi-Fi</span>
-        <span class="status">Đã kết nối</span>
+        <span class="label" data-i18n="home.wifi">Kết nối Wi-Fi</span>
+        <span class="status" data-i18n="home.wifiConnected">Đã kết nối</span>
       </div>
       <div class="info-row">
-        <span class="label">Địa chỉ IP</span>
+        <span class="label" data-i18n="home.ip">Địa chỉ IP</span>
         <span class="value" id="ip-address"></span>
       </div>
       <div class="info-row">
-        <span class="label">Bộ nhớ trống</span>
+        <span class="label" data-i18n="home.freeHeap">Bộ nhớ trống</span>
         <span class="value" id="free-heap"></span>
       </div>
     </div>
 
-    <footer class="tenor-footer"><span>Thư viện trên thiết bị</span><a href="https://cross.tenor.vn" target="_blank" rel="noopener noreferrer">cross.tenor.vn ↗</a></footer>
+    <footer class="tenor-footer"><span data-i18n="home.footerLibrary">Thư viện trên thiết bị</span><a href="https://cross.tenor.vn" target="_blank" rel="noopener noreferrer">cross.tenor.vn ↗</a></footer>
   <script>
+/* TENOR_WEB_I18N */
+    // The shared masthead tagline lives in BrandHeader.inc; bind it here rather
+    // than editing the shared header.
+    TenorI18n.bind('.tenor-masthead .tenor-local', 'brand.localTagline');
+    TenorI18n.init();
+
+    let lastStatus = null;
+
+    function renderStatus() {
+      if (!lastStatus) return;
+      document.getElementById('version').textContent = lastStatus.version || TenorI18n.t('common.na');
+      document.getElementById('serial').textContent = lastStatus.serial || TenorI18n.t('common.na');
+      document.getElementById('ip-address').textContent = lastStatus.ip || TenorI18n.t('common.na');
+      document.getElementById('free-heap').textContent = lastStatus.freeHeap
+        ? TenorI18n.t('common.bytes', { value: TenorI18n.formatNumber(lastStatus.freeHeap) })
+        : TenorI18n.t('common.na');
+    }
+
     async function fetchStatus() {
       try {
-        const response = await fetch('/api/status');
+        const response = await fetch(TenorI18n.apiUrl('/api/status'));
         if (!response.ok) {
           throw new Error('Failed to fetch status: ' + response.status + ' ' + response.statusText);
         }
-        const data = await response.json();
-        document.getElementById('version').textContent = data.version || 'N/A';
-        document.getElementById('serial').textContent = data.serial;
-        document.getElementById('ip-address').textContent = data.ip || 'N/A';
-        document.getElementById('free-heap').textContent = data.freeHeap
-          ? data.freeHeap.toLocaleString() + ' bytes'
-          : 'N/A';
+        lastStatus = await response.json();
+        renderStatus();
       } catch (error) {
         console.error('Error fetching status:', error);
       }
     }
+
+    // A locale change re-renders the values already fetched; it never refetches
+    // and never restarts anything in flight.
+    TenorI18n.onChange(renderStatus);
 
     // Fetch status on page load
     window.onload = fetchStatus;

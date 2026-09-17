@@ -5,6 +5,7 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <NetworkTrust.h>
+#include <WiFi.h>
 #include <base64.h>
 #include <esp_wifi.h>
 
@@ -56,11 +57,14 @@ bool isRedirect(int status) {
 // likely to be hit the longer a transfer takes, so small feeds mostly get
 // away with it while a large category consistently doesn't.
 struct WifiPowerSaveGuard {
+  bool changed = false;
   WifiPowerSaveGuard() {
     esp_err_t err = esp_wifi_set_ps(WIFI_PS_NONE);
+    changed = err == ESP_OK;
     if (err != ESP_OK) LOG_ERR("HTTP", "Failed to disable WiFi power-save: %d", err);
   }
   ~WifiPowerSaveGuard() {
+    if (!changed) return;
     esp_err_t err = esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
     if (err != ESP_OK) LOG_ERR("HTTP", "Failed to restore WiFi power-save: %d", err);
   }
@@ -267,6 +271,14 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
                                            bool downgradeRedirectsToHttp = false, const char* rootCA = nullptr,
                                            bool allowRedirects = true) {
   if (downgradeRedirectsToHttp) return HttpDownloader::HTTP_ERROR;
+#ifndef SIMULATOR
+  // Native simulator sockets use the host network independently of fake Wi-Fi.
+  // On the device, reject before NTP or TCP can enter an uninitialised driver.
+  if (WiFi.getMode() == WIFI_MODE_NULL || WiFi.status() != WL_CONNECTED) {
+    LOG_ERR("HTTP", "WiFi is not connected");
+    return HttpDownloader::HTTP_ERROR;
+  }
+#endif
 #if defined(FREEINK_NET_WOLFSSL)
   return runGetWolf(url, username, password, sink, downgradeRedirectsToHttp, rootCA, allowRedirects);
 #else

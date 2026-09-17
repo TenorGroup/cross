@@ -28,16 +28,22 @@ namespace {
 // Tab labels for Font | Size | Layout | Style.
 constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_LAYOUT, StrId::STR_STYLE};
 
-constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING,     StrId::STR_EXTRA_SPACING,
-                                         StrId::STR_ALIGNMENT,        StrId::STR_SCREEN_MARGIN,
-                                         StrId::STR_PARAGRAPH_INDENT, StrId::STR_LETTER_SPACING};
+// Same order as TextSettingsActivity::LayoutRow, one label per row.
+constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING,     StrId::STR_LETTER_SPACING,
+                                         StrId::STR_WORD_SPACING,     StrId::STR_EXTRA_SPACING,
+                                         StrId::STR_PARA_ALIGNMENT,   StrId::STR_SCREEN_MARGIN,
+                                         StrId::STR_PARAGRAPH_INDENT};
 constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING, StrId::STR_HYPHENATION, StrId::STR_EMBEDDED_STYLE,
                                         StrId::STR_TEXT_AA, StrId::STR_READER_INK_WEIGHT};
 
-constexpr StrId LETTER_SPACING_IDS[] = {StrId::STR_TIGHT, StrId::STR_INK_DEFAULT, StrId::STR_WIDE};
-constexpr StrId PARAGRAPH_SPACING_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_SPACING_LARGE, StrId::STR_SPACING_LARGER};
+// One label set for every spacing row: line, letter and paragraph spacing share
+// one five-value scale (readerSpacing::Level), so they share one label order.
+constexpr StrId SPACING_LEVEL_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW, StrId::STR_TIGHT,
+                                       StrId::STR_WIDE, StrId::STR_VERY_WIDE};
 constexpr StrId INK_WEIGHT_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_INK_LIGHT, StrId::STR_INK_STRONG};
-constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_TIGHT, StrId::STR_INK_DEFAULT, StrId::STR_WIDE};
+// Tắt / Mặc định / Lớn, matching readerSpacing::DropCapMode.
+constexpr StrId DROP_CAP_IDS[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_SPACING_LARGE};
+static_assert(std::size(DROP_CAP_IDS) == readerSpacing::DROP_CAP_MODE_COUNT, "drop cap labels");
 constexpr StrId ALIGNMENT_IDS[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                    StrId::STR_BOOK_S_STYLE};
 constexpr StrId INDENT_IDS[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_WIDE};
@@ -59,8 +65,7 @@ void TextSettingsActivity::onEnter() {
   afterHeader = tenorchrome::enabled() ? tenorchrome::CONTENT_TOP
                                        : metrics_.topPadding + metrics_.headerHeight + metrics_.verticalSpacing;
   bottomReserved = metrics_.buttonHintsHeight + metrics_.verticalSpacing;
-  usableHeight = renderer.getScreenHeight() - afterHeader - bottomReserved;
-  previewHeight = usableHeight * metrics_.previewHeightPercent / 100;
+  updatePreviewGeometry();
 
   // Danh sach ho va ho dang dung lay tu fontdoc, cung mot cho voi menu doc va giu nut.
   fonts_.clear();
@@ -236,9 +241,10 @@ const char* TextSettingsActivity::confirmLabelText() const {
     case Tab::Layout:
       // Inline choices cycle directly; the other rows open a picker.
       return ringPos() - 1 == static_cast<int>(LayoutRow::LineSpacing) ||
+                     ringPos() - 1 == static_cast<int>(LayoutRow::LetterSpacing) ||
+                     ringPos() - 1 == static_cast<int>(LayoutRow::WordSpacing) ||
                      ringPos() - 1 == static_cast<int>(LayoutRow::ParaSpacing) ||
-                     ringPos() - 1 == static_cast<int>(LayoutRow::ParaIndent) ||
-                     ringPos() - 1 == static_cast<int>(LayoutRow::LetterSpacing)
+                     ringPos() - 1 == static_cast<int>(LayoutRow::ParaIndent)
                  ? tr(STR_TOGGLE)
                  : tr(STR_SELECT);
     case Tab::Style:
@@ -252,6 +258,8 @@ void TextSettingsActivity::render(RenderLock&&) {
   if (optionPopup_.processRender(renderer, mappedInput)) return;  // picker draws over everything
 
   renderer.clearScreen();
+
+  updatePreviewGeometry();
 
   const auto pageWidth = renderer.getScreenWidth();
 
@@ -282,6 +290,34 @@ void TextSettingsActivity::render(RenderLock&&) {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();
+}
+
+void TextSettingsActivity::updatePreviewGeometry() {
+  usableHeight = std::max(0, renderer.getScreenHeight() - afterHeader - bottomReserved);
+  previewHeight = usableHeight * metrics_.previewHeightPercent / 100;
+
+  const int fontId = SETTINGS.getReaderFontId();
+  if (fontId == 0) return;
+
+  const int lineAdvance = std::max(1, renderer.getLineHeight(fontId, SETTINGS.getReaderLineCompression()));
+  const int lineHeight = std::max(0, renderer.getTextHeight(fontId));
+  const int normalExtent = std::max(lineAdvance, lineHeight);
+  const int dropCapHeight = readerSpacing::dropCapHeight(
+      readerSpacing::clampDropCapMode(SETTINGS.dropCapMode), lineAdvance);
+  const int firstParagraphExtent = std::max(
+      static_cast<int>(textsettings::FIRST_PARAGRAPH_LINES) * lineAdvance,
+      dropCapHeight > 0 ? dropCapHeight + 4 : 0);
+  const int paragraphGap = readerSpacing::paragraphGap(SETTINGS.extraParagraphSpacing, lineAdvance);
+  const int labelReserved =
+      renderer.getTextHeight(UI_10_FONT_ID) + metrics_.verticalSpacing + metrics_.previewPadding;
+  const int needed = labelReserved + metrics_.previewPadding + firstParagraphExtent + paragraphGap + normalExtent;
+  // Keep two settings rows reachable while allowing large spacing combinations
+  // to retain both paragraphs in the preview.
+  const int listReserved = 2 * (metrics_.listRowHeight + metrics_.listRowGap) +
+                           renderer.getTextHeight(UI_10_FONT_ID) + metrics_.verticalSpacing +
+                           (tenorchrome::enabled() ? 0 : metrics_.tabBarHeight);
+  const int maxPreviewHeight = std::max(0, usableHeight - listReserved);
+  previewHeight = std::clamp(std::max(previewHeight, needed), 0, maxPreviewHeight);
 }
 
 // Font switching runs on the main task from loop(), which deliberately holds no
@@ -347,7 +383,12 @@ void TextSettingsActivity::applySize(int listIndex) {
 void TextSettingsActivity::confirmLayoutRow(int row) {
   switch (static_cast<LayoutRow>(row)) {
     case LayoutRow::LetterSpacing:
-      SETTINGS.letterSpacing = (SETTINGS.letterSpacing + 1) % 3;
+      SETTINGS.letterSpacing = readerSpacing::clampLevel(SETTINGS.letterSpacing + 1);
+      SETTINGS.saveToFile();
+      requestUpdate();
+      break;
+    case LayoutRow::WordSpacing:
+      SETTINGS.wordSpacing = readerSpacing::clampLevel(SETTINGS.wordSpacing + 1);
       SETTINGS.saveToFile();
       requestUpdate();
       break;
@@ -357,12 +398,12 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
       requestUpdate();
       break;
     case LayoutRow::ParaSpacing:
-      SETTINGS.extraParagraphSpacing = (SETTINGS.extraParagraphSpacing + 1) % 3;
+      SETTINGS.extraParagraphSpacing = readerSpacing::clampLevel(SETTINGS.extraParagraphSpacing + 1);
       SETTINGS.saveToFile();
       requestUpdate();
       break;
     case LayoutRow::LineSpacing:
-      SETTINGS.lineSpacing = (SETTINGS.lineSpacing + 1) % CrossPointSettings::LINE_COMPRESSION_COUNT;
+      SETTINGS.lineSpacing = readerSpacing::clampLevel(SETTINGS.lineSpacing + 1);
       SETTINGS.saveToFile();
       requestUpdate();
       break;
@@ -395,15 +436,15 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
 std::string TextSettingsActivity::layoutValueText(int row) {
   switch (static_cast<LayoutRow>(row)) {
     case LayoutRow::LetterSpacing:
-      return I18N.get(LETTER_SPACING_IDS[SETTINGS.letterSpacing < 3 ? SETTINGS.letterSpacing : 1]);
+      return I18N.get(SPACING_LEVEL_IDS[readerSpacing::clampLevel(SETTINGS.letterSpacing)]);
+    case LayoutRow::WordSpacing:
+      return I18N.get(SPACING_LEVEL_IDS[readerSpacing::clampLevel(SETTINGS.wordSpacing)]);
     case LayoutRow::ParaIndent:
       return I18N.get(INDENT_IDS[SETTINGS.paragraphIndent < std::size(INDENT_IDS) ? SETTINGS.paragraphIndent : 0]);
-    case LayoutRow::LineSpacing: {
-      const uint8_t v = SETTINGS.lineSpacing;
-      return v < std::size(LINE_SPACING_IDS) ? I18N.get(LINE_SPACING_IDS[v]) : I18N.get(StrId::STR_INK_DEFAULT);
-    }
+    case LayoutRow::LineSpacing:
+      return I18N.get(SPACING_LEVEL_IDS[readerSpacing::clampLevel(SETTINGS.lineSpacing)]);
     case LayoutRow::ParaSpacing:
-      return I18N.get(PARAGRAPH_SPACING_IDS[SETTINGS.extraParagraphSpacing < 3 ? SETTINGS.extraParagraphSpacing : 0]);
+      return I18N.get(SPACING_LEVEL_IDS[readerSpacing::clampLevel(SETTINGS.extraParagraphSpacing)]);
     case LayoutRow::Alignment: {
       const uint8_t v = SETTINGS.paragraphAlignment;
       return v < std::size(ALIGNMENT_IDS) ? I18N.get(ALIGNMENT_IDS[v]) : I18N.get(StrId::STR_JUSTIFY);
@@ -439,7 +480,9 @@ void TextSettingsActivity::confirmStyleRow(int row) {
       break;
     }
     case StyleRow::FocusReading:
-      SETTINGS.focusReadingEnabled = !SETTINGS.focusReadingEnabled;
+      // The drop cap cycles Off -> Default -> Large; the Settings list and the
+      // reader toolbar show the same three labels.
+      SETTINGS.dropCapMode = static_cast<uint8_t>((SETTINGS.dropCapMode + 1) % readerSpacing::DROP_CAP_MODE_COUNT);
       break;
     case StyleRow::Hyphenation:
       SETTINGS.hyphenationEnabled = !SETTINGS.hyphenationEnabled;
@@ -463,7 +506,7 @@ std::string TextSettingsActivity::styleValueText(int row) {
     case StyleRow::InkWeight:
       return I18N.get(INK_WEIGHT_IDS[sdFontSystem.effectiveWeight()]);
     case StyleRow::FocusReading:
-      return SETTINGS.focusReadingEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+      return I18N.get(DROP_CAP_IDS[readerSpacing::clampDropCapMode(SETTINGS.dropCapMode)]);
     case StyleRow::Hyphenation:
       return SETTINGS.hyphenationEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     case StyleRow::EmbeddedStyle:

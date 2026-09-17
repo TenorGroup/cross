@@ -602,6 +602,12 @@ bool SdCardFont::load(const char* path) {
     s.header.kernRightClassCount = tocBuf[22];
     s.header.ligaturePairCount = tocBuf[23];
     s.header.is2Bit = is2Bit;
+    // Ink top above the baseline, at bytes 28-29 of the 32-byte style entry.
+    // Packs built before the field carry 0 there - and the bytes are inside
+    // the TOC entry the content hash already covers, so an old pack keeps
+    // today's first-line placement while a rebuilt pack changes both the
+    // value and the font id.
+    s.header.maxInkTop = readI16(tocBuf + 28);
 
     // Sanity-check counts to reject malformed files before allocating.
     // Kern class counts are uint8 (bounded by type). Entry counts are uint16
@@ -1558,6 +1564,14 @@ EpdFont* SdCardFont::getEpdFont(uint8_t style) {
 }
 
 bool SdCardFont::hasStyle(uint8_t style) const { return styles_[style & (MAX_STYLES - 1)].present; }
+
+int SdCardFont::maxInkTop(uint8_t style) const {
+  // Same fallback as rendering: a requested style that is not in the file
+  // reports the bounds of the style that would actually be drawn.
+  const uint8_t resolved = resolveStyle(style & (MAX_STYLES - 1));
+  if (!styles_[resolved].present) return 0;
+  return styles_[resolved].header.maxInkTop;
+}
 
 uint8_t SdCardFont::resolveStyle(uint8_t style) const {
   static const uint8_t kFallbacks[MAX_STYLES][MAX_STYLES] = {

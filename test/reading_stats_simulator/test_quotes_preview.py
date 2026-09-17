@@ -22,6 +22,9 @@ class QuotesPreviewTest(unittest.TestCase):
         self.store.mkdir()
         shutil.copy(REPO / 'test/epubs/test_dictionary_synonyms.epub', self.sd / 'audit.epub')
         (self.store / 'settings.json').write_text(json.dumps({'language':'VI', 'sleepTimeout':10, 'readerFavorites':[18]}))
+        # Nhip 17/09/2026: thieu recent.json thi the GAN DAY rong, con tro kep ve dai the va mot nhip
+        # CONFIRM khong mo duoc sach. Them dung mot muc de mot nhip CONFIRM mo cuon fixture.
+        (self.store / 'recent.json').write_text(json.dumps({'books':[{'path':'/audit.epub','title':'Synonym Lookup Test'}]}))
 
     def launch(self, events):
         env = {k:v for k,v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
@@ -40,14 +43,23 @@ class QuotesPreviewTest(unittest.TestCase):
         return text
 
     def test_selected_text_survives_restart_and_duplicate_save(self):
-        events = '1000:DOWN;1800:CONFIRM;2600:CONFIRM;5000:CONFIRM;6000:CONFIRM;7000:CONFIRM;8500:CONFIRM;9300:RIGHT;10000:RIGHT;11000:CONFIRM;13000:BACK;14000:QUIT'
+        # Nhip 17/09/2026: setUp da them mot muc recent.json nen the GAN DAY co dung mot hang va
+        # MOT nhip CONFIRM mo cuon fixture; nhip ke tiep mo menu doc (the Yeu thich).
+        # The CONG CU co 1 Dong bo, 2 Tra tu, 3 Luu trich dan: ba nhip DOWN doi the Yeu thich ->
+        # Vi tri -> Doc -> Cong cu, roi RIGHT hai nhip tu hang 1 xuong hang 3 va CONFIRM mo man
+        # chon chu (QuoteSelect); hai nhip RIGHT + CONFIRM sau do chon tu va luu nhu cu.
+        events = '1000:CONFIRM;3200:CONFIRM;4400:DOWN;5000:DOWN;5600:DOWN;6600:RIGHT;7200:RIGHT;8200:CONFIRM;9200:CONFIRM;11000:CONFIRM;12500:BACK;13500:QUIT'
         for _ in range(2):
             log = self.finish(*self.launch(events))
             self.assertIn('Entering activity: QuoteSelect', log)
             files = list((self.store / 'quotes').glob('*.json'))
             self.assertEqual(len(files), 1)
             saved = json.loads(files[0].read_text())
-            self.assertEqual(saved['text'], 'Up and confirm')
+            # Nhip 17/09/2026: man chon chu nay luu DUNG TU dang duoc tro toi (mot tu), va con tro vao o tu
+            # 'position.' cua doan dau; tien de cu 'Up and confirm' la cua luong chon mot DOAN tu truoc
+            # dot rework, khong con dung nua. Y dinh bai giu nguyen: luu mot tu that trong EPUB roi kiem
+            # vi tri nguon va viec luu trung chi tao mot ban ghi.
+            self.assertEqual(saved['text'], 'position.')
             self.assertEqual(saved['title'], 'Synonym Lookup Test')
             self.assertEqual((saved['path'],saved['spine'],saved['page']), ('/audit.epub',0,0))
 
@@ -59,8 +71,14 @@ class QuotesPreviewTest(unittest.TestCase):
     def test_preview_preserves_stores_and_returns_to_browser(self):
         (self.store / 'reading-stats.json').write_text('{"ngay":[[20260914,12,33]]}')
         # A warm read creates real progress and recent-book records to protect.
-        self.finish(*self.launch('1000:DOWN;1800:CONFIRM;2600:CONFIRM;4200:RIGHT;5500:BACK;6500:QUIT'))
-        process,log = self.launch('2000:DOWN;3000:CONFIRM;4000:CONFIRM:1000;6500:RIGHT;8000:LEFT;9500:BACK;11000:QUIT')
+        self.finish(*self.launch('1000:CONFIRM;3800:RIGHT;5600:BACK;6600:QUIT'))
+        # Nhip 17/09/2026: o the Folder cua Home con tro dung o DAI THE (vong 0) va GIU Chon moi mo
+        # trinh duyet tep goc the nho. Trong trinh duyet, hang 1 la thu muc .crosspoint nen phai
+        # RIGHT mot nhip sang tep sach; nut GIU de mo ban xem truoc la PageForward, ma tren X3
+        # PageForward la mot trong HAI NUT CANH (MappedInputManager.cpp:100-113), tuc phim DOWN cua
+        # mo phong — giu RIGHT thi khong bao gio mo duoc ban xem truoc. Nhip cu doi the Home thay vi
+        # buoc con tro nen khong bao gio vao duoc trinh duyet.
+        process,log = self.launch('1600:DOWN;2300:LEFT;3000:CONFIRM:900;4700:RIGHT;5600:DOWN:900;7300:DOWN;8800:BACK;10300:QUIT')
         time.sleep(1.3)
         before = self.protected()
         text = self.finish(process,log)
@@ -71,8 +89,12 @@ class QuotesPreviewTest(unittest.TestCase):
         self.assertEqual(before, self.protected())
 
     def test_stats_and_quotes_open_and_return_to_same_home(self):
-        self.finish(*self.launch('1000:DOWN;1800:CONFIRM;2600:CONFIRM;4500:BACK;5500:QUIT'))
-        log = self.finish(*self.launch('1000:DOWN;1800:DOWN;2600:CONFIRM;3400:CONFIRM;4500:BACK;5300:RIGHT;6200:CONFIRM;8000:BACK;9000:QUIT'))
+        self.finish(*self.launch('1000:CONFIRM;3800:BACK;4800:QUIT'))
+        # Nhip 17/09/2026: thu tu the Home mac dinh la {0,1,4,2,3} (MenuCustomization.h:16) nen ba nhip DOWN moi tu
+        # GAN DAY qua THU MUC, YEU THICH toi THONG KE (con tro o
+        # hang 1 = Thoi quen doc); RIGHT mot nhip xuong hang 2 = Thong ke theo sach (BookStats), lui
+        # lai, roi RIGHT hai nhip nua xuong hang 4 = Trich dan (Quotes).
+        log = self.finish(*self.launch('1000:DOWN;1800:DOWN;2600:DOWN;3400:RIGHT;4600:CONFIRM;5800:BACK;6800:RIGHT;7600:RIGHT;8600:CONFIRM;10200:BACK;11200:QUIT'))
         self.assertIn('Entering activity: Quotes', log)
         self.assertIn('Entering activity: BookStats', log)
         self.assertEqual(log.count('Popped from activity stack, new size = 0'), 2, log)
@@ -92,9 +114,12 @@ class QuotesPreviewTest(unittest.TestCase):
                     table = b''.join(struct.pack('<QIHH', 104 + i * len(page), len(page), 528, 792) for i in range(3))
                     source.write_bytes(header + table + page * 3)
                 source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-                self.finish(*self.launch('1000:DOWN;1800:CONFIRM;2600:CONFIRM;4800:RIGHT;6500:BACK;7500:QUIT'))
+                self.finish(*self.launch('1000:CONFIRM;3800:RIGHT;5600:BACK;6600:QUIT'))
                 before = self.protected()
-                process, log = self.launch('1800:DOWN;2800:CONFIRM;3800:CONFIRM:1000;5800:RIGHT;7000:BACK;8200:QUIT')
+                # Cung duong nhip 17/09/2026 nhu bai xem truoc EPUB: giu Chon o dai the Folder mo
+                # trinh duyet tep, RIGHT sang tep sach (hang 1 la thu muc .crosspoint), roi GIU
+                # DOWN (PageForward = nut canh) 400ms de mo ban xem truoc.
+                process, log = self.launch('1600:DOWN;2300:LEFT;3000:CONFIRM:900;4700:RIGHT;5600:DOWN:900;7300:DOWN;8800:BACK;10300:QUIT')
                 text = self.finish(process, log)
                 self.assertIn('Preview: /audit.' + extension, text)
                 self.assertEqual(before, self.protected())

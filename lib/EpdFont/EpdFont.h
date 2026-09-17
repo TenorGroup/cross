@@ -5,10 +5,32 @@ class EpdFont {
   void getTextBounds(const char* string, int startX, int startY, int* minX, int* minY, int* maxX, int* maxY) const;
 
  public:
+  // Incremental form of getTextBounds(). The state keeps the same cursor,
+  // kerning and combining-mark bookkeeping as the full-string measurement so
+  // callers can measure every UTF-8 prefix without rebuilding a temporary
+  // string for each candidate.
+  struct TextBoundsState {
+    int minX = 0;
+    int minY = 0;
+    int maxX = 0;
+    int maxY = 0;
+    int startY = 0;
+    int lastBaseX = 0;
+    int lastBaseLeft = 0;
+    int lastBaseWidth = 0;
+    int lastBaseTop = 0;
+    int32_t prevAdvanceFP = 0;
+    uint32_t prevCp = 0;
+  };
+
   const EpdFontData* data;
   explicit EpdFont(const EpdFontData* data) : data(data) {}
   ~EpdFont() = default;
   void getTextDimensions(const char* string, int* w, int* h) const;
+
+  static TextBoundsState beginTextBounds(int startX = 0, int startY = 0);
+  void appendTextBounds(TextBoundsState& state, uint32_t cp, const char*& text) const;
+  static int textBoundsWidth(const TextBoundsState& state) { return state.maxX - state.minX; }
 
   const EpdGlyph* getGlyph(uint32_t cp) const;
 

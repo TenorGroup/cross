@@ -196,7 +196,7 @@ void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
 
 void EpubReaderBookmarksActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
   // Content: the safe area minus the title band render() paints.
   screen.setContentMarginFromScreen(fui::Insets{
       static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
@@ -211,7 +211,7 @@ void EpubReaderBookmarksActivity::buildScreen(UiScreen& screen) {
 
   // "Hold Open to Delete" names a physical button; on touch boards the row
   // long-press covers deletion, so the hint would be wrong there.
-  if (!mappedInput.hasTouch()) {
+  if (!mappedInput.hasTouch() && !SETTINGS.globalStatusBarHidden()) {
     const int reserved = screen.body().y + screen.body().height - tenorchrome::tipY(renderer) + 2;
     if (reserved > 0) screen.takeBottom(static_cast<int16_t>(reserved));
     tenorchrome::drawTip(renderer, tr(STR_HOLD_OPEN_TO_DELETE));

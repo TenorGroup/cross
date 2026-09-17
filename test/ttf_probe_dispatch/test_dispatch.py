@@ -6,7 +6,7 @@ import tempfile
 
 ROOT=Path(__file__).resolve().parents[2]
 source=(ROOT/'src/main.cpp').read_text()
-body=source.split('// CMD:TTF_PROBE ',1)[1].split('\n',1)[1].split('#ifndef SIMULATOR',1)[0]
+body=source.split('// CMD:TTF_PROBE ',1)[1].split('\n',1)[1].split('#endif  // TENOR_TTF_PROBE',1)[0]
 cpp=r'''
 #include <string>
 #include <cstdlib>

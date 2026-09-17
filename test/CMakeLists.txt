@@ -84,3 +84,17 @@ add_subdirectory(webdav_replace)
 add_subdirectory(secure_http)
 
 add_subdirectory(secure_client)
+
+add_subdirectory(font_installer)
+
+add_subdirectory(font_manifest)
+
+# Library-local host suites live next to the code they test; the binary directory
+# keeps them out of the flat test/ tree.
+add_subdirectory(${REPO_ROOT}/freeink-sdk/libs/network/BleKeyboardHost/tests BleKeyboardHostTests)
+
+# BTH2: duong page-turner BLE voi dau vao gia (report HID that -> luot lat trang).
+add_subdirectory(ble_page_turner)
+add_subdirectory(ble_page_turner_runtime)
+add_subdirectory(truncated_text)
+add_subdirectory(png_bmp_converter)

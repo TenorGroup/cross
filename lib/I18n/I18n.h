@@ -18,6 +18,12 @@ class I18n {
   // Get localized string by ID
   const char* get(StrId id) const;
 
+  // Get localized string by ID for an explicit language without mutating the
+  // current (device) language. Used to serve one request's locale while other
+  // requests and the on-device UI keep their own. Unknown ids return "???" and
+  // unknown languages fall back to English, matching get(StrId).
+  const char* get(StrId id, Language language) const;
+
   const char* operator[](StrId id) const { return get(id); }
 
   Language getLanguage() const { return _language; }

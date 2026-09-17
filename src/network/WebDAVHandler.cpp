@@ -101,7 +101,12 @@ void WebDAVHandler::raw(WebServer& server, const String& uri, HTTPRaw& raw) {
     }
     if (_putOk) {
       String tempPath = _putPath + ".davtmp";
-      _putOk = webdav::replaceFile(Storage, tempPath.c_str(), _putPath.c_str());
+      bool backupCleanupPending = false;
+      _putOk = webdav::replaceFile(Storage, tempPath.c_str(), _putPath.c_str(), &backupCleanupPending);
+      if (backupCleanupPending) {
+        LOG_ERR("DAV", "PUT %s: backup %s.davbak retained after committed replacement", _putPath.c_str(),
+                _putPath.c_str());
+      }
       if (!_putOk) Storage.remove(tempPath.c_str());
     }
     LOG_DBG("DAV", "PUT END: %u bytes, ok=%d", raw.totalSize, _putOk);
@@ -537,7 +542,12 @@ void WebDAVHandler::handleMove(WebServer& s) {
   }
 
   clearBookCache(srcPath.c_str());
-  bool success = webdav::replaceFile(Storage, srcPath.c_str(), dstPath.c_str());
+  bool backupCleanupPending = false;
+  bool success = webdav::replaceFile(Storage, srcPath.c_str(), dstPath.c_str(), &backupCleanupPending);
+  if (backupCleanupPending) {
+    LOG_ERR("DAV", "MOVE %s: backup %s.davbak retained after committed replacement", dstPath.c_str(),
+            dstPath.c_str());
+  }
 
   if (success) {
     s.send(dstExists ? 204 : 201);
@@ -645,7 +655,12 @@ void WebDAVHandler::handleCopy(WebServer& s) {
   if (copyOk && !dstFile.sync()) copyOk = false;
   srcFile.close();
   dstFile.close();
-  if (copyOk) copyOk = webdav::replaceFile(Storage, tempPath.c_str(), dstPath.c_str());
+  bool backupCleanupPending = false;
+  if (copyOk) copyOk = webdav::replaceFile(Storage, tempPath.c_str(), dstPath.c_str(), &backupCleanupPending);
+  if (backupCleanupPending) {
+    LOG_ERR("DAV", "COPY %s: backup %s.davbak retained after committed replacement", dstPath.c_str(),
+            dstPath.c_str());
+  }
 
   if (copyOk) {
     s.send(dstExists ? 204 : 201);

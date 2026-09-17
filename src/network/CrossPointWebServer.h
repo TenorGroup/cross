@@ -89,6 +89,10 @@ class CrossPointWebServer {
   static void wsEventCallback(uint8_t num, WStype_t type, uint8_t* payload, size_t length);
   void abortWsUpload(const char* tag);
 
+  // Locale of the current request, resolved from its `lang` query argument.
+  // Resolved per request; the global I18N language is never mutated.
+  Language requestLanguage() const;
+
   // File scanning
   void scanFiles(const char* path, const std::function<void(FileInfo)>& callback) const;
   String formatFileSize(size_t bytes) const;

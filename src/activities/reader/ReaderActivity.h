@@ -67,6 +67,10 @@ class ReaderActivity : public Activity {
   ~ReaderActivity() override = default;
   std::string navigationMemoryKey() const override { return name + ":" + bookPath; }
 
+  // Luot lat trang tu nguon NGOAI nut vat ly (page turner BLE). Di qua pageTurn() de van DEM
+  // dung nhu nut that - goi thang latTrangThat() se bo qua bo dem trang da lat.
+  bool luotLatTrangNgoai(const bool isForward) { return pageTurn(isForward); }
+
   static std::unique_ptr<ReaderActivity> create(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                 std::string path, bool allowFastInitialRefresh, bool preview = false);
 
@@ -92,6 +96,7 @@ class ReaderActivity : public Activity {
 
  public:
   void loop() override;
+  bool isPageReady() const { return pageReady.load(std::memory_order_acquire); }
   void render(RenderLock&& lock) override;
 
   bool isReaderActivity() const final { return !preview; }

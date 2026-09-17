@@ -46,26 +46,36 @@ struct PageTurnResult {
   bool prev;
   bool next;
   bool fromTilt;
+  bool prevLongPressed;
+  bool nextLongPressed;
+  bool prevButtonPressed;
+  bool nextButtonPressed;
 };
 
 inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
-  const bool usePress = SETTINGS.longPressButtonBehavior == SETTINGS.OFF;
+  const bool longPressEnabled = SETTINGS.longPressButtonBehavior != SETTINGS.OFF;
   const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
   const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
   const bool swapFront = input.isNavDirectionSwapped();
   const auto prevButton = swapFront ? MappedInputManager::Button::Right : MappedInputManager::Button::Left;
   const auto nextButton = swapFront ? MappedInputManager::Button::Left : MappedInputManager::Button::Right;
-  const auto pageButtonTriggered = [&](const MappedInputManager::Button button) {
-    if (usePress) return input.wasPressed(button);
-    return input.wasLongPressed(button, SKIP_HOLD_MS) || input.wasReleased(button);
-  };
-  const bool prev =
-      tiltPrev || (pageButtonTriggered(MappedInputManager::Button::PageBack) || pageButtonTriggered(prevButton));
+  const bool prevButtonPressed =
+      input.wasPressed(MappedInputManager::Button::PageBack) || input.wasPressed(prevButton);
+  const bool nextButtonPressed =
+      input.wasPressed(MappedInputManager::Button::PageForward) || input.wasPressed(nextButton);
+  const bool prevLongPressed =
+      longPressEnabled &&
+      (input.wasLongPressed(MappedInputManager::Button::PageBack, SKIP_HOLD_MS) ||
+       input.wasLongPressed(prevButton, SKIP_HOLD_MS));
+  const bool nextLongPressed =
+      longPressEnabled &&
+      (input.wasLongPressed(MappedInputManager::Button::PageForward, SKIP_HOLD_MS) ||
+       input.wasLongPressed(nextButton, SKIP_HOLD_MS));
+  const bool prev = tiltPrev || prevButtonPressed;
   const bool powerTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
                          input.wasReleased(MappedInputManager::Button::Power);
-  const bool next = tiltNext || pageButtonTriggered(MappedInputManager::Button::PageForward) || powerTurn ||
-                    pageButtonTriggered(nextButton);
-  return {prev, next, tiltPrev || tiltNext};
+  const bool next = tiltNext || nextButtonPressed || powerTurn;
+  return {prev, next, tiltPrev || tiltNext, prevLongPressed, nextLongPressed, prevButtonPressed, nextButtonPressed};
 }
 
 struct TouchPageTurn {

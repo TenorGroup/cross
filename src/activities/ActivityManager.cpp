@@ -10,6 +10,7 @@
 #include <algorithm>
 
 #include "CrossPointSettings.h"
+#include "BlePageTurnerRuntime.h"
 #include "OpdsServerStore.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
@@ -89,7 +90,7 @@ void ActivityManager::loop() {
     return;
   }
 
-  if (currentActivity && !sleepTransition) {
+  if (currentActivity && !sleepTransition && pendingAction == PendingAction::None) {
     const bool heldBack = mappedInput.wasLongPressed(MappedInputManager::Button::Back, 1000);
     if (!currentActivity->isHomeActivity() && (heldBack || mappedInput.wasHomeGesture())) {
       if (currentActivity->saveInputBeforeHome()) {
@@ -127,6 +128,12 @@ void ActivityManager::loop() {
   }
 
   while (pendingAction != PendingAction::None) {
+    // Release the radio before the next activity allocates its fonts, cover or
+    // inflate buffers. Teardown can span loop iterations and must run outside
+    // RenderLock so the worker and renderer can finish without deadlocking.
+    if (!freeink::ble::suspendForTransition()) return;
+    ++activityGeneration_;
+
     if (pendingAction == PendingAction::Pop) {
       RenderLock lock;
 
@@ -457,6 +464,21 @@ bool ActivityManager::isReaderActivity() const {
          (currentActivity && currentActivity->isReaderActivity());
 }
 
+bool ActivityManager::isForegroundReaderActivity() const {
+  return pendingAction == PendingAction::None && currentActivity && currentActivity->isReaderActivity();
+}
+
+bool ActivityManager::isForegroundReaderReady() const {
+  return isForegroundReaderActivity() && static_cast<ReaderActivity*>(currentActivity.get())->isPageReady();
+}
+
+bool ActivityManager::pageTurn(const bool forward) {
+  if (!currentActivity || !currentActivity->isReaderActivity()) return false;
+  // Di qua loi vao cong khai cua ReaderActivity: no goi pageTurn() ben trong, tuc van DEM so trang
+  // da lat nhu khi bam nut that (goi thang latTrangThat() se bo qua bo dem).
+  return static_cast<ReaderActivity*>(currentActivity.get())->luotLatTrangNgoai(forward);
+}
+
 bool ActivityManager::handleForcedRefresh() { return currentActivity && currentActivity->handleForcedRefresh(); }
 
 bool ActivityManager::skipLoopDelay() const { return currentActivity && currentActivity->skipLoopDelay(); }
@@ -516,6 +538,10 @@ RenderLock::RenderLock() {
   isLocked = true;
 }
 
+RenderLock::RenderLock(TryTake) {
+  isLocked = xSemaphoreTake(activityManager.renderingMutex, 0) == pdTRUE;
+}
+
 RenderLock::RenderLock([[maybe_unused]] Activity&) {
   xSemaphoreTake(activityManager.renderingMutex, portMAX_DELAY);
   isLocked = true;
@@ -549,5 +575,13 @@ void ActivityManager::stepHomeForTest(int direction) {
   RenderLock lock;
   if (currentActivity && currentActivity->isHomeActivity())
     static_cast<HomeActivity*>(currentActivity.get())->stepForTest(direction);
+}
+
+void ActivityManager::tabHomeForTest(int index) {
+  // KHONG lay RenderLock o day: HomeActivity::selectTab da lay RenderLock(*this), va renderingMutex duoc
+  // tao bang xSemaphoreCreateMutex nen KHONG tai nhap - lay lan hai se treo vinh vien (dung loi da lam
+  // vong lap chinh thoi phuc vu lenh serial sau CMD:HOME_TAB). Lay dung MOT lan, tai cho da co san.
+  if (currentActivity && currentActivity->isHomeActivity())
+    static_cast<HomeActivity*>(currentActivity.get())->tabForTest(index);
 }
 #endif

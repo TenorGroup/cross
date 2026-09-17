@@ -32,7 +32,19 @@ class TextSettingsActivity final : public UiTabListActivity {
  private:
   // Row indices per tab. enum class (not plain enum) so a LayoutRow can't be
   // silently confused with a StyleRow of equal value.
-  enum class LayoutRow { LineSpacing, ParaSpacing, Alignment, ScreenMargin, ParaIndent, LetterSpacing, Count };
+  // Layout order fixed by the approved plan: the four spacing kinds first, then
+  // alignment, margin and paragraph indent. WordSpacing sits between letter and
+  // paragraph spacing.
+  enum class LayoutRow {
+    LineSpacing,
+    LetterSpacing,
+    WordSpacing,
+    ParaSpacing,
+    Alignment,
+    ScreenMargin,
+    ParaIndent,
+    Count
+  };
   enum class StyleRow { FocusReading, Hyphenation, EmbeddedStyle, AntiAliasing, InkWeight, Count };
 
   // --- UiTabListActivity contract ---
@@ -64,6 +76,7 @@ class TextSettingsActivity final : public UiTabListActivity {
   const char* confirmLabelText() const;
   // True when the focused list row is a setting the preview cannot reflect.
   bool focusedRowHasNoPreview() const;
+  void updatePreviewGeometry();
   void switchTab(int direction = 1);
 
   // Row storage for the active tab: rowItems_ (label/actionValue) is

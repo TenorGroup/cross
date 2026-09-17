@@ -163,7 +163,7 @@ bool EpubReaderChapterSelectionActivity::handleButtons() {
 
 void EpubReaderChapterSelectionActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
   // Content: the safe area minus the header band drawChrome paints the title in.
   screen.setContentMarginFromScreen(fui::Insets{
       static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
@@ -183,9 +183,11 @@ void EpubReaderChapterSelectionActivity::buildScreen(UiScreen& screen) {
     return;
   }
 
-  const int bottom = screen.body().y + screen.body().height;
-  const int tipTop = tenorchrome::tipY(renderer) - 2;
-  if (bottom > tipTop) screen.takeBottom(static_cast<int16_t>(bottom - tipTop));
+  if (!SETTINGS.globalStatusBarHidden()) {
+    const int bottom = screen.body().y + screen.body().height;
+    const int tipTop = tenorchrome::tipY(renderer) - 2;
+    if (bottom > tipTop) screen.takeBottom(static_cast<int16_t>(bottom - tipTop));
+  }
   fui::ListProps props;
   props.count = static_cast<uint16_t>(listCount());
   props.action = ACTION_ROW;
@@ -202,7 +204,7 @@ void EpubReaderChapterSelectionActivity::buildScreen(UiScreen& screen) {
 
 void EpubReaderChapterSelectionActivity::drawChrome() {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
   GUI.drawHeader(renderer, Rect{safe.x, safe.y + metrics.topPadding, safe.width, metrics.headerHeight},
                  tr(STR_SELECT_CHAPTER));
 }

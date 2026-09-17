@@ -1,11 +1,14 @@
 #include <Epub/Page.h>
+#include <Epub/ReaderSpacing.h>
 #include <GfxRenderer.h>
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <set>
 #include <string>
+#include <vector>
 
 #define class struct
 #define private public
@@ -275,7 +278,7 @@ TEST_F(ChapterHtmlSlimParserTest, ParserPropagatesIndentChoiceToNewParagraphs) {
 }
 
 TEST_F(ChapterHtmlSlimParserTest, OpeningParagraphUsesOneLargeInitialInsteadOfWordPrefixes) {
-  parser.focusReadingEnabled = true;
+  parser.dropCapMode = readerSpacing::DROP_CAP_LARGE;
   parser.viewportWidth = 160;
   parser.currentTextBlock.reset();
   parser.blockStyleStack.push_back(BlockStyle());
@@ -296,7 +299,7 @@ TEST_F(ChapterHtmlSlimParserTest, OpeningParagraphUsesOneLargeInitialInsteadOfWo
 }
 
 TEST_F(ChapterHtmlSlimParserTest, DropCapDoesNotRepeatAndTocResetsIt) {
-  parser.focusReadingEnabled = true;
+  parser.dropCapMode = readerSpacing::DROP_CAP_LARGE;
   parser.currentTextBlock.reset();
   parser.blockStyleStack.push_back(BlockStyle());
   auto paragraph = [&](const char* tag, const char* text) {
@@ -325,7 +328,7 @@ TEST_F(ChapterHtmlSlimParserTest, DropCapDoesNotRepeatAndTocResetsIt) {
 }
 
 TEST_F(ChapterHtmlSlimParserTest, DropCapKeepsTwoLinesOnSamePage) {
-  parser.focusReadingEnabled = true;
+  parser.dropCapMode = readerSpacing::DROP_CAP_LARGE;
   parser.viewportHeight = 64;
   parser.viewportWidth = 160;
   parser.currentPage = std::make_unique<Page>();
@@ -398,13 +401,90 @@ TEST_F(ChapterHtmlSlimParserTest, LetterSpacingChangesLineBreaksAndIsCarriedInto
 }
 
 TEST_F(ChapterHtmlSlimParserTest, ParagraphModesAddThreeDistinctGaps) {
-  for (const uint8_t mode : {0, 1, 2}) {
+  // The parser now consumes a resolved gap in pixels, so the three legacy modes
+  // are compared through readerSpacing::paragraphGap instead of raw ordinals.
+  constexpr int kLineHeight = 16;
+  auto paragraph = [&](const char* word) {
+    parser.currentTextBlock = std::make_unique<ParsedText>(true);
+    parser.currentTextBlock->addWord(word, EpdFontFamily::REGULAR);
+    parser.makePages();
+  };
+  for (const uint8_t mode : {readerSpacing::LEVEL_DEFAULT, readerSpacing::WIDE, readerSpacing::VERY_WIDE}) {
     parser.extraParagraphSpacing = mode;
     parser.currentPageNextY = 0;
     parser.currentPage.reset();
-    parser.currentTextBlock = std::make_unique<ParsedText>(true);
-    parser.currentTextBlock->addWord("word", EpdFontFamily::REGULAR);
-    parser.makePages();
-    EXPECT_EQ(parser.currentPageNextY, mode == 0 ? 20 : mode == 1 ? 24 : 32);
+    parser.khoiTruocDaXepTrang = false;
+    paragraph("word");
+    // The gap belongs to the boundary BETWEEN two paragraphs, so the opening
+    // paragraph must not be preceded by one.
+    EXPECT_EQ(parser.currentPageNextY, kLineHeight);
+    paragraph("word");
+    // ...and the second paragraph is advanced by the line height plus the gap
+    // of this mode, measured from the end of the first paragraph's line.
+    EXPECT_EQ(parser.currentPageNextY, 2 * kLineHeight + readerSpacing::paragraphGap(mode, kLineHeight));
   }
+  // The three legacy modes must stay distinct from one another.
+  EXPECT_LT(readerSpacing::paragraphGap(readerSpacing::LEVEL_DEFAULT, kLineHeight),
+            readerSpacing::paragraphGap(readerSpacing::WIDE, kLineHeight));
+  EXPECT_LT(readerSpacing::paragraphGap(readerSpacing::WIDE, kLineHeight),
+            readerSpacing::paragraphGap(readerSpacing::VERY_WIDE, kLineHeight));
+}
+
+TEST_F(ChapterHtmlSlimParserTest, ForcedTocAnchorStartsFreshPageWithoutGapAndKeepsAnchorOffsetAndDropCap) {
+  const auto fixturePath = std::filesystem::temp_directory_path() / "crosspoint-forced-toc-anchor.xhtml";
+  {
+    std::ofstream fixture(fixturePath);
+    ASSERT_TRUE(fixture.is_open());
+    fixture << R"(<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Forced anchor</title></head><body><p>Alpha</p><p id="toc-next">Beta</p></body></html>)";
+  }
+
+  GfxRenderer parserRenderer;
+  CssParser parserCss{"/tmp"};
+  std::string filepath = fixturePath.string();
+  std::vector<uint32_t> pageOffsets;
+  std::vector<int16_t> lineY;
+  std::vector<uint16_t> dropCapHeights;
+  ChapterHtmlSlimParser actualParser{
+      nullptr,
+      filepath,
+      parserRenderer,
+      0,
+      1.0f,
+      readerSpacing::WIDE,
+      static_cast<uint8_t>(CssTextAlign::Left),
+      static_cast<uint16_t>(parserRenderer.getScreenWidth()),
+      static_cast<uint16_t>(parserRenderer.getScreenHeight()),
+      false,
+      readerSpacing::DROP_CAP_LARGE,
+      [&](std::unique_ptr<Page> page, uint16_t, uint16_t, uint32_t visibleOffset) {
+        ASSERT_NE(page, nullptr);
+        pageOffsets.push_back(visibleOffset);
+        for (const auto& element : page->elements) {
+          if (element->getTag() != TAG_PageLine) continue;
+          const auto& pageLine = static_cast<const PageLine&>(*element);
+          lineY.push_back(pageLine.yPos);
+          dropCapHeights.push_back(pageLine.getBlock()->getDropCapHeight());
+        }
+      },
+      true,
+      "",
+      "",
+      0,
+      {"toc-next"},
+      nullptr,
+      &parserCss,
+      2,
+      0,
+      0};
+
+  ASSERT_TRUE(actualParser.parseAndBuildPages());
+  std::error_code removeError;
+  std::filesystem::remove(fixturePath, removeError);
+
+  ASSERT_EQ(pageOffsets, (std::vector<uint32_t>{0, 5}));
+  ASSERT_EQ(lineY, (std::vector<int16_t>{0, 0}));
+  ASSERT_EQ(dropCapHeights, (std::vector<uint16_t>{28, 28}));
+  ASSERT_EQ(actualParser.getAnchors().size(), 1u);
+  EXPECT_EQ(actualParser.getAnchors()[0].first, "toc-next");
+  EXPECT_EQ(actualParser.getAnchors()[0].second, 1u);
 }

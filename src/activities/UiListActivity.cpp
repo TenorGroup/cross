@@ -323,7 +323,7 @@ int UiListActivity::focusFavorite(const std::string& key) {
   return -1;
 }
 void UiListActivity::reserveFavoriteHint(UiScreen& screen) {
-  if (!supportsFavorites()) return;
+  if (!supportsFavorites() || SETTINGS.globalStatusBarHidden()) return;
   favoriteHintY = tenorchrome::tipY(renderer);
   const int bottom = screen.body().y + screen.body().height;
   const int reservedTop = favoriteHintY - 2;

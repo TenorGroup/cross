@@ -307,6 +307,10 @@ void ChapterHtmlSlimParser::flushPendingAnchor() {
       currentPage.reset(new Page());
       currentPageNextY = 0;
       currentPageVisibleOffsetSet = false;
+      // The paragraph boundary was completed on the page we just emitted. The
+      // next block starts a new chapter page, so it must not inherit the
+      // boundary gap that belongs between blocks on one page.
+      khoiTruocDaXepTrang = false;
     }
   }
 
@@ -422,7 +426,8 @@ void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
   // block is flushed so the chapter starts on a fresh page.
   flushPendingAnchor();
   currentTextBlock.reset(
-      new ParsedText(extraParagraphSpacing, hyphenationEnabled, false, blockStyle, paragraphIndent, letterSpacing));
+      new ParsedText(extraParagraphSpacing, hyphenationEnabled, false, blockStyle, paragraphIndent, letterSpacing, wordSpacing));
+  currentTextBlock->setLineCompression(lineCompression);
   wordsExtractedInBlock = 0;
   listItemBulletOnly = false;
 }
@@ -881,7 +886,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
 
     self->currentTextBlock =
         makeUniqueNoThrow<ParsedText>(self->extraParagraphSpacing, self->hyphenationEnabled, false, tableCellBlockStyle,
-                                      self->paragraphIndent, self->letterSpacing);
+                                      self->paragraphIndent, self->letterSpacing, self->wordSpacing);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: table cell");
       self->skipUntilDepth = self->depth;
@@ -1395,9 +1400,11 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                                                                                   BlockStyle::CombineAxis::Horizontal);
       self->blockStyleStack.push_back(accumulated);
       self->startNewTextBlock(accumulated.withoutBottom());
-      if (strcmp(name, "p") == 0 && self->focusReadingEnabled && self->chapterInitialPending && self->tableDepth == 0) {
-        self->currentTextBlock->enableDropCap(self->renderer.getLineHeight(self->fontId, self->lineCompression) * 2 -
-                                              4);
+      if (strcmp(name, "p") == 0 && self->dropCapMode != readerSpacing::DROP_CAP_OFF && self->chapterInitialPending &&
+          self->tableDepth == 0) {
+        self->currentTextBlock->enableDropCap(
+            readerSpacing::dropCapHeight(self->dropCapMode, self->renderer.getLineHeight(self->fontId,
+                                                                                          self->lineCompression)));
       }
       self->updateEffectiveInlineStyle();
 
@@ -1560,7 +1567,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     const BlockStyle flowStyle =
         self->blockStyleStack.empty() ? BlockStyle() : self->blockStyleStack.back().withoutBottom();
     self->currentTextBlock = makeUniqueNoThrow<ParsedText>(self->extraParagraphSpacing, self->hyphenationEnabled, false,
-                                                           flowStyle, self->paragraphIndent, self->letterSpacing);
+                                                           flowStyle, self->paragraphIndent, self->letterSpacing, self->wordSpacing);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: text block for character data");
       return;
@@ -1916,7 +1923,7 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
     const BlockStyle flowStyle =
         self->blockStyleStack.empty() ? BlockStyle() : self->blockStyleStack.back().withoutBottom();
     self->currentTextBlock = makeUniqueNoThrow<ParsedText>(self->extraParagraphSpacing, self->hyphenationEnabled, false,
-                                                           flowStyle, self->paragraphIndent, self->letterSpacing);
+                                                           flowStyle, self->paragraphIndent, self->letterSpacing, self->wordSpacing);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: text block after table");
     }
@@ -2190,8 +2197,17 @@ void ChapterHtmlSlimParser::makePages() {
 
   const int lineHeight = renderer.getLineHeight(fontId, lineCompression);
 
-  // Apply top spacing before the paragraph (stored in pixels)
+  // Khoang ngan doan thuoc ve RANH GIOI giua hai khoi: cong o day, dau khoi, chu khong cong sau khi
+  // khoi truoc da xep xong. Nho vay khoi do <br> mo (ngat dong mem trong cung doan) khong nhan khoang
+  // ngan doan, ke ca <br> DAU TIEN - truong hop ma cach "danh dau khoi bi dong" bo sot vi <br> duoc doc
+  // sau khi khoi da xep trang.
   const BlockStyle& blockStyle = currentTextBlock->getBlockStyle();
+  if (khoiTruocDaXepTrang && !blockStyle.fromBrElement) {
+    currentPageNextY += readerSpacing::paragraphGap(extraParagraphSpacing, lineHeight);
+  }
+  khoiTruocDaXepTrang = true;
+
+  // Apply top spacing before the paragraph (stored in pixels)
   if (blockStyle.marginTop > 0) {
     currentPageNextY += blockStyle.marginTop;
   }
@@ -2231,5 +2247,6 @@ void ChapterHtmlSlimParser::makePages() {
     currentPageNextY += blockStyle.paddingBottom;
   }
 
-  currentPageNextY += readerSpacing::paragraphGap(extraParagraphSpacing, lineHeight);
+  // Khong cong khoang ngan doan o day nua: no da duoc cong o DAU khoi ke tiep (xem tren), de ranh gioi
+  // do <br> quyet dinh chu khong phu thuoc thu tu parse/xep trang.
 }

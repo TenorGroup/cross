@@ -22,6 +22,8 @@ void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool ha
   // Text appearance lives in Text Settings. Keep the reader menu concise.
   items.push_back({Action::TEXT_SETTINGS, StrId::STR_TEXT_SETTINGS, Tab::READING});
   items.push_back({Action::NIGHT_MODE, StrId::STR_NIGHT_MODE, Tab::READING});
+  // Thanh trang thai cua trinh doc: sau muc, doi ngay tai cho bang popup.
+  items.push_back({Action::STATUS_BAR, StrId::STR_HIDE_READER_STATUS_BAR, Tab::READING});
   items.push_back({Action::ROTATE_SCREEN, StrId::STR_ORIENTATION, Tab::READING});
   items.push_back({Action::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN, Tab::READING});
   if (hasFrontlight) {
@@ -48,10 +50,11 @@ void buildMoreItems(std::vector<Item>& items, const bool hasFootnotes, const boo
                              }),
               items.end());
   static constexpr Action order[] = {Action::FOOTNOTES,     Action::BOOKMARKS,      Action::TOGGLE_BOOKMARK,
-                                     Action::NIGHT_MODE,    Action::FRONTLIGHT,     Action::DICTIONARY,
-                                     Action::ROTATE_SCREEN, Action::AUTO_PAGE_TURN, Action::GO_TO_PERCENT,
-                                     Action::SCREENSHOT,    Action::DISPLAY_QR,     Action::GO_HOME,
-                                     Action::SYNC,          Action::DELETE_CACHE,   Action::SAVE_QUOTE};
+                                     Action::NIGHT_MODE,    Action::STATUS_BAR,     Action::FRONTLIGHT,
+                                     Action::DICTIONARY,    Action::ROTATE_SCREEN,  Action::AUTO_PAGE_TURN,
+                                     Action::GO_TO_PERCENT, Action::SCREENSHOT,     Action::DISPLAY_QR,
+                                     Action::GO_HOME,       Action::SYNC,           Action::DELETE_CACHE,
+                                     Action::SAVE_QUOTE};
   std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
     return std::find(std::begin(order), std::end(order), a.action) <
            std::find(std::begin(order), std::end(order), b.action);

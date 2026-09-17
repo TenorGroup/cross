@@ -15,6 +15,7 @@
 #include <cstring>
 
 #include "MappedInputManager.h"
+#include "FileTransferState.h"
 #include "SdCardFontSystem.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -72,6 +73,14 @@ void FontDownloadActivity::onBackButton() {
 // --- Lifecycle ---
 
 void FontDownloadActivity::onEnter() {
+  runtimeStarted_ = false;
+  // Keep BLE stopped for Wi-Fi selection, TLS downloads, and SD replacement.
+  if (!filetransfer::acquire()) {
+    LOG_ERR("FONT", "BLE teardown incomplete; leaving font download");
+    finish();
+    return;
+  }
+  runtimeStarted_ = true;
   UiListActivity::onEnter();
   // This screen reads installation state directly from SD. Drop the rebuildable
   // registry before TLS/JSON allocations fragment the heap; keep loaded fonts
@@ -92,11 +101,15 @@ void FontDownloadActivity::onEnter() {
 void FontDownloadActivity::onExit() {
   Activity::onExit();
 
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
-    WiFi.disconnect(false);
-    delay(30);
-    silentRestart();
+  if (runtimeStarted_) {
+    if (WiFi.getMode() != WIFI_MODE_NULL) {
+      WiFi.disconnect(false);
+      delay(30);
+      silentRestart();
+    }
   }
+
+  filetransfer::release();
 }
 
 void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
@@ -198,6 +211,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   static constexpr const char* MANIFEST_TMP = "/fonts_manifest.tmp";
 
   if (auto* fcm = renderer.getFontCacheManager()) {
+    RenderLock lock(*this);
     fcm->releaseSdFontCaches();
   }
   if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
@@ -261,7 +275,24 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     return false;
   }
 
-  baseUrl_ = doc["baseUrl"] | "";
+  // Validate every schema field that can affect allocation or transfer before
+  // clearing the current catalog or consulting SD state. In particular, an
+  // absent/empty family file list used to reach ensureFamilyDir() as a
+  // successful zero-file download.
+  if (!font_manifest::validateRequiredShape(doc)) {
+    LOG_ERR("FONT", "Malformed manifest families/files/size fields");
+    errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+    return false;
+  }
+
+  const char* manifestBaseUrl = doc["baseUrl"].as<const char*>();
+  if (!font_manifest::isSupportedBaseUrl(manifestBaseUrl)) {
+    LOG_ERR("FONT", "Malformed manifest baseUrl");
+    errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+    return false;
+  }
+
+  baseUrl_ = manifestBaseUrl;
   downloadUrl_.reserve(baseUrl_.size() + 128);
   clearManifest();
   sdFontSystem.markRegistryDirty();
@@ -275,14 +306,38 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   const size_t groupCount = std::min(groupsArr.size(), MAX_SCRIPT_GROUPS);
   size_t arenaBytes = 1;  // leading terminator makes offset 0 the empty string
   size_t manifestFileCount = 0;
+  const auto addArenaString = [&arenaBytes](const char* text) {
+    const size_t length = std::strlen(text);
+    if (length == std::numeric_limits<size_t>::max()) return false;
+    const size_t bytes = length + 1;
+    if (arenaBytes > std::numeric_limits<size_t>::max() - bytes) return false;
+    arenaBytes += bytes;
+    return arenaBytes <= std::numeric_limits<uint32_t>::max();
+  };
   for (size_t groupIndex = 0; groupIndex < groupCount; groupIndex++) {
-    arenaBytes += std::strlen(groupsArr[groupIndex]["label"] | "") + 1;
+    if (!addArenaString(groupsArr[groupIndex]["label"] | "")) {
+      LOG_ERR("FONT", "Manifest string arena size overflow");
+      errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+      return false;
+    }
   }
   for (JsonObject fObj : familiesArr) {
-    arenaBytes += std::strlen(fObj["name"] | "") + 1;
-    arenaBytes += std::strlen(fObj["description"] | "") + 1;
+    if (!addArenaString(fObj["name"] | "") || !addArenaString(fObj["description"] | "")) {
+      LOG_ERR("FONT", "Manifest string arena size overflow");
+      errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+      return false;
+    }
     for (JsonObject fileObj : fObj["files"].as<JsonArray>()) {
-      arenaBytes += std::strlen(fileObj["name"] | "") + 1;
+      if (!addArenaString(fileObj["name"] | "")) {
+        LOG_ERR("FONT", "Manifest string arena size overflow");
+        errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+        return false;
+      }
+      if (manifestFileCount >= std::numeric_limits<uint32_t>::max()) {
+        LOG_ERR("FONT", "Manifest file entry count overflow");
+        errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+        return false;
+      }
       manifestFileCount++;
     }
   }
@@ -350,6 +405,10 @@ bool FontDownloadActivity::fetchAndParseManifest() {
       }
     }
 
+    // A directory with missing files is an incomplete installation; the size
+    // checks below mark it for repair without retaining the whole SD registry.
+    family.installed = SdCardFontRegistry::findFamilyRoot(str(family.name)) != nullptr;
+
     family.fileStart = fileEntryCount_;
     for (JsonObject fileObj : fObj["files"].as<JsonArray>()) {
       if (!FontInstaller::isValidCpfontFilename(fileObj["name"] | "")) {
@@ -370,37 +429,44 @@ bool FontDownloadActivity::fetchAndParseManifest() {
       }
       file.crc32 = fileObj["crc32"].as<uint32_t>();
 
+      // Preflight the complete destination path of every manifest file:
+      // family and filename can each pass their own grammar and still not fit
+      // once joined under the installed root. This runs for families that are
+      // not installed and for every file after an early update detection, so a
+      // manifest with one unbuildable path is rejected whole instead of
+      // failing mid-transfer or creating a truncated path on SD.
+      char path[FontInstaller::MAX_FONT_PATH_SIZE];
+      if (!FontInstaller::buildFontPath(str(family.name), str(file.name), path, sizeof(path))) {
+        LOG_ERR("FONT", "Invalid font path in manifest: %s/%s", str(family.name), str(file.name));
+        errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+        return false;
+      }
+
+      // Detect updates by comparing manifest file sizes with files on disk.
+      // Not a checksum, but a size mismatch reliably indicates a rebuild in
+      // practice. hasUpdate latches rather than stopping the scan, so the path
+      // preflight above still covers the remaining files.
+      if (family.installed && !family.hasUpdate) {
+        HalFile f;
+        if (Storage.openFileForRead("FONT", path, f)) {
+          const size_t actual = f.fileSize();
+          f.close();
+          if (actual != file.size) family.hasUpdate = true;
+        } else {
+          // File missing on disk but family dir exists - treat as update
+          family.hasUpdate = true;
+        }
+      }
+
+      if (file.size > std::numeric_limits<uint32_t>::max() - family.totalSize) {
+        LOG_ERR("FONT", "Manifest family size overflow for %s", str(family.name));
+        errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+        return false;
+      }
       family.totalSize += file.size;
       files_[fileEntryCount_++] = file;
     }
     family.fileCount = fileEntryCount_ - family.fileStart;
-
-    // A directory with missing files is an incomplete installation; the size
-    // checks below mark it for repair without retaining the whole SD registry.
-    family.installed = SdCardFontRegistry::findFamilyRoot(str(family.name)) != nullptr;
-
-    // Detect updates by comparing manifest file sizes with files on disk.
-    // Not a checksum, but a size mismatch reliably indicates a rebuild in practice.
-    if (family.installed) {
-      for (uint32_t i = 0; i < family.fileCount; i++) {
-        const ManifestFile& file = files_[family.fileStart + i];
-        char path[128];
-        FontInstaller::buildFontPath(str(family.name), str(file.name), path, sizeof(path));
-        HalFile f;
-        if (Storage.openFileForRead("FONT", path, f)) {
-          size_t actual = f.fileSize();
-          f.close();
-          if (actual != file.size) {
-            family.hasUpdate = true;
-            break;
-          }
-        } else {
-          // File missing on disk but family dir exists - treat as update
-          family.hasUpdate = true;
-          break;
-        }
-      }
-    }
 
     families_.push_back(family);
   }
@@ -581,6 +647,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
   // hold tens of KB the TLS session needs; release them up front rather than
   // starving the transfer. They repopulate on demand after the download.
   if (auto* fcm = renderer.getFontCacheManager()) {
+    RenderLock lock(*this);
     fcm->releaseSdFontCaches();
     LOG_DBG("FONT", "Free heap after SD font cache release: %d bytes", ESP.getFreeHeap());
   }
@@ -594,6 +661,23 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     state_ = ERROR;
     errorMessage_ = tr(STR_MEMORY_ERROR);
     return;
+  }
+
+  // The manifest was preflighted at parse time, but SD state can change
+  // between parsing and download. Rebuild every destination before the family
+  // directory is created so a rejected path cannot leave an empty directory
+  // behind or start a transfer to a truncated target. One buffer is reused by
+  // this preflight and by the per-file loop below.
+  char destPath[FontInstaller::MAX_FONT_PATH_SIZE];
+  for (uint32_t i = 0; i < family.fileCount; i++) {
+    if (!FontInstaller::buildFontPath(str(family.name), str(files_[family.fileStart + i].name), destPath,
+                                      sizeof(destPath))) {
+      LOG_ERR("FONT", "Invalid font path: %s/%s", str(family.name), str(files_[family.fileStart + i].name));
+      RenderLock lock(*this);
+      state_ = ERROR;
+      errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+      return;
+    }
   }
 
   if (!fontInstaller_.ensureFamilyDir(str(family.name))) {
@@ -613,12 +697,21 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     }
     requestUpdateAndWait();
 
-    char destPath[128];
-    FontInstaller::buildFontPath(str(family.name), str(file.name), destPath, sizeof(destPath));
+    // Rebuilt into the same buffer per file: the path may only become
+    // unbuildable if storage changed since the preflight above, and that must
+    // fail closed rather than download to a truncated target.
+    if (!FontInstaller::buildFontPath(str(family.name), str(file.name), destPath, sizeof(destPath))) {
+      LOG_ERR("FONT", "Invalid font path: %s/%s", str(family.name), str(file.name));
+      RenderLock lock(*this);
+      state_ = ERROR;
+      errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
+      return;
+    }
 
     downloadUrl_.assign(baseUrl_).append(str(file.name));
 
     auto downloadResult = HttpDownloader::HTTP_ERROR;
+    bool backupCleanupPending = false;
     const auto installResult = webdav::installVerifiedFile(
         Storage, destPath,
         [&](const char* staging) {
@@ -653,7 +746,10 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
             return false;
           }
           return fontInstaller_.validateCpfontFile(staging);
-        });
+        }, &backupCleanupPending);
+    if (backupCleanupPending) {
+      LOG_ERR("FONT", "Install %s: backup %s.davbak retained after committed replacement", destPath, destPath);
+    }
 
     if (installResult != webdav::InstallResult::OK) {
       // Completed files remain usable; a retry can replace them independently.

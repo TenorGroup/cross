@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>tenor/cross - Fonts</title>
+    <title data-i18n="fonts.docTitle">tenor/cross - Font chữ</title>
     <style>
       :root {
         --font-color: #333;
@@ -127,28 +127,120 @@
     <!--TENOR_BRAND-->
 
     <div class="nav-links">
-      <a href="/">Thiết bị</a>
-      <a href="/files">Tệp</a>
-      <a href="/settings">Cài đặt</a>
-      <a href="/fonts" class="active">Font chữ</a>
+      <a href="/" data-i18n="nav.device">Thiết bị</a>
+      <a href="/files" data-i18n="nav.files">Tệp</a>
+      <a href="/settings" data-i18n="nav.settings">Cài đặt</a>
+      <a href="/fonts" class="active" data-i18n="nav.fonts">Font chữ</a>
+      <div class="tenor-lang-slot" data-tenor-lang-selector></div>
     </div>
 
     <div class="card">
-      <h2>Font đã cài</h2>
-      <div id="families"><p class="empty">Loading...</p></div>
+      <h2 data-i18n="fonts.installedTitle">Font đã cài</h2>
+      <div id="families"><p class="empty" data-i18n="common.loading">Đang tải...</p></div>
     </div>
 
     <div class="card">
-      <h2>Thêm font chữ</h2>
+      <h2 data-i18n="fonts.addTitle">Thêm font chữ</h2>
       <form class="upload-form" id="uploadForm">
-        <input type="file" id="fontFiles" webkitdirectory directory multiple required />
-        <button type="submit" class="btn btn-primary">Gửi font</button>
+        <input type="file" id="fontFiles" webkitdirectory directory multiple required aria-label="Thêm font chữ" data-i18n-aria-label="fonts.addTitle" />
+        <button type="submit" class="btn btn-primary" data-i18n="fonts.submit">Gửi font</button>
       </form>
       <p id="pickedInfo" class="family-meta" style="margin: 8px 0 0;"></p>
       <div id="status"></div>
     </div>
 
   <script>
+/* TENOR_WEB_I18N */
+    // The shared masthead tagline lives in BrandHeader.inc; bind it here rather
+    // than editing the shared header.
+    TenorI18n.bind('.tenor-masthead .tenor-local', 'brand.localTagline');
+    TenorI18n.init();
+
+    // Dynamic messages are kept as data plus a message thunk, so a locale change
+    // re-renders what is already on screen without refetching and without
+    // restarting an upload that is in progress.
+    let familiesState = null; // {families: [...]} or {error: true}
+    let statusState = null; // {kind, message: () => string}
+    let pickedState = null; // () => string
+
+    function emptyParagraph(text) {
+      const p = document.createElement('p');
+      p.className = 'empty';
+      p.textContent = text;
+      return p;
+    }
+
+    function renderFamilies() {
+      const el = document.getElementById('families');
+      // Build rows with DOM APIs and textContent so on-device family names
+      // (which can contain arbitrary characters) cannot break markup or
+      // execute script via innerHTML / inline onclick interpolation.
+      el.replaceChildren();
+      if (!familiesState) {
+        el.appendChild(emptyParagraph(TenorI18n.t('common.loading')));
+        return;
+      }
+      if (familiesState.error) {
+        el.appendChild(emptyParagraph(TenorI18n.t('fonts.loadFailed')));
+        return;
+      }
+      if (familiesState.families.length === 0) {
+        el.appendChild(emptyParagraph(TenorI18n.t('fonts.empty')));
+        return;
+      }
+      for (const f of familiesState.families) {
+        const row = document.createElement('div');
+        row.className = 'family';
+
+        const info = document.createElement('div');
+        info.className = 'family-info';
+        const h3 = document.createElement('h3');
+        // Family names are user data: never translated, never re-escaped.
+        h3.textContent = f.name;
+        info.appendChild(h3);
+        const meta = document.createElement('span');
+        meta.className = 'family-meta';
+        const sizes = (f.sizes || []).join(', ');
+        const filesSizes = (f.files || []).map(fi => formatSize(fi.size)).join(' + ');
+        meta.textContent = TenorI18n.t('fonts.familyMeta', { sizes: sizes, files: filesSizes });
+        info.appendChild(meta);
+
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-danger';
+        btn.textContent = TenorI18n.t('fonts.delete');
+        // Capture name in the closure rather than interpolating into onclick.
+        const familyName = f.name;
+        btn.addEventListener('click', () => deleteFamily(familyName));
+
+        row.appendChild(info);
+        row.appendChild(btn);
+        el.appendChild(row);
+      }
+    }
+
+    function setStatus(kind, message) {
+      statusState = { kind: kind, message: message };
+      renderStatus();
+    }
+
+    function renderStatus() {
+      const el = document.getElementById('status');
+      if (!statusState) {
+        el.className = '';
+        el.textContent = '';
+        el.style.display = 'none';
+        return;
+      }
+      el.className = statusState.kind;
+      el.style.display = 'block';
+      el.textContent = statusState.message();
+    }
+
+    function renderPicked() {
+      const info = document.getElementById('pickedInfo');
+      info.textContent = pickedState ? pickedState() : '';
+    }
+
     function formatSize(bytes) {
       if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
       if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
@@ -156,79 +248,32 @@
     }
 
     async function loadFonts() {
-      const el = document.getElementById('families');
       try {
-        const res = await fetch('/api/fonts');
+        const res = await fetch(TenorI18n.apiUrl('/api/fonts'));
         const data = await res.json();
-        // Build rows with DOM APIs and textContent so on-device family names
-        // (which can contain arbitrary characters) cannot break markup or
-        // execute script via innerHTML / inline onclick interpolation.
-        el.replaceChildren();
-        if (!data.families || data.families.length === 0) {
-          const p = document.createElement('p');
-          p.className = 'empty';
-          p.textContent = 'No fonts installed';
-          el.appendChild(p);
-          return;
-        }
-        for (const f of data.families) {
-          const row = document.createElement('div');
-          row.className = 'family';
-
-          const info = document.createElement('div');
-          info.className = 'family-info';
-          const h3 = document.createElement('h3');
-          h3.textContent = f.name;
-          info.appendChild(h3);
-          const meta = document.createElement('span');
-          meta.className = 'family-meta';
-          const sizes = (f.sizes || []).join(', ');
-          const filesSizes = (f.files || []).map(fi => formatSize(fi.size)).join(' + ');
-          meta.textContent = sizes + 'pt · ' + filesSizes;
-          info.appendChild(meta);
-
-          const btn = document.createElement('button');
-          btn.className = 'btn btn-danger';
-          btn.textContent = 'Xóa';
-          // Capture name in the closure rather than interpolating into onclick.
-          const familyName = f.name;
-          btn.addEventListener('click', () => deleteFamily(familyName));
-
-          row.appendChild(info);
-          row.appendChild(btn);
-          el.appendChild(row);
-        }
+        familiesState = { families: data.families || [] };
       } catch (e) {
-        el.replaceChildren();
-        const p = document.createElement('p');
-        p.className = 'empty';
-        p.textContent = 'Failed to load font list';
-        el.appendChild(p);
+        familiesState = { error: true };
       }
+      renderFamilies();
     }
 
     async function deleteFamily(name) {
-      if (!confirm('Delete font family "' + name + '"?')) return;
-      const status = document.getElementById('status');
-      status.className = '';
-      status.style.display = 'block';
-      status.textContent = 'Deleting ' + name + '...';
+      if (!confirm(TenorI18n.t('fonts.deleteConfirm', { family: name }))) return;
+      setStatus('', () => TenorI18n.t('fonts.deleting', { family: name }));
       try {
-        const res = await fetch('/api/fonts/delete', {
+        const res = await fetch(TenorI18n.apiUrl('/api/fonts/delete'), {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({family: name})
         });
         if (res.ok) {
-          status.className = 'status-ok';
-          status.textContent = 'Deleted "' + name + '".';
+          setStatus('status-ok', () => TenorI18n.t('fonts.deleted', { family: name }));
         } else {
-          status.className = 'status-err';
-          status.textContent = 'Failed to delete "' + name + '".';
+          setStatus('status-err', () => TenorI18n.t('fonts.deleteFailed', { family: name }));
         }
       } catch (err) {
-        status.className = 'status-err';
-        status.textContent = 'Delete error: ' + err.message;
+        setStatus('status-err', () => TenorI18n.t('fonts.deleteError', { message: err.message }));
       }
       await loadFonts();
     }
@@ -251,25 +296,22 @@
     }
 
     document.getElementById('fontFiles').addEventListener('change', function() {
-      const info = document.getElementById('pickedInfo');
       const files = cpfontFilesOnly(this.files);
       if (files.length === 0) {
-        info.textContent = 'No .cpfont files found in the selected folder.';
+        pickedState = () => TenorI18n.t('fonts.noCpfontInFolder');
+        renderPicked();
         return;
       }
       const family = sanitizeFamily(familyFromFilename(files[0].name));
-      info.textContent = files.length + ' file' + (files.length === 1 ? '' : 's') +
-        ' → family "' + family + '"';
+      pickedState = () => TenorI18n.tPlural('fonts.pickedSummary', files.length, { family: family });
+      renderPicked();
     });
 
     document.getElementById('uploadForm').addEventListener('submit', async function(e) {
       e.preventDefault();
-      const status = document.getElementById('status');
       const files = cpfontFilesOnly(document.getElementById('fontFiles').files);
       if (files.length === 0) {
-        status.className = 'status-err';
-        status.style.display = 'block';
-        status.textContent = 'No .cpfont files selected.';
+        setStatus('status-err', () => TenorI18n.t('fonts.noSelection'));
         return;
       }
 
@@ -278,44 +320,56 @@
       // for every upload, corrupting the install layout.
       const families = [...new Set(files.map(f => sanitizeFamily(familyFromFilename(f.name))))];
       if (families.length !== 1) {
-        status.className = 'status-err';
-        status.style.display = 'block';
-        status.textContent = 'Please select files from a single font family.';
+        setStatus('status-err', () => TenorI18n.t('fonts.multiFamily'));
         return;
       }
       const family = families[0];
 
-      status.className = '';
-      status.style.display = 'block';
-
       let uploaded = 0;
       for (const file of files) {
-        status.textContent = 'Uploading ' + (uploaded + 1) + '/' + files.length + ': ' + file.name;
+        const index = uploaded + 1;
+        setStatus('', () => TenorI18n.t('fonts.uploading', {
+          index: index,
+          total: files.length,
+          file: file.name
+        }));
         const formData = new FormData();
         formData.append('family', family);
         formData.append('file', file, file.name);
         try {
-          const res = await fetch('/api/fonts/upload', { method: 'POST', body: formData });
+          const res = await fetch(TenorI18n.apiUrl('/api/fonts/upload'), { method: 'POST', body: formData });
           const data = await res.json();
           if (!data.ok) {
-            status.className = 'status-err';
-            status.textContent = 'Failed on ' + file.name + ': ' + (data.error || 'unknown error');
+            // data.error is backend-owned text already in the request locale;
+            // only the fallback is translated here, at render time.
+            setStatus('status-err', () => TenorI18n.t('fonts.uploadFailedFile', {
+              file: file.name,
+              message: data.error || TenorI18n.t('fonts.unknownError')
+            }));
             await loadFonts();
             return;
           }
         } catch (err) {
-          status.className = 'status-err';
-          status.textContent = 'Upload error on ' + file.name + ': ' + err.message;
+          setStatus('status-err', () => TenorI18n.t('fonts.uploadError', {
+            file: file.name,
+            message: err.message
+          }));
           await loadFonts();
           return;
         }
         uploaded++;
       }
 
-      status.className = 'status-ok';
-      status.textContent = 'Uploaded ' + uploaded + ' file' + (uploaded === 1 ? '' : 's') +
-        ' to family "' + family + '".';
+      setStatus('status-ok', () => TenorI18n.tPlural('fonts.uploadedSummary', uploaded, { family: family }));
       await loadFonts();
+    });
+
+    // Switching locale re-renders the current view; it never refetches, never
+    // clears the file picker and never interrupts an upload in progress.
+    TenorI18n.onChange(function() {
+      renderFamilies();
+      renderStatus();
+      renderPicked();
     });
 
     loadFonts();

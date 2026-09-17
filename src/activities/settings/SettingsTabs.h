@@ -25,6 +25,7 @@ enum class Action : uint8_t {
   Clock,
   FileTransfer,
   BrowseOPDS,
+  BlePageTurner,
 };
 
 enum class Tab : uint8_t { SCREEN, READER, CONTROLS, SYSTEM, DEVICE, KEYBOARD, OTHER };

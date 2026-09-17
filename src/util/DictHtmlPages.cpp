@@ -244,7 +244,7 @@ bool buildDictionaryHtmlPages(GfxRenderer& renderer, const std::string& definiti
     auto parser = makeUniqueNoThrow<ChapterHtmlSlimParser>(
         nullptr, tmpPath, renderer, SETTINGS.getReaderFontId(), SETTINGS.getReaderLineCompression(),
         SETTINGS.extraParagraphSpacing, SETTINGS.paragraphAlignment, viewportWidth, viewportHeight,
-        SETTINGS.hyphenationEnabled, SETTINGS.focusReadingEnabled,
+        SETTINGS.hyphenationEnabled, SETTINGS.dropCapMode,
         [&pagesOut, &resourceLimitHit, &retainedElements, &limitReason](std::unique_ptr<Page> page, uint16_t, uint16_t,
                                                                         uint32_t) {
           if (resourceLimitHit) return;

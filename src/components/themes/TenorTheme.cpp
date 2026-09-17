@@ -4,6 +4,7 @@
 #include <HalGPIO.h>
 #include <I18n.h>
 
+#include <algorithm>
 #include <cstring>
 
 #include "CrossPointSettings.h"
@@ -13,6 +14,8 @@
 
 void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                                  const char* btn4) const {
+  // Tat thanh trang thai ngoai trinh doc thi khong con nhan nut.
+  if (SETTINGS.globalStatusBarHidden()) return;
   if (gpio.hasTouch()) {
     return;
   }
@@ -30,16 +33,32 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
   constexpr int wideButtonPositions[] = {65, 157, 291, 383};
   const int* buttonPositions = renderer.getScreenWidth() >= 528 ? wideButtonPositions : narrowButtonPositions;
   const char* labels[] = {btn1, btn2, btn3, btn4};
-  const bool grayscale = renderer.getRenderMode() != GfxRenderer::BW && !renderer.grayPlanesAreAbsolute();
+  const bool grayscale = renderer.getRenderMode() != GfxRenderer::BW && renderer.grayPlanesAreAbsolute();
+  const bool lon = SETTINGS.globalStatusBarLarge();
+  const int net = lon ? 18 : 14;
+  const int iconAnchor = tenorchrome::statusIconTopY(pageHeight, lon) + net / 2;
+  const auto corners = tenorchrome::statusCornerBounds(renderer, lon);
+  constexpr int cornerGap = 6;
+
+  // Clear all cells before painting symbols that may extend beyond their original cell.
+  for (int i = 0; i < 4; i++) {
+    if (labels[i] == nullptr || labels[i][0] == '\0') continue;
+    renderer.fillRect(buttonPositions[i], pageHeight - buttonY, buttonWidth, buttonHeight, grayscale);
+  }
 
   for (int i = 0; i < 4; i++) {
     if (labels[i] == nullptr || labels[i][0] == '\0') continue;
     const int x = buttonPositions[i];
     const int top = pageHeight - buttonY;
-    // Pha xam: to den de bit xam bang 0, giu nguyen nhan den trang cua pha don sac.
-    renderer.fillRect(x, top, buttonWidth, buttonHeight, grayscale);
     if (grayscale) continue;
-    if (!SETTINGS.tenorButtonSymbols || !buttonSymbols::drawLabel(renderer, labels[i], x + buttonWidth / 2, top + 17)) {
+    const auto bounds = buttonSymbols::horizontalBounds(labels[i], net);
+    int iconX = x + buttonWidth / 2;
+    if (bounds.left != 0 || bounds.right != 0) {
+      if (i == 0) iconX = std::max(iconX, corners.leftEnd + cornerGap + bounds.left);
+      if (i == 3) iconX = std::min(iconX, corners.rightStart - cornerGap - 1 - bounds.right);
+    }
+    if (!SETTINGS.tenorButtonSymbols ||
+        !buttonSymbols::drawLabel(renderer, labels[i], iconX, iconAnchor, net)) {
       drawHintLabel(renderer, SMALL_FONT_ID, labels[i], x, buttonWidth, top, buttonHeight - vachCao - 2, textYOffset);
     }
     renderer.fillRectDither(x, pageHeight - vachCao - 1, buttonWidth, vachCao, Color::LightGray);

@@ -5,6 +5,7 @@
 #include <FsHelpers.h>
 #include <HalGPIO.h>
 #include <HalStorage.h>
+#include <I18n.h>
 #include <InlineButtonText.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -80,6 +81,24 @@ bool isProtectedItemName(const String& name) {
   return !web_path::allowed(std::string_view(name.c_str(), name.length()));
 }
 
+// Locale-aware lookup for the web transfer surface: one request's locale
+// without touching the global I18N singleton (the device language must not
+// change while a web request is being served).
+inline const char* trWeb(Language language, StrId id) { return I18n::getInstance().get(id, language); }
+
+// Error body for the font endpoints, whose responses are JSON. The key text is
+// appended (no intermediate format buffer); quotes and backslashes are escaped
+// so no translation can produce an invalid payload.
+String webErrorBody(Language language, StrId id) {
+  String body = "{\"error\":\"";
+  for (const char* c = trWeb(language, id); *c != '\0'; ++c) {
+    if (*c == '"' || *c == '\\') body += '\\';
+    body += *c;
+  }
+  body += "\"}";
+  return body;
+}
+
 }  // namespace
 
 // File listing page template - now using generated headers:
@@ -87,6 +106,16 @@ bool isProtectedItemName(const String& name) {
 // - FilesPageHeaderHtml (from html/FilesPageHeader.html)
 // - FilesPageFooterHtml (from html/FilesPageFooter.html)
 CrossPointWebServer::CrossPointWebServer() {}
+
+Language CrossPointWebServer::requestLanguage() const {
+  // Contract: the request's own `lang` query argument decides the locale;
+  // anything missing or unrecognised falls back to Vietnamese.
+  if (!server) return Language::VI;
+  const String code = server->arg("lang");
+  if (code == "en-AU") return Language::EN;
+  if (code == "zh-Hans") return Language::ZH_HANS;
+  return Language::VI;
+}
 
 CrossPointWebServer::~CrossPointWebServer() { stop(); }
 
@@ -144,118 +173,118 @@ void CrossPointWebServer::begin() {
   // Setup routes
   LOG_DBG("WEB", "Setting up routes...");
   server->on("/", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleRoot();
+    if (auth.authorize(*server, true, requestLanguage())) handleRoot();
   });
   server->on("/files", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleFileList();
+    if (auth.authorize(*server, true, requestLanguage())) handleFileList();
   });
   server->on("/theme.css", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleTheme();
+    if (auth.authorize(*server, true, requestLanguage())) handleTheme();
   });
   server->on("/js/jszip.min.js", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleJszip();
+    if (auth.authorize(*server, true, requestLanguage())) handleJszip();
   });
 
   server->on("/api/status", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleStatus();
+    if (auth.authorize(*server, true, requestLanguage())) handleStatus();
   });
   server->on("/api/files", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleFileListData();
+    if (auth.authorize(*server, true, requestLanguage())) handleFileListData();
   });
   server->on("/download", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleDownload();
+    if (auth.authorize(*server, true, requestLanguage())) handleDownload();
   });
 
   // Upload endpoint with special handling for multipart form data
   server->on(
       "/upload", HTTP_POST,
       [this] {
-        if (auth.authorize(*server)) handleUploadPost(upload);
+        if (auth.authorize(*server, true, requestLanguage())) handleUploadPost(upload);
       },
       [this] {
-        if (auth.authorize(*server, false)) handleUpload(upload);
+        if (auth.authorize(*server, false, requestLanguage())) handleUpload(upload);
       });
 
   // Create folder endpoint
   server->on("/mkdir", HTTP_POST, [this] {
-    if (auth.authorize(*server)) handleCreateFolder();
+    if (auth.authorize(*server, true, requestLanguage())) handleCreateFolder();
   });
 
   // Rename file endpoint
   server->on("/rename", HTTP_POST, [this] {
-    if (auth.authorize(*server)) handleRename();
+    if (auth.authorize(*server, true, requestLanguage())) handleRename();
   });
 
   // Move file endpoint
   server->on("/move", HTTP_POST, [this] {
-    if (auth.authorize(*server)) handleMove();
+    if (auth.authorize(*server, true, requestLanguage())) handleMove();
   });
 
   // Delete file/folder endpoint
   server->on("/delete", HTTP_POST, [this] {
-    if (auth.authorize(*server)) handleDelete();
+    if (auth.authorize(*server, true, requestLanguage())) handleDelete();
   });
 
   // Settings endpoints
   server->on("/settings", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleSettingsPage();
+    if (auth.authorize(*server, true, requestLanguage())) handleSettingsPage();
   });
   server->on("/api/settings", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleGetSettings();
+    if (auth.authorize(*server, true, requestLanguage())) handleGetSettings();
   });
   server->on("/api/settings", HTTP_POST, [this] {
-    if (auth.authorize(*server)) handlePostSettings();
+    if (auth.authorize(*server, true, requestLanguage())) handlePostSettings();
   });
 
   // Font management endpoints
   server->on("/fonts", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleFontsPage();
+    if (auth.authorize(*server, true, requestLanguage())) handleFontsPage();
   });
   server->on("/api/fonts", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleFontList();
+    if (auth.authorize(*server, true, requestLanguage())) handleFontList();
   });
   server->on(
       "/api/fonts/upload", HTTP_POST,
       [this] {
-        if (auth.authorize(*server)) handleFontUpload();
+        if (auth.authorize(*server, true, requestLanguage())) handleFontUpload();
       },
       [this] {
-        if (auth.authorize(*server, false)) handleFontUploadData();
+        if (auth.authorize(*server, false, requestLanguage())) handleFontUploadData();
       });
   server->on("/api/fonts/delete", HTTP_POST, [this] {
-    if (auth.authorize(*server)) handleFontDelete();
+    if (auth.authorize(*server, true, requestLanguage())) handleFontDelete();
   });
 
   // OPDS server endpoints
   server->on("/api/opds", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleGetOpdsServers();
+    if (auth.authorize(*server, true, requestLanguage())) handleGetOpdsServers();
   });
   server->on("/api/opds", HTTP_POST, [this] {
-    if (auth.authorize(*server)) handlePostOpdsServer();
+    if (auth.authorize(*server, true, requestLanguage())) handlePostOpdsServer();
   });
   server->on("/api/opds/delete", HTTP_POST, [this] {
-    if (auth.authorize(*server)) handleDeleteOpdsServer();
+    if (auth.authorize(*server, true, requestLanguage())) handleDeleteOpdsServer();
   });
 
   // Wi-Fi credential endpoints
   server->on("/api/wifi", HTTP_GET, [this] {
-    if (auth.authorize(*server)) handleGetWifiNetworks();
+    if (auth.authorize(*server, true, requestLanguage())) handleGetWifiNetworks();
   });
   server->on("/api/wifi", HTTP_POST, [this] {
-    if (auth.authorize(*server)) handlePostWifiNetwork();
+    if (auth.authorize(*server, true, requestLanguage())) handlePostWifiNetwork();
   });
   server->on("/api/wifi/delete", HTTP_POST, [this] {
-    if (auth.authorize(*server)) handleDeleteWifiNetwork();
+    if (auth.authorize(*server, true, requestLanguage())) handleDeleteWifiNetwork();
   });
 
   server->on("/api/session", HTTP_GET, [this] {
-    if (!auth.authorize(*server)) return;
+    if (!auth.authorize(*server, true, requestLanguage())) return;
     server->sendHeader("Cache-Control", "no-store");
     server->send(200, "text/plain", auth.token());
   });
 
   server->onNotFound([this] {
-    if (auth.authorize(*server)) handleNotFound();
+    if (auth.authorize(*server, true, requestLanguage())) handleNotFound();
   });
   LOG_DBG("WEB", "[MEM] Free heap after route setup: %d bytes", ESP.getFreeHeap());
 
@@ -469,6 +498,7 @@ void CrossPointWebServer::handleJszip() const {
 }
 
 void CrossPointWebServer::handleNotFound() const {
+  const Language lang = requestLanguage();
   // CORS preflight: routes are registered per-method, so OPTIONS requests land
   // here. Only same-origin browser requests are allowed by the auth gate.
   if (server->method() == HTTP_OPTIONS) {
@@ -485,12 +515,14 @@ void CrossPointWebServer::handleNotFound() const {
     return;
   }
 
-  String message = "404 Not Found\n\n";
+  String message = trWeb(lang, StrId::STR_WEB_NOT_FOUND);
+  message += "\n\n";
   message += "URI: " + server->uri() + "\n";
   server->send(404, "text/plain", message);
 }
 
 void CrossPointWebServer::handleStatus() const {
+  const Language lang = requestLanguage();
   // Get correct IP based on AP vs STA mode
   const String ipAddr = apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
 
@@ -525,7 +557,7 @@ void CrossPointWebServer::handleStatus() const {
   if (valid) {
     doc["serial"] = snBuf;
   } else {
-    doc["serial"] = "Not found";
+    doc["serial"] = trWeb(lang, StrId::STR_WEB_SERIAL_NOT_FOUND);
   }
 
   String response;
@@ -588,6 +620,7 @@ void CrossPointWebServer::handleFileList() const {
 }
 
 void CrossPointWebServer::handleFileListData() const {
+  const Language lang = requestLanguage();
   // Get current path from query string (default to root)
   String currentPath = "/";
   if (server->hasArg("path")) {
@@ -595,7 +628,7 @@ void CrossPointWebServer::handleFileListData() const {
   }
 
   if (currentPath.isEmpty()) {
-    server->send(403, "text/plain", "Protected path");
+    server->send(403, "text/plain", trWeb(lang, StrId::STR_WEB_PROTECTED_PATH));
     return;
   }
 
@@ -635,30 +668,31 @@ void CrossPointWebServer::handleFileListData() const {
 }
 
 void CrossPointWebServer::handleDownload() {
+  const Language lang = requestLanguage();
   if (!server->hasArg("path")) {
-    server->send(400, "text/plain", "Missing path");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_PATH));
     return;
   }
 
   String itemPath = normalizeWebPath(server->arg("path"));
   if (itemPath.isEmpty() || itemPath == "/") {
-    server->send(400, "text/plain", "Invalid path");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_PATH));
     return;
   }
 
   if (!Storage.exists(itemPath.c_str())) {
-    server->send(404, "text/plain", "Item not found");
+    server->send(404, "text/plain", trWeb(lang, StrId::STR_WEB_ITEM_NOT_FOUND));
     return;
   }
 
   HalFile file = Storage.open(itemPath.c_str());
   if (!file) {
-    server->send(500, "text/plain", "Failed to open file");
+    server->send(500, "text/plain", trWeb(lang, StrId::STR_WEB_FAILED_OPEN_FILE));
     return;
   }
   if (file.isDirectory()) {
     file.close();
-    server->send(400, "text/plain", "Path is a directory");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_PATH_IS_DIRECTORY));
     return;
   }
 
@@ -735,6 +769,7 @@ static bool flushUploadBuffer(CrossPointWebServer::UploadState& state) {
 }
 
 void CrossPointWebServer::handleUpload(UploadState& state) const {
+  const Language lang = requestLanguage();
   static size_t lastLoggedSize = 0;
 
   // Reset watchdog at start of every upload callback - HTTP parsing can be slow
@@ -763,7 +798,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
     writeCount = 0;
 
     if (!FsHelpers::isSafePathComponent(state.fileName) || isProtectedItemName(state.fileName)) {
-      state.error = "Invalid file name";
+      state.error = trWeb(lang, StrId::STR_WEB_INVALID_FILE_NAME);
       LOG_DBG("WEB", "[UPLOAD] Rejected unsafe filename: %s", state.fileName.c_str());
       return;
     }
@@ -778,7 +813,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
     }
 
     if (state.path.isEmpty()) {
-      state.error = "Protected path";
+      state.error = trWeb(lang, StrId::STR_WEB_PROTECTED_PATH);
       return;
     }
 
@@ -793,7 +828,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
     // Check if file already exists - SD operations can be slow
     resetTaskWatchdogIfSubscribed();
     if (Storage.exists(filePath.c_str())) {
-      state.error = "File already exists: " + state.fileName;
+      state.error = String(trWeb(lang, StrId::STR_WEB_FILE_EXISTS)) + " " + state.fileName;
       LOG_DBG("WEB", "[UPLOAD] Collision: %s", filePath.c_str());
       return;
     }
@@ -801,7 +836,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
     // Open file for writing - this can be slow due to FAT cluster allocation
     resetTaskWatchdogIfSubscribed();
     if (!Storage.openFileForWrite("WEB", filePath, state.file)) {
-      state.error = "Failed to create file on SD card";
+      state.error = trWeb(lang, StrId::STR_WEB_CREATE_FILE_FAILED);
       LOG_DBG("WEB", "[UPLOAD] FAILED to create file: %s", filePath.c_str());
       return;
     }
@@ -827,7 +862,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
         // Flush buffer when full
         if (state.bufferPos >= UploadState::UPLOAD_BUFFER_SIZE) {
           if (!flushUploadBuffer(state)) {
-            state.error = "Failed to write to SD card - disk may be full";
+            state.error = trWeb(lang, StrId::STR_WEB_WRITE_FAILED_DISK);
             state.file.close();
             return;
           }
@@ -849,7 +884,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
     if (state.file) {
       // Flush any remaining buffered data
       if (!flushUploadBuffer(state)) {
-        state.error = "Failed to write final data to SD card";
+        state.error = trWeb(lang, StrId::STR_WEB_WRITE_FINAL_FAILED);
       }
       state.file.close();
 
@@ -880,24 +915,27 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
       filePath += state.fileName;
       Storage.remove(filePath.c_str());
     }
-    state.error = "Upload aborted";
+    state.error = trWeb(lang, StrId::STR_WEB_UPLOAD_ABORTED);
     LOG_DBG("WEB", "Upload aborted");
   }
 }
 
 void CrossPointWebServer::handleUploadPost(UploadState& state) const {
+  const Language lang = requestLanguage();
   if (state.success) {
-    server->send(200, "text/plain", "File uploaded successfully: " + state.fileName);
+    server->send(200, "text/plain", String(trWeb(lang, StrId::STR_WEB_UPLOAD_OK)) + " " + state.fileName);
   } else {
-    const String error = state.error.isEmpty() ? "Unknown error during upload" : state.error;
+    const String error = state.error.isEmpty() ? String(trWeb(lang, StrId::STR_WEB_UPLOAD_UNKNOWN_ERROR))
+                                             : state.error;
     server->send(400, "text/plain", error);
   }
 }
 
 void CrossPointWebServer::handleCreateFolder() const {
+  const Language lang = requestLanguage();
   // Get folder name from form data
   if (!server->hasArg("name")) {
-    server->send(400, "text/plain", "Missing folder name");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_FOLDER_NAME));
     return;
   }
 
@@ -905,17 +943,17 @@ void CrossPointWebServer::handleCreateFolder() const {
 
   // Validate folder name
   if (folderName.isEmpty()) {
-    server->send(400, "text/plain", "Folder name cannot be empty");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_FOLDER_NAME_EMPTY));
     return;
   }
   if (!FsHelpers::isSafePathComponent(folderName)) {
     LOG_DBG("WEB", "Rejected unsafe folder name: %s", folderName.c_str());
-    server->send(400, "text/plain", "Invalid folder name");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_FOLDER_NAME));
     return;
   }
   if (isProtectedItemName(folderName)) {
     LOG_DBG("WEB", "Rejected protected folder name: %s", folderName.c_str());
-    server->send(403, "text/plain", "Cannot create protected item");
+    server->send(403, "text/plain", trWeb(lang, StrId::STR_WEB_CANNOT_CREATE_PROTECTED));
     return;
   }
 
@@ -926,7 +964,7 @@ void CrossPointWebServer::handleCreateFolder() const {
   }
 
   if (parentPath.isEmpty()) {
-    server->send(403, "text/plain", "Protected path");
+    server->send(403, "text/plain", trWeb(lang, StrId::STR_WEB_PROTECTED_PATH));
     return;
   }
 
@@ -939,23 +977,24 @@ void CrossPointWebServer::handleCreateFolder() const {
 
   // Check if already exists
   if (Storage.exists(folderPath.c_str())) {
-    server->send(400, "text/plain", "Folder already exists");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_FOLDER_EXISTS));
     return;
   }
 
   // Create the folder
   if (Storage.mkdir(folderPath.c_str())) {
     LOG_DBG("WEB", "Folder created successfully: %s", folderPath.c_str());
-    server->send(200, "text/plain", "Folder created: " + folderName);
+    server->send(200, "text/plain", String(trWeb(lang, StrId::STR_WEB_FOLDER_CREATED)) + " " + folderName);
   } else {
     LOG_DBG("WEB", "Failed to create folder: %s", folderPath.c_str());
-    server->send(500, "text/plain", "Failed to create folder");
+    server->send(500, "text/plain", trWeb(lang, StrId::STR_WEB_CREATE_FOLDER_FAILED));
   }
 }
 
 void CrossPointWebServer::handleRename() const {
+  const Language lang = requestLanguage();
   if (!server->hasArg("path") || !server->hasArg("name")) {
-    server->send(400, "text/plain", "Missing path or new name");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_PATH_OR_NAME));
     return;
   }
 
@@ -964,45 +1003,45 @@ void CrossPointWebServer::handleRename() const {
   newName.trim();
 
   if (itemPath.isEmpty() || itemPath == "/") {
-    server->send(400, "text/plain", "Invalid path");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_PATH));
     return;
   }
   if (newName.isEmpty()) {
-    server->send(400, "text/plain", "New name cannot be empty");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_NEW_NAME_EMPTY));
     return;
   }
   if (newName.indexOf('/') >= 0 || newName.indexOf('\\') >= 0) {
-    server->send(400, "text/plain", "Invalid file name");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_FILE_NAME));
     return;
   }
   if (isProtectedItemName(newName)) {
-    server->send(403, "text/plain", "Cannot rename to protected name");
+    server->send(403, "text/plain", trWeb(lang, StrId::STR_WEB_CANNOT_RENAME_TO_PROTECTED));
     return;
   }
 
   const String itemName = itemPath.substring(itemPath.lastIndexOf('/') + 1);
   if (isProtectedItemName(itemName)) {
-    server->send(403, "text/plain", "Cannot rename protected item");
+    server->send(403, "text/plain", trWeb(lang, StrId::STR_WEB_CANNOT_RENAME_PROTECTED));
     return;
   }
   if (newName == itemName) {
-    server->send(200, "text/plain", "Name unchanged");
+    server->send(200, "text/plain", trWeb(lang, StrId::STR_WEB_NAME_UNCHANGED));
     return;
   }
 
   if (!Storage.exists(itemPath.c_str())) {
-    server->send(404, "text/plain", "Item not found");
+    server->send(404, "text/plain", trWeb(lang, StrId::STR_WEB_ITEM_NOT_FOUND));
     return;
   }
 
   HalFile file = Storage.open(itemPath.c_str());
   if (!file) {
-    server->send(500, "text/plain", "Failed to open file");
+    server->send(500, "text/plain", trWeb(lang, StrId::STR_WEB_FAILED_OPEN_FILE));
     return;
   }
   if (file.isDirectory()) {
     file.close();
-    server->send(400, "text/plain", "Only files can be renamed");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_ONLY_FILES_RENAME));
     return;
   }
 
@@ -1018,7 +1057,7 @@ void CrossPointWebServer::handleRename() const {
 
   if (Storage.exists(newPath.c_str())) {
     file.close();
-    server->send(409, "text/plain", "Target already exists");
+    server->send(409, "text/plain", trWeb(lang, StrId::STR_WEB_TARGET_EXISTS));
     return;
   }
 
@@ -1028,16 +1067,17 @@ void CrossPointWebServer::handleRename() const {
 
   if (success) {
     LOG_DBG("WEB", "Renamed file: %s -> %s", itemPath.c_str(), newPath.c_str());
-    server->send(200, "text/plain", "Renamed successfully");
+    server->send(200, "text/plain", trWeb(lang, StrId::STR_WEB_RENAMED));
   } else {
     LOG_ERR("WEB", "Failed to rename file: %s -> %s", itemPath.c_str(), newPath.c_str());
-    server->send(500, "text/plain", "Failed to rename file");
+    server->send(500, "text/plain", trWeb(lang, StrId::STR_WEB_RENAME_FAILED));
   }
 }
 
 void CrossPointWebServer::handleMove() const {
+  const Language lang = requestLanguage();
   if (!server->hasArg("path") || !server->hasArg("dest")) {
-    server->send(400, "text/plain", "Missing path or destination");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_PATH_OR_DEST));
     return;
   }
 
@@ -1045,46 +1085,46 @@ void CrossPointWebServer::handleMove() const {
   String destPath = normalizeWebPath(server->arg("dest"));
 
   if (itemPath.isEmpty() || itemPath == "/") {
-    server->send(400, "text/plain", "Invalid path");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_PATH));
     return;
   }
   if (destPath.isEmpty()) {
-    server->send(400, "text/plain", "Invalid destination");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_DEST));
     return;
   }
 
   const String itemName = itemPath.substring(itemPath.lastIndexOf('/') + 1);
   if (isProtectedItemName(itemName)) {
-    server->send(403, "text/plain", "Cannot move protected item");
+    server->send(403, "text/plain", trWeb(lang, StrId::STR_WEB_CANNOT_MOVE_PROTECTED));
     return;
   }
   if (destPath != "/") {
     const String destName = destPath.substring(destPath.lastIndexOf('/') + 1);
     if (isProtectedItemName(destName)) {
-      server->send(403, "text/plain", "Cannot move into protected folder");
+      server->send(403, "text/plain", trWeb(lang, StrId::STR_WEB_CANNOT_MOVE_INTO_PROTECTED));
       return;
     }
   }
 
   if (!Storage.exists(itemPath.c_str())) {
-    server->send(404, "text/plain", "Item not found");
+    server->send(404, "text/plain", trWeb(lang, StrId::STR_WEB_ITEM_NOT_FOUND));
     return;
   }
 
   HalFile file = Storage.open(itemPath.c_str());
   if (!file) {
-    server->send(500, "text/plain", "Failed to open file");
+    server->send(500, "text/plain", trWeb(lang, StrId::STR_WEB_FAILED_OPEN_FILE));
     return;
   }
   if (file.isDirectory()) {
     file.close();
-    server->send(400, "text/plain", "Only files can be moved");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_ONLY_FILES_MOVE));
     return;
   }
 
   if (!Storage.exists(destPath.c_str())) {
     file.close();
-    server->send(404, "text/plain", "Destination not found");
+    server->send(404, "text/plain", trWeb(lang, StrId::STR_WEB_DEST_NOT_FOUND));
     return;
   }
   HalFile destDir = Storage.open(destPath.c_str());
@@ -1093,7 +1133,7 @@ void CrossPointWebServer::handleMove() const {
       destDir.close();
     }
     file.close();
-    server->send(400, "text/plain", "Destination is not a folder");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_DEST_NOT_FOLDER));
     return;
   }
   destDir.close();
@@ -1106,12 +1146,12 @@ void CrossPointWebServer::handleMove() const {
 
   if (newPath == itemPath) {
     file.close();
-    server->send(200, "text/plain", "Already in destination");
+    server->send(200, "text/plain", trWeb(lang, StrId::STR_WEB_ALREADY_IN_DEST));
     return;
   }
   if (Storage.exists(newPath.c_str())) {
     file.close();
-    server->send(409, "text/plain", "Target already exists");
+    server->send(409, "text/plain", trWeb(lang, StrId::STR_WEB_TARGET_EXISTS));
     return;
   }
 
@@ -1121,25 +1161,26 @@ void CrossPointWebServer::handleMove() const {
 
   if (success) {
     LOG_DBG("WEB", "Moved file: %s -> %s", itemPath.c_str(), newPath.c_str());
-    server->send(200, "text/plain", "Moved successfully");
+    server->send(200, "text/plain", trWeb(lang, StrId::STR_WEB_MOVED));
   } else {
     LOG_ERR("WEB", "Failed to move file: %s -> %s", itemPath.c_str(), newPath.c_str());
-    server->send(500, "text/plain", "Failed to move file");
+    server->send(500, "text/plain", trWeb(lang, StrId::STR_WEB_MOVE_FAILED));
   }
 }
 
 void CrossPointWebServer::handleDelete() const {
+  const Language lang = requestLanguage();
   // To ensure backwards compatibility, plain `path` is mapped
   // to a single element JSON array.
   bool hasPathArg = server->hasArg("path");
   bool hasPathsArg = server->hasArg("paths");
   // Check 'paths' or `path` argument is provided
   if (!(hasPathArg || hasPathsArg)) {
-    server->send(400, "text/plain", "Missing `path` or `paths` argument");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_DELETE_ARG));
     return;
   }
   if (hasPathArg && hasPathsArg) {
-    server->send(400, "text/plain", "Provide either 'path' or 'paths', not both");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_PROVIDE_PATH_OR_PATHS));
     return;
   }
 
@@ -1155,19 +1196,19 @@ void CrossPointWebServer::handleDelete() const {
     doc.add(pathsArg);
   }
   if (error) {
-    server->send(400, "text/plain", "Invalid paths format");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_PATHS_FORMAT));
     return;
   }
 
   auto paths = doc.as<JsonArray>();
   if (paths.isNull() || paths.size() == 0) {
-    server->send(400, "text/plain", "No paths provided");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_NO_PATHS));
     return;
   }
 
   for (const auto& p : paths) {
     if (!p.is<const char*>() || normalizeWebPath(p.as<String>()).isEmpty() || p.as<String>() == "/") {
-      server->send(403, "text/plain", "Protected path");
+      server->send(403, "text/plain", trWeb(lang, StrId::STR_WEB_PROTECTED_PATH));
       return;
     }
   }
@@ -1181,14 +1222,14 @@ void CrossPointWebServer::handleDelete() const {
 
     // Validate path
     if (itemPath.isEmpty() || itemPath == "/") {
-      failedItems += itemPath + " (cannot delete root); ";
+      failedItems += itemPath + " (" + String(trWeb(lang, StrId::STR_WEB_DELETE_REASON_ROOT)) + "); ";
       allSuccess = false;
       continue;
     }
 
     // Check if item exists
     if (!Storage.exists(itemPath.c_str())) {
-      failedItems += itemPath + " (not found); ";
+      failedItems += itemPath + " (" + String(trWeb(lang, StrId::STR_WEB_DELETE_REASON_NOT_FOUND)) + "); ";
       allSuccess = false;
       continue;
     }
@@ -1202,7 +1243,7 @@ void CrossPointWebServer::handleDelete() const {
       if (entry) {
         entry.close();
         f.close();
-        failedItems += itemPath + " (folder not empty); ";
+        failedItems += itemPath + " (" + String(trWeb(lang, StrId::STR_WEB_DELETE_REASON_FOLDER_NOT_EMPTY)) + "); ";
         allSuccess = false;
         continue;
       }
@@ -1216,15 +1257,16 @@ void CrossPointWebServer::handleDelete() const {
     }
 
     if (!success) {
-      failedItems += itemPath + " (deletion failed); ";
+      failedItems += itemPath + " (" + String(trWeb(lang, StrId::STR_WEB_DELETE_REASON_FAILED)) + "); ";
       allSuccess = false;
     }
   }
 
   if (allSuccess) {
-    server->send(200, "text/plain", "All items deleted successfully");
+    server->send(200, "text/plain", trWeb(lang, StrId::STR_WEB_DELETE_ALL_OK));
   } else {
-    server->send(500, "text/plain", "Failed to delete some items: " + failedItems);
+    server->send(500, "text/plain",
+                String(trWeb(lang, StrId::STR_WEB_DELETE_SOME_FAILED)) + " " + failedItems);
   }
 }
 
@@ -1234,6 +1276,7 @@ void CrossPointWebServer::handleSettingsPage() const {
 }
 
 void CrossPointWebServer::handleGetSettings() const {
+  const Language lang = requestLanguage();
   // Pass the SD font registry so the fontFamily setting's enumStringValues
   // includes SD-resident families - otherwise the web API only exposes the
   // three built-in fonts.
@@ -1253,8 +1296,8 @@ void CrossPointWebServer::handleGetSettings() const {
 
     doc.clear();
     doc["key"] = s.key;
-    doc["name"] = plainButtonText(I18N.get(s.nameId));
-    doc["category"] = I18N.get(s.category);
+    doc["name"] = plainButtonText(trWeb(lang, s.nameId));
+    doc["category"] = trWeb(lang, s.category);
 
     switch (s.type) {
       case SettingType::TOGGLE: {
@@ -1278,7 +1321,7 @@ void CrossPointWebServer::handleGetSettings() const {
           }
         } else {
           for (const auto& opt : s.enumValues) {
-            options.add(I18N.get(opt));
+            options.add(trWeb(lang, opt));
           }
         }
         break;
@@ -1328,8 +1371,9 @@ void CrossPointWebServer::handleGetSettings() const {
 }
 
 void CrossPointWebServer::handlePostSettings() {
+  const Language lang = requestLanguage();
   if (!server->hasArg("plain")) {
-    server->send(400, "text/plain", "Missing JSON body");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_JSON));
     return;
   }
 
@@ -1337,7 +1381,8 @@ void CrossPointWebServer::handlePostSettings() {
   JsonDocument doc;
   const DeserializationError err = deserializeJson(doc, body);
   if (err) {
-    server->send(400, "text/plain", String("Invalid JSON: ") + err.c_str());
+    server->send(400, "text/plain",
+                  String(trWeb(lang, StrId::STR_WEB_INVALID_JSON)) + " " + err.c_str());
     return;
   }
 
@@ -1404,7 +1449,9 @@ void CrossPointWebServer::handlePostSettings() {
   SETTINGS.saveToFile();
 
   LOG_DBG("WEB", "Applied %d setting(s)", applied);
-  server->send(200, "text/plain", String("Applied ") + String(applied) + " setting(s)");
+    char appliedBody[64];
+  snprintf(appliedBody, sizeof(appliedBody), trWeb(lang, StrId::STR_WEB_SETTINGS_APPLIED_FORMAT), applied);
+  server->send(200, "text/plain", appliedBody);
 }
 
 // ---- OPDS Server API ----
@@ -1445,8 +1492,9 @@ void CrossPointWebServer::handleGetOpdsServers() const {
 }
 
 void CrossPointWebServer::handlePostOpdsServer() {
+  const Language lang = requestLanguage();
   if (!server->hasArg("plain")) {
-    server->send(400, "text/plain", "Missing JSON body");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_JSON));
     return;
   }
 
@@ -1454,7 +1502,8 @@ void CrossPointWebServer::handlePostOpdsServer() {
   JsonDocument doc;
   const DeserializationError err = deserializeJson(doc, body);
   if (err) {
-    server->send(400, "text/plain", String("Invalid JSON: ") + err.c_str());
+    server->send(400, "text/plain",
+                  String(trWeb(lang, StrId::STR_WEB_INVALID_JSON)) + " " + err.c_str());
     return;
   }
 
@@ -1471,7 +1520,7 @@ void CrossPointWebServer::handlePostOpdsServer() {
   if (doc["index"].is<int>()) {
     int idx = doc["index"].as<int>();
     if (idx < 0 || idx >= static_cast<int>(OPDS_STORE.getCount())) {
-      server->send(400, "text/plain", "Invalid server index");
+      server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_SERVER_INDEX));
       return;
     }
     // Preserve existing password if not explicitly provided
@@ -1487,7 +1536,7 @@ void CrossPointWebServer::handlePostOpdsServer() {
   } else {
     opdsServer.password = password;
     if (!OPDS_STORE.addServer(opdsServer)) {
-      server->send(400, "text/plain", "Cannot add server (limit reached)");
+      server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_SERVER_LIMIT));
       return;
     }
     LOG_DBG("WEB", "Added new OPDS server: %s", opdsServer.name.c_str());
@@ -1498,8 +1547,9 @@ void CrossPointWebServer::handlePostOpdsServer() {
 
 // Uses POST (not HTTP DELETE) because ESP32 WebServer doesn't support DELETE with body.
 void CrossPointWebServer::handleDeleteOpdsServer() {
+  const Language lang = requestLanguage();
   if (!server->hasArg("plain")) {
-    server->send(400, "text/plain", "Missing JSON body");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_JSON));
     return;
   }
 
@@ -1507,18 +1557,19 @@ void CrossPointWebServer::handleDeleteOpdsServer() {
   JsonDocument doc;
   const DeserializationError err = deserializeJson(doc, body);
   if (err) {
-    server->send(400, "text/plain", String("Invalid JSON: ") + err.c_str());
+    server->send(400, "text/plain",
+                  String(trWeb(lang, StrId::STR_WEB_INVALID_JSON)) + " " + err.c_str());
     return;
   }
 
   if (!doc["index"].is<int>()) {
-    server->send(400, "text/plain", "Missing index");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_INDEX));
     return;
   }
 
   int idx = doc["index"].as<int>();
   if (idx < 0 || idx >= static_cast<int>(OPDS_STORE.getCount())) {
-    server->send(400, "text/plain", "Invalid server index");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_SERVER_INDEX));
     return;
   }
 
@@ -1564,8 +1615,9 @@ void CrossPointWebServer::handleGetWifiNetworks() const {
 }
 
 void CrossPointWebServer::handlePostWifiNetwork() {
+  const Language lang = requestLanguage();
   if (!server->hasArg("plain")) {
-    server->send(400, "text/plain", "Missing JSON body");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_JSON));
     return;
   }
 
@@ -1573,13 +1625,14 @@ void CrossPointWebServer::handlePostWifiNetwork() {
   JsonDocument doc;
   const DeserializationError err = deserializeJson(doc, body);
   if (err) {
-    server->send(400, "text/plain", String("Invalid JSON: ") + err.c_str());
+    server->send(400, "text/plain",
+                  String(trWeb(lang, StrId::STR_WEB_INVALID_JSON)) + " " + err.c_str());
     return;
   }
 
   std::string ssid = doc["ssid"] | std::string("");
   if (ssid.empty()) {
-    server->send(400, "text/plain", "SSID is required");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_SSID_REQUIRED));
     return;
   }
 
@@ -1591,12 +1644,12 @@ void CrossPointWebServer::handlePostWifiNetwork() {
   if (doc["index"].is<int>()) {
     int idx = doc["index"].as<int>();
     if (idx < 0) {
-      server->send(400, "text/plain", "Invalid network index");
+      server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_NETWORK_INDEX));
       return;
     }
     const auto credential = WIFI_STORE.getCredentialAt(static_cast<size_t>(idx));
     if (!credential) {
-      server->send(400, "text/plain", "Invalid network index");
+      server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_NETWORK_INDEX));
       return;
     }
 
@@ -1613,14 +1666,14 @@ void CrossPointWebServer::handlePostWifiNetwork() {
     }
 
     if (!ok) {
-      server->send(400, "text/plain", "Failed to update Wi-Fi network");
+      server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_WIFI_UPDATE_FAILED));
       return;
     }
 
     LOG_DBG("WEB", "Updated Wi-Fi network at index %d (SSID: %s)", idx, ssid.c_str());
   } else {
     if (!WIFI_STORE.addCredential(ssid, password)) {
-      server->send(400, "text/plain", "Cannot add network (limit reached)");
+      server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_NETWORK_LIMIT));
       return;
     }
     LOG_DBG("WEB", "Added Wi-Fi network: %s", ssid.c_str());
@@ -1631,8 +1684,9 @@ void CrossPointWebServer::handlePostWifiNetwork() {
 
 // Uses POST (not HTTP DELETE) because ESP32 WebServer doesn't support DELETE with body.
 void CrossPointWebServer::handleDeleteWifiNetwork() {
+  const Language lang = requestLanguage();
   if (!server->hasArg("plain")) {
-    server->send(400, "text/plain", "Missing JSON body");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_JSON));
     return;
   }
 
@@ -1640,28 +1694,29 @@ void CrossPointWebServer::handleDeleteWifiNetwork() {
   JsonDocument doc;
   const DeserializationError err = deserializeJson(doc, body);
   if (err) {
-    server->send(400, "text/plain", String("Invalid JSON: ") + err.c_str());
+    server->send(400, "text/plain",
+                  String(trWeb(lang, StrId::STR_WEB_INVALID_JSON)) + " " + err.c_str());
     return;
   }
 
   if (!doc["index"].is<int>()) {
-    server->send(400, "text/plain", "Missing index");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_INDEX));
     return;
   }
 
   int idx = doc["index"].as<int>();
   if (idx < 0) {
-    server->send(400, "text/plain", "Invalid network index");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_NETWORK_INDEX));
     return;
   }
   const auto ssid = WIFI_STORE.getSsidAt(static_cast<size_t>(idx));
   if (!ssid) {
-    server->send(400, "text/plain", "Invalid network index");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_INVALID_NETWORK_INDEX));
     return;
   }
 
   if (!WIFI_STORE.removeCredential(*ssid)) {
-    server->send(400, "text/plain", "Failed to delete Wi-Fi network");
+    server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_WIFI_DELETE_FAILED));
     return;
   }
 
@@ -2004,6 +2059,16 @@ void CrossPointWebServer::handleFontUploadData() {
 
       fontUpload.familyName = family.c_str();
 
+      // Build and validate the complete destination path before touching the
+      // SD card: an invalid or over-long path must not create a directory or
+      // open a truncated target for writing. A failure leaves fontUpload
+      // invalid, so the upload reports the existing 400 without cleanup work.
+      char path[FontInstaller::MAX_FONT_PATH_SIZE];
+      if (!FontInstaller::buildFontPath(family.c_str(), filename.c_str(), path, sizeof(path))) {
+        LOG_ERR("WEB", "Invalid font path: %s/%s", family.c_str(), filename.c_str());
+        break;
+      }
+
       // Create a temporary FontInstaller for directory creation
       FontInstaller installer(sdFontSystem.registry());
       if (!installer.ensureFamilyDir(family.c_str())) {
@@ -2011,8 +2076,6 @@ void CrossPointWebServer::handleFontUploadData() {
         break;
       }
 
-      char path[128];
-      FontInstaller::buildFontPath(family.c_str(), filename.c_str(), path, sizeof(path));
       if (Storage.exists(path)) {
         LOG_ERR("WEB", "Font file already exists");
         break;
@@ -2106,22 +2169,24 @@ void CrossPointWebServer::handleFontUploadData() {
 }
 
 void CrossPointWebServer::handleFontUpload() {
+  const Language lang = requestLanguage();
   if (fontUpload.valid) {
     sdFontSystem.markRegistryDirty();
     server->send(200, "application/json", "{\"ok\":true}");
     LOG_DBG("WEB", "Font upload complete: %s", fontUpload.filePath.c_str());
   } else {
-    server->send(400, "application/json", "{\"error\":\"Invalid .cpfont file\"}");
+    server->send(400, "application/json", webErrorBody(lang, StrId::STR_WEB_INVALID_CPFONT));
   }
 }
 
 void CrossPointWebServer::handleFontDelete() {
+  const Language lang = requestLanguage();
   String body = server->arg("plain");
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, body);
 
   if (err || !doc["family"].is<const char*>()) {
-    server->send(400, "application/json", "{\"error\":\"Invalid request\"}");
+    server->send(400, "application/json", webErrorBody(lang, StrId::STR_WEB_INVALID_REQUEST));
     return;
   }
 
@@ -2134,7 +2199,7 @@ void CrossPointWebServer::handleFontDelete() {
     server->send(200, "application/json", "{\"ok\":true}");
     LOG_DBG("WEB", "Deleted font family: %s", familyName);
   } else {
-    server->send(500, "application/json", "{\"error\":\"Delete failed\"}");
+    server->send(500, "application/json", webErrorBody(lang, StrId::STR_WEB_FONT_DELETE_FAILED));
     LOG_ERR("WEB", "Failed to delete font family: %s", familyName);
   }
 }

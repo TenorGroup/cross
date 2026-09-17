@@ -191,7 +191,7 @@ void StatusBarSettingsActivity::buildScreen(UiScreen& screen) {
   // bar) so the list never runs underneath it, plus the button-hints row below.
   // The preview is pinned directly above the hints (see render()), so the band
   // is just the bar + its label, not a floating gap.
-  const int statusBarHeight = UITheme::getInstance().getStatusBarHeight();
+  const int statusBarHeight = UITheme::getInstance().getStatusBarHeight(UITheme::StatusBarScope::Reader);
   const auto previewFooter =
       static_cast<int16_t>(SETTINGS.uiTheme == CrossPointSettings::TENOR_UI
                                ? 0
@@ -253,7 +253,7 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
   GUI.drawStatusBar(renderer, 75, 8, 32, title, metrics.buttonHintsHeight, 0, false);
 
   renderer.drawCenteredText(UI_10_FONT_ID,
-                            renderer.getScreenHeight() - UITheme::getInstance().getStatusBarHeight() -
+                            renderer.getScreenHeight() - UITheme::getInstance().getStatusBarHeight(UITheme::StatusBarScope::Reader) -
                                 metrics.buttonHintsHeight - verticalPreviewTextPadding,
                             tr(STR_PREVIEW));
 

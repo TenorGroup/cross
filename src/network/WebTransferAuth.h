@@ -1,5 +1,6 @@
 #pragma once
 
+#include <I18n.h>
 #include <WebServer.h>
 #include <base64.h>
 
@@ -64,11 +65,15 @@ class WebTransferAuth {
     return origin.substr(0, prefix.size()) == prefix && hostAllowed(origin.substr(prefix.size()));
   }
 
-  bool authorize(WebServer& server, bool reply = true) const {
+  // The language of the rejection body is the request's locale; callers that
+  // serve a non-localised surface (WebDAV) keep the English default.
+  bool authorize(WebServer& server, bool reply = true, Language language = Language::EN) const {
     const String host = server.header("Host");
     const String origin = server.header("Origin");
     if (!hostAllowed(host.c_str()) || (!origin.isEmpty() && origin != "http://" + host)) {
-      if (reply) server.send(403, "text/plain", "Forbidden origin");
+      if (reply) {
+        server.send(403, "text/plain", I18n::getInstance().get(StrId::STR_WEB_FORBIDDEN_ORIGIN, language));
+      }
       return false;
     }
     const String value = server.header("Authorization");
@@ -76,7 +81,7 @@ class WebTransferAuth {
     if (reply) {
       server.sendHeader("WWW-Authenticate", "Basic realm=\"tenor/cross\"");
       server.sendHeader("Cache-Control", "no-store");
-      server.send(401, "text/plain", "Use username tenor and the password shown on the reader.");
+      server.send(401, "text/plain", I18n::getInstance().get(StrId::STR_WEB_AUTH_REQUIRED, language));
     }
     return false;
   }

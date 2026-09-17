@@ -7,6 +7,7 @@
 #include <Logging.h>
 #include <esp_ota_ops.h>
 
+#include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "activities/home/FileBrowserActivity.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -15,11 +16,26 @@
 #include "network/FirmwareFlasher.h"
 
 void SdFirmwareUpdateActivity::onEnter() {
+  runtimeStarted = false;
+  // Stop BLE before entering the picker and before any validation/flash path.
+  if (!filetransfer::acquire()) {
+    LOG_ERR("FW", "BLE teardown incomplete; leaving SD firmware update");
+    finish();
+    return;
+  }
+  runtimeStarted = true;
   Activity::onEnter();
   // Build-identity marker - confirms which firmware build owns the SD update flow.
   LOG_INF("FW", "SdFirmwareUpdateActivity build=%s %s recovery=%d", __DATE__, __TIME__, recoveryMode ? 1 : 0);
   state = State::PICKING;
   launchPicker();
+}
+
+void SdFirmwareUpdateActivity::onExit() {
+  Activity::onExit();
+  // The owner covers picker, validation, confirmation, and the synchronous
+  // flash. Release it only once this activity is actually leaving.
+  filetransfer::release();
 }
 
 void SdFirmwareUpdateActivity::launchPicker() {

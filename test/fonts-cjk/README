@@ -1,0 +1,175 @@
+# CJK font — TEST ONLY, NOT PART OF ANY RELEASE
+
+Thư mục này là chỗ để thử đường đọc tiếng Trung (gói C1). **Không** tệp nào ở đây
+nằm trong bộ phát hành, **không** tệp nào được `platformio.ini` hay `src/` tham
+chiếu, và **chưa** có quyết định đưa họ font này vào bản phát hành. Muốn đưa vào
+phát hành thì phải qua bước đóng gói pack + manifest riêng và được duyệt.
+
+## Họ font
+
+| mục | giá trị |
+| --- | --- |
+| Họ | **Noto Sans SC** (Noto Sans Simplified Chinese) |
+| Phiên bản | **2.004** (`Version 2.004-H2;hotconv 1.0.118;makeotfexe 2.5.65603`) |
+| Tệp nguồn | `NotoSansSC[wght].ttf` — variable, trục `wght` 100–900, mặc định 100 (Thin) |
+| Số glyph | 31.036 · `unitsPerEm` 1000 · `cmap` 30.890 codepoint |
+| Bản quyền | `(c) 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.` |
+| Giấy phép | **SIL Open Font License 1.1** (cho phép nhúng và phân phối lại, kèm tệp OFL) |
+
+## Nguồn tải (công khai, chính thức)
+
+Đều tải từ kho chính thức `google/fonts`, thư mục `ofl/notosanssc`:
+
+- Font: https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf
+- Giấy phép: https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/OFL.txt
+- Khai báo nguồn thượng nguồn (`METADATA.pb`):
+  `repository_url: https://github.com/notofonts/noto-cjk`,
+  `commit: 523d033d6cb47f4a80c58a35753646f5c3608a78`
+
+Tệp nguồn này **trùng khít** tệp mà firmware đang dùng để dựng glyph tiếng Trung
+cho giao diện: `scripts/build_chinese_ui.py` đã ghim
+`SOURCE_SHA = a3041811…8af0da`, và sha256 tải về ở đây bằng đúng giá trị đó.
+Đây là lý do chọn họ này thay vì thêm một họ CJK mới: giấy phép OFL đã có sẵn
+trong bộ phát hành (`licenses/fonts/NotoSansSC-OFL.txt`), không phát sinh nghĩa vụ
+giấy phép mới.
+
+## sha256 (đo bằng `shasum -a 256`)
+
+Tệp font nguồn và giấy phép (gốc thư mục này):
+
+| tệp | byte | sha256 |
+| --- | --- | --- |
+| `NotoSansSC[wght].ttf` | 17.772.300 | `a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da` |
+| `NotoSansSC-OFL.txt` | 4.388 | `1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9` |
+
+`NotoSansSC-OFL.txt` **giống từng byte** với `licenses/fonts/NotoSansSC-OFL.txt`
+đang phát hành (`cmp` không báo khác biệt, cùng sha256).
+
+Gói `.cpfont` thử và manifest (`cpfont/`):
+
+| tệp | byte | sha256 |
+| --- | --- | --- |
+| `cpfont/NotoSansSC_12.cpfont` | 3.403.611 | `e6884aa3d99d917349c7b857e9c960770e7928e7cc03118a588e67bc2a039fca` |
+| `cpfont/NotoSansSC_18.cpfont` | 6.974.052 | `8381af43e27ab61c471c859c95465fb8c43faa9d8df3c8358061acfbf5d7e474` |
+| `cpfont/fonts.json` | — | `f2a9cf6764d1696180d1f2cf5fb516741b965fc0cbb4b776743c85fc1f6f6eec` |
+
+`NotoSansSC[wght].ttf` bị `.gitignore` cục bộ bỏ qua (17,7 MB, tải lại được và
+đã ghim hash) — theo lệ hiện có của repo: `*.cpfont`, `downloaded_fonts/`,
+`instanced_fonts/` cũng không được commit. `.cpfont` ở đây đã tự động bị
+`.gitignore` gốc bỏ qua (dòng `*.cpfont`). Bản quyền, README và script kiểm thì
+được theo dõi.
+
+## Độ phủ đo được
+
+`cjk` là preset khoảng mã của `lib/EpdFont/scripts/fontconvert_sdcard.py`:
+`U+3000–303F`, `U+3040–309F`, `U+30A0–30FF`, `U+4E00–9FFF`, `U+F900–FAFF`,
+`U+FF00–FFEF`.
+
+| khoảng | có / tổng |
+| --- | --- |
+| CJK Unified Ideographs (U+4E00–9FFF) | 20.976 / 20.992 |
+| CJK Symbols and Punctuation (U+3000–303F) | 64 / 64 |
+| Hiragana (U+3040–309F) | 93 / 96 |
+| Katakana (U+30A0–30FF) | 96 / 96 |
+| CJK Compatibility Ideographs (U+F900–FAFF) | 122 / 512 |
+| Halfwidth/Fullwidth Forms (U+FF00–FFEF) | 224 / 240 |
+
+Câu fixture C1 (`夜色渐深，书页间的线索渐渐清晰…`) và kana đều có đủ glyph.
+Preset `cjk` **không** gồm Hangul (Hangul thuộc preset `hangul`) — sách Trung–Hàn
+lẫn lộn cần thêm một họ Hangul riêng.
+
+## Vì sao phải nằm ngoài flash
+
+Đo bằng chính công cụ của repo (`fontconvert_sdcard.py`), sau khi instance
+`wght=400` — xem bảng sha256 ở trên:
+
+| cỡ | glyph | khoảng | byte `.cpfont` |
+| --- | --- | --- | --- |
+| 12 pt | 21.575 | 76 | 3.403.611 (3,25 MB) |
+| 18 pt | 21.575 | 76 | 6.974.052 (6,65 MB) |
+
+Bản ứng viên v1.0.3 dùng 6.254.455/6.553.600 byte flash (95,4%) — một cỡ 18 pt
+(6,65 MB) đã **không lọt** flash, chưa nói tới 8 cỡ × 3 mức đậm. Nên đường phân
+phối hợp lệ là **thẻ SD** (`docs/sd-card-fonts.md`), không phải nhúng vào binary.
+
+Lưu ý khi đóng gói: mặc định của trục `wght` là **100 (Thin)**; muốn ra độ đậm
+đọc sách phải instance 400/500 như `scripts/build_chinese_ui.py` đang làm.
+
+### Lệnh dựng lại đúng hai tệp `.cpfont` này
+
+    # 1) instance trục wght về 400 (mặc định của font là 100 = Thin)
+    python3 - <<'PY'
+    from fontTools.ttLib import TTFont
+    from fontTools.varLib.instancer import instantiateVariableFont
+    f = TTFont('test/fonts-cjk/NotoSansSC[wght].ttf', recalcTimestamp=False)
+    instantiateVariableFont(f, {'wght': 400}, inplace=True)
+    f.save('/tmp/ns400.ttf'); f.close()
+    PY
+
+    # 2) raster hoá preset "cjk" ở 12 và 18 pt
+    python3 lib/EpdFont/scripts/fontconvert_sdcard.py /tmp/ns400.ttf \
+      --intervals cjk --sizes 12,18 --style regular \
+      --name NotoSansSC --output-dir test/fonts-cjk/cpfont
+
+Dựng lại cho ra **đúng byte cũ** (sha256 ở trên khớp lại sau khi dựng lại độc lập).
+
+## Cài vào thẻ SD thử
+
+Không cần manifest cho đường này: registry quét thư mục (xem
+`docs/sd-card-fonts.md`). Chép vào thẻ theo đúng bố cục `<Họ>_<cỡ>.cpfont`,
+`<Họ>` phải trùng tên thư mục:
+
+    SD root/
+    └── .fonts/                     ← thư mục ẩn, ưu tiên (hoặc /fonts/ nếu muốn nhìn thấy)
+        └── NotoSansSC/
+            ├── NotoSansSC_12.cpfont
+            └── NotoSansSC_18.cpfont
+
+Rồi cắm thẻ và khởi động lại máy. Vào **Settings > Reader > Font Family**, họ
+hiện đúng tên **NotoSansSC** (tên họ lấy từ tên thư mục, không hard-code). Mục
+**Settings > Reader > Font Size** sẽ liệt kê các cỡ có trong họ: **12 và 18**.
+
+Giới hạn của cặp này (chủ ý, để thử chứ chưa phải gói hoàn chỉnh):
+
+- Chỉ có 12 và 18 pt. Dự phòng CJK cho **giao diện** khớp theo cỡ với các cỡ UI
+  8/10/12 pt, nên chỉ cỡ **12** có bản khớp; ở 8 và 10 pt giao diện vẫn ra ô
+  thiếu chữ cho tới khi họ có thêm `NotoSansSC_8.cpfont` và `NotoSansSC_10.cpfont`.
+- Chỉ có một mức đậm (`regular`), không có `weight-1/`, `weight-2/`.
+- Đây là ảnh bitmap 1-bit của font; chưa kiểm trên panel X3 lần nào.
+
+## Manifest `fonts.json`
+
+Tên tệp mà **firmware/simulator mong đợi** là **`fonts.json`** — tên này bị
+hard-code trong `src/activities/settings/FontDownloadActivity.h` (URL mặc định
+`…/releases/download/sd-fonts-m<FONTS_MANIFEST_VERSION>-b<CPFONT_VERSION>/fonts.json`,
+tức `sd-fonts-m1-b4` với manifest v1 và cpfont v4). Có thể đổi bằng
+`-DFONT_MANIFEST_URL='\"…/fonts.json\"'` khi build bản thử.
+
+`cpfont/fonts.json` ở đây do chính `scripts/generate-font-manifest.py` sinh:
+
+    python3 scripts/generate-font-manifest.py \
+      --input test/fonts-cjk/cpfont \
+      --base-url 'http://127.0.0.1:8000/' \
+      --output test/fonts-cjk/cpfont/fonts.json
+
+- `baseUrl` là **chỗ giữ chỗ cho bản thử cục bộ**; máy ghép `baseUrl` + `name`,
+  nên khi phục vụ thật phải sửa `baseUrl` cho trùng gốc với `FONT_MANIFEST_URL`.
+- Nội dung: `version: 1`, một họ `NotoSansSC`, styles `["regular"]`, hai tệp kèm
+  `size` và `crc32` (`0x64C6626B`, `0x0FFBC71E`).
+- `scripts`/`scriptGroups` **rỗng** vì họ này chưa có khối trong
+  `lib/EpdFont/scripts/sd-fonts.yaml`. Muốn hiện đúng nhóm chữ (CJK) khi thành
+  gói thật thì phải thêm khối đó — **cố ý không thêm lúc này**, vì sửa
+  `sd-fonts.yaml` là sửa đầu vào của bộ dựng gói phát hành.
+- `font-manifest.json` (danh sách sha256 trong zip phát hành) là tệp **khác**,
+  do bước đóng gói phát hành sinh; trong cây nguồn này không có script nào sinh
+  tên tệp đó.
+
+## Kiểm lại
+
+    shasum -a 256 'test/fonts-cjk/NotoSansSC[wght].ttf' test/fonts-cjk/NotoSansSC-OFL.txt
+    shasum -a 256 test/fonts-cjk/cpfont/*
+    python3 test/fonts-cjk/verify_font.py
+
+`verify_font.py` kiểm: hash ghim của font nguồn và OFL, OFL khớp bản đang phát
+hành, độ phủ CJK bắt buộc, cùng sự khớp giữa `fonts.json` với byte thật của hai
+tệp `.cpfont` (tên, `size`, `crc32`).

@@ -110,7 +110,8 @@ void XtcReaderActivity::renderStatusBarOverlay(GfxRenderer& renderer, const Stat
     return;
   }
 
-  const int statusBarHeight = UITheme::getInstance().getStatusBarHeight();
+  const int statusBarHeight =
+      UITheme::getInstance().getStatusBarHeight(UITheme::StatusBarScope::Reader);
   if (statusBarHeight <= 0) {
     return;
   }

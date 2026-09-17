@@ -177,7 +177,7 @@ void EpubReaderPercentSelectionActivity::render(RenderLock&&) {
 
   auto& theme = UITheme::getInstance();
   auto metrics = theme.getMetrics();
-  Rect screen = theme.getScreenSafeArea(renderer, true, false);
+  Rect screen = theme.getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
 
   GUI.drawHeader(renderer, Rect{screen.x, screen.y + metrics.topPadding, screen.width, metrics.headerHeight},
                  tr(STR_GO_TO_PERCENT));

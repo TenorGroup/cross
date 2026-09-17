@@ -48,7 +48,9 @@ namespace {
 // v44: Persist internal-link rectangles with each page for touch navigation.
 // v45: Internal EPUB links preserve CSS superscript/subscript positioning.
 // v46: Independent first-line indentation mode in the render-spec cache key.
-constexpr uint8_t SECTION_FILE_VERSION = 50;
+// v51: The drop cap boolean became a three-value mode whose size differs, so a
+// v50 header would be read as a different setting; those caches are discarded.
+constexpr uint8_t SECTION_FILE_VERSION = 51;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
@@ -68,8 +70,9 @@ constexpr uint8_t SECTION_FILE_INCOMPLETE_VERSION = 0;
 constexpr uint8_t SECTION_FILE_PARTIAL_VERSION = 0xFE - (SECTION_FILE_VERSION - 28);
 constexpr uint32_t HEADER_SIZE =
     sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(bool) + sizeof(uint8_t) +
-    sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) + sizeof(uint8_t) +
-    sizeof(bool) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t);
+    sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
+    sizeof(uint8_t) + sizeof(bool) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
+    sizeof(uint32_t);
 }  // namespace
 
 // Out-of-line so the unique_ptr<ChapterHtmlSlimParser> in BuildContext can be
@@ -114,10 +117,11 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
   }
   static_assert(HEADER_SIZE == sizeof(SECTION_FILE_VERSION) + sizeof(spec.fontId) + sizeof(spec.lineCompression) +
                                    sizeof(spec.extraParagraphSpacing) + sizeof(spec.paragraphIndent) +
-                                   sizeof(spec.letterSpacing) + sizeof(spec.paragraphAlignment) +
+                                   sizeof(spec.letterSpacing) + sizeof(spec.wordSpacing) +
+                                   sizeof(spec.paragraphAlignment) +
                                    sizeof(spec.viewportWidth) + sizeof(spec.viewportHeight) + sizeof(pageCount) +
                                    sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) +
-                                   sizeof(spec.imageRendering) + sizeof(spec.focusReadingEnabled) + sizeof(uint32_t) +
+                                   sizeof(spec.imageRendering) + sizeof(spec.dropCapMode) + sizeof(uint32_t) +
                                    sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t),
                 "Header size mismatch");
   // Written as the incomplete sentinel; finalizeBuild() patches it to
@@ -128,13 +132,14 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
   serialization::writePod(file, spec.extraParagraphSpacing);
   serialization::writePod(file, spec.paragraphIndent);
   serialization::writePod(file, spec.letterSpacing);
+  serialization::writePod(file, spec.wordSpacing);
   serialization::writePod(file, spec.paragraphAlignment);
   serialization::writePod(file, spec.viewportWidth);
   serialization::writePod(file, spec.viewportHeight);
   serialization::writePod(file, spec.hyphenationEnabled);
   serialization::writePod(file, spec.embeddedStyle);
   serialization::writePod(file, spec.imageRendering);
-  serialization::writePod(file, spec.focusReadingEnabled);
+  serialization::writePod(file, spec.dropCapMode);
   serialization::writePod(file, pageCount);  // Placeholder for page count (will be initially 0, patched later)
   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for LUT offset (patched later)
   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for anchor map offset (patched later)
@@ -168,38 +173,50 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     uint8_t fileExtraParagraphSpacing;
     uint8_t fileParagraphIndent;
     int8_t fileLetterSpacing;
+    uint8_t fileWordSpacing;
     uint8_t fileParagraphAlignment;
     bool fileHyphenationEnabled;
     bool fileEmbeddedStyle;
     uint8_t fileImageRendering;
-    bool fileFocusReadingEnabled;
+    uint8_t fileDropCapMode;
     serialization::readPod(file, fileFontId);
     serialization::readPod(file, fileLineCompression);
     serialization::readPod(file, fileExtraParagraphSpacing);
     serialization::readPod(file, fileParagraphIndent);
     serialization::readPod(file, fileLetterSpacing);
+    serialization::readPod(file, fileWordSpacing);
     serialization::readPod(file, fileParagraphAlignment);
     serialization::readPod(file, fileViewportWidth);
     serialization::readPod(file, fileViewportHeight);
     serialization::readPod(file, fileHyphenationEnabled);
     serialization::readPod(file, fileEmbeddedStyle);
     serialization::readPod(file, fileImageRendering);
-    serialization::readPod(file, fileFocusReadingEnabled);
+    serialization::readPod(file, fileDropCapMode);
 
     if (spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
         spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.paragraphIndent != fileParagraphIndent ||
-        spec.letterSpacing != fileLetterSpacing || spec.paragraphAlignment != fileParagraphAlignment ||
+        spec.letterSpacing != fileLetterSpacing || spec.wordSpacing != fileWordSpacing ||
+        spec.paragraphAlignment != fileParagraphAlignment ||
         spec.viewportWidth != fileViewportWidth || spec.viewportHeight != fileViewportHeight ||
         spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
-        spec.imageRendering != fileImageRendering || spec.focusReadingEnabled != fileFocusReadingEnabled) {
+        spec.imageRendering != fileImageRendering || spec.dropCapMode != fileDropCapMode) {
       file.close();
       LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
+      LOG_INF("SCT", "Section cache MISS: params %ux%u font %d != file %ux%u font %d",
+              static_cast<unsigned>(spec.viewportWidth), static_cast<unsigned>(spec.viewportHeight), spec.fontId,
+              static_cast<unsigned>(fileViewportWidth), static_cast<unsigned>(fileViewportHeight), fileFontId);
       clearCache();
       return false;
     }
   }
 
   serialization::readPod(file, pageCount);
+
+  // Dau vet truc tiep cho nghiem thu: mot dong cho biet cache duoc DUNG LAI hay khong,
+  // cung voi vung nhin da ghi trong header. Khong doi hanh vi, chi de doc.
+  LOG_INF("SCT", "Section cache HIT: %u pages, viewport %ux%u, partial=%u", static_cast<unsigned>(pageCount),
+          static_cast<unsigned>(spec.viewportWidth), static_cast<unsigned>(spec.viewportHeight),
+          static_cast<unsigned>(filePartial ? 1 : 0));
 
   if (filePartial) {
     // A partial's pageCount is the watermark of a suspended build. Read the watermark
@@ -341,7 +358,8 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     }
 
     if (!streamed) {
-      LOG_ERR("SCT", "Failed to stream item contents to temp file after retries");
+      LOG_ERR("SCT", "Failed to stream item contents to temp file after retries free=%u largest=%u",
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
       return false;
     }
 
@@ -357,8 +375,15 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     }
   }
 
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("SCT", "EPUB_BUILD stage=html mode=%s cached=%u free=%u largest=%u", reusedHtml ? "reused" : "new",
+          htmlCached ? 1u : 0u, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+
   if (!Storage.openFileForWrite("SCT", binTmpPath(), file)) {
     if (!reusedHtml) Storage.remove(tmpHtmlPath.c_str());
+    LOG_ERR("SCT", "Failed to open section temp free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
     return false;
   }
   // Header is written with the incomplete-version sentinel; finalizeBuild() commits it.
@@ -366,7 +391,8 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
 
   auto ctx = makeUniqueNoThrow<BuildContext>();
   if (!ctx) {
-    LOG_ERR("SCT", "OOM: BuildContext");
+    LOG_ERR("SCT", "OOM: BuildContext free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
     file.close();
     Storage.remove(binTmpPath().c_str());
     if (!reusedHtml) Storage.remove(tmpHtmlPath.c_str());
@@ -387,9 +413,19 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   if (spec.embeddedStyle) {
     ctx->cssParser = epub->getCssParser();
     if (ctx->cssParser) {
+#ifdef TENOR_UI_ACCEPTANCE
+      LOG_DBG("SCT", "EPUB_BUILD stage=css_before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+              static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
       const CssParser::CacheLoadResult cacheResult = ctx->cssParser->loadFromCache();
+#ifdef TENOR_UI_ACCEPTANCE
+      LOG_DBG("SCT", "EPUB_BUILD stage=css_after result=%u free=%u largest=%u",
+              static_cast<unsigned>(cacheResult), static_cast<unsigned>(ESP.getFreeHeap()),
+              static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
       if (cacheResult == CssParser::CacheLoadResult::LowMemory) {
-        LOG_ERR("SCT", "Insufficient heap to hydrate CSS; section build deferred");
+        LOG_ERR("SCT", "Insufficient heap to hydrate CSS; section build deferred free=%u largest=%u",
+                static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
         ctx->cssParser->clear();
         file.close();
         Storage.remove(binTmpPath().c_str());
@@ -397,9 +433,15 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
         return false;
       }
       if (cacheResult == CssParser::CacheLoadResult::Invalid) {
-        LOG_ERR("SCT", "Failed to load CSS from cache");
+        LOG_ERR("SCT", "Failed to load CSS from cache free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getMaxAllocHeap()));
       }
     }
+  } else {
+#ifdef TENOR_UI_ACCEPTANCE
+    LOG_DBG("SCT", "EPUB_BUILD stage=css_disabled free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   }
 
   // Collect TOC anchors for this spine so the parser can insert page breaks at chapter boundaries
@@ -420,19 +462,24 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   // captures the BuildContext pointer to append to its in-RAM LUT; build_ owns the
   // context for the parser's whole lifetime.
   BuildContext* ctxPtr = ctx.get();
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("SCT", "EPUB_BUILD stage=parser_before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   ctx->parser = makeUniqueNoThrow<ChapterHtmlSlimParser>(
       epub, ctxPtr->parsePath, renderer, spec.fontId, spec.lineCompression, spec.extraParagraphSpacing,
       spec.paragraphAlignment, spec.viewportWidth, spec.viewportHeight, spec.hyphenationEnabled,
-      spec.focusReadingEnabled,
+      spec.dropCapMode,
       [this, ctxPtr](std::unique_ptr<Page> page, const uint16_t paragraphIndex, const uint16_t listItemIndex,
                      const uint32_t visibleTextOffset) {
         ctxPtr->lut.push_back(
             {this->onPageComplete(std::move(page)), paragraphIndex, listItemIndex, visibleTextOffset});
       },
       spec.embeddedStyle, ctxPtr->contentBase, ctxPtr->imageBasePath, spec.imageRendering, std::move(tocAnchors),
-      popupFn, ctxPtr->cssParser, spec.paragraphIndent, spec.letterSpacing);
+      popupFn, ctxPtr->cssParser, spec.paragraphIndent, spec.letterSpacing, spec.wordSpacing);
   if (!ctx->parser) {
-    LOG_ERR("SCT", "OOM: ChapterHtmlSlimParser");
+    LOG_ERR("SCT", "OOM: ChapterHtmlSlimParser free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
     if (ctx->cssParser) ctx->cssParser->clear();
     file.close();
     Storage.remove(binTmpPath().c_str());
@@ -444,10 +491,15 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   build_ = std::move(ctx);
 
   if (!build_->parser->beginParse()) {
-    LOG_ERR("SCT", "Failed to begin parse");
+    LOG_ERR("SCT", "Failed to begin parse free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
     abandonBuild();
     return false;
   }
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("SCT", "EPUB_BUILD stage=parser_ready free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   build_->totalBytes = build_->parser->parseTotalBytes();
   return true;
 }
@@ -464,7 +516,8 @@ bool Section::buildSomeMore(const int maxPages) {
   for (;;) {
     const auto status = build_->parser->parseStep();
     if (status == ChapterHtmlSlimParser::ParseStatus::Error) {
-      LOG_ERR("SCT", "Parse error during incremental build");
+      LOG_ERR("SCT", "Parse error during incremental build free=%u largest=%u",
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
       abandonBuild();
       return false;
     }
