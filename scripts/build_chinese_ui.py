@@ -15,13 +15,13 @@ def main():
     from fontTools import subset
     from fontTools.varLib.instancer import instantiateVariableFont
     p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.add_argument('--source',type=Path,required=True);p.add_argument('--chinese',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--recipe',type=Path,required=True);a=p.parse_args()
-    assert hashlib.sha256(a.source.read_bytes()).hexdigest()==SOURCE_SHA, 'Unexpected source font SHA256'
+    assert hashlib.sha256(a.source.read_bytes()).hexdigest()==SOURCE_SHA, 'SHA256 của font nguồn không đúng'
     sys.path.insert(0,str(a.root/'scripts'));from gen_i18n import parse_yaml_file
     cps=required(parse_yaml_file(a.chinese));recipe=json.loads(a.recipe.read_text());out=a.output;out.mkdir(parents=True,exist_ok=True)
     # Only new characters: keep every existing primary/fallback glyph unchanged.
     new=set()
     for n in NAMES:new |= cps-set(map(int,recipe[n]['hashes']))
-    font=TTFont(a.source,recalcTimestamp=False);cmap=font.getBestCmap();assert not new-cmap.keys(), ('Source lacks characters',new-cmap.keys())
+    font=TTFont(a.source,recalcTimestamp=False);cmap=font.getBestCmap();assert not new-cmap.keys(), ('font nguồn thiếu ký tự',new-cmap.keys())
     opt=subset.Options();opt.layout_features=[];s=subset.Subsetter(options=opt);s.populate(unicodes=sorted(new));s.subset(font);var=out/'NotoSansSC-UI-variable.ttf';font.save(var);font.close()
     for weight in [400,500]:
         f=TTFont(var,recalcTimestamp=False);instantiateVariableFont(f,{'wght':weight},inplace=True);f.save(out/f'NotoSansSC-UI-{weight}.ttf');f.close()
@@ -33,5 +33,5 @@ def main():
         (out/(n+'.h')).write_text(header+text)
         (out/(n+'.log')).write_text(run.stderr)
     (out/'charset.json').write_text(json.dumps({'source_sha256':SOURCE_SHA,'charset_sha256':fingerprint(cps),'codepoints':sorted(cps),'added':sorted(new)},indent=2))
-    print('generated',len(new),'additional characters in five UI faces')
+    print('đã sinh',len(new),'ký tự bổ sung cho năm mặt chữ giao diện')
 if __name__=='__main__':main()

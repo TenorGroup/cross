@@ -51,6 +51,8 @@ namespace {
 constexpr StrId TAB_NAMES[HomeActivity::TAB_COUNT] = {StrId::STR_HOME_TAB_RECENT, StrId::STR_HOME_TAB_FOLDER,
                                                       StrId::STR_HOME_TAB_STATS, StrId::STR_SETTINGS_TITLE,
                                                       StrId::STR_READER_TAB_FAVORITES};
+constexpr int TENOR_RECENT_CARD_HEIGHT_TALL = 324;
+constexpr int TENOR_RECENT_OLDER_GAP = 16;
 }  // namespace
 
 HomeActivity::HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -171,18 +173,35 @@ void HomeActivity::onPause() {
 void HomeActivity::selectTab(const Tab tab) {
   // The render task reads activeTabId and the row arrays while it builds the
   // screen, and a tab step arrives from the unlocked button path.
-  RenderLock lock(*this);
-  activeTabId = tab;
-  favoriteFileMissing = false;
-  // The tenor card stays fixed while browsing Home tabs. Reuse its existing
-  // bitmap on wrap; onPause/onExit release it before opening another activity.
-  if (tab != Tab::RECENT && !tenorchrome::enabled()) {
-    freeCoverBuffer();
-    coverRendered = false;
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t selectStartedUs = micros();
+  uint32_t rebuildRowsUs = 0;
+#endif
+  {
+    RenderLock lock(*this);
+    activeTabId = tab;
+    favoriteFileMissing = false;
+    // The tenor card stays fixed while browsing Home tabs. Reuse its existing
+    // bitmap on wrap; onPause/onExit release it before opening another activity.
+    if (tab != Tab::RECENT && !tenorchrome::enabled()) {
+      freeCoverBuffer();
+      coverRendered = false;
+    }
+#ifdef TENOR_UI_ACCEPTANCE
+    const uint32_t rebuildStartedUs = micros();
+#endif
+    rebuildRows();
+#ifdef TENOR_UI_ACCEPTANCE
+    rebuildRowsUs = micros() - rebuildStartedUs;
+#endif
+    if (!mappedInput.hasTouch() && listCount() > 0 && activeNav().selected <= 0) activeNav().selected = 1;
+    activeNav().followOnBuild = true;
   }
-  rebuildRows();
-  if (!mappedInput.hasTouch() && listCount() > 0 && activeNav().selected <= 0) activeNav().selected = 1;
-  activeNav().followOnBuild = true;
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_INF("HOME_PROBE", "tab_select_us=%lu rebuild_rows_us=%lu tab=%d",
+          static_cast<unsigned long>(micros() - selectStartedUs), static_cast<unsigned long>(rebuildRowsUs),
+          static_cast<int>(tab));
+#endif
 }
 
 void HomeActivity::stepTab(const int direction) {
@@ -235,7 +254,7 @@ void HomeActivity::rebuildRows() {
     }
   }
 
-  if (activeTabId == Tab::FAVORITES) {
+  if (activeTabId == Tab::FAVORITES && menucustom::state().pinCount > 0) {
     const auto catalog = getSettingsList(&sdFontSystem.registry());
     for (int i = 0; i < menucustom::state().pinCount; ++i) {
       const std::string key = menucustom::state().pins[i].data();
@@ -534,6 +553,9 @@ void HomeActivity::buildScreen(UiScreen& screen) {
   props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
   if (activeTabId == Tab::RECENT && tenorchrome::enabled() && !rowItems.empty()) {
+#ifdef TENOR_UI_ACCEPTANCE
+    const uint32_t recentUiStarted = micros();
+#endif
     reserveFixedMenuContent(screen);
     reserveFavoriteHint(screen);
     decoratePinnedRows(props);
@@ -552,8 +574,14 @@ void HomeActivity::buildScreen(UiScreen& screen) {
     props.count = 1;
     props.selectedIndex = n.selected == 1 ? 0 : -1;
     props.scrollIndicator = false;
+#ifdef TENOR_UI_ACCEPTANCE
+    const uint32_t listStarted = micros();
+#endif
     screen.list(props, metrics.listRowHeight);
-    screen.takeTop(12);
+#ifdef TENOR_UI_ACCEPTANCE
+    const uint32_t continueDone = micros();
+#endif
+    screen.takeTop(TENOR_RECENT_OLDER_GAP);
     const int olderCount = rowItems.size() - 1;
     if (olderCount > 0) {
       recentOlderTop = fui::listTopIndexFor(std::max(0, n.selected - 2), std::max(0, recentOlderTop), 2, olderCount);
@@ -565,6 +593,12 @@ void HomeActivity::buildScreen(UiScreen& screen) {
       props.scrollIndicator = true;
       screen.list(props, 2 * metrics.listRowHeight + metrics.listRowGap);
     }
+#ifdef TENOR_UI_ACCEPTANCE
+    LOG_INF("HOME_PROBE", "recent_prepare_us=%lu continue_us=%lu older_us=%lu",
+            static_cast<unsigned long>(listStarted - recentUiStarted),
+            static_cast<unsigned long>(continueDone - listStarted),
+            static_cast<unsigned long>(micros() - continueDone));
+#endif
     return;
   }
   syncTabListViewport(screen, props);
@@ -572,17 +606,47 @@ void HomeActivity::buildScreen(UiScreen& screen) {
 }
 
 void HomeActivity::render(RenderLock&&) {
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t totalStartedUs = micros();
+  const uint32_t paintStartedUs = totalStartedUs;
+#endif
   const uint32_t started = millis();
   renderer.clearScreen();
   drawChrome();
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t chromeUs = micros() - paintStartedUs;
+  const uint32_t uiStartedUs = micros();
+  unsigned rebuildPasses = 0;
+#endif
   renderUi();
   for (int pass = 0; activeNav().consumeRebuildNeeded() && pass < 5; ++pass) {
     renderer.clearScreen();
     drawChrome();
     renderUi();
+#ifdef TENOR_UI_ACCEPTANCE
+    ++rebuildPasses;
+#endif
   }
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t uiUs = micros() - uiStartedUs;
+  const uint32_t footerStartedUs = micros();
+#endif
   drawFooter();
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t footerUs = micros() - footerStartedUs;
+  const uint32_t paintUs = micros() - paintStartedUs;
+  const uint32_t displayStartedUs = micros();
+#endif
   renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t displayUs = micros() - displayStartedUs;
+  LOG_INF("HOME_PROBE", "frame_paint_us=%lu display_us=%lu total_us=%lu",
+          static_cast<unsigned long>(paintUs), static_cast<unsigned long>(displayUs),
+          static_cast<unsigned long>(micros() - totalStartedUs));
+  LOG_INF("HOME_PROBE", "chrome_us=%lu ui_us=%lu footer_us=%lu rebuild_passes=%u",
+          static_cast<unsigned long>(chromeUs), static_cast<unsigned long>(uiUs),
+          static_cast<unsigned long>(footerUs), rebuildPasses);
+#endif
   cleanInitialRefresh = false;
   LOG_INF("HOME", "Frame row=%d top=%d total=%lums heap=%u", ringPos(), activeNav().top,
           static_cast<unsigned long>(millis() - started), ESP.getFreeHeap());
@@ -702,12 +766,26 @@ bool HomeActivity::toggleFavorite(int row) {
 }
 
 int HomeActivity::recentCardHeight() const {
-  return tenorchrome::enabled() ? (recentBooks.empty() ? 96 : (renderer.getScreenHeight() >= 700 ? 328 : 180))
+  return tenorchrome::enabled()
+             ? (recentBooks.empty() ? 96
+                                    : (renderer.getScreenHeight() >= 700 ? TENOR_RECENT_CARD_HEIGHT_TALL : 180))
                                 : UITheme::getInstance().getMetrics().homeCoverTileHeight;
 }
 void HomeActivity::drawRecentCard() {
-  if (coverBufferStored && restoreCoverBuffer()) return;
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t restoreStartedUs = micros();
+#endif
+  if (coverBufferStored && restoreCoverBuffer()) {
+#ifdef TENOR_UI_ACCEPTANCE
+    LOG_INF("HOME_PROBE", "card_restore_us=%lu cache_bytes=%u", static_cast<unsigned long>(micros() - restoreStartedUs),
+            static_cast<unsigned>(coverBufferSize));
+#endif
+    return;
+  }
   const uint32_t started = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t cardStartedUs = micros();
+#endif
   const int top = coverTileTop() + 6;
   const int right = renderer.getScreenWidth() - 24;
   if (recentBooks.empty()) {
@@ -782,6 +860,10 @@ void HomeActivity::drawRecentCard() {
   coverRectH = coverY + coverH - top;
   coverBufferStored = storeCoverBuffer();
   coverRendered = true;
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_INF("HOME_PROBE", "card_build_us=%lu cache_bytes=%u", static_cast<unsigned long>(micros() - cardStartedUs),
+          static_cast<unsigned>(coverBufferSize));
+#endif
   LOG_INF("HOME", "Recent card build=%lums cache=%u", static_cast<unsigned long>(millis() - started),
           static_cast<unsigned>(coverBufferSize));
 }

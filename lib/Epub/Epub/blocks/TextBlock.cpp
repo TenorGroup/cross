@@ -359,7 +359,8 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   serialization::readPod(file, textBytes);
   serialization::readPod(file, dropHeight);
   serialization::readPod(file, spacing);
-  if (spacing < -1 || spacing > 1) return nullptr;
+  // readerSpacing::Level resolves to -2..+2 px on top of the glyph advance.
+  if (spacing < -2 || spacing > 2) return nullptr;
   if (dropHeight > 256) return nullptr;
 
   // Sanity checks: cap the arena allocation and reject impossible geometry

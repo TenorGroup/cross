@@ -9,6 +9,15 @@ constexpr int GROUPS = 4;
 constexpr int MAX_TABS = 8;
 constexpr int MAX_PINS = 32;
 constexpr int KEY_SIZE = 64;
+// Keep saved v1 pin keys intact while matching their current setting routes.
+// Shared by pin membership, duplicate detection and the favorites launcher.
+inline const char* canonicalPinKey(const char* key) {
+  if (!key) return "";
+  if (strcmp(key, "text/focusReadingEnabled") == 0) return "text/dropCapMode";
+  if (strcmp(key, "settings/hideGlobalStatusBar") == 0) return "settings/globalStatusBarMode";
+  if (strcmp(key, "settings/hideReaderStatusBar") == 0) return "settings/readerStatusBarMode";
+  return key;
+}
 struct State {
   std::array<std::array<uint8_t, MAX_TABS>, GROUPS> order{};
   std::array<std::array<char, KEY_SIZE>, MAX_PINS> pins{};
@@ -34,7 +43,7 @@ struct State {
   int find(const char* key) const {
     if (!key || !*key) return -1;
     for (int i = 0; i < pinCount; ++i)
-      if (strcmp(pins[i].data(), key) == 0) return i;
+      if (strcmp(canonicalPinKey(pins[i].data()), canonicalPinKey(key)) == 0) return i;
     return -1;
   }
 };

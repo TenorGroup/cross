@@ -1,6 +1,7 @@
 #include "ParsedText.h"
 
 #include <BidiUtils.h>
+#include <Epub/ReaderSpacing.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -215,9 +216,12 @@ void stripSoftHyphensInPlace(std::string& word) {
 // don't inflate inter-word spacing.
 uint16_t measureWordWidth(const GfxRenderer& renderer, const int fontId, const std::string& word,
                           const EpdFontFamily::Style style, const bool appendHyphen = false,
-                          const int8_t letterSpacing = 0) {
+                          const int8_t letterSpacing = 0, const uint8_t wordSpacing = 0) {
   if (word.size() == 1 && word[0] == ' ' && !appendHyphen) {
-    return renderer.getSpaceWidth(fontId, style);
+    // A literal U+0020 token (the NBSP / narrow-NBSP form) is content the parser
+    // kept as its own token: its advance IS the inter-word gap, so it carries the
+    // same word-spacing delta the neighbouring words would otherwise get.
+    return renderer.getSpaceWidth(fontId, style, wordSpacing);
   }
   const bool hasSoftHyphen = containsSoftHyphen(word);
   if (!hasSoftHyphen && !appendHyphen) {
@@ -268,18 +272,19 @@ uint16_t measureFocusPrefixAdvance(const GfxRenderer& renderer, const int fontId
 // Advance width of a whole token, accounting for a bold focus prefix when it has one.
 uint16_t measureFocusWordWidth(const GfxRenderer& renderer, const int fontId, const std::string& word,
                                const EpdFontFamily::Style style, const uint8_t focusBoundary,
-                               const bool appendHyphen = false, const int8_t letterSpacing = 0) {
+                               const bool appendHyphen = false, const int8_t letterSpacing = 0,
+                               const uint8_t wordSpacing = 0) {
   if (focusBoundary == 0) {
-    return measureWordWidth(renderer, fontId, word, style, appendHyphen, letterSpacing);
+    return measureWordWidth(renderer, fontId, word, style, appendHyphen, letterSpacing, wordSpacing);
   }
   if (focusBoundary >= word.size()) {
     // The bold run covers the whole token, as for a split candidate ending on the boundary.
     return measureWordWidth(renderer, fontId, word, static_cast<EpdFontFamily::Style>(style | EpdFontFamily::BOLD),
-                            appendHyphen, letterSpacing);
+                            appendHyphen, letterSpacing, wordSpacing);
   }
   const uint16_t suffixWidth =
       appendHyphen
-          ? measureWordWidth(renderer, fontId, word.substr(focusBoundary), style, true, letterSpacing)
+          ? measureWordWidth(renderer, fontId, word.substr(focusBoundary), style, true, letterSpacing, wordSpacing)
           : static_cast<uint16_t>(renderer.getTextAdvanceX(fontId, word.c_str() + focusBoundary, style, letterSpacing));
   return measureFocusPrefixAdvance(renderer, fontId, word, style, focusBoundary, letterSpacing) + suffixWidth;
 }
@@ -670,8 +675,10 @@ int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer
   if (!isFirstLine || !isNaturalAlign) {
     return 0;
   }
-  const int spaces = paragraphIndent == 2 ? 6 : paragraphIndent == 1 ? 3 : 0;
-  return renderer.getSpaceWidth(fontId, EpdFontFamily::REGULAR) * spaces;
+  const int spaces = readerSpacing::indentSpaces(paragraphIndent);
+  // The indent is N space advances, so it follows the word-spacing level and the
+  // first line stays aligned with the gaps below it.
+  return renderer.getSpaceWidth(fontId, EpdFontFamily::REGULAR, wordSpacing) * spaces;
 }
 // Consumes data to minimize memory usage
 void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fontId, const uint16_t viewportWidth,
@@ -852,7 +859,7 @@ std::vector<uint16_t> ParsedText::calculateWordWidths(const GfxRenderer& rendere
         (wordStyles[i] & EpdFontFamily::DROP_CAP)
             ? renderer.getDropCapWordWidth(fontId, words[i].c_str(), wordStyles[i], dropCapHeight, letterSpacing)
             : measureFocusWordWidth(renderer, fontId, words[i], wordStyles[i], wordFocusBoundary[i], false,
-                                    letterSpacing));
+                                    letterSpacing, wordSpacing));
   }
 
   // Adjust widths for ruby groups to comply with JLReq standards
@@ -1000,7 +1007,7 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
         gap = 0;
       } else if (j > static_cast<size_t>(i)) {
         gap =
-            renderer.getSpaceAdvance(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]), wordStyles[j - 1]);
+            renderer.getSpaceAdvance(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]), wordStyles[j - 1], wordSpacing);
       }
 
       if (j > static_cast<size_t>(i)) gap += letterSpacing * (continuesVec[j] || noSpaceBeforeVec[j] ? 1 : 2);
@@ -1109,7 +1116,7 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
         spacing = 0;
       } else if (!isFirstWord) {
         spacing = renderer.getSpaceAdvance(fontId, lastCodepoint(words[currentIndex - 1]),
-                                           firstCodepoint(words[currentIndex]), wordStyles[currentIndex - 1]);
+                                           firstCodepoint(words[currentIndex]), wordStyles[currentIndex - 1], wordSpacing);
       }
       if (!isFirstWord)
         spacing += letterSpacing * (continuesVec[currentIndex] || noSpaceBeforeVec[currentIndex] ? 1 : 2);
@@ -1327,7 +1334,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
                                               firstCodepoint(lineWords[wordIdx]), lineWordStyles[wordIdx - 1]);
     } else if (!noSpaceBeforeVec[boundaryIdx]) {
       totalNaturalGaps += renderer.getSpaceAdvance(fontId, lastCodepoint(lineWords[wordIdx - 1]),
-                                                   firstCodepoint(lineWords[wordIdx]), lineWordStyles[wordIdx - 1]);
+                                                   firstCodepoint(lineWords[wordIdx]), lineWordStyles[wordIdx - 1], wordSpacing);
     }
   }
 
@@ -1417,7 +1424,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
         reorderedGapCount++;
         reorderedNaturalGaps += renderer.getSpaceAdvance(fontId, lastCodepoint(reorderedWordsScratch[wordIdx - 1]),
                                                          firstCodepoint(reorderedWordsScratch[wordIdx]),
-                                                         reorderedStylesScratch[wordIdx - 1]);
+                                                         reorderedStylesScratch[wordIdx - 1], wordSpacing);
       } else if (wordIdx > 0 && reorderedContinuesScratch[wordIdx]) {
         if (reorderedWordsScratch[wordIdx] == " ") {
           reorderedGapCount++;
@@ -1481,7 +1488,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
         int gap = nextNoSpace ? 0
                               : renderer.getSpaceAdvance(fontId, lastCodepoint(reorderedWordsScratch[wordIdx]),
                                                          firstCodepoint(reorderedWordsScratch[wordIdx + 1]),
-                                                         reorderedStylesScratch[wordIdx]);
+                                                         reorderedStylesScratch[wordIdx], wordSpacing);
         if (effectiveAlignment == CssTextAlign::Justify && !isLastLine) {
           gap += reorderedJustifyExtra;
         }
@@ -1530,7 +1537,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
             gap = nextNoSpace
                       ? 0
                       : renderer.getSpaceAdvance(fontId, lastCodepoint(lineWords[wordIdx]),
-                                                 firstCodepoint(lineWords[wordIdx + 1]), lineWordStyles[wordIdx]);
+                                                 firstCodepoint(lineWords[wordIdx + 1]), lineWordStyles[wordIdx], wordSpacing);
           }
           if (wordIdx + 1 < lineWordCount && effectiveAlignment == CssTextAlign::Justify && !isLastLine) {
             gap += justifyExtra;
@@ -1574,7 +1581,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
             gap = nextNoSpace
                       ? 0
                       : renderer.getSpaceAdvance(fontId, lastCodepoint(lineWords[wordIdx]),
-                                                 firstCodepoint(lineWords[wordIdx + 1]), lineWordStyles[wordIdx]);
+                                                 firstCodepoint(lineWords[wordIdx + 1]), lineWordStyles[wordIdx], wordSpacing);
           }
           if (wordIdx + 1 < lineWordCount && effectiveAlignment == CssTextAlign::Justify && !isLastLine) {
             gap += justifyExtra;
@@ -1672,6 +1679,28 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
 }
 
 int ParsedText::lineIndent(size_t line, const GfxRenderer& renderer, int fontId) const {
-  if (dropCapInset) return extractedLines + line == 1 ? dropCapInset : 0;
+  if (dropCapInset) {
+    // Chua cho chu lon o MOI dong ma no chiem, khong chi dong dau. Chu lon cao `dropCapHeight` pixel
+    // va duoc ve tu y+2 xuong (GfxRenderer::drawDropCapWord), nen dai muc cua no la [2, capH+2). Dong
+    // thu i chiem [i*A, (i+1)*A) voi A la buoc dong cua trang; dong giao voi dai muc khi i*A < capH+2,
+    // tuc i <= floor((capH+1)/A). Dong 0 la dong MANG chinh chu lon (phan chu con lai cua dong do da
+    // duoc ve sau chu lon qua getDropCapAdvance), nen chi chua tu dong 1 den dong K.
+    //
+    // Do lai tren mo phong (fixture chu "An", chu lon cao 72 px / buoc dong 47 px): quy tac nay cho
+    // K = floor(73/47) = 1, dong 2 bat dau sau chan chu lon (x_dau 6 -> 55/67) thay vi chay duoi chan
+    // chu. Quy tac cu (chi dong 1, hoac 1..ceil(capH/A)) hoac de dong do chay duoi chan chu lon (loi
+    // founder bao), hoac chua thua mot dong nua so voi dai muc.
+    const int lineHeight = renderer.getLineHeight(fontId);
+    // Buoc dong THAT cua trang la buoc goc nhan he so gian dong (parser dat dong bang
+    // getLineHeight(fontId, lineCompression)); chieu cao chu lon cung duoc tinh tren buoc do
+    // (ChapterHtmlSlimParser.cpp: dropCapHeight(mode, getLineHeight(fontId, lineCompression))), nen phai
+    // dung cung mot buoc o day, neu khong thi o muc gian dong rong se chua thua mot dong.
+    const int advance = lineHeight > 0 ? static_cast<int>(lineHeight * lineCompression + 0.5f) : 0;
+    const size_t dongCuoiChua =
+        advance > 0 ? static_cast<size_t>((dropCapHeight + 1) / advance) : 1;  // >= 1, xem tren
+    const size_t soDongChua = dongCuoiChua > 0 ? dongCuoiChua : 1;
+    const size_t dongTrongKhoi = extractedLines + line;  // 0-based, tinh trong chinh khoi nay
+    return dongTrongKhoi >= 1 && dongTrongKhoi <= soDongChua ? dropCapInset : 0;
+  }
   return resolveFirstLineIndent(line == 0, renderer, fontId);
 }

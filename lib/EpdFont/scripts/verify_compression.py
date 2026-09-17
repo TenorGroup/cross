@@ -104,7 +104,7 @@ def verify_font_file(filepath):
     # Check if this is a compressed font (has Groups array)
     groups_match = re.search(r'static const EpdFontGroup (\w+)Groups\[\]', content)
     if not groups_match:
-        return (os.path.basename(filepath), None, "uncompressed, skipping")
+        return (os.path.basename(filepath), None, "không nén, bỏ qua")
 
     font_name = groups_match.group(1)
 
@@ -114,7 +114,7 @@ def verify_font_file(filepath):
         content, re.DOTALL
     )
     if not bitmap_match:
-        return (font_name, False, "could not find Bitmaps array")
+        return (font_name, False, "không thấy mảng Bitmaps")
 
     compressed_data = parse_hex_array(bitmap_match.group(1))
 
@@ -124,11 +124,11 @@ def verify_font_file(filepath):
         content, re.DOTALL
     )
     if not groups_array_match:
-        return (font_name, False, "could not find Groups array")
+        return (font_name, False, "không thấy mảng Groups")
 
     groups = parse_groups(groups_array_match.group(1))
     if not groups:
-        return (font_name, False, "Groups array parsed to 0 entries; check format")
+        return (font_name, False, "mảng Groups phân tích ra 0 mục; hãy kiểm tra định dạng")
 
     # Extract glyphs
     glyphs_match = re.search(
@@ -136,7 +136,7 @@ def verify_font_file(filepath):
         content, re.DOTALL
     )
     if not glyphs_match:
-        return (font_name, False, "could not find Glyphs array")
+        return (font_name, False, "không thấy mảng Glyphs")
 
     glyphs = parse_glyphs(glyphs_match.group(1))
 
@@ -149,32 +149,32 @@ def verify_font_file(filepath):
     if g2g_match:
         glyph_to_group = parse_uint8_array(g2g_match.group(1))
         if len(glyph_to_group) != len(glyphs):
-            return (font_name, False, f"glyphToGroup length ({len(glyph_to_group)}) != glyph count ({len(glyphs)})")
+            return (font_name, False, f"độ dài glyphToGroup ({len(glyph_to_group)}) != số glyph ({len(glyphs)})")
         max_group_id = max(glyph_to_group)
         if max_group_id >= len(groups):
-            return (font_name, False, f"glyphToGroup contains group ID {max_group_id} but only {len(groups)} groups exist")
+            return (font_name, False, f"glyphToGroup chứa ID nhóm {max_group_id} nhưng chỉ có {len(groups)} nhóm")
 
     # Verify each group
     for gi, group in enumerate(groups):
         # Extract compressed chunk
         chunk = compressed_data[group['compressedOffset']:group['compressedOffset'] + group['compressedSize']]
         if len(chunk) != group['compressedSize']:
-            return (font_name, False, f"group {gi}: compressed data truncated (expected {group['compressedSize']}, got {len(chunk)})")
+            return (font_name, False, f"nhóm {gi}: dữ liệu nén bị cắt (mong đợi {group['compressedSize']}, nhận {len(chunk)})")
 
         # Decompress with raw DEFLATE - result is byte-aligned data
         try:
             decompressed = zlib.decompress(chunk, -15)
         except zlib.error as e:
-            return (font_name, False, f"group {gi}: decompression failed: {e}")
+            return (font_name, False, f"nhóm {gi}: giải nén thất bại: {e}")
 
         if len(decompressed) != group['uncompressedSize']:
-            return (font_name, False, f"group {gi}: size mismatch (expected {group['uncompressedSize']}, got {len(decompressed)})")
+            return (font_name, False, f"nhóm {gi}: sai kích thước (mong đợi {group['uncompressedSize']}, nhận {len(decompressed)})")
 
         # Get glyph indices for this group
         group_glyph_indices = get_group_glyph_indices(group, gi, glyphs, glyph_to_group)
         if glyph_to_group is not None and len(group_glyph_indices) != group['glyphCount']:
             return (font_name, False,
-                    f"group {gi}: glyphCount {group['glyphCount']} != mapping count {len(group_glyph_indices)}")
+                    f"nhóm {gi}: glyphCount {group['glyphCount']} != số ánh xạ {len(group_glyph_indices)}")
 
         # Walk through byte-aligned data, compact each glyph, and verify against packed format
         byte_aligned_offset = 0
@@ -182,7 +182,7 @@ def verify_font_file(filepath):
 
         for glyph_idx in group_glyph_indices:
             if glyph_idx >= len(glyphs):
-                return (font_name, False, f"group {gi}: glyph index {glyph_idx} out of range")
+                return (font_name, False, f"nhóm {gi}: chỉ số glyph {glyph_idx} nằm ngoài phạm vi")
             glyph = glyphs[glyph_idx]
             width = glyph['width']
             height = glyph['height']
@@ -190,9 +190,9 @@ def verify_font_file(filepath):
             if width == 0 or height == 0:
                 # Zero-size glyphs should have dataOffset == current packed_offset and dataLength == 0
                 if glyph['dataOffset'] != packed_offset:
-                    return (font_name, False, f"group {gi}, glyph {glyph_idx}: zero-size glyph dataOffset {glyph['dataOffset']} != expected packed offset {packed_offset}")
+                    return (font_name, False, f"nhóm {gi}, glyph {glyph_idx}: glyph rỗng có dataOffset {glyph['dataOffset']} != offset packed mong đợi {packed_offset}")
                 if glyph['dataLength'] != 0:
-                    return (font_name, False, f"group {gi}, glyph {glyph_idx}: zero-size glyph dataLength {glyph['dataLength']} != expected 0")
+                    return (font_name, False, f"nhóm {gi}, glyph {glyph_idx}: glyph rỗng có dataLength {glyph['dataLength']} != 0 như mong đợi")
                 continue
 
             aligned_size = ((width + 3) // 4) * height
@@ -200,14 +200,14 @@ def verify_font_file(filepath):
 
             # Verify packed offset and size match glyph metadata
             if glyph['dataOffset'] != packed_offset:
-                return (font_name, False, f"group {gi}, glyph {glyph_idx}: dataOffset {glyph['dataOffset']} != expected packed offset {packed_offset}")
+                return (font_name, False, f"nhóm {gi}, glyph {glyph_idx}: dataOffset {glyph['dataOffset']} != offset packed mong đợi {packed_offset}")
             if glyph['dataLength'] != packed_size:
-                return (font_name, False, f"group {gi}, glyph {glyph_idx}: dataLength {glyph['dataLength']} != expected packed length {packed_size} "
+                return (font_name, False, f"nhóm {gi}, glyph {glyph_idx}: dataLength {glyph['dataLength']} != độ dài packed mong đợi {packed_size} "
                         f"(width={width}, height={height})")
 
             # Extract byte-aligned data for this glyph
             if byte_aligned_offset + aligned_size > len(decompressed):
-                return (font_name, False, f"group {gi}, glyph {glyph_idx}: byte-aligned data extends beyond decompressed buffer "
+                return (font_name, False, f"nhóm {gi}, glyph {glyph_idx}: dữ liệu byte-aligned vượt quá buffer đã giải nén "
                         f"(offset={byte_aligned_offset}, size={aligned_size}, buf_size={len(decompressed)})")
 
             aligned_glyph = decompressed[byte_aligned_offset:byte_aligned_offset + aligned_size]
@@ -215,32 +215,32 @@ def verify_font_file(filepath):
             # Compact to packed and verify pixel values are valid (0-3 for 2-bit)
             packed_glyph = compact_aligned_to_packed(aligned_glyph, width, height)
             if len(packed_glyph) != packed_size:
-                return (font_name, False, f"group {gi}, glyph {glyph_idx}: compacted size {len(packed_glyph)} != expected {packed_size}")
+                return (font_name, False, f"nhóm {gi}, glyph {glyph_idx}: kích thước sau khi gộp {len(packed_glyph)} != mong đợi {packed_size}")
 
             byte_aligned_offset += aligned_size
             packed_offset += packed_size
 
         # Verify total byte-aligned size matches uncompressedSize
         if byte_aligned_offset != group['uncompressedSize']:
-            return (font_name, False, f"group {gi}: total byte-aligned size {byte_aligned_offset} != uncompressedSize {group['uncompressedSize']}")
+            return (font_name, False, f"nhóm {gi}: tổng kích thước byte-aligned {byte_aligned_offset} != uncompressedSize {group['uncompressedSize']}")
 
     extra_info = ""
     if glyph_to_group is not None:
-        extra_info = " (frequency-grouped)"
-    return (font_name, True, f"{len(groups)} groups, {len(glyphs)} glyphs OK{extra_info}")
+        extra_info = " (nhóm theo tần suất)"
+    return (font_name, True, f"{len(groups)} nhóm, {len(glyphs)} glyph OK{extra_info}")
 
 
 def main():
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <font_headers_directory>", file=sys.stderr)
+        print(f"Cách dùng: {sys.argv[0]} <thu_muc_header_font>", file=sys.stderr)
         sys.exit(1)
     if sys.argv[1] in ("-h", "--help"):
-        print(f"Usage: {sys.argv[0]} <font_headers_directory>")
+        print(f"Cách dùng: {sys.argv[0]} <thu_muc_header_font>")
         sys.exit(0)
 
     font_dir = sys.argv[1]
     if not os.path.isdir(font_dir):
-        print(f"Error: {font_dir} is not a directory", file=sys.stderr)
+        print(f"Lỗi: {font_dir} không phải là thư mục", file=sys.stderr)
         sys.exit(1)
 
     files = sorted(f for f in os.listdir(font_dir) if f.endswith('.h') and f != 'all.h')
@@ -256,12 +256,12 @@ def main():
             skipped += 1
         elif success:
             passed += 1
-            print(f"  PASS: {filename} ({message})")
+            print(f"  ĐẠT: {filename} ({message})")
         else:
             failed += 1
-            print(f"  FAIL: {filename} - {message}")
+            print(f"  HỎNG: {filename} - {message}")
 
-    print(f"\nResults: {passed} passed, {failed} failed, {skipped} skipped (uncompressed)")
+    print(f"\nKết quả: {passed} đạt, {failed} hỏng, {skipped} bỏ qua (không nén)")
 
     if failed > 0:
         sys.exit(1)

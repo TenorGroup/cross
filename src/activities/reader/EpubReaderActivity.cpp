@@ -54,28 +54,29 @@ namespace {
 // de biet co phai dan lai hay khong.
 struct AnhChupChu {
   uint8_t fontFamily, fontPointSize, lineSpacing, screenMargin, paragraphAlignment, extraParagraphSpacing,
-      paragraphIndent, focusReadingEnabled, hyphenationEnabled, embeddedStyle, textAntiAliasing, readerInkWeight,
-      letterSpacing, hideReaderStatusBar, hideGlobalStatusBar;
+      paragraphIndent, dropCapMode, hyphenationEnabled, embeddedStyle, textAntiAliasing, readerInkWeight,
+      letterSpacing, wordSpacing, readerStatusBarMode, globalStatusBarMode;
   std::string sdFontFamilyName;
   static AnhChupChu chup() {
     return {SETTINGS.fontFamily,          SETTINGS.fontPointSize,
             SETTINGS.lineSpacing,         SETTINGS.screenMargin,
             SETTINGS.paragraphAlignment,  SETTINGS.extraParagraphSpacing,
-            SETTINGS.paragraphIndent,     SETTINGS.focusReadingEnabled,
+            SETTINGS.paragraphIndent,     SETTINGS.dropCapMode,
             SETTINGS.hyphenationEnabled,  SETTINGS.embeddedStyle,
             SETTINGS.textAntiAliasing,    SETTINGS.readerInkWeight,
-            SETTINGS.letterSpacing,       SETTINGS.hideReaderStatusBar,
-            SETTINGS.hideGlobalStatusBar, std::string(SETTINGS.sdFontFamilyName)};
+            SETTINGS.letterSpacing,       SETTINGS.wordSpacing,
+            SETTINGS.readerStatusBarMode, SETTINGS.globalStatusBarMode,
+            std::string(SETTINGS.sdFontFamilyName)};
   }
   bool operator==(const AnhChupChu& o) const {
     return fontFamily == o.fontFamily && fontPointSize == o.fontPointSize && lineSpacing == o.lineSpacing &&
            screenMargin == o.screenMargin && paragraphAlignment == o.paragraphAlignment &&
            extraParagraphSpacing == o.extraParagraphSpacing && paragraphIndent == o.paragraphIndent &&
-           focusReadingEnabled == o.focusReadingEnabled && hyphenationEnabled == o.hyphenationEnabled &&
+           dropCapMode == o.dropCapMode && hyphenationEnabled == o.hyphenationEnabled &&
            embeddedStyle == o.embeddedStyle && textAntiAliasing == o.textAntiAliasing &&
            sdFontFamilyName == o.sdFontFamilyName && readerInkWeight == o.readerInkWeight &&
-           letterSpacing == o.letterSpacing && hideReaderStatusBar == o.hideReaderStatusBar &&
-           hideGlobalStatusBar == o.hideGlobalStatusBar;
+           letterSpacing == o.letterSpacing && wordSpacing == o.wordSpacing &&
+           readerStatusBarMode == o.readerStatusBarMode && globalStatusBarMode == o.globalStatusBarMode;
   }
 };
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
@@ -204,7 +205,8 @@ EpubReaderActivity::~EpubReaderActivity() {
 bool EpubReaderActivity::loadBook() {
   auto loadedEpub = makeUniqueNoThrow<Epub>(bookPath, "/.crosspoint");
   if (!loadedEpub) {
-    LOG_ERR("ERS", "Failed to allocate EPUB object");
+    LOG_ERR("ERS", "Failed to allocate EPUB object free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
     return false;
   }
 
@@ -216,15 +218,29 @@ bool EpubReaderActivity::loadBook() {
 
   bool loaded;
   {
+#ifdef TENOR_UI_ACCEPTANCE
+    if (uncached) {
+      LOG_DBG("ERS", "EPUB_LOAD stage=before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+              static_cast<unsigned>(ESP.getMaxAllocHeap()));
+    }
+#endif
     std::optional<GfxRenderer::FrameBufferLoan> loan;
     if (uncached) loan.emplace(renderer);
     loaded = loadedEpub->load(true, SETTINGS.embeddedStyle == 0);
   }
+#ifdef TENOR_UI_ACCEPTANCE
+  if (uncached) {
+    LOG_DBG("ERS", "EPUB_LOAD stage=after loaded=%u free=%u largest=%u", loaded ? 1u : 0u,
+            static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  }
+#endif
   if (!loaded) {
-    LOG_ERR("ERS", "Failed to load EPUB");
+    LOG_ERR("ERS", "Failed to load EPUB free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
     return false;
   }
   epub = std::move(loadedEpub);
+  tocSpineCached = -1;  // sach khac: bo cache khoang muc TOC cua spine
 
   ImageBlock::clearRenderFailures();
   ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest) {
@@ -266,6 +282,39 @@ bool EpubReaderActivity::loadBook() {
   }
 
   loadCachedBookmarks();
+
+  // The GAN DAY card only ever READS a thumbnail bitmap; nothing in the app generated one, so a
+  // book added by this firmware always fell back to the brand placeholder (a device that showed a
+  // real cover only did so for a thumbnail written by an older release). Generate it here, once
+  // per book: generateThumbBmp() returns early when the file already exists, so a warm open pays
+  // nothing and the first open pays one JPEG->1-bit BMP pass.
+  const int thumbHeight = UITheme::getInstance().getMetrics().homeCoverHeight;
+  if (!preview) {
+    const bool thumbMissing = !Storage.exists(epub->getThumbBmpPath(thumbHeight).c_str());
+#ifdef TENOR_UI_ACCEPTANCE
+    if (thumbMissing) {
+      LOG_DBG("ERS", "EPUB_THUMB stage=before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+              static_cast<unsigned>(ESP.getMaxAllocHeap()));
+    }
+#endif
+    bool thumbGenerated;
+    {
+      // Cover extraction and PNG decoding can borrow the framebuffer for inflate.
+      // Keep the panel's current image until the first reader page is drawn.
+      std::optional<GfxRenderer::FrameBufferLoan> loan;
+      if (thumbMissing) loan.emplace(renderer);
+      thumbGenerated = epub->generateThumbBmp(thumbHeight);
+    }
+#ifdef TENOR_UI_ACCEPTANCE
+    if (thumbMissing) {
+      LOG_DBG("ERS", "EPUB_THUMB stage=after result=%u free=%u largest=%u", thumbGenerated ? 1u : 0u,
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+    }
+#endif
+    if (!thumbGenerated) {
+      LOG_DBG("ERS", "No cover thumbnail for the recent card (book has no usable cover image)");
+    }
+  }
   return true;
 }
 
@@ -304,12 +353,13 @@ void EpubReaderActivity::openReaderMenu() {
   // pagination buffers; chapterPosition() covers that with the cached position.
   const ChapterPosition position = chapterPosition();
   const int bookProgressPercent = bookPercentFor(position);
+  const uint8_t readerStatusBarHeightBeforeMenu = readerStatusBarHeight();
 
   startActivityForResult(
       std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), position.displayPage(),
                                                position.totalPages, bookProgressPercent, SETTINGS.orientation,
                                                !currentPageFootnotes.empty(), !cachedBookmarks.empty()),
-      [this](const ActivityResult& result) {
+      [this, readerStatusBarHeightBeforeMenu](const ActivityResult& result) {
         const auto& menu = std::get<MenuResult>(result.data);
 
         if (SETTINGS.orientation != menu.orientation) {
@@ -317,6 +367,14 @@ void EpubReaderActivity::openReaderMenu() {
         }
 
         toggleAutoPageTurn(menu.pageTurnOption);
+
+        // The status-bar picker updates SETTINGS in place, then the menu closes
+        // through the cancelled result path. Rebuild only when the reserved
+        // reader height changes. Same-height modes need a footer repaint only.
+        if (result.isCancelled && readerStatusBarHeight() != readerStatusBarHeightBeforeMenu) {
+          RenderLock lock;
+          danLaiTrang();
+        }
 
         if (!result.isCancelled) {
           onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action), menu);
@@ -375,12 +433,12 @@ void EpubReaderActivity::loop() {
   }
 
   constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
-  if (section && !section->isBuilding() && !RenderLock::peek() && renderer.hasFrameBuffer() &&
+  if (section && !section->isBuilding() && renderer.hasFrameBuffer() &&
       lastRenderCompleteMs != 0 && millis() - lastRenderCompleteMs > IDLE_PREWARM_DEBOUNCE_MS &&
       ESP.getFreeHeap() > RENDER_MIN_FREE_HEAP && ESP.getMaxAllocHeap() > BACKGROUND_BUILD_MIN_MAX_ALLOC &&
       (idlePrewarmSpine != currentSpineIndex || idlePrewarmPage != section->currentPage)) {
-    RenderLock lock;
-    if (section && !section->isBuilding() &&
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired() && section && !section->isBuilding() &&
         (idlePrewarmSpine != currentSpineIndex || idlePrewarmPage != section->currentPage)) {
       idlePrewarmSpine = currentSpineIndex;
       idlePrewarmPage = section->currentPage;
@@ -399,25 +457,27 @@ void EpubReaderActivity::loop() {
     }
   }
 
-  if (section && !section->isBuilding() && section->isPartial() && !RenderLock::peek() && buildViewportWidth > 0 &&
+  if (section && !section->isBuilding() && section->isPartial() && buildViewportWidth > 0 &&
       !partialRebuildStartFailed &&
       section->currentPage + PARTIAL_REBUILD_START_MARGIN >= static_cast<int>(section->pageCount)) {
-    RenderLock lock;
-    const ReaderRenderSpec buildSpec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
-    if (!section->startBuild(buildSpec)) {
-      partialRebuildStartFailed = true;
-      LOG_ERR("ERS", "Failed to start deferred partial extension build");
-    } else {
-      LOG_DBG("ERS", "Reader near partial watermark (%d/%d), resuming extension build", section->currentPage,
-              section->pageCount);
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired()) {
+      const ReaderRenderSpec buildSpec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
+      if (!section->startBuild(buildSpec)) {
+        partialRebuildStartFailed = true;
+        LOG_ERR("ERS", "Failed to start deferred partial extension build");
+      } else {
+        LOG_DBG("ERS", "Reader near partial watermark (%d/%d), resuming extension build", section->currentPage,
+                section->pageCount);
+      }
     }
   }
 
-  if (section && section->isBuilding() && !RenderLock::peek() &&
+  if (section && section->isBuilding() &&
       (section->isPartial() || static_cast<int>(section->pageCount) < section->currentPage + BUILD_WINDOW_AHEAD) &&
       buildTickHeapGate()) {
-    RenderLock lock;
-    if (section->isBuilding() && buildTickHeapGate()) {
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired() && section->isBuilding() && buildTickHeapGate()) {
       if (!section->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK)) {
         LOG_ERR("ERS", "Background section build failed");
         section.reset();
@@ -638,6 +698,32 @@ void EpubReaderActivity::loop() {
 
   constexpr unsigned long kMinManualTurnGapMs = 200;
   const bool turnGuardActive = RenderLock::peek() || (millis() - lastPageTurnTime) < kMinManualTurnGapMs;
+
+  // Turbo giữ nút: sau nắc chương đầu, nút còn giữ thì nắc tiếp theo nhịp
+  // cố định tới khi thả. Cả hai hướng cùng giữ thì dừng (không định hướng).
+  // Paint đang bay thì dời nắc sang tick sau, giữ nguyên hẹn. Kiểm cả nút
+  // bên (PageBack/PageForward) lẫn nút front (Left/Right) như detectPageTurn.
+  if (turboHoldDirection != 0) {
+    const bool toGiu = turboHoldDirection > 0
+        ? (mappedInput.isPressed(MappedInputManager::Button::PageForward) ||
+           mappedInput.isPressed(MappedInputManager::Button::Right))
+        : (mappedInput.isPressed(MappedInputManager::Button::PageBack) ||
+           mappedInput.isPressed(MappedInputManager::Button::Left));
+    const bool nguocGiu = turboHoldDirection > 0
+        ? (mappedInput.isPressed(MappedInputManager::Button::PageBack) ||
+           mappedInput.isPressed(MappedInputManager::Button::Left))
+        : (mappedInput.isPressed(MappedInputManager::Button::PageForward) ||
+           mappedInput.isPressed(MappedInputManager::Button::Right));
+    if (!toGiu || nguocGiu) {
+      turboHoldDirection = 0;
+    } else if (millis() >= turboNextJumpMs && !turnGuardActive) {
+      if (!nhayChuongMotBac(turboHoldDirection, std::nullopt) && !skipPages(turboHoldDirection)) {
+        turboHoldDirection = 0;
+      }
+      turboNextJumpMs = millis() + ReaderUtils::SKIP_HOLD_MS;
+      requestUpdate();
+    }
+  }
   if (pendingManualTurn != 0 && !turnGuardActive) {
     if (!section) {
       pendingManualTurn = 0;
@@ -650,11 +736,18 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  auto [prevTriggered, nextTriggered, fromTilt] = ReaderUtils::detectPageTurn(mappedInput);
-  prevTriggered = prevTriggered || touch.prev;
-  nextTriggered = nextTriggered || touch.next;
+  const auto turns = ReaderUtils::detectPageTurn(mappedInput);
+  const bool prevPageTriggered = turns.prev || touch.prev;
+  const bool nextPageTriggered = turns.next || touch.next;
+  const bool prevTriggered = prevPageTriggered || turns.prevLongPressed;
+  const bool nextTriggered = nextPageTriggered || turns.nextLongPressed;
   if (!prevTriggered && !nextTriggered) {
     return;
+  }
+
+  if (SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP) {
+    if (turns.prevButtonPressed) rememberChapterHoldOrigin(-1);
+    if (turns.nextButtonPressed) rememberChapterHoldOrigin(1);
   }
 
   if (handleEndOfBookPageTurn(prevTriggered, nextTriggered)) {
@@ -667,7 +760,10 @@ void EpubReaderActivity::loop() {
   }
 
   const unsigned long heldMs = (touch.prev || touch.next) ? touch.heldMs : mappedInput.getHeldTime();
-  const bool longPress = !fromTilt && heldMs >= ReaderUtils::SKIP_HOLD_MS;
+  const bool longPress =
+      !turns.fromTilt &&
+      (turns.prevLongPressed || turns.nextLongPressed ||
+       ((touch.prev || touch.next) && heldMs >= ReaderUtils::SKIP_HOLD_MS));
   // Giu nut lat trang = Co chu: mot lan giu, mot nac, KEP o bien; cu release da bi
   // wasLongPressed nuot nen khong lat trang du. Nghieng (fromTilt) va nut nguon khong toi day.
   if (longPress && SETTINGS.longPressButtonBehavior == SETTINGS.FONT_SIZE_STEP) {
@@ -676,7 +772,29 @@ void EpubReaderActivity::loop() {
   }
 
   if (longPress && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP) {
-    skipPages(nextTriggered ? 1 : -1);
+    // Giu nut = doi DUNG MOT chuong theo muc luc; nha nut sau do khong sinh luot lat
+    // them vi wasLongPressed da nuot luot release (xem detectPageTurn). Sach khong co
+    // muc luc thi giu nguyen kha nang cu: nhay mot doan trang. Nút bên cạnh còn giữ
+    // sau nắc này tiếp tục nắc theo nhịp (turbo) tới khi thả.
+    const bool fromTouchHold = touch.prev || touch.next;
+    const int huong = (fromTouchHold ? touch.next : turns.nextLongPressed) ? 1 : -1;
+    const auto& holdOrigin = huong > 0 ? chapterHoldNextOrigin : chapterHoldPrevOrigin;
+    // A touch hold fires on release, so its current position is the origin.
+    // Stored button origins belong to earlier presses and can be stale here.
+    const std::optional<int> logicalOrigin =
+        !fromTouchHold && holdOrigin.has_value()
+            ? std::optional<int>(logicalTocIndexForPosition(*holdOrigin, huong))
+            : std::nullopt;
+    if (huong > 0)
+      chapterHoldNextOrigin.reset();
+    else
+      chapterHoldPrevOrigin.reset();
+    if (!nhayChuongMotBac(huong, logicalOrigin)) skipPages(huong);
+    if (!fromTouchHold) {
+      // Chỉ bật turbo cho nút vật lý: giữ nút vẫn còn sau nắc thì nắc tiếp.
+      turboHoldDirection = static_cast<int8_t>(huong);
+      turboNextJumpMs = millis() + ReaderUtils::SKIP_HOLD_MS;
+    }
     requestUpdate();
     return;
   }
@@ -700,7 +818,7 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  if (prevTriggered) {
+  if (prevPageTriggered) {
     pageTurn(false);
   } else {
     pageTurn(true);
@@ -1135,6 +1253,132 @@ bool EpubReaderActivity::latTrangThat(bool isForwardTurn) {
   return false;
 }
 
+int EpubReaderActivity::logicalTocIndexForPosition(const ChapterHoldOrigin& origin, const int huong) {
+  if (!epub) return -1;
+  const int soMuc = static_cast<int>(epub->getTocItemsCount());
+  if (soMuc <= 0) return -1;
+  const int originSpineIndex = origin.spineIndex;
+  // Muc dang o = muc cuoi cung co spine khong vuot qua spine dang doc. Mot XHTML co the
+  // chua nhieu muc, nen buoc nhay di theo TUNG MUC chu khong theo tung tep XHTML.
+  // Khoang muc TOC cua spine goc chi tinh mot lan cho moi spine (xem tocSpineCached):
+  if (tocSpineCached != originSpineIndex) {
+    int dau = -1, cuoi = -1, truoc = -1;
+    for (int i = 0; i < soMuc; i++) {
+      const auto muc = epub->getTocItem(i);
+      if (muc.spineIndex < 0) continue;
+      if (muc.spineIndex < originSpineIndex) {
+        truoc = i;
+        continue;
+      }
+      if (muc.spineIndex == originSpineIndex) {
+        if (dau < 0) dau = i;
+        cuoi = i;
+        continue;
+      }
+      break;
+    }
+    tocDauTrongSpine = dau;
+    tocCuoiTrongSpine = cuoi;
+    tocTruocTrongSpine = truoc;
+    tocSpineCached = originSpineIndex;
+  }
+  const int dauTrongSpine = tocDauTrongSpine;
+  const int cuoiTrongSpine = tocCuoiTrongSpine;
+  // Muc cuoi cung nam TRUOC spine goc: moc de di lui khi chua biet vi tri trong spine.
+  int dangO = tocTruocTrongSpine;
+  // Mot tep XHTML co the chua nhieu muc TOC (nhieu neo). "Muc dang o" phai la muc XA NHAT
+  // trong spine goc ma neo cua no van con nam TRUOC hoac NGAY TAI trang goc: nho vay
+  // giu-nut-tiep di a1 -> a2 -> a3, giu-nut-lui di a3 -> a2 -> a1, va mo lai giua a2 thi
+  // van tinh dung a2. Khi spine chi co mot muc thi ket qua y nguyen nhu truoc.
+  if (dauTrongSpine >= 0) {
+    dangO = dauTrongSpine;
+    if (!origin.pendingAnchor.empty()) {
+      for (int i = dauTrongSpine; i <= cuoiTrongSpine; ++i) {
+        const auto muc = epub->getTocItem(i);
+        if (muc.spineIndex == originSpineIndex && muc.anchor == origin.pendingAnchor) {
+          dangO = i;
+          break;
+        }
+      }
+    } else if (section && currentSpineIndex == originSpineIndex) {
+      const int trangDangDoc = origin.pageNumber;
+      // Khong duoc gia dinh so trang cua cac muc TOC trong mot tep la khong giam: TOC co the khong
+      // theo thu tu trang, va mot neo co the thieu/hong ngay GIUA danh sach (khong chi o sau).
+      // Vi vay KHONG dung chat nhi phan. Quet nguoc tu muc cuoi va dung o muc dau tien co neo
+      // giai duoc va trang <= trang dang doc: dung trong moi truong hop, ke ca TOC khong sap thu tu.
+      // Neu khong muc nao thoa (hoac ca bang neo hong) thi lui ve muc dau spine.
+      // Chi phi: O(so muc SAU muc dang o). Toc do that su den tu cache khoang TOC o tren (khong
+      // con quet ca bang moi nhip), phan con lai ghi lai lam gioi han de review.
+      for (int i = cuoiTrongSpine; i >= dauTrongSpine; i--) {
+        const auto muc = epub->getTocItem(i);
+        if (muc.spineIndex != originSpineIndex) continue;
+        int trangNeo = 0;  // muc khong co neo = dau tep = trang 0
+        if (!muc.anchor.empty()) {
+          const auto trangTimDuoc = section->findAnchor(muc.anchor);
+          if (!trangTimDuoc.has_value()) continue;  // chua giai duoc: khong ket luan duoc gi
+          trangNeo = static_cast<int>(*trangTimDuoc);
+        }
+        if (trangNeo <= trangDangDoc) {
+          dangO = i;
+          break;
+        }
+      }
+    } else if (currentSpineIndex != originSpineIndex) {
+      // Neu lat trang vua vuot sang spine moi thi section cua spine goc da duoc tha.
+      // Lui tu trang dau can moc dau, tien tu trang cuoi can moc cuoi.
+      dangO = huong < 0 ? dauTrongSpine : cuoiTrongSpine;
+    }
+  }
+  return dangO;
+}
+
+void EpubReaderActivity::rememberChapterHoldOrigin(const int huong) {
+  ChapterHoldOrigin origin;
+  origin.spineIndex = currentSpineIndex;
+  origin.pageNumber = section ? section->currentPage : nextPageNumber;
+  // pendingAnchor is only needed while a chapter target is still waiting for its section.
+  // Keep the snapshot bounded so a malformed EPUB cannot make a short press copy an arbitrary
+  // amount of metadata before the page turn.
+  constexpr size_t kMaxHoldOriginAnchorLength = 128;
+  if (pendingAnchor.size() <= kMaxHoldOriginAnchorLength) origin.pendingAnchor = pendingAnchor;
+  if (huong > 0)
+    chapterHoldNextOrigin = std::move(origin);
+  else
+    chapterHoldPrevOrigin = std::move(origin);
+}
+
+bool EpubReaderActivity::nhayChuongMotBac(int huong, std::optional<int> logicalOrigin) {
+  if (!epub || huong == 0) return false;
+  const int soMuc = static_cast<int>(epub->getTocItemsCount());
+  if (soMuc <= 0) return false;
+  int dangO = -1;
+  if (logicalOrigin.has_value()) {
+    dangO = *logicalOrigin;
+  } else {
+    ChapterHoldOrigin currentOrigin;
+    currentOrigin.spineIndex = currentSpineIndex;
+    currentOrigin.pageNumber = section ? section->currentPage : nextPageNumber;
+    currentOrigin.pendingAnchor = pendingAnchor;
+    dangO = logicalTocIndexForPosition(currentOrigin, huong);
+  }
+  for (int i = dangO + huong; i >= 0 && i < soMuc; i += huong) {
+    if (i == dangO) continue;
+    const auto muc = epub->getTocItem(i);
+    if (muc.spineIndex < 0) continue;  // muc tro toi tep khong nam trong sach: bo qua
+    {
+      RenderLock lock;
+      clearDeferredReposition();
+      currentSpineIndex = muc.spineIndex;
+      pendingAnchor = muc.anchor;
+      nextPageNumber = 0;
+      section.reset();
+    }
+    requestUpdate();
+    return true;
+  }
+  return false;  // da o chuong dau hoac chuong cuoi
+}
+
 bool EpubReaderActivity::skipPages(int amount) {
   if (!section) return false;
   if (amount > 0) {
@@ -1175,7 +1419,11 @@ bool EpubReaderActivity::skipLoopDelay() {
 
 void EpubReaderActivity::renderBook() {
 #ifdef TENOR_UI_ACCEPTANCE
+#ifndef SIMULATOR
   LOG_INF("ERS", "Render CPU=%uMHz heap=%u", getCpuFrequencyMhz(), ESP.getFreeHeap());
+#else
+  LOG_INF("ERS", "Render simulator heap=%u", ESP.getFreeHeap());
+#endif
 #endif
   currentPageLinks.clear();
   if (!epub) return;
@@ -1853,12 +2101,16 @@ void EpubReaderActivity::renderStatusBar() const {
 namespace {
 constexpr StrId kTextRowNames[] = {StrId::STR_FONT, StrId::STR_FONT_SIZE, StrId::STR_LINE_SPACING,
                                    StrId::STR_PARA_ALIGNMENT, StrId::STR_FOCUS_READING};
-constexpr StrId kSpacingIds[] = {StrId::STR_TIGHT, StrId::STR_INK_DEFAULT, StrId::STR_WIDE};
+constexpr StrId kSpacingIds[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW, StrId::STR_TIGHT, StrId::STR_WIDE,
+                                 StrId::STR_VERY_WIDE};
+// Tắt / Mặc định / Lớn, in the same order as readerSpacing::DropCapMode.
+constexpr StrId kDropCapIds[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_SPACING_LARGE};
 constexpr StrId kAlignIds[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                StrId::STR_BOOK_S_STYLE};
 constexpr int kTextRowCount = static_cast<int>(std::size(kTextRowNames));
-static_assert(std::size(kSpacingIds) == CrossPointSettings::LINE_COMPRESSION_COUNT, "line spacing labels");
+static_assert(std::size(kSpacingIds) == readerSpacing::LEVEL_COUNT, "line spacing labels");
 static_assert(std::size(kAlignIds) == CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, "alignment labels");
+static_assert(std::size(kDropCapIds) == readerSpacing::DROP_CAP_MODE_COUNT, "drop cap labels");
 }  // namespace
 
 bool EpubReaderActivity::readingPageVisible() const { return section && overlay == Overlay::None && !isAtEndOfBook(); }
@@ -1891,11 +2143,11 @@ std::string EpubReaderActivity::textRowValue(int row) const {
     case 1:
       return std::to_string(SETTINGS.fontPointSize) + " pt";
     case 2:
-      return I18N.get(kSpacingIds[SETTINGS.lineSpacing % CrossPointSettings::LINE_COMPRESSION_COUNT]);
+      return I18N.get(kSpacingIds[readerSpacing::clampLevel(SETTINGS.lineSpacing)]);
     case 3:
       return I18N.get(kAlignIds[SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT]);
     case 4:
-      return SETTINGS.focusReadingEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+      return I18N.get(kDropCapIds[readerSpacing::clampDropCapMode(SETTINGS.dropCapMode)]);
     default:
       return "";
   }
@@ -1934,7 +2186,7 @@ void EpubReaderActivity::showTextRowPopup(const int row) {
     }
     case 2:
       overlayPopup.show(StrId::STR_LINE_SPACING, kSpacingIds, static_cast<int>(std::size(kSpacingIds)),
-                        SETTINGS.lineSpacing % CrossPointSettings::LINE_COMPRESSION_COUNT, [this](int idx) {
+                        readerSpacing::clampLevel(SETTINGS.lineSpacing), [this](int idx) {
                           SETTINGS.lineSpacing = static_cast<uint8_t>(idx);
                           applyTextSettingLive();
                         });
@@ -2242,8 +2494,8 @@ void EpubReaderActivity::handleOverlayInput() {
                                  requestUpdate();                    // re-render page + Text panel
                                });
       } else if (panelIndex == 4) {
-        // Focus Reading is a genuine on/off: a tap toggles and applies live.
-        SETTINGS.focusReadingEnabled = SETTINGS.focusReadingEnabled ? 0 : 1;
+        // Drop cap cycles Off -> Default -> Large and applies live.
+        SETTINGS.dropCapMode = static_cast<uint8_t>((SETTINGS.dropCapMode + 1) % readerSpacing::DROP_CAP_MODE_COUNT);
         applyTextSettingLive();
       } else {
         // Enum rows open the Settings-style option picker.

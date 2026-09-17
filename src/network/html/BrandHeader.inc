@@ -1,1 +1,1 @@
-<header class="tenor-masthead"><a class="tenor-identity" href="/" aria-label="tenor/cross"><span class="hieu-khong-gian">tenor</span><span class="hieu-gach">/</span><span class="hieu-ten">cross</span></a><span class="tenor-local">Thư viện qua Wi-Fi</span></header>
+<header class="tenor-masthead"><a class="tenor-identity" href="/" aria-label="tenor/cross"><span class="hieu-khong-gian">tenor</span><span class="hieu-gach">/</span><span class="hieu-ten">cross</span></a><span class="tenor-local" data-i18n="brand.localTagline">Thư viện qua Wi-Fi</span></header>

@@ -108,9 +108,9 @@ def resolve_intervals(preset_str):
         name = name.strip().lower()
         unnamed_interval = parse_hex_range(name)
         if name not in INTERVAL_PRESETS and unnamed_interval is None:
-            print(f"Error: unknown interval preset '{name}'", file=sys.stderr)
-            print(f"Available presets: {', '.join(sorted(INTERVAL_PRESETS.keys()))}", file=sys.stderr)
-            print("You can also specify unnamed hex ranges like (0x2100-0x214F)", file=sys.stderr)
+            print(f"Lỗi: không rõ preset khoảng Unicode '{name}'", file=sys.stderr)
+            print(f"Preset có sẵn: {', '.join(sorted(INTERVAL_PRESETS.keys()))}", file=sys.stderr)
+            print("Cũng có thể nhập khoảng hex không tên, ví dụ (0x2100-0x214F)", file=sys.stderr)
             sys.exit(1)
 
         if unnamed_interval is not None:
@@ -143,6 +143,7 @@ StyleRasterData = namedtuple("StyleRasterData", [
     "all_glyphs",              # [(GlyphProps, packed_bytes), ...]
     "total_bitmap_size",       # int
     "advanceY", "ascender", "descender",
+    "max_ink_top",             # int: tallest ink above the baseline (max glyph top) in this style
     "kern_left_classes", "kern_right_classes", "kern_matrix",
     "kern_left_class_count", "kern_right_class_count",
     "ligature_pairs",
@@ -364,7 +365,7 @@ def extract_kerning_fonttools(font_path, codepoints, ppem):
                     if effective_type == 2:
                         _extract_pairpos_subtable(actual, glyph_to_cp, raw_kern)
                     else:
-                        print(f"  Debug: skipping unsupported GPOS kern lookupType="
+                        print(f"  Gỡ lỗi: bỏ qua GPOS kern lookupType="
                               f"{effective_type} (outer={lookup.LookupType}, Format={actual.Format})",
                               file=sys.stderr)
 
@@ -430,9 +431,9 @@ def derive_kern_classes(kern_map):
     kern_right_class_count = right_class_id - 1
 
     if kern_left_class_count > 255 or kern_right_class_count > 255:
-        print(f"WARNING: kerning class count exceeds uint8_t range "
+        print(f"CẢNH BÁO: số lớp kerning vượt phạm vi uint8_t "
               f"(left={kern_left_class_count}, right={kern_right_class_count}), "
-              f"dropping kerning for this style",
+              f"nên bỏ kerning cho kiểu này",
               file=sys.stderr)
         return ([], [], [], 0, 0)
 
@@ -513,9 +514,9 @@ def extract_ligatures_fonttools(font_path, codepoints):
                             lig_cp = STANDARD_LIGATURE_MAP[seq]
                         else:
                             seq_str = ', '.join(f'U+{cp:04X}' for cp in seq)
-                            print(f"ligatures: WARNING: dropping ligature ({seq_str}) -> "
-                                  f"glyph '{lig.LigGlyph}': output glyph has no cmap entry "
-                                  f"and input sequence is not in STANDARD_LIGATURE_MAP",
+                            print(f"ligatures: CẢNH BÁO: bỏ ligature ({seq_str}) -> "
+                                  f"glyph '{lig.LigGlyph}': glyph đầu ra không có mục trong cmap "
+                                  f"và chuỗi đầu vào không có trong STANDARD_LIGATURE_MAP",
                                   file=sys.stderr)
                             continue
                         raw_ligatures[seq] = lig_cp
@@ -560,9 +561,9 @@ def extract_ligatures_fonttools(font_path, codepoints):
             packed = (intermediate_cp << 16) | last_cp
             pairs.append((packed, lig_cp))
         else:
-            print(f"ligatures: skipping {len(seq)}-char ligature "
+            print(f"ligatures: bỏ qua ligature {len(seq)} ký tự "
                   f"({', '.join(f'U+{cp:04X}' for cp in seq)}) -> U+{lig_cp:04X}: "
-                  f"no intermediate ligature for prefix", file=sys.stderr)
+                  f"không có ligature trung gian cho tiền tố", file=sys.stderr)
 
     # Sort by packed pair key - on-device lookup uses binary search
     pairs.sort(key=lambda p: p[0])
@@ -627,7 +628,7 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
     # Only check glyph existence via get_char_index - do NOT call
     # load_glyph here, as that triggers FT_LOAD_RENDER at the target
     # DPI and doubles total rasterization time for no benefit.
-    print(f"  [{style_label}] Validating intervals against font...", file=sys.stderr)
+    print(f"  [{style_label}] Đang đối chiếu khoảng Unicode với font...", file=sys.stderr)
     validated_intervals = []
     for i_start, i_end in intervals:
         start = i_start
@@ -643,7 +644,7 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
 
     intervals = validated_intervals
     total_glyphs = sum(end - start + 1 for start, end in intervals)
-    print(f"  [{style_label}] Validated: {len(intervals)} intervals, {total_glyphs} glyphs", file=sys.stderr)
+    print(f"  [{style_label}] Đã đối chiếu: {len(intervals)} khoảng, {total_glyphs} glyph", file=sys.stderr)
 
     # Rasterize all glyphs
     total_bitmap_size = 0
@@ -732,6 +733,18 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
             total_bitmap_size += len(packed)
             all_glyphs.append((glyph, packed))
 
+    # Tallest ink above the baseline in this style: the largest bitmap_top over
+    # every glyph that actually has ink. The reader places a page's first text
+    # line from this instead of a guessed inset - Vietnamese double accents
+    # (e.g. U+1EB2) sit above the nominal ascender, so `margin + 1` clipped
+    # them against the screen edge. Empty glyphs carry width/height 0 and
+    # top 0, so they cannot raise the bound; a style with no inked glyph at all
+    # reports 0, which callers read as "unknown".
+    max_ink_top = 0
+    for glyph, _ in all_glyphs:
+        if glyph.width and glyph.height and glyph.top > max_ink_top:
+            max_ink_top = glyph.top
+
     # Get font metrics from pipe character (same heuristic as fontconvert.py)
     load_glyph(ord('|'))
 
@@ -739,8 +752,8 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
     ascender = norm_ceil(face.size.ascender)
     descender = norm_floor(face.size.descender)
 
-    print(f"  [{style_label}] Metrics: advanceY={advanceY}, ascender={ascender}, descender={descender}", file=sys.stderr)
-    print(f"  [{style_label}] Bitmap: {total_bitmap_size} bytes ({total_bitmap_size / 1024:.1f} KB)", file=sys.stderr)
+    print(f"  [{style_label}] Số đo: advanceY={advanceY}, ascender={ascender}, descender={descender}", file=sys.stderr)
+    print(f"  [{style_label}] Ảnh bitmap: {total_bitmap_size} byte ({total_bitmap_size / 1024:.1f} KB)", file=sys.stderr)
 
     # --- Extract kerning and ligatures ---
     ppem = size * 150.0 / 72.0
@@ -751,7 +764,7 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
     # field; drop them before class derivation to avoid a downstream
     # struct.error when packing the binary kern tables.
     kern_map = {(lcp, rcp): v for (lcp, rcp), v in kern_map.items() if lcp <= 0xFFFF and rcp <= 0xFFFF}
-    print(f"  [{style_label}] Kerning: {len(kern_map)} pairs extracted", file=sys.stderr)
+    print(f"  [{style_label}] Kerning: trích được {len(kern_map)} cặp", file=sys.stderr)
 
     (kern_left_classes, kern_right_classes, kern_matrix,
      kern_left_class_count, kern_right_class_count) = derive_kern_classes(kern_map)
@@ -759,7 +772,7 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
     if kern_map:
         matrix_size = kern_left_class_count * kern_right_class_count
         entries_size = (len(kern_left_classes) + len(kern_right_classes)) * 3
-        print(f"  [{style_label}] Kerning classes: {kern_left_class_count} left, {kern_right_class_count} right, "
+        print(f"  [{style_label}] Lớp kerning: {kern_left_class_count} trái, {kern_right_class_count} phải, "
               f"{matrix_size + entries_size} bytes", file=sys.stderr)
 
     # SMP codepoints in ligature inputs / outputs are filtered inside
@@ -767,10 +780,10 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
     # entry returned here is already 16-bit safe.
     ligature_pairs = extract_ligatures_fonttools(fontfile, all_cps)
     if len(ligature_pairs) > 255:
-        print(f"  [{style_label}] WARNING: {len(ligature_pairs)} ligature pairs exceeds uint8_t max (255), truncating",
+        print(f"  [{style_label}] CẢNH BÁO: {len(ligature_pairs)} cặp ligature vượt mức tối đa của uint8_t (255), cắt bớt",
               file=sys.stderr)
         ligature_pairs = ligature_pairs[:255]
-    print(f"  [{style_label}] Ligatures: {len(ligature_pairs)} pairs", file=sys.stderr)
+    print(f"  [{style_label}] Ligature: {len(ligature_pairs)} cặp", file=sys.stderr)
 
     return StyleRasterData(
         style_id=style_id,
@@ -780,6 +793,7 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
         advanceY=advanceY,
         ascender=ascender,
         descender=descender,
+        max_ink_top=max_ink_top,
         kern_left_classes=kern_left_classes,
         kern_right_classes=kern_right_classes,
         kern_matrix=kern_matrix,
@@ -863,7 +877,7 @@ def generate_cpfont_multistyle(style_fonts, size, intervals, output_path,
     for style_id in sorted(style_fonts.keys()):
         fontfile = style_fonts[style_id]
         fallback_fontfile = fallback_style_fonts.get(style_id)
-        print(f"  Rasterizing style {style_id}...", file=sys.stderr)
+        print(f"  Đang raster hoá kiểu {style_id}...", file=sys.stderr)
         raster_data[style_id] = rasterize_font_style(
             fontfile, size, (style_intervals or {}).get(style_id, intervals), style_id=style_id,
             force_autohint=force_autohint,
@@ -891,17 +905,29 @@ def generate_cpfont_multistyle(style_fonts, size, intervals, output_path,
     # Build style TOC entries
     # Each entry: styleId(1) + pad(3) + intervalCount(4) + glyphCount(4) +
     #   advanceY(1) + ascender(2) + descender(2) + kernL(2) + kernR(2) +
-    #   kernLCls(1) + kernRCls(1) + ligCount(1) + dataOffset(4) + reserved(4) = 32
-    STYLE_TOC_FORMAT = "<B3xIIBhhHHBBBI4x"
+    #   kernLCls(1) + kernRCls(1) + ligCount(1) + dataOffset(4) +
+    #   maxInkTop(2) + reserved(2) = 32
+    #
+    # maxInkTop is the style's tallest ink above the baseline (see
+    # rasterize_font_style). It reuses the tail of the entry's reserved bytes,
+    # so the entry stays 32 bytes and the format version stays 4: firmware that
+    # predates the field skips those bytes, and firmware reading a 0 there
+    # keeps the pre-existing first-line inset. 0 means "unknown".
+    STYLE_TOC_FORMAT = "<B3xIIBhhHHBBBIh2x"
     assert struct.calcsize(STYLE_TOC_FORMAT) == STYLE_TOC_ENTRY_SIZE
 
     toc_data = bytearray()
     for style_id in sorted(raster_data.keys()):
         sd = raster_data[style_id]
         if sd.advanceY > 255:
-            print(f"ERROR: advanceY ({sd.advanceY}) exceeds uint8 range for "
-                  f"style {style_id} size {size}. This likely means the font "
-                  f"size is too large for this format.",
+            print(f"LỖI: advanceY ({sd.advanceY}) vượt phạm vi uint8 cho "
+                  f"kiểu {style_id} cỡ {size}. Nhiều khả năng cỡ chữ này quá lớn cho "
+                  f"định dạng hiện tại.",
+                  file=sys.stderr)
+            sys.exit(1)
+        if not -32768 <= sd.max_ink_top <= 32767:
+            print(f"LỖI: maxInkTop ({sd.max_ink_top}) không vừa kiểu int16 cho "
+                  f"kiểu {style_id} cỡ {size}.",
                   file=sys.stderr)
             sys.exit(1)
         toc_data += struct.pack(STYLE_TOC_FORMAT,
@@ -911,7 +937,8 @@ def generate_cpfont_multistyle(style_fonts, size, intervals, output_path,
                                 len(sd.kern_left_classes), len(sd.kern_right_classes),
                                 sd.kern_left_class_count, sd.kern_right_class_count,
                                 len(sd.ligature_pairs),
-                                style_offsets[style_id])
+                                style_offsets[style_id],
+                                sd.max_ink_top)
 
     # Write output
     os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
@@ -925,79 +952,79 @@ def generate_cpfont_multistyle(style_fonts, size, intervals, output_path,
         total_file_size = f.tell()
 
     # Print summary
-    print(f"  Output: {output_path} (v4, {style_count} styles)", file=sys.stderr)
-    print(f"    Header+TOC: {HEADER_SIZE + len(toc_data)} bytes", file=sys.stderr)
+    print(f"  Kết quả: {output_path} (v4, {style_count} kiểu)", file=sys.stderr)
+    print(f"    Header+TOC: {HEADER_SIZE + len(toc_data)} byte", file=sys.stderr)
     for style_id in sorted(raster_data.keys()):
         sd = raster_data[style_id]
         secs = packed_sections[style_id]
         style_names = {0: "regular", 1: "bold", 2: "italic", 3: "bolditalic"}
         sname = style_names.get(style_id, str(style_id))
         ssize = style_sections_total_size(secs)
-        print(f"    {sname}: {len(sd.all_glyphs)} glyphs, {len(sd.intervals)} intervals, "
+        print(f"    {sname}: {len(sd.all_glyphs)} glyph, {len(sd.intervals)} khoảng, "
               f"{ssize} bytes", file=sys.stderr)
-    print(f"    Total: {total_file_size} bytes ({total_file_size / 1024 / 1024:.2f} MB)", file=sys.stderr)
+    print(f"    Tổng: {total_file_size} byte ({total_file_size / 1024 / 1024:.2f} MB)", file=sys.stderr)
     return total_file_size
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate .cpfont files for SD card font loading.",
+        description="Sinh file .cpfont để nạp font từ thẻ SD.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=f"Available interval presets: {', '.join(sorted(INTERVAL_PRESETS.keys()))}"
+        epilog=f"Preset khoảng Unicode có sẵn: {', '.join(sorted(INTERVAL_PRESETS.keys()))}"
     )
 
     # Font file (positional, optional for multi-style mode)
     parser.add_argument("fontfile", nargs="?", default=None,
-                        help="Path to the font file (single-style mode).")
+                        help="Đường dẫn file font (chế độ một kiểu chữ).")
     parser.add_argument("--intervals", dest="intervals",
-                        help="Comma-separated interval presets (e.g., 'latin-ext,greek,cyrillic').")
+                        help="Các preset khoảng Unicode, phân tách bằng dấu phẩy (ví dụ 'latin-ext,greek,cyrillic').")
     parser.add_argument("--size", type=int, dest="size",
-                        help="Single font size to generate.")
+                        help="Một cỡ chữ cần sinh.")
     parser.add_argument("--sizes", dest="sizes",
-                        help="Comma-separated sizes (e.g., '12,14,16,18').")
+                        help="Các cỡ chữ, phân tách bằng dấu phẩy (ví dụ '12,14,16,18').")
     parser.add_argument("--style", dest="style", default="regular",
                         choices=["regular", "bold", "italic", "bolditalic"],
-                        help="Font style for single-style mode (default: regular).")
+                        help="Kiểu chữ cho chế độ một kiểu (mặc định: regular).")
     parser.add_argument("--name", dest="name",
-                        help="Font family name for output filenames (default: derived from font filename).")
+                        help="Tên họ font dùng cho tên file đầu ra (mặc định: lấy từ tên file font).")
     parser.add_argument("--force-autohint", dest="force_autohint", action="store_true",
-                        help="Force FreeType auto-hinter instead of native font hinting.")
+                        help="Buộc dùng auto-hinter của FreeType thay cho hinting gốc của font.")
     parser.add_argument("--trial-weights", action="store_true",
-                        help="Build base plus two experimental weight packs, default sizes 12 to 26.")
+                        help="Dựng bản gốc kèm hai gói độ đậm thử nghiệm, cỡ mặc định 12 đến 26.")
     parser.add_argument("--embolden-px", type=float, default=0.0,
-                        help="Experimental outline strength in pixels, 0 to 0.5 (default: unchanged).")
+                        help="Độ đậm viền thử nghiệm, đơn vị pixel, 0 đến 0.5 (mặc định: giữ nguyên).")
     parser.add_argument("-o", "--output", dest="output",
-                        help="Output file path (for single-size mode).")
+                        help="Đường dẫn file đầu ra (cho chế độ một cỡ).")
     parser.add_argument("--output-dir", dest="output_dir",
-                        help="Output directory for multi-size mode.")
+                        help="Thư mục đầu ra cho chế độ nhiều cỡ.")
     parser.add_argument("--list-presets", action="store_true",
-                        help="List available interval presets and exit.")
+                        help="Liệt kê các preset khoảng Unicode rồi thoát.")
 
     # Multi-style mode: per-style font file arguments (generates v4 .cpfont)
     parser.add_argument("--regular", dest="font_regular",
-                        help="Font file for regular style (enables multi-style v4 mode).")
+                        help="File font cho kiểu regular (bật chế độ nhiều kiểu v4).")
     parser.add_argument("--bold", dest="font_bold",
-                        help="Font file for bold style.")
+                        help="File font cho kiểu bold.")
     parser.add_argument("--italic", dest="font_italic",
-                        help="Font file for italic style.")
+                        help="File font cho kiểu italic.")
     parser.add_argument("--bolditalic", dest="font_bolditalic",
-                        help="Font file for bold-italic style.")
+                        help="File font cho kiểu bold-italic.")
     parser.add_argument("--fallback-regular", dest="fallback_regular",
-                        help="Fallback font file for regular style.")
+                        help="File font dự phòng cho kiểu regular.")
     parser.add_argument("--fallback-bold", dest="fallback_bold",
-                        help="Fallback font file for bold style.")
+                        help="File font dự phòng cho kiểu bold.")
     parser.add_argument("--fallback-italic", dest="fallback_italic",
-                        help="Fallback font file for italic style.")
+                        help="File font dự phòng cho kiểu italic.")
     parser.add_argument("--fallback-bolditalic", dest="fallback_bolditalic",
-                        help="Fallback font file for bold-italic style.")
+                        help="File font dự phòng cho kiểu bold-italic.")
 
     args = parser.parse_args()
 
     if args.list_presets:
-        print("Available interval presets:")
+        print("Preset khoảng Unicode có sẵn:")
         for name, ranges in sorted(INTERVAL_PRESETS.items()):
             total = sum(e - s + 1 for s, e in ranges)
-            print(f"  {name:15s}  {len(ranges)} range(s), ~{total} codepoints")
+            print(f"  {name:15s}  {len(ranges)} khoảng, ~{total} điểm mã")
         sys.exit(0)
 
     # Detect multi-style mode
@@ -1026,8 +1053,8 @@ def main():
 
     # Require --intervals
     if not args.intervals:
-        print("Error: --intervals is required (e.g., --intervals latin-ext,greek,cyrillic)", file=sys.stderr)
-        print(f"Available presets: {', '.join(sorted(INTERVAL_PRESETS.keys()))}", file=sys.stderr)
+        print("Lỗi: bắt buộc có --intervals (ví dụ --intervals latin-ext,greek,cyrillic)", file=sys.stderr)
+        print(f"Preset có sẵn: {', '.join(sorted(INTERVAL_PRESETS.keys()))}", file=sys.stderr)
         sys.exit(1)
 
     intervals = resolve_intervals(args.intervals)
@@ -1040,12 +1067,12 @@ def main():
     elif args.trial_weights:
         sizes = list(range(12, 27, 2))
     else:
-        print("Error: --size or --sizes is required", file=sys.stderr)
+        print("Lỗi: cần --size hoặc --sizes", file=sys.stderr)
         sys.exit(1)
 
     # Validate early: single-style mode requires a font file
     if not is_multistyle and not fontfile:
-        print("Error: fontfile is required in single-style mode", file=sys.stderr)
+        print("Lỗi: chế độ một kiểu bắt buộc phải có file font", file=sys.stderr)
         sys.exit(1)
 
     # Determine font name
@@ -1082,7 +1109,7 @@ def main():
 
     # Always generate v4 format
     if args.output and len(sizes) != 1:
-        print("Error: --output can only be used with a single size", file=sys.stderr)
+        print("Lỗi: --output chỉ dùng được khi sinh một cỡ duy nhất", file=sys.stderr)
         sys.exit(1)
     output_dir = args.output_dir if args.output_dir else f"{font_name}/"
     levels = (0.0, 0.2, 0.35) if args.trial_weights else (args.embolden_px,)
@@ -1100,7 +1127,7 @@ def main():
         folder = os.path.join(output_dir, f"weight-{weight}") if weight else output_dir
         for sz in sizes:
             output_path = args.output if args.output else os.path.join(folder, f"{font_name}_{sz}.cpfont")
-            print(f"Generating {output_path} (size {sz}, outline {strength}px)...", file=sys.stderr)
+            print(f"Đang tạo {output_path} (cỡ {sz}, độ đậm viền {strength}px)...", file=sys.stderr)
             total_size += generate_cpfont_multistyle(
                 style_fonts, sz, intervals, output_path,
                 force_autohint=args.force_autohint,
@@ -1114,7 +1141,7 @@ def main():
         with open(os.path.join(output_dir, ".weight-recipe.json"), "w", encoding="utf-8") as recipe:
             json.dump(manifest, recipe, indent=2)
             recipe.write("\n")
-    print(f"\nTotal: {len(sizes) * len(levels)} files, {total_size / 1024 / 1024:.2f} MB", file=sys.stderr)
+    print(f"\nTổng: {len(sizes) * len(levels)} file, {total_size / 1024 / 1024:.2f} MB", file=sys.stderr)
 
 
 

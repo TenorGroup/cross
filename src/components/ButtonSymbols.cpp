@@ -3,6 +3,7 @@
 #include <HalGPIO.h>
 #include <I18n.h>
 
+#include <algorithm>
 #include <cstring>
 
 #include "CrossPointSettings.h"
@@ -31,7 +32,11 @@ inlineSymbols::Spec resolve(int id) {
   return {shapes[id], I18N.get(labels[id])};
 }
 void install() { inlineSymbols::configure(resolve, font); }
-bool drawLabel(const GfxRenderer& renderer, const char* label, int x, int y) {
+namespace {
+constexpr int kNutNet = 14;
+
+int labelId(const char* label) {
+  if (!label) return -1;
   const StrId labels[] = {StrId::STR_SELECT,   StrId::STR_BACK,     StrId::STR_DIR_UP,
                           StrId::STR_DIR_DOWN, StrId::STR_DIR_LEFT, StrId::STR_DIR_RIGHT};
   int id = -1;
@@ -42,10 +47,85 @@ bool drawLabel(const GfxRenderer& renderer, const char* label, int x, int y) {
     if (strcmp(label, I18N.get(labels[i])) == 0) id = i;
   if (strcmp(label, tr(STR_TOGGLE)) == 0 || strcmp(label, tr(STR_OPEN)) == 0 || strcmp(label, tr(STR_CONFIRM)) == 0)
     id = 0;
+  return id;
+}
+
+void veTamGiac(const GfxRenderer& r, const int x, const int y, const int net, const int dir, const bool doc,
+               const bool black) {
+  for (int c = 0; c < net; ++c) {
+    const int dai = net - c;
+    const int le = (dai - 1) / 2;
+    const int half = net / 2;
+    if (doc) {
+      const int py = dir < 0 ? y + half - 1 - c : y - half + c;
+      r.drawLine(x - le, py, x - le + dai - 1, py, black);
+    } else {
+      const int px = dir < 0 ? x + half - c : x - half + c;
+      r.drawLine(px, y - le, px, y - le + dai - 1, black);
+    }
+  }
+}
+
+void veMuiTen(const GfxRenderer& r, const inlineSymbols::Shape shape, const int x, const int y, const bool black,
+              const int net = kNutNet) {
+  if (shape == inlineSymbols::Shape::Up || shape == inlineSymbols::Shape::Down) {
+    veTamGiac(r, x, y, net, shape == inlineSymbols::Shape::Up ? -1 : 1, true, black);
+    return;
+  }
+  const int dir = shape == inlineSymbols::Shape::Right ? 1 : -1;
+  const int ngangY = y - 1;
+  if (shape == inlineSymbols::Shape::Back) {
+    const int le = net / 2 + 2;
+    veTamGiac(r, x - le, ngangY, net, -1, false, black);
+    veTamGiac(r, x + le, ngangY, net, -1, false, black);
+    return;
+  }
+  veTamGiac(r, x, ngangY, net, dir, false, black);
+}
+
+void veDauChon(const GfxRenderer& r, const int x, const int y, const bool black, const int net) {
+  const int size = net + 2;
+  const int h = std::max(3, size / 2);
+  const int selectY = y + (net >= 18 ? 1 : 0);
+  inlineSymbols::drawShape(r, inlineSymbols::Shape::Select, x, selectY, size, black);
+  if (net >= 18) r.drawPixel(x + h * 3 / 4, selectY - h, black);
+}
+}  // namespace
+
+SymbolBounds horizontalBounds(const char* label, const int net) {
+  const int id = labelId(label);
+  if (id < 0 || id > 5) return {0, 0};
+  const auto shape = resolve(id).shape;
+  const int half = net / 2;
+  const int triangleMin = half - net + 1;
+  const int triangleMax = half;
+  if (shape == Shape::Back) {
+    const int separation = half + 2;
+    return {separation - triangleMin, separation + triangleMax};
+  }
+  if (shape == Shape::Select) {
+    const int h = std::max(3, (net + 2) / 2);
+    return {h, h};
+  }
+  if (shape == Shape::Up || shape == Shape::Down) {
+    const int rowLeft = (net - 1) / 2;
+    return {rowLeft, net - 1 - rowLeft};
+  }
+  if (shape == Shape::Left) return {-triangleMin, triangleMax};
+  if (shape == Shape::Right) return {half, net - 1 - half};
+  return {0, 0};
+}
+
+bool drawLabel(const GfxRenderer& renderer, const char* label, int x, int y, const int net) {
+  const int id = labelId(label);
   if (id < 0) return false;
   const auto spec = resolve(id);
   if (spec.label) return false;
-  inlineSymbols::drawShape(renderer, spec.shape, x, y, id == 0 ? 26 : 20, true);
+  if (spec.shape == inlineSymbols::Shape::Select) {
+    veDauChon(renderer, x, y, true, net);
+  } else {
+    veMuiTen(renderer, spec.shape, x, y, true, net);
+  }
   return true;
 }
 }  // namespace buttonSymbols

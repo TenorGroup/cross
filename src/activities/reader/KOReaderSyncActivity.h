@@ -75,6 +75,7 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   // WiFi.getMode() because performUpload() calls esp_wifi_stop() on the way out,
   // which makes WiFi.getMode() return WIFI_MODE_NULL.
   bool wifiActivated = false;
+  bool runtimeStarted = false;
 
   void onWifiSelectionComplete(bool success);
   void performSync();

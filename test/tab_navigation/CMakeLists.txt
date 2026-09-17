@@ -7,6 +7,7 @@ set(PIO_LIBDEPS "${REPO_ROOT}/.pio/libdeps/gh_release")
 
 add_executable(TabNavigationTest
   TabNavigationTest.cpp
+  ${REPO_ROOT}/src/MenuFavorites.cpp
   ${REPO_ROOT}/test/mapped_input/FakeHal.cpp
   ${REPO_ROOT}/test/host_stubs/FakeUi.cpp
   ${REPO_ROOT}/src/MappedInputManager.cpp
@@ -53,5 +54,13 @@ target_compile_definitions(TabNavigationTest PRIVATE
 target_link_libraries(TabNavigationTest PRIVATE
   GTest::gtest_main
 )
+
+# Exercise the real favorites catalog without linking unrelated activity constructors.
+target_compile_options(TabNavigationTest PRIVATE -ffunction-sections -fdata-sections)
+if(APPLE)
+  target_link_options(TabNavigationTest PRIVATE -Wl,-dead_strip)
+else()
+  target_link_options(TabNavigationTest PRIVATE -Wl,--gc-sections)
+endif()
 
 gtest_discover_tests(TabNavigationTest)

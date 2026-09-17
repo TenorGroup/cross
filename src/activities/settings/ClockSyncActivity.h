@@ -20,6 +20,7 @@ class ClockSyncActivity final : public Activity {
   enum State { SYNCING, SUCCESS, NO_WIFI, FAILED, TIMEZONE_FAILED };
   State state = SYNCING;
   char syncedTime[16] = {0};
+  bool runtimeStarted = false;
   bool shouldTearDownWifiOnExit = false;
 
   void runSync();

@@ -87,7 +87,10 @@ void CalibreConnectActivity::startWebServer() {
   // on OOM. See CrossPointWebServerActivity::startWebServer().
   if (auto* fcm = renderer.getFontCacheManager()) {
     LOG_DBG("CAL", "Free heap before SD font cache release: %d bytes", ESP.getFreeHeap());
-    fcm->releaseSdFontCaches();
+    {
+      RenderLock lock(*this);
+      fcm->releaseSdFontCaches();
+    }
     LOG_DBG("CAL", "Free heap before server alloc: %d bytes", ESP.getFreeHeap());
   }
 

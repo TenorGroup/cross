@@ -134,7 +134,12 @@ void ReaderActivity::chotSoLieuDoc() {
 }
 
 void ReaderActivity::onTick() {
-  RenderLock lock;
+  // Never stall the input loop on a paint in flight: try-take instead of
+  // blocking. A blocked main task stops gpio polling for the whole paint
+  // (~2 s on X3), which silently eats short taps (the debounced press never
+  // sees two consecutive agreeing samples).
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired()) return;
   updateReadingTime(pageReady.load(std::memory_order_acquire) && readingPageVisible());
   if (millis() - statsSavedMs >= 30000) chotSoLieuDoc();
 }
@@ -210,10 +215,18 @@ void ReaderActivity::readingMargins(int& top, int& right, int& bottom, int& left
   renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
   const int margin = SETTINGS.screenMargin;
   if (tenorchrome::enabled()) {
-    // tenor/cross uses the physical page edges, matching the fixed footer.
-    // Default text inset is 5 px; preserve an explicitly larger reader margin.
+    // Tenor reader margins are expressed in the renderer's current logical orientation.
     left = margin;
-    top = margin + 1;    // Vietnamese accents can exceed the font ascender by one pixel.
+    // Keep the first line below the ink-safe floor, with a small visual breathing room.
+    const int fontId = SETTINGS.getReaderFontId();
+    int maxInkTop = 0;
+    for (uint8_t style = EpdFontFamily::REGULAR; style <= EpdFontFamily::BOLD_ITALIC; ++style) {
+      maxInkTop = std::max(maxInkTop, renderer.getFontMaxInkTop(fontId, static_cast<EpdFontFamily::Style>(style)));
+    }
+    constexpr int TOP_BREATHING_ROOM = 3;
+    const int inkSafeTop =
+        maxInkTop > 0 ? std::max(margin, maxInkTop - renderer.getFontAscenderSize(fontId)) : margin + 1;
+    top = inkSafeTop + TOP_BREATHING_ROOM;
     right = margin + 3;  // Reserve ink overhang beyond the final glyph advance.
     bottom = std::max(margin, preview                            ? static_cast<int>(PREVIEW_FOOTER_HEIGHT)
                               : SETTINGS.readerStatusBarHidden() ? 0
@@ -227,7 +240,8 @@ void ReaderActivity::readingMargins(int& top, int& right, int& bottom, int& left
 }
 
 uint8_t ReaderActivity::readerStatusBarHeight() const {
-  return preview ? PREVIEW_FOOTER_HEIGHT : UITheme::getInstance().getStatusBarHeight();
+  return preview ? PREVIEW_FOOTER_HEIGHT
+                 : UITheme::getInstance().getStatusBarHeight(UITheme::StatusBarScope::Reader);
 }
 
 void ReaderActivity::drawPreviewFooter() const {
@@ -269,19 +283,22 @@ void ReaderActivity::loop() {
   if (handleBackNavigation()) return;
 
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
-  auto [prevTriggered, nextTriggered, fromTilt] = ReaderUtils::detectPageTurn(mappedInput);
-  prevTriggered = prevTriggered || touch.prev;
-  nextTriggered = nextTriggered || touch.next;
+  const auto turns = ReaderUtils::detectPageTurn(mappedInput);
+  const bool prevTriggered = turns.prev || turns.prevLongPressed || touch.prev;
+  const bool nextTriggered = turns.next || turns.nextLongPressed || touch.next;
   if (!prevTriggered && !nextTriggered) return;
   if (handleEndOfBookPageTurn(prevTriggered, nextTriggered)) return;
 
   const unsigned long heldMs = (touch.prev || touch.next) ? touch.heldMs : mappedInput.getHeldTime();
-  if (!fromTilt && SETTINGS.longPressButtonBehavior == SETTINGS.FONT_SIZE_STEP && heldMs >= ReaderUtils::SKIP_HOLD_MS) {
+  const bool longPress =
+      !turns.fromTilt &&
+      (turns.prevLongPressed || turns.nextLongPressed ||
+       ((touch.prev || touch.next) && heldMs >= ReaderUtils::SKIP_HOLD_MS));
+  if (longPress && SETTINGS.longPressButtonBehavior == SETTINGS.FONT_SIZE_STEP) {
     if (docCoChuMotNac(nextTriggered ? 1 : -1)) requestUpdate();
     return;
   }
-  const bool skip =
-      !fromTilt && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP && heldMs >= ReaderUtils::SKIP_HOLD_MS;
+  const bool skip = longPress && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP;
 
   if (prevTriggered) {
     if (skip) {

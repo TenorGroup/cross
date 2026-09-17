@@ -58,7 +58,7 @@ def load_catalog_from_yaml(
     try:
         import yaml
     except ImportError:
-        print("WARNING: pyyaml not installed, cannot load family metadata from YAML", file=sys.stderr)
+        print("CẢNH BÁO: chưa cài pyyaml nên không đọc được metadata họ font từ YAML", file=sys.stderr)
         return {}, {}, []
 
     with open(yaml_path) as f:
@@ -70,9 +70,9 @@ def load_catalog_from_yaml(
         tag = group.get("tag")
         label = group.get("label")
         if not isinstance(tag, str) or not tag or not isinstance(label, str) or not label:
-            raise ValueError("sd-fonts.yaml: scriptGroups entries require non-empty tag and label strings")
+            raise ValueError("sd-fonts.yaml: mỗi mục scriptGroups cần tag và label là chuỗi không rỗng")
         if tag in known_tags:
-            raise ValueError(f"sd-fonts.yaml: duplicate script group tag '{tag}'")
+            raise ValueError(f"sd-fonts.yaml: tag nhóm chữ viết bị trùng '{tag}'")
         known_tags.add(tag)
         groups.append((tag, label))
 
@@ -82,13 +82,13 @@ def load_catalog_from_yaml(
     for family in families:
         scripts = family.get("scripts", [])
         if not isinstance(scripts, list) or not all(isinstance(tag, str) for tag in scripts):
-            raise ValueError(f"sd-fonts.yaml: family '{family['name']}' scripts must be a list of tags")
+            raise ValueError(f"sd-fonts.yaml: họ font '{family['name']}' phải có 'scripts' là danh sách tag")
         if len(scripts) != len(set(scripts)):
-            raise ValueError(f"sd-fonts.yaml: family '{family['name']}' has duplicate script tags")
+            raise ValueError(f"sd-fonts.yaml: họ font '{family['name']}' có tag chữ viết bị trùng")
         unknown_tags = set(scripts) - known_tags
         if unknown_tags:
             raise ValueError(
-                f"sd-fonts.yaml: family '{family['name']}' references unknown script groups: "
+                f"sd-fonts.yaml: họ font '{family['name']}' tham chiếu nhóm chữ viết không có trong file: "
                 f"{', '.join(sorted(unknown_tags))}"
             )
         family_scripts[family["name"]] = scripts
@@ -101,7 +101,7 @@ def read_cpfont_styles(filepath: Path) -> list[str]:
     with open(filepath, "rb") as f:
         header_data = f.read(GLOBAL_HEADER_SIZE)
         if len(header_data) < GLOBAL_HEADER_SIZE:
-            print(f"  WARNING: {filepath.name} too small, skipping", file=sys.stderr)
+            print(f"  CẢNH BÁO: {filepath.name} quá nhỏ, bỏ qua", file=sys.stderr)
             return []
 
         magic, version, _flags, style_count = struct.unpack(
@@ -110,14 +110,14 @@ def read_cpfont_styles(filepath: Path) -> list[str]:
 
         if magic != CPFONT_MAGIC:
             print(
-                f"  WARNING: {filepath.name} bad magic {magic!r}, skipping",
+                f"  CẢNH BÁO: {filepath.name} sai magic {magic!r}, bỏ qua",
                 file=sys.stderr,
             )
             return []
 
         if version != CPFONT_VERSION:
             print(
-                f"  WARNING: {filepath.name} version {version} != {CPFONT_VERSION}, skipping",
+                f"  CẢNH BÁO: {filepath.name} có version {version} != {CPFONT_VERSION}, bỏ qua",
                 file=sys.stderr,
             )
             return []
@@ -172,7 +172,7 @@ def scan_cpfont_files(input_dir: Path) -> dict[str, list[Path]]:
             continue
         parsed = parse_filename(path.name)
         if parsed is None:
-            print(f"  WARNING: skipping {path.name} (unexpected filename format)", file=sys.stderr)
+            print(f"  CẢNH BÁO: bỏ qua {path.name} (tên file không đúng dạng)", file=sys.stderr)
             continue
         family_name = parsed[0]
         families.setdefault(family_name, []).append(path)
@@ -198,8 +198,8 @@ def build_manifest(
         description = FAMILY_DESCRIPTIONS.get(family_name)
         if description is None:
             print(
-                f"  WARNING: no description for family '{family_name}', "
-                f"consider adding one to sd-fonts.yaml (--descriptions-from)",
+                f"  CẢNH BÁO: họ font '{family_name}' chưa có mô tả, "
+                f"nên thêm mô tả vào sd-fonts.yaml (--descriptions-from)",
                 file=sys.stderr,
             )
             description = family_name
@@ -246,33 +246,33 @@ def build_manifest(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate fonts.json manifest from .cpfont files"
+        description="Sinh manifest fonts.json từ các file .cpfont"
     )
     parser.add_argument(
         "--input",
         required=True,
-        help="Directory containing .cpfont files (flat or nested by family)",
+        help="Thư mục chứa các file .cpfont (phẳng hoặc lồng theo họ font)",
     )
     parser.add_argument(
         "--base-url",
         required=True,
-        help="URL prefix for font downloads (device concatenates baseUrl + filename)",
+        help="Tiền tố URL để tải font (máy đọc ghép baseUrl + tên file)",
     )
     parser.add_argument(
         "--output",
         required=True,
-        help="Output path for fonts.json",
+        help="Đường dẫn ghi fonts.json",
     )
     parser.add_argument(
         "--descriptions-from",
         default=None,
-        help="Path to sd-fonts.yaml to load family descriptions (default: use family name)",
+        help="Đường dẫn sd-fonts.yaml để lấy mô tả họ font (mặc định: dùng tên họ font)",
     )
     args = parser.parse_args()
 
     input_dir = Path(args.input)
     if not input_dir.is_dir():
-        print(f"ERROR: {input_dir} is not a directory", file=sys.stderr)
+        print(f"LỖI: {input_dir} không phải là thư mục", file=sys.stderr)
         sys.exit(1)
 
     # Ensure base URL ends with /
@@ -287,22 +287,22 @@ def main():
         if desc_path.exists():
             FAMILY_DESCRIPTIONS, FAMILY_SCRIPTS, SCRIPT_GROUPS = load_catalog_from_yaml(desc_path)
             print(
-                f"Loaded {len(FAMILY_DESCRIPTIONS)} descriptions, "
-                f"{len(FAMILY_SCRIPTS)} script memberships from {desc_path}"
+                f"Đã nạp {len(FAMILY_DESCRIPTIONS)} mô tả, "
+                f"{len(FAMILY_SCRIPTS)} nhóm chữ viết từ {desc_path}"
             )
         else:
-            print(f"WARNING: {desc_path} not found, using family names as descriptions", file=sys.stderr)
+            print(f"CẢNH BÁO: không thấy {desc_path}, dùng tên họ font làm mô tả", file=sys.stderr)
 
-    print(f"Scanning {input_dir} for .cpfont files...")
+    print(f"Đang quét {input_dir} tìm file .cpfont...")
     families = scan_cpfont_files(input_dir)
 
     if not families:
-        print("ERROR: no .cpfont files found", file=sys.stderr)
+        print("LỖI: không tìm thấy file .cpfont nào", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Found {len(families)} font families:")
+    print(f"Tìm thấy {len(families)} họ font:")
     for name, files in sorted(families.items()):
-        print(f"  {name}: {len(files)} files")
+        print(f"  {name}: {len(files)} file")
 
     manifest = build_manifest(families, base_url)
 
@@ -312,7 +312,7 @@ def main():
         json.dump(manifest, f, indent=2)
         f.write("\n")
 
-    print(f"Wrote {output_path}")
+    print(f"Đã ghi {output_path}")
 
 
 if __name__ == "__main__":

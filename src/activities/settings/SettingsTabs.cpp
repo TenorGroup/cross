@@ -31,6 +31,8 @@ Tab nhaCua(const Action action) {
     case Action::RemapFrontButtons:
       return Tab::CONTROLS;
     // Thiet bi: thu thuoc ve chinh cai may nay, dat mot lan roi hau nhu khong dong lai.
+    case Action::BlePageTurner:
+      return Tab::DEVICE;
     case Action::DeviceName:
     case Action::Network:
     case Action::Language:

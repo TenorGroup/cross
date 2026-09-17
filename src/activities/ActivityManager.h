@@ -78,6 +78,7 @@ class ActivityManager {
   std::atomic<bool> requestedUpdate{false};
   bool sleepTransition = false;
   bool homeAfterInput = false;
+  uint32_t activityGeneration_ = 0;
   MenuNavigationMemory navigationMemory;
   void restoreNavigation();
   void saveNavigation(Activity& activity);
@@ -124,11 +125,20 @@ class ActivityManager {
   bool switchSettingsSibling(int direction);
 #ifdef TENOR_UI_ACCEPTANCE
   void stepHomeForTest(int direction);
+  void tabHomeForTest(int index);
 #endif
 
   bool preventAutoSleep() const;
   bool requiresExclusiveStorageLoop() const;
   bool isReaderActivity() const;
+  bool isForegroundReaderActivity() const;
+  bool isForegroundReaderReady() const;
+  uint32_t activityGeneration() const { return activityGeneration_; }
+
+  // Lat trang trong trinh doc dang mo (theo huong `forward`). Tra false khi hoạt động hiện tại
+  // khong phai trinh doc hoac trinh doc tu choi (dau/cuoi sach). Dung cho nguon vao ngoai nut
+  // vat ly, vi du page turner BLE.
+  bool pageTurn(bool forward);
   bool handleForcedRefresh();
   bool skipLoopDelay() const;
   ScreenshotInfo getScreenshotInfo() const;

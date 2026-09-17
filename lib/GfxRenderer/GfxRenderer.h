@@ -296,15 +296,27 @@ class GfxRenderer {
                         BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO) const;
   void drawText(int fontId, int x, int y, const char* text, bool black = true,
                 EpdFontFamily::Style style = EpdFontFamily::REGULAR,
-                BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO, int letterSpacing = 0) const;
-  int getSpaceWidth(int fontId, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
+                BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO, int letterSpacing = 0,
+                uint8_t wordSpacing = 0) const;
+  /// Space advance in pixels. \p wordSpacing is a readerSpacing::Level (0 ==
+  /// DEFAULT == no adjustment) and adds readerSpacing::wordPixels() to U+0020
+  /// alone; the paragraph indent is N of these advances and scales with it.
+  int getSpaceWidth(int fontId, EpdFontFamily::Style style = EpdFontFamily::REGULAR,
+                    uint8_t wordSpacing = 0) const;
   /// Returns the total inter-word advance: fp4::toPixel(spaceAdvance + kern(leftCp,' ') + kern(' ',rightCp)).
   /// Using a single snap avoids the +/-1 px rounding error that arises when space advance and kern are
   /// snapped separately and then added as integers.
-  int getSpaceAdvance(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const;
+  /// The same delta applies to the inter-word gap; \p wordSpacing is the same
+  /// readerSpacing::Level, so the line breaker, justification and the word
+  /// x-position builder all measure one gap.
+  int getSpaceAdvance(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style,
+                      uint8_t wordSpacing = 0) const;
   /// Returns the kerning adjustment between two adjacent codepoints.
   int getKerning(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const;
-  int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style, int letterSpacing = 0) const;
+  /// Whole-string advance. \p wordSpacing applies the U+0020 delta to every
+  /// space in \p text (TXT layout measures and draws whole lines).
+  int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style, int letterSpacing = 0,
+                      uint8_t wordSpacing = 0) const;
   int getDropCapAdvance(int fontId, const char* text, EpdFontFamily::Style style, int height,
                         int letterSpacing = 0) const;
   int getDropCapWordWidth(int fontId, const char* text, EpdFontFamily::Style style, int height,
@@ -312,6 +324,11 @@ class GfxRenderer {
   void drawDropCapWord(int fontId, int x, int y, const char* text, EpdFontFamily::Style style, int height,
                        int letterSpacing = 0) const;
   int getFontAscenderSize(int fontId) const;
+  /// Tallest ink above the baseline for an SD-card font's style, resolved
+  /// through that font's present-style fallback. Returns 0 for built-in fonts
+  /// and for packs built before the cpfont ink-top field, i.e. "unknown - keep
+  /// the caller's existing placement".
+  int getFontMaxInkTop(int fontId, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   int getLineHeight(int fontId) const;
   int getLineHeight(int fontId, float compression) const;
   std::string truncatedText(int fontId, const char* text, int maxWidth,

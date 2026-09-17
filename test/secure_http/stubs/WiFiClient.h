@@ -14,9 +14,11 @@ struct Request {
 };
 inline std::deque<std::string> replies;
 inline std::vector<Request> requests;
+inline int connectAttempts = 0;
 inline void reset() {
   replies.clear();
   requests.clear();
+  connectAttempts = 0;
 }
 }  // namespace wire
 class WiFiClient : public Client {
@@ -28,6 +30,7 @@ class WiFiClient : public Client {
   void setConnectionTimeout(unsigned long) {}
   int connect(IPAddress, uint16_t) override { return 0; }
   int connect(const char* host, uint16_t port) override {
+    ++wire::connectAttempts;
     if (wire::replies.empty()) return 0;
     response = wire::replies.front();
     wire::replies.pop_front();

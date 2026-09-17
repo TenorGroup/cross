@@ -1,6 +1,7 @@
 #pragma once
 #include <ArduinoJson.h>
 #include <Epub/ReaderRenderSpec.h>
+#include <Epub/ReaderSpacing.h>
 #include <PersistableStore.h>
 
 #include <cstdint>
@@ -112,7 +113,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // slot; fromJson() folds that range up (see LEGACY_FONT_SIZE_MAX).
   static constexpr uint8_t LEGACY_FONT_SIZE_MAX = 3;
   static constexpr uint8_t DEFAULT_FONT_POINT_SIZE = 16;
-  enum LINE_COMPRESSION { TIGHT = 0, NORMAL = 1, WIDE = 2, LINE_COMPRESSION_COUNT };
   enum PARAGRAPH_ALIGNMENT {
     JUSTIFIED = 0,
     LEFT_ALIGN = 1,
@@ -220,10 +220,33 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t sleepScreenCoverMode = FIT;
   // Sleep screen cover filter
   uint8_t sleepScreenCoverFilter = NO_FILTER;
-  // Status bar settings
+  // Thanh trang thai ngoai trinh doc: dung ba muc founder chot. Gia tri luu xuong
+  // settings.json nen CHI THEM VAO CUOI.
+  enum GLOBAL_STATUS_BAR_MODE {
+    GLOBAL_STATUS_BAR_SMALL = 0,  // Mac dinh nho
+    GLOBAL_STATUS_BAR_OFF = 1,    // Tat: khong pin, khong gio, khong nhan nut
+    GLOBAL_STATUS_BAR_LARGE = 2,  // Lon
+    GLOBAL_STATUS_BAR_MODE_COUNT
+  };
+  // Thanh trang thai trong trinh doc: sau muc, doc lap voi lua chon ngoai trinh doc.
+  enum READER_STATUS_BAR_MODE {
+    READER_STATUS_BAR_OFF = 0,               // Tat
+    READER_STATUS_BAR_CLOCK_BATTERY = 1,     // Dong ho & pin
+    READER_STATUS_BAR_DEFAULT = 2,           // Mac dinh du
+    READER_STATUS_BAR_CHAPTER_PROGRESS = 3,  // Ten chuong & tien trinh chuong
+    READER_STATUS_BAR_CHAPTER_CLOCK = 4,     // Ten chuong & dong ho
+    READER_STATUS_BAR_CHAPTER_BATTERY = 5,   // Ten chuong & pin
+    READER_STATUS_BAR_MODE_COUNT
+  };
+  // Trang thai thanh trang thai
+  uint8_t globalStatusBarMode = GLOBAL_STATUS_BAR_SMALL;
+  uint8_t readerStatusBarMode = READER_STATUS_BAR_DEFAULT;
+  // Hai co cua v1.0.2 chi con de doc file cu roi quy doi trong fromJson.
   uint8_t hideReaderStatusBar = 0;
   uint8_t hideGlobalStatusBar = 0;
-  bool readerStatusBarHidden() const { return hideGlobalStatusBar || hideReaderStatusBar; }
+  bool globalStatusBarHidden() const { return globalStatusBarMode == GLOBAL_STATUS_BAR_OFF; }
+  bool globalStatusBarLarge() const { return globalStatusBarMode == GLOBAL_STATUS_BAR_LARGE; }
+  bool readerStatusBarHidden() const { return readerStatusBarMode == READER_STATUS_BAR_OFF; }
   uint8_t statusBarChapterPageCount = 1;
   uint8_t statusBarBookProgressPercentage = 1;
   uint8_t statusBarProgressBar = HIDE_PROGRESS;
@@ -243,9 +266,16 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Set once an NTP sync succeeds. Used to skip re-syncing on every WiFi connect.
   // Resetting to 0 (e.g. via the web UI) forces a re-sync on next WiFi connect.
   uint8_t clockHasBeenSynced = 0;
-  // Text rendering settings
-  uint8_t extraParagraphSpacing = 0;
-  uint8_t letterSpacing = 1;
+  // Text rendering settings. Each of these three is a readerSpacing::Level, not
+  // a private enum: the ordinal is what settings.json stores, and ReaderSpacing.h
+  // turns it into the line factor, the letter delta and the paragraph gap.
+  // toJson stamps textSpacingVersion 3; fromJson folds v1/v2 files into it.
+  uint8_t extraParagraphSpacing = readerSpacing::LEVEL_DEFAULT;
+  uint8_t letterSpacing = readerSpacing::LEVEL_DEFAULT;
+  // readerSpacing::Level applied to the U+0020 advance. Joined the group at
+  // textSpacingVersion 3 and no earlier release wrote the key, so an absent key
+  // keeps the default rather than being folded like the three above.
+  uint8_t wordSpacing = readerSpacing::LEVEL_DEFAULT;
   // 0 = off, 1 = default, 2 = wide.
   uint8_t paragraphIndent = 1;
   uint8_t textAntiAliasing = 1;
@@ -290,7 +320,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t fontPointSize = DEFAULT_FONT_POINT_SIZE;
   // User preference; a family without the variant temporarily renders at weight 0.
   uint8_t readerInkWeight = 0;
-  uint8_t lineSpacing = NORMAL;
+  // readerSpacing::Level. Was LINE_COMPRESSION TIGHT/NORMAL/WIDE before
+  // textSpacingVersion 3; fromJson maps those old ordinals onto the levels.
+  uint8_t lineSpacing = readerSpacing::LEVEL_DEFAULT;
   uint8_t paragraphAlignment = JUSTIFIED;
   // Auto-sleep timeout setting (default 10 minutes). Legacy sleepTimeout enum values are migration-only.
   uint8_t sleepTimeoutMinutes = 10;
@@ -329,8 +361,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t pwrBtnFootnoteBack = 1;
   // Use book's embedded CSS styles for EPUB rendering (1 = enabled, 0 = disabled)
   uint8_t embeddedStyle = 1;
-  // Enlarge the opening character of the first paragraph in a chapter.
-  uint8_t focusReadingEnabled = 1;
+  // Drop cap on the opening character of the first paragraph in a chapter:
+  // 0 Off, 1 Default, 2 Large. Older files stored a boolean under
+  // focusReadingEnabled and are migrated on read.
+  uint8_t dropCapMode = readerSpacing::DROP_CAP_DEFAULT;
   uint8_t readerMenuStyle = READER_MENU_LIST;
   // SD card font family name (empty = use built-in fontFamily).
   // Bokerlam is the reader font this firmware ships as its default choice. It lives on the
@@ -377,6 +411,49 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint16_t keyboardLayouts = 0;
   // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
   uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
+
+  // --- BLE page turner (BTH2) -------------------------------------------------
+  // Mac dinh TAT. Nam truong nay duoc luu tay trong toJson/fromJson (khong qua
+  // SettingsList) vi man hinh cua chung la BlePageTurnerActivity, khong phai
+  // man Cai dat chung. File v1.0.2 khong co nam khoa nay: doc len ra dung mac
+  // dinh duoi day, va khong truong cu nao bi mat.
+  //
+  // `blePeerAddr`/`blePeerName` la thiet bi nguoi dung da chon: giu lai de lan
+  // sau ket noi lai ma khong phai quet lai. `blePrevKeyUsage`/`bleNextKeyUsage`
+  // la ma HID usage THO da hoc duoc tu report da phan giai; 0 = chua hoc.
+  uint8_t blePageTurnerEnabled = 0;
+  char blePeerAddr[18] = "";
+  char blePeerName[32] = "";
+  uint8_t blePrevKeyUsage = 0;
+  uint8_t bleNextKeyUsage = 0;
+
+  static constexpr uint8_t BLE_USAGE_NONE = 0;
+  // HID Usage Tables, Keyboard/Keypad (page 0x07): Left 0x50, Right 0x4F,
+  // Page Up 0x4B, Page Down 0x4E.
+  static constexpr uint8_t BLE_USAGE_LEFT = 0x50;
+  static constexpr uint8_t BLE_USAGE_RIGHT = 0x4F;
+  static constexpr uint8_t BLE_USAGE_PAGE_UP = 0x4B;
+  static constexpr uint8_t BLE_USAGE_PAGE_DOWN = 0x4E;
+
+  enum class BlePageAction : uint8_t { None = 0, PreviousPage, NextPage };
+
+  // Y nghia lat trang cua mot usage HID da phan giai. Nut DA HOC thay cho mac
+  // dinh cua dung chieu do: hoc roi thi nut cu khong con lat trang nua, neu
+  // khong nguoi dung khong bao gio bo duoc mot anh xa sai. Chua hoc gi thi chi
+  // bon nut mac dinh duoi day duoc nhan - van ban go binh thuong KHONG lat
+  // trang. Mot usage di kem modifier (Ctrl/Alt/...) khong tinh.
+  BlePageAction blePageActionFor(const uint8_t usageId, const uint8_t mods) const {
+    if (!blePageTurnerEnabled || usageId == BLE_USAGE_NONE || mods != 0) return BlePageAction::None;
+    if (blePrevKeyUsage != BLE_USAGE_NONE && usageId == blePrevKeyUsage) return BlePageAction::PreviousPage;
+    if (bleNextKeyUsage != BLE_USAGE_NONE && usageId == bleNextKeyUsage) return BlePageAction::NextPage;
+    if (blePrevKeyUsage == BLE_USAGE_NONE && (usageId == BLE_USAGE_LEFT || usageId == BLE_USAGE_PAGE_UP)) {
+      return BlePageAction::PreviousPage;
+    }
+    if (bleNextKeyUsage == BLE_USAGE_NONE && (usageId == BLE_USAGE_RIGHT || usageId == BLE_USAGE_PAGE_DOWN)) {
+      return BlePageAction::NextPage;
+    }
+    return BlePageAction::None;
+  }
 
   static constexpr uint8_t MIN_SLEEP_TIMEOUT_MINUTES = 1;
   static constexpr uint8_t SLEEP_TIMEOUT_NEVER_MINUTES = 31;

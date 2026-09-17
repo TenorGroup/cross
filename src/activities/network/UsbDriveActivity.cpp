@@ -4,6 +4,7 @@
 #include <HalStorage.h>
 #include <I18n.h>
 
+#include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
 #include "components/UITheme.h"
@@ -11,6 +12,14 @@
 namespace fui = freeink::ui;
 
 void UsbDriveActivity::onEnter() {
+  runtimeStarted = false;
+  // Stop BLE before the first render wait and before raw SD ownership changes.
+  if (!filetransfer::acquire()) {
+    LOG_ERR("USB", "BLE teardown incomplete; leaving USB Drive");
+    onGoHome();
+    return;
+  }
+  runtimeStarted = true;
   Activity::onEnter();
   resetUi();
   app.setScreen(&UsbDriveActivity::driveScreen, this);
@@ -34,8 +43,10 @@ void UsbDriveActivity::onEnter() {
 }
 
 void UsbDriveActivity::onExit() {
-  if (!restartRequested) Storage.endUsbDrive();
+  if (runtimeStarted && !restartRequested) Storage.endUsbDrive();
   Activity::onExit();
+  // Storage is released before the radio owner is released.
+  filetransfer::release();
 }
 
 void UsbDriveActivity::loop() {

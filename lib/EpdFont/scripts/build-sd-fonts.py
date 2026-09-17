@@ -69,7 +69,7 @@ def download_font(url: str, dest: Path, retries: int = 3) -> Path:
     if dest.exists():
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
-    print(f"  Downloading {dest.name}...")
+    print(f"  Đang tải {dest.name}...")
     last_err = None
     for attempt in range(1, retries + 1):
         force_ipv4 = attempt > 1
@@ -82,14 +82,14 @@ def download_font(url: str, dest: Path, retries: int = 3) -> Path:
             last_err = e
             dest.unlink(missing_ok=True)
             if attempt < retries:
-                print(f"  Attempt {attempt} failed ({e}); retrying (IPv4-only)...")
+                print(f"  Lần thử {attempt} thất bại ({e}); thử lại chỉ với IPv4...")
         finally:
             if force_ipv4:
                 socket.getaddrinfo = _orig_getaddrinfo
     else:
         raise RuntimeError(f"Failed to download {url}: {last_err}") from last_err
     size_kb = dest.stat().st_size / 1024
-    print(f"  Downloaded {dest.name} ({size_kb:.0f} KB)")
+    print(f"  Đã tải {dest.name} ({size_kb:.0f} KB)")
     return dest
 
 
@@ -115,7 +115,7 @@ def extract_static_instance(source_path: Path, axes: dict, family_name: str, sty
     for old in cached.parent.glob(f"{style_name}_*.ttf"):
         old.unlink()
 
-    print(f"  Extracting static instance: {family_name}/{style_name} ({axis_key})")
+    print(f"  Đang tách bản tĩnh: {family_name}/{style_name} ({axis_key})")
     # Atomic write: save to a temp file first, then rename. A crash or save()
     # exception would otherwise leave a corrupt `cached` file that future runs
     # would happily reuse via the `cached.exists()` check above.
@@ -309,38 +309,38 @@ def generate_manifest(
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"ERROR: Manifest generation failed:\n{result.stderr}", file=sys.stderr)
+        print(f"LỖI: sinh manifest thất bại:\n{result.stderr}", file=sys.stderr)
         return
     print(result.stdout, end="")
-    print(f"Manifest written: {manifest_path}")
+    print(f"Đã ghi manifest: {manifest_path}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build SD card fonts from YAML config")
+    parser = argparse.ArgumentParser(description="Dựng font cho thẻ SD từ file cấu hình YAML")
     parser.add_argument(
-        "--config", default=str(DEFAULT_CONFIG), help="Path to font families YAML config"
+        "--config", default=str(DEFAULT_CONFIG), help="Đường dẫn file YAML cấu hình các họ font"
     )
     parser.add_argument(
-        "--output-dir", default=str(DEFAULT_OUTPUT), help="Output directory for .cpfont files"
+        "--output-dir", default=str(DEFAULT_OUTPUT), help="Thư mục đầu ra cho các file .cpfont"
     )
-    parser.add_argument("--only", help="Comma-separated family names to build (default: all)")
-    parser.add_argument("--manifest", action="store_true", help="Also generate fonts.json manifest")
-    parser.add_argument("--base-url", default="", help="Base URL for manifest (required with --manifest)")
+    parser.add_argument("--only", help="Các họ font cần dựng, phân tách bằng dấu phẩy (mặc định: tất cả)")
+    parser.add_argument("--manifest", action="store_true", help="Sinh thêm manifest fonts.json")
+    parser.add_argument("--base-url", default="", help="URL gốc cho manifest (bắt buộc khi dùng --manifest)")
     parser.add_argument(
-        "--manifest-output", default=None, help="Manifest output path (default: <output-dir>/fonts.json)"
+        "--manifest-output", default=None, help="Đường dẫn ghi manifest (mặc định: <output-dir>/fonts.json)"
     )
     parser.add_argument(
         "--jobs", "-j", type=int, default=None,
-        help="Max parallel jobs (default: number of families)"
+        help="Số tiến trình chạy song song tối đa (mặc định: số họ font)"
     )
-    parser.add_argument("--clean", action="store_true", help="Clean output directory before building")
+    parser.add_argument("--clean", action="store_true", help="Dọn thư mục đầu ra trước khi dựng")
     parser.add_argument(
         "--verbose", "-v", action="store_true",
-        help="Stream child process output in real time (useful for debugging timeouts)"
+        help="Phát trực tiếp output của tiến trình con (hữu ích khi gỡ lỗi timeout)"
     )
     parser.add_argument(
         "--timeout", type=int, default=600,
-        help="Per-family timeout in seconds (default: 600)"
+        help="Thời gian chờ cho mỗi họ font, tính bằng giây (mặc định: 600)"
     )
     args = parser.parse_args()
 
@@ -350,7 +350,7 @@ def main():
     # Load config
     config_path = Path(args.config)
     if not config_path.exists():
-        print(f"ERROR: Config not found: {config_path}", file=sys.stderr)
+        print(f"LỖI: không thấy file cấu hình: {config_path}", file=sys.stderr)
         sys.exit(1)
 
     with open(config_path) as f:
@@ -358,14 +358,14 @@ def main():
 
     families = config.get("families", [])
     if not families:
-        print("ERROR: No families defined in config", file=sys.stderr)
+        print("LỖI: file cấu hình không định nghĩa họ font nào", file=sys.stderr)
         sys.exit(1)
 
     if not DEFAULT_FALLBACK_FONT.exists() or not DEFAULT_FALLBACK_FONT.is_file():
         print(
-            "ERROR: Missing default fallback font: "
+            "LỖI: thiếu font dự phòng mặc định: "
             f"{DEFAULT_FALLBACK_FONT}\n"
-            "This font is required for fallback glyphs in SD font builds.",
+            "Font này cần thiết cho các glyph dự phòng khi dựng font thẻ SD.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -376,35 +376,35 @@ def main():
         families = [f for f in families if f["name"] in only_names]
         missing = only_names - {f["name"] for f in families}
         if missing:
-            print(f"WARNING: families not found in config: {', '.join(missing)}", file=sys.stderr)
+            print(f"CẢNH BÁO: không thấy các họ font sau trong cấu hình: {', '.join(missing)}", file=sys.stderr)
         if not families:
-            print("ERROR: no matching families after --only filter", file=sys.stderr)
+            print("LỖI: không còn họ font nào khớp sau khi lọc --only", file=sys.stderr)
             sys.exit(1)
 
     output_base = Path(args.output_dir)
 
     if args.clean and output_base.exists():
-        print(f"Cleaning {output_base}...")
+        print(f"Đang dọn {output_base}...")
         shutil.rmtree(output_base)
 
     output_base.mkdir(parents=True, exist_ok=True)
 
     # Download phase (sequential - avoids hammering servers)
-    print(f"\n=== Resolving {len(families)} font families ===\n")
+    print(f"\n=== Đang chuẩn bị {len(families)} họ font ===\n")
     for family in families:
         for style_name, style_spec in family.get("styles", {}).items():
             if "url" in style_spec:
                 try:
                     resolve_font_path(style_spec, family["name"], style_name)
                 except Exception as e:
-                    print(f"ERROR: {e}", file=sys.stderr)
+                    print(f"LỖI: {e}", file=sys.stderr)
                     sys.exit(1)
 
     # Build phase (parallel)
     max_workers = args.jobs or len(families)
     verbose = args.verbose
     timeout = args.timeout
-    print(f"\n=== Building {len(families)} families ({max_workers} parallel jobs, timeout {timeout}s) ===\n")
+    print(f"\n=== Đang dựng {len(families)} họ font ({max_workers} tiến trình song song, timeout {timeout}s) ===\n")
 
     failed = []
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -419,19 +419,19 @@ def main():
                 family_dir = output_base / name
                 count = len(list(family_dir.glob("*.cpfont")))
                 size = sum(f.stat().st_size for f in family_dir.glob("*.cpfont"))
-                print(f"  OK: {name} ({count} files, {size / 1024 / 1024:.1f} MB)")
+                print(f"  OK: {name} ({count} file, {size / 1024 / 1024:.1f} MB)")
             else:
-                print(f"  FAILED: {name}: {message}", file=sys.stderr)
+                print(f"  THẤT BẠI: {name}: {message}", file=sys.stderr)
                 failed.append(name)
 
     # Summary
-    print("\n=== Summary ===\n")
+    print("\n=== Tổng kết ===\n")
     total_files = len(list(output_base.rglob("*.cpfont")))
     total_size = sum(f.stat().st_size for f in output_base.rglob("*.cpfont"))
-    print(f"Total: {total_files} .cpfont files ({total_size / 1024 / 1024:.1f} MB)")
+    print(f"Tổng: {total_files} file .cpfont ({total_size / 1024 / 1024:.1f} MB)")
 
     if failed:
-        print(f"\nFailed families: {', '.join(failed)}", file=sys.stderr)
+        print(f"\nCác họ font thất bại: {', '.join(failed)}", file=sys.stderr)
 
     # Manifest
     if args.manifest:

@@ -159,7 +159,7 @@ void EndOfBookOptions::buildListScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Same layout math as render(): the list band starts under the title/subtitle it
   // draws, and stops above the button hints (the safe-area bottom edge).
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
   const int titleY = safe.y + safe.height / 8;
   const int subtitleY = titleY + renderer.getLineHeight(UI_12_FONT_ID) + metrics.verticalSpacing;
   const int listTop = subtitleY + renderer.getLineHeight(UI_10_FONT_ID) + metrics.verticalSpacing * 2;
@@ -203,7 +203,7 @@ void EndOfBookOptions::render(GfxRenderer& renderer, const MappedInputManager& i
   // orientations - lay out inside the safe area so nothing hides behind them. Vertical
   // positions derive from the safe-area height and font line heights so other panel
   // resolutions scale (review request on #2532).
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
   const int titleY = safe.y + safe.height / 8;
   const int subtitleY = titleY + renderer.getLineHeight(UI_12_FONT_ID) + metrics.verticalSpacing;
 

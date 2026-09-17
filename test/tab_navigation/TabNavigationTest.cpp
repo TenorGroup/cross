@@ -2,6 +2,8 @@
 #include <HalGPIO.h>
 #include <gtest/gtest.h>
 
+#include "SettingsList.h"
+#include "MenuFavorites.h"
 #include "activities/UiTabListActivity.h"
 #include "util/ButtonNavigator.h"
 
@@ -26,6 +28,7 @@ class FakeTabScreen final : public UiTabListActivity {
 
   int tab = 0;
   int tabSteps = 0;
+  int rows = kRowCount;
 
   int tabCount() const override { return kTabCount; }
   int activeTab() const override { return tab; }
@@ -35,11 +38,23 @@ class FakeTabScreen final : public UiTabListActivity {
     tab = (tab + direction + kTabCount) % kTabCount;
     tabSteps++;
   }
-  bool handleButtons() override { return false; }
+  bool handleButtons() override {
+    if (!mappedInput.wasReleased(MappedInputManager::Button::Confirm)) return false;
+    if (ringPos() == 0) {
+      if (listCount() > 0) moveRingTo(1);
+    } else {
+      activateIndex(ringPos() - 1);
+    }
+    return true;
+  }
 
-  int listCount() const override { return kRowCount; }
+  int listCount() const override { return rows; }
   void buildScreen(UiScreen&) override {}
-  void activateIndex(int) override { commitTabNavigation(); }
+  int activatedRow = -1;
+  void activateIndex(int index) override {
+    activatedRow = index;
+    commitTabNavigation();
+  }
 
   freeink::ui::ListNav& state() { return activeNav(); }
 
@@ -137,6 +152,61 @@ TEST_F(TabScreenFixture, NutMatTruocDiGiuaCacDongChuKhongNhayTab) {
   tap(HalGPIO::BTN_RIGHT);
   EXPECT_EQ(screen.tab, tabBefore) << "nut mat truoc khong duoc nhay tab";
   EXPECT_NE(screen.ring(), ringBefore) << "nut mat truoc phai doi dong dang chon";
+}
+
+TEST_F(TabScreenFixture, NutMatTruocQuayTrongCacDongKhongVaoThanhThe) {
+  for (int i = 1; i < kRowCount; ++i) tap(HalGPIO::BTN_RIGHT);
+  ASSERT_EQ(screen.ring(), kRowCount);
+
+  tap(HalGPIO::BTN_RIGHT);
+  EXPECT_EQ(screen.ring(), 1) << "hang cuoi sang tiep phai quay ve hang dau";
+
+  tap(HalGPIO::BTN_LEFT);
+  EXPECT_EQ(screen.ring(), kRowCount) << "hang dau lui lai phai quay ve hang cuoi";
+}
+
+TEST_F(TabScreenFixture, ChonSauBoundaryKichHoatHangDau) {
+  for (int i = 1; i < kRowCount; ++i) tap(HalGPIO::BTN_RIGHT);
+  tap(HalGPIO::BTN_RIGHT);
+  ASSERT_EQ(screen.ring(), 1);
+
+  tap(HalGPIO::BTN_CONFIRM);
+  EXPECT_EQ(screen.activatedRow, 0) << "Confirm sau boundary phai mo hang dau";
+}
+
+TEST_F(TabScreenFixture, DanhSachRongGiuiConTroOThanhThe) {
+  screen.rows = 0;
+  tap(HalGPIO::BTN_RIGHT);
+  EXPECT_EQ(screen.ring(), 0);
+  tap(HalGPIO::BTN_LEFT);
+  EXPECT_EQ(screen.ring(), 0);
+}
+
+TEST_F(TabScreenFixture, ShrinkingRowsClampsBeforeConfirm) {
+  screen.state().selected = kRowCount;
+  screen.rows = 2;
+  tap(HalGPIO::BTN_CONFIRM);
+  EXPECT_EQ(screen.ring(), 2);
+  EXPECT_EQ(screen.activatedRow, 1);
+}
+
+TEST_F(TabScreenFixture, EmptyTabRegainingRowsSelectsFirstBeforeConfirm) {
+  screen.rows = 0;
+  screen.loop();
+  ASSERT_EQ(screen.ring(), 0);
+  screen.rows = 2;
+  tap(HalGPIO::BTN_CONFIRM);
+  EXPECT_EQ(screen.ring(), 1);
+  EXPECT_EQ(screen.activatedRow, 0);
+}
+
+TEST_F(TabScreenFixture, RestoredCursorClampsToCurrentRows) {
+  MenuNavigationState saved;
+  screen.state().selected = kRowCount;
+  screen.captureNavigation(saved);
+  screen.rows = 2;
+  screen.restoreNavigation(saved);
+  EXPECT_EQ(screen.ring(), 2);
 }
 
 TEST_F(TabScreenFixture, HaiTrucKhongDamNhau) {
@@ -344,4 +414,80 @@ TEST(MenuCustomization, BoundsPinsWithoutEvictingExistingEntries) {
   EXPECT_EQ(state().find("settings/test5"), 4);
   EXPECT_EQ(state().pinCount, MAX_PINS - 1);
   state() = State{};
+}
+
+TEST(SettingsClockAdapter, ReadsEveryLegacyValueWithoutChangingStorageOrRegistration) {
+  const auto registered = SettingInfo::Enum(
+      StrId::STR_CLOCK, &CrossPointSettings::statusBarClock,
+      {StrId::STR_HIDE, StrId::STR_DIR_RIGHT, StrId::STR_DIR_LEFT}, "statusBarClock", StrId::STR_CUSTOMISE_STATUS_BAR);
+  const auto original = SETTINGS.statusBarClock;
+  for (const uint8_t legacy : {0, 1, 2}) {
+    SETTINGS.statusBarClock = legacy;
+    const auto device = buildTenorClockPlacementSetting(registered);
+    EXPECT_EQ(device.valueGetter(), legacy == 2 ? 1 : 0);
+    EXPECT_EQ(SETTINGS.statusBarClock, legacy);
+    EXPECT_EQ(device.enumValues.size(), 2);
+    EXPECT_STREQ(device.key, registered.key);
+    EXPECT_EQ(registered.valuePtr, &CrossPointSettings::statusBarClock);
+    EXPECT_EQ(registered.category, StrId::STR_CUSTOMISE_STATUS_BAR);
+    EXPECT_EQ(registered.enumValues.size(), 3);
+  }
+  SETTINGS.statusBarClock = original;
+}
+
+TEST(SettingsClockAdapter, ExplicitSelectionWritesOnlyExistingRightOrLeftEnums) {
+  const auto registered = SettingInfo::Enum(StrId::STR_CLOCK, &CrossPointSettings::statusBarClock, {}, "statusBarClock");
+  const auto device = buildTenorClockPlacementSetting(registered);
+  const auto original = SETTINGS.statusBarClock;
+  device.valueSetter(0);
+  EXPECT_EQ(SETTINGS.statusBarClock, CrossPointSettings::STATUS_BAR_CLOCK_RIGHT);
+  device.valueSetter(1);
+  EXPECT_EQ(SETTINGS.statusBarClock, CrossPointSettings::STATUS_BAR_CLOCK_LEFT);
+  SETTINGS.statusBarClock = original;
+}
+
+// A default clock represents a board whose RTC probe did not find hardware.
+HalClock halClock;
+
+TEST(MenuFavoritesCompatibility, RenamedPinsRemainFindableAndCanBeRemovedFromNewRows) {
+  const char* oldKeys[] = {"text/focusReadingEnabled", "settings/hideGlobalStatusBar", "settings/hideReaderStatusBar"};
+  const char* newKeys[] = {"text/dropCapMode", "settings/globalStatusBarMode", "settings/readerStatusBarMode"};
+  for (int i = 0; i < 3; ++i) {
+    auto& pins = menucustom::state();
+    pins = menucustom::State{};
+    ASSERT_TRUE(menucustom::togglePin(oldKeys[i]));
+    EXPECT_EQ(pins.find(newKeys[i]), 0);
+    EXPECT_STREQ(pins.pins[0].data(), oldKeys[i]);
+    ASSERT_TRUE(menucustom::togglePin(newKeys[i]));
+    EXPECT_EQ(pins.pinCount, 0) << newKeys[i];
+  }
+  menucustom::state() = menucustom::State{};
+}
+
+TEST(MenuFavoritesCompatibility, LegacyTextPinFindsCurrentRouteAndLabel) {
+  const auto* route = menufavorites::find("text/focusReadingEnabled");
+  ASSERT_NE(route, nullptr);
+  EXPECT_STREQ(route->key, "text/dropCapMode");
+  EXPECT_EQ(route->tab, 3);
+  EXPECT_EQ(route->row, 0);
+  EXPECT_EQ(menufavorites::label("text/focusReadingEnabled", {}), StrId::STR_FOCUS_READING);
+}
+
+TEST(MenuFavoritesCompatibility, LegacyStatusPinsShowCurrentLabels) {
+  const std::vector<SettingInfo> settings = {
+      SettingInfo::Enum(StrId::STR_HIDE_GLOBAL_STATUS_BAR, &CrossPointSettings::globalStatusBarMode, {}, "globalStatusBarMode"),
+      SettingInfo::Enum(StrId::STR_HIDE_READER_STATUS_BAR, &CrossPointSettings::readerStatusBarMode, {}, "readerStatusBarMode"),
+  };
+  EXPECT_EQ(menufavorites::label("settings/hideGlobalStatusBar", settings), StrId::STR_HIDE_GLOBAL_STATUS_BAR);
+  EXPECT_EQ(menufavorites::label("settings/hideReaderStatusBar", settings), StrId::STR_HIDE_READER_STATUS_BAR);
+}
+
+TEST(MenuFavoritesCompatibility, MissingRtcHidesClockPinBeforeTenorLabelOverride) {
+  const auto originalTheme = SETTINGS.uiTheme;
+  SETTINGS.uiTheme = CrossPointSettings::TENOR_UI;
+  ASSERT_FALSE(halClock.isAvailable());
+  EXPECT_EQ(menufavorites::label("status/statusBarClock", {}), StrId::STR_NONE_OPT);
+  EXPECT_EQ(menufavorites::label("action/2", {}), StrId::STR_NONE_OPT);
+  EXPECT_EQ(menufavorites::label("clock/clockFormat", {}), StrId::STR_NONE_OPT);
+  SETTINGS.uiTheme = originalTheme;
 }

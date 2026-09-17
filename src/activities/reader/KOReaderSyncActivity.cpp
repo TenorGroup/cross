@@ -12,6 +12,7 @@
 
 #include "Epub/Section.h"
 #include "EpubReaderUtils.h"
+#include "FileTransferState.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderDocumentId.h"
 #include "MappedInputManager.h"
@@ -379,6 +380,14 @@ void KOReaderSyncActivity::performUpload() {
 }
 
 void KOReaderSyncActivity::onEnter() {
+  runtimeStarted = false;
+  // Keep BLE stopped for Wi-Fi selection and the complete sync transaction.
+  if (!filetransfer::acquire()) {
+    LOG_ERR("KOSync", "BLE teardown incomplete; leaving KOReader sync");
+    onGoHome();
+    return;
+  }
+  runtimeStarted = true;
   Activity::onEnter();
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
 
@@ -412,11 +421,13 @@ void KOReaderSyncActivity::onEnter() {
 void KOReaderSyncActivity::onExit() {
   Activity::onExit();
 
-  if (wifiActivated) {
+  if (runtimeStarted && wifiActivated) {
     WiFi.disconnect(false);
     delay(30);
     silentRestartToReader();
   }
+
+  filetransfer::release();
 }
 
 void KOReaderSyncActivity::chooseResultOption() {
@@ -599,7 +610,7 @@ void KOReaderSyncActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
   auto metrics = UITheme::getInstance().getMetrics();
-  Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
 
   GUI.drawHeader(renderer, Rect{screen.x, screen.y + metrics.topPadding, screen.width, metrics.headerHeight},
                  state == SHOWING_RESULT ? tr(STR_PROGRESS_FOUND) : tr(STR_KOREADER_SYNC));

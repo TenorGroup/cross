@@ -13,6 +13,7 @@
 
 #include "CrossPointSettings.h"
 #include "DeviceName.h"
+#include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "WifiCredentialStore.h"
 #include "activities/util/KeyboardEntryActivity.h"
@@ -93,6 +94,15 @@ void WifiSelectionActivity::onPromptEvent(const fui::ActionEvent& event, void* u
 }
 
 void WifiSelectionActivity::onEnter() {
+  runtimeStarted = false;
+  // The picker starts scans/connects immediately. Keep BLE stopped through the
+  // complete child lifetime; parents may hold an additional nested owner.
+  if (!filetransfer::acquire()) {
+    LOG_ERR("WIFI", "BLE teardown incomplete; leaving network picker");
+    finish();
+    return;
+  }
+  runtimeStarted = true;
   Activity::onEnter();
   // WiFi initialization requires the normal APB clock even when entry was
   // triggered by a timer or serial command during idle power saving.
@@ -175,18 +185,21 @@ void WifiSelectionActivity::onEnter() {
 void WifiSelectionActivity::onExit() {
   Activity::onExit();
 
-  LOG_DBG("WIFI", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
+  if (runtimeStarted) {
+    LOG_DBG("WIFI", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
 
-  // Stop any ongoing WiFi scan
-  LOG_DBG("WIFI", "Deleting WiFi scan...");
-  WiFi.scanDelete();
-  LOG_DBG("WIFI", "Free heap after scanDelete: %d bytes", ESP.getFreeHeap());
+    // Stop any ongoing WiFi scan
+    LOG_DBG("WIFI", "Deleting WiFi scan...");
+    WiFi.scanDelete();
+    LOG_DBG("WIFI", "Free heap after scanDelete: %d bytes", ESP.getFreeHeap());
 
-  // Note: We do NOT disconnect WiFi here - the parent activity
-  // (CrossPointWebServerActivity) manages WiFi connection state. We just clean
-  // up the scan and task.
+    // Note: We do NOT disconnect WiFi here - the parent activity
+    // (CrossPointWebServerActivity) manages WiFi connection state. We just clean
+    // up the scan and task.
 
-  LOG_DBG("WIFI", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
+    LOG_DBG("WIFI", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
+  }
+  filetransfer::release();
 }
 
 void WifiSelectionActivity::startWifiScan(const bool autoScan) {

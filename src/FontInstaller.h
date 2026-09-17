@@ -19,13 +19,34 @@ class FontInstaller {
 
   explicit FontInstaller(SdCardFontRegistry& registry);
 
-  /// Validate a family name: alphanumeric + hyphen + underscore only, no path traversal.
+  /// Maximum family-name length in bytes, excluding the NUL terminator.
+  /// Guarantees the name still fits CrossPointSettings::sdFontFamilyName[32].
+  static constexpr size_t MAX_FAMILY_NAME_LEN = 31;
+
+  /// Maximum .cpfont filename length in bytes, INCLUDING the ".cpfont" suffix
+  /// and excluding the NUL terminator.
+  static constexpr size_t MAX_CPFONT_FILENAME_LEN = 87;
+
+  /// Largest family directory path FontInstaller builds, including the NUL:
+  /// longest root "/.fonts" + '/' + a maximum-length family name.
+  static constexpr size_t MAX_FAMILY_DIR_PATH_SIZE = 7 + 1 + MAX_FAMILY_NAME_LEN + 1;
+
+  /// Largest font file path FontInstaller builds, including the NUL:
+  /// "/.fonts" + '/' + family + '/' + filename. Guarantees the result fits
+  /// SdCardFont::filePath_[128] and every 128-byte caller buffer.
+  static constexpr size_t MAX_FONT_PATH_SIZE = 7 + 1 + MAX_FAMILY_NAME_LEN + 1 + MAX_CPFONT_FILENAME_LEN + 1;
+  static_assert(MAX_FONT_PATH_SIZE == 128, "font path buffers (SdCardFont::filePath_) are 128 bytes");
+
+  /// Validate a family name: ASCII alphanumeric + hyphen + underscore only, no
+  /// path traversal, no separators. Rejects null/empty and anything longer than
+  /// MAX_FAMILY_NAME_LEN bytes; the scan stops at that bound.
   static bool isValidFamilyName(const char* name);
 
-  /// Validate a .cpfont filename: ends with ".cpfont", no path separators or
-  /// traversal sequences, basename uses only alphanumeric + hyphen + underscore
-  /// + dot (only as the extension separator). Rejects "../foo.cpfont" and
-  /// "evil/foo.cpfont".
+  /// Validate a .cpfont filename: ASCII alphanumeric + hyphen + underscore
+  /// basename followed by exactly ".cpfont". Rejects null/empty, path
+  /// separators, traversal sequences ("../foo.cpfont" and "evil/foo.cpfont")
+  /// and anything longer than MAX_CPFONT_FILENAME_LEN bytes; the scan stops at
+  /// that bound.
   static bool isValidCpfontFilename(const char* name);
 
   /// Ensure /<root>/<family>/ exists, where <root> is /.fonts (preferred) or /fonts.
@@ -39,7 +60,11 @@ class FontInstaller {
   /// Build the full SD path for a font file.
   /// Writes "/<root>/<family>/<filename>" to outBuf, choosing <root> the same
   /// way ensureFamilyDir does (existing install dir, else default-write root).
-  static void buildFontPath(const char* family, const char* filename, char* outBuf, size_t outBufSize);
+  /// Returns false, and leaves outBuf empty, when family or filename is invalid,
+  /// when outBuf is null or too small for the complete path, or when snprintf
+  /// would truncate; a partial path is never reported as success. Invalid input
+  /// is rejected before any registry lookup.
+  static bool buildFontPath(const char* family, const char* filename, char* outBuf, size_t outBufSize);
 
   /// Delete a family directory and all .cpfont files in it.
   /// If the deleted family is the active reader font, clears the setting.

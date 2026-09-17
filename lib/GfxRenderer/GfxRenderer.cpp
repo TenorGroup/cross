@@ -4,6 +4,9 @@
 #include <BoardConfig.h>
 #include <BuildScratch.h>
 #include <DropCap.h>
+// The word-spacing factors live with the other reader-spacing constants; this
+// file consumes only readerSpacing::LEVEL_DEFAULT and readerSpacing::wordPixels.
+#include <Epub/ReaderSpacing.h>
 #include <FontDecompressor.h>
 #include <HalGPIO.h>
 #include <Logging.h>
@@ -12,6 +15,7 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <cstring>
 
 #include "CjkTextWrap.h"
 #include "FontCacheManager.h"
@@ -28,8 +32,51 @@ uint8_t resolveSdCardStyle(const SdCardFont& font, const EpdFontFamily::Style st
 }
 }  // namespace
 
+// Defined next to the spacing consumers far below, but the per-glyph draw loop
+// above them applies the same word-gap delta, so declare it here.
+static int32_t withWordSpacingFP(int32_t spaceFP, uint8_t wordSpacing);
+
 namespace {
 const char* resolveVisualText(const char* text, std::string& visualBuffer, BidiUtils::BidiBaseDir baseDir);
+
+bool hasRtlLeadBytes(const char* text) {
+  for (const auto* p = reinterpret_cast<const unsigned char*>(text); *p; ++p) {
+    if (*p >= 0xD6 && *p <= 0xDB) return true;
+  }
+  return false;
+}
+
+bool hasLigaturePair(const EpdFontData* data, const uint32_t leftCp, const uint32_t rightCp) {
+  if (!data || !data->ligaturePairs || data->ligaturePairCount == 0 || leftCp > 0xFFFF || rightCp > 0xFFFF) {
+    return false;
+  }
+
+  const uint32_t key = (leftCp << 16) | rightCp;
+  const auto* begin = data->ligaturePairs;
+  const auto* end = begin + data->ligaturePairCount;
+  const auto it = std::lower_bound(
+      begin, end, key, [](const EpdLigaturePair& pair, const uint32_t value) { return pair.pair < value; });
+  return it != end && it->pair == key;
+}
+
+// applyLigatures() can consume one or more following codepoints. A prefix
+// scan is exact only when neither the source nor the prefix-plus-ellipsis can
+// contain a table pair, so conservatively skip the fast path for the whole
+// string when a pair is present.
+bool hasActualLigatureSequence(const EpdFontData* data, const char* text) {
+  if (!data || !data->ligaturePairs || data->ligaturePairCount == 0 || !text) return false;
+
+  const char* cursor = text;
+  uint32_t previousCp = 0;
+  uint32_t cp;
+  while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&cursor)))) {
+    if (previousCp != 0 && hasLigaturePair(data, previousCp, cp)) return true;
+    // The candidate measured by truncatedText appends U+2026 to every prefix.
+    if (hasLigaturePair(data, cp, 0x2026)) return true;
+    previousCp = cp;
+  }
+  return false;
+}
 
 // Appends the shaped visual form of every RTL token in `text` to `shapedOut`.
 // getTextAdvanceX() measures the bidi-reordered, Arabic-shaped codepoint stream,
@@ -647,7 +694,7 @@ void GfxRenderer::drawCenteredText(const int fontId, const int y, const char* te
 
 void GfxRenderer::drawText(const int fontId, const int x, const int y, const char* text, const bool black,
                            const EpdFontFamily::Style style, const BidiUtils::BidiBaseDir baseDir,
-                           const int letterSpacing) const {
+                           const int letterSpacing, const uint8_t wordSpacing) const {
   // cannot draw a NULL / empty string
   if (text == nullptr || *text == '\0') {
     return;
@@ -723,8 +770,11 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
     // identical character pairs always produce the same pixel step regardless of
     // where they fall on the line.
     if (prevCp != 0) {
-      const auto kernFP = font.getKerning(prevCp, cp, style);             // 4.4 fixed-point kern
-      lastBaseX += fp4::toPixel(prevAdvanceFP + kernFP) + letterSpacing;  // snap 12.4 fixed-point to nearest pixel
+      const auto kernFP = font.getKerning(prevCp, cp, style);  // 4.4 fixed-point kern
+      // Only a U+0020 advance carries the word-spacing delta; every other glyph keeps the
+      // plain advance, so inter-letter advances stay independent of the word gap.
+      const int32_t stepFP = prevCp == ' ' ? withWordSpacingFP(prevAdvanceFP, wordSpacing) : prevAdvanceFP;
+      lastBaseX += fp4::toPixel(stepFP + kernFP) + letterSpacing;  // snap 12.4 fixed-point to nearest pixel
     }
 
     const EpdGlyph* glyph = font.getGlyph(cp, style);
@@ -1800,6 +1850,10 @@ void GfxRenderer::writeFramebufferRegion(int x, int y, int w, int h, const uint8
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
                                        const EpdFontFamily::Style style, const int letterSpacing) const {
   if (!text || maxWidth <= 0) return "";
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t truncateStarted = micros();
+  unsigned truncateSteps = 0;
+#endif
 
   std::string item = text;
   // U+2026 HORIZONTAL ELLIPSIS (UTF-8: 0xE2 0x80 0xA6)
@@ -1810,12 +1864,66 @@ std::string GfxRenderer::truncatedText(const int fontId, const char* text, const
     return item;
   }
 
-  while (!item.empty() && getTextWidth(fontId, (item + ellipsis).c_str(), style, BidiUtils::BidiBaseDir::AUTO,
-                                       letterSpacing) >= maxWidth) {
-    utf8RemoveLastChar(item);
+  bool hasEllipsis = false;
+
+  // Built-in, unshaped LTR fonts can reuse the exact EpdFont bounds state for
+  // each UTF-8 prefix. SD fonts, fallback strings, inline controls, RTL text
+  // and fonts with GSUB pairs retain the reference loop below because those
+  // paths have storage or shaping state that a prefix accumulator cannot own.
+  if (letterSpacing == 0 && !std::strstr(text, "\xEE\x84") && !hasRtlLeadBytes(text) &&
+      !cjkTextWrap::containsCjk(text)) {
+    const int resolvedFontId = resolveTextFontId(fontId, text, style);
+    const auto fontIt = fontMap.find(resolvedFontId);
+    if (resolvedFontId == fontId && fontIt != fontMap.end()) {
+      const EpdFontFamily& font = fontIt->second;
+      const EpdFontData* fontData = font.getData(style);
+      if (fontData && fontData->groups == nullptr && fontData->glyphMissHandler == nullptr &&
+          !hasActualLigatureSequence(fontData, text)) {
+        auto state = font.beginTextBounds();
+        const char* cursor = text;
+        size_t bestBytes = 0;
+        unsigned codepointCount = 0;
+        unsigned bestCodepointCount = 0;
+        uint32_t cp;
+        while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&cursor)))) {
+          font.appendTextBounds(state, cp, cursor, style);
+          ++codepointCount;
+
+          auto candidate = state;
+          const char* ellipsisCursor = ellipsis + 3;
+          font.appendTextBounds(candidate, 0x2026, ellipsisCursor, style);
+          if (font.textBoundsWidth(candidate) < maxWidth) {
+            bestBytes = static_cast<size_t>(cursor - text);
+            bestCodepointCount = codepointCount;
+          }
+        }
+
+        item.resize(bestBytes);
+        item += ellipsis;
+        hasEllipsis = true;
+#ifdef TENOR_UI_ACCEPTANCE
+        truncateSteps = codepointCount - bestCodepointCount;
+#endif
+      }
+    }
   }
 
-  return item.empty() ? ellipsis : item + ellipsis;
+  if (!hasEllipsis) {
+    while (!item.empty() && getTextWidth(fontId, (item + ellipsis).c_str(), style, BidiUtils::BidiBaseDir::AUTO,
+                                         letterSpacing) >= maxWidth) {
+      utf8RemoveLastChar(item);
+#ifdef TENOR_UI_ACCEPTANCE
+      ++truncateSteps;
+#endif
+    }
+  }
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_INF("TEXT_PROBE", "truncate_us=%lu bytes=%u steps=%u font=%d width=%d",
+          static_cast<unsigned long>(micros() - truncateStarted), static_cast<unsigned>(strlen(text)),
+          truncateSteps, fontId, maxWidth);
+#endif
+
+  return hasEllipsis ? item : (item.empty() ? ellipsis : item + ellipsis);
 }
 
 std::vector<std::string> GfxRenderer::wrappedText(const int fontId, const char* text, const int maxWidth,
@@ -2028,12 +2136,27 @@ bool GfxRenderer::copyBufferToRegion(int lx, int ly, int lw, int lh, const uint8
   return true;
 }
 
-int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style style) const {
+// The single place the word-spacing delta is computed. spaceFP is a U+0020
+// advance in 12.4 fixed point; readerSpacing::wordPixels() returns whole pixels,
+// so the delta re-enters the sum as 16x and the caller's single fp4::toPixel()
+// snap still decides the final pixel - the levels survive the snap exactly as
+// they were measured. getSpaceWidth, getSpaceAdvance, getTextAdvanceX and
+// drawText all route through here, so the line breaker, justification, the word
+// x-position builder and the glyph cursor can never disagree on one gap.
+// The delta is zero unless the level came from the word-spacing row, so an
+// untouched DEFAULT reader measures the same bytes it always did.
+static int32_t withWordSpacingFP(const int32_t spaceFP, const uint8_t wordSpacing) {
+  if (wordSpacing == readerSpacing::LEVEL_DEFAULT) return spaceFP;
+  return spaceFP + static_cast<int32_t>(readerSpacing::wordPixels(wordSpacing, fp4::toPixel(spaceFP))) * 16;
+}
+
+int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style style,
+                              const uint8_t wordSpacing) const {
   // Advance table fast-path for SD card fonts during layout
   auto sdIt = sdCardFonts_.find(fontId);
   if (sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable()) {
     const uint8_t resolvedStyle = resolveSdCardStyle(*sdIt->second, style);
-    return fp4::toPixel(sdIt->second->getAdvance(' ', resolvedStyle));
+    return fp4::toPixel(withWordSpacingFP(sdIt->second->getAdvance(' ', resolvedStyle), wordSpacing));
   }
 
   const auto fontIt = fontMap.find(fontId);
@@ -2043,18 +2166,19 @@ int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style styl
   }
 
   const EpdGlyph* spaceGlyph = fontIt->second.getGlyph(' ', style);
-  return spaceGlyph ? fp4::toPixel(spaceGlyph->advanceX) : 0;  // snap 12.4 fixed-point to nearest pixel
+  // snap 12.4 fixed-point to nearest pixel
+  return spaceGlyph ? fp4::toPixel(withWordSpacingFP(spaceGlyph->advanceX, wordSpacing)) : 0;
 }
 
 int GfxRenderer::getSpaceAdvance(const int fontId, const uint32_t leftCp, const uint32_t rightCp,
-                                 const EpdFontFamily::Style style) const {
+                                 const EpdFontFamily::Style style, const uint8_t wordSpacing) const {
   // Advance table fast-path for SD card fonts during layout.
   // Kern data is not loaded during layout (consistent with previous metadataOnly behavior),
   // so we return just the space advance without kerning.
   auto sdIt = sdCardFonts_.find(fontId);
   if (sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable()) {
     const uint8_t resolvedStyle = resolveSdCardStyle(*sdIt->second, style);
-    return fp4::toPixel(sdIt->second->getAdvance(' ', resolvedStyle));
+    return fp4::toPixel(withWordSpacingFP(sdIt->second->getAdvance(' ', resolvedStyle), wordSpacing));
   }
 
   const auto fontIt = fontMap.find(fontId);
@@ -2066,7 +2190,7 @@ int GfxRenderer::getSpaceAdvance(const int fontId, const uint32_t leftCp, const 
   // Snapping the combined value avoids the +/-1 px error from snapping each component separately.
   const int32_t kernFP = static_cast<int32_t>(font.getKerning(leftCp, ' ', style)) +
                          static_cast<int32_t>(font.getKerning(' ', rightCp, style));
-  return fp4::toPixel(spaceAdvanceFP + kernFP);
+  return fp4::toPixel(withWordSpacingFP(spaceAdvanceFP, wordSpacing) + kernFP);
 }
 
 int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint32_t rightCp,
@@ -2078,7 +2202,7 @@ int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint3
 }
 
 int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFamily::Style style,
-                                 const int letterSpacing) const {
+                                 const int letterSpacing, const uint8_t wordSpacing) const {
   // Match the font drawText would use for CJK-bearing strings (see resolveTextFontId).
   const int resolvedFontId = resolveTextFontId(fontId, text, style);
   // Measure the exact codepoint stream drawText renders: bidi-reordered and
@@ -2115,6 +2239,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
         const EpdGlyph* glyph = font.getGlyph(cp, style);
         advFP = glyph ? glyph->advanceX : 0;
       }
+      if (cp == ' ') advFP = withWordSpacingFP(advFP, wordSpacing);
       if (!utf8IsCombiningMark(cp) && bases++ > 0) widthFP += letterSpacing * 16;
       widthFP += isSupSub ? (advFP + 1) / 2 : advFP;
     }
@@ -2151,6 +2276,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
 
     const EpdGlyph* glyph = font.getGlyph(cp, style);
     prevAdvanceFP = glyph ? glyph->advanceX : 0;
+    if (cp == ' ') prevAdvanceFP = withWordSpacingFP(prevAdvanceFP, wordSpacing);
     if ((style & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0) {
       prevAdvanceFP = (prevAdvanceFP + 1) / 2;
     }
@@ -2168,6 +2294,14 @@ int GfxRenderer::getFontAscenderSize(const int fontId) const {
   }
 
   return fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
+}
+
+int GfxRenderer::getFontMaxInkTop(const int fontId, const EpdFontFamily::Style style) const {
+  // Only SD-card packs carry the ink-top field; a built-in font reports
+  // "unknown" so its placement is unchanged.
+  const auto sdFont = sdCardFonts_.find(fontId);
+  if (sdFont == sdCardFonts_.end() || sdFont->second == nullptr) return 0;
+  return sdFont->second->maxInkTop(static_cast<uint8_t>(style) & 0x03);
 }
 
 int GfxRenderer::getLineHeight(const int fontId) const {

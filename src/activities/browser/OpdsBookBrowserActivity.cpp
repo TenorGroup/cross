@@ -11,6 +11,7 @@
 #include <WiFi.h>
 
 #include "CrossPointSettings.h"
+#include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -45,6 +46,15 @@ OpdsBookBrowserActivity::OpdsBookBrowserActivity(GfxRenderer& renderer, MappedIn
       server(std::move(server)) {}
 
 void OpdsBookBrowserActivity::onEnter() {
+  runtimeStarted = false;
+  // Keep BLE stopped for the complete Wi-Fi/feed/download session. This also
+  // covers the nested WiFiSelectionActivity and its result callback.
+  if (!filetransfer::acquire()) {
+    LOG_ERR("OPDS", "BLE teardown incomplete; leaving OPDS browser");
+    onGoHome();
+    return;
+  }
+  runtimeStarted = true;
   Activity::onEnter();
 
   state = BrowserState::CHECK_WIFI;
@@ -69,14 +79,19 @@ void OpdsBookBrowserActivity::onEnter() {
 
 void OpdsBookBrowserActivity::onExit() {
   Activity::onExit();
-  entries.clear();
-  navigationHistory.clear();
 
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
-    WiFi.disconnect(false);
-    delay(30);
-    silentRestart();
+  if (runtimeStarted) {
+    entries.clear();
+    navigationHistory.clear();
+
+    if (WiFi.getMode() != WIFI_MODE_NULL) {
+      WiFi.disconnect(false);
+      delay(30);
+      silentRestart();
+    }
   }
+
+  filetransfer::release();
 }
 
 void OpdsBookBrowserActivity::activateSelected() {
@@ -509,6 +524,7 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
   // refuse to start below the floor - a doomed transfer otherwise dies
   // mid-stream with MEMORY_E, or abort()s on an interior allocation.
   if (auto* fcm = renderer.getFontCacheManager()) {
+    RenderLock lock(*this);
     fcm->releaseSdFontCaches();
   }
   LOG_DBG("OPDS", "Download heap: %u free, %u max block", ESP.getFreeHeap(), ESP.getMaxAllocHeap());

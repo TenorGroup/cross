@@ -50,7 +50,12 @@ class FontWeightTest(unittest.TestCase):
 
     def test_weight_change_returns_to_book(self):
         self.settings.update(fontSize=16,readerInkWeight=0)
-        script=self.READING+';11300:RIGHT;12000:RIGHT;12700:CONFIRM;15000:DOWN;16000:RIGHT;16700:RIGHT;17400:RIGHT;18100:RIGHT;19000:CONFIRM;22000:BACK;26000:QUIT'
+        # Nhip 17/09/2026: doi muc Dong muc (ink weight) nay nam trong the KIEU cua Cua Cai
+        # dat van ban, mo tu menu doc (the Doc, hang 1 = Cai dat van ban) chu khong con la
+        # mot popup rieng trong menu doc. READING dua man toi the BO CUC, dong 1; DOWN mot
+        # nhip sang the KIEU; RIGHT bon nhip xuong hang 5 = Dong muc; CONFIRM xoay muc do
+        # sang trong so ke tiep co san (1 = Light) roi quay lai sach.
+        script=self.READING+';5000:DOWN;6000:RIGHT;6700:RIGHT;7400:RIGHT;8100:RIGHT;9000:CONFIRM;11000:BACK;13000:QUIT'
         saved,log=self.run_sim(script)
         self.assertEqual(saved['readerInkWeight'],1)
         self.assertIn('/weight-1/Trial_16.cpfont',log)
@@ -58,7 +63,16 @@ class FontWeightTest(unittest.TestCase):
 
     def test_26_from_popup(self):
         self.settings.update(fontSize=14,readerInkWeight=0)
-        saved,log=self.run_sim(self.READING+';11500:CONFIRM;13200:LEFT;13900:LEFT;14600:CONFIRM;19000:QUIT')
+        # Nhip 17/09/2026: co chu gio chon trong the CO CHU cua Cua Cai dat van ban
+        # (Phong | Co chu | Bo cuc | Kieu). READING toi the BO CUC; DOWN ba nhip di vong
+        # vong qua dai the toi dong CUOI = co lon nhat cua ho Trial (26); CONFIRM ap dung.
+        # The CO CHU cua ho Trial co tam dong 12..26 (goi --trial-weights sinh ra) va con tro dat tai
+        # co dang dung 14 (dong 2), nen RIGHT sau nhip moi toi duoc dong 8 = 26; di dai the (LEFT)
+        # vong qua vong 0 chu khong toi dong cuoi.
+        # Y dinh bai giu nguyen: chon 26 roi quay lai sach.
+        saved,log=self.run_sim(self.READING+';5000:DOWN;5800:DOWN;6600:DOWN;'
+                                          '7400:RIGHT;8000:RIGHT;8600:RIGHT;9200:RIGHT;9800:RIGHT;10400:RIGHT;'
+                                          '11200:CONFIRM;13000:BACK;15000:QUIT')
         self.assertEqual(saved['fontSize'],26)
 
 if __name__=='__main__': unittest.main()

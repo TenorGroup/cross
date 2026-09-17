@@ -10,6 +10,7 @@
 #include <cstdio>
 
 #include "CrossPointSettings.h"
+#include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -18,6 +19,14 @@
 #include "network/TimezoneLookup.h"
 
 void ClockSyncActivity::onEnter() {
+  runtimeStarted = false;
+  // Keep BLE stopped for Wi-Fi selection, NTP, and optional HTTPS timezone lookup.
+  if (!filetransfer::acquire()) {
+    LOG_ERR("CLK", "BLE teardown incomplete; leaving clock sync");
+    finish();
+    return;
+  }
+  runtimeStarted = true;
   Activity::onEnter();
   state = SYNCING;
   syncedTime[0] = '\0';
@@ -34,11 +43,13 @@ void ClockSyncActivity::onEnter() {
 void ClockSyncActivity::onExit() {
   Activity::onExit();
 
-  if (shouldTearDownWifiOnExit && WiFi.getMode() != WIFI_MODE_NULL) {
+  if (runtimeStarted && shouldTearDownWifiOnExit && WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(false);
     delay(30);
     silentRestart();
   }
+
+  filetransfer::release();
 }
 
 void ClockSyncActivity::launchWifiSelection() {

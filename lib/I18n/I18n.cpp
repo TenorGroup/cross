@@ -12,14 +12,16 @@ I18n& I18n::getInstance() {
   return instance;
 }
 
-const char* I18n::get(StrId id) const {
+const char* I18n::get(StrId id) const { return get(id, _language); }
+
+const char* I18n::get(StrId id, Language language) const {
   const auto index = static_cast<size_t>(id);
   if (index >= static_cast<size_t>(StrId::_COUNT)) {
     return "???";
   }
 
   // Use generated helper function - no hardcoded switch needed!
-  const LangStrings lang = getLanguageStrings(_language);
+  const LangStrings lang = getLanguageStrings(language);
 
   // If bit 15 of the offset is set, apply the offset to the English lookup table
   const uint16_t off = lang.offsets[index];

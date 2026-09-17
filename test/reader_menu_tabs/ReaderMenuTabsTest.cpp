@@ -218,10 +218,11 @@ TEST(XepYeuThich, MotMucThiDayDiDauCungDung) {
 
 TEST(ToolbarMore, KeepsLegacyOrderForEveryOptionalItemCombination) {
   const MenuAction expected[] = {MenuAction::FOOTNOTES,     MenuAction::BOOKMARKS,      MenuAction::TOGGLE_BOOKMARK,
-                                 MenuAction::NIGHT_MODE,    MenuAction::FRONTLIGHT,     MenuAction::DICTIONARY,
-                                 MenuAction::ROTATE_SCREEN, MenuAction::AUTO_PAGE_TURN, MenuAction::GO_TO_PERCENT,
-                                 MenuAction::SCREENSHOT,    MenuAction::DISPLAY_QR,     MenuAction::GO_HOME,
-                                 MenuAction::SYNC,          MenuAction::DELETE_CACHE,   MenuAction::SAVE_QUOTE};
+                                 MenuAction::NIGHT_MODE,    MenuAction::STATUS_BAR,     MenuAction::FRONTLIGHT,
+                                 MenuAction::DICTIONARY,    MenuAction::ROTATE_SCREEN,  MenuAction::AUTO_PAGE_TURN,
+                                 MenuAction::GO_TO_PERCENT, MenuAction::SCREENSHOT,     MenuAction::DISPLAY_QR,
+                                 MenuAction::GO_HOME,       MenuAction::SYNC,           MenuAction::DELETE_CACHE,
+                                 MenuAction::SAVE_QUOTE};
   for (int flags = 0; flags < 8; ++flags) {
     std::vector<readermenu::Item> items;
     readermenu::buildMoreItems(items, flags & 1, flags & 2, flags & 4);

@@ -46,7 +46,7 @@ def fetch_freetype():
     if already_good():
         return
 
-    print(f"FreeTypeLite: fetching FreeType {VERSION}")
+    print(f"FreeTypeLite: đang tải FreeType {VERSION}")
     if os.path.isdir(VENDOR):
         shutil.rmtree(VENDOR)
 
@@ -55,15 +55,15 @@ def fetch_freetype():
             blob = response.read()
     except Exception as exc:
         sys.stderr.write(
-            f"FreeTypeLite: could not download {URL}: {exc}\n"
-            "The TTF probe needs this source. Fetch the tarball by hand and unpack the\n"
-            f"include/ and src/ trees under {VENDOR}/ if this machine is offline.\n"
+            f"FreeTypeLite: không tải được {URL}: {exc}\n"
+            "Phần dò TTF cần mã nguồn này. Hãy tự tải tarball rồi giải nén cây\n"
+            f"include/ và src/ vào {VENDOR}/ nếu máy này không có mạng.\n"
         )
         env.Exit(1)  # noqa: F821
 
     digest = hashlib.sha256(blob).hexdigest()
     if digest != SHA256:
-        sys.stderr.write(f"FreeTypeLite: hash mismatch for {URL}\n  expected {SHA256}\n  got      {digest}\n")
+        sys.stderr.write(f"FreeTypeLite: sai hash cho {URL}\n  mong đợi {SHA256}\n  nhận được {digest}\n")
         env.Exit(1)  # noqa: F821
 
     tmp = VENDOR + ".tmp"
@@ -83,7 +83,7 @@ def fetch_freetype():
                 continue
             # Refuse anything that would land outside the vendor tree.
             if os.path.isabs(member.name) or ".." in member.name.split("/"):
-                sys.stderr.write(f"FreeTypeLite: refusing suspicious tar entry {member.name}\n")
+                sys.stderr.write(f"FreeTypeLite: từ chối mục tar đáng ngờ {member.name}\n")
                 env.Exit(1)  # noqa: F821
             if member.isdir() or member.isfile():
                 tar.extract(member, tmp)
@@ -94,7 +94,7 @@ def fetch_freetype():
 
     with open(STAMP, "w") as f:
         f.write(SHA256 + "\n")
-    print(f"FreeTypeLite: FreeType {VERSION} ready at {VENDOR}")
+    print(f"FreeTypeLite: FreeType {VERSION} đã sẵn sàng tại {VENDOR}")
 
 
 fetch_freetype()

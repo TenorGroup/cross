@@ -241,6 +241,26 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     return;
   }
 
+  if (selectedAction == MenuAction::STATUS_BAR) {
+    // Sau muc thanh trang thai cua trinh doc: popup de doc ten tung muc, chon xong
+    // ghi lai. Doi giua nam muc cung chieu cao thi chi ve lai thanh; doi sang/tu
+    // muc Tat thi chieu cao doi, trinh doc se dan lai trang va giu anchor.
+    static const StrId nhan[] = {StrId::STR_STATE_OFF, StrId::STR_STATUS_BAR_CLOCK_BATTERY, StrId::STR_STATUS_BAR_DEFAULT,
+                                 StrId::STR_STATUS_BAR_CHAPTER_PROGRESS, StrId::STR_STATUS_BAR_CHAPTER_CLOCK,
+                                 StrId::STR_STATUS_BAR_CHAPTER_BATTERY};
+    std::vector<std::string> chu;
+    chu.reserve(CrossPointSettings::READER_STATUS_BAR_MODE_COUNT);
+    for (const auto id : nhan) chu.push_back(I18N.get(id));
+    const int dangDung = SETTINGS.readerStatusBarMode;
+    optionPopup.show(StrId::STR_HIDE_READER_STATUS_BAR, chu, dangDung, [this](const int idx) {
+      if (idx < 0 || idx >= CrossPointSettings::READER_STATUS_BAR_MODE_COUNT) return;
+      SETTINGS.readerStatusBarMode = static_cast<uint8_t>(idx);
+      SETTINGS.saveToFile();
+    });
+    requestUpdate();
+    return;
+  }
+
   if (selectedAction == MenuAction::FRONTLIGHT) {
     const bool lightOn = !Frontlight.isOn();
     Frontlight.setOn(lightOn);
@@ -364,7 +384,7 @@ bool EpubReaderMenuActivity::handleButtons() {
 
 void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
   // Content: the safe area minus the header band GUI.drawHeader paints.
   screen.setContentMarginFromScreen(fui::Insets{
       static_cast<int16_t>(tenorchrome::enabled() ? tenorchrome::TAB_TOP
@@ -424,7 +444,7 @@ void EpubReaderMenuActivity::drawChrome() {
     return;
   }
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
 
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the rest of the screen renders through the app.

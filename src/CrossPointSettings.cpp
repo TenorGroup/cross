@@ -69,7 +69,7 @@ static_assert(CrossPointSettings::READER_FAVORITE_MAX == readermenu::TOI_DA_GHIM
               "tran danh sach yeu thich lech giua CrossPointSettings va readermenu");
 
 void CrossPointSettings::toJson(JsonDocument& doc) const {
-  doc["textSpacingVersion"] = 2;
+  doc["textSpacingVersion"] = 3;
   doc["paragraphIndentVersion"] = 1;
   const CrossPointSettings& s = *this;
 
@@ -126,6 +126,13 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
       yeuThich.add(readerFavorites[i]);
     }
   }
+
+  // BLE page turner (BTH2) - managed by BlePageTurnerActivity, not SettingsList.
+  doc["blePageTurnerEnabled"] = blePageTurnerEnabled;
+  doc["blePeerAddr"] = blePeerAddr;
+  doc["blePeerName"] = blePeerName;
+  doc["blePrevKeyUsage"] = blePrevKeyUsage;
+  doc["bleNextKeyUsage"] = bleNextKeyUsage;
 }
 
 bool CrossPointSettings::fromJson(JsonVariantConst doc) {
@@ -195,6 +202,20 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     }
   }
 
+  // v1.0.2 luu hai co an rieng cho thanh trang thai ngoai/trong trinh doc. Quy doi
+  // theo dung y dinh cu, nhung CHI khi file chua co khoa moi, de mot file v3 khong
+  // bi ghi de boi co cu.
+  if (doc["globalStatusBarMode"].isNull() && !doc["hideGlobalStatusBar"].isNull()) {
+    globalStatusBarMode =
+        (doc["hideGlobalStatusBar"] | uint8_t{0}) ? GLOBAL_STATUS_BAR_OFF : GLOBAL_STATUS_BAR_SMALL;
+    needsResave = true;
+  }
+  if (doc["readerStatusBarMode"].isNull() && !doc["hideReaderStatusBar"].isNull()) {
+    readerStatusBarMode =
+        (doc["hideReaderStatusBar"] | uint8_t{0}) ? READER_STATUS_BAR_OFF : READER_STATUS_BAR_DEFAULT;
+    needsResave = true;
+  }
+
   // Retire the experimental hold-to-resize shortcut without delaying page turns.
   if ((doc["longPressButtonBehavior"] | uint8_t{OFF}) == FONT_SIZE_STEP) {
     longPressButtonBehavior = OFF;
@@ -207,18 +228,85 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     sleepTimeoutMinutes = sleepTimeoutEnumToMinutes(legacyValue);
     needsResave = true;
   }
-  if ((doc["textSpacingVersion"] | 0) < 2 && !doc["extraParagraphSpacing"].isNull()) {
-    const auto previous = doc["extraParagraphSpacing"].as<uint8_t>();
-    extraParagraphSpacing = doc["textSpacingVersion"].isNull() ? (previous != 0 ? 1 : 0) : (previous == 2 ? 1 : 0);
-    needsResave = true;
+  // Text spacing levels (textSpacingVersion 3). The generic loop above already
+  // took each stored ordinal through the five-value range check, so the fields
+  // hold either a valid level or the row's default. The rules below read the
+  // document as well, because an ABSENT key means "never set" and must keep the
+  // new default instead of being folded as if it held an old ordinal, and
+  // because an out-of-range value has to ask for a resave rather than silently
+  // become a level.
+  {
+    const uint8_t spacingVersion = doc["textSpacingVersion"] | 0;
+    if (spacingVersion < 3) {
+      // Line and letter shared one three-value row; paragraph spacing had its
+      // own. Anything outside the old range is a repair, and every file below
+      // v3 is rewritten once so the version stamp sticks.
+      if (!doc["lineSpacing"].isNull()) {
+        const uint8_t raw = lineSpacing == 3 ? 2 : lineSpacing;  // v1/v2 treated a stored 3 as Wide
+        lineSpacing = raw > 2 ? readerSpacing::LEVEL_DEFAULT : readerSpacing::legacyLineLetterLevel(raw);
+      }
+      if (!doc["letterSpacing"].isNull()) {
+        letterSpacing = letterSpacing > 2 ? readerSpacing::LEVEL_DEFAULT
+                                         : readerSpacing::legacyLineLetterLevel(letterSpacing);
+      }
+      // wordSpacing did not exist before v3, so an old file has either no key
+      // (keep the default) or a hand-edit the five-value row cannot hold.
+      if (!doc["wordSpacing"].isNull() && doc["wordSpacing"].as<uint8_t>() >= readerSpacing::LEVEL_COUNT) {
+        wordSpacing = readerSpacing::LEVEL_DEFAULT;
+      }
+      if (!doc["extraParagraphSpacing"].isNull()) {
+        // Files older than v2 stored a toggle-like value that was already folded
+        // once, by the v2 release; fold it to the v2 meaning first, exactly as
+        // that release did, then to a level.
+        uint8_t v2 = extraParagraphSpacing;
+        if (spacingVersion < 2) {
+          v2 = doc["textSpacingVersion"].isNull() ? (v2 != 0 ? 1 : 0) : (v2 == 2 ? 1 : 0);
+        }
+        extraParagraphSpacing =
+            v2 > 2 ? readerSpacing::LEVEL_DEFAULT : readerSpacing::legacyParagraphLevel(v2);
+      }
+      needsResave = true;
+    } else {
+      // Already v3: these ordinals never re-enter the folds. Only a value the
+      // row cannot hold is repaired, and that is worth a resave.
+      const auto repairLevel = [&doc, &needsResave](const char* key, uint8_t& field) {
+        if (doc[key].isNull()) return;  // absent keeps the default level
+        const uint8_t raw = doc[key].as<uint8_t>();
+        if (raw < readerSpacing::LEVEL_COUNT) {
+          field = raw;
+        } else {
+          field = readerSpacing::LEVEL_DEFAULT;
+          needsResave = true;
+        }
+      };
+      repairLevel("lineSpacing", lineSpacing);
+      repairLevel("letterSpacing", letterSpacing);
+      repairLevel("wordSpacing", wordSpacing);
+      repairLevel("extraParagraphSpacing", extraParagraphSpacing);
+    }
   }
   if (doc["paragraphIndentVersion"].isNull() && !doc["paragraphIndent"].isNull()) {
     paragraphIndent = doc["paragraphIndent"].as<uint8_t>() == 2 ? 0 : 1;
     needsResave = true;
   }
-  if ((doc["lineSpacing"] | uint8_t{NORMAL}) == 3) {
-    lineSpacing = WIDE;
-    needsResave = true;
+  // Drop cap: the old boolean became a three-value mode. A file that had the
+  // feature on keeps the size it used to draw (Large); off becomes Off; a file
+  // with neither key keeps the new smaller default. An out-of-range mode is
+  // repaired and the file is resaved once.
+  if (doc["dropCapMode"].isNull()) {
+    if (!doc["focusReadingEnabled"].isNull()) {
+      dropCapMode = (doc["focusReadingEnabled"].as<uint8_t>() != 0) ? readerSpacing::DROP_CAP_LARGE
+                                                                   : readerSpacing::DROP_CAP_OFF;
+      needsResave = true;
+    }
+  } else {
+    const uint8_t raw = doc["dropCapMode"].as<uint8_t>();
+    if (raw < readerSpacing::DROP_CAP_MODE_COUNT) {
+      dropCapMode = raw;
+    } else {
+      dropCapMode = readerSpacing::DROP_CAP_DEFAULT;
+      needsResave = true;
+    }
   }
   // Front button remap - managed by RemapFrontButtons sub-activity, not in SettingsList.
   frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
@@ -288,6 +376,20 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     }
   }
 
+  // BLE page turner (BTH2). Khong ban phat hanh nao truoc day ghi nam khoa nay,
+  // nen mot file v1.0.2 thieu chung nghia la "chua ai dung": giu dung mac dinh
+  // trong struct (tat, khong peer, chua hoc nut) va ghi lai file MOT lan de nam
+  // khoa co mat tu day. Cac truong cu di qua vong lap chung o tren nen khong
+  // truong nao bi mat.
+  blePageTurnerEnabled = (doc["blePageTurnerEnabled"] | uint8_t{0}) ? 1 : 0;
+  copyToField(blePeerAddr, doc["blePeerAddr"] | "", sizeof(blePeerAddr));
+  copyToField(blePeerName, doc["blePeerName"] | "", sizeof(blePeerName));
+  blePrevKeyUsage = doc["blePrevKeyUsage"] | uint8_t{0};
+  bleNextKeyUsage = doc["bleNextKeyUsage"] | uint8_t{0};
+  if (doc["blePageTurnerEnabled"].isNull()) {
+    needsResave = true;
+  }
+
   if (needsResave) {
     LOG_DBG("CPS", "Resaving settings to update format");
     requestResave();
@@ -301,29 +403,69 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
 CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
   StatusBarSpec spec;
   if (readerStatusBarHidden()) return spec;
-  spec.showChapterPageCount = statusBarChapterPageCount != 0;
-  spec.showBookProgressPercent = statusBarBookProgressPercentage != 0;
-  spec.titleMode = statusBarTitle;
-  spec.showBattery = statusBarBattery != 0;
-  spec.showBatteryPercent = hideBatteryPercentage == HIDE_NEVER;
-  spec.clockMode = statusBarClock;
+  // Sau muc nguoi dung chon. Moi muc chi bat dung cac thanh phan co ten trong muc,
+  // va ca sau muc deu nam trong CUNG mot lan chu (tru Tat) nen doi muc khong lam
+  // doi chieu cao trang: chi ve lai thanh trang thai, khong dan lai sach.
+  switch (readerStatusBarMode) {
+    case READER_STATUS_BAR_CLOCK_BATTERY:
+      spec.showChapterPageCount = false;
+      spec.showBookProgressPercent = false;
+      spec.titleMode = HIDE_TITLE;
+      spec.showBattery = true;
+      spec.showBatteryPercent = true;
+      spec.clockMode = statusBarClock == STATUS_BAR_CLOCK_LEFT ? STATUS_BAR_CLOCK_LEFT : STATUS_BAR_CLOCK_RIGHT;
+      spec.progressBarMode = HIDE_PROGRESS;
+      spec.progressBarHeightPx = 0;
+      spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
+      break;
+    case READER_STATUS_BAR_CHAPTER_PROGRESS:
+      spec.showChapterPageCount = true;
+      spec.showBookProgressPercent = false;
+      spec.titleMode = CHAPTER_TITLE;
+      spec.showBattery = false;
+      spec.showBatteryPercent = false;
+      spec.clockMode = STATUS_BAR_CLOCK_HIDE;
+      spec.progressBarMode = HIDE_PROGRESS;
+      spec.progressBarHeightPx = 0;
+      spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
+      break;
+    case READER_STATUS_BAR_CHAPTER_CLOCK:
+      spec.showChapterPageCount = false;
+      spec.showBookProgressPercent = false;
+      spec.titleMode = CHAPTER_TITLE;
+      spec.showBattery = false;
+      spec.showBatteryPercent = false;
+      spec.clockMode = statusBarClock == STATUS_BAR_CLOCK_LEFT ? STATUS_BAR_CLOCK_LEFT : STATUS_BAR_CLOCK_RIGHT;
+      spec.progressBarMode = HIDE_PROGRESS;
+      spec.progressBarHeightPx = 0;
+      spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
+      break;
+    case READER_STATUS_BAR_CHAPTER_BATTERY:
+      spec.showChapterPageCount = false;
+      spec.showBookProgressPercent = false;
+      spec.titleMode = CHAPTER_TITLE;
+      spec.showBattery = true;
+      spec.showBatteryPercent = true;
+      spec.clockMode = STATUS_BAR_CLOCK_HIDE;
+      spec.progressBarMode = HIDE_PROGRESS;
+      spec.progressBarHeightPx = 0;
+      spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
+      break;
+    case READER_STATUS_BAR_DEFAULT:
+    default:
+      spec.showChapterPageCount = true;
+      spec.showBookProgressPercent = true;
+      spec.titleMode = CHAPTER_TITLE;
+      spec.showBattery = true;
+      spec.showBatteryPercent = true;
+      spec.clockMode = statusBarClock == STATUS_BAR_CLOCK_LEFT ? STATUS_BAR_CLOCK_LEFT : STATUS_BAR_CLOCK_RIGHT;
+      spec.progressBarMode = HIDE_PROGRESS;
+      spec.progressBarHeightPx = 0;
+      spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
+      break;
+  }
   spec.clock12h = clockFormat == 1;
   spec.clockUtcOffsetQ = clockUtcOffsetQ;
-  spec.progressBarMode = statusBarProgressBar;
-  spec.progressBarHeightPx =
-      statusBarProgressBar != HIDE_PROGRESS ? static_cast<uint8_t>((statusBarProgressBarThickness + 1) * 2) : 0;
-  spec.xtcMode = xtcStatusBarMode;
-  if (uiTheme == TENOR_UI) {
-    spec.showChapterPageCount = true;
-    spec.showBookProgressPercent = true;
-    spec.titleMode = CHAPTER_TITLE;
-    spec.showBattery = true;
-    spec.showBatteryPercent = true;
-    spec.clockMode = statusBarClock == STATUS_BAR_CLOCK_LEFT ? STATUS_BAR_CLOCK_LEFT : STATUS_BAR_CLOCK_RIGHT;
-    spec.progressBarMode = HIDE_PROGRESS;
-    spec.progressBarHeightPx = 0;
-    spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
-  }
   return spec;
 }
 
@@ -335,53 +477,25 @@ ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWid
   spec.extraParagraphSpacing = extraParagraphSpacing;
   spec.paragraphIndent = paragraphIndent;
   spec.letterSpacing = readerSpacing::letterPixels(letterSpacing);
+  spec.wordSpacing = wordSpacing;
   spec.paragraphAlignment = paragraphAlignment;
   spec.viewportWidth = viewportWidth;
   spec.viewportHeight = viewportHeight;
   spec.hyphenationEnabled = hyphenationEnabled != 0;
   spec.embeddedStyle = embeddedStyle != 0;
   spec.imageRendering = imageRendering;
-  spec.focusReadingEnabled = focusReadingEnabled != 0;
+  spec.dropCapMode = dropCapMode;
   return spec;
 }
 
 float CrossPointSettings::getReaderLineCompression() const {
-  // SD card fonts use same compression as Bookerly (the most neutral values)
-  if (sdFontFamilyName[0] != '\0') {
-    switch (lineSpacing) {
-      case TIGHT:
-        return 0.95f;
-      case NORMAL:
-      default:
-        return 1.0f;
-      case WIDE:
-        return 1.1f;
-    }
-  }
-
-  switch (fontFamily) {
-    case NOTOSERIF:
-    default:
-      switch (lineSpacing) {
-        case TIGHT:
-          return 0.95f;
-        case NORMAL:
-        default:
-          return 1.0f;
-        case WIDE:
-          return 1.1f;
-      }
-    case NOTOSANS:
-      switch (lineSpacing) {
-        case TIGHT:
-          return 0.90f;
-        case NORMAL:
-        default:
-          return 0.95f;
-        case WIDE:
-          return 1.0f;
-      }
-  }
+  // Mặc định has to mean the family's own default. The per-family tables this
+  // used to carry were SD and Noto Serif at 0.95/1.00/1.10 and Noto Sans at
+  // 0.90/0.95/1.00; with one five-level table the base is now expressed once and
+  // each level adds a fixed step, so a Noto Sans reader keeps the 0.95 default
+  // they already had and the other four levels move evenly around it.
+  const float base = (sdFontFamilyName[0] == '\0' && fontFamily == NOTOSANS) ? 0.95f : 1.00f;
+  return base + readerSpacing::lineFactorOffset(lineSpacing);
 }
 
 unsigned long CrossPointSettings::getSleepTimeoutMs() const {

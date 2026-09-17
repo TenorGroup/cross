@@ -3,63 +3,87 @@
 #include <HalStorage.h>
 #include <Logging.h>
 
-#include <cctype>
+#include <cstdio>
 #include <cstring>
 
 #include "CrossPointSettings.h"
 
+namespace {
+
+/// ASCII alphanumeric + hyphen + underscore. Deliberately not std::isalnum:
+/// the check must be locale-independent and must reject every non-ASCII byte
+/// (UTF-8 continuations included) rather than accept whatever the locale
+/// happens to classify as alphanumeric.
+constexpr bool isAllowedNameChar(char c) {
+  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+}
+
+constexpr char kCpfontExt[] = ".cpfont";
+constexpr size_t kCpfontExtLen = sizeof(kCpfontExt) - 1;
+static_assert(FontInstaller::MAX_CPFONT_FILENAME_LEN > kCpfontExtLen, "filename bound must leave room for a basename");
+
+}  // namespace
+
 FontInstaller::FontInstaller(SdCardFontRegistry& registry) : registry_(registry) {}
 
 bool FontInstaller::isValidFamilyName(const char* name) {
-  if (name == nullptr || name[0] == '\0') return false;
+  if (name == nullptr) return false;
 
-  // Reject path traversal
-  if (strstr(name, "..") != nullptr) return false;
-  if (strchr(name, '/') != nullptr) return false;
-  if (strchr(name, '\\') != nullptr) return false;
-
-  for (const char* p = name; *p != '\0'; ++p) {
-    char c = *p;
-    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_') {
-      return false;
-    }
+  // Bounded scan: stop at MAX_FAMILY_NAME_LEN even if the input is longer, so
+  // an arbitrarily long string can never be walked.
+  size_t i = 0;
+  for (; i < MAX_FAMILY_NAME_LEN; ++i) {
+    const char c = name[i];
+    if (c == '\0') break;
+    if (!isAllowedNameChar(c)) return false;
   }
-  return true;
+  return i > 0 && name[i] == '\0';
 }
 
 bool FontInstaller::isValidCpfontFilename(const char* name) {
-  if (name == nullptr || name[0] == '\0') return false;
+  if (name == nullptr) return false;
 
-  // Reject path separators / traversal up front. Anything that could escape
-  // the family directory or refer to a different one is a hard reject.
-  if (strstr(name, "..") != nullptr) return false;
-  if (strchr(name, '/') != nullptr) return false;
-  if (strchr(name, '\\') != nullptr) return false;
+  size_t nameLen = 0;
+  while (nameLen < MAX_CPFONT_FILENAME_LEN && name[nameLen] != '\0') ++nameLen;
+  // Either the string ended inside the bound, or it is over-long.
+  if (name[nameLen] != '\0') return false;
 
-  // Must end with ".cpfont" exactly.
-  static constexpr char kExt[] = ".cpfont";
-  static constexpr size_t kExtLen = sizeof(kExt) - 1;
-  size_t nameLen = strlen(name);
-  if (nameLen <= kExtLen) return false;
-  if (strcmp(name + nameLen - kExtLen, kExt) != 0) return false;
+  // Must end with ".cpfont" exactly, with a non-empty basename before it.
+  if (nameLen <= kCpfontExtLen) return false;
+  if (memcmp(name + nameLen - kCpfontExtLen, kCpfontExt, kCpfontExtLen) != 0) return false;
 
-  // Basename (before .cpfont) must be alphanumeric + hyphen + underscore only.
-  // No additional dots - keeps stray "Foo.cpfont.tmp"-style names out.
-  size_t baseLen = nameLen - kExtLen;
+  // Basename: ASCII alphanumeric + hyphen + underscore only. No '.' at all, so
+  // "Foo.cpfont.tmp" and traversal segments ("..") can never pass.
+  const size_t baseLen = nameLen - kCpfontExtLen;
   for (size_t i = 0; i < baseLen; ++i) {
-    char c = name[i];
-    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_') {
-      return false;
-    }
+    if (!isAllowedNameChar(name[i])) return false;
   }
   return true;
 }
 
 bool FontInstaller::ensureFamilyDir(const char* familyName) {
+  // Reject before any registry or storage access: an invalid family must not
+  // create (or even probe) anything on the card.
+  if (!isValidFamilyName(familyName)) {
+    LOG_ERR("FONT", "Invalid family name for dir: %s", familyName ? familyName : "(null)");
+    return false;
+  }
+
   // Reuse the family's existing root if installed; otherwise pick the
   // default-write root (hidden if no roots exist yet).
   const char* root = SdCardFontRegistry::findFamilyRoot(familyName);
   if (!root) root = SdCardFontRegistry::defaultWriteRoot();
+  if (!root) {
+    LOG_ERR("FONT", "No fonts root available");
+    return false;
+  }
+
+  char dirPath[MAX_FAMILY_DIR_PATH_SIZE];
+  const int written = snprintf(dirPath, sizeof(dirPath), "%s/%s", root, familyName);
+  if (written < 0 || static_cast<size_t>(written) >= sizeof(dirPath)) {
+    LOG_ERR("FONT", "Family dir path too long: %s/%s", root, familyName);
+    return false;
+  }
 
   if (!Storage.exists(root)) {
     if (!Storage.mkdir(root)) {
@@ -67,9 +91,6 @@ bool FontInstaller::ensureFamilyDir(const char* familyName) {
       return false;
     }
   }
-
-  char dirPath[160];
-  snprintf(dirPath, sizeof(dirPath), "%s/%s", root, familyName);
 
   if (!Storage.exists(dirPath)) {
     if (!Storage.mkdir(dirPath)) {
@@ -104,12 +125,30 @@ bool FontInstaller::validateCpfontFile(const char* path) {
   return true;
 }
 
-void FontInstaller::buildFontPath(const char* family, const char* filename, char* outBuf, size_t outBufSize) {
+bool FontInstaller::buildFontPath(const char* family, const char* filename, char* outBuf, size_t outBufSize) {
+  // Nothing writable: refuse without touching the buffer.
+  if (outBuf == nullptr || outBufSize == 0) return false;
+  outBuf[0] = '\0';
+
+  // Validate before any registry lookup so invalid input has no side effects.
+  if (!isValidFamilyName(family) || !isValidCpfontFilename(filename)) return false;
+
   // Use the same root selection as ensureFamilyDir: existing install dir wins,
   // otherwise the default-write root.
   const char* root = SdCardFontRegistry::findFamilyRoot(family);
   if (!root) root = SdCardFontRegistry::defaultWriteRoot();
-  snprintf(outBuf, outBufSize, "%s/%s/%s", root, family, filename);
+  if (!root) {
+    LOG_ERR("FONT", "No fonts root available for: %s", family);
+    return false;
+  }
+
+  const int written = snprintf(outBuf, outBufSize, "%s/%s/%s", root, family, filename);
+  if (written < 0 || static_cast<size_t>(written) >= outBufSize) {
+    LOG_ERR("FONT", "Font path does not fit in %zu bytes: %s/%s/%s", outBufSize, root, family, filename);
+    outBuf[0] = '\0';
+    return false;
+  }
+  return true;
 }
 
 FontInstaller::Error FontInstaller::deleteFamily(const char* familyName) {
@@ -122,8 +161,14 @@ FontInstaller::Error FontInstaller::deleteFamily(const char* familyName) {
   bool removedAny = false;
   bool sawAny = false;
   for (const char* root : roots) {
-    char dirPath[160];
-    snprintf(dirPath, sizeof(dirPath), "%s/%s", root, familyName);
+    char dirPath[MAX_FAMILY_DIR_PATH_SIZE];
+    const int written = snprintf(dirPath, sizeof(dirPath), "%s/%s", root, familyName);
+    // Check the complete path before probing or deleting: never operate on a
+    // truncated directory name.
+    if (written < 0 || static_cast<size_t>(written) >= sizeof(dirPath)) {
+      LOG_ERR("FONT", "Family dir path too long: %s/%s", root, familyName);
+      return Error::INVALID_FAMILY_NAME;
+    }
     if (!Storage.exists(dirPath)) continue;
     sawAny = true;
     if (!Storage.removeDir(dirPath)) {

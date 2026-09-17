@@ -70,7 +70,7 @@ bool wasDrawn(const std::string& text) {
 }  // namespace hosttest
 
 void GfxRenderer::drawText(int, const int x, const int y, const char* text, bool, EpdFontFamily::Style,
-                           BidiUtils::BidiBaseDir, int) const {
+                           BidiUtils::BidiBaseDir, int, uint8_t) const {
   if (text != nullptr) {
     hosttest::drawn().push_back({text, x, y, false});
   }

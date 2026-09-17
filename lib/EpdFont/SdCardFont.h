@@ -106,6 +106,13 @@ class SdCardFont {
   // Returns true if the given style is present in this font file.
   bool hasStyle(uint8_t style) const;
 
+  // Tallest ink above the baseline for a style, read from that style's TOC
+  // entry when the pack carries the ink-top field. `style` is resolved through
+  // the same present-style fallback as rendering. Returns 0 when the pack
+  // predates the field (existing v1.0.2 packs) or the style has no inked
+  // glyph: the value is unknown and callers keep their previous placement.
+  int maxInkTop(uint8_t style) const;
+
   // Resolve requested style bits to the closest present style.
   uint8_t resolveStyle(uint8_t style) const;
 
@@ -155,6 +162,11 @@ class SdCardFont {
     uint8_t kernLeftClassCount = 0;
     uint8_t kernRightClassCount = 0;
     uint8_t ligaturePairCount = 0;
+    // Tallest ink above the baseline over this style's glyphs, from the style
+    // TOC entry's ink-top field. 0 = unknown (a pack built before the field
+    // existed, or a style with no inked glyph): callers keep the placement
+    // they used before the field was added.
+    int16_t maxInkTop = 0;
   };
 
   // All per-style data: file offsets, intervals, kern/lig, prewarm cache, EpdFont

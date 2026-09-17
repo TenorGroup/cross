@@ -437,7 +437,7 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
                                                 static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  if (mode == Mode::Books) {
+  if (mode == Mode::Books && !SETTINGS.globalStatusBarHidden()) {
     const int actions = tenorchrome::tipHeight(renderer, tr(STR_FILE_SIDE_ACTIONS), 3);
     screen.takeBottom(static_cast<int16_t>(28 + actions));
   }

@@ -11,6 +11,7 @@
 #include <cstddef>
 
 #include "DeviceName.h"
+#include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
 #include "SilentRestart.h"
@@ -77,6 +78,14 @@ int barsForRssi(int rssi, int currentBars) {
 }  // namespace
 
 void CrossPointWebServerActivity::onEnter() {
+  runtimeStarted = false;
+  // Claim the radio before any render, Wi-Fi startup, or nested activity work.
+  if (!filetransfer::acquire()) {
+    LOG_ERR("WEBACT", "BLE teardown incomplete; leaving file transfer");
+    onGoHome();
+    return;
+  }
+  runtimeStarted = true;
   Activity::onEnter();
 
   LOG_INF("WEBACT", "Enter after reader closed heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
@@ -87,6 +96,7 @@ void CrossPointWebServerActivity::onEnter() {
   // demand - release them up front instead of aborting in startWebServer()
   // when the heap comes up short (observed on X3 with a Korean SD font).
   if (auto* fcm = renderer.getFontCacheManager()) {
+    RenderLock lock(*this);
     fcm->releaseSdFontCaches();
     LOG_DBG("WEBACT", "Free heap after SD font cache release: %d bytes", ESP.getFreeHeap());
   }
@@ -123,24 +133,29 @@ void CrossPointWebServerActivity::onEnter() {
 void CrossPointWebServerActivity::onExit() {
   Activity::onExit();
 
-  LOG_DBG("WEBACT", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
+  if (runtimeStarted) {
+    LOG_DBG("WEBACT", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
 
-  state = WebServerActivityState::SHUTTING_DOWN;
-  stopDnsServer();
-  MDNS.end();
+    state = WebServerActivityState::SHUTTING_DOWN;
+    stopDnsServer();
+    MDNS.end();
 
-  // Skip reboot if WiFi was never activated (e.g. user backed out of mode selection).
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
-    if (isApMode) {
-      WiFi.softAPdisconnect(true);
-    } else {
-      WiFi.disconnect(false);
+    // Skip reboot if WiFi was never activated (e.g. user backed out of mode selection).
+    if (WiFi.getMode() != WIFI_MODE_NULL) {
+      if (isApMode) {
+        WiFi.softAPdisconnect(true);
+      } else {
+        WiFi.disconnect(false);
+      }
+      delay(30);
+      silentRestart();
     }
-    delay(30);
-    silentRestart();
-  }
 
-  LOG_DBG("WEBACT", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
+    LOG_DBG("WEBACT", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
+  }
+  // Release only after DNS/mDNS and Wi-Fi teardown have completed. A nested
+  // activity may still hold its own owner while this activity exits.
+  filetransfer::release();
 }
 
 void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) {
@@ -293,7 +308,10 @@ void CrossPointWebServerActivity::startWebServer() {
   // rendered since onEnter(), and a CJK SSID repopulates the SD-font caches.
   if (auto* fcm = renderer.getFontCacheManager()) {
     LOG_DBG("WEBACT", "Free heap before SD font cache release: %d bytes", ESP.getFreeHeap());
-    fcm->releaseSdFontCaches();
+    {
+      RenderLock lock(*this);
+      fcm->releaseSdFontCaches();
+    }
     LOG_DBG("WEBACT", "Free heap before server alloc: %d bytes", ESP.getFreeHeap());
   }
 

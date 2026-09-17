@@ -1,0 +1,5 @@
+# Tài sản thử, không vào bản phát hành.
+# Tệp font 17,7 MB này tải lại được từ nguồn chính thức và đã ghim sha256 trong
+# README + verify_font.py, nên không commit; giấy phép, README và script thì có.
+# Cùng lệ với .gitignore gốc: *.cpfont, downloaded_fonts/, instanced_fonts/.
+NotoSansSC[wght].ttf

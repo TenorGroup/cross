@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "FontManifestValidation.h"
 #include "FontInstaller.h"
 #include "SdCardFont.h"
 #include "activities/UiListActivity.h"
@@ -114,6 +116,7 @@ class FontDownloadActivity final : public UiListActivity {
   int downloadingFamilyIndex_ = 0;
   std::string errorMessage_;
   bool cancelRequested_ = false;
+  bool runtimeStarted_ = false;
   // Set when the cancel came from the home gesture (consumed by the download
   // callback's own input pump); exit to home after the abort unwinds.
   bool goHomeRequested_ = false;
