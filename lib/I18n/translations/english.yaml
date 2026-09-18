@@ -652,7 +652,6 @@ STR_SPACING_LARGE: "Large"
 STR_SPACING_LARGER: "Larger"
 
 STR_WEB_FORBIDDEN_ORIGIN: "Forbidden origin"
-STR_WEB_AUTH_REQUIRED: "Use username tenor and the password shown on the reader."
 STR_WEB_NOT_FOUND: "404 Not Found"
 STR_WEB_SERIAL_NOT_FOUND: "Not found"
 STR_WEB_PROTECTED_PATH: "Protected path"

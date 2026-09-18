@@ -11,13 +11,11 @@ available while CrossPoint Reader is in File Transfer or Calibre Wireless mode.
 Examples use `tenor-cross.local`. If mDNS does not resolve on your network, use
 the IP address shown on the device screen.
 
-## Authentication
+## Request Checks
 
-All HTTP routes and WebDAV methods require HTTP Basic credentials: username `tenor`, password shown on the reader. In the curl examples below, add `--user tenor` and enter that password at the prompt. Missing or invalid credentials return 401. A foreign Origin or unsupported Host returns 403. Use the exact IP or `.local` URL displayed by the reader.
+No credentials are required: every HTTP route and WebDAV method is served to anyone who can reach the reader's address. Requests are still checked against the reader's own address — a request whose `Host` is not the reader's IP or `.local` name (on the served port), or whose `Origin` header is present and does not match it, is rejected with 403. Use the exact IP or `.local` URL displayed by the reader.
 
-`GET /api/session` requires the same credentials and returns a 32-character hexadecimal WebSocket token as `text/plain` with `Cache-Control: no-store`. Keep it in memory for the connection and never include it in URLs or logs. It expires when File Transfer is restarted.
-
-The local server uses HTTP on a trusted LAN or the reader's WPA2 hotspot. This transport does not provide end-to-end encryption on the LAN.
+The local server uses HTTP on a trusted LAN or the reader's open hotspot. This transport does not provide end-to-end encryption on the LAN.
 
 ## HTTP Pages
 
@@ -434,18 +432,14 @@ ws://tenor-cross.local:81/
 
 Protocol:
 
-1. Fetch `/api/session` with HTTP Basic credentials.
-2. Open the socket with an Origin matching the reader HTTP origin, for example `http://tenor-cross.local`. Native clients must supply this header too.
-3. Send `AUTH:<token>` and wait for `AUTHENTICATED`.
-4. Send `START:<filename>:<size>:<path>` and wait for `READY`.
-5. Send binary chunks. The server sends `PROGRESS:<received>:<total>` every 64 KB or at completion.
-6. Wait for `DONE` or `ERROR:<message>`.
+1. Open the socket with an Origin matching the reader HTTP origin, for example `http://tenor-cross.local`. Native clients must supply this header too.
+2. Send `START:<filename>:<size>:<path>` and wait for `READY`.
+3. Send binary chunks. The server sends `PROGRESS:<received>:<total>` every 64 KB or at completion.
+4. Wait for `DONE` or `ERROR:<message>`.
 
 Example session:
 
 ```text
-Client -> AUTH:<token from /api/session>
-Server -> AUTHENTICATED
 Client -> START:mybook.epub:1234567:/Books
 Server -> READY
 Client -> [binary chunk]
@@ -507,7 +501,7 @@ The final field is the WebSocket upload port.
 
 ### Access Point Mode (AP)
 
-- Device creates a WPA2 hotspot named `tenor-cross`, with the temporary password displayed on the reader.
+- Device creates an open hotspot named `tenor-cross`; no key is asked for on either side.
 - The device shows a Wi-Fi QR code and URL QR code.
 - The fallback IP is typically `192.168.4.1`.
 - `/api/status` returns `"mode": "AP"` and `"rssi": 0`.
