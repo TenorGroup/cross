@@ -34,6 +34,10 @@ class CrossPointWebServerActivity final : public Activity {
   NetworkMode networkMode = NetworkMode::JOIN_NETWORK;
   bool isApMode = false;
   bool runtimeStarted = false;
+  // Button-only hardware opens file transfer without the network-mode screen:
+  // join a saved network when there is one, otherwise start the open hotspot.
+  // Set once in onEnter(); touch hardware keeps the picker.
+  bool buttonOnlyFlow = false;
 #ifdef TENOR_UI_ACCEPTANCE
   bool autoJoinForTest = false;
 #endif
@@ -61,6 +65,7 @@ class CrossPointWebServerActivity final : public Activity {
 
   void onNetworkModeSelected(NetworkMode mode);
   void onWifiSelectionComplete(bool connected);
+  void startButtonOnlyFlow();
   void startAccessPoint();
   void startWebServer();
 

@@ -15,6 +15,7 @@
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
 #include "SilentRestart.h"
+#include "WifiCredentialStore.h"
 #include "WifiSelectionActivity.h"
 #include "activities/network/CalibreConnectActivity.h"
 #include "components/UITheme.h"
@@ -118,6 +119,15 @@ void CrossPointWebServerActivity::onEnter() {
   }
 #endif
 
+  // Button-only hardware has no touch keyboard, so the picker and the Wi-Fi
+  // password screen are a dead end: pick a saved network silently or open the
+  // hotspot. Touch hardware keeps the mode screen.
+  buttonOnlyFlow = !mappedInput.hasTouch();
+  if (buttonOnlyFlow) {
+    startButtonOnlyFlow();
+    return;
+  }
+
   // Launch network mode selection subactivity
   LOG_DBG("WEBACT", "Launching NetworkModeSelectionActivity...");
   startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
@@ -156,6 +166,42 @@ void CrossPointWebServerActivity::onExit() {
   // Release only after DNS/mDNS and Wi-Fi teardown have completed. A nested
   // activity may still hold its own owner while this activity exits.
   filetransfer::release();
+}
+
+void CrossPointWebServerActivity::startButtonOnlyFlow() {
+  {
+    RenderLock lock(*this);
+    WIFI_STORE.loadFromFile();
+  }
+
+  if (WIFI_STORE.getCredentialCount() > 0) {
+    // Hand the saved-network picker the "never ask" flag: it either connects
+    // on its own or leaves with a cancelled result.
+    networkMode = NetworkMode::JOIN_NETWORK;
+    isApMode = false;
+    state = WebServerActivityState::WIFI_SELECTION;
+    LOG_DBG("WEBACT", "Turning on WiFi (STA mode)...");
+    WiFi.mode(WIFI_STA);
+    requestUpdate();
+
+    startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, true, false, true),
+                           [this](const ActivityResult& result) {
+                             if (!result.isCancelled) {
+                               const auto& wifi = std::get<WifiResult>(result.data);
+                               connectedIP = wifi.ip;
+                               connectedSSID = wifi.ssid;
+                             }
+                             onWifiSelectionComplete(!result.isCancelled);
+                           });
+    return;
+  }
+
+  LOG_INF("WEBACT", "No saved network; opening the hotspot");
+  networkMode = NetworkMode::CREATE_HOTSPOT;
+  isApMode = true;
+  state = WebServerActivityState::AP_STARTING;
+  requestUpdate();
+  startAccessPoint();
 }
 
 void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) {
@@ -236,6 +282,18 @@ void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) 
     // Start the web server
     startWebServer();
   } else {
+    // Button-only hardware has no other option to offer: a saved network that
+    // did not connect means the hotspot, not another screen.
+    if (buttonOnlyFlow) {
+      LOG_INF("WEBACT", "Saved network unusable; opening the hotspot");
+      networkMode = NetworkMode::CREATE_HOTSPOT;
+      isApMode = true;
+      state = WebServerActivityState::AP_STARTING;
+      requestUpdate();
+      startAccessPoint();
+      return;
+    }
+
     // User cancelled - go back to mode selection
     state = WebServerActivityState::MODE_SELECTION;
 

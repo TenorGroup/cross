@@ -30,11 +30,13 @@ constexpr fui::ActionId ACTION_PROMPT = 3;
 }  // namespace
 
 WifiSelectionActivity::WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                             const bool autoConnect, const bool syncClock)
+                                             const bool autoConnect, const bool syncClock,
+                                             const bool savedNetworkOnly)
     : Activity("WifiSelection", renderer, mappedInput),
       UiAppHost(renderer),
       allowAutoConnect(autoConnect),
-      syncClockOnConnect(syncClock) {}
+      syncClockOnConnect(syncClock),
+      savedNetworkOnly(savedNetworkOnly) {}
 
 void WifiSelectionActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<WifiSelectionActivity*>(user);
@@ -178,8 +180,23 @@ void WifiSelectionActivity::onEnter() {
     return;
   }
 
+  // A caller that promised not to ask (button-only file transfer) has nothing
+  // to work with when the store came back empty.
+  if (giveUpBeforeAsking()) {
+    return;
+  }
+
   // Fallback to scanning
   startWifiScan();
+}
+
+bool WifiSelectionActivity::giveUpBeforeAsking() {
+  if (!savedNetworkOnly) {
+    return false;
+  }
+  LOG_INF("WIFI", "No saved network to use; leaving the picker");
+  onComplete(false);
+  return true;
 }
 
 void WifiSelectionActivity::onExit() {
@@ -235,6 +252,9 @@ void WifiSelectionActivity::processWifiScanResults() {
     realNetworkCount = 0;
     appendHiddenNetworkEntry();
     rebuildNetworkRowItems();
+    if (giveUpBeforeAsking()) {
+      return;
+    }
     autoConnecting = false;
     state = WifiSelectionState::NETWORK_LIST;
     selectedNetworkIndex = 0;
@@ -286,6 +306,10 @@ void WifiSelectionActivity::processWifiScanResults() {
   WiFi.scanDelete();
 
   if (autoConnecting && !manualNetworkListRequested && tryNextSavedNetworkFromScan()) {
+    return;
+  }
+
+  if (giveUpBeforeAsking()) {
     return;
   }
 
@@ -454,6 +478,9 @@ void WifiSelectionActivity::handleAutoConnectFailure() {
     if (tryNextSavedNetworkFromScan()) {
       return;
     }
+    if (giveUpBeforeAsking()) {
+      return;
+    }
     autoConnecting = false;
     state = WifiSelectionState::NETWORK_LIST;
     selectedNetworkIndex = 0;
@@ -466,6 +493,9 @@ void WifiSelectionActivity::handleAutoConnectFailure() {
 
 void WifiSelectionActivity::showNetworkListFromAutoConnect() {
   LOG_DBG("WIFI", "User requested manual network list");
+  if (giveUpBeforeAsking()) {
+    return;
+  }
   WiFi.disconnect();
   autoConnecting = false;
   manualNetworkListRequested = true;
