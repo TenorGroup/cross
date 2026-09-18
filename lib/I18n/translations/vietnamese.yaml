@@ -652,7 +652,6 @@ STR_SPACING_LARGE: "Lớn"
 STR_SPACING_LARGER: "Lớn hơn"
 
 STR_WEB_FORBIDDEN_ORIGIN: "Nguồn gốc bị từ chối"
-STR_WEB_AUTH_REQUIRED: "Dùng tên đăng nhập tenor và mật khẩu hiển thị trên máy đọc."
 STR_WEB_NOT_FOUND: "404 Không tìm thấy"
 STR_WEB_SERIAL_NOT_FOUND: "Không tìm thấy"
 STR_WEB_PROTECTED_PATH: "Đường dẫn được bảo vệ"

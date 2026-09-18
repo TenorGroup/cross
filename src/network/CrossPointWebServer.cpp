@@ -277,12 +277,6 @@ void CrossPointWebServer::begin() {
     if (auth.authorize(*server, true, requestLanguage())) handleDeleteWifiNetwork();
   });
 
-  server->on("/api/session", HTTP_GET, [this] {
-    if (!auth.authorize(*server, true, requestLanguage())) return;
-    server->sendHeader("Cache-Control", "no-store");
-    server->send(200, "text/plain", auth.token());
-  });
-
   server->onNotFound([this] {
     if (auth.authorize(*server, true, requestLanguage())) handleNotFound();
   });
@@ -290,9 +284,9 @@ void CrossPointWebServer::begin() {
 
   // Collect WebDAV headers and register handler
   // If-None-Match is collected so the static-page handlers can answer conditional GETs with 304
-  const char* collectedHeaders[] = {"Depth",   "Destination",   "Overwrite", "If",     "Lock-Token",
-                                    "Timeout", "If-None-Match", "Host",      "Origin", "Authorization"};
-  server->collectHeaders(collectedHeaders, 10);
+  const char* collectedHeaders[] = {"Depth",     "Destination", "Overwrite", "If",     "Lock-Token",
+                                    "Timeout",   "If-None-Match", "Host",    "Origin"};
+  server->collectHeaders(collectedHeaders, 9);
   server->addHandler(
       new WebDAVHandler(auth));  // Note: WebDAVHandler will be deleted by WebServer when server is stopped
   LOG_DBG("WEB", "WebDAV handler initialized");
@@ -1738,17 +1732,6 @@ void CrossPointWebServer::wsEventCallback(uint8_t num, WStype_t type, uint8_t* p
 //   3. Server sends TEXT "PROGRESS:<received>:<total>" after each chunk
 //   4. Server sends TEXT "DONE" or "ERROR:<message>" when complete
 void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
-  if (type == WStype_CONNECTED || type == WStype_DISCONNECTED) wsAuthenticated[num] = false;
-  if (type != WStype_CONNECTED && type != WStype_DISCONNECTED && !wsAuthenticated[num]) {
-    const std::string_view text(reinterpret_cast<const char*>(payload), length);
-    if (type == WStype_TEXT && text.substr(0, 5) == "AUTH:" && auth.tokenMatches(text.substr(5))) {
-      wsAuthenticated[num] = true;
-      wsServer->sendTXT(num, "AUTHENTICATED");
-    } else {
-      wsServer->disconnect(num);
-    }
-    return;
-  }
   switch (type) {
     case WStype_DISCONNECTED:
       LOG_DBG("WS", "Client %u disconnected", num);

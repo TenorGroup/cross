@@ -5596,9 +5596,6 @@ function getWsUrl() {
 
 // Upload file via WebSocket (faster, binary protocol)
 async function uploadFileWebSocket(file, onProgress, onComplete, onError) {
-  const session = await fetch(TenorI18n.apiUrl("/api/session"), {cache: "no-store"});
-  if (!session.ok) throw new Error("Authentication required");
-  const token = await session.text();
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(getWsUrl());
     currentUploadWs = ws;
@@ -5611,17 +5608,13 @@ async function uploadFileWebSocket(file, onProgress, onComplete, onError) {
     ws.onopen = function() {
       console.log('[WS] Connected, starting upload:', file.name);
       // Send start message: START:<filename>:<size>:<path>
-      ws.send(`AUTH:${token}`);
+      ws.send(`START:${file.name}:${file.size}:${currentPath}`);
     };
 
     ws.onmessage = async function(event) {
       const msg = event.data;
       console.log('[WS] Message:', msg);
 
-      if (msg === 'AUTHENTICATED') {
-        ws.send(`START:${file.name}:${file.size}:${currentPath}`);
-        return;
-      }
       if (msg === 'READY') {
         uploadStarted = true;
         sendingChunks = true;

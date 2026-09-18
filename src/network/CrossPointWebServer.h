@@ -50,8 +50,6 @@ class CrossPointWebServer {
     UploadState() { buffer.resize(UPLOAD_BUFFER_SIZE); }
   } upload;
 
-  const char* transferPassword() const { return auth.password(); }
-
   CrossPointWebServer();
   ~CrossPointWebServer();
 
@@ -74,7 +72,6 @@ class CrossPointWebServer {
 
  private:
   WebTransferAuth auth;
-  bool wsAuthenticated[256] = {};
   std::unique_ptr<WebServer> server = nullptr;
   std::unique_ptr<WebSocketsServer> wsServer = nullptr;
   bool running = false;

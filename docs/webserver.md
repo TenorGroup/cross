@@ -15,7 +15,7 @@ The web server is available while the device is in **File Transfer** or
 - Upload and delete `.cpfont` SD-card font families
 - Accept WebDAV clients and Calibre wireless uploads
 
-The server requires the username `tenor` and the temporary password displayed on the reader. A new File Transfer session creates a new password. Use a trusted private network or the password-protected hotspot.
+The server requires no sign-in: a device that can reach the reader's address gets the full file manager. Use a trusted private network, or the reader's own hotspot while it is running.
 
 ## Starting File Transfer
 
@@ -26,7 +26,7 @@ The server requires the username `tenor` and the temporary password displayed on
 |------|----------|
 | **Join Network** | You want the reader to join an existing Wi-Fi network. |
 | **Calibre Wireless** | You want to receive books from the CrossPoint Calibre plugin workflow. |
-| **Create Hotspot** | You want the reader to create its own WPA2-protected Wi-Fi network. |
+| **Create Hotspot** | You want the reader to create its own Wi-Fi network for nearby devices. |
 
 ## Join Network Mode
 
@@ -47,12 +47,12 @@ After connection, the reader shows:
 - The direct IP URL, for example `http://192.0.2.10/`
 - The mDNS fallback URL, usually `http://tenor-cross.local/`
 
-Use either URL from a phone, tablet, or computer on the same network. Enter username `tenor` and the password shown on the reader when your browser requests sign-in.
+Use either URL from a phone, tablet, or computer on the same network. The page opens without sign-in or any password.
 
 ## Create Hotspot Mode
 
 1. Select **Create Hotspot**.
-2. Connect your phone or computer to the WPA2 Wi-Fi network shown on the reader, using its displayed password:
+2. Connect your phone or computer to the open Wi-Fi network shown on the reader — scan the first QR code to join without typing anything:
 
 ```text
 tenor-cross
@@ -68,7 +68,7 @@ opening the web interface.
 
 Calibre Wireless starts the same web server in station mode, then displays setup
 instructions and upload progress on the reader. Use this mode with the
-clients that support the authenticated WebSocket upload protocol below. Older clients that send START immediately must first add the session-token exchange.
+clients that speak the WebSocket upload protocol below.
 
 For Calibre OPDS browsing, add `/opds` to the catalog URL when configuring an
 OPDS server.
@@ -130,12 +130,12 @@ Endpoint details are documented in [webserver-endpoints.md](./webserver-endpoint
 
 - The HTTP server runs on port 80.
 - The WebSocket upload server runs on port 81.
-- HTTP and WebDAV require HTTP Basic sign-in for each transfer session. WebSocket uploads require a session token and a matching Origin.
-- HTTP does not encrypt traffic on a joined LAN. Use a trusted network; the password gate does not protect against packet capture.
+- HTTP and WebDAV are served without sign-in. WebSocket uploads require an Origin matching the reader's address.
+- HTTP does not encrypt traffic on a joined LAN. Use a trusted network.
 - Internal dot directories, device state, cache, FAT aliases and replacement backup files are blocked from web access.
 - File uploads over WebSocket are removed after disconnect, error or 30 seconds without upload data.
 - The server stops when you exit File Transfer or Calibre Wireless mode.
-- Hotspot mode uses WPA2 with the displayed temporary password; disconnect when done.
+- Hotspot mode is an open network: disconnect it when done.
 
 ## Tips
 
