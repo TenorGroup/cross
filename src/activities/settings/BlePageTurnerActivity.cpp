@@ -117,6 +117,16 @@ void BlePageTurnerActivity::onEnter() {
   lastPollMs = millis();
   lastStateSig = 0;
   rowsDirty = true;
+  // Mot co "BAT" da luu ma radio khong chay la man hinh noi doi (founder 18/09/2026:
+  // "cu phai on roi off"). Vao man nay thi thu bat ngay; bat khong noi thi tat co,
+  // ghi ly do ra dong trang thai, de nguoi dung khong phai lat qua lat lai.
+  if (SETTINGS.blePageTurnerEnabled && backend::compiledIn() && !backend::running() && !backend::stopping()) {
+    if (!backend::begin(renderer)) {
+      LOG_ERR("BLE", "Saved opt-in could not start the radio on the settings screen; switching it off");
+      SETTINGS.blePageTurnerEnabled = 0;
+      SETTINGS.saveToFile();
+    }
+  }
   // Trang thai phai dung NGAY lan ve dau tien, khong doi mot nhip poll.
   capNhatTrangThai();
   requestUpdate();

@@ -8,8 +8,8 @@ Bang chung, khong phai cam giac:
 
 Hop dong da do (dung dung, khong suy lai):
   - Home hien NAM sach gan nhat; tep thieu KHONG chiem mot hang;
-  - ring: 0 = dai the, 1..N = hang; hai nut TRUOC (LEFT/RIGHT) di vong,
-    hai nut CANH (UP/DOWN) doi the; UiTabListActivity::onEnter dat con tro ve HANG 1;
+  - ring: 1..N = hang, cap nut TRUOC (LEFT/RIGHT) di vong trong 1..N va khong
+    ghe dai the (v1.0.3); hai nut CANH (UP/DOWN) doi the; onEnter dat con tro ve HANG 1;
   - the bia ve theo `recentBooks.front()`; vung bia duoc cache lai nen moi nhip
     dieu huong KHONG duoc dung lai (khong co them dong `Recent card build=`).
 
@@ -171,8 +171,13 @@ class RecentJourneyTest(unittest.TestCase):
         return max((row for row, _, _ in frames(log)), default=0)
 
     def mo_hang_cuoi(self, shots=()):
-        """Tu HANG 1 (onEnter): LEFT -> dai the, LEFT -> hang cuoi, CONFIRM -> mo sach."""
-        return self.chay("2500:LEFT;3200:LEFT;4200:CONFIRM;6500:QUIT", shots)
+        """Tu HANG 1 (onEnter): LEFT quay vong thang toi hang cuoi, CONFIRM -> mo sach.
+
+        v1.0.3 (UiTabListActivity::navigateButtons): cap nut mat truoc di vong
+        1..N va KHONG ghe vi tri 0 cua dai the; hai nut canh moi doi the. Kich ban
+        cu (LEFT hai lan) la hop dong truoc do va da mo nham cuon ap chot.
+        """
+        return self.chay("2500:LEFT;4200:CONFIRM;6500:QUIT", shots)
 
     def sd_khac(self):
         """Doi sang mot the SD gia moi (cach ly ca fixture) va tra ve ham tra lai."""
