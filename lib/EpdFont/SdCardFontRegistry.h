@@ -5,19 +5,28 @@
 #include <vector>
 
 struct SdCardFontFileInfo {
-  std::string path;        // v4 on-disk naming: "/<root>/<Family>/<Family>_<size>.cpfont"
-                           // where <root> is "/.fonts" (preferred, hidden) or "/fonts" (visible).
-                           // e.g. "/.fonts/NotoSansCJK/NotoSansCJK_14.cpfont"
-  uint8_t pointSize;       // parsed from filename: 14
-  uint8_t style;           // always 0 in v4 (all 4 styles bundled in one file);
-                           // kept for potential future formats
-  uint8_t weightMask = 1;  // bit 0: base, bits 1/2: installed experimental outlines
-  std::string weightPath(uint8_t weight) const;
+  uint8_t pointSize;  // parsed from filename: 14
+  uint8_t style;      // always 0 in v4 (all 4 styles bundled in one file);
+                      // kept for potential future formats
+  uint8_t stem;       // index into SdCardFontFamilyInfo::stems
 };
 
 struct SdCardFontFamilyInfo {
   std::string name;  // directory name, e.g. "NotoSansCJK"
+  // Filename part before "_<size>.cpfont" (e.g. "Bookerly-SD"), one entry for
+  // nearly every family. Keeping the stem once instead of a full path per file
+  // holds the registry of 30 families near 4 KB instead of 22 KB (18/09/2026).
+  std::vector<std::string> stems;
   std::vector<SdCardFontFileInfo> files;
+  bool hiddenRoot = true;  // "/.fonts" when true, "/fonts" otherwise
+
+  std::string dir() const;  // "/<root>/<name>"
+  // "/<root>/<name>/<stem>_<size>.cpfont", or its "weight-N" variant.
+  std::string filePath(const SdCardFontFileInfo& file, uint8_t weight = 0) const;
+  // bit 0: base, bits 1/2: installed experimental outlines. Resolved by two
+  // directory lookups when asked, never at discovery: probing every file at
+  // boot cost 2.5 s and the answer is only needed when a family is loaded.
+  uint8_t weights(const SdCardFontFileInfo& file) const;
 
   const SdCardFontFileInfo* findFile(uint8_t size, uint8_t style = 0) const;
   // Installed file closest to `pointSize` (ties → smaller). nullptr when the
@@ -56,7 +65,7 @@ class SdCardFontRegistry {
  private:
   std::vector<SdCardFontFamilyInfo> families_;  // sorted alphabetically
 
-  static bool parseFilename(const char* filename, uint8_t& size, uint8_t& style);
+  static bool parseFilename(const char* filename, uint8_t& size, uint8_t& style, std::string& stem);
   static void scanDirectory(const char* dirPath, SdCardFontFamilyInfo& family);
   // Scan one root (e.g. "/.fonts"), append families to `out`, dedup by name.
   static void scanRoot(const char* rootPath, std::vector<SdCardFontFamilyInfo>& out);

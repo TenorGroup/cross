@@ -95,6 +95,8 @@ std::vector<std::string> GfxRenderer::wrappedText(int, const char* text, int, in
 }
 
 RenderLock::RenderLock(Activity&) {}
+RenderLock::RenderLock() { isLocked = true; }
+RenderLock::RenderLock(TryTake) { isLocked = true; }  // host: the panel never holds the lock
 RenderLock::~RenderLock() {}
 
 const ThemeMetrics& UITheme::getMetrics() const {

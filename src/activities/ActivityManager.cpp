@@ -4,6 +4,7 @@
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <HalDisplay.h>
+#include <HalMemory.h>
 #include <HalPowerManager.h>
 #include <Memory.h>
 
@@ -218,6 +219,11 @@ void ActivityManager::loop() {
 
       lock.unlock();  // onEnter may acquire its own lock
       currentActivity->onEnter();
+      {
+        const auto heap = HalMemory::getInternalHeap();
+        LOG_INF("HEAP", "enter %s free=%u largest=%u", currentActivity->name.c_str(),
+                static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.largestBlockBytes));
+      }
       restoreNavigation();
 
       // onEnter may request another pending action, we will handle it in the next loop iteration
@@ -275,8 +281,14 @@ void ActivityManager::exitActivity(const RenderLock& lock) {
   if (currentActivity) {
     saveNavigation(*currentActivity);
     const uint32_t started = millis();
+    const std::string exited = currentActivity->name;
     currentActivity->onExit();
     currentActivity.reset();
+    {
+      const auto heap = HalMemory::getInternalHeap();
+      LOG_INF("HEAP", "exit %s free=%u largest=%u", exited.c_str(), static_cast<unsigned>(heap.freeBytes),
+              static_cast<unsigned>(heap.largestBlockBytes));
+    }
     if (sleepTransition) LOG_INF("SLP", "Timing close-activity=%lu ms", static_cast<unsigned long>(millis() - started));
   }
 }

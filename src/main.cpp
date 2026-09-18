@@ -387,6 +387,14 @@ void enterDeepSleep(bool fromTimeout = false) {
   sleepWithConfiguredButtons();
 }
 
+// Heap ledger: one line per boot milestone and per screen change, so the
+// 189 KB in use at Home can be attributed instead of guessed (M0, 18/09/2026).
+static void logHeapMark(const char* tag) {
+  const auto heap = HalMemory::getInternalHeap();
+  LOG_INF("HEAP", "%s free=%u largest=%u min=%u", tag, static_cast<unsigned>(heap.freeBytes),
+          static_cast<unsigned>(heap.largestBlockBytes), static_cast<unsigned>(heap.minFreeBytes));
+}
+
 void setupDisplayAndFonts(bool seamless = false) {
 #if !FREEINK_MCU_C3
   // C3 resolves its controller in HalGPIO::begin() before SPI claims the
@@ -402,8 +410,10 @@ void setupDisplayAndFonts(bool seamless = false) {
 #endif
 
   display.begin(seamless);
+  logHeapMark("display.begin");
   renderer.begin();
   activityManager.begin();
+  logHeapMark("render-task");
   LOG_DBG("MAIN", "Display initialized");
 
   // Initialize font decompressor for compressed reader fonts
@@ -426,9 +436,11 @@ void setupDisplayAndFonts(bool seamless = false) {
   renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
   renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
   renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
+  logHeapMark("fonts-builtin");
 
   // Discover and load SD card fonts
   sdFontSystem.begin(renderer);
+  logHeapMark("fonts-sd");
 
   LOG_DBG("MAIN", "Fonts setup");
 }
@@ -468,6 +480,7 @@ void setup() {
 
   gpio.begin();
   powerManager.begin();
+  logHeapMark("boot");
 
   const auto wakeupReason = gpio.getWakeupReason();
   // Sample the wake hold now - a click wake is released within milliseconds of
@@ -502,6 +515,7 @@ void setup() {
   }
 
   HalSystem::checkPanic();
+  logHeapMark("storage");
 
   APP_STATE.loadFromFile();
   const bool isSleepWake = wakeupReason == HalGPIO::WakeupReason::PowerButton;
@@ -520,13 +534,18 @@ void setup() {
     SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_TOOLBAR;
   }
   SETTINGS.loadFromFile();
+  logHeapMark("store-settings");
   RECENT_BOOKS.loadFromFile();
+  logHeapMark("store-recent");
   READING_STATS.loadFromFile();
+  logHeapMark("store-stats");
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
+  logHeapMark("i18n");
   KOREADER_STORE.loadFromFile();
   OPDS_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
+  logHeapMark("stores");
 
   // Brightness and warmth are always restored. A normal wake starts with the
   // light off unless Restore Light on Wake is enabled; silent maintenance
@@ -585,6 +604,7 @@ void setup() {
   bool needsWakeRefresh = false;
 
   setupDisplayAndFonts(resume != BootResume::Splash);
+  logHeapMark("display-and-fonts");
 
   switch (resume) {
     case BootResume::Silent:
@@ -1014,6 +1034,17 @@ void loop() {
         activityManager.pushActivity(makeUniqueNoThrow<StatusBarSettingsActivity>(renderer, mappedInputManager));
       } else if (cmd == "MEMORY") {
         logSerial.printf("MEMORY:%u,%u,%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+#ifndef SIMULATOR
+      } else if (cmd == "HEAP_INFO") {
+        // Summary only: a per-block dump over serial tripped the watchdog.
+        multi_heap_info_t info;
+        heap_caps_get_info(&info, MALLOC_CAP_INTERNAL);
+        logSerial.printf("HEAP_INFO:free=%u,alloc=%u,largest=%u,min=%u,blocks_alloc=%u,blocks_free=%u,loop_stack_free=%u\n",
+                         static_cast<unsigned>(info.total_free_bytes), static_cast<unsigned>(info.total_allocated_bytes),
+                         static_cast<unsigned>(info.largest_free_block), static_cast<unsigned>(info.minimum_free_bytes),
+                         static_cast<unsigned>(info.allocated_blocks), static_cast<unsigned>(info.free_blocks),
+                         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+#endif
       } else if (cmd == "NETWORK") {
         logSerial.printf("NETWORK:status=%d,rssi=%d,ip=%s,heap=%u,largest=%u\n", static_cast<int>(WiFi.status()),
                          WiFi.RSSI(), WiFi.localIP().toString().c_str(), ESP.getFreeHeap(), ESP.getMaxAllocHeap());

@@ -40,6 +40,9 @@ class EpubReaderActivity final : public ReaderActivity {
   int cachedSpineIndex = 0;
   int cachedChapterTotalPageCount = 0;
   std::optional<uint32_t> cachedVisibleTextOffset;
+  // Set by the main loop on a page turn, consumed under the render lock.
+  std::atomic<bool> deferredClearPending{false};
+  void takePendingDeferredClear();
   std::optional<uint32_t> currentPageVisibleOffset;
   std::optional<uint32_t> pendingOffsetJump;
   unsigned long lastPageTurnTime = 0UL;

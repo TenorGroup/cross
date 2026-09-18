@@ -1,5 +1,7 @@
 #include "HomeActivity.h"
 
+#include <FontCacheManager.h>
+
 #include <Bitmap.h>
 #include <Epub.h>
 #include <FsHelpers.h>
@@ -819,6 +821,11 @@ void HomeActivity::drawRecentCard() {
   const auto quoteStyle = book.excerpt.empty() ? EpdFontFamily::REGULAR : EpdFontFamily::ITALIC;
   const auto quote =
       book.excerpt.empty() ? std::string(tr(STR_RECENT_NO_EXCERPT)) : std::string("“") + book.excerpt + "”";
+  // Without a page slot every glyph miss inflates a whole font group again
+  // (the decompressor keeps one hot group), which made this card cost ~620 ms
+  // on the X3. Prewarm once; the slot is released after the card is cached.
+  auto* fcm = renderer.getFontCacheManager();
+  if (fcm) fcm->prewarmCache(quoteFont, quote.c_str(), static_cast<uint8_t>(1u << quoteStyle));
   auto lines = renderer.wrappedText(quoteFont, quote.c_str(), textWidth, tall ? 4 : 1, quoteStyle);
   if (!lines.empty()) {
     auto& last = lines.back();
@@ -865,6 +872,7 @@ void HomeActivity::drawRecentCard() {
   coverRectH = coverY + coverH - top;
   coverBufferStored = storeCoverBuffer();
   coverRendered = true;
+  if (fcm) fcm->releaseBuiltinPageCaches();  // the card is now a cached bitmap
 #ifdef TENOR_UI_ACCEPTANCE
   LOG_INF("HOME_PROBE", "card_build_us=%lu cache_bytes=%u", static_cast<unsigned long>(micros() - cardStartedUs),
           static_cast<unsigned>(coverBufferSize));

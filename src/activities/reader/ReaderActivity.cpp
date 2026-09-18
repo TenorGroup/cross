@@ -1,5 +1,7 @@
 #include "ReaderActivity.h"
 
+#include <FontCacheManager.h>
+
 #include <FsHelpers.h>
 #include <HalClock.h>
 #include <HalStorage.h>
@@ -95,6 +97,10 @@ void ReaderActivity::onExit() {
 
   updateReadingTime(false);
   chotSoLieuDoc();
+  // The SD font glyph arenas built while reading are dead weight on Home and
+  // Settings (measured 18/09/2026: ~19 KB kept after leaving a book). They are
+  // rebuilt by the next page prewarm, so hand them back here.
+  if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
 
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   if (!preview) {
