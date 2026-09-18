@@ -291,7 +291,14 @@ void WifiSelectionActivity::processWifiScanResults() {
     }
   }
 
-  // Sort: saved-password networks first, then by signal strength (strongest first)
+  // "Found N networks" counts what the radio saw, so it is taken before the
+  // saved-but-unseen rows join the list.
+  realNetworkCount = networks.size();
+  appendSavedNetworksNotSeen();
+
+  // Sort: saved-password networks first, then by signal strength (strongest first).
+  // Unseen saved networks carry the weakest possible RSSI, so they sit at the
+  // bottom of the saved block and above everything unsaved.
   std::sort(networks.begin(), networks.end(), [](const WifiNetworkInfo& a, const WifiNetworkInfo& b) {
     if (a.hasSavedPassword != b.hasSavedPassword) {
       return a.hasSavedPassword;
@@ -299,7 +306,6 @@ void WifiSelectionActivity::processWifiScanResults() {
     return a.rssi > b.rssi;
   });
 
-  realNetworkCount = networks.size();
   appendHiddenNetworkEntry();
   rebuildNetworkRowItems();
 
@@ -317,6 +323,29 @@ void WifiSelectionActivity::processWifiScanResults() {
   state = WifiSelectionState::NETWORK_LIST;
   selectedNetworkIndex = 0;
   requestUpdate();
+}
+
+void WifiSelectionActivity::appendSavedNetworksNotSeen() {
+  // Every saved credential the scan missed gets a row of its own. Without it a
+  // credential saved under a name that never broadcasts is unreachable: the list
+  // only ever held scan results, so nothing on the device could forget it.
+  const size_t saved = WIFI_STORE.getCredentialCount();
+  for (size_t i = 0; i < saved; i++) {
+    const auto ssid = WIFI_STORE.getSsidAt(i);
+    if (!ssid || ssid->empty()) continue;
+    const auto seen = std::find_if(networks.begin(), networks.end(),
+                                   [&ssid](const WifiNetworkInfo& net) { return net.ssid == *ssid; });
+    if (seen != networks.end()) continue;
+
+    LOG_INF("WIFI", "Saved network not in range: %s", ssid->c_str());
+    WifiNetworkInfo network;
+    network.ssid = *ssid;
+    network.rssi = INT32_MIN;  // weakest possible: sorts to the end of the saved block
+    network.isEncrypted = true;
+    network.hasSavedPassword = true;
+    network.isSavedOutOfRange = true;
+    networks.push_back(std::move(network));
+  }
 }
 
 void WifiSelectionActivity::appendHiddenNetworkEntry() {
@@ -341,8 +370,10 @@ void WifiSelectionActivity::rebuildNetworkRowItems() {
   for (size_t i = 0; i < networks.size(); i++) {
     const auto& network = networks[i];
     if (!network.isHiddenPlaceholder) {
-      networkStatuses[i] = std::string(network.hasSavedPassword ? "+ " : "") + (network.isEncrypted ? "* " : "") +
-                           getSignalStrengthIndicator(network.rssi);
+      networkStatuses[i] = std::string(network.hasSavedPassword ? "+ " : "") +
+                           (network.isSavedOutOfRange ? "" : (network.isEncrypted ? "* " : "")) +
+                           (network.isSavedOutOfRange ? tr(STR_WIFI_NOT_IN_RANGE)
+                                                      : getSignalStrengthIndicator(network.rssi));
     }
     fui::ListItem item;
     item.label = network.isHiddenPlaceholder ? tr(STR_ADD_HIDDEN_NETWORK) : network.ssid.c_str();

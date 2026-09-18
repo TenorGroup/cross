@@ -21,6 +21,10 @@ struct WifiNetworkInfo {
   bool isEncrypted;
   bool hasSavedPassword;             // Whether we have saved credentials for this network
   bool isHiddenPlaceholder = false;  // Synthetic "Add hidden network..." list entry
+  // Saved credential that this scan did not see. It still gets a row so the
+  // user can forget it: a network saved under a mistyped name never broadcasts
+  // that name, so without this row there is no way off the device to drop it.
+  bool isSavedOutOfRange = false;
 };
 
 // WiFi selection states
@@ -133,6 +137,7 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   void startWifiScan(bool autoScan = false);
   void processWifiScanResults();
   void appendHiddenNetworkEntry();
+  void appendSavedNetworksNotSeen();
   void selectNetwork(int index);
   void promptHiddenSsid();
   void promptPasswordEntry();
