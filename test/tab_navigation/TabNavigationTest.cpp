@@ -446,6 +446,42 @@ TEST(SettingsClockAdapter, ExplicitSelectionWritesOnlyExistingRightOrLeftEnums) 
   SETTINGS.statusBarClock = original;
 }
 
+TEST(SettingsJsonRoundTrip, WakeIntoBookPersistsAndClampsLikeEveryEnumKey) {
+  auto& settings = SETTINGS;
+  const uint8_t original = settings.wakeIntoBook;
+
+  // Key absent from an older file: the struct default stands.
+  settings.wakeIntoBook = 0;
+  {
+    JsonDocument doc;
+    ASSERT_TRUE(settings.fromJson(doc.as<JsonVariantConst>()));
+    EXPECT_EQ(settings.wakeIntoBook, 0);
+  }
+
+  // A written value survives reading the file back and writing it out again.
+  {
+    JsonDocument doc;
+    doc["wakeIntoBook"] = 1;
+    ASSERT_TRUE(settings.fromJson(doc.as<JsonVariantConst>()));
+    EXPECT_EQ(settings.wakeIntoBook, 1);
+
+    JsonDocument saved;
+    settings.toJson(saved);
+    EXPECT_EQ(saved["wakeIntoBook"] | uint8_t{255}, 1);
+  }
+
+  // Out-of-range value falls back to the default, the way every enum key does.
+  settings.wakeIntoBook = 0;
+  {
+    JsonDocument doc;
+    doc["wakeIntoBook"] = 7;
+    ASSERT_TRUE(settings.fromJson(doc.as<JsonVariantConst>()));
+    EXPECT_EQ(settings.wakeIntoBook, 0);
+  }
+
+  settings.wakeIntoBook = original;
+}
+
 // A default clock represents a board whose RTC probe did not find hardware.
 HalClock halClock;
 

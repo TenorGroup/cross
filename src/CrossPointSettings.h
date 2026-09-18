@@ -412,6 +412,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint16_t keyboardLayouts = 0;
   // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
   uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
+  // Wake straight back into the book that was open when deep sleep began,
+  // instead of returning to Home. 0 = off, 1 = on.
+  uint8_t wakeIntoBook = 0;
 
   // --- BLE page turner (BTH2) -------------------------------------------------
   // Mac dinh TAT. Nam truong nay duoc luu tay trong toJson/fromJson (khong qua
