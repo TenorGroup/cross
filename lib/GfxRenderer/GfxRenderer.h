@@ -324,6 +324,8 @@ class GfxRenderer {
   void drawDropCapWord(int fontId, int x, int y, const char* text, EpdFontFamily::Style style, int height,
                        int letterSpacing = 0) const;
   int getFontAscenderSize(int fontId) const;
+  // Do sau cua chu duoi duong nen (so duong, vd 9 px): cung ascender lam thanh chieu cao muc cua mot dong.
+  int getFontDescenderSize(int fontId) const;
   /// Tallest ink above the baseline for an SD-card font's style, resolved
   /// through that font's present-style fallback. Returns 0 for built-in fonts
   /// and for packs built before the cpfont ink-top field, i.e. "unknown - keep

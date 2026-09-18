@@ -2130,8 +2130,13 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
 }
 
 void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const uint32_t visibleOffset) {
-  const int lineHeight =
-      renderer.getLineHeight(fontId, lineCompression) + line->getRubyShift(renderer.getFontAscenderSize(fontId));
+  const int ascender = renderer.getFontAscenderSize(fontId);
+  const int rubyShift = line->getRubyShift(ascender);
+  const int lineHeight = renderer.getLineHeight(fontId, lineCompression) + rubyShift;
+  // Dong co vua trang hay khong do bang MUC THAT (ascender + descender), khong do bang o dong.
+  // O dong co the hep hon muc (gian dong Hep) hoac rong hon muc (gian dong Rong); chu luon ve
+  // tu y + ascender xuong descender, nen day trang chi can cach muc dong cuoi, khong can cach o.
+  const int inkHeight = ascender + renderer.getFontDescenderSize(fontId) + rubyShift;
 
   if (!currentPage) {
     currentPage.reset(new Page());
@@ -2140,7 +2145,7 @@ void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
     currentPageVisibleOffsetSet = false;
   }
 
-  const int requiredHeight = std::max(lineHeight, static_cast<int>(line->getDropCapHeight()) + 4);
+  const int requiredHeight = std::max(inkHeight, static_cast<int>(line->getDropCapHeight()) + 4);
   if (currentPageNextY + requiredHeight > viewportHeight) {
     setCurrentPageVisibleOffset(visibleOffset);
     completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex, currentPageVisibleOffset);
@@ -2163,7 +2168,6 @@ void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
 
   // Apply horizontal left inset (margin + padding) as x position offset
   const int16_t xOffset = line->getBlockStyle().leftInset();
-  const int rubyShift = line->getRubyShift(renderer.getFontAscenderSize(fontId));
   const int baseLineHeight = renderer.getLineHeight(fontId, lineCompression);
   for (const auto& link : line->takeLinkSpans()) {
     if (!currentPage->addLink(link.href, static_cast<int16_t>(xOffset + link.x),

@@ -50,7 +50,7 @@ namespace {
 // v46: Independent first-line indentation mode in the render-spec cache key.
 // v51: The drop cap boolean became a three-value mode whose size differs, so a
 // v50 header would be read as a different setting; those caches are discarded.
-constexpr uint8_t SECTION_FILE_VERSION = 51;
+constexpr uint8_t SECTION_FILE_VERSION = 52;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects

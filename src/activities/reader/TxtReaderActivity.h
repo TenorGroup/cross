@@ -22,6 +22,7 @@ class TxtReaderActivity final : public ReaderActivity {
   int viewportWidth = 0;
   int viewportHeight = 0;
   int cachedLineHeight = 0;
+  int cachedInkHeight = 0;  // ascender + descender: dong cuoi vua trang khi muc vua, khong phai khi o dong vua
   uint8_t cachedWordSpacing = 0;
   int cachedParagraphGap = 0;
   int8_t cachedLetterSpacing = 0;

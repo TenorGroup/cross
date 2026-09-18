@@ -2296,6 +2296,16 @@ int GfxRenderer::getFontAscenderSize(const int fontId) const {
   return fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
 }
 
+int GfxRenderer::getFontDescenderSize(const int fontId) const {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
+    LOG_ERR("GFX", "Font %d not found", fontId);
+    return 0;
+  }
+  // Font luu descender am (duoi duong nen); tra ve do sau duong.
+  return std::abs(fontIt->second.getData(EpdFontFamily::REGULAR)->descender);
+}
+
 int GfxRenderer::getFontMaxInkTop(const int fontId, const EpdFontFamily::Style style) const {
   // Only SD-card packs carry the ink-top field; a built-in font reports
   // "unknown" so its placement is unchanged.

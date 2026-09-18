@@ -31,8 +31,10 @@ class GfxRenderer {
   }
   int getScreenWidth() const { return 480; }
   int getScreenHeight() const { return 800; }
-  int getLineHeight(int, float = 1.0f) const { return 16; }
+  int getLineHeight(int, float compression = 1.0f) const { return static_cast<int>(16 * compression + 0.5f); }
   int getFontAscenderSize(int) const { return 12; }
+  // Muc mot dong = 12 + 6 = 18 px, cao hon o dong 16 px: giong font that (Bookerly 16: o 44, muc 45).
+  int getFontDescenderSize(int) const { return 6; }
   // wordSpacing is a readerSpacing::Level; the stub keeps a fixed gap so the
   // parser tests measure line breaks, not the space delta.
   int getSpaceWidth(int, EpdFontFamily::Style, uint8_t = 0) const { return 4; }
