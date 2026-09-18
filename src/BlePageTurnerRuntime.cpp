@@ -2,6 +2,8 @@
 
 #include <GfxRenderer.h>
 
+#include <atomic>
+
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
 
 #include <FontCacheManager.h>
@@ -12,8 +14,6 @@
 #include <activities/RenderLock.h>
 
 #include "FileTransferState.h"
-
-#include <atomic>
 
 #if defined(ESP_PLATFORM) || defined(ARDUINO)
 #include "freertos/FreeRTOS.h"
@@ -144,3 +144,12 @@ bool freeink::ble::beginAsync(GfxRenderer& renderer) {
   return false;
 }
 #endif
+
+namespace {
+std::atomic<bool> readerStartWasDeferred{false};
+}  // namespace
+
+bool freeink::ble::readerStartDeferred() { return readerStartWasDeferred.load(std::memory_order_relaxed); }
+void freeink::ble::setReaderStartDeferred(const bool deferred) {
+  readerStartWasDeferred.store(deferred, std::memory_order_relaxed);
+}

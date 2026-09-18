@@ -21,4 +21,12 @@ bool beginAsync(GfxRenderer& renderer);
 // transition until the worker has released its memory and callbacks.
 bool suspendForTransition();
 
+// True when the reader's own attempt to start the radio was turned down for
+// memory (CROSSPOINT_BLE_HID_HOST builds call setReaderStartDeferred when the
+// async start reports a failure). The settings screen reads it to say "not
+// running in books: low memory" instead of claiming the page turner is on.
+// Lives outside the capability guard: a build without BLE still answers false.
+bool readerStartDeferred();
+void setReaderStartDeferred(bool deferred);
+
 }  // namespace freeink::ble

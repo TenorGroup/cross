@@ -21,6 +21,9 @@ Ky vong dung khi co BLE DANG TAT (FREEINK_CAP_BLE_HID_HOST=0, mac dinh):
     KHONG BAO GIO thanh `BẬT` (STR_STATE_ON): radio khong chay duoc;
   - nhip Chon vao dong `BLE page turner` van ghi y dinh (enabled=1) nhung
     begin() that bai -> ghi log ERR; tat lai thi `settings.json` tro ve 0.
+  - hai dong `Gán nút lật tới` / `Gán nút lật lui` nam sau dong quet, gia tri
+    `Mặc định` khi chua hoc nut nao; vao mot dong roi cho het 15 giay thi dong
+    trang thai doi sang `Không nhận được nút` va settings.json khong doi.
 
 Chay: venv/bin/python -m pytest test/reading_stats_simulator/test_ble_settings_screen.py -q
 Anh duoc luu vao CROSSPOINT_TEST_ARTIFACTS (mac dinh: <repo>/t3).
@@ -72,10 +75,15 @@ class BleSettingsScreenTest(unittest.TestCase):
             json.dumps({"openEpubPath": "", "lastSleepFromReader": False, "showBootScreen": False}))
         self.anh_dat = []
 
-    def chay(self, buoc, shots=(), timeout=60):
-        """Chay ban mo phong voi kich ban; `shots` = [(moc_ms, ten_anh)] -> tra ve log."""
+    def chay(self, buoc, shots=(), timeout=60, script=None):
+        """Chay ban mo phong voi kich ban; `shots` = [(moc_ms, ten_anh)] -> tra ve log.
+
+        `script` (chuoi tho) thay cho `buoc` khi mot bai can moc thoi gian dai hon
+        nhip NHIP_MS, vi du cho het 15 giay cua luot gan nut.
+        """
         env = {k: v for k, v in os.environ.items() if not k.startswith("CROSSPOINT_SIM_")}
-        env.update(SDL_VIDEODRIVER="dummy", CROSSPOINT_SIM_SD=str(self.sd), CROSSPOINT_SIM_INPUT_SCRIPT=kich_ban(buoc))
+        env.update(SDL_VIDEODRIVER="dummy", CROSSPOINT_SIM_SD=str(self.sd),
+                   CROSSPOINT_SIM_INPUT_SCRIPT=script if script is not None else kich_ban(buoc))
         if shots:
             ART.mkdir(parents=True, exist_ok=True)
             env["CROSSPOINT_SIM_SCREENSHOTS"] = ";".join(f"{ms}:{ART / (ten + '.bmp')}" for ms, ten in shots)
@@ -139,6 +147,37 @@ class BleSettingsScreenTest(unittest.TestCase):
         # 5. Thoat ra thi tuy chon van la TAT trong settings.json.
         luu = json.loads((self.store / "settings.json").read_text())
         self.assertEqual(luu["blePageTurnerEnabled"], 0, luu)
+
+    def test_gan_nut_cho_het_muoi_lam_giay_roi_bao_khong_nhan_duoc(self):
+        """Vao hang "Gan nut lat toi" roi cho: khong co radio nen khong co phim nao toi.
+
+        Do duoc: dong trang thai doi tu cau cho sang cau khong nhan duoc, va
+        settings.json KHONG doi (khong hoc duoc nut nao).
+        """
+        # ... mo man BLE (xem test tren), roi RIGHT x3 = hang "Gan nut lat toi", CONFIRM.
+        buoc = ["DOWN"] * 4 + ["RIGHT"] * 5 + ["CONFIRM", "LEFT", "CONFIRM"] + ["RIGHT"] * 3 + ["CONFIRM"]
+        bat_cho = 2000 + (len(buoc) - 1) * NHIP_MS
+        script = kich_ban(buoc) + f"{bat_cho + 17000}:QUIT;"
+        shots = [
+            (bat_cho + 3000, "ble-gan-nut-dang-cho"),
+            (bat_cho + 16000, "ble-gan-nut-khong-nhan-duoc"),
+        ]
+        log = self.chay(buoc, shots, timeout=70, script=script)
+
+        self.assertEqual(log.count("Entering activity: BlePageTurner"), 1, log[-3000:])
+        self.assertEqual(log.count("Entering activity: KeyboardEntry"), 0, log[-3000:])
+        self.assertIn("Waiting for a button to bind to next", log, log[-3000:])
+        self.assertIn("Bind wait ended with no key", log, log[-3000:])
+
+        # Hai khung phai khac nhau: cau cho doi thanh cau khong nhan duoc.
+        dang_cho, het_cho = (self.anh(ten) for ten in self.anh_dat)
+        self.assertIsNotNone(ImageChops.difference(dang_cho, het_cho).getbbox(),
+                             "dong trang thai khong doi sau khi het 15 giay cho")
+
+        # Khong co phim nao toi thi khong hoc duoc gi.
+        luu = json.loads((self.store / "settings.json").read_text())
+        self.assertEqual(luu.get("bleNextKeyUsage", 0), 0, luu)
+        self.assertEqual(luu.get("blePrevKeyUsage", 0), 0, luu)
 
 
 if __name__ == "__main__":

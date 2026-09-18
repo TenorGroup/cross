@@ -30,6 +30,7 @@
 
 #include "BleKeyboardHost.h"
 #include "CrossPointSettings.h"
+#include "activities/settings/BleKeyBinding.h"
 #include "FakeBle.h"
 #include "HidDescriptors.h"
 #include "HidKeymap.h"
@@ -49,11 +50,20 @@ enum : uint16_t {
 
 // Usages a page-turner remote can send (HID Usage Tables, Keyboard/Keypad page).
 constexpr uint8_t kUsageA = 0x04;
+constexpr uint8_t kUsageB = 0x05;
 constexpr uint8_t kUsageEnter = 0x28;
+constexpr uint8_t kUsageBackspace = 0x2A;
+constexpr uint8_t kUsageSpace = 0x2C;
 constexpr uint8_t kUsagePageUp = 0x4B;
 constexpr uint8_t kUsagePageDown = 0x4E;
 constexpr uint8_t kUsageRight = 0x4F;
 constexpr uint8_t kUsageLeft = 0x50;
+constexpr uint8_t kUsageDown = 0x51;
+constexpr uint8_t kUsageUp = 0x52;
+constexpr uint8_t kUsageScanPrev = 0xB6;
+constexpr uint8_t kUsageScanNext = 0xB5;
+constexpr uint8_t kUsageVolumeDown = 0xEA;
+constexpr uint8_t kUsageVolumeUp = 0xE9;
 
 // One 8-byte boot-shaped report: modifier byte, reserved byte, six key slots.
 std::vector<uint8_t> bootReport(uint8_t mods, std::initializer_list<uint8_t> keys) {
@@ -74,6 +84,7 @@ struct Turns {
   int events = 0;
   int previous = 0;
   int next = 0;
+  uint8_t lastUsage = 0;  // ma THO cua su kien cuoi - cung la ma in ra log chan doan
   int total() const { return previous + next; }
 };
 
@@ -121,6 +132,37 @@ class PageTurnerFakeInputTest : public ::testing::Test {
     ASSERT_TRUE(fakeble::notify(reportChar_, frame.data(), frame.size()));
   }
 
+  // A remote shaped like a cheap accessory: two report layouts, where report id 2 is
+  // a 16-bit Consumer array - the shape a volume key arrives in. The characteristic
+  // is wired by Report Reference (Report id 2, type 1 = Input), the same way a real
+  // device declares it.
+  void connectConsumerRemote() {
+    const int map = fakeble::addCharacteristic(kUuidReportMap, /*canRead=*/true);
+    fakeble::setCharacteristicValue(map, hidtest::kTwoReports, sizeof hidtest::kTwoReports);
+    const int protocol = fakeble::addCharacteristic(kUuidProtocolMode, false, /*canWrite=*/true);
+    const uint8_t refConsumer[2] = {2, 1};
+    consumerChar_ = fakeble::addCharacteristic(kUuidReport, false, false, /*canNotify=*/true);
+    fakeble::setReportReference(consumerChar_, refConsumer, sizeof refConsumer);
+
+    ASSERT_TRUE(fakeble::beginHost());
+    ASSERT_EQ(fakeble::connectTo(kAddr), fakeble::LinkResult::Connected);
+    const uint8_t reportProtocol[1] = {1};
+    ASSERT_TRUE(fakeble::writeWasSent(protocol, reportProtocol, 1));
+    ASSERT_TRUE(fakeble::isSubscribed(consumerChar_));
+  }
+
+  // One Consumer-page press (16-bit usage, little endian).
+  void pressConsumer(uint16_t usage) {
+    const uint8_t frame[3] = {2, static_cast<uint8_t>(usage & 0xFF), static_cast<uint8_t>(usage >> 8)};
+    ASSERT_TRUE(fakeble::notify(consumerChar_, frame, sizeof frame));
+  }
+
+  // The frame that follows a released Consumer button.
+  void releaseConsumer() {
+    const uint8_t frame[3] = {2, 0, 0};
+    ASSERT_TRUE(fakeble::notify(consumerChar_, frame, sizeof frame));
+  }
+
   // The frame that follows a released button: no usage, so no new event.
   void releaseAll() {
     const std::vector<uint8_t> frame = bootReport(0, {});
@@ -134,6 +176,7 @@ class PageTurnerFakeInputTest : public ::testing::Test {
     KeyEvent ev;
     while (fakeble::host().popKey(ev)) {
       ++turns.events;
+      turns.lastUsage = ev.keycode;
       switch (SETTINGS.blePageActionFor(ev.keycode, ev.mods)) {
         case CrossPointSettings::BlePageAction::PreviousPage:
           ++turns.previous;
@@ -150,6 +193,7 @@ class PageTurnerFakeInputTest : public ::testing::Test {
 
  private:
   int reportChar_ = -1;
+  int consumerChar_ = -1;
   uint8_t savedEnabled_ = 0;
   uint8_t savedPrev_ = 0;
   uint8_t savedNext_ = 0;
@@ -255,9 +299,12 @@ TEST_F(PageTurnerFakeInputTest, LearnedKeyReplacesTheDefaultForThatDirection) {
 TEST_F(PageTurnerFakeInputTest, UnassignedKeysTurnNoPage) {
   connectRemote();
 
-  press(kUsageA);  // typing must not flip pages
+  // Enter used to stand here; it is a default Next usage now (see
+  // CheapRemoteDefaultsTurnPagesWithoutLearning), so the letter keys carry the
+  // "typing must not flip pages" contract instead.
+  press(kUsageA);
   releaseAll();
-  press(kUsageEnter);
+  press(kUsageB);
   releaseAll();
 
   const Turns turns = drainTurns();
@@ -324,6 +371,123 @@ TEST_F(PageTurnerFakeInputTest, QueuedPressesAreDecidedPerEventNotCollapsed) {
   EXPECT_EQ(turns.events, 3);
   EXPECT_EQ(turns.next, 3);
   EXPECT_EQ(turns.previous, 0);
+}
+
+// --- Mac dinh rong hon: dieu khien gia khong phai hoc nut --------------------
+
+TEST_F(PageTurnerFakeInputTest, CheapRemoteDefaultsTurnPagesWithoutLearning) {
+  connectRemote();
+
+  const uint8_t nextDefaults[] = {kUsageDown, kUsageSpace, kUsageEnter, kUsageVolumeUp, kUsageScanNext};
+  for (const uint8_t usage : nextDefaults) {
+    press(usage);
+    releaseAll();
+    EXPECT_EQ(drainTurns().next, 1)
+        << "usage 0x" << std::hex << static_cast<int>(usage) << " did not turn forward by default";
+  }
+
+  const uint8_t prevDefaults[] = {kUsageUp, kUsageBackspace, kUsageVolumeDown, kUsageScanPrev};
+  for (const uint8_t usage : prevDefaults) {
+    press(usage);
+    releaseAll();
+    EXPECT_EQ(drainTurns().previous, 1)
+        << "usage 0x" << std::hex << static_cast<int>(usage) << " did not turn back by default";
+  }
+
+  // Typing still must not flip pages.
+  press(kUsageA);
+  releaseAll();
+  EXPECT_EQ(drainTurns().total(), 0);
+}
+
+TEST_F(PageTurnerFakeInputTest, LearnedKeyRetiresTheNewDefaultForItsDirection) {
+  SETTINGS.bleNextKeyUsage = kUsageVolumeUp;  // a remote whose Next button is Volume Up
+  connectRemote();
+
+  press(kUsageVolumeUp);
+  releaseAll();
+  EXPECT_EQ(drainTurns().next, 1) << "the learned key did not turn the page";
+
+  press(kUsageDown);
+  releaseAll();
+  EXPECT_EQ(drainTurns().total(), 0) << "the replaced default still turned a page";
+}
+
+TEST_F(PageTurnerFakeInputTest, ModifiersOnTheNewDefaultsTurnNoPage) {
+  connectRemote();
+
+  press(kUsageDown, HID_LCTRL);
+  releaseAll();
+  press(kUsageVolumeUp, HID_LSHIFT);
+  releaseAll();
+  const Turns withModifiers = drainTurns();
+  EXPECT_EQ(withModifiers.events, 2) << "the events never reached the app";
+  EXPECT_EQ(withModifiers.total(), 0) << "a modifier press turned a page";
+
+  press(kUsageDown);  // control: the same usage alone turns
+  releaseAll();
+  EXPECT_EQ(drainTurns().next, 1);
+}
+
+// --- Remote gui trang Consumer: ma phai toi noi ------------------------------
+
+TEST_F(PageTurnerFakeInputTest, ConsumerVolumeRemoteIsDecodedAndTurnsThePage) {
+  connectConsumerRemote();
+
+  pressConsumer(0x00E9);
+  releaseConsumer();
+  const Turns up = drainTurns();
+  ASSERT_EQ(up.events, 1) << "the consumer report never reached the app";
+  EXPECT_EQ(up.lastUsage, kUsageVolumeUp) << "consumer 0x00E9 must arrive as its low byte 0xE9";
+  EXPECT_EQ(up.next, 1);
+
+  pressConsumer(0x00EA);
+  releaseConsumer();
+  EXPECT_EQ(drainTurns().previous, 1);
+}
+
+// --- Vong hoc nut: phim gia -> luat gan -> anh xa ----------------------------
+
+TEST_F(PageTurnerFakeInputTest, BindingLoopLearnsTheFirstUsageTheRemoteSends) {
+  connectRemote();
+
+  KeyEvent ev;
+  int accepted = 0;
+  const auto learnNext = [&] {
+    while (fakeble::host().popKey(ev)) {
+      if (blebinding::assign(blebinding::Direction::Next, ev.keycode, ev.mods)) ++accepted;
+    }
+  };
+
+  // A release frame arrives first: usage 0 must not be learned as a button.
+  releaseAll();
+  learnNext();
+  EXPECT_EQ(accepted, 0) << "a release frame was learned as a key";
+  EXPECT_EQ(SETTINGS.bleNextKeyUsage, 0);
+
+  // The next real press is the one that gets bound.
+  press(kUsageDown);
+  releaseAll();
+  learnNext();
+  EXPECT_EQ(accepted, 1);
+  EXPECT_EQ(SETTINGS.bleNextKeyUsage, kUsageDown);
+  EXPECT_EQ(blebinding::assigned(blebinding::Direction::Next), kUsageDown);
+  EXPECT_EQ(blebinding::assigned(blebinding::Direction::Prev), 0) << "the other direction was touched";
+
+  // The learned key turns the page, and the defaults it replaced go quiet.
+  press(kUsageDown);
+  releaseAll();
+  EXPECT_EQ(drainTurns().next, 1);
+  press(kUsageRight);
+  releaseAll();
+  EXPECT_EQ(drainTurns().total(), 0) << "a retired default still turned a page";
+
+  // Clearing the binding brings the defaults back.
+  blebinding::clear(blebinding::Direction::Next);
+  EXPECT_EQ(blebinding::assigned(blebinding::Direction::Next), 0);
+  press(kUsageDown);
+  releaseAll();
+  EXPECT_EQ(drainTurns().next, 1) << "the default was not live again after clearing";
 }
 
 }  // namespace
