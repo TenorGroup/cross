@@ -15,6 +15,14 @@ constexpr int STATUS_TEXT_LANE = 24;
 constexpr int STATUS_ICON_TOP_OFFSET = 5;
 constexpr int STATUS_LARGE_TEXT_SHIFT = 10;
 constexpr int STATUS_HEIGHT_LARGE = 40;
+// Muc cua thanh trang thai nho bat dau cach mep duoi 22 px: chu ve o y = H - STATUS_TEXT_LANE va
+// dinh muc cua font nho nam duoi y 2 px (do tren gia lap X3, ke ca dau chong nhu "Ậ").
+constexpr int STATUS_INK_TOP = STATUS_TEXT_LANE - 2;
+// Chu trong trinh doc duoc xuong toi cach muc thanh trang thai dung 2 px, do bang muc that cua dong
+// (xem ChapterHtmlSlimParser::addLineToPage). Truoc day chua 28 px va do bang o dong nen khoang cach
+// thuc te dao dong 1-9 px tuy muc gian dong, va co trang thieu 1 px la mat ca dong.
+constexpr int READER_TEXT_TO_STATUS_GAP = 2;
+constexpr int READER_BOTTOM_RESERVE = STATUS_INK_TOP + READER_TEXT_TO_STATUS_GAP;
 constexpr int statusTextY(const int screenHeight, const bool large, const int paddingBottom = 0) {
   return screenHeight - STATUS_TEXT_LANE - (large ? STATUS_LARGE_TEXT_SHIFT : 0) - paddingBottom;
 }

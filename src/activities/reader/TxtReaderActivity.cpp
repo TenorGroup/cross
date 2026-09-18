@@ -26,7 +26,7 @@ namespace {
 constexpr size_t CHUNK_SIZE = 8 * 1024;  // 8KB chunk for reading
 // Cache file magic and version
 constexpr uint32_t CACHE_MAGIC = 0x54585449;  // "TXTI"
-constexpr uint8_t CACHE_VERSION = 6;          // Increment when cache format changes
+constexpr uint8_t CACHE_VERSION = 7;          // Increment when cache format changes
 }  // namespace
 
 // Doi co chu roi dung lai chi muc trang, giu dung doan dang doc: trang moi la trang chua
@@ -92,10 +92,12 @@ void TxtReaderActivity::initializeReader(GfxRenderer& renderer) {
   const int lineHeight = std::max(1, renderer.getLineHeight(cachedFontId, SETTINGS.getReaderLineCompression()));
 
   cachedLineHeight = lineHeight;
+  cachedInkHeight = renderer.getFontAscenderSize(cachedFontId) + renderer.getFontDescenderSize(cachedFontId);
   cachedParagraphGap = readerSpacing::paragraphGap(SETTINGS.extraParagraphSpacing, lineHeight);
   cachedLetterSpacing = readerSpacing::letterPixels(SETTINGS.letterSpacing);
   cachedWordSpacing = SETTINGS.wordSpacing;
-  linesPerPage = viewportHeight / lineHeight;
+  // So dong toi da mot trang theo luat muc: dong cuoi chi can muc (cachedInkHeight) nam trong khung.
+  linesPerPage = viewportHeight >= cachedInkHeight ? (viewportHeight - cachedInkHeight) / lineHeight + 1 : 1;
   if (linesPerPage < 1) linesPerPage = 1;
   currentPageLineY.reserve(linesPerPage);
   currentPageLineIndent.reserve(linesPerPage);
@@ -167,7 +169,7 @@ bool TxtReaderActivity::loadPageAtOffset(const GfxRenderer& renderer, size_t off
   if (lineIndent) lineIndent->clear();
   int indent = 0;
   int y = 0;
-  const auto fits = [&]() { return outLines.empty() || y + cachedLineHeight <= viewportHeight; };
+  const auto fits = [&]() { return outLines.empty() || y + cachedInkHeight <= viewportHeight; };
   const auto addLine = [&](std::string value) {
     if (lineY) lineY->push_back(static_cast<uint16_t>(y));
     if (lineIndent) lineIndent->push_back(static_cast<uint16_t>(indent));

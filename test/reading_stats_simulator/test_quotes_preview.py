@@ -68,21 +68,26 @@ class QuotesPreviewTest(unittest.TestCase):
                 for p in self.store.rglob('*') if p.is_file() and
                 (p.suffix=='.json' or 'progress' in p.name or 'bookmark' in p.name)}
 
+    def dua_vao_thu_muc(self, ten):
+        # Nhip 18/09/2026 (v1.0.3): the File cua Home liet ke goc the nho ngay tai cho, GIU Chon tren
+        # mot hang tep la GHIM (UiListActivity xu ly truoc HomeActivity::handleButtons), nen ban xem
+        # truoc chi con mo duoc trong trinh duyet tep: dat sach vao thu muc /sach, Chon hang "sach/"
+        # o the File mo trinh duyet, roi GIU DOWN (PageForward = nut canh tren X3, 400 ms).
+        (self.sd / 'sach').mkdir(exist_ok=True)
+        (self.sd / ten).rename(self.sd / 'sach' / ten)
+        (self.store / 'recent.json').write_text(json.dumps({'books':[{'path':'/sach/' + ten,'title':'Synonym Lookup Test'}]}))
+        return '1600:DOWN;2400:CONFIRM;4000:DOWN:900;6000:BACK;7500:BACK;9000:QUIT'
+
     def test_preview_preserves_stores_and_returns_to_browser(self):
         (self.store / 'reading-stats.json').write_text('{"ngay":[[20260914,12,33]]}')
+        duong = self.dua_vao_thu_muc('audit.epub')
         # A warm read creates real progress and recent-book records to protect.
         self.finish(*self.launch('1000:CONFIRM;3800:RIGHT;5600:BACK;6600:QUIT'))
-        # Nhip 17/09/2026: o the Folder cua Home con tro dung o DAI THE (vong 0) va GIU Chon moi mo
-        # trinh duyet tep goc the nho. Trong trinh duyet, hang 1 la thu muc .crosspoint nen phai
-        # RIGHT mot nhip sang tep sach; nut GIU de mo ban xem truoc la PageForward, ma tren X3
-        # PageForward la mot trong HAI NUT CANH (MappedInputManager.cpp:100-113), tuc phim DOWN cua
-        # mo phong — giu RIGHT thi khong bao gio mo duoc ban xem truoc. Nhip cu doi the Home thay vi
-        # buoc con tro nen khong bao gio vao duoc trinh duyet.
-        process,log = self.launch('1600:DOWN;2300:LEFT;3000:CONFIRM:900;4700:RIGHT;5600:DOWN:900;7300:DOWN;8800:BACK;10300:QUIT')
+        process,log = self.launch(duong)
         time.sleep(1.3)
         before = self.protected()
         text = self.finish(process,log)
-        self.assertIn('Preview: /audit.epub',text)
+        self.assertIn('Preview: /sach/audit.epub',text)
         self.assertIn('Popped from activity stack, new size = 0',text)
         self.assertEqual(before, self.protected())
         self.finish(*self.launch('1800:QUIT'))
@@ -114,14 +119,14 @@ class QuotesPreviewTest(unittest.TestCase):
                     table = b''.join(struct.pack('<QIHH', 104 + i * len(page), len(page), 528, 792) for i in range(3))
                     source.write_bytes(header + table + page * 3)
                 source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+                duong = self.dua_vao_thu_muc('audit.' + extension)
+                source = self.sd / 'sach' / ('audit.' + extension)
                 self.finish(*self.launch('1000:CONFIRM;3800:RIGHT;5600:BACK;6600:QUIT'))
                 before = self.protected()
-                # Cung duong nhip 17/09/2026 nhu bai xem truoc EPUB: giu Chon o dai the Folder mo
-                # trinh duyet tep, RIGHT sang tep sach (hang 1 la thu muc .crosspoint), roi GIU
-                # DOWN (PageForward = nut canh) 400ms de mo ban xem truoc.
-                process, log = self.launch('1600:DOWN;2300:LEFT;3000:CONFIRM:900;4700:RIGHT;5600:DOWN:900;7300:DOWN;8800:BACK;10300:QUIT')
+                # Cung duong nhip 18/09/2026 nhu bai xem truoc EPUB (xem dua_vao_thu_muc).
+                process, log = self.launch(duong)
                 text = self.finish(process, log)
-                self.assertIn('Preview: /audit.' + extension, text)
+                self.assertIn('Preview: /sach/audit.' + extension, text)
                 self.assertEqual(before, self.protected())
                 self.assertEqual(source_hash, hashlib.sha256(source.read_bytes()).hexdigest())
                 source.unlink()

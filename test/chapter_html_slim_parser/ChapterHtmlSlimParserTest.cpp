@@ -327,6 +327,42 @@ TEST_F(ChapterHtmlSlimParserTest, DropCapDoesNotRepeatAndTocResetsIt) {
   EXPECT_GT(block(0).getDropCapHeight(), 0);
 }
 
+namespace {
+// Xep 6 tu, moi tu mot dong (khung rong 40 px, tu "Alpha" rong 40), dem so dong o trang dau.
+unsigned linesOnFirstPage(ChapterHtmlSlimParser& parser, const float compression, const int viewportHeight) {
+  parser.lineCompression = compression;
+  parser.viewportHeight = viewportHeight;
+  parser.viewportWidth = 40;
+  parser.currentPage.reset();
+  parser.currentTextBlock.reset();
+  parser.khoiTruocDaXepTrang = false;  // goi lai trong cung bai kiem: khong cong khoang ngan doan o dau
+  parser.blockStyleStack.push_back(BlockStyle());
+  unsigned firstPageLines = 0;
+  bool first = true;
+  parser.completePageFn = [&](std::unique_ptr<Page> page, auto, auto, auto) {
+    if (first) firstPageLines = page->elements.size();
+    first = false;
+  };
+  ChapterHtmlSlimParser::startElement(&parser, "p", nullptr);
+  for (int i = 0; i < 6; ++i) parser.currentTextBlock->addWord("Alpha", EpdFontFamily::REGULAR);
+  parser.makePages();
+  return firstPageLines;
+}
+}  // namespace
+
+// Luat day trang do bang MUC (ascender 12 + descender 6 = 18), khong do bang o dong.
+// Gian dong hep (o 16 < muc 18): dong thu ba o y = 32 co o vua khung 49 nhung muc cham 50, phai sang trang.
+TEST_F(ChapterHtmlSlimParserTest, LastLineBreaksWhenInkOverflowsEvenIfLineBoxFits) {
+  EXPECT_EQ(linesOnFirstPage(parser, 1.0f, 49), 2u);
+  EXPECT_EQ(linesOnFirstPage(parser, 1.0f, 50), 3u);
+}
+
+// Gian dong rong (o 24 > muc 18): dong thu hai o y = 24 co o tran khung 42 nhung muc vua, duoc o lai.
+TEST_F(ChapterHtmlSlimParserTest, LastLineStaysWhenInkFitsEvenIfLineBoxOverflows) {
+  EXPECT_EQ(linesOnFirstPage(parser, 1.5f, 42), 2u);
+  EXPECT_EQ(linesOnFirstPage(parser, 1.5f, 41), 1u);
+}
+
 TEST_F(ChapterHtmlSlimParserTest, DropCapKeepsTwoLinesOnSamePage) {
   parser.dropCapMode = readerSpacing::DROP_CAP_LARGE;
   parser.viewportHeight = 64;
