@@ -85,6 +85,11 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   // Whether to attempt auto-connect on entry
   const bool allowAutoConnect;
   const bool syncClockOnConnect;
+  // Callers that must never ask the user for anything (button-only hardware
+  // opening file transfer) set this: when no saved network is reachable the
+  // picker leaves with a cancelled result instead of showing the network list
+  // or the on-screen keyboard.
+  const bool savedNetworkOnly;
 
   // Whether we are attempting to auto-connect or auto-scan saved networks.
   bool autoConnecting = false;
@@ -140,11 +145,15 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   bool hasAttemptedAutoSsid(const std::string& ssid) const;
   static std::string getSignalStrengthIndicator(int32_t rssi);
 
+  // True when this caller must not show the network list or the keyboard: the
+  // picker reports "not connected" so the parent can start its own hotspot.
+  bool giveUpBeforeAsking();
+
   void onComplete(bool connected);
 
  public:
   explicit WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool autoConnect = true,
-                                 bool syncClock = true);
+                                 bool syncClock = true, bool savedNetworkOnly = false);
   void onEnter() override;
   void onExit() override;
   void loop() override;
