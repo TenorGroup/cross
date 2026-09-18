@@ -733,6 +733,15 @@ STR_BLE_UNAVAILABLE: "Bản dựng này không có Bluetooth"
 
 STR_BLE_STOPPING: "Bluetooth đang dừng"
 STR_BLE_START_FAILED: "Chưa khởi động được Bluetooth"
+STR_BLE_BIND_NEXT: "Gán nút lật tới"
+STR_BLE_BIND_PREV: "Gán nút lật lui"
+STR_BLE_BIND_WAIT: "Bấm nút trên điều khiển…"
+STR_BLE_BIND_DONE: "Đã gán %s"
+STR_BLE_BIND_NONE: "Không nhận được nút"
+STR_BLE_BIND_CLEAR: "Xoá gán"
+STR_BLE_BIND_DEFAULT: "Mặc định"
+STR_BLE_LAST_KEY: "nút vừa nhận %s"
+STR_BLE_READER_LOW_RAM: "Chưa chạy trong sách vì thiếu RAM"
 
 STR_KEYBOARD_MOVE_HORIZONTAL: "Di chuyển ngang"
 

@@ -777,15 +777,28 @@ void loop() {
       if (foregroundReader && activityManager.isForegroundReaderReady() && !bleReaderBeginAttempted &&
           !bleHid.isStopping()) {
         bleReaderBeginAttempted = true;
-        if (!bleHid.isRunning() && !freeink::ble::beginAsync(renderer)) {
-          LOG_ERR("BLE", "Reader BLE start deferred: insufficient memory or unavailable radio");
+        if (!bleHid.isRunning()) {
+          const bool started = freeink::ble::beginAsync(renderer);
+          freeink::ble::setReaderStartDeferred(!started);
+          if (started) {
+            LOG_INF("BLE", "Reader BLE start requested");
+          } else {
+            LOG_ERR("BLE", "Reader BLE start deferred: insufficient memory or unavailable radio");
+          }
         }
       }
       if (foregroundReader && bleHid.isRunning()) {
+        freeink::ble::setReaderStartDeferred(false);
         bleHid.poll();
         freeink::KeyEvent ev;
         while (bleHid.popKey(ev)) {
           const auto hanhDong = SETTINGS.blePageActionFor(ev.keycode, ev.mods);
+          // Mot dong cho MOI phim lay ra: day la duong chan doan cho nguoi cam
+          // dieu khien that (doc qua serial la biet remote gui ma nao).
+          LOG_INF("BLE", "key 0x%02X mods 0x%02X -> %s", ev.keycode, ev.mods,
+                  hanhDong == CrossPointSettings::BlePageAction::PreviousPage  ? "previous"
+                  : hanhDong == CrossPointSettings::BlePageAction::NextPage    ? "next"
+                                                                               : "none");
           if (hanhDong == CrossPointSettings::BlePageAction::PreviousPage) {
             coLuotCho = true;
             luotChoTien = false;

@@ -704,6 +704,15 @@ STR_BLE_UNAVAILABLE: "此固件未包含 Bluetooth"
 
 STR_BLE_STOPPING: "蓝牙正在关闭"
 STR_BLE_START_FAILED: "无法启动蓝牙"
+STR_BLE_BIND_NEXT: "设置下一页按键"
+STR_BLE_BIND_PREV: "设置上一页按键"
+STR_BLE_BIND_WAIT: "请按控制器上的按键"
+STR_BLE_BIND_DONE: "已设置 %s"
+STR_BLE_BIND_NONE: "未收到按键"
+STR_BLE_BIND_CLEAR: "清除设置"
+STR_BLE_BIND_DEFAULT: "默认"
+STR_BLE_LAST_KEY: "上次按键 %s"
+STR_BLE_READER_LOW_RAM: "内存不足，阅读时未启动"
 
 STR_KEYBOARD_MOVE_HORIZONTAL: "水平移动"
 

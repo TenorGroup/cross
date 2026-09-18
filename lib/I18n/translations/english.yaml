@@ -733,6 +733,15 @@ STR_BLE_UNAVAILABLE: "Bluetooth unavailable in this build"
 
 STR_BLE_STOPPING: "Bluetooth is stopping"
 STR_BLE_START_FAILED: "Bluetooth could not start"
+STR_BLE_BIND_NEXT: "Bind next-page button"
+STR_BLE_BIND_PREV: "Bind previous-page button"
+STR_BLE_BIND_WAIT: "Press a button on the remote…"
+STR_BLE_BIND_DONE: "Bound %s"
+STR_BLE_BIND_NONE: "No button received"
+STR_BLE_BIND_CLEAR: "Clear binding"
+STR_BLE_BIND_DEFAULT: "Default"
+STR_BLE_LAST_KEY: "last key %s"
+STR_BLE_READER_LOW_RAM: "Not running in books: low memory"
 
 STR_KEYBOARD_MOVE_HORIZONTAL: "Move horizontally"
 

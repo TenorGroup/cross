@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "activities/UiListActivity.h"
+#include "activities/settings/BleKeyBinding.h"
 #include "components/OptionPopup.h"
 
 /**
@@ -35,6 +36,10 @@ class BlePageTurnerActivity final : public UiListActivity {
     ROW_STATUS = 1,
     ROW_SCAN = 2,
     ROW_PAIRED_HEADER = 3,
+    // Hai hang gan nut nam ngay sau hang quet (thu tu hien thi do rebuildRows
+    // quyet dinh, khong phai gia tri ma nay).
+    ROW_BIND_NEXT = 4,
+    ROW_BIND_PREV = 5,
     ROW_PAIRED_BASE = 100,
     ROW_DEVICE_HEADER = 200,
     ROW_DEVICE_BASE = 300,
@@ -44,6 +49,7 @@ class BlePageTurnerActivity final : public UiListActivity {
   int listCount() const override { return static_cast<int>(rowItems_.size()); }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
+  void onRowLongPress(int index) override;
   bool handleCustomInput() override;
   const char* headerTitle() const override;
 
@@ -57,10 +63,33 @@ class BlePageTurnerActivity final : public UiListActivity {
   void handleScanRow();
   void openPairedPopup(int bondIndex);
 
+  // --- Gan nut (hotfix 18/09/2026) ------------------------------------------
+  // Man nay dang mo thi phim cua dieu khien khong thuoc ve ai khac: rut het hang
+  // doi, phim dau tien trong luot cho duoc gan, con lai chi de hien ma vua nhan.
+  void readPendingKeys();
+  void startBindWait(blebinding::Direction direction);
+  void clearBind(blebinding::Direction direction);
+  // Gia tri hien o hang gan nut: ma dang gan dang "0x51", hoac "Mac dinh".
+  std::string bindValue(blebinding::Direction direction) const;
+
   std::string statusText_;
+  // Dong cua hang Trang thai sau khi ghep thong bao gan nut va ma vua nhan. La
+  // thanh vien vi ListItem::value tro vao day, khong phai chuoi tam.
+  std::string statusValue_;
+  // Gia tri cua hai hang gan nut, cung ly do: ListItem::value la con tro.
+  std::string bindNextValue_;
+  std::string bindPrevValue_;
   std::vector<freeink::ui::ListItem> rowItems_;
   OptionPopup optionPopup;
   bool rowsDirty = true;
   uint32_t lastPollMs = 0;
   uint32_t lastStateSig = 0;
+
+  bool bindWaitActive_ = false;
+  blebinding::Direction bindDirection_ = blebinding::Direction::Next;
+  uint32_t bindWaitStartedMs_ = 0;
+  uint8_t lastKeyUsage_ = 0;
+  // Thong bao cua luot gan nut (dang cho / da gan / khong nhan duoc) thay cho dong
+  // trang thai radio cho toi khi nguoi dung lam viec khac.
+  std::string bindNotice_;
 };

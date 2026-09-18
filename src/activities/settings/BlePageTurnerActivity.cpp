@@ -65,13 +65,18 @@ void disconnect() { BleHid.disconnect(); }
 void forget(const char* addr) { BleHid.forget(addr); }
 bool takeFailure(char* out, const size_t outLen) { return BleHid.takeConnectFailure(out, outLen); }
 
-// Mot phim bam trong luc man cai dat dang mo khong duoc lat trang khi nguoi doc
-// quay lai: hang doi phai rong truoc khi roi man.
-void drainKeys() {
+// Mot phim dang cho trong hang doi: `usage`/`mods` la ma THO cua su kien. Tra ve
+// false khi hang doi rong (hoac ban dung khong co BLE).
+bool takeKey(uint8_t& usage, uint8_t& mods) {
   freeink::KeyEvent ev;
-  while (BleHid.popKey(ev)) {
-  }
+  if (!BleHid.popKey(ev)) return false;
+  usage = ev.keycode;
+  mods = ev.mods;
+  return true;
 }
+
+// Trinh doc da thu bat radio va bi hoan vi RAM: hang Trang thai phai noi that.
+bool readerDeferred() { return freeink::ble::readerStartDeferred(); }
 
 #else
 
@@ -96,7 +101,8 @@ bool connect(const char*) { return false; }
 void disconnect() {}
 void forget(const char*) {}
 bool takeFailure(char*, const size_t) { return false; }
-void drainKeys() {}
+bool takeKey(uint8_t&, uint8_t&) { return false; }
+bool readerDeferred() { return false; }
 
 #endif
 
@@ -135,8 +141,28 @@ void BlePageTurnerActivity::onEnter() {
 void BlePageTurnerActivity::loop() {
   UiListActivity::loop();
 
-  // Phim cua page turner khong thuoc ve man nay; bo chung truoc khi roi man.
-  backend::drainKeys();
+  // Phim cua page turner khong thuoc ve man nay: rut het hang doi. Trong luot gan
+  // nut thi chinh phim do la thu can doc, ngoai luot do thi chi de hien ma vua nhan.
+  readPendingKeys();
+  if (bindWaitActive_ && millis() - bindWaitStartedMs_ >= blebinding::kWaitMs) {
+    bindWaitActive_ = false;
+    bindNotice_ = tr(STR_BLE_BIND_NONE);
+    LOG_INF("BLE", "Bind wait ended with no key");
+    rowsDirty = true;
+    requestUpdate();
+  }
+
+  // Giu Chon tren mot hang gan nut = xoa gan. Lop nen da doi 700 ms va tra su kien
+  // mot lan; man nay khong bat tinh nang ghim nen khong ai tranh su kien nay.
+  if (!optionPopup.isActive() && mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700) &&
+      nav.selected >= 0 && nav.selected < static_cast<int>(rowItems_.size())) {
+    const int16_t code = rowItems_[nav.selected].actionValue;
+    if (code == ROW_BIND_NEXT) {
+      clearBind(blebinding::Direction::Next);
+    } else if (code == ROW_BIND_PREV) {
+      clearBind(blebinding::Direction::Prev);
+    }
+  }
 
   const uint32_t now = millis();
   if (now - lastPollMs < 250) return;  // nhip 4 lan/giay: du muot cho e-ink, khong quay CPU
@@ -169,6 +195,10 @@ void BlePageTurnerActivity::capNhatTrangThai() {
     statusText_ = tr(STR_BLE_UNAVAILABLE);
   } else if (!SETTINGS.blePageTurnerEnabled) {
     statusText_ = tr(STR_STATE_OFF);
+  } else if (backend::readerDeferred()) {
+    // Radio co the dang chay o man nay nhung lan thu bat trong trinh doc da bi
+    // hoan vi RAM - noi that thay vi hien "BAT".
+    statusText_ = tr(STR_BLE_READER_LOW_RAM);
   } else if (!backend::running()) {
     statusText_ = tr(STR_BLE_START_FAILED);
   } else if (backend::connected()) {
@@ -200,6 +230,8 @@ void BlePageTurnerActivity::rebuildRows() {
   them(tr(STR_BLE_PAGE_TURNER), ROW_ENABLE);
   them(tr(STR_BLE_STATUS), ROW_STATUS);
   them(tr(STR_BLE_SCAN), ROW_SCAN);
+  them(tr(STR_BLE_BIND_NEXT), ROW_BIND_NEXT);
+  them(tr(STR_BLE_BIND_PREV), ROW_BIND_PREV);
 
   them(tr(STR_BLE_PAIRED_DEVICES), ROW_PAIRED_HEADER);
   const uint8_t bonds = backend::bondCount();
@@ -217,10 +249,78 @@ void BlePageTurnerActivity::rebuildRows() {
 }
 
 void BlePageTurnerActivity::refreshValues() {
-  if (rowItems_.size() < 3) return;
+  if (rowItems_.size() < 5) return;
   rowItems_[0].value = SETTINGS.blePageTurnerEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
-  rowItems_[1].value = statusText_.c_str();
   rowItems_[2].label = backend::scanning() ? tr(STR_BLE_STOP_SCAN) : tr(STR_BLE_SCAN);
+  bindNextValue_ = bindValue(blebinding::Direction::Next);
+  bindPrevValue_ = bindValue(blebinding::Direction::Prev);
+  rowItems_[3].value = bindNextValue_.c_str();
+  rowItems_[4].value = bindPrevValue_.c_str();
+
+  // Hang Trang thai: thong bao cua luot gan nut neu dang co, roi den trang thai
+  // radio, va duoi cung la ma vua nhan khi man con mo.
+  statusValue_ = bindNotice_.empty() ? statusText_ : bindNotice_;
+  if (lastKeyUsage_ != CrossPointSettings::BLE_USAGE_NONE) {
+    char ma[8];
+    char duoi[48];
+    snprintf(ma, sizeof(ma), "0x%02X", lastKeyUsage_);
+    snprintf(duoi, sizeof(duoi), tr(STR_BLE_LAST_KEY), ma);
+    statusValue_ += " \xC2\xB7 ";  // dau cham giua, gop hai manh thanh mot dong
+    statusValue_ += duoi;
+  }
+  rowItems_[1].value = statusValue_.c_str();
+}
+
+std::string BlePageTurnerActivity::bindValue(const blebinding::Direction direction) const {
+  const uint8_t usage = blebinding::assigned(direction);
+  if (usage == blebinding::kUnassigned) return tr(STR_BLE_BIND_DEFAULT);
+  char ma[8];
+  snprintf(ma, sizeof(ma), "0x%02X", usage);
+  return std::string(ma);
+}
+
+void BlePageTurnerActivity::readPendingKeys() {
+  uint8_t usage = 0;
+  uint8_t mods = 0;
+  while (backend::takeKey(usage, mods)) {
+    // Khung nha nut va phim di kem modifier khong phai la mot lan bam that.
+    if (!blebinding::usableUsage(usage, mods)) continue;
+    lastKeyUsage_ = usage;
+    const bool daGan = bindWaitActive_ && blebinding::assign(bindDirection_, usage, mods);
+    if (daGan) {
+      SETTINGS.saveToFile();
+      bindWaitActive_ = false;
+      char ma[8];
+      char thongBao[48];
+      snprintf(ma, sizeof(ma), "0x%02X", usage);
+      snprintf(thongBao, sizeof(thongBao), tr(STR_BLE_BIND_DONE), ma);
+      bindNotice_ = thongBao;
+      LOG_INF("BLE", "Bound key %s to %s", ma, bindDirection_ == blebinding::Direction::Next ? "next" : "prev");
+    }
+    rowsDirty = true;
+    requestUpdate();
+  }
+}
+
+void BlePageTurnerActivity::startBindWait(const blebinding::Direction direction) {
+  bindDirection_ = direction;
+  bindWaitActive_ = true;
+  bindWaitStartedMs_ = millis();
+  bindNotice_ = tr(STR_BLE_BIND_WAIT);
+  LOG_INF("BLE", "Waiting for a button to bind to %s",
+          direction == blebinding::Direction::Next ? "next" : "prev");
+  rowsDirty = true;
+  requestUpdate();
+}
+
+void BlePageTurnerActivity::clearBind(const blebinding::Direction direction) {
+  blebinding::clear(direction);
+  SETTINGS.saveToFile();
+  bindWaitActive_ = false;
+  bindNotice_ = tr(STR_BLE_BIND_CLEAR);
+  LOG_INF("BLE", "Cleared the %s binding", direction == blebinding::Direction::Next ? "next" : "prev");
+  rowsDirty = true;
+  requestUpdate();
 }
 
 void BlePageTurnerActivity::toggleEnabled() {
@@ -288,10 +388,21 @@ void BlePageTurnerActivity::activateIndex(const int index) {
   if (index < 0 || index >= static_cast<int>(rowItems_.size())) return;
 
   const int16_t code = rowItems_[index].actionValue;
+  // Mot nhip vao hang khac la nguoi dung doi y: thong bao cu va luot cho cu het hieu luc.
+  if (code != ROW_BIND_NEXT && code != ROW_BIND_PREV) {
+    bindWaitActive_ = false;
+    bindNotice_.clear();
+  }
   if (code == ROW_ENABLE) {
     toggleEnabled();
   } else if (code == ROW_SCAN) {
     handleScanRow();
+  } else if (code == ROW_BIND_NEXT) {
+    startBindWait(blebinding::Direction::Next);
+    return;  // startBindWait da ve lai man
+  } else if (code == ROW_BIND_PREV) {
+    startBindWait(blebinding::Direction::Prev);
+    return;
   } else if (code >= ROW_PAIRED_BASE && code < ROW_PAIRED_BASE + static_cast<int16_t>(backend::bondCount())) {
     openPairedPopup(code - ROW_PAIRED_BASE);
     return;  // popup tu lo phan ve
@@ -313,6 +424,18 @@ void BlePageTurnerActivity::activateIndex(const int index) {
 
 bool BlePageTurnerActivity::handleCustomInput() {
   return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
+}
+
+void BlePageTurnerActivity::onRowLongPress(const int index) {
+  if (index < 0 || index >= static_cast<int>(rowItems_.size())) return;
+  const int16_t code = rowItems_[index].actionValue;
+  // Nhip giu tren hang gan nut = xoa gan (hotfix: nguoi dung phai bo duoc mot anh
+  // xa sai ma khong phai hoc lai nut khac).
+  if (code == ROW_BIND_NEXT) {
+    clearBind(blebinding::Direction::Next);
+  } else if (code == ROW_BIND_PREV) {
+    clearBind(blebinding::Direction::Prev);
+  }
 }
 
 const char* BlePageTurnerActivity::headerTitle() const { return tr(STR_BLE_PAGE_TURNER); }
