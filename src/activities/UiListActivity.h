@@ -113,6 +113,8 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Applies the queue; true once it is empty, false while the panel still owns
   // the render lock (the moves stay queued for the next pass).
   bool applyPendingNav();
+  // Button/touch handling of one pass; loop() wraps it with the queue apply.
+  void loopInput();
   // One row step for StepNext/StepPrev. Default: the flat-list walk with wrap
   // and a follow. UiTabListActivity overrides it with the row ring (1..count).
   virtual void stepSelection(int direction);

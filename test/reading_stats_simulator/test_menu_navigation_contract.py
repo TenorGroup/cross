@@ -84,7 +84,9 @@ class MenuNavigationContractTest(unittest.TestCase):
         self.assertEqual(saved['statusBarClock'], 2, log)
 
     def test_keyboard_axis_keeps_numeric_toggle_persistence(self):
-        log, saved = self.run_keys(self.group(5) + ['RIGHT', 'RIGHT', 'CONFIRM', 'BACK'])
+        # Keyboard tab rows since 18/09/2026: Hang phim, Ban phim truc (the layouts
+        # row left with the non EN/VI/ZH languages), so one RIGHT reaches the axis toggle.
+        log, saved = self.run_keys(self.group(5) + ['RIGHT', 'CONFIRM', 'BACK'])
         self.assertEqual(saved['keyboardAxisSwapped'], 1, log)
         self.assertIs(type(saved['keyboardAxisSwapped']), int)
         self.assertEqual(saved['keyboardAligned'], 0, log)

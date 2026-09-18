@@ -1214,10 +1214,11 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
 
 bool EpubReaderActivity::latTrangThat(bool isForwardTurn) {
   if (!section) return false;
-  {
-    RenderLock lock;
-    clearDeferredReposition();
-  }
+  // Never wait for the render lock on a page turn: a paint in flight holds it
+  // for the whole waveform (up to ~1.2 s with anti-aliasing) and a blocked main
+  // loop stops sampling the buttons. The render task clears the deferred
+  // reposition itself before it uses it (renderBook, applyDeferredReposition).
+  deferredClearPending.store(true, std::memory_order_release);
   if (isForwardTurn) {
     if (section->currentPage < section->pageCount - 1 || section->isBuilding()) {
       section->currentPage++;
@@ -1426,6 +1427,7 @@ void EpubReaderActivity::renderBook() {
 #endif
 #endif
   currentPageLinks.clear();
+  takePendingDeferredClear();  // page turns queue this instead of waiting for the lock
   if (!epub) return;
 
   const auto showPendingSyncSaveError = [this]() {
@@ -1758,6 +1760,7 @@ void EpubReaderActivity::onEndOfBookRendered() {
 }
 
 bool EpubReaderActivity::applyDeferredReposition() {
+  takePendingDeferredClear();
   if ((!cachedVisibleTextOffset.has_value() && cachedChapterTotalPageCount == 0) || !section || section->isBuilding()) {
     return false;
   }
@@ -1789,8 +1792,16 @@ bool EpubReaderActivity::applyDeferredReposition() {
 }
 
 void EpubReaderActivity::clearDeferredReposition() {
+  deferredClearPending.store(false, std::memory_order_release);
   cachedChapterTotalPageCount = 0;
   cachedVisibleTextOffset.reset();
+}
+
+void EpubReaderActivity::takePendingDeferredClear() {
+  if (deferredClearPending.exchange(false, std::memory_order_acq_rel)) {
+    cachedChapterTotalPageCount = 0;
+    cachedVisibleTextOffset.reset();
+  }
 }
 
 bool EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageCount) {

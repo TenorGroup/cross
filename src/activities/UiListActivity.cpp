@@ -225,6 +225,13 @@ bool UiListActivity::confirmReleased() {
 bool UiListActivity::backReleased() { return mappedInput.wasReleased(MappedInputManager::Button::Back); }
 
 void UiListActivity::loop() {
+  loopInput();
+  // Apply what this pass queued right away when the panel is idle, so a press
+  // is reflected before the next pass instead of ten milliseconds later.
+  if (navQueueCount > 0) applyPendingNav();
+}
+
+void UiListActivity::loopInput() {
   // The render task owns the lock for a whole frame (panel refresh included),
   // so the queue is drained with a non-waiting lock and the buttons are read
   // on every pass either way. A press landing mid-frame is queued, not lost.

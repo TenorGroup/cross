@@ -1,5 +1,7 @@
 #include "SdCardFontSystem.h"
 
+#include <HalMemory.h>
+
 #include <GfxRenderer.h>
 #include <Logging.h>
 
@@ -35,6 +37,11 @@ constexpr UiFontSize kUiFontSizes[] = {
 
 void SdCardFontSystem::begin(GfxRenderer& renderer) {
   registry_.discover();
+  {
+    const auto heap = HalMemory::getInternalHeap();
+    LOG_INF("HEAP", "fonts-sd-registry free=%u largest=%u families=%d", static_cast<unsigned>(heap.freeBytes),
+            static_cast<unsigned>(heap.largestBlockBytes), registry_.getFamilyCount());
+  }
 
   // Register this system as the SD font ID resolver in settings.
   // Uses a static trampoline since CrossPointSettings stores a plain function pointer.
@@ -189,5 +196,5 @@ int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t /*pointSize*
 uint8_t SdCardFontSystem::availableWeightMask() const {
   const auto* family = registry_.findFamily(SETTINGS.sdFontFamilyName);
   const auto* file = family ? family->findNearestSize(SETTINGS.fontPointSize) : nullptr;
-  return file ? file->weightMask : 1;
+  return file ? family->weights(*file) : 1;
 }

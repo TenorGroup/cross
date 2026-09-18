@@ -171,6 +171,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   enum HIDE_BATTERY_PERCENTAGE { HIDE_NEVER = 0, HIDE_READER = 1, HIDE_ALWAYS = 2, HIDE_BATTERY_PERCENTAGE_COUNT };
 
   // Page turn button long press behavior
+  // Mặc định theo quyết định founder v1.0.3: giữ nút bên cạnh = nhảy chương.
   enum LONG_PRESS_BUTTON_BEHAVIOR {
     OFF = 0,
     CHAPTER_SKIP = 1,
@@ -346,7 +347,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Hide battery percentage
   uint8_t hideBatteryPercentage = HIDE_NEVER;
   // Long-press page turn button behavior
-  uint8_t longPressButtonBehavior = OFF;
+  uint8_t longPressButtonBehavior = CHAPTER_SKIP;
   // Long-press Confirm function in EPUB reader (cycles through LONG_PRESS_MENU_FUNCTION values).
   // Defaults to Disabled so shortcut-based bookmark toggling remains opt-in.
   uint8_t longPressMenuFunction = LP_MENU_DISABLED;

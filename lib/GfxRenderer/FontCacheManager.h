@@ -15,6 +15,9 @@ class FontCacheManager {
   void setFontDecompressor(FontDecompressor* d);
 
   void clearCache();
+  // Drops only the built-in (compressed) fonts' page slots, e.g. after a
+  // one-off screen such as the Home card prewarmed a paragraph of serif text.
+  void releaseBuiltinPageCaches();
   // Release every rebuildable SD-font cache (mini glyph/kern arenas, kern/lig
   // class tables, overflow rings, advance tables) while keeping the fonts
   // loaded. Everything faults back in on demand. For heap-critical transitions

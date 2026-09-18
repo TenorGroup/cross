@@ -19,6 +19,7 @@
 #include "FontDownloadActivity.h"
 #include "KOReaderSettingsActivity.h"
 #include "KeyboardLayoutsActivity.h"
+#include "activities/util/KeyboardLayoutSet.h"
 #include "LanguageSelectActivity.h"
 #include "MappedInputManager.h"
 #include "OpdsServerListActivity.h"
@@ -151,8 +152,11 @@ void SettingsActivity::rebuildSettingsLists() {
   for (const auto& dong : DONG_HANH_DONG) {
     danhSachCuaThe(settingstabs::nhaCua(dong.viec)).push_back(SettingInfo::Action(dong.nhan, dong.viec));
   }
-  keyboardSettings.insert(keyboardSettings.begin(),
-                          SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
+  // One layout leaves nothing to pick, so the row would be a dead press.
+  if (keyboard_layouts::COUNT > 1) {
+    keyboardSettings.insert(keyboardSettings.begin(),
+                            SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
+  }
   // Sleep, wake and clock precede file-management preferences.
   if (halClock.isAvailable()) {
     const auto files = std::find_if(systemSettings.begin(), systemSettings.end(), [](const SettingInfo& row) {

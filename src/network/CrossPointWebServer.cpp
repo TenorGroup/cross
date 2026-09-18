@@ -2007,10 +2007,11 @@ void CrossPointWebServer::handleFontList() {
       if (!firstFile && !append(",")) return;
       firstFile = false;
       doc.clear();
-      const char* name = strrchr(file.path.c_str(), '/');
-      doc["name"] = name ? name + 1 : file.path.c_str();
+      const std::string filePath = family.filePath(file);
+      const char* name = strrchr(filePath.c_str(), '/');
+      doc["name"] = name ? name + 1 : filePath.c_str();
       HalFile font;
-      const bool opened = Storage.openFileForRead("WEB", file.path.c_str(), font);
+      const bool opened = Storage.openFileForRead("WEB", filePath.c_str(), font);
       doc["size"] = opened ? static_cast<unsigned long>(font.size()) : 0;
       if (opened) font.close();
       if (!sendRecord()) return;

@@ -44,6 +44,10 @@ void FontCacheManager::clearCache() {
   }
 }
 
+void FontCacheManager::releaseBuiltinPageCaches() {
+  if (fontDecompressor_) fontDecompressor_->clearCache();
+}
+
 void FontCacheManager::releaseSdFontCaches() {
   if (fontDecompressor_) fontDecompressor_->clearCache();
   for (auto& [id, font] : sdCardFonts_) {

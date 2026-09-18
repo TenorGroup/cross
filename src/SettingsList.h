@@ -208,14 +208,16 @@ inline SettingInfo buildTenorClockPlacementSetting(const SettingInfo& registered
 // Each entry has a key (for JSON API) and category (for grouping).
 // ACTION-type entries and entries without a key are device-only.
 //
-// The static list is constructed exactly once (master's optimization, #1086 +
-// #1636) so the per-entry SettingInfo cost is paid once; every call then copies
-// it. When an SdCardFontRegistry is supplied AND has SD card fonts installed,
-// the font-family entry is replaced in that copy with a registry-aware version.
-// The font-size entry is always rebuilt, since its options are point sizes read
-// from the active family rather than a fixed enum.
-inline const std::vector<SettingInfo>& getBaseSettingsList() {
-  static const std::vector<SettingInfo> baseList = [] {
+// Built on every call and handed to the caller by value. Upstream kept one
+// resident copy (#1086, #1636); on the X3 that copy is ~18 KB of heap held for
+// the whole session while the settings screen is open for seconds a day
+// (measured 18/09/2026), so the build cost is paid per use instead.
+// When an SdCardFontRegistry is supplied AND has SD card fonts installed, the
+// font-family entry is replaced with a registry-aware version. The font-size
+// entry is always rebuilt, since its options are point sizes read from the
+// active family rather than a fixed enum.
+inline std::vector<SettingInfo> getBaseSettingsList() {
+  std::vector<SettingInfo> baseList = [] {
     // Enum settings are persisted as numeric values. Assign these labels by enum
     // value so a reordered menu or enum cannot silently swap their behavior.
     std::vector<StrId> sleepScreenValues(CrossPointSettings::SLEEP_SCREEN_MODE_COUNT);
