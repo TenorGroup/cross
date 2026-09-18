@@ -18,7 +18,7 @@ PROGRAM = Path(os.environ.get("STATUSBAR_PROGRAM", REPO / ".pio/build/simulator_
 FONT = Path(
     os.environ.get(
         "STATUSBAR_FONT",
-        "/Users/tuan/Tenor/outputs/260917-v103-luna-takeover/statusbar-paintorder/BeVietnamPro_18.cpfont",
+        str(Path(__file__).resolve().parent / "fixtures/BeVietnamPro_18.cpfont"),
     )
 )
 
