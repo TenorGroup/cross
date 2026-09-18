@@ -69,6 +69,8 @@ class BlePageTurnerActivity final : public UiListActivity {
   void readPendingKeys();
   void startBindWait(blebinding::Direction direction);
   void clearBind(blebinding::Direction direction);
+  // Nhip giu tren mot hang: ca duong nut bam lan duong cam ung deu goi day.
+  void clearBindForRow(int index);
   // Gia tri hien o hang gan nut: ma dang gan dang "0x51", hoac "Mac dinh".
   std::string bindValue(blebinding::Direction direction) const;
 
