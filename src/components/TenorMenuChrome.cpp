@@ -51,9 +51,6 @@ constexpr int SIBLING_CHEVRON_HEIGHT = 8;
 constexpr int SIBLING_EDGE = 18;
 constexpr int SIBLING_LABEL_GAP = 6;
 constexpr int SIBLING_CENTER_GAP = 16;
-constexpr int SIBLING_ROUTE_GAP = 3;
-constexpr int SIBLING_PAGE_RANGE_OFFSET = 18;
-constexpr int SIBLING_PAGE_RANGE_GAP = 2;
 
 void drawSiblingChevron(const GfxRenderer& r, const int x, const int y, const bool pointsRight) {
   const int mid = y + SIBLING_CHEVRON_HEIGHT / 2;
@@ -69,15 +66,21 @@ void drawSiblingChevron(const GfxRenderer& r, const int x, const int y, const bo
 }  // namespace
 
 void tenorchrome::drawSiblingDestinations(const GfxRenderer& r, const char* previous, const char* next) {
-  constexpr int font = SMALL_FONT_ID;
+  // Mot bac to hon SMALL: day la thu noi cho nguoi dung biet hai nut hai ben di
+  // dau, nen no phai doc duoc luot qua.
+  constexpr int font = UI_10_FONT_ID;
   constexpr int tracking = 1;
   const int routeLineHeight = r.getLineHeight(UI_12_FONT_ID);
   const int routeY = HEADER_TOP + (HEADER_HEIGHT - routeLineHeight) / 2;
   const int siblingLineHeight = r.getLineHeight(font);
-  const int siblingY = routeY + routeLineHeight + SIBLING_ROUTE_GAP;
-  const int pageRangeY = TAB_TOP + SIBLING_PAGE_RANGE_OFFSET;
-  if (routeLineHeight <= 0 || siblingLineHeight <= 0 ||
-      siblingY + siblingLineHeight > pageRangeY - SIBLING_PAGE_RANGE_GAP)
+  // Neo vao GIUA dai the, khong phai treo duoi dong duong dan. Dai the bi an o
+  // man nay, nhung no van la o ma hai ten nay thuoc ve, nen canh giua theo no
+  // thi hai ten dung dung cho du man co ve dai hay khong.
+  const int siblingY = TAB_TOP + (TAB_HEIGHT - siblingLineHeight) / 2;
+  // Tran duoi la day dai the. Truoc day tran nay bi keo len vi goc phai con ve
+  // day dong "1-10 / 13"; bo con so do roi thi ten the duoc dung het dai.
+  if (routeLineHeight <= 0 || siblingLineHeight <= 0 || siblingY < routeY + routeLineHeight ||
+      siblingY + siblingLineHeight > TAB_TOP + TAB_HEIGHT)
     return;
 
   const int width = r.getScreenWidth();
@@ -197,6 +200,17 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   std::string name = r.truncatedText(SMALL_FONT_ID, title, std::max(0, room - r.getTextWidth(SMALL_FONT_ID, ":")));
   if (!name.empty()) name += ":";
   if (!name.empty()) r.drawText(SMALL_FONT_ID, trai + markWidth, y, name.c_str());
+}
+
+void tenorchrome::drawMoreBelowChevron(const GfxRenderer& renderer) {
+  constexpr int HALF_WIDTH = 11, HEIGHT = 7, THICKNESS = 2;
+  const int cx = renderer.getScreenWidth() / 2;
+  const int top = tipY(renderer) - 30;
+  // Hai nhip day mot diem: net mot diem tren e-ink nhat qua, nhin khong ra hinh.
+  for (int d = 0; d < THICKNESS; ++d) {
+    renderer.drawLine(cx - HALF_WIDTH, top + d, cx, top + HEIGHT + d);
+    renderer.drawLine(cx, top + HEIGHT + d, cx + HALF_WIDTH, top + d);
+  }
 }
 
 int tenorchrome::tipY(const GfxRenderer& renderer) {

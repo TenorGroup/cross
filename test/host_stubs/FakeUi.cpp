@@ -146,6 +146,7 @@ int tipY(const GfxRenderer&) { return 726; }
 int tipHeight(const GfxRenderer&, const char*, int) { return 28; }
 void drawTip(const GfxRenderer&, const char*, int, int) {}
 void drawHeader(const GfxRenderer&, const char*, const char*) {}
+void drawMoreBelowChevron(const GfxRenderer&) {}
 }  // namespace tenorchrome
 
 // Persist only in memory in the input harness; simulator tests cover SD failures.

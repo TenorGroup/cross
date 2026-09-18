@@ -1,13 +1,14 @@
-"""KIEM: chi bao "1-4 / 4" chi hien khi danh sach THAT SU dai hon mot man.
+"""KIEM: con dong ben duoi thi bao bang mui ten chu V o chan man.
 
-Man Cai dat cua tenor/cross hien ten hai the ben canh o goc tren, kieu
-`< He thong` va `Ban phim >`, de nguoi dung biet hai nut hai ben di dau. Chi bao
-so dong duoc ve ngay BEN DUOI ten the ben phai (UiListActivity::renderUi, moc
-goc phai o TAB_TOP + 18), nen no chen vao dung cho do.
+Truoc day cho nay ve mot con so kieu "1-10 / 13" o goc tren phai, ngay ben
+duoi ten the ben canh. Con so do gan nhu vo dung khi ca danh sach da hien het,
+va no lay mat cho cua ten the, thu duy nhat o goc do dang doc. Nay bo han con
+so; con dong ben duoi thi ve mot mui ten chu V o giua chan man, ngay tren dong
+mach nuoc, vi it nguoi nhin thanh cuon.
 
-Khi ca danh sach da hien het tren man thi cau "1-4 / 4" khong noi them gi, chi
-lay mat cho cua thu co ich hon. Bai nay do bang PIXEL, khong can doc chu: cat
-dung o chu nhat noi chi bao duoc ve, roi xem o do co muc den nao khong.
+Bai nay do bang PIXEL, khong can doc chu: cat dung dai ngang noi mui ten duoc
+ve roi dem diem muc. Dai do nam duoi dong cuoi cua danh sach va tren dong mach
+nuoc, nen khong dinh chu nao khac.
 
 Chay: /usr/bin/python3 -m unittest test.reading_stats_simulator.test_cai_dat_so_dong
 """
@@ -27,12 +28,12 @@ ART = Path(os.environ.get("CROSSPOINT_TEST_ARTIFACTS", REPO / "t3"))
 
 NHIP_MS = 1200
 
-# O chi bao so dong: neo goc phai (rong man 528, le phai 18) o TAB_TOP + 18 = 71.
-# Lay rong rai quanh do, va CHI o nay, de khong cham vao ten the ben canh o tren.
-O_CHI_BAO = (360, 70, 515, 100)
+# O mui ten: giua man (rong 528) va o tipY - 30. Do duoc tren anh that: net mui
+# ten nam o y 696..704, dong cuoi danh sach het o y 670, dong mach nuoc o y 737.
+O_MUI_TEN = (240, 690, 290, 712)
 
 
-class CaiDatSoDongTest(unittest.TestCase):
+class CaiDatConDongBenDuoiTest(unittest.TestCase):
     maxDiff = None
 
     def setUp(self):
@@ -58,36 +59,33 @@ class CaiDatSoDongTest(unittest.TestCase):
         self.assertEqual(run.returncode, 0, f"simulator exit {run.returncode}\n{log[-3000:]}")
         return log
 
-    def muc_den_trong_o(self, ten):
-        """So diem anh khong phai nen trang trong o chi bao."""
+    def muc_den_trong_o(self, ten, o):
+        """So diem anh khong phai nen trang trong mot o chu nhat."""
         path = ART / (ten + ".bmp")
         self.assertTrue(path.exists(), f"thieu anh {ten}")
-        o = Image.open(path).convert("L").crop(O_CHI_BAO)
-        return sum(1 for p in o.getdata() if p < 128)
+        return sum(1 for p in Image.open(path).convert("L").crop(o).getdata() if p < 128)
 
-    def test_the_cai_dat_ngan_thi_khong_ve_chi_bao_so_dong(self):
-        """The `Thiet bi` co 4 dong, hien het tren mot man, nen o chi bao phai SACH."""
+    def test_the_ngan_thi_khong_ve_mui_ten(self):
+        """The `Thiet bi` co 4 dong, hien het tren mot man: khong con gi o duoi de bao."""
         buoc = ["DOWN"] * 4 + ["RIGHT"] * 5 + ["CONFIRM"]
         mo = 2000 + (len(buoc) - 1) * NHIP_MS
-        self.chay(buoc, [(mo + 1500, "so-dong-the-ngan")])
+        self.chay(buoc, [(mo + 1500, "the-ngan")])
 
-        den = self.muc_den_trong_o("so-dong-the-ngan")
-        self.assertEqual(den, 0,
-                         f"con {den} diem muc trong o chi bao: cau '1-4 / 4' van dang chen duoi ten the ben canh")
+        den = self.muc_den_trong_o("the-ngan", O_MUI_TEN)
+        self.assertEqual(den, 0, f"con {den} diem muc: ve mui ten trong khi khong con dong nao ben duoi")
 
-    def test_the_cai_dat_dai_thi_van_ve_chi_bao_so_dong(self):
-        """The `Hien thi` co 13 dong ma chi hien 10, o do chi bao noi that mot dieu.
+    def test_the_dai_thi_ve_mui_ten_o_chan_man(self):
+        """The `Hien thi` co 13 dong ma chi hien 10, nen phai bao la con dong ben duoi.
 
-        Ca nay giu cho ca tren khoi bi vá qua tay: xoa han chi bao la bai nay do.
+        Ca nay giu cho ca tren khoi bi va qua tay: bo han mui ten la bai nay do.
         """
         # Mo Cai dat roi bam DOWN ba nhip de sang the `Hien thi` (13 dong, hien 10).
         buoc = ["DOWN"] * 4 + ["RIGHT"] * 5 + ["CONFIRM"] + ["DOWN"] * 3
         mo = 2000 + (len(buoc) - 1) * NHIP_MS
-        self.chay(buoc, [(mo + 1500, "so-dong-the-dai")])
+        self.chay(buoc, [(mo + 1500, "the-dai")])
 
-        den = self.muc_den_trong_o("so-dong-the-dai")
-        self.assertGreater(den, 0,
-                           "the dai ma khong ve chi bao: nguoi dung khong biet con dong o duoi")
+        den = self.muc_den_trong_o("the-dai", O_MUI_TEN)
+        self.assertGreater(den, 0, "the dai ma khong ve mui ten: nguoi dung khong biet con dong o duoi")
 
 
 if __name__ == "__main__":

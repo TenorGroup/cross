@@ -37,6 +37,11 @@ StatusCornerBounds statusCornerBounds(const GfxRenderer& renderer, bool large);
 void drawStatus(const GfxRenderer& renderer, const char* title = nullptr, int currentPage = 0, int pageCount = 0,
                 float bookProgress = 0, int paddingBottom = 0, bool estimated = false, bool bookmarked = false);
 int tipY(const GfxRenderer& renderer);
+
+// Mui ten chu V o giua, ngay tren dong mach nuoc chan man: bao rang danh sach
+// con dong ben duoi. Thay cho cau "1-10 / 13" o goc tren, vi it ai nhin thanh
+// cuon va con so do lay mat cho cua ten the ben canh.
+void drawMoreBelowChevron(const GfxRenderer& renderer);
 int tipHeight(const GfxRenderer& renderer, const char* text, int maxLines = 4);
 void drawTip(const GfxRenderer& renderer, const char* text, int linesAbove = 0, int maxLines = 4);
 void drawHeader(const GfxRenderer& renderer, const char* title, const char* prefix = "");
