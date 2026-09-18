@@ -350,18 +350,11 @@ void UiListActivity::renderUi() {
   favoriteHintY = -1;
   UiAppHost::renderUi();
   restorePinnedRows();
-  // The range only earns its place on a list that scrolls. On a screen whose
-  // rows all fit, "1-4 / 4" says nothing, and it is drawn directly under the
-  // name of the neighbouring tab, which is the one thing there worth reading.
-  if (tenorchrome::enabled() && !tabBandDrawn && listCount() > activeNav().pageRows()) {
-    const int count = listCount();
-    const auto& n = activeNav();
-    const int first = count > 0 ? std::min(n.top + 1, count) : 0;
-    const int last = std::min(count, n.top + n.pageRows());
-    char label[48];
-    snprintf(label, sizeof(label), "%d-%d / %d", first, last, count);
-    const int w = renderer.getTextWidth(SMALL_FONT_ID, label);
-    renderer.drawText(SMALL_FONT_ID, renderer.getScreenWidth() - 18 - w, tenorchrome::TAB_TOP + 18, label);
+  // Con dong ben duoi thi noi bang mot mui ten chu V o chan man, khong bang mot
+  // con so o goc tren: it nguoi nhin thanh cuon, va cho goc tren thuoc ve ten
+  // the ben canh, thu duy nhat o do dang doc.
+  if (tenorchrome::enabled() && activeNav().top + activeNav().pageRows() < listCount()) {
+    tenorchrome::drawMoreBelowChevron(renderer);
   }
   drawPageHints();
   if (favoriteHintY >= 0) {
