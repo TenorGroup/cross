@@ -72,36 +72,55 @@ class WakeIntoBookTest(unittest.TestCase):
         self.assertNotIn("Home", self.truoc(vao, "EpubReader"), "Trang chu khong duoc hien truoc trinh doc")
 
     # --- 2. trang sách phải được đẩy lên panel bằng nước sóng dọn bóng ------
-    def test_2_lan_ve_trang_sau_thuc_day_khong_dung_FAST(self):
+    def test_2_lan_ve_trang_sau_thuc_day_la_nhip_don_bong(self):
         log = self.chay(wake_into_book=1)
         self.assertIn("Entering activity: EpubReader", log, f"khong vao trinh doc\n{log[-4000:]}")
 
-        # Đo trên giả lập: trình đọc xoá trắng panel một nhịp FAST (mode=2) rồi vẽ
-        # trang bằng HALF (mode=1). Nhịp đưa TRANG lên panel mới là nhịp dọn bóng
-        # màn ngủ; FAST ở đó là mất bóng đúng như allowFastInitialRefresh=true.
+        # FreeInkDisplay.h:32 khai enum RefreshMode { FULL_REFRESH, HALF_REFRESH,
+        # FAST_REFRESH }, tức FULL=0, HALF=1, FAST=2.
+        #
+        # Đường về Trang chủ khi thức dậy dọn bằng FULL (HomeActivity.cpp:647).
+        # Trình đọc thì KHÔNG dùng FULL, và đó là cố ý: trang có mặt xám đi vào
+        # nhánh needsAnyGrayscale (EpubReaderActivity.cpp:1906-1912), nhánh này
+        # ép HALF rồi gọi preconditionGrayscale(), vì trên X3 nhịp dọn chỉ ổn
+        # định khi sóng tiền xử lý xám chạy trước lúc ghi mặt xám. Ép FULL ở đó
+        # là đụng đường sóng xám của panel, phải đo trên máy thật mới chốt được.
+        #
+        # Nên mốc chốt được ở đây là: nhịp đưa trang lên panel phải là một nhịp
+        # dọn (FULL hoặc HALF), tuyệt đối không phải FAST. FAST ở chỗ này nghĩa
+        # là allowFastInitialRefresh đã lọt vào true và bóng màn ngủ sẽ đọng lại.
         sau_khi_vao = log[log.index("Entering activity: EpubReader"):]
         den_khi_ve_xong_trang = sau_khi_vao.split("Rendered page in", 1)[0]
         modes = REFRESH.findall(den_khi_ve_xong_trang)
 
         self.assertTrue(modes, f"trinh doc khong ve khung nao\n{sau_khi_vao[-2000:]}")
-        self.assertNotEqual(modes[-1], "2",
-                            f"trang sach len panel bang FAST, con bong anh man ngu\n{sau_khi_vao[-2000:]}")
+        self.assertIn(modes[-1], ("0", "1"),
+                      f"trang sach len panel bang mode={modes[-1]} (FAST), bong anh man ngu se dong lai"
+                      f"\n{sau_khi_vao[-2000:]}")
 
     # --- 3. tắt tuỳ chọn: về Trang chủ như cũ -------------------------------
     def test_3_tat_tuy_chon_thi_ve_trang_chu(self):
         log = self.chay(wake_into_book=0)
         self.assertIn("Home", self.da_vao(log), f"khong ve Trang chu\n{log[-4000:]}")
 
+        self.assertNotIn("EpubReader", self.da_vao(log),
+                         f"tat tuy chon ma van vao trinh doc\n{log[-4000:]}")
+
     # --- 4. ngủ từ màn khác: về Trang chủ -----------------------------------
     def test_4_ngu_tu_man_khac_thi_ve_trang_chu(self):
         log = self.chay(wake_into_book=1, last_sleep_from_reader=False)
         self.assertIn("Home", self.da_vao(log), f"khong ve Trang chu\n{log[-4000:]}")
+
+        self.assertNotIn("EpubReader", self.da_vao(log),
+                         f"ngu tu man khac ma van vao trinh doc\n{log[-4000:]}")
 
     # --- 5. sách đã bị xoá khỏi thẻ: về Trang chủ ---------------------------
     def test_5_sach_da_xoa_thi_ve_trang_chu(self):
         log = self.chay(wake_into_book=1, dat_sach=False)
         self.assertIn("Home", self.da_vao(log), f"khong ve Trang chu\n{log[-4000:]}")
 
+        self.assertNotIn("EpubReader", self.da_vao(log),
+                         f"sach da xoa ma van vao trinh doc\n{log[-4000:]}")
 
 if __name__ == "__main__":
     unittest.main()
