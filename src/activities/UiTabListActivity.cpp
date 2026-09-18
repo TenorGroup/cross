@@ -32,7 +32,7 @@ void UiTabListActivity::onEnter() {
   app.on(ACTION_TAB, &UiTabListActivity::tabActionTrampoline, this);
 }
 
-bool UiTabListActivity::clampActiveTabCursor() {
+bool UiTabListActivity::clampAfterNav() {
   auto& cursor = activeNav();
   const int count = listCount();
   const int selected = count <= 0 ? 0 : std::clamp(cursor.selected, mappedInput.hasTouch() ? 0 : 1, count);
@@ -40,20 +40,6 @@ bool UiTabListActivity::clampActiveTabCursor() {
   cursor.selected = selected;
   cursor.followOnBuild = true;
   return true;
-}
-
-void UiTabListActivity::loop() {
-  // Counts can change while returning from a child or removing a favorite.
-  // Clamp before Confirm reads the selection, and again after a tab switch.
-  {
-    RenderLock lock(*this);
-    if (clampActiveTabCursor()) requestUpdate();
-  }
-  UiListActivity::loop();
-  {
-    RenderLock lock(*this);
-    if (clampActiveTabCursor()) requestUpdate();
-  }
 }
 
 fui::ListNav& UiTabListActivity::activeNav() {
@@ -74,7 +60,7 @@ void UiTabListActivity::tabActionTrampoline(const fui::ActionEvent& event, void*
   auto* self = static_cast<UiTabListActivity*>(user);
   if (event.value < 0 || event.value >= self->tabCount()) return;
   self->onTabAction(event.value);
-  if (self->clampActiveTabCursor()) self->requestUpdate();
+  if (self->clampAfterNav()) self->requestUpdate();
 }
 
 void UiTabListActivity::onRowAction(const fui::ActionEvent& event) {
@@ -158,35 +144,34 @@ void UiTabListActivity::navigateButtons() {
   // the edge button into the front one, and each runs on its own navigator:
   // ButtonNavigator keeps one hold-suppression latch per instance and clears it
   // on every release, so one shared navigator lets the axes corrupt each other.
-  const int count = listCount();
-  const auto next = [this, count] {
-    if (count <= 0) {
-      moveRingTo(0);
-      return;
-    }
-    const int ring = ringPos();
-    moveRingTo(ring <= 0 || ring >= count ? 1 : ring + 1);
-  };
-  const auto previous = [this, count] {
-    if (count <= 0) {
-      moveRingTo(0);
-      return;
-    }
-    const int ring = ringPos();
-    moveRingTo(ring <= 1 || ring > count ? count : ring - 1);
-  };
-  buttonNavigator.onRelease({MappedInputManager::Button::Right}, next);
-  buttonNavigator.onRelease({MappedInputManager::Button::Left}, previous);
-  tabNavigator.onRelease({MappedInputManager::Button::Down}, [this] { stepTab(1); });
-  tabNavigator.onRelease({MappedInputManager::Button::Up}, [this] { stepTab(-1); });
+  buttonNavigator.onRelease({MappedInputManager::Button::Right}, [this] { queueNavIntent(NavIntent::StepNext); });
+  buttonNavigator.onRelease({MappedInputManager::Button::Left}, [this] { queueNavIntent(NavIntent::StepPrev); });
+  tabNavigator.onRelease({MappedInputManager::Button::Down}, [this] { queueNavIntent(NavIntent::TabNext); });
+  tabNavigator.onRelease({MappedInputManager::Button::Up}, [this] { queueNavIntent(NavIntent::TabPrev); });
 }
+
+void UiTabListActivity::stepSelection(const int direction) {
+  const int count = listCount();
+  if (count <= 0) {
+    moveRingTo(0);
+    return;
+  }
+  const int ring = ringPos();
+  if (direction > 0) {
+    moveRingTo(ring <= 0 || ring >= count ? 1 : ring + 1);
+  } else {
+    moveRingTo(ring <= 1 || ring > count ? count : ring - 1);
+  }
+}
+
+void UiTabListActivity::applyFirstRow() { moveRingTo(listCount() > 0 ? 1 : 0); }
 
 void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& props, const bool hasSubtitle) {
   reserveFixedMenuContent(screen);
   reserveFavoriteHint(screen);
   decoratePinnedRows(props);
   const int count = listCount();
-  clampActiveTabCursor();
+  clampAfterNav();
   auto& n = activeNav();
   int16_t rowHeight = screen.theme().rowHeight;
   if (!mappedInput.hasTouch()) {
@@ -450,7 +435,7 @@ void UiTabListActivity::restoreNavigation(const MenuNavigationState& state) {
     tabNavs[i].followOnBuild = true;
   }
   rowTab = state.committedTab;
-  clampActiveTabCursor();
+  clampAfterNav();
 }
 
 int UiTabListActivity::adjacentTab(const int direction) const {

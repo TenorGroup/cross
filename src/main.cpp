@@ -1078,6 +1078,7 @@ void loop() {
   static unsigned long lastActivityTime = millis();
   if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() || halTiltSensor.hadActivity() ||
       activityManager.preventAutoSleep()) {
+    if (gpio.wasAnyPressed()) LOG_INF("IN", "press t=%lu", static_cast<unsigned long>(millis()));
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }

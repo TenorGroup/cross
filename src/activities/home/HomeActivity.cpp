@@ -369,10 +369,10 @@ void HomeActivity::activateIndex(const int index) {
 bool HomeActivity::handleButtons() {
   // Continue reading stays above the independently scrolled older books.
   // Its row is the visible top even when the older viewport starts at book 4.
+  // Queued like every other move: the loop must not wait for the panel.
   if (activeTabId == Tab::RECENT && tenorchrome::enabled() &&
       mappedInput.wasLongPressed(MappedInputManager::Button::Left, 700)) {
-    RenderLock lock(*this);
-    moveRingTo(listCount() > 0 ? 1 : 0);
+    queueNavIntent(NavIntent::FirstRow);
     return true;
   }
   if (mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700)) {
@@ -391,9 +391,13 @@ bool HomeActivity::handleButtons() {
       path = "/" + mucTheNho[index];
     if (!path.empty()) {
       {
-        RenderLock lock(*this);
-        freeCoverBuffer();
-        coverRendered = false;
+        // Free the card before the reader allocates. onPause() releases it too,
+        // so a panel that is mid-refresh is left to do it rather than waited on.
+        RenderLock coverLock(RenderLock::TryTake{});
+        if (coverLock.acquired()) {
+          freeCoverBuffer();
+          coverRendered = false;
+        }
       }
       startActivityForResult(ReaderActivity::create(renderer, mappedInput, path, false, true), nullptr);
     }
@@ -401,14 +405,15 @@ bool HomeActivity::handleButtons() {
   }
   // Back opens the most recently read book: it is otherwise unused here, and
   // recentBooks is most-recent-first and already pruned of missing files.
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (backReleased()) {
     if (!recentBooks.empty()) onSelectBook(recentBooks[0].path);
     return true;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (confirmReleased()) {
     if (ringPos() == 0) {
-      moveRingTo(1);  // step into the tab's first row; the edge buttons change tab
+      // Step into the tab's first row; the edge buttons change tab.
+      queueNavIntent(NavIntent::FirstRow);
     } else {
       activateIndex(ringPos() - 1);
     }

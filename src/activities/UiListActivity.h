@@ -84,6 +84,53 @@ class UiListActivity : public Activity, protected UiAppHost {
   // The button-navigation tail of loop(): front taps step one row, edge taps
   // page the viewport, and holds select the first/last visible row. UiTabListActivity replaces it with the ring walk.
   virtual void navigateButtons();
+
+  // --- navigation intents ----------------------------------------------------
+  // A press queues a move instead of performing it. The render task owns the
+  // render lock for a whole frame, panel refresh included (390 ms measured on
+  // the X3), and the debounce needs two samples more than 5 ms apart: a press
+  // that arrives while loop() waits for that lock is never sampled, so it never
+  // existed. loop() therefore never waits. It applies the queue with a
+  // non-waiting lock the moment the panel is free, and holds Select/Back for
+  // the pass that applies it so they land on the row the user can see.
+  //
+  // Only the main task reads and writes the queue.
+  enum class NavIntent : uint8_t {
+    StepNext,          // one row forward, wraps
+    StepPrev,          // one row back, wraps
+    PageNext,          // viewport down one page
+    PagePrev,          // viewport up one page
+    BoundaryFirst,     // first visible row (hold)
+    BoundaryLast,      // last visible row (hold)
+    BoundaryFirstRing, // same, moving the ring to a row (hold on tab screens)
+    BoundaryLastRing,
+    FirstRow,          // first row with the viewport pulled to it
+    TabNext,           // step the tab one forward
+    TabPrev,
+  };
+  static constexpr uint8_t NAV_QUEUE_SIZE = 8;
+  void queueNavIntent(NavIntent intent);
+  // Applies the queue; true once it is empty, false while the panel still owns
+  // the render lock (the moves stay queued for the next pass).
+  bool applyPendingNav();
+  // One row step for StepNext/StepPrev. Default: the flat-list walk with wrap
+  // and a follow. UiTabListActivity overrides it with the row ring (1..count).
+  virtual void stepSelection(int direction);
+  // Tab steps, dispatched with no render lock held: switching tabs rebuilds the
+  // screen's data model and takes the lock itself.
+  virtual void applyTabStep(int direction) {}
+  // First row with the viewport pulled to it; ring screens address ring 1.
+  virtual void applyFirstRow() {}
+  // Subclass clamp, run under the render lock after every applied intent and on
+  // every pass with an empty queue (UiTabListActivity: the ring cursor).
+  virtual bool clampAfterNav() { return false; }
+  // Release edges for Select/Back. A Select that arrives while moves are still
+  // queued is remembered and reported on the pass that applies them, so it acts
+  // on the row the user can see; with an empty queue it fires immediately. Back
+  // never depends on the selection and is never held back. Subclasses that read
+  // Confirm themselves must use confirmReleased() for that guarantee.
+  bool confirmReleased();
+  bool backReleased();
   // First hook in loop(); return true when the pass is consumed (popups, extra
   // buttons, gestures). Runs before the base button handling.
   virtual bool supportsFavorites() const { return false; }
@@ -127,8 +174,9 @@ class UiListActivity : public Activity, protected UiAppHost {
   // chan rieng. Tuc loi tham my, khong phai doc ra ngoai bo nho.
   //
 
-  // Move the selection to index and pull the viewport to it.
-  void moveSelectionTo(int index);
+  // Queue a page move / a move to the first (last) visible row. The ring
+  // variant (BoundaryFirstRing/BoundaryLastRing) addresses a row on the
+  // 1..count ring tab screens use.
   void moveListPage(int direction);
   void moveToVisibleBoundary(bool last, bool ring = false);
 
@@ -145,6 +193,13 @@ class UiListActivity : public Activity, protected UiAppHost {
   // (not name-hidden) to subclasses with extra touch surfaces.
   bool routeListTouch();
 
+  // Apply one queued intent. Caller holds the render lock; tab intents are
+  // handled by applyPendingNav() itself.
+  bool applyNavIntent(NavIntent intent);
+  bool applyPage(int direction);
+  bool applyBoundary(bool last, bool ring);
+  NavIntent popNavIntent();
+
   void drawPageHints();
   const bool wantsTouchLongPress;
   std::string pendingFavorite;
@@ -152,4 +207,11 @@ class UiListActivity : public Activity, protected UiAppHost {
   bool activateFavorite = true;
   bool favoriteSaveFailed = false;
   int favoriteHintY = -1;
+  NavIntent navQueue[NAV_QUEUE_SIZE];
+  uint8_t navQueueHead = 0;
+  uint8_t navQueueCount = 0;
+  // A Select release held back while moves were still queued (see
+  // confirmReleased), and a pin hold waiting for a pass that can take the lock.
+  bool pendingConfirm = false;
+  bool pendingPin = false;
 };
