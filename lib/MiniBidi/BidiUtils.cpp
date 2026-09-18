@@ -11,6 +11,7 @@ extern "C" {
 #include <Utf8.h>
 
 #include <cstring>
+#include <cstdlib>
 #include <mutex>
 
 // Guards the static bidi_char buffers in applyBidiVisual() and
@@ -36,9 +37,15 @@ bool isNaturalDirectionClass(const uchar cls) {
 
 // Visual-reorder scratch shared by applyBidiVisual() and
 // computeVisualWordOrder(). Neither function calls the other, and bidiMutex
-// already serialises both, so a single buffer serves both instead of a
-// per-function static - saving ~1.5 KB of always-resident RAM.
-bidi_char sharedBidiLine[BIDI_MAX_LINE];
+// already serialises both. Both buffers (line + shaped, 3 KB together) are
+// allocated on the first right-to-left text and kept from then on: a Latin,
+// Vietnamese or CJK library never pays for them (18/09/2026).
+bidi_char* bidiScratch(const bool shapedBuffer) {
+  static bidi_char* buffers = nullptr;
+  if (!buffers) buffers = static_cast<bidi_char*>(malloc(2 * BIDI_MAX_LINE * sizeof(bidi_char)));
+  if (!buffers) return nullptr;
+  return buffers + (shapedBuffer ? BIDI_MAX_LINE : 0);
+}
 
 }  // namespace
 
@@ -95,8 +102,9 @@ bool applyBidiVisual(const char* utf8, std::string& out, int paragraphLevel) {
   if (!utf8 || !*utf8) return false;
   const std::lock_guard<std::mutex> lock(bidiMutex);
 
-  bidi_char* const line = sharedBidiLine;
-  static bidi_char shaped[BIDI_MAX_LINE];
+  bidi_char* const line = bidiScratch(false);
+  bidi_char* const shaped = bidiScratch(true);
+  if (!line || !shaped) return false;
   int count = 0;
   int lastBase = -1;           // last non-formatter character (mintty's ibase)
   uint8_t pendingJoiners = 0;  // ZWJ/ZWNJ seen since lastBase
@@ -182,7 +190,8 @@ bool computeVisualWordOrder(const std::vector<std::string>& words, bool paragrap
   if (nWords <= 1 || nWords > BIDI_MAX_LINE) return false;
   const std::lock_guard<std::mutex> lock(bidiMutex);
 
-  bidi_char* const line = sharedBidiLine;
+  bidi_char* const line = bidiScratch(false);
+  if (!line) return false;
   int count = 0;
   bool truncated = false;
 

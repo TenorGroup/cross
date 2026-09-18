@@ -19,7 +19,8 @@ struct PinDecoration {
   const char* original = nullptr;
   std::string text;
 };
-std::array<PinDecoration, 32> pinDecorations;
+// One per visible row; the X3 lists fit twelve rows at the dense height.
+std::array<PinDecoration, 12> pinDecorations;
 size_t pinDecorationCount = 0;
 void restorePinnedRows() {
   for (size_t i = 0; i < pinDecorationCount; ++i) pinDecorations[i].row->label = pinDecorations[i].original;

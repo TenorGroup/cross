@@ -1251,7 +1251,15 @@ void loop() {
     powerManager.setPowerSaving(false);  // Make sure we're at full performance when skipLoopDelay is requested
     yield();                             // Give FreeRTOS a chance to run tasks, but return immediately
   } else {
-    if (millis() - lastActivityTime >= HalPowerManager::IDLE_POWER_SAVING_MS) {
+#if CROSSPOINT_BLE_HID_HOST
+    // The BLE controller needs a steady clock: dropping the CPU to 80 MHz while
+    // it connects ended in an HCI ack failure and an interrupt watchdog reset
+    // (X3, 18/09/2026). Keep full speed while the radio is up.
+    const bool radioActive = bleHid.isRunning() || bleHid.isStopping();
+#else
+    const bool radioActive = false;
+#endif
+    if (!radioActive && millis() - lastActivityTime >= HalPowerManager::IDLE_POWER_SAVING_MS) {
       // If we've been inactive for a while, increase the delay to save power
       powerManager.setPowerSaving(true);  // Lower CPU frequency after extended inactivity
       // Sleep in short slices and wake the poll as soon as a button contact closes.
