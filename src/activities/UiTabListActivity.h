@@ -20,7 +20,6 @@
 class UiTabListActivity : public UiListActivity {
  public:
   void onEnter() override;
-  void loop() override;
   void captureNavigation(MenuNavigationState& state) const override;
   void restoreNavigation(const MenuNavigationState& state) override;
 
@@ -94,8 +93,21 @@ class UiTabListActivity : public UiListActivity {
   int favoriteSelectedRow() override { return ringPos() - 1; }
   // ACTION_ROW lands as ring = row + 1, then activateIndex(row).
   void onRowAction(const freeink::ui::ActionEvent& event) override;
-  // Release walks the row ring; continuous hold steps the tab.
+  // Release walks the row ring; continuous hold steps the tab. Both queue an
+  // intent, so a press is never lost while the panel draws.
   void navigateButtons() override;
+  // Ring walk for the StepNext/StepPrev intents (1..count, wrapping).
+  void stepSelection(int direction) override;
+  // TabNext/TabPrev: the subclass switch takes the render lock itself, so the
+  // applier dispatches these with no lock held.
+  void applyTabStep(int direction) override { stepTab(direction); }
+  // First row with the viewport pulled to it: ring 1 (Home's continue-reading
+  // card), or ring 0 when the list is empty.
+  void applyFirstRow() override;
+  // UiListActivity hook: clamp the active tab's ring cursor. Runs inside
+  // applyPendingNav(), under the render lock, before Confirm reads the
+  // selection and after every applied move or tab switch.
+  bool clampAfterNav() override;
   bool handleTabHoldNavigation();
   int adjacentTab(int direction) const;
   bool tabChordBlocked = false;
@@ -104,7 +116,6 @@ class UiTabListActivity : public UiListActivity {
   // held the cursor drops every other tab's remembered position (see rowTab).
   void moveRingTo(int ringIndex);
   void commitTabNavigation();
-  bool clampActiveTabCursor();
 
   static constexpr int16_t MUI_TEN_LE = 14;   // mang le moi ben, danh cho mui ten
   static constexpr int16_t MUI_TEN_RONG = 6;  // be ngang mui ten

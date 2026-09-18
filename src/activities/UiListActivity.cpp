@@ -2,6 +2,7 @@
 
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include <algorithm>
 
@@ -60,11 +61,11 @@ void UiListActivity::onRowAction(const fui::ActionEvent& event) {
 }
 
 bool UiListActivity::handleButtons() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (backReleased()) {
     onBackButton();
     return true;
   }
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (confirmReleased()) {
     const int selected = activeNav().selected;
     if (selected >= 0 && selected < listCount()) activateIndex(selected);
     return true;
@@ -83,20 +84,154 @@ bool UiListActivity::routeListTouch() {
   return static_cast<bool>(route);  // dispatched to the action handler
 }
 
-void UiListActivity::moveSelectionTo(const int index) {
-  {
-    // The render task reads nav mid-build (syncToProps, layout feedback); a
-    // press landing during a render would otherwise tear selection/viewport.
-    RenderLock lock(*this);
-    auto& n = activeNav();
-    n.selected = index;
-    n.follow(listCount());
+void UiListActivity::queueNavIntent(const NavIntent intent) {
+  if (navQueueCount >= NAV_QUEUE_SIZE) {
+    LOG_ERR("UI", "Navigation queue full, dropped intent %u", static_cast<unsigned>(intent));
+    return;
   }
-  requestUpdate();
+  navQueue[(navQueueHead + navQueueCount) % NAV_QUEUE_SIZE] = intent;
+  ++navQueueCount;
 }
 
+UiListActivity::NavIntent UiListActivity::popNavIntent() {
+  const NavIntent intent = navQueue[navQueueHead];
+  navQueueHead = static_cast<uint8_t>((navQueueHead + 1) % NAV_QUEUE_SIZE);
+  --navQueueCount;
+  return intent;
+}
+
+bool UiListActivity::applyPendingNav() {
+  bool changed = false;
+  for (;;) {
+    if (navQueueCount == 0) {
+      // Clamp once per pass: the row set can change under the cursor (a tab
+      // switch, a child screen returning) between two passes.
+      RenderLock lock(RenderLock::TryTake{});
+      if (!lock.acquired()) return false;
+      changed |= clampAfterNav();
+      if (changed) requestUpdate();
+      return true;
+    }
+    if (navQueue[navQueueHead] == NavIntent::TabNext || navQueue[navQueueHead] == NavIntent::TabPrev) {
+      // A tab switch rebuilds the screen's data model and takes the render lock
+      // itself (stepTab -> selectTab/selectCategory), so it runs with our scope
+      // released. Only from a pass that owns a free panel: waiting here is what
+      // swallowed the edge-button presses.
+      {
+        RenderLock lock(RenderLock::TryTake{});
+        if (!lock.acquired()) {
+          if (changed) requestUpdate();
+          return false;
+        }
+      }
+      const int direction = navQueue[navQueueHead] == NavIntent::TabNext ? 1 : -1;
+      popNavIntent();
+      applyTabStep(direction);
+      changed = true;
+      continue;
+    }
+    {
+      RenderLock lock(RenderLock::TryTake{});
+      if (!lock.acquired()) {
+        if (changed) requestUpdate();
+        return false;
+      }
+      changed |= applyNavIntent(popNavIntent());
+      changed |= clampAfterNav();
+    }
+  }
+}
+
+bool UiListActivity::applyNavIntent(const NavIntent intent) {
+  switch (intent) {
+    case NavIntent::StepNext:
+      stepSelection(1);
+      return true;
+    case NavIntent::StepPrev:
+      stepSelection(-1);
+      return true;
+    case NavIntent::PageNext:
+      return applyPage(1);
+    case NavIntent::PagePrev:
+      return applyPage(-1);
+    case NavIntent::BoundaryFirst:
+      return applyBoundary(false, false);
+    case NavIntent::BoundaryLast:
+      return applyBoundary(true, false);
+    case NavIntent::BoundaryFirstRing:
+      return applyBoundary(false, true);
+    case NavIntent::BoundaryLastRing:
+      return applyBoundary(true, true);
+    case NavIntent::FirstRow:
+      applyFirstRow();
+      return true;
+    case NavIntent::TabNext:
+    case NavIntent::TabPrev:
+      break;  // dispatched by applyPendingNav(), which owns their lock handling
+  }
+  return false;
+}
+
+void UiListActivity::stepSelection(const int direction) {
+  auto& n = activeNav();
+  const int count = listCount();
+  n.selected =
+      direction > 0 ? ButtonNavigator::nextIndex(n.selected, count) : ButtonNavigator::previousIndex(n.selected, count);
+  n.follow(count);
+}
+
+bool UiListActivity::applyPage(const int direction) {
+  auto& n = activeNav();
+  const int count = listCount();
+  const int rows = std::max(1, n.pageRowsFor(count));
+  const bool moved = n.scrollBy(direction * rows, count);
+  if (moved) {
+    // Start at the first displayed item. Following the old selection here
+    // would pull the viewport back and turn Page Down into a one-row scroll.
+    n.selected = n.top;
+    n.followOnBuild = false;
+    n.followPending = false;
+  }
+  return moved;
+}
+
+bool UiListActivity::applyBoundary(const bool last, const bool ring) {
+  auto& n = activeNav();
+  const int count = listCount();
+  const int first = kepConTro(n.top, count);
+  const int end = kepConTro(first + std::max(1, n.pageRowsFor(count)) - 1, count);
+  n.selected = count > 0 ? (last ? end : first) + (ring ? 1 : 0) : 0;
+  n.followOnBuild = false;
+  n.followPending = false;
+  return true;
+}
+
+bool UiListActivity::confirmReleased() {
+  // Held back only while moves are still queued: the row Select should act on
+  // is the one on screen. With an empty queue the selection cannot be stale, so
+  // Select fires immediately even if the panel is mid-refresh.
+  if (navQueueCount > 0) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) pendingConfirm = true;
+    return false;
+  }
+  if (pendingConfirm) {
+    pendingConfirm = false;
+    return true;
+  }
+  return mappedInput.wasReleased(MappedInputManager::Button::Confirm);
+}
+
+// Back never depends on the selection, so it is never held back.
+bool UiListActivity::backReleased() { return mappedInput.wasReleased(MappedInputManager::Button::Back); }
+
 void UiListActivity::loop() {
+  // The render task owns the lock for a whole frame (panel refresh included),
+  // so the queue is drained with a non-waiting lock and the buttons are read
+  // on every pass either way. A press landing mid-frame is queued, not lost.
+  const bool panelFree = applyPendingNav();
+
   if (!pendingFavorite.empty()) {
+    if (!panelFree) return;  // a one-shot wish, safe to retry next pass
     const std::string key = std::move(pendingFavorite);
     pendingFavorite.clear();
     const int row = focusFavorite(key);
@@ -105,15 +240,23 @@ void UiListActivity::loop() {
     return;
   }
   if (handleCustomInput()) return;
-  if (supportsFavorites() && !favoriteKey(favoriteSelectedRow()).empty() &&
-      mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700)) {
-    const std::string key = favoriteKey(favoriteSelectedRow());
-    if (!key.empty()) {
-      RenderLock lock(*this);
-      favoriteSaveFailed = !toggleFavorite(favoriteSelectedRow());
-      favoritesChanged();
+  if (pendingPin || (supportsFavorites() && !favoriteKey(favoriteSelectedRow()).empty() &&
+                     mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700))) {
+    // A hold fires once, so it is never dropped: it is applied as soon as the
+    // panel frees the lock.
+    RenderLock lock(RenderLock::TryTake{});
+    if (!lock.acquired()) {
+      pendingPin = true;
+      return;
     }
-    requestUpdate();
+    pendingPin = false;
+    const int row = favoriteSelectedRow();
+    const std::string key = favoriteKey(row);
+    if (!key.empty()) {
+      favoriteSaveFailed = !toggleFavorite(row);
+      favoritesChanged();
+      requestUpdate();
+    }
     return;
   }
   if (handleButtons()) return;
@@ -123,16 +266,7 @@ void UiListActivity::loop() {
   // off-screen) and button navigation pulls the view back to it.
   const auto swipe = mappedInput.wasSwipe();
   if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
-    bool moved = false;
-    {
-      // Same nav-vs-render race as moveSelectionTo: the render task writes
-      // pageRows/top mid-build, so read and mutate under one lock.
-      RenderLock lock(*this);
-      auto& n = activeNav();
-      const int delta = swipe == MappedInputManager::SwipeDir::Up ? n.pageRows() : -n.pageRows();
-      moved = n.scrollBy(delta, listCount());
-    }
-    if (moved) requestUpdate();
+    queueNavIntent(swipe == MappedInputManager::SwipeDir::Up ? NavIntent::PageNext : NavIntent::PagePrev);
     return;
   }
 
@@ -140,42 +274,22 @@ void UiListActivity::loop() {
 }
 
 void UiListActivity::moveListPage(const int direction) {
-  bool moved = false;
-  {
-    RenderLock lock(*this);
-    auto& n = activeNav();
-    const int count = listCount();
-    const int rows = std::max(1, n.pageRowsFor(count));
-    moved = n.scrollBy(direction * rows, count);
-    if (moved) {
-      // Start at the first displayed item. Following the old selection here
-      // would pull the viewport back and turn Page Down into a one-row scroll.
-      n.selected = n.top;
-      n.followOnBuild = false;
-      n.followPending = false;
-    }
-  }
-  if (moved) requestUpdate();
+  queueNavIntent(direction > 0 ? NavIntent::PageNext : NavIntent::PagePrev);
 }
 
 void UiListActivity::moveToVisibleBoundary(const bool last, const bool ring) {
-  {
-    RenderLock lock(*this);
-    auto& n = activeNav();
-    const int count = listCount();
-    const int first = kepConTro(n.top, count);
-    const int end = kepConTro(first + std::max(1, n.pageRowsFor(count)) - 1, count);
-    n.selected = count > 0 ? (last ? end : first) + (ring ? 1 : 0) : 0;
-    n.followOnBuild = false;
-    n.followPending = false;
+  // The ring variant has no data work of its own: it only addresses the row as
+  // a ring position (UiTabListActivity's hold-to-jump).
+  if (ring) {
+    queueNavIntent(last ? NavIntent::BoundaryLastRing : NavIntent::BoundaryFirstRing);
+    return;
   }
-  requestUpdate();
+  queueNavIntent(last ? NavIntent::BoundaryLast : NavIntent::BoundaryFirst);
 }
 
 void UiListActivity::navigateButtons() {
   using Button = MappedInputManager::Button;
   constexpr unsigned long HOLD_MS = 700;
-  const int count = listCount();
   // Physical front Up/Down are logical Left/Right on X3. Its edge pair are
   // logical Up/Down. wasLongPressed fires once and swallows the release.
   if (mappedInput.wasLongPressed(Button::Left, HOLD_MS) || mappedInput.wasLongPressed(Button::Up, HOLD_MS)) {
@@ -187,9 +301,9 @@ void UiListActivity::navigateButtons() {
     return;
   }
   if (mappedInput.wasReleased(Button::Right)) {
-    moveSelectionTo(ButtonNavigator::nextIndex(activeNav().selected, count));
+    queueNavIntent(NavIntent::StepNext);
   } else if (mappedInput.wasReleased(Button::Left)) {
-    moveSelectionTo(ButtonNavigator::previousIndex(activeNav().selected, count));
+    queueNavIntent(NavIntent::StepPrev);
   } else if (mappedInput.wasReleased(Button::Down)) {
     if (!activityManager.switchSettingsSibling(1)) moveListPage(1);
   } else if (mappedInput.wasReleased(Button::Up)) {

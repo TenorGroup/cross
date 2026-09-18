@@ -313,8 +313,8 @@ void SettingsActivity::navigateButtons() {
   buttonNavigator.onRelease({MappedInputManager::Button::Right}, next);
   buttonNavigator.onRelease({MappedInputManager::Button::Left}, previous);
 
-  tabNavigator.onRelease({MappedInputManager::Button::Down}, [this] { stepTab(1); });
-  tabNavigator.onRelease({MappedInputManager::Button::Up}, [this] { stepTab(-1); });
+  tabNavigator.onRelease({MappedInputManager::Button::Down}, [this] { queueNavIntent(NavIntent::TabNext); });
+  tabNavigator.onRelease({MappedInputManager::Button::Up}, [this] { queueNavIntent(NavIntent::TabPrev); });
 }
 
 bool SettingsActivity::handleButtons() {
