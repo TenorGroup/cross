@@ -117,14 +117,19 @@ class ReworkUiTest(unittest.TestCase):
 
     def test_s1_activating_another_group_resets_previous_cursor(self):
         # After activating Reader/Text settings, Display returns to row 1.
-        # LEFT wraps to its last row: Quick resume timeout.
+        # LEFT wraps to the LAST row of the Display group.
+        #
+        # Dong cuoi do tung la Quick resume timeout. Tu v1.0.6 no la 'Thuc day la
+        # vao sach' (wakeIntoBook), vi gói B chen dong do vao ngay sau quick resume.
+        # Bai nay do chuyen con tro quay ve dau khi doi nhom, khong do rieng mot khoa
+        # nao; chen them dong o cuoi nhom Hien thi thi bai nay do lai, va do la dung.
         script = ('1000:UP;1600:RIGHT;2200:CONFIRM;'
                   '3000:RIGHT;3500:RIGHT;4200:DOWN;4800:CONFIRM;6200:BACK;'
                   '7600:UP;8200:LEFT;8800:CONFIRM;10000:QUIT')
-        self.settings['quickResumeSleepScreen'] = 0
+        self.settings['wakeIntoBook'] = 0
         (self.store / 'settings.json').write_text(json.dumps(self.settings))
         log = self.run_sim(script)
-        self.assertEqual(self.saved()['quickResumeSleepScreen'], 1, log)
+        self.assertEqual(self.saved()['wakeIntoBook'], 1, log)
         self.assertEqual(self.saved()['tenorSideArrows'], 1, log)
 
     def test_h6_folder_opens_child_then_back_reaches_root(self):
@@ -143,8 +148,13 @@ class ReworkUiTest(unittest.TestCase):
 
     def test_file_transfer_from_home_settings(self):
         # Home Settings focuses Gửi file immediately. No intermediate Settings screen.
+        #
+        # Moc cu la 'NetworkModeSelection'. Tu v1.0.6 may KHONG cam ung khong mo man
+        # chon che do nua, no vao thang diem phat hoac mang da luu, nen moc do khong
+        # con ton tai tren ban gia lap X3. Moc moi la chinh man Gui file. Duong di
+        # moi duoc phu rieng o test_file_transfer_no_password.py.
         log = self.run_sim('1000:UP;1800:CONFIRM;3000:BACK;4500:QUIT')
-        self.assertIn('Entering activity: NetworkModeSelection', log)
+        self.assertIn('Entering activity: CrossPointWebServer', log)
         self.assertNotIn('Entering activity: Settings', log)
         self.assertEqual(log.count('Entering activity: Home'), 2, log)
 
