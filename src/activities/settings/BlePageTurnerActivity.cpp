@@ -152,16 +152,11 @@ void BlePageTurnerActivity::loop() {
     requestUpdate();
   }
 
-  // Giu Chon tren mot hang gan nut = xoa gan. Lop nen da doi 700 ms va tra su kien
-  // mot lan; man nay khong bat tinh nang ghim nen khong ai tranh su kien nay.
-  if (!optionPopup.isActive() && mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700) &&
-      nav.selected >= 0 && nav.selected < static_cast<int>(rowItems_.size())) {
-    const int16_t code = rowItems_[nav.selected].actionValue;
-    if (code == ROW_BIND_NEXT) {
-      clearBind(blebinding::Direction::Next);
-    } else if (code == ROW_BIND_PREV) {
-      clearBind(blebinding::Direction::Prev);
-    }
+  // Duong giu nut cua may nut bam. Do duoc tren gia lap X3: day la duong chay,
+  // con onRowLongPress() khong he duoc goi o may khong cam ung. Lop nen chi doc
+  // nhip giu khi man co bat tinh nang ghim, ma man nay khong bat.
+  if (!optionPopup.isActive() && mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700)) {
+    clearBindForRow(nav.selected);
   }
 
   const uint32_t now = millis();
@@ -265,7 +260,7 @@ void BlePageTurnerActivity::refreshValues() {
     char duoi[48];
     snprintf(ma, sizeof(ma), "0x%02X", lastKeyUsage_);
     snprintf(duoi, sizeof(duoi), tr(STR_BLE_LAST_KEY), ma);
-    statusValue_ += " \xC2\xB7 ";  // dau cham giua, gop hai manh thanh mot dong
+    statusValue_ += " - ";  // gop hai manh thanh mot dong
     statusValue_ += duoi;
   }
   rowItems_[1].value = statusValue_.c_str();
@@ -426,11 +421,14 @@ bool BlePageTurnerActivity::handleCustomInput() {
   return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
 }
 
-void BlePageTurnerActivity::onRowLongPress(const int index) {
+// Duong giu nut cua may cam ung, do lop nen phat su kien hang co co longPress.
+void BlePageTurnerActivity::onRowLongPress(const int index) { clearBindForRow(index); }
+
+// Mot quyet dinh, mot ham: hai duong nhip giu o tren deu di qua day, nen luat
+// "giu tren hang gan nut la xoa gan" chi duoc phat bieu mot lan.
+void BlePageTurnerActivity::clearBindForRow(const int index) {
   if (index < 0 || index >= static_cast<int>(rowItems_.size())) return;
   const int16_t code = rowItems_[index].actionValue;
-  // Nhip giu tren hang gan nut = xoa gan (hotfix: nguoi dung phai bo duoc mot anh
-  // xa sai ma khong phai hoc lai nut khac).
   if (code == ROW_BIND_NEXT) {
     clearBind(blebinding::Direction::Next);
   } else if (code == ROW_BIND_PREV) {
