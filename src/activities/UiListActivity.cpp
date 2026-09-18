@@ -350,7 +350,10 @@ void UiListActivity::renderUi() {
   favoriteHintY = -1;
   UiAppHost::renderUi();
   restorePinnedRows();
-  if (tenorchrome::enabled() && !tabBandDrawn) {
+  // The range only earns its place on a list that scrolls. On a screen whose
+  // rows all fit, "1-4 / 4" says nothing, and it is drawn directly under the
+  // name of the neighbouring tab, which is the one thing there worth reading.
+  if (tenorchrome::enabled() && !tabBandDrawn && listCount() > activeNav().pageRows()) {
     const int count = listCount();
     const auto& n = activeNav();
     const int first = count > 0 ? std::min(n.top + 1, count) : 0;
