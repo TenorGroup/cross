@@ -24,12 +24,9 @@ __pycache__/
 /debate/
 /research/
 /AGENTS.md
-/CLAUDE.md
 /SESSION_HANDOFF.md
 /ROADMAP.md
 .skills/
-.claude/
-.codex/
 .env
 .env.*
 *.key

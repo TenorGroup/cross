@@ -69,7 +69,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   // --- tab Yeu thich ---------------------------------------------------------------
   // Giu nut Chon tren mot dong bat ky la ghim dong do vao Yeu thich, giu lan nua la go
   // ra. Chon nhip GIU vi no dang trong o man nay, con them mot man hay mot the moi thi
-  // ton nhip bam, ma dieu mot cua tenor/cross la it nut nhat (CLAUDE.md).
+  // ton nhip bam, ma dieu mot cua tenor/cross la it nut nhat.
   bool doiGhimDongDangChon();
   // Trong tab Yeu thich, giu nut Len hoac Xuong la day dong dang chon di mot bac.
   bool xepLaiDongDangChon(int huong);

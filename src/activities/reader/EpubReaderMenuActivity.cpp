@@ -359,7 +359,7 @@ bool EpubReaderMenuActivity::handleButtons() {
   }
 
   // Giu Chon tren mot dong la GHIM dong do vao Yeu thich, giu lan nua la go ra. Nhip giu
-  // dang trong o man nay, va dieu mot cua tenor/cross la it nut nhat (CLAUDE.md).
+  // dang trong o man nay, va dieu mot cua tenor/cross la it nut nhat.
   //
   // Dung wasLongPressed chu khong tu do getHeldTime luc nha: ham nay ban ngay khi qua
   // nguong, va no NUOT luot nha ke tiep, nen giu khong bi tinh thanh mot lan bam nhanh
