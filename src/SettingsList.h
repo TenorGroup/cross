@@ -272,6 +272,8 @@ inline std::vector<SettingInfo> getBaseSettingsList() {
         SettingInfo::Enum(StrId::STR_QUICK_RESUME_TIMEOUT, &CrossPointSettings::quickResumeSleepScreen,
                           {StrId::STR_STATE_OFF, StrId::STR_STATE_ON}, "quickResumeSleepScreen",
                           StrId::STR_CAT_DISPLAY),
+        SettingInfo::Enum(StrId::STR_WAKE_INTO_BOOK, &CrossPointSettings::wakeIntoBook,
+                          {StrId::STR_STATE_OFF, StrId::STR_STATE_ON}, "wakeIntoBook", StrId::STR_CAT_DISPLAY),
 #if FREEINK_CAP_FRONTLIGHT
         SettingInfo::Toggle(StrId::STR_RESTORE_LIGHT_ON_WAKE, &CrossPointSettings::frontlightRestoreOnWake,
                             "frontlightRestoreOnWake", StrId::STR_CAT_DISPLAY),

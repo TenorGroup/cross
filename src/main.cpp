@@ -650,6 +650,12 @@ void setup() {
     // through to the sleep-wake "resume reader" logic, which fires on stale
     // openEpubPath + lastSleepFromReader from a prior session.
     activityManager.goHome(snapshotHomeMenu);
+  } else if (isSleepWake && SETTINGS.wakeIntoBook && APP_STATE.lastSleepFromReader &&
+             !APP_STATE.openEpubPath.empty() && Storage.exists(APP_STATE.openEpubPath.c_str())) {
+    // Wake straight back into the book that was open at sleep. The reader's
+    // first paint is a cleaning waveform (allowFastInitialRefresh stays false),
+    // which is the pass that takes the retained sleep frame off the panel.
+    activityManager.goToReader(APP_STATE.openEpubPath);
   } else {
     activityManager.goHome(HomeMenuItem::RECENT_CONTINUE, needsWakeRefresh);
   }
