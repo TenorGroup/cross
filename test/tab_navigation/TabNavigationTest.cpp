@@ -2,7 +2,29 @@
 #include <HalGPIO.h>
 #include <gtest/gtest.h>
 
+#include <cstdlib>
+#include <new>
+
 #include "SettingsList.h"
+
+// Do cu cap phat LON NHAT trong mot doan ma. Khong dem tong, vi thu giet may la
+// mot khoi LIEN NHAU khong xin duoc chu khong phai tong so byte: tren may that
+// `operator new` xin 16.560 byte mot cuc, truot, nem bad_alloc, ma du an tat
+// ngoai le nen thanh abort(). Coredump 19/09/2026 chi dung vao day.
+namespace alloctest {
+bool recording = false;
+size_t largest = 0;
+void reset() { largest = 0; }
+}  // namespace alloctest
+
+void* operator new(size_t n) {
+  if (alloctest::recording && n > alloctest::largest) alloctest::largest = n;
+  void* p = std::malloc(n ? n : 1);
+  if (!p) throw std::bad_alloc();
+  return p;
+}
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete(void* p, size_t) noexcept { std::free(p); }
 #include "MenuFavorites.h"
 #include "activities/UiTabListActivity.h"
 #include "util/ButtonNavigator.h"
@@ -526,4 +548,37 @@ TEST(MenuFavoritesCompatibility, MissingRtcHidesClockPinBeforeTenorLabelOverride
   EXPECT_EQ(menufavorites::label("action/2", {}), StrId::STR_NONE_OPT);
   EXPECT_EQ(menufavorites::label("clock/clockFormat", {}), StrId::STR_NONE_OPT);
   SETTINGS.uiTheme = originalTheme;
+}
+
+
+// Luu cai dat khong duoc doi mot khoi bo nho lien lon. Duong nay chay moi lan
+// nguoi dung bat mot tuy chon, doi co chu, gan nut, hay xep lai mot dong ghim.
+TEST(SettingsSaveAllocation, SavingDoesNotAskForOneLargeContiguousBlock) {
+  JsonDocument warm;
+  SETTINGS.toJson(warm);  // lan dau co the dung bang, khong tinh
+
+  JsonDocument doc;
+  alloctest::reset();
+  alloctest::recording = true;
+  SETTINGS.toJson(doc);
+  alloctest::recording = false;
+
+  // 8 KB la nguong rong rai: bang cai dat that xin 16.560 byte.
+  EXPECT_LT(alloctest::largest, 8u * 1024u)
+      << "luu cai dat xin mot khoi " << alloctest::largest
+      << " byte lien nhau; dong bo nho phan manh la cu nay truot va may abort()";
+}
+
+// Doc cai dat luc khoi dong di qua cung duong do.
+TEST(SettingsSaveAllocation, LoadingDoesNotAskForOneLargeContiguousBlock) {
+  JsonDocument doc;
+  SETTINGS.toJson(doc);
+
+  alloctest::reset();
+  alloctest::recording = true;
+  SETTINGS.fromJson(doc);
+  alloctest::recording = false;
+
+  EXPECT_LT(alloctest::largest, 8u * 1024u)
+      << "doc cai dat xin mot khoi " << alloctest::largest << " byte lien nhau";
 }

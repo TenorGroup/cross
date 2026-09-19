@@ -733,6 +733,7 @@ STR_BLE_FORGET: "Quên thiết bị"
 STR_BLE_UNAVAILABLE: "Bản dựng này không có Bluetooth"
 
 STR_BLE_STOPPING: "Bluetooth đang dừng"
+STR_BLE_IDLE_STOPPED: "Tự tắt để tiết kiệm pin"
 STR_BLE_START_FAILED: "Chưa khởi động được Bluetooth"
 STR_BLE_BIND_NEXT: "Gán nút lật tới"
 STR_BLE_BIND_PREV: "Gán nút lật lui"

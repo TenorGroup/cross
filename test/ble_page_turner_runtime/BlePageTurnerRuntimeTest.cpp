@@ -22,6 +22,8 @@ class BlePageTurnerRuntimeTest : public ::testing::Test {
   void SetUp() override {
     auto& host = freeink::BleKeyboardHost::getInstance();
     host.reset();
+    freeink::ble::setIdleStopped(false);
+    freeink::ble::setReaderStartDeferred(false);
     HalMemory::internalHeap = {kEnoughFree, 249216, 0, kEnoughLargest};
     HalMemory::internalHeapReads = 0;
     ble_runtime_test::cacheReleaseCalls = 0;
@@ -184,6 +186,68 @@ TEST_F(BlePageTurnerRuntimeTest, ActivityTransitionWithIdleRadioDoesNotAllocateO
   EXPECT_EQ(freeink::BleKeyboardHost::getInstance().endCalls, 0u);
   EXPECT_EQ(ble_runtime_test::renderLockAcquires, 0u);
   EXPECT_EQ(HalMemory::internalHeapReads, 0u);
+}
+
+TEST_F(BlePageTurnerRuntimeTest, IdleStopRecordsReasonAndClearsStaleReaderFailure) {
+  auto& host = freeink::BleKeyboardHost::getInstance();
+  host.running = true;
+  freeink::ble::setReaderStartDeferred(true);
+
+  EXPECT_TRUE(freeink::ble::stopForIdle());
+  EXPECT_TRUE(freeink::ble::idleStopped());
+  EXPECT_FALSE(freeink::ble::readerStartDeferred());
+  EXPECT_FALSE(host.isRunning());
+  EXPECT_EQ(host.endCalls, 1u);
+  EXPECT_EQ(host.lastEndTimeoutMs, 0u);
+  EXPECT_FALSE(host.endHeldRenderLock);
+}
+
+TEST_F(BlePageTurnerRuntimeTest, PendingIdleStopKeepsReasonThroughCleanupAndNavigation) {
+  auto& host = freeink::BleKeyboardHost::getInstance();
+  host.running = true;
+  host.endResult = false;
+
+  EXPECT_FALSE(freeink::ble::stopForIdle());
+  EXPECT_TRUE(freeink::ble::idleStopped());
+  EXPECT_TRUE(host.isStopping());
+  EXPECT_FALSE(freeink::ble::suspendForTransition());
+  EXPECT_TRUE(freeink::ble::idleStopped());
+
+  host.endResult = true;
+  EXPECT_TRUE(freeink::ble::suspendForTransition());
+  EXPECT_FALSE(host.isStopping());
+  EXPECT_TRUE(freeink::ble::idleStopped());
+}
+
+TEST_F(BlePageTurnerRuntimeTest, ExplicitBeginClearsReasonsEvenWhenMemoryCheckRejectsIt) {
+  freeink::ble::setIdleStopped(true);
+  freeink::ble::setReaderStartDeferred(true);
+  HalMemory::internalHeap.freeBytes = kEnoughFree - 1;
+
+  EXPECT_FALSE(freeink::ble::begin(renderer));
+  EXPECT_FALSE(freeink::ble::idleStopped());
+  EXPECT_FALSE(freeink::ble::readerStartDeferred());
+}
+
+TEST_F(BlePageTurnerRuntimeTest, ExplicitBeginDuringCleanupClearsOldIdleReason) {
+  auto& host = freeink::BleKeyboardHost::getInstance();
+  host.stopping = true;
+  freeink::ble::setIdleStopped(true);
+
+  EXPECT_FALSE(freeink::ble::begin(renderer));
+  EXPECT_FALSE(freeink::ble::idleStopped());
+  EXPECT_EQ(host.beginCalls, 0u);
+}
+
+TEST_F(BlePageTurnerRuntimeTest, ExplicitAsyncBeginRestartsAfterIdleStop) {
+  auto& host = freeink::BleKeyboardHost::getInstance();
+  host.running = true;
+  ASSERT_TRUE(freeink::ble::stopForIdle());
+
+  EXPECT_TRUE(freeink::ble::beginAsync(renderer));
+  EXPECT_TRUE(host.isRunning());
+  EXPECT_FALSE(freeink::ble::idleStopped());
+  EXPECT_EQ(host.beginCalls, 1u);
 }
 
 TEST(BlePageTurnerRuntimeSourceContractTest, AllAppBeginCallsUseTheRuntimeFunnel) {

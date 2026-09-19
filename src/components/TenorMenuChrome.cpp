@@ -46,6 +46,9 @@ void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char
 }
 
 namespace {
+// Khoang tu vien phai vien pin toi chu so phan tram. Ba cho phai dung chung mot
+// so: hai cho tinh be rong khoi pin va mot cho ve that, lech nhau la so bi cat.
+constexpr int BATTERY_TEXT_GAP = 4;
 constexpr int SIBLING_CHEVRON_WIDTH = 6;
 constexpr int SIBLING_CHEVRON_HEIGHT = 8;
 constexpr int SIBLING_EDGE = 18;
@@ -118,7 +121,7 @@ tenorchrome::StatusCornerBounds tenorchrome::statusCornerBounds(const GfxRendere
   const int percent = std::max(0, std::min(100, static_cast<int>(powerManager.getBatteryPercentage())));
   char percentage[8];
   snprintf(percentage, sizeof(percentage), "%d", percent);
-  const int batteryBlock = batteryWidth + 7 + r.getTextWidth(fontChu, percentage);
+  const int batteryBlock = batteryWidth + BATTERY_TEXT_GAP + r.getTextWidth(fontChu, percentage);
   const bool swap = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
   if (swap) return {inset + timeWidth, r.getScreenWidth() - inset - batteryBlock};
   return {inset + batteryBlock, r.getScreenWidth() - inset - timeWidth};
@@ -155,7 +158,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   char percentage[8];
   snprintf(percentage, sizeof(percentage), "%d", percent);
   const int batteryTextWidth = hienPhanTram ? r.getTextWidth(fontChu, percentage) : 0;
-  const int batteryBlock = batteryWidth + (hienPhanTram ? 7 + batteryTextWidth : 0);
+  const int batteryBlock = batteryWidth + (hienPhanTram ? BATTERY_TEXT_GAP + batteryTextWidth : 0);
   // Pin nam o ben DOI dien voi dong ho (hoac ben trai khi khong hien dong ho), nen
   // muc 5 (ten chuong & pin) khong day pin sang phai nhu khi vang dong ho.
   const int bx = (hienGio && swap) ? width - inset - batteryBlock : inset;
@@ -172,7 +175,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
     r.fillRect(bx + batteryWidth - 1, by + 5, 2, 4);
     const int fill = ((batteryWidth - 5) * percent + 50) / 100;
     if (fill > 0) r.fillRect(bx + 2, by + 2, fill, batteryHeight - 4);
-    if (hienPhanTram) r.drawText(fontChu, bx + batteryWidth + 7, y, percentage);
+    if (hienPhanTram) r.drawText(fontChu, bx + batteryWidth + BATTERY_TEXT_GAP, y, percentage);
   }
   if (!hienTieuDe && !hienSoTrang && !hienTienDo) return;
   // Hai ben neo vao dung khoi goc dang co, cach mot khoang nho.

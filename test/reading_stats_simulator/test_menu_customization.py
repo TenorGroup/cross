@@ -32,12 +32,20 @@ def state(pins=(),**overrides):
 def same(a,b,box):
  assert ImageChops.difference(Image.open(a).crop(box).convert('RGB'),Image.open(b).crop(box).convert('RGB')).getbbox() is None,(a,b)
 def pin():
- sd=t.run('pin-e2e','1000:UP;1500:RIGHT;2000:CONFIRM;2800:CONFIRM:900;4150:BACK;4700:UP;5100:UP;5750:CONFIRM;7100:QUIT',[(6500,'popup')])
+ # Display starts on uiTheme. Eight row steps reach sleepScreen on the X3.
+ script='1000:UP;1500:RIGHT;2000:CONFIRM;'
+ script+=';'.join(f'{2800+700*i}:RIGHT' for i in range(8))+';'
+ script+='8500:CONFIRM:900;9900:BACK;10500:UP;11000:UP;11700:CONFIRM;13300:QUIT'
+ sd=t.run('pin-e2e',script,[(12700,'popup')])
  assert saved(sd,'menu-customization.json')['pins']==['settings/sleepScreen']
  assert saved(sd,'settings.json')['sleepScreen']==8
  assert 'Entering activity: Settings' in (t.o/'pin-e2e.log').read_text()
  t.run('pin-restart','1000:DOWN;1500:DOWN;2000:CONFIRM;3200:QUIT',[(2700,'popup')],reuse='pin-e2e')
- same(t.o/'pin-e2e-popup.png',t.o/'pin-restart-popup.png',(0,70,528,720))
+ assert saved(sd,'menu-customization.json')['pins']==['settings/sleepScreen']
+ assert saved(sd,'settings.json')['sleepScreen']==8
+ # Compare the entire popup. The parent row focus is in-memory and can differ
+ # between the warm return and a restart behind this modal.
+ same(t.o/'pin-e2e-popup.png',t.o/'pin-restart-popup.png',(67,30,462,761))
 def order():
  sd=t.run('reorder-e2e','1000:DOWN:1600;3100:QUIT',[(700,'before'),(2800,'after')])
  assert saved(sd,'menu-customization.json')['tabs']['home']==[1,0,4,2,3]

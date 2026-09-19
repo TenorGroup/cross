@@ -46,6 +46,8 @@ void logSkipped(const char* reason, const HalMemory::HeapStats& heap) {
 }  // namespace
 
 bool begin(GfxRenderer& renderer) {
+  setIdleStopped(false);
+  setReaderStartDeferred(false);
   auto& host = BleKeyboardHost::getInstance();
   if (host.isStopping()) return false;
   if (host.isRunning()) return true;
@@ -109,6 +111,8 @@ void attemptTask(void* param) {
 }  // namespace
 
 bool beginAsync(GfxRenderer& renderer) {
+  setIdleStopped(false);
+  setReaderStartDeferred(false);
   auto& host = BleKeyboardHost::getInstance();
   if (host.isRunning()) return true;
 #ifdef BLE_BEGIN_TASK
@@ -128,28 +132,45 @@ bool beginAsync(GfxRenderer& renderer) {
 #endif
 }
 
+bool stopForIdle() {
+  setIdleStopped(true);
+  setReaderStartDeferred(false);
+  return suspendForTransition();
+}
+
 }  // namespace freeink::ble
 
 #else
 
 bool freeink::ble::suspendForTransition() { return true; }
+bool freeink::ble::stopForIdle() { return true; }
 
 bool freeink::ble::begin(GfxRenderer& renderer) {
   (void)renderer;
+  setIdleStopped(false);
+  setReaderStartDeferred(false);
   return false;
 }
 
 bool freeink::ble::beginAsync(GfxRenderer& renderer) {
   (void)renderer;
+  setIdleStopped(false);
+  setReaderStartDeferred(false);
   return false;
 }
 #endif
 
 namespace {
 std::atomic<bool> readerStartWasDeferred{false};
+std::atomic<bool> radioWasIdleStopped{false};
 }  // namespace
 
 bool freeink::ble::readerStartDeferred() { return readerStartWasDeferred.load(std::memory_order_relaxed); }
 void freeink::ble::setReaderStartDeferred(const bool deferred) {
   readerStartWasDeferred.store(deferred, std::memory_order_relaxed);
+}
+
+bool freeink::ble::idleStopped() { return radioWasIdleStopped.load(std::memory_order_relaxed); }
+void freeink::ble::setIdleStopped(const bool stopped) {
+  radioWasIdleStopped.store(stopped, std::memory_order_relaxed);
 }

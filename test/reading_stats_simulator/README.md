@@ -4,8 +4,16 @@ They use Python plus Pillow for image comparisons and take about five minutes.
 ```sh
 pio run -e simulator_x3_uc8279
 python3 scripts/generate_test_epubs.py
-python3 -m unittest discover -s test/reading_stats_simulator -v
+python3 test/reading_stats_simulator/run_all.py --output /tmp/cross-simulator-evidence
 ```
+
+`run_all.py` executes every `test_*.py` file, including procedural jobs and
+unittest modules without a main guard. `--list` prints the current inventory
+(31 scripts, 171 scenarios). The output directory must be new. Each run archives
+the executable, its SHA-256, the source revision, per-file logs and a JSON
+manifest. A skipped test, a missing scenario, a timeout or a changed test file
+fails the gate. `--program /path/to/program` selects a previously built binary;
+`--jobs 1` runs serially. Install Pillow and freetype-py before running.
 
 The tests verify that dated and undated history survives two process starts, successful
 page turns accumulate, and rejected backward turns at the beginning of a book add zero.

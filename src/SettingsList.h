@@ -216,8 +216,13 @@ inline SettingInfo buildTenorClockPlacementSetting(const SettingInfo& registered
 // font-family entry is replaced with a registry-aware version. The font-size
 // entry is always rebuilt, since its options are point sizes read from the
 // active family rather than a fixed enum.
-inline std::vector<SettingInfo> getBaseSettingsList() {
-  std::vector<SettingInfo> baseList = [] {
+// Bang nay mo ta cai dat NAM O DAU, khong phai gia tri hien tai cua chung: no chi
+// giu StrId, con tro thanh vien va dia chi trong SETTINGS, tat ca deu co dinh suot
+// doi chuong trinh. Truoc day no duoc dung lai tu dau MOI LAN goi, va vector phinh
+// dan qua tung lan chen, nen mot lan luu cai dat doi mot khoi lien ~16 KB. Tren may
+// that cu do truot roi abort() (coredump 19/09/2026, luc xep lai mot dong ghim).
+inline const std::vector<SettingInfo>& getBaseSettingsList() {
+  static const std::vector<SettingInfo> baseList = [] {
     // Enum settings are persisted as numeric values. Assign these labels by enum
     // value so a reordered menu or enum cannot silently swap their behavior.
     std::vector<StrId> sleepScreenValues(CrossPointSettings::SLEEP_SCREEN_MODE_COUNT);
@@ -536,50 +541,33 @@ inline std::vector<SettingInfo> getBaseSettingsList() {
   return baseList;
 }
 
+// Dong nao khong thuoc ve ban may nay. Tach rieng de duong luu va duong doc soi
+// duoc tung dong ma khong phai chep ca bang ra mot vector moi.
+inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
+  // Menu doc dang thanh cong cu la giao dien cham: may nut giu menu danh sach cu.
+  if (!BoardConfig::hasTouch() &&
+      (s.nameId == StrId::STR_TOUCH_READER_CONTROLS || s.nameId == StrId::STR_READER_MENU_STYLE))
+    return true;
+  // Khong co den nen thi hai dong do ngoi khong. X3 va X4 khai NO_FRONTLIGHT,
+  // X4 Pro co den nen giu lai. Phai hoi CA HAI kieu day den: mot bang day den qua
+  // I2C chu khong phai PWM, chi hoi PWM la giau mat dong cua may that su co den.
+  if (!BoardConfig::hasPwmFrontlight() && !BoardConfig::hasI2cFrontlight() &&
+      (s.nameId == StrId::STR_RESTORE_LIGHT_ON_WAKE || s.nameId == StrId::STR_BRIGHTNESS))
+    return true;
+  // Cu chi mo menu doc chi co nghia o may con phim Home cam ung, vi cho khac thi
+  // vuot canh duoi la ve Home va cham giua moi la duong chinh.
+  if (!BoardConfig::hasHomeKey() && s.nameId == StrId::STR_SHOW_READER_MENU) return true;
+  if (BoardConfig::hasTouch() &&
+      (s.nameId == StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION || s.nameId == StrId::STR_SUNLIGHT_FADING_FIX ||
+       s.nameId == StrId::STR_BACK_SHORT_TO_FILE_BROWSER))
+    return true;
+  return false;
+}
+
 inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* registry = nullptr,
                                               const std::vector<DictionaryEntry>* dictionaries = nullptr) {
   std::vector<SettingInfo> v = getBaseSettingsList();
-  if (!BoardConfig::hasTouch()) {
-    // The toolbar reader menu is touch-first chrome: button boards keep the
-    // classic list menu, so the style choice is hidden along with the touch
-    // controls.
-    v.erase(std::remove_if(v.begin(), v.end(),
-                           [](const SettingInfo& s) {
-                             return s.nameId == StrId::STR_TOUCH_READER_CONTROLS ||
-                                    s.nameId == StrId::STR_READER_MENU_STYLE;
-                           }),
-            v.end());
-  }
-  // The reader-menu gesture choice only makes sense where the menu stays
-  // reachable without the tap and the bottom edge is free (the capacitive
-  // Home key); everywhere else the bottom-edge up-swipe is Home and the
-  // center tap is the primary path, so the setting stays at its Tap default.
-  // A board with no frontlight has nothing to brighten or to restore on wake, so
-  // both rows would sit there doing nothing. The X3 and X4 declare NO_FRONTLIGHT;
-  // the X4 Pro has one and keeps them. Ask about both wiring styles: one board
-  // drives its light over I2C rather than PWM, and checking only PWM would hide
-  // the rows from a device that does have a light.
-  if (!BoardConfig::hasPwmFrontlight() && !BoardConfig::hasI2cFrontlight()) {
-    v.erase(std::remove_if(v.begin(), v.end(),
-                           [](const SettingInfo& s) {
-                             return s.nameId == StrId::STR_RESTORE_LIGHT_ON_WAKE || s.nameId == StrId::STR_BRIGHTNESS;
-                           }),
-            v.end());
-  }
-  if (!BoardConfig::hasHomeKey()) {
-    v.erase(std::remove_if(v.begin(), v.end(),
-                           [](const SettingInfo& s) { return s.nameId == StrId::STR_SHOW_READER_MENU; }),
-            v.end());
-  }
-  if (BoardConfig::hasTouch()) {
-    v.erase(std::remove_if(v.begin(), v.end(),
-                           [](const SettingInfo& s) {
-                             return s.nameId == StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION ||
-                                    s.nameId == StrId::STR_SUNLIGHT_FADING_FIX ||
-                                    s.nameId == StrId::STR_BACK_SHORT_TO_FILE_BROWSER;
-                           }),
-            v.end());
-  }
+  v.erase(std::remove_if(v.begin(), v.end(), settingHiddenOnThisBoard), v.end());
   if (registry && registry->getFamilyCount() > 0) {
     auto it = std::find_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.nameId == StrId::STR_FONT_FAMILY; });
     if (it != v.end()) {

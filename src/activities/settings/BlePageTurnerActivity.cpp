@@ -47,6 +47,7 @@ bool begin(GfxRenderer& renderer) { return freeink::ble::begin(renderer); }
 bool end() { return BleHid.end(); }
 bool stopping() { return BleHid.isStopping(); }
 bool running() { return BleHid.isRunning(); }
+bool idleStopped() { return freeink::ble::idleStopped(); }
 void poll() { BleHid.poll(); }
 bool scanning() { return BleHid.isScanning(); }
 void startScan() { BleHid.startScan(15000); }
@@ -84,6 +85,7 @@ bool begin(GfxRenderer&) { return false; }
 bool end() { return true; }
 bool stopping() { return false; }
 bool running() { return false; }
+bool idleStopped() { return false; }
 void poll() {}
 bool scanning() { return false; }
 void startScan() {}
@@ -123,10 +125,10 @@ void BlePageTurnerActivity::onEnter() {
   lastPollMs = millis();
   lastStateSig = 0;
   rowsDirty = true;
-  // Mot co "BAT" da luu ma radio khong chay la man hinh noi doi (founder 18/09/2026:
-  // "cu phai on roi off"). Vao man nay thi thu bat ngay; bat khong noi thi tat co,
-  // ghi ly do ra dong trang thai, de nguoi dung khong phai lat qua lat lai.
-  if (SETTINGS.blePageTurnerEnabled && backend::compiledIn() && !backend::running() && !backend::stopping()) {
+  // Khoi dong opt-in da luu khi vao cai dat. Neu radio tu tat vi nhan roi,
+  // giu ly do do den khi nguoi dung chu dong bat, quet hoac ket noi lai.
+  if (SETTINGS.blePageTurnerEnabled && backend::compiledIn() && !backend::running() && !backend::stopping() &&
+      !backend::idleStopped()) {
     if (!backend::begin(renderer)) {
       LOG_ERR("BLE", "Saved opt-in could not start the radio on the settings screen; switching it off");
       SETTINGS.blePageTurnerEnabled = 0;
@@ -176,20 +178,24 @@ uint32_t BlePageTurnerActivity::trangThaiSig() const {
   return (backend::scanning() ? 1u : 0u) | (backend::connected() ? 2u : 0u) |
          (backend::connecting() ? 4u : 0u) | (backend::stopping() ? 8u : 0u) |
          (backend::running() ? 16u : 0u) | (SETTINGS.blePageTurnerEnabled ? 32u : 0u) |
+         (backend::idleStopped() ? 64u : 0u) | (backend::readerDeferred() ? 128u : 0u) |
          (static_cast<uint32_t>(backend::bondCount()) << 8) |
          (static_cast<uint32_t>(backend::deviceCount()) << 16);
 }
 
 void BlePageTurnerActivity::capNhatTrangThai() {
   char failure[48];
+  const bool hasFailure = backend::takeFailure(failure, sizeof(failure));
   if (backend::stopping()) {
     statusText_ = tr(STR_BLE_STOPPING);
-  } else if (backend::takeFailure(failure, sizeof(failure))) {
-    statusText_ = failure;
   } else if (!backend::compiledIn()) {
     statusText_ = tr(STR_BLE_UNAVAILABLE);
   } else if (!SETTINGS.blePageTurnerEnabled) {
     statusText_ = tr(STR_STATE_OFF);
+  } else if (backend::idleStopped()) {
+    statusText_ = tr(STR_BLE_IDLE_STOPPED);
+  } else if (hasFailure) {
+    statusText_ = failure;
   } else if (backend::readerDeferred()) {
     // Radio co the dang chay o man nay nhung lan thu bat trong trinh doc da bi
     // hoan vi RAM - noi that thay vi hien "BAT".
@@ -328,6 +334,8 @@ void BlePageTurnerActivity::toggleEnabled() {
       LOG_ERR("BLE", "BLE HID host begin() failed; preference kept, radio not running");
     }
   } else {
+    freeink::ble::setIdleStopped(false);
+    freeink::ble::setReaderStartDeferred(false);
     backend::stopScan();
     if (!backend::end()) LOG_INF("BLE", "BLE shutdown pending; input loop will finish cleanup");
   }
@@ -336,7 +344,7 @@ void BlePageTurnerActivity::toggleEnabled() {
 
 void BlePageTurnerActivity::handleScanRow() {
   if (!SETTINGS.blePageTurnerEnabled) return;  // chua bat thi khong co gi de quet
-  if (!backend::running() && !backend::begin(renderer)) return;  // ban dung khong co BLE
+  if (!backend::begin(renderer)) return;  // ban dung khong co BLE
   if (backend::scanning()) {
     backend::stopScan();
     return;
@@ -356,7 +364,7 @@ void BlePageTurnerActivity::openPairedPopup(const int bondIndex) {
       } else {
         chupChuoi(SETTINGS.blePeerAddr, addr.c_str(), sizeof(SETTINGS.blePeerAddr));
         SETTINGS.saveToFile();
-        backend::connect(SETTINGS.blePeerAddr);
+        if (SETTINGS.blePageTurnerEnabled && backend::begin(renderer)) backend::connect(SETTINGS.blePeerAddr);
       }
     } else {
       backend::forget(addr.c_str());
@@ -407,7 +415,7 @@ void BlePageTurnerActivity::activateIndex(const int index) {
     chupChuoi(SETTINGS.blePeerAddr, backend::deviceAddr(dev), sizeof(SETTINGS.blePeerAddr));
     chupChuoi(SETTINGS.blePeerName, backend::deviceName(dev), sizeof(SETTINGS.blePeerName));
     SETTINGS.saveToFile();
-    backend::connect(SETTINGS.blePeerAddr);
+    if (SETTINGS.blePageTurnerEnabled && backend::begin(renderer)) backend::connect(SETTINGS.blePeerAddr);
   } else {
     return;  // dong tieu de / dong "khong tim thay": khong co viec gi
   }

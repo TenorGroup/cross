@@ -17,6 +17,12 @@ bool begin(GfxRenderer& renderer);
 // own state (isRunning) and the diagnostics status command.
 bool beginAsync(GfxRenderer& renderer);
 
+// Stop an idle radio without blocking input. The reason remains visible in
+// settings until an explicit start attempt or disable action clears it.
+bool stopForIdle();
+bool idleStopped();
+void setIdleStopped(bool stopped);
+
 // Poll teardown without blocking input. A false result defers the activity
 // transition until the worker has released its memory and callbacks.
 bool suspendForTransition();

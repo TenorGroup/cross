@@ -49,6 +49,7 @@
 #endif
 
 #include "CrossPointSettings.h"
+#include "BleIdleOff.h"
 #include "BlePageTurnerRuntime.h"
 #include "SettingsList.h"
 #include "CrossPointState.h"
@@ -592,7 +593,21 @@ void setup() {
       break;
   }
 
-  LOG_DBG("MAIN", "Starting tenor/cross version " CROSSPOINT_VERSION);
+  LOG_INF("MAIN", "Starting tenor/cross version " CROSSPOINT_VERSION);
+#ifndef SIMULATOR
+  // A USB write to app0 does not change the OTA boot selection. Report the
+  // running partition and ELF identity before accepting a hardware test.
+  const esp_partition_t* runningApp = esp_ota_get_running_partition();
+  esp_app_desc_t runningDesc{};
+  if (runningApp && esp_ota_get_partition_description(runningApp, &runningDesc) == ESP_OK) {
+    char elfSha[65];
+    for (size_t i = 0; i < sizeof(runningDesc.app_elf_sha256); ++i) {
+      snprintf(elfSha + i * 2, 3, "%02x", runningDesc.app_elf_sha256[i]);
+    }
+    LOG_INF("BOOT", "Firmware %s partition=%s address=0x%06x elf_sha256=%s", CROSSPOINT_VERSION,
+            runningApp->label, static_cast<unsigned>(runningApp->address), elfSha);
+  }
+#endif
 
   // Resolve the boot presentation. A splashless wake cleans the retained sleep
   // image on its first useful paint; subsequent paints use the normal cadence.
@@ -725,12 +740,14 @@ void loop() {
   static uint32_t bleReaderGeneration = 0;
   auto& bleHid = freeink::BleKeyboardHost::getInstance();
   static uint32_t lastBleCleanupMs = 0;
+  static uint32_t bleIdleSinceMs = 0;
   if (bleHid.isStopping() && millis() - lastBleCleanupMs >= 250) {
     lastBleCleanupMs = millis();
     bleHid.end(0);  // Poll cancellation without blocking the input loop.
   }
   const bool dangChiemStorage = activityManager.requiresExclusiveStorageLoop() || filetransfer::isActive();
   if (dangChiemStorage) {
+    bleIdleSinceMs = 0;
     bleHid.end(0);
     coLuotCho = false;
   }
@@ -771,11 +788,12 @@ void loop() {
     }
     bleReaderGeneration = generation;
     if (dangChiemStorage || !SETTINGS.blePageTurnerEnabled) {
+      bleIdleSinceMs = 0;
       if (bleHid.isRunning() || bleHid.isStopping()) bleHid.end(0);
       coLuotCho = false;
     } else {
       if (foregroundReader && activityManager.isForegroundReaderReady() && !bleReaderBeginAttempted &&
-          !bleHid.isStopping()) {
+          !freeink::ble::idleStopped() && !bleHid.isStopping()) {
         bleReaderBeginAttempted = true;
         if (!bleHid.isRunning()) {
           const bool started = freeink::ble::beginAsync(renderer);
@@ -787,6 +805,20 @@ void loop() {
           }
         }
       }
+      // Lau khong ai noi thi ha radio xuong. Khong co moc nay thi bat mot lan la
+      // radio chay mai, ma vong tiet kiem dien ben duoi co chu y giu CPU o toc do
+      // day chung nao radio con song, nen may nam im van an pin. Luat o BleIdleOff.h.
+      if (bleHid.isRunning()) {
+        if (bleHid.isConnected() || bleIdleSinceMs == 0) bleIdleSinceMs = millis();
+        if (bleidle::shouldStop(true, bleHid.isConnected(), millis() - bleIdleSinceMs)) {
+          LOG_INF("BLE", "Radio idle for %u ms with nothing connected; stopping", bleidle::kIdleOffMs);
+          freeink::ble::stopForIdle();
+          bleIdleSinceMs = 0;
+        }
+      } else {
+        bleIdleSinceMs = 0;
+      }
+
       if (foregroundReader && bleHid.isRunning()) {
         freeink::ble::setReaderStartDeferred(false);
         bleHid.poll();
@@ -924,6 +956,8 @@ void loop() {
         logSerial.printf("BLE_TEST:begin=%d,heap=%u,largest=%u\n", ok, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
       } else if (cmd == "BLE_TEST_END") {
         SETTINGS.blePageTurnerEnabled = 0;
+        freeink::ble::setIdleStopped(false);
+        freeink::ble::setReaderStartDeferred(false);
         const bool ended = freeink::BleKeyboardHost::getInstance().end();
         logSerial.printf("BLE_TEST:end=%d,heap=%u,largest=%u\n", ended, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
       } else if (cmd == "BLE_TEST_SCAN") {
@@ -1124,14 +1158,24 @@ void loop() {
     }
   }
 
-  // Check for any user activity (button press or release) or active background work
+  // Hai dong ho, khong phai mot. `lastActivityTime` chi do NGUOI dung cham vao may,
+  // va no lai la thu quyet dinh co ha xung CPU hay khong (xem nhanh
+  // IDLE_POWER_SAVING_MS ben duoi). Truoc day mot man dang ban cung day dong ho nay
+  // moi vong lap, nen viec giu may THUC vo tinh tat luon ca viec HA XUNG: may cam
+  // cui chay het toc do trong khi chang ai dung.
+  // `lastSleepResetTime` do rieng cho quyet dinh tu ngu, va man dang ban van day duoc.
   static unsigned long lastActivityTime = millis();
-  if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() || halTiltSensor.hadActivity() ||
-      activityManager.preventAutoSleep()) {
+  static unsigned long lastSleepResetTime = millis();
+  const bool nguoiDungChamVao = gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() ||
+                                halTiltSensor.hadActivity();
+  if (nguoiDungChamVao) {
     if (gpio.wasAnyPressed()) LOG_INF("IN", "press t=%lu", static_cast<unsigned long>(millis()));
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }
+  // Man dang ban giu may thuc, va khi no xong thi dong ho ngu dem lai tu luc do chu
+  // khong ngu ngay lap tuc.
+  if (nguoiDungChamVao || activityManager.preventAutoSleep()) lastSleepResetTime = millis();
 
   // Let wake continue as soon as its hold has been verified. The release can
   // arrive after setup, so consume that one input frame rather than making it
@@ -1194,7 +1238,7 @@ void loop() {
 #endif
 
   const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
-  if (sleepTimeoutMs > 0 && millis() - lastActivityTime >= sleepTimeoutMs) {
+  if (sleepTimeoutMs > 0 && millis() - lastSleepResetTime >= sleepTimeoutMs) {
     LOG_DBG("SLP", "Auto-sleep triggered after %lu ms of inactivity", sleepTimeoutMs);
     enterDeepSleep(true);
     // This should never be hit as `enterDeepSleep` calls esp_deep_sleep_start

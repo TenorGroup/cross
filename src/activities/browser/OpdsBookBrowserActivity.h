@@ -78,5 +78,11 @@ class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
   void downloadBook(const OpdsEntry& book);
   void launchSearch();
   void performSearch(const std::string& query);
-  bool preventAutoSleep() override { return true; }
+  // Chi chan tu ngu khi that su dang ban. Truoc day day la `return true` vo dieu
+  // kien, nen mo man duyet ra la may khong bao gio tu ngu nua; BROWSING, ERROR va
+  // SEARCH_INPUT deu la luc may ngoi cho nguoi.
+  bool preventAutoSleep() override {
+    return state == BrowserState::CHECK_WIFI || state == BrowserState::LOADING ||
+           state == BrowserState::DOWNLOADING;
+  }
 };

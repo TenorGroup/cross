@@ -733,6 +733,7 @@ STR_BLE_FORGET: "Forget device"
 STR_BLE_UNAVAILABLE: "Bluetooth unavailable in this build"
 
 STR_BLE_STOPPING: "Bluetooth is stopping"
+STR_BLE_IDLE_STOPPED: "Off to save power"
 STR_BLE_START_FAILED: "Bluetooth could not start"
 STR_BLE_BIND_NEXT: "Bind next-page button"
 STR_BLE_BIND_PREV: "Bind previous-page button"

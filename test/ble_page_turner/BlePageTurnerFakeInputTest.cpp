@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "BleKeyboardHost.h"
+#include "BleIdleOff.h"
 #include "CrossPointSettings.h"
 #include "activities/settings/BleKeyBinding.h"
 #include "FakeBle.h"
@@ -491,3 +492,24 @@ TEST_F(PageTurnerFakeInputTest, BindingLoopLearnsTheFirstUsageTheRemoteSends) {
 }
 
 }  // namespace
+
+// Radio khong co moc tu tat la may nam im van an pin: vong tiet kiem dien giu CPU
+// o toc do day chung nao radio con chay. Luat duoi day la thu dung radio xuong.
+TEST(BleIdleOffTest, RadioStopsOnlyAfterTheLimitAndOnlyWhenNobodyIsConnected) {
+  constexpr uint32_t limit = bleidle::kIdleOffMs;
+
+  // Chua toi han thi giu nguyen, du khong ai noi.
+  EXPECT_FALSE(bleidle::shouldStop(/*running=*/true, /*connected=*/false, limit - 1));
+  // Dung han va qua han thi ha xuong.
+  EXPECT_TRUE(bleidle::shouldStop(true, false, limit));
+  EXPECT_TRUE(bleidle::shouldStop(true, false, limit * 3));
+
+  // Dang noi thi khong bao gio tat: dieu khien lat trang im rat lau giua hai lan bam.
+  EXPECT_FALSE(bleidle::shouldStop(true, /*connected=*/true, limit * 100));
+
+  // Radio khong chay thi khong co gi de ha.
+  EXPECT_FALSE(bleidle::shouldStop(/*running=*/false, false, limit * 100));
+
+  // Han la nam phut, doi so nay la doi hanh vi nguoi dung thay duoc.
+  EXPECT_EQ(limit, 5u * 60u * 1000u);
+}

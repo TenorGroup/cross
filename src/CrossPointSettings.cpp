@@ -73,7 +73,12 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["paragraphIndentVersion"] = 1;
   const CrossPointSettings& s = *this;
 
-  for (const auto& info : getSettingsList()) {
+  // Duyet THANG bang tinh, khong chep ra vector rieng: duong nay chay moi lan
+  // nguoi dung bat mot tuy chon hay xep lai mot dong ghim, va cu chep cu doi mot
+  // khoi lien ~16 KB. Loc theo phan cung bang cung mot vi ngu ma getSettingsList
+  // dung, nen nhung dong duoc ghi xuong khong doi.
+  for (const auto& info : getBaseSettingsList()) {
+    if (settingHiddenOnThisBoard(info)) continue;
     if (!info.key) continue;
     // Dynamic entries (KOReader etc.) are stored in their own files - skip.
     if (!info.valuePtr && !info.stringOffset) continue;
@@ -141,7 +146,12 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
 
   auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
 
-  for (const auto& info : getSettingsList()) {
+  // Duyet THANG bang tinh, khong chep ra vector rieng: duong nay chay moi lan
+  // nguoi dung bat mot tuy chon hay xep lai mot dong ghim, va cu chep cu doi mot
+  // khoi lien ~16 KB. Loc theo phan cung bang cung mot vi ngu ma getSettingsList
+  // dung, nen nhung dong duoc ghi xuong khong doi.
+  for (const auto& info : getBaseSettingsList()) {
+    if (settingHiddenOnThisBoard(info)) continue;
     if (!info.key) continue;
     // Dynamic entries (KOReader etc.) are stored in their own files - skip.
     if (!info.valuePtr && !info.stringOffset) continue;

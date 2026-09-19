@@ -704,6 +704,7 @@ STR_BLE_FORGET: "忘记设备"
 STR_BLE_UNAVAILABLE: "此固件未包含 Bluetooth"
 
 STR_BLE_STOPPING: "蓝牙正在关闭"
+STR_BLE_IDLE_STOPPED: "已自动关闭以节电"
 STR_BLE_START_FAILED: "无法启动蓝牙"
 STR_BLE_BIND_NEXT: "设置下一页按键"
 STR_BLE_BIND_PREV: "设置上一页按键"

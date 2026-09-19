@@ -35,7 +35,7 @@ class ReworkFontBoundariesTest(unittest.TestCase):
         (self.sd / 'books').mkdir()
         shutil.copyfile(REPO / 'test/epubs/test_kerning_ligature.epub', self.sd / 'books/sach.epub')
         (self.store / 'recent.json').write_text(json.dumps({'books': [{'path': '/books/sach.epub', 'title': 'Audit'}]}))
-        self.settings = dict(language='VI', fontSize=14, sdFontFamilyName='', sleepTimeout=10)
+        self.settings = dict(language='VI', fontFamily=0, fontSize=14, sdFontFamilyName='', sleepTimeout=10)
 
     def fonts(self, total):
         for i in range(total - 2):
@@ -72,10 +72,10 @@ class ReworkFontBoundariesTest(unittest.TestCase):
 
     def check_font_boundary(self, total):
         self.fonts(total)
-        # Sau READING man dang o the PHONG, con tro o dong 1 (ho dang dung). DOWN hai nhip
-        # di Bo cuc -> Kieu -> Phong; LEFT hai nhip di vong qua dai the (1 -> 0 -> dong cuoi)
-        # toi ho CUOI CUNG trong danh sach; CONFIRM ap dung ho do.
-        saved, log = self.run_sim(self.READING + ';5000:DOWN;5800:DOWN;6600:LEFT;7400:LEFT;'
+        # READING opens Layout. Two edge-button presses select Family, whose
+        # explicit fontFamily=0 fixture starts on the first built-in family.
+        # One LEFT wraps rows 1..N directly to the final installed family.
+        saved, log = self.run_sim(self.READING + ';5000:DOWN;5800:DOWN;6600:LEFT;'
                                                   '8200:CONFIRM;10000:BACK;12000:QUIT')
         self.assertIn(f'SD font system ready ({total - 2} families discovered)', log)
         self.assertEqual(log.count('Entering activity: TextSettings'), 1, log)
