@@ -715,11 +715,18 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     const auto installResult = webdav::installVerifiedFile(
         Storage, destPath,
         [&](const char* staging) {
+          int lastRenderedPercent = -1;
+          size_t lastRenderedBytes = static_cast<size_t>(-1);
+          unsigned long lastProgressUpdateMs = 0;
           downloadResult = HttpDownloader::downloadToFile(
               downloadUrl_, staging,
-              [this](size_t downloaded, size_t total) {
-                fileProgress_ = downloaded;
-                fileTotal_ = total;
+              [this, &lastRenderedPercent, &lastRenderedBytes, &lastProgressUpdateMs](size_t downloaded,
+                                                                                 size_t total) {
+                {
+                  RenderLock lock(*this);
+                  fileProgress_ = downloaded;
+                  fileTotal_ = total;
+                }
                 mappedInput.update();
                 if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
                     mappedInput.wasPressed(MappedInputManager::Button::Back)) {
@@ -733,7 +740,16 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
                   cancelRequested_ = true;
                   goHomeRequested_ = true;
                 }
-                requestUpdate(true);
+                const int percent = total > 0 ? static_cast<int>(static_cast<uint64_t>(downloaded) * 100 / total) : 0;
+                const unsigned long now = millis();
+                if ((downloaded != lastRenderedBytes || percent != lastRenderedPercent) &&
+                    (lastRenderedPercent < 0 || percent >= 100 || percent >= lastRenderedPercent + 5 ||
+                     now - lastProgressUpdateMs >= 500)) {
+                  lastRenderedPercent = percent;
+                  lastRenderedBytes = downloaded;
+                  lastProgressUpdateMs = now;
+                  requestUpdate(true);
+                }
               },
               &cancelRequested_, "", "");
           return downloadResult == HttpDownloader::OK;
@@ -1093,10 +1109,14 @@ void FontDownloadActivity::render(RenderLock&&) {
     }
 
     int barY = centerY + metrics.verticalSpacing;
-    GUI.drawProgressBar(
-        renderer,
-        Rect{metrics.contentSidePadding, barY, pageWidth - metrics.contentSidePadding * 2, metrics.progressBarHeight},
-        static_cast<int>(progress * 100), 100);
+    if (fileTotal_ > 0) {
+      GUI.drawProgressBar(
+          renderer,
+          Rect{metrics.contentSidePadding, barY, pageWidth - metrics.contentSidePadding * 2, metrics.progressBarHeight},
+          static_cast<int>(progress * 100), 100);
+    } else {
+      renderer.drawCenteredText(UI_10_FONT_ID, barY, formatSize(fileProgress_).c_str());
+    }
 
     const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

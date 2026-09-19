@@ -28,10 +28,7 @@ class KeyboardEntryActivity : public Activity {
         inputType(inputType) {}
 
   void onEnter() override;
-  bool saveInputBeforeHome() override {
-    onComplete(text);
-    return true;
-  }
+  bool saveInputBeforeHome() override;
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
@@ -95,9 +92,9 @@ class KeyboardEntryActivity : public Activity {
   // TouchHoldRouter's routePublished()-based reads in loop() always see a
   // complete, previously-published table, never one mid-rebuild - no taps
   // dropped for that reason anymore. interactionsReady itself gates only
-  // before the very first publish (nothing registered yet). Do not clear it
-  // for later renders: the point of retaining the published generation is
-  // that loop() can keep routing a release while the next frame is built.
+  // before the very first publish (nothing registered yet). Keep it set for
+  // later renders so the next locked input pass can route a release against
+  // the latest complete table.
   // atomic (not volatile) so the flag also orders the first table publication
   // on dual-core targets.
   std::atomic<bool> interactionsReady{false};
@@ -108,6 +105,18 @@ class KeyboardEntryActivity : public Activity {
 
   void onComplete(std::string text);
   void onCancel();
+  struct ButtonInput {
+    bool pressed, released, held;
+  };
+  struct InputFrame {
+    ButtonInput rowPrev, rowNext, colPrev, colNext, confirm, back;
+    unsigned long heldMs, capturedAt;
+    bool tapped, touchDown, touchHeld;
+    int tapX = 0, tapY = 0, touchX = 0, touchY = 0;
+  };
+  // Called under the same nonrecursive lock that ActivityManager gives render().
+  // Helpers mutate state under this caller-owned lock; completion runs after it.
+  void loopLocked(const InputFrame& input, bool& complete);
   bool cursorPositionFromPoint(int x, int y, size_t& position) const;
   std::string displayTextForCurrentState() const;
   // Advance of s[start, end) measured in place by temporarily null-terminating
@@ -142,8 +151,8 @@ class KeyboardEntryActivity : public Activity {
   void moveSelectionCol(int delta);
   bool syncSelectionToValue(int16_t value);
   // Handles one key activation (by stable key id). Returns true when the
-  // screen needs a repaint; OK/cancel finish the activity instead.
-  bool activateValue(int16_t value, bool longPress);
+  // screen needs a repaint; OK requests completion after loop releases the lock.
+  bool activateValue(int16_t value, bool longPress, bool& complete);
   bool clearAllOrAltOnSelected();
 
   void insertUtf8(const char* out);

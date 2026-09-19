@@ -93,6 +93,7 @@ bool ReadingStatsStore::saveToFile() const {
 }
 bool ReadingStatsStore::loadFromFile() {
   std::lock_guard<std::mutex> lock(storeMutex);
+  ++bookListGeneration;
   JsonDocument doc;
   const bool pending = Storage.exists(RESET_FILE);
   const bool exists =
@@ -186,7 +187,10 @@ bool ReadingStatsStore::readBook(const std::string& path, BookReadingRecord& rec
 bool ReadingStatsStore::activateBook(const std::string& path, const uint8_t progress, const std::string& title) {
   if (!writableSchema || !statisticsReadable) return false;
   if (path == activeBookPath) {
-    if (!title.empty()) activeBookTitle = title;
+    if (!title.empty() && title != activeBookTitle) {
+      activeBookTitle = title;
+      ++bookListGeneration;
+    }
     return true;
   }
   // The active book and global days share one checkpoint. Archive the last
@@ -203,6 +207,7 @@ bool ReadingStatsStore::activateBook(const std::string& path, const uint8_t prog
   activeBookPath = path;
   activeBookTitle = title;
   activeBook = next;
+  ++bookListGeneration;
   return true;
 }
 
@@ -218,6 +223,7 @@ void ReadingStatsStore::record(const uint32_t day, const uint32_t ms, const uint
   if ((ms || turns) && day && day > activeBook.lastDay) {
     if (!activeBook.firstDay) activeBook.firstDay = day;
     activeBook.lastDay = day;
+    ++bookListGeneration;
     if (activeBook.days < UINT32_MAX) ++activeBook.days;
   }
 }
@@ -285,6 +291,7 @@ void ReadingStatsStore::toJson(JsonDocument& doc) const {
 }
 
 bool ReadingStatsStore::fromJson(const JsonVariantConst doc) {
+  ++bookListGeneration;
   writableSchema = !doc["schema"].is<uint32_t>() || doc["schema"].as<uint32_t>() <= 4;
   if (!writableSchema) {
     LOG_ERR("STATS", "Newer statistics schema retained without changes");

@@ -8,6 +8,7 @@ class UiListActivity;
 class GfxRenderer;
 class MappedInputManager;
 struct SettingInfo;
+class SdCardFontRegistry;
 namespace menufavorites {
 struct Descriptor {
   const char* key;
@@ -18,7 +19,9 @@ struct Descriptor {
 };
 const Descriptor* find(const std::string& key);
 const char* keyFor(const char* screen, int tab, int row);
+StrId label(const std::string& key);
 StrId label(const std::string& key, const std::vector<SettingInfo>& settings);
+std::string value(const std::string& key, const SdCardFontRegistry* registry = nullptr);
 std::string value(const std::string& key, const std::vector<SettingInfo>& settings);
 std::unique_ptr<UiListActivity> open(const std::string& key, GfxRenderer& renderer, MappedInputManager& input);
 }  // namespace menufavorites

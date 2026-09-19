@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-PROGRAM = REPO / ".pio/build/simulator_x3_uc8279/program"
+PROGRAM = Path(os.environ.get("CROSSPOINT_SIM_PROGRAM", REPO / ".pio/build/simulator_x3_uc8279/program"))
 
 # Home: thẻ Cài đặt (CAI_DAT) cách thẻ Gần đây ba nhịp RIGHT, dòng đầu của nó là
 # "Gửi file"; con trỏ mở màn ở dòng 1 nên cần một nhịp UP.
@@ -114,6 +114,24 @@ class FileTransferNoPasswordTest(unittest.TestCase):
         self.assertIn("Attempting saved network: Nha Cua Toi", log, log[-4000:])
         self.assertIn("Network mode: AP", log, f"khong lui ve diem phat\n{log[-4000:]}")
         self.khong_hoi_gi(log)
+
+    def test_4_mot_lan_back_thoat_diem_phat(self):
+        self.kiem_mot_lan_back(5937, "AP")
+
+    def test_5_mot_lan_back_thoat_mang_da_luu(self):
+        self.dat_mang_luu("Nha Cua Toi")
+        self.kiem_mot_lan_back(6241, "STA")
+
+    def kiem_mot_lan_back(self, luc_bam, che_do):
+        # One 80 ms press, with no second Back to conceal a dropped release.
+        script = DI_DEN_GUI_FILE.replace("9000:QUIT", f"{luc_bam}:BACK:80;9000:QUIT")
+        log = self.chay(script)
+        self.assertIn(f"Network mode: {che_do}", log, log[-4000:])
+        exits = re.findall(r"\[(\d+)\].*Exiting activity: CrossPointWebServer", log)
+        self.assertEqual(len(exits), 1, f"mot lan Back phai thoat Gui file\n{log[-4000:]}")
+        delay = int(exits[0]) - (luc_bam + 80)
+        self.assertGreaterEqual(delay, 0, "Gui file thoat truoc khi nha nut Back")
+        self.assertLess(delay, 750, f"Back bi cham {delay} ms\n{log[-4000:]}")
 
 
 if __name__ == "__main__":

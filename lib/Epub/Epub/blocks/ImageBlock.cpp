@@ -2,6 +2,7 @@
 
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
+#include <HalMemory.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <Serialization.h>
@@ -422,20 +423,23 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
 }
 
 bool ImageBlock::serialize(HalFile& file) {
-  serialization::writeString(file, imagePath);
-  serialization::writeString(file, srcPath);
-  serialization::writePod(file, width);
-  serialization::writePod(file, height);
-  return true;
+  return serialization::writeString(file, imagePath) && serialization::writeString(file, srcPath) &&
+         serialization::writePod(file, width) && serialization::writePod(file, height);
 }
 
 std::unique_ptr<ImageBlock> ImageBlock::deserialize(HalFile& file) {
-  std::string path;
-  std::string src;
-  serialization::readString(file, path);
-  serialization::readString(file, src);
-  int16_t w, h;
-  serialization::readPod(file, w);
-  serialization::readPod(file, h);
-  return std::unique_ptr<ImageBlock>(new (std::nothrow) ImageBlock(path, src, w, h));
+  serialization::CheckedReader reader(file);
+  auto block = std::unique_ptr<ImageBlock>(new (std::nothrow) ImageBlock({}, {}, 0, 0));
+  if (!block) return nullptr;
+  // Paths share the metadata cache's 4096-byte record budget. Read into the
+  // owned strings directly, so constructing the block never duplicates them.
+  auto canAllocatePath = [](size_t bytes) {
+    const size_t largest = HalMemory::getDefaultHeap().largestBlockBytes;
+    return largest > 2 && bytes <= (largest - 2) / 2;
+  };
+  if (!reader.string(block->imagePath, 4096, canAllocatePath) ||
+      !reader.string(block->srcPath, 4096, canAllocatePath) ||
+      !reader.pod(block->width) || !reader.pod(block->height) || block->imagePath.empty() ||
+      block->width <= 0 || block->height <= 0) return nullptr;
+  return block;
 }

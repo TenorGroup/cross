@@ -225,3 +225,51 @@ TEST(SecureClientLifecycle, WarningProtocolAlertCannotAuthorizeFallback) {
   EXPECT_EQ(wire::connectAttempts, 1);
   EXPECT_EQ(wire::replies.size(), 1u);
 }
+
+namespace {
+template <class T, class Callback>
+void installAbortCallback(T& client, Callback callback) {
+  // Keep the regression runnable against the pre-fix class too.
+  if constexpr (requires { client.setAbortCallback(callback); }) client.setAbortCallback(callback);
+}
+}
+
+TEST(SecureClientCancellation, StopsBeforeTcpWhenAlreadyCancelled) {
+  resetFixture();
+  wire::replies.push_back("fixture");
+  freeink::SecureClient client;
+  client.setCACert("fixture");
+  installAbortCallback(client, [] { return true; });
+  EXPECT_EQ(client.connect("example.test", 443), 0);
+  EXPECT_EQ(wire::connectAttempts, 0);
+}
+
+TEST(SecureClientCancellation, PollsWhileTlsPeerStallsAndReclaimsSession) {
+  resetFixture();
+  wire::replies.push_back("fixture");
+  for (int i = 0; i < 100; ++i) scriptFailure(WOLFSSL_ERROR_WANT_READ);
+  const int before = tls_fixture::outstandingMethods;
+  int pumps = 0;
+  {
+    freeink::SecureClient client;
+    client.setCACert("fixture");
+    installAbortCallback(client, [&] { return ++pumps >= 4; });
+    EXPECT_EQ(client.connect("example.test", 443), 0);
+    EXPECT_GE(pumps, 4);
+    EXPECT_LE(tls_fixture::connectCalls, 3);
+    EXPECT_EQ(tls_fixture::tls12MethodCalls, 0);
+  }
+  EXPECT_EQ(tls_fixture::outstandingMethods, before);
+}
+
+TEST(SecureClientCancellation, CancellationPreventsTlsFallback) {
+  resetFixture();
+  wire::replies = {"first", "second"};
+  scriptFailure(VERSION_ERROR);
+  freeink::SecureClient client;
+  client.setCACert("fixture");
+  installAbortCallback(client, [] { return tls_fixture::connectCalls > 0; });
+  EXPECT_EQ(client.connect("example.test", 443), 0);
+  EXPECT_EQ(wire::connectAttempts, 1);
+  EXPECT_EQ(tls_fixture::tls12MethodCalls, 0);
+}

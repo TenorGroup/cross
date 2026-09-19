@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <climits>
+#include <algorithm>
 #include <cstdio>
 #include <string>
 
@@ -17,10 +19,20 @@ class HalFile {
     return file_ != nullptr;
   }
   int available() const { return file_ ? static_cast<int>(size() - position()) : 0; }
-  size_t read(void* buffer, size_t count) { return file_ ? std::fread(buffer, 1, count, file_) : 0; }
+  inline static int readResultOverride = INT_MIN;
+  inline static size_t maxReadBytes = SIZE_MAX;
+  int read(void* buffer, size_t count) {
+    if (readResultOverride != INT_MIN) {
+      const int result = readResultOverride;
+      readResultOverride = INT_MIN;
+      return result;
+    }
+    return file_ ? static_cast<int>(std::fread(buffer, 1, std::min(count, maxReadBytes), file_)) : 0;
+  }
   size_t write(const void* buffer, size_t count) { return file_ ? std::fwrite(buffer, 1, count, file_) : 0; }
   size_t write(uint8_t byte) { return write(&byte, 1); }
   bool flush() { return file_ && std::fflush(file_) == 0; }
+  bool seek(size_t offset) { return file_ && std::fseek(file_, static_cast<long>(offset), SEEK_SET) == 0; }
   bool seekCur(size_t offset) { return file_ && std::fseek(file_, static_cast<long>(offset), SEEK_CUR) == 0; }
   bool close() {
     if (!file_) return false;

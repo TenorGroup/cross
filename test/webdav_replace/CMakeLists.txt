@@ -1,3 +1,4 @@
 add_executable(WebDavReplaceTest WebDavReplaceTest.cpp)
+target_include_directories(WebDavReplaceTest PRIVATE ${REPO_ROOT}/freeink-sdk/libs/hardware/SDCardManager/include)
 target_link_libraries(WebDavReplaceTest PRIVATE crosspoint_test_common GTest::gtest_main)
 gtest_discover_tests(WebDavReplaceTest)

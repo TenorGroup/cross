@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 class GfxRenderer;
 
 namespace freeink::ble {
@@ -25,7 +27,14 @@ void setIdleStopped(bool stopped);
 
 // Poll teardown without blocking input. A false result defers the activity
 // transition until the worker has released its memory and callbacks.
-bool suspendForTransition();
+bool suspendForTransition(uint32_t timeoutMs = 0);
+
+// Includes queued/in-flight initialization and pending teardown.
+bool busy();
+bool initializing();
+#ifdef TENOR_UI_ACCEPTANCE
+uint32_t startStackHighWaterMark();
+#endif
 
 // True when the reader's own attempt to start the radio was turned down for
 // memory (CROSSPOINT_BLE_HID_HOST builds call setReaderStartDeferred when the

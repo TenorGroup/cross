@@ -1,0 +1,29 @@
+# BLE lifecycle integration regressions
+
+The runtime harness compiles the complete production `BlePageTurnerRuntime.cpp`,
+its header and `FileTransferState.h` with the ESP/FreeRTOS path enabled. A queued
+scheduler and SDK callbacks reproduce cancellation before worker execution and
+suspension during initialization. The main power branch is extracted unchanged
+from `src/main.cpp` and executes in the same harness. Eleven scenarios cover
+ownership, power locks, teardown, failed initialization and idle-stop status.
+
+The sleep harness executes the complete production `goToSleep` and
+`enterDeepSleep` bodies. Eight scenarios cover deferred completion, deadline
+cancellation, abort before hardware shutdown, successful shutdown ordering,
+retry ownership after accepted input and inactivity arithmetic through long uptime
+and timer wrap, plus explicit sleep after failure. Shared sleep-transition publication requires RenderLock in the
+fixture. The accepted-input clocks and autosleep gate execute their unchanged
+production source.
+Its activity loop, BLE availability and hardware boundaries are controlled fakes.
+
+Run from the repository root:
+
+```sh
+python3 test/ble_integration/lifecycle/run_runtime.py --source . --output /tmp/ble-runtime-test
+python3 test/ble_integration/lifecycle/sleep/run.py --source . --output /tmp/ble-sleep-test
+```
+
+Both scripts accept `--compiler /path/to/c++`. CTest uses the configured compiler
+and keeps generated source, binaries, logs and SHA-256 manifests in the binary
+tree. These host regressions complement full simulator and physical-device
+acceptance; they do not execute NimBLE or a physical power controller.

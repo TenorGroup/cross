@@ -205,6 +205,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // to be noticed here rather than assumed away.
   uint8_t appliedOrientation = 0;
 
+  bool externalPageTurnAllowed() const override;
+  bool manualPageTurnReady() const override;
   bool loadBook() override;
   bool readingPageVisible() const override;
   std::string getBookTitle() const override { return epub ? epub->getTitle() : ""; }

@@ -1,28 +1,10 @@
 #pragma once
 #include <string>
+#include <RecoverableFile.h>
 
 namespace webdav {
-// Keep an existing destination recoverable if the final rename fails.
-// A leftover backup blocks replacement until recovered from the SD card.
-// backupCleanupPending is cleared on entry and set true only when the replacement
-// committed but the destination backup could not be deleted, so the caller can warn
-// that the retained backup keeps blocking the next replacement.
-template <typename Store>
-bool replaceFile(Store& storage, const char* source, const char* destination, bool* backupCleanupPending = nullptr) {
-  if (backupCleanupPending) *backupCleanupPending = false;
-  const std::string backup = std::string(destination) + ".davbak";
-  if (storage.exists(backup.c_str())) return false;
-  const bool existed = storage.exists(destination);
-  if (existed && !storage.rename(destination, backup.c_str())) return false;
-  if (!storage.rename(source, destination)) {
-    if (existed) storage.rename(backup.c_str(), destination);
-    return false;
-  }
-  if (existed && !storage.remove(backup.c_str()) && backupCleanupPending != nullptr) {
-    *backupCleanupPending = true;
-  }
-  return true;
-}
+using freeink::recoverFile;
+using freeink::replaceFile;
 enum class InstallResult { OK, DOWNLOAD_FAILED, VALIDATION_FAILED, REPLACE_FAILED };
 
 // Commit only a completely downloaded, validated file; leave the old file usable on failure.

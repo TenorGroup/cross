@@ -25,21 +25,20 @@ class FileBrowserActivity final : public UiListActivity {
   std::vector<std::string> files;
   std::unique_ptr<char[]> fileNameBuffer;
 
-  // Per-row render buffers, derived from `files` and rebuilt only when it
-  // changes (loadFiles()) rather than on every repaint - buildScreen() used to
-  // rebuild a name/extension string and a ListItem per file on every render
-  // (cursor move, tap flash, ...), which meant a 500-file directory allocated
-  // 500 strings per repaint instead of once per directory load.
+  // Raw names retain the directory sort order. Derived labels and ListItems
+  // cover only the viewport plus its partial trailing row; unchanged repaints
+  // reuse them. Their storage stays alive until the next locked screen build.
   std::vector<std::string> rowNames;
   std::vector<std::string> rowExtensions;
   std::vector<freeink::ui::ListItem> rowItems;
+  int rowWindowFirst = -1;
   // getFileName()'s "[folder]" bracket formatting depends on the active
   // theme's showsFileIcons(); tracked so a theme change while this activity is
   // paused underneath (e.g. a Settings screen reached via a picker flow)
   // invalidates the cached rows on return instead of rendering stale ones.
   bool rowsUseFileIcons = false;
 
-  void rebuildRowItems();
+  void rebuildRowItems(int first, int count);
 
   int listCount() const override { return static_cast<int>(files.size()); }
   void buildScreen(UiScreen& screen) override;

@@ -257,7 +257,6 @@ void HomeActivity::rebuildRows() {
   }
 
   if (activeTabId == Tab::FAVORITES && menucustom::state().pinCount > 0) {
-    const auto catalog = getSettingsList(&sdFontSystem.registry());
     for (int i = 0; i < menucustom::state().pinCount; ++i) {
       const std::string key = menucustom::state().pins[i].data();
       if (filefavorites::isFileKey(key)) {
@@ -268,10 +267,10 @@ void HomeActivity::rebuildRows() {
                                          : utf8ComposeNfc(path.substr(path.find_last_of('/') + 1)));
         continue;
       }
-      const auto name = menufavorites::label(key, catalog);
+      const auto name = menufavorites::label(key);
       if (name == StrId::STR_NONE_OPT) continue;
       favoriteKeys.push_back(key);
-      favoriteValues.push_back(menufavorites::value(key, catalog));
+      favoriteValues.push_back(menufavorites::value(key, &sdFontSystem.registry()));
       rowLabels.emplace_back(I18N.get(name));
     }
   }

@@ -41,7 +41,13 @@ class ChapterHtmlSlimParser {
   bool nextWordContinues = false;  // true when next flushed word attaches to previous (inline element boundary)
   std::unique_ptr<ParsedText> currentTextBlock = nullptr;
   // Ruby text state
+  static constexpr size_t MAX_RUBY_BASE_TOKENS = 256;
+  static constexpr size_t MAX_RUBY_BASE_BYTES = 8192;
+  static constexpr size_t MAX_BUFFERED_RUBY_BYTES = 2 * TextBlock::MAX_RUBY_ANNOTATION_BYTES;
   bool inRuby = false;
+  size_t rubyBaseBytes = 0;
+  size_t rubyAnnotationBytes = 0;
+  size_t rubyGroupStartWordIndex = 0;
   int rubyStartWordIndex = -1;
   bool collectingRubyText = false;
   std::string rubyTextBuffer;
@@ -146,6 +152,7 @@ class ChapterHtmlSlimParser {
   // until the whole thing is laid out. parseFile_ and the expat parser stay alive
   // for the lifetime of the parse so it can be paused and resumed at buffer
   // boundaries.
+  bool buildFailed_ = false;
   XML_Parser xmlParser_ = nullptr;
   HalFile parseFile_;
   uint32_t parseStartTime_ = 0;
@@ -160,6 +167,9 @@ class ChapterHtmlSlimParser {
   void addTableRowSeparator();
   void setCurrentPageVisibleOffset(uint32_t offset);
   void makePages();
+  void flushTextIfOverBudget();
+  bool createPage();
+  bool emitCurrentPage();
   static EpdFontFamily::Style fontStyleForTextDecoration(CssTextDecoration decoration);
   static void applyDirectionToEntry(StyleStackEntry& entry, const CssStyle& css);
   static void applyTextDecorationToEntry(StyleStackEntry& entry, const CssStyle& css);
@@ -221,8 +231,11 @@ class ChapterHtmlSlimParser {
   enum class ParseStatus { More, Done, Error };
   bool beginParse();
   ParseStatus parseStep();
-  bool finishParse();  // flush the trailing page and tear down; returns true
+  bool finishParse();  // flush the trailing page and tear down; fails if any build stage failed
   void abortParse();   // tear down without flushing (error / abandon)
+
+  void failBuild();
+  bool hasFailed() const { return buildFailed_; }
 
   void addLineToPage(std::unique_ptr<TextBlock> line, uint32_t visibleOffset);
   const std::vector<std::pair<std::string, uint16_t>>& getAnchors() const { return anchorData; }

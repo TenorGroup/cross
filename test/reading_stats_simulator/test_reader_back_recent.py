@@ -29,6 +29,7 @@ def check(mode):
  assert 'Entering activity: FileBrowser' not in section,section[-3000:]
  latest=json.loads((store/'recent.json').read_text())['books'][0]['path']
  assert latest==('/nested/book.epub' if mode=='folder' else '/target.txt'),latest
- print('PASS',mode,'Back -> Recent/Continue -> same book, old preference ignored',flush=True)
+ return mode
 with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
- for f in [pool.submit(check,mode) for mode in ['folder','favorites','recent']]:f.result()
+ for f in [pool.submit(check,mode) for mode in ['folder','favorites','recent']]:
+  print(f'PASS {f.result()} Back -> Recent/Continue -> same book, old preference ignored',flush=True)

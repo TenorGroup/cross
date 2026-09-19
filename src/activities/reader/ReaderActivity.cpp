@@ -94,6 +94,7 @@ void ReaderActivity::onEnter() {
 
 void ReaderActivity::onExit() {
   Activity::onExit();
+  pendingExternalTurn = 0;
 
   updateReadingTime(false);
   chotSoLieuDoc();
@@ -151,6 +152,7 @@ void ReaderActivity::onTick() {
 }
 
 void ReaderActivity::onPause() {
+  pendingExternalTurn = 0;
   updateReadingTime(false);
   chotSoLieuDoc();
 }
@@ -266,27 +268,95 @@ bool ReaderActivity::handlePreviewInput() {
     activityManager.goToReader(bookPath);
     return true;
   }
+  if (processExternalPageTurn()) return true;
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
   const auto turns = ReaderUtils::detectPageTurn(mappedInput);
   if (turns.prev || touch.prev) {
-    if (isAtEndOfBook())
-      onReturnFromEndOfBook();
-    else
-      pageTurn(false);
-    requestUpdate();
+    if (isAtEndOfBook()) {
+      RenderLock lock(RenderLock::TryTake{});
+      if (lock.acquired()) {
+        onReturnFromEndOfBook();
+        requestUpdate();
+      } else {
+        pendingExternalTurn = -1;
+        pendingExternalGeneration = activityManager.activityGeneration();
+        pendingTurnIsLocal = true;
+      }
+    } else if (pageTurn(false)) {
+      requestUpdate();
+    }
   } else if (turns.next || touch.next) {
-    if (!isAtEndOfBook()) pageTurn(true);
-    requestUpdate();
+    if (!isAtEndOfBook() && pageTurn(true)) requestUpdate();
   }
+  return true;
+}
+
+bool ReaderActivity::pageTurnLocked(const bool isForward) {
+  if (!latTrangThat(isForward)) return false;
+  ++trangDaLat;
+  return true;
+}
+
+bool ReaderActivity::pageTurn(const bool isForward) {
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired()) {
+    pendingExternalTurn = isForward ? 1 : -1;
+    pendingExternalGeneration = activityManager.activityGeneration();
+    pendingTurnIsLocal = true;
+    return false;
+  }
+  return pageTurnLocked(isForward);
+}
+
+bool ReaderActivity::luotLatTrangNgoai(const bool isForward) {
+  if (!externalPageTurnAllowed()) return false;
+  // The render task publishes this object once loaded. Menu state is changed
+  // by the main input task, so reject its reports before resetting timers.
+  if (endOfBookOptionsReady.load(std::memory_order_acquire) && endOfBookOptions->menuActive()) return false;
+  // One pending direction per reader generation. A repaint can take seconds;
+  // repeated reports during that paint coalesce into the latest direction.
+  pendingExternalTurn = isForward ? 1 : -1;
+  pendingExternalGeneration = activityManager.activityGeneration();
+  pendingTurnIsLocal = false;
+  return true;
+}
+
+bool ReaderActivity::processExternalPageTurn() {
+  if (pendingExternalTurn == 0) return false;
+  if (pendingExternalGeneration != activityManager.activityGeneration() ||
+      (!pendingTurnIsLocal && !externalPageTurnAllowed())) {
+    pendingExternalTurn = 0;
+    return false;
+  }
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired() || !manualPageTurnReady()) return true;
+  const bool forward = pendingExternalTurn > 0;
+  pendingExternalTurn = 0;
+  // Preview owns Back/Confirm and stays inside its current book.
+  if (preview && isAtEndOfBook()) {
+    if (!forward) {
+      onReturnFromEndOfBook();
+      requestUpdate();
+    }
+    return true;
+  }
+  // The same end-of-book gate owns physical and external page actions. An
+  // open suggestion menu consumes the report without turning a hidden page.
+  if (!preview && handleEndOfBookPageTurn(!forward, forward)) return true;
+  if (pageTurnLocked(forward)) requestUpdate();
   return true;
 }
 
 void ReaderActivity::loop() {
   if (handlePreviewInput()) return;
   clearEndOfBookOptionsIfNeeded();
-  if (handleEndOfBookMenu()) return;
+  if (handleEndOfBookMenu()) {
+    pendingExternalTurn = 0;
+    return;
+  }
   if (handleFormatInput()) return;
   if (handleBackNavigation()) return;
+  if (processExternalPageTurn()) return;
 
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
   const auto turns = ReaderUtils::detectPageTurn(mappedInput);
@@ -306,20 +376,8 @@ void ReaderActivity::loop() {
   }
   const bool skip = longPress && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP;
 
-  if (prevTriggered) {
-    if (skip) {
-      skipPages(-10);
-    } else {
-      pageTurn(false);
-    }
-  } else {
-    if (skip) {
-      skipPages(10);
-    } else {
-      pageTurn(true);
-    }
-  }
-  requestUpdate();
+  const bool changed = skip ? skipPages(prevTriggered ? -10 : 10) : pageTurn(!prevTriggered);
+  if (changed) requestUpdate();
 }
 
 void ReaderActivity::render(RenderLock&&) {

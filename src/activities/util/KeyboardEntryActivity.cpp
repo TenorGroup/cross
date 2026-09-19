@@ -116,6 +116,9 @@ const fui::KeyboardLayout URL_SNIPPET_LAYOUT{URL_SNIP_ROWS, 4};
 
 void KeyboardEntryActivity::onEnter() {
   Activity::onEnter();
+  // ActivityManager publishes the activity before calling onEnter unlocked.
+  // A pending render notification can already be reading its initial state.
+  RenderLock lock(*this);
   cursorPos = text.length();
   // URL layers are EN-arranged app tables; everything else opens on the UI
   // language's layout, or on an enabled one if the user switched that off.
@@ -269,7 +272,7 @@ bool KeyboardEntryActivity::backspaceUtf8() {
   return true;
 }
 
-bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPress) {
+bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPress, bool& complete) {
   switch (value) {
     case fui::QWERTY_KEY_SHIFT:
       delPressCount = 0;
@@ -313,7 +316,7 @@ bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPr
       clampSelection();
       return true;
     case fui::QWERTY_KEY_ENTER:
-      onComplete(text);
+      complete = true;
       return false;
     case fui::QWERTY_KEY_BACKSPACE:
       if (longPress) {
@@ -369,14 +372,12 @@ std::string KeyboardEntryActivity::displayTextForCurrentState() const {
     return displayText;
   }
 
-  size_t revealPos;
-  if (cursorMode) {
-    revealPos = text.length();  // no reveal in displayText; block draws actual char directly
-  } else {
-    revealPos = (text.length() > 0 && cursorPos > 0) ? cursorPos - 1 : std::string::npos;
-  }
+  // Keep byte offsets for the cursor, but reveal a whole UTF-8 character.
+  // In cursor mode the block draws the actual character separately.
+  const size_t revealEnd = cursorMode ? 0 : cursorPos;
+  const size_t revealStart = utf8Prev(text, revealEnd);
   for (size_t i = 0; i < displayText.length(); i++) {
-    if (i != revealPos) {
+    if (i < revealStart || i >= revealEnd) {
       displayText[i] = '*';
     }
   }
@@ -406,28 +407,24 @@ bool KeyboardEntryActivity::rangeIsRtl(std::string& s, const int start, const in
 int KeyboardEntryActivity::lineBreakEnd(std::string& s, const int start, const int maxWidth) const {
   const int len = static_cast<int>(s.length());
   if (measureRange(s, start, len) <= maxWidth) return len;
-  int lo = start + 1;
-  int hi = len - 1;
-  int best = start + 1;
-  while (lo <= hi) {
-    const int mid = lo + (hi - lo) / 2;
+  int lo = start;
+  int hi = len;
+  while (true) {
+    int mid = lo + (hi - lo) / 2;
+    // Measure only complete code points. Truncated prefixes reach the font
+    // decoder as replacement characters and give unreliable widths.
+    while (mid > lo && (static_cast<uint8_t>(s[mid]) & 0xC0) == 0x80) mid--;
+    if (mid == lo) mid = static_cast<int>(utf8Next(s, static_cast<size_t>(lo)));
+    if (mid >= hi) break;
     if (measureRange(s, start, mid) <= maxWidth) {
-      best = mid;
-      lo = mid + 1;
+      lo = mid;
     } else {
-      hi = mid - 1;
+      hi = mid;
     }
   }
 
-  // The byte-index search can stop inside a character; snap back to a boundary,
-  // keeping one whole character so the wrap loop always advances.
-  const int firstCharEnd = static_cast<int>(utf8Next(s, static_cast<size_t>(start)));
-  while (best > start && (static_cast<uint8_t>(s[best]) & 0xC0) == 0x80) best--;
-  // Widths measured mid-character are unreliable, so the search can overshoot.
-  while (best > firstCharEnd && measureRange(s, start, best) > maxWidth) {
-    best = static_cast<int>(utf8Prev(s, static_cast<size_t>(best)));
-  }
-  return best < firstCharEnd ? firstCharEnd : best;
+  // An oversized first character still occupies one line so wrapping advances.
+  return lo > start ? lo : static_cast<int>(utf8Next(s, static_cast<size_t>(start)));
 }
 
 bool KeyboardEntryActivity::cursorPositionFromPoint(const int x, const int y, size_t& position) const {
@@ -539,16 +536,52 @@ fui::Rect KeyboardEntryActivity::keyboardRect() const {
 }
 
 void KeyboardEntryActivity::loop() {
+  // GPIO state stays sampled while the main task waits for RenderLock, but
+  // getHeldTime() keeps advancing. Capture input before that wait so a short
+  // tap cannot become a destructive hold just because a display frame is slow.
+  const auto button = [this](MappedInputManager::Button key) {
+    return ButtonInput{mappedInput.wasPressed(key), mappedInput.wasReleased(key), mappedInput.isPressed(key)};
+  };
   const bool swapAxis = SETTINGS.keyboardAxisSwapped != 0;
-  const auto kRowPrev = swapAxis ? MappedInputManager::Button::Left : MappedInputManager::Button::Up;
-  const auto kRowNext = swapAxis ? MappedInputManager::Button::Right : MappedInputManager::Button::Down;
-  const auto kColPrev = swapAxis ? MappedInputManager::Button::Up : MappedInputManager::Button::Left;
-  const auto kColNext = swapAxis ? MappedInputManager::Button::Down : MappedInputManager::Button::Right;
-  int tx = 0;
-  int ty = 0;
+  InputFrame input;
+  input.rowPrev = button(swapAxis ? MappedInputManager::Button::Left : MappedInputManager::Button::Up);
+  input.rowNext = button(swapAxis ? MappedInputManager::Button::Right : MappedInputManager::Button::Down);
+  input.colPrev = button(swapAxis ? MappedInputManager::Button::Up : MappedInputManager::Button::Left);
+  input.colNext = button(swapAxis ? MappedInputManager::Button::Down : MappedInputManager::Button::Right);
+  input.confirm = button(MappedInputManager::Button::Confirm);
+  input.back = button(MappedInputManager::Button::Back);
+  input.tapped = mappedInput.wasScreenTapped(input.tapX, input.tapY);
+  input.touchDown = mappedInput.wasScreenTouchDown(input.touchX, input.touchY);
+  int hx = 0, hy = 0;
+  input.touchHeld = mappedInput.isScreenTouchHeld(hx, hy);
+  input.heldMs = mappedInput.getHeldTime();
+  input.capturedAt = millis();
 
+  bool complete = false;
+  std::string completedText;
+  {
+    // render() retains this same lock through its entire frame, so its text
+    // copy, cursor spans, visibility and layout all describe one input state.
+    RenderLock lock(*this);
+    loopLocked(input, complete);
+    if (complete) completedText = text;
+  }
+  if (complete) onComplete(std::move(completedText));
+}
+
+bool KeyboardEntryActivity::saveInputBeforeHome() {
+  std::string completedText;
+  {
+    RenderLock lock(*this);
+    completedText = text;
+  }
+  onComplete(std::move(completedText));
+  return true;
+}
+
+void KeyboardEntryActivity::loopLocked(const InputFrame& input, bool& complete) {
   size_t touchedCursorPos = 0;
-  if (mappedInput.wasScreenTapped(tx, ty) && cursorPositionFromPoint(tx, ty, touchedCursorPos)) {
+  if (input.tapped && cursorPositionFromPoint(input.tapX, input.tapY, touchedCursorPos)) {
     cursorPos = std::min(touchedCursorPos, text.length());
     // The masked text field maps taps per byte; snap back to a boundary so
     // the cursor never lands inside a multi-byte character.
@@ -564,20 +597,13 @@ void KeyboardEntryActivity::loop() {
   }
 
   if (!cursorMode && interactionsReady) {
-    const bool pressedDown = mappedInput.wasScreenTouchDown(tx, ty);
-    int tapX = 0;
-    int tapY = 0;
-    const bool tapped = mappedInput.wasScreenTapped(tapX, tapY);
-    int hx = 0;
-    int hy = 0;
-    const bool inContact = mappedInput.isScreenTouchHeld(hx, hy);
-
     const fui::TouchHoldRouter::Result result =
-        touchRouter.update(interactions, pressedDown, static_cast<int16_t>(tx), static_cast<int16_t>(ty), tapped,
-                           static_cast<int16_t>(tapX), static_cast<int16_t>(tapY), inContact, millis());
+        touchRouter.update(interactions, input.touchDown, static_cast<int16_t>(input.touchX),
+                           static_cast<int16_t>(input.touchY), input.tapped, static_cast<int16_t>(input.tapX),
+                           static_cast<int16_t>(input.tapY), input.touchHeld, input.capturedAt);
     if (result.event) {
       syncSelectionToValue(result.event.value);
-      if (activateValue(result.event.value, result.event.longPress)) {
+      if (activateValue(result.event.value, result.event.longPress, complete)) {
         requestUpdate();
       }
       return;
@@ -585,17 +611,17 @@ void KeyboardEntryActivity::loop() {
     if (result.activeChanged) {
       requestUpdate();
     }
-    if (pressedDown || tapped) {
+    if (input.touchDown || input.tapped) {
       return;
     }
   }
 
-  if (!cursorMode && mappedInput.wasPressed(kRowPrev)) {
+  if (!cursorMode && input.rowPrev.pressed) {
     upHeld = true;
     upLongHandled = false;
   }
 
-  if (upHeld && !upLongHandled && mappedInput.isPressed(kRowPrev) && mappedInput.getHeldTime() > LONG_PRESS_MS) {
+  if (upHeld && !upLongHandled && input.rowPrev.held && input.heldMs > LONG_PRESS_MS) {
     cursorMode = true;
     upLongHandled = true;
     hintVisible = true;
@@ -603,7 +629,7 @@ void KeyboardEntryActivity::loop() {
     requestUpdate();
   }
 
-  if (mappedInput.wasReleased(kRowPrev)) {
+  if (input.rowPrev.released) {
     if (upHeld && !upLongHandled && !cursorMode) {
       moveSelectionRow(-1);
       requestUpdate();
@@ -612,7 +638,7 @@ void KeyboardEntryActivity::loop() {
     upLongHandled = false;
   }
 
-  if (mappedInput.wasPressed(kRowNext)) {
+  if (input.rowNext.pressed) {
     downHeld = true;
     if (cursorMode) {
       togglePos = false;
@@ -626,7 +652,7 @@ void KeyboardEntryActivity::loop() {
     }
   }
 
-  if (mappedInput.wasReleased(kRowNext)) {
+  if (input.rowNext.released) {
     if (downHeld && !downLongHandled && !cursorMode) {
       moveSelectionRow(1);
       requestUpdate();
@@ -639,20 +665,20 @@ void KeyboardEntryActivity::loop() {
   // deletes backwards in both, so a typo found while walking the cursor can be
   // fixed on the spot. The hold replaces the old continuous column repeat: one
   // gesture cannot both scan across keys and fire an edit.
-  if (mappedInput.wasPressed(kColPrev)) {
+  if (input.colPrev.pressed) {
     colPrevHeld = true;
     colPrevLongHandled = false;
   }
 
-  if (colPrevHeld && !colPrevLongHandled && mappedInput.isPressed(kColPrev) &&
-      mappedInput.getHeldTime() > LONG_PRESS_MS) {
+  if (colPrevHeld && !colPrevLongHandled && input.colPrev.held &&
+      input.heldMs > LONG_PRESS_MS) {
     if (backspaceUtf8()) {
       requestUpdate();
     }
     colPrevLongHandled = true;
   }
 
-  if (mappedInput.wasReleased(kColPrev)) {
+  if (input.colPrev.released) {
     const bool wasHeld = colPrevHeld;
     const bool edited = colPrevLongHandled;
     colPrevHeld = false;
@@ -672,7 +698,7 @@ void KeyboardEntryActivity::loop() {
     }
   }
 
-  if (mappedInput.wasPressed(kColNext)) {
+  if (input.colNext.pressed) {
     colNextHeld = true;
     colNextLongHandled = false;
     if (cursorMode && inputType == InputType::Password && !togglePos) {
@@ -686,8 +712,8 @@ void KeyboardEntryActivity::loop() {
   // typing a multi-word name meant crossing the layout for every gap, and cursor
   // mode had no way to add one at all. A password field keeps this gesture for
   // its reveal instead.
-  if (colNextHeld && !colNextLongHandled && mappedInput.isPressed(kColNext) &&
-      mappedInput.getHeldTime() > LONG_PRESS_MS) {
+  if (colNextHeld && !colNextLongHandled && input.colNext.held &&
+      input.heldMs > LONG_PRESS_MS) {
     if (rightHeld && !rightLongHandled) {
       savedCursorPos = rightStartCursorPos;
       togglePos = true;
@@ -699,7 +725,7 @@ void KeyboardEntryActivity::loop() {
     requestUpdate();
   }
 
-  if (mappedInput.wasReleased(kColNext)) {
+  if (input.colNext.released) {
     const bool wasHeld = colNextHeld;
     const bool edited = colNextLongHandled;
     colNextHeld = false;
@@ -718,7 +744,7 @@ void KeyboardEntryActivity::loop() {
     if (cursorMode) return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+  if (input.confirm.pressed) {
     confirmHeld = true;
     confirmLongHandled = false;
   }
@@ -726,24 +752,24 @@ void KeyboardEntryActivity::loop() {
   const fui::KeyboardKey* selKey = selectedKey();
   const bool selectedDel = selKey && selKey->value == fui::QWERTY_KEY_BACKSPACE;
 
-  if (confirmHeld && !confirmLongHandled && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
-      mappedInput.getHeldTime() > DEL_LONG_PRESS_MS && selectedDel) {
+  if (confirmHeld && !confirmLongHandled && input.confirm.held &&
+      input.heldMs > DEL_LONG_PRESS_MS && selectedDel) {
     clearAllOrAltOnSelected();
     confirmLongHandled = true;
     requestUpdate();
   }
 
-  if (confirmHeld && !confirmLongHandled && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
-      mappedInput.getHeldTime() > LONG_PRESS_MS) {
+  if (confirmHeld && !confirmLongHandled && input.confirm.held &&
+      input.heldMs > LONG_PRESS_MS) {
     if (!selectedDel && clearAllOrAltOnSelected()) {
       requestUpdate();
       confirmLongHandled = true;
     }
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (input.confirm.released) {
     if (confirmHeld && !confirmLongHandled && !cursorMode) {
-      if (selKey && activateValue(selKey->value, false)) {
+      if (selKey && activateValue(selKey->value, false, complete)) {
         requestUpdate();
       }
     } else if (confirmHeld && !confirmLongHandled && cursorMode && inputType == InputType::Password && togglePos) {
@@ -754,15 +780,15 @@ void KeyboardEntryActivity::loop() {
     confirmLongHandled = false;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+  if (input.back.pressed) {
     backHeld = true;
     backLongHandled = false;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (input.back.released) {
     backHeld = false;
     backLongHandled = false;
-    onComplete(text);
+    complete = true;
   }
 
   if (hintVisible && !cursorMode && millis() - hintShowTime > 4000) {

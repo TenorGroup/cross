@@ -53,6 +53,7 @@ class ParsedText {
   uint32_t visibleOffsetBase = 0;
   std::vector<VisibleOffsetRebase> visibleOffsetRebases;
   std::deque<std::string> rubyTexts;
+  size_t rubyTextBytes = 0;
   BlockStyle blockStyle;
   bool extraParagraphSpacing;
   int8_t letterSpacing = 0;
@@ -66,6 +67,7 @@ class ParsedText {
   float lineCompression = 1.0f;
   size_t extractedLines = 0;
   bool dropCapPrepared = false;
+  bool layoutFailed = false;
   int lineIndent(size_t line, const GfxRenderer& renderer, int fontId) const;
   bool isNaturalAlign;
   bool hasRtlWord;
@@ -94,7 +96,7 @@ class ParsedText {
                                                   std::vector<bool>& noSpaceBeforeVec);
   bool hyphenateWordAtIndex(size_t wordIndex, int availableWidth, const GfxRenderer& renderer, int fontId,
                             std::vector<uint16_t>& wordWidths, bool allowFallbackBreaks);
-  void extractLine(size_t breakIndex, int pageWidth, const std::vector<uint16_t>& wordWidths,
+  bool extractLine(size_t breakIndex, int pageWidth, const std::vector<uint16_t>& wordWidths,
                    const std::vector<bool>& continuesVec, const std::vector<bool>& noSpaceBeforeVec,
                    const std::vector<size_t>& lineBreakIndices,
                    const std::function<void(std::unique_ptr<TextBlock>, uint32_t)>& processLine,
@@ -131,8 +133,9 @@ class ParsedText {
   // chua chu lon phai tinh theo buoc that do, khong phai buoc goc cua font.
   void setLineCompression(const float value) { lineCompression = value > 0.0f ? value : 1.0f; }
   bool wantsDropCap() const { return dropCapHeight != 0; }
-  void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false,
-               uint32_t visibleTextOffset = 0, uint8_t linkId = 0);
+  bool addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false,
+               uint32_t visibleTextOffset = 0, uint8_t linkId = 0, size_t maxWordCount = SIZE_MAX);
+  void failLayout() { layoutFailed = true; }
   uint8_t addLinkTarget(const char* href);
   bool linkTargetMatches(uint8_t linkId, const char* href) const;
   void setRubyForWordAt(size_t index, const std::string& ruby);
@@ -141,12 +144,13 @@ class ParsedText {
     return index < wordStyles.size() ? wordStyles[index] : EpdFontFamily::REGULAR;
   }
   std::string getRubyTextAt(size_t index) const { return index < rubyTexts.size() ? rubyTexts[index] : std::string(); }
+  size_t getRubyTextBytes() const { return rubyTextBytes; }
   void ensureRubyCapacity();
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   BlockStyle& getBlockStyle() { return blockStyle; }
   size_t size() const { return words.size(); }
   bool isEmpty() const { return words.empty(); }
-  void layoutAndExtractLines(const GfxRenderer& renderer, int fontId, uint16_t viewportWidth,
+  bool layoutAndExtractLines(const GfxRenderer& renderer, int fontId, uint16_t viewportWidth,
                              const std::function<void(std::unique_ptr<TextBlock>, uint32_t)>& processLine,
                              bool includeLastLine = true);
 };

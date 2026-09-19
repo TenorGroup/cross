@@ -11,6 +11,8 @@
  */
 class HttpDownloader {
  public:
+  // Also called periodically during transport waits to pump activity input.
+  // total == 0 means unknown size; callers must throttle repaint separately.
   using ProgressCallback = std::function<void(size_t downloaded, size_t total)>;
   // Called with each body chunk as it arrives; return false to abort. Lets a
   // streaming parser consume the response without buffering the whole body.
@@ -21,6 +23,7 @@ class HttpDownloader {
     HTTP_ERROR,
     FILE_ERROR,
     ABORTED,
+    CACHE_ERROR,  // File committed, but stale reading cache could not be removed.
   };
 
   // Pre-flight floor for starting a TLS transfer. Below this the session or

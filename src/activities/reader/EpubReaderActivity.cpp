@@ -417,6 +417,14 @@ void EpubReaderActivity::openDictionaryWordSelect(const bool quotation) {
   startActivityForResult(std::move(selector), [this](const ActivityResult&) { requestUpdate(); });
 }
 
+bool EpubReaderActivity::externalPageTurnAllowed() const {
+  return !preview && overlay == Overlay::None;
+}
+
+bool EpubReaderActivity::manualPageTurnReady() const {
+  return millis() - lastPageTurnTime >= 200;
+}
+
 void EpubReaderActivity::loop() {
   if (!epub) {
     finish();
@@ -525,6 +533,7 @@ void EpubReaderActivity::loop() {
   // open, so the timer must neither flip the page under it nor eat the panel's next
   // Confirm/Back release.
   if (overlay != Overlay::None) {
+    pendingExternalTurn = 0;
     if (usesToolbarMenu()) {
       // Hold the interval at zero elapsed so closing the panel starts a fresh one.
       lastPageTurnTime = millis();
@@ -544,6 +553,7 @@ void EpubReaderActivity::loop() {
         mappedInput.wasReleased(MappedInputManager::Button::Back) ||
         ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
       automaticPageTurnActive = false;
+      pendingExternalTurn = 0;
       requestUpdate();
       return;
     }
@@ -559,8 +569,7 @@ void EpubReaderActivity::loop() {
     }
 
     if ((millis() - lastPageTurnTime) >= pageTurnDuration) {
-      pageTurn(true);
-      requestUpdate();
+      if (pageTurn(true)) requestUpdate();
       return;
     }
   }
@@ -571,6 +580,7 @@ void EpubReaderActivity::loop() {
   // dictionary word picker over it. Anything the menu does not handle (long-press Back to
   // the file browser, say) still falls through to the regular handlers.
   if (handleEndOfBookMenu()) {
+    pendingExternalTurn = 0;
     return;
   }
   const bool endOfBookMenuOpen = endOfBookMenuActive();
@@ -696,8 +706,9 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  constexpr unsigned long kMinManualTurnGapMs = 200;
-  const bool turnGuardActive = RenderLock::peek() || (millis() - lastPageTurnTime) < kMinManualTurnGapMs;
+  if (processExternalPageTurn()) return;
+
+  const bool turnGuardActive = RenderLock::peek() || !manualPageTurnReady();
 
   // Turbo giữ nút: sau nắc chương đầu, nút còn giữ thì nắc tiếp theo nhịp
   // cố định tới khi thả. Cả hai hướng cùng giữ thì dừng (không định hướng).
@@ -731,8 +742,7 @@ void EpubReaderActivity::loop() {
     }
     const bool forward = pendingManualTurn > 0;
     pendingManualTurn = 0;
-    pageTurn(forward);
-    requestUpdate();
+    if (pageTurn(forward)) requestUpdate();
     return;
   }
 
@@ -818,12 +828,7 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  if (prevPageTriggered) {
-    pageTurn(false);
-  } else {
-    pageTurn(true);
-  }
-  requestUpdate();
+  if (pageTurn(!prevPageTriggered)) requestUpdate();
 }
 
 void EpubReaderActivity::jumpToPercent(int percent) {
@@ -1214,10 +1219,8 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
 
 bool EpubReaderActivity::latTrangThat(bool isForwardTurn) {
   if (!section) return false;
-  // Never wait for the render lock on a page turn: a paint in flight holds it
-  // for the whole waveform (up to ~1.2 s with anti-aliasing) and a blocked main
-  // loop stops sampling the buttons. The render task clears the deferred
-  // reposition itself before it uses it (renderBook, applyDeferredReposition).
+  // ReaderActivity owns the render lock for every page mutation, including
+  // chapter changes. The lock is nonrecursive.
   deferredClearPending.store(true, std::memory_order_release);
   if (isForwardTurn) {
     if (section->currentPage < section->pageCount - 1 || section->isBuilding()) {
@@ -1225,7 +1228,6 @@ bool EpubReaderActivity::latTrangThat(bool isForwardTurn) {
       lastPageTurnTime = millis();
       return true;
     } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
-      RenderLock lock;
       nextPageNumber = 0;
       currentSpineIndex++;
       section.reset();
@@ -1242,7 +1244,6 @@ bool EpubReaderActivity::latTrangThat(bool isForwardTurn) {
       lastPageTurnTime = millis();
       return true;
     } else if (currentSpineIndex > 0) {
-      RenderLock lock;
       nextPageNumber = 0;
       pendingPageJump = std::numeric_limits<uint16_t>::max();
       currentSpineIndex--;

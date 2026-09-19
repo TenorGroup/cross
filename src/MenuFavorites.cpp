@@ -90,13 +90,15 @@ const char* keyFor(const char* screen, int tab, int row) {
     if (strcmp(screen, item.screen) == 0 && tab == item.tab && row == item.row) return item.key;
   return "";
 }
+StrId label(const std::string& key) { return label(key, getBaseSettingsList()); }
+
 StrId label(const std::string& key, const std::vector<SettingInfo>& settings) {
   const char* canonical = menucustom::canonicalPinKey(key.c_str());
   if (canonical != key.c_str()) return label(canonical, settings);
   if (unavailableClock(key)) return StrId::STR_NONE_OPT;
   if (key.rfind("settings/", 0) == 0) {
     for (const auto& info : settings) {
-      if (!info.key || key.compare(9, std::string::npos, info.key) != 0) continue;
+      if (settingHiddenOnThisBoard(info) || !info.key || key.compare(9, std::string::npos, info.key) != 0) continue;
       if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI &&
           info.valuePtr == &CrossPointSettings::hideBatteryPercentage)
         return StrId::STR_NONE_OPT;
@@ -144,13 +146,28 @@ std::string value(const std::string& key, const std::vector<SettingInfo>& settin
   const auto slash = key.find('/');
   if (slash == std::string::npos) return "";
   for (const auto& info : settings) {
-    if (!info.key || key.compare(slash + 1, std::string::npos, info.key) != 0) continue;
+    if (settingHiddenOnThisBoard(info) || !info.key || key.compare(slash + 1, std::string::npos, info.key) != 0) continue;
     // Favorites never copy credentials or other string values into their labels.
     if (info.type == SettingType::STRING) return "";
     return SettingsActivity::settingValueText(info);
   }
   return "";
 }
+std::string value(const std::string& key, const SdCardFontRegistry* registry) {
+  const char* canonical = menucustom::canonicalPinKey(key.c_str());
+  if (canonical != key.c_str()) return value(canonical, registry);
+  const auto slash = key.find('/');
+  if (slash != std::string::npos) {
+    // Materialize only the dynamic descriptor requested by this pin. The result
+    // string owns its bytes before the temporary descriptor leaves this call.
+    if (key.compare(slash + 1, std::string::npos, "fontFamily") == 0)
+      return SettingsActivity::settingValueText(buildFontFamilySetting(registry));
+    if (key.compare(slash + 1, std::string::npos, "fontSize") == 0)
+      return SettingsActivity::settingValueText(buildFontSizeSetting(registry));
+  }
+  return value(key, getBaseSettingsList());
+}
+
 std::unique_ptr<UiListActivity> open(const std::string& key, GfxRenderer& renderer, MappedInputManager& input) {
   const char* canonical = menucustom::canonicalPinKey(key.c_str());
   if (canonical != key.c_str()) return open(canonical, renderer, input);

@@ -335,6 +335,8 @@ static void sleepWithConfiguredButtons() {
 #endif
 }
 
+static bool autoSleepBlockedUntilInput = false;
+
 // Enter deep sleep mode
 void enterDeepSleep(bool fromTimeout = false) {
   const uint32_t sleepStarted = millis();
@@ -355,7 +357,11 @@ void enterDeepSleep(bool fromTimeout = false) {
   // a WiFi activity would otherwise silentRestart() here and reboot instead.
   deepSleepInProgress = true;
   LOG_INF("SLP", "Timing save-state=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
-  activityManager.goToSleep(fromTimeout);
+  if (!activityManager.goToSleep(fromTimeout)) {
+    deepSleepInProgress = false;
+    autoSleepBlockedUntilInput = true;
+    return;
+  }
   LOG_INF("SLP", "Timing image-ready=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
   const uint32_t retainedStarted = millis();
 
@@ -734,8 +740,7 @@ void loop() {
 #if CROSSPOINT_BLE_HID_HOST
   // Resolve the radio handoff before USB's early return. Activity onEnter() can
   // already have done blocking storage or Wi-Fi work before this loop resumes.
-  static bool coLuotCho = false;
-  static bool luotChoTien = true;
+  bool bleInputActivity = false;
   static bool bleReaderBeginAttempted = false;
   static uint32_t bleReaderGeneration = 0;
   auto& bleHid = freeink::BleKeyboardHost::getInstance();
@@ -743,13 +748,12 @@ void loop() {
   static uint32_t bleIdleSinceMs = 0;
   if (bleHid.isStopping() && millis() - lastBleCleanupMs >= 250) {
     lastBleCleanupMs = millis();
-    bleHid.end(0);  // Poll cancellation without blocking the input loop.
+    freeink::ble::suspendForTransition();  // Poll cancellation without blocking input.
   }
   const bool dangChiemStorage = activityManager.requiresExclusiveStorageLoop() || filetransfer::isActive();
   if (dangChiemStorage) {
     bleIdleSinceMs = 0;
-    bleHid.end(0);
-    coLuotCho = false;
+    freeink::ble::suspendForTransition();
   }
 #endif
 
@@ -772,10 +776,9 @@ void loop() {
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
 
 #if CROSSPOINT_BLE_HID_HOST
-  // Page turner BLE: chi nhan khi dang o TRINH DOC va nguoi dung da bat. Callback cua host chi day
-  // su kien vao hang doi; vong lap chinh lay ra, doi usage thanh hanh dong, va giu TOI DA MOT luot
-  // cho moi vong lap (bam don dap khi dang ve khong tich thanh nhieu luot lat). Roi trinh doc hoac
-  // host khong chay (ngat ket noi / tat) thi xoa luot cho. Su kien co modifier khong tinh.
+  // Page turner BLE: callbacks only queue HID reports. Map each new report on
+  // main, then let the foreground reader coalesce one pending direction in its
+  // current activity generation. Unmapped/modifier reports do not reset timers.
   {
     // A saved opt-in starts only after the foreground reader has produced a
     // page. Home needs its own cover/font memory before we can assess BLE's
@@ -787,10 +790,21 @@ void loop() {
       bleReaderBeginAttempted = false;
     }
     bleReaderGeneration = generation;
+    // A page-key release or touch on the foreground reader grants one fresh
+    // attempt after idle-off. Repeated idle ticks never allocate/retry BLE.
+    const bool localReaderInput =
+        mappedInputManager.wasReleased(MappedInputManager::Button::PageBack) ||
+        mappedInputManager.wasReleased(MappedInputManager::Button::PageForward) ||
+        mappedInputManager.wasReleased(MappedInputManager::Button::Left) ||
+        mappedInputManager.wasReleased(MappedInputManager::Button::Right) || gpio.wasTouchActivity();
+    if (foregroundReader && SETTINGS.blePageTurnerEnabled && freeink::ble::idleStopped() && localReaderInput) {
+      freeink::ble::setIdleStopped(false);
+      bleReaderBeginAttempted = false;
+      LOG_INF("BLE", "Reader input rearmed idle radio");
+    }
     if (dangChiemStorage || !SETTINGS.blePageTurnerEnabled) {
       bleIdleSinceMs = 0;
-      if (bleHid.isRunning() || bleHid.isStopping()) bleHid.end(0);
-      coLuotCho = false;
+      freeink::ble::suspendForTransition();
     } else {
       if (foregroundReader && activityManager.isForegroundReaderReady() && !bleReaderBeginAttempted &&
           !freeink::ble::idleStopped() && !bleHid.isStopping()) {
@@ -808,7 +822,7 @@ void loop() {
       // Lau khong ai noi thi ha radio xuong. Khong co moc nay thi bat mot lan la
       // radio chay mai, ma vong tiet kiem dien ben duoi co chu y giu CPU o toc do
       // day chung nao radio con song, nen may nam im van an pin. Luat o BleIdleOff.h.
-      if (bleHid.isRunning()) {
+      if (!freeink::ble::initializing() && bleHid.isRunning()) {
         if (bleHid.isConnected() || bleIdleSinceMs == 0) bleIdleSinceMs = millis();
         if (bleidle::shouldStop(true, bleHid.isConnected(), millis() - bleIdleSinceMs)) {
           LOG_INF("BLE", "Radio idle for %u ms with nothing connected; stopping", bleidle::kIdleOffMs);
@@ -819,7 +833,7 @@ void loop() {
         bleIdleSinceMs = 0;
       }
 
-      if (foregroundReader && bleHid.isRunning()) {
+      if (foregroundReader && !freeink::ble::initializing() && bleHid.isRunning()) {
         freeink::ble::setReaderStartDeferred(false);
         bleHid.poll();
         freeink::KeyEvent ev;
@@ -831,17 +845,15 @@ void loop() {
                   hanhDong == CrossPointSettings::BlePageAction::PreviousPage  ? "previous"
                   : hanhDong == CrossPointSettings::BlePageAction::NextPage    ? "next"
                                                                                : "none");
-          if (hanhDong == CrossPointSettings::BlePageAction::PreviousPage) {
-            coLuotCho = true;
-            luotChoTien = false;
-          } else if (hanhDong == CrossPointSettings::BlePageAction::NextPage) {
-            coLuotCho = true;
-            luotChoTien = true;
+          if (hanhDong == CrossPointSettings::BlePageAction::PreviousPage ||
+              hanhDong == CrossPointSettings::BlePageAction::NextPage) {
+            // Enqueue once per new mapped report. A deferred repaint never
+            // generates another activity-timer reset on subsequent ticks.
+            if (activityManager.pageTurn(hanhDong == CrossPointSettings::BlePageAction::NextPage)) {
+              bleInputActivity = true;
+            }
           }
         }
-        if (coLuotCho && activityManager.pageTurn(luotChoTien)) coLuotCho = false;
-      } else {
-        coLuotCho = false;
       }
     }
   }
@@ -948,6 +960,10 @@ void loop() {
         activityManager.pushActivity(makeUniqueNoThrow<OtaUpdateActivity>(renderer, mappedInputManager));
 #endif
 #ifdef TENOR_UI_ACCEPTANCE
+      } else if (cmd == "UI_READER_NEXT" || cmd == "UI_READER_PREV") {
+        const bool queued = activityManager.pageTurn(cmd == "UI_READER_NEXT");
+        logSerial.printf("UI_READER:synthetic_external=1,queued=%d,generation=%u\n", queued,
+                         static_cast<unsigned>(activityManager.activityGeneration()));
 #if CROSSPOINT_BLE_HID_HOST
       } else if (cmd == "BLE_TEST_BEGIN") {
         // In-memory only. A reset restores the saved user preference.
@@ -958,15 +974,16 @@ void loop() {
         SETTINGS.blePageTurnerEnabled = 0;
         freeink::ble::setIdleStopped(false);
         freeink::ble::setReaderStartDeferred(false);
-        const bool ended = freeink::BleKeyboardHost::getInstance().end();
+        const bool ended = freeink::ble::suspendForTransition(1000);
         logSerial.printf("BLE_TEST:end=%d,heap=%u,largest=%u\n", ended, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
       } else if (cmd == "BLE_TEST_SCAN") {
         auto& host = freeink::BleKeyboardHost::getInstance();
         if (host.isRunning()) host.startScan(5000);
       } else if (cmd == "BLE_TEST_STATUS") {
         const auto& host = freeink::BleKeyboardHost::getInstance();
-        logSerial.printf("BLE_TEST:enabled=%u,running=%d,scanning=%d,connected=%d,heap=%u,largest=%u\n",
+        logSerial.printf("BLE_TEST:enabled=%u,running=%d,scanning=%d,connected=%d,busy=%d,initializing=%d,heap=%u,largest=%u\n",
                          SETTINGS.blePageTurnerEnabled, host.isRunning(), host.isScanning(), host.isConnected(),
+                         freeink::ble::busy(), freeink::ble::initializing(),
                          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 #endif
       } else if (cmd == "FILE_TRANSFER_AUTOCONNECT") {
@@ -1097,6 +1114,12 @@ void loop() {
                          static_cast<unsigned>(info.largest_free_block), static_cast<unsigned>(info.minimum_free_bytes),
                          static_cast<unsigned>(info.allocated_blocks), static_cast<unsigned>(info.free_blocks),
                          static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+#ifdef TENOR_UI_ACCEPTANCE
+        logSerial.printf("STACK_INFO:render_free=%u,ble_start_min_free=%u,ble_busy=%d,ble_initializing=%d\n",
+                         static_cast<unsigned>(activityManager.renderStackHighWaterMark()),
+                         static_cast<unsigned>(freeink::ble::startStackHighWaterMark()),
+                         freeink::ble::busy(), freeink::ble::initializing());
+#endif
 #endif
       } else if (cmd == "NETWORK") {
         logSerial.printf("NETWORK:status=%d,rssi=%d,ip=%s,heap=%u,largest=%u\n", static_cast<int>(WiFi.status()),
@@ -1168,14 +1191,20 @@ void loop() {
   static unsigned long lastSleepResetTime = millis();
   const bool nguoiDungChamVao = gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() ||
                                 halTiltSensor.hadActivity();
-  if (nguoiDungChamVao) {
+#if CROSSPOINT_BLE_HID_HOST
+  const bool userActivity = nguoiDungChamVao || bleInputActivity;
+#else
+  const bool userActivity = nguoiDungChamVao;
+#endif
+  if (userActivity) {
+    autoSleepBlockedUntilInput = false;
     if (gpio.wasAnyPressed()) LOG_INF("IN", "press t=%lu", static_cast<unsigned long>(millis()));
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }
   // Man dang ban giu may thuc, va khi no xong thi dong ho ngu dem lai tu luc do chu
   // khong ngu ngay lap tuc.
-  if (nguoiDungChamVao || activityManager.preventAutoSleep()) lastSleepResetTime = millis();
+  if (userActivity || activityManager.preventAutoSleep()) lastSleepResetTime = millis();
 
   // Let wake continue as soon as its hold has been verified. The release can
   // arrive after setup, so consume that one input frame rather than making it
@@ -1238,7 +1267,8 @@ void loop() {
 #endif
 
   const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
-  if (sleepTimeoutMs > 0 && millis() - lastSleepResetTime >= sleepTimeoutMs) {
+  if (sleepTimeoutMs > 0 && !autoSleepBlockedUntilInput &&
+      millis() - lastSleepResetTime >= sleepTimeoutMs) {
     LOG_DBG("SLP", "Auto-sleep triggered after %lu ms of inactivity", sleepTimeoutMs);
     enterDeepSleep(true);
     // This should never be hit as `enterDeepSleep` calls esp_deep_sleep_start
@@ -1318,7 +1348,7 @@ void loop() {
     // The BLE controller needs a steady clock: dropping the CPU to 80 MHz while
     // it connects ended in an HCI ack failure and an interrupt watchdog reset
     // (X3, 18/09/2026). Keep full speed while the radio is up.
-    const bool radioActive = bleHid.isRunning() || bleHid.isStopping();
+    const bool radioActive = freeink::ble::busy();
 #else
     const bool radioActive = false;
 #endif
@@ -1334,6 +1364,7 @@ void loop() {
         if (gpio.rawInputActive()) break;
       }
     } else {
+      if (radioActive) powerManager.setPowerSaving(false);
       // Short delay to prevent tight loop while still being responsive
       delay(10);
     }

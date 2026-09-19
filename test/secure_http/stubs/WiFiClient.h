@@ -15,10 +15,12 @@ struct Request {
 inline std::deque<std::string> replies;
 inline std::vector<Request> requests;
 inline int connectAttempts = 0;
+inline bool closeAfterReply = false;
 inline void reset() {
   replies.clear();
   requests.clear();
   connectAttempts = 0;
+  closeAfterReply = false;
 }
 }  // namespace wire
 class WiFiClient : public Client {
@@ -57,6 +59,6 @@ class WiFiClient : public Client {
   int peek() override { return available() ? static_cast<unsigned char>(response[offset]) : -1; }
   void flush() override {}
   void stop() override { open = false; }
-  uint8_t connected() override { return open; }
+  uint8_t connected() override { return open && (!wire::closeAfterReply || offset < response.size()); }
   operator bool() override { return open; }
 };

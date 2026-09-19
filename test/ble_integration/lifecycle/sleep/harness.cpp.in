@@ -1,0 +1,261 @@
+#include <cstdint>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <type_traits>
+#include <vector>
+
+#define LOG_INF(...) ((void)0)
+#define LOG_DBG(...) ((void)0)
+#define LOG_ERR(...) ((void)0)
+#define LOG_WRN(...) ((void)0)
+#define LOG_WARN(...) ((void)0)
+
+static uint32_t clockMs;
+static uint32_t bleReadyAt;
+static bool bleNeverReady;
+static int loopCalls;
+static int exitCalls;
+static int sleepEnterCalls;
+static int lockDepth;
+static int storageOffCalls;
+static int displayOffCalls;
+static int deepSleepCalls;
+static int retainedFrameCalls;
+static int failures;
+static std::vector<std::string> events;
+static uint32_t millis() { return clockMs; }
+static void delay(uint32_t value) { clockMs += value; }
+
+struct RenderLock {
+  RenderLock() { ++lockDepth; }
+  ~RenderLock() { --lockDepth; }
+};
+struct Renderer {};
+struct Input {};
+struct Activity {
+  explicit Activity(const char* title) : name(title) {}
+  virtual ~Activity() = default;
+  std::string name;
+};
+struct SleepActivity : Activity {
+  SleepActivity(Renderer&, Input&, bool) : Activity("Sleep") {}
+  static void showEnteringSleep(Renderer&) { events.push_back("sleep-notice"); }
+};
+
+struct CheckedSleepFlag {
+  bool value = false;
+  operator bool() const { return value; }
+  CheckedSleepFlag& operator=(bool next) {
+    if (!lockDepth) {
+      ++failures;
+      std::cerr << "FAIL sleepTransition publication lacks RenderLock\n";
+    }
+    value = next;
+    return *this;
+  }
+};
+struct ActivityManager {
+  enum class PendingAction { None, Replace };
+  Renderer renderer;
+  Input mappedInput;
+  CheckedSleepFlag sleepTransition{};
+  bool requestedUpdate = true;
+  PendingAction pendingAction = PendingAction::None;
+  std::unique_ptr<Activity> currentActivity;
+  std::unique_ptr<Activity> pendingActivity;
+  @RETURN_TYPE@ goToSleep(bool fromTimeout);
+  bool isReaderActivity() { return currentActivity && currentActivity->name == "Reader"; }
+  bool preventAutoSleep() { return false; }
+  void requestUpdate() { requestedUpdate = true; }
+  void replaceActivity(std::unique_ptr<Activity>&& next) {
+    pendingActivity = std::move(next);
+    pendingAction = PendingAction::Replace;
+  }
+  void loop() {
+    ++loopCalls;
+    if (lockDepth) throw std::string("activity loop called under RenderLock");
+    if (pendingAction == PendingAction::None) return;
+    if (bleNeverReady || clockMs < bleReadyAt) return;
+    events.push_back("reader-exit");
+    ++exitCalls;
+    currentActivity = std::move(pendingActivity);
+    pendingAction = PendingAction::None;
+    if (currentActivity && currentActivity->name == "Sleep") {
+      events.push_back("sleep-render");
+      ++sleepEnterCalls;
+    }
+  }
+} activityManager;
+
+struct HalPowerManager { struct Lock {}; void setPowerSaving(bool) {} } powerManager;
+struct CrossPointSettings {
+  enum class SLEEP_SCREEN_MODE { QUICK_RESUME, TRANSPARENT_CUSTOM, TENOR };
+  enum class QUICK_RESUME_SLEEP_SCREEN { QUICK_RESUME_AFTER_TIMEOUT, NONE };
+};
+struct Settings {
+  unsigned long getSleepTimeoutMs() const { return 60000; }
+  CrossPointSettings::SLEEP_SCREEN_MODE sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::TENOR;
+  CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN quickResumeSleepScreen = CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::NONE;
+} SETTINGS;
+struct AppState {
+  bool lastSleepFromReader = false;
+  bool showBootScreen = true;
+  void saveToFile() { events.push_back("state-save"); }
+} APP_STATE;
+struct GPIO { bool deviceIsX3() { return true; } bool wasAnyPressed() { return false; } } gpio;
+struct HalDisplay {
+  enum class Controller { UC8279 };
+  Controller getController() { return Controller::UC8279; }
+  void deepSleep() { ++displayOffCalls; events.push_back("display-off"); }
+} display;
+struct StorageBoundary {
+  bool exists(const char*) { return false; }
+  void remove(const char*) {}
+  void prepareForDeepSleep() { ++storageOffCalls; events.push_back("storage-off"); }
+} Storage;
+static constexpr int WIFI_MODE_NULL = 0;
+static constexpr int WIFI_OFF = 0;
+struct WifiBoundary {
+  int getMode() { return WIFI_MODE_NULL; }
+  void disconnect(bool) {}
+  void mode(int) {}
+} WiFi;
+struct TiltBoundary { void deepSleep() {} } halTiltSensor;
+static const char* SLEEP_FRAME_FILE = "/sleep-frame";
+static bool deepSleepInProgress;
+// Both declarations permit execution of the historical and current bodies.
+static uint32_t sleepRetryAt;
+static bool autoSleepBlockedUntilInput;
+static uint32_t lastActivityTime;
+static uint32_t lastSleepResetTime;
+static void saveSleepFrameBuffer() { ++retainedFrameCalls; events.push_back("frame-save"); }
+static void sleepWithConfiguredButtons() { ++deepSleepCalls; events.push_back("deep-sleep"); }
+
+@GO_TO_SLEEP@
+
+@ENTER_DEEP_SLEEP@
+
+static void runMainSleepGate(bool userActivity) {
+@MAIN_SLEEP_GATE@
+}
+
+template<class Manager>
+static bool invokeGoToSleep(Manager& manager) {
+  if constexpr (std::is_same_v<decltype(manager.goToSleep(false)), bool>) {
+    return manager.goToSleep(false);
+  } else {
+    // The historical caller treated return from its void API as completion.
+    manager.goToSleep(false);
+    return true;
+  }
+}
+
+static void reset() {
+  clockMs = 100;
+  bleReadyAt = 100;
+  bleNeverReady = false;
+  loopCalls = exitCalls = sleepEnterCalls = lockDepth = 0;
+  storageOffCalls = displayOffCalls = deepSleepCalls = retainedFrameCalls = 0;
+  deepSleepInProgress = false;
+  sleepRetryAt = 0;
+  autoSleepBlockedUntilInput = false;
+  lastActivityTime = 0;
+  lastSleepResetTime = 0;
+  events.clear();
+  activityManager = ActivityManager{};
+  activityManager.currentActivity = std::make_unique<Activity>("Reader");
+}
+static void require(bool condition, const char* scenario, const char* message) {
+  if (!condition) { ++failures; std::cout << "FAIL " << scenario << ": " << message << '\n'; }
+}
+static size_t eventIndex(const char* event) {
+  for (size_t i = 0; i < events.size(); ++i) if (events[i] == event) return i;
+  return events.size();
+}
+
+int main() {
+  reset();
+  bleReadyAt = 140;
+  const bool eventuallyCompleted = invokeGoToSleep(activityManager);
+  require(eventuallyCompleted && exitCalls == 1 && sleepEnterCalls == 1 &&
+              activityManager.pendingAction == ActivityManager::PendingAction::None,
+          "pending-completes", "must wait until deferred BLE suspension permits reader exit and sleep render");
+  require(loopCalls >= 2, "pending-completes", "pending BLE needs more than one activity-loop poll");
+
+  reset();
+  bleNeverReady = true;
+  const bool timedOut = invokeGoToSleep(activityManager);
+  require(!timedOut, "deadline-cancels", "deadline must report incomplete transition");
+  require(clockMs >= 5100 && clockMs <= 5200, "deadline-cancels", "wait must be bounded at five seconds");
+  require(activityManager.currentActivity && activityManager.currentActivity->name == "Reader" &&
+              !activityManager.pendingActivity && activityManager.pendingAction == ActivityManager::PendingAction::None,
+          "deadline-cancels", "reader must remain active and pending SleepActivity must be discarded");
+  require(!activityManager.sleepTransition && activityManager.requestedUpdate,
+          "deadline-cancels", "cancelled transition must resume rendering and request repaint");
+
+  reset();
+  bleNeverReady = true;
+  enterDeepSleep(true);
+  require(storageOffCalls == 0 && displayOffCalls == 0 && deepSleepCalls == 0 && retainedFrameCalls == 0,
+          "caller-abort", "failed activity transition must not retain a stale frame or power down storage/display/device");
+  require(!deepSleepInProgress, "caller-abort", "sleep latch must clear on abort");
+
+
+  reset();
+  bleReadyAt = 130;
+  enterDeepSleep(false);
+  require(exitCalls == 1 && sleepEnterCalls == 1 && storageOffCalls == 1 && displayOffCalls == 1 && deepSleepCalls == 1,
+          "caller-success", "completed transition must execute one reader exit, sleep render and hardware shutdown");
+  require(eventIndex("reader-exit") < eventIndex("sleep-render") &&
+              eventIndex("sleep-render") < eventIndex("storage-off") &&
+              eventIndex("storage-off") < eventIndex("deep-sleep"),
+          "caller-success", "reader exit and sleep rendering must precede storage off and deep sleep");
+  require(deepSleepInProgress, "caller-success", "sleep latch must remain set for successful transition");
+
+  reset();
+  bleNeverReady = true;
+  enterDeepSleep(true);
+  const int attemptsAfterAbort = loopCalls;
+  // Move beyond several historical retry deadlines while no input arrives.
+  for (int tick = 0; tick < 3; ++tick) {
+    clockMs += 65000;
+    runMainSleepGate(false);
+  }
+  require(loopCalls == attemptsAfterAbort && deepSleepCalls == 0,
+          "abort-blocks-autoretry", "failed sleep must stay blocked across idle ticks until accepted input");
+  const int attemptsBeforeInput = loopCalls;
+  bleNeverReady = false;
+  runMainSleepGate(true);
+  require(loopCalls == attemptsBeforeInput && deepSleepCalls == 0 && lastSleepResetTime == clockMs,
+          "input-rearms", "accepted input must rearm a complete inactivity interval without immediate sleep");
+  clockMs += 60001;
+  runMainSleepGate(false);
+  require(deepSleepCalls == 1,
+          "input-rearms", "a fresh inactivity interval after accepted input must permit autosleep");
+
+  reset();
+  clockMs = 0x80000000u + 100000u;
+  lastSleepResetTime = clockMs - 60001;
+  runMainSleepGate(false);
+  require(deepSleepCalls == 1,
+          "long-uptime", "autosleep must work after the signed 32-bit half-range without a retry sentinel");
+
+  reset();
+  clockMs = 200;
+  lastSleepResetTime = UINT32_MAX - 60000;
+  runMainSleepGate(false);
+  require(deepSleepCalls == 1,
+          "uptime-wrap", "inactivity arithmetic must keep autosleep working across uint32 wrap");
+
+  reset();
+  bleNeverReady = true;
+  enterDeepSleep(true);
+  bleNeverReady = false;
+  enterDeepSleep(false);
+  require(deepSleepCalls == 1,
+          "manual-retry", "explicit sleep must remain available after a failed automatic attempt");
+
+  std::cout << "BLE-02 sleep regression: 8 scenarios, " << failures << " failed assertions\n";
+  return failures ? 1 : 0;
+}

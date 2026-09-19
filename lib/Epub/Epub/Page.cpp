@@ -1,6 +1,7 @@
 #include "Page.h"
 
 #include <GfxRenderer.h>
+#include <HalMemory.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <Serialization.h>
@@ -24,18 +25,21 @@ void PageLine::render(GfxRenderer& renderer, const int fontId, const int xOffset
 }
 
 bool PageLine::serialize(HalFile& file) {
-  serialization::writePod(file, xPos);
-  serialization::writePod(file, yPos);
+  if (!serialization::writePod(file, xPos)) return false;
+  if (!serialization::writePod(file, yPos)) return false;
 
   // serialize TextBlock pointed to by PageLine
   return block->serialize(file);
 }
 
 std::unique_ptr<PageLine> PageLine::deserialize(HalFile& file) {
+  serialization::CheckedReader reader(file);
   int16_t xPos;
   int16_t yPos;
-  serialization::readPod(file, xPos);
-  serialization::readPod(file, yPos);
+  reader.pod(xPos);
+  reader.pod(yPos);
+
+  if (!reader.ok()) return nullptr;
 
   auto tb = TextBlock::deserialize(file);
   if (!tb) {
@@ -61,18 +65,21 @@ void PageImage::renderPlaceholder(GfxRenderer& renderer, const int xOffset, cons
 }
 
 bool PageImage::serialize(HalFile& file) {
-  serialization::writePod(file, xPos);
-  serialization::writePod(file, yPos);
+  if (!serialization::writePod(file, xPos)) return false;
+  if (!serialization::writePod(file, yPos)) return false;
 
   // serialize ImageBlock
   return imageBlock->serialize(file);
 }
 
 std::unique_ptr<PageImage> PageImage::deserialize(HalFile& file) {
+  serialization::CheckedReader reader(file);
   int16_t xPos;
   int16_t yPos;
-  serialization::readPod(file, xPos);
-  serialization::readPod(file, yPos);
+  reader.pod(xPos);
+  reader.pod(yPos);
+
+  if (!reader.ok()) return nullptr;
 
   auto ib = ImageBlock::deserialize(file);
   if (!ib) {
@@ -97,24 +104,25 @@ void PageHorizontalRule::render(GfxRenderer& renderer, const int fontId, const i
 }
 
 bool PageHorizontalRule::serialize(HalFile& file) {
-  serialization::writePod(file, xPos);
-  serialization::writePod(file, yPos);
-  serialization::writePod(file, width);
-  serialization::writePod(file, thickness);
+  if (!serialization::writePod(file, xPos)) return false;
+  if (!serialization::writePod(file, yPos)) return false;
+  if (!serialization::writePod(file, width)) return false;
+  if (!serialization::writePod(file, thickness)) return false;
   return true;
 }
 
 std::unique_ptr<PageHorizontalRule> PageHorizontalRule::deserialize(HalFile& file) {
+  serialization::CheckedReader reader(file);
   int16_t xPos = 0;
   int16_t yPos = 0;
   uint16_t width = 0;
   uint8_t thickness = 0;
-  serialization::readPod(file, xPos);
-  serialization::readPod(file, yPos);
-  serialization::readPod(file, width);
-  serialization::readPod(file, thickness);
+  reader.pod(xPos);
+  reader.pod(yPos);
+  reader.pod(width);
+  reader.pod(thickness);
 
-  if (width == 0 || thickness == 0) {
+  if (!reader.ok() || width == 0 || thickness == 0) {
     LOG_ERR("PGE", "Deserialization failed: invalid horizontal rule metadata (width=%u thickness=%u)", width,
             thickness);
     return nullptr;
@@ -149,12 +157,13 @@ void Page::renderWithImagePlaceholders(GfxRenderer& renderer, const int fontId, 
 }
 
 bool Page::serialize(HalFile& file) const {
+  if (elements.size() > UINT16_MAX) return false;
   const uint16_t count = elements.size();
-  serialization::writePod(file, count);
+  if (!serialization::writePod(file, count)) return false;
 
   for (const auto& el : elements) {
     // Use getTag() method to determine type
-    serialization::writePod(file, static_cast<uint8_t>(el->getTag()));
+    if (!serialization::writePod(file, static_cast<uint8_t>(el->getTag()))) return false;
 
     if (!el->serialize(file)) {
       return false;
@@ -163,7 +172,7 @@ bool Page::serialize(HalFile& file) const {
 
   // Serialize footnotes (clamp to MAX_FOOTNOTES_PER_PAGE to match addFootnote/deserialize limits)
   const uint16_t fnCount = std::min<uint16_t>(footnotes.size(), MAX_FOOTNOTES_PER_PAGE);
-  serialization::writePod(file, fnCount);
+  if (!serialization::writePod(file, fnCount)) return false;
   for (uint16_t i = 0; i < fnCount; i++) {
     const auto& fn = footnotes[i];
     if (file.write(fn.number, sizeof(fn.number)) != sizeof(fn.number) ||
@@ -174,23 +183,24 @@ bool Page::serialize(HalFile& file) const {
   }
 
   const uint16_t linkCount = std::min<uint16_t>(links.size(), MAX_LINKS_PER_PAGE);
-  serialization::writePod(file, linkCount);
+  if (!serialization::writePod(file, linkCount)) return false;
   for (uint16_t i = 0; i < linkCount; i++) {
     const auto& link = links[i];
     if (file.write(link.href, sizeof(link.href)) != sizeof(link.href)) {
       LOG_ERR("PGE", "Failed to write link %u", i);
       return false;
     }
-    serialization::writePod(file, link.x);
-    serialization::writePod(file, link.y);
-    serialization::writePod(file, link.width);
-    serialization::writePod(file, link.height);
+    if (!serialization::writePod(file, link.x)) return false;
+    if (!serialization::writePod(file, link.y)) return false;
+    if (!serialization::writePod(file, link.width)) return false;
+    if (!serialization::writePod(file, link.height)) return false;
   }
 
   return true;
 }
 
 std::unique_ptr<Page> Page::deserialize(HalFile& file) {
+  serialization::CheckedReader reader(file);
   auto page = makeUniqueNoThrow<Page>();
   if (!page) {
     LOG_ERR("PGE", "Deserialization failed: could not allocate Page");
@@ -198,21 +208,22 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
   }
 
   uint16_t count;
-  serialization::readPod(file, count);
+  reader.pod(count);
 
-  // Reserve up front so a page load costs one allocation for the element vector
-  // instead of a grow-copy-free cycle every doubling. `count` is untrusted (it
-  // comes straight off the SD cache), so clamp it: a real page holds a few dozen
-  // elements, while a corrupt header could ask for 65535 * sizeof(unique_ptr) and
-  // abort() on the failed allocation (vector's operator new is throwing, and this
-  // firmware builds with -fno-exceptions). Under-reserving is harmless -- the
-  // push_back path below still grows normally.
-  static constexpr uint16_t RESERVE_CAP = 256;
-  page->elements.reserve(std::min(count, RESERVE_CAP));
+  // The smallest element is a rule: tag + x/y + width + thickness.
+  // Counts are checked against bytes left before reserve; this also prevents
+  // truncated headers from requesting an allocation.
+  constexpr size_t minElementBytes = 1 + 3 * sizeof(uint16_t) + sizeof(uint8_t);
+  if (!reader.ok() || reader.remaining() < 2 * sizeof(uint16_t) ||
+      count > (reader.remaining() - 2 * sizeof(uint16_t)) / minElementBytes) return nullptr;
+  if (count > HalMemory::getDefaultHeap().largestBlockBytes / sizeof(decltype(page->elements)::value_type)) {
+    return nullptr;
+  }
+  page->elements.reserve(count);
 
   for (uint16_t i = 0; i < count; i++) {
     uint8_t tag;
-    serialization::readPod(file, tag);
+    if (!reader.pod(tag)) return nullptr;
 
     if (tag == TAG_PageLine) {
       auto pl = PageLine::deserialize(file);
@@ -240,16 +251,19 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
 
   // Deserialize footnotes
   uint16_t fnCount;
-  serialization::readPod(file, fnCount);
-  if (fnCount > MAX_FOOTNOTES_PER_PAGE) {
+  reader.pod(fnCount);
+  if (!reader.ok() || fnCount > MAX_FOOTNOTES_PER_PAGE ||
+      !reader.has(static_cast<size_t>(fnCount) * (sizeof(FootnoteEntry::number) + sizeof(FootnoteEntry::href)) +
+                  sizeof(uint16_t))) {
     LOG_ERR("PGE", "Invalid footnote count %u", fnCount);
     return nullptr;
   }
+  if (fnCount > HalMemory::getDefaultHeap().largestBlockBytes / sizeof(FootnoteEntry)) return nullptr;
   page->footnotes.resize(fnCount);
   for (uint16_t i = 0; i < fnCount; i++) {
     auto& entry = page->footnotes[i];
-    if (file.read(entry.number, sizeof(entry.number)) != sizeof(entry.number) ||
-        file.read(entry.href, sizeof(entry.href)) != sizeof(entry.href)) {
+    if (!reader.read(entry.number, sizeof(entry.number)) ||
+        !reader.read(entry.href, sizeof(entry.href))) {
       LOG_ERR("PGE", "Failed to read footnote %u", i);
       return nullptr;
     }
@@ -258,28 +272,30 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
   }
 
   uint16_t linkCount;
-  serialization::readPod(file, linkCount);
-  if (linkCount > MAX_LINKS_PER_PAGE) {
+  reader.pod(linkCount);
+  if (!reader.ok() || linkCount > MAX_LINKS_PER_PAGE ||
+      !reader.has(static_cast<size_t>(linkCount) * (sizeof(PageLink::href) + 4 * sizeof(int16_t)))) {
     LOG_ERR("PGE", "Invalid link count %u", linkCount);
     return nullptr;
   }
+  if (linkCount > HalMemory::getDefaultHeap().largestBlockBytes / sizeof(PageLink)) return nullptr;
   page->links.resize(linkCount);
   for (uint16_t i = 0; i < linkCount; i++) {
     auto& link = page->links[i];
-    if (file.read(link.href, sizeof(link.href)) != sizeof(link.href)) {
+    if (!reader.read(link.href, sizeof(link.href))) {
       LOG_ERR("PGE", "Failed to read link %u", i);
       return nullptr;
     }
     link.href[sizeof(link.href) - 1] = '\0';
-    serialization::readPod(file, link.x);
-    serialization::readPod(file, link.y);
-    serialization::readPod(file, link.width);
-    serialization::readPod(file, link.height);
-    if (link.href[0] == '\0' || link.width <= 0 || link.height <= 0) {
+    reader.pod(link.x);
+    reader.pod(link.y);
+    reader.pod(link.width);
+    reader.pod(link.height);
+    if (!reader.ok() || link.href[0] == '\0' || link.width <= 0 || link.height <= 0) {
       LOG_ERR("PGE", "Invalid link geometry %u", i);
       return nullptr;
     }
   }
 
-  return page;
+  return reader.ok() ? std::move(page) : nullptr;
 }

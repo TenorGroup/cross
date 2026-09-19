@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""Compile the production row builder/screen with the actual SDK list renderer.
+
+Only display/font I/O and activity wiring are stubbed. The source functions are
+extracted verbatim so the baseline can run the same end-to-end row assertions.
+"""
+import argparse
+from pathlib import Path
+import subprocess
+
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[1]
+
+
+def function(source, signature):
+    begin = source.index(signature)
+    opening = source.index("{", begin)
+    depth = 1
+    end = opening + 1
+    while depth:
+        depth += (source[end] == "{") - (source[end] == "}")
+        end += 1
+    return source[begin:end]
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source", type=Path, default=REPO / "src/activities/home/FileBrowserActivity.cpp")
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--sanitize", action="store_true")
+    parser.add_argument("--compiler", default="clang++")
+    args = parser.parse_args()
+    args.output.mkdir(parents=True, exist_ok=True)
+    source = args.source.read_text()
+    signatures = [
+        "void FileBrowserActivity::rebuildRowItems(",
+        "std::string getFileName(std::string filename) {",
+        "std::string getFileExtension(const std::string& filename) {",
+        "void FileBrowserActivity::buildScreen(UiScreen& screen) {",
+    ]
+    functions = "\n\n".join(function(source, sig) for sig in signatures)
+    windowed = "const int first" in functions.split("\n", 1)[0]
+    base = (REPO / "src/activities/UiListActivity.cpp").read_text()
+    pin_state = base[base.index("struct PinDecoration {"):base.index("}  // namespace")]
+    base_methods = "\n\n".join(function(base, sig) for sig in [
+        "void UiListActivity::syncListViewport(",
+        "void UiListActivity::decoratePinnedRows(",
+    ]).replace("UiListActivity::", "FileBrowserActivity::")
+    generated = args.output / "production_rows.inc"
+    generated.write_text(pin_state + "\n" + base_methods + "\n" + functions)
+    binary = args.output / "folder_rows"
+    cmd = [args.compiler, "-std=c++20", "-O1", "-g", "-Wall", "-Wextra",
+           "-Wno-unused-parameter", f"-DWINDOWED={int(windowed)}",
+           "-I" + str(args.output), "-I" + str(REPO / "freeink-sdk/libs/ui/FreeInkUI/include"),
+           "-I" + str(REPO / "lib/Utf8"), "-I" + str(REPO / "lib/FsHelpers"),
+           "-I" + str(REPO / "test/host_stubs"),
+           str(HERE / "FolderRowsRegression.cpp"), str(REPO / "lib/Utf8/Utf8.cpp"),
+           str(REPO / "lib/FsHelpers/FsHelpers.cpp"),
+           str(REPO / "freeink-sdk/libs/ui/FreeInkUI/src/FreeInkUI.cpp"), "-o", str(binary)]
+    if args.sanitize:
+        cmd[1:1] = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+    subprocess.run(cmd, check=True)
+    result = subprocess.run([str(binary)], text=True, capture_output=True)
+    (args.output / "results.log").write_text(result.stdout + result.stderr)
+    print(result.stdout + result.stderr, end="")
+    raise SystemExit(result.returncode)
+
+
+if __name__ == "__main__":
+    main()

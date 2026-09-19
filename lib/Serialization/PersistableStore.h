@@ -46,11 +46,11 @@ class PersistableStoreBase {
   // instead of instantiating serializeJson/deserializeJson in their own TU -
   // that per-TU duplication is exactly what this class exists to prevent.
 
-  // Serializes doc and writes it to path (ensures /.crosspoint exists). Logs on failure.
+  // Checks complete serialization and writes through checked staging/backup replacement.
   static bool writeDocToFile(const char* path, const JsonDocument& doc);
 
-  // Reads path and parses it into doc. Returns false silently when the file
-  // does not exist (expected on first boot); logs on read/parse failure.
+  // Reads checked main data, falling back to a valid backup after interruption.
+  // Allocation/read failures preserve all files and return false for a retry.
   static bool readDocFromFile(const char* path, JsonDocument& doc);
 
  protected:

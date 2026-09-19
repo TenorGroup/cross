@@ -49,7 +49,7 @@ size_t zipFillCallback(void* vctx, const uint8_t** data) {
   // rather than letting the negative-to-size_t conversion underflow fileRemaining
   // and report a huge bytesRead, which would have the inflate library read past
   // the end of readBuf.
-  if (result < 0) {
+  if (result <= 0 || static_cast<size_t>(result) > toRead) {
     LOG_ERR("ZIP", "Failed to read compressed data: %d", result);
     return 0;
   }
@@ -447,6 +447,7 @@ uint8_t* ZipFile::readFileToMemory(const char* filename, size_t* size, const boo
 }
 
 bool ZipFile::readFileToStream(const char* filename, Print& out, const size_t chunkSize, const bool allowEarlyStop) {
+  if (chunkSize == 0) return false;
   const ScopedOpenClose zip{*this};
   if (!zip) return false;
 
@@ -456,7 +457,7 @@ bool ZipFile::readFileToStream(const char* filename, Print& out, const size_t ch
   const long fileOffset = getDataOffset(fileStat);
   if (fileOffset < 0) return false;
 
-  file.seek(fileOffset);
+  if (!file.seek(fileOffset)) return false;
   const auto deflatedDataSize = fileStat.compressedSize;
   const auto inflatedDataSize = fileStat.uncompressedSize;
 
@@ -470,13 +471,15 @@ bool ZipFile::readFileToStream(const char* filename, Print& out, const size_t ch
 
     size_t remaining = inflatedDataSize;
     while (remaining > 0) {
-      const size_t dataRead = file.read(buffer, remaining < chunkSize ? remaining : chunkSize);
-      if (dataRead == 0) {
+      const size_t requested = std::min(remaining, chunkSize);
+      const int result = file.read(buffer, requested);
+      if (result <= 0 || static_cast<size_t>(result) > requested) {
         LOG_ERR("ZIP", "Could not read more bytes");
         free(buffer);
         return false;
       }
 
+      const size_t dataRead = static_cast<size_t>(result);
       if (out.write(buffer, dataRead) != dataRead) {
         free(buffer);
         if (allowEarlyStop) return true;  // sink has what it needs
@@ -526,6 +529,11 @@ bool ZipFile::readFileToStream(const char* filename, Print& out, const size_t ch
       size_t produced;
       const InflateStream::Status status = inflate.readAtMost(outputBuffer, chunkSize, &produced);
 
+      if (status == InflateStream::Status::Error) {
+        LOG_ERR("ZIP", "Decompression failed");
+        break;
+      }
+
       totalProduced += produced;
       if (totalProduced > static_cast<size_t>(inflatedDataSize)) {
         LOG_ERR("ZIP", "Decompressed size exceeds expected (%zu > %zu)", totalProduced,
@@ -555,10 +563,6 @@ bool ZipFile::readFileToStream(const char* filename, Print& out, const size_t ch
         break;
       }
 
-      if (status == InflateStream::Status::Error) {
-        LOG_ERR("ZIP", "Decompression failed");
-        break;
-      }
       // InflateStream::Status::Ok: output buffer full, continue
     }
 

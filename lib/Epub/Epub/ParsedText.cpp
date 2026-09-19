@@ -397,9 +397,11 @@ void ParsedText::eraseVisibleOffsetPrefix(const size_t count) {
   visibleOffsetBase = newBase;
 }
 
-void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle, const bool underline,
-                         const bool attachToPrevious, const uint32_t visibleTextOffset, const uint8_t linkId) {
-  if (word.empty()) return;
+bool ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle, const bool underline,
+                         const bool attachToPrevious, const uint32_t visibleTextOffset, const uint8_t linkId,
+                         const size_t maxWordCount) {
+  if (layoutFailed) return false;
+  if (word.empty()) return true;
 
   // The device fonts carry no combining-mark positioning, so EPUB text stored in NFD
   // (a base letter followed by separate combining accents -- common for Vietnamese,
@@ -418,6 +420,10 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
 
   const auto pushToken = [&](std::string token, const bool continues, const bool noSpaceBefore,
                              const uint8_t focusBoundary, const uint32_t tokenOffset) {
+    if (words.size() >= maxWordCount) {
+      layoutFailed = true;
+      return;
+    }
     words.push_back(std::move(token));
     wordStyles.push_back(baseStyle);
     wordContinues.push_back(continues);
@@ -468,6 +474,10 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   if (auto breakOffsets = cjkCharacterBreakByteOffsets(word); !breakOffsets.empty()) {
     // CJK-heavy paragraphs can push hundreds of tiny tokens quickly when CSS toggles
     // inline styles. Reserve once up front to avoid repeated vector growth reallocations.
+    if (words.size() > maxWordCount || breakOffsets.size() + 1 > maxWordCount - words.size()) {
+      layoutFailed = true;
+      return false;
+    }
     ensureTokenCapacity(breakOffsets.size() + 1);
     bool firstToken = true;
     size_t tokenStart = 0;
@@ -488,7 +498,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
-    return;
+    return !layoutFailed;
   }
 
   if (containsCjkBreakableCodepoint(word)) {
@@ -497,7 +507,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
-    return;
+    return !layoutFailed;
   }
 
   // Already-bold text should stay fully bold; focus splitting would make its suffix regular later.
@@ -507,17 +517,21 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
-    return;
+    return !layoutFailed;
   }
 
   // --- FOCUS READING LOGIC BELOW ---
 
   // Worst case: a segment boundary on each byte (highly punctuated UTF-8 text).
-  ensureTokenCapacity(word.length());
+  ensureTokenCapacity(std::min(word.length(), maxWordCount - std::min(words.size(), maxWordCount)));
 
   // Lambda helper to process and push individual sub-segments of the string
   // Use std::string_view to avoid heap allocations when slicing
   auto processSegment = [&](std::string_view segment, bool isWord, bool attach, bool noSpaceBefore) {
+    if (words.size() >= maxWordCount) {
+      layoutFailed = true;
+      return;
+    }
     const unsigned char* wordBegin = reinterpret_cast<const unsigned char*>(word.data());
     const unsigned char* segmentBegin = reinterpret_cast<const unsigned char*>(segment.data());
     uint32_t segmentOffset = visibleTextOffset;
@@ -623,6 +637,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   if (wordStartsRtl) {
     hasRtlWord = true;
   }
+  return !layoutFailed;
 }
 
 uint8_t ParsedText::addLinkTarget(const char* href) {
@@ -643,6 +658,7 @@ void ParsedText::setRubyForWordAt(size_t index, const std::string& ruby) {
   if (rubyTexts.size() <= index) {
     rubyTexts.resize(words.size());
   }
+  rubyTextBytes = rubyTextBytes - rubyTexts[index].size() + ruby.size();
   rubyTexts[index] = ruby;
 }
 
@@ -651,6 +667,7 @@ void ParsedText::setRubyGroupAt(size_t startIndex, size_t count, const std::stri
   if (rubyTexts.size() <= startIndex) {
     rubyTexts.resize(words.size());
   }
+  rubyTextBytes = rubyTextBytes - rubyTexts[startIndex].size() + ruby.size();
   rubyTexts[startIndex] = ruby;
   for (size_t i = 1; i < count; i++) {
     size_t idx = startIndex + i;
@@ -658,6 +675,7 @@ void ParsedText::setRubyGroupAt(size_t startIndex, size_t count, const std::stri
     if (rubyTexts.size() <= idx) {
       rubyTexts.resize(words.size());
     }
+    rubyTextBytes -= rubyTexts[idx].size();
     rubyTexts[idx] = "";
     wordStyles[idx] =
         static_cast<EpdFontFamily::Style>(static_cast<uint8_t>(wordStyles[idx]) | EpdFontFamily::RUBY_CONTINUE);
@@ -681,12 +699,11 @@ int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer
   return renderer.getSpaceWidth(fontId, EpdFontFamily::REGULAR, wordSpacing) * spaces;
 }
 // Consumes data to minimize memory usage
-void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fontId, const uint16_t viewportWidth,
+bool ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fontId, const uint16_t viewportWidth,
                                        const std::function<void(std::unique_ptr<TextBlock>, uint32_t)>& processLine,
                                        const bool includeLastLine) {
-  if (words.empty()) {
-    return;
-  }
+  if (layoutFailed) return false;
+  if (words.empty()) return true;
 
   // Per-paragraph RTL auto-detection: only when CSS/HTML didn't explicitly set direction.
   // Explicit dir="ltr" must be respected and not overridden by content heuristic.
@@ -751,8 +768,13 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   const size_t lineCount = includeLastLine ? lineBreakIndices.size() : lineBreakIndices.size() - 1;
 
   for (size_t i = 0; i < lineCount; ++i) {
-    extractLine(i, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore, lineBreakIndices, processLine, renderer,
-                fontId);
+    if (!extractLine(i, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore, lineBreakIndices, processLine,
+                     renderer, fontId) || layoutFailed) {
+      // A caller discards the failed chapter and retries from its source. A prefix
+      // already emitted by this pass must never be promoted as a complete cache.
+      layoutFailed = true;
+      return false;
+    }
   }
 
   extractedLines += lineCount;
@@ -769,9 +791,11 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
     eraseVisibleOffsetPrefix(consumed);
     if (!rubyTexts.empty()) {
       const size_t rtConsumed = std::min(consumed, rubyTexts.size());
+      for (size_t i = 0; i < rtConsumed; ++i) rubyTextBytes -= rubyTexts[i].size();
       rubyTexts.erase(rubyTexts.begin(), rubyTexts.begin() + rtConsumed);
     }
   }
+  return true;
 }
 
 static inline bool isCjkIdeograph(uint32_t cp) {
@@ -1279,7 +1303,7 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
   return true;
 }
 
-void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const std::vector<uint16_t>& wordWidths,
+bool ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const std::vector<uint16_t>& wordWidths,
                              const std::vector<bool>& continuesVec, const std::vector<bool>& noSpaceBeforeVec,
                              const std::vector<size_t>& lineBreakIndices,
                              const std::function<void(std::unique_ptr<TextBlock>, uint32_t)>& processLine,
@@ -1644,14 +1668,14 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
                                               std::vector<uint16_t>{}, blockStyle, std::move(lineRubyTexts),
                                               std::move(lineLinks));
     if (!block || !block->valid()) {
-      LOG_ERR("PTX", "Dropping line: TextBlock or arena allocation failed");
-      return;
+      LOG_ERR("PTX", "Layout failed: TextBlock or arena allocation failed");
+      return false;
     }
     if (!lineWordStyles.empty() && (lineWordStyles[0] & EpdFontFamily::DROP_CAP))
       block->setDropCapHeight(dropCapHeight);
     block->setLetterSpacing(letterSpacing);
     processLine(std::move(block), lineVisibleOffset);
-    return;
+    return !layoutFailed;
   }
 
   // Each word is one TextBlock entry carrying its own boundary; all that remains is the suffix x
@@ -1671,11 +1695,12 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
   auto block = makeUniqueNoThrow<TextBlock>(lineWords, lineXPos, lineWordStyles, outBoundaries, outSuffixX, blockStyle,
                                             std::move(lineRubyTexts), std::move(lineLinks));
   if (!block || !block->valid()) {
-    LOG_ERR("PTX", "Dropping line: TextBlock or arena allocation failed");
-    return;
+    LOG_ERR("PTX", "Layout failed: TextBlock or arena allocation failed");
+    return false;
   }
   block->setLetterSpacing(letterSpacing);
   processLine(std::move(block), lineVisibleOffset);
+  return !layoutFailed;
 }
 
 int ParsedText::lineIndent(size_t line, const GfxRenderer& renderer, int fontId) const {

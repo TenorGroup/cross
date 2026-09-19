@@ -38,11 +38,15 @@ class ReaderActivity : public Activity {
 
   // Lat mot trang, va DEM no. Mot cho duy nhat dem, chu khong dem o ca ba trinh doc:
   // dem o ba noi thi mot dinh dang moi se im lang khong duoc dem.
-  bool pageTurn(bool isForward) {
-    if (!latTrangThat(isForward)) return false;
-    trangDaLat++;
-    return true;
-  }
+  // The format mutation runs under this one nonrecursive render lock.
+  bool pageTurn(bool isForward);
+  bool pageTurnLocked(bool isForward);
+  virtual bool externalPageTurnAllowed() const { return !preview; }
+  virtual bool manualPageTurnReady() const { return true; }
+  bool processExternalPageTurn();
+  int8_t pendingExternalTurn = 0;
+  bool pendingTurnIsLocal = false;
+  uint32_t pendingExternalGeneration = 0;
   virtual bool skipPages(int amount) { return pageTurn(amount > 0); }
   // Giu nut lat trang khi "Giu nut lat trang khi doc" = Co chu: doi co mot nac theo `huong`
   // (+1 to, -1 nho), KEP o hai bien. Tra ve true neu co doi. Mac dinh (XTC, bitmap) khong doi gi,
@@ -67,9 +71,9 @@ class ReaderActivity : public Activity {
   ~ReaderActivity() override = default;
   std::string navigationMemoryKey() const override { return name + ":" + bookPath; }
 
-  // Luot lat trang tu nguon NGOAI nut vat ly (page turner BLE). Di qua pageTurn() de van DEM
-  // dung nhu nut that - goi thang latTrangThat() se bo qua bo dem trang da lat.
-  bool luotLatTrangNgoai(const bool isForward) { return pageTurn(isForward); }
+  // Queue one external direction for this reader generation. The reader loop
+  // applies render/menu guards, counts the accepted turn and requests repaint.
+  bool luotLatTrangNgoai(bool isForward);
 
   static std::unique_ptr<ReaderActivity> create(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                 std::string path, bool allowFastInitialRefresh, bool preview = false);

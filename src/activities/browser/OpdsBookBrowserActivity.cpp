@@ -313,6 +313,10 @@ void OpdsBookBrowserActivity::buildDownloadScreen(UiScreen& screen) {
     progress.border = fui::Paint::solid(fui::Color::Black);
     progress.borderWidth = 1;
     fui::progressBar(screen.frame(), bar, progress);
+  } else {
+    char received[32];
+    snprintf(received, sizeof(received), "%zu B", downloadProgress);
+    screen.target().text(bar, received, centered);
   }
 
   const fui::Rect btnArea = screen.takeTop(btnH);
@@ -538,12 +542,17 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
   }
 
   int lastRenderedPercent = -1;
+  size_t lastRenderedBytes = static_cast<size_t>(-1);
   unsigned long lastProgressUpdateMs = 0;
   const auto result = HttpDownloader::downloadToFile(
       downloadUrl, filename,
-      [this, &lastRenderedPercent, &lastProgressUpdateMs](const size_t downloaded, const size_t total) {
-        downloadProgress = downloaded;
-        downloadTotal = total;
+      [this, &lastRenderedPercent, &lastRenderedBytes, &lastProgressUpdateMs](const size_t downloaded,
+                                                                          const size_t total) {
+        {
+          RenderLock lock(*this);
+          downloadProgress = downloaded;
+          downloadTotal = total;
+        }
         // The activity loop is blocked for the whole download; pump input here
         // so the Cancel button or a Back press can abort mid-transfer.
         mappedInput.update();
@@ -558,10 +567,12 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
         routeTouch(mappedInput);
         const int percent = total > 0 ? static_cast<int>(static_cast<uint64_t>(downloaded) * 100 / total) : 0;
         const unsigned long now = millis();
-        if (percent >= 100 || lastRenderedPercent < 0 ||
-            percent >= lastRenderedPercent + DOWNLOAD_PROGRESS_STEP_PERCENT ||
-            now - lastProgressUpdateMs >= DOWNLOAD_PROGRESS_MIN_UPDATE_MS) {
+        if ((downloaded != lastRenderedBytes || percent != lastRenderedPercent) &&
+            (percent >= 100 || lastRenderedPercent < 0 ||
+             percent >= lastRenderedPercent + DOWNLOAD_PROGRESS_STEP_PERCENT ||
+             now - lastProgressUpdateMs >= DOWNLOAD_PROGRESS_MIN_UPDATE_MS)) {
           lastRenderedPercent = percent;
+          lastRenderedBytes = downloaded;
           lastProgressUpdateMs = now;
           requestUpdate(true);
         }
@@ -569,7 +580,6 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
       &cancelDownload, server.username, server.password);
 
   if (result == HttpDownloader::OK) {
-    clearBookCache(filename);
     state = BrowserState::LOADING;
     statusMessage = tr(STR_LOADING);
     fetchFeed(currentPath);

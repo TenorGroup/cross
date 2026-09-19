@@ -1,0 +1,259 @@
+--- a/src/esp_http_client.h
++++ b/src/esp_http_client.h
+@@ -1,11 +1,16 @@
+ #pragma once
+ 
+ #include <cstring>
++#include <cctype>
++#include <curl/curl.h>
++#include <sys/socket.h>
+ #include <map>
+ #include <string>
+ 
+ #include "SimHttpFetch.h"
+ #include "esp_err.h"
++
++constexpr int ESP_ERR_HTTP_EAGAIN = 0x7007;
+ 
+ enum http_event { HTTP_EVENT_ON_DATA, HTTP_EVENT_ON_HEADER };
+ 
+@@ -68,6 +73,14 @@
+   std::string responseBody;
+   size_t bodyOffset = 0;
+   bool opened = false;
++  CURL *easy = nullptr;
++  CURLM *multi = nullptr;
++  curl_slist *requestHeaders = nullptr;
++  curl_socket_t socket = CURL_SOCKET_BAD;
++  bool headersReady = false;
++  bool done = false;
++  bool failed = false;
++  bool chunked = false;
+ };
+ 
+ namespace sim_http_client_detail {
+@@ -106,8 +119,8 @@
+   return ESP_OK;
+ }
+ 
+-inline bool esp_http_client_is_chunked_response(esp_http_client_handle_t) {
+-  return false;
++inline bool esp_http_client_is_chunked_response(esp_http_client_handle_t handle) {
++  return handle && handle->chunked;
+ }
+ 
+ inline int esp_http_client_get_content_length(esp_http_client_handle_t handle) {
+@@ -164,38 +177,142 @@
+   return ESP_OK;
+ }
+ 
+-inline esp_err_t esp_http_client_open(esp_http_client_handle_t handle,
+-                                      int /*write_len*/) {
+-  if (!handle || !handle->config.url)
+-    return ESP_FAIL;
++// Native open/read uses libcurl's nonblocking multi interface. The caller's
++// polling loop remains in control while DNS/connect/headers/body are pending.
++inline int esp_http_client_get_socket(esp_http_client_handle_t handle) {
++  return handle ? static_cast<int>(handle->socket) : -1;
++}
++inline esp_err_t esp_http_client_set_timeout_ms(esp_http_client_handle_t handle, int timeout) {
++  if (!handle || timeout < 0) return ESP_FAIL;
++  handle->config.timeout_ms = timeout;
++  return ESP_OK;
++}
++namespace sim_http_client_detail {
++inline void poll(SimEspHttpClient *handle) {
++  if (!handle->multi || handle->done) return;
++  if (handle->config.event_handler) {
++    esp_http_client_event_t event{};
++    event.event_id = HTTP_EVENT_ON_DATA;
++    event.client = handle;
++    event.user_data = handle->config.user_data;
++    handle->config.event_handler(&event);
++  }
++  int running = 0;
++  if (curl_multi_perform(handle->multi, &running) != CURLM_OK) {
++    handle->failed = handle->done = true;
++    return;
++  }
++  int remaining;
++  while (CURLMsg *message = curl_multi_info_read(handle->multi, &remaining)) {
++    if (message->msg != CURLMSG_DONE) continue;
++    handle->failed = message->data.result != CURLE_OK;
++    handle->done = true;
++  }
++}
++inline void release(SimEspHttpClient *handle) {
++  if (handle->multi && handle->easy) curl_multi_remove_handle(handle->multi, handle->easy);
++  if (handle->easy) curl_easy_cleanup(handle->easy);
++  if (handle->multi) curl_multi_cleanup(handle->multi);
++  curl_slist_free_all(handle->requestHeaders);
++  handle->easy = nullptr; handle->multi = nullptr; handle->requestHeaders = nullptr;
++  handle->socket = CURL_SOCKET_BAD;
++}
++} // namespace sim_http_client_detail
++
++inline esp_err_t esp_http_client_open(esp_http_client_handle_t handle, int /*write_len*/) {
++  if (!handle || !handle->config.url) return ESP_FAIL;
+   using namespace sim_http_client_detail;
+-  sim_http_fetch::Response response;
+-  std::string basicAuth;
+-  if (handle->config.username &&
+-      handle->config.auth_type != HTTP_AUTH_TYPE_NONE) {
+-    basicAuth = handle->config.username;
+-    basicAuth += ':';
+-    if (handle->config.password)
+-      basicAuth += handle->config.password;
+-  }
+-  if (!sim_http_fetch::fetch(
+-          handle->config.url, methodName(handle->config.method),
+-          handle->headers, basicAuth,
+-          handle->postField.empty() ? nullptr : handle->postField.c_str(),
+-          response))
+-    return ESP_FAIL;
+-  handle->statusCode = response.statusCode;
+-  handle->responseBody = std::move(response.body);
+-  handle->contentLength = static_cast<int>(handle->responseBody.size());
+-  handle->bodyOffset = 0;
++  release(handle);
++  handle->responseBody.clear(); handle->bodyOffset = 0;
++  handle->headersReady = handle->done = handle->failed = handle->chunked = false;
++  handle->statusCode = 0; handle->contentLength = -1;
++  sim_http_fetch::Response local;
++  if (sim_http_fetch::fetchFromMockRoot(handle->config.url, local) ||
++      sim_http_fetch::fetchFromFileUrl(handle->config.url, local)) {
++    handle->statusCode = local.statusCode;
++    handle->responseBody = std::move(local.body);
++    handle->contentLength = static_cast<int>(handle->responseBody.size());
++    handle->opened = handle->headersReady = handle->done = true;
++    return ESP_OK;
++  }
++  static const CURLcode initialized = curl_global_init(CURL_GLOBAL_DEFAULT);
++  if (initialized != CURLE_OK) return ESP_FAIL;
++  handle->easy = curl_easy_init();
++  handle->multi = curl_multi_init();
++  if (!handle->easy || !handle->multi) { release(handle); return ESP_FAIL; }
++  CURL *easy = handle->easy;
++  curl_easy_setopt(easy, CURLOPT_URL, handle->config.url);
++  curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, methodName(handle->config.method));
++  curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
++  curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
++  curl_easy_setopt(easy, CURLOPT_MAXREDIRS, 5L);
++  curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT_MS, static_cast<long>(handle->config.timeout_ms > 0 ? handle->config.timeout_ms : 3000));
++  curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS, 60000L);
++  curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 1L);
++  curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 2L);
++  if (handle->config.cert_pem) {
++    curl_blob ca{const_cast<char *>(handle->config.cert_pem), strlen(handle->config.cert_pem), CURL_BLOB_COPY};
++    curl_easy_setopt(easy, CURLOPT_CAINFO_BLOB, &ca);
++  }
++  if (handle->config.username && handle->config.auth_type != HTTP_AUTH_TYPE_NONE) {
++    curl_easy_setopt(easy, CURLOPT_USERNAME, handle->config.username);
++    curl_easy_setopt(easy, CURLOPT_PASSWORD, handle->config.password ? handle->config.password : "");
++  }
++  if (!handle->postField.empty()) curl_easy_setopt(easy, CURLOPT_POSTFIELDS, handle->postField.c_str());
++  for (const auto& header : handle->headers) {
++    handle->requestHeaders = curl_slist_append(handle->requestHeaders, (header.first + ": " + header.second).c_str());
++  }
++  curl_easy_setopt(easy, CURLOPT_HTTPHEADER, handle->requestHeaders);
++  curl_easy_setopt(easy, CURLOPT_SOCKOPTDATA, handle);
++  curl_easy_setopt(easy, CURLOPT_SOCKOPTFUNCTION, +[](void *data, curl_socket_t fd, curlsocktype) -> int {
++    static_cast<SimEspHttpClient *>(data)->socket = fd;
++    return CURL_SOCKOPT_OK;
++  });
++  curl_easy_setopt(easy, CURLOPT_CLOSESOCKETDATA, handle);
++  curl_easy_setopt(easy, CURLOPT_CLOSESOCKETFUNCTION, +[](void *data, curl_socket_t fd) -> int {
++    auto *client = static_cast<SimEspHttpClient *>(data);
++    if (client->socket == fd) client->socket = CURL_SOCKET_BAD;
++    return ::close(fd);
++  });
++  curl_easy_setopt(easy, CURLOPT_WRITEDATA, handle);
++  curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, +[](char *bytes, size_t size, size_t count, void *data) -> size_t {
++    auto *client = static_cast<SimEspHttpClient *>(data);
++    const size_t length = size * count;
++    if (client->statusCode < 300 || client->statusCode >= 400) client->responseBody.append(bytes, length);
++    return length;
++  });
++  curl_easy_setopt(easy, CURLOPT_HEADERDATA, handle);
++  curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, +[](char *bytes, size_t size, size_t count, void *data) -> size_t {
++    auto *client = static_cast<SimEspHttpClient *>(data);
++    const size_t length = size * count;
++    const std::string line(bytes, length);
++    if (line.rfind("HTTP/", 0) == 0) {
++      const auto space = line.find(' ');
++      client->statusCode = space == std::string::npos ? 0 : atoi(line.c_str() + space + 1);
++      client->headersReady = false; client->contentLength = -1; client->chunked = false;
++    } else if (line == "\r\n") {
++      client->headersReady = client->statusCode >= 200 && client->statusCode != 301 && client->statusCode != 302 &&
++                             client->statusCode != 303 && client->statusCode != 307 && client->statusCode != 308;
++    } else {
++      std::string key = line.substr(0, line.find(':'));
++      for (char& c : key) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
++      if (key == "content-length") client->contentLength = atoi(line.c_str() + key.size() + 1);
++      if (key == "transfer-encoding") client->chunked = true;
++    }
++    return length;
++  });
++  if (curl_multi_add_handle(handle->multi, easy) != CURLM_OK) { release(handle); return ESP_FAIL; }
+   handle->opened = true;
+-  return ESP_OK;
++  poll(handle);
++  return handle->failed ? ESP_FAIL : ESP_OK;
+ }
+ 
+ inline int64_t esp_http_client_fetch_headers(esp_http_client_handle_t handle) {
+-  if (!handle || !handle->opened)
+-    return -1;
+-  return static_cast<int64_t>(handle->responseBody.size());
++  if (!handle || !handle->opened) return ESP_FAIL;
++  sim_http_client_detail::poll(handle);
++  if (handle->failed) return ESP_FAIL;
++  if (!handle->headersReady) return -ESP_ERR_HTTP_EAGAIN;
++  return handle->contentLength > 0 ? handle->contentLength : 0;
+ }
+ 
+ inline esp_err_t
+@@ -207,6 +324,7 @@
+ inline esp_err_t esp_http_client_close(esp_http_client_handle_t handle) {
+   if (!handle)
+     return ESP_FAIL;
++  sim_http_client_detail::release(handle);
+   handle->responseBody.clear();
+   handle->bodyOffset = 0;
+   handle->opened = false;
+@@ -217,12 +335,17 @@
+                                 int len) {
+   if (!handle || !handle->opened || !buf || len <= 0)
+     return -1;
++  sim_http_client_detail::poll(handle);
++  if (handle->failed) return ESP_FAIL;
+   size_t remaining = handle->responseBody.size() - handle->bodyOffset;
+   size_t toRead = std::min(static_cast<size_t>(len), remaining);
+   if (toRead == 0)
+-    return 0;
++    return handle->done ? 0 : -ESP_ERR_HTTP_EAGAIN;
+   std::memcpy(buf, handle->responseBody.data() + handle->bodyOffset, toRead);
+   handle->bodyOffset += toRead;
++  if (handle->bodyOffset == handle->responseBody.size()) {
++    handle->responseBody.clear(); handle->bodyOffset = 0;
++  }
+   return static_cast<int>(toRead);
+ }
+ 
+@@ -230,7 +353,7 @@
+ esp_http_client_is_complete_data_received(esp_http_client_handle_t handle) {
+   if (!handle || !handle->opened)
+     return false;
+-  return handle->bodyOffset >= handle->responseBody.size();
++  return handle->done && !handle->failed && handle->bodyOffset >= handle->responseBody.size();
+ }
+ 
+ inline esp_err_t esp_http_client_get_and_clear_last_tls_error(
+@@ -243,6 +366,7 @@
+ }
+ 
+ inline esp_err_t esp_http_client_cleanup(esp_http_client_handle_t handle) {
++  if (handle) sim_http_client_detail::release(handle);
+   delete handle;
+   return ESP_OK;
+ }

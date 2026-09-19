@@ -67,6 +67,10 @@ void WebDAVHandler::raw(WebServer& server, const String& uri, HTTPRaw& raw) {
     }
 
     if (_putFile) _putFile.close();
+    if (!webdav::recoverFile(Storage, _putPath.c_str())) {
+      _putOk = false;
+      return;
+    }
     _putExisted = Storage.exists(_putPath.c_str());
 
     if (_putExisted) {
@@ -97,7 +101,7 @@ void WebDAVHandler::raw(WebServer& server, const String& uri, HTTPRaw& raw) {
   } else if (raw.status == RAW_END) {
     if (_putFile) {
       if (_putOk && !_putFile.sync()) _putOk = false;
-      _putFile.close();
+      if (!_putFile.close()) _putOk = false;
     }
     if (_putOk) {
       String tempPath = _putPath + ".davtmp";
@@ -386,7 +390,11 @@ void WebDAVHandler::handlePut(WebServer& s) {
     return;
   }
 
-  clearBookCache(path.c_str());
+  if (!clearBookCache(path.c_str())) {
+    LOG_ERR("DAV", "PUT %s committed but cache cleanup failed", path.c_str());
+    s.send(500, "text/plain", "File committed but cache cleanup failed");
+    return;
+  }
   s.send(_putExisted ? 204 : 201);
   LOG_DBG("DAV", "PUT complete: %s", path.c_str());
 }
@@ -528,6 +536,10 @@ void WebDAVHandler::handleMove(WebServer& s) {
     }
   }
 
+  if (!webdav::recoverFile(Storage, dstPath.c_str())) {
+    s.send(500, "text/plain", "Failed to recover destination");
+    return;
+  }
   bool dstExists = Storage.exists(dstPath.c_str());
   if (dstExists) {
     HalFile destination = Storage.open(dstPath.c_str());
@@ -541,7 +553,6 @@ void WebDAVHandler::handleMove(WebServer& s) {
     return;
   }
 
-  clearBookCache(srcPath.c_str());
   bool backupCleanupPending = false;
   bool success = webdav::replaceFile(Storage, srcPath.c_str(), dstPath.c_str(), &backupCleanupPending);
   if (backupCleanupPending) {
@@ -550,6 +561,14 @@ void WebDAVHandler::handleMove(WebServer& s) {
   }
 
   if (success) {
+    const bool sourceCacheCleared = clearBookCache(srcPath.c_str());
+    const bool destinationCacheCleared = clearBookCache(dstPath.c_str());
+    if (!sourceCacheCleared || !destinationCacheCleared) {
+      LOG_ERR("DAV", "MOVE %s -> %s committed but cache cleanup failed (source=%d destination=%d)",
+              srcPath.c_str(), dstPath.c_str(), sourceCacheCleared, destinationCacheCleared);
+      s.send(500, "text/plain", "File committed but cache cleanup failed");
+      return;
+    }
     s.send(dstExists ? 204 : 201);
   } else {
     s.send(500, "text/plain", "Move failed");
@@ -608,6 +627,11 @@ void WebDAVHandler::handleCopy(WebServer& s) {
     }
   }
 
+  if (!webdav::recoverFile(Storage, dstPath.c_str())) {
+    srcFile.close();
+    s.send(500, "text/plain", "Failed to recover destination");
+    return;
+  }
   bool dstExists = Storage.exists(dstPath.c_str());
   if (dstExists) {
     HalFile destination = Storage.open(dstPath.c_str());
@@ -632,16 +656,19 @@ void WebDAVHandler::handleCopy(WebServer& s) {
 
   auto buf = makeUniqueNoThrow<uint8_t[]>(1024);
   if (!buf) {
+    srcFile.close();
     dstFile.close();
     Storage.remove(tempPath.c_str());
     s.send(500, "text/plain", "Out of memory");
     return;
   }
   bool copyOk = true;
-  while (srcFile.available()) {
+  size_t bytesRemaining = srcFile.size();
+  while (bytesRemaining > 0) {
     resetTaskWatchdogIfSubscribed();
-    int bytesRead = srcFile.read(buf.get(), 1024);
-    if (bytesRead <= 0) {
+    const size_t requested = bytesRemaining < 1024 ? bytesRemaining : 1024;
+    int bytesRead = srcFile.read(buf.get(), requested);
+    if (bytesRead <= 0 || static_cast<size_t>(bytesRead) > requested) {
       copyOk = false;
       break;
     }
@@ -650,11 +677,12 @@ void WebDAVHandler::handleCopy(WebServer& s) {
       copyOk = false;
       break;
     }
+    bytesRemaining -= written;
   }
 
   if (copyOk && !dstFile.sync()) copyOk = false;
   srcFile.close();
-  dstFile.close();
+  if (!dstFile.close()) copyOk = false;
   bool backupCleanupPending = false;
   if (copyOk) copyOk = webdav::replaceFile(Storage, tempPath.c_str(), dstPath.c_str(), &backupCleanupPending);
   if (backupCleanupPending) {
@@ -663,6 +691,11 @@ void WebDAVHandler::handleCopy(WebServer& s) {
   }
 
   if (copyOk) {
+    if (!clearBookCache(dstPath.c_str())) {
+      LOG_ERR("DAV", "COPY %s committed but cache cleanup failed", dstPath.c_str());
+      s.send(500, "text/plain", "File committed but cache cleanup failed");
+      return;
+    }
     s.send(dstExists ? 204 : 201);
   } else {
     Storage.remove(tempPath.c_str());

@@ -15,7 +15,7 @@ class BleKeyboardHost {
   }
 
   bool isRunning() const { return running; }
-  bool isStopping() const { return stopping; }
+  bool isStopping() const { return stopping || pendingCleanup; }
   bool begin(const char*) {
     ++beginCalls;
     beginHeldRenderLock = ble_runtime_test::renderLockHeld;

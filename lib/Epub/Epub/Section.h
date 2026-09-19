@@ -20,23 +20,25 @@ class Section {
   std::string filePath;
   HalFile file;
 
-  void writeSectionFileHeader(const ReaderRenderSpec& spec);
+  bool writeSectionFileHeader(const ReaderRenderSpec& spec);
   uint32_t onPageComplete(std::unique_ptr<Page> page);
 
-  // Page-offset table entry, kept in RAM while an incremental build is running so
-  // already-built pages can be located in the partially-written .bin.
+  // Temporary on-disk entry for locating pages while a build is running.
   struct PageLutEntry {
     uint32_t fileOffset;
     uint16_t paragraphIndex;
     uint16_t listItemIndex;
     uint32_t visibleTextOffset;
   };
+  static_assert(sizeof(PageLutEntry) == 12, "Temporary LUT record must stay bounded");
   // Held only while an incremental build is in progress (see startBuild). Carries the
   // live parser plus the strings it references (the parser stores them by reference)
-  // and the in-RAM page-offset table.
+  // and the temporary on-disk page-offset table.
   struct BuildContext {
     std::unique_ptr<ChapterHtmlSlimParser> parser;
-    std::vector<PageLutEntry> lut;
+    HalFile lut;
+    uint32_t lastVisibleTextOffset = 0;
+    bool failed = false;
     std::string parsePath;
     std::string contentBase;
     std::string imageBasePath;
@@ -55,7 +57,7 @@ class Section {
   };
   std::unique_ptr<BuildContext> build_;
   bool buildComplete_ = false;
-  // Pages laid out by the active build (== build_->lut.size()). Distinct from pageCount,
+  // Pages laid out by the active build. Distinct from pageCount,
   // which is the pages *available to read* and also counts a loaded partial file's pages.
   uint16_t builtPageCount_ = 0;
   // A partial section file (suspended build from a previous session) is loaded at filePath.
@@ -72,6 +74,8 @@ class Section {
   // Builds write here and are swapped over filePath only on commit, so a prior
   // partial/finalized file stays readable while a rebuild is in progress.
   std::string binTmpPath() const { return filePath + ".part"; }
+  std::string lutTmpPath() const { return filePath + ".lut.part"; }
+  bool readBuildEntry(uint16_t page, PageLutEntry& entry) const;
   std::unique_ptr<Page> loadPageAt(int page) const;
   // Read a page already laid out by the in-progress build (page < build LUT size), from
   // the partially-written tmp .bin without disturbing the build's write cursor.
@@ -164,6 +168,6 @@ class Section {
   // False with no build running -- there is nothing left to wait for, so the on-disk
   // cache answers directly.
   bool buildReachedVisibleTextOffset(uint32_t offset) const {
-    return build_ && !build_->lut.empty() && offset <= build_->lut.back().visibleTextOffset;
+    return build_ && builtPageCount_ > 0 && offset <= build_->lastVisibleTextOffset;
   }
 };

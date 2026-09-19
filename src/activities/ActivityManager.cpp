@@ -31,6 +31,16 @@
 
 static portMUX_TYPE activityManagerSpinlock = portMUX_INITIALIZER_UNLOCKED;
 
+#ifdef TENOR_UI_ACCEPTANCE
+uint32_t ActivityManager::renderStackHighWaterMark() const {
+#ifndef SIMULATOR
+  return renderTaskHandle ? uxTaskGetStackHighWaterMark(renderTaskHandle) : 0;
+#else
+  return 0;
+#endif
+}
+#endif
+
 void ActivityManager::begin() {
 #if defined(configNUM_CORES) && configNUM_CORES > 1
   constexpr BaseType_t renderTaskCore = 1;
@@ -384,7 +394,7 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
   }
 }
 
-void ActivityManager::goToSleep(bool fromTimeout) {
+bool ActivityManager::goToSleep(bool fromTimeout) {
   const uint32_t started = millis();
   {
     RenderLock lock;
@@ -394,7 +404,25 @@ void ActivityManager::goToSleep(bool fromTimeout) {
     LOG_INF("SLP", "Timing notice-and-lock=%lu ms", static_cast<unsigned long>(millis() - started));
   }
   replaceActivity(std::make_unique<SleepActivity>(renderer, mappedInput, fromTimeout));
-  loop();  // Important: sleep screen must be rendered immediately, the caller will go to sleep right after this returns
+  // The radio starter/connection worker may need several polls before it gives
+  // up ownership. Only onEnter of SleepActivity completes the retained image.
+  while (pendingAction != PendingAction::None) {
+    loop();
+    if (pendingAction == PendingAction::None) break;
+    if (millis() - started >= 5000) {
+      LOG_ERR("SLP", "Sleep transition timed out; keeping display and storage awake");
+      pendingActivity.reset();
+      pendingAction = PendingAction::None;
+      {
+        RenderLock lock;
+        sleepTransition = false;
+      }
+      requestUpdate();
+      return false;
+    }
+    delay(10);
+  }
+  return currentActivity && currentActivity->name == "Sleep";
 }
 
 void ActivityManager::goToBoot() { replaceActivity(std::make_unique<BootActivity>(renderer, mappedInput)); }
@@ -485,9 +513,7 @@ bool ActivityManager::isForegroundReaderReady() const {
 }
 
 bool ActivityManager::pageTurn(const bool forward) {
-  if (!currentActivity || !currentActivity->isReaderActivity()) return false;
-  // Di qua loi vao cong khai cua ReaderActivity: no goi pageTurn() ben trong, tuc van DEM so trang
-  // da lat nhu khi bam nut that (goi thang latTrangThat() se bo qua bo dem).
+  if (!isForegroundReaderReady() || sleepTransition) return false;
   return static_cast<ReaderActivity*>(currentActivity.get())->luotLatTrangNgoai(forward);
 }
 

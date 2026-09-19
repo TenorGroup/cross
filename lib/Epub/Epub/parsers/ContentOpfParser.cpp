@@ -32,6 +32,11 @@ bool startsWithImageMediaType(const std::string& mediaType) {
 }
 }  // namespace
 
+void ContentOpfParser::failIo() {
+  failed = true;
+  if (parser) XML_StopParser(parser, XML_FALSE);
+}
+
 bool ContentOpfParser::setup() {
   parser = XML_ParserCreate(nullptr);
   if (!parser) {
@@ -59,7 +64,11 @@ ContentOpfParser::~ContentOpfParser() {
 size_t ContentOpfParser::write(const uint8_t data) { return write(&data, 1); }
 
 size_t ContentOpfParser::write(const uint8_t* buffer, const size_t size) {
-  if (!parser) return 0;
+  if (!parser || failed) return 0;
+  if (size > remainingSize) {
+    failIo();
+    return 0;
+  }
 
   const uint8_t* currentBufferPos = buffer;
   auto remainingInBuffer = size;
@@ -76,7 +85,7 @@ size_t ContentOpfParser::write(const uint8_t* buffer, const size_t size) {
     const auto toRead = remainingInBuffer < 1024 ? remainingInBuffer : 1024;
     memcpy(buf, currentBufferPos, toRead);
 
-    if (XML_ParseBuffer(parser, static_cast<int>(toRead), remainingSize == toRead) == XML_STATUS_ERROR) {
+    if (XML_ParseBuffer(parser, static_cast<int>(toRead), remainingSize == toRead) == XML_STATUS_ERROR || failed) {
       LOG_DBG("COF", "Parse error at line %lu: %s", XML_GetCurrentLineNumber(parser),
               XML_ErrorString(XML_GetErrorCode(parser)));
       destroyXmlParser(parser);
@@ -93,6 +102,7 @@ size_t ContentOpfParser::write(const uint8_t* buffer, const size_t size) {
 
 void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name, const XML_Char** atts) {
   auto* self = static_cast<ContentOpfParser*>(userData);
+  if (self->failed) return;
   (void)atts;
 
   if (self->state == START && xmlLocalNameEquals(name, "package")) {
@@ -126,7 +136,9 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
   if (self->state == IN_PACKAGE && xmlLocalNameEquals(name, "manifest")) {
     self->state = IN_MANIFEST;
     if (!Storage.openFileForWrite("COF", self->cachePath + itemCacheFile, self->tempItemStore)) {
-      LOG_ERR("COF", "Couldn't open temp items file for writing. This is probably going to be a fatal error.");
+      LOG_ERR("COF", "Couldn't open temp items file for writing");
+      self->failIo();
+      return;
     }
     return;
   }
@@ -134,7 +146,9 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
   if (self->state == IN_PACKAGE && xmlLocalNameEquals(name, "spine")) {
     self->state = IN_SPINE;
     if (!Storage.openFileForRead("COF", self->cachePath + itemCacheFile, self->tempItemStore)) {
-      LOG_ERR("COF", "Couldn't open temp items file for reading. This is probably going to be a fatal error.");
+      LOG_ERR("COF", "Couldn't open temp items file for reading");
+      self->failIo();
+      return;
     }
 
     // Sort the (unconditionally-built) item index so every idref lookup uses binary
@@ -155,7 +169,9 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
     // TODO Remove print
     LOG_DBG("COF", "Entering guide state.");
     if (!Storage.openFileForRead("COF", self->cachePath + itemCacheFile, self->tempItemStore)) {
-      LOG_ERR("COF", "Couldn't open temp items file for reading. This is probably going to be a fatal error.");
+      LOG_ERR("COF", "Couldn't open temp items file for reading");
+      self->failIo();
+      return;
     }
     return;
   }
@@ -196,18 +212,22 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
       }
     }
 
-    // Record index entry for fast lookup later
+    // Capture the offset, then publish an index entry only after both fields
+    // are complete. The same metadata budget is enforced by the cache reader.
+    const uint32_t itemOffset = static_cast<uint32_t>(self->tempItemStore.position());
+    if (itemId.size() > 4096 || href.size() > 4096 ||
+        !serialization::writeString(self->tempItemStore, itemId) ||
+        !serialization::writeString(self->tempItemStore, href)) {
+      self->failIo();
+      return;
+    }
     if (self->tempItemStore) {
       ItemIndexEntry entry;
       entry.idHash = fnvHash(itemId);
       entry.idLen = static_cast<uint16_t>(itemId.size());
-      entry.fileOffset = static_cast<uint32_t>(self->tempItemStore.position());
+      entry.fileOffset = itemOffset;
       self->itemIndex.push_back(entry);
     }
-
-    // Write items down to SD card
-    serialization::writeString(self->tempItemStore, itemId);
-    serialization::writeString(self->tempItemStore, href);
 
     if (itemId == self->coverItemId) {
       // Some EPUBs set meta name="cover" to an XHTML wrapper item.
@@ -275,11 +295,17 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
 
             // Check for match (may need to check a few due to hash collisions)
             while (it != self->itemIndex.end() && it->idHash == targetHash) {
-              self->tempItemStore.seek(it->fileOffset);
+              serialization::CheckedReader reader(self->tempItemStore);
               std::string itemId;
-              serialization::readString(self->tempItemStore, itemId);
+              if (!reader.seek(it->fileOffset) || !reader.string(itemId)) {
+                self->failIo();
+                return;
+              }
               if (itemId == idref) {
-                serialization::readString(self->tempItemStore, href);
+                if (!reader.string(href)) {
+                  self->failIo();
+                  return;
+                }
                 found = true;
                 break;
               }
@@ -288,11 +314,17 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
           } else {
             // Fallback linear scan, only reached when the index is empty (no manifest
             // items). The fast binary-search path above is used for all real manifests.
-            self->tempItemStore.seek(0);
+            serialization::CheckedReader reader(self->tempItemStore);
+            if (!reader.seek(0)) {
+              self->failIo();
+              return;
+            }
             std::string itemId;
-            while (self->tempItemStore.available()) {
-              serialization::readString(self->tempItemStore, itemId);
-              serialization::readString(self->tempItemStore, href);
+            while (reader.remaining()) {
+              if (!reader.string(itemId) || !reader.string(href)) {
+                self->failIo();
+                return;
+              }
               if (itemId == idref) {
                 found = true;
                 break;
@@ -300,9 +332,11 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
             }
           }
 
-          if (found && self->cache) {
-            self->cache->createSpineEntry(href);
+          if (!found || href.empty()) {
+            self->failIo();
+            return;
           }
+          self->cache->createSpineEntry(href);
         }
       }
       return;
@@ -338,6 +372,7 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
 
 void XMLCALL ContentOpfParser::characterData(void* userData, const XML_Char* s, const int len) {
   auto* self = static_cast<ContentOpfParser*>(userData);
+  if (self->failed) return;
 
   if (self->state == IN_BOOK_TITLE) {
     self->title.append(s, len);
@@ -360,23 +395,26 @@ void XMLCALL ContentOpfParser::characterData(void* userData, const XML_Char* s, 
 
 void XMLCALL ContentOpfParser::endElement(void* userData, const XML_Char* name) {
   auto* self = static_cast<ContentOpfParser*>(userData);
+  if (self->failed) return;
   (void)name;
 
   if (self->state == IN_SPINE && xmlLocalNameEquals(name, "spine")) {
     self->state = IN_PACKAGE;
-    self->tempItemStore.close();
+    if (!self->tempItemStore.close()) self->failIo();
     return;
   }
 
   if (self->state == IN_GUIDE && xmlLocalNameEquals(name, "guide")) {
     self->state = IN_PACKAGE;
-    self->tempItemStore.close();
+    if (!self->tempItemStore.close()) self->failIo();
     return;
   }
 
   if (self->state == IN_MANIFEST && xmlLocalNameEquals(name, "manifest")) {
     self->state = IN_PACKAGE;
-    self->tempItemStore.close();
+    const bool synced = self->tempItemStore.sync();
+    const bool closed = self->tempItemStore.close();
+    if (!synced || !closed) self->failIo();
     return;
   }
 

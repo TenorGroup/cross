@@ -7,6 +7,13 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
+namespace {
+bool fitsPageCache(const std::vector<ReadingStatsStore::BookEntry>& books) {
+  size_t retained = books.capacity() * sizeof(ReadingStatsStore::BookEntry);
+  for (const auto& book : books) retained += book.path.capacity() + book.title.capacity() + 2;
+  return retained <= 4096;
+}
+}  // namespace
 const char* BookStatsLibraryActivity::headerTitle() const { return tr(STR_STATS_BY_BOOK); }
 void BookStatsLibraryActivity::onEnter() {
   RenderLock lock(*this);
@@ -14,16 +21,38 @@ void BookStatsLibraryActivity::onEnter() {
   UiListActivity::onEnter();
 }
 void BookStatsLibraryActivity::loadPage(const ReadingStatsStore::BookEntry& boundary, bool back) {
-  READING_STATS.listBooks(boundary, back, books);
-  if (back) {
-    previous = books.size() > 20;
-    next = true;
-    if (previous) books.erase(books.begin());
+  const auto generation = READING_STATS.listGeneration();
+  if (adjacentValid && generation == pageGeneration && !boundary.path.empty() && back == adjacentBefore) {
+    books.swap(adjacentBooks);
+    std::swap(previous, adjacentPrevious);
+    std::swap(next, adjacentNext);
+    adjacentBefore = !adjacentBefore;
+    if (!fitsPageCache(adjacentBooks)) {
+      adjacentValid = false;
+      std::vector<ReadingStatsStore::BookEntry>().swap(adjacentBooks);
+    }
   } else {
-    previous = !boundary.path.empty();
-    next = books.size() > 20;
-    if (next) books.pop_back();
+    adjacentValid = generation == pageGeneration && !boundary.path.empty() && !books.empty() && fitsPageCache(books);
+    if (adjacentValid) {
+      adjacentBooks.swap(books);
+      adjacentPrevious = previous;
+      adjacentNext = next;
+      adjacentBefore = !back;
+    } else {
+      std::vector<ReadingStatsStore::BookEntry>().swap(adjacentBooks);
+    }
+    READING_STATS.listBooks(boundary, back, books);
+    if (back) {
+      previous = books.size() > 20;
+      next = !books.empty();
+      if (previous) books.erase(books.begin());
+    } else {
+      previous = !boundary.path.empty() && !books.empty();
+      next = books.size() > 20;
+      if (next) books.pop_back();
+    }
   }
+  pageGeneration = generation;
   count = 0;
   rows = {};
   if (previous) {

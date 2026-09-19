@@ -16,7 +16,9 @@ class TxtReaderActivity final : public ReaderActivity {
   int totalPages = 1;
 
   // Streaming text reader - stores file offsets for each page
-  std::vector<size_t> pageOffsets;
+  std::unique_ptr<uint32_t[]> pageOffsets;
+  size_t pageOffsetCount = 0;
+  size_t pageOffsetCapacity = 0;
   std::vector<std::string> currentPageLines;
   int linesPerPage = 0;
   int viewportWidth = 0;
@@ -45,9 +47,12 @@ class TxtReaderActivity final : public ReaderActivity {
   bool loadPageAtOffset(const GfxRenderer& renderer, size_t offset, std::vector<std::string>& outLines,
                         size_t& nextOffset, std::vector<uint16_t>* lineY = nullptr,
                         std::vector<uint16_t>* lineIndent = nullptr);
-  void buildPageIndex(GfxRenderer& renderer);
+  bool reservePageOffsets(size_t count);
+  bool addPageOffset(size_t offset);
+  bool buildPageIndex(GfxRenderer& renderer);
   bool loadPageIndexCache();
-  void savePageIndexCache() const;
+  bool loadPageIndexCacheFile(const std::string& path);
+  bool savePageIndexCache() const;
   void saveProgress() const;
   void loadProgress();
   void renderStatusBar() const;

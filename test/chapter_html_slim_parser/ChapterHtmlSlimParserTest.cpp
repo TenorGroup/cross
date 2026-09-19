@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <new>
 #include <set>
 #include <string>
 #include <vector>
@@ -15,6 +16,31 @@
 #include "Epub/parsers/ChapterHtmlSlimParser.h"
 #undef private
 #undef class
+
+// Fault only explicit nothrow firmware allocations, leaving gtest and STL alone.
+namespace parserAllocationFault {
+size_t objectSize = 0;
+bool array = false;
+unsigned hits = 0;
+void reset() { objectSize = 0; array = false; hits = 0; }
+}
+
+void* operator new(size_t size, const std::nothrow_t&) noexcept {
+  if (parserAllocationFault::objectSize == size) {
+    parserAllocationFault::objectSize = 0;
+    ++parserAllocationFault::hits;
+    return nullptr;
+  }
+  try { return ::operator new(size); } catch (...) { return nullptr; }
+}
+void* operator new[](size_t size, const std::nothrow_t&) noexcept {
+  if (parserAllocationFault::array) {
+    parserAllocationFault::array = false;
+    ++parserAllocationFault::hits;
+    return nullptr;
+  }
+  try { return ::operator new[](size); } catch (...) { return nullptr; }
+}
 
 namespace {
 
@@ -523,4 +549,258 @@ TEST_F(ChapterHtmlSlimParserTest, ForcedTocAnchorStartsFreshPageWithoutGapAndKee
   ASSERT_EQ(actualParser.getAnchors().size(), 1u);
   EXPECT_EQ(actualParser.getAnchors()[0].first, "toc-next");
   EXPECT_EQ(actualParser.getAnchors()[0].second, 1u);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, AllocationFailureRejectsChapterAndRetryConservesEveryWord) {
+  const auto path = std::filesystem::temp_directory_path() / "crosspoint-parser-oom.xhtml";
+  std::vector<std::string> expected;
+  {
+    std::ofstream output(path);
+    output << "<html><body>";
+    for (int i = 0; i < 100; ++i) {
+      expected.push_back("word" + std::to_string(i));
+      output << "<p>" << expected.back() << "</p>";
+    }
+    output << "</body></html>";
+  }
+  const std::string inputPath = path.string();
+  // The zero-size case targets the TextBlock arena's nothrow array allocation.
+  for (const size_t allocationSize : {sizeof(TextBlock), sizeof(PageLine), sizeof(Page), sizeof(ParsedText), size_t{0}}) {
+    for (const unsigned failAfterPage : {2u, 49u}) {
+    SCOPED_TRACE(allocationSize);
+    for (const bool inject : {true, false}) {
+      parserAllocationFault::reset();
+      std::vector<std::string> actual;
+      unsigned emitted = 0;
+      ChapterHtmlSlimParser attempt{nullptr, inputPath, renderer, 0, 1.0f, 0, 0, 160, 40,
+          false, 0, [&](std::unique_ptr<Page> page, auto, auto, auto) {
+            ++emitted;
+            if (page) for (const auto& element : page->elements) {
+              if (element->getTag() != TAG_PageLine) continue;
+              const auto& block = *static_cast<const PageLine&>(*element).getBlock();
+              for (uint16_t i = 0; i < block.wordCount(); ++i) actual.push_back(block.wordText(i));
+            }
+            if (inject && emitted == failAfterPage) {
+              parserAllocationFault::objectSize = allocationSize;
+              parserAllocationFault::array = allocationSize == 0;
+            }
+          }, false, "", ""};
+      const bool success = attempt.parseAndBuildPages();
+      EXPECT_EQ(success, !inject);
+      if (inject) {
+        EXPECT_EQ(parserAllocationFault::hits, 1u);
+        const unsigned beforeFinish = emitted;
+        EXPECT_FALSE(attempt.finishParse());
+        EXPECT_EQ(emitted, beforeFinish);
+      } else {
+        EXPECT_EQ(actual, expected);
+      }
+      parserAllocationFault::reset();
+    }
+    }
+  }
+  std::filesystem::remove(path);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, FailedTextBlockKeepsLayoutFailureSticky) {
+  for (const bool focus : {false, true}) {
+    ParsedText text(false, false, focus);
+    text.addWord("conservation", EpdFontFamily::REGULAR);
+    parserAllocationFault::reset();
+    parserAllocationFault::array = true;
+    unsigned emitted = 0;
+    EXPECT_FALSE(text.layoutAndExtractLines(renderer, 0, 200, [&](auto, auto) { ++emitted; }));
+    EXPECT_EQ(parserAllocationFault::hits, 1u);
+    EXPECT_EQ(emitted, 0u);
+    EXPECT_EQ(text.size(), 1u);
+    EXPECT_FALSE(text.layoutAndExtractLines(renderer, 0, 200, [&](auto, auto) { ++emitted; }));
+    EXPECT_FALSE(text.addWord("later", EpdFontFamily::REGULAR));
+    parserAllocationFault::reset();
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, OversizedRubyRejectsBuildAndPreservesSource) {
+  const auto path = std::filesystem::temp_directory_path() / "crosspoint-parser-ruby-bound.xhtml";
+  std::string manyTokens;
+  for (unsigned i = 0; i < 257; ++i) manyTokens += "x ";
+  std::string manyCjk;
+  for (unsigned i = 0; i < 257; ++i) manyCjk += "漢";
+  const std::vector<std::string> groups = {
+      "base<rt>" + std::string(2049, 'a') + "</rt>",
+      "base<rt>" + std::string(1200, 'a') + "</rt><rt>" + std::string(1200, 'b') + "</rt>",
+      manyTokens + "<rt>reading</rt>",
+      manyCjk + "<rt>reading</rt>",
+      std::string(8193, 'x') + "<rt>reading</rt>"};
+  const std::string inputPath = path.string();
+  for (const auto& group : groups) {
+    const std::string source = "<html><body><p><ruby>" + group + "</ruby></p></body></html>";
+    { std::ofstream output(path); output << source; }
+    ChapterHtmlSlimParser attempt{nullptr, inputPath, renderer, 0, 1.0f, 0, 0, 160, 40,
+        false, 0, [](auto, auto, auto, auto) {}, false, "", ""};
+    EXPECT_FALSE(attempt.parseAndBuildPages()) << group.size();
+    EXPECT_FALSE(attempt.finishParse());
+    std::ifstream input(path);
+    const std::string retained{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    EXPECT_EQ(retained, source);
+  }
+  std::filesystem::remove(path);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, SinkFailureRejectsPageCountAndFinalTail) {
+  const auto path = std::filesystem::temp_directory_path() / "crosspoint-parser-sink-failure.xhtml";
+  {
+    std::ofstream output(path);
+    output << "<html><body><p>one</p><p>two</p><p>three</p></body></html>trailing";
+  }
+  const std::string inputPath = path.string();
+  for (const unsigned rejectAt : {1u, 2u}) {
+    unsigned accepted = 0;
+    unsigned offered = 0;
+    ChapterHtmlSlimParser* active = nullptr;
+    ChapterHtmlSlimParser attempt{nullptr, inputPath, renderer, 0, 1.0f, 0, 0, 160, 40,
+        false, 0, [&](auto, auto, auto, auto) {
+          if (++offered == rejectAt) active->failBuild();
+          else ++accepted;
+        }, false, "", ""};
+    active = &attempt;
+    EXPECT_FALSE(attempt.parseAndBuildPages());
+    EXPECT_TRUE(attempt.hasFailed());
+    EXPECT_EQ(attempt.completedPageCount, accepted);
+    EXPECT_FALSE(attempt.finishParse());
+    EXPECT_EQ(offered, rejectAt);
+  }
+  std::filesystem::remove(path);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, ReadFailureIsStickyAndShortReadsConserveText) {
+  const auto path = std::filesystem::temp_directory_path() / "crosspoint-parser-read-failure.xhtml";
+  { std::ofstream output(path); output << "<html><body><p>one two three</p></body></html>"; }
+  const std::string inputPath = path.string();
+  for (const int result : {-1, 0, 1025}) {
+    ChapterHtmlSlimParser attempt{nullptr, inputPath, renderer, 0, 1.0f, 0, 0, 160, 40,
+        false, 0, [](auto, auto, auto, auto) { FAIL() << "Read failure emitted a page"; }, false, "", ""};
+    ASSERT_TRUE(attempt.beginParse());
+    HalFile::readResultOverride = result;
+    EXPECT_EQ(attempt.parseStep(), ChapterHtmlSlimParser::ParseStatus::Error);
+    EXPECT_TRUE(attempt.hasFailed());
+    EXPECT_FALSE(attempt.finishParse());
+  }
+  std::vector<std::string> words;
+  ChapterHtmlSlimParser attempt{nullptr, inputPath, renderer, 0, 1.0f, 0, 0, 160, 40,
+      false, 0, [&](std::unique_ptr<Page> page, auto, auto, auto) {
+        for (const auto& element : page->elements) {
+          if (element->getTag() != TAG_PageLine) continue;
+          const auto& block = *static_cast<const PageLine&>(*element).getBlock();
+          for (uint16_t i = 0; i < block.wordCount(); ++i) words.emplace_back(block.wordText(i));
+        }
+      }, false, "", ""};
+  HalFile::maxReadBytes = 3;
+  EXPECT_TRUE(attempt.parseAndBuildPages());
+  HalFile::maxReadBytes = SIZE_MAX;
+  EXPECT_EQ(words, (std::vector<std::string>{"one", "two", "three"}));
+  std::filesystem::remove(path);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, RubyAtCapacityKeepsVietnameseCjkAndContinuation) {
+  const auto path = std::filesystem::temp_directory_path() / "crosspoint-parser-ruby-capacity.xhtml";
+  std::string cjk;
+  for (unsigned i = 0; i < 256; ++i) cjk += "漢";
+  const std::string source = "<html><body><p><ruby>" + cjk + "<rt>" + std::string(2048, 'a') +
+      "</rt></ruby></p><p><ruby>Việt<rt>đọc</rt>Nam<rt>nam</rt></ruby></p></body></html>";
+  { std::ofstream output(path); output << source; }
+  const std::string inputPath = path.string();
+  unsigned words = 0;
+  unsigned annotationBytes = 0;
+  ChapterHtmlSlimParser attempt{nullptr, inputPath, renderer, 0, 1.0f, 0, 0, 160, 40,
+      false, 0, [&](std::unique_ptr<Page> page, auto, auto, auto) {
+        for (const auto& element : page->elements) {
+          if (element->getTag() != TAG_PageLine) continue;
+          const auto& block = *static_cast<const PageLine&>(*element).getBlock();
+          words += block.wordCount();
+          for (const auto& ruby : block.getRubyTexts()) annotationBytes += ruby.size();
+        }
+      }, false, "", ""};
+  EXPECT_TRUE(attempt.parseAndBuildPages());
+  EXPECT_EQ(words, 258u);
+  EXPECT_EQ(annotationBytes, 2048u + std::string("đọcnam").size());
+  std::filesystem::remove(path);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, ConsecutiveRubyGroupsBoundRetainedTokensAndConserveText) {
+  for (const bool css : {false, true}) {
+  for (const bool hyphenation : {false, true}) {
+  for (const std::string base : {std::string("漢"), std::string("word")}) {
+    const auto path = std::filesystem::temp_directory_path() / "crosspoint-parser-many-ruby.xhtml";
+    { std::ofstream output(path); output << "<html><body><p>";
+      for (unsigned i = 0; i < 2000; ++i) output << "<ruby>" << base << "<rt>reading</rt></ruby>";
+      output << "</p></body></html>";
+    }
+    const std::string inputPath = path.string();
+    unsigned words = 0;
+    unsigned annotations = 0;
+    ChapterHtmlSlimParser attempt{nullptr, inputPath, renderer, 0, 1.0f, 0, 0, 160, 40,
+        hyphenation, 0, [&](std::unique_ptr<Page> page, auto, auto, auto) {
+          for (const auto& element : page->elements) {
+            if (element->getTag() != TAG_PageLine) continue;
+            const auto& block = *static_cast<const PageLine&>(*element).getBlock();
+            words += block.wordCount();
+            for (const auto& ruby : block.getRubyTexts()) annotations += ruby == "reading";
+          }
+        }, css, "", ""};
+    ASSERT_TRUE(attempt.beginParse());
+    size_t peakWords = 0;
+    for (;;) {
+      const auto state = attempt.parseStep();
+      ASSERT_NE(state, ChapterHtmlSlimParser::ParseStatus::Error);
+      if (attempt.currentTextBlock) peakWords = std::max(peakWords, attempt.currentTextBlock->size());
+      if (state == ChapterHtmlSlimParser::ParseStatus::Done) break;
+    }
+    EXPECT_LE(peakWords, 1024u) << base;
+    std::cout << "ruby sequence css=" << css << " hyphenation=" << hyphenation << " base=" << base << " peak retained words=" << peakWords << "\n";
+    EXPECT_TRUE(attempt.finishParse());
+    EXPECT_EQ(words, 2000u);
+    EXPECT_EQ(annotations, 2000u);
+    std::filesystem::remove(path);
+  }
+  }
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, ManyLegalRubyAnnotationsBoundAggregateBytes) {
+  const auto path = std::filesystem::temp_directory_path() / "crosspoint-parser-ruby-bytes.xhtml";
+  { std::ofstream output(path); output << "<html><body><p>";
+    for (unsigned i = 0; i < 100; ++i) output << "<ruby>漢<rt>" << std::string(2048, 'a') << "</rt></ruby>";
+    output << "</p></body></html>";
+  }
+  const std::string inputPath = path.string();
+  unsigned words = 0;
+  unsigned annotationBytes = 0;
+  ChapterHtmlSlimParser attempt{nullptr, inputPath, renderer, 0, 1.0f, 0, 0, 160, 40,
+      false, 0, [&](std::unique_ptr<Page> page, auto, auto, auto) {
+        for (const auto& element : page->elements) {
+          if (element->getTag() != TAG_PageLine) continue;
+          const auto& block = *static_cast<const PageLine&>(*element).getBlock();
+          words += block.wordCount();
+          for (const auto& ruby : block.getRubyTexts()) annotationBytes += ruby.size();
+        }
+      }, false, "", ""};
+  ASSERT_TRUE(attempt.beginParse());
+  size_t peakAnnotationBytes = 0;
+  for (;;) {
+    const auto state = attempt.parseStep();
+    ASSERT_NE(state, ChapterHtmlSlimParser::ParseStatus::Error);
+    if (attempt.currentTextBlock) {
+      size_t bytes = 0;
+      for (const auto& ruby : attempt.currentTextBlock->rubyTexts) bytes += ruby.size();
+      EXPECT_EQ(attempt.currentTextBlock->getRubyTextBytes(), bytes);
+      peakAnnotationBytes = std::max(peakAnnotationBytes, bytes);
+    }
+    if (state == ChapterHtmlSlimParser::ParseStatus::Done) break;
+  }
+  EXPECT_LE(peakAnnotationBytes, 4096u);
+  EXPECT_TRUE(attempt.finishParse());
+  EXPECT_EQ(words, 100u);
+  EXPECT_EQ(annotationBytes, 204800u);
+  std::cout << "many legal ruby groups peak retained annotation bytes=" << peakAnnotationBytes << "\n";
+  std::filesystem::remove(path);
 }

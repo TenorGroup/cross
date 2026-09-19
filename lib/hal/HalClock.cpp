@@ -96,8 +96,6 @@ bool HalClock::formatTime(char* buf, size_t bufSize, uint8_t utcOffsetQuarterHou
 }
 
 bool HalClock::syncFromNTP() {
-  if (!_available) return false;
-
   if (WiFi.status() != WL_CONNECTED) {
     LOG_ERR("CLK", "WiFi not connected, cannot sync NTP");
     return false;
@@ -112,7 +110,14 @@ bool HalClock::syncFromNTP() {
     if (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
       time_t now = time(nullptr);
       struct tm timeinfo;
-      gmtime_r(&now, &timeinfo);
+      // Use the same epoch floor as the HTTPS callers. SNTP success must
+      // establish usable system time even on boards without an external RTC.
+      if (now < 1735689600 || !gmtime_r(&now, &timeinfo)) {
+        LOG_ERR("CLK", "NTP completed with invalid system time");
+        return false;
+      }
+      LOG_INF("CLK", "System time synced from NTP");
+      if (!_available) return true;
 
       Rtc::DateTime dt;
       dt.year = static_cast<uint16_t>(timeinfo.tm_year + 1900);
@@ -126,12 +131,16 @@ bool HalClock::syncFromNTP() {
         _lastPollMs = 0;
         _cachedHour = dt.hour;
         _cachedMinute = dt.minute;
+        _cachedYear = dt.year;
+        _cachedMonth = dt.month;
+        _cachedDay = dt.day;
         _hasCachedTime = true;
         LOG_INF("CLK", "RTC set to %04u-%02u-%02u %02u:%02u:%02u UTC", dt.year, dt.month, dt.day, dt.hour, dt.minute,
                 dt.second);
-        return true;
+      } else {
+        LOG_ERR("CLK", "RTC write failed; system time remains synced");
       }
-      return false;
+      return true;
     }
     delay(100);
   }

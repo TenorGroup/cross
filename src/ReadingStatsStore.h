@@ -19,6 +19,7 @@ struct BookReadingRecord {
 class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   bool writableSchema = true;
   uint32_t bookEpoch = 0;
+  uint32_t bookListGeneration = 0;
   ReadingStatsStore() = default;
   ~ReadingStatsStore() = default;
 
@@ -37,6 +38,7 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
     uint32_t day = 0;
   };
   void listBooks(const BookEntry& boundary, bool previous, std::vector<BookEntry>& result) const;
+  uint32_t listGeneration() const { return bookListGeneration; }
   std::string activeBookTitle;
   std::string activeBookPath;
   BookReadingRecord activeBook;

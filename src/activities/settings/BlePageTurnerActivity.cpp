@@ -44,7 +44,7 @@ constexpr bool compiledIn() { return BLE_UI_CAP_HID_HOST != 0; }
 #if BLE_UI_CAP_HID_HOST
 
 bool begin(GfxRenderer& renderer) { return freeink::ble::begin(renderer); }
-bool end() { return BleHid.end(); }
+bool end() { return freeink::ble::suspendForTransition(1000); }
 bool stopping() { return BleHid.isStopping(); }
 bool running() { return BleHid.isRunning(); }
 bool idleStopped() { return freeink::ble::idleStopped(); }

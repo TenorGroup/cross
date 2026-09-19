@@ -84,6 +84,12 @@ class HalGPIO {
   // going through the debounced state. Cheap enough to call every few ms.
   bool rawInputActive();
   void readButtonAdc(int& group1, int& group2);
+#if !defined(SIMULATOR) && CROSSPOINT_EMULATED == 0
+  // Pure ADC samples with the SDK's band classification; leaves input events intact.
+  void sampleButtonAdc(InputManager::ButtonAdcSample& first, InputManager::ButtonAdcSample& second) {
+    inputMgr.readButtonAdc(first, second);
+  }
+#endif
   uint8_t readWakeButtons();
   static void markValidatedButtonWake(uint8_t button);
   uint8_t validatedWakeButton() const { return validatedButtonWake; }

@@ -149,7 +149,8 @@ void SdCardFont::resetStyleMiniData(PerStyle& s) {
 }
 
 void SdCardFont::freeStyleKernLigatureData(PerStyle& s) {
-  // Both font views borrow the resident ligature table.
+  // Both data views borrow this table. Clear every alias before releasing
+  // ownership so measurement remains safe between cache release and prewarm.
   s.stubData.ligaturePairs = nullptr;
   s.stubData.ligaturePairCount = 0;
   s.miniData.ligaturePairs = nullptr;

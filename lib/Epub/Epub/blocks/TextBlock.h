@@ -40,6 +40,8 @@
 // focus reading is disabled).
 class TextBlock final : public Block {
  public:
+  // Shared with the parser: oversized annotations fail the build without truncating content.
+  static constexpr size_t MAX_RUBY_ANNOTATION_BYTES = 2048;
   struct LinkSpan {
     char href[FOOTNOTE_HREF_LEN];
     int16_t x;

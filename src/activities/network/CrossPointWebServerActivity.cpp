@@ -10,6 +10,7 @@
 
 #include <cstddef>
 
+#include "CrossPointSettings.h"
 #include "DeviceName.h"
 #include "FileTransferState.h"
 #include "MappedInputManager.h"
@@ -141,6 +142,9 @@ void CrossPointWebServerActivity::onEnter() {
 }
 
 void CrossPointWebServerActivity::onExit() {
+  const bool sampledBack = backLatch.active();
+  backLatch.stop();
+  if (sampledBack) LOG_INF("WEBACT", "Back sampler stopped stack_free=%u", backLatch.stackFreeBytes());
   Activity::onExit();
 
   if (runtimeStarted) {
@@ -379,6 +383,11 @@ void CrossPointWebServerActivity::startWebServer() {
   webServer->begin();
 
   if (webServer->isRunning()) {
+    if (!backLatch.start(gpio, SETTINGS.frontButtonBack)) {
+      LOG_ERR("WEBACT", "Cannot start Back sampler");
+      onGoHome();
+      return;
+    }
     state = WebServerActivityState::SERVER_RUNNING;
     LOG_INF("WEBACT", "Server ready heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     lastWifiBars = isApMode ? 0 : barsForRssi(WiFi.RSSI(), 0);
@@ -397,6 +406,14 @@ void CrossPointWebServerActivity::startWebServer() {
 void CrossPointWebServerActivity::loop() {
   // Handle different states
   if (state == WebServerActivityState::SERVER_RUNNING) {
+    // Main already sampled input for this pass. Preserve that release edge and
+    // leave before starting another request; teardown runs via ActivityManager.
+    if (backLatch.consume() ||
+        (!backLatch.active() && mappedInput.wasReleased(MappedInputManager::Button::Back)) || mappedInput.wasHomeGesture()) {
+      onGoHome();
+      return;
+    }
+
     // Handle DNS requests for captive portal (AP mode only)
     if (isApMode && dnsServer) {
       dnsServer->processNextRequest();
@@ -447,7 +464,7 @@ void CrossPointWebServerActivity::loop() {
       }
     }
 
-    // Handle web server requests - maximize throughput with watchdog safety
+    // Handle web server requests with watchdog safety.
     if (webServer && webServer->isRunning()) {
       const unsigned long timeSinceLastHandleClient = millis() - lastHandleClientTime;
 
@@ -459,35 +476,15 @@ void CrossPointWebServerActivity::loop() {
       // Reset watchdog BEFORE processing - HTTP header parsing can be slow
       resetTaskWatchdogIfSubscribed();
 
-      // Process HTTP requests in tight loop for maximum throughput
-      // More iterations = more data processed per main loop cycle
-      constexpr int MAX_ITERATIONS = 500;
-      for (int i = 0; i < MAX_ITERATIONS && webServer->isRunning(); i++) {
-        webServer->handleClient();
-        // Reset watchdog every 32 iterations
-        if ((i & 0x1F) == 0x1F) {
-          resetTaskWatchdogIfSubscribed();
-        }
-        // Yield and check for exit button every 64 iterations
-        if ((i & 0x3F) == 0x3F) {
-          yield();
-          // Pump input inside this blocking loop so exit events remain responsive.
-          mappedInput.update();
-          // This update consumes the one-shot Home event before ActivityManager
-          // can see it, so handle Home here alongside Back.
-          if (mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture()) {
-            onGoHome();
-            return;
-          }
-        }
-      }
+      // Service one request pass, then let main sample input again. skipLoopDelay()
+      // keeps the next pass immediate while the server is running. A synchronous
+      // handler finishes before ActivityManager can tear down the server.
+      webServer->handleClient();
       lastHandleClientTime = millis();
-    }
-
-    // Also check outside the request-processing loop.
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture()) {
-      onGoHome();
-      return;
+      if (backLatch.consume()) {
+        onGoHome();
+        return;
+      }
     }
   }
 }

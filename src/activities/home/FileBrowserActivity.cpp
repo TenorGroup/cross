@@ -40,10 +40,13 @@ FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManag
       entryPath(basepath) {}
 
 void FileBrowserActivity::loadFiles() {
+  rowWindowFirst = -1;
+  rowItems.clear();
+  rowNames.clear();
+  rowExtensions.clear();
   if (!fileNameBuffer) {
     LOG_ERR("FileBrowser", "fileNameBuffer not allocated");
     files.clear();
-    rebuildRowItems();  // also drops any now-stale cached rows
     return;
   }
   // Cai gi la muc doc duoc, cai gi bi giau, thu tu sap xep: chot o docthumuc, dung chung
@@ -51,31 +54,34 @@ void FileBrowserActivity::loadFiles() {
   docthumuc::doc(basepath.c_str(), SETTINGS.showHiddenFiles,
                  mode == Mode::PickFirmware ? docthumuc::Loc::Firmware : docthumuc::Loc::Sach, fileNameBuffer.get(),
                  NAME_BUFFER_SIZE, files);
-  rebuildRowItems();
 }
 
-// Derives rowNames/rowExtensions/rowItems from `files`. Called whenever
-// `files` changes (end of loadFiles()) so buildScreen() can reuse the cached
-// rows on every repaint instead of re-deriving a name/extension string (and a
-// ListItem) per file each time it's called.
-void FileBrowserActivity::rebuildRowItems() {
+// Derive only the final viewport after ListNav has followed/clamped selection.
+// A single extra row supplies the partial preview at the bottom of the list.
+void FileBrowserActivity::rebuildRowItems(const int first, const int count) {
+  const int available = std::min(count, listCount() - first);
+  if (rowWindowFirst == first && rowItems.size() == static_cast<size_t>(available) &&
+      rowsUseFileIcons == UITheme::getInstance().getTheme().showsFileIcons())
+    return;
   rowsUseFileIcons = UITheme::getInstance().getTheme().showsFileIcons();
-  rowNames.resize(files.size());
-  rowExtensions.resize(files.size());
   rowItems.clear();
-  rowItems.reserve(files.size());
-  for (size_t i = 0; i < files.size(); i++) {
-    rowNames[i] = getFileName(files[i]);
-    rowExtensions[i] = getFileExtension(files[i]);
+  rowNames.resize(available);
+  rowExtensions.resize(available);
+  rowItems.reserve(available);
+  for (int i = 0; i < available; i++) {
+    const int index = first + i;
+    rowNames[i] = getFileName(files[index]);
+    rowExtensions[i] = getFileExtension(files[index]);
     fui::ListItem item;
     item.label = rowNames[i].c_str();
     if (!rowExtensions[i].empty()) item.value = rowExtensions[i].c_str();
-    item.icon = listIconFor(UITheme::getFileIcon(files[i]), SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? 32 : 0);
-    item.actionValue = static_cast<int16_t>(i);
+    item.icon = listIconFor(UITheme::getFileIcon(files[index]), SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? 32 : 0);
+    item.actionValue = static_cast<int16_t>(index);
     rowItems.push_back(item);
   }
+  rowWindowFirst = first;
 
-  // One SD pass for every CJK filename in the folder; repaints then hit the
+  // One SD pass for the visible CJK filenames; repaints then hit the
   // resident tables instead of re-reading per-string. Getter form: no
   // concatenated copy (a bare-new string append aborts under heap pressure).
   // The last index covers the bottom path band: basepath (possibly a CJK
@@ -129,6 +135,7 @@ void FileBrowserActivity::onExit() {
   rowNames.clear();
   rowExtensions.clear();
   rowItems.clear();
+  rowWindowFirst = -1;
   fileNameBuffer.reset();
 }
 
@@ -444,9 +451,9 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
 
   // Full path band at the bottom: separator on top, left-truncated so the
   // deepest directory stays visible.
-  {
-    const int pathLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
-    const fui::Rect band = screen.takeBottom(static_cast<int16_t>(pathLineHeight + metrics.verticalSpacing));
+  const int pathLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  const fui::Rect band = screen.takeBottom(static_cast<int16_t>(pathLineHeight + metrics.verticalSpacing));
+  const auto drawPath = [&]() {
     screen.target().fill(fui::Rect{band.x, band.y, band.width, 3}, fui::Paint::solid(fui::Color::Black));
     const int pathY =
         band.y + metrics.verticalSpacing / 2 + (band.height - metrics.verticalSpacing / 2 - pathLineHeight) / 2;
@@ -469,25 +476,17 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
       pathDisplay = leftTruncBuf;
     }
     renderer.drawText(SMALL_FONT_ID, band.x + metrics.contentSidePadding, pathY, pathDisplay);
-  }
+  };
 
   if (files.empty()) {
+    drawPath();
     screen.centeredText(mode == Mode::PickFirmware ? tr(STR_NO_BIN_FILES) : tr(STR_NO_FILES_FOUND),
                         screen.theme().bodyText);
     return;
   }
 
-  // rowNames/rowExtensions/rowItems are built once per loadFiles() call (see
-  // rebuildRowItems()) and reused here. getFileName()'s folder-bracket format
-  // depends on the theme, so a theme change picked up while this activity was
-  // paused underneath another screen invalidates the cache before it's read.
-  if (rowsUseFileIcons != UITheme::getInstance().getTheme().showsFileIcons()) {
-    rebuildRowItems();
-  }
-
   fui::ListProps props;
-  props.items = rowItems.data();
-  props.count = static_cast<uint16_t>(rowItems.size());
+  props.count = static_cast<uint16_t>(files.size());
   props.action = ACTION_ROW;
   // Tap opens/navigates; long-press prompts delete (physical buttons stay in loop()).
   props.inputMask = fui::InputTouch | fui::InputLongPress;
@@ -509,6 +508,14 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   // files past the fold are visibly present, not silently absent.
   props.partialTrailingRow = true;
   syncListViewport(screen, props);
+  rebuildRowItems(nav.top, nav.visibleRows + 1);
+  props.items = rowItems.data();
+  props.itemsWindowFirst = static_cast<uint16_t>(rowWindowFirst);
+  props.itemsWindowCount = static_cast<uint16_t>(rowItems.size());
+  // syncListViewport ran before materialization; decorate the new window only
+  // after every label pointer is stable. renderUi restores them after drawing.
+  decoratePinnedRows(props);
+  drawPath();
   screen.list(props);
 }
 

@@ -1,0 +1,356 @@
+// Boundary fakes only. Mutation control flow and cache dispatch are production code.
+#include <algorithm>
+#include <cstring>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <vector>
+#include "@REPLACEMENT@"
+
+class String {
+ public:
+  std::string value;
+  String() = default;
+  String(const char* p) : value(p) {}
+  String(const std::string& p) : value(p) {}
+  const char* c_str() const { return value.c_str(); }
+  bool isEmpty() const { return value.empty(); }
+  int lastIndexOf(char c) const { return static_cast<int>(value.rfind(c)); }
+  String substring(int from, int to) const { return value.substr(from, to - from); }
+  bool operator==(const String& other) const { return value == other.value; }
+  String operator+(const char* suffix) const { return value + suffix; }
+};
+#define LOG_DBG(...) do {} while (0)
+#define LOG_ERR(...) do {} while (0)
+void resetTaskWatchdogIfSubscribed() {}
+template <class T> std::unique_ptr<T> makeUniqueNoThrow(size_t n) {
+  return std::make_unique<T>(n);
+}
+
+struct Node {
+  std::string data;
+  bool directory = false;
+};
+struct Faults {
+  int readLimit = -1;
+  int readChunk = -1;
+  int availableLimit = -1;
+  bool readError = false;
+  bool shortWrite = false;
+  bool sync = false;
+  bool close = false;
+  std::set<std::string> rename;
+  std::set<std::string> remove;
+  std::set<std::string> cacheDelete;
+};
+struct FakeStorage;
+struct HalFile {
+  FakeStorage* store = nullptr;
+  std::string path;
+  size_t offset = 0;
+  bool writable = false;
+  operator bool() const { return store != nullptr; }
+  bool isDirectory() const;
+  size_t size() const;
+  size_t position() const { return offset; }
+  int available() const;
+  int read(void* buf, size_t count);
+  size_t write(const uint8_t* buf, size_t count);
+  bool sync();
+  bool close();
+};
+struct FakeStorage {
+  std::map<std::string, Node> files;
+  Faults fault;
+  std::vector<std::string> operations;
+  bool exists(const char* path) { return files.count(path); }
+  HalFile open(const char* path) { return exists(path) ? HalFile{this, path} : HalFile{}; }
+  bool openFileForWrite(const char*, const String& path, HalFile& out) {
+    files[path.value] = Node{};
+    out = HalFile{this, path.value, 0, true};
+    return true;
+  }
+  bool rename(const char* from, const char* to) {
+    operations.push_back(std::string("rename:") + from + ":" + to);
+    if (fault.rename.count(from) || !exists(from) || exists(to)) return false;
+    files[to] = files[from];
+    files.erase(from);
+    return true;
+  }
+  bool remove(const char* path) {
+    operations.push_back(std::string("remove:") + path);
+    return !fault.remove.count(path) && files.erase(path);
+  }
+} Storage;
+bool HalFile::isDirectory() const { return store->files.at(path).directory; }
+size_t HalFile::size() const { return store->files.at(path).data.size(); }
+int HalFile::available() const {
+  if (store->fault.availableLimit >= 0 && offset >= static_cast<size_t>(store->fault.availableLimit)) return 0;
+  return static_cast<int>(size() - offset);
+}
+int HalFile::read(void* buf, size_t count) {
+  if (store->fault.readError) return -1;
+  if (store->fault.readLimit >= 0 && offset >= static_cast<size_t>(store->fault.readLimit)) return 0;
+  count = std::min(count, size() - offset);
+  if (store->fault.readLimit >= 0) count = std::min(count, static_cast<size_t>(store->fault.readLimit) - offset);
+  if (store->fault.readChunk > 0) count = std::min(count, static_cast<size_t>(store->fault.readChunk));
+  std::memcpy(buf, store->files.at(path).data.data() + offset, count);
+  offset += count;
+  return static_cast<int>(count);
+}
+size_t HalFile::write(const uint8_t* buf, size_t count) {
+  if (store->fault.shortWrite && count) --count;
+  store->files.at(path).data.append(reinterpret_cast<const char*>(buf), count);
+  offset += count;
+  return count;
+}
+bool HalFile::sync() { return !store->fault.sync; }
+bool HalFile::close() {
+  const bool ok = !writable || !store->fault.close;
+  store = nullptr;
+  return ok;
+}
+
+struct WebServer {
+  String src, dst;
+  bool overwrite = true;
+  int code = 0;
+  std::string body;
+  void send(int value, const char* = nullptr, const char* text = nullptr) {
+    code = value;
+    body = text ? text : "";
+  }
+};
+enum RawStatus { RAW_START, RAW_WRITE, RAW_END, RAW_ABORTED };
+struct HTTPRaw { RawStatus status; uint8_t* buf = nullptr; size_t currentSize = 0; size_t totalSize = 0; };
+struct Auth { bool authorize(WebServer&, bool) const { return true; } };
+struct WebDAVHandler {
+  Auth auth;
+  HalFile _putFile;
+  String _putPath;
+  bool _putOk = false;
+  bool _putExisted = false;
+  void raw(WebServer&, const String&, HTTPRaw&);
+  void handlePut(WebServer&);
+  void handleMove(WebServer&);
+  void handleCopy(WebServer&);
+  String getRequestPath(WebServer& s) const { return s.src; }
+  String getDestinationPath(WebServer& s) const { return s.dst; }
+  bool getOverwrite(WebServer& s) const { return s.overwrite; }
+  bool isProtectedPath(const String&) const { return false; }
+};
+
+std::map<std::string, std::string> cache;
+std::vector<std::string> invalidated;
+namespace FsHelpers {
+bool extension(const std::string& p, const char* suffix) {
+  const size_t n = std::strlen(suffix);
+  return p.size() >= n && p.compare(p.size() - n, n, suffix) == 0;
+}
+bool hasEpubExtension(const std::string& p) { return extension(p, ".epub"); }
+bool hasTxtExtension(const std::string& p) { return extension(p, ".txt"); }
+bool hasXtcExtension(const std::string& p) { return extension(p, ".xtc"); }
+}
+struct CachedBook {
+  std::string path;
+  CachedBook(const std::string& p, const char*) : path(p) {}
+  bool clearCache() {
+    invalidated.push_back(path);
+    Storage.operations.push_back("invalidate:" + path);
+    if (Storage.fault.cacheDelete.count(path)) return false;
+    cache.erase(path);
+    return true;
+  }
+};
+using Epub = CachedBook;
+using Txt = CachedBook;
+using Xtc = CachedBook;
+@PRODUCTION_CACHE@
+
+@PRODUCTION_METHODS@
+
+int failures = 0;
+int scenarios = 0;
+std::string scenario;
+void expect(bool result, const char* message) {
+  if (!result) { ++failures; std::cerr << "FAIL " << scenario << ": " << message << '\n'; }
+}
+void begin(const std::string& name) {
+  ++scenarios;
+  scenario = name;
+  Storage = FakeStorage{};
+  cache.clear();
+  invalidated.clear();
+}
+std::string openBook(const std::string& path) {
+  if (!cache.count(path)) cache[path] = Storage.files.at(path).data;
+  return cache.at(path);
+}
+void seed(const std::string& src, const std::string& dst) {
+  Storage.files[src] = {"new title|new toc|new cover|new pages"};
+  Storage.files[dst] = {"old title|old toc|old cover|old pages"};
+  openBook(src);
+  openBook(dst);
+}
+void preserved(const std::string& src, const std::string& dst) {
+  expect(Storage.files.count(src) && Storage.files.at(src).data.find("new title") == 0, "source bytes retained");
+  expect(Storage.files.count(dst) && Storage.files.at(dst).data.find("old title") == 0, "destination bytes retained");
+  expect(invalidated.empty(), "good caches retained on failure");
+}
+void upload(WebDAVHandler& h, WebServer& s) {
+  HTTPRaw raw{RAW_START};
+  h.raw(s, s.src, raw);
+  std::string payload = "new title|new toc|new cover|new pages";
+  raw = {RAW_WRITE, reinterpret_cast<uint8_t*>(payload.data()), payload.size(), payload.size()};
+  h.raw(s, s.src, raw);
+  raw.status = RAW_END;
+  h.raw(s, s.src, raw);
+  h.handlePut(s);
+}
+int main() {
+  for (const char* ext : {".epub", ".txt", ".xtc"}) {
+    const std::string src = std::string("/a") + ext, dst = std::string("/b") + ext;
+    for (bool move : {false, true}) {
+      const std::string op = move ? "MOVE" : "COPY";
+      begin(op + ext + " overwrite cached destination");
+      seed(src, dst);
+      WebDAVHandler h;
+      WebServer s{src, dst};
+      if (move) h.handleMove(s); else h.handleCopy(s);
+      expect(s.code == 204, "overwrite succeeds");
+      expect(openBook(dst) == "new title|new toc|new cover|new pages", "reopen uses new content after destination invalidation");
+      expect(std::count(invalidated.begin(), invalidated.end(), dst) == 1, "destination invalidated once");
+      expect(std::count(invalidated.begin(), invalidated.end(), src) == (move ? 1 : 0), "source invalidation follows MOVE only");
+      auto commit = std::find(Storage.operations.begin(), Storage.operations.end(), "rename:" + (move ? src : dst + ".davtmp") + ":" + dst);
+      auto clear = std::find(Storage.operations.begin(), Storage.operations.end(), "invalidate:" + dst);
+      expect(commit < clear && clear != Storage.operations.end(), "destination invalidation happens after commit");
+
+      begin(op + ext + " Overwrite F"); seed(src, dst);
+      s = {src, dst, false};
+      if (move) h.handleMove(s); else h.handleCopy(s);
+      expect(s.code == 412, "Overwrite F rejected"); preserved(src, dst);
+
+      begin(op + ext + " failed final rename"); seed(src, dst);
+      Storage.fault.rename.insert(move ? src : dst + ".davtmp");
+      s = {src, dst};
+      if (move) h.handleMove(s); else h.handleCopy(s);
+      expect(s.code == 500, "failed commit reported"); preserved(src, dst);
+
+      begin(op + ext + " backup cleanup failure"); seed(src, dst);
+      Storage.fault.remove.insert(dst + ".davbak");
+      s = {src, dst};
+      if (move) h.handleMove(s); else h.handleCopy(s);
+      expect(s.code == 204, "committed replacement remains successful");
+      expect(Storage.files.at(dst + ".davbak").data.find("old title") == 0, "backup remains recoverable");
+      expect(openBook(dst).find("new title") == 0, "cache cleared despite pending cleanup");
+
+      begin(op + ext + " same path"); seed(src, dst);
+      s = {src, src};
+      if (move) h.handleMove(s); else h.handleCopy(s);
+      expect(s.code == 204, "same resource remains a no-op"); preserved(src, dst);
+    }
+  }
+  for (const std::string fault : {"short write", "read error", "short eof", "sync", "close", "available ends early", "short reads"}) {
+    begin("COPY " + fault); seed("/a.epub", "/b.epub");
+    if (fault == "short write") Storage.fault.shortWrite = true;
+    if (fault == "read error") Storage.fault.readError = true;
+    if (fault == "short eof") Storage.fault.readLimit = 5;
+    if (fault == "sync") Storage.fault.sync = true;
+    if (fault == "close") Storage.fault.close = true;
+    if (fault == "available ends early") { Storage.fault.availableLimit = 5; Storage.fault.readLimit = 5; }
+    if (fault == "short reads") Storage.fault.readChunk = 3;
+    WebDAVHandler h;
+    WebServer s{"/a.epub", "/b.epub"};
+    h.handleCopy(s);
+    if (fault == "short reads") {
+      expect(s.code == 204, "positive short reads continued to full length");
+      expect(openBook("/b.epub") == Storage.files.at("/a.epub").data, "complete copied content");
+    } else {
+      expect(s.code == 500, "I/O failure prevents commit"); preserved("/a.epub", "/b.epub");
+      expect(!Storage.files.count("/b.epub.davtmp"), "failed staging removed");
+    }
+  }
+  for (const std::string fault : {"none", "sync", "close", "short write"}) {
+    begin("PUT " + fault); seed("/a.epub", "/b.epub");
+    Storage.fault.sync = fault == "sync";
+    Storage.fault.close = fault == "close";
+    Storage.fault.shortWrite = fault == "short write";
+    WebDAVHandler h;
+    WebServer s{"/b.epub", ""};
+    upload(h, s);
+    if (fault == "none") {
+      expect(s.code == 204, "PUT succeeds");
+      expect(openBook("/b.epub").find("new title") == 0, "PUT cache refreshed");
+    } else {
+      expect(s.code == 500, "PUT I/O failure prevents commit"); preserved("/a.epub", "/b.epub");
+    }
+  }
+  for (const std::string op : {"PUT", "COPY", "MOVE"}) {
+    for (const std::string state : {"backup only", "recovery fails", "existing plus backup", "Overwrite F"}) {
+      if (op == "PUT" && state == "Overwrite F") continue;
+      begin(op + " recovery " + state); seed("/a.epub", "/b.epub");
+      Storage.files["/b.epub.davbak"] = Storage.files.at("/b.epub");
+      if (state != "existing plus backup") Storage.files.erase("/b.epub");
+      if (state == "recovery fails") Storage.fault.rename.insert("/b.epub.davbak");
+      WebDAVHandler h;
+      WebServer s{op == "PUT" ? "/b.epub" : "/a.epub", "/b.epub", state != "Overwrite F"};
+      if (op == "PUT") upload(h, s);
+      else if (op == "COPY") h.handleCopy(s);
+      else h.handleMove(s);
+      if (state == "backup only") {
+        expect(s.code == 204, "restored destination treated as overwrite");
+        expect(openBook("/b.epub").find("new title") == 0, "new content after recovery and commit");
+      } else if (state == "recovery fails") {
+        expect(s.code == 500, "failed recovery blocks mutation");
+        expect(!Storage.files.count("/b.epub"), "failed recovery keeps destination missing");
+        expect(Storage.files.at("/b.epub.davbak").data.find("old title") == 0, "sole backup retained");
+        expect(invalidated.empty(), "failed recovery preserves caches");
+      } else {
+        expect(s.code == (state == "Overwrite F" ? 412 : 500), "backup state blocks replacement");
+        preserved("/a.epub", "/b.epub");
+      }
+    }
+  }
+  for (size_t length : {0u, 4097u}) {
+    begin("COPY full source length " + std::to_string(length)); seed("/a.txt", "/b.txt");
+    Storage.files.at("/a.txt").data.assign(length, 'x');
+    Storage.fault.readChunk = 37;
+    WebDAVHandler h;
+    WebServer s{"/a.txt", "/b.txt"};
+    h.handleCopy(s);
+    expect(s.code == 204, "copy succeeds for complete input");
+    expect(openBook("/b.txt") == std::string(length, 'x'), "zero or multichunk payload copied exactly");
+  }
+  for (const char* ext : {".epub", ".txt", ".xtc"}) {
+    const std::string src = std::string("/a") + ext, dst = std::string("/b") + ext;
+    for (const std::string op : {"PUT", "COPY", "MOVE"}) {
+      for (const std::string failedCache : {"destination", "source", "both"}) {
+        if (op != "MOVE" && failedCache != "destination") continue;
+        begin(op + ext + " committed but cache deletion fails: " + failedCache); seed(src, dst);
+        if (failedCache != "source") Storage.fault.cacheDelete.insert(dst);
+        if (failedCache != "destination") Storage.fault.cacheDelete.insert(src);
+        WebDAVHandler h;
+        WebServer s{op == "PUT" ? dst : src, dst};
+        if (op == "PUT") upload(h, s);
+        else if (op == "COPY") h.handleCopy(s);
+        else h.handleMove(s);
+        expect(s.code == 500, "cache cleanup failure never reports successful HTTP status");
+        expect(s.body.find("committed") != std::string::npos && s.body.find("cache cleanup failed") != std::string::npos,
+               "HTTP error distinguishes committed file from cache cleanup failure");
+        expect(Storage.files.at(dst).data == "new title|new toc|new cover|new pages", "committed destination remains intact");
+        expect(Storage.files.count(src) == (op == "MOVE" ? 0 : 1), "source follows completed mutation");
+        expect(std::count(invalidated.begin(), invalidated.end(), dst) == 1, "destination cleanup attempted once");
+        expect(std::count(invalidated.begin(), invalidated.end(), src) == (op == "MOVE" ? 1 : 0),
+               "MOVE attempts source and destination independently");
+        const auto commit = "rename:" + (op == "MOVE" ? src : dst + ".davtmp") + ":" + dst;
+        expect(std::count(Storage.operations.begin(), Storage.operations.end(), commit) == 1, "commit is never retried after cleanup failure");
+        if (failedCache != "source") expect(cache.at(dst).find("old title") == 0, "failed destination cleanup retained stale cache, reported to caller");
+        else expect(openBook(dst).find("new title") == 0, "destination cleanup still succeeds when source cleanup fails");
+      }
+    }
+  }
+  std::cout << scenarios << " scenarios, " << failures << " failures\n";
+  return failures ? 1 : 0;
+}

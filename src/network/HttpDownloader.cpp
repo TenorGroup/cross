@@ -8,6 +8,10 @@
 #include <WiFi.h>
 #include <base64.h>
 #include <esp_wifi.h>
+#include <ZipFile.h>
+
+#include "WebDavReplace.h"
+#include "util/BookCacheUtils.h"
 
 #include <ctime>
 #include <functional>
@@ -30,11 +34,13 @@ namespace {
 constexpr int HTTP_RX_BUF = 2048;
 constexpr int HTTP_TX_BUF = 512;
 #endif
-// Per-socket-op timeout. Some OPDS download endpoints are slow to send headers
-// (>15s) and chunked catalogs stall mid-body, so 15s killed them. 60s gives
-// slow servers room. esp_http_client's timeout_ms is uint32, so unlike Arduino
-// HTTPClient's uint16 setTimeout it doesn't silently truncate.
+// Keep slow-server tolerance separate from input polling. The wolfSSL waits
+// poll cooperatively; esp_http_client reads retry short timeouts below.
 constexpr int HTTP_TIMEOUT_MS = 60000;
+#if !defined(FREEINK_NET_WOLFSSL)
+constexpr int HTTP_CONNECT_TIMEOUT_MS = 3000;
+constexpr int HTTP_POLL_TIMEOUT_MS = 0;
+#endif
 constexpr size_t READ_CHUNK = 1024;
 constexpr int MAX_REDIRECTS = 5;
 
@@ -44,6 +50,21 @@ struct Sink {
   bool* cancelFlag = nullptr;
   size_t total = 0;
   size_t downloaded = 0;
+  unsigned long lastPumpMs = 0;
+  bool pumped = false;
+
+  bool poll(bool force = false) {
+    if (cancelFlag && *cancelFlag) return true;
+    const unsigned long now = millis();
+    if (progress && (force || !pumped || now - lastPumpMs >= 25)) {
+      lastPumpMs = now;
+      pumped = true;
+      // total == 0 is indeterminate. This callback also pumps activity input
+      // while waiting for headers or the next body bytes.
+      progress(downloaded, total);
+    }
+    return cancelFlag && *cancelFlag;
+  }
 };
 
 bool isRedirect(int status) {
@@ -79,9 +100,11 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
   std::string url = startUrl;
 
   for (int hop = 0; hop <= MAX_REDIRECTS; ++hop) {
+    if (sink.poll()) return HttpDownloader::ABORTED;
     freeink::http_url::Parts parsed;
     if (!freeink::http_url::parse(url, parsed)) return HttpDownloader::HTTP_ERROR;
     if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return HttpDownloader::HTTP_ERROR;
+    if (sink.poll()) return HttpDownloader::ABORTED;
     freeink::SecureHttpClient http;
     http.setTimeout(rootCA ? 10000 : HTTP_TIMEOUT_MS);
     if (rootCA) {
@@ -110,12 +133,14 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
           if (sink.total == 0 && http.hasContentLength()) sink.total = http.getContentLength();
           if (!sink.write(data, len)) return false;
           sink.downloaded += len;
-          if (sink.progress && sink.total > 0) sink.progress(sink.downloaded, sink.total);
           return true;
         },
-        [&sink]() { return sink.cancelFlag && *sink.cancelFlag; });
+        [&http, &sink]() {
+          if (http.getStatus() == 200 && http.hasContentLength()) sink.total = http.getContentLength();
+          return sink.poll();
+        });
 
-    if (http.aborted()) return HttpDownloader::ABORTED;
+    if (http.aborted() || sink.poll(true)) return HttpDownloader::ABORTED;
     if (status < 0) {
       LOG_ERR("HTTP", "wolfSSL request failed");
       return HttpDownloader::HTTP_ERROR;
@@ -157,11 +182,12 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
 HttpDownloader::DownloadError runGet(const std::string& url, const std::string& username, const std::string& password,
                                      Sink& sink, const char* rootCA, bool allowRedirects) {
   WifiPowerSaveGuard psGuard;
+  if (sink.poll()) return HttpDownloader::ABORTED;
   esp_http_client_config_t config = {};
   config.url = url.c_str();
   config.buffer_size = HTTP_RX_BUF;
   config.buffer_size_tx = HTTP_TX_BUF;
-  config.timeout_ms = HTTP_TIMEOUT_MS;
+  config.timeout_ms = HTTP_CONNECT_TIMEOUT_MS;
   // Verify HTTPS against the bundled CA roots. This build has esp-tls
   // CONFIG_ESP_TLS_INSECURE off, so an unverified TLS handshake can't be set
   // up at all; the model is public servers over verified https and local
@@ -174,6 +200,17 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   } else
     config.crt_bundle_attach = esp_crt_bundle_attach;
   config.keep_alive_enable = true;
+  config.user_data = &sink;
+  config.event_handler = [](esp_http_client_event_t* event) -> esp_err_t {
+    auto& target = *static_cast<Sink*>(event->user_data);
+    if (target.poll()) {
+      // Interrupt the socket without freeing parser buffers from its own
+      // callback. The owning loop performs cleanup after the API unwinds.
+      const int fd = esp_http_client_get_socket(event->client);
+      if (fd >= 0) shutdown(fd, SHUT_RDWR);
+    }
+    return ESP_OK;
+  };
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
   if (!client) {
@@ -193,36 +230,65 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   // 30x responses manually. OPDS download endpoints and the GitHub release CDN
   // both redirect.
   esp_err_t err = esp_http_client_open(client, 0);
+  if (sink.poll()) {
+    esp_http_client_cleanup(client);
+    return HttpDownloader::ABORTED;
+  }
   if (err != ESP_OK) {
     LOG_ERR("HTTP", "open failed: %s", esp_err_to_name(err));
     esp_http_client_cleanup(client);
     return HttpDownloader::HTTP_ERROR;
   }
-  int64_t contentLength = esp_http_client_fetch_headers(client);
+  // A nonblocking read returns EAGAIN between packets, giving input its own
+  // cadence even for a byte-at-a-time header or an unknown-length body.
+  esp_http_client_set_timeout_ms(client, HTTP_POLL_TIMEOUT_MS);
+  const auto fetchHeaders = [&]() -> int64_t {
+    const unsigned long deadline = millis() + HTTP_TIMEOUT_MS;
+    for (;;) {
+      if (sink.poll()) return -ESP_ERR_HTTP_EAGAIN;
+      const int64_t result = esp_http_client_fetch_headers(client);
+      if (result != -ESP_ERR_HTTP_EAGAIN || static_cast<int32_t>(millis() - deadline) >= 0) return result;
+      delay(10);
+    }
+  };
+  int64_t contentLength = fetchHeaders();
+  if (sink.poll()) {
+    esp_http_client_cleanup(client);
+    return HttpDownloader::ABORTED;
+  }
   int status = esp_http_client_get_status_code(client);
   for (int hop = 0;
        allowRedirects && username.empty() && url.rfind("http://", 0) == 0 && isRedirect(status) && hop < MAX_REDIRECTS;
        ++hop) {
     if (esp_http_client_set_redirection(client) != ESP_OK) break;
     esp_http_client_close(client);
+    esp_http_client_set_timeout_ms(client, HTTP_CONNECT_TIMEOUT_MS);
     err = esp_http_client_open(client, 0);
+    if (sink.poll()) {
+      esp_http_client_cleanup(client);
+      return HttpDownloader::ABORTED;
+    }
     if (err != ESP_OK) {
       LOG_ERR("HTTP", "redirect open failed: %s", esp_err_to_name(err));
       esp_http_client_cleanup(client);
       return HttpDownloader::HTTP_ERROR;
     }
-    contentLength = esp_http_client_fetch_headers(client);
+    esp_http_client_set_timeout_ms(client, HTTP_POLL_TIMEOUT_MS);
+    contentLength = fetchHeaders();
+    if (sink.poll()) {
+      esp_http_client_cleanup(client);
+      return HttpDownloader::ABORTED;
+    }
     status = esp_http_client_get_status_code(client);
   }
 
-  if (status != 200) {
+  if (contentLength < 0 || status != 200) {
     LOG_ERR("HTTP", "unexpected status: %d", status);
     esp_http_client_cleanup(client);
     return HttpDownloader::HTTP_ERROR;
   }
 
-  // fetch_headers returns 0 for a chunked response (no Content-Length); leave
-  // total at 0 so progress stays silent and the size check is skipped.
+  // Unknown lengths remain zero and progress still carries received bytes.
   sink.total = contentLength > 0 ? static_cast<size_t>(contentLength) : 0;
 
   auto buf = makeUniqueNoThrow<char[]>(READ_CHUNK);
@@ -232,28 +298,38 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
     return HttpDownloader::HTTP_ERROR;
   }
 
+  unsigned long bodyDeadline = millis() + HTTP_TIMEOUT_MS;
   while (true) {
-    if (sink.cancelFlag && *sink.cancelFlag) {
+    if (sink.poll()) {
       esp_http_client_cleanup(client);
       return HttpDownloader::ABORTED;
     }
     const int read = esp_http_client_read(client, buf.get(), READ_CHUNK);
+    if (sink.poll()) {
+      esp_http_client_cleanup(client);
+      return HttpDownloader::ABORTED;
+    }
+    if (read == -ESP_ERR_HTTP_EAGAIN && static_cast<int32_t>(millis() - bodyDeadline) < 0) {
+      delay(10);
+      continue;
+    }
     if (read < 0) {
       LOG_ERR("HTTP", "read error after %zu bytes", sink.downloaded);
       esp_http_client_cleanup(client);
       return HttpDownloader::HTTP_ERROR;
     }
     if (read == 0) break;  // all data received
+    bodyDeadline = millis() + HTTP_TIMEOUT_MS;
     if (!sink.write(reinterpret_cast<const uint8_t*>(buf.get()), read)) {
       esp_http_client_cleanup(client);
       return HttpDownloader::FILE_ERROR;
     }
     sink.downloaded += read;
-    if (sink.progress && sink.total > 0) sink.progress(sink.downloaded, sink.total);
   }
 
   const bool complete = esp_http_client_is_complete_data_received(client);
   esp_http_client_cleanup(client);
+  if (sink.poll(true)) return HttpDownloader::ABORTED;
   if (!complete) {
     LOG_ERR("HTTP", "incomplete: got %zu of %zu bytes", sink.downloaded, sink.total);
     return HttpDownloader::HTTP_ERROR;
@@ -327,12 +403,11 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
                                                              bool downgradeRedirectsToHttp) {
   LOG_DBG("HTTP", "Downloading file");
 
-  if (Storage.exists(destPath.c_str())) {
-    Storage.remove(destPath.c_str());
-  }
+  if (!webdav::recoverFile(Storage, destPath.c_str())) return FILE_ERROR;
+  const std::string staging = destPath + ".davtmp";
   HalFile file;
-  if (!Storage.openFileForWrite("HTTP", destPath.c_str(), file)) {
-    LOG_ERR("HTTP", "Failed to open file for writing");
+  if (!Storage.openFileForWrite("HTTP", staging.c_str(), file)) {
+    LOG_ERR("HTTP", "Failed to open staging file");
     return FILE_ERROR;
   }
 
@@ -340,22 +415,35 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   sink.progress = std::move(progress);
   sink.cancelFlag = cancelFlag;
   sink.write = [&file](const uint8_t* data, size_t len) { return file.write(data, len) == len; };
-
   const DownloadError result = runGetSecure(url, username, password, sink, downgradeRedirectsToHttp);
   const bool synced = result == OK && file.sync();
-  // Close before any remove() on the same path; DESTRUCTOR_CLOSES_FILE would
-  // otherwise close only after the remove.
-  file.close();
-
-  if (result != OK || !synced) {
-    Storage.remove(destPath.c_str());
-    return result != OK ? result : FILE_ERROR;
+  const bool closed = file.close();
+  if (result != OK || !synced || !closed || sink.downloaded == 0) {
+    Storage.remove(staging.c_str());
+    return result != OK ? result : (!synced || !closed ? FILE_ERROR : HTTP_ERROR);
   }
-  if (sink.downloaded == 0) {
-    LOG_ERR("HTTP", "no data received");
-    Storage.remove(destPath.c_str());
-    return HTTP_ERROR;
+  // OPDS names books as .epub. Reuse the ZIP reader to reject a response that
+  // lacks the container entry before replacing an existing readable book.
+  if (destPath.size() >= 5 && destPath.compare(destPath.size() - 5, 5, ".epub") == 0) {
+    ZipFile zip(staging);
+    size_t containerSize = 0;
+    const bool valid = zip.open() && zip.getInflatedFileSize("META-INF/container.xml", &containerSize) && containerSize > 0;
+    zip.close();
+    if (!valid) {
+      Storage.remove(staging.c_str());
+      return FILE_ERROR;
+    }
   }
+  bool backupCleanupPending = false;
+  if (!webdav::replaceFile(Storage, staging.c_str(), destPath.c_str(), &backupCleanupPending)) {
+    Storage.remove(staging.c_str());
+    return FILE_ERROR;
+  }
+  if (!clearBookCache(destPath)) {
+    LOG_ERR("HTTP", "Committed %s; reading cache cleanup failed", destPath.c_str());
+    return CACHE_ERROR;
+  }
+  if (backupCleanupPending) LOG_ERR("HTTP", "Committed %s; backup retained", destPath.c_str());
   LOG_DBG("HTTP", "Downloaded %zu bytes", sink.downloaded);
   return OK;
 }

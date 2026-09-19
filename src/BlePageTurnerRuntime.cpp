@@ -3,11 +3,13 @@
 #include <GfxRenderer.h>
 
 #include <atomic>
+#include <optional>
 
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
 
 #include <FontCacheManager.h>
 #include <HalMemory.h>
+#include <HalPowerManager.h>
 #include <Logging.h>
 #include <BleKeyboardHost.h>
 
@@ -22,12 +24,6 @@
 #endif
 
 namespace freeink::ble {
-bool suspendForTransition() {
-  auto& host = BleKeyboardHost::getInstance();
-  if (!host.isRunning() && !host.isStopping()) return true;
-  return host.end(0);
-}
-
 namespace {
 
 constexpr size_t kMinimumFreeBytes = 65536;
@@ -37,19 +33,22 @@ constexpr size_t kMinimumLargestBlockBytes = 32768;
 // worker finishes. The worker clears it before deleting itself.
 std::atomic<bool> attemptInFlight{false};
 std::atomic<GfxRenderer*> attemptRenderer{nullptr};
+std::atomic<bool> attemptCancelled{false};
+// The starter owns this until the worker finishes; teardown then runs on main.
+// Keeping the lock through the running state also closes gaps between polls.
+std::optional<HalPowerManager::Lock> radioPowerLock;
+#ifdef TENOR_UI_ACCEPTANCE
+std::atomic<uint32_t> startStackMinimum{0};
+#endif
 
 void logSkipped(const char* reason, const HalMemory::HeapStats& heap) {
   LOG_ERR("BLE", "HID begin skipped (%s): free=%zu largest=%zu required_free=%zu required_largest=%zu", reason,
           heap.freeBytes, heap.largestBlockBytes, kMinimumFreeBytes, kMinimumLargestBlockBytes);
 }
 
-}  // namespace
-
-bool begin(GfxRenderer& renderer) {
-  setIdleStopped(false);
-  setReaderStartDeferred(false);
+bool beginOwned(GfxRenderer& renderer) {
   auto& host = BleKeyboardHost::getInstance();
-  if (host.isStopping()) return false;
+  if (attemptCancelled.load(std::memory_order_acquire) || host.isStopping()) return false;
   if (host.isRunning()) return true;
 
   const auto before = HalMemory::getInternalHeap();
@@ -78,7 +77,12 @@ bool begin(GfxRenderer& renderer) {
 
   // This function performs one attempt. Callers decide when a later explicit
   // user action is allowed to retry; there is no retry loop here.
+  if (attemptCancelled.load(std::memory_order_acquire) || filetransfer::isActive()) return false;
   if (!host.begin("FreeInk")) return false;
+  if (attemptCancelled.load(std::memory_order_acquire) || filetransfer::isActive()) {
+    host.end(0);
+    return false;
+  }
 
   // BLE may initialize successfully while consuming the reader's last large
   // block. InflateReader::RING_BYTES and the streaming miniz window both need
@@ -95,39 +99,90 @@ bool begin(GfxRenderer& renderer) {
   return true;
 }
 
-namespace {
+void finishAttempt(const bool started, const bool reportReaderFailure) {
+  auto& host = BleKeyboardHost::getInstance();
+  if (reportReaderFailure) {
+    setReaderStartDeferred(!started && !attemptCancelled.load(std::memory_order_acquire));
+  }
+  if (!host.isRunning() && !host.isStopping()) radioPowerLock.reset();
+  attemptRenderer.store(nullptr, std::memory_order_release);
+  attemptInFlight.store(false, std::memory_order_release);
+}
 
 #ifdef BLE_BEGIN_TASK
 void attemptTask(void* param) {
   GfxRenderer* renderer = attemptRenderer.load(std::memory_order_acquire);
-  if (renderer != nullptr) {
-    begin(*renderer);
-  }
-  attemptInFlight.store(false, std::memory_order_release);
+  const bool started = renderer != nullptr && beginOwned(*renderer);
+#ifdef TENOR_UI_ACCEPTANCE
+  startStackMinimum.store(uxTaskGetStackHighWaterMark(nullptr), std::memory_order_release);
+#endif
+  finishAttempt(started, true);
   vTaskDelete(nullptr);
 }
 #endif
 
 }  // namespace
 
-bool beginAsync(GfxRenderer& renderer) {
+#ifdef TENOR_UI_ACCEPTANCE
+uint32_t startStackHighWaterMark() { return startStackMinimum.load(std::memory_order_acquire); }
+#endif
+
+bool initializing() { return attemptInFlight.load(std::memory_order_acquire); }
+
+bool busy() {
+  if (attemptInFlight.load(std::memory_order_acquire)) return true;
+  auto& host = BleKeyboardHost::getInstance();
+  return host.isRunning() || host.isStopping();
+}
+
+bool suspendForTransition(const uint32_t timeoutMs) {
+  // Never call SDK end concurrently with NimBLE init. The worker still owns
+  // its allocations until finishAttempt publishes completion.
+  attemptCancelled.store(true, std::memory_order_release);
+  if (attemptInFlight.load(std::memory_order_acquire)) return false;
+  auto& host = BleKeyboardHost::getInstance();
+  if (host.isRunning() || host.isStopping()) {
+    if (!radioPowerLock) radioPowerLock.emplace();
+    if (!host.end(timeoutMs)) return false;
+  }
+  radioPowerLock.reset();
+  return true;
+}
+
+bool begin(GfxRenderer& renderer) {
   setIdleStopped(false);
   setReaderStartDeferred(false);
-  auto& host = BleKeyboardHost::getInstance();
-  if (host.isRunning()) return true;
+  bool expected = false;
+  if (!attemptInFlight.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) return false;
+  attemptCancelled.store(false, std::memory_order_release);
+  if (!radioPowerLock) radioPowerLock.emplace();
+  const bool started = beginOwned(renderer);
+  finishAttempt(started, false);
+  return started;
+}
+
+bool beginAsync(GfxRenderer& renderer) {
 #ifdef BLE_BEGIN_TASK
-  if (attemptInFlight.load(std::memory_order_acquire)) return false;
-  if (host.isStopping()) return false;
+  setIdleStopped(false);
+  setReaderStartDeferred(false);
+  bool expected = false;
+  if (!attemptInFlight.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) return false;
+  auto& host = BleKeyboardHost::getInstance();
+  if (host.isStopping() || host.isRunning()) {
+    const bool running = host.isRunning();
+    attemptInFlight.store(false, std::memory_order_release);
+    return running;
+  }
+  attemptCancelled.store(false, std::memory_order_release);
+  if (!radioPowerLock) radioPowerLock.emplace();
   attemptRenderer.store(&renderer, std::memory_order_release);
-  attemptInFlight.store(true, std::memory_order_release);
   const BaseType_t ok = xTaskCreate(attemptTask, "ble-start", 3072, nullptr, 2, nullptr);
   if (ok != pdPASS) {
-    attemptInFlight.store(false, std::memory_order_release);
+    finishAttempt(false, true);
     return false;
   }
   return true;
 #else
-  // Host tests exercise the synchronous path directly.
   return begin(renderer);
 #endif
 }
@@ -142,7 +197,12 @@ bool stopForIdle() {
 
 #else
 
-bool freeink::ble::suspendForTransition() { return true; }
+bool freeink::ble::suspendForTransition(uint32_t) { return true; }
+bool freeink::ble::busy() { return false; }
+bool freeink::ble::initializing() { return false; }
+#ifdef TENOR_UI_ACCEPTANCE
+uint32_t freeink::ble::startStackHighWaterMark() { return 0; }
+#endif
 bool freeink::ble::stopForIdle() { return true; }
 
 bool freeink::ble::begin(GfxRenderer& renderer) {

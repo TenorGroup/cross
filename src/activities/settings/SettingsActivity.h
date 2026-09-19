@@ -1,6 +1,7 @@
 #pragma once
 #include <I18n.h>
 
+#include <atomic>
 #include <functional>
 #include <string>
 #include <vector>
@@ -160,6 +161,9 @@ class SettingsActivity final : public UiTabListActivity {
   // ra hai cho (rebuildSettingsLists va selectCategory), va hai ban sao do la kieu
   // vo am tham khi them mot the moi.
   std::vector<SettingInfo>& danhSachCuaThe(settingstabs::Tab tab);
+
+  std::atomic<bool> saveFailed{false};
+  bool saveSettings();
 
   bool preserveQuickResumeTimeoutOn = false;
   bool quickResumeTimeoutAutoEnabled = false;

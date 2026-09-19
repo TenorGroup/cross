@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""Compile unchanged settings category method bodies against hardware boundaries.
+
+--baseline-ref optionally records RED on an earlier revision. The default
+current-only mode uses the recorded category order fixture and needs no git.
+"""
+import argparse
+import hashlib
+import itertools
+import json
+import os
+import pathlib
+import platform
+import subprocess
+
+HERE = pathlib.Path(__file__).resolve().parent
+parser = argparse.ArgumentParser()
+parser.add_argument('--repo', type=pathlib.Path, required=True)
+parser.add_argument('--output', type=pathlib.Path, required=True)
+parser.add_argument('--baseline-ref')
+parser.add_argument('--sanitize', action='store_true')
+args = parser.parse_args()
+ROOT = args.repo.resolve()
+OUT = args.output.resolve()
+OUT.mkdir(parents=True, exist_ok=True)
+
+
+def method_slice(text, signature):
+    start = text.index(signature)
+    opening = text.index('{', start)
+    level = 1
+    i = opening + 1
+    while level:
+        if text[i] == '{':
+            level += 1
+        if text[i] == '}':
+            level -= 1
+        i += 1
+    return text[start:i] + '\n'
+
+
+include_paths = [
+    'test/host_stubs', 'src', '.pio/libdeps/gh_release/ArduinoJson/src',
+    'lib/Epub', 'lib/I18n', 'lib/Logging', 'lib/EpdFont', 'lib/Serialization',
+    'lib/KOReaderSync', 'freeink-sdk/libs/hardware/BoardConfig/include',
+    'freeink-sdk/libs/ui/FreeInkUI/include',
+]
+includes = ['-I' + str(ROOT / path) for path in include_paths]
+manifest = {}
+modes = ['before', 'after'] if args.baseline_ref else ['after']
+for mode in modes:
+    output = OUT / mode
+    output.mkdir(exist_ok=True)
+    (output / 'activities/settings').mkdir(parents=True, exist_ok=True)
+
+    def read(path):
+        if mode == 'before':
+            return subprocess.check_output(
+                ['git', 'show', f'{args.baseline_ref}:{path}'], cwd=ROOT, text=True)
+        return (ROOT / path).read_text()
+
+    paths = ['src/SettingsList.h', 'src/activities/settings/SettingsActivity.h',
+             'src/activities/settings/SettingsActivity.cpp']
+    sources = {path: read(path) for path in paths}
+    manifest[mode] = {path: hashlib.sha256(text.encode()).hexdigest()
+                      for path, text in sources.items()}
+    (output / 'SettingsList.h').write_text(sources[paths[0]])
+    header = sources[paths[1]]
+    descriptor = header[header.index('enum class SettingType'):
+                        header.index('class SettingsActivity final')]
+    (output / 'activities/settings/SettingsActivity.h').write_text(
+        '#pragma once\n#include <functional>\n#include <string>\n#include <vector>\n'
+        '#include <I18n.h>\n#include "CrossPointSettings.h"\n'
+        '#include "activities/settings/SettingsTabs.h"\n' + descriptor)
+    methods = method_slice(sources[paths[2]],
+                           'std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe')
+    methods += method_slice(sources[paths[2]], 'void SettingsActivity::rebuildSettingsLists()')
+    (output / 'CategoryMethods.inc').write_text(methods)
+    for name in ['HalTiltSensor', 'HalClock']:
+        instance = name[0].lower() + name[1:]
+        (output / f'{name}.h').write_text(
+            '#pragma once\nclass ' + name + ' { public: bool available=false; '
+            'bool isAvailable() const { return available; } };\n'
+            'extern ' + name + ' ' + instance + ';\n')
+    for profile in ['c3', 'pro']:
+        devices = (['-DFREEINK_DEVICE_X3=1', '-DFREEINK_DEVICE_X4=1'] if profile == 'c3'
+                   else ['-DFREEINK_DEVICE_X4PRO=1'])
+        sanitizer = ['-fsanitize=address,undefined', '-fno-omit-frame-pointer'] if args.sanitize else []
+        dead_strip = '-Wl,-dead_strip' if platform.system() == 'Darwin' else '-Wl,--gc-sections'
+        command = [os.environ.get('CXX', 'c++'), '-std=c++20', '-g', '-O1', *sanitizer,
+                   '-ffunction-sections', '-fdata-sections', dead_strip,
+                   '-DENABLE_ARDUINO_FEATURES=0', '-DCROSSPOINT_VERSION="category-test"',
+                   *devices, '-I' + str(output), *includes, str(HERE / 'harness.cpp'),
+                   str(ROOT / 'src/ReaderFontSizes.cpp'),
+                   str(ROOT / 'src/activities/settings/SettingsTabs.cpp'),
+                   str(ROOT / 'lib/I18n/I18n.cpp'), str(ROOT / 'lib/I18n/I18nStrings.cpp'),
+                   '-o', str(output / profile)]
+        (output / (profile + '-command.json')).write_text(json.dumps(command, indent=2) + '\n')
+        build = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        (output / (profile + '-build.log')).write_text(build.stdout)
+        if build.returncode:
+            print(build.stdout)
+            raise SystemExit(build.returncode)
+
+fixture = json.loads((HERE / 'expected-rows.json').read_text())
+results = []
+for board, tenor, rtc, footnotes, dictionaries in itertools.product(
+        ['x3', 'x4', 'pro'], [0, 1], [0, 1], [0, 1], [0, 1]):
+    pair = {}
+    case = '-'.join(map(str, [board, tenor, rtc, footnotes, dictionaries]))
+    for mode in modes:
+        binary = OUT / mode / ('pro' if board == 'pro' else 'c3')
+        command = [str(binary), '--enforce', board, str(tenor), str(rtc),
+                   str(footnotes), str(dictionaries)]
+        run = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        (OUT / mode / (case + '.stderr')).write_text(run.stderr)
+        (OUT / mode / (case + '.json')).write_text(run.stdout)
+        try:
+            measured = json.loads(run.stdout)
+        except json.JSONDecodeError:
+            print(case, mode, run.returncode, run.stderr)
+            raise SystemExit(1)
+        measured['exit'] = run.returncode
+        pair[mode] = measured
+        expected_exit = 1 if mode == 'before' else 0
+        if run.returncode != expected_exit:
+            print(case, mode, run.returncode, run.stderr)
+            raise SystemExit(1)
+        rows = [tab['rows'] for tab in measured['tabs']]
+        if rows != fixture[case]:
+            print(case, mode, 'category row order changed')
+            raise SystemExit(1)
+    results.append({'case': case, **pair})
+(OUT / 'source-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+(OUT / 'results.json').write_text(json.dumps(results, indent=2) + '\n')
+red_note = 'baseline allocation/capacity assertions RED; ' if args.baseline_ref else ''
+sanitizer_note = ' under ASan/UBSan' if args.sanitize else ''
+print(f'{len(results)} cases: {red_note}current GREEN. Exact row order identical to '
+      f'baseline fixture; dynamic owned-lifetime checks GREEN{sanitizer_note}.')

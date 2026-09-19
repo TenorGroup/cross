@@ -110,7 +110,7 @@ class ActivityManager {
   void goToRecentBooks();
   void goToBrowser();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
-  void goToSleep(bool fromTimeout = false);
+  bool goToSleep(bool fromTimeout = false);
   void goToBoot();
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   void goToCrashReport();
@@ -126,6 +126,7 @@ class ActivityManager {
 #ifdef TENOR_UI_ACCEPTANCE
   void stepHomeForTest(int direction);
   void tabHomeForTest(int index);
+  uint32_t renderStackHighWaterMark() const;
 #endif
 
   bool preventAutoSleep() const;
@@ -135,9 +136,8 @@ class ActivityManager {
   bool isForegroundReaderReady() const;
   uint32_t activityGeneration() const { return activityGeneration_; }
 
-  // Lat trang trong trinh doc dang mo (theo huong `forward`). Tra false khi hoạt động hiện tại
-  // khong phai trinh doc hoac trinh doc tu choi (dau/cuoi sach). Dung cho nguon vao ngoai nut
-  // vat ly, vi du page turner BLE.
+  // Queue an external page action on the ready foreground reader. True means
+  // this new input was accepted; the reader applies it when rendering is safe.
   bool pageTurn(bool forward);
   bool handleForcedRefresh();
   bool skipLoopDelay() const;

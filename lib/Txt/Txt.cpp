@@ -171,9 +171,10 @@ bool Txt::clearCache() const {
 }
 
 bool Txt::readContent(uint8_t* buffer, size_t offset, size_t length) const {
-  if (!loaded) {
+  if (!loaded || offset > fileSize || length > fileSize - offset || (length > 0 && buffer == nullptr)) {
     return false;
   }
+  if (length == 0) return true;
 
   HalFile file;
   if (!Storage.openFileForRead("TXT", filepath, file)) {
@@ -184,6 +185,12 @@ bool Txt::readContent(uint8_t* buffer, size_t offset, size_t length) const {
     return false;
   }
 
-  size_t bytesRead = file.read(buffer, length);
-  return bytesRead > 0;
+  size_t completed = 0;
+  while (completed < length) {
+    const size_t requested = length - completed;
+    const int result = file.read(buffer + completed, requested);
+    if (result <= 0 || static_cast<size_t>(result) > requested) return false;
+    completed += static_cast<size_t>(result);
+  }
+  return true;
 }

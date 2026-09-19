@@ -2,6 +2,7 @@
 
 #include <BidiUtils.h>
 #include <GfxRenderer.h>
+#include <HalMemory.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <Serialization.h>
@@ -311,11 +312,11 @@ bool TextBlock::serialize(HalFile& file) const {
   // Word data: scalars, then the arena verbatim -- its in-memory layout is
   // exactly the on-disk layout (see TextBlock.h), so one write covers all
   // per-word arrays and the text blob.
-  serialization::writePod(file, numWords);
-  serialization::writePod(file, static_cast<uint8_t>(focusPresent ? 1 : 0));
-  serialization::writePod(file, textBytes);
-  serialization::writePod(file, dropCapHeight);
-  serialization::writePod(file, letterSpacing);
+  if (!serialization::writePod(file, numWords)) return false;
+  if (!serialization::writePod(file, static_cast<uint8_t>(focusPresent ? 1 : 0))) return false;
+  if (!serialization::writePod(file, textBytes)) return false;
+  if (!serialization::writePod(file, dropCapHeight)) return false;
+  if (!serialization::writePod(file, letterSpacing)) return false;
   if (numWords > 0) {
     const size_t size = arenaSize(numWords, focusPresent, textBytes);
     if (file.write(arena.get(), size) != size) {
@@ -326,41 +327,42 @@ bool TextBlock::serialize(HalFile& file) const {
 
   // Ruby text data
   for (size_t i = 0; i < numWords; i++) {
-    serialization::writeString(file, (i < rubyTexts.size()) ? rubyTexts[i] : std::string());
+    if (!serialization::writeString(file, (i < rubyTexts.size()) ? rubyTexts[i] : std::string())) return false;
   }
 
   // Style (alignment + margins/padding/indent)
-  serialization::writePod(file, blockStyle.alignment);
-  serialization::writePod(file, blockStyle.textAlignDefined);
-  serialization::writePod(file, blockStyle.marginTop);
-  serialization::writePod(file, blockStyle.marginBottom);
-  serialization::writePod(file, blockStyle.marginLeft);
-  serialization::writePod(file, blockStyle.marginRight);
-  serialization::writePod(file, blockStyle.paddingTop);
-  serialization::writePod(file, blockStyle.paddingBottom);
-  serialization::writePod(file, blockStyle.paddingLeft);
-  serialization::writePod(file, blockStyle.paddingRight);
-  serialization::writePod(file, blockStyle.textIndent);
-  serialization::writePod(file, blockStyle.textIndentDefined);
-  serialization::writePod(file, blockStyle.isRtl);
-  serialization::writePod(file, blockStyle.directionDefined);
+  if (!serialization::writePod(file, blockStyle.alignment)) return false;
+  if (!serialization::writePod(file, blockStyle.textAlignDefined)) return false;
+  if (!serialization::writePod(file, blockStyle.marginTop)) return false;
+  if (!serialization::writePod(file, blockStyle.marginBottom)) return false;
+  if (!serialization::writePod(file, blockStyle.marginLeft)) return false;
+  if (!serialization::writePod(file, blockStyle.marginRight)) return false;
+  if (!serialization::writePod(file, blockStyle.paddingTop)) return false;
+  if (!serialization::writePod(file, blockStyle.paddingBottom)) return false;
+  if (!serialization::writePod(file, blockStyle.paddingLeft)) return false;
+  if (!serialization::writePod(file, blockStyle.paddingRight)) return false;
+  if (!serialization::writePod(file, blockStyle.textIndent)) return false;
+  if (!serialization::writePod(file, blockStyle.textIndentDefined)) return false;
+  if (!serialization::writePod(file, blockStyle.isRtl)) return false;
+  if (!serialization::writePod(file, blockStyle.directionDefined)) return false;
 
   return true;
 }
 
 std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
+  serialization::CheckedReader reader(file);
   uint16_t wc;
   uint8_t hasFocus;
   uint16_t textBytes;
   uint16_t dropHeight = 0;
   int8_t spacing = 0;
-  serialization::readPod(file, wc);
-  serialization::readPod(file, hasFocus);
-  serialization::readPod(file, textBytes);
-  serialization::readPod(file, dropHeight);
-  serialization::readPod(file, spacing);
+  reader.pod(wc);
+  reader.pod(hasFocus);
+  reader.pod(textBytes);
+  reader.pod(dropHeight);
+  reader.pod(spacing);
   // readerSpacing::Level resolves to -2..+2 px on top of the glyph advance.
-  if (spacing < -2 || spacing > 2) return nullptr;
+  if (!reader.ok() || hasFocus > 1 || spacing < -2 || spacing > 2) return nullptr;
   if (dropHeight > 256) return nullptr;
 
   // Sanity checks: cap the arena allocation and reject impossible geometry
@@ -387,12 +389,16 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
 
   if (wc > 0) {
     const size_t size = arenaSize(wc, block->focusPresent, textBytes);
+    // Each word also has a ruby length field; style uses one enum, four bools,
+    // and nine int16 fields. Reject truncated records before arena allocation.
+    constexpr size_t styleBytes = sizeof(CssTextAlign) + 4 * sizeof(bool) + 9 * sizeof(int16_t);
+    if (!reader.has(size + static_cast<size_t>(wc) * sizeof(uint32_t) + styleBytes)) return nullptr;
     block->arena = makeUniqueNoThrow<uint8_t[]>(size);
     if (!block->arena) {
       LOG_ERR("TXB", "OOM: arena %u bytes", static_cast<uint32_t>(size));
       return nullptr;
     }
-    if (file.read(block->arena.get(), size) != size) {
+    if (!reader.read(block->arena.get(), size)) {
       LOG_ERR("TXB", "Deserialization failed: arena read (%u bytes)", static_cast<uint32_t>(size));
       return nullptr;
     }
@@ -427,9 +433,16 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   // overwrites every byte, so a moved-from value carries nothing into the next iteration.
   std::string scratch;
   for (uint16_t i = 0; i < wc; i++) {
-    serialization::readString(file, scratch);
+    // Query the heap only when an annotation needs an allocation. Empty ruby
+    // fields are the common path and require no heap walk or allocation.
+    if (!reader.string(scratch, MAX_RUBY_ANNOTATION_BYTES, [](size_t bytes) {
+          const size_t largest = HalMemory::getDefaultHeap().largestBlockBytes;
+          // Allow for std::string growth rounding and its NUL terminator.
+          return largest > 2 && bytes <= (largest - 2) / 2;
+        })) return nullptr;
     if (scratch.empty()) continue;
     if (block->rubyTexts.empty()) {
+      if (wc > HalMemory::getDefaultHeap().largestBlockBytes / sizeof(std::string)) return nullptr;
       block->rubyTexts.resize(wc);
     }
     block->rubyTexts[i] = std::move(scratch);
@@ -437,20 +450,23 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
 
   // Style (alignment + margins/padding/indent)
   BlockStyle& blockStyle = block->blockStyle;
-  serialization::readPod(file, blockStyle.alignment);
-  serialization::readPod(file, blockStyle.textAlignDefined);
-  serialization::readPod(file, blockStyle.marginTop);
-  serialization::readPod(file, blockStyle.marginBottom);
-  serialization::readPod(file, blockStyle.marginLeft);
-  serialization::readPod(file, blockStyle.marginRight);
-  serialization::readPod(file, blockStyle.paddingTop);
-  serialization::readPod(file, blockStyle.paddingBottom);
-  serialization::readPod(file, blockStyle.paddingLeft);
-  serialization::readPod(file, blockStyle.paddingRight);
-  serialization::readPod(file, blockStyle.textIndent);
-  serialization::readPod(file, blockStyle.textIndentDefined);
-  serialization::readPod(file, blockStyle.isRtl);
-  serialization::readPod(file, blockStyle.directionDefined);
+  reader.pod(blockStyle.alignment);
+  reader.pod(blockStyle.textAlignDefined);
+  reader.pod(blockStyle.marginTop);
+  reader.pod(blockStyle.marginBottom);
+  reader.pod(blockStyle.marginLeft);
+  reader.pod(blockStyle.marginRight);
+  reader.pod(blockStyle.paddingTop);
+  reader.pod(blockStyle.paddingBottom);
+  reader.pod(blockStyle.paddingLeft);
+  reader.pod(blockStyle.paddingRight);
+  reader.pod(blockStyle.textIndent);
+  reader.pod(blockStyle.textIndentDefined);
+  reader.pod(blockStyle.isRtl);
+  reader.pod(blockStyle.directionDefined);
 
+  if (!reader.ok() || static_cast<uint8_t>(blockStyle.alignment) > static_cast<uint8_t>(CssTextAlign::None)) {
+    return nullptr;
+  }
   return block;
 }
