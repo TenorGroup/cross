@@ -54,6 +54,9 @@ def child(path, program):
     subprocess.Popen = FrozenPopen
     sys.path.insert(0, str(HERE))
     sys.argv = [str(path)]
+    if path.name == 'test_reading_stats.py':
+        # This legacy script checks existence before spawning the simulator.
+        sys.argv.extend(['--program', str(program)])
     namespace = runpy.run_path(str(path), run_name='__main__')
     # unittest.main() exits itself. An unguarded module needs explicit execution.
     classes = [value for value in namespace.values()
