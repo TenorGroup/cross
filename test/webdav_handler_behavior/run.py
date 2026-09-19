@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Compile the production WebDAV mutation methods against fault-injected I/O."""
+"""Compile the production WebDAV GET and mutation methods against fault-injected I/O."""
 import argparse
+import hashlib
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -25,6 +27,7 @@ def main():
     functions = "\n\n".join(method(source, signature) for signature in [
         "void WebDAVHandler::raw(", "void WebDAVHandler::handlePut(",
         "void WebDAVHandler::handleMove(", "void WebDAVHandler::handleCopy(",
+        "void WebDAVHandler::handleGet(",
     ])
     cache_source = (root / "src/util/BookCacheUtils.cpp").read_text()
     cache_signature = "bool clearBookCache(" if "bool clearBookCache(" in cache_source else "void clearBookCache("
@@ -34,6 +37,12 @@ def main():
     generated = (here / "harness.cpp.in").read_text().replace("@REPLACEMENT@", str(replacement))
     generated = generated.replace("@PRODUCTION_CACHE@", cache).replace("@PRODUCTION_METHODS@", functions)
     (build / "test.cpp").write_text(generated)
+    (build / "source-hashes.json").write_text(json.dumps({
+        "WebDAVHandler.cpp": hashlib.sha256(source.encode()).hexdigest(),
+        "WebDavReplace.h": hashlib.sha256(replacement.read_bytes()).hexdigest(),
+        "BookCacheUtils.cpp": hashlib.sha256(cache_source.encode()).hexdigest(),
+        "compiled-harness": hashlib.sha256(generated.encode()).hexdigest(),
+    }, indent=2) + "\n")
     subprocess.run(["c++", "-std=c++17", "-O1", "-g", "-fsanitize=address,undefined",
                     "-fno-omit-frame-pointer", "-I", str(root / "freeink-sdk/libs/hardware/SDCardManager/include"),
                     str(build / "test.cpp"), "-o", str(build / "test")], check=True)

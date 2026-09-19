@@ -6,7 +6,7 @@
 void require(bool result,const char* message){if(!result){std::cerr<<"FAIL: "<<message<<"\n";std::exit(1);}}
 void resetMemory(){JsonDocument doc;doc["schema"]=3;require(READING_STATS.fromJson(doc.as<JsonVariantConst>()),"reset in-memory state");READING_STATS.statisticsReadable=true;}
 void report(unsigned n,const char* label,IoCounts c,long long us) {
-  std::cout<<"{\"records\":"<<n<<",\"page\":\""<<label<<"\",\"opens\":"<<c.opens<<",\"read_calls\":"<<c.readCalls<<",\"parses\":"<<c.parses<<",\"bytes_read\":"<<c.bytesRead<<",\"latency_us\":"<<us<<",\"requested_yield_ms\":"<<c.yieldedMs<<"}"<<std::endl;
+  std::cout<<"{\"records\":"<<n<<",\"page\":\""<<label<<"\",\"opens\":"<<c.opens<<",\"read_calls\":"<<c.readCalls<<",\"legacy_parses\":"<<c.parses<<",\"bytes_read\":"<<c.bytesRead<<",\"latency_us\":"<<us<<",\"requested_yield_ms\":"<<c.yieldedMs<<"}"<<std::endl;
 }
 void measuredNavigation(unsigned n) {
   fixture(n);resetMemory();
@@ -15,9 +15,9 @@ void measuredNavigation(unsigned n) {
   run("first",[&]{a.onEnter();});auto first=a.labels();
   run("next",[&]{a.click(a.rowCount()-1);});auto second=a.labels();
   run("previous",[&]{a.click(0);});require(first==a.labels(),"previous page contents differ");
-  require(io.opens==0 && io.parses==0,"revisiting adjacent page rereads all history");
+  require(io.opens==0 && io.readCalls==0 && io.entryOpens==0,"revisiting adjacent page rereads all history");
   run("next-again",[&]{a.click(a.rowCount()-1);});require(second==a.labels(),"next page contents differ");
-  require(io.opens==0 && io.parses==0,"next adjacent cache miss");
+  require(io.opens==0 && io.readCalls==0 && io.entryOpens==0,"next adjacent cache miss");
 }
 void invalidation(const char* name,const std::function<void()>& mutate,bool active=false){
   fixture(100);resetMemory();
@@ -44,7 +44,7 @@ void oversizePage(){
     JsonDocument doc;std::ifstream in(item.path());deserializeJson(doc,in);in.close();doc["title"]=std::string(240,'T');std::ofstream out(item.path());serializeJson(doc,out);
   }
   GfxRenderer r;MappedInputManager i;BookStatsLibraryActivity a(r,i);a.onEnter();auto first=a.labels();a.click(a.rowCount()-1);io={};a.click(0);
-  require(io.parses==100,"oversized page retained in cache");require(a.labels()==first,"oversized page content mismatch");
+  require(io.readFiles==100,"oversized page retained in cache");require(a.labels()==first,"oversized page content mismatch");
   std::cout<<"PASS oversized page bypasses bounded cache\n";
 }
 void oversizeSwap(){
@@ -56,8 +56,8 @@ void oversizeSwap(){
     if(!onFirst){doc["title"]=std::string(240,'T');std::ofstream out(item.path());serializeJson(doc,out);}
   }
   GfxRenderer r;MappedInputManager i;BookStatsLibraryActivity a(r,i);a.onEnter();auto labels=a.labels();a.click(a.rowCount()-1);
-  io={};a.click(0);require(io.parses==0,"small cached first page missed");require(labels==a.labels(),"swap changed cached first page");
-  io={};a.click(a.rowCount()-1);require(io.parses==100,"oversized current page entered cache during swap");
+  io={};a.click(0);require(io.opens==0 && io.readCalls==0 && io.entryOpens==0,"small cached first page missed");require(labels==a.labels(),"swap changed cached first page");
+  io={};a.click(a.rowCount()-1);require(io.readFiles==100,"oversized current page entered cache during swap");
   std::cout<<"PASS oversized current page is discarded after cache swap\n";
 }
 void recovery(){

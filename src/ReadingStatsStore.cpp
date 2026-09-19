@@ -19,6 +19,64 @@ bool finishReset() {
   if (Storage.exists(main) && !Storage.remove(main)) return false;
   return Storage.rename(RESET_FILE, main);
 }
+enum class SnapshotReadResult { Ready, Invalid, Unavailable };
+
+// Directory enumeration already opened this snapshot. Buffer its reads so JSON
+// parsing avoids repeated full-path lookups and one SD call per character.
+class SnapshotReader {
+  HalFile& file;
+  size_t remaining;
+  uint8_t buffer[256];
+  size_t used = 0, count = 0;
+  bool failed = false;
+
+ public:
+  SnapshotReader(HalFile& file, size_t size) : file(file), remaining(size) {}
+  int read() {
+    if (used == count) {
+      if (failed || remaining == 0) return -1;
+      const size_t requested = std::min(remaining, sizeof(buffer));
+      const int received = file.read(buffer, requested);
+      if (received <= 0 || static_cast<size_t>(received) > requested) {
+        failed = true;
+        return -1;
+      }
+      remaining -= static_cast<size_t>(received);
+      used = 0;
+      count = static_cast<size_t>(received);
+    }
+    return buffer[used++];
+  }
+  size_t readBytes(char* target, size_t length) {
+    size_t copied = 0;
+    for (; copied < length; ++copied) {
+      const int value = read();
+      if (value < 0) break;
+      target[copied] = static_cast<char>(value);
+    }
+    return copied;
+  }
+  bool finish() {
+    // A JSON object can finish before the file does. Check the remaining bytes
+    // too, matching the previous whole-file read's treatment of storage errors.
+    while (read() >= 0) {}
+    return !failed;
+  }
+};
+
+SnapshotReadResult readOpenSnapshot(HalFile& file, size_t size, JsonDocument& doc) {
+  doc.clear();
+  if (size > 4096) return file.close() ? SnapshotReadResult::Invalid : SnapshotReadResult::Unavailable;
+  SnapshotReader input(file, size);
+  const auto error = deserializeJson(doc, input);
+  const bool complete = input.finish();
+  const bool closed = file.close();
+  if (!complete || !closed || error == DeserializationError::NoMemory || doc.overflowed()) {
+    return SnapshotReadResult::Unavailable;
+  }
+  return !error && doc.is<JsonObject>() ? SnapshotReadResult::Ready : SnapshotReadResult::Invalid;
+}
+
 bool readSnapshot(const std::string& path, JsonDocument& doc) {
   const auto bounded = [](const std::string& filePath) {
     auto file = Storage.open(filePath.c_str());
@@ -447,9 +505,15 @@ void ReadingStatsStore::listBooks(const BookEntry& boundary, bool previous, std:
     const auto base = backup ? filename.substr(0, 27) : filename;
     if (base.size() != 27 || base.substr(0, 6) != "tenor_" || base.substr(22) != ".json") continue;
     const auto snapshot = std::string("/.crosspoint/reading-stats/") + base;
-    if (file.size() > 4096 || (backup && Storage.exists(snapshot.c_str()))) continue;
+    const size_t size = file.size();
+    if (size > 4096 || (backup && Storage.exists(snapshot.c_str()))) continue;
     JsonDocument doc;
-    if (readSnapshot(snapshot, doc) && (doc["bookEpoch"] | 0u) == bookEpoch) {
+    const auto read = readOpenSnapshot(file, size, doc);
+    if (read == SnapshotReadResult::Unavailable) continue;
+    // Corrupt snapshots retain the existing .davbak/.bak recovery policy.
+    // Read errors and OOM say nothing about corruption, so keep both copies.
+    if ((read == SnapshotReadResult::Ready || readSnapshot(snapshot, doc)) &&
+        (doc["bookEpoch"] | 0u) == bookEpoch) {
       const std::string path = doc["path"] | "";
       if (path != activeBookPath && path.size() <= 1024 && bookFile(path) == snapshot)
         add({path, doc["title"] | "", doc["last"] | 0u});

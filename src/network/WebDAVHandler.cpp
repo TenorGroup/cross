@@ -329,12 +329,54 @@ void WebDAVHandler::handleGet(WebServer& s) {
   }
 
   String contentType = getMimeType(path);
-  s.setContentLength(file.size());
+  size_t bytesRemaining = file.size();
+  constexpr size_t BUFFER_SIZE = 1024;
+  std::unique_ptr<uint8_t[]> buffer;
+  if (bytesRemaining > 0) {
+    buffer = makeUniqueNoThrow<uint8_t[]>(BUFFER_SIZE);
+    if (!buffer) {
+      file.close();
+      s.send(500, "text/plain", "Out of memory");
+      return;
+    }
+  }
+  s.setContentLength(bytesRemaining);
   s.send(200, contentType.c_str(), "");
 
   NetworkClient client = s.client();
-  client.write(file);
-  file.close();
+  // HalFile derives from Print, so write(file) selects write(uint8_t) through
+  // its bool conversion. Stream explicit bytes and bound reads to the length
+  // promised above, including when SD/network operations return short counts.
+  bool complete = true;
+  while (bytesRemaining > 0) {
+    resetTaskWatchdogIfSubscribed();
+    const size_t requested = bytesRemaining < BUFFER_SIZE ? bytesRemaining : BUFFER_SIZE;
+    const int count = file.read(buffer.get(), requested);
+    if (count <= 0 || static_cast<size_t>(count) > requested) {
+      complete = false;
+      break;
+    }
+    const size_t bytesRead = static_cast<size_t>(count);
+    size_t sent = 0;
+    while (sent < bytesRead) {
+      resetTaskWatchdogIfSubscribed();
+      const size_t written = client.write(buffer.get() + sent, bytesRead - sent);
+      if (written == 0 || written > bytesRead - sent) {
+        complete = false;
+        break;
+      }
+      sent += written;
+    }
+    bytesRemaining -= sent;
+    if (!complete) break;
+  }
+  if (!file.close()) complete = false;
+  if (!complete) {
+    LOG_ERR("DAV", "GET %s failed with %u bytes remaining", path.c_str(), static_cast<unsigned>(bytesRemaining));
+    // Headers have already been sent. Close the incomplete response so the
+    // client observes truncation; a second HTTP response would corrupt it.
+    client.stop();
+  }
 }
 
 // ── HEAD ─────────────────────────────────────────────────────────────────────

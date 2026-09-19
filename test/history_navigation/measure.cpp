@@ -27,7 +27,7 @@ std::vector<Entry> page(unsigned n,const char* label,const Entry& boundary,bool 
   io={};std::vector<Entry> out;auto start=std::chrono::steady_clock::now();
   READING_STATS.listBooks(boundary,back,out);
   auto us=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count();
-  std::cout<<"{\"records\":"<<n<<",\"page\":\""<<label<<"\",\"opens\":"<<io.opens<<",\"read_calls\":"<<io.readCalls<<",\"parses\":"<<io.parses<<",\"bytes_read\":"<<io.bytesRead<<",\"latency_us\":"<<us<<",\"requested_yield_ms\":"<<io.yieldedMs<<",\"entries\":"<<out.size()<<"}"<<std::endl;
+  std::cout<<"{\"records\":"<<n<<",\"page\":\""<<label<<"\",\"opens\":"<<io.opens<<",\"read_calls\":"<<io.readCalls<<",\"legacy_parses\":"<<io.parses<<",\"bytes_read\":"<<io.bytesRead<<",\"latency_us\":"<<us<<",\"requested_yield_ms\":"<<io.yieldedMs<<",\"entries\":"<<out.size()<<"}"<<std::endl;
   if(out.size()>20){if(back)out.erase(out.begin());else out.pop_back();}return out;
 }
 int main(){for(unsigned n:{100u,1000u,5000u}){fixture(n);auto first=page(n,"first",{},false);auto next=page(n,"next",first.back(),false);auto previous=page(n,"previous",next.front(),true);if(previous.size()!=first.size())return 3;for(size_t i=0;i<first.size();++i)if(first[i].path!=previous[i].path)return 4;}return 0;}

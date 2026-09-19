@@ -1,4 +1,4 @@
-// Boundary fakes only. Mutation control flow and cache dispatch are production code.
+// Boundary fakes only. GET/mutation control flow and cache dispatch are production code.
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -24,9 +24,11 @@ class String {
 };
 #define LOG_DBG(...) do {} while (0)
 #define LOG_ERR(...) do {} while (0)
-void resetTaskWatchdogIfSubscribed() {}
+int watchdogResets = 0;
+void resetTaskWatchdogIfSubscribed() { ++watchdogResets; }
+bool allocationFailure = false;
 template <class T> std::unique_ptr<T> makeUniqueNoThrow(size_t n) {
-  return std::make_unique<T>(n);
+  return allocationFailure ? nullptr : std::make_unique<T>(n);
 }
 
 struct Node {
@@ -38,6 +40,9 @@ struct Faults {
   int readChunk = -1;
   int availableLimit = -1;
   bool readError = false;
+  int readErrorAt = -1;
+  bool readOversize = false;
+  bool readClose = false;
   bool shortWrite = false;
   bool sync = false;
   bool close = false;
@@ -65,6 +70,8 @@ struct FakeStorage {
   std::map<std::string, Node> files;
   Faults fault;
   std::vector<std::string> operations;
+  int closedFiles = 0;
+  int readCalls = 0;
   bool exists(const char* path) { return files.count(path); }
   HalFile open(const char* path) { return exists(path) ? HalFile{this, path} : HalFile{}; }
   bool openFileForWrite(const char*, const String& path, HalFile& out) {
@@ -91,7 +98,9 @@ int HalFile::available() const {
   return static_cast<int>(size() - offset);
 }
 int HalFile::read(void* buf, size_t count) {
-  if (store->fault.readError) return -1;
+  ++store->readCalls;
+  if (store->fault.readError || (store->fault.readErrorAt >= 0 && offset >= static_cast<size_t>(store->fault.readErrorAt))) return -1;
+  if (store->fault.readOversize) return static_cast<int>(count + 1);
   if (store->fault.readLimit >= 0 && offset >= static_cast<size_t>(store->fault.readLimit)) return 0;
   count = std::min(count, size() - offset);
   if (store->fault.readLimit >= 0) count = std::min(count, static_cast<size_t>(store->fault.readLimit) - offset);
@@ -108,16 +117,52 @@ size_t HalFile::write(const uint8_t* buf, size_t count) {
 }
 bool HalFile::sync() { return !store->fault.sync; }
 bool HalFile::close() {
-  const bool ok = !writable || !store->fault.close;
+  ++store->closedFiles;
+  const bool ok = writable ? !store->fault.close : !store->fault.readClose;
   store = nullptr;
   return ok;
 }
 
+// Match the relevant Arduino NetworkClient overload set. HalFile has implicit
+// operator bool and is not Stream, so the old write(file) resolves to uint8_t.
+struct Stream {};
+struct Connection {
+  std::string wire;
+  int singleByteCalls = 0;
+  int writeChunk = -1;
+  int zeroWriteAt = -1;
+  bool oversizeWrite = false;
+  bool stopped = false;
+};
+struct NetworkClient {
+  std::shared_ptr<Connection> connection;
+  size_t write(uint8_t value) {
+    ++connection->singleByteCalls;
+    connection->wire.push_back(static_cast<char>(value));
+    return 1;
+  }
+  size_t write(const uint8_t* bytes, size_t count) {
+    if (connection->stopped) return 0;
+    if (connection->zeroWriteAt >= 0 && connection->wire.size() >= static_cast<size_t>(connection->zeroWriteAt)) return 0;
+    if (connection->oversizeWrite) return count + 1;
+    if (connection->writeChunk > 0) count = std::min(count, static_cast<size_t>(connection->writeChunk));
+    if (connection->zeroWriteAt >= 0) count = std::min(count, static_cast<size_t>(connection->zeroWriteAt) - connection->wire.size());
+    connection->wire.append(reinterpret_cast<const char*>(bytes), count);
+    return count;
+  }
+  size_t write(Stream&);
+  size_t write(Stream&, size_t);
+  void stop() { connection->stopped = true; }
+};
 struct WebServer {
   String src, dst;
   bool overwrite = true;
   int code = 0;
   std::string body;
+  size_t contentLength = static_cast<size_t>(-1);
+  std::shared_ptr<Connection> connection = std::make_shared<Connection>();
+  void setContentLength(size_t value) { contentLength = value; }
+  NetworkClient client() { return {connection}; }
   void send(int value, const char* = nullptr, const char* text = nullptr) {
     code = value;
     body = text ? text : "";
@@ -136,6 +181,8 @@ struct WebDAVHandler {
   void handlePut(WebServer&);
   void handleMove(WebServer&);
   void handleCopy(WebServer&);
+  void handleGet(WebServer&);
+  static String getMimeType(const String&) { return "application/octet-stream"; }
   String getRequestPath(WebServer& s) const { return s.src; }
   String getDestinationPath(WebServer& s) const { return s.dst; }
   bool getOverwrite(WebServer& s) const { return s.overwrite; }
@@ -183,6 +230,8 @@ void begin(const std::string& name) {
   Storage = FakeStorage{};
   cache.clear();
   invalidated.clear();
+  allocationFailure = false;
+  watchdogResets = 0;
 }
 std::string openBook(const std::string& path) {
   if (!cache.count(path)) cache[path] = Storage.files.at(path).data;
@@ -350,6 +399,66 @@ int main() {
         else expect(openBook(dst).find("new title") == 0, "destination cleanup still succeeds when source cleanup fails");
       }
     }
+  }
+
+  for (size_t length : {0u, 1u, 2666u, 65537u}) {
+    for (const std::string mode : {"normal", "short reads", "short writes", "both short"}) {
+      begin("GET " + std::to_string(length) + " " + mode);
+      std::string payload(length, '\0');
+      for (size_t i = 0; i < length; ++i) payload[i] = static_cast<char>((i * 71 + 19) & 255);
+      Storage.files["/owner.json"] = {payload};
+      if (mode == "short reads" || mode == "both short") Storage.fault.readChunk = 37;
+      WebDAVHandler h;
+      WebServer s{"/owner.json", ""};
+      if (mode == "short writes" || mode == "both short") s.connection->writeChunk = 17;
+      h.handleGet(s);
+      expect(s.code == 200 && s.contentLength == length, "declared GET length matches file");
+      expect(s.connection->wire == payload, "all binary bytes streamed in order");
+      expect(s.connection->singleByteCalls == 0, "HalFile did not decay through bool into one byte");
+      expect(!s.connection->stopped, "complete response not aborted");
+      expect(Storage.closedFiles == 1, "GET file closed exactly once");
+      if (length > 0) expect(watchdogResets > 0, "watchdog serviced while streaming");
+      if (length == 2666 && mode == "normal") {
+        std::cout << "GET trigger length=" << s.contentLength << " body=" << s.connection->wire.size()
+                  << " byte_overload_calls=" << s.connection->singleByteCalls << '\n';
+      }
+    }
+  }
+  for (const std::string fault : {"negative", "negative after chunk", "zero read", "early EOF", "oversize read",
+                                  "zero write", "disconnect after chunk", "oversize write", "read close"}) {
+    begin("GET " + fault);
+    Storage.files["/owner.json"] = {std::string(2666, 'x')};
+    WebDAVHandler h;
+    WebServer s{"/owner.json", ""};
+    if (fault == "negative") Storage.fault.readError = true;
+    if (fault == "negative after chunk") Storage.fault.readErrorAt = 1024;
+    if (fault == "zero read") Storage.fault.readLimit = 0;
+    if (fault == "early EOF") Storage.fault.readLimit = 37;
+    if (fault == "oversize read") Storage.fault.readOversize = true;
+    if (fault == "zero write") s.connection->zeroWriteAt = 0;
+    if (fault == "disconnect after chunk") s.connection->zeroWriteAt = 1031;
+    if (fault == "oversize write") s.connection->oversizeWrite = true;
+    if (fault == "read close") Storage.fault.readClose = true;
+    h.handleGet(s);
+    expect(s.code == 200 && s.contentLength == 2666, "already-sent GET headers remain one response");
+    expect(s.connection->stopped, "incomplete or failed transfer closes socket");
+    expect(Storage.closedFiles == 1, "fault closes file exactly once");
+    expect(s.connection->wire.size() <= 2666, "fault never sends beyond advertised bytes");
+    if (fault != "read close") expect(s.connection->wire.size() < 2666, "fault does not fabricate missing bytes");
+    expect(s.connection->wire == std::string(s.connection->wire.size(), 'x'), "only initialized source bytes sent");
+  }
+  for (bool empty : {false, true}) {
+    begin(empty ? "GET empty with allocation failure" : "GET OOM before headers");
+    Storage.files["/owner.json"] = {empty ? "" : "valid payload"};
+    allocationFailure = true;
+    WebDAVHandler h;
+    WebServer s{"/owner.json", ""};
+    h.handleGet(s);
+    expect(s.code == (empty ? 200 : 500), "GET OOM has accurate HTTP status");
+    expect(s.connection->wire.empty(), "no accidental body on allocation failure");
+    expect(Storage.closedFiles == 1, "allocation path closes file");
+    expect(Storage.readCalls == 0, "allocation failure/empty file performs no read");
+    if (!empty) expect(s.contentLength == static_cast<size_t>(-1), "allocation fails before file length promised");
   }
   std::cout << scenarios << " scenarios, " << failures << " failures\n";
   return failures ? 1 : 0;
