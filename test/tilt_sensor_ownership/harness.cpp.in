@@ -1,0 +1,183 @@
+#include <cstdio>
+
+#include "HalTiltSensor.h"
+
+static void updateTiltSensorForForegroundActivity(bool foregroundReader, bool foregroundActivityManagesTiltSensor);
+
+namespace {
+
+unsigned long fakeMillis = 0;
+
+struct FakeImuState {
+  bool available = true;
+  bool readOk = true;
+  bool sleepOk = true;
+  bool wakeOk = true;
+  float gx = 400.0f;
+  float gy = 0.0f;
+  float gz = 0.0f;
+  int beginCalls = 0;
+  int readCalls = 0;
+  int sleepCalls = 0;
+  int wakeCalls = 0;
+} imu;
+
+struct TestSettings {
+  uint8_t tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  uint8_t orientation = CrossPointOrientation::PORTRAIT;
+} SETTINGS;
+
+int failures = 0;
+
+bool expect(const bool condition, const char* const scenario, const char* const detail) {
+  if (condition) return true;
+  std::printf("FAIL %s: %s\n", scenario, detail);
+  ++failures;
+  return false;
+}
+
+void resetSensor() {
+  fakeMillis = 0;
+  imu = FakeImuState{};
+  halTiltSensor = HalTiltSensor{};
+  halTiltSensor.begin();
+  expect(halTiltSensor.isAvailable(), "setup", "fake IMU must initialize");
+}
+
+void runTabTick(const uint8_t tabMode, const bool acceptsTilt = true) {
+  updateTiltSensorForForegroundActivity(false, true);
+  halTiltSensor.update(tabMode, SETTINGS.orientation, acceptsTilt);
+}
+
+void runReaderTick() { updateTiltSensorForForegroundActivity(true, false); }
+
+void tabReachesForwardTiltAfterOneWake() {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  const int sleepAfterBegin = imu.sleepCalls;
+
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  }
+
+  expect(imu.wakeCalls == 1, "tab-one-owner", "tab must wake IMU once across stabilization");
+  expect(imu.sleepCalls == sleepAfterBegin, "tab-one-owner", "main must not re-sleep active tab IMU");
+  expect(halTiltSensor.wasTiltedForward(), "tab-one-owner", "tab must receive forward tilt after stabilization and cooldown");
+}
+
+void readerKeepsItsExistingOwner() {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_NORMAL;
+
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runReaderTick();
+  }
+
+  expect(imu.wakeCalls == 1, "reader-owner", "reader must wake IMU once");
+  expect(halTiltSensor.wasTiltedForward(), "reader-owner", "reader forward tilt must still fire");
+}
+
+void plainActivitySleepsExactlyOnce() {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_NORMAL;
+  runReaderTick();
+  expect(imu.wakeCalls == 1, "plain-activity", "reader setup must wake IMU");
+
+  const int sleepAfterBegin = imu.sleepCalls;
+  fakeMillis = 50;
+  updateTiltSensorForForegroundActivity(false, false);
+  expect(imu.sleepCalls == sleepAfterBegin + 1, "plain-activity", "plain activity must put an awake IMU to sleep");
+
+  fakeMillis = 100;
+  updateTiltSensorForForegroundActivity(false, false);
+  expect(imu.sleepCalls == sleepAfterBegin + 1, "plain-activity", "sleep must not repeat after IMU is already asleep");
+}
+
+void tabOffSleepsThroughTheTabOwner() {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  const int sleepAfterBegin = imu.sleepCalls;
+
+  fakeMillis = 50;
+  runTabTick(CrossPointTiltPageTurn::TILT_OFF);
+  expect(imu.sleepCalls == sleepAfterBegin + 1, "tab-off", "tab Off must sleep an awake IMU");
+
+  fakeMillis = 100;
+  runTabTick(CrossPointTiltPageTurn::TILT_OFF);
+  expect(imu.sleepCalls == sleepAfterBegin + 1, "tab-off", "tab Off must not repeat sleep");
+}
+
+void modalKeepsTheTabLifecycleAndLatch() {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  const int sleepAfterBegin = imu.sleepCalls;
+
+  fakeMillis = 400;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL, false);
+  expect(imu.sleepCalls == sleepAfterBegin, "tab-modal", "inactive tab modal must retain existing IMU power state");
+  expect(!halTiltSensor.wasTiltedForward(), "tab-modal", "modal must discard pending tab tilt events");
+
+  fakeMillis = 650;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  expect(halTiltSensor.wasTiltedForward(), "tab-modal", "resumed tab must complete its original wake and cooldown window");
+
+  fakeMillis = 700;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  expect(!halTiltSensor.wasTiltedForward(), "neutral-latch", "held tilt must not repeat before neutral");
+
+  imu.gx = 0.0f;
+  fakeMillis = 750;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  imu.gx = 400.0f;
+  fakeMillis = 800;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  expect(!halTiltSensor.wasTiltedForward(), "cooldown", "neutral alone must not bypass cooldown");
+
+  fakeMillis = 1250;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  expect(halTiltSensor.wasTiltedForward(), "neutral-latch", "neutral plus cooldown must allow the next tilt");
+}
+
+}  // namespace
+
+unsigned long millis() { return fakeMillis; }
+
+namespace freeink {
+
+bool Imu::begin() {
+  ++imu.beginCalls;
+  begun_ = imu.available;
+  return begun_;
+}
+
+bool Imu::read(Sample& out) {
+  ++imu.readCalls;
+  out = Sample{0.0f, 0.0f, 0.0f, imu.gx, imu.gy, imu.gz};
+  return begun_ && imu.readOk;
+}
+
+bool Imu::sleep() {
+  ++imu.sleepCalls;
+  return begun_ && imu.sleepOk;
+}
+
+bool Imu::wake() {
+  ++imu.wakeCalls;
+  return begun_ && imu.wakeOk;
+}
+
+}  // namespace freeink
+
+@MAIN_TILT_ROUTE@
+
+int main() {
+  tabReachesForwardTiltAfterOneWake();
+  readerKeepsItsExistingOwner();
+  plainActivitySleepsExactlyOnce();
+  tabOffSleepsThroughTheTabOwner();
+  modalKeepsTheTabLifecycleAndLatch();
+  std::printf("tilt_sensor_ownership: %d failed assertions\n", failures);
+  return failures == 0 ? 0 : 1;
+}

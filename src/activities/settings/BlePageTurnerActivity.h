@@ -51,6 +51,8 @@ class BlePageTurnerActivity final : public UiListActivity {
   void activateIndex(int index) override;
   void onRowLongPress(int index) override;
   bool handleCustomInput() override;
+  void stepSelection(int direction) override;
+  bool clampAfterNav() override;
   const char* headerTitle() const override;
 
   void rebuildRows();

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #include "ButtonSymbols.h"
 #include "UITheme.h"
@@ -49,6 +50,7 @@ namespace {
 // Khoang tu vien phai vien pin toi chu so phan tram. Ba cho phai dung chung mot
 // so: hai cho tinh be rong khoi pin va mot cho ve that, lech nhau la so bi cat.
 constexpr int BATTERY_TEXT_GAP = 4;
+constexpr int STATUS_CORNER_INSET = 2;
 constexpr int SIBLING_CHEVRON_WIDTH = 6;
 constexpr int SIBLING_CHEVRON_HEIGHT = 8;
 constexpr int SIBLING_EDGE = 18;
@@ -112,7 +114,6 @@ void tenorchrome::drawSiblingDestinations(const GfxRenderer& r, const char* prev
 }
 
 tenorchrome::StatusCornerBounds tenorchrome::statusCornerBounds(const GfxRenderer& r, const bool large) {
-  constexpr int inset = 12;
   const int fontChu = large ? UI_12_FONT_ID : SMALL_FONT_ID;
   const int batteryWidth = large ? 32 : 26;
   char clock[12] = "--:--";
@@ -123,8 +124,9 @@ tenorchrome::StatusCornerBounds tenorchrome::statusCornerBounds(const GfxRendere
   snprintf(percentage, sizeof(percentage), "%d", percent);
   const int batteryBlock = batteryWidth + BATTERY_TEXT_GAP + r.getTextWidth(fontChu, percentage);
   const bool swap = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
-  if (swap) return {inset + timeWidth, r.getScreenWidth() - inset - batteryBlock};
-  return {inset + batteryBlock, r.getScreenWidth() - inset - timeWidth};
+  if (swap)
+    return {STATUS_CORNER_INSET + timeWidth, r.getScreenWidth() - STATUS_CORNER_INSET - batteryBlock};
+  return {STATUS_CORNER_INSET + batteryBlock, r.getScreenWidth() - STATUS_CORNER_INSET - timeWidth};
 }
 
 // Mot lan chu dung chung cho moi menu va trinh doc. Mot lan ve chi doc dong ho khi
@@ -144,7 +146,6 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   const int width = r.getScreenWidth();
   const bool lon = !trongTrinhDoc && SETTINGS.globalStatusBarLarge();
   const int y = statusTextY(r.getScreenHeight(), lon, paddingBottom);
-  constexpr int inset = 12;
   const int batteryWidth = lon ? 32 : 26;
   const int batteryHeight = lon ? 18 : 14;
   const int fontChu = lon ? UI_12_FONT_ID : SMALL_FONT_ID;
@@ -152,7 +153,8 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   char clock[12] = "--:--";
   halClock.formatTime(clock, sizeof(clock), SETTINGS.clockUtcOffsetQ, SETTINGS.clockFormat == 1);
   const int timeWidth = r.getTextWidth(fontChu, clock);
-  if (hienGio) r.drawText(fontChu, swap ? inset : width - inset - timeWidth, y, clock);
+  if (hienGio)
+    r.drawText(fontChu, swap ? STATUS_CORNER_INSET : width - STATUS_CORNER_INSET - timeWidth, y, clock);
   const int by = statusIconTopY(r.getScreenHeight(), lon, paddingBottom);
   const int percent = std::max(0, std::min(100, static_cast<int>(powerManager.getBatteryPercentage())));
   char percentage[8];
@@ -161,7 +163,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   const int batteryBlock = batteryWidth + (hienPhanTram ? BATTERY_TEXT_GAP + batteryTextWidth : 0);
   // Pin nam o ben DOI dien voi dong ho (hoac ben trai khi khong hien dong ho), nen
   // muc 5 (ten chuong & pin) khong day pin sang phai nhu khi vang dong ho.
-  const int bx = (hienGio && swap) ? width - inset - batteryBlock : inset;
+  const int bx = (hienGio && swap) ? width - STATUS_CORNER_INSET - batteryBlock : STATUS_CORNER_INSET;
   if (hienPin) {
     // Khoi pin lien mach, vien bo goc, va vien van thay khi pin can.
     r.drawLine(bx + 2, by, bx + batteryWidth - 4, by);
@@ -179,8 +181,15 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   }
   if (!hienTieuDe && !hienSoTrang && !hienTienDo) return;
   // Hai ben neo vao dung khoi goc dang co, cach mot khoang nho.
-  const int trai = (hienGio && swap ? inset + timeWidth : (hienPin && bx == inset ? inset + batteryBlock : inset)) + 14;
-  const int phai = (hienGio && !swap ? width - inset - timeWidth : (hienPin && bx != inset ? bx : width - inset)) - 14;
+  const int trai =
+      (hienGio && swap ? STATUS_CORNER_INSET + timeWidth
+                        : (hienPin && bx == STATUS_CORNER_INSET ? STATUS_CORNER_INSET + batteryBlock
+                                                                  : STATUS_CORNER_INSET)) +
+      14;
+  const int phai =
+      (hienGio && !swap ? width - STATUS_CORNER_INSET - timeWidth
+                         : (hienPin && bx != STATUS_CORNER_INSET ? bx : width - STATUS_CORNER_INSET)) -
+      14;
   std::string counts;
   if (hienSoTrang) {
     char phan[24];
@@ -205,10 +214,12 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   if (!name.empty()) r.drawText(SMALL_FONT_ID, trai + markWidth, y, name.c_str());
 }
 
+int tenorchrome::moreBelowChevronTopY(const GfxRenderer& renderer) { return tipY(renderer) - 30; }
+
 void tenorchrome::drawMoreBelowChevron(const GfxRenderer& renderer) {
   constexpr int HALF_WIDTH = 11, HEIGHT = 7, THICKNESS = 2;
   const int cx = renderer.getScreenWidth() / 2;
-  const int top = tipY(renderer) - 30;
+  const int top = moreBelowChevronTopY(renderer);
   // Hai nhip day mot diem: net mot diem tren e-ink nhat qua, nhin khong ra hinh.
   for (int d = 0; d < THICKNESS; ++d) {
     renderer.drawLine(cx - HALF_WIDTH, top + d, cx, top + HEIGHT + d);
@@ -231,9 +242,71 @@ int tenorchrome::tipY(const GfxRenderer& renderer, const bool hasTextHints) {
   }
   return renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight - (renderer.getLineHeight(SMALL_FONT_ID) + 5);
 }
+
+namespace {
+std::vector<std::string> tipLines(const GfxRenderer& renderer, const char* text, const int maxLines) {
+  std::vector<std::string> lines;
+  if (!text || maxLines <= 0) return lines;
+
+  const std::string value(text);
+  size_t start = 0;
+  while (start <= value.size() && static_cast<int>(lines.size()) < maxLines) {
+    const size_t end = value.find('\n', start);
+    const std::string paragraph = value.substr(start, end == std::string::npos ? end : end - start);
+    if (paragraph.empty()) {
+      lines.emplace_back();
+    } else {
+      const auto wrapped = renderer.wrappedText(SMALL_FONT_ID, paragraph.c_str(), renderer.getScreenWidth() - 48,
+                                                maxLines - static_cast<int>(lines.size()));
+      lines.insert(lines.end(), wrapped.begin(), wrapped.end());
+    }
+    if (end == std::string::npos) break;
+    start = end + 1;
+  }
+  return lines;
+}
+
+int tipLineY(const GfxRenderer& renderer, const std::vector<std::string>& lines, const int linesAbove,
+             const bool hasTextHints) {
+  constexpr int font = SMALL_FONT_ID;
+  const int lineHeight = renderer.getLineHeight(font);
+  int y = tenorchrome::tipY(renderer, hasTextHints) -
+          (linesAbove + static_cast<int>(lines.size()) - 1) * lineHeight;
+  if (!tenorchrome::compactFooterTips(hasTextHints)) return y;
+
+  int inkBottom = 0;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    const int bottom = std::max(renderer.getFontAscenderSize(font) - 1,
+                                renderer.getTextInkBottom(font, lines[i].c_str(), EpdFontFamily::REGULAR));
+    inkBottom = std::max(inkBottom, static_cast<int>(i) * lineHeight + bottom);
+  }
+  return y + static_cast<int>(lines.size()) * lineHeight - inkBottom;
+}
+}  // namespace
+
+int tenorchrome::tipTopY(const GfxRenderer& renderer, const char* text, const int linesAbove, const int maxLines,
+                         const bool hasTextHints) {
+  constexpr int font = SMALL_FONT_ID;
+  const auto lines = tipLines(renderer, text, maxLines);
+  if (lines.empty()) return tipY(renderer, hasTextHints);
+
+  const int lineHeight = renderer.getLineHeight(font);
+  const int y = tipLineY(renderer, lines, linesAbove, hasTextHints);
+  int top = y;
+  bool hasInk = false;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (renderer.getTextInkBottom(font, lines[i].c_str(), EpdFontFamily::REGULAR) <= 0) continue;
+    const int lineTop = y + static_cast<int>(i) * lineHeight +
+                        renderer.getTextInkTop(font, lines[i].c_str(), EpdFontFamily::REGULAR);
+    top = hasInk ? std::min(top, lineTop) : lineTop;
+    hasInk = true;
+  }
+  return top;
+}
+
 int tenorchrome::tipHeight(const GfxRenderer& renderer, const char* text, int maxLines) {
   constexpr int font = SMALL_FONT_ID;
-  const auto lines = renderer.wrappedText(font, text, renderer.getScreenWidth() - 48, maxLines);
+  const auto lines = tipLines(renderer, text, maxLines);
   return lines.empty() ? 0 : renderer.getLineHeight(font) + 7 + (static_cast<int>(lines.size()) - 1) * renderer.getLineHeight(font);
 }
 void tenorchrome::drawTip(const GfxRenderer& renderer, const char* text, int linesAbove, int maxLines,
@@ -241,21 +314,10 @@ void tenorchrome::drawTip(const GfxRenderer& renderer, const char* text, int lin
   // Global status-bar Off also hides contextual footer tips.
   if (SETTINGS.globalStatusBarHidden()) return;
   constexpr int font = SMALL_FONT_ID;
-  const auto lines = renderer.wrappedText(font, text, renderer.getScreenWidth() - 48, maxLines);
+  const auto lines = tipLines(renderer, text, maxLines);
   if (lines.empty()) return;
   const int lineHeight = renderer.getLineHeight(font);
-  int y = tipY(renderer, hasTextHints) - (linesAbove + static_cast<int>(lines.size()) - 1) * lineHeight;
-  if (compactFooterTips(hasTextHints)) {
-    // Measure all lines, including descenders and Vietnamese lower dots. Inline
-    // symbols end above the baseline; include that bound for symbol-only tips.
-    int inkBottom = 0;
-    for (size_t i = 0; i < lines.size(); ++i) {
-      const int bottom = std::max(renderer.getFontAscenderSize(font) - 1,
-                                 renderer.getTextInkBottom(font, lines[i].c_str(), EpdFontFamily::REGULAR));
-      inkBottom = std::max(inkBottom, static_cast<int>(i) * lineHeight + bottom);
-    }
-    y += static_cast<int>(lines.size()) * lineHeight - inkBottom;
-  }
+  int y = tipLineY(renderer, lines, linesAbove, hasTextHints);
   for (const auto& line : lines) {
     renderer.drawCenteredText(font, y, line.c_str());
     y += renderer.getLineHeight(font);

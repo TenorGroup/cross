@@ -27,6 +27,14 @@ constexpr uint8_t publicMask(const uint8_t physicalMask) {
   return static_cast<uint8_t>((physicalMask & 1u) | ((physicalMask & 0x1cu) >> 1));
 }
 
+constexpr uint8_t next(const int current) {
+  return static_cast<uint8_t>((clamp(current) + 1) % LEVEL_COUNT);
+}
+
+constexpr bool available(const int publicLevel, const uint8_t mask) {
+  return publicLevel >= 0 && publicLevel < LEVEL_COUNT && (mask & (1u << publicLevel));
+}
+
 constexpr uint8_t nextAvailable(const int current, const uint8_t mask) {
   const uint8_t level = clamp(current);
   for (uint8_t step = 1; step <= LEVEL_COUNT; ++step) {

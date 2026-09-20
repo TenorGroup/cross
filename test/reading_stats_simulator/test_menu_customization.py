@@ -16,7 +16,7 @@ def run(name,script,shots=(),state=None,settings=None,reuse=None):
   if path.exists(): Image.open(path).save(path.with_suffix('.png'))
  return sd
 def state(pins=(),**tabs):
- d=dict(home=[0,1,4,2,3],settings=list(range(7)),reader=list(range(4)),text=list(range(4)));d.update(tabs)
+ d=dict(home=[0,1,4,2,3],settings=[0,7,1,2,3,4,5,6],reader=list(range(4)),text=list(range(4)));d.update(tabs)
  return dict(version=1,tabs=d,pins=list(pins))
 
 import sys
@@ -27,17 +27,16 @@ from PIL import Image,ImageChops
 
 def saved(sd,name):return json.loads((sd/'.crosspoint'/name).read_text())
 def state(pins=(),**overrides):
- tabs=dict(home=[0,1,4,2,3],settings=list(range(7)),reader=list(range(4)),text=list(range(4)));tabs.update(overrides)
+ tabs=dict(home=[0,1,4,2,3],settings=[0,7,1,2,3,4,5,6],reader=list(range(4)),text=list(range(4)));tabs.update(overrides)
  return dict(version=1,tabs=tabs,pins=list(pins))
 def same(a,b,box):
  assert ImageChops.difference(Image.open(a).crop(box).convert('RGB'),Image.open(b).crop(box).convert('RGB')).getbbox() is None,(a,b)
 def pin():
- # Display starts on uiTheme. Nine row steps reach sleepScreen on the X3;
- # uiTextSize precedes the existing display rows since v1.0.8.
- script='1000:UP;1500:RIGHT;2000:CONFIRM;'
- script+=';'.join(f'{2800+600*i}:RIGHT' for i in range(9))+';'
- script+='8500:CONFIRM:900;9900:BACK;10500:UP;11000:UP;11700:CONFIRM;13300:QUIT'
- sd=t.run('pin-e2e',script,[(12700,'popup')])
+ # Sleep is stable settings tab ID 7 and follows Display in the default order.
+ # Its first row is sleepScreen, so one tab step reaches the row directly.
+ script=('1000:UP;1500:RIGHT;2000:CONFIRM;3000:DOWN;4200:CONFIRM:900;'
+         '5700:BACK;6500:UP;7200:UP;8000:CONFIRM;9800:QUIT')
+ sd=t.run('pin-e2e',script,[(9200,'popup')])
  assert saved(sd,'menu-customization.json')['pins']==['settings/sleepScreen']
  assert saved(sd,'settings.json')['sleepScreen']==8
  assert 'Entering activity: Settings' in (t.o/'pin-e2e.log').read_text()
@@ -85,14 +84,14 @@ def font():
 
 def text():
  sd=route('text','text/readerInkWeight','Entering activity: TextSettings',{'readerInkWeight':0})
- assert saved(sd,'settings.json')['readerInkWeight']==0  # no installed weight pack; original guard must remain
+ assert saved(sd,'settings.json')['readerInkWeight']==1  # requested level persists even when its pack is unavailable
 
 def opds():
  route('opds','opds/opdsDownloadFolder','Entering activity:')
  assert 'OpdsServerList' in (t.o/'opds.log').read_text()
 def groups():
  sd=t.run('groups','1000:UP;1500:RIGHT;2000:CONFIRM;2700:DOWN:1300;4500:BACK;5400:QUIT',[(4250,'display'),(5000,'home')])
- x=saved(sd,'menu-customization.json');assert x['tabs']['settings']==[1,0,2,3,4,5,6];assert x['tabs']['home']==[0,1,4,2,3]
+ x=saved(sd,'menu-customization.json');assert x['tabs']['settings']==[7,0,1,2,3,4,5,6];assert x['tabs']['home']==[0,1,4,2,3]
 
 def homeback():
  route('homeback','status/statusBarClock','Entering activity: StatusBarSettings',press='2700:BACK:1200;',shots=[(4100,'home')])
@@ -107,7 +106,7 @@ def recover():
 def normalize():
  s=state(['text/fontSize','text/fontSize','future/missing'],home=[4,4,255,0],settings=[6,6,123])
  sd=t.run('normalize','1000:DOWN:1200;2800:QUIT',[(2500,'order')],s)
- x=saved(sd,'menu-customization.json');assert x['pins']==['text/fontSize','future/missing'];assert x['tabs']['home']==[4,1,0,2,3];assert x['tabs']['settings']==[6,0,1,2,3,4,5]
+ x=saved(sd,'menu-customization.json');assert x['pins']==['text/fontSize','future/missing'];assert x['tabs']['home']==[4,1,0,2,3];assert x['tabs']['settings']==[6,0,1,2,3,4,5,7]
 def writefail():
  sd=t.o/'sd-writefail';d=sd/'.crosspoint/menu-customization.tmp';d.mkdir(parents=True,exist_ok=True);(d/'block').write_text('test')
  sd=t.run('writefail','1000:UP;1500:RIGHT;2000:CONFIRM;2700:CONFIRM:900;4300:QUIT',[(4000,'failed')])

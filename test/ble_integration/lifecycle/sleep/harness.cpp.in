@@ -68,6 +68,7 @@ struct ActivityManager {
   @RETURN_TYPE@ goToSleep(bool fromTimeout);
   bool isReaderActivity() { return currentActivity && currentActivity->name == "Reader"; }
   bool isForegroundReaderActivity() { return foregroundReader; }
+  bool isForegroundActivityManagingTiltSensor() { return false; }
   bool preventAutoSleep() { return false; }
   void requestUpdate() { requestedUpdate = true; }
   void replaceActivity(std::unique_ptr<Activity>&& next) {
@@ -154,6 +155,8 @@ static uint32_t lastSleepResetTime;
 static void saveSleepFrameBuffer() { ++retainedFrameCalls; events.push_back("frame-save"); }
 static void sleepWithConfiguredButtons() { ++deepSleepCalls; events.push_back("deep-sleep"); }
 
+namespace CrossPointTiltPageTurn { constexpr uint8_t TILT_OFF = 0; }
+@TILT_ROUTE@
 @GO_TO_SLEEP@
 
 @ENTER_DEEP_SLEEP@

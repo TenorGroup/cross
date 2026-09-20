@@ -14,7 +14,7 @@ constexpr const char* PATH = "/.crosspoint/menu-customization.json";
 constexpr const char* TEMP = "/.crosspoint/menu-customization.tmp";
 constexpr const char* BACKUP = "/.crosspoint/menu-customization.bak";
 constexpr const char* GROUP_NAMES[] = {"home", "settings", "reader", "text"};
-constexpr int COUNTS[] = {5, 7, 4, 4};
+constexpr int COUNTS[] = {5, settingstabs::TAB_COUNT, 4, 4};
 bool read(const char* path) {
   auto file = Storage.open(path);
   if (!file || file.size() > 8192) return false;

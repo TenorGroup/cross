@@ -26,8 +26,9 @@ std::map<Tab, int> demTheoThe() {
 
 TEST(SettingsTabs, CuaDongHoNamTrongHeThong) { EXPECT_EQ(settingstabs::nhaCua(Action::Clock), Tab::SYSTEM); }
 
-TEST(SettingsTabs, BayTheCoBanPhim) {
-  EXPECT_EQ(settingstabs::TAB_COUNT, 7);
+TEST(SettingsTabs, TamTheCoBanPhimVaNgu) {
+  EXPECT_EQ(settingstabs::TAB_COUNT, 8);
+  EXPECT_EQ(static_cast<int>(Tab::SLEEP), 7);
   EXPECT_EQ(settingstabs::nhaCua(Action::KeyboardLayouts), Tab::KEYBOARD);
 }
 

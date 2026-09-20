@@ -93,15 +93,15 @@ class ReworkUiTest(unittest.TestCase):
         self.assertEqual(log.count('Entering activity: EpubReaderMenu'), 1, log)
 
     # --- S1: man Cai dat khong thanh the, nut canh nhay nhom, vong chi gom dong ---------------
-    # Vao Cai dat > nhom Khac tu man chinh: the Cai dat (DOWN x4), roi RIGHT x7
+    # Vao Cai dat > nhom Khac tu man chinh: the Cai dat (DOWN x4), roi RIGHT x8
     # sang hang "Khac" trong danh sach nhom, Chon mo thang nhom do.
     VAO_THIET_BI = ('1000:DOWN;1500:DOWN;2000:DOWN;2500:DOWN;'
-                    '3000:RIGHT;3250:RIGHT;3500:RIGHT;3750:RIGHT;4000:RIGHT;4250:RIGHT;4500:RIGHT;'
-                    '4900:CONFIRM')
+                    '3000:RIGHT;3250:RIGHT;3500:RIGHT;3750:RIGHT;4000:RIGHT;4250:RIGHT;4500:RIGHT;4750:RIGHT;'
+                    '5200:CONFIRM')
 
     def test_s1_nut_canh_sang_nhom_khac_dap_dong_1_va_chon_mo_ngay(self):
         # Nhóm Khác, dòng 1 là Đồng bộ KOReader; Chọn mở ngay, không phải bước vào dòng trước.
-        log = self.run_sim(self.VAO_THIET_BI + ';6000:CONFIRM;8000:QUIT')
+        log = self.run_sim(self.VAO_THIET_BI + ';6400:CONFIRM;8400:QUIT')
         self.assertEqual(log.count('Entering activity: Settings'), 1, log)
         self.assertEqual(log.count('Entering activity: KOReaderSettings'), 1, log)
 
@@ -117,19 +117,14 @@ class ReworkUiTest(unittest.TestCase):
 
     def test_s1_activating_another_group_resets_previous_cursor(self):
         # After activating Reader/Text settings, Display returns to row 1.
-        # LEFT wraps to the LAST row of the Display group.
-        #
-        # Dong cuoi do tung la Quick resume timeout. Tu v1.0.6 no la 'Thuc day la
-        # vao sach' (wakeIntoBook), vi gói B chen dong do vao ngay sau quick resume.
-        # Bai nay do chuyen con tro quay ve dau khi doi nhom, khong do rieng mot khoa
-        # nao; chen them dong o cuoi nhom Hien thi thi bai nay do lai, va do la dung.
+        # LEFT wraps to the last Display row, Night mode.
         script = ('1000:UP;1600:RIGHT;2200:CONFIRM;'
-                  '3000:RIGHT;3500:RIGHT;4200:DOWN;4800:CONFIRM;6200:BACK;'
-                  '7600:UP;8200:LEFT;8800:CONFIRM;10000:QUIT')
-        self.settings['wakeIntoBook'] = 0
+                  '3000:RIGHT;3500:RIGHT;4200:DOWN;4700:DOWN;5300:CONFIRM;6700:BACK;'
+                  '8100:UP;8600:UP;9200:LEFT;9800:CONFIRM;11200:QUIT')
+        self.settings['screenInverted'] = 0
         (self.store / 'settings.json').write_text(json.dumps(self.settings))
         log = self.run_sim(script)
-        self.assertEqual(self.saved()['wakeIntoBook'], 1, log)
+        self.assertEqual(self.saved()['screenInverted'], 1, log)
         self.assertEqual(self.saved()['tenorSideArrows'], 1, log)
 
     def test_h6_folder_opens_child_then_back_reaches_root(self):
@@ -176,11 +171,11 @@ class ReworkUiTest(unittest.TestCase):
         self.assertNotIn('Entering activity: StatusBarSettings', log)
         self.assertEqual(self.saved()['statusBarClock'], 1, log)
 
-    def test_h5_clock_follows_sleep_and_wake_in_system(self):
-        # System: sleep row 1, wake row 2, clock row 3.
+    def test_h5_clock_is_first_row_in_system_after_sleep_split(self):
+        # Sleep and wake have their own group. System now starts with Clock.
         script = ('1000:DOWN;1500:DOWN;2000:DOWN;2500:DOWN;'
-                  '3000:RIGHT;3300:RIGHT;3600:RIGHT;3900:RIGHT;4300:CONFIRM;'
-                  '5200:RIGHT;5600:RIGHT;6100:CONFIRM;8000:QUIT')
+                  '3000:RIGHT;3300:RIGHT;3600:RIGHT;3900:RIGHT;4200:RIGHT;4600:CONFIRM;'
+                  '5600:CONFIRM;7600:QUIT')
         log = self.run_sim(script)
         self.assertEqual(log.count('Entering activity: DongHoSettings'), 1, log)
 

@@ -220,6 +220,21 @@ int main() {
     check(off.ys.empty() && std::none_of(off.pixels.begin(), off.pixels.end(), [](auto p) { return p != 0; }), "status off drew footer ink");
     SETTINGS.hidden = false;
     std::printf("tier=%d caption=%d fallback reserve=%d\n", tier, text.getLineHeight(1), UITheme::getInstance().getMetrics().buttonHintsHeight);
+
+    const char* firstForcedLine = "Ở mọi thẻ, giữ tick để ghim hoặc gỡ.";
+    const char* secondForcedLine = "Trong Yêu thích, giữ tick để đổi vị trí.";
+    const std::string forcedLines = std::string(firstForcedLine) + "\n" + secondForcedLine;
+    GfxRenderer forced;
+    tenorchrome::drawTip(forced, forcedLines.c_str());
+    check(forced.paintedText == std::vector<std::string>{firstForcedLine, secondForcedLine},
+          "literal newline must produce separate footer-tip lines");
+    check(forced.ys.size() == 2 && forced.ys[1] - forced.ys[0] == forced.getLineHeight(1),
+          "literal newline must preserve caption line spacing");
+    check(tenorchrome::tipHeight(forced, forcedLines.c_str(), 4) == forced.getLineHeight(1) * 2 + 7,
+          "literal newline must reserve both footer-tip lines");
+    check(tenorchrome::tipTopY(forced, forcedLines.c_str()) ==
+              forced.ys.front() + forced.getTextInkTop(1, firstForcedLine, EpdFontFamily::REGULAR),
+          "footer-tip reserve must begin at the first actual glyph row");
   }
   assert(fallbackCalls == 3);
   for (int tier = 0; tier < 3; ++tier) {

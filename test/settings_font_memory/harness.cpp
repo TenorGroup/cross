@@ -13,6 +13,7 @@
 #include <HalTiltSensor.h>
 #include <SdCardFontRegistry.h>
 #include <FreeInkUI.h>
+#include <ObfuscationUtils.h>
 #include "SettingsList.h"
 #include "activities/util/KeyboardLayoutSet.h"
 
@@ -21,6 +22,8 @@ struct alignas(std::max_align_t) Header { size_t bytes; unsigned epoch; };
 unsigned epoch = 0;
 bool active = false;
 size_t live = 0, peak = 0;
+bool requireReleaseLock = false;
+unsigned renderLockDepth = 0;
 }
 void* operator new(size_t n) {
   auto* h = static_cast<mem::Header*>(std::malloc(sizeof(mem::Header) + (n ? n : 1)));
@@ -32,7 +35,10 @@ void* operator new(size_t n) {
 void operator delete(void* p) noexcept {
   if (!p) return;
   auto* h = static_cast<mem::Header*>(p) - 1;
-  if (h->epoch && h->epoch == mem::epoch) mem::live -= h->bytes;
+  if (h->epoch && h->epoch == mem::epoch) {
+    if (mem::requireReleaseLock && mem::renderLockDepth == 0) std::abort();
+    mem::live -= h->bytes;
+  }
   std::free(h);
 }
 void* operator new[](size_t n) { return ::operator new(n); }
@@ -42,7 +48,36 @@ void operator delete[](void* p, size_t) noexcept { ::operator delete(p); }
 #include "Boundaries.inc"
 namespace fui = freeink::ui;
 struct ActivityResult { bool isCancelled = false; };
-struct FontDownloadActivity { template<class A, class B> FontDownloadActivity(A&, B&) {} };
+struct FontDownloadActivity {
+  template<class A, class B> FontDownloadActivity(A&, B&) {}
+  FontDownloadActivity() = default;
+  enum State { LOADING_MANIFEST, ERROR, GROUP_LIST, FAMILY_LIST } state_ = FAMILY_LIST;
+  struct Nav { void reset() {} } groupNav_, nav;
+  bool rowsDirty_ = false, finished = false, locked = false, sawReleased = false, fetchOk = true;
+  void finish() { finished = true; }
+  void requestUpdateAndWait() {}
+  bool fetchAndParseManifest() { sawReleased = mem::live == 0; return fetchOk; }
+  void clearManifest() {}
+  bool hasGroupScreen() const { return false; }
+  void buildFilteredIndices(int) {}
+  void onWifiSelectionComplete(bool);
+};
+struct RenderLock {
+  FontDownloadActivity& owner;
+  explicit RenderLock(FontDownloadActivity& value) : owner(value) {
+    if(owner.locked) std::abort();
+    owner.locked = true; ++mem::renderLockDepth;
+  }
+  ~RenderLock() { owner.locked = false; --mem::renderLockDepth; }
+};
+namespace obfuscation {
+String obfuscateToBase64(const std::string& s) { return String(s.c_str()); }
+std::string deobfuscateFromBase64(const char* s, size_t, bool* ok, bool* tooLong) {
+  if (ok) *ok = true;
+  if (tooLong) *tooLong = false;
+  return s ? s : "";
+}
+}
 
 struct SettingsActivity {
   struct Cursor { int selected = 0; bool followOnBuild = false; };
@@ -53,7 +88,7 @@ struct SettingsActivity {
   bool routingClosed = false;
   int saves = 0;
   std::vector<SettingInfo> displaySettings, readerSettings, controlsSettings, systemSettings,
-                           deviceSettings, otherSettings, keyboardSettings;
+                           deviceSettings, otherSettings, keyboardSettings, sleepSettings;
   const std::vector<SettingInfo>* currentSettings = nullptr;
   std::array<Cursor, settingstabs::TAB_COUNT> tabNavs{};
   std::vector<std::string> rowValues_;
@@ -72,19 +107,90 @@ struct SettingsActivity {
   void launchFontDownload();
 };
 #include "Methods.inc"
+#include "PostWifiMethods.inc"
 
 bool check(bool value, const char* message) {
   if (!value) std::printf("FAIL %s\n", message);
   return value;
 }
 
+std::string jsonSettings() {
+  JsonDocument doc;
+  SETTINGS.toJson(doc);
+  std::string out;
+  serializeJson(doc, out);
+  return out;
+}
+
+bool catalogReleaseProbe() {
+  ++mem::epoch; mem::live = mem::peak = 0; mem::active = true;
+  const auto& initial = getBaseSettingsList();
+  mem::active = false;
+  const size_t bytes = mem::live;
+  const auto copied = initial;
+  const auto webCopy = getSettingsList();
+  const auto clock = std::find_if(copied.begin(), copied.end(), [](const auto& row) {
+    return row.valuePtr == &CrossPointSettings::statusBarClock;
+  });
+  const auto clockCopy = buildTenorClockPlacementSetting(*clock);
+  const std::string beforeJson = jsonSettings();
+  releaseBaseSettingsList();
+  bool ok = check(mem::live == 0, "shared catalog allocations released");
+  std::printf("catalog_rows=%zu sizeof_SettingInfo=%zu allocated=%zu after_release=%zu\n",
+              copied.size(), sizeof(SettingInfo), bytes, mem::live);
+  ok &= check(copied.size() == 72 && !webCopy.empty(), "72 base rows and owned web copy survive release");
+  clockCopy.valueSetter(1);
+  ok &= check(clockCopy.valueGetter() == 1, "copied dynamic callback survives catalog release");
+  SETTINGS.statusBarClock = CrossPointSettings::STATUS_BAR_CLOCK_HIDE;
+  // Compare every field that shapes ordering, JSON persistence and enum rendering.
+  mem::active = true;
+  const auto& rebuilt = getBaseSettingsList();
+  mem::active = false;
+  ok &= check(rebuilt.size() == copied.size() && rebuilt.capacity() == copied.size(), "exact rebuild capacity/count");
+  for (size_t i = 0; i < std::min(rebuilt.size(), copied.size()); ++i) {
+    const auto& a = copied[i]; const auto& b = rebuilt[i];
+    ok &= check(a.nameId == b.nameId && a.type == b.type && a.valuePtr == b.valuePtr &&
+                a.enumValues == b.enumValues && a.enumStringValues == b.enumStringValues && a.action == b.action &&
+                a.valueRange.min == b.valueRange.min && a.valueRange.max == b.valueRange.max && a.valueRange.step == b.valueRange.step &&
+                a.key == b.key && a.category == b.category && a.obfuscated == b.obfuscated &&
+                a.inTextSettings == b.inTextSettings && a.stringOffset == b.stringOffset && a.stringMaxLen == b.stringMaxLen,
+                "descriptor order/keys/enums/persistence fields unchanged");
+  }
+  JsonDocument prior;
+  deserializeJson(prior, beforeJson);
+  ok &= check(SETTINGS.fromJson(prior.as<JsonVariantConst>()), "real settings JSON reload succeeds");
+  ok &= check(jsonSettings() == beforeJson, "real settings JSON byte-equivalent roundtrip");
+  // A Wi-Fi time save can recreate the catalog. Release must happen after that
+  // child returns and before manifest TLS, using the actual production callback.
+  releaseBaseSettingsList();
+  JsonDocument wifiSave;
+  mem::active = true;
+  SETTINGS.toJson(wifiSave);
+  mem::active = false;
+  ok &= check(mem::live > 0, "Wi-Fi save has a full rebuilt catalog");
+  FontDownloadActivity font;
+  mem::requireReleaseLock = true;
+  font.onWifiSelectionComplete(true);
+  mem::requireReleaseLock = false;
+  ok &= check(font.sawReleased && !font.locked, "catalog released after Wi-Fi before manifest TLS");
+  FontDownloadActivity cancelled;
+  cancelled.onWifiSelectionComplete(false);
+  ok &= check(cancelled.finished, "Wi-Fi cancellation still finishes child");
+  // Fail manifest and rebuild settings on return in the lifecycle test below.
+  FontDownloadActivity failed;
+  failed.fetchOk = false;
+  failed.onWifiSelectionComplete(true);
+  ok &= check(failed.state_ == FontDownloadActivity::ERROR && failed.sawReleased, "manifest failure preserves release and error path");
+  ok &= check(jsonSettings() == beforeJson, "persistence getter rebuilds safely after release/error");
+  return ok;
+}
+
 int main() {
   BoardConfig::ACTIVE = BoardConfig::XTEINK_X3;
   gpio.x3 = true; halTiltSensor.available = true;
   SETTINGS.uiTheme = CrossPointSettings::TENOR_UI;
-  (void)getBaseSettingsList();
   (void)I18N.get(StrId::STR_SETTINGS_TITLE);
-  bool ok = true;
+  bool ok = catalogReleaseProbe();
   for (const bool dictionaries : {false, true}) {
     discovered.clear();
     if (dictionaries) discovered.push_back({"Long dictionary owned label for lifetime verification", "book"});
@@ -113,6 +219,7 @@ int main() {
       ok &= check(activity.danhSachCuaThe(static_cast<settingstabs::Tab>(t)).capacity() == 0, "category capacity released");
     ok &= check(activity.rowItems_.capacity() == 0 && activity.rowValues_.capacity() == 0, "row capacities released");
     // Emulate child return, including the early BLE-acquire failure/cancel route.
+    releaseBaseSettingsList();
     activity.onResume();
     ok &= check(activity.currentSettings && activity.settingsCount > 0, "rows rebuilt before result callback");
     ok &= check(activity.readerSettings[1].action == SettingAction::DownloadFonts,

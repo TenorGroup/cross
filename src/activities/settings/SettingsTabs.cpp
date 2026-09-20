@@ -4,6 +4,8 @@ namespace settingstabs {
 
 StrId tenThe(const Tab tab) {
   switch (tab) {
+    case Tab::SLEEP:
+      return StrId::STR_CAT_SLEEP;
     case Tab::SCREEN:
       return StrId::STR_CAT_DISPLAY;
     case Tab::READER:
@@ -60,7 +62,7 @@ bool moTrinhChon(const int soLuaChon) { return soLuaChon >= 4; }
 int dongCuaTheCaiDat(StrId* const out, const int max) {
   int n = 0;
   for (int i = 0; i < TAB_COUNT && n < max; i++) {
-    out[n++] = tenThe(static_cast<Tab>(i));
+    out[n++] = tenThe(static_cast<Tab>(DEFAULT_ORDER[i]));
   }
   return n;
 }

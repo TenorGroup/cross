@@ -133,6 +133,7 @@ class ActivityManager {
   bool requiresExclusiveStorageLoop() const;
   bool isReaderActivity() const;
   bool isForegroundReaderActivity() const;
+  bool isForegroundActivityManagingTiltSensor() const;
   bool isForegroundReaderReady() const;
   uint32_t activityGeneration() const { return activityGeneration_; }
 

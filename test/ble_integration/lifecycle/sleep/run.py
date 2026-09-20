@@ -39,9 +39,10 @@ main_path = args.source / "src/main.cpp"
 go = extract(activity_path.read_text(), r"(?:bool|void) ActivityManager::goToSleep\(")
 main_source = main_path.read_text()
 tilt_update = re.search(
-    r"(?:const bool pendingTiltActivity = halTiltSensor\.hadActivity\(\);\s+)?"
-    r"halTiltSensor\.update\(\s*SETTINGS\.tiltPageTurn,\s*SETTINGS\.orientation,\s*"
-    r"activityManager\.isForegroundReaderActivity\(\)\s*\);",
+    r"const bool pendingTiltActivity = halTiltSensor\.hadActivity\(\);\s+"
+    r"const bool foregroundReader = activityManager\.isForegroundReaderActivity\(\);\s+"
+    r"const bool foregroundActivityManagesTiltSensor = activityManager\.isForegroundActivityManagingTiltSensor\(\);\s+"
+    r"updateTiltSensorForForegroundActivity\(foregroundReader, foregroundActivityManagesTiltSensor\);",
     main_source,
 )
 if not tilt_update:
@@ -50,6 +51,7 @@ tilt_input = re.search(r"const bool nguoiDungChamVao\s*=\s*.*?;", main_source, r
 if not tilt_input:
     raise ValueError("Missing accepted user activity input")
 tilt_activity_gate = tilt_update.group() + "\n" + tilt_input.group()
+tilt_route = extract(main_source, r"static void updateTiltSensorForForegroundActivity\(")
 enter = extract(main_source, r"void enterDeepSleep\(")
 input_clock = extract(main_source, r"if \(userActivity\)")
 reset_clock = re.search(r"if \(userActivity \|\| activityManager\.preventAutoSleep\(\)\) lastSleepResetTime = millis\(\);", main_source).group()
@@ -61,6 +63,7 @@ generated = (template.replace("@RETURN_TYPE@", return_type)
              .replace("@GO_TO_SLEEP@", go)
              .replace("@ENTER_DEEP_SLEEP@", enter)
              .replace("@MAIN_SLEEP_GATE@", sleep_gate)
+             .replace("@TILT_ROUTE@", tilt_route)
              .replace("@MAIN_TILT_ACTIVITY_GATE@", tilt_activity_gate))
 cpp = args.output / "sleep-regression.cpp"
 cpp.write_text(generated)

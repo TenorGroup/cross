@@ -39,6 +39,7 @@ void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool ha
   // Ve man chinh goi onGoHome() va ve MAN CHINH, khac han nut Quay lai von ve
   // lai TRANG SACH, nen no khong thua.
   items.push_back({Action::GO_HOME, StrId::STR_GO_HOME_BUTTON, Tab::TOOLS});
+  items.push_back({Action::BLUETOOTH, StrId::STR_BLE_PAGE_TURNER, Tab::TOOLS});
 }
 
 void buildMoreItems(std::vector<Item>& items, const bool hasFootnotes, const bool hasBookmarks,
@@ -54,7 +55,7 @@ void buildMoreItems(std::vector<Item>& items, const bool hasFootnotes, const boo
                                      Action::DICTIONARY,    Action::ROTATE_SCREEN,  Action::AUTO_PAGE_TURN,
                                      Action::GO_TO_PERCENT, Action::SCREENSHOT,     Action::DISPLAY_QR,
                                      Action::GO_HOME,       Action::SYNC,           Action::DELETE_CACHE,
-                                     Action::SAVE_QUOTE};
+                                     Action::SAVE_QUOTE,    Action::BLUETOOTH};
   std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
     return std::find(std::begin(order), std::end(order), a.action) <
            std::find(std::begin(order), std::end(order), b.action);

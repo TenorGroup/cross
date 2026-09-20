@@ -156,6 +156,7 @@ class SettingsActivity final : public UiTabListActivity {
   std::vector<SettingInfo> deviceSettings;
   std::vector<SettingInfo> otherSettings;
   std::vector<SettingInfo> keyboardSettings;
+  std::vector<SettingInfo> sleepSettings;
   const std::vector<SettingInfo>* currentSettings = nullptr;
 
   // Mot cho duy nhat noi the nao giu danh sach nao. Truoc 14/09/2026 phep nay chep
@@ -190,6 +191,7 @@ class SettingsActivity final : public UiTabListActivity {
   const char* tabLabel(int index) const override {
     return I18N.get(settingstabs::tenThe(static_cast<settingstabs::Tab>(index)));
   }
+  bool showWakeHint() const;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   void onTabAction(int index) override;

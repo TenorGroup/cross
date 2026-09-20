@@ -230,16 +230,21 @@ void BlePageTurnerActivity::rebuildRows() {
 
   them(tr(STR_BLE_PAGE_TURNER), ROW_ENABLE);
   them(tr(STR_BLE_STATUS), ROW_STATUS);
+  rowItems_.back().enabled = false;
   them(tr(STR_BLE_SCAN), ROW_SCAN);
   them(tr(STR_BLE_BIND_NEXT), ROW_BIND_NEXT);
   them(tr(STR_BLE_BIND_PREV), ROW_BIND_PREV);
 
-  them(tr(STR_BLE_PAIRED_DEVICES), ROW_PAIRED_HEADER);
   const uint8_t bonds = backend::bondCount();
   for (uint8_t i = 0; i < bonds; i++) {
     them(backend::bondName(i)[0] != '\0' ? backend::bondName(i) : backend::bondAddr(i), ROW_PAIRED_BASE + i);
+    if (i == 0) rowItems_.back().sectionHeading = tr(STR_BLE_PAIRED_DEVICES);
   }
-  if (bonds == 0) them(tr(STR_BLE_NO_DEVICES), ROW_NO_DEVICE);
+  if (bonds == 0) {
+    them(tr(STR_BLE_NO_DEVICES), ROW_NO_DEVICE);
+    rowItems_.back().enabled = false;
+    rowItems_.back().sectionHeading = tr(STR_BLE_PAIRED_DEVICES);
+  }
 
   // Thiet bi quang cao duoc chi hien khi CO: mot dong "khong tim thay" thu hai se
   // lam nguoi doc tuong dang co mot muc nua.
@@ -247,6 +252,25 @@ void BlePageTurnerActivity::rebuildRows() {
   for (uint8_t i = 0; i < found; i++) {
     them(backend::deviceName(i)[0] != '\0' ? backend::deviceName(i) : backend::deviceAddr(i), ROW_DEVICE_BASE + i);
   }
+  clampAfterNav();
+}
+
+void BlePageTurnerActivity::stepSelection(const int direction) {
+  const int count = listCount();
+  for (int i = 0; i < count; ++i) {
+    UiListActivity::stepSelection(direction);
+    if (rowItems_[nav.selected].enabled) return;
+  }
+}
+
+bool BlePageTurnerActivity::clampAfterNav() {
+  if (rowItems_.empty()) return false;
+  const int previous = nav.selected;
+  nav.selected = kepConTro(nav.selected, listCount());
+  // Page moves and holds can land on information rows too. Keep one focus
+  // policy for those paths and for a changing bond/discovery list.
+  if (!rowItems_[nav.selected].enabled) stepSelection(1);
+  return nav.selected != previous;
 }
 
 void BlePageTurnerActivity::refreshValues() {
@@ -384,12 +408,11 @@ void BlePageTurnerActivity::openPairedPopup(const int bondIndex) {
 }
 
 void BlePageTurnerActivity::activateIndex(const int index) {
+  if (index < 0 || index >= static_cast<int>(rowItems_.size()) || !rowItems_[index].enabled) return;
   nav.selected = index;
   // Mo popup hoac doi trang thai radio deu ve mot be mat khac: vet sang con lai
   // se lam xam mot o khong lien quan.
   app.clearTapFlash();
-  if (index < 0 || index >= static_cast<int>(rowItems_.size())) return;
-
   const int16_t code = rowItems_[index].actionValue;
   // Mot nhip vao hang khac la nguoi dung doi y: thong bao cu va luot cho cu het hieu luc.
   if (code != ROW_BIND_NEXT && code != ROW_BIND_PREV) {

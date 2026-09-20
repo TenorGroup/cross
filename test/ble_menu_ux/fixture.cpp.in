@@ -1,0 +1,209 @@
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <set>
+#include <string>
+#include <vector>
+#include "activities/reader/ReaderMenuLayout.h"
+#undef tr
+const char* testTranslation(StrId id, const char* name) {
+  return id == StrId::STR_BLE_LAST_KEY ? "key %s" : name;
+}
+#define tr(id) testTranslation(StrId::id, #id)
+#define LOG_INF(...) (void)0
+#define LOG_ERR(...) (void)0
+namespace fui {
+struct ListItem {
+  const char* label = nullptr;
+  const char* value = nullptr;
+  int16_t actionValue = 0;
+  bool enabled = true;
+  bool isHeader = false;
+  const char* sectionHeading = nullptr;
+};
+}
+struct CrossPointSettings { static constexpr uint8_t BLE_USAGE_NONE = 0; };
+struct Settings {
+  bool blePageTurnerEnabled = true;
+  char blePeerAddr[18] = {}, blePeerName[32] = {};
+  int saves = 0;
+  void saveToFile() { ++saves; }
+} SETTINGS;
+namespace blebinding { enum class Direction { Next, Prev }; }
+namespace freeink::ble {
+void setIdleStopped(bool) {}
+void setReaderStartDeferred(bool) {}
+}
+namespace backend {
+std::vector<std::string> bonds;
+std::vector<std::string> devices;
+std::vector<std::string> connections;
+bool live = false, scan = false;
+int begins = 0;
+uint8_t bondCount() { return bonds.size(); }
+uint8_t deviceCount() { return devices.size(); }
+const char* bondAddr(uint8_t i) { return bonds.at(i).c_str(); }
+const char* bondName(uint8_t i) { return bonds.at(i).c_str(); }
+const char* deviceAddr(uint8_t i) { return devices.at(i).c_str(); }
+const char* deviceName(uint8_t i) { return devices.at(i).c_str(); }
+bool connected() { return live; }
+bool scanning() { return scan; }
+bool begin(int&) { ++begins; return true; }
+bool end() { return true; }
+void startScan() { scan = true; }
+void stopScan() { scan = false; }
+void connect(const char* addr) { connections.emplace_back(addr); }
+void disconnect() { live = false; }
+void forget(const char*) {}
+}
+void chupChuoi(char* dest, const char* src, size_t maxLen) {
+  std::strncpy(dest, src, maxLen - 1); dest[maxLen - 1] = '\0';
+}
+struct Nav {
+  int selected = 0;
+  void follow(int) {}
+};
+struct ButtonNavigator {
+  static int nextIndex(int index, int count) { return (index + 1) % count; }
+  static int previousIndex(int index, int count) { return (index + count - 1) % count; }
+};
+struct UiListActivity {
+  virtual ~UiListActivity() = default;
+  Nav nav;
+  Nav& activeNav() { return nav; }
+  virtual int listCount() const = 0;
+  static int kepConTro(int index, int count) { return std::max(0, std::min(index, count - 1)); }
+  void stepSelection(int direction);
+};
+struct Popup {
+  int shows = 0;
+  std::vector<StrId> options;
+  std::function<void(int)> callback;
+  void show(StrId, const StrId* choices, int count, int, std::function<void(int)> f) {
+    ++shows; options.assign(choices, choices + count); callback = std::move(f);
+  }
+};
+struct BlePageTurnerActivity : UiListActivity {
+  @@ROW_ENUM@@
+  BlePageTurnerActivity() = default;
+  BlePageTurnerActivity(int&, int&) {}
+  int renderer = 0;
+  struct App { void clearTapFlash() {} } app;
+  Popup optionPopup;
+  std::vector<fui::ListItem> rowItems_;
+  bool rowsDirty = false, bindWaitActive_ = false;
+  std::string bindNotice_, bindNextValue_, bindPrevValue_, statusValue_, statusText_ = "ready";
+  uint8_t lastKeyUsage_ = 0;
+  int updates = 0;
+  int listCount() const override { return rowItems_.size(); }
+  void requestUpdate() { ++updates; }
+  void capNhatTrangThai() {}
+  std::string bindValue(blebinding::Direction) const { return "default"; }
+  void startBindWait(blebinding::Direction) { bindWaitActive_ = true; }
+  void rebuildRows();
+  void refreshValues();
+  void activateIndex(int index);
+  void openPairedPopup(int index);
+  void toggleEnabled();
+  void handleScanRow();
+  void stepSelection(int direction);
+  bool clampAfterNav();
+};
+@@METHODS@@
+struct ActivityResult {};
+struct Reader {
+  int renderer = 0, mappedInput = 0;
+  int spine = 3, page = 27, updates = 0;
+  std::unique_ptr<BlePageTurnerActivity> child;
+  std::function<void(const ActivityResult&)> onReturn;
+  void requestUpdate() { ++updates; }
+  void startActivityForResult(std::unique_ptr<BlePageTurnerActivity> activity,
+                              std::function<void(const ActivityResult&)> callback) {
+    child = std::move(activity); onReturn = std::move(callback);
+  }
+  void activateBluetooth() { @@ROUTE@@ }
+};
+int failures = 0, checks = 0;
+void require(bool condition, const std::string& why) {
+  ++checks;
+  if (!condition) { ++failures; std::cerr << "FAIL: " << why << '\n'; }
+}
+int main() {
+  using Action = readermenu::Action;
+  const Action bluetooth = static_cast<Action>(20);
+  const Action legacy[] = {Action::SELECT_CHAPTER, Action::FOOTNOTES, Action::TEXT_SETTINGS, Action::NIGHT_MODE,
+    Action::STATUS_BAR, Action::FRONTLIGHT, Action::GO_TO_PERCENT, Action::AUTO_PAGE_TURN, Action::ROTATE_SCREEN,
+    Action::BOOKMARKS, Action::TOGGLE_BOOKMARK, Action::SCREENSHOT, Action::DISPLAY_QR, Action::GO_HOME,
+    Action::SYNC, Action::DELETE_CACHE, Action::DICTIONARY, Action::FONT_SIZE, Action::FONT_FAMILY, Action::SAVE_QUOTE};
+  for (int i = 0; i < 20; ++i) require(static_cast<int>(legacy[i]) == i, "legacy saved action changed");
+  require(readermenu::ACTION_COUNT == 21, "Bluetooth extends action bounds to 21");
+  for (int flags = 0; flags < 8; ++flags) {
+    std::vector<readermenu::Item> items;
+    readermenu::buildItems(items, flags & 1, flags & 2, flags & 4);
+    require(std::count_if(items.begin(), items.end(), [&](const auto& i) {
+      return i.action == bluetooth && i.tab == readermenu::Tab::TOOLS;
+    }) == 1, "exactly one Bluetooth Tools action");
+    require(items.size() <= 20, "reader row storage capacity");
+    const Action pins[] = {Action::SAVE_QUOTE, bluetooth, Action::SYNC};
+    uint8_t indices[3]{};
+    const int count = readermenu::rowsOfFavorites(items, pins, 3, indices, 3);
+    require(count == 3, "Bluetooth can be pinned with old favorites");
+    for (int i = 0; i < count; ++i) require(items[indices[i]].action == pins[i], "pin order retained");
+    readermenu::buildMoreItems(items, flags & 1, flags & 2, flags & 4);
+    require(std::count_if(items.begin(), items.end(), [&](const auto& i) { return i.action == bluetooth; }) == 1,
+            "exactly one Bluetooth More action");
+    require(!items.empty() && items.back().action == bluetooth, "More preserves old order and appends Bluetooth");
+  }
+  for (const int bonds : {0, 1, 4}) for (const bool enabled : {false, true}) {
+    SETTINGS = {}; SETTINGS.blePageTurnerEnabled = enabled;
+    backend::bonds.clear(); backend::devices.clear(); backend::connections.clear(); backend::live = false;
+    for (int i = 0; i < bonds; ++i) backend::bonds.push_back("AA:BB:CC:DD:EE:F" + std::to_string(i));
+    BlePageTurnerActivity screen;
+    screen.rebuildRows(); screen.refreshValues();
+    int sectionHeadings = 0;
+    for (int i = 0; i < screen.listCount(); ++i) {
+      const auto& row = screen.rowItems_[i];
+      require(row.actionValue != BlePageTurnerActivity::ROW_PAIRED_HEADER, "paired heading is absent from physical row model");
+      if (row.sectionHeading) ++sectionHeadings;
+      if (row.actionValue == BlePageTurnerActivity::ROW_STATUS || row.actionValue == BlePageTurnerActivity::ROW_NO_DEVICE) {
+        require(!row.enabled, "status/empty is noninteractive for touch");
+        screen.activateIndex(i);
+        require(screen.optionPopup.shows == 0 && backend::connections.empty(), "status/empty creates no fake popup/connect");
+        screen.nav.selected = i; screen.clampAfterNav();
+        require(screen.rowItems_[screen.nav.selected].enabled, "page/boundary clamp skips disabled rows");
+      }
+    }
+    require(sectionHeadings == 1, "paired section heading attaches to first bond or empty row");
+    for (int direction : {-1, 1}) {
+      screen.nav.selected = 0;
+      for (int step = 0; step < 2 * screen.listCount(); ++step) {
+        screen.stepSelection(direction);
+        require(screen.rowItems_[screen.nav.selected].enabled, "physical navigation skips status/empty");
+      }
+    }
+    for (int bond = 0; bond < bonds; ++bond) {
+      for (int i = 0; i < screen.listCount(); ++i) {
+        if (screen.rowItems_[i].actionValue != BlePageTurnerActivity::ROW_PAIRED_BASE + bond) continue;
+        const int shows = screen.optionPopup.shows;
+        const size_t calls = backend::connections.size();
+        screen.activateIndex(i);
+        require(screen.optionPopup.shows == shows + 1 && screen.optionPopup.options.size() == 2, "actual paired row opens two choices");
+        screen.optionPopup.callback(0);
+        require(SETTINGS.blePeerAddr == backend::bonds[bond], "selected exact address saved");
+        require(backend::connections.size() == calls + (enabled ? 1 : 0), "connect dispatch respects enabled setting");
+        if (enabled) require(backend::connections.back() == backend::bonds[bond], "connect dispatch uses selected exact address");
+      }
+    }
+  }
+  Reader reader;
+  reader.activateBluetooth();
+  require(reader.child != nullptr, "reader route opens existing Bluetooth activity");
+  if (reader.onReturn) { reader.child.reset(); reader.onReturn(ActivityResult{}); }
+  require(reader.spine == 3 && reader.page == 27, "Bluetooth return preserves reader position");
+  require(reader.updates == 1, "Bluetooth return requests reader repaint");
+  std::cout << checks << " checks, " << failures << " failures\n";
+  return failures ? 1 : 0;
+}

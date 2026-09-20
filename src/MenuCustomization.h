@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include "activities/settings/SettingsTabs.h"
+
 namespace menucustom {
 constexpr int GROUPS = 4;
 constexpr int MAX_TABS = 8;
@@ -26,6 +28,8 @@ struct State {
     for (auto& group : order)
       for (int i = 0; i < MAX_TABS; ++i) group[i] = i;
     order[0] = {0, 1, 4, 2, 3, 5, 6, 7};
+    static_assert(settingstabs::TAB_COUNT == MAX_TABS, "Settings order must fit persisted tab slots");
+    order[1] = settingstabs::DEFAULT_ORDER;
   }
   void normalize(int group, int count) {
     std::array<uint8_t, MAX_TABS> result{};

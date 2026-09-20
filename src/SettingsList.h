@@ -214,10 +214,26 @@ inline SettingInfo buildTenorClockPlacementSetting(const SettingInfo& registered
 // Each entry has a key (for JSON API) and category (for grouping).
 // ACTION-type entries and entries without a key are device-only.
 //
-// Static descriptors keep member pointers and settings-field offsets. Values are
+// Cached descriptors keep member pointers and settings-field offsets. Values are
 // read on demand, so save/load can iterate by reference without allocating a
 // second catalog. UI consumers copy only the rows they own.
+namespace settings_catalog {
+inline std::vector<SettingInfo>& storage() {
+  static std::vector<SettingInfo> rows;
+  return rows;
+}
+}  // namespace settings_catalog
+
+// Call only at a quiescent activity transition under RenderLock, after all
+// borrowed descriptors/iterators have left scope. Owned category copies survive.
+// Any later getter, including settings persistence, rebuilds the full catalog.
+inline void releaseBaseSettingsList() {
+  std::vector<SettingInfo>().swap(settings_catalog::storage());
+}
+
 inline const std::vector<SettingInfo>& getBaseSettingsList() {
+  auto& baseList = settings_catalog::storage();
+  if (!baseList.empty()) return baseList;
 #if defined(TENOR_UI_ACCEPTANCE) && defined(ESP_PLATFORM)
   static bool catalogMeasured = false;
   if (!catalogMeasured) {
@@ -226,7 +242,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                      ESP.getMaxAllocHeap(), static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
   }
 #endif
-  static const std::vector<SettingInfo> baseList = [] {
+  baseList = [] {
     // Enum settings are persisted as numeric values. Assign these labels by enum
     // value so a reordered menu or enum cannot silently swap their behavior.
     std::vector<StrId> sleepScreenValues(CrossPointSettings::SLEEP_SCREEN_MODE_COUNT);
@@ -247,7 +263,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
-    // 70 unconditional descriptors; each capability below adds exactly one.
+    // 70 unconditional descriptors; the IMU branch adds reader and tab tilt settings.
     // Cold-catalog tests cover each capability branch and the IMU variant.
     constexpr size_t fixedCount = 70
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
@@ -258,7 +274,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 #endif
         ;
     std::vector<SettingInfo> v;
-    v.reserve(fixedCount + (hasTilt ? 1 : 0));
+    v.reserve(fixedCount + (hasTilt ? 2 : 0));
     // --- Display ---
     v.push_back(SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
                           {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
@@ -545,11 +561,14 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
       // Keep the reader page-turn gestures together.
       for (auto it = v.begin(); it != v.end(); ++it) {
         if (it->nameId == StrId::STR_SIDE_BTN_LAYOUT) {
-          v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
-                                             // STR_INVERTED means inverted colours elsewhere; tilt needs a
-                                             // reversed direction, so it gets a word of its own.
-                                             {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_TILT_INVERTED},
-                                             "tiltPageTurn", StrId::STR_CAT_READER));
+          it = v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
+                                                   // STR_INVERTED means inverted colours elsewhere; tilt needs a
+                                                   // reversed direction, so it gets a word of its own.
+                                                   {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_TILT_INVERTED},
+                                                   "tiltPageTurn", StrId::STR_CAT_READER));
+          v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_TAB_NAVIGATION, &CrossPointSettings::tiltTabNavigation,
+                                              {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_TILT_INVERTED},
+                                              "tiltTabNavigation", StrId::STR_CAT_CONTROLS));
           break;
         }
       }
@@ -597,6 +616,17 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
 // there when needed. Return -1 for rows hidden in device categories.
 inline int deviceSettingsTab(const SettingInfo& setting, bool deviceIsX3) {
   if (settingHiddenOnThisBoard(setting)) return -1;
+  // Device-only grouping: preserve the shared catalog's web category and keys.
+  if (setting.valuePtr == &CrossPointSettings::wakeButtons)
+    return deviceIsX3 ? static_cast<int>(settingstabs::Tab::SLEEP) : -1;
+  if (setting.valuePtr == &CrossPointSettings::sleepScreen ||
+      setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode ||
+      setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||
+      setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen ||
+      setting.valuePtr == &CrossPointSettings::wakeIntoBook ||
+      setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes ||
+      setting.valuePtr == &CrossPointSettings::frontlightRestoreOnWake)
+    return static_cast<int>(settingstabs::Tab::SLEEP);
   const bool tenor = SETTINGS.uiTheme == CrossPointSettings::TENOR_UI;
   if (tenor && setting.valuePtr == &CrossPointSettings::hideBatteryPercentage) return -1;
   if (!tenor && (setting.valuePtr == &CrossPointSettings::tenorButtonSymbols ||
@@ -617,7 +647,6 @@ inline int deviceSettingsTab(const SettingInfo& setting, bool deviceIsX3) {
   }
   if (setting.category == StrId::STR_CAT_KEYBOARD) return static_cast<int>(settingstabs::Tab::KEYBOARD);
   if (setting.category == StrId::STR_CAT_SYSTEM) {
-    if (setting.valuePtr == &CrossPointSettings::wakeButtons && !deviceIsX3) return -1;
     return static_cast<int>(settingstabs::Tab::SYSTEM);
   }
   return -1;

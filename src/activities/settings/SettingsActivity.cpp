@@ -51,6 +51,8 @@ SettingsActivity::SettingsActivity(GfxRenderer& renderer, MappedInputManager& ma
 
 std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe(const settingstabs::Tab tab) {
   switch (tab) {
+    case settingstabs::Tab::SLEEP:
+      return sleepSettings;
     case settingstabs::Tab::SCREEN:
       return displaySettings;
     case settingstabs::Tab::READER:
@@ -77,6 +79,7 @@ void SettingsActivity::rebuildSettingsLists() {
   deviceSettings.clear();
   otherSettings.clear();
   keyboardSettings.clear();
+  sleepSettings.clear();
 
   // Pick up any fonts uploaded/deleted over the web server since the last
   // reader activity ran - otherwise the font-family picker shows stale list.
@@ -148,7 +151,7 @@ void SettingsActivity::rebuildSettingsLists() {
     keyboardSettings.insert(keyboardSettings.begin(),
                             SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
   }
-  // Sleep, wake and clock precede file-management preferences.
+  // Clock precedes file-management preferences.
   const auto files = std::find_if(systemSettings.begin(), systemSettings.end(), [](const SettingInfo& row) {
     return row.valuePtr == &CrossPointSettings::showHiddenFiles;
   });
@@ -651,6 +654,14 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
   return "";
 }
 
+bool SettingsActivity::showWakeHint() const {
+  if (selectedCategoryIndex != static_cast<int>(settingstabs::Tab::SLEEP) || !gpio.deviceIsX3() ||
+      SETTINGS.globalStatusBarHidden() || !currentSettings) return false;
+  const int row = ringPos() - 1;
+  return row >= 0 && row < static_cast<int>(currentSettings->size()) &&
+         (*currentSettings)[row].valuePtr == &CrossPointSettings::wakeButtons;
+}
+
 void SettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Content below the GUI.drawHeader band, above the button hints.
@@ -658,13 +669,10 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
       static_cast<int16_t>(
           metrics.buttonHintsHeight +
-          (selectedCategoryIndex == static_cast<int>(settingstabs::Tab::SYSTEM) && gpio.deviceIsX3() &&
-                   !SETTINGS.globalStatusBarHidden()
-               ? 26
-               : 0)),
+          (showWakeHint() ? tenorchrome::tipHeight(renderer, tr(STR_WAKE_POWER_HINT), 4) : 0)),
       0});
 
-  // Khong con thanh 7 the o day (S1): bo 7 nhom da hien mot lan o man chinh, hien lai lan nua
+  // Cac nhom da hien mot lan o man chinh, hien lai lan nua
   // la trung (T1). Ten nhom di len dau man, hai mui tien dac hai mep bao nut canh nhay nhom.
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
@@ -696,7 +704,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   screen.list(props);
 }
 
-// Ten nhom o dau man, kep giua hai mui ten DAC, be (cung co mui ten cua thanh the chay). Vong 7
+// Ten nhom o dau man, kep giua hai mui ten DAC, be (cung co mui ten cua thanh the chay). Cac
 // nhom quay vong nen luon con nhom ca hai ben, ve ca hai. Ve tay o day vi drawHeader chi nhan mot
 // chuoi tieu de; hai mui ten dat ngay canh chu de mat doc "< Hien thi >" thanh mot cum.
 void SettingsActivity::veTenNhomCoMuiTen(const GfxRenderer& r, const int x0, const int yGiua, const char* ten) {
@@ -783,8 +791,8 @@ void SettingsActivity::render(RenderLock&&) {
     tenorchrome::drawSiblingDestinations(renderer, tabLabel(adjacentTab(-1)), tabLabel(adjacentTab(1)));
   }
 
-  if (selectedCategoryIndex == static_cast<int>(settingstabs::Tab::SYSTEM) && gpio.deviceIsX3()) {
-    tenorchrome::drawTip(renderer, tr(STR_WAKE_POWER_HINT), 1);
+  if (showWakeHint()) {
+    tenorchrome::drawTip(renderer, tr(STR_WAKE_POWER_HINT), 0, 4);
   }
 
   const int ring = ringPos();

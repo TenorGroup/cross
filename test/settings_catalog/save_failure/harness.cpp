@@ -50,7 +50,7 @@ struct UITheme {
 namespace tenorchrome {
 bool enabled() { return false; }
 void drawSiblingDestinations(GfxRenderer&, const char*, const char*) {}
-void drawTip(GfxRenderer&, const char*, int) {}
+void drawTip(GfxRenderer&, const char*, int, int = 4) {}
 }
 struct GpioBoundary { bool deviceIsX3() const { return true; } } gpio;
 struct FontBoundary { const int& registry() { static int registry; return registry; } } sdFontSystem;
@@ -120,7 +120,7 @@ struct SettingsActivity {
   int ringPos() const { return 1; }
   int activeTab() const { return 0; }
   ListNav& activeNav() { return nav; }
-  int tabCount() const { return 7; }
+  int tabCount() const { return settingstabs::TAB_COUNT; }
   int adjacentTab(int direction) const { return direction; }
   const char* tabLabel(int) const { return "Settings"; }
   void drawNavigationHeader(const char*) {}
@@ -142,6 +142,7 @@ struct SettingsActivity {
   bool handleButtons();
   void toggleCurrentSetting();
   void openSleepTimeoutPicker();
+  bool showWakeHint() const;
   void render(RenderLock&&);
 };
 #include "Methods.inc"

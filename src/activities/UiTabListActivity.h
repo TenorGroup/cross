@@ -23,6 +23,7 @@ class UiTabListActivity : public UiListActivity {
   void loop() override;
   void captureNavigation(MenuNavigationState& state) const override;
   void restoreNavigation(const MenuNavigationState& state) override;
+  bool managesTiltSensor() const override { return true; }
 
   struct CuaSoThe {
     int dau = 0;  // chi so the dau tien hien ra

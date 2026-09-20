@@ -12,6 +12,7 @@ p = argparse.ArgumentParser()
 p.add_argument('--repo', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
 p.add_argument('--sanitize', action='store_true')
+p.add_argument('--catalog-release-noop', action='store_true', help='Mutate only the generated release body to prove RED')
 a = p.parse_args()
 r, out = a.repo.resolve(), a.output.resolve()
 out.mkdir(parents=True, exist_ok=True)
@@ -26,7 +27,14 @@ def method(text, signature):
     return text[start:i] + '\n'
 
 source = (r / 'src/activities/settings/SettingsActivity.cpp').read_text()
-(out / 'SettingsList.h').write_text((r / 'src/SettingsList.h').read_text())
+catalog = (r / 'src/SettingsList.h').read_text()
+release_signature = 'inline void releaseBaseSettingsList()'
+if release_signature not in catalog:
+    catalog += '\ninline void releaseBaseSettingsList() {}\n'
+elif a.catalog_release_noop:
+    catalog = catalog.replace(method(catalog, release_signature), release_signature + ' {}\n')
+(out / 'SettingsList.h').write_text(catalog)
+(out / 'CrossPointSettings.cpp').write_text((r / 'src/CrossPointSettings.cpp').read_text())
 header = (r / 'src/activities/settings/SettingsActivity.h').read_text()
 base = (r / 'src/activities/Activity.h').read_text()
 (out / 'activities/settings').mkdir(parents=True, exist_ok=True)
@@ -49,6 +57,8 @@ for name in ['onPause', 'onResume']:
 branch = source.split('case SettingAction::DownloadFonts:', 1)[1].split('case SettingAction::TextSettings:', 1)[0]
 methods += 'void SettingsActivity::launchFontDownload() {\n' + branch.rsplit('break;', 1)[0] + '}\n'
 (out / 'Methods.inc').write_text(methods)
+font_source = (r / 'src/activities/settings/FontDownloadActivity.cpp').read_text()
+(out / 'PostWifiMethods.inc').write_text(method(font_source, 'void FontDownloadActivity::onWifiSelectionComplete'))
 # Reuse the established hardware/storage boundaries, not its SettingsActivity test double.
 boundary = (r / 'test/settings_catalog/category/harness.cpp').read_text()
 boundary = boundary[boundary.index('HalTiltSensor halTiltSensor;'):boundary.index('struct SettingsActivity {')]
@@ -69,12 +79,14 @@ if a.sanitize:
     cmd += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
 cmd += ['-I' + str(r / x) for x in incs]
 cmd += [str(Path(__file__).with_name('harness.cpp')), str(r / 'src/ReaderFontSizes.cpp'),
+        str(out / 'CrossPointSettings.cpp'),
         str(r / 'src/activities/settings/SettingsTabs.cpp'), str(r / 'lib/I18n/I18n.cpp'),
         str(r / 'lib/I18n/I18nStrings.cpp'), '-o', str(out / 'probe')]
 (out / 'command.json').write_text(json.dumps(cmd, indent=2) + '\n')
 (out / 'source-manifest.json').write_text(json.dumps({str(path.relative_to(r)): hashlib.sha256(path.read_bytes()).hexdigest()
     for path in [r / 'src/activities/settings/SettingsActivity.cpp', r / 'src/activities/settings/SettingsActivity.h',
-                 r / 'src/SettingsList.h', r / 'src/activities/Activity.h']}, indent=2) + '\n')
+                 r / 'src/SettingsList.h', r / 'src/activities/Activity.h',
+                 r / 'src/activities/settings/FontDownloadActivity.cpp', r / 'src/CrossPointSettings.cpp']}, indent=2) + '\n')
 build = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 (out / 'build.log').write_text(build.stdout)
 if build.returncode:

@@ -252,7 +252,7 @@ const char* TextSettingsActivity::confirmLabelText() const {
                  ? tr(STR_TOGGLE)
                  : tr(STR_SELECT);
     case Tab::Style:
-      return ringPos() - 1 == static_cast<int>(StyleRow::InkWeight) ? tr(STR_SELECT) : tr(STR_TOGGLE);
+      return tr(STR_TOGGLE);
     default:
       return tr(STR_SELECT);
   }
@@ -279,8 +279,9 @@ void TextSettingsActivity::render(RenderLock&&) {
     renderUi();
   });
 
-  const bool weightUnavailable = tab_ == Tab::Style && ringPos() - 1 == static_cast<int>(StyleRow::InkWeight) &&
-                                 sdFontSystem.availableWeightMask() == 1;
+  const bool weightUnavailable =
+      tab_ == Tab::Style && ringPos() - 1 == static_cast<int>(StyleRow::InkWeight) &&
+      !readerInk::available(SETTINGS.readerInkWeight, sdFontSystem.availableWeightMask());
   if (weightUnavailable || focusedRowHasNoPreview()) {
     const int captionHeight = renderer.getTextHeight(UI_10_FONT_ID) + metrics_.verticalSpacing;
     const int capY = afterHeader + usableHeight - captionHeight + metrics_.verticalSpacing;
@@ -461,19 +462,13 @@ std::string TextSettingsActivity::layoutValueText(int row) {
 
 void TextSettingsActivity::confirmStyleRow(int row) {
   switch (static_cast<StyleRow>(row)) {
-    case StyleRow::InkWeight: {
-      const uint8_t mask = sdFontSystem.availableWeightMask();
-      if (mask == 1) return;
-      const uint8_t current = sdFontSystem.effectiveWeight();
-      const uint8_t next = readerInk::nextAvailable(current, mask);
-      if (next == current) return;
+    case StyleRow::InkWeight:
       {
         RenderLock lock;
-        SETTINGS.readerInkWeight = next;
+        SETTINGS.readerInkWeight = readerInk::next(SETTINGS.readerInkWeight);
         sdFontSystem.ensureLoaded(renderer);
       }
       break;
-    }
     case StyleRow::FocusReading:
       // The drop cap cycles Off -> Default -> Large; the Settings list and the
       // reader toolbar show the same three labels.
@@ -499,7 +494,7 @@ void TextSettingsActivity::confirmStyleRow(int row) {
 std::string TextSettingsActivity::styleValueText(int row) {
   switch (static_cast<StyleRow>(row)) {
     case StyleRow::InkWeight:
-      return I18N.get(INK_WEIGHT_IDS[sdFontSystem.effectiveWeight()]);
+      return I18N.get(INK_WEIGHT_IDS[readerInk::clamp(SETTINGS.readerInkWeight)]);
     case StyleRow::FocusReading:
       return I18N.get(DROP_CAP_IDS[readerSpacing::clampDropCapMode(SETTINGS.dropCapMode)]);
     case StyleRow::Hyphenation:

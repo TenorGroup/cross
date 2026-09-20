@@ -19,11 +19,54 @@
 HalTiltSensor halTiltSensor;
 
 // UiTabListActivity owns tab navigation. This host target does not link the
-// hardware IMU driver, so keep its sensor boundary inert while tests inject
-// one-shot directions through the tab base's queue entry.
-void HalTiltSensor::update(uint8_t, uint8_t, bool) {}
-bool HalTiltSensor::wasTiltedForward() { return false; }
-bool HalTiltSensor::wasTiltedBack() { return false; }
+// hardware IMU driver. The seam injects one physical forward tilt and maps it
+// through the real mode contract, so routing tests can observe the mode that
+// each activity supplied to the sensor.
+namespace tiltfixture {
+uint8_t lastMode = CrossPointTiltPageTurn::TILT_OFF;
+bool lastTargetActive = false;
+bool physicalForward = false;
+bool forwardEvent = false;
+bool backwardEvent = false;
+
+void reset() {
+  lastMode = CrossPointTiltPageTurn::TILT_OFF;
+  lastTargetActive = false;
+  physicalForward = false;
+  forwardEvent = false;
+  backwardEvent = false;
+}
+
+void injectPhysicalForward() { physicalForward = true; }
+}  // namespace tiltfixture
+
+void HalTiltSensor::update(const uint8_t mode, const uint8_t, const bool gestureTargetActive) {
+  tiltfixture::lastMode = mode;
+  tiltfixture::lastTargetActive = gestureTargetActive;
+  tiltfixture::forwardEvent = false;
+  tiltfixture::backwardEvent = false;
+  if (!tiltfixture::physicalForward) return;
+
+  tiltfixture::physicalForward = false;
+  if (!gestureTargetActive || mode == CrossPointTiltPageTurn::TILT_OFF) return;
+  if (mode == CrossPointTiltPageTurn::TILT_NORMAL) {
+    tiltfixture::forwardEvent = true;
+  } else if (mode == CrossPointTiltPageTurn::TILT_INVERTED) {
+    tiltfixture::backwardEvent = true;
+  }
+}
+
+bool HalTiltSensor::wasTiltedForward() {
+  const bool event = tiltfixture::forwardEvent;
+  tiltfixture::forwardEvent = false;
+  return event;
+}
+
+bool HalTiltSensor::wasTiltedBack() {
+  const bool event = tiltfixture::backwardEvent;
+  tiltfixture::backwardEvent = false;
+  return event;
+}
 
 // The catalogue asks the SD-font registry which point sizes a family offers.
 // A host has no registry: no family is found, so the built-in size list is used.

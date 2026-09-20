@@ -62,6 +62,8 @@ class Activity {
   // transitions so no filesystem code races a raw SD-card owner.
   virtual bool requiresExclusiveStorageLoop() const { return false; }
   virtual bool isReaderActivity() const { return false; }
+  // True when this activity calls HalTiltSensor::update() from its own loop.
+  virtual bool managesTiltSensor() const { return false; }
   // Returns true when the activity schedules its own forced refresh.
   virtual bool handleForcedRefresh() { return false; }
   virtual bool isHomeActivity() const { return false; }

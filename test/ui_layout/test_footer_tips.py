@@ -34,7 +34,13 @@ base = (ROOT / 'src/components/themes/BaseTheme.cpp').read_text()
 renderer = (ROOT / 'lib/GfxRenderer/GfxRenderer.cpp').read_text()
 header = (ROOT / 'src/components/TenorMenuChrome.h').read_text()
 definitions = []
-for name in ('smallFooterSymbolsTopY', 'compactFooterTips', 'tipY', 'drawTip'):
+for name in ('smallFooterSymbolsTopY', 'compactFooterTips', 'tipY'):
+    if f'tenorchrome::{name}(' in chrome:
+        definitions.append(function(chrome, f'tenorchrome::{name}('))
+for signature in ('std::vector<std::string> tipLines(', 'int tipLineY('):
+    if signature in chrome:
+        definitions.append(function(chrome, signature))
+for name in ('tipTopY', 'tipHeight', 'drawTip'):
     if f'tenorchrome::{name}(' in chrome:
         definitions.append(function(chrome, f'tenorchrome::{name}('))
 definitions.append(function(theme, 'TenorTheme::drawButtonHints('))
@@ -50,7 +56,7 @@ definitions.append(hint_label)
 definitions.append(function(renderer, 'GfxRenderer::wrappedText(').replace('GfxRenderer::wrappedText(', 'GfxRenderer::wrappedTextProduction('))
 for name in ('getTextInkTop', 'getTextInkBottom'):
     definitions.append(function(renderer, f'GfxRenderer::{name}('))
-declarations = '\n'.join(re.findall(r'^(?:bool|int|void) (?:smallFooterSymbolsTopY|compactFooterTips|tipY|drawTip)\([^;]+;', header, re.M))
+declarations = '\n'.join(re.findall(r'^(?:bool|int|void) (?:smallFooterSymbolsTopY|compactFooterTips|tipY|tipTopY|tipHeight|drawTip)\([^;]+;', header, re.M))
 fixture = Path(__file__).with_name('footer_tips.cpp').read_text()
 fixture = fixture.replace('// CHROME_DECLARATIONS', declarations)
 fixture = fixture.replace('// PRODUCTION_FUNCTIONS', '\n'.join(definitions))

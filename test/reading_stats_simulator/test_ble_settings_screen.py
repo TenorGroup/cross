@@ -35,6 +35,7 @@ import re
 import subprocess
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from PIL import Image, ImageChops
@@ -103,14 +104,14 @@ class BleSettingsScreenTest(unittest.TestCase):
         # Home the dau -> the Cai dat (DOWN x4) -> nhom Thiet bi (RIGHT x5) ->
         # mo man Cai dat (CONFIRM) -> mo man BLE (CONFIRM) -> thu bat (CONFIRM)
         # -> tat lai (CONFIRM) -> ra khoi man BLE (BACK) -> ra khoi Cai dat (BACK).
-        buoc = ["DOWN"] * 4 + ["RIGHT"] * 5 + ["CONFIRM", "LEFT", "CONFIRM", "CONFIRM", "CONFIRM"]
+        buoc = ["DOWN"] * 4 + ["RIGHT"] * 6 + ["CONFIRM", "LEFT", "CONFIRM", "CONFIRM", "CONFIRM"]
         # Moc chup: sau khi mo Cai dat, sau khi mo man BLE, sau moi nhip Chon.
-        mo_cai_dat, mo_ble = 2000 + 9 * NHIP_MS, 2000 + 11 * NHIP_MS
+        mo_cai_dat, mo_ble = 2000 + 10 * NHIP_MS, 2000 + 12 * NHIP_MS
         shots = [
             (mo_cai_dat + 900, "ble-cai-dat-nhom-thiet-bi"),
             (mo_ble + 900, "ble-man-hinh-1-khong-kha-dung"),
-            (2000 + 12 * NHIP_MS + 900, "ble-man-hinh-2-thu-bat"),
-            (2000 + 13 * NHIP_MS + 900, "ble-man-hinh-3-tat-lai"),
+            (2000 + 13 * NHIP_MS + 900, "ble-man-hinh-2-thu-bat"),
+            (2000 + 14 * NHIP_MS + 900, "ble-man-hinh-3-tat-lai"),
         ]
         buoc += ["BACK", "BACK", "QUIT"]
         log = self.chay(buoc, shots)
@@ -154,8 +155,8 @@ class BleSettingsScreenTest(unittest.TestCase):
         Do duoc: dong trang thai doi tu cau cho sang cau khong nhan duoc, va
         settings.json KHONG doi (khong hoc duoc nut nao).
         """
-        # ... mo man BLE (xem test tren), roi RIGHT x3 = hang "Gan nut lat toi", CONFIRM.
-        buoc = ["DOWN"] * 4 + ["RIGHT"] * 5 + ["CONFIRM", "LEFT", "CONFIRM"] + ["RIGHT"] * 3 + ["CONFIRM"]
+        # Hang Trang thai bo qua khi bam nut: RIGHT x2 toi "Gan nut lat toi".
+        buoc = ["DOWN"] * 4 + ["RIGHT"] * 6 + ["CONFIRM", "LEFT", "CONFIRM"] + ["RIGHT"] * 2 + ["CONFIRM"]
         bat_cho = 2000 + (len(buoc) - 1) * NHIP_MS
         script = kich_ban(buoc) + f"{bat_cho + 17000}:QUIT;"
         shots = [
@@ -178,6 +179,24 @@ class BleSettingsScreenTest(unittest.TestCase):
         luu = json.loads((self.store / "settings.json").read_text())
         self.assertEqual(luu.get("bleNextKeyUsage", 0), 0, luu)
         self.assertEqual(luu.get("blePrevKeyUsage", 0), 0, luu)
+
+    def test_epub_favorite_opens_bluetooth_and_returns_to_same_reader(self):
+        book = self.sd / "ble.epub"
+        with zipfile.ZipFile(book, "w") as epub:
+            epub.writestr("mimetype", "application/epub+zip")
+            epub.writestr("META-INF/container.xml", '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')
+            epub.writestr("book.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>BLE</dc:title><dc:identifier id="id">ble</dc:identifier></metadata><manifest><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>')
+            epub.writestr("body.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><body><p>Bluetooth reader route.</p></body></html>')
+        (self.store / "recent.json").write_text(json.dumps({"books": [{"path": "/ble.epub", "title": "BLE"}]}))
+        settings = json.loads((self.store / "settings.json").read_text())
+        settings.update(readerFavorites=[20], readerFavoriteCount=1, readerFavoritesDaDat=1)
+        (self.store / "settings.json").write_text(json.dumps(settings))
+        log = self.chay([], script="2000:CONFIRM;5000:CONFIRM;7000:CONFIRM;9000:BACK;11000:QUIT")
+        self.assertEqual(log.count("Entering activity: EpubReader"), 1, log[-5000:])
+        self.assertEqual(log.count("Entering activity: EpubReaderMenu"), 1, log[-5000:])
+        self.assertEqual(log.count("Entering activity: BlePageTurner"), 1, log[-5000:])
+        self.assertEqual(log.count("Exiting activity: BlePageTurner"), 1, log[-5000:])
+        self.assertEqual(log.count("Exiting activity: EpubReader"), 0, log[-5000:])
 
 
 if __name__ == "__main__":

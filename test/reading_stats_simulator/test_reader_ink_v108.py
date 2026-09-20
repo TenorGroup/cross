@@ -238,6 +238,20 @@ class ReaderInkV108Test(unittest.TestCase):
         self.assert_loaded(restart_log, 0)
         self.assertEqual(bounds(restarted['page'])['body_sha256'], bounds(images['reader-return0'])['body_sha256'])
 
+    def test_ui_cycle_keeps_requested_missing_level(self):
+        missing = self.sd / '.fonts/Literata/weight-3/Literata_16.cpfont'
+        missing.unlink()
+        self.settings['readerInkWeight'] = 1
+        events = '1000:CONFIRM;2200:CONFIRM;2900:DOWN;3600:DOWN;4300:CONFIRM;5400:DOWN;'
+        events += '6100:RIGHT;6800:RIGHT;7500:RIGHT;8200:RIGHT;9400:CONFIRM;10800:BACK;12200:BACK;13600:QUIT'
+        images, log = self.run_sim('missing-cycle', events, ((8900, 'before'), (10100, 'requested')))
+        self.assertIn('Entering activity: TextSettings', log)
+        self.assertEqual(self.settings['readerInkWeight'], 2, log[-5000:])
+        before = images['before'].crop((16, 128, 512, 305))
+        requested = images['requested'].crop((16, 128, 512, 305))
+        self.assertIsNotNone(ImageChops.difference(before, requested).getbbox(),
+                             'Missing requested level must repaint the inline status')
+
     def test_missing_and_corrupt_new_variants_preserve_requested_level(self):
         for level in (2, 3):
             path = self.sd / '.fonts/Literata' / f'weight-{PHYSICAL[level]}' / 'Literata_16.cpfont'

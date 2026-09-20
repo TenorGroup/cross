@@ -337,10 +337,10 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
     rowHeight = static_cast<int16_t>(hasSubtitle ? metrics.listWithSubtitleRowHeight : metrics.listRowHeight);
     props.rowHeight = rowHeight;
   }
-  // Reserve a small hint band before measuring the list, so arrows cannot
-  // cover the final item. Tabbed screens use their own tab arrows instead.
+  const int rowGap = props.rowGap >= 0 ? props.rowGap : screen.theme().listRowGap;
+  reserveMoreBelowChevron(screen, rowHeight, rowGap);
 
-  activeNav().syncToProps(screen.body(), rowHeight, screen.theme().listRowGap, listCount(), props);
+  activeNav().syncToProps(screen.body(), rowHeight, rowGap, listCount(), props);
 
   activeNav().selected = kepConTro(activeNav().selected, listCount());
   props.selectedIndex = static_cast<int16_t>(activeNav().selected);
@@ -359,11 +359,7 @@ void UiListActivity::renderUi() {
   }
   drawPageHints();
   if (favoriteHintY >= 0) {
-    const std::string key = favoriteKey(favoriteSelectedRow());
-    const StrId hint = favoriteSaveFailed                           ? StrId::STR_MENU_SAVE_FAILED
-                       : menucustom::state().find(key.c_str()) >= 0 ? StrId::STR_MENU_PINNED
-                                                                    : StrId::STR_MENU_PIN_HINT;
-    if (!key.empty() || favoriteSaveFailed) tenorchrome::drawTip(renderer, I18N.get(hint));
+    if (const char* hint = favoriteHintText()) tenorchrome::drawTip(renderer, hint);
   }
 }
 
@@ -435,10 +431,28 @@ int UiListActivity::focusFavorite(const std::string& key) {
 }
 void UiListActivity::reserveFavoriteHint(UiScreen& screen) {
   if (!supportsFavorites() || SETTINGS.globalStatusBarHidden()) return;
+  const char* hint = favoriteHintText();
+  if (!hint) return;
   favoriteHintY = tenorchrome::tipY(renderer);
   const int bottom = screen.body().y + screen.body().height;
-  const int reservedTop = favoriteHintY - 2;
+  const int reservedTop = tenorchrome::tipTopY(renderer, hint) - 2;
   if (bottom > reservedTop) screen.takeBottom(static_cast<int16_t>(bottom - reservedTop));
+}
+
+void UiListActivity::reserveMoreBelowChevron(UiScreen& screen, const int16_t rowHeight, const int rowGap) {
+  if (!tenorchrome::enabled() || listCount() <= fui::listVisibleRows(screen.body(), rowHeight, rowGap)) return;
+  const int bottom = screen.body().y + screen.body().height;
+  const int reservedTop = tenorchrome::moreBelowChevronTopY(renderer) - 2;
+  if (bottom > reservedTop) screen.takeBottom(static_cast<int16_t>(bottom - reservedTop));
+}
+
+const char* UiListActivity::favoriteHintText() {
+  const std::string key = favoriteKey(favoriteSelectedRow());
+  if (key.empty() && !favoriteSaveFailed) return nullptr;
+  const StrId hint = favoriteSaveFailed                           ? StrId::STR_MENU_SAVE_FAILED
+                     : menucustom::state().find(key.c_str()) >= 0 ? StrId::STR_MENU_PINNED
+                                                                  : StrId::STR_MENU_PIN_HINT;
+  return I18N.get(hint);
 }
 
 bool UiListActivity::toggleFavorite(int row) {

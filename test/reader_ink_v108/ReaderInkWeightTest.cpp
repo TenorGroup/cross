@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdint>
+#include <initializer_list>
 #ifdef READER_INK_V107_BASELINE
 namespace readerInk {
 constexpr uint8_t LEVEL_COUNT = 3;
@@ -9,6 +10,10 @@ constexpr uint8_t fromLegacy(int value) { return clamp(value); }
 constexpr uint8_t physical(int value) { return clamp(value); }
 constexpr uint8_t publicFromPhysical(int value) { return clamp(value); }
 constexpr uint8_t publicMask(uint8_t mask) { return mask & 7; }
+constexpr uint8_t next(int value) { return (clamp(value) + 1) % LEVEL_COUNT; }
+constexpr bool available(int value, uint8_t mask) {
+  return value >= 0 && value < LEVEL_COUNT && (mask & (1u << value));
+}
 constexpr uint8_t nextAvailable(int current, uint8_t mask) {
   for (uint8_t step = 1; step <= 3; ++step) {
     const auto candidate = static_cast<uint8_t>((current + step) % 3);
@@ -51,4 +56,17 @@ int main() {
   assert(readerInk::nextAvailable(3, 0x09) == 0);
   assert(readerInk::nextAvailable(0, 0x01) == 0);
   assert(readerInk::nextAvailable(255, 0x09) == 3);
+
+  // A short press always advances the requested public level. Availability
+  // controls the rendered fallback and warning, never which labels are reachable.
+  for (const uint8_t mask : {uint8_t{0x03}, uint8_t{0x0f}}) {
+    assert(readerInk::next(0) == 1);
+    assert(readerInk::next(1) == 2);
+    assert(readerInk::next(2) == 3);
+    assert(readerInk::next(3) == 0);
+    assert(readerInk::available(0, mask));
+    assert(readerInk::available(1, mask));
+    assert(readerInk::available(2, mask) == (mask == 0x0f));
+    assert(readerInk::available(3, mask) == (mask == 0x0f));
+  }
 }

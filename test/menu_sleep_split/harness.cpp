@@ -1,0 +1,147 @@
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+#include <BoardConfig.h>
+#include <HalClock.h>
+#include <HalTiltSensor.h>
+#include <SdCardFontRegistry.h>
+#include "SettingsList.h"
+#include "MenuCustomization.h"
+#include "activities/util/KeyboardLayoutSet.h"
+#include "Boundaries.inc"
+namespace menucustom {
+State& state() { static State data; return data; }
+bool save() { return true; }
+}
+struct RenderLock { template<class T> explicit RenderLock(T&) {} };
+struct SettingsActivity {
+  struct Cursor { int selected=0; bool followOnBuild=false; };
+  struct Input { bool hasTouch() const { return BoardConfig::hasTouch(); } } mappedInput;
+  int selectedCategoryIndex=0, settingsCount=0;
+  static constexpr int categoryCount=settingstabs::TAB_COUNT;
+#include "Fields.inc"
+  const std::vector<SettingInfo>* currentSettings=nullptr;
+  std::array<Cursor, settingstabs::TAB_COUNT> tabNavs{};
+  void rebuildRowItems() {}
+  Cursor& activeNav() { return tabNavs[selectedCategoryIndex]; }
+  int ringPos() const { return tabNavs[selectedCategoryIndex].selected; }
+  void selectCategory(int tab) {
+    selectedCategoryIndex=tab;
+    currentSettings=&danhSachCuaThe(static_cast<settingstabs::Tab>(tab));
+    settingsCount=currentSettings->size();
+  }
+  std::vector<SettingInfo>& danhSachCuaThe(settingstabs::Tab);
+  void rebuildSettingsLists();
+  std::string favoriteKey(int) const;
+  int focusFavorite(const std::string&);
+  bool showWakeHint() const;
+};
+#include "Methods.inc"
+struct HomeSettings {
+  std::vector<int> settingsGroups;
+  std::vector<std::string> rowLabels;
+  void build() {
+#include "HomeSettings.inc"
+  }
+};
+// Preserve symbolic label identities across unrelated translation regeneration.
+static const char* names[] = {
+#include "KeyNames.inc"
+};
+const char* trWeb(Language, StrId id) { return names[static_cast<int>(id)]; }
+const char* plainButtonText(const char* text) { return text; }
+void yield() {}
+void resetTaskWatchdogIfSubscribed() {}
+constexpr int CONTENT_LENGTH_UNKNOWN=-1;
+struct WebBoundary {
+  std::string output;
+  void setContentLength(int) {}
+  void send(int, const char*, const char*) {}
+  void sendContent(const char* s) { output += s; }
+};
+struct CrossPointWebServer {
+  std::unique_ptr<WebBoundary> server=std::make_unique<WebBoundary>();
+  Language requestLanguage() const { return Language::EN; }
+  void handleGetSettings() const;
+};
+#include "Web.inc"
+static int checks=0;
+static bool check(bool value, const char* message) {
+  ++checks;
+  if (!value) std::fprintf(stderr,"FAIL %s\n",message);
+  return value;
+}
+int main(int argc, char** argv) {
+  const std::string board=argc>1?argv[1]:"x3";
+  const bool tenor=argc>2?std::atoi(argv[2]):true;
+  const bool imu=argc>3?std::atoi(argv[3]):true;
+  const bool optional=argc>4?std::atoi(argv[4]):false;
+  BoardConfig::ACTIVE=board=="x3"?BoardConfig::XTEINK_X3:board=="x4"?BoardConfig::XTEINK_X4:BoardConfig::XTEINK_X4_PRO;
+  gpio.x3=board=="x3";
+  halTiltSensor.available=imu;
+  halClock.available=optional;
+  SETTINGS.uiTheme=tenor?CrossPointSettings::TENOR_UI:CrossPointSettings::CLASSIC;
+  SETTINGS.shortPwrBtn=optional?CrossPointSettings::FOOTNOTES:CrossPointSettings::IGNORE;
+  if(optional) discovered.push_back({"Dictionary", "dict"});
+  CrossPointWebServer web;
+  web.handleGetSettings();
+  bool ok=true;
+  ok &= check(settingstabs::TAB_COUNT==8,"eight settings tabs");
+  ok &= check(static_cast<int>(settingstabs::Tab::OTHER)==6,"old tab IDs preserved");
+  SettingsActivity activity;
+  activity.rebuildSettingsLists();
+  const auto& catalog=getBaseSettingsList();
+  std::map<std::string,int> occurrences, routes;
+  JsonDocument result;
+  auto counts=result["counts"].to<JsonArray>();
+  for(int tab=0;tab<settingstabs::TAB_COUNT;++tab) {
+    const auto& rows=activity.danhSachCuaThe(static_cast<settingstabs::Tab>(tab));
+    counts.add(rows.size());
+    for(const auto& row:rows) {
+      const auto key=row.key?std::string("settings/")+row.key:"action/"+std::to_string(static_cast<int>(row.action));
+      ++occurrences[key];
+      if(!row.key && row.action==SettingAction::None) continue;
+      routes[key]=tab;
+      const int index=activity.focusFavorite(key);
+      ok &= check(index>=0 && activity.selectedCategoryIndex==tab,"every visible pin resolves to its tab");
+      ok &= check(activity.favoriteKey(index)==key,"pin stable key round trip");
+    }
+  }
+  for(const auto& [key,n]:occurrences) ok &= check(n==1,"each visible row has exactly one tab");
+  const char* moved[]={"sleepScreen","sleepScreenCoverMode","sleepScreenCoverFilter","quickResumeSleepScreen","wakeIntoBook","sleepTimeoutMinutes"};
+  for(const char* key:moved) ok &= check(routes[std::string("settings/")+key]==7,"moved sleep row resolves to tab ID7");
+  ok &= check(gpio.x3 ? routes["settings/wakeButtons"]==7 : !routes.count("settings/wakeButtons"),"wakeButtons capability and new route");
+  const bool light=BoardConfig::hasPwmFrontlight()||BoardConfig::hasI2cFrontlight();
+  ok &= check(light ? routes["settings/frontlightRestoreOnWake"]==7 : !routes.count("settings/frontlightRestoreOnWake"),"restore light belongs to Sleep only on supported board");
+  const auto before=web.server->output;
+  web.server->output.clear(); web.handleGetSettings();
+  ok &= check(before==web.server->output,"grouping and pin route leave web JSON byte identical");
+  HomeSettings home; home.build();
+  const std::vector<int> desired={0,7,1,2,3,4,5,6};
+  ok &= check(home.settingsGroups==desired && home.rowLabels.size()==9,"Home exposes eight default ordered entries plus file transfer");
+  StrId labels[8]{};
+  ok &= check(settingstabs::dongCuaTheCaiDat(labels,8)==8,"Home label helper includes eight groups");
+  ok &= check(labels[7]==StrId::STR_CAT_OTHER,"default labels end with Other");
+  for(int i=0;i<settingstabs::TAB_COUNT;++i) {
+    ok &= check(settingstabs::tenThe(static_cast<settingstabs::Tab>(i))!=StrId::STR_NONE_OPT,"every tab named");
+    for(int j=0;j<i;++j) ok &= check(settingstabs::tenThe(static_cast<settingstabs::Tab>(i))!=settingstabs::tenThe(static_cast<settingstabs::Tab>(j)),"tab labels unique");
+  }
+  for(const auto& [key,tab]:routes) {
+    activity.focusFavorite(key);
+    ok &= check(activity.showWakeHint()==(gpio.x3 && key=="settings/wakeButtons"),"wake hint limited to selected wake row");
+  }
+  if(gpio.x3) {
+    activity.focusFavorite("settings/wakeButtons");
+    SETTINGS.globalStatusBarMode=CrossPointSettings::GLOBAL_STATUS_BAR_OFF;
+    ok &= check(!activity.showWakeHint(),"hidden global status suppresses hint and reserve");
+  }
+  result["catalog"]=catalog.size(); result["checks"]=checks;
+  JsonDocument webDoc; deserializeJson(webDoc, before); result["web"]=webDoc;
+  std::string output; serializeJson(result,output); std::puts(output.c_str());
+  return ok?0:1;
+}

@@ -742,6 +742,15 @@ static bool visitDiagnosticSetting(const String& key, Visitor&& visitor) {
 }
 #endif
 
+static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
+                                                   const bool foregroundActivityManagesTiltSensor) {
+  if (foregroundReader) {
+    halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, true);
+  } else if (!foregroundActivityManagesTiltSensor) {
+    halTiltSensor.update(CrossPointTiltPageTurn::TILT_OFF, SETTINGS.orientation, false);
+  }
+}
+
 void loop() {
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
@@ -788,9 +797,11 @@ void loop() {
   }
 
   // Tab gestures are sampled by the activity at the end of the previous loop.
-  // Preserve their activity before the foreground reader poll clears the flag.
+  // Preserve their activity before the foreground route clears the flag.
   const bool pendingTiltActivity = halTiltSensor.hadActivity();
-  halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isForegroundReaderActivity());
+  const bool foregroundReader = activityManager.isForegroundReaderActivity();
+  const bool foregroundActivityManagesTiltSensor = activityManager.isForegroundActivityManagingTiltSensor();
+  updateTiltSensorForForegroundActivity(foregroundReader, foregroundActivityManagesTiltSensor);
 
 #if CROSSPOINT_BLE_HID_HOST
   // Page turner BLE: callbacks only queue HID reports. Map each new report on

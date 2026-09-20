@@ -41,6 +41,7 @@
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "activities/settings/BlePageTurnerActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -1125,6 +1126,11 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
     }
     case EpubReaderMenuActivity::MenuAction::SYNC: {
       launchKOReaderSync();
+      break;
+    }
+    case EpubReaderMenuActivity::MenuAction::BLUETOOTH: {
+      startActivityForResult(std::make_unique<BlePageTurnerActivity>(renderer, mappedInput),
+                             [this](const ActivityResult&) { requestUpdate(); });
       break;
     }
     case EpubReaderMenuActivity::MenuAction::BOOKMARKS: {

@@ -1,6 +1,7 @@
 #pragma once
 #include <I18n.h>
 
+#include <array>
 #include <cstdint>
 
 namespace settingstabs {
@@ -28,8 +29,10 @@ enum class Action : uint8_t {
   BlePageTurner,
 };
 
-enum class Tab : uint8_t { SCREEN, READER, CONTROLS, SYSTEM, DEVICE, KEYBOARD, OTHER };
-inline constexpr int TAB_COUNT = 7;
+enum class Tab : uint8_t { SCREEN, READER, CONTROLS, SYSTEM, DEVICE, KEYBOARD, OTHER, SLEEP };
+inline constexpr int TAB_COUNT = 8;
+// Display order is independent of stable persisted tab IDs.
+inline constexpr std::array<uint8_t, TAB_COUNT> DEFAULT_ORDER = {0, 7, 1, 2, 3, 4, 5, 6};
 
 // Nhan cua the.
 StrId tenThe(Tab tab);

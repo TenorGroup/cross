@@ -508,6 +508,10 @@ bool ActivityManager::isForegroundReaderActivity() const {
   return pendingAction == PendingAction::None && currentActivity && currentActivity->isReaderActivity();
 }
 
+bool ActivityManager::isForegroundActivityManagingTiltSensor() const {
+  return pendingAction == PendingAction::None && currentActivity && currentActivity->managesTiltSensor();
+}
+
 bool ActivityManager::isForegroundReaderReady() const {
   return isForegroundReaderActivity() && static_cast<ReaderActivity*>(currentActivity.get())->isPageReady();
 }

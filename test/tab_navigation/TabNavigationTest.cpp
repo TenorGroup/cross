@@ -6,6 +6,7 @@
 #include <new>
 
 #include "SettingsList.h"
+#include "activities/reader/ReaderUtils.h"
 
 // Do cu cap phat LON NHAT trong mot doan ma. Khong dem tong, vi thu giet may la
 // mot khoi LIEN NHAU khong xin duoc chu khong phai tong so byte: tren may that
@@ -36,6 +37,13 @@ extern bool held[8];
 extern unsigned long heldMs;
 void reset();
 }  // namespace faketest
+
+namespace tiltfixture {
+extern uint8_t lastMode;
+extern bool lastTargetActive;
+void reset();
+void injectPhysicalForward();
+}  // namespace tiltfixture
 
 HalDisplay& hostTestDisplay();
 
@@ -194,6 +202,49 @@ TEST_F(TabScreenFixture, TiltQueuesOneTabStepAndKeepsPerTabFocus) {
   ASSERT_TRUE(screen.queueTilt(true, true));
   screen.loop();
   EXPECT_EQ(screen.tabSteps, coalescedSteps + 1);
+}
+
+TEST_F(TabScreenFixture, ReaderTiltModeStaysIndependentFromTabTiltMode) {
+  SETTINGS.tiltTabNavigation = CrossPointSettings::TILT_NVERTED;
+  const uint8_t readerModes[] = {CrossPointSettings::TILT_OFF, CrossPointSettings::TILT_NORMAL,
+                                 CrossPointSettings::TILT_NVERTED};
+
+  for (const uint8_t readerMode : readerModes) {
+    SCOPED_TRACE(readerMode);
+    SETTINGS.tiltPageTurn = readerMode;
+    tiltfixture::reset();
+    tiltfixture::injectPhysicalForward();
+    halTiltSensor.update(SETTINGS.tiltPageTurn, CrossPointOrientation::PORTRAIT, true);
+
+    const auto turn = ReaderUtils::detectPageTurn(input);
+    EXPECT_EQ(tiltfixture::lastMode, readerMode);
+    EXPECT_TRUE(tiltfixture::lastTargetActive);
+    EXPECT_EQ(turn.next, readerMode == CrossPointSettings::TILT_NORMAL);
+    EXPECT_EQ(turn.prev, readerMode == CrossPointSettings::TILT_NVERTED);
+    EXPECT_EQ(turn.fromTilt, readerMode != CrossPointSettings::TILT_OFF);
+  }
+}
+
+TEST_F(TabScreenFixture, TabTiltModeStaysIndependentFromReaderTiltMode) {
+  SETTINGS.tiltPageTurn = CrossPointSettings::TILT_NORMAL;
+  const uint8_t tabModes[] = {CrossPointSettings::TILT_OFF, CrossPointSettings::TILT_NORMAL,
+                              CrossPointSettings::TILT_NVERTED};
+
+  for (const uint8_t tabMode : tabModes) {
+    SCOPED_TRACE(tabMode);
+    SETTINGS.tiltTabNavigation = tabMode;
+    screen.tab = 0;
+    screen.tabSteps = 0;
+    tiltfixture::reset();
+    tiltfixture::injectPhysicalForward();
+    screen.loop();
+
+    EXPECT_EQ(tiltfixture::lastMode, tabMode);
+    EXPECT_TRUE(tiltfixture::lastTargetActive);
+    EXPECT_EQ(screen.tabSteps, tabMode == CrossPointSettings::TILT_OFF ? 0 : 1);
+    EXPECT_EQ(screen.tab, tabMode == CrossPointSettings::TILT_NORMAL ? 1
+                                                                       : tabMode == CrossPointSettings::TILT_NVERTED ? 2 : 0);
+  }
 }
 
 TEST_F(TabScreenFixture, ModalAndInactiveTargetsRejectTiltEvents) {

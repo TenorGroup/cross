@@ -17,6 +17,7 @@
 #include "MappedInputManager.h"
 #include "FileTransferState.h"
 #include "SdCardFontSystem.h"
+#include "SettingsList.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -122,6 +123,17 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
 
   {
     RenderLock lock(*this);
+    // Wi-Fi time/timezone persistence may have rebuilt the settings catalog.
+    // Release it after that child exits and before manifest/file TLS starts.
+#ifdef ESP_PLATFORM
+    const uint32_t before = ESP.getFreeHeap();
+#endif
+    releaseBaseSettingsList();
+#ifdef ESP_PLATFORM
+    const uint32_t after = ESP.getFreeHeap();
+    LOG_INF("FONT", "Settings catalog released=%u heap=%u largest=%u", after >= before ? after - before : 0u,
+            after, ESP.getMaxAllocHeap());
+#endif
     state_ = LOADING_MANIFEST;
   }
   requestUpdateAndWait();

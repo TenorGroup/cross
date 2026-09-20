@@ -133,6 +133,7 @@ add_subdirectory(http_downloader)
 add_subdirectory(ble_integration)
 
 add_subdirectory(settings_catalog)
+add_subdirectory(menu_tilt_settings)
 add_subdirectory(settings_font_memory)
 
 add_subdirectory(reading_stats_clock)
@@ -153,6 +154,11 @@ add_subdirectory(ui_layout)
 add_subdirectory(dropcap_raster)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME TiltSensorForegroundOwnership COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tilt_sensor_ownership/run.py" --source "${REPO_ROOT}")
+add_test(NAME BleMenuUxRegression COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ble_menu_ux/run.py" "${REPO_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/ble-menu-ux")
+add_test(NAME InkQuickCycleContract COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ink_quick_cycle/test_contract.py")
+add_test(NAME MenuSleepSplitRegression COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/menu_sleep_split/run.py" --repo "${REPO_ROOT}" --output "${CMAKE_CURRENT_BINARY_DIR}/menu-sleep-split" --sanitize)
+set_tests_properties(MenuSleepSplitRegression PROPERTIES RUN_SERIAL TRUE TIMEOUT 180)
 add_test(NAME WiFiPowerProductionBehavior COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/wifi_power/run.py" --source-root "${REPO_ROOT}" --output "${CMAKE_CURRENT_BINARY_DIR}/wifi-power-behavior")
 
 add_test(NAME PowerTimeoutProductionBehavior COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/power_timeouts/run.py" --source-root "${REPO_ROOT}" --output "${CMAKE_CURRENT_BINARY_DIR}/power-timeout-behavior")

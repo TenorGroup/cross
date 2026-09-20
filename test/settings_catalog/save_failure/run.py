@@ -84,6 +84,8 @@ for mode in modes:
                   'void SettingsActivity::toggleCurrentSetting()',
                   'void SettingsActivity::openSleepTimeoutPicker()',
                   'void SettingsActivity::render(RenderLock&&)']
+    if 'bool SettingsActivity::showWakeHint() const' in source:
+        signatures.insert(0, 'bool SettingsActivity::showWakeHint() const')
     if 'bool SettingsActivity::saveSettings()' in source:
         signatures.insert(0, 'bool SettingsActivity::saveSettings()')
     (output / 'Methods.inc').write_text(''.join(method_slice(source, signature)

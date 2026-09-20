@@ -11,6 +11,7 @@ from PIL import Image
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
+SETTINGS_ORDER = [0, 7, 1, 2, 3, 4, 5, 6]
 
 
 class MenuNavigationContractTest(unittest.TestCase):
@@ -37,7 +38,7 @@ class MenuNavigationContractTest(unittest.TestCase):
     def write_pins(self, pins):
         (self.store / 'menu-customization.json').write_text(json.dumps({
             'version': 1, 'tabs': {
-                'home': [0, 1, 4, 2, 3], 'settings': list(range(7)),
+                'home': [0, 1, 4, 2, 3], 'settings': SETTINGS_ORDER,
                 'reader': list(range(4)), 'text': list(range(4)),
             }, 'pins': pins,
         }))
@@ -58,8 +59,9 @@ class MenuNavigationContractTest(unittest.TestCase):
 
     @staticmethod
     def group(index):
-        # Home Settings begins on Transfer, followed by Display through Other.
-        return ['UP'] + ['RIGHT'] * (index + 1) + ['CONFIRM']
+        # Home Settings begins on Transfer, followed by the persisted display
+        # order. Stable tab IDs remain 0..6, with Sleep appended as ID 7.
+        return ['UP'] + ['RIGHT'] * (SETTINGS_ORDER.index(index) + 1) + ['CONFIRM']
 
     def test_clock_cursor_preserves_legacy_hidden_value(self):
         self.settings['statusBarClock'] = 0
@@ -140,6 +142,20 @@ class MenuNavigationContractTest(unittest.TestCase):
                 self.assertEqual(rebooted[field], 1)
                 self.assertEqual(rebooted[other], 0)
 
+    def test_tilt_tab_pin_changes_only_menu_navigation(self):
+        self.settings['tiltPageTurn'] = 2
+        self.settings['tiltTabNavigation'] = 0
+        self.write_settings()
+        self.write_pins(['settings/tiltTabNavigation'])
+        log, saved = self.run_keys(['DOWN', 'DOWN', 'CONFIRM', 'BACK'])
+        self.assertIn('Entering activity: Settings', log)
+        self.assertEqual(saved['tiltTabNavigation'], 1, log)
+        self.assertEqual(saved['tiltPageTurn'], 2, log)
+        self.assertEqual(json.loads((self.store / 'menu-customization.json').read_text())['pins'],
+                         ['settings/tiltTabNavigation'])
+        _, rebooted = self.run_keys([])
+        self.assertEqual((rebooted['tiltPageTurn'], rebooted['tiltTabNavigation']), (2, 1))
+
     def test_hiding_global_status_bar_reclaims_space_on_the_same_screen(self):
         self.settings['globalStatusBarMode'] = 0
         self.write_settings()
@@ -150,19 +166,20 @@ class MenuNavigationContractTest(unittest.TestCase):
             [(3300, 'small'), (3850, 'off-live'), (5100, 'off-reopened')])
         self.assertEqual(saved['globalStatusBarMode'], 1, log)
 
-        def row_ink(name):
+        def footer_ink(name):
             with Image.open(self.sd / (name + '.bmp')) as image:
                 gray = image.convert('L')
                 pixels = gray.tobytes()
                 dark_is_ink = sum(value < 128 for value in pixels) < len(pixels) / 2
-                row = gray.crop((0, 700, gray.width, 721)).tobytes()
-                return sum((value < 128) == dark_is_ink for value in row)
+                footer = gray.crop((0, 760, gray.width, gray.height)).tobytes()
+                return sum((value < 128) == dark_is_ink for value in footer)
 
-        # The compact symbolic footer lets Small show the eleventh row too.
-        # Off keeps that row and removes the footer immediately and after reopen.
-        self.assertGreater(row_ink('small'), 400, log)
-        self.assertGreater(row_ink('off-live'), 400, log)
-        self.assertEqual(row_ink('off-live'), row_ink('off-reopened'), log)
+        # Sleep rows moved out of Display, so there is no eleventh row to probe.
+        # Measure the actual footer band: Small paints it; Off removes it both
+        # immediately and after reopening the same screen.
+        self.assertGreater(footer_ink('small'), 400, log)
+        self.assertEqual(footer_ink('off-live'), 0, log)
+        self.assertEqual(footer_ink('off-live'), footer_ink('off-reopened'), log)
 
     def test_file_browser_reclaims_hidden_footer_tip_space(self):
         books = self.sd / 'books'

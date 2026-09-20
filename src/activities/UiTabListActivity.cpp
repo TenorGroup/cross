@@ -24,7 +24,7 @@ UiTabListActivity::UiTabListActivity(const char* name, GfxRenderer& renderer, Ma
 void UiTabListActivity::loop() {
   const bool acceptsTilt = acceptsTiltTabNavigation();
   const auto orientation = static_cast<CrossPointOrientation::Value>(renderer.getOrientation());
-  halTiltSensor.update(SETTINGS.tiltPageTurn, static_cast<uint8_t>(orientation), acceptsTilt);
+  halTiltSensor.update(SETTINGS.tiltTabNavigation, static_cast<uint8_t>(orientation), acceptsTilt);
   if (acceptsTilt) {
     const bool forward = halTiltSensor.wasTiltedForward();
     const bool backward = halTiltSensor.wasTiltedBack();
@@ -209,8 +209,9 @@ void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& pr
     // wrapped items per-row, so the dense height stays for the rest.
     props.rowHeight = rowHeight;
   }
-  const uint16_t rows =
-      fui::listVisibleRows(screen.body(), rowHeight, props.rowGap >= 0 ? props.rowGap : screen.theme().listRowGap);
+  const int rowGap = props.rowGap >= 0 ? props.rowGap : screen.theme().listRowGap;
+  reserveMoreBelowChevron(screen, rowHeight, rowGap);
+  const uint16_t rows = fui::listVisibleRows(screen.body(), rowHeight, rowGap);
   n.visibleRows = rows > 0 ? rows : 1;
   if (n.followOnBuild) {
     // Screen entry / tab switch: show the tab's remembered selection, or the
