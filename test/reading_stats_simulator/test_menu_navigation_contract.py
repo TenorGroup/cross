@@ -158,9 +158,9 @@ class MenuNavigationContractTest(unittest.TestCase):
                 row = gray.crop((0, 700, gray.width, 721)).tobytes()
                 return sum((value < 128) == dark_is_ink for value in row)
 
-        # Display's eleventh row fits in the recovered footer area. The same
-        # row must appear immediately and after reopening the saved setting.
-        self.assertLess(row_ink('small'), 120, log)
+        # The compact symbolic footer lets Small show the eleventh row too.
+        # Off keeps that row and removes the footer immediately and after reopen.
+        self.assertGreater(row_ink('small'), 400, log)
         self.assertGreater(row_ink('off-live'), 400, log)
         self.assertEqual(row_ink('off-live'), row_ink('off-reopened'), log)
 

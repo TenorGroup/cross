@@ -150,7 +150,8 @@ class UiSizesV108Test(unittest.TestCase):
         band = selected_band(image, top=top, bottom=792 - FOOTERS[tier])
         self.assertIsNotNone(band, "Selected row is missing from framebuffer")
         self.assertGreaterEqual(band[1] - band[0], BODY_LINES[tier], band)
-        self.assertLess(band[1], 792 - FOOTERS[tier], "Selected row touches footer")
+        # Bands are half-open. Ending at footer_start leaves every footer pixel free.
+        self.assertLessEqual(band[1], 792 - FOOTERS[tier], "Selected row overlaps footer")
         return band
 
     def matrix(self, tier, locale):

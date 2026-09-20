@@ -81,8 +81,8 @@ class StatusBarModesTest(unittest.TestCase):
             'day_noi_dung': max(noi_dung) if noi_dung else 0,
             'muc_dai_day': int(muc[DAY_DAY:].sum()),
             'so_hang': hang,
-            # Vung cua hang thu 11 trong danh sach Hien thi. Muc Mac dinh nho khong
-            # voi toi day nen gan nhu trong; muc Tat phai ve duoc nhan cua hang do.
+            # Vung cua hang thu 11 trong danh sach Hien thi. Muc nho compact va
+            # muc Tat deu hien hang nay; muc Lon giu reserve day du nen dung o hang 10.
             'muc_hang_11': int(muc[700:721].sum()),
         }
 
@@ -94,24 +94,26 @@ class StatusBarModesTest(unittest.TestCase):
         self.viet_cai_dat(globalStatusBarMode=1)
         self.chay(MO_HIEN_THI + '5600:QUIT', 'off', 5000)
         tat = self.do('off')
-        # Danh sach Hien thi co 11 hang: muc Mac dinh nho chi thay 10, muc Tat thay du 11.
+        # Danh sach Hien thi co 11 hang. Footer nho compact va muc Tat deu thay du 11.
         self.assertGreater(tat['muc_hang_11'], 400,
                            f"Tat phai ve duoc hang thu 11: {nho} vs {tat}")
-        self.assertLess(nho['muc_hang_11'], 120,
-                        f"Mac dinh nho khong duoc voi toi hang thu 11: {nho} vs {tat}")
+        self.assertGreater(nho['muc_hang_11'], 400,
+                           f"Mac dinh nho compact phai hien hang thu 11: {nho} vs {tat}")
         self.assertLess(tat['muc_dai_day'], nho['muc_dai_day'] / 2,
                         f"Tat phai bo pin/gio/nhan nut: {nho} vs {tat}")
 
     def test_muc_lon_giu_nguyen_bo_cuc(self):
-        """Lon: van 10 hang nhu Mac dinh nho, chi khac net ve o dai day."""
+        """Lon: giu reserve day du va 10 hang, trong khi Nho compact hien 11 hang."""
         self.viet_cai_dat(globalStatusBarMode=0)
         self.chay(MO_HIEN_THI + '5600:QUIT', 'small2', 5000)
         nho = self.do('small2')
         self.viet_cai_dat(globalStatusBarMode=2)
         self.chay(MO_HIEN_THI + '5600:QUIT', 'large2', 5000)
         lon = self.do('large2')
-        self.assertEqual(lon['day_noi_dung'], nho['day_noi_dung'],
-                         f"Lon khong duoc dan lai bo cuc: {nho} vs {lon}")
+        self.assertGreater(nho['muc_hang_11'], 400,
+                           f"Nho compact phai hien hang thu 11: {nho} vs {lon}")
+        self.assertLess(lon['muc_hang_11'], 120,
+                        f"Lon phai giu reserve day du va dung o hang 10: {nho} vs {lon}")
         self.assertGreater(lon['muc_dai_day'], nho['muc_dai_day'],
                            f"Lon phai ve to hon trong cung dai: {nho} vs {lon}")
 
