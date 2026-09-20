@@ -146,6 +146,7 @@ class SettingsActivity final : public UiTabListActivity {
   const int theBanDau;  // the mo san, do nguoi goi dat
   int settingsCount = 0;
   int pendingSiblingIndex = -1;
+  bool releaseListsForFontDownload_ = false;
 
   // Per-category settings derived from shared list + device-only actions
   std::vector<SettingInfo> displaySettings;
@@ -224,6 +225,8 @@ class SettingsActivity final : public UiTabListActivity {
   explicit SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int theBanDau = 0,
                             bool fromHomeGroup = false);
   void onEnter() override;
+  void onPause() override;
+  void onResume() override;
   std::string navigationLabel() const override { return tabLabel(activeTab()); }
   bool selectSettingsSibling(int direction) override;
   bool openPendingSettingsSibling() override;

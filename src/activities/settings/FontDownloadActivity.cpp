@@ -775,9 +775,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
           onGoHome();
           return;
         }
-        RenderLock lock(*this);
-        state_ = FAMILY_LIST;
-        rowsDirty_ = true;
+        returnToFamilyList(fontdownload::ReleaseButton::Back);
         return;
       }
       LOG_ERR("FONT", "Font install failed: %s download=%d stage=%d", str(file.name), downloadResult,
@@ -1001,25 +999,17 @@ bool FontDownloadActivity::handleCustomInput() {
   if (state_ == COMPLETE) {
     int x = 0;
     int y = 0;
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
-        mappedInput.wasPressed(MappedInputManager::Button::Confirm) || mappedInput.wasScreenTapped(x, y)) {
-      {
-        RenderLock lock(*this);
-        state_ = FAMILY_LIST;
-        rowsDirty_ = true;  // the completed download changed installed/hasUpdate
-      }
-      terminalIdleTimerStarted_ = false;
-      requestUpdate();
+    const bool backPressed = mappedInput.wasPressed(MappedInputManager::Button::Back);
+    const bool confirmPressed = !backPressed && mappedInput.wasPressed(MappedInputManager::Button::Confirm);
+    const bool screenTapped = !backPressed && !confirmPressed && mappedInput.wasScreenTapped(x, y);
+    if (backPressed || confirmPressed || screenTapped) {
+      returnToFamilyList(backPressed   ? fontdownload::ReleaseButton::Back
+                         : confirmPressed ? fontdownload::ReleaseButton::Confirm
+                                          : fontdownload::ReleaseButton::None);
     }
   } else if (state_ == ERROR) {
     if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-      {
-        RenderLock lock(*this);
-        state_ = FAMILY_LIST;
-        rowsDirty_ = true;  // the failed download reset installed/hasUpdate
-      }
-      terminalIdleTimerStarted_ = false;
-      requestUpdate();
+      returnToFamilyList(fontdownload::ReleaseButton::Back);
     } else if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
       if (downloadingFamilyIndex_ >= 0 && downloadingFamilyIndex_ < static_cast<int>(families_.size())) {
         terminalIdleTimerStarted_ = false;
@@ -1027,13 +1017,7 @@ bool FontDownloadActivity::handleCustomInput() {
         requestUpdateAndWait();
         return true;
       } else {
-        {
-          RenderLock lock(*this);
-          state_ = FAMILY_LIST;
-          rowsDirty_ = true;
-        }
-        terminalIdleTimerStarted_ = false;
-        requestUpdate();
+        returnToFamilyList(fontdownload::ReleaseButton::Confirm);
       }
     } else {
       int x = 0;
@@ -1045,13 +1029,7 @@ bool FontDownloadActivity::handleCustomInput() {
           requestUpdateAndWait();
           return true;
         }
-        {
-          RenderLock lock(*this);
-          state_ = FAMILY_LIST;
-          rowsDirty_ = true;
-        }
-        terminalIdleTimerStarted_ = false;
-        requestUpdate();
+        returnToFamilyList(fontdownload::ReleaseButton::None);
       }
     }
   }
@@ -1059,8 +1037,40 @@ bool FontDownloadActivity::handleCustomInput() {
   return true;
 }
 
+bool FontDownloadActivity::handleButtons() {
+  using Button = MappedInputManager::Button;
+  switch (familyListReleaseGuard_.button()) {
+    case fontdownload::ReleaseButton::Back:
+      if (familyListReleaseGuard_.consumeIfReleased(mappedInput.wasReleased(Button::Back),
+                                                     mappedInput.isPressed(Button::Back))) {
+        return true;
+      }
+      break;
+    case fontdownload::ReleaseButton::Confirm:
+      if (familyListReleaseGuard_.consumeIfReleased(mappedInput.wasReleased(Button::Confirm),
+                                                     mappedInput.isPressed(Button::Confirm))) {
+        return true;
+      }
+      break;
+    case fontdownload::ReleaseButton::None:
+      break;
+  }
+  return UiListActivity::handleButtons();
+}
+
 bool FontDownloadActivity::terminalStateIdleExpired(const unsigned long now) const {
   return terminalIdleTimerStarted_ && now - terminalStateSince_ >= TERMINAL_IDLE_TIMEOUT_MS;
+}
+
+void FontDownloadActivity::returnToFamilyList(const fontdownload::ReleaseButton releaseButton) {
+  familyListReleaseGuard_.arm(releaseButton);
+  {
+    RenderLock lock(*this);
+    state_ = FAMILY_LIST;
+    rowsDirty_ = true;
+  }
+  terminalIdleTimerStarted_ = false;
+  requestUpdate();
 }
 
 // --- Rendering ---

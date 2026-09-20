@@ -194,6 +194,37 @@ void SettingsActivity::restoreNavigation(const MenuNavigationState& state) {
   UiTabListActivity::restoreNavigation(restored);
 }
 
+void SettingsActivity::onPause() {
+  if (!releaseListsForFontDownload_) return;
+  // ActivityManager holds RenderLock and has already saved navigation. The
+  // download child owns its data, so these descriptors and rows can be rebuilt
+  // on return. Other children can retain descriptor pointers and keep them.
+#ifdef ESP_PLATFORM
+  const uint32_t before = ESP.getFreeHeap();
+#endif
+  closeRouting();
+  currentSettings = nullptr;
+  settingsCount = 0;
+  std::vector<fui::ListItem>().swap(rowItems_);
+  std::vector<std::string>().swap(rowValues_);
+  for (int tab = 0; tab < settingstabs::TAB_COUNT; ++tab) {
+    std::vector<SettingInfo>().swap(danhSachCuaThe(static_cast<settingstabs::Tab>(tab)));
+  }
+#ifdef ESP_PLATFORM
+  const uint32_t after = ESP.getFreeHeap();
+  LOG_INF("SETTINGS", "Font download rows released=%u heap=%u largest=%u", after >= before ? after - before : 0u,
+          after, ESP.getMaxAllocHeap());
+#endif
+}
+
+void SettingsActivity::onResume() {
+  if (!releaseListsForFontDownload_) return;
+  // The manager still owns RenderLock here, before the result handler can
+  // request a repaint. Keep the remembered tab and each tab's cursor.
+  rebuildSettingsLists();
+  releaseListsForFontDownload_ = false;
+}
+
 void SettingsActivity::selectCategory(const int categoryIndex) {
   // Same render-vs-button race selectTab() documents in the reader menu: the
   // render task reads currentSettings/rowItems_ mid-build while a tab step
@@ -491,10 +522,10 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResult(std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::DownloadFonts:
+        releaseListsForFontDownload_ = true;
         startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput),
                                [this](const ActivityResult&) {
                                  saveSettings();
-                                 rebuildSettingsLists();
                                });
         break;
       case SettingAction::TextSettings:

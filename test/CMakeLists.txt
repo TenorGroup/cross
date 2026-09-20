@@ -133,6 +133,7 @@ add_subdirectory(http_downloader)
 add_subdirectory(ble_integration)
 
 add_subdirectory(settings_catalog)
+add_subdirectory(settings_font_memory)
 
 add_subdirectory(reading_stats_clock)
 

@@ -10,6 +10,7 @@
 #include "SdCardFont.h"
 #include "activities/UiListActivity.h"
 #include "activities/settings/FontDownloadProgress.h"
+#include "activities/settings/FontDownloadReleaseGuard.h"
 
 // JSON schema version of the fonts.json manifest. The canonical version for
 // the build tooling lives in lib/EpdFont/scripts/cpfont_version.py. This
@@ -120,6 +121,7 @@ class FontDownloadActivity final : public UiListActivity {
   // This is read and updated only under RenderLock. It lets the downloader
   // keep polling Back while an e-ink frame holds the renderer mutex.
   fontdownload::ProgressRenderGate progressRenderGate_;
+  fontdownload::ReleaseConsumptionGuard familyListReleaseGuard_;
   int downloadingFamilyIndex_ = 0;
   std::string errorMessage_;
   bool cancelRequested_ = false;
@@ -145,10 +147,12 @@ class FontDownloadActivity final : public UiListActivity {
   void activateIndex(int index) override;
   freeink::ui::ListNav& activeNav() override;
   void onBackButton() override;
+  bool handleButtons() override;
   // Non-list states (loading, downloading, complete, error) consume the loop
   // pass here; the group and family lists use the base list protocol.
   bool handleCustomInput() override;
   bool terminalStateIdleExpired(unsigned long now) const;
+  void returnToFamilyList(fontdownload::ReleaseButton releaseButton);
 
   void activateSelected();
 

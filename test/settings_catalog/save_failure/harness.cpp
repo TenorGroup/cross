@@ -104,6 +104,7 @@ struct SettingsActivity {
   PopupBoundary optionPopup;
 #include "State.inc"
   bool fromHomeGroup = false;
+  bool releaseListsForFontDownload_ = false;
   unsigned finished = 0, home = 0, updates = 0, rebuilds = 0;
   bool uiApplyOk = true;
   uint8_t uiSizeSeenDuringApply = 255;
