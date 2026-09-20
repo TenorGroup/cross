@@ -1,11 +1,22 @@
 """Shared tab and hint geometry through real X3/X4 simulator input.
 Use TEST_PROGRAM and MENU_TEST_OUTPUT as in test_menu_customization.py.
 """
-import sys,shutil,os,concurrent.futures
+import sys,shutil,os,concurrent.futures,json
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_menu_customization as t
 from PIL import Image,ImageChops
+
+def centered_ink_bands(image,top,bottom):
+ im=image.convert('L')
+ if im.width>im.height:im=im.rotate(90,expand=True)
+ bands=[];start=None
+ for y in range(top,bottom):
+  ink=any(im.getpixel((x,y))<128 for x in range(90,438))
+  if ink and start is None:start=y
+  elif not ink and start is not None:bands.append((start,y));start=None
+ if start is not None:bands.append((start,bottom))
+ return bands
 
 def reader():
  name='reader-layout';sd=t.o/('sd-'+name);sd.mkdir(parents=True,exist_ok=True);shutil.copy(t.r/'test/epubs/test_kerning_ligature.epub',sd/'book.epub')
@@ -26,6 +37,29 @@ def hints():
  t.run(name,'1000:DOWN;2000:CONFIRM;3300:BACK:1200;5000:UP;5800:RIGHT;6600:CONFIRM;8000:QUIT',[(1500,'folder'),(2900,'nested'),(7500,'settings')])
  a=Image.open(t.o/(name+'-folder.png'));b=Image.open(t.o/(name+'-nested.png'));c=Image.open(t.o/(name+'-settings.png'))
  for v in [b,c]:assert ImageChops.difference(a.crop((100,726,425,748)),v.crop((100,726,425,748))).getbbox() is None
- print('PASS exact pin-tip font and position across Folder, nested folder, Settings',flush=True)
+ measured=[]
+ # The Vietnamese pin hint contains a real g descender. Small symbolic footers
+ # leave exactly two blank rows before the logical symbol lane. Large footers
+ # retain their legacy caption band at every UI tier.
+ growth=(0,5,12);large_bands=((730,743),(687,702),(671,690))
+ for tier in range(3):
+  row={'tier':tier}
+  for mode in (0,2):
+   label=f'footer-{tier}-{mode}';root=t.o/('sd-'+label);(root/'books/a').mkdir(parents=True)
+   t.run(label,'1000:DOWN;2400:QUIT',[(1800,'folder')],settings={'uiTextSize':tier,'globalStatusBarMode':mode,'tenorButtonSymbols':1})
+   image=Image.open(t.o/(label+'-folder.png'))
+   if mode==0:
+    symbol_lane_top=772-growth[tier]
+    bands=centered_ink_bands(image,symbol_lane_top-40,symbol_lane_top)
+    assert len(bands)==1,(tier,mode,bands)
+    assert symbol_lane_top-bands[0][1]==2,(tier,mode,symbol_lane_top,bands)
+    row['small_tip_band']=bands[0];row['small_symbol_lane_top']=symbol_lane_top;row['small_gap']=2
+   else:
+    bands=centered_ink_bands(image,640,750)
+    assert bands==[large_bands[tier]],(tier,mode,bands,large_bands[tier])
+    row['large_tip_band']=bands[0]
+  measured.append(row)
+ (t.o/'footer-geometry.json').write_text(json.dumps(measured,indent=2)+'\n')
+ print('PASS exact pin-tip position, small descender gap, and unchanged large anchor across three tiers',flush=True)
 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as p:
  for f in [p.submit(reader),p.submit(hints)]:f.result()
