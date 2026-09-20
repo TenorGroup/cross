@@ -633,6 +633,7 @@ void OpdsBookBrowserActivity::launchSearch() {
         onGoHome();
         return;
       }
+      idleTimerStarted = false;
       state = BrowserState::BROWSING;
       requestUpdate();
       return;

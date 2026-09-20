@@ -2,14 +2,19 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
+#include <EpdFont.h>
+#include <EpdFontFamily.h>
+#include <CjkTextWrap.h>
+#include <Utf8.h>
 #include <builtinFonts/bevietnampro_8_regular.h>
 #include <builtinFonts/bevietnampro_10_regular.h>
 #include <builtinFonts/geist_12_regular.h>
 
 constexpr int SMALL_FONT_ID = 1;
-namespace EpdFontFamily { enum Style { REGULAR }; }
+namespace BidiUtils { enum class BidiBaseDir { AUTO }; }
 struct Settings {
   int uiTextSize = 0;
   bool hidden = false, large = false, tenorButtonSymbols = true;
@@ -29,9 +34,21 @@ struct GfxRenderer {
   enum { BW };
   mutable std::vector<unsigned char> pixels = std::vector<unsigned char>(480 * 800);
   mutable std::vector<int> ys;
+  mutable std::vector<std::string> paintedText;
+  mutable int attemptedInkTop = 800, attemptedInkBottom = 0;
+  int screenHeight = 800;
+  int fontOverride = -1;
   const EpdFontData& font() const {
-    return SETTINGS.uiTextSize == 0 ? bevietnampro_8_regular : SETTINGS.uiTextSize == 1 ? bevietnampro_10_regular : geist_12_regular;
+    const int face = fontOverride < 0 ? SETTINGS.uiTextSize : fontOverride;
+    return face == 0 ? bevietnampro_8_regular : face == 1 ? bevietnampro_10_regular : geist_12_regular;
   }
+  const EpdFont& fontObject() const {
+    static const EpdFont fonts[] = {EpdFont(&bevietnampro_8_regular), EpdFont(&bevietnampro_10_regular), EpdFont(&geist_12_regular)};
+    return fonts[SETTINGS.uiTextSize];
+  }
+  const std::map<int, EpdFontFamily> fontMap = {{SMALL_FONT_ID, EpdFontFamily(&fontObject())}};
+  int resolveTextFontId(int fontId, const char*, EpdFontFamily::Style) const { return fontId; }
+  const char* resolveVisualText(const char* text, std::string&, BidiUtils::BidiBaseDir) const { return text; }
   const EpdGlyph* glyph(unsigned cp) const {
     const auto& f = font();
     for (unsigned i = 0; i < f.intervalCount; ++i) {
@@ -48,23 +65,27 @@ struct GfxRenderer {
     while (n--) cp = (cp << 6) | (static_cast<unsigned char>(*text++) & 63);
     return cp;
   }
-  int getScreenHeight() const { return 800; }
+  int getScreenHeight() const { return screenHeight; }
   int getScreenWidth() const { return 480; }
   int getLineHeight(int) const { return font().advanceY; }
   int getFontAscenderSize(int) const { return font().ascender; }
   int getTextHeight(int) const { return font().ascender; }
-  int getTextWidth(int, const char* text) const {
-    int width = 0;
-    while (*text) if (const auto* g = glyph(next(text))) width += g->advanceX / 16;
+  int getTextWidth(int, const char* text, EpdFontFamily::Style = EpdFontFamily::REGULAR) const {
+    int width = 0, height = 0;
+    EpdFont(&font()).getTextDimensions(text, &width, &height);
     return width;
   }
-  int getTextInkBottom(int, const char* text, EpdFontFamily::Style) const {
-    int bottom = 0;
-    while (*text) if (const auto* g = glyph(next(text)); g && g->width && g->height)
-      bottom = std::max(bottom, font().ascender - g->top + g->height);
-    return bottom;
+  std::string truncatedText(int fontId, const char* text, int maxWidth, EpdFontFamily::Style style) const {
+    if (getTextWidth(fontId, text, style) <= maxWidth) return text;
+    std::string item(text);
+    while (!item.empty() && getTextWidth(fontId, (item + "…").c_str(), style) >= maxWidth) utf8RemoveLastChar(item);
+    return item + "…";
   }
-  std::vector<std::string> wrappedText(int, const char* text, int, int maxLines) const {
+  int getTextInkTop(int, const char*, EpdFontFamily::Style) const;
+  int getTextInkBottom(int, const char*, EpdFontFamily::Style) const;
+  std::vector<std::string> wrappedTextProduction(int, const char*, int, int, EpdFontFamily::Style) const;
+  std::vector<std::string> wrappedText(int fontId, const char* text, int width, int maxLines) const {
+    if (!std::strchr(text, '|')) return wrappedTextProduction(fontId, text, width, maxLines, EpdFontFamily::REGULAR);
     std::vector<std::string> lines;
     std::string value(text);
     size_t start = 0, end;
@@ -77,6 +98,7 @@ struct GfxRenderer {
   }
   void drawText(int, int x, int y, const char* text) const {
     ys.push_back(y);
+    paintedText.emplace_back(text);
     while (*text) {
       const auto* g = glyph(next(text));
       if (!g) continue;
@@ -91,6 +113,7 @@ struct GfxRenderer {
   }
   void drawCenteredText(int font, int y, const char* text) const { drawText(font, 100, y, text); }
   void drawPixel(int x, int y, bool black) const {
+    if (black) { attemptedInkTop = std::min(attemptedInkTop, y); attemptedInkBottom = std::max(attemptedInkBottom, y + 1); }
     if (x >= 0 && x < 480 && y >= 0 && y < 800) pixels[y * 480 + x] = black;
   }
   void fillRect(int x, int y, int w, int h, bool black) const {
@@ -130,7 +153,7 @@ struct TenorTheme {
   void drawButtonHints(GfxRenderer&, const char*, const char*, const char*, const char*) const;
   static void drawHintLabel(const GfxRenderer& r, int font, const char* label, int x, int width, int top, int height, int offset) {
     ++fallbackCalls;
-    assert(top == 800 - UITheme::getInstance().getMetrics().buttonHintsHeight);
+    assert(top == r.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight);
     assert(height == UITheme::getInstance().getMetrics().buttonHintsHeight - 5);
     assert(offset == 4);
     BaseTheme::drawHintLabel(r, font, label, x, width, top, height, offset);
@@ -157,6 +180,13 @@ int main() {
       for (int y = 0; y < 800; ++y)
         for (int x = 0; x < 480; ++x) if (r.pixels[y * 480 + x]) actualBottom = y + 1;
       check(actualBottom == bottom, "glyph bounds differ from actual last painted row");
+      int measuredTop = 800;
+      for (size_t i = 0; i < lines.size(); ++i)
+        measuredTop = std::min(measuredTop, r.ys[i] + r.getTextInkTop(1, lines[i].c_str(), EpdFontFamily::REGULAR));
+      // Offline ink tuning leaves one blank bitmap row on a few glyphs. The
+      // glyph box is a conservative bound and must contain every painted row.
+      check(measuredTop <= r.attemptedInkTop && r.attemptedInkTop - measuredTop <= 1,
+            "ink-top API fails to bound the first painted glyph row");
       const auto before = r.pixels;
       TenorTheme{}.drawButtonHints(r, "symbol", "symbol", "symbol", "symbol");
       check(r.pixels == before, "footer clear erased a tip painted before the symbols");
@@ -192,6 +222,50 @@ int main() {
     std::printf("tier=%d caption=%d fallback reserve=%d\n", tier, text.getLineHeight(1), UITheme::getInstance().getMetrics().buttonHintsHeight);
   }
   assert(fallbackCalls == 3);
+  for (int tier = 0; tier < 3; ++tier) {
+    SETTINGS.uiTextSize = tier;
+    for (const char* label : {"Cập nhật", "Chọn mạng", "Download", "Mạng", "Tải về", "ẤN CHỌN", "ẬP ẬP"}) {
+      GfxRenderer r;
+      r.screenHeight = 792;
+      const int reserve = UITheme::getInstance().getMetrics().buttonHintsHeight;
+      const int boxTop = r.getScreenHeight() - reserve;
+      const int boxBottom = r.getScreenHeight() - 5;
+      TenorTheme{}.drawButtonHints(r, "", "", "", label);
+      std::printf("label=%s tier=%d width=%d lines=%zu ink=[%d,%d) box=[%d,%d)\n", label, tier,
+                  r.getTextWidth(1, label), r.ys.size(), r.attemptedInkTop, r.attemptedInkBottom, boxTop, boxBottom);
+      check(r.attemptedInkTop >= boxTop && r.attemptedInkBottom <= boxBottom,
+            "fallback label ink escapes its box into panel edge or dither");
+      if (std::strcmp(label, "Cập nhật") == 0 || std::strcmp(label, "Chọn mạng") == 0)
+        check(r.ys.size() == 2, "readable two-word action lost its second line");
+      if (std::strcmp(label, "Cập nhật") == 0)
+        check(r.paintedText == std::vector<std::string>{"Cập", "nhật"}, "update action lost letters or accents");
+      if (std::strcmp(label, "Chọn mạng") == 0)
+        check(r.paintedText == std::vector<std::string>{"Chọn", "mạng"}, "network action lost letters or accents");
+      if (r.getTextWidth(1, label) <= 72) {
+        const int expected = boxTop + (tier == 0 ? 4 : std::max(1, (reserve - 5 - r.getLineHeight(1)) / 2));
+        check(r.ys.front() == expected, "ordinary single-line label moved");
+      }
+    }
+  }
+  // Same production painter, with the 40px Base/Lyra and 35px Tenor boxes.
+  // Small caption fonts also model Base's 10pt hint font while uiTextSize=0.
+  for (int face = 0; face < 2; ++face) {
+    for (int height : {35, 40}) {
+      for (const char* label : {"Cập nhật", "Chọn mạng", "Download", "Tải xuống", "ẤN CHỌN"}) {
+        SETTINGS.uiTextSize = face;
+        GfxRenderer r;
+        SETTINGS.uiTextSize = 0;
+        // Renderer font methods use fontMap below; preserve the selected face
+        // independently of the layout tier for this Base-theme comparison.
+        r.fontOverride = face;
+        BaseTheme::drawHintLabel(r, 1, label, 58, 80, 752, height, 4);
+        check(r.attemptedInkTop >= 752 && r.attemptedInkBottom <= 752 + height,
+              "small wrapped label escapes another theme's box");
+        if (r.paintedText.size() == 1 && r.getTextWidth(1, label) > 72)
+          check(r.paintedText[0].find("…") != std::string::npos, "too-tall label hid truncation");
+      }
+    }
+  }
   std::printf("%s: actual glyph pixels, descenders, stacked accents, wrapped tips, paint order, large/text/off\n", failures ? "RED" : "GREEN");
   return failures ? 1 : 0;
 }

@@ -156,11 +156,43 @@ void BaseTheme::drawHintLabel(const GfxRenderer& renderer, const int fontId, con
     return;
   }
 
-  // Small keeps its measured legacy ink spacing. Enlarged hints have room
-  // reserved for two complete line boxes, including accents and leading.
-  constexpr int lineGap = 2;
-  const int step = (small ? renderer.getTextHeight(fontId) : renderer.getLineHeight(fontId)) + lineGap;
   const auto lines = renderer.wrappedText(fontId, label, maxTextWidth, 2);
+  if (small && !lines.empty()) {
+    // The small Tenor footer has 35px: two ascender-based rows can put the
+    // lower dot of "nhat" below the panel. Pack the actual ink, retaining a
+    // 1px row gap when the usual 2px gap would exceed the available box.
+    int tops[2] = {}, heights[2] = {};
+    int inkHeight = 0;
+    for (size_t i = 0; i < lines.size(); ++i) {
+      tops[i] = renderer.getTextInkTop(fontId, lines[i].c_str(), EpdFontFamily::REGULAR);
+      heights[i] = renderer.getTextInkBottom(fontId, lines[i].c_str(), EpdFontFamily::REGULAR) - tops[i];
+      inkHeight += heights[i];
+    }
+    const int gaps = static_cast<int>(lines.size()) - 1;
+    if (inkHeight + gaps > boxHeight) {
+      // Two full glyph rows physically do not fit. Keep the active font and
+      // expose truncation with an ellipsis, instead of losing lower accents.
+      const auto compact = renderer.truncatedText(fontId, label, maxTextWidth, EpdFontFamily::REGULAR);
+      const int top = renderer.getTextInkTop(fontId, compact.c_str(), EpdFontFamily::REGULAR);
+      const int height = renderer.getTextInkBottom(fontId, compact.c_str(), EpdFontFamily::REGULAR) - top;
+      const int y = boxTop + std::max(0, (boxHeight - height) / 2) - top;
+      renderer.drawText(fontId, x + (boxWidth - 1 - renderer.getTextWidth(fontId, compact.c_str())) / 2,
+                        y, compact.c_str());
+      return;
+    }
+    const int gap = gaps ? std::min(2, (boxHeight - inkHeight) / gaps) : 0;
+    int inkY = boxTop + (boxHeight - inkHeight - gap * gaps) / 2;
+    for (size_t i = 0; i < lines.size(); ++i) {
+      const int lineWidth = renderer.getTextWidth(fontId, lines[i].c_str());
+      renderer.drawText(fontId, x + (boxWidth - 1 - lineWidth) / 2, inkY - tops[i], lines[i].c_str());
+      inkY += heights[i] + gap;
+    }
+    return;
+  }
+
+  // Enlarged hints have room for complete line boxes, accents and leading.
+  constexpr int lineGap = 2;
+  const int step = renderer.getLineHeight(fontId) + lineGap;
   const int block = static_cast<int>(lines.size()) * step - lineGap;
   int lineY = boxTop + std::max(1, (boxHeight - block) / 2);
   for (const auto& line : lines) {

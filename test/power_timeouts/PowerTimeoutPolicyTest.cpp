@@ -21,6 +21,8 @@
 
 @KEYBOARD_POLICY@
 
+constexpr bool kOpdsSearchNormalCancelDisarmsParentIdle = @OPDS_SEARCH_CANCEL_DISARMS_PARENT_IDLE@;
+
 namespace {
 void require(bool condition, const char* message) {
   if (!condition) {
@@ -76,6 +78,33 @@ void exerciseKeyboardIdleDeadline() {
           "keyboard expired before reset deadline");
   require(keyboard_power::idleTimeoutDue(302000u, timeoutMs, false, since),
           "keyboard missed reset deadline");
+}
+
+void exerciseOpdsSearchCancelLifecycle() {
+  constexpr uint32_t searchOpenedAt = 1000u;
+  constexpr uint32_t searchReturnedAt = searchOpenedAt + opds_power::IDLE_TIMEOUT_MS + 1u;
+
+  uint32_t keyboardIdleSince = searchOpenedAt;
+  require(!keyboard_power::idleTimeoutDue(searchReturnedAt, opds_power::IDLE_TIMEOUT_MS, true, keyboardIdleSince),
+          "active OPDS search keyboard timed out");
+  require(keyboardIdleSince == searchReturnedAt, "active OPDS search keyboard did not refresh its deadline");
+
+  uint32_t parentIdleSince = searchOpenedAt;
+  bool parentTimerStarted = true;
+  require(kOpdsSearchNormalCancelDisarmsParentIdle,
+          "normal OPDS search cancellation left the parent idle deadline armed");
+  if (kOpdsSearchNormalCancelDisarmsParentIdle) parentTimerStarted = false;
+
+  require(!opds_power::idleExitDue(searchReturnedAt, true, true, false, parentIdleSince, parentTimerStarted),
+          "normal OPDS search cancellation exited to home");
+  require(parentTimerStarted && parentIdleSince == searchReturnedAt,
+          "normal OPDS search cancellation did not restart the parent idle deadline");
+  require(!opds_power::idleExitDue(searchReturnedAt + opds_power::IDLE_TIMEOUT_MS - 1u, true, true, false,
+                                   parentIdleSince, parentTimerStarted),
+          "fresh OPDS idle deadline expired early");
+  require(opds_power::idleExitDue(searchReturnedAt + opds_power::IDLE_TIMEOUT_MS, true, true, false,
+                                  parentIdleSince, parentTimerStarted),
+          "fresh OPDS idle deadline did not exit");
 }
 }  // namespace
 
@@ -136,6 +165,7 @@ int main() {
   exerciseRadioIdleDeadline(clock_sync_power::idleExitDue, "Clock busy phase requested exit");
   exerciseRadioIdleDeadline(koreader_sync_power::idleExitDue, "KOReader busy phase requested exit");
   exerciseKeyboardIdleDeadline();
+  exerciseOpdsSearchCancelLifecycle();
 
   std::cout << "power timeout lifecycle cases passed\n";
   return 0;

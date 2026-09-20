@@ -353,6 +353,7 @@ class GfxRenderer {
   void drawTextRotated90CW(int fontId, int x, int y, const char* text, bool black = true,
                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   int getTextHeight(int fontId) const;
+  int getTextInkTop(int fontId, const char* text, EpdFontFamily::Style style) const;
   int getTextInkBottom(int fontId, const char* text, EpdFontFamily::Style style) const;
   bool drawBitmapCover(const Bitmap& bitmap, int x, int y, int width, int height) const;
 

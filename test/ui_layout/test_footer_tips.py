@@ -12,6 +12,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser()
 parser.add_argument('--legacy-clear', action='store_true', help='restore the old clear rectangle in the test unit')
+parser.add_argument('--legacy-wrap', action='store_true', help='restore ascender-based small wrapped-label spacing')
 args = parser.parse_args()
 
 
@@ -30,13 +31,25 @@ def function(source, name):
 chrome = (ROOT / 'src/components/TenorMenuChrome.cpp').read_text()
 theme = (ROOT / 'src/components/themes/TenorTheme.cpp').read_text()
 base = (ROOT / 'src/components/themes/BaseTheme.cpp').read_text()
+renderer = (ROOT / 'lib/GfxRenderer/GfxRenderer.cpp').read_text()
 header = (ROOT / 'src/components/TenorMenuChrome.h').read_text()
 definitions = []
 for name in ('smallFooterSymbolsTopY', 'compactFooterTips', 'tipY', 'drawTip'):
     if f'tenorchrome::{name}(' in chrome:
         definitions.append(function(chrome, f'tenorchrome::{name}('))
 definitions.append(function(theme, 'TenorTheme::drawButtonHints('))
-definitions.append(function(base, 'BaseTheme::drawHintLabel('))
+hint_label = function(base, 'BaseTheme::drawHintLabel(')
+if args.legacy_wrap:
+    start = hint_label.index('  const auto lines = renderer.wrappedText(')
+    end = hint_label.index('  const int block =', start)
+    hint_label = hint_label[:start] + '''  constexpr int lineGap = 2;
+  const int step = (small ? renderer.getTextHeight(fontId) : renderer.getLineHeight(fontId)) + lineGap;
+  const auto lines = renderer.wrappedText(fontId, label, maxTextWidth, 2);
+''' + hint_label[end:]
+definitions.append(hint_label)
+definitions.append(function(renderer, 'GfxRenderer::wrappedText(').replace('GfxRenderer::wrappedText(', 'GfxRenderer::wrappedTextProduction('))
+for name in ('getTextInkTop', 'getTextInkBottom'):
+    definitions.append(function(renderer, f'GfxRenderer::{name}('))
 declarations = '\n'.join(re.findall(r'^(?:bool|int|void) (?:smallFooterSymbolsTopY|compactFooterTips|tipY|drawTip)\([^;]+;', header, re.M))
 fixture = Path(__file__).with_name('footer_tips.cpp').read_text()
 fixture = fixture.replace('// CHROME_DECLARATIONS', declarations)
@@ -53,5 +66,8 @@ with tempfile.TemporaryDirectory(prefix='footer-tips-') as folder:
     program = Path(folder) / 'test'
     source.write_text(fixture)
     subprocess.run(['c++', '-std=c++17', '-O0', '-UNDEBUG', '-I', str(ROOT / 'lib/EpdFont'),
-                    str(source), '-o', str(program)], check=True)
+                    '-I', str(ROOT / 'lib/Utf8'), '-I', str(ROOT / 'lib/GfxRenderer'),
+                    str(source), str(ROOT / 'lib/EpdFont/EpdFont.cpp'), str(ROOT / 'lib/EpdFont/EpdFontFamily.cpp'),
+                    str(ROOT / 'lib/Utf8/Utf8.cpp'),
+                    '-o', str(program)], check=True)
     subprocess.run([str(program)], check=True)

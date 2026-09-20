@@ -72,6 +72,13 @@ def main() -> int:
         "activity_result_h": root / "src/activities/ActivityResult.h",
     }
     sources = {name: path.read_text() for name, path in paths.items()}
+    opds_search_normal_cancel_disarms_parent_idle = re.search(
+        r'if \(result\.isCancelled\) \{\s*'
+        r'const auto\* keyboardResult = std::get_if<KeyboardResult>\(&result\.data\);\s*'
+        r'if \(keyboardResult != nullptr && keyboardResult->timedOut\) \{\s*'
+        r'onGoHome\(\);\s*return;\s*\}\s*'
+        r'idleTimerStarted = false;\s*state = BrowserState::BROWSING;',
+        sources["opds_cpp"], re.DOTALL) is not None
 
     checks = [
         ("server-lifecycle", "class WebSessionLifecycle" in sources["server_h"],
@@ -189,6 +196,9 @@ def main() -> int:
         "@KOREADER_POLICY@", extract_namespace(sources["koreader_h"], "koreader_sync_power"))
     production = production.replace(
         "@KEYBOARD_POLICY@", extract_namespace(sources["keyboard_h"], "keyboard_power"))
+    production = production.replace(
+        "@OPDS_SEARCH_CANCEL_DISARMS_PARENT_IDLE@",
+        "true" if opds_search_normal_cancel_disarms_parent_idle else "false")
 
     green = compile_and_run(args.cxx, production, output, "power-timeout-lifecycle")
     if green["compile_returncode"] != 0 or green["run_returncode"] != 0:
@@ -236,7 +246,10 @@ def main() -> int:
             "if (interaction && now == idleSince) {\n    idleSince = now;"),
         "keyboard-wrap-broken": (
             "return now - idleSince >= timeoutMs;",
-            "return now >= idleSince && now - idleSince >= timeoutMs;")
+            "return now >= idleSince && now - idleSince >= timeoutMs;"),
+        "opds-search-cancel-parent-idle": (
+            "constexpr bool kOpdsSearchNormalCancelDisarmsParentIdle = true;",
+            "constexpr bool kOpdsSearchNormalCancelDisarmsParentIdle = false;")
     }
     mutant_results = {}
     for name, (old, new) in mutations.items():

@@ -2329,6 +2329,27 @@ int GfxRenderer::getLineHeight(const int fontId, const float compression) const 
   return static_cast<int>(getLineHeight(fontId) * compression + 0.5f);
 }
 
+int GfxRenderer::getTextInkTop(int fontId, const char* text, EpdFontFamily::Style style) const {
+  const int resolved = resolveTextFontId(fontId, text, style);
+  const auto it = fontMap.find(resolved);
+  if (it == fontMap.end()) return 0;
+  const int baseline =
+      getFontAscenderSize(resolved) + (resolved == fontId ? 0 : (getLineHeight(fontId) - getLineHeight(resolved)) / 2);
+  std::string visual;
+  text = resolveVisualText(text, visual, BidiUtils::BidiBaseDir::AUTO);
+  int top = baseline;
+  bool hasInk = false;
+  while (uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
+    cp = it->second.applyLigatures(cp, text, style);
+    const auto* glyph = it->second.getGlyph(cp, style);
+    if (glyph && glyph->width && glyph->height) {
+      top = std::min(top, baseline - glyph->top);
+      hasInk = true;
+    }
+  }
+  return hasInk ? top : 0;
+}
+
 int GfxRenderer::getTextInkBottom(int fontId, const char* text, EpdFontFamily::Style style) const {
   const int resolved = resolveTextFontId(fontId, text, style);
   const auto it = fontMap.find(resolved);
