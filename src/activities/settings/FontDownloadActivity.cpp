@@ -640,6 +640,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     downloadingFamilyIndex_ = static_cast<int>(&family - families_.data());
     fileProgress_ = 0;
     fileTotal_ = 0;
+    progressRenderGate_.reset();
     cancelRequested_ = false;
     goHomeRequested_ = false;
   }
@@ -696,6 +697,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       RenderLock lock(*this);
       fileProgress_ = 0;
       fileTotal_ = file.size;
+      progressRenderGate_.reset();
     }
     requestUpdateAndWait();
 
@@ -724,18 +726,9 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     const auto installResult = webdav::installVerifiedFile(
         Storage, destPath,
         [&](const char* staging) {
-          int lastRenderedPercent = -1;
-          size_t lastRenderedBytes = static_cast<size_t>(-1);
-          unsigned long lastProgressUpdateMs = 0;
           downloadResult = HttpDownloader::downloadToFile(
               downloadUrl_, staging,
-              [this, &lastRenderedPercent, &lastRenderedBytes, &lastProgressUpdateMs](size_t downloaded,
-                                                                                 size_t total) {
-                {
-                  RenderLock lock(*this);
-                  fileProgress_ = downloaded;
-                  fileTotal_ = total;
-                }
+              [this](size_t downloaded, size_t total) {
                 mappedInput.update();
                 if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
                     mappedInput.wasPressed(MappedInputManager::Button::Back)) {
@@ -749,16 +742,13 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
                   cancelRequested_ = true;
                   goHomeRequested_ = true;
                 }
-                const int percent = total > 0 ? static_cast<int>(static_cast<uint64_t>(downloaded) * 100 / total) : 0;
                 const unsigned long now = millis();
-                if ((downloaded != lastRenderedBytes || percent != lastRenderedPercent) &&
-                    (lastRenderedPercent < 0 || percent >= 100 || percent >= lastRenderedPercent + 5 ||
-                     now - lastProgressUpdateMs >= 500)) {
-                  lastRenderedPercent = percent;
-                  lastRenderedBytes = downloaded;
-                  lastProgressUpdateMs = now;
-                  requestUpdate(true);
-                }
+                RenderLock lock(RenderLock::TryTake{});
+                if (!lock.acquired() || !progressRenderGate_.requestDue(downloaded, total, now)) return;
+                fileProgress_ = downloaded;
+                if (total > 0) fileTotal_ = total;
+                lock.unlock();
+                requestUpdate(true);
               },
               &cancelRequested_, "", "");
           return downloadResult == HttpDownloader::OK;
@@ -1088,6 +1078,7 @@ std::string FontDownloadActivity::formatSize(size_t bytes) {
 }
 
 void FontDownloadActivity::render(RenderLock&&) {
+  progressRenderGate_.renderStarted();
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();

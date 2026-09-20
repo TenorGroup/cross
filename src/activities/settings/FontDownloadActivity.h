@@ -9,6 +9,7 @@
 #include "FontInstaller.h"
 #include "SdCardFont.h"
 #include "activities/UiListActivity.h"
+#include "activities/settings/FontDownloadProgress.h"
 
 // JSON schema version of the fonts.json manifest. The canonical version for
 // the build tooling lives in lib/EpdFont/scripts/cpfont_version.py. This
@@ -116,6 +117,9 @@ class FontDownloadActivity final : public UiListActivity {
   size_t currentFileTotal_ = 0;
   size_t fileProgress_ = 0;
   size_t fileTotal_ = 0;
+  // This is read and updated only under RenderLock. It lets the downloader
+  // keep polling Back while an e-ink frame holds the renderer mutex.
+  fontdownload::ProgressRenderGate progressRenderGate_;
   int downloadingFamilyIndex_ = 0;
   std::string errorMessage_;
   bool cancelRequested_ = false;

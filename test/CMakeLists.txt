@@ -88,6 +88,7 @@ add_subdirectory(secure_client)
 add_subdirectory(font_installer)
 
 add_subdirectory(font_manifest)
+add_subdirectory(font_download_progress)
 
 # Library-local host suites live next to the code they test; the binary directory
 # keeps them out of the flat test/ tree.
