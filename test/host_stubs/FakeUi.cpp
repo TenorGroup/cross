@@ -142,9 +142,9 @@ HalDisplay& hostTestDisplay() { return fakeDisplay; }
 // The input harness stubs pixel rendering; simulator journeys cover the header.
 HalGPIO gpio;
 namespace tenorchrome {
-int tipY(const GfxRenderer&) { return 726; }
+int tipY(const GfxRenderer&, bool) { return 726; }
 int tipHeight(const GfxRenderer&, const char*, int) { return 28; }
-void drawTip(const GfxRenderer&, const char*, int, int) {}
+void drawTip(const GfxRenderer&, const char*, int, int, bool) {}
 void drawHeader(const GfxRenderer&, const char*, const char*) {}
 void drawMoreBelowChevron(const GfxRenderer&) {}
 }  // namespace tenorchrome
