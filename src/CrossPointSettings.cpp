@@ -13,6 +13,7 @@
 
 #include "I18nKeys.h"
 #include "ReaderFontSizes.h"
+#include "ReaderInkWeight.h"
 #include "SettingsList.h"
 #include "activities/reader/ReaderMenuLayout.h"
 #include "fontIds.h"
@@ -71,6 +72,7 @@ static_assert(CrossPointSettings::READER_FAVORITE_MAX == readermenu::TOI_DA_GHIM
 void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["textSpacingVersion"] = 3;
   doc["paragraphIndentVersion"] = 1;
+  doc["readerInkWeightVersion"] = readerInk::SCHEMA_VERSION;
   const CrossPointSettings& s = *this;
 
   // Duyet THANG bang tinh, khong chep ra vector rieng: duong nay chay moi lan
@@ -210,6 +212,28 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
       }
       s.*(info.valuePtr) = v;
     }
+  }
+
+  if (doc["uiTextSize"].isNull()) {
+    uiTextSize = UI_TEXT_SMALL;
+  } else {
+    const int storedUiTextSize = doc["uiTextSize"].as<int>();
+    uiTextSize = storedUiTextSize >= UI_TEXT_SMALL && storedUiTextSize < UI_TEXT_SIZE_COUNT
+                     ? static_cast<uint8_t>(storedUiTextSize)
+                     : UI_TEXT_SMALL;
+    if (storedUiTextSize != uiTextSize) needsResave = true;
+  }
+
+  const uint8_t inkVersion = doc["readerInkWeightVersion"] | uint8_t{0};
+  if (inkVersion < readerInk::SCHEMA_VERSION) {
+    readerInkWeight = doc["readerInkWeight"].isNull()
+                          ? uint8_t{0}
+                          : readerInk::fromLegacy(doc["readerInkWeight"].as<int>());
+    needsResave = true;
+  } else if (!doc["readerInkWeight"].isNull()) {
+    const int storedInkWeight = doc["readerInkWeight"].as<int>();
+    readerInkWeight = readerInk::clamp(storedInkWeight);
+    if (storedInkWeight != readerInkWeight) needsResave = true;
   }
 
   // v1.0.2 luu hai co an rieng cho thanh trang thai ngoai/trong trinh doc. Quy doi

@@ -2,6 +2,7 @@
 #include <HalGPIO.h>
 
 #include "CrossPointSettings.h"
+#include "UIScale.h"
 class GfxRenderer;
 namespace tenorchrome {
 constexpr int HEADER_TOP = 5;
@@ -23,10 +24,22 @@ constexpr int STATUS_INK_TOP = STATUS_TEXT_LANE - 2;
 // thuc te dao dong 1-9 px tuy muc gian dong, va co trang thieu 1 px la mat ca dong.
 constexpr int READER_TEXT_TO_STATUS_GAP = 2;
 constexpr int READER_BOTTOM_RESERVE = STATUS_INK_TOP + READER_TEXT_TO_STATUS_GAP;
-constexpr int statusTextY(const int screenHeight, const bool large, const int paddingBottom = 0) {
-  return screenHeight - STATUS_TEXT_LANE - (large ? STATUS_LARGE_TEXT_SHIFT : 0) - paddingBottom;
+inline int headerHeight() { return HEADER_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).bodyLineHeight - 33; }
+inline int tabTop() { return HEADER_TOP + headerHeight(); }
+inline int tabHeight() { return TAB_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).subtitleLineHeight - 26; }
+inline int contentTop() { return tabTop() + tabHeight() + 16; }
+inline int statusTextGrowth(bool large = false) {
+  const auto text = uiTextSizeSpec(SETTINGS.uiTextSize);
+  return large ? text.bodyLineHeight - 33 : text.captionLineHeight - 21;
 }
-constexpr int statusIconTopY(const int screenHeight, const bool large, const int paddingBottom = 0) {
+inline int statusHeight(bool large = false) {
+  return (large ? STATUS_HEIGHT_LARGE : STATUS_HEIGHT) + statusTextGrowth(large);
+}
+inline int readerBottomReserve() { return READER_BOTTOM_RESERVE + statusTextGrowth(); }
+inline int statusTextY(const int screenHeight, const bool large, const int paddingBottom = 0) {
+  return screenHeight - STATUS_TEXT_LANE - (large ? STATUS_LARGE_TEXT_SHIFT : 0) - paddingBottom - statusTextGrowth(large);
+}
+inline int statusIconTopY(const int screenHeight, const bool large, const int paddingBottom = 0) {
   return statusTextY(screenHeight, large, paddingBottom) + STATUS_ICON_TOP_OFFSET;
 }
 struct StatusCornerBounds {

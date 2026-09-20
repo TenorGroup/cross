@@ -1,7 +1,6 @@
 #include "MenuFavorites.h"
 
 #include <BoardConfig.h>
-#include <HalClock.h>
 #include <HalGPIO.h>
 #include <Memory.h>
 
@@ -16,12 +15,6 @@
 extern HalGPIO gpio;
 namespace menufavorites {
 namespace {
-bool unavailableClock(const std::string& key) {
-  const bool needsRtc = key.rfind("clock/", 0) == 0 || key == "action/14" || key == "status/statusBarClock" ||
-                        key == "settings/statusBarClock" ||
-                        (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && key == "action/2");
-  return needsRtc && !halClock.isAvailable();
-}
 constexpr Descriptor ITEMS[] = {
     {"clock/clockFormat", StrId::STR_CLOCK_FORMAT, "clock", 0, 0},
     {"clock/clockUtcOffsetQ", StrId::STR_CLOCK_UTC_OFFSET, "clock", 0, 1},
@@ -95,7 +88,6 @@ StrId label(const std::string& key) { return label(key, getBaseSettingsList()); 
 StrId label(const std::string& key, const std::vector<SettingInfo>& settings) {
   const char* canonical = menucustom::canonicalPinKey(key.c_str());
   if (canonical != key.c_str()) return label(canonical, settings);
-  if (unavailableClock(key)) return StrId::STR_NONE_OPT;
   if (key.rfind("settings/", 0) == 0) {
     for (const auto& info : settings) {
       if (settingHiddenOnThisBoard(info) || !info.key || key.compare(9, std::string::npos, info.key) != 0) continue;
@@ -129,7 +121,6 @@ StrId label(const std::string& key, const std::vector<SettingInfo>& settings) {
 std::string value(const std::string& key, const std::vector<SettingInfo>& settings) {
   const char* canonical = menucustom::canonicalPinKey(key.c_str());
   if (canonical != key.c_str()) return value(canonical, settings);
-  if (unavailableClock(key)) return "";
   const auto* item = find(key);
   if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI &&
       (key == "status/statusBarClock" || key == "settings/statusBarClock" || key == "action/2")) {
@@ -171,7 +162,6 @@ std::string value(const std::string& key, const SdCardFontRegistry* registry) {
 std::unique_ptr<UiListActivity> open(const std::string& key, GfxRenderer& renderer, MappedInputManager& input) {
   const char* canonical = menucustom::canonicalPinKey(key.c_str());
   if (canonical != key.c_str()) return open(canonical, renderer, input);
-  if (unavailableClock(key)) return nullptr;
   const auto* item = find(key);
   std::unique_ptr<UiListActivity> result;
   bool activate = true;

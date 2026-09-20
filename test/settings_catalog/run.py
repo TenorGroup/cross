@@ -70,7 +70,7 @@ for front,warm,touch,legacy in variants:
  for imu in [0,1]:
   cm+=f'add_test(NAME cold_{target}_imu{imu} COMMAND {target} cold {imu})\n'
   if not legacy and (front,warm,touch) in [(0,0,0),(1,1,1)]:
-   for mode in ['favorites','dynamic','json','home','home-file']:
+   for mode in ['favorites','dynamic','json','v108','home','home-file']:
     cm+=f'add_test(NAME {mode}_{target}_imu{imu} COMMAND {target} {mode} {imu})\n'
 (out/'CMakeLists.txt').write_text(cm)
 for name,cmd in [('configure',[a.cmake,'-S',str(out),'-B',str(out/'build')]),('build',[a.cmake,'--build',str(out/'build'),'-j',a.jobs]),('ctest',[str(Path(a.cmake).with_name('ctest')),'--test-dir',str(out/'build'),'--output-on-failure','-V'])]:

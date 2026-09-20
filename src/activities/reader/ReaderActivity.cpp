@@ -238,7 +238,7 @@ void ReaderActivity::readingMargins(int& top, int& right, int& bottom, int& left
     right = margin + 3;  // Reserve ink overhang beyond the final glyph advance.
     bottom = std::max(margin, preview                            ? static_cast<int>(PREVIEW_FOOTER_HEIGHT)
                               : SETTINGS.readerStatusBarHidden() ? 0
-                                                                 : tenorchrome::READER_BOTTOM_RESERVE);
+                                                                 : tenorchrome::readerBottomReserve());
     return;
   }
   top += margin;

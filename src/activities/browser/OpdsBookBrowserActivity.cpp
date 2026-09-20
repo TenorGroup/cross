@@ -17,6 +17,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/TenorMenuChrome.h"
+#include "components/SettledListRender.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/icons/search32.h"
@@ -47,6 +48,7 @@ OpdsBookBrowserActivity::OpdsBookBrowserActivity(GfxRenderer& renderer, MappedIn
 
 void OpdsBookBrowserActivity::onEnter() {
   runtimeStarted = false;
+  idleTimerStarted = false;
   // Keep BLE stopped for the complete Wi-Fi/feed/download session. This also
   // covers the nested WiFiSelectionActivity and its result callback.
   if (!filetransfer::acquire()) {
@@ -125,7 +127,21 @@ void OpdsBookBrowserActivity::onCancelEvent(const fui::ActionEvent&, void* user)
   self->cancelDownload = true;
 }
 
+bool OpdsBookBrowserActivity::idleExitDue(const unsigned long now, const bool interaction) {
+  const bool waiting = state == BrowserState::BROWSING || state == BrowserState::ERROR;
+  const bool radioAlive = runtimeStarted && WiFi.getMode() != WIFI_MODE_NULL;
+  return opds_power::idleExitDue(static_cast<uint32_t>(now), waiting, radioAlive, interaction, idleSince,
+                                 idleTimerStarted);
+}
+
 void OpdsBookBrowserActivity::loop() {
+  const bool interaction = mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() ||
+                           mappedInput.wasScreenTouchReleased();
+  if (idleExitDue(millis(), interaction)) {
+    onGoHome();
+    return;
+  }
+
   if (state == BrowserState::WIFI_SELECTION || state == BrowserState::SEARCH_INPUT) {
     return;
   }
@@ -230,7 +246,7 @@ void OpdsBookBrowserActivity::screenHeader(UiScreen& screen, const bool withSear
   if (tenorchrome::enabled()) {
     drawNavigationHeader(server.name.empty() ? tr(STR_OPDS_BROWSER) : server.name.c_str());
     screen.setContentMarginFromScreen(fui::Insets{
-        tenorchrome::CONTENT_TOP, 0, static_cast<int16_t>(UITheme::getInstance().getMetrics().buttonHintsHeight), 0});
+        tenorchrome::contentTop(), 0, static_cast<int16_t>(UITheme::getInstance().getMetrics().buttonHintsHeight), 0});
     return;
   }
 
@@ -349,8 +365,6 @@ void OpdsBookBrowserActivity::buildStatusScreen(UiScreen& screen) {
 }
 
 void OpdsBookBrowserActivity::render(RenderLock&&) {
-  renderer.clearScreen();
-
   MappedInputManager::Labels labels;
   switch (state) {
     case BrowserState::BROWSING: {
@@ -370,9 +384,11 @@ void OpdsBookBrowserActivity::render(RenderLock&&) {
       labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
       break;
   }
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
-  renderUi();
+  renderSettledList(listNav, [&] {
+    renderer.clearScreen();
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderUi();
+  });
   renderer.displayBuffer();
 }
 
@@ -608,14 +624,21 @@ void OpdsBookBrowserActivity::launchSearch() {
   state = BrowserState::SEARCH_INPUT;
   requestUpdate();
 
-  auto keyboard = std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_SEARCH));
+  auto keyboard = std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_SEARCH), "", 0,
+                                                           InputType::Text, true, opds_power::IDLE_TIMEOUT_MS);
   startActivityForResult(std::move(keyboard), [this](const ActivityResult& result) {
-    state = BrowserState::BROWSING;
-    if (!result.isCancelled) {
-      performSearch(std::get<KeyboardResult>(result.data).text);
-    } else {
+    if (result.isCancelled) {
+      const auto* keyboardResult = std::get_if<KeyboardResult>(&result.data);
+      if (keyboardResult != nullptr && keyboardResult->timedOut) {
+        onGoHome();
+        return;
+      }
+      state = BrowserState::BROWSING;
       requestUpdate();
+      return;
     }
+    state = BrowserState::BROWSING;
+    performSearch(std::get<KeyboardResult>(result.data).text);
   });
 }
 

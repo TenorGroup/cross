@@ -48,11 +48,14 @@ void ChapterNumberEntryActivity::render(RenderLock&&) {
   renderer.clearScreen();
   drawNavigationHeader(tr(STR_GO_TO_CHAPTER_NUMBER));
   const int w = renderer.getScreenWidth();
-  renderer.drawCenteredText(UI_12_FONT_ID, tenorchrome::CONTENT_TOP + 24, tr(STR_CHAPTER_NUMBER_LABEL));
-  const int cell = (w - 48) / 6, y = tenorchrome::CONTENT_TOP + 94;
+  renderer.drawCenteredText(UI_12_FONT_ID, tenorchrome::contentTop() + 24, tr(STR_CHAPTER_NUMBER_LABEL));
+  const bool enlarged = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
+  const int cell = (w - 48) / 6;
+  const int y = tenorchrome::contentTop() + (enlarged ? 24 + renderer.getLineHeight(UI_12_FONT_ID) + 32 : 94);
+  const int cellHeight = enlarged ? renderer.getLineHeight(NOTOSANS_18_FONT_ID) + 20 : 60;
   for (int i = 0; i < 6; ++i) {
     const int x = 24 + i * cell;
-    renderer.fillRectDither(x, y, cell - 5, 60, i == cursor ? Color::Black : Color::White);
+    renderer.fillRectDither(x, y, cell - 5, cellHeight, i == cursor ? Color::Black : Color::White);
     char ch[2] = {digits[i], 0};
     renderer.drawText(NOTOSANS_18_FONT_ID,
                       x + (cell - 5 - renderer.getTextWidth(NOTOSANS_18_FONT_ID, ch, EpdFontFamily::BOLD)) / 2, y + 10,

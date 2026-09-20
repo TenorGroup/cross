@@ -1,0 +1,26 @@
+#pragma once
+#include <cassert>
+#include <map>
+#include <EpdFontFamily.h>
+#include <FontCacheManager.h>
+extern int uiTestLockDepth;
+extern bool uiTestBootRegistration;
+class SdCardFont;
+class GfxRenderer {
+  std::map<int,EpdFontFamily> fontMap;
+  std::map<int,SdCardFont*> sdCardFonts_;
+  FontCacheManager* cache_ = nullptr;
+ public:
+  void begin() {}
+  void insertFont(int id, EpdFontFamily family) {
+    if (uiTestBootRegistration) assert(uiTestLockDepth > 0);
+    fontMap.emplace(id,family);
+  }
+  @REPLACE_BUILTIN_METHOD@
+  const auto& getFontMap() const { return fontMap; }
+  bool isSdCardFont(int id) const { return sdCardFonts_.count(id) > 0; }
+  void registerSdCardFont(int id,SdCardFont* font) { sdCardFonts_[id] = font; }
+  void removeFont(int id) { fontMap.erase(id); sdCardFonts_.erase(id); }
+  void setFontCacheManager(FontCacheManager* cache) { cache_ = cache; }
+  FontCacheManager* getFontCacheManager() { return cache_; }
+};

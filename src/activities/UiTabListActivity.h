@@ -20,6 +20,7 @@
 class UiTabListActivity : public UiListActivity {
  public:
   void onEnter() override;
+  void loop() override;
   void captureNavigation(MenuNavigationState& state) const override;
   void restoreNavigation(const MenuNavigationState& state) override;
 
@@ -68,6 +69,9 @@ class UiTabListActivity : public UiListActivity {
   // Confirm on the tab bar should do). Subclass owns wrap and any per-switch
   // state reset, and requests the update.
   virtual void stepTab(int direction) = 0;
+  virtual bool allowsTiltTabNavigation() const { return true; }
+  bool acceptsTiltTabNavigation() const;
+  bool queueTiltTabNavigation(bool forward, bool backward);
   // Moi man the tu quyet nghia cua Chon va Quay lai; luat chung tu 14/09/2026 dem: Chon o thanh
   // the buoc xuong dong dau, Quay lai roi man mot nhip.
   bool handleButtons() override = 0;

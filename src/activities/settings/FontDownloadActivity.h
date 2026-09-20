@@ -16,16 +16,18 @@
 // support a new manifest schema.
 #define FONTS_MANIFEST_VERSION 1
 
+namespace font_power {
+enum class Phase { Idle, LoadingManifest, Downloading, Complete, Error };
+
+inline bool preventsAutoSleep(const Phase phase) {
+  return phase == Phase::LoadingManifest || phase == Phase::Downloading;
+}
+}  // namespace font_power
+
 #ifndef FONT_MANIFEST_URL
-// Manifest + .cpfont assets are published by .github/workflows/release-fonts.yml
-// to the crosspoint-fonts repo under the "sd-fonts-m<META>-b<BIN>" tag. The tag
-// pattern must stay in sync with the workflow; it derives its version numbers
-// from lib/EpdFont/scripts/cpfont_version.py.
-#define FONT_MANIFEST_URL_STRINGIFY_INNER(x) #x
-#define FONT_MANIFEST_URL_STRINGIFY(x) FONT_MANIFEST_URL_STRINGIFY_INNER(x)
-#define FONT_MANIFEST_URL                                                                                           \
-  "https://github.com/crosspoint-reader/crosspoint-fonts/releases/download/sd-fonts-m" FONT_MANIFEST_URL_STRINGIFY( \
-      FONTS_MANIFEST_VERSION) "-b" FONT_MANIFEST_URL_STRINGIFY(CPFONT_VERSION) "/fonts.json"
+// Pin the compatible four-weight font pack independently of future app versions.
+// Publication stages this immutable directory before making the firmware available.
+#define FONT_MANIFEST_URL "https://cross.tenor.vn/firmware/v1.0.8/fonts/fonts.json"
 #endif
 
 class FontDownloadActivity final : public UiListActivity {
@@ -39,11 +41,12 @@ class FontDownloadActivity final : public UiListActivity {
   void onExit() override;
   void render(RenderLock&&) override;
   bool preventAutoSleep() override {
-    return state_ == LOADING_MANIFEST || state_ == DOWNLOADING ||
-           // The download is synchronous and blocks the main loop until it
-           // completes, so activityManager.preventAutoSleep() is never polled
-           // during downloading.
-           state_ == COMPLETE || state_ == ERROR;
+    font_power::Phase phase = font_power::Phase::Idle;
+    if (state_ == LOADING_MANIFEST) phase = font_power::Phase::LoadingManifest;
+    if (state_ == DOWNLOADING) phase = font_power::Phase::Downloading;
+    if (state_ == COMPLETE) phase = font_power::Phase::Complete;
+    if (state_ == ERROR) phase = font_power::Phase::Error;
+    return font_power::preventsAutoSleep(phase);
   }
   bool skipLoopDelay() override { return true; }
 
@@ -117,6 +120,9 @@ class FontDownloadActivity final : public UiListActivity {
   std::string errorMessage_;
   bool cancelRequested_ = false;
   bool runtimeStarted_ = false;
+  static constexpr unsigned long TERMINAL_IDLE_TIMEOUT_MS = 5UL * 60UL * 1000UL;
+  unsigned long terminalStateSince_ = 0;
+  bool terminalIdleTimerStarted_ = false;
   // Set when the cancel came from the home gesture (consumed by the download
   // callback's own input pump); exit to home after the abort unwinds.
   bool goHomeRequested_ = false;
@@ -138,6 +144,7 @@ class FontDownloadActivity final : public UiListActivity {
   // Non-list states (loading, downloading, complete, error) consume the loop
   // pass here; the group and family lists use the base list protocol.
   bool handleCustomInput() override;
+  bool terminalStateIdleExpired(unsigned long now) const;
 
   void activateSelected();
 

@@ -78,6 +78,8 @@
 #include "activities/settings/StatusBarSettingsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "UIFontTiers.h"
+#include "ReaderInkWeight.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
@@ -329,7 +331,11 @@ static bool loadSleepFrameBuffer() {
 
 static void sleepWithConfiguredButtons() {
 #ifndef SIMULATOR
-  powerManager.startDeepSleep(gpio, SETTINGS.wakeButtons);
+  const bool preserveClock = halClock.hasValidTime();
+  if (gpio.deviceIsX4()) {
+    LOG_INF("SLP", "X4 clock retention requested=%u", preserveClock);
+  }
+  powerManager.startDeepSleep(gpio, SETTINGS.wakeButtons, preserveClock);
 #else
   powerManager.startDeepSleep(gpio);
 #endif
@@ -423,6 +429,10 @@ void setupDisplayAndFonts(bool seamless = false) {
   logHeapMark("render-task");
   LOG_DBG("MAIN", "Display initialized");
 
+  // The render worker already exists. Keep all font registration and the
+  // persisted UI tier in one locked boot transaction before the first activity.
+  RenderLock fontLock;
+
   // Initialize font decompressor for compressed reader fonts
   if (!fontDecompressor.init()) {
     LOG_ERR("MAIN", "Font decompressor init failed");
@@ -447,6 +457,9 @@ void setupDisplayAndFonts(bool seamless = false) {
 
   // Discover and load SD card fonts
   sdFontSystem.begin(renderer);
+  if (!applyUiFontSize(renderer, SETTINGS.uiTextSize)) {
+    LOG_ERR("MAIN", "Unable to apply saved UI font size");
+  }
   logHeapMark("fonts-sd");
 
   LOG_DBG("MAIN", "Fonts setup");
@@ -742,6 +755,7 @@ void loop() {
   // already have done blocking storage or Wi-Fi work before this loop resumes.
   bool bleInputActivity = false;
   static bool bleReaderBeginAttempted = false;
+  static bool bleReaderReconnectConfigured = false;
   static uint32_t bleReaderGeneration = 0;
   auto& bleHid = freeink::BleKeyboardHost::getInstance();
   static uint32_t lastBleCleanupMs = 0;
@@ -773,7 +787,10 @@ void loop() {
     return;
   }
 
-  halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+  // Tab gestures are sampled by the activity at the end of the previous loop.
+  // Preserve their activity before the foreground reader poll clears the flag.
+  const bool pendingTiltActivity = halTiltSensor.hadActivity();
+  halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isForegroundReaderActivity());
 
 #if CROSSPOINT_BLE_HID_HOST
   // Page turner BLE: callbacks only queue HID reports. Map each new report on
@@ -788,6 +805,7 @@ void loop() {
     const uint32_t generation = activityManager.activityGeneration();
     if (!foregroundReader || !SETTINGS.blePageTurnerEnabled || generation != bleReaderGeneration) {
       bleReaderBeginAttempted = false;
+      bleReaderReconnectConfigured = false;
     }
     bleReaderGeneration = generation;
     // A page-key release or touch on the foreground reader grants one fresh
@@ -800,6 +818,7 @@ void loop() {
     if (foregroundReader && SETTINGS.blePageTurnerEnabled && freeink::ble::idleStopped() && localReaderInput) {
       freeink::ble::setIdleStopped(false);
       bleReaderBeginAttempted = false;
+      bleReaderReconnectConfigured = false;
       LOG_INF("BLE", "Reader input rearmed idle radio");
     }
     if (dangChiemStorage || !SETTINGS.blePageTurnerEnabled) {
@@ -835,6 +854,13 @@ void loop() {
 
       if (foregroundReader && !freeink::ble::initializing() && bleHid.isRunning()) {
         freeink::ble::setReaderStartDeferred(false);
+        if (!bleReaderReconnectConfigured && !bleHid.isStopping()) {
+          bleReaderReconnectConfigured = true;
+          if (SETTINGS.blePeerAddr[0] != '\0' &&
+              !bleHid.armSelectedPeerReconnect(SETTINGS.blePeerAddr)) {
+            LOG_INF("BLE", "Selected reader peer was not armed");
+          }
+        }
         bleHid.poll();
         freeink::KeyEvent ev;
         while (bleHid.popKey(ev)) {
@@ -1046,7 +1072,7 @@ void loop() {
         char family[32] = {};
         unsigned point = 0, weight = 0;
         if (sscanf(cmd.c_str() + 10, "%31s %u %u", family, &point, &weight) == 3 && point >= 12 && point <= 26 &&
-            weight <= 2 && sdFontSystem.registry().findFamily(family)) {
+            weight < readerInk::LEVEL_COUNT && sdFontSystem.registry().findFamily(family)) {
           const uint32_t started = millis();
           {
             RenderLock lock;
@@ -1190,7 +1216,7 @@ void loop() {
   static unsigned long lastActivityTime = millis();
   static unsigned long lastSleepResetTime = millis();
   const bool nguoiDungChamVao = gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() ||
-                                halTiltSensor.hadActivity();
+                                pendingTiltActivity || halTiltSensor.hadActivity();
 #if CROSSPOINT_BLE_HID_HOST
   const bool userActivity = nguoiDungChamVao || bleInputActivity;
 #else

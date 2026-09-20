@@ -381,6 +381,7 @@ void KOReaderSyncActivity::performUpload() {
 
 void KOReaderSyncActivity::onEnter() {
   runtimeStarted = false;
+  idleTimerStarted = false;
   // Keep BLE stopped for Wi-Fi selection and the complete sync transaction.
   if (!filetransfer::acquire()) {
     LOG_ERR("KOSync", "BLE teardown incomplete; leaving KOReader sync");
@@ -677,7 +678,21 @@ void KOReaderSyncActivity::render(RenderLock&&) {
   }
 }
 
+bool KOReaderSyncActivity::idleExitDue(const unsigned long now, const bool interaction) {
+  const bool waiting = state == SHOWING_RESULT || state == NO_REMOTE_PROGRESS || state == SYNC_FAILED;
+  const bool radioAlive = runtimeStarted && wifiActivated && WiFi.getMode() != WIFI_MODE_NULL;
+  return koreader_sync_power::idleExitDue(static_cast<uint32_t>(now), waiting, radioAlive, interaction, idleSince,
+                                          idleTimerStarted);
+}
+
 void KOReaderSyncActivity::loop() {
+  const bool interaction = mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() ||
+                           mappedInput.wasScreenTouchReleased();
+  if (idleExitDue(millis(), interaction)) {
+    returnToReader();
+    return;
+  }
+
   if (state == NO_CREDENTIALS || state == SYNC_FAILED || state == UPLOAD_COMPLETE || state == SYNC_COMPLETE) {
     if (autoReturnAt != 0 && millis() >= autoReturnAt) {
       returnToReader();

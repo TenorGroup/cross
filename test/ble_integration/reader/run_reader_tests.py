@@ -103,17 +103,22 @@ suffix = P(__file__).with_name('reader_cases.cpp').read_text()
 main = read('src/main.cpp')
 init = main[main.index('  // Resolve the radio handoff'):]
 init = init[:init.index('#endif')]
+tilt_capture = re.search(r'  const bool pendingTiltActivity = halTiltSensor\.hadActivity\(\);\n', main)
+assert tilt_capture
 core = main[main.index('  // Page turner BLE:'):]
 core = core[:core.index('#endif')]
 timers = main[main.index('  static unsigned long lastActivityTime = millis();'):]
 end = re.search('  if \\([^\\n]*preventAutoSleep\\(\\)\\) lastSleepResetTime = millis\\(\\);', timers)
 assert end
 timers = timers[:end.end()]
-for name in ['coLuotCho', 'luotChoTien', 'bleReaderBeginAttempted', 'bleReaderGeneration', 'lastBleCleanupMs', 'bleIdleSinceMs']:
+state_names = ['coLuotCho', 'luotChoTien', 'bleReaderBeginAttempted', 'bleReaderGeneration', 'lastBleCleanupMs', 'bleIdleSinceMs']
+if 'bleReaderReconnectConfigured' in main:
+    state_names.append('bleReaderReconnectConfigured')
+for name in state_names:
     init = re.sub('  static [^\\n]+ ' + name + ' = [^\\n]+;\\n', '', init)
 timers = re.sub('  static unsigned long last(?:ActivityTime|SleepResetTime) = millis\\(\\);\\n', '', timers)
 mainfixture = P(__file__).with_name('main_fixture.hpp').read_text() + '\n' + read('src/BleIdleOff.h').replace('#pragma once', '')
-pump = 'struct MainPump { bool coLuotCho=false,luotChoTien=true,bleReaderBeginAttempted=false;uint32_t bleReaderGeneration=0,lastBleCleanupMs=0,bleIdleSinceMs=0; unsigned long lastActivityTime=millis(),lastSleepResetTime=millis(); void pump(){\n' + init + core + timers + '\n}};\n'
+pump = 'struct MainPump { bool coLuotCho=false,luotChoTien=true,bleReaderBeginAttempted=false,bleReaderReconnectConfigured=false;uint32_t bleReaderGeneration=0,lastBleCleanupMs=0,bleIdleSinceMs=0; unsigned long lastActivityTime=millis(),lastSleepResetTime=millis(); void pump(){\n' + init + tilt_capture.group() + core + timers + '\n}};\n'
 source = prefix + '\n\n' + '\n\n'.join(functions) + '\n\n' + mainfixture + pump + suffix
 (out / 'reader_production.cpp').write_text(source)
 files = ['src/BleIdleOff.h', 'src/main.cpp', 'src/activities/reader/ReaderActivity.h', 'src/activities/reader/ReaderActivity.cpp', 'src/activities/reader/EpubReaderActivity.cpp', 'src/activities/reader/TxtReaderActivity.cpp', 'src/activities/reader/XtcReaderActivity.cpp', 'src/activities/ActivityManager.cpp']

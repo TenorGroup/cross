@@ -51,6 +51,7 @@ class FakeTabScreen final : public UiTabListActivity {
   int tab = 0;
   int tabSteps = 0;
   int rows = kRowCount;
+  bool modalActive = false;
 
   int tabCount() const override { return kTabCount; }
   int activeTab() const override { return tab; }
@@ -79,6 +80,13 @@ class FakeTabScreen final : public UiTabListActivity {
   }
 
   freeink::ui::ListNav& state() { return activeNav(); }
+  bool acceptsTiltTabs() const { return acceptsTiltTabNavigation(); }
+  bool queueTilt(const bool forward, const bool backward) { return queueTiltTabNavigation(forward, backward); }
+
+ protected:
+  bool allowsTiltTabNavigation() const override { return !modalActive; }
+
+ public:
 
   // Vi tri con tro trong vong: 0 la thanh tab, 1 tro di la cac dong.
   int ring() const { return ringPos(); }
@@ -164,6 +172,39 @@ TEST_F(TabScreenFixture, NutCanhNhayTab) {
   EXPECT_EQ(screen.tab, (before + 1) % kTabCount) << "nut canh phai phai sang tab sau";
   tap(HalGPIO::BTN_UP);
   EXPECT_EQ(screen.tab, before) << "nut canh trai phai quay lai tab truoc";
+}
+
+TEST_F(TabScreenFixture, TiltQueuesOneTabStepAndKeepsPerTabFocus) {
+  tap(HalGPIO::BTN_RIGHT);
+  tap(HalGPIO::BTN_RIGHT);
+  ASSERT_EQ(screen.ring(), 3);
+
+  const int stepsBefore = screen.tabSteps;
+  ASSERT_TRUE(screen.queueTilt(true, false));
+  screen.loop();
+  EXPECT_EQ(screen.tab, 1);
+  EXPECT_EQ(screen.tabSteps, stepsBefore + 1);
+
+  ASSERT_TRUE(screen.queueTilt(false, true));
+  screen.loop();
+  EXPECT_EQ(screen.tab, 0);
+  EXPECT_EQ(screen.ring(), 3);
+
+  const int coalescedSteps = screen.tabSteps;
+  ASSERT_TRUE(screen.queueTilt(true, true));
+  screen.loop();
+  EXPECT_EQ(screen.tabSteps, coalescedSteps + 1);
+}
+
+TEST_F(TabScreenFixture, ModalAndInactiveTargetsRejectTiltEvents) {
+  EXPECT_TRUE(screen.acceptsTiltTabs());
+  screen.modalActive = true;
+  EXPECT_FALSE(screen.acceptsTiltTabs());
+  EXPECT_FALSE(screen.queueTilt(true, false));
+
+  EXPECT_FALSE(HalTiltSensor::shouldDiscardPendingEvents(CrossPointTiltPageTurn::TILT_NORMAL, true));
+  EXPECT_TRUE(HalTiltSensor::shouldDiscardPendingEvents(CrossPointTiltPageTurn::TILT_NORMAL, false));
+  EXPECT_TRUE(HalTiltSensor::shouldDiscardPendingEvents(CrossPointTiltPageTurn::TILT_OFF, true));
 }
 
 // Cap nut mat truoc mang ten lo gic Left/Right nhung giao dien dan nhan Len/Xuong.
@@ -540,13 +581,14 @@ TEST(MenuFavoritesCompatibility, LegacyStatusPinsShowCurrentLabels) {
   EXPECT_EQ(menufavorites::label("settings/hideReaderStatusBar", settings), StrId::STR_HIDE_READER_STATUS_BAR);
 }
 
-TEST(MenuFavoritesCompatibility, MissingRtcHidesClockPinBeforeTenorLabelOverride) {
+TEST(MenuFavoritesCompatibility, MissingRtcKeepsSystemTimePinsReachable) {
   const auto originalTheme = SETTINGS.uiTheme;
   SETTINGS.uiTheme = CrossPointSettings::TENOR_UI;
   ASSERT_FALSE(halClock.isAvailable());
-  EXPECT_EQ(menufavorites::label("status/statusBarClock", {}), StrId::STR_NONE_OPT);
-  EXPECT_EQ(menufavorites::label("action/2", {}), StrId::STR_NONE_OPT);
-  EXPECT_EQ(menufavorites::label("clock/clockFormat", {}), StrId::STR_NONE_OPT);
+  EXPECT_EQ(menufavorites::label("status/statusBarClock", {}), StrId::STR_STATUS_CORNERS);
+  EXPECT_EQ(menufavorites::label("action/2", {}), StrId::STR_STATUS_CORNERS);
+  EXPECT_EQ(menufavorites::label("clock/clockFormat", {}), StrId::STR_CLOCK_FORMAT);
+  EXPECT_EQ(menufavorites::label("action/14", {}), StrId::STR_CLOCK);
   SETTINGS.uiTheme = originalTheme;
 }
 

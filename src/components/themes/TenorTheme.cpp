@@ -11,6 +11,7 @@
 #include "components/ButtonSymbols.h"
 #include "components/TenorMenuChrome.h"
 #include "fontIds.h"
+#include "components/UITheme.h"
 
 void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                                  const char* btn4) const {
@@ -25,8 +26,8 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
 
   const int pageHeight = renderer.getScreenHeight();
   constexpr int buttonWidth = 80;
-  constexpr int buttonHeight = TenorMetrics::values.buttonHintsHeight;
-  constexpr int buttonY = TenorMetrics::values.buttonHintsHeight;  // cach day man
+  const int buttonHeight = UITheme::getInstance().getMetrics().buttonHintsHeight;
+  const int buttonY = UITheme::getInstance().getMetrics().buttonHintsHeight;  // cach day man
   constexpr int textYOffset = 4;                                   // chu nam cao hon Lyra mot chut, chua cho vach
   constexpr int vachCao = 3;                                       // vach xam duoi nhan
   constexpr int narrowButtonPositions[] = {58, 146, 254, 342};

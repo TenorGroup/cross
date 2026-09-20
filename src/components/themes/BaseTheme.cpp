@@ -1,4 +1,6 @@
 #include "BaseTheme.h"
+#include "ClockStatus.h"
+#include "components/UIScale.h"
 
 #include <FreeInkUIGfxRenderer.h>
 #include <GfxRenderer.h>
@@ -146,17 +148,18 @@ void BaseTheme::drawHintLabel(const GfxRenderer& renderer, const int fontId, con
   constexpr int textPadding = 4;  // keeps a wrapped label off the button's border
   const int maxTextWidth = boxWidth - (textPadding * 2);
 
+  const bool small = normalizedUiTextSize(SETTINGS.uiTextSize) == 0;
   const int textWidth = renderer.getTextWidth(fontId, label);
   if (textWidth <= maxTextWidth) {
-    renderer.drawText(fontId, x + (boxWidth - 1 - textWidth) / 2, boxTop + singleLineYOffset, label);
+    const int offset = small ? singleLineYOffset : std::max(1, (boxHeight - renderer.getLineHeight(fontId)) / 2);
+    renderer.drawText(fontId, x + (boxWidth - 1 - textWidth) / 2, boxTop + offset, label);
     return;
   }
 
-  // Spaced by the glyph height, not getLineHeight() - that returns the font's
-  // full advanceY (leading included), which stacks two lines taller than the
-  // button and clips the second one.
+  // Small keeps its measured legacy ink spacing. Enlarged hints have room
+  // reserved for two complete line boxes, including accents and leading.
   constexpr int lineGap = 2;
-  const int step = renderer.getTextHeight(fontId) + lineGap;
+  const int step = (small ? renderer.getTextHeight(fontId) : renderer.getLineHeight(fontId)) + lineGap;
   const auto lines = renderer.wrappedText(fontId, label, maxTextWidth, 2);
   const int block = static_cast<int>(lines.size()) * step - lineGap;
   int lineY = boxTop + std::max(1, (boxHeight - block) / 2);
@@ -180,8 +183,8 @@ void BaseTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const c
 
   const int pageHeight = renderer.getScreenHeight();
   constexpr int buttonWidth = 106;
-  constexpr int buttonHeight = BaseMetrics::values.buttonHintsHeight;
-  constexpr int buttonY = BaseMetrics::values.buttonHintsHeight;  // Distance from bottom
+  const int buttonHeight = UITheme::getInstance().getMetrics().buttonHintsHeight;
+  const int buttonY = UITheme::getInstance().getMetrics().buttonHintsHeight;  // Distance from bottom
   constexpr int textYOffset = 7;                                  // Distance from top of button to text baseline
   // Keyed to the portrait panel width: the 528-wide X3 gets more spacing than
   // the 480-wide boards (X4, X4 Pro, and the other 800x480 panels).
@@ -213,7 +216,7 @@ void BaseTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* top
   }
 
   const int screenWidth = renderer.getScreenWidth();
-  constexpr int buttonWidth = BaseMetrics::values.sideButtonHintsWidth;  // Width on screen (height when rotated)
+  const int buttonWidth = UITheme::getInstance().getMetrics().sideButtonHintsWidth;  // Width on screen (height when rotated)
   constexpr int buttonHeight = 80;                                       // Height on screen (width when rotated)
   constexpr int buttonMargin = 4;
 
@@ -644,18 +647,19 @@ int BaseTheme::getMenuRowHeight(const GfxRenderer&) const { return UITheme::getI
 void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
   for (int i = 0; i < buttonCount; ++i) {
     const int tileY = BaseMetrics::values.verticalSpacing + rect.y +
-                      static_cast<int>(i) * (BaseMetrics::values.menuRowHeight + BaseMetrics::values.menuSpacing);
+                      static_cast<int>(i) * (metrics.menuRowHeight + metrics.menuSpacing);
 
     const bool selected = selectedIndex == i;
 
     if (selected) {
       renderer.fillRect(rect.x + BaseMetrics::values.contentSidePadding, tileY,
-                        rect.width - BaseMetrics::values.contentSidePadding * 2, BaseMetrics::values.menuRowHeight);
+                        rect.width - BaseMetrics::values.contentSidePadding * 2, metrics.menuRowHeight);
     } else {
       renderer.drawRect(rect.x + BaseMetrics::values.contentSidePadding, tileY,
-                        rect.width - BaseMetrics::values.contentSidePadding * 2, BaseMetrics::values.menuRowHeight);
+                        rect.width - BaseMetrics::values.contentSidePadding * 2, metrics.menuRowHeight);
     }
 
     std::string labelStr = buttonLabel(i);
@@ -664,7 +668,7 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     const int textX = rect.x + (rect.width - textWidth) / 2;
     const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
     const int textY =
-        tileY + (BaseMetrics::values.menuRowHeight - lineHeight) / 2;  // vertically centered assuming y is top of text
+        tileY + (metrics.menuRowHeight - lineHeight) / 2;  // vertically centered assuming y is top of text
     // Invert text when the tile is selected, to contrast with the filled background
     renderer.drawText(UI_10_FONT_ID, textX, textY, label, selectedIndex != i);
   }
@@ -740,7 +744,7 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
                                    &orientedMarginLeft);
   const auto sb = SETTINGS.statusBarSpec();
-  const bool showStatusBarTextLane = sb.textLaneVisible(halClock.isAvailable());
+  const bool showStatusBarTextLane = sb.textLaneVisible(clockstatus::hasValidTime());
 
   // Draw Progress Text
   const auto screenHeight = renderer.getScreenHeight();
@@ -820,7 +824,7 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
 
   // Read the clock only as part of an existing page/status-bar render.
   // A minute change must not schedule its own e-paper refresh.
-  if (sb.showsClock() && halClock.isAvailable()) {
+  if (sb.showsClock() && clockstatus::hasValidTime()) {
     char timeBuf[9];
     if (halClock.formatTime(timeBuf, sizeof(timeBuf), sb.clockUtcOffsetQ, sb.clock12h)) {
       int clockTextWidth = renderer.getTextWidth(SMALL_FONT_ID, timeBuf);

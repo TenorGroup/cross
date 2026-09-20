@@ -216,7 +216,7 @@ bool ReadingStatsStore::resetStatistics(const bool all) {
 uint32_t ReadingStatsStore::currentDay() {
   uint16_t year;
   uint8_t month, day, hour, minute;
-  if (!SETTINGS.clockHasBeenSynced || !halClock.getDateTime(year, month, day, hour, minute)) return 0;
+  if (!halClock.getDateTime(year, month, day, hour, minute)) return 0;
   if (year < 2000 || year > 2099 || month < 1 || month > 12 || day < 1 ||
       day > ngaygio::soNgayTrongThang(year, month) || hour > 23 || minute > 59)
     return 0;
@@ -439,7 +439,7 @@ bool ReadingStatsStore::fromJson(const JsonVariantConst doc) {
 habits::Stamp ReadingStatsStore::habitStamp() {
   uint16_t year;
   uint8_t month, day, hour, minute;
-  if (!SETTINGS.clockHasBeenSynced || !halClock.getDateTime(year, month, day, hour, minute) || hour > 23 || minute > 59)
+  if (!halClock.getDateTime(year, month, day, hour, minute) || hour > 23 || minute > 59)
     return {};
   const auto utcDay = habits::ordinal(year, month, day);
   if (!utcDay) return {};

@@ -1,24 +1,33 @@
 #pragma once
+#include <cstdint>
 #include "fontIds.h"
 
-// FreeInkUI font slots. Row heights, header height, and touch sizes are not
-// chosen here: FreeInkApp derives all metric tokens from the body font's line
-// height (themeTokensForLineHeight). One fixed tier for every board - the
-// user-facing UI-scale setting was removed.
+// Stable aliases keep drawing and measurement on the same active UI faces.
+// Reader font IDs are independent of these three bindings.
 struct UIScaleSpec {
   int smallFontId;
   int bodyFontId;
   int titleFontId;
 };
 
-inline UIScaleSpec uiScaleSpec() {
-  UIScaleSpec spec{};
-  spec.smallFontId = UI_10_FONT_ID;
-  spec.bodyFontId = UI_12_FONT_ID;
-  // Titles use the UI font, not a reader font: fui headers draw book and
-  // directory titles, and the built-in Ubuntu UI fonts cover Hebrew (plus the
-  // size-matched SD CJK fallback) where the NotoSans reader subsets do not.
-  // Same font develop's drawHeader used, so script coverage matches develop.
-  spec.titleFontId = UI_12_FONT_ID;
-  return spec;
+struct UITextSizeSpec {
+  uint8_t captionPointSize;
+  uint8_t subtitlePointSize;
+  uint8_t bodyPointSize;
+  uint8_t captionLineHeight;
+  uint8_t subtitleLineHeight;
+  uint8_t bodyLineHeight;
+};
+
+constexpr uint8_t normalizedUiTextSize(uint8_t value) { return value < 3 ? value : 0; }
+
+// Line heights are measured from the generated font data at 150 DPI.
+constexpr UITextSizeSpec uiTextSizeSpec(uint8_t value) {
+  switch (normalizedUiTextSize(value)) {
+    case 1: return {10, 12, 14, 26, 33, 38};
+    case 2: return {12, 14, 16, 33, 38, 43};
+    default: return {8, 10, 12, 21, 26, 33};
+  }
 }
+
+constexpr UIScaleSpec uiScaleSpec() { return {UI_10_FONT_ID, UI_12_FONT_ID, UI_12_FONT_ID}; }

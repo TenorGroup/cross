@@ -5,9 +5,14 @@
 #include <string>
 
 #define LOG_DBG(...) ((void)0)
+#define LOG_INF(...) ((void)0)
 
 static unsigned long nowMs = 1000;
 static int watchdogResets = 0;
+static int serverCalls = 0;
+static int serverStops = 0;
+static int expiryChecks = 0;
+static int dnsStops = 0;
 unsigned long millis() { return nowMs; }
 void yield() {}
 void resetTaskWatchdogIfSubscribed() { ++watchdogResets; }
@@ -26,6 +31,11 @@ struct FakeDns {
 };
 static FakeDns dns;
 static FakeDns* dnsServer = &dns;
+void stopDnsServer() {
+  if (!dnsServer) return;
+  ++dnsStops;
+  dnsServer = nullptr;
+}
 
 // InputManager::update clears releasedEvents before polling GPIO. A release
 // sampled by main survives until the next update, which can erase it.
@@ -48,6 +58,7 @@ struct MappedInputManager {
 struct FakeServer {
   bool running = true;
   bool inHandler = false;
+  bool expired = false;
   int calls = 0;
   unsigned long handlerMs = 0;
   std::function<void()> duringHandler;
@@ -55,9 +66,19 @@ struct FakeServer {
   void handleClient() {
     inHandler = true;
     ++calls;
+    ++serverCalls;
     nowMs += handlerMs;
     if (duringHandler) duringHandler();
     inHandler = false;
+  }
+  bool sessionIdleExpired(unsigned long) {
+    ++expiryChecks;
+    return expired;
+  }
+  void stop() {
+    if (inHandler) throw std::runtime_error("server stopped inside HTTP handler");
+    running = false;
+    ++serverStops;
   }
 };
 enum class WebServerActivityState { SERVER_RUNNING, SHUTTING_DOWN, AP_STARTING };
@@ -66,9 +87,11 @@ struct CrossPointWebServerActivity {
   bool isApMode = true;
   std::unique_ptr<FakeServer> webServer = std::make_unique<FakeServer>();
   MappedInputManager mappedInput;
-  struct {
+  struct FakeLatch {
+    int stops = 0;
     bool consume() const { return false; }
     bool active() const { return false; }
+    void stop() { ++stops; }
   } backLatch;
   unsigned long lastHandleClientTime = 0;
   unsigned long firstDisconnectAt = 0;
@@ -81,6 +104,16 @@ struct CrossPointWebServerActivity {
   void onGoHome() {
     if (webServer && webServer->inHandler) throw std::runtime_error("exit inside HTTP handler");
     ++exits;
+  }
+  void stopServerAndGoHome() {
+    state = WebServerActivityState::SHUTTING_DOWN;
+    backLatch.stop();
+    stopDnsServer();
+    if (webServer) {
+      webServer->stop();
+      webServer.reset();
+    }
+    onGoHome();
   }
   void loop();
 #include "production-delay.inc"
@@ -100,8 +133,10 @@ void run(const std::string& name) {
     input.home = name == "entry-home";
     activity.loop();
     require(activity.exits == 1, "main-sampled exit event was lost");
-    require(server.calls == 0 && dns.calls == 0, "exit delayed behind network service");
+    require(serverCalls == 0 && dns.calls == 0, "exit delayed behind network service");
     require(input.updates == 0, "activity overwrote main input frame");
+    require(!activity.webServer && serverStops == 1 && dnsStops == 1 && activity.backLatch.stops == 1,
+            "entry exit skipped synchronous cleanup");
   } else if (name == "loaded-handler-budget") {
     server.handlerMs = 20;
     auto start = millis();
@@ -125,11 +160,11 @@ void run(const std::string& name) {
     } else {
       input.pendingRelease = true;  // The user releases just after the handler.
     }
-    int finishedCalls = server.calls;
+    int finishedCalls = serverCalls;
     input.update();  // The next main pass samples the physical release.
     activity.loop();
     require(activity.exits == 1, "first release after HTTP handler did not exit");
-    require(server.calls == finishedCalls, "another request ran after the exit event");
+    require(serverCalls == finishedCalls, "another request ran after the exit event");
   } else if (name == "ap-dns-and-throughput") {
     for (int pass = 0; pass < 100; ++pass) {
       input.update();
@@ -155,18 +190,36 @@ void run(const std::string& name) {
     WiFi.connection = WL_DISCONNECTED;
     nowMs = 3001;
     activity.loop();
-    int priorCalls = server.calls;
+    int priorCalls = serverCalls;
     nowMs += activity.WIFI_ABANDON_MS + 1;
     activity.loop();
     require(activity.exits == 1 && activity.state == WebServerActivityState::SHUTTING_DOWN,
             "sustained outage did not leave transfer");
-    require(server.calls == priorCalls, "request processed after abandoning WiFi");
+    require(serverCalls == priorCalls, "request processed after abandoning WiFi");
   } else if (name == "stopped-server-back") {
     server.running = false;
     input.released = true;
     activity.loop();
-    require(activity.exits == 1 && server.calls == 0, "stopped server trapped Back");
+    require(activity.exits == 1 && serverCalls == 0, "stopped server trapped Back");
     require(!activity.skipLoopDelay(), "stopped server kept main busy");
+  } else if (name == "idle-timeout-safe-boundary") {
+    bool handlerCompleted = false;
+    server.expired = true;
+    server.duringHandler = [&] { handlerCompleted = true; };
+    activity.loop();
+    require(handlerCompleted && serverCalls == 1 && expiryChecks == 1,
+            "idle timeout did not wait for the request boundary");
+    require(activity.exits == 1 && !activity.webServer, "idle timeout did not leave transfer");
+    require(serverStops == 1 && dnsStops == 1 && activity.backLatch.stops == 1,
+            "idle timeout skipped synchronous cleanup");
+  } else if (name == "recent-transfer-activity-defers-timeout") {
+    activity.loop();
+    require(activity.exits == 0 && activity.webServer && serverCalls == 1 && expiryChecks == 1,
+            "recent transfer activity was cut by idle timeout");
+    server.expired = true;
+    activity.loop();
+    require(activity.exits == 1 && !activity.webServer && serverCalls == 2 && expiryChecks == 2,
+            "stalled transfer session did not close at its idle deadline");
   } else if (name == "inactive-state") {
     activity.state = WebServerActivityState::AP_STARTING;
     input.released = true;

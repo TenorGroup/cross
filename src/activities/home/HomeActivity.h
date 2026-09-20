@@ -72,6 +72,9 @@ class HomeActivity final : public UiTabListActivity {
   bool toggleFavorite(int row) override;
   bool favoriteFileMissing = false;
   bool statsResetFailed = false;
+  uint8_t statsPage = 0;
+  bool statsRowsEnlarged = false;
+  int statsPanelHeight() const;
   void confirmStatsReset(bool all);
   bool giuNutDiDong(int direction) override;
   // Header band, plus the cover tile on the Recent tab.
@@ -107,6 +110,7 @@ class HomeActivity final : public UiTabListActivity {
   bool coverBufferStored = false;
   uint8_t* coverBuffer = nullptr;
   size_t coverBufferSize = 0;
+  uint8_t coverBufferUiSize = 0;
   int coverRectX = 0, coverRectY = 0, coverRectW = 0, coverRectH = 0;
   bool storeCoverBuffer();
   bool restoreCoverBuffer();

@@ -7,6 +7,14 @@
 #include "activities/Activity.h"
 #include "network/CrossPointWebServer.h"
 
+namespace calibre_power {
+template <typename Stop, typename Finish>
+void stopBeforeFinish(Stop stop, Finish finish) {
+  stop();
+  finish();
+}
+}  // namespace calibre_power
+
 enum class CalibreConnectState { WIFI_SELECTION, SERVER_STARTING, SERVER_RUNNING, ERROR };
 
 /**

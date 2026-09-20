@@ -28,15 +28,34 @@ std::vector<Entry> expected(unsigned n) {
   std::sort(result.begin(),result.end(),[](const Entry& a,const Entry& b){return a.day!=b.day?a.day>b.day:a.path<b.path;});
   if(result.size()>21)result.resize(21);return result;
 }
+constexpr size_t acceptedReadChunk=256;
+void padSnapshots(size_t padding) {
+  if(!padding)return;
+  const auto directory=fixtureRoot+"/.crosspoint/reading-stats";
+  for(const auto& item:std::filesystem::directory_iterator(directory)) {
+    std::ofstream out(item.path(),std::ios::app);out<<std::string(padding,' ');
+  }
+}
+size_t readCallBound() {
+  size_t calls=0;
+  const auto directory=fixtureRoot+"/.crosspoint/reading-stats";
+  for(const auto& item:std::filesystem::directory_iterator(directory)) {
+    const auto size=std::filesystem::file_size(item.path());
+    calls+=(size+acceptedReadChunk-1)/acceptedReadChunk;
+  }
+  return calls;
+}
 void measurement(bool gate) {
-  for(unsigned n:{100u,1000u,5000u}) {
-    fixture(n);resetScan();io={};std::vector<Entry> result;
+  struct Shape { const char* name;size_t padding; };
+  for(const auto shape:{Shape{"small",0},Shape{"large",768}}) for(unsigned n:{100u,1000u,5000u}) {
+    fixture(n);padSnapshots(shape.padding);const auto maxReadCalls=readCallBound();resetScan();io={};std::vector<Entry> result;
     auto start=std::chrono::steady_clock::now();READING_STATS.listBooks({},false,result);
     auto us=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count();
     const auto hash=contentHash(result);
-    std::cout<<"{\"records\":"<<n<<",\"opens\":"<<io.opens<<",\"directory_opens\":"<<io.directoryOpens
+    std::cout<<"{\"records\":"<<n<<",\"record_shape\":\""<<shape.name<<"\",\"opens\":"<<io.opens<<",\"directory_opens\":"<<io.directoryOpens
       <<",\"entry_opens\":"<<io.entryOpens<<",\"full_path_file_opens\":"<<io.fullPathFileOpens
       <<",\"read_doc_calls\":"<<io.readDocs<<",\"exists\":"<<io.exists<<",\"read_calls\":"<<io.readCalls
+      <<",\"read_call_bound\":"<<maxReadCalls
       <<",\"read_files\":"<<io.readFiles<<",\"bytes_read\":"<<io.bytesRead<<",\"legacy_parses\":"<<io.parses
       <<",\"entries\":"<<result.size()<<",\"content_hash\":\""<<std::hex<<hash<<std::dec
       <<"\",\"host_latency_us\":"<<us<<"}"<<std::endl;
@@ -45,6 +64,7 @@ void measurement(bool gate) {
       check(io.directoryOpens==1 && io.entryOpens==n,"directory enumeration changed");
       check(io.fullPathFileOpens==0,"healthy entries reopened by full path");
       check(io.readDocs==0 && io.exists==0,"healthy entries reenter legacy recovery/probe");
+      check(io.readCalls<=maxReadCalls,"healthy snapshots exceeded the 256-byte read-call budget");
     }
   }
 }

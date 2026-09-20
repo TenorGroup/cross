@@ -49,6 +49,7 @@ class UITheme {
   std::unique_ptr<BaseTheme> currentTheme;
   mutable ThemeMetrics adjustedMetrics;
   mutable bool metricsValid = false;
+  mutable uint8_t metricsForTextSize = 0;
   mutable bool metricsForTouch = false;
   mutable bool metricsForHiddenStatusBar = false;
 };

@@ -29,6 +29,10 @@ class SdCardFontManager {
   // or loading failed.
   int loadFamilyExtraSize(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, uint8_t pointSize);
 
+  // Release only auxiliary UI sizes, preserving the active reader font object
+  // and its ID. Caller clears font caches and owns the render lock.
+  void unloadExtraSizes(GfxRenderer& renderer);
+
   // Unload everything, unregister from renderer.
   void unloadAll(GfxRenderer& renderer);
 

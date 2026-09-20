@@ -5,6 +5,8 @@
 
 #include <atomic>
 
+#include "ReaderInkWeight.h"
+
 class GfxRenderer;
 
 /// Facade that owns the SD card font registry, manager, and resolver logic.
@@ -21,8 +23,11 @@ class SdCardFontSystem {
   /// Call before entering the reader or after settings change.
   /// Also re-discovers if the registry has been marked dirty (e.g. by web upload).
   void ensureLoaded(GfxRenderer& renderer);
+  // Caller holds RenderLock and clears font caches before changing UI faces.
+  // Missing auxiliary packs leave that UI alias on its built-in glyphs.
+  void refreshUiFallbacks(GfxRenderer& renderer, uint8_t uiTextSize);
   uint8_t availableWeightMask() const;
-  uint8_t effectiveWeight() const { return manager_.currentWeight(); }
+  uint8_t effectiveWeight() const { return readerInk::publicFromPhysical(manager_.currentWeight()); }
 
   // OTA uses built-in UI fonts and reboots on exit. Release SD font metadata
   // and the discovery catalog before TLS; settings and card files stay intact.
@@ -63,6 +68,7 @@ class SdCardFontSystem {
   SdCardFontRegistry registry_;
   SdCardFontManager manager_;
   uint8_t loadedRequestWeight_ = 0;
+  uint8_t uiTextSize_ = 0;
   std::atomic<bool> registryDirty_{false};
 };
 

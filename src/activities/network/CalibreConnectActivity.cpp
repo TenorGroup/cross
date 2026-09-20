@@ -8,6 +8,8 @@
 
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
+#include "CrossPointSettings.h"
+#include "UIFontTiers.h"
 #include "WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -53,6 +55,7 @@ void CalibreConnectActivity::onEnter() {
 void CalibreConnectActivity::onExit() {
   Activity::onExit();
 
+  stopWebServer();
   MDNS.end();
 
   if (WiFi.getMode() != WIFI_MODE_NULL) {
@@ -95,6 +98,14 @@ void CalibreConnectActivity::startWebServer() {
   }
 
   webServer.reset(new CrossPointWebServer());
+  webServer->setUiTextSizeApplier([this](const uint8_t size) {
+    RenderLock lock(*this);
+    if (!applyUiFontSize(renderer, size)) return false;
+    SETTINGS.uiTextSize = size;
+    UITheme::getInstance().reload();
+    requestUpdate();
+    return true;
+  });
   webServer->begin();
 
   if (webServer->isRunning()) {
@@ -128,6 +139,10 @@ void CalibreConnectActivity::loop() {
     constexpr int MAX_ITERATIONS = 80;
     for (int i = 0; i < MAX_ITERATIONS && webServer->isRunning(); i++) {
       webServer->handleClient();
+      if (exitRequested || webServer->sessionIdleExpired(millis())) {
+        exitRequested = true;
+        break;
+      }
       if ((i & 0x07) == 0x07) {
         resetTaskWatchdogIfSubscribed();
       }
@@ -177,7 +192,7 @@ void CalibreConnectActivity::loop() {
   }
 
   if (exitRequested) {
-    finish();
+    calibre_power::stopBeforeFinish([this] { stopWebServer(); }, [this] { finish(); });
     return;
   }
 }

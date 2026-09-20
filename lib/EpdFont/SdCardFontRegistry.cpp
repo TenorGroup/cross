@@ -12,7 +12,7 @@ std::string SdCardFontFamilyInfo::dir() const {
 }
 
 std::string SdCardFontFamilyInfo::filePath(const SdCardFontFileInfo& file, const uint8_t weight) const {
-  if (weight > 2 || file.stem >= stems.size()) return {};
+  if (weight > 4 || file.stem >= stems.size()) return {};
   std::string path = dir();
   if (weight != 0) {
     path += "/weight-";
@@ -24,7 +24,7 @@ std::string SdCardFontFamilyInfo::filePath(const SdCardFontFileInfo& file, const
 
 uint8_t SdCardFontFamilyInfo::weights(const SdCardFontFileInfo& file) const {
   uint8_t mask = 1;
-  for (uint8_t weight = 1; weight <= 2; ++weight) {
+  for (uint8_t weight = 1; weight <= 4; ++weight) {
     if (Storage.exists(filePath(file, weight).c_str())) mask |= static_cast<uint8_t>(1u << weight);
   }
   return mask;

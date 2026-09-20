@@ -38,6 +38,18 @@ activity_path = args.source / "src/activities/ActivityManager.cpp"
 main_path = args.source / "src/main.cpp"
 go = extract(activity_path.read_text(), r"(?:bool|void) ActivityManager::goToSleep\(")
 main_source = main_path.read_text()
+tilt_update = re.search(
+    r"(?:const bool pendingTiltActivity = halTiltSensor\.hadActivity\(\);\s+)?"
+    r"halTiltSensor\.update\(\s*SETTINGS\.tiltPageTurn,\s*SETTINGS\.orientation,\s*"
+    r"activityManager\.isForegroundReaderActivity\(\)\s*\);",
+    main_source,
+)
+if not tilt_update:
+    raise ValueError("Missing foreground tilt poll")
+tilt_input = re.search(r"const bool nguoiDungChamVao\s*=\s*.*?;", main_source, re.DOTALL)
+if not tilt_input:
+    raise ValueError("Missing accepted user activity input")
+tilt_activity_gate = tilt_update.group() + "\n" + tilt_input.group()
 enter = extract(main_source, r"void enterDeepSleep\(")
 input_clock = extract(main_source, r"if \(userActivity\)")
 reset_clock = re.search(r"if \(userActivity \|\| activityManager\.preventAutoSleep\(\)\) lastSleepResetTime = millis\(\);", main_source).group()
@@ -45,7 +57,11 @@ auto_sleep = extract(main_source, r"if \(sleepTimeoutMs > 0")
 sleep_gate = input_clock + "\n" + reset_clock + "\nconst unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();\n" + auto_sleep
 return_type = go.split(" ", 1)[0]
 template = (Path(__file__).parent / "harness.cpp.in").read_text()
-generated = template.replace("@RETURN_TYPE@", return_type).replace("@GO_TO_SLEEP@", go).replace("@ENTER_DEEP_SLEEP@", enter).replace("@MAIN_SLEEP_GATE@", sleep_gate)
+generated = (template.replace("@RETURN_TYPE@", return_type)
+             .replace("@GO_TO_SLEEP@", go)
+             .replace("@ENTER_DEEP_SLEEP@", enter)
+             .replace("@MAIN_SLEEP_GATE@", sleep_gate)
+             .replace("@MAIN_TILT_ACTIVITY_GATE@", tilt_activity_gate))
 cpp = args.output / "sleep-regression.cpp"
 cpp.write_text(generated)
 manifest = {
@@ -54,8 +70,9 @@ manifest = {
         "ActivityManager::goToSleep": {"file": str(activity_path), "sha256": hashlib.sha256(go.encode()).hexdigest()},
         "enterDeepSleep": {"file": str(main_path), "sha256": hashlib.sha256(enter.encode()).hexdigest()},
         "main sleep gate and accepted-input clocks": {"file": str(main_path), "sha256": hashlib.sha256(sleep_gate.encode()).hexdigest()},
+        "main foreground tilt poll and input gate": {"file": str(main_path), "sha256": hashlib.sha256(tilt_activity_gate.encode()).hexdigest()},
     },
-    "boundary_model": "Monotonic fake clock; deferred activity loop; BLE suspension availability; fake storage/display/deep sleep. Both production function bodies execute unchanged.",
+    "boundary_model": "Monotonic fake clock; deferred activity loop; BLE suspension availability; fake storage/display/deep sleep. Production sleep bodies plus the main tilt poll and accepted-input gate execute unchanged.",
 }
 exe = args.output / "sleep-regression"
 build = subprocess.run([args.compiler, "-std=c++17", "-Wall", "-Wextra", "-Wno-unused-variable", str(cpp), "-o", str(exe)], cwd=args.output, text=True, capture_output=True)

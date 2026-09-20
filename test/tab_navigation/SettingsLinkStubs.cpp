@@ -18,6 +18,13 @@
 // The catalogue asks the tilt sensor whether the hardware is present.
 HalTiltSensor halTiltSensor;
 
+// UiTabListActivity owns tab navigation. This host target does not link the
+// hardware IMU driver, so keep its sensor boundary inert while tests inject
+// one-shot directions through the tab base's queue entry.
+void HalTiltSensor::update(uint8_t, uint8_t, bool) {}
+bool HalTiltSensor::wasTiltedForward() { return false; }
+bool HalTiltSensor::wasTiltedBack() { return false; }
+
 // The catalogue asks the SD-font registry which point sizes a family offers.
 // A host has no registry: no family is found, so the built-in size list is used.
 const SdCardFontFamilyInfo* SdCardFontRegistry::findFamily(const std::string&) const { return nullptr; }

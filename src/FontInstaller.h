@@ -23,8 +23,8 @@ class FontInstaller {
   /// Guarantees the name still fits CrossPointSettings::sdFontFamilyName[32].
   static constexpr size_t MAX_FAMILY_NAME_LEN = 31;
 
-  /// Maximum .cpfont filename length in bytes, INCLUDING the ".cpfont" suffix
-  /// and excluding the NUL terminator.
+  /// Maximum .cpfont filename or relative-path length in bytes, INCLUDING
+  /// the ".cpfont" suffix and excluding the NUL terminator.
   static constexpr size_t MAX_CPFONT_FILENAME_LEN = 87;
 
   /// Largest family directory path FontInstaller builds, including the NUL:
@@ -49,16 +49,25 @@ class FontInstaller {
   /// that bound.
   static bool isValidCpfontFilename(const char* name);
 
+  /// Accept a flat filename or exactly weight-1..4/<filename>. The complete
+  /// relative path shares the 87-byte filename limit and 128-byte full path.
+  /// Upload callers continue to use isValidCpfontFilename for flat names.
+  static bool isValidCpfontRelativePath(const char* name);
+
   /// Ensure /<root>/<family>/ exists, where <root> is /.fonts (preferred) or /fonts.
   /// Re-uses the existing root if the family is already installed; otherwise
   /// creates it under SdCardFontRegistry::defaultWriteRoot().
   bool ensureFamilyDir(const char* familyName);
 
+  /// Validate both names before I/O, then ensure the family and optional
+  /// single weight directory exist. No other subdirectory shape is accepted.
+  bool ensureFontDir(const char* familyName, const char* relativePath);
+
   /// Validate a .cpfont file on disk (check magic bytes).
   bool validateCpfontFile(const char* path);
 
   /// Build the full SD path for a font file.
-  /// Writes "/<root>/<family>/<filename>" to outBuf, choosing <root> the same
+  /// Writes "/<root>/<family>/<relativePath>" to outBuf, choosing <root> the same
   /// way ensureFamilyDir does (existing install dir, else default-write root).
   /// Returns false, and leaves outBuf empty, when family or filename is invalid,
   /// when outBuf is null or too small for the complete path, or when snprintf

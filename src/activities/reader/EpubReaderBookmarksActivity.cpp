@@ -9,6 +9,7 @@
 #include "MappedInputManager.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/SettledListRender.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
 
@@ -230,8 +231,6 @@ void EpubReaderBookmarksActivity::buildScreen(UiScreen& screen) {
 }
 
 void EpubReaderBookmarksActivity::render(RenderLock&&) {
-  renderer.clearScreen();
-
   const auto pageWidth = renderer.getScreenWidth();
   const auto orientation = renderer.getOrientation();
   // Landscape orientation: reserve a horizontal gutter for button hints.
@@ -248,9 +247,11 @@ void EpubReaderBookmarksActivity::render(RenderLock&&) {
   // Manual centering to honor content gutters.
   const int titleX =
       contentX + (contentWidth - renderer.getTextWidth(UI_12_FONT_ID, tr(STR_BOOKMARKS), EpdFontFamily::BOLD)) / 2;
-  renderer.drawText(UI_12_FONT_ID, titleX, 15 + contentY, tr(STR_BOOKMARKS), true, EpdFontFamily::BOLD);
-
-  renderUi();
+  renderSettledList(activeNav(), [&] {
+    renderer.clearScreen();
+    renderer.drawText(UI_12_FONT_ID, titleX, 15 + contentY, tr(STR_BOOKMARKS), true, EpdFontFamily::BOLD);
+    renderUi();
+  });
 
   if (confirmPopup.processRender(renderer, mappedInput)) return;
 

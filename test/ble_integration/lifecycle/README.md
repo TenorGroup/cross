@@ -8,10 +8,11 @@ from `src/main.cpp` and executes in the same harness. Eleven scenarios cover
 ownership, power locks, teardown, failed initialization and idle-stop status.
 
 The sleep harness executes the complete production `goToSleep` and
-`enterDeepSleep` bodies. Eight scenarios cover deferred completion, deadline
+`enterDeepSleep` bodies. Ten scenarios cover deferred completion, deadline
 cancellation, abort before hardware shutdown, successful shutdown ordering,
 retry ownership after accepted input and inactivity arithmetic through long uptime
-and timer wrap, plus explicit sleep after failure. Shared sleep-transition publication requires RenderLock in the
+and timer wrap, explicit sleep after failure, and a tab tilt carried to the next
+main-loop pass. Shared sleep-transition publication requires RenderLock in the
 fixture. The accepted-input clocks and autosleep gate execute their unchanged
 production source.
 Its activity loop, BLE availability and hardware boundaries are controlled fakes.

@@ -8,12 +8,31 @@
 
 HalClock halClock;  // Singleton instance
 
+namespace {
+// Keep a cold boot's seconds-since-start out of calendar and reading statistics.
+constexpr time_t MIN_CLOCK_EPOCH = 1735689600;  // 2025-01-01 UTC
+
+bool readSystemTime(struct tm& utc) {
+  const time_t now = time(nullptr);
+  return now >= MIN_CLOCK_EPOCH && gmtime_r(&now, &utc) && utc.tm_year <= 199;
+}
+
+bool validRtcDate(const Rtc::DateTime& dt) {
+  if (dt.year < 2025 || dt.year > 2099 || dt.month < 1 || dt.month > 12 || dt.hour > 23 ||
+      dt.minute > 59 || dt.second > 59) return false;
+  constexpr uint8_t days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  const uint8_t limit = days[dt.month - 1] + (dt.month == 2 && dt.year % 4 == 0 ? 1 : 0);
+  return dt.day >= 1 && dt.day <= limit;
+}
+}  // namespace
+
 void HalClock::begin() {
   _available = _sdkRtc.begin();
   LOG_INF("CLK", _available ? "SDK RTC found" : "RTC not found");
+  // A retained platform clock can already be newer than a failed RTC write.
+  if (hasValidTime()) return;
   Rtc::DateTime dt;
-  if (_available && _sdkRtc.now(dt) && dt.year >= 2020 && dt.year <= 2099 && dt.month >= 1 && dt.month <= 12 &&
-      dt.day >= 1 && dt.day <= 31 && dt.hour <= 23 && dt.minute <= 59 && dt.second <= 59) {
+  if (_available && _sdkRtc.now(dt) && validRtcDate(dt)) {
     struct tm utc = {};
     utc.tm_year = dt.year - 1900;
     utc.tm_mon = dt.month - 1;
@@ -28,43 +47,25 @@ void HalClock::begin() {
   }
 }
 
+bool HalClock::hasValidTime() const {
+  struct tm utc = {};
+  return readSystemTime(utc);
+}
+
 bool HalClock::getTime(uint8_t& hour, uint8_t& minute) const {
-  if (!_available) return false;
-
-  const unsigned long now = millis();
-  if (_lastPollMs != 0 && (now - _lastPollMs) < CLOCK_POLL_MS) {
-    hour = _cachedHour;
-    minute = _cachedMinute;
-    return true;
-  }
-
-  Rtc::DateTime dt;
-  if (!_sdkRtc.now(dt)) {
-    if (!_hasCachedTime) return false;
-    _lastPollMs = now;
-    hour = _cachedHour;
-    minute = _cachedMinute;
-    return true;
-  }
-  _cachedHour = dt.hour;
-  _cachedMinute = dt.minute;
-  _cachedYear = dt.year;
-  _cachedMonth = dt.month;
-  _cachedDay = dt.day;
-  _lastPollMs = now;
-  _hasCachedTime = true;
-  hour = _cachedHour;
-  minute = _cachedMinute;
-  return true;
+  uint16_t year;
+  uint8_t month, day;
+  return getDateTime(year, month, day, hour, minute);
 }
 
 bool HalClock::getDateTime(uint16_t& year, uint8_t& month, uint8_t& day, uint8_t& hour, uint8_t& minute) const {
-  // Di qua getTime() de dung chung bo dem va nhip doc 10 giay; no da nap ngay thang vao
-  // bo dem roi, o day chi viec doc ra.
-  if (!getTime(hour, minute)) return false;
-  year = _cachedYear;
-  month = _cachedMonth;
-  day = _cachedDay;
+  struct tm utc = {};
+  if (!readSystemTime(utc)) return false;
+  year = static_cast<uint16_t>(utc.tm_year + 1900);
+  month = static_cast<uint8_t>(utc.tm_mon + 1);
+  day = static_cast<uint8_t>(utc.tm_mday);
+  hour = static_cast<uint8_t>(utc.tm_hour);
+  minute = static_cast<uint8_t>(utc.tm_min);
   return true;
 }
 
@@ -108,11 +109,10 @@ bool HalClock::syncFromNTP() {
   constexpr int maxAttempts = 50;
   for (int i = 0; i < maxAttempts; i++) {
     if (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
-      time_t now = time(nullptr);
-      struct tm timeinfo;
+      struct tm timeinfo = {};
       // Use the same epoch floor as the HTTPS callers. SNTP success must
       // establish usable system time even on boards without an external RTC.
-      if (now < 1735689600 || !gmtime_r(&now, &timeinfo)) {
+      if (!readSystemTime(timeinfo)) {
         LOG_ERR("CLK", "NTP completed with invalid system time");
         return false;
       }
@@ -128,13 +128,6 @@ bool HalClock::syncFromNTP() {
       dt.second = static_cast<uint8_t>(timeinfo.tm_sec);
       dt.weekday = static_cast<uint8_t>(timeinfo.tm_wday);
       if (_sdkRtc.set(dt)) {
-        _lastPollMs = 0;
-        _cachedHour = dt.hour;
-        _cachedMinute = dt.minute;
-        _cachedYear = dt.year;
-        _cachedMonth = dt.month;
-        _cachedDay = dt.day;
-        _hasCachedTime = true;
         LOG_INF("CLK", "RTC set to %04u-%02u-%02u %02u:%02u:%02u UTC", dt.year, dt.month, dt.day, dt.hour, dt.minute,
                 dt.second);
       } else {

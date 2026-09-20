@@ -11,9 +11,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', required=True, type=pathlib.Path)
     parser.add_argument('--cxx', default='c++')
+    parser.add_argument('--source-root', type=pathlib.Path, help='Unmodified production tree for baseline comparisons')
     args = parser.parse_args()
     here = pathlib.Path(__file__).resolve().parent
-    repo = here.parents[1]
+    repo = (args.source_root or here.parents[1]).resolve()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
 
@@ -26,6 +27,9 @@ def main():
     (output / 'production-http-flow.inc').write_text(flow)
     clock = repo / 'lib/hal/HalClock.cpp'
     (output / 'source-hashes.json').write_text(json.dumps({
+        'source-root': str(repo),
+        'HalClock.h': hashlib.sha256((repo / 'lib/hal/HalClock.h').read_bytes()).hexdigest(),
+        'ClockNtpBehavior.cpp': hashlib.sha256((here / 'ClockNtpBehavior.cpp').read_bytes()).hexdigest(),
         'HalClock.cpp': hashlib.sha256(clock.read_bytes()).hexdigest(),
         'HttpDownloader.cpp': hashlib.sha256(http.encode()).hexdigest(),
         'http-flow': hashlib.sha256(flow.encode()).hexdigest(),
@@ -37,9 +41,12 @@ def main():
                '-I' + str(repo / 'freeink-sdk/libs/network/SecureNet/include'),
                '-I' + str(output), str(clock), str(here / 'ClockNtpBehavior.cpp'),
                '-o', str(binary)]
+    (output / 'compile-command.json').write_text(json.dumps(command, indent=2) + '\n')
     subprocess.run(command, check=True)
     result = subprocess.run([str(binary)], capture_output=True, text=True)
     (output / 'result.log').write_text(result.stdout + result.stderr)
+    (output / 'result.json').write_text(json.dumps({'exit_code': result.returncode, 'binary_sha256':
+        hashlib.sha256(binary.read_bytes()).hexdigest()}, indent=2) + '\n')
     print(result.stdout + result.stderr, end='')
     return result.returncode
 

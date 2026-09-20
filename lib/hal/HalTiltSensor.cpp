@@ -62,22 +62,30 @@ bool HalTiltSensor::deepSleep() {
   return true;
 }
 
-void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool inReader) {
+void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool gestureTargetActive) {
+  if (shouldDiscardPendingEvents(mode, gestureTargetActive)) {
+    clearPendingEvents();
+  }
+
   if (!_available) {
     return;
   }
 
   // State machine: wake up or sleep based on the enabled flag
-  if ((mode != CrossPointTiltPageTurn::TILT_OFF) && !_isAwake) {
-    _isAwake = wake();
-    return;
-  } else if ((mode == CrossPointTiltPageTurn::TILT_OFF) && _isAwake) {
-    _isAwake = !deepSleep();
+  if (mode == CrossPointTiltPageTurn::TILT_OFF) {
+    if (_isAwake) _isAwake = !deepSleep();
     return;
   }
 
-  // If disabled, skip the rest of the polling logic and avoid unnecessary I2C traffic in non-reader activities
-  if ((mode == CrossPointTiltPageTurn::TILT_OFF) || !inReader) {
+  // An inactive reader, modal, or child screen must not retain a gesture for
+  // the next foreground target. Keep the held-gesture latch intact so it has
+  // to return to neutral before another event can fire.
+  if (!gestureTargetActive) {
+    return;
+  }
+
+  if (!_isAwake) {
+    _isAwake = wake();
     return;
   }
 

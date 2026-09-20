@@ -10,6 +10,7 @@
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
+#include "components/OptionPopupLayout.h"
 #include "components/UiAppHelpers.h"
 
 // Modal option picker drawn over the current screen (no clear) via
@@ -33,7 +34,7 @@ class OptionPopup {
     for (int i = 0; i < optionCount; i++) {
       ownedStrings[i] = I18N.get(optionIds[i]);
     }
-    selectedIndex = currentIndex;
+    selectedIndex = std::max(0, std::min(currentIndex, static_cast<int>(ownedStrings.size()) - 1));
     onSelectCallback = std::move(onSelect);
     uiReady = false;
     active = true;
@@ -46,7 +47,7 @@ class OptionPopup {
     for (int i = 0; i < optionCount; i++) {
       ownedStrings[i] = options[i];
     }
-    selectedIndex = currentIndex;
+    selectedIndex = std::max(0, std::min(currentIndex, static_cast<int>(ownedStrings.size()) - 1));
     onSelectCallback = std::move(onSelect);
     uiReady = false;
     active = true;
@@ -56,7 +57,7 @@ class OptionPopup {
             std::function<void(int)> onSelect) {
     title = I18N.get(titleId);
     ownedStrings = options;
-    selectedIndex = currentIndex;
+    selectedIndex = std::max(0, std::min(currentIndex, static_cast<int>(ownedStrings.size()) - 1));
     onSelectCallback = std::move(onSelect);
     uiReady = false;
     active = true;
@@ -65,10 +66,8 @@ class OptionPopup {
   bool handleInput(MappedInputManager& input, const std::function<void()>& requestUpdate) {
     if (!active) return false;
 
-    // Match the render cap: only the first MAX_OPTIONS rows exist on screen,
-    // so button wrap-around must not select an invisible option.
-    const int total = static_cast<int>(ownedStrings.size());
-    const int count = total > MAX_OPTIONS ? MAX_OPTIONS : total;
+    const int count = static_cast<int>(ownedStrings.size());
+    if (count == 0) { active = false; return true; }
     const freeink::ui::InputSnapshot snap = touchSnapshotFrom(input);
     if (snap.touchPressed || snap.touchReleased || snap.touchHeld) {
       // Interactions are registered on the render task; only route once the
@@ -80,6 +79,11 @@ class OptionPopup {
           selectedIndex = event.value;
           active = false;
           if (onSelectCallback) onSelectCallback(selectedIndex);
+          requestUpdate();
+          return true;
+        }
+        if (event && event.action == ACTION_PAGE) {
+          selectedIndex = std::max(0, std::min(count - 1, static_cast<int>(event.value)));
           requestUpdate();
           return true;
         }
@@ -214,8 +218,38 @@ class OptionPopup {
     const fui::Rect screen = device.screen();
     const int16_t width =
         fui::clampI16(std::min<int>(screen.width * 3 / 4, screen.width - metrics.optionPopupDialogSideMargin * 2));
-    const int16_t height = fui::clampI16(fui::optionDialogHeight(target, props, width), 0, screen.height);
-    const fui::Rect dialogRect = fui::centeredRect(screen, fui::Size{width, height});
+    const int fullHeight = fui::optionDialogHeight(target, props, width);
+    fui::Rect available = screen;
+    const bool small = normalizedUiTextSize(SETTINGS.uiTextSize) == 0;
+    if (!small || totalOptions > MAX_OPTIONS || fullHeight > screen.height) {
+      available = device.safeRect();
+      available.height = fui::clampI16(available.height - metrics.buttonHintsHeight);
+      props.optionCount = 0;
+      const int headerHeight = fui::optionDialogHeight(target, props, width);
+      const auto window = optionPopupWindow(totalOptions, selectedIndex, available.height, headerHeight,
+                                            props.buttonHeight + props.gap);
+      int slot = 0;
+      if (window.paged) {
+        options[slot++] = {tr(STR_PREV_PAGE), ACTION_PAGE,
+                           static_cast<int16_t>(std::max(0, window.first - 1)), fui::StateNormal, window.first > 0};
+      }
+      for (int i = 0; i < window.count; ++i) {
+        const int index = window.first + i;
+        options[slot].label = ownedStrings[index].c_str();
+        options[slot].action = ACTION_OPTION;
+        options[slot].value = static_cast<int16_t>(index);
+        options[slot].state = index == selectedIndex ? fui::StateFocused : fui::StateNormal;
+        ++slot;
+      }
+      if (window.paged) {
+        options[slot++] = {tr(STR_NEXT_PAGE), ACTION_PAGE,
+                           static_cast<int16_t>(std::min(totalOptions - 1, window.first + window.count)), fui::StateNormal,
+                           window.first + window.count < totalOptions};
+      }
+      props.optionCount = static_cast<uint8_t>(slot);
+    }
+    const int16_t height = fui::optionDialogHeight(target, props, width);
+    const fui::Rect dialogRect = fui::centeredRect(available, fui::Size{width, height});
 
     // Chrome guard first, options after: route() scans newest-first, so the
     // option buttons win inside the dialog and the guard absorbs the rest.
@@ -269,13 +303,13 @@ class OptionPopup {
   }
 
  private:
-  // The dialog has no scrolling, so options past MAX_OPTIONS would render off
-  // screen anyway; a fixed cap keeps the DialogOption array on the stack and
-  // the interaction table small. +1 slot for the chrome guard rect.
+  // A bounded page keeps the stack and published hit table small. All source
+  // options remain reachable through physical selection and touch page rows.
   static constexpr int MAX_OPTIONS = 16;
   static constexpr size_t INTERACTION_CAPACITY = MAX_OPTIONS + 1;
   static constexpr freeink::ui::ActionId ACTION_OPTION = 1;
   static constexpr freeink::ui::ActionId ACTION_CHROME = 2;
+  static constexpr freeink::ui::ActionId ACTION_PAGE = 3;
 
   bool active = false;
   std::string title;

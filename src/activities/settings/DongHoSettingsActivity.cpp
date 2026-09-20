@@ -6,12 +6,14 @@
 #include <cstdio>
 #include <memory>
 
+#include "ClockStatus.h"
 #include "ClockOffsetActivity.h"
 #include "ClockSyncActivity.h"
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "MenuFavorites.h"
 #include "components/UITheme.h"
+#include "components/SettledListRender.h"
 #include "components/UIThemeTokens.h"
 
 namespace fui = freeink::ui;
@@ -88,7 +90,7 @@ std::string DongHoSettingsActivity::giaTriDong(const int index) {
     case CHENH_LECH_UTC:
       return formatUtcOffset(SETTINGS.clockUtcOffsetQ);
     case DONG_BO_NGAY:
-      return SETTINGS.clockHasBeenSynced ? tr(STR_CLOCK_SYNCED) : tr(STR_NOT_SET);
+      return clockstatus::hasValidTime() ? tr(STR_CLOCK_SYNCED) : tr(STR_NOT_SET);
     case TU_DO_MUI_GIO:
       return SETTINGS.clockAutoTimezone ? tr(STR_TIMEZONE_AUTO) : tr(STR_TIMEZONE_MANUAL);
     default:
@@ -119,10 +121,12 @@ void DongHoSettingsActivity::buildScreen(UiScreen& screen) {
 }
 
 void DongHoSettingsActivity::render(RenderLock&&) {
-  renderer.clearScreen();
   const auto& metrics = UITheme::getInstance().getMetrics();
-  drawNavigationHeader(tr(STR_CLOCK));
-  renderUi();
+  renderSettledList(activeNav(), [&] {
+    renderer.clearScreen();
+    drawNavigationHeader(tr(STR_CLOCK));
+    renderUi();
+  });
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();

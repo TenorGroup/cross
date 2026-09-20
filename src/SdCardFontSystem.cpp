@@ -9,6 +9,8 @@
 
 #include "CrossPointSettings.h"
 #include "ReaderFontSizes.h"
+#include "ReaderInkWeight.h"
+#include "components/UIScale.h"
 #include "fontIds.h"
 
 namespace {
@@ -26,11 +28,6 @@ void snapFontPointSizeTo(const uint8_t availablePointSize) {
 struct UiFontSize {
   int fontId;
   uint8_t pointSize;
-};
-constexpr UiFontSize kUiFontSizes[] = {
-    {SMALL_FONT_ID, 8},
-    {UI_10_FONT_ID, 10},
-    {UI_12_FONT_ID, 12},
 };
 
 }  // namespace
@@ -54,7 +51,7 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
   if (SETTINGS.sdFontFamilyName[0] != '\0') {
     const auto* family = registry_.findFamily(SETTINGS.sdFontFamilyName);
     if (family) {
-      if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize, SETTINGS.readerInkWeight)) {
+      if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize, readerInk::physical(SETTINGS.readerInkWeight))) {
         snapFontPointSizeTo(manager_.currentPointSize());
         loadedRequestWeight_ = SETTINGS.readerInkWeight;
         setupUiFallbacks(renderer);
@@ -135,7 +132,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
 
   const auto* family = registry_.findFamily(wantedFamily);
   if (family) {
-    if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize, SETTINGS.readerInkWeight)) {
+    if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize, readerInk::physical(SETTINGS.readerInkWeight))) {
       snapFontPointSizeTo(manager_.currentPointSize());
       loadedRequestWeight_ = SETTINGS.readerInkWeight;
       setupUiFallbacks(renderer);
@@ -148,6 +145,12 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     LOG_DBG("SDFS", "SD font family not found: %s (clearing)", wantedFamily);
     SETTINGS.clearSdFontFamily();
   }
+}
+
+void SdCardFontSystem::refreshUiFallbacks(GfxRenderer& renderer, uint8_t uiTextSize) {
+  uiTextSize_ = normalizedUiTextSize(uiTextSize);
+  manager_.unloadExtraSizes(renderer);
+  setupUiFallbacks(renderer);
 }
 
 void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {
@@ -176,7 +179,11 @@ void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {
     return;
   }
 
-  for (const auto& ui : kUiFontSizes) {
+  const auto spec = uiTextSizeSpec(uiTextSize_);
+  const UiFontSize sizes[] = {{SMALL_FONT_ID, spec.captionPointSize},
+                              {UI_10_FONT_ID, spec.subtitlePointSize},
+                              {UI_12_FONT_ID, spec.bodyPointSize}};
+  for (const auto& ui : sizes) {
     const int sdFontId = manager_.loadFamilyExtraSize(*family, renderer, ui.pointSize);
     if (sdFontId != 0) {
       renderer.setFallbackFont(ui.fontId, sdFontId);
@@ -196,5 +203,5 @@ int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t /*pointSize*
 uint8_t SdCardFontSystem::availableWeightMask() const {
   const auto* family = registry_.findFamily(SETTINGS.sdFontFamilyName);
   const auto* file = family ? family->findNearestSize(SETTINGS.fontPointSize) : nullptr;
-  return file ? family->weights(*file) : 1;
+  return file ? readerInk::publicMask(family->weights(*file)) : 1;
 }

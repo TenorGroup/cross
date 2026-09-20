@@ -8,6 +8,7 @@
 #include <vector>
 #include <functional>
 #include <algorithm>
+#include <cstring>
 #define LOG_INF(...) ((void)0)
 #define LOG_ERR(...) ((void)0)
 #define CROSSPOINT_BLE_HID_HOST 1
@@ -30,7 +31,7 @@ struct ActivityManager {enum class PendingAction{None,Push};PendingAction pendin
 ActivityManager activityManager;
 struct FakeInput{enum class Button{PageBack,PageForward,Left,Right,Back,Confirm};bool prev=false,next=false,back=false,confirm=false;bool released=false;int releasedButton=-1;bool wasReleased(Button button)const{if(button==Button::Back)return back;if(button==Button::Confirm)return confirm;return released&&(releasedButton<0||releasedButton==static_cast<int>(button));} unsigned long getHeldTime()const{return 0;}};
 using MappedInputManager=FakeInput;FakeInput mappedInputManager;
-struct FakeSettings{enum Behavior{FONT_SIZE_STEP,CHAPTER_SKIP};Behavior longPressButtonBehavior=CHAPTER_SKIP;bool blePageTurnerEnabled=true;enum class BlePageAction{PreviousPage,NextPage,None};BlePageAction blePageActionFor(int key,int mods)const{return mods?BlePageAction::None:(key==1?BlePageAction::NextPage:(key==2?BlePageAction::PreviousPage:BlePageAction::None));}}SETTINGS;
+struct FakeSettings{enum Behavior{FONT_SIZE_STEP,CHAPTER_SKIP};Behavior longPressButtonBehavior=CHAPTER_SKIP;bool blePageTurnerEnabled=true;char blePeerAddr[18]={};enum class BlePageAction{PreviousPage,NextPage,None};BlePageAction blePageActionFor(int key,int mods)const{return mods?BlePageAction::None:(key==1?BlePageAction::NextPage:(key==2?BlePageAction::PreviousPage:BlePageAction::None));}}SETTINGS;
 using CrossPointSettings=FakeSettings;
 namespace ReaderUtils {constexpr int SKIP_HOLD_MS=500;
 struct Turns{bool prev=false,next=false,prevLongPressed=false,nextLongPressed=false,fromTilt=false;};
@@ -69,7 +70,7 @@ struct TxtReaderActivity:ReaderActivity {bool initialized=true;int currentPage=1
 struct FakeXtc{unsigned getPageCount()const{return 4;}};
 struct XtcReaderActivity:ReaderActivity{std::unique_ptr<FakeXtc>xtc=std::make_unique<FakeXtc>();unsigned currentPage=1;
  bool latTrangThat(bool)override;bool isAtEndOfBook()const override;void onReturnFromEndOfBook()override;};
-struct Section{int currentPage=1,pageCount=4;bool building=false;bool isBuilding()const{return building;}};
+struct Section{int currentPage=1,pageCount=4;bool building=false,partial=false;bool isBuilding()const{return building;}bool isPartial()const{return partial;}};
 struct FakeEpub{int getSpineItemsCount()const{return 3;}};
 struct EpubReaderActivity:ReaderActivity{
  enum class Overlay{None,Toolbar,WordPicker};Overlay overlay=Overlay::None;

@@ -12,6 +12,18 @@
 
 enum class InputType { Text, Password, Url };
 
+namespace keyboard_power {
+inline bool idleTimeoutDue(const uint32_t now, const uint32_t timeoutMs, const bool interaction,
+                           uint32_t& idleSince) {
+  if (timeoutMs == 0) return false;
+  if (interaction) {
+    idleSince = now;
+    return false;
+  }
+  return now - idleSince >= timeoutMs;
+}
+}  // namespace keyboard_power
+
 // Text entry on the FreeInkUI keyboard component: the SDK layout tables and
 // keyboard() do the key rendering and hit-rect registration, InteractionBuffer
 // routes taps/long-presses, and this activity owns the text field, cursor
@@ -20,12 +32,13 @@ class KeyboardEntryActivity : public Activity {
  public:
   explicit KeyboardEntryActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                  std::string title = "Enter Text", std::string initialText = "",
-                                 const size_t maxLength = 0, InputType inputType = InputType::Text)
+                                 const size_t maxLength = 0, InputType inputType = InputType::Text,
+                                 bool backCancels = false, const uint32_t idleTimeoutMs = 0)
       : Activity("KeyboardEntry", renderer, mappedInput),
         title(std::move(title)),
         text(std::move(initialText)),
         maxLength(maxLength),
-        inputType(inputType) {}
+        inputType(inputType), backCancels(backCancels), idleTimeoutMs(idleTimeoutMs) {}
 
   void onEnter() override;
   bool saveInputBeforeHome() override;
@@ -38,6 +51,9 @@ class KeyboardEntryActivity : public Activity {
   std::string text;
   size_t maxLength;
   InputType inputType;
+  bool backCancels = false;
+  uint32_t idleTimeoutMs = 0;
+  uint32_t idleSince = 0;
   bool passwordVisible = false;
 
   ButtonNavigator buttonNavigator;
@@ -105,6 +121,7 @@ class KeyboardEntryActivity : public Activity {
 
   void onComplete(std::string text);
   void onCancel();
+  void onTimeout();
   struct ButtonInput {
     bool pressed, released, held;
   };
@@ -161,6 +178,8 @@ class KeyboardEntryActivity : public Activity {
   static size_t utf8Next(const std::string& s, size_t pos);
 
   freeink::ui::Rect keyboardRect() const;
+  int inputTop() const;
+  int inputWindowStart(std::string& displayText, int maxWidth) const;
 
   static constexpr uint16_t LONG_PRESS_MS = 500;
   static constexpr uint16_t DEL_LONG_PRESS_MS = 1500;

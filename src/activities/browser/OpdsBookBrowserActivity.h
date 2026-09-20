@@ -1,6 +1,7 @@
 #pragma once
 #include <OpdsParser.h>
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -9,6 +10,24 @@
 #include "activities/Activity.h"
 #include "components/UiAppHost.h"
 #include "util/ButtonNavigator.h"
+
+namespace opds_power {
+constexpr uint32_t IDLE_TIMEOUT_MS = 5u * 60u * 1000u;
+
+inline bool idleExitDue(const uint32_t now, const bool waiting, const bool radioAlive, const bool interaction,
+                        uint32_t& idleSince, bool& timerStarted) {
+  if (!waiting || !radioAlive) {
+    timerStarted = false;
+    return false;
+  }
+  if (!timerStarted || interaction) {
+    idleSince = now;
+    timerStarted = true;
+    return false;
+  }
+  return now - idleSince >= IDLE_TIMEOUT_MS;
+}
+}  // namespace opds_power
 
 /**
  * Activity for browsing and downloading books from an OPDS server.
@@ -43,7 +62,7 @@ class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
   size_t downloadProgress = 0;
   size_t downloadTotal = 0;
 
-  OpdsServer server;  // Copied at construction — safe even if the store changes during browsing
+  OpdsServer server;  // Copied at construction - safe even if the store changes during browsing
 
   // Viewport memory (top/visibleRows) for the browsing list; `selected` is
   // mirrored from selectorIndex at build/move time.
@@ -54,6 +73,8 @@ class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
   // Set when the cancel came from the home gesture (consumed by the download
   // callback's own input pump); exit to home after the abort unwinds.
   bool goHomeAfterCancel = false;
+  uint32_t idleSince = 0;
+  bool idleTimerStarted = false;
   bool runtimeStarted = false;
 
   // Single screen fn dispatching on `state`: every state shares the themed
@@ -71,6 +92,7 @@ class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
   void checkAndConnectWifi();
   void launchWifiSelection();
   void onWifiSelectionComplete(bool connected);
+  bool idleExitDue(unsigned long now, bool interaction);
   void fetchFeed(const std::string& path);
   void releaseEntries();
   void navigateToEntry(const OpdsEntry& entry);

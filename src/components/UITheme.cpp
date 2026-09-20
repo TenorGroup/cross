@@ -13,6 +13,7 @@
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "TenorMenuChrome.h"
+#include "UIThemeSizing.h"
 #include "components/themes/BaseTheme.h"
 #include "components/themes/TenorTheme.h"
 #include "components/themes/lyra/Lyra3CoversTheme.h"
@@ -74,13 +75,16 @@ const ThemeMetrics& UITheme::getMetrics() const {
   // Refresh the cached metrics when either input changes.
   const bool touch = gpio.hasTouch();
   const bool statusBarHidden = SETTINGS.globalStatusBarHidden();
-  if (!metricsValid || touch != metricsForTouch || statusBarHidden != metricsForHiddenStatusBar) {
-    adjustedMetrics = *currentMetrics;
+  const uint8_t textSize = normalizedUiTextSize(SETTINGS.uiTextSize);
+  if (!metricsValid || touch != metricsForTouch || statusBarHidden != metricsForHiddenStatusBar ||
+      textSize != metricsForTextSize) {
+    adjustedMetrics = uiSizedThemeMetrics(*currentMetrics, textSize);
     if (touch || statusBarHidden) {
       // Tat thanh trang thai ngoai trinh doc thi khong con nhan nut, nen dai nhan
       // nut tra ve 0 va vung an toan lay lai dung phan do.
       adjustedMetrics.buttonHintsHeight = 0;
     }
+    metricsForTextSize = textSize;
     metricsForTouch = touch;
     metricsForHiddenStatusBar = statusBarHidden;
     metricsValid = true;
@@ -148,11 +152,11 @@ int UITheme::getStatusBarHeight(StatusBarScope scope) {
     // Trong trinh doc: muc 0 la Tat, nam muc con lai cung mot chieu cao nen doi
     // muc chi ve lai thanh, khong dan lai trang.
     if (SETTINGS.readerStatusBarHidden()) return 0;
-    if (tenorchrome::enabled()) return tenorchrome::STATUS_HEIGHT;
+    if (tenorchrome::enabled()) return tenorchrome::statusHeight();
   } else if (SETTINGS.globalStatusBarHidden()) {
     return 0;
   } else if (tenorchrome::enabled()) {
-    return SETTINGS.globalStatusBarLarge() ? tenorchrome::STATUS_HEIGHT_LARGE : tenorchrome::STATUS_HEIGHT;
+    return tenorchrome::statusHeight(SETTINGS.globalStatusBarLarge());
   }
   const ThemeMetrics metrics = UITheme::getInstance().getMetrics();
   const auto sb = SETTINGS.statusBarSpec();

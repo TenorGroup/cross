@@ -32,9 +32,10 @@ def state(pins=(),**overrides):
 def same(a,b,box):
  assert ImageChops.difference(Image.open(a).crop(box).convert('RGB'),Image.open(b).crop(box).convert('RGB')).getbbox() is None,(a,b)
 def pin():
- # Display starts on uiTheme. Eight row steps reach sleepScreen on the X3.
+ # Display starts on uiTheme. Nine row steps reach sleepScreen on the X3;
+ # uiTextSize precedes the existing display rows since v1.0.8.
  script='1000:UP;1500:RIGHT;2000:CONFIRM;'
- script+=';'.join(f'{2800+700*i}:RIGHT' for i in range(8))+';'
+ script+=';'.join(f'{2800+600*i}:RIGHT' for i in range(9))+';'
  script+='8500:CONFIRM:900;9900:BACK;10500:UP;11000:UP;11700:CONFIRM;13300:QUIT'
  sd=t.run('pin-e2e',script,[(12700,'popup')])
  assert saved(sd,'menu-customization.json')['pins']==['settings/sleepScreen']

@@ -83,7 +83,7 @@ bool SdCardFontManager::loadFamily(const SdCardFontFamilyInfo& family, GfxRender
 
   loaded_.reserve(4);  // reader plus up to three UI fallback sizes
   int id = 0;
-  if (weight > 0 && weight <= 2 && (family.weights(*selected) & (1u << weight))) {
+  if (weight > 0 && weight <= 4 && (family.weights(*selected) & (1u << weight))) {
     id = loadFile(family, *selected, renderer, weight);
   }
   if (id == 0) {
@@ -110,6 +110,18 @@ int SdCardFontManager::loadFamilyExtraSize(const SdCardFontFamilyInfo& family, G
   }
 
   return loadFile(family, *file, renderer);
+}
+
+void SdCardFontManager::unloadExtraSizes(GfxRenderer& renderer) {
+  // Clear mappings before deleting their objects. The first entry is always
+  // the reader font; a UI alias may have reused it and it stays registered.
+  renderer.clearFallbackFonts();
+  while (loaded_.size() > 1) {
+    auto& extra = loaded_.back();
+    renderer.removeFont(extra.fontId);
+    delete extra.font;
+    loaded_.pop_back();
+  }
 }
 
 void SdCardFontManager::unloadAll(GfxRenderer& renderer) {

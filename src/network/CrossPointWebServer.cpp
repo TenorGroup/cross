@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <utility>
 
 #include "CrossPointSettings.h"
 #include "DeviceName.h"
@@ -107,6 +108,14 @@ String webErrorBody(Language language, StrId id) {
 // - FilesPageFooterHtml (from html/FilesPageFooter.html)
 CrossPointWebServer::CrossPointWebServer() {}
 
+void CrossPointWebServer::setUiTextSizeApplier(std::function<bool(uint8_t)> applier) {
+  uiTextSizeApplier = std::move(applier);
+}
+
+bool CrossPointWebServer::applyUiTextSizeSetting(const uint8_t value) {
+  return uiTextSizeApplier && uiTextSizeApplier(value);
+}
+
 Language CrossPointWebServer::requestLanguage() const {
   // Contract: the request's own `lang` query argument decides the locale;
   // anything missing or unrecognised falls back to Vietnamese.
@@ -169,6 +178,16 @@ void CrossPointWebServer::begin() {
   }
 
   server->enableCORS(false);
+
+  // Count completed local requests as session activity. The status endpoint is
+  // polled by the page and cannot keep an abandoned session awake by itself.
+  server->addMiddleware([this](WebServer& request, Middleware::Callback next) {
+    const String uri = request.uri();
+    const bool handled = next();
+    sessionLifecycle.noteHttpRequest(auth.authorize(request, false, requestLanguage()), uri == "/api/status",
+                                     millis());
+    return handled;
+  });
 
   // Setup routes
   LOG_DBG("WEB", "Setting up routes...");
@@ -316,6 +335,7 @@ void CrossPointWebServer::begin() {
   // catches hard CPU lockups, matching the rest of the application lifecycle.
 
   running = true;
+  sessionLifecycle.start(millis());
 
   LOG_DBG("WEB", "Web server started on port %d", port);
   // Show the correct IP based on network mode
@@ -323,6 +343,16 @@ void CrossPointWebServer::begin() {
   LOG_DBG("WEB", "Access at http://%s/", ipAddr.c_str());
   LOG_DBG("WEB", "WebSocket at ws://%s:%d/", ipAddr.c_str(), wsPort);
   LOG_DBG("WEB", "[MEM] Free heap after server.begin(): %d bytes", ESP.getFreeHeap());
+}
+
+void CrossPointWebServer::noteSessionActivity() { sessionLifecycle.noteMeaningfulActivity(millis()); }
+
+void CrossPointWebServer::noteTransferActivity(const size_t bytes) {
+  sessionLifecycle.noteTransferBytes(bytes, millis());
+}
+
+bool CrossPointWebServer::sessionIdleExpired(const unsigned long now) const {
+  return sessionLifecycle.idleExpired(static_cast<uint32_t>(now));
 }
 
 void CrossPointWebServer::abortWsUpload(const char* tag) {
@@ -341,7 +371,29 @@ void CrossPointWebServer::abortWsUpload(const char* tag) {
   wsLastProgressSent = 0;
 }
 
+void CrossPointWebServer::abortHttpUploads() {
+  if (upload.file.isOpen()) {
+    upload.file.close();
+    String filePath = upload.path;
+    if (!filePath.endsWith("/")) filePath += "/";
+    filePath += upload.fileName;
+    if (!upload.fileName.isEmpty()) Storage.remove(filePath.c_str());
+  }
+  upload.bufferPos = 0;
+  upload.success = false;
+
+  if (fontUpload.file.isOpen()) {
+    fontUpload.file.close();
+    if (!fontUpload.filePath.empty()) Storage.remove(fontUpload.filePath.c_str());
+  }
+  fontUpload.valid = false;
+  fontUpload.magicChecked = false;
+  fontUpload.bytesWritten = 0;
+  fontUpload.bufferPos = 0;
+}
+
 void CrossPointWebServer::stop() {
+  sessionLifecycle.stop();
   if (!running || !server) {
     LOG_DBG("WEB", "stop() called but already stopped (running=%d, server=%p)", running, server.get());
     return;
@@ -353,7 +405,8 @@ void CrossPointWebServer::stop() {
   LOG_DBG("WEB", "[MEM] Free heap before stop: %d bytes", ESP.getFreeHeap());
 
   // Close any in-progress WebSocket upload and remove partial file
-  if (wsUploadInProgress && wsUploadFile) {
+  abortHttpUploads();
+  if (wsUploadInProgress || wsUploadFile) {
     abortWsUpload("WEB");
   }
 
@@ -727,6 +780,7 @@ void CrossPointWebServer::handleDownload() {
         downloadOk = false;
         break;
       }
+      noteTransferActivity(wrote);
       totalWritten += wrote;
       sent += wrote;
     }
@@ -762,7 +816,7 @@ static bool flushUploadBuffer(CrossPointWebServer::UploadState& state) {
   return true;
 }
 
-void CrossPointWebServer::handleUpload(UploadState& state) const {
+void CrossPointWebServer::handleUpload(UploadState& state) {
   const Language lang = requestLanguage();
   static size_t lastLoggedSize = 0;
 
@@ -864,6 +918,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
       }
 
       state.size += upload.currentSize;
+      noteTransferActivity(upload.currentSize);
 
       // Log progress every 100KB
       if (state.size - lastLoggedSize >= 102400) {
@@ -1382,6 +1437,19 @@ void CrossPointWebServer::handlePostSettings() {
 
   const auto& settings = getSettingsList(&sdFontSystem.registry());
   int applied = 0;
+  bool uiTextSizeApplied = false;
+  const uint8_t previousUiTextSize = SETTINGS.uiTextSize;
+  if (!doc["uiTextSize"].isNull()) {
+    const int requestedUiTextSize = doc["uiTextSize"].as<int>();
+    if (requestedUiTextSize >= CrossPointSettings::UI_TEXT_SMALL &&
+        requestedUiTextSize < CrossPointSettings::UI_TEXT_SIZE_COUNT) {
+      if (!applyUiTextSizeSetting(static_cast<uint8_t>(requestedUiTextSize))) {
+        server->send(409, "text/plain", trWeb(lang, StrId::STR_ERROR_GENERAL_FAILURE));
+        return;
+      }
+      uiTextSizeApplied = true;
+    }
+  }
 
   for (const auto& s : settings) {
     if (!s.key) continue;
@@ -1405,7 +1473,9 @@ void CrossPointWebServer::handlePostSettings() {
             if (s.valuePtr == &CrossPointSettings::clockUtcOffsetQ && SETTINGS.clockUtcOffsetQ != val) {
               SETTINGS.clockAutoTimezone = 0;
             }
-            SETTINGS.*(s.valuePtr) = static_cast<uint8_t>(val);
+            if (s.valuePtr != &CrossPointSettings::uiTextSize) {
+              SETTINGS.*(s.valuePtr) = static_cast<uint8_t>(val);
+            }
           } else if (s.valueSetter) {
             s.valueSetter(static_cast<uint8_t>(val));
           }
@@ -1440,10 +1510,16 @@ void CrossPointWebServer::handlePostSettings() {
     }
   }
 
-  SETTINGS.saveToFile();
+  if (!SETTINGS.saveToFile()) {
+    if (uiTextSizeApplied && !applyUiTextSizeSetting(previousUiTextSize)) {
+      LOG_ERR("WEB", "Failed to roll back UI text size after settings save failure");
+    }
+    server->send(500, "text/plain", trWeb(lang, StrId::STR_HABIT_SAVE_FAILED));
+    return;
+  }
 
   LOG_DBG("WEB", "Applied %d setting(s)", applied);
-    char appliedBody[64];
+  char appliedBody[64];
   snprintf(appliedBody, sizeof(appliedBody), trWeb(lang, StrId::STR_WEB_SETTINGS_APPLIED_FORMAT), applied);
   server->send(200, "text/plain", appliedBody);
 }
@@ -1793,6 +1869,7 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
           wsUploadReceived = 0;
           wsLastProgressSent = 0;
           wsUploadStartTime = wsLastActivityTime = millis();
+          noteSessionActivity();
 
           String filePath = wsUploadPath;
           if (!filePath.endsWith("/")) filePath += "/";
@@ -1867,6 +1944,7 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
 
       wsUploadReceived += written;
       wsLastActivityTime = millis();
+      noteTransferActivity(written);
 
       // Send progress update (every 64KB or at end)
       if (wsUploadReceived - wsLastProgressSent >= 65536 || wsUploadReceived >= wsUploadSize) {
@@ -1903,6 +1981,11 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
       }
       break;
     }
+
+    case WStype_PING:
+    case WStype_PONG:
+      sessionLifecycle.noteWebSocketPing(millis());
+      break;
 
     default:
       break;
@@ -2112,6 +2195,7 @@ void CrossPointWebServer::handleFontUploadData() {
           resetTaskWatchdogIfSubscribed();
         }
       }
+      if (fontUpload.valid) noteTransferActivity(upload.currentSize);
       break;
     }
 

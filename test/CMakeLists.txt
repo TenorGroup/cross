@@ -113,6 +113,7 @@ add_subdirectory(folder_rows)
 add_subdirectory(history_navigation)
 
 add_subdirectory(section_cache)
+add_subdirectory(reader_build_budget)
 
 add_subdirectory(cache_serialization)
 
@@ -124,8 +125,32 @@ add_subdirectory(txt_zip_io)
 
 add_subdirectory(clock_ntp_behavior)
 
+add_subdirectory(x4_sleep_clock)
+
 add_subdirectory(http_downloader)
 
 add_subdirectory(ble_integration)
 
 add_subdirectory(settings_catalog)
+
+add_subdirectory(reading_stats_clock)
+
+add_subdirectory(transfer_entry)
+
+add_subdirectory(ui_tiers)
+
+add_subdirectory(settings_v108)
+
+add_executable(reader_ink_v108 reader_ink_v108/ReaderInkWeightTest.cpp)
+target_compile_options(reader_ink_v108 PRIVATE -UNDEBUG)
+target_include_directories(reader_ink_v108 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+add_test(NAME reader_ink_v108 COMMAND reader_ink_v108)
+
+add_subdirectory(ui_layout)
+
+add_subdirectory(dropcap_raster)
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME WiFiPowerProductionBehavior COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/wifi_power/run.py" --source-root "${REPO_ROOT}" --output "${CMAKE_CURRENT_BINARY_DIR}/wifi-power-behavior")
+
+add_test(NAME PowerTimeoutProductionBehavior COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/power_timeouts/run.py" --source-root "${REPO_ROOT}" --output "${CMAKE_CURRENT_BINARY_DIR}/power-timeout-behavior")

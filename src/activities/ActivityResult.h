@@ -15,6 +15,7 @@ struct WifiResult {
 
 struct KeyboardResult {
   std::string text;
+  bool timedOut = false;
 };
 
 struct MenuResult {

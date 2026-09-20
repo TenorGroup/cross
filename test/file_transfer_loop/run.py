@@ -38,7 +38,8 @@ def main():
                     '-I' + str(output), str(here / 'FileTransferLoop.cpp'), '-o', str(binary)], check=True)
     cases = ('entry-back', 'entry-home', 'loaded-handler-budget', 'release-after-handler',
              'upload-boundary-exit', 'ap-dns-and-throughput', 'wifi-recovery',
-             'wifi-abandon', 'stopped-server-back', 'inactive-state')
+             'wifi-abandon', 'stopped-server-back', 'idle-timeout-safe-boundary',
+             'recent-transfer-activity-defers-timeout', 'inactive-state')
     results = []
     for case in cases:
         run = subprocess.run([str(binary), case], capture_output=True, text=True)

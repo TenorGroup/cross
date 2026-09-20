@@ -256,3 +256,72 @@ TEST(VerifiedFileInstall, ReplacementFailureClearsPendingFlag) {
   EXPECT_FALSE(pending);
   EXPECT_EQ(s.files.at("book"), "original");
 }
+
+TEST(VerifiedFileInstall, WeightedFontPathsCommitInsideTheirOwnDirectories) {
+  for (int weight = 1; weight <= 4; ++weight) {
+    const std::string destination = "/.fonts/Bookerly/weight-" + std::to_string(weight) + "/Bookerly_16.cpfont";
+    const std::string base = "/.fonts/Bookerly/Bookerly_16.cpfont";
+    Store s;
+    s.files = {{destination, "old weighted"}, {base, "base unchanged"}};
+    const auto result = webdav::installVerifiedFile(
+        s, destination.c_str(),
+        [&](const char* staging) {
+          EXPECT_EQ(std::string(staging), destination + ".davtmp");
+          EXPECT_EQ(s.files.at(destination), "old weighted");
+          s.files[staging] = "verified new weighted";
+          return true;
+        },
+        [&](const char* staging) {
+          EXPECT_EQ(s.files.at(destination), "old weighted");
+          return s.files.at(staging) == "verified new weighted";
+        });
+    EXPECT_EQ(result, webdav::InstallResult::OK);
+    EXPECT_EQ(s.files.at(destination), "verified new weighted");
+    EXPECT_EQ(s.files.at(base), "base unchanged");
+    EXPECT_FALSE(s.files.count(destination + ".davtmp"));
+    EXPECT_FALSE(s.files.count(destination + ".davbak"));
+  }
+}
+
+TEST(VerifiedFileInstall, WeightedFontPathRetainsOldBytesAfterDownloadChecksumOrCommitFailure) {
+  const std::string destination = "/fonts/Bookerly/weight-4/Bookerly_16.cpfont";
+  for (int failure = 0; failure < 3; ++failure) {
+    Store s;
+    s.files = {{destination, "old weighted"}};
+    if (failure == 2) s.failedRenames.insert(destination + ".davtmp");
+    bool pending = true;
+    const auto result = webdav::installVerifiedFile(
+        s, destination.c_str(),
+        [&](const char* staging) { s.files[staging] = "candidate"; return failure != 0; },
+        [&](const char*) { return failure != 1; }, &pending);
+    const webdav::InstallResult expected[] = {webdav::InstallResult::DOWNLOAD_FAILED,
+      webdav::InstallResult::VALIDATION_FAILED, webdav::InstallResult::REPLACE_FAILED};
+    EXPECT_EQ(result, expected[failure]);
+    EXPECT_FALSE(pending);
+    EXPECT_EQ(s.files.at(destination), "old weighted");
+    EXPECT_FALSE(s.files.count(destination + ".davtmp"));
+    EXPECT_FALSE(s.files.count(destination + ".davbak"));
+  }
+}
+
+TEST(VerifiedFileInstall, WeightedFontPathPreservesRecoveryBackupAndCanRetryAfterRenameFailure) {
+  const std::string destination = "/.fonts/Bookerly/weight-3/Bookerly_26.cpfont";
+  Store s;
+  s.files = {{destination, "old weighted"}, {destination + ".davbak", "recoverable backup"}};
+  const auto install = [&]() {
+    return webdav::installVerifiedFile(s, destination.c_str(),
+      [&](const char* staging) { s.files[staging] = "candidate"; return true; },
+      [&](const char*) { return true; });
+  };
+  EXPECT_EQ(install(), webdav::InstallResult::REPLACE_FAILED);
+  EXPECT_EQ(s.files.at(destination), "old weighted");
+  EXPECT_EQ(s.files.at(destination + ".davbak"), "recoverable backup");
+  s.files.erase(destination + ".davbak");
+  s.failedRenames.insert(destination + ".davtmp");
+  EXPECT_EQ(install(), webdav::InstallResult::REPLACE_FAILED);
+  EXPECT_EQ(s.files.at(destination), "old weighted");
+  s.failedRenames.clear();
+  EXPECT_EQ(install(), webdav::InstallResult::OK);
+  EXPECT_EQ(s.files.at(destination), "candidate");
+  EXPECT_EQ(s.files.size(), 1u);
+}

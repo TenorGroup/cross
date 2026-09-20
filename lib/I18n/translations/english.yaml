@@ -51,7 +51,7 @@ STR_SCANNING: "Scanning..."
 STR_FINDING_SAVED_WIFI: "Finding saved Wi-Fi..."
 STR_CONNECTING: "Connecting..."
 STR_CONNECTING_SAVED_WIFI: "Connecting to saved Wi-Fi..."
-STR_SHOW_NETWORKS: "Show"
+STR_SHOW_NETWORKS: "Choose network"
 STR_CONNECTED: "Connected!"
 STR_CONNECTION_FAILED: "Connection Failed"
 STR_FORGET_NETWORK: "Forget Network?"
@@ -748,3 +748,19 @@ STR_BLE_READER_LOW_RAM: "Not running in books: low memory"
 STR_KEYBOARD_MOVE_HORIZONTAL: "Move horizontally"
 
 STR_KEYBOARD_MOVE_VERTICAL: "Move vertically"
+
+STR_UI_TEXT_SIZE: "UI text size"
+
+STR_UI_SIZE_SMALL: "Small"
+
+STR_UI_SIZE_MEDIUM: "Medium"
+
+STR_UI_SIZE_LARGE: "Large"
+
+STR_READER_INK_0: "0"
+
+STR_READER_INK_1: "+1"
+
+STR_READER_INK_2: "+2"
+
+STR_READER_INK_3: "+3"

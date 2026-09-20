@@ -27,6 +27,7 @@ void reset() {
   ntpCalls = rtcWrites = tlsBegins = 0;
   caConfigured = false;
   logs.clear();
+  stored = Rtc::DateTime{};
   halClock = HalClock{};
 }
 }
@@ -153,9 +154,126 @@ void alreadyValidEpoch() {
   CHECK(download() == HttpDownloader::OK);
   CHECK(fake::ntpCalls == 0 && fake::tlsBegins == 1 && fake::caConfigured);
 }
+void expectDate(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute) {
+  uint16_t actualYear = 0;
+  uint8_t actualMonth = 0, actualDay = 0, actualHour = 0, actualMinute = 0;
+  CHECK(halClock.getDateTime(actualYear, actualMonth, actualDay, actualHour, actualMinute));
+  CHECK(actualYear == year && actualMonth == month && actualDay == day);
+  CHECK(actualHour == hour && actualMinute == minute);
+}
+void noRtcDisplayAfterNtp() {
+  ++cases; fake::reset(); halClock.begin();
+  CHECK(halClock.syncFromNTP());
+  expectDate(2026, 9, 19, 12, 0);
+  char text[9] = {};
+  CHECK(halClock.formatTime(text, sizeof(text), 76));
+  CHECK(std::string(text) == "19:00");
+}
+void offlineMidnightAndRetainedWake() {
+  ++cases; fake::reset(); halClock.begin();
+  CHECK(halClock.syncFromNTP());
+  fake::wifi = false;
+  fake::epoch += 12 * 3600;
+  expectDate(2026, 9, 20, 0, 0);
+  // Recreate the application HAL while retaining the platform epoch, as on a
+  // powered deep-sleep wake. Full battery power loss is covered separately.
+  halClock = HalClock{};
+  halClock.begin();
+  expectDate(2026, 9, 20, 0, 0);
+  CHECK(fake::ntpCalls == 1);
+}
+void fullPowerLossStaysUnknown() {
+  ++cases; fake::reset(); halClock.begin();
+  CHECK(halClock.syncFromNTP());
+  fake::epoch = 0;
+  fake::wifi = false;
+  halClock = HalClock{};
+  halClock.begin();
+  uint16_t y = 0;
+  uint8_t mo = 0, d = 0, h = 0, mi = 0;
+  CHECK(!halClock.getDateTime(y, mo, d, h, mi));
+  CHECK(!halClock.syncFromNTP());
+}
+void failedRtcWriteUsesFreshSystemTime() {
+  ++cases; fake::reset(); fake::rtc = fake::rtcReadable = true;
+  fake::stored = {2026, 9, 18, 3, 4, 5, 5};
+  halClock.begin();
+  expectDate(2026, 9, 18, 3, 4);
+  fake::rtcWritable = false;
+  CHECK(halClock.syncFromNTP());
+  fake::ms += 1001;
+  expectDate(2026, 9, 19, 12, 0);
+}
+void rtcReadFailureKeepsTimeAdvancing() {
+  ++cases; fake::reset(); fake::rtc = fake::rtcReadable = true;
+  fake::stored = {2026, 9, 19, 23, 59, 0, 6};
+  halClock.begin();
+  expectDate(2026, 9, 19, 23, 59);
+  fake::rtcReadable = false;
+  fake::epoch += 120;
+  fake::ms += 120000;
+  expectDate(2026, 9, 20, 0, 1);
+}
+void invalidRtcCalendarIsNotNormalized() {
+  ++cases; fake::reset(); fake::rtc = fake::rtcReadable = true;
+  fake::stored = {2026, 2, 31, 12, 0, 0, 0};
+  halClock.begin();
+  CHECK(fake::epoch == 0);
+  uint16_t y = 0;
+  uint8_t mo = 0, d = 0, h = 0, mi = 0;
+  CHECK(!halClock.getDateTime(y, mo, d, h, mi));
+}
+void systemClockUpperBound() {
+  ++cases; fake::reset(); halClock.begin();
+  fake::epoch = 4102444800LL;  // 2100-01-01 UTC, outside supported date arithmetic.
+  uint16_t y = 0;
+  uint8_t mo = 0, d = 0, h = 0, mi = 0;
+  CHECK(!halClock.getDateTime(y, mo, d, h, mi));
+}
+void invalidRtcTimeAndLeapDates() {
+  ++cases;
+  for (const Rtc::DateTime invalid : {Rtc::DateTime{2026, 2, 29, 0, 0, 0, 0},
+                                    Rtc::DateTime{2026, 1, 1, 24, 0, 0, 0},
+                                    Rtc::DateTime{2026, 1, 1, 0, 60, 0, 0},
+                                    Rtc::DateTime{2026, 1, 1, 0, 0, 60, 0}}) {
+    fake::reset(); fake::rtc = fake::rtcReadable = true; fake::stored = invalid;
+    halClock.begin();
+    uint16_t y = 0;
+    uint8_t mo = 0, d = 0, h = 0, mi = 0;
+    CHECK(!halClock.getDateTime(y, mo, d, h, mi));
+    CHECK(fake::epoch == 0);
+  }
+  fake::reset(); fake::rtc = fake::rtcReadable = true;
+  fake::stored = {2028, 2, 29, 23, 59, 59, 2};
+  halClock.begin();
+  expectDate(2028, 2, 29, 23, 59);
+}
+void retainedSystemBeatsStaleRtc() {
+  ++cases; fake::reset(); fake::rtc = fake::rtcReadable = true;
+  fake::stored = {2026, 9, 18, 3, 4, 5, 5};
+  fake::epoch = fake::ntpEpoch;
+  halClock.begin();
+  expectDate(2026, 9, 19, 12, 0);
+}
+void invalidNtpUpperBound() {
+  ++cases; fake::reset(); halClock.begin(); fake::ntpEpoch = 4102444800LL;
+  CHECK(!halClock.syncFromNTP());
+}
+void failedSyncRetainsWorkingClock() {
+  ++cases; fake::reset(); halClock.begin();
+  CHECK(halClock.syncFromNTP());
+  fake::ntpResponds = false;
+  CHECK(!halClock.syncFromNTP());
+  expectDate(2026, 9, 19, 12, 0);
+}
 int main() {
   noRtcColdBoot(); failedRtcReadAndWrite(); goodRtcWrite(); ntpTimeout(); wifiDisconnected();
   invalidCompletedEpoch(); alreadyValidEpoch();
+  noRtcDisplayAfterNtp(); offlineMidnightAndRetainedWake(); fullPowerLossStaysUnknown();
+  failedRtcWriteUsesFreshSystemTime(); rtcReadFailureKeepsTimeAdvancing();
+  invalidRtcCalendarIsNotNormalized(); systemClockUpperBound();
+  invalidRtcTimeAndLeapDates(); retainedSystemBeatsStaleRtc();
+  invalidNtpUpperBound(); failedSyncRetainsWorkingClock();
   std::printf("%d scenarios, %d failures\n", cases, failures);
   return failures ? 1 : 0;
 }

@@ -89,28 +89,70 @@ struct { wl_status_t status() const { return WL_CONNECTED; } int RSSI() const { 
 int barsForRssi(int, int) { return 3; }
 struct FakeDns { void processNextRequest() {} } dns;
 FakeDns* dnsServer = &dns;
+static int dnsStops = 0;
+void stopDnsServer() {
+  if (!dnsServer) return;
+  ++dnsStops;
+  dnsServer = nullptr;
+}
+static int fakeServerCalls = 0;
+static int fakeServerStops = 0;
+static bool fakeServerCompleted = false;
+static bool applierPresentAtBegin = false;
 struct FakeServer {
   bool inHandler = false;
   bool running = true;
   unsigned handlerMs = 270;
   int calls = 0;
   bool completed = false;
+  std::function<bool(uint8_t)> uiTextSizeApplier;
   bool isRunning() const { return running; }
-  void begin() { running = true; }
+  void setUiTextSizeApplier(std::function<bool(uint8_t)> applier) { uiTextSizeApplier = std::move(applier); }
+  void begin() {
+    applierPresentAtBegin = static_cast<bool>(uiTextSizeApplier);
+    running = true;
+  }
   void handleClient() {
     ++calls;
+    ++fakeServerCalls;
     inHandler = true;
     vTaskDelay(handlerMs);
     completed = true;
+    fakeServerCompleted = true;
     inHandler = false;
+  }
+  bool sessionIdleExpired(unsigned long) const { return false; }
+  void stop() {
+    require(!inHandler, "server stopped inside an unfinished upload handler");
+    running = false;
+    ++fakeServerStops;
   }
 };
 using CrossPointWebServer = FakeServer;
 template<class T> std::unique_ptr<T> makeUniqueNoThrow() { return std::make_unique<T>(); }
 struct FakeFontCache { void releaseSdFontCaches() {} };
 struct FakeRenderer { FakeFontCache* getFontCacheManager() { return nullptr; } };
-struct RenderLock { template<class T> explicit RenderLock(T&) {} };
-struct { uint8_t frontButtonBack = 0; } SETTINGS;
+static int renderLockAcquisitions = 0;
+struct RenderLock {
+  template<class T> explicit RenderLock(T&) { ++renderLockAcquisitions; }
+};
+static bool applyUiFontSizeResult = true;
+static int applyUiFontSizeCalls = 0;
+static uint8_t appliedUiTextSize = 255;
+bool applyUiFontSize(FakeRenderer&, const uint8_t size) {
+  ++applyUiFontSizeCalls;
+  appliedUiTextSize = size;
+  return applyUiFontSizeResult;
+}
+struct UITheme {
+  int reloads = 0;
+  static UITheme& getInstance() {
+    static UITheme instance;
+    return instance;
+  }
+  void reload() { ++reloads; }
+};
+struct { uint8_t frontButtonBack = 0, uiTextSize = 0; } SETTINGS;
 HalGPIO gpio;
 enum class WebServerActivityState { SERVER_RUNNING, SHUTTING_DOWN, AP_STARTING };
 struct CrossPointWebServerActivity {
@@ -122,14 +164,15 @@ struct CrossPointWebServerActivity {
   MappedInputManager mappedInput;
   unsigned long lastHandleClientTime = 0, firstDisconnectAt = 0;
   static constexpr unsigned long WIFI_ABANDON_MS = 300000;
-  int consecutiveDisconnects = 0, lastWifiBars = 3, exits = 0;
-  void requestUpdate() {}
+  int consecutiveDisconnects = 0, lastWifiBars = 3, exits = 0, updates = 0;
+  void requestUpdate() { ++updates; }
   void onGoHome() {
-    require(!webServer->inHandler, "activity exited during an unfinished upload handler");
+    require(!webServer || !webServer->inHandler, "activity exited during an unfinished upload handler");
     ++exits;
   }
   void loop();
   void startWebServer();
+  void stopServerAndGoHome();
 #include "production-delay.inc"
 };
 #include "production-loop.inc"
@@ -148,14 +191,16 @@ void run(const std::string& name) {
     pulse.join();
     // A main-only sampler has never observed the entirely enclosed pulse.
     activity.mappedInput.update();
-    activity.webServer->handlerMs = 0;
+    if (activity.webServer) activity.webServer->handlerMs = 0;
     if (!activity.exits) activity.loop();
     std::cout << "handler_ms=" << millis() - before << " main_press="
               << activity.mappedInput.physical.buttonPressStart << " main_release="
               << activity.mappedInput.physical.buttonPressFinish << " exits=" << activity.exits << '\n';
     require(activity.exits == 1, "physical Back entirely inside handler was lost");
-    require(activity.webServer->completed, "upload handler was interrupted before completion");
-    require(activity.webServer->calls == 1, "another HTTP request ran before pending exit");
+    require(fakeServerCompleted, "upload handler was interrupted before completion");
+    require(fakeServerCalls == 1, "another HTTP request ran before pending exit");
+    require(!activity.webServer && fakeServerStops == 1 && dnsStops == 1,
+            "Back exit skipped synchronous server or DNS cleanup");
     require(activity.mappedInput.physical.buttonPressStart == 0, "fixture sampled pulse in main");
     activity.backLatch.stop();
     require(activity.backLatch.stackFreeBytes() == 1176, "stack watermark not retained at stop");
@@ -169,6 +214,25 @@ void run(const std::string& name) {
     require(activity.exits == 1 && !activity.backLatch.active(), "sampler OOM did not request safe exit");
     activity.loop();
     require(activity.webServer->calls == 0, "HTTP handler ran after sampler OOM");
+    return;
+  }
+  if (name == "ui-size-callback") {
+    CrossPointWebServerActivity activity;
+    activity.state = WebServerActivityState::AP_STARTING;
+    activity.startWebServer();
+    require(applierPresentAtBegin, "UI size applier was not installed before begin");
+    require(activity.webServer && activity.webServer->uiTextSizeApplier, "UI size applier was not retained");
+    const int updatesBefore = activity.updates;
+    require(activity.webServer->uiTextSizeApplier(2), "valid UI size apply failed");
+    require(renderLockAcquisitions == 1 && applyUiFontSizeCalls == 1 && appliedUiTextSize == 2,
+            "UI size apply skipped render lock or renderer update");
+    require(SETTINGS.uiTextSize == 2 && UITheme::getInstance().reloads == 1 && activity.updates == updatesBefore + 1,
+            "successful UI size apply did not publish layout state");
+    applyUiFontSizeResult = false;
+    require(!activity.webServer->uiTextSizeApplier(1), "failed UI size apply was accepted");
+    require(SETTINGS.uiTextSize == 2 && UITheme::getInstance().reloads == 1 && activity.updates == updatesBefore + 1,
+            "failed UI size apply changed published state");
+    activity.backLatch.stop();
     return;
   }
   if (name == "zero-chatter-activity") {

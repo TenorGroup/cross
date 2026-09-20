@@ -8,6 +8,7 @@ set(PIO_LIBDEPS "${REPO_ROOT}/.pio/libdeps/gh_release")
 add_executable(MappedInputManagerTest
   MappedInputManagerTest.cpp
   FakeHal.cpp
+  TiltSensorStubs.cpp
   ${REPO_ROOT}/test/host_stubs/FakeUi.cpp
   ${REPO_ROOT}/src/MappedInputManager.cpp
   ${REPO_ROOT}/src/activities/Activity.cpp

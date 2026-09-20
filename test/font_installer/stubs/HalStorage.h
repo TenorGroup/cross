@@ -24,6 +24,7 @@ struct HostStorage {
   bool present = false;
   // Force removeDir() to fail, for the deleteFamily error path.
   bool failRemove = false;
+  std::string failMkdirPath;
 
   bool exists(const char* path) {
     calls.emplace_back(std::string("exists:") + path);
@@ -31,7 +32,7 @@ struct HostStorage {
   }
   bool mkdir(const char* path) {
     calls.emplace_back(std::string("mkdir:") + path);
-    return true;
+    return failMkdirPath != path;
   }
   bool removeDir(const char* path) {
     calls.emplace_back(std::string("remove:") + path);

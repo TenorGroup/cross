@@ -23,9 +23,8 @@ struct SdCardFontFamilyInfo {
   std::string dir() const;  // "/<root>/<name>"
   // "/<root>/<name>/<stem>_<size>.cpfont", or its "weight-N" variant.
   std::string filePath(const SdCardFontFileInfo& file, uint8_t weight = 0) const;
-  // bit 0: base, bits 1/2: installed experimental outlines. Resolved by two
-  // directory lookups when asked, never at discovery: probing every file at
-  // boot cost 2.5 s and the answer is only needed when a family is loaded.
+  // Physical mask: base at bit 0, legacy outlines at 1/2, guarded variants at 3/4.
+  // Resolved on demand, never at discovery. The app maps this to public levels.
   uint8_t weights(const SdCardFontFileInfo& file) const;
 
   const SdCardFontFileInfo* findFile(uint8_t size, uint8_t style = 0) const;

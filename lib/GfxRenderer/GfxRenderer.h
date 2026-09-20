@@ -131,6 +131,14 @@ class GfxRenderer {
   // Setup
   void begin();  // must be called right after display.begin()
   void insertFont(int fontId, EpdFontFamily font);
+  // Caller owns RenderLock. Replace an existing built-in value in place,
+  // preserving map-node addresses and avoiding allocation during UI rebind.
+  bool replaceBuiltinFont(int fontId, const EpdFontFamily& font) {
+    auto it = fontMap.find(fontId);
+    if (it == fontMap.end() || sdCardFonts_.count(fontId)) return false;
+    it->second = font;
+    return true;
+  }
   // Clears both the flash-font map and any SD-font registration for fontId.
   // Coupled to avoid dangling SdCardFont* in sdCardFonts_ when callers free
   // the underlying SdCardFont and forget the SD-side unregister.

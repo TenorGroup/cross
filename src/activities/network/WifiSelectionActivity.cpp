@@ -83,20 +83,26 @@ void WifiSelectionActivity::onPromptEvent(const fui::ActionEvent& event, void* u
     self->forgetPromptSelection = event.value;
     self->app.clearTapFlash();  // the action leaves this screen
     if (self->forgetPromptSelection == 1) {
-      RenderLock lock(*self);
-      WIFI_STORE.removeCredential(self->selectedSSID);
-      const auto network = find_if(self->networks.begin(), self->networks.end(),
-                                   [self](const WifiNetworkInfo& net) { return net.ssid == self->selectedSSID; });
-      if (network != self->networks.end()) {
-        network->hasSavedPassword = false;
+      {
+        RenderLock lock(*self);
+        WIFI_STORE.removeCredential(self->selectedSSID);
+        const auto network = find_if(self->networks.begin(), self->networks.end(),
+                                     [self](const WifiNetworkInfo& net) { return net.ssid == self->selectedSSID; });
+        if (network != self->networks.end()) {
+          network->hasSavedPassword = false;
+        }
       }
+      self->startWifiScan();
+    } else {
+      self->state = WifiSelectionState::NETWORK_LIST;
+      self->requestUpdate();
     }
-    self->startWifiScan();
   }
 }
 
 void WifiSelectionActivity::onEnter() {
   runtimeStarted = false;
+  wifiConnectionHandedOff = false;
   // The picker starts scans/connects immediately. Keep BLE stopped through the
   // complete child lifetime; parents may hold an additional nested owner.
   if (!filetransfer::acquire()) {
@@ -205,21 +211,38 @@ void WifiSelectionActivity::onExit() {
   if (runtimeStarted) {
     LOG_DBG("WIFI", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
 
-    // Stop any ongoing WiFi scan
-    LOG_DBG("WIFI", "Deleting WiFi scan...");
-    WiFi.scanDelete();
-    LOG_DBG("WIFI", "Free heap after scanDelete: %d bytes", ESP.getFreeHeap());
-
-    // Note: We do NOT disconnect WiFi here - the parent activity
-    // (CrossPointWebServerActivity) manages WiFi connection state. We just clean
-    // up the scan and task.
+    if (wifiConnectionHandedOff) {
+      WiFi.scanDelete();
+    } else {
+      stopWifiRadio();
+    }
 
     LOG_DBG("WIFI", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
   }
   filetransfer::release();
 }
 
+void WifiSelectionActivity::stopWifiRadio() {
+  WiFi.scanDelete();
+  // Credentials live in WifiCredentialStore. Keep the SDK erase flag false so
+  // cleanup cannot remove unrelated persisted station state.
+  WiFi.disconnect(true, false);
+  WiFi.mode(WIFI_OFF);
+  powerManager.setPowerSaving(true);
+}
+
 void WifiSelectionActivity::startWifiScan(const bool autoScan) {
+  if (!networks.empty() && selectedNetworkIndex < networks.size()) {
+    scanFocusSsid = networks[selectedNetworkIndex].ssid;
+    scanFocusIndex = selectedNetworkIndex;
+    scanFocusWasHidden = networks[selectedNetworkIndex].isHiddenPlaceholder;
+    hasScanFocus = true;
+  } else {
+    scanFocusSsid.clear();
+    scanFocusIndex = 0;
+    scanFocusWasHidden = false;
+    hasScanFocus = false;
+  }
   autoConnecting = autoScan;
   manualNetworkListRequested = false;
   listNav.reset();
@@ -230,21 +253,28 @@ void WifiSelectionActivity::startWifiScan(const bool autoScan) {
   networkRowItems.clear();
   requestUpdate();
 
-  // Set WiFi mode to station
+  // WiFi initialization needs the normal APB clock after a waiting screen put
+  // the device back into low-power mode.
+  powerManager.setPowerSaving(false);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   delay(100);
 
   // Start async scan
+  scanStartTime = millis();
   WiFi.scanNetworks(true);  // true = async scan
 }
 
 void WifiSelectionActivity::processWifiScanResults() {
-  const int16_t scanResult = WiFi.scanComplete();
+  int16_t scanResult = WiFi.scanComplete();
 
   if (scanResult == WIFI_SCAN_RUNNING) {
-    // Scan still in progress
-    return;
+    if (millis() - scanStartTime <= SCAN_TIMEOUT_MS) {
+      return;
+    }
+    LOG_INF("WIFI", "Scan timed out after %lu ms", SCAN_TIMEOUT_MS);
+    WiFi.scanDelete();
+    scanResult = WIFI_SCAN_FAILED;
   }
 
   if (scanResult == WIFI_SCAN_FAILED) {
@@ -257,7 +287,8 @@ void WifiSelectionActivity::processWifiScanResults() {
     }
     autoConnecting = false;
     state = WifiSelectionState::NETWORK_LIST;
-    selectedNetworkIndex = 0;
+    restoreSelectionAfterScan();
+    stopWifiRadio();
     requestUpdate();
     return;
   }
@@ -321,8 +352,25 @@ void WifiSelectionActivity::processWifiScanResults() {
 
   autoConnecting = false;
   state = WifiSelectionState::NETWORK_LIST;
-  selectedNetworkIndex = 0;
+  restoreSelectionAfterScan();
+  stopWifiRadio();
   requestUpdate();
+}
+
+void WifiSelectionActivity::restoreSelectionAfterScan() {
+  selectedNetworkIndex = 0;
+  if (hasScanFocus && !networks.empty()) {
+    const auto focused = std::find_if(networks.begin(), networks.end(), [this](const WifiNetworkInfo& network) {
+      return scanFocusWasHidden ? network.isHiddenPlaceholder
+                                : (!network.isHiddenPlaceholder && network.ssid == scanFocusSsid);
+    });
+    selectedNetworkIndex = focused != networks.end()
+                               ? static_cast<size_t>(std::distance(networks.begin(), focused))
+                               : std::min(scanFocusIndex, networks.size() - 1);
+  }
+  listNav.selected = static_cast<int>(selectedNetworkIndex);
+  listNav.follow(static_cast<int>(networks.size()));
+  hasScanFocus = false;
 }
 
 void WifiSelectionActivity::appendSavedNetworksNotSeen() {
@@ -422,13 +470,15 @@ void WifiSelectionActivity::selectNetwork(const int index) {
 }
 
 void WifiSelectionActivity::promptPasswordEntry() {
+  stopWifiRadio();
   // Show password entry
   state = WifiSelectionState::PASSWORD_ENTRY;
   // Don't allow screen updates while changing activity
   startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_ENTER_WIFI_PASSWORD),
                                                                  "",  // No initial text
                                                                  64,  // Max password length
-                                                                 InputType::Text),
+                                                                 InputType::Password,
+                                                                 true),
                          [this](const ActivityResult& result) {
                            if (result.isCancelled) {
                              state = WifiSelectionState::NETWORK_LIST;
@@ -440,6 +490,7 @@ void WifiSelectionActivity::promptPasswordEntry() {
 }
 
 void WifiSelectionActivity::promptHiddenSsid() {
+  stopWifiRadio();
   selectedSSID.clear();
   selectedRequiresPassword = true;  // Hidden networks are usually encrypted; empty password still joins open APs
   usedSavedPassword = false;
@@ -451,7 +502,8 @@ void WifiSelectionActivity::promptHiddenSsid() {
   startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_ENTER_WIFI_SSID),
                                                                  "",  // No initial text
                                                                  32,  // Max SSID length (IEEE 802.11: 32 bytes)
-                                                                 InputType::Text),
+                                                                 InputType::Text,
+                                                                 true),
                          [this](const ActivityResult& result) {
                            if (result.isCancelled) {
                              state = WifiSelectionState::NETWORK_LIST;
@@ -515,6 +567,7 @@ void WifiSelectionActivity::handleAutoConnectFailure() {
     autoConnecting = false;
     state = WifiSelectionState::NETWORK_LIST;
     selectedNetworkIndex = 0;
+    stopWifiRadio();
     requestUpdate();
     return;
   }
@@ -539,6 +592,7 @@ void WifiSelectionActivity::showNetworkListFromAutoConnect() {
 
   state = WifiSelectionState::NETWORK_LIST;
   selectedNetworkIndex = 0;
+  stopWifiRadio();
   requestUpdate();
 }
 
@@ -551,6 +605,7 @@ void WifiSelectionActivity::attemptConnection() {
 
   LOG_INF("WIFI", "Connect begin heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   WiFi.persistent(false);  // Credentials are managed by WifiCredentialStore; suppress SDK NVS auto-connect
+  powerManager.setPowerSaving(false);
   WiFi.mode(WIFI_STA);
   LOG_INF("WIFI", "STA ready");
   WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
@@ -609,10 +664,9 @@ void WifiSelectionActivity::checkConnectionStatus() {
             WiFi.RSSI());
 #endif
 
-    // Sync RTC from NTP on the first successful WiFi connection only. The DS3231
-    // drifts ~2 ppm so one sync is enough; users can force a re-sync from
-    // Settings > Customise Status Bar > Sync clock now.
-    if (syncClockOnConnect && halClock.isAvailable() && !SETTINGS.clockHasBeenSynced) {
+    // A persisted sync flag cannot prove that this boot has valid system time.
+    // Boards without an RTC must sync again after a cold boot.
+    if (syncClockOnConnect && (!SETTINGS.clockHasBeenSynced || !halClock.hasValidTime())) {
       LOG_INF("WIFI", "NTP begin");
       if (halClock.syncFromNTP()) {
         SETTINGS.clockHasBeenSynced = 1;
@@ -620,7 +674,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
       }
     }
 
-    if (syncClockOnConnect && halClock.isAvailable() && SETTINGS.clockAutoTimezone) {
+    if (syncClockOnConnect && halClock.hasValidTime() && SETTINGS.clockAutoTimezone) {
       {
         RenderLock lock(*this);
         if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
@@ -644,6 +698,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
     // Otherwise, immediately complete so parent can start web server
     if (!usedSavedPassword && !enteredPassword.empty()) {
       state = WifiSelectionState::SAVE_PROMPT;
+      savePromptStartTime = millis();
       savePromptSelection = 0;  // Default to "Yes"
       requestUpdate();
     } else {
@@ -666,6 +721,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
       handleAutoConnectFailure();
       return;
     }
+    stopWifiRadio();
     state = WifiSelectionState::CONNECTION_FAILED;
     requestUpdate();
     return;
@@ -675,12 +731,12 @@ void WifiSelectionActivity::checkConnectionStatus() {
   const unsigned long timeoutMs = autoConnecting ? AUTO_CONNECTION_TIMEOUT_MS : CONNECTION_TIMEOUT_MS;
   if (millis() - connectionStartTime > timeoutMs) {
     LOG_INF("WIFI", "Connection timed out after %lu ms, status %d", timeoutMs, static_cast<int>(status));
-    WiFi.disconnect();
     connectionError = tr(STR_ERROR_CONNECTION_TIMEOUT);
     if (autoConnecting) {
       handleAutoConnectFailure();
       return;
     }
+    stopWifiRadio();
     state = WifiSelectionState::CONNECTION_FAILED;
     requestUpdate();
     return;
@@ -716,6 +772,12 @@ void WifiSelectionActivity::loop() {
         showNetworkListFromAutoConnect();
         return;
       }
+    } else if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      LOG_INF("WIFI", "Manual connection cancelled");
+      stopWifiRadio();
+      state = WifiSelectionState::NETWORK_LIST;
+      requestUpdate();
+      return;
     }
     checkConnectionStatus();
     return;
@@ -745,6 +807,11 @@ void WifiSelectionActivity::loop() {
 
   // Handle save prompt state
   if (state == WifiSelectionState::SAVE_PROMPT) {
+    if (millis() - savePromptStartTime > SAVE_PROMPT_TIMEOUT_MS) {
+      LOG_INF("WIFI", "Save prompt timed out after %lu ms", SAVE_PROMPT_TIMEOUT_MS);
+      onComplete(false);
+      return;
+    }
     // Touch goes through the FreeInkApp: render() registered the dialog
     // button hit rects; route the snapshot and let onPromptEvent dispatch.
     const auto route = routeTouch(mappedInput);
@@ -800,21 +867,25 @@ void WifiSelectionActivity::loop() {
       }
     } else if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
       if (forgetPromptSelection == 1) {
-        RenderLock lock(*this);
-        // User chose "Forget network" - forget the network
-        WIFI_STORE.removeCredential(selectedSSID);
-        // Update the network list to reflect the change
-        const auto network = find_if(networks.begin(), networks.end(),
-                                     [this](const WifiNetworkInfo& net) { return net.ssid == selectedSSID; });
-        if (network != networks.end()) {
-          network->hasSavedPassword = false;
+        {
+          RenderLock lock(*this);
+          // User chose "Forget network" - forget the network
+          WIFI_STORE.removeCredential(selectedSSID);
+          // Update the network list to reflect the change
+          const auto network = find_if(networks.begin(), networks.end(),
+                                       [this](const WifiNetworkInfo& net) { return net.ssid == selectedSSID; });
+          if (network != networks.end()) {
+            network->hasSavedPassword = false;
+          }
         }
+        startWifiScan();
+      } else {
+        state = WifiSelectionState::NETWORK_LIST;
+        requestUpdate();
       }
-      // Go back to network list (whether Cancel or Forget network was selected)
-      startWifiScan();
     } else if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-      // Skip forgetting, go back to network list
-      startWifiScan();
+      state = WifiSelectionState::NETWORK_LIST;
+      requestUpdate();
     }
     return;
   }
@@ -829,16 +900,18 @@ void WifiSelectionActivity::loop() {
 
   // Handle connection failed state
   if (state == WifiSelectionState::CONNECTION_FAILED) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
-        mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-      // If we were auto-connecting or using a saved credential, offer to forget
-      // the network
-      if (autoConnecting || usedSavedPassword) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      autoConnecting = false;
+      state = WifiSelectionState::NETWORK_LIST;
+      requestUpdate();
+      return;
+    }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+      if (usedSavedPassword) {
         autoConnecting = false;
         state = WifiSelectionState::FORGET_PROMPT;
         forgetPromptSelection = 0;  // Default to "Cancel"
       } else {
-        // Go back to network list on failure for non-saved credentials
         state = WifiSelectionState::NETWORK_LIST;
       }
       requestUpdate();
@@ -1210,6 +1283,11 @@ void WifiSelectionActivity::renderConnectionFailed(const Rect* screen, const The
 }
 
 void WifiSelectionActivity::onComplete(const bool connected) {
+  if (!connected) {
+    stopWifiRadio();
+  } else {
+    wifiConnectionHandedOff = true;
+  }
   ActivityResult result;
   result.isCancelled = !connected;
   if (connected) {

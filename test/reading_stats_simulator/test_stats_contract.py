@@ -296,27 +296,33 @@ class StatsContractTest(unittest.TestCase):
         DO_DUOC["phien_ngan"] = {"ngay": du_lieu.get("ngay"), "habits_days": phien,
                                  "activeBook": du_lieu.get("activeBook")}
 
-    def test_1e_dong_ho_chua_sync_thi_khong_gan_bua_ngay(self):
+    def test_1e_epoch_chay_hop_le_khong_bi_chan_boi_co_dong_bo_cu(self):
         kb = KichBan(self)
         _sach_gia(kb, 1)
         kb.dat_settings(clockHasBeenSynced=0)
         kb.chay("1000:CONFIRM;2500:RIGHT;2600:RIGHT;3800:BACK;5500:QUIT")
         du_lieu = kb.doc()
-        self.assertEqual(du_lieu.get("ngay", []), [], "chua co ngay thi khong duoc ghi vao mot ngay nao")
-        self.assertGreaterEqual(du_lieu.get("lacTrang", 0), 2, "luot lat vao thung chua biet ngay")
-        self.assertGreater(du_lieu.get("lacMs", 0), 0, "thoi gian vao thung chua biet ngay")
-        self.assertEqual(du_lieu["activeBook"]["first"], 0, "chua biet ngay thi khong dan ngay bua")
-        lac_truoc = (du_lieu["lacPhut"], du_lieu["lacTrang"])
-        DO_DUOC["chua_sync"] = {"ngay": du_lieu.get("ngay"), "lacPhut": du_lieu["lacPhut"],
-                                "lacTrang": du_lieu["lacTrang"], "lacMs": du_lieu["lacMs"]}
-        # Dong bo dong ho roi doc tiep: ngay moi duoc ghi rieng, phan cu KHONG bi gan bua.
-        kb.dat_settings(clockHasBeenSynced=1)
+        dong = kb.ngay()
+        self.assertIsNotNone(dong, "epoch chay hop le phai tao dong ngay du co luu van bang 0")
+        self.assertEqual(dong[1:3], [0, 2])
+        self.assertGreater(dong[3], 0)
+        self.assertEqual(du_lieu.get("lacTrang", 0), 0)
+        self.assertEqual(du_lieu.get("lacMs", 0), 0)
+        self.assertEqual(du_lieu["activeBook"]["first"], dong[0])
+        self.assertEqual(du_lieu["activeBook"]["last"], dong[0])
+        DO_DUOC["epoch_hop_le_co_cu"] = {"ngay": du_lieu.get("ngay"), "lacPhut": du_lieu.get("lacPhut", 0),
+                                           "lacTrang": du_lieu.get("lacTrang", 0), "lacMs": du_lieu.get("lacMs", 0)}
+        # Giu nguyen co cu bang 0 qua mot lan doc nua. Runtime epoch van la nguon su that.
         kb.chay("1000:CONFIRM;2500:RIGHT;2600:RIGHT;3800:BACK;5500:QUIT")
         du_lieu = kb.doc()
-        self.assertEqual([dong[0] for dong in du_lieu["ngay"]], [ma_ngay_dia_phuong(kb.bien_co)])
-        self.assertGreaterEqual(du_lieu["lacTrang"], lac_truoc[1], "phan chua biet ngay phai con nguyen")
-        DO_DUOC["sau_sync"] = {"ngay": du_lieu["ngay"], "lacTrang": du_lieu["lacTrang"],
-                               "lacPhut": du_lieu["lacPhut"]}
+        dong = kb.ngay()
+        self.assertIsNotNone(dong)
+        self.assertEqual(dong[1:3], [0, 4])
+        self.assertGreater(dong[3], 0)
+        self.assertEqual(du_lieu.get("lacTrang", 0), 0)
+        self.assertEqual(du_lieu.get("lacMs", 0), 0)
+        DO_DUOC["epoch_hop_le_lan_hai"] = {"ngay": du_lieu["ngay"], "lacTrang": du_lieu.get("lacTrang", 0),
+                                             "lacPhut": du_lieu.get("lacPhut", 0)}
 
     def test_1f_mui_gio_va_cuoi_tuan_khong_suy_dien(self):
         do_duoc = {}

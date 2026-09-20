@@ -1,6 +1,5 @@
 #include "CssParser.h"
 
-#include <Arduino.h>
 #include <Logging.h>
 #include <Memory.h>
 
@@ -44,10 +43,6 @@ constexpr size_t READ_BUFFER_SIZE = 512;
 constexpr size_t MAX_RULES = 1500;
 constexpr size_t SELECTOR_POOL_CAP = 32 * 1024;
 constexpr size_t MAX_UNIQUE_STYLES = 256;
-
-// Minimum free heap required to apply CSS during rendering
-// If below this threshold, we skip CSS to avoid display artifacts.
-constexpr size_t MIN_FREE_HEAP_FOR_CSS = 48 * 1024;
 
 // Maximum length for a single selector string
 // Prevents parsing of extremely long or malformed selectors
@@ -860,16 +855,6 @@ CssParser::ParseResult CssParser::loadFromStream(HalFile& source) {
 // Style resolution
 
 CssStyle CssParser::resolveStyle(std::string_view tagName, std::string_view classAttr) const {
-  static bool lowHeapWarningLogged = false;
-  if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_CSS) {
-    if (!lowHeapWarningLogged) {
-      lowHeapWarningLogged = true;
-      LOG_DBG("CSS", "Warning: low heap (%u bytes) below MIN_FREE_HEAP_FOR_CSS (%u), returning empty style",
-              ESP.getFreeHeap(), static_cast<unsigned>(MIN_FREE_HEAP_FOR_CSS));
-    }
-    return CssStyle{};
-  }
-
   CssStyle result;
 
   // 1. Apply element-level style (lowest priority).

@@ -61,11 +61,13 @@ struct ActivityManager {
   Input mappedInput;
   CheckedSleepFlag sleepTransition{};
   bool requestedUpdate = true;
+  bool foregroundReader = true;
   PendingAction pendingAction = PendingAction::None;
   std::unique_ptr<Activity> currentActivity;
   std::unique_ptr<Activity> pendingActivity;
   @RETURN_TYPE@ goToSleep(bool fromTimeout);
   bool isReaderActivity() { return currentActivity && currentActivity->name == "Reader"; }
+  bool isForegroundReaderActivity() { return foregroundReader; }
   bool preventAutoSleep() { return false; }
   void requestUpdate() { requestedUpdate = true; }
   void replaceActivity(std::unique_ptr<Activity>&& next) {
@@ -95,6 +97,8 @@ struct CrossPointSettings {
 };
 struct Settings {
   unsigned long getSleepTimeoutMs() const { return 60000; }
+  uint8_t tiltPageTurn = 1;
+  uint8_t orientation = 0;
   CrossPointSettings::SLEEP_SCREEN_MODE sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::TENOR;
   CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN quickResumeSleepScreen = CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::NONE;
 } SETTINGS;
@@ -103,7 +107,12 @@ struct AppState {
   bool showBootScreen = true;
   void saveToFile() { events.push_back("state-save"); }
 } APP_STATE;
-struct GPIO { bool deviceIsX3() { return true; } bool wasAnyPressed() { return false; } } gpio;
+struct GPIO {
+  bool deviceIsX3() { return true; }
+  bool wasAnyPressed() { return false; }
+  bool wasAnyReleased() { return false; }
+  bool wasTouchActivity() { return false; }
+} gpio;
 struct HalDisplay {
   enum class Controller { UC8279 };
   Controller getController() { return Controller::UC8279; }
@@ -121,7 +130,20 @@ struct WifiBoundary {
   void disconnect(bool) {}
   void mode(int) {}
 } WiFi;
-struct TiltBoundary { void deepSleep() {} } halTiltSensor;
+struct TiltBoundary {
+  bool activity = false;
+  int updateCalls = 0;
+  bool hadActivity() {
+    const bool value = activity;
+    activity = false;
+    return value;
+  }
+  void update(uint8_t, uint8_t, bool gestureTargetActive) {
+    ++updateCalls;
+    if (!gestureTargetActive) activity = false;
+  }
+  void deepSleep() {}
+} halTiltSensor;
 static const char* SLEEP_FRAME_FILE = "/sleep-frame";
 static bool deepSleepInProgress;
 // Both declarations permit execution of the historical and current bodies.
@@ -138,6 +160,11 @@ static void sleepWithConfiguredButtons() { ++deepSleepCalls; events.push_back("d
 
 static void runMainSleepGate(bool userActivity) {
 @MAIN_SLEEP_GATE@
+}
+
+static bool runMainTiltActivityGate() {
+@MAIN_TILT_ACTIVITY_GATE@
+  return nguoiDungChamVao;
 }
 
 template<class Manager>
@@ -164,6 +191,7 @@ static void reset() {
   lastSleepResetTime = 0;
   events.clear();
   activityManager = ActivityManager{};
+  halTiltSensor = TiltBoundary{};
   activityManager.currentActivity = std::make_unique<Activity>("Reader");
 }
 static void require(bool condition, const char* scenario, const char* message) {
@@ -175,6 +203,15 @@ static size_t eventIndex(const char* event) {
 }
 
 int main() {
+  reset();
+  activityManager.foregroundReader = false;
+  halTiltSensor.activity = true;
+  const bool tabTiltReset = runMainTiltActivityGate();
+  require(tabTiltReset, "tab-tilt-autosleep",
+          "a tab tilt from the preceding activity loop must reset the autosleep timer");
+  require(halTiltSensor.updateCalls == 1 && !halTiltSensor.activity, "tab-tilt-autosleep",
+          "inactive foreground polling must still discard the consumed tab event");
+
   reset();
   bleReadyAt = 140;
   const bool eventuallyCompleted = invokeGoToSleep(activityManager);
@@ -256,6 +293,6 @@ int main() {
   require(deepSleepCalls == 1,
           "manual-retry", "explicit sleep must remain available after a failed automatic attempt");
 
-  std::cout << "BLE-02 sleep regression: 8 scenarios, " << failures << " failed assertions\n";
+  std::cout << "BLE-02 sleep regression: 10 scenarios, " << failures << " failed assertions\n";
   return failures ? 1 : 0;
 }

@@ -12,6 +12,7 @@
 #include "SdCardFontSystem.h"
 #include "activities/settings/SettingsTabs.h"
 #include "components/TenorMenuChrome.h"
+#include "components/SettledListRender.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/icons/tenorHomeTabIcons.h"
@@ -387,7 +388,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
   // Content: the safe area minus the header band GUI.drawHeader paints.
   screen.setContentMarginFromScreen(fui::Insets{
-      static_cast<int16_t>(tenorchrome::enabled() ? tenorchrome::TAB_TOP
+      static_cast<int16_t>(tenorchrome::enabled() ? tenorchrome::tabTop()
                                                   : safe.y + metrics.topPadding + metrics.headerHeight),
       static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
       static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
@@ -455,10 +456,11 @@ void EpubReaderMenuActivity::drawChrome() {
 void EpubReaderMenuActivity::render(RenderLock&&) {
   if (optionPopup.processRender(renderer, mappedInput)) return;
 
-  renderer.clearScreen();
-  drawChrome();
-
-  renderUi();
+  renderSettledList(activeNav(), [&] {
+    renderer.clearScreen();
+    drawChrome();
+    renderUi();
+  });
 
   drawFooter();
   renderer.displayBuffer();

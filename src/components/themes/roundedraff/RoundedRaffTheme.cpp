@@ -1,4 +1,5 @@
 #include "RoundedRaffTheme.h"
+#include "components/UIScale.h"
 
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
@@ -211,7 +212,7 @@ void RoundedRaffTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, 
   const int sidePadding = 20;
   const int groupGap = 10;
   const int bottomMargin = 10;
-  const int hintHeight = RoundedRaffMetrics::values.buttonHintsHeight - 10;  // 30px total guide height
+  const int hintHeight = UITheme::getInstance().getMetrics().buttonHintsHeight - 10;  // 30px total guide height
   const int groupWidth = (pageWidth - sidePadding * 2 - groupGap) / 2;
   const int hintY = pageHeight - hintHeight - bottomMargin;
   const int textY = hintY + (hintHeight - renderer.getLineHeight(kGuideFontId)) / 2;
@@ -246,6 +247,18 @@ void RoundedRaffTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, 
   const int upX = rightGroupX + innerEdgePadding;
   const int downX = rightGroupX + groupWidth - innerEdgePadding - downWidth;
 
+  if (normalizedUiTextSize(SETTINGS.uiTextSize) != 0) {
+    // Each physical button owns half a guide. Wrapping stays inside that slot
+    // when translated labels grow with the selected UI font.
+    renderer.drawRoundedRect(rightGroupX, hintY, groupWidth, hintHeight, 2, kBottomRadius, true);
+    const int slotWidth = groupWidth / 2;
+    const char* labels[] = {backLabel.c_str(), selectText.c_str(), upText.c_str(), downText.c_str()};
+    const int positions[] = {leftGroupX, leftGroupX + slotWidth, rightGroupX, rightGroupX + slotWidth};
+    for (int i = 0; i < 4; ++i)
+      if (*labels[i]) drawHintLabel(renderer, kGuideFontId, labels[i], positions[i], slotWidth, hintY, hintHeight, 0);
+    renderer.setOrientation(origOrientation);
+    return;
+  }
   if (!backDisabled) {
     renderer.drawText(kGuideFontId, backX, textY, backLabel.c_str(), true, EpdFontFamily::REGULAR);
   }

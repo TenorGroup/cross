@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -10,6 +11,18 @@
 #include "../../../freeink-sdk/libs/network/SecureNet/include/HttpUrl.h"
 
 namespace font_manifest {
+
+// FAT names compare case-insensitively. Manifest names use ASCII; keep this
+// independent of locale and avoid allocating a folded copy of every path.
+inline bool sameAsciiName(const char* a, const char* b) {
+  if (!a || !b) return false;
+  for (; *a && *b; ++a, ++b) {
+    const char ca = *a >= 'A' && *a <= 'Z' ? *a + ('a' - 'A') : *a;
+    const char cb = *b >= 'A' && *b <= 'Z' ? *b + ('a' - 'A') : *b;
+    if (ca != cb) return false;
+  }
+  return *a == *b;
+}
 
 // These checks run on the parsed DOM before the activity clears its current
 // table or reads installation state. Keep them independent of SD and UI code
@@ -23,11 +36,18 @@ inline bool validateRequiredShape(JsonVariantConst document) {
   if (families.isNull() || families.size() == 0) return false;
 
   uint64_t totalFileEntries = 0;
+  size_t familyIndex = 0;
   for (const JsonVariantConst familyValue : families) {
     if (!familyValue.is<JsonObjectConst>()) return false;
     const JsonObjectConst family = familyValue.as<JsonObjectConst>();
     const char* familyName = family["name"].as<const char*>();
     if (!familyName || *familyName == '\0') return false;
+    size_t previousFamily = 0;
+    for (const JsonVariantConst previous : families) {
+      if (previousFamily++ >= familyIndex) break;
+      if (sameAsciiName(familyName, previous["name"].as<const char*>())) return false;
+    }
+    ++familyIndex;
 
     const JsonVariantConst filesValue = family["files"];
     if (!filesValue.is<JsonArrayConst>()) return false;
@@ -35,11 +55,18 @@ inline bool validateRequiredShape(JsonVariantConst document) {
     if (files.isNull() || files.size() == 0) return false;
 
     uint64_t familyTotal = 0;
+    size_t fileIndex = 0;
     for (const JsonVariantConst fileValue : files) {
       if (!fileValue.is<JsonObjectConst>()) return false;
       const JsonObjectConst file = fileValue.as<JsonObjectConst>();
       const char* fileName = file["name"].as<const char*>();
       if (!fileName || *fileName == '\0') return false;
+      size_t previousFile = 0;
+      for (const JsonVariantConst previous : files) {
+        if (previousFile++ >= fileIndex) break;
+        if (sameAsciiName(fileName, previous["name"].as<const char*>())) return false;
+      }
+      ++fileIndex;
       if (!file["size"].is<uint32_t>() || file["size"].as<uint32_t>() == 0) return false;
       if (!file["crc32"].is<uint32_t>()) return false;
 

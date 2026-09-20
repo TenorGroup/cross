@@ -15,6 +15,17 @@
 #include <HalTiltSensor.h>
 #include <SdCardFontRegistry.h>
 
+namespace settings_test_io {
+JsonDocument nextRead;
+int writes = 0;
+
+void setNextRead(const JsonDocument& doc) {
+  nextRead.clear();
+  nextRead.set(doc.as<JsonVariantConst>());
+  writes = 0;
+}
+}  // namespace settings_test_io
+
 // The catalogue asks the tilt sensor whether the hardware is present.
 HalTiltSensor halTiltSensor;
 
@@ -35,8 +46,17 @@ void KOReaderCredentialStore::setSendMetadata(bool) {}
 void KOReaderCredentialStore::setSyncBehavior(KOReaderSyncBehavior) {}
 void KOReaderCredentialStore::toJson(JsonDocument&) const {}
 
-// Only used by saveToFile(), which this suite does not call.
-bool PersistableStoreBase::writeDocToFile(const char*, const JsonDocument&) { return true; }
+bool PersistableStoreBase::writeDocToFile(const char*, const JsonDocument& doc) {
+  ++settings_test_io::writes;
+  settings_test_io::nextRead.clear();
+  settings_test_io::nextRead.set(doc.as<JsonVariantConst>());
+  return true;
+}
+
+bool PersistableStoreBase::readDocFromFile(const char*, JsonDocument& doc) {
+  doc.set(settings_test_io::nextRead.as<JsonVariantConst>());
+  return true;
+}
 
 namespace obfuscation {
 // Credential obfuscation is device-keyed; the settings round trip only needs it

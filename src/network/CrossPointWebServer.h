@@ -5,11 +5,55 @@
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "WebTransferAuth.h"
+
+namespace power_timeout {
+constexpr uint32_t SESSION_IDLE_TIMEOUT_MS = 5u * 60u * 1000u;
+
+class WebSessionLifecycle {
+ public:
+  void start(const uint32_t now) {
+    running_ = true;
+    lastActivityTime_ = now;
+  }
+
+  void stop() { running_ = false; }
+
+  void noteHttpRequest(const bool authorized, const bool statusEndpoint, const uint32_t now) {
+    if (running_ && authorized && !statusEndpoint) lastActivityTime_ = now;
+  }
+
+  void noteMeaningfulActivity(const uint32_t now) {
+    if (running_) lastActivityTime_ = now;
+  }
+
+  void noteTransferBytes(const size_t bytes, const uint32_t now) {
+    if (running_ && bytes > 0) lastActivityTime_ = now;
+  }
+
+  // Browser pings only prove that a page remains open. They do not represent
+  // an operation that should keep the reader awake.
+  void noteWebSocketPing(uint32_t) {}
+
+  bool idleExpired(const uint32_t now) const {
+    return running_ && now - lastActivityTime_ >= SESSION_IDLE_TIMEOUT_MS;
+  }
+
+  bool running() const { return running_; }
+  uint32_t lastActivityTime() const { return lastActivityTime_; }
+
+ private:
+  bool running_ = false;
+  uint32_t lastActivityTime_ = 0;
+};
+}  // namespace power_timeout
 
 // Structure to hold file information
 struct FileInfo {
@@ -53,6 +97,10 @@ class CrossPointWebServer {
   CrossPointWebServer();
   ~CrossPointWebServer();
 
+  // The owning activity applies and publishes the UI font tier under its
+  // RenderLock. A server without an owner callback rejects this setting.
+  void setUiTextSizeApplier(std::function<bool(uint8_t)> applier);
+
   // Start the web server (call after WiFi is connected)
   void begin();
 
@@ -64,6 +112,9 @@ class CrossPointWebServer {
 
   // Check if server is running
   bool isRunning() const { return running; }
+
+  unsigned long getLastActivityTime() const { return sessionLifecycle.lastActivityTime(); }
+  bool sessionIdleExpired(unsigned long now) const;
 
   WsUploadStatus getWsUploadStatus() const;
 
@@ -80,6 +131,12 @@ class CrossPointWebServer {
   uint16_t wsPort = 81;  // WebSocket port
   NetworkUDP udp;
   bool udpActive = false;
+  power_timeout::WebSessionLifecycle sessionLifecycle;
+  std::function<bool(uint8_t)> uiTextSizeApplier;
+
+  void noteSessionActivity();
+  void noteTransferActivity(size_t bytes);
+  void abortHttpUploads();
 
   // WebSocket upload state
   void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length);
@@ -104,7 +161,7 @@ class CrossPointWebServer {
   void handleFileList() const;
   void handleFileListData() const;
   void handleDownload();
-  void handleUpload(UploadState& state) const;
+  void handleUpload(UploadState& state);
   void handleUploadPost(UploadState& state) const;
   void handleCreateFolder() const;
   void handleRename() const;
@@ -115,6 +172,7 @@ class CrossPointWebServer {
   void handleSettingsPage() const;
   void handleGetSettings() const;
   void handlePostSettings();
+  bool applyUiTextSizeSetting(uint8_t value);
 
   // Font management handlers
   void handleFontsPage() const;

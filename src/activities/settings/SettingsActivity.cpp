@@ -2,7 +2,6 @@
 
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
-#include <HalClock.h>
 #include <HalDisplay.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -30,10 +29,12 @@
 #include "SettingsList.h"
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
+#include "UIFontTiers.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/TenorMenuChrome.h"
+#include "components/SettledListRender.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -102,26 +103,25 @@ void SettingsActivity::rebuildSettingsLists() {
       {StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate},
   };
   const bool deviceIsX3 = gpio.deviceIsX3();
-  const bool clockAvailable = halClock.isAvailable();
   const auto& catalog = getBaseSettingsList();
   std::array<size_t, settingstabs::TAB_COUNT> rowCounts{};
   for (const auto& setting : catalog) {
-    const int tab = deviceSettingsTab(setting, deviceIsX3, clockAvailable);
+    const int tab = deviceSettingsTab(setting, deviceIsX3);
     if (tab >= 0) ++rowCounts[tab];
   }
   for (const auto& row : DONG_HANH_DONG) ++rowCounts[static_cast<int>(settingstabs::nhaCua(row.viec))];
   if (!BoardConfig::hasTouch()) ++rowCounts[static_cast<int>(settingstabs::Tab::CONTROLS)];
   if (keyboard_layouts::COUNT > 1) ++rowCounts[static_cast<int>(settingstabs::Tab::KEYBOARD)];
-  if (clockAvailable) ++rowCounts[static_cast<int>(settingstabs::Tab::SYSTEM)];
+  ++rowCounts[static_cast<int>(settingstabs::Tab::SYSTEM)];
   rowCounts[static_cast<int>(settingstabs::Tab::READER)] +=
       2 + (!dictionaries.empty() ? 1 : 0) + (SETTINGS.uiTheme != CrossPointSettings::TENOR_UI ? 1 : 0);
   for (size_t tab = 0; tab < rowCounts.size(); ++tab)
     danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).reserve(rowCounts[tab]);
 
   for (const auto& setting : catalog) {
-    const int tab = deviceSettingsTab(setting, deviceIsX3, clockAvailable);
+    const int tab = deviceSettingsTab(setting, deviceIsX3);
     if (tab < 0) continue;
-    if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && clockAvailable &&
+    if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI &&
         setting.valuePtr == &CrossPointSettings::statusBarClock) {
       const auto afterLabels = std::find_if(displaySettings.begin(), displaySettings.end(), [](const SettingInfo& row) {
         return row.valuePtr == &CrossPointSettings::tenorButtonSymbols;
@@ -149,12 +149,10 @@ void SettingsActivity::rebuildSettingsLists() {
                             SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
   }
   // Sleep, wake and clock precede file-management preferences.
-  if (halClock.isAvailable()) {
-    const auto files = std::find_if(systemSettings.begin(), systemSettings.end(), [](const SettingInfo& row) {
-      return row.valuePtr == &CrossPointSettings::showHiddenFiles;
-    });
-    systemSettings.insert(files, SettingInfo::Action(StrId::STR_CLOCK, SettingAction::Clock));
-  }
+  const auto files = std::find_if(systemSettings.begin(), systemSettings.end(), [](const SettingInfo& row) {
+    return row.valuePtr == &CrossPointSettings::showHiddenFiles;
+  });
+  systemSettings.insert(files, SettingInfo::Action(StrId::STR_CLOCK, SettingAction::Clock));
   readerSettings.insert(readerSettings.begin(),
                         SettingInfo::Action(StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings));
   readerSettings.insert(readerSettings.begin() + 1,
@@ -257,16 +255,28 @@ void SettingsActivity::onExit() {
   UITheme::getInstance().reload();  // Re-apply theme in case it was changed
 }
 
-void SettingsActivity::applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr) {
+bool SettingsActivity::applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr, const uint8_t newValue) {
+  if (valuePtr == &CrossPointSettings::uiTextSize) {
+    RenderLock lock(*this);
+    if (!applyUiFontSize(renderer, newValue)) {
+      LOG_ERR("SETTINGS", "Applying UI text size failed");
+      return false;
+    }
+    SETTINGS.uiTextSize = newValue;
+    UITheme::getInstance().reload();
+    resetUi();
+    return true;
+  }
   // Theme changes take effect immediately, on this screen - reload the theme
   // and re-derive the app's tokens so the very next repaint is in the new look.
   if (valuePtr != &CrossPointSettings::uiTheme) {
-    return;
+    return true;
   }
   UITheme::getInstance().reload();
   // Re-derive the shared tokens for the new look; the gate stays closed until
   // the repaint that rebuilds the interaction table in the new layout.
   resetUi();
+  return true;
 }
 
 bool SettingsActivity::handleCustomInput() {
@@ -350,6 +360,7 @@ void SettingsActivity::toggleCurrentSetting() {
 
   const auto& setting = (*currentSettings)[selectedSetting];
   const auto changedValuePtr = setting.valuePtr;
+  bool uiTextSizeApplied = false;
   const bool sleepScreenChanged = setting.valuePtr == &CrossPointSettings::sleepScreen;
   const bool quickResumeTimeoutChanged = setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;
 
@@ -367,17 +378,38 @@ void SettingsActivity::toggleCurrentSetting() {
     if (settingstabs::moTrinhChon(static_cast<int>(setting.enumValues.size()))) {
       const auto valuePtr = setting.valuePtr;
       optionPopup.show(setting.nameId, setting.enumValues.data(), static_cast<int>(setting.enumValues.size()),
-                       currentValue, [this, valuePtr, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
-                         SETTINGS.*valuePtr = idx;
+                       currentValue,
+                       [this, valuePtr, currentValue, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
+                         if (valuePtr == &CrossPointSettings::uiTextSize) {
+                           if (!applyUiSettingChange(valuePtr, static_cast<uint8_t>(idx))) {
+                             requestUpdate();
+                             return;
+                           }
+                         } else {
+                           SETTINGS.*valuePtr = idx;
+                         }
                          syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
+                         if (valuePtr != &CrossPointSettings::uiTextSize &&
+                             !applyUiSettingChange(valuePtr, currentValue)) {
+                           requestUpdate();
+                           return;
+                         }
                          saveSettings();
                          rebuildSettingsLists();
-                         applyUiSettingChange(valuePtr);
                        });
       requestUpdate();
       return;
     }
-    SETTINGS.*(setting.valuePtr) = (currentValue + 1) % static_cast<uint8_t>(setting.enumValues.size());
+    const uint8_t newValue = (currentValue + 1) % static_cast<uint8_t>(setting.enumValues.size());
+    if (setting.valuePtr == &CrossPointSettings::uiTextSize) {
+      if (!applyUiSettingChange(setting.valuePtr, newValue)) {
+        requestUpdate();
+        return;
+      }
+      uiTextSizeApplied = true;
+    } else {
+      SETTINGS.*(setting.valuePtr) = newValue;
+    }
   } else if (setting.type == SettingType::ENUM && setting.valueGetter && setting.valueSetter) {
     const uint8_t totalValues = setting.enumStringValues.empty()
                                     ? static_cast<uint8_t>(setting.enumValues.size())
@@ -503,9 +535,12 @@ void SettingsActivity::toggleCurrentSetting() {
   }
 
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
+  if (!uiTextSizeApplied && !applyUiSettingChange(changedValuePtr, 0)) {
+    requestUpdate();
+    return;
+  }
   saveSettings();
   rebuildSettingsLists();
-  applyUiSettingChange(changedValuePtr);
 }
 
 void SettingsActivity::syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged) {
@@ -700,8 +735,6 @@ bool SettingsActivity::openPendingSettingsSibling() {
 void SettingsActivity::render(RenderLock&&) {
   if (optionPopup.processRender(renderer, mappedInput)) return;
 
-  renderer.clearScreen();
-
   const auto pageWidth = renderer.getScreenWidth();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
@@ -709,9 +742,11 @@ void SettingsActivity::render(RenderLock&&) {
   // indicator; the rest of the screen renders through the app.
   // Version rides in the header's trailing label slot: the footer position
   // conflicts with button hints on non-touch devices.
-  drawNavigationHeader(tabLabel(activeTab()));
-
-  renderUi();
+  renderSettledList(activeNav(), [&] {
+    renderer.clearScreen();
+    drawNavigationHeader(tabLabel(activeTab()));
+    renderUi();
+  });
 
   if (tenorchrome::enabled() && tabCount() > 1) {
     tenorchrome::drawSiblingDestinations(renderer, tabLabel(adjacentTab(-1)), tabLabel(adjacentTab(1)));

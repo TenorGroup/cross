@@ -53,6 +53,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   // Back closes on RELEASE and Confirm activates on RELEASE; everything else
   // (row navigation, tab steps) falls through to the base handler.
   bool handleButtons() override;
+  bool allowsTiltTabNavigation() const override { return !optionPopup.isActive(); }
   bool rowIsPinned(int row) const override;
   // Giu cap nut di-dong: trong tab Yeu thich thi day dong dang chon di mot bac.
   bool giuNutDiDong(int huong) override;

@@ -26,8 +26,22 @@ class ReadingStatsSimulatorTest(unittest.TestCase):
             encoding="utf-8",
         )
         (self.store / "settings.json").write_text(
-            json.dumps({"language": "EN", "sleepTimeout": 10}), encoding="utf-8"
+            json.dumps({"language": "EN", "sleepTimeout": 10, "clockUtcOffsetQ": 48}), encoding="utf-8"
         )
+
+    @staticmethod
+    def utc_day():
+        return int(datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d"))
+
+    def assert_runtime_day(self, actual, before, after, turns):
+        rows = [row for row in actual.get("ngay", []) if row and row[0] in {before, after}]
+        self.assertEqual(len(rows), 1, actual.get("ngay"))
+        row = rows[0]
+        self.assertGreaterEqual(len(row), 4, row)
+        self.assertEqual(row[1], 0)
+        self.assertEqual(row[2], turns)
+        self.assertGreater(row[3], 0)
+        return row
 
     def run_reader(self, buttons):
         # Open the first book through Home > Folder, turn pages, then exit to Home.
@@ -57,16 +71,22 @@ class ReadingStatsSimulatorTest(unittest.TestCase):
     def test_history_survives_two_boots(self):
         history = {"ngay": [[20260913, 12, 30]], "lacPhut": 5, "lacTrang": 7}
         (self.store / "reading-stats.json").write_text(json.dumps(history), encoding="utf-8")
-        for expected_turns in (9, 11):
+        for daily_turns in (2, 4):
+            before = self.utc_day()
             actual = self.run_reader(["RIGHT", "RIGHT"])
-            with self.subTest(expected_turns=expected_turns):
-                self.assertEqual(actual.get("ngay"), history["ngay"])
+            after = self.utc_day()
+            with self.subTest(daily_turns=daily_turns):
+                self.assertEqual(actual.get("ngay", [])[0], history["ngay"][0])
+                self.assertEqual(len(actual.get("ngay", [])), 2)
+                self.assert_runtime_day(actual, before, after, daily_turns)
                 self.assertEqual(actual.get("lacPhut"), 5)
-                self.assertEqual(actual.get("lacTrang"), expected_turns)
+                self.assertEqual(actual.get("lacTrang"), 7)
 
     def test_back_at_first_page_does_not_count(self):
+        before = self.utc_day()
         actual = self.run_reader(["LEFT", "LEFT", "LEFT"])
-        self.assertEqual(actual.get("ngay", []), [])
+        after = self.utc_day()
+        self.assert_runtime_day(actual, before, after, 0)
         self.assertEqual(actual.get("lacTrang", 0), 0)
         self.assertEqual(actual.get("lacPhut", 0), 0)
 
@@ -79,20 +99,28 @@ class ReadingStatsSimulatorTest(unittest.TestCase):
         (self.store / "reading-stats.json").write_text(json.dumps({
             "ngay": rows, "lacPhut": -1, "lacTrang": 7,
         }))
+        before = self.utc_day()
         actual = self.run_reader(["RIGHT", "RIGHT"])
-        expected = [[day, 4, 6] if day == 20260815 else [day, 1, 2] for day in dates[-30:]]
-        self.assertEqual(actual["ngay"], expected)
+        after = self.utc_day()
+        expected = [[day, 4, 6] if day == 20260815 else [day, 1, 2] for day in dates[-29:]]
+        self.assertEqual(actual["ngay"][:-1], expected)
+        self.assert_runtime_day(actual, before, after, 2)
         self.assertEqual(actual.get("lacPhut", 0), 0)
-        self.assertEqual(actual.get("lacTrang", 0), 9)
+        self.assertEqual(actual.get("lacTrang", 0), 7)
 
     def test_interrupted_checkpoint_recovers_previous_snapshot(self):
         (self.store / "reading-stats.json").write_text('{"ngay":[')
         (self.store / "reading-stats.json.bak").write_text(json.dumps({
             "ngay": [[20260913, 12, 30]], "lacMs": 59000, "lacTrang": 7}))
+        before = self.utc_day()
         actual = self.run_reader(["RIGHT", "RIGHT"])
-        self.assertEqual(actual["ngay"], [[20260913, 12, 30]])
-        self.assertGreaterEqual(actual.get("lacPhut", 0), 1)
-        self.assertEqual(actual["lacTrang"], 9)
+        after = self.utc_day()
+        self.assertEqual(actual["ngay"][0], [20260913, 12, 30])
+        self.assertEqual(len(actual["ngay"]), 2)
+        self.assert_runtime_day(actual, before, after, 2)
+        self.assertEqual(actual.get("lacPhut", 0), 0)
+        self.assertEqual(actual.get("lacMs", 0), 59000)
+        self.assertEqual(actual["lacTrang"], 7)
 
     def test_epub_menu_time_is_paused_and_active_book_matches_daily_checkpoint(self):
         import shutil
@@ -101,12 +129,15 @@ class ReadingStatsSimulatorTest(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if not k.startswith("CROSSPOINT_SIM_")}
         env.update(SDL_VIDEODRIVER="dummy", CROSSPOINT_SIM_SD=str(self.sd),
             CROSSPOINT_SIM_INPUT_SCRIPT="1000:DOWN;1800:CONFIRM;5000:CONFIRM;14000:BACK;16000:BACK;17000:QUIT")
+        before = self.utc_day()
         run = subprocess.run([str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=25)
+        after = self.utc_day()
         log = run.stdout + run.stderr
         self.assertEqual(run.returncode, 0, log)
         self.assertIn("Entering activity: EpubReaderMenu", log)
         data = json.loads((self.store / "reading-stats.json").read_text())
-        measured = data.get("lacPhut", 0) * 60000 + data.get("lacMs", 0)
+        day = self.assert_runtime_day(data, before, after, 0)
+        measured = day[1] * 60000 + day[3]
         self.assertGreater(measured, 2500, log)
         self.assertLess(measured, 6500, log)
         book = data["activeBook"]

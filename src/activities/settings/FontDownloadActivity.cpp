@@ -21,6 +21,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
+#include "components/SettledListRender.h"
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
 #include "network/WebDavReplace.h"
@@ -74,6 +75,7 @@ void FontDownloadActivity::onBackButton() {
 
 void FontDownloadActivity::onEnter() {
   runtimeStarted_ = false;
+  terminalIdleTimerStarted_ = false;
   // Keep BLE stopped for Wi-Fi selection, TLS downloads, and SD replacement.
   if (!filetransfer::acquire()) {
     LOG_ERR("FONT", "BLE teardown incomplete; leaving font download");
@@ -411,7 +413,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
     family.fileStart = fileEntryCount_;
     for (JsonObject fileObj : fObj["files"].as<JsonArray>()) {
-      if (!FontInstaller::isValidCpfontFilename(fileObj["name"] | "")) {
+      if (!FontInstaller::isValidCpfontRelativePath(fileObj["name"] | "")) {
         errorMessage_ = tr(STR_INVALID_FONT_MANIFEST);
         return false;
       }
@@ -710,6 +712,13 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
 
     downloadUrl_.assign(baseUrl_).append(str(file.name));
 
+    if (!fontInstaller_.ensureFontDir(str(family.name), str(file.name))) {
+      RenderLock lock(*this);
+      state_ = ERROR;
+      errorMessage_ = "Failed to create font directory";
+      return;
+    }
+
     auto downloadResult = HttpDownloader::HTTP_ERROR;
     bool backupCleanupPending = false;
     const auto installResult = webdav::installVerifiedFile(
@@ -989,6 +998,16 @@ bool FontDownloadActivity::handleCustomInput() {
     return false;
   }
 
+  if (state_ == COMPLETE || state_ == ERROR) {
+    if (!terminalIdleTimerStarted_) {
+      terminalStateSince_ = millis();
+      terminalIdleTimerStarted_ = true;
+    } else if (terminalStateIdleExpired(millis())) {
+      finish();
+      return true;
+    }
+  }
+
   if (state_ == COMPLETE) {
     int x = 0;
     int y = 0;
@@ -999,6 +1018,7 @@ bool FontDownloadActivity::handleCustomInput() {
         state_ = FAMILY_LIST;
         rowsDirty_ = true;  // the completed download changed installed/hasUpdate
       }
+      terminalIdleTimerStarted_ = false;
       requestUpdate();
     }
   } else if (state_ == ERROR) {
@@ -1008,9 +1028,11 @@ bool FontDownloadActivity::handleCustomInput() {
         state_ = FAMILY_LIST;
         rowsDirty_ = true;  // the failed download reset installed/hasUpdate
       }
+      terminalIdleTimerStarted_ = false;
       requestUpdate();
     } else if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
       if (downloadingFamilyIndex_ >= 0 && downloadingFamilyIndex_ < static_cast<int>(families_.size())) {
+        terminalIdleTimerStarted_ = false;
         downloadFamily(families_[downloadingFamilyIndex_]);
         requestUpdateAndWait();
         return true;
@@ -1020,6 +1042,7 @@ bool FontDownloadActivity::handleCustomInput() {
           state_ = FAMILY_LIST;
           rowsDirty_ = true;
         }
+        terminalIdleTimerStarted_ = false;
         requestUpdate();
       }
     } else {
@@ -1027,6 +1050,7 @@ bool FontDownloadActivity::handleCustomInput() {
       int y = 0;
       if (mappedInput.wasScreenTapped(x, y)) {
         if (downloadingFamilyIndex_ >= 0 && downloadingFamilyIndex_ < static_cast<int>(families_.size())) {
+          terminalIdleTimerStarted_ = false;
           downloadFamily(families_[downloadingFamilyIndex_]);
           requestUpdateAndWait();
           return true;
@@ -1036,12 +1060,17 @@ bool FontDownloadActivity::handleCustomInput() {
           state_ = FAMILY_LIST;
           rowsDirty_ = true;
         }
+        terminalIdleTimerStarted_ = false;
         requestUpdate();
       }
     }
   }
 
   return true;
+}
+
+bool FontDownloadActivity::terminalStateIdleExpired(const unsigned long now) const {
+  return terminalIdleTimerStarted_ && now - terminalStateSince_ >= TERMINAL_IDLE_TIMEOUT_MS;
 }
 
 // --- Rendering ---
@@ -1078,15 +1107,27 @@ void FontDownloadActivity::render(RenderLock&&) {
   const auto lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   const auto contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const auto centerY = (pageHeight - lineHeight) / 2;
+  const auto renderFontList = [&] {
+    bool firstPass = true;
+    renderSettledList(activeNav(), [&] {
+      if (!firstPass) {
+        renderer.clearScreen();
+        GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_FONT_BROWSER),
+                       headerSubtitle);
+      }
+      firstPass = false;
+      renderUi();
+    });
+  };
 
   if (state_ == LOADING_MANIFEST) {
     renderer.drawCenteredText(UI_10_FONT_ID, centerY, tr(STR_LOADING_FONT_LIST));
   } else if (state_ == GROUP_LIST) {
-    renderUi();
+    renderFontList();
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state_ == FAMILY_LIST) {
-    renderUi();
+    renderFontList();
 
     const bool hasVisibleFamilies = !filteredIndices_.empty();
     const char* confirmLabel = !hasVisibleFamilies            ? ""

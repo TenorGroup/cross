@@ -71,7 +71,7 @@ void HalPowerManager::setPowerSaving(bool enabled) {
   // Otherwise, no change needed
 }
 
-void HalPowerManager::startDeepSleep(HalGPIO& gpio, uint8_t wakeMode) const {
+void HalPowerManager::startDeepSleep(HalGPIO& gpio, uint8_t wakeMode, [[maybe_unused]] const bool preserveClock) const {
 #ifdef ENABLE_SERIAL_LOG
   // Tear down HWCDC so the host sees a clean disconnect and the peripheral
   // doesn't hold power domains that interfere with USB-powered GPIO wake.
@@ -82,14 +82,14 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio, uint8_t wakeMode) const {
 
 #if !SOC_PM_SUPPORT_EXT1_WAKEUP
   if (gpio.isXteinkDevice()) {
-    // GPIO13 cuts the X4 battery latch and the X3 SD rail. X3 retains its
-    // processor supply for GPIO deep-sleep wake.
+    // Keep X4's RTC-domain clock powered when requested. X3 always cuts its
+    // SD rail here while retaining its processor supply for GPIO wake.
     // Release any surviving pad hold first: hold_en survives deep sleep via
     // the SDK's deepSleep() (esp_sleep_config_gpio_isolate +
     // gpio_deep_sleep_hold_en), and a held pad silently ignores the drive.
     gpio_hold_dis(XTEINK_C3_GPIO13);
     gpio_set_direction(XTEINK_C3_GPIO13, GPIO_MODE_OUTPUT);
-    gpio_set_level(XTEINK_C3_GPIO13, 0);
+    gpio_set_level(XTEINK_C3_GPIO13, gpio.deviceIsX4() && preserveClock ? HIGH : LOW);
     gpio_hold_en(XTEINK_C3_GPIO13);
   }
 #endif
@@ -103,7 +103,7 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio, uint8_t wakeMode) const {
   // button press cold-boots instead of fast-waking. holdPowerRails() asserted
   // the latches at boot but arms no sleep hold; arm it here instead. Skips
   // XTEINK_C3_GPIO13: it IS power.latch0 on the C3 Xteink boards, where the
-  // block above drives it LOW on purpose (battery power-off).
+  // block above already applies the C3 X4 clock and X3 SD-rail policy.
   for (const int8_t pin : {BoardConfig::ACTIVE.power.latch0, BoardConfig::ACTIVE.power.latch1}) {
     if (pin < 0 || static_cast<gpio_num_t>(pin) == XTEINK_C3_GPIO13) continue;
     const auto g = static_cast<gpio_num_t>(pin);

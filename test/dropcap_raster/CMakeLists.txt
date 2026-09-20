@@ -1,0 +1,4 @@
+add_executable(dropcap_raster_tests test_dropcap_raster.cpp)
+target_link_libraries(dropcap_raster_tests PRIVATE crosspoint_test_common)
+target_include_directories(dropcap_raster_tests PRIVATE ${REPO_ROOT}/lib/EpdFont)
+add_test(NAME dropcap_raster COMMAND dropcap_raster_tests)

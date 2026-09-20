@@ -8,6 +8,7 @@
 #include "MenuFavorites.h"
 #include "MenuCustomization.h"
 void runHomeFavorites(const SdCardFontRegistry&,std::vector<std::string>&,std::vector<std::string>&,std::vector<std::string>&);
+namespace settings_test_io { extern int writes; void setNextRead(const JsonDocument&); }
 namespace mem {
 struct alignas(std::max_align_t) Header { size_t n; size_t epoch; };
 size_t epoch=0,total=0,largest=0,live=0,peak=0,count=0; bool active=false;
@@ -59,5 +60,25 @@ int main(int argc,char**argv){
   std::puts("dynamic_labels_after_source_destroyed=GREEN");return 0;
  }
  if(mode=="json") {JsonDocument doc;SETTINGS.toJson(doc);mem::start();SETTINGS.toJson(doc);mem::report("save_warm",0,0);if(mem::total!=0)return 8;mem::start();bool ok=SETTINGS.fromJson(doc.as<JsonVariantConst>());mem::report("load_warm",0,0);return ok && mem::total==0?0:5;}
+ if(mode=="v108") {
+  auto expect=[](bool value,const char* label){if(!value)std::printf("FAIL %s\n",label);return value;};
+  const auto uiSize=std::find_if(base.begin(),base.end(),[](const SettingInfo& row){return row.key && std::strcmp(row.key,"uiTextSize")==0;});
+  const auto inkWeight=std::find_if(base.begin(),base.end(),[](const SettingInfo& row){return row.key && std::strcmp(row.key,"readerInkWeight")==0;});
+  bool ok=expect(uiSize!=base.end() && uiSize->type==SettingType::ENUM && uiSize->enumValues.size()==3,"ui size catalog");
+  ok=expect(inkWeight!=base.end() && inkWeight->type==SettingType::ENUM && inkWeight->enumValues.size()==4,"ink catalog")&&ok;
+  JsonDocument saved;SETTINGS.toJson(saved);ok=expect(saved["uiTextSize"].as<uint8_t>()==0 && saved["readerInkWeightVersion"].as<uint8_t>()==1,"default stamps")&&ok;
+  JsonDocument medium;medium["uiTextSize"]=1;ok=expect(SETTINGS.fromJson(medium.as<JsonVariantConst>()),"medium load")&&ok;
+  saved.clear();SETTINGS.toJson(saved);ok=expect(saved["uiTextSize"].as<uint8_t>()==1,"medium round trip")&&ok;
+  JsonDocument corrupt;corrupt["uiTextSize"]=99;ok=expect(SETTINGS.fromJson(corrupt.as<JsonVariantConst>()),"corrupt UI load")&&ok;
+  saved.clear();SETTINGS.toJson(saved);ok=expect(saved["uiTextSize"].as<uint8_t>()==0,"corrupt UI clamps")&&ok;
+  JsonDocument legacy;ok=expect(SETTINGS.fromJson(legacy.as<JsonVariantConst>()),"absent UI load")&&ok;
+  saved.clear();SETTINGS.toJson(saved);ok=expect(saved["uiTextSize"].as<uint8_t>()==0,"absent UI defaults")&&ok;
+  const int legacyInputs[]={0,1,2,3,99};const uint8_t legacyExpected[]={0,1,1,0,0};
+  for(size_t i=0;i<std::size(legacyInputs);++i){JsonDocument old;SETTINGS.toJson(old);old.remove("readerInkWeightVersion");old["readerInkWeight"]=legacyInputs[i];ok=SETTINGS.fromJson(old.as<JsonVariantConst>())&&ok;ok=expect(SETTINGS.readerInkWeight==legacyExpected[i],"legacy ink mapping")&&ok;}
+  JsonDocument missingInk;SETTINGS.toJson(missingInk);missingInk.remove("readerInkWeightVersion");missingInk.remove("readerInkWeight");ok=expect(SETTINGS.fromJson(missingInk.as<JsonVariantConst>()),"missing ink load")&&ok;ok=expect(SETTINGS.readerInkWeight==0,"missing ink defaults")&&ok;
+  JsonDocument currentCorrupt;SETTINGS.toJson(currentCorrupt);currentCorrupt["readerInkWeight"]=99;ok=expect(SETTINGS.fromJson(currentCorrupt.as<JsonVariantConst>()),"current corrupt ink load")&&ok;ok=expect(SETTINGS.readerInkWeight==0,"current corrupt ink clamps")&&ok;
+  JsonDocument resaveOnce;SETTINGS.toJson(resaveOnce);resaveOnce.remove("readerInkWeightVersion");resaveOnce["readerInkWeight"]=2;settings_test_io::setNextRead(resaveOnce);ok=SETTINGS.loadFromFile()&&ok;ok=expect(SETTINGS.readerInkWeight==1&&settings_test_io::writes==1,"legacy resaves once")&&ok;ok=SETTINGS.loadFromFile()&&ok;ok=expect(SETTINGS.readerInkWeight==1&&settings_test_io::writes==1,"current stays stable")&&ok;
+  std::printf("v108_catalog_persistence=%s\n",ok?"GREEN":"RED");return ok?0:12;
+ }
  return 2;
 }

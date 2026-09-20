@@ -1,6 +1,8 @@
 #include "UiTabListActivity.h"
 
 #include <GfxRenderer.h>
+#include <CrossPointSettings.h>
+#include <HalTiltSensor.h>
 
 #include <algorithm>
 #include <cassert>
@@ -18,6 +20,28 @@ constexpr int16_t TOUCH_TAB_BAR_HEIGHT = 50;
 
 UiTabListActivity::UiTabListActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiListActivity(name, renderer, mappedInput) {}
+
+void UiTabListActivity::loop() {
+  const bool acceptsTilt = acceptsTiltTabNavigation();
+  const auto orientation = static_cast<CrossPointOrientation::Value>(renderer.getOrientation());
+  halTiltSensor.update(SETTINGS.tiltPageTurn, static_cast<uint8_t>(orientation), acceptsTilt);
+  if (acceptsTilt) {
+    const bool forward = halTiltSensor.wasTiltedForward();
+    const bool backward = halTiltSensor.wasTiltedBack();
+    queueTiltTabNavigation(forward, backward);
+  }
+  UiListActivity::loop();
+}
+
+bool UiTabListActivity::acceptsTiltTabNavigation() const {
+  return tabCount() > 1 && allowsTiltTabNavigation();
+}
+
+bool UiTabListActivity::queueTiltTabNavigation(const bool forward, const bool backward) {
+  if (!acceptsTiltTabNavigation() || (!forward && !backward)) return false;
+  queueNavIntent(forward ? NavIntent::TabNext : NavIntent::TabPrev);
+  return true;
+}
 
 void UiTabListActivity::onEnter() {
   // Size the per-tab state before the base resets activeNav() (which indexes
@@ -82,6 +106,7 @@ void UiTabListActivity::forgetOtherTabs() {
 void UiTabListActivity::moveRingTo(const int ringIndex) {
   auto& n = activeNav();
   n.selected = ringIndex;
+  n.followPending = ringIndex > 0;
   if (ringIndex == 0) {
     n.top = 0;
   } else {
@@ -191,6 +216,7 @@ void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& pr
     // Screen entry / tab switch: show the tab's remembered selection, or the
     // top when the tab bar holds the focus.
     n.followOnBuild = false;
+    n.followPending = n.selected > 0;
     n.top = n.selected > 0 ? static_cast<int>(fui::listTopIndexFor(
                                  static_cast<int16_t>(n.selected - 1), static_cast<uint16_t>(n.top < 0 ? 0 : n.top),
                                  static_cast<uint16_t>(n.visibleRows), static_cast<uint16_t>(count)))
@@ -199,6 +225,7 @@ void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& pr
   n.scrollBy(0, count);  // clamp to range
   props.topIndex = static_cast<uint16_t>(n.top);
   props.selectedIndex = static_cast<int16_t>(n.selected - 1);  // -1 = tab band focused
+  props.nav = &n;  // actual wrapped-row layout corrects the estimated viewport
 }
 
 UiTabListActivity::CuaSoThe UiTabListActivity::tinhCuaSo(const int tong, const int dangChon, const int dauCu,
@@ -275,7 +302,7 @@ void UiTabListActivity::veMuiTenThe(UiScreen& screen, const fui::Rect& thanh, co
 }
 
 int UiTabListActivity::preferredTabBarHeight() const {
-  if (tenorchrome::enabled()) return tenorchrome::TAB_HEIGHT;
+  if (tenorchrome::enabled()) return tenorchrome::tabHeight();
   return mappedInput.hasTouch() ? TOUCH_TAB_BAR_HEIGHT : UITheme::getInstance().getMetrics().tabBarHeight;
 }
 

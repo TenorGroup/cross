@@ -1,7 +1,6 @@
 #include "StatusBarSettingsActivity.h"
 
 #include <GfxRenderer.h>
-#include <HalClock.h>
 #include <I18n.h>
 
 #include <cstring>
@@ -11,14 +10,14 @@
 #include "MappedInputManager.h"
 #include "MenuFavorites.h"
 #include "components/UITheme.h"
+#include "components/SettledListRender.h"
 #include "components/UIThemeTokens.h"
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
 
 namespace {
-// Menu items in their natural order. Clock entries are appended only when the
-// DS3231 RTC is present so X4 devices don't see them at all.
+// Menu items in their natural order. System time can come from RTC or NTP.
 enum MenuItem {
   ITEM_CHAPTER_PAGE_COUNT = 0,
   ITEM_BOOK_PROGRESS_PERCENTAGE,
@@ -27,12 +26,11 @@ enum MenuItem {
   ITEM_TITLE,
   ITEM_BATTERY,
   ITEM_XTC_STATUS_BAR,
-  ITEM_CLOCK,  // X3 only: VI TRI dong ho tren thanh. Bon dong cau hinh dong ho o man Dong ho.
+  ITEM_CLOCK,
   ITEM_COUNT
 };
 
-constexpr int BASE_MENU_ITEMS = ITEM_CLOCK;  // Items shown on every device
-constexpr int FULL_MENU_ITEMS = ITEM_COUNT;  // Items shown when RTC is available
+constexpr int FULL_MENU_ITEMS = ITEM_COUNT;
 static_assert(FULL_MENU_ITEMS == StatusBarSettingsActivity::MAX_STATUS_BAR_ITEMS,
               "keep StatusBarSettingsActivity::MAX_STATUS_BAR_ITEMS in sync with ITEM_COUNT");
 
@@ -73,7 +71,7 @@ void StatusBarSettingsActivity::onEnter() {
 
   visibleItemCount = SETTINGS.uiTheme == CrossPointSettings::TENOR_UI
                          ? 1
-                         : (halClock.isAvailable() ? FULL_MENU_ITEMS : BASE_MENU_ITEMS);
+                         : FULL_MENU_ITEMS;
 
   // Clamp statusBarProgressBar and statusBarTitle in case of corrupt/migrated data
   if (SETTINGS.statusBarProgressBar >= PROGRESS_BAR_ITEMS) {
@@ -224,16 +222,16 @@ void StatusBarSettingsActivity::buildScreen(UiScreen& screen) {
 void StatusBarSettingsActivity::render(RenderLock&&) {
   if (optionPopup.processRender(renderer, mappedInput)) return;
 
-  renderer.clearScreen();
-
   auto metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
 
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the list renders through the app; the preview stays raw.
-  drawNavigationHeader(tr(STR_CUSTOMISE_STATUS_BAR));
-
-  renderUi();
+  renderSettledList(activeNav(), [&] {
+    renderer.clearScreen();
+    drawNavigationHeader(tr(STR_CUSTOMISE_STATUS_BAR));
+    renderUi();
+  });
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TOGGLE), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

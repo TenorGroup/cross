@@ -1,0 +1,54 @@
+#include <cassert>
+#include <cstdint>
+#ifdef READER_INK_V107_BASELINE
+namespace readerInk {
+constexpr uint8_t LEVEL_COUNT = 3;
+constexpr uint8_t SCHEMA_VERSION = 0;
+constexpr uint8_t clamp(int value) { return value >= 0 && value < 3 ? value : 0; }
+constexpr uint8_t fromLegacy(int value) { return clamp(value); }
+constexpr uint8_t physical(int value) { return clamp(value); }
+constexpr uint8_t publicFromPhysical(int value) { return clamp(value); }
+constexpr uint8_t publicMask(uint8_t mask) { return mask & 7; }
+constexpr uint8_t nextAvailable(int current, uint8_t mask) {
+  for (uint8_t step = 1; step <= 3; ++step) {
+    const auto candidate = static_cast<uint8_t>((current + step) % 3);
+    if (mask & (1u << candidate)) return candidate;
+  }
+  return clamp(current);
+}
+}
+#else
+#include "ReaderInkWeight.h"
+#endif
+int main() {
+  // Old Strong must keep its appearance and become public +1 exactly once.
+  assert(readerInk::fromLegacy(2) == 1);
+  assert(readerInk::fromLegacy(1) == 1);
+  assert(readerInk::fromLegacy(0) == 0);
+  assert(readerInk::fromLegacy(3) == 0);
+  assert(readerInk::fromLegacy(-1) == 0);
+  assert(readerInk::SCHEMA_VERSION == 1);
+  assert(readerInk::LEVEL_COUNT == 4);
+  constexpr uint8_t physical[] = {0, 2, 3, 4};
+  for (int publicLevel = 0; publicLevel < 4; ++publicLevel) {
+    assert(readerInk::physical(publicLevel) == physical[publicLevel]);
+    assert(readerInk::publicFromPhysical(physical[publicLevel]) == publicLevel);
+    assert(readerInk::clamp(publicLevel) == publicLevel);
+  }
+  assert(readerInk::publicFromPhysical(1) == 0);
+  assert(readerInk::physical(4) == 0);
+  assert(readerInk::publicFromPhysical(5) == 0);
+  assert(readerInk::clamp(255) == 0);
+  assert(readerInk::publicMask(0x1f) == 0x0f);
+  assert(readerInk::publicMask(0x03) == 0x01); // old Light is not new +1
+  assert(readerInk::publicMask(0x05) == 0x03); // old Strong is new +1
+  assert(readerInk::publicMask(0x11) == 0x09);
+  assert(readerInk::nextAvailable(0, 0x0f) == 1);
+  assert(readerInk::nextAvailable(1, 0x0f) == 2);
+  assert(readerInk::nextAvailable(2, 0x0f) == 3);
+  assert(readerInk::nextAvailable(3, 0x0f) == 0);
+  assert(readerInk::nextAvailable(0, 0x09) == 3);
+  assert(readerInk::nextAvailable(3, 0x09) == 0);
+  assert(readerInk::nextAvailable(0, 0x01) == 0);
+  assert(readerInk::nextAvailable(255, 0x09) == 3);
+}

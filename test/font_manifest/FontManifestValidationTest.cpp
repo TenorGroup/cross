@@ -90,3 +90,39 @@ TEST(FontManifestValidation, RejectsMissingOrUnsupportedBaseUrl) {
     EXPECT_FALSE(validatesManifest(manifest.c_str())) << url;
   }
 }
+
+TEST(FontManifestValidation, RejectsDuplicateFamilyNamesIgnoringAsciiCase) {
+  EXPECT_FALSE(validatesShape(R"json({"families":[
+    {"name":"Bookerly","files":[{"name":"Book_16.cpfont","size":1,"crc32":1}]},
+    {"name":"bookerly","files":[{"name":"Book_18.cpfont","size":1,"crc32":2}]}
+  ]})json"));
+}
+
+TEST(FontManifestValidation, RejectsDuplicateRelativeNamesIgnoringAsciiCase) {
+  EXPECT_FALSE(validatesShape(R"json({"families":[{"name":"Bookerly","files":[
+    {"name":"weight-2/Book_16.cpfont","size":1,"crc32":1},
+    {"name":"weight-2/book_16.cpfont","size":1,"crc32":2}
+  ]}]})json"));
+}
+
+TEST(FontManifestValidation, AllowsDifferentWeightPathsAndNamesReusedAcrossFamilies) {
+  EXPECT_TRUE(validatesShape(R"json({"families":[
+    {"name":"Bookerly","files":[
+      {"name":"Book_16.cpfont","size":1,"crc32":1},
+      {"name":"weight-1/Book_16.cpfont","size":1,"crc32":1},
+      {"name":"weight-2/Book_16.cpfont","size":1,"crc32":1},
+      {"name":"weight-3/Book_16.cpfont","size":1,"crc32":1},
+      {"name":"weight-4/Book_16.cpfont","size":1,"crc32":1}]},
+    {"name":"Other","files":[{"name":"Book_16.cpfont","size":1,"crc32":1}]}
+  ]})json"));
+}
+
+TEST(FontManifestValidation, RejectsExactDuplicatesAsWellAsCaseAliases) {
+  EXPECT_FALSE(validatesShape(R"json({"families":[
+    {"name":"Bookerly","files":[{"name":"a.cpfont","size":1,"crc32":1}]},
+    {"name":"Bookerly","files":[{"name":"b.cpfont","size":1,"crc32":1}]}
+  ]})json"));
+  EXPECT_FALSE(validatesShape(R"json({"families":[{"name":"Bookerly","files":[
+    {"name":"a.cpfont","size":1,"crc32":1},{"name":"a.cpfont","size":2,"crc32":2}
+  ]}]})json"));
+}

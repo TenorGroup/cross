@@ -58,6 +58,7 @@ class TextSettingsActivity final : public UiTabListActivity {
   void stepTab(int direction) override { switchTab(direction); }
   bool handleButtons() override;
   bool handleCustomInput() override;
+  bool allowsTiltTabNavigation() const override { return !optionPopup_.isActive(); }
   bool supportsFavorites() const override { return true; }
   std::string favoriteKey(int row) const override;
   int focusFavorite(const std::string& key) override;

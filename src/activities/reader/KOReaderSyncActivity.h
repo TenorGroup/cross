@@ -1,6 +1,7 @@
 #pragma once
 #include <Epub.h>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -9,6 +10,24 @@
 #include "ProgressMapper.h"
 #include "activities/Activity.h"
 #include "components/UiAppHost.h"
+
+namespace koreader_sync_power {
+constexpr uint32_t IDLE_TIMEOUT_MS = 5u * 60u * 1000u;
+
+inline bool idleExitDue(const uint32_t now, const bool waiting, const bool radioAlive, const bool interaction,
+                        uint32_t& idleSince, bool& timerStarted) {
+  if (!waiting || !radioAlive) {
+    timerStarted = false;
+    return false;
+  }
+  if (!timerStarted || interaction) {
+    idleSince = now;
+    timerStarted = true;
+    return false;
+  }
+  return now - idleSince >= IDLE_TIMEOUT_MS;
+}
+}  // namespace koreader_sync_power
 
 /**
  * Activity for syncing reading progress with KOReader sync server.
@@ -76,6 +95,8 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   // which makes WiFi.getMode() return WIFI_MODE_NULL.
   bool wifiActivated = false;
   bool runtimeStarted = false;
+  uint32_t idleSince = 0;
+  bool idleTimerStarted = false;
 
   void onWifiSelectionComplete(bool success);
   void performSync();
@@ -97,4 +118,5 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   void buildResultScreen(UiScreen& screen);
   void chooseResultOption();
   void startUpload();
+  bool idleExitDue(unsigned long now, bool interaction);
 };

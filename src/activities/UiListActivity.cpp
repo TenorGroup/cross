@@ -9,6 +9,7 @@
 #include "MappedInputManager.h"
 #include "MenuCustomization.h"
 #include "components/TenorMenuChrome.h"
+#include "components/SettledListRender.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -396,19 +397,11 @@ void UiListActivity::drawFooter() {
 }
 
 void UiListActivity::render(RenderLock&&) {
-  renderer.clearScreen();
-  drawChrome();
-  renderUi();
-  // Wrapped labels grow rows, so fewer rows can fit than the fixed-height
-  // estimate ListNav plans with. list() reports the real layout back
-  // (ListNav::onListRendered); when the selection landed past the drawn rows
-  // the nav advanced the viewport and asked for another build. Bounded: top
-  // strictly advances toward the selection each pass.
-  for (int pass = 0; activeNav().consumeRebuildNeeded() && pass < 8; ++pass) {
+  renderSettledList(activeNav(), [&] {
     renderer.clearScreen();
     drawChrome();
     renderUi();
-  }
+  });
   drawFooter();
   renderer.displayBuffer();
 }
@@ -426,8 +419,8 @@ void UiListActivity::restoreNavigation(const MenuNavigationState& state) {
 }
 
 void UiListActivity::reserveFixedMenuContent(UiScreen& screen) {
-  if (tenorchrome::enabled() && screen.body().y < tenorchrome::CONTENT_TOP)
-    screen.takeTop(static_cast<int16_t>(tenorchrome::CONTENT_TOP - screen.body().y));
+  if (tenorchrome::enabled() && screen.body().y < tenorchrome::contentTop())
+    screen.takeTop(static_cast<int16_t>(tenorchrome::contentTop() - screen.body().y));
 }
 
 int UiListActivity::focusFavorite(const std::string& key) {

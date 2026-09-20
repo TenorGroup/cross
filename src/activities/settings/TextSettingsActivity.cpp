@@ -15,9 +15,11 @@
 #include "MenuFavorites.h"
 #include "ReaderFontChon.h"
 #include "ReaderFontSizes.h"
+#include "ReaderInkWeight.h"
 #include "SdCardFontSystem.h"
 #include "TextSettingsPreview.h"
 #include "components/TenorMenuChrome.h"
+#include "components/SettledListRender.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "fontIds.h"
@@ -40,7 +42,9 @@ constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING, StrId::STR_HYP
 // one five-value scale (readerSpacing::Level), so they share one label order.
 constexpr StrId SPACING_LEVEL_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW, StrId::STR_TIGHT,
                                        StrId::STR_WIDE, StrId::STR_VERY_WIDE};
-constexpr StrId INK_WEIGHT_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_INK_LIGHT, StrId::STR_INK_STRONG};
+constexpr StrId INK_WEIGHT_IDS[] = {StrId::STR_READER_INK_0, StrId::STR_READER_INK_1,
+                                    StrId::STR_READER_INK_2, StrId::STR_READER_INK_3};
+static_assert(std::size(INK_WEIGHT_IDS) == readerInk::LEVEL_COUNT, "reader ink labels");
 // Tắt / Mặc định / Lớn, matching readerSpacing::DropCapMode.
 constexpr StrId DROP_CAP_IDS[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_SPACING_LARGE};
 static_assert(std::size(DROP_CAP_IDS) == readerSpacing::DROP_CAP_MODE_COUNT, "drop cap labels");
@@ -62,7 +66,7 @@ void TextSettingsActivity::onEnter() {
   UiTabListActivity::onEnter();
 
   metrics_ = UITheme::getInstance().getMetrics();
-  afterHeader = tenorchrome::enabled() ? tenorchrome::CONTENT_TOP
+  afterHeader = tenorchrome::enabled() ? tenorchrome::contentTop()
                                        : metrics_.topPadding + metrics_.headerHeight + metrics_.verticalSpacing;
   bottomReserved = metrics_.buttonHintsHeight + metrics_.verticalSpacing;
   updatePreviewGeometry();
@@ -187,7 +191,7 @@ bool TextSettingsActivity::handleButtons() {
 void TextSettingsActivity::buildScreen(UiScreen& screen) {
   // Content sits below the preview pane (render() draws header + preview
   // directly) and above the caption band + button hints.
-  const int tabTop = tenorchrome::enabled() ? tenorchrome::TAB_TOP : afterHeader + previewHeight;
+  const int tabTop = tenorchrome::enabled() ? tenorchrome::tabTop() : afterHeader + previewHeight;
   const int captionHeight = renderer.getTextHeight(UI_10_FONT_ID) + metrics_.verticalSpacing;
   screen.setContentMarginFromScreen(
       fui::Insets{static_cast<int16_t>(tabTop), 0, static_cast<int16_t>(bottomReserved + captionHeight), 0});
@@ -257,13 +261,9 @@ const char* TextSettingsActivity::confirmLabelText() const {
 void TextSettingsActivity::render(RenderLock&&) {
   if (optionPopup_.processRender(renderer, mappedInput)) return;  // picker draws over everything
 
-  renderer.clearScreen();
-
   updatePreviewGeometry();
 
   const auto pageWidth = renderer.getScreenWidth();
-
-  drawNavigationHeader(tr(STR_TEXT_SETTINGS));
 
   const char* familyName = (currentFamilyIndex_ >= 0 && currentFamilyIndex_ < static_cast<int>(fonts_.size()))
                                ? fonts_[currentFamilyIndex_].name.c_str()
@@ -271,11 +271,13 @@ void TextSettingsActivity::render(RenderLock&&) {
   const char* sizeName = (currentSizeIndex_ >= 0 && currentSizeIndex_ < static_cast<int>(sizes_.size()))
                              ? sizes_[currentSizeIndex_].name.c_str()
                              : "";
-  textsettings::renderPreview(renderer, previewLayout_, metrics_.previewPadding, metrics_.verticalSpacing, afterHeader,
-                              previewHeight, familyName, sizeName);
-
-  // Tab bar + active tab's list draw inside the screen builder.
-  renderUi();
+  renderSettledList(activeNav(), [&] {
+    renderer.clearScreen();
+    drawNavigationHeader(tr(STR_TEXT_SETTINGS));
+    textsettings::renderPreview(renderer, previewLayout_, metrics_.previewPadding, metrics_.verticalSpacing, afterHeader,
+                               previewHeight, familyName, sizeName);
+    renderUi();
+  });
 
   const bool weightUnavailable = tab_ == Tab::Style && ringPos() - 1 == static_cast<int>(StyleRow::InkWeight) &&
                                  sdFontSystem.availableWeightMask() == 1;
@@ -463,14 +465,7 @@ void TextSettingsActivity::confirmStyleRow(int row) {
       const uint8_t mask = sdFontSystem.availableWeightMask();
       if (mask == 1) return;
       const uint8_t current = sdFontSystem.effectiveWeight();
-      uint8_t next = current;
-      for (int step = 1; step <= 3; ++step) {
-        const auto candidate = static_cast<uint8_t>((current + step) % 3);
-        if (mask & (1u << candidate)) {
-          next = candidate;
-          break;
-        }
-      }
+      const uint8_t next = readerInk::nextAvailable(current, mask);
       if (next == current) return;
       {
         RenderLock lock;

@@ -382,11 +382,37 @@ void EpubReaderActivity::openReaderMenu() {
       });
 }
 
+bool EpubReaderActivity::deferBackgroundBuildForBle() const {
+#if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
+  // Reserve parser/CSS memory before the first paint publishes a BLE-ready reader.
+  return SETTINGS.blePageTurnerEnabled;
+#else
+  return false;
+#endif
+}
+
+bool EpubReaderActivity::backgroundBuildStartHeapGate() {
+  return !deferBackgroundBuildForBle() && ESP.getFreeHeap() >= BACKGROUND_BUILD_START_MIN_FREE_HEAP &&
+         ESP.getMaxAllocHeap() >= BACKGROUND_BUILD_START_MIN_MAX_ALLOC;
+}
+
 bool EpubReaderActivity::buildTickHeapGate() {
   const size_t freeHeap = ESP.getFreeHeap();
   const size_t maxBlock = ESP.getMaxAllocHeap();
   buildHeapPaused = freeHeap < BACKGROUND_BUILD_MIN_FREE_HEAP || maxBlock < BACKGROUND_BUILD_MIN_MAX_ALLOC;
   return !buildHeapPaused;
+}
+
+void EpubReaderActivity::suspendBackgroundBuild() {
+  if (!section || !section->isBuilding()) return;
+  const bool heapPressure = !buildTickHeapGate();
+  if (!heapPressure && !deferBackgroundBuildForBle()) return;
+  section->suspendBuild();
+  // BLE policy is reversible when the setting is disabled. Heap-pressure pauses stay latched.
+  backgroundBuildSuspended = backgroundBuildSuspended || heapPressure;
+  LOG_INF("ERS", "Background build suspended for render headroom: page=%d pages=%u free=%u largest=%u",
+          section->currentPage, static_cast<unsigned>(section->pageCount),
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
 }
 
 void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFullRefresh) {
@@ -465,11 +491,18 @@ void EpubReaderActivity::loop() {
     }
   }
 
+  // Background section builds release their parser for BLE or when the tick budget fails.
+  if (section && section->isBuilding() && (deferBackgroundBuildForBle() || !buildTickHeapGate())) {
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired()) suspendBackgroundBuild();
+  }
+
   if (section && !section->isBuilding() && section->isPartial() && buildViewportWidth > 0 &&
-      !partialRebuildStartFailed &&
+      !partialRebuildStartFailed && !backgroundBuildSuspended && backgroundBuildStartHeapGate() &&
       section->currentPage + PARTIAL_REBUILD_START_MARGIN >= static_cast<int>(section->pageCount)) {
     RenderLock lock(RenderLock::TryTake{});
-    if (lock.acquired()) {
+    if (lock.acquired() && section && !section->isBuilding() && section->isPartial() &&
+        backgroundBuildStartHeapGate()) {
       const ReaderRenderSpec buildSpec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
       if (!section->startBuild(buildSpec)) {
         partialRebuildStartFailed = true;
@@ -477,6 +510,7 @@ void EpubReaderActivity::loop() {
       } else {
         LOG_DBG("ERS", "Reader near partial watermark (%d/%d), resuming extension build", section->currentPage,
                 section->pageCount);
+        suspendBackgroundBuild();
       }
     }
   }
@@ -493,6 +527,8 @@ void EpubReaderActivity::loop() {
       } else if (section->isBuildComplete() && applyDeferredReposition()) {
         requestUpdate();
       }
+      // A tick can cross the budget while laying out a paragraph. Release before the next frame.
+      suspendBackgroundBuild();
     }
   }
 
@@ -1223,7 +1259,7 @@ bool EpubReaderActivity::latTrangThat(bool isForwardTurn) {
   // chapter changes. The lock is nonrecursive.
   deferredClearPending.store(true, std::memory_order_release);
   if (isForwardTurn) {
-    if (section->currentPage < section->pageCount - 1 || section->isBuilding()) {
+    if (section->currentPage < section->pageCount - 1 || section->isBuilding() || section->isPartial()) {
       section->currentPage++;
       lastPageTurnTime = millis();
       return true;
@@ -1475,6 +1511,8 @@ void EpubReaderActivity::renderBook() {
     LOG_DBG("ERS", "Loading file: %s, index: %d", filepath.c_str(), currentSpineIndex);
     section = std::unique_ptr<Section>(new Section(epub, currentSpineIndex, renderer));
     partialRebuildStartFailed = false;
+    backgroundBuildSuspended = false;
+    buildHeapPaused = false;
 
     const bool cacheLoaded = section->loadSectionFile(renderSpec);
     if (cacheLoaded) {
@@ -1517,7 +1555,7 @@ void EpubReaderActivity::renderBook() {
 
         if (section->isPartial() &&
             (anchorJump ? section->getPageForAnchor(pendingAnchor).has_value()
-                        : target + PARTIAL_REBUILD_START_MARGIN < static_cast<int>(section->pageCount))) {
+                        : !offsetJump.has_value() && target < static_cast<int>(section->pageCount))) {
           LOG_DBG("ERS", "Partial covers target %d of %d; deferring extension build", target, section->pageCount);
         } else {
           const size_t spineBytes =
@@ -1638,6 +1676,10 @@ void EpubReaderActivity::renderBook() {
       }
     }
   }
+
+  // renderBook already owns RenderLock. Explicit targets may build past the cached watermark;
+  // once available, release the parser for BLE or low heap before page loading and grayscale allocation.
+  suspendBackgroundBuild();
 
   if (!section->isBuilding() && section->pageCount > 0 &&
       section->currentPage >= static_cast<int>(section->pageCount)) {

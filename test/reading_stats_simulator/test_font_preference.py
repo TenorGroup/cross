@@ -23,7 +23,8 @@ class PreferenceTest(unittest.TestCase):
     sub=Path(f'weight-{w}') if w else Path('')
     dst=self.sd/'.fonts'/fam/sub/f'{fam}_16.cpfont';dst.parent.mkdir(parents=True,exist_ok=True)
     shutil.copyfile(self.pack/sub/'Bokerlam_16.cpfont',dst)
-  self.settings=dict(language='VI',uiTheme=4,sdFontFamilyName='Bokerlam',fontSize=16,readerInkWeight=2,sleepTimeout=10)
+  self.settings=dict(language='VI',uiTheme=4,sdFontFamilyName='Bokerlam',fontSize=16,
+                    readerInkWeightVersion=1,readerInkWeight=1,sleepTimeout=10)
   (self.store/'menu-customization.json').write_text(json.dumps(dict(version=1,tabs=dict(home=[0,1,4,2,3],settings=list(range(7)),reader=list(range(4)),text=list(range(4))),pins=['text/fontFamily'])))
  def run_sim(self, actions):
   (self.store/'settings.json').write_text(json.dumps(self.settings))
@@ -36,7 +37,7 @@ class PreferenceTest(unittest.TestCase):
  def roundtrip(self, steps):
   log=self.run_sim('800:DOWN;1300:DOWN;1800:CONFIRM;'+steps+';6200:QUIT')
   self.assertEqual(self.settings['sdFontFamilyName'],'Bokerlam')
-  self.assertEqual(self.settings['readerInkWeight'],2)
+  self.assertEqual(self.settings['readerInkWeight'],1)
   self.assertEqual(log.count('Loaded /.fonts/Bokerlam/weight-2/Bokerlam_16.cpfont'),2,log)
  def test_base_only_roundtrip(self):self.roundtrip('3000:LEFT;3500:CONFIRM;4200:RIGHT;4700:CONFIRM')
  def test_weighted_roundtrip(self):self.roundtrip('3000:RIGHT;3500:CONFIRM;4200:LEFT;4700:CONFIRM')
@@ -44,7 +45,7 @@ class PreferenceTest(unittest.TestCase):
  def test_corrupt_variant_does_not_retry_each_preview(self):
   (self.sd/'.fonts/Bokerlam/weight-2/Bokerlam_16.cpfont').write_bytes(b'broken')
   log=self.run_sim('800:DOWN;1300:DOWN;1800:CONFIRM;3000:CONFIRM;4200:CONFIRM;5500:QUIT')
-  self.assertEqual(self.settings['readerInkWeight'],2)
+  self.assertEqual(self.settings['readerInkWeight'],1)
   self.assertEqual(log.count('Loaded /.fonts/Bokerlam/Bokerlam_16.cpfont'),1,log)
   (self.sd/'.fonts/Bokerlam/weight-2/Bokerlam_16.cpfont').write_bytes((self.pack/'weight-2/Bokerlam_16.cpfont').read_bytes())
   log=self.run_sim('2500:QUIT')

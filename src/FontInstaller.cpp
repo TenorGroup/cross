@@ -61,6 +61,19 @@ bool FontInstaller::isValidCpfontFilename(const char* name) {
   return true;
 }
 
+bool FontInstaller::isValidCpfontRelativePath(const char* name) {
+  if (name == nullptr) return false;
+  size_t length = 0;
+  while (length < MAX_CPFONT_FILENAME_LEN && name[length] != '\0') ++length;
+  if (name[length] != '\0') return false;
+  if (isValidCpfontFilename(name)) return true;
+
+  // The complete relative path is bounded before inspecting the prefix or
+  // basename. A single exact weight directory is the only separator allowed.
+  return length > 9 && memcmp(name, "weight-", 7) == 0 && name[7] >= '1' && name[7] <= '4' &&
+         name[8] == '/' && isValidCpfontFilename(name + 9);
+}
+
 bool FontInstaller::ensureFamilyDir(const char* familyName) {
   // Reject before any registry or storage access: an invalid family must not
   // create (or even probe) anything on the card.
@@ -101,6 +114,17 @@ bool FontInstaller::ensureFamilyDir(const char* familyName) {
   return true;
 }
 
+bool FontInstaller::ensureFontDir(const char* familyName, const char* relativePath) {
+  if (!isValidFamilyName(familyName) || !isValidCpfontRelativePath(relativePath)) return false;
+  if (!ensureFamilyDir(familyName)) return false;
+  if (!strchr(relativePath, '/')) return true;
+
+  char directory[MAX_FONT_PATH_SIZE];
+  if (!buildFontPath(familyName, relativePath, directory, sizeof(directory))) return false;
+  *strrchr(directory, '/') = '\0';
+  return Storage.exists(directory) || Storage.mkdir(directory);
+}
+
 bool FontInstaller::validateCpfontFile(const char* path) {
   HalFile file;
   if (!Storage.openFileForRead("FONT", path, file)) {
@@ -131,7 +155,7 @@ bool FontInstaller::buildFontPath(const char* family, const char* filename, char
   outBuf[0] = '\0';
 
   // Validate before any registry lookup so invalid input has no side effects.
-  if (!isValidFamilyName(family) || !isValidCpfontFilename(filename)) return false;
+  if (!isValidFamilyName(family) || !isValidCpfontRelativePath(filename)) return false;
 
   // Use the same root selection as ensureFamilyDir: existing install dir wins,
   // otherwise the default-write root.

@@ -104,15 +104,28 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   // Saved SSIDs already attempted during the current auto-connect session.
   std::vector<std::string> autoAttemptedSsids;
 
+  // Stable focus key captured before a rescan clears `networks`. An empty SSID
+  // is valid for the synthetic hidden-network row, so keep its identity apart.
+  std::string scanFocusSsid;
+  size_t scanFocusIndex = 0;
+  bool scanFocusWasHidden = false;
+  bool hasScanFocus = false;
+
   // Save/forget prompt selection (0 = Yes, 1 = No)
   int savePromptSelection = 0;
   int forgetPromptSelection = 0;
 
-  // Connection timeout
+  // Radio work is bounded. Waiting screens keep WiFi off so an abandoned
+  // picker can return to the normal idle CPU clock.
+  static constexpr unsigned long SCAN_TIMEOUT_MS = 15000;
   static constexpr unsigned long CONNECTION_TIMEOUT_MS = 15000;
   static constexpr unsigned long AUTO_CONNECTION_TIMEOUT_MS = CONNECTION_TIMEOUT_MS;
+  static constexpr unsigned long SAVE_PROMPT_TIMEOUT_MS = 60000;
+  unsigned long scanStartTime = 0;
   unsigned long connectionStartTime = 0;
+  unsigned long savePromptStartTime = 0;
   bool runtimeStarted = false;
+  bool wifiConnectionHandedOff = false;
 
   // The UiAppHost app hosts the network list and the save/forget prompts
   // (themed rows and dialogs, touch routing); every other state keeps its
@@ -134,8 +147,10 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   void renderConnected(const Rect* screen, const ThemeMetrics* metrics) const;
   void renderConnectionFailed(const Rect* screen, const ThemeMetrics* metrics) const;
 
+  void stopWifiRadio();
   void startWifiScan(bool autoScan = false);
   void processWifiScanResults();
+  void restoreSelectionAfterScan();
   void appendHiddenNetworkEntry();
   void appendSavedNetworksNotSeen();
   void selectNetwork(int index);

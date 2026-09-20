@@ -26,27 +26,28 @@ class FontWeightTest(unittest.TestCase):
         shutil.copyfile(REPO/'test/epubs/test_kerning_ligature.epub',self.sd/'books/sach.epub')
         (self.store/'recent.json').write_text(json.dumps({'books':[{'path':'/books/sach.epub','title':'Trial'}]}))
         shutil.copytree(self.pack,self.sd/'.fonts/Trial')
-        self.settings=dict(language='VI',fontSize=26,sdFontFamilyName='Trial',readerInkWeight=2,sleepTimeout=10)
+        self.settings=dict(language='VI',fontSize=26,sdFontFamilyName='Trial',readerInkWeightVersion=1,
+                           readerInkWeight=1,sleepTimeout=10)
 
     def test_installed_26_and_persistence(self):
         saved,log=self.run_sim('1000:CONFIRM;1700:CONFIRM;8500:QUIT')
         self.assertEqual(saved['fontSize'],26)
-        self.assertEqual(saved['readerInkWeight'],2)
+        self.assertEqual(saved['readerInkWeight'],1)
         self.assertIn('/weight-2/Trial_26.cpfont',log)
         self.assertIn('Entering activity: EpubReader',log)
         self.settings=saved
         saved,log=self.run_sim('1000:CONFIRM;1700:CONFIRM;8500:QUIT')
-        self.assertEqual(saved['readerInkWeight'],2)
+        self.assertEqual(saved['readerInkWeight'],1)
 
     def test_missing_variant_preserves_family(self):
         (self.sd/'.fonts/Trial/weight-2/Trial_26.cpfont').unlink()
         saved,log=self.run_sim('1000:CONFIRM;1700:CONFIRM;8500:QUIT')
-        self.assertEqual((saved['sdFontFamilyName'],saved['fontSize'],saved['readerInkWeight']),('Trial',26,2))
+        self.assertEqual((saved['sdFontFamilyName'],saved['fontSize'],saved['readerInkWeight']),('Trial',26,1))
 
     def test_corrupt_variant_preserves_family(self):
         (self.sd/'.fonts/Trial/weight-2/Trial_26.cpfont').write_bytes(b'broken')
         saved,log=self.run_sim('1000:CONFIRM;1700:CONFIRM;8500:QUIT')
-        self.assertEqual((saved['sdFontFamilyName'],saved['readerInkWeight']),('Trial',2))
+        self.assertEqual((saved['sdFontFamilyName'],saved['readerInkWeight']),('Trial',1))
 
     def test_weight_change_returns_to_book(self):
         self.settings.update(fontSize=16,readerInkWeight=0)
@@ -58,7 +59,7 @@ class FontWeightTest(unittest.TestCase):
         script=self.READING+';5000:DOWN;6000:RIGHT;6700:RIGHT;7400:RIGHT;8100:RIGHT;9000:CONFIRM;11000:BACK;13000:QUIT'
         saved,log=self.run_sim(script)
         self.assertEqual(saved['readerInkWeight'],1)
-        self.assertIn('/weight-1/Trial_16.cpfont',log)
+        self.assertIn('/weight-2/Trial_16.cpfont',log)
         self.assertIn('Entering activity: TextSettings',log)
 
     def test_26_from_popup(self):

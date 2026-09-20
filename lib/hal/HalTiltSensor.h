@@ -53,8 +53,12 @@ class HalTiltSensor {
   // True if an IMU is present on this device
   bool isAvailable() const { return _available; }
 
-  // Poll the accelerometer and update tilt gesture state.
-  void update(const uint8_t mode, const uint8_t orientation, const bool inReader);
+  // Poll the accelerometer and update tilt gesture state for an active target.
+  void update(const uint8_t mode, const uint8_t orientation, const bool gestureTargetActive);
+
+  static bool shouldDiscardPendingEvents(const uint8_t mode, const bool gestureTargetActive) {
+    return mode == CrossPointTiltPageTurn::TILT_OFF || !gestureTargetActive;
+  }
 
   // Returns true once per tilt-forward gesture (next page direction).
   // Consumed on read - subsequent calls return false until next gesture.

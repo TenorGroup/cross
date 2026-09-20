@@ -40,6 +40,8 @@ def validate(root, chinese=None, headers=None, baseline=None):
     headers = headers or root/'lib/EpdFont/builtinFonts'
     base = json.loads(baseline.read_text()) if baseline else None
     results = []
+    ink_path = root/'test/ui_tiers/ui-ink-manifest.json'
+    ink_fonts = json.loads(ink_path.read_text()).get('fonts', {}) if ink_path.exists() else {}
     for name in NAMES:
         h = read_header(headers/(name+'.h'))
         missing = cps - h['glyphs'].keys()
@@ -48,8 +50,15 @@ def validate(root, chinese=None, headers=None, baseline=None):
         if base:
             assert h['metrics'] == base[name]['metrics'], (name, 'metrics changed')
             assert h['kern'] == base[name]['kern'], (name, 'kerning changed')
+            approved = {str(entry['codepoint']): entry for entry in ink_fonts.get(name, {}).get('changed_glyphs', [])}
             for cp, digest in base[name]['hashes'].items():
-                assert h['hashes'].get(cp) == digest, (name, 'old glyph changed', cp)
+                actual = h['hashes'].get(cp)
+                if actual == digest:
+                    continue
+                change = approved.get(cp)
+                assert change and change['before_glyph_sha256'] == digest and change['after_glyph_sha256'] == actual, (name, 'unapproved old glyph change', cp)
+            for cp, change in approved.items():
+                assert h['hashes'].get(cp) == change['after_glyph_sha256'], (name, 'approved ink glyph changed', cp)
         top = max(h['glyphs'][cp][0][4] for cp in cps if cp >= 0x2e80)
         bottom = min(h['glyphs'][cp][0][4] - h['glyphs'][cp][0][1] for cp in cps if cp >= 0x2e80)
         assert top <= h['metrics'][1] and bottom >= h['metrics'][2], (name, 'CJK exceeds line metrics', top, bottom, h['metrics'])

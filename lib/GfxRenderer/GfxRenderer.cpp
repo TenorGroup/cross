@@ -1,3 +1,4 @@
+#include <DropCapReconstruction.h>
 #include "GfxRenderer.h"
 
 #include <BidiUtils.h>
@@ -2704,31 +2705,15 @@ void GfxRenderer::drawDropCapWord(int fontId, int x, int y, const char* text, Ep
   const auto* bitmap = getGlyphBitmap(data, glyph);
   // Consume the bitmap before rendering the suffix, which can evict its SD cache slot.
   if (bitmap && glyphIntersectsStrip(capX, y + 2, capX + width - 1, y + height + 1)) {
-    const auto sample = [&](int sx, int sy) -> int {
-      if (sx < 0 || sy < 0 || sx >= sw || sy >= sh) return 0;
-      const int pos = sy * sw + sx;
-      return data->is2Bit ? ((bitmap[pos >> 2] >> ((3 - (pos & 3)) * 2)) & 3)
-                          : (((bitmap[pos >> 3] >> (7 - (pos & 7))) & 1) * 3);
-    };
     const auto mode = grayPlanesAreAbsolute() ? BW : renderMode;
-    // Fixed-point bilinear sampling retains the four-level text pipeline without a second bitmap.
-    for (int dy = 0; dy < height; ++dy) {
-      const int fy = ((2 * dy + 1) * sh * 128 / height) - 128;
-      const int sy = fy >= 0 ? fy / 256 : -1, wy = fy - sy * 256;
-      for (int dx = 0; dx < width; ++dx) {
-        const int fx = ((2 * dx + 1) * sw * 128 / width) - 128;
-        const int sx = fx >= 0 ? fx / 256 : -1, wx = fx - sx * 256;
-        const int ink = (sample(sx, sy) * (256 - wx) * (256 - wy) + sample(sx + 1, sy) * wx * (256 - wy) +
-                         sample(sx, sy + 1) * (256 - wx) * wy + sample(sx + 1, sy + 1) * wx * wy + 32768) /
-                        65536;
-        if (mode == BW && ink)
-          drawPixel(capX + dx, y + 2 + dy, true);
-        else if (mode == GRAYSCALE_MSB && (ink == 1 || ink == 2))
-          drawPixel(capX + dx, y + 2 + dy, false);
-        else if (mode == GRAYSCALE_LSB && ink == 2)
-          drawPixel(capX + dx, y + 2 + dy, false);
-      }
-    }
+    dropcap_reconstruction::render({bitmap, sw, sh, data->is2Bit}, width, height, [&](int dx, int dy, int ink) {
+      if (mode == BW && ink)
+        drawPixel(capX + dx, y + 2 + dy, true);
+      else if (mode == GRAYSCALE_MSB && (ink == 1 || ink == 2))
+        drawPixel(capX + dx, y + 2 + dy, false);
+      else if (mode == GRAYSCALE_LSB && ink == 2)
+        drawPixel(capX + dx, y + 2 + dy, false);
+    });
   }
   drawText(fontId, x + advance, y, text + initial.endBytes, true, style, BidiUtils::BidiBaseDir::AUTO, letterSpacing);
 }

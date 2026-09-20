@@ -13,7 +13,9 @@ Usage:
 
 The input directory may be flat (all .cpfont files in one dir) or nested
 (family subdirectories). Family names are derived from filenames using the
-convention <FamilyName>_<size>.cpfont.
+convention <FamilyName>_<size>.cpfont. Weight variants retain one weight-1..4
+subdirectory in manifest names. Use --assets-output to copy nested inputs into
+the corresponding download tree; baseUrl must point to that tree.
 """
 
 from __future__ import annotations
@@ -21,6 +23,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shutil
 import struct
 import sys
 import zlib
@@ -180,14 +184,31 @@ def scan_cpfont_files(input_dir: Path) -> dict[str, list[Path]]:
     return families
 
 
+def download_name(filepath: Path) -> str:
+    """Map SD family folders to the flat download tree, retaining weight folders."""
+    parent = filepath.parent.name
+    prefix = ''
+    if parent.startswith('weight-'):
+        if parent not in {f'weight-{level}' for level in range(1, 5)}:
+            raise ValueError(f'Unsupported weight directory: {filepath}')
+        prefix = parent + '/'
+    name = prefix + filepath.name
+    if len(name) > 87 or not re.fullmatch(r'[A-Za-z0-9_-]+\.cpfont', filepath.name):
+        raise ValueError(f'Invalid download path: {name}')
+    return name
+
+
 def build_manifest(
     families: dict[str, list[Path]], base_url: str
 ) -> dict:
     """Build the manifest dict from discovered font families."""
     manifest_families = []
     used_script_tags: set[str] = set()
+    download_targets: set[str] = set()
 
     for family_name in sorted(families.keys()):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,31}", family_name):
+            raise ValueError(f"Invalid family name: {family_name}")
         files = families[family_name]
 
         # Read styles from the first file (all files in a family have the
@@ -208,10 +229,14 @@ def build_manifest(
         used_script_tags.update(scripts)
 
         file_entries = []
-        for filepath in sorted(files, key=lambda p: p.name):
+        for filepath in sorted(files, key=download_name):
+            name = download_name(filepath)
+            if name.lower() in download_targets:
+                raise ValueError(f'Duplicate download target: {name}')
+            download_targets.add(name.lower())
             file_entries.append(
                 {
-                    "name": filepath.name,
+                    "name": name,
                     "size": filepath.stat().st_size,
                     "crc32": compute_crc32(filepath),
                 }
@@ -268,6 +293,10 @@ def main():
         default=None,
         help="Đường dẫn sd-fonts.yaml để lấy mô tả họ font (mặc định: dùng tên họ font)",
     )
+    parser.add_argument(
+        "--assets-output", type=Path,
+        help="Copy downloadable assets into a tree matching baseUrl + file.name",
+    )
     args = parser.parse_args()
 
     input_dir = Path(args.input)
@@ -305,6 +334,14 @@ def main():
         print(f"  {name}: {len(files)} file")
 
     manifest = build_manifest(families, base_url)
+
+    if args.assets_output:
+        for files in families.values():
+            for filepath in files:
+                target = args.assets_output / download_name(filepath)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.resolve() != filepath.resolve():
+                    shutil.copyfile(filepath, target)
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

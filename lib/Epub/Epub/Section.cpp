@@ -54,7 +54,8 @@ namespace {
 // v51: The drop cap boolean became a three-value mode whose size differs, so a
 // v50 header would be read as a different setting; those caches are discarded.
 // v53: Discard caches whose older builders could silently omit failed lines.
-constexpr uint8_t SECTION_FILE_VERSION = 53;
+// v54: Rebuild pages whose CSS cascade could be skipped under low heap.
+constexpr uint8_t SECTION_FILE_VERSION = 54;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects

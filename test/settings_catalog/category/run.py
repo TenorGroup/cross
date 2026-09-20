@@ -11,6 +11,7 @@ import json
 import os
 import pathlib
 import platform
+import re
 import subprocess
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -19,9 +20,12 @@ parser.add_argument('--repo', type=pathlib.Path, required=True)
 parser.add_argument('--output', type=pathlib.Path, required=True)
 parser.add_argument('--baseline-ref')
 parser.add_argument('--sanitize', action='store_true')
+parser.add_argument('--update-fixture', action='store_true')
+parser.add_argument('--i18n-dir', type=pathlib.Path)
 args = parser.parse_args()
 ROOT = args.repo.resolve()
 OUT = args.output.resolve()
+I18N = args.i18n_dir.resolve() if args.i18n_dir else ROOT / 'lib/I18n'
 OUT.mkdir(parents=True, exist_ok=True)
 
 
@@ -41,11 +45,40 @@ def method_slice(text, signature):
 
 include_paths = [
     'test/host_stubs', 'src', '.pio/libdeps/gh_release/ArduinoJson/src',
-    'lib/Epub', 'lib/I18n', 'lib/Logging', 'lib/EpdFont', 'lib/Serialization',
+    'lib/Epub', 'lib/Logging', 'lib/EpdFont', 'lib/Serialization',
     'lib/KOReaderSync', 'freeink-sdk/libs/hardware/BoardConfig/include',
     'freeink-sdk/libs/ui/FreeInkUI/include',
 ]
-includes = ['-I' + str(ROOT / path) for path in include_paths]
+includes = ['-I' + str(I18N), *['-I' + str(ROOT / path) for path in include_paths]]
+
+
+def load_str_ids(path):
+    text = path.read_text()
+    start = text.index('enum class StrId')
+    sentinel = re.search(r'^\s*_COUNT\s*$', text[start:], re.MULTILINE)
+    if sentinel is None:
+        raise RuntimeError('StrId sentinel missing from generated keyset')
+    body = text[start:start + sentinel.start()]
+    return re.findall(r'^\s*(STR_[A-Z0-9_]+)\s*,', body, re.MULTILINE)
+
+
+str_ids = load_str_ids(I18N / 'I18nKeys.h')
+
+
+def symbolic_rows(measured):
+    rows = []
+    for tab in measured['tabs']:
+        symbolic = []
+        for row in tab['rows']:
+            label, remainder = row.split(':', 1)
+            index = int(label)
+            if index >= len(str_ids):
+                raise RuntimeError(f'StrId ordinal {index} exceeds generated keyset')
+            symbolic.append(f'{str_ids[index]}:{remainder}')
+        rows.append(symbolic)
+    return rows
+
+
 manifest = {}
 modes = ['before', 'after'] if args.baseline_ref else ['after']
 for mode in modes:
@@ -64,6 +97,7 @@ for mode in modes:
     sources = {path: read(path) for path in paths}
     manifest[mode] = {path: hashlib.sha256(text.encode()).hexdigest()
                       for path, text in sources.items()}
+    manifest[mode]['I18nKeys.h'] = hashlib.sha256((I18N / 'I18nKeys.h').read_bytes()).hexdigest()
     (output / 'SettingsList.h').write_text(sources[paths[0]])
     header = sources[paths[1]]
     descriptor = header[header.index('enum class SettingType'):
@@ -93,7 +127,7 @@ for mode in modes:
                    *devices, '-I' + str(output), *includes, str(HERE / 'harness.cpp'),
                    str(ROOT / 'src/ReaderFontSizes.cpp'),
                    str(ROOT / 'src/activities/settings/SettingsTabs.cpp'),
-                   str(ROOT / 'lib/I18n/I18n.cpp'), str(ROOT / 'lib/I18n/I18nStrings.cpp'),
+                   str(I18N / 'I18n.cpp'), str(I18N / 'I18nStrings.cpp'),
                    '-o', str(output / profile)]
         (output / (profile + '-command.json')).write_text(json.dumps(command, indent=2) + '\n')
         build = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -103,6 +137,7 @@ for mode in modes:
             raise SystemExit(build.returncode)
 
 fixture = json.loads((HERE / 'expected-rows.json').read_text())
+updated_fixture = {}
 results = []
 for board, tenor, rtc, footnotes, dictionaries in itertools.product(
         ['x3', 'x4', 'pro'], [0, 1], [0, 1], [0, 1], [0, 1]):
@@ -126,14 +161,20 @@ for board, tenor, rtc, footnotes, dictionaries in itertools.product(
         if run.returncode != expected_exit:
             print(case, mode, run.returncode, run.stderr)
             raise SystemExit(1)
-        rows = [tab['rows'] for tab in measured['tabs']]
-        if rows != fixture[case]:
+        rows = symbolic_rows(measured)
+        if mode == 'after':
+            updated_fixture[case] = rows
+        if not args.update_fixture and rows != fixture[case]:
             print(case, mode, 'category row order changed')
             raise SystemExit(1)
     results.append({'case': case, **pair})
+if args.update_fixture:
+    (HERE / 'expected-rows.json').write_text(json.dumps(updated_fixture, indent=2) + '\n')
 (OUT / 'source-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 (OUT / 'results.json').write_text(json.dumps(results, indent=2) + '\n')
 red_note = 'baseline allocation/capacity assertions RED; ' if args.baseline_ref else ''
 sanitizer_note = ' under ASan/UBSan' if args.sanitize else ''
-print(f'{len(results)} cases: {red_note}current GREEN. Exact row order identical to '
-      f'baseline fixture; dynamic owned-lifetime checks GREEN{sanitizer_note}.')
+fixture_note = ('category fixture updated from measured current output' if args.update_fixture
+                else 'exact row order identical to baseline fixture')
+print(f'{len(results)} cases: {red_note}current GREEN. {fixture_note}; '
+      f'dynamic owned-lifetime checks GREEN{sanitizer_note}.')

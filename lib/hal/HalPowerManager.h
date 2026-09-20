@@ -39,7 +39,9 @@ class HalPowerManager {
 
   // Setup wake up GPIO and enter deep sleep
   // Should be called inside main loop() to respect active normal-speed locks
-  void startDeepSleep(HalGPIO& gpio, uint8_t wakeMode = 0) const;
+  // preserveClock keeps the C3 X4 supply latched for its RTC-domain system clock.
+  // X3 and other boards retain their normal rail policy.
+  void startDeepSleep(HalGPIO& gpio, uint8_t wakeMode = 0, bool preserveClock = false) const;
 
   // Get battery percentage (range 0-100)
   uint16_t getBatteryPercentage() const;

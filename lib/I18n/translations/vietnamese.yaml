@@ -51,7 +51,7 @@ STR_SCANNING: "Đang quét..."
 STR_FINDING_SAVED_WIFI: "Đang tìm mạng Wi-Fi đã lưu..."
 STR_CONNECTING: "Đang kết nối..."
 STR_CONNECTING_SAVED_WIFI: "Đang kết nối tới mạng Wi-Fi đã lưu..."
-STR_SHOW_NETWORKS: "Hiện"
+STR_SHOW_NETWORKS: "Chọn mạng"
 STR_CONNECTED: "Đã kết nối!"
 STR_CONNECTION_FAILED: "Kết nối thất bại"
 STR_FORGET_NETWORK: "Quên mạng này?"
@@ -748,3 +748,19 @@ STR_BLE_READER_LOW_RAM: "Chưa chạy trong sách vì thiếu RAM"
 STR_KEYBOARD_MOVE_HORIZONTAL: "Di chuyển ngang"
 
 STR_KEYBOARD_MOVE_VERTICAL: "Di chuyển dọc"
+
+STR_UI_TEXT_SIZE: "Cỡ chữ giao diện"
+
+STR_UI_SIZE_SMALL: "Nhỏ"
+
+STR_UI_SIZE_MEDIUM: "Vừa"
+
+STR_UI_SIZE_LARGE: "Lớn"
+
+STR_READER_INK_0: "0"
+
+STR_READER_INK_1: "+1"
+
+STR_READER_INK_2: "+2"
+
+STR_READER_INK_3: "+3"

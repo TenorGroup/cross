@@ -34,6 +34,7 @@ class FontInstallerTest : public ::testing::Test {
     Storage.calls.clear();
     Storage.present = false;
     Storage.failRemove = false;
+    Storage.failMkdirPath.clear();
     font_installer_test::resetRegistryStub();
     SETTINGS.sdFontFamilyName[0] = '\0';
   }
@@ -227,6 +228,15 @@ TEST_F(FontInstallerTest, BuildFontPathNeverReturnsATruncatedPath) {
   EXPECT_EQ(buffer[0], '\0');
 }
 
+TEST_F(FontInstallerTest, BuildFontPathAcceptsAllPhysicalWeightDirectories) {
+  char path[FontInstaller::MAX_FONT_PATH_SIZE];
+  for (int weight = 1; weight <= 4; ++weight) {
+    const std::string relative = "weight-" + std::to_string(weight) + "/Book_16.cpfont";
+    ASSERT_TRUE(FontInstaller::buildFontPath("Bookerly", relative.c_str(), path, sizeof(path)));
+    EXPECT_EQ(std::string(path), "/.fonts/Bookerly/" + relative);
+  }
+}
+
 // ----------------------------------------------------------- ensureFamilyDir
 
 TEST_F(FontInstallerTest, EnsureFamilyDirRejectsInvalidFamiliesBeforeRegistryAndStorage) {
@@ -262,6 +272,96 @@ TEST_F(FontInstallerTest, EnsureFamilyDirCreatesTheCompleteLongestPath) {
   ASSERT_EQ(Storage.calls.size(), 4u);
   // 7-byte root + '/' + the full 31-byte family name: never a truncated dir.
   EXPECT_EQ(Storage.calls[3], "mkdir:/.fonts/" + family);
+}
+
+TEST_F(FontInstallerTest, RelativePathKeepsFlatUploadGrammarSeparate) {
+  EXPECT_TRUE(FontInstaller::isValidCpfontRelativePath("Book_16.cpfont"));
+  EXPECT_TRUE(FontInstaller::isValidCpfontRelativePath(longestFilename().c_str()));
+  for (int weight = 1; weight <= 4; ++weight) {
+    const std::string relative = "weight-" + std::to_string(weight) + "/Book_16.cpfont";
+    EXPECT_TRUE(FontInstaller::isValidCpfontRelativePath(relative.c_str()));
+    EXPECT_FALSE(FontInstaller::isValidCpfontFilename(relative.c_str()));
+  }
+}
+
+TEST_F(FontInstallerTest, RelativePathBoundsIncludeTheWeightDirectory) {
+  const std::string relative = "weight-4/" + repeat('f', 71) + ".cpfont";
+  ASSERT_EQ(relative.size(), 87u);
+  ASSERT_TRUE(FontInstaller::isValidCpfontRelativePath(relative.c_str()));
+  EXPECT_FALSE(FontInstaller::isValidCpfontRelativePath(("weight-4/" + longestFilename()).c_str()));
+  EXPECT_FALSE(FontInstaller::isValidCpfontRelativePath(("weight-4/f" + repeat('f', 71) + ".cpfont").c_str()));
+  char path[FontInstaller::MAX_FONT_PATH_SIZE];
+  ASSERT_TRUE(FontInstaller::buildFontPath(longestFamily().c_str(), relative.c_str(), path, sizeof(path)));
+  EXPECT_EQ(std::strlen(path) + 1, sizeof(path));
+  EXPECT_FALSE(FontInstaller::buildFontPath(longestFamily().c_str(), relative.c_str(), path, sizeof(path)-1));
+  EXPECT_EQ(path[0], '\0');
+}
+
+TEST_F(FontInstallerTest, RelativePathRejectsTraversalAndUnrecognizedDirectoriesBeforeIo) {
+  const char* const invalid[] = {
+    nullptr, "", "weight-1/", "weight-0/a.cpfont", "weight-5/a.cpfont", "weight-10/a.cpfont",
+    "Weight-1/a.cpfont", "weight-1\\a.cpfont", "weight-1//a.cpfont", "weight-1/../a.cpfont",
+    "weight-1/./a.cpfont", "weight-1/weight-2/a.cpfont", "../a.cpfont", "/weight-1/a.cpfont",
+    "weight-1/.cpfont", "weight-1/a.cpfont.tmp", "weight-1/a.CPFONT", "weight-1/%2e%2e.cpfont",
+    "weight-1/has space.cpfont", "weight-1/caf\xC3\xA9.cpfont"
+  };
+  SdCardFontRegistry registry;
+  FontInstaller installer(registry);
+  char path[FontInstaller::MAX_FONT_PATH_SIZE];
+  for (const char* relative : invalid) {
+    SCOPED_TRACE(relative ? relative : "(null)");
+    EXPECT_FALSE(FontInstaller::isValidCpfontRelativePath(relative));
+    EXPECT_FALSE(FontInstaller::buildFontPath("Bookerly", relative, path, sizeof(path)));
+    EXPECT_FALSE(installer.ensureFontDir("Bookerly", relative));
+  }
+  EXPECT_TRUE(Storage.calls.empty());
+  EXPECT_EQ(font_installer_test::registryRootLookups, 0);
+}
+
+TEST_F(FontInstallerTest, EnsureFontDirValidatesFamilyBeforeAnyStorageCall) {
+  SdCardFontRegistry registry;
+  FontInstaller installer(registry);
+  for (const char* family : {"", "../family", "a/b"}) {
+    EXPECT_FALSE(installer.ensureFontDir(family, "weight-2/Book_16.cpfont"));
+  }
+  EXPECT_FALSE(installer.ensureFontDir(nullptr, "weight-2/Book_16.cpfont"));
+  EXPECT_TRUE(Storage.calls.empty());
+  EXPECT_EQ(font_installer_test::registryRootLookups, 0);
+}
+
+TEST_F(FontInstallerTest, EnsureFontDirCreatesExactlyOneWeightDirectoryUnderExistingRoot) {
+  existingRoot = SdCardFontRegistry::FONTS_DIR_VISIBLE;
+  SdCardFontRegistry registry;
+  FontInstaller installer(registry);
+  ASSERT_TRUE(installer.ensureFontDir("Bookerly", "weight-4/Book_16.cpfont"));
+  const std::vector<std::string> expected = {
+    "exists:/fonts", "mkdir:/fonts", "exists:/fonts/Bookerly", "mkdir:/fonts/Bookerly",
+    "exists:/fonts/Bookerly/weight-4", "mkdir:/fonts/Bookerly/weight-4"
+  };
+  EXPECT_EQ(Storage.calls, expected);
+}
+
+TEST_F(FontInstallerTest, EnsureFontDirFlatNeedsOnlyFamilyAndExistingWeightNeedsNoMkdir) {
+  SdCardFontRegistry registry;
+  FontInstaller installer(registry);
+  ASSERT_TRUE(installer.ensureFontDir("Bookerly", "Book_16.cpfont"));
+  ASSERT_EQ(Storage.calls.size(), 4u);
+  EXPECT_EQ(Storage.calls.back(), "mkdir:/.fonts/Bookerly");
+  Storage.calls.clear();
+  Storage.present = true;
+  ASSERT_TRUE(installer.ensureFontDir("Bookerly", "weight-2/Book_16.cpfont"));
+  const std::vector<std::string> expected = {
+    "exists:/.fonts", "exists:/.fonts/Bookerly", "exists:/.fonts/Bookerly/weight-2"
+  };
+  EXPECT_EQ(Storage.calls, expected);
+}
+
+TEST_F(FontInstallerTest, EnsureFontDirReportsWeightMkdirFailure) {
+  SdCardFontRegistry registry;
+  FontInstaller installer(registry);
+  Storage.failMkdirPath = "/.fonts/Bookerly/weight-3";
+  EXPECT_FALSE(installer.ensureFontDir("Bookerly", "weight-3/Book_16.cpfont"));
+  EXPECT_EQ(Storage.calls.back(), "mkdir:/.fonts/Bookerly/weight-3");
 }
 
 // -------------------------------------------------------------- deleteFamily

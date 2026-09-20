@@ -1,4 +1,7 @@
 #include "ReadingStatsView.h"
+#include "ReadingStatsLayout.h"
+#include "CrossPointSettings.h"
+#include "components/UIScale.h"
 
 #include <GfxRenderer.h>
 #include <I18n.h>
@@ -11,14 +14,31 @@
 #include "fontIds.h"
 #include "util/NgayGio.h"
 namespace readingstatsview {
-void draw(const GfxRenderer& r, const int top, const bool sleep, const bool compact) {
+namespace {
+ReadingStatsLayout layoutFor(const GfxRenderer& r, bool sleep) {
+  return {r.getLineHeight(SMALL_FONT_ID), r.getLineHeight(UI_10_FONT_ID), r.getLineHeight(UI_12_FONT_ID),
+          r.getLineHeight(sleep ? NOTOSANS_18_FONT_ID : UI_12_FONT_ID)};
+}
+}
+int panelHeight(const GfxRenderer& r, int page, bool sleep) {
+  if (normalizedUiTextSize(SETTINGS.uiTextSize) == 0) return HEIGHT;
+  const auto layout = layoutFor(r, sleep);
+  return page == 0 ? layout.meanLabel : page == 1 ? layout.height - layout.meanLabel : layout.height;
+}
+void draw(const GfxRenderer& r, const int top, const bool sleep, const bool compact, const int page) {
   // The badge borrows whitespace within this panel, preserving the list viewport.
-  const auto y = [top, compact](const int offset) {
+  const bool enlarged = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
+  const auto layout = layoutFor(r, sleep);
+  const auto y = [top, compact, enlarged, page, &layout](const int offset) {
+    if (enlarged) return top + layout.offset(offset) - (page == 1 ? layout.meanLabel : 0);
     return top + (compact ? offset * (HEIGHT - BADGE_HEIGHT) / HEIGHT : offset);
   };
   const int width = r.getScreenWidth() - 48;
+  const auto cellText = [&](int font, const char* text, EpdFontFamily::Style style = EpdFontFamily::REGULAR) {
+    return enlarged ? r.truncatedText(font, text, width / 2 - 12, style) : std::string(text);
+  };
   if (!READING_STATS.statisticsReadable) {
-    r.drawText(UI_12_FONT_ID, 24, y(24), tr(STR_STATS_READ_ERROR));
+    r.drawText(UI_12_FONT_ID, 24, enlarged ? top + 24 : y(24), tr(STR_STATS_READ_ERROR));
     return;
   }
   const uint32_t today = ReadingStatsStore::currentDay();
@@ -55,20 +75,22 @@ void draw(const GfxRenderer& r, const int top, const bool sleep, const bool comp
       streakOpen = false;
   }
   char text[96];
-  r.drawText(UI_10_FONT_ID, 24, top, tr(STR_STATS_TODAY));
+  if (page != 1) {
+  r.drawText(UI_10_FONT_ID, 24, top, cellText(UI_10_FONT_ID, tr(STR_STATS_TODAY)).c_str());
   duration(totals[0], text, sizeof(text));
-  r.drawText(sleep ? NOTOSANS_18_FONT_ID : UI_12_FONT_ID, 24, y(28), today ? text : tr(STR_STATS_UNDATED), true,
+  r.drawText(sleep ? NOTOSANS_18_FONT_ID : UI_12_FONT_ID, 24, y(28), cellText(sleep ? NOTOSANS_18_FONT_ID : UI_12_FONT_ID, today ? text : tr(STR_STATS_UNDATED), EpdFontFamily::BOLD).c_str(), true,
              EpdFontFamily::BOLD);
   snprintf(text, sizeof(text), "%lu%s %s", static_cast<unsigned long>(streak), streak == 30 ? "+" : "",
            tr(STR_STATS_DAYS));
   const int right = r.getScreenWidth() - 24;
-  r.drawText(UI_10_FONT_ID, right - r.getTextWidth(UI_10_FONT_ID, tr(STR_STATS_STREAK)), top, tr(STR_STATS_STREAK));
+  const auto streakLabel = cellText(UI_10_FONT_ID, tr(STR_STATS_STREAK));
+  r.drawText(UI_10_FONT_ID, right - r.getTextWidth(UI_10_FONT_ID, streakLabel.c_str()), top, streakLabel.c_str());
   r.drawText(UI_12_FONT_ID, right - r.getTextWidth(UI_12_FONT_ID, text, EpdFontFamily::BOLD), y(28),
              today ? text : "...", true, EpdFontFamily::BOLD);
   const int half = width / 2;
   for (int i = 0; i < 2; ++i) {
     const int x = 24 + i * half;
-    r.drawText(UI_10_FONT_ID, x, y(80), i ? tr(STR_STATS_MONTH) : tr(STR_STATS_WEEK));
+    r.drawText(UI_10_FONT_ID, x, y(80), cellText(UI_10_FONT_ID, i ? tr(STR_STATS_MONTH) : tr(STR_STATS_WEEK)).c_str());
     duration(totals[i + 1], text, sizeof(text));
     r.drawText(UI_10_FONT_ID, x, y(105),
                r.truncatedText(UI_10_FONT_ID, today ? text : "...", half - 12, EpdFontFamily::BOLD).c_str(), true,
@@ -90,10 +112,12 @@ void draw(const GfxRenderer& r, const int top, const bool sleep, const bool comp
     r.drawText(SMALL_FONT_ID, x + (pitch - r.getTextWidth(SMALL_FONT_ID, text)) / 2, y(233), text);
     if (!known[d]) r.drawText(SMALL_FONT_ID, x + pitch / 2, y(203), ".");
   }
+  }
+  if (page == 0) return;
   const auto habit = READING_STATS.habitLedger.summarize(ReadingStatsStore::habitStamp().day);
   const int xs[] = {24, 24 + width / 2};
-  r.drawText(SMALL_FONT_ID, xs[0], y(270), tr(STR_STATS_MEAN_WEEK));
-  r.drawText(SMALL_FONT_ID, xs[1], y(270), tr(STR_STATS_SESSIONS_28));
+  r.drawText(SMALL_FONT_ID, xs[0], y(270), cellText(SMALL_FONT_ID, tr(STR_STATS_MEAN_WEEK)).c_str());
+  r.drawText(SMALL_FONT_ID, xs[1], y(270), cellText(SMALL_FONT_ID, tr(STR_STATS_SESSIONS_28)).c_str());
   if (readDays7)
     duration(totals[1] / readDays7, text, sizeof(text));
   else
@@ -103,8 +127,8 @@ void draw(const GfxRenderer& r, const int top, const bool sleep, const bool comp
              EpdFontFamily::BOLD);
   snprintf(text, sizeof(text), "%lu", static_cast<unsigned long>(habit.sessions));
   r.drawText(UI_12_FONT_ID, xs[1], y(296), habit.coverage ? text : "...", true, EpdFontFamily::BOLD);
-  r.drawText(SMALL_FONT_ID, xs[0], y(336), tr(STR_STATS_NIGHT_28));
-  r.drawText(SMALL_FONT_ID, xs[1], y(336), tr(STR_STATS_SHORT_LONG));
+  r.drawText(SMALL_FONT_ID, xs[0], y(336), cellText(SMALL_FONT_ID, tr(STR_STATS_NIGHT_28)).c_str());
+  r.drawText(SMALL_FONT_ID, xs[1], y(336), cellText(SMALL_FONT_ID, tr(STR_STATS_SHORT_LONG)).c_str());
   snprintf(text, sizeof(text), "%u%%",
            habit.activeMs ? static_cast<unsigned>(100ull * habit.nightMs / habit.activeMs) : 0);
   r.drawText(UI_12_FONT_ID, xs[0], y(362), habit.activeMs ? text : "...", true, EpdFontFamily::BOLD);
@@ -123,7 +147,14 @@ void draw(const GfxRenderer& r, const int top, const bool sleep, const bool comp
 }
 void drawSleep(const GfxRenderer& r) {
   const int width = r.getScreenWidth(), height = r.getScreenHeight();
-  r.drawText(NOTOSANS_18_FONT_ID, 24, 30, tr(STR_SLEEP_STATS), true, EpdFontFamily::BOLD);
+  const bool enlarged = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
+  const int titleY = enlarged ? 18 : 30;
+  const int dateY = enlarged ? titleY + r.getLineHeight(NOTOSANS_18_FONT_ID) + 2 : 78;
+  const int ruleY = enlarged ? dateY + r.getLineHeight(UI_10_FONT_ID) + 4 : 108;
+  const int panelTop = enlarged ? ruleY + 11 : 132;
+  const auto sleepTitle = enlarged ? r.truncatedText(NOTOSANS_18_FONT_ID, tr(STR_SLEEP_STATS), width - 48,
+                                                       EpdFontFamily::BOLD) : std::string(tr(STR_SLEEP_STATS));
+  r.drawText(NOTOSANS_18_FONT_ID, 24, titleY, sleepTitle.c_str(), true, EpdFontFamily::BOLD);
   const uint32_t today = ReadingStatsStore::currentDay();
   char text[80];
   if (today)
@@ -131,23 +162,33 @@ void drawSleep(const GfxRenderer& r) {
              static_cast<unsigned long>(today / 100 % 100), static_cast<unsigned long>(today / 10000));
   else
     snprintf(text, sizeof(text), "%s", tr(STR_STATS_UNDATED));
-  r.drawText(UI_10_FONT_ID, 24, 78, text);
-  r.fillRect(24, 108, width - 48, 3);
-  draw(r, 132, true);
+  r.drawText(UI_10_FONT_ID, 24, dateY, text);
+  r.fillRect(24, ruleY, width - 48, 3);
+  draw(r, panelTop, true);
   if (READING_STATS.statisticsReadable && !READING_STATS.activeBookPath.empty()) {
-    r.fillRect(24, 584, width - 48, 2);
+    const int bookRule = enlarged ? panelTop + panelHeight(r, -1, true) + 8 : 584;
+    const int bookTitle = enlarged ? bookRule + 6 : 602;
+    const int bookLabel = enlarged ? bookTitle + r.getLineHeight(UI_10_FONT_ID) + 4 : 644;
+    const int bookValue = enlarged ? bookLabel + r.getLineHeight(SMALL_FONT_ID) + 4 : 669;
+    r.fillRect(24, bookRule, width - 48, 2);
     const auto& title =
         READING_STATS.activeBookTitle.empty() ? READING_STATS.activeBookPath : READING_STATS.activeBookTitle;
-    r.drawText(UI_10_FONT_ID, 24, 602,
+    r.drawText(UI_10_FONT_ID, 24, bookTitle,
                r.truncatedText(UI_10_FONT_ID, title.c_str(), width - 48, EpdFontFamily::BOLD).c_str(), true,
                EpdFontFamily::BOLD);
-    r.drawText(SMALL_FONT_ID, 24, 644, tr(STR_STATS_BOOK_TIME));
+    const auto bookTimeLabel = enlarged ? r.truncatedText(SMALL_FONT_ID, tr(STR_STATS_BOOK_TIME), width / 2 - 36)
+                                        : std::string(tr(STR_STATS_BOOK_TIME));
+    const auto positionLabel = enlarged ? r.truncatedText(SMALL_FONT_ID, tr(STR_STATS_POSITION), width / 2 - 24)
+                                        : std::string(tr(STR_STATS_POSITION));
+    r.drawText(SMALL_FONT_ID, 24, bookLabel, bookTimeLabel.c_str());
     duration(static_cast<uint64_t>(READING_STATS.activeBook.minutes) * 60000 + READING_STATS.activeBook.remainderMs,
              text, sizeof(text));
-    r.drawText(UI_12_FONT_ID, 24, 669, text, true, EpdFontFamily::BOLD);
-    r.drawText(SMALL_FONT_ID, width / 2, 644, tr(STR_STATS_POSITION));
+    const auto bookTime = enlarged ? r.truncatedText(UI_12_FONT_ID, text, width / 2 - 36, EpdFontFamily::BOLD)
+                                   : std::string(text);
+    r.drawText(UI_12_FONT_ID, 24, bookValue, bookTime.c_str(), true, EpdFontFamily::BOLD);
+    r.drawText(SMALL_FONT_ID, width / 2, bookLabel, positionLabel.c_str());
     snprintf(text, sizeof(text), "%u%%", READING_STATS.activeBook.progress);
-    r.drawText(UI_12_FONT_ID, width / 2, 669, text, true, EpdFontFamily::BOLD);
+    r.drawText(UI_12_FONT_ID, width / 2, bookValue, text, true, EpdFontFamily::BOLD);
   }
   r.drawText(UI_10_FONT_ID, 24, height - 40, "tenor/cross", true, EpdFontFamily::BOLD);
 }

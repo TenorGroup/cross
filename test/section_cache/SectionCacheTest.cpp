@@ -140,6 +140,35 @@ class SectionCacheTest : public ::testing::Test {
   }
 };
 TEST_F(SectionCacheTest, FullProductionRoundTripPreservesAllBookWords) { retryAndCheckEveryWord(); }
+TEST_F(SectionCacheTest, RejectsFinalCacheFromHeapDependentCssResolver) {
+  std::string legacy = valid;
+  legacy[0] = 53;
+  {
+    std::ofstream output(cache(), std::ios::binary | std::ios::trunc);
+    output.write(legacy.data(), legacy.size());
+  }
+  Section reopened(epub, 0, renderer);
+  EXPECT_FALSE(reopened.loadSectionFile(spec));
+}
+TEST_F(SectionCacheTest, RejectsPartialCacheFromHeapDependentCssResolver) {
+  {
+    Section partial(epub, 0, renderer);
+    ASSERT_TRUE(partial.startBuild(spec));
+    ASSERT_TRUE(partial.buildSomeMore(2));
+    ASSERT_TRUE(partial.isBuilding());
+    partial.suspendBuild();
+    ASSERT_TRUE(partial.isPartial());
+  }
+  std::string legacy = bytes(cache());
+  ASSERT_GT(legacy.size(), 0u);
+  legacy[0] = static_cast<char>(0xFE - (53 - 28));
+  {
+    std::ofstream output(cache(), std::ios::binary | std::ios::trunc);
+    output.write(legacy.data(), legacy.size());
+  }
+  Section reopened(epub, 0, renderer);
+  EXPECT_FALSE(reopened.loadSectionFile(spec));
+}
 TEST_F(SectionCacheTest, MiddlePageShortWriteFailsImmediatelyAndKeepsPreviousCache) {
   {
     Section section(epub, 0, renderer);

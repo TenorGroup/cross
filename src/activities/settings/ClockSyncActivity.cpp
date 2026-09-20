@@ -20,6 +20,8 @@
 
 void ClockSyncActivity::onEnter() {
   runtimeStarted = false;
+  shouldTearDownWifiOnExit = false;
+  idleTimerStarted = false;
   // Keep BLE stopped for Wi-Fi selection, NTP, and optional HTTPS timezone lookup.
   if (!filetransfer::acquire()) {
     LOG_ERR("CLK", "BLE teardown incomplete; leaving clock sync");
@@ -32,6 +34,7 @@ void ClockSyncActivity::onEnter() {
   syncedTime[0] = '\0';
 
   if (WiFi.status() == WL_CONNECTED) {
+    shouldTearDownWifiOnExit = true;
     requestUpdate();
     return;
   }
@@ -102,7 +105,21 @@ void ClockSyncActivity::runSync() {
   requestUpdate();
 }
 
+bool ClockSyncActivity::idleExitDue(const unsigned long now, const bool interaction) {
+  const bool waiting = state == SUCCESS || state == NO_WIFI || state == FAILED || state == TIMEZONE_FAILED;
+  const bool radioAlive = runtimeStarted && WiFi.getMode() != WIFI_MODE_NULL;
+  return clock_sync_power::idleExitDue(static_cast<uint32_t>(now), waiting, radioAlive, interaction, idleSince,
+                                       idleTimerStarted);
+}
+
 void ClockSyncActivity::loop() {
+  const bool interaction = mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() ||
+                           mappedInput.wasScreenTouchReleased();
+  if (idleExitDue(millis(), interaction)) {
+    finish();
+    return;
+  }
+
   if (state == SYNCING) {
     // First-tick: render the "Syncing..." screen, then perform the (blocking) sync.
     // requestUpdateAndWait below forces the render before we block on WiFi.

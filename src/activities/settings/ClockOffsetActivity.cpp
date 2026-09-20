@@ -1,12 +1,12 @@
 #include "ClockOffsetActivity.h"
 
 #include <GfxRenderer.h>
-#include <HalClock.h>
 #include <I18n.h>
 
 #include <algorithm>
 #include <cstdio>
 
+#include "ClockStatus.h"
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
@@ -356,7 +356,7 @@ void ClockOffsetActivity::render(RenderLock&&) {
   }
 
   // Live preview of the resulting wall-clock time, so users can verify against a watch.
-  if (halClock.isAvailable()) {
+  if (clockstatus::hasValidTime()) {
     char timeBuf[9];
     const uint8_t encoded = encodeOffset(sign, hours, minutesQuarter);
     if (halClock.formatTime(timeBuf, sizeof(timeBuf), encoded, SETTINGS.clockFormat == 1)) {

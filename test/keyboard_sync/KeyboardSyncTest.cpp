@@ -1,5 +1,6 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "activities/util/KeyboardLayoutSet.h"
+#include "components/UITheme.h"
 
 #include <atomic>
 #include <chrono>
@@ -17,6 +18,11 @@ namespace fui = freeink::ui;
 namespace keyboard_test {
 thread_local bool renderLockHeld = false;
 bool completedUnderLock = false;
+bool cancelled = false;
+bool finished = false;
+bool resultSet = false;
+bool timedOut = false;
+unsigned long nowMs = 10000;
 std::string completedText;
 std::mutex renderMutex;
 }
@@ -54,8 +60,16 @@ struct Fixture {
   GfxRenderer renderer;
   MappedInputManager input;
   KeyboardEntryActivity activity;
-  explicit Fixture(std::string text, InputType type = InputType::Text)
-      : activity(renderer, input, "Keyboard", std::move(text), 0, type) {
+  explicit Fixture(std::string text, InputType type = InputType::Text, bool backCancels = false,
+                   uint32_t idleTimeoutMs = 0, uint32_t startMs = 10000)
+      : activity(renderer, input, "Keyboard", std::move(text), 0, type, backCancels, idleTimeoutMs) {
+    keyboard_test::completedUnderLock = false;
+    keyboard_test::cancelled = false;
+    keyboard_test::finished = false;
+    keyboard_test::resultSet = false;
+    keyboard_test::timedOut = false;
+    keyboard_test::completedText.clear();
+    keyboard_test::nowMs = startMs;
     activity.onEnter();
   }
   void render() {
@@ -244,6 +258,90 @@ static void run(const std::string& test) {
       require(keyboard_test::completedText == "aế中", "completion dropped edited text");
       require(!keyboard_test::completedUnderLock, "Back/OK/Home completed while holding RenderLock");
     }
+  } else if (test == "viewport") {
+    for (uint8_t tier : {1, 2}) {
+      SETTINGS.uiTextSize = tier;
+      const std::string initial = "BEGIN" + std::string(1000, 'x') + "END";
+      Fixture f(initial);
+      f.renderer.uiTier = tier;
+      f.render();
+      bool endVisible = false;
+      for (const auto& run : f.renderer.runs) {
+        require(run.y == 5 + UITheme::getInstance().getMetrics().headerHeight + 16,
+                "enlarged field escaped its one-line viewport");
+        endVisible |= run.text.find("END") != std::string::npos;
+      }
+      require(endVisible, "cursor end is outside viewport");
+      f.hold(Button::Up);
+      for (size_t i = 0; i < initial.size(); ++i) f.tap(Button::Left);
+      f.render();
+      bool startVisible = false;
+      for (const auto& run : f.renderer.runs) startVisible |= run.text.find("BEGIN") != std::string::npos;
+      require(startVisible, "moving cursor to start did not scroll field viewport");
+      require(f.completed() == initial, "viewport changed stored text");
+      require(!f.renderer.invalidUtf8Seen, "viewport split UTF-8");
+    }
+    SETTINGS.uiTextSize = 0;
+  } else if (test == "cancel") {
+    for (int mode = 0; mode < 3; ++mode) {
+      keyboard_test::cancelled = false;
+      keyboard_test::completedText.clear();
+      Fixture f("secret", InputType::Password, true);
+      if (mode == 0) f.tap(Button::Back);
+      if (mode == 1) {
+        for (int i = 0; i < 4; ++i) f.tap(Button::Down);
+        f.tap(Button::Left);
+        f.tap(Button::Confirm);
+      }
+      if (mode == 2) f.activity.saveInputBeforeHome();
+      require(keyboard_test::cancelled == (mode != 1), "Wi-Fi Back/Home must cancel, OK must submit");
+      require(mode == 1 ? keyboard_test::completedText == "secret" : keyboard_test::completedText.empty(),
+              "Wi-Fi cancellation submitted password");
+      require(!keyboard_test::timedOut, "normal keyboard completion was marked as timed out");
+      require(!keyboard_test::completedUnderLock, "cancel callback ran under RenderLock");
+    }
+  } else if (test == "timeout_disabled") {
+    Fixture f("query", InputType::Text, true);
+    keyboard_test::nowMs = 10000u + 24u * 60u * 60u * 1000u;
+    f.input.reset();
+    f.activity.loop();
+    require(!keyboard_test::finished && !keyboard_test::resultSet,
+            "default keyboard timeout must remain disabled");
+  } else if (test == "timeout_wrap") {
+    constexpr uint32_t timeoutMs = 5u * 60u * 1000u;
+    constexpr uint32_t startMs = UINT32_MAX - 1000u;
+    Fixture f("query", InputType::Text, true, timeoutMs, startMs);
+    keyboard_test::nowMs = static_cast<uint32_t>(startMs + timeoutMs - 1u);
+    f.input.reset();
+    f.activity.loop();
+    require(!keyboard_test::finished, "opt-in keyboard timeout expired before wrapped deadline");
+    keyboard_test::nowMs = static_cast<uint32_t>(startMs + timeoutMs);
+    f.activity.loop();
+    require(keyboard_test::finished && keyboard_test::resultSet && keyboard_test::cancelled,
+            "opt-in keyboard did not cancel at wrapped deadline");
+    require(keyboard_test::timedOut, "timeout result did not distinguish expiry from Back");
+    require(!keyboard_test::completedUnderLock, "timeout completed while holding RenderLock");
+  } else if (test == "timeout_input_reset") {
+    constexpr uint32_t timeoutMs = 5u * 60u * 1000u;
+    Fixture f("query", InputType::Text, true, timeoutMs, 1000u);
+    keyboard_test::nowMs = 300000u;
+    f.press(Button::Left);
+    f.input.reset();
+    keyboard_test::nowMs = 599999u;
+    f.activity.loop();
+    require(!keyboard_test::finished, "keyboard expired before reset deadline");
+    keyboard_test::nowMs = 600000u;
+    f.activity.loop();
+    require(keyboard_test::finished && keyboard_test::cancelled && keyboard_test::timedOut,
+            "actual keyboard input did not reset the timeout deadline");
+  } else if (test == "timeout_normal_cancel") {
+    constexpr uint32_t timeoutMs = 5u * 60u * 1000u;
+    Fixture f("query", InputType::Text, true, timeoutMs, 1000u);
+    keyboard_test::nowMs = 2000u;
+    f.tap(Button::Back);
+    require(keyboard_test::finished && keyboard_test::resultSet && keyboard_test::cancelled,
+            "Back did not cancel an opt-in keyboard");
+    require(!keyboard_test::timedOut, "Back cancellation was reported as an idle timeout");
   } else if (test == "stress") {
     Fixture f("aế中", InputType::Password);
     std::atomic<bool> stop{false};

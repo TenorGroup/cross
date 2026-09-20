@@ -17,7 +17,7 @@ void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char
   constexpr int font = UI_12_FONT_ID;
   constexpr auto dir = BidiUtils::BidiBaseDir::AUTO;
   const int width = std::max(1, r.getScreenWidth() - x - rightReserve);
-  const int y = HEADER_TOP + (HEADER_HEIGHT - r.getLineHeight(font)) / 2;
+  const int y = HEADER_TOP + (headerHeight() - r.getLineHeight(font)) / 2;
   const auto measure = [&](const std::string& s, EpdFontFamily::Style style) {
     return r.getTextWidth(font, s.c_str(), style, dir, tracking);
   };
@@ -74,16 +74,16 @@ void tenorchrome::drawSiblingDestinations(const GfxRenderer& r, const char* prev
   constexpr int font = UI_10_FONT_ID;
   constexpr int tracking = 1;
   const int routeLineHeight = r.getLineHeight(UI_12_FONT_ID);
-  const int routeY = HEADER_TOP + (HEADER_HEIGHT - routeLineHeight) / 2;
+  const int routeY = HEADER_TOP + (headerHeight() - routeLineHeight) / 2;
   const int siblingLineHeight = r.getLineHeight(font);
   // Neo vao GIUA dai the, khong phai treo duoi dong duong dan. Dai the bi an o
   // man nay, nhung no van la o ma hai ten nay thuoc ve, nen canh giua theo no
   // thi hai ten dung dung cho du man co ve dai hay khong.
-  const int siblingY = TAB_TOP + (TAB_HEIGHT - siblingLineHeight) / 2;
+  const int siblingY = tabTop() + (tabHeight() - siblingLineHeight) / 2;
   // Tran duoi la day dai the. Truoc day tran nay bi keo len vi goc phai con ve
   // day dong "1-10 / 13"; bo con so do roi thi ten the duoc dung het dai.
   if (routeLineHeight <= 0 || siblingLineHeight <= 0 || siblingY < routeY + routeLineHeight ||
-      siblingY + siblingLineHeight > TAB_TOP + TAB_HEIGHT)
+      siblingY + siblingLineHeight > tabTop() + tabHeight())
     return;
 
   const int width = r.getScreenWidth();
@@ -217,12 +217,12 @@ void tenorchrome::drawMoreBelowChevron(const GfxRenderer& renderer) {
 }
 
 int tenorchrome::tipY(const GfxRenderer& renderer) {
-  return renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight - 26;
+  return renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight - (renderer.getLineHeight(SMALL_FONT_ID) + 5);
 }
 int tenorchrome::tipHeight(const GfxRenderer& renderer, const char* text, int maxLines) {
   constexpr int font = SMALL_FONT_ID;
   const auto lines = renderer.wrappedText(font, text, renderer.getScreenWidth() - 48, maxLines);
-  return lines.empty() ? 0 : 28 + (static_cast<int>(lines.size()) - 1) * renderer.getLineHeight(font);
+  return lines.empty() ? 0 : renderer.getLineHeight(font) + 7 + (static_cast<int>(lines.size()) - 1) * renderer.getLineHeight(font);
 }
 void tenorchrome::drawTip(const GfxRenderer& renderer, const char* text, int linesAbove, int maxLines) {
   // Global status-bar Off also hides contextual footer tips.

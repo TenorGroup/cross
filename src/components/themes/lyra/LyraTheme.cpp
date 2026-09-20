@@ -116,8 +116,8 @@ void LyraTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const c
   const int pageHeight = renderer.getScreenHeight();
   constexpr int buttonWidth = 80;
   constexpr int smallButtonHeight = 15;
-  constexpr int buttonHeight = LyraMetrics::values.buttonHintsHeight;
-  constexpr int buttonY = LyraMetrics::values.buttonHintsHeight;  // Distance from bottom
+  const int buttonHeight = UITheme::getInstance().getMetrics().buttonHintsHeight;
+  const int buttonY = UITheme::getInstance().getMetrics().buttonHintsHeight;  // Distance from bottom
   constexpr int textYOffset = 7;                                  // Distance from top of button to text baseline
   // Keyed to the portrait panel width: the 528-wide X3 gets more spacing than
   // the 480-wide boards (X4, X4 Pro, and the other 800x480 panels).
@@ -157,7 +157,7 @@ void LyraTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* top
   }
 
   const int screenWidth = renderer.getScreenWidth();
-  constexpr int buttonWidth = LyraMetrics::values.sideButtonHintsWidth;  // Width on screen (height when rotated)
+  const int buttonWidth = UITheme::getInstance().getMetrics().sideButtonHintsWidth;  // Width on screen (height when rotated)
   constexpr int buttonHeight = 78;                                       // Height on screen (width when rotated)
   constexpr int buttonMargin = 0;
 
@@ -311,11 +311,12 @@ void LyraTheme::drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) c
 void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
   for (int i = 0; i < buttonCount; ++i) {
     int tileWidth = rect.width - LyraMetrics::values.contentSidePadding * 2;
     Rect tileRect = Rect{rect.x + LyraMetrics::values.contentSidePadding,
-                         rect.y + i * (LyraMetrics::values.menuRowHeight + LyraMetrics::values.menuSpacing), tileWidth,
-                         LyraMetrics::values.menuRowHeight};
+                         rect.y + i * (metrics.menuRowHeight + metrics.menuSpacing), tileWidth,
+                         metrics.menuRowHeight};
 
     const bool selected = selectedIndex == i;
 
@@ -327,7 +328,7 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     const char* label = labelStr.c_str();
     int textX = tileRect.x + 16;
     const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-    const int textY = tileRect.y + (LyraMetrics::values.menuRowHeight - lineHeight) / 2;
+    const int textY = tileRect.y + (metrics.menuRowHeight - lineHeight) / 2;
 
     if (rowIcon != nullptr) {
       UIIcon icon = rowIcon(i);

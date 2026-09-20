@@ -131,7 +131,15 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr int BACKGROUND_BUILD_PAGES_PER_TICK = 2;
   static constexpr size_t BACKGROUND_BUILD_MIN_FREE_HEAP = 32 * 1024;
   static constexpr size_t BACKGROUND_BUILD_MIN_MAX_ALLOC = 16 * 1024;
+  // Conservative pre-parser admission budget; ticks use the smaller resident-build budget.
+  static constexpr size_t BACKGROUND_BUILD_START_MIN_FREE_HEAP = 64 * 1024;
+  static constexpr size_t BACKGROUND_BUILD_START_MIN_MAX_ALLOC = 32 * 1024;
+  bool deferBackgroundBuildForBle() const;
+  bool backgroundBuildStartHeapGate();
   bool buildTickHeapGate();
+  // Caller owns RenderLock. Heap-pressure suspension resumes only for an explicit target.
+  void suspendBackgroundBuild();
+  bool backgroundBuildSuspended = false;
   bool buildHeapPaused = false;
   static constexpr size_t RENDER_MIN_FREE_HEAP = 24 * 1024;
   static constexpr int BUILD_WINDOW_AHEAD = 5;

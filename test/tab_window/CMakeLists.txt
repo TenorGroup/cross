@@ -5,6 +5,7 @@ set(PIO_LIBDEPS "${REPO_ROOT}/.pio/libdeps/gh_release")
 add_executable(TabWindowTest
   TabWindowTest.cpp
   ${REPO_ROOT}/test/mapped_input/FakeHal.cpp
+  ${REPO_ROOT}/test/mapped_input/TiltSensorStubs.cpp
   ${REPO_ROOT}/test/host_stubs/FakeUi.cpp
   ${REPO_ROOT}/src/MappedInputManager.cpp
   ${REPO_ROOT}/src/activities/Activity.cpp

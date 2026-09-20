@@ -1,8 +1,28 @@
 #pragma once
 
+#include <cstdint>
+
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
 #include "network/OtaUpdater.h"
+
+namespace ota_power {
+constexpr uint32_t IDLE_TIMEOUT_MS = 5u * 60u * 1000u;
+
+inline bool idleExitDue(const uint32_t now, const bool waiting, const bool radioAlive, const bool interaction,
+                        uint32_t& idleSince, bool& timerStarted) {
+  if (!waiting || !radioAlive) {
+    timerStarted = false;
+    return false;
+  }
+  if (!timerStarted || interaction) {
+    idleSince = now;
+    timerStarted = true;
+    return false;
+  }
+  return now - idleSince >= IDLE_TIMEOUT_MS;
+}
+}  // namespace ota_power
 
 class OtaUpdateActivity : public Activity {
   enum State {
@@ -22,6 +42,8 @@ class OtaUpdateActivity : public Activity {
   State state = WIFI_SELECTION;
   unsigned int lastUpdaterPercentage = UNINITIALIZED_PERCENTAGE;
   bool runtimeStarted = false;
+  uint32_t idleSince = 0;
+  bool idleTimerStarted = false;
   OtaUpdater updater;
   // Optional detail line shown under the generic "Update failed" heading.
   // Points into the i18n string table (flash-resident, so no lifetime concern);
@@ -33,6 +55,7 @@ class OtaUpdateActivity : public Activity {
 
   void onWifiSelectionComplete(bool success);
   void runUpdateInstall();
+  bool idleExitDue(unsigned long now, bool interaction);
 
  public:
   explicit OtaUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

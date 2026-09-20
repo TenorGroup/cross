@@ -1,13 +1,16 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <new>
 #include <string>
 #include <vector>
 
+#include <Arduino.h>
 #include "CssParser.h"
 
 namespace fs = std::filesystem;
@@ -21,6 +24,28 @@ constexpr size_t kStyleEnumPrefixBytes = 5;
 constexpr size_t kStyleLengthFieldCount = 11;
 constexpr size_t kStyleLengthBytes = sizeof(decltype(CssLength::value)) + sizeof(uint8_t);
 
+namespace resolveAllocationProbe {
+
+bool enabled = false;
+bool rejectNothrow = false;
+size_t calls = 0;
+size_t bytes = 0;
+
+void reset() {
+  enabled = false;
+  rejectNothrow = false;
+  calls = 0;
+  bytes = 0;
+}
+
+void record(const size_t size) {
+  if (!enabled) return;
+  ++calls;
+  bytes += size;
+}
+
+}  // namespace resolveAllocationProbe
+
 class CssParserTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -29,10 +54,14 @@ class CssParserTest : public ::testing::Test {
     fs::remove_all(directory_);
     fs::create_directories(directory_);
     Storage.clearFailures();
+    ESP.reset();
+    resolveAllocationProbe::reset();
   }
 
   void TearDown() override {
     Storage.clearFailures();
+    ESP.reset();
+    resolveAllocationProbe::reset();
     fs::remove_all(directory_);
   }
 
@@ -64,6 +93,37 @@ class CssParserTest : public ::testing::Test {
 
   fs::path directory_;
 };
+
+}  // namespace
+
+void* operator new(const std::size_t size) {
+  resolveAllocationProbe::record(size);
+  if (void* memory = std::malloc(size == 0 ? 1 : size)) return memory;
+  throw std::bad_alloc();
+}
+
+void* operator new[](const std::size_t size) {
+  return ::operator new(size);
+}
+
+void* operator new(const std::size_t size, const std::nothrow_t&) noexcept {
+  resolveAllocationProbe::record(size);
+  if (resolveAllocationProbe::rejectNothrow) return nullptr;
+  return std::malloc(size == 0 ? 1 : size);
+}
+
+void* operator new[](const std::size_t size, const std::nothrow_t&) noexcept {
+  return ::operator new(size, std::nothrow);
+}
+
+void operator delete(void* memory) noexcept { std::free(memory); }
+void operator delete[](void* memory) noexcept { std::free(memory); }
+void operator delete(void* memory, const std::size_t) noexcept { std::free(memory); }
+void operator delete[](void* memory, const std::size_t) noexcept { std::free(memory); }
+void operator delete(void* memory, const std::nothrow_t&) noexcept { std::free(memory); }
+void operator delete[](void* memory, const std::nothrow_t&) noexcept { std::free(memory); }
+
+namespace {
 
 TEST_F(CssParserTest, ResolvesCaseInsensitiveCascadeAndMergesDuplicates) {
   CssParser parser(cachePath());
@@ -184,6 +244,45 @@ TEST_F(CssParserTest, CanonicalCacheRoundTripPreservesStyles) {
   const CssStyle paragraph = reader.resolveStyle("p", "");
   EXPECT_EQ(paragraph.textAlign, CssTextAlign::Justify);
   EXPECT_FLOAT_EQ(paragraph.marginTop.value, 2.0f);
+}
+
+TEST_F(CssParserTest, HydratedRulesRemainAvailableAtObservedBleBuildHeapWithoutAllocation) {
+  constexpr uint32_t kObservedFreeHeap = 39772;
+  CssParser writer(cachePath());
+  ASSERT_EQ(loadCss(writer,
+                    "p { text-align: justify; }\n"
+                    ".hidden { display: none; }\n"
+                    "p.hidden { font-weight: bold; }\n"),
+            CssParser::ParseResult::Complete);
+  ASSERT_TRUE(writer.saveToCache(true));
+
+  CssParser reader(cachePath());
+  ASSERT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Complete);
+
+  ESP.freeHeap = kObservedFreeHeap;
+  resolveAllocationProbe::enabled = true;
+  const CssStyle style = reader.resolveStyle("p", "hidden");
+  resolveAllocationProbe::enabled = false;
+
+  EXPECT_EQ(resolveAllocationProbe::calls, 0u);
+  EXPECT_EQ(resolveAllocationProbe::bytes, 0u);
+  EXPECT_EQ(ESP.freeHeapQueries, 0u);
+  EXPECT_EQ(style.textAlign, CssTextAlign::Justify);
+  EXPECT_EQ(style.display, CssDisplay::None);
+  EXPECT_EQ(style.fontWeight, CssFontWeight::Bold);
+}
+
+TEST_F(CssParserTest, HydrationReportsLowMemoryWhenPoolAllocationFails) {
+  CssParser writer(cachePath());
+  ASSERT_EQ(loadCss(writer, ".visible { font-style: italic; }\n"), CssParser::ParseResult::Complete);
+  ASSERT_TRUE(writer.saveToCache(true));
+
+  CssParser reader(cachePath());
+  resolveAllocationProbe::rejectNothrow = true;
+  EXPECT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::LowMemory);
+  resolveAllocationProbe::rejectNothrow = false;
+
+  EXPECT_TRUE(reader.empty());
 }
 
 TEST_F(CssParserTest, PartialCacheIsValidatedDuringInspection) {

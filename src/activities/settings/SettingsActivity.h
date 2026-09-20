@@ -195,6 +195,7 @@ class SettingsActivity final : public UiTabListActivity {
   void stepTab(int direction) override;
   bool handleButtons() override;
   bool handleCustomInput() override;
+  bool allowsTiltTabNavigation() const override { return !optionPopup.isActive(); }
   bool supportsFavorites() const override { return true; }
   std::string favoriteKey(int row) const override;
   int focusFavorite(const std::string& key) override;
@@ -205,7 +206,7 @@ class SettingsActivity final : public UiTabListActivity {
   void dapXuongNhom();
 
   void selectCategory(int categoryIndex);
-  void applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr);
+  bool applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr, uint8_t newValue);
 
   void enterCategory(int categoryIndex);
   static void veTenNhomCoMuiTen(const GfxRenderer& r, int x0, int yGiua, const char* ten);

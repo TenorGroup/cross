@@ -5,11 +5,20 @@
 #include <utility>
 #include "activities/RenderLock.h"
 
-struct KeyboardResult { std::string text; };
-struct ActivityResult { bool isCancelled = false; };
+struct KeyboardResult { std::string text; bool timedOut = false; };
+struct ActivityResult {
+  bool isCancelled = false;
+  KeyboardResult data;
+  ActivityResult() = default;
+  ActivityResult(KeyboardResult result) : data(std::move(result)) {}
+};
 namespace keyboard_test {
 extern thread_local bool renderLockHeld;
 extern bool completedUnderLock;
+extern bool cancelled;
+extern bool finished;
+extern bool resultSet;
+extern bool timedOut;
 extern std::string completedText;
 }
 class Activity {
@@ -25,7 +34,18 @@ class Activity {
   virtual bool saveInputBeforeHome() { return false; }
   virtual void render(RenderLock&&) {}
   void requestUpdate() {}
-  void setResult(KeyboardResult r) { keyboard_test::completedText = std::move(r.text); }
-  void setResult(ActivityResult) {}
-  void finish() { keyboard_test::completedUnderLock |= keyboard_test::renderLockHeld; }
+  void setResult(KeyboardResult r) {
+    keyboard_test::completedText = std::move(r.text);
+    keyboard_test::timedOut = r.timedOut;
+    keyboard_test::resultSet = true;
+  }
+  void setResult(ActivityResult r) {
+    keyboard_test::cancelled = r.isCancelled;
+    keyboard_test::timedOut = r.data.timedOut;
+    keyboard_test::resultSet = true;
+  }
+  void finish() {
+    keyboard_test::completedUnderLock |= keyboard_test::renderLockHeld;
+    keyboard_test::finished = true;
+  }
 };

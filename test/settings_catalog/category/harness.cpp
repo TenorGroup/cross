@@ -137,18 +137,25 @@ int main(int argc, char** argv) {
   halClock.available = rtc;
   SETTINGS.uiTheme = tenor ? CrossPointSettings::TENOR_UI : CrossPointSettings::CLASSIC;
   SETTINGS.shortPwrBtn = footnotes ? CrossPointSettings::FOOTNOTES : CrossPointSettings::IGNORE;
+  bool ok = true;
   fonts(sdFontSystem.fonts, 128);
   if (hasDictionaries)
     for (int i = 0; i < 8; ++i)
       discovered.push_back({std::to_string(i) + " Dictionary long owned label", "book"});
   const auto& catalog = getBaseSettingsList();
+  const auto themeRow = std::find_if(catalog.begin(), catalog.end(), [](const auto& row) {
+    return row.valuePtr == &CrossPointSettings::uiTheme;
+  });
+  ok &= check(themeRow != catalog.end() && themeRow + 1 != catalog.end() &&
+              (themeRow + 1)->valuePtr == &CrossPointSettings::uiTextSize,
+              "UI text size immediately follows theme");
   SettingsActivity activity;
   for (auto& cursor : activity.tabNavs) cursor.selected = 10000;
   measuring = true;
   activity.rebuildSettingsLists();
   measuring = false;
   const size_t firstAllocs = allocs, firstBytes = bytes, firstLargest = largest;
-  bool ok = check(sdFontSystem.refreshes == 1 && activity.rebuilds == 1, "actual rebuild called discovery boundary and row renderer");
+  ok &= check(sdFontSystem.refreshes == 1 && activity.rebuilds == 1, "actual rebuild called discovery boundary and row renderer");
   size_t total = 0, capacity = 0;
   std::printf("{\"board\":\"%s\",\"tenor\":%d,\"rtc\":%d,\"footnotes\":%d,\"dictionaries\":%d,\"sizeof\":%zu,\"catalog\":%zu,\"allocs\":%zu,\"bytes\":%zu,\"largest\":%zu,\"tabs\":[",
               board.c_str(), tenor, rtc, footnotes, hasDictionaries, sizeof(SettingInfo), catalog.size(), firstAllocs, firstBytes, firstLargest);
@@ -178,7 +185,11 @@ int main(int argc, char** argv) {
     readers[dictionaryIndex].valueSetter(8);
     ok &= check(readers[dictionaryIndex].valueGetter() == 8, "category dictionary survives discovery lifetime");
   }
-  if (tenor && rtc) {
+  const auto clockAction = std::find_if(activity.systemSettings.begin(), activity.systemSettings.end(), [](const auto& row) {
+    return row.action == SettingAction::Clock;
+  });
+  ok &= check(clockAction != activity.systemSettings.end(), "clock action remains available without RTC hardware");
+  if (tenor) {
     const auto labels = std::find_if(activity.displaySettings.begin(), activity.displaySettings.end(), [](const auto& row) {
       return row.valuePtr == &CrossPointSettings::tenorButtonSymbols;
     });

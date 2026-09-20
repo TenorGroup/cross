@@ -247,9 +247,9 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
-    // 69 unconditional descriptors; each capability below adds exactly one.
+    // 70 unconditional descriptors; each capability below adds exactly one.
     // Cold-catalog tests cover each capability branch and the IMU variant.
-    constexpr size_t fixedCount = 69
+    constexpr size_t fixedCount = 70
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
                                   + 1
 #endif
@@ -264,6 +264,9 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
                            StrId::STR_THEME_ROUNDEDRAFF, StrId::STR_THEME_TENOR},
                           "uiTheme", StrId::STR_CAT_DISPLAY));
+    v.push_back(SettingInfo::Enum(StrId::STR_UI_TEXT_SIZE, &CrossPointSettings::uiTextSize,
+                          {StrId::STR_UI_SIZE_SMALL, StrId::STR_UI_SIZE_MEDIUM, StrId::STR_UI_SIZE_LARGE},
+                          "uiTextSize", StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Enum(StrId::STR_HIDE_GLOBAL_STATUS_BAR, &CrossPointSettings::globalStatusBarMode,
                           {StrId::STR_STATUS_BAR_SMALL, StrId::STR_STATE_OFF, StrId::STR_STATUS_BAR_LARGE},
                           "globalStatusBarMode", StrId::STR_CAT_DISPLAY));
@@ -363,7 +366,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
             "orientation", StrId::STR_CAT_READER));
 
     v.push_back(std::move(SettingInfo::Enum(StrId::STR_READER_INK_WEIGHT, &CrossPointSettings::readerInkWeight,
-                          {StrId::STR_INK_DEFAULT, StrId::STR_INK_LIGHT, StrId::STR_INK_STRONG}, "readerInkWeight",
+                          {StrId::STR_READER_INK_0, StrId::STR_READER_INK_1, StrId::STR_READER_INK_2,
+                           StrId::STR_READER_INK_3}, "readerInkWeight",
                           StrId::STR_CAT_READER)
             .withTextSettings()));
     v.push_back(std::move(SettingInfo::Toggle(StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing, "textAntiAliasing",
@@ -591,13 +595,13 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
 // The device category list owns only rows visible in its categories. Font and
 // spacing descriptors stay in Text Settings; their dynamic options are built
 // there when needed. Return -1 for rows hidden in device categories.
-inline int deviceSettingsTab(const SettingInfo& setting, bool deviceIsX3, bool clockAvailable) {
+inline int deviceSettingsTab(const SettingInfo& setting, bool deviceIsX3) {
   if (settingHiddenOnThisBoard(setting)) return -1;
   const bool tenor = SETTINGS.uiTheme == CrossPointSettings::TENOR_UI;
   if (tenor && setting.valuePtr == &CrossPointSettings::hideBatteryPercentage) return -1;
   if (!tenor && (setting.valuePtr == &CrossPointSettings::tenorButtonSymbols ||
                  setting.valuePtr == &CrossPointSettings::tenorSideArrows)) return -1;
-  if (tenor && clockAvailable && setting.valuePtr == &CrossPointSettings::statusBarClock)
+  if (tenor && setting.valuePtr == &CrossPointSettings::statusBarClock)
     return static_cast<int>(settingstabs::Tab::SCREEN);
   if (setting.category == StrId::STR_CAT_DISPLAY) {
     if (setting.valuePtr == &CrossPointSettings::fadingFix &&

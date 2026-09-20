@@ -1,0 +1,46 @@
+{
+  "Geist/Geist-Black.ttf": {
+    "bytes": 130508,
+    "sha256": "558a58b06cd4cbc57117fae2f905648f0d7c88d89bbdb497d64d5317b1b19a36"
+  },
+  "Geist/Geist-Bold.ttf": {
+    "bytes": 128824,
+    "sha256": "3f21f02b827228c3f0c5fb230d027b5a1a263013618e8052bc1b3c5692812c88"
+  },
+  "Geist/Geist-Medium.ttf": {
+    "bytes": 127660,
+    "sha256": "3a3b36f0d0b981f4857f7f00eeef4a5ee123605575d362ab31ee7c19e3d11f2f"
+  },
+  "Geist/Geist-Regular.ttf": {
+    "bytes": 126048,
+    "sha256": "85a1c6b18a6b0a06dfe9fd4f6d6a5d4979f74ec861eaef4bc7868b5492b8a117"
+  },
+  "Geist/Geist-Variable.ttf": {
+    "bytes": 169056,
+    "sha256": "73894e0448cae90a92b6c2f8732b7bb9acb7b94c418bff559dad4a18e1de9659"
+  },
+  "Geist/OFL.txt": {
+    "bytes": 4383,
+    "sha256": "c683bfbcc7e087f5d37a54ef628f10387c451a83ddc459b151403a164ac46c90"
+  },
+  "BeVietnamPro/BeVietnamPro-Bold.ttf": {
+    "bytes": 140300,
+    "sha256": "7f738fe5c43c8872807b20e2d30d42163618de8a4daf7f48a939adac32c16847"
+  },
+  "BeVietnamPro/BeVietnamPro-ExtraBold.ttf": {
+    "bytes": 139680,
+    "sha256": "44dbfa01553d227bec76ba6446c5618870a76a4a3297f41630dde859d0650d02"
+  },
+  "BeVietnamPro/BeVietnamPro-Medium.ttf": {
+    "bytes": 135980,
+    "sha256": "b60832bfa0fcd015158112c64d7e3fdad3b0c6287d1823f85a3103636e845268"
+  },
+  "BeVietnamPro/BeVietnamPro-Regular.ttf": {
+    "bytes": 132948,
+    "sha256": "cd1ef6e9d7db28ad5cdb88a65ccbe693870e60d340b791f349d248342b4fe4c3"
+  },
+  "BeVietnamPro/OFL.txt": {
+    "bytes": 4397,
+    "sha256": "6b7f8f73609a25ea78c891e34cf37b06f8a676b7ea986e941e43b009110f2a85"
+  }
+}

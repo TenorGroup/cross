@@ -24,7 +24,13 @@ parser.add_argument("--compress", dest="compress", action="store_true", help="N�
 parser.add_argument("--zopfli", dest="zopfli", action="store_true", help="Use Zopfli for the DEFLATE backend instead of zlib. Tạo luồng raw-DEFLATE chuẩn (bộ giải nén uzlib trên máy đọc được nguyên vẹn), thường nhỏ hơn zlib -9 vài phần trăm nhưng nén chậm hơn nhiều. Cần --compress và gói 'zopfli'.")
 parser.add_argument("--force-autohint", dest="force_autohint", action="store_true", help="Buộc dùng auto-hinter của FreeType thay cho hinting gốc. Giúp độ dày nét đều hơn với font có hinting TrueType yếu hoặc không có.")
 parser.add_argument("--pnum", dest="pnum", action="store_true", help="Dùng chữ số tỉ lệ (tính năng pnum của OpenType) thay cho chữ số tabular mặc định. Giảm khoảng trống giữa các chữ số trong dòng chữ.")
+parser.add_argument("--mono-coverage", action="store_true", help="Store binary coverage in 2-bit form for compression; preserves the 1-bit threshold.")
+parser.add_argument("--max-group-bytes", type=int, default=65536, help="Maximum decompressed bitmap bytes per compressed group (default: 65536).")
 args = parser.parse_args()
+if args.mono_coverage and not args.is2Bit:
+    parser.error("--mono-coverage requires --2bit")
+if not 1 <= args.max_group_bytes <= 65536:
+    parser.error("--max-group-bytes must be between 1 and 65536")
 
 import freetype
 from fontTools.ttLib import TTFont
@@ -329,7 +335,9 @@ for i_start, i_end in intervals:
                     bm = pixels4g[y * pitch + (x // 2)]
                     bm = (bm >> ((x % 2) * 4)) & 0xF
 
-                    if bm >= 12:
+                    if args.mono_coverage:
+                        px += 3 if bm >= 2 else 0
+                    elif bm >= 12:
                         px += 3
                     elif bm >= 8:
                         px += 2
@@ -833,7 +841,7 @@ if compress:
     # 64 KB cap: large enough to hold any single built-in script group with
     # headroom, small enough to be a comfortable transient malloc on the
     # ESP32-C3.
-    GROUP_MAX_UNCOMPRESSED_BYTES = 65536
+    GROUP_MAX_UNCOMPRESSED_BYTES = args.max_group_bytes
 
     def get_script_group(code_point):
         for i, (start, end) in enumerate(SCRIPT_GROUP_RANGES):

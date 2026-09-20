@@ -182,6 +182,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
 
   // UI Theme
   enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3, TENOR_UI = 4 };
+  enum UI_TEXT_SIZE { UI_TEXT_SMALL = 0, UI_TEXT_MEDIUM = 1, UI_TEXT_LARGE = 2, UI_TEXT_SIZE_COUNT };
 
   // Image rendering in EPUB reader
   enum IMAGE_RENDERING { IMAGES_DISPLAY = 0, IMAGES_PLACEHOLDER = 1, IMAGES_SUPPRESS = 2, IMAGE_RENDERING_COUNT };
@@ -353,6 +354,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t longPressMenuFunction = LP_MENU_DISABLED;
   // UI Theme
   uint8_t uiTheme = TENOR_UI;
+  // UI font tier. Persisted ordinals: 0 Small, 1 Medium, 2 Large.
+  uint8_t uiTextSize = UI_TEXT_SMALL;
   // Tenor-only appearance preferences; existing themes retain their own hints.
   uint8_t tenorButtonSymbols = 1;
   uint8_t tenorSideArrows = 1;

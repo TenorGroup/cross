@@ -96,6 +96,7 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 
 void OtaUpdateActivity::onEnter() {
   runtimeStarted = false;
+  idleTimerStarted = false;
   // Claim the radio before Wi-Fi startup or the render wait below. This also
   // covers the auto-connect callback, which can block inside this transition.
   if (!filetransfer::acquire()) {
@@ -250,7 +251,21 @@ void OtaUpdateActivity::runUpdateInstall() {
   }
 }
 
+bool OtaUpdateActivity::idleExitDue(const unsigned long now, const bool interaction) {
+  const bool waiting = state == WAITING_CONFIRMATION || state == FAILED || state == NO_UPDATE;
+  const bool radioAlive = runtimeStarted && WiFi.getMode() != WIFI_MODE_NULL;
+  return ota_power::idleExitDue(static_cast<uint32_t>(now), waiting, radioAlive, interaction, idleSince,
+                                idleTimerStarted);
+}
+
 void OtaUpdateActivity::loop() {
+  const bool interaction = mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() ||
+                           mappedInput.wasScreenTouchReleased();
+  if (idleExitDue(millis(), interaction)) {
+    finish();
+    return;
+  }
+
   if (state == WAITING_CONFIRMATION) {
     if (confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
     // Popup dismissed without a selection (Back button or tap outside): cancel.

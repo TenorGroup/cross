@@ -1,4 +1,5 @@
 #include "KeyboardEntryActivity.h"
+#include "components/UIScale.h"
 
 #include <BidiUtils.h>
 #include <HalGPIO.h>
@@ -116,6 +117,7 @@ const fui::KeyboardLayout URL_SNIPPET_LAYOUT{URL_SNIP_ROWS, 4};
 
 void KeyboardEntryActivity::onEnter() {
   Activity::onEnter();
+  idleSince = static_cast<uint32_t>(millis());
   // ActivityManager publishes the activity before calling onEnter unlocked.
   // A pending render notification can already be reading its initial state.
   RenderLock lock(*this);
@@ -436,8 +438,7 @@ bool KeyboardEntryActivity::cursorPositionFromPoint(const int x, const int y, si
   const auto& metrics = UITheme::getInstance().getMetrics();
 
   const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-  const int inputStartY = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing +
-                          metrics.verticalSpacing * 4 + metrics.keyboardVerticalOffset;
+  const int inputStartY = inputTop();
 
   int availableWidth = pageWidth;
   if (gpio.deviceIsX3()) {
@@ -454,7 +455,7 @@ bool KeyboardEntryActivity::cursorPositionFromPoint(const int x, const int y, si
   const bool centerText = metrics.keyboardCenteredText;
   std::string displayText = displayTextForCurrentState();
 
-  int lineStartIdx = 0;
+  int lineStartIdx = inputWindowStart(displayText, maxLineWidth);
   int lineY = inputStartY;
   int lastLineStartIdx = 0;
   int lastLineEndIdx = static_cast<int>(displayText.length());
@@ -499,7 +500,7 @@ bool KeyboardEntryActivity::cursorPositionFromPoint(const int x, const int y, si
       return true;
     }
 
-    if (lineEndIdx == static_cast<int>(displayText.length())) {
+    if (normalizedUiTextSize(SETTINGS.uiTextSize) != 0 || lineEndIdx == static_cast<int>(displayText.length())) {
       break;
     }
 
@@ -519,18 +520,45 @@ bool KeyboardEntryActivity::cursorPositionFromPoint(const int x, const int y, si
   return false;
 }
 
+int KeyboardEntryActivity::inputTop() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  if (normalizedUiTextSize(SETTINGS.uiTextSize) != 0)
+    return metrics.topPadding + (tenorchrome::enabled() ? tenorchrome::headerHeight() : metrics.headerHeight) +
+           metrics.verticalSpacing;
+  return metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing * 5 + metrics.keyboardVerticalOffset;
+}
+
+int KeyboardEntryActivity::inputWindowStart(std::string& displayText, int maxWidth) const {
+  if (normalizedUiTextSize(SETTINGS.uiTextSize) == 0) return 0;
+  int start = 0;
+  while (start < static_cast<int>(displayText.size())) {
+    const int end = lineBreakEnd(displayText, start, maxWidth);
+    if (end >= static_cast<int>(displayText.size()) || cursorPos < static_cast<size_t>(end)) break;
+    start = end;
+  }
+  return start;
+}
+
 fui::Rect KeyboardEntryActivity::keyboardRect() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int pageWidth = renderer.getScreenWidth();
   const int pageHeight = renderer.getScreenHeight();
   const int rows = currentLayout().rowCount;
   const int gap = metrics.keyboardKeySpacing;
-  const int height = rows * metrics.keyboardKeyHeight + (rows > 1 ? (rows - 1) * gap : 0);
+  const bool enlarged = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
+  const int keyHeight = enlarged ? renderer.getLineHeight(UI_12_FONT_ID) + renderer.getLineHeight(SMALL_FONT_ID) + 8
+                                 : metrics.keyboardKeyHeight;
+  const int height = rows * keyHeight + (rows > 1 ? (rows - 1) * gap : 0);
   const int width = pageWidth * metrics.keyboardWidthPercent / 100;
   const int x = (pageWidth - width) / 2;
-  const int y = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing - height +
-                metrics.keyboardVerticalOffset -
-                (tenorchrome::enabled() ? 28 + 6 * renderer.getLineHeight(SMALL_FONT_ID) : 0);
+  int insetTop = 0, insetRight = 0, insetBottom = 0, insetLeft = 0;
+  if (enlarged) renderer.getOrientedViewableTRBL(&insetTop, &insetRight, &insetBottom, &insetLeft);
+  const int footerReserve = std::max(metrics.buttonHintsHeight, insetBottom);
+  const int y = enlarged ? pageHeight - footerReserve - height -
+                               (12 + 2 * renderer.getLineHeight(SMALL_FONT_ID))
+                         : pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing - height +
+                               metrics.keyboardVerticalOffset -
+                               (tenorchrome::enabled() ? 28 + 6 * renderer.getLineHeight(SMALL_FONT_ID) : 0);
   return fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(width),
                    static_cast<int16_t>(height)};
 }
@@ -557,6 +585,17 @@ void KeyboardEntryActivity::loop() {
   input.heldMs = mappedInput.getHeldTime();
   input.capturedAt = millis();
 
+  const auto buttonActive = [](const ButtonInput& value) { return value.pressed || value.released || value.held; };
+  const bool interaction = buttonActive(input.rowPrev) || buttonActive(input.rowNext) ||
+                           buttonActive(input.colPrev) || buttonActive(input.colNext) ||
+                           buttonActive(input.confirm) || buttonActive(input.back) || input.tapped || input.touchDown ||
+                           input.touchHeld;
+  if (keyboard_power::idleTimeoutDue(static_cast<uint32_t>(input.capturedAt), idleTimeoutMs, interaction,
+                                     idleSince)) {
+    onTimeout();
+    return;
+  }
+
   bool complete = false;
   std::string completedText;
   {
@@ -566,10 +605,14 @@ void KeyboardEntryActivity::loop() {
     loopLocked(input, complete);
     if (complete) completedText = text;
   }
-  if (complete) onComplete(std::move(completedText));
+  if (complete) {
+    if (backCancels && input.back.released) onCancel();
+    else onComplete(std::move(completedText));
+  }
 }
 
 bool KeyboardEntryActivity::saveInputBeforeHome() {
+  if (backCancels) { onCancel(); return true; }
   std::string completedText;
   {
     RenderLock lock(*this);
@@ -806,8 +849,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, title.c_str());
 
   const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-  const int inputStartY = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing +
-                          metrics.verticalSpacing * 4 + metrics.keyboardVerticalOffset;
+  const int inputStartY = inputTop();
   int inputHeight = 0;
 
   std::string displayText = displayTextForCurrentState();
@@ -844,7 +886,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     if (w > cursorCharWidth) cursorCharWidth = w;
   }
 
-  int lineStartIdx = 0;
+  int lineStartIdx = inputWindowStart(displayText, maxLineWidth);
   int textWidth = 0;
   int cursorPixelX = effectiveMargin;
   int cursorLineY = inputStartY;
@@ -904,7 +946,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
       } else {
         renderer.drawText(UI_12_FONT_ID, lineStartX, inputStartY + inputHeight, lineText.c_str());
       }
-      if (lineEndIdx == static_cast<int>(displayText.length())) {
+      if (normalizedUiTextSize(SETTINGS.uiTextSize) != 0 || lineEndIdx == static_cast<int>(displayText.length())) {
         break;
       }
 
@@ -951,7 +993,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     }
   }
 
-  if (hintVisible && !text.empty()) {
+  if (normalizedUiTextSize(SETTINGS.uiTextSize) == 0 && hintVisible && !text.empty()) {
     const int hintLh = renderer.getLineHeight(SMALL_FONT_ID);
     const int underlineY = inputStartY + inputHeight + lineHeight + metrics.verticalSpacing;
     const int hintY = underlineY + 4;
@@ -993,7 +1035,18 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     tipCount = 5 + (inputType == InputType::Url ? 1 : 0);
   }
 
-  if (tipCount > 0) {
+  if (normalizedUiTextSize(SETTINGS.uiTextSize) != 0) {
+    const char* contextual = cursorMode ? tr(STR_KB_HINT_RETURN_KEYBOARD) : tr(STR_KB_HINT_EDIT_ENTRY);
+    if (cursorMode && inputType == InputType::Password)
+      contextual = passwordVisible ? tr(STR_KB_HINT_HIDE_PASSWORD) : tr(STR_KB_HINT_SHOW_PASSWORD);
+    const int tipY = kbRect.y + kbRect.height + 6;
+    const auto fit = [&](const char* text, int y) {
+      renderer.drawCenteredText(SMALL_FONT_ID, y,
+                                renderer.truncatedText(SMALL_FONT_ID, text, pageWidth - 24).c_str(), true);
+    };
+    fit(contextual, tipY);
+    fit(tr(STR_KB_HINT_CLEAR_TEXT), tipY + tipsLh);
+  } else if (tipCount > 0) {
     int y = tenorchrome::enabled() ? tenorchrome::tipY(renderer) - tipCount * tipsLh
                                    : (underlineBottom + kbRect.y) / 2 - (tipCount + 1) * tipsLh / 2;
     drawTip(tr(STR_KB_TIPS), y);
@@ -1066,6 +1119,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   props.selectedIndex = cursorMode ? -1 : static_cast<int16_t>(selectedLogicalIndex());
   props.labelText.font = fui::GfxRendererTarget::FONT_BODY;
   props.altText.font = fui::GfxRendererTarget::FONT_SMALL;
+  props.stackAlternates = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
   props.gap = static_cast<int16_t>(metrics.keyboardKeySpacing);
   props.padding = fui::Insets{0, 0, 0, 0};
   // Fingers land low on the bottom row (occlusion) and there is no key below
@@ -1101,6 +1155,13 @@ void KeyboardEntryActivity::onComplete(std::string text) {
 
 void KeyboardEntryActivity::onCancel() {
   ActivityResult result;
+  result.isCancelled = true;
+  setResult(std::move(result));
+  finish();
+}
+
+void KeyboardEntryActivity::onTimeout() {
+  ActivityResult result{KeyboardResult{"", true}};
   result.isCancelled = true;
   setResult(std::move(result));
   finish();

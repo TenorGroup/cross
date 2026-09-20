@@ -11,6 +11,7 @@
 #include <I18n.h>
 #include "CrossPointSettings.h"
 #include "activities/settings/SettingsActivity.h"
+#include "components/SettledListRender.h"
 
 static bool persistOk = true;
 static unsigned writes = 0, errors = 0;
@@ -94,6 +95,9 @@ struct PopupBoundary {
   }
   void choose(int i) { active = false; auto cb = std::move(callback); cb(i); }
 };
+struct ListNav {
+  bool consumeRebuildNeeded() { return false; }
+};
 struct SettingsActivity {
   GfxRenderer renderer;
   MappedInputManager mappedInput;
@@ -101,7 +105,10 @@ struct SettingsActivity {
 #include "State.inc"
   bool fromHomeGroup = false;
   unsigned finished = 0, home = 0, updates = 0, rebuilds = 0;
+  bool uiApplyOk = true;
+  uint8_t uiSizeSeenDuringApply = 255;
   int selectedCategoryIndex = 0, settingsCount = 1;
+  ListNav nav;
   std::vector<SettingInfo> rows;
   const std::vector<SettingInfo>* currentSettings = &rows;
   std::function<void(const ActivityResult&)> childCallback;
@@ -111,13 +118,21 @@ struct SettingsActivity {
   void nhanNhom() {}
   int ringPos() const { return 1; }
   int activeTab() const { return 0; }
+  ListNav& activeNav() { return nav; }
   int tabCount() const { return 7; }
   int adjacentTab(int direction) const { return direction; }
   const char* tabLabel(int) const { return "Settings"; }
   void drawNavigationHeader(const char*) {}
   void renderUi() {}
   void rebuildSettingsLists() { ++rebuilds; }
-  void applyUiSettingChange(uint8_t CrossPointSettings::*) {}
+  bool applyUiSettingChange(uint8_t CrossPointSettings::*) { return true; }
+  bool applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr, uint8_t value) {
+    if (valuePtr != &CrossPointSettings::uiTextSize) return true;
+    uiSizeSeenDuringApply = SETTINGS.uiTextSize;
+    if (!uiApplyOk) return false;
+    SETTINGS.uiTextSize = value;
+    return true;
+  }
   void syncQuickResumeTimeoutForSleepScreen(bool, bool) {}
   template<class T> void startActivityForResult(std::unique_ptr<T>, std::function<void(const ActivityResult&)> cb) {
     childCallback = std::move(cb);
@@ -185,6 +200,43 @@ int main() {
     activity.optionPopup.choose(2);
     ok &= check(SETTINGS.showHiddenFiles == 2, "enum callback sets selected value");
     ok &= failureShown(activity, "enum callback save failure visible");
+    ++scenarios;
+  }
+  {
+    SettingsActivity activity;
+    SETTINGS.uiTextSize = 0;
+    row(activity, SettingInfo::Enum(StrId::STR_UI_TEXT_SIZE, &CrossPointSettings::uiTextSize,
+         {StrId::STR_UI_SIZE_SMALL,StrId::STR_UI_SIZE_MEDIUM,StrId::STR_UI_SIZE_LARGE}));
+    persistOk = true;
+    activity.toggleCurrentSetting();
+    ok &= check(activity.uiSizeSeenDuringApply == 0, "direct UI apply sees the previous setting");
+    ok &= check(SETTINGS.uiTextSize == 1, "direct UI apply publishes candidate before save");
+    ++scenarios;
+  }
+  {
+    SettingsActivity activity;
+    SETTINGS.uiTextSize = 0;
+    activity.uiApplyOk = false;
+    const unsigned writesBefore = writes;
+    row(activity, SettingInfo::Enum(StrId::STR_UI_TEXT_SIZE, &CrossPointSettings::uiTextSize,
+         {StrId::STR_UI_SIZE_SMALL,StrId::STR_UI_SIZE_MEDIUM,StrId::STR_UI_SIZE_LARGE}));
+    activity.toggleCurrentSetting();
+    ok &= check(activity.uiSizeSeenDuringApply == 0, "failed UI apply sees the previous setting");
+    ok &= check(SETTINGS.uiTextSize == 0, "failed UI apply keeps the previous setting");
+    ok &= check(writes == writesBefore, "failed UI apply is not persisted");
+    ++scenarios;
+  }
+  {
+    SettingsActivity activity;
+    SETTINGS.uiTextSize = 1;
+    row(activity, SettingInfo::Enum(StrId::STR_UI_TEXT_SIZE, &CrossPointSettings::uiTextSize,
+         {StrId::STR_UI_SIZE_SMALL,StrId::STR_UI_SIZE_MEDIUM,StrId::STR_UI_SIZE_LARGE,StrId::STR_SELECT}));
+    persistOk = true;
+    activity.toggleCurrentSetting();
+    ok &= check(activity.optionPopup.active, "four-value UI enum opens picker");
+    activity.optionPopup.choose(3);
+    ok &= check(activity.uiSizeSeenDuringApply == 1, "popup UI apply sees the previous setting");
+    ok &= check(SETTINGS.uiTextSize == 3, "popup UI apply publishes candidate before save");
     ++scenarios;
   }
   for (bool strings : {false,true}) {
