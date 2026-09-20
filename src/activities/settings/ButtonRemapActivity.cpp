@@ -130,8 +130,13 @@ void ButtonRemapActivity::render(RenderLock&&) {
                      errorMessage.c_str());
   }
 
-  tenorchrome::drawTip(renderer, tr(STR_REMAP_RESET_HINT), 1);
-  tenorchrome::drawTip(renderer, tr(STR_REMAP_CANCEL_HINT));
+  bool hasTextHints = false;
+  for (const auto hardware : {CrossPointSettings::FRONT_HW_BACK, CrossPointSettings::FRONT_HW_CONFIRM,
+                              CrossPointSettings::FRONT_HW_LEFT, CrossPointSettings::FRONT_HW_RIGHT}) {
+    if (labelForHardware(hardware)[0] == '-') hasTextHints = true;
+  }
+  tenorchrome::drawTip(renderer, tr(STR_REMAP_RESET_HINT), 1, 4, hasTextHints);
+  tenorchrome::drawTip(renderer, tr(STR_REMAP_CANCEL_HINT), 0, 4, hasTextHints);
 
   // Live preview of logical labels under front buttons.
   // This mirrors the on-device front button order: Back, Confirm, Left, Right.

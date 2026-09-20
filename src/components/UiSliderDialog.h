@@ -80,6 +80,7 @@ inline void buildSliderDialogScreen(UiAppHost::UiScreen& screen, const GfxRender
   // Two-line step hint (front buttons = fine step, side buttons = coarse step),
   // preformatted by the caller so the layout doesn't depend on a separator
   // hidden in translated text.
-  if (spec.hintLine1) tenorchrome::drawTip(renderer, spec.hintLine1, spec.hintLine2 ? 1 : 0);
-  if (spec.hintLine2) tenorchrome::drawTip(renderer, spec.hintLine2);
+  // The front +/- labels are text and keep their complete hint boxes.
+  if (spec.hintLine1) tenorchrome::drawTip(renderer, spec.hintLine1, spec.hintLine2 ? 1 : 0, 4, true);
+  if (spec.hintLine2) tenorchrome::drawTip(renderer, spec.hintLine2, 0, 4, true);
 }

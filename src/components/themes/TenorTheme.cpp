@@ -44,7 +44,12 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
   // Clear all cells before painting symbols that may extend beyond their original cell.
   for (int i = 0; i < 4; i++) {
     if (labels[i] == nullptr || labels[i][0] == '\0') continue;
-    renderer.fillRect(buttonPositions[i], pageHeight - buttonY, buttonWidth, buttonHeight, grayscale);
+    const auto bounds = buttonSymbols::horizontalBounds(labels[i], net);
+    const bool compactSymbol = tenorchrome::compactFooterTips(bounds.left == 0 && bounds.right == 0);
+    // Some screens paint their tip before the footer. Clear only the symbol
+    // lane there so the lowered tip's descenders survive either paint order.
+    const int clearTop = compactSymbol ? tenorchrome::smallFooterSymbolsTopY(renderer) : pageHeight - buttonY;
+    renderer.fillRect(buttonPositions[i], clearTop, buttonWidth, pageHeight - clearTop, grayscale);
   }
 
   for (int i = 0; i < 4; i++) {

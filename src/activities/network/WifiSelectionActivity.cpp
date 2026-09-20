@@ -103,6 +103,7 @@ void WifiSelectionActivity::onPromptEvent(const fui::ActionEvent& event, void* u
 void WifiSelectionActivity::onEnter() {
   runtimeStarted = false;
   wifiConnectionHandedOff = false;
+  completionWaitingForBackRelease = false;
   // The picker starts scans/connects immediately. Keep BLE stopped through the
   // complete child lifetime; parents may hold an additional nested owner.
   if (!filetransfer::acquire()) {
@@ -744,6 +745,13 @@ void WifiSelectionActivity::checkConnectionStatus() {
 }
 
 void WifiSelectionActivity::loop() {
+  // Keep the release in this activity: the parent's chooser handles Back on
+  // release, while this picker cancels scans/connections on press.
+  if (completionWaitingForBackRelease) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Back)) finish();
+    return;
+  }
+
   // Check scan progress
   if (state == WifiSelectionState::SCANNING) {
     if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
@@ -1294,5 +1302,9 @@ void WifiSelectionActivity::onComplete(const bool connected) {
     result.data = WifiResult{true, selectedSSID, connectedIP};
   }
   setResult(std::move(result));
+  // Radio cleanup and result preparation happen immediately. Finish after the
+  // physical gesture ends so its release cannot also cancel the next screen.
+  completionWaitingForBackRelease = mappedInput.isPressed(MappedInputManager::Button::Back);
+  if (completionWaitingForBackRelease) return;
   finish();
 }

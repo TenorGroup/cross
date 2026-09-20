@@ -216,7 +216,19 @@ void tenorchrome::drawMoreBelowChevron(const GfxRenderer& renderer) {
   }
 }
 
-int tenorchrome::tipY(const GfxRenderer& renderer) {
+int tenorchrome::smallFooterSymbolsTopY(const GfxRenderer& renderer) {
+  return statusIconTopY(renderer.getScreenHeight(), false) - 1;
+}
+
+bool tenorchrome::compactFooterTips(const bool hasTextHints) {
+  return enabled() && SETTINGS.tenorButtonSymbols && !SETTINGS.globalStatusBarHidden() &&
+         !SETTINGS.globalStatusBarLarge() && !hasTextHints;
+}
+
+int tenorchrome::tipY(const GfxRenderer& renderer, const bool hasTextHints) {
+  if (compactFooterTips(hasTextHints)) {
+    return smallFooterSymbolsTopY(renderer) - 2 - renderer.getLineHeight(SMALL_FONT_ID);
+  }
   return renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight - (renderer.getLineHeight(SMALL_FONT_ID) + 5);
 }
 int tenorchrome::tipHeight(const GfxRenderer& renderer, const char* text, int maxLines) {
@@ -224,12 +236,26 @@ int tenorchrome::tipHeight(const GfxRenderer& renderer, const char* text, int ma
   const auto lines = renderer.wrappedText(font, text, renderer.getScreenWidth() - 48, maxLines);
   return lines.empty() ? 0 : renderer.getLineHeight(font) + 7 + (static_cast<int>(lines.size()) - 1) * renderer.getLineHeight(font);
 }
-void tenorchrome::drawTip(const GfxRenderer& renderer, const char* text, int linesAbove, int maxLines) {
+void tenorchrome::drawTip(const GfxRenderer& renderer, const char* text, int linesAbove, int maxLines,
+                          const bool hasTextHints) {
   // Global status-bar Off also hides contextual footer tips.
   if (SETTINGS.globalStatusBarHidden()) return;
   constexpr int font = SMALL_FONT_ID;
   const auto lines = renderer.wrappedText(font, text, renderer.getScreenWidth() - 48, maxLines);
-  int y = tipY(renderer) - (linesAbove + static_cast<int>(lines.size()) - 1) * renderer.getLineHeight(font);
+  if (lines.empty()) return;
+  const int lineHeight = renderer.getLineHeight(font);
+  int y = tipY(renderer, hasTextHints) - (linesAbove + static_cast<int>(lines.size()) - 1) * lineHeight;
+  if (compactFooterTips(hasTextHints)) {
+    // Measure all lines, including descenders and Vietnamese lower dots. Inline
+    // symbols end above the baseline; include that bound for symbol-only tips.
+    int inkBottom = 0;
+    for (size_t i = 0; i < lines.size(); ++i) {
+      const int bottom = std::max(renderer.getFontAscenderSize(font) - 1,
+                                 renderer.getTextInkBottom(font, lines[i].c_str(), EpdFontFamily::REGULAR));
+      inkBottom = std::max(inkBottom, static_cast<int>(i) * lineHeight + bottom);
+    }
+    y += static_cast<int>(lines.size()) * lineHeight - inkBottom;
+  }
   for (const auto& line : lines) {
     renderer.drawCenteredText(font, y, line.c_str());
     y += renderer.getLineHeight(font);

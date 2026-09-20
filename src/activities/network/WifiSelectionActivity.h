@@ -126,6 +126,7 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   unsigned long savePromptStartTime = 0;
   bool runtimeStarted = false;
   bool wifiConnectionHandedOff = false;
+  bool completionWaitingForBackRelease = false;
 
   // The UiAppHost app hosts the network list and the save/forget prompts
   // (themed rows and dialogs, touch routing); every other state keeps its

@@ -29,6 +29,19 @@ def main() -> int:
     stub_files = sorted((here / "stubs").rglob("*.h"))
     cpp = source_root / "src/activities/network/WifiSelectionActivity.cpp"
     header = source_root / "src/activities/network/WifiSelectionActivity.h"
+    chooser = source_root / "src/activities/UiListActivity.cpp"
+    chooser_code = chooser.read_text()
+    chooser_methods = []
+    for signature in ("bool UiListActivity::handleButtons()", "bool UiListActivity::backReleased()"):
+        start = chooser_code.index(signature)
+        opening = chooser_code.index("{", start)
+        depth = 1
+        end = opening + 1
+        while depth:
+            depth += (chooser_code[end] == "{") - (chooser_code[end] == "}")
+            end += 1
+        chooser_methods.append(chooser_code[start:end])
+    (output / "chooser-input.inc").write_text("\n\n".join(chooser_methods) + "\n")
 
     command = [
         args.cxx,
@@ -41,6 +54,7 @@ def main() -> int:
         "-fsanitize=address,undefined",
         "-fno-omit-frame-pointer",
         "-I" + str(here / "stubs"),
+        "-I" + str(output),
         "-I" + str(source_root / "src/activities/network"),
         "-I" + str(source_root / "src"),
         str(harness),
@@ -55,6 +69,7 @@ def main() -> int:
         "source_root": str(source_root),
         "WifiSelectionActivity.cpp": sha256(cpp),
         "WifiSelectionActivity.h": sha256(header),
+        "UiListActivity.cpp": sha256(chooser),
         "WifiPowerBehavior.cpp": sha256(harness),
         "run.py": sha256(here / "run.py"),
         "stubs": {str(path.relative_to(here)): sha256(path) for path in stub_files},

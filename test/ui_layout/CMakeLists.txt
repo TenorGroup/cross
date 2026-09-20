@@ -16,6 +16,7 @@ foreach(name geometry option_window stats_layout stats_navigation list_render ke
   add_test(NAME UiLayout.${name} COMMAND UiLayout_${name})
 endforeach()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME UiLayout.footer_tips COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_footer_tips.py")
 add_test(NAME UiLayout.clock_guard COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_clock_guard.py")
 add_test(NAME UiLayout.list_render_wiring COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_list_render_wiring.py")
 add_executable(UiLayout_stats_render stats_render.cpp

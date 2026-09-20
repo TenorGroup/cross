@@ -57,7 +57,7 @@ enum StrId {
 
 inline const char* tr(const StrId id) {
   if (id == STR_NETWORKS_FOUND) return "%zu networks";
-  if (id == STR_SHOW_NETWORKS) return "Chon mang";
+  if (id == STR_SHOW_NETWORKS) return "Mang";
   if (id == STR_MAC_ADDRESS) return "MAC";
   if (id == STR_NETWORK_PREFIX) return "Network: ";
   if (id == STR_IP_ADDRESS_PREFIX) return "IP: ";
@@ -123,20 +123,19 @@ class MappedInputManager {
   std::optional<Button> pressed;
   std::optional<Button> released;
   bool confirmDown = false;
+  bool backDown = false;
   SwipeDir swipe = SwipeDir::None;
   bool touch = false;
 
   bool wasPressed(const Button button) {
-    if (pressed != button) return false;
-    pressed.reset();
-    return true;
+    return pressed == button;
   }
   bool wasReleased(const Button button) {
-    if (released != button) return false;
-    released.reset();
-    return true;
+    return released == button;
   }
-  bool isPressed(const Button button) const { return button == Button::Confirm && confirmDown; }
+  bool isPressed(const Button button) const {
+    return (button == Button::Confirm && confirmDown) || (button == Button::Back && backDown);
+  }
   SwipeDir wasSwipe() {
     const auto value = swipe;
     swipe = SwipeDir::None;

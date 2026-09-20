@@ -10,6 +10,22 @@
 
 #include <iostream>
 
+// Compile the chooser's production button dispatch, keeping only its unrelated
+// list model and ActivityManager transition boundary fake.
+struct UiListActivity {
+  MappedInputManager& mappedInput;
+  freeink::ui::ListNav nav;
+  bool finished = false;
+  bool handleButtons();
+  bool backReleased();
+  bool confirmReleased() { return mappedInput.wasReleased(MappedInputManager::Button::Confirm); }
+  freeink::ui::ListNav& activeNav() { return nav; }
+  int listCount() const { return 3; }
+  void activateIndex(int) {}
+  void onBackButton() { finished = true; }
+};
+#include "chooser-input.inc"
+
 namespace {
 int failures = 0;
 
@@ -217,7 +233,66 @@ void autoFlowHintSaysChooseNetwork() {
   const Rect screen{};
   const ThemeMetrics metrics{};
   f.activity.renderConnecting(&screen, &metrics);
-  expect(GUI.lastButton2 == "Chon mang", "auto-flow Confirm hint says choose network");
+  expect(GUI.lastButton2 == "Mang", "auto-flow Confirm hint opens the network list");
+}
+
+void physicalBackStaysAtChooser(const WifiSelectionState state, const char* scenario) {
+  resetPlatform();
+  Fixture f;
+  UiListActivity chooser{f.input, {}, false};
+  f.activity.state = state;
+  f.activity.autoConnecting = state == WifiSelectionState::AUTO_CONNECTING;
+  WiFi.currentMode = WIFI_STA;
+  bool atChooser = false;
+  auto frame = [&](unsigned long now, bool press, bool down, bool release) {
+    testMillis = now;
+    f.input.pressed = press ? std::optional{MappedInputManager::Button::Back} : std::nullopt;
+    f.input.released = release ? std::optional{MappedInputManager::Button::Back} : std::nullopt;
+    f.input.backDown = down;
+    // ActivityManager runs exactly the activity current at the start of this
+    // frame, then resolves pending pop/push without running the new child.
+    if (atChooser) {
+      chooser.handleButtons();
+    } else {
+      f.activity.loop();
+      if (Activity::didFinish) {
+        f.activity.onExit();
+        atChooser = true;
+      }
+    }
+  };
+
+  std::cout << "SCENARIO " << scenario << '\n';
+  // diagnostic-r4b: press at 1069526, chooser consumed release at 1070107.
+  f.activity.scanStartTime = f.activity.connectionStartTime = f.activity.savePromptStartTime = 1068712;
+  frame(1069526, true, true, false);
+  expect(!atChooser, "Back press retains WiFi activity until physical release");
+  if (state != WifiSelectionState::SAVE_PROMPT) {
+    expect(WiFi.currentMode == WIFI_MODE_NULL, "Back press stops radio before release");
+  }
+  frame(1069539, false, true, false);
+  expect(!atChooser, "held Back cannot reach chooser");
+  frame(1070107, false, false, true);
+  expect(atChooser && !chooser.finished, "first Back release lands on chooser");
+  frame(1070117, false, false, false);
+  expect(atChooser && !chooser.finished, "chooser remains after first complete Back gesture");
+  frame(1070200, true, true, false);
+  expect(!chooser.finished, "second Back press leaves chooser until release");
+  frame(1070320, false, false, true);
+  expect(chooser.finished, "second Back release exits chooser to parent");
+  expect(f.activity.finalResult.isCancelled == (state != WifiSelectionState::SAVE_PROMPT),
+         "deferred completion preserves cancellation or successful handoff");
+}
+
+void touchBackStillCompletesImmediately() {
+  resetPlatform();
+  Fixture f;
+  f.activity.state = WifiSelectionState::AUTO_CONNECTING;
+  f.input.touch = true;
+  f.input.pressed = MappedInputManager::Button::Back;
+  f.activity.loop();
+  expect(Activity::didFinish && f.activity.finalResult.isCancelled,
+         "touch Back without physical hold completes immediately");
 }
 }  // namespace
 
@@ -234,6 +309,11 @@ int main() {
   failureBackAndConfirmHaveSeparateMeanings();
   wifiPasswordUsesMaskedCancelKeyboard();
   autoFlowHintSaysChooseNetwork();
+  physicalBackStaysAtChooser(WifiSelectionState::AUTO_CONNECTING, "auto-connecting Back trace");
+  physicalBackStaysAtChooser(WifiSelectionState::SCANNING, "scanning Back trace");
+  physicalBackStaysAtChooser(WifiSelectionState::NETWORK_LIST, "network list Back trace");
+  physicalBackStaysAtChooser(WifiSelectionState::SAVE_PROMPT, "save prompt Back handoff");
+  touchBackStillCompletesImmediately();
   std::cout << (failures ? "FAILURES " : "ALL PASS ") << failures << '\n';
   return failures == 0 ? 0 : 1;
 }
