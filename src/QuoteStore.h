@@ -15,10 +15,15 @@ struct QuoteRecord {
   std::string path, title, text;
   int spine = 0, page = 0;
   uint32_t day = 0;
+  // Minute of the local day the quote was kept, 0-1439. Records written before the clock
+  // was stamped, and records kept while the clock could not be read, carry NO_MINUTE and
+  // show the date alone.
+  uint16_t minute = 0xFFFF;
   bool hasAnchor = false;
   uint32_t anchorStart = 0, anchorEnd = 0;
 };
 namespace quotes {
+constexpr uint16_t NO_MINUTE = 0xFFFF;
 constexpr size_t MAX_BYTES = 1024;
 constexpr size_t PAGE_SIZE = 20;
 // Anchors held in RAM while a book is open: 12 bytes each, so the whole list stays

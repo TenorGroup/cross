@@ -231,15 +231,30 @@ ReadingStatsStore::ResetResult ReadingStatsStore::resetStatistics(const bool all
   return ResetResult::Complete;
 }
 
-uint32_t ReadingStatsStore::currentDay() {
+// One reading of the clock, already moved onto the local offset. Both the day code and
+// the minute of the day come from here, so the two can never name different moments.
+static bool mocDiaPhuongBayGio(ngaygio::Moc& moc) {
   uint16_t year;
   uint8_t month, day, hour, minute;
-  if (!halClock.getDateTime(year, month, day, hour, minute)) return 0;
+  if (!halClock.getDateTime(year, month, day, hour, minute)) return false;
   if (year < 2000 || year > 2099 || month < 1 || month > 12 || day < 1 ||
       day > ngaygio::soNgayTrongThang(year, month) || hour > 23 || minute > 59)
-    return 0;
+    return false;
   const int offset = (std::min<int>(SETTINGS.clockUtcOffsetQ, 104) - 48) * 15;
-  return ngaygio::maNgay(ngaygio::doiSangDiaPhuong({year, month, day, hour, minute}, offset));
+  moc = ngaygio::doiSangDiaPhuong({year, month, day, hour, minute}, offset);
+  return true;
+}
+
+uint32_t ReadingStatsStore::currentDay() {
+  ngaygio::Moc moc;
+  if (!mocDiaPhuongBayGio(moc)) return 0;
+  return ngaygio::maNgay(moc);
+}
+
+uint16_t ReadingStatsStore::currentMinute() {
+  ngaygio::Moc moc;
+  if (!mocDiaPhuongBayGio(moc)) return NO_MINUTE;
+  return static_cast<uint16_t>(moc.gio * 60 + moc.phut);
 }
 
 bool ReadingStatsStore::readBook(const std::string& path, BookReadingRecord& record) const {

@@ -255,6 +255,7 @@ void DictionaryWordSelectActivity::confirmQuotation() {
     quote.text += words[i].text;
   }
   quote.day = ReadingStatsStore::currentDay();
+  quote.minute = ReadingStatsStore::currentMinute();
   // Anchor the saved text to its place in the book, so the reader can find these same
   // words on a later render. The walk below uses the same word order and the same word
   // filter this screen selected with; a different count means the two disagreed, and a

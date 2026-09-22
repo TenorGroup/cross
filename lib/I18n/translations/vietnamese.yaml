@@ -521,6 +521,11 @@ STR_QUOTES_SOURCE_FORMAT: "Chương %d, trang %d - %02u/%02u/%04u"
 STR_QUOTES_UNREADABLE: "Không đọc được đoạn này"
 STR_QUOTES_TOO_LONG: "Chọn đoạn ngắn hơn"
 STR_QUOTES_SAVE_FAILED: "Chưa lưu được trích dẫn"
+STR_QUOTES_DETAIL_CHAPTER: "Chương %d: %s"
+STR_QUOTES_DETAIL_CHAPTER_ONLY: "Chương %d"
+STR_QUOTES_DETAIL_PAGE: "Trang %d"
+STR_QUOTES_DETAIL_WHEN: "%02u/%02u/%04u %02u:%02u"
+STR_QUOTES_DETAIL_DAY: "%02u/%02u/%04u"
 
 STR_PREVIEW_HINT: "Đọc thử:  trở về,  đọc sách"
 

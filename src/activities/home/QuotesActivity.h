@@ -33,9 +33,12 @@ class QuotesActivity final : public Activity {
   struct Entry {
     enum class Kind : uint8_t { Quote, Previous, Next, Empty };
     Kind kind = Kind::Quote;
-    // Already wrapped to the block width, at most quoteblock::MAX_LINES of them.
+    // Wrapped to the block width, at most quoteblock::MAX_LINES of them. Empty until the
+    // block is wanted on screen; `preview` holds the text it will be wrapped from.
     std::vector<std::string> lines;
+    std::string preview;
     std::string source;
+    bool wrapped = false;
   };
 
   void loadPage(const std::string& boundary, bool previous);
@@ -46,11 +49,19 @@ class QuotesActivity final : public Activity {
   quoteblock::Metrics metrics() const;
   int bandTop() const;
   int bandHeight() const;
+  // Face the quote body is measured and drawn with: the reading font while it lives in
+  // flash, a built-in serif of the nearest size while it lives on the card.
+  int builtInBodyFont() const;
+  // Wrap block `index` if it has not been wrapped yet.
+  void ensureWrapped(int index);
+  // The whole record laid out for the detail view: source block first, quote under it.
+  std::string detailBody(const QuoteRecord& quote) const;
 
   std::vector<std::string> names;
   std::array<Entry, MAX_ENTRIES> entries;
   std::array<uint8_t, MAX_ENTRIES> lineCounts{};
   int count = 0;
+  int bodyFont = 0;
   int selected = 0;
   int top = 0;
   bool hasPrevious = false, hasNext = false;

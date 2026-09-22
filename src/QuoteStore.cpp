@@ -31,6 +31,10 @@ bool load(const std::string& name, QuoteRecord& q) {
   q.spine = doc["spine"] | 0;
   q.page = doc["page"] | 0;
   q.day = doc["day"] | 0u;
+  // Optional inside the same schema, like the anchor below: a record kept before the time
+  // was stamped has no "gio" key and is shown with its date alone.
+  q.minute = doc["gio"].isNull() ? NO_MINUTE : static_cast<uint16_t>(doc["gio"] | 0u);
+  if (q.minute >= 1440) q.minute = NO_MINUTE;
   // Optional inside the same schema: records written before highlighting existed have
   // no anchor, load normally, and are simply never drawn on a page.
   q.hasAnchor = !doc["vo"].isNull() && !doc["ve"].isNull();
@@ -77,6 +81,7 @@ bool save(const QuoteRecord& q) {
   doc["spine"] = q.spine;
   doc["page"] = q.page;
   doc["day"] = q.day;
+  if (q.minute < 1440) doc["gio"] = q.minute;
   if (q.hasAnchor) {
     doc["vo"] = q.anchorStart;
     doc["ve"] = q.anchorEnd;

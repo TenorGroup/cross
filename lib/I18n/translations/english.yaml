@@ -521,6 +521,11 @@ STR_QUOTES_SOURCE_FORMAT: "Chapter %d, page %d - %02u/%02u/%04u"
 STR_QUOTES_UNREADABLE: "Cannot read this quotation"
 STR_QUOTES_TOO_LONG: "Select a shorter passage"
 STR_QUOTES_SAVE_FAILED: "Could not save quotation"
+STR_QUOTES_DETAIL_CHAPTER: "Chapter %d: %s"
+STR_QUOTES_DETAIL_CHAPTER_ONLY: "Chapter %d"
+STR_QUOTES_DETAIL_PAGE: "Page %d"
+STR_QUOTES_DETAIL_WHEN: "%02u/%02u/%04u %02u:%02u"
+STR_QUOTES_DETAIL_DAY: "%02u/%02u/%04u"
 
 STR_PREVIEW_HINT: "Preview:  returns,  reads book"
 

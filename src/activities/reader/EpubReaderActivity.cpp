@@ -530,8 +530,13 @@ void EpubReaderActivity::openDictionaryWordSelect(const bool quotation) {
   if (!selector) return;
   if (quotation) selector->selectQuotation({bookPath, getBookTitle(), "", currentSpineIndex, section->currentPage, 0});
   startActivityForResult(std::move(selector), [this, quotation](const ActivityResult&) {
-    // A quote saved on that screen has to be drawn on the page we return to.
-    if (quotation) quotes::loadAnchors(bookPath, quoteAnchors);
+    // A quote saved on that screen has to be drawn on the page we return to. The result
+    // handler runs with the render lock released, so take it here: drawQuoteHighlights
+    // walks quoteAnchors on the render task, and a rebuild frees the buffer it is walking.
+    if (quotation) {
+      RenderLock lock;
+      quotes::loadAnchors(bookPath, quoteAnchors);
+    }
     requestUpdate();
   });
 }

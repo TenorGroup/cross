@@ -50,6 +50,10 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   bool readBook(const std::string& path, BookReadingRecord& record) const;
   void record(uint32_t day, uint32_t ms, uint16_t turns, uint8_t progress);
   static uint32_t currentDay();
+  // Minute of the local day (0-1439) at the same moment currentDay() names, or NO_MINUTE
+  // when the clock cannot be read. Records written without a clock keep the date only.
+  static constexpr uint16_t NO_MINUTE = 0xFFFF;
+  static uint16_t currentMinute();
 
   static const char* getFilePath() { return "/.crosspoint/reading-stats.json"; }
   void toJson(JsonDocument& doc) const;

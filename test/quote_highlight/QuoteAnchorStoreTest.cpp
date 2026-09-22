@@ -186,6 +186,45 @@ TEST_F(QuoteAnchorStoreTest, ReSavingAPreAnchorRecordAddsTheAnchor) {
   EXPECT_EQ(onlyQuoteFileName(), name);
 }
 
+// The detail view names the moment a quote was kept, so the minute of the day travels
+// next to the day code. It is one more optional key inside schema 1.
+TEST_F(QuoteAnchorStoreTest, SavedTimeSurvivesSaveAndLoad) {
+  QuoteRecord saved = sampleQuote();
+  saved.minute = 20 * 60 + 41;
+  ASSERT_TRUE(quotes::save(saved));
+
+  const std::string name = onlyQuoteFileName();
+  ASSERT_FALSE(name.empty());
+  QuoteRecord loaded;
+  ASSERT_TRUE(quotes::load(name, loaded));
+  EXPECT_EQ(loaded.minute, 20u * 60 + 41);
+  EXPECT_EQ(loaded.day, saved.day);
+}
+
+// A record written before the time was stamped, and a record kept while the clock could
+// not be read, both come back with no minute so the detail view shows the date alone.
+TEST_F(QuoteAnchorStoreTest, RecordWithoutTimeLoadsWithNoMinute) {
+  std::filesystem::create_directories(quoteDirectory());
+  const std::string name = "00112233445566fe.json";
+  {
+    std::ofstream output(quoteDirectory() + "/" + name);
+    output << R"({"schema":1,"path":"/audit.epub","title":"Synonym Lookup Test",)"
+           << R"("text":"position.","spine":0,"page":0,"day":20260921})";
+  }
+  QuoteRecord loaded;
+  ASSERT_TRUE(quotes::load(name, loaded));
+  EXPECT_EQ(loaded.minute, quotes::NO_MINUTE);
+
+  // An unreadable clock leaves the record without the key too, so an older build reading
+  // the same card sees exactly the file it used to write.
+  std::filesystem::remove(quoteDirectory() + "/" + name);
+  QuoteRecord clockless = sampleQuote();
+  clockless.text = "kept while the clock was unreadable";
+  ASSERT_TRUE(quotes::save(clockless));
+  const std::string written = fileText(onlyQuoteFileName());
+  EXPECT_EQ(written.find("\"gio\""), std::string::npos) << written;
+}
+
 TEST_F(QuoteAnchorStoreTest, LoadAnchorsOnEmptyStoreGivesNothing) {
   std::vector<QuoteAnchor> anchors;
   anchors.push_back(QuoteAnchor{1, 2, 3});
