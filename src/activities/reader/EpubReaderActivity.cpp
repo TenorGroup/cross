@@ -42,6 +42,7 @@
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "activities/settings/BlePageTurnerActivity.h"
+#include "BlePageTurnerRuntime.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -334,6 +335,9 @@ int EpubReaderActivity::bookPercentFor(const ChapterPosition& position) const {
 
 void EpubReaderActivity::openReaderMenu() {
   pendingManualTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+  dropTurnTrace(pendingManualTurnTrace, "reader_menu");
+#endif
   if (usesToolbarMenu()) {
     // Reached from a child activity's result handler (footnotes, bookmarks,
     // go-to-percent... cancelled back to the menu), so the framebuffer holds
@@ -385,15 +389,19 @@ void EpubReaderActivity::openReaderMenu() {
 
 bool EpubReaderActivity::deferBackgroundBuildForBle() const {
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
-  // Reserve parser/CSS memory before the first paint publishes a BLE-ready reader.
-  return SETTINGS.blePageTurnerEnabled;
+  // An enabled preference is idle configuration. Defer only while the radio
+  // owns or is acquiring its memory, or after the reader start was explicitly
+  // refused for memory. This keeps an idle radio from parking the parser.
+  return SETTINGS.blePageTurnerEnabled &&
+         (freeink::ble::busy() || freeink::ble::initializing() || freeink::ble::readerStartDeferred());
 #else
   return false;
 #endif
 }
 
 bool EpubReaderActivity::backgroundBuildStartHeapGate() {
-  return !deferBackgroundBuildForBle() && ESP.getFreeHeap() >= BACKGROUND_BUILD_START_MIN_FREE_HEAP &&
+  return !backgroundBuildFailed && !deferBackgroundBuildForBle() &&
+         ESP.getFreeHeap() >= BACKGROUND_BUILD_START_MIN_FREE_HEAP &&
          ESP.getMaxAllocHeap() >= BACKGROUND_BUILD_START_MIN_MAX_ALLOC;
 }
 
@@ -404,15 +412,72 @@ bool EpubReaderActivity::buildTickHeapGate() {
   return !buildHeapPaused;
 }
 
-void EpubReaderActivity::suspendBackgroundBuild() {
-  if (!section || !section->isBuilding()) return;
-  const bool heapPressure = !buildTickHeapGate();
-  if (!heapPressure && !deferBackgroundBuildForBle()) return;
+bool EpubReaderActivity::backgroundBuildCanTick() {
+  if (!section || !section->isBuilding() || backgroundBuildFailed || deferBackgroundBuildForBle())
+    return false;
+  // The loop clears a one-pass park latch before it reaches this predicate.
+  // Keeping the predicate side-effect free also prevents skipLoopDelay() from
+  // admitting a just-parked parser in the same frame.
+  if (backgroundBuildSuspended) return false;
+  if (section->isBuildParked()) return backgroundBuildStartHeapGate();
+  return buildTickHeapGate();
+}
+
+bool EpubReaderActivity::releaseRadioForBuild() {
+#if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
+  if (radioReleasedForBuild || !SETTINGS.blePageTurnerEnabled || freeink::ble::idleStopped()) return false;
+  radioReleasedForBuild = true;
+  LOG_INF("ERS", "Section build starved of heap; stopping the radio until the page is shown free=%u largest=%u",
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  const unsigned long started = millis();
+  while (!freeink::ble::stopForIdle() && millis() - started < RADIO_RELEASE_TIMEOUT_MS) delay(20);
+  return true;
+#else
+  return false;
+#endif
+}
+
+// Heap ran out while extending the section and nothing else could be freed. Keep the
+// pages already built and the reading position; the next input shows the last built page.
+void EpubReaderActivity::showMemoryError() {
+#ifdef TENOR_UI_ACCEPTANCE
+  tracePaint("ERROR", "memory");
+  logTurnTrace("FAILED", appliedTurnTrace, "memory");
+  appliedTurnTrace = {};
+#endif
+  LOG_ERR("ERS", "Section build starved of heap with nothing left to release free=%u largest=%u",
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
   section->suspendBuild();
-  // BLE policy is reversible when the setting is disabled. Heap-pressure pauses stay latched.
-  backgroundBuildSuspended = backgroundBuildSuspended || heapPressure;
-  LOG_INF("ERS", "Background build suspended for render headroom: page=%d pages=%u free=%u largest=%u",
-          section->currentPage, static_cast<unsigned>(section->pageCount),
+  if (section->pageCount > 0 && section->currentPage >= static_cast<int>(section->pageCount)) {
+    section->currentPage = section->pageCount - 1;
+  }
+  renderer.clearScreen();
+  GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
+  automaticPageTurnActive = false;
+}
+
+void EpubReaderActivity::suspendBackgroundBuild() {
+  if (!section || !section->isBuilding() || section->isBuildParked()) return;
+  const bool heapPressure = !buildTickHeapGate();
+  if (!heapPressure && !backgroundBuildSuspended && !deferBackgroundBuildForBle() && !backgroundBuildFailed) return;
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("ERS_TRACE", "BUILD_SUSPEND t=%lu spine=%d page=%d count=%u partial=%u heap=%u largest=%u ble=%u pressure=%u",
+          millis(), currentSpineIndex, section->currentPage, static_cast<unsigned>(section->pageCount),
+          section->isPartial() ? 1u : 0u, static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()), deferBackgroundBuildForBle() ? 1u : 0u,
+          heapPressure ? 1u : 0u);
+#endif
+  // The small checkpoint releases parser/CSS memory while completed pages stay
+  // in the active staging file. Unsupported boundaries keep the partial-commit fallback.
+  const bool parked = !backgroundBuildFailed && section->parkBuild();
+  if (!parked) section->suspendBuild();
+  // BLE policy is reversible when the radio becomes idle. A parked
+  // heap-pressure build can also resume after the released memory recovers;
+  // keep a one-pass latch for every park so the same loop cannot immediately
+  // re-admit the parser. A partial-commit fallback stays latched as well.
+  backgroundBuildSuspended = parked || heapPressure;
+  LOG_INF("ERS", "Build parser released for render headroom: parked=%u page=%d pages=%u free=%u largest=%u",
+          parked ? 1u : 0u, section->currentPage, static_cast<unsigned>(section->pageCount),
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
 }
 
@@ -467,19 +532,41 @@ void EpubReaderActivity::loop() {
     return;
   }
 
+#if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
+  // The radio was stopped to finish a starved section build. Once the render task
+  // has released the lock the page is on screen, so ask the main loop to restart it.
+  if (radioReleasedForBuild) {
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired()) {
+      radioReleasedForBuild = false;
+      freeink::ble::requestRearm();
+    }
+  }
+#endif
+
   constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
-  if (section && !section->isBuilding() && renderer.hasFrameBuffer() &&
+  if (section && (!section->isBuilding() || section->isBuildParked()) && renderer.hasFrameBuffer() &&
       lastRenderCompleteMs != 0 && millis() - lastRenderCompleteMs > IDLE_PREWARM_DEBOUNCE_MS &&
       ESP.getFreeHeap() > RENDER_MIN_FREE_HEAP && ESP.getMaxAllocHeap() > BACKGROUND_BUILD_MIN_MAX_ALLOC &&
       (idlePrewarmSpine != currentSpineIndex || idlePrewarmPage != section->currentPage)) {
     RenderLock lock(RenderLock::TryTake{});
-    if (lock.acquired() && section && !section->isBuilding() &&
+    if (lock.acquired() && section && (!section->isBuilding() || section->isBuildParked()) &&
         (idlePrewarmSpine != currentSpineIndex || idlePrewarmPage != section->currentPage)) {
       idlePrewarmSpine = currentSpineIndex;
       idlePrewarmPage = section->currentPage;
       const int nextPage = section->currentPage + 1;
       if (nextPage < static_cast<int>(section->pageCount)) {
+#ifdef TENOR_UI_ACCEPTANCE
+        LOG_DBG("ERS_TRACE", "PREWARM_LOAD_BEGIN t=%lu spine=%d page=%d heap=%u largest=%u", millis(),
+                currentSpineIndex, nextPage, static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
         if (const auto p = section->loadPage(nextPage)) {
+#ifdef TENOR_UI_ACCEPTANCE
+          LOG_DBG("ERS_TRACE", "PREWARM_LOAD_END t=%lu spine=%d page=%d ok=1 offset=%u heap=%u largest=%u",
+                  millis(), currentSpineIndex, nextPage, static_cast<unsigned>(p->visibleTextOffset),
+                  static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
           if (auto* fcm = renderer.getFontCacheManager()) {
             const auto t0 = millis();
             auto scope = fcm->createPrewarmScope();
@@ -493,9 +580,24 @@ void EpubReaderActivity::loop() {
   }
 
   // Background section builds release their parser for BLE or when the tick budget fails.
-  if (section && section->isBuilding() && (deferBackgroundBuildForBle() || !buildTickHeapGate())) {
+  // A newly parked builder waits until the next loop pass before resuming. This
+  // prevents a park followed by an immediate tick in the same pass from
+  // burning the memory headroom that the park just created.
+  bool backgroundBuildParkedThisLoop = false;
+  // A parked parser resumes on the next loop pass once the radio is idle and
+  // the released heap is available. The latch stays set through the remainder
+  // of the pass that performed the park, including skipLoopDelay().
+  if (section && section->isBuildParked() && backgroundBuildSuspended && !deferBackgroundBuildForBle() &&
+      backgroundBuildStartHeapGate()) {
+    backgroundBuildSuspended = false;
+  }
+  if (section && section->isBuilding() && !section->isBuildParked() &&
+      (backgroundBuildSuspended || backgroundBuildFailed || deferBackgroundBuildForBle() || !buildTickHeapGate())) {
     RenderLock lock(RenderLock::TryTake{});
-    if (lock.acquired()) suspendBackgroundBuild();
+    if (lock.acquired()) {
+      suspendBackgroundBuild();
+      backgroundBuildParkedThisLoop = section && section->isBuildParked();
+    }
   }
 
   if (section && !section->isBuilding() && section->isPartial() && buildViewportWidth > 0 &&
@@ -516,18 +618,34 @@ void EpubReaderActivity::loop() {
     }
   }
 
-  if (section && section->isBuilding() &&
+  if (section &&
       (section->isPartial() || static_cast<int>(section->pageCount) < section->currentPage + BUILD_WINDOW_AHEAD) &&
-      buildTickHeapGate()) {
+      !backgroundBuildParkedThisLoop && backgroundBuildCanTick()) {
     RenderLock lock(RenderLock::TryTake{});
-    if (lock.acquired() && section->isBuilding() && buildTickHeapGate()) {
+    if (lock.acquired() && backgroundBuildCanTick()) {
+#ifdef TENOR_UI_ACCEPTANCE
+      traceBuildTickBegin("background");
+#endif
       if (!section->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK)) {
-        LOG_ERR("ERS", "Background section build failed");
-        section.reset();
-        requestUpdate();
+        if (section->buildStarved()) {
+          // The build is parked with its pages intact. The next foreground demand
+          // resumes it, freeing the radio first if it has to.
+          buildHeapPaused = true;
+        } else {
+          LOG_ERR("ERS", "Background section build failed");
+          backgroundBuildFailed = true;
+          nextPageNumber = section->currentPage;
+          section.reset();
+          requestUpdate();
+        }
       } else if (section->isBuildComplete() && applyDeferredReposition()) {
         requestUpdate();
       }
+#ifdef TENOR_UI_ACCEPTANCE
+      if (section) {
+        traceBuildTickEnd("background");
+      }
+#endif
       // A tick can cross the budget while laying out a paragraph. Release before the next frame.
       suspendBackgroundBuild();
     }
@@ -571,6 +689,9 @@ void EpubReaderActivity::loop() {
   // Confirm/Back release.
   if (overlay != Overlay::None) {
     pendingExternalTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+    dropTurnTrace(pendingExternalTurnTrace, "overlay");
+#endif
     if (usesToolbarMenu()) {
       // Hold the interval at zero elapsed so closing the panel starts a fresh one.
       lastPageTurnTime = millis();
@@ -591,6 +712,9 @@ void EpubReaderActivity::loop() {
         ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
       automaticPageTurnActive = false;
       pendingExternalTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+      dropTurnTrace(pendingExternalTurnTrace, "auto_cancel");
+#endif
       requestUpdate();
       return;
     }
@@ -606,6 +730,9 @@ void EpubReaderActivity::loop() {
     }
 
     if ((millis() - lastPageTurnTime) >= pageTurnDuration) {
+#ifdef TENOR_UI_ACCEPTANCE
+      currentTurnTrace = detectTurnTrace("automatic", true);
+#endif
       if (pageTurn(true)) requestUpdate();
       return;
     }
@@ -618,6 +745,9 @@ void EpubReaderActivity::loop() {
   // the file browser, say) still falls through to the regular handlers.
   if (handleEndOfBookMenu()) {
     pendingExternalTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+    dropTurnTrace(pendingExternalTurnTrace, "end_menu");
+#endif
     return;
   }
   const bool endOfBookMenuOpen = endOfBookMenuActive();
@@ -704,6 +834,9 @@ void EpubReaderActivity::loop() {
     // toolbar over it (one refresh) instead of pushing a full-screen menu.
     if (usesToolbarMenu() && section) {
       pendingManualTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+      dropTurnTrace(pendingManualTurnTrace, "toolbar");
+#endif
       openOverlay(Overlay::Toolbar);
     } else {
       openReaderMenu();
@@ -775,10 +908,17 @@ void EpubReaderActivity::loop() {
   if (pendingManualTurn != 0 && !turnGuardActive) {
     if (!section) {
       pendingManualTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+      dropTurnTrace(pendingManualTurnTrace, "no_section");
+#endif
       return;
     }
     const bool forward = pendingManualTurn > 0;
     pendingManualTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+    currentTurnTrace = pendingManualTurnTrace;
+    pendingManualTurnTrace = {};
+#endif
     if (pageTurn(forward)) requestUpdate();
     return;
   }
@@ -791,6 +931,15 @@ void EpubReaderActivity::loop() {
   if (!prevTriggered && !nextTriggered) {
     return;
   }
+
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("ERS_TRACE", "INPUT_TRIGGER t=%lu spine=%d page=%d count=%u prev=%u next=%u prev_long=%u next_long=%u touch=%u heap=%u largest=%u min=%u",
+          millis(), currentSpineIndex, section ? section->currentPage : nextPageNumber,
+          section ? static_cast<unsigned>(section->pageCount) : 0u, prevTriggered ? 1u : 0u,
+          nextTriggered ? 1u : 0u, turns.prevLongPressed ? 1u : 0u, turns.nextLongPressed ? 1u : 0u,
+          (touch.prev || touch.next) ? 1u : 0u, static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()), static_cast<unsigned>(ESP.getMinFreeHeap()));
+#endif
 
   if (SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP) {
     if (turns.prevButtonPressed) rememberChapterHoldOrigin(-1);
@@ -860,8 +1009,16 @@ void EpubReaderActivity::loop() {
     return;
   }
 
+#ifdef TENOR_UI_ACCEPTANCE
+  currentTurnTrace = detectTurnTrace((touch.prev || touch.next) ? "touch" : turns.fromTilt ? "tilt" : "button",
+                                     !prevPageTriggered);
+#endif
   if (turnGuardActive) {
     pendingManualTurn = prevTriggered ? -1 : 1;
+#ifdef TENOR_UI_ACCEPTANCE
+    replaceQueuedTurnTrace(pendingManualTurnTrace, currentTurnTrace, "manual_guard");
+    currentTurnTrace = {};
+#endif
     return;
   }
 
@@ -1261,6 +1418,12 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
 
 bool EpubReaderActivity::latTrangThat(bool isForwardTurn) {
   if (!section) return false;
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("ERS_TRACE", "PAGE_TURN_ATTEMPT t=%lu spine=%d page=%d count=%u dir=%u building=%u heap=%u largest=%u",
+          millis(), currentSpineIndex, section->currentPage, static_cast<unsigned>(section->pageCount),
+          isForwardTurn ? 1u : 0u, section->isBuilding() ? 1u : 0u,
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   // ReaderActivity owns the render lock for every page mutation, including
   // chapter changes. The lock is nonrecursive.
   deferredClearPending.store(true, std::memory_order_release);
@@ -1457,11 +1620,50 @@ void EpubReaderActivity::onReturnFromEndOfBook() {
 }
 
 bool EpubReaderActivity::skipLoopDelay() {
-  return section && section->isBuilding() && !buildHeapPaused &&
+  return backgroundBuildCanTick() &&
          (section->isPartial() || static_cast<int>(section->pageCount) < section->currentPage + BUILD_WINDOW_AHEAD);
 }
 
+#ifdef TENOR_UI_ACCEPTANCE
+void EpubReaderActivity::traceBuildTickBegin(const char* source) const {
+  LOG_DBG("ERS_TRACE", "BUILD_TICK_BEGIN t=%lu source=%s spine=%d page=%d count=%u heap=%u largest=%u",
+          millis(), source, currentSpineIndex, section->currentPage, static_cast<unsigned>(section->pageCount),
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+}
+
+void EpubReaderActivity::traceBuildTickEnd(const char* source) const {
+  LOG_DBG("ERS_TRACE", "BUILD_TICK_END t=%lu source=%s spine=%d page=%d count=%u building=%u complete=%u heap=%u largest=%u",
+          millis(), source, currentSpineIndex, section->currentPage, static_cast<unsigned>(section->pageCount),
+          section->isBuilding() ? 1u : 0u, section->isBuildComplete() ? 1u : 0u,
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+}
+
+void EpubReaderActivity::tracePaint(const char* phase, const char* kind) const {
+  const unsigned long now = millis();
+  LOG_INF("ERS_TRACE", "PAINT_%s rid=%u id=%u t=%lu elapsed_ms=%lu input_ms=%lu spine=%d page=%d kind=%s heap=%u largest=%u min=%u",
+          phase, static_cast<unsigned>(paintTraceSequence), static_cast<unsigned>(appliedTurnTrace.id), now,
+          now - paintTraceStarted, appliedTurnTrace.id == 0 ? 0UL : now - appliedTurnTrace.detectedMs,
+          currentSpineIndex, section ? section->currentPage : nextPageNumber, kind,
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
+          static_cast<unsigned>(ESP.getMinFreeHeap()));
+}
+
+void EpubReaderActivity::traceReadablePaint(const char* kind) {
+  if (readablePaintTraced) return;
+  readablePaintTraced = true;
+  // This is a software upper bound after an existing completion boundary.
+  // Physical pixel timing still requires a synchronized panel recording.
+  tracePaint("READABLE_BOUND", kind);
+}
+#endif
+
 void EpubReaderActivity::renderBook() {
+#ifdef TENOR_UI_ACCEPTANCE
+  ++paintTraceSequence;
+  paintTraceStarted = millis();
+  readablePaintTraced = false;
+  tracePaint("BEGIN", deferBackgroundBuildForBle() ? "ble_deferred" : "book");
+#endif
 #ifdef TENOR_UI_ACCEPTANCE
 #ifndef SIMULATOR
   LOG_INF("ERS", "Render CPU=%uMHz heap=%u", getCpuFrequencyMhz(), ESP.getFreeHeap());
@@ -1480,6 +1682,11 @@ void EpubReaderActivity::renderBook() {
   };
 
   const auto showBuildError = [this]() {
+#ifdef TENOR_UI_ACCEPTANCE
+    tracePaint("ERROR", "index");
+    logTurnTrace("FAILED", appliedTurnTrace, "index");
+    appliedTurnTrace = {};
+#endif
     renderer.clearScreen();
     GUI.drawPopup(renderer, tr(STR_INDEX_FAILED));
     automaticPageTurnActive = false;
@@ -1515,7 +1722,7 @@ void EpubReaderActivity::renderBook() {
   if (!section) {
     const auto filepath = epub->getSpineItem(currentSpineIndex).href;
     LOG_DBG("ERS", "Loading file: %s, index: %d", filepath.c_str(), currentSpineIndex);
-    section = std::unique_ptr<Section>(new Section(epub, currentSpineIndex, renderer));
+    section = std::unique_ptr<Section>(new Section(epub, currentSpineIndex, renderer, preview));
     partialRebuildStartFailed = false;
     backgroundBuildSuspended = false;
     buildHeapPaused = false;
@@ -1584,9 +1791,22 @@ void EpubReaderActivity::renderBook() {
           const unsigned long buildStartMs = millis();
           bool started;
           {
+#ifdef TENOR_UI_ACCEPTANCE
+            LOG_DBG("ERS_TRACE", "BUILD_START_BEGIN t=%lu source=foreground spine=%d target=%d count=%u spine_bytes=%u heap=%u largest=%u min=%u",
+                    millis(), currentSpineIndex, target, static_cast<unsigned>(section->pageCount),
+                    static_cast<unsigned>(spineBytes), static_cast<unsigned>(ESP.getFreeHeap()),
+                    static_cast<unsigned>(ESP.getMaxAllocHeap()), static_cast<unsigned>(ESP.getMinFreeHeap()));
+#endif
             GfxRenderer::FrameBufferLoan loan(renderer);
             started = section->startBuild(renderSpec, [this] { showBuildPopup(renderer, pagesUntilFullRefresh); });
           }
+#ifdef TENOR_UI_ACCEPTANCE
+          LOG_DBG("ERS_TRACE", "BUILD_START_END t=%lu source=foreground ok=%u count=%u building=%u spine_bytes=%u heap=%u largest=%u min=%u",
+                  millis(), started ? 1u : 0u, static_cast<unsigned>(section->pageCount),
+                  section->isBuilding() ? 1u : 0u, static_cast<unsigned>(spineBytes),
+                  static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
+                  static_cast<unsigned>(ESP.getMinFreeHeap()));
+#endif
           if (!started) {
             LOG_ERR("ERS", "Failed to start section build");
             section.reset();
@@ -1594,20 +1814,34 @@ void EpubReaderActivity::renderBook() {
             showBuildError();
             return;
           }
+          bool completedBuildTick = false;
           while (!section->isBuildComplete() &&
                  (anchorJump               ? !section->findAnchor(pendingAnchor)
                   : offsetJump.has_value() ? !section->buildReachedVisibleTextOffset(*offsetJump)
                                            : static_cast<int>(section->pageCount) <= target)) {
-            if (buildPopupPending && millis() - buildStartMs >= BUILD_POPUP_DEADLINE_MS) {
+            if (completedBuildTick && buildPopupPending && millis() - buildStartMs >= BUILD_POPUP_DEADLINE_MS) {
               showBuildPopup(renderer, pagesUntilFullRefresh);
             }
+#ifdef TENOR_UI_ACCEPTANCE
+            traceBuildTickBegin("foreground");
+#endif
             if (!section->buildSomeMore(BUILD_PAGES_PER_CHUNK)) {
+              if (section->buildStarved()) {
+                if (releaseRadioForBuild()) continue;
+                buildPopupPending = false;
+                showMemoryError();
+                return;
+              }
               LOG_ERR("ERS", "Failed during incremental section build");
               section.reset();
               buildPopupPending = false;
               showBuildError();
               return;
             }
+            completedBuildTick = true;
+#ifdef TENOR_UI_ACCEPTANCE
+            traceBuildTickEnd("foreground");
+#endif
           }
           buildPopupPending = false;
         }
@@ -1653,33 +1887,64 @@ void EpubReaderActivity::renderBook() {
   }
 
   if (section->isPartial() && section->currentPage >= static_cast<int>(section->pageCount)) {
-    GUI.drawPopup(renderer, tr(STR_INDEXING));
-    pagesUntilFullRefresh = 1;
-  }
-  while (section->isPartial() && section->currentPage >= static_cast<int>(section->pageCount)) {
-    if (!section->isBuilding() && !section->startBuild(renderSpec)) {
-      LOG_ERR("ERS", "Failed to start partial extension build");
-      section.reset();
-      showBuildError();
-      return;
-    }
-    while (!section->isBuildComplete() && section->currentPage >= static_cast<int>(section->pageCount)) {
-      if (!section->buildSomeMore(BUILD_PAGES_PER_CHUNK)) {
-        LOG_ERR("ERS", "Failed during incremental section build");
+    const unsigned long buildStartMs = millis();
+    bool completedBuildTick = false;
+    buildPopupPending = true;
+    while (section->isPartial() && section->currentPage >= static_cast<int>(section->pageCount)) {
+      if (!section->isBuilding() && !section->startBuild(renderSpec)) {
+        LOG_ERR("ERS", "Failed to start partial extension build");
         section.reset();
+        buildPopupPending = false;
         showBuildError();
         return;
       }
+      while (!section->isBuildComplete() && section->currentPage >= static_cast<int>(section->pageCount)) {
+        if (completedBuildTick && buildPopupPending && millis() - buildStartMs >= BUILD_POPUP_DEADLINE_MS) {
+          showBuildPopup(renderer, pagesUntilFullRefresh);
+        }
+#ifdef TENOR_UI_ACCEPTANCE
+        traceBuildTickBegin("watermark");
+#endif
+        if (!section->buildSomeMore(BUILD_PAGES_PER_CHUNK)) {
+          if (section->buildStarved()) {
+            if (releaseRadioForBuild()) continue;
+            buildPopupPending = false;
+            showMemoryError();
+            return;
+          }
+          LOG_ERR("ERS", "Failed during incremental section build");
+          section.reset();
+          buildPopupPending = false;
+          showBuildError();
+          return;
+        }
+        completedBuildTick = true;
+#ifdef TENOR_UI_ACCEPTANCE
+        traceBuildTickEnd("watermark");
+#endif
+      }
     }
+    buildPopupPending = false;
   }
   if (section->isBuilding()) {
     while (!section->isBuildComplete() && section->currentPage >= static_cast<int>(section->pageCount)) {
+#ifdef TENOR_UI_ACCEPTANCE
+      traceBuildTickBegin("window");
+#endif
       if (!section->buildSomeMore(BUILD_PAGES_PER_CHUNK)) {
+        if (section->buildStarved()) {
+          if (releaseRadioForBuild()) continue;
+          showMemoryError();
+          return;
+        }
         LOG_ERR("ERS", "Failed during incremental section build");
         section.reset();
         showBuildError();
         return;
       }
+#ifdef TENOR_UI_ACCEPTANCE
+      traceBuildTickEnd("window");
+#endif
     }
   }
 
@@ -1697,6 +1962,11 @@ void EpubReaderActivity::renderBook() {
   renderer.clearScreen();
 
   if (section->pageCount == 0) {
+#ifdef TENOR_UI_ACCEPTANCE
+    tracePaint("ERROR", "empty_chapter");
+    logTurnTrace("FAILED", appliedTurnTrace, "empty_chapter");
+    appliedTurnTrace = {};
+#endif
     LOG_DBG("ERS", "No pages to render");
     renderer.drawCenteredText(UI_12_FONT_ID, 300, tr(STR_EMPTY_CHAPTER), true, EpdFontFamily::BOLD);
     renderStatusBar();
@@ -1707,6 +1977,11 @@ void EpubReaderActivity::renderBook() {
   }
 
   if (section->currentPage < 0 || section->currentPage >= section->pageCount) {
+#ifdef TENOR_UI_ACCEPTANCE
+    tracePaint("ERROR", "bounds");
+    logTurnTrace("FAILED", appliedTurnTrace, "bounds");
+    appliedTurnTrace = {};
+#endif
     LOG_DBG("ERS", "Page out of bounds: %d (max %d)", section->currentPage, section->pageCount);
     renderer.drawCenteredText(UI_12_FONT_ID, 300, tr(STR_OUT_OF_BOUNDS), true, EpdFontFamily::BOLD);
     renderStatusBar();
@@ -1719,15 +1994,23 @@ void EpubReaderActivity::renderBook() {
   updateBookmarkFlag();
 
   {
+#ifdef TENOR_UI_ACCEPTANCE
+    tracePaint("LOAD_BEGIN", section->isBuilding() ? "building" : "cache");
+#endif
     auto p = section->loadPage(section->currentPage);
+#ifdef TENOR_UI_ACCEPTANCE
+    tracePaint("LOAD_END", p ? "ok" : "failed");
+#endif
     if (!p) {
-      LOG_ERR("ERS", "Failed to load page from SD - clearing section cache");
+      LOG_ERR("ERS", "Failed to load page from SD (attempt %u)", static_cast<unsigned>(pageLoadRetryCount + 1));
       automaticPageTurnActive = false;
       const bool giveUp = ++pageLoadRetryCount > MAX_PAGE_LOAD_RETRIES;
-      section->abandonBuild();
-      section->clearCache();
-      section.reset();
       if (giveUp) {
+#ifdef TENOR_UI_ACCEPTANCE
+        tracePaint("ERROR", "page_load");
+        logTurnTrace("FAILED", appliedTurnTrace, "page_load");
+        appliedTurnTrace = {};
+#endif
         LOG_ERR("ERS", "Page load retry limit reached, aborting");
         pageLoadRetryCount = 0;
         renderer.clearScreen();
@@ -1735,6 +2018,16 @@ void EpubReaderActivity::renderBook() {
         renderer.displayBuffer();
         showPendingSyncSaveError();
         return;
+      }
+      // A failed SD read or page allocation can recover on the next render.
+      // Retry the existing section first, then allow one cache rebuild per incident.
+      // Carry the requested page across reset; nextPageNumber may still be the
+      // position from when this chapter was opened.
+      if (pageLoadRetryCount == 2) {
+        nextPageNumber = section->currentPage;
+        section->abandonBuild();
+        section->clearCache();
+        section.reset();
       }
       requestUpdate();
       showPendingSyncSaveError();
@@ -1755,6 +2048,11 @@ void EpubReaderActivity::renderBook() {
 
     const auto start = millis();
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+#ifdef TENOR_UI_ACCEPTANCE
+    tracePaint("COMPLETE", readablePaintTraced ? "page" : "no_readable_bound");
+    logTurnTrace("RENDERED", appliedTurnTrace, "page");
+    appliedTurnTrace = {};
+#endif
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     lastRenderCompleteMs = millis();
   }
@@ -1891,6 +2189,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   renderStatusBar();
   scope.endScanAndPrewarm();
   const auto tPrewarm = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+  tracePaint("PREWARM_END", "page_and_status");
+#endif
 
   const bool pageHasImages = page->hasImages();
   const bool pageHasImagesNeedingDecode = pageHasImages && page->hasImagesNeedingDecode();
@@ -1925,20 +2226,32 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     page->renderWithImagePlaceholders(renderer, fontId, orientedMarginLeft, orientedMarginTop);
     renderStatusBar();
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+#ifdef TENOR_UI_ACCEPTANCE
+    tracePaint("PLACEHOLDER_DONE", "image_decode");
+#endif
     renderer.clearScreen();
   }
 
   page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
   renderStatusBar();
   const auto tBwRender = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+  tracePaint("BW_RENDER_END", pageHasImages ? "image" : "text");
+#endif
 
   if (absoluteImageGrayscale) {
     const auto baseMode = cleanImageBasePending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH;
     if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute, baseMode)) {
       LOG_ERR("ERS", "Could not start absolute image page; displaying B/W");
       ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
+#ifdef TENOR_UI_ACCEPTANCE
+      traceReadablePaint("absolute_bw_fallback");
+#endif
       return;
     }
+#ifdef TENOR_UI_ACCEPTANCE
+    traceReadablePaint("absolute_bw_base");
+#endif
     LOG_DBG("ERS", "UC8279 image page: absolute quality waveform");
     pagesUntilFullRefresh = 1;
   } else if (pageHasImages) {
@@ -1946,26 +2259,44 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     // the panel receptive to the gray waveform; pending cleanup still honors
     // the scheduled/manual HALF refresh.
     renderer.displayBuffer(cleanImageBasePending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
+#ifdef TENOR_UI_ACCEPTANCE
+    traceReadablePaint("image_bw_base");
+#endif
     pagesUntilFullRefresh = 1;
   } else if (combinedGrayscaleBase) {
     // Stash the base without activating; displayGrayBuffer() below commits
     // base + grays as one waveform.
     ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh);
+#ifdef TENOR_UI_ACCEPTANCE
+    tracePaint("BASE_STAGED", "combined");
+#endif
   } else if (needsAnyGrayscale) {
     if (pagesUntilFullRefresh <= 1) {
       // A cleanup refresh settles X3 correctly only when its grayscale
       // preconditioning waveform runs before the gray planes are written.
       renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+#ifdef TENOR_UI_ACCEPTANCE
+      traceReadablePaint("half_refresh");
+#endif
       renderer.preconditionGrayscale();
       pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
     } else if (overlapRefresh) {
       ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, /*async=*/true);
+#ifdef TENOR_UI_ACCEPTANCE
+      tracePaint("BASE_SUBMITTED", "async");
+#endif
     } else {
       renderer.displayGrayscaleBase(HalDisplay::FAST_REFRESH);
+#ifdef TENOR_UI_ACCEPTANCE
+      traceReadablePaint("gray_bw_base");
+#endif
       pagesUntilFullRefresh--;
     }
   } else {
     ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
+#ifdef TENOR_UI_ACCEPTANCE
+    traceReadablePaint("bw");
+#endif
   }
   const auto tDisplay = millis();
 
@@ -1999,9 +2330,15 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       renderPlaneToBuffer(true, lsbPlaneBuf.get());
       if (msbPlaneBuf) renderPlaneToBuffer(false, msbPlaneBuf.get());
       const auto tGrayRender = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+      tracePaint("GRAY_RENDER_END", msbPlaneBuf ? "two_planes" : "one_plane");
+#endif
 
       renderer.waitRefreshComplete();
       const auto tWait = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+      traceReadablePaint("async_wait");
+#endif
 
       renderer.writeGrayscalePlaneStrip(true, lsbPlaneBuf.get(), 0, gh);
       if (msbPlaneBuf) {
@@ -2015,9 +2352,16 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       renderer.setRenderMode(GfxRenderer::BW);
       renderer.displayGrayBuffer();
       const auto tGrayDisplay = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+      tracePaint("GRAY_DONE", "buffered");
+      traceReadablePaint("buffered_gray");
+#endif
 
       renderer.cleanupGrayscaleWithFrameBuffer();
       const auto tEnd = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+      tracePaint("CLEANUP_END", "buffered");
+#endif
 
       LOG_DBG("ERS",
               "Page render (tiled async): prewarm=%lums bw_render=%lums display=%lums gray_render=%lums "
@@ -2027,8 +2371,14 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     } else {
       auto scratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(gwBytes) * STRIP_ROWS);
       renderer.waitRefreshComplete();
+#ifdef TENOR_UI_ACCEPTANCE
+      if (!combinedGrayscaleBase && !absoluteImageGrayscale) traceReadablePaint("strip_wait");
+#endif
       if (!scratch) {
         LOG_ERR("ERS", "OOM: grayscale strip scratch (%d bytes); skipping AA this page", gwBytes * STRIP_ROWS);
+#ifdef TENOR_UI_ACCEPTANCE
+        tracePaint("GRAY_SKIPPED", "scratch_oom");
+#endif
         if (overlapRefresh || combinedGrayscaleBase) {
           // The BW refresh ran the shadow-free async path, so controller RAM's
           // differential baseline was never rebuilt. Even with AA skipped it must
@@ -2037,6 +2387,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
           // base activation is still deferred; this cleanup commits it so the
           // page reaches the panel even without its grays.
           renderer.cleanupGrayscaleWithFrameBuffer();
+#ifdef TENOR_UI_ACCEPTANCE
+          tracePaint("CLEANUP_END", "scratch_oom");
+          traceReadablePaint("cleanup_bw");
+#endif
         }
       } else {
         renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
@@ -2064,9 +2418,16 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         renderer.setRenderMode(GfxRenderer::BW);
         renderer.displayGrayBuffer();
         const auto tGrayDisplay = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+        tracePaint("GRAY_DONE", "strip");
+        traceReadablePaint("strip_gray");
+#endif
 
         renderer.cleanupGrayscaleWithFrameBuffer();
         const auto tCleanup = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+        tracePaint("CLEANUP_END", "strip");
+#endif
 
         const auto tEnd = millis();
         LOG_DBG("ERS",
@@ -2080,6 +2441,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     if (needsAnyGrayscale) {
       if (!renderer.storeBwBuffer()) {
         LOG_ERR("ERS", "Failed to store BW buffer for grayscale render; skipping grayscale this page");
+#ifdef TENOR_UI_ACCEPTANCE
+        tracePaint("GRAY_SKIPPED", "bw_store_oom");
+#endif
         if (absoluteImageGrayscale) renderer.setRenderMode(GfxRenderer::BW);
         return;
       }
@@ -2099,9 +2463,16 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
       renderer.displayGrayBuffer();
       const auto tGrayDisplay = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+      tracePaint("GRAY_DONE", "full_planes");
+      traceReadablePaint("full_gray");
+#endif
       renderer.setRenderMode(GfxRenderer::BW);
       renderer.restoreBwBuffer();
       const auto tBwRestore = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+      tracePaint("CLEANUP_END", "bw_restore");
+#endif
 
       const auto tEnd = millis();
       LOG_DBG("ERS",
@@ -3039,7 +3410,19 @@ CrossPointPosition EpubReaderActivity::getCurrentPosition() const {
   return localPos;
 }
 
+void EpubReaderActivity::onPause() {
+  pendingManualTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+  dropTurnTrace(pendingManualTurnTrace, "pause");
+#endif
+  ReaderActivity::onPause();
+}
+
 void EpubReaderActivity::onExit() {
+  pendingManualTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+  dropTurnTrace(pendingManualTurnTrace, "exit");
+#endif
   if (!preview && !recentsEntryRemoved && section && pageReady.load(std::memory_order_acquire)) {
     // One existing page cache read on exit, no EPUB scan and no page-turn overhead.
     auto page = section->loadPage(section->currentPage);

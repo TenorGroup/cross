@@ -9,9 +9,10 @@ import subprocess
 import tempfile
 import time
 import unittest
+from PIL import Image, ImageChops
 
 REPO = Path(__file__).resolve().parents[2]
-PROGRAM = REPO / '.pio/build/simulator_x3_uc8279/program'
+PROGRAM = Path(os.environ.get('CROSSPOINT_SIM_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 
 class QuotesPreviewTest(unittest.TestCase):
     def setUp(self):
@@ -21,14 +22,17 @@ class QuotesPreviewTest(unittest.TestCase):
         self.store = self.sd / '.crosspoint'
         self.store.mkdir()
         shutil.copy(REPO / 'test/epubs/test_dictionary_synonyms.epub', self.sd / 'audit.epub')
-        (self.store / 'settings.json').write_text(json.dumps({'language':'VI', 'sleepTimeout':10, 'readerFavorites':[18]}))
+        language = os.environ.get('CROSSPOINT_TEST_LANGUAGE', 'VI')
+        (self.store / 'settings.json').write_text(json.dumps({'language':language, 'sleepTimeout':10, 'readerFavorites':[18]}))
         # Nhip 17/09/2026: thieu recent.json thi the GAN DAY rong, con tro kep ve dai the va mot nhip
         # CONFIRM khong mo duoc sach. Them dung mot muc de mot nhip CONFIRM mo cuon fixture.
         (self.store / 'recent.json').write_text(json.dumps({'books':[{'path':'/audit.epub','title':'Synonym Lookup Test'}]}))
 
-    def launch(self, events):
+    def launch(self, events, shots=()):
         env = {k:v for k,v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
         env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(self.sd), CROSSPOINT_SIM_INPUT_SCRIPT=events)
+        if shots:
+            env['CROSSPOINT_SIM_SCREENSHOTS'] = ';'.join(f'{ms}:{self.sd / (name + ".bmp")}' for ms, name in shots)
         log = tempfile.TemporaryFile(mode='w+')
         self.addCleanup(log.close)
         process = subprocess.Popen([str(PROGRAM)], cwd=REPO, env=env, stdout=log, stderr=log)
@@ -41,6 +45,46 @@ class QuotesPreviewTest(unittest.TestCase):
         text = log.read()
         self.assertEqual(process.returncode, 0, text)
         return text
+
+    def test_saved_feedback_dismisses_once_to_same_reader_page(self):
+        events = ('1000:CONFIRM;3200:CONFIRM;4400:DOWN;5000:DOWN;5600:DOWN;'
+                  '6600:RIGHT;7200:RIGHT;8200:CONFIRM;9200:CONFIRM;'
+                  '9900:RIGHT;11000:CONFIRM;12500:CONFIRM;14000:QUIT')
+        log = self.finish(*self.launch(events, ((2500, 'before'), (10500, 'selection'),
+                                                (11700, 'saved'), (13200, 'dismissed'))))
+        self.assertIn('Entering activity: QuoteSelect', log)
+        exits = [line for line in log.splitlines() if 'Exiting activity: QuoteSelect' in line]
+        self.assertEqual(len(exits), 1, log)
+        self.assertGreaterEqual(int(exits[0].split(']')[0][1:]), 12500, log)
+        files = list((self.store / 'quotes').glob('*.json'))
+        self.assertEqual(len(files), 1)
+        saved = json.loads(files[0].read_text())
+        self.assertEqual(saved['text'], 'position. Clear')
+        self.assertEqual((saved['path'], saved['spine'], saved['page']), ('/audit.epub', 0, 0))
+        with Image.open(self.sd / 'before.bmp') as before, Image.open(self.sd / 'dismissed.bmp') as dismissed:
+            content = (0, 0, before.width, before.height - 45)
+            self.assertIsNone(ImageChops.difference(before.crop(content).convert('RGB'),
+                                                    dismissed.crop(content).convert('RGB')).getbbox())
+        with Image.open(self.sd / 'selection.bmp') as selection, Image.open(self.sd / 'saved.bmp') as feedback:
+            self.assertIsNotNone(ImageChops.difference(selection.convert('RGB'), feedback.convert('RGB')).getbbox())
+        if evidence := os.environ.get('CROSSPOINT_QUOTE_EVIDENCE_DIR'):
+            target = Path(evidence)
+            target.mkdir(parents=True, exist_ok=True)
+            language = os.environ.get('CROSSPOINT_TEST_LANGUAGE', 'VI')
+            for name in ('before', 'selection', 'saved', 'dismissed'):
+                shutil.copy2(self.sd / f'{name}.bmp', target / f'{language.lower()}-{name}.bmp')
+
+    def test_failed_save_stays_in_selection_without_quote(self):
+        (self.store / 'quotes').write_text('blocks quote directory creation')
+        events = ('1000:CONFIRM;3200:CONFIRM;4400:DOWN;5000:DOWN;5600:DOWN;'
+                  '6600:RIGHT;7200:RIGHT;8200:CONFIRM;9200:CONFIRM;'
+                  '9900:RIGHT;11000:CONFIRM;13000:QUIT')
+        log = self.finish(*self.launch(events, ((10500, 'selection'), (12100, 'failed'))))
+        self.assertIn('Entering activity: QuoteSelect', log)
+        self.assertNotIn('Exiting activity: QuoteSelect', log)
+        self.assertEqual((self.store / 'quotes').read_text(), 'blocks quote directory creation')
+        with Image.open(self.sd / 'selection.bmp') as selection, Image.open(self.sd / 'failed.bmp') as failed:
+            self.assertIsNotNone(ImageChops.difference(selection.convert('RGB'), failed.convert('RGB')).getbbox(), log)
 
     def test_selected_text_survives_restart_and_duplicate_save(self):
         # Nhip 17/09/2026: setUp da them mot muc recent.json nen the GAN DAY co dung mot hang va

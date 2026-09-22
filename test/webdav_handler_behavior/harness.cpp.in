@@ -58,6 +58,7 @@ struct HalFile {
   bool writable = false;
   operator bool() const { return store != nullptr; }
   bool isDirectory() const;
+  HalFile openNextFile() const { return {}; }
   size_t size() const;
   size_t position() const { return offset; }
   int available() const;
@@ -90,6 +91,7 @@ struct FakeStorage {
     operations.push_back(std::string("remove:") + path);
     return !fault.remove.count(path) && files.erase(path);
   }
+  bool rmdir(const char* path) { return remove(path); }
 } Storage;
 bool HalFile::isDirectory() const { return store->files.at(path).directory; }
 size_t HalFile::size() const { return store->files.at(path).data.size(); }
@@ -182,6 +184,7 @@ struct WebDAVHandler {
   void handleMove(WebServer&);
   void handleCopy(WebServer&);
   void handleGet(WebServer&);
+  void handleDelete(WebServer&);
   static String getMimeType(const String&) { return "application/octet-stream"; }
   String getRequestPath(WebServer& s) const { return s.src; }
   String getDestinationPath(WebServer& s) const { return s.dst; }
@@ -259,6 +262,40 @@ void upload(WebDAVHandler& h, WebServer& s) {
   h.handlePut(s);
 }
 int main() {
+  for (const char* ext : {".epub", ".txt", ".xtc"}) {
+    const std::string path = std::string("/delete") + ext;
+    begin("DELETE success " + path);
+    Storage.files[path] = {"book bytes"};
+    openBook(path);
+    WebDAVHandler h;
+    WebServer s{path, ""};
+    h.handleDelete(s);
+    expect(s.code == 204 && !Storage.files.count(path), "file deletion committed");
+    expect(!cache.count(path), "cache removed after file commit");
+    auto removed = std::find(Storage.operations.begin(), Storage.operations.end(), "remove:" + path);
+    auto cleared = std::find(Storage.operations.begin(), Storage.operations.end(), "invalidate:" + path);
+    expect(removed < cleared && cleared != Storage.operations.end(), "cache cleanup follows file deletion");
+
+    begin("DELETE file removal fails " + path);
+    Storage.files[path] = {"book bytes"};
+    openBook(path);
+    Storage.fault.remove.insert(path);
+    s = {path, ""};
+    h.handleDelete(s);
+    expect(s.code == 500 && Storage.files.count(path), "failed file deletion reported");
+    expect(invalidated.empty() && cache.count(path), "valid cache retained when deletion fails");
+
+    begin("DELETE cache cleanup fails " + path);
+    Storage.files[path] = {"book bytes"};
+    openBook(path);
+    Storage.fault.cacheDelete.insert(path);
+    s = {path, ""};
+    h.handleDelete(s);
+    expect(s.code == 500 && !Storage.files.count(path), "committed deletion with cleanup failure reported");
+    expect(s.body.find("committed") != std::string::npos && s.body.find("cache cleanup failed") != std::string::npos,
+           "error distinguishes committed deletion from cleanup failure");
+    expect(cache.count(path), "failed cleanup leaves cache for diagnosis");
+  }
   for (const char* ext : {".epub", ".txt", ".xtc"}) {
     const std::string src = std::string("/a") + ext, dst = std::string("/b") + ext;
     for (bool move : {false, true}) {

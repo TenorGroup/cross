@@ -44,7 +44,7 @@ class DictionaryWordSelectActivity final : public Activity {
     EpdFontFamily::Style style;
   };
 
-  enum class Popup : uint8_t { None, Busy, NotFound, Error };
+  enum class Popup : uint8_t { None, Busy, NotFound, Error, Saved };
 
   bool quoteMode = false;
   QuoteRecord quote;
@@ -57,6 +57,7 @@ class DictionaryWordSelectActivity final : public Activity {
   void performLookup();
   bool drawHighlightWithSnapshot();
   void drawHints() const;
+  void drawSavedPopup() const;
 
   std::unique_ptr<Page> page;
   const int marginLeft;

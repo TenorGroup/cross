@@ -156,6 +156,32 @@ class ChapterHtmlSlimParser {
   XML_Parser xmlParser_ = nullptr;
   HalFile parseFile_;
   uint32_t parseStartTime_ = 0;
+  // A checkpoint is taken only after a closed text block, at an exact XML
+  // event boundary. The read cursor may already be a buffer ahead of it.
+  static constexpr size_t MAX_CHECKPOINT_ANCESTORS = 32;
+  static constexpr size_t MAX_CHECKPOINT_PREFIX = 2048;
+  uint16_t checkpointPrologBytes_ = 0;
+  std::string checkpointPrefix_;
+  std::array<uint16_t, MAX_CHECKPOINT_ANCESTORS> checkpointPrefixEnds_{};
+  std::array<bool, MAX_CHECKPOINT_ANCESTORS> checkpointAncestorSupported_{};
+  size_t checkpointDepth_ = 0;
+  size_t checkpointUnsupported_ = 0;
+  bool checkpointAllowed_ = true;
+  bool checkpointReady_ = false;
+  bool replayingCheckpoint_ = false;
+  bool xmlSuspended_ = false;
+  bool finalBuffer_ = false;
+  uint32_t checkpointOffset_ = 0;
+  int64_t sourceOffsetBase_ = 0;
+  int stepStartPages_ = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+  uint32_t parseStepCount_ = 0;
+  uint32_t parseReadCalls_ = 0;
+  uint32_t parseReadBytes_ = 0;
+  uint32_t parseShortReads_ = 0;
+  uint32_t parseReadErrors_ = 0;
+  bool parseFinishing_ = false;
+#endif
 
   void updateEffectiveInlineStyle();
   void startNewTextBlock(const BlockStyle& blockStyle);
@@ -177,11 +203,14 @@ class ChapterHtmlSlimParser {
   void pushTableTextStyleEntry(const CssStyle& cssStyle);
   void pushDecorationStyleEntry(CssTextDecoration defaultDecoration, const CssStyle& cssStyle);
   void emitHorizontalRule(const BlockStyle& blockStyle);
+  void trackCheckpointStart(const XML_Char* name, const XML_Char** atts);
+  void trackCheckpointEnd(const XML_Char* name);
   // XML callbacks
   static void XMLCALL startElement(void* userData, const XML_Char* name, const XML_Char** atts);
   static void XMLCALL characterData(void* userData, const XML_Char* s, int len);
   static void XMLCALL defaultHandlerExpand(void* userData, const XML_Char* s, int len);
   static void XMLCALL endElement(void* userData, const XML_Char* name);
+  static void XMLCALL processEndElement(void* userData, const XML_Char* name);
 
  public:
   explicit ChapterHtmlSlimParser(
@@ -234,15 +263,21 @@ class ChapterHtmlSlimParser {
   bool finishParse();  // flush the trailing page and tear down; fails if any build stage failed
   void abortParse();   // tear down without flushing (error / abandon)
 
+  bool hasCheckpoint() const;
+  bool writeCheckpoint(HalFile& file);
+  // Call on a newly begun parser. A failed restore requires a fresh parser.
+  bool restoreCheckpoint(HalFile& file, uint16_t expectedPages);
+
   void failBuild();
   bool hasFailed() const { return buildFailed_; }
 
   void addLineToPage(std::unique_ptr<TextBlock> line, uint32_t visibleOffset);
   const std::vector<std::pair<std::string, uint16_t>>& getAnchors() const { return anchorData; }
+  std::vector<std::pair<std::string, uint16_t>> takeAnchors() { return std::move(anchorData); }
 
   // Byte progress of the in-flight parse, used to estimate a still-building section's total page
   // count (a giant single-spine book never fully lays out, so its real count is unknown). Valid
   // between beginParse() and finishParse()/abortParse().
-  size_t parseBytesConsumed() { return parseFile_ ? parseFile_.position() : 0; }
+  size_t parseBytesConsumed() { return checkpointReady_ ? checkpointOffset_ : (parseFile_ ? parseFile_.position() : 0); }
   size_t parseTotalBytes() { return parseFile_ ? parseFile_.size() : 0; }
 };

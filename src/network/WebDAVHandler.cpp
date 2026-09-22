@@ -485,12 +485,16 @@ void WebDAVHandler::handleDelete(WebServer& s) {
     }
   } else {
     file.close();
-    clearBookCache(path.c_str());
-    if (Storage.remove(path.c_str())) {
-      s.send(204);
-    } else {
+    if (!Storage.remove(path.c_str())) {
       s.send(500, "text/plain", "Failed to delete file");
+      return;
     }
+    if (!clearBookCache(path.c_str())) {
+      LOG_ERR("DAV", "DELETE %s committed but cache cleanup failed", path.c_str());
+      s.send(500, "text/plain", "Deletion committed but cache cleanup failed");
+      return;
+    }
+    s.send(204);
   }
 }
 

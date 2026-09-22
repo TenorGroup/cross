@@ -12,10 +12,12 @@ p.add_argument('source', type=pathlib.Path)
 p.add_argument('output', type=pathlib.Path)
 p.add_argument('--compiler', default='c++')
 p.add_argument('--ble-capability', choices=('absent', '0', '1'), default='1')
+p.add_argument('--reader-source', type=pathlib.Path)
 a = p.parse_args()
 a.output.mkdir(parents=True, exist_ok=True)
-cpp = (a.source / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
-header = (a.source / 'src/activities/reader/EpubReaderActivity.h').read_text()
+reader_source = a.reader_source or a.source
+cpp = (reader_source / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+header = (reader_source / 'src/activities/reader/EpubReaderActivity.h').read_text()
 
 def function(name, text=None, owner='EpubReaderActivity'):
     cpp = text if text is not None else globals()['cpp']
@@ -35,24 +37,44 @@ scheduler = 'void EpubReaderActivity::backgroundTick() {\n' + loop[start:end] + 
 render = function('renderBook')
 start = render.index('  if (section->isPartial() && section->currentPage >=')
 end = render.index('  renderer.clearScreen();', start)
-foreground = 'void EpubReaderActivity::foreground() {\n ReaderRenderSpec renderSpec; auto showBuildError=[]{};\n' + render[start:end] + '\n}'
+foreground = 'void EpubReaderActivity::foreground() {\n ReaderRenderSpec renderSpec; auto showBuildError=[]{ ++buildErrors; };\n' + render[start:end] + '\n}'
+initial_branch = render.index('bool completedBuildTick = false;', render.index('const int target ='))
+initial_end_marker = '\n          buildPopupPending = false;'
+initial_end = render.index(initial_end_marker, initial_branch) + len(initial_end_marker)
+initial_resume = (
+    'void EpubReaderActivity::initialResume(int target) {\n'
+    ' const bool anchorJump = false; const std::string pendingAnchor;\n'
+    ' const std::optional<uint32_t> offsetJump; const unsigned long buildStartMs = millis();\n'
+    ' buildPopupPending = true; ReaderRenderSpec renderSpec;\n'
+    ' auto showBuildError=[]{ ++buildErrors; };\n'
+    ' if (!section->startBuild(renderSpec)) { section.reset(); buildPopupPending = false; showBuildError(); return; }\n' +
+    render[initial_branch:initial_end] + '\n}')
+start = render.index('    auto p = section->loadPage(section->currentPage);')
+end = render.index('    currentPageVisibleOffset = p->visibleTextOffset;', start)
+page_load = ('void EpubReaderActivity::loadPageForRender() {\n'
+             ' auto showPendingSyncSaveError=[]{};\n' + render[start:end] + '\n}')
 # Constants and state declarations come from the real header, avoiding a second policy.
 declarations = []
 for line in header.splitlines():
-    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD)|bool (?:buildHeapPaused|backgroundBuildSuspended|partialRebuildStartFailed)|uint16_t buildViewport)', line):
+    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t pageLoadRetryCount|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|radioReleasedForBuild)|uint16_t buildViewport)', line):
         declarations.append(line)
 fixture = pathlib.Path(__file__).with_name('fixture.hpp').read_text().replace('@@FIELDS@@', '\n'.join(declarations))
-functions = [function('buildTickHeapGate'), function('latTrangThat'), function('skipLoopDelay')]
-for name in ['deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'suspendBackgroundBuild']:
+functions = [function('buildTickHeapGate'), function('latTrangThat'), function('skipLoopDelay'), function('showBuildPopup')]
+for name in ['deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'suspendBackgroundBuild', 'releaseRadioForBuild', 'showMemoryError']:
     if 'EpubReaderActivity::' + name + '(' in cpp:
         functions.append(function(name))
 reader = (a.source / 'src/activities/reader/ReaderActivity.cpp').read_text()
 functions += [function(name, reader, 'ReaderActivity') for name in ['luotLatTrangNgoai', 'processExternalPageTurn', 'pageTurnLocked']]
 assert loop.index('if (processExternalPageTurn()) return;') > loop.index('  if (handlePreviewInput()) return;')
 cases = pathlib.Path(__file__).with_name('cases.cpp').read_text()
-source = fixture + '\n' + '\n'.join(functions) + '\n' + scheduler + '\n' + foreground + '\n' + cases
+source = fixture + '\n' + '\n'.join(functions) + '\n' + scheduler + '\n' + foreground + '\n' + initial_resume + '\n' + page_load + '\n' + cases
 (a.output / 'projection.cpp').write_text(source)
-(a.output / 'source-hashes.json').write_text(json.dumps({str(path): hashlib.sha256((a.source / path).read_bytes()).hexdigest() for path in ['src/activities/reader/EpubReaderActivity.cpp', 'src/activities/reader/EpubReaderActivity.h', 'src/activities/reader/ReaderActivity.cpp']}, indent=2))
+hash_sources = {
+    'src/activities/reader/EpubReaderActivity.cpp': reader_source,
+    'src/activities/reader/EpubReaderActivity.h': reader_source,
+    'src/activities/reader/ReaderActivity.cpp': a.source,
+}
+(a.output / 'source-hashes.json').write_text(json.dumps({str(path): hashlib.sha256((root / path).read_bytes()).hexdigest() for path, root in hash_sources.items()}, indent=2))
 cmd = [a.compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-fsanitize=address,undefined', '-g', str(a.output / 'projection.cpp'), '-o', str(a.output / 'projection')]
 if a.ble_capability != 'absent':
     cmd.insert(1, '-DFREEINK_CAP_BLE_HID_HOST=' + a.ble_capability)

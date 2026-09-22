@@ -36,6 +36,8 @@ class Section {
   // and the temporary on-disk page-offset table.
   struct BuildContext {
     std::unique_ptr<ChapterHtmlSlimParser> parser;
+    std::vector<std::pair<std::string, uint16_t>> parkedAnchors;
+    ReaderRenderSpec spec;
     HalFile lut;
     uint32_t lastVisibleTextOffset = 0;
     bool failed = false;
@@ -55,8 +57,18 @@ class Section {
     float smoothedEstimate = 0;
     uint32_t smoothedAtConsumed = 0;
   };
+  bool loadBuildCss(BuildContext* context);
+  std::unique_ptr<ChapterHtmlSlimParser> makeBuildParser(BuildContext* context, const ReaderRenderSpec& spec,
+                                                         const std::function<void()>& popupFn = nullptr);
+  bool resumeParkedBuild();
   std::unique_ptr<BuildContext> build_;
   bool buildComplete_ = false;
+  bool buildStarved_ = false;
+  // One parse step allocates words, lines and page links out of the render heap.
+  // Below these floors the next allocation aborts the firmware.
+  static constexpr size_t BUILD_STEP_MIN_FREE_HEAP = 16 * 1024;
+  static constexpr size_t BUILD_STEP_MIN_MAX_ALLOC = 8 * 1024;
+  const bool preview_;
   // Pages laid out by the active build. Distinct from pageCount,
   // which is the pages *available to read* and also counts a loaded partial file's pages.
   uint16_t builtPageCount_ = 0;
@@ -68,6 +80,7 @@ class Section {
   uint32_t partialBytesConsumed_ = 0;
   uint32_t partialTotalBytes_ = 0;
   bool finalizeBuild();
+  bool restorePartialBuild();
   // Write the LUTs/anchor map (and, for a partial, the watermark trailer), patch the
   // header, stamp the version byte, and swap the tmp .bin over filePath.
   bool commitBuildFile(uint8_t version, uint32_t bytesConsumed, uint32_t totalBytes);
@@ -75,6 +88,7 @@ class Section {
   // partial/finalized file stays readable while a rebuild is in progress.
   std::string binTmpPath() const { return filePath + ".part"; }
   std::string lutTmpPath() const { return filePath + ".lut.part"; }
+  std::string checkpointTmpPath() const { return filePath + ".checkpoint.part"; }
   bool readBuildEntry(uint16_t page, PageLutEntry& entry) const;
   std::unique_ptr<Page> loadPageAt(int page) const;
   // Read a page already laid out by the in-progress build (page < build LUT size), from
@@ -87,7 +101,7 @@ class Section {
 
   // Constructor and destructor are out-of-line: BuildContext holds a unique_ptr to the
   // forward-declared ChapterHtmlSlimParser, whose full definition is only visible in the .cpp.
-  explicit Section(const std::shared_ptr<Epub>& epub, int spineIndex, GfxRenderer& renderer);
+  explicit Section(const std::shared_ptr<Epub>& epub, int spineIndex, GfxRenderer& renderer, bool preview = false);
   ~Section();
   bool loadSectionFile(const ReaderRenderSpec& spec);
   bool clearCache() const;
@@ -103,6 +117,14 @@ class Section {
   // false on error (the build is abandoned). Sets isBuildComplete() when finished.
   bool buildSomeMore(int maxPages);
   bool isBuilding() const { return static_cast<bool>(build_); }
+  // Keep completed staging pages while releasing parser/CSS memory for rendering.
+  // Failure leaves the parser resident so the caller can use suspendBuild().
+  bool parkBuild();
+  bool isBuildParked() const { return build_ && !build_->parser; }
+  // True after buildSomeMore() returned false because the render heap fell below the
+  // per-step floor. The build stays parked or resident instead of being abandoned, so
+  // the caller can free memory and call buildSomeMore() again.
+  bool buildStarved() const { return buildStarved_; }
   bool isBuildComplete() const { return buildComplete_; }
   // Best-known total page count: the exact pageCount once finalized, or a smoothed byte-based
   // estimate (pages so far scaled by totalBytes/bytesConsumed, damped by an EMA) while a giant spine

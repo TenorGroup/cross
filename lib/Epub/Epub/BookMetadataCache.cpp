@@ -19,6 +19,35 @@ constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
 // return); 4KB = 8 SD sectors per transfer, enough to stop the sector-cache thrash.
 constexpr size_t BUILD_IO_BUFFER_SIZE = 4096;
 
+#ifdef TENOR_UI_ACCEPTANCE
+// Logical metadata operations. BufferedFileReader/Writer may coalesce these
+// requests before they reach the underlying HalFile.
+struct CacheIoStats {
+  uint32_t readOps = 0;
+  uint32_t writeOps = 0;
+  uint32_t seekOps = 0;
+  uint64_t readBytes = 0;
+  uint64_t writeBytes = 0;
+};
+
+CacheIoStats cacheIoStats;
+
+struct CacheIoSnapshot {
+  CacheIoStats stats;
+};
+
+CacheIoSnapshot snapshotCacheIo() { return {cacheIoStats}; }
+
+void logCacheIoDelta(const char* op, const int index, const bool ok, const CacheIoSnapshot& before) {
+  LOG_DBG("BMC", "EPUB_BMC_IO op=%s index=%d ok=%u read_ops=%u read_bytes=%llu write_ops=%u write_bytes=%llu seek_ops=%u",
+          op, index, ok ? 1u : 0u, cacheIoStats.readOps - before.stats.readOps,
+          static_cast<unsigned long long>(cacheIoStats.readBytes - before.stats.readBytes),
+          cacheIoStats.writeOps - before.stats.writeOps,
+          static_cast<unsigned long long>(cacheIoStats.writeBytes - before.stats.writeBytes),
+          cacheIoStats.seekOps - before.stats.seekOps);
+}
+#endif
+
 // Cache strings are metadata, never chapter content. Bound allocation before resize,
 // and keep failures sticky so a failed seek cannot reinterpret the previous record.
 constexpr uint32_t MAX_METADATA_STRING_BYTES = 4096;
@@ -29,6 +58,9 @@ class MetadataReader {
   bool ok() const { return valid; }
   size_t position() const { return file.position(); }
   bool seek(size_t target) {
+#ifdef TENOR_UI_ACCEPTANCE
+    ++cacheIoStats.seekOps;
+#endif
     valid = valid && target <= end && file.seek(target);
     return valid;
   }
@@ -48,12 +80,17 @@ class MetadataReader {
     return read(value.data(), length);
   }
 
- private:
-  bool has(size_t length) const { return position() <= end && length <= end - position(); }
   bool read(void* dst, size_t length) {
+#ifdef TENOR_UI_ACCEPTANCE
+    ++cacheIoStats.readOps;
+    cacheIoStats.readBytes += length;
+#endif
     valid = valid && has(length) && file.read(dst, length) == length;
     return valid;
   }
+
+ private:
+  bool has(size_t length) const { return position() <= end && length <= end - position(); }
   F& file;
   size_t end;
   bool valid = true;
@@ -68,6 +105,10 @@ uint32_t writeSpineEntryTo(F& file, const BookMetadataCache::SpineEntry& entry) 
   serialization::writeString(file, entry.href);
   serialization::writePod(file, entry.cumulativeSize);
   serialization::writePod(file, entry.tocIndex);
+#ifdef TENOR_UI_ACCEPTANCE
+  ++cacheIoStats.writeOps;
+  cacheIoStats.writeBytes += file.position() - pos;
+#endif
   return pos;
 }
 
@@ -79,6 +120,10 @@ uint32_t writeTocEntryTo(F& file, const BookMetadataCache::TocEntry& entry) {
   serialization::writeString(file, entry.anchor);
   serialization::writePod(file, entry.level);
   serialization::writePod(file, entry.spineIndex);
+#ifdef TENOR_UI_ACCEPTANCE
+  ++cacheIoStats.writeOps;
+  cacheIoStats.writeBytes += file.position() - pos;
+#endif
   return pos;
 }
 
@@ -106,6 +151,9 @@ BookMetadataCache::TocEntry readTocEntryFrom(F& file) {
 /* ============= WRITING / BUILDING FUNCTIONS ================ */
 
 bool BookMetadataCache::beginWrite() {
+#ifdef TENOR_UI_ACCEPTANCE
+  cacheIoStats = {};
+#endif
   buildMode = true;
   spineCount = 0;
   tocCount = 0;
@@ -201,6 +249,11 @@ bool BookMetadataCache::endWrite() {
 
   buildMode = false;
   LOG_DBG("BMC", "Wrote %d spine, %d TOC entries", spineCount, tocCount);
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("BMC", "EPUB_BMC_IO op=build_total index=-1 ok=1 read_ops=%u read_bytes=%llu write_ops=%u write_bytes=%llu seek_ops=%u",
+          cacheIoStats.readOps, static_cast<unsigned long long>(cacheIoStats.readBytes), cacheIoStats.writeOps,
+          static_cast<unsigned long long>(cacheIoStats.writeBytes), cacheIoStats.seekOps);
+#endif
   return true;
 }
 
@@ -501,6 +554,7 @@ void BookMetadataCache::createTocEntry(const std::string& title, const std::stri
 
 bool BookMetadataCache::load() {
   loaded = false;
+  tocCursor.reset();
   cumulativeSizes.reset();
   spineCount = tocCount = 0;
   if (bookFile) bookFile.close();
@@ -508,6 +562,7 @@ bool BookMetadataCache::load() {
 
   const auto fail = [this]() {
     LOG_ERR("BMC", "Invalid or unreadable book.bin; rejecting cache");
+    tocCursor.reset();
     bookFile.close();
     cumulativeSizes.reset();
     spineCount = tocCount = 0;
@@ -565,17 +620,52 @@ bool BookMetadataCache::load() {
 }
 
 BookMetadataCache::TocCursor::TocCursor(const std::string& path, uint32_t lut, int start, uint16_t spine, uint16_t toc)
-    : index(start), spineCount(spine), tocCount(toc) {
+    : lutOffset(lut), index(start), spineCount(spine), tocCount(toc) {
   if (start < 0 || start >= toc || !Storage.openFileForRead("BMC", path, file)) return;
   end = file.size();
-  MetadataReader reader(file, end);
-  uint32_t position = 0;
-  const uint32_t dataStart = lut + (static_cast<uint32_t>(spine) + toc) * sizeof(uint32_t);
-  if (!reader.seek(lut + (static_cast<uint32_t>(spine) + start) * sizeof(uint32_t)) || !reader.pod(position) ||
-      position < dataStart || !reader.seek(position))
-    return;
-  stream = makeUniqueNoThrow<serialization::BufferedFileReader>(file, 2048);
-  error = !stream;
+  error = false;
+  seekTo(start);
+}
+
+bool BookMetadataCache::TocCursor::seekTo(const int target) {
+  if (error || target < 0 || target >= tocCount) return false;
+  if (stream && target == index) return true;
+  if (windowStart < 0 || target < windowStart || target >= windowStart + windowCount) {
+    // Release the data wrapper before directly accessing its file for the LUT.
+    stream.reset();
+    windowStart = target / LOOKUP_WINDOW * LOOKUP_WINDOW;
+    windowCount = std::min<int>(LOOKUP_WINDOW, tocCount - windowStart);
+    MetadataReader reader(file, end);
+    const uint32_t dataStart = lutOffset + (static_cast<uint32_t>(spineCount) + tocCount) * sizeof(uint32_t);
+    if (!reader.seek(lutOffset + (static_cast<uint32_t>(spineCount) + windowStart) * sizeof(uint32_t)) ||
+        !reader.read(offsets, windowCount * sizeof(uint32_t))) {
+      error = true;
+      return false;
+    }
+    for (uint16_t i = 0; i < windowCount; ++i) {
+      if (offsets[i] < dataStart || offsets[i] >= end || (i > 0 && offsets[i] <= offsets[i - 1])) {
+        error = true;
+        return false;
+      }
+    }
+    if (!reader.seek(offsets[0])) {
+      error = true;
+      return false;
+    }
+    stream = makeUniqueNoThrow<serialization::BufferedFileReader>(file, 2048);
+    // Fill from the start of the window so backward lookups reuse earlier bytes.
+    uint8_t firstByte = 0;
+    if (!stream || stream->read(&firstByte, 1) != 1) {
+      error = true;
+      return false;
+    }
+  }
+  if (!stream->seek(offsets[target - windowStart])) {
+    error = true;
+    return false;
+  }
+  index = target;
+  return true;
 }
 
 bool BookMetadataCache::TocCursor::next(TocEntry& entry) {
@@ -593,9 +683,25 @@ bool BookMetadataCache::TocCursor::next(TocEntry& entry) {
 }
 
 std::unique_ptr<BookMetadataCache::TocCursor> BookMetadataCache::openTocCursor(int start) const {
-  if (!loaded || start < 0 || start >= tocCount) return nullptr;
+#ifdef TENOR_UI_ACCEPTANCE
+  const auto ioBefore = snapshotCacheIo();
+#endif
+  if (!loaded || start < 0 || start >= tocCount) {
+#ifdef TENOR_UI_ACCEPTANCE
+    logCacheIoDelta("open_toc_cursor", start, false, ioBefore);
+#endif
+    return nullptr;
+  }
   auto cursor = makeUniqueNoThrow<TocCursor>(cachePath + bookBinFile, lutOffset, start, spineCount, tocCount);
-  if (!cursor || cursor->failed()) return nullptr;
+  if (!cursor || cursor->failed()) {
+#ifdef TENOR_UI_ACCEPTANCE
+    logCacheIoDelta("open_toc_cursor", start, false, ioBefore);
+#endif
+    return nullptr;
+  }
+#ifdef TENOR_UI_ACCEPTANCE
+  logCacheIoDelta("open_toc_cursor", start, true, ioBefore);
+#endif
   return cursor;
 }
 
@@ -617,13 +723,29 @@ BookMetadataCache::SpineEntry BookMetadataCache::getSpineEntry(const int index) 
     return {};
   }
 
+#ifdef TENOR_UI_ACCEPTANCE
+  const auto ioBefore = snapshotCacheIo();
+#endif
+
   MetadataReader reader(bookFile, bookFile.size());
   uint32_t pos = 0;
   const uint32_t dataStart = lutOffset + (static_cast<uint32_t>(spineCount) + tocCount) * sizeof(uint32_t);
-  if (!reader.seek(lutOffset + sizeof(uint32_t) * index) || !reader.pod(pos) || pos < dataStart || !reader.seek(pos))
+  if (!reader.seek(lutOffset + sizeof(uint32_t) * index) || !reader.pod(pos) || pos < dataStart || !reader.seek(pos)) {
+#ifdef TENOR_UI_ACCEPTANCE
+    logCacheIoDelta("get_spine_entry", index, false, ioBefore);
+#endif
     return {};
+  }
   auto entry = readSpineEntryFrom(reader);
-  if (!reader.ok() || entry.tocIndex < -1 || entry.tocIndex >= static_cast<int>(tocCount)) return {};
+  if (!reader.ok() || entry.tocIndex < -1 || entry.tocIndex >= static_cast<int>(tocCount)) {
+#ifdef TENOR_UI_ACCEPTANCE
+    logCacheIoDelta("get_spine_entry", index, false, ioBefore);
+#endif
+    return {};
+  }
+#ifdef TENOR_UI_ACCEPTANCE
+  logCacheIoDelta("get_spine_entry", index, true, ioBefore);
+#endif
   return entry;
 }
 
@@ -638,14 +760,42 @@ BookMetadataCache::TocEntry BookMetadataCache::getTocEntry(const int index) {
     return {};
   }
 
+#ifdef TENOR_UI_ACCEPTANCE
+  const auto ioBefore = snapshotCacheIo();
+#endif
+
+  if (!tocCursor) tocCursor = openTocCursor(index);
+  if (tocCursor) {
+    TocEntry entry;
+    if (tocCursor->seekTo(index) && tocCursor->next(entry)) {
+#ifdef TENOR_UI_ACCEPTANCE
+      logCacheIoDelta("get_toc_entry_cursor", index, true, ioBefore);
+#endif
+      return entry;
+    }
+    tocCursor.reset();
+  }
+
   MetadataReader reader(bookFile, bookFile.size());
   uint32_t pos = 0;
   const uint32_t dataStart = lutOffset + (static_cast<uint32_t>(spineCount) + tocCount) * sizeof(uint32_t);
   if (!reader.seek(lutOffset + sizeof(uint32_t) * (spineCount + index)) || !reader.pod(pos) || pos < dataStart ||
-      !reader.seek(pos))
+      !reader.seek(pos)) {
+#ifdef TENOR_UI_ACCEPTANCE
+    logCacheIoDelta("get_toc_entry_random", index, false, ioBefore);
+#endif
     return {};
+  }
   auto entry = readTocEntryFrom(reader);
-  if (!reader.ok() || entry.spineIndex < -1 || entry.spineIndex >= static_cast<int>(spineCount)) return {};
+  if (!reader.ok() || entry.spineIndex < -1 || entry.spineIndex >= static_cast<int>(spineCount)) {
+#ifdef TENOR_UI_ACCEPTANCE
+    logCacheIoDelta("get_toc_entry_random", index, false, ioBefore);
+#endif
+    return {};
+  }
+#ifdef TENOR_UI_ACCEPTANCE
+  logCacheIoDelta("get_toc_entry_random", index, true, ioBefore);
+#endif
   return entry;
 }
 

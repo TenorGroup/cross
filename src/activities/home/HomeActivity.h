@@ -1,6 +1,7 @@
 #pragma once
 #include <I18n.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -71,7 +72,7 @@ class HomeActivity final : public UiTabListActivity {
   void favoritesChanged() override;
   bool toggleFavorite(int row) override;
   bool favoriteFileMissing = false;
-  bool statsResetFailed = false;
+  std::optional<StrId> statsResetTip;
   uint8_t statsPage = 0;
   bool statsRowsEnlarged = false;
   int statsPanelHeight() const;

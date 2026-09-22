@@ -44,4 +44,10 @@ uint32_t startStackHighWaterMark();
 bool readerStartDeferred();
 void setReaderStartDeferred(bool deferred);
 
+// The reader stops the radio when a section build runs out of heap. Once the page
+// is on screen it asks the main loop to start the radio again, the same way a
+// local key release rearms an idle-stopped radio.
+void requestRearm();
+bool takeRearmRequest();
+
 }  // namespace freeink::ble

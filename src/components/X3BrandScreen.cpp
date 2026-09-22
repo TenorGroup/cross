@@ -31,6 +31,13 @@ bool renderX3BrandScreen(GfxRenderer& renderer, const bool boot) {
     if (boot) renderer.drawCenteredText(SMALL_FONT_ID, x3brand::HEIGHT - 30, CROSSPOINT_VERSION);
     return true;
   };
+  // Ghost clear, sleep only. The absolute grayscale pass below is a single panel
+  // activation with no erase phase, so whatever the reader left on the glass
+  // shows through the art's large dark field. Drive one GC pass to the art's own
+  // black and white threshold (the MSB plane) first so every pixel is driven and
+  // the previous page is gone before the gray planes land. Boot is left alone:
+  // the controller init already forces GC on the next two content paints.
+  if (!boot && decode(msb, msbSize)) renderer.displayBuffer(HalDisplay::FULL_REFRESH);
   // Separate-base panels (including the simulator) need a monochrome base.
   // X3 UC8279 defers its base and presents both absolute planes in one waveform.
   bool ready = caps.base == HalDisplay::GrayscaleBase::Combined || decode(msb, msbSize);

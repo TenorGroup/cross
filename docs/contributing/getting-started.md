@@ -6,7 +6,7 @@ This guide helps you build and run CrossPoint locally.
 
 - PlatformIO Core (`pio`) or VS Code + PlatformIO IDE
 - Python 3.8+
-- `clang-format` 21+ in your `PATH` (CI uses clang-format 21)
+- `clang-format` 21+ in your `PATH` or the selected Xcode toolchain
 - USB-C cable
 - Xteink X4 device for hardware testing
 
@@ -75,10 +75,13 @@ pio run --target upload
 ## First checks before opening a PR
 
 ```sh
-./bin/clang-format-fix
+./bin/clang-format-fix --check -g
 pio check --fail-on-defect low --fail-on-defect medium --fail-on-defect high
 pio run
 ```
+
+The formatter defaults to checking. Use `./bin/clang-format-fix --fix -g` to apply
+formatting to changed files, then review the diff.
 
 ## What to read next
 

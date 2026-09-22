@@ -111,6 +111,8 @@ def main():
         fixture = out / path.stem
         fixture.mkdir()
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', TEST_PROGRAM=str(program),
+                   TEST_PROGRAM_SHA256=manifest['program_sha256'],
+                   READER_INK_PACK=os.environ.get('READER_INK_PACK', ''),
                    STATUSBAR_PROGRAM=str(program), MENU_TEST_OUTPUT=str(fixture / 'menu'),
                    BOOT_TEST_OUTPUT=str(fixture / 'boot'), CROSSPOINT_TEST_ARTIFACTS=str(fixture / 'artifacts'))
         command = [sys.executable, str(Path(__file__).resolve()), '--child', str(path), '--program', str(program)]

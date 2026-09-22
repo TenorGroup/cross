@@ -48,6 +48,16 @@ class EpubReaderActivity final : public ReaderActivity {
   unsigned long lastPageTurnTime = 0UL;
   unsigned long pageTurnDuration = 0UL;
   int8_t pendingManualTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+  TurnTrace pendingManualTurnTrace;
+  uint32_t paintTraceSequence = 0;
+  unsigned long paintTraceStarted = 0;
+  bool readablePaintTraced = false;
+  void traceBuildTickBegin(const char* source) const;
+  void traceBuildTickEnd(const char* source) const;
+  void tracePaint(const char* phase, const char* kind) const;
+  void traceReadablePaint(const char* kind);
+#endif
   std::optional<ChapterHoldOrigin> chapterHoldPrevOrigin;
   std::optional<ChapterHoldOrigin> chapterHoldNextOrigin;
   // Turbo hold: sau nắc chương đầu (long-press), nút vẫn giữ thì tiếp tục nắc
@@ -137,9 +147,18 @@ class EpubReaderActivity final : public ReaderActivity {
   bool deferBackgroundBuildForBle() const;
   bool backgroundBuildStartHeapGate();
   bool buildTickHeapGate();
+  bool backgroundBuildCanTick();
   // Caller owns RenderLock. Heap-pressure suspension resumes only for an explicit target.
   void suspendBackgroundBuild();
   bool backgroundBuildSuspended = false;
+  // A failed speculative tick stays disabled until this reader visit ends.
+  bool backgroundBuildFailed = false;
+  // Set while the radio is stopped so a starved section build can finish. The reader
+  // asks for a restart once the page is on screen.
+  bool radioReleasedForBuild = false;
+  static constexpr unsigned long RADIO_RELEASE_TIMEOUT_MS = 3000;
+  bool releaseRadioForBuild();
+  void showMemoryError();
   bool buildHeapPaused = false;
   static constexpr size_t RENDER_MIN_FREE_HEAP = 24 * 1024;
   static constexpr int BUILD_WINDOW_AHEAD = 5;
@@ -228,6 +247,7 @@ class EpubReaderActivity final : public ReaderActivity {
                               bool allowFastInitialRefresh)
       : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
   ~EpubReaderActivity() override;
+  void onPause() override;
   void onExit() override;
 
   void loop() override;

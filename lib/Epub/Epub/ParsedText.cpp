@@ -705,6 +705,14 @@ bool ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   if (layoutFailed) return false;
   if (words.empty()) return true;
 
+#ifdef TENOR_UI_ACCEPTANCE
+  const unsigned long layoutStartMs = millis();
+  const unsigned layoutWordCount = static_cast<unsigned>(words.size());
+  LOG_DBG("ERS_TRACE", "PARSED_LAYOUT_BEGIN t=%lu words=%u ruby=%u hyphen=%u viewport=%u include_last=%u",
+          layoutStartMs, layoutWordCount, rubyTexts.empty() ? 0u : 1u, hyphenationEnabled ? 1u : 0u,
+          static_cast<unsigned>(viewportWidth), includeLastLine ? 1u : 0u);
+#endif
+
   // Per-paragraph RTL auto-detection: only when CSS/HTML didn't explicitly set direction.
   // Explicit dir="ltr" must be respected and not overridden by content heuristic.
   if (!blockStyle.directionDefined && hasRtlWord) {
@@ -757,6 +765,10 @@ bool ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   }
   auto wordWidths = calculateWordWidths(renderer, fontId);
 
+#ifdef TENOR_UI_ACCEPTANCE
+  const unsigned long widthsEndMs = millis();
+#endif
+
   std::vector<size_t> lineBreakIndices;
   if (hyphenationEnabled || dropCapInset) {
     // Use greedy layout that can split words mid-loop when a hyphenated prefix fits.
@@ -765,6 +777,9 @@ bool ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   } else {
     lineBreakIndices = computeLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
   }
+#ifdef TENOR_UI_ACCEPTANCE
+  const unsigned long breaksEndMs = millis();
+#endif
   const size_t lineCount = includeLastLine ? lineBreakIndices.size() : lineBreakIndices.size() - 1;
 
   for (size_t i = 0; i < lineCount; ++i) {
@@ -773,11 +788,23 @@ bool ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
       // A caller discards the failed chapter and retries from its source. A prefix
       // already emitted by this pass must never be promoted as a complete cache.
       layoutFailed = true;
+#ifdef TENOR_UI_ACCEPTANCE
+      LOG_ERR("ERS_TRACE", "PARSED_LAYOUT_FAIL t=%lu words=%u line=%u heap_layout_failed=1", millis(), layoutWordCount,
+              static_cast<unsigned>(i));
+#endif
       return false;
     }
   }
 
   extractedLines += lineCount;
+
+#ifdef TENOR_UI_ACCEPTANCE
+  const unsigned long extractEndMs = millis();
+  LOG_DBG("ERS_TRACE", "PARSED_LAYOUT_END t=%lu words=%u lines=%u widths_ms=%lu breaks_ms=%lu extract_ms=%lu total_ms=%lu remaining=%u extracted=%u",
+          extractEndMs, layoutWordCount, static_cast<unsigned>(lineCount), widthsEndMs - layoutStartMs,
+          breaksEndMs - widthsEndMs, extractEndMs - breaksEndMs, extractEndMs - layoutStartMs,
+          static_cast<unsigned>(words.size()), static_cast<unsigned>(extractedLines));
+#endif
 
   // Remove consumed words so size() reflects only remaining words
   if (lineCount > 0) {
@@ -1007,12 +1034,70 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
 
   // DP table to store the minimum badness (cost) of lines starting at index i
   std::vector<int> dp(totalWordCount);
-  // 'ans[i]' stores the index 'j' of the *last word* in the optimal line starting at 'i'
-  std::vector<size_t> ans(totalWordCount);
+
+  struct PackedLineChoice {
+    uint16_t lastWord;
+    int16_t gapBefore;
+  };
+  static_assert(sizeof(PackedLineChoice) == sizeof(uint32_t));
+
+  const auto boundaryGap = [&](const size_t rightWord) {
+    int gap = 0;
+    if (continuesVec[rightWord]) {
+      gap = renderer.getKerning(fontId, lastCodepoint(words[rightWord - 1]), firstCodepoint(words[rightWord]),
+                                wordStyles[rightWord - 1]);
+    } else if (!noSpaceBeforeVec[rightWord]) {
+      gap = renderer.getSpaceAdvance(fontId, lastCodepoint(words[rightWord - 1]), firstCodepoint(words[rightWord]),
+                                     wordStyles[rightWord - 1], wordSpacing);
+    }
+    return gap + letterSpacing * (continuesVec[rightWord] || noSpaceBeforeVec[rightWord] ? 1 : 2);
+  };
+
+  // On the reader, this entry is the same size as the former size_t answer entry.
+  // It uses that space to cache each boundary gap, avoiding repeated UTF-8 scans
+  // and font spacing lookups in the DP inner loop. Ruby and values outside the
+  // packed bounds retain the general path below.
+  bool usePackedChoices = rubyTexts.empty() && totalWordCount <= std::numeric_limits<uint16_t>::max();
+  std::vector<PackedLineChoice> packedChoices;
+  std::vector<size_t> generalChoices;
+  if (usePackedChoices) {
+    packedChoices.resize(totalWordCount);
+    for (size_t i = 1; i < totalWordCount; ++i) {
+      const int gap = boundaryGap(i);
+      if (gap < std::numeric_limits<int16_t>::min() || gap > std::numeric_limits<int16_t>::max()) {
+        usePackedChoices = false;
+        break;
+      }
+      packedChoices[i].gapBefore = static_cast<int16_t>(gap);
+    }
+  }
+  if (!usePackedChoices) {
+    std::vector<PackedLineChoice>().swap(packedChoices);
+    generalChoices.resize(totalWordCount);
+  }
+
+  const auto setChoice = [&](const size_t lineStart, const size_t lastWord) {
+    if (usePackedChoices) {
+      packedChoices[lineStart].lastWord = static_cast<uint16_t>(lastWord);
+    } else {
+      generalChoices[lineStart] = lastWord;
+    }
+  };
+  const auto getChoice = [&](const size_t lineStart) -> size_t {
+    return usePackedChoices ? packedChoices[lineStart].lastWord : generalChoices[lineStart];
+  };
+  const auto getGap = [&](const size_t rightWord) {
+    return usePackedChoices ? static_cast<int>(packedChoices[rightWord].gapBefore) : boundaryGap(rightWord);
+  };
 
   // Base Case
   dp[totalWordCount - 1] = 0;
-  ans[totalWordCount - 1] = totalWordCount - 1;
+  setChoice(totalWordCount - 1, totalWordCount - 1);
+
+  // A complete plain-text suffix has zero last-line cost if every prefix fits.
+  // Track its maximum partial width too: negative spacing can hide an earlier
+  // overflow. One scalar avoids a paragraph-sized extra allocation on the reader.
+  int64_t suffixMaxWidth = wordWidths.back();
 
   for (int i = totalWordCount - 2; i >= 0; --i) {
     int currlen = 0;
@@ -1021,20 +1106,20 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
     // First line has reduced width due to text-indent
     const int effectivePageWidth = i == 0 ? pageWidth - firstLineIndent : pageWidth;
 
+    if (rubyTexts.empty()) {
+      const size_t next = static_cast<size_t>(i) + 1;
+      const int gap = getGap(next);
+      suffixMaxWidth = std::max<int64_t>(wordWidths[i], wordWidths[i] + gap + suffixMaxWidth);
+      if (suffixMaxWidth <= effectivePageWidth) {
+        dp[i] = 0;
+        setChoice(i, totalWordCount - 1);
+        continue;
+      }
+    }
+
     for (size_t j = i; j < totalWordCount; ++j) {
       // Add space before word j, unless it's the first word on the line or a continuation
-      int gap = 0;
-      if (j > static_cast<size_t>(i) && continuesVec[j]) {
-        // Attached and breakable-attached boundaries both use kerning when kept on one line.
-        gap = renderer.getKerning(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]), wordStyles[j - 1]);
-      } else if (j > static_cast<size_t>(i) && noSpaceBeforeVec[j]) {
-        gap = 0;
-      } else if (j > static_cast<size_t>(i)) {
-        gap =
-            renderer.getSpaceAdvance(fontId, lastCodepoint(words[j - 1]), firstCodepoint(words[j]), wordStyles[j - 1], wordSpacing);
-      }
-
-      if (j > static_cast<size_t>(i)) gap += letterSpacing * (continuesVec[j] || noSpaceBeforeVec[j] ? 1 : 2);
+      const int gap = j > static_cast<size_t>(i) ? getGap(j) : 0;
 
       // Calculate extraStartOffset for the first word on the line (i) (protect left margin)
       const int extraStartOffset = (j == i) ? calculateRubyExtraStartOffset(i, totalWordCount, renderer, fontId) : 0;
@@ -1076,14 +1161,14 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
       // text.
       if (cost <= dp[i]) {
         dp[i] = cost;
-        ans[i] = j;  // j is the index of the last word in this optimal line
+        setChoice(i, j);  // j is the index of the last word in this optimal line
       }
     }
 
     // Handle oversized word: if no valid configuration found, force single-word line
     // This prevents cascade failure where one oversized word breaks all preceding words
     if (dp[i] == MAX_COST) {
-      ans[i] = i;  // Just this word on its own line
+      setChoice(i, i);  // Just this word on its own line
       // Inherit cost from next word to allow subsequent words to find valid configurations
       if (i + 1 < static_cast<int>(totalWordCount)) {
         dp[i] = dp[i + 1];
@@ -1098,7 +1183,7 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
   size_t currentWordIndex = 0;
 
   while (currentWordIndex < totalWordCount) {
-    size_t nextBreakIndex = ans[currentWordIndex] + 1;
+    size_t nextBreakIndex = getChoice(currentWordIndex) + 1;
 
     // Safety check: prevent infinite loop if nextBreakIndex doesn't advance
     if (nextBreakIndex <= currentWordIndex) {

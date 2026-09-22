@@ -64,7 +64,8 @@ def main():
     sources = {name: (root / name).read_text() for name in source_paths}
     reader = sources[source_paths[2]]
     names = ["initializeReader", "buildPageIndex", "loadPageAtOffset", "loadPageIndexCache", "savePageIndexCache"]
-    for optional in ("reservePageOffsets", "addPageOffset", "clearPageOffsets", "loadPageIndexCacheFile"):
+    for optional in ("reservePageOffsets", "addPageOffset", "clearPageOffsets", "pageIndexCachePath",
+                     "loadPageIndexCacheFile"):
         if f"TxtReaderActivity::{optional}(" in reader:
             names.append(optional)
     bodies = [method(reader, "TxtReaderActivity::" + name) for name in names]

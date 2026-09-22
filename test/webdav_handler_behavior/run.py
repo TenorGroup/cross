@@ -27,7 +27,7 @@ def main():
     functions = "\n\n".join(method(source, signature) for signature in [
         "void WebDAVHandler::raw(", "void WebDAVHandler::handlePut(",
         "void WebDAVHandler::handleMove(", "void WebDAVHandler::handleCopy(",
-        "void WebDAVHandler::handleGet(",
+        "void WebDAVHandler::handleGet(", "void WebDAVHandler::handleDelete(",
     ])
     cache_source = (root / "src/util/BookCacheUtils.cpp").read_text()
     cache_signature = "bool clearBookCache(" if "bool clearBookCache(" in cache_source else "void clearBookCache("

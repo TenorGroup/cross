@@ -3,8 +3,37 @@ import hashlib
 import json
 import re
 
-def read_header(path):
+
+ARRAY = re.compile(
+    r'(?:static const|inline constexpr)\s+(\w+)\s+(\w+)\[(\d*)\]\s*=\s*\{(.*?)^\};',
+    re.M | re.S,
+)
+SHARED_ALIAS = re.compile(
+    r'static constexpr auto&\s+(\w+)\s*=\s*builtin_font_metadata::(\w+)\s*;'
+)
+SHARED_HEADER = 'builtin_font_metadata.h'
+
+
+def expand_header(path):
+    """Restore local literal arrays for offline readers and standalone rewrites."""
     text = path.read_text(encoding='utf-8')
+    if SHARED_ALIAS.search(text):
+        shared = (path.parent / SHARED_HEADER).read_text(encoding='utf-8')
+        arrays = {m.group(2): m for m in ARRAY.finditer(shared)}
+
+        def expand(match):
+            name, target = match.groups()
+            if target not in arrays:
+                raise ValueError(f'Unresolved font metadata alias {name}: {target}')
+            kind, _, count, body = arrays[target].groups()
+            return f'static const {kind} {name}[{count}] = {{{body}}};'
+
+        text = SHARED_ALIAS.sub(expand, text)
+    return re.sub(r'^#include "builtin_font_metadata.h"\n', '', text, flags=re.M)
+
+
+def read_header(path):
+    text = expand_header(path)
     def array(name):
         match = re.search(r'\w+' + name + r'\[.*?\]\s*=\s*\{(.*?)\n\};', text, re.S)
         return match.group(1) if match else ''

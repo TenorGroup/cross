@@ -5,6 +5,7 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <Serialization.h>
 #include <Utf8.h>
 #include <XmlParserUtils.h>
 #include <expat.h>
@@ -45,6 +46,46 @@ constexpr size_t TEXT_BLOCK_SOFT_FLUSH_WORDS_WITH_CSS = 320;
 // every text fragment (e.g. Kobo KePub spans). The cap prevents unbounded heap growth
 // on resource-constrained devices (~380KB heap). TOC anchors bypass this cap.
 constexpr size_t MAX_ANCHORS_PER_CHAPTER = 1024;
+
+namespace {
+constexpr uint32_t CHECKPOINT_MAGIC = 0x43504b31;
+constexpr uint32_t MAX_CHECKPOINT_BYTES = 128 * 1024;
+
+bool checkpointChecksum(HalFile& file, const uint32_t bytes, uint32_t& result) {
+  uint8_t buffer[512];
+  uint32_t crc = UINT32_MAX;
+  for (uint32_t remaining = bytes; remaining > 0;) {
+    const size_t count = std::min<size_t>(remaining, sizeof(buffer));
+    if (file.read(buffer, count) != static_cast<int>(count)) return false;
+    for (size_t i = 0; i < count; ++i) {
+      crc ^= buffer[i];
+      for (unsigned bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
+    }
+    remaining -= count;
+  }
+  result = ~crc;
+  return true;
+}
+
+bool writeCheckpointStyle(HalFile& file, const BlockStyle& style) {
+  using serialization::writePod;
+  return writePod(file, style.alignment) && writePod(file, style.marginTop) && writePod(file, style.marginBottom) &&
+         writePod(file, style.marginLeft) && writePod(file, style.marginRight) && writePod(file, style.paddingTop) &&
+         writePod(file, style.paddingBottom) && writePod(file, style.paddingLeft) && writePod(file, style.paddingRight) &&
+         writePod(file, style.textIndent) && writePod(file, style.textIndentDefined) &&
+         writePod(file, style.textAlignDefined) && writePod(file, style.isRtl) &&
+         writePod(file, style.directionDefined) && writePod(file, style.fromBrElement);
+}
+
+bool readCheckpointStyle(serialization::CheckedReader& reader, BlockStyle& style) {
+  return reader.pod(style.alignment) && static_cast<uint8_t>(style.alignment) <= static_cast<uint8_t>(CssTextAlign::None) &&
+         reader.pod(style.marginTop) && reader.pod(style.marginBottom) && reader.pod(style.marginLeft) &&
+         reader.pod(style.marginRight) && reader.pod(style.paddingTop) && reader.pod(style.paddingBottom) &&
+         reader.pod(style.paddingLeft) && reader.pod(style.paddingRight) && reader.pod(style.textIndent) &&
+         reader.pod(style.textIndentDefined) && reader.pod(style.textAlignDefined) && reader.pod(style.isRtl) &&
+         reader.pod(style.directionDefined) && reader.pod(style.fromBrElement);
+}
+}  // namespace
 
 // Reuse serializable PageLine/PageHorizontalRule elements for a small grid.
 constexpr int16_t TABLE_CELL_HORIZONTAL_PADDING = 4;
@@ -707,6 +748,7 @@ void ChapterHtmlSlimParser::finishTableRow() {
 void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char* name, const XML_Char** atts) {
   auto* self = static_cast<ChapterHtmlSlimParser*>(userData);
   if (self->buildFailed_) return;
+  self->trackCheckpointStart(name, atts);
   if (strcasecmp(name, "body") == 0) {
     // Case-insensitive to match ParagraphStreamer's tag matching (ProgressMapper). A case
     // mismatch here would leave visibleTextOffset at 0 for the whole section, so every page
@@ -1852,6 +1894,11 @@ void XMLCALL ChapterHtmlSlimParser::defaultHandlerExpand(void* userData, const X
 }
 
 void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* name) {
+  processEndElement(userData, name);
+  static_cast<ChapterHtmlSlimParser*>(userData)->trackCheckpointEnd(name);
+}
+
+void XMLCALL ChapterHtmlSlimParser::processEndElement(void* userData, const XML_Char* name) {
   auto* self = static_cast<ChapterHtmlSlimParser*>(userData);
   if (self->buildFailed_) return;
   if (self->nonVisibleTextDepth > 0) {
@@ -2081,6 +2128,216 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
   }
 }
 
+void ChapterHtmlSlimParser::trackCheckpointStart(const XML_Char* name, const XML_Char** atts) {
+  if (!checkpointAllowed_) return;
+  if (checkpointDepth_ == 0) {
+    // Keep the original declaration/DTD bytes. Entity definitions and default
+    // attributes must be replayed before rebuilding the open ancestor stack.
+    const auto prologBytes = XML_GetCurrentByteIndex(xmlParser_);
+    if (prologBytes < 0 || prologBytes > static_cast<XML_Index>(MAX_CHECKPOINT_PREFIX)) {
+      checkpointAllowed_ = false;
+      return;
+    }
+    checkpointPrologBytes_ = static_cast<uint16_t>(prologBytes);
+  }
+  if (checkpointDepth_ == MAX_CHECKPOINT_ANCESTORS) {
+    checkpointAllowed_ = false;
+    return;
+  }
+  static constexpr const char* containers[] = {
+      "html", "body", "div", "section", "article", "main", "aside", "nav", "blockquote", "ul", "ol"};
+  const bool supported = matches(name, containers, std::size(containers));
+  checkpointPrefixEnds_[checkpointDepth_] = checkpointPrefix_.size();
+  checkpointAncestorSupported_[checkpointDepth_++] = supported;
+  if (!supported) {
+    ++checkpointUnsupported_;
+    return;
+  }
+  const auto append = [this](const char* text) {
+    const size_t length = strlen(text);
+    if (length > MAX_CHECKPOINT_PREFIX - checkpointPrologBytes_ - checkpointPrefix_.size()) {
+      checkpointAllowed_ = false;
+      return;
+    }
+    if (checkpointAllowed_) checkpointPrefix_.append(text, length);
+  };
+  append("<");
+  append(name);
+  for (size_t i = 0; atts && atts[i] && checkpointAllowed_; i += 2) {
+    append(" ");
+    append(atts[i]);
+    append("=\"");
+    // Expat has already expanded entities and normalized attributes. Escape
+    // their values again so replay reconstructs exactly the same strings.
+    // Numeric references also preserve expanded UTF-8 under a US-ASCII prolog.
+    const auto* value = reinterpret_cast<const unsigned char*>(atts[i + 1]);
+    while (*value && checkpointAllowed_) {
+      const uint32_t codepoint = utf8NextCodepoint(&value);
+      switch (codepoint) {
+        case '&': append("&amp;"); break;
+        case '<': append("&lt;"); break;
+        case '"': append("&quot;"); break;
+        case '\n': append("&#10;"); break;
+        case '\r': append("&#13;"); break;
+        case '\t': append("&#9;"); break;
+        default: {
+          if (codepoint >= 0x80) {
+            char reference[12];
+            snprintf(reference, sizeof(reference), "&#x%lX;", static_cast<unsigned long>(codepoint));
+            append(reference);
+          } else {
+            const char byte[] = {static_cast<char>(codepoint), 0};
+            append(byte);
+          }
+        }
+      }
+    }
+    append("\"");
+  }
+  append(">");
+}
+
+void ChapterHtmlSlimParser::trackCheckpointEnd(const XML_Char* name) {
+  if (!checkpointAllowed_ || checkpointDepth_ == 0) return;
+  --checkpointDepth_;
+  if (!checkpointAncestorSupported_[checkpointDepth_]) --checkpointUnsupported_;
+  checkpointPrefix_.resize(checkpointPrefixEnds_[checkpointDepth_]);
+  // The block-closing path constructs a fresh empty ParsedText and clears
+  // currentCssStyle. Soft-flush and inline boundaries carry more layout state.
+  if (replayingCheckpoint_ || buildFailed_ || completedPageCount <= stepStartPages_ ||
+      !isHeaderOrBlock(name) || strcmp(name, "br") == 0 || !insideBody ||
+      checkpointUnsupported_ != 0 || checkpointDepth_ == 0 || skipUntilDepth != INT_MAX ||
+      boldUntilDepth != INT_MAX || italicUntilDepth != INT_MAX || partWordBufferIndex != 0 ||
+      !currentTextBlock || !currentTextBlock->isEmpty() || wordsExtractedInBlock != 0 ||
+      nextWordContinues || inRuby || collectingRubyText || tableDepth != 0 ||
+      insideFootnoteLink || !pendingFootnotes.empty() || !pendingAnchorId.empty() ||
+      nonVisibleTextDepth != 0 || listItemBulletOnly) return;
+  // Internal entity callbacks can report the whole '&name;' source span even
+  // while more replacement markup remains. Only a literal closing tag in the
+  // input buffer is a source boundary that a fresh parser can resume after.
+  int contextOffset = 0, contextSize = 0;
+  const char* context = XML_GetInputContext(xmlParser_, &contextOffset, &contextSize);
+  const int eventBytes = XML_GetCurrentByteCount(xmlParser_);
+  if (!context || contextOffset < 0 || eventBytes < 3 || contextOffset > contextSize - eventBytes ||
+      context[contextOffset] != '<' || context[contextOffset + 1] != '/') return;
+  const int64_t offset = sourceOffsetBase_ + XML_GetCurrentByteIndex(xmlParser_) + eventBytes;
+  if (offset <= 0 || offset >= static_cast<int64_t>(parseFile_.size())) return;
+  if (XML_StopParser(xmlParser_, XML_TRUE) == XML_STATUS_ERROR) return;
+  checkpointOffset_ = static_cast<uint32_t>(offset);
+  checkpointReady_ = true;
+}
+
+bool ChapterHtmlSlimParser::hasCheckpoint() const {
+  if (!checkpointReady_ || !checkpointAllowed_ || buildFailed_ || !currentTextBlock ||
+      !currentTextBlock->isEmpty() || anchorData.size() > UINT16_MAX) return false;
+  size_t anchorBytes = 0;
+  for (const auto& anchor : anchorData) {
+    if (anchor.first.size() > 4096) return false;
+    anchorBytes += anchor.first.size() + sizeof(uint32_t) + sizeof(uint16_t);
+    if (anchorBytes > MAX_CHECKPOINT_BYTES / 2) return false;
+  }
+  return true;
+}
+
+bool ChapterHtmlSlimParser::writeCheckpoint(HalFile& file) {
+  using serialization::writePod;
+  using serialization::writeString;
+  if (!hasCheckpoint()) return false;
+  const uint32_t header = file.position();
+  if (!writePod(file, CHECKPOINT_MAGIC) || !writePod(file, uint32_t{0}) || !writePod(file, uint32_t{0})) return false;
+  const uint32_t payload = file.position();
+  const uint32_t total = parseTotalBytes();
+  if (!writePod(file, total) || !writePod(file, checkpointOffset_) ||
+      !writePod(file, static_cast<uint16_t>(completedPageCount)) ||
+      !writePod(file, static_cast<uint32_t>(checkpointPrologBytes_ + checkpointPrefix_.size()))) return false;
+  if (checkpointPrologBytes_ != 0) {
+    const size_t cursor = parseFile_.position();
+    bool copied = parseFile_.seek(0);
+    uint8_t buffer[512];
+    for (size_t left = checkpointPrologBytes_; copied && left != 0;) {
+      const size_t count = std::min(left, sizeof(buffer));
+      copied = parseFile_.read(buffer, count) == static_cast<int>(count) && file.write(buffer, count) == count;
+      left -= count;
+    }
+    const bool restored = parseFile_.seek(cursor);
+    if (!copied || !restored) return false;
+  }
+  if (file.write(checkpointPrefix_.data(), checkpointPrefix_.size()) != checkpointPrefix_.size() ||
+      !writeCheckpointStyle(file, currentTextBlock->getBlockStyle()) ||
+      !writePod(file, currentPageNextY) || !writePod(file, imageCounter) || !writePod(file, dropCapBottom) ||
+      !writePod(file, visibleTextOffset) || !writePod(file, partWordVisibleOffset) ||
+      !writePod(file, currentPageVisibleOffset) || !writePod(file, xpathParagraphIndex) ||
+      !writePod(file, xpathListItemIndex) || !writePod(file, khoiTruocDaXepTrang) ||
+      !writePod(file, chapterInitialPending) || !writePod(file, imagePopupFired) ||
+      !writePod(file, currentPageVisibleOffsetSet) || !writePod(file, static_cast<bool>(currentPage))) return false;
+  if (currentPage && !currentPage->serialize(file)) return false;
+  if (!writePod(file, static_cast<uint16_t>(anchorData.size()))) return false;
+  for (const auto& anchor : anchorData) {
+    if (!writeString(file, anchor.first) || !writePod(file, anchor.second)) return false;
+  }
+  const uint32_t end = file.position();
+  const uint32_t bytes = end - payload;
+  uint32_t crc = 0;
+  return bytes <= MAX_CHECKPOINT_BYTES && file.seek(payload) && checkpointChecksum(file, bytes, crc) &&
+         file.seek(header + sizeof(uint32_t)) && writePod(file, bytes) && writePod(file, crc) && file.seek(end);
+}
+
+bool ChapterHtmlSlimParser::restoreCheckpoint(HalFile& file, const uint16_t expectedPages) {
+  serialization::CheckedReader reader(file);
+  uint32_t magic = 0, bytes = 0, expectedCrc = 0, crc = 0;
+  if (!reader.pod(magic) || magic != CHECKPOINT_MAGIC || !reader.pod(bytes) || !reader.pod(expectedCrc) ||
+      bytes == 0 || bytes > MAX_CHECKPOINT_BYTES || bytes != reader.remaining()) return false;
+  const size_t payload = reader.position();
+  if (!checkpointChecksum(file, bytes, crc) || crc != expectedCrc || !reader.seek(payload)) return false;
+  uint32_t total = 0, offset = 0;
+  uint16_t pages = 0;
+  std::string prefix;
+  BlockStyle style;
+  if (!reader.pod(total) || total != parseFile_.size() || !reader.pod(offset) || offset == 0 || offset >= total ||
+      !reader.pod(pages) || pages == 0 || pages != expectedPages ||
+      !reader.string(prefix, MAX_CHECKPOINT_PREFIX) || prefix.empty() || !readCheckpointStyle(reader, style)) return false;
+  replayingCheckpoint_ = true;
+  const auto xmlStatus = XML_Parse(xmlParser_, prefix.data(), static_cast<int>(prefix.size()), XML_FALSE);
+  replayingCheckpoint_ = false;
+  if (xmlStatus != XML_STATUS_OK || buildFailed_ || !checkpointAllowed_ || !insideBody ||
+      checkpointUnsupported_ != 0 || checkpointDepth_ == 0 || skipUntilDepth != INT_MAX || completedPageCount != 0 ||
+      !currentTextBlock || !currentTextBlock->isEmpty()) return false;
+  // Replay establishes ancestor CSS stacks. The closed block cleared its own
+  // style and pending anchors before the saved layout state was captured.
+  currentCssStyle.reset();
+  updateEffectiveInlineStyle();
+  currentTextBlock->setBlockStyle(style);
+  currentTextBlock->resetDropCap();
+  pendingAnchorId.clear();
+  anchorData.clear();
+  bool pagePresent = false;
+  if (!reader.pod(currentPageNextY) || !reader.pod(imageCounter) || !reader.pod(dropCapBottom) ||
+      !reader.pod(visibleTextOffset) || !reader.pod(partWordVisibleOffset) ||
+      !reader.pod(currentPageVisibleOffset) || !reader.pod(xpathParagraphIndex) ||
+      !reader.pod(xpathListItemIndex) || !reader.pod(khoiTruocDaXepTrang) ||
+      !reader.pod(chapterInitialPending) || !reader.pod(imagePopupFired) ||
+      !reader.pod(currentPageVisibleOffsetSet) || !reader.pod(pagePresent) ||
+      imageCounter < 0 || currentPageVisibleOffset > visibleTextOffset) return false;
+  if (pagePresent) {
+    currentPage = Page::deserialize(file);
+    if (!currentPage) return false;
+  }
+  uint16_t anchors = 0;
+  if (!reader.pod(anchors) || anchors > reader.remaining() / 6) return false;
+  for (uint16_t i = 0; i < anchors; ++i) {
+    std::string anchor;
+    uint16_t page = 0;
+    if (!reader.string(anchor) || !reader.pod(page) || page > pages) return false;
+    anchorData.emplace_back(std::move(anchor), page);
+  }
+  if (reader.remaining() != 0 || !parseFile_.seek(offset)) return false;
+  completedPageCount = pages;
+  sourceOffsetBase_ = static_cast<int64_t>(offset) - prefix.size();
+  checkpointOffset_ = offset;
+  checkpointReady_ = true;
+  return true;
+}
+
 ChapterHtmlSlimParser::~ChapterHtmlSlimParser() { abortParse(); }
 
 bool ChapterHtmlSlimParser::beginParse() {
@@ -2142,46 +2399,180 @@ bool ChapterHtmlSlimParser::beginParse() {
   XML_SetUserData(xmlParser_, this);
   XML_SetElementHandler(xmlParser_, startElement, endElement);
   XML_SetCharacterDataHandler(xmlParser_, characterData);
+  XML_SetXmlDeclHandler(xmlParser_, [](void* data, const XML_Char*, const XML_Char* encoding, int) {
+    if (encoding && strcasecmp(encoding, "UTF-8") != 0 && strcasecmp(encoding, "US-ASCII") != 0)
+      static_cast<ChapterHtmlSlimParser*>(data)->checkpointAllowed_ = false;
+  });
 
+#ifdef TENOR_UI_ACCEPTANCE
+  parseStepCount_ = 0;
+  parseReadCalls_ = 0;
+  parseReadBytes_ = 0;
+  parseShortReads_ = 0;
+  parseReadErrors_ = 0;
+  parseFinishing_ = false;
+#endif
   parseStartTime_ = millis();
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("EHP_TRACE", "PARSE_BEGIN t=%lu file_bytes=%u position=%u",
+          static_cast<unsigned long>(parseStartTime_), static_cast<unsigned>(parseFile_.size()),
+          static_cast<unsigned>(parseFile_.position()));
+#endif
   return true;
 }
 
 ChapterHtmlSlimParser::ParseStatus ChapterHtmlSlimParser::parseStep() {
   if (buildFailed_ || !xmlParser_ || !parseFile_) return ParseStatus::Error;
+  checkpointReady_ = false;
+  stepStartPages_ = completedPageCount;
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t stepStartedAt = millis();
+  (void)stepStartedAt;
+  ++parseStepCount_;
+#endif
+  // Resume Expat's unread input first. A suspended final buffer still contains
+  // closing elements and must not be mistaken for a completed document.
+  if (xmlSuspended_) {
+    const auto status = XML_ResumeParser(xmlParser_);
+    xmlSuspended_ = status == XML_STATUS_SUSPENDED;
+    ParseStatus result = finalBuffer_ && !xmlSuspended_ ? ParseStatus::Done : ParseStatus::More;
+    if (buildFailed_) {
+      result = ParseStatus::Error;
+    } else if (status == XML_STATUS_ERROR) {
+      if (htmlEnded_) {
+        result = ParseStatus::Done;
+      } else {
+        failBuild();
+        result = ParseStatus::Error;
+      }
+    }
+#ifdef TENOR_UI_ACCEPTANCE
+    LOG_DBG("EHP_TRACE", "PARSE_STEP t=%lu step=%u status=%s stage=resume bytes=%u/%u read_calls=%u read_bytes=%u step_ms=%u",
+            static_cast<unsigned long>(millis()), static_cast<unsigned>(parseStepCount_),
+            result == ParseStatus::Error ? "error" : result == ParseStatus::Done ? "done" : "more",
+            static_cast<unsigned>(parseFile_.position()), static_cast<unsigned>(parseFile_.size()),
+            static_cast<unsigned>(parseReadCalls_), static_cast<unsigned>(parseReadBytes_),
+            static_cast<unsigned>(millis() - stepStartedAt));
+#endif
+    return result;
+  }
   void* const buf = XML_GetBuffer(xmlParser_, PARSE_BUFFER_SIZE);
   if (!buf) {
     LOG_ERR("EHP", "Couldn't allocate memory for buffer");
     failBuild();
+#ifdef TENOR_UI_ACCEPTANCE
+    LOG_DBG("EHP_TRACE", "PARSE_STEP t=%lu step=%u status=error stage=buffer bytes=%u/%u read_calls=%u read_bytes=%u short_reads=%u read_errors=%u step_ms=%u",
+            static_cast<unsigned long>(millis()), static_cast<unsigned>(parseStepCount_),
+            static_cast<unsigned>(parseFile_.position()), static_cast<unsigned>(parseFile_.size()),
+            static_cast<unsigned>(parseReadCalls_), static_cast<unsigned>(parseReadBytes_),
+            static_cast<unsigned>(parseShortReads_),
+            static_cast<unsigned>(parseReadErrors_), static_cast<unsigned>(millis() - stepStartedAt));
+#endif
     return ParseStatus::Error;
   }
 
   const auto len = parseFile_.read(buf, PARSE_BUFFER_SIZE);
+#ifdef TENOR_UI_ACCEPTANCE
+  ++parseReadCalls_;
+  if (len > 0) {
+    parseReadBytes_ += static_cast<uint32_t>(len);
+  }
+#endif
+  const int availableAfterRead = parseFile_.available();
+#ifdef TENOR_UI_ACCEPTANCE
+  if (len >= 0 && len < static_cast<int>(PARSE_BUFFER_SIZE)) {
+    ++parseShortReads_;
+  }
+#endif
   if (len <= 0 || static_cast<size_t>(len) > PARSE_BUFFER_SIZE) {
     // A clean EOF is allowed. Negative reads must never reach Expat as a size.
-    if (len != 0 || parseFile_.available() > 0) {
+    if (len != 0 || availableAfterRead > 0) {
+#ifdef TENOR_UI_ACCEPTANCE
+      ++parseReadErrors_;
+#endif
       LOG_ERR("EHP", "File read error");
       failBuild();
+#ifdef TENOR_UI_ACCEPTANCE
+      LOG_DBG("EHP_TRACE", "PARSE_STEP t=%lu step=%u status=error stage=read len=%d bytes=%u/%u read_calls=%u read_bytes=%u short_reads=%u read_errors=%u step_ms=%u",
+              static_cast<unsigned long>(millis()), static_cast<unsigned>(parseStepCount_), len,
+              static_cast<unsigned>(parseFile_.position()), static_cast<unsigned>(parseFile_.size()),
+              static_cast<unsigned>(parseReadCalls_), static_cast<unsigned>(parseReadBytes_),
+              static_cast<unsigned>(parseShortReads_),
+              static_cast<unsigned>(parseReadErrors_), static_cast<unsigned>(millis() - stepStartedAt));
+#endif
       return ParseStatus::Error;
     }
   }
-  const int done = parseFile_.available() == 0;
+  const int done = availableAfterRead == 0;
+  // UTF-16 without an explicit XML encoding declaration cannot be replayed as
+  // a UTF-8 ancestor prefix. It always keeps the cold rebuild path.
+  if (sourceOffsetBase_ == 0 && parseFile_.position() == static_cast<size_t>(len) && len >= 2) {
+    const auto* bytes = static_cast<const uint8_t*>(buf);
+    if (bytes[0] == 0 || bytes[1] == 0 || bytes[0] == 0xff || bytes[0] == 0xfe) checkpointAllowed_ = false;
+  }
+  finalBuffer_ = done;
   const auto status = XML_ParseBuffer(xmlParser_, static_cast<int>(len), done);
-  if (buildFailed_) return ParseStatus::Error;
+  xmlSuspended_ = status == XML_STATUS_SUSPENDED;
+  if (buildFailed_) {
+#ifdef TENOR_UI_ACCEPTANCE
+    LOG_DBG("EHP_TRACE", "PARSE_STEP t=%lu step=%u status=error stage=callbacks bytes=%u/%u read_calls=%u read_bytes=%u short_reads=%u read_errors=%u step_ms=%u",
+            static_cast<unsigned long>(millis()), static_cast<unsigned>(parseStepCount_),
+            static_cast<unsigned>(parseFile_.position()), static_cast<unsigned>(parseFile_.size()),
+            static_cast<unsigned>(parseReadCalls_), static_cast<unsigned>(parseReadBytes_),
+            static_cast<unsigned>(parseShortReads_),
+            static_cast<unsigned>(parseReadErrors_), static_cast<unsigned>(millis() - stepStartedAt));
+#endif
+    return ParseStatus::Error;
+  }
   if (status == XML_STATUS_ERROR) {
     if (htmlEnded_) {
       LOG_DBG("EHP", "Ignoring trailing data after </html>: %s", XML_ErrorString(XML_GetErrorCode(xmlParser_)));
+#ifdef TENOR_UI_ACCEPTANCE
+      LOG_DBG("EHP_TRACE", "PARSE_STEP t=%lu step=%u status=done stage=trailing bytes=%u/%u read_calls=%u read_bytes=%u short_reads=%u read_errors=%u step_ms=%u",
+              static_cast<unsigned long>(millis()), static_cast<unsigned>(parseStepCount_),
+              static_cast<unsigned>(parseFile_.position()), static_cast<unsigned>(parseFile_.size()),
+              static_cast<unsigned>(parseReadCalls_), static_cast<unsigned>(parseReadBytes_),
+              static_cast<unsigned>(parseShortReads_),
+              static_cast<unsigned>(parseReadErrors_), static_cast<unsigned>(millis() - stepStartedAt));
+#endif
       return ParseStatus::Done;
     }
     LOG_ERR("EHP", "Parse error at line %lu:\n%s", XML_GetCurrentLineNumber(xmlParser_),
             XML_ErrorString(XML_GetErrorCode(xmlParser_)));
     failBuild();
+#ifdef TENOR_UI_ACCEPTANCE
+    LOG_DBG("EHP_TRACE", "PARSE_STEP t=%lu step=%u status=error stage=xml bytes=%u/%u read_calls=%u read_bytes=%u short_reads=%u read_errors=%u step_ms=%u",
+            static_cast<unsigned long>(millis()), static_cast<unsigned>(parseStepCount_),
+            static_cast<unsigned>(parseFile_.position()), static_cast<unsigned>(parseFile_.size()),
+            static_cast<unsigned>(parseReadCalls_), static_cast<unsigned>(parseReadBytes_),
+            static_cast<unsigned>(parseShortReads_),
+            static_cast<unsigned>(parseReadErrors_), static_cast<unsigned>(millis() - stepStartedAt));
+#endif
     return ParseStatus::Error;
   }
-  return done ? ParseStatus::Done : ParseStatus::More;
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("EHP_TRACE", "PARSE_STEP t=%lu step=%u status=%s bytes=%u/%u read_calls=%u read_bytes=%u short_reads=%u read_errors=%u step_ms=%u",
+          static_cast<unsigned long>(millis()), static_cast<unsigned>(parseStepCount_),
+          done && !xmlSuspended_ ? "done" : "more", static_cast<unsigned>(parseFile_.position()),
+          static_cast<unsigned>(parseFile_.size()), static_cast<unsigned>(parseReadCalls_),
+          static_cast<unsigned>(parseReadBytes_), static_cast<unsigned>(parseShortReads_),
+          static_cast<unsigned>(parseReadErrors_),
+          static_cast<unsigned>(millis() - stepStartedAt));
+#endif
+  return done && !xmlSuspended_ ? ParseStatus::Done : ParseStatus::More;
 }
 
 void ChapterHtmlSlimParser::abortParse() {
+#ifdef TENOR_UI_ACCEPTANCE
+  if (xmlParser_ && !parseFinishing_) {
+    LOG_DBG("EHP_TRACE", "PARSE_ABORT t=%lu step=%u bytes=%u/%u read_calls=%u read_bytes=%u short_reads=%u read_errors=%u elapsed_ms=%u",
+            static_cast<unsigned long>(millis()), static_cast<unsigned>(parseStepCount_),
+            static_cast<unsigned>(parseFile_.position()), static_cast<unsigned>(parseFile_.size()),
+            static_cast<unsigned>(parseReadCalls_), static_cast<unsigned>(parseReadBytes_),
+            static_cast<unsigned>(parseShortReads_),
+            static_cast<unsigned>(parseReadErrors_), static_cast<unsigned>(millis() - parseStartTime_));
+  }
+#endif
   if (xmlParser_) {
     destroyXmlParser(xmlParser_);
     xmlParser_ = nullptr;
@@ -2193,7 +2584,22 @@ void ChapterHtmlSlimParser::abortParse() {
 }
 
 bool ChapterHtmlSlimParser::finishParse() {
+#ifdef TENOR_UI_ACCEPTANCE
+  if (xmlParser_) {
+    LOG_DBG("EHP_TRACE", "PARSE_END t=%lu step=%u bytes=%u/%u read_calls=%u read_bytes=%u short_reads=%u read_errors=%u pages=%u visible=%u elapsed_ms=%u",
+            static_cast<unsigned long>(millis()), static_cast<unsigned>(parseStepCount_),
+            static_cast<unsigned>(parseFile_.position()), static_cast<unsigned>(parseFile_.size()),
+            static_cast<unsigned>(parseReadCalls_), static_cast<unsigned>(parseReadBytes_),
+            static_cast<unsigned>(parseShortReads_),
+            static_cast<unsigned>(parseReadErrors_), static_cast<unsigned>(completedPageCount),
+            static_cast<unsigned>(visibleTextOffset), static_cast<unsigned>(millis() - parseStartTime_));
+  }
+#endif
   if (xmlParser_) LOG_DBG("EHP", "Time to parse and build pages: %lu ms", millis() - parseStartTime_);
+
+#ifdef TENOR_UI_ACCEPTANCE
+  parseFinishing_ = true;
+#endif
   abortParse();
   if (buildFailed_) return false;
 

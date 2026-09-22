@@ -172,7 +172,7 @@ class UiSizesV108Test(unittest.TestCase):
         t.key("DOWN").shot("home-settings").key("RIGHT").key("CONFIRM").shot("display")
         t.key("CONFIRM").shot("popup").key("RIGHT").shot("popup-next").key("LEFT").key("CONFIRM")
         t.key("LEFT").shot("display-last").key("RIGHT")
-        t.key("DOWN", 4).shot("device").key("RIGHT").key("CONFIRM").shot("keyboard")
+        t.key("DOWN", 5).shot("device").key("RIGHT").key("CONFIRM").shot("keyboard")
         t.key("RIGHT").key("CONFIRM").shot("keyboard-edit").key("BACK").shot("keyboard-return")
         t.key("UP", 3).key("CONFIRM").shot("text-settings")
         t.key("LEFT").shot("text-settings-last").key("BACK")

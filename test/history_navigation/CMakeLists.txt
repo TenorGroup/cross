@@ -46,3 +46,49 @@ target_compile_definitions(HistoryFastScanTest PRIVATE
 add_test(NAME HistoryFastScanHealthy COMMAND HistoryFastScanTest contract)
 add_test(NAME HistoryFastScanReadFailures COMMAND HistoryFastScanTest faults)
 add_test(NAME HistoryFastScanAllocationFailures COMMAND HistoryFastScanTest oom)
+
+add_executable(ReadingStatsSchemaTest
+  schema_preservation.cpp
+  ${CMAKE_CURRENT_BINARY_DIR}/ReadingStatsStore.cpp
+  ${REPO_ROOT}/src/util/ReadingHabits.cpp
+  ${REPO_ROOT}/src/util/SoLieuDoc.cpp
+  ${REPO_ROOT}/src/util/NgayGio.cpp
+)
+target_include_directories(ReadingStatsSchemaTest BEFORE PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src
+)
+target_compile_definitions(ReadingStatsSchemaTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0)
+add_test(NAME ReadingStatsSchemaPreservation COMMAND ReadingStatsSchemaTest)
+
+add_executable(ReadingStatsIoTest
+  io_preservation.cpp
+  ${REPO_ROOT}/src/util/ReadingHabits.cpp
+  ${REPO_ROOT}/src/util/SoLieuDoc.cpp
+  ${REPO_ROOT}/src/util/NgayGio.cpp
+)
+target_include_directories(ReadingStatsIoTest BEFORE PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src
+)
+target_compile_definitions(ReadingStatsIoTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0)
+add_test(NAME ReadingStatsIoPreservation COMMAND ReadingStatsIoTest)
+
+add_executable(ReadingStatsResetFinalizationTest
+  reset_finalization.cpp
+  ${REPO_ROOT}/src/util/ReadingHabits.cpp
+  ${REPO_ROOT}/src/util/SoLieuDoc.cpp
+  ${REPO_ROOT}/src/util/NgayGio.cpp
+)
+target_include_directories(ReadingStatsResetFinalizationTest BEFORE PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src
+)
+target_compile_definitions(ReadingStatsResetFinalizationTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0)
+add_test(NAME ReadingStatsResetFinalization COMMAND ReadingStatsResetFinalizationTest)

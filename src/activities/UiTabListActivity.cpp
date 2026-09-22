@@ -26,9 +26,11 @@ void UiTabListActivity::loop() {
   const auto orientation = static_cast<CrossPointOrientation::Value>(renderer.getOrientation());
   halTiltSensor.update(SETTINGS.tiltTabNavigation, static_cast<uint8_t>(orientation), acceptsTilt);
   if (acceptsTilt) {
+    // Tab tilt runs opposite to page-turn tilt: the sensor mode above is
+    // unchanged, only the two readings trade places here.
     const bool forward = halTiltSensor.wasTiltedForward();
     const bool backward = halTiltSensor.wasTiltedBack();
-    queueTiltTabNavigation(forward, backward);
+    queueTiltTabNavigation(backward, forward);
   }
   UiListActivity::loop();
 }

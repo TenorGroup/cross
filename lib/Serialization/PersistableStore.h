@@ -53,6 +53,11 @@ class PersistableStoreBase {
   // Allocation/read failures preserve all files and return false for a retry.
   static bool readDocFromFile(const char* path, JsonDocument& doc);
 
+  enum class ReadResult { Ready, Invalid, Unavailable };
+  // Missing/invalid data permits recovery; unavailable data must be retried.
+  // A nonzero bound applies to both the main file and its recovery copy.
+  static ReadResult readDocFromFileStatus(const char* path, JsonDocument& doc, size_t maxBytes = 0);
+
  protected:
   /**
    * Helper function for extracting an obfuscated password from a JSON value.

@@ -108,6 +108,7 @@ add_subdirectory(file_transfer_back_latch)
 add_subdirectory(sd_font_lifetime)
 
 add_subdirectory(storage_recovery)
+add_subdirectory(hal_storage_trace)
 
 add_subdirectory(folder_rows)
 
@@ -115,6 +116,7 @@ add_subdirectory(history_navigation)
 
 add_subdirectory(section_cache)
 add_subdirectory(reader_build_budget)
+add_subdirectory(reader_turn_trace)
 
 add_subdirectory(cache_serialization)
 
@@ -154,6 +156,9 @@ add_subdirectory(ui_layout)
 add_subdirectory(dropcap_raster)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME FormatterCliSafety COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/clang_format_cli/test_cli.py")
+add_test(NAME FirmwareImageSize COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/firmware_size/test_image_size.py")
+add_test(NAME BuiltinFontMetadata COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/font_metadata/test_pooling.py")
 add_test(NAME TiltSensorForegroundOwnership COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tilt_sensor_ownership/run.py" --source "${REPO_ROOT}")
 add_test(NAME BleMenuUxRegression COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ble_menu_ux/run.py" "${REPO_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/ble-menu-ux")
 add_test(NAME InkQuickCycleContract COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ink_quick_cycle/test_contract.py")

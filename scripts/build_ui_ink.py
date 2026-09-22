@@ -10,7 +10,7 @@ import sys
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'scripts'))
-from font_header_tools import read_header
+from font_header_tools import expand_header, read_header
 from build_chinese_ui import SOURCE_SHA
 import freetype
 import numpy as np
@@ -102,7 +102,7 @@ def tune(name, header, sources, cjk_source):
 
 
 def write_tuned_header(source, output, glyphs):
-    text=source.read_text()
+    text=expand_header(source)
     rows=re.search(r'\w+Glyphs\[.*?\]\s*=\s*\{(.*?)\n\};',text,re.S).group(1)
     records=[list(map(int,re.findall(r'-?\d+',v))) for v in re.findall(r'\{([^{}]+)\}',rows)]
     intervals=re.search(r'\w+Intervals\[.*?\]\s*=\s*\{(.*?)\n\};',text,re.S).group(1)

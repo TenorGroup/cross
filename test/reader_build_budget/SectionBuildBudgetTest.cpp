@@ -54,7 +54,9 @@ TEST(SectionBuildBudget, SuspendedSmallerRebuildPreservesCacheBytesAndCurrentPag
   std::filesystem::create_directories(root);
   auto epub = std::make_shared<Epub>();
   epub->cachePath = root.string();
-  epub->contents = "<html><body>";
+  // This fixture exercises the cold fallback. A valid checkpoint resumes at the
+  // watermark and extends it on the first tick, so it cannot produce a smaller rebuild.
+  epub->contents = "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><html><body>";
   for (int n = 0; n < 180; ++n) epub->contents += "<p>word" + std::to_string(n) + "</p>";
   epub->contents += "</body></html>";
   GfxRenderer renderer;
@@ -65,7 +67,12 @@ TEST(SectionBuildBudget, SuspendedSmallerRebuildPreservesCacheBytesAndCurrentPag
   {
     Section initial(epub, 0, renderer);
     ASSERT_TRUE(initial.startBuild(spec));
-    ASSERT_TRUE(initial.buildSomeMore(12));
+    unsigned ticks = 0;
+    while (initial.pageCount < 12) {
+      ASSERT_TRUE(initial.isBuilding());
+      ASSERT_TRUE(initial.buildSomeMore(12));
+      ASSERT_LT(++ticks, 100u);
+    }
     initial.suspendBuild();
     ASSERT_FALSE(initial.isBuilding());
     ASSERT_TRUE(initial.isPartial());

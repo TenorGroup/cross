@@ -11,11 +11,13 @@
 #include <climits>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 #include "CrossPointSettings.h"
 #include "DictionaryDefinitionActivity.h"
 #include "ReadingStatsStore.h"
 #include "components/UITheme.h"
+#include "fontIds.h"
 
 namespace {
 
@@ -255,7 +257,8 @@ void DictionaryWordSelectActivity::confirmQuotation() {
   }
   quote.day = ReadingStatsStore::currentDay();
   if (quotes::save(quote)) {
-    finish();
+    popup = Popup::Saved;
+    requestUpdate();
     return;
   }
   popup = Popup::Error;
@@ -265,6 +268,13 @@ void DictionaryWordSelectActivity::confirmQuotation() {
 }
 
 void DictionaryWordSelectActivity::loop() {
+  if (popup == Popup::Saved) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+        mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      finish();
+    }
+    return;
+  }
   if (popup == Popup::NotFound || popup == Popup::Error) {
     if (millis() - popupTime >= POPUP_DURATION_MS) {
       popup = Popup::None;
@@ -380,6 +390,11 @@ bool DictionaryWordSelectActivity::drawHighlightWithSnapshot() {
 // hint's screen area. No side-button hints: the full-bleed reader page has no
 // spare gutter for them, so a hint box there would hide text.
 void DictionaryWordSelectActivity::drawHints() const {
+  if (popup == Popup::Saved) {
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_DONE), "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    return;
+  }
   // No selectable word on this page: Confirm and navigation are all no-ops
   // (guarded by words.empty() in loop()/performLookup), so only Back does
   // anything and only Back is hinted.
@@ -392,6 +407,28 @@ void DictionaryWordSelectActivity::drawHints() const {
       tr(STR_BACK), quoteMode ? (anchor < 0 ? tr(STR_QUOTES_START) : tr(STR_QUOTES_SAVE)) : tr(STR_LOOKUP),
       tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+void DictionaryWordSelectActivity::drawSavedPopup() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const char* title = tr(STR_QUOTES_SAVED);
+  const std::string route = std::string(tr(STR_HOME_TAB_STATS)) + " > " + tr(STR_QUOTES);
+  const int titleWidth = renderer.getTextWidth(UI_12_FONT_ID, title, EpdFontFamily::BOLD);
+  const int routeWidth = renderer.getTextWidth(UI_10_FONT_ID, route.c_str());
+  const int titleHeight = renderer.getLineHeight(UI_12_FONT_ID);
+  const int routeHeight = renderer.getLineHeight(UI_10_FONT_ID);
+  const int width = std::max(titleWidth, routeWidth) + metrics.popupMarginX * 2;
+  const int height = titleHeight + routeHeight + metrics.popupMarginY * 3;
+  const int x = (renderer.getScreenWidth() - width) / 2;
+  const int y = static_cast<int>(renderer.getScreenHeight() * metrics.popupTopOffsetRatio);
+  const int frame = metrics.popupFrameThickness;
+  renderer.fillRect(x - frame, y - frame, width + frame * 2, height + frame * 2, true);
+  renderer.fillRect(x, y, width, height, false);
+  renderer.drawText(UI_12_FONT_ID, x + (width - titleWidth) / 2, y + metrics.popupMarginY, title, true,
+                    EpdFontFamily::BOLD);
+  renderer.drawText(UI_10_FONT_ID, x + (width - routeWidth) / 2, y + titleHeight + metrics.popupMarginY * 2,
+                    route.c_str());
+  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
 
 void DictionaryWordSelectActivity::render(RenderLock&&) {
@@ -440,6 +477,10 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
     // The popup overdraws the page, so the snapshot no longer matches the
     // framebuffer - force the next render onto the full-repaint path.
     snapshotIdx = -1;
+    if (popup == Popup::Saved) {
+      drawSavedPopup();
+      return;
+    }
     // drawPopup overlays the framebuffer and refreshes the display itself.
     // I18N.get directly: tr() only accepts literal key names.
     GUI.drawPopup(renderer, I18N.get(popupMsg));

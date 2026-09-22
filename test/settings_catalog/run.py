@@ -16,7 +16,7 @@ out.mkdir(parents=True,exist_ok=True)
 activity=(repo/'src/activities/settings/SettingsActivity.cpp').read_text()
 start=activity.index('std::string SettingsActivity::settingValueText(')
 end=activity.index('\nvoid SettingsActivity::buildScreen',start)
-(out/'SettingsValueSlice.cpp').write_text('#include "SettingsList.h"\n'+activity[start:end]+'\n')
+(out/'SettingsValueSlice.cpp').write_text('#include "SettingsList.h"\n#include "components/TenorMenuChrome.h"\n'+activity[start:end]+'\n')
 def home_slice(home_source, destination):
  text=home_source.read_text()
  start=text.index('  if (activeTabId == Tab::FAVORITES && menucustom::state().pinCount > 0) {')

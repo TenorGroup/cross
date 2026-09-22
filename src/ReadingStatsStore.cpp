@@ -19,6 +19,27 @@ bool finishReset() {
   if (Storage.exists(main) && !Storage.remove(main)) return false;
   return Storage.rename(RESET_FILE, main);
 }
+void cleanupBookSnapshots() {
+  auto dir = Storage.open("/.crosspoint/reading-stats");
+  unsigned scanned = 0;
+  for (auto entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
+    if (entry.isDirectory()) continue;
+    char name[40];
+    entry.getName(name, sizeof(name));
+    const std::string filename = name;
+    const bool suffix = filename.size() == 27 ||
+                        (filename.size() == 31 && (filename.substr(27) == ".bak" || filename.substr(27) == ".tmp"));
+    if (!suffix || filename.substr(0, 6) != "tenor_" || filename.substr(22, 5) != ".json") continue;
+    bool hex = true;
+    for (int i = 6; i < 22; ++i)
+      hex &= (filename[i] >= '0' && filename[i] <= '9') || (filename[i] >= 'a' && filename[i] <= 'f');
+    if (!hex) continue;
+    entry.close();
+    const auto path = std::string("/.crosspoint/reading-stats/") + filename;
+    if (!Storage.remove(path.c_str())) LOG_ERR("STATS", "Old statistics cleanup deferred: %s", name);
+    if (++scanned % 8 == 0) delay(1);
+  }
+}
 enum class SnapshotReadResult { Ready, Invalid, Unavailable };
 
 // Directory enumeration already opened this snapshot. Buffer its reads so JSON
@@ -64,9 +85,9 @@ class SnapshotReader {
   }
 };
 
-SnapshotReadResult readOpenSnapshot(HalFile& file, size_t size, JsonDocument& doc) {
+SnapshotReadResult readOpenSnapshot(HalFile& file, size_t size, JsonDocument& doc, size_t maxBytes = 4096) {
   doc.clear();
-  if (size > 4096) return file.close() ? SnapshotReadResult::Invalid : SnapshotReadResult::Unavailable;
+  if (size > maxBytes) return file.close() ? SnapshotReadResult::Invalid : SnapshotReadResult::Unavailable;
   SnapshotReader input(file, size);
   const auto error = deserializeJson(doc, input);
   const bool complete = input.finish();
@@ -78,23 +99,33 @@ SnapshotReadResult readOpenSnapshot(HalFile& file, size_t size, JsonDocument& do
 }
 
 bool readSnapshot(const std::string& path, JsonDocument& doc) {
-  const auto bounded = [](const std::string& filePath) {
-    auto file = Storage.open(filePath.c_str());
-    return file && file.size() <= 32768;
-  };
-  if (bounded(path) && PersistableStoreBase::readDocFromFile(path.c_str(), doc) && doc.is<JsonObject>()) return true;
+  using ReadResult = PersistableStoreBase::ReadResult;
+  const auto result = PersistableStoreBase::readDocFromFileStatus(path.c_str(), doc, 32768);
+  if (result == ReadResult::Unavailable) return false;
+  if (result == ReadResult::Ready && doc.is<JsonObject>()) return true;
   doc.clear();
-  return bounded(path + ".bak") && PersistableStoreBase::readDocFromFile((path + ".bak").c_str(), doc) &&
+  return PersistableStoreBase::readDocFromFileStatus((path + ".bak").c_str(), doc, 32768) == ReadResult::Ready &&
          doc.is<JsonObject>();
+}
+bool readResetSnapshot(JsonDocument& doc) {
+  auto file = Storage.open(RESET_FILE);
+  if (!file) return false;
+  return readOpenSnapshot(file, file.size(), doc, 32768) == SnapshotReadResult::Ready;
 }
 bool writeSnapshot(const std::string& path, const JsonDocument& doc) {
   if (doc.overflowed()) return false;
   const std::string temporary = path + ".tmp", backup = path + ".bak";
+  bool readable = false;
+  if (Storage.exists(path.c_str())) {
+    JsonDocument previous;
+    const auto result = PersistableStoreBase::readDocFromFileStatus(path.c_str(), previous, 32768);
+    if (result == PersistableStoreBase::ReadResult::Unavailable) return false;
+    readable = result == PersistableStoreBase::ReadResult::Ready;
+  }
   if (!PersistableStoreBase::writeDocToFile(temporary.c_str(), doc)) return false;
   if (Storage.exists(path.c_str())) {
     // Keep the known readable backup if the main file was interrupted.
-    JsonDocument previous;
-    if (PersistableStoreBase::readDocFromFile(path.c_str(), previous)) {
+    if (readable) {
       if (Storage.exists(backup.c_str()) && !Storage.remove(backup.c_str())) return false;
       if (!Storage.rename(path.c_str(), backup.c_str())) return false;
     } else if (!Storage.remove(path.c_str()))
@@ -144,7 +175,7 @@ BookReadingRecord decodeBook(JsonVariantConst doc) {
 bool ReadingStatsStore::saveToFile() const {
   if (!writableSchema || !statisticsReadable) return false;
   std::lock_guard<std::mutex> lock(storeMutex);
-  if (!finishReset()) return false;
+  if (Storage.exists(RESET_FILE)) return false;
   JsonDocument doc;
   toJson(doc);
   return writeSnapshot(getFilePath(), doc);
@@ -156,16 +187,20 @@ bool ReadingStatsStore::loadFromFile() {
   const bool pending = Storage.exists(RESET_FILE);
   const bool exists =
       pending || Storage.exists(getFilePath()) || Storage.exists((std::string(getFilePath()) + ".bak").c_str());
-  const bool loaded = readSnapshot(pending ? RESET_FILE : getFilePath(), doc) && fromJson(doc.as<JsonVariantConst>());
+  const bool loaded = (pending ? readResetSnapshot(doc) : readSnapshot(getFilePath(), doc)) &&
+                      fromJson(doc.as<JsonVariantConst>());
   statisticsReadable = loaded || (!exists && !Storage.exists("/.crosspoint/reading-stats"));
-  if (pending && loaded) finishReset();
+  if (pending && loaded) {
+    const bool all = !doc["ngay"].is<JsonArrayConst>();
+    if (finishReset() && all) cleanupBookSnapshots();
+  }
   return loaded;
 }
 
-bool ReadingStatsStore::resetStatistics(const bool all) {
-  if (!writableSchema || !statisticsReadable || (all && bookEpoch == UINT32_MAX)) return false;
+ReadingStatsStore::ResetResult ReadingStatsStore::resetStatistics(const bool all) {
+  if (!writableSchema || !statisticsReadable || (all && bookEpoch == UINT32_MAX)) return ResetResult::Failed;
   std::lock_guard<std::mutex> lock(storeMutex);
-  if (!finishReset()) return false;
+  if (Storage.exists(RESET_FILE)) return ResetResult::Pending;
   JsonDocument doc;
   if (all) {
     doc["schema"] = 4;
@@ -174,43 +209,26 @@ bool ReadingStatsStore::resetStatistics(const bool all) {
     toJson(doc);
     doc.remove("habits");
   }
-  if (doc.overflowed()) return false;
+  if (doc.overflowed()) return ResetResult::Failed;
   // Commit a preferred snapshot before touching any old main/backup file.
   const std::string temporary = std::string(RESET_FILE) + ".tmp";
   String encoded;
   serializeJson(doc, encoded);
-  if (encoded.length() != measureJson(doc)) return false;
+  if (encoded.length() != measureJson(doc)) return ResetResult::Failed;
   auto file = Storage.open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
-  if (!file || file.write(encoded.c_str(), encoded.length()) != encoded.length()) return false;
-  if (!file.close() || !Storage.rename(temporary.c_str(), RESET_FILE)) return false;
+  if (!file || file.write(encoded.c_str(), encoded.length()) != encoded.length()) return ResetResult::Failed;
+  if (!file.close() || !Storage.rename(temporary.c_str(), RESET_FILE)) return ResetResult::Failed;
   // The committed document was constructed here; parsing it cannot require more
   // title/path capacity than the current store in a habits-only reset.
   statisticsReadable = fromJson(doc.as<JsonVariantConst>());
-  if (!statisticsReadable) return true;  // Fail closed after a committed reset.
+  if (!statisticsReadable) return ResetResult::Pending;
   const bool finalized = finishReset();
-  if (!finalized) LOG_ERR("STATS", "Reset committed; journal finalization pending");
-  if (all) {
-    auto dir = Storage.open("/.crosspoint/reading-stats");
-    unsigned scanned = 0;
-    for (auto entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
-      if (entry.isDirectory()) continue;
-      char name[40];
-      entry.getName(name, sizeof(name));
-      const std::string filename = name;
-      const bool suffix = filename.size() == 27 ||
-                          (filename.size() == 31 && (filename.substr(27) == ".bak" || filename.substr(27) == ".tmp"));
-      if (!suffix || filename.substr(0, 6) != "tenor_" || filename.substr(22, 5) != ".json") continue;
-      bool hex = true;
-      for (int i = 6; i < 22; ++i)
-        hex &= (filename[i] >= '0' && filename[i] <= '9') || (filename[i] >= 'a' && filename[i] <= 'f');
-      if (!hex) continue;
-      entry.close();
-      const auto path = std::string("/.crosspoint/reading-stats/") + filename;
-      if (!Storage.remove(path.c_str())) LOG_ERR("STATS", "Old statistics cleanup deferred: %s", name);
-      if (++scanned % 8 == 0) delay(1);
-    }
+  if (!finalized) {
+    LOG_ERR("STATS", "Reset committed; journal finalization pending");
+    return ResetResult::Pending;
   }
-  return true;
+  if (all) cleanupBookSnapshots();
+  return ResetResult::Complete;
 }
 
 uint32_t ReadingStatsStore::currentDay() {
@@ -350,9 +368,10 @@ void ReadingStatsStore::toJson(JsonDocument& doc) const {
 
 bool ReadingStatsStore::fromJson(const JsonVariantConst doc) {
   ++bookListGeneration;
-  writableSchema = !doc["schema"].is<uint32_t>() || doc["schema"].as<uint32_t>() <= 4;
+  const auto schema = doc["schema"];
+  writableSchema = schema.isUnbound() || (schema.is<uint32_t>() && schema.as<uint32_t>() <= 4);
   if (!writableSchema) {
-    LOG_ERR("STATS", "Newer statistics schema retained without changes");
+    LOG_ERR("STATS", "Unsupported statistics schema retained without changes");
     return false;
   }
   bookEpoch = doc["bookEpoch"] | 0u;

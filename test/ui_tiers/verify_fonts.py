@@ -8,13 +8,13 @@ import zlib
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'scripts'))
-from font_header_tools import read_header
+from font_header_tools import expand_header, read_header
 from check_chinese_ui import required
 from gen_i18n import parse_yaml_file
 
 
 def inspect(header, reference):
-    text = header.read_text()
+    text = expand_header(header)
     def body(suffix):
         return re.search(r'\w+'+suffix+r'\[.*?\]\s*=\s*\{(.*?)\n\};', text, re.S).group(1)
     bitmap = bytes(int(x, 16) for x in re.findall(r'0x([0-9a-fA-F]+)', body('Bitmaps')))

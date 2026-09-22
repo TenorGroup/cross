@@ -81,3 +81,8 @@ InputManager::InputManager() {}
 std::string TextSettingsActivity::layoutValueText(int){return "layout-boundary";}
 std::string TextSettingsActivity::styleValueText(int){return "style-boundary";}
 std::string DongHoSettingsActivity::giaTriDong(int){return "clock-boundary";}
+
+namespace tenorchrome {
+int tipLineCount(const GfxRenderer&, const char*, int) { return 0; }
+int tipHeight(const GfxRenderer&, const char*, int) { return 0; }
+}  // namespace tenorchrome

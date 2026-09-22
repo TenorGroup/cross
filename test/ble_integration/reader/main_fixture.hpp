@@ -9,7 +9,8 @@ struct BleKeyboardHost {bool running=true,stopping=false,connected=false,armResu
  static BleKeyboardHost&getInstance(){static BleKeyboardHost h;return h;}
  bool isStopping()const{return stopping;}bool isRunning()const{return running;}bool isConnected()const{return connected;}
  void end(int){running=false;stopping=false;}bool armSelectedPeerReconnect(const char*addr){armCalls++;armedAddr=addr?addr:"";events.emplace_back("arm");return armResult;}void poll(){polls++;events.emplace_back("poll");}bool popKey(KeyEvent&e){if(queue.empty())return false;e=queue.front();queue.erase(queue.begin());return true;}};
-namespace ble {bool stopped=false,init=false,startSuccess=true;int starts=0;
+namespace ble {bool stopped=false,init=false,startSuccess=true,rearm=false;int starts=0;
+ void requestRearm(){rearm=true;}bool takeRearmRequest(){bool r=rearm;rearm=false;return r;}
  bool idleStopped(){return stopped;}void setIdleStopped(bool s){stopped=s;}bool initializing(){return init;}
  void setReaderStartDeferred(bool){}bool beginAsync(int&){starts++;BleKeyboardHost::getInstance().running=startSuccess;return startSuccess;}
  void stopForIdle(){stopped=true;BleKeyboardHost::getInstance().end(0);}void suspendForTransition(){BleKeyboardHost::getInstance().end(0);}}

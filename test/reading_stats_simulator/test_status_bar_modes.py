@@ -23,9 +23,12 @@ REPO = Path(__file__).resolve().parents[2]
 PROGRAM = REPO / '.pio/build/simulator_x3_uc8279/program'
 EPUB = REPO / 'test/epubs/test_kerning_ligature.epub'
 
-# Man Cai dat > nhom Hien thi: bon nhip DOWN sang the Cai dat, hai nhip RIGHT sang nhom.
-MO_HIEN_THI = '1000:DOWN;1500:DOWN;2000:DOWN;2500:DOWN;3000:RIGHT;3400:CONFIRM;'
+# Home > the Folder > thu muc books. Muoi hai tep fixture buoc danh sach phai
+# can den vung day man hinh, nen do duoc phan noi dung ma moi mode de lai.
+MO_THU_MUC_DAI = '1000:DOWN;1500:CONFIRM;'
 DAY_DAY = 745  # tu day tro xuong la dai trang thai + nhan nut
+O_HANG_11 = (70, 700, 230, 708)
+DAI_CHROME_DUOI = (765, 792)
 
 
 class StatusBarModesTest(unittest.TestCase):
@@ -37,6 +40,8 @@ class StatusBarModesTest(unittest.TestCase):
         (self.sd / 'books').mkdir()
         shutil.copy(EPUB, self.sd / 'books/sach.epub')
         (self.store / 'recent.json').write_text(json.dumps({'books': [{'path': '/books/sach.epub', 'title': 'Sach'}]}))
+        for index in range(1, 13):
+            (self.sd / f'books/fixture-{index:02d}.txt').write_text('fixture\n')
         self.shots = Path(self.tmp.name) / 'shots'
         self.shots.mkdir()
 
@@ -80,41 +85,40 @@ class StatusBarModesTest(unittest.TestCase):
         return {
             'day_noi_dung': max(noi_dung) if noi_dung else 0,
             'muc_dai_day': int(muc[DAY_DAY:].sum()),
+            # Folder dai co the dat noi dung qua day 745. Day nay nam trong
+            # chrome co dinh cua chan manh, tach phep do footer khoi list.
+            'muc_chrome_duoi': int(muc[DAI_CHROME_DUOI[0]:DAI_CHROME_DUOI[1]].sum()),
             'so_hang': hang,
-            # Vung cua hang thu 11 trong danh sach Hien thi. Muc nho compact va
-            # muc Tat deu hien hang nay; muc Lon giu reserve day du nen dung o hang 10.
-            'muc_hang_11': int(muc[700:721].sum()),
+            # O chu cua hang 11 trong Folder, tranh mui ten va chu footer.
+            'muc_hang_11': int(muc[O_HANG_11[1]:O_HANG_11[3], O_HANG_11[0]:O_HANG_11[2]].sum()),
         }
 
     def test_tat_thanh_lay_lai_dung_mot_hang(self):
-        """Tat: hang cuoi cua danh sach tut xuong thap hon, va dai day mat pin/giờ/nhan nut."""
+        """Tat: Folder dai hien tron mot hang thu 11 va bo chrome chan manh."""
         self.viet_cai_dat(globalStatusBarMode=0)
-        self.chay(MO_HIEN_THI + '5600:QUIT', 'small', 5000)
+        self.chay(MO_THU_MUC_DAI + '5600:QUIT', 'small', 5000)
         nho = self.do('small')
         self.viet_cai_dat(globalStatusBarMode=1)
-        self.chay(MO_HIEN_THI + '5600:QUIT', 'off', 5000)
+        self.chay(MO_THU_MUC_DAI + '5600:QUIT', 'off', 5000)
         tat = self.do('off')
-        # Danh sach Hien thi co 11 hang. Footer nho compact va muc Tat deu thay du 11.
-        self.assertGreater(tat['muc_hang_11'], 400,
-                           f"Tat phai ve duoc hang thu 11: {nho} vs {tat}")
-        self.assertGreater(nho['muc_hang_11'], 400,
-                           f"Mac dinh nho compact phai hien hang thu 11: {nho} vs {tat}")
-        self.assertLess(tat['muc_dai_day'], nho['muc_dai_day'] / 2,
+        self.assertLess(nho['muc_hang_11'], 20,
+                        f"Nho phai giu hang 11 ngoai viewport: {nho} vs {tat}")
+        self.assertGreater(tat['muc_hang_11'], 100,
+                           f"Tat phai lay lai cho cho hang 11: {nho} vs {tat}")
+        self.assertLess(tat['muc_chrome_duoi'], nho['muc_chrome_duoi'] / 2,
                         f"Tat phai bo pin/gio/nhan nut: {nho} vs {tat}")
 
     def test_muc_lon_giu_nguyen_bo_cuc(self):
-        """Lon: giu reserve day du va 10 hang, trong khi Nho compact hien 11 hang."""
+        """Lon: giu chrome chan manh va hang 11 ngoai viewport cua Folder dai."""
         self.viet_cai_dat(globalStatusBarMode=0)
-        self.chay(MO_HIEN_THI + '5600:QUIT', 'small2', 5000)
+        self.chay(MO_THU_MUC_DAI + '5600:QUIT', 'small2', 5000)
         nho = self.do('small2')
         self.viet_cai_dat(globalStatusBarMode=2)
-        self.chay(MO_HIEN_THI + '5600:QUIT', 'large2', 5000)
+        self.chay(MO_THU_MUC_DAI + '5600:QUIT', 'large2', 5000)
         lon = self.do('large2')
-        self.assertGreater(nho['muc_hang_11'], 400,
-                           f"Nho compact phai hien hang thu 11: {nho} vs {lon}")
-        self.assertLess(lon['muc_hang_11'], 120,
-                        f"Lon phai giu reserve day du va dung o hang 10: {nho} vs {lon}")
-        self.assertGreater(lon['muc_dai_day'], nho['muc_dai_day'],
+        self.assertLess(lon['muc_hang_11'], 20,
+                        f"Lon phai giu hang 11 ngoai viewport: {nho} vs {lon}")
+        self.assertGreater(lon['muc_chrome_duoi'], nho['muc_chrome_duoi'],
                            f"Lon phai ve to hon trong cung dai: {nho} vs {lon}")
 
     def test_hai_pham_vi_doc_lap(self):

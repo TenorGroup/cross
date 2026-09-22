@@ -99,6 +99,62 @@ TEST_F(ChapterHtmlSlimParserTest, RubySurvivesPartialParagraphExtraction) {
   EXPECT_EQ(lines, 2u);
 }
 
+TEST_F(ChapterHtmlSlimParserTest, PlainLineBreaksDoNotChargeLeadingGapTwice) {
+  BlockStyle style;
+  style.alignment = CssTextAlign::Left;
+  style.textAlignDefined = true;
+  style.textIndentDefined = true;
+  style.textIndent = 12;
+  ParsedText text(false, false, false, style, 1);
+  text.addWord("a", EpdFontFamily::REGULAR);
+  text.addWord("b", EpdFontFamily::REGULAR);
+  text.addWord("c", EpdFontFamily::REGULAR);
+
+  std::vector<unsigned> lineWordCounts;
+  ASSERT_TRUE(text.layoutAndExtractLines(renderer, 0, 20, [&](std::unique_ptr<TextBlock> line, auto) {
+    lineWordCounts.push_back(line->wordCount());
+  }));
+  ASSERT_EQ(lineWordCounts.size(), 2u);
+  EXPECT_EQ(lineWordCounts[0], 1u);
+  EXPECT_EQ(lineWordCounts[1], 2u);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, PlainLineBreaksMatchUnannotatedRubyPath) {
+  // Empty annotations exercise the established DP path with zero ruby overhang.
+  // Compare every break and token after fallback hyphenation, including spacing
+  // that can make a partial line wider than the complete suffix.
+  uint32_t state = 0x109;
+  for (unsigned sample = 0; sample < 1200; ++sample) {
+    auto next = [&]() { state = state * 1664525u + 1013904223u; return state; };
+    BlockStyle style;
+    style.alignment = CssTextAlign::Left;
+    style.textAlignDefined = true;
+    const int spacing = static_cast<int>(next() % 17) - 8;
+    ParsedText plain(false, false, false, style, next() % 3, spacing, next() % 5);
+    const size_t count = 2 + next() % 40;
+    for (size_t i = 0; i < count; ++i) {
+      plain.addWord(std::string(1 + next() % 14, static_cast<char>('a' + next() % 26)),
+                    static_cast<EpdFontFamily::Style>(next() % 4));
+      plain.wordContinues[i] = (next() & 8) != 0;
+      plain.wordNoSpaceBefore[i] = (next() & 8) != 0;
+    }
+    ParsedText annotated = plain;
+    annotated.rubyTexts.resize(count);
+    auto plainWidths = plain.calculateWordWidths(renderer, 0);
+    auto annotatedWidths = annotated.calculateWordWidths(renderer, 0);
+    const int pageWidth = sample % 11 == 0 ? 100000 : 8 + next() % 300;
+    SCOPED_TRACE(::testing::Message() << "sample=" << sample << " width=" << pageWidth
+                                    << " letterSpacing=" << spacing);
+    const auto expected = annotated.computeLineBreaks(renderer, 0, pageWidth, annotatedWidths,
+                                                       annotated.wordContinues, annotated.wordNoSpaceBefore);
+    const auto actual = plain.computeLineBreaks(renderer, 0, pageWidth, plainWidths,
+                                               plain.wordContinues, plain.wordNoSpaceBefore);
+    ASSERT_EQ(actual, expected);
+    ASSERT_EQ(plain.words, annotated.words);
+    ASSERT_EQ(plainWidths, annotatedWidths);
+  }
+}
+
 TEST_F(ChapterHtmlSlimParserTest, UnequalTableCellsAndRubySurvivePageBreaks) {
   parser.viewportWidth = 240;
   parser.viewportHeight = 32;

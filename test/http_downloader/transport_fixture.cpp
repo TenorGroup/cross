@@ -36,6 +36,7 @@ uint8_t SecureClient::connected() { return _transport.connected(); }
 #ifndef FREEINK_NET_WOLFSSL
 #include "esp_http_fixture.h"
 #endif
+#define HTTP_DOWNLOADER_TRANSPORT_FIXTURE 1
 #include "production_transport.inc"
 
 static auto runDownload(Sink& sink) {
@@ -105,3 +106,175 @@ TEST_F(DownloadPump, PreservesFixedChunkedAndCloseDelimitedPayloads) {
     EXPECT_EQ(payload, "abc");
   }
 }
+
+#ifdef FREEINK_NET_WOLFSSL
+class WolfRedirect : public testing::Test {
+ protected:
+  void SetUp() override { wire::reset(); }
+  HttpDownloader::DownloadError get(const std::string& url) {
+    Sink sink;
+    sink.write = [&](const uint8_t* data, size_t size) {
+      payload.append(reinterpret_cast<const char*>(data), size);
+      return true;
+    };
+    return runGetWolf(url, "", "", sink, false, nullptr, true);
+  }
+  std::string payload;
+};
+
+TEST_F(WolfRedirect, QueryOnlyLocationMayContainAbsoluteUrlValue) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: ?next=https://catalog.example/b\r\nContent-Length: 0\r\n\r\n",
+                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("https://books.example/catalog/page?old=1"), HttpDownloader::OK);
+  ASSERT_EQ(wire::requests.size(), 2u);
+  EXPECT_NE(wire::requests[1].bytes.find("GET /catalog/page?next=https://catalog.example/b HTTP/1.1"),
+            std::string::npos);
+}
+
+TEST_F(WolfRedirect, RelativeLocationMayContainAbsoluteUrlValue) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: next.epub?origin=https://example.org\r\nContent-Length: 0\r\n\r\n",
+                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("https://books.example/catalog/page"), HttpDownloader::OK);
+  ASSERT_EQ(wire::requests.size(), 2u);
+  EXPECT_NE(wire::requests[1].bytes.find("GET /catalog/next.epub?origin=https://example.org HTTP/1.1"),
+            std::string::npos);
+}
+
+TEST_F(WolfRedirect, RejectsUnsupportedScheme) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: ftp://books.example/book\r\nContent-Length: 0\r\n\r\n"};
+  EXPECT_EQ(get("https://books.example/catalog/page"), HttpDownloader::HTTP_ERROR);
+  EXPECT_EQ(wire::connectAttempts, 1);
+}
+
+TEST_F(WolfRedirect, RejectsOverlongLocationBeforeConnecting) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: https://books.example/" + std::string(2048, 'a') +
+                   "\r\nContent-Length: 0\r\n\r\n"};
+  EXPECT_EQ(get("https://books.example/catalog/page"), HttpDownloader::HTTP_ERROR);
+  EXPECT_EQ(wire::connectAttempts, 1);
+}
+#endif
+
+#ifndef FREEINK_NET_WOLFSSL
+class FallbackRedirect : public testing::Test {
+ protected:
+  void SetUp() override {
+    wire::reset();
+    wire::fallbackRequests.clear();
+  }
+  HttpDownloader::DownloadError get(const std::string& url, const std::string& user = {},
+                                    const std::string& password = {}) {
+    Sink sink;
+    sink.write = [&](const uint8_t* data, size_t size) {
+      payload.append(reinterpret_cast<const char*>(data), size);
+      return true;
+    };
+    return runGet(url, user, password, sink, nullptr, true);
+  }
+  std::string payload;
+};
+
+TEST_F(FallbackRedirect, FollowsHttpsWithSameOriginBasicAuth) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: /book\r\nContent-Length: 0\r\n\r\n",
+                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("https://books.example/opds", "reader", "secret"), HttpDownloader::OK);
+  EXPECT_EQ(payload, "abc");
+  ASSERT_EQ(wire::fallbackRequests.size(), 2u);
+  EXPECT_EQ(wire::fallbackRequests[1].url, "https://books.example/book");
+  EXPECT_TRUE(wire::fallbackRequests[1].authorized);
+}
+
+TEST_F(FallbackRedirect, PreservesRedirectQuery) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: /book?token=abc\r\nContent-Length: 0\r\n\r\n",
+                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("https://books.example/opds"), HttpDownloader::OK);
+  ASSERT_EQ(wire::fallbackRequests.size(), 2u);
+  EXPECT_EQ(wire::fallbackRequests[1].url, "https://books.example/book?token=abc");
+}
+
+TEST_F(FallbackRedirect, QueryOnlyLocationKeepsCurrentPath) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: ?page=2\r\nContent-Length: 0\r\n\r\n",
+                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("https://books.example/catalog/page?old=1"), HttpDownloader::OK);
+  ASSERT_EQ(wire::fallbackRequests.size(), 2u);
+  EXPECT_EQ(wire::fallbackRequests[1].url, "https://books.example/catalog/page?page=2");
+}
+
+TEST_F(FallbackRedirect, QueryOnlyLocationMayContainAbsoluteUrlValue) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: ?next=https://catalog.example/b\r\nContent-Length: 0\r\n\r\n",
+                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("https://books.example/catalog/page?old=1"), HttpDownloader::OK);
+  ASSERT_EQ(wire::fallbackRequests.size(), 2u);
+  EXPECT_EQ(wire::fallbackRequests[1].url,
+            "https://books.example/catalog/page?next=https://catalog.example/b");
+}
+
+TEST_F(FallbackRedirect, RelativeLocationMayContainAbsoluteUrlValue) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: next.epub?origin=https://example.org\r\nContent-Length: 0\r\n\r\n",
+                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("https://books.example/catalog/page"), HttpDownloader::OK);
+  ASSERT_EQ(wire::fallbackRequests.size(), 2u);
+  EXPECT_EQ(wire::fallbackRequests[1].url,
+            "https://books.example/catalog/next.epub?origin=https://example.org");
+}
+
+TEST_F(FallbackRedirect, RelativeLocationIgnoresSlashInCurrentQuery) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: next\r\nContent-Length: 0\r\n\r\n",
+                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("https://books.example/catalog/page?next=/nested/item"), HttpDownloader::OK);
+  ASSERT_EQ(wire::fallbackRequests.size(), 2u);
+  EXPECT_EQ(wire::fallbackRequests[1].url, "https://books.example/catalog/next");
+}
+
+TEST_F(FallbackRedirect, RelativeParentLocationRemovesDotSegment) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: ../book\r\nContent-Length: 0\r\n\r\n",
+                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("https://books.example/catalog/chapter/page"), HttpDownloader::OK);
+  ASSERT_EQ(wire::fallbackRequests.size(), 2u);
+  EXPECT_EQ(wire::fallbackRequests[1].url, "https://books.example/catalog/book");
+}
+
+TEST_F(FallbackRedirect, RejectsOverlongLocationBeforeConnecting) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: https://books.example/" + std::string(2048, 'a') +
+                   "\r\nContent-Length: 0\r\n\r\n"};
+  EXPECT_EQ(get("https://books.example/opds"), HttpDownloader::HTTP_ERROR);
+  EXPECT_EQ(wire::fallbackRequests.size(), 1u);
+}
+
+TEST_F(FallbackRedirect, RemovesBasicAuthAcrossOrigins) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: https://cdn.example/book\r\nContent-Length: 0\r\n\r\n",
+                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("https://books.example/opds", "reader", "secret"), HttpDownloader::OK);
+  EXPECT_EQ(payload, "abc");
+  ASSERT_EQ(wire::fallbackRequests.size(), 2u);
+  EXPECT_EQ(wire::fallbackRequests[1].url, "https://cdn.example/book");
+  EXPECT_FALSE(wire::fallbackRequests[1].authorized);
+}
+
+TEST_F(FallbackRedirect, AllowsHttpUpgradeToHttps) {
+  wire::replies = {"HTTP/1.1 301 Moved\r\nLocation: https://books.example/book\r\nContent-Length: 0\r\n\r\n",
+                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"};
+  EXPECT_EQ(get("http://books.example/opds"), HttpDownloader::OK);
+  EXPECT_EQ(payload, "abc");
+  ASSERT_EQ(wire::fallbackRequests.size(), 2u);
+  EXPECT_EQ(wire::fallbackRequests[1].url, "https://books.example/book");
+}
+
+TEST_F(FallbackRedirect, RejectsHttpsDowngrade) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: http://books.example/book\r\nContent-Length: 0\r\n\r\n"};
+  EXPECT_EQ(get("https://books.example/opds"), HttpDownloader::HTTP_ERROR);
+  EXPECT_EQ(wire::fallbackRequests.size(), 1u);
+}
+
+TEST_F(FallbackRedirect, RejectsUnsupportedScheme) {
+  wire::replies = {"HTTP/1.1 302 Found\r\nLocation: ftp://books.example/book\r\nContent-Length: 0\r\n\r\n"};
+  EXPECT_EQ(get("https://books.example/opds"), HttpDownloader::HTTP_ERROR);
+  EXPECT_EQ(wire::fallbackRequests.size(), 1u);
+}
+
+TEST_F(FallbackRedirect, RejectsSixthHop) {
+  for (int i = 0; i < 6; ++i)
+    wire::replies.push_back("HTTP/1.1 302 Found\r\nLocation: /again\r\nContent-Length: 0\r\n\r\n");
+  EXPECT_EQ(get("http://books.example/opds"), HttpDownloader::HTTP_ERROR);
+  EXPECT_EQ(wire::fallbackRequests.size(), 6u);
+}
+#endif

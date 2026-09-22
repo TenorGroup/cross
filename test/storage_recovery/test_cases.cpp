@@ -1,7 +1,63 @@
 int failed=0,total=0;
 void check(bool ok,const char*n){++total;printf("%s %s\n",ok?"PASS":"FAIL",n);if(!ok)++failed;}
 void reset(){Storage=SDCardManager{};Storage.files["book"]="old-book";Storage.files["settings"]="{\"saved\":1}";transferBody="new-book";transferResult=HttpDownloader::OK;invalidations=0;failInvalidation=false;}
+void checkedReadStatus(){
+ using Result=PersistableStoreBase::ReadResult;
+ JsonDocument doc;
+ reset();Storage.files.erase("settings");
+ check(PersistableStoreBase::readDocFromFileStatus("settings",doc,32768)==Result::Invalid,"missing main and recovery allow fallback");
+ for(const char* content:{"","{broken"}) {
+  reset();Storage.files["settings"]=content;
+  check(PersistableStoreBase::readDocFromFileStatus("settings",doc,32768)==Result::Invalid,"proven invalid main permits fallback");
+ }
+ for(bool recovery:{false,true}) for(size_t size:{32768u,32769u}) {
+  reset();const std::string path=recovery?"settings.davbak":"settings";
+  if(recovery)Storage.files["settings"]="{broken";
+  const std::string value="{\"saved\":7}";
+  Storage.files[path]=value+std::string(size-value.size(),' ');
+  const auto original=Storage.files;
+  const auto result=PersistableStoreBase::readDocFromFileStatus("settings",doc,32768);
+  if(size==32768) {
+   check(result==Result::Ready && doc["saved"]==7,"exact bound accepts main and recovery");
+   check(Storage.files["settings"].size()==32768,"exact bound promotion retains bytes");
+  } else {
+   check(result==Result::Unavailable,"oversize main and recovery are unavailable");
+   check(Storage.files==original && Storage.readsByPath[path]==0,"oversize refuses before reading or mutation");
+  }
+ }
+ for(bool recovery:{false,true}) for(int fault=0;fault<3;++fault) {
+  reset();if(recovery)Storage.files["settings"]="{broken";
+  Storage.files["settings.davbak"]="{\"saved\":7}";
+  Storage.readFaultPath=recovery?"settings.davbak":"settings";
+  if(fault==0)Storage.failOpen=true;
+  if(fault==1)Storage.failRead=true;
+  if(fault==2)Storage.failClose=true;
+  const auto original=Storage.files;
+  check(PersistableStoreBase::readDocFromFileStatus("settings",doc,32768)==Result::Unavailable,"open/read/close status is unavailable");
+  check(Storage.readFaultHits>0,"targeted main or recovery fault was reached");
+  check(Storage.files==original,"unavailable status preserves main and recovery");
+ }
+ struct Deny:ArduinoJson::Allocator {
+  unsigned hits=0;
+  void*allocate(size_t)override{++hits;return nullptr;}
+  void deallocate(void*)override{}
+  void*reallocate(void*,size_t)override{++hits;return nullptr;}
+ } deny;
+ reset();Storage.files["settings.davbak"]="{\"saved\":7}";const auto original=Storage.files;
+ JsonDocument noHeap(&deny);
+ check(PersistableStoreBase::readDocFromFileStatus("settings",noHeap,32768)==Result::Unavailable && deny.hits>0,
+       "real parser allocation failure is unavailable");
+ check(Storage.files==original,"parser allocation failure retains both files");
+ for(bool renameFailure:{false,true}) {
+  reset();Storage.files["settings"]="{broken";Storage.files["settings.davbak"]="{\"saved\":7}";
+  if(renameFailure)Storage.failRename.insert("settings.davbak");else Storage.failRemove=true;
+  check(PersistableStoreBase::readDocFromFileStatus("settings",doc,32768)==Result::Ready && doc["saved"]==7,
+        "valid recovery is usable while promotion fails");
+  check(Storage.files["settings.davbak"]=="{\"saved\":7}","failed promotion retains verified recovery bytes");
+ }
+}
 int main(){
+ checkedReadStatus();
  reset();Storage.failRead=true;check(Storage.readFile("settings").isEmpty(),"signed SD read error rejected");
  reset();Storage.shortRead=2;check(Storage.readFile("settings").length()==11,"short SD reads preserve full JSON");
  reset();Storage.failClose=true;check(Storage.readFile("settings").isEmpty(),"SD close failure rejected before JSON parse");

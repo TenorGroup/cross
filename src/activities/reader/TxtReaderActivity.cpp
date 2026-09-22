@@ -526,8 +526,12 @@ void TxtReaderActivity::loadProgress() {
   }
 }
 
+std::string TxtReaderActivity::pageIndexCachePath() const {
+  return txt->getCachePath() + (preview ? "/preview_index.bin" : "/index.bin");
+}
+
 bool TxtReaderActivity::loadPageIndexCache() {
-  const std::string path = txt->getCachePath() + "/index.bin";
+  const std::string path = pageIndexCachePath();
   if (!freeink::recoverFile(Storage, path.c_str())) return false;
   const std::string backup = path + ".davbak";
   if (loadPageIndexCacheFile(path)) {
@@ -589,7 +593,7 @@ bool TxtReaderActivity::loadPageIndexCacheFile(const std::string& path) {
 
 bool TxtReaderActivity::savePageIndexCache() const {
   if (pageOffsetCount == 0 || totalPages != static_cast<int>(pageOffsetCount)) return false;
-  const std::string cachePath = txt->getCachePath() + "/index.bin";
+  const std::string cachePath = pageIndexCachePath();
   const std::string staging = cachePath + ".tmp";
   HalFile f;
   if (!Storage.openFileForWrite("TRS", staging, f)) return false;

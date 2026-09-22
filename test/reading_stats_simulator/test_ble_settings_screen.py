@@ -192,11 +192,13 @@ class BleSettingsScreenTest(unittest.TestCase):
         settings.update(readerFavorites=[20], readerFavoriteCount=1, readerFavoritesDaDat=1)
         (self.store / "settings.json").write_text(json.dumps(settings))
         log = self.chay([], script="2000:CONFIRM;5000:CONFIRM;7000:CONFIRM;9000:BACK;11000:QUIT")
-        self.assertEqual(log.count("Entering activity: EpubReader"), 1, log[-5000:])
+        self.assertEqual(len(re.findall(r"Entering activity: EpubReader(?:\r)?$", log, re.MULTILINE)), 1,
+                         log[-5000:])
         self.assertEqual(log.count("Entering activity: EpubReaderMenu"), 1, log[-5000:])
         self.assertEqual(log.count("Entering activity: BlePageTurner"), 1, log[-5000:])
         self.assertEqual(log.count("Exiting activity: BlePageTurner"), 1, log[-5000:])
-        self.assertEqual(log.count("Exiting activity: EpubReader"), 0, log[-5000:])
+        self.assertEqual(len(re.findall(r"Exiting activity: EpubReader(?:\r)?$", log, re.MULTILINE)), 0,
+                         log[-5000:])
 
 
 if __name__ == "__main__":

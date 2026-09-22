@@ -116,20 +116,33 @@ class BookMetadataCache {
   bool buildBookBin(const std::string& epubPath, const BookMetadata& metadata);
 
   // Independent sequential stream: random lookups cannot disturb its position.
-  // One 2 KB buffer exists only for the lifetime of a chapter search.
+  // One 2 KB buffer exists for the lifetime of the cursor.
   class TocCursor {
    public:
     TocCursor(const std::string& path, uint32_t lut, int start, uint16_t spine, uint16_t toc);
     bool next(TocEntry& entry);
+    bool seekTo(int target);
     bool failed() const { return error; }
 
    private:
     HalFile file;
     std::unique_ptr<serialization::BufferedFileReader> stream;
     size_t end = 0;
+    uint32_t lutOffset = 0;
+    static constexpr uint16_t LOOKUP_WINDOW = 32;
+    uint32_t offsets[LOOKUP_WINDOW] = {};
+    int windowStart = -1;
+    uint16_t windowCount = 0;
     uint16_t index = 0, spineCount = 0, tocCount = 0;
     bool error = true;
   };
+
+ private:
+  // Reuse one buffered stream and a bounded LUT window for repeated, ascending,
+  // and descending lookups. Each record still passes the checked reader.
+  std::unique_ptr<TocCursor> tocCursor;
+
+ public:
   std::unique_ptr<TocCursor> openTocCursor(int start = 0) const;
 
   // Reading phase (read mode)

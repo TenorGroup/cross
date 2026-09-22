@@ -3,13 +3,31 @@
 `run_tests.py` compiles the production background scheduler, foreground partial extension,
 heap gates, suspension helper and EPUB page-turn function. The queued-turn methods come
 verbatim from `ReaderActivity.cpp`. Heap, Section, render lock and platform calls are
-instrumented host boundaries. Fifteen BLE-capable cases and twelve cases without BLE capability verify release under the lock, preservation of
-cached position, no restart churn, foreground progress, and queued external-turn draining.
+instrumented host boundaries. The production projection verifies release under the lock,
+preservation of cached position, no restart churn, foreground progress, and queued
+external-turn draining. Regression cases also cover a 900-15,000 ms partial-cache restore:
+a successful first tick stays silent, repeated useful ticks paint progress once, and a
+failed first tick does not paint an extra popup or reset refresh cadence. A failed
+background tick must preserve the current page as its bounded retry target; the existing
+start heap gate must still block an unsafe retry build.
+The same popup contracts run against the exact initial/resume loop predicate extracted
+from `renderBook`; its cache loading and `startBuild` inputs remain instrumented boundaries.
+A background tick failure also latches speculative work across the section recreation
+performed by `renderBook`. Thirty background ticks must stay idle, while an explicit
+foreground watermark target still extends the cache and releases its parser before render.
+A fresh reader instance restores healthy background admission after the failed visit ends.
+With parser parking enabled, low-heap and BLE gates keep completed pages readable while
+the parser is released. A parked heap-latched build stays idle without a zero-delay loop,
+foreground demand resumes it, and the latch still blocks later background ticks. A BLE-only
+park resumes background work only after the user disables BLE. The existing cases leave
+parking disabled in the Section stub and continue to cover the partial-commit fallback.
 This projection tests control flow; it does not measure ESP32 heap or panel AA.
 
 `SectionBuildBudgetTest` compiles the actual Section, parser, page and CSS implementations
-against the established section-cache storage/render stubs. It creates a partial cache,
-starts a shorter rebuild, suspends it, and checks exact old cache bytes, page count, position,
+against the established section-cache storage/render stubs. Its ISO-8859-1 fixture uses
+the supported cold fallback because checkpoint resume currently accepts UTF-8 and US-ASCII.
+It builds a partial cache across bounded ticks, starts a shorter rebuild, suspends it,
+and checks exact old cache bytes, page count, position,
 visible offset and page load. It then extends past the watermark on demand and checks that
 the requested page remains readable after suspension.
 

@@ -47,25 +47,27 @@ void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char
 }
 
 namespace {
-// Khoang tu vien phai vien pin toi chu so phan tram. Ba cho phai dung chung mot
-// so: hai cho tinh be rong khoi pin va mot cho ve that, lech nhau la so bi cat.
+// Khoang giua bieu tuong pin va chu so phan tram o ca hai chieu sap xep.
 constexpr int BATTERY_TEXT_GAP = 4;
-constexpr int STATUS_CORNER_INSET = 2;
-constexpr int SIBLING_CHEVRON_WIDTH = 6;
-constexpr int SIBLING_CHEVRON_HEIGHT = 8;
+constexpr int STATUS_CORNER_INSET = 8;
+constexpr int SIBLING_CHEVRON_WIDTH = 8;
+constexpr int SIBLING_CHEVRON_HEIGHT = 11;
+constexpr int SIBLING_CHEVRON_THICKNESS = 2;
 constexpr int SIBLING_EDGE = 18;
 constexpr int SIBLING_LABEL_GAP = 6;
 constexpr int SIBLING_CENTER_GAP = 16;
 
 void drawSiblingChevron(const GfxRenderer& r, const int x, const int y, const bool pointsRight) {
   const int mid = y + SIBLING_CHEVRON_HEIGHT / 2;
-  const int tip = x + SIBLING_CHEVRON_WIDTH - 1;
-  if (pointsRight) {
-    r.drawLine(x, y, tip, mid);
-    r.drawLine(tip, mid, x, y + SIBLING_CHEVRON_HEIGHT - 1);
-  } else {
-    r.drawLine(tip, y, x, mid);
-    r.drawLine(x, mid, tip, y + SIBLING_CHEVRON_HEIGHT - 1);
+  const int tip = x + SIBLING_CHEVRON_WIDTH - SIBLING_CHEVRON_THICKNESS;
+  for (int dx = 0; dx < SIBLING_CHEVRON_THICKNESS; ++dx) {
+    if (pointsRight) {
+      r.drawLine(x + dx, y, tip + dx, mid);
+      r.drawLine(tip + dx, mid, x + dx, y + SIBLING_CHEVRON_HEIGHT - 1);
+    } else {
+      r.drawLine(tip + dx, y, x + dx, mid);
+      r.drawLine(x + dx, mid, tip + dx, y + SIBLING_CHEVRON_HEIGHT - 1);
+    }
   }
 }
 }  // namespace
@@ -163,33 +165,30 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   const int batteryBlock = batteryWidth + (hienPhanTram ? BATTERY_TEXT_GAP + batteryTextWidth : 0);
   // Pin nam o ben DOI dien voi dong ho (hoac ben trai khi khong hien dong ho), nen
   // muc 5 (ten chuong & pin) khong day pin sang phai nhu khi vang dong ho.
-  const int bx = (hienGio && swap) ? width - STATUS_CORNER_INSET - batteryBlock : STATUS_CORNER_INSET;
+  const bool batteryRight = hienGio && swap;
+  const int batteryBlockX = batteryRight ? width - STATUS_CORNER_INSET - batteryBlock : STATUS_CORNER_INSET;
+  const int bx = batteryRight ? width - STATUS_CORNER_INSET - batteryWidth : batteryBlockX;
   if (hienPin) {
-    // Khoi pin lien mach, vien bo goc, va vien van thay khi pin can.
-    r.drawLine(bx + 2, by, bx + batteryWidth - 4, by);
-    r.drawLine(bx + 2, by + batteryHeight - 1, bx + batteryWidth - 4, by + batteryHeight - 1);
-    r.drawLine(bx, by + 2, bx, by + batteryHeight - 3);
-    r.drawLine(bx + batteryWidth - 2, by + 2, bx + batteryWidth - 2, by + batteryHeight - 3);
-    r.drawPixel(bx + 1, by + 1);
-    r.drawPixel(bx + 1, by + batteryHeight - 2);
-    r.drawPixel(bx + batteryWidth - 3, by + 1);
-    r.drawPixel(bx + batteryWidth - 3, by + batteryHeight - 2);
-    r.fillRect(bx + batteryWidth - 1, by + 5, 2, 4);
-    const int fill = ((batteryWidth - 5) * percent + 50) / 100;
-    if (fill > 0) r.fillRect(bx + 2, by + 2, fill, batteryHeight - 4);
-    if (hienPhanTram) r.drawText(fontChu, bx + batteryWidth + BATTERY_TEXT_GAP, y, percentage);
+    // Tong be rong gom ca dau pin 2 px, de vien ngoai dung inset.
+    const int bodyWidth = batteryWidth - 2;
+    r.drawRoundedRect(bx, by, bodyWidth, batteryHeight, 1, 3, true);
+    r.fillRect(bx + bodyWidth, by + (batteryHeight - 4) / 2, 2, 4);
+    const int fill = ((bodyWidth - 4) * percent + 50) / 100;
+    if (fill > 0) r.fillRoundedRect(bx + 2, by + 2, fill, batteryHeight - 4, 1, Color::Black);
+    if (hienPhanTram) {
+      const int textX = batteryRight ? batteryBlockX : bx + batteryWidth + BATTERY_TEXT_GAP;
+      r.drawText(fontChu, textX, y, percentage);
+    }
   }
   if (!hienTieuDe && !hienSoTrang && !hienTienDo) return;
   // Hai ben neo vao dung khoi goc dang co, cach mot khoang nho.
   const int trai =
       (hienGio && swap ? STATUS_CORNER_INSET + timeWidth
-                        : (hienPin && bx == STATUS_CORNER_INSET ? STATUS_CORNER_INSET + batteryBlock
-                                                                  : STATUS_CORNER_INSET)) +
+                       : (hienPin && !batteryRight ? STATUS_CORNER_INSET + batteryBlock : STATUS_CORNER_INSET)) +
       14;
-  const int phai =
-      (hienGio && !swap ? width - STATUS_CORNER_INSET - timeWidth
-                         : (hienPin && bx != STATUS_CORNER_INSET ? bx : width - STATUS_CORNER_INSET)) -
-      14;
+  const int phai = (hienGio && !swap ? width - STATUS_CORNER_INSET - timeWidth
+                                     : (hienPin && batteryRight ? batteryBlockX : width - STATUS_CORNER_INSET)) -
+                   14;
   std::string counts;
   if (hienSoTrang) {
     char phan[24];
@@ -214,12 +213,16 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   if (!name.empty()) r.drawText(SMALL_FONT_ID, trai + markWidth, y, name.c_str());
 }
 
-int tenorchrome::moreBelowChevronTopY(const GfxRenderer& renderer) { return tipY(renderer) - 30; }
+int tenorchrome::moreBelowChevronTopY(const GfxRenderer& renderer, const int hintTopY) {
+  const int top = tipY(renderer) - 30;
+  // The chevron occupies nine rows. Leave two clear rows before the first tip.
+  return hintTopY >= 0 ? std::min(top, hintTopY - 11) : top;
+}
 
-void tenorchrome::drawMoreBelowChevron(const GfxRenderer& renderer) {
+void tenorchrome::drawMoreBelowChevron(const GfxRenderer& renderer, const int hintTopY) {
   constexpr int HALF_WIDTH = 11, HEIGHT = 7, THICKNESS = 2;
   const int cx = renderer.getScreenWidth() / 2;
-  const int top = moreBelowChevronTopY(renderer);
+  const int top = moreBelowChevronTopY(renderer, hintTopY);
   // Hai nhip day mot diem: net mot diem tren e-ink nhat qua, nhin khong ra hinh.
   for (int d = 0; d < THICKNESS; ++d) {
     renderer.drawLine(cx - HALF_WIDTH, top + d, cx, top + HEIGHT + d);
@@ -302,6 +305,10 @@ int tenorchrome::tipTopY(const GfxRenderer& renderer, const char* text, const in
     hasInk = true;
   }
   return top;
+}
+
+int tenorchrome::tipLineCount(const GfxRenderer& renderer, const char* text, const int maxLines) {
+  return static_cast<int>(tipLines(renderer, text, maxLines).size());
 }
 
 int tenorchrome::tipHeight(const GfxRenderer& renderer, const char* text, int maxLines) {

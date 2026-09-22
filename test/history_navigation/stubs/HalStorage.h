@@ -27,14 +27,23 @@ struct ReadFault {
   size_t shortLimit=0, failAfter=SIZE_MAX, extraSize=0;
   bool closeFails=false;
   int result=-1; // -1: signed error, 0: premature EOF, 1: overlong result.
+  bool fullPath=false, openFails=false;
+  size_t hits=0;
 };
 inline ReadFault readFault;
+enum class StorageFaultOperation { None, OpenWrite, Write, CloseWrite, Remove, Rename };
+struct StorageFault {
+  StorageFaultOperation operation=StorageFaultOperation::None;
+  std::string path, target;
+  size_t hits=0;
+};
+inline StorageFault storageFault;
 inline void delay(unsigned ms) { io.yieldedMs += ms; }
 #define LOG_ERR(...) ((void)0)
 class HalFile {
   struct Handle {
     FILE* fp=nullptr; DIR* dp=nullptr; std::string name;
-    bool entry=false, countedRead=false;
+    bool entry=false, countedRead=false, writable=false;
     size_t offset=0;
     ~Handle(){ if(fp) fclose(fp); if(dp) closedir(dp); if(entry) --openEntries[name]; }
   };
@@ -43,7 +52,12 @@ class HalFile {
   HalFile()=default;
   HalFile(const std::string& path, int flags=O_RDONLY, bool entry=false) {
     ++io.opens;
-    auto p=std::make_shared<Handle>(); p->name=path; p->entry=entry;
+    const bool writable=flags & O_WRONLY;
+    if (!entry && writable && storageFault.operation==StorageFaultOperation::OpenWrite &&
+        path==fixtureRoot+storageFault.path) { ++storageFault.hits; return; }
+    if (!entry && !(flags & O_WRONLY) && readFault.fullPath && readFault.openFails &&
+        path==fixtureRoot+readFault.path) { ++readFault.hits; return; }
+    auto p=std::make_shared<Handle>(); p->name=path; p->entry=entry; p->writable=writable;
     if(entry) ++openEntries[path];
     struct stat st{};
     if (!stat(path.c_str(), &st) && S_ISDIR(st.st_mode)) {
@@ -56,7 +70,7 @@ class HalFile {
   }
   explicit operator bool() const { return bool(h); }
   bool isDirectory() const { return h && h->dp; }
-  bool faultMatches() const { return h && h->entry && !readFault.path.empty() &&
+  bool faultMatches() const { return h && (h->entry || readFault.fullPath) && !readFault.path.empty() &&
     (readFault.path=="*" || h->name==fixtureRoot+readFault.path); }
   size_t size() const {
     struct stat st{};
@@ -76,7 +90,7 @@ class HalFile {
     if(!h->countedRead) { ++io.readFiles; h->countedRead=true; }
     size_t count=requested;
     if(faultMatches()) {
-      if(h->offset>=readFault.failAfter) return readFault.result==1 ? static_cast<int>(requested+1) : readFault.result;
+      if(h->offset>=readFault.failAfter) { ++readFault.hits; return readFault.result==1 ? static_cast<int>(requested+1) : readFault.result; }
       count=std::min(count,readFault.failAfter-h->offset);
       if(readFault.shortLimit) count=std::min(count,readFault.shortLimit);
     }
@@ -84,17 +98,53 @@ class HalFile {
     h->offset+=n; io.bytesRead+=n;
     return ferror(h->fp) ? -1 : static_cast<int>(n);
   }
-  size_t write(const char* p,size_t n) { return h && h->fp ? fwrite(p,1,n,h->fp) : 0; }
-  bool close() { const bool fail=faultMatches() && readFault.closeFails; h.reset(); return !fail; }
+  size_t write(const char* p,size_t n) {
+    if(h && h->writable && storageFault.operation==StorageFaultOperation::Write &&
+       h->name==fixtureRoot+storageFault.path) { ++storageFault.hits; return 0; }
+    return h && h->fp ? fwrite(p,1,n,h->fp) : 0;
+  }
+  bool close() {
+    const bool readFail=faultMatches() && readFault.closeFails;
+    const bool writeFail=h && h->writable && storageFault.operation==StorageFaultOperation::CloseWrite &&
+                         h->name==fixtureRoot+storageFault.path;
+    if(readFail) ++readFault.hits;
+    if(writeFail) ++storageFault.hits;
+    h.reset(); return !readFail && !writeFail;
+  }
 };
 struct FakeStorage {
   HalFile open(const char* p,int flags=O_RDONLY) const { return HalFile(fixtureRoot+p,flags); }
   bool exists(const char* p) const { ++io.exists; return std::filesystem::exists(fixtureRoot+p); }
-  bool remove(const char* p) const { ++io.removes; if(openEntries[fixtureRoot+p]) ++io.mutationsWithOpenHandle; return std::filesystem::remove(fixtureRoot+p); }
-  bool rename(const char* a,const char* b) const { ++io.renames; if(openEntries[fixtureRoot+a] || openEntries[fixtureRoot+b]) ++io.mutationsWithOpenHandle; return ::rename((fixtureRoot+a).c_str(),(fixtureRoot+b).c_str())==0; }
+  bool remove(const char* p) const {
+    ++io.removes;
+    if(storageFault.operation==StorageFaultOperation::Remove && storageFault.path==p) {
+      ++storageFault.hits; return false;
+    }
+    if(openEntries[fixtureRoot+p]) ++io.mutationsWithOpenHandle;
+    return std::filesystem::remove(fixtureRoot+p);
+  }
+  bool rename(const char* a,const char* b) const {
+    ++io.renames;
+    if(storageFault.operation==StorageFaultOperation::Rename && storageFault.path==a && storageFault.target==b) {
+      ++storageFault.hits; return false;
+    }
+    if(openEntries[fixtureRoot+a] || openEntries[fixtureRoot+b]) ++io.mutationsWithOpenHandle;
+    return ::rename((fixtureRoot+a).c_str(),(fixtureRoot+b).c_str())==0;
+  }
   bool ensureDirectoryExists(const char* p) const { std::filesystem::create_directories(fixtureRoot+p); return true; }
   bool mkdir(const char* p) const { return ensureDirectoryExists(p); }
   std::string readFile(const char* p) const {
+    if(readFault.fullPath && readFault.path==p) {
+      auto file=open(p); if(!file) return {};
+      size_t remaining=file.size(); std::string result; char buffer[512];
+      while(remaining) {
+        const size_t requested=std::min(remaining,sizeof(buffer));
+        const int n=file.read(buffer,requested);
+        if(n<=0 || static_cast<size_t>(n)>requested) { file.close(); return {}; }
+        result.append(buffer,static_cast<size_t>(n)); remaining-=static_cast<size_t>(n);
+      }
+      return file.close() ? result : std::string{};
+    }
     ++io.opens; ++io.fullPathFileOpens;
     auto* f=fopen((fixtureRoot+p).c_str(),"rb"); if(!f) return {};
     ++io.readFiles;

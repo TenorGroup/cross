@@ -146,6 +146,7 @@ class UiListActivity : public Activity, protected UiAppHost {
   void reserveFavoriteHint(UiScreen& screen);
   void reserveMoreBelowChevron(UiScreen& screen, int16_t rowHeight, int rowGap);
   const char* favoriteHintText();
+  virtual int favoriteHintLinesAbove() const { return 0; }
   virtual bool handleCustomInput() { return false; }
   // Back/Confirm handling; override wholesale for press/release or hold
   // variants. Return true when a button consumed the pass.

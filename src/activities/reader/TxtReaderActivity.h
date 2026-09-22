@@ -50,6 +50,7 @@ class TxtReaderActivity final : public ReaderActivity {
   bool reservePageOffsets(size_t count);
   bool addPageOffset(size_t offset);
   bool buildPageIndex(GfxRenderer& renderer);
+  std::string pageIndexCachePath() const;
   bool loadPageIndexCache();
   bool loadPageIndexCacheFile(const std::string& path);
   bool savePageIndexCache() const;

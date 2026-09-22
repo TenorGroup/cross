@@ -29,7 +29,7 @@ inline bool preventsAutoSleep(const Phase phase) {
 #ifndef FONT_MANIFEST_URL
 // Pin the compatible four-weight font pack independently of future app versions.
 // Publication stages this immutable directory before making the firmware available.
-#define FONT_MANIFEST_URL "https://cross.tenor.vn/firmware/v1.0.8/fonts/fonts.json"
+#define FONT_MANIFEST_URL "https://cross.tenor.vn/firmware/v1.0.9/fonts/fonts.json"
 #endif
 
 class FontDownloadActivity final : public UiListActivity {

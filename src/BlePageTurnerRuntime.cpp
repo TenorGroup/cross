@@ -223,7 +223,11 @@ bool freeink::ble::beginAsync(GfxRenderer& renderer) {
 namespace {
 std::atomic<bool> readerStartWasDeferred{false};
 std::atomic<bool> radioWasIdleStopped{false};
+std::atomic<bool> rearmRequested{false};
 }  // namespace
+
+void freeink::ble::requestRearm() { rearmRequested.store(true, std::memory_order_relaxed); }
+bool freeink::ble::takeRearmRequest() { return rearmRequested.exchange(false, std::memory_order_relaxed); }
 
 bool freeink::ble::readerStartDeferred() { return readerStartWasDeferred.load(std::memory_order_relaxed); }
 void freeink::ble::setReaderStartDeferred(const bool deferred) {

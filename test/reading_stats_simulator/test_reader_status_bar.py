@@ -22,6 +22,7 @@ from PIL import Image
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('STATUSBAR_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
+ARTIFACTS = Path(os.environ['STATUSBAR_ARTIFACTS']) if os.environ.get('STATUSBAR_ARTIFACTS') else None
 EPUB = REPO / 'test/epubs/test_kerning_ligature.epub'
 DAI_DAY = 765  # vung do dai day: duoi day chu (day chu cao nhat khi Tat la 764)
 
@@ -70,12 +71,14 @@ class ReaderStatusBarTest(unittest.TestCase):
         (self.store / 'recent.json').write_text(json.dumps({'books': [{'path': '/books/sach.epub', 'title': 'Sach'}]}))
         self.shots = Path(self.tmp.name) / 'shots'
         self.shots.mkdir()
+        if ARTIFACTS:
+            ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def chay(self, mode, ten_anh, script=None, them=None, fixture='sach.epub', shot_time=3400):
-        st = {'language': 'VI', 'fontSize': 14, 'readerStatusBarMode': mode}
+        st = {'language': 'VI', 'fontSize': 14, 'readerStatusBarMode': mode, 'statusBarClock': 1}
         if them:
             st.update(them)
         (self.store / 'settings.json').write_text(json.dumps(st))
@@ -93,6 +96,10 @@ class ReaderStatusBarTest(unittest.TestCase):
         run = subprocess.run([str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=40)
         log = run.stdout + run.stderr
         self.assertEqual(run.returncode, 0, log)
+        if ARTIFACTS:
+            shutil.copy2(self.shots / f'{ten_anh}.bmp', ARTIFACTS / f'{ten_anh}.bmp')
+            (ARTIFACTS / f'{ten_anh}.log').write_text(log)
+            (ARTIFACTS / f'{ten_anh}-input.txt').write_text(script + '\n')
         return log
 
     def do(self, ten_anh):
@@ -107,14 +114,40 @@ class ReaderStatusBarTest(unittest.TestCase):
             'giua': int(dai[:, 80:rong - 80].sum()),
             'phai': int(dai[:, rong - 80:].sum()),
             'tong': int(dai.sum()),
+            'goc_trai': int(dai[:, :16].sum()),
+            'goc_phai': int(dai[:, rong - 16:].sum()),
             # Vi tri cua lan muc ngoai cung la dau vet theo THIET KE cua tung thanh phan:
-            # pin bat dau o le 12, dong ho ket thuc cach mep 12, ten chuong bat dau o 26,
-            # so trang ket thuc cach mep 26. Nho vay phan biet duoc muc nao co dong ho,
+            # Contract v1.0.9: pin/gio cach mep 8 px, noi dung cach khoi khoi goc.
+            # Bearing font co the lam net chu dau tien cach diem ve them 1-2 px.
+            # Dai 16 px o moi goc phan biet pin/gio voi ten chuong/so trang.
+            # Nho vay phan biet duoc muc nao co dong ho,
             # muc nao co pin ma khong phu thuoc vao so phut tren dong ho.
             'xa_trai': min(cot) if cot else -1,
             'xa_phai': max(cot) if cot else -1,
             'day_chu': max(noi_dung) if noi_dung else 0,
         }
+
+    def kiem_pin_bo_bon_goc(self, ten_anh):
+        image = Image.open(self.shots / f'{ten_anh}.bmp').convert('L')
+        bx, battery_width = 8, 26
+        icon_right = bx + battery_width - 1
+        pixels = [(x, y) for y in range(image.height - 50, image.height - 4)
+                  for x in range(bx, icon_right + 1) if image.getpixel((x, y)) < 128]
+        self.assertTrue(pixels, f'{ten_anh}: khong thay icon pin reader')
+        top = min(y for _, y in pixels)
+        bottom = max(y for _, y in pixels)
+        body_right = icon_right - 2
+        for dx in range(3):
+            for x, y in ((bx + dx, top), (body_right - dx, top),
+                         (bx + dx, bottom), (body_right - dx, bottom)):
+                self.assertGreaterEqual(image.getpixel((x, y)), 128,
+                                        f'{ten_anh}: than pin con goc vuong tai {(x, y)}')
+        for y in (top, bottom):
+            self.assertTrue(any(image.getpixel((x, y)) < 128 for x in range(bx + 3, body_right - 2)),
+                            f'{ten_anh}: canh than pin bi dut o y={y}')
+        for x in (icon_right - 1, icon_right):
+            self.assertTrue(any(image.getpixel((x, y)) < 128 for y in range(top, bottom + 1)),
+                            f'{ten_anh}: dau pin thieu cot x={x}')
 
     def test_sau_muc_thanh_phan_dung_nhu_thiet_ke(self):
         """Moi muc chi hien dung thanh phan co ten trong muc, do tren ba vung cua dai day.
@@ -133,29 +166,38 @@ class ReaderStatusBarTest(unittest.TestCase):
         for mode in range(6):
             self.chay(mode, f'thanh-{mode}', fixture='sparse.epub')
             do_duoc[mode] = self.do(f'thanh-{mode}')
+        if ARTIFACTS:
+            (ARTIFACTS / '260922_reader-status-measurements.json').write_text(
+                json.dumps(do_duoc, ensure_ascii=False, indent=2) + '\n')
         d = do_duoc
         # 0 Tat: khong mot net nao o dai day.
         self.assertEqual(d[0]['tong'], 0, d[0])
-        # 1 Dong ho & pin: pin sat le trai (12), dong ho sat le phai (515), khong co ten chuong.
-        self.assertLessEqual(d[1]['xa_trai'], 14, d[1])
-        self.assertGreaterEqual(d[1]['xa_phai'], 510, d[1])
+        # 1 Dong ho & pin: hai khoi goc theo inset 8 px, giua trong.
+        self.assertEqual(d[1]['xa_trai'], 8, d[1])
+        self.assertGreaterEqual(d[1]['xa_phai'], 518, d[1])
         self.assertEqual(d[1]['giua'], 0, d[1])
         # 2 Mac dinh du: pin, dong ho, so trang va ten chuong - nhieu muc nhat.
-        self.assertLessEqual(d[2]['xa_trai'], 14, d[2])
-        self.assertGreaterEqual(d[2]['xa_phai'], 510, d[2])
+        self.assertEqual(d[2]['xa_trai'], 8, d[2])
+        self.assertGreaterEqual(d[2]['xa_phai'], 518, d[2])
         self.assertGreater(d[2]['tong'], 1200, d[2])
-        # 3 Ten chuong & tien trinh chuong: KHONG pin (bat dau o 26), KHONG dong ho (ket thuc
-        # o 501), nhung co so trang nen van nhieu muc hon muc 1.
-        self.assertGreaterEqual(d[3]['xa_trai'], 20, d[3])
-        self.assertLessEqual(d[3]['xa_phai'], 505, d[3])
+        # 3 Ten chuong & tien trinh chuong: noi dung neo theo hai khoi goc 8 px.
+        self.assertIn(d[3]['xa_trai'], range(22, 25), d[3])
+        self.assertIn(d[3]['xa_phai'], range(503, 506), d[3])
         self.assertGreater(d[3]['tong'], 400, d[3])
         # 4 Ten chuong & dong ho: KHONG pin nhung CO dong ho.
-        self.assertGreaterEqual(d[4]['xa_trai'], 20, d[4])
-        self.assertGreaterEqual(d[4]['xa_phai'], 510, d[4])
+        self.assertIn(d[4]['xa_trai'], range(22, 25), d[4])
+        self.assertGreaterEqual(d[4]['xa_phai'], 518, d[4])
         # 5 Ten chuong & pin: CO pin nhung KHONG dong ho, va khong co so trang.
-        self.assertLessEqual(d[5]['xa_trai'], 14, d[5])
-        self.assertLessEqual(d[5]['xa_phai'], 505, d[5])
+        self.assertEqual(d[5]['xa_trai'], 8, d[5])
+        self.assertLessEqual(d[5]['xa_phai'], 497, d[5])
         self.assertGreater(d[5]['tong'], 400, d[5])
+        # Component checks remain independent of the clock's changing digits.
+        for mode, (pin, gio) in enumerate(((False, False), (True, True), (True, True),
+                                           (False, False), (False, True), (True, False))):
+            self.assertEqual(d[mode]['goc_trai'] > 0, pin, (mode, d[mode]))
+            self.assertEqual(d[mode]['goc_phai'] > 0, gio, (mode, d[mode]))
+        for mode in (GIO_PIN, MAC_DINH, CHUONG_PIN):
+            self.kiem_pin_bo_bon_goc(f'thanh-{mode}')
 
     def test_tat_cho_them_dong_va_giu_dung_doan_dang_doc(self):
         """Muc Tat phai keo day chu xuong, va van o dung muc dau chuong (anchor)."""

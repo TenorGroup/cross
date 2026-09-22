@@ -355,11 +355,11 @@ void UiListActivity::renderUi() {
   // con so o goc tren: it nguoi nhin thanh cuon, va cho goc tren thuoc ve ten
   // the ben canh, thu duy nhat o do dang doc.
   if (tenorchrome::enabled() && activeNav().top + activeNav().pageRows() < listCount()) {
-    tenorchrome::drawMoreBelowChevron(renderer);
+    tenorchrome::drawMoreBelowChevron(renderer, favoriteHintY);
   }
   drawPageHints();
   if (favoriteHintY >= 0) {
-    if (const char* hint = favoriteHintText()) tenorchrome::drawTip(renderer, hint);
+    if (const char* hint = favoriteHintText()) tenorchrome::drawTip(renderer, hint, favoriteHintLinesAbove());
   }
 }
 
@@ -433,16 +433,16 @@ void UiListActivity::reserveFavoriteHint(UiScreen& screen) {
   if (!supportsFavorites() || SETTINGS.globalStatusBarHidden()) return;
   const char* hint = favoriteHintText();
   if (!hint) return;
-  favoriteHintY = tenorchrome::tipY(renderer);
+  favoriteHintY = tenorchrome::tipTopY(renderer, hint, favoriteHintLinesAbove());
   const int bottom = screen.body().y + screen.body().height;
-  const int reservedTop = tenorchrome::tipTopY(renderer, hint) - 2;
+  const int reservedTop = favoriteHintY - 2;
   if (bottom > reservedTop) screen.takeBottom(static_cast<int16_t>(bottom - reservedTop));
 }
 
 void UiListActivity::reserveMoreBelowChevron(UiScreen& screen, const int16_t rowHeight, const int rowGap) {
   if (!tenorchrome::enabled() || listCount() <= fui::listVisibleRows(screen.body(), rowHeight, rowGap)) return;
   const int bottom = screen.body().y + screen.body().height;
-  const int reservedTop = tenorchrome::moreBelowChevronTopY(renderer) - 2;
+  const int reservedTop = tenorchrome::moreBelowChevronTopY(renderer, favoriteHintY) - 2;
   if (bottom > reservedTop) screen.takeBottom(static_cast<int16_t>(bottom - reservedTop));
 }
 

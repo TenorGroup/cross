@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
 #include <map>
 #include <string>
@@ -36,6 +37,7 @@ struct GfxRenderer {
   mutable std::vector<int> ys;
   mutable std::vector<std::string> paintedText;
   mutable int attemptedInkTop = 800, attemptedInkBottom = 0;
+  mutable int lineTop = 800, lineBottom = 0;
   int screenHeight = 800;
   int fontOverride = -1;
   const EpdFontData& font() const {
@@ -121,6 +123,10 @@ struct GfxRenderer {
       for (int col = x; col < x + w; ++col) drawPixel(col, row, black);
   }
   void fillRectDither(int, int, int, int, Color) const {}
+  void drawLine(int, int y, int, int endY) const {
+    lineTop = std::min(lineTop, std::min(y, endY));
+    lineBottom = std::max(lineBottom, std::max(y, endY) + 1);
+  }
   Orientation getOrientation() const { return Portrait; }
   void setOrientation(Orientation) const {}
   int getRenderMode() const { return BW; }
@@ -160,9 +166,10 @@ struct TenorTheme {
   }
 };
 // PRODUCTION_FUNCTIONS
+// WAKE_FOOTER_TEST
 
 int main() {
-  int failures = 0;
+  int failures = checkWakeFooter();
   const auto check = [&](bool value, const char* message) {
     if (!value) { std::printf("FAIL tier=%d: %s\n", SETTINGS.uiTextSize, message); ++failures; }
   };

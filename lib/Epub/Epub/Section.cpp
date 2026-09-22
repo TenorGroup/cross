@@ -1,5 +1,6 @@
 #include "Section.h"
 
+#include <Arduino.h>
 #include <HalStorage.h>
 
 #include <algorithm>
@@ -82,11 +83,13 @@ constexpr uint32_t HEADER_SIZE =
 
 // Out-of-line so the unique_ptr<ChapterHtmlSlimParser> in BuildContext can be
 // constructed/destroyed where the parser's full definition is visible.
-Section::Section(const std::shared_ptr<Epub>& epub, const int spineIndex, GfxRenderer& renderer)
+Section::Section(const std::shared_ptr<Epub>& epub, const int spineIndex, GfxRenderer& renderer, const bool preview)
     : epub(epub),
       spineIndex(spineIndex),
       renderer(renderer),
-      filePath(epub->getCachePath() + "/sections/" + std::to_string(spineIndex) + ".bin") {}
+      filePath(epub->getCachePath() + (preview ? "/sections/preview_" : "/sections/") + std::to_string(spineIndex) +
+               ".bin"),
+      preview_(preview) {}
 
 // Suspend any in-progress build so every section.reset() / navigation / sleep path
 // persists the pages already laid out as a partial .bin instead of discarding them
@@ -284,6 +287,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
 // Your updated class method (assuming you are using the 'SD' object, which is a wrapper for a specific filesystem)
 bool Section::clearCache() const {
   Storage.remove(lutTmpPath().c_str());
+  Storage.remove(checkpointTmpPath().c_str());
   Storage.remove((filePath + ".davbak").c_str());
   const std::string tmpBin = binTmpPath();
   if (Storage.exists(tmpBin.c_str())) {
@@ -314,6 +318,99 @@ bool Section::createSectionFile(const ReaderRenderSpec& spec, const std::functio
   return buildComplete_;
 }
 
+bool Section::loadBuildCss(BuildContext* ctx) {
+  const auto& spec = ctx->spec;
+  if (spec.embeddedStyle) {
+    ctx->cssParser = epub->getCssParser();
+    if (ctx->cssParser) {
+#ifdef TENOR_UI_ACCEPTANCE
+      LOG_DBG("SCT", "EPUB_BUILD stage=css_before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+              static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+      const CssParser::CacheLoadResult cacheResult = ctx->cssParser->loadFromCache();
+#ifdef TENOR_UI_ACCEPTANCE
+      LOG_DBG("SCT", "EPUB_BUILD stage=css_after result=%u free=%u largest=%u", static_cast<unsigned>(cacheResult),
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+      if (cacheResult == CssParser::CacheLoadResult::LowMemory) {
+        LOG_ERR("SCT", "Insufficient heap to hydrate CSS; section build deferred free=%u largest=%u",
+                static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+        ctx->cssParser->clear();
+        return false;
+      }
+      if (cacheResult == CssParser::CacheLoadResult::Invalid) {
+        LOG_ERR("SCT", "Failed to load CSS from cache free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getMaxAllocHeap()));
+      }
+    }
+  } else {
+#ifdef TENOR_UI_ACCEPTANCE
+    LOG_DBG("SCT", "EPUB_BUILD stage=css_disabled free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+  }
+
+  return true;
+}
+
+std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ctxPtr, const ReaderRenderSpec& spec,
+                                                                const std::function<void()>& popupFn) {
+  // Collect TOC anchors for this spine so the parser can insert page breaks at chapter boundaries
+  std::vector<std::string> tocAnchors;
+  const int startTocIndex = epub->getTocIndexForSpineIndex(spineIndex);
+  if (startTocIndex >= 0) {
+    for (int i = startTocIndex; i < epub->getTocItemsCount(); i++) {
+      auto entry = epub->getTocItem(i);
+      if (entry.spineIndex != spineIndex) break;
+      if (!entry.anchor.empty()) {
+        tocAnchors.push_back(std::move(entry.anchor));
+      }
+    }
+  }
+
+  // The parser stores the path/contentBase/imageBasePath by reference, so they must
+  // live in the BuildContext (which outlives the parser). The page-complete callback
+  // captures the BuildContext pointer to append to its on-disk LUT; build_ owns the
+  // context for the parser's whole lifetime.
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("SCT", "EPUB_BUILD stage=parser_before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+  return makeUniqueNoThrow<ChapterHtmlSlimParser>(
+      epub, ctxPtr->parsePath, renderer, spec.fontId, spec.lineCompression, spec.extraParagraphSpacing,
+      spec.paragraphAlignment, spec.viewportWidth, spec.viewportHeight, spec.hyphenationEnabled, spec.dropCapMode,
+      [this, ctxPtr](std::unique_ptr<Page> page, const uint16_t paragraphIndex, const uint16_t listItemIndex,
+                     const uint32_t visibleTextOffset) {
+        if (ctxPtr->failed) return;
+        // The serialized page count is uint16_t. Refuse overflow explicitly.
+        if (builtPageCount_ == UINT16_MAX) {
+          ctxPtr->failed = true;
+          ctxPtr->parser->failBuild();
+          return;
+        }
+        const uint32_t position = this->onPageComplete(std::move(page));
+        const PageLutEntry entry{position, paragraphIndex, listItemIndex, visibleTextOffset};
+        if (position == 0 || !ctxPtr->lut.seek(static_cast<size_t>(builtPageCount_) * sizeof(entry)) ||
+            ctxPtr->lut.write(&entry, sizeof(entry)) != sizeof(entry)) {
+          ctxPtr->failed = true;
+          ctxPtr->parser->failBuild();
+          return;
+        }
+#ifdef TENOR_UI_ACCEPTANCE
+        if (builtPageCount_ == 0) {
+          LOG_DBG("SCT", "EPUB_PAGE_FIRST spine=%d visible=%u file_offset=%u free=%u largest=%u", spineIndex,
+                  static_cast<unsigned>(visibleTextOffset), static_cast<unsigned>(position),
+                  static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+        }
+#endif
+        ++builtPageCount_;
+        pageCount = std::max(pageCount, builtPageCount_);
+        ctxPtr->lastVisibleTextOffset = visibleTextOffset;
+      },
+      spec.embeddedStyle, ctxPtr->contentBase, ctxPtr->imageBasePath, spec.imageRendering, tocAnchors, popupFn,
+      ctxPtr->cssParser, spec.paragraphIndent, spec.letterSpacing, spec.wordSpacing);
+}
+
 bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void()>& popupFn) {
   if (build_) {
     LOG_ERR("SCT", "startBuild called while a build is already active");
@@ -323,6 +420,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   builtPageCount_ = 0;
   if (!freeink::recoverFile(Storage, filePath.c_str())) return false;
   Storage.remove(lutTmpPath().c_str());
+  Storage.remove(checkpointTmpPath().c_str());
   // Pages from a loaded partial stay readable (from filePath) while this build writes
   // to the tmp .bin, so availability never drops below the partial's watermark.
   pageCount = partial_ ? partialPageCount_ : 0;
@@ -455,93 +553,19 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   // Derive the content base directory and image cache path prefix for the parser
   const size_t lastSlash = localPath.find_last_of('/');
   ctx->contentBase = (lastSlash != std::string::npos) ? localPath.substr(0, lastSlash + 1) : "";
-  ctx->imageBasePath = epub->getCachePath() + "/img_" + std::to_string(spineIndex) + "_";
+  ctx->imageBasePath = epub->getCachePath() + (preview_ ? "/preview_img_" : "/img_") + std::to_string(spineIndex) + "_";
 
-  if (spec.embeddedStyle) {
-    ctx->cssParser = epub->getCssParser();
-    if (ctx->cssParser) {
-#ifdef TENOR_UI_ACCEPTANCE
-      LOG_DBG("SCT", "EPUB_BUILD stage=css_before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
-              static_cast<unsigned>(ESP.getMaxAllocHeap()));
-#endif
-      const CssParser::CacheLoadResult cacheResult = ctx->cssParser->loadFromCache();
-#ifdef TENOR_UI_ACCEPTANCE
-      LOG_DBG("SCT", "EPUB_BUILD stage=css_after result=%u free=%u largest=%u",
-              static_cast<unsigned>(cacheResult), static_cast<unsigned>(ESP.getFreeHeap()),
-              static_cast<unsigned>(ESP.getMaxAllocHeap()));
-#endif
-      if (cacheResult == CssParser::CacheLoadResult::LowMemory) {
-        LOG_ERR("SCT", "Insufficient heap to hydrate CSS; section build deferred free=%u largest=%u",
-                static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
-        ctx->cssParser->clear();
-        ctx->lut.close();
-        Storage.remove(lutTmpPath().c_str());
-        file.close();
-        Storage.remove(binTmpPath().c_str());
-        if (!ctx->reusedHtml) Storage.remove(ctx->tmpHtmlPath.c_str());
-        return false;
-      }
-      if (cacheResult == CssParser::CacheLoadResult::Invalid) {
-        LOG_ERR("SCT", "Failed to load CSS from cache free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
-                static_cast<unsigned>(ESP.getMaxAllocHeap()));
-      }
-    }
-  } else {
-#ifdef TENOR_UI_ACCEPTANCE
-    LOG_DBG("SCT", "EPUB_BUILD stage=css_disabled free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
-            static_cast<unsigned>(ESP.getMaxAllocHeap()));
-#endif
+  ctx->spec = spec;
+  if (!loadBuildCss(ctx.get())) {
+    ctx->lut.close();
+    Storage.remove(lutTmpPath().c_str());
+    file.close();
+    Storage.remove(binTmpPath().c_str());
+    if (!ctx->reusedHtml) Storage.remove(ctx->tmpHtmlPath.c_str());
+    return false;
   }
 
-  // Collect TOC anchors for this spine so the parser can insert page breaks at chapter boundaries
-  std::vector<std::string> tocAnchors;
-  const int startTocIndex = epub->getTocIndexForSpineIndex(spineIndex);
-  if (startTocIndex >= 0) {
-    for (int i = startTocIndex; i < epub->getTocItemsCount(); i++) {
-      auto entry = epub->getTocItem(i);
-      if (entry.spineIndex != spineIndex) break;
-      if (!entry.anchor.empty()) {
-        tocAnchors.push_back(std::move(entry.anchor));
-      }
-    }
-  }
-
-  // The parser stores the path/contentBase/imageBasePath by reference, so they must
-  // live in the BuildContext (which outlives the parser). The page-complete callback
-  // captures the BuildContext pointer to append to its on-disk LUT; build_ owns the
-  // context for the parser's whole lifetime.
-  BuildContext* ctxPtr = ctx.get();
-#ifdef TENOR_UI_ACCEPTANCE
-  LOG_DBG("SCT", "EPUB_BUILD stage=parser_before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
-          static_cast<unsigned>(ESP.getMaxAllocHeap()));
-#endif
-  ctx->parser = makeUniqueNoThrow<ChapterHtmlSlimParser>(
-      epub, ctxPtr->parsePath, renderer, spec.fontId, spec.lineCompression, spec.extraParagraphSpacing,
-      spec.paragraphAlignment, spec.viewportWidth, spec.viewportHeight, spec.hyphenationEnabled,
-      spec.dropCapMode,
-      [this, ctxPtr](std::unique_ptr<Page> page, const uint16_t paragraphIndex, const uint16_t listItemIndex,
-                     const uint32_t visibleTextOffset) {
-        if (ctxPtr->failed) return;
-        // The serialized page count is uint16_t. Refuse overflow explicitly.
-        if (builtPageCount_ == UINT16_MAX) {
-          ctxPtr->failed = true;
-          ctxPtr->parser->failBuild();
-          return;
-        }
-        const uint32_t position = this->onPageComplete(std::move(page));
-        const PageLutEntry entry{position, paragraphIndex, listItemIndex, visibleTextOffset};
-        if (position == 0 || !ctxPtr->lut.seek(static_cast<size_t>(builtPageCount_) * sizeof(entry)) ||
-            ctxPtr->lut.write(&entry, sizeof(entry)) != sizeof(entry)) {
-          ctxPtr->failed = true;
-          ctxPtr->parser->failBuild();
-          return;
-        }
-        ++builtPageCount_;
-        pageCount = std::max(pageCount, builtPageCount_);
-        ctxPtr->lastVisibleTextOffset = visibleTextOffset;
-      },
-      spec.embeddedStyle, ctxPtr->contentBase, ctxPtr->imageBasePath, spec.imageRendering, std::move(tocAnchors),
-      popupFn, ctxPtr->cssParser, spec.paragraphIndent, spec.letterSpacing, spec.wordSpacing);
+  ctx->parser = makeBuildParser(ctx.get(), spec, popupFn);
   if (!ctx->parser) {
     LOG_ERR("SCT", "OOM: ChapterHtmlSlimParser free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
             static_cast<unsigned>(ESP.getMaxAllocHeap()));
@@ -563,17 +587,184 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     abandonBuild();
     return false;
   }
+  if (partial_) {
+    if (restorePartialBuild()) {
+      LOG_INF("SCT", "Resumed checkpoint: %u pages, HTML byte %u", builtPageCount_,
+              static_cast<unsigned>(build_->parser->parseBytesConsumed()));
+    } else {
+      // A legacy or damaged checkpoint keeps the readable partial and starts a
+      // fresh parser. Recreate both staging files after any failed prefix copy.
+      build_->parser.reset();
+      file.close();
+      build_->lut.close();
+      builtPageCount_ = 0;
+      build_->failed = false;
+      build_->lastVisibleTextOffset = 0;
+      if (!Storage.openFileForWrite("SCT", binTmpPath(), file) || !writeSectionFileHeader(spec) ||
+          !Storage.openFileForWrite("SCT", lutTmpPath(), build_->lut)) {
+        abandonBuild();
+        return false;
+      }
+      build_->parser = makeBuildParser(build_.get(), spec, popupFn);
+      if (!build_->parser || !build_->parser->beginParse()) {
+        abandonBuild();
+        return false;
+      }
+      LOG_DBG("SCT", "Partial checkpoint unavailable; rebuilding from chapter start");
+    }
+  }
 #ifdef TENOR_UI_ACCEPTANCE
   LOG_DBG("SCT", "EPUB_BUILD stage=parser_ready free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
           static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
   build_->totalBytes = build_->parser->parseTotalBytes();
+  build_->bytesConsumed = build_->parser->parseBytesConsumed();
+  return true;
+}
+
+bool Section::restorePartialBuild() {
+  HalFile previous;
+  if (!Storage.openFileForRead("SCT", filePath, previous)) return false;
+  serialization::CheckedReader reader(previous);
+  // Compare the complete render key, excluding version/count/LUT addresses.
+  constexpr size_t KEY_BYTES = HEADER_SIZE - 1 - sizeof(uint16_t) - 5 * sizeof(uint32_t);
+  uint8_t previousKey[KEY_BYTES], nextKey[KEY_BYTES];
+  if (!reader.seek(1) || !reader.read(previousKey, KEY_BYTES) || !file.seek(1) ||
+      file.read(nextKey, KEY_BYTES) != KEY_BYTES || memcmp(previousKey, nextKey, KEY_BYTES) != 0 ||
+      !file.seek(HEADER_SIZE)) return false;
+  uint16_t pages = 0;
+  uint32_t pageLut = 0, anchors = 0, paragraphs = 0, items = 0, visible = 0;
+  if (!reader.pod(pages) || pages != partialPageCount_ || !reader.pod(pageLut) || !reader.pod(anchors) ||
+      !reader.pod(paragraphs) || !reader.pod(items) || !reader.pod(visible)) return false;
+  const uint64_t count = pages;
+  const uint64_t extension = visible + count * sizeof(uint32_t) + 2 * sizeof(uint32_t);
+  if (pages == 0 || pageLut < HEADER_SIZE || anchors != pageLut + count * sizeof(uint32_t) ||
+      paragraphs < anchors + sizeof(uint16_t) || items != paragraphs + sizeof(uint16_t) + count * sizeof(uint16_t) ||
+      visible != items + count * sizeof(uint16_t) || extension >= previous.size() ||
+      !reader.seek(extension) || !build_->parser->restoreCheckpoint(previous, pages)) return false;
+
+  // Batch SD transfers while preserving page offsets and the atomic commit.
+  // Release the optional buffer before allocating LUTs or parsing more text.
+  uint8_t buffer[512];
+  if (!reader.seek(HEADER_SIZE)) return false;
+  {
+    constexpr size_t COPY_BUFFER_BYTES = 4096;
+    auto bulkBuffer = makeUniqueNoThrow<uint8_t[]>(COPY_BUFFER_BYTES);
+    uint8_t* const copyBuffer = bulkBuffer ? bulkBuffer.get() : buffer;
+    const size_t capacity = bulkBuffer ? COPY_BUFFER_BYTES : sizeof(buffer);
+#ifdef TENOR_UI_ACCEPTANCE
+    const uint32_t copyStart = millis();
+#endif
+    for (size_t remaining = pageLut - HEADER_SIZE; remaining > 0;) {
+      const size_t bytes = std::min(remaining, capacity);
+      if (!reader.read(copyBuffer, bytes) || file.write(copyBuffer, bytes) != bytes) return false;
+      remaining -= bytes;
+    }
+#ifdef TENOR_UI_ACCEPTANCE
+    LOG_DBG("SCT", "EPUB_PREFIX bytes=%u block=%u ms=%u free=%u largest=%u",
+            static_cast<unsigned>(pageLut - HEADER_SIZE), static_cast<unsigned>(capacity),
+            static_cast<unsigned>(millis() - copyStart), static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+  }
+  constexpr size_t ENTRIES_PER_BLOCK = 64;
+  auto entries = makeUniqueNoThrow<PageLutEntry[]>(ENTRIES_PER_BLOCK);
+  if (!entries) return false;
+  uint32_t previousOffset = 0, previousVisible = 0;
+  for (size_t first = 0; first < pages; first += ENTRIES_PER_BLOCK) {
+    const size_t rows = std::min(ENTRIES_PER_BLOCK, static_cast<size_t>(pages) - first);
+    const auto readColumn = [&](uint32_t start, const auto field) {
+      using Value = std::remove_reference_t<decltype(entries[0].*field)>;
+      const size_t bytes = rows * sizeof(Value);
+      if (!reader.seek(start + first * sizeof(Value)) || !reader.read(buffer, bytes)) return false;
+      for (size_t i = 0; i < rows; ++i) memcpy(&(entries[i].*field), buffer + i * sizeof(Value), sizeof(Value));
+      return true;
+    };
+    if (!readColumn(pageLut, &PageLutEntry::fileOffset) ||
+        !readColumn(paragraphs + sizeof(uint16_t), &PageLutEntry::paragraphIndex) ||
+        !readColumn(items, &PageLutEntry::listItemIndex) ||
+        !readColumn(visible, &PageLutEntry::visibleTextOffset)) return false;
+    for (size_t i = 0; i < rows; ++i) {
+      const auto& entry = entries[i];
+      if (entry.fileOffset < HEADER_SIZE || entry.fileOffset >= pageLut || entry.fileOffset <= previousOffset ||
+          entry.visibleTextOffset < previousVisible) return false;
+      previousOffset = entry.fileOffset;
+      previousVisible = entry.visibleTextOffset;
+    }
+    const size_t bytes = rows * sizeof(PageLutEntry);
+    if (build_->lut.write(entries.get(), bytes) != bytes) return false;
+  }
+  builtPageCount_ = pages;
+  build_->lastVisibleTextOffset = previousVisible;
+  return previous.close();
+}
+
+bool Section::parkBuild() {
+  if (!build_ || build_->failed) return false;
+  if (!build_->parser) return true;
+  if (!build_->parser->hasCheckpoint()) return false;
+#ifdef TENOR_UI_ACCEPTANCE
+  const auto started = millis();
+#endif
+  HalFile checkpoint;
+  if (!Storage.openFileForWrite("SCT", checkpointTmpPath(), checkpoint)) return false;
+  const bool written = build_->parser->writeCheckpoint(checkpoint) && checkpoint.sync();
+#ifdef TENOR_UI_ACCEPTANCE
+  const size_t bytes = checkpoint.size();
+#endif
+  const bool closed = checkpoint.close();
+  if (!written || !closed) {
+    Storage.remove(checkpointTmpPath().c_str());
+    return false;
+  }
+  build_->bytesConsumed = build_->parser->parseBytesConsumed();
+  build_->parkedAnchors = build_->parser->takeAnchors();
+  build_->parser.reset();
+  if (build_->cssParser) build_->cssParser->clear();
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("SCT", "EPUB_PARK pages=%u checkpoint_bytes=%u ms=%u free=%u largest=%u",
+          static_cast<unsigned>(builtPageCount_), static_cast<unsigned>(bytes),
+          static_cast<unsigned>(millis() - started), static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+  return true;
+}
+
+bool Section::resumeParkedBuild() {
+  if (!build_ || build_->failed) return false;
+  if (build_->parser) return true;
+#ifdef TENOR_UI_ACCEPTANCE
+  const auto started = millis();
+#endif
+  HalFile checkpoint;
+  if (!Storage.openFileForRead("SCT", checkpointTmpPath(), checkpoint)) return false;
+  // The checkpoint restores anchors too. Release the parked map before allocating
+  // the parser so the two copies never overlap in the render heap.
+  std::vector<std::pair<std::string, uint16_t>>().swap(build_->parkedAnchors);
+  bool restored = loadBuildCss(build_.get());
+  if (restored) {
+    build_->parser = makeBuildParser(build_.get(), build_->spec);
+    restored = build_->parser && build_->parser->beginParse() &&
+               build_->parser->restoreCheckpoint(checkpoint, builtPageCount_);
+  }
+  const bool closed = checkpoint.close();
+  if (!restored || !closed) {
+    build_->parser.reset();
+    if (build_->cssParser) build_->cssParser->clear();
+    return false;
+  }
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("SCT", "EPUB_RESUME pages=%u ms=%u free=%u largest=%u", static_cast<unsigned>(builtPageCount_),
+          static_cast<unsigned>(millis() - started), static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   return true;
 }
 
 bool Section::buildSomeMore(const int maxPages) {
-  if (!build_ || !build_->parser) {
-    LOG_ERR("SCT", "buildSomeMore with no active build");
+  if (!build_ || !resumeParkedBuild()) {
+    LOG_ERR("SCT", "Unable to resume section build");
+    if (build_) abandonBuild();
     return false;
   }
   // Pace on pages laid out by THIS build, not pageCount: during a rebuild over a partial,
@@ -581,8 +772,26 @@ bool Section::buildSomeMore(const int maxPages) {
   // would otherwise turn one "small" chunk into a blocking rebuild of the whole watermark.
   const int startCount = builtPageCount_;
   const uint32_t tickStart = millis();
+  buildStarved_ = false;
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t inputBytes = build_->parser->parseBytesConsumed();
+  LOG_DBG("SCT", "EPUB_TICK begin max=%d built=%u available=%u bytes=%u/%u free=%u largest=%u",
+          maxPages, static_cast<unsigned>(builtPageCount_), static_cast<unsigned>(pageCount),
+          static_cast<unsigned>(inputBytes), static_cast<unsigned>(build_->totalBytes),
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   unsigned steps = 0;
   for (;;) {
+    if (ESP.getFreeHeap() < BUILD_STEP_MIN_FREE_HEAP || ESP.getMaxAllocHeap() < BUILD_STEP_MIN_MAX_ALLOC) {
+      LOG_ERR("SCT", "Build starved of heap free=%u largest=%u; parking after %u pages",
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
+              static_cast<unsigned>(builtPageCount_));
+      build_->bytesConsumed = build_->parser->parseBytesConsumed();
+      buildStarved_ = true;
+      // A failed park keeps the parser resident; either way the caller can retry.
+      parkBuild();
+      return false;
+    }
     const auto status = build_->parser->parseStep();
     if (status == ChapterHtmlSlimParser::ParseStatus::Error || build_->failed) {
       LOG_ERR("SCT", "Parse error during incremental build free=%u largest=%u",
@@ -591,12 +800,26 @@ bool Section::buildSomeMore(const int maxPages) {
       return false;
     }
     if (status == ChapterHtmlSlimParser::ParseStatus::Done) {
+#ifdef TENOR_UI_ACCEPTANCE
+      LOG_DBG("SCT", "EPUB_TICK done max=%d built=%u delta=%u bytes=%u/%u steps=%u ms=%u free=%u largest=%u",
+              maxPages, static_cast<unsigned>(builtPageCount_), static_cast<unsigned>(builtPageCount_ - startCount),
+              static_cast<unsigned>(build_->parser->parseBytesConsumed()), static_cast<unsigned>(build_->totalBytes),
+              steps, static_cast<unsigned>(millis() - tickStart), static_cast<unsigned>(ESP.getFreeHeap()),
+              static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
       return finalizeBuild();
     }
     // ParseStatus::More: yield once we've laid out the requested number of pages.
     if (maxPages > 0 && ((builtPageCount_ - startCount) >= maxPages || ++steps >= 4 ||
                          millis() - tickStart >= 20)) {
       build_->bytesConsumed = build_->parser->parseBytesConsumed();
+#ifdef TENOR_UI_ACCEPTANCE
+      LOG_DBG("SCT", "EPUB_TICK yield max=%d built=%u delta=%u bytes=%u/%u steps=%u ms=%u last_visible=%u free=%u largest=%u",
+              maxPages, static_cast<unsigned>(builtPageCount_), static_cast<unsigned>(builtPageCount_ - startCount),
+              static_cast<unsigned>(build_->bytesConsumed), static_cast<unsigned>(build_->totalBytes), steps,
+              static_cast<unsigned>(millis() - tickStart), static_cast<unsigned>(build_->lastVisibleTextOffset),
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
       return true;
     }
   }
@@ -608,8 +831,9 @@ bool Section::hasHtmlCache() const {
 }
 
 std::optional<uint16_t> Section::findAnchorDuringBuild(const std::string& anchor) const {
-  if (!build_ || !build_->parser) return std::nullopt;
-  for (const auto& [key, page] : build_->parser->getAnchors()) {
+  if (!build_) return std::nullopt;
+  const auto& anchors = build_->parser ? build_->parser->getAnchors() : build_->parkedAnchors;
+  for (const auto& [key, page] : anchors) {
     if (key == anchor) return page;
   }
   return std::nullopt;
@@ -674,10 +898,21 @@ uint16_t Section::estimatedTotalPages() const {
 // On failure the tmp is removed and any pre-existing file at filePath is left intact.
 bool Section::commitBuildFile(const uint8_t version, const uint32_t bytesConsumed, const uint32_t totalBytes) {
   const bool asPartial = (version == SECTION_FILE_PARTIAL_VERSION);
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t commitStart = millis();
+  LOG_DBG("SCT", "EPUB_CACHE_WRITE begin partial=%u pages=%u bytes=%u/%u free=%u largest=%u",
+          asPartial ? 1u : 0u, static_cast<unsigned>(builtPageCount_), static_cast<unsigned>(bytesConsumed),
+          static_cast<unsigned>(totalBytes), static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   const auto failCommit = [this]() {
     build_->failed = true;
     file.close();
     Storage.remove(binTmpPath().c_str());
+#ifdef TENOR_UI_ACCEPTANCE
+    LOG_DBG("SCT", "EPUB_CACHE_WRITE failed pages=%u free=%u largest=%u", static_cast<unsigned>(builtPageCount_),
+            static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
     return false;
   };
   if (build_->failed || build_->parser->hasFailed() || !file || !build_->lut) return failCommit();
@@ -692,9 +927,17 @@ bool Section::commitBuildFile(const uint8_t version, const uint32_t bytesConsume
       const size_t count = std::min(ENTRIES_PER_BLOCK, static_cast<size_t>(builtPageCount_) - offset);
       const size_t bytes = count * sizeof(PageLutEntry);
       if (build_->lut.read(entries.get(), bytes) != static_cast<int>(bytes)) return false;
+      // Compact one column in the existing workspace, behind the unread entries.
+      // Each output value is at most four bytes, while each input row is twelve.
+      auto* output = reinterpret_cast<uint8_t*>(entries.get());
+      const size_t valueBytes = sizeof(entries[0].*field);
       for (size_t i = 0; i < count; ++i) {
-        if (entries[i].fileOffset == 0 || !serialization::writePod(file, entries[i].*field)) return false;
+        if (entries[i].fileOffset == 0) return false;
+        const auto value = entries[i].*field;
+        memcpy(output + i * valueBytes, &value, valueBytes);
       }
+      const size_t outputBytes = count * valueBytes;
+      if (file.write(output, outputBytes) != outputBytes) return false;
     }
     return true;
   };
@@ -722,6 +965,7 @@ bool Section::commitBuildFile(const uint8_t version, const uint32_t bytesConsume
   if (!writeColumn(&PageLutEntry::visibleTextOffset)) return failCommit();
   if (asPartial && (!serialization::writePod(file, bytesConsumed) || !serialization::writePod(file, totalBytes)))
     return failCommit();
+  if (asPartial && build_->parser->hasCheckpoint() && !build_->parser->writeCheckpoint(file)) return failCommit();
 
   if (!file.seek(HEADER_SIZE - sizeof(uint32_t) * 5 - sizeof(builtPageCount_)) ||
       !serialization::writePod(file, builtPageCount_) || !serialization::writePod(file, lutOffset) ||
@@ -734,6 +978,11 @@ bool Section::commitBuildFile(const uint8_t version, const uint32_t bytesConsume
   bool backupCleanupPending = false;
   if (!freeink::replaceFile(Storage, binTmpPath().c_str(), filePath.c_str(), &backupCleanupPending)) return failCommit();
   if (backupCleanupPending) LOG_DBG("SCT", "Section committed with retained recovery backup");
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("SCT", "EPUB_CACHE_WRITE done partial=%u pages=%u ms=%u free=%u largest=%u",
+          asPartial ? 1u : 0u, static_cast<unsigned>(builtPageCount_), static_cast<unsigned>(millis() - commitStart),
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   return true;
 }
 
@@ -757,6 +1006,7 @@ bool Section::finalizeBuild() {
   if (build_->cssParser) build_->cssParser->clear();
   build_->lut.close();
   Storage.remove(lutTmpPath().c_str());
+  Storage.remove(checkpointTmpPath().c_str());
   build_.reset();
   if (!committed) {
     pageCount = partial_ ? partialPageCount_ : 0;
@@ -772,7 +1022,7 @@ bool Section::finalizeBuild() {
 
 void Section::suspendBuild() {
   if (!build_) return;
-  if (build_->failed || build_->parser->hasFailed()) {
+  if (build_->failed || !resumeParkedBuild() || build_->parser->hasFailed()) {
     abandonBuild();
     return;
   }
@@ -809,6 +1059,7 @@ void Section::suspendBuild() {
   }
   build_->lut.close();
   Storage.remove(lutTmpPath().c_str());
+  Storage.remove(checkpointTmpPath().c_str());
   build_.reset();
   buildComplete_ = false;
   pageCount = partial_ ? partialPageCount_ : 0;
@@ -829,6 +1080,7 @@ void Section::abandonBuild() {
   }
   build_->lut.close();
   Storage.remove(lutTmpPath().c_str());
+  Storage.remove(checkpointTmpPath().c_str());
   build_.reset();
   buildComplete_ = false;
   pageCount = partial_ ? partialPageCount_ : 0;
@@ -842,6 +1094,9 @@ bool Section::readBuildEntry(const uint16_t page, PageLutEntry& entry) const {
 }
 
 std::unique_ptr<Page> Section::loadPageDuringBuild(const int page) {
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t readStart = millis();
+#endif
   PageLutEntry entry{};
   if (page < 0 || !file || !readBuildEntry(page, entry) || entry.fileOffset == 0) return nullptr;
   const uint32_t writePos = file.position();
@@ -849,10 +1104,16 @@ std::unique_ptr<Page> Section::loadPageDuringBuild(const int page) {
   auto p = Page::deserialize(file);
   if (!file.seek(writePos)) {
     build_->failed = true;
-    build_->parser->failBuild();
+    if (build_->parser) build_->parser->failBuild();
     return nullptr;
   }
   if (p) p->visibleTextOffset = entry.visibleTextOffset;
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("SCT", "EPUB_CACHE_READ source=active page=%d ok=%u file_offset=%u visible=%u ms=%u free=%u largest=%u",
+          page, p ? 1u : 0u, static_cast<unsigned>(entry.fileOffset), static_cast<unsigned>(entry.visibleTextOffset),
+          static_cast<unsigned>(millis() - readStart), static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   return p;
 }
 
@@ -860,23 +1121,46 @@ std::unique_ptr<Page> Section::loadPageDuringBuild(const int page) {
 // previous session). Uses a local handle so it is safe while a build holds the member
 // `file` open on the tmp .bin.
 std::unique_ptr<Page> Section::loadPageAt(const int page) const {
+#ifdef TENOR_UI_ACCEPTANCE
+  const uint32_t readStart = millis();
+#endif
   HalFile f;
   if (page < 0 || !Storage.openFileForRead("SCT", filePath, f)) return nullptr;
   serialization::CheckedReader reader(f);
+#ifdef TENOR_UI_ACCEPTANCE
+  unsigned seekCount = 0;
+#endif
+  const auto seek = [&reader
+#ifdef TENOR_UI_ACCEPTANCE
+                     , &seekCount
+#endif
+  ](const size_t target) {
+#ifdef TENOR_UI_ACCEPTANCE
+    ++seekCount;
+#endif
+    return reader.seek(target);
+  };
   uint16_t count = 0;
   uint32_t lutOffset = 0, pagePos = 0, visibleLutOffset = 0, visibleTextOffset = 0;
-  if (!reader.seek(HEADER_SIZE - sizeof(uint32_t) * 5 - sizeof(uint16_t)) || !reader.pod(count) ||
+  if (!seek(HEADER_SIZE - sizeof(uint32_t) * 5 - sizeof(uint16_t)) || !reader.pod(count) ||
       page >= count || !reader.pod(lutOffset) || lutOffset < HEADER_SIZE ||
       static_cast<uint64_t>(lutOffset) + sizeof(uint32_t) * count > f.size() ||
-      !reader.seek(lutOffset + sizeof(uint32_t) * page) || !reader.pod(pagePos) ||
+      !seek(lutOffset + sizeof(uint32_t) * page) || !reader.pod(pagePos) ||
       pagePos < HEADER_SIZE || pagePos >= lutOffset ||
-      !reader.seek(HEADER_SIZE - sizeof(uint32_t)) || !reader.pod(visibleLutOffset) ||
+      !seek(HEADER_SIZE - sizeof(uint32_t)) || !reader.pod(visibleLutOffset) ||
       visibleLutOffset < lutOffset ||
       static_cast<uint64_t>(visibleLutOffset) + sizeof(uint32_t) * count > f.size() ||
-      !reader.seek(visibleLutOffset + sizeof(uint32_t) * page) || !reader.pod(visibleTextOffset) ||
-      !reader.seek(pagePos)) return nullptr;
+      !seek(visibleLutOffset + sizeof(uint32_t) * page) || !reader.pod(visibleTextOffset) ||
+      !seek(pagePos)) return nullptr;
   auto result = Page::deserialize(f);
   if (result) result->visibleTextOffset = visibleTextOffset;
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("SCT", "EPUB_CACHE_READ source=disk page=%d ok=%u count=%u seeks=%u file_offset=%u visible=%u ms=%u free=%u largest=%u",
+          page, result ? 1u : 0u, static_cast<unsigned>(count), static_cast<unsigned>(seekCount),
+          static_cast<unsigned>(pagePos), static_cast<unsigned>(visibleTextOffset),
+          static_cast<unsigned>(millis() - readStart),
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   return result;
 }
 

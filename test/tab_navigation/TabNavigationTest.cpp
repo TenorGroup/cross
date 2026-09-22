@@ -242,8 +242,10 @@ TEST_F(TabScreenFixture, TabTiltModeStaysIndependentFromReaderTiltMode) {
     EXPECT_EQ(tiltfixture::lastMode, tabMode);
     EXPECT_TRUE(tiltfixture::lastTargetActive);
     EXPECT_EQ(screen.tabSteps, tabMode == CrossPointSettings::TILT_OFF ? 0 : 1);
-    EXPECT_EQ(screen.tab, tabMode == CrossPointSettings::TILT_NORMAL ? 1
-                                                                       : tabMode == CrossPointSettings::TILT_NVERTED ? 2 : 0);
+    // Tab tilt runs opposite to the raw sensor mode: Normal steps back,
+    // Inverted steps next.
+    EXPECT_EQ(screen.tab, tabMode == CrossPointSettings::TILT_NORMAL ? 2
+                                                                       : tabMode == CrossPointSettings::TILT_NVERTED ? 1 : 0);
   }
 }
 

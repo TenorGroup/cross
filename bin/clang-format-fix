@@ -1,54 +1,89 @@
 #!/usr/bin/env bash
 
-# Check if clang-format is available and pick the preferred binary.
-if command -v clang-format-21 >/dev/null 2>&1; then
-  CLANG_FORMAT_BIN="clang-format-21"
-elif command -v clang-format >/dev/null 2>&1; then
-  CLANG_FORMAT_BIN="clang-format"
-else
-  printf "'clang-format' not found in current environment\n"
-  printf "Install clang-format-21 (recommended), clang, clang-tools, or clang-format depending on your distro/os and tooling requirements\n"
-  exit 1
-fi
-
 set -euo pipefail
 
-GIT_LS_FILES_FLAGS=""
-# -g scopes formatting to modified and new files in git status.
-if [[ "${1:-}" == "-g" ]]; then
-  GIT_LS_FILES_FLAGS="--modified --others"
+usage() {
+  cat <<'EOF'
+Usage: ./bin/clang-format-fix [--check | --fix] [-g] [-- <git pathspec>...]
+
+  --check       Report formatting errors without changing files (default).
+  --fix         Apply formatting to the selected files.
+  -g, --changed Select staged, unstaged, and untracked files only.
+  -h, --help    Show this help without running the formatter.
+
+Generated fonts, hyphenation data, and vendored sources are excluded.
+Requires clang-format 21 or newer, including the Xcode toolchain on macOS.
+EOF
+}
+
+mode=""
+changed=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --check|--fix)
+      if [[ -n "$mode" && "$mode" != "$1" ]]; then
+        printf '%s\n' 'Choose either --check or --fix.' >&2
+        exit 2
+      fi
+      mode="$1"
+      ;;
+    -g|--changed) changed=true ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; break ;;
+    *) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+  esac
+  shift
+done
+mode="${mode:---check}"
+
+# Keep git's NUL-delimited names intact, including whitespace and newlines.
+file_list="$(mktemp "${TMPDIR:-/tmp}/cross-clang-format.XXXXXX")"
+trap 'rm -f "$file_list"' EXIT
+if "$changed"; then
+  git ls-files -z --modified --others --exclude-standard -- "$@" > "$file_list"
+  git diff --cached --name-only --diff-filter=ACMRTUXB -z -- "$@" >> "$file_list"
+else
+  git ls-files -z --cached --exclude-standard -- "$@" > "$file_list"
 fi
 
-CLANG_FORMAT_VERSION_RAW="$(${CLANG_FORMAT_BIN} --version)"
-CLANG_FORMAT_MAJOR="$(printf '%s\n' "${CLANG_FORMAT_VERSION_RAW}" | grep -oE '[0-9]+' | head -n1)"
+files=()
+while IFS= read -r -d '' path; do
+  case "$path" in
+    lib/EpdFont/builtinFonts/*|lib/Epub/Epub/hyphenation/generated/*|lib/uzlib/*|third_party/*|lib/miniz/third_party/*)
+      continue ;;
+    *.c|*.cpp|*.h|*.hpp) ;;
+    *) continue ;;
+  esac
+  [[ -f "$path" ]] || continue
+  duplicate=false
+  if [[ ${#files[@]} -gt 0 ]]; then
+    for existing in "${files[@]}"; do
+      if [[ "$existing" == "$path" ]]; then duplicate=true; break; fi
+    done
+  fi
+  if ! "$duplicate"; then files+=("$path"); fi
+done < "$file_list"
+[[ ${#files[@]} -gt 0 ]] || exit 0
 
-# Guard against local binaries older than the repo formatting config.
-if [[ -z "${CLANG_FORMAT_MAJOR}" || "${CLANG_FORMAT_MAJOR}" -lt 21 ]]; then
-  echo "Error: ${CLANG_FORMAT_BIN} is too old: ${CLANG_FORMAT_VERSION_RAW}"
-  echo "This repository's .clang-format requires clang-format 21 or newer."
-  echo "Install clang-format-21 and rerun ./bin/clang-format-fix"
+if command -v clang-format-21 >/dev/null 2>&1; then
+  formatter="$(command -v clang-format-21)"
+elif command -v clang-format >/dev/null 2>&1; then
+  formatter="$(command -v clang-format)"
+elif command -v xcrun >/dev/null 2>&1; then
+  formatter="$(xcrun --find clang-format)"
+else
+  printf '%s\n' 'Install clang-format 21 or newer, or select an Xcode toolchain.' >&2
   exit 1
 fi
 
-# --- Main Logic ---
+version="$("$formatter" --version)"
+if [[ ! "$version" =~ ([0-9]+)\. || "${BASH_REMATCH[1]:-0}" -lt 21 ]]; then
+  printf 'clang-format 21 or newer is required: %s\n' "$version" >&2
+  exit 1
+fi
 
-# Format all files (or only modified files if -g is passed)
-
-# Use 'git ls-files' to get a list of all files tracked by git:
-# --modified: files tracked by git that have been modified (staged or unstaged)
-# --exclude-standard: ignores files in .gitignore
-# Additionally exclude files in 'lib/EpdFont/builtinFonts/' as they are script-generated.
-# Also exclude files in 'lib/Epub/Epub/hyphenation/generated/' as they are script-generated.
-# Keep the no-match case non-fatal: grep returns 1 when no files match,
-# which is expected when there are no modified C/C++ files.
-set +o pipefail
-git ls-files  --exclude-standard ${GIT_LS_FILES_FLAGS} \
-    | grep -E '\.(c|cpp|h|hpp)$' \
-    | grep -v -E '^lib/EpdFont/builtinFonts/' \
-    | grep -v -E '^lib/Epub/Epub/hyphenation/generated/' \
-    | grep -v -E '^lib/uzlib/' \
-    | grep -v -E '^third_party/' \
-    | grep -v -E '^lib/miniz/third_party/' \
-    | xargs -r "${CLANG_FORMAT_BIN}" -style=file -i
-# Restore strict pipeline failure handling for the rest of the script.
-set -o pipefail
+if [[ "$mode" == '--fix' ]]; then
+  "$formatter" --style=file -i -- "${files[@]}"
+else
+  "$formatter" --style=file --dry-run --Werror -- "${files[@]}"
+fi

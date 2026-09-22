@@ -88,3 +88,5 @@ python fontconvert.py notosans_8_regular 8 \
 echo ""
 echo "Running compression verification..."
 python verify_compression.py ../builtinFonts/
+
+python ../../../scripts/deduplicate_font_metadata.py ../builtinFonts/

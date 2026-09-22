@@ -44,6 +44,7 @@ if(SD_FONT_ASAN)
   target_compile_options(SdFontLifetimeTest PRIVATE -fsanitize=address -fno-omit-frame-pointer -g)
   target_link_options(SdFontLifetimeTest PRIVATE -fsanitize=address)
 endif()
-foreach(scenario ruby-base ruby-annotation repeat-release failed-read failed-seek failed-reload)
+foreach(scenario ruby-base ruby-annotation repeat-release failed-read failed-seek failed-reload
+                 advance-low-heap advance-cjk advance-cap advance-growth-failure advance-growth-peak)
   add_test(NAME SdFontLifetime.${scenario} COMMAND SdFontLifetimeTest ${scenario})
 endforeach()

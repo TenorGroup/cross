@@ -826,7 +826,8 @@ void loop() {
         mappedInputManager.wasReleased(MappedInputManager::Button::PageForward) ||
         mappedInputManager.wasReleased(MappedInputManager::Button::Left) ||
         mappedInputManager.wasReleased(MappedInputManager::Button::Right) || gpio.wasTouchActivity();
-    if (foregroundReader && SETTINGS.blePageTurnerEnabled && freeink::ble::idleStopped() && localReaderInput) {
+    if (foregroundReader && SETTINGS.blePageTurnerEnabled && freeink::ble::idleStopped() &&
+        (localReaderInput || freeink::ble::takeRearmRequest())) {
       freeink::ble::setIdleStopped(false);
       bleReaderBeginAttempted = false;
       bleReaderReconnectConfigured = false;

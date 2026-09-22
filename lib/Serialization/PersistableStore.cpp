@@ -46,45 +46,54 @@ bool PersistableStoreBase::writeDocToFile(const char* path, const JsonDocument& 
 }
 
 bool PersistableStoreBase::readDocFromFile(const char* path, JsonDocument& doc) {
-  bool unavailable = false;
-  const auto parse = [&doc, &unavailable](const char* candidate) {
-    unavailable = false;
-    if (!Storage.exists(candidate)) return false;
-    const String json = Storage.readFile(candidate);
+  return readDocFromFileStatus(path, doc) == ReadResult::Ready;
+}
+
+PersistableStoreBase::ReadResult PersistableStoreBase::readDocFromFileStatus(const char* path, JsonDocument& doc,
+                                                                         const size_t maxBytes) {
+  const auto parse = [&doc, maxBytes](const char* candidate) {
     doc.clear();
+    if (!Storage.exists(candidate)) return ReadResult::Invalid;
+    if (maxBytes) {
+      HalFile probe;
+      if (!Storage.openFileForRead("PERSIST", candidate, probe)) return ReadResult::Unavailable;
+      const size_t size = probe.fileSize();
+      const bool closed = probe.close();
+      if (!closed || size > maxBytes) return ReadResult::Unavailable;
+    }
+    const String json = Storage.readFile(candidate);
     if (json.isEmpty()) {
       // The String API represents both failed reads and a real zero-byte
       // file as empty. Confirm metadata before classifying it as corrupt.
       HalFile probe;
       if (!Storage.openFileForRead("PERSIST", candidate, probe)) {
-        unavailable = true;
-        return false;
+        return ReadResult::Unavailable;
       }
       const bool emptyFile = probe.fileSize() == 0;
-      unavailable = !probe.close() || !emptyFile;
-      return false;
+      return probe.close() && emptyFile ? ReadResult::Invalid : ReadResult::Unavailable;
     }
     const auto error = deserializeJson(doc, json);
-    unavailable = error == DeserializationError::NoMemory || doc.overflowed();
-    return !error && !unavailable;
+    if (error == DeserializationError::NoMemory || doc.overflowed()) return ReadResult::Unavailable;
+    return error ? ReadResult::Invalid : ReadResult::Ready;
   };
-  if (parse(path)) return true;
+  const auto main = parse(path);
   // A read/allocation failure says nothing about whether main is corrupt.
   // Retry later while preserving both files instead of replacing newer data.
-  if (unavailable) return false;
+  if (main != ReadResult::Invalid) return main;
   const std::string backup = std::string(path) + ".davbak";
-  if (!parse(backup.c_str())) {
+  const auto recovery = parse(backup.c_str());
+  if (recovery != ReadResult::Ready) {
     doc.clear();
-    return false;
+    return recovery;
   }
   // The parsed backup is usable even if SD metadata recovery fails. Retain it
   // on disk so the next boot can retry, and never promote unverified staging.
   if (Storage.exists(path) && !Storage.remove(path)) {
     LOG_ERR("PERSIST", "Using backup; cannot remove invalid %s", path);
-    return true;
+    return ReadResult::Ready;
   }
   if (!Storage.rename(backup.c_str(), path)) LOG_ERR("PERSIST", "Using retained backup for %s", path);
-  return true;
+  return ReadResult::Ready;
 }
 
 std::string PersistableStoreBase::extractPassword(JsonVariantConst doc, bool& needsResave) {

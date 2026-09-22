@@ -95,6 +95,9 @@ void ReaderActivity::onEnter() {
 void ReaderActivity::onExit() {
   Activity::onExit();
   pendingExternalTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+  dropTurnTrace(pendingExternalTurnTrace, "exit");
+#endif
 
   updateReadingTime(false);
   chotSoLieuDoc();
@@ -153,6 +156,9 @@ void ReaderActivity::onTick() {
 
 void ReaderActivity::onPause() {
   pendingExternalTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+  dropTurnTrace(pendingExternalTurnTrace, "pause");
+#endif
   updateReadingTime(false);
   chotSoLieuDoc();
 }
@@ -235,7 +241,7 @@ void ReaderActivity::readingMargins(int& top, int& right, int& bottom, int& left
     const int inkSafeTop =
         maxInkTop > 0 ? std::max(margin, maxInkTop - renderer.getFontAscenderSize(fontId)) : margin + 1;
     top = inkSafeTop + TOP_BREATHING_ROOM;
-    right = margin + 3;  // Reserve ink overhang beyond the final glyph advance.
+    right = margin;  // Keep the reader text inset equal on both sides.
     bottom = std::max(margin, preview                            ? static_cast<int>(PREVIEW_FOOTER_HEIGHT)
                               : SETTINGS.readerStatusBarHidden() ? 0
                                                                  : tenorchrome::readerBottomReserve());
@@ -281,6 +287,9 @@ bool ReaderActivity::handlePreviewInput() {
         pendingExternalTurn = -1;
         pendingExternalGeneration = activityManager.activityGeneration();
         pendingTurnIsLocal = true;
+#ifdef TENOR_UI_ACCEPTANCE
+        replaceQueuedTurnTrace(pendingExternalTurnTrace, detectTurnTrace("preview", false), "render_lock");
+#endif
       }
     } else if (pageTurn(false)) {
       requestUpdate();
@@ -291,18 +300,69 @@ bool ReaderActivity::handlePreviewInput() {
   return true;
 }
 
+#ifdef TENOR_UI_ACCEPTANCE
+ReaderActivity::TurnTrace ReaderActivity::detectTurnTrace(const char* source, const bool forward) {
+  TurnTrace trace{++turnTraceSequence, millis(), source, forward};
+  logTurnTrace("DETECTED", trace, "input");
+  return trace;
+}
+
+void ReaderActivity::logTurnTrace(const char* phase, const TurnTrace& trace, const char* detail) const {
+  if (trace.id == 0) return;
+  const unsigned long now = millis();
+  LOG_INF("RDR_TRACE", "%s id=%u gen=%u t=%lu age_ms=%lu src=%s dir=%u detail=%s heap=%u largest=%u min=%u",
+          phase, static_cast<unsigned>(trace.id), static_cast<unsigned>(activityManager.activityGeneration()),
+          now, now - trace.detectedMs, trace.source, trace.forward ? 1u : 0u, detail,
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
+          static_cast<unsigned>(ESP.getMinFreeHeap()));
+}
+
+void ReaderActivity::replaceQueuedTurnTrace(TurnTrace& queue, const TurnTrace& incoming, const char* reason) {
+  logTurnTrace("COALESCED", queue, reason);
+  queue = incoming;
+  logTurnTrace("QUEUED", queue, reason);
+}
+
+void ReaderActivity::dropTurnTrace(TurnTrace& trace, const char* reason) {
+  logTurnTrace("DROPPED", trace, reason);
+  trace = {};
+}
+#endif
+
 bool ReaderActivity::pageTurnLocked(const bool isForward) {
-  if (!latTrangThat(isForward)) return false;
+#ifdef TENOR_UI_ACCEPTANCE
+  if (currentTurnTrace.id == 0) currentTurnTrace = detectTurnTrace("local", isForward);
+#endif
+  if (!latTrangThat(isForward)) {
+#ifdef TENOR_UI_ACCEPTANCE
+    logTurnTrace("REJECTED", currentTurnTrace, "unchanged");
+    currentTurnTrace = {};
+#endif
+    return false;
+  }
+#ifdef TENOR_UI_ACCEPTANCE
+  logTurnTrace("SUPERSEDED", appliedTurnTrace, "next_mutation");
+  appliedTurnTrace = currentTurnTrace;
+  currentTurnTrace = {};
+  logTurnTrace("APPLIED", appliedTurnTrace, "page");
+#endif
   ++trangDaLat;
   return true;
 }
 
 bool ReaderActivity::pageTurn(const bool isForward) {
+#ifdef TENOR_UI_ACCEPTANCE
+  if (currentTurnTrace.id == 0) currentTurnTrace = detectTurnTrace("local", isForward);
+#endif
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired()) {
     pendingExternalTurn = isForward ? 1 : -1;
     pendingExternalGeneration = activityManager.activityGeneration();
     pendingTurnIsLocal = true;
+#ifdef TENOR_UI_ACCEPTANCE
+    replaceQueuedTurnTrace(pendingExternalTurnTrace, currentTurnTrace, "render_lock");
+    currentTurnTrace = {};
+#endif
     return false;
   }
   return pageTurnLocked(isForward);
@@ -318,6 +378,9 @@ bool ReaderActivity::luotLatTrangNgoai(const bool isForward) {
   pendingExternalTurn = isForward ? 1 : -1;
   pendingExternalGeneration = activityManager.activityGeneration();
   pendingTurnIsLocal = false;
+#ifdef TENOR_UI_ACCEPTANCE
+  replaceQueuedTurnTrace(pendingExternalTurnTrace, detectTurnTrace("external", isForward), "external");
+#endif
   return true;
 }
 
@@ -326,14 +389,24 @@ bool ReaderActivity::processExternalPageTurn() {
   if (pendingExternalGeneration != activityManager.activityGeneration() ||
       (!pendingTurnIsLocal && !externalPageTurnAllowed())) {
     pendingExternalTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+    dropTurnTrace(pendingExternalTurnTrace, "stale_or_blocked");
+#endif
     return false;
   }
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired() || !manualPageTurnReady()) return true;
   const bool forward = pendingExternalTurn > 0;
   pendingExternalTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+  currentTurnTrace = pendingExternalTurnTrace;
+  pendingExternalTurnTrace = {};
+#endif
   // Preview owns Back/Confirm and stays inside its current book.
   if (preview && isAtEndOfBook()) {
+#ifdef TENOR_UI_ACCEPTANCE
+    dropTurnTrace(currentTurnTrace, "preview_end");
+#endif
     if (!forward) {
       onReturnFromEndOfBook();
       requestUpdate();
@@ -342,7 +415,12 @@ bool ReaderActivity::processExternalPageTurn() {
   }
   // The same end-of-book gate owns physical and external page actions. An
   // open suggestion menu consumes the report without turning a hidden page.
-  if (!preview && handleEndOfBookPageTurn(!forward, forward)) return true;
+  if (!preview && handleEndOfBookPageTurn(!forward, forward)) {
+#ifdef TENOR_UI_ACCEPTANCE
+    dropTurnTrace(currentTurnTrace, "end_of_book");
+#endif
+    return true;
+  }
   if (pageTurnLocked(forward)) requestUpdate();
   return true;
 }
@@ -352,6 +430,9 @@ void ReaderActivity::loop() {
   clearEndOfBookOptionsIfNeeded();
   if (handleEndOfBookMenu()) {
     pendingExternalTurn = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+    dropTurnTrace(pendingExternalTurnTrace, "end_menu");
+#endif
     return;
   }
   if (handleFormatInput()) return;
@@ -386,6 +467,10 @@ void ReaderActivity::render(RenderLock&&) {
       renderer.clearScreen();
       drawPreviewFooter();
       renderer.displayBuffer();
+#ifdef TENOR_UI_ACCEPTANCE
+      logTurnTrace("RENDERED", appliedTurnTrace, "preview_end");
+      appliedTurnTrace = {};
+#endif
       return;
     }
     if (!endOfBookOptions) {
@@ -401,6 +486,10 @@ void ReaderActivity::render(RenderLock&&) {
       endOfBookOptions->render(renderer, mappedInput);
     }
     renderer.displayBuffer();
+#ifdef TENOR_UI_ACCEPTANCE
+    logTurnTrace("RENDERED", appliedTurnTrace, "end_of_book");
+    appliedTurnTrace = {};
+#endif
     onEndOfBookRendered();
     return;
   }

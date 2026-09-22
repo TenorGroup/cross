@@ -42,27 +42,33 @@ inline uint16_t readU16(const uint8_t* p) { return p[0] | (p[1] << 8); }
 inline int16_t readI16(const uint8_t* p) { return static_cast<int16_t>(p[0] | (p[1] << 8)); }
 inline uint32_t readU32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24); }
 
-// Walks a null-terminated UTF-8 string and appends each unique codepoint to
-// codepoints[0..cpCount-1] via O(n²) dedup.  Returns true if the buffer
-// reached maxCount (cap hit), false if all codepoints fit.
-bool collectUniqueCodepoints(const char* text, uint32_t* codepoints, uint32_t& cpCount, uint32_t maxCount) {
+constexpr uint32_t MAX_UNIQUE_CODEPOINTS = 4096;
+
+void insertCodepoint(uint32_t cp, uint32_t* codepoints, uint32_t& cpCount, uint32_t position) {
+  memmove(codepoints + position + 1, codepoints + position, (cpCount - position) * sizeof(uint32_t));
+  codepoints[position] = cp;
+  ++cpCount;
+}
+
+// Keep the small paragraph set sorted so repeated characters need only a
+// binary search. Return 1 if another unique codepoint needs more capacity.
+// Capacity excludes two slots reserved for injected space/hyphen.
+int collectUniqueCodepoints(const char* text, uint32_t* codepoints, uint32_t& cpCount, uint32_t capacity) {
   const unsigned char* p = reinterpret_cast<const unsigned char*>(text);
   while (*p) {
-    uint32_t cp = utf8NextCodepoint(&p);
+    const uint32_t cp = utf8NextCodepoint(&p);
     if (cp == 0) break;
-    bool found = false;
-    for (uint32_t i = 0; i < cpCount; i++) {
-      if (codepoints[i] == cp) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      if (cpCount >= maxCount) return true;
-      codepoints[cpCount++] = cp;
-    }
+    const uint32_t position = std::lower_bound(codepoints, codepoints + cpCount, cp) - codepoints;
+    if (position < cpCount && codepoints[position] == cp) continue;
+    if (cpCount == capacity) return 1;
+    insertCodepoint(cp, codepoints, cpCount, position);
   }
-  return false;
+  return 0;
+}
+
+void injectCodepoint(uint32_t cp, uint32_t* codepoints, uint32_t& cpCount) {
+  const uint32_t position = std::lower_bound(codepoints, codepoints + cpCount, cp) - codepoints;
+  if (position == cpCount || codepoints[position] != cp) insertCodepoint(cp, codepoints, cpCount, position);
 }
 
 const char* asCStr(const std::string& s) { return s.c_str(); }
@@ -1510,35 +1516,40 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
 
   unsigned long startMs = millis();
 
+  // Ordinary paragraphs need a small set even when the text is long.
   // +2 reserved slots for space and hyphen injected after the main scan.
-  static constexpr uint32_t MAX_UNIQUE_CODEPOINTS = 4096;
-  uint32_t* codepoints = new (std::nothrow) uint32_t[MAX_UNIQUE_CODEPOINTS + 2];
-  if (!codepoints) {
-    LOG_ERR("SDCF", "buildAdvanceTable: failed to allocate codepoint buffer (%u bytes)", MAX_UNIQUE_CODEPOINTS * 4);
-    return -1;
-  }
+  uint32_t capacity = 128;
+  std::unique_ptr<uint32_t[]> codepoints;
   uint32_t cpCount = 0;
-  bool hitCap = false;
-
-  for (auto it = begin; it != end && !hitCap; ++it) {
-    hitCap = collectUniqueCodepoints(asCStr(*it), codepoints, cpCount, MAX_UNIQUE_CODEPOINTS);
+  int collectResult = 0;
+  for (;;) {
+    codepoints.reset(new (std::nothrow) uint32_t[capacity + 2]);
+    if (!codepoints) {
+      LOG_ERR("SDCF", "buildAdvanceTable: failed to allocate codepoint buffer (%u bytes)", (capacity + 2) * 4);
+      return -1;
+    }
+    cpCount = 0;
+    collectResult = 0;
+    for (auto it = begin; it != end && collectResult == 0; ++it) {
+      collectResult = collectUniqueCodepoints(asCStr(*it), codepoints.get(), cpCount, capacity);
+    }
+    if (extraText && collectResult == 0) {
+      collectResult = collectUniqueCodepoints(extraText, codepoints.get(), cpCount, capacity);
+    }
+    if (collectResult == 0 || capacity == MAX_UNIQUE_CODEPOINTS) break;
+    // Release before growing, then replay the immutable input. This bounds
+    // collection peak to one array even with a fragmented reader heap.
+    codepoints.reset();
+    capacity *= 2;
   }
-  if (extraText && !hitCap) {
-    hitCap = collectUniqueCodepoints(extraText, codepoints, cpCount, MAX_UNIQUE_CODEPOINTS);
-  }
+  if (includeSpace) injectCodepoint(' ', codepoints.get(), cpCount);
+  if (includeHyphen) injectCodepoint('-', codepoints.get(), cpCount);
 
-  if (includeSpace && std::none_of(codepoints, codepoints + cpCount, [](uint32_t c) { return c == ' '; }))
-    codepoints[cpCount++] = ' ';
-  if (includeHyphen && std::none_of(codepoints, codepoints + cpCount, [](uint32_t c) { return c == '-'; }))
-    codepoints[cpCount++] = '-';
-
-  if (hitCap) {
+  if (collectResult > 0) {
     LOG_ERR("SDCF", "buildAdvanceTable: unique codepoint cap (%u) hit, layout may be approximate",
             MAX_UNIQUE_CODEPOINTS);
   }
-  std::sort(codepoints, codepoints + cpCount);
-  int totalMissed = fetchAdvancesForCodepoints(codepoints, cpCount, styleMask);
-  delete[] codepoints;
+  int totalMissed = fetchAdvancesForCodepoints(codepoints.get(), cpCount, styleMask);
   stats_.prewarmTotalMs = millis() - startMs;
   return totalMissed;
 }

@@ -24,6 +24,9 @@ def main():
     start = http.index('struct Sink {')
     end = http.index('\n#endif', http.index('HttpDownloader::DownloadError runGetWolf'))
     flow = http[start:end].replace('#if defined(FREEINK_NET_WOLFSSL)\n', '')
+    limit_start = http.find('constexpr size_t MAX_REDIRECT_URL =')
+    if limit_start >= 0:
+        flow = http[limit_start:http.index('\n', limit_start) + 1] + flow
     (output / 'production-http-flow.inc').write_text(flow)
     clock = repo / 'lib/hal/HalClock.cpp'
     (output / 'source-hashes.json').write_text(json.dumps({

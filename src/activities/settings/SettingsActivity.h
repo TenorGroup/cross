@@ -192,6 +192,7 @@ class SettingsActivity final : public UiTabListActivity {
     return I18N.get(settingstabs::tenThe(static_cast<settingstabs::Tab>(index)));
   }
   bool showWakeHint() const;
+  int favoriteHintLinesAbove() const override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   void onTabAction(int index) override;

@@ -133,13 +133,55 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
         # mo Cai dat van ban o the Ho font, roi xuong hai nhip sang Bo cuc.
         return ["DOWN"] * 4 + ["RIGHT"] * 5 + ["CONFIRM"] + ["UP"] * 2 + ["CONFIRM"] + ["DOWN"] * 2
 
-    def mep_status(self, ten):
+    def anh_status(self, ten):
         with Image.open(ART / (ten + ".bmp")) as source:
-            image = source.convert("L")
+            return source.convert("L")
+
+    def kiem_status(self, ten, lon, clock):
+        image = self.anh_status(ten)
         pixels = [(x, y) for y in range(image.height - 70, image.height - 4) for x in range(image.width)
                   if image.getpixel((x, y)) < 128]
         self.assertTrue(pixels, f"{ten}: khong co pixel status")
-        return min(x for x, _ in pixels), max(x for x, _ in pixels), image.width
+        left = min(x for x, _ in pixels)
+        right = max(x for x, _ in pixels)
+        right_margin = image.width - right - 1
+        if clock == 1:
+            self.assertEqual(left, 8, f"{ten}: icon pin trai phai bat dau tai inset 8 px")
+            self.assertIn(right_margin, range(8, 11), f"{ten}: dong ho phai sai inset")
+        else:
+            self.assertIn(left, range(8, 11), f"{ten}: dong ho trai sai inset hoac bearing")
+            self.assertEqual(right_margin, 8, f"{ten}: dau pin phai phai ket thuc tai inset 8 px")
+
+        battery_width = 32 if lon else 26
+        bx = 8 if clock == 1 else image.width - 8 - battery_width
+        icon_right = bx + battery_width - 1
+        icon_pixels = [(x, y) for x, y in pixels if bx <= x <= icon_right]
+        self.assertTrue(icon_pixels, f"{ten}: khong thay icon pin tai goc quy dinh")
+        top = min(y for _, y in icon_pixels)
+        bottom = max(y for _, y in icon_pixels)
+        body_right = icon_right - 2
+
+        # Bon goc than pin phai co khoang trang nhin thay, canh tren va duoi van
+        # lien mach o giua. Day la hinh hoc anh, doc lap voi cach renderer ve cung.
+        for dx in range(3):
+            for x, y in ((bx + dx, top), (body_right - dx, top),
+                         (bx + dx, bottom), (body_right - dx, bottom)):
+                self.assertGreaterEqual(image.getpixel((x, y)), 128,
+                                        f"{ten}: than pin con goc vuong tai {(x, y)}")
+        for y in (top, bottom):
+            self.assertTrue(any(image.getpixel((x, y)) < 128 for x in range(bx + 3, body_right - 2)),
+                            f"{ten}: canh than pin bi dut o y={y}")
+
+        # Hai cot cuoi la dau pin. Khi pin o ben phai, day cung la net muc ngoai
+        # cung cua thanh; phan tram nam tron ven ben trai va cach icon mot khe.
+        for x in (icon_right - 1, icon_right):
+            self.assertTrue(any(image.getpixel((x, y)) < 128 for y in range(top, bottom + 1)),
+                            f"{ten}: dau pin thieu cot x={x}")
+        if clock == 2:
+            percent = [(x, y) for x, y in pixels if bx - 60 <= x <= bx - 5]
+            self.assertTrue(percent, f"{ten}: thieu phan tram ben trai icon pin phai")
+            visible_gap = bx - max(x for x, _ in percent) - 1
+            self.assertIn(visible_gap, range(4, 9), f"{ten}: khe phan tram-pin sai: {visible_gap}")
 
     def test_the_ngan_thi_khong_ve_mui_ten(self):
         """The `He thong` co bon dong, hien het tren mot man."""
@@ -179,28 +221,23 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
             top, extras = self.v_sach(ten)
             self.assertFalse(extras, f"tier {tier}: co {len(extras)} pixel hang danh sach trong mask V o y={top}")
 
-    def test_status_lon_bam_hai_goc_o_ba_co_chu_va_hai_chieu_dong_ho(self):
-        cases = [(tier, clock) for tier in range(3) for clock in (1, 2)]
+    def test_status_thuong_va_lon_bam_hai_goc_o_ba_co_chu_va_hai_chieu_dong_ho(self):
+        cases = [(mode, tier, clock) for mode in (0, 2) for tier in range(3) for clock in (1, 2)]
 
         def capture(case):
-            tier, clock = case
-            ten = f"large-status-{tier}-{clock}"
+            mode, tier, clock = case
+            ten = f"status-{mode}-{tier}-{clock}"
             sd = self.tao_sd(ten, {"language": "VI", "uiTheme": 4, "uiTextSize": tier,
-                                  "globalStatusBarMode": 2, "tenorButtonSymbols": 1, "statusBarClock": clock})
+                                  "globalStatusBarMode": mode, "tenorButtonSymbols": 1,
+                                  "statusBarClock": clock})
             self.chay([], [(1800, ten)], sd=sd)
-            return tier, clock, ten
+            return mode, tier, clock, ten
 
         with ThreadPoolExecutor(max_workers=3) as pool:
             captures = list(pool.map(capture, cases))
-        for tier, clock, ten in captures:
-            left, right, width = self.mep_status(ten)
-            right_margin = width - right - 1
-            self.assertGreater(left, 0, f"tier {tier}, clock {clock}: status bi cat o mep trai")
-            self.assertLess(right, width - 1, f"tier {tier}, clock {clock}: status bi cat o mep phai")
-            self.assertGreaterEqual(left, 2, f"tier {tier}, clock {clock}: goc trai vuot vien an toan")
-            self.assertLessEqual(left, 4, f"tier {tier}, clock {clock}: goc trai cach vien qua xa")
-            self.assertGreaterEqual(right_margin, 2, f"tier {tier}, clock {clock}: goc phai vuot vien an toan")
-            self.assertLessEqual(right_margin, 4, f"tier {tier}, clock {clock}: goc phai cach vien qua xa")
+        for mode, tier, clock, ten in captures:
+            with self.subTest(mode=mode, tier=tier, clock=clock):
+                self.kiem_status(ten, lon=(mode == 2), clock=clock)
 
 
 if __name__ == "__main__":

@@ -2,13 +2,28 @@
 // API boundary double for the esp_http_client fallback. The production runGet
 // loop owns cancellation, timeout policy, payload delivery and cleanup.
 #include <sys/socket.h>
+#include <algorithm>
 #include <memory>
 #include <cstdlib>
 #include <string>
 #include <functional>
+namespace wire {
+struct FallbackRequest {
+  std::string url;
+  bool authorized;
+};
+inline std::vector<FallbackRequest> fallbackRequests;
+}
 struct FakeHttp;
 using esp_http_client_handle_t = FakeHttp*;
-struct esp_http_client_event_t { void* user_data; esp_http_client_handle_t client; };
+constexpr int HTTP_EVENT_ON_HEADER = 1;
+struct esp_http_client_event_t {
+  void* user_data;
+  esp_http_client_handle_t client;
+  int event_id = 0;
+  char* header_key = nullptr;
+  char* header_value = nullptr;
+};
 struct esp_http_client_config_t {
   const char* url = nullptr;
   int buffer_size = 0, buffer_size_tx = 0, timeout_ms = 0;
@@ -20,6 +35,9 @@ struct esp_http_client_config_t {
 };
 struct FakeHttp {
   esp_http_client_config_t config;
+  std::string url;
+  std::string location;
+  bool authorized = false;
   std::string raw;
   size_t offset = 0, contentLength = 0, received = 0;
   bool chunked = false, framed = false, complete = false;
@@ -32,17 +50,42 @@ template <class T> auto makeUniqueNoThrow(size_t n) { return std::make_unique<T>
 inline void notify(FakeHttp* h) {
   if (h->config.event_handler) {
     esp_http_client_event_t event{h->config.user_data, h};
+    if (!h->location.empty()) {
+      char key[] = "Location";
+      event.event_id = HTTP_EVENT_ON_HEADER;
+      event.header_key = key;
+      event.header_value = h->location.data();
+      h->config.event_handler(&event);
+    }
+    event.event_id = 0;
     h->config.event_handler(&event);
   }
 }
-inline FakeHttp* esp_http_client_init(esp_http_client_config_t* config) { return new FakeHttp{*config}; }
+inline FakeHttp* esp_http_client_init(esp_http_client_config_t* config) {
+  auto* client = new FakeHttp{};
+  client->config = *config;
+  client->url = config->url;
+  return client;
+}
 inline void esp_http_client_cleanup(FakeHttp* h) { delete h; }
-inline int esp_http_client_set_header(FakeHttp*, const char*, const char*) { return 0; }
+inline int esp_http_client_set_header(FakeHttp* h, const char* name, const char*) {
+  if (std::string(name) == "Authorization") h->authorized = true;
+  return 0;
+}
+inline int esp_http_client_delete_header(FakeHttp* h, const char* name) {
+  if (std::string(name) == "Authorization") h->authorized = false;
+  return 0;
+}
 inline int esp_http_client_open(FakeHttp* h, int) {
   ++wire::connectAttempts;
+  wire::fallbackRequests.push_back({h->url, h->authorized});
   if (wire::replies.empty()) return -1;
   h->raw = wire::replies.front();
   wire::replies.pop_front();
+  h->offset = h->contentLength = h->received = 0;
+  h->status = 0;
+  h->chunked = h->framed = h->complete = false;
+  h->location.clear();
   return 0;
 }
 inline int esp_http_client_set_timeout_ms(FakeHttp* h, int timeout) { h->config.timeout_ms = timeout; return 0; }
@@ -56,11 +99,37 @@ inline int64_t esp_http_client_fetch_headers(FakeHttp* h) {
   h->framed = length != std::string::npos && length < end;
   if (h->framed) h->contentLength = std::strtoul(h->raw.c_str()+length+16, nullptr, 10);
   h->chunked = h->raw.find("Transfer-Encoding: chunked") < end;
+  const auto location = h->raw.find("Location: ");
+  if (location != std::string::npos && location < end) {
+    const auto value = location + 10;
+    h->location = h->raw.substr(value, h->raw.find("\r\n", value) - value);
+  }
   notify(h);
   return h->contentLength;
 }
 inline int esp_http_client_get_status_code(FakeHttp* h) { return h->status; }
-inline int esp_http_client_set_redirection(FakeHttp*) { return -1; }
+inline int esp_http_client_set_redirection(FakeHttp* h) {
+  if (h->location.empty()) return -1;
+  if (h->url.rfind("https://", 0) == 0 && h->location.rfind("https://", 0) != 0) return -1;
+  if (h->location.find("://") != std::string::npos) h->url = h->location;
+  else if (h->location.rfind("/", 0) == 0) {
+    const auto authorityEnd = h->url.find('/', h->url.find("://") + 3);
+    h->url = h->url.substr(0, authorityEnd) + h->location;
+  } else return -1;
+  return 0;
+}
+inline int esp_http_client_set_url(FakeHttp* h, const char* url) {
+  h->url = url;
+  return 0;
+}
+inline int esp_http_client_get_url(FakeHttp* h, char* out, int len) {
+  const auto query = h->url.find('?');
+  const auto url = h->url.substr(0, query);
+  if (len <= 0) return -1;
+  std::memcpy(out, url.c_str(), std::min(url.size(), static_cast<size_t>(len - 1)));
+  out[std::min(url.size(), static_cast<size_t>(len - 1))] = '\0';
+  return 0;
+}
 inline int esp_http_client_close(FakeHttp*) { return 0; }
 inline int esp_http_client_read(FakeHttp* h, char* out, int len) {
   if (h->complete || (h->framed && h->received == h->contentLength)) { h->complete = true; return 0; }

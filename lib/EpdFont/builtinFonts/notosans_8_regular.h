@@ -6,6 +6,7 @@
  * Command used: fontconvert.py notosans_8_regular 8 ../builtinFonts/source/NotoSans/NotoSans-Regular.ttf ../builtinFonts/source/NotoSansHebrew/NotoSansHebrew-Regular.ttf ../builtinFonts/source/NotoSansArabic/NotoSansArabic-Regular.ttf --additional-intervals 0x05D0,0x05EA --additional-intervals 0x060C,0x060C --additional-intervals 0x061B,0x061B --additional-intervals 0x061F,0x061F --additional-intervals 0x0621,0x0621 --additional-intervals 0x0640,0x0640 --additional-intervals 0x0654,0x0654 --additional-intervals 0x0660,0x0669 --additional-intervals 0x06BA,0x06BA --additional-intervals 0x06D4,0x06D4 --additional-intervals 0x06D5,0x06D5 --additional-intervals 0x06F0,0x06F9 --additional-intervals 0xFB56,0xFB59 --additional-intervals 0xFB66,0xFB69 --additional-intervals 0xFB7A,0xFB7D --additional-intervals 0xFB88,0xFB95 --additional-intervals 0xFB9E,0xFB9F --additional-intervals 0xFBA6,0xFBB1 --additional-intervals 0xFBFC,0xFBFF --additional-intervals 0xFE80,0xFEFC
  */
 #pragma once
+#include "builtin_font_metadata.h"
 #include "EpdFontData.h"
 
 static const uint8_t notosans_8_regularBitmaps[18657] = {
@@ -2794,13 +2795,7 @@ static const int8_t notosans_8_regularKernSparseValues[] = {
       -4,   -5,   -1,   -9,  -11,  -11,   -7,   -5,  -11,   -7,   -8,
 };
 
-static const EpdLigaturePair notosans_8_regularLigaturePairs[] = {
-    { 0x00660066, 0xFB00 }, // f f -> U+FB00
-    { 0x00660069, 0xFB01 }, // f i -> U+FB01
-    { 0x0066006C, 0xFB02 }, // f l -> U+FB02
-    { 0xFB000069, 0xFB03 }, // U+FB00 i -> U+FB03
-    { 0xFB00006C, 0xFB04 }, // U+FB00 l -> U+FB04
-};
+static constexpr auto& notosans_8_regularLigaturePairs = builtin_font_metadata::data_eec36962daa84f91;
 
 static const EpdFontData notosans_8_regular = {
     notosans_8_regularBitmaps,

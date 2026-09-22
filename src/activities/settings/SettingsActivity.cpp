@@ -662,6 +662,10 @@ bool SettingsActivity::showWakeHint() const {
          (*currentSettings)[row].valuePtr == &CrossPointSettings::wakeButtons;
 }
 
+int SettingsActivity::favoriteHintLinesAbove() const {
+  return showWakeHint() ? tenorchrome::tipLineCount(renderer, tr(STR_WAKE_POWER_HINT)) : 0;
+}
+
 void SettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Content below the GUI.drawHeader band, above the button hints.

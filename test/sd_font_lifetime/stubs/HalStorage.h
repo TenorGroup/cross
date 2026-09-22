@@ -14,6 +14,7 @@ struct HalFile {
   size_t offset_ = 0;
   inline static size_t shortReadAt = std::numeric_limits<size_t>::max();
   inline static size_t failSeekAt = std::numeric_limits<size_t>::max();
+  inline static size_t readCalls = 0;
   size_t position() const { return offset_; }
   size_t size() const { return bytes ? bytes->size() : 0; }
   bool seek(size_t offset) { return seekSet(offset); }
@@ -24,6 +25,7 @@ struct HalFile {
   }
   int read(void* out, size_t size) {
     if (!bytes) return -1;
+    ++readCalls;
     size_t actual = std::min(size, bytes->size() - offset_);
     if (offset_ == shortReadAt && actual) --actual;
     std::memcpy(out, bytes->data() + offset_, actual);

@@ -26,6 +26,7 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   friend class PersistableStore<ReadingStatsStore>;
 
  public:
+  enum class ResetResult : uint8_t { Failed, Pending, Complete };
   solieu::Kho kho;
   habits::Ledger habitLedger;
   bool statisticsReadable = true;
@@ -42,7 +43,7 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   std::string activeBookTitle;
   std::string activeBookPath;
   BookReadingRecord activeBook;
-  bool resetStatistics(bool all);
+  ResetResult resetStatistics(bool all);
   bool saveToFile() const;
   bool loadFromFile();
   bool activateBook(const std::string& path, uint8_t progress, const std::string& title = "");

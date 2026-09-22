@@ -79,8 +79,8 @@ int main(){
   invalidation("title",[]{require(READING_STATS.activateBook("/Books/active.epub",0,"Changed title"),"title mutation");},true);
   invalidation("day",[]{READING_STATS.record(20260930,1000,1,2);},true);
   invalidation("fromJson",[]{JsonDocument d;d["schema"]=3;READING_STATS.fromJson(d.as<JsonVariantConst>());});
-  invalidation("reset-all",[]{require(READING_STATS.resetStatistics(true),"reset all");});
-  invalidation("reset-habits",[]{require(READING_STATS.resetStatistics(false),"reset habits");});
+  invalidation("reset-all",[]{require(READING_STATS.resetStatistics(true)==ReadingStatsStore::ResetResult::Complete,"reset all");});
+  invalidation("reset-habits",[]{require(READING_STATS.resetStatistics(false)==ReadingStatsStore::ResetResult::Complete,"reset habits");});
   invalidation("load",[]{require(READING_STATS.saveToFile(),"save before load");require(READING_STATS.loadFromFile(),"load after save");});
   invalidation("load-failed",[]{require(!READING_STATS.loadFromFile(),"expected unavailable global snapshot");});
   oversizePage();

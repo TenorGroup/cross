@@ -47,6 +47,23 @@ class ReaderActivity : public Activity {
   int8_t pendingExternalTurn = 0;
   bool pendingTurnIsLocal = false;
   uint32_t pendingExternalGeneration = 0;
+#ifdef TENOR_UI_ACCEPTANCE
+  struct TurnTrace {
+    uint32_t id = 0;
+    unsigned long detectedMs = 0;
+    const char* source = "none";
+    bool forward = false;
+  };
+  uint32_t turnTraceSequence = 0;
+  TurnTrace currentTurnTrace;
+  TurnTrace pendingExternalTurnTrace;
+  // Written and read only under RenderLock. Input queues have separate records.
+  TurnTrace appliedTurnTrace;
+  TurnTrace detectTurnTrace(const char* source, bool forward);
+  void logTurnTrace(const char* phase, const TurnTrace& trace, const char* detail) const;
+  void replaceQueuedTurnTrace(TurnTrace& queue, const TurnTrace& incoming, const char* reason);
+  void dropTurnTrace(TurnTrace& trace, const char* reason);
+#endif
   virtual bool skipPages(int amount) { return pageTurn(amount > 0); }
   // Giu nut lat trang khi "Giu nut lat trang khi doc" = Co chu: doi co mot nac theo `huong`
   // (+1 to, -1 nho), KEP o hai bien. Tra ve true neu co doi. Mac dinh (XTC, bitmap) khong doi gi,

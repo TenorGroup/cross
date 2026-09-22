@@ -446,7 +446,7 @@ bool HomeActivity::handleButtons() {
 }
 
 void HomeActivity::confirmStatsReset(const bool all) {
-  statsResetFailed = false;
+  statsResetTip.reset();
   startActivityForResult(
       makeUniqueNoThrow<ConfirmationActivity>(
           renderer, mappedInput, I18N.get(all ? StrId::STR_STATS_RESET_ALL : StrId::STR_STATS_RESET_HABITS),
@@ -454,7 +454,16 @@ void HomeActivity::confirmStatsReset(const bool all) {
       [this, all](const ActivityResult& result) {
         if (result.isCancelled) return;
         RenderLock lock(*this);
-        statsResetFailed = !READING_STATS.resetStatistics(all);
+        switch (READING_STATS.resetStatistics(all)) {
+          case ReadingStatsStore::ResetResult::Failed:
+            statsResetTip = StrId::STR_STATS_RESET_FAILED;
+            break;
+          case ReadingStatsStore::ResetResult::Pending:
+            statsResetTip = StrId::STR_STATS_RESET_PENDING;
+            break;
+          case ReadingStatsStore::ResetResult::Complete:
+            break;
+        }
         rebuildRows();
         requestUpdate();
       });
@@ -476,7 +485,7 @@ void HomeActivity::drawFooter() {
   UiListActivity::drawFooter();
   if (activeTabId == Tab::FOLDER && ringPos() == 0) tenorchrome::drawTip(renderer, tr(STR_FOLDER_HOLD));
   if (favoriteFileMissing) tenorchrome::drawTip(renderer, tr(STR_FILE_NOT_FOUND), 1, 3);
-  if (activeTabId == Tab::STATS && statsResetFailed) tenorchrome::drawTip(renderer, tr(STR_STATS_RESET_FAILED), 1, 2);
+  if (activeTabId == Tab::STATS && statsResetTip) tenorchrome::drawTip(renderer, I18N.get(*statsResetTip), 1, 2);
 }
 
 void HomeActivity::drawChrome() {
@@ -572,8 +581,8 @@ void HomeActivity::buildScreen(UiScreen& screen) {
 
   if (favoriteFileMissing)
     screen.takeBottom(static_cast<int16_t>(28 + tenorchrome::tipHeight(renderer, tr(STR_FILE_NOT_FOUND), 3)));
-  if (activeTabId == Tab::STATS && statsResetFailed)
-    screen.takeBottom(static_cast<int16_t>(28 + tenorchrome::tipHeight(renderer, tr(STR_STATS_RESET_FAILED), 2)));
+  if (activeTabId == Tab::STATS && statsResetTip)
+    screen.takeBottom(static_cast<int16_t>(28 + tenorchrome::tipHeight(renderer, I18N.get(*statsResetTip), 2)));
   fui::ListProps props;
   props.items = rowItems.data();
   props.count = static_cast<uint16_t>(rowItems.size());

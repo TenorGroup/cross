@@ -61,8 +61,9 @@ int tipTopY(const GfxRenderer& renderer, const char* text, int linesAbove = 0, i
 // Mui ten chu V o giua, ngay tren dong mach nuoc chan man: bao rang danh sach
 // con dong ben duoi. Thay cho cau "1-10 / 13" o goc tren, vi it ai nhin thanh
 // cuon va con so do lay mat cho cua ten the ben canh.
-int moreBelowChevronTopY(const GfxRenderer& renderer);
-void drawMoreBelowChevron(const GfxRenderer& renderer);
+int moreBelowChevronTopY(const GfxRenderer& renderer, int hintTopY = -1);
+void drawMoreBelowChevron(const GfxRenderer& renderer, int hintTopY = -1);
+int tipLineCount(const GfxRenderer& renderer, const char* text, int maxLines = 4);
 int tipHeight(const GfxRenderer& renderer, const char* text, int maxLines = 4);
 void drawTip(const GfxRenderer& renderer, const char* text, int linesAbove = 0, int maxLines = 4,
              bool hasTextHints = false);

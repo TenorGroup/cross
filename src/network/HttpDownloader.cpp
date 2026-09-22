@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <HalClock.h>
+#include "../../freeink-sdk/libs/network/SecureNet/include/HttpUrl.h"
 #include <Logging.h>
 #include <Memory.h>
 #include <NetworkTrust.h>
@@ -16,6 +17,7 @@
 #include <ctime>
 #include <functional>
 #include <string>
+#include <vector>
 
 #if defined(FREEINK_NET_WOLFSSL)
 #include <SecureHttpClient.h>
@@ -34,6 +36,8 @@ namespace {
 constexpr int HTTP_RX_BUF = 2048;
 constexpr int HTTP_TX_BUF = 512;
 #endif
+// Reject oversized Location targets before handing them to the SDK.
+constexpr size_t MAX_REDIRECT_URL = 2048;
 // Keep slow-server tolerance separate from input polling. The wolfSSL waits
 // poll cooperatively; esp_http_client reads retry short timeouts below.
 constexpr int HTTP_TIMEOUT_MS = 60000;
@@ -52,6 +56,10 @@ struct Sink {
   size_t downloaded = 0;
   unsigned long lastPumpMs = 0;
   bool pumped = false;
+#if !defined(FREEINK_NET_WOLFSSL)
+  std::string redirectLocation;
+  bool redirectTooLong = false;
+#endif
 
   bool poll(bool force = false) {
     if (cancelFlag && *cancelFlag) return true;
@@ -69,6 +77,54 @@ struct Sink {
 
 bool isRedirect(int status) {
   return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
+}
+
+bool resolveRedirectUrl(const std::string& base, const std::string& location, std::string& resolved) {
+  freeink::http_url::Parts current;
+  if (location.empty() || location.size() > MAX_REDIRECT_URL || !freeink::http_url::parse(base, current)) return false;
+  const size_t authorityEnd = base.find_first_of("/?#", base.find("://") + 3);
+  const std::string origin = base.substr(0, authorityEnd);
+  std::string path(current.target.substr(0, current.target.find('?')));
+  if (path.empty()) path = "/";
+  const size_t firstDelimiter = location.find_first_of(":/?#");
+  if (firstDelimiter != std::string::npos && location[firstDelimiter] == ':') resolved = location;
+  else if (location.rfind("//", 0) == 0) resolved = std::string(current.scheme) + ":" + location;
+  else if (location[0] == '/') resolved = origin + location;
+  else if (location[0] == '?') resolved = origin + path + location;
+  else if (location[0] == '#') resolved = base;
+  else resolved = origin + path.substr(0, path.rfind('/') + 1) + location;
+
+  freeink::http_url::Parts next;
+  if (!freeink::http_url::parse(resolved, next)) return false;
+  const size_t pathStart = resolved.find_first_of("/?#", resolved.find("://") + 3);
+  std::string target(next.target);
+  const size_t queryStart = target.find('?');
+  std::string nextPath = target.substr(0, queryStart);
+  if (nextPath.empty()) nextPath = "/";
+  std::vector<std::string_view> segments;
+  for (size_t start = 1; start <= nextPath.size();) {
+    const size_t end = nextPath.find('/', start);
+    const std::string_view segment(nextPath.data() + start,
+                                   (end == std::string::npos ? nextPath.size() : end) - start);
+    if (segment == "..") {
+      if (!segments.empty()) segments.pop_back();
+      if (end == std::string::npos) segments.push_back("");
+    } else if (segment == ".") {
+      if (end == std::string::npos) segments.push_back("");
+    } else {
+      segments.push_back(segment);
+    }
+    if (end == std::string::npos) break;
+    start = end + 1;
+  }
+  std::string normalized = "/";
+  for (size_t i = 0; i < segments.size(); ++i) {
+    if (i) normalized += '/';
+    normalized.append(segments[i]);
+  }
+  resolved = resolved.substr(0, pathStart) + normalized +
+             (queryStart == std::string::npos ? "" : target.substr(queryStart));
+  return resolved.size() <= MAX_REDIRECT_URL;
 }
 
 // OtaUpdater.cpp already disables WiFi power-save for firmware downloads, but
@@ -149,7 +205,7 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
       if (!allowRedirects) return HttpDownloader::HTTP_ERROR;
       const std::string location = http.getHeader("location");
       std::string nextUrl;
-      if (location.empty() || !freeink::SecureHttpClient::resolveUrl(url, location, nextUrl) ||
+      if (!resolveRedirectUrl(url, location, nextUrl) ||
           !freeink::http_url::redirectAllowed(url, nextUrl)) {
         LOG_ERR("HTTP", "wolfSSL bad redirect: %d", status);
         return HttpDownloader::HTTP_ERROR;
@@ -203,6 +259,13 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   config.user_data = &sink;
   config.event_handler = [](esp_http_client_event_t* event) -> esp_err_t {
     auto& target = *static_cast<Sink*>(event->user_data);
+    if (event->event_id == HTTP_EVENT_ON_HEADER && event->header_key && event->header_value &&
+        freeink::http_url::equalFolded(event->header_key, "Location")) {
+      size_t length = 0;
+      while (length <= MAX_REDIRECT_URL && event->header_value[length]) ++length;
+      target.redirectTooLong = length > MAX_REDIRECT_URL;
+      if (!target.redirectTooLong) target.redirectLocation.assign(event->header_value, length);
+    }
     if (target.poll()) {
       // Interrupt the socket without freeing parser buffers from its own
       // callback. The owning loop performs cleanup after the API unwinds.
@@ -257,12 +320,28 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
     return HttpDownloader::ABORTED;
   }
   int status = esp_http_client_get_status_code(client);
-  for (int hop = 0;
-       allowRedirects && username.empty() && url.rfind("http://", 0) == 0 && isRedirect(status) && hop < MAX_REDIRECTS;
-       ++hop) {
-    if (esp_http_client_set_redirection(client) != ESP_OK) break;
+#if !defined(SIMULATOR) || defined(HTTP_DOWNLOADER_TRANSPORT_FIXTURE)
+  std::string currentUrl = url;
+  for (int hop = 0; allowRedirects && isRedirect(status) && hop < MAX_REDIRECTS; ++hop) {
+    std::string nextUrl;
+    if (sink.redirectTooLong || !resolveRedirectUrl(currentUrl, sink.redirectLocation, nextUrl) ||
+        !freeink::http_url::redirectAllowed(currentUrl, nextUrl)) {
+      LOG_ERR("HTTP", "unsafe redirect: %d", status);
+      esp_http_client_cleanup(client);
+      return HttpDownloader::HTTP_ERROR;
+    }
+    currentUrl = std::move(nextUrl);
     esp_http_client_close(client);
+    if (esp_http_client_set_url(client, currentUrl.c_str()) != ESP_OK) {
+      esp_http_client_cleanup(client);
+      return HttpDownloader::HTTP_ERROR;
+    }
+    if (!freeink::http_url::sameOrigin(url, currentUrl)) {
+      esp_http_client_delete_header(client, "Authorization");
+    }
     esp_http_client_set_timeout_ms(client, HTTP_CONNECT_TIMEOUT_MS);
+    sink.redirectLocation.clear();
+    sink.redirectTooLong = false;
     err = esp_http_client_open(client, 0);
     if (sink.poll()) {
       esp_http_client_cleanup(client);
@@ -281,6 +360,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
     }
     status = esp_http_client_get_status_code(client);
   }
+#endif
 
   if (contentLength < 0 || status != 200) {
     LOG_ERR("HTTP", "unexpected status: %d", status);
