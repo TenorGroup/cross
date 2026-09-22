@@ -668,6 +668,8 @@ STR_CHAPTER_SEARCHING: "Đang tìm chương..."
 STR_CHAPTER_NOT_FOUND: "Không tìm thấy số chương này"
 
 STR_SLEEP_STATS: "Thống kê đọc"
+STR_SLEEP_QUOTE: "Sách + trích dẫn"
+STR_RECENT_OTHER_BOOK: "Cuốn khác"
 
 STR_STATS_RESET_ALL: "Xóa thống kê đọc"
 STR_STATS_RESET_HABITS: "Tính lại danh hiệu từ đầu"

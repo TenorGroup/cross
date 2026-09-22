@@ -668,6 +668,8 @@ STR_CHAPTER_SEARCHING: "Finding chapter..."
 STR_CHAPTER_NOT_FOUND: "No matching chapter number"
 
 STR_SLEEP_STATS: "Reading statistics"
+STR_SLEEP_QUOTE: "Book + quotation"
+STR_RECENT_OTHER_BOOK: "Another book"
 
 STR_STATS_RESET_ALL: "Clear reading statistics"
 STR_STATS_RESET_HABITS: "Restart reading habits"
