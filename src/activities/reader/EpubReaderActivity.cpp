@@ -42,6 +42,7 @@
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "activities/home/QuotesActivity.h"
 #include "activities/settings/BlePageTurnerActivity.h"
 #include "BlePageTurnerRuntime.h"
 #include "activities/settings/TextSettingsActivity.h"
@@ -511,7 +512,7 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
   buildPopupPending = false;
 }
 
-void EpubReaderActivity::openDictionaryWordSelect(const bool quotation) {
+void EpubReaderActivity::openDictionaryWordSelect(const bool quotation, const std::string& editName) {
   if (!quotation && SETTINGS.dictionaryName[0] == '\0') {
     showDictionaryMessage = true;
     dictionaryMessageTime = millis();
@@ -519,6 +520,8 @@ void EpubReaderActivity::openDictionaryWordSelect(const bool quotation) {
     return;
   }
   if (!section) return;
+  QuoteRecord existing;
+  if (!editName.empty() && !quotes::load(editName, existing)) return;
   auto page = section->loadPage(section->currentPage);
   if (!page) return;
 
@@ -528,7 +531,10 @@ void EpubReaderActivity::openDictionaryWordSelect(const bool quotation) {
   auto selector = makeUniqueNoThrow<DictionaryWordSelectActivity>(renderer, mappedInput, std::move(page),
                                                                   orientedMarginLeft, orientedMarginTop);
   if (!selector) return;
-  if (quotation) selector->selectQuotation({bookPath, getBookTitle(), "", currentSpineIndex, section->currentPage, 0});
+  if (!editName.empty())
+    selector->editQuotation(std::move(existing), editName, currentSpineIndex, section->currentPage);
+  else if (quotation)
+    selector->selectQuotation({bookPath, getBookTitle(), "", currentSpineIndex, section->currentPage, 0});
   startActivityForResult(std::move(selector), [this, quotation](const ActivityResult&) {
     // A quote saved on that screen has to be drawn on the page we return to. The result
     // handler runs with the render lock released, so take it here: drawQuoteHighlights
@@ -539,6 +545,48 @@ void EpubReaderActivity::openDictionaryWordSelect(const bool quotation) {
     }
     requestUpdate();
   });
+}
+
+void EpubReaderActivity::openBookQuotes() {
+  startActivityForResult(
+      std::make_unique<QuotesActivity>(renderer, mappedInput, bookPath, /*insideReader=*/true),
+      [this](const ActivityResult& result) {
+        // Quotes may have been deleted, trimmed or rewritten on that screen, so the anchors
+        // are read again whatever it returned. Same lock the save path takes:
+        // drawQuoteHighlights walks quoteAnchors on the render task.
+        {
+          RenderLock lock;
+          quotes::loadAnchors(bookPath, quoteAnchors);
+        }
+        if (const auto* edit = std::get_if<QuoteEditResult>(&result.data); edit && !result.isCancelled) {
+          jumpToQuoteForEdit(edit->name);
+        }
+        requestUpdate();
+      });
+}
+
+void EpubReaderActivity::jumpToQuoteForEdit(const std::string& name) {
+  QuoteRecord quote;
+  if (!quotes::load(name, quote) || quote.path != bookPath) return;
+  RenderLock lock;
+  pendingQuoteEdit = name;
+  quoteEditPageShown = false;
+  // A spine item this book does not have (the file was replaced by another edition) leaves
+  // the reader where it is; the selector then says the quote is not on this page.
+  if (quote.spine < 0 || quote.spine >= epub->getSpineItemsCount()) return;
+  clearDeferredReposition();
+  const int page = std::max(0, quote.page);
+  // The two roads the bookmark jump takes: an anchored quote is found by its visible text
+  // offset, which survives a change of font size; an older one only knows its page number.
+  if (section && currentSpineIndex == quote.spine) {
+    section->currentPage =
+        quote.hasAnchor ? section->getPageForVisibleTextOffset(quote.anchorStart).value_or(page) : page;
+  } else {
+    currentSpineIndex = quote.spine;
+    if (quote.hasAnchor) pendingOffsetJump = quote.anchorStart;
+    nextPageNumber = page;
+    section.reset();
+  }
 }
 
 bool EpubReaderActivity::externalPageTurnAllowed() const {
@@ -575,6 +623,23 @@ void EpubReaderActivity::loop() {
     }
   }
 #endif
+
+  // A quote handed back for reselection: its page is on the panel now, so the selector opens
+  // over it. The flag is consumed under the lock so a render still in flight finishes first.
+  if (quoteEditPageShown) {
+    std::string name;
+    {
+      RenderLock lock(RenderLock::TryTake{});
+      if (lock.acquired()) {
+        quoteEditPageShown = false;
+        name.swap(pendingQuoteEdit);
+      }
+    }
+    if (!name.empty()) {
+      openDictionaryWordSelect(true, name);
+      return;
+    }
+  }
 
   constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
   // The cover thumbnail goes ahead of the page prewarm, but only once: the page has been on
@@ -1278,6 +1343,9 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
     }
     case EpubReaderMenuActivity::MenuAction::SAVE_QUOTE:
       openDictionaryWordSelect(true);
+      break;
+    case EpubReaderMenuActivity::MenuAction::QUOTES_OF_BOOK:
+      openBookQuotes();
       break;
     case EpubReaderMenuActivity::MenuAction::DICTIONARY: {
       openDictionaryWordSelect();
@@ -2107,6 +2175,7 @@ void EpubReaderActivity::renderBook() {
 #endif
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     lastRenderCompleteMs = millis();
+    if (!pendingQuoteEdit.empty()) quoteEditPageShown = true;
   }
 
   if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||

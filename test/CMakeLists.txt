@@ -58,6 +58,7 @@ add_subdirectory(chapter_html_slim_parser)
 add_subdirectory(ligature_guard)
 add_subdirectory(page_link)
 add_subdirectory(quote_highlight)
+add_subdirectory(quote_reselect)
 add_subdirectory(word_select_repeat)
 add_subdirectory(chapter_position)
 

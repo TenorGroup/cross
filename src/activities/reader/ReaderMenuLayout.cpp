@@ -33,6 +33,9 @@ void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool ha
   items.push_back({Action::SYNC, StrId::STR_SYNC_PROGRESS, Tab::TOOLS});
   items.push_back({Action::DICTIONARY, StrId::STR_LOOKUP, Tab::TOOLS});
   items.push_back({Action::SAVE_QUOTE, StrId::STR_QUOTES_SAVE_ACTION, Tab::TOOLS});
+  // Right under Save quotation: the quotes of this book are where a saved one is read again,
+  // trimmed or reselected on its page.
+  items.push_back({Action::QUOTES_OF_BOOK, StrId::STR_QUOTES_OF_BOOK, Tab::TOOLS});
   items.push_back({Action::SCREENSHOT, StrId::STR_SCREENSHOT_BUTTON, Tab::TOOLS});
   items.push_back({Action::DISPLAY_QR, StrId::STR_DISPLAY_QR, Tab::TOOLS});
   items.push_back({Action::DELETE_CACHE, StrId::STR_DELETE_CACHE, Tab::TOOLS});
@@ -55,7 +58,7 @@ void buildMoreItems(std::vector<Item>& items, const bool hasFootnotes, const boo
                                      Action::DICTIONARY,    Action::ROTATE_SCREEN,  Action::AUTO_PAGE_TURN,
                                      Action::GO_TO_PERCENT, Action::SCREENSHOT,     Action::DISPLAY_QR,
                                      Action::GO_HOME,       Action::SYNC,           Action::DELETE_CACHE,
-                                     Action::SAVE_QUOTE,    Action::BLUETOOTH};
+                                     Action::SAVE_QUOTE,    Action::QUOTES_OF_BOOK, Action::BLUETOOTH};
   std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
     return std::find(std::begin(order), std::end(order), a.action) <
            std::find(std::begin(order), std::end(order), b.action);

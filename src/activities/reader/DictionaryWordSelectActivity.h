@@ -4,6 +4,7 @@
 #include <I18n.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "QuoteStore.h"
@@ -29,6 +30,17 @@ class DictionaryWordSelectActivity final : public Activity {
     quote = std::move(context);
     name = "QuoteSelect";
   }
+  // Reselect a saved quote on the page it was kept on. The selector opens with the old range
+  // marked, when it lies wholly on this page, so one Confirm keeps the quote as it was and
+  // moving first saves a new range. Saving rewrites record `recordName` in place: the book,
+  // title and moment it was kept stay, the words and their place come from the new range.
+  // `spine` and `pageNumber` say where this page is, which the page itself does not carry.
+  void editQuotation(QuoteRecord existing, std::string recordName, const int spine, const int pageNumber) {
+    selectQuotation(std::move(existing));
+    editName = std::move(recordName);
+    editSpine = spine;
+    editPage = pageNumber;
+  }
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;
@@ -50,6 +62,13 @@ class DictionaryWordSelectActivity final : public Activity {
   bool quoteMode = false;
   QuoteRecord quote;
   int anchor = -1;
+  // Set by editQuotation(): the record Confirm rewrites instead of saving a new one.
+  std::string editName;
+  int editSpine = 0;
+  int editPage = 0;
+  // Marks the old range of the quote being edited, or queues the "not on this page" notice
+  // and leaves a fresh selection.
+  void preselectEditedRange();
   void confirmQuotation();
   void extractWords();
   int closestInRow(uint16_t row, int centerX) const;

@@ -29,12 +29,13 @@ enum class Action {
   FONT_SIZE,    // mo TextSettings o the Co chu
   FONT_FAMILY,  // mo TextSettings o the Font chu
   SAVE_QUOTE,
-  BLUETOOTH
+  BLUETOOTH,
+  QUOTES_OF_BOOK  // mo man Trich dan cua dung cuon dang doc
 };
 
 // So lenh dang co. Dung de loc mot o rac doc len tu settings.json: mot so vuot tam nghia
 // la ban ghi cu tro toi mot lenh khong con ton tai.
-inline constexpr int ACTION_COUNT = static_cast<int>(Action::BLUETOOTH) + 1;
+inline constexpr int ACTION_COUNT = static_cast<int>(Action::QUOTES_OF_BOOK) + 1;
 
 enum class Tab : uint8_t { FAVORITES, POSITION, READING, TOOLS };
 inline constexpr int TAB_COUNT = 4;

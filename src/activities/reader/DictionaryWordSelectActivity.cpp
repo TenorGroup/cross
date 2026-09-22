@@ -16,6 +16,7 @@
 #include "CrossPointSettings.h"
 #include "DictionaryDefinitionActivity.h"
 #include "QuoteHighlight.h"
+#include "QuoteReselect.h"
 #include "ReadingStatsStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -60,7 +61,25 @@ void DictionaryWordSelectActivity::onEnter() {
     const int initial = closestInRow(rowCount / 2, renderer.getScreenWidth() / 2);
     if (initial >= 0) selected = initial;
   }
+  if (!editName.empty()) preselectEditedRange();
   requestUpdate();
+}
+
+void DictionaryWordSelectActivity::preselectEditedRange() {
+  // The same walk and word filter the save path anchors with, so the old offsets name the
+  // same words. A count that differs from this screen's list means the two disagree, and a
+  // fresh selection is safer than marking the wrong words.
+  std::vector<quotes::PageWord> placed;
+  quotes::pageWords(*page, marginLeft, marginTop, renderer.getFontAscenderSize(fontId), placed);
+  size_t first = 0, last = 0;
+  if (placed.size() == words.size() && quotes::reselectRange(quote, editSpine, placed, first, last)) {
+    anchor = static_cast<int>(first);
+    selected = static_cast<int>(last);
+    return;
+  }
+  popup = Popup::Error;
+  popupMsg = StrId::STR_QUOTES_RESELECT_MISSING;
+  popupTime = millis();
 }
 
 void DictionaryWordSelectActivity::extractWords() {
@@ -254,8 +273,16 @@ void DictionaryWordSelectActivity::confirmQuotation() {
     if (i > first) quote.text += ' ';
     quote.text += words[i].text;
   }
-  quote.day = ReadingStatsStore::currentDay();
-  quote.minute = ReadingStatsStore::currentMinute();
+  const bool editing = !editName.empty();
+  if (editing) {
+    // An edited quote keeps the moment it was kept; only its words and place are new.
+    quote.spine = editSpine;
+    quote.page = editPage;
+    quote.hasAnchor = false;
+  } else {
+    quote.day = ReadingStatsStore::currentDay();
+    quote.minute = ReadingStatsStore::currentMinute();
+  }
   // Anchor the saved text to its place in the book, so the reader can find these same
   // words on a later render. The walk below uses the same word order and the same word
   // filter this screen selected with; a different count means the two disagreed, and a
@@ -264,13 +291,13 @@ void DictionaryWordSelectActivity::confirmQuotation() {
   quotes::pageWords(*page, marginLeft, marginTop, renderer.getFontAscenderSize(fontId), anchored);
   if (anchored.size() == words.size())
     quotes::setAnchor(quote, anchored, static_cast<size_t>(first), static_cast<size_t>(last));
-  if (quotes::save(quote)) {
+  if (editing ? quotes::replace(editName, quote) : quotes::save(quote)) {
     popup = Popup::Saved;
     requestUpdate();
     return;
   }
   popup = Popup::Error;
-  popupMsg = StrId::STR_QUOTES_SAVE_FAILED;
+  popupMsg = editing ? StrId::STR_QUOTES_EDIT_FAILED : StrId::STR_QUOTES_SAVE_FAILED;
   popupTime = millis();
   requestUpdate();
 }

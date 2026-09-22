@@ -95,6 +95,12 @@ class EpubReaderActivity final : public ReaderActivity {
   // Anchors of this book's saved quotes, 12 bytes each and capped by the store, read
   // once per book open. Highlights are drawn from these, so no quote text is resident.
   std::vector<QuoteAnchor> quoteAnchors;
+  // Name of the quote whose page the reader is moving to so the selector can reopen it there,
+  // empty when no reselection waits. Written by the main loop under the render lock.
+  std::string pendingQuoteEdit;
+  // Set by renderBook once a page is on the panel while a reselection waits; the main loop
+  // then opens the selector over that page.
+  std::atomic<bool> quoteEditPageShown{false};
   bool recentsEntryRemoved = false;
   unsigned long bookmarkMessageTime = 0UL;
   bool pendingReadFolderMove = false;
@@ -228,7 +234,12 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string moreRowName(int row) const;
   std::string moreRowValue(int row) const;
   void activateMoreRow(int row);
-  void openDictionaryWordSelect(bool quotation = false);
+  // `editName` non-empty reopens that saved quote for reselection on the current page.
+  void openDictionaryWordSelect(bool quotation = false, const std::string& editName = {});
+  // Tools > Quotations in this book: the Quotes screen for this book only. A quote it hands
+  // back for reselection is jumped to, and the selector opens once its page is drawn.
+  void openBookQuotes();
+  void jumpToQuoteForEdit(const std::string& name);
   bool launchKOReaderSync();
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);

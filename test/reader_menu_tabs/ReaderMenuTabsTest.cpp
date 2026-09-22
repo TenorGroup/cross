@@ -45,7 +45,7 @@ TEST(ReaderMenuTabs, BonTab) { EXPECT_EQ(readermenu::TAB_COUNT, 4); }
 TEST(ReaderMenuTabs, BluetoothAppendsSavedActionAndKeepsFavoriteOrder) {
   EXPECT_EQ(static_cast<int>(MenuAction::SAVE_QUOTE), 19);
   EXPECT_EQ(static_cast<int>(MenuAction::BLUETOOTH), 20);
-  EXPECT_EQ(readermenu::ACTION_COUNT, 21);
+  EXPECT_EQ(readermenu::ACTION_COUNT, 22);
   const MenuAction pins[] = {MenuAction::SAVE_QUOTE, MenuAction::BLUETOOTH, MenuAction::SYNC};
   for (int flags = 0; flags < 8; ++flags) {
     const auto all = menu(flags & 1, flags & 2, flags & 4);
@@ -53,6 +53,43 @@ TEST(ReaderMenuTabs, BluetoothAppendsSavedActionAndKeepsFavoriteOrder) {
     const auto tools = rows(all, MenuTab::TOOLS);
     EXPECT_EQ(std::count(tools.begin(), tools.end(), MenuAction::BLUETOOTH), 1);
     EXPECT_EQ(yeuThich(all, pins, 3), std::vector<MenuAction>(std::begin(pins), std::end(pins)));
+  }
+}
+
+// Quotations of this book is saved in settings.json as the number 21 when it is pinned, so
+// the number is part of the contract: it comes after Bluetooth, and every older number keeps
+// naming the command it named before.
+constexpr auto kQuotesOfBook = static_cast<MenuAction>(21);
+
+TEST(ReaderMenuTabs, QuotesOfBookIsAppendedAsActionTwentyOne) {
+  EXPECT_EQ(static_cast<int>(MenuAction::BLUETOOTH), 20);
+  EXPECT_EQ(readermenu::ACTION_COUNT, 22);
+  const MenuAction pins[] = {kQuotesOfBook, MenuAction::SAVE_QUOTE, MenuAction::SYNC};
+  for (int flags = 0; flags < 8; ++flags) {
+    const auto all = menu(flags & 1, flags & 2, flags & 4);
+    EXPECT_EQ(yeuThich(all, pins, 3), std::vector<MenuAction>(std::begin(pins), std::end(pins)));
+  }
+}
+
+// The row sits directly under Save quotation, in the Tools tab only, with its own label, for
+// every book and board. The rows above it keep their places, so a hand that learned
+// "Tools, third row" still saves a quote.
+TEST(ReaderMenuTabs, QuotesOfBookSitsUnderSaveQuotation) {
+  const MenuAction expected[] = {MenuAction::SYNC,       MenuAction::DICTIONARY,   MenuAction::SAVE_QUOTE,
+                                 kQuotesOfBook,          MenuAction::SCREENSHOT,   MenuAction::DISPLAY_QR,
+                                 MenuAction::DELETE_CACHE, MenuAction::GO_HOME,    MenuAction::BLUETOOTH};
+  for (int flags = 0; flags < 8; ++flags) {
+    const auto all = menu(flags & 1, flags & 2, flags & 4);
+    EXPECT_EQ(rows(all, MenuTab::TOOLS), std::vector<MenuAction>(std::begin(expected), std::end(expected)))
+        << "optional flags=" << flags;
+    int found = 0;
+    for (const auto& item : all) {
+      if (item.action != kQuotesOfBook) continue;
+      ++found;
+      EXPECT_EQ(item.tab, MenuTab::TOOLS);
+      EXPECT_EQ(item.labelId, StrId::STR_QUOTES_OF_BOOK);
+    }
+    EXPECT_EQ(found, 1) << "optional flags=" << flags;
   }
 }
 
@@ -237,7 +274,7 @@ TEST(ToolbarMore, KeepsLegacyOrderForEveryOptionalItemCombination) {
                                  MenuAction::DICTIONARY,    MenuAction::ROTATE_SCREEN,  MenuAction::AUTO_PAGE_TURN,
                                  MenuAction::GO_TO_PERCENT, MenuAction::SCREENSHOT,     MenuAction::DISPLAY_QR,
                                  MenuAction::GO_HOME,       MenuAction::SYNC,           MenuAction::DELETE_CACHE,
-                                 MenuAction::SAVE_QUOTE,    MenuAction::BLUETOOTH};
+                                 MenuAction::SAVE_QUOTE,    kQuotesOfBook,              MenuAction::BLUETOOTH};
   for (int flags = 0; flags < 8; ++flags) {
     std::vector<readermenu::Item> items;
     readermenu::buildMoreItems(items, flags & 1, flags & 2, flags & 4);

@@ -139,7 +139,7 @@ int main() {
     Action::BOOKMARKS, Action::TOGGLE_BOOKMARK, Action::SCREENSHOT, Action::DISPLAY_QR, Action::GO_HOME,
     Action::SYNC, Action::DELETE_CACHE, Action::DICTIONARY, Action::FONT_SIZE, Action::FONT_FAMILY, Action::SAVE_QUOTE};
   for (int i = 0; i < 20; ++i) require(static_cast<int>(legacy[i]) == i, "legacy saved action changed");
-  require(readermenu::ACTION_COUNT == 21, "Bluetooth extends action bounds to 21");
+  require(readermenu::ACTION_COUNT == 22, "Quotations of this book extends action bounds to 22 after Bluetooth");
   for (int flags = 0; flags < 8; ++flags) {
     std::vector<readermenu::Item> items;
     readermenu::buildItems(items, flags & 1, flags & 2, flags & 4);
