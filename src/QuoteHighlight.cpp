@@ -2,6 +2,8 @@
 
 #include <Utf8.h>
 
+#include <algorithm>
+
 namespace quotes {
 namespace {
 
@@ -117,6 +119,39 @@ bool anyAnchorAtOrAfter(const std::vector<QuoteAnchor>& anchors, const int spine
     if (anchor.spine == spine && anchor.end > pageStartOffset) return true;
   }
   return false;
+}
+
+size_t wordCount(const std::string& text) {
+  return text.empty() ? 0 : static_cast<size_t>(std::count(text.begin(), text.end(), ' ')) + 1;
+}
+
+// Kept beside the page walk so the codepoints a trim drops are counted by the same function
+// that placed the words, which is what keeps the moved anchor on the words that are left.
+bool trimWords(QuoteRecord& quote, const size_t front, const size_t back) {
+  const size_t words = wordCount(quote.text);
+  if (front >= words || back >= words - front) return false;
+  const std::string& text = quote.text;
+  // Each dropped word takes its one separator with it, the same gap pageWords counts.
+  size_t begin = 0;
+  uint32_t droppedFront = 0;
+  for (size_t i = 0; i < front; i++) {
+    const size_t space = text.find(' ', begin);
+    droppedFront += codepointCount(text.substr(begin, space - begin).c_str()) + 1u;
+    begin = space + 1;
+  }
+  size_t end = text.size();
+  uint32_t droppedBack = 0;
+  for (size_t i = 0; i < back; i++) {
+    const size_t space = text.rfind(' ', end - 1);
+    droppedBack += codepointCount(text.substr(space + 1, end - space - 1).c_str()) + 1u;
+    end = space;
+  }
+  quote.text = text.substr(begin, end - begin);
+  if (quote.hasAnchor) {
+    quote.anchorStart += droppedFront;
+    quote.anchorEnd -= droppedBack;
+  }
+  return true;
 }
 
 }  // namespace quotes

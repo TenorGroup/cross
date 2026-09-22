@@ -221,4 +221,96 @@ TEST(QuoteHighlightBands, NoSelectionDrawsNothingAndClearsTheCallersBuffer) {
   EXPECT_TRUE(bands.empty());
 }
 
+// Trimming a saved quote must keep its highlight on exactly the words that are left. The
+// page below mixes plain words, precomposed Vietnamese ("một", "thứ") and decomposed
+// Vietnamese ("tiếng" and "Việt" written as base letters plus combining marks), so a
+// trim that counted bytes, or composed the marks before counting, would drift.
+Page trimPage() {
+  Page page;
+  page.visibleTextOffset = PAGE_START;
+  page.elements.push_back(line({"Con", "m\xe1\xbb\x99t", "ti" "e\xcc\x82\xcc\x81" "ng", "trang"}, {0, 40, 80, 130}, 5,
+                               100));
+  page.elements.push_back(line({"th\xe1\xbb\xa9", "Vie\xcc\xa3\xcc\x82t", "hai", "ba."}, {0, 40, 90, 130}, 5, 130));
+  return page;
+}
+
+// The saved text, built the way the selector builds it: the chosen words joined by one space.
+std::string joined(const std::vector<quotes::PageWord>& words, size_t first, size_t last) {
+  std::string text;
+  for (size_t i = first; i <= last; i++) {
+    if (i > first) text += ' ';
+    text += words[i].text;
+  }
+  return text;
+}
+
+TEST(QuoteTrim, WordCountFollowsTheSelectorsSpaces) {
+  EXPECT_EQ(quotes::wordCount(""), 0u);
+  EXPECT_EQ(quotes::wordCount("one"), 1u);
+  EXPECT_EQ(quotes::wordCount("m\xe1\xbb\x99t hai ba"), 3u);
+}
+
+TEST(QuoteTrim, TrimmedAnchorCoversExactlyTheWordsLeft) {
+  const Page page = trimPage();
+  const std::vector<quotes::PageWord> words = sampleWords(page);
+  ASSERT_EQ(words.size(), 8u);
+  // "tiếng" decomposed is t, i, e, two marks, n, g: seven codepoints for five letters.
+  ASSERT_EQ(words[2].codepoints, 7u);
+  size_t checked = 0;
+  for (size_t a = 0; a < words.size(); a++) {
+    for (size_t b = a; b < words.size(); b++) {
+      const size_t count = b - a + 1;
+      for (size_t k = 0; k < count; k++) {
+        for (size_t j = 0; k + j < count; j++) {
+          QuoteRecord quote;
+          quote.spine = 3;
+          quote.text = joined(words, a, b);
+          quotes::setAnchor(quote, words, a, b);
+          ASSERT_EQ(quotes::wordCount(quote.text), count);
+          ASSERT_TRUE(quotes::trimWords(quote, k, j)) << a << " " << b << " " << k << " " << j;
+          EXPECT_EQ(quote.text, joined(words, a + k, b - j));
+          size_t first = 0, last = 0;
+          ASSERT_TRUE(quotes::coveredWords(QuoteAnchor{3, quote.anchorStart, quote.anchorEnd}, 3, words, first, last));
+          EXPECT_EQ(first, a + k) << a << " " << b << " " << k << " " << j;
+          EXPECT_EQ(last, b - j) << a << " " << b << " " << k << " " << j;
+          // And the anchor is the very one the selector would stamp on the shorter choice.
+          QuoteRecord direct;
+          quotes::setAnchor(direct, words, a + k, b - j);
+          EXPECT_EQ(quote.anchorStart, direct.anchorStart);
+          EXPECT_EQ(quote.anchorEnd, direct.anchorEnd);
+          checked++;
+        }
+      }
+    }
+  }
+  EXPECT_GT(checked, 100u);
+}
+
+TEST(QuoteTrim, TrimmingEveryWordIsRefusedAndLeavesTheQuoteAlone) {
+  const std::vector<quotes::PageWord> words = sampleWords(trimPage());
+  QuoteRecord quote;
+  quote.spine = 3;
+  quote.text = joined(words, 1, 3);
+  quotes::setAnchor(quote, words, 1, 3);
+  const QuoteRecord before = quote;
+  EXPECT_FALSE(quotes::trimWords(quote, 2, 1));
+  EXPECT_FALSE(quotes::trimWords(quote, 3, 0));
+  EXPECT_FALSE(quotes::trimWords(quote, 0, 5));
+  EXPECT_FALSE(quotes::trimWords(quote, static_cast<size_t>(-1), 2));
+  EXPECT_EQ(quote.text, before.text);
+  EXPECT_EQ(quote.anchorStart, before.anchorStart);
+  EXPECT_EQ(quote.anchorEnd, before.anchorEnd);
+}
+
+// A quote kept before anchors existed has only its text to trim.
+TEST(QuoteTrim, UnanchoredQuoteTrimsTextOnly) {
+  QuoteRecord quote;
+  quote.text = "one two three";
+  EXPECT_TRUE(quotes::trimWords(quote, 1, 1));
+  EXPECT_EQ(quote.text, "two");
+  EXPECT_FALSE(quote.hasAnchor);
+  EXPECT_EQ(quote.anchorStart, 0u);
+  EXPECT_EQ(quote.anchorEnd, 0u);
+}
+
 }  // namespace

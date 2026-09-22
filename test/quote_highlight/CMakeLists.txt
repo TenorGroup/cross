@@ -24,10 +24,12 @@ gtest_discover_tests(QuoteHighlightTest)
 # card. Reuses the filesystem-backed storage and JSON stubs of the history suite.
 add_executable(QuoteAnchorStoreTest
   QuoteAnchorStoreTest.cpp
+  QuoteNameStoreTest.cpp
   ${REPO_ROOT}/src/QuoteStore.cpp
 )
 target_include_directories(QuoteAnchorStoreTest BEFORE PRIVATE
   ${REPO_ROOT}/test/history_navigation/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
   ${REPO_ROOT}/src
   ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src
 )
