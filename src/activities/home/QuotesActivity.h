@@ -17,7 +17,11 @@
 // and only one font, which is what made the old version read like a settings menu.
 class QuotesActivity final : public Activity {
  public:
-  QuotesActivity(GfxRenderer& r, MappedInputManager& input) : Activity("Quotes", r, input) {}
+  // `bookPath` empty opens the list of books; a path opens that book's quotes directly.
+  // `insideReader` is true when the reader opened this screen for its own book: only then
+  // does editing offer to reselect the quote on the page (finishing with QuoteEditResult).
+  QuotesActivity(GfxRenderer& r, MappedInputManager& input, std::string bookPath = "", bool insideReader = false)
+      : Activity("Quotes", r, input), bookPath(std::move(bookPath)), insideReader(insideReader) {}
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;
@@ -57,6 +61,8 @@ class QuotesActivity final : public Activity {
   // The whole record laid out for the detail view: source block first, quote under it.
   std::string detailBody(const QuoteRecord& quote) const;
 
+  std::string bookPath;
+  bool insideReader = false;
   std::vector<std::string> names;
   std::array<Entry, MAX_ENTRIES> entries;
   std::array<uint8_t, MAX_ENTRIES> lineCounts{};

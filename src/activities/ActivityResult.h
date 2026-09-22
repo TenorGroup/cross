@@ -73,9 +73,16 @@ struct FilePathResult {
   std::string path;
 };
 
+// A quote the reader should reselect on its page: the Quotes screens opened from inside
+// the reader finish with this, and the reader jumps to the quote and opens the selector.
+struct QuoteEditResult {
+  std::string name;
+};
+
 using ResultVariant =
     std::variant<std::monostate, WifiResult, KeyboardResult, MenuResult, ChapterResult, PercentResult, IntervalResult,
-                 PageResult, ProgressChangeResult, NetworkModeResult, FootnoteResult, FilePathResult>;
+                 PageResult, ProgressChangeResult, NetworkModeResult, FootnoteResult, FilePathResult,
+                 QuoteEditResult>;
 
 struct ActivityResult {
   bool isCancelled = false;
