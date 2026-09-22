@@ -26,17 +26,38 @@ void UiTabListActivity::loop() {
   const auto orientation = static_cast<CrossPointOrientation::Value>(renderer.getOrientation());
   halTiltSensor.update(SETTINGS.tiltTabNavigation, static_cast<uint8_t>(orientation), acceptsTilt);
   if (acceptsTilt) {
-    // Tab tilt runs opposite to page-turn tilt: the sensor mode above is
-    // unchanged, only the two readings trade places here.
+    // Measured on the X3 22/09: the sensor's own Normal is the direction
+    // readers find natural for tabs, so the readings pass straight through.
     const bool forward = halTiltSensor.wasTiltedForward();
     const bool backward = halTiltSensor.wasTiltedBack();
-    queueTiltTabNavigation(backward, forward);
+    queueTiltTabNavigation(forward, backward);
+  }
+  // Row tilt is the other gyro axis. It is armed after the poll above because
+  // that call carries the tab setting alone; the arming is read by the next
+  // poll, and this runs on every pass, so the sensor is never more than one
+  // pass behind the live setting and gate.
+  const bool acceptsRowTilt = acceptsTiltMenuNavigation();
+  halTiltSensor.configureVerticalGesture(SETTINGS.tiltMenuNavigation, acceptsRowTilt);
+  if (acceptsRowTilt) {
+    // Measured on the X3 22/09: the gesture the sensor labels Up is the one
+    // readers use to go down a row, so the two readings trade places here.
+    queueTiltMenuNavigation(halTiltSensor.wasTiltedDown(), halTiltSensor.wasTiltedUp());
   }
   UiListActivity::loop();
 }
 
 bool UiTabListActivity::acceptsTiltTabNavigation() const {
   return tabCount() > 1 && allowsTiltTabNavigation();
+}
+
+bool UiTabListActivity::acceptsTiltMenuNavigation() const {
+  return listCount() > 0 && allowsTiltMenuNavigation();
+}
+
+bool UiTabListActivity::queueTiltMenuNavigation(const bool up, const bool down) {
+  if (!acceptsTiltMenuNavigation() || (!up && !down)) return false;
+  queueNavIntent(up ? NavIntent::StepPrev : NavIntent::StepNext);
+  return true;
 }
 
 bool UiTabListActivity::queueTiltTabNavigation(const bool forward, const bool backward) {

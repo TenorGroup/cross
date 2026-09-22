@@ -35,11 +35,14 @@ int main(int argc, char** argv) {
   const auto& catalog = getBaseSettingsList();
   const SettingInfo* readerTilt = findSetting(catalog, "tiltPageTurn");
   const SettingInfo* menuTilt = findSetting(catalog, "tiltTabNavigation");
+  const SettingInfo* rowTilt = findSetting(catalog, "tiltMenuNavigation");
   CrossPointSettings& settings = SETTINGS;
-  bool ok = expect(catalog.size() == (hasImu ? 72U : 70U), "X3 descriptor count");
+  bool ok = expect(catalog.size() == (hasImu ? 73U : 70U), "X3 descriptor count");
 
   if (!hasImu) {
-    ok = expect(readerTilt == nullptr && menuTilt == nullptr, "tilt descriptors require IMU") && ok;
+    ok = expect(readerTilt == nullptr && menuTilt == nullptr && rowTilt == nullptr,
+                "tilt descriptors require IMU") &&
+         ok;
     settings.tiltTabNavigation = CrossPointSettings::TILT_OFF;
     JsonDocument injected;
     injected["tiltTabNavigation"] = CrossPointSettings::TILT_NORMAL;
@@ -47,13 +50,15 @@ int main(int argc, char** argv) {
     ok = expect(settings.tiltTabNavigation == CrossPointSettings::TILT_OFF, "non-IMU JSON stays default") && ok;
     JsonDocument saved;
     settings.toJson(saved);
-    ok = expect(saved["tiltTabNavigation"].isNull(), "non-IMU JSON omits tab tilt") && ok;
+    ok = expect(saved["tiltTabNavigation"].isNull() && saved["tiltMenuNavigation"].isNull(),
+                "non-IMU JSON omits both menu tilt keys") &&
+         ok;
     std::printf("menu_tilt_settings=no-imu:%s\n", ok ? "GREEN" : "RED");
     return ok ? 0 : 1;
   }
 
-  ok = expect(readerTilt && menuTilt, "both tilt descriptors present") && ok;
-  if (!readerTilt || !menuTilt) return 1;
+  ok = expect(readerTilt && menuTilt && rowTilt, "all three tilt descriptors present") && ok;
+  if (!readerTilt || !menuTilt || !rowTilt) return 1;
   ok = expect(readerTilt->nameId == StrId::STR_TILT_PAGE_TURN &&
                   readerTilt->valuePtr == &CrossPointSettings::tiltPageTurn && isTiltEnum(*readerTilt, StrId::STR_CAT_READER),
               "reader tilt descriptor stays unchanged") &&
@@ -62,6 +67,13 @@ int main(int argc, char** argv) {
                   menuTilt->valuePtr == &CrossPointSettings::tiltTabNavigation && isTiltEnum(*menuTilt, StrId::STR_CAT_CONTROLS),
               "tab tilt descriptor uses independent field") &&
        ok;
+  ok = expect(rowTilt->nameId == StrId::STR_TILT_MENU_NAVIGATION &&
+                  rowTilt->valuePtr == &CrossPointSettings::tiltMenuNavigation &&
+                  isTiltEnum(*rowTilt, StrId::STR_CAT_CONTROLS),
+              "row tilt descriptor uses independent field in Controls") &&
+       ok;
+  ok = expect(rowTilt == menuTilt + 1, "row tilt row sits directly after tab tilt") && ok;
+  ok = expect(settings.tiltMenuNavigation == CrossPointSettings::TILT_OFF, "row tilt defaults off") && ok;
 
   settings.tiltPageTurn = CrossPointSettings::TILT_OFF;
   settings.tiltTabNavigation = CrossPointSettings::TILT_OFF;
@@ -69,27 +81,33 @@ int main(int argc, char** argv) {
   oldJson["tiltPageTurn"] = CrossPointSettings::TILT_NVERTED;
   ok = expect(settings.fromJson(oldJson.as<JsonVariantConst>()), "old settings JSON loads") && ok;
   ok = expect(settings.tiltPageTurn == CrossPointSettings::TILT_NVERTED &&
-                  settings.tiltTabNavigation == CrossPointSettings::TILT_OFF,
-              "missing tab key defaults off without changing reader") &&
+                  settings.tiltTabNavigation == CrossPointSettings::TILT_OFF &&
+                  settings.tiltMenuNavigation == CrossPointSettings::TILT_OFF,
+              "missing tab and row keys default off without changing reader") &&
        ok;
 
   for (uint8_t readerMode = CrossPointSettings::TILT_OFF; readerMode < CrossPointSettings::TILT_PAGE_TURN_COUNT;
        ++readerMode) {
     for (uint8_t menuMode = CrossPointSettings::TILT_OFF; menuMode < CrossPointSettings::TILT_PAGE_TURN_COUNT;
          ++menuMode) {
+      const uint8_t rowMode = static_cast<uint8_t>((readerMode + menuMode) % CrossPointSettings::TILT_PAGE_TURN_COUNT);
       settings.tiltPageTurn = CrossPointSettings::TILT_OFF;
       settings.tiltTabNavigation = CrossPointSettings::TILT_OFF;
+      settings.tiltMenuNavigation = CrossPointSettings::TILT_OFF;
       JsonDocument input;
       input["tiltPageTurn"] = readerMode;
       input["tiltTabNavigation"] = menuMode;
+      input["tiltMenuNavigation"] = rowMode;
       ok = expect(settings.fromJson(input.as<JsonVariantConst>()), "independent tilt JSON loads") && ok;
-      ok = expect(settings.tiltPageTurn == readerMode && settings.tiltTabNavigation == menuMode,
-                  "reader and menu modes remain independent") &&
+      ok = expect(settings.tiltPageTurn == readerMode && settings.tiltTabNavigation == menuMode &&
+                      settings.tiltMenuNavigation == rowMode,
+                  "reader, tab and row modes remain independent") &&
            ok;
       JsonDocument saved;
       settings.toJson(saved);
       ok = expect((saved["tiltPageTurn"] | uint8_t{255}) == readerMode &&
-                      (saved["tiltTabNavigation"] | uint8_t{255}) == menuMode,
+                      (saved["tiltTabNavigation"] | uint8_t{255}) == menuMode &&
+                      (saved["tiltMenuNavigation"] | uint8_t{255}) == rowMode,
                   "each explicit mode round trips") &&
            ok;
     }
@@ -97,13 +115,16 @@ int main(int argc, char** argv) {
 
   settings.tiltPageTurn = CrossPointSettings::TILT_OFF;
   settings.tiltTabNavigation = CrossPointSettings::TILT_OFF;
+  settings.tiltMenuNavigation = CrossPointSettings::TILT_OFF;
   JsonDocument corruptJson;
   corruptJson["tiltPageTurn"] = CrossPointSettings::TILT_NORMAL;
   corruptJson["tiltTabNavigation"] = CrossPointSettings::TILT_PAGE_TURN_COUNT;
+  corruptJson["tiltMenuNavigation"] = CrossPointSettings::TILT_PAGE_TURN_COUNT;
   ok = expect(settings.fromJson(corruptJson.as<JsonVariantConst>()), "out-of-range tab tilt JSON loads") && ok;
   ok = expect(settings.tiltPageTurn == CrossPointSettings::TILT_NORMAL &&
-                  settings.tiltTabNavigation == CrossPointSettings::TILT_OFF,
-              "out-of-range tab mode clamps without changing reader") &&
+                  settings.tiltTabNavigation == CrossPointSettings::TILT_OFF &&
+                  settings.tiltMenuNavigation == CrossPointSettings::TILT_OFF,
+              "out-of-range tab and row modes clamp without changing reader") &&
        ok;
 
   std::printf("menu_tilt_settings=imu:%s\n", ok ? "GREEN" : "RED");

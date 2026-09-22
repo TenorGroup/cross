@@ -393,6 +393,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t tiltPageTurn = TILT_OFF;
   // Tilt-based tab navigation (X3 only - requires QMI8658 IMU)
   uint8_t tiltTabNavigation = TILT_OFF;
+  // Tilt-based row navigation on menu screens (X3 only - requires QMI8658 IMU)
+  uint8_t tiltMenuNavigation = TILT_OFF;
   // Touch screen reader zones/gestures on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_SWIPE;
   // Reader menu open gesture (SHOW_READER_MENU: off / center tap / bottom-edge

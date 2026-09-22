@@ -22,6 +22,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -85,6 +86,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -147,6 +149,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -211,6 +214,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -274,6 +278,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -337,6 +342,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -399,6 +405,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -463,6 +470,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -527,6 +535,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -591,6 +600,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -654,6 +664,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -719,6 +730,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -783,6 +795,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -847,6 +860,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -910,6 +924,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -975,6 +990,7 @@
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",

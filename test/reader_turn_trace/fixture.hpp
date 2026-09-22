@@ -51,6 +51,7 @@ struct ReadingStats { uint32_t currentDay() const { return 1; } } READING_STATS;
 struct ReaderActivity {
   int8_t pendingExternalTurn = 0;
   bool pendingTurnIsLocal = false;
+  bool pendingExternalChapter = false;
   uint32_t pendingExternalGeneration = 0;
 @@TRACE_FIELDS@@
   std::atomic<bool> endOfBookOptionsReady{false};
@@ -67,6 +68,7 @@ struct ReaderActivity {
   bool statsActive = false;
   bool externalPageTurnAllowed() const { return allowed; }
   bool manualPageTurnReady() const { return ready; }
+  bool nhayChuongThat(int) { return false; }
   bool latTrangThat(bool forward) {
     if (!changed) return false;
     modelPage += forward ? 1 : -1;

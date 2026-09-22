@@ -263,7 +263,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
-    // 70 unconditional descriptors; the IMU branch adds reader and tab tilt settings.
+    // 70 unconditional descriptors; the IMU branch adds reader, tab and row tilt settings.
     // Cold-catalog tests cover each capability branch and the IMU variant.
     constexpr size_t fixedCount = 70
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
@@ -274,7 +274,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 #endif
         ;
     std::vector<SettingInfo> v;
-    v.reserve(fixedCount + (hasTilt ? 2 : 0));
+    v.reserve(fixedCount + (hasTilt ? 3 : 0));
     // --- Display ---
     v.push_back(SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
                           {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
@@ -566,9 +566,13 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                                                    // reversed direction, so it gets a word of its own.
                                                    {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_TILT_INVERTED},
                                                    "tiltPageTurn", StrId::STR_CAT_READER));
-          v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_TAB_NAVIGATION, &CrossPointSettings::tiltTabNavigation,
+          it = v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_TAB_NAVIGATION, &CrossPointSettings::tiltTabNavigation,
+                                                   {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_TILT_INVERTED},
+                                                   "tiltTabNavigation", StrId::STR_CAT_CONTROLS));
+          // Row tilt sits next to tab tilt: same band of gestures, other axis.
+          v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_MENU_NAVIGATION, &CrossPointSettings::tiltMenuNavigation,
                                               {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_TILT_INVERTED},
-                                              "tiltTabNavigation", StrId::STR_CAT_CONTROLS));
+                                              "tiltMenuNavigation", StrId::STR_CAT_CONTROLS));
           break;
         }
       }

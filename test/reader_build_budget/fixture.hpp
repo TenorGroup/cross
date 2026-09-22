@@ -7,9 +7,13 @@
 #include <stdexcept>
 #include <string>
 #include <algorithm>
-#define LOG_DBG(...) ((void)0)
-#define LOG_ERR(...) ((void)0)
-#define LOG_INF(...) ((void)0)
+// Swallow the arguments instead of the whole call: values a log line is the only
+// consumer of (the idle prewarm timer) must still count as used under -Werror.
+template <class... A>
+inline void logSink(A&&...) {}
+#define LOG_DBG(...) logSink(__VA_ARGS__)
+#define LOG_ERR(...) logSink(__VA_ARGS__)
+#define LOG_INF(...) logSink(__VA_ARGS__)
 #define STR_INDEXING 1
 #define STR_PAGE_LOAD_ERROR 2
 #define STR_MEMORY_ERROR 3
@@ -20,6 +24,12 @@ uint32_t clockMs = 1000;
 uint32_t millis() { return clockMs; }
 int popupCount = 0, buildErrors = 0;
 uint32_t popupAtMs = 0;
+// Cover thumbnail for the GAN DAY card. The counters let a case say WHEN the
+// JPEG->BMP pass ran, and whether it borrowed the framebuffer to do it.
+struct ThumbState {
+  int existsChecks = 0, generated = 0, loans = 0;
+  bool fileOnCard = false;
+} thumbs;
 void require(bool value, const char* reason) { if (!value) throw std::runtime_error(reason); }
 struct RenderLock {
   struct TryTake {};
@@ -32,7 +42,25 @@ struct RenderLock {
 };
 struct Heap { size_t free = 80000, largest = 60000; size_t getFreeHeap() { return free; } size_t getMaxAllocHeap() { return largest; } } ESP;
 struct ReaderRenderSpec {};
-struct Settings { bool blePageTurnerEnabled = false; ReaderRenderSpec readerRenderSpec(int, int) { return {}; } } SETTINGS;
+struct Settings {
+  bool blePageTurnerEnabled = false;
+  int getReaderFontId() const { return 0; }
+  ReaderRenderSpec readerRenderSpec(int, int) { return {}; }
+} SETTINGS;
+struct StorageStub {
+  bool exists(const char*) { ++thumbs.existsChecks; return thumbs.fileOnCard; }
+} Storage;
+struct ThemeMetrics { int homeCoverHeight = 226; };
+class UITheme {
+ public:
+  static UITheme& getInstance() { static UITheme instance; return instance; }
+  const ThemeMetrics& getMetrics() const { return metrics_; }
+
+ private:
+  ThemeMetrics metrics_;
+};
+struct PrewarmScope { void endScanAndPrewarm() {} };
+struct FontCacheManager { PrewarmScope createPrewarmScope() { return {}; } };
 namespace freeink::ble {
 inline bool busyState = false;
 inline bool initializingState = false;
@@ -55,6 +83,13 @@ struct ReaderRenderer {
   void clearScreen() {}
   void drawCenteredText(int, int, int message, bool, int) { if (message == STR_PAGE_LOAD_ERROR) ++pageReads.errors; }
   void displayBuffer() {}
+  FontCacheManager* getFontCacheManager() { return nullptr; }
+  // The real loan hands the framebuffer bytes to a build phase and returns it
+  // WHITE, so only a caller that redraws the whole screen may take one.
+  class FrameBufferLoan {
+   public:
+    explicit FrameBufferLoan(ReaderRenderer&) { ++thumbs.loans; }
+  };
 };
 using GfxRenderer = ReaderRenderer;
 struct Section {
@@ -66,7 +101,12 @@ struct Section {
   int starts = 0, ticks = 0, suspends = 0, parks = 0, resumes = 0;
   int restoredPagesAfterStart = 0;
   uint32_t startMs = 0, tickMs = 0;
-  struct Page {};
+  // Heap the park gives back, and what the parser takes again when it resumes.
+  // Both are knobs so a case can reproduce the device numbers around a park.
+  size_t parkRestoresFree = 80000, parkRestoresLargest = 60000, parserFootprint = 0;
+  struct Page {
+    void render(const ReaderRenderer&, int, int, int) const {}
+  };
   std::unique_ptr<Page> loadPage(int page) {
     require(RenderLock::busy, "load without render lock");
     require(page == currentPage, "read changed target");
@@ -85,7 +125,10 @@ struct Section {
   bool startBuild(const ReaderRenderSpec&) { require(RenderLock::busy, "start without render lock"); ++starts; clockMs += startMs; if (failStart) return false; building = true; parked = false; builtPages = restoredPagesAfterStart; if (dropAfterStart) ESP.free = 29000; return true; }
   bool buildSomeMore(int n) {
     require(RenderLock::busy, "build without render lock"); ++ticks; clockMs += tickMs;
-    if (parked) { parked = false; ++resumes; }
+    if (parked) {
+      parked = false; ++resumes;
+      ESP.free = ESP.free > parserFootprint ? ESP.free - parserFootprint : 0;
+    }
     if (failTick) return false;
     starved = starveUntilRadioStopped && !freeink::ble::idleStoppedState;
     if (starved) { parked = canPark; return false; }
@@ -97,7 +140,7 @@ struct Section {
   bool parkBuild() {
     require(RenderLock::busy, "park without render lock");
     if (!canPark) return false;
-    ++parks; parked = true; ESP.free = 80000; ESP.largest = 60000;
+    ++parks; parked = true; ESP.free = parkRestoresFree; ESP.largest = parkRestoresLargest;
     return true;
   }
   void suspendBuild() {
@@ -106,17 +149,27 @@ struct Section {
     building = parked = false; partial = true; ESP.free = 80000; ESP.largest = 60000;
   }
 };
-struct Epub { int getSpineItemsCount() const { return 3; } };
+struct Epub {
+  int getSpineItemsCount() const { return 3; }
+  std::string getThumbBmpPath(int height) const { return "/thumb_" + std::to_string(height) + ".bmp"; }
+  // Mirrors Epub::generateThumbBmp: an existing file returns early and costs nothing.
+  bool generateThumbBmp(int) const {
+    if (thumbs.fileOnCard) return true;
+    ++thumbs.generated;
+    return true;
+  }
+};
 struct Manager { uint32_t activityGeneration() const { return 1; } } activityManager;
 struct EndMenu { bool menuActive() const { return false; } };
 struct ReaderActivity {
   int pendingExternalTurn = 0, requests = 0, trangDaLat = 0;
   uint32_t pendingExternalGeneration = 0;
-  bool pendingTurnIsLocal = false, preview = false;
+  bool pendingTurnIsLocal = false, pendingExternalChapter = false, preview = false;
   std::atomic<bool> endOfBookOptionsReady{false};
   std::unique_ptr<EndMenu> endOfBookOptions = std::make_unique<EndMenu>();
   virtual ~ReaderActivity() = default;
   virtual bool latTrangThat(bool) = 0;
+  virtual bool nhayChuongThat(int) { return false; }
   bool externalPageTurnAllowed() const { return true; }
   bool manualPageTurnReady() const { return true; }
   bool isAtEndOfBook() const { return false; }
@@ -136,8 +189,10 @@ struct EpubReaderActivity : ReaderActivity {
   uint32_t lastPageTurnTime = 0;
   std::atomic<bool> deferredClearPending{false};
   bool deferBackgroundBuildForBle() const; bool buildTickHeapGate(); bool backgroundBuildStartHeapGate(); bool backgroundBuildCanTick(); void suspendBackgroundBuild();
-  bool releaseRadioForBuild(); void showMemoryError();
+  bool releaseRadioForBuild(); void showMemoryError(); void generatePendingThumb();
   void backgroundTick(); void foreground(); bool skipLoopDelay(); bool latTrangThat(bool);
+  // loadBook()'s cover-thumbnail tail and loop()'s idle region, projected verbatim.
+  void openThumbStep(); void idleStep();
   void initialResume(int target);
   void showBuildPopup(GfxRenderer&, int&);
   void loadPageForRender();

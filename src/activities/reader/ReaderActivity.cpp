@@ -357,6 +357,7 @@ bool ReaderActivity::pageTurn(const bool isForward) {
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired()) {
     pendingExternalTurn = isForward ? 1 : -1;
+    pendingExternalChapter = false;
     pendingExternalGeneration = activityManager.activityGeneration();
     pendingTurnIsLocal = true;
 #ifdef TENOR_UI_ACCEPTANCE
@@ -376,6 +377,20 @@ bool ReaderActivity::luotLatTrangNgoai(const bool isForward) {
   // One pending direction per reader generation. A repaint can take seconds;
   // repeated reports during that paint coalesce into the latest direction.
   pendingExternalTurn = isForward ? 1 : -1;
+  pendingExternalChapter = false;
+  pendingExternalGeneration = activityManager.activityGeneration();
+  pendingTurnIsLocal = false;
+#ifdef TENOR_UI_ACCEPTANCE
+  replaceQueuedTurnTrace(pendingExternalTurnTrace, detectTurnTrace("external", isForward), "external");
+#endif
+  return true;
+}
+
+bool ReaderActivity::luotNhayChuongNgoai(const bool isForward) {
+  if (!externalPageTurnAllowed()) return false;
+  if (endOfBookOptionsReady.load(std::memory_order_acquire) && endOfBookOptions->menuActive()) return false;
+  pendingExternalTurn = isForward ? 1 : -1;
+  pendingExternalChapter = true;
   pendingExternalGeneration = activityManager.activityGeneration();
   pendingTurnIsLocal = false;
 #ifdef TENOR_UI_ACCEPTANCE
@@ -397,7 +412,9 @@ bool ReaderActivity::processExternalPageTurn() {
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired() || !manualPageTurnReady()) return true;
   const bool forward = pendingExternalTurn > 0;
+  const bool chapter = pendingExternalChapter;
   pendingExternalTurn = 0;
+  pendingExternalChapter = false;
 #ifdef TENOR_UI_ACCEPTANCE
   currentTurnTrace = pendingExternalTurnTrace;
   pendingExternalTurnTrace = {};
@@ -419,6 +436,16 @@ bool ReaderActivity::processExternalPageTurn() {
 #ifdef TENOR_UI_ACCEPTANCE
     dropTurnTrace(currentTurnTrace, "end_of_book");
 #endif
+    return true;
+  }
+  if (chapter) {
+    // Giu nut tren remote. Khong dem vao so trang da lat: mot nac chuong khong phai
+    // mot trang doc. Sach khong co muc luc thi khong lam gi, chi ghi mot dong.
+    if (nhayChuongThat(forward ? 1 : -1)) {
+      requestUpdate();
+    } else {
+      LOG_INF("READER", "Hold ignored: this book has no chapters to skip");
+    }
     return true;
   }
   if (pageTurnLocked(forward)) requestUpdate();

@@ -34,6 +34,7 @@
 #include "MappedInputManager.h"
 #include "ProgressMapper.h"
 #include "QrDisplayActivity.h"
+#include "QuoteHighlight.h"
 #include "ReaderActivity.h"
 #include "ReaderFontChon.h"
 #include "ReaderFontSizes.h"
@@ -284,40 +285,45 @@ bool EpubReaderActivity::loadBook() {
   }
 
   loadCachedBookmarks();
+  // Anchors of the quotes saved in this book, read once here so a page turn never
+  // walks the quote directory. Preview never draws highlights, so it never pays.
+  if (!preview) quotes::loadAnchors(bookPath, quoteAnchors);
 
   // The GAN DAY card only ever READS a thumbnail bitmap; nothing in the app generated one, so a
   // book added by this firmware always fell back to the brand placeholder (a device that showed a
   // real cover only did so for a thumbnail written by an older release). Generate it here, once
-  // per book: generateThumbBmp() returns early when the file already exists, so a warm open pays
-  // nothing and the first open pays one JPEG->1-bit BMP pass.
+  // per book. The JPEG->1-bit BMP pass costs seconds and nothing on the open path reads its
+  // output, so only record the miss here; loop() runs it once the first page is on the panel.
   const int thumbHeight = UITheme::getInstance().getMetrics().homeCoverHeight;
   if (!preview) {
-    const bool thumbMissing = !Storage.exists(epub->getThumbBmpPath(thumbHeight).c_str());
-#ifdef TENOR_UI_ACCEPTANCE
-    if (thumbMissing) {
-      LOG_DBG("ERS", "EPUB_THUMB stage=before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
-              static_cast<unsigned>(ESP.getMaxAllocHeap()));
-    }
-#endif
-    bool thumbGenerated;
-    {
-      // Cover extraction and PNG decoding can borrow the framebuffer for inflate.
-      // Keep the panel's current image until the first reader page is drawn.
-      std::optional<GfxRenderer::FrameBufferLoan> loan;
-      if (thumbMissing) loan.emplace(renderer);
-      thumbGenerated = epub->generateThumbBmp(thumbHeight);
-    }
-#ifdef TENOR_UI_ACCEPTANCE
-    if (thumbMissing) {
-      LOG_DBG("ERS", "EPUB_THUMB stage=after result=%u free=%u largest=%u", thumbGenerated ? 1u : 0u,
-              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
-    }
-#endif
-    if (!thumbGenerated) {
-      LOG_DBG("ERS", "No cover thumbnail for the recent card (book has no usable cover image)");
-    }
+    pendingThumbHeight = thumbHeight;
+    pendingThumbGeneration = !Storage.exists(epub->getThumbBmpPath(thumbHeight).c_str());
   }
   return true;
+}
+
+// Runs from loop() with the render lock held, once the first page has been on the panel for a
+// beat and the heap has recovered. Cover extraction and PNG decoding want a large inflate
+// state, and the open path used to hand them the framebuffer's bytes. A FrameBufferLoan cannot
+// be used here: it returns the buffer WHITE (FreeInkDisplay::returnBuildStorage) and every
+// other caller redraws the whole screen straight after. This one does not - the page stays on
+// the panel, and openOverlay() paints its chrome onto the framebuffer copy of that page. So the
+// inflate state comes from the heap, which is what the caller's idle thresholds pay for.
+void EpubReaderActivity::generatePendingThumb() {
+  if (!pendingThumbGeneration || !epub) return;
+  pendingThumbGeneration = false;
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("ERS", "EPUB_THUMB stage=before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+  const bool thumbGenerated = epub->generateThumbBmp(pendingThumbHeight);
+#ifdef TENOR_UI_ACCEPTANCE
+  LOG_DBG("ERS", "EPUB_THUMB stage=after result=%u free=%u largest=%u", thumbGenerated ? 1u : 0u,
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
+  if (!thumbGenerated) {
+    LOG_DBG("ERS", "No cover thumbnail for the recent card (book has no usable cover image)");
+  }
 }
 
 ChapterPosition EpubReaderActivity::chapterPosition() const {
@@ -400,8 +406,14 @@ bool EpubReaderActivity::deferBackgroundBuildForBle() const {
 }
 
 bool EpubReaderActivity::backgroundBuildStartHeapGate() {
-  return !backgroundBuildFailed && !deferBackgroundBuildForBle() &&
-         ESP.getFreeHeap() >= BACKGROUND_BUILD_START_MIN_FREE_HEAP &&
+  // Admitting a parked build loads the parser again, which drops the free heap by whatever the
+  // last park handed back. Require room for that on top of the tick budget the resumed build
+  // has to stay above, or the resume buys one page and pays for the next park straight after.
+  const size_t admission = parkedParserFootprint > 0
+                               ? std::max<size_t>(BACKGROUND_BUILD_START_MIN_FREE_HEAP,
+                                                  parkedParserFootprint + BACKGROUND_BUILD_MIN_FREE_HEAP)
+                               : BACKGROUND_BUILD_START_MIN_FREE_HEAP;
+  return !backgroundBuildFailed && !deferBackgroundBuildForBle() && ESP.getFreeHeap() >= admission &&
          ESP.getMaxAllocHeap() >= BACKGROUND_BUILD_START_MIN_MAX_ALLOC;
 }
 
@@ -426,10 +438,15 @@ bool EpubReaderActivity::backgroundBuildCanTick() {
 bool EpubReaderActivity::releaseRadioForBuild() {
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
   if (radioReleasedForBuild || !SETTINGS.blePageTurnerEnabled || freeink::ble::idleStopped()) return false;
+  // Never tear down a start that is still in flight: the worker owns the
+  // NimBLE discovery and a cancel here leaves its callbacks pointing at a
+  // task that no longer exists. Wait for it to settle, then stop.
+  const unsigned long started = millis();
+  while (freeink::ble::initializing() && millis() - started < RADIO_RELEASE_TIMEOUT_MS) delay(20);
+  if (freeink::ble::initializing()) return false;
   radioReleasedForBuild = true;
   LOG_INF("ERS", "Section build starved of heap; stopping the radio until the page is shown free=%u largest=%u",
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
-  const unsigned long started = millis();
   while (!freeink::ble::stopForIdle() && millis() - started < RADIO_RELEASE_TIMEOUT_MS) delay(20);
   return true;
 #else
@@ -469,8 +486,14 @@ void EpubReaderActivity::suspendBackgroundBuild() {
 #endif
   // The small checkpoint releases parser/CSS memory while completed pages stay
   // in the active staging file. Unsupported boundaries keep the partial-commit fallback.
+  const size_t freeBeforePark = ESP.getFreeHeap();
   const bool parked = !backgroundBuildFailed && section->parkBuild();
   if (!parked) section->suspendBuild();
+  if (parked) {
+    // What the park just released is what the next resume will take back.
+    const size_t freeAfterPark = ESP.getFreeHeap();
+    if (freeAfterPark > freeBeforePark) parkedParserFootprint = freeAfterPark - freeBeforePark;
+  }
   // BLE policy is reversible when the radio becomes idle. A parked
   // heap-pressure build can also resume after the released memory recovers;
   // keep a one-pass latch for every park so the same loop cannot immediately
@@ -506,7 +529,11 @@ void EpubReaderActivity::openDictionaryWordSelect(const bool quotation) {
                                                                   orientedMarginLeft, orientedMarginTop);
   if (!selector) return;
   if (quotation) selector->selectQuotation({bookPath, getBookTitle(), "", currentSpineIndex, section->currentPage, 0});
-  startActivityForResult(std::move(selector), [this](const ActivityResult&) { requestUpdate(); });
+  startActivityForResult(std::move(selector), [this, quotation](const ActivityResult&) {
+    // A quote saved on that screen has to be drawn on the page we return to.
+    if (quotation) quotes::loadAnchors(bookPath, quoteAnchors);
+    requestUpdate();
+  });
 }
 
 bool EpubReaderActivity::externalPageTurnAllowed() const {
@@ -545,6 +572,18 @@ void EpubReaderActivity::loop() {
 #endif
 
   constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
+  // The cover thumbnail goes ahead of the page prewarm, but only once: the page has been on
+  // the panel for a beat and the heap covers the inflate state (see THUMB_IDLE_MIN_FREE_HEAP).
+  if (pendingThumbGeneration && renderer.hasFrameBuffer() && lastRenderCompleteMs != 0 &&
+      millis() - lastRenderCompleteMs > IDLE_PREWARM_DEBOUNCE_MS &&
+      ESP.getFreeHeap() > THUMB_IDLE_MIN_FREE_HEAP && ESP.getMaxAllocHeap() > THUMB_IDLE_MIN_MAX_ALLOC) {
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired()) {
+      generatePendingThumb();
+      return;  // seconds have passed inside the lock; take input on the next pass
+    }
+  }
+
   if (section && (!section->isBuilding() || section->isBuildParked()) && renderer.hasFrameBuffer() &&
       lastRenderCompleteMs != 0 && millis() - lastRenderCompleteMs > IDLE_PREWARM_DEBOUNCE_MS &&
       ESP.getFreeHeap() > RENDER_MIN_FREE_HEAP && ESP.getMaxAllocHeap() > BACKGROUND_BUILD_MIN_MAX_ALLOC &&
@@ -1554,7 +1593,14 @@ void EpubReaderActivity::rememberChapterHoldOrigin(const int huong) {
     chapterHoldPrevOrigin = std::move(origin);
 }
 
-bool EpubReaderActivity::nhayChuongMotBac(int huong, std::optional<int> logicalOrigin) {
+bool EpubReaderActivity::nhayChuongThat(const int huong) {
+  // Giu nut tren remote BLE. Nguoi goi da giu khoa ve, nen KHONG goi skipPages o day
+  // nhu duong giu nut vat ly: ham do tu lay khoa, long vao nhau la ket. Sach khong co
+  // muc luc thi giu nut khong lam gi, va nguoi goi ghi mot dong noi vi sao.
+  return nhayChuongMotBac(huong, std::nullopt, /*khoaDaGiu=*/true);
+}
+
+bool EpubReaderActivity::nhayChuongMotBac(int huong, std::optional<int> logicalOrigin, const bool khoaDaGiu) {
   if (!epub || huong == 0) return false;
   const int soMuc = static_cast<int>(epub->getTocItemsCount());
   if (soMuc <= 0) return false;
@@ -1573,7 +1619,8 @@ bool EpubReaderActivity::nhayChuongMotBac(int huong, std::optional<int> logicalO
     const auto muc = epub->getTocItem(i);
     if (muc.spineIndex < 0) continue;  // muc tro toi tep khong nam trong sach: bo qua
     {
-      RenderLock lock;
+      std::optional<RenderLock> khoa;
+      if (!khoaDaGiu) khoa.emplace();
       clearDeferredReposition();
       currentSpineIndex = muc.spineIndex;
       pendingAnchor = muc.anchor;
@@ -2169,6 +2216,37 @@ void EpubReaderActivity::rememberCurrentContentOffset() {
   }
 }
 
+// The quote selector inverts a selection by filling one band per line and redrawing the
+// glyphs white; repeating that here is what makes a saved quote look the same as the
+// selection did. Word widths come from the advance table the page render just warmed, so
+// no glyph is read from the card for this.
+void EpubReaderActivity::drawQuoteHighlights(const Page& page, const int fontId, const int marginLeft,
+                                             const int marginTop) const {
+  if (!quotes::anyAnchorAtOrAfter(quoteAnchors, currentSpineIndex, page.visibleTextOffset)) return;
+  std::vector<quotes::PageWord> words;
+  quotes::pageWords(page, marginLeft, marginTop, renderer.getFontAscenderSize(fontId), words);
+  if (words.empty()) return;
+  const int lineHeight = renderer.getLineHeight(fontId);
+  std::vector<quotes::WordBox> boxes;
+  std::vector<quotes::HighlightBand> bands;
+  for (const auto& anchor : quoteAnchors) {
+    size_t first = 0, last = 0;
+    if (!quotes::coveredWords(anchor, currentSpineIndex, words, first, last)) continue;
+    boxes.clear();
+    for (size_t i = first; i <= last; i++) {
+      const auto& word = words[i];
+      boxes.push_back(quotes::WordBox{word.x, word.y,
+                                      static_cast<int16_t>(renderer.getTextAdvanceX(fontId, word.text, word.style))});
+    }
+    quotes::highlightBands(boxes, lineHeight, bands);
+    for (const auto& band : bands) renderer.fillRect(band.x, band.y, band.width, band.height);
+    for (size_t i = first; i <= last; i++) {
+      const auto& word = words[i];
+      renderer.drawText(fontId, word.x, word.y, word.text, false, word.style);
+    }
+  }
+}
+
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                         const int orientedMarginRight, const int orientedMarginBottom,
                                         const int orientedMarginLeft) {
@@ -2233,6 +2311,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   }
 
   page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
+  drawQuoteHighlights(*page, fontId, orientedMarginLeft, orientedMarginTop);
   renderStatusBar();
   const auto tBwRender = millis();
 #ifdef TENOR_UI_ACCEPTANCE

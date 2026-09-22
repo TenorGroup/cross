@@ -64,6 +64,8 @@ def reader_fn(name):
 new = 'processExternalPageTurn(' in body
 prefix = P(__file__).with_name('reader_fixture.hpp').read_text().replace('@@NEW@@', '1' if new else '0')
 functions = [reader_fn(n) for n in ['pageTurn', 'luotLatTrangNgoai', 'handleEndOfBookPageTurn', 'endOfBookMenuActive', 'updateReadingTime', 'handlePreviewInput', 'loop']]
+if 'luotNhayChuongNgoai(' in body:
+    functions.append(reader_fn('luotNhayChuongNgoai'))
 if new:
     for n in ['pageTurnLocked', 'processExternalPageTurn', 'cancelExternalPageTurn']:
         if n + '(' in body or n + '(' in head:
@@ -77,6 +79,9 @@ for fmt in ['Txt', 'Xtc', 'Epub']:
             if 'EpubReaderActivity::' + n + '(' in text:
                 functions.append(function(text, 'EpubReaderActivity::' + n))
 functions.append(function(read('src/activities/ActivityManager.cpp'), 'ActivityManager::pageTurn'))
+manager = read('src/activities/ActivityManager.cpp')
+if 'ActivityManager::chapterSkip(' in manager:
+    functions.append(function(manager, 'ActivityManager::chapterSkip'))
 epubloop = function(read('src/activities/reader/EpubReaderActivity.cpp'), 'EpubReaderActivity::loop')
 
 def conditional_block(text, marker):
@@ -111,11 +116,12 @@ timers = main[main.index('  static unsigned long lastActivityTime = millis();'):
 end = re.search('  if \\([^\\n]*preventAutoSleep\\(\\)\\) lastSleepResetTime = millis\\(\\);', timers)
 assert end
 timers = timers[:end.end()]
-state_names = ['coLuotCho', 'luotChoTien', 'bleReaderBeginAttempted', 'bleReaderGeneration', 'lastBleCleanupMs', 'bleIdleSinceMs']
+state_names = ['coLuotCho', 'luotChoTien', 'bleReaderBeginAttempted', 'bleReaderGeneration', 'lastBleCleanupMs', 'bleIdleSinceMs', 'bleGiuNut']
 if 'bleReaderReconnectConfigured' in main:
     state_names.append('bleReaderReconnectConfigured')
 for name in state_names:
     init = re.sub('  static [^\\n]+ ' + name + ' = [^\\n]+;\\n', '', init)
+    init = re.sub('  static [^\\n]+ ' + name + ';\\n', '', init)
 timers = re.sub('  static unsigned long last(?:ActivityTime|SleepResetTime) = millis\\(\\);\\n', '', timers)
 mainfixture = P(__file__).with_name('main_fixture.hpp').read_text() + '\n' + read('src/BleIdleOff.h').replace('#pragma once', '')
 pump = 'struct MainPump { bool coLuotCho=false,luotChoTien=true,bleReaderBeginAttempted=false,bleReaderReconnectConfigured=false;uint32_t bleReaderGeneration=0,lastBleCleanupMs=0,bleIdleSinceMs=0; unsigned long lastActivityTime=millis(),lastSleepResetTime=millis(); void pump(){\n' + init + tilt_capture.group() + core + timers + '\n}};\n'

@@ -14,6 +14,7 @@
 #include "ChapterPosition.h"
 #include "EpubReaderMenuActivity.h"
 #include "ProgressMapper.h"
+#include "QuoteStore.h"
 #include "ReaderActivity.h"
 #include "ReaderToolbarUi.h"
 #include "components/OptionPopup.h"
@@ -78,9 +79,22 @@ class EpubReaderActivity final : public ReaderActivity {
   bool currentPageBookmarked = false;
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
+  // The GAN DAY card's cover thumbnail is not needed before the first page. loadBook() only
+  // records that the file is missing; loop() generates it once the page is on the panel.
+  bool pendingThumbGeneration = false;
+  int pendingThumbHeight = 0;
+  // The deferred pass takes no FrameBufferLoan: the loan gives the framebuffer back white
+  // (FreeInkDisplay::returnBuildStorage) and nothing redraws the page after it, so the
+  // inflate state has to come from the heap. These two cover that allocation.
+  static constexpr size_t THUMB_IDLE_MIN_FREE_HEAP = 96 * 1024;
+  static constexpr size_t THUMB_IDLE_MIN_MAX_ALLOC = 48 * 1024;
+  void generatePendingThumb();
   unsigned long lastRenderCompleteMs = 0;
   bool bookmarkRemoved = false;
   std::vector<BookmarkEntry> cachedBookmarks;
+  // Anchors of this book's saved quotes, 12 bytes each and capped by the store, read
+  // once per book open. Highlights are drawn from these, so no quote text is resident.
+  std::vector<QuoteAnchor> quoteAnchors;
   bool recentsEntryRemoved = false;
   unsigned long bookmarkMessageTime = 0UL;
   bool pendingReadFolderMove = false;
@@ -151,6 +165,9 @@ class EpubReaderActivity final : public ReaderActivity {
   // Caller owns RenderLock. Heap-pressure suspension resumes only for an explicit target.
   void suspendBackgroundBuild();
   bool backgroundBuildSuspended = false;
+  // Heap the parser handed back at the last park. The resume gate has to cover this on top
+  // of the tick budget, or the resume buys one page and pays for the next park.
+  size_t parkedParserFootprint = 0;
   // A failed speculative tick stays disabled until this reader visit ends.
   bool backgroundBuildFailed = false;
   // Set while the radio is stopped so a starved section build can finish. The reader
@@ -175,7 +192,8 @@ class EpubReaderActivity final : public ReaderActivity {
   void rememberChapterHoldOrigin(int huong);
   // Doi dung mot muc muc luc theo huong +1/-1, dung lai dung duong ma man Chon chuong
   // van dung (spine + anchor). Tra ve false khi khong co muc luc hoac da o dau/cuoi.
-  bool nhayChuongMotBac(int huong, std::optional<int> logicalOrigin = std::nullopt);
+  // `khoaDaGiu` = nguoi goi dang giu san khoa ve; lay them mot lan nua la khoa long nhau.
+  bool nhayChuongMotBac(int huong, std::optional<int> logicalOrigin = std::nullopt, bool khoaDaGiu = false);
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action, const MenuResult& menu);
@@ -224,6 +242,9 @@ class EpubReaderActivity final : public ReaderActivity {
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
   void renderStatusBar() const;
+  // Invert the words of every saved quote that reaches this page, exactly the way the
+  // quote selector inverts a live selection. Called on the black and white pass only.
+  void drawQuoteHighlights(const Page& page, int fontId, int marginLeft, int marginTop) const;
   void applyOrientation(uint8_t orientation);
   void applyInitialOrientation() override;
   // The orientation the current layout was built for. The control center's
@@ -254,6 +275,7 @@ class EpubReaderActivity final : public ReaderActivity {
 
   bool latTrangThat(bool isForward) override;
   bool skipPages(int amount) override;
+  bool nhayChuongThat(int huong) override;
   bool isAtEndOfBook() const override;
   void onReturnFromEndOfBook() override;
 

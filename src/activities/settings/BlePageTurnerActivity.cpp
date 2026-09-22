@@ -70,10 +70,14 @@ bool takeFailure(char* out, const size_t outLen) { return BleHid.takeConnectFail
 // false khi hang doi rong (hoac ban dung khong co BLE).
 bool takeKey(uint8_t& usage, uint8_t& mods) {
   freeink::KeyEvent ev;
-  if (!BleHid.popKey(ev)) return false;
-  usage = ev.keycode;
-  mods = ev.mods;
-  return true;
+  while (BleHid.popKey(ev)) {
+    // Canh NHA nut nhac lai dung ma vua bam. Hoc no nua la mot lan bam ghi hai lan.
+    if (!ev.pressed) continue;
+    usage = ev.keycode;
+    mods = ev.mods;
+    return true;
+  }
+  return false;
 }
 
 // Trinh doc da thu bat radio va bi hoan vi RAM: hang Trang thai phai noi that.

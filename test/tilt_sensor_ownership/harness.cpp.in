@@ -49,6 +49,15 @@ void runTabTick(const uint8_t tabMode, const bool acceptsTilt = true) {
   halTiltSensor.update(tabMode, SETTINGS.orientation, acceptsTilt);
 }
 
+// Menu screens poll the horizontal axis and arm the vertical one on the same
+// pass; the arming is read by the poll that follows it.
+void runMenuTick(const uint8_t tabMode, const uint8_t rowMode, const bool acceptsTilt = true,
+                 const bool acceptsRowTilt = true) {
+  updateTiltSensorForForegroundActivity(false, true);
+  halTiltSensor.update(tabMode, SETTINGS.orientation, acceptsTilt);
+  halTiltSensor.configureVerticalGesture(rowMode, acceptsRowTilt);
+}
+
 void runReaderTick() { updateTiltSensorForForegroundActivity(true, false); }
 
 void tabReachesForwardTiltAfterOneWake() {
@@ -140,6 +149,108 @@ void modalKeepsTheTabLifecycleAndLatch() {
   expect(halTiltSensor.wasTiltedForward(), "neutral-latch", "neutral plus cooldown must allow the next tilt");
 }
 
+void verticalChannelFiresOnTheOtherAxis() {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  SETTINGS.orientation = CrossPointOrientation::PORTRAIT;
+  imu.gx = 0.0f;
+  imu.gy = 400.0f;  // top edge away from the user
+
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  }
+
+  expect(halTiltSensor.wasTiltedDown(), "vertical-axis", "portrait gy must report a step down");
+  expect(!halTiltSensor.wasTiltedUp(), "vertical-axis", "one gesture must not fire both directions");
+  expect(!halTiltSensor.wasTiltedForward() && !halTiltSensor.wasTiltedBack(), "vertical-axis",
+         "the vertical axis must leave the horizontal channel silent");
+
+  // Held past the trigger: one gesture stays one event until neutral plus cooldown.
+  fakeMillis = 700;
+  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  expect(!halTiltSensor.wasTiltedDown(), "vertical-latch", "held vertical tilt must not repeat before neutral");
+
+  imu.gy = 0.0f;
+  fakeMillis = 750;
+  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  imu.gy = 400.0f;
+  fakeMillis = 1250;
+  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  expect(halTiltSensor.wasTiltedDown(), "vertical-latch", "neutral plus cooldown must allow the next vertical tilt");
+}
+
+void verticalChannelObeysItsOwnModeAndGate() {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  SETTINGS.orientation = CrossPointOrientation::PORTRAIT;
+  imu.gx = 0.0f;
+  imu.gy = 400.0f;
+
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_OFF);
+  }
+  expect(!halTiltSensor.wasTiltedDown() && !halTiltSensor.wasTiltedUp(), "vertical-off",
+         "an Off vertical mode must never emit");
+
+  resetSensor();
+  imu.gx = 0.0f;
+  imu.gy = 400.0f;
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL, true, false);
+  }
+  expect(!halTiltSensor.wasTiltedDown() && !halTiltSensor.wasTiltedUp(), "vertical-gate",
+         "an inactive row target must never emit");
+
+  resetSensor();
+  imu.gx = 0.0f;
+  imu.gy = 400.0f;
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_INVERTED);
+  }
+  expect(halTiltSensor.wasTiltedUp(), "vertical-inverted", "Inverted must turn the same motion into a step up");
+  expect(!halTiltSensor.wasTiltedDown(), "vertical-inverted", "Inverted must not also report a step down");
+}
+
+void verticalChannelFollowsOrientationLikeTheHorizontalOne() {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  SETTINGS.orientation = CrossPointOrientation::LANDSCAPE_CW;
+  imu.gx = 400.0f;  // vertical axis in landscape CW
+  imu.gy = 0.0f;
+
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runMenuTick(CrossPointTiltPageTurn::TILT_OFF, CrossPointTiltPageTurn::TILT_NORMAL);
+  }
+  expect(halTiltSensor.wasTiltedDown(), "vertical-orientation", "landscape CW must read the vertical axis off gx");
+
+  resetSensor();
+  SETTINGS.orientation = CrossPointOrientation::INVERTED;
+  imu.gx = 0.0f;
+  imu.gy = 400.0f;
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runMenuTick(CrossPointTiltPageTurn::TILT_OFF, CrossPointTiltPageTurn::TILT_NORMAL);
+  }
+  expect(halTiltSensor.wasTiltedUp(), "vertical-orientation", "an upside-down screen must mirror the vertical axis");
+  SETTINGS.orientation = CrossPointOrientation::PORTRAIT;
+}
+
+void readerNeverSeesTheVerticalChannel() {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_NORMAL;
+  SETTINGS.orientation = CrossPointOrientation::PORTRAIT;
+  imu.gx = 0.0f;
+  imu.gy = 400.0f;
+
+  // A menu pass arms the vertical channel, then the reader takes the foreground.
+  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runReaderTick();
+  }
+  expect(!halTiltSensor.wasTiltedUp() && !halTiltSensor.wasTiltedDown(), "reader-vertical",
+         "the reader route must disarm the vertical channel");
+  expect(!halTiltSensor.wasTiltedForward(), "reader-vertical", "vertical motion must not turn a page");
+}
+
 }  // namespace
 
 unsigned long millis() { return fakeMillis; }
@@ -178,6 +289,10 @@ int main() {
   plainActivitySleepsExactlyOnce();
   tabOffSleepsThroughTheTabOwner();
   modalKeepsTheTabLifecycleAndLatch();
+  verticalChannelFiresOnTheOtherAxis();
+  verticalChannelObeysItsOwnModeAndGate();
+  verticalChannelFollowsOrientationLikeTheHorizontalOne();
+  readerNeverSeesTheVerticalChannel();
   std::printf("tilt_sensor_ownership: %d failed assertions\n", failures);
   return failures == 0 ? 0 : 1;
 }

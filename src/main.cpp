@@ -745,8 +745,12 @@ static bool visitDiagnosticSetting(const String& key, Visitor&& visitor) {
 static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
                                                    const bool foregroundActivityManagesTiltSensor) {
   if (foregroundReader) {
+    // Row tilt belongs to the menu screens: the reader keeps the page-turn axis
+    // and nothing else, so the vertical channel is disarmed on the way in.
+    halTiltSensor.configureVerticalGesture(CrossPointTiltPageTurn::TILT_OFF, false);
     halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, true);
   } else if (!foregroundActivityManagesTiltSensor) {
+    halTiltSensor.configureVerticalGesture(CrossPointTiltPageTurn::TILT_OFF, false);
     halTiltSensor.update(CrossPointTiltPageTurn::TILT_OFF, SETTINGS.orientation, false);
   }
 }
@@ -765,6 +769,13 @@ void loop() {
   bool bleInputActivity = false;
   static bool bleReaderBeginAttempted = false;
   static bool bleReaderReconnectConfigured = false;
+  // A start refused for memory is retried a few times once the reader has
+  // settled: the first page build holds the heap the radio needs and gives it
+  // back a few seconds later when the builder parks.
+  static constexpr unsigned long BLE_READER_RETRY_MS = 5000;
+  static constexpr uint8_t BLE_READER_RETRY_LIMIT = 6;
+  static unsigned long bleReaderRetryAtMs = 0;
+  static uint8_t bleReaderRetries = 0;
   static uint32_t bleReaderGeneration = 0;
   auto& bleHid = freeink::BleKeyboardHost::getInstance();
   static uint32_t lastBleCleanupMs = 0;
@@ -817,6 +828,8 @@ void loop() {
     if (!foregroundReader || !SETTINGS.blePageTurnerEnabled || generation != bleReaderGeneration) {
       bleReaderBeginAttempted = false;
       bleReaderReconnectConfigured = false;
+      bleReaderRetryAtMs = 0;
+      bleReaderRetries = 0;
     }
     bleReaderGeneration = generation;
     // A page-key release or touch on the foreground reader grants one fresh
@@ -837,6 +850,20 @@ void loop() {
       bleIdleSinceMs = 0;
       freeink::ble::suspendForTransition();
     } else {
+      if (foregroundReader && bleReaderBeginAttempted && freeink::ble::readerStartDeferred() && !bleHid.isRunning() &&
+          !freeink::ble::initializing() && !freeink::ble::idleStopped() && bleReaderRetries < BLE_READER_RETRY_LIMIT) {
+        if (bleReaderRetryAtMs == 0) {
+          bleReaderRetryAtMs = millis() + BLE_READER_RETRY_MS;
+        } else if (millis() >= bleReaderRetryAtMs) {
+          bleReaderRetryAtMs = 0;
+          ++bleReaderRetries;
+          bleReaderBeginAttempted = false;
+          LOG_INF("BLE", "Retrying reader BLE start after memory refusal (%u)", static_cast<unsigned>(bleReaderRetries));
+        }
+      } else {
+        bleReaderRetryAtMs = 0;
+        if (bleHid.isRunning()) bleReaderRetries = 0;
+      }
       if (foregroundReader && activityManager.isForegroundReaderReady() && !bleReaderBeginAttempted &&
           !freeink::ble::idleStopped() && !bleHid.isStopping()) {
         bleReaderBeginAttempted = true;
@@ -879,17 +906,22 @@ void loop() {
           const auto hanhDong = SETTINGS.blePageActionFor(ev.keycode, ev.mods);
           // Mot dong cho MOI phim lay ra: day la duong chan doan cho nguoi cam
           // dieu khien that (doc qua serial la biet remote gui ma nao).
-          LOG_INF("BLE", "key 0x%02X mods 0x%02X -> %s", ev.keycode, ev.mods,
+          LOG_INF("BLE", "key 0x%02X mods 0x%02X %s -> %s", ev.keycode, ev.mods, ev.pressed ? "down" : "up",
                   hanhDong == CrossPointSettings::BlePageAction::PreviousPage  ? "previous"
                   : hanhDong == CrossPointSettings::BlePageAction::NextPage    ? "next"
                                                                                : "none");
-          if (hanhDong == CrossPointSettings::BlePageAction::PreviousPage ||
-              hanhDong == CrossPointSettings::BlePageAction::NextPage) {
-            // Enqueue once per new mapped report. A deferred repaint never
-            // generates another activity-timer reset on subsequent ticks.
-            if (activityManager.pageTurn(hanhDong == CrossPointSettings::BlePageAction::NextPage)) {
-              bleInputActivity = true;
-            }
+          if (hanhDong != CrossPointSettings::BlePageAction::PreviousPage &&
+              hanhDong != CrossPointSettings::BlePageAction::NextPage) {
+            continue;
+          }
+          // Only the press edge acts. Free3 reports a fixed release 60-100 ms after
+          // every press regardless of how long the button is held, so a hold cannot
+          // be told from a tap and the release frame carries nothing to act on.
+          if (!ev.pressed) continue;
+          // Enqueue once per new mapped report. A deferred repaint never
+          // generates another activity-timer reset on subsequent ticks.
+          if (activityManager.pageTurn(hanhDong == CrossPointSettings::BlePageAction::NextPage)) {
+            bleInputActivity = true;
           }
         }
       }

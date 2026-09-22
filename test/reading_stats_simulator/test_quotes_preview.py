@@ -61,10 +61,20 @@ class QuotesPreviewTest(unittest.TestCase):
         saved = json.loads(files[0].read_text())
         self.assertEqual(saved['text'], 'position. Clear')
         self.assertEqual((saved['path'], saved['spine'], saved['page']), ('/audit.epub', 0, 0))
-        with Image.open(self.sd / 'before.bmp') as before, Image.open(self.sd / 'dismissed.bmp') as dismissed:
+        # Sau khi luu, trang quay ve dung cho cu nhung doan vua luu phai con to dam: phan khac
+        # biet so voi truoc khi chon nam gon trong vung doan chon, ngoai vung do khong doi.
+        with Image.open(self.sd / 'before.bmp') as before, Image.open(self.sd / 'dismissed.bmp') as dismissed, \
+                Image.open(self.sd / 'selection.bmp') as selection:
             content = (0, 0, before.width, before.height - 45)
-            self.assertIsNone(ImageChops.difference(before.crop(content).convert('RGB'),
-                                                    dismissed.crop(content).convert('RGB')).getbbox())
+            picked = ImageChops.difference(before.crop(content).convert('RGB'),
+                                           selection.crop(content).convert('RGB')).getbbox()
+            kept = ImageChops.difference(before.crop(content).convert('RGB'),
+                                         dismissed.crop(content).convert('RGB')).getbbox()
+            self.assertIsNotNone(picked, log)
+            self.assertIsNotNone(kept, 'saved quote is not highlighted after the feedback closes')
+            self.assertTrue(kept[0] >= picked[0] - 2 and kept[1] >= picked[1] - 2 and
+                            kept[2] <= picked[2] + 2 and kept[3] <= picked[3] + 2,
+                            f'highlight {kept} spills outside the selected text {picked}')
         with Image.open(self.sd / 'selection.bmp') as selection, Image.open(self.sd / 'saved.bmp') as feedback:
             self.assertIsNotNone(ImageChops.difference(selection.convert('RGB'), feedback.convert('RGB')).getbbox())
         if evidence := os.environ.get('CROSSPOINT_QUOTE_EVIDENCE_DIR'):
@@ -106,6 +116,132 @@ class QuotesPreviewTest(unittest.TestCase):
             self.assertEqual(saved['text'], 'position.')
             self.assertEqual(saved['title'], 'Synonym Lookup Test')
             self.assertEqual((saved['path'],saved['spine'],saved['page']), ('/audit.epub',0,0))
+
+    # Shape of one quote block, mirroring src/components/QuoteBlockLayout.h. The screen is
+    # checked through these pixels because a wrong inset only shows on the panel as "reads
+    # badly", which is what sent this screen back for a rework.
+    SIDE_INSET = 20
+    BAR_WIDTH = 2
+    BAR_WIDTH_SELECTED = 6
+    BAR_GAP = 14
+
+    def seed_quotes(self):
+        quotes = self.store / 'quotes'
+        quotes.mkdir()
+        rows = [
+            ('1111111111111111', 'Tiêu chuẩn không phải là điều ta mong muốn, nó là điều ta làm mỗi ngày, '
+                                 'kể cả khi không ai nhìn.', 'Score Takes Care of Itself', 3, 12, 20260919),
+            ('2222222222222222', 'A short one.', 'Ego is the Enemy', 1, 4, 20260920),
+            ('3333333333333333', 'The reader turns one page and keeps its position. Clear lines fit the page. '
+                                 'Office affine affinity. The reader turns one page and keeps its position again, '
+                                 'and the paragraph runs on well past the fourth line.', 'Synonym Lookup Test',
+             0, 2, 20260921),
+        ]
+        for name, text, title, spine, page, day in rows:
+            (quotes / (name + '.json')).write_text(json.dumps(
+                {'schema': 1, 'path': '/audit.epub', 'title': title, 'text': text,
+                 'spine': spine, 'page': page, 'day': day}, ensure_ascii=False), encoding='utf-8')
+
+    @staticmethod
+    def dark_runs(image, x0, x1, y0, y1):
+        """Vertical runs of ink inside the column strip [x0, x1)."""
+        pixels = image.load()
+        runs, start = [], None
+        for y in range(y0, y1):
+            dark = any(pixels[x, y] < 128 for x in range(x0, x1))
+            if dark and start is None:
+                start = y
+            if not dark and start is not None:
+                runs.append((start, y - 1))
+                start = None
+        if start is not None:
+            runs.append((start, y1 - 1))
+        return runs
+
+    @staticmethod
+    def full_width_bands(image, footer=45):
+        """Rows that are ink almost edge to edge, grouped: one group per highlighted line."""
+        pixels = image.load()
+        width, height = image.size
+        rows = [y for y in range(height - footer)
+                if sum(1 for x in range(width) if pixels[x, y] < 128) > width * 0.9]
+        bands, start, previous = [], rows[0], rows[0]
+        for y in rows[1:]:
+            if y != previous + 1:
+                bands.append((start, previous))
+                start = y
+            previous = y
+        bands.append((start, previous))
+        return bands
+
+    def continuous_bands(self, image):
+        """Bands with no unpainted column inside them: one mark per line, spaces included."""
+        pixels = image.load()
+        width = image.size[0]
+        found = []
+        for top, bottom in self.full_width_bands(image):
+            columns = [x for x in range(width) if any(pixels[x, y] < 128 for y in range(top, bottom + 1))]
+            left, right = min(columns), max(columns)
+            gaps = sum(1 for x in range(left, right + 1)
+                       if all(pixels[x, y] >= 128 for y in range(top, bottom + 1)))
+            if gaps == 0 and right - left >= 400:
+                found.append((top, bottom, right - left + 1))
+        return found
+
+    def test_holding_right_extends_the_quote_and_marks_whole_lines(self):
+        # One hold instead of one press per word: 2.2 seconds of RIGHT has to cross tens of
+        # words, which the old fixed 500 ms repeat could never do.
+        events = ('1000:CONFIRM;3200:CONFIRM;4400:DOWN;5000:DOWN;5600:DOWN;'
+                  '6600:RIGHT;7200:RIGHT;8200:CONFIRM;9200:CONFIRM;9900:RIGHT:2200;'
+                  '13000:CONFIRM;14200:CONFIRM;16000:QUIT')
+        log = self.finish(*self.launch(events, ((12300, 'selection'), (15200, 'reader'))))
+        self.assertIn('Entering activity: QuoteSelect', log)
+        files = list((self.store / 'quotes').glob('*.json'))
+        self.assertEqual(len(files), 1, log)
+        saved = json.loads(files[0].read_text())
+        self.assertGreater(len(saved['text'].split()), 20, saved['text'])
+        self.assertIn('vo', saved)
+        # Every whole line of the selection is one unbroken mark, the spaces between the
+        # words included, and the saved quote is drawn the same way back in the reader.
+        with Image.open(self.sd / 'selection.bmp') as selection, Image.open(self.sd / 'reader.bmp') as reader:
+            picked = self.continuous_bands(selection.convert('L'))
+            kept = self.continuous_bands(reader.convert('L'))
+            self.assertGreaterEqual(len(picked), 3, picked)
+            self.assertEqual([band[:2] for band in picked], [band[:2] for band in kept])
+
+    def test_quotes_screen_draws_blocks_with_a_bar_and_marks_the_selection(self):
+        self.seed_quotes()
+        # Home: three DOWN to the Statistics tab, three RIGHT to its fourth row (Quotes).
+        events = ('1000:DOWN;1800:DOWN;2600:DOWN;3400:RIGHT;4200:RIGHT;5000:RIGHT;6000:CONFIRM;'
+                  '8500:DOWN;10500:DOWN;12500:CONFIRM;16000:QUIT')
+        log = self.finish(*self.launch(events, ((8000, 'quotes-list'), (12000, 'quotes-third'),
+                                                (15000, 'quotes-detail'))))
+        self.assertIn('Entering activity: Quotes', log)
+        self.assertIn('Entering activity: DictionaryDefinition', log)
+
+        thin = (self.SIDE_INSET, self.SIDE_INSET + self.BAR_WIDTH)
+        wide = (self.SIDE_INSET + self.BAR_WIDTH, self.SIDE_INSET + self.BAR_WIDTH_SELECTED)
+        air = (self.SIDE_INSET + self.BAR_WIDTH_SELECTED, self.SIDE_INSET + self.BAR_WIDTH_SELECTED + self.BAR_GAP - 1)
+        selected_bars = []
+        for name in ('quotes-list', 'quotes-third'):
+            with Image.open(self.sd / f'{name}.bmp') as shot:
+                image = shot.convert('L')
+                height = image.size[1]
+                bars = self.dark_runs(image, thin[0], thin[1], 80, height - 50)
+                self.assertEqual(len(bars), 3, f'{name}: expected one bar per quote, got {bars}')
+                marked = self.dark_runs(image, wide[0], wide[1], 80, height - 50)
+                self.assertEqual(len(marked), 1, f'{name}: exactly one block is selected, got {marked}')
+                self.assertIn(marked[0], bars, f'{name}: the wide bar must sit on a block')
+                # Nothing but the bar: the air between it and the first glyph stays empty.
+                self.assertEqual(self.dark_runs(image, air[0], air[1], 80, height - 50), [],
+                                 f'{name}: something was drawn in the block gutter')
+                selected_bars.append(marked[0])
+        self.assertNotEqual(selected_bars[0], selected_bars[1], 'Down did not move the selection')
+        if evidence := os.environ.get('CROSSPOINT_QUOTE_EVIDENCE_DIR'):
+            target = Path(evidence)
+            target.mkdir(parents=True, exist_ok=True)
+            for name in ('quotes-list', 'quotes-third', 'quotes-detail'):
+                shutil.copy2(self.sd / f'{name}.bmp', target / f'{name}.bmp')
 
     def protected(self):
         return {str(p.relative_to(self.store)):hashlib.sha256(p.read_bytes()).hexdigest()

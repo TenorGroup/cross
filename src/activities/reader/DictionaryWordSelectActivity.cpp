@@ -15,6 +15,7 @@
 
 #include "CrossPointSettings.h"
 #include "DictionaryDefinitionActivity.h"
+#include "QuoteHighlight.h"
 #include "ReadingStatsStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -22,8 +23,6 @@
 namespace {
 
 constexpr unsigned long POPUP_DURATION_MS = 1500;
-constexpr unsigned long WORD_REPEAT_START_MS = 500;
-constexpr unsigned long WORD_REPEAT_INTERVAL_MS = 500;
 
 // A token is selectable when it has an ASCII alphanumeric or a non-ASCII
 // codepoint outside U+2000-U+206F (dashes, bullets and other General
@@ -256,6 +255,14 @@ void DictionaryWordSelectActivity::confirmQuotation() {
     quote.text += words[i].text;
   }
   quote.day = ReadingStatsStore::currentDay();
+  // Anchor the saved text to its place in the book, so the reader can find these same
+  // words on a later render. The walk below uses the same word order and the same word
+  // filter this screen selected with; a different count means the two disagreed, and a
+  // quote with no anchor is better than one drawn over the wrong words.
+  std::vector<quotes::PageWord> anchored;
+  quotes::pageWords(*page, marginLeft, marginTop, renderer.getFontAscenderSize(fontId), anchored);
+  if (anchored.size() == words.size())
+    quotes::setAnchor(quote, anchored, static_cast<size_t>(first), static_cast<size_t>(last));
   if (quotes::save(quote)) {
     popup = Popup::Saved;
     requestUpdate();
@@ -328,19 +335,24 @@ void DictionaryWordSelectActivity::loop() {
 
   const bool hasNextWord = selected + 1 < static_cast<int>(words.size());
   const unsigned long now = millis();
-  const bool repeat =
-      mappedInput.getHeldTime() >= WORD_REPEAT_START_MS && now - lastHorizontalMoveTime >= WORD_REPEAT_INTERVAL_MS;
-  const bool moveLeft = mappedInput.wasPressed(MappedInputManager::Button::ScreenLeft) ||
-                        (repeat && mappedInput.isPressed(MappedInputManager::Button::ScreenLeft));
-  const bool moveRight = mappedInput.wasPressed(MappedInputManager::Button::ScreenRight) ||
-                         (repeat && mappedInput.isPressed(MappedInputManager::Button::ScreenRight));
+  // Holding Left/Right walks the page: the first repeat waits, then the steps come
+  // faster, so picking a long quote is one hold instead of one press per word.
+  const bool leftPressed = mappedInput.wasPressed(MappedInputManager::Button::ScreenLeft);
+  const bool rightPressed = mappedInput.wasPressed(MappedInputManager::Button::ScreenRight);
+  const bool leftDown = mappedInput.isPressed(MappedInputManager::Button::ScreenLeft);
+  const bool rightDown = mappedInput.isPressed(MappedInputManager::Button::ScreenRight);
+  if (leftPressed || rightPressed)
+    horizontalRepeat.pressed(now);
+  else if (!leftDown && !rightDown)
+    horizontalRepeat.released();
+  const bool repeat = (leftDown || rightDown) && horizontalRepeat.shouldStep(now);
+  const bool moveLeft = leftPressed || (repeat && leftDown);
+  const bool moveRight = rightPressed || (repeat && rightDown);
   if (moveLeft && selected > 0) {
     selected--;
-    lastHorizontalMoveTime = now;
     requestUpdate();
   } else if (moveRight && hasNextWord) {
     selected++;
-    lastHorizontalMoveTime = now;
     requestUpdate();
   } else if (mappedInput.wasPressed(MappedInputManager::Button::ScreenUp)) {
     moveVertical(-1);
@@ -462,11 +474,17 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
 
   if (!words.empty()) {
     if (quoteMode && anchor >= 0) {
-      for (int i = std::min(anchor, selected); i <= std::max(anchor, selected); ++i) {
-        const auto& word = words[i];
-        renderer.fillRect(word.x - 1, word.y - 1, word.width + 2, lineHeight + 2);
-        renderer.drawText(fontId, word.x, word.y, word.text, false, word.style);
-      }
+      // One fill per line rather than one per word, so the spaces inside the selection
+      // are marked too and the reader later draws the saved quote the same way.
+      const int first = std::min(anchor, selected), last = std::max(anchor, selected);
+      std::vector<quotes::WordBox> boxes;
+      boxes.reserve(static_cast<size_t>(last - first) + 1);
+      for (int i = first; i <= last; ++i) boxes.push_back(quotes::WordBox{words[i].x, words[i].y, words[i].width});
+      std::vector<quotes::HighlightBand> bands;
+      quotes::highlightBands(boxes, lineHeight, bands);
+      for (const auto& band : bands) renderer.fillRect(band.x, band.y, band.width, band.height);
+      for (int i = first; i <= last; ++i)
+        renderer.drawText(fontId, words[i].x, words[i].y, words[i].text, false, words[i].style);
     } else
       drawHighlightWithSnapshot();
   }

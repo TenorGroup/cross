@@ -78,11 +78,13 @@ std::vector<uint8_t> bootReport(uint8_t mods, std::initializer_list<uint8_t> key
   return report;
 }
 
-// What the page-turner path decided for the events it was handed. `events` is the
-// number of key events the host made available to the app, `previous`/`next` the
-// page turns those events map to.
+// What the page-turner path decided for the events it was handed. The host hands the
+// app BOTH edges of a button, so a direction is decided once, on the press edge, and
+// `releases` counts the matching second halves. `events` is the number of press
+// events the host made available, `previous`/`next` the page turns they map to.
 struct Turns {
   int events = 0;
+  int releases = 0;
   int previous = 0;
   int next = 0;
   uint8_t lastUsage = 0;  // ma THO cua su kien cuoi - cung la ma in ra log chan doan
@@ -176,6 +178,10 @@ class PageTurnerFakeInputTest : public ::testing::Test {
     Turns turns;
     KeyEvent ev;
     while (fakeble::host().popKey(ev)) {
+      if (!ev.pressed) {
+        ++turns.releases;
+        continue;  // the release edge repeats the button's identity, it decides nothing
+      }
       ++turns.events;
       turns.lastUsage = ev.keycode;
       switch (SETTINGS.blePageActionFor(ev.keycode, ev.mods)) {
@@ -209,6 +215,7 @@ TEST_F(PageTurnerFakeInputTest, AssignedKeyTurnsExactlyOnePageInItsDirection) {
   releaseAll();
   const Turns nextTurn = drainTurns();
   EXPECT_EQ(nextTurn.events, 1);
+  EXPECT_EQ(nextTurn.releases, 1) << "the press edge arrived without its release";
   EXPECT_EQ(nextTurn.next, 1);
   EXPECT_EQ(nextTurn.previous, 0);
 
@@ -318,32 +325,42 @@ TEST_F(PageTurnerFakeInputTest, UnassignedKeysTurnNoPage) {
 TEST_F(PageTurnerFakeInputTest, MixedScriptTurnsExactlyTheAssignedPages) {
   connectRemote();
 
-  press(kUsageRight);
-  releaseAll();
-  press(kUsagePageDown);
-  releaseAll();
-  press(kUsageRight);
-  releaseAll();
-  press(kUsageRight);
-  releaseAll();
-  press(kUsagePageUp);
-  releaseAll();
-  press(kUsageLeft);
-  releaseAll();
+  // Each gesture is drained where it happens, which is what the main loop does on
+  // every iteration: ten gestures held unread would be twenty events, past the ring.
+  Turns turns;
+  const auto drainInto = [&] {
+    const Turns batch = drainTurns();
+    turns.events += batch.events;
+    turns.releases += batch.releases;
+    turns.previous += batch.previous;
+    turns.next += batch.next;
+  };
+  const auto gesture = [&](uint8_t usage, uint8_t mods = 0) {
+    press(usage, mods);
+    drainInto();
+    releaseAll();
+    drainInto();
+  };
 
-  press(kUsageRight, HID_LCTRL);  // Ctrl+Right: ignored
-  releaseAll();
-  press(kUsageLeft, HID_LSHIFT);  // Shift+Left: ignored
-  releaseAll();
+  gesture(kUsageRight);
+  gesture(kUsagePageDown);
+  gesture(kUsageRight);
+  gesture(kUsageRight);
+  gesture(kUsagePageUp);
+  gesture(kUsageLeft);
+
+  gesture(kUsageRight, HID_LCTRL);  // Ctrl+Right: ignored
+  gesture(kUsageLeft, HID_LSHIFT);  // Shift+Left: ignored
 
   press(kUsageRight);  // a held button repeating its frame, then the release
+  drainInto();
   press(kUsageRight);
+  drainInto();
   releaseAll();
+  drainInto();
 
-  press(kUsageA);  // unassigned
-  releaseAll();
+  gesture(kUsageA);  // unassigned
 
-  const Turns turns = drainTurns();
   // Five Next (four assigned presses + the held button's single fresh press) and two
   // Previous, out of ten events the host handed over.
   EXPECT_EQ(turns.next, 5);
@@ -456,6 +473,7 @@ TEST_F(PageTurnerFakeInputTest, BindingLoopLearnsTheFirstUsageTheRemoteSends) {
   int accepted = 0;
   const auto learnNext = [&] {
     while (fakeble::host().popKey(ev)) {
+      if (!ev.pressed) continue;  // the release edge repeats the usage; takeKey() skips it
       if (blebinding::assign(blebinding::Direction::Next, ev.keycode, ev.mods)) ++accepted;
     }
   };

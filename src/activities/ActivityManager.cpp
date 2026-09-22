@@ -521,6 +521,11 @@ bool ActivityManager::pageTurn(const bool forward) {
   return static_cast<ReaderActivity*>(currentActivity.get())->luotLatTrangNgoai(forward);
 }
 
+bool ActivityManager::chapterSkip(const bool forward) {
+  if (!isForegroundReaderReady() || sleepTransition) return false;
+  return static_cast<ReaderActivity*>(currentActivity.get())->luotNhayChuongNgoai(forward);
+}
+
 bool ActivityManager::handleForcedRefresh() { return currentActivity && currentActivity->handleForcedRefresh(); }
 
 bool ActivityManager::skipLoopDelay() const { return currentActivity && currentActivity->skipLoopDelay(); }

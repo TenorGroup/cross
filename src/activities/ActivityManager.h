@@ -140,6 +140,8 @@ class ActivityManager {
   // Queue an external page action on the ready foreground reader. True means
   // this new input was accepted; the reader applies it when rendering is safe.
   bool pageTurn(bool forward);
+  // Nhu pageTurn, nhung mot nac CHUONG (giu nut lat trang tren remote BLE).
+  bool chapterSkip(bool forward);
   bool handleForcedRefresh();
   bool skipLoopDelay() const;
   ScreenshotInfo getScreenshotInfo() const;

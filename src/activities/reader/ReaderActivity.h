@@ -46,6 +46,7 @@ class ReaderActivity : public Activity {
   bool processExternalPageTurn();
   int8_t pendingExternalTurn = 0;
   bool pendingTurnIsLocal = false;
+  bool pendingExternalChapter = false;
   uint32_t pendingExternalGeneration = 0;
 #ifdef TENOR_UI_ACCEPTANCE
   struct TurnTrace {
@@ -65,6 +66,9 @@ class ReaderActivity : public Activity {
   void dropTurnTrace(TurnTrace& trace, const char* reason);
 #endif
   virtual bool skipPages(int amount) { return pageTurn(amount > 0); }
+  // Nhay DUNG MOT chuong theo `huong` (+1 toi, -1 lui). Khoa ve da duoc nguoi goi
+  // giu san. Trinh doc khong co muc luc tra ve false: giu nut o do khong lam gi.
+  virtual bool nhayChuongThat(int /*huong*/) { return false; }
   // Giu nut lat trang khi "Giu nut lat trang khi doc" = Co chu: doi co mot nac theo `huong`
   // (+1 to, -1 nho), KEP o hai bien. Tra ve true neu co doi. Mac dinh (XTC, bitmap) khong doi gi,
   // nhung nhip giu van bi TIEU: 0 doi co, 0 lat trang du.
@@ -91,6 +95,10 @@ class ReaderActivity : public Activity {
   // Queue one external direction for this reader generation. The reader loop
   // applies render/menu guards, counts the accepted turn and requests repaint.
   bool luotLatTrangNgoai(bool isForward);
+
+  // Nhu tren, nhung mot nac CHUONG. Cung mot hang doi nen hai lenh khong chong nhau:
+  // lenh sau thay lenh truoc, giong hai luot lat trang lien tiep.
+  bool luotNhayChuongNgoai(bool isForward);
 
   static std::unique_ptr<ReaderActivity> create(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                 std::string path, bool allowFastInitialRefresh, bool preview = false);

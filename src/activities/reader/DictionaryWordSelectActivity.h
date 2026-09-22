@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "QuoteStore.h"
+#include "WordSelectRepeat.h"
 #include "activities/Activity.h"
 #include "util/Dictionary.h"
 
@@ -68,7 +69,7 @@ class DictionaryWordSelectActivity final : public Activity {
   std::vector<WordBox> words;
   int selected = 0;
   uint16_t rowCount = 0;
-  unsigned long lastHorizontalMoveTime = 0;
+  wordselect::Repeat horizontalRepeat;
 
   Dictionary dict;
   bool dictOpenAttempted = false;

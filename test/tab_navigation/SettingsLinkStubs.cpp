@@ -28,6 +28,12 @@ bool lastTargetActive = false;
 bool physicalForward = false;
 bool forwardEvent = false;
 bool backwardEvent = false;
+// Vertical channel: the menu row axis, armed by its own mode and target gate.
+uint8_t lastVerticalMode = CrossPointTiltPageTurn::TILT_OFF;
+bool lastVerticalTargetActive = false;
+bool physicalVertical = false;
+bool upEvent = false;
+bool downEvent = false;
 
 void reset() {
   lastMode = CrossPointTiltPageTurn::TILT_OFF;
@@ -35,9 +41,18 @@ void reset() {
   physicalForward = false;
   forwardEvent = false;
   backwardEvent = false;
+  lastVerticalMode = CrossPointTiltPageTurn::TILT_OFF;
+  lastVerticalTargetActive = false;
+  physicalVertical = false;
+  upEvent = false;
+  downEvent = false;
 }
 
 void injectPhysicalForward() { physicalForward = true; }
+
+// One physical flick on the vertical axis: the top edge leaning toward the
+// user, which Normal reports as a step up.
+void injectPhysicalVertical() { physicalVertical = true; }
 }  // namespace tiltfixture
 
 void HalTiltSensor::update(const uint8_t mode, const uint8_t, const bool gestureTargetActive) {
@@ -65,6 +80,34 @@ bool HalTiltSensor::wasTiltedForward() {
 bool HalTiltSensor::wasTiltedBack() {
   const bool event = tiltfixture::backwardEvent;
   tiltfixture::backwardEvent = false;
+  return event;
+}
+
+void HalTiltSensor::configureVerticalGesture(const uint8_t mode, const bool gestureTargetActive) {
+  tiltfixture::lastVerticalMode = mode;
+  tiltfixture::lastVerticalTargetActive = gestureTargetActive;
+  tiltfixture::upEvent = false;
+  tiltfixture::downEvent = false;
+  if (!tiltfixture::physicalVertical) return;
+
+  tiltfixture::physicalVertical = false;
+  if (!gestureTargetActive || mode == CrossPointTiltPageTurn::TILT_OFF) return;
+  if (mode == CrossPointTiltPageTurn::TILT_NORMAL) {
+    tiltfixture::upEvent = true;
+  } else if (mode == CrossPointTiltPageTurn::TILT_INVERTED) {
+    tiltfixture::downEvent = true;
+  }
+}
+
+bool HalTiltSensor::wasTiltedUp() {
+  const bool event = tiltfixture::upEvent;
+  tiltfixture::upEvent = false;
+  return event;
+}
+
+bool HalTiltSensor::wasTiltedDown() {
+  const bool event = tiltfixture::downEvent;
+  tiltfixture::downEvent = false;
   return event;
 }
 

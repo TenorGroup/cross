@@ -143,6 +143,12 @@ struct TiltBoundary {
     ++updateCalls;
     if (!gestureTargetActive) activity = false;
   }
+  void configureVerticalGesture(uint8_t mode, bool gestureTargetActive) {
+    verticalMode = mode;
+    verticalTargetActive = gestureTargetActive;
+  }
+  uint8_t verticalMode = 0;
+  bool verticalTargetActive = false;
   void deepSleep() {}
 } halTiltSensor;
 static const char* SLEEP_FRAME_FILE = "/sleep-frame";

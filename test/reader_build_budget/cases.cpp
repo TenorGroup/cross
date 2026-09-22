@@ -6,7 +6,7 @@ template<class F> void test(const char* name, F fn) {
   freeink::ble::readerStartDeferredState = false;
   freeink::ble::idleStoppedState = false;
   freeink::ble::stopForIdleCalls = freeink::ble::rearmRequests = 0;
-  clockMs = 1000; popupCount = buildErrors = 0; popupAtMs = 0;
+  clockMs = 1000; popupCount = buildErrors = 0; popupAtMs = 0; thumbs = {};
   try { fn(); std::cout << "PASS " << name << '\n'; }
   catch (const std::exception& e) { ++failures; std::cout << "FAIL " << name << ": " << e.what() << '\n'; }
 }
@@ -220,7 +220,9 @@ int main() {
     require(r.section->parks == 1 && r.section->suspends == 0, "parking used partial-commit fallback");
     require(r.section->pageCount == 19 && r.section->currentPage == 4, "parking lost readable pages or position");
     require(!r.skipLoopDelay(), "parked heap latch busy-spins");
-    ESP.free = 80000; ESP.largest = 60000;
+    // Recovered means recovered past the parser this park released (80000 - 29100) plus the
+    // tick budget it must stay above, not just past the start gate.
+    ESP.free = 96000; ESP.largest = 60000;
     r.backgroundTick();
     require(r.section->ticks == 1 && r.section->resumes == 1 && !r.section->isBuildParked(),
             "recovered heap did not resume the parked parser");
@@ -296,6 +298,71 @@ int main() {
     r.backgroundTick(); r.processExternalPageTurn();
     require(r.requests == 1 && r.trangDaLat == 1, "queued turn replayed");
   });
+  // Heap values below are the ones the device logged right after the first page of a
+  // cold open painted: PAINT_COMPLETE rid=1 heap=116768 largest=90100.
+  test("cover thumbnail leaves the open path and runs on an idle pass", [] {
+    EpubReaderActivity r; r.section->building = r.section->partial = false;
+    r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
+    r.openThumbStep();
+    require(thumbs.existsChecks == 1, "open path stopped looking for the cover thumbnail");
+    require(thumbs.generated == 0, "open path still paid for the cover thumbnail");
+    ESP.free = 116768; ESP.largest = 90100;
+    r.lastRenderCompleteMs = millis();
+    clockMs += 500;  // past IDLE_PREWARM_DEBOUNCE_MS, first page is on the panel
+    r.idleStep();
+    require(thumbs.generated == 1, "idle pass never generated the deferred thumbnail");
+    // A loan returns the framebuffer white and nothing repaints it on this path.
+    require(thumbs.loans == 0, "idle thumbnail borrowed the framebuffer under a live page");
+    clockMs += 500;
+    r.idleStep();
+    require(thumbs.generated == 1, "deferred thumbnail ran again on a later idle pass");
+  });
+  test("deferred thumbnail waits for heap and for the first page", [] {
+    EpubReaderActivity r; r.section->building = r.section->partial = false;
+    r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
+    r.openThumbStep();
+    ESP.free = 116768; ESP.largest = 90100;
+    r.idleStep();
+    require(thumbs.generated == 0, "thumbnail ran before the first page was painted");
+    r.lastRenderCompleteMs = millis();
+    clockMs += 500;
+    ESP.free = 53364; ESP.largest = 28660;  // deep in a chapter, parser resident
+    r.idleStep();
+    require(thumbs.generated == 0, "thumbnail ran below the idle heap budget");
+    ESP.free = 116768; ESP.largest = 90100;
+    r.idleStep();
+    require(thumbs.generated == 1, "thumbnail never recovered once heap returned");
+  });
+  test("existing cover thumbnail asks for nothing on either path", [] {
+    EpubReaderActivity r; thumbs.fileOnCard = true;
+    r.section->building = r.section->partial = false;
+    r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
+    r.openThumbStep();
+    ESP.free = 116768; ESP.largest = 90100;
+    r.lastRenderCompleteMs = millis();
+    clockMs += 500;
+    r.idleStep();
+    require(thumbs.generated == 0, "warm open regenerated an existing thumbnail");
+    require(thumbs.loans == 0, "warm open borrowed the framebuffer for nothing");
+  });
+  // Device evidence (serial-r14-rx.log): EPUB_PARK free=50564 then EPUB_RESUME free=28924,
+  // so the parser takes back about 21 KB and lands under the 32 KB tick budget.
+  test("parked parser is not resumed into an immediate re-park", [] {
+    EpubReaderActivity r; r.section->canPark = true;
+    r.section->parkRestoresFree = 66000; r.section->parkRestoresLargest = 60000;
+    r.section->parserFootprint = 35000;
+    ESP.free = 29100; ESP.largest = 17396;
+    r.backgroundTick();
+    require(r.section->isBuildParked() && r.section->parks == 1, "heap pressure did not park the parser");
+    for (int n = 0; n < 20; ++n) r.backgroundTick();
+    require(r.section->resumes == 0, "parked parser was resumed only to be parked again");
+    require(r.section->parks == 1, "park and resume churn continued after the first park");
+    require(!r.skipLoopDelay(), "refused resume busy-spins");
+    ESP.free = 116768; ESP.largest = 90100;
+    r.backgroundTick();
+    require(r.section->resumes == 1 && !r.section->isBuildParked(),
+            "heap that covers the parser did not resume the parked build");
+  });
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
   test("BLE idle with enabled setting admits background parser", [] {
     EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = true; r.buildViewportWidth = 515;
@@ -319,6 +386,15 @@ int main() {
     r.backgroundTick();
     require(r.section->ticks == 1 && r.section->resumes == 1 && !r.section->isBuildParked(),
             "idle BLE did not restore admitted background progress");
+  });
+  test("starved extension never stops a radio that is still starting", [] {
+    EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = true; r.section->canPark = true;
+    r.section->starveUntilRadioStopped = true; r.section->currentPage = r.section->pageCount;
+    freeink::ble::initializingState = true;
+    { RenderLock held; r.foreground(); }
+    require(freeink::ble::stopForIdleCalls == 0, "radio torn down while its start was in flight");
+    require(buildErrors == 0 && r.section && popupCount == 1, "starved build with radio starting did not fall back to the memory notice");
+    require(!r.radioReleasedForBuild, "release flagged although the radio was left alone");
   });
   test("starved extension stops radio then finishes the page", [] {
     EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = true; r.section->canPark = true;

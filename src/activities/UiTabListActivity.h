@@ -73,6 +73,13 @@ class UiTabListActivity : public UiListActivity {
   virtual bool allowsTiltTabNavigation() const { return true; }
   bool acceptsTiltTabNavigation() const;
   bool queueTiltTabNavigation(bool forward, bool backward);
+  // Row tilt shares the modal gate with tab tilt: a popup owning the screen
+  // stands both of them down.
+  virtual bool allowsTiltMenuNavigation() const { return allowsTiltTabNavigation(); }
+  bool acceptsTiltMenuNavigation() const;
+  // One gesture is one row, wrap included: the same intents the two front
+  // buttons queue.
+  bool queueTiltMenuNavigation(bool up, bool down);
   // Moi man the tu quyet nghia cua Chon va Quay lai; luat chung tu 14/09/2026 dem: Chon o thanh
   // the buoc xuong dong dau, Quay lai roi man mot nhip.
   bool handleButtons() override = 0;

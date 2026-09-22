@@ -41,8 +41,11 @@ void reset();
 namespace tiltfixture {
 extern uint8_t lastMode;
 extern bool lastTargetActive;
+extern uint8_t lastVerticalMode;
+extern bool lastVerticalTargetActive;
 void reset();
 void injectPhysicalForward();
+void injectPhysicalVertical();
 }  // namespace tiltfixture
 
 HalDisplay& hostTestDisplay();
@@ -90,6 +93,8 @@ class FakeTabScreen final : public UiTabListActivity {
   freeink::ui::ListNav& state() { return activeNav(); }
   bool acceptsTiltTabs() const { return acceptsTiltTabNavigation(); }
   bool queueTilt(const bool forward, const bool backward) { return queueTiltTabNavigation(forward, backward); }
+  bool acceptsTiltRows() const { return acceptsTiltMenuNavigation(); }
+  bool queueTiltRow(const bool up, const bool down) { return queueTiltMenuNavigation(up, down); }
 
  protected:
   bool allowsTiltTabNavigation() const override { return !modalActive; }
@@ -242,10 +247,10 @@ TEST_F(TabScreenFixture, TabTiltModeStaysIndependentFromReaderTiltMode) {
     EXPECT_EQ(tiltfixture::lastMode, tabMode);
     EXPECT_TRUE(tiltfixture::lastTargetActive);
     EXPECT_EQ(screen.tabSteps, tabMode == CrossPointSettings::TILT_OFF ? 0 : 1);
-    // Tab tilt runs opposite to the raw sensor mode: Normal steps back,
-    // Inverted steps next.
-    EXPECT_EQ(screen.tab, tabMode == CrossPointSettings::TILT_NORMAL ? 2
-                                                                       : tabMode == CrossPointSettings::TILT_NVERTED ? 1 : 0);
+    // Measured on the X3 22/09: with the readings swapped, the mode readers
+    // called Inverted was the natural one. Normal now steps next again.
+    EXPECT_EQ(screen.tab, tabMode == CrossPointSettings::TILT_NORMAL ? 1
+                                                                       : tabMode == CrossPointSettings::TILT_NVERTED ? 2 : 0);
   }
 }
 
@@ -258,6 +263,83 @@ TEST_F(TabScreenFixture, ModalAndInactiveTargetsRejectTiltEvents) {
   EXPECT_FALSE(HalTiltSensor::shouldDiscardPendingEvents(CrossPointTiltPageTurn::TILT_NORMAL, true));
   EXPECT_TRUE(HalTiltSensor::shouldDiscardPendingEvents(CrossPointTiltPageTurn::TILT_NORMAL, false));
   EXPECT_TRUE(HalTiltSensor::shouldDiscardPendingEvents(CrossPointTiltPageTurn::TILT_OFF, true));
+}
+
+// Nghieng doc: mot cu dong di dung MOT dong, y nhu bam nut len hoac xuong.
+TEST_F(TabScreenFixture, NghiengDocDiMotDongNhuNutLenXuong) {
+  SETTINGS.tiltTabNavigation = CrossPointSettings::TILT_OFF;
+  SETTINGS.tiltMenuNavigation = CrossPointSettings::TILT_NORMAL;
+  ASSERT_EQ(screen.ring(), 1);
+
+  tiltfixture::reset();
+  tiltfixture::injectPhysicalVertical();
+  screen.loop();
+  EXPECT_EQ(tiltfixture::lastVerticalMode, CrossPointSettings::TILT_NORMAL);
+  EXPECT_TRUE(tiltfixture::lastVerticalTargetActive);
+  // Do tren X3 22/09: cu dong nay o muc Binh thuong phai di XUONG mot dong, dung nhu nut.
+  EXPECT_EQ(screen.ring(), 2);
+  EXPECT_EQ(screen.tabSteps, 0) << "nghieng doc khong duoc cham toi tab";
+
+  SETTINGS.tiltMenuNavigation = CrossPointSettings::TILT_NVERTED;
+  tiltfixture::reset();
+  tiltfixture::injectPhysicalVertical();
+  screen.loop();
+  EXPECT_EQ(screen.ring(), 1) << "Dao chieu phai di nguoc lai dung mot dong";
+}
+
+TEST_F(TabScreenFixture, NghiengDocTatThiKhongDoiDong) {
+  SETTINGS.tiltMenuNavigation = CrossPointSettings::TILT_OFF;
+  const int before = screen.ring();
+  tiltfixture::reset();
+  tiltfixture::injectPhysicalVertical();
+  screen.loop();
+  EXPECT_EQ(tiltfixture::lastVerticalMode, CrossPointSettings::TILT_OFF);
+  EXPECT_EQ(screen.ring(), before);
+}
+
+// Hai truc chay song song: nghieng ngang van nhay tab nhu cu, nghieng doc di dong.
+TEST_F(TabScreenFixture, NghiengNgangVanNhayTabKhiNghiengDocDangBat) {
+  SETTINGS.tiltTabNavigation = CrossPointSettings::TILT_NORMAL;
+  SETTINGS.tiltMenuNavigation = CrossPointSettings::TILT_NORMAL;
+  screen.tab = 0;
+  screen.tabSteps = 0;
+  const int ringBefore = screen.ring();
+
+  tiltfixture::reset();
+  tiltfixture::injectPhysicalForward();
+  screen.loop();
+  EXPECT_EQ(tiltfixture::lastMode, CrossPointSettings::TILT_NORMAL);
+  EXPECT_EQ(screen.tabSteps, 1) << "nghieng ngang van phai nhay dung mot tab";
+  EXPECT_EQ(screen.tab, 1) << "muc Binh thuong nhay toi tab ke, do tren X3 22/09";
+  EXPECT_EQ(screen.ring(), ringBefore) << "nghieng ngang khong duoc doi dong";
+}
+
+TEST_F(TabScreenFixture, ModalChanNghiengDoc) {
+  SETTINGS.tiltMenuNavigation = CrossPointSettings::TILT_NORMAL;
+  EXPECT_TRUE(screen.acceptsTiltRows());
+  screen.modalActive = true;
+  EXPECT_FALSE(screen.acceptsTiltRows());
+  EXPECT_FALSE(screen.queueTiltRow(true, false));
+
+  const int before = screen.ring();
+  tiltfixture::reset();
+  tiltfixture::injectPhysicalVertical();
+  screen.loop();
+  EXPECT_FALSE(tiltfixture::lastVerticalTargetActive);
+  EXPECT_EQ(screen.ring(), before);
+}
+
+TEST_F(TabScreenFixture, ManKhongCoDongThiNghiengDocDungYen) {
+  SETTINGS.tiltMenuNavigation = CrossPointSettings::TILT_NORMAL;
+  screen.rows = 0;
+  screen.loop();
+  ASSERT_EQ(screen.ring(), 0);
+  EXPECT_FALSE(screen.acceptsTiltRows());
+
+  tiltfixture::reset();
+  tiltfixture::injectPhysicalVertical();
+  screen.loop();
+  EXPECT_EQ(screen.ring(), 0);
 }
 
 // Cap nut mat truoc mang ten lo gic Left/Right nhung giao dien dan nhan Len/Xuong.

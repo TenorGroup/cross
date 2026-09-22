@@ -145,16 +145,34 @@ class MenuNavigationContractTest(unittest.TestCase):
     def test_tilt_tab_pin_changes_only_menu_navigation(self):
         self.settings['tiltPageTurn'] = 2
         self.settings['tiltTabNavigation'] = 0
+        self.settings['tiltMenuNavigation'] = 0
         self.write_settings()
         self.write_pins(['settings/tiltTabNavigation'])
         log, saved = self.run_keys(['DOWN', 'DOWN', 'CONFIRM', 'BACK'])
         self.assertIn('Entering activity: Settings', log)
         self.assertEqual(saved['tiltTabNavigation'], 1, log)
         self.assertEqual(saved['tiltPageTurn'], 2, log)
+        # Row tilt is a third, independent key: the tab pin must not touch it.
+        self.assertEqual(saved['tiltMenuNavigation'], 0, log)
         self.assertEqual(json.loads((self.store / 'menu-customization.json').read_text())['pins'],
                          ['settings/tiltTabNavigation'])
         _, rebooted = self.run_keys([])
-        self.assertEqual((rebooted['tiltPageTurn'], rebooted['tiltTabNavigation']), (2, 1))
+        self.assertEqual((rebooted['tiltPageTurn'], rebooted['tiltTabNavigation'],
+                          rebooted['tiltMenuNavigation']), (2, 1, 0))
+
+    def test_tilt_menu_pin_changes_only_row_navigation(self):
+        self.settings['tiltPageTurn'] = 2
+        self.settings['tiltTabNavigation'] = 2
+        self.settings['tiltMenuNavigation'] = 0
+        self.write_settings()
+        self.write_pins(['settings/tiltMenuNavigation'])
+        log, saved = self.run_keys(['DOWN', 'DOWN', 'CONFIRM', 'BACK'])
+        self.assertIn('Entering activity: Settings', log)
+        self.assertEqual(saved['tiltMenuNavigation'], 1, log)
+        self.assertEqual((saved['tiltPageTurn'], saved['tiltTabNavigation']), (2, 2), log)
+        _, rebooted = self.run_keys([])
+        self.assertEqual((rebooted['tiltPageTurn'], rebooted['tiltTabNavigation'],
+                          rebooted['tiltMenuNavigation']), (2, 2, 1))
 
     def test_hiding_global_status_bar_reclaims_space_on_the_same_screen(self):
         self.settings['globalStatusBarMode'] = 0
