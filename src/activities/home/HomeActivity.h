@@ -9,6 +9,7 @@
 #include "RecentBooksStore.h"
 #include "activities/UiTabListActivity.h"
 #include "activities/settings/SettingsTabs.h"
+#include "components/HomeExcerptStyle.h"
 
 struct Rect;
 
@@ -131,6 +132,17 @@ class HomeActivity final : public UiTabListActivity {
   uint64_t cardQuotes[RECENT_LIMIT] = {};
   uint8_t cardQuotesPicked = 0;
   std::string cardExcerpt(int index, bool& quoted);
+  // Reading stats of the book on the card, read and formatted once per card build and drawn on
+  // every paint (a few lines of flash fonts), so the cached regions stay the cover and the text.
+  struct CardStats {
+    uint8_t rows = 0;
+    uint8_t percent = 0;
+    bool recorded = false;
+    std::string values[HOME_STAT_COUNT];
+  };
+  CardStats cardStats;
+  void loadCardStats(const RecentBook& book);
+  int drawCardStats(const HomeCardLayout& card);
   void drawRecentCard();
   void drawOtherBookRow(int shown, int ruleY, int rowY);
   const char* habitSuggestion() const;

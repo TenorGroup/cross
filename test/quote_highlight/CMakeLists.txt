@@ -25,6 +25,7 @@ gtest_discover_tests(QuoteHighlightTest)
 add_executable(QuoteAnchorStoreTest
   QuoteAnchorStoreTest.cpp
   QuoteNameStoreTest.cpp
+  QuoteLatestTest.cpp
   ${REPO_ROOT}/src/QuoteStore.cpp
 )
 target_include_directories(QuoteAnchorStoreTest BEFORE PRIVATE

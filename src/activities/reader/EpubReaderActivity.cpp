@@ -46,6 +46,8 @@
 #include "activities/settings/BlePageTurnerActivity.h"
 #include "BlePageTurnerRuntime.h"
 #include "activities/settings/TextSettingsActivity.h"
+#include "components/HomeExcerptStyle.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/BookmarkUtil.h"
@@ -295,10 +297,17 @@ bool EpubReaderActivity::loadBook() {
   // real cover only did so for a thumbnail written by an older release). Generate it here, once
   // per book. The JPEG->1-bit BMP pass costs seconds and nothing on the open path reads its
   // output, so only record the miss here; loop() runs it once the first page is on the panel.
-  const int thumbHeight = UITheme::getInstance().getMetrics().homeCoverHeight;
+  // The tenor card draws the cover at its own height, well above the theme's, and scaling the
+  // theme's thumbnail up that far makes the dither coarse, so that card gets a thumbnail of its
+  // own, written first. The theme's stays: other themes read it, and the card falls back to it.
+  // A book opened before the card's existed has the theme's alone and gets the card's here.
   if (!preview) {
-    pendingThumbHeight = thumbHeight;
-    pendingThumbGeneration = !Storage.exists(epub->getThumbBmpPath(thumbHeight).c_str());
+    pendingThumbCount = 0;
+    for (const int height : {tenorchrome::enabled() ? HOME_CARD_COVER_H : 0,
+                             UITheme::getInstance().getMetrics().homeCoverHeight}) {
+      if (height > 0 && !Storage.exists(epub->getThumbBmpPath(height).c_str()))
+        pendingThumbHeights[pendingThumbCount++] = height;
+    }
   }
   return true;
 }
@@ -310,14 +319,19 @@ bool EpubReaderActivity::loadBook() {
 // other caller redraws the whole screen straight after. This one does not - the page stays on
 // the panel, and openOverlay() paints its chrome onto the framebuffer copy of that page. So the
 // inflate state comes from the heap, which is what the caller's idle thresholds pay for.
+// One height per call, so input is taken between two decodes.
 void EpubReaderActivity::generatePendingThumb() {
-  if (!pendingThumbGeneration || !epub) return;
-  pendingThumbGeneration = false;
+  if (pendingThumbCount == 0 || !epub) return;
+  const int height = pendingThumbHeights[0];
+  pendingThumbHeights[0] = pendingThumbHeights[1];
+  --pendingThumbCount;
 #ifdef TENOR_UI_ACCEPTANCE
-  LOG_DBG("ERS", "EPUB_THUMB stage=before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
-          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  LOG_DBG("ERS", "EPUB_THUMB stage=before height=%d free=%u largest=%u", height,
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
-  const bool thumbGenerated = epub->generateThumbBmp(pendingThumbHeight);
+  const unsigned long started = millis();
+  const bool thumbGenerated = epub->generateThumbBmp(height);
+  LOG_INF("ERS", "Cover thumbnail %d px: %lu ms, ok=%u", height, millis() - started, thumbGenerated ? 1u : 0u);
 #ifdef TENOR_UI_ACCEPTANCE
   LOG_DBG("ERS", "EPUB_THUMB stage=after result=%u free=%u largest=%u", thumbGenerated ? 1u : 0u,
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
@@ -644,7 +658,7 @@ void EpubReaderActivity::loop() {
   constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
   // The cover thumbnail goes ahead of the page prewarm, but only once: the page has been on
   // the panel for a beat and the heap covers the inflate state (see THUMB_IDLE_MIN_FREE_HEAP).
-  if (pendingThumbGeneration && renderer.hasFrameBuffer() && lastRenderCompleteMs != 0 &&
+  if (pendingThumbCount > 0 && renderer.hasFrameBuffer() && lastRenderCompleteMs != 0 &&
       millis() - lastRenderCompleteMs > IDLE_PREWARM_DEBOUNCE_MS &&
       ESP.getFreeHeap() > THUMB_IDLE_MIN_FREE_HEAP && ESP.getMaxAllocHeap() > THUMB_IDLE_MIN_MAX_ALLOC) {
     RenderLock lock(RenderLock::TryTake{});

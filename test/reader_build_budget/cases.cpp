@@ -6,7 +6,7 @@ template<class F> void test(const char* name, F fn) {
   freeink::ble::readerStartDeferredState = false;
   freeink::ble::idleStoppedState = false;
   freeink::ble::stopForIdleCalls = freeink::ble::rearmRequests = 0;
-  clockMs = 1000; popupCount = buildErrors = 0; popupAtMs = 0; thumbs = {};
+  clockMs = 1000; popupCount = buildErrors = 0; popupAtMs = 0; thumbs = {}; tenorchrome::enabledState = true;
   try { fn(); std::cout << "PASS " << name << '\n'; }
   catch (const std::exception& e) { ++failures; std::cout << "FAIL " << name << ": " << e.what() << '\n'; }
 }
@@ -304,18 +304,50 @@ int main() {
     EpubReaderActivity r; r.section->building = r.section->partial = false;
     r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
     r.openThumbStep();
-    require(thumbs.existsChecks == 1, "open path stopped looking for the cover thumbnail");
+    // One look per height: the card's own and the theme's.
+    require(thumbs.existsChecks == 2, "open path stopped looking for the cover thumbnails");
     require(thumbs.generated == 0, "open path still paid for the cover thumbnail");
     ESP.free = 116768; ESP.largest = 90100;
     r.lastRenderCompleteMs = millis();
     clockMs += 500;  // past IDLE_PREWARM_DEBOUNCE_MS, first page is on the panel
     r.idleStep();
-    require(thumbs.generated == 1, "idle pass never generated the deferred thumbnail");
+    // One per pass, so input is taken between two seconds-long decodes; the card's own first.
+    require(thumbs.heights == std::vector<int>{356}, "idle pass did not generate the card-sized thumbnail first");
     // A loan returns the framebuffer white and nothing repaints it on this path.
     require(thumbs.loans == 0, "idle thumbnail borrowed the framebuffer under a live page");
     clockMs += 500;
     r.idleStep();
-    require(thumbs.generated == 1, "deferred thumbnail ran again on a later idle pass");
+    require((thumbs.heights == std::vector<int>{356, 226}), "second idle pass did not generate the theme thumbnail");
+    clockMs += 500;
+    r.idleStep();
+    require(thumbs.generated == 2, "deferred thumbnail ran again on a later idle pass");
+  });
+  test("book opened before the card thumbnail gets it on its next idle pass", [] {
+    EpubReaderActivity r; thumbs.onCard = {226};
+    r.section->building = r.section->partial = false;
+    r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
+    r.openThumbStep();
+    ESP.free = 116768; ESP.largest = 90100;
+    r.lastRenderCompleteMs = millis();
+    for (int pass = 0; pass < 3; ++pass) {
+      clockMs += 500;
+      r.idleStep();
+    }
+    require(thumbs.heights == std::vector<int>{356}, "only the missing card thumbnail should be generated");
+  });
+  test("other themes keep the theme thumbnail alone", [] {
+    EpubReaderActivity r; tenorchrome::enabledState = false;
+    r.section->building = r.section->partial = false;
+    r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
+    r.openThumbStep();
+    require(thumbs.existsChecks == 1, "a theme without the card looked for the card thumbnail");
+    ESP.free = 116768; ESP.largest = 90100;
+    r.lastRenderCompleteMs = millis();
+    for (int pass = 0; pass < 3; ++pass) {
+      clockMs += 500;
+      r.idleStep();
+    }
+    require(thumbs.heights == std::vector<int>{226}, "a theme without the card paid for the card thumbnail");
   });
   test("deferred thumbnail waits for heap and for the first page", [] {
     EpubReaderActivity r; r.section->building = r.section->partial = false;
@@ -332,6 +364,11 @@ int main() {
     ESP.free = 116768; ESP.largest = 90100;
     r.idleStep();
     require(thumbs.generated == 1, "thumbnail never recovered once heap returned");
+    // The second height waits for the same budget.
+    clockMs += 500;
+    ESP.free = 53364; ESP.largest = 28660;
+    r.idleStep();
+    require(thumbs.generated == 1, "second thumbnail ran below the idle heap budget");
   });
   test("existing cover thumbnail asks for nothing on either path", [] {
     EpubReaderActivity r; thumbs.fileOnCard = true;

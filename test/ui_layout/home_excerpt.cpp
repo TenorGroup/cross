@@ -43,6 +43,22 @@ void quotePick() {
   puts("PASS: the card shows a quote kept since the last visit, otherwise a random one of the book");
 }
 
+// The quote the store marked as kept last and no screen has shown yet (quotes::latestSaved) wins
+// over both rules above: after deep sleep Home has no memory of the book, but the card does.
+void markedQuotePick() {
+  const uint64_t ids[] = {id(2090, 0, 3), id(2090, 0, 2), id(2090, 0, 1), id(2090, 0, 0)};
+  // Not shown since power-on, whatever the random value says.
+  assert(homeQuoteIndex(ids, 4, 0, 0, ids[2]) == 2);
+  assert(homeQuoteIndex(ids, 4, 0, 7, ids[0]) == 0);
+  // An edit of an older quote is marked too, even when Home already saw the book's newest.
+  assert(homeQuoteIndex(ids, 4, ids[0], 1, ids[3]) == 3);
+  // A mark of another book, or of a quote since deleted, is not this card's business.
+  const uint64_t other = (0x2ab0e838ull << 32) | id(2090, 0, 3);
+  assert(homeQuoteIndex(ids, 4, 0, 6, other) == 2);
+  assert(homeQuoteIndex(ids, 4, 0, 6, id(2089, 0, 0)) == 2);
+  puts("PASS: a marked quote not shown yet is the one on the card");
+}
+
 // X3 at the default text size: Geist 12 title (33), Be Vietnam Pro 10 author and bottom row (26),
 // Noto Serif 12 italic excerpt (34). Top is under the tab row, bottom is the top of the hint band.
 HomeCardInput x3(int titleLines) {
@@ -59,12 +75,14 @@ HomeCardInput x3(int titleLines) {
 }
 
 void cardGeometry() {
-  // The approved drawing: cover 236 x 356 centred under the tab row, title, author, three lines of
-  // excerpt, then the rule and the other-book row above the footer.
+  // The approved two-column drawing (H4): cover 236 x 356 at the left margin under the tab row, the
+  // reading stats to its right, then title, author, three lines of excerpt at the cover's left edge
+  // across the full width, and the rule and the other-book row above the footer.
   const auto card = homeCardLayout(x3(2));
   assert(card.coverW == 236 && card.coverH == 356);
-  assert(card.coverX == (528 - 236) / 2 && card.coverY == 124);
-  assert(card.textX == 40 && card.textW == 448);
+  assert(card.coverX == 24 && card.coverY == 124);
+  assert(card.statsX == 24 + 236 + 22 && card.statsRight == 528 - 24);
+  assert(card.textX == 24 && card.textW == 480);
   assert(card.titleY == 124 + 356 + 18);
   assert(card.authorY == card.titleY + 2 * 33 + 2);
   assert(card.excerptY == card.authorY + 26 + 8);
@@ -81,14 +99,15 @@ void cardGeometry() {
   assert(shortTitle.excerptLines == 3);
 
   // Larger text: Geist 16 title (43) and Noto Serif 16 excerpt (45). The cover gives up height,
-  // keeps its 236:356 shape and stays centred; the text still ends above the rule.
+  // keeps its 236:356 shape and its left edge, and the stats column takes the width it gives up.
   auto large = x3(2);
   large.titleLineHeight = 43;
   large.excerptLineHeight = 45;
   const auto big = homeCardLayout(large);
   assert(big.coverH < 356 && big.coverH >= 200);
   assert(big.coverW == big.coverH * 236 / 356);
-  assert(big.coverX == (528 - big.coverW) / 2);
+  assert(big.coverX == 24);
+  assert(big.statsX == 24 + big.coverW + 22 && big.statsRight == 504);
   assert(big.excerptLines == 3);
   assert(big.excerptY + 3 * 45 + 16 <= big.ruleY);
 
@@ -101,6 +120,75 @@ void cardGeometry() {
   assert(small.excerptLines >= 1 && small.excerptLines < 3);
   assert(small.excerptY + small.excerptLines * 34 <= small.ruleY);
   puts("PASS: card geometry matches the approved drawing and gives way to larger text");
+}
+
+constexpr uint8_t bit(HomeStat row) { return static_cast<uint8_t>(1u << row); }
+constexpr uint8_t ALL_STATS = bit(HOME_STAT_READ) | bit(HOME_STAT_TOTAL) | bit(HOME_STAT_AVERAGE) |
+                              bit(HOME_STAT_DAYS) | bit(HOME_STAT_SPAN);
+
+void statRows() {
+  // A book read 18 h 59 min over 10 days, 14/09 to 23/09. Every row.
+  const uint64_t hours = (18 * 60 + 59) * 60000ull;
+  assert(homeStatRows(true, hours, 10, 20260914, 20260923) == ALL_STATS);
+  // No reading record: the percent row alone, which then says it was not recorded.
+  assert(homeStatRows(false, hours, 10, 20260914, 20260923) == bit(HOME_STAT_READ));
+  // Opened but not read yet: nothing to total, average or date.
+  assert(homeStatRows(true, 0, 0, 0, 0) == bit(HOME_STAT_READ));
+  // Time kept while the clock could not be read: a total, but no day to average over or to date.
+  assert(homeStatRows(true, hours, 0, 0, 0) == (bit(HOME_STAT_READ) | bit(HOME_STAT_TOTAL)));
+  // Page turns only, on one day: days and dates, but no time to total or average.
+  assert(homeStatRows(true, 0, 1, 20260923, 20260923) ==
+         (bit(HOME_STAT_READ) | bit(HOME_STAT_DAYS) | bit(HOME_STAT_SPAN)));
+  puts("PASS: the stats column shows only the rows the book's record fills");
+}
+
+void statsColumn() {
+  // X3 default: Be Vietnam Pro 8 labels (21), Geist 12 bold values (33), beside a 356 px cover.
+  const auto card = homeCardLayout(x3(2));
+  HomeStatsInput in;
+  in.top = card.coverY;
+  in.bottom = card.coverY + card.coverH;
+  in.labelLineHeight = 21;
+  in.valueLineHeight = 33;
+  in.rows = ALL_STATS;
+  const auto column = homeStatsLayout(in);
+  assert(column.rows == ALL_STATS);
+  assert(column.labelY[HOME_STAT_READ] == card.coverY + 2);
+  assert(column.valueY[HOME_STAT_READ] == column.labelY[HOME_STAT_READ] + 21);
+  // The progress bar sits under the percent, then the next label.
+  assert(column.barY >= column.valueY[HOME_STAT_READ] + 33 - 6);
+  assert(column.labelY[HOME_STAT_TOTAL] >= column.barY + 6 + 6);
+  for (int row = HOME_STAT_TOTAL; row < HOME_STAT_COUNT; ++row) {
+    assert(column.labelY[row] > column.valueY[row - 1]);
+    assert(column.valueY[row] == column.labelY[row] + 21);
+  }
+  // The last value ends inside the cover's height, so the title below is not pushed down.
+  assert(column.valueY[HOME_STAT_SPAN] + 33 <= in.bottom);
+
+  // Missing rows close up: the next present row takes the place of the absent one.
+  in.rows = bit(HOME_STAT_READ) | bit(HOME_STAT_DAYS);
+  const auto sparse = homeStatsLayout(in);
+  assert(sparse.rows == in.rows);
+  assert(sparse.labelY[HOME_STAT_DAYS] == column.labelY[HOME_STAT_TOTAL]);
+
+  // Larger text and a smaller cover: rows that do not fit are left out from the bottom, never drawn
+  // past the cover.
+  in.rows = ALL_STATS;
+  in.bottom = in.top + 240;
+  in.labelLineHeight = 28;
+  in.valueLineHeight = 43;
+  const auto crowded = homeStatsLayout(in);
+  assert(crowded.rows & bit(HOME_STAT_READ));
+  assert(!(crowded.rows & bit(HOME_STAT_SPAN)));
+  for (int row = 0; row < HOME_STAT_COUNT; ++row)
+    if (crowded.rows & (1u << row)) assert(crowded.valueY[row] + 43 <= in.bottom);
+  // The first row that does not fit ends the column: a later, shorter row is not squeezed in.
+  bool gap = false;
+  for (int row = 0; row < HOME_STAT_COUNT; ++row) {
+    if (!(crowded.rows & (1u << row))) gap = true;
+    else assert(!gap);
+  }
+  puts("PASS: the stats column fits beside the cover and gives way to larger text");
 }
 
 int main() {
@@ -122,5 +210,8 @@ int main() {
   }
   puts("PASS: CJK excerpt resolves actual generated glyph intervals in all three tiers; Latin keeps serif");
   quotePick();
+  markedQuotePick();
   cardGeometry();
+  statRows();
+  statsColumn();
 }

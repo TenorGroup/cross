@@ -11,6 +11,8 @@ namespace quotes {
 namespace {
 constexpr char DIRECTORY[] = "/.crosspoint/quotes";
 constexpr char MARKER[] = "/.crosspoint/quotes/.ten-v2";
+// The quote kept last; a dot name, so no listing reads it as a quote (see latestSaved()).
+constexpr char LATEST[] = "/.crosspoint/quotes/.latest";
 constexpr unsigned SLOTS = 16;
 
 std::string filePath(const std::string& name) { return std::string(DIRECTORY) + "/" + name; }
@@ -133,6 +135,17 @@ bool readRecord(const std::string& filePath, QuoteRecord& q) {
   return true;
 }
 
+// Points latestSaved() at `id`. Staged and renamed like a record, so a cut leaves the old mark
+// or none, never a partial one; rename does not replace, so the old mark goes first. A failure
+// here costs only which quote Home shows, so it never fails the save.
+void markLatest(const QuoteId id) {
+  constexpr char STAGED[] = "/.crosspoint/quotes/.latest.tmp";
+  const std::string name = nameOf(id);
+  if (!Storage.writeFile(STAGED, name.substr(0, 16).c_str())) return;
+  if (Storage.exists(LATEST)) Storage.remove(LATEST);
+  if (!Storage.rename(STAGED, LATEST)) LOG_ERR("QTS", "Latest quote mark not written");
+}
+
 // Finishes or undoes a write that save() or replace() staged as "<name>.tmp" when the power
 // went. replace() removes the old record only after the staged file is written and closed,
 // so a staged file with no record beside it is complete and is promoted. A staged file
@@ -212,7 +225,10 @@ bool save(const QuoteRecord& q) {
     if (!load(id, existing) || existing.path != q.path || existing.text != q.text || existing.spine != q.spine ||
         existing.page != q.page)
       continue;
-    if (existing.hasAnchor || !q.hasAnchor) return true;
+    if (existing.hasAnchor || !q.hasAnchor) {
+      markLatest(id);
+      return true;
+    }
     // A quote saved before anchors existed is rewritten once under its own name, so
     // highlighting the same words again starts drawing them and the quote keeps the
     // moment it was first kept.
@@ -226,7 +242,9 @@ bool save(const QuoteRecord& q) {
   if (!Storage.ensureDirectoryExists("/.crosspoint") || !Storage.ensureDirectoryExists(DIRECTORY)) return false;
   const std::string path = filePath(nameOf(id));
   const std::string temporary = path + ".tmp";
-  return writeRecord(temporary, q) && Storage.rename(temporary.c_str(), path.c_str());
+  if (!writeRecord(temporary, q) || !Storage.rename(temporary.c_str(), path.c_str())) return false;
+  markLatest(id);
+  return true;
 }
 bool remove(const QuoteId id) { return Storage.remove(filePath(nameOf(id)).c_str()); }
 bool replace(const QuoteId id, const QuoteRecord& updated) {
@@ -237,7 +255,9 @@ bool replace(const QuoteId id, const QuoteRecord& updated) {
   if (!writeRecord(temporary, updated)) return false;
   // rename does not replace, so the old record goes first; the staged file already holds
   // every field of the new one.
-  return Storage.remove(path.c_str()) && Storage.rename(temporary.c_str(), path.c_str());
+  if (!Storage.remove(path.c_str()) || !Storage.rename(temporary.c_str(), path.c_str())) return false;
+  markLatest(id);
+  return true;
 }
 bool load(const std::string& name, QuoteRecord& quote) {
   QuoteId id;
@@ -291,6 +311,17 @@ bool migrateNames() {
   }
   return Storage.ensureDirectoryExists("/.crosspoint") && Storage.ensureDirectoryExists(DIRECTORY) &&
          Storage.writeFile(MARKER, "2");
+}
+bool latestSaved(QuoteId& id) {
+  auto file = Storage.open(LATEST);
+  if (!file) return false;
+  char text[17] = {};
+  const int read = file.read(text, 16);
+  file.close();
+  return read == 16 && idOf(std::string(text, 16) + ".json", id);
+}
+void forgetLatestSaved() {
+  if (Storage.exists(LATEST)) Storage.remove(LATEST);
 }
 void listNames(const uint32_t book, std::vector<QuoteId>& ids) {
   ids.clear();

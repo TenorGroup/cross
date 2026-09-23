@@ -74,6 +74,13 @@ bool load(const std::string& name, QuoteRecord& quote);
 bool remove(const std::string& name);
 bool replace(const std::string& name, const QuoteRecord& updated);
 
+// The quote save() or replace() wrote last, for Home to show once. It lives in the dot file
+// "/.crosspoint/quotes/.latest" (sixteen hex digits), so it outlives deep sleep, and listings
+// skip it like every name that is not a quote's. False, and `id` untouched, when there is none.
+bool latestSaved(QuoteId& id);
+// Clears it once a screen has shown that quote, so the next visit is free to pick another.
+void forgetLatestSaved();
+
 // Called on every visit to the Quotes screens. First repairs what a power cut left in the
 // middle of a write (see replace()); that is one walk of the directory acting only on
 // ".tmp" names. Then, once, renames files written before v1.0.11 (hash names) to the

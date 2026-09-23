@@ -21,25 +21,16 @@ REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 FONTS = REPO / 'lib/EpdFont/builtinFonts/source'
 
-TITLE_A = ('Những việc lớn được hoàn thành như thế nào: Những yếu tố bất ngờ quyết định số phận của mọi dự '
-           'án, từ sửa nhà đến thám hiểm không gian và mọi thứ ở giữa (tenor version)')
-PATH_A = ('/books/tenor/translated-by-tenor/Những việc lớn được hoàn thành như thế nào (tenor version) '
-          '[How Big Things Get Done] - Bent Flyvbjerg & Dan Gardner.epub')
-EXCERPT_A = ('Trong quyển sách này, chúng tôi đi tìm lời giải cho câu hỏi vì sao phần lớn dự án lớn vượt '
-             'ngân sách, trễ hạn, và vì sao một số ít lại về đích.')
-# A store shaped like a real reader's: four quotes, one book, 22/09/2026, no minute, by page.
+TITLE_A = 'Một cuốn sách có tên rất dài: những điều nhỏ quyết định số phận của một công trình lớn, từ viên gạch đầu tiên tới ngày bàn giao và mọi thứ nằm ở giữa (bản đọc thử)'
+PATH_A = '/books/thu-vien/ban-doc-thu/Một cuốn sách có tên rất dài (bản đọc thử) [A Very Long Title] - Tác giả Một & Tác giả Hai.epub'
+EXCERPT_A = ('Trong cuốn sách này, người viết kể lại cách một nhóm nhỏ làm xong một việc lớn, từ bản '
+             'vẽ đầu tiên tới ngày bàn giao.')
+# The long-title fixture: four quotes, one book, one day, no minute, by page.
 QUOTES = [
-    (16, 'lại trong một cuộc họp hội đồng quản trị. Đã có ai khác làm việc này chưa? Câu trả lời đầy '
-         'phấn khích là: “Chưa!”', 7617, 7730),
-    (23, 'Tham vọng không chỉ thôi thúc chúng ta trở thành người đầu tiên, mà còn có thể đẩy chúng ta tới '
-         'chỗ hoàn thành thứ lớn nhất. Cao nhất. Dài nhất. Nhanh nhất.', 10790, 10946),
-    (30, 'Nếu nhìn công nghệ theo cách này, ta sẽ thấy rõ rằng, khi mọi yếu tố khác như nhau, người lập kế '
-         'hoạch dự án nên ưu tiên công nghệ dày dạn kinh nghiệm, cũng vì lý do người xây nhà nên ưu tiên '
-         'thợ mộc giàu kinh nghiệm.', 14078, 14295),
-    (40, 'Các bản vẽ của Taillibert hầu như không đếm xỉa đến những vấn đề thực tế thông thường. “Thiết kế '
-         'sân vận động không tính đến khả năng thi công và không chừa chỗ cho giàn giáo bên trong,” các kỹ '
-         'sư thẩm định viết, khiến công nhân không còn lựa chọn nào khác ngoài việc tập trung hàng chục '
-         'cần cẩu', 19003, 19298),
+    (16, 'rồi trong buổi họp đầu tiên của cả nhóm. Đã có ai đo lại chỗ này chưa? Câu trả lời ngắn gọn là: “Chưa!”', 7617, 7730),
+    (23, 'Muốn làm cho xong một việc lớn thì trước hết phải làm cho xong một việc nhỏ. Đo lại. Ghi lại. Làm lại. Rồi mới đi tiếp.', 10790, 10946),
+    (30, 'Nếu nhìn vật liệu theo cách này, ta sẽ thấy rõ rằng, khi mọi thứ khác như nhau, người lập kế hoạch nên chọn thứ đã dùng nhiều lần, cũng như người xây nhà nên chọn người thợ đã làm nhiều nhà.', 14078, 14295),
+    (40, 'Bản vẽ của đợt đầu hầu như không nhắc tới những việc rất thường của công trường. “Bản vẽ không chừa chỗ cho giàn giáo và không tính tới đường đi của cần cẩu,” người thẩm tra ghi lại, khiến đội thi công không còn cách nào khác ngoài việc dựng thêm hàng chục cột chống tạm', 19003, 19298),
 ]
 CARD_QUOTE = re.compile(r'Card quote ([0-9a-f]{16}\.json) of (\d+)')
 CARD_BUILD = re.compile(r'Recent card build=(\d+)ms')
@@ -142,7 +133,7 @@ class HomeRecentCardTest(unittest.TestCase):
 
     # Regions of the default X3 card (528 x 792): cover, text block, other-book row, left arrow,
     # the footer tip lane the pin hint used, and the four footer hint cells.
-    COVER = (146, 124, 382, 480)
+    COVER = (24, 124, 260, 480)
     TEXT = (40, 498, 488, 712)
     ROW = (40, 712, 488, 756)
     LEFT_ARROW = (10, 722, 30, 756)
@@ -150,7 +141,7 @@ class HomeRecentCardTest(unittest.TestCase):
     HINTS = [(65, 770, 145, 792), (157, 770, 237, 792), (291, 770, 371, 792), (383, 770, 463, 792)]
 
     def test_one_book_without_quotes_shows_the_page_excerpt(self):
-        self.write_recent([self.add_book(PATH_A, TITLE_A, 'Bent Flyvbjerg, Dan Gardner', EXCERPT_A)])
+        self.write_recent([self.add_book(PATH_A, TITLE_A, 'Tác giả Mẫu, Người Viết', EXCERPT_A)])
         log, shots = self.launch('3000:QUIT', [(1800, 'card')])
         card = shots['card']
         self.assertNotRegex(log, CARD_QUOTE)
@@ -159,14 +150,14 @@ class HomeRecentCardTest(unittest.TestCase):
         self.assertTrue(self.ink(card, self.TEXT), 'no title, author or excerpt drawn')
         # One book: no rule and no other-book row, and no pin hint in the tip lane above the footer.
         self.assertFalse(self.ink(card, (0, 712, 528, 756)), 'row or tip drawn for a single book')
-        # Footer: Back reads as text (it opens the book), Select stays, both arrows go (nothing to
+        # Footer: Back (it opens the book) and Select stay, both arrows go (nothing to
         # step to with one book).
         back, select, previous, following = (self.ink(card, cell) for cell in self.HINTS)
         self.assertTrue(back and select, 'Back or Select hint missing')
         self.assertFalse(previous or following, 'direction hints drawn with one book')
 
     def test_book_with_quotes_shows_one_of_its_quotes(self):
-        self.write_recent([self.add_book(PATH_A, TITLE_A, 'Bent Flyvbjerg, Dan Gardner', EXCERPT_A)])
+        self.write_recent([self.add_book(PATH_A, TITLE_A, 'Tác giả Mẫu, Người Viết', EXCERPT_A)])
         names = self.seed_quotes()
         log, shots = self.launch('3000:QUIT', [(1800, 'card')])
         found = CARD_QUOTE.findall(log)
@@ -177,7 +168,7 @@ class HomeRecentCardTest(unittest.TestCase):
         self.assertTrue(self.ink(shots['card'], self.TEXT))
 
     def test_three_books_step_with_the_front_buttons_and_select_opens_the_shown_one(self):
-        books = [self.add_book(PATH_A, TITLE_A, 'Bent Flyvbjerg, Dan Gardner', EXCERPT_A),
+        books = [self.add_book(PATH_A, TITLE_A, 'Tác giả Mẫu, Người Viết', EXCERPT_A),
                  self.add_book('/ego.epub', 'Ego is the Enemy', 'Ryan Holiday',
                                'The ego is the enemy of what you want and of what you have.',
                                'test_kerning_ligature.epub'),
@@ -199,7 +190,7 @@ class HomeRecentCardTest(unittest.TestCase):
             self.assertTrue(self.ink(images[name], self.ROW), f'{name}: no other-book row')
         self.assertFalse(self.ink(images['first'], self.LEFT_ARROW), 'left arrow on the most recent book')
         self.assertTrue(self.ink(images['second'], self.LEFT_ARROW), 'no left arrow on an older book')
-        # Four hints: Back as text, Select, and left and right arrows.
+        # Four hints: Back, Select, and left and right arrows.
         self.assertTrue(all(self.ink(images['first'], cell) for cell in self.HINTS))
         self.assertGreaterEqual(len(CARD_BUILD.findall(log)), 5)
         # Select opened the book on the card (the third, oldest one) in the reader.
@@ -208,7 +199,7 @@ class HomeRecentCardTest(unittest.TestCase):
         self.assertEqual(state['openEpubPath'], '/score.epub')
 
     def test_quote_saved_in_the_reader_is_on_the_card_back_home(self):
-        self.write_recent([self.add_book(PATH_A, TITLE_A, 'Bent Flyvbjerg, Dan Gardner', EXCERPT_A)])
+        self.write_recent([self.add_book(PATH_A, TITLE_A, 'Tác giả Mẫu, Người Viết', EXCERPT_A)])
         names = self.seed_quotes()
         # Home, Select opens the book; reader menu, Tools, Save quotation, pick two words, save,
         # dismiss; Back from the page to Home.

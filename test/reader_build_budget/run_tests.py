@@ -40,7 +40,7 @@ idle_start = loop.index('  constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS')
 idle = 'void EpubReaderActivity::idleStep() {\n' + loop[idle_start:start] + '\n}'
 # Cover-thumbnail tail of loadBook(), up to its final return.
 load_book = function('loadBook')
-thumb_start = load_book.index('  const int thumbHeight = UITheme::getInstance().getMetrics().homeCoverHeight;')
+thumb_start = load_book.index('  // The GAN DAY card only ever READS a thumbnail bitmap')
 open_thumb = 'void EpubReaderActivity::openThumbStep() {\n' + load_book[thumb_start:load_book.rindex('  return true;')] + '\n}'
 render = function('renderBook')
 start = render.index('  if (section->isPartial() && section->currentPage >=')
@@ -64,7 +64,7 @@ page_load = ('void EpubReaderActivity::loadPageForRender() {\n'
 # Constants and state declarations come from the real header, avoiding a second policy.
 declarations = []
 for line in header.splitlines():
-    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD|RENDER_MIN_FREE_HEAP|THUMB_IDLE)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t pageLoadRetryCount|size_t parkedParserFootprint|unsigned long lastRenderCompleteMs|int (?:idlePrewarmSpine|idlePrewarmPage|pendingThumbHeight)|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|radioReleasedForBuild|pendingThumbGeneration)|uint16_t buildViewport)', line):
+    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD|RENDER_MIN_FREE_HEAP|THUMB_IDLE)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t (?:pageLoadRetryCount|pendingThumbCount)|size_t parkedParserFootprint|unsigned long lastRenderCompleteMs|int (?:idlePrewarmSpine|idlePrewarmPage|pendingThumbHeight)|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|radioReleasedForBuild|pendingThumbGeneration)|uint16_t buildViewport)', line):
         declarations.append(line)
 fixture = pathlib.Path(__file__).with_name('fixture.hpp').read_text().replace('@@FIELDS@@', '\n'.join(declarations))
 functions = [function('buildTickHeapGate'), function('latTrangThat'), function('skipLoopDelay'), function('showBuildPopup')]

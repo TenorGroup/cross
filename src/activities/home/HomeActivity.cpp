@@ -39,6 +39,7 @@
 #include "activities/reader/ReaderActivity.h"
 #include "activities/settings/SettingsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "components/ReadingStatsFormat.h"
 #include "components/ReadingStatsView.h"
 #include "components/HomeStatsNavigation.h"
 #include "components/HomeExcerptStyle.h"
@@ -495,11 +496,12 @@ const char* HomeActivity::habitSuggestion() const {
 }
 
 void HomeActivity::drawFooter() {
-  // Back opens the most recent book from every tab (handleButtons), so its hint says so, and is
-  // hidden when there is no book to open. On the tenor Recent tab the front buttons step between
-  // books and Select opens the one shown; hints for a button that would do nothing are left out.
+  // Back opens the most recent book from every tab (handleButtons). Its hint is the return symbol
+  // every screen draws for Back, hidden when there is no book to open. On the tenor Recent tab the
+  // front buttons step between books and Select opens the one shown; hints for a button that would
+  // do nothing are left out.
   const bool hasRecent = !recentBooks.empty();
-  const char* back = hasRecent ? tr(STR_CONTINUE_READING) : "";
+  const char* back = hasRecent ? tr(STR_BACK) : "";
   const bool card = activeTabId == Tab::RECENT && tenorchrome::enabled();
   const bool several = recentBooks.size() > 1;
   const auto labels =
@@ -836,8 +838,13 @@ std::string HomeActivity::cardExcerpt(const int index, bool& quoted) {
     quotes::listNames(key, ids);
     if (!ids.empty()) {
       uint64_t& seen = seenNewest(key);
+      // The quote kept or edited last, which the card has not shown yet; it survives deep sleep,
+      // unlike `seen`. Spent once shown, so the next visit picks again.
+      quotes::QuoteId marked = 0;
+      if (!quotes::latestSaved(marked) || quotes::bookKeyOfName(marked) != key) marked = 0;
       cardQuotes[index] =
-          ids[homeQuoteIndex(ids.data(), ids.size(), seen, static_cast<uint32_t>(random(0x7FFFFFFF)))];
+          ids[homeQuoteIndex(ids.data(), ids.size(), seen, static_cast<uint32_t>(random(0x7FFFFFFF)), marked)];
+      if (marked != 0 && cardQuotes[index] == marked) quotes::forgetLatestSaved();
       seen = ids.front();
       LOG_INF("HOME", "Card quote %s of %u", quotes::nameOf(cardQuotes[index]).c_str(),
               static_cast<unsigned>(ids.size()));
@@ -849,6 +856,69 @@ std::string HomeActivity::cardExcerpt(const int index, bool& quoted) {
     return quote.text;
   }
   return book.excerpt;
+}
+
+void HomeActivity::loadCardStats(const RecentBook& book) {
+  BookReadingRecord record;
+  cardStats = {};
+  cardStats.recorded = READING_STATS.readBook(book.path, record);
+  const uint64_t elapsed = static_cast<uint64_t>(record.minutes) * 60000 + record.remainderMs;
+  cardStats.rows = homeStatRows(cardStats.recorded, elapsed, record.days, record.firstDay, record.lastDay);
+  cardStats.percent = std::min<uint8_t>(record.progress, 100);
+  auto& values = cardStats.values;
+  char text[64], duration[48];
+  if (!cardStats.recorded) {
+    values[HOME_STAT_READ] = tr(STR_STATS_NOT_RECORDED);
+    return;
+  }
+  snprintf(text, sizeof(text), "%u%%", static_cast<unsigned>(cardStats.percent));
+  values[HOME_STAT_READ] = text;
+  readingstatsview::duration(elapsed, text, sizeof(text));
+  values[HOME_STAT_TOTAL] = text;
+  if (record.days) {
+    readingstatsview::duration(elapsed / record.days, duration, sizeof(duration));
+    snprintf(text, sizeof(text), tr(STR_RECENT_STAT_PER_DAY), duration);
+    values[HOME_STAT_AVERAGE] = text;
+    snprintf(text, sizeof(text), tr(STR_RECENT_STAT_DAYS_VALUE), static_cast<unsigned>(record.days));
+    values[HOME_STAT_DAYS] = text;
+  }
+  snprintf(text, sizeof(text), tr(STR_RECENT_STAT_SPAN_VALUE), static_cast<unsigned>(record.firstDay % 100),
+           static_cast<unsigned>(record.firstDay / 100 % 100), static_cast<unsigned>(record.lastDay % 100),
+           static_cast<unsigned>(record.lastDay / 100 % 100));
+  values[HOME_STAT_SPAN] = text;
+}
+
+// Label in the small face, value in the title face (bold), stepping down one size when the value is
+// wider than the column, as in the approved drawing. Returns the top of the progress bar, -1 when
+// none is drawn.
+int HomeActivity::drawCardStats(const HomeCardLayout& card) {
+  static constexpr StrId LABELS[HOME_STAT_COUNT] = {StrId::STR_RECENT_STAT_READ, StrId::STR_RECENT_STAT_TOTAL,
+                                                    StrId::STR_RECENT_STAT_AVERAGE, StrId::STR_RECENT_STAT_DAYS,
+                                                    StrId::STR_RECENT_STAT_SPAN};
+  HomeStatsInput in;
+  in.top = card.coverY;
+  in.bottom = card.coverY + card.coverH;
+  in.labelLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  in.valueLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
+  in.rows = cardStats.rows;
+  const auto column = homeStatsLayout(in);
+  const int width = card.statsRight - card.statsX;
+  for (int row = 0; row < HOME_STAT_COUNT; ++row) {
+    if (!(column.rows & (1u << row))) continue;
+    renderer.drawText(SMALL_FONT_ID, card.statsX, column.labelY[row], I18N.get(LABELS[row]));
+    const char* value = cardStats.values[row].c_str();
+    const bool fits = renderer.getTextWidth(UI_12_FONT_ID, value, EpdFontFamily::BOLD) <= width;
+    const int font = fits ? UI_12_FONT_ID : UI_10_FONT_ID;
+    renderer.drawText(font, card.statsX, column.valueY[row],
+                      renderer.truncatedText(font, value, width, EpdFontFamily::BOLD).c_str(), true,
+                      EpdFontFamily::BOLD);
+  }
+  if (column.barY >= 0 && cardStats.recorded) {
+    renderer.drawRect(card.statsX, column.barY, width, HOME_STATS_BAR_H);
+    renderer.fillRect(card.statsX, column.barY, width * cardStats.percent / 100, HOME_STATS_BAR_H);
+    return column.barY;
+  }
+  return -1;
 }
 
 void HomeActivity::drawRecentCard() {
@@ -863,8 +933,7 @@ void HomeActivity::drawRecentCard() {
   HomeCardInput in;
   in.screenWidth = renderer.getScreenWidth();
   in.top = coverTileTop() - 4;
-  // Above both the tip lane and the hint band: the Back hint is text here, and at the larger text
-  // sizes it wraps to two lines that fill the taller band.
+  // Above both the tip lane and the hint band, which grows with the larger text sizes.
   in.bottom = std::min(tenorchrome::tipY(renderer) + 6,
                        renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight);
   in.titleLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
@@ -881,6 +950,7 @@ void HomeActivity::drawRecentCard() {
     LOG_INF("HOME_PROBE", "card_restore_us=%lu cache_bytes=%u", static_cast<unsigned long>(micros() - restoreStartedUs),
             static_cast<unsigned>(coverBufferSize));
 #endif
+    drawCardStats(frame);
     drawOtherBookRow(shown, frame.ruleY, frame.rowY);
     return;
   }
@@ -922,9 +992,10 @@ void HomeActivity::drawRecentCard() {
     y += renderer.getLineHeight(quoteFont);
   }
   const int textBottom = std::min(y, card.ruleY - 1);
-  // Thumbnails are generated at the theme's cover height; one made at the card's own height is
-  // sharper, so it is used when present.
+  // The reader writes a thumbnail at the card's own height and one at the theme's; the card's is
+  // drawn at its own size, the theme's is the fallback for a book not opened since that began.
   bool image = false;
+  int coverHeight = 0;
   for (const int height : {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight}) {
     if (image || book.coverBmpPath.empty()) break;
     HalFile file;
@@ -932,6 +1003,7 @@ void HomeActivity::drawRecentCard() {
     Bitmap bitmap(file);
     if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0)
       image = renderer.drawBitmapCover(bitmap, card.coverX, card.coverY, card.coverW, card.coverH);
+    if (image) coverHeight = height;
   }
   if (!image) {
     for (int yy = 0; yy < card.coverH; ++yy)
@@ -957,13 +1029,16 @@ void HomeActivity::drawRecentCard() {
   coverBufferBook = shown;
   coverRendered = true;
   if (fcm) fcm->releaseBuiltinPageCaches();  // the card is now a cached bitmap
+  loadCardStats(book);
+  const int barY = drawCardStats(card);
   drawOtherBookRow(shown, card.ruleY, card.rowY);
 #ifdef TENOR_UI_ACCEPTANCE
   LOG_INF("HOME_PROBE", "card_build_us=%lu cache_bytes=%u", static_cast<unsigned long>(micros() - cardStartedUs),
           static_cast<unsigned>(coverBufferSize));
 #endif
-  LOG_INF("HOME", "Recent card build=%lums cache=%u", static_cast<unsigned long>(millis() - started),
-          static_cast<unsigned>(coverBufferSize));
+  LOG_INF("HOME", "Recent card build=%lums cache=%u cover=%d", static_cast<unsigned long>(millis() - started),
+          static_cast<unsigned>(coverBufferSize), coverHeight);
+  LOG_INF("HOME", "Card stats rows=%02x bar=%d", static_cast<unsigned>(cardStats.rows), barY);
 }
 
 // "Another book" and the next book's title under a rule, with an arrow on each side that has a

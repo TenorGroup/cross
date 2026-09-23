@@ -21,8 +21,10 @@ std::string quoteDirectory() { return fixtureRoot + "/.crosspoint/quotes"; }
 std::set<std::string> filesOnCard() {
   std::set<std::string> found;
   if (!std::filesystem::exists(quoteDirectory())) return found;
+  // The mark of the quote kept last is rewritten by every save and edit; QuoteLatestTest owns
+  // it, and these tests are about the records and their staged copies.
   for (const auto& entry : std::filesystem::directory_iterator(quoteDirectory()))
-    found.insert(entry.path().filename().string());
+    if (entry.path().filename() != ".latest") found.insert(entry.path().filename().string());
   return found;
 }
 

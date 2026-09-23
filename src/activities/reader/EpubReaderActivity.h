@@ -79,10 +79,11 @@ class EpubReaderActivity final : public ReaderActivity {
   bool currentPageBookmarked = false;
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
-  // The GAN DAY card's cover thumbnail is not needed before the first page. loadBook() only
-  // records that the file is missing; loop() generates it once the page is on the panel.
-  bool pendingThumbGeneration = false;
-  int pendingThumbHeight = 0;
+  // The GAN DAY card's cover thumbnails are not needed before the first page. loadBook() only
+  // records which heights are missing (the card's own, then the theme's); loop() generates them
+  // one per idle pass once the page is on the panel.
+  int pendingThumbHeights[2] = {};
+  uint8_t pendingThumbCount = 0;
   // The deferred pass takes no FrameBufferLoan: the loan gives the framebuffer back white
   // (FreeInkDisplay::returnBuildStorage) and nothing redraws the page after it, so the
   // inflate state has to come from the heap. These two cover that allocation.

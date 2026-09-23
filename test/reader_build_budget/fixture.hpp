@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <string>
 #include <algorithm>
+#include <cstdlib>
+#include <vector>
 // Swallow the arguments instead of the whole call: values a log line is the only
 // consumer of (the idle prewarm timer) must still count as used under -Werror.
 template <class... A>
@@ -26,10 +28,19 @@ int popupCount = 0, buildErrors = 0;
 uint32_t popupAtMs = 0;
 // Cover thumbnail for the GAN DAY card. The counters let a case say WHEN the
 // JPEG->BMP pass ran, and whether it borrowed the framebuffer to do it.
+// `fileOnCard` stands for every height already written; `onCard` for some heights only (a book
+// opened before the card's own thumbnail existed). `heights` records the order of generation.
 struct ThumbState {
   int existsChecks = 0, generated = 0, loans = 0;
   bool fileOnCard = false;
+  std::vector<int> onCard, heights;
+  bool has(int height) const { return fileOnCard || std::find(onCard.begin(), onCard.end(), height) != onCard.end(); }
 } thumbs;
+int thumbHeightOf(const char* path) {
+  const std::string name(path);
+  const auto at = name.rfind("thumb_");
+  return at == std::string::npos ? 0 : std::atoi(name.c_str() + at + 6);
+}
 void require(bool value, const char* reason) { if (!value) throw std::runtime_error(reason); }
 struct RenderLock {
   struct TryTake {};
@@ -48,9 +59,15 @@ struct Settings {
   ReaderRenderSpec readerRenderSpec(int, int) { return {}; }
 } SETTINGS;
 struct StorageStub {
-  bool exists(const char*) { ++thumbs.existsChecks; return thumbs.fileOnCard; }
+  bool exists(const char* path) { ++thumbs.existsChecks; return thumbs.has(thumbHeightOf(path)); }
 } Storage;
 struct ThemeMetrics { int homeCoverHeight = 226; };
+// The tenor Recent card and the height it draws the cover at (components/HomeExcerptStyle.h).
+inline constexpr int HOME_CARD_COVER_H = 356;
+namespace tenorchrome {
+inline bool enabledState = true;
+inline bool enabled() { return enabledState; }
+}  // namespace tenorchrome
 class UITheme {
  public:
   static UITheme& getInstance() { static UITheme instance; return instance; }
@@ -153,9 +170,11 @@ struct Epub {
   int getSpineItemsCount() const { return 3; }
   std::string getThumbBmpPath(int height) const { return "/thumb_" + std::to_string(height) + ".bmp"; }
   // Mirrors Epub::generateThumbBmp: an existing file returns early and costs nothing.
-  bool generateThumbBmp(int) const {
-    if (thumbs.fileOnCard) return true;
+  bool generateThumbBmp(int height) const {
+    if (thumbs.has(height)) return true;
     ++thumbs.generated;
+    thumbs.heights.push_back(height);
+    thumbs.onCard.push_back(height);
     return true;
   }
 };
