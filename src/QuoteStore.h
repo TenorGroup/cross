@@ -106,9 +106,4 @@ void loadAnchors(const std::string& bookPath, std::vector<QuoteAnchor>& anchors)
 bool trimWords(QuoteRecord& quote, size_t front, size_t back);
 // Number of words trimWords counts in `text`.
 size_t wordCount(const std::string& text);
-
-// v1.0.10 paging, kept only until QuotesActivity moves to listNames(); removed at merge.
-constexpr size_t PAGE_SIZE = 20;
-constexpr size_t MAX_ANCHOR_SCAN = 256;
-void list(const std::string& boundary, bool previous, std::vector<std::string>& names);
 }  // namespace quotes

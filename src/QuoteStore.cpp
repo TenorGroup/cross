@@ -323,27 +323,6 @@ void listBooks(std::vector<BookSummary>& books) {
   std::sort(books.begin(), books.end(),
             [](const BookSummary& a, const BookSummary& b) { return newerFirst(a.newest, b.newest); });
 }
-void list(const std::string& boundary, const bool previous, std::vector<std::string>& names) {
-  names.clear();
-  names.reserve(PAGE_SIZE + 1);
-  auto directory = Storage.open(DIRECTORY);
-  if (!directory || !directory.isDirectory()) return;
-  char name[32];
-  for (auto entry = directory.openNextFile(); entry; entry = directory.openNextFile()) {
-    if (entry.isDirectory()) continue;
-    entry.getName(name, sizeof(name));
-    std::string key = name;
-    if (key.size() != 21 || key.substr(16) != ".json") continue;
-    if (!boundary.empty() && (previous ? key >= boundary : key <= boundary)) continue;
-    names.insert(std::lower_bound(names.begin(), names.end(), key), std::move(key));
-    if (names.size() > PAGE_SIZE + 1) {
-      if (previous)
-        names.erase(names.begin());
-      else
-        names.pop_back();
-    }
-  }
-}
 void loadAnchors(const std::string& bookPath, std::vector<QuoteAnchor>& anchors) {
   anchors.clear();
   if (bookPath.empty()) return;

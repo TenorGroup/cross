@@ -11,6 +11,8 @@ import time
 import unittest
 from PIL import Image, ImageChops
 
+from test_quotes_v1011 import write_quote
+
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('CROSSPOINT_SIM_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 
@@ -117,30 +119,26 @@ class QuotesPreviewTest(unittest.TestCase):
             self.assertEqual(saved['title'], 'Synonym Lookup Test')
             self.assertEqual((saved['path'],saved['spine'],saved['page']), ('/audit.epub',0,0))
 
-    # Shape of one quote block, mirroring src/components/QuoteBlockLayout.h. The screen is
-    # checked through these pixels because a wrong inset only shows on the panel as "reads
-    # badly", which is what sent this screen back for a rework.
+    # The number column of the Quotes list (src/components/QuoteListLayout.h): the selected
+    # quote's number box is filled from SIDE_INSET, and nothing is drawn between the box and
+    # the opening quote that hangs left of TEXT_X.
     SIDE_INSET = 20
-    BAR_WIDTH = 2
-    BAR_WIDTH_SELECTED = 6
-    BAR_GAP = 14
+    TEXT_X = 80
 
     def seed_quotes(self):
         quotes = self.store / 'quotes'
         quotes.mkdir()
+        (quotes / '.ten-v2').write_text('2')
         rows = [
-            ('1111111111111111', 'Tiêu chuẩn không phải là điều ta mong muốn, nó là điều ta làm mỗi ngày, '
-                                 'kể cả khi không ai nhìn.', 'Score Takes Care of Itself', 3, 12, 20260919),
-            ('2222222222222222', 'A short one.', 'Ego is the Enemy', 1, 4, 20260920),
-            ('3333333333333333', 'The reader turns one page and keeps its position. Clear lines fit the page. '
-                                 'Office affine affinity. The reader turns one page and keeps its position again, '
-                                 'and the paragraph runs on well past the fourth line.', 'Synonym Lookup Test',
-             0, 2, 20260921),
+            ('Tiêu chuẩn không phải là điều ta mong muốn, nó là điều ta làm mỗi ngày, '
+             'kể cả khi không ai nhìn.', 'Score Takes Care of Itself', 3, 12, 20260919),
+            ('A short one.', 'Ego is the Enemy', 1, 4, 20260920),
+            ('The reader turns one page and keeps its position. Clear lines fit the page. '
+             'Office affine affinity. The reader turns one page and keeps its position again, '
+             'and the paragraph runs on well past the fourth line.', 'Synonym Lookup Test', 0, 2, 20260921),
         ]
-        for name, text, title, spine, page, day in rows:
-            (quotes / (name + '.json')).write_text(json.dumps(
-                {'schema': 1, 'path': '/audit.epub', 'title': title, 'text': text,
-                 'spine': spine, 'page': page, 'day': day}, ensure_ascii=False), encoding='utf-8')
+        for text, title, spine, page, day in rows:
+            write_quote(quotes, '/audit.epub', title, text, spine, page, day)
 
     @staticmethod
     def dark_runs(image, x0, x1, y0, y1):
@@ -209,34 +207,33 @@ class QuotesPreviewTest(unittest.TestCase):
             self.assertGreaterEqual(len(picked), 3, picked)
             self.assertEqual([band[:2] for band in picked], [band[:2] for band in kept])
 
-    def test_quotes_screen_draws_blocks_with_a_bar_and_marks_the_selection(self):
+    def test_quotes_list_marks_the_selected_number_and_opens_the_detail(self):
         self.seed_quotes()
-        # Home: three DOWN to the Statistics tab, three RIGHT to its fourth row (Quotes).
+        # Home: three DOWN to the Statistics tab, three RIGHT to its fourth row (Quotes). The
+        # list of books opens on its one book; Select opens that book's three quotes, and
+        # Right twice walks to the third before Select opens it.
         events = ('1000:DOWN;1800:DOWN;2600:DOWN;3400:RIGHT;4200:RIGHT;5000:RIGHT;6000:CONFIRM;'
-                  '8500:DOWN;10500:DOWN;12500:CONFIRM;16000:QUIT')
-        log = self.finish(*self.launch(events, ((8000, 'quotes-list'), (12000, 'quotes-third'),
-                                                (15000, 'quotes-detail'))))
+                  '7500:CONFIRM;9000:RIGHT;10000:RIGHT;11500:CONFIRM;14000:QUIT')
+        log = self.finish(*self.launch(events, ((8700, 'quotes-list'), (11200, 'quotes-third'),
+                                                (13500, 'quotes-detail'))))
         self.assertIn('Entering activity: Quotes', log)
-        self.assertIn('Entering activity: DictionaryDefinition', log)
+        self.assertIn('Entering activity: QuoteDetail', log)
 
-        thin = (self.SIDE_INSET, self.SIDE_INSET + self.BAR_WIDTH)
-        wide = (self.SIDE_INSET + self.BAR_WIDTH, self.SIDE_INSET + self.BAR_WIDTH_SELECTED)
-        air = (self.SIDE_INSET + self.BAR_WIDTH_SELECTED, self.SIDE_INSET + self.BAR_WIDTH_SELECTED + self.BAR_GAP - 1)
-        selected_bars = []
+        box = (self.SIDE_INSET + 1, self.SIDE_INSET + 5)
+        gutter = (self.TEXT_X - 28, self.TEXT_X - 18)
+        marked = []
         for name in ('quotes-list', 'quotes-third'):
             with Image.open(self.sd / f'{name}.bmp') as shot:
                 image = shot.convert('L')
                 height = image.size[1]
-                bars = self.dark_runs(image, thin[0], thin[1], 80, height - 50)
-                self.assertEqual(len(bars), 3, f'{name}: expected one bar per quote, got {bars}')
-                marked = self.dark_runs(image, wide[0], wide[1], 80, height - 50)
-                self.assertEqual(len(marked), 1, f'{name}: exactly one block is selected, got {marked}')
-                self.assertIn(marked[0], bars, f'{name}: the wide bar must sit on a block')
-                # Nothing but the bar: the air between it and the first glyph stays empty.
-                self.assertEqual(self.dark_runs(image, air[0], air[1], 80, height - 50), [],
-                                 f'{name}: something was drawn in the block gutter')
-                selected_bars.append(marked[0])
-        self.assertNotEqual(selected_bars[0], selected_bars[1], 'Down did not move the selection')
+                boxes = self.dark_runs(image, box[0], box[1], 100, height - 60)
+                self.assertEqual(len(boxes), 1, f'{name}: exactly one number box is filled, got {boxes}')
+                self.assertGreaterEqual(boxes[0][1] - boxes[0][0], 20, f'{name}: {boxes}')
+                # Nothing but the box and the hanging quote: the air between them stays empty.
+                self.assertEqual(self.dark_runs(image, gutter[0], gutter[1], 100, height - 60), [],
+                                 f'{name}: something was drawn in the number gutter')
+                marked.append(boxes[0])
+        self.assertLess(marked[0][0], marked[1][0], 'Right did not move the selection down')
         if evidence := os.environ.get('CROSSPOINT_QUOTE_EVIDENCE_DIR'):
             target = Path(evidence)
             target.mkdir(parents=True, exist_ok=True)
