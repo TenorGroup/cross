@@ -71,6 +71,29 @@ def selected_band(image, top=125, bottom=700):
     return max(bands, key=lambda b: b[1] - b[0]) if bands else None
 
 
+def other_book_row(image):
+    """v1.0.11 Recent card: the rule over the "another book" row, the row's ink and the next ink
+    below it (the footer hints), as (rule, ink_top, ink_bottom, next_ink). None without a rule."""
+    gray = image.convert("L")
+    pixels = gray.load()
+    inked = [y for y in range(480, image.height) if any(pixels[x, y] < 128 for x in range(40, image.width - 40))]
+    def full(y):
+        return all(pixels[x, y] < 128 for x in range(40, image.width - 40, 4))
+
+    # A hairline: one full-width dark row. A filled list selection is many rows deep.
+    rule = next((y for y in inked if full(y) and not full(y - 1) and not full(y + 1)), None)
+    if rule is None:
+        return None
+    below = [y for y in inked if y > rule]
+    top = below[0]
+    bottom = top
+    # The row is one line of text; accents may leave a one or two pixel gap above the letters.
+    while any(bottom < y <= bottom + 3 for y in below):
+        bottom = max(y for y in below if bottom < y <= bottom + 3)
+    following = next((y for y in below if y > bottom), image.height)
+    return rule, top, bottom, following
+
+
 def selected_text_ink(image, band):
     """Measure real white glyph ink inside a black selected row, in label area."""
     crop = image.crop((42, band[0] + 3, 270, band[1] - 3)).convert("L")
@@ -183,10 +206,20 @@ class UiSizesV108Test(unittest.TestCase):
         self.assertIn("Exiting activity: KeyboardEntry", log)
         self.assertIn("Entering activity: TextSettings", log)
         measured = {}
-        for label in ("home-last", "stats-page0", "display", "display-last", "device", "keyboard-return",
+        # v1.0.11: the Recent tab shows one book; four front presses step to the fifth. Its card
+        # changes, and the "another book" row under it keeps clear of the footer hints.
+        self.assertIsNotNone(ImageChops.difference(images["home"].crop((0, 120, 528, 700)),
+                                                   images["home-last"].crop((0, 120, 528, 700))).getbbox(),
+                             f"{locale} tier{tier}: four presses did not change the book on the card")
+        row = other_book_row(images["home-last"])
+        self.assertIsNotNone(row, f"{locale} tier{tier}: no other-book row on the card")
+        self.assertGreaterEqual(row[2] - row[1], BODY_LINES[tier] // 3, f"{locale} tier{tier}: row {row}")
+        self.assertGreaterEqual(row[3] - row[2], 2, f"{locale} tier{tier}: other-book row touches the hints {row}")
+        measured["home-last"] = row
+        for label in ("stats-page0", "display", "display-last", "device", "keyboard-return",
                       "text-settings", "text-settings-last"):
             try:
-                measured[label] = self.assert_row(images[label], tier, top=480 if label == "home-last" else 125)
+                measured[label] = self.assert_row(images[label], tier)
             except AssertionError as error:
                 raise AssertionError(f"{locale} tier{tier} {label}: {error}") from error
         glyphs = selected_text_ink(images["display"], measured["display"])

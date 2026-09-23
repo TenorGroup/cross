@@ -10,8 +10,9 @@ Hop dong da do (dung dung, khong suy lai):
   - Home hien NAM sach gan nhat; tep thieu KHONG chiem mot hang;
   - ring: 1..N = hang, cap nut TRUOC (LEFT/RIGHT) di vong trong 1..N va khong
     ghe dai the (v1.0.3); hai nut CANH (UP/DOWN) doi the; onEnter dat con tro ve HANG 1;
-  - the bia ve theo `recentBooks.front()`; vung bia duoc cache lai nen moi nhip
-    dieu huong KHONG duoc dung lai (khong co them dong `Recent card build=`).
+  - v1.0.11: the Gan day hien MOT cuon, cuon thu (ring - 1); moi nhip nut truoc doi
+    sang cuon khac nen dung the dung MOT lan cho cuon do (mot dong `Recent card build=`),
+    con ve lai ma khong doi cuon (doi the roi quay ve) thi lay lai tu cache, khong dung lai.
 
 Chay: venv/bin/python -m unittest test_recent_journey
 So do duoc in ra dong `DO_DUOC=...` va ghi vao CROSSPOINT_TEST_ARTIFACTS/recent_journey_measure.json.
@@ -58,27 +59,23 @@ def bmp_gia(path: Path, mau):
     Image.new("RGB", (120, 180), mau).save(path)
 
 
-def hop_chon(image):
-    """Hop cua hang dang chon (dao mau nen dam) trong vung danh sach.
+def dong_cuon_khac(image):
+    """Dong "Cuon khac" duoi the: (y cua vach ke, (y_tren, y_duoi) cua muc chu ngay duoi vach).
 
-    Tra ve (y_tren, y_duoi) cua dai dong dam lien tuc cao nhat; None neu khong co.
-    Dung de biet hang cuoi co duoc ve TRON VEN (khong bi cat) hay khong.
+    v1.0.11 bo danh sach sach cu; dong nay la thu duy nhat o day the. Vach ke chay tu x=40
+    toi x=487; chu nam ngay duoi. None neu khong co vach.
     """
-    px = image.load()
-    le, phai = 24, image.width - 24
-    buoc = 2
-    dai, bat_dau = [], None
-    for y in range(COVER_TILE_TOP, image.height):
-        dam = sum(1 for x in range(le, phai, buoc) if sum(px[x, y]) < 300)
-        day = dam > ((phai - le) // buoc) * 0.6
-        if day and bat_dau is None:
-            bat_dau = y
-        if not day and bat_dau is not None:
-            dai.append((bat_dau, y - 1))
-            bat_dau = None
-    if bat_dau is not None:
-        dai.append((bat_dau, image.height - 1))
-    return max(dai, key=lambda r: r[1] - r[0]) if dai else None
+    px = image.convert("L").load()
+    for vach in range(COVER_TILE_TOP + 360, image.height):
+        if all(px[x, vach] < 128 for x in range(40, image.width - 40, 4)):
+            break
+    else:
+        return None
+    # Mot dong chu cao chung 26 diem anh; dau thanh co the tach khoi than chu nen lay tu hang
+    # co muc dau tien toi hang co muc cuoi cung, khong doi hai hang lien nhau.
+    co_muc = [y for y in range(vach + 1, min(image.height, vach + 36))
+              if any(px[x, y] < 128 for x in range(40, image.width - 40))]
+    return (vach, (co_muc[0], co_muc[-1])) if co_muc else (vach, (vach + 1, vach + 1))
 
 
 class RecentJourneyTest(unittest.TestCase):
@@ -160,10 +157,9 @@ class RecentJourneyTest(unittest.TestCase):
 
     @staticmethod
     def vung_bia(image):
-        """Vung anh bia trong the (Tenor chrome: coverX=24, coverY=tile+6+34)."""
-        w, h = (176, 264) if image.height >= 700 else (88, 132)
-        y = COVER_TILE_TOP + 6 + 34
-        return (24, y, 24 + w, y + h)
+        """Vung anh bia trong the v1.0.11: 236 x 356, giua man, ngay duoi dai the (X3)."""
+        x = (image.width - 236) // 2
+        return (x, COVER_TILE_TOP - 4, x + 236, COVER_TILE_TOP - 4 + 356)
 
     @staticmethod
     def so_hang_cuoi(log):
@@ -223,7 +219,7 @@ class RecentJourneyTest(unittest.TestCase):
         self.dat_sach(5)
         self.dat_settings()
         self.dat_state()
-        # Mot nhip CONFIRM ngay khi vao Home = HANG 1 = the "Doc tiep" = sach moi nhat.
+        # Mot nhip CONFIRM ngay khi vao Home = HANG 1 = the dang hien sach moi nhat.
         log = self.chay("2500:CONFIRM;4500:BACK;5500:QUIT", shots=[(4000, "the-dau")])
         self.assertIn("Entering activity: TxtReader", log)
         self.assertEqual(json.loads((self.store / "state.json").read_text())["openEpubPath"], "/book1.txt")
@@ -247,28 +243,33 @@ class RecentJourneyTest(unittest.TestCase):
         self.assertGreater(len(builds(log)), 0, "the bia phai duoc dung lan dau")
         DO_DUOC["metadata_dai_builds"] = builds(log)
 
-    # --- 2. the "Doc tiep" + khong dung lai bia moi nhip ---------------------
-    def test_2_con_tro_di_khong_dung_lai_bia(self):
+    # --- 2. moi nhip mot cuon, moi cuon dung the mot lan --------------------
+    def test_2_moi_nhip_doi_cuon_va_chi_dung_the_mot_lan(self):
         self.dat_sach(5, cover_o=1)
         self.dat_settings()
         self.dat_state()
-        # RIGHT = nut TRUOC, di vong qua tung hang (vao Home da o HANG 1).
-        log = self.chay("2500:RIGHT;3200:RIGHT;3900:RIGHT;4600:RIGHT;5600:QUIT",
-                        shots=[(3000, "hang-1"), (3700, "hang-2"), (5100, "hang-5")])
+        # RIGHT = nut TRUOC, di vong qua tung cuon (vao Home da o HANG 1). Sau do DOWN roi UP:
+        # sang the ben canh roi ve, van cuon thu nam, the lay lai tu cache.
+        log = self.chay("2500:RIGHT;3200:RIGHT;3900:RIGHT;4600:RIGHT;5300:DOWN;6000:UP;7000:QUIT",
+                        shots=[(2200, "hang-1"), (3000, "hang-2"), (5100, "hang-5"), (6600, "hang-5-ve")])
         nhip = frames(log)
         self.assertGreaterEqual(len(nhip), 5, f"thieu khung hinh: {nhip}")
         self.assertEqual([row for row, _, _ in nhip][:5], [1, 2, 3, 4, 5], f"ring sai: {nhip}")
-        # Dung lai bia: chi MOT lan dung the bia cho ca phien.
+        # Nam cuon, nam lan dung the; doi the roi ve khong dung them lan nao.
         dung_bia = builds(log)
-        self.assertEqual(len(dung_bia), 1, f"bia bi dung lai moi nhip: {dung_bia}")
+        self.assertEqual(len(dung_bia), 5, f"so lan dung the sai: {dung_bia}")
         DO_DUOC["builds_moi_nhip_di_chuyen"] = dung_bia
         DO_DUOC["nhip_di_chuyen_frame_ms"] = [ms for _, _, ms in nhip]
-        # Vung bia phai y nguyen giua cac nhip (cache tra lai, khong ve lai).
+        # Cuon 1 co bia that, cuon 2 thi khong: vung bia phai doi theo cuon dang hien.
         anh1, anh2 = self.anh("hang-1"), self.anh("hang-2")
         self.assertEqual(anh1.size, anh2.size)
-        self.assertIsNone(ImageChops.difference(anh1.crop(self.vung_bia(anh1)),
-                                                anh2.crop(self.vung_bia(anh2))).getbbox(),
-                          "vung bia doi giua hai nhip dieu huong")
+        self.assertIsNotNone(ImageChops.difference(anh1.crop(self.vung_bia(anh1)),
+                                                   anh2.crop(self.vung_bia(anh2))).getbbox(),
+                             "vung bia khong doi khi sang cuon khac")
+        anh5, anh5_ve = self.anh("hang-5"), self.anh("hang-5-ve")
+        self.assertIsNone(ImageChops.difference(anh5.crop((0, COVER_TILE_TOP - 4, anh5.width, 756)),
+                                                anh5_ve.crop((0, COVER_TILE_TOP - 4, anh5.width, 756))).getbbox(),
+                          "the doi sau khi sang the ben canh roi ve")
 
     def test_2_bia_that_khac_bia_fallback(self):
         do_duoc = {}
@@ -278,7 +279,7 @@ class RecentJourneyTest(unittest.TestCase):
                 self.dat_sach(3, cover_o=cover_o)
                 self.dat_settings()
                 self.dat_state()
-                log = self.chay("2500:RIGHT;3500:QUIT", shots=[(3000, f"bia-{nhan}")])
+                log = self.chay("3500:QUIT", shots=[(3000, f"bia-{nhan}")])
                 self.assertGreater(builds(log)[0][1], 0, "the bia phai co cache")
                 anh = self.anh(f"bia-{nhan}")
                 do_duoc[nhan] = anh.crop(self.vung_bia(anh))
@@ -337,7 +338,7 @@ class RecentJourneyTest(unittest.TestCase):
                 self.dat_state()
                 log = self.mo_hang_cuoi(shots=[(3600, f"hang-cuoi-{nhan}")])
                 anh = self.anh(f"hang-cuoi-{nhan}")
-                ket_qua[nhan] = {"hang": self.so_hang_cuoi(log), "anh": anh, "hop": hop_chon(anh)}
+                ket_qua[nhan] = {"hang": self.so_hang_cuoi(log), "anh": anh, "hop": dong_cuon_khac(anh)}
             finally:
                 tra_lai()
         DO_DUOC["hang_thanh_mac_dinh"] = ket_qua["mac-dinh"]["hang"]
@@ -352,18 +353,20 @@ class RecentJourneyTest(unittest.TestCase):
         day = (0, anh_md.height - 32, anh_md.width, anh_md.height)
         self.assertIsNotNone(ImageChops.difference(anh_md.crop(day), anh_tat.crop(day)).getbbox(),
                              "globalStatusBarMode=1 phai bo dai trang thai day man")
-        # Hang cuoi phai ve TRON VEN: hop chon du cao va khong cham mep duoi man hinh.
+        # Cuon cuoi dang hien, dong "Cuon khac" o day the phai ve TRON VEN: co vach, co chu
+        # du cao ngay duoi vach, khong cham mep duoi man hinh.
         for nhan in ("mac-dinh", "tat"):
             hop = ket_qua[nhan]["hop"]
-            self.assertIsNotNone(hop, f"{nhan}: khong tim thay hop cua hang dang chon")
-            cao = hop[1] - hop[0] + 1
-            self.assertGreaterEqual(cao, 24, f"{nhan}: hop chon qua thap ({hop})")
-            self.assertLessEqual(cao, 60, f"{nhan}: hop chon qua cao, khong phai mot hang ({hop})")
-            self.assertLessEqual(hop[1], ket_qua[nhan]["anh"].height - 8,
-                                 f"{nhan}: hang cuoi cham mep duoi man hinh ({hop})")
-        self.assertEqual(ket_qua["mac-dinh"]["hop"][1] - ket_qua["mac-dinh"]["hop"][0],
-                         ket_qua["tat"]["hop"][1] - ket_qua["tat"]["hop"][0],
-                         "chieu cao hang cuoi phai nhu nhau giua hai muc thanh")
+            self.assertIsNotNone(hop, f"{nhan}: khong tim thay dong Cuon khac")
+            vach, (dau, cuoi) = hop
+            cao = cuoi - dau + 1
+            self.assertGreaterEqual(cao, 12, f"{nhan}: chu dong Cuon khac qua thap ({hop})")
+            self.assertLessEqual(cao, 30, f"{nhan}: chu dong Cuon khac qua cao, khong phai mot dong ({hop})")
+            self.assertLessEqual(cuoi, ket_qua[nhan]["anh"].height - 8,
+                                 f"{nhan}: dong Cuon khac cham mep duoi man hinh ({hop})")
+        self.assertEqual(ket_qua["mac-dinh"]["hop"][1][1] - ket_qua["mac-dinh"]["hop"][1][0],
+                         ket_qua["tat"]["hop"][1][1] - ket_qua["tat"]["hop"][1][0],
+                         "chieu cao dong Cuon khac phai nhu nhau giua hai muc thanh")
 
     # --- 6. do thoi gian moi nhip + log dung lai bia ------------------------
     def test_6_do_thoi_gian_moi_nhip_va_log_dung_bia(self):
@@ -374,9 +377,10 @@ class RecentJourneyTest(unittest.TestCase):
         nhip = frames(log)
         DO_DUOC["nhip_frame_ms_item6"] = [ms for _, _, ms in nhip]
         DO_DUOC["builds_trong_ca_phien"] = builds(log)
-        self.assertEqual(len(builds(log)), 1, f"bia dung lai: {builds(log)}")
+        # v1.0.11: moi nhip hien mot cuon khac, nen moi cuon dung the dung mot lan.
+        self.assertEqual(len(builds(log)), 5, f"so lan dung the sai: {builds(log)}")
         self.assertEqual(len(nhip), 5, f"thieu khung hinh do: {nhip}")
-        # Nhip dieu huong sau khi the bia da cache: khong dung lai bia, khong qua 50ms.
+        # Nhip dieu huong, ke ca dung the cho cuon moi: khong qua 50ms tren simulator.
         self.assertLessEqual(max(ms for _, _, ms in nhip[1:]), 50,
                              f"nhip dieu huong qua cham tren simulator: {nhip}")
         DO_DUOC["chenh_ms_moi_nhip"] = [nhip[i + 1][2] - nhip[i][2] for i in range(len(nhip) - 1)]

@@ -28,6 +28,7 @@
 #include "MappedInputManager.h"
 #include "MenuCustomization.h"
 #include "MenuFavorites.h"
+#include "QuoteStore.h"
 #include "QuotesActivity.h"
 #include "ReadingHabitsActivity.h"
 #include "ReadingHistoryActivity.h"
@@ -56,8 +57,22 @@ namespace {
 constexpr StrId TAB_NAMES[HomeActivity::TAB_COUNT] = {StrId::STR_HOME_TAB_RECENT, StrId::STR_HOME_TAB_FOLDER,
                                                       StrId::STR_HOME_TAB_STATS, StrId::STR_SETTINGS_TITLE,
                                                       StrId::STR_READER_TAB_FAVORITES};
-constexpr int TENOR_RECENT_CARD_HEIGHT_TALL = 324;
-constexpr int TENOR_RECENT_OLDER_GAP = 16;
+// Newest quote id of each book when Home last showed it (see homeQuoteIndex). It lives in RAM
+// across Home visits and is lost at power-off, after which the card simply picks at random.
+struct SeenQuote {
+  uint32_t book = 0;
+  uint64_t newest = 0;
+};
+constexpr uint8_t SEEN_BOOKS = 5;  // as many as the Recent tab lists
+SeenQuote seenQuotes[SEEN_BOOKS];
+uint8_t seenNext = 0;
+uint64_t& seenNewest(const uint32_t book) {
+  for (auto& seen : seenQuotes)
+    if (seen.newest != 0 && seen.book == book) return seen.newest;
+  auto& seen = seenQuotes[seenNext++ % SEEN_BOOKS];
+  seen = SeenQuote{book, 0};
+  return seen.newest;
+}
 }  // namespace
 
 HomeActivity::HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -231,8 +246,7 @@ void HomeActivity::rebuildRows() {
 
   switch (activeTabId) {
     case Tab::RECENT:
-      for (size_t i = 0; i < recentBooks.size(); ++i)
-        rowLabels.push_back(tenorchrome::enabled() && i == 0 ? tr(STR_CONTINUE_READING) : recentBooks[i].title);
+      for (const auto& book : recentBooks) rowLabels.push_back(book.title);
       break;
     case Tab::FOLDER:
       docGocTheNho();
@@ -389,8 +403,7 @@ void HomeActivity::activateIndex(const int index) {
 }
 
 bool HomeActivity::handleButtons() {
-  // Continue reading stays above the independently scrolled older books.
-  // Its row is the visible top even when the older viewport starts at book 4.
+  // Holding the front previous button brings the card back to the most recent book.
   // Queued like every other move: the loop must not wait for the panel.
   if (activeTabId == Tab::RECENT && tenorchrome::enabled() &&
       mappedInput.wasLongPressed(MappedInputManager::Button::Left, 700)) {
@@ -482,7 +495,18 @@ const char* HomeActivity::habitSuggestion() const {
 }
 
 void HomeActivity::drawFooter() {
-  UiListActivity::drawFooter();
+  // Back opens the most recent book from every tab (handleButtons), so its hint says so, and is
+  // hidden when there is no book to open. On the tenor Recent tab the front buttons step between
+  // books and Select opens the one shown; hints for a button that would do nothing are left out.
+  const bool hasRecent = !recentBooks.empty();
+  const char* back = hasRecent ? tr(STR_CONTINUE_READING) : "";
+  const bool card = activeTabId == Tab::RECENT && tenorchrome::enabled();
+  const bool several = recentBooks.size() > 1;
+  const auto labels =
+      card ? mappedInput.mapLabels(back, hasRecent ? tr(STR_SELECT) : "", several ? tr(STR_DIR_LEFT) : "",
+                                   several ? tr(STR_DIR_RIGHT) : "")
+           : mappedInput.mapLabels(back, tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   if (activeTabId == Tab::FOLDER && ringPos() == 0) tenorchrome::drawTip(renderer, tr(STR_FOLDER_HOLD));
   if (favoriteFileMissing) tenorchrome::drawTip(renderer, tr(STR_FILE_NOT_FOUND), 1, 3);
   if (activeTabId == Tab::STATS && statsResetTip) tenorchrome::drawTip(renderer, I18N.get(*statsResetTip), 1, 2);
@@ -528,6 +552,7 @@ void HomeActivity::drawChrome() {
   coverRectY = coverTileTop();
   coverRectW = pageWidth;
   coverRectH = metrics.homeCoverTileHeight;
+  textRectH = 0;
   bool bufferRestored = coverBufferStored && restoreCoverBuffer();
   GUI.drawRecentBookCover(renderer, Rect{0, coverTileTop(), pageWidth, metrics.homeCoverTileHeight}, recentBooks,
                           tenorchrome::enabled() ? -1 : std::max(0, ringPos() - 1), coverRendered, coverBufferStored,
@@ -565,8 +590,23 @@ void HomeActivity::buildScreen(UiScreen& screen) {
       fui::Insets{static_cast<int16_t>(tabBarTop()), 0, static_cast<int16_t>(metrics.buttonHintsHeight), 0});
 
   buildTabBar(screen);
+  if (activeTabId == Tab::RECENT && tenorchrome::enabled()) {
+    // drawChrome() paints the whole card; no list rows are drawn. The ring still counts one row
+    // per book, so the front buttons walk the books with the usual wrap, and the viewport spans
+    // them all: no "more below" chevron, and holding a front button reaches the first or last.
+    auto& n = activeNav();
+    const int count = listCount();
+    n.selected = count > 0 ? std::clamp(n.selected, 1, count) : 0;
+    n.top = 0;
+    n.visibleRows = std::max(1, count);
+    n.drawnRows = count;
+    n.drawnCount = count;
+    n.followOnBuild = false;
+    n.followPending = false;
+    return;
+  }
   // Leave the cover tile's band to drawChrome(); the list starts under it.
-  if (activeTabId == Tab::RECENT) screen.takeTop(static_cast<int16_t>(recentCardHeight()));
+  if (activeTabId == Tab::RECENT) screen.takeTop(static_cast<int16_t>(metrics.homeCoverTileHeight));
 
   if (activeTabId == Tab::STATS) screen.takeTop(static_cast<int16_t>(statsPanelHeight() + 12));
 
@@ -590,58 +630,6 @@ void HomeActivity::buildScreen(UiScreen& screen) {
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
-  if (activeTabId == Tab::RECENT && tenorchrome::enabled() && !rowItems.empty()) {
-#ifdef TENOR_UI_ACCEPTANCE
-    const uint32_t recentUiStarted = micros();
-#endif
-    reserveFixedMenuContent(screen);
-    reserveFavoriteHint(screen);
-    decoratePinnedRows(props);
-    props.labelText.maxLines = 1;
-    props.rowHeight = metrics.listRowHeight;
-    props.rowGap = metrics.listRowGap;
-    auto& n = activeNav();
-    if (n.followOnBuild) {
-      recentOlderTop = n.top;
-      n.followOnBuild = false;
-    }
-    n.selected = std::clamp(n.selected, 0, static_cast<int>(rowItems.size()));
-    const int olderRoom = std::max(0, screen.body().height - metrics.listRowHeight - TENOR_RECENT_OLDER_GAP);
-    const int olderRows = std::max(1, std::min(2, (olderRoom + metrics.listRowGap) /
-                                                   (metrics.listRowHeight + metrics.listRowGap)));
-    n.visibleRows = 1 + olderRows;
-    n.drawnRows = 1 + olderRows;
-    n.drawnCount = rowItems.size();
-    props.count = 1;
-    props.selectedIndex = n.selected == 1 ? 0 : -1;
-    props.scrollIndicator = false;
-#ifdef TENOR_UI_ACCEPTANCE
-    const uint32_t listStarted = micros();
-#endif
-    screen.list(props, metrics.listRowHeight);
-#ifdef TENOR_UI_ACCEPTANCE
-    const uint32_t continueDone = micros();
-#endif
-    screen.takeTop(TENOR_RECENT_OLDER_GAP);
-    const int olderCount = rowItems.size() - 1;
-    if (olderCount > 0) {
-      recentOlderTop = fui::listTopIndexFor(std::max(0, n.selected - 2), std::max(0, recentOlderTop), olderRows, olderCount);
-      n.top = recentOlderTop;
-      props.items = rowItems.data() + 1;
-      props.count = olderCount;
-      props.topIndex = recentOlderTop;
-      props.selectedIndex = n.selected > 1 ? n.selected - 2 : -1;
-      props.scrollIndicator = true;
-      screen.list(props, olderRows * metrics.listRowHeight + (olderRows - 1) * metrics.listRowGap);
-    }
-#ifdef TENOR_UI_ACCEPTANCE
-    LOG_INF("HOME_PROBE", "recent_prepare_us=%lu continue_us=%lu older_us=%lu",
-            static_cast<unsigned long>(listStarted - recentUiStarted),
-            static_cast<unsigned long>(continueDone - listStarted),
-            static_cast<unsigned long>(micros() - continueDone));
-#endif
-    return;
-  }
   syncTabListViewport(screen, props);
   screen.list(props);
 }
@@ -701,8 +689,11 @@ bool HomeActivity::storeCoverBuffer() {
   // to cloning the whole framebuffer.
   if (coverRectW <= 0 || coverRectH <= 0) return false;
   freeCoverBuffer();
-  const size_t needed = renderer.getRegionByteSize(coverRectX, coverRectY, coverRectW, coverRectH);
-  if (needed == 0) return false;
+  const size_t first = renderer.getRegionByteSize(coverRectX, coverRectY, coverRectW, coverRectH);
+  const size_t second =
+      textRectW > 0 && textRectH > 0 ? renderer.getRegionByteSize(textRectX, textRectY, textRectW, textRectH) : 0;
+  const size_t needed = first + second;
+  if (first == 0) return false;
   coverBuffer = static_cast<uint8_t*>(malloc(needed));
   if (!coverBuffer) {
     LOG_ERR("HOME", "OOM: cover buffer (%u bytes)", (unsigned)needed);
@@ -710,7 +701,9 @@ bool HomeActivity::storeCoverBuffer() {
   }
   coverBufferSize = needed;
   coverBufferUiSize = normalizedUiTextSize(SETTINGS.uiTextSize);
-  if (!renderer.copyRegionToBuffer(coverRectX, coverRectY, coverRectW, coverRectH, coverBuffer, coverBufferSize)) {
+  if (!renderer.copyRegionToBuffer(coverRectX, coverRectY, coverRectW, coverRectH, coverBuffer, first) ||
+      (second > 0 &&
+       !renderer.copyRegionToBuffer(textRectX, textRectY, textRectW, textRectH, coverBuffer + first, second))) {
     free(coverBuffer);
     coverBuffer = nullptr;
     coverBufferSize = 0;
@@ -725,7 +718,12 @@ bool HomeActivity::restoreCoverBuffer() {
     return false;
   }
   if (!coverBuffer || coverRectW <= 0 || coverRectH <= 0) return false;
-  return renderer.copyBufferToRegion(coverRectX, coverRectY, coverRectW, coverRectH, coverBuffer, coverBufferSize);
+  const size_t first = renderer.getRegionByteSize(coverRectX, coverRectY, coverRectW, coverRectH);
+  if (first > coverBufferSize ||
+      !renderer.copyBufferToRegion(coverRectX, coverRectY, coverRectW, coverRectH, coverBuffer, first))
+    return false;
+  return first == coverBufferSize || renderer.copyBufferToRegion(textRectX, textRectY, textRectW, textRectH,
+                                                                 coverBuffer + first, coverBufferSize - first);
 }
 
 void HomeActivity::freeCoverBuffer() {
@@ -735,12 +733,12 @@ void HomeActivity::freeCoverBuffer() {
   }
   coverBufferSize = 0;
   coverBufferStored = false;
+  coverBufferBook = -1;
 }
 
 void HomeActivity::loadRecentBooks() {
   recentBooks.clear();
   const auto& books = RECENT_BOOKS.getBooks();
-  constexpr size_t RECENT_LIMIT = 5;
   recentBooks.reserve(std::min(books.size(), RECENT_LIMIT));
   for (const RecentBook& book : books) {
     if (RecentBooksStore::isMissing(book)) continue;
@@ -820,134 +818,180 @@ int HomeActivity::statsPanelHeight() const {
          (habitSuggestion() ? renderer.getLineHeight(UI_12_FONT_ID) + 8 : 0);
 }
 
-int HomeActivity::recentCardHeight() const {
-  const auto text = uiTextSizeSpec(SETTINGS.uiTextSize);
-  const int growth = normalizedUiTextSize(SETTINGS.uiTextSize) == 0 ? 0
-                       : (text.subtitleLineHeight - 26) + 3 * (text.bodyLineHeight - 33) +
-                         4 * (renderer.getLineHeight(SETTINGS.uiTextSize == 1 ? NOTOSERIF_14_FONT_ID : NOTOSERIF_16_FONT_ID) -
-                              renderer.getLineHeight(NOTOSERIF_12_FONT_ID));
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  if (!tenorchrome::enabled()) return metrics.homeCoverTileHeight;
-  if (recentBooks.empty()) return 96;
-  const int desired = (renderer.getScreenHeight() >= 700 ? TENOR_RECENT_CARD_HEIGHT_TALL : 180) + growth;
-  if (normalizedUiTextSize(SETTINGS.uiTextSize) == 0) return desired;
-  int bottom = renderer.getScreenHeight() - metrics.buttonHintsHeight;
-  if (!SETTINGS.globalStatusBarHidden()) bottom = std::min(bottom, tenorchrome::tipY(renderer) - 2);
-  // Keep the continue row and at least one older book visible. The excerpt
-  // already measures its available lines against this bounded card band.
-  const int listReserve = metrics.listRowHeight +
-                         (recentBooks.size() > 1 ? TENOR_RECENT_OLDER_GAP + metrics.listRowHeight : 0);
-  return std::max(0, std::min(desired, bottom - coverTileTop() - listReserve));
+int HomeActivity::shownRecent() const {
+  const int count = static_cast<int>(recentBooks.size());
+  return count == 0 ? -1 : std::clamp(ringPos() - 1, 0, count - 1);
 }
+
+std::string HomeActivity::cardExcerpt(const int index, bool& quoted) {
+  quoted = false;
+  const auto& book = recentBooks[index];
+  const uint8_t bit = static_cast<uint8_t>(1u << index);
+  if (!(cardQuotesPicked & bit)) {
+    // Picked once per visit, not per repaint. listNames() reads names only, so no other book's
+    // record is opened; the one quote shown is the only record read below.
+    cardQuotesPicked |= bit;
+    std::vector<quotes::QuoteId> ids;
+    const uint32_t key = quotes::bookKey(book.path);
+    quotes::listNames(key, ids);
+    if (!ids.empty()) {
+      uint64_t& seen = seenNewest(key);
+      cardQuotes[index] =
+          ids[homeQuoteIndex(ids.data(), ids.size(), seen, static_cast<uint32_t>(random(0x7FFFFFFF)))];
+      seen = ids.front();
+      LOG_INF("HOME", "Card quote %s of %u", quotes::nameOf(cardQuotes[index]).c_str(),
+              static_cast<unsigned>(ids.size()));
+    }
+  }
+  QuoteRecord quote;
+  if (cardQuotes[index] != 0 && quotes::load(cardQuotes[index], quote)) {
+    quoted = true;
+    return quote.text;
+  }
+  return book.excerpt;
+}
+
 void HomeActivity::drawRecentCard() {
+  if (recentBooks.empty()) {
+    renderer.drawText(UI_12_FONT_ID, 24, coverTileTop() + 26, tr(STR_NO_RECENT_BOOKS));
+    return;
+  }
+  const int shown = shownRecent();
+  const int serifFont = SETTINGS.uiTextSize == 1   ? NOTOSERIF_14_FONT_ID
+                        : SETTINGS.uiTextSize == 2 ? NOTOSERIF_16_FONT_ID
+                                                   : NOTOSERIF_12_FONT_ID;
+  HomeCardInput in;
+  in.screenWidth = renderer.getScreenWidth();
+  in.top = coverTileTop() - 4;
+  // Above both the tip lane and the hint band: the Back hint is text here, and at the larger text
+  // sizes it wraps to two lines that fill the taller band.
+  in.bottom = std::min(tenorchrome::tipY(renderer) + 6,
+                       renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight);
+  in.titleLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
+  in.titleLines = 2;
+  in.authorLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
+  in.excerptLineHeight = renderer.getLineHeight(serifFont);
+  in.rowLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
+  const auto frame = homeCardLayout(in);
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t restoreStartedUs = micros();
 #endif
-  if (coverBufferStored && restoreCoverBuffer()) {
+  if (coverBufferStored && coverBufferBook == shown && restoreCoverBuffer()) {
 #ifdef TENOR_UI_ACCEPTANCE
     LOG_INF("HOME_PROBE", "card_restore_us=%lu cache_bytes=%u", static_cast<unsigned long>(micros() - restoreStartedUs),
             static_cast<unsigned>(coverBufferSize));
 #endif
+    drawOtherBookRow(shown, frame.ruleY, frame.rowY);
     return;
   }
   const uint32_t started = millis();
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t cardStartedUs = micros();
 #endif
-  const int top = coverTileTop() + 6;
-  const int right = renderer.getScreenWidth() - 24;
-  if (recentBooks.empty()) {
-    renderer.drawText(UI_12_FONT_ID, 24, top + 20, tr(STR_NO_RECENT_BOOKS));
-    return;
-  }
-  const auto& book = recentBooks.front();
-  renderer.drawText(UI_10_FONT_ID, 24, top, tr(STR_RECENT_LATEST));
-  const bool tall = renderer.getScreenHeight() >= 700;
-  const int coverX = 24, coverW = tall ? 176 : 88, coverH = tall ? 264 : 132;
-  const bool enlarged = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
-  const int coverY = top + (enlarged ? renderer.getLineHeight(UI_10_FONT_ID) + 8 : 34), textX = coverX + coverW + 20, textWidth = right - textX;
-  int y = coverY;
+  const auto& book = recentBooks[shown];
   const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
-  for (const auto& line :
-       renderer.wrappedText(UI_12_FONT_ID, title.c_str(), textWidth, tall ? 3 : 2, EpdFontFamily::BOLD)) {
-    renderer.drawText(UI_12_FONT_ID, textX, y, line.c_str(), true, EpdFontFamily::BOLD);
-    y += enlarged ? renderer.getLineHeight(UI_12_FONT_ID) : 29;
+  const auto titleLines = renderer.wrappedText(UI_12_FONT_ID, title.c_str(), frame.textW, 2, EpdFontFamily::BOLD);
+  in.titleLines = std::max(1, static_cast<int>(titleLines.size()));
+  const auto card = homeCardLayout(in);
+  int y = card.titleY;
+  for (const auto& line : titleLines) {
+    renderer.drawText(UI_12_FONT_ID, card.textX, y, line.c_str(), true, EpdFontFamily::BOLD);
+    y += in.titleLineHeight;
   }
-  y = enlarged ? y + 8 : coverY + (tall ? 98 : 62);
-  renderer.drawText(
-      UI_10_FONT_ID, textX, y,
-      renderer
-          .truncatedText(UI_10_FONT_ID, book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str(), textWidth)
-          .c_str());
-  const int authorBottom = y + renderer.getLineHeight(UI_10_FONT_ID);
-  const bool cjkExcerpt = homeExcerptUsesUiFont(book.excerpt.c_str());
-  const int quoteFont = book.excerpt.empty() ? SMALL_FONT_ID
-                       : cjkExcerpt ? UI_12_FONT_ID
-                       : SETTINGS.uiTextSize == 1 ? NOTOSERIF_14_FONT_ID
-                       : SETTINGS.uiTextSize == 2 ? NOTOSERIF_16_FONT_ID : NOTOSERIF_12_FONT_ID;
-  const auto quoteStyle = book.excerpt.empty() || cjkExcerpt ? EpdFontFamily::REGULAR : EpdFontFamily::ITALIC;
-  const auto quote =
-      book.excerpt.empty() ? std::string(tr(STR_RECENT_NO_EXCERPT)) : std::string("“") + book.excerpt + "”";
+  const char* author = book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str();
+  renderer.drawText(UI_10_FONT_ID, card.textX, card.authorY,
+                    renderer.truncatedText(UI_10_FONT_ID, author, card.textW).c_str());
+  // A saved quote of the book goes in curly quotes; the page excerpt the reader left on is shown
+  // as it is, as in the approved drawings.
+  bool quoted = false;
+  const auto excerpt = cardExcerpt(shown, quoted);
+  const bool cjkExcerpt = homeExcerptUsesUiFont(excerpt.c_str());
+  const int quoteFont = excerpt.empty() ? SMALL_FONT_ID : cjkExcerpt ? UI_12_FONT_ID : serifFont;
+  const auto quoteStyle = excerpt.empty() || cjkExcerpt ? EpdFontFamily::REGULAR : EpdFontFamily::ITALIC;
+  const auto quote = excerpt.empty() ? std::string(tr(STR_RECENT_NO_EXCERPT))
+                     : quoted        ? std::string("“") + excerpt + "”"
+                                     : excerpt;
   // Without a page slot every glyph miss inflates a whole font group again
   // (the decompressor keeps one hot group), which made this card cost ~620 ms
   // on the X3. Prewarm once; the slot is released after the card is cached.
   auto* fcm = renderer.getFontCacheManager();
   if (fcm) fcm->prewarmCache(quoteFont, quote.c_str(), static_cast<uint8_t>(1u << quoteStyle));
-  const int textBottom = enlarged ? coverTileTop() + recentCardHeight() - 12 : coverY + coverH;
-  const int quoteLines = enlarged ? std::max(1, std::min(tall ? 4 : 1,
-                                        (textBottom - authorBottom - 8) / renderer.getLineHeight(quoteFont)))
-                                  : tall ? 4 : 1;
-  auto lines = renderer.wrappedText(quoteFont, quote.c_str(), textWidth, quoteLines, quoteStyle);
-  if (!lines.empty()) {
-    auto& last = lines.back();
-    const std::string closing = "”";
-    if (!book.excerpt.empty() &&
-        (last.size() < closing.size() || last.compare(last.size() - closing.size(), closing.size(), closing) != 0))
-      last = renderer.truncatedText(quoteFont, last.c_str(),
-                                    textWidth - renderer.getTextWidth(quoteFont, closing.c_str(), quoteStyle) - 2,
-                                    quoteStyle) +
-             closing;
-    y = textBottom - renderer.getTextInkBottom(quoteFont, last.c_str(), quoteStyle) -
-        (lines.size() - 1) * renderer.getLineHeight(quoteFont);
-    for (const auto& line : lines) {
-      renderer.drawText(quoteFont, textX, y, line.c_str(), true, quoteStyle);
-      y += renderer.getLineHeight(quoteFont);
-    }
+  y = card.excerptY;
+  for (const auto& line : renderer.wrappedText(quoteFont, quote.c_str(), card.textW, card.excerptLines, quoteStyle)) {
+    renderer.drawText(quoteFont, card.textX, y, line.c_str(), true, quoteStyle);
+    y += renderer.getLineHeight(quoteFont);
   }
+  const int textBottom = std::min(y, card.ruleY - 1);
+  // Thumbnails are generated at the theme's cover height; one made at the card's own height is
+  // sharper, so it is used when present.
   bool image = false;
-  if (!book.coverBmpPath.empty()) {
-    const auto path =
-        UITheme::getCoverThumbPath(book.coverBmpPath, UITheme::getInstance().getMetrics().homeCoverHeight);
+  for (const int height : {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight}) {
+    if (image || book.coverBmpPath.empty()) break;
     HalFile file;
-    if (Storage.openFileForRead("HOME", path, file)) {
-      Bitmap bitmap(file);
-      if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0)
-        image = renderer.drawBitmapCover(bitmap, coverX, coverY, coverW, coverH);
-    }
+    if (!Storage.openFileForRead("HOME", UITheme::getCoverThumbPath(book.coverBmpPath, height), file)) continue;
+    Bitmap bitmap(file);
+    if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0)
+      image = renderer.drawBitmapCover(bitmap, card.coverX, card.coverY, card.coverW, card.coverH);
   }
   if (!image) {
-    for (int yy = 0; yy < coverH; ++yy)
-      for (int xx = 0; xx < coverW; ++xx) {
-        const int sx = xx * sleepcover::WIDTH / coverW;
-        const int sy = yy * sleepcover::HEIGHT / coverH;
+    for (int yy = 0; yy < card.coverH; ++yy)
+      for (int xx = 0; xx < card.coverW; ++xx) {
+        const int sx = xx * sleepcover::WIDTH / card.coverW;
+        const int sy = yy * sleepcover::HEIGHT / card.coverH;
         const int bit = sy * sleepcover::WIDTH + sx;
         const bool white = (sleepcover::PIXELS[bit / 8] >> (7 - bit % 8)) & 1;
-        renderer.drawPixel(coverX + xx, coverY + yy, !white);
+        renderer.drawPixel(card.coverX + xx, card.coverY + yy, !white);
       }
   }
-  // Cache the whole fixed card, including typography, only while Home owns it.
+  // Cache the cover and the text block, including typography, only while Home owns them.
   // onPause/onExit release this bounded region before a book or network screen opens.
-  coverRectX = 24;
-  coverRectY = top;
-  coverRectW = right - 24;
-  coverRectH = std::max(coverY + coverH, textBottom) - top;
+  coverRectX = card.coverX;
+  coverRectY = card.coverY;
+  coverRectW = card.coverW;
+  coverRectH = card.coverH;
+  textRectX = card.textX;
+  textRectY = card.titleY;
+  textRectW = card.textW;
+  textRectH = std::max(0, textBottom - card.titleY);
   coverBufferStored = storeCoverBuffer();
+  coverBufferBook = shown;
   coverRendered = true;
   if (fcm) fcm->releaseBuiltinPageCaches();  // the card is now a cached bitmap
+  drawOtherBookRow(shown, card.ruleY, card.rowY);
 #ifdef TENOR_UI_ACCEPTANCE
   LOG_INF("HOME_PROBE", "card_build_us=%lu cache_bytes=%u", static_cast<unsigned long>(micros() - cardStartedUs),
           static_cast<unsigned>(coverBufferSize));
 #endif
   LOG_INF("HOME", "Recent card build=%lums cache=%u", static_cast<unsigned long>(millis() - started),
           static_cast<unsigned>(coverBufferSize));
+}
+
+// "Another book" and the next book's title under a rule, with an arrow on each side that has a
+// book to step to. Drawn on every paint: it is one line of an uncompressed flash font.
+void HomeActivity::drawOtherBookRow(const int shown, const int ruleY, const int rowY) {
+  const int count = static_cast<int>(recentBooks.size());
+  if (count < 2) return;
+  constexpr int MARGIN = 40, ARROW_W = 10, ARROW_HALF = 7, ARROW_GAP = 12;
+  const int left = MARGIN, right = renderer.getScreenWidth() - MARGIN;
+  renderer.drawLine(left, ruleY, right - 1, ruleY);
+  const char* label = tr(STR_RECENT_OTHER_BOOK);
+  renderer.drawText(UI_10_FONT_ID, left, rowY, label);
+  const auto& next = recentBooks[(shown + 1) % count];
+  const auto title = next.title.empty() ? next.path.substr(next.path.find_last_of('/') + 1) : next.title;
+  const int titleRight = right - ARROW_W - ARROW_GAP;
+  const int room = titleRight - left - renderer.getTextWidth(UI_10_FONT_ID, label) - 16;
+  const auto shownTitle = renderer.truncatedText(UI_10_FONT_ID, title.c_str(), room, EpdFontFamily::BOLD);
+  const int titleWidth = renderer.getTextWidth(UI_10_FONT_ID, shownTitle.c_str(), EpdFontFamily::BOLD);
+  renderer.drawText(UI_10_FONT_ID, titleRight - titleWidth, rowY, shownTitle.c_str(), true, EpdFontFamily::BOLD);
+  const int cy = rowY + renderer.getFontAscenderSize(UI_10_FONT_ID) * 2 / 3;
+  // Solid triangle, tip first; direction 1 points right.
+  const auto arrow = [&](const int tipX, const int direction) {
+    for (int i = 0; i < ARROW_W; ++i) {
+      const int half = i * ARROW_HALF / (ARROW_W - 1);
+      renderer.drawLine(tipX - direction * i, cy - half, tipX - direction * i, cy + half);
+    }
+  };
+  arrow(right - 1, 1);
+  // Right wraps to the most recent book from the last one, so only the left arrow can be missing.
+  if (shown > 0) arrow(left - 24, -1);
 }

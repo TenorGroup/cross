@@ -113,13 +113,26 @@ class HomeActivity final : public UiTabListActivity {
   size_t coverBufferSize = 0;
   uint8_t coverBufferUiSize = 0;
   int coverRectX = 0, coverRectY = 0, coverRectW = 0, coverRectH = 0;
+  // The tenor card keeps a second region, its text block, so the blank sides of the cover are not
+  // held in RAM. Zero height when the snapshot is a single region.
+  int textRectX = 0, textRectY = 0, textRectW = 0, textRectH = 0;
+  // Recent book the snapshot shows, so stepping to another book rebuilds the card.
+  int coverBufferBook = -1;
   bool storeCoverBuffer();
   bool restoreCoverBuffer();
   void freeCoverBuffer();
 
-  int recentOlderTop = 0;
-  int recentCardHeight() const;
+  // The tenor Recent tab shows one book at a time: ring position N shows recentBooks[N - 1], and
+  // the front buttons walk the ring, so they step through the books.
+  static constexpr size_t RECENT_LIMIT = 5;
+  int shownRecent() const;
+  // Saved quote each book's card shows during this visit, picked once per book (bit set in
+  // cardQuotesPicked); 0 when the book has none and the card shows the page excerpt instead.
+  uint64_t cardQuotes[RECENT_LIMIT] = {};
+  uint8_t cardQuotesPicked = 0;
+  std::string cardExcerpt(int index, bool& quoted);
   void drawRecentCard();
+  void drawOtherBookRow(int shown, int ruleY, int rowY);
   const char* habitSuggestion() const;
   void loadRecentBooks();
   void onSelectBook(const std::string& path);
