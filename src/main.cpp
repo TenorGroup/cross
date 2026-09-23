@@ -62,6 +62,7 @@
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/home/BookStatsActivity.h"
+#include "QuoteStore.h"
 #include "activities/home/QuotesActivity.h"
 
 // Page turner BLE: chi lien ket host cua SDK khi capability duoc bat (xem env x3-ble).
@@ -557,6 +558,12 @@ void setup() {
   logHeapMark("store-settings");
   RECENT_BOOKS.loadFromFile();
   logHeapMark("store-recent");
+  // Quote files written before v1.0.11 are renamed to the per-book scheme here, before the
+  // first book opens: the reader finds a book's highlights by file name alone, so an old
+  // name would hide them until the Quotes screen was visited. A no-op once done, apart from
+  // repairing a quote edit a power cut interrupted.
+  quotes::migrateNames();
+  logHeapMark("store-quotes");
   READING_STATS.loadFromFile();
   logHeapMark("store-stats");
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
@@ -1163,6 +1170,27 @@ void loop() {
         if (!books.empty())
           activityManager.pushActivity(makeUniqueNoThrow<BookStatsActivity>(renderer, mappedInputManager,
                                                                             books.front().path, books.front().title));
+#ifdef TENOR_UI_ACCEPTANCE
+      } else if (cmd == "QUOTES_DUMP") {
+        // Every quote file, name and raw bytes, so a card's quotes can be backed up over USB:
+        // the web transfer keeps hidden folders off limits.
+        auto dir = Storage.open("/.crosspoint/quotes");
+        unsigned files = 0;
+        if (dir && dir.isDirectory()) {
+          char fileName[64];
+          uint8_t chunk[256];
+          for (auto entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
+            if (entry.isDirectory()) continue;
+            entry.getName(fileName, sizeof(fileName));
+            logSerial.printf("QDUMP_FILE:%s:%u\n", fileName, static_cast<unsigned>(entry.size()));
+            for (int n = entry.read(chunk, sizeof(chunk)); n > 0; n = entry.read(chunk, sizeof(chunk)))
+              logSerial.write(chunk, n);
+            logSerial.printf("\nQDUMP_END\n");
+            ++files;
+          }
+        }
+        logSerial.printf("QDUMP_DONE:%u\n", files);
+#endif
       } else if (cmd == "QUOTES") {
         activityManager.pushActivity(makeUniqueNoThrow<QuotesActivity>(renderer, mappedInputManager));
       } else if (cmd == "CLOCK_SYNC") {
