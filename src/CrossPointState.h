@@ -20,6 +20,9 @@ class CrossPointState : public PersistableStore<CrossPointState> {
   uint16_t recentOverlaySleepImages[SLEEP_RECENT_COUNT] = {};
   uint8_t recentOverlaySleepPos = 0;
   uint8_t recentOverlaySleepFill = 0;
+  // Id (QuoteStore QuoteId) of the quote the last "Book + quotation" sleep screen showed, so
+  // the next one draws another. 0 before the first one.
+  uint64_t lastSleepQuote = 0;
   uint8_t readerActivityLoadCount = 0;
   bool lastSleepFromReader = false;
   bool showBootScreen = true;

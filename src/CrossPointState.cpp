@@ -50,6 +50,12 @@ void CrossPointState::toJson(JsonDocument& doc) const {
   for (int i = 0; i < SLEEP_RECENT_COUNT; i++) recentOverlayArr.add(recentOverlaySleepImages[i]);
   doc["recentOverlaySleepPos"] = recentOverlaySleepPos;
   doc["recentOverlaySleepFill"] = recentOverlaySleepFill;
+  // Two 32-bit halves: a 64-bit JSON number would pull ArduinoJson's 64-bit conversions
+  // into flash for this one field.
+  if (lastSleepQuote) {
+    doc["lastSleepQuoteHi"] = static_cast<uint32_t>(lastSleepQuote >> 32);
+    doc["lastSleepQuoteLo"] = static_cast<uint32_t>(lastSleepQuote);
+  }
   doc["readerActivityLoadCount"] = readerActivityLoadCount;
   doc["lastSleepFromReader"] = lastSleepFromReader;
   doc["showBootScreen"] = showBootScreen;
@@ -87,6 +93,7 @@ bool CrossPointState::fromJson(JsonVariantConst doc) {
     const uint8_t legacy = doc["lastSleepImage"] | static_cast<uint8_t>(UINT8_MAX);
     if (legacy != UINT8_MAX) pushRecentSleep(static_cast<uint16_t>(legacy));
   }
+  lastSleepQuote = static_cast<uint64_t>(doc["lastSleepQuoteHi"] | 0u) << 32 | (doc["lastSleepQuoteLo"] | 0u);
   readerActivityLoadCount = doc["readerActivityLoadCount"] | static_cast<uint8_t>(0);
   lastSleepFromReader = doc["lastSleepFromReader"] | false;
   showBootScreen = doc["showBootScreen"] | true;

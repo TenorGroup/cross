@@ -44,8 +44,10 @@ def pin():
  assert saved(sd,'menu-customization.json')['pins']==['settings/sleepScreen']
  assert saved(sd,'settings.json')['sleepScreen']==8
  # Compare the entire popup. The parent row focus is in-memory and can differ
- # between the warm return and a restart behind this modal.
- same(t.o/'pin-e2e-popup.png',t.o/'pin-restart-popup.png',(67,30,462,761))
+ # between the warm return and a restart behind this modal. With eleven sleep
+ # screens (v1.0.11) the popup pages; tenor/cross opens on its second page, a
+ # shorter box, so the tab behind it shows above and below and is left out.
+ same(t.o/'pin-e2e-popup.png',t.o/'pin-restart-popup.png',(67,178,462,582))
 def order():
  sd=t.run('reorder-e2e','1000:DOWN:1600;3100:QUIT',[(700,'before'),(2800,'after')])
  assert saved(sd,'menu-customization.json')['tabs']['home']==[1,0,4,2,3]

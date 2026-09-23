@@ -21,12 +21,16 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <vector>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "QuoteStore.h"
 #include "ReadingStatsStore.h"
+#include "SleepQuoteLayout.h"
 #include "activities/reader/ReaderUtils.h"
 #include "components/ManNguTenor.h"
+#include "components/QuoteMarkGlyph.h"
 #include "components/ReadingStatsView.h"
 #include "components/UITheme.h"
 #include "components/X3BrandScreen.h"
@@ -496,6 +500,38 @@ void releaseSdFontCachesForDecode(const GfxRenderer& renderer) {
   }
 }
 
+// Plots the big opening mark through drawPixel, so it lands correctly whatever the byte
+// alignment of its position. The bytes are packed for drawImage's blit
+// (components/QuoteMarkGlyph.h), which snaps x to a whole byte on the simulator; stored
+// (row, column) lands at (x + rows - 1 - row, y + column), the mapping drawIcon uses. The
+// Quotes detail screen plots it the same way.
+void drawQuoteMark(const GfxRenderer& renderer, const int x, const int y) {
+  constexpr int stride = (QUOTE_MARK_DRAW_WIDTH + 7) / 8;
+  for (int row = 0; row < QUOTE_MARK_DRAW_HEIGHT; ++row) {
+    for (int column = 0; column < QUOTE_MARK_DRAW_WIDTH; ++column) {
+      const uint8_t byte = kQuoteMarkGlyphBitmap[row * stride + (column >> 3)];
+      if (((byte >> (7 - (column & 7))) & 1) == 0) renderer.drawPixel(x + QUOTE_MARK_DRAW_HEIGHT - 1 - row, y + column);
+    }
+  }
+}
+
+// The cover the Cover sleep mode already cached for `bookPath`: the variant that mode would
+// pick on this panel first, then any other variant already on the card. Nothing is decoded
+// here. Building a cover at sleep for a book that never had one shown would cost a full
+// cover decode for one small tile, so a book without a cached cover simply shows no tile.
+std::string cachedCoverPath(const std::string& bookPath, const bool originalThresholds,
+                            const CrossPointSettings& settings) {
+  if (!FsHelpers::hasEpubExtension(bookPath)) return {};
+  const Epub epub(bookPath, "/.crosspoint");
+  const bool cropped = settings.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
+  for (int variant = 0; variant < 4; variant++) {
+    const std::string path = epub.getCoverBmpPath((variant & 1) ? !cropped : cropped,
+                                                  (variant & 2) ? !originalThresholds : originalThresholds);
+    if (Storage.exists(path.c_str())) return path;
+  }
+  return {};
+}
+
 }  // namespace
 
 void SleepActivity::showEnteringSleep(GfxRenderer& renderer) {
@@ -560,6 +596,8 @@ void SleepActivity::onEnter() {
       return renderStatsSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::TENOR):
       return renderTenorSleepScreen();
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::QUOTE):
+      return renderQuoteSleepScreen();
     default:
       return renderDefaultSleepScreen();
   }
@@ -953,4 +991,176 @@ void SleepActivity::renderStatsSleepScreen() const {
   renderer.clearScreen();
   readingstatsview::drawSleep(renderer);
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+}
+
+void SleepActivity::renderQuoteSleepScreen() const {
+  using namespace sleepquote;
+  // One reference each: every APP_STATE or SETTINGS use expands the store's guarded
+  // static initialisation again.
+  auto& state = APP_STATE;
+  const auto& settings = SETTINGS;
+  // Only the directory is read to choose; one record is opened, the one shown.
+  std::vector<quotes::QuoteId> ids;
+  quotes::listNames(0, ids);
+  const auto last = std::find(ids.begin(), ids.end(), state.lastSleepQuote);
+  const size_t avoid = last == ids.end() ? NO_INDEX : static_cast<size_t>(last - ids.begin());
+  const size_t index = pickIndex(ids.size(), avoid, static_cast<uint32_t>(random(INT32_MAX)));
+  QuoteRecord quote;
+  if (index == NO_INDEX || !quotes::load(ids[index], quote)) {
+    LOG_INF("SLP", "Sleep quote: none of %u readable, Tenor screen instead", static_cast<unsigned>(ids.size()));
+    return renderTenorSleepScreen();
+  }
+  LOG_INF("SLP", "Sleep quote %s (%u of %u)", quotes::nameOf(ids[index]).c_str(), static_cast<unsigned>(index),
+          static_cast<unsigned>(ids.size()));
+  state.lastSleepQuote = ids[index];
+  state.saveToFile();
+  std::vector<quotes::QuoteId>().swap(ids);
+
+  releaseSdFontCachesForDecode(renderer);
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+  const auto caps = renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute);
+  const bool originalThresholds = caps.supported() && display.getController() == HalDisplay::Controller::SSD1677 &&
+                                  settings.sleepScreenCoverFilter ==
+                                      CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
+
+  HalFile coverFile;
+  const std::string coverPath = cachedCoverPath(quote.path, originalThresholds, settings);
+  const bool coverOpen = !coverPath.empty() && Storage.openFileForRead("SLP", coverPath, coverFile);
+  Bitmap cover(coverFile);
+  const bool hasCover = coverOpen && cover.parseHeaders() == BmpReaderError::Ok && cover.getWidth() > 0 &&
+                        cover.getHeight() > 0;
+  // Trim the cover to the tile's own shape so it fills the tile instead of floating in it.
+  float cropX = 0.0f;
+  float cropY = 0.0f;
+  if (hasCover) {
+    const float ratio = static_cast<float>(cover.getWidth()) / static_cast<float>(cover.getHeight());
+    const float tile = static_cast<float>(COVER_W) / static_cast<float>(COVER_H);
+    if (ratio > tile)
+      cropX = 1.0f - tile / ratio;
+    else
+      cropY = 1.0f - ratio / tile;
+  }
+
+  // The body at the largest size the whole quote fits at, cut at the smallest otherwise.
+  // Built-in flash fonts only: nothing here is measured with a font on the card.
+  static constexpr int BODY_FONTS[] = {NOTOSERIF_18_FONT_ID, NOTOSERIF_16_FONT_ID, NOTOSERIF_14_FONT_ID};
+  constexpr int SIZES = sizeof(BODY_FONTS) / sizeof(BODY_FONTS[0]);
+  int heights[SIZES];
+  for (int i = 0; i < SIZES; i++) heights[i] = renderer.getLineHeight(BODY_FONTS[i]);
+  const int bodyRight = renderer.getScreenWidth() - RIGHT_INSET;
+  const int bodyWidth = bodyRight - MARGIN_X;
+  const std::string text = quote.text + "\xe2\x80\x9d";
+  auto* fcm = renderer.getFontCacheManager();
+  std::vector<std::string> body;
+  const Fit fit = chooseFit(heights, SIZES, [&](const int size, const int limit) {
+    if (fcm) fcm->prewarmCache(BODY_FONTS[size], text.c_str(), 1u << EpdFontFamily::REGULAR);
+    body = renderer.wrappedText(BODY_FONTS[size], text.c_str(), bodyWidth, limit + 1);
+    return static_cast<int>(body.size());
+  });
+  const int bodyFont = BODY_FONTS[fit.size];
+  if (fit.cut) {
+    body = renderer.wrappedText(bodyFont, text.c_str(), bodyWidth, bodyLineLimit(heights[fit.size]));
+    if (!body.empty()) {
+      const auto width = [&](const std::string& line) { return renderer.getTextWidth(bodyFont, line.c_str()); };
+      body.back() = closeCutLine(body.back(), bodyWidth, width);
+    }
+  }
+
+  // Bottom row: title (at most three lines) and place, beside the cover or from the margin.
+  const int textX = hasCover ? MARGIN_X + COVER_W + COVER_TEXT_GAP : MARGIN_X;
+  constexpr int TITLE_FONT = NOTOSERIF_12_FONT_ID;
+  if (fcm && !quote.title.empty()) fcm->prewarmCache(TITLE_FONT, quote.title.c_str(), 1u << EpdFontFamily::ITALIC);
+  auto title = quote.title.empty() ? std::vector<std::string>{}
+                                   : renderer.wrappedText(TITLE_FONT, quote.title.c_str(), bodyRight - textX,
+                                                          TITLE_MAX_LINES, EpdFontFamily::ITALIC);
+  if (!title.empty()) tidyEllipsis(title.back());
+  char place[96];
+  const std::string placeFmt = placeFormat(tr(STR_QUOTES_LIST_PLACE));
+  if (!placeFmt.empty())
+    snprintf(place, sizeof(place), placeFmt.c_str(), quote.spine + 1, quote.page + 1);
+  else
+    snprintf(place, sizeof(place), tr(STR_QUOTES_DETAIL_CHAPTER_ONLY), quote.spine + 1);
+  LOG_INF("SLP", "Sleep quote size=%d lines=%u cut=%u cover=%u title=%u line=%d", fit.size,
+          static_cast<unsigned>(body.size()), fit.cut, hasCover, static_cast<unsigned>(title.size()),
+          heights[fit.size]);
+
+  // One frame in the current render mode. Text and the mark come out black in every mode
+  // this is called in (B/W, or an absolute gray plane, where glyphs are drawn as B/W); the
+  // cover follows the mode, so each plane gets its own bits of the cover.
+  const auto drawFrame = [&](const bool withCover) {
+    renderer.clearScreen();
+    drawQuoteMark(renderer, GLYPH_X, GLYPH_Y);
+    int y = BODY_TOP;
+    for (const auto& line : body) {
+      renderer.drawText(bodyFont, MARGIN_X, y, line.c_str());
+      y += heights[fit.size];
+    }
+    y = ROW_TOP + TITLE_DROP;
+    for (const auto& line : title) {
+      renderer.drawText(TITLE_FONT, textX, y, line.c_str(), true, EpdFontFamily::ITALIC);
+      y += renderer.getLineHeight(TITLE_FONT);
+    }
+    if (!title.empty()) y += PLACE_GAP;
+    renderer.drawText(SMALL_FONT_ID, textX, y, place);
+    return !withCover || (cover.rewindToData() == BmpReaderError::Ok &&
+                          renderer.drawBitmap(cover, MARGIN_X, ROW_TOP, COVER_W, COVER_H, cropX, cropY));
+  };
+
+  const uint32_t started = millis();
+  const bool x3 = gpio.deviceIsX3();
+  const bool gray = hasCover && cover.hasGreyscale();
+  if (gray && caps.supported()) {
+    // Same panel sequence as the Tenor screen (X3BrandScreen.cpp): on X3 one GC pass of the
+    // B/W frame clears what the reader left on the glass, because the absolute gray pass
+    // that follows has no erase phase of its own. setRenderMode(BW) would cancel an absolute
+    // pass once it has begun, so inside the pass the mode only moves between the planes.
+    renderer.setRenderMode(GfxRenderer::BW);
+    bool ready = drawFrame(true);
+    if (ready && x3) {
+      renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+      ready = caps.base == HalDisplay::GrayscaleBase::Combined || drawFrame(true);
+    }
+    if (ready) ready = renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute);
+    if (ready) renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
+    if (ready) ready = drawFrame(true);
+    if (ready) renderer.copyGrayscaleLsbBuffers();
+    if (ready) renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
+    if (ready) ready = drawFrame(true);
+    if (ready) renderer.copyGrayscaleMsbBuffers();
+    if (ready) renderer.displayGrayBuffer();
+    renderer.setRenderMode(GfxRenderer::BW);  // also cancels a failed partial pass
+    LOG_INF("SLP", "Sleep quote gray ready=%u visible=%lu ms", ready, static_cast<unsigned long>(millis() - started));
+    if (ready) return;
+    // A cover that fails to read part way through: show the words alone.
+    drawFrame(false);
+    renderer.displayBuffer(x3 ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
+    return;
+  }
+
+  renderer.setRenderMode(GfxRenderer::BW);
+  const bool coverDrawn = drawFrame(hasCover);
+  if (!coverDrawn) drawFrame(false);
+  if (!gray || !coverDrawn) {
+    renderer.displayBuffer(x3 ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
+    LOG_INF("SLP", "Sleep quote bw visible=%lu ms", static_cast<unsigned long>(millis() - started));
+    return;
+  }
+  // Panels without absolute gray: the cover's gray planes are nudges over a B/W base, the
+  // same pipeline as the Cover sleep mode (renderBitmapSleepScreen).
+  renderer.displayGrayscaleBase(HalDisplay::HALF_REFRESH);
+  bool ready = true;
+  for (const auto plane : {GfxRenderer::GRAYSCALE_LSB, GfxRenderer::GRAYSCALE_MSB}) {
+    renderer.clearScreen(0x00);
+    renderer.setRenderMode(plane);
+    ready = cover.rewindToData() == BmpReaderError::Ok &&
+            renderer.drawBitmap(cover, MARGIN_X, ROW_TOP, COVER_W, COVER_H, cropX, cropY);
+    if (!ready) break;
+    if (plane == GfxRenderer::GRAYSCALE_LSB)
+      renderer.copyGrayscaleLsbBuffers();
+    else
+      renderer.copyGrayscaleMsbBuffers();
+  }
+  if (ready) renderer.displayGrayBuffer();
+  renderer.setRenderMode(GfxRenderer::BW);
+  LOG_INF("SLP", "Sleep quote nudge ready=%u visible=%lu ms", ready, static_cast<unsigned long>(millis() - started));
 }

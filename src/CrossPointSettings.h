@@ -27,6 +27,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     // tu nay duoc luu xuong settings.json: chen vao giua la moi ban ghi cu hieu nham.
     TENOR = 8,
     STATS = 9,
+    // A random saved quote with the small cover of its book (v1.0.11).
+    QUOTE = 10,
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };

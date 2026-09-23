@@ -256,6 +256,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     sleepScreenValues[CrossPointSettings::TRANSPARENT_CUSTOM] = StrId::STR_TRANSPARENT;
     sleepScreenValues[CrossPointSettings::TENOR] = StrId::STR_SLEEP_TENOR;
     sleepScreenValues[CrossPointSettings::STATS] = StrId::STR_SLEEP_STATS;
+    sleepScreenValues[CrossPointSettings::QUOTE] = StrId::STR_SLEEP_QUOTE;
 
     std::vector<StrId> statusBarClockValues(CrossPointSettings::STATUS_BAR_CLOCK_MODE_COUNT);
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_HIDE] = StrId::STR_HIDE;
