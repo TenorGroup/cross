@@ -117,7 +117,7 @@ for root, _, files in os.walk(SRC_DIR):
             if "/* TENOR_WEB_FONT */" in content:
                 with open("src/network/html/assets/Geist.woff2", "rb") as font:
                     data = base64.b64encode(font.read()).decode("ascii")
-                content = content.replace("/* TENOR_WEB_FONT */", "@font-face{font-family:Geist;src:url(data:font/woff2;base64," + data + ") format('woff2');font-weight:100 900;font-display:swap}")
+                content = content.replace("/* TENOR_WEB_FONT */", "@font-face{font-family:Geist;src:url(data:font/woff2;base64," + data + ") format('woff2');font-weight:400 700;font-display:swap}")
             content = inject_web_i18n(content, file_path)
             # Only minify HTML files; JS files are typically pre-minified (e.g., jszip.min.js)
             if file.endswith(".html"):
