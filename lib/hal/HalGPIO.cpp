@@ -43,10 +43,6 @@ bool readBQ27220CurrentMA(int16_t* outCurrent) {
 }  // namespace X3GPIO
 
 namespace {
-constexpr uint32_t BUTTON_WAKE_MAGIC = 0x57414b31;
-RTC_DATA_ATTR uint32_t buttonWakeMagic = 0;
-RTC_DATA_ATTR uint32_t buttonWakeCheck = 0;
-RTC_DATA_ATTR uint32_t buttonWakeKey = 0;
 constexpr char HW_NAMESPACE[] = "cphw";
 constexpr char NVS_KEY_DEV_OVERRIDE[] = "dev_ovr";  // 0=auto, 1=x4, 2=x3
 constexpr char NVS_KEY_DEV_CACHED[] = "dev_det";    // 0=unknown, 1=x4, 2=x3
@@ -118,16 +114,6 @@ HalGPIO::DeviceType detectDeviceTypeWithFingerprint() {
 }  // namespace
 
 void HalGPIO::begin() {
-  const bool validKey =
-      buttonWakeKey != 0 && buttonWakeKey <= (1u << BTN_POWER) && (buttonWakeKey & (buttonWakeKey - 1)) == 0;
-  validatedButtonWake =
-      validKey && esp_reset_reason() == ESP_RST_DEEPSLEEP && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER &&
-              buttonWakeMagic == BUTTON_WAKE_MAGIC && buttonWakeCheck == ~(BUTTON_WAKE_MAGIC ^ buttonWakeKey)
-          ? buttonWakeKey
-          : 0;
-  buttonWakeMagic = 0;
-  buttonWakeCheck = 0;
-  buttonWakeKey = 0;
 #if FREEINK_MCU_C3
   _deviceType = detectDeviceTypeWithFingerprint();
   BoardConfig::selectDevice(deviceIsX3() ? BoardConfig::Board::XteinkX3 : BoardConfig::Board::XteinkX4);
@@ -173,23 +159,6 @@ void HalGPIO::readButtonAdc(int& group1, int& group2) {
   inputMgr.readButtonAdc(first, second);
   group1 = first.raw;
   group2 = second.raw;
-}
-
-uint8_t HalGPIO::readWakeButtons() {
-  InputManager::ButtonAdcSample first{}, second{};
-  // Discard the first ADC conversion pair after a light-sleep interval.
-  inputMgr.readButtonAdc(first, second);
-  inputMgr.readButtonAdc(first, second);
-  uint8_t mask = inputMgr.isPowerButtonPhysicallyPressed() ? 1u << BTN_POWER : 0;
-  if (first.button >= 0 && first.button < 4) mask |= 1u << first.button;
-  if (second.button >= 4 && second.button < 6) mask |= 1u << second.button;
-  return mask;
-}
-
-void HalGPIO::markValidatedButtonWake(uint8_t button) {
-  buttonWakeKey = button;
-  buttonWakeCheck = ~(BUTTON_WAKE_MAGIC ^ buttonWakeKey);
-  buttonWakeMagic = BUTTON_WAKE_MAGIC;
 }
 
 bool HalGPIO::isPressed(uint8_t buttonIndex) const { return inputMgr.isPressed(buttonIndex); }
@@ -265,15 +234,6 @@ bool HalGPIO::isXteinkDevice() const {
 }
 
 bool HalGPIO::verifyPowerButtonWakeup() {
-  if (validatedButtonWake) {
-    const unsigned long started = millis();
-    inputMgr.update();
-    do {
-      delay(1);
-      inputMgr.update();
-    } while (inputMgr.isDebouncePending() && millis() - started < 50);
-    return true;
-  }
   // M5Paper v1.1: the classic ESP32's reset-to-setup() latency exceeds a normal
   // wheel click, so a click wake is always released before this samples and
   // verification would re-sleep on every wake. Its wheel has hard external
@@ -332,7 +292,6 @@ bool HalGPIO::coldBootImpliesPowerButton() const {
 }
 
 HalGPIO::WakeupReason HalGPIO::getWakeupReason() const {
-  if (validatedButtonWake) return WakeupReason::PowerButton;
   const auto wakeupCause = esp_sleep_get_wakeup_cause();
   const auto resetReason = esp_reset_reason();
 

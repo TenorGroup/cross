@@ -166,10 +166,9 @@ struct TenorTheme {
   }
 };
 // PRODUCTION_FUNCTIONS
-// WAKE_FOOTER_TEST
 
 int main() {
-  int failures = checkWakeFooter();
+  int failures = 0;
   const auto check = [&](bool value, const char* message) {
     if (!value) { std::printf("FAIL tier=%d: %s\n", SETTINGS.uiTextSize, message); ++failures; }
   };

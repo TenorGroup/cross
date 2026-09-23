@@ -39,7 +39,6 @@ struct SettingsActivity {
   void rebuildSettingsLists();
   std::string favoriteKey(int) const;
   int focusFavorite(const std::string&);
-  bool showWakeHint() const;
 };
 #include "Methods.inc"
 struct HomeSettings {
@@ -115,7 +114,7 @@ int main(int argc, char** argv) {
   for(const auto& [key,n]:occurrences) ok &= check(n==1,"each visible row has exactly one tab");
   const char* moved[]={"sleepScreen","sleepScreenCoverMode","sleepScreenCoverFilter","quickResumeSleepScreen","wakeIntoBook","sleepTimeoutMinutes"};
   for(const char* key:moved) ok &= check(routes[std::string("settings/")+key]==7,"moved sleep row resolves to tab ID7");
-  ok &= check(gpio.x3 ? routes["settings/wakeButtons"]==7 : !routes.count("settings/wakeButtons"),"wakeButtons capability and new route");
+  ok &= check(!routes.count("settings/wakeButtons"),"retired wakeButtons row is gone on every board");
   const bool light=BoardConfig::hasPwmFrontlight()||BoardConfig::hasI2cFrontlight();
   ok &= check(light ? routes["settings/frontlightRestoreOnWake"]==7 : !routes.count("settings/frontlightRestoreOnWake"),"restore light belongs to Sleep only on supported board");
   const auto before=web.server->output;
@@ -131,15 +130,7 @@ int main(int argc, char** argv) {
     ok &= check(settingstabs::tenThe(static_cast<settingstabs::Tab>(i))!=StrId::STR_NONE_OPT,"every tab named");
     for(int j=0;j<i;++j) ok &= check(settingstabs::tenThe(static_cast<settingstabs::Tab>(i))!=settingstabs::tenThe(static_cast<settingstabs::Tab>(j)),"tab labels unique");
   }
-  for(const auto& [key,tab]:routes) {
-    activity.focusFavorite(key);
-    ok &= check(activity.showWakeHint()==(gpio.x3 && key=="settings/wakeButtons"),"wake hint limited to selected wake row");
-  }
-  if(gpio.x3) {
-    activity.focusFavorite("settings/wakeButtons");
-    SETTINGS.globalStatusBarMode=CrossPointSettings::GLOBAL_STATUS_BAR_OFF;
-    ok &= check(!activity.showWakeHint(),"hidden global status suppresses hint and reserve");
-  }
+  ok &= check(activity.focusFavorite("settings/wakeButtons")<0,"an old wakeButtons pin resolves to no row");
   result["catalog"]=catalog.size(); result["checks"]=checks;
   JsonDocument webDoc; deserializeJson(webDoc, before); result["web"]=webDoc;
   std::string output; serializeJson(result,output); std::puts(output.c_str());

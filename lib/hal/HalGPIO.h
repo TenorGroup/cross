@@ -45,7 +45,6 @@ class HalGPIO {
 
   bool lastUsbConnected = false;
   bool usbStateChanged = false;
-  uint8_t validatedButtonWake = 0;
 
  public:
   enum class DeviceType : uint8_t { X4, X3 };
@@ -90,9 +89,6 @@ class HalGPIO {
     inputMgr.readButtonAdc(first, second);
   }
 #endif
-  uint8_t readWakeButtons();
-  static void markValidatedButtonWake(uint8_t button);
-  uint8_t validatedWakeButton() const { return validatedButtonWake; }
   bool hasTouch() const;
   // Capacitive Home key reported by the touch controller (X4 Pro). The tap
   // event fires on release and excludes a long hold.

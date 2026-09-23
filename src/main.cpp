@@ -125,7 +125,6 @@ constexpr unsigned long X4PRO_POWER_CLICK_MAX_HOLD_MS = 300;
 // A wake hold must never become an in-app power-button action.  Boot may continue
 // while the button is held; swallow the one release that ends that wake gesture.
 static bool wakePowerReleasePending = false;
-static uint8_t wakeSideReleasePending = 0;
 
 // Fonts
 EpdFont notoserif14RegularFont(&notoserif_14_regular);
@@ -330,13 +329,13 @@ static bool loadSleepFrameBuffer() {
   return true;
 }
 
-static void sleepWithConfiguredButtons() {
+static void sleepUntilPowerButton() {
 #ifndef SIMULATOR
   const bool preserveClock = halClock.hasValidTime();
   if (gpio.deviceIsX4()) {
     LOG_INF("SLP", "X4 clock retention requested=%u", preserveClock);
   }
-  powerManager.startDeepSleep(gpio, SETTINGS.wakeButtons, preserveClock);
+  powerManager.startDeepSleep(gpio, preserveClock);
 #else
   powerManager.startDeepSleep(gpio);
 #endif
@@ -398,7 +397,7 @@ void enterDeepSleep(bool fromTimeout = false) {
   LOG_INF("SLP", "Timing ready-to-sleep=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
   LOG_DBG("MAIN", "Entering deep sleep");
 
-  sleepWithConfiguredButtons();
+  sleepUntilPowerButton();
 }
 
 // Heap ledger: one line per boot milestone and per screen change, so the
@@ -588,12 +587,9 @@ void setup() {
         LOG_DBG("MAIN", "Power-button wake not held through verification, sleeping");
         halTiltSensor.deepSleep();
         Storage.prepareForDeepSleep();
-        sleepWithConfiguredButtons();
+        sleepUntilPowerButton();
       }
       wakePowerReleasePending = true;
-#ifndef SIMULATOR
-      wakeSideReleasePending = gpio.validatedWakeButton() & ~(1u << HalGPIO::BTN_POWER);
-#endif
       break;
     case HalGPIO::WakeupReason::AfterUSBPower:
       // Most devices return to sleep after a USB-powered cold boot.
@@ -609,7 +605,7 @@ void setup() {
 #else
       halTiltSensor.deepSleep();
       Storage.prepareForDeepSleep();
-      sleepWithConfiguredButtons();
+      sleepUntilPowerButton();
       break;
 #endif
     case HalGPIO::WakeupReason::AfterFlash:
@@ -1307,17 +1303,6 @@ void loop() {
   // Let wake continue as soon as its hold has been verified. The release can
   // arrive after setup, so consume that one input frame rather than making it
   // a page turn, refresh, or other short power-button action.
-  if (wakeSideReleasePending) {
-    uint8_t pressed = 0;
-    for (uint8_t index = 0; index < 7; ++index) {
-      if (gpio.isPressed(index)) pressed |= 1u << index;
-    }
-    // An independently pressed power key remains available if a side key sticks.
-    if ((pressed & wakeSideReleasePending) == 0 || (pressed & (1u << HalGPIO::BTN_POWER))) {
-      wakeSideReleasePending = 0;
-    }
-    return;
-  }
   if (wakePowerReleasePending && !gpio.isPressed(HalGPIO::BTN_POWER)) {
     wakePowerReleasePending = false;
     return;

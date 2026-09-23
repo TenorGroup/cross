@@ -1,7 +1,6 @@
 #include "MenuFavorites.h"
 
 #include <BoardConfig.h>
-#include <HalGPIO.h>
 #include <Memory.h>
 
 #include "MenuCustomization.h"
@@ -12,7 +11,6 @@
 #include "activities/settings/OpdsServerListActivity.h"
 #include "activities/settings/StatusBarSettingsActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
-extern HalGPIO gpio;
 namespace menufavorites {
 namespace {
 constexpr Descriptor ITEMS[] = {
@@ -94,7 +92,6 @@ StrId label(const std::string& key, const std::vector<SettingInfo>& settings) {
       if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI &&
           info.valuePtr == &CrossPointSettings::hideBatteryPercentage)
         return StrId::STR_NONE_OPT;
-      if (info.valuePtr == &CrossPointSettings::wakeButtons && !gpio.deviceIsX3()) return StrId::STR_NONE_OPT;
       if (info.valuePtr == &CrossPointSettings::fadingFix && (BoardConfig::isX4Pro() || BoardConfig::isX4Classic()))
         return StrId::STR_NONE_OPT;
       if (info.valuePtr == &CrossPointSettings::pwrBtnFootnoteBack &&

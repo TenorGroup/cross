@@ -21,7 +21,7 @@ def main():
     production = out / 'production'
     production.mkdir(exist_ok=True)
     hashes = {}
-    for name in ('HalPowerManager.cpp', 'HalPowerManager.h', 'WakeButtons.h'):
+    for name in ('HalPowerManager.cpp', 'HalPowerManager.h'):
         original = repo / 'lib/hal' / name
         shutil.copyfile(original, production / name)
         hashes[str(original)] = hashlib.sha256(original.read_bytes()).hexdigest()

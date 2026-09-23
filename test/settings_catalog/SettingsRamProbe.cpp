@@ -80,5 +80,20 @@ int main(int argc,char**argv){
   JsonDocument resaveOnce;SETTINGS.toJson(resaveOnce);resaveOnce.remove("readerInkWeightVersion");resaveOnce["readerInkWeight"]=2;settings_test_io::setNextRead(resaveOnce);ok=SETTINGS.loadFromFile()&&ok;ok=expect(SETTINGS.readerInkWeight==1&&settings_test_io::writes==1,"legacy resaves once")&&ok;ok=SETTINGS.loadFromFile()&&ok;ok=expect(SETTINGS.readerInkWeight==1&&settings_test_io::writes==1,"current stays stable")&&ok;
   std::printf("v108_catalog_persistence=%s\n",ok?"GREEN":"RED");return ok?0:12;
  }
+ if(mode=="wake-card") {
+  // The retired wakeButtons key (a card from an earlier release stores 3) must
+  // load, change nothing, and be dropped by the next save.
+  JsonDocument plain;SETTINGS.toJson(plain);plain.remove("wakeButtons");
+  std::string plainText;serializeJson(plain,plainText);
+  bool ok=SETTINGS.fromJson(plain.as<JsonVariantConst>());
+  JsonDocument reference;SETTINGS.toJson(reference);std::string referenceText;serializeJson(reference,referenceText);
+  JsonDocument card;deserializeJson(card,plainText);card["wakeButtons"]=3;
+  ok=SETTINGS.fromJson(card.as<JsonVariantConst>())&&ok;
+  JsonDocument after;SETTINGS.toJson(after);std::string afterText;serializeJson(after,afterText);
+  if(afterText!=referenceText)std::printf("FAIL card with wakeButtons=3 saves differently from the same card without it\n");
+  if(after["wakeButtons"].is<int>())std::printf("FAIL next save still writes wakeButtons=%d\n",after["wakeButtons"].as<int>());
+  ok=ok&&afterText==referenceText&&!after["wakeButtons"].is<int>();
+  std::printf("retired_wake_key=%s\n",ok?"GREEN":"RED");return ok?0:13;
+ }
  return 2;
 }

@@ -159,7 +159,7 @@ static bool autoSleepBlockedUntilInput;
 static uint32_t lastActivityTime;
 static uint32_t lastSleepResetTime;
 static void saveSleepFrameBuffer() { ++retainedFrameCalls; events.push_back("frame-save"); }
-static void sleepWithConfiguredButtons() { ++deepSleepCalls; events.push_back("deep-sleep"); }
+static void sleepUntilPowerButton() { ++deepSleepCalls; events.push_back("deep-sleep"); }
 
 namespace CrossPointTiltPageTurn { constexpr uint8_t TILT_OFF = 0; }
 @TILT_ROUTE@

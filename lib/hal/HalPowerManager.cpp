@@ -4,14 +4,12 @@
 #include <Logging.h>
 #include <PowerManager.h>
 #include <WiFi.h>
-#include <esp_sleep.h>
-#include <esp_timer.h>
+#include <driver/gpio.h>
 #include <soc/soc_caps.h>
 
 #include <cassert>
 
 #include "HalGPIO.h"
-#include "WakeButtons.h"
 
 #if FREEINK_DEVICE_PAPERMONO
 #include <M5Pm1.h>
@@ -71,7 +69,7 @@ void HalPowerManager::setPowerSaving(bool enabled) {
   // Otherwise, no change needed
 }
 
-void HalPowerManager::startDeepSleep(HalGPIO& gpio, uint8_t wakeMode, [[maybe_unused]] const bool preserveClock) const {
+void HalPowerManager::startDeepSleep([[maybe_unused]] HalGPIO& gpio, [[maybe_unused]] const bool preserveClock) const {
 #ifdef ENABLE_SERIAL_LOG
   // Tear down HWCDC so the host sees a clean disconnect and the peripheral
   // doesn't hold power domains that interfere with USB-powered GPIO wake.
@@ -123,34 +121,6 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio, uint8_t wakeMode, [[maybe_un
   // deep-sleep command while its rail is still up (enterDeepSleep() in main.cpp
   // guarantees that ordering).
   freeink::PowerManager::powerDownRailsForSleep();
-
-  if (gpio.deviceIsX3() && wakeMode > 0 && wakeMode <= 3) {
-    wakebuttons::HoldFilter filter;
-    const uint8_t allowed = wakebuttons::allowedMask(wakeMode);
-    uint8_t failures = 0;
-    // ADC ladders have several valid high-voltage bands. Periodic light sleep
-    // retains the ADC input configuration and permits every selected band.
-    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-    while (true) {
-      if (filter.sample(gpio.readWakeButtons(), allowed, millis())) {
-        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-        if (esp_sleep_enable_timer_wakeup(1000) == ESP_OK) {
-          HalGPIO::markValidatedButtonWake(filter.acceptedButton());
-          freeink::PowerManager::deepSleep();
-        }
-        break;
-      }
-      delay(1);  // Allow idle/watchdog tasks to run between samples.
-      const int64_t started = esp_timer_get_time();
-      const esp_err_t armed = esp_sleep_enable_timer_wakeup(100000);
-      const esp_err_t result = armed == ESP_OK ? esp_light_sleep_start() : armed;
-      const bool slept = result == ESP_OK && esp_timer_get_time() - started >= 80000;
-      failures = slept ? 0 : failures + 1;
-      if (failures >= 3) break;
-    }
-    // A rejected or repeatedly short light sleep must not turn into a hot loop.
-    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-  }
 
 #if FREEINK_DEVICE_PAPERMONO
   // Its power button is behind the M5PM1 PMIC rather than an ESP GPIO, so

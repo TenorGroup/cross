@@ -18,7 +18,7 @@ Host byte counts use host ABI sizes. The target log in onPause reports actual
 released heap and largest free block before FontDownload starts Wi-Fi.
 
 The shared-catalog probe additionally compiles the unchanged post-Wi-Fi callback
-and CrossPointSettings.cpp. It checks 73 rows with the same order, keys, enum
+and CrossPointSettings.cpp. It checks 72 rows with the same order, keys, enum
 values and persistence fields after rebuilding, byte-equivalent JSON roundtrips,
 owned descriptor/web copies, dynamic callbacks, and settings persistence that
 rebuilds the catalog during Wi-Fi setup. The real font callback must release it

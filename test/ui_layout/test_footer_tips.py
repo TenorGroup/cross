@@ -5,7 +5,6 @@ records actual font pixels and the footer's clear rectangles in painting order.
 """
 from pathlib import Path
 import argparse
-import json
 import re
 import subprocess
 import tempfile
@@ -68,28 +67,6 @@ declarations = '\n'.join(re.findall(r'^(?:bool|int|void) (?:smallFooterSymbolsTo
 fixture = Path(__file__).with_name('footer_tips.cpp').read_text()
 fixture = fixture.replace('// CHROME_DECLARATIONS', declarations)
 fixture = fixture.replace('// PRODUCTION_FUNCTIONS', '\n'.join(definitions))
-list_source = read_source('src/activities/UiListActivity.cpp')
-settings_source = read_source('src/activities/settings/SettingsActivity.cpp')
-wake_fixture = Path(__file__).with_name('wake_footer.inc').read_text()
-methods = [function(list_source, f'UiListActivity::{name}(')
-           for name in ('renderUi', 'reserveFavoriteHint', 'reserveMoreBelowChevron')]
-offset = 'SettingsActivity::favoriteHintLinesAbove('
-methods.append(function(settings_source, offset) if offset in settings_source else
-               'int SettingsActivity::favoriteHintLinesAbove() const { return 0; }')
-# Execute the wake painter from the real render method, including its guard.
-render = function(settings_source, 'SettingsActivity::render(')
-wake_block = function(render, '  if (showWakeHint()) {')
-methods.append('void SettingsActivity::drawWakeHint() {\n' + wake_block + '\n}')
-wake_fixture = wake_fixture.replace('// ACTIVITY_FUNCTIONS', '\n'.join(methods))
-captions = []
-for language in ('vietnamese', 'english'):
-    translation = (ROOT / f'lib/I18n/translations/{language}.yaml').read_text()
-    values = [json.loads(re.search(r'^' + key + r': (.+)$', translation, re.M)[1])
-              for key in ('STR_WAKE_POWER_HINT', 'STR_MENU_PIN_HINT', 'STR_MENU_PINNED', 'STR_MENU_SAVE_FAILED')]
-    for hint in values[1:]:
-        captions.append('{' + ','.join(json.dumps(v, ensure_ascii=False) for v in (values[0], hint)) + '}')
-wake_fixture = wake_fixture.replace('// CAPTIONS', ',\n'.join(captions))
-fixture = fixture.replace('// WAKE_FOOTER_TEST', wake_fixture)
 if args.legacy_clear:
     fixture = fixture.replace('compactSymbol ? tenorchrome::smallFooterSymbolsTopY(renderer) : pageHeight - buttonY',
                               'pageHeight - buttonY')

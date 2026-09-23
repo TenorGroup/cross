@@ -105,11 +105,10 @@ void SettingsActivity::rebuildSettingsLists() {
       {StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates},
       {StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate},
   };
-  const bool deviceIsX3 = gpio.deviceIsX3();
   const auto& catalog = getBaseSettingsList();
   std::array<size_t, settingstabs::TAB_COUNT> rowCounts{};
   for (const auto& setting : catalog) {
-    const int tab = deviceSettingsTab(setting, deviceIsX3);
+    const int tab = deviceSettingsTab(setting);
     if (tab >= 0) ++rowCounts[tab];
   }
   for (const auto& row : DONG_HANH_DONG) ++rowCounts[static_cast<int>(settingstabs::nhaCua(row.viec))];
@@ -122,7 +121,7 @@ void SettingsActivity::rebuildSettingsLists() {
     danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).reserve(rowCounts[tab]);
 
   for (const auto& setting : catalog) {
-    const int tab = deviceSettingsTab(setting, deviceIsX3);
+    const int tab = deviceSettingsTab(setting);
     if (tab < 0) continue;
     if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI &&
         setting.valuePtr == &CrossPointSettings::statusBarClock) {
@@ -654,27 +653,12 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
   return "";
 }
 
-bool SettingsActivity::showWakeHint() const {
-  if (selectedCategoryIndex != static_cast<int>(settingstabs::Tab::SLEEP) || !gpio.deviceIsX3() ||
-      SETTINGS.globalStatusBarHidden() || !currentSettings) return false;
-  const int row = ringPos() - 1;
-  return row >= 0 && row < static_cast<int>(currentSettings->size()) &&
-         (*currentSettings)[row].valuePtr == &CrossPointSettings::wakeButtons;
-}
-
-int SettingsActivity::favoriteHintLinesAbove() const {
-  return showWakeHint() ? tenorchrome::tipLineCount(renderer, tr(STR_WAKE_POWER_HINT)) : 0;
-}
-
 void SettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Content below the GUI.drawHeader band, above the button hints.
   screen.setContentMarginFromScreen(fui::Insets{
       static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-      static_cast<int16_t>(
-          metrics.buttonHintsHeight +
-          (showWakeHint() ? tenorchrome::tipHeight(renderer, tr(STR_WAKE_POWER_HINT), 4) : 0)),
-      0});
+      static_cast<int16_t>(metrics.buttonHintsHeight), 0});
 
   // Cac nhom da hien mot lan o man chinh, hien lai lan nua
   // la trung (T1). Ten nhom di len dau man, hai mui tien dac hai mep bao nut canh nhay nhom.
@@ -793,10 +777,6 @@ void SettingsActivity::render(RenderLock&&) {
 
   if (tenorchrome::enabled() && tabCount() > 1) {
     tenorchrome::drawSiblingDestinations(renderer, tabLabel(adjacentTab(-1)), tabLabel(adjacentTab(1)));
-  }
-
-  if (showWakeHint()) {
-    tenorchrome::drawTip(renderer, tr(STR_WAKE_POWER_HINT), 0, 4);
   }
 
   const int ring = ringPos();

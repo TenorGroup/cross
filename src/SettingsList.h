@@ -264,9 +264,9 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
-    // 70 unconditional descriptors; the IMU branch adds reader, tab and row tilt settings.
+    // 69 unconditional descriptors; the IMU branch adds reader, tab and row tilt settings.
     // Cold-catalog tests cover each capability branch and the IMU variant.
-    constexpr size_t fixedCount = 70
+    constexpr size_t fixedCount = 69
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
                                   + 1
 #endif
@@ -448,9 +448,6 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
             StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeoutMinutes,
             {CrossPointSettings::MIN_SLEEP_TIMEOUT_MINUTES, CrossPointSettings::MAX_SLEEP_TIMEOUT_MINUTES, 1},
             "sleepTimeoutMinutes", StrId::STR_CAT_SYSTEM));
-    v.push_back(SettingInfo::Enum(StrId::STR_WAKE_BUTTONS, &CrossPointSettings::wakeButtons,
-                          {StrId::STR_WAKE_POWER, StrId::STR_WAKE_RIGHT, StrId::STR_WAKE_SIDES, StrId::STR_WAKE_ALL},
-                          "wakeButtons", StrId::STR_CAT_SYSTEM));
     v.push_back(SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles, "showHiddenFiles",
                             StrId::STR_CAT_SYSTEM));
     v.push_back(SettingInfo::Toggle(StrId::STR_REMOVE_READ_FROM_RECENTS, &CrossPointSettings::removeReadBooksFromRecents,
@@ -619,11 +616,8 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
 // The device category list owns only rows visible in its categories. Font and
 // spacing descriptors stay in Text Settings; their dynamic options are built
 // there when needed. Return -1 for rows hidden in device categories.
-inline int deviceSettingsTab(const SettingInfo& setting, bool deviceIsX3) {
+inline int deviceSettingsTab(const SettingInfo& setting) {
   if (settingHiddenOnThisBoard(setting)) return -1;
-  // Device-only grouping: preserve the shared catalog's web category and keys.
-  if (setting.valuePtr == &CrossPointSettings::wakeButtons)
-    return deviceIsX3 ? static_cast<int>(settingstabs::Tab::SLEEP) : -1;
   if (setting.valuePtr == &CrossPointSettings::sleepScreen ||
       setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode ||
       setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||

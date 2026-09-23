@@ -38,11 +38,6 @@ position, restart, and verify duplicate saves create one record. Preview tests t
 pages and return to the browser for EPUB, TXT and XTC while hashing progress,
 bookmarks and JSON stores before and after. A further restart preserves them.
 
-`WakeButtonsTest` in the host CMake suite covers all seven individual keys in all
-four wake groups, short taps, interrupted holds, switching keys, a stuck side key,
-and timer wrap. ADC sampling, light-sleep power and physical panel behavior need
-hardware validation.
-
 Serial diagnostics in logging builds: `CMD:HOME`, `CMD:READ_RECENT`,
 `CMD:BOOK_STATS`, `CMD:QUOTES`, `CMD:CLOCK_SYNC`, `CMD:MEMORY`,
 `CMD:BUTTON_ADC`, `CMD:SETTINGS_READER`, `CMD:STATUS_BAR_SETTINGS`, and `CMD:SCREENSHOT`. Navigation follows the normal activity

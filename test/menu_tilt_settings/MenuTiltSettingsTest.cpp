@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
   const SettingInfo* menuTilt = findSetting(catalog, "tiltTabNavigation");
   const SettingInfo* rowTilt = findSetting(catalog, "tiltMenuNavigation");
   CrossPointSettings& settings = SETTINGS;
-  bool ok = expect(catalog.size() == (hasImu ? 73U : 70U), "X3 descriptor count");
+  bool ok = expect(catalog.size() == (hasImu ? 72U : 69U), "X3 descriptor count");
 
   if (!hasImu) {
     ok = expect(readerTilt == nullptr && menuTilt == nullptr && rowTilt == nullptr,

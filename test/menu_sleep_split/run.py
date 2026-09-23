@@ -49,12 +49,6 @@ fields = header[header.index('  std::vector<SettingInfo> displaySettings;'):head
 sigs = ['std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe', 'void SettingsActivity::rebuildSettingsLists()',
         'std::string SettingsActivity::favoriteKey(', 'int SettingsActivity::focusFavorite(']
 methods = ''.join(method(source, s) for s in sigs)
-if 'bool SettingsActivity::showWakeHint() const' in source:
-    methods += method(source, 'bool SettingsActivity::showWakeHint() const')
-else:
-    # Baseline's existing render predicate, compiled to make the contextual test RED.
-    predicate = re.search(r'if \((selectedCategoryIndex[^\n]+)\) \{\n    tenorchrome::drawTip', source)[1]
-    methods += 'bool SettingsActivity::showWakeHint() const { return ' + predicate + '; }\n'
 (out / 'Methods.inc').write_text(methods)
 home = (r / 'src/activities/home/HomeActivity.cpp').read_text()
 home = home[home.index('case Tab::CAI_DAT: {'):]
