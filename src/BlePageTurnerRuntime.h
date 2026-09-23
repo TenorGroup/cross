@@ -50,4 +50,10 @@ void setReaderStartDeferred(bool deferred);
 void requestRearm();
 bool takeRearmRequest();
 
+// Set while the reader keeps the radio stopped for a starved section build. A local
+// key release must not restart it then: the start takes the heap the build is still
+// waiting for. requestRearm() ends the hold.
+bool radioHeldForBuild();
+void setRadioHeldForBuild(bool held);
+
 }  // namespace freeink::ble

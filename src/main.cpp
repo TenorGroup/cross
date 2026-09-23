@@ -582,8 +582,9 @@ void setup() {
   switch (wakeupReason) {
     case HalGPIO::WakeupReason::PowerButton:
       // With Short Power Button Press = Sleep, a single click wakes on any
-      // device; otherwise the button must still be held (ghost-wake debounce).
-      if (!wakeHoldVerified && (gpio.deviceIsX3() || SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::SLEEP)) {
+      // device, X3 included, so the tap that locks also unlocks; otherwise the
+      // button must still be held (ghost-wake debounce).
+      if (!CrossPointSettings::acceptPowerWake(SETTINGS.shortPwrBtn, wakeHoldVerified)) {
         LOG_DBG("MAIN", "Power-button wake not held through verification, sleeping");
         halTiltSensor.deepSleep();
         Storage.prepareForDeepSleep();
@@ -747,6 +748,7 @@ static bool visitDiagnosticSetting(const String& key, Visitor&& visitor) {
 
 static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
                                                    const bool foregroundActivityManagesTiltSensor) {
+  halTiltSensor.setStrength(SETTINGS.tiltStrengthH, SETTINGS.tiltStrengthV);
   if (foregroundReader) {
     // Row tilt belongs to the menu screens: the reader keeps the page-turn axis
     // and nothing else, so the vertical channel is disarmed on the way in.
@@ -829,6 +831,8 @@ void loop() {
     const bool foregroundReader = activityManager.isForegroundReaderActivity();
     const uint32_t generation = activityManager.activityGeneration();
     if (!foregroundReader || !SETTINGS.blePageTurnerEnabled || generation != bleReaderGeneration) {
+      // A build hold belongs to one reader visit; the next visit may start the radio again.
+      if (generation != bleReaderGeneration) freeink::ble::setRadioHeldForBuild(false);
       bleReaderBeginAttempted = false;
       bleReaderReconnectConfigured = false;
       bleReaderRetryAtMs = 0;
@@ -842,8 +846,11 @@ void loop() {
         mappedInputManager.wasReleased(MappedInputManager::Button::PageForward) ||
         mappedInputManager.wasReleased(MappedInputManager::Button::Left) ||
         mappedInputManager.wasReleased(MappedInputManager::Button::Right) || gpio.wasTouchActivity();
+    // A radio the reader stopped for a starved build restarts on the reader's request once
+    // its page is shown. Restarting it on a key release starved the build again and the
+    // start task held this loop for 2.85 s (X3, 23/09/2026).
     if (foregroundReader && SETTINGS.blePageTurnerEnabled && freeink::ble::idleStopped() &&
-        (localReaderInput || freeink::ble::takeRearmRequest())) {
+        ((localReaderInput && !freeink::ble::radioHeldForBuild()) || freeink::ble::takeRearmRequest())) {
       freeink::ble::setIdleStopped(false);
       bleReaderBeginAttempted = false;
       bleReaderReconnectConfigured = false;
@@ -1032,6 +1039,26 @@ void loop() {
       } else if (cmd == "OTA_ACCEPTANCE") {
         activityManager.pushActivity(makeUniqueNoThrow<OtaUpdateActivity>(renderer, mappedInputManager));
 #endif
+#ifdef TENOR_PRESS_PROBE
+      } else if (cmd.startsWith("PRESS ")) {
+        // CMD:PRESS <NEXT|PREV|SIDE_NEXT|SIDE_PREV|POWER> <holdMs> <count> <gapMs>: plays
+        // presses through the button hook while this loop keeps running, so they can land
+        // mid-render. Names follow the portrait reader mapping of the current settings.
+        char name[12] = {};
+        unsigned hold = 0, count = 0, gap = 0;
+        const bool sideSwapped = SETTINGS.sideButtonLayout == CrossPointSettings::NEXT_PREV;
+        int button = -1;
+        if (sscanf(cmd.c_str() + 6, "%11s %u %u %u", name, &hold, &count, &gap) == 4) {
+          const String n(name);
+          if (n == "NEXT") button = SETTINGS.frontButtonRight;
+          if (n == "PREV") button = SETTINGS.frontButtonLeft;
+          if (n == "SIDE_NEXT") button = sideSwapped ? HalGPIO::BTN_UP : HalGPIO::BTN_DOWN;
+          if (n == "SIDE_PREV") button = sideSwapped ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP;
+          if (n == "POWER") button = HalGPIO::BTN_POWER;
+        }
+        if (button >= 0) gpio.injectPresses(button, hold, count, gap);
+        logSerial.printf("PRESS:button=%d,hold=%u,count=%u,gap=%u,t=%lu\n", button, hold, count, gap, millis());
+#endif
 #ifdef TENOR_UI_ACCEPTANCE
       } else if (cmd == "UI_READER_NEXT" || cmd == "UI_READER_PREV") {
         const bool queued = activityManager.pageTurn(cmd == "UI_READER_NEXT");
@@ -1160,7 +1187,11 @@ void loop() {
         }
       } else if (cmd == "READ_RECENT") {
         const auto& books = RECENT_BOOKS.getBooks();
-        if (!books.empty()) activityManager.goToReader(books.front().path);
+        if (!books.empty()) {
+          activityManager.goToReader(books.front().path);
+          // Named on the cable so a test can reopen this book afterwards and leave Recent as found.
+          logSerial.printf("READ_RECENT:%s\n", books.front().path.c_str());
+        }
       } else if (cmd == "BOOK_STATS") {
         const auto& books = RECENT_BOOKS.getBooks();
         if (!books.empty())
@@ -1419,6 +1450,13 @@ void loop() {
       LOG_DBG("LOOP", "New max loop duration: %lu ms (activity: %lu ms)", maxLoopDuration, activityDuration);
     }
   }
+
+#ifndef SIMULATOR
+  // From the end of the first pass on, buttons are sampled off this loop, so a long
+  // pass (page prewarm, section build) no longer swallows a short press. Setup and
+  // this first pass have already absorbed any button held through boot.
+  gpio.startBackgroundSampling();
+#endif
 
   // Add delay at the end of the loop to prevent tight spinning
   // When an activity requests skip loop delay (e.g., webserver running), use yield() for faster response

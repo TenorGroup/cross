@@ -95,7 +95,7 @@ void ReaderActivity::onEnter() {
 void ReaderActivity::onExit() {
   Activity::onExit();
   pendingExternalTurn = 0;
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
   dropTurnTrace(pendingExternalTurnTrace, "exit");
 #endif
 
@@ -156,7 +156,7 @@ void ReaderActivity::onTick() {
 
 void ReaderActivity::onPause() {
   pendingExternalTurn = 0;
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
   dropTurnTrace(pendingExternalTurnTrace, "pause");
 #endif
   updateReadingTime(false);
@@ -284,12 +284,10 @@ bool ReaderActivity::handlePreviewInput() {
         onReturnFromEndOfBook();
         requestUpdate();
       } else {
-        pendingExternalTurn = -1;
-        pendingExternalGeneration = activityManager.activityGeneration();
-        pendingTurnIsLocal = true;
-#ifdef TENOR_UI_ACCEPTANCE
-        replaceQueuedTurnTrace(pendingExternalTurnTrace, detectTurnTrace("preview", false), "render_lock");
+#ifdef TENOR_TURN_TRACE
+        currentTurnTrace = detectTurnTrace("preview", false);
 #endif
+        queuePageTurn(false, true, "render_lock");
       }
     } else if (pageTurn(false)) {
       requestUpdate();
@@ -300,7 +298,7 @@ bool ReaderActivity::handlePreviewInput() {
   return true;
 }
 
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
 ReaderActivity::TurnTrace ReaderActivity::detectTurnTrace(const char* source, const bool forward) {
   TurnTrace trace{++turnTraceSequence, millis(), source, forward};
   logTurnTrace("DETECTED", trace, "input");
@@ -317,8 +315,9 @@ void ReaderActivity::logTurnTrace(const char* phase, const TurnTrace& trace, con
           static_cast<unsigned>(ESP.getMinFreeHeap()));
 }
 
-void ReaderActivity::replaceQueuedTurnTrace(TurnTrace& queue, const TurnTrace& incoming, const char* reason) {
-  logTurnTrace("COALESCED", queue, reason);
+void ReaderActivity::replaceQueuedTurnTrace(TurnTrace& queue, const TurnTrace& incoming, const char* reason,
+                                            const bool merged) {
+  logTurnTrace(merged ? "MERGED" : "COALESCED", queue, reason);
   queue = incoming;
   logTurnTrace("QUEUED", queue, reason);
 }
@@ -330,17 +329,17 @@ void ReaderActivity::dropTurnTrace(TurnTrace& trace, const char* reason) {
 #endif
 
 bool ReaderActivity::pageTurnLocked(const bool isForward) {
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
   if (currentTurnTrace.id == 0) currentTurnTrace = detectTurnTrace("local", isForward);
 #endif
   if (!latTrangThat(isForward)) {
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
     logTurnTrace("REJECTED", currentTurnTrace, "unchanged");
     currentTurnTrace = {};
 #endif
     return false;
   }
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
   logTurnTrace("SUPERSEDED", appliedTurnTrace, "next_mutation");
   appliedTurnTrace = currentTurnTrace;
   currentTurnTrace = {};
@@ -351,22 +350,31 @@ bool ReaderActivity::pageTurnLocked(const bool isForward) {
 }
 
 bool ReaderActivity::pageTurn(const bool isForward) {
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
   if (currentTurnTrace.id == 0) currentTurnTrace = detectTurnTrace("local", isForward);
 #endif
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired()) {
-    pendingExternalTurn = isForward ? 1 : -1;
-    pendingExternalChapter = false;
-    pendingExternalGeneration = activityManager.activityGeneration();
-    pendingTurnIsLocal = true;
-#ifdef TENOR_UI_ACCEPTANCE
-    replaceQueuedTurnTrace(pendingExternalTurnTrace, currentTurnTrace, "render_lock");
-    currentTurnTrace = {};
-#endif
+    queuePageTurn(isForward, true, "render_lock");
     return false;
   }
   return pageTurnLocked(isForward);
+}
+
+void ReaderActivity::queuePageTurn(const bool isForward, const bool isLocal, const char* reason) {
+  const int queued = isLocal && pendingTurnIsLocal && !pendingExternalChapter ? pendingExternalTurn : 0;
+  pendingExternalTurn =
+      static_cast<int8_t>(std::clamp<int>(queued + (isForward ? 1 : -1), -MAX_QUEUED_TURNS, MAX_QUEUED_TURNS));
+  pendingExternalChapter = false;
+  pendingExternalGeneration = activityManager.activityGeneration();
+  pendingTurnIsLocal = isLocal;
+#ifdef TENOR_TURN_TRACE
+  replaceQueuedTurnTrace(pendingExternalTurnTrace, currentTurnTrace, reason, queued != 0);
+  currentTurnTrace = {};
+  if (pendingExternalTurn == 0) dropTurnTrace(pendingExternalTurnTrace, "cancelled");
+#else
+  (void)reason;
+#endif
 }
 
 bool ReaderActivity::luotLatTrangNgoai(const bool isForward) {
@@ -376,13 +384,10 @@ bool ReaderActivity::luotLatTrangNgoai(const bool isForward) {
   if (endOfBookOptionsReady.load(std::memory_order_acquire) && endOfBookOptions->menuActive()) return false;
   // One pending direction per reader generation. A repaint can take seconds;
   // repeated reports during that paint coalesce into the latest direction.
-  pendingExternalTurn = isForward ? 1 : -1;
-  pendingExternalChapter = false;
-  pendingExternalGeneration = activityManager.activityGeneration();
-  pendingTurnIsLocal = false;
-#ifdef TENOR_UI_ACCEPTANCE
-  replaceQueuedTurnTrace(pendingExternalTurnTrace, detectTurnTrace("external", isForward), "external");
+#ifdef TENOR_TURN_TRACE
+  currentTurnTrace = detectTurnTrace("external", isForward);
 #endif
+  queuePageTurn(isForward, false, "external");
   return true;
 }
 
@@ -393,7 +398,7 @@ bool ReaderActivity::luotNhayChuongNgoai(const bool isForward) {
   pendingExternalChapter = true;
   pendingExternalGeneration = activityManager.activityGeneration();
   pendingTurnIsLocal = false;
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
   replaceQueuedTurnTrace(pendingExternalTurnTrace, detectTurnTrace("external", isForward), "external");
 #endif
   return true;
@@ -404,24 +409,25 @@ bool ReaderActivity::processExternalPageTurn() {
   if (pendingExternalGeneration != activityManager.activityGeneration() ||
       (!pendingTurnIsLocal && !externalPageTurnAllowed())) {
     pendingExternalTurn = 0;
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
     dropTurnTrace(pendingExternalTurnTrace, "stale_or_blocked");
 #endif
     return false;
   }
   RenderLock lock(RenderLock::TryTake{});
-  if (!lock.acquired() || !manualPageTurnReady()) return true;
+  if (!lock.acquired() || !manualPageTurnReady()) return false;
   const bool forward = pendingExternalTurn > 0;
   const bool chapter = pendingExternalChapter;
+  int8_t remaining = pendingExternalTurn;
   pendingExternalTurn = 0;
   pendingExternalChapter = false;
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
   currentTurnTrace = pendingExternalTurnTrace;
   pendingExternalTurnTrace = {};
 #endif
   // Preview owns Back/Confirm and stays inside its current book.
   if (preview && isAtEndOfBook()) {
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
     dropTurnTrace(currentTurnTrace, "preview_end");
 #endif
     if (!forward) {
@@ -433,7 +439,7 @@ bool ReaderActivity::processExternalPageTurn() {
   // The same end-of-book gate owns physical and external page actions. An
   // open suggestion menu consumes the report without turning a hidden page.
   if (!preview && handleEndOfBookPageTurn(!forward, forward)) {
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
     dropTurnTrace(currentTurnTrace, "end_of_book");
 #endif
     return true;
@@ -448,7 +454,15 @@ bool ReaderActivity::processExternalPageTurn() {
     }
     return true;
   }
-  if (pageTurnLocked(forward)) requestUpdate();
+  // Presses queued during a paint land together: one repaint shows the page they add up to.
+  bool changed = false;
+  while (remaining != 0 && !isAtEndOfBook() && pageTurnLocked(forward)) {
+    changed = true;
+    remaining -= forward ? 1 : -1;
+  }
+  // A turn into a chapter that is still being laid out stops early; the rest waits for it.
+  if (changed && !isAtEndOfBook()) pendingExternalTurn = remaining;
+  if (changed) requestUpdate();
   return true;
 }
 
@@ -457,7 +471,7 @@ void ReaderActivity::loop() {
   clearEndOfBookOptionsIfNeeded();
   if (handleEndOfBookMenu()) {
     pendingExternalTurn = 0;
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
     dropTurnTrace(pendingExternalTurnTrace, "end_menu");
 #endif
     return;
@@ -494,7 +508,7 @@ void ReaderActivity::render(RenderLock&&) {
       renderer.clearScreen();
       drawPreviewFooter();
       renderer.displayBuffer();
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
       logTurnTrace("RENDERED", appliedTurnTrace, "preview_end");
       appliedTurnTrace = {};
 #endif
@@ -513,7 +527,7 @@ void ReaderActivity::render(RenderLock&&) {
       endOfBookOptions->render(renderer, mappedInput);
     }
     renderer.displayBuffer();
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
     logTurnTrace("RENDERED", appliedTurnTrace, "end_of_book");
     appliedTurnTrace = {};
 #endif

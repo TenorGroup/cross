@@ -8,6 +8,7 @@ struct ThemeMetrics {
   int sideButtonHintsWidth = 0, keyboardTextFieldWidthPercent = 90;
   bool keyboardCenteredText = false;
   int keyboardKeySpacing = 4, keyboardKeyHeight = 32, keyboardWidthPercent = 90, buttonHintsHeight = 24;
+  bool roundedMarks = false;
 };
 class UITheme {
  public:

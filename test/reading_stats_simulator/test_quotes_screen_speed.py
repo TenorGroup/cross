@@ -1,6 +1,6 @@
 """Statistics > Quotes with a reading font that lives on the card.
 
-The founder's X3 took 61.8 seconds to paint this screen for three saved quotes, and the
+A real X3 took 61.8 seconds to paint this screen for three saved quotes, and the
 serial log named the cost: 6452 lines of "[SDCF] Overflow: loaded U+... on demand". Nothing
 behind getTextWidth() reads the advance table, so wrapping a preview with a card font loads
 every glyph it measures through an eight-slot cache. The checks below are the shape of that

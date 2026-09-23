@@ -1,4 +1,5 @@
 #include <BatteryMonitor.h>
+#include <ButtonEdgeLatch.h>
 #include <HalGPIO.h>
 #include <Logging.h>
 #include <PowerManager.h>
@@ -7,6 +8,9 @@
 #include <Wire.h>
 #include <XteinkDetect.h>
 #include <esp_sleep.h>
+#include <esp_timer.h>
+
+#include <atomic>
 
 // Global HalGPIO instance
 HalGPIO gpio;
@@ -111,7 +115,68 @@ HalGPIO::DeviceType detectDeviceTypeWithFingerprint() {
   return HalGPIO::DeviceType::X4;
 }
 
+#ifdef TENOR_PRESS_PROBE
+// Synthetic presses for on-device latency measurement. They enter through the
+// SDK button hook, so they take the same debounce, held-time and edge path as
+// a real contact: a press that no sample catches twice is lost like a real one.
+struct PressPlan {
+  unsigned long startMs;
+  uint16_t holdMs;
+  uint16_t periodMs;
+  uint16_t count;
+  uint16_t logged;
+  int16_t lastSeen;
+  uint8_t mask;
+};
+PressPlan pressPlan{};
+
+// Runs inside the SDK button read, on the sample timer. No logging here: a
+// full USB serial buffer must never stall the sampler it is measuring.
+uint8_t plannedButtons() {
+  if (pressPlan.count == 0 || static_cast<long>(millis() - pressPlan.startMs) < 0) return 0;
+  const unsigned long since = millis() - pressPlan.startMs;
+  const unsigned long k = since / pressPlan.periodMs;
+  const bool down = k < pressPlan.count && since % pressPlan.periodMs < pressPlan.holdMs;
+  if (down) pressPlan.lastSeen = static_cast<int16_t>(k);
+  return down ? pressPlan.mask : 0;
+}
+
+// Main loop: one line per planned press once its contact is over, stamped with
+// its physical start so latency is measured from the finger. seen=0 means no
+// sample ran while the contact was closed.
+void reportPlannedPresses() {
+  if (pressPlan.count == 0 || static_cast<long>(millis() - pressPlan.startMs) < 0) return;
+  const unsigned long since = millis() - pressPlan.startMs;
+  while (pressPlan.logged < pressPlan.count &&
+         since >= static_cast<unsigned long>(pressPlan.logged) * pressPlan.periodMs + pressPlan.holdMs) {
+    LOG_INF("IN", "inject n=%u t=%lu seen=%d", pressPlan.logged + 1,
+            pressPlan.startMs + static_cast<unsigned long>(pressPlan.logged) * pressPlan.periodMs,
+            pressPlan.lastSeen >= static_cast<int16_t>(pressPlan.logged));
+    ++pressPlan.logged;
+  }
+}
+#endif
+
 }  // namespace
+
+#ifdef TENOR_PRESS_PROBE
+void HalGPIO::injectPresses(const uint8_t buttonIndex, const uint16_t holdMs, const uint16_t count,
+                            const uint16_t gapMs) {
+  // Every press follows a gap, the first one included, so a single press with a
+  // long gap lands on an idle, down-clocked loop.
+  // The sample timer reads this plan; count goes last so it never sees a half-written one.
+  pressPlan.count = 0;
+  pressPlan.startMs = millis() + gapMs;
+  pressPlan.holdMs = holdMs;
+  pressPlan.periodMs = static_cast<uint16_t>(holdMs + gapMs);
+  pressPlan.logged = 0;
+  pressPlan.lastSeen = -1;
+  pressPlan.mask = static_cast<uint8_t>(1u << buttonIndex);
+  InputManager::setButtonHook(plannedButtons);
+  std::atomic_thread_fence(std::memory_order_release);
+  pressPlan.count = pressPlan.periodMs == 0 ? 0 : count;
+}
+#endif
 
 void HalGPIO::begin() {
 #if FREEINK_MCU_C3
@@ -145,8 +210,87 @@ void HalGPIO::begin() {
   inputMgr.begin();
 }
 
+namespace {
+// Shared between the sample timer and the main loop; one HalGPIO exists. Once the
+// timer runs, only it touches the SDK debounce. After each sample it publishes
+// the edges and a snapshot of the level and held times under edgeLock, and the
+// main loop reads only that, under the same lock, so it never sees half a sample.
+portMUX_TYPE edgeLock = portMUX_INITIALIZER_UNLOCKED;
+ButtonEdgeLatch edges;
+struct ButtonSample {
+  uint8_t state = 0;
+  bool debouncePending = false;
+  unsigned long heldMs = 0;
+  unsigned long powerHeldMs = 0;
+  unsigned long atMs = 0;
+};
+ButtonSample sample;
+
+ButtonSample readSample(const InputManager& input) {
+  ButtonSample now;
+  for (uint8_t button = 0; button <= HalGPIO::BTN_POWER; ++button) {
+    if (input.isPressed(button)) now.state |= 1u << button;
+  }
+  now.debouncePending = input.isDebouncePending();
+  now.heldMs = input.getHeldTime();
+  now.powerHeldMs = input.getPowerButtonHeldTime();
+  now.atMs = millis();
+  return now;
+}
+
+// Set while another reader (Back latch of file transfer, BUTTON_ADC) converts the
+// button ladder. The IDF oneshot driver only try-locks the ADC unit and Arduino's
+// analogRead then returns 0, which the ladder reads as Right+Down, so the timer
+// skips that tick instead of feeding it to the debounce. A plain flag is enough on
+// the single-core C3: the timer task outranks every other ladder reader.
+std::atomic<bool> ladderInUse{false};
+}  // namespace
+
+void HalGPIO::startBackgroundSampling() {
+  if (sampleTimer || inputMgr.hasTouch() ||
+      BoardConfig::ACTIVE.inputStyle != BoardConfig::InputStyle::XteinkAdcLadder) {
+    return;
+  }
+  // Ticks missed while the flash cache is off (OTA, settings save) are dropped, not replayed
+  // back to back: one fresh sample after the gap is all the debounce needs.
+  const esp_timer_create_args_t args{sampleButtons, this, ESP_TIMER_TASK, "buttons", true};
+  esp_timer_handle_t timer = nullptr;
+  if (esp_timer_create(&args, &timer) != ESP_OK) return;
+  // Published before the first tick: from here on only the timer runs the debounce,
+  // and the main loop reads the snapshot, seeded here with the state it had.
+  sample = readSample(inputMgr);
+  sampleTimer = timer;
+  esp_timer_start_periodic(timer, 10000);
+}
+
+void HalGPIO::sampleButtons(void* self) {
+  if (ladderInUse.load(std::memory_order_acquire)) return;
+  auto& input = static_cast<HalGPIO*>(self)->inputMgr;
+  input.update();
+  uint8_t pressed = 0;
+  uint8_t released = 0;
+  for (uint8_t button = 0; button <= BTN_POWER; ++button) {
+    if (input.wasPressed(button)) pressed |= 1u << button;
+    if (input.wasReleased(button)) released |= 1u << button;
+  }
+  const ButtonSample now = readSample(input);
+  portENTER_CRITICAL(&edgeLock);
+  edges.add(pressed, released);
+  sample = now;
+  portEXIT_CRITICAL(&edgeLock);
+}
+
 void HalGPIO::update() {
-  inputMgr.update();
+  if (sampleTimer) {
+    portENTER_CRITICAL(&edgeLock);
+    edges.take(framePressed, frameReleased);
+    portEXIT_CRITICAL(&edgeLock);
+  } else {
+    inputMgr.update();
+  }
+#ifdef TENOR_PRESS_PROBE
+  reportPlannedPresses();
+#endif
   const bool connected = isUsbConnected();
   usbStateChanged = (connected != lastUsbConnected);
   lastUsbConnected = connected;
@@ -156,23 +300,49 @@ bool HalGPIO::wasUsbStateChanged() const { return usbStateChanged; }
 
 void HalGPIO::readButtonAdc(int& group1, int& group2) {
   InputManager::ButtonAdcSample first{}, second{};
-  inputMgr.readButtonAdc(first, second);
+  sampleButtonAdc(first, second);
   group1 = first.raw;
   group2 = second.raw;
 }
 
-bool HalGPIO::isPressed(uint8_t buttonIndex) const { return inputMgr.isPressed(buttonIndex); }
+void HalGPIO::sampleButtonAdc(InputManager::ButtonAdcSample& first, InputManager::ButtonAdcSample& second) {
+  ladderInUse.store(true, std::memory_order_release);
+  inputMgr.readButtonAdc(first, second);
+  ladderInUse.store(false, std::memory_order_release);
+}
 
-bool HalGPIO::wasPressed(uint8_t buttonIndex) const { return inputMgr.wasPressed(buttonIndex); }
+bool HalGPIO::isPressed(uint8_t buttonIndex) const {
+  if (!sampleTimer) return inputMgr.isPressed(buttonIndex);
+  portENTER_CRITICAL(&edgeLock);
+  const bool pressed = (sample.state >> buttonIndex) & 1u;
+  portEXIT_CRITICAL(&edgeLock);
+  return pressed;
+}
 
-bool HalGPIO::wasAnyPressed() const { return inputMgr.wasAnyPressed(); }
+bool HalGPIO::wasPressed(uint8_t buttonIndex) const {
+  return sampleTimer ? (framePressed >> buttonIndex) & 1u : inputMgr.wasPressed(buttonIndex);
+}
 
-bool HalGPIO::wasReleased(uint8_t buttonIndex) const { return inputMgr.wasReleased(buttonIndex); }
+bool HalGPIO::wasAnyPressed() const { return sampleTimer ? framePressed != 0 : inputMgr.wasAnyPressed(); }
 
-bool HalGPIO::wasAnyReleased() const { return inputMgr.wasAnyReleased(); }
+bool HalGPIO::wasReleased(uint8_t buttonIndex) const {
+  return sampleTimer ? (frameReleased >> buttonIndex) & 1u : inputMgr.wasReleased(buttonIndex);
+}
+
+bool HalGPIO::wasAnyReleased() const { return sampleTimer ? frameReleased != 0 : inputMgr.wasAnyReleased(); }
 
 bool HalGPIO::rawInputActive() {
+  if (sampleTimer) {
+    // The timer owns the ladder: wake on a collected edge or a contact the debounce is still weighing.
+    portENTER_CRITICAL(&edgeLock);
+    const bool active = edges.pending() || sample.debouncePending || sample.state != 0;
+    portEXIT_CRITICAL(&edgeLock);
+    return active;
+  }
   if (inputMgr.isPowerButtonPhysicallyPressed()) return true;
+#ifdef TENOR_PRESS_PROBE
+  if (plannedButtons()) return true;  // a synthetic contact wakes the idle poll like a real one
+#endif
   InputManager::ButtonAdcSample g1{}, g2{};
   inputMgr.readButtonAdc(g1, g2);
   // The Xteink ladder idles at the ADC full-scale rail (~4095); every button band sits below 3900.
@@ -180,9 +350,23 @@ bool HalGPIO::rawInputActive() {
   return (g1.raw >= 0 && g1.raw < kIdleRailMin) || (g2.raw >= 0 && g2.raw < kIdleRailMin);
 }
 
-unsigned long HalGPIO::getHeldTime() const { return inputMgr.getHeldTime(); }
+// A held time from the snapshot keeps growing between samples, as the SDK's own
+// getter would when read live.
+unsigned long HalGPIO::getHeldTime() const {
+  if (!sampleTimer) return inputMgr.getHeldTime();
+  portENTER_CRITICAL(&edgeLock);
+  const ButtonSample at = sample;
+  portEXIT_CRITICAL(&edgeLock);
+  return at.state ? at.heldMs + (millis() - at.atMs) : at.heldMs;
+}
 
-unsigned long HalGPIO::getPowerButtonHeldTime() const { return inputMgr.getPowerButtonHeldTime(); }
+unsigned long HalGPIO::getPowerButtonHeldTime() const {
+  if (!sampleTimer) return inputMgr.getPowerButtonHeldTime();
+  portENTER_CRITICAL(&edgeLock);
+  const ButtonSample at = sample;
+  portEXIT_CRITICAL(&edgeLock);
+  return (at.state >> BTN_POWER) & 1u ? at.powerHeldMs + (millis() - at.atMs) : at.powerHeldMs;
+}
 
 bool HalGPIO::hasTouch() const { return inputMgr.hasTouch(); }
 

@@ -46,8 +46,12 @@ def pin():
  # Compare the entire popup. The parent row focus is in-memory and can differ
  # between the warm return and a restart behind this modal. With eleven sleep
  # screens (v1.0.11) the popup pages; tenor/cross opens on its second page, a
- # shorter box, so the tab behind it shows above and below and is left out.
- same(t.o/'pin-e2e-popup.png',t.o/'pin-restart-popup.png',(67,178,462,582))
+ # shorter box, so the tab behind it shows above and below and is left out. The popup's corners
+ # are rounded (27 px, reaching 1.6 r = 44 px along each edge), and the tab shows through them
+ # too, so the four corner squares are left out as well.
+ k=44
+ same(t.o/'pin-e2e-popup.png',t.o/'pin-restart-popup.png',(67+k,178,462-k,582))
+ same(t.o/'pin-e2e-popup.png',t.o/'pin-restart-popup.png',(67,178+k,462,582-k))
 def order():
  sd=t.run('reorder-e2e','1000:DOWN:1600;3100:QUIT',[(700,'before'),(2800,'after')])
  assert saved(sd,'menu-customization.json')['tabs']['home']==[1,0,4,2,3]

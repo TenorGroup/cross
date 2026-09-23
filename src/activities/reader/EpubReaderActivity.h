@@ -49,7 +49,7 @@ class EpubReaderActivity final : public ReaderActivity {
   unsigned long lastPageTurnTime = 0UL;
   unsigned long pageTurnDuration = 0UL;
   int8_t pendingManualTurn = 0;
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
   TurnTrace pendingManualTurnTrace;
   uint32_t paintTraceSequence = 0;
   unsigned long paintTraceStarted = 0;
@@ -92,6 +92,8 @@ class EpubReaderActivity final : public ReaderActivity {
   void generatePendingThumb();
   unsigned long lastRenderCompleteMs = 0;
   bool bookmarkRemoved = false;
+  // The bookmark popup slot shows the tilt toggle's new state instead.
+  bool tiltMessage = false;
   std::vector<BookmarkEntry> cachedBookmarks;
   // Anchors of this book's saved quotes, 12 bytes each and capped by the store, read
   // once per book open. Highlights are drawn from these, so no quote text is resident.
@@ -188,6 +190,11 @@ class EpubReaderActivity final : public ReaderActivity {
   bool buildHeapPaused = false;
   static constexpr size_t RENDER_MIN_FREE_HEAP = 24 * 1024;
   static constexpr int BUILD_WINDOW_AHEAD = 5;
+  // Quiet-pass look-ahead while the radio keeps the parser parked: not before the page
+  // has settled, and not so late that the loop already runs down-clocked.
+  static constexpr int BUILD_WINDOW_QUIET_MS = 400;
+  static constexpr int BUILD_WINDOW_LATEST_MS = 1200;
+  int lookAheadPage = -1;
   static constexpr int PARTIAL_REBUILD_START_MARGIN = 15;
   static constexpr int BUILD_POPUP_PAGE_THRESHOLD = 20;
   static constexpr size_t BUILD_POPUP_BYTE_THRESHOLD = 96 * 1024;
@@ -245,6 +252,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void jumpToQuoteForEdit(const std::string& name);
   bool launchKOReaderSync();
   unsigned long confirmLongPressThreshold() const;
+  void toggleTiltFromReader();
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void loadCachedBookmarks();
   void addBookmark();

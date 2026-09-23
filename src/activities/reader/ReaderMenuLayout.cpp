@@ -4,7 +4,8 @@
 
 namespace readermenu {
 
-void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool hasBookmarks, const bool hasFrontlight) {
+void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool hasBookmarks, const bool hasFrontlight,
+                const bool hasTilt) {
   items.clear();
   items.reserve(ACTION_COUNT);
 
@@ -43,6 +44,11 @@ void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool ha
   // lai TRANG SACH, nen no khong thua.
   items.push_back({Action::GO_HOME, StrId::STR_GO_HOME_BUTTON, Tab::TOOLS});
   items.push_back({Action::BLUETOOTH, StrId::STR_BLE_PAGE_TURNER, Tab::TOOLS});
+  // Quick actions a reader may want one hold away: pinnable into Favorites.
+  items.push_back({Action::FILE_TRANSFER, StrId::STR_FILE_TRANSFER, Tab::TOOLS});
+  if (hasTilt) {
+    items.push_back({Action::TILT_PAGE_TURN, StrId::STR_TILT_PAGE_TURN, Tab::TOOLS});
+  }
 }
 
 void buildMoreItems(std::vector<Item>& items, const bool hasFootnotes, const bool hasBookmarks,
@@ -58,7 +64,8 @@ void buildMoreItems(std::vector<Item>& items, const bool hasFootnotes, const boo
                                      Action::DICTIONARY,    Action::ROTATE_SCREEN,  Action::AUTO_PAGE_TURN,
                                      Action::GO_TO_PERCENT, Action::SCREENSHOT,     Action::DISPLAY_QR,
                                      Action::GO_HOME,       Action::SYNC,           Action::DELETE_CACHE,
-                                     Action::SAVE_QUOTE,    Action::QUOTES_OF_BOOK, Action::BLUETOOTH};
+                                     Action::SAVE_QUOTE,    Action::QUOTES_OF_BOOK, Action::BLUETOOTH,
+                                     Action::FILE_TRANSFER, Action::TILT_PAGE_TURN};
   std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
     return std::find(std::begin(order), std::end(order), a.action) <
            std::find(std::begin(order), std::end(order), b.action);

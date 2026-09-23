@@ -25,6 +25,8 @@ struct FakeImuState {
 struct TestSettings {
   uint8_t tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
   uint8_t orientation = CrossPointOrientation::PORTRAIT;
+  uint8_t tiltStrengthH = 1;  // Medium
+  uint8_t tiltStrengthV = 1;
 } SETTINGS;
 
 int failures = 0;
@@ -251,6 +253,68 @@ void readerNeverSeesTheVerticalChannel() {
   expect(!halTiltSensor.wasTiltedForward(), "reader-vertical", "vertical motion must not turn a page");
 }
 
+// Reader route with a side flick of `gx` dps at the given side strength.
+bool readerTurnsAt(const float gx, const uint8_t strength) {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_NORMAL;
+  SETTINGS.orientation = CrossPointOrientation::PORTRAIT;
+  SETTINGS.tiltStrengthH = strength;
+  imu.gx = gx;
+  imu.gy = 0.0f;
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runReaderTick();
+  }
+  return halTiltSensor.wasTiltedForward();
+}
+
+// Menu route with an up/down flick of `gy` dps at the given up/down strength.
+bool menuRowMovesAt(const float gy, const uint8_t strength) {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  SETTINGS.orientation = CrossPointOrientation::PORTRAIT;
+  SETTINGS.tiltStrengthV = strength;
+  imu.gx = 0.0f;
+  imu.gy = gy;
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runMenuTick(CrossPointTiltPageTurn::TILT_OFF, CrossPointTiltPageTurn::TILT_NORMAL);
+  }
+  return halTiltSensor.wasTiltedDown();
+}
+
+void flickStrengthSetsEachAxisThreshold() {
+  // Light 190 dps, Medium 270 dps (the old shared value), Strong 360 dps.
+  expect(readerTurnsAt(200.0f, 0), "strength-side", "Light must turn a page at 200 dps");
+  expect(!readerTurnsAt(200.0f, 1), "strength-side", "Medium must ignore 200 dps");
+  expect(readerTurnsAt(300.0f, 1), "strength-side", "Medium must turn a page at 300 dps");
+  expect(!readerTurnsAt(300.0f, 2), "strength-side", "Strong must ignore 300 dps");
+  expect(readerTurnsAt(370.0f, 2), "strength-side", "Strong must turn a page at 370 dps");
+  expect(!readerTurnsAt(200.0f, 9) && readerTurnsAt(300.0f, 9), "strength-side",
+         "an unknown strength must behave as Medium");
+  SETTINGS.tiltStrengthH = 1;
+
+  expect(menuRowMovesAt(200.0f, 0), "strength-updown", "Light must move a row at 200 dps");
+  expect(!menuRowMovesAt(200.0f, 1), "strength-updown", "Medium must ignore 200 dps");
+  expect(!menuRowMovesAt(300.0f, 2), "strength-updown", "Strong must ignore 300 dps");
+  expect(menuRowMovesAt(370.0f, 2), "strength-updown", "Strong must move a row at 370 dps");
+  SETTINGS.tiltStrengthV = 1;
+
+  // The two axes read their own setting: a Light up/down flick moves a row
+  // while the same pass stays below a Strong side threshold.
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  SETTINGS.tiltStrengthH = 2;
+  SETTINGS.tiltStrengthV = 0;
+  imu.gx = 300.0f;
+  imu.gy = 200.0f;
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  }
+  expect(halTiltSensor.wasTiltedDown(), "strength-split", "Light up/down must fire at 200 dps");
+  expect(!halTiltSensor.wasTiltedForward(), "strength-split", "Strong side must hold at 300 dps");
+  SETTINGS.tiltStrengthH = 1;
+  SETTINGS.tiltStrengthV = 1;
+}
+
 }  // namespace
 
 unsigned long millis() { return fakeMillis; }
@@ -293,6 +357,7 @@ int main() {
   verticalChannelObeysItsOwnModeAndGate();
   verticalChannelFollowsOrientationLikeTheHorizontalOne();
   readerNeverSeesTheVerticalChannel();
+  flickStrengthSetsEachAxisThreshold();
   std::printf("tilt_sensor_ownership: %d failed assertions\n", failures);
   return failures == 0 ? 0 : 1;
 }

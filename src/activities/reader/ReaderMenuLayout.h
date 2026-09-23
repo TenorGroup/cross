@@ -30,12 +30,14 @@ enum class Action {
   FONT_FAMILY,  // mo TextSettings o the Font chu
   SAVE_QUOTE,
   BLUETOOTH,
-  QUOTES_OF_BOOK  // mo man Trich dan cua dung cuon dang doc
+  QUOTES_OF_BOOK,  // mo man Trich dan cua dung cuon dang doc
+  FILE_TRANSFER,   // leaves the book for the file transfer screen
+  TILT_PAGE_TURN   // toggles tilt page turn in place; boards with an IMU only
 };
 
 // So lenh dang co. Dung de loc mot o rac doc len tu settings.json: mot so vuot tam nghia
 // la ban ghi cu tro toi mot lenh khong con ton tai.
-inline constexpr int ACTION_COUNT = static_cast<int>(Action::QUOTES_OF_BOOK) + 1;
+inline constexpr int ACTION_COUNT = static_cast<int>(Action::TILT_PAGE_TURN) + 1;
 
 enum class Tab : uint8_t { FAVORITES, POSITION, READING, TOOLS };
 inline constexpr int TAB_COUNT = 4;
@@ -48,7 +50,8 @@ struct Item {
 
 // Muc co dieu kien (chu thich, dau trang, den nen) xep CUOI tab cua no, de cac
 // muc luon hien giu nguyen so thu tu du cuon sach nay co va cuon kia khong.
-void buildItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, bool hasFrontlight);
+void buildItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, bool hasFrontlight,
+                bool hasTilt = false);
 
 // Toolbar More keeps its original order independently of the tab layout.
 void buildMoreItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, bool hasFrontlight);

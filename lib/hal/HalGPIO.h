@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <InputManager.h>
 
+struct esp_timer;  // esp_timer_handle_t, kept opaque so host test builds need no IDF header
+
 // Display SPI pins (custom pins for XteinkX4, not hardware SPI defaults)
 #define EPD_SCLK 8   // SPI Clock
 #define EPD_MOSI 10  // SPI MOSI (Master Out Slave In)
@@ -46,6 +48,15 @@ class HalGPIO {
   bool lastUsbConnected = false;
   bool usbStateChanged = false;
 
+  // Button sampling off the main loop (ADC-ladder boards). A periodic timer runs
+  // the SDK debounce every 10 ms, so a press is sampled even while the main loop
+  // spends 50 ms to seconds in one step (next-page prewarm, section build). The
+  // edges it collects wait until update() hands them to the next frame.
+  esp_timer* sampleTimer = nullptr;
+  uint8_t framePressed = 0;
+  uint8_t frameReleased = 0;
+  static void sampleButtons(void* self);
+
  public:
   enum class DeviceType : uint8_t { X4, X3 };
 
@@ -68,6 +79,9 @@ class HalGPIO {
 
   // Start button GPIO and setup SPI for screen and SD card
   void begin();
+  // Moves button sampling onto the timer. Call once the boot-time presses are
+  // settled; later calls do nothing. Boards with touch keep sampling in update().
+  void startBackgroundSampling();
 
   // Button input methods
   void update();
@@ -85,9 +99,8 @@ class HalGPIO {
   void readButtonAdc(int& group1, int& group2);
 #if !defined(SIMULATOR) && CROSSPOINT_EMULATED == 0
   // Pure ADC samples with the SDK's band classification; leaves input events intact.
-  void sampleButtonAdc(InputManager::ButtonAdcSample& first, InputManager::ButtonAdcSample& second) {
-    inputMgr.readButtonAdc(first, second);
-  }
+  // The button sample timer skips its tick while this converts the ladder.
+  void sampleButtonAdc(InputManager::ButtonAdcSample& first, InputManager::ButtonAdcSample& second);
 #endif
   bool hasTouch() const;
   // Capacitive Home key reported by the touch controller (X4 Pro). The tap
@@ -115,6 +128,11 @@ class HalGPIO {
   bool wasSwipe(float& nxStart, float& nyStart, float& nxEnd, float& nyEnd) const;
   bool wasTouchActivity() const;
   void setSharedConfirmPowerShortPressEmitsPower(bool enabled);
+#ifdef TENOR_PRESS_PROBE
+  // Measurement builds only: plays `count` presses of one button, each held
+  // `holdMs` and each preceded by `gapMs` of release, the first one included.
+  void injectPresses(uint8_t buttonIndex, uint16_t holdMs, uint16_t count, uint16_t gapMs);
+#endif
 
   // Verify that the physical power button remains held through input debounce.
   // Returns true if verification succeeded, false if device should return to sleep.

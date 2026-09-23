@@ -2,7 +2,7 @@
 
 Truoc ban nay khung chu chua 28 px day va xet dong bang O dong: voi NotoSerif 16 gian dong
 Sieu rong (o 54 px) trang chi duoc 13 dong vi dong 14 thieu dung 1 px o, du muc dong 14 con
-cach thanh trang thai hon 10 px. Founder chup may that (Bookerly 16, Hep) cung thieu 1 px.
+cach thanh trang thai hon 10 px. Anh chup may that (Bookerly 16, Hep) cung thieu 1 px.
 Luat moi: dong cuoi vua trang khi muc (ascender + descender) con cach muc thanh trang thai
 it nhat READER_TEXT_TO_STATUS_GAP = 2 px.
 """
@@ -17,9 +17,7 @@ PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc
 STATUS_INK_TOP = 22          # tenorchrome::STATUS_INK_TOP
 GAP = 2                      # tenorchrome::READER_TEXT_TO_STATUS_GAP
 
-DOAN = ('Ông Gehry là kiến trúc sư đầu tiên thật sự đưa được đường cong tự do vào công trình lớn, '
-        'nhưng chính công trình đầu tiên có đường cong của mình, Bảo tàng Thiết kế Vitra ở Weil am Rhein, '
-        'Đức, hoàn thành vào năm 1989, lại cho thấy một chỗ gồ lên trông không giống chủ đích. ')
+DOAN = ('Người thợ mộc già bào xong tấm ván cuối cùng khi trời vừa tắt nắng, rồi ngồi xuống bậc thềm đếm lại từng cái đinh còn trong hộp, vì sáng mai cả xóm sẽ tới dựng mái cho căn nhà nhỏ ở cuối con dốc, nơi mùa nào gió cũng thổi ngược lên từ phía bờ sông. ')
 
 
 def write_epub(path: Path) -> None:

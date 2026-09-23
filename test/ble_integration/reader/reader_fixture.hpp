@@ -46,6 +46,7 @@ struct ReaderActivity:Activity{
  int8_t pendingExternalTurn=0;uint32_t pendingExternalGeneration=0;bool pendingTurnIsLocal=false,pendingExternalChapter=false;int backCalls=0,formatCalls=0,chapterSkips=0;std::string bookPath="fixture.txt";void finish(){}
  bool statsEnabled=true,statsActive=false,statsDirty=false;uint32_t statsLastMs=0,statsSavedMs=0,statsDay=1,statsDayPollMs=0;
  virtual bool latTrangThat(bool)=0;virtual bool isAtEndOfBook()const=0;virtual void onReturnFromEndOfBook()=0;
+ static constexpr int8_t MAX_QUEUED_TURNS=8;void queuePageTurn(bool,bool,const char*);
  bool pageTurn(bool);bool pageTurnLocked(bool);bool luotLatTrangNgoai(bool);bool luotNhayChuongNgoai(bool);bool processExternalPageTurn();void cancelExternalPageTurn();
  // Trinh doc khong co muc luc tra ve false: giu nut o do khong lam gi ca.
  virtual bool nhayChuongThat(int){return false;}

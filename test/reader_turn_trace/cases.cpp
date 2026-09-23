@@ -47,7 +47,7 @@ int main() {
     require(reader.luotLatTrangNgoai(true), "external input rejected");
     RenderLock::busy = true;
     nowMs = 1400;
-    require(reader.processExternalPageTurn(), "busy external queue was not deferred");
+    require(!reader.processExternalPageTurn(), "busy external queue swallowed the tick's input");
     require(reader.modelPage == 1, "busy queue changed model");
     RenderLock::busy = false;
     nowMs = 1800;
@@ -88,7 +88,7 @@ int main() {
     reader.ready = false;
     require(reader.luotLatTrangNgoai(true), "external input rejected");
     nowMs = 1450;
-    require(reader.processExternalPageTurn(), "unready turn was not deferred");
+    require(!reader.processExternalPageTurn(), "unready turn swallowed the tick's input");
     require(reader.modelPage == 1 && noPhase("APPLIED"), "unready turn was applied");
     reader.ready = true;
     nowMs = 1900;
@@ -113,6 +113,42 @@ int main() {
     require(reader.appliedTurnTrace.id == 2 && reader.appliedTurnTrace.detectedMs == 1200,
             "surviving event lost identity");
 #endif
+  });
+  test("every local press that misses the lock turns one page", [] {
+    ReaderActivity reader;
+    RenderLock::busy = true;
+    for (int i = 0; i < 3; ++i) require(!reader.pageTurn(false), "busy local turn mutated model");
+    RenderLock::busy = false;
+    require(reader.processExternalPageTurn(), "local queue did not drain");
+    require(reader.modelPage == -2 && reader.trangDaLat == 3 && reader.updates == 1,
+            "queued local presses did not land as three pages in one repaint");
+    require(logged("MERGED", 1) && logged("MERGED", 2) && logged("APPLIED", 3), "merged presses lack disposition");
+  });
+  test("opposite local presses cancel out", [] {
+    ReaderActivity reader;
+    RenderLock::busy = true;
+    reader.pageTurn(true);
+    reader.pageTurn(false);
+    require(reader.pendingExternalTurn == 0 && loggedDetail("DROPPED", 2, "cancelled"),
+            "opposite local presses did not cancel");
+    RenderLock::busy = false;
+    require(!reader.processExternalPageTurn() && reader.modelPage == 1, "cancelled presses turned a page");
+  });
+  test("a remote report still replaces queued local presses", [] {
+    ReaderActivity reader;
+    RenderLock::busy = true;
+    reader.pageTurn(true);
+    reader.pageTurn(true);
+    require(reader.luotLatTrangNgoai(false), "external input rejected");
+    require(reader.pendingExternalTurn == -1, "remote report did not take the queue");
+    RenderLock::busy = false;
+  });
+  test("queued turns are capped", [] {
+    ReaderActivity reader;
+    RenderLock::busy = true;
+    for (int i = 0; i < 20; ++i) reader.pageTurn(true);
+    require(reader.pendingExternalTurn == 8, "queue is not capped at eight turns");
+    RenderLock::busy = false;
   });
   test("stale generation drops queued metadata", [] {
     ReaderActivity reader;
@@ -139,7 +175,7 @@ int main() {
     RenderLock::busy = true;
     nowMs = 1300;
     require(reader.luotLatTrangNgoai(false), "next external input rejected");
-    require(reader.processExternalPageTurn(), "next input was not held by lock");
+    require(!reader.processExternalPageTurn(), "held input swallowed the tick's input");
     require(reader.modelPage == 2, "queued input changed render model");
 #if TRACE_PRESENT
     require(reader.appliedTurnTrace.id == 1 && reader.appliedTurnTrace.detectedMs == 1000 &&
@@ -167,23 +203,39 @@ int main() {
             std::string(reader.appliedTurnTrace.source) == "button", "EPUB event identity changed");
 #endif
   });
-  test("EPUB guarded inputs coalesce with disposition", [] {
+  test("EPUB guarded inputs all count", [] {
     EpubReaderActivity reader;
     reader.ready = false;
     reader.manualInput(false, false, false, false);
     nowMs = 1200;
-    reader.manualInput(true, true, true, false);
-    require(reader.pendingManualTurn == -1 && reader.modelPage == 1, "EPUB queue lost latest direction");
+    reader.manualInput(false, false, true, false);
+    require(reader.pendingManualTurn == 2 && reader.modelPage == 1, "EPUB queue kept one press of two");
     reader.ready = true;
     nowMs = 1600;
     reader.drainManual();
-    require(reader.modelPage == 0 && reader.trangDaLat == 1, "EPUB coalesced turn applied incorrectly");
-    require(logged("COALESCED", 1) && logged("APPLIED", 2) && !logged("APPLIED", 1),
-            "EPUB displaced or surviving trace disposition missing");
+    require(reader.modelPage == 3 && reader.trangDaLat == 2 && reader.updates == 1,
+            "EPUB queued presses did not land as two pages in one repaint");
+    require(logged("MERGED", 1) && logged("APPLIED", 2), "EPUB merged trace disposition missing");
 #if TRACE_PRESENT
-    require(reader.appliedTurnTrace.id == 2 && reader.appliedTurnTrace.detectedMs == 1200 &&
-            std::string(reader.appliedTurnTrace.source) == "touch", "EPUB latest input metadata changed");
+    require(reader.appliedTurnTrace.id != 1, "EPUB merged press reported as the applied one");
 #endif
+  });
+  test("EPUB opposite guarded presses cancel out", [] {
+    EpubReaderActivity reader;
+    reader.ready = false;
+    reader.manualInput(false, false, false, false);
+    reader.manualInput(true, true, false, false);
+    require(reader.pendingManualTurn == 0, "EPUB opposite presses did not add up to zero");
+    require(loggedDetail("DROPPED", 2, "cancelled"), "EPUB cancelled queue lacks drop disposition");
+  });
+  test("EPUB press in the drain pass is not lost", [] {
+    EpubReaderActivity reader;
+    reader.ready = false;
+    reader.manualInput(false, false, false, false);
+    reader.ready = true;
+    nowMs = 1500;
+    reader.drainThenInput(false, false, false, false);
+    require(reader.modelPage == 3 && reader.trangDaLat == 2, "press read in the drain pass was dropped");
   });
   test("EPUB manual readiness handoff keeps queued identity", [] {
     EpubReaderActivity reader;

@@ -118,6 +118,10 @@ struct ThemeMetrics {
   int controlRadius;
   int sheetRadius;
   int capsuleRadius;
+  // Selection marks screens draw by hand, outside FreeInkUI (the reader's word mark, the
+  // keyboard's key cursor), round by the tenor/cross formula (components/themes/TenorRadius.h).
+  // Off keeps them square, as every theme but tenor/cross has always drawn them.
+  bool roundedMarks = false;
 };
 
 enum UIIcon {

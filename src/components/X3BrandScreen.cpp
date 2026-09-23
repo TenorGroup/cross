@@ -6,6 +6,7 @@
 
 #include "X3BrandAssets.h"
 #include "X3BrandCodec.h"
+#include "activities/boot_sleep/SleepGrayPlanes.h"
 #include "fontIds.h"
 
 bool renderX3BrandScreen(GfxRenderer& renderer, const bool boot) {
@@ -31,23 +32,27 @@ bool renderX3BrandScreen(GfxRenderer& renderer, const bool boot) {
     if (boot) renderer.drawCenteredText(SMALL_FONT_ID, x3brand::HEIGHT - 30, CROSSPOINT_VERSION);
     return true;
   };
-  // Ghost clear, sleep only. The absolute grayscale pass below is a single panel
+  // Sleep folds the two planes into one dithered B/W frame and shows it with a single GC pass
+  // (SleepGrayPlanes.h): the glass holds it unpowered for hours, and the GC pass also erases
+  // what the reader left there. Boot keeps the absolute gray waveform: it is repainted within
+  // seconds, and the controller init already forces GC on the next two content paints.
+  const bool fold = !boot && SleepGrayPlanes::wanted();
+  SleepGrayPlanes planes(renderer, fold);
+  // Ghost clear, gray sleep only. The absolute grayscale pass below is a single panel
   // activation with no erase phase, so whatever the reader left on the glass
   // shows through the art's large dark field. Drive one GC pass to the art's own
   // black and white threshold (the MSB plane) first so every pixel is driven and
-  // the previous page is gone before the gray planes land. Boot is left alone:
-  // the controller init already forces GC on the next two content paints.
-  if (!boot && decode(msb, msbSize)) renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  // the previous page is gone before the gray planes land.
+  if (!boot && !fold && decode(msb, msbSize)) renderer.displayBuffer(HalDisplay::FULL_REFRESH);
   // Separate-base panels (including the simulator) need a monochrome base.
   // X3 UC8279 defers its base and presents both absolute planes in one waveform.
-  bool ready = caps.base == HalDisplay::GrayscaleBase::Combined || decode(msb, msbSize);
-  if (ready) ready = renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute);
+  bool ready = fold || caps.base == HalDisplay::GrayscaleBase::Combined || decode(msb, msbSize);
+  if (ready && !fold) ready = renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute);
   if (ready) ready = decode(lsb, lsbSize);
-  if (ready) renderer.copyGrayscaleLsbBuffers();
+  if (ready) planes.lsb();
   if (ready) ready = decode(msb, msbSize);
   // Uploads complete synchronously before the framebuffer is reused.
-  if (ready) renderer.copyGrayscaleMsbBuffers();
-  if (ready) renderer.displayGrayBuffer();
+  if (ready) planes.show();
   renderer.setRenderMode(GfxRenderer::BW);  // also cancels a failed partial pass
   renderer.setOrientation(orientation);
   LOG_INF("BRAND", "%s ready=%u combined=%u visible=%lu ms", boot ? "boot" : "sleep", ready,

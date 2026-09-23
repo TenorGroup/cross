@@ -90,6 +90,8 @@ inline bool readerStartDeferred() { return readerStartDeferredState; }
 inline bool idleStopped() { return idleStoppedState; }
 inline bool stopForIdle() { ++stopForIdleCalls; idleStoppedState = true; return true; }
 inline void requestRearm() { ++rearmRequests; }
+inline bool heldForBuildState = false;
+inline void setRadioHeldForBuild(bool held) { heldForBuildState = held; }
 }  // namespace freeink::ble
 inline void delay(uint32_t ms) { clockMs += ms; }
 struct Gui { void drawPopup(int, int) { ++popupCount; popupAtMs = millis(); } } GUI;
@@ -196,12 +198,17 @@ struct ReaderActivity {
   bool handleEndOfBookPageTurn(bool, bool) { return false; }
   void requestUpdate() { ++requests; }
   bool luotLatTrangNgoai(bool); bool processExternalPageTurn(); bool pageTurnLocked(bool);
+  static constexpr int MAX_QUEUED_TURNS = 8;
+  void queuePageTurn(bool, bool, const char*);
 };
 struct EpubReaderActivity : ReaderActivity {
   std::unique_ptr<Section> section = std::make_unique<Section>();
   std::unique_ptr<Epub> epub = std::make_unique<Epub>();
 @@FIELDS@@
   ReaderRenderer renderer;
+  // A button edge in this pass; the idle steps wait for a quiet pass.
+  int8_t pendingManualTurn = 0;
+  struct Input { bool edge = false; bool wasAnyPressed() const { return edge; } bool wasAnyReleased() const { return false; } } mappedInput;
   int pagesUntilFullRefresh = 0;
   bool automaticPageTurnActive = false;
   // The reselection a failed build or starved section drops (EpubReaderActivity.h).

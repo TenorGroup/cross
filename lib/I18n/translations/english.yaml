@@ -813,3 +813,13 @@ STR_READER_INK_1: "+1"
 STR_READER_INK_2: "+2"
 
 STR_READER_INK_3: "+3"
+
+STR_TILT_STRENGTH_H: "Side flick strength"
+
+STR_TILT_STRENGTH_V: "Up/down flick strength"
+
+STR_TILT_LIGHT: "Light"
+
+STR_TILT_STRONG: "Strong"
+
+STR_SLEEP_BW_REFRESH: "Black and white refresh before sleep"

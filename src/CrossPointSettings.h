@@ -166,6 +166,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LP_MENU_BOOKMARK = 2,
     LP_MENU_DICTIONARY = 3,
     LP_MENU_READER_MENU = 4,
+    LP_MENU_FILE_TRANSFER = 5,
+    // Last on purpose: boards without an IMU drop it from the list without
+    // shifting any stored index.
+    LP_MENU_TILT_PAGE_TURN = 6,
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
 
@@ -173,7 +177,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   enum HIDE_BATTERY_PERCENTAGE { HIDE_NEVER = 0, HIDE_READER = 1, HIDE_ALWAYS = 2, HIDE_BATTERY_PERCENTAGE_COUNT };
 
   // Page turn button long press behavior
-  // Mặc định theo quyết định founder v1.0.3: giữ nút bên cạnh = nhảy chương.
+  // Mặc định theo quyết định của v1.0.3: giữ nút bên cạnh = nhảy chương.
   enum LONG_PRESS_BUTTON_BEHAVIOR {
     OFF = 0,
     CHAPTER_SKIP = 1,
@@ -195,6 +199,14 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   enum READER_MENU_STYLE { READER_MENU_LIST = 0, READER_MENU_TOOLBAR = 1, READER_MENU_STYLE_COUNT };
 
   enum TILT_PAGE_TURN { TILT_OFF = 0, TILT_NORMAL = 1, TILT_NVERTED = 2, TILT_PAGE_TURN_COUNT };
+
+  // How hard a wrist flick must be before it counts, per axis. Persisted by index.
+  enum TILT_STRENGTH {
+    TILT_STRENGTH_LIGHT = 0,
+    TILT_STRENGTH_MEDIUM = 1,
+    TILT_STRENGTH_STRONG = 2,
+    TILT_STRENGTH_COUNT
+  };
 
   enum TOUCH_READER_CONTROLS {
     TOUCH_READER_OFF = 0,
@@ -224,7 +236,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t sleepScreenCoverMode = FIT;
   // Sleep screen cover filter
   uint8_t sleepScreenCoverFilter = NO_FILTER;
-  // Thanh trang thai ngoai trinh doc: dung ba muc founder chot. Gia tri luu xuong
+  // Thanh trang thai ngoai trinh doc: dung ba muc da chot. Gia tri luu xuong
   // settings.json nen CHI THEM VAO CUOI.
   enum GLOBAL_STATUS_BAR_MODE {
     GLOBAL_STATUS_BAR_SMALL = 0,  // Mac dinh nho
@@ -396,6 +408,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t tiltTabNavigation = TILT_OFF;
   // Tilt-based row navigation on menu screens (X3 only - requires QMI8658 IMU)
   uint8_t tiltMenuNavigation = TILT_OFF;
+  // Flick strength for the side (page turn, tabs) and up/down (menu rows) axes.
+  uint8_t tiltStrengthH = TILT_STRENGTH_MEDIUM;
+  uint8_t tiltStrengthV = TILT_STRENGTH_MEDIUM;
+  // The mode a quick toggle turns tilt page turn back on to, so an Inverted
+  // choice survives being switched off and on again.
+  uint8_t tiltPageTurnLastOn = TILT_NORMAL;
   // Touch screen reader zones/gestures on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_SWIPE;
   // Reader menu open gesture (SHOW_READER_MENU: off / center tap / bottom-edge
@@ -423,6 +441,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Wake straight back into the book that was open when deep sleep began,
   // instead of returning to Home. 0 = off, 1 = on.
   uint8_t wakeIntoBook = 0;
+  // X3 only: end every sleep screen on one full black and white refresh, gray art as an
+  // ordered dither (v1.0.12). 0 keeps the v1.0.11 gray waveforms. 1 = on (default).
+  uint8_t sleepBwRefresh = 1;
 
   // --- BLE page turner (BTH2) -------------------------------------------------
   // Mac dinh TAT. Nam truong nay duoc luu tay trong toJson/fromJson (khong qua
@@ -499,6 +520,23 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   using SdFontIdResolver = int (*)(void* ctx, const char* familyName, uint8_t fontSize);
   SdFontIdResolver sdFontIdResolver = nullptr;
   void* sdFontResolverCtx = nullptr;
+
+  // Whether a power-button wake may boot. With Short Power Button = Sleep a tap
+  // puts the device to sleep, so a tap must also wake it, on every board;
+  // otherwise the press must have been held through verification.
+  static bool acceptPowerWake(const uint8_t shortPwrBtnSetting, const bool holdVerified) {
+    return holdVerified || shortPwrBtnSetting == SLEEP;
+  }
+
+  // Tilt page turn quick toggle: Off goes back to the last mode that was on.
+  void toggleTiltPageTurn() {
+    if (tiltPageTurn != TILT_OFF) {
+      tiltPageTurnLastOn = tiltPageTurn;
+      tiltPageTurn = TILT_OFF;
+    } else {
+      tiltPageTurn = tiltPageTurnLastOn == TILT_NVERTED ? TILT_NVERTED : TILT_NORMAL;
+    }
+  }
 
   uint16_t getPowerButtonDuration() const {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;

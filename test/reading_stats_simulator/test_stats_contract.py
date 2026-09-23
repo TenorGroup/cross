@@ -1,7 +1,7 @@
 """HOP DONG THONG KE: so lieu doc va danh hieu, do bang simulator X3 that.
 
 Moi ca chay trinh mo phong that voi mot the SD tam (tempfile). KHONG dung du lieu
-that cua founder: moi thu duoc ghi trong thu muc tam va xoa khi bai ket thuc.
+that cua chu may: moi thu duoc ghi trong thu muc tam va xoa khi bai ket thuc.
 
 Bang chung, khong phai cam giac:
   - log firmware: `Entering activity: ..` (man nao duoc mo), `Frame row=.. top=..`
@@ -265,7 +265,7 @@ class StatsContractTest(unittest.TestCase):
         duong_dan = _sach_gia(kb, 3)
         kb.dat_settings()
         kb.chay("1000:CONFIRM;2500:RIGHT;2600:RIGHT;3800:BACK;5500:QUIT")
-        # Mo cuon thu hai: recent.json tro thang toi no (hop dong cua founder).
+        # Mo cuon thu hai: recent.json tro thang toi no (hop dong da chot).
         kb.dat_recent(duong_dan[1], duong_dan[0], duong_dan[2])
         kb.chay("1000:CONFIRM;2500:RIGHT;2600:RIGHT;3800:BACK;5500:QUIT")
         du_lieu = kb.doc()

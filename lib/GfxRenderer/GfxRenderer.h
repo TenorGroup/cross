@@ -114,8 +114,6 @@ class GfxRenderer {
   void freeBwBufferChunks();
   template <Color color>
   void drawPixelDither(int x, int y) const;
-  template <Color color>
-  void fillArc(int maxRadius, int cx, int cy, int xDir, int yDir) const;
   // Byte-aligned, orientation-specialized rectangle fill. Rotates the rect's
   // two opposing corners into physical-framebuffer space once, then walks each
   // physical row with head-mask / middle memset / tail-mask byte writes - no
@@ -264,7 +262,6 @@ class GfxRenderer {
   void drawPixel(int x, int y, bool state = true) const;
   void drawLine(int x1, int y1, int x2, int y2, bool state = true) const;
   void drawLine(int x1, int y1, int x2, int y2, int lineWidth, bool state) const;
-  void drawArc(int maxRadius, int cx, int cy, int xDir, int yDir, int lineWidth, bool state) const;
   void drawRect(int x, int y, int width, int height, bool state = true) const;
   void drawRect(int x, int y, int width, int height, int lineWidth, bool state) const;
   void drawRoundedRect(int x, int y, int width, int height, int lineWidth, int cornerRadius, bool state) const;

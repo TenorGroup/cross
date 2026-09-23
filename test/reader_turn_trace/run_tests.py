@@ -49,14 +49,16 @@ def block(text, start):
     return text[start:end]
 
 
-trace_match = re.search(r"(#ifdef TENOR_UI_ACCEPTANCE\n  struct TurnTrace \{.*?\n#endif)", header, re.S)
+trace_match = re.search(r"(#ifdef TENOR_(?:UI_ACCEPTANCE|TURN_TRACE)\n  struct TurnTrace \{.*?\n#endif)", header, re.S)
 trace_fields = trace_match.group(1) if trace_match else ""
 trace_present = bool(trace_match)
 epub_trace_match = re.search(r"(?m)^  TurnTrace pendingManualTurnTrace;", epub_header)
 epub_fields = re.search(r"(?m)^  int8_t pendingManualTurn = 0;", epub_header).group(0)
 if epub_trace_match:
-    epub_fields += "\n#ifdef TENOR_UI_ACCEPTANCE\n" + epub_trace_match.group(0) + "\n#endif"
+    epub_fields += "\n#ifdef TENOR_TURN_TRACE\n" + epub_trace_match.group(0) + "\n#endif"
 names = ["pageTurn", "pageTurnLocked", "luotLatTrangNgoai", "processExternalPageTurn", "onPause", "onResume"]
+if "ReaderActivity::queuePageTurn(" in cpp:
+    names.append("queuePageTurn")
 if trace_present:
     names = ["detectTurnTrace", "logTurnTrace", "replaceQueuedTurnTrace", "dropTurnTrace"] + names
 
@@ -78,6 +80,14 @@ manual = ("void EpubReaderActivity::manualInput(bool prevTriggered, bool prevPag
           "  struct Touch { bool prev, next; } touch{touchTriggered, false};\n"
           "  struct Turns { bool fromTilt; } turns{fromTilt};\n"
           "  (void)touch; (void)turns;\n" + guard + "\n" + manual_slice + "\n}")
+# One loop pass that drains the guarded queue and then reads a press from the
+# same pass, in production order: a return inside the drain would skip the press.
+tick = ("void EpubReaderActivity::drainThenInput(bool prevTriggered, bool prevPageTriggered, "
+        "bool touchTriggered, bool fromTilt) {\n"
+        "  struct Touch { bool prev, next; } touch{touchTriggered, false};\n"
+        "  struct Turns { bool fromTilt; } turns{fromTilt};\n"
+        "  (void)touch; (void)turns;\n" + guard + "\n" + block(epub, drain_start) + "\n" +
+        manual_slice + "\n}")
 menu_start = epub.index("void EpubReaderActivity::openReaderMenu() {")
 menu_body = epub.index("\n", menu_start) + 1
 menu_end = epub.index("  if (usesToolbarMenu())", menu_body)
@@ -89,14 +99,14 @@ exit_method = "void EpubReaderActivity::onExit() {" + exit_prefix + "  ReaderAct
 cases = pathlib.Path(__file__).with_name("cases.cpp").read_text()
 projection = args.output / "projection.cpp"
 projection.write_text(fixture + "\n" + "\n\n".join(function(name) for name in names) +
-                      "\n" + "\n\n".join((drain, manual, menu)) + "\n" +
+                      "\n" + "\n\n".join((drain, manual, tick, menu)) + "\n" +
                       (function("onPause", epub, "EpubReaderActivity") if epub_pause else "") +
                       "\n" + exit_method + "\n" + cases)
 (args.output / "source-hashes.json").write_text(json.dumps({
     str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in (reader_cpp, reader_h, epub_cpp, epub_h)
 }, indent=2))
 command = [args.compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
-           "-fsanitize=address,undefined", "-g", "-DTENOR_UI_ACCEPTANCE", str(projection),
+           "-fsanitize=address,undefined", "-g", "-DTENOR_UI_ACCEPTANCE", "-DTENOR_TURN_TRACE", str(projection),
            "-o", str(args.output / "projection")]
 (args.output / "compile-command.json").write_text(json.dumps(command, indent=2))
 compiled = subprocess.run(command, capture_output=True, text=True)

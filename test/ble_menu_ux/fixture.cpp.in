@@ -139,14 +139,17 @@ int main() {
     Action::BOOKMARKS, Action::TOGGLE_BOOKMARK, Action::SCREENSHOT, Action::DISPLAY_QR, Action::GO_HOME,
     Action::SYNC, Action::DELETE_CACHE, Action::DICTIONARY, Action::FONT_SIZE, Action::FONT_FAMILY, Action::SAVE_QUOTE};
   for (int i = 0; i < 20; ++i) require(static_cast<int>(legacy[i]) == i, "legacy saved action changed");
-  require(readermenu::ACTION_COUNT == 22, "Quotations of this book extends action bounds to 22 after Bluetooth");
+  require(readermenu::ACTION_COUNT == 24, "File transfer and tilt toggle extend action bounds to 24 after Bluetooth");
   for (int flags = 0; flags < 8; ++flags) {
     std::vector<readermenu::Item> items;
     readermenu::buildItems(items, flags & 1, flags & 2, flags & 4);
     require(std::count_if(items.begin(), items.end(), [&](const auto& i) {
       return i.action == bluetooth && i.tab == readermenu::Tab::TOOLS;
     }) == 1, "exactly one Bluetooth Tools action");
-    require(items.size() <= 20, "reader row storage capacity");
+    for (const auto tab : {readermenu::Tab::POSITION, readermenu::Tab::READING, readermenu::Tab::TOOLS}) {
+      require(std::count_if(items.begin(), items.end(), [&](const auto& i) { return i.tab == tab; }) <= 20,
+              "reader row storage capacity per tab");
+    }
     const Action pins[] = {Action::SAVE_QUOTE, bluetooth, Action::SYNC};
     uint8_t indices[3]{};
     const int count = readermenu::rowsOfFavorites(items, pins, 3, indices, 3);
@@ -155,7 +158,9 @@ int main() {
     readermenu::buildMoreItems(items, flags & 1, flags & 2, flags & 4);
     require(std::count_if(items.begin(), items.end(), [&](const auto& i) { return i.action == bluetooth; }) == 1,
             "exactly one Bluetooth More action");
-    require(!items.empty() && items.back().action == bluetooth, "More preserves old order and appends Bluetooth");
+    require(items.size() >= 2 && items[items.size() - 2].action == bluetooth &&
+                items.back().action == Action::FILE_TRANSFER,
+            "More preserves old order: Bluetooth, then the appended File transfer");
   }
   for (const int bonds : {0, 1, 4}) for (const bool enabled : {false, true}) {
     SETTINGS = {}; SETTINGS.blePageTurnerEnabled = enabled;

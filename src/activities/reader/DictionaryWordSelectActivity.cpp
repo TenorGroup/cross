@@ -19,6 +19,7 @@
 #include "QuoteReselect.h"
 #include "ReadingStatsStore.h"
 #include "components/UITheme.h"
+#include "components/themes/TenorRadius.h"
 #include "fontIds.h"
 
 namespace {
@@ -419,7 +420,12 @@ bool DictionaryWordSelectActivity::drawHighlightWithSnapshot() {
   snapshotH = static_cast<int16_t>(hh);
   snapshotIdx = saved ? selected : -1;
 
-  renderer.fillRect(hx, hy, hw, hh, true);
+  // A leaf of the mark's short side, as far as its 2 px around the word lets the corner clear the
+  // glyphs; the corners it leaves are the page's own pixels, restored with the rest of the box.
+  const int radius = UITheme::getInstance().getMetrics().roundedMarks
+                         ? tenorradius::fitted(tenorradius::leaf(std::min(hw, hh)), 2)
+                         : 0;
+  renderer.fillRoundedRect(hx, hy, hw, hh, radius, Color::Black);
   renderer.drawText(fontId, word.x, word.y, word.text, false, word.style);
   return saved;
 }

@@ -159,13 +159,13 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
     } else {
       // Check for new tilt gesture (with cooldown)
       if ((now - _lastTiltMs) >= COOLDOWN_MS) {
-        if (tiltAxis > RATE_THRESHOLD_DPS) {
+        if (tiltAxis > _rateThresholdDps) {
           _tiltForwardEvent = true;
           _hadActivity = true;
           _inTilt = true;
           _lastTiltMs = now;
           LOG_INF("GYR", "Forward Trigger=(%.1f) dps", tiltAxis);
-        } else if (tiltAxis < -RATE_THRESHOLD_DPS) {
+        } else if (tiltAxis < -_rateThresholdDps) {
           _tiltBackEvent = true;
           _hadActivity = true;
           _inTilt = true;
@@ -189,13 +189,13 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   if ((now - _lastVerticalTiltMs) < COOLDOWN_MS) {
     return;
   }
-  if (verticalAxis > RATE_THRESHOLD_DPS) {
+  if (verticalAxis > _verticalRateThresholdDps) {
     _tiltDownEvent = true;
     _hadActivity = true;
     _inVerticalTilt = true;
     _lastVerticalTiltMs = now;
     LOG_INF("GYR", "Down Trigger=(%.1f) dps", verticalAxis);
-  } else if (verticalAxis < -RATE_THRESHOLD_DPS) {
+  } else if (verticalAxis < -_verticalRateThresholdDps) {
     _tiltUpEvent = true;
     _hadActivity = true;
     _inVerticalTilt = true;
@@ -214,6 +214,14 @@ bool HalTiltSensor::wasTiltedBack() {
   const bool val = _tiltBackEvent;
   _tiltBackEvent = false;
   return val;
+}
+
+void HalTiltSensor::setStrength(const uint8_t horizontal, const uint8_t vertical) {
+  // Light, Medium, Strong in deg/sec. The neutral re-arm rate stays fixed, so a
+  // Light setting still needs the wrist to settle before the next flick.
+  static constexpr float RATE_BY_STRENGTH[] = {190.0f, 270.0f, 360.0f};
+  _rateThresholdDps = RATE_BY_STRENGTH[horizontal < 3 ? horizontal : 1];
+  _verticalRateThresholdDps = RATE_BY_STRENGTH[vertical < 3 ? vertical : 1];
 }
 
 void HalTiltSensor::configureVerticalGesture(const uint8_t mode, const bool gestureTargetActive) {

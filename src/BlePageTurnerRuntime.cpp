@@ -224,9 +224,15 @@ namespace {
 std::atomic<bool> readerStartWasDeferred{false};
 std::atomic<bool> radioWasIdleStopped{false};
 std::atomic<bool> rearmRequested{false};
+std::atomic<bool> heldForBuild{false};
 }  // namespace
 
-void freeink::ble::requestRearm() { rearmRequested.store(true, std::memory_order_relaxed); }
+void freeink::ble::requestRearm() {
+  heldForBuild.store(false, std::memory_order_relaxed);
+  rearmRequested.store(true, std::memory_order_relaxed);
+}
+bool freeink::ble::radioHeldForBuild() { return heldForBuild.load(std::memory_order_relaxed); }
+void freeink::ble::setRadioHeldForBuild(const bool held) { heldForBuild.store(held, std::memory_order_relaxed); }
 bool freeink::ble::takeRearmRequest() { return rearmRequested.exchange(false, std::memory_order_relaxed); }
 
 bool freeink::ble::readerStartDeferred() { return readerStartWasDeferred.load(std::memory_order_relaxed); }

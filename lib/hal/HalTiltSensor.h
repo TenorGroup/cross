@@ -39,8 +39,12 @@ class HalTiltSensor {
   bool _inVerticalTilt = false;          // Currently tilted past threshold
   unsigned long _lastVerticalTiltMs = 0;  // Debounce / cooldown
 
+  // Trigger speed per axis, set by setStrength(). Medium is the original
+  // shared 270 deg/sec, so an untouched setting behaves as before.
+  float _rateThresholdDps = 270.0f;
+  float _verticalRateThresholdDps = 270.0f;
+
   // Tuning constants
-  static constexpr float RATE_THRESHOLD_DPS = 270.0f;      // Deg/sec speed to trigger flick
   static constexpr float NEUTRAL_RATE_DPS = 50.0f;         // Must stop moving below this rate before next trigger
   static constexpr unsigned long COOLDOWN_MS = 600;        // Minimum ms between triggers
   static constexpr unsigned long POLL_INTERVAL_MS = 50;    // 20 Hz polling
@@ -62,6 +66,10 @@ class HalTiltSensor {
 
   // True if an IMU is present on this device
   bool isAvailable() const { return _available; }
+
+  // Flick strength per axis (CrossPointSettings::TILT_STRENGTH): 0 Light,
+  // 1 Medium, 2 Strong. Out-of-range values read as Medium.
+  void setStrength(uint8_t horizontal, uint8_t vertical);
 
   // Poll the accelerometer and update tilt gesture state for an active target.
   void update(const uint8_t mode, const uint8_t orientation, const bool gestureTargetActive);

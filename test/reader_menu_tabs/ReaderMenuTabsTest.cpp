@@ -15,9 +15,10 @@ using MenuTab = readermenu::Tab;
 // Bon tab CO SO HUU dong. Tab Yeu thich khong so huu gi, no tro toi bon tab nay.
 constexpr MenuTab kTabsThuong[] = {MenuTab::POSITION, MenuTab::READING, MenuTab::TOOLS};
 
-std::vector<MenuItem> menu(const bool footnotes, const bool bookmarks, const bool frontlight) {
+std::vector<MenuItem> menu(const bool footnotes, const bool bookmarks, const bool frontlight,
+                           const bool tilt = false) {
   std::vector<MenuItem> items;
-  readermenu::buildItems(items, footnotes, bookmarks, frontlight);
+  readermenu::buildItems(items, footnotes, bookmarks, frontlight, tilt);
   return items;
 }
 
@@ -38,18 +39,19 @@ std::vector<MenuAction> yeuThich(const std::vector<MenuItem>& all, const MenuAct
 }
 
 // Cai day du: sach co chu thich, co dau trang, may co den nen.
-std::vector<MenuItem> menuDayDu() { return menu(true, true, true); }
+std::vector<MenuItem> menuDayDu() { return menu(true, true, true, true); }
 
 TEST(ReaderMenuTabs, BonTab) { EXPECT_EQ(readermenu::TAB_COUNT, 4); }
 
 TEST(ReaderMenuTabs, BluetoothAppendsSavedActionAndKeepsFavoriteOrder) {
   EXPECT_EQ(static_cast<int>(MenuAction::SAVE_QUOTE), 19);
   EXPECT_EQ(static_cast<int>(MenuAction::BLUETOOTH), 20);
-  EXPECT_EQ(readermenu::ACTION_COUNT, 22);
+  EXPECT_EQ(readermenu::ACTION_COUNT, 24);
   const MenuAction pins[] = {MenuAction::SAVE_QUOTE, MenuAction::BLUETOOTH, MenuAction::SYNC};
-  for (int flags = 0; flags < 8; ++flags) {
-    const auto all = menu(flags & 1, flags & 2, flags & 4);
-    EXPECT_LE(all.size(), 20u);
+  for (int flags = 0; flags < 16; ++flags) {
+    const auto all = menu(flags & 1, flags & 2, flags & 4, flags & 8);
+    // The menu screen keeps at most 20 rows per tab.
+    for (const auto tab : {MenuTab::POSITION, MenuTab::READING, MenuTab::TOOLS}) EXPECT_LE(rows(all, tab).size(), 20u);
     const auto tools = rows(all, MenuTab::TOOLS);
     EXPECT_EQ(std::count(tools.begin(), tools.end(), MenuAction::BLUETOOTH), 1);
     EXPECT_EQ(yeuThich(all, pins, 3), std::vector<MenuAction>(std::begin(pins), std::end(pins)));
@@ -63,7 +65,7 @@ constexpr auto kQuotesOfBook = static_cast<MenuAction>(21);
 
 TEST(ReaderMenuTabs, QuotesOfBookIsAppendedAsActionTwentyOne) {
   EXPECT_EQ(static_cast<int>(MenuAction::BLUETOOTH), 20);
-  EXPECT_EQ(readermenu::ACTION_COUNT, 22);
+  EXPECT_EQ(readermenu::ACTION_COUNT, 24);
   const MenuAction pins[] = {kQuotesOfBook, MenuAction::SAVE_QUOTE, MenuAction::SYNC};
   for (int flags = 0; flags < 8; ++flags) {
     const auto all = menu(flags & 1, flags & 2, flags & 4);
@@ -77,7 +79,8 @@ TEST(ReaderMenuTabs, QuotesOfBookIsAppendedAsActionTwentyOne) {
 TEST(ReaderMenuTabs, QuotesOfBookSitsUnderSaveQuotation) {
   const MenuAction expected[] = {MenuAction::SYNC,       MenuAction::DICTIONARY,   MenuAction::SAVE_QUOTE,
                                  kQuotesOfBook,          MenuAction::SCREENSHOT,   MenuAction::DISPLAY_QR,
-                                 MenuAction::DELETE_CACHE, MenuAction::GO_HOME,    MenuAction::BLUETOOTH};
+                                 MenuAction::DELETE_CACHE, MenuAction::GO_HOME,    MenuAction::BLUETOOTH,
+                                 MenuAction::FILE_TRANSFER};
   for (int flags = 0; flags < 8; ++flags) {
     const auto all = menu(flags & 1, flags & 2, flags & 4);
     EXPECT_EQ(rows(all, MenuTab::TOOLS), std::vector<MenuAction>(std::begin(expected), std::end(expected)))
@@ -90,6 +93,38 @@ TEST(ReaderMenuTabs, QuotesOfBookSitsUnderSaveQuotation) {
       EXPECT_EQ(item.labelId, StrId::STR_QUOTES_OF_BOOK);
     }
     EXPECT_EQ(found, 1) << "optional flags=" << flags;
+  }
+}
+
+// File transfer and the tilt toggle are saved in settings.json as 22 and 23 when pinned, so
+// the numbers are part of the contract, after every older action.
+TEST(ReaderMenuTabs, QuickActionsAreAppendedAsTwentyTwoAndTwentyThree) {
+  EXPECT_EQ(static_cast<int>(MenuAction::QUOTES_OF_BOOK), 21);
+  EXPECT_EQ(static_cast<int>(MenuAction::FILE_TRANSFER), 22);
+  EXPECT_EQ(static_cast<int>(MenuAction::TILT_PAGE_TURN), 23);
+  const MenuAction pins[] = {MenuAction::TILT_PAGE_TURN, MenuAction::FILE_TRANSFER, MenuAction::SYNC};
+  const auto withImu = menu(false, false, false, true);
+  EXPECT_EQ(yeuThich(withImu, pins, 3), std::vector<MenuAction>(std::begin(pins), std::end(pins)));
+  // A pinned tilt toggle on a board without an IMU is skipped, like the frontlight on the X3.
+  const auto noImu = menu(false, false, false, false);
+  EXPECT_EQ(yeuThich(noImu, pins, 3), (std::vector<MenuAction>{MenuAction::FILE_TRANSFER, MenuAction::SYNC}));
+}
+
+// Both quick actions live in Tools with the labels the rest of the firmware uses; the tilt
+// row is conditional, so it closes the tab and only exists where an IMU does.
+TEST(ReaderMenuTabs, QuickActionsCloseTheToolsTab) {
+  for (int flags = 0; flags < 8; ++flags) {
+    const auto noImu = rows(menu(flags & 1, flags & 2, flags & 4, false), MenuTab::TOOLS);
+    ASSERT_FALSE(noImu.empty());
+    EXPECT_EQ(noImu.back(), MenuAction::FILE_TRANSFER) << "optional flags=" << flags;
+    EXPECT_EQ(std::count(noImu.begin(), noImu.end(), MenuAction::TILT_PAGE_TURN), 0);
+    const auto withImu = rows(menu(flags & 1, flags & 2, flags & 4, true), MenuTab::TOOLS);
+    ASSERT_EQ(withImu.size(), noImu.size() + 1);
+    EXPECT_EQ(withImu.back(), MenuAction::TILT_PAGE_TURN) << "optional flags=" << flags;
+  }
+  for (const auto& item : menu(true, true, true, true)) {
+    if (item.action == MenuAction::FILE_TRANSFER) EXPECT_EQ(item.labelId, StrId::STR_FILE_TRANSFER);
+    if (item.action == MenuAction::TILT_PAGE_TURN) EXPECT_EQ(item.labelId, StrId::STR_TILT_PAGE_TURN);
   }
 }
 
@@ -274,7 +309,8 @@ TEST(ToolbarMore, KeepsLegacyOrderForEveryOptionalItemCombination) {
                                  MenuAction::DICTIONARY,    MenuAction::ROTATE_SCREEN,  MenuAction::AUTO_PAGE_TURN,
                                  MenuAction::GO_TO_PERCENT, MenuAction::SCREENSHOT,     MenuAction::DISPLAY_QR,
                                  MenuAction::GO_HOME,       MenuAction::SYNC,           MenuAction::DELETE_CACHE,
-                                 MenuAction::SAVE_QUOTE,    kQuotesOfBook,              MenuAction::BLUETOOTH};
+                                 MenuAction::SAVE_QUOTE,    kQuotesOfBook,              MenuAction::BLUETOOTH,
+                                 MenuAction::FILE_TRANSFER};
   for (int flags = 0; flags < 8; ++flags) {
     std::vector<readermenu::Item> items;
     readermenu::buildMoreItems(items, flags & 1, flags & 2, flags & 4);

@@ -30,4 +30,10 @@ patch(root / "HalTiltSensor.h", [(
     "  bool wasTiltedUp() { return false; }\n"
     "  bool wasTiltedDown() { return false; }\n",
     1,
+), (
+    "  bool hadActivity() { return false; }\n",
+    "  // Flick strength per axis: nothing to tune without a gyro.\n"
+    "  void setStrength(const uint8_t /*horizontal*/, const uint8_t /*vertical*/) {}\n"
+    "  bool hadActivity() { return false; }\n",
+    1,
 )])

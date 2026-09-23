@@ -43,3 +43,33 @@ target_compile_features(UiLayout_home_excerpt PRIVATE cxx_std_20)
 target_compile_options(UiLayout_home_excerpt PRIVATE -UNDEBUG)
 target_include_directories(UiLayout_home_excerpt PRIVATE "${REPO_ROOT}/src" "${REPO_ROOT}/lib/Utf8" "${REPO_ROOT}/lib/EpdFont")
 add_test(NAME UiLayout.home_excerpt COMMAND UiLayout_home_excerpt)
+add_executable(UiLayout_tenor_radius tenor_radius.cpp)
+target_compile_features(UiLayout_tenor_radius PRIVATE cxx_std_20)
+target_compile_options(UiLayout_tenor_radius PRIVATE -UNDEBUG)
+target_include_directories(UiLayout_tenor_radius PRIVATE "${REPO_ROOT}/src" "${REPO_ROOT}/lib/GfxRenderer")
+add_test(NAME UiLayout.tenor_radius COMMAND UiLayout_tenor_radius)
+# Rounded blocks through the real GfxRenderer.cpp, with the button_symbols test's stubs and a RAM
+# framebuffer, so the corner shape is checked on the pixels the panel gets.
+add_executable(UiLayout_rounded_render rounded_render.cpp
+  "${REPO_ROOT}/lib/GfxRenderer/GfxRenderer.cpp"
+  "${REPO_ROOT}/lib/GfxRenderer/FontCacheManager.cpp"
+  "${REPO_ROOT}/lib/GfxRenderer/InlineSymbols.cpp"
+  "${REPO_ROOT}/lib/EpdFont/EpdFont.cpp"
+  "${REPO_ROOT}/lib/EpdFont/EpdFontFamily.cpp"
+  "${REPO_ROOT}/lib/Utf8/Utf8.cpp"
+  "${REPO_ROOT}/lib/Epub/Epub/blocks/TextBlock.cpp"
+  "${REPO_ROOT}/lib/MiniBidi/BidiUtils.cpp"
+  "${REPO_ROOT}/lib/MiniBidi/minibidi.c")
+target_compile_features(UiLayout_rounded_render PRIVATE cxx_std_20)
+target_include_directories(UiLayout_rounded_render BEFORE PRIVATE "${REPO_ROOT}/test/button_symbols/stubs")
+target_include_directories(UiLayout_rounded_render PRIVATE "${REPO_ROOT}/src" "${REPO_ROOT}/src/components"
+  "${REPO_ROOT}/lib/EpdFont" "${REPO_ROOT}/lib/Utf8" "${REPO_ROOT}/lib/GfxRenderer" "${REPO_ROOT}/lib/Epub"
+  "${REPO_ROOT}/lib/Memory" "${REPO_ROOT}/lib/MiniBidi" "${REPO_ROOT}/lib/Serialization" "${REPO_ROOT}/lib/hal"
+  "${REPO_ROOT}/lib/I18n" "${REPO_ROOT}/freeink-sdk/libs/display/FreeInkDisplay/include")
+target_compile_options(UiLayout_rounded_render PRIVATE -ffunction-sections -fdata-sections)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  target_link_options(UiLayout_rounded_render PRIVATE -Wl,-dead_strip)
+else()
+  target_link_options(UiLayout_rounded_render PRIVATE -Wl,--gc-sections)
+endif()
+add_test(NAME UiLayout.rounded_render COMMAND UiLayout_rounded_render)

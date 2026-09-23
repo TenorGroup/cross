@@ -2,6 +2,7 @@
 
 #include <GfxRenderer.h>
 #include <HalFrontlight.h>
+#include <HalTiltSensor.h>
 #include <I18n.h>
 
 #include "CrossPointSettings.h"
@@ -35,7 +36,7 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
       currentPage(currentPage),
       totalPages(totalPages),
       bookProgressPercent(bookProgressPercent) {
-  readermenu::buildItems(menuItems, hasFootnotes, hasBookmarks, Frontlight.present());
+  readermenu::buildItems(menuItems, hasFootnotes, hasBookmarks, Frontlight.present(), halTiltSensor.isAvailable());
   napGhim();
   rebuildRows();
 }
@@ -242,6 +243,13 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     return;
   }
 
+  if (selectedAction == MenuAction::TILT_PAGE_TURN) {
+    SETTINGS.toggleTiltPageTurn();
+    SETTINGS.saveToFile();
+    requestUpdate();
+    return;
+  }
+
   if (selectedAction == MenuAction::STATUS_BAR) {
     // Sau muc thanh trang thai cua trinh doc: popup de doc ten tung muc, chon xong
     // ghi lai. Doi giua nam muc cung chieu cao thi chi ve lai thanh; doi sang/tu
@@ -416,6 +424,8 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       menuRowItems[r].value = pageTurnLabels[selectedPageTurnOption];
     } else if (action == MenuAction::NIGHT_MODE) {
       menuRowItems[r].value = I18N.get(SETTINGS.screenInverted ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF);
+    } else if (action == MenuAction::TILT_PAGE_TURN) {
+      menuRowItems[r].value = I18N.get(SETTINGS.tiltPageTurn ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF);
     } else if (action == MenuAction::FRONTLIGHT) {
       menuRowItems[r].value = I18N.get(Frontlight.isOn() ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF);
     }

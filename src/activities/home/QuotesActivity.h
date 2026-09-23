@@ -68,6 +68,7 @@ class QuotesActivity final : public Activity {
   bool showsBooks() const { return order == Order::Books; }
   int itemCount() const;
   int perPage() const;
+  quotelist::PageShape pageShape() const;
   int pageCount() const;
   // Reads the order for the current view, then its first page. Callers hold the lock.
   void reload();
@@ -83,9 +84,10 @@ class QuotesActivity final : public Activity {
   void leave();
 
   quotelist::Metrics metrics() const;
+  int placeFont() const;
   // The same band, measured for the top row's own face.
   quotelist::Metrics topRowMetrics() const;
-  void ensureWrapped(Block& block) const;
+  void ensureWrapped(Block& block, int maxLines, int placeFontId) const;
   void drawTopRow(const char* label) const;
   void drawBlocks() const;
   void drawBookRows() const;

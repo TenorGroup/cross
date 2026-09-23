@@ -68,6 +68,7 @@ add_subdirectory(fs_helpers)
 
 add_subdirectory(absolute_grayscale)
 add_subdirectory(mapped_input)
+add_subdirectory(button_edge_latch)
 add_subdirectory(tab_navigation)
 add_subdirectory(reader_menu_tabs)
 add_subdirectory(tab_window)

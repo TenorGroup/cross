@@ -185,11 +185,14 @@ inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& di
   return s;
 }
 
-inline std::vector<StrId> buildLongPressMenuValues() {
-  static constexpr StrId VALUES[] = {StrId::STR_KOSYNC, StrId::STR_DISABLED, StrId::STR_BOOKMARK_OPTION,
-                                     StrId::STR_DICTIONARY, StrId::STR_READER_MENU};
-  const size_t count = BoardConfig::hasHomeKey() ? std::size(VALUES) : std::size(VALUES) - 1;
-  return {VALUES, VALUES + count};
+// Indexed by CrossPointSettings::LONG_PRESS_MENU_FUNCTION. The tilt toggle is
+// last, so a board without an IMU drops it without shifting a stored index.
+inline std::vector<StrId> buildLongPressMenuValues(const bool hasTilt) {
+  static constexpr StrId VALUES[] = {StrId::STR_KOSYNC,      StrId::STR_DISABLED,      StrId::STR_BOOKMARK_OPTION,
+                                     StrId::STR_DICTIONARY,  StrId::STR_READER_MENU,   StrId::STR_FILE_TRANSFER,
+                                     StrId::STR_TILT_PAGE_TURN};
+  static_assert(std::size(VALUES) == CrossPointSettings::LONG_PRESS_MENU_FUNCTION_COUNT, "one label per function");
+  return {VALUES, VALUES + std::size(VALUES) - (hasTilt ? 0 : 1)};
 }
 
 // Tenor shows the two visible corner layouts. Legacy value 0 reads as right,
@@ -264,9 +267,10 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
-    // 69 unconditional descriptors; the IMU branch adds reader, tab and row tilt settings.
+    // 70 unconditional descriptors; the IMU branch adds reader, tab and row tilt
+    // settings and the two flick strengths.
     // Cold-catalog tests cover each capability branch and the IMU variant.
-    constexpr size_t fixedCount = 69
+    constexpr size_t fixedCount = 70
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
                                   + 1
 #endif
@@ -275,7 +279,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 #endif
         ;
     std::vector<SettingInfo> v;
-    v.reserve(fixedCount + (hasTilt ? 3 : 0));
+    v.reserve(fixedCount + (hasTilt ? 5 : 0));
     // --- Display ---
     v.push_back(SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
                           {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
@@ -315,6 +319,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Enum(StrId::STR_WAKE_INTO_BOOK, &CrossPointSettings::wakeIntoBook,
                           {StrId::STR_STATE_OFF, StrId::STR_STATE_ON}, "wakeIntoBook", StrId::STR_CAT_DISPLAY));
+    v.push_back(SettingInfo::Toggle(StrId::STR_SLEEP_BW_REFRESH, &CrossPointSettings::sleepBwRefresh, "sleepBwRefresh",
+                                    StrId::STR_CAT_DISPLAY));
 #if FREEINK_CAP_FRONTLIGHT
     v.push_back(SettingInfo::Toggle(StrId::STR_RESTORE_LIGHT_ON_WAKE, &CrossPointSettings::frontlightRestoreOnWake,
                             "frontlightRestoreOnWake", StrId::STR_CAT_DISPLAY));
@@ -428,7 +434,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                            StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION},
                           "longPressButtonBehavior", StrId::STR_CAT_CONTROLS));
     v.push_back(SettingInfo::Enum(StrId::STR_LONG_PRESS_MENU, &CrossPointSettings::longPressMenuFunction,
-                          buildLongPressMenuValues(), "longPressMenuFunction", StrId::STR_CAT_CONTROLS));
+                          buildLongPressMenuValues(hasTilt), "longPressMenuFunction", StrId::STR_CAT_CONTROLS));
 #if FREEINK_CAP_TOUCH
     v.push_back(SettingInfo::Enum(StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
                           {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH,
@@ -568,9 +574,19 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                                                    {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_TILT_INVERTED},
                                                    "tiltTabNavigation", StrId::STR_CAT_CONTROLS));
           // Row tilt sits next to tab tilt: same band of gestures, other axis.
-          v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_MENU_NAVIGATION, &CrossPointSettings::tiltMenuNavigation,
-                                              {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_TILT_INVERTED},
-                                              "tiltMenuNavigation", StrId::STR_CAT_CONTROLS));
+          it = v.insert(it + 1,
+                        SettingInfo::Enum(StrId::STR_TILT_MENU_NAVIGATION, &CrossPointSettings::tiltMenuNavigation,
+                                          {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_TILT_INVERTED},
+                                          "tiltMenuNavigation", StrId::STR_CAT_CONTROLS));
+          // Flick strength per axis: side flicks turn pages and tabs, up/down
+          // flicks move menu rows, and wrists differ on each.
+          it = v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_STRENGTH_H, &CrossPointSettings::tiltStrengthH,
+                                                   {StrId::STR_TILT_LIGHT, StrId::STR_UI_SIZE_MEDIUM,
+                                                    StrId::STR_TILT_STRONG},
+                                                   "tiltStrengthH", StrId::STR_CAT_CONTROLS));
+          v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_STRENGTH_V, &CrossPointSettings::tiltStrengthV,
+                                              {StrId::STR_TILT_LIGHT, StrId::STR_UI_SIZE_MEDIUM, StrId::STR_TILT_STRONG},
+                                              "tiltStrengthV", StrId::STR_CAT_CONTROLS));
           break;
         }
       }
@@ -606,6 +622,10 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
   // Cu chi mo menu doc chi co nghia o may con phim Home cam ung, vi cho khac thi
   // vuot canh duoi la ve Home va cham giua moi la duong chinh.
   if (!BoardConfig::hasHomeKey() && s.nameId == StrId::STR_SHOW_READER_MENU) return true;
+  // Only X3 sleeps with its panel unpowered; the other boards keep their sleep refresh.
+  if (s.nameId == StrId::STR_SLEEP_BW_REFRESH && BoardConfig::ACTIVE.board != BoardConfig::Board::XteinkX3 &&
+      BoardConfig::ACTIVE.board != BoardConfig::Board::XteinkX3Uc8279)
+    return true;
   if (BoardConfig::hasTouch() &&
       (s.nameId == StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION || s.nameId == StrId::STR_SUNLIGHT_FADING_FIX ||
        s.nameId == StrId::STR_BACK_SHORT_TO_FILE_BROWSER))
@@ -623,6 +643,7 @@ inline int deviceSettingsTab(const SettingInfo& setting) {
       setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||
       setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen ||
       setting.valuePtr == &CrossPointSettings::wakeIntoBook ||
+      setting.valuePtr == &CrossPointSettings::sleepBwRefresh ||
       setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes ||
       setting.valuePtr == &CrossPointSettings::frontlightRestoreOnWake)
     return static_cast<int>(settingstabs::Tab::SLEEP);

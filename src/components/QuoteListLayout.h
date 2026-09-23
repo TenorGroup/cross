@@ -18,16 +18,22 @@ constexpr int16_t RIGHT_INSET = 24;
 // hanging opening quote both live in the gutter to its left, between SIDE_INSET and TEXT_X.
 constexpr int16_t TEXT_X = 80;
 
-// A screen holds at most three quote blocks (the mockup's page at the smallest UI text size),
-// and fewer when the larger sizes leave no room for three (blocksPerPage()). A quote previews
-// at most three lines before it is cut with an ellipsis. The full quote is one Select away.
+// A screen holds at most three quote blocks (the mockup's page at the smallest UI text size).
+// How many lines each previews is not fixed: it is the most that lets the page's blocks fill the
+// band (pageShape()), so long quotes end at the footer instead of leaving a strip of white above
+// it. A page drops to fewer blocks before a preview drops under MIN_BODY_LINES. The full quote
+// is one Select away.
 constexpr int BLOCKS_PER_PAGE = 3;
-constexpr int MAX_BODY_LINES = 3;
+constexpr int MIN_BODY_LINES = 3;
+constexpr int MAX_BODY_LINES = 6;
 
 // Gap from the quote's last line to its first source line.
 constexpr int16_t SOURCE_GAP = 10;
-// Breathing room above and below the rule that separates two blocks (the research note's
-// own figure: "26 px trên và dưới gạch").
+// Least room between one block's last line and the next block's first, the rule in its middle.
+// Room a full page leaves over is shared out evenly on top of it (pageShape()).
+constexpr int16_t MIN_BLOCK_GAP = 20;
+// Breathing room above and below the rule under a book row (the research note's own figure:
+// "26 px trên và dưới gạch").
 constexpr int16_t DIVIDER_GAP = 26;
 
 // Horizontal padding each side of the number, inside its box.
@@ -84,21 +90,28 @@ struct Block {
   int16_t height = 0;     // top of this block to top of the next one
 };
 
-// Height one block takes: `bodyLines` quote lines, one or two source lines, the divider
-// and its breathing room included.
-int16_t blockHeight(int bodyLines, bool twoSourceLines, const Metrics& m);
+// What one page of quote blocks holds, worked out from the band alone, before any quote is
+// read or wrapped, so paging and numbering stay the same whatever the quotes on a page.
+struct PageShape {
+  int blocks = 1;                 // blocks a page holds
+  int bodyLines = MIN_BODY_LINES; // most quote lines a block previews
+  int16_t gap = MIN_BLOCK_GAP;    // last line of one block to the first of the next
+};
 
-// Place a block with `bodyLines` quote lines at top `y`. `numberWidth` and `quoteWidth` are
-// the caller's own measurements (renderer.getTextWidth) of the number text in the number
-// font and the opening quote glyph in the body font.
+// The most blocks (up to BLOCKS_PER_PAGE) that each still preview MIN_BODY_LINES, then the most
+// lines each can preview; the room left over when every block is that tall goes evenly into the
+// gaps between them, so a page of long quotes ends at the band's bottom. A page of short quotes
+// keeps the same gaps and leaves its white at the foot.
+PageShape pageShape(const Metrics& m, int16_t top, bool twoSourceLines);
+
+// Height one block takes: `bodyLines` quote lines, one or two source lines, and the gap under it.
+int16_t blockHeight(int bodyLines, bool twoSourceLines, const Metrics& m, int16_t gap);
+
+// Place a block with `bodyLines` quote lines at top `y`, `gap` under it. `numberWidth` and
+// `quoteWidth` are the caller's own measurements (renderer.getTextWidth) of the number text in
+// the number font and the opening quote glyph in the body font.
 Block place(const Metrics& m, int16_t y, int bodyLines, bool twoSourceLines, int16_t numberWidth,
-            int16_t quoteWidth);
-
-// Blocks a page holds when the first starts at `top`: as many of the tallest shape
-// (MAX_BODY_LINES quote lines, and two source lines when `twoSourceLines`) as end above the
-// band's bottom, at most BLOCKS_PER_PAGE, at least one. Pages are sized before any quote is
-// wrapped, so paging and numbering stay the same whatever the quotes on a page.
-int blocksPerPage(const Metrics& m, int16_t top, bool twoSourceLines);
+            int16_t quoteWidth, int16_t gap);
 
 // Paging over `count` blocks, `perPage` to a screen.
 int pageCount(int count, int perPage);

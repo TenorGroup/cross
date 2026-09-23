@@ -67,7 +67,7 @@ functions = [reader_fn(n) for n in ['pageTurn', 'luotLatTrangNgoai', 'handleEndO
 if 'luotNhayChuongNgoai(' in body:
     functions.append(reader_fn('luotNhayChuongNgoai'))
 if new:
-    for n in ['pageTurnLocked', 'processExternalPageTurn', 'cancelExternalPageTurn']:
+    for n in ['pageTurnLocked', 'processExternalPageTurn', 'cancelExternalPageTurn', 'queuePageTurn']:
         if n + '(' in body or n + '(' in head:
             functions.append(reader_fn(n))
 for fmt in ['Txt', 'Xtc', 'Epub']:

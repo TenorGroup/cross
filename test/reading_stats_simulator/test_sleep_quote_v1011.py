@@ -214,6 +214,13 @@ class SleepQuoteTest(unittest.TestCase):
     def grays(self, image, box):
         return sum(1 for p in image.crop(box).getdata() if 20 < p < 235)
 
+    def dithered(self, image, box):
+        """X3 shows the cover as an ordered dither (v1.0.12): aligned 4x4 cells holding a Bayer
+        gray, 4 of 16 pixels white (dark gray) or 12 of 16 (light gray)."""
+        px = image.load()
+        return sum(1 for y in range(box[1] // 4 * 4, box[3] - 3, 4) for x in range(box[0] // 4 * 4, box[2] - 3, 4)
+                   if sum(px[x + i, y + j] > 128 for i in range(4) for j in range(4)) in (4, 12))
+
     def fit(self, log):
         match = FIT.search(log)
         self.assertIsNotNone(match, log)
@@ -233,9 +240,9 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertIn(f'Sleep quote {name}', log)
         self.assertEqual(self.fit(log), (0, 1, 0, 1, 1))
         self.assert_quote_frame(image)
-        self.assertGreater(self.grays(image, COVER_BOX), 1000, 'cover tile has no gray levels')
+        self.assertGreater(self.dithered(image, COVER_BOX), 200, 'cover tile has no gray levels')
         sleep = self.sleep_part(log)
-        # One GC pass clears the reader's page before the gray planes (as the Tenor screen).
+        # One GC pass shows the dithered frame and clears the reader's page (as the Tenor screen).
         self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), ['0'], sleep)
         self.assertIn('Sleep quote gray ready=1', sleep)
         self.assertNotIn('[BRAND] sleep ready=', sleep)
@@ -251,7 +258,7 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertEqual(title, 3, log)
         self.assertIn(size, (0, 1, 2))
         self.assert_quote_frame(image)
-        self.assertGreater(self.grays(image, COVER_BOX), 1000)
+        self.assertGreater(self.dithered(image, COVER_BOX), 200)
 
     def test_long_quote_is_cut_at_fourteen(self):
         record = {'schema': 1, 'path': SECOND_BOOK, 'title': SECOND_TITLE, 'text': long_text(),
@@ -274,6 +281,7 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertEqual((cut, cover, title), (0, 0, 3), log)
         self.assert_quote_frame(image)
         self.assertEqual(self.grays(image, COVER_BOX), 0)
+        self.assertLess(self.dithered(image, COVER_BOX), 100)
         # The title starts at the margin, inside where the tile would have been.
         self.assertGreater(self.ink(image, (48, 596, 144, 700)), 50)
         sleep = self.sleep_part(log)
@@ -297,7 +305,7 @@ class SleepQuoteTest(unittest.TestCase):
         made = re.search(r'Sleep quote cover made=1 ms=(\d+) bytes=(\d+)', log)
         self.assertIsNotNone(made, log)
         self.assertEqual(self.fit(log)[3], 1, log)
-        self.assertGreater(self.grays(image, COVER_BOX), 1000, 'made cover not drawn')
+        self.assertGreater(self.dithered(image, COVER_BOX), 200, 'made cover not drawn')
         covers = list((sd / '.crosspoint').glob('epub_*/cover_*.bmp'))
         self.assertEqual(len(covers), 1, covers)
         self.assertEqual(covers[0].stat().st_size, int(made.group(2)))
@@ -321,6 +329,7 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertIn('Sleep quote cover skipped: book not on card', log)
         self.assertEqual(self.fit(log)[3], 0, log)
         self.assertEqual(self.grays(image, COVER_BOX), 0)
+        self.assertLess(self.dithered(image, COVER_BOX), 100)
         self.assertEqual(list((sd / '.crosspoint').glob('epub_*/cover_*.bmp')), [])
 
     def test_short_heap_skips_making_the_cover(self):
@@ -345,6 +354,7 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertIn('Generating BMP from JPG cover image', log)
         self.assertEqual(self.fit(log)[3], 0, log)
         self.assertEqual(self.grays(image, COVER_BOX), 0)
+        self.assertLess(self.dithered(image, COVER_BOX), 100)
         markers = list(cache.glob('epub_*/cover_*.fail'))
         self.assertEqual(len(markers), 1, list(cache.rglob('*')))
         self.assertEqual(list(cache.glob('epub_*/cover_*.bmp')), [])

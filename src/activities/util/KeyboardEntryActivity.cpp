@@ -12,6 +12,7 @@
 #include "MappedInputManager.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/themes/TenorRadius.h"
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
@@ -1121,6 +1122,14 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   props.altText.font = fui::GfxRendererTarget::FONT_SMALL;
   props.stackAlternates = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
   props.gap = static_cast<int16_t>(metrics.keyboardKeySpacing);
+  // The key cursor is a leaf of a key's short side (keys of one unit: ten to the widest row);
+  // unselected keys have no fill or border, so only the cursor shows it.
+  if (metrics.roundedMarks) {
+    const int rows = currentLayout().rowCount;
+    const int keyHeight = (kbRect.height - (rows - 1) * props.gap) / std::max(rows, 1);
+    const int keyWidth = (kbRect.width - 9 * props.gap) / 10;
+    props.keyRadius = static_cast<uint8_t>(tenorradius::leaf(std::min(keyHeight, keyWidth)));
+  }
   props.padding = fui::Insets{0, 0, 0, 0};
   // Fingers land low on the bottom row (occlusion) and there is no key below
   // to catch the miss - extend its hit band down to the button hints bar.

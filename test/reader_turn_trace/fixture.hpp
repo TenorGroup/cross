@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <cstdarg>
 #include <cstdio>
@@ -49,6 +50,7 @@ struct EndOfBookOptions {
 };
 struct ReadingStats { uint32_t currentDay() const { return 1; } } READING_STATS;
 struct ReaderActivity {
+  static constexpr int8_t MAX_QUEUED_TURNS = 8;
   int8_t pendingExternalTurn = 0;
   bool pendingTurnIsLocal = false;
   bool pendingExternalChapter = false;
@@ -86,6 +88,7 @@ struct ReaderActivity {
   bool pageTurn(bool);
   bool pageTurnLocked(bool);
   bool luotLatTrangNgoai(bool);
+  void queuePageTurn(bool, bool, const char*);
   bool processExternalPageTurn();
 };
 struct Section {};
@@ -94,6 +97,7 @@ struct EpubReaderActivity : ReaderActivity {
 @@EPUB_FIELDS@@
   void drainManual();
   void manualInput(bool prevTriggered, bool prevPageTriggered, bool touchTriggered, bool fromTilt);
+  void drainThenInput(bool prevTriggered, bool prevPageTriggered, bool touchTriggered, bool fromTilt);
   void cancelManualForReaderMenu();
 @@EPUB_ON_PAUSE@@
   void onExit() override;

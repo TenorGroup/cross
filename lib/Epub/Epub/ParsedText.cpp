@@ -1799,7 +1799,7 @@ int ParsedText::lineIndent(size_t line, const GfxRenderer& renderer, int fontId)
     // Do lai tren mo phong (fixture chu "An", chu lon cao 72 px / buoc dong 47 px): quy tac nay cho
     // K = floor(73/47) = 1, dong 2 bat dau sau chan chu lon (x_dau 6 -> 55/67) thay vi chay duoi chan
     // chu. Quy tac cu (chi dong 1, hoac 1..ceil(capH/A)) hoac de dong do chay duoi chan chu lon (loi
-    // founder bao), hoac chua thua mot dong nua so voi dai muc.
+    // da bao), hoac chua thua mot dong nua so voi dai muc.
     const int lineHeight = renderer.getLineHeight(fontId);
     // Buoc dong THAT cua trang la buoc goc nhan he so gian dong (parser dat dong bang
     // getLineHeight(fontId, lineCompression)); chieu cao chu lon cung duoc tinh tren buoc do

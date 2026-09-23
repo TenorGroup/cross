@@ -33,7 +33,10 @@ def function(name, text=None, owner='EpubReaderActivity'):
 loop = function('loop')
 start = loop.index('  // Background section builds') if '  // Background section builds' in loop else loop.index('  if (section && !section->isBuilding() && section->isPartial()')
 end = loop.index('  if (handlePreviewInput()) return;', start)
-scheduler = 'void EpubReaderActivity::backgroundTick() {\n' + loop[start:end] + '\n}'
+edge_at = loop.find('  const bool inputThisPass')
+edge = loop[edge_at:loop.index(';', edge_at) + 1] + '\n' if edge_at >= 0 else ''
+scheduler = ('void EpubReaderActivity::backgroundTick() {\n' + (edge if 'inputThisPass' in loop[start:end] else '') +
+             loop[start:end] + '\n}')
 # Idle region of loop(): everything between the debounce constant and the background
 # scheduler. The deferred cover thumbnail lives here, ahead of the page prewarm.
 idle_start = loop.index('  constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS')
@@ -64,7 +67,7 @@ page_load = ('void EpubReaderActivity::loadPageForRender() {\n'
 # Constants and state declarations come from the real header, avoiding a second policy.
 declarations = []
 for line in header.splitlines():
-    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD|RENDER_MIN_FREE_HEAP|THUMB_IDLE)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t (?:pageLoadRetryCount|pendingThumbCount)|size_t parkedParserFootprint|unsigned long lastRenderCompleteMs|int (?:idlePrewarmSpine|idlePrewarmPage|pendingThumbHeight)|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|radioReleasedForBuild|pendingThumbGeneration)|uint16_t buildViewport)', line):
+    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD|RENDER_MIN_FREE_HEAP|THUMB_IDLE)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t (?:pageLoadRetryCount|pendingThumbCount)|size_t parkedParserFootprint|unsigned long lastRenderCompleteMs|int (?:idlePrewarmSpine|idlePrewarmPage|pendingThumbHeight|lookAheadPage)|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|radioReleasedForBuild|pendingThumbGeneration)|uint16_t buildViewport)', line):
         declarations.append(line)
 fixture = pathlib.Path(__file__).with_name('fixture.hpp').read_text().replace('@@FIELDS@@', '\n'.join(declarations))
 functions = [function('buildTickHeapGate'), function('latTrangThat'), function('skipLoopDelay'), function('showBuildPopup')]
@@ -72,7 +75,8 @@ for name in ['deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'back
     if 'EpubReaderActivity::' + name + '(' in cpp:
         functions.append(function(name))
 reader = (a.source / 'src/activities/reader/ReaderActivity.cpp').read_text()
-functions += [function(name, reader, 'ReaderActivity') for name in ['luotLatTrangNgoai', 'processExternalPageTurn', 'pageTurnLocked']]
+functions += [function(name, reader, 'ReaderActivity') for name in ['luotLatTrangNgoai', 'processExternalPageTurn', 'pageTurnLocked']
+              + (['queuePageTurn'] if 'ReaderActivity::queuePageTurn(' in reader else [])]
 assert loop.index('if (processExternalPageTurn()) return;') > loop.index('  if (handlePreviewInput()) return;')
 cases = pathlib.Path(__file__).with_name('cases.cpp').read_text()
 source = (fixture + '\n' + '\n'.join(functions) + '\n' + scheduler + '\n' + idle + '\n' + open_thumb + '\n' +

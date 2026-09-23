@@ -27,12 +27,12 @@ SortRow sortRow(const Metrics& m) {
 
 int16_t contentTop(const Metrics& m) { return static_cast<int16_t>(sortRow(m).dividerY + SORT_DIVIDER_GAP); }
 
-int16_t blockHeight(const int bodyLines, const bool twoSourceLines, const Metrics& m) {
-  return static_cast<int16_t>(inkHeight(bodyLines, twoSourceLines, m) + DIVIDER_GAP);
+int16_t blockHeight(const int bodyLines, const bool twoSourceLines, const Metrics& m, const int16_t gap) {
+  return static_cast<int16_t>(inkHeight(bodyLines, twoSourceLines, m) + gap);
 }
 
 Block place(const Metrics& m, const int16_t y, const int bodyLines, const bool twoSourceLines,
-            const int16_t numberWidth, const int16_t quoteWidth) {
+            const int16_t numberWidth, const int16_t quoteWidth, const int16_t gap) {
   Block block;
   block.numberBoxX = static_cast<int16_t>(m.bandX + SIDE_INSET);
   block.numberBoxY = y;
@@ -43,8 +43,8 @@ Block place(const Metrics& m, const int16_t y, const int bodyLines, const bool t
   block.lineStep = m.bodyLineHeight;
   block.sourceY = static_cast<int16_t>(y + bodyLines * m.bodyLineHeight + SOURCE_GAP);
   block.sourceStep = twoSourceLines ? m.smallLineHeight : int16_t{0};
-  block.height = blockHeight(bodyLines, twoSourceLines, m);
-  block.dividerY = static_cast<int16_t>(y + inkHeight(bodyLines, twoSourceLines, m) + DIVIDER_GAP / 2);
+  block.height = blockHeight(bodyLines, twoSourceLines, m, gap);
+  block.dividerY = static_cast<int16_t>(y + inkHeight(bodyLines, twoSourceLines, m) + gap / 2);
 
   // The number box sizes to the caller's own measurement of the number text instead of a
   // fixed width: a fixed box was the real mockup bug, crowding the hanging quote once a
@@ -60,11 +60,25 @@ Block place(const Metrics& m, const int16_t y, const int bodyLines, const bool t
   return block;
 }
 
-int blocksPerPage(const Metrics& m, const int16_t top, const bool twoSourceLines) {
-  // The last block needs its ink only; the divider gap under it hangs past the band.
-  const int height = blockHeight(MAX_BODY_LINES, twoSourceLines, m);
-  const int blocks = height > 0 ? (m.bandBottom - top + DIVIDER_GAP) / height : 0;
-  return blocks < 1 ? 1 : blocks > BLOCKS_PER_PAGE ? BLOCKS_PER_PAGE : blocks;
+PageShape pageShape(const Metrics& m, const int16_t top, const bool twoSourceLines) {
+  PageShape shape;
+  if (m.bodyLineHeight <= 0) return shape;
+  const int band = m.bandBottom - top;
+  const int fixed = inkHeight(0, twoSourceLines, m);
+  for (int blocks = BLOCKS_PER_PAGE; blocks >= 1; --blocks) {
+    // The last block needs its ink only; no gap hangs under it.
+    int lines = (band - (blocks - 1) * MIN_BLOCK_GAP - blocks * fixed) / (blocks * m.bodyLineHeight);
+    if (lines < MIN_BODY_LINES && blocks > 1) continue;
+    lines = lines < 1 ? 1 : lines > MAX_BODY_LINES ? MAX_BODY_LINES : lines;
+    shape.blocks = blocks;
+    shape.bodyLines = lines;
+    if (blocks > 1) {
+      const int spare = band - blocks * inkHeight(lines, twoSourceLines, m);
+      shape.gap = static_cast<int16_t>(spare / (blocks - 1) > MIN_BLOCK_GAP ? spare / (blocks - 1) : MIN_BLOCK_GAP);
+    }
+    break;
+  }
+  return shape;
 }
 
 int pageCount(const int count, const int perPage) { return bookPageCount(count, perPage); }

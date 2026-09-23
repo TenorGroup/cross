@@ -651,6 +651,43 @@ class QuotesV1011Test(unittest.TestCase):
         self.assertEqual(per_page[0], 3)
         self.assertTrue(1 <= per_page[2] <= per_page[1] <= 3, per_page)
 
+    # Long quotes of one invented book: each runs well past the four lines a block previews at the
+    # smallest text size, so every block on the page is as tall as the page shape allows.
+    LONG_QUOTES = [
+        'Buổi sáng hôm ấy cả xóm dậy sớm hơn thường lệ, người thì ra đồng thăm lúa, người thì đứng trước '
+        'hiên nhìn trời, còn bọn trẻ chạy dọc bờ đê xem nước sông lên tới đâu, rồi gọi nhau về ăn cơm khi '
+        'mặt trời đã lên cao quá ngọn tre đầu làng và tiếng trống trường bắt đầu vang lên.',
+        'Người thợ mộc già bảo rằng gỗ cũng biết thở, phải để nó nghỉ qua một mùa mưa rồi mới đem ra bào, '
+        'vội vàng thì tấm ván sẽ cong, cái bàn đóng xong sẽ không bao giờ đứng cho vững, và người ngồi vào '
+        'đó ăn bữa cơm nào cũng thấy chông chênh như đang ngồi trên một con thuyền nhỏ.',
+        'Chị bán hàng nước đầu ngõ nhớ tên từng người đi qua, nhớ cả ai uống trà đặc ai uống trà loãng, '
+        'và mỗi lần có người lạ tới chị lại hỏi thăm quê quán, hỏi đường đi lối lại, như thể đã quen nhau '
+        'từ lâu lắm rồi và chỉ đang chờ một dịp để ngồi xuống kể cho hết chuyện cũ.',
+    ]
+
+    def test_long_quotes_fill_one_book_page_to_the_footer(self):
+        # The reported screen: one book, long quotes, the smallest text size. Three blocks of the
+        # tallest preview end at the band's bottom; no strip of white is left above the footer.
+        for i in range(6):
+            write_quote(self.quotes, *HILL, self.LONG_QUOTES[i % 3], i + 1, 10 + i * 7, 20260910 + i, 480 + i)
+        log = self.journey('CONFIRM', '@b2-long-page1', 'DOWN', '@b2-long-page2')
+        book = [e for e in lists(log) if e[0] == 'book']
+        self.assertTrue(book, log[-4000:])
+        self.assertEqual([e[2:4] for e in book], [(1, 2), (2, 2)])
+        bands = [m for m in re.finditer(r'Quote page band (\d+)-(\d+) tip (\d+) per page (\d+) lines (\d+)/(\d+)/(\d+)',
+                                         log)]
+        top, bottom, tip, per_page, body, _, place = (int(x) for x in bands[-1].groups())
+        self.assertEqual(per_page, 3)
+        for name in ('b2-long-page1', 'b2-long-page2'):
+            image = self.shot(name)
+            pixels = image.load()
+            inked = [y for y in range(top, tip) if any(pixels[x, y] < 128 for x in range(0, image.width))]
+            self.assertTrue(inked, name)
+            self.assertLessEqual(bottom - inked[-1], body,
+                                 f'{name}: {bottom - inked[-1]} px of white between the last block and the footer')
+        # The place line under each quote is set one tier over the caption face (21 px at this size).
+        self.assertGreater(place, 21, 'the place line is still in the caption face')
+
     def test_one_book_of_four_quotes_kept_in_one_moment(self):
         # The shape of the first real store read off an X3: one book with a title of some 170
         # characters, four anchored quotes of one chapter, all kept on one day with no minute

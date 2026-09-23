@@ -64,7 +64,7 @@ class RecentBooksSimulatorTest(unittest.TestCase):
             for key in list(env):
                 if key.startswith("CROSSPOINT_SIM_"):
                     del env[key]
-            # Ky vong 17/09 theo quyet dinh founder: man chinh chi hien NAM sach gan nhat
+            # Ky vong 17/09 theo quyet dinh da chot: man chinh chi hien NAM sach gan nhat
             # (truoc day bai nay cho ca muoi cuon). Tep thieu khong chiem mot hang.
             # Front previous wraps directly from the first row to the last row.
             # Fixture: mot tep thieu roi book2..book10 -> nam hang hien ra la book2..book6,

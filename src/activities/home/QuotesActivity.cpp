@@ -12,26 +12,29 @@
 #include "QuoteDetailActivity.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/themes/TenorRadius.h"
 #include "fontIds.h"
 
 namespace {
 
 // Every face on these screens lives in flash (see the class comment): the quote body in
 // Noto Serif 14, the numbers and book rows in the UI body tier, the top row in the UI
-// subtitle tier, the place and date lines in the caption tier. The book title over the
-// place line is bold (mockup A1), and the caption tier has no bold at the smallest UI
-// size, so the title takes the subtitle tier's bold instead.
+// subtitle tier, the book rows' date line in the caption tier. The place line under a quote
+// takes the subtitle tier where it fits (placeFont()). The book title over the place line is
+// bold (mockup A1), and the caption tier has no bold at the smallest UI size, so the title
+// takes the subtitle tier's bold.
 constexpr int BODY_FONT_ID = NOTOSERIF_14_FONT_ID;
 constexpr int NUMBER_FONT_ID = UI_12_FONT_ID;
 constexpr int TOP_ROW_FONT_ID = UI_10_FONT_ID;
-constexpr int SOURCE_FONT_ID = SMALL_FONT_ID;
 constexpr int SOURCE_TITLE_FONT_ID = UI_10_FONT_ID;
+constexpr int DATE_FONT_ID = SMALL_FONT_ID;
 // Left inset and right reserve of the header row (components/TenorMenuChrome.cpp).
 constexpr int HEADER_SIDE = 18;
 
-// Longest part of a quote a list block keeps to wrap: three lines of Noto Serif 14 hold
-// well under this, and the whole quote is read in the detail view from the card again.
-constexpr size_t PREVIEW_BYTES = 240;
+// Part of a quote a list block keeps to wrap, per preview line: a line of Noto Serif 14 holds
+// well under this even in Vietnamese, whose marked letters take two or three bytes each. The
+// whole quote is read in the detail view from the card again.
+constexpr size_t PREVIEW_BYTES_PER_LINE = 100;
 
 // Holding a side button this long jumps ten pages instead of one.
 constexpr unsigned long HOLD_MS = 700;
@@ -41,7 +44,11 @@ constexpr int JUMP_PAGES = 10;
 constexpr int FOOTER_GAP = 8;
 // The top row's mark reaches this far past its own text on each side (mockup A4).
 constexpr int TOP_ROW_MARK_PAD = 6;
-constexpr int BOOK_ROW_RADIUS = 8;
+// Every mark on these screens is a leaf of its own short side (components/themes/TenorRadius.h),
+// kept only as far as its padding lets the corner clear its text.
+int markRadius(const int width, const int height, const int pad) {
+  return tenorradius::fitted(tenorradius::leaf(std::min(width, height)), pad);
+}
 
 constexpr char OPEN_QUOTE[] = "\xe2\x80\x9c";
 constexpr char CLOSE_QUOTE[] = "\xe2\x80\x9d";
@@ -98,12 +105,16 @@ int QuotesActivity::itemCount() const {
   return showsBooks() ? static_cast<int>(books.size()) : static_cast<int>(ids.size());
 }
 
-// Quote blocks page by the tallest block this view can draw, measured in the active UI text
-// size: three at the smallest size, fewer where larger faces would push the third into the
-// footer.
+// Quote blocks page by the shape the band gives this view in the active UI text size
+// (quotelist::pageShape): three at the smallest size, fewer where larger faces leave no room
+// for three previews of three lines.
 int QuotesActivity::perPage() const {
   if (showsBooks()) return std::min(MAX_BOOK_ROWS, quotelist::bookRowsPerPage(metrics()));
-  return quotelist::blocksPerPage(metrics(), quotelist::contentTop(topRowMetrics()), !bookLevel());
+  return pageShape().blocks;
+}
+
+quotelist::PageShape QuotesActivity::pageShape() const {
+  return quotelist::pageShape(metrics(), quotelist::contentTop(topRowMetrics()), !bookLevel());
 }
 
 int QuotesActivity::pageCount() const { return quotelist::bookPageCount(itemCount(), perPage()); }
@@ -116,11 +127,28 @@ quotelist::Metrics QuotesActivity::metrics() const {
   m.bandBottom = static_cast<int16_t>(tenorchrome::tipY(renderer) - FOOTER_GAP);
   m.bodyLineHeight = static_cast<int16_t>(renderer.getLineHeight(BODY_FONT_ID));
   m.numberLineHeight = static_cast<int16_t>(renderer.getLineHeight(NUMBER_FONT_ID));
-  // Above the place line, the top level's blocks carry a book title in the taller title
-  // face; the layout steps both source lines by this one height.
-  m.smallLineHeight = static_cast<int16_t>(
-      renderer.getLineHeight(!bookLevel() && !showsBooks() ? SOURCE_TITLE_FONT_ID : SOURCE_FONT_ID));
+  // The lines under a quote (the top level's book title and the place line) share one face,
+  // so the layout steps them by its height; the book rows' date line is the caption face.
+  m.smallLineHeight = static_cast<int16_t>(renderer.getLineHeight(showsBooks()  ? DATE_FONT_ID
+                                                                   : bookLevel() ? placeFont()
+                                                                                 : SOURCE_TITLE_FONT_ID));
   return m;
+}
+
+// The place line sat in the caption tier until it read too small beside the quote; the
+// subtitle tier is one step up and still well under the quote's own face. It is taken when a
+// long place ("chapter 99, page 999" and a date) fits the text column in it, which holds at
+// the two smaller UI sizes; at the largest, where the caption tier is already as tall as the
+// middle size's subtitle, the place line stays in the caption tier rather than lose its date
+// to an ellipsis. Both faces live in flash, so the measure never touches the card.
+int QuotesActivity::placeFont() const {
+  QuoteRecord longest;
+  longest.spine = 98;
+  longest.page = 998;
+  longest.day = 20261228;
+  const int width = renderer.getScreenWidth() - quotelist::RIGHT_INSET - quotelist::TEXT_X;
+  const auto place = formatted(tr(STR_QUOTES_LIST_PLACE), longest);
+  return renderer.getTextWidth(UI_10_FONT_ID, place.c_str()) <= width ? UI_10_FONT_ID : SMALL_FONT_ID;
 }
 
 quotelist::Metrics QuotesActivity::topRowMetrics() const {
@@ -226,6 +254,7 @@ void QuotesActivity::loadPage() {
     return;
   }
   blockCount = 0;
+  const size_t previewBytes = PREVIEW_BYTES_PER_LINE * pageShape().bodyLines;
   for (int i = first; i < last; ++i) {
     Block& block = blocks[blockCount++];
     block = Block{};
@@ -233,7 +262,7 @@ void QuotesActivity::loadPage() {
     QuoteRecord quote;
     block.readable = quotes::load(block.id, quote);
     if (block.readable) {
-      block.preview = clipped(quote.text, PREVIEW_BYTES);
+      block.preview = clipped(quote.text, previewBytes);
       if (block.preview.size() < quote.text.size()) block.preview += ELLIPSIS;
       block.title = clipped(quote.title, 256);
       block.place = formatted(tr(STR_QUOTES_LIST_PLACE), quote);
@@ -422,7 +451,7 @@ void QuotesActivity::loop() {
   cursorNavigator.onPressAndContinuous({Button::Left}, [this] { moveCursor(-1); });
 }
 
-void QuotesActivity::ensureWrapped(Block& block) const {
+void QuotesActivity::ensureWrapped(Block& block, const int maxLines, const int placeFontId) const {
   if (block.wrapped) return;
   block.wrapped = true;
   const int width = renderer.getScreenWidth() - quotelist::RIGHT_INSET - quotelist::TEXT_X;
@@ -432,7 +461,7 @@ void QuotesActivity::ensureWrapped(Block& block) const {
   }
   // The closing mark rides on the last line, so every line leaves room for it.
   const int closeWidth = renderer.getTextWidth(BODY_FONT_ID, CLOSE_QUOTE);
-  block.lines = renderer.wrappedText(BODY_FONT_ID, block.preview.c_str(), width - closeWidth, quotelist::MAX_BODY_LINES);
+  block.lines = renderer.wrappedText(BODY_FONT_ID, block.preview.c_str(), width - closeWidth, maxLines);
   if (block.lines.empty()) block.lines.emplace_back();
   tidyEllipsis(block.lines.back());
   if (!endsWithCloseQuote(block.lines.back())) block.lines.back() += CLOSE_QUOTE;
@@ -440,7 +469,7 @@ void QuotesActivity::ensureWrapped(Block& block) const {
   block.preview.shrink_to_fit();
   block.title = renderer.truncatedText(SOURCE_TITLE_FONT_ID, block.title.c_str(), width, EpdFontFamily::BOLD);
   tidyEllipsis(block.title);
-  block.place = renderer.truncatedText(SOURCE_FONT_ID, block.place.c_str(), width);
+  block.place = renderer.truncatedText(placeFontId, block.place.c_str(), width);
 }
 
 void QuotesActivity::drawTopRow(const char* label) const {
@@ -448,8 +477,9 @@ void QuotesActivity::drawTopRow(const char* label) const {
   const bool marked = selected < 0;
   if (marked) {
     const int width = renderer.getTextWidth(TOP_ROW_FONT_ID, label);
-    renderer.fillRect(row.x - TOP_ROW_MARK_PAD, row.y - quotelist::SORT_ROW_PAD, width + 2 * TOP_ROW_MARK_PAD,
-                      row.height);
+    renderer.fillRoundedRect(row.x - TOP_ROW_MARK_PAD, row.y - quotelist::SORT_ROW_PAD, width + 2 * TOP_ROW_MARK_PAD,
+                             row.height, markRadius(width + 2 * TOP_ROW_MARK_PAD, row.height, TOP_ROW_MARK_PAD),
+                             Color::Black);
   }
   renderer.drawText(TOP_ROW_FONT_ID, row.x, row.y, label, !marked);
   renderer.drawLine(row.x, row.dividerY, row.x + row.width, row.dividerY);
@@ -459,20 +489,26 @@ void QuotesActivity::drawBlocks() const {
   const auto m = metrics();
   const int quoteWidth = renderer.getTextWidth(BODY_FONT_ID, OPEN_QUOTE);
   const bool twoSourceLines = !bookLevel();
+  const auto shape = pageShape();
+  const int placeFontId = placeFont();
   auto y = quotelist::contentTop(topRowMetrics());
-  const int first = page * perPage();
+  const int first = page * shape.blocks;
   for (int i = 0; i < blockCount; ++i) {
     Block& entry = blocks[i];
-    ensureWrapped(entry);
+    ensureWrapped(entry, shape.bodyLines, placeFontId);
     char number[12];
     snprintf(number, sizeof(number), "%d", first + i + 1);
     const int numberWidth = renderer.getTextWidth(NUMBER_FONT_ID, number, EpdFontFamily::BOLD);
     const auto block = quotelist::place(m, y, static_cast<int>(entry.lines.size()), twoSourceLines && entry.readable,
-                                        static_cast<int16_t>(numberWidth), static_cast<int16_t>(quoteWidth));
+                                        static_cast<int16_t>(numberWidth), static_cast<int16_t>(quoteWidth), shape.gap);
     // The number sits level with the quote's first line rather than at its top edge.
     const int boxY = block.numberBoxY + (m.bodyLineHeight - block.numberBoxHeight) / 2;
     const bool marked = first + i == selected;
-    if (marked) renderer.fillRect(block.numberBoxX, boxY, block.numberBoxWidth, block.numberBoxHeight);
+    if (marked) {
+      renderer.fillRoundedRect(
+          block.numberBoxX, boxY, block.numberBoxWidth, block.numberBoxHeight,
+          markRadius(block.numberBoxWidth, block.numberBoxHeight, quotelist::NUMBER_BOX_PAD), Color::Black);
+    }
     renderer.drawText(NUMBER_FONT_ID, block.numberBoxX + (block.numberBoxWidth - numberWidth) / 2, boxY, number,
                       !marked, EpdFontFamily::BOLD);
     if (entry.readable) renderer.drawText(BODY_FONT_ID, block.hangingQuoteX, block.textY, OPEN_QUOTE);
@@ -486,7 +522,7 @@ void QuotesActivity::drawBlocks() const {
         renderer.drawText(SOURCE_TITLE_FONT_ID, block.textX, sourceY, entry.title.c_str(), true, EpdFontFamily::BOLD);
         sourceY += block.sourceStep;
       }
-      renderer.drawText(SOURCE_FONT_ID, block.textX, sourceY, entry.place.c_str());
+      renderer.drawText(placeFontId, block.textX, sourceY, entry.place.c_str());
     }
     if (i + 1 < blockCount) {
       renderer.drawLine(block.textX, block.dividerY, m.bandWidth - quotelist::RIGHT_INSET, block.dividerY);
@@ -506,8 +542,9 @@ void QuotesActivity::drawBookRows() const {
     // The mark covers the title and date lines only; the row's trailing gap stays white
     // so the next row does not look joined to it.
     if (marked) {
-      renderer.fillRoundedRect(row.x, row.y, row.width, row.height - quotelist::DIVIDER_GAP / 2, BOOK_ROW_RADIUS,
-                               Color::Black);
+      const int markHeight = row.height - quotelist::DIVIDER_GAP / 2;
+      renderer.fillRoundedRect(row.x, row.y, row.width, markHeight,
+                               markRadius(row.width, markHeight, quotelist::BOOK_ROW_PAD), Color::Black);
     }
     char count[12];
     snprintf(count, sizeof(count), "%d", entry.count);
@@ -517,7 +554,7 @@ void QuotesActivity::drawBookRows() const {
     auto title = renderer.truncatedText(NUMBER_FONT_ID, entry.title.c_str(), titleRoom);
     tidyEllipsis(title);
     renderer.drawText(NUMBER_FONT_ID, row.titleX, row.titleY, title.c_str(), !marked);
-    renderer.drawText(SOURCE_FONT_ID, row.dateX, row.dateY, entry.latest.c_str(), !marked);
+    renderer.drawText(DATE_FONT_ID, row.dateX, row.dateY, entry.latest.c_str(), !marked);
     y = static_cast<int16_t>(y + row.height);
   }
 }

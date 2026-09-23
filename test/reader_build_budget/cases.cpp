@@ -424,6 +424,52 @@ int main() {
     require(r.section->ticks == 1 && r.section->resumes == 1 && !r.section->isBuildParked(),
             "idle BLE did not restore admitted background progress");
   });
+  // Device evidence (x3-do-fix2, d3): with the radio up the parser stays parked, the reader
+  // sits on the last laid-out page, and every turn paid 140 to 400 ms resuming the parser
+  // inside the paint before its page could load. A quiet pass lays out the next page first.
+  test("BLE busy lays out the next page on a quiet pass at the frontier", [] {
+    EpubReaderActivity r; r.section->canPark = true; SETTINGS.blePageTurnerEnabled = true;
+    freeink::ble::busyState = true; r.buildViewportWidth = 515;
+    r.backgroundTick();
+    require(r.section->isBuildParked() && r.section->parks == 1, "precondition: BLE policy parks the parser");
+    r.section->builtPages = r.section->oldPages = r.section->pageCount = 19;
+    r.section->currentPage = 18;
+    ESP.free = 46124; ESP.largest = 15348;  // BLE-live heap on the X3 between turns
+    r.lastRenderCompleteMs = clockMs;
+    r.backgroundTick();
+    require(r.section->resumes == 0, "look-ahead ran while the page was still settling");
+    clockMs += 500;
+    r.backgroundTick();
+    require(r.section->resumes == 1 && r.section->pageCount > 19, "next page was not laid out on a quiet pass");
+    require(r.section->isBuildParked() && r.section->parks == 2, "parser was not handed back after the look-ahead");
+    require(freeink::ble::stopForIdleCalls == 0, "look-ahead touched the radio");
+    for (int n = 0; n < 10; ++n) r.backgroundTick();
+    require(r.section->resumes == 1, "look-ahead repeated for the same page");
+  });
+  test("look-ahead leaves a radio that is still starting alone", [] {
+    EpubReaderActivity r; r.section->canPark = true; SETTINGS.blePageTurnerEnabled = true;
+    freeink::ble::busyState = true; r.buildViewportWidth = 515;
+    r.backgroundTick();
+    r.section->builtPages = r.section->oldPages = r.section->pageCount = 19;
+    r.section->currentPage = 18;
+    freeink::ble::initializingState = true;
+    r.lastRenderCompleteMs = clockMs;
+    clockMs += 500;
+    r.backgroundTick();
+    require(r.section->resumes == 0, "parser resumed while the radio was allocating its start");
+  });
+  test("look-ahead waits while turns are queued behind the paint", [] {
+    EpubReaderActivity r; r.section->canPark = true; SETTINGS.blePageTurnerEnabled = true;
+    freeink::ble::busyState = true; r.buildViewportWidth = 515;
+    r.backgroundTick();
+    r.section->builtPages = r.section->oldPages = r.section->pageCount = 19;
+    r.section->currentPage = 18;
+    r.pendingManualTurn = 1;
+    r.lastRenderCompleteMs = clockMs;
+    clockMs += 500;
+    r.backgroundTick();
+    require(r.section->resumes == 0, "look-ahead ran ahead of a queued turn");
+  });
   test("starved extension never stops a radio that is still starting", [] {
     EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = true; r.section->canPark = true;
     r.section->starveUntilRadioStopped = true; r.section->currentPage = r.section->pageCount;

@@ -48,6 +48,7 @@
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/X3SleepCover.h"
+#include "components/themes/TenorRadius.h"
 #include "components/icons/homeTabIcons.h"
 #include "components/icons/tenorHomeTabIcons.h"
 #include "fontIds.h"
@@ -1024,6 +1025,10 @@ void HomeActivity::drawRecentCard() {
         renderer.drawPixel(card.coverX + xx, card.coverY + yy, !white);
       }
   }
+  // Round the cover's corners by painting the page back over them, the pixels a rounded card
+  // would not cover: a few hundred pixels, no second buffer, and the cached card keeps them.
+  renderer.maskRoundedRectOutsideCorners(card.coverX, card.coverY, card.coverW, card.coverH,
+                                         tenorradius::cover(card.coverW));
   // Cache the cover and the text block, including typography, only while Home owns them.
   // onPause/onExit release this bounded region before a book or network screen opens.
   coverRectX = card.coverX;

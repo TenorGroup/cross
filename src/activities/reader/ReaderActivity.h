@@ -8,6 +8,12 @@
 #include "EndOfBookOptions.h"
 #include "activities/Activity.h"
 
+// Page-turn and paint trace lines (RDR_TRACE, ERS_TRACE). Acceptance builds carry them,
+// and so does the press probe, which measures latency on an otherwise release build.
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+#define TENOR_TURN_TRACE 1
+#endif
+
 class ReaderActivity : public Activity {
  protected:
   std::string bookPath;
@@ -43,12 +49,19 @@ class ReaderActivity : public Activity {
   bool pageTurnLocked(bool isForward);
   virtual bool externalPageTurnAllowed() const { return !preview; }
   virtual bool manualPageTurnReady() const { return true; }
+  // Applies the queued turns once the render lock is free. Returns false while it
+  // waits, so the caller still reads this pass's input into the same queue.
   bool processExternalPageTurn();
+  // Signed count of queued page turns. Every local press that lands during a paint
+  // counts and opposite presses cancel, capped so a stuck source stays bounded. A
+  // remote report or a chapter jump still replaces the queue with its own direction.
+  static constexpr int8_t MAX_QUEUED_TURNS = 8;
+  void queuePageTurn(bool isForward, bool isLocal, const char* reason);
   int8_t pendingExternalTurn = 0;
   bool pendingTurnIsLocal = false;
   bool pendingExternalChapter = false;
   uint32_t pendingExternalGeneration = 0;
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef TENOR_TURN_TRACE
   struct TurnTrace {
     uint32_t id = 0;
     unsigned long detectedMs = 0;
@@ -62,7 +75,8 @@ class ReaderActivity : public Activity {
   TurnTrace appliedTurnTrace;
   TurnTrace detectTurnTrace(const char* source, bool forward);
   void logTurnTrace(const char* phase, const TurnTrace& trace, const char* detail) const;
-  void replaceQueuedTurnTrace(TurnTrace& queue, const TurnTrace& incoming, const char* reason);
+  // merged: the queued press still turns its page with this batch; otherwise it is displaced.
+  void replaceQueuedTurnTrace(TurnTrace& queue, const TurnTrace& incoming, const char* reason, bool merged = false);
   void dropTurnTrace(TurnTrace& trace, const char* reason);
 #endif
   virtual bool skipPages(int amount) { return pageTurn(amount > 0); }

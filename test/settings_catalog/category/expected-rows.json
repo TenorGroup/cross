@@ -23,6 +23,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -58,6 +60,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -86,6 +89,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -121,6 +126,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -148,6 +154,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -184,6 +192,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -212,6 +221,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -248,6 +259,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -275,6 +287,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -310,6 +324,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -338,6 +353,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -373,6 +390,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -400,6 +418,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -436,6 +456,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -464,6 +485,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -500,6 +523,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -528,6 +552,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -563,6 +589,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -592,6 +619,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -627,6 +656,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -655,6 +685,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -691,6 +723,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -720,6 +753,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -756,6 +791,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -784,6 +820,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -819,6 +857,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -848,6 +887,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -883,6 +924,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -911,6 +953,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -947,6 +991,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],
@@ -976,6 +1021,8 @@
       "STR_REMAP_FRONT_BUTTONS:1:",
       "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
       "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
@@ -1012,6 +1059,7 @@
       "STR_SLEEP_COVER_FILTER:0:sleepScreenCoverFilter",
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
+      "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
     ]
   ],

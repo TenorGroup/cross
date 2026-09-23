@@ -58,3 +58,4 @@ endif()
 
 add_test(NAME MenuTiltSettingsNoImu COMMAND MenuTiltSettingsTest no-imu)
 add_test(NAME MenuTiltSettingsImu COMMAND MenuTiltSettingsTest imu)
+add_test(NAME PowerButtonTapWake COMMAND MenuTiltSettingsTest power)

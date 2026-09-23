@@ -90,7 +90,7 @@ If the frontlight doesn't come back on after the device wakes from sleep, check 
 ### Power On / Off
 
 To turn the device on or off, **press and hold the Power button for approximately half a second**.
-In the **[Controls Settings](#363-controls)** you can configure the power button to turn the device off with a short press instead of a long one.
+In the **[Controls Settings](#363-controls)** you can configure the power button to turn the device off with a short press instead of a long one. With that choice ("Sleep"), a short press also wakes the device, on the X3 as well, including after it went to sleep on its own.
 
 To reboot the device (for example after a firmware update or if it's frozen), press and release the Reset button, and then quickly press and hold the Power button for a few seconds.
 
@@ -300,11 +300,14 @@ The Settings screen allows you to configure the device's behavior. There are a f
   - "KOSync" - Hold Confirm (~1 second) to launch KOReader sync directly.
   - "Dictionary" - Hold Confirm (~0.4 second) to start dictionary word selection on the current page (see [docs/dictionary.md](docs/dictionary.md)).
   - "Disabled" - Long-press is ignored; only short-press opens the reader menu.
+  - "Reader Menu" - Hold Confirm (~0.4 second) to open the reader menu, which lands on its Favorites tab.
+  - "File Transfer" - Hold Confirm (~0.4 second) to leave the book for the File Transfer screen. Reading progress is kept.
+  - "Tilt Page Turn" *(X3 only)* - Hold Confirm (~0.4 second) to switch tilt page turning off, or back on in the direction it had. A popup shows the new state.
 
 - **Short Power Button Click**: Controls the effect of a short click of the power button:
   
   - "Ignore" (default) - Require a long press to turn off the device
-  - "Sleep" - A short press puts the device into sleep mode
+  - "Sleep" - A short press puts the device into sleep mode, and a short press wakes it again
   - "Page Turn" - A short press in reading mode turns to the next page; a long press turns the device off
   - "Footnotes" - A short press in reading mode opens the footnotes submenu; if only one footnote is present on the page, the referenced page is opened directly. The short press on the power button can be used to select the footnote in the submenu, and to go back to the original page after finish reading the footnote (like the back button).
   - "Refresh" - A short press triggers a manual full-screen refresh, useful for clearing ghosting
@@ -599,6 +602,8 @@ Auto Page Turn automatically advances pages at a set interval, useful for hands-
 
 On the **Xteink X3**, the gyroscope can be used to turn pages by tilting the device. This feature is available in the Controls settings.
 
+**Side flick strength** and **Up/down flick strength** set how firm a flick must be before it counts: "Light", "Medium" (default) or "Strong". The side setting covers page turns and tab changes, the up/down setting covers moving through menu rows.
+
 ### Footnote Navigation
 
 When reading an EPUB that contains footnotes, you can navigate to the footnote text by selecting the footnote reference in the book. From the footnote, you can return to your original reading position.
@@ -647,6 +652,10 @@ Available options include:
 - **Go Home** - Close the book and return to the Home screen.
 - **Sync Progress** - Push or pull reading progress with a KOReader sync server (see [KOReader Sync Quick Setup](#367-koreader-sync-quick-setup)).
 - **Delete Book Cache** - Clear the cached layout data for the current book, forcing a re-index on next open.
+- **File Transfer** - Leave the book for the File Transfer screen. Reading progress is kept.
+- **Tilt Page Turn** *(X3 only)* - Switch tilt page turning off, or back on in the direction it had.
+
+Hold **Confirm** on any row to pin it to the **Favorites** tab, where the menu opens.
 
 Press **Back** at any time to close the menu and return to your current page.
 

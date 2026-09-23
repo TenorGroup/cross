@@ -125,6 +125,9 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     doc["keyboardLayouts"] = keyboardLayouts;
   }
 
+  // Only Inverted needs remembering; Normal is what a toggle falls back to.
+  if (tiltPageTurnLastOn == TILT_NVERTED) doc["tiltPageTurnLastOn"] = tiltPageTurnLastOn;
+
   // Tab Yeu thich: mot DANH SACH co thu tu, nen vong lap uint8_t chung khong cha duoc.
   // Bo han khoa khi nguoi doc chua tung ghim gi, de ban mac dinh con duong doi ve sau.
   if (readerFavoritesDaDat) {
@@ -389,6 +392,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   if (doc["keyboardLayouts"].is<uint16_t>()) {
     keyboardLayouts = doc["keyboardLayouts"].as<uint16_t>();
   }
+  tiltPageTurnLastOn = (doc["tiltPageTurnLastOn"] | uint8_t{TILT_NORMAL}) == TILT_NVERTED ? TILT_NVERTED : TILT_NORMAL;
 
   // Tab Yeu thich. Vang mat nghia la nguoi doc chua tung ghim gi, va luc do man menu se
   // dung ban mac dinh cua no; o day de nguyen readerFavoriteCount bang 0.
