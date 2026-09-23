@@ -1,5 +1,7 @@
 #include "InlineSymbols.h"
 
+#include "InlineSymbolBitmaps.h"
+
 #include <algorithm>
 #include <cstring>
 namespace inlineSymbols {
@@ -8,6 +10,29 @@ Resolver resolve = nullptr;
 FontFilter accepts = nullptr;
 int marker(const unsigned char* p) {
   return p[0] == 0xEE && p[1] == 0x84 && p[2] >= 0x80 && p[2] < 0x90 ? p[2] - 0x80 : -1;
+}
+// Back and Select are drawn from fixed reference bitmaps (see
+// scripts/gen_back_arrow.py), not procedurally, so their pixels match the
+// approved artwork exactly. Sizes below 16 use the net-14 glyph, everything
+// else uses net-18; footer hints pass size=net (14 or 18) directly, and
+// inline text sizes (max(12, textHeight*3/4)) fall on the same two tiers.
+const inlineSymbolBitmaps::Glyph& backGlyph(int size) {
+  return size >= 16 ? inlineSymbolBitmaps::kBackNet18 : inlineSymbolBitmaps::kBackNet14;
+}
+const inlineSymbolBitmaps::Glyph& selectGlyph(int size) {
+  return size >= 16 ? inlineSymbolBitmaps::kSelectNet18 : inlineSymbolBitmaps::kSelectNet14;
+}
+// Centers the glyph horizontally on x and vertically on [y-h, y-h+height-1],
+// so its top matches the top every other shape here uses (y-h).
+void drawGlyph(const GfxRenderer& r, const inlineSymbolBitmaps::Glyph& glyph, int x, int y, int h, bool black) {
+  const int x0 = x - glyph.width / 2;
+  const int y0 = y - h;
+  for (int row = 0; row < glyph.height; ++row) {
+    const uint32_t bits = glyph.rows[row];
+    for (int col = 0; col < glyph.width; ++col) {
+      if (bits & (1u << (glyph.width - 1 - col))) r.drawPixel(x0 + col, y0 + row, black);
+    }
+  }
 }
 }  // namespace
 void configure(Resolver resolver, FontFilter filter) {
@@ -22,21 +47,17 @@ void drawShape(const GfxRenderer& r, Shape shape, int x, int y, int size, bool b
       const int half = row * h / (h * 2);
       r.drawLine(x - half, y + dir * (h - row), x + half, y + dir * (h - row), black);
     }
-  } else if (shape == Shape::Left || shape == Shape::Right || shape == Shape::Back) {
+  } else if (shape == Shape::Left || shape == Shape::Right) {
     const int dir = shape == Shape::Right ? 1 : -1;
-    const int n = shape == Shape::Back ? 2 : 1;
-    const int half = n == 2 ? std::max(2, h / 2) : h;
-    for (int i = 0; i < n; ++i)
-      for (int col = 0; col <= half * 2; ++col) {
-        const int cx = x + (n == 2 ? (i == 0 ? -half - 1 : half + 1) : 0);
-        const int dy = col * h / (half * 2);
-        const int px = cx + dir * (half - col);
-        r.drawLine(px, y - dy, px, y + dy, black);
-      }
+    for (int col = 0; col <= h * 2; ++col) {
+      const int dy = col * h / (h * 2);
+      const int px = x + dir * (h - col);
+      r.drawLine(px, y - dy, px, y + dy, black);
+    }
+  } else if (shape == Shape::Back) {
+    drawGlyph(r, backGlyph(size), x, y, h, black);
   } else if (shape == Shape::Select) {
-    const int xs[] = {x - h, x - h * 2 / 3, x - h / 4, x + h * 3 / 4, x + h, x - h / 4};
-    const int ys[] = {y, y - h / 3, y + h / 6, y - h, y - h * 2 / 3, y + h * 3 / 4};
-    r.fillPolygon(xs, ys, 6, black);
+    drawGlyph(r, selectGlyph(size), x, y, h, black);
   } else if (shape == Shape::Erase) {
     r.drawLine(x - h, y, x - h / 2, y - h, black);
     r.drawLine(x - h, y, x - h / 2, y + h, black);
@@ -99,5 +120,10 @@ int text(const GfxRenderer& r, int font, int x, int y, const char* str, bool dra
     }
   }
   return advance;
+}
+int glyphWidth(Shape shape, int size) {
+  if (shape == Shape::Back) return backGlyph(size).width;
+  if (shape == Shape::Select) return selectGlyph(size).width;
+  return 0;
 }
 }  // namespace inlineSymbols

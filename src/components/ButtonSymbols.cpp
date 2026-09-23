@@ -3,7 +3,6 @@
 #include <HalGPIO.h>
 #include <I18n.h>
 
-#include <algorithm>
 #include <cstring>
 
 #include "CrossPointSettings.h"
@@ -75,21 +74,14 @@ void veMuiTen(const GfxRenderer& r, const inlineSymbols::Shape shape, const int 
   const int dir = shape == inlineSymbols::Shape::Right ? 1 : -1;
   const int ngangY = y - 1;
   if (shape == inlineSymbols::Shape::Back) {
-    const int le = net / 2 + 2;
-    veTamGiac(r, x - le, ngangY, net, -1, false, black);
-    veTamGiac(r, x + le, ngangY, net, -1, false, black);
+    // Shares the return-arrow geometry with inline text hints, so the footer
+    // symbol and the inline one stay the same shape.
+    inlineSymbols::drawShape(r, shape, x, ngangY, net, black);
     return;
   }
   veTamGiac(r, x, ngangY, net, dir, false, black);
 }
 
-void veDauChon(const GfxRenderer& r, const int x, const int y, const bool black, const int net) {
-  const int size = net + 2;
-  const int h = std::max(3, size / 2);
-  const int selectY = y + (net >= 18 ? 1 : 0);
-  inlineSymbols::drawShape(r, inlineSymbols::Shape::Select, x, selectY, size, black);
-  if (net >= 18) r.drawPixel(x + h * 3 / 4, selectY - h, black);
-}
 }  // namespace
 
 SymbolBounds horizontalBounds(const char* label, const int net) {
@@ -99,13 +91,12 @@ SymbolBounds horizontalBounds(const char* label, const int net) {
   const int half = net / 2;
   const int triangleMin = half - net + 1;
   const int triangleMax = half;
-  if (shape == Shape::Back) {
-    const int separation = half + 2;
-    return {separation - triangleMin, separation + triangleMax};
-  }
-  if (shape == Shape::Select) {
-    const int h = std::max(3, (net + 2) / 2);
-    return {h, h};
+  if (shape == Shape::Back || shape == Shape::Select) {
+    // Back and Select are bitmap glyphs (see InlineSymbols.cpp); the footer
+    // centers them the same way drawShape() does, so their ink extent is
+    // exactly the glyph width split around that center.
+    const int w = inlineSymbols::glyphWidth(shape, net);
+    return {w / 2, w - 1 - w / 2};
   }
   if (shape == Shape::Up || shape == Shape::Down) {
     const int rowLeft = (net - 1) / 2;
@@ -122,7 +113,7 @@ bool drawLabel(const GfxRenderer& renderer, const char* label, int x, int y, con
   const auto spec = resolve(id);
   if (spec.label) return false;
   if (spec.shape == inlineSymbols::Shape::Select) {
-    veDauChon(renderer, x, y, true, net);
+    inlineSymbols::drawShape(renderer, spec.shape, x, y, net, true);
   } else {
     veMuiTen(renderer, spec.shape, x, y, true, net);
   }

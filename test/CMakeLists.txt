@@ -155,6 +155,7 @@ target_include_directories(reader_ink_v108 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/.
 add_test(NAME reader_ink_v108 COMMAND reader_ink_v108)
 
 add_subdirectory(ui_layout)
+add_subdirectory(button_symbols)
 
 add_subdirectory(dropcap_raster)
 

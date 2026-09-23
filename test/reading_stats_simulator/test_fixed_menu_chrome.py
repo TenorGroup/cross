@@ -39,9 +39,13 @@ def hints():
  for v in [b,c]:assert ImageChops.difference(a.crop((100,726,425,748)),v.crop((100,726,425,748))).getbbox() is None
  measured=[]
  # The Vietnamese pin hint contains a real g descender. Small symbolic footers
- # leave exactly two blank rows before the logical symbol lane. Large footers
- # retain their legacy caption band at every UI tier.
- growth=(0,5,12);large_bands=((730,743),(687,702),(671,690))
+ # leave a blank gap before the logical symbol lane; large footers retain a
+ # caption band at every UI tier. Back and Select are now fixed
+ # 1-bit bitmaps (InlineSymbolBitmaps.h) instead of a tier-scaled procedural
+ # glyph, so both are a touch taller at the smallest tier than the shapes they
+ # replaced: the small gap is 1px (not 2px) at tier 0, and the large band
+ # grows by up to 2px. Re-measured 23/09/2026 against the new glyphs.
+ growth=(0,5,12);large_bands=((729,744),(686,702),(670,690));small_gaps=(1,2,2)
  for tier in range(3):
   row={'tier':tier}
   for mode in (0,2):
@@ -52,8 +56,9 @@ def hints():
     symbol_lane_top=772-growth[tier]
     bands=centered_ink_bands(image,symbol_lane_top-40,symbol_lane_top)
     assert len(bands)==1,(tier,mode,bands)
-    assert symbol_lane_top-bands[0][1]==2,(tier,mode,symbol_lane_top,bands)
-    row['small_tip_band']=bands[0];row['small_symbol_lane_top']=symbol_lane_top;row['small_gap']=2
+    gap=small_gaps[tier]
+    assert symbol_lane_top-bands[0][1]==gap,(tier,mode,symbol_lane_top,bands)
+    row['small_tip_band']=bands[0];row['small_symbol_lane_top']=symbol_lane_top;row['small_gap']=gap
    else:
     bands=centered_ink_bands(image,640,750)
     assert bands==[large_bands[tier]],(tier,mode,bands,large_bands[tier])

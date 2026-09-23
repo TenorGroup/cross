@@ -27,7 +27,7 @@ PATH_A = ('/books/tenor/translated-by-tenor/Những việc lớn được hoàn 
           '[How Big Things Get Done] - Bent Flyvbjerg & Dan Gardner.epub')
 EXCERPT_A = ('Trong quyển sách này, chúng tôi đi tìm lời giải cho câu hỏi vì sao phần lớn dự án lớn vượt '
              'ngân sách, trễ hạn, và vì sao một số ít lại về đích.')
-# The four quotes on the founder's X3, 23/09/2026: one book, 22/09/2026, no minute, by page.
+# A store shaped like a real reader's: four quotes, one book, 22/09/2026, no minute, by page.
 QUOTES = [
     (16, 'lại trong một cuộc họp hội đồng quản trị. Đã có ai khác làm việc này chưa? Câu trả lời đầy '
          'phấn khích là: “Chưa!”', 7617, 7730),

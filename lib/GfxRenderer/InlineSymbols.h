@@ -13,4 +13,7 @@ void configure(Resolver resolver, FontFilter filter);
 int text(const GfxRenderer& renderer, int font, int x, int y, const char* text, bool draw, bool black,
          EpdFontFamily::Style style, int spacing = 0);
 void drawShape(const GfxRenderer& renderer, Shape shape, int x, int y, int size, bool black);
+// Pixel width of the bitmap glyph drawShape() picks for `shape` at target size `size`.
+// Only meaningful for the bitmap-backed shapes (Back, Select); 0 otherwise.
+int glyphWidth(Shape shape, int size);
 }  // namespace inlineSymbols
