@@ -145,7 +145,7 @@ void BaseTheme::drawProgressBar(const GfxRenderer& renderer, Rect rect, const si
 // theme's drawButtonHints() gets the same behaviour.
 void BaseTheme::drawHintLabel(const GfxRenderer& renderer, const int fontId, const char* label, const int x,
                               const int boxWidth, const int boxTop, const int boxHeight, const int singleLineYOffset) {
-  constexpr int textPadding = 4;  // keeps a wrapped label off the button's border
+  constexpr int textPadding = 3;  // keeps a wrapped label off the button's border
   const int maxTextWidth = boxWidth - (textPadding * 2);
 
   const bool small = normalizedUiTextSize(SETTINGS.uiTextSize) == 0;
