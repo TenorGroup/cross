@@ -70,8 +70,10 @@ for line in header.splitlines():
     if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD|RENDER_MIN_FREE_HEAP|THUMB_IDLE)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t (?:pageLoadRetryCount|pendingThumbCount)|size_t parkedParserFootprint|unsigned long lastRenderCompleteMs|int (?:idlePrewarmSpine|idlePrewarmPage|pendingThumbHeight|lookAheadPage)|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|radioReleasedForBuild|pendingThumbGeneration)|uint16_t buildViewport)', line):
         declarations.append(line)
 fixture = pathlib.Path(__file__).with_name('fixture.hpp').read_text().replace('@@FIELDS@@', '\n'.join(declarations))
+layout_hook = 'EpubReaderActivity::pageAwaitsLayout(' in cpp
+fixture = fixture.replace('@@LAYOUT@@', '  bool pageAwaitsLayout() const;' if layout_hook else '')
 functions = [function('buildTickHeapGate'), function('latTrangThat'), function('skipLoopDelay'), function('showBuildPopup')]
-for name in ['deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'suspendBackgroundBuild', 'releaseRadioForBuild', 'showMemoryError', 'generatePendingThumb']:
+for name in ['pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'suspendBackgroundBuild', 'releaseRadioForBuild', 'showMemoryError', 'generatePendingThumb']:
     if 'EpubReaderActivity::' + name + '(' in cpp:
         functions.append(function(name))
 reader = (a.source / 'src/activities/reader/ReaderActivity.cpp').read_text()

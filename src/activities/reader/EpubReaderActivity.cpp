@@ -618,6 +618,15 @@ bool EpubReaderActivity::manualPageTurnReady() const {
   return millis() - lastPageTurnTime >= 200;
 }
 
+// latTrangThat lets a forward turn step past the pages laid out so far while the chapter is
+// still being laid out; the paint then lays out up to that page, or pulls it back to the
+// chapter's last page if the chapter ends first. A chapter laid out to its end has nothing
+// left to wait for, even one with no pages.
+bool EpubReaderActivity::pageAwaitsLayout() const {
+  return section && (section->isBuilding() || section->isPartial()) &&
+         section->currentPage >= static_cast<int>(section->pageCount);
+}
+
 void EpubReaderActivity::loop() {
   if (!epub) {
     finish();
@@ -1076,7 +1085,7 @@ void EpubReaderActivity::loop() {
       requestUpdate();
     }
   }
-  if (pendingManualTurn != 0 && !turnGuardActive) {
+  if (pendingManualTurn != 0 && !turnGuardActive && !pageAwaitsLayout()) {
     if (!section) {
       pendingManualTurn = 0;
 #ifdef TENOR_TURN_TRACE
@@ -1098,9 +1107,11 @@ void EpubReaderActivity::loop() {
     while (remaining != 0 && !isAtEndOfBook() && pageTurn(forward)) {
       changed = true;
       remaining -= forward ? 1 : -1;
+      if (pageAwaitsLayout()) break;
     }
-    // A turn into the next chapter leaves no section until it is laid out; the rest waits for it.
-    if (changed && !section) pendingManualTurn = remaining;
+    // A turn into the next chapter leaves no section until it is laid out, and a turn onto a
+    // page not laid out yet waits for the paint that lays it out; the rest waits for either.
+    if (changed && (!section || pageAwaitsLayout())) pendingManualTurn = remaining;
     if (changed) requestUpdate();
   }
 
@@ -1194,8 +1205,9 @@ void EpubReaderActivity::loop() {
   currentTurnTrace = detectTurnTrace((touch.prev || touch.next) ? "touch" : turns.fromTilt ? "tilt" : "button",
                                      !prevPageTriggered);
 #endif
-  // Anything still queued goes first, so a new press joins the queue behind it.
-  if (turnGuardActive || pendingManualTurn != 0) {
+  // Anything still queued goes first, so a new press joins the queue behind it, and so does a
+  // press while the page on screen still waits for its layout.
+  if (turnGuardActive || pendingManualTurn != 0 || pageAwaitsLayout()) {
     pendingManualTurn = static_cast<int8_t>(
         std::clamp<int>(pendingManualTurn + (prevTriggered ? -1 : 1), -MAX_QUEUED_TURNS, MAX_QUEUED_TURNS));
 #ifdef TENOR_TURN_TRACE

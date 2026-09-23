@@ -49,8 +49,14 @@ class ReaderActivity : public Activity {
   bool pageTurnLocked(bool isForward);
   virtual bool externalPageTurnAllowed() const { return !preview; }
   virtual bool manualPageTurnReady() const { return true; }
-  // Applies the queued turns once the render lock is free. Returns false while it
-  // waits, so the caller still reads this pass's input into the same queue.
+  // True while the page on screen is one the layout has not reached yet (a chapter still
+  // being laid out). Queued turns wait there for the paint that lays it out: run on
+  // past it, they would leave the chapter's real end and the paint would pull them back.
+  virtual bool pageAwaitsLayout() const { return false; }
+  // Applies the queued turns once the render lock is free. Returns true only when it
+  // spent the pass (end of book, a chapter jump). While it waits, and after plain page
+  // turns, it returns false, so the caller still reads this pass's press: the edge latch
+  // hands each press to one pass only, and a return here would lose it.
   bool processExternalPageTurn();
   // Signed count of queued page turns. Every local press that lands during a paint
   // counts and opposite presses cancel, capped so a stuck source stays bounded. A

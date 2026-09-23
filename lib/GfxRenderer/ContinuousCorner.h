@@ -35,7 +35,8 @@ inline void sinCos(const float x, float& sine, float& cosine) {
 
 // Fills cut[d] with how many pixels of row d (counted from the corner's edge row) lie outside
 // the corner, for a corner of `radius` inside a shape whose short side allows `budget` px per
-// corner. Returns the number of rows that lose a pixel; rows past it are not cut.
+// corner. Returns the number of rows that lose a pixel; rows past it are not cut. Called with
+// the default smoothing, see the cached profile() below; this one works the curve out each time.
 //
 // A pixel belongs to the shape when its centre does (it is at least half covered): row d is cut
 // where the curve crosses the line y = d + 0.5, and loses the pixels whose centres lie before
@@ -44,7 +45,7 @@ inline void sinCos(const float x, float& sine, float& cosine) {
 // into a long one-pixel shelf along the edge. The shape is symmetric about the corner's diagonal
 // and so is the sampling, so column d loses exactly what row d loses, and callers use one table
 // for all four corners.
-inline int profile(int radius, int budget, uint8_t* cut, float smoothing = SMOOTHING) {
+inline int profile(int radius, int budget, uint8_t* cut, float smoothing) {
   if (radius > MAX_RADIUS) radius = MAX_RADIUS;
   if (radius > budget) radius = budget;
   if (radius <= 0) return 0;
@@ -119,6 +120,53 @@ inline int profile(int radius, int budget, uint8_t* cut, float smoothing = SMOOT
     cut[row] = static_cast<uint8_t>(n);
     if (n > 0) used = row + 1;
   }
+  return used;
+}
+
+namespace detail {
+// Corners already worked out. The curve costs thousands of soft-float operations (about 3,700 at
+// r = 5, 20,000 at r = 26), and the firmware draws a handful of corners over and over: the status
+// bar's battery twice per page turn, a popup on every repaint. Drawing is serialised (one
+// framebuffer, drawn under the render lock), and so is this table. Plain data, zeroed at start
+// (radius 0 marks an empty entry), so it costs RAM only.
+struct CachedProfile {
+  uint8_t radius;
+  uint8_t budget;
+  uint8_t written;  // rows the profile writes, cut or not
+  int8_t used;
+  uint8_t cut[MAX_ROWS];
+};
+inline constexpr int CACHED_PROFILES = 8;
+inline CachedProfile cachedProfiles[CACHED_PROFILES];
+inline uint8_t nextCachedProfile = 0;
+}  // namespace detail
+
+// profile() at the default smoothing, served from the table once worked out. The output is the
+// same as working it out: the key is the corner after the size limits, and every budget of 2 r or
+// more gives full smoothing (SMOOTHING is under 1), so they share one entry.
+inline int profile(int radius, const int budget, uint8_t* cut) {
+  if (radius > MAX_RADIUS) radius = MAX_RADIUS;
+  if (radius > budget) radius = budget;
+  if (radius <= 0) return 0;
+  const int key = budget < 2 * radius ? budget : 2 * radius;
+  for (const auto& entry : detail::cachedProfiles) {
+    if (entry.radius == radius && entry.budget == key) {
+      for (int row = 0; row < entry.written; ++row) cut[row] = entry.cut[row];
+      return entry.used;
+    }
+  }
+  auto& entry = detail::cachedProfiles[detail::nextCachedProfile];
+  detail::nextCachedProfile = (detail::nextCachedProfile + 1) % detail::CACHED_PROFILES;
+  uint8_t fresh[MAX_ROWS];
+  for (auto& n : fresh) n = 0xFF;
+  const int used = profile(radius, key, fresh, SMOOTHING);
+  int written = 0;
+  while (written < MAX_ROWS && fresh[written] != 0xFF) ++written;
+  entry.radius = static_cast<uint8_t>(radius);
+  entry.budget = static_cast<uint8_t>(key);
+  entry.written = static_cast<uint8_t>(written);
+  entry.used = static_cast<int8_t>(used);
+  for (int row = 0; row < written; ++row) cut[row] = entry.cut[row] = fresh[row];
   return used;
 }
 

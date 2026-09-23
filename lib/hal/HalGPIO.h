@@ -53,8 +53,6 @@ class HalGPIO {
   // spends 50 ms to seconds in one step (next-page prewarm, section build). The
   // edges it collects wait until update() hands them to the next frame.
   esp_timer* sampleTimer = nullptr;
-  uint8_t framePressed = 0;
-  uint8_t frameReleased = 0;
   static void sampleButtons(void* self);
 
  public:

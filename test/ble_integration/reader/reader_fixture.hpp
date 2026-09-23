@@ -13,6 +13,7 @@
 #define LOG_ERR(...) ((void)0)
 #define CROSSPOINT_BLE_HID_HOST 1
 #define NEW_PIPELINE @@NEW@@
+#define LAYOUT_HOOK @@LAYOUT@@
 uint32_t nowMs=1000;
 uint32_t millis(){return nowMs;}
 struct RenderLock { struct TryTake{}; static inline bool busy=false; bool owns=false;
@@ -52,6 +53,7 @@ struct ReaderActivity:Activity{
  virtual bool nhayChuongThat(int){return false;}
  virtual bool externalPageTurnAllowed()const;
  virtual bool manualPageTurnReady()const;
+ virtual bool pageAwaitsLayout()const;
  bool isReaderActivity()const override{return !preview;}
  bool isPageReady()const{return pageReady.load();}
  void requestUpdate(){requests++;}
@@ -67,6 +69,9 @@ bool ActivityManager::isForegroundReaderReady()const{return isForegroundReaderAc
 #if !NEW_PIPELINE
 bool ReaderActivity::externalPageTurnAllowed()const{return true;}
 bool ReaderActivity::manualPageTurnReady()const{return true;}
+#endif
+#if !LAYOUT_HOOK
+bool ReaderActivity::pageAwaitsLayout()const{return false;}
 #endif
 struct TxtReaderActivity:ReaderActivity {bool initialized=true;int currentPage=1,totalPages=4;
  bool latTrangThat(bool)override;bool isAtEndOfBook()const override;void onReturnFromEndOfBook()override;};
@@ -85,5 +90,8 @@ struct EpubReaderActivity:ReaderActivity{
  bool latTrangThat(bool)override;bool isAtEndOfBook()const override;void onReturnFromEndOfBook()override;
 #if NEW_PIPELINE
  bool externalPageTurnAllowed()const override;bool manualPageTurnReady()const override;
+#endif
+#if LAYOUT_HOOK
+ bool pageAwaitsLayout()const override;
 #endif
 };

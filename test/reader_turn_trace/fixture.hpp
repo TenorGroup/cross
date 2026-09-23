@@ -49,6 +49,27 @@ struct EndOfBookOptions {
   bool menuActive() const { return menu; }
 };
 struct ReadingStats { uint32_t currentDay() const { return 1; } } READING_STATS;
+// What one pass of ReaderActivity::loop reads from the buttons; a test sets it before the pass.
+struct Renderer {};
+struct MappedInput {
+  unsigned long getHeldTime() const { return 0; }
+};
+struct PageTurns { bool prev = false, next = false, prevLongPressed = false, nextLongPressed = false, fromTilt = false; };
+struct TouchTurns { bool prev = false, next = false; unsigned long heldMs = 0; };
+PageTurns passTurns;
+namespace ReaderUtils {
+constexpr unsigned long SKIP_HOLD_MS = 700;
+TouchTurns detectTouchPageTurn(Renderer&, MappedInput&) { return {}; }
+PageTurns detectPageTurn(MappedInput&) {
+  const PageTurns turns = passTurns;
+  passTurns = {};
+  return turns;
+}
+}  // namespace ReaderUtils
+struct Settings {
+  enum { FONT_SIZE_STEP = 1, CHAPTER_SKIP = 2 };
+  uint8_t longPressButtonBehavior = 0;
+} SETTINGS;
 struct ReaderActivity {
   static constexpr int8_t MAX_QUEUED_TURNS = 8;
   int8_t pendingExternalTurn = 0;
@@ -68,10 +89,22 @@ struct ReaderActivity {
   int modelPage = 1;
   uint32_t statsLastMs = 0, statsDayPollMs = 0, statsDay = 0;
   bool statsActive = false;
+  Renderer renderer;
+  MappedInput mappedInput;
+  virtual ~ReaderActivity() = default;
   bool externalPageTurnAllowed() const { return allowed; }
   bool manualPageTurnReady() const { return ready; }
+  virtual bool pageAwaitsLayout() const { return false; }
   bool nhayChuongThat(int) { return false; }
-  bool latTrangThat(bool forward) {
+  bool docCoChuMotNac(int) { return false; }
+  virtual bool skipPages(int amount) { return pageTurn(amount > 0); }
+  void clearEndOfBookOptionsIfNeeded() {}
+  bool handlePreviewInput() { return false; }
+  bool handleEndOfBookMenu() { return false; }
+  bool handleFormatInput() { return false; }
+  bool handleBackNavigation() { return false; }
+  void loop();
+  virtual bool latTrangThat(bool forward) {
     if (!changed) return false;
     modelPage += forward ? 1 : -1;
     return true;
@@ -91,13 +124,58 @@ struct ReaderActivity {
   void queuePageTurn(bool, bool, const char*);
   bool processExternalPageTurn();
 };
-struct Section {};
+// A chapter as far as it is laid out. Until layout() sets it, a long laid-out chapter that
+// keeps the plain page model above.
+struct Section {
+  bool modelled = false;
+  int currentPage = 0;
+  uint16_t pageCount = 1000;
+  bool building = false;
+  bool isBuilding() const { return building; }
+  bool isPartial() const { return false; }
+};
 struct EpubReaderActivity : ReaderActivity {
   std::unique_ptr<Section> section = std::make_unique<Section>();
+  int chapter = 0;
+  int chapters = 2;
 @@EPUB_FIELDS@@
+  void layout(const int page, const int pages, const bool building) {
+    if (!section) section = std::make_unique<Section>();
+    section->currentPage = page;
+    section->pageCount = static_cast<uint16_t>(pages);
+    section->building = building;
+    section->modelled = true;
+  }
+  // The production turn (EpubReaderActivity::latTrangThat) on a chapter model: while the chapter
+  // is still being laid out a forward turn may step past the pages laid out so far.
+  bool latTrangThat(bool forward) override {
+    if (!section) return false;
+    if (!section->modelled) return ReaderActivity::latTrangThat(forward);
+    if (forward) {
+      if (section->currentPage < section->pageCount - 1 || section->isBuilding() || section->isPartial()) {
+        section->currentPage++;
+      } else if (chapter + 1 < chapters) {
+        ++chapter;
+        section.reset();
+      } else {
+        atEnd = true;
+      }
+      return true;
+    }
+    if (section->currentPage > 0) {
+      section->currentPage--;
+      return true;
+    }
+    if (chapter == 0) return false;
+    --chapter;
+    section.reset();
+    return true;
+  }
+@@EPUB_LAYOUT@@
   void drainManual();
   void manualInput(bool prevTriggered, bool prevPageTriggered, bool touchTriggered, bool fromTilt);
   void drainThenInput(bool prevTriggered, bool prevPageTriggered, bool touchTriggered, bool fromTilt);
+  void externalThenInput(bool prevTriggered, bool prevPageTriggered, bool touchTriggered, bool fromTilt);
   void cancelManualForReaderMenu();
 @@EPUB_ON_PAUSE@@
   void onExit() override;

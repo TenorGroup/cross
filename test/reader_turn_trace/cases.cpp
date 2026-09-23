@@ -6,6 +6,7 @@ void test(const char* name, const std::function<void()>& run) {
   nowMs = 1000;
   RenderLock::busy = false;
   activityManager.generation = 1;
+  passTurns = {};
   events.clear();
   try { run(); std::cout << "PASS " << name << '\n'; }
   catch (const std::exception& error) {
@@ -51,7 +52,7 @@ int main() {
     require(reader.modelPage == 1, "busy queue changed model");
     RenderLock::busy = false;
     nowMs = 1800;
-    require(reader.processExternalPageTurn(), "external queue was not drained");
+    require(!reader.processExternalPageTurn(), "plain turns took the whole pass");
     require(reader.modelPage == 2 && reader.updates == 1, "external queue did not turn once");
     require(logged("DETECTED", 1) && logged("QUEUED", 1) && logged("APPLIED", 1),
             "external trace phases missing");
@@ -74,7 +75,7 @@ int main() {
     require(reader.modelPage == 1, "busy local turn changed model");
     RenderLock::busy = false;
     nowMs = 1700;
-    require(reader.processExternalPageTurn(), "local queued turn was not drained");
+    require(!reader.processExternalPageTurn(), "plain turns took the whole pass");
     require(reader.modelPage == 0 && reader.trangDaLat == 1, "local queued turn not applied once");
     require(logged("DETECTED", 1) && logged("QUEUED", 1) && logged("APPLIED", 1),
             "local trace phases missing");
@@ -92,7 +93,7 @@ int main() {
     require(reader.modelPage == 1 && noPhase("APPLIED"), "unready turn was applied");
     reader.ready = true;
     nowMs = 1900;
-    require(reader.processExternalPageTurn(), "ready turn did not drain");
+    require(!reader.processExternalPageTurn(), "plain turns took the whole pass");
     require(logged("APPLIED", 1) && eventText("APPLIED", 1).find("age_ms=900") != std::string::npos,
             "readiness wait lost original event time");
 #if TRACE_PRESENT
@@ -104,7 +105,7 @@ int main() {
     require(reader.luotLatTrangNgoai(true), "first external input rejected");
     nowMs = 1200;
     require(reader.luotLatTrangNgoai(false), "second external input rejected");
-    require(reader.processExternalPageTurn(), "coalesced queue did not drain");
+    require(!reader.processExternalPageTurn(), "plain turns took the whole pass");
     require(reader.modelPage == 0 && reader.trangDaLat == 1, "latest direction not applied once");
     require(logged("COALESCED", 1) && logged("QUEUED", 2) && logged("APPLIED", 2),
             "coalesced event disposition missing");
@@ -119,7 +120,7 @@ int main() {
     RenderLock::busy = true;
     for (int i = 0; i < 3; ++i) require(!reader.pageTurn(false), "busy local turn mutated model");
     RenderLock::busy = false;
-    require(reader.processExternalPageTurn(), "local queue did not drain");
+    require(!reader.processExternalPageTurn(), "plain turns took the whole pass");
     require(reader.modelPage == -2 && reader.trangDaLat == 3 && reader.updates == 1,
             "queued local presses did not land as three pages in one repaint");
     require(logged("MERGED", 1) && logged("MERGED", 2) && logged("APPLIED", 3), "merged presses lack disposition");
@@ -309,6 +310,90 @@ int main() {
 #if TRACE_PRESENT
     require(reader.pendingManualTurnTrace.id == 0, "EPUB exit retained queued metadata");
 #endif
+  });
+  // A chapter still being laid out: page 5 is on screen, pages 0 to 5 are laid out, and the
+  // chapter really ends at page 6. Five presses land during the paint: one reaches page 6 and
+  // four go on into the next chapter. A batch that ran on past the laid-out pages would leave
+  // the page far past the chapter's end, the paint would pull it back to page 6 and the presses
+  // meant for the next chapter would be gone.
+  test("EPUB queued presses wait at the page still being laid out", [] {
+    EpubReaderActivity reader;
+    reader.layout(5, 6, true);
+    reader.ready = false;
+    for (int i = 0; i < 5; ++i) reader.manualInput(false, false, false, false);
+    require(reader.pendingManualTurn == 5, "guarded presses were not queued");
+    reader.ready = true;
+    reader.drainManual();
+    require(reader.section && reader.section->currentPage == 6 && reader.pendingManualTurn == 4,
+            "queued turns ran past the pages laid out so far");
+    reader.drainManual();
+    require(reader.section->currentPage == 6 && reader.pendingManualTurn == 4,
+            "queued turns went on before the paint laid the page out");
+    reader.layout(6, 7, false);  // the paint lays the chapter out to its end
+    reader.drainManual();
+    require(!reader.section && reader.chapter == 1 && reader.pendingManualTurn == 3,
+            "the rest did not wait for the next chapter");
+    reader.layout(0, 10, false);
+    reader.drainManual();
+    require(reader.chapter == 1 && reader.section->currentPage == 3 && reader.pendingManualTurn == 0 &&
+                reader.trangDaLat == 5,
+            "a press queued during the chapter's layout was lost");
+  });
+  test("presses queued behind the render lock wait at the page still being laid out", [] {
+    EpubReaderActivity reader;
+    reader.layout(5, 6, true);
+    RenderLock::busy = true;
+    for (int i = 0; i < 5; ++i) require(!reader.pageTurn(true), "busy turn mutated the page");
+    RenderLock::busy = false;
+    reader.processExternalPageTurn();
+    require(reader.section && reader.section->currentPage == 6 && reader.pendingExternalTurn == 4,
+            "queued turns ran past the pages laid out so far");
+    reader.processExternalPageTurn();
+    require(reader.section->currentPage == 6 && reader.pendingExternalTurn == 4,
+            "queued turns went on before the paint laid the page out");
+    reader.layout(6, 7, false);
+    reader.processExternalPageTurn();
+    require(!reader.section && reader.chapter == 1 && reader.pendingExternalTurn == 3,
+            "the rest did not wait for the next chapter");
+    reader.layout(0, 10, false);
+    reader.processExternalPageTurn();
+    require(reader.section->currentPage == 3 && reader.pendingExternalTurn == 0 && reader.trangDaLat == 5,
+            "a press queued during the chapter's layout was lost");
+  });
+  test("EPUB press on a page still being laid out joins the queue", [] {
+    EpubReaderActivity reader;
+    reader.layout(6, 6, true);  // a turn already stepped onto page 6; its paint has not run yet
+    reader.manualInput(false, false, false, false);
+    require(reader.section->currentPage == 6 && reader.pendingManualTurn == 1,
+            "a press stepped further past the pages laid out so far");
+  });
+  // A chapter laid out to its end with no pages at all has nothing left to wait for.
+  test("queued presses pass an empty chapter that is laid out", [] {
+    EpubReaderActivity reader;
+    reader.layout(0, 0, false);
+    reader.ready = false;
+    for (int i = 0; i < 2; ++i) reader.manualInput(false, false, false, false);
+    reader.ready = true;
+    reader.drainManual();
+    require(!reader.section && reader.chapter == 1 && reader.pendingManualTurn == 1,
+            "queued presses stuck in an empty chapter");
+  });
+  // TXT and XTC readers: the pass that applies the queue also reads this pass's press.
+  test("press in the pass that applies the queue is not lost", [] {
+    ReaderActivity reader;
+    RenderLock::busy = true;
+    require(!reader.pageTurn(true), "busy turn mutated the page");
+    RenderLock::busy = false;
+    passTurns.next = true;
+    reader.loop();
+    require(reader.modelPage == 3 && reader.trangDaLat == 2, "press read in the pass that applied the queue was dropped");
+  });
+  test("EPUB press in the pass that applies a remote turn is not lost", [] {
+    EpubReaderActivity reader;
+    require(reader.luotLatTrangNgoai(true), "remote turn rejected");
+    reader.externalThenInput(false, false, false, false);
+    require(reader.modelPage + reader.pendingManualTurn == 3,
+            "button press read in the pass that applied a remote turn was dropped");
   });
   std::cout << "RESULT " << tests - failures << "/" << tests << " passed\n";
   return failures ? 1 : 0;

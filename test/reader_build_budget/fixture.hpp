@@ -193,6 +193,7 @@ struct ReaderActivity {
   virtual bool nhayChuongThat(int) { return false; }
   bool externalPageTurnAllowed() const { return true; }
   bool manualPageTurnReady() const { return true; }
+  virtual bool pageAwaitsLayout() const { return false; }
   bool isAtEndOfBook() const { return false; }
   void onReturnFromEndOfBook() {}
   bool handleEndOfBookPageTurn(bool, bool) { return false; }
@@ -225,4 +226,5 @@ struct EpubReaderActivity : ReaderActivity {
   void showBuildPopup(GfxRenderer&, int&);
   void loadPageForRender();
   bool applyDeferredReposition() { return false; }
+@@LAYOUT@@
 };

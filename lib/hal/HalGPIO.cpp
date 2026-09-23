@@ -213,18 +213,12 @@ void HalGPIO::begin() {
 namespace {
 // Shared between the sample timer and the main loop; one HalGPIO exists. Once the
 // timer runs, only it touches the SDK debounce. After each sample it publishes
-// the edges and a snapshot of the level and held times under edgeLock, and the
-// main loop reads only that, under the same lock, so it never sees half a sample.
+// the edges and a snapshot of the level and held times under edgeLock. update()
+// takes the edges and a copy of that snapshot under the same lock, and a loop pass
+// reads levels and held times from its copy, so they always agree with its edges.
 portMUX_TYPE edgeLock = portMUX_INITIALIZER_UNLOCKED;
-ButtonEdgeLatch edges;
-struct ButtonSample {
-  uint8_t state = 0;
-  bool debouncePending = false;
-  unsigned long heldMs = 0;
-  unsigned long powerHeldMs = 0;
-  unsigned long atMs = 0;
-};
-ButtonSample sample;
+ButtonFrames frames;
+static_assert(ButtonFrames::kPowerButton == HalGPIO::BTN_POWER);
 
 ButtonSample readSample(const InputManager& input) {
   ButtonSample now;
@@ -258,7 +252,7 @@ void HalGPIO::startBackgroundSampling() {
   if (esp_timer_create(&args, &timer) != ESP_OK) return;
   // Published before the first tick: from here on only the timer runs the debounce,
   // and the main loop reads the snapshot, seeded here with the state it had.
-  sample = readSample(inputMgr);
+  frames.latest = frames.frame = readSample(inputMgr);
   sampleTimer = timer;
   esp_timer_start_periodic(timer, 10000);
 }
@@ -275,15 +269,14 @@ void HalGPIO::sampleButtons(void* self) {
   }
   const ButtonSample now = readSample(input);
   portENTER_CRITICAL(&edgeLock);
-  edges.add(pressed, released);
-  sample = now;
+  frames.publish(pressed, released, now);
   portEXIT_CRITICAL(&edgeLock);
 }
 
 void HalGPIO::update() {
   if (sampleTimer) {
     portENTER_CRITICAL(&edgeLock);
-    edges.take(framePressed, frameReleased);
+    frames.beginFrame();
     portEXIT_CRITICAL(&edgeLock);
   } else {
     inputMgr.update();
@@ -314,28 +307,28 @@ void HalGPIO::sampleButtonAdc(InputManager::ButtonAdcSample& first, InputManager
 bool HalGPIO::isPressed(uint8_t buttonIndex) const {
   if (!sampleTimer) return inputMgr.isPressed(buttonIndex);
   portENTER_CRITICAL(&edgeLock);
-  const bool pressed = (sample.state >> buttonIndex) & 1u;
+  const bool pressed = frames.isPressed(buttonIndex);
   portEXIT_CRITICAL(&edgeLock);
   return pressed;
 }
 
 bool HalGPIO::wasPressed(uint8_t buttonIndex) const {
-  return sampleTimer ? (framePressed >> buttonIndex) & 1u : inputMgr.wasPressed(buttonIndex);
+  return sampleTimer ? (frames.framePressed >> buttonIndex) & 1u : inputMgr.wasPressed(buttonIndex);
 }
 
-bool HalGPIO::wasAnyPressed() const { return sampleTimer ? framePressed != 0 : inputMgr.wasAnyPressed(); }
+bool HalGPIO::wasAnyPressed() const { return sampleTimer ? frames.framePressed != 0 : inputMgr.wasAnyPressed(); }
 
 bool HalGPIO::wasReleased(uint8_t buttonIndex) const {
-  return sampleTimer ? (frameReleased >> buttonIndex) & 1u : inputMgr.wasReleased(buttonIndex);
+  return sampleTimer ? (frames.frameReleased >> buttonIndex) & 1u : inputMgr.wasReleased(buttonIndex);
 }
 
-bool HalGPIO::wasAnyReleased() const { return sampleTimer ? frameReleased != 0 : inputMgr.wasAnyReleased(); }
+bool HalGPIO::wasAnyReleased() const { return sampleTimer ? frames.frameReleased != 0 : inputMgr.wasAnyReleased(); }
 
 bool HalGPIO::rawInputActive() {
   if (sampleTimer) {
     // The timer owns the ladder: wake on a collected edge or a contact the debounce is still weighing.
     portENTER_CRITICAL(&edgeLock);
-    const bool active = edges.pending() || sample.debouncePending || sample.state != 0;
+    const bool active = frames.active();
     portEXIT_CRITICAL(&edgeLock);
     return active;
   }
@@ -350,22 +343,20 @@ bool HalGPIO::rawInputActive() {
   return (g1.raw >= 0 && g1.raw < kIdleRailMin) || (g2.raw >= 0 && g2.raw < kIdleRailMin);
 }
 
-// A held time from the snapshot keeps growing between samples, as the SDK's own
-// getter would when read live.
 unsigned long HalGPIO::getHeldTime() const {
   if (!sampleTimer) return inputMgr.getHeldTime();
   portENTER_CRITICAL(&edgeLock);
-  const ButtonSample at = sample;
+  const unsigned long held = frames.heldTime(millis());
   portEXIT_CRITICAL(&edgeLock);
-  return at.state ? at.heldMs + (millis() - at.atMs) : at.heldMs;
+  return held;
 }
 
 unsigned long HalGPIO::getPowerButtonHeldTime() const {
   if (!sampleTimer) return inputMgr.getPowerButtonHeldTime();
   portENTER_CRITICAL(&edgeLock);
-  const ButtonSample at = sample;
+  const unsigned long held = frames.powerHeldTime(millis());
   portEXIT_CRITICAL(&edgeLock);
-  return (at.state >> BTN_POWER) & 1u ? at.powerHeldMs + (millis() - at.atMs) : at.powerHeldMs;
+  return held;
 }
 
 bool HalGPIO::hasTouch() const { return inputMgr.hasTouch(); }

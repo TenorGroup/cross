@@ -48,6 +48,11 @@ target_compile_features(UiLayout_tenor_radius PRIVATE cxx_std_20)
 target_compile_options(UiLayout_tenor_radius PRIVATE -UNDEBUG)
 target_include_directories(UiLayout_tenor_radius PRIVATE "${REPO_ROOT}/src" "${REPO_ROOT}/lib/GfxRenderer")
 add_test(NAME UiLayout.tenor_radius COMMAND UiLayout_tenor_radius)
+add_executable(UiLayout_corner_cost corner_cost.cpp)
+target_compile_features(UiLayout_corner_cost PRIVATE cxx_std_20)
+target_compile_options(UiLayout_corner_cost PRIVATE -UNDEBUG)
+target_include_directories(UiLayout_corner_cost PRIVATE "${REPO_ROOT}/lib/GfxRenderer")
+add_test(NAME UiLayout.corner_cost COMMAND UiLayout_corner_cost)
 # Rounded blocks through the real GfxRenderer.cpp, with the button_symbols test's stubs and a RAM
 # framebuffer, so the corner shape is checked on the pixels the panel gets.
 foreach(name rounded_render rounded_border)

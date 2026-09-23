@@ -56,7 +56,7 @@ epub_trace_match = re.search(r"(?m)^  TurnTrace pendingManualTurnTrace;", epub_h
 epub_fields = re.search(r"(?m)^  int8_t pendingManualTurn = 0;", epub_header).group(0)
 if epub_trace_match:
     epub_fields += "\n#ifdef TENOR_TURN_TRACE\n" + epub_trace_match.group(0) + "\n#endif"
-names = ["pageTurn", "pageTurnLocked", "luotLatTrangNgoai", "processExternalPageTurn", "onPause", "onResume"]
+names = ["pageTurn", "pageTurnLocked", "luotLatTrangNgoai", "processExternalPageTurn", "onPause", "onResume", "loop"]
 if "ReaderActivity::queuePageTurn(" in cpp:
     names.append("queuePageTurn")
 if trace_present:
@@ -68,9 +68,11 @@ fixture = fixture.replace("@@TRACE_FIELDS@@", trace_fields)
 fixture = fixture.replace("@@EPUB_FIELDS@@", epub_fields)
 epub_pause = "void EpubReaderActivity::onPause()" in epub
 fixture = fixture.replace("@@EPUB_ON_PAUSE@@", "  void onPause() override;" if epub_pause else "")
+epub_layout = "EpubReaderActivity::pageAwaitsLayout(" in epub
+fixture = fixture.replace("@@EPUB_LAYOUT@@", "  bool pageAwaitsLayout() const override;" if epub_layout else "")
 
 guard = re.search(r"(?m)^  const bool turnGuardActive = RenderLock::peek\(\) \|\| !manualPageTurnReady\(\);", epub).group(0)
-drain_start = epub.index("  if (pendingManualTurn != 0 && !turnGuardActive) {")
+drain_start = re.search(r"(?m)^  if \(pendingManualTurn != 0 && !turnGuardActive.*\{$", epub).start()
 drain = "void EpubReaderActivity::drainManual() {\n" + guard + "\n" + block(epub, drain_start) + "\n}"
 manual_end = epub.index("  if (pageTurn(!prevPageTriggered)) requestUpdate();", drain_start)
 manual_start = epub.rfind("  if (!section) {", drain_start, manual_end)
@@ -88,6 +90,16 @@ tick = ("void EpubReaderActivity::drainThenInput(bool prevTriggered, bool prevPa
         "  struct Turns { bool fromTilt; } turns{fromTilt};\n"
         "  (void)touch; (void)turns;\n" + guard + "\n" + block(epub, drain_start) + "\n" +
         manual_slice + "\n}")
+# One EPUB loop pass that applies a queued remote turn, then reads a button press from the same
+# pass, in production order: the queue call is the production line itself.
+loop_start = epub.index("void EpubReaderActivity::loop()")
+external_line = re.compile(r"(?m)^  if \(processExternalPageTurn\(\)\) return;$").search(epub, loop_start).group(0)
+external_tick = ("void EpubReaderActivity::externalThenInput(bool prevTriggered, bool prevPageTriggered, "
+                 "bool touchTriggered, bool fromTilt) {\n"
+                 "  struct Touch { bool prev, next; } touch{touchTriggered, false};\n"
+                 "  struct Turns { bool fromTilt; } turns{fromTilt};\n"
+                 "  (void)touch; (void)turns;\n" + external_line + "\n" + guard + "\n" +
+                 block(epub, drain_start) + "\n" + manual_slice + "\n}")
 menu_start = epub.index("void EpubReaderActivity::openReaderMenu() {")
 menu_body = epub.index("\n", menu_start) + 1
 menu_end = epub.index("  if (usesToolbarMenu())", menu_body)
@@ -99,7 +111,8 @@ exit_method = "void EpubReaderActivity::onExit() {" + exit_prefix + "  ReaderAct
 cases = pathlib.Path(__file__).with_name("cases.cpp").read_text()
 projection = args.output / "projection.cpp"
 projection.write_text(fixture + "\n" + "\n\n".join(function(name) for name in names) +
-                      "\n" + "\n\n".join((drain, manual, tick, menu)) + "\n" +
+                      "\n" + "\n\n".join((drain, manual, tick, external_tick, menu)) + "\n" +
+                      (function("pageAwaitsLayout", epub, "EpubReaderActivity") + "\n" if epub_layout else "") +
                       (function("onPause", epub, "EpubReaderActivity") if epub_pause else "") +
                       "\n" + exit_method + "\n" + cases)
 (args.output / "source-hashes.json").write_text(json.dumps({

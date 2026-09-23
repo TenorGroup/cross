@@ -62,7 +62,9 @@ def reader_fn(name):
     f = f.replace(name + '(', 'ReaderActivity::' + name + '(', 1)
     return f
 new = 'processExternalPageTurn(' in body
+layout_hook = 'pageAwaitsLayout(' in head
 prefix = P(__file__).with_name('reader_fixture.hpp').read_text().replace('@@NEW@@', '1' if new else '0')
+prefix = prefix.replace('@@LAYOUT@@', '1' if layout_hook else '0')
 functions = [reader_fn(n) for n in ['pageTurn', 'luotLatTrangNgoai', 'handleEndOfBookPageTurn', 'endOfBookMenuActive', 'updateReadingTime', 'handlePreviewInput', 'loop']]
 if 'luotNhayChuongNgoai(' in body:
     functions.append(reader_fn('luotNhayChuongNgoai'))
@@ -75,7 +77,7 @@ for fmt in ['Txt', 'Xtc', 'Epub']:
     for n in ['latTrangThat', 'isAtEndOfBook', 'onReturnFromEndOfBook']:
         functions.append(function(text, fmt + 'ReaderActivity::' + n))
     if fmt == 'Epub':
-        for n in ['externalPageTurnAllowed', 'manualPageTurnReady']:
+        for n in ['externalPageTurnAllowed', 'manualPageTurnReady', 'pageAwaitsLayout']:
             if 'EpubReaderActivity::' + n + '(' in text:
                 functions.append(function(text, 'EpubReaderActivity::' + n))
 functions.append(function(read('src/activities/ActivityManager.cpp'), 'ActivityManager::pageTurn'))
@@ -100,7 +102,7 @@ selected = [conditional_block(epubloop, marker) for marker in ['if (overlay != O
 if 'if (processExternalPageTurn()) return;' in epubloop:
     selected.append((epubloop.index('if (processExternalPageTurn()) return;'), 'if (processExternalPageTurn()) return;'))
 functions.append('void EpubReaderActivity::loop() {\n const bool confirmReleased = mappedInput.wasReleased(MappedInputManager::Button::Confirm);\n' + '\n'.join((part for (_, part) in sorted(selected))) + '\n}')
-for n in ['externalPageTurnAllowed', 'manualPageTurnReady']:
+for n in ['externalPageTurnAllowed', 'manualPageTurnReady', 'pageAwaitsLayout']:
     if n + '(' in head:
         f = function(head, n).strip().replace('virtual ', '', 1).replace(n + '(', 'ReaderActivity::' + n + '(', 1)
         functions.append(f)

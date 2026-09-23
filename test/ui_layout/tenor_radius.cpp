@@ -7,6 +7,7 @@
 
 #include "ContinuousCorner.h"
 #include "components/themes/TenorRadius.h"
+#include "components/themes/TenorTheme.h"
 
 namespace {
 
@@ -178,6 +179,25 @@ int main() {
   }
   static_assert(tenorradius::fitted(8, 8) == 8);
   static_assert(tenorradius::fitted(8, 2) == 6);
+
+  // 3. The Tenor theme takes every radius from the formula at its own row height (52 px), not at the
+  // height of the theme it starts from: a list row, a control and a capsule are leaves of 8, and a
+  // popup or sheet holding them at the option popup's 20 px padding is concentric at 28.
+  const ThemeMetrics& tenor = TenorMetrics::values;
+  printf("Tenor theme: listRowHeight=%d listRowRadius=%d controlRadius=%d capsuleRadius=%d "
+         "optionPopupInnerPadding=%d popupCornerRadius=%d sheetRadius=%d\n",
+         tenor.listRowHeight, tenor.listRowRadius, tenor.controlRadius, tenor.capsuleRadius,
+         tenor.optionPopupInnerPadding, tenor.popupCornerRadius, tenor.sheetRadius);
+  const bool themeRadiiHold =
+      tenor.listRowHeight == 52 && tenor.optionPopupInnerPadding == 20 &&
+      tenor.listRowRadius == tenorradius::leaf(tenor.listRowHeight) && tenor.listRowRadius == 8 &&
+      tenor.controlRadius == 8 && tenor.capsuleRadius == 8 &&
+      tenor.popupCornerRadius == tenorradius::container(tenor.listRowRadius, tenor.optionPopupInnerPadding) &&
+      tenor.popupCornerRadius == 28 && tenor.sheetRadius == 28;
+  if (!themeRadiiHold) {
+    puts("FAIL: the Tenor theme's radii are not leaf(52) = 8 and container(8, 20) = 28");
+    return 1;
+  }
 
   puts("PASS: continuous corners sampled at pixel centres match the circle unsmoothed and the curve "
        "smoothed, and the leaf, container, nest and cover sizes hold their anchors");

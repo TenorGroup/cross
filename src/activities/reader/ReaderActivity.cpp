@@ -415,7 +415,7 @@ bool ReaderActivity::processExternalPageTurn() {
     return false;
   }
   RenderLock lock(RenderLock::TryTake{});
-  if (!lock.acquired() || !manualPageTurnReady()) return false;
+  if (!lock.acquired() || !manualPageTurnReady() || pageAwaitsLayout()) return false;
   const bool forward = pendingExternalTurn > 0;
   const bool chapter = pendingExternalChapter;
   int8_t remaining = pendingExternalTurn;
@@ -459,11 +459,13 @@ bool ReaderActivity::processExternalPageTurn() {
   while (remaining != 0 && !isAtEndOfBook() && pageTurnLocked(forward)) {
     changed = true;
     remaining -= forward ? 1 : -1;
+    if (pageAwaitsLayout()) break;
   }
-  // A turn into a chapter that is still being laid out stops early; the rest waits for it.
+  // A turn into a chapter, or onto a page, that is still being laid out stops early; the rest
+  // waits for it.
   if (changed && !isAtEndOfBook()) pendingExternalTurn = remaining;
   if (changed) requestUpdate();
-  return true;
+  return false;
 }
 
 void ReaderActivity::loop() {
