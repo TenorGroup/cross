@@ -515,21 +515,52 @@ void drawQuoteMark(const GfxRenderer& renderer, const int x, const int y) {
   }
 }
 
-// The cover the Cover sleep mode already cached for `bookPath`: the variant that mode would
-// pick on this panel first, then any other variant already on the card. Nothing is decoded
-// here. Building a cover at sleep for a book that never had one shown would cost a full
-// cover decode for one small tile, so a book without a cached cover simply shows no tile.
-std::string cachedCoverPath(const std::string& bookPath, const bool originalThresholds,
-                            const CrossPointSettings& settings) {
+// Heap the cover generator needs at sleep: the JPEG decoder refuses to start below 52 KB
+// free (JpegToBmpConverter.cpp), and its decoder object and row buffers are single blocks.
+constexpr uint32_t COVER_MIN_FREE_HEAP = 56 * 1024;
+constexpr uint32_t COVER_MIN_BLOCK = 32 * 1024;
+
+// The sleep cover of `bookPath`, where the Cover sleep mode caches it: the variant that mode
+// would pick on this panel first, then any other variant already on the card. When none is
+// cached yet it is made once, now, with that mode's own generator and path, so later sleeps
+// of either mode find it. The tile is left out instead, and nothing is retried in this
+// sleep, when the book is gone from the card, its metadata cache is missing, the heap is
+// short, or the generator fails.
+std::string sleepCoverPath(const std::string& bookPath, const bool originalThresholds,
+                           const CrossPointSettings& settings) {
   if (!FsHelpers::hasEpubExtension(bookPath)) return {};
-  const Epub epub(bookPath, "/.crosspoint");
+  Epub epub(bookPath, "/.crosspoint");
   const bool cropped = settings.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
   for (int variant = 0; variant < 4; variant++) {
     const std::string path = epub.getCoverBmpPath((variant & 1) ? !cropped : cropped,
                                                   (variant & 2) ? !originalThresholds : originalThresholds);
     if (Storage.exists(path.c_str())) return path;
   }
-  return {};
+  if (!Storage.exists(bookPath.c_str())) {
+    LOG_INF("SLP", "Sleep quote cover skipped: book not on card");
+    return {};
+  }
+  const uint32_t freeHeap = ESP.getFreeHeap();
+  const uint32_t block = ESP.getMaxAllocHeap();
+  if (freeHeap < COVER_MIN_FREE_HEAP || block < COVER_MIN_BLOCK) {
+    LOG_INF("SLP", "Sleep quote cover skipped: heap free=%u block=%u", static_cast<unsigned>(freeHeap),
+            static_cast<unsigned>(block));
+    return {};
+  }
+  const uint32_t started = millis();
+  // The metadata cache the reader built is enough; building it here for a book never
+  // opened would parse the whole package at sleep.
+  if (!epub.load(/*buildIfMissing=*/false, /*skipLoadingCss=*/true) ||
+      !epub.generateCoverBmp(cropped, originalThresholds)) {
+    LOG_INF("SLP", "Sleep quote cover skipped: not made in %lu ms", static_cast<unsigned long>(millis() - started));
+    return {};
+  }
+  std::string path = epub.getCoverBmpPath(cropped, originalThresholds);
+  HalFile made;
+  const size_t bytes = Storage.openFileForRead("SLP", path, made) ? made.size() : 0;
+  LOG_INF("SLP", "Sleep quote cover made=1 ms=%lu bytes=%u", static_cast<unsigned long>(millis() - started),
+          static_cast<unsigned>(bytes));
+  return path;
 }
 
 }  // namespace
@@ -1024,7 +1055,7 @@ void SleepActivity::renderQuoteSleepScreen() const {
                                       CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
 
   HalFile coverFile;
-  const std::string coverPath = cachedCoverPath(quote.path, originalThresholds, settings);
+  const std::string coverPath = sleepCoverPath(quote.path, originalThresholds, settings);
   const bool coverOpen = !coverPath.empty() && Storage.openFileForRead("SLP", coverPath, coverFile);
   Bitmap cover(coverFile);
   const bool hasCover = coverOpen && cover.parseHeaders() == BmpReaderError::Ok && cover.getWidth() > 0 &&

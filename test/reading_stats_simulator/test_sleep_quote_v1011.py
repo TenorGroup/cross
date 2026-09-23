@@ -118,6 +118,7 @@ class SleepQuoteTest(unittest.TestCase):
             cls.real[name] = (f'{quote_id(record, i):016x}.json', raw)
         # One Cover sleep per book fills the cover cache this screen reads.
         cls.caches = {}
+        cls.books = {}
         for book, title in ((REAL_BOOK, 'Một cuốn sách có tên rất dài: những điều nhỏ quyết định số p'), (SECOND_BOOK, SECOND_TITLE)):
             sd = cls.root / ('cover-' + str(book_key(book)))
             write_epub(sd / book.lstrip('/'), title)
@@ -129,15 +130,17 @@ class SleepQuoteTest(unittest.TestCase):
             made = list(store.glob('epub_*/cover_*.bmp'))
             assert made, 'Cover sleep made no cover cache\n' + log
             cls.caches[book] = list(store.glob('epub_*'))
+            cls.books[book] = sd / book.lstrip('/')
 
     @classmethod
     def tearDownClass(cls):
         cls.temp.cleanup()
 
     @staticmethod
-    def run_sim(sd, script, shots=None, after_wake=None, shots_after=None):
+    def run_sim(sd, script, shots=None, after_wake=None, shots_after=None, extra=None):
         env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
         env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(sd), CROSSPOINT_SIM_INPUT_SCRIPT=script)
+        env.update(extra or {})
         if shots:
             env['CROSSPOINT_SIM_SCREENSHOTS'] = shots
         if after_wake:
@@ -166,12 +169,14 @@ class SleepQuoteTest(unittest.TestCase):
         (store / 'state.json').write_text(json.dumps({'showBootScreen': False}))
         return sd
 
-    def sleep_once(self, sd, label):
+    def sleep_once(self, sd, label, extra=None):
         """One sleep from Home. Every screenshot due before the panel sleeps is taken at the
         deep-sleep present with the finished sleep frame, so the last one on disk is it."""
         times = [SLEEP_AT + 50 * i for i in range(1, 80)]
+        for old in sd.glob('shot-*.bmp'):
+            old.unlink()
         shots = ';'.join(f'{t}:{sd / f"shot-{t}.bmp"}' for t in times)
-        log = self.run_sim(sd, f'{SLEEP_AT}:SLEEP;{SLEEP_AT + 4500}:QUIT', shots=shots)
+        log = self.run_sim(sd, f'{SLEEP_AT}:SLEEP;{SLEEP_AT + 4500}:QUIT', shots=shots, extra=extra)
         return log, self.last_shot(sd, times, label)
 
     def last_shot(self, sd, times, label):
@@ -259,6 +264,59 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertGreater(self.ink(image, (48, 596, 144, 700)), 50)
         sleep = self.sleep_part(log)
         self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), ['0'], sleep)
+
+    def book_without_cover(self, name, raw, book_on_card=True):
+        """The quote's book as a reader leaves it: the book file and its metadata cache, but
+        no sleep cover, because the Cover sleep mode never ran for it."""
+        sd = self.make_sd([(name, raw)], covers=[REAL_BOOK])
+        for made in (sd / '.crosspoint').glob('epub_*/cover_*.bmp'):
+            made.unlink()
+        if book_on_card:
+            (sd / REAL_BOOK.lstrip('/')).parent.mkdir(parents=True)
+            shutil.copy(self.books[REAL_BOOK], sd / REAL_BOOK.lstrip('/'))
+        return sd
+
+    def test_missing_cover_is_made_once_then_reused(self):
+        name, raw = self.real[REAL_217]
+        sd = self.book_without_cover(name, raw)
+        log, image = self.sleep_once(sd, 'S2-bia-tao-luc-ngu')
+        made = re.search(r'Sleep quote cover made=1 ms=(\d+) bytes=(\d+)', log)
+        self.assertIsNotNone(made, log)
+        self.assertEqual(self.fit(log)[3], 1, log)
+        self.assertGreater(self.grays(image, COVER_BOX), 1000, 'made cover not drawn')
+        covers = list((sd / '.crosspoint').glob('epub_*/cover_*.bmp'))
+        self.assertEqual(len(covers), 1, covers)
+        self.assertEqual(covers[0].stat().st_size, int(made.group(2)))
+        first = int(re.search(r'Timing image-ready=(\d+) ms', log).group(1))
+        # The next sleep finds it cached, and so would the Cover sleep mode.
+        again, image2 = self.sleep_once(sd, 'S2-bia-da-co')
+        self.assertNotIn('Sleep quote cover made=', again)
+        self.assertEqual(self.fit(again)[3], 1, again)
+        self.assertEqual(list(image.crop(COVER_BOX).getdata()), list(image2.crop(COVER_BOX).getdata()))
+        cached = int(re.search(r'Timing image-ready=(\d+) ms', again).group(1))
+        measured = dict(make_ms=int(made.group(1)), bytes=int(made.group(2)), first_sleep_ms=first,
+                        cached_sleep_ms=cached, cover=covers[0].name)
+        print('DO_DUOC', json.dumps(measured))
+        if SHOTS:
+            (Path(SHOTS) / 'do-bia-luc-ngu.json').write_text(json.dumps(measured, indent=2) + '\n')
+
+    def test_missing_book_file_draws_text_only(self):
+        name, raw = self.real[REAL_217]
+        sd = self.book_without_cover(name, raw, book_on_card=False)
+        log, image = self.sleep_once(sd, 'S2-thieu-tep-sach')
+        self.assertIn('Sleep quote cover skipped: book not on card', log)
+        self.assertEqual(self.fit(log)[3], 0, log)
+        self.assertEqual(self.grays(image, COVER_BOX), 0)
+        self.assertEqual(list((sd / '.crosspoint').glob('epub_*/cover_*.bmp')), [])
+
+    def test_short_heap_skips_making_the_cover(self):
+        name, raw = self.real[REAL_217]
+        sd = self.book_without_cover(name, raw)
+        log, image = self.sleep_once(sd, 'S2-thieu-heap',
+                                     extra={'CROSSPOINT_SIM_FREE_HEAP': '40000', 'CROSSPOINT_SIM_MAX_ALLOC_HEAP': '30000'})
+        self.assertIn('Sleep quote cover skipped: heap', log)
+        self.assertEqual(self.fit(log)[3], 0, log)
+        self.assertEqual(list((sd / '.crosspoint').glob('epub_*/cover_*.bmp')), [])
 
     def test_empty_store_falls_back_to_tenor(self):
         sd = self.make_sd([])
