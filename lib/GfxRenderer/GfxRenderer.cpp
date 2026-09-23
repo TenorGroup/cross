@@ -975,18 +975,47 @@ void GfxRenderer::drawRoundedRect(const int x, const int y, const int width, con
       from = end + 1;
     }
   };
-  for (int i = 0; i < height; ++i) {
+  // Row i on one side (`right` measures from the right edge): the border runs from the outer edge
+  // to the inner one. A row of the top or bottom band has no inner edge and runs across.
+  const auto run = [&](const int i, const bool fromRight, int& from, int& to) {
     int outerLeft, outerRight;
     cornerInsets(i, height, outer, box, corners, outerLeft, outerRight);
+    from = fromRight ? outerRight : outerLeft;
     const int ii = i - lineWidth;
     if (!hollow || ii < 0 || ii >= innerHeight) {
-      span(i, outerLeft, width - 1 - outerRight);
-      continue;
+      to = width - 1 - (fromRight ? outerLeft : outerRight);
+      return false;
     }
     int innerLeft, innerRight;
     cornerInsets(ii, innerHeight, inner, innerRows, corners, innerLeft, innerRight);
-    span(i, outerLeft, lineWidth + innerLeft - 1);
-    span(i, width - lineWidth - innerRight, width - 1 - outerRight);
+    to = lineWidth + (fromRight ? innerRight : innerLeft) - 1;
+    return true;
+  };
+  for (int i = 0; i < height; ++i) {
+    int from, to;
+    if (!run(i, false, from, to)) {
+      span(i, from, to);
+      continue;
+    }
+    for (const bool onRight : {false, true}) {
+      run(i, onRight, from, to);
+      // Outer less inner alone leaves gaps in a thin border: where the curve is nearly flat the
+      // outer edge steps several pixels between rows while the inner edge has not moved yet, so a
+      // row can come out empty or end short of the next row's start. Like joining the points of a
+      // line, each row keeps at least one pixel and runs inward until it touches the rows above
+      // and below. It only ever grows toward the inside, so it stays within the filled block.
+      if (to < from) to = from;
+      for (const int n : {i - 1, i + 1}) {
+        if (n < 0 || n >= height) continue;
+        int nextFrom, nextTo;
+        run(n, onRight, nextFrom, nextTo);
+        if (nextFrom - 1 > to) to = nextFrom - 1;
+      }
+      if (onRight)
+        span(i, width - 1 - to, width - 1 - from);
+      else
+        span(i, from, to);
+    }
   }
 }
 

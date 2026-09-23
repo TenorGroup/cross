@@ -247,6 +247,35 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertIn('Sleep quote gray ready=1', sleep)
         self.assertNotIn('[BRAND] sleep ready=', sleep)
 
+    def test_cover_corners_are_rounded_in_both_sleep_paths(self):
+        # The cover tile is rounded like every cover (TenorRadius.h cover(96) = 6 px, a continuous
+        # corner reaching about 1.6 r along each edge), on X3's dithered black-and-white path
+        # (sleepBwRefresh on, the default) and on the gray path (off). The fixture's cover is dark
+        # at the top and mid gray at the bottom, so a square tile has ink in every corner.
+        record = {'schema': 1, 'path': SECOND_BOOK, 'title': SECOND_TITLE, 'text': SHORT_TEXT,
+                  'spine': 2, 'page': 4, 'day': 20260923, 'gio': 600}
+        name = f'{quote_id(record, 0):016x}.json'
+        x0, y0, x1, y1 = COVER_BOX[0], COVER_BOX[1], COVER_BOX[2] - 1, COVER_BOX[3] - 1
+        for refresh in (1, 0):
+            with self.subTest(sleepBwRefresh=refresh):
+                sd = self.make_sd([(name, json.dumps(record, ensure_ascii=False).encode())], covers=[SECOND_BOOK],
+                                  settings={'language': 'VI', 'sleepScreen': 10, 'sleepBwRefresh': refresh})
+                log, image = self.sleep_once(sd, f'S2-bia-bo-goc-{refresh}')
+                self.assertEqual(self.fit(log)[3], 1, log)
+                px = image.load()
+                for cx, cy, dx, dy in ((x0, y0, 1, 1), (x1, y0, -1, 1), (x0, y1, 1, -1), (x1, y1, -1, -1)):
+                    # The corner triangle a 6 px circle already leaves out stays paper.
+                    cut = [(cx + dx * i, cy + dy * j) for j in range(3) for i in range(3 - j)]
+                    self.assertTrue(all(px[x, y] > 128 for x, y in cut),
+                                    f'corner at ({cx}, {cy}) is square: {[px[x, y] for x, y in cut]}')
+                    # And the cover still reaches the tile's edge past the corner (four rows: the
+                    # dither leaves whole rows white).
+                    edge = [px[cx + dx * i, cy + dy * j] for i in range(12, 40) for j in range(4)]
+                    self.assertTrue(any(v < 235 for v in edge), f"no cover along the edge at ({cx}, {cy})")
+                # Dithered on the black-and-white path, gray levels on the gray one.
+                shades = self.dithered(image, COVER_BOX) if refresh else self.grays(image, COVER_BOX)
+                self.assertGreater(shades, 200, 'cover tile has no gray levels')
+
     def test_real_quote_fits_whole(self):
         name, raw = self.real[REAL_217]
         sd = self.make_sd([(name, raw)], covers=[REAL_BOOK])

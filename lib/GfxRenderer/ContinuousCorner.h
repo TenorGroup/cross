@@ -35,15 +35,15 @@ inline void sinCos(const float x, float& sine, float& cosine) {
 
 // Fills cut[d] with how many pixels of row d (counted from the corner's edge row) lie outside
 // the corner, for a corner of `radius` inside a shape whose short side allows `budget` px per
-// corner. Returns the number of rows that lose a pixel; rows past it are not cut. The profile is
-// symmetric about the corner's diagonal, so column d loses what row d loses, and callers use one
-// table for all four corners.
+// corner. Returns the number of rows that lose a pixel; rows past it are not cut.
 //
-// Pixels are sampled where the renderer has always put them: the edge row and column lie on the
-// corner's straight lines, the way the old quarter circle stood with its centre on the pixel
-// `radius` in from both edges. With s = 0 the table is that circle, pixel for pixel, so a radius
-// keeps the size it had; with s = 0.6 the gentle ends of the curve show as the edge row and
-// column letting go of the corner earlier, over the extra 0.6 r.
+// A pixel belongs to the shape when its centre does (it is at least half covered): row d is cut
+// where the curve crosses the line y = d + 0.5, and loses the pixels whose centres lie before
+// that crossing. Sampling at the centres keeps the raster as even as the curve: the gentle ends
+// of a continuous corner, less than half a pixel off the edge, cut nothing, instead of turning
+// into a long one-pixel shelf along the edge. The shape is symmetric about the corner's diagonal
+// and so is the sampling, so column d loses exactly what row d loses, and callers use one table
+// for all four corners.
 inline int profile(int radius, int budget, uint8_t* cut, float smoothing = SMOOTHING) {
   if (radius > MAX_RADIUS) radius = MAX_RADIUS;
   if (radius > budget) radius = budget;
@@ -59,9 +59,9 @@ inline int profile(int radius, int budget, uint8_t* cut, float smoothing = SMOOT
   const float r = static_cast<float>(radius);
   const float quarter = 0.78539816f;  // 45 degrees
   float sinHalfArc, cosHalfArc, sinHalfAlpha, cosHalfAlpha, sinBeta, cosBeta;
-  detail::sinCos(quarter * (1 - s), sinHalfArc, cosHalfArc);  // half the arc, 45 (1 - s) degrees
+  detail::sinCos(quarter * (1 - s), sinHalfArc, cosHalfArc);    // half the arc, 45 (1 - s) degrees
   detail::sinCos(quarter * s / 2, sinHalfAlpha, cosHalfAlpha);  // half of alpha = 45 s / 2
-  detail::sinCos(quarter * s, sinBeta, cosBeta);               // beta = 45 s
+  detail::sinCos(quarter * s, sinBeta, cosBeta);                // beta = 45 s
   const float p = (1.0f + s) * r;
   const float arcSection = sinHalfArc * r * 1.41421356f;
   const float c = r * sinHalfAlpha / cosHalfAlpha * cosBeta;
@@ -70,47 +70,52 @@ inline int profile(int radius, int budget, uint8_t* cut, float smoothing = SMOOT
   const float a = 2 * b;
   const float ex = arcSection + d;  // = p - a - b - c
 
-  int rows = static_cast<int>(p);
-  if (rows < p) ++rows;  // ceil(p): every row less than p from the corner
-  if (rows > MAX_ROWS) rows = MAX_ROWS;
-  // First each row's crossing, measured along the row. That measure is sound where the curve is
-  // steep; on the flat rows next to the edge, the edge row itself lies on the curve's tangent and a
-  // crossing along it says nothing. So the table is then made symmetric from the steep side: pixel
-  // (i, d) above the diagonal goes exactly when its mirror (d, i) does.
-  uint8_t along[MAX_ROWS];
-  for (int row = 0; row < rows; ++row) {
-    if (row <= d) {
-      // First Bezier, all of it above the diagonal: only the mirrors count here.
-      along[row] = static_cast<uint8_t>(rows);
-    } else if (row <= ex) {
-      // The arc, in whole numbers: ceil(r - sqrt(n)) is r - floor(sqrt(n)), a square root or not,
-      // which keeps a pixel on the curve the way the old circle did, so an unsmoothed corner
-      // lands on its pixels exactly.
-      const int n = radius * radius - (radius - row) * (radius - row);
-      int root = 0;
-      while ((root + 1) * (root + 1) <= n) ++root;
-      along[row] = static_cast<uint8_t>(radius - root);
-    } else {
-      // Second Bezier, the mirror of the first: find t where the first one's x equals the row, and
-      // take the first one's y there, d t^3. x only falls as t grows, so halving finds it.
-      float lo = 0, hi = 1;
-      for (int k = 0; k < 24; ++k) {
-        const float t = (lo + hi) / 2, u = 1 - t;
-        const float x = u * u * u * p + 3 * u * u * t * (p - a) + 3 * u * t * t * (p - a - b) + t * t * t * ex;
-        (x > row ? lo : hi) = t;
-      }
+  // The first Bezier at parameter t: x falls from p to ex and y (= d t^3, every control point but
+  // the last sits on the edge) rises from 0 to d, both monotonic, so halving on t inverts either.
+  const auto bezierX = [&](const float t) {
+    const float u = 1 - t;
+    return u * u * u * p + 3 * u * u * t * (p - a) + 3 * u * t * t * (p - a - b) + t * t * t * ex;
+  };
+  const auto solve = [&](const bool alongX, const float target) {
+    float lo = 0, hi = 1;
+    for (int k = 0; k < 24; ++k) {
       const float t = (lo + hi) / 2;
-      // A pixel whose centre sits within float rounding of the curve stays.
-      const float x = d * t * t * t - 1e-3f;
-      int inset = static_cast<int>(x);
-      if (inset < x) ++inset;
-      along[row] = static_cast<uint8_t>(inset > 0 ? inset : 0);
+      const bool before = alongX ? bezierX(t) > target : d * t * t * t < target;
+      (before ? lo : hi) = t;
     }
-  }
+    return (lo + hi) / 2;
+  };
+
+  int rows = static_cast<int>(p + 0.5f);  // rows whose centre lies before p: ceil(p - 0.5)
+  if (rows < p - 0.5f) ++rows;
+  if (rows > MAX_ROWS) rows = MAX_ROWS;
   int used = 0;
   for (int row = 0; row < rows; ++row) {
-    int n = along[row] < row + 1 ? along[row] : row + 1;  // pixels left of the diagonal
-    for (int i = row + 1; i < rows; ++i) n += along[i] > row ? 1 : 0;  // mirrors of the steep side
+    const float y = row + 0.5f;
+    int n;
+    if (y > d && y <= ex) {
+      // The arc, in whole numbers so a circle's own ties land exactly: pixel i's centre lies
+      // outside it when (r - i - 0.5)^2 + (r - y)^2 > r^2, that is (2r - 2i - 1)^2 > N below.
+      const int twiceOff = 2 * radius - 2 * row - 1;  // 2 (r - y)
+      const int n4 = 4 * radius * radius - twiceOff * twiceOff;
+      n = 0;
+      while (n < radius && (2 * radius - 2 * n - 1) * (2 * radius - 2 * n - 1) > n4) ++n;
+    } else {
+      // A Bezier: on the first, the x where its y reaches the row; on the second (the mirror of
+      // the first), the first one's y where its x reaches the row.
+      float x;
+      if (y <= d) {
+        x = bezierX(solve(false, y));
+      } else {
+        const float t = solve(true, y);
+        x = d * t * t * t;
+      }
+      // Pixels whose centres (i + 0.5) lie before the crossing.
+      const float before = x - 0.5f;
+      n = static_cast<int>(before);
+      if (n < before) ++n;
+      if (n < 0) n = 0;
+    }
     cut[row] = static_cast<uint8_t>(n);
     if (n > 0) used = row + 1;
   }

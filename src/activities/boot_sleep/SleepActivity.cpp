@@ -35,6 +35,7 @@
 #include "components/ReadingStatsView.h"
 #include "components/UITheme.h"
 #include "components/X3BrandScreen.h"
+#include "components/themes/TenorRadius.h"
 #include "fontIds.h"
 #include "images/MoonIcon.h"
 
@@ -1160,8 +1161,16 @@ void SleepActivity::renderQuoteSleepScreen() const {
     }
     if (!title.empty()) y += PLACE_GAP;
     renderer.drawText(SMALL_FONT_ID, textX, y, place);
-    return !withCover || (cover.rewindToData() == BmpReaderError::Ok &&
-                          renderer.drawBitmap(cover, MARGIN_X, ROW_TOP, COVER_W, COVER_H, cropX, cropY));
+    if (!withCover) return true;
+    const bool drawn = cover.rewindToData() == BmpReaderError::Ok &&
+                       renderer.drawBitmap(cover, MARGIN_X, ROW_TOP, COVER_W, COVER_H, cropX, cropY);
+    // Rounded like every cover (components/themes/TenorRadius.h): the page's white back over the
+    // corners, in the B/W frame and in each absolute gray plane alike, where white is also the
+    // cleared state.
+    if (drawn) {
+      renderer.maskRoundedRectOutsideCorners(MARGIN_X, ROW_TOP, COVER_W, COVER_H, tenorradius::cover(COVER_W));
+    }
+    return drawn;
   };
 
   const uint32_t started = millis();
@@ -1217,6 +1226,10 @@ void SleepActivity::renderQuoteSleepScreen() const {
     ready = cover.rewindToData() == BmpReaderError::Ok &&
             renderer.drawBitmap(cover, MARGIN_X, ROW_TOP, COVER_W, COVER_H, cropX, cropY);
     if (!ready) break;
+    // A nudge plane starts all clear (0x00), which is Color::Black to the renderer: that is "no
+    // gray" at the rounded corners here.
+    renderer.maskRoundedRectOutsideCorners(MARGIN_X, ROW_TOP, COVER_W, COVER_H, tenorradius::cover(COVER_W),
+                                           Color::Black);
     if (plane == GfxRenderer::GRAYSCALE_LSB) planes.lsb();
   }
   if (ready) planes.show();

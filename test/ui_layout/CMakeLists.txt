@@ -50,7 +50,8 @@ target_include_directories(UiLayout_tenor_radius PRIVATE "${REPO_ROOT}/src" "${R
 add_test(NAME UiLayout.tenor_radius COMMAND UiLayout_tenor_radius)
 # Rounded blocks through the real GfxRenderer.cpp, with the button_symbols test's stubs and a RAM
 # framebuffer, so the corner shape is checked on the pixels the panel gets.
-add_executable(UiLayout_rounded_render rounded_render.cpp
+foreach(name rounded_render rounded_border)
+add_executable(UiLayout_${name} ${name}.cpp
   "${REPO_ROOT}/lib/GfxRenderer/GfxRenderer.cpp"
   "${REPO_ROOT}/lib/GfxRenderer/FontCacheManager.cpp"
   "${REPO_ROOT}/lib/GfxRenderer/InlineSymbols.cpp"
@@ -60,16 +61,17 @@ add_executable(UiLayout_rounded_render rounded_render.cpp
   "${REPO_ROOT}/lib/Epub/Epub/blocks/TextBlock.cpp"
   "${REPO_ROOT}/lib/MiniBidi/BidiUtils.cpp"
   "${REPO_ROOT}/lib/MiniBidi/minibidi.c")
-target_compile_features(UiLayout_rounded_render PRIVATE cxx_std_20)
-target_include_directories(UiLayout_rounded_render BEFORE PRIVATE "${REPO_ROOT}/test/button_symbols/stubs")
-target_include_directories(UiLayout_rounded_render PRIVATE "${REPO_ROOT}/src" "${REPO_ROOT}/src/components"
+target_compile_features(UiLayout_${name} PRIVATE cxx_std_20)
+target_include_directories(UiLayout_${name} BEFORE PRIVATE "${REPO_ROOT}/test/button_symbols/stubs")
+target_include_directories(UiLayout_${name} PRIVATE "${REPO_ROOT}/src" "${REPO_ROOT}/src/components"
   "${REPO_ROOT}/lib/EpdFont" "${REPO_ROOT}/lib/Utf8" "${REPO_ROOT}/lib/GfxRenderer" "${REPO_ROOT}/lib/Epub"
   "${REPO_ROOT}/lib/Memory" "${REPO_ROOT}/lib/MiniBidi" "${REPO_ROOT}/lib/Serialization" "${REPO_ROOT}/lib/hal"
   "${REPO_ROOT}/lib/I18n" "${REPO_ROOT}/freeink-sdk/libs/display/FreeInkDisplay/include")
-target_compile_options(UiLayout_rounded_render PRIVATE -ffunction-sections -fdata-sections)
+target_compile_options(UiLayout_${name} PRIVATE -ffunction-sections -fdata-sections)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-  target_link_options(UiLayout_rounded_render PRIVATE -Wl,-dead_strip)
+  target_link_options(UiLayout_${name} PRIVATE -Wl,-dead_strip)
 else()
-  target_link_options(UiLayout_rounded_render PRIVATE -Wl,--gc-sections)
+  target_link_options(UiLayout_${name} PRIVATE -Wl,--gc-sections)
 endif()
-add_test(NAME UiLayout.rounded_render COMMAND UiLayout_rounded_render)
+add_test(NAME UiLayout.${name} COMMAND UiLayout_${name})
+endforeach()

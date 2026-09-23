@@ -12,6 +12,7 @@
 #include "ButtonSymbols.h"
 #include "UITheme.h"
 #include "fontIds.h"
+#include "themes/TenorRadius.h"
 
 void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char* prefix) {
   constexpr int x = 18, rightReserve = 18, tracking = 1;
@@ -171,10 +172,16 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   if (hienPin) {
     // Tong be rong gom ca dau pin 2 px, de vien ngoai dung inset.
     const int bodyWidth = batteryWidth - 2;
-    r.drawRoundedRect(bx, by, bodyWidth, batteryHeight, 1, 3, true);
+    // Blocks are sampled at pixel centres, so a corner of 5 px draws the body's corners with the
+    // very pixels the battery has always had (3, 1, 1 per row); the charge inside is set 2 px in,
+    // concentric with it.
+    constexpr int BATTERY_RADIUS = 5;
+    r.drawRoundedRect(bx, by, bodyWidth, batteryHeight, 1, BATTERY_RADIUS, true);
     r.fillRect(bx + bodyWidth, by + (batteryHeight - 4) / 2, 2, 4);
     const int fill = ((bodyWidth - 4) * percent + 50) / 100;
-    if (fill > 0) r.fillRoundedRect(bx + 2, by + 2, fill, batteryHeight - 4, 1, Color::Black);
+    if (fill > 0) {
+      r.fillRoundedRect(bx + 2, by + 2, fill, batteryHeight - 4, tenorradius::nest(BATTERY_RADIUS, 2), Color::Black);
+    }
     if (hienPhanTram) {
       const int textX = batteryRight ? batteryBlockX : bx + batteryWidth + BATTERY_TEXT_GAP;
       r.drawText(fontChu, textX, y, percentage);

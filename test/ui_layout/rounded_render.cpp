@@ -91,8 +91,10 @@ int main() {
   checkFill(renderer, 9, 9, 8, {true, true, true, true});
 
   // A border is the outer block less the inner block set in by the line width, with the inner
-  // corner concentric (radius r - width) and sized by the inner box.
-  for (const int r : {3, 8, 12}) {
+  // corner concentric (radius r - width) and sized by the inner box, plus the few pixels that join
+  // its rows into one line where the curve is nearly flat (rounded_border.cpp checks the line).
+  // Nothing of it lies outside the outer block.
+  for (const int r : {3, 8, 12, 27}) {
     for (const int lw : {1, 2, 3}) {
       constexpr int X = 50, Y = 40, W = 200, H = 90;
       clear();
@@ -102,11 +104,23 @@ int main() {
         for (int j = 0; j < W; ++j) drawn[i * W + j] = isInk(X + j, Y + i);
       clear();
       renderer.fillRoundedRect(X, Y, W, H, r, Color::Black);
-      renderer.fillRoundedRect(X + lw, Y + lw, W - 2 * lw, H - 2 * lw, std::max(r - lw, 0), Color::White);
-      int wrong = 0;
+      std::vector<bool> outerBlock(W * H);
       for (int i = 0; i < H; ++i)
-        for (int j = 0; j < W; ++j) wrong += drawn[i * W + j] != isInk(X + j, Y + i) ? 1 : 0;
-      check(wrong == 0, "drawRoundedRect is outer less inner, r/lw", r, lw);
+        for (int j = 0; j < W; ++j) outerBlock[i * W + j] = isInk(X + j, Y + i);
+      renderer.fillRoundedRect(X + lw, Y + lw, W - 2 * lw, H - 2 * lw, std::max(r - lw, 0), Color::White);
+      int missing = 0, outside = 0, joins = 0;
+      for (int i = 0; i < H; ++i)
+        for (int j = 0; j < W; ++j) {
+          const int n = i * W + j;
+          const bool ring = isInk(X + j, Y + i);
+          missing += ring && !drawn[n] ? 1 : 0;
+          outside += drawn[n] && !outerBlock[n] ? 1 : 0;
+          joins += drawn[n] && !ring ? 1 : 0;
+        }
+      check(missing == 0, "drawRoundedRect covers outer less inner, r/lw", r, lw);
+      check(outside == 0, "drawRoundedRect stays inside the outer block, r/lw", r, lw);
+      // The joins are a handful per corner, never a second line.
+      check(joins <= 4 * 3 * lw, "drawRoundedRect joins stay few, r/lw", r * 100 + lw, joins);
     }
   }
 
