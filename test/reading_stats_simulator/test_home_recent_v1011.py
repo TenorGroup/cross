@@ -21,16 +21,16 @@ REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 FONTS = REPO / 'lib/EpdFont/builtinFonts/source'
 
-TITLE_A = 'Một cuốn sách có tên rất dài: những điều nhỏ quyết định số phận của một công trình lớn, từ viên gạch đầu tiên tới ngày bàn giao và mọi thứ nằm ở giữa (bản đọc thử)'
-PATH_A = '/books/thu-vien/ban-doc-thu/Một cuốn sách có tên rất dài (bản đọc thử) [A Very Long Title] - Tác giả Một & Tác giả Hai.epub'
-EXCERPT_A = ('Trong cuốn sách này, người viết kể lại cách một nhóm nhỏ làm xong một việc lớn, từ bản '
-             'vẽ đầu tiên tới ngày bàn giao.')
+TITLE_A = 'Chuyện dài về một làng ven biển: những mùa gió, những con thuyền, những người đi xa và những người ở lại, kể theo lời bà ngoại vào các buổi tối mất điện (bản thử)'
+PATH_A = '/sach/thu-vien-mau/ban-thu/Chuyện dài về một làng ven biển (bản thử) [Một tựa sách rất dài] - Người Kể & Người Chép.epub'
+EXCERPT_A = ('Cuốn sách kể về một làng ven biển qua nhiều mùa gió, từ chiếc thuyền đầu tiên tới buổi '
+             'tối cả làng ngồi nghe bà ngoại kể chuyện.')
 # The long-title fixture: four quotes, one book, one day, no minute, by page.
 QUOTES = [
-    (16, 'rồi trong buổi họp đầu tiên của cả nhóm. Đã có ai đo lại chỗ này chưa? Câu trả lời ngắn gọn là: “Chưa!”', 7617, 7730),
-    (23, 'Muốn làm cho xong một việc lớn thì trước hết phải làm cho xong một việc nhỏ. Đo lại. Ghi lại. Làm lại. Rồi mới đi tiếp.', 10790, 10946),
-    (30, 'Nếu nhìn vật liệu theo cách này, ta sẽ thấy rõ rằng, khi mọi thứ khác như nhau, người lập kế hoạch nên chọn thứ đã dùng nhiều lần, cũng như người xây nhà nên chọn người thợ đã làm nhiều nhà.', 14078, 14295),
-    (40, 'Bản vẽ của đợt đầu hầu như không nhắc tới những việc rất thường của công trường. “Bản vẽ không chừa chỗ cho giàn giáo và không tính tới đường đi của cần cẩu,” người thẩm tra ghi lại, khiến đội thi công không còn cách nào khác ngoài việc dựng thêm hàng chục cột chống tạm', 19003, 19298),
+    (12, 'Chiều nào bà cũng ra đầu ngõ ngồi đợi thuyền về. Gió mặn, trời thấp, nước lên chậm. Con chó nằm dưới chân bà, mắt nhìn ra biển.', 3120, 3247),
+    (19, 'Mẹ bảo vá lưới thì phải ngồi yên một chỗ, mỗi mắt lưới buộc hai lần. Hỏi vì sao, mẹ chỉ đáp: “Cho chắc!”', 5044, 5148),
+    (27, 'Mùa gió năm ấy về sớm hơn mọi năm. Cả làng kéo thuyền lên bãi cát từ lúc trời còn tối, người lớn hò nhau từng nhịp, trẻ con xách đèn chạy theo, còn các bà nấu nồi cháo lớn đặt giữa sân đình.', 8210, 8400),
+    (35, 'Chú Tư đi biển ba mươi năm, chưa lần nào kể về những đêm bão. Chú chỉ kể chuyện con cá chuồn bay lên đậu trên mạn thuyền, chuyện trăng rằm soi xuống mặt nước phẳng như tấm kính, và chuyện một buổi sáng cả đàn cá heo bơi theo thuyền từ cửa lạch ra tới hòn đảo nhỏ phía xa.', 11375, 11646),
 ]
 CARD_QUOTE = re.compile(r'Card quote ([0-9a-f]{16}\.json) of (\d+)')
 CARD_BUILD = re.compile(r'Recent card build=(\d+)ms')
@@ -98,10 +98,10 @@ class HomeRecentCardTest(unittest.TestCase):
         folder.mkdir()
         names = []
         for slot, (page, text, start, end) in enumerate(QUOTES):
-            name = quote_name(PATH_A, 20260922, 0, slot)
+            name = quote_name(PATH_A, 20260815, 0, slot)
             (folder / name).write_text(json.dumps(
-                {'schema': 1, 'path': PATH_A, 'title': TITLE_A, 'text': text, 'spine': 10, 'page': page,
-                 'day': 20260922, 'vo': start, 've': end}, ensure_ascii=False, separators=(',', ':')),
+                {'schema': 1, 'path': PATH_A, 'title': TITLE_A, 'text': text, 'spine': 6, 'page': page,
+                 'day': 20260815, 'vo': start, 've': end}, ensure_ascii=False, separators=(',', ':')),
                 encoding='utf-8')
             names.append(name)
         (folder / '.ten-v2').write_text('2')
@@ -169,11 +169,11 @@ class HomeRecentCardTest(unittest.TestCase):
 
     def test_three_books_step_with_the_front_buttons_and_select_opens_the_shown_one(self):
         books = [self.add_book(PATH_A, TITLE_A, 'Tác giả Mẫu, Người Viết', EXCERPT_A),
-                 self.add_book('/ego.epub', 'Ego is the Enemy', 'Ryan Holiday',
-                               'The ego is the enemy of what you want and of what you have.',
+                 self.add_book('/ben-song.epub', 'Bến sông ngày gió', 'Người Viết Thử',
+                               'Nước lên từ sáng, bến vắng người, chỉ còn tiếng gió qua mấy mái chèo.',
                                'test_kerning_ligature.epub'),
-                 self.add_book('/score.epub', 'The Score Takes Care of Itself', 'Bill Walsh',
-                               'The score takes care of itself when you take care of the effort.')]
+                 self.add_book('/doi-che.epub', 'Mùa hái chè trên đồi', 'Tác Giả Thử',
+                               'Sương còn đọng trên lá khi người hái chè lên tới đỉnh đồi.')]
         self.write_recent(books)
         events = '2000:RIGHT;3600:RIGHT;5200:RIGHT;6800:LEFT;8400:CONFIRM;12000:QUIT'
         shots = [(1800, 'first'), (3400, 'second'), (5000, 'third'), (6600, 'wrapped'), (8200, 'back-left'),
@@ -196,7 +196,7 @@ class HomeRecentCardTest(unittest.TestCase):
         # Select opened the book on the card (the third, oldest one) in the reader.
         self.assertIn('Entering activity: EpubReader', log)
         state = json.loads((self.store / 'state.json').read_text())
-        self.assertEqual(state['openEpubPath'], '/score.epub')
+        self.assertEqual(state['openEpubPath'], '/doi-che.epub')
 
     def test_quote_saved_in_the_reader_is_on_the_card_back_home(self):
         self.write_recent([self.add_book(PATH_A, TITLE_A, 'Tác giả Mẫu, Người Viết', EXCERPT_A)])

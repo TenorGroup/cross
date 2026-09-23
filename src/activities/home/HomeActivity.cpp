@@ -345,7 +345,16 @@ void HomeActivity::activateIndex(const int index) {
       else if (action == 2)
         startActivityForResult(makeUniqueNoThrow<ReadingHistoryActivity>(renderer, mappedInput), nullptr);
       else if (action == 3)
-        startActivityForResult(makeUniqueNoThrow<QuotesActivity>(renderer, mappedInput), nullptr);
+        startActivityForResult(makeUniqueNoThrow<QuotesActivity>(renderer, mappedInput),
+                               [this](const ActivityResult& result) {
+                                 // A quote deleted or trimmed there may be the one a card shows,
+                                 // so every card picks its quote again and is drawn anew.
+                                 if (result.isCancelled) return;
+                                 RenderLock lock(*this);
+                                 cardQuotesPicked = 0;
+                                 std::fill(std::begin(cardQuotes), std::end(cardQuotes), 0);
+                                 freeCoverBuffer();
+                               });
       else
         confirmStatsReset(action == 4);
       return;

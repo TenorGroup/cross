@@ -126,13 +126,37 @@ TEST(SleepQuoteCut, TextWithoutSpacesBacksOffByCodepoint) {
 }
 
 TEST(SleepQuoteTitle, EllipsisSitsOnTheLastWord) {
-  std::string line = "quyết định số phận của mọi dự án, \xe2\x80\xa6";
+  std::string line = "những mùa gió và những con thuyền, \xe2\x80\xa6";
   sleepquote::tidyEllipsis(line);
-  EXPECT_EQ(line, "quyết định số phận của mọi dự án\xe2\x80\xa6");
-  line = "yếu tố bất ngờ quyết định\xe2\x80\xa6";
+  EXPECT_EQ(line, "những mùa gió và những con thuyền\xe2\x80\xa6");
+  line = "kể theo lời bà ngoại\xe2\x80\xa6";
   sleepquote::tidyEllipsis(line);
-  EXPECT_EQ(line, "yếu tố bất ngờ quyết định\xe2\x80\xa6");
+  EXPECT_EQ(line, "kể theo lời bà ngoại\xe2\x80\xa6");
   line = "Sách thử có bìa";
   sleepquote::tidyEllipsis(line);
   EXPECT_EQ(line, "Sách thử có bìa");
+}
+
+// The cover of the quote's book is made at sleep when none is cached. A failure is kept as
+// "<cover>.fail" so an unreadable cover costs one attempt, not one per sleep; that is right
+// only when the generator had the heap it needs. The JPEG decoder refuses below 52 KB free
+// (JpegToBmpConverter.cpp), so a failure while the heap was short says nothing about the
+// book and must leave no marker.
+TEST(SleepQuoteCover, HeapClearlyEnoughIsAboveTheDecoderFloor) {
+  EXPECT_GT(sleepquote::COVER_MIN_FREE_HEAP, 52u * 1024u);
+  EXPECT_TRUE(sleepquote::coverHeapReady({sleepquote::COVER_MIN_FREE_HEAP, sleepquote::COVER_MIN_BLOCK}));
+  EXPECT_FALSE(sleepquote::coverHeapReady({sleepquote::COVER_MIN_FREE_HEAP - 1, sleepquote::COVER_MIN_BLOCK}));
+  EXPECT_FALSE(sleepquote::coverHeapReady({sleepquote::COVER_MIN_FREE_HEAP, sleepquote::COVER_MIN_BLOCK - 1}));
+}
+
+TEST(SleepQuoteCover, FailureIsKeptOnlyWhenTheHeapWasEnoughAroundIt) {
+  const sleepquote::HeapSample plenty{200u * 1024u, 100u * 1024u};
+  // The metadata cache the check before it did not count took the heap under the floor.
+  const sleepquote::HeapSample dipped{50u * 1024u, 40u * 1024u};
+  EXPECT_TRUE(sleepquote::keepCoverFailure(plenty, plenty));
+  EXPECT_FALSE(sleepquote::keepCoverFailure(dipped, plenty));
+  EXPECT_FALSE(sleepquote::keepCoverFailure(plenty, dipped));
+  EXPECT_FALSE(sleepquote::keepCoverFailure(dipped, dipped));
+  // Plenty free but fragmented: the decoder's single blocks could not be had.
+  EXPECT_FALSE(sleepquote::keepCoverFailure(plenty, {200u * 1024u, 16u * 1024u}));
 }

@@ -128,7 +128,8 @@ class HomeActivity final : public UiTabListActivity {
   static constexpr size_t RECENT_LIMIT = 5;
   int shownRecent() const;
   // Saved quote each book's card shows during this visit, picked once per book (bit set in
-  // cardQuotesPicked); 0 when the book has none and the card shows the page excerpt instead.
+  // cardQuotesPicked) and again after the Quotes screen changed the store; 0 when the book has
+  // none and the card shows the page excerpt instead.
   uint64_t cardQuotes[RECENT_LIMIT] = {};
   uint8_t cardQuotesPicked = 0;
   std::string cardExcerpt(int index, bool& quoted);

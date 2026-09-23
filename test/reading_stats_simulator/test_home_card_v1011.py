@@ -37,7 +37,7 @@ CARD_STATS = re.compile(r'Card stats rows=([0-9a-f]{2}) bar=(-?\d+)')
 THUMB = re.compile(r'Cover thumbnail (\d+) px: (\d+) ms, ok=(\d)')
 
 TITLE_A = 'Một cuốn sách có tên rất dài'
-PATH_A = '/books/viec-lon.epub'
+PATH_A = '/sach/lang-ven-bien.epub'
 
 
 def fnv64(text):
@@ -56,7 +56,7 @@ def cover_jpeg(width=600, height=900):
     for i in range(12):
         draw.ellipse((40 + i * 30, 520 + i * 10, 200 + i * 30, 680 + i * 10), outline=255 - i * 12, width=3)
     font = ImageFont.truetype(str(FONTS / 'Geist/Geist-Bold.ttf'), 96)
-    for i, word in enumerate(('HOW', 'BIG', 'THINGS')):
+    for i, word in enumerate(('WIND', 'OVER', 'SAND')):
         draw.text((width // 2, 90 + i * 120), word, font=font, fill=250, anchor='ma')
     small = ImageFont.truetype(str(FONTS / 'Geist/Geist-Bold.ttf'), 34)
     draw.text((width // 2, 800), 'TÁC GIẢ MẪU', font=small, fill=10, anchor='ma')
@@ -240,7 +240,7 @@ class HomeCardFollowupTest(unittest.TestCase):
     # --- 3. reading stats beside the cover -----------------------------------------------------
     def test_stats_column_beside_the_cover(self):
         books = []
-        for path, title in ((PATH_A, TITLE_A), ('/b.epub', 'Ego is the Enemy'), ('/c.epub', 'No record yet')):
+        for path, title in ((PATH_A, TITLE_A), ('/b.epub', 'Bến sông ngày gió'), ('/c.epub', 'No record yet')):
             (self.sd / path.lstrip('/')).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(FIXTURE, self.sd / path.lstrip('/'))
             books.append({'path': path, 'title': title, 'author': 'Tenor', 'coverBmpPath': '',
@@ -248,13 +248,13 @@ class HomeCardFollowupTest(unittest.TestCase):
         self.write_recent(books)
         # The first book is the active one; the second has its own file; the
         # third was never recorded.
-        record = {'bookEpoch': 0, 'path': PATH_A, 'title': TITLE_A, 'minutes': 18 * 60 + 59, 'ms': 0, 'turns': 970,
-                  'first': 20260914, 'last': 20260923, 'days': 10, 'progress': 21, 'startProgress': 0}
+        record = {'bookEpoch': 0, 'path': PATH_A, 'title': TITLE_A, 'minutes': 7 * 60 + 25, 'ms': 0, 'turns': 412,
+                  'first': 20260805, 'last': 20260817, 'days': 6, 'progress': 34, 'startProgress': 0}
         (self.store / 'reading-stats.json').write_text(json.dumps({'schema': 3, 'activeBook': record}))
         folder = self.store / 'reading-stats'
         folder.mkdir()
-        other = dict(record, path='/b.epub', title='Ego is the Enemy', minutes=45, turns=30, first=20260920,
-                     last=20260921, days=2, progress=7)
+        other = dict(record, path='/b.epub', title='Bến sông ngày gió', minutes=45, turns=30, first=20260810,
+                     last=20260811, days=2, progress=7)
         (folder / ('tenor_%016x.json' % fnv64('/b.epub'))).write_text(json.dumps(other))
         log, shots = self.launch('2500:RIGHT;4500:RIGHT;7000:QUIT',
                                  [(2000, 'stats-a'), (4000, 'stats-b'), (6500, 'stats-c')])
@@ -267,7 +267,7 @@ class HomeCardFollowupTest(unittest.TestCase):
         # A and B fill the column; C stops after its percent row.
         self.assertTrue(self.ink(a, (282, 400, 504, 480)))
         self.assertFalse(self.ink(c, (282, 190, 504, 480)), 'rows drawn for a book with no record')
-        # The progress bar: filled for 21 % of its width, outlined after that.
+        # The progress bar: filled for 34 % of its width, outlined after that.
         bar = int(stats[0][1])
         self.assertGreater(bar, 124)
         mid = bar + 3

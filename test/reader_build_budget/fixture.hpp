@@ -204,6 +204,8 @@ struct EpubReaderActivity : ReaderActivity {
   ReaderRenderer renderer;
   int pagesUntilFullRefresh = 0;
   bool automaticPageTurnActive = false;
+  // The reselection a failed build or starved section drops (EpubReaderActivity.h).
+  std::string pendingQuoteEdit;
   int currentSpineIndex = 0, nextPageNumber = 0, pendingPageJump = 0;
   uint32_t lastPageTurnTime = 0;
   std::atomic<bool> deferredClearPending{false};

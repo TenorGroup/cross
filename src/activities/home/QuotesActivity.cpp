@@ -98,8 +98,12 @@ int QuotesActivity::itemCount() const {
   return showsBooks() ? static_cast<int>(books.size()) : static_cast<int>(ids.size());
 }
 
+// Quote blocks page by the tallest block this view can draw, measured in the active UI text
+// size: three at the smallest size, fewer where larger faces would push the third into the
+// footer.
 int QuotesActivity::perPage() const {
-  return showsBooks() ? std::min(MAX_BOOK_ROWS, quotelist::bookRowsPerPage(metrics())) : quotelist::BLOCKS_PER_PAGE;
+  if (showsBooks()) return std::min(MAX_BOOK_ROWS, quotelist::bookRowsPerPage(metrics()));
+  return quotelist::blocksPerPage(metrics(), quotelist::contentTop(topRowMetrics()), !bookLevel());
 }
 
 int QuotesActivity::pageCount() const { return quotelist::bookPageCount(itemCount(), perPage()); }
@@ -254,6 +258,12 @@ void QuotesActivity::logPage() const {
       snprintf(key, sizeof(key), " %016llx", static_cast<unsigned long long>(ids[i]));
     shown += key;
   }
+  // The band the rows must stay inside and the footer line under it, so a journey can check
+  // on the screenshot that no row runs into the footer at any UI text size.
+  const auto m = metrics();
+  LOG_DBG("QTS", "Quote page band %d-%d tip %d per page %d lines %d/%d/%d", quotelist::contentTop(topRowMetrics()),
+          m.bandBottom, tenorchrome::tipY(renderer), perPage(), m.bodyLineHeight, m.numberLineHeight,
+          m.smallLineHeight);
   if (showsBooks())
     LOG_DBG("QTS", "Quote books page %d/%d of %d books, %d quotes:%s", page + 1, pageCount(), bookTotal, quoteTotal,
             shown.c_str());
@@ -351,8 +361,8 @@ void QuotesActivity::activate() {
     return;
   }
   if (selected >= static_cast<int>(ids.size())) return;
-  startActivityForResult(makeUniqueNoThrow<QuoteDetailActivity>(renderer, mappedInput, ids, selected, insideReader),
-                         done);
+  startActivityForResult(
+      makeUniqueNoThrow<QuoteDetailActivity>(renderer, mappedInput, ids, selected, insideReader, openBook), done);
 }
 
 // A screen opened from here closes with isCancelled when nothing changed, or with the
@@ -450,7 +460,7 @@ void QuotesActivity::drawBlocks() const {
   const int quoteWidth = renderer.getTextWidth(BODY_FONT_ID, OPEN_QUOTE);
   const bool twoSourceLines = !bookLevel();
   auto y = quotelist::contentTop(topRowMetrics());
-  const int first = page * quotelist::BLOCKS_PER_PAGE;
+  const int first = page * perPage();
   for (int i = 0; i < blockCount; ++i) {
     Block& entry = blocks[i];
     ensureWrapped(entry);

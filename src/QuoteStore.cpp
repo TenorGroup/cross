@@ -41,15 +41,21 @@ bool newerFirst(const QuoteId a, const QuoteId b) {
 
 uint32_t minuteOf(const QuoteId id) { return static_cast<uint32_t>(id >> 4) & 0xFFF; }
 
-// First id of `base`'s book and day that `taken` does not hold, in `base`'s own minute or,
-// when its 16 slots are full, the next minute with a free slot up to the last of the day.
-// Only the name moves: the record keeps its own minute, so the time shown stays exact and
-// the order is off by minutes only among quotes kept in such a burst.
+// Id for a new quote of `base`'s book and day: the slot after the highest one `taken` holds
+// in `base`'s own minute, or, when slot 15 is in use, the same in the next minute, up to the
+// last of the day. A slot freed by a delete below the highest is never reused, because a
+// quote placed there would list after quotes kept before it. Only the name moves: the record
+// keeps its own minute, so the time shown stays exact and the order is off by minutes only
+// among quotes kept in such a burst.
 bool freeId(const QuoteId base, const std::vector<QuoteId>& taken, QuoteId& id) {
   for (QuoteId minute = minuteOf(base); minute < 1440; minute++) {
-    for (unsigned slot = 0; slot < SLOTS; slot++) {
-      id = (base & ~QuoteId{0xFFFF}) | minute << 4 | slot;
-      if (std::find(taken.begin(), taken.end(), id) == taken.end()) return true;
+    const QuoteId first = (base & ~QuoteId{0xFFFF}) | minute << 4;
+    unsigned next = 0;
+    for (const QuoteId used : taken)
+      if ((used & ~QuoteId{0xF}) == first) next = std::max<unsigned>(next, static_cast<unsigned>(used & 0xF) + 1);
+    if (next < SLOTS) {
+      id = first | next;
+      return true;
     }
   }
   return false;
@@ -105,18 +111,26 @@ bool writeRecord(const std::string& path, const QuoteRecord& q) {
   }
   return !doc.overflowed() && PersistableStoreBase::writeDocToFile(path.c_str(), doc);
 }
-bool readRecord(const std::string& filePath, QuoteRecord& q) {
+using ReadResult = PersistableStoreBase::ReadResult;
+
+// Ready when `q` holds the record. Invalid when the file is missing, too large, not JSON or
+// not a quote record: reading it again would give the same answer. Unavailable when it could
+// not be opened or read this time (a busy card, a short heap), which says nothing about the
+// file, so a caller that would give up on it tries again later instead.
+ReadResult readRecordStatus(const std::string& filePath, QuoteRecord& q) {
   JsonDocument doc;
   {
     auto file = Storage.open(filePath.c_str());
-    if (!file || file.size() > 16384) return false;
+    if (!file) return Storage.exists(filePath.c_str()) ? ReadResult::Unavailable : ReadResult::Invalid;
+    if (file.size() > 16384) return ReadResult::Invalid;
   }
-  if (!PersistableStoreBase::readDocFromFile(filePath.c_str(), doc)) return false;
-  if ((doc["schema"] | 0) != 1) return false;
+  const auto read = PersistableStoreBase::readDocFromFileStatus(filePath.c_str(), doc);
+  if (read != ReadResult::Ready) return read;
+  if ((doc["schema"] | 0) != 1) return ReadResult::Invalid;
   const char* text = doc["text"] | "";
   const char* path = doc["path"] | "";
   const char* title = doc["title"] | "";
-  if (!*text || strlen(text) > MAX_BYTES || strlen(path) > 1024 || strlen(title) > 512) return false;
+  if (!*text || strlen(text) > MAX_BYTES || strlen(path) > 1024 || strlen(title) > 512) return ReadResult::Invalid;
   q.text = text;
   q.path = path;
   q.title = title;
@@ -132,7 +146,10 @@ bool readRecord(const std::string& filePath, QuoteRecord& q) {
   q.hasAnchor = !doc["vo"].isNull() && !doc["ve"].isNull();
   q.anchorStart = doc["vo"] | 0u;
   q.anchorEnd = doc["ve"] | 0u;
-  return true;
+  return ReadResult::Ready;
+}
+bool readRecord(const std::string& filePath, QuoteRecord& q) {
+  return readRecordStatus(filePath, q) == ReadResult::Ready;
 }
 
 // Points latestSaved() at `id`. Staged and renamed like a record, so a cut leaves the old mark
@@ -147,11 +164,12 @@ void markLatest(const QuoteId id) {
 }
 
 // Finishes or undoes a write that save() or replace() staged as "<name>.tmp" when the power
-// went. replace() removes the old record only after the staged file is written and closed,
-// so a staged file with no record beside it is complete and is promoted. A staged file
-// next to its record was cut while being written and is dropped. save() stages a new quote
-// the same way; a cut in the middle of that write leaves a partial file with no record,
-// which is dropped too, because promoting it would list a quote that cannot be opened.
+// went. Both write the staged file in full and close it before they touch the record, so a
+// staged file that reads back as a whole record is a finished write that only missed its
+// swap: it is promoted, over the old record when replace() was cut before removing it. One
+// that does not read back was cut while being written and is dropped, record or not, since
+// promoting it would list a quote that cannot be opened. One that could not be read this time
+// is left for the next visit.
 void repairStaged() {
   std::vector<QuoteId> staged;
   forEachEntry([&](const char* entry) {
@@ -164,8 +182,17 @@ void repairStaged() {
     const std::string path = filePath(nameOf(id));
     const std::string temporary = path + ".tmp";
     QuoteRecord record;
-    const bool promote = !Storage.exists(path.c_str()) && readRecord(temporary, record);
-    const bool done = promote ? Storage.rename(temporary.c_str(), path.c_str()) : Storage.remove(temporary.c_str());
+    const auto read = readRecordStatus(temporary, record);
+    if (read == ReadResult::Unavailable) {
+      LOG_INF("QTS", "Staged quote %s left for later", nameOf(id).c_str());
+      continue;
+    }
+    const bool promote = read == ReadResult::Ready;
+    // rename does not replace, so the old record goes first; the staged file holds every
+    // field of the new one.
+    const bool done = promote ? (!Storage.exists(path.c_str()) || Storage.remove(path.c_str())) &&
+                                    Storage.rename(temporary.c_str(), path.c_str())
+                              : Storage.remove(temporary.c_str());
     LOG_INF("QTS", "Staged quote %s %s%s", nameOf(id).c_str(), promote ? "promoted" : "dropped",
             done ? "" : ", failed");
   }
@@ -286,9 +313,15 @@ bool migrateNames() {
   bool failed = false;
   for (const QuoteId id : ids) {
     QuoteRecord quote;
-    // A record that cannot be read has no fields to name it by. It stays where it is and
-    // does not hold the marker back, or every visit would retry it forever.
-    if (!load(id, quote)) {
+    // A record that is not a quote record has no fields to name it by. It stays where it is
+    // and does not hold the marker back, or every visit would retry it forever. One that could
+    // not be read this time does hold it back: the next visit reads it again.
+    const auto read = readRecordStatus(filePath(nameOf(id)), quote);
+    if (read == ReadResult::Unavailable) {
+      failed = true;
+      continue;
+    }
+    if (read != ReadResult::Ready) {
       unreadable++;
       continue;
     }
@@ -306,7 +339,7 @@ bool migrateNames() {
   LOG_INF("QTS", "Quote names: %u renamed, %u unreadable left as they were", static_cast<unsigned>(renamed),
           static_cast<unsigned>(unreadable));
   if (failed) {
-    LOG_ERR("QTS", "Quote names: a rename failed, will retry");
+    LOG_ERR("QTS", "Quote names: a read or rename failed, will retry");
     return false;
   }
   return Storage.ensureDirectoryExists("/.crosspoint") && Storage.ensureDirectoryExists(DIRECTORY) &&

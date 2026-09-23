@@ -130,9 +130,9 @@ class QuotesPreviewTest(unittest.TestCase):
         quotes.mkdir()
         (quotes / '.ten-v2').write_text('2')
         rows = [
-            ('Tiêu chuẩn không phải là điều ta mong muốn, nó là điều ta làm mỗi ngày, '
-             'kể cả khi không ai nhìn.', 'Score Takes Care of Itself', 3, 12, 20260919),
-            ('A short one.', 'Ego is the Enemy', 1, 4, 20260920),
+            ('Sương còn đọng trên lá khi người hái chè lên tới đỉnh đồi, còn mặt trời '
+             'thì vừa ló.', 'Mùa hái chè trên đồi', 3, 12, 20260919),
+            ('A short one.', 'Bến sông ngày gió', 1, 4, 20260920),
             ('The reader turns one page and keeps its position. Clear lines fit the page. '
              'Office affine affinity. The reader turns one page and keeps its position again, '
              'and the paragraph runs on well past the fourth line.', 'Synonym Lookup Test', 0, 2, 20260921),

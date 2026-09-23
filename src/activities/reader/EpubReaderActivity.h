@@ -97,7 +97,9 @@ class EpubReaderActivity final : public ReaderActivity {
   // once per book open. Highlights are drawn from these, so no quote text is resident.
   std::vector<QuoteAnchor> quoteAnchors;
   // Name of the quote whose page the reader is moving to so the selector can reopen it there,
-  // empty when no reselection waits. Written by the main loop under the render lock.
+  // empty when no reselection waits. Written by the main loop under the render lock, and
+  // cleared by renderBook when it ends on anything but a page, and by the next button press
+  // before that page is shown.
   std::string pendingQuoteEdit;
   // Set by renderBook once a page is on the panel while a reselection waits; the main loop
   // then opens the selector over that page.

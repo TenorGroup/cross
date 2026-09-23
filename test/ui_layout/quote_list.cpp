@@ -30,6 +30,61 @@ constexpr int16_t NUMBER_WIDTH_99 = 32;     // "99" in Geist Bold 12
 
 quotelist::Metrics metrics() { return {BAND_X, BAND_WIDTH, BAND_TOP, BAND_BOTTOM, BODY_LINE, NUMBER_LINE, SMALL_LINE}; }
 
+// The real band of the Quotes list at each UI text size, as the simulator logs it ("Quote
+// page band"): the header's bottom and the band's bottom (the footer line less its gap). Line
+// heights are the tiers' own (components/UIScale.h): the caption, subtitle and body faces;
+// the quote itself stays Noto Serif 14 (40) at every size.
+struct Tier {
+  const char* name;
+  int16_t headerBottom, bandBottom;
+  int16_t caption, subtitle, body;
+};
+constexpr Tier TIERS[] = {
+    {"Small", 53, 741, 21, 26, 33},
+    {"Medium", 58, 731, 26, 33, 38},
+    {"Large", 63, 717, 33, 38, 43},
+};
+
+// Top of the first block: under the top row, which is set in the subtitle face.
+int16_t firstBlockTop(const Tier& tier) {
+  const quotelist::Metrics top{BAND_X, BAND_WIDTH, tier.headerBottom, tier.bandBottom, BODY_LINE, tier.body,
+                               tier.subtitle};
+  return quotelist::contentTop(top);
+}
+
+// The page size the screen uses for the tallest block of one view, then a check that that
+// many such blocks, placed as the screen places them, keep every line above the band's
+// bottom, and that one more would not have: the page is as full as it can be.
+int checkTier(const Tier& tier, const bool allQuotes) {
+  // All quotes: a bold title line in the subtitle face over the place line. One book: the
+  // place line alone, in the caption face.
+  const quotelist::Metrics m{BAND_X,    BAND_WIDTH, tier.headerBottom, tier.bandBottom,
+                             BODY_LINE, tier.body,  allQuotes ? tier.subtitle : tier.caption};
+  const int16_t top = firstBlockTop(tier);
+  const int perPage = quotelist::blocksPerPage(m, top, allQuotes);
+  if (perPage < 1 || perPage > quotelist::BLOCKS_PER_PAGE) {
+    printf("FAIL: %s %s: %d blocks a page\n", tier.name, allQuotes ? "all" : "book", perPage);
+    assert(false);
+  }
+  int16_t y = top;
+  int16_t inkBottom = 0;
+  for (int i = 0; i < perPage; ++i) {
+    const auto block = quotelist::place(m, y, quotelist::MAX_BODY_LINES, allQuotes, NUMBER_WIDTH_1, QUOTE_GLYPH_WIDTH);
+    inkBottom = static_cast<int16_t>(block.sourceY + block.sourceStep + m.smallLineHeight);
+    y = static_cast<int16_t>(y + block.height);
+  }
+  if (inkBottom > quotelist::footerY(m)) {
+    printf("FAIL: %s %s: %d blocks end at %d, past the band's bottom %d\n", tier.name, allQuotes ? "all" : "book",
+           perPage, inkBottom, quotelist::footerY(m));
+    assert(false);
+  }
+  if (perPage < quotelist::BLOCKS_PER_PAGE) {
+    const auto extra = quotelist::place(m, y, quotelist::MAX_BODY_LINES, allQuotes, NUMBER_WIDTH_1, QUOTE_GLYPH_WIDTH);
+    assert(extra.sourceY + extra.sourceStep + m.smallLineHeight > quotelist::footerY(m));
+  }
+  return perPage;
+}
+
 }  // namespace
 
 int main() {
@@ -37,17 +92,22 @@ int main() {
 
   // Three to a screen: two quotes make one page, five make two, and the fifth (index 3,
   // the fourth quote) starts that second page.
-  assert(quotelist::pageCount(2) == 1);
-  assert(quotelist::pageOf(0) == 0);
-  assert(quotelist::pageOf(1) == 0);
-  assert(quotelist::firstOfPage(0) == 0);
+  assert(quotelist::pageCount(2, 3) == 1);
+  assert(quotelist::pageOf(0, 3) == 0);
+  assert(quotelist::pageOf(1, 3) == 0);
+  assert(quotelist::firstOfPage(0, 3) == 0);
 
-  assert(quotelist::pageCount(5) == 2);
-  assert(quotelist::pageOf(2) == 0);
-  assert(quotelist::pageOf(3) == 1);
-  assert(quotelist::firstOfPage(1) == 3);
-  assert(quotelist::clampPage(5, 5) == 1);
-  assert(quotelist::clampPage(-1, 5) == 0);
+  assert(quotelist::pageCount(5, 3) == 2);
+  assert(quotelist::pageOf(2, 3) == 0);
+  assert(quotelist::pageOf(3, 3) == 1);
+  assert(quotelist::firstOfPage(1, 3) == 3);
+  assert(quotelist::clampPage(5, 5, 3) == 1);
+  assert(quotelist::clampPage(-1, 5, 3) == 0);
+  // Two to a screen, as the larger text sizes page: five quotes make three pages, and the
+  // fifth starts the third.
+  assert(quotelist::pageCount(5, 2) == 3);
+  assert(quotelist::pageOf(4, 2) == 2);
+  assert(quotelist::firstOfPage(2, 2) == 4);
 
   // The sort row is the cursor's first stop, above every real row; the first block starts
   // below its divider and the breathing room under it.
@@ -117,6 +177,15 @@ int main() {
   assert(quotelist::bookFirstOfPage(1, rowsPerPage) == rowsPerPage);
   assert(quotelist::bookPageCount(0, rowsPerPage) == 1);
 
-  puts("PASS: quote list keeps the number box off the hanging quote, pages three at a time, "
-       "and the book list pages the same way");
+  // Every UI text size: the tallest blocks of both views stay above the footer. The smallest
+  // size keeps the mockup's three to a page.
+  for (const auto& tier : TIERS) {
+    const int all = checkTier(tier, true);
+    const int book = checkTier(tier, false);
+    printf("%s: %d blocks a page for all quotes, %d inside one book\n", tier.name, all, book);
+  }
+  assert(checkTier(TIERS[0], true) == 3 && checkTier(TIERS[0], false) == 3);
+
+  puts("PASS: quote list keeps the number box off the hanging quote, fits its pages to the band at "
+       "every text size, and the book list pages the same way");
 }

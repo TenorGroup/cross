@@ -121,11 +121,13 @@ class QuoteNameStoreTest : public ::testing::Test {
     fixtureRoot = root.string();
     io = {};
     storageFault = {};
+    readFault = {};
   }
   void TearDown() override {
     std::filesystem::remove_all(root);
     fixtureRoot.clear();
     storageFault = {};
+    readFault = {};
   }
 };
 
@@ -178,6 +180,39 @@ TEST_F(QuoteNameStoreTest, TwoQuotesInTheSameMinuteTakeTheNextSlot) {
   std::vector<quotes::QuoteId> ids;
   quotes::listNames(0, ids);
   EXPECT_EQ(namesOf(ids), (std::vector<std::string>{second, first}));
+}
+
+// Deleting a quote from a burst frees a slot below the newest one of that minute. A quote
+// kept later in the same minute still lists first: it takes the slot after the highest one
+// in use, never the freed one.
+TEST_F(QuoteNameStoreTest, QuoteKeptAfterADeleteStillListsFirst) {
+  ASSERT_TRUE(quotes::save(quoteOf("a", "first", 20260922, MINUTE_2041)));
+  ASSERT_TRUE(quotes::save(quoteOf("a", "second", 20260922, MINUTE_2041)));
+  ASSERT_TRUE(quotes::remove(fileName(KEY_A, CODE_20260922, MINUTE_2041, 0)));
+  ASSERT_TRUE(quotes::save(quoteOf("a", "third", 20260922, MINUTE_2041)));
+  const std::string third = fileName(KEY_A, CODE_20260922, MINUTE_2041, 2);
+  EXPECT_EQ(quoteFiles(), (std::set<std::string>{fileName(KEY_A, CODE_20260922, MINUTE_2041, 1), third}));
+  std::vector<quotes::QuoteId> ids;
+  quotes::listNames(0, ids);
+  ASSERT_EQ(ids.size(), 2u);
+  QuoteRecord newest;
+  ASSERT_TRUE(quotes::load(ids.front(), newest));
+  EXPECT_EQ(newest.text, "third");
+}
+
+// With the last slot of the minute in use, a new quote of that minute moves on to the next
+// minute even when slots below it were freed, so it still sorts after every older one.
+TEST_F(QuoteNameStoreTest, LastSlotInUseMovesTheNextQuoteOnEvenWithFreedSlots) {
+  for (int i = 0; i < 16; i++) ASSERT_TRUE(quotes::save(quoteOf("a", "q" + std::to_string(i), 20260922, 1)));
+  for (uint32_t slot = 0; slot < 15; slot++) ASSERT_TRUE(quotes::remove(fileName(KEY_A, CODE_20260922, 1, slot)));
+  ASSERT_TRUE(quotes::save(quoteOf("a", "later", 20260922, 1)));
+  EXPECT_EQ(quoteFiles(), (std::set<std::string>{fileName(KEY_A, CODE_20260922, 1, 15),
+                                                 fileName(KEY_A, CODE_20260922, 2, 0)}));
+  std::vector<quotes::QuoteId> ids;
+  quotes::listNames(0, ids);
+  QuoteRecord newest;
+  ASSERT_TRUE(quotes::load(ids.front(), newest));
+  EXPECT_EQ(newest.text, "later");
 }
 
 // Sixteen slots fill up in a burst of saves; the seventeenth quote moves its name to the
@@ -412,6 +447,37 @@ TEST_F(QuoteNameStoreTest, FailedRenameLeavesNoMarkerAndIsRetried) {
   EXPECT_TRUE(filesOnCard().count(".ten-v2"));
 }
 
+// A legacy record that could not be opened this time (the card busy, a read cut short) says
+// nothing about the file itself. Writing the marker now would leave it under its hash name
+// for good, so the pass reports a failure and the next visit tries again.
+TEST_F(QuoteNameStoreTest, TransientReadFailureLeavesNoMarkerAndIsRetried) {
+  const QuoteRecord a1 = quoteOf("a", "legacy one", 20260922, MINUTE_2041);
+  const std::string legacy = legacyName(a1);
+  writeFile(legacy, recordJson(a1.path, a1.text, a1.spine, a1.page, a1.day, a1.minute));
+  readFault.path = "/.crosspoint/quotes/" + legacy;
+  readFault.fullPath = true;
+  readFault.openFails = true;
+  EXPECT_FALSE(quotes::migrateNames());
+  EXPECT_GE(readFault.hits, 1u);
+  EXPECT_FALSE(filesOnCard().count(".ten-v2"));
+  EXPECT_EQ(quoteFiles(), std::set<std::string>{legacy});
+
+  readFault = {};
+  EXPECT_TRUE(quotes::migrateNames());
+  EXPECT_EQ(quoteFiles(), std::set<std::string>{fileName(KEY_A, CODE_20260922, MINUTE_2041, 0)});
+  EXPECT_TRUE(filesOnCard().count(".ten-v2"));
+}
+
+// A file that reads back whole but is not a quote record of this schema is definitively not
+// one to rename. It stays where it is and does not hold the marker back.
+TEST_F(QuoteNameStoreTest, RecordOfAnotherSchemaDoesNotHoldTheMarker) {
+  const std::string other = "0123456789abcdef.json";
+  writeFile(other, R"({"schema":7,"path":"a","title":"Book","text":"words"})");
+  EXPECT_TRUE(quotes::migrateNames());
+  EXPECT_TRUE(filesOnCard().count(".ten-v2"));
+  EXPECT_EQ(quoteFiles(), std::set<std::string>{other});
+}
+
 // The reader opens only the files of the book it shows, so a corrupt or huge record of
 // another book costs nothing, and the number of other books' quotes no longer matters.
 TEST_F(QuoteNameStoreTest, LoadAnchorsOpensOnlyThisBooksFiles) {
@@ -540,6 +606,32 @@ TEST_F(QuoteNameStoreTest, CutAfterRemoveIsRepairedByPromotingTheStagedRecord) {
   QuoteRecord loaded;
   ASSERT_TRUE(quotes::load(name, loaded));
   EXPECT_EQ(loaded.text, "too many");
+}
+
+// replace() writes the whole new record to "<name>.tmp" and closes it before it touches the
+// old one. A cut after that, before the old record is removed, leaves a complete staged file
+// beside the old record: the edit is done but for the swap, and the next visit finishes it.
+TEST_F(QuoteNameStoreTest, CompleteStagedEditBesideTheRecordIsPromoted) {
+  ASSERT_TRUE(quotes::migrateNames());
+  ASSERT_TRUE(quotes::save(quoteOf("a", "chosen too many words", 20260922, 100)));
+  const std::string name = fileName(KEY_A, CODE_20260922, 100, 0);
+  QuoteRecord edited;
+  ASSERT_TRUE(quotes::load(name, edited));
+  edited.text = "too many";
+  // The power goes where the old record would be removed: both files are whole.
+  storageFault.operation = StorageFaultOperation::Remove;
+  storageFault.path = "/.crosspoint/quotes/" + name;
+  EXPECT_FALSE(quotes::replace(name, edited));
+  storageFault = {};
+  ASSERT_TRUE(filesOnCard().count(name));
+  ASSERT_TRUE(filesOnCard().count(name + ".tmp"));
+
+  ASSERT_TRUE(quotes::migrateNames());
+  EXPECT_EQ(filesOnCard(), (std::set<std::string>{name, ".ten-v2"}));
+  QuoteRecord loaded;
+  ASSERT_TRUE(quotes::load(name, loaded));
+  EXPECT_EQ(loaded.text, "too many");
+  EXPECT_EQ(loaded.minute, 100u);
 }
 
 // A cut while the staged file was still being written leaves it beside the old record,

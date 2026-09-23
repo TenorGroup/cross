@@ -72,14 +72,20 @@ constexpr char CLOSE_QUOTE[] = "\xe2\x80\x9d";
 
 // The chapter by number and, when the book's own table of contents names it, by name. The
 // lookup is the one the reader's status bar makes: spine item -> table of contents entry.
-// A book with no cached table of contents leaves the number standing alone.
-std::string chapterLine(const QuoteRecord& quote) {
+// `book` is the loaded book the reader passed down, used when the quote is one of its own;
+// otherwise the book's cached metadata is loaded for the lookup. A book with no cached table
+// of contents leaves the number standing alone.
+std::string chapterLine(const QuoteRecord& quote, const Epub* book) {
   char line[192];
-  Epub epub(quote.path, "/.crosspoint");
-  if (epub.load(/*buildIfMissing=*/false, /*skipLoadingCss=*/true)) {
-    const int tocIndex = epub.getTocIndexForSpineIndex(quote.spine);
+  std::unique_ptr<Epub> loaded;
+  if (!book || book->getPath() != quote.path) {
+    loaded = makeUniqueNoThrow<Epub>(quote.path, "/.crosspoint");
+    book = loaded && loaded->load(/*buildIfMissing=*/false, /*skipLoadingCss=*/true) ? loaded.get() : nullptr;
+  }
+  if (book) {
+    const int tocIndex = book->getTocIndexForSpineIndex(quote.spine);
     if (tocIndex >= 0) {
-      const std::string title = epub.getTocItem(tocIndex).title;
+      const std::string title = book->getTocItem(tocIndex).title;
       if (!title.empty()) {
         snprintf(line, sizeof(line), tr(STR_QUOTES_DETAIL_CHAPTER), quote.spine + 1, clipped(title, 120).c_str());
         return line;
@@ -175,6 +181,9 @@ void QuoteDetailActivity::show(const int newIndex) {
   chapter.clear();
   when.clear();
   pageLine.clear();
+  // load() leaves `quote` as it was when the record cannot be read, which would carry the
+  // previous quote's words into the delete confirmation.
+  quote = QuoteRecord{};
   loaded = quotes::load(ids[index], quote);
   auto m = metrics();
   const int width = quotedetail::bodyX1(m) - quotedetail::bodyX0(m);
@@ -189,8 +198,7 @@ void QuoteDetailActivity::show(const int newIndex) {
                                       EpdFontFamily::ITALIC);
     m = metrics();
   }
-  chapter = renderer.truncatedText(META_FONT_ID, chapterLine(quote).c_str(), width);
-  tidyEllipsis(chapter);
+  chapter = chapterFor(width);
   if (!titleLines.empty()) tidyEllipsis(titleLines.back());
   when = whenLine(quote);
   char page[48];
@@ -207,6 +215,17 @@ void QuoteDetailActivity::show(const int newIndex) {
   pages = fontChoice.pages;
   lines = std::move(size18 ? lines18 : lines16);
   linesPerPage = std::max(1, quotedetail::linesPerPage(size18 ? m.lineHeight18 : m.lineHeight16, m));
+}
+
+std::string QuoteDetailActivity::chapterFor(const int width) {
+  const auto id = ids[index];
+  for (const auto& known : chapters)
+    if (known.first == id) return known.second;
+  std::string line = renderer.truncatedText(META_FONT_ID, chapterLine(quote, openBook.get()).c_str(), width);
+  tidyEllipsis(line);
+  if (chapters.size() >= CHAPTER_CACHE) chapters.erase(chapters.begin());
+  chapters.emplace_back(id, line);
+  return line;
 }
 
 // For the simulator journeys (test/reading_stats_simulator/test_quotes_v1011.py); device
@@ -227,9 +246,14 @@ void QuoteDetailActivity::openMenu(const Menu which) {
     // The header above already shows the quote's place in the list, so the options are
     // titled by the screen's name alone.
     if (which == Menu::Options) {
+      // A record that cannot be read has no words to trim or reselect; deleting it is all
+      // there is to do.
       static constexpr StrId options[] = {StrId::STR_QUOTES_MENU_EDIT, StrId::STR_QUOTES_MENU_DELETE,
                                           StrId::STR_CANCEL};
-      popup.show(StrId::STR_QUOTES, options, 3, 0, pick);
+      if (loaded)
+        popup.show(StrId::STR_QUOTES, options, 3, 0, pick);
+      else
+        popup.show(StrId::STR_QUOTES, options + 1, 2, 0, pick);
     } else if (which == Menu::Edit) {
       static constexpr StrId options[] = {StrId::STR_QUOTES_EDIT_TRIM, StrId::STR_QUOTES_EDIT_RESELECT,
                                           StrId::STR_CANCEL};
@@ -240,15 +264,25 @@ void QuoteDetailActivity::openMenu(const Menu which) {
       // short, so the note stands under the words and the question titles the dialog.
       confirmingDelete = true;
       const int width = renderer.getScreenWidth() - 2 * EXCERPT_MARGIN;
-      const std::string words = std::string(OPEN_QUOTE) + clipped(quote.text, 400);
-      const int closeWidth = renderer.getTextWidth(EXCERPT_FONT_ID, CLOSE_QUOTE);
-      excerpt = renderer.wrappedText(EXCERPT_FONT_ID, words.c_str(), width - closeWidth, EXCERPT_MAX_LINES);
-      if (excerpt.empty()) excerpt.emplace_back(OPEN_QUOTE);
-      tidyEllipsis(excerpt.back());
-      if (!endsWithCloseQuote(excerpt.back())) excerpt.back() += CLOSE_QUOTE;
+      if (loaded) {
+        const std::string words = std::string(OPEN_QUOTE) + clipped(quote.text, 400);
+        const int closeWidth = renderer.getTextWidth(EXCERPT_FONT_ID, CLOSE_QUOTE);
+        excerpt = renderer.wrappedText(EXCERPT_FONT_ID, words.c_str(), width - closeWidth, EXCERPT_MAX_LINES);
+        if (excerpt.empty()) excerpt.emplace_back(OPEN_QUOTE);
+        tidyEllipsis(excerpt.back());
+        if (!endsWithCloseQuote(excerpt.back())) excerpt.back() += CLOSE_QUOTE;
+      } else {
+        // No words to quote: the line the detail itself shows for such a record, unquoted.
+        excerpt = renderer.wrappedText(EXCERPT_FONT_ID, tr(STR_QUOTES_UNREADABLE), width, EXCERPT_MAX_LINES);
+        if (excerpt.empty()) excerpt.emplace_back();
+      }
       note = renderer.wrappedText(NOTE_FONT_ID, tr(STR_QUOTES_DELETE_NOTE), width, NOTE_MAX_LINES);
       static constexpr StrId options[] = {StrId::STR_CANCEL, StrId::STR_CONFIRM};
       popup.show(StrId::STR_QUOTES_DELETE_HEADING, options, 2, 0, pick);
+#ifdef SIMULATOR
+      LOG_DBG("QTS", "Quote delete asks %016llx: %s", static_cast<unsigned long long>(ids[index]),
+              excerpt.front().c_str());
+#endif
     }
   }
   requestUpdate();
@@ -256,9 +290,11 @@ void QuoteDetailActivity::openMenu(const Menu which) {
 
 // Runs after the popup has closed, never from inside its callback: the next menu reuses
 // the same popup, and replacing its callback while that callback runs would destroy it.
-void QuoteDetailActivity::chooseFromMenu(const Menu which, const int option) {
+void QuoteDetailActivity::chooseFromMenu(const Menu which, int option) {
   switch (which) {
     case Menu::Options:
+      // Without the Edit row the options start at Delete.
+      if (!loaded && option >= 0) option++;
       if (option == 0) {
         if (insideReader)
           openMenu(Menu::Edit);

@@ -136,4 +136,26 @@ inline void tidyEllipsis(std::string& line) {
   if (end > 0) line.erase(end, line.size() - n - end);
 }
 
+// Heap the cover generator needs at sleep: the JPEG decoder refuses to start below 52 KB
+// free (JpegToBmpConverter.cpp), and its decoder object and row buffers are single blocks.
+constexpr uint32_t COVER_MIN_FREE_HEAP = 56 * 1024;
+constexpr uint32_t COVER_MIN_BLOCK = 32 * 1024;
+
+struct HeapSample {
+  uint32_t free = 0;
+  uint32_t block = 0;  // largest single block
+};
+
+inline bool coverHeapReady(const HeapSample heap) {
+  return heap.free >= COVER_MIN_FREE_HEAP && heap.block >= COVER_MIN_BLOCK;
+}
+
+// A failed cover is kept as failed ("<cover>.fail", no retry) only when the heap was clearly
+// enough both right before the generator ran and right after it gave up. A failure with the
+// heap short at either end may be the decoder refusing to start, which says nothing about the
+// book, so that sleep skips the tile and the next one tries again.
+inline bool keepCoverFailure(const HeapSample before, const HeapSample after) {
+  return coverHeapReady(before) && coverHeapReady(after);
+}
+
 }  // namespace sleepquote

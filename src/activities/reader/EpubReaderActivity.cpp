@@ -486,6 +486,8 @@ void EpubReaderActivity::showMemoryError() {
   renderer.clearScreen();
   GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
   automaticPageTurnActive = false;
+  // The page shown after this is not the one a waiting reselection asked for.
+  pendingQuoteEdit.clear();
 }
 
 void EpubReaderActivity::suspendBackgroundBuild() {
@@ -562,8 +564,12 @@ void EpubReaderActivity::openDictionaryWordSelect(const bool quotation, const st
 }
 
 void EpubReaderActivity::openBookQuotes() {
+  // The screen is handed the book already open here, so the detail names chapters from its
+  // table of contents instead of opening the book a second time.
+  auto screen = makeUniqueNoThrow<QuotesActivity>(renderer, mappedInput, bookPath, /*insideReader=*/true, epub);
+  if (!screen) return;
   startActivityForResult(
-      std::make_unique<QuotesActivity>(renderer, mappedInput, bookPath, /*insideReader=*/true),
+      std::move(screen),
       [this](const ActivityResult& result) {
         // Quotes may have been deleted, trimmed or rewritten on that screen, so the anchors
         // are read again whatever it returned. Same lock the save path takes:
@@ -653,6 +659,12 @@ void EpubReaderActivity::loop() {
       openDictionaryWordSelect(true, name);
       return;
     }
+  }
+  // A button pressed before the quote's page reached the panel moves the reader on its own
+  // way, so the reselection is dropped; left waiting it would open over a later page.
+  if (!pendingQuoteEdit.empty() && !quoteEditPageShown && mappedInput.wasAnyPressed()) {
+    RenderLock lock;
+    if (!quoteEditPageShown) pendingQuoteEdit.clear();
   }
 
   constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
@@ -1824,12 +1836,16 @@ void EpubReaderActivity::renderBook() {
     renderer.clearScreen();
     GUI.drawPopup(renderer, tr(STR_INDEX_FAILED));
     automaticPageTurnActive = false;
+    // A reselection waits for its own page only; after a failed build the next page drawn is
+    // wherever the reader moves to, so the selector must not open over it.
+    pendingQuoteEdit.clear();
   };
 
   if (currentSpineIndex < 0) currentSpineIndex = 0;
   if (currentSpineIndex > epub->getSpineItemsCount()) currentSpineIndex = epub->getSpineItemsCount();
 
   if (currentSpineIndex == epub->getSpineItemsCount()) {
+    pendingQuoteEdit.clear();
     return;
   }
 
@@ -2106,6 +2122,7 @@ void EpubReaderActivity::renderBook() {
     renderStatusBar();
     renderer.displayBuffer();
     automaticPageTurnActive = false;
+    pendingQuoteEdit.clear();
     showPendingSyncSaveError();
     return;
   }
@@ -2121,6 +2138,7 @@ void EpubReaderActivity::renderBook() {
     renderStatusBar();
     renderer.displayBuffer();
     automaticPageTurnActive = false;
+    pendingQuoteEdit.clear();
     showPendingSyncSaveError();
     return;
   }
@@ -2150,6 +2168,7 @@ void EpubReaderActivity::renderBook() {
         renderer.clearScreen();
         renderer.drawCenteredText(UI_12_FONT_ID, 300, tr(STR_PAGE_LOAD_ERROR), true, EpdFontFamily::BOLD);
         renderer.displayBuffer();
+        pendingQuoteEdit.clear();
         showPendingSyncSaveError();
         return;
       }

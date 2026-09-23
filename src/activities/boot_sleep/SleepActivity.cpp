@@ -515,19 +515,15 @@ void drawQuoteMark(const GfxRenderer& renderer, const int x, const int y) {
   }
 }
 
-// Heap the cover generator needs at sleep: the JPEG decoder refuses to start below 52 KB
-// free (JpegToBmpConverter.cpp), and its decoder object and row buffers are single blocks.
-constexpr uint32_t COVER_MIN_FREE_HEAP = 56 * 1024;
-constexpr uint32_t COVER_MIN_BLOCK = 32 * 1024;
-
 // The sleep cover of `bookPath`, where the Cover sleep mode caches it: the variant that mode
 // would pick on this panel first, then any other variant already on the card. When none is
 // cached yet it is made once, now, with that mode's own generator and path, so later sleeps
 // of either mode find it. The tile is left out instead, and nothing is retried in this
 // sleep, when the book is gone from the card, its metadata cache is missing, the heap is
-// short, or the generator fails. A generator failure is kept as "<cover>.fail" next to the
-// cover it would have written, so a book whose cover image cannot be read costs one attempt
-// instead of one per sleep; clearing the book's cache removes the marker with it.
+// short, or the generator fails. A generator failure with the heap clearly enough around it
+// (sleepquote::keepCoverFailure) is kept as "<cover>.fail" next to the cover it would have
+// written, so a book whose cover image cannot be read costs one attempt instead of one per
+// sleep; clearing the book's cache removes the marker with it.
 std::string sleepCoverPath(const std::string& bookPath, const bool originalThresholds,
                            const CrossPointSettings& settings) {
   if (!FsHelpers::hasEpubExtension(bookPath)) return {};
@@ -542,13 +538,14 @@ std::string sleepCoverPath(const std::string& bookPath, const bool originalThres
     LOG_INF("SLP", "Sleep quote cover skipped: book not on card");
     return {};
   }
-  const uint32_t freeHeap = ESP.getFreeHeap();
-  const uint32_t block = ESP.getMaxAllocHeap();
-  if (freeHeap < COVER_MIN_FREE_HEAP || block < COVER_MIN_BLOCK) {
-    LOG_INF("SLP", "Sleep quote cover skipped: heap free=%u block=%u", static_cast<unsigned>(freeHeap),
-            static_cast<unsigned>(block));
-    return {};
-  }
+  const auto heapNow = [] { return sleepquote::HeapSample{ESP.getFreeHeap(), ESP.getMaxAllocHeap()}; };
+  const auto heapShort = [](const sleepquote::HeapSample heap) {
+    if (sleepquote::coverHeapReady(heap)) return false;
+    LOG_INF("SLP", "Sleep quote cover skipped: heap free=%u block=%u", static_cast<unsigned>(heap.free),
+            static_cast<unsigned>(heap.block));
+    return true;
+  };
+  if (heapShort(heapNow())) return {};
   std::string path = epub.getCoverBmpPath(cropped, originalThresholds);
   const std::string failed = path.substr(0, path.size() - 4) + ".fail";
   if (Storage.exists(failed.c_str())) {
@@ -562,9 +559,17 @@ std::string sleepCoverPath(const std::string& bookPath, const bool originalThres
     LOG_INF("SLP", "Sleep quote cover skipped: no book cache");
     return {};
   }
+  // Again, now that the metadata cache is loaded: it takes heap of its own, and the check
+  // above ran without it.
+  const auto before = heapNow();
+  if (heapShort(before)) return {};
   if (!epub.generateCoverBmp(cropped, originalThresholds)) {
-    Storage.writeFile(failed.c_str(), "1");
-    LOG_INF("SLP", "Sleep quote cover skipped: not made in %lu ms", static_cast<unsigned long>(millis() - started));
+    const auto after = heapNow();
+    const bool keep = sleepquote::keepCoverFailure(before, after);
+    if (keep) Storage.writeFile(failed.c_str(), "1");
+    LOG_INF("SLP", "Sleep quote cover skipped: not made in %lu ms, heap free=%u block=%u, %s",
+            static_cast<unsigned long>(millis() - started), static_cast<unsigned>(after.free),
+            static_cast<unsigned>(after.block), keep ? "marked failed" : "retried next sleep");
     return {};
   }
   HalFile made;

@@ -18,8 +18,9 @@ constexpr int16_t RIGHT_INSET = 24;
 // hanging opening quote both live in the gutter to its left, between SIDE_INSET and TEXT_X.
 constexpr int16_t TEXT_X = 80;
 
-// A screen holds exactly three quote blocks; a quote previews at most three lines before
-// it is cut with an ellipsis. The full quote is one Select away.
+// A screen holds at most three quote blocks (the mockup's page at the smallest UI text size),
+// and fewer when the larger sizes leave no room for three (blocksPerPage()). A quote previews
+// at most three lines before it is cut with an ellipsis. The full quote is one Select away.
 constexpr int BLOCKS_PER_PAGE = 3;
 constexpr int MAX_BODY_LINES = 3;
 
@@ -93,11 +94,17 @@ int16_t blockHeight(int bodyLines, bool twoSourceLines, const Metrics& m);
 Block place(const Metrics& m, int16_t y, int bodyLines, bool twoSourceLines, int16_t numberWidth,
             int16_t quoteWidth);
 
-// Paging over `count` blocks, three to a screen.
-int pageCount(int count);
-int pageOf(int index);
-int firstOfPage(int page);
-int clampPage(int page, int count);
+// Blocks a page holds when the first starts at `top`: as many of the tallest shape
+// (MAX_BODY_LINES quote lines, and two source lines when `twoSourceLines`) as end above the
+// band's bottom, at most BLOCKS_PER_PAGE, at least one. Pages are sized before any quote is
+// wrapped, so paging and numbering stay the same whatever the quotes on a page.
+int blocksPerPage(const Metrics& m, int16_t top, bool twoSourceLines);
+
+// Paging over `count` blocks, `perPage` to a screen.
+int pageCount(int count, int perPage);
+int pageOf(int index, int perPage);
+int firstOfPage(int page, int perPage);
+int clampPage(int page, int count, int perPage);
 
 // Baseline for the footer line ("N trích dẫn, M cuốn sách" or "Trang P/N").
 int16_t footerY(const Metrics& m);

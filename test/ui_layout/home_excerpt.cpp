@@ -127,17 +127,17 @@ constexpr uint8_t ALL_STATS = bit(HOME_STAT_READ) | bit(HOME_STAT_TOTAL) | bit(H
                               bit(HOME_STAT_DAYS) | bit(HOME_STAT_SPAN);
 
 void statRows() {
-  // A book read 18 h 59 min over 10 days, 14/09 to 23/09. Every row.
-  const uint64_t hours = (18 * 60 + 59) * 60000ull;
-  assert(homeStatRows(true, hours, 10, 20260914, 20260923) == ALL_STATS);
+  // A book read 7 h 25 min over 6 days, 05/08 to 17/08. Every row.
+  const uint64_t hours = (7 * 60 + 25) * 60000ull;
+  assert(homeStatRows(true, hours, 6, 20260805, 20260817) == ALL_STATS);
   // No reading record: the percent row alone, which then says it was not recorded.
-  assert(homeStatRows(false, hours, 10, 20260914, 20260923) == bit(HOME_STAT_READ));
+  assert(homeStatRows(false, hours, 6, 20260805, 20260817) == bit(HOME_STAT_READ));
   // Opened but not read yet: nothing to total, average or date.
   assert(homeStatRows(true, 0, 0, 0, 0) == bit(HOME_STAT_READ));
   // Time kept while the clock could not be read: a total, but no day to average over or to date.
   assert(homeStatRows(true, hours, 0, 0, 0) == (bit(HOME_STAT_READ) | bit(HOME_STAT_TOTAL)));
   // Page turns only, on one day: days and dates, but no time to total or average.
-  assert(homeStatRows(true, 0, 1, 20260923, 20260923) ==
+  assert(homeStatRows(true, 0, 1, 20260817, 20260817) ==
          (bit(HOME_STAT_READ) | bit(HOME_STAT_DAYS) | bit(HOME_STAT_SPAN)));
   puts("PASS: the stats column shows only the rows the book's record fills");
 }

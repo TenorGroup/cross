@@ -60,17 +60,21 @@ Block place(const Metrics& m, const int16_t y, const int bodyLines, const bool t
   return block;
 }
 
-int pageCount(const int count) {
-  if (count <= 0) return 1;
-  return (count + BLOCKS_PER_PAGE - 1) / BLOCKS_PER_PAGE;
+int blocksPerPage(const Metrics& m, const int16_t top, const bool twoSourceLines) {
+  // The last block needs its ink only; the divider gap under it hangs past the band.
+  const int height = blockHeight(MAX_BODY_LINES, twoSourceLines, m);
+  const int blocks = height > 0 ? (m.bandBottom - top + DIVIDER_GAP) / height : 0;
+  return blocks < 1 ? 1 : blocks > BLOCKS_PER_PAGE ? BLOCKS_PER_PAGE : blocks;
 }
 
-int pageOf(const int index) { return index < 0 ? 0 : index / BLOCKS_PER_PAGE; }
+int pageCount(const int count, const int perPage) { return bookPageCount(count, perPage); }
 
-int firstOfPage(const int page) { return (page < 0 ? 0 : page) * BLOCKS_PER_PAGE; }
+int pageOf(const int index, const int perPage) { return bookPageOf(index, perPage); }
 
-int clampPage(const int page, const int count) {
-  const int last = pageCount(count) - 1;
+int firstOfPage(const int page, const int perPage) { return bookFirstOfPage(page, perPage); }
+
+int clampPage(const int page, const int count, const int perPage) {
+  const int last = pageCount(count, perPage) - 1;
   if (page < 0) return 0;
   return page > last ? last : page;
 }

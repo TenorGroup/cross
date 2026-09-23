@@ -37,8 +37,8 @@ PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc
 REAL_QUOTES = REPO / 'test/reading_stats_simulator/fixtures/quotes-one-long-title'
 SHOTS = os.environ.get('SLEEP_QUOTE_SHOTS')
 
-REAL_BOOK = '/books/thu-vien/ban-doc-thu/Một cuốn sách có tên rất dài (bản đọc thử) [A Very Long Title] - Tác giả Một & Tác giả Hai.epub'
-REAL_217 = 'b36e80cc905f3bda.json'  # the 190-character quote of the fixture
+REAL_BOOK = '/sach/thu-vien-mau/ban-thu/Chuyện dài về một làng ven biển (bản thử) [Một tựa sách rất dài] - Người Kể & Người Chép.epub'
+REAL_217 = 'b1a75d94e5d467dc.json'  # the 190-character quote of the fixture
 SECOND_BOOK = '/books/sach-thu-co-bia.epub'
 SECOND_TITLE = 'Sách thử có bìa'
 SHORT_TEXT = 'Làm chậm để đi nhanh.'
@@ -98,8 +98,8 @@ def write_epub(path, title, cover=None):
 
 def long_text():
     """Exactly 1024 bytes of Vietnamese, the store's own limit."""
-    base = ('Khi mọi yếu tố khác như nhau, người lập kế hoạch nên ưu tiên thứ đã được thử thách nhiều lần, '
-            'vì kinh nghiệm tích lại trong nó là thứ không mua được bằng tiền. ')
+    base = ('Sáng sớm, sương phủ kín mặt hồ, mấy con cò đứng im trên bờ ruộng, còn người đi chợ thì '
+            'lặng lẽ gánh hàng qua cây cầu tre bắc ngang con lạch nhỏ. ')
     text = ''
     for ch in base * 8:
         if len((text + ch).encode()) > 1022:
@@ -121,7 +121,7 @@ class SleepQuoteTest(unittest.TestCase):
         # One Cover sleep per book fills the cover cache this screen reads.
         cls.caches = {}
         cls.books = {}
-        for book, title in ((REAL_BOOK, 'Một cuốn sách có tên rất dài: những điều nhỏ quyết định số p'), (SECOND_BOOK, SECOND_TITLE)):
+        for book, title in ((REAL_BOOK, 'Chuyện dài về một làng ven biển: những mùa gió, những con th'), (SECOND_BOOK, SECOND_TITLE)):
             sd = cls.root / ('cover-' + str(book_key(book)))
             write_epub(sd / book.lstrip('/'), title)
             store = sd / '.crosspoint'

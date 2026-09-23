@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import zipfile
 
 from PIL import Image
 
@@ -77,9 +78,9 @@ def write_quote(directory, path, title, text, spine, page, day, minute=None, slo
     return target
 
 
-EGO = ('/sach/ego.epub', 'Ego is the Enemy')
-SCORE = ('/sach/score.epub', 'The Score Takes Care of Itself')
-XUONG = ('/sach/xuong.epub', 'Xưởng một người')
+RIVER = ('/sach/ben-song.epub', 'Bến sông ngày gió')
+HILL = ('/sach/doi-che.epub', 'Mùa hái chè trên đồi')
+SEA = ('/sach/lang-bien.epub', 'Làng biển mùa gió')
 
 LINE = re.compile(r'Quote list (\w+) (\w+) page (\d+)/(\d+) of (\d+):((?: [0-9a-f]{16})*)')
 BOOKS = re.compile(r'Quote books page (\d+)/(\d+) of (\d+) books, (\d+) quotes:((?: [0-9a-f]{8})*)')
@@ -172,17 +173,17 @@ class QuotesV1011Test(unittest.TestCase):
 
     # ---- running the simulator ----
 
-    def journey(self, *steps, gap=1200):
-        """Home to Quotes, then `steps`: a key ('RIGHT', 'DOWN:1000') every `gap` ms, or
-        '@name' for a screenshot shortly after the key before it."""
-        events, shots, at = [HOME_TO_QUOTES], [], 7600
+    def journey(self, *steps, gap=1200, start=HOME_TO_QUOTES, at=7600, tail=400):
+        """Home to Quotes (or `start`, ending before `at` ms), then `steps`: a key ('RIGHT',
+        'DOWN:1000') every `gap` ms, or '@name' for a screenshot shortly after the key before it."""
+        events, shots = [start], []
         for step in steps:
             if step.startswith('@'):
                 shots.append((at - gap // 5, step[1:]))
             else:
                 events.append(f'{at}:{step}')
                 at += gap
-        events.append(f'{at + 400}:QUIT')
+        events.append(f'{at + tail}:QUIT')
         return self.run_sim(';'.join(events), shots)
 
     def run_sim(self, events, shots):
@@ -221,20 +222,20 @@ class QuotesV1011Test(unittest.TestCase):
     # ---- seeds ----
 
     def three_books(self):
-        """Xưởng (1 quote, newest), Ego (2), Score (3, oldest): newest book first."""
+        """Sea (1 quote, newest), River (2), Hill (3, oldest): newest book first."""
         q = self.quotes
         ids = {}
-        ids['score'] = [
-            write_quote(q, *SCORE, 'Tiêu chuẩn không phải là điều ta mong muốn, nó là điều ta làm mỗi ngày.',
+        ids['hill'] = [
+            write_quote(q, *HILL, 'Sương còn đọng trên lá khi người hái chè lên tới đỉnh đồi.',
                         3, 12, 20260919, 1290),
-            write_quote(q, *SCORE, 'Người ta không leo lên tới đỉnh của một tiêu chuẩn rồi đứng yên ở đó.',
+            write_quote(q, *HILL, 'Buổi trưa cả nhóm ngồi dưới gốc cây, chia nhau nắm xôi và ấm nước chè.',
                         5, 40, 20260920, 600),
-            write_quote(q, *SCORE, 'Kết quả tự lo cho nó.', 1, 2, 20260921, 480)]
-        ids['ego'] = [
-            write_quote(q, *EGO, 'Cái tôi là kẻ thù của mọi thứ ta muốn.', 1, 4, 20260920, 700),
-            write_quote(q, *EGO, 'Đừng kể câu chuyện của mình trước khi nó xảy ra.', 2, 17, 20260922, 1200)]
-        ids['xuong'] = [
-            write_quote(q, *XUONG, 'Một người thợ giỏi mài đồ nghề của mình mỗi tối.', 0, 2, 20260923, 540)]
+            write_quote(q, *HILL, 'Chiều xuống, gùi chè đã đầy.', 1, 2, 20260921, 480)]
+        ids['river'] = [
+            write_quote(q, *RIVER, 'Nước lên từ sáng, bến vắng người.', 1, 4, 20260920, 700),
+            write_quote(q, *RIVER, 'Ông lái đò buộc thuyền vào gốc bần rồi ngồi hút thuốc.', 2, 17, 20260922, 1200)]
+        ids['sea'] = [
+            write_quote(q, *SEA, 'Tối nào bà cũng kể một chuyện về con thuyền đầu tiên.', 0, 2, 20260923, 540)]
         return ids
 
     @staticmethod
@@ -251,7 +252,7 @@ class QuotesV1011Test(unittest.TestCase):
         self.assertTrue(pages, log[-4000:])
         page, total, books, count, keys = pages[-1]
         self.assertEqual((page, total, books, count), (1, 1, 3, 6))
-        self.assertEqual(keys, [book_key(XUONG[0]), book_key(EGO[0]), book_key(SCORE[0])])
+        self.assertEqual(keys, [book_key(SEA[0]), book_key(RIVER[0]), book_key(HILL[0])])
         # The first row is the cursor's stop on entry: a filled band across the row.
         image = self.shot('b1-books')
         band = filled_rows(image, 40, image.width - 40, 90, 220)
@@ -259,13 +260,13 @@ class QuotesV1011Test(unittest.TestCase):
 
     def test_list_inside_one_book_is_its_own_quotes_newest_first(self):
         ids = self.three_books()
-        # Row 2 of the book list is Ego (two quotes).
+        # Row 2 of the book list is River (two quotes).
         log = self.journey('RIGHT', 'CONFIRM', '@b2-book', 'BACK', '@b2-back')
         self.assertEqual(log.count('Entering activity: Quotes'), 2, log[-4000:])
         book = [entry for entry in lists(log) if entry[0] == 'book']
         self.assertTrue(book, log[-4000:])
         self.assertEqual(book[0][1:5], ('newest', 1, 1, 2))
-        self.assertEqual(book[0][5], newest_first([self.id_of(p) for p in ids['ego']]))
+        self.assertEqual(book[0][5], newest_first([self.id_of(p) for p in ids['river']]))
         # One number box is filled, on the first quote.
         image = self.shot('b2-book')
         boxes = dark_runs(image, 21, 25, 100, image.height - 60)
@@ -277,9 +278,9 @@ class QuotesV1011Test(unittest.TestCase):
 
     def test_all_newest_with_two_quotes_fits_one_page(self):
         q = self.quotes
-        first = write_quote(q, *SCORE, 'Tiêu chuẩn không phải là điều ta mong muốn, nó là điều ta làm mỗi '
-                            'ngày, kể cả khi không ai nhìn.', 3, 12, 20260919, 1290)
-        second = write_quote(q, *EGO, 'Cái tôi là kẻ thù của mọi thứ ta muốn.', 1, 4, 20260920, 700)
+        first = write_quote(q, *HILL, 'Sương còn đọng trên lá khi người hái chè lên tới đỉnh đồi, còn mặt '
+                            'trời thì vừa ló sau rặng núi.', 3, 12, 20260919, 1290)
+        second = write_quote(q, *RIVER, 'Nước lên từ sáng, bến vắng người.', 1, 4, 20260920, 700)
         # Left from the first book row reaches the top row; Select turns it to "All, newest".
         log = self.journey('LEFT', '@a4-top-row', 'CONFIRM', 'RIGHT', '@a1-all-newest', 'RIGHT', '@a1-second')
         entry = [e for e in lists(log) if e[:2] == ('all', 'newest')]
@@ -298,10 +299,10 @@ class QuotesV1011Test(unittest.TestCase):
             tops.append(boxes[0][0])
         self.assertGreater(tops[1], tops[0], 'Right did not move the cursor down')
 
-    def seed_many(self, count, book=SCORE):
+    def seed_many(self, count, book=HILL):
         written = []
         for i in range(count):
-            written.append(write_quote(self.quotes, *book, f'Đoạn trích số {i + 1} về tiêu chuẩn của một xưởng.',
+            written.append(write_quote(self.quotes, *book, f'Đoạn trích số {i + 1} về một buổi hái chè.',
                                        i % 4, i + 1, 20260901 + i // 60, i % 60 * 20))
         return [self.id_of(p) for p in written]
 
@@ -331,7 +332,7 @@ class QuotesV1011Test(unittest.TestCase):
 
     def test_top_rows_cycle_views_and_sorts_in_order(self):
         ids = self.three_books()
-        # Top level: Books -> All newest -> All oldest -> Books. Then into Score (row 3),
+        # Top level: Books -> All newest -> All oldest -> Books. Then into Hill (row 3),
         # whose own top row cycles Newest -> Oldest -> Book order -> Newest.
         log = self.journey('LEFT', 'CONFIRM', '@view-newest', 'CONFIRM', '@view-oldest', 'CONFIRM',
                            'RIGHT', 'RIGHT', 'RIGHT', 'CONFIRM', 'LEFT', 'CONFIRM', 'CONFIRM', '@sort-page',
@@ -344,16 +345,16 @@ class QuotesV1011Test(unittest.TestCase):
         self.assertEqual(len(book_pages(log)), 2, 'Books view should load on entry and after the cycle')
         book = [e for e in lists(log) if e[0] == 'book']
         self.assertEqual([e[1] for e in book], ['newest', 'oldest', 'page', 'newest'])
-        score = [self.id_of(p) for p in ids['score']]
-        self.assertEqual(book[0][5], newest_first(score))
-        self.assertEqual(book[1][5], list(reversed(newest_first(score))))
+        hill = [self.id_of(p) for p in ids['hill']]
+        self.assertEqual(book[0][5], newest_first(hill))
+        self.assertEqual(book[1][5], list(reversed(newest_first(hill))))
         # Book order: spine 1, then 3, then 5.
-        self.assertEqual(book[2][5], [score[2], score[0], score[1]])
+        self.assertEqual(book[2][5], [hill[2], hill[0], hill[1]])
 
     def long_text(self):
-        words = ('Người ta không leo lên tới đỉnh của một tiêu chuẩn rồi đứng yên ở đó. Ngày nào không '
-                 'giữ nó, nó tuột khỏi tay mình, chậm tới mức mình không kịp thấy, cho tới hôm kết quả '
-                 'nói thay. ').split()
+        words = ('Con đường lên đồi chè ngoằn ngoèo qua ba con suối nhỏ. Mùa mưa nước tràn qua mặt đá, '
+                 'người đi phải xắn quần lội qua, tay giữ chặt gùi, chân dò từng bước cho tới khi sang '
+                 'được bờ bên kia. ').split()
         text, i = '', 0
         while True:
             candidate = (text + ' ' + words[i % len(words)]).strip()
@@ -365,7 +366,7 @@ class QuotesV1011Test(unittest.TestCase):
         text = self.long_text()
         self.assertLessEqual(len(text.encode('utf-8')), 1024)
         self.assertGreater(len(text.encode('utf-8')), 1000)
-        short = write_quote(self.quotes, '/audit.epub', 'Synonym Lookup Test', 'Cái tôi là kẻ thù của mọi thứ ta muốn.',
+        short = write_quote(self.quotes, '/audit.epub', 'Synonym Lookup Test', 'Nước lên từ sáng, bến vắng người.',
                             0, 0, 20260922, 1290)
         long = write_quote(self.quotes, '/audit.epub', 'Synonym Lookup Test', text, 0, 1, 20260921, 600)
         log = self.journey('CONFIRM', 'CONFIRM', '@d2-short', 'RIGHT', '@d2-long-1', 'DOWN', '@d2-long-2',
@@ -401,22 +402,22 @@ class QuotesV1011Test(unittest.TestCase):
 
     def test_delete_confirmed_removes_the_file_and_the_list_shrinks(self):
         ids = self.three_books()
-        victim = sorted(ids['xuong'])[0]
-        # Books: Xưởng is row 1 with one quote; use Score instead (row 3, three quotes).
+        victim = sorted(ids['sea'])[0]
+        # Books: Sea is row 1 with one quote; use Hill instead (row 3, three quotes).
         log = self.journey('RIGHT', 'RIGHT', 'CONFIRM', 'CONFIRM', 'CONFIRM', '@m1-options', 'RIGHT', 'CONFIRM',
                            '@m2-delete', 'RIGHT', 'CONFIRM', '@d2-after-delete', 'BACK', '@list-after-delete')
-        score = newest_first([self.id_of(p) for p in ids['score']])
-        self.assertIn(f'Quote deleted {score[0]:016x}', log, log[-4000:])
-        self.assertFalse((self.quotes / ('%016x.json' % score[0])).exists())
+        hill = newest_first([self.id_of(p) for p in ids['hill']])
+        self.assertIn(f'Quote deleted {hill[0]:016x}', log, log[-4000:])
+        self.assertFalse((self.quotes / ('%016x.json' % hill[0])).exists())
         self.assertTrue(victim.exists())
         seen = details(log)
-        self.assertEqual([d[:3] for d in seen], [(1, 3, score[0]), (1, 2, score[1])])
+        self.assertEqual([d[:3] for d in seen], [(1, 3, hill[0]), (1, 2, hill[1])])
         book = [e for e in lists(log) if e[0] == 'book']
         self.assertEqual([e[4] for e in book], [3, 2], 'the list did not reload after the delete')
 
     def test_delete_cancelled_keeps_the_file(self):
         ids = self.three_books()
-        target = sorted(ids['xuong'])[0]
+        target = sorted(ids['sea'])[0]
         before = target.read_bytes()
         log = self.journey('CONFIRM', 'CONFIRM', 'CONFIRM', 'RIGHT', 'CONFIRM', '@m2-cancel', 'CONFIRM',
                            '@d2-kept', 'BACK')
@@ -489,9 +490,9 @@ class QuotesV1011Test(unittest.TestCase):
     def test_v1010_hash_names_are_renamed_once(self):
         shutil.rmtree(self.quotes)
         legacy = [
-            ('a1b2c3d4e5f60718.json', EGO, 'Cái tôi là kẻ thù của mọi thứ ta muốn.', 1, 4, 20260920, 700),
-            ('0f1e2d3c4b5a6978.json', SCORE, 'Kết quả tự lo cho nó.', 1, 2, 20260921, None),
-            ('77aa88bb99cc00dd.json', SCORE, 'Tiêu chuẩn là điều ta làm mỗi ngày.', 3, 12, 20260919, 1290),
+            ('a1b2c3d4e5f60718.json', RIVER, 'Nước lên từ sáng, bến vắng người.', 1, 4, 20260920, 700),
+            ('0f1e2d3c4b5a6978.json', HILL, 'Chiều xuống, gùi chè đã đầy.', 1, 2, 20260921, None),
+            ('77aa88bb99cc00dd.json', HILL, 'Sương còn đọng trên lá chè.', 3, 12, 20260919, 1290),
         ]
         for name, book, text, spine, page, day, minute in legacy:
             write_quote(self.quotes, *book, text, spine, page, day, minute, name=name)
@@ -503,9 +504,156 @@ class QuotesV1011Test(unittest.TestCase):
         pages = book_pages(log)
         self.assertEqual(pages[-1][2:4], (2, 3))
 
+    @staticmethod
+    def book_loads(log):
+        """Times the detail screen loaded a book (Epub::load logs each one) after it opened."""
+        after = log.split('Entering activity: QuoteDetail', 1)
+        return after[1].count('Loading ePub:') if len(after) > 1 else None
+
+    def test_detail_names_each_chapter_once_per_quote(self):
+        # Left and Right walk back to a quote already shown: its chapter line is kept, so the
+        # book is loaded once per quote, never again for the same one.
+        write_quote(self.quotes, '/audit.epub', 'Synonym Lookup Test', 'Một câu ngắn để thử.', 0, 0, 20260922, 1290)
+        write_quote(self.quotes, '/audit.epub', 'Synonym Lookup Test', 'Một câu khác, cũng ngắn.', 0, 1, 20260921, 600)
+        log = self.journey('CONFIRM', 'CONFIRM', 'RIGHT', 'LEFT', 'RIGHT', 'BACK')
+        self.assertEqual([d[0] for d in details(log)], [1, 2, 1, 2], log[-4000:])
+        self.assertEqual(self.book_loads(log), 2, log[-6000:])
+
+    # Home opens /audit.epub; Select opens the reader menu, three Down reach its Tools tab and
+    # three Right its fourth row, "Quotes of this book".
+    READER_QUOTES = '1000:CONFIRM;3200:CONFIRM;4400:DOWN;5000:DOWN;5600:DOWN;6600:RIGHT;7200:RIGHT;7800:RIGHT;8800:CONFIRM'
+
+    def test_detail_opened_from_the_reader_uses_the_open_book(self):
+        # From the reader the book is already loaded: the detail names chapters from it, and
+        # loads no second copy of the same book.
+        write_quote(self.quotes, '/audit.epub', 'Synonym Lookup Test', 'Một câu ngắn để thử.', 0, 0, 20260922, 1290)
+        write_quote(self.quotes, '/audit.epub', 'Synonym Lookup Test', 'Một câu khác, cũng ngắn.', 0, 1, 20260921, 600)
+        log = self.journey('CONFIRM', '@r-detail', 'RIGHT', 'LEFT', 'BACK', 'BACK', start=self.READER_QUOTES, at=10400)
+        self.assertIn('Entering activity: EpubReader', log)
+        self.assertEqual([d[0] for d in details(log)], [1, 2, 1], log[-6000:])
+        self.assertEqual(self.book_loads(log), 0, log[-6000:])
+
+    def test_reselect_from_the_reader_still_opens_the_selector(self):
+        # Edit, then "Reselect on the book page": the reader turns to the quote's page and the
+        # selector opens over it.
+        write_quote(self.quotes, '/audit.epub', 'Synonym Lookup Test', 'Một câu ngắn để thử.', 0, 0, 20260922, 1290)
+        log = self.journey('CONFIRM', 'CONFIRM', 'CONFIRM', 'RIGHT', 'CONFIRM', '@r-reselect',
+                           start=self.READER_QUOTES, at=10400, tail=4000)
+        after = log.split('Entering activity: QuoteDetail', 1)
+        self.assertEqual(len(after), 2, log[-6000:])
+        self.assertIn('Entering activity: QuoteSelect', after[1], log[-6000:])
+
+    def test_reselect_on_a_chapter_that_fails_does_not_open_over_a_later_page(self):
+        # The quote's chapter cannot be laid out (its file is missing from the book): the reader
+        # says so and the reselection ends there. Going on to a chapter that does show, through
+        # the chapter list, must not open the selector over a page the quote is not on.
+        book = self.sd / 'missing-middle.epub'
+        body = '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head><body><p>' + \
+            'Một đoạn văn thử cho chương này. ' * 40 + '</p></body></html>'
+        with zipfile.ZipFile(book, 'w') as z:
+            z.writestr('mimetype', 'application/epub+zip')
+            z.writestr('META-INF/container.xml', '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')
+            z.writestr('book.opf', '<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Ba chương</dc:title><dc:identifier id="id">missing-middle</dc:identifier><dc:language>vi</dc:language></metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/><item id="a" href="a.xhtml" media-type="application/xhtml+xml"/><item id="b" href="b.xhtml" media-type="application/xhtml+xml"/><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/></manifest><spine toc="ncx"><itemref idref="a"/><itemref idref="b"/><itemref idref="c"/></spine></package>')
+            z.writestr('toc.ncx', '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head/><docTitle><text>Ba chương</text></docTitle><navMap>' +
+                       ''.join(f'<navPoint id="{c}" playOrder="{i + 1}"><navLabel><text>Chương {i + 1}</text></navLabel><content src="{c}.xhtml"/></navPoint>'
+                               for i, c in enumerate('abc')) + '</navMap></ncx>')
+            z.writestr('a.xhtml', body)
+            z.writestr('c.xhtml', body)
+        (self.store / 'recent.json').write_text(json.dumps({'books': [{'path': '/missing-middle.epub', 'title': 'Ba chương'}]}))
+        write_quote(self.quotes, '/missing-middle.epub', 'Ba chương', 'Một câu ở chương hỏng.', 1, 0, 20260922, 600)
+        log = self.journey('CONFIRM', 'CONFIRM', 'CONFIRM', 'RIGHT', 'CONFIRM', '@f-failed', 'CONFIRM', 'DOWN', '@f-menu', 'CONFIRM', '@f-chapters', 'RIGHT', 'CONFIRM', '@f-third',
+                           start=self.READER_QUOTES, at=10400, gap=1500, tail=3000)
+        after = log.split('Exiting activity: QuoteDetail', 1)
+        self.assertEqual(len(after), 2, log[-6000:])
+        self.assertIn('Failed to start section build', after[1], log[-6000:])
+        # The chapter list then takes the reader to the third chapter, which shows.
+        self.assertIn('Loading file: c.xhtml', after[1], log[-6000:])
+        self.assertIn('Rendered page', after[1].split('Loading file: c.xhtml', 1)[1], log[-6000:])
+        self.assertNotIn('Entering activity: QuoteSelect', after[1], log[-6000:])
+
+    def test_unreadable_record_offers_delete_alone_without_the_previous_words(self):
+        # The detail of a record that cannot be read: Options holds only Delete (and Cancel),
+        # and the confirmation quotes no words, never those of the quote shown before it.
+        kept = write_quote(self.quotes, *RIVER, 'Gió thổi qua bến sông suốt buổi chiều.', 1, 2, 20260922, 600)
+        broken = self.quotes / quote_name(RIVER[0], 20260920, 300)
+        broken.write_text('{ this is not a record', encoding='utf-8')
+        log = self.journey('CONFIRM', 'CONFIRM', 'RIGHT', '@u-detail', 'CONFIRM', '@u-options', 'CONFIRM',
+                           '@u-delete', 'RIGHT', 'CONFIRM', '@u-after')
+        self.assertEqual([d[2] for d in details(log)][:2], [self.id_of(kept), self.id_of(broken)], log[-4000:])
+        self.assertNotIn('Entering activity: QuoteTrim', log)
+        asks = re.findall(r'Quote delete asks ([0-9a-f]{16}): (.*)', log)
+        self.assertEqual(asks, [('%016x' % self.id_of(broken), 'Không đọc được đoạn này')], log[-4000:])
+        self.assertIn('Quote deleted %016x' % self.id_of(broken), log)
+        self.assertFalse(broken.exists())
+        self.assertTrue(kept.exists())
+
+    def test_home_card_picks_again_after_its_quote_is_deleted(self):
+        # The card shows the quote kept last; deleting it on the Quotes screen sends the card
+        # back to pick among the quotes left, instead of dropping to the page excerpt.
+        newer = write_quote(self.quotes, '/audit.epub', 'Synonym Lookup Test', 'Câu mới lưu, sắp bị xoá.', 0, 1,
+                            20260922, 1290)
+        older = write_quote(self.quotes, '/audit.epub', 'Synonym Lookup Test', 'Câu cũ, vẫn còn.', 0, 0,
+                            20260921, 600)
+        (self.quotes / '.latest').write_text(newer.name[:16])
+        log = self.journey('CONFIRM', 'CONFIRM', 'CONFIRM', 'RIGHT', 'CONFIRM', 'RIGHT', 'CONFIRM', 'BACK', 'BACK',
+                           'BACK', 'UP', 'UP', 'UP', '@card-after-delete')
+        self.assertIn('Quote deleted %016x' % self.id_of(newer), log, log[-4000:])
+        cards = re.findall(r'Card quote ([0-9a-f]{16}\.json) of (\d+)', log)
+        self.assertEqual(cards, [(newer.name, '2'), (older.name, '1')], log[-6000:])
+
+    BAND = re.compile(r'Quote page band (\d+)-(\d+) tip (\d+) per page (\d+)')
+
+    def test_three_line_quotes_clear_the_footer_at_every_text_size(self):
+        # The tallest block a page holds: three lines of quote, then the book title and the
+        # place under it (the "all quotes" view). A page holds as many as fit above the footer
+        # at each UI text size; none may reach into the footer line or the hints.
+        text = ('Buổi sáng hôm ấy cả xóm dậy sớm hơn thường lệ, người thì ra đồng thăm lúa, người thì '
+                'đứng trước hiên nhìn trời, còn bọn trẻ chạy dọc bờ đê xem nước sông lên tới đâu.')
+        self.assertLessEqual(len(text.encode('utf-8')), 240)
+        for i in range(7):
+            write_quote(self.quotes, *(RIVER if i % 2 else HILL), text, i, i + 3, 20260910 + i, 480 + i)
+        per_page = {}
+        for tier in (0, 1, 2):
+            with self.subTest(tier=tier):
+                (self.store / 'settings.json').write_text(json.dumps(
+                    {'language': 'VI', 'sleepTimeout': 10, 'uiTextSize': tier}))
+                shot = f'size-{tier}-all-newest'
+                # Right walks the cursor through the first page and onto the next one.
+                log = self.journey('LEFT', 'CONFIRM', '@' + shot, *(['RIGHT'] * 4), '@' + shot + '-cursor')
+                top, bottom, tip, count = (int(x) for x in self.BAND.findall(log)[-1])
+                per_page[tier] = count
+                entry = [e for e in lists(log) if e[:2] == ('all', 'newest')]
+                self.assertTrue(entry, log[-4000:])
+                self.assertEqual(len(entry[0][5]), count)
+                self.assertEqual(entry[0][3], -(-7 // count), 'page count does not follow the page size')
+                # The fourth step lands on quote 4: on page 2 when two fit a page, still on page 2
+                # when three do, and the page shows the quotes that follow the first page's.
+                pages = [(e[2], e[5]) for e in entry]
+                self.assertEqual(pages[-1][0], 2, pages)
+                every = entry[0][5] + pages[-1][1]
+                self.assertEqual(len(set(every)), len(every), 'a quote shows on two pages')
+                image = self.shot(shot)
+                keep = os.environ.get('CROSSPOINT_QUOTE_EVIDENCE_DIR')
+                if keep:
+                    Path(keep).mkdir(parents=True, exist_ok=True)
+                    image.save(Path(keep) / f'{shot}.png')
+                # The rows between the band's bottom and the footer line stay white.
+                self.assertEqual(ink_in(image, 0, image.width, bottom, tip), set(),
+                                 f'tier {tier}: a block runs past the band ({bottom}) into the footer ({tip})')
+                # The footer line itself holds only its own centred text.
+                pixels = image.load()
+                columns = [x for x in range(image.width)
+                           if any(pixels[x, y] < 128 for y in range(tip, tip + 20))]
+                self.assertTrue(columns, f'tier {tier}: no footer text')
+                self.assertLessEqual(abs(columns[0] + columns[-1] - image.width), 6,
+                                     f'tier {tier}: ink beside the footer text, {columns[0]}-{columns[-1]}')
+        # The smallest size keeps its three to a page; the larger sizes hold fewer, never none.
+        self.assertEqual(per_page[0], 3)
+        self.assertTrue(1 <= per_page[2] <= per_page[1] <= 3, per_page)
+
     def test_one_book_of_four_quotes_kept_in_one_moment(self):
         # The shape of the first real store read off an X3: one book with a title of some 170
-        # characters, four anchored quotes of spine 10, all kept on one day with no minute
+        # characters, four anchored quotes of one chapter, all kept on one day with no minute
         # stamped, under v1.0.10 hash names. CROSSPOINT_QUOTE_SEED_DIR points the scenario at
         # a copy of real files; the committed fixture has the same shape with other words.
         source = Path(os.environ.get('CROSSPOINT_QUOTE_SEED_DIR') or FIXTURES / 'quotes-one-long-title')

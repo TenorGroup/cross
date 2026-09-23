@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -17,13 +18,21 @@
 // Only the page on screen is ever read from the card: the order comes from file names
 // alone (QuoteStore.h), and each visible quote or book row opens one record. Every font
 // here lives in flash, so nothing on screen is measured through the card.
+class Epub;
+
 class QuotesActivity final : public Activity {
  public:
   // `bookPath` empty opens the list of books; a path opens that book's quotes directly.
   // `insideReader` is true when the reader opened this screen for its own book: only then
   // does editing offer to reselect the quote on the page (finishing with QuoteEditResult).
-  QuotesActivity(GfxRenderer& r, MappedInputManager& input, std::string bookPath = "", bool insideReader = false)
-      : Activity("Quotes", r, input), bookPath(std::move(bookPath)), insideReader(insideReader) {}
+  // `openBook` is the reader's own loaded book, passed on to the detail so it reads chapter
+  // names from it instead of loading the book again.
+  QuotesActivity(GfxRenderer& r, MappedInputManager& input, std::string bookPath = "", bool insideReader = false,
+                 std::shared_ptr<Epub> openBook = nullptr)
+      : Activity("Quotes", r, input),
+        bookPath(std::move(bookPath)),
+        insideReader(insideReader),
+        openBook(std::move(openBook)) {}
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;
@@ -84,6 +93,7 @@ class QuotesActivity final : public Activity {
 
   std::string bookPath;
   bool insideReader = false;
+  std::shared_ptr<Epub> openBook;
   uint32_t book = 0;
   std::string bookTitle;
   Order order = Order::Books;
