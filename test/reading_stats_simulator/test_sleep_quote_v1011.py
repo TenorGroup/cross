@@ -42,6 +42,8 @@ REAL_217 = 'b36e80cc905f3bda.json'  # the 190-character quote of the fixture
 SECOND_BOOK = '/books/sach-thu-co-bia.epub'
 SECOND_TITLE = 'Sách thử có bìa'
 SHORT_TEXT = 'Làm chậm để đi nhanh.'
+BROKEN_BOOK = '/books/sach-bia-hong.epub'
+BROKEN_TITLE = 'Sách có ảnh bìa hỏng'
 SLEEP_AT = 2500
 
 # Mockup S2 geometry (SleepQuoteLayout.h): glyph ink, cover tile, title column.
@@ -84,13 +86,13 @@ def cover_jpeg():
     return out.getvalue()
 
 
-def write_epub(path, title):
+def write_epub(path, title, cover=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, 'w') as z:
         z.writestr('mimetype', 'application/epub+zip')
         z.writestr('META-INF/container.xml', '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')
         z.writestr('book.opf', '<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>' + title + '</dc:title><dc:identifier id="id">sleep-quote</dc:identifier><dc:language>vi</dc:language><meta name="cover" content="cover"/></metadata><manifest><item id="cover" href="cover.jpg" media-type="image/jpeg"/><item id="body" href="body.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="body"/></spine></package>')
-        z.writestr('cover.jpg', cover_jpeg())
+        z.writestr('cover.jpg', cover_jpeg() if cover is None else cover)
         z.writestr('body.xhtml', '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head><body><p>' + 'Một đoạn văn thử. ' * 200 + '</p></body></html>')
 
 
@@ -131,6 +133,18 @@ class SleepQuoteTest(unittest.TestCase):
             assert made, 'Cover sleep made no cover cache\n' + log
             cls.caches[book] = list(store.glob('epub_*'))
             cls.books[book] = sd / book.lstrip('/')
+        # A book whose cover image is broken: the Cover sleep builds its metadata cache but
+        # makes no cover.
+        sd = cls.root / 'cover-broken'
+        write_epub(sd / BROKEN_BOOK.lstrip('/'), BROKEN_TITLE, cover=b'\xff\xd8\xff\xe0 not a jpeg ' * 40)
+        store = sd / '.crosspoint'
+        store.mkdir(parents=True)
+        (store / 'settings.json').write_text(json.dumps({'language': 'VI', 'sleepScreen': 3}))
+        (store / 'state.json').write_text(json.dumps({'showBootScreen': False, 'openEpubPath': BROKEN_BOOK}))
+        log = cls.run_sim(sd, f'{SLEEP_AT}:SLEEP;9000:QUIT')
+        assert list(store.glob('epub_*/book.bin')) and not list(store.glob('epub_*/cover_*')), log
+        cls.caches[BROKEN_BOOK] = list(store.glob('epub_*'))
+        cls.books[BROKEN_BOOK] = sd / BROKEN_BOOK.lstrip('/')
 
     @classmethod
     def tearDownClass(cls):
@@ -317,6 +331,42 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertIn('Sleep quote cover skipped: heap', log)
         self.assertEqual(self.fit(log)[3], 0, log)
         self.assertEqual(list((sd / '.crosspoint').glob('epub_*/cover_*.bmp')), [])
+
+    def test_broken_cover_is_tried_once(self):
+        record = {'schema': 1, 'path': BROKEN_BOOK, 'title': BROKEN_TITLE, 'text': SHORT_TEXT,
+                  'spine': 0, 'page': 0, 'day': 20260923, 'gio': 700}
+        name = f'{quote_id(record, 0):016x}.json'
+        sd = self.make_sd([(name, json.dumps(record, ensure_ascii=False).encode())], covers=[BROKEN_BOOK])
+        (sd / BROKEN_BOOK.lstrip('/')).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(self.books[BROKEN_BOOK], sd / BROKEN_BOOK.lstrip('/'))
+        cache = sd / '.crosspoint'
+        log, image = self.sleep_once(sd, 'S2-bia-hong-lan-1')
+        self.assertIn('Sleep quote cover skipped: not made', log)
+        self.assertIn('Generating BMP from JPG cover image', log)
+        self.assertEqual(self.fit(log)[3], 0, log)
+        self.assertEqual(self.grays(image, COVER_BOX), 0)
+        markers = list(cache.glob('epub_*/cover_*.fail'))
+        self.assertEqual(len(markers), 1, list(cache.rglob('*')))
+        self.assertEqual(list(cache.glob('epub_*/cover_*.bmp')), [])
+        # The next sleep reads the marker and leaves the generator alone.
+        again, _ = self.sleep_once(sd, 'S2-bia-hong-lan-2')
+        self.assertIn('Sleep quote cover skipped: failed before', again)
+        self.assertNotIn('Generating BMP from JPG cover image', again)
+        self.assertNotIn('Sleep quote cover skipped: not made', again)
+        self.assertEqual(self.fit(again)[3], 0, again)
+
+    def test_missing_book_or_short_heap_leaves_no_marker(self):
+        name, raw = self.real[REAL_217]
+        sd = self.book_without_cover(name, raw, book_on_card=False)
+        self.sleep_once(sd, 'S2-khong-dau-thieu-sach')
+        sd2 = self.book_without_cover(name, raw)
+        self.sleep_once(sd2, 'S2-khong-dau-thieu-heap',
+                        extra={'CROSSPOINT_SIM_FREE_HEAP': '40000', 'CROSSPOINT_SIM_MAX_ALLOC_HEAP': '30000'})
+        for card in (sd, sd2):
+            self.assertEqual(list((card / '.crosspoint').glob('epub_*/cover_*.fail')), [])
+        # Once the book and the heap are back, the cover is made.
+        log, _ = self.sleep_once(sd2, 'S2-du-heap-tao-bia')
+        self.assertIn('Sleep quote cover made=1', log)
 
     def test_empty_store_falls_back_to_tenor(self):
         sd = self.make_sd([])

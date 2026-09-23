@@ -525,7 +525,9 @@ constexpr uint32_t COVER_MIN_BLOCK = 32 * 1024;
 // cached yet it is made once, now, with that mode's own generator and path, so later sleeps
 // of either mode find it. The tile is left out instead, and nothing is retried in this
 // sleep, when the book is gone from the card, its metadata cache is missing, the heap is
-// short, or the generator fails.
+// short, or the generator fails. A generator failure is kept as "<cover>.fail" next to the
+// cover it would have written, so a book whose cover image cannot be read costs one attempt
+// instead of one per sleep; clearing the book's cache removes the marker with it.
 std::string sleepCoverPath(const std::string& bookPath, const bool originalThresholds,
                            const CrossPointSettings& settings) {
   if (!FsHelpers::hasEpubExtension(bookPath)) return {};
@@ -547,15 +549,24 @@ std::string sleepCoverPath(const std::string& bookPath, const bool originalThres
             static_cast<unsigned>(block));
     return {};
   }
+  std::string path = epub.getCoverBmpPath(cropped, originalThresholds);
+  const std::string failed = path.substr(0, path.size() - 4) + ".fail";
+  if (Storage.exists(failed.c_str())) {
+    LOG_INF("SLP", "Sleep quote cover skipped: failed before");
+    return {};
+  }
   const uint32_t started = millis();
   // The metadata cache the reader built is enough; building it here for a book never
   // opened would parse the whole package at sleep.
-  if (!epub.load(/*buildIfMissing=*/false, /*skipLoadingCss=*/true) ||
-      !epub.generateCoverBmp(cropped, originalThresholds)) {
+  if (!epub.load(/*buildIfMissing=*/false, /*skipLoadingCss=*/true)) {
+    LOG_INF("SLP", "Sleep quote cover skipped: no book cache");
+    return {};
+  }
+  if (!epub.generateCoverBmp(cropped, originalThresholds)) {
+    Storage.writeFile(failed.c_str(), "1");
     LOG_INF("SLP", "Sleep quote cover skipped: not made in %lu ms", static_cast<unsigned long>(millis() - started));
     return {};
   }
-  std::string path = epub.getCoverBmpPath(cropped, originalThresholds);
   HalFile made;
   const size_t bytes = Storage.openFileForRead("SLP", path, made) ? made.size() : 0;
   LOG_INF("SLP", "Sleep quote cover made=1 ms=%lu bytes=%u", static_cast<unsigned long>(millis() - started),
