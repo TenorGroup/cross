@@ -242,8 +242,8 @@ class SleepQuoteTest(unittest.TestCase):
         self.assert_quote_frame(image)
         self.assertGreater(self.dithered(image, COVER_BOX), 200, 'cover tile has no gray levels')
         sleep = self.sleep_part(log)
-        # One GC pass shows the dithered frame and clears the reader's page (as the Tenor screen).
-        self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), ['0'], sleep)
+        # Black, white, then the sleep frame: the visible refresh the default switch promises.
+        self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), ['0', '0', '0'], sleep)
         self.assertIn('Sleep quote gray ready=1', sleep)
         self.assertNotIn('[BRAND] sleep ready=', sleep)
 
@@ -314,7 +314,8 @@ class SleepQuoteTest(unittest.TestCase):
         # The title starts at the margin, inside where the tile would have been.
         self.assertGreater(self.ink(image, (48, 596, 144, 700)), 50)
         sleep = self.sleep_part(log)
-        self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), ['0'], sleep)
+        # Black, white, then the sleep frame: the visible refresh the default switch promises.
+        self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), ['0', '0', '0'], sleep)
 
     def book_without_cover(self, name, raw, book_on_card=True):
         """The quote's book as a reader leaves it: the book file and its metadata cache, but

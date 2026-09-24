@@ -42,6 +42,7 @@ BOOK = '/books/vuon-sau-nha.epub'
 TITLE = 'Khu vườn sau nhà'
 QUOTE = 'Buổi chiều, mấy chậu húng quế ngoài hiên lại thơm như chưa từng bị ai hái.'
 PANEL_OP = re.compile(r'displayBuffer, mode=\d|displayGrayscaleBase, mode=\d|displayGrayBuffer')
+CLEAR_STEP = re.compile(r'\[SLP\] clear (?:black|white)|displayBuffer, mode=\d|displayGrayscaleBase, mode=\d|displayGrayBuffer')
 COVER_BOX = (48, 596, 144, 741)  # SleepQuoteLayout.h, the cover tile of the quote screen
 
 
@@ -135,8 +136,18 @@ class SleepEndsBwTest(unittest.TestCase):
             image.save(Path(SHOTS) / f'{label}.png')
         return log, sleep, image
 
-    def assert_ends_on_bw_full(self, sleep):
+    def assert_ends_on_bw_full(self, sleep, clears=True):
         ops = PANEL_OP.findall(sleep)
+        # The switch promises a refresh the reader can see. A GC pass on this panel only drives
+        # the pixels that change, so the page underneath ghosts into a sleep image painted over it.
+        # A screen that paints a new image therefore first drives every pixel black, then white.
+        # Quick resume and transparent keep the page itself, so they paint straight away.
+        steps = [m.group(0) for m in CLEAR_STEP.finditer(sleep)]
+        expected = ['[SLP] clear black', 'displayBuffer, mode=0', '[SLP] clear white', 'displayBuffer, mode=0']
+        if clears:
+            self.assertEqual(steps[:4], expected, steps)
+        else:
+            self.assertNotIn('[SLP] clear black', steps, steps)
         self.assertTrue(ops, sleep)
         self.assertEqual(ops[-1], 'displayBuffer, mode=0', ops)
         # No gray waveform anywhere in the sleep path: the full refresh already clears the page.
@@ -217,7 +228,7 @@ class SleepEndsBwTest(unittest.TestCase):
                     (sd / 'sleep-overlay.bmp').write_bytes(gray_bmp(200, 200))
                 log, sleep, image = self.sleep_once(sd, f'che-do-{mode}')
                 self.assertIn(f'Sleep screen mode={mode},', log)
-                self.assert_ends_on_bw_full(sleep)
+                self.assert_ends_on_bw_full(sleep, clears=mode not in (6, 7))
                 self.assertEqual(self.grays(image), 0)
                 if mode == 2:
                     found = self.dither_blocks(image, (0, 0, 528, 792))

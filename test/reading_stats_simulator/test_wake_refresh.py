@@ -78,10 +78,10 @@ class WakeRefreshTest(unittest.TestCase):
             # nhu tien de cu. Y dinh bai giu nguyen: moi buoc ve chi chay MOT lan.
             # Trong ban simulator duong xam khong tu log tung buoc, dau vet duy nhat cua no la
             # dong "[BRAND] sleep ready=" o cuoi X3BrandScreen, nen dem dong do de bat ca ve hai lan.
-            # Man ngu chay DUNG MOT lan GC (mode=0) xoa bong cua trang doc truoc khi nap hai
-            # mat pixel xam. Nhieu hon mot la them mot lan chop; khong co lan nao la bong chu
-            # trang truoc con in trong vung toi cua tam anh.
-            self.assertEqual(re.findall(r"displayBuffer, mode=(\d)", sleep), ["0"], log)
+            # Voi cong tac lam moi truoc khi ngu (mac dinh bat), man ngu chay DUNG BA lan GC:
+            # to den, to trang, roi moi ve anh. Hai lan dau lai tung diem anh de bong trang doc
+            # khong in vao anh ngu; thieu lan nao la bong chu trang truoc con lai.
+            self.assertEqual(re.findall(r"displayBuffer, mode=(\d)", sleep), ["0", "0", "0"], log)
             self.assertEqual(log.count("[BRAND] sleep ready=1"), 1, log)
             self.assertIn("Restored sleep frame baseline", wake)
             self.assertEqual(re.findall(r"displayBuffer, mode=(\d)", wake), ["0", "2"], log)

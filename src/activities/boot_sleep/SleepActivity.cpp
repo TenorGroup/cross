@@ -635,6 +635,18 @@ void SleepActivity::onEnter() {
     return renderTransparentCustomSleepScreen();
   }
 
+  // The switch promises a refresh the reader can see. On X3 a GC pass only drives the pixels
+  // that change, so the page underneath ghosts into a sleep image painted straight over it.
+  // Drive every pixel black, then white, first; quick resume and transparent keep the page
+  // itself and have returned above.
+  if (SleepGrayPlanes::wanted()) {
+    for (const uint8_t fill : {uint8_t{0x00}, uint8_t{0xFF}}) {
+      LOG_DBG("SLP", "clear %s", fill == 0x00 ? "black" : "white");
+      renderer.clearScreen(fill);
+      renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+    }
+  }
+
   // These modes replace the whole screen. Paint only the completed sleep frame.
   switch (settings.sleepScreen) {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::BLANK):
