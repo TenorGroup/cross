@@ -35,11 +35,16 @@ bool SleepGrayPlanes::keep() {
   return true;
 }
 
-void SleepGrayPlanes::base() {
-  if (!fold) return renderer.displayGrayscaleBase(HalDisplay::HALF_REFRESH);
+bool SleepGrayPlanes::base() {
+  if (!fold) {
+    renderer.displayGrayscaleBase(HalDisplay::HALF_REFRESH);
+    return true;
+  }
   overlay = true;
-  // No room to keep the B/W frame: show it as it is, the gray masks drawn next go unused.
-  if (!keep()) show();
+  if (keep()) return true;
+  // No room to keep the B/W frame: show it as it is.
+  show();
+  return false;
 }
 
 void SleepGrayPlanes::lsb() {

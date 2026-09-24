@@ -619,9 +619,9 @@ bool EpubReaderActivity::manualPageTurnReady() const {
 }
 
 // latTrangThat lets a forward turn step past the pages laid out so far while the chapter is
-// still being laid out; the paint then lays out up to that page, or pulls it back to the
-// chapter's last page if the chapter ends first. A chapter laid out to its end has nothing
-// left to wait for, even one with no pages.
+// still being laid out; the paint then lays out up to that page, or turns on into the next
+// chapter if the chapter ends first. A chapter laid out to its end has nothing left to wait
+// for, even one with no pages.
 bool EpubReaderActivity::pageAwaitsLayout() const {
   return section && (section->isBuilding() || section->isPartial()) &&
          section->currentPage >= static_cast<int>(section->pageCount);
@@ -1902,6 +1902,8 @@ void EpubReaderActivity::renderBook() {
   currentPageLinks.clear();
   takePendingDeferredClear();  // page turns queue this instead of waiting for the lock
   if (!epub) return;
+  // Read before the layout below settles it: a turn stepped past the pages laid out so far.
+  const bool turnPastLaidOut = pageAwaitsLayout();
 
   const auto showPendingSyncSaveError = [this]() {
     if (!pendingSyncSaveError) return;
@@ -2187,6 +2189,14 @@ void EpubReaderActivity::renderBook() {
   if (!section->isBuilding() && section->pageCount > 0 &&
       section->currentPage >= static_cast<int>(section->pageCount)) {
     section->currentPage = section->pageCount - 1;
+    // The chapter ended right at the page a turn stepped onto: that turn goes on into the next
+    // chapter (or the end of the book) as it would have from the last page, instead of showing
+    // the last page again with the turn counted. A queued turn back then comes back here.
+    if (turnPastLaidOut) {
+      latTrangThat(true);
+      requestUpdate();
+      return;
+    }
   }
 
   applyDeferredReposition();

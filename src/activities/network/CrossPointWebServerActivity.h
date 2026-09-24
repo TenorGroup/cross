@@ -35,6 +35,10 @@ class CrossPointWebServerActivity final : public Activity {
   NetworkMode networkMode = NetworkMode::JOIN_NETWORK;
   bool isApMode = false;
   bool runtimeStarted = false;
+  // Book this session was opened from; empty when opened outside a book.
+  std::string returnBook;
+  // Set once the exit reopens returnBook, so a Wi-Fi restart boots into it.
+  bool toBook = false;
 #ifdef TENOR_UI_ACCEPTANCE
   bool autoJoinForTest = false;
 #endif
@@ -63,7 +67,8 @@ class CrossPointWebServerActivity final : public Activity {
 
   void onNetworkModeSelected(NetworkMode mode);
   void onWifiSelectionComplete(bool connected);
-  void stopServerAndGoHome();
+  void leave();
+  void stopServerAndLeave();
   void startAccessPoint();
   void startWebServer();
 
@@ -71,8 +76,9 @@ class CrossPointWebServerActivity final : public Activity {
 #ifdef TENOR_UI_ACCEPTANCE
   void requestAutoJoinForTest() { autoJoinForTest = true; }
 #endif
-  explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("CrossPointWebServer", renderer, mappedInput) {}
+  explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                       std::string returnBook = {})
+      : Activity("CrossPointWebServer", renderer, mappedInput), returnBook(std::move(returnBook)) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

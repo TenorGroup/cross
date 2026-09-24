@@ -135,6 +135,27 @@ int main() {
     check(isInk(X + W / 2, Y) && isInk(X, Y + H / 2), "top and side edges drawn");
   }
 
+  // The same pair with a line wider than the corner's box: the sides keep the full line width all
+  // the way down to the open corners, not only the part of it that falls inside the corner's box.
+  {
+    constexpr int X = 60, Y = 60, W = 80, H = 40, R = 3, LW = 6;
+    uint8_t cut[continuouscorner::MAX_ROWS];
+    const int box = continuouscorner::profile(R, std::min(W, H) / 2, cut);
+    check(box < LW, "the case needs a line wider than the box", box, LW);
+    clear();
+    renderer.drawRoundedRect(X, Y, W, H, LW, R, true, true, false, false, true);
+    int thin = 0;
+    for (int i = LW; i < H - box; ++i) {
+      int left = 0, right = 0;
+      for (int j = 0; j < W / 2; ++j) {
+        left += isInk(X + j, Y + i) ? 1 : 0;
+        right += isInk(X + W - 1 - j, Y + i) ? 1 : 0;
+      }
+      thin += (left != LW) + (right != LW);
+    }
+    check(thin == 0, "sides keep the line width below a narrow corner, rows", thin);
+  }
+
   // The cover mask paints the page back over exactly the pixels the profile cuts, at all four
   // corners, and nothing inside.
   for (const int r : {6, 11}) {

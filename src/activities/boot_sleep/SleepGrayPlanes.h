@@ -20,7 +20,9 @@ class SleepGrayPlanes {
   SleepGrayPlanes(GfxRenderer& renderer, bool fold) : renderer(renderer), fold(fold) {}
   ~SleepGrayPlanes();  // out of line: one copy of the seven frees, not one per caller
   // Overlay (nudge) pictures, once the B/W frame is drawn: stands for displayGrayscaleBase(HALF).
-  void base();
+  // False when there was no heap to keep the frame and it is already on the glass: the caller
+  // draws no planes then, or the framebuffer would no longer match the glass.
+  bool base();
   // The LSB plane is in the framebuffer: stands for copyGrayscaleLsbBuffers().
   void lsb();
   // The MSB plane is in the framebuffer: stands for copyGrayscaleMsbBuffers() + displayGrayBuffer().

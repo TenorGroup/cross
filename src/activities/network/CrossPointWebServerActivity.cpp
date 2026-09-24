@@ -4,6 +4,7 @@
 #include <ESPmDNS.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
+#include <HalStorage.h>
 #include <I18n.h>
 #include <Memory.h>
 #include <WiFi.h>
@@ -11,6 +12,7 @@
 #include <cstddef>
 
 #include "CrossPointSettings.h"
+#include "CrossPointState.h"
 #include "DeviceName.h"
 #include "FileTransferState.h"
 #include "MappedInputManager.h"
@@ -19,6 +21,7 @@
 #include "UIFontTiers.h"
 #include "WifiSelectionActivity.h"
 #include "activities/network/CalibreConnectActivity.h"
+#include "activities/reader/ReaderActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/QrUtils.h"
@@ -123,7 +126,7 @@ void CrossPointWebServerActivity::onEnter() {
   // Claim the radio before any render, Wi-Fi startup, or nested activity work.
   if (!filetransfer::acquire()) {
     LOG_ERR("WEBACT", "BLE teardown incomplete; leaving file transfer");
-    onGoHome();
+    leave();
     return;
   }
   runtimeStarted = true;
@@ -164,7 +167,7 @@ void CrossPointWebServerActivity::onEnter() {
   startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) {
                            if (result.isCancelled) {
-                             onGoHome();
+                             leave();
                            } else {
                              onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
                            }
@@ -176,6 +179,14 @@ void CrossPointWebServerActivity::onExit() {
   backLatch.stop();
   if (sampledBack) LOG_INF("WEBACT", "Back sampler stopped stack_free=%u", backLatch.stackFreeBytes());
   Activity::onExit();
+
+  // Sleep taken here ends a detour from the book. main saved the sleep origin
+  // before closing this screen, so record it as a sleep from the reader and
+  // let the wake-into-book setting decide the wake, as it would in the book.
+  if (!returnBook.empty() && activityManager.isSleepTransition()) {
+    APP_STATE.lastSleepFromReader = true;
+    APP_STATE.saveToFile();
+  }
 
   if (runtimeStarted) {
     LOG_DBG("WEBACT", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
@@ -192,7 +203,13 @@ void CrossPointWebServerActivity::onExit() {
         WiFi.disconnect(false);
       }
       delay(30);
-      silentRestart();
+      // The restart hands back the heap Wi-Fi fragmented; the reader then opens
+      // on a clean heap, the same way it would after a cold boot.
+      if (toBook) {
+        silentRestartToReader();
+      } else {
+        silentRestart();
+      }
     }
 
     LOG_DBG("WEBACT", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
@@ -233,7 +250,7 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
           startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
                                  [this](const ActivityResult& result) {
                                    if (result.isCancelled) {
-                                     onGoHome();
+                                     leave();
                                    } else {
                                      onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
                                    }
@@ -286,7 +303,7 @@ void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) 
     startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
                            [this](const ActivityResult& result) {
                              if (result.isCancelled) {
-                               onGoHome();
+                               leave();
                              } else {
                                onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
                              }
@@ -308,7 +325,7 @@ void CrossPointWebServerActivity::startAccessPoint() {
 
   if (!apStarted) {
     LOG_ERR("WEBACT", "ERROR: Failed to start Access Point!");
-    onGoHome();
+    leave();
     return;
   }
 
@@ -359,7 +376,7 @@ void CrossPointWebServerActivity::startWebServer() {
   // Create the web server instance
   if (!webServer) webServer = makeUniqueNoThrow<CrossPointWebServer>();
   if (!webServer) {
-    onGoHome();
+    leave();
     return;
   }
   webServer->setUiTextSizeApplier([this](const uint8_t size) {
@@ -375,7 +392,7 @@ void CrossPointWebServerActivity::startWebServer() {
   if (webServer->isRunning()) {
     if (!backLatch.start(gpio, SETTINGS.frontButtonBack)) {
       LOG_ERR("WEBACT", "Cannot start Back sampler");
-      onGoHome();
+      leave();
       return;
     }
     state = WebServerActivityState::SERVER_RUNNING;
@@ -389,11 +406,26 @@ void CrossPointWebServerActivity::startWebServer() {
     LOG_ERR("WEBACT", "ERROR: Failed to start web server!");
     webServer.reset();
     // Go back on error
-    onGoHome();
+    leave();
   }
 }
 
-void CrossPointWebServerActivity::stopServerAndGoHome() {
+// Opened from a book, every exit but the Home gesture reopens that book on its
+// saved page. A book deleted or moved away during the session has no file left
+// at its path, and a reader that cannot be allocated has nothing to show: Home.
+void CrossPointWebServerActivity::leave() {
+  if (!returnBook.empty() && Storage.exists(returnBook.c_str())) {
+    auto reader = ReaderActivity::create(renderer, mappedInput, returnBook, false);
+    if (reader) {
+      toBook = true;
+      activityManager.replaceActivity(std::move(reader));
+      return;
+    }
+  }
+  onGoHome();
+}
+
+void CrossPointWebServerActivity::stopServerAndLeave() {
   state = WebServerActivityState::SHUTTING_DOWN;
   backLatch.stop();
   stopDnsServer();
@@ -401,7 +433,7 @@ void CrossPointWebServerActivity::stopServerAndGoHome() {
     webServer->stop();
     webServer.reset();
   }
-  onGoHome();
+  leave();
 }
 
 void CrossPointWebServerActivity::loop() {
@@ -409,9 +441,12 @@ void CrossPointWebServerActivity::loop() {
   if (state == WebServerActivityState::SERVER_RUNNING) {
     // Main already sampled input for this pass. Preserve that release edge and
     // leave before starting another request; teardown runs via ActivityManager.
+    const bool homeGesture = mappedInput.wasHomeGesture();
     if (backLatch.consume() ||
-        (!backLatch.active() && mappedInput.wasReleased(MappedInputManager::Button::Back)) || mappedInput.wasHomeGesture()) {
-      stopServerAndGoHome();
+        (!backLatch.active() && mappedInput.wasReleased(MappedInputManager::Button::Back)) || homeGesture) {
+      // The Home gesture asks for Home, even when the session came from a book.
+      if (homeGesture) returnBook.clear();
+      stopServerAndLeave();
       return;
     }
 
@@ -439,7 +474,7 @@ void CrossPointWebServerActivity::loop() {
                   consecutiveDisconnects, millis() - firstDisconnectAt);
           if (millis() - firstDisconnectAt > WIFI_ABANDON_MS) {
             LOG_DBG("WEBACT", "WiFi unavailable for >%lu s; returning to network selection", WIFI_ABANDON_MS / 1000UL);
-            stopServerAndGoHome();
+            stopServerAndLeave();
             return;
           }
         } else {
@@ -482,14 +517,14 @@ void CrossPointWebServerActivity::loop() {
       webServer->handleClient();
       lastHandleClientTime = millis();
       if (backLatch.consume()) {
-        stopServerAndGoHome();
+        stopServerAndLeave();
         return;
       }
       // End an idle transfer session only after the current handler has
       // returned. The server policy keeps active transfers alive.
       if (webServer->sessionIdleExpired(millis())) {
         LOG_INF("WEBACT", "File transfer idle timeout; closing server");
-        stopServerAndGoHome();
+        stopServerAndLeave();
         return;
       }
     }

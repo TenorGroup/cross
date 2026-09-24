@@ -48,7 +48,9 @@ open_thumb = 'void EpubReaderActivity::openThumbStep() {\n' + load_book[thumb_st
 render = function('renderBook')
 start = render.index('  if (section->isPartial() && section->currentPage >=')
 end = render.index('  renderer.clearScreen();', start)
-foreground = 'void EpubReaderActivity::foreground() {\n ReaderRenderSpec renderSpec; auto showBuildError=[]{ ++buildErrors; };\n' + render[start:end] + '\n}'
+# renderBook reads turnPastLaidOut before any layout, above this slice.
+foreground = ('void EpubReaderActivity::foreground() {\n ReaderRenderSpec renderSpec; auto showBuildError=[]{ ++buildErrors; };\n'
+              + ' const bool turnPastLaidOut = pageAwaitsLayout();\n' + render[start:end] + '\n}')
 initial_branch = render.index('bool completedBuildTick = false;', render.index('const int target ='))
 initial_end_marker = '\n          buildPopupPending = false;'
 initial_end = render.index(initial_end_marker, initial_branch) + len(initial_end_marker)

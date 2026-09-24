@@ -364,8 +364,8 @@ AlphaOverlayResult tryRenderTransparentOverlayBmp(HalFile& file, GfxRenderer& re
   SleepGrayPlanes planes(renderer, SleepGrayPlanes::wanted());
   if (absolute) {
     if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute)) return AlphaOverlayResult::Error;
-  } else {
-    planes.base();
+  } else if (!planes.base()) {
+    return AlphaOverlayResult::Rendered;
   }
 
   // Absolute planes retain B/W background bits; each visible overlay pixel is rewritten in both passes.
@@ -820,7 +820,7 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
     // calibrated against the pixel state the single-pass HALF waveform leaves
     // behind. A FULL (GC) base parks pixels in a different charge state and
     // the differential nudge then lands unevenly (blotchy noise in gray areas).
-    planes.base();
+    if (!planes.base()) return;
   } else {
     renderer.displayBuffer(sleepRefresh());
   }
@@ -905,8 +905,8 @@ bool SleepActivity::renderTransparentOverlayPng(const std::string& path) const {
   SleepGrayPlanes planes(renderer, SleepGrayPlanes::wanted());
   if (absolute) {
     if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute)) return false;
-  } else {
-    planes.base();
+  } else if (!planes.base()) {
+    return true;
   }
 
   // Absolute planes retain B/W background bits; each visible overlay pixel is rewritten in both passes.
@@ -1231,7 +1231,7 @@ void SleepActivity::renderQuoteSleepScreen() const {
   // Panels without absolute gray: the cover's gray planes are nudges over a B/W base, the
   // same pipeline as the Cover sleep mode (renderBitmapSleepScreen).
   SleepGrayPlanes planes(renderer, SleepGrayPlanes::wanted());
-  planes.base();
+  if (!planes.base()) return;
   bool ready = true;
   for (const auto plane : {GfxRenderer::GRAYSCALE_LSB, GfxRenderer::GRAYSCALE_MSB}) {
     renderer.clearScreen(0x00);

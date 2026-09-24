@@ -11,6 +11,7 @@
 #include <algorithm>
 
 #include "CrossPointSettings.h"
+#include "CrossPointState.h"
 #include "BlePageTurnerRuntime.h"
 #include "OpdsServerStore.h"
 #include "boot_sleep/BootActivity.h"
@@ -334,7 +335,10 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
 }
 
 void ActivityManager::goToFileTransfer() {
-  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput));
+  // Opened from a book, File transfer is a detour: it hands the reader back on
+  // exit. The reader has already saved its position, it does so on every paint.
+  std::string book = isReaderActivity() ? APP_STATE.openEpubPath : std::string();
+  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput, std::move(book)));
 }
 
 void ActivityManager::goToUsbDrive() {

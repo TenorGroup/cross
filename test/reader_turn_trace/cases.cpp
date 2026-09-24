@@ -360,6 +360,50 @@ int main() {
     require(reader.section->currentPage == 3 && reader.pendingExternalTurn == 0 && reader.trangDaLat == 5,
             "a press queued during the chapter's layout was lost");
   });
+  // The rare end of the case above: the chapter turns out to end right at the page the turn
+  // stepped onto. That turn belongs to the next chapter; pulled back onto the last page it would
+  // be counted without moving the reader.
+  test("a turn past a chapter that ends right there goes on into the next chapter", [] {
+    EpubReaderActivity reader;
+    reader.layout(5, 6, true);
+    reader.ready = false;
+    for (int i = 0; i < 5; ++i) reader.manualInput(false, false, false, false);
+    reader.ready = true;
+    reader.drainManual();
+    require(reader.section->currentPage == 6 && reader.pendingManualTurn == 4, "setup: the turn did not wait");
+    const bool turnPastLaidOut = reader.pageAwaitsLayout();
+    reader.layout(6, 6, false);  // the paint lays the chapter out: it ends before page 6
+    reader.settleLaidOut(turnPastLaidOut);
+    reader.layout(0, 10, false);
+    reader.drainManual();
+    require(reader.chapter == 1 && reader.section->currentPage == 4 && reader.pendingManualTurn == 0,
+            "a turn past the chapter's end was pulled back onto its last page");
+    require(reader.trangDaLat == 5, "pages counted differ from pages turned");
+  });
+  test("a turn past a chapter that ends right there, then one back, stays on its last page", [] {
+    EpubReaderActivity reader;
+    reader.layout(5, 6, true);
+    reader.manualInput(false, false, false, false);  // onto page 6, not laid out yet
+    reader.manualInput(true, true, false, false);    // back, queued behind it
+    require(reader.section->currentPage == 6 && reader.pendingManualTurn == -1, "setup: the back press was not queued");
+    const bool turnPastLaidOut = reader.pageAwaitsLayout();
+    reader.layout(6, 6, false);
+    reader.settleLaidOut(turnPastLaidOut);
+    if (!reader.section) reader.layout(0, 10, false);  // the next chapter's paint
+    reader.drainManual();
+    if (!reader.section) reader.layout(5, 6, false);  // back into the chapter, on its last page
+    require(reader.chapter == 0 && reader.section->currentPage == 5 && reader.pendingManualTurn == 0,
+            "forward then back did not come back to the chapter's last page");
+    require(reader.trangDaLat == 2, "pages counted differ from the turns made");
+  });
+  // A page that was set, not turned onto (a saved position past a shorter layout), still clamps.
+  test("a page past a laid-out chapter that no turn stepped onto stays in the chapter", [] {
+    EpubReaderActivity reader;
+    reader.layout(6, 6, false);
+    reader.settleLaidOut(false);
+    require(reader.section && reader.chapter == 0 && reader.section->currentPage == 5,
+            "a restored page left its chapter");
+  });
   test("EPUB press on a page still being laid out joins the queue", [] {
     EpubReaderActivity reader;
     reader.layout(6, 6, true);  // a turn already stepped onto page 6; its paint has not run yet

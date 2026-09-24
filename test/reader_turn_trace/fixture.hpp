@@ -172,6 +172,8 @@ struct EpubReaderActivity : ReaderActivity {
     return true;
   }
 @@EPUB_LAYOUT@@
+  // The paint's last step once the chapter is laid out (EpubReaderActivity::renderBook).
+  void settleLaidOut(bool turnPastLaidOut);
   void drainManual();
   void manualInput(bool prevTriggered, bool prevPageTriggered, bool touchTriggered, bool fromTilt);
   void drainThenInput(bool prevTriggered, bool prevPageTriggered, bool touchTriggered, bool fromTilt);

@@ -1263,6 +1263,36 @@ void loop() {
                          static_cast<unsigned>(raceReads), static_cast<unsigned>(raceOdd),
                          static_cast<unsigned>(raceFirst), static_cast<unsigned>(raceMin),
                          static_cast<unsigned>(raceMax), static_cast<unsigned>(usbReads));
+      } else if (cmd == "STATS_DUMP") {
+        // What decides whether reading is recorded, read back after a battery wake: the
+        // clock that dates it, whether the store loaded, and whether a save lands now.
+        // The lock keeps the save off the SD bus while a page paints, as the reader's own saves are.
+        RenderLock lock;
+        const auto& st = READING_STATS;
+        const uint32_t day = ReadingStatsStore::currentDay();
+        uint32_t todayMs = 0, todayTurns = 0;
+        for (const auto& d : st.kho.cacNgay())
+          if (d.ma == day) todayMs = d.phut * 60000u + d.leMs, todayTurns = d.trang;
+        const std::string main = ReadingStatsStore::getFilePath();
+        const bool saved = READING_STATS.saveToFile();
+        logSerial.printf(
+            "STATS:readable=%d,save=%d,clock=%d,day=%lu,today_ms=%lu,today_turns=%lu,undated_min=%lu,undated_ms=%u,"
+            "undated_turns=%lu,book_ms=%lu,book_turns=%lu,main=%d,bak=%d,tmp=%d,reset=%d,dir=%d,reader=%d,"
+            "heap=%u,largest=%u,t=%lu\n",
+            st.statisticsReadable, saved, halClock.hasValidTime(), static_cast<unsigned long>(day),
+            static_cast<unsigned long>(todayMs), static_cast<unsigned long>(todayTurns),
+            static_cast<unsigned long>(st.kho.phutChuaBietNgay()), st.kho.msChuaBietNgay(),
+            static_cast<unsigned long>(st.kho.trangChuaBietNgay()),
+            static_cast<unsigned long>(st.activeBook.minutes * 60000u + st.activeBook.remainderMs),
+            static_cast<unsigned long>(st.activeBook.turns), Storage.exists(main.c_str()),
+            Storage.exists((main + ".bak").c_str()), Storage.exists((main + ".tmp").c_str()),
+            Storage.exists("/.crosspoint/reading-stats.reset"), Storage.exists("/.crosspoint/reading-stats"),
+            activityManager.isReaderActivity(), ESP.getFreeHeap(), ESP.getMaxAllocHeap(), millis());
+      } else if (cmd.startsWith("CLEAR_BOOK_CACHE ")) {
+        // Makes a book open like a first open (cover thumbnails and chapters rebuilt).
+        const std::string path = cmd.substring(17).c_str();
+        const std::string dir = "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(path));
+        logSerial.printf("CLEAR_BOOK_CACHE:%s,removed=%d\n", dir.c_str(), Storage.removeDir(dir.c_str()));
       } else if (cmd == "BATT") {
         const BatteryMonitor battery;
         const auto st = battery.readStatus();

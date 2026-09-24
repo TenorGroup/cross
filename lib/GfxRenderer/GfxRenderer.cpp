@@ -969,7 +969,13 @@ void GfxRenderer::drawRoundedRect(const int x, const int y, const int width, con
         keep = topRow ? (corners & 2) : bottomRow ? (corners & 8) : right;
       } else {
         end = std::min(to, width - box - 1);
-        keep = i < lineWidth ? top : bottom;
+        // A line wider than the corner's box: its sides reach past the box into this middle part,
+        // and are kept beside a rounded corner whichever band the row is in.
+        if (from < lineWidth)
+          end = std::min(end, lineWidth - 1);
+        else if (from < width - lineWidth)
+          end = std::min(end, width - lineWidth - 1);
+        keep = (i < lineWidth ? top : bottom) || (from < lineWidth ? left : from >= width - lineWidth && right);
       }
       if (keep) fillRect(x + from, y + i, end - from + 1, 1, state);
       from = end + 1;

@@ -214,8 +214,9 @@ namespace {
 // Shared between the sample timer and the main loop; one HalGPIO exists. Once the
 // timer runs, only it touches the SDK debounce. After each sample it publishes
 // the edges and a snapshot of the level and held times under edgeLock. update()
-// takes the edges and a copy of that snapshot under the same lock, and a loop pass
-// reads levels and held times from its copy, so they always agree with its edges.
+// takes the edges and a copy of the snapshot its last edge came with under the same
+// lock, and a loop pass reads levels and held times from its copy, so they always
+// agree with its edges.
 portMUX_TYPE edgeLock = portMUX_INITIALIZER_UNLOCKED;
 ButtonFrames frames;
 static_assert(ButtonFrames::kPowerButton == HalGPIO::BTN_POWER);
@@ -253,8 +254,13 @@ void HalGPIO::startBackgroundSampling() {
   // Published before the first tick: from here on only the timer runs the debounce,
   // and the main loop reads the snapshot, seeded here with the state it had.
   frames.latest = frames.frame = readSample(inputMgr);
+  // Kept only once it runs: with `sampleTimer` set, update() stops polling and reads the frames,
+  // so a timer that never started would leave every button dead.
+  if (esp_timer_start_periodic(timer, 10000) != ESP_OK) {
+    esp_timer_delete(timer);
+    return;
+  }
   sampleTimer = timer;
-  esp_timer_start_periodic(timer, 10000);
 }
 
 void HalGPIO::sampleButtons(void* self) {

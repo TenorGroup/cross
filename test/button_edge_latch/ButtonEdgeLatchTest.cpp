@@ -1,8 +1,13 @@
 // The main loop can stall for seconds (a section build starved of heap while the
 // radio starts). Every press the sample timer saw meanwhile must still reach the
-// reader, one per frame, in the order the timer saw them.
+// reader, one per frame, in the order the timer saw them, across buttons too.
 #include <ButtonEdgeLatch.h>
 #include <gtest/gtest.h>
+
+#include <algorithm>
+#include <fstream>
+#include <iterator>
+#include <string>
 
 namespace {
 constexpr uint8_t kDown = 1u << 5;
@@ -40,17 +45,35 @@ TEST(ButtonEdgeLatch, OneTapIsOnePressAndOneRelease) {
   EXPECT_EQ(pressed | released, 0);
 }
 
-TEST(ButtonEdgeLatch, ButtonsDrainIndependently) {
+// Edges leave in the order they came: a second press of Down waits for the next frame, and the
+// Up pressed with it waits with it instead of jumping ahead.
+TEST(ButtonEdgeLatch, EdgesLeaveInTheOrderTheyCame) {
   ButtonEdgeLatch latch;
   latch.add(kDown, 0);
   latch.add(kDown | kUp, 0);
   uint8_t pressed = 0, released = 0;
   latch.take(pressed, released);
-  EXPECT_EQ(pressed, kDown | kUp);
-  latch.take(pressed, released);
   EXPECT_EQ(pressed, kDown);
   latch.take(pressed, released);
+  EXPECT_EQ(pressed, kDown | kUp);
+  latch.take(pressed, released);
   EXPECT_EQ(pressed, 0);
+}
+
+// A tap of one button, then a tap of another: one frame each, first tap first.
+TEST(ButtonEdgeLatch, TapsOfTwoButtonsKeepTheirOrder) {
+  ButtonEdgeLatch latch;
+  latch.add(kDown, 0);
+  latch.add(0, kDown);
+  latch.add(kUp, 0);
+  latch.add(0, kUp);
+  uint8_t pressed = 0, released = 0;
+  latch.take(pressed, released);
+  EXPECT_EQ(pressed, kDown);
+  EXPECT_EQ(released, kDown);
+  latch.take(pressed, released);
+  EXPECT_EQ(pressed, kUp);
+  EXPECT_EQ(released, kUp);
 }
 
 TEST(ButtonEdgeLatch, AStuckSourceStaysBounded) {
@@ -120,6 +143,47 @@ TEST(ButtonFrames, APassKeepsTheLevelAndHeldTimeItStartedWith) {
   EXPECT_EQ(frames.heldTime(1500), 450u);
 }
 
+// A stall with Next tapped and then Previous: the reader turns one page on each frame's release
+// and checks Previous first, so both releases in one frame would add up to one page back instead
+// of forward and back again.
+TEST(ButtonFrames, NextThenPreviousDuringOneStallTurnsForwardThenBack) {
+  ButtonFrames frames;
+  frames.publish(kDown, 0, sampleAt(kDown, 0, 1000));
+  frames.publish(0, kDown, sampleAt(0, 80, 1080));
+  frames.publish(kUp, 0, sampleAt(kUp, 0, 1200));
+  frames.publish(0, kUp, sampleAt(0, 90, 1290));
+  int page = 0;
+  int lowest = 0;
+  for (int i = 0; i < 4; ++i) {
+    frames.beginFrame();
+    if (frames.frameReleased & kUp)
+      --page;
+    else if (frames.frameReleased & kDown)
+      ++page;
+    lowest = std::min(lowest, page);
+  }
+  EXPECT_EQ(page, 0);
+  EXPECT_EQ(lowest, 0);  // forward first, as pressed
+}
+
+// A short tap and then a long hold, both during one stall: the tap's release, handed out frames
+// later, still reads the tap's own held time, so it is not taken for a long press.
+TEST(ButtonFrames, AQueuedReleaseKeepsItsOwnHeldTime) {
+  constexpr uint8_t kBack = 1u << 0;
+  ButtonFrames frames;
+  frames.publish(kPower, 0, sampleAt(kPower, 0, 1000));
+  frames.publish(0, kPower, sampleAt(0, 80, 1080));
+  frames.publish(kBack, 0, sampleAt(kBack, 0, 1200));
+  frames.publish(0, 0, sampleAt(kBack, 800, 2000));
+  frames.beginFrame();
+  EXPECT_EQ(frames.frameReleased, kPower);
+  EXPECT_EQ(frames.heldTime(2000), 80u);
+  EXPECT_EQ(frames.powerHeldTime(2000), 80u);
+  frames.beginFrame();
+  EXPECT_EQ(frames.framePressed, kBack);
+  EXPECT_EQ(frames.heldTime(2000), 800u);
+}
+
 // The idle poll still wakes on what the timer sees now, not on the last pass.
 TEST(ButtonFrames, IdleWakeReadsTheLatestSample) {
   ButtonFrames frames;
@@ -129,4 +193,20 @@ TEST(ButtonFrames, IdleWakeReadsTheLatestSample) {
   weighing.debouncePending = true;
   frames.publish(0, 0, weighing);
   EXPECT_TRUE(frames.active());
+}
+
+// The timer is the only reader of the ladder once `sampleTimer` is set: update() then serves the
+// frames it publishes and never runs the debounce itself. A timer created but never started would
+// leave every button dead, so the handle is kept only once the start succeeded, and a failed start
+// deletes the timer and stays on the polled path.
+TEST(HalGpioSampling, TheTimerIsKeptOnlyOnceItRuns) {
+  std::ifstream file(REPO_ROOT_PATH "/lib/hal/HalGPIO.cpp");
+  const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const size_t begin = text.find("void HalGPIO::startBackgroundSampling()");
+  ASSERT_NE(begin, std::string::npos);
+  const std::string body = text.substr(begin, text.find("\n}\n", begin) - begin);
+  const size_t start = body.find("esp_timer_start_periodic(timer, 10000) != ESP_OK");
+  ASSERT_NE(start, std::string::npos) << "the start's result is not checked";
+  EXPECT_NE(body.find("esp_timer_delete(timer)", start), std::string::npos) << "a failed start leaks its timer";
+  EXPECT_GT(body.find("sampleTimer = timer"), start) << "the handle is kept before the timer runs";
 }

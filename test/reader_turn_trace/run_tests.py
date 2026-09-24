@@ -100,6 +100,10 @@ external_tick = ("void EpubReaderActivity::externalThenInput(bool prevTriggered,
                  "  struct Turns { bool fromTilt; } turns{fromTilt};\n"
                  "  (void)touch; (void)turns;\n" + external_line + "\n" + guard + "\n" +
                  block(epub, drain_start) + "\n" + manual_slice + "\n}")
+# The paint's clamp once the chapter is laid out, as renderBook runs it: `turnPastLaidOut` is
+# what renderBook read from pageAwaitsLayout() before laying the chapter out.
+settle_start = re.search(r"(?m)^  if \(!section->isBuilding\(\) && section->pageCount > 0 &&$", epub).start()
+settle = "void EpubReaderActivity::settleLaidOut(bool turnPastLaidOut) {\n" + block(epub, settle_start) + "\n}"
 menu_start = epub.index("void EpubReaderActivity::openReaderMenu() {")
 menu_body = epub.index("\n", menu_start) + 1
 menu_end = epub.index("  if (usesToolbarMenu())", menu_body)
@@ -111,7 +115,7 @@ exit_method = "void EpubReaderActivity::onExit() {" + exit_prefix + "  ReaderAct
 cases = pathlib.Path(__file__).with_name("cases.cpp").read_text()
 projection = args.output / "projection.cpp"
 projection.write_text(fixture + "\n" + "\n\n".join(function(name) for name in names) +
-                      "\n" + "\n\n".join((drain, manual, tick, external_tick, menu)) + "\n" +
+                      "\n" + "\n\n".join((drain, manual, tick, external_tick, menu, settle)) + "\n" +
                       (function("pageAwaitsLayout", epub, "EpubReaderActivity") + "\n" if epub_layout else "") +
                       (function("onPause", epub, "EpubReaderActivity") if epub_pause else "") +
                       "\n" + exit_method + "\n" + cases)

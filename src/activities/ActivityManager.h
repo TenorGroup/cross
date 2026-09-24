@@ -130,6 +130,8 @@ class ActivityManager {
 #endif
 
   bool preventAutoSleep() const;
+  // True while goToSleep() closes the foreground activity for deep sleep.
+  bool isSleepTransition() const { return sleepTransition; }
   bool requiresExclusiveStorageLoop() const;
   bool isReaderActivity() const;
   bool isForegroundReaderActivity() const;

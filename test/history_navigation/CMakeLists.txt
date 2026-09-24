@@ -92,3 +92,18 @@ target_include_directories(ReadingStatsResetFinalizationTest BEFORE PRIVATE
 )
 target_compile_definitions(ReadingStatsResetFinalizationTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0)
 add_test(NAME ReadingStatsResetFinalization COMMAND ReadingStatsResetFinalizationTest)
+
+add_executable(ReadingStatsLoadRetryTest
+  load_retry.cpp
+  ${REPO_ROOT}/src/util/ReadingHabits.cpp
+  ${REPO_ROOT}/src/util/SoLieuDoc.cpp
+  ${REPO_ROOT}/src/util/NgayGio.cpp
+)
+target_include_directories(ReadingStatsLoadRetryTest BEFORE PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src
+)
+target_compile_definitions(ReadingStatsLoadRetryTest PRIVATE ARDUINOJSON_ENABLE_ARDUINO_STRING=0)
+add_test(NAME ReadingStatsLoadRetry COMMAND ReadingStatsLoadRetryTest)

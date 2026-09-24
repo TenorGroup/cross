@@ -104,7 +104,13 @@ bool readSnapshot(const std::string& path, JsonDocument& doc) {
   if (result == ReadResult::Unavailable) return false;
   if (result == ReadResult::Ready && doc.is<JsonObject>()) return true;
   doc.clear();
-  return PersistableStoreBase::readDocFromFileStatus((path + ".bak").c_str(), doc, 32768) == ReadResult::Ready &&
+  const auto backup = PersistableStoreBase::readDocFromFileStatus((path + ".bak").c_str(), doc, 32768);
+  if (backup == ReadResult::Ready && doc.is<JsonObject>()) return true;
+  doc.clear();
+  // writeSnapshot() commits .tmp whole before its renames, so a power cut between them
+  // (an X3 on battery loses power in sleep) leaves the newest snapshot only there.
+  return backup != ReadResult::Unavailable &&
+         PersistableStoreBase::readDocFromFileStatus((path + ".tmp").c_str(), doc, 32768) == ReadResult::Ready &&
          doc.is<JsonObject>();
 }
 bool readResetSnapshot(JsonDocument& doc) {
@@ -189,7 +195,9 @@ bool ReadingStatsStore::loadFromFile() {
       pending || Storage.exists(getFilePath()) || Storage.exists((std::string(getFilePath()) + ".bak").c_str());
   const bool loaded = (pending ? readResetSnapshot(doc) : readSnapshot(getFilePath(), doc)) &&
                       fromJson(doc.as<JsonVariantConst>());
-  statisticsReadable = loaded || (!exists && !Storage.exists("/.crosspoint/reading-stats"));
+  // With no global file there is nothing to protect: refusing here left the store
+  // unreadable for good, and no reading was recorded again.
+  statisticsReadable = loaded || !exists;
   if (pending && loaded) {
     const bool all = !doc["ngay"].is<JsonArrayConst>();
     if (finishReset() && all) cleanupBookSnapshots();
@@ -276,6 +284,9 @@ bool ReadingStatsStore::readBook(const std::string& path, BookReadingRecord& rec
 }
 
 bool ReadingStatsStore::activateBook(const std::string& path, const uint8_t progress, const std::string& title) {
+  // Each X3 wake is a boot. A read the boot could not finish is retried here, or the
+  // whole session up to the next sleep would go unrecorded.
+  if (!statisticsReadable) loadFromFile();
   if (!writableSchema || !statisticsReadable) return false;
   if (path == activeBookPath) {
     if (!title.empty() && title != activeBookTitle) {
