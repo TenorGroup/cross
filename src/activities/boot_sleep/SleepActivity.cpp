@@ -34,6 +34,7 @@
 #include "components/QuoteMarkGlyph.h"
 #include "components/ReadingStatsView.h"
 #include "components/UITheme.h"
+#include "components/X3BrandCodec.h"
 #include "components/X3BrandScreen.h"
 #include "components/themes/TenorRadius.h"
 #include "fontIds.h"
@@ -687,8 +688,8 @@ void SleepActivity::onEnter() {
 // Man ngu mac dinh cua tenor/cross: an pham branding nen thang vao firmware, nen khong ai
 // phai chep file vao the nho moi co man ngu tu te.
 //
-// Du lieu la RLE hai byte mot doan, so diem roi toi muc, chay theo hang tu trai sang phai
-// va tu tren xuong. Xem scripts/sinh_man_ngu.py.
+// X3 khong co mat xam tuyet doi (X3 UC8253) ve ban du phong: mot khung den trang da cham san,
+// nen zlib, giai nen thang vao bo dem khung doc. Xem scripts/sinh_man_ngu.py.
 void SleepActivity::renderTenorSleepScreen() const {
   releaseSdFontCachesForDecode(renderer);
   if (renderX3BrandScreen(renderer, false)) return;
@@ -697,30 +698,16 @@ void SleepActivity::renderTenorSleepScreen() const {
     renderDefaultSleepScreen();
     return;
   }
-  renderer.clearScreen();
-
-  static constexpr Color MUC[4] = {Color::Black, Color::DarkGray, Color::LightGray, Color::White};
-  int x = 0;
-  int y = 0;
-  for (size_t i = 0; i + 1 < sizeof(mannogu::DU_LIEU); i += 2) {
-    int con = mannogu::DU_LIEU[i];
-    const uint8_t muc = mannogu::DU_LIEU[i + 1];
-    while (con > 0 && y < mannogu::CAO) {
-      const int trongHang = mannogu::RONG - x;
-      const int ve = con < trongHang ? con : trongHang;
-      // Nen da trang san sau clearScreen(), nen doan trang khong phai ve lai. Bo qua chung
-      // cat phan lon so lenh ve: an pham nay 85% dien tich la nen trang.
-      if (muc != 3) renderer.fillRectDither(x, y, ve, 1, MUC[muc]);
-      x += ve;
-      con -= ve;
-      if (x >= mannogu::RONG) {
-        x = 0;
-        y++;
-      }
-    }
-  }
-
-  showSleepFrame(renderer, HalDisplay::FULL_REFRESH);
+  // The frame is stored upright, as the art was always drawn: the reader turns the screen back
+  // upright on its way out, so this is the orientation the sleep screen meets.
+  const auto orientation = renderer.getOrientation();
+  renderer.setOrientation(GfxRenderer::Portrait);
+  uint8_t* frame = renderer.getFrameBuffer();
+  if (decodeX3BrandPlane(mannogu::KHUNG, sizeof(mannogu::KHUNG), frame, renderer.getBufferSize()))
+    showSleepFrame(renderer, HalDisplay::FULL_REFRESH);
+  else
+    renderDefaultSleepScreen();
+  renderer.setOrientation(orientation);
 }
 
 void SleepActivity::renderCustomSleepScreen() const {

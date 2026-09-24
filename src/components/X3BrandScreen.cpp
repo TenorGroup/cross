@@ -4,12 +4,19 @@
 #include <HalGPIO.h>
 #include <Logging.h>
 
+#include <cstdlib>
+
 #include "X3BrandAssets.h"
 #include "X3BrandCodec.h"
 #include "activities/boot_sleep/SleepGrayPlanes.h"
 #include "fontIds.h"
 
 bool renderX3BrandScreen(GfxRenderer& renderer, const bool boot) {
+#ifdef SIMULATOR
+  // The simulator offers absolute gray planes on every panel. The UC8253 X3 has none and takes
+  // the caller's fallback art; this lets a test walk that path.
+  if (std::getenv("CROSSPOINT_SIM_NO_ABSOLUTE_GRAY")) return false;
+#endif
   const auto caps = renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute);
   if (!gpio.deviceIsX3() || !caps.supported() || !renderer.hasFrameBuffer() ||
       renderer.getBufferSize() != x3brand::PLANE_BYTES)
