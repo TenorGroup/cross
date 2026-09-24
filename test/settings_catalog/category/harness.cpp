@@ -179,7 +179,8 @@ int main(int argc, char** argv) {
   ok &= check(readers[0].action == SettingAction::TextSettings && readers[1].action == SettingAction::DownloadFonts,
               "reader text and font actions preserve leading order");
   if (hasDictionaries) {
-    const auto dictionaryIndex = readers.size() - 1 - (!tenor ? 1 : 0);
+    // Every theme ends the reader tab with the status bar action, right after the dictionary.
+    const auto dictionaryIndex = readers.size() - 2;
     ok &= check(readers[dictionaryIndex].nameId == StrId::STR_DICTIONARY, "dictionary is last reader descriptor before optional action");
     discovered.clear();
     readers[dictionaryIndex].valueSetter(8);

@@ -263,7 +263,15 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   bool globalStatusBarHidden() const { return globalStatusBarMode == GLOBAL_STATUS_BAR_OFF; }
   bool globalStatusBarLarge() const { return globalStatusBarMode == GLOBAL_STATUS_BAR_LARGE; }
   bool readerStatusBarHidden() const { return readerStatusBarMode == READER_STATUS_BAR_OFF; }
+  // The chapter name (statusBarTitle), chapter page count and book percentage each
+  // have their own switch; Off, battery and clock stay with readerStatusBarMode.
+  // statusBarItemsMode names the mode the three switches belong to. The reader menu
+  // and the web page write the mode byte directly, so a mode picked there shows
+  // what its name says until the switches adopt it.
   uint8_t statusBarChapterPageCount = 1;
+  uint8_t statusBarItemsMode = READER_STATUS_BAR_DEFAULT;
+  // Makes the three switches hold what the current mode shows, before one is flipped.
+  void adoptReaderStatusItems();
   uint8_t statusBarBookProgressPercentage = 1;
   uint8_t statusBarProgressBar = HIDE_PROGRESS;
   uint8_t statusBarProgressBarThickness = PROGRESS_BAR_NORMAL;

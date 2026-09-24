@@ -140,6 +140,7 @@ add_subdirectory(ble_integration)
 
 add_subdirectory(settings_catalog)
 add_subdirectory(menu_tilt_settings)
+add_subdirectory(reader_status_items)
 add_subdirectory(settings_font_memory)
 
 add_subdirectory(reading_stats_clock)

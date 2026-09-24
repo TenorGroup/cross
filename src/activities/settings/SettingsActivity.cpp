@@ -115,8 +115,7 @@ void SettingsActivity::rebuildSettingsLists() {
   if (!BoardConfig::hasTouch()) ++rowCounts[static_cast<int>(settingstabs::Tab::CONTROLS)];
   if (keyboard_layouts::COUNT > 1) ++rowCounts[static_cast<int>(settingstabs::Tab::KEYBOARD)];
   ++rowCounts[static_cast<int>(settingstabs::Tab::SYSTEM)];
-  rowCounts[static_cast<int>(settingstabs::Tab::READER)] +=
-      2 + (!dictionaries.empty() ? 1 : 0) + (SETTINGS.uiTheme != CrossPointSettings::TENOR_UI ? 1 : 0);
+  rowCounts[static_cast<int>(settingstabs::Tab::READER)] += 3 + (!dictionaries.empty() ? 1 : 0);
   for (size_t tab = 0; tab < rowCounts.size(); ++tab)
     danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).reserve(rowCounts[tab]);
 
@@ -159,9 +158,7 @@ void SettingsActivity::rebuildSettingsLists() {
                         SettingInfo::Action(StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings));
   readerSettings.insert(readerSettings.begin() + 1,
                         SettingInfo::Action(StrId::STR_MANAGE_FONTS, SettingAction::DownloadFonts));
-  if (SETTINGS.uiTheme != CrossPointSettings::TENOR_UI) {
-    readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
-  }
+  readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
 
   // A theme or conditional row can shorten an inactive category as well.
   for (size_t tab = 0; tab < tabNavs.size(); ++tab) {
@@ -801,6 +798,10 @@ std::string SettingsActivity::favoriteKey(const int row) const {
   if (!currentSettings || row < 0 || row >= settingsCount) return {};
   const auto& item = (*currentSettings)[row];
   if (item.key) return std::string("settings/") + item.key;
+  // Tenor keeps the old action/2 pin pointing at the battery and clock corners
+  // (focusFavorite below), so this row cannot be pinned there under that key.
+  if (item.action == SettingAction::CustomiseStatusBar && SETTINGS.uiTheme == CrossPointSettings::TENOR_UI)
+    return {};
   if (item.action != SettingAction::None) return "action/" + std::to_string(static_cast<int>(item.action));
   return {};
 }

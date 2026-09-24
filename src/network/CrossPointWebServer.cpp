@@ -1326,6 +1326,8 @@ void CrossPointWebServer::handleSettingsPage() const {
 
 void CrossPointWebServer::handleGetSettings() const {
   const Language lang = requestLanguage();
+  // A mode picked on the device since the switches were last set is what the page must show and edit.
+  SETTINGS.adoptReaderStatusItems();
   // Pass the SD font registry so the fontFamily setting's enumStringValues
   // includes SD-resident families - otherwise the web API only exposes the
   // three built-in fonts.
@@ -1421,6 +1423,8 @@ void CrossPointWebServer::handleGetSettings() const {
 
 void CrossPointWebServer::handlePostSettings() {
   const Language lang = requestLanguage();
+  // A mode picked on the device since the switches were last set is what the page must show and edit.
+  SETTINGS.adoptReaderStatusItems();
   if (!server->hasArg("plain")) {
     server->send(400, "text/plain", trWeb(lang, StrId::STR_WEB_MISSING_JSON));
     return;

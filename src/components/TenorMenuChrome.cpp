@@ -204,7 +204,8 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   }
   if (hienTienDo) {
     char phan[16];
-    snprintf(phan, sizeof(phan), "%s%.0f%%", counts.empty() ? "" : " ",
+    // Two spaces: one space in the small font reads "1/1 100%" as "1/1100%".
+    snprintf(phan, sizeof(phan), "%s%.0f%%", counts.empty() ? "" : "  ",
              std::max(0.0f, std::min(100.0f, bookProgress)));
     counts += phan;
   }
@@ -215,9 +216,14 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   if (bookmarked) inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, trai + 6, y + 12, 10, true);
   if (!hienTieuDe) return;
   const int room = std::max(0, countX - trai - markWidth - 8);
-  std::string name = r.truncatedText(SMALL_FONT_ID, title, std::max(0, room - r.getTextWidth(SMALL_FONT_ID, ":")));
-  if (!name.empty()) name += ":";
-  if (!name.empty()) r.drawText(SMALL_FONT_ID, trai + markWidth, y, name.c_str());
+  // The colon only separates the name from counts; alone it would dangle.
+  const int colon = counts.empty() ? 0 : r.getTextWidth(SMALL_FONT_ID, ":");
+  std::string name = r.truncatedText(SMALL_FONT_ID, title, std::max(0, room - colon));
+  // A room narrower than the ellipsis still gets one back, so measure what came back
+  // and give up the name rather than draw it into the battery or the clock.
+  if (name.empty() || r.getTextWidth(SMALL_FONT_ID, name.c_str()) + colon > room) return;
+  if (colon) name += ":";
+  r.drawText(SMALL_FONT_ID, trai + markWidth, y, name.c_str());
 }
 
 int tenorchrome::moreBelowChevronTopY(const GfxRenderer& renderer, const int hintTopY) {

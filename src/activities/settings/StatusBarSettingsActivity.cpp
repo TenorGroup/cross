@@ -61,6 +61,16 @@ constexpr int STATUS_BAR_CLOCK_ITEMS = CrossPointSettings::STATUS_BAR_CLOCK_MODE
 const StrId statusBarClockNames[STATUS_BAR_CLOCK_ITEMS] = {StrId::STR_HIDE, StrId::STR_DIR_RIGHT, StrId::STR_DIR_LEFT};
 
 const int verticalPreviewTextPadding = 40;
+
+// The Tenor bar draws the chapter name, the two counts, battery and clock, so its
+// screen lists only the items that bar reads, as the classic item each one edits.
+constexpr MenuItem TENOR_ROWS[] = {ITEM_TITLE, ITEM_CHAPTER_PAGE_COUNT, ITEM_BOOK_PROGRESS_PERCENTAGE, ITEM_CLOCK};
+constexpr StrId TENOR_NAMES[] = {StrId::STR_CHAPTER_NAME, StrId::STR_CHAPTER_PAGE_COUNT,
+                                 StrId::STR_BOOK_PROGRESS_PERCENTAGE, StrId::STR_STATUS_CORNERS};
+constexpr int TENOR_ROW_COUNT = sizeof(TENOR_ROWS) / sizeof(TENOR_ROWS[0]);
+
+bool tenorTheme() { return SETTINGS.uiTheme == CrossPointSettings::TENOR_UI; }
+int itemAt(const int row) { return tenorTheme() ? TENOR_ROWS[row] : row; }
 }  // namespace
 
 StatusBarSettingsActivity::StatusBarSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -69,9 +79,10 @@ StatusBarSettingsActivity::StatusBarSettingsActivity(GfxRenderer& renderer, Mapp
 void StatusBarSettingsActivity::onEnter() {
   UiListActivity::onEnter();
 
-  visibleItemCount = SETTINGS.uiTheme == CrossPointSettings::TENOR_UI
-                         ? 1
-                         : FULL_MENU_ITEMS;
+  visibleItemCount = tenorTheme() ? TENOR_ROW_COUNT : FULL_MENU_ITEMS;
+  // A mode picked in the reader menu or on the web shows what its name says; the
+  // switches take that as their starting point before any of them is flipped.
+  SETTINGS.adoptReaderStatusItems();
 
   // Clamp statusBarProgressBar and statusBarTitle in case of corrupt/migrated data
   if (SETTINGS.statusBarProgressBar >= PROGRESS_BAR_ITEMS) {
@@ -97,8 +108,7 @@ void StatusBarSettingsActivity::onEnter() {
   // Labels never change (unlike the values, which track live SETTINGS
   // state), so they're set once here rather than every buildScreen() call.
   for (int i = 0; i < visibleItemCount; i++) {
-    rowItems_[i].label =
-        SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? tr(STR_STATUS_CORNERS) : I18N.get(menuNames[i]);
+    rowItems_[i].label = I18N.get(tenorTheme() ? TENOR_NAMES[i] : menuNames[i]);
     rowItems_[i].actionValue = static_cast<int16_t>(i);
   }
 }
@@ -118,14 +128,8 @@ void StatusBarSettingsActivity::activateIndex(const int index) {
 }
 
 void StatusBarSettingsActivity::handleSelection() {
-  if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI) {
-    SETTINGS.statusBarClock = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT
-                                  ? CrossPointSettings::STATUS_BAR_CLOCK_RIGHT
-                                  : CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
-    SETTINGS.saveToFile();
-    return;
-  }
-  switch (nav.selected) {
+  const bool tenor = tenorTheme();
+  switch (itemAt(nav.selected)) {
     case ITEM_CHAPTER_PAGE_COUNT:
       SETTINGS.statusBarChapterPageCount = (SETTINGS.statusBarChapterPageCount + 1) % 2;
       break;
@@ -140,7 +144,11 @@ void StatusBarSettingsActivity::handleSelection() {
           (SETTINGS.statusBarProgressBarThickness + 1) % PROGRESS_BAR_THICKNESS_ITEMS;
       break;
     case ITEM_TITLE:
-      SETTINGS.statusBarTitle = (SETTINGS.statusBarTitle + 1) % TITLE_ITEMS;
+      // Tenor names the chapter only: the switch is chapter name shown or hidden.
+      SETTINGS.statusBarTitle = !tenor ? (SETTINGS.statusBarTitle + 1) % TITLE_ITEMS
+                                : SETTINGS.statusBarTitle == CrossPointSettings::HIDE_TITLE
+                                    ? CrossPointSettings::CHAPTER_TITLE
+                                    : CrossPointSettings::HIDE_TITLE;
       break;
     case ITEM_BATTERY:
       SETTINGS.statusBarBattery = (SETTINGS.statusBarBattery + 1) % 2;
@@ -149,7 +157,11 @@ void StatusBarSettingsActivity::handleSelection() {
       SETTINGS.xtcStatusBarMode = (SETTINGS.xtcStatusBarMode + 1) % XTC_STATUS_BAR_ITEMS;
       break;
     case ITEM_CLOCK:
-      SETTINGS.statusBarClock = (SETTINGS.statusBarClock + 1) % STATUS_BAR_CLOCK_ITEMS;
+      // Tenor always draws the clock the mode asks for; this row only swaps corners.
+      SETTINGS.statusBarClock = !tenor ? (SETTINGS.statusBarClock + 1) % STATUS_BAR_CLOCK_ITEMS
+                                : SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT
+                                    ? CrossPointSettings::STATUS_BAR_CLOCK_RIGHT
+                                    : CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
       break;
     default:
       return;
@@ -158,10 +170,8 @@ void StatusBarSettingsActivity::handleSelection() {
 }
 
 std::string StatusBarSettingsActivity::rowValueText(const int index) {
-  if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI)
-    return SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT ? tr(STR_CLOCK_LEFT_BATTERY_RIGHT)
-                                                                                : tr(STR_BATTERY_LEFT_CLOCK_RIGHT);
-  switch (index) {
+  const bool tenor = tenorTheme();
+  switch (itemAt(index)) {
     case ITEM_CHAPTER_PAGE_COUNT:
       return SETTINGS.statusBarChapterPageCount ? tr(STR_SHOW) : tr(STR_HIDE);
     case ITEM_BOOK_PROGRESS_PERCENTAGE:
@@ -171,12 +181,16 @@ std::string StatusBarSettingsActivity::rowValueText(const int index) {
     case ITEM_PROGRESS_BAR_THICKNESS:
       return I18N.get(progressBarThicknessNames[SETTINGS.statusBarProgressBarThickness]);
     case ITEM_TITLE:
+      if (tenor) return SETTINGS.statusBarTitle != CrossPointSettings::HIDE_TITLE ? tr(STR_SHOW) : tr(STR_HIDE);
       return I18N.get(titleNames[SETTINGS.statusBarTitle]);
     case ITEM_BATTERY:
       return SETTINGS.statusBarBattery ? tr(STR_SHOW) : tr(STR_HIDE);
     case ITEM_XTC_STATUS_BAR:
       return I18N.get(xtcStatusBarNames[SETTINGS.xtcStatusBarMode]);
     case ITEM_CLOCK:
+      if (tenor)
+        return SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT ? tr(STR_CLOCK_LEFT_BATTERY_RIGHT)
+                                                                                    : tr(STR_BATTERY_LEFT_CLOCK_RIGHT);
       return I18N.get(statusBarClockNames[SETTINGS.statusBarClock]);
     default:
       return tr(STR_HIDE);
@@ -259,5 +273,8 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
 }
 
 std::string StatusBarSettingsActivity::favoriteKey(int row) const {
-  return menufavorites::keyFor("status", 0, SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? 7 : row);
+  // Tenor pins only the corner row: the favorites catalog labels every other
+  // status pin as empty there, so a pinned switch would show no name.
+  if (tenorTheme() && itemAt(row) != ITEM_CLOCK) return {};
+  return menufavorites::keyFor("status", 0, itemAt(row));
 }

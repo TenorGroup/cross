@@ -99,6 +99,16 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     }
   }
 
+  // The file always carries the switches in effect, marked as this mode's, so the
+  // next boot and the web page read what the reader draws.
+  if (!readerStatusBarHidden()) {
+    const auto spec = statusBarSpec();
+    doc["statusBarTitle"] = spec.titleMode;
+    doc["statusBarChapterPageCount"] = static_cast<uint8_t>(spec.showChapterPageCount);
+    doc["statusBarBookProgressPercentage"] = static_cast<uint8_t>(spec.showBookProgressPercent);
+  }
+  doc["statusBarItemsMode"] = readerStatusBarMode;
+
   // Front button remap - managed by RemapFrontButtons sub-activity, not in SettingsList.
   doc["frontButtonBack"] = frontButtonBack;
   doc["frontButtonConfirm"] = frontButtonConfirm;
@@ -250,6 +260,14 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   if (doc["readerStatusBarMode"].isNull() && !doc["hideReaderStatusBar"].isNull()) {
     readerStatusBarMode =
         (doc["hideReaderStatusBar"] | uint8_t{0}) ? READER_STATUS_BAR_OFF : READER_STATUS_BAR_DEFAULT;
+    needsResave = true;
+  }
+  // A file from before the switches carries switch values nothing ever read (the
+  // web page could still set them), so the switches start from what the stored
+  // mode showed.
+  statusBarItemsMode = doc["statusBarItemsMode"] | uint8_t{0xFF};
+  if (statusBarItemsMode != readerStatusBarMode) {
+    adoptReaderStatusItems();
     needsResave = true;
   }
 
@@ -438,73 +456,57 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   return true;
 }
 
+namespace {
+// What each reader status bar mode shows, indexed by the stored value. Battery and
+// clock only ever come from here. The three text bits are what the mode's name
+// promises, and the starting point the switches adopt.
+enum : uint8_t { SB_TITLE = 1, SB_PAGES = 2, SB_PERCENT = 4, SB_BATTERY = 8, SB_CLOCK = 16 };
+constexpr uint8_t READER_MODE_ITEMS[CrossPointSettings::READER_STATUS_BAR_MODE_COUNT] = {
+    0,                                                        // Off
+    SB_BATTERY | SB_CLOCK,                                    // Clock & battery
+    SB_TITLE | SB_PAGES | SB_PERCENT | SB_BATTERY | SB_CLOCK,  // Full default
+    SB_TITLE | SB_PAGES,                                      // Chapter name & chapter progress
+    SB_TITLE | SB_CLOCK,                                      // Chapter name & clock
+    SB_TITLE | SB_BATTERY,                                    // Chapter name & battery
+};
+}  // namespace
+
 CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
   StatusBarSpec spec;
   if (readerStatusBarHidden()) return spec;
-  // Sau muc nguoi dung chon. Moi muc chi bat dung cac thanh phan co ten trong muc,
-  // va ca sau muc deu nam trong CUNG mot lan chu (tru Tat) nen doi muc khong lam
-  // doi chieu cao trang: chi ve lai thanh trang thai, khong dan lai sach.
-  switch (readerStatusBarMode) {
-    case READER_STATUS_BAR_CLOCK_BATTERY:
-      spec.showChapterPageCount = false;
-      spec.showBookProgressPercent = false;
-      spec.titleMode = HIDE_TITLE;
-      spec.showBattery = true;
-      spec.showBatteryPercent = true;
-      spec.clockMode = statusBarClock == STATUS_BAR_CLOCK_LEFT ? STATUS_BAR_CLOCK_LEFT : STATUS_BAR_CLOCK_RIGHT;
-      spec.progressBarMode = HIDE_PROGRESS;
-      spec.progressBarHeightPx = 0;
-      spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
-      break;
-    case READER_STATUS_BAR_CHAPTER_PROGRESS:
-      spec.showChapterPageCount = true;
-      spec.showBookProgressPercent = false;
-      spec.titleMode = CHAPTER_TITLE;
-      spec.showBattery = false;
-      spec.showBatteryPercent = false;
-      spec.clockMode = STATUS_BAR_CLOCK_HIDE;
-      spec.progressBarMode = HIDE_PROGRESS;
-      spec.progressBarHeightPx = 0;
-      spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
-      break;
-    case READER_STATUS_BAR_CHAPTER_CLOCK:
-      spec.showChapterPageCount = false;
-      spec.showBookProgressPercent = false;
-      spec.titleMode = CHAPTER_TITLE;
-      spec.showBattery = false;
-      spec.showBatteryPercent = false;
-      spec.clockMode = statusBarClock == STATUS_BAR_CLOCK_LEFT ? STATUS_BAR_CLOCK_LEFT : STATUS_BAR_CLOCK_RIGHT;
-      spec.progressBarMode = HIDE_PROGRESS;
-      spec.progressBarHeightPx = 0;
-      spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
-      break;
-    case READER_STATUS_BAR_CHAPTER_BATTERY:
-      spec.showChapterPageCount = false;
-      spec.showBookProgressPercent = false;
-      spec.titleMode = CHAPTER_TITLE;
-      spec.showBattery = true;
-      spec.showBatteryPercent = true;
-      spec.clockMode = STATUS_BAR_CLOCK_HIDE;
-      spec.progressBarMode = HIDE_PROGRESS;
-      spec.progressBarHeightPx = 0;
-      spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
-      break;
-    case READER_STATUS_BAR_DEFAULT:
-    default:
-      spec.showChapterPageCount = true;
-      spec.showBookProgressPercent = true;
-      spec.titleMode = CHAPTER_TITLE;
-      spec.showBattery = true;
-      spec.showBatteryPercent = true;
-      spec.clockMode = statusBarClock == STATUS_BAR_CLOCK_LEFT ? STATUS_BAR_CLOCK_LEFT : STATUS_BAR_CLOCK_RIGHT;
-      spec.progressBarMode = HIDE_PROGRESS;
-      spec.progressBarHeightPx = 0;
-      spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
-      break;
+  // Every mode but Off shares ONE text lane, so moving between modes or flipping a
+  // switch only redraws the bar and never re-lays the book.
+  const uint8_t shown =
+      READER_MODE_ITEMS[readerStatusBarMode < READER_STATUS_BAR_MODE_COUNT ? readerStatusBarMode
+                                                                           : READER_STATUS_BAR_DEFAULT];
+  if (statusBarItemsMode == readerStatusBarMode) {
+    spec.titleMode = statusBarTitle;
+    spec.showChapterPageCount = statusBarChapterPageCount;
+    spec.showBookProgressPercent = statusBarBookProgressPercentage;
+  } else {
+    spec.titleMode = (shown & SB_TITLE) ? CHAPTER_TITLE : HIDE_TITLE;
+    spec.showChapterPageCount = shown & SB_PAGES;
+    spec.showBookProgressPercent = shown & SB_PERCENT;
   }
+  spec.showBattery = spec.showBatteryPercent = shown & SB_BATTERY;
+  if (shown & SB_CLOCK)
+    spec.clockMode = statusBarClock == STATUS_BAR_CLOCK_LEFT ? STATUS_BAR_CLOCK_LEFT : STATUS_BAR_CLOCK_RIGHT;
+  spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
   spec.clock12h = clockFormat == 1;
   spec.clockUtcOffsetQ = clockUtcOffsetQ;
   return spec;
+}
+
+void CrossPointSettings::adoptReaderStatusItems() {
+  if (statusBarItemsMode == readerStatusBarMode) return;
+  // Off shows nothing to adopt; the switches wait for the next mode that shows text.
+  if (!readerStatusBarHidden()) {
+    const auto spec = statusBarSpec();
+    statusBarTitle = spec.titleMode;
+    statusBarChapterPageCount = spec.showChapterPageCount;
+    statusBarBookProgressPercentage = spec.showBookProgressPercent;
+  }
+  statusBarItemsMode = readerStatusBarMode;
 }
 
 ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWidth,

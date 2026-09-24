@@ -105,6 +105,13 @@ int main(int argc, char** argv) {
       const auto key=row.key?std::string("settings/")+row.key:"action/"+std::to_string(static_cast<int>(row.action));
       ++occurrences[key];
       if(!row.key && row.action==SettingAction::None) continue;
+      // Tenor keeps the legacy action/2 pin on the battery and clock corners, so the
+      // status bar row that shares its action is deliberately not pinnable there.
+      if(tenor && row.action==SettingAction::CustomiseStatusBar) {
+        activity.selectCategory(tab);
+        ok &= check(activity.favoriteKey(static_cast<int>(&row-rows.data())).empty(),"Tenor status bar row is not pinnable");
+        continue;
+      }
       routes[key]=tab;
       const int index=activity.focusFavorite(key);
       ok &= check(index>=0 && activity.selectedCategoryIndex==tab,"every visible pin resolves to its tab");
