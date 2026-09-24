@@ -540,15 +540,8 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   const int srcWidth = jpeg->getWidth();
   const int srcHeight = jpeg->getHeight();
   const bool progressiveDecode = (jpeg->getJPEGType() == JPEG_MODE_PROGRESSIVE);
-  // JPEGDEC forces progressive streams to JPEG_SCALE_EIGHTH in DecodeJPEG,
-  // so callback coordinates and MCU buffering must use the reduced decode grid.
-  const int decodedSrcWidth = progressiveDecode ? ((srcWidth + 7) >> 3) : srcWidth;
-  const int decodedSrcHeight = progressiveDecode ? ((srcHeight + 7) >> 3) : srcHeight;
 
   LOG_DBG("JPG", "JPEG dimensions: %dx%d", srcWidth, srcHeight);
-  if (progressiveDecode) {
-    LOG_DBG("JPG", "Progressive JPEG decode uses 1/8 source: %dx%d", decodedSrcWidth, decodedSrcHeight);
-  }
 
   constexpr int MAX_IMAGE_WIDTH = 2048;
   constexpr int MAX_IMAGE_HEIGHT = 3072;
@@ -562,14 +555,6 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   // Calculate output dimensions (pre-scale to fit display exactly)
   int outWidth = srcWidth;
   int outHeight = srcHeight;
-  if (targetWidth <= 0 || targetHeight <= 0) {
-    // Without an explicit target, keep decoder-native dimensions.
-    outWidth = decodedSrcWidth;
-    outHeight = decodedSrcHeight;
-  }
-
-  const int scaleSrcWidth = decodedSrcWidth;
-  const int scaleSrcHeight = decodedSrcHeight;
 
   uint32_t scaleX_fp = 65536;  // 1.0 in 16.16 fixed point
   uint32_t scaleY_fp = 65536;
@@ -589,10 +574,29 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
     outHeight = static_cast<int>(srcHeight * scale);
     if (outWidth < 1) outWidth = 1;
     if (outHeight < 1) outHeight = 1;
-
-    LOG_DBG("JPG", "Scaling source %dx%d (decode grid %dx%d) -> %dx%d (target %dx%d)", srcWidth, srcHeight,
-            scaleSrcWidth, scaleSrcHeight, outWidth, outHeight, targetWidth, targetHeight);
   }
+
+  // JPEGDEC forces progressive streams to JPEG_SCALE_EIGHTH in DecodeJPEG, so callback
+  // coordinates and MCU buffering use the reduced decode grid. A 1-bit thumbnail keeps a small
+  // fraction of a baseline cover's pixels, and JPEGDEC can decode straight to a half, quarter
+  // or eighth of the source. That spares the inverse transform and this file's area averaging
+  // for pixels the scaler would only sum away; take the smallest grid still covering the output.
+  int decodeScale = progressiveDecode ? 8 : 1;
+  if (oneBit && targetWidth > 0 && targetHeight > 0) {
+    while (decodeScale < 8 && (srcWidth + 2 * decodeScale - 1) / (2 * decodeScale) >= outWidth &&
+           (srcHeight + 2 * decodeScale - 1) / (2 * decodeScale) >= outHeight) {
+      decodeScale *= 2;
+    }
+  }
+  const int scaleSrcWidth = (srcWidth + decodeScale - 1) / decodeScale;
+  const int scaleSrcHeight = (srcHeight + decodeScale - 1) / decodeScale;
+  if (targetWidth <= 0 || targetHeight <= 0) {
+    // Without an explicit target, keep decoder-native dimensions.
+    outWidth = scaleSrcWidth;
+    outHeight = scaleSrcHeight;
+  }
+  LOG_DBG("JPG", "Scaling source %dx%d (decode grid %dx%d) -> %dx%d (target %dx%d)", srcWidth, srcHeight,
+          scaleSrcWidth, scaleSrcHeight, outWidth, outHeight, targetWidth, targetHeight);
 
   if (scaleSrcWidth != outWidth || scaleSrcHeight != outHeight) {
     scaleX_fp = (static_cast<uint32_t>(scaleSrcWidth) << 16) / outWidth;
@@ -698,7 +702,11 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   jpeg->setPixelType(EIGHT_BIT_GRAYSCALE);
   jpeg->setUserPointer(&ctx);
 
-  rc = jpeg->decode(0, 0, 0);
+  rc = jpeg->decode(0, 0,
+                    progressiveDecode || decodeScale == 1 ? 0
+                    : decodeScale == 2                    ? JPEG_SCALE_HALF
+                    : decodeScale == 4                    ? JPEG_SCALE_QUARTER
+                                                          : JPEG_SCALE_EIGHTH);
 
   if (rc == 1 && ctx.smoothUpscale && !ctx.error) {
     finishSmoothUpscale(&ctx);

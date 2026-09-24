@@ -79,17 +79,11 @@ class EpubReaderActivity final : public ReaderActivity {
   bool currentPageBookmarked = false;
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
-  // The GAN DAY card's cover thumbnails are not needed before the first page. loadBook() only
-  // records which heights are missing (the card's own, then the theme's); loop() generates them
-  // one per idle pass once the page is on the panel.
+  // The GAN DAY card's cover thumbnails are read only by Home. loadBook() records which heights
+  // are missing (the card's own, then the theme's); onExit() writes them as the reader closes.
   int pendingThumbHeights[2] = {};
   uint8_t pendingThumbCount = 0;
-  // The deferred pass takes no FrameBufferLoan: the loan gives the framebuffer back white
-  // (FreeInkDisplay::returnBuildStorage) and nothing redraws the page after it, so the
-  // inflate state has to come from the heap. These two cover that allocation.
-  static constexpr size_t THUMB_IDLE_MIN_FREE_HEAP = 96 * 1024;
-  static constexpr size_t THUMB_IDLE_MIN_MAX_ALLOC = 48 * 1024;
-  void generatePendingThumb();
+  void writePendingThumbs();
   unsigned long lastRenderCompleteMs = 0;
   bool bookmarkRemoved = false;
   // The bookmark popup slot shows the tilt toggle's new state instead.

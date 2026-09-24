@@ -209,6 +209,9 @@ EpubReaderActivity::~EpubReaderActivity() {
 }
 
 bool EpubReaderActivity::loadBook() {
+#ifdef TENOR_TURN_TRACE
+  const unsigned long loadStarted = millis();
+#endif
   auto loadedEpub = makeUniqueNoThrow<Epub>(bookPath, "/.crosspoint");
   if (!loadedEpub) {
     LOG_ERR("ERS", "Failed to allocate EPUB object free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
@@ -253,6 +256,9 @@ bool EpubReaderActivity::loadBook() {
     return static_cast<Epub*>(ctx)->extractItemToFile(src, dest);
   });
 
+#ifdef TENOR_TURN_TRACE
+  const unsigned long epubLoaded = millis();
+#endif
   epub->setupCacheDir();
 
   HalFile f;
@@ -287,16 +293,25 @@ bool EpubReaderActivity::loadBook() {
     }
   }
 
+#ifdef TENOR_TURN_TRACE
+  const unsigned long progressRead = millis();
+#endif
   loadCachedBookmarks();
+#ifdef TENOR_TURN_TRACE
+  const unsigned long bookmarksRead = millis();
+#endif
   // Anchors of the quotes saved in this book, read once here so a page turn never
   // walks the quote directory. Preview never draws highlights, so it never pays.
   if (!preview) quotes::loadAnchors(bookPath, quoteAnchors);
+#ifdef TENOR_TURN_TRACE
+  const unsigned long quotesRead = millis();
+#endif
 
   // The GAN DAY card only ever READS a thumbnail bitmap; nothing in the app generated one, so a
   // book added by this firmware always fell back to the brand placeholder (a device that showed a
-  // real cover only did so for a thumbnail written by an older release). Generate it here, once
-  // per book. The JPEG->1-bit BMP pass costs seconds and nothing on the open path reads its
-  // output, so only record the miss here; loop() runs it once the first page is on the panel.
+  // real cover only did so for a thumbnail written by an older release). Generate it once per
+  // book. The JPEG->1-bit BMP pass costs seconds and only Home reads its output, so only record
+  // the miss here; onExit() writes it as the reader closes (see writePendingThumbs).
   // The tenor card draws the cover at its own height, well above the theme's, and scaling the
   // theme's thumbnail up that far makes the dither coarse, so that card gets a thumbnail of its
   // own, written first. The theme's stays: other themes read it, and the card falls back to it.
@@ -309,36 +324,29 @@ bool EpubReaderActivity::loadBook() {
         pendingThumbHeights[pendingThumbCount++] = height;
     }
   }
+#ifdef TENOR_TURN_TRACE
+  LOG_INF("ERS", "LOAD_STAGES epub=%lu progress=%lu marks=%lu quotes=%lu thumbs=%lu uncached=%u",
+          epubLoaded - loadStarted, progressRead - epubLoaded, bookmarksRead - progressRead,
+          quotesRead - bookmarksRead, millis() - quotesRead, uncached ? 1u : 0u);
+#endif
   return true;
 }
 
-// Runs from loop() with the render lock held, once the first page has been on the panel for a
-// beat and the heap has recovered. Cover extraction and PNG decoding want a large inflate
-// state, and the open path used to hand them the framebuffer's bytes. A FrameBufferLoan cannot
-// be used here: it returns the buffer WHITE (FreeInkDisplay::returnBuildStorage) and every
-// other caller redraws the whole screen straight after. This one does not - the page stays on
-// the panel, and openOverlay() paints its chrome onto the framebuffer copy of that page. So the
-// inflate state comes from the heap, which is what the caller's idle thresholds pay for.
-// One height per call, so input is taken between two decodes.
-void EpubReaderActivity::generatePendingThumb() {
-  if (pendingThumbCount == 0 || !epub) return;
-  const int height = pendingThumbHeights[0];
-  pendingThumbHeights[0] = pendingThumbHeights[1];
-  --pendingThumbCount;
+// Runs from onExit(). While reading, the thumbnail waited on idle passes for 96 KB free, which
+// the page-turner radio never leaves (61 KB on the X3), so a new book reached Home without its
+// cover; and with the radio off each decode held the buttons for about 3 s under the page. By
+// the time the reader closes the ActivityManager has already released the radio and the page
+// no longer matters, so both heights are written here in one pass over the cover. A sleep
+// transition skips them: the power key must not wait on a decode, and the next open records
+// the miss again.
+void EpubReaderActivity::writePendingThumbs() {
+  if (pendingThumbCount == 0 || !epub || activityManager.isSleepTransition()) return;
 #ifdef TENOR_UI_ACCEPTANCE
-  LOG_DBG("ERS", "EPUB_THUMB stage=before height=%d free=%u largest=%u", height,
-          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  LOG_DBG("ERS", "EPUB_THUMB stage=before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
-  const unsigned long started = millis();
-  const bool thumbGenerated = epub->generateThumbBmp(height);
-  LOG_INF("ERS", "Cover thumbnail %d px: %lu ms, ok=%u", height, millis() - started, thumbGenerated ? 1u : 0u);
-#ifdef TENOR_UI_ACCEPTANCE
-  LOG_DBG("ERS", "EPUB_THUMB stage=after result=%u free=%u largest=%u", thumbGenerated ? 1u : 0u,
-          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
-#endif
-  if (!thumbGenerated) {
-    LOG_DBG("ERS", "No cover thumbnail for the recent card (book has no usable cover image)");
-  }
+  epub->generateThumbBmps(pendingThumbHeights, pendingThumbCount);
+  pendingThumbCount = 0;
 }
 
 ChapterPosition EpubReaderActivity::chapterPosition() const {
@@ -358,6 +366,7 @@ void EpubReaderActivity::openReaderMenu() {
   pendingManualTurn = 0;
 #ifdef TENOR_TURN_TRACE
   dropTurnTrace(pendingManualTurnTrace, "reader_menu");
+  LOG_INF("ERS", "MENU_REQUEST t=%lu", millis());
 #endif
   if (usesToolbarMenu()) {
     // Reached from a child activity's result handler (footnotes, bookmarks,
@@ -683,18 +692,6 @@ void EpubReaderActivity::loop() {
   // waits for a quiet pass.
   const bool inputThisPass =
       mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() || pendingManualTurn != 0 || pendingExternalTurn != 0;
-  // The cover thumbnail goes ahead of the page prewarm, but only once: the page has been on
-  // the panel for a beat and the heap covers the inflate state (see THUMB_IDLE_MIN_FREE_HEAP).
-  if (!inputThisPass && pendingThumbCount > 0 && renderer.hasFrameBuffer() && lastRenderCompleteMs != 0 &&
-      millis() - lastRenderCompleteMs > IDLE_PREWARM_DEBOUNCE_MS &&
-      ESP.getFreeHeap() > THUMB_IDLE_MIN_FREE_HEAP && ESP.getMaxAllocHeap() > THUMB_IDLE_MIN_MAX_ALLOC) {
-    RenderLock lock(RenderLock::TryTake{});
-    if (lock.acquired()) {
-      generatePendingThumb();
-      return;  // seconds have passed inside the lock; take input on the next pass
-    }
-  }
-
   if (!inputThisPass && section && (!section->isBuilding() || section->isBuildParked()) &&
       renderer.hasFrameBuffer() && lastRenderCompleteMs != 0 && millis() - lastRenderCompleteMs > IDLE_PREWARM_DEBOUNCE_MS &&
       ESP.getFreeHeap() > RENDER_MIN_FREE_HEAP && ESP.getMaxAllocHeap() > BACKGROUND_BUILD_MIN_MAX_ALLOC &&
@@ -820,7 +817,9 @@ void EpubReaderActivity::loop() {
   const bool atEndOfBook = currentSpineIndex > 0 && currentSpineIndex >= epub->getSpineItemsCount();
   clearEndOfBookOptionsIfNeeded();
 
-  if (SETTINGS.removeReadBooksFromRecents) {
+  // Only once the open itself is on the list (commitOpen), or the pending add would bring back
+  // an entry this removes.
+  if (SETTINGS.removeReadBooksFromRecents && !openCommitPending) {
     if (atEndOfBook && !recentsEntryRemoved) {
       recentsEntryRemoved = RECENT_BOOKS.removeByPath(epub->getPath());
     } else if (!atEndOfBook && recentsEntryRemoved) {
@@ -3704,6 +3703,8 @@ void EpubReaderActivity::onPause() {
 }
 
 void EpubReaderActivity::onExit() {
+  // The excerpt below lands on this book's recent entry, so the entry goes in first.
+  commitOpen();
   pendingManualTurn = 0;
 #ifdef TENOR_TURN_TRACE
   dropTurnTrace(pendingManualTurnTrace, "exit");
@@ -3723,4 +3724,6 @@ void EpubReaderActivity::onExit() {
     }
   }
   ReaderActivity::onExit();
+  // After the base class has handed back the SD font caches.
+  writePendingThumbs();
 }

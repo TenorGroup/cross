@@ -142,6 +142,11 @@ class ReaderActivity : public Activity {
   uint16_t trangDaLat = 0;
   void updateReadingTime(bool active);
   void chotSoLieuDoc();
+  // state.json and the recent list are read by the next boot and by Home, never before the
+  // first frame of this reader, yet writing them sat on the open path in front of that frame.
+  // onEnter() leaves them pending; the first tick after the frame, or the exit, writes them.
+  bool openCommitPending = false;
+  void commitOpen();
 
  public:
   void loop() override;

@@ -27,7 +27,8 @@ uint32_t millis() { return clockMs; }
 int popupCount = 0, buildErrors = 0;
 uint32_t popupAtMs = 0;
 // Cover thumbnail for the GAN DAY card. The counters let a case say WHEN the
-// JPEG->BMP pass ran, and whether it borrowed the framebuffer to do it.
+// JPEG->BMP pass ran (while a page is read, or as the reader closes), and whether it borrowed
+// the framebuffer to do it.
 // `fileOnCard` stands for every height already written; `onCard` for some heights only (a book
 // opened before the card's own thumbnail existed). `heights` records the order of generation.
 struct ThumbState {
@@ -171,22 +172,58 @@ struct Section {
 struct Epub {
   int getSpineItemsCount() const { return 3; }
   std::string getThumbBmpPath(int height) const { return "/thumb_" + std::to_string(height) + ".bmp"; }
-  // Mirrors Epub::generateThumbBmp: an existing file returns early and costs nothing.
-  bool generateThumbBmp(int height) const {
-    if (thumbs.has(height)) return true;
-    ++thumbs.generated;
-    thumbs.heights.push_back(height);
-    thumbs.onCard.push_back(height);
-    return true;
+  // Mirrors Epub::generateThumbBmps: an existing file is skipped and costs nothing.
+  void generateThumbBmps(const int* heights, int count) const {
+    for (int i = 0; i < count; ++i) {
+      if (thumbs.has(heights[i])) continue;
+      ++thumbs.generated;
+      thumbs.heights.push_back(heights[i]);
+      thumbs.onCard.push_back(heights[i]);
+    }
   }
+  // The one-height call of the previous release, so its reader still compiles for a red run.
+  bool generateThumbBmp(int height) const { generateThumbBmps(&height, 1); return true; }
 };
-struct Manager { uint32_t activityGeneration() const { return 1; } } activityManager;
+struct Manager {
+  bool sleepTransitionState = false;
+  uint32_t activityGeneration() const { return 1; }
+  bool isSleepTransition() const { return sleepTransitionState; }
+} activityManager;
 struct EndMenu { bool menuActive() const { return false; } };
+// The open's own writes: state.json and the recent list (ReaderActivity::onEnter and commitOpen).
+struct OpenWrites { int stateSaves = 0, recentAdds = 0; } openWrites;
+struct AppState {
+  std::string openEpubPath;
+  void saveToFile() { ++openWrites.stateSaves; }
+} APP_STATE;
+struct RecentBooks {
+  void addBook(const std::string&, const std::string&, const std::string&, const std::string&) {
+    ++openWrites.recentAdds;
+  }
+} RECENT_BOOKS;
+struct ReadingStats {
+  bool activateBook(const std::string&, int, const std::string&) { return true; }
+  uint32_t currentDay() const { return 1; }
+} READING_STATS;
 struct ReaderActivity {
   int pendingExternalTurn = 0, requests = 0, trangDaLat = 0;
   uint32_t pendingExternalGeneration = 0;
   bool pendingTurnIsLocal = false, pendingExternalChapter = false, preview = false;
   std::atomic<bool> endOfBookOptionsReady{false};
+  // What the tail of onEnter(), onTick() and commitOpen() touch.
+  std::string bookPath = "/sach/moi.epub";
+  bool statsEnabled = false, openCommitPending = false;
+  uint32_t statsLastMs = 0, statsSavedMs = 0, statsDayPollMs = 0, statsDay = 0;
+  std::atomic<bool> pageReady{false};
+  std::string getBookTitle() const { return "Tieu de"; }
+  std::string getBookAuthor() const { return "Tac gia"; }
+  std::string getBookThumbBmpPath() const { return "/thumb_[HEIGHT].bmp"; }
+  struct Info { int progressPercent = 0; };
+  Info getScreenshotInfo() const { return {}; }
+  bool readingPageVisible() const { return true; }
+  void updateReadingTime(bool) {}
+  void chotSoLieuDoc() {}
+  void openTail(); void onTick(); void commitOpen();
   std::unique_ptr<EndMenu> endOfBookOptions = std::make_unique<EndMenu>();
   virtual ~ReaderActivity() = default;
   virtual bool latTrangThat(bool) = 0;
@@ -218,7 +255,7 @@ struct EpubReaderActivity : ReaderActivity {
   uint32_t lastPageTurnTime = 0;
   std::atomic<bool> deferredClearPending{false};
   bool deferBackgroundBuildForBle() const; bool buildTickHeapGate(); bool backgroundBuildStartHeapGate(); bool backgroundBuildCanTick(); void suspendBackgroundBuild();
-  bool releaseRadioForBuild(); void showMemoryError(); void generatePendingThumb();
+  bool releaseRadioForBuild(); void showMemoryError(); void generatePendingThumb(); void writePendingThumbs();
   void backgroundTick(); void foreground(); bool skipLoopDelay(); bool latTrangThat(bool);
   // loadBook()'s cover-thumbnail tail and loop()'s idle region, projected verbatim.
   void openThumbStep(); void idleStep();

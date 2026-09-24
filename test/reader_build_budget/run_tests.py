@@ -38,7 +38,7 @@ edge = loop[edge_at:loop.index(';', edge_at) + 1] + '\n' if edge_at >= 0 else ''
 scheduler = ('void EpubReaderActivity::backgroundTick() {\n' + (edge if 'inputThisPass' in loop[start:end] else '') +
              loop[start:end] + '\n}')
 # Idle region of loop(): everything between the debounce constant and the background
-# scheduler. The deferred cover thumbnail lives here, ahead of the page prewarm.
+# scheduler. The cover thumbnail used to run here; a case holds that it no longer does.
 idle_start = loop.index('  constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS')
 idle = 'void EpubReaderActivity::idleStep() {\n' + loop[idle_start:start] + '\n}'
 # Cover-thumbnail tail of loadBook(), up to its final return.
@@ -75,12 +75,21 @@ fixture = pathlib.Path(__file__).with_name('fixture.hpp').read_text().replace('@
 layout_hook = 'EpubReaderActivity::pageAwaitsLayout(' in cpp
 fixture = fixture.replace('@@LAYOUT@@', '  bool pageAwaitsLayout() const;' if layout_hook else '')
 functions = [function('buildTickHeapGate'), function('latTrangThat'), function('skipLoopDelay'), function('showBuildPopup')]
-for name in ['pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'suspendBackgroundBuild', 'releaseRadioForBuild', 'showMemoryError', 'generatePendingThumb']:
+for name in ['pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'suspendBackgroundBuild', 'releaseRadioForBuild', 'showMemoryError', 'generatePendingThumb', 'writePendingThumbs']:
     if 'EpubReaderActivity::' + name + '(' in cpp:
         functions.append(function(name))
-reader = (a.source / 'src/activities/reader/ReaderActivity.cpp').read_text()
-functions += [function(name, reader, 'ReaderActivity') for name in ['luotLatTrangNgoai', 'processExternalPageTurn', 'pageTurnLocked']
+# A reader without the exit step (the previous release) writes nothing as it closes.
+if 'EpubReaderActivity::writePendingThumbs(' not in cpp:
+    functions.append('void EpubReaderActivity::writePendingThumbs() {}')
+reader = (reader_source / 'src/activities/reader/ReaderActivity.cpp').read_text()
+functions += [function(name, reader, 'ReaderActivity') for name in ['luotLatTrangNgoai', 'processExternalPageTurn', 'pageTurnLocked', 'onTick']
               + (['queuePageTurn'] if 'ReaderActivity::queuePageTurn(' in reader else [])]
+# The tail of onEnter() from the reading-stats activation on: where the open writes its state.
+on_enter = function('onEnter', reader, 'ReaderActivity')
+functions.append('void ReaderActivity::openTail() {\n' + on_enter[on_enter.index('  statsEnabled = READING_STATS.activateBook'):])
+# A reader that writes the open inside onEnter() (the previous release) has nothing left to commit.
+functions.append(function('commitOpen', reader, 'ReaderActivity') if 'ReaderActivity::commitOpen(' in reader
+                 else 'void ReaderActivity::commitOpen() {}')
 assert loop.index('if (processExternalPageTurn()) return;') > loop.index('  if (handlePreviewInput()) return;')
 cases = pathlib.Path(__file__).with_name('cases.cpp').read_text()
 source = (fixture + '\n' + '\n'.join(functions) + '\n' + scheduler + '\n' + idle + '\n' + open_thumb + '\n' +
@@ -89,7 +98,7 @@ source = (fixture + '\n' + '\n'.join(functions) + '\n' + scheduler + '\n' + idle
 hash_sources = {
     'src/activities/reader/EpubReaderActivity.cpp': reader_source,
     'src/activities/reader/EpubReaderActivity.h': reader_source,
-    'src/activities/reader/ReaderActivity.cpp': a.source,
+    'src/activities/reader/ReaderActivity.cpp': reader_source,
 }
 (a.output / 'source-hashes.json').write_text(json.dumps({str(path): hashlib.sha256((root / path).read_bytes()).hexdigest() for path, root in hash_sources.items()}, indent=2))
 cmd = [a.compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-fsanitize=address,undefined', '-g', str(a.output / 'projection.cpp'), '-o', str(a.output / 'projection')]

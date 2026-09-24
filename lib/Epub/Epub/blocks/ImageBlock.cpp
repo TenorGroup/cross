@@ -359,6 +359,9 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
     return;  // Successfully rendered from cache
   }
 
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+  const unsigned long firstViewStarted = millis();
+#endif
   // The build only header-probed the image for dimensions; pull the actual
   // file out of the book now, on first visit to the page.
   if (!srcPath.empty() && extractFn && !Storage.exists(imagePath.c_str())) {
@@ -410,7 +413,14 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
 
   LOG_DBG("IMG", "Using %s decoder", decoder->getFormatName());
 
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+  const unsigned long decodeStarted = millis();
+#endif
   bool success = decoder->decodeToFramebuffer(imagePath, renderer, config);
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+  LOG_INF("IMG", "FIRST_VIEW extract=%lu decode=%lu ms size=%u %dx%d", decodeStarted - firstViewStarted,
+          millis() - decodeStarted, static_cast<unsigned>(fileSize), width, height);
+#endif
   if (!success) {
     LOG_ERR("IMG", "Failed to decode image: %s", imagePath.c_str());
     rememberImageFailure(imagePath);

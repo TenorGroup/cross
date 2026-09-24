@@ -68,13 +68,22 @@ void ReaderActivity::onEnter() {
 
   trangDaLat = 0;
 
+#ifdef TENOR_TURN_TRACE
+  const unsigned long openStarted = millis();
+#endif
   sdFontSystem.ensureLoaded(renderer);
   applyInitialOrientation();
+#ifdef TENOR_TURN_TRACE
+  const unsigned long fontsDone = millis();
+#endif
 
   if (!loadBook()) {
     finish();
     return;
   }
+#ifdef TENOR_TURN_TRACE
+  const unsigned long bookLoaded = millis();
+#endif
 
   if (preview) {
     LOG_INF("READER", "Preview: %s", bookPath.c_str());
@@ -85,15 +94,32 @@ void ReaderActivity::onEnter() {
   statsEnabled = READING_STATS.activateBook(bookPath, getScreenshotInfo().progressPercent, getBookTitle());
   statsLastMs = statsSavedMs = statsDayPollMs = millis();
   statsDay = READING_STATS.currentDay();
+#ifdef TENOR_TURN_TRACE
+  LOG_INF("READER", "OPEN_STAGES fonts=%lu load=%lu stats=%lu", fontsDone - openStarted, bookLoaded - fontsDone,
+          statsLastMs - bookLoaded);
+#endif
 
   APP_STATE.openEpubPath = bookPath;
+  openCommitPending = true;
+  requestUpdate();
+}
+
+void ReaderActivity::commitOpen() {
+  if (!openCommitPending) return;
+  openCommitPending = false;
+#ifdef TENOR_TURN_TRACE
+  const unsigned long started = millis();
+#endif
   APP_STATE.saveToFile();
   RECENT_BOOKS.addBook(bookPath, getBookTitle(), getBookAuthor(), getBookThumbBmpPath());
-  requestUpdate();
+#ifdef TENOR_TURN_TRACE
+  LOG_INF("READER", "OPEN_COMMIT ms=%lu", millis() - started);
+#endif
 }
 
 void ReaderActivity::onExit() {
   Activity::onExit();
+  commitOpen();
   pendingExternalTurn = 0;
 #ifdef TENOR_TURN_TRACE
   dropTurnTrace(pendingExternalTurnTrace, "exit");
@@ -144,6 +170,11 @@ void ReaderActivity::chotSoLieuDoc() {
 }
 
 void ReaderActivity::onTick() {
+  // The first frame is on the panel: a page, or the end-of-book screen, which sets no pageReady.
+  if (openCommitPending &&
+      (pageReady.load(std::memory_order_acquire) || endOfBookOptionsReady.load(std::memory_order_acquire))) {
+    commitOpen();
+  }
   // Never stall the input loop on a paint in flight: try-take instead of
   // blocking. A blocked main task stops gpio polling for the whole paint
   // (~2 s on X3), which silently eats short taps (the debounced press never
@@ -158,9 +189,13 @@ void ReaderActivity::onPause() {
   pendingExternalTurn = 0;
 #ifdef TENOR_TURN_TRACE
   dropTurnTrace(pendingExternalTurnTrace, "pause");
+  const unsigned long started = millis();
 #endif
   updateReadingTime(false);
   chotSoLieuDoc();
+#ifdef TENOR_TURN_TRACE
+  LOG_INF("READER", "PAUSE_SAVE t=%lu ms=%lu", started, millis() - started);
+#endif
 }
 
 void ReaderActivity::onResume() {

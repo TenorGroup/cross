@@ -7,6 +7,7 @@ template<class F> void test(const char* name, F fn) {
   freeink::ble::idleStoppedState = false;
   freeink::ble::stopForIdleCalls = freeink::ble::rearmRequests = 0;
   clockMs = 1000; popupCount = buildErrors = 0; popupAtMs = 0; thumbs = {}; tenorchrome::enabledState = true;
+  activityManager.sleepTransitionState = false; openWrites = {};
   try { fn(); std::cout << "PASS " << name << '\n'; }
   catch (const std::exception& e) { ++failures; std::cout << "FAIL " << name << ": " << e.what() << '\n'; }
 }
@@ -298,9 +299,10 @@ int main() {
     r.backgroundTick(); r.processExternalPageTurn();
     require(r.requests == 1 && r.trangDaLat == 1, "queued turn replayed");
   });
-  // Heap values below are the ones the device logged right after the first page of a
-  // cold open painted: PAINT_COMPLETE rid=1 heap=116768 largest=90100.
-  test("cover thumbnail leaves the open path and runs on an idle pass", [] {
+  // Heap values below are the ones the device logged right after the first page of a cold open
+  // painted: PAINT_COMPLETE rid=1 heap=116768 largest=90100 with the page-turner radio off, and
+  // MEM Free: 61204 bytes, MaxAlloc: 55284 bytes once the radio started (cand-newbook-open.log).
+  test("cover thumbnail leaves the reading passes and is written as the reader closes", [] {
     EpubReaderActivity r; r.section->building = r.section->partial = false;
     r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
     r.openThumbStep();
@@ -309,30 +311,40 @@ int main() {
     require(thumbs.generated == 0, "open path still paid for the cover thumbnail");
     ESP.free = 116768; ESP.largest = 90100;
     r.lastRenderCompleteMs = millis();
-    clockMs += 500;  // past IDLE_PREWARM_DEBOUNCE_MS, first page is on the panel
-    r.idleStep();
-    // One per pass, so input is taken between two seconds-long decodes; the card's own first.
-    require(thumbs.heights == std::vector<int>{356}, "idle pass did not generate the card-sized thumbnail first");
-    // A loan returns the framebuffer white and nothing repaints it on this path.
-    require(thumbs.loans == 0, "idle thumbnail borrowed the framebuffer under a live page");
-    clockMs += 500;
-    r.idleStep();
-    require((thumbs.heights == std::vector<int>{356, 226}), "second idle pass did not generate the theme thumbnail");
-    clockMs += 500;
-    r.idleStep();
-    require(thumbs.generated == 2, "deferred thumbnail ran again on a later idle pass");
+    for (int pass = 0; pass < 3; ++pass) {
+      clockMs += 500;  // past IDLE_PREWARM_DEBOUNCE_MS, the page is on the panel
+      r.idleStep();
+    }
+    // Each decode held the buttons for about 3 s on the X3 under the page being read.
+    require(thumbs.generated == 0, "idle pass decoded the cover under the page being read");
+    r.writePendingThumbs();
+    // The card's own height first: it is the one the card draws.
+    require((thumbs.heights == std::vector<int>{356, 226}), "closing the reader did not write both thumbnails");
+    // A loan returns the framebuffer white; nothing needs the bytes here.
+    require(thumbs.loans == 0, "closing thumbnail borrowed the framebuffer");
+    r.writePendingThumbs();
+    require(thumbs.generated == 2, "a second close wrote the thumbnails again");
   });
-  test("book opened before the card thumbnail gets it on its next idle pass", [] {
-    EpubReaderActivity r; thumbs.onCard = {226};
-    r.section->building = r.section->partial = false;
+  test("radio heap still gets the new book its cover when the reader closes", [] {
+    EpubReaderActivity r; r.section->building = r.section->partial = false;
     r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
     r.openThumbStep();
-    ESP.free = 116768; ESP.largest = 90100;
+    ESP.free = 61204; ESP.largest = 55284;
     r.lastRenderCompleteMs = millis();
     for (int pass = 0; pass < 3; ++pass) {
       clockMs += 500;
       r.idleStep();
     }
+    r.writePendingThumbs();
+    require((thumbs.heights == std::vector<int>{356, 226}),
+            "a book read with the radio on reached Home without a cover");
+  });
+  test("book opened before the card thumbnail gets it when the reader closes", [] {
+    EpubReaderActivity r; thumbs.onCard = {226};
+    r.section->building = r.section->partial = false;
+    r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
+    r.openThumbStep();
+    r.writePendingThumbs();
     require(thumbs.heights == std::vector<int>{356}, "only the missing card thumbnail should be generated");
   });
   test("other themes keep the theme thumbnail alone", [] {
@@ -341,34 +353,16 @@ int main() {
     r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
     r.openThumbStep();
     require(thumbs.existsChecks == 1, "a theme without the card looked for the card thumbnail");
-    ESP.free = 116768; ESP.largest = 90100;
-    r.lastRenderCompleteMs = millis();
-    for (int pass = 0; pass < 3; ++pass) {
-      clockMs += 500;
-      r.idleStep();
-    }
+    r.writePendingThumbs();
     require(thumbs.heights == std::vector<int>{226}, "a theme without the card paid for the card thumbnail");
   });
-  test("deferred thumbnail waits for heap and for the first page", [] {
+  test("sleep does not wait on a cover decode", [] {
     EpubReaderActivity r; r.section->building = r.section->partial = false;
     r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
     r.openThumbStep();
-    ESP.free = 116768; ESP.largest = 90100;
-    r.idleStep();
-    require(thumbs.generated == 0, "thumbnail ran before the first page was painted");
-    r.lastRenderCompleteMs = millis();
-    clockMs += 500;
-    ESP.free = 53364; ESP.largest = 28660;  // deep in a chapter, parser resident
-    r.idleStep();
-    require(thumbs.generated == 0, "thumbnail ran below the idle heap budget");
-    ESP.free = 116768; ESP.largest = 90100;
-    r.idleStep();
-    require(thumbs.generated == 1, "thumbnail never recovered once heap returned");
-    // The second height waits for the same budget.
-    clockMs += 500;
-    ESP.free = 53364; ESP.largest = 28660;
-    r.idleStep();
-    require(thumbs.generated == 1, "second thumbnail ran below the idle heap budget");
+    activityManager.sleepTransitionState = true;
+    r.writePendingThumbs();
+    require(thumbs.generated == 0, "the power key waited on a cover decode");
   });
   test("existing cover thumbnail asks for nothing on either path", [] {
     EpubReaderActivity r; thumbs.fileOnCard = true;
@@ -379,8 +373,32 @@ int main() {
     r.lastRenderCompleteMs = millis();
     clockMs += 500;
     r.idleStep();
+    r.writePendingThumbs();
     require(thumbs.generated == 0, "warm open regenerated an existing thumbnail");
     require(thumbs.loans == 0, "warm open borrowed the framebuffer for nothing");
+  });
+  // state.json and the recent list are read by the next boot and by Home only. Writing them in
+  // onEnter() put two SD writes (and a pass over every recent book on the card) ahead of the
+  // first page.
+  test("opening a book records it after the first frame, not before", [] {
+    EpubReaderActivity r;
+    r.openTail();
+    require(openWrites.stateSaves == 0 && openWrites.recentAdds == 0,
+            "the open wrote state and recents ahead of the first frame");
+    r.onTick();
+    require(openWrites.recentAdds == 0, "the open was recorded before a frame reached the panel");
+    r.pageReady = true;
+    r.onTick();
+    require(openWrites.stateSaves == 1 && openWrites.recentAdds == 1, "the first frame did not record the open");
+    r.onTick();
+    require(openWrites.stateSaves == 1 && openWrites.recentAdds == 1, "the open was recorded twice");
+  });
+  test("a book opened on its end screen is recorded once that screen is drawn", [] {
+    EpubReaderActivity r;
+    r.openTail();
+    r.endOfBookOptionsReady = true;
+    r.onTick();
+    require(openWrites.recentAdds == 1, "the end-of-book screen did not record the open");
   });
   // Device evidence (serial-r14-rx.log): EPUB_PARK free=50564 then EPUB_RESUME free=28924,
   // so the parser takes back about 21 KB and lands under the 32 KB tick budget.
