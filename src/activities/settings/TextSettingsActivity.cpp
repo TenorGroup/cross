@@ -2,6 +2,7 @@
 
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -63,6 +64,9 @@ TextSettingsActivity::TextSettingsActivity(GfxRenderer& renderer, MappedInputMan
 const char* TextSettingsActivity::tabLabel(const int index) const { return I18N.get(TAB_NAME_IDS[index]); }
 
 void TextSettingsActivity::onEnter() {
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long started = millis();
+#endif
   UiTabListActivity::onEnter();
 
   metrics_ = UITheme::getInstance().getMetrics();
@@ -83,6 +87,9 @@ void TextSettingsActivity::onEnter() {
   tabNavs[static_cast<int>(Tab::Size)].selected = currentSizeIndex_ + 1;
 
   rebuildRowItems();
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("TXT", "Enter ms=%lu", millis() - started);
+#endif
 }
 
 // Rebuilds rowItems_ (label + actionValue) for the active tab. Structural -
@@ -271,11 +278,23 @@ void TextSettingsActivity::render(RenderLock&&) {
   const char* sizeName = (currentSizeIndex_ >= 0 && currentSizeIndex_ < static_cast<int>(sizes_.size()))
                              ? sizes_[currentSizeIndex_].name.c_str()
                              : "";
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long started = millis();
+  unsigned long previewMs = 0;
+  unsigned passes = 0;
+#endif
   renderSettledList(activeNav(), [&] {
     renderer.clearScreen();
     drawNavigationHeader(tr(STR_TEXT_SETTINGS));
+#ifdef TENOR_PRESS_PROBE
+    const unsigned long previewStarted = millis();
+    ++passes;
+#endif
     textsettings::renderPreview(renderer, previewLayout_, metrics_.previewPadding, metrics_.verticalSpacing, afterHeader,
                                previewHeight, familyName, sizeName);
+#ifdef TENOR_PRESS_PROBE
+    previewMs += millis() - previewStarted;
+#endif
     renderUi();
   });
 
@@ -292,7 +311,14 @@ void TextSettingsActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabelText(), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long painted = millis();
+#endif
   renderer.displayBuffer();
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("TXT", "Frame paint=%lu preview=%lu passes=%u display=%lu", painted - started, previewMs, passes,
+          millis() - painted);
+#endif
 }
 
 void TextSettingsActivity::updatePreviewGeometry() {

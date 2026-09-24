@@ -191,7 +191,12 @@ class EpubReaderActivity final : public ReaderActivity {
   // has settled, and not so late that the loop already runs down-clocked.
   static constexpr int BUILD_WINDOW_QUIET_MS = 400;
   static constexpr int BUILD_WINDOW_LATEST_MS = 1200;
+  // Bound on one look-ahead: the next page took 780 ms on the X3, a pathological one stops here.
+  static constexpr int BUILD_WINDOW_MAX_MS = 1500;
   int lookAheadPage = -1;
+  // Last pass that saw the radio's start in flight. The window above counts from here too: the
+  // radio starts right after a book's first page, and its start can outlast the window.
+  unsigned long radioSettledMs = 0;
   static constexpr int PARTIAL_REBUILD_START_MARGIN = 15;
   static constexpr int BUILD_POPUP_PAGE_THRESHOLD = 20;
   static constexpr size_t BUILD_POPUP_BYTE_THRESHOLD = 96 * 1024;

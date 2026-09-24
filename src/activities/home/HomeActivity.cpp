@@ -77,6 +77,32 @@ uint64_t& seenNewest(const uint32_t book) {
   seen = SeenQuote{book, 0};
   return seen.newest;
 }
+
+// A card file: this head, then the cover region and the text region as the framebuffer holds them.
+// `thumb` is whether the card's own thumbnail was on the card when the cover was drawn: the reader
+// writes it the first time it opens a book, and a card drawn before that is stale from then on.
+struct CardFileHead {
+  uint32_t magic;
+  uint32_t key;
+  int16_t rects[8];
+  uint32_t bytes;
+  uint8_t thumb;
+};
+constexpr uint32_t CARD_FILE_MAGIC = 0x31445243;  // "CRD1"
+
+uint32_t fnv(uint32_t hash, const void* data, size_t size) {
+  for (const auto* p = static_cast<const uint8_t*>(data); size--; ++p) hash = (hash ^ *p) * 16777619u;
+  return hash;
+}
+uint32_t fnv(const uint32_t hash, const std::string& text) { return fnv(hash, text.c_str(), text.size() + 1); }
+
+// Books whose missing card thumbnail Home has tried to write since boot, by path hash: a cover that
+// fails to decode is not decoded again on every visit.
+uint32_t thumbTried[5] = {};
+uint8_t thumbTriedNext = 0;
+// Idle time on the card before Home decodes a missing cover (1 to 3 s under a notice).
+constexpr uint32_t CARD_THUMB_IDLE_MS = 3000;
+constexpr size_t CARD_THUMB_MIN_FREE_HEAP = 96 * 1024;
 }  // namespace
 
 HomeActivity::HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -480,6 +506,7 @@ void HomeActivity::confirmStatsReset(const bool all) {
       [this, all](const ActivityResult& result) {
         if (result.isCancelled) return;
         RenderLock lock(*this);
+        cardRecordsRead = cardRecordsFound = 0;
         switch (READING_STATS.resetStatistics(all)) {
           case ReadingStatsStore::ResetResult::Failed:
             statsResetTip = StrId::STR_STATS_RESET_FAILED;
@@ -695,8 +722,9 @@ void HomeActivity::render(RenderLock&&) {
 #endif
   LOG_INF("HOME", "Frame row=%d top=%d total=%lums heap=%u", ringPos(), activeNav().top,
           static_cast<unsigned long>(millis() - started), ESP.getFreeHeap());
-  // The wake's first frame is up: now write the splash setup() re-armed (see setup()).
-  if (cleanInitialRefresh) saveAppState();
+  if (!cardFilePending.empty()) saveCardFile();
+  // The wake's first frame is up: the main task writes the splash setup() re-armed (onTick).
+  if (cleanInitialRefresh) wakeStatePending = true;
   cleanInitialRefresh = false;
 }
 
@@ -872,10 +900,15 @@ std::string HomeActivity::cardExcerpt(const int index, bool& quoted) {
   return book.excerpt;
 }
 
-void HomeActivity::loadCardStats(const RecentBook& book) {
-  BookReadingRecord record;
+void HomeActivity::loadCardStats(const int index) {
+  const uint8_t bit = static_cast<uint8_t>(1u << index);
+  if (!(cardRecordsRead & bit)) {
+    cardRecordsRead |= bit;
+    if (READING_STATS.readBook(recentBooks[index].path, cardRecords[index])) cardRecordsFound |= bit;
+  }
+  const BookReadingRecord& record = cardRecords[index];
   cardStats = {};
-  cardStats.recorded = READING_STATS.readBook(book.path, record);
+  cardStats.recorded = cardRecordsFound & bit;
   const uint64_t elapsed = static_cast<uint64_t>(record.minutes) * 60000 + record.remainderMs;
   cardStats.rows = homeStatRows(cardStats.recorded, elapsed, record.days, record.firstDay, record.lastDay);
   cardStats.percent = std::min<uint8_t>(record.progress, 100);
@@ -974,6 +1007,49 @@ void HomeActivity::drawRecentCard() {
 #endif
   const auto& book = recentBooks[shown];
   const auto title = book.title.empty() ? book.path.substr(book.path.find_last_of('/') + 1) : book.title;
+  const char* author = book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str();
+  // A saved quote of the book goes in curly quotes; the page excerpt the reader left on is shown
+  // as it is, as in the approved drawings.
+  bool quoted = false;
+  const auto excerpt = cardExcerpt(shown, quoted);
+  const auto quote = excerpt.empty() ? std::string(tr(STR_RECENT_NO_EXCERPT))
+                     : quoted        ? std::string("“") + excerpt + "”"
+                                     : excerpt;
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t quotedMs = millis();
+#endif
+  // The cover and the lines under it depend on these alone (the cover's height and the title's
+  // line count do not move the cover), so the key says whether a card file still shows this card.
+  const std::string thumbPath =
+      book.coverBmpPath.empty() ? std::string() : UITheme::getCoverThumbPath(book.coverBmpPath, HOME_CARD_COVER_H);
+  const int16_t geometry[] = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY),
+                              static_cast<int16_t>(frame.coverW), static_cast<int16_t>(frame.coverH),
+                              static_cast<int16_t>(frame.textX),  static_cast<int16_t>(frame.titleY),
+                              static_cast<int16_t>(frame.textW),  static_cast<int16_t>(SETTINGS.uiTextSize),
+                              static_cast<int16_t>(SETTINGS.screenInverted)};
+  uint32_t key = fnv(fnv(2166136261u, CROSSPOINT_VERSION), geometry, sizeof(geometry));
+  key = fnv(fnv(fnv(fnv(key, title), std::string(author)), quote), std::string(SETTINGS.sdFontFamilyName));
+  // One file for the page excerpt and four for quotes, so a book with a few quotes finds its card
+  // whichever the visit picked, and a book's files stay bounded however many it has.
+  std::string cardPath;
+  if (!thumbPath.empty()) {
+    cardPath = thumbPath + ".card";
+    cardPath += quoted ? static_cast<char>('0' + (static_cast<uint32_t>(cardQuotes[shown]) * 2654435761u >> 30)) : 'e';
+  }
+  if (!cardPath.empty() && loadCardFile(cardPath, key, thumbPath) && restoreCoverBuffer()) {
+    coverBufferBook = shown;
+    coverRendered = true;
+    if (!cardFileThumb) wantThumb(shown);
+    loadCardStats(shown);
+    drawCardStats(frame);
+    drawOtherBookRow(shown, frame.ruleY, frame.rowY);
+    LOG_INF("HOME", "Recent card file=%lums cache=%u", static_cast<unsigned long>(millis() - started),
+            static_cast<unsigned>(coverBufferSize));
+    return;
+  }
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t fileMs = millis();
+#endif
   const auto titleLines = renderer.wrappedText(UI_12_FONT_ID, title.c_str(), frame.textW, 2, EpdFontFamily::BOLD);
   in.titleLines = std::max(1, static_cast<int>(titleLines.size()));
   const auto card = homeCardLayout(in);
@@ -982,19 +1058,11 @@ void HomeActivity::drawRecentCard() {
     renderer.drawText(UI_12_FONT_ID, card.textX, y, line.c_str(), true, EpdFontFamily::BOLD);
     y += in.titleLineHeight;
   }
-  const char* author = book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str();
   renderer.drawText(UI_10_FONT_ID, card.textX, card.authorY,
                     renderer.truncatedText(UI_10_FONT_ID, author, card.textW).c_str());
-  // A saved quote of the book goes in curly quotes; the page excerpt the reader left on is shown
-  // as it is, as in the approved drawings.
-  bool quoted = false;
-  const auto excerpt = cardExcerpt(shown, quoted);
   const bool cjkExcerpt = homeExcerptUsesUiFont(excerpt.c_str());
   const int quoteFont = excerpt.empty() ? SMALL_FONT_ID : cjkExcerpt ? UI_12_FONT_ID : serifFont;
   const auto quoteStyle = excerpt.empty() || cjkExcerpt ? EpdFontFamily::REGULAR : EpdFontFamily::ITALIC;
-  const auto quote = excerpt.empty() ? std::string(tr(STR_RECENT_NO_EXCERPT))
-                     : quoted        ? std::string("“") + excerpt + "”"
-                                     : excerpt;
   // Without a page slot every glyph miss inflates a whole font group again
   // (the decompressor keeps one hot group), which made this card cost ~620 ms
   // on the X3. Prewarm once; the slot is released after the card is cached.
@@ -1006,14 +1074,19 @@ void HomeActivity::drawRecentCard() {
     y += renderer.getLineHeight(quoteFont);
   }
   const int textBottom = std::min(y, card.ruleY - 1);
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t textMs = millis();
+#endif
   // The reader writes a thumbnail at the card's own height and one at the theme's; the card's is
   // drawn at its own size, the theme's is the fallback for a book not opened since that began.
   bool image = false;
   int coverHeight = 0;
+  cardFileThumb = 0;
   for (const int height : {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight}) {
     if (image || book.coverBmpPath.empty()) break;
     HalFile file;
     if (!Storage.openFileForRead("HOME", UITheme::getCoverThumbPath(book.coverBmpPath, height), file)) continue;
+    if (height == HOME_CARD_COVER_H) cardFileThumb = 1;
     Bitmap bitmap(file);
     if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0)
       image = renderer.drawBitmapCover(bitmap, card.coverX, card.coverY, card.coverW, card.coverH);
@@ -1033,6 +1106,9 @@ void HomeActivity::drawRecentCard() {
   // would not cover: a few hundred pixels, no second buffer, and the cached card keeps them.
   renderer.maskRoundedRectOutsideCorners(card.coverX, card.coverY, card.coverW, card.coverH,
                                          tenorradius::cover(card.coverW));
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t imageMs = millis();
+#endif
   // Cache the cover and the text block, including typography, only while Home owns them.
   // onPause/onExit release this bounded region before a book or network screen opens.
   coverRectX = card.coverX;
@@ -1046,17 +1122,130 @@ void HomeActivity::drawRecentCard() {
   coverBufferStored = storeCoverBuffer();
   coverBufferBook = shown;
   coverRendered = true;
+  if (coverBufferStored && !cardPath.empty()) {
+    cardFilePending = cardPath;
+    cardFileKey = key;
+  }
+  if (!cardFileThumb && !thumbPath.empty()) wantThumb(shown);
   if (fcm) fcm->releaseBuiltinPageCaches();  // the card is now a cached bitmap
-  loadCardStats(book);
+  loadCardStats(shown);
   const int barY = drawCardStats(card);
   drawOtherBookRow(shown, card.ruleY, card.rowY);
 #ifdef TENOR_UI_ACCEPTANCE
   LOG_INF("HOME_PROBE", "card_build_us=%lu cache_bytes=%u", static_cast<unsigned long>(micros() - cardStartedUs),
           static_cast<unsigned>(coverBufferSize));
 #endif
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("HOME", "Card stages quote=%lu file=%lu text=%lu image=%lu rest=%lu", quotedMs - started,
+          fileMs - quotedMs, textMs - fileMs, imageMs - textMs, millis() - imageMs);
+#endif
   LOG_INF("HOME", "Recent card build=%lums cache=%u cover=%d", static_cast<unsigned long>(millis() - started),
           static_cast<unsigned>(coverBufferSize), coverHeight);
   LOG_INF("HOME", "Card stats rows=%02x bar=%d", static_cast<unsigned>(cardStats.rows), barY);
+}
+
+bool HomeActivity::loadCardFile(const std::string& path, const uint32_t key, const std::string& thumbPath) {
+  auto file = Storage.open(path.c_str());
+  if (!file) return false;
+  CardFileHead head;
+  if (file.read(&head, sizeof(head)) != static_cast<int>(sizeof(head)) || head.magic != CARD_FILE_MAGIC ||
+      head.key != key || file.size() != sizeof(head) + head.bytes)
+    return false;
+  if (Storage.exists(thumbPath.c_str()) != static_cast<bool>(head.thumb)) return false;
+  cardFileThumb = head.thumb;
+  const auto* r = head.rects;
+  const size_t first = renderer.getRegionByteSize(r[0], r[1], r[2], r[3]);
+  if (first == 0 || first + (r[7] > 0 ? renderer.getRegionByteSize(r[4], r[5], r[6], r[7]) : 0) != head.bytes)
+    return false;
+  freeCoverBuffer();
+  coverBuffer = static_cast<uint8_t*>(malloc(head.bytes));
+  if (!coverBuffer) return false;
+  if (file.read(coverBuffer, head.bytes) != static_cast<int>(head.bytes)) {
+    freeCoverBuffer();
+    return false;
+  }
+  coverBufferSize = head.bytes;
+  coverBufferUiSize = normalizedUiTextSize(SETTINGS.uiTextSize);
+  coverRectX = r[0];
+  coverRectY = r[1];
+  coverRectW = r[2];
+  coverRectH = r[3];
+  textRectX = r[4];
+  textRectY = r[5];
+  textRectW = r[6];
+  textRectH = r[7];
+  coverBufferStored = true;
+  return true;
+}
+
+void HomeActivity::wantThumb(const int index) {
+  if (!FsHelpers::hasEpubExtension(recentBooks[index].path)) return;
+  const uint32_t id = fnv(2166136261u, recentBooks[index].path);
+  for (const uint32_t tried : thumbTried)
+    if (tried == id) return;
+  thumbWantedAtMs = millis();
+  thumbWanted = static_cast<int8_t>(index);
+}
+
+void HomeActivity::onTick() {
+  if (wakeStatePending.exchange(false)) saveAppState();
+  const int index = thumbWanted.load();
+  if (index < 0) return;
+  // Any press moves the card on or opens something: the decode waits for the next idle card.
+  if (mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased()) {
+    thumbWanted = -1;
+    return;
+  }
+  if (millis() - thumbWantedAtMs.load() < CARD_THUMB_IDLE_MS) return;
+  thumbWanted = -1;
+  writeMissingThumb(index);
+}
+
+void HomeActivity::writeMissingThumb(const int index) {
+  RenderLock lock(*this);
+  if (activeTabId != Tab::RECENT || index != shownRecent()) return;
+  const std::string path = recentBooks[index].path;
+  thumbTried[thumbTriedNext++ % 5] = fnv(2166136261u, path);
+  // The card is drawn again with its cover, and the decode gets the card's snapshot memory.
+  freeCoverBuffer();
+  coverRendered = false;
+  if (ESP.getFreeHeap() >= CARD_THUMB_MIN_FREE_HEAP) {
+    LOG_INF("HOME", "Card thumbnail write %d", index);
+    GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+    Epub epub(path, "/.crosspoint");
+    if (epub.load(false, true)) {
+      const int heights[] = {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight};
+      epub.generateThumbBmps(heights, 2);
+    }
+  }
+  requestUpdate();
+}
+
+// Runs after the frame is on the panel, so the write never delays the card it caches. The head
+// goes first with the length it promises, so a write cut short reads back as a missing file.
+void HomeActivity::saveCardFile() {
+  const std::string path = std::move(cardFilePending);
+  cardFilePending.clear();
+  if (!coverBufferStored || !coverBuffer) return;
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t started = millis();
+#endif
+  const CardFileHead head{CARD_FILE_MAGIC,
+                          cardFileKey,
+                          {static_cast<int16_t>(coverRectX), static_cast<int16_t>(coverRectY),
+                           static_cast<int16_t>(coverRectW), static_cast<int16_t>(coverRectH),
+                           static_cast<int16_t>(textRectX), static_cast<int16_t>(textRectY),
+                           static_cast<int16_t>(textRectW), static_cast<int16_t>(textRectH)},
+                          static_cast<uint32_t>(coverBufferSize),
+                          cardFileThumb};
+  auto file = Storage.open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
+  const bool ok = file && file.write(&head, sizeof(head)) == sizeof(head) &&
+                  file.write(coverBuffer, coverBufferSize) == coverBufferSize;
+  file.close();
+  if (!ok) Storage.remove(path.c_str());
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("HOME", "Card file saved ok=%u ms=%lu", ok ? 1u : 0u, static_cast<unsigned long>(millis() - started));
+#endif
 }
 
 // "Another book" and the next book's title under a rule, with an arrow on each side that has a

@@ -42,6 +42,13 @@ uint32_t ActivityManager::renderStackHighWaterMark() const {
 }
 #endif
 
+namespace {
+// Writes a closing screen left for later (deferWrite). Set and run on the main task only; the
+// render task says when a frame has been drawn since.
+void (*deferredWrites[4])() = {};
+std::atomic<bool> frameAfterDeferredWrite{false};
+}  // namespace
+
 void ActivityManager::begin() {
 #if defined(configNUM_CORES) && configNUM_CORES > 1
   constexpr BaseType_t renderTaskCore = 1;
@@ -75,6 +82,7 @@ void ActivityManager::renderTaskLoop() {
       // The sleep screen forces normal polarity itself (SleepActivity).
       display.setInverted(SETTINGS.screenInverted != 0);
       currentActivity->render(std::move(lock));
+      frameAfterDeferredWrite.store(true, std::memory_order_release);
     }
     // Notify any task blocked in requestUpdateAndWait() that the render is done.
     TaskHandle_t waiter = nullptr;
@@ -100,6 +108,13 @@ void ActivityManager::loop() {
       xTaskNotify(renderTaskHandle, 1, eIncrement);
     }
     return;
+  }
+
+  // The next screen's first frame is up: now the writes the screen before it left (deferWrite),
+  // under the render lock so they never run beside a paint.
+  if (deferredWrites[0] && frameAfterDeferredWrite.load(std::memory_order_acquire)) {
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired()) flushDeferredWrites();
   }
 
   if (currentActivity && !sleepTransition && pendingAction == PendingAction::None) {
@@ -143,7 +158,15 @@ void ActivityManager::loop() {
     // Release the radio before the next activity allocates its fonts, cover or
     // inflate buffers. Teardown can span loop iterations and must run outside
     // RenderLock so the worker and renderer can finish without deadlocking.
+#ifdef TENOR_PRESS_PROBE
+    static uint32_t radioWaitFrom = 0;
+    if (!radioWaitFrom) radioWaitFrom = millis() | 1;
     if (!freeink::ble::suspendForTransition()) return;
+    LOG_INF("ACT", "Transition radio=%lu ms", static_cast<unsigned long>(millis() - radioWaitFrom));
+    radioWaitFrom = 0;
+#else
+    if (!freeink::ble::suspendForTransition()) return;
+#endif
     ++activityGeneration_;
 
     if (pendingAction == PendingAction::Pop) {
@@ -287,19 +310,54 @@ void ActivityManager::saveNavigation(Activity& activity) {
   navigationMemory.save(activity.navigationMemoryKey(), state);
 }
 
+void ActivityManager::deferWrite(void (*write)()) {
+  frameAfterDeferredWrite.store(false, std::memory_order_relaxed);
+  for (auto& slot : deferredWrites) {
+    if (slot == write) return;
+    if (!slot) {
+      slot = write;
+      return;
+    }
+  }
+  write();
+}
+
+void ActivityManager::flushDeferredWrites() {
+  if (!deferredWrites[0]) return;
+  const uint32_t started = millis();
+  unsigned count = 0;
+  for (auto& slot : deferredWrites) {
+    if (!slot) break;
+    const auto write = slot;
+    slot = nullptr;
+    write();
+    ++count;
+  }
+  LOG_INF("ACT", "Deferred writes n=%u ms=%lu", count, static_cast<unsigned long>(millis() - started));
+}
+
 void ActivityManager::exitActivity(const RenderLock& lock) {
   // Note: lock must be held by the caller
   if (currentActivity) {
+    // What the screen before this one left is written before this one leaves anything.
+    flushDeferredWrites();
     saveNavigation(*currentActivity);
     const uint32_t started = millis();
     const std::string exited = currentActivity->name;
     currentActivity->onExit();
+#ifdef TENOR_PRESS_PROBE
+    const uint32_t exitedMs = millis();
+#endif
     currentActivity.reset();
     {
       const auto heap = HalMemory::getInternalHeap();
       LOG_INF("HEAP", "exit %s free=%u largest=%u", exited.c_str(), static_cast<unsigned>(heap.freeBytes),
               static_cast<unsigned>(heap.largestBlockBytes));
     }
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("ACT", "Exit stages onExit=%lu destroy=%lu", static_cast<unsigned long>(exitedMs - started),
+            static_cast<unsigned long>(millis() - exitedMs));
+#endif
     if (sleepTransition) LOG_INF("SLP", "Timing close-activity=%lu ms", static_cast<unsigned long>(millis() - started));
   }
 }

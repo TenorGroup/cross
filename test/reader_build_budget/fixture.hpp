@@ -19,6 +19,7 @@ inline void logSink(A&&...) {}
 #define STR_INDEXING 1
 #define STR_PAGE_LOAD_ERROR 2
 #define STR_MEMORY_ERROR 3
+#define STR_LOADING_POPUP 4
 #define UI_12_FONT_ID 12
 struct EpdFontFamily { static constexpr int BOLD = 1; };
 int tr(int n) { return n; }
@@ -95,7 +96,9 @@ inline bool heldForBuildState = false;
 inline void setRadioHeldForBuild(bool held) { heldForBuildState = held; }
 }  // namespace freeink::ble
 inline void delay(uint32_t ms) { clockMs += ms; }
-struct Gui { void drawPopup(int, int) { ++popupCount; popupAtMs = millis(); } } GUI;
+// Thumbnails written when the last popup went up, so a case can tell a notice came first.
+int popupGenerated = -1;
+struct Gui { void drawPopup(int, int) { ++popupCount; popupAtMs = millis(); popupGenerated = thumbs.generated; } } GUI;
 struct PageReadState { int failures = 0, reads = 0, clears = 0, abandons = 0, errors = 0; } pageReads;
 struct ReaderRenderer {
   operator int() const { return 0; }
@@ -118,7 +121,7 @@ struct Section {
   bool failStart = false, failTick = false, dropAfterTick = false, dropAfterStart = false;
   bool starveUntilRadioStopped = false, starved = false;
   bool buildStarved() const { return starved; }
-  int starts = 0, ticks = 0, suspends = 0, parks = 0, resumes = 0;
+  int starts = 0, ticks = 0, suspends = 0, parks = 0, resumes = 0, ticksPerPage = 0, ticksIntoPage = 0;
   int restoredPagesAfterStart = 0;
   uint32_t startMs = 0, tickMs = 0;
   // Heap the park gives back, and what the parser takes again when it resumes.
@@ -152,7 +155,11 @@ struct Section {
     if (failTick) return false;
     starved = starveUntilRadioStopped && !freeink::ble::idleStoppedState;
     if (starved) { parked = canPark; return false; }
-    builtPages += n; pageCount = std::max(oldPages, builtPages);
+    // The real tick yields after about 20 ms of parsing (Section::buildSomeMore), so on the X3 one
+    // page takes dozens of ticks. ticksPerPage > 0 models that: a page lands every that many ticks.
+    if (ticksPerPage > 0) builtPages += ++ticksIntoPage % ticksPerPage == 0 ? 1 : 0;
+    else builtPages += n;
+    pageCount = std::max(oldPages, builtPages);
     if (dropAfterTick) { ESP.free = 29100; ESP.largest = 17396; }
     if (builtPages >= 40) { pageCount = 40; building = partial = false; complete = true; }
     return true;

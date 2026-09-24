@@ -69,7 +69,7 @@ page_load = ('void EpubReaderActivity::loadPageForRender() {\n'
 # Constants and state declarations come from the real header, avoiding a second policy.
 declarations = []
 for line in header.splitlines():
-    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD|RENDER_MIN_FREE_HEAP|THUMB_IDLE)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t (?:pageLoadRetryCount|pendingThumbCount)|size_t parkedParserFootprint|unsigned long lastRenderCompleteMs|int (?:idlePrewarmSpine|idlePrewarmPage|pendingThumbHeight|lookAheadPage)|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|radioReleasedForBuild|pendingThumbGeneration)|uint16_t buildViewport)', line):
+    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD|RENDER_MIN_FREE_HEAP|THUMB_IDLE)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t (?:pageLoadRetryCount|pendingThumbCount)|size_t parkedParserFootprint|unsigned long (?:lastRenderCompleteMs|radioSettledMs)|int (?:idlePrewarmSpine|idlePrewarmPage|pendingThumbHeight|lookAheadPage)|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|radioReleasedForBuild|pendingThumbGeneration)|uint16_t buildViewport)', line):
         declarations.append(line)
 fixture = pathlib.Path(__file__).with_name('fixture.hpp').read_text().replace('@@FIELDS@@', '\n'.join(declarations))
 layout_hook = 'EpubReaderActivity::pageAwaitsLayout(' in cpp
@@ -90,6 +90,10 @@ on_enter = function('onEnter', reader, 'ReaderActivity')
 functions.append('void ReaderActivity::openTail() {\n' + on_enter[on_enter.index('  statsEnabled = READING_STATS.activateBook'):])
 # Whether opening the reader menu asks the pause to keep the stats in RAM.
 functions.append('constexpr bool kMenuKeepsStats = %s;' % ('true' if 'pauseKeepsStatsInRam = true' in function('openReaderMenu') else 'false'))
+# Whether every text settings screen the reader opens asks the pause to keep the stats in RAM too.
+opens = [m.start() for m in re.finditer(r'make_unique<TextSettingsActivity>', cpp)]
+functions.append('constexpr bool kTextSettingsKeepsStats = %s;' % (
+    'true' if opens and all('pauseKeepsStatsInRam = true' in cpp[at - 400:at] for at in opens) else 'false'))
 # A reader that writes the open inside onEnter() (the previous release) has nothing left to commit.
 functions.append(function('commitOpen', reader, 'ReaderActivity') if 'ReaderActivity::commitOpen(' in reader
                  else 'void ReaderActivity::commitOpen() {}')

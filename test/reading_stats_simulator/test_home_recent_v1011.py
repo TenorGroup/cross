@@ -34,6 +34,8 @@ QUOTES = [
 ]
 CARD_QUOTE = re.compile(r'Card quote ([0-9a-f]{16}\.json) of (\d+)')
 CARD_BUILD = re.compile(r'Recent card build=(\d+)ms')
+# From v1.0.13 a card shown before is read back from its file instead of built again.
+CARD_FILE = re.compile(r'Recent card file=(\d+)ms')
 
 
 def book_key(path):
@@ -192,7 +194,7 @@ class HomeRecentCardTest(unittest.TestCase):
         self.assertTrue(self.ink(images['second'], self.LEFT_ARROW), 'no left arrow on an older book')
         # Four hints: Back, Select, and left and right arrows.
         self.assertTrue(all(self.ink(images['first'], cell) for cell in self.HINTS))
-        self.assertGreaterEqual(len(CARD_BUILD.findall(log)), 5)
+        self.assertGreaterEqual(len(CARD_BUILD.findall(log)) + len(CARD_FILE.findall(log)), 5)
         # Select opened the book on the card (the third, oldest one) in the reader.
         self.assertIn('Entering activity: EpubReader', log)
         state = json.loads((self.store / 'state.json').read_text())

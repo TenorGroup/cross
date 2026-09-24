@@ -784,21 +784,26 @@ void Epub::generateThumbBmps(const int* heights, const int count) const {
       cover.close();
       copied = true;
     }
+    // Written under a temporary name and renamed once whole: whether a thumbnail is missing is
+    // decided by its name alone, so a write cut by power loss or sleep must not leave that name.
+    const std::string partPath = thumbPath + ".tmp";
+    Storage.remove(partPath.c_str());
     if (!Storage.openFileForRead("EBP", coverTempPath, cover) ||
-        !Storage.openFileForWrite("EBP", thumbPath, thumbBmp)) {
+        !Storage.openFileForWrite("EBP", partPath, thumbBmp)) {
       break;
     }
     // Generate 1-bit BMP for fast home screen rendering (no gray passes needed)
     const int width = height * 0.6;
-    const bool success =
+    bool success =
         jpg ? JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(cover, thumbBmp, width, height)
             : PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(cover, thumbBmp, width, height);
     // Explicitly close() files before calling Storage.remove()
     cover.close();
     thumbBmp.close();
+    success = success && Storage.rename(partPath.c_str(), thumbPath.c_str());
     if (!success) {
       LOG_ERR("EBP", "Failed to generate thumb BMP from cover image");
-      Storage.remove(thumbPath.c_str());
+      Storage.remove(partPath.c_str());
     }
     LOG_INF("EBP", "Cover thumbnail %d px: %lu ms, ok=%u, page=0", height, millis() - started, success ? 1u : 0u);
   }

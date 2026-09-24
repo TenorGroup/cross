@@ -223,12 +223,17 @@ class CoverThumbCapture final : public ImageBlock::ThumbHook {
     int written = 0;
     for (int i = 0; i < 2 && heights[i] > 0 && (i == 0 || heights[1] < heights[0]); i++) {
       const auto path = epub.getThumbBmpPath(heights[i]);
+      // Under a temporary name until whole, as Epub::generateThumbBmps writes it: the reader
+      // only asks whether the name exists, so a cut write must not leave it behind.
+      const auto part = path + ".tmp";
+      Storage.remove(part.c_str());
       HalFile file;
-      const bool ok = Storage.openFileForWrite("ERS", path, file) &&
-                      (i == 0 ? thumb->writeTo(file) : thumb->writeScaled(heights[i], file));
+      bool ok = Storage.openFileForWrite("ERS", part, file) &&
+                (i == 0 ? thumb->writeTo(file) : thumb->writeScaled(heights[i], file));
       file.close();
+      ok = ok && Storage.rename(part.c_str(), path.c_str());
       if (!ok) {
-        Storage.remove(path.c_str());
+        Storage.remove(part.c_str());
         break;
       }
       LOG_INF("ERS", "Cover thumbnail %d px: %lu ms, ok=1, page=1", heights[i], millis() - started);
@@ -397,14 +402,16 @@ bool EpubReaderActivity::loadBook() {
 // cover; and with the radio off each decode held the buttons for about 3 s under the page. By
 // the time the reader closes the ActivityManager has already released the radio and the page
 // no longer matters, so both heights are written here in one pass over the cover. A sleep
-// transition skips them: the power key must not wait on a decode, and the next open records
-// the miss again.
+// transition skips them: the power key must not wait on a decode; the next open records the miss
+// again, and Home writes a thumbnail its card still lacks on an idle pass (writeMissingThumb).
 void EpubReaderActivity::writePendingThumbs() {
   if (pendingThumbCount == 0 || !epub || activityManager.isSleepTransition()) return;
 #ifdef TENOR_UI_ACCEPTANCE
   LOG_DBG("ERS", "EPUB_THUMB stage=before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
           static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
+  // The decode holds the page still for 1 to 3 s on the X3; say so on the panel first.
+  GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   epub->generateThumbBmps(pendingThumbHeights, pendingThumbCount);
   pendingThumbCount = 0;
 }
@@ -832,12 +839,19 @@ void EpubReaderActivity::loop() {
   // the panel for a beat, lay out the next pages here instead, once per page. It takes
   // the same heap the paint's own resume takes, never while the radio is still
   // allocating its start, and the park below hands the parser straight back.
-  const unsigned long sincePaint = millis() - lastRenderCompleteMs;
+  // A book reopened on the last page of its partial cache has no parser to resume: the radio
+  // starts before the extension can, so the extension starts here, as the first turn's paint
+  // would start it (780 ms inside that paint on the X3).
+  if (freeink::ble::initializing()) radioSettledMs = millis();
+  const unsigned long sincePaint = std::min(millis() - lastRenderCompleteMs, millis() - radioSettledMs);
   const bool lookAhead =
-      !inputThisPass && section && section->isBuildParked() && !backgroundBuildFailed &&
-      !backgroundBuildParkedThisLoop && deferBackgroundBuildForBle() && !freeink::ble::initializing() &&
-      lookAheadPage != section->currentPage && section->currentPage + 1 >= static_cast<int>(section->pageCount) &&
-      lastRenderCompleteMs != 0 && sincePaint > BUILD_WINDOW_QUIET_MS && sincePaint < BUILD_WINDOW_LATEST_MS;
+      !inputThisPass && section &&
+      (section->isBuildParked() ||
+       (section->isPartial() && !section->isBuilding() && !partialRebuildStartFailed && buildViewportWidth > 0)) &&
+      !backgroundBuildFailed && !backgroundBuildParkedThisLoop && deferBackgroundBuildForBle() &&
+      !freeink::ble::initializing() && lookAheadPage != section->currentPage &&
+      section->currentPage + 1 >= static_cast<int>(section->pageCount) && lastRenderCompleteMs != 0 &&
+      sincePaint > BUILD_WINDOW_QUIET_MS && sincePaint < BUILD_WINDOW_LATEST_MS;
   if (lookAhead ||
       (!inputThisPass && section &&
        (section->isPartial() || static_cast<int>(section->pageCount) < section->currentPage + BUILD_WINDOW_AHEAD) &&
@@ -845,10 +859,28 @@ void EpubReaderActivity::loop() {
     RenderLock lock(RenderLock::TryTake{});
     if (lock.acquired() && (lookAhead || backgroundBuildCanTick())) {
       if (lookAhead) lookAheadPage = section->currentPage;
+      const unsigned long tickStarted = millis();
+#ifdef TENOR_TURN_TRACE
+      const unsigned startedExtension = lookAhead && !section->isBuilding() ? 1u : 0u;
+#endif
 #ifdef TENOR_UI_ACCEPTANCE
       traceBuildTickBegin("background");
 #endif
-      if (!section->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK)) {
+      if (!section->isBuilding() &&
+          !section->startBuild(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight))) {
+        partialRebuildStartFailed = true;
+        LOG_ERR("ERS", "Failed to start look-ahead extension build");
+      } else if (![&] {
+                   // One tick is about 20 ms of parsing and often adds no page, so the look-ahead
+                   // keeps ticking until the page after this one is laid out; handing the parser
+                   // back after one tick left the first turn to lay it out in its paint (r27-ui).
+                   bool ticked = section->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK);
+                   while (lookAhead && ticked && !section->isBuildComplete() &&
+                          static_cast<int>(section->pageCount) <= section->currentPage + 1 &&
+                          millis() - tickStarted < static_cast<unsigned long>(BUILD_WINDOW_MAX_MS))
+                     ticked = section->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK);
+                   return ticked;
+                 }()) {
         if (section->buildStarved()) {
           // The build is parked with its pages intact. The next foreground demand
           // resumes it, freeing the radio first if it has to.
@@ -870,6 +902,11 @@ void EpubReaderActivity::loop() {
 #endif
       // A tick can cross the budget while laying out a paragraph. Release before the next frame.
       suspendBackgroundBuild();
+#ifdef TENOR_TURN_TRACE
+      if (lookAhead)
+        LOG_INF("ERS", "LOOK_AHEAD start=%u pages=%u ms=%lu", startedExtension,
+                section ? static_cast<unsigned>(section->pageCount) : 0u, millis() - tickStarted);
+#endif
     }
   }
 
@@ -1459,8 +1496,18 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
                        : action == EpubReaderMenuActivity::MenuAction::FONT_FAMILY ? TextSettingsActivity::Tab::Family
                                                                                    : TextSettingsActivity::Tab::Layout;
       const AnhChupChu truoc = AnhChupChu::chup();
+#ifdef TENOR_TURN_TRACE
+      const unsigned long registryStarted = millis();
+#endif
+      // The font list: after a wake it reads every family folder on the card the first time.
+      const auto* registry = &sdFontSystem.registry();
+#ifdef TENOR_TURN_TRACE
+      LOG_INF("ERS", "TEXT_SETTINGS registry=%lu", millis() - registryStarted);
+#endif
+      // The menu's own screen: its pause keeps the stats in RAM as the menu's did (274 ms on the X3).
+      pauseKeepsStatsInRam = true;
       startActivityForResult(
-          std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(), tab),
+          std::make_unique<TextSettingsActivity>(renderer, mappedInput, registry, tab),
           [this, truoc](const ActivityResult&) {
             if (truoc == AnhChupChu::chup()) return;
             RenderLock lock;
@@ -3263,6 +3310,7 @@ void EpubReaderActivity::handleOverlayInput() {
         overlay = Overlay::None;
         overlayPopup.dismiss();
         discardOverlayPage();
+        pauseKeepsStatsInRam = true;
         startActivityForResult(std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(),
                                                                       TextSettingsActivity::Tab::Family),
                                [this](const ActivityResult&) {
@@ -3768,6 +3816,9 @@ void EpubReaderActivity::onPause() {
 }
 
 void EpubReaderActivity::onExit() {
+#ifdef TENOR_TURN_TRACE
+  [[maybe_unused]] const unsigned long exitStarted = millis();
+#endif
   // The excerpt below lands on this book's recent entry, so the entry goes in first.
   commitOpen();
   pendingManualTurn = 0;
@@ -3788,7 +3839,17 @@ void EpubReaderActivity::onExit() {
       RECENT_BOOKS.rememberExcerpt(bookPath, excerpt->result());
     }
   }
+#ifdef TENOR_TURN_TRACE
+  [[maybe_unused]] const unsigned long excerptDone = millis();
+#endif
   ReaderActivity::onExit();
+#ifdef TENOR_TURN_TRACE
+  [[maybe_unused]] const unsigned long baseDone = millis();
+#endif
   // After the base class has handed back the SD font caches.
   writePendingThumbs();
+#ifdef TENOR_TURN_TRACE
+  LOG_INF("ERS", "EXIT_STAGES excerpt=%lu base=%lu thumbs=%lu", excerptDone - exitStarted, baseDone - excerptDone,
+          millis() - baseDone);
+#endif
 }

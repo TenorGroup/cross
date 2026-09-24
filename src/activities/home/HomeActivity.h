@@ -1,11 +1,13 @@
 #pragma once
 #include <I18n.h>
 
+#include <atomic>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "./FileBrowserActivity.h"
+#include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "activities/UiTabListActivity.h"
 #include "activities/settings/SettingsTabs.h"
@@ -29,6 +31,7 @@ class HomeActivity final : public UiTabListActivity {
   void captureNavigation(MenuNavigationState& state) const override;
   void onExit() override;
   void onPause() override;
+  void onTick() override;
   void render(RenderLock&&) override;
   bool isHomeActivity() const override { return true; }
 #ifdef TENOR_UI_ACCEPTANCE
@@ -122,6 +125,24 @@ class HomeActivity final : public UiTabListActivity {
   bool storeCoverBuffer();
   bool restoreCoverBuffer();
   void freeCoverBuffer();
+  // The same two regions kept on the card next to the book's cover thumbnail, so stepping back to a
+  // book shown on an earlier visit reads one file instead of decoding the cover and laying out the
+  // text again (about 250 to 430 ms on the X3). Written after the frame that built them.
+  std::string cardFilePending;
+  uint32_t cardFileKey = 0;
+  uint8_t cardFileThumb = 0;
+  bool loadCardFile(const std::string& path, uint32_t key, const std::string& thumbPath);
+  void saveCardFile();
+  // A book whose card thumbnail is still missing: the reader writes it from the cover page or as
+  // it closes, and a book read to the power key each time never took either route. The card asks
+  // for it here (render task) and an idle pass writes it (main task), once per book and boot.
+  std::atomic<int8_t> thumbWanted{-1};
+  std::atomic<uint32_t> thumbWantedAtMs{0};
+  void wantThumb(int index);
+  void writeMissingThumb(int index);
+  // The wake's first frame is up; the main task writes state.json (V5: never the render task,
+  // which raced the sleep path's own write).
+  std::atomic<bool> wakeStatePending{false};
 
   // The tenor Recent tab shows one book at a time: ring position N shows recentBooks[N - 1], and
   // the front buttons walk the ring, so they step through the books.
@@ -142,7 +163,11 @@ class HomeActivity final : public UiTabListActivity {
     std::string values[HOME_STAT_COUNT];
   };
   CardStats cardStats;
-  void loadCardStats(const RecentBook& book);
+  // Each card's reading record, read from its file once per visit: only the open book's record
+  // changes while Home is up, and that one is served from RAM by the store.
+  BookReadingRecord cardRecords[RECENT_LIMIT];
+  uint8_t cardRecordsRead = 0, cardRecordsFound = 0;
+  void loadCardStats(int index);
   int drawCardStats(const HomeCardLayout& card);
   void drawRecentCard();
   void drawOtherBookRow(int shown, int ruleY, int rowY);

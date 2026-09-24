@@ -126,7 +126,16 @@ void ReaderActivity::onExit() {
 #endif
 
   updateReadingTime(false);
-  chotSoLieuDoc();
+  // The stats checkpoint and state.json held the screen after the book 250 to 450 ms on the X3.
+  // Both copy what is in RAM, so they wait for that screen's first frame (ActivityManager::
+  // deferWrite); a power cut in between loses the reading since the last 30 s checkpoint, the
+  // bound a crash on the page already has. Sleep writes them now: the device powers down next.
+  const bool sleeping = activityManager.isSleepTransition();
+  if (sleeping) {
+    chotSoLieuDoc();
+  } else if (statsEnabled && statsDirty) {
+    activityManager.deferWrite([] { READING_STATS.saveToFile(); });
+  }
   // The SD font glyph arenas built while reading are dead weight on Home and
   // Settings (measured 18/09/2026: ~19 KB kept after leaving a book). They are
   // rebuilt by the next page prewarm, so hand them back here.
@@ -135,7 +144,11 @@ void ReaderActivity::onExit() {
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   if (!preview) {
     APP_STATE.readerActivityLoadCount = 0;
-    APP_STATE.saveToFile();
+    if (sleeping) {
+      APP_STATE.saveToFile();
+    } else {
+      activityManager.deferWrite([] { APP_STATE.saveToFile(); });
+    }
   }
 
   endOfBookOptions.reset();

@@ -8,6 +8,7 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Logging.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -153,14 +154,23 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
                        .language = static_cast<uint8_t>(I18N.getLanguage()),
                        .hyphenation = SETTINGS.hyphenationEnabled != 0};
   if (key != layout.key) {
+#ifdef TENOR_PRESS_PROBE
+    const unsigned long started = millis();
+#endif
     if (auto* fcm = renderer.getFontCacheManager()) {
       fcm->clearCache();
       const std::string sample = utf8ComposeNfc(I18N.get(StrId::STR_FONT_PREVIEW_TEXT));
       fcm->prewarmCache(fontId, sample.c_str(),
                        SETTINGS.dropCapMode != readerSpacing::DROP_CAP_OFF ? 0x03 : 0x01);
     }
+#ifdef TENOR_PRESS_PROBE
+    const unsigned long warmed = millis();
+#endif
     relayout(layout, renderer, fontId, textWidth);
     layout.key = key;
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("TXT", "Preview warm=%lu layout=%lu", warmed - started, millis() - warmed);
+#endif
   }
 
   const int textBottomLimit = labelY - labelGap;

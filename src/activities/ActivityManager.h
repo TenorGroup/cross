@@ -82,6 +82,7 @@ class ActivityManager {
   MenuNavigationMemory navigationMemory;
   void restoreNavigation();
   void saveNavigation(Activity& activity);
+  void flushDeferredWrites();
 
  public:
   explicit ActivityManager(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -115,6 +116,11 @@ class ActivityManager {
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   void goToCrashReport();
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE, bool cleanInitialRefresh = false);
+
+  // A write a closing screen can leave for later: the main loop runs it once the next screen's
+  // first frame is on the panel, or as the next screen closes, whichever comes first. Sleep closes
+  // the screen too, so nothing waits past it. Main task only (onExit).
+  void deferWrite(void (*write)());
 
   // This will move current activity to stack instead of deleting it
   void pushActivity(std::unique_ptr<Activity>&& activity);

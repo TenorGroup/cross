@@ -366,6 +366,19 @@ int main() {
     activityManager.sleepTransitionState = true;
     r.writePendingThumbs();
     require(thumbs.generated == 0, "the power key waited on a cover decode");
+    require(popupCount == 0, "a notice for a decode that did not run");
+  });
+  // The decode as the reader closes held the page still for 1 to 3 s on the X3 with nothing on
+  // the panel to say so (review V4). A short notice goes up first.
+  test("closing the reader puts up a notice before it decodes the cover", [] {
+    EpubReaderActivity r; r.section->building = r.section->partial = false;
+    r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
+    r.openThumbStep();
+    r.writePendingThumbs();
+    require(popupCount == 1 && popupGenerated == 0, "the page stood still without a notice while the cover decoded");
+    require(thumbs.generated == 2, "the notice replaced the decode");
+    r.writePendingThumbs();
+    require(popupCount == 1, "a notice with nothing to decode");
   });
   test("existing cover thumbnail asks for nothing on either path", [] {
     EpubReaderActivity r; thumbs.fileOnCard = true;
@@ -399,6 +412,18 @@ int main() {
     r.onPause();  // a later screen that is not the menu
     require(openWrites.statsSaves == 2, "the menu flag leaked into a later pause");
     require(kMenuKeepsStats, "openReaderMenu does not ask the pause to keep the stats in RAM");
+  });
+  // Text settings open from the reader menu (or the reader's text panel): the pause as they opened
+  // wrote the checkpoint, 274 ms on the X3 before the screen could paint (sweep-int6: PAUSE_SAVE
+  // ms=274). They are the menu's own screens and keep the record in RAM the same way.
+  test("text settings open without writing the stats", [] {
+    EpubReaderActivity r; r.statsEnabled = true; r.statsActive = true; r.pageReady = true;
+    r.statsLastMs = r.statsSavedMs = r.statsDayPollMs = millis();
+    clockMs += 20000;
+    r.pauseKeepsStatsInRam = kTextSettingsKeepsStats;
+    r.onPause();
+    require(openWrites.statsSaves == 0, "text settings waited on a stats write");
+    require(r.statsDirty, "the reading before text settings was not recorded");
   });
   test("other screens over the reader still write the stats as they open", [] {
     EpubReaderActivity r; r.statsEnabled = true; r.statsActive = true; r.pageReady = true;
@@ -517,6 +542,69 @@ int main() {
     clockMs += 500;
     r.backgroundTick();
     require(r.section->resumes == 0, "look-ahead ran ahead of a queued turn");
+  });
+  // Device evidence (sweep-int6, 24/09): a book reopened on the last page of its partial cache.
+  // The radio starts right after the first paint, so the extension never started, and the first
+  // turn laid the next page out inside its paint: 1.52 s against 0.66 s for the turns after it.
+  test("BLE busy starts a partial's extension ahead of the first turn", [] {
+    EpubReaderActivity r; r.section->canPark = true; SETTINGS.blePageTurnerEnabled = true;
+    freeink::ble::busyState = true; r.buildViewportWidth = 515;
+    r.section->building = false;
+    r.section->builtPages = r.section->oldPages = r.section->pageCount = 3;
+    r.section->restoredPagesAfterStart = 3;
+    r.section->currentPage = 2;
+    ESP.free = 59072; ESP.largest = 53236;  // BLE-live heap on the X3 at that turn
+    r.lastRenderCompleteMs = clockMs;
+    r.backgroundTick();
+    require(r.section->starts == 0, "extension started while the page was still settling");
+    clockMs += 500;
+    r.backgroundTick();
+    require(r.section->starts == 1 && r.section->pageCount > 3, "next page was not laid out ahead of the first turn");
+    require(r.section->isBuildParked(), "parser was not handed back after the look-ahead");
+    for (int n = 0; n < 10; ++n) r.backgroundTick();
+    require(r.section->starts == 1 && r.section->resumes == 0, "look-ahead repeated for the same page");
+  });
+  // Device evidence (r27-ui, 25/09): the look-ahead above started the extension but ran one
+  // tick, about 20 ms of parsing, then handed the parser back: no page was added and the first
+  // turn still laid its page out inside the paint (PAINT_LOAD_BEGIN kind=building, 783 ms).
+  test("look-ahead lays out the whole next page, not one parser tick", [] {
+    EpubReaderActivity r; r.section->canPark = true; SETTINGS.blePageTurnerEnabled = true;
+    freeink::ble::busyState = true; r.buildViewportWidth = 515;
+    r.section->building = false;
+    r.section->builtPages = r.section->oldPages = r.section->pageCount = 4;
+    r.section->restoredPagesAfterStart = 4;
+    r.section->currentPage = 3;
+    r.section->ticksPerPage = 39;  // 780 ms at 20 ms a tick
+    ESP.free = 52136; ESP.largest = 26612;  // after the radio start, r27-ui
+    r.lastRenderCompleteMs = clockMs;
+    clockMs += 500;
+    r.backgroundTick();
+    require(r.section->pageCount > r.section->currentPage + 1, "the page after the current one is not laid out");
+    require(r.section->isBuildParked(), "parser was not handed back after the look-ahead");
+    const int ticks = r.section->ticks;
+    for (int n = 0; n < 10; ++n) r.backgroundTick();
+    require(r.section->ticks == ticks, "look-ahead kept laying out past the next page");
+  });
+  test("look-ahead window opens when the radio's start ends, not at the paint", [] {
+    EpubReaderActivity r; r.section->canPark = true; SETTINGS.blePageTurnerEnabled = true;
+    freeink::ble::busyState = true; r.buildViewportWidth = 515;
+    r.section->building = false;
+    r.section->builtPages = r.section->oldPages = r.section->pageCount = 3;
+    r.section->restoredPagesAfterStart = 3;
+    r.section->currentPage = 2;
+    r.lastRenderCompleteMs = clockMs;
+    freeink::ble::initializingState = true;
+    for (int n = 0; n < 6; ++n) {
+      clockMs += 300;
+      r.backgroundTick();
+    }
+    require(r.section->starts == 0, "look-ahead ran while the radio was allocating its start");
+    freeink::ble::initializingState = false;
+    r.backgroundTick();
+    require(r.section->starts == 0, "look-ahead ran the moment the radio came up");
+    clockMs += 500;
+    r.backgroundTick();
+    require(r.section->starts == 1 && r.section->pageCount > 3, "window closed while the radio was starting");
   });
   test("starved extension never stops a radio that is still starting", [] {
     EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = true; r.section->canPark = true;
