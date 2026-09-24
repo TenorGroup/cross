@@ -42,7 +42,8 @@ struct HomeCardInput {
   int screenWidth = 0;
   int top = 0;     // first row under the tab band
   int bottom = 0;  // last row the other-book row may use
-  int titleLineHeight = 0;
+  int titleLineHeight = 0;      // the line the cover is sized for
+  int titleDrawLineHeight = 0;  // the title font's own line when larger, 0 when the same
   int titleLines = 0;  // lines the title actually wraps to, 1 or 2
   int authorLineHeight = 0;
   int excerptLineHeight = 0;
@@ -65,7 +66,8 @@ inline HomeCardLayout homeCardLayout(const HomeCardInput& in) {
   card.rowY = in.bottom - in.rowLineHeight;
   card.ruleY = card.rowY - ROW_GAP;
   // The cover is sized for a two-line title whatever this book's title is, so it keeps one size
-  // while the reader steps between books.
+  // while the reader steps between books. A larger title font takes its extra rows from the
+  // excerpt, which then shows fewer lines, so the cover stays at its thumbnail's size.
   const int text = COVER_GAP + TITLE_LINES * in.titleLineHeight + AUTHOR_GAP + in.authorLineHeight + EXCERPT_GAP +
                    EXCERPT_LINES * in.excerptLineHeight + RULE_GAP;
   const int room = card.ruleY - in.top - text;
@@ -76,7 +78,8 @@ inline HomeCardLayout homeCardLayout(const HomeCardInput& in) {
   card.statsX = card.coverX + card.coverW + STATS_GAP;
   card.statsRight = in.screenWidth - MARGIN;
   card.titleY = card.coverY + card.coverH + COVER_GAP;
-  card.authorY = card.titleY + in.titleLines * in.titleLineHeight + AUTHOR_GAP;
+  card.authorY =
+      card.titleY + in.titleLines * (in.titleDrawLineHeight ? in.titleDrawLineHeight : in.titleLineHeight) + AUTHOR_GAP;
   card.excerptY = card.authorY + in.authorLineHeight + EXCERPT_GAP;
   const int lines = in.excerptLineHeight > 0 ? (card.ruleY - RULE_GAP - card.excerptY) / in.excerptLineHeight : 0;
   card.excerptLines = lines > EXCERPT_LINES ? EXCERPT_LINES : lines < 1 ? 1 : lines;

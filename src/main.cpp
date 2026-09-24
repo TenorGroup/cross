@@ -478,6 +478,7 @@ void setupDisplayAndFonts(bool seamless = false) {
 #endif  // OMIT_FONTS
   renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
   renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
+  renderer.insertFont(UI_TITLE_FONT_ID, uiFontTierFamily(UIFontRole::Title, 0));
   renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
   logHeapMark("fonts-builtin");
 

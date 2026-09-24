@@ -92,7 +92,8 @@ void TenorTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* to
                        : *labels[i] == 'v' ? inlineSymbols::Shape::Right
                        : *labels[i] == '>' ? inlineSymbols::Shape::Up
                                            : inlineSymbols::Shape::Down;
-    const int x = gpio.hasEdgeSideButtons() ? (i ? renderer.getScreenWidth() - 7 : 7) : renderer.getScreenWidth() - 7;
+    const int x =
+        gpio.hasEdgeSideButtons() ? (i ? renderer.getScreenWidth() - 1 - 7 : 7) : renderer.getScreenWidth() - 7;
     const int y = gpio.hasEdgeSideButtons() ? 195 : 195 + i * 83;
     inlineSymbols::drawShape(renderer, shape, x, y, 8, true);
   }

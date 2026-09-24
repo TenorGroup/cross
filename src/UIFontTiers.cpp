@@ -28,6 +28,8 @@ const EpdFontFamily& uiFontTierFamily(UIFontRole role, uint8_t size) {
       return tier == 0 ? smallFontFamily : tier == 1 ? ui10FontFamily : ui12FontFamily;
     case UIFontRole::Subtitle:
       return tier == 0 ? ui10FontFamily : tier == 1 ? ui12FontFamily : family14;
+    case UIFontRole::Title:
+      return tier == 0 ? family14 : family16;
     case UIFontRole::Body:
     default:
       return tier == 0 ? ui12FontFamily : tier == 1 ? family14 : family16;
@@ -43,6 +45,7 @@ bool applyUiFontSize(GfxRenderer& renderer, uint8_t size) {
   renderer.replaceBuiltinFont(SMALL_FONT_ID, uiFontTierFamily(UIFontRole::Caption, size));
   renderer.replaceBuiltinFont(UI_10_FONT_ID, uiFontTierFamily(UIFontRole::Subtitle, size));
   renderer.replaceBuiltinFont(UI_12_FONT_ID, uiFontTierFamily(UIFontRole::Body, size));
+  renderer.replaceBuiltinFont(UI_TITLE_FONT_ID, uiFontTierFamily(UIFontRole::Title, size));
   sdFontSystem.refreshUiFallbacks(renderer, normalizedUiTextSize(size));
   return true;
 }

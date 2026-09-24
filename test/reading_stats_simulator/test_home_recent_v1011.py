@@ -200,6 +200,108 @@ class HomeRecentCardTest(unittest.TestCase):
         state = json.loads((self.store / 'state.json').read_text())
         self.assertEqual(state['openEpubPath'], '/doi-che.epub')
 
+    @staticmethod
+    def edge_runs(image, top, bottom):
+        """Dark column runs nearest each screen edge inside rows top..bottom.
+
+        Returns ((first, last) of the left run, (first, last) of the right run, the column where ink
+        resumes after the left run, the column where ink ends before the right run).
+        """
+        width = image.width
+        dark = [any(image.getpixel((x, y)) < 128 for y in range(top, bottom)) for x in range(width)]
+        left0 = dark.index(True)
+        left1 = left0
+        while dark[left1 + 1]:
+            left1 += 1
+        right1 = width - 1 - dark[::-1].index(True)
+        right0 = right1
+        while dark[right0 - 1]:
+            right0 -= 1
+        after = next(x for x in range(left1 + 1, width) if dark[x])
+        before = next(x for x in range(right0 - 1, -1, -1) if dark[x])
+        return (left0, left1), (right0, right1), after, before
+
+    def test_arrows_on_both_sides_mirror_each_other(self):
+        # Two books and the second shown: the other-book row has an arrow on each side, and the side
+        # buttons' arrows sit at mid height on both edges.
+        self.write_recent([self.add_book(PATH_A, TITLE_A, 'Tác giả Mẫu, Người Viết', EXCERPT_A),
+                           self.add_book('/ben-song.epub', 'Bến sông ngày gió', 'Người Viết Thử',
+                                         'Nước lên từ sáng, bến vắng người, chỉ còn tiếng gió qua mấy mái chèo.',
+                                         'test_kerning_ligature.epub')])
+        _, images = self.launch('2000:RIGHT;5000:QUIT', [(3800, 'second')])
+        card = images['second']
+        last = card.width - 1
+        # The rule is the full-width line above the row; the row's arrows are measured under it.
+        rule = next(y for y in range(700, 760)
+                    if sum(card.getpixel((x, y)) < 128 for x in range(card.width)) > 400)
+        (l0, l1), (r0, r1), label, title = self.edge_runs(card, rule + 2, 756)
+        self.assertEqual((l0, last - r1), (l0, l0), f'row arrows: left x {l0}..{l1}, right x {r0}..{r1}')
+        self.assertEqual(l1 - l0, r1 - r0, 'row arrows differ in width')
+        # The title keeps the label's distance from its arrow, within a glyph's side bearing.
+        self.assertLessEqual(abs((label - l1) - (r0 - title)), 2,
+                             f'row gaps: label {label - l1 - 1} px, title {r0 - title - 1} px')
+        (l0, l1), (r0, r1), _, _ = self.edge_runs(card, 185, 206)
+        self.assertEqual((l0, last - r1), (l0, l0), f'side arrows: left x {l0}..{l1}, right x {r0}..{r1}')
+        self.assertEqual(l1 - l0, r1 - r0, 'side arrows differ in width')
+
+    @staticmethod
+    def bands(image, top, bottom):
+        """Runs of rows with ink across the text width, as (first, last) pairs."""
+        rows = [any(image.getpixel((x, y)) < 128 for x in range(24, image.width - 24)) for y in range(top, bottom)]
+        runs = []
+        for offset, dark in enumerate(rows):
+            if dark and (not runs or runs[-1][1] != top + offset - 1):
+                runs.append([top + offset, top + offset])
+            elif dark:
+                runs[-1][1] = top + offset
+        return [tuple(run) for run in runs]
+
+    def test_card_title_is_larger_and_clear_of_the_lines_around_it(self):
+        # Before the title went one size up (Geist bold 12/14/16 at text sizes 0/1/2) the short
+        # title's ink measured 25/28/31 rows. Size 2 has no larger Geist face in flash and keeps 31.
+        base = {0: 25, 1: 28, 2: 31}
+        books = [self.add_book(PATH_A, TITLE_A, 'Tác giả Mẫu, Người Viết', EXCERPT_A),
+                 self.add_book('/ben-song.epub', 'Bến sông ngày gió', 'Người Viết Thử',
+                               'Nước lên từ sáng, bến vắng người, chỉ còn tiếng gió qua mấy mái chèo. '
+                               'Chiều xuống, thuyền về muộn, đèn trên bến bật lên từng ngọn một.',
+                               'test_kerning_ligature.epub')]
+        self.write_recent(books)
+        for size in (0, 1, 2):
+            with self.subTest(size=size):
+                (self.store / 'settings.json').write_text(json.dumps(
+                    {'language': 'VI', 'uiTheme': 4, 'sleepTimeout': 120, 'uiTextSize': size}))
+                _, images = self.launch('2000:RIGHT;5000:QUIT', [(1800, f'long-{size}'), (4600, f'short-{size}')])
+                for name, title_lines in ((f'long-{size}', 2), (f'short-{size}', 1)):
+                    card = images[name]
+                    rule = next(y for y in range(600, 780)
+                                if sum(card.getpixel((x, y)) < 128 for x in range(card.width)) > 400)
+                    runs = self.bands(card, 124, rule)
+                    # The cover (with the stats beside it) is one tall run; then title, author, excerpt.
+                    cover_run = next(i for i, (first, last) in enumerate(runs) if last - first > 100)
+                    lines = runs[cover_run + 1:]
+                    self.assertGreaterEqual(len(lines), title_lines + 2, f'{name}: {runs}')
+                    heights = [last - first + 1 for first, last in lines]
+                    if name.startswith('short') and size < 2:
+                        self.assertGreater(heights[0], base[size], f'{name}: title {heights[0]} rows, {runs}')
+                    # Each run is one line of text: a title line running into the author or the
+                    # excerpt would join two lines into one run taller than any single line.
+                    self.assertLessEqual(max(heights), 38 if size == 0 else 43, f'{name}: {runs}')
+                    self.assertLess(lines[-1][1], rule - 1, f'{name}: text reaches the rule')
+
+    def test_keyboard_side_arrows_mirror_each_other(self):
+        # The keyboard draws its side button arrows through the theme, apart from the list screens.
+        (self.store / 'menu-customization.json').write_text(json.dumps(
+            {'version': 1, 'tabs': {'home': [0, 1, 4, 2, 3], 'settings': [0, 7, 1, 2, 3, 4, 5, 6],
+                                    'reader': [0, 1, 2, 3], 'text': [0, 1, 2, 3]},
+             'pins': ['kosync/koServerUrl']}))
+        log, images = self.launch('1000:DOWN;1600:DOWN;2300:CONFIRM;4500:QUIT', [(4000, 'keyboard')])
+        self.assertIn('Entering activity: KeyboardEntry', log)
+        board = images['keyboard']
+        (l0, l1), (r0, r1), _, _ = self.edge_runs(board, 185, 206)
+        self.assertEqual((l0, board.width - 1 - r1), (l0, l0),
+                         f'keyboard arrows: left x {l0}..{l1}, right x {r0}..{r1}')
+        self.assertEqual(l1 - l0, r1 - r0, 'keyboard arrows differ in width')
+
     def test_quote_saved_in_the_reader_is_on_the_card_back_home(self):
         self.write_recent([self.add_book(PATH_A, TITLE_A, 'Tác giả Mẫu, Người Viết', EXCERPT_A)])
         names = self.seed_quotes()

@@ -366,7 +366,7 @@ void UiListActivity::renderUi() {
 void UiListActivity::drawPageHints() {
   if (mappedInput.hasTouch() || SETTINGS.uiTheme != CrossPointSettings::TENOR_UI || !SETTINGS.tenorSideArrows) return;
   constexpr int cy = 195;
-  const int right = renderer.getScreenWidth() - 4;
+  const int right = renderer.getScreenWidth() - 1 - 4;  // mirror of column 4 on the left
   // Paint after the list: drawing during screen construction is covered by
   // the list background on full-width menus such as Settings.
   for (int dx = 0; dx <= 6; ++dx) {

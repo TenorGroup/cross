@@ -36,6 +36,7 @@
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
+#include "UIFontTiers.h"
 #include "activities/reader/ReaderActivity.h"
 #include "activities/settings/SettingsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -88,7 +89,7 @@ struct CardFileHead {
   uint32_t bytes;
   uint8_t thumb;
 };
-constexpr uint32_t CARD_FILE_MAGIC = 0x31445243;  // "CRD1"
+constexpr uint32_t CARD_FILE_MAGIC = 0x32445243;  // "CRD2": the title went one font size up
 
 uint32_t fnv(uint32_t hash, const void* data, size_t size) {
   for (const auto* p = static_cast<const uint8_t*>(data); size--; ++p) hash = (hash ^ *p) * 16777619u;
@@ -1050,13 +1051,16 @@ void HomeActivity::drawRecentCard() {
 #ifdef TENOR_PRESS_PROBE
   const uint32_t fileMs = millis();
 #endif
-  const auto titleLines = renderer.wrappedText(UI_12_FONT_ID, title.c_str(), frame.textW, 2, EpdFontFamily::BOLD);
+  // CJK titles stay on the body font: its SD fallback covers them, the title font has none.
+  const int titleFont = homeExcerptUsesUiFont(title.c_str()) ? UI_12_FONT_ID : UI_TITLE_FONT_ID;
+  const auto titleLines = renderer.wrappedText(titleFont, title.c_str(), frame.textW, 2, EpdFontFamily::BOLD);
   in.titleLines = std::max(1, static_cast<int>(titleLines.size()));
+  in.titleDrawLineHeight = renderer.getLineHeight(titleFont);
   const auto card = homeCardLayout(in);
   int y = card.titleY;
   for (const auto& line : titleLines) {
-    renderer.drawText(UI_12_FONT_ID, card.textX, y, line.c_str(), true, EpdFontFamily::BOLD);
-    y += in.titleLineHeight;
+    renderer.drawText(titleFont, card.textX, y, line.c_str(), true, EpdFontFamily::BOLD);
+    y += in.titleDrawLineHeight;
   }
   renderer.drawText(UI_10_FONT_ID, card.textX, card.authorY,
                     renderer.truncatedText(UI_10_FONT_ID, author, card.textW).c_str());
@@ -1249,22 +1253,23 @@ void HomeActivity::saveCardFile() {
 }
 
 // "Another book" and the next book's title under a rule, with an arrow on each side that has a
-// book to step to. Drawn on every paint: it is one line of an uncompressed flash font.
+// book to step to. Drawn on every paint: it is one line of an uncompressed flash font. The arrows
+// sit outside the text margins as mirror images, so the title ends on the right margin as the
+// label starts on the left one.
 void HomeActivity::drawOtherBookRow(const int shown, const int ruleY, const int rowY) {
   const int count = static_cast<int>(recentBooks.size());
   if (count < 2) return;
-  constexpr int MARGIN = 40, ARROW_W = 10, ARROW_HALF = 7, ARROW_GAP = 12;
+  constexpr int MARGIN = 40, ARROW_W = 10, ARROW_HALF = 7, ARROW_OUT = 24;
   const int left = MARGIN, right = renderer.getScreenWidth() - MARGIN;
   renderer.drawLine(left, ruleY, right - 1, ruleY);
   const char* label = tr(STR_RECENT_OTHER_BOOK);
   renderer.drawText(UI_10_FONT_ID, left, rowY, label);
   const auto& next = recentBooks[(shown + 1) % count];
   const auto title = next.title.empty() ? next.path.substr(next.path.find_last_of('/') + 1) : next.title;
-  const int titleRight = right - ARROW_W - ARROW_GAP;
-  const int room = titleRight - left - renderer.getTextWidth(UI_10_FONT_ID, label) - 16;
+  const int room = right - left - renderer.getTextWidth(UI_10_FONT_ID, label) - 16;
   const auto shownTitle = renderer.truncatedText(UI_10_FONT_ID, title.c_str(), room, EpdFontFamily::BOLD);
   const int titleWidth = renderer.getTextWidth(UI_10_FONT_ID, shownTitle.c_str(), EpdFontFamily::BOLD);
-  renderer.drawText(UI_10_FONT_ID, titleRight - titleWidth, rowY, shownTitle.c_str(), true, EpdFontFamily::BOLD);
+  renderer.drawText(UI_10_FONT_ID, right - titleWidth, rowY, shownTitle.c_str(), true, EpdFontFamily::BOLD);
   const int cy = rowY + renderer.getFontAscenderSize(UI_10_FONT_ID) * 2 / 3;
   // Solid triangle, tip first; direction 1 points right.
   const auto arrow = [&](const int tipX, const int direction) {
@@ -1273,7 +1278,7 @@ void HomeActivity::drawOtherBookRow(const int shown, const int ruleY, const int 
       renderer.drawLine(tipX - direction * i, cy - half, tipX - direction * i, cy + half);
     }
   };
-  arrow(right - 1, 1);
+  arrow(right - 1 + ARROW_OUT, 1);
   // Right wraps to the most recent book from the last one, so only the left arrow can be missing.
-  if (shown > 0) arrow(left - 24, -1);
+  if (shown > 0) arrow(left - ARROW_OUT, -1);
 }
