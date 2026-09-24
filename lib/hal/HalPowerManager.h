@@ -19,6 +19,7 @@ class HalPowerManager {
 
   mutable int _batteryCachedPercent = 0;         // Last read battery percentage (0-100)
   mutable unsigned long _batteryLastPollMs = 0;  // Timestamp of last battery read in milliseconds
+  TaskHandle_t _gaugeTask = nullptr;             // The loop task, the only one that reads an I2C gauge
 
   uint16_t normalSpeedLocks = 0;
   SemaphoreHandle_t modeMutex = nullptr;  // Protect the lock count and CPU-frequency transition
@@ -43,7 +44,8 @@ class HalPowerManager {
   // X3 and other boards retain their normal rail policy.
   void startDeepSleep(HalGPIO& gpio, bool preserveClock = false) const;
 
-  // Get battery percentage (range 0-100)
+  // Get battery percentage (range 0-100). On a board with an I2C gauge only the loop
+  // task reads the gauge; other tasks (the render task) get the loop's last reading.
   uint16_t getBatteryPercentage() const;
 
   // RAII helper class to manage power saving locks

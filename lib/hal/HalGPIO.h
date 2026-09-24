@@ -46,6 +46,7 @@ class HalGPIO {
 #endif
 
   bool lastUsbConnected = false;
+  TaskHandle_t usbPollTask = nullptr;  // The loop task: the only one that reads the X3 gauge
   bool usbStateChanged = false;
 
   // Button sampling off the main loop (ADC-ladder boards). A periodic timer runs

@@ -31,6 +31,10 @@ void HalPowerManager::begin() {
   normalFreq = getCpuFrequencyMhz();
   modeMutex = xSemaphoreCreateMutex();
   assert(modeMutex != nullptr);
+  // setup() and loop() share one task. Read once here so the first paint, drawn by the
+  // render task, already has a real value.
+  _gaugeTask = xTaskGetCurrentTaskHandle();
+  getBatteryPercentage();
 }
 
 void HalPowerManager::setPowerSaving(bool enabled) {
@@ -139,6 +143,11 @@ void HalPowerManager::startDeepSleep([[maybe_unused]] HalGPIO& gpio, [[maybe_unu
 uint16_t HalPowerManager::getBatteryPercentage() const {
   static const BatteryMonitor battery;
   if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
+    // The gauge shares Wire with reads the loop task makes (charging state, tilt, clock).
+    // Wire hands its receive buffer back before read(), so a read from a second task can
+    // take the other transaction's reply bytes: on an X3 that showed as a charge that
+    // jumped anywhere from 0 to 100%. Only the loop task talks to the gauge.
+    if (_gaugeTask != nullptr && xTaskGetCurrentTaskHandle() != _gaugeTask) return _batteryCachedPercent;
     const unsigned long now = millis();
     if (_batteryLastPollMs != 0 && (now - _batteryLastPollMs) < BATTERY_POLL_MS) {
       return _batteryCachedPercent;

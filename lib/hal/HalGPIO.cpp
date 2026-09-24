@@ -284,6 +284,7 @@ void HalGPIO::update() {
 #ifdef TENOR_PRESS_PROBE
   reportPlannedPresses();
 #endif
+  if (usbPollTask == nullptr) usbPollTask = xTaskGetCurrentTaskHandle();
   const bool connected = isUsbConnected();
   usbStateChanged = (connected != lastUsbConnected);
   lastUsbConnected = connected;
@@ -431,6 +432,9 @@ bool HalGPIO::verifyPowerButtonWakeup() {
 
 bool HalGPIO::isUsbConnected() const {
   if (deviceIsX3()) {
+    // Other tasks (the render task drawing a charging bolt) get the loop's last answer:
+    // the gauge is only safe to read from one task, see HalPowerManager.
+    if (usbPollTask != nullptr && xTaskGetCurrentTaskHandle() != usbPollTask) return lastUsbConnected;
     // X3: infer USB/charging via BQ27220 Current() register (0x0C, signed mA).
     // Positive current means charging.
     for (uint8_t attempt = 0; attempt < 2; ++attempt) {

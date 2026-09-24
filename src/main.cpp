@@ -805,6 +805,8 @@ void loop() {
 
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   mappedInputManager.update();
+  // The render task draws the battery from the value polled here (at most every 1.5 s).
+  powerManager.getBatteryPercentage();
 
 #if CROSSPOINT_BLE_HID_HOST
   // Resolve the radio handoff before USB's early return. Activity onEnter() can
@@ -1220,6 +1222,47 @@ void loop() {
         logSerial.printf("WAKE_TIMER:%u\n", static_cast<unsigned>(probeWakeSeconds));
       } else if (cmd == "LOGDUMP") {
         probeLogDump();
+      } else if (cmd.startsWith("I2C_RACE ")) {
+        // Two tasks on the gauge at once, as the render task and the loop did: a second task
+        // reads state of charge while this loop reads the current register. Any reading far
+        // from the first one is a reply taken from the other task's transaction.
+        static volatile bool raceRun;
+        static volatile uint32_t raceReads, raceOdd, raceMin, raceMax, raceFirst;
+        raceRun = true;
+        raceReads = raceOdd = 0;
+        raceMin = 0xffff;
+        raceMax = 0;
+        raceFirst = 0xffff;
+        xTaskCreate(
+            [](void*) {
+              const BatteryMonitor gauge;
+              while (raceRun) {
+                uint16_t soc = 0;
+                if (!gauge.readPercentageChecked(soc)) continue;
+                ++raceReads;
+                if (raceFirst == 0xffff) raceFirst = soc;
+                if (soc + 1 < raceFirst || soc > raceFirst + 1) {
+                  ++raceOdd;
+                  if (soc < raceMin) raceMin = soc;
+                  if (soc > raceMax) raceMax = soc;
+                }
+              }
+              raceRun = true;
+              vTaskDelete(nullptr);
+            },
+            "i2c-race", 3072, nullptr, 1, nullptr);
+        const unsigned long end = millis() + static_cast<unsigned long>(cmd.substring(9).toInt());
+        uint32_t usbReads = 0;
+        while (static_cast<long>(millis() - end) < 0) {
+          gpio.isUsbConnected();
+          ++usbReads;
+        }
+        raceRun = false;
+        while (!raceRun) delay(5);
+        logSerial.printf("I2C_RACE:soc_reads=%u,odd=%u,first=%u,odd_min=%u,odd_max=%u,usb_reads=%u\n",
+                         static_cast<unsigned>(raceReads), static_cast<unsigned>(raceOdd),
+                         static_cast<unsigned>(raceFirst), static_cast<unsigned>(raceMin),
+                         static_cast<unsigned>(raceMax), static_cast<unsigned>(usbReads));
       } else if (cmd == "BATT") {
         const BatteryMonitor battery;
         const auto st = battery.readStatus();
