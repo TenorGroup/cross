@@ -1079,7 +1079,7 @@ void loop() {
 #endif
 #ifdef TENOR_PRESS_PROBE
       } else if (cmd.startsWith("PRESS ")) {
-        // CMD:PRESS <NEXT|PREV|SIDE_NEXT|SIDE_PREV|POWER> <holdMs> <count> <gapMs>: plays
+        // CMD:PRESS <NEXT|PREV|SIDE_NEXT|SIDE_PREV|POWER|BACK|CONFIRM> <holdMs> <count> <gapMs>: plays
         // presses through the button hook while this loop keeps running, so they can land
         // mid-render. Names follow the portrait reader mapping of the current settings.
         char name[12] = {};
@@ -1093,6 +1093,8 @@ void loop() {
           if (n == "SIDE_NEXT") button = sideSwapped ? HalGPIO::BTN_UP : HalGPIO::BTN_DOWN;
           if (n == "SIDE_PREV") button = sideSwapped ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP;
           if (n == "POWER") button = HalGPIO::BTN_POWER;
+          if (n == "BACK") button = SETTINGS.frontButtonBack;
+          if (n == "CONFIRM") button = SETTINGS.frontButtonConfirm;
         }
         if (button >= 0) gpio.injectPresses(button, hold, count, gap);
         logSerial.printf("PRESS:button=%d,hold=%u,count=%u,gap=%u,t=%lu\n", button, hold, count, gap, millis());
