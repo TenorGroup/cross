@@ -60,7 +60,8 @@ body, header = texts[paths[0]], texts[paths[1]]
 row_start = header.index("enum RowCode")
 row_brace = header.index("{", row_start)
 row_enum = header[row_start:row_brace] + block(header, row_brace) + ";"
-names = ["rebuildRows", "refreshValues", "activateIndex", "openPairedPopup", "toggleEnabled", "handleScanRow"]
+names = ["rebuildRows", "refreshValues", "activateIndex", "openPairedPopup", "toggleEnabled", "handleScanRow",
+         "clearBindForRow"]
 methods = [function(body, "BlePageTurnerActivity::" + name) for name in names]
 for name in ["stepSelection", "clampAfterNav"]:
     if "BlePageTurnerActivity::" + name in body:

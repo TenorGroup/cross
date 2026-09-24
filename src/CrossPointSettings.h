@@ -6,6 +6,8 @@
 
 #include <cstdint>
 
+#include "activities/settings/BleKeyBinding.h"
+
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
  private:
   // Private constructor for singleton
@@ -467,6 +469,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   char blePeerName[32] = "";
   uint8_t blePrevKeyUsage = 0;
   uint8_t bleNextKeyUsage = 0;
+  // Per-remote button tables (by BLE address), key `bleRemotes`. The rules for
+  // learning, reading and lookup live in activities/settings/BleKeyBinding.h; this
+  // only holds the storage.
+  blebinding::RemoteTable bleRemotes[blebinding::kMaxRemotes] = {};
+  uint8_t bleRemoteCount = 0;
 
   static constexpr uint8_t BLE_USAGE_NONE = 0;
   // HID Usage Tables, Keyboard/Keypad (page 0x07): Left 0x50, Right 0x4F,

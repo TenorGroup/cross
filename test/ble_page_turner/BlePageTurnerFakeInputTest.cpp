@@ -464,49 +464,266 @@ TEST_F(PageTurnerFakeInputTest, ConsumerVolumeRemoteIsDecodedAndTurnsThePage) {
   EXPECT_EQ(drainTurns().previous, 1);
 }
 
-// --- Vong hoc nut: phim gia -> luat gan -> anh xa ----------------------------
+// --- Per-button binding from RAW frames ----------------------------------------
+//
+// The same chain src/main.cpp runs for the connected remote: pick the table by
+// address and name, drain raw edges, let blebinding::onRawEdge decide (falling back
+// to the old usage mapping for a button the table does not name), drain key events
+// and IGNORE them when there is a table.
 
-TEST_F(PageTurnerFakeInputTest, BindingLoopLearnsTheFirstUsageTheRemoteSends) {
-  connectRemote();
+// What the routed path decided, counted per action.
+struct Routed {
+  int next = 0;
+  int previous = 0;
+  int nextChapter = 0;
+  int previousChapter = 0;
+  int total() const { return next + previous + nextChapter + previousChapter; }
+};
 
-  KeyEvent ev;
-  int accepted = 0;
-  const auto learnNext = [&] {
-    while (fakeble::host().popKey(ev)) {
-      if (!ev.pressed) continue;  // the release edge repeats the usage; takeKey() skips it
-      if (blebinding::assign(blebinding::Direction::Next, ev.keycode, ev.mods)) ++accepted;
+class RemoteBindingTest : public PageTurnerFakeInputTest {
+ protected:
+  void SetUp() override {
+    PageTurnerFakeInputTest::SetUp();
+    savedRemotes_ = SETTINGS.bleRemoteCount;
+    SETTINGS.bleRemoteCount = 0;
+    router_ = blebinding::Router();
+  }
+  void TearDown() override {
+    SETTINGS.bleRemoteCount = savedRemotes_;
+    PageTurnerFakeInputTest::TearDown();
+  }
+
+  // The three-button remote (map rebuilt from the device log), advertised under
+  // `name` so the host resolves it on link-up the way it does for a real scan.
+  void connectThreeButton(const char* name) {
+    const int map = fakeble::addCharacteristic(kUuidReportMap, /*canRead=*/true);
+    fakeble::setCharacteristicValue(map, hidtest::kThreeButtonRemote, sizeof hidtest::kThreeButtonRemote);
+    fakeble::addCharacteristic(kUuidProtocolMode, false, /*canWrite=*/true);
+    const uint8_t ref3[2] = {3, 1};
+    media_ = fakeble::addCharacteristic(kUuidReport, false, false, /*canNotify=*/true);
+    fakeble::setReportReference(media_, ref3, sizeof ref3);
+    ASSERT_TRUE(fakeble::beginHost());
+    fakeble::host().startScan();
+    fakeble::state().advertise(kAddr, name, -40);
+    ASSERT_EQ(fakeble::connectTo(kAddr), fakeble::LinkResult::Connected);
+    ASSERT_STREQ(fakeble::host().connectedName(), name);
+  }
+
+  void frame(std::initializer_list<uint8_t> bytes) {
+    const std::vector<uint8_t> data(bytes);
+    const size_t before = fakeble::allocationCount();
+    ASSERT_TRUE(fakeble::notify(media_, data.data(), data.size()));
+    EXPECT_EQ(fakeble::allocationCount(), before) << "notification path allocated";
+  }
+
+  void count(Routed& r, const blebinding::Action a) {
+    switch (a) {
+      case blebinding::Action::NextPage: ++r.next; break;
+      case blebinding::Action::PrevPage: ++r.previous; break;
+      case blebinding::Action::NextChapter: ++r.nextChapter; break;
+      case blebinding::Action::PrevChapter: ++r.previousChapter; break;
+      case blebinding::Action::None: break;
     }
+  }
+
+  // One main-loop pass over everything the host queued, as src/main.cpp runs it.
+  Routed route(const uint32_t nowMs) {
+    Routed r;
+    router_.follow(fakeble::host().isConnected());
+    if (router_.linked && !router_.chosen) {
+      router_.table = blebinding::tableFor(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount,
+                                           fakeble::host().connectedAddr(), fakeble::host().connectedName());
+      router_.chosen = true;
+    }
+    const bool viaTable = blebinding::routes(router_.table);
+    RawButtonEvent raw;
+    while (fakeble::host().popRawButton(raw)) {
+      if (!viaTable) continue;
+      const auto legacy = SETTINGS.blePageActionFor(raw.keycode, raw.mods);
+      count(r, blebinding::onRawEdge(*router_.table, raw.code(), raw.pressed, raw.atMs,
+                                     legacy == CrossPointSettings::BlePageAction::NextPage ? blebinding::Action::NextPage
+                                     : legacy == CrossPointSettings::BlePageAction::PreviousPage
+                                         ? blebinding::Action::PrevPage
+                                         : blebinding::Action::None,
+                                     router_.wait));
+    }
+    if (viaTable) count(r, blebinding::pollHold(router_.wait, nowMs));
+    KeyEvent ev;
+    while (fakeble::host().popKey(ev)) {
+      if (viaTable || !ev.pressed) continue;
+      const auto a = SETTINGS.blePageActionFor(ev.keycode, ev.mods);
+      if (a == CrossPointSettings::BlePageAction::NextPage) ++r.next;
+      if (a == CrossPointSettings::BlePageAction::PreviousPage) ++r.previous;
+    }
+    return r;
+  }
+
+  Routed tap(std::initializer_list<uint8_t> press) {
+    frame(press);
+    fakeble::advanceMillis(60);
+    frame({0x00, 0x00, 0x00});
+    return route(fakeble::clockMs());
+  }
+
+  blebinding::Router router_;
+  int media_ = -1;
+  uint8_t savedRemotes_ = 0;
+};
+
+TEST_F(RemoteBindingTest, ThreeButtonDefaultTapIsNextChapterAndHoldFrameIsPreviousChapter) {
+  // The keycode bindings the page buttons were given on the old screen.
+  SETTINGS.bleNextKeyUsage = 0x02;
+  SETTINGS.blePrevKeyUsage = 0x01;
+  connectThreeButton("Free3-R");
+
+  const Routed third = tap({0x00, 0x02, 0x00});
+  EXPECT_EQ(third.nextChapter, 1);
+  EXPECT_EQ(third.total(), 1);
+
+  const Routed held = tap({0x08, 0x00, 0x00});
+  EXPECT_EQ(held.previousChapter, 1);
+  EXPECT_EQ(held.total(), 1);
+
+  // The page buttons keep their keycode bindings, one turn per press, no more.
+  const Routed forward = tap({0x02, 0x00, 0x00});
+  EXPECT_EQ(forward.next, 1);
+  EXPECT_EQ(forward.total(), 1) << "the key event of the same frame turned a second page";
+  const Routed back = tap({0x01, 0x00, 0x00});
+  EXPECT_EQ(back.previous, 1);
+  EXPECT_EQ(back.total(), 1);
+}
+
+TEST_F(RemoteBindingTest, RemoteWithoutTableKeepsTodaysPath) {
+  SETTINGS.bleNextKeyUsage = 0x02;
+  SETTINGS.blePrevKeyUsage = 0x01;
+  connectThreeButton("Some Remote");
+  // No table: the page buttons turn through the key path exactly as before, and
+  // the third button still does nothing.
+  EXPECT_EQ(tap({0x02, 0x00, 0x00}).next, 1);
+  EXPECT_EQ(tap({0x01, 0x00, 0x00}).previous, 1);
+  EXPECT_EQ(tap({0x00, 0x02, 0x00}).total(), 0);
+  EXPECT_EQ(tap({0x08, 0x00, 0x00}).total(), 0);
+}
+
+TEST_F(RemoteBindingTest, LearningFromTheRawRingBindsEachButtonOfThisRemote) {
+  connectThreeButton("Some Remote");
+  // What the Bluetooth screen does: the first press edge, then its release.
+  const auto learnNext = [&](blebinding::Action action, std::initializer_list<uint8_t> press, uint32_t holdMs) {
+    frame(press);
+    fakeble::advanceMillis(holdMs);
+    frame({0x00, 0x00, 0x00});
+    RawButtonEvent down, up;
+    ASSERT_TRUE(fakeble::host().popRawButton(down));
+    ASSERT_TRUE(fakeble::host().popRawButton(up));
+    ASSERT_TRUE(down.pressed);
+    ASSERT_FALSE(up.pressed);
+    ASSERT_EQ(up.code(), down.code());
+    KeyEvent ev;
+    while (fakeble::host().popKey(ev)) {
+    }
+    blebinding::RemoteTable* table = blebinding::editableTable(
+        SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, fakeble::host().connectedAddr(), fakeble::host().connectedName());
+    ASSERT_NE(table, nullptr);
+    ASSERT_TRUE(blebinding::learn(*table, action, down.code(), up.atMs - down.atMs >= blebinding::kHoldMs));
   };
+  learnNext(blebinding::Action::NextPage, {0x02, 0x00, 0x00}, 60);
+  learnNext(blebinding::Action::PrevPage, {0x01, 0x00, 0x00}, 60);
+  learnNext(blebinding::Action::NextChapter, {0x00, 0x02, 0x00}, 60);
+  learnNext(blebinding::Action::PrevChapter, {0x08, 0x00, 0x00}, 60);
+  ASSERT_EQ(SETTINGS.bleRemoteCount, 1);
+  EXPECT_STREQ(SETTINGS.bleRemotes[0].addr, kAddr);
+  EXPECT_EQ(SETTINGS.bleRemotes[0].count, 4);
 
-  // A release frame arrives first: usage 0 must not be learned as a button.
-  releaseAll();
-  learnNext();
-  EXPECT_EQ(accepted, 0) << "a release frame was learned as a key";
-  EXPECT_EQ(SETTINGS.bleNextKeyUsage, 0);
+  // Learned, then routed: the keycode bindings are not needed any more.
+  EXPECT_EQ(tap({0x02, 0x00, 0x00}).next, 1);
+  EXPECT_EQ(tap({0x01, 0x00, 0x00}).previous, 1);
+  EXPECT_EQ(tap({0x00, 0x02, 0x00}).nextChapter, 1);
+  EXPECT_EQ(tap({0x08, 0x00, 0x00}).previousChapter, 1);
+}
 
-  // The next real press is the one that gets bound.
-  press(kUsageDown);
-  releaseAll();
-  learnNext();
-  EXPECT_EQ(accepted, 1);
-  EXPECT_EQ(SETTINGS.bleNextKeyUsage, kUsageDown);
-  EXPECT_EQ(blebinding::assigned(blebinding::Direction::Next), kUsageDown);
-  EXPECT_EQ(blebinding::assigned(blebinding::Direction::Prev), 0) << "the other direction was touched";
+TEST_F(RemoteBindingTest, TapAndHoldOnARemoteThatReportsTheRelease) {
+  connectThreeButton("Some Remote");
+  blebinding::RemoteTable* table = blebinding::editableTable(
+      SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, fakeble::host().connectedAddr(), fakeble::host().connectedName());
+  ASSERT_NE(table, nullptr);
+  ASSERT_TRUE(blebinding::learn(*table, blebinding::Action::NextPage, 0x030102, false));
+  ASSERT_TRUE(blebinding::learn(*table, blebinding::Action::NextChapter, 0x030102, true));
 
-  // The learned key turns the page, and the defaults it replaced go quiet.
-  press(kUsageDown);
-  releaseAll();
-  EXPECT_EQ(drainTurns().next, 1);
-  press(kUsageRight);
-  releaseAll();
-  EXPECT_EQ(drainTurns().total(), 0) << "a retired default still turned a page";
+  // 100 ms tap: the tap action, once, on the release.
+  frame({0x00, 0x02, 0x00});
+  EXPECT_EQ(route(fakeble::clockMs()).total(), 0) << "a button with a hold slot acted before it knew";
+  fakeble::advanceMillis(100);
+  frame({0x00, 0x00, 0x00});
+  const Routed tapped = route(fakeble::clockMs());
+  EXPECT_EQ(tapped.next, 1);
+  EXPECT_EQ(tapped.total(), 1);
 
-  // Clearing the binding brings the defaults back.
-  blebinding::clear(blebinding::Direction::Next);
-  EXPECT_EQ(blebinding::assigned(blebinding::Direction::Next), 0);
-  press(kUsageDown);
-  releaseAll();
-  EXPECT_EQ(drainTurns().next, 1) << "the default was not live again after clearing";
+  // Held past the threshold: the hold action fires while still down, the release does nothing.
+  frame({0x00, 0x02, 0x00});
+  EXPECT_EQ(route(fakeble::clockMs()).total(), 0);
+  fakeble::advanceMillis(800);
+  const Routed held = route(fakeble::clockMs());
+  EXPECT_EQ(held.nextChapter, 1);
+  EXPECT_EQ(held.total(), 1);
+  frame({0x00, 0x00, 0x00});
+  EXPECT_EQ(route(fakeble::clockMs()).total(), 0) << "the release after a hold acted again";
+}
+
+TEST_F(RemoteBindingTest, OneRemotesTableIsNotAppliedToAnother) {
+  blebinding::RemoteTable* a = blebinding::editableTable(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount,
+                                                         "11:22:33:44:55:66", "Remote A");
+  ASSERT_NE(a, nullptr);
+  ASSERT_TRUE(blebinding::learn(*a, blebinding::Action::NextChapter, 0x030102, false));
+  connectThreeButton("Remote B");
+  EXPECT_EQ(tap({0x00, 0x02, 0x00}).total(), 0);
+  EXPECT_EQ(blebinding::tableFor(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, "11:22:33:44:55:66", "Remote A"), a);
+  EXPECT_TRUE(blebinding::forgetRemote(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, "11:22:33:44:55:66"));
+  EXPECT_EQ(SETTINGS.bleRemoteCount, 0);
+}
+
+TEST_F(RemoteBindingTest, ClearedTableKeepsItsAddressAndGoesBackToTheKeyPath) {
+  SETTINGS.bleNextKeyUsage = 0x02;
+  connectThreeButton("Free3-R");
+  blebinding::RemoteTable* table = blebinding::editableTable(
+      SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, fakeble::host().connectedAddr(), fakeble::host().connectedName());
+  ASSERT_NE(table, nullptr);
+  EXPECT_EQ(table->count, 2) << "an edit starts from the built-in default";
+  blebinding::clearAction(*table, blebinding::Action::NextChapter);
+  blebinding::clearAction(*table, blebinding::Action::PrevChapter);
+  EXPECT_EQ(table->count, 0);
+  // Cleared by hand: the default must not come back, and the key path decides.
+  EXPECT_EQ(tap({0x00, 0x02, 0x00}).total(), 0);
+  EXPECT_EQ(tap({0x02, 0x00, 0x00}).next, 1);
+}
+
+TEST(BleBindingTableTest, FullTableRefusesAndGarbageIsNotValid) {
+  blebinding::RemoteTable t{};
+  const blebinding::Action actions[4] = {blebinding::Action::NextPage, blebinding::Action::PrevPage,
+                                         blebinding::Action::NextChapter, blebinding::Action::PrevChapter};
+  // Four actions, each learned on a new button: four slots, the old ones replaced.
+  for (uint32_t round = 0; round < 3; ++round) {
+    for (int i = 0; i < 4; ++i) EXPECT_TRUE(blebinding::learn(t, actions[i], 0x030000 + round * 16 + i + 1, false));
+  }
+  EXPECT_EQ(t.count, 4);
+  // The same button gesture for a second action moves it, never doubles it.
+  EXPECT_TRUE(blebinding::learn(t, blebinding::Action::NextPage, 0x030000 + 32 + 2, false));
+  EXPECT_EQ(blebinding::lookup(t, 0x030000 + 32 + 2, false), blebinding::Action::NextPage);
+  EXPECT_EQ(t.count, 3);
+  // A full table (eight slots read back from the card) says so instead of overwriting.
+  t.count = blebinding::kMaxBindings;
+  for (uint8_t i = 0; i < t.count; ++i) {
+    t.bindings[i] = blebinding::makeBinding(0x010000 + i + 1, (i & 1) != 0, blebinding::Action::NextPage);
+  }
+  EXPECT_FALSE(blebinding::learn(t, blebinding::Action::PrevPage, 0x7F0001, false));
+  EXPECT_EQ(t.count, blebinding::kMaxBindings);
+  EXPECT_EQ(blebinding::lookup(t, 0x7F0001, false), blebinding::Action::None);
+
+  EXPECT_TRUE(blebinding::valid(blebinding::makeBinding(0x030102, true, blebinding::Action::PrevChapter)));
+  EXPECT_FALSE(blebinding::valid(blebinding::makeBinding(0x030102, false, blebinding::Action::None)));
+  EXPECT_FALSE(blebinding::valid(0x70030102u)) << "action out of range";
+  EXPECT_FALSE(blebinding::valid(0x18030102u)) << "unknown bit";
+  EXPECT_FALSE(blebinding::valid(blebinding::makeBinding(0x030100, false, blebinding::Action::NextPage)))
+      << "a zero value is a release, not a button";
 }
 
 }  // namespace

@@ -847,6 +847,9 @@ void loop() {
   auto& bleHid = freeink::BleKeyboardHost::getInstance();
   static uint32_t lastBleCleanupMs = 0;
   static uint32_t bleIdleSinceMs = 0;
+  // Remote with a button table (learned, or the built-in default for its kind): the
+  // table picked once per link, and the tap/hold decision still waiting.
+  static blebinding::Router bleRouter;
   if (bleHid.isStopping() && millis() - lastBleCleanupMs >= 250) {
     lastBleCleanupMs = millis();
     freeink::ble::suspendForTransition();  // Poll cancellation without blocking input.
@@ -897,6 +900,7 @@ void loop() {
       if (generation != bleReaderGeneration) freeink::ble::setRadioHeldForBuild(false);
       bleReaderBeginAttempted = false;
       bleReaderReconnectConfigured = false;
+      bleRouter = blebinding::Router();  // settings may have changed the tables while away
       bleReaderRetryAtMs = 0;
       bleReaderRetries = 0;
     }
@@ -973,9 +977,52 @@ void loop() {
           }
         }
         bleHid.poll();
+        // A remote with a table goes by RAW edges: each edge checks at most 8 slots of
+        // the connected remote's table, and a button the table does not name falls back
+        // to the old usage mapping. Without a table the raw ring is only drained and the
+        // key path below runs exactly as before.
+        freeink::RawButtonEvent tho;
+        bleRouter.follow(bleHid.isConnected());
+        if (bleRouter.linked && !bleRouter.chosen) {
+          // Edges queued while the reader was not in front (the remote stays linked on
+          // Home) do not belong to this page: drop them, so an old press cannot skip a
+          // chapter when the book opens.
+          while (bleHid.popRawButton(tho)) {
+          }
+          bleRouter.table = blebinding::tableFor(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, bleHid.connectedAddr(),
+                                                 bleHid.connectedName());
+          bleRouter.chosen = true;
+        }
+        const bool quaBang = blebinding::routes(bleRouter.table);
+        const auto lam = [&](const blebinding::Action a) {
+          if (a == blebinding::Action::None) return;
+          const bool toi = a == blebinding::Action::NextPage || a == blebinding::Action::NextChapter;
+          const bool chuong = a == blebinding::Action::NextChapter || a == blebinding::Action::PrevChapter;
+          if (chuong ? activityManager.chapterSkip(toi) : activityManager.pageTurn(toi)) bleInputActivity = true;
+        };
+        while (bleHid.popRawButton(tho)) {
+          if (!quaBang) continue;
+          const auto cu = SETTINGS.blePageActionFor(tho.keycode, tho.mods);
+          const auto hanhDong = blebinding::onRawEdge(
+              *bleRouter.table, tho.code(), tho.pressed, tho.atMs,
+              cu == CrossPointSettings::BlePageAction::NextPage       ? blebinding::Action::NextPage
+              : cu == CrossPointSettings::BlePageAction::PreviousPage ? blebinding::Action::PrevPage
+                                                                      : blebinding::Action::None,
+              bleRouter.wait);
+          lam(hanhDong);  // act first, log after: the log line is not on the page's clock
+          LOG_INF("BLE", "raw %u:%u=%02X %s -> %s", tho.reportId, tho.byteIndex, tho.value, tho.pressed ? "down" : "up",
+                  blebinding::actionName(hanhDong));
+        }
+        if (quaBang) {
+          const auto giu = blebinding::pollHold(bleRouter.wait, millis());
+          lam(giu);
+          if (giu != blebinding::Action::None) LOG_INF("BLE", "raw hold -> %s", blebinding::actionName(giu));
+        }
         freeink::KeyEvent ev;
         while (bleHid.popKey(ev)) {
-          const auto hanhDong = SETTINGS.blePageActionFor(ev.keycode, ev.mods);
+          // With a table the raw edge already decided this frame: its key event is only logged.
+          const auto hanhDong =
+              quaBang ? CrossPointSettings::BlePageAction::None : SETTINGS.blePageActionFor(ev.keycode, ev.mods);
           // Mot dong cho MOI phim lay ra: day la duong chan doan cho nguoi cam
           // dieu khien that (doc qua serial la biet remote gui ma nao).
           LOG_INF("BLE", "key 0x%02X mods 0x%02X %s -> %s", ev.keycode, ev.mods, ev.pressed ? "down" : "up",
@@ -1236,6 +1283,30 @@ void loop() {
         I18N.setLanguage(static_cast<Language>(SETTINGS.language));
         activityManager.goHome();
         logSerial.printf("UI_LANGUAGE:RESTORED\n");
+#ifdef TENOR_PRESS_PROBE
+      } else if (cmd.startsWith("BLE_RAW")) {
+        // CMD:BLE_RAW <hex bytes>: one HID frame through the real ingest path, as if the
+        // remote had sent it; the next loop pass routes it. With no remote connected the
+        // route takes the built-in three-button table, so the hot path from frame to page
+        // or chapter can be timed with no hand on a remote. Open a book first.
+        uint8_t frame[16];
+        size_t n = 0;
+        const char* p = cmd.c_str() + 7;
+        unsigned v = 0;
+        int used = 0;
+        while (n < sizeof(frame) && sscanf(p, " %x%n", &v, &used) == 1) {
+          frame[n++] = static_cast<uint8_t>(v);
+          p += used;
+        }
+        if (!bleHid.isConnected()) {
+          bleRouter.table = blebinding::defaultTableFor("Free3");
+          bleRouter.chosen = true;
+        }
+        const unsigned long t0 = micros();
+        bleHid.onReportIngest(frame, n);
+        logSerial.printf("BLE_RAW:len=%u,ingest_us=%lu,running=%d,t=%lu\n", static_cast<unsigned>(n), micros() - t0,
+                         bleHid.isRunning(), millis());
+#endif
 #endif
 #ifdef TENOR_PRESS_PROBE
       } else if (cmd.startsWith("WAKE_TIMER ")) {

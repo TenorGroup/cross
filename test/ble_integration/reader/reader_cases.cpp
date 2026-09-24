@@ -1,6 +1,6 @@
 int failures=0,tests=0;
 void require(bool yes,const char*message){if(!yes)throw std::runtime_error(message);}
-void test(const std::string&name,std::function<void()>fn){tests++; RenderLock::busy=false;nowMs=1000;READING_STATS={};activityManager.generation=1;activityManager.pendingAction=ActivityManager::PendingAction::None;activityManager.sleepTransition=false;activityManager.exclusive=false;activityManager.preventSleep=false;gpio={};mappedInputManager={};powerManager={};halTiltSensor={};filetransfer::active=false;freeink::BleKeyboardHost::getInstance()={};freeink::ble::stopped=false;freeink::ble::rearm=false;freeink::ble::held=false;freeink::ble::deferred=false;freeink::ble::init=false;freeink::ble::starts=0;freeink::ble::startSuccess=true;SETTINGS.blePageTurnerEnabled=true;
+void test(const std::string&name,std::function<void()>fn){tests++; RenderLock::busy=false;nowMs=1000;READING_STATS={};activityManager.generation=1;activityManager.pendingAction=ActivityManager::PendingAction::None;activityManager.sleepTransition=false;activityManager.exclusive=false;activityManager.preventSleep=false;gpio={};mappedInputManager={};powerManager={};halTiltSensor={};filetransfer::active=false;freeink::BleKeyboardHost::getInstance()={};freeink::ble::stopped=false;freeink::ble::rearm=false;freeink::ble::held=false;freeink::ble::deferred=false;freeink::ble::init=false;freeink::ble::starts=0;freeink::ble::startSuccess=true;SETTINGS.blePageTurnerEnabled=true;SETTINGS.bleRemoteCount=0;
  try{fn();std::cout<<"PASS "<<name<<"\n";}catch(const std::exception&e){failures++;std::cout<<"FAIL "<<name<<": "<<e.what()<<"\n";}RenderLock::busy=false;activityManager.currentActivity.reset();}
 template<class T>std::shared_ptr<T>reader(){auto r=std::make_shared<T>();activityManager.currentActivity=r;return r;}
 void press(int key){freeink::BleKeyboardHost::getInstance().queue.push_back({key,0,true});}
@@ -83,6 +83,62 @@ int main(){
  auto r=reader<TxtReaderActivity>();MainPump p;noiRemote();
  for(int i=0;i<3;i++){release(1);p.pump();r->loop();nowMs+=100;}
  require(page(*r)==1&&r->trangDaLat==0&&r->chapterSkips==0,"a stray release frame turned a page");
+ });
+ // Per-button binding (v1.0.14): RAW edges of a remote with a table, through the real main
+ // loop into the reader. Three-button remote: button 3 sends "00 02 00" (byte 1) on a tap and
+ // "08 00 00" when held. Default table by name: tap = next chapter, hold = previous chapter;
+ // the page buttons keep the old usage mapping.
+ const auto noiRemoteTen=[](const char*ten){auto&h=freeink::BleKeyboardHost::getInstance();h.connected=true;h.addr="7d:de:5c:bd:ae:ca";h.name=ten;};
+ const auto canhCu=[](uint32_t code){freeink::RawButtonEvent e;e.value=code&0xFF;e.byteIndex=(code>>8)&0xFF;e.reportId=(code>>16)&0xFF;e.atMs=nowMs;freeink::BleKeyboardHost::getInstance().raw.push_back(e);};
+ const auto canh=[](uint32_t code,bool nhan,uint8_t keycode=0){freeink::RawButtonEvent e;e.value=code&0xFF;e.byteIndex=(code>>8)&0xFF;e.reportId=(code>>16)&0xFF;e.pressed=nhan;e.keycode=keycode;e.atMs=nowMs;freeink::BleKeyboardHost::getInstance().raw.push_back(e);};
+ test("BLE table: third button tap skips one chapter forward and turns no page",[&]{
+ auto r=reader<EpubReaderActivity>();MainPump p;noiRemoteTen("Free3-R");p.pump();nowMs=5000;
+ canh(0x030102,true);p.pump();r->loop();nowMs+=60;canh(0x030102,false);p.pump();r->loop();
+ require(r->chapterSkips==1&&r->currentSpineIndex==1,"third button tap did not skip one chapter forward");
+ require(r->trangDaLat==0,"a chapter skip was counted as a page");
+ require(p.lastSleepResetTime==nowMs-60,"accepted remote action did not reset the sleep clock");
+ });
+ test("BLE table: held third button frame skips one chapter back",[&]{
+ auto r=reader<EpubReaderActivity>();r->currentSpineIndex=2;MainPump p;noiRemoteTen("Free3-R");p.pump();
+ canh(0x030008,true,0x30);p.pump();r->loop();nowMs+=53;canh(0x030008,false);p.pump();r->loop();
+ require(r->chapterSkips==1&&r->currentSpineIndex==1,"hold frame did not skip one chapter back");
+ });
+ test("BLE table: page frame turns exactly one page though its key event is queued too",[&]{
+ auto r=reader<TxtReaderActivity>();MainPump p;noiRemoteTen("Free3-R");p.pump();
+ // The notify can land between the raw and the key drains: the key event then comes one pass later.
+ canh(0x030002,true,1);p.pump();r->loop();press(1);nowMs+=20;p.pump();r->loop();nowMs+=40;canh(0x030002,false);release(1);p.pump();r->loop();
+ require(page(*r)==2&&r->trangDaLat==1,"table route and key path turned the page twice (or not at all)");
+ require(r->chapterSkips==0,"a page button skipped a chapter");
+ });
+ test("BLE no table: raw edges are drained and the key path is unchanged",[&]{
+ auto r=reader<TxtReaderActivity>();MainPump p;noiRemoteTen("Some Remote");p.pump();
+ canh(0x030002,true,1);press(1);p.pump();r->loop();
+ canh(0x030102,true);p.pump();r->loop();
+ require(page(*r)==2&&r->trangDaLat==1&&r->chapterSkips==0,"a remote without a table left today's key path");
+ require(freeink::BleKeyboardHost::getInstance().raw.empty(),"raw edges were left in the ring");
+ });
+ test("BLE hold slot: a tap acts on release, a hold acts at the threshold and its release does nothing",[&]{
+ auto r=reader<EpubReaderActivity>();r->section->currentPage=1;MainPump p;noiRemoteTen("Some Remote");
+ auto*t=blebinding::editableTable(SETTINGS.bleRemotes,SETTINGS.bleRemoteCount,"7d:de:5c:bd:ae:ca","Some Remote");
+ require(t&&blebinding::learn(*t,blebinding::Action::NextPage,0x030102,false)&&blebinding::learn(*t,blebinding::Action::NextChapter,0x030102,true),"table setup");p.pump();
+ canh(0x030102,true);p.pump();r->loop();require(page(*r)==1&&r->chapterSkips==0,"a button with a hold slot acted on its press");
+ nowMs+=100;canh(0x030102,false);p.pump();r->loop();require(page(*r)==2&&r->chapterSkips==0,"a 100 ms tap did not turn one page");
+ nowMs+=250;canh(0x030102,true);p.pump();r->loop();nowMs+=699;p.pump();r->loop();require(r->chapterSkips==0,"hold fired before the threshold");
+ nowMs+=1;p.pump();r->loop();require(r->chapterSkips==1&&r->trangDaLat==1,"hold did not skip one chapter at the threshold");
+ nowMs+=300;canh(0x030102,false);p.pump();r->loop();require(r->chapterSkips==1&&r->trangDaLat==1,"the release after a hold acted");
+ });
+ test("BLE router drops a table when the link goes to another remote",[&]{
+ auto r=reader<EpubReaderActivity>();MainPump p;noiRemoteTen("Free3-R");p.pump();
+ canh(0x030102,true);p.pump();r->loop();canh(0x030102,false);p.pump();r->loop();require(r->chapterSkips==1,"setup skip missing");
+ auto&h=freeink::BleKeyboardHost::getInstance();h.connected=false;nowMs+=10;p.pump();
+ noiRemoteTen("Some Remote");nowMs+=10;canh(0x030102,true);p.pump();r->loop();
+ require(r->chapterSkips==1,"the previous remote's table acted for another remote");
+ });
+ test("BLE table: edges queued before the reader chose its table are dropped",[&]{
+ auto r=reader<EpubReaderActivity>();MainPump p;noiRemoteTen("Free3-R");
+ canhCu(0x030102);p.pump();r->loop();nowMs+=900;p.pump();r->loop();
+ require(r->chapterSkips==0&&r->trangDaLat==0,"a press queued before the reader pass acted");
+ canh(0x030102,true);p.pump();r->loop();require(r->chapterSkips==1,"a fresh press after the table was chosen did not act");
  });
  std::cout<<"RESULT "<<tests-failures<<"/"<<tests<<" passed\n";return failures?1:0;
 }

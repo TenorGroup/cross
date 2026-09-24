@@ -825,3 +825,8 @@ STR_TILT_STRONG: "Mạnh"
 STR_SLEEP_BW_REFRESH: "Làm mới đen trắng trước khi ngủ"
 
 STR_CHAPTER_NAME: "Tên chương"
+
+STR_BLE_BIND_NEXT_CHAPTER: "Gán nút chương sau"
+STR_BLE_BIND_PREV_CHAPTER: "Gán nút chương trước"
+STR_BLE_BIND_HOLD: "giữ lâu"
+STR_BLE_BIND_FULL: "Hết chỗ gán nút"

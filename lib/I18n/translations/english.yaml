@@ -825,3 +825,8 @@ STR_TILT_STRONG: "Strong"
 STR_SLEEP_BW_REFRESH: "Black and white refresh before sleep"
 
 STR_CHAPTER_NAME: "Chapter name"
+
+STR_BLE_BIND_NEXT_CHAPTER: "Bind next-chapter button"
+STR_BLE_BIND_PREV_CHAPTER: "Bind previous-chapter button"
+STR_BLE_BIND_HOLD: "hold"
+STR_BLE_BIND_FULL: "Binding table is full"

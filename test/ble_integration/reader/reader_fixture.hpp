@@ -32,7 +32,8 @@ struct ActivityManager {enum class PendingAction{None,Push};PendingAction pendin
 ActivityManager activityManager;
 struct FakeInput{enum class Button{PageBack,PageForward,Left,Right,Back,Confirm};bool prev=false,next=false,back=false,confirm=false;bool released=false;int releasedButton=-1;bool wasReleased(Button button)const{if(button==Button::Back)return back;if(button==Button::Confirm)return confirm;return released&&(releasedButton<0||releasedButton==static_cast<int>(button));} unsigned long getHeldTime()const{return 0;}};
 using MappedInputManager=FakeInput;FakeInput mappedInputManager;
-struct FakeSettings{enum Behavior{FONT_SIZE_STEP,CHAPTER_SKIP};Behavior longPressButtonBehavior=CHAPTER_SKIP;bool blePageTurnerEnabled=true;char blePeerAddr[18]={};enum class BlePageAction{PreviousPage,NextPage,None};BlePageAction blePageActionFor(int key,int mods)const{return mods?BlePageAction::None:(key==1?BlePageAction::NextPage:(key==2?BlePageAction::PreviousPage:BlePageAction::None));}}SETTINGS;
+@@BLEBINDING@@
+struct FakeSettings{blebinding::RemoteTable bleRemotes[blebinding::kMaxRemotes]={};uint8_t bleRemoteCount=0;enum Behavior{FONT_SIZE_STEP,CHAPTER_SKIP};Behavior longPressButtonBehavior=CHAPTER_SKIP;bool blePageTurnerEnabled=true;char blePeerAddr[18]={};enum class BlePageAction{PreviousPage,NextPage,None};BlePageAction blePageActionFor(int key,int mods)const{return mods?BlePageAction::None:(key==1?BlePageAction::NextPage:(key==2?BlePageAction::PreviousPage:BlePageAction::None));}}SETTINGS;
 using CrossPointSettings=FakeSettings;
 namespace ReaderUtils {constexpr int SKIP_HOLD_MS=500;
 struct Turns{bool prev=false,next=false,prevLongPressed=false,nextLongPressed=false,fromTilt=false;};

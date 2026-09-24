@@ -36,10 +36,13 @@ class BlePageTurnerActivity final : public UiListActivity {
     ROW_STATUS = 1,
     ROW_SCAN = 2,
     ROW_PAIRED_HEADER = 3,
-    // Hai hang gan nut nam ngay sau hang quet (thu tu hien thi do rebuildRows
-    // quyet dinh, khong phai gia tri ma nay).
+    // Four bind rows right after the scan row (rebuildRows decides the display
+    // order, not these values). Row code minus ROW_BIND_NEXT plus 1 is the row's
+    // blebinding::Action.
     ROW_BIND_NEXT = 4,
     ROW_BIND_PREV = 5,
+    ROW_BIND_NEXT_CHAPTER = 6,
+    ROW_BIND_PREV_CHAPTER = 7,
     ROW_PAIRED_BASE = 100,
     ROW_DEVICE_HEADER = 200,
     ROW_DEVICE_BASE = 300,
@@ -65,24 +68,26 @@ class BlePageTurnerActivity final : public UiListActivity {
   void handleScanRow();
   void openPairedPopup(int bondIndex);
 
-  // --- Gan nut (hotfix 18/09/2026) ------------------------------------------
-  // Man nay dang mo thi phim cua dieu khien khong thuoc ve ai khac: rut het hang
-  // doi, phim dau tien trong luot cho duoc gan, con lai chi de hien ma vua nhan.
+  // --- Per-button binding from raw frames (v1.0.14) --------------------------
+  // While this screen is open the remote's input belongs to nobody else: both
+  // queues are drained. The first press edge of a wait is the button learned, its
+  // release tells a tap from a hold; everything else only shows the last code.
   void readPendingKeys();
-  void startBindWait(blebinding::Direction direction);
-  void clearBind(blebinding::Direction direction);
+  void startBindWait(blebinding::Action action);
+  void finishLearn(bool sawRelease, uint32_t heldMs);
+  void clearBind(blebinding::Action action);
   // Nhip giu tren mot hang: ca duong nut bam lan duong cam ung deu goi day.
   void clearBindForRow(int index);
-  // Gia tri hien o hang gan nut: ma dang gan dang "0x51", hoac "Mac dinh".
-  std::string bindValue(blebinding::Direction direction) const;
+  // Value shown on a bind row: a learned code such as "3:1=02", an old usage code
+  // "0x51", or "Default".
+  std::string bindValue(blebinding::Action action) const;
 
   std::string statusText_;
   // Dong cua hang Trang thai sau khi ghep thong bao gan nut va ma vua nhan. La
   // thanh vien vi ListItem::value tro vao day, khong phai chuoi tam.
   std::string statusValue_;
-  // Gia tri cua hai hang gan nut, cung ly do: ListItem::value la con tro.
-  std::string bindNextValue_;
-  std::string bindPrevValue_;
+  // Values of the four bind rows, same reason: ListItem::value is a pointer.
+  std::string bindValues_[4];
   std::vector<freeink::ui::ListItem> rowItems_;
   OptionPopup optionPopup;
   bool rowsDirty = true;
@@ -90,9 +95,12 @@ class BlePageTurnerActivity final : public UiListActivity {
   uint32_t lastStateSig = 0;
 
   bool bindWaitActive_ = false;
-  blebinding::Direction bindDirection_ = blebinding::Direction::Next;
+  blebinding::Action bindAction_ = blebinding::Action::NextPage;
   uint32_t bindWaitStartedMs_ = 0;
-  uint8_t lastKeyUsage_ = 0;
+  // Button being learned: its code and press time, waiting for the release. 0 = none yet.
+  uint32_t learnCode_ = 0;
+  uint32_t learnPressMs_ = 0;
+  uint32_t lastRawCode_ = 0;
   // Thong bao cua luot gan nut (dang cho / da gan / khong nhan duoc) thay cho dong
   // trang thai radio cho toi khi nguoi dung lam viec khac.
   std::string bindNotice_;

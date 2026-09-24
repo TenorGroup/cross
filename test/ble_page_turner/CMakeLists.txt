@@ -61,3 +61,49 @@ target_link_libraries(BlePageTurnerFakeInputTest PRIVATE
 )
 
 gtest_discover_tests(BlePageTurnerFakeInputTest)
+
+# Per-remote button tables through the REAL settings.json code: compiles
+# CrossPointSettings.cpp as is, the way menu_tilt_settings does.
+add_executable(BleRemoteSettingsTest
+  BleRemoteSettingsTest.cpp
+  ${REPO_ROOT}/test/settings_catalog/LinkStubs.cpp
+  ${REPO_ROOT}/src/CrossPointSettings.cpp
+  ${REPO_ROOT}/src/ReaderFontSizes.cpp
+  ${REPO_ROOT}/lib/I18n/I18n.cpp
+  ${REPO_ROOT}/lib/I18n/I18nStrings.cpp
+)
+target_compile_features(BleRemoteSettingsTest PRIVATE cxx_std_20)
+target_include_directories(BleRemoteSettingsTest BEFORE PRIVATE
+  ${REPO_ROOT}/test/menu_tilt_settings/stubs
+  ${REPO_ROOT}/test/host_stubs
+)
+file(GLOB_RECURSE _brs_all_dirs LIST_DIRECTORIES true "${REPO_ROOT}/lib/*" "${REPO_ROOT}/freeink-sdk/*" "${REPO_ROOT}/src/*")
+set(_brs_inc_dirs "${REPO_ROOT}/src")
+foreach(_d ${_libdep_srcs})
+  if(IS_DIRECTORY ${_d})
+    list(APPEND _brs_inc_dirs ${_d})
+  endif()
+endforeach()
+foreach(_d ${_brs_all_dirs})
+  if(IS_DIRECTORY ${_d} AND NOT ${_d} MATCHES "pro_stubs" AND NOT ${_d} MATCHES "/test/host")
+    list(APPEND _brs_inc_dirs ${_d})
+  endif()
+endforeach()
+list(REMOVE_DUPLICATES _brs_inc_dirs)
+target_include_directories(BleRemoteSettingsTest PRIVATE ${_brs_inc_dirs})
+target_compile_definitions(BleRemoteSettingsTest PRIVATE
+  FREEINK_DEVICE_X3=1
+  FREEINK_DEVICE_X4=1
+  FREEINK_CAP_FRONTLIGHT=0
+  FREEINK_CAP_WARMLIGHT=0
+  ENABLE_ARDUINO_FEATURES=0
+  CROSSPOINT_VERSION="ble-remote-settings-test"
+)
+target_compile_options(BleRemoteSettingsTest PRIVATE -ffunction-sections -fdata-sections)
+if(APPLE)
+  target_link_options(BleRemoteSettingsTest PRIVATE -Wl,-dead_strip)
+else()
+  target_link_options(BleRemoteSettingsTest PRIVATE -Wl,--gc-sections)
+endif()
+target_link_libraries(BleRemoteSettingsTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(BleRemoteSettingsTest)

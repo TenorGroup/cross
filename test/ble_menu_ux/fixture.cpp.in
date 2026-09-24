@@ -25,14 +25,16 @@ struct ListItem {
   const char* sectionHeading = nullptr;
 };
 }
+#include "activities/settings/BleKeyBinding.h"
 struct CrossPointSettings { static constexpr uint8_t BLE_USAGE_NONE = 0; };
 struct Settings {
   bool blePageTurnerEnabled = true;
   char blePeerAddr[18] = {}, blePeerName[32] = {};
+  blebinding::RemoteTable bleRemotes[blebinding::kMaxRemotes] = {};
+  uint8_t bleRemoteCount = 0;
   int saves = 0;
   void saveToFile() { ++saves; }
 } SETTINGS;
-namespace blebinding { enum class Direction { Next, Prev }; }
 namespace freeink::ble {
 void setIdleStopped(bool) {}
 void setReaderStartDeferred(bool) {}
@@ -50,6 +52,8 @@ const char* bondName(uint8_t i) { return bonds.at(i).c_str(); }
 const char* deviceAddr(uint8_t i) { return devices.at(i).c_str(); }
 const char* deviceName(uint8_t i) { return devices.at(i).c_str(); }
 bool connected() { return live; }
+const char* connectedAddr() { return live ? "AA:BB:CC:DD:EE:F0" : ""; }
+const char* connectedName() { return live ? "Remote" : ""; }
 bool scanning() { return scan; }
 bool begin(int&) { ++begins; return true; }
 bool end() { return true; }
@@ -95,14 +99,17 @@ struct BlePageTurnerActivity : UiListActivity {
   Popup optionPopup;
   std::vector<fui::ListItem> rowItems_;
   bool rowsDirty = false, bindWaitActive_ = false;
-  std::string bindNotice_, bindNextValue_, bindPrevValue_, statusValue_, statusText_ = "ready";
-  uint8_t lastKeyUsage_ = 0;
+  std::string bindNotice_, bindValues_[4], statusValue_, statusText_ = "ready";
+  uint32_t lastRawCode_ = 0;
+  std::vector<blebinding::Action> waited, cleared;
   int updates = 0;
   int listCount() const override { return rowItems_.size(); }
   void requestUpdate() { ++updates; }
   void capNhatTrangThai() {}
-  std::string bindValue(blebinding::Direction) const { return "default"; }
-  void startBindWait(blebinding::Direction) { bindWaitActive_ = true; }
+  std::string bindValue(blebinding::Action) const { return "default"; }
+  void startBindWait(blebinding::Action a) { bindWaitActive_ = true; waited.push_back(a); }
+  void clearBind(blebinding::Action a) { cleared.push_back(a); }
+  void clearBindForRow(int index);
   void rebuildRows();
   void refreshValues();
   void activateIndex(int index);
@@ -202,6 +209,42 @@ int main() {
         if (enabled) require(backend::connections.back() == backend::bonds[bond], "connect dispatch uses selected exact address");
       }
     }
+  }
+  {
+    // Four bind rows right after the scan row: next page, previous page, next chapter,
+    // previous chapter. A tap listens for that row's action; a hold clears exactly it.
+    SETTINGS = {};
+    backend::bonds.assign({"AA:BB:CC:DD:EE:F0"}); backend::devices.clear(); backend::live = true;
+    BlePageTurnerActivity screen;
+    screen.rebuildRows(); screen.refreshValues();
+    const blebinding::Action order[4] = {blebinding::Action::NextPage, blebinding::Action::PrevPage,
+                                         blebinding::Action::NextChapter, blebinding::Action::PrevChapter};
+    int scanRow = -1;
+    for (int i = 0; i < screen.listCount(); ++i)
+      if (screen.rowItems_[i].actionValue == BlePageTurnerActivity::ROW_SCAN) scanRow = i;
+    require(scanRow >= 0 && scanRow + 4 < screen.listCount(), "bind rows follow the scan row");
+    for (int k = 0; k < 4; ++k) {
+      const int row = scanRow + 1 + k;
+      require(screen.rowItems_[row].enabled && screen.rowItems_[row].value != nullptr, "bind row is live and shows a value");
+      screen.activateIndex(row);
+      require(screen.waited.size() == static_cast<size_t>(k + 1) && screen.waited.back() == order[k],
+              "tapping a bind row listens for its own action");
+      screen.clearBindForRow(row);
+      require(screen.cleared.size() == static_cast<size_t>(k + 1) && screen.cleared.back() == order[k],
+              "holding a bind row clears its own action");
+    }
+    screen.clearBindForRow(0);
+    require(screen.cleared.size() == 4, "holding a non-bind row clears nothing");
+    // Forgetting a device forgets its button table too.
+    blebinding::editableTable(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, "AA:BB:CC:DD:EE:F0", "Remote");
+    require(SETTINGS.bleRemoteCount == 1, "table setup");
+    for (int i = 0; i < screen.listCount(); ++i) {
+      if (screen.rowItems_[i].actionValue != BlePageTurnerActivity::ROW_PAIRED_BASE) continue;
+      screen.activateIndex(i);
+      screen.optionPopup.callback(1);
+    }
+    require(SETTINGS.bleRemoteCount == 0, "forgetting a device keeps its binding table");
+    backend::live = false;
   }
   Reader reader;
   reader.activateBluetooth();
