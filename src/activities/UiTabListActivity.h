@@ -130,9 +130,8 @@ class UiTabListActivity : public UiListActivity {
   void commitTabNavigation();
 
   static constexpr int16_t MUI_TEN_LE = 14;   // mang le moi ben, danh cho mui ten
-  static constexpr int16_t MUI_TEN_RONG = 6;  // be ngang mui ten
-  static constexpr int16_t MUI_TEN_CAO = 10;  // chieu cao mui ten
-  void veMuiTenThe(UiScreen& screen, const freeink::ui::Rect& thanh, int16_t le);
+  static constexpr int MUI_TEN_NUA = 5;       // nua do mo chu V: cao 11, rong 7
+  void veMuiTenThe(const freeink::ui::Rect& thanh, int16_t le);
 
   // The shared tab band: theme-driven pill treatment (label-hugging Lyra vs
   // full-slot RoundedRaff), Lyra focused band wash, always-on divider.

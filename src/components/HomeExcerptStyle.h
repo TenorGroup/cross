@@ -87,17 +87,27 @@ inline HomeCardLayout homeCardLayout(const HomeCardInput& in) {
 }
 
 // Rows of the reading stats column beside the cover, top to bottom.
-enum HomeStat : uint8_t { HOME_STAT_READ, HOME_STAT_TOTAL, HOME_STAT_AVERAGE, HOME_STAT_DAYS, HOME_STAT_SPAN, HOME_STAT_COUNT };
+enum HomeStat : uint8_t {
+  HOME_STAT_READ,
+  HOME_STAT_FINISH,
+  HOME_STAT_TOTAL,
+  HOME_STAT_AVERAGE,
+  HOME_STAT_DAYS,
+  HOME_STAT_SPAN,
+  HOME_STAT_COUNT
+};
 
 // Which rows a book's reading record fills, one bit per HomeStat. The percent row always shows; a
 // book with no record shows it alone (it then says the book was not recorded). Otherwise a row
 // shows only when it has a number behind it: time for the total, reading days for the days and
-// the average, a first and last day for the span. The average is the stats screen's "per reading
-// day" figure, total time over reading days.
+// the average, a first and last day for the span, an estimate (`finish`, ngaydocxong::uocTinh gave
+// one) for the expected finish. The average is the stats screen's "per reading day" figure, total
+// time over reading days.
 inline uint8_t homeStatRows(const bool recorded, const uint64_t elapsedMs, const uint32_t days,
-                            const uint32_t firstDay, const uint32_t lastDay) {
+                            const uint32_t firstDay, const uint32_t lastDay, const bool finish = false) {
   uint8_t rows = 1u << HOME_STAT_READ;
   if (!recorded) return rows;
+  if (finish) rows |= 1u << HOME_STAT_FINISH;
   if (elapsedMs > 0) rows |= 1u << HOME_STAT_TOTAL;
   if (elapsedMs > 0 && days > 0) rows |= 1u << HOME_STAT_AVERAGE;
   if (days > 0) rows |= 1u << HOME_STAT_DAYS;

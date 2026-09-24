@@ -82,14 +82,19 @@ uint64_t& seenNewest(const uint32_t book) {
 // A card file: this head, then the cover region and the text region as the framebuffer holds them.
 // `thumb` is whether the card's own thumbnail was on the card when the cover was drawn: the reader
 // writes it the first time it opens a book, and a card drawn before that is stale from then on.
+// The cover has a key of its own: leaving a book on a new page changes the excerpt alone, and the
+// saved cover then goes back on the card while only the text is laid out again (about 210 ms of a
+// 333 ms card on the X3 is the cover). `cover` is the thumbnail height it was drawn from.
 struct CardFileHead {
   uint32_t magic;
+  uint32_t coverKey;
   uint32_t key;
   int16_t rects[8];
   uint32_t bytes;
   uint8_t thumb;
+  int16_t cover;
 };
-constexpr uint32_t CARD_FILE_MAGIC = 0x32445243;  // "CRD2": the title went one font size up
+constexpr uint32_t CARD_FILE_MAGIC = 0x33445243;  // "CRD3": the cover keyed apart from the text
 
 uint32_t fnv(uint32_t hash, const void* data, size_t size) {
   for (const auto* p = static_cast<const uint8_t*>(data); size--; ++p) hash = (hash ^ *p) * 16777619u;
@@ -911,10 +916,12 @@ void HomeActivity::loadCardStats(const int index) {
   cardStats = {};
   cardStats.recorded = cardRecordsFound & bit;
   const uint64_t elapsed = static_cast<uint64_t>(record.minutes) * 60000 + record.remainderMs;
-  cardStats.rows = homeStatRows(cardStats.recorded, elapsed, record.days, record.firstDay, record.lastDay);
-  cardStats.percent = std::min<uint8_t>(record.progress, 100);
   auto& values = cardStats.values;
   char text[64], duration[48];
+  const bool finish = cardStats.recorded && BookStatsActivity::finishText(record, text, sizeof(text));
+  if (finish) values[HOME_STAT_FINISH] = text;
+  cardStats.rows = homeStatRows(cardStats.recorded, elapsed, record.days, record.firstDay, record.lastDay, finish);
+  cardStats.percent = std::min<uint8_t>(record.progress, 100);
   if (!cardStats.recorded) {
     values[HOME_STAT_READ] = tr(STR_STATS_NOT_RECORDED);
     return;
@@ -940,9 +947,9 @@ void HomeActivity::loadCardStats(const int index) {
 // wider than the column, as in the approved drawing. Returns the top of the progress bar, -1 when
 // none is drawn.
 int HomeActivity::drawCardStats(const HomeCardLayout& card) {
-  static constexpr StrId LABELS[HOME_STAT_COUNT] = {StrId::STR_RECENT_STAT_READ, StrId::STR_RECENT_STAT_TOTAL,
-                                                    StrId::STR_RECENT_STAT_AVERAGE, StrId::STR_RECENT_STAT_DAYS,
-                                                    StrId::STR_RECENT_STAT_SPAN};
+  static constexpr StrId LABELS[HOME_STAT_COUNT] = {StrId::STR_RECENT_STAT_READ,    StrId::STR_RECENT_STAT_FINISH,
+                                                    StrId::STR_RECENT_STAT_TOTAL,   StrId::STR_RECENT_STAT_AVERAGE,
+                                                    StrId::STR_RECENT_STAT_DAYS,    StrId::STR_RECENT_STAT_SPAN};
   HomeStatsInput in;
   in.top = card.coverY;
   in.bottom = card.coverY + card.coverH;
@@ -1020,7 +1027,8 @@ void HomeActivity::drawRecentCard() {
   const uint32_t quotedMs = millis();
 #endif
   // The cover and the lines under it depend on these alone (the cover's height and the title's
-  // line count do not move the cover), so the key says whether a card file still shows this card.
+  // line count do not move the cover), so the keys say whether a card file still shows this card,
+  // or at least its cover.
   const std::string thumbPath =
       book.coverBmpPath.empty() ? std::string() : UITheme::getCoverThumbPath(book.coverBmpPath, HOME_CARD_COVER_H);
   const int16_t geometry[] = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY),
@@ -1028,8 +1036,9 @@ void HomeActivity::drawRecentCard() {
                               static_cast<int16_t>(frame.textX),  static_cast<int16_t>(frame.titleY),
                               static_cast<int16_t>(frame.textW),  static_cast<int16_t>(SETTINGS.uiTextSize),
                               static_cast<int16_t>(SETTINGS.screenInverted)};
-  uint32_t key = fnv(fnv(2166136261u, CROSSPOINT_VERSION), geometry, sizeof(geometry));
-  key = fnv(fnv(fnv(fnv(key, title), std::string(author)), quote), std::string(SETTINGS.sdFontFamilyName));
+  const uint32_t coverKey = fnv(fnv(2166136261u, CROSSPOINT_VERSION), geometry, sizeof(geometry));
+  const uint32_t key =
+      fnv(fnv(fnv(fnv(coverKey, title), std::string(author)), quote), std::string(SETTINGS.sdFontFamilyName));
   // One file for the page excerpt and four for quotes, so a book with a few quotes finds its card
   // whichever the visit picked, and a book's files stay bounded however many it has.
   std::string cardPath;
@@ -1037,7 +1046,8 @@ void HomeActivity::drawRecentCard() {
     cardPath = thumbPath + ".card";
     cardPath += quoted ? static_cast<char>('0' + (static_cast<uint32_t>(cardQuotes[shown]) * 2654435761u >> 30)) : 'e';
   }
-  if (!cardPath.empty() && loadCardFile(cardPath, key, thumbPath) && restoreCoverBuffer()) {
+  const CardFile saved = cardPath.empty() ? CardFile::None : loadCardFile(cardPath, coverKey, key, thumbPath);
+  if (saved == CardFile::Whole && restoreCoverBuffer()) {
     coverBufferBook = shown;
     coverRendered = true;
     if (!cardFileThumb) wantThumb(shown);
@@ -1048,6 +1058,11 @@ void HomeActivity::drawRecentCard() {
             static_cast<unsigned>(coverBufferSize));
     return;
   }
+  // Only the text changed: the saved cover goes back, the snapshot memory goes to the text layout.
+  int coverHeight = 0;
+  const bool coverKept = saved == CardFile::Cover && restoreCoverBuffer();
+  if (coverKept) coverHeight = cardFileCover;
+  freeCoverBuffer();
 #ifdef TENOR_PRESS_PROBE
   const uint32_t fileMs = millis();
 #endif
@@ -1083,9 +1098,8 @@ void HomeActivity::drawRecentCard() {
 #endif
   // The reader writes a thumbnail at the card's own height and one at the theme's; the card's is
   // drawn at its own size, the theme's is the fallback for a book not opened since that began.
-  bool image = false;
-  int coverHeight = 0;
-  cardFileThumb = 0;
+  bool image = coverKept;
+  if (!coverKept) cardFileThumb = 0;
   for (const int height : {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight}) {
     if (image || book.coverBmpPath.empty()) break;
     HalFile file;
@@ -1108,8 +1122,9 @@ void HomeActivity::drawRecentCard() {
   }
   // Round the cover's corners by painting the page back over them, the pixels a rounded card
   // would not cover: a few hundred pixels, no second buffer, and the cached card keeps them.
-  renderer.maskRoundedRectOutsideCorners(card.coverX, card.coverY, card.coverW, card.coverH,
-                                         tenorradius::cover(card.coverW));
+  if (!coverKept)
+    renderer.maskRoundedRectOutsideCorners(card.coverX, card.coverY, card.coverW, card.coverH,
+                                           tenorradius::cover(card.coverW));
 #ifdef TENOR_PRESS_PROBE
   const uint32_t imageMs = millis();
 #endif
@@ -1128,7 +1143,9 @@ void HomeActivity::drawRecentCard() {
   coverRendered = true;
   if (coverBufferStored && !cardPath.empty()) {
     cardFilePending = cardPath;
+    cardFileCoverKey = coverKey;
     cardFileKey = key;
+    cardFileCover = static_cast<int16_t>(coverHeight);
   }
   if (!cardFileThumb && !thumbPath.empty()) wantThumb(shown);
   if (fcm) fcm->releaseBuiltinPageCaches();  // the card is now a cached bitmap
@@ -1143,32 +1160,37 @@ void HomeActivity::drawRecentCard() {
   LOG_INF("HOME", "Card stages quote=%lu file=%lu text=%lu image=%lu rest=%lu", quotedMs - started,
           fileMs - quotedMs, textMs - fileMs, imageMs - textMs, millis() - imageMs);
 #endif
-  LOG_INF("HOME", "Recent card build=%lums cache=%u cover=%d", static_cast<unsigned long>(millis() - started),
-          static_cast<unsigned>(coverBufferSize), coverHeight);
+  LOG_INF("HOME", "Recent card build=%lums cache=%u cover=%d kept=%u", static_cast<unsigned long>(millis() - started),
+          static_cast<unsigned>(coverBufferSize), coverHeight, coverKept ? 1u : 0u);
   LOG_INF("HOME", "Card stats rows=%02x bar=%d", static_cast<unsigned>(cardStats.rows), barY);
 }
 
-bool HomeActivity::loadCardFile(const std::string& path, const uint32_t key, const std::string& thumbPath) {
+HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const uint32_t coverKey,
+                                                  const uint32_t key, const std::string& thumbPath) {
   auto file = Storage.open(path.c_str());
-  if (!file) return false;
+  if (!file) return CardFile::None;
   CardFileHead head;
   if (file.read(&head, sizeof(head)) != static_cast<int>(sizeof(head)) || head.magic != CARD_FILE_MAGIC ||
-      head.key != key || file.size() != sizeof(head) + head.bytes)
-    return false;
-  if (Storage.exists(thumbPath.c_str()) != static_cast<bool>(head.thumb)) return false;
-  cardFileThumb = head.thumb;
+      head.coverKey != coverKey || file.size() != sizeof(head) + head.bytes)
+    return CardFile::None;
+  if (Storage.exists(thumbPath.c_str()) != static_cast<bool>(head.thumb)) return CardFile::None;
   const auto* r = head.rects;
   const size_t first = renderer.getRegionByteSize(r[0], r[1], r[2], r[3]);
   if (first == 0 || first + (r[7] > 0 ? renderer.getRegionByteSize(r[4], r[5], r[6], r[7]) : 0) != head.bytes)
-    return false;
+    return CardFile::None;
+  // The cover alone is read when the text is stale.
+  const bool whole = head.key == key;
+  const size_t bytes = whole ? head.bytes : first;
   freeCoverBuffer();
-  coverBuffer = static_cast<uint8_t*>(malloc(head.bytes));
-  if (!coverBuffer) return false;
-  if (file.read(coverBuffer, head.bytes) != static_cast<int>(head.bytes)) {
+  coverBuffer = static_cast<uint8_t*>(malloc(bytes));
+  if (!coverBuffer) return CardFile::None;
+  if (file.read(coverBuffer, bytes) != static_cast<int>(bytes)) {
     freeCoverBuffer();
-    return false;
+    return CardFile::None;
   }
-  coverBufferSize = head.bytes;
+  cardFileThumb = head.thumb;
+  cardFileCover = head.cover;
+  coverBufferSize = bytes;
   coverBufferUiSize = normalizedUiTextSize(SETTINGS.uiTextSize);
   coverRectX = r[0];
   coverRectY = r[1];
@@ -1177,9 +1199,9 @@ bool HomeActivity::loadCardFile(const std::string& path, const uint32_t key, con
   textRectX = r[4];
   textRectY = r[5];
   textRectW = r[6];
-  textRectH = r[7];
+  textRectH = whole ? r[7] : 0;
   coverBufferStored = true;
-  return true;
+  return whole ? CardFile::Whole : CardFile::Cover;
 }
 
 void HomeActivity::wantThumb(const int index) {
@@ -1235,13 +1257,15 @@ void HomeActivity::saveCardFile() {
   const uint32_t started = millis();
 #endif
   const CardFileHead head{CARD_FILE_MAGIC,
+                          cardFileCoverKey,
                           cardFileKey,
                           {static_cast<int16_t>(coverRectX), static_cast<int16_t>(coverRectY),
                            static_cast<int16_t>(coverRectW), static_cast<int16_t>(coverRectH),
                            static_cast<int16_t>(textRectX), static_cast<int16_t>(textRectY),
                            static_cast<int16_t>(textRectW), static_cast<int16_t>(textRectH)},
                           static_cast<uint32_t>(coverBufferSize),
-                          cardFileThumb};
+                          cardFileThumb,
+                          cardFileCover};
   auto file = Storage.open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
   const bool ok = file && file.write(&head, sizeof(head)) == sizeof(head) &&
                   file.write(coverBuffer, coverBufferSize) == coverBufferSize;
@@ -1252,14 +1276,15 @@ void HomeActivity::saveCardFile() {
 #endif
 }
 
-// "Another book" and the next book's title under a rule, with an arrow on each side that has a
+// "Another book" and the next book's title under a rule, with an open V on each side that has a
 // book to step to. Drawn on every paint: it is one line of an uncompressed flash font. The arrows
 // sit outside the text margins as mirror images, so the title ends on the right margin as the
 // label starts on the left one.
 void HomeActivity::drawOtherBookRow(const int shown, const int ruleY, const int rowY) {
   const int count = static_cast<int>(recentBooks.size());
   if (count < 2) return;
-  constexpr int MARGIN = 40, ARROW_W = 10, ARROW_HALF = 7, ARROW_OUT = 24;
+  // The arrows' tips stay where the solid triangles had them, 24 px outside the text margins.
+  constexpr int MARGIN = 40, ARROW_SPAN = 7, ARROW_OUT = 24;
   const int left = MARGIN, right = renderer.getScreenWidth() - MARGIN;
   renderer.drawLine(left, ruleY, right - 1, ruleY);
   const char* label = tr(STR_RECENT_OTHER_BOOK);
@@ -1270,15 +1295,10 @@ void HomeActivity::drawOtherBookRow(const int shown, const int ruleY, const int 
   const auto shownTitle = renderer.truncatedText(UI_10_FONT_ID, title.c_str(), room, EpdFontFamily::BOLD);
   const int titleWidth = renderer.getTextWidth(UI_10_FONT_ID, shownTitle.c_str(), EpdFontFamily::BOLD);
   renderer.drawText(UI_10_FONT_ID, right - titleWidth, rowY, shownTitle.c_str(), true, EpdFontFamily::BOLD);
-  const int cy = rowY + renderer.getFontAscenderSize(UI_10_FONT_ID) * 2 / 3;
-  // Solid triangle, tip first; direction 1 points right.
-  const auto arrow = [&](const int tipX, const int direction) {
-    for (int i = 0; i < ARROW_W; ++i) {
-      const int half = i * ARROW_HALF / (ARROW_W - 1);
-      renderer.drawLine(tipX - direction * i, cy - half, tipX - direction * i, cy + half);
-    }
-  };
-  arrow(right - 1 + ARROW_OUT, 1);
+  const int top = rowY + renderer.getFontAscenderSize(UI_10_FONT_ID) * 2 / 3 - ARROW_SPAN;
+  const int length = tenorchrome::moreChevronLength(ARROW_SPAN);
+  tenorchrome::drawMoreChevron(renderer, right + ARROW_OUT - length, top, tenorchrome::ChevronDir::Right, ARROW_SPAN);
   // Right wraps to the most recent book from the last one, so only the left arrow can be missing.
-  if (shown > 0) arrow(left - ARROW_OUT, -1);
+  if (shown > 0)
+    tenorchrome::drawMoreChevron(renderer, left - ARROW_OUT, top, tenorchrome::ChevronDir::Left, ARROW_SPAN);
 }

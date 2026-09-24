@@ -48,6 +48,11 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   bool loadFromFile();
   bool activateBook(const std::string& path, uint8_t progress, const std::string& title = "");
   bool readBook(const std::string& path, BookReadingRecord& record) const;
+
+ private:
+  bool readBookFile(const std::string& path, BookReadingRecord& record, int memo) const;
+
+ public:
   void record(uint32_t day, uint32_t ms, uint16_t turns, uint8_t progress);
   static uint32_t currentDay();
   // Minute of the local day (0-1439) at the same moment currentDay() names, or NO_MINUTE

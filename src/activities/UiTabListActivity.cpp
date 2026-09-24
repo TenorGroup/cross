@@ -11,6 +11,7 @@
 #include "MenuCustomization.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/themes/TenorRadius.h"
 
 namespace fui = freeink::ui;
 
@@ -305,24 +306,15 @@ void UiTabListActivity::capNhatCuaSoThe(const int vua) {
   cuaSoDai = cuaSo.dai;
 }
 
-void UiTabListActivity::veMuiTenThe(UiScreen& screen, const fui::Rect& thanh, const int16_t le) {
-  // Mui ten DAC, be, nam giua chieu cao bang the. Chi hien ben nao that su con the an.
-  const int16_t giua = static_cast<int16_t>(thanh.y + thanh.height / 2);
-  const int16_t nua = static_cast<int16_t>(MUI_TEN_CAO / 2);
-  const auto muc = fui::Paint::solid(fui::Color::Black);
-
-  if (cuaSoDau > 0) {
-    const int16_t x = static_cast<int16_t>(thanh.x + (le - MUI_TEN_RONG) / 2);
-    screen.target().triangle(fui::Point{static_cast<int16_t>(x + MUI_TEN_RONG), static_cast<int16_t>(giua - nua)},
-                             fui::Point{static_cast<int16_t>(x + MUI_TEN_RONG), static_cast<int16_t>(giua + nua)},
-                             fui::Point{x, giua}, muc);
-  }
-  if (cuaSoDau + cuaSoDai < tabCount()) {
-    const int16_t x = static_cast<int16_t>(thanh.right() - le + (le - MUI_TEN_RONG) / 2);
-    screen.target().triangle(fui::Point{x, static_cast<int16_t>(giua - nua)},
-                             fui::Point{x, static_cast<int16_t>(giua + nua)},
-                             fui::Point{static_cast<int16_t>(x + MUI_TEN_RONG), giua}, muc);
-  }
+void UiTabListActivity::veMuiTenThe(const fui::Rect& thanh, const int16_t le) {
+  // The "more this way" V, mid height of the band, only on a side that really has hidden tabs.
+  const int y = thanh.y + thanh.height / 2 - MUI_TEN_NUA;
+  const int rong = tenorchrome::moreChevronLength(MUI_TEN_NUA);
+  if (cuaSoDau > 0)
+    tenorchrome::drawMoreChevron(renderer, thanh.x + (le - rong) / 2, y, tenorchrome::ChevronDir::Left, MUI_TEN_NUA);
+  if (cuaSoDau + cuaSoDai < tabCount())
+    tenorchrome::drawMoreChevron(renderer, thanh.right() - le + (le - rong) / 2, y, tenorchrome::ChevronDir::Right,
+                                 MUI_TEN_NUA);
 }
 
 int UiTabListActivity::preferredTabBarHeight() const {
@@ -418,10 +410,15 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   tabStyles.explicitlySet = true;
   tabStyles.normal.foreground = fui::Paint::solid(fui::Color::Black);
   if (tenorHome) {
+    // Gray inside a 2 px black ring. The ring's solid ink draws the corner: a gray dither alone
+    // samples it on even pixels only, in a phase that moves with each tab's position, so every
+    // tab showed a different corner. A leaf of the cursor's own height.
     tabStyles.selected.background = fui::Paint::dither(fui::Color::LightGray);
     tabStyles.selected.foreground = fui::Paint::solid(fui::Color::Black);
-    tabStyles.selected.radius = screen.theme().listRowRadius;
-    tabProps.selectedUnderline = 2;
+    tabStyles.selected.border = fui::Paint::solid(fui::Color::Black);
+    tabStyles.selected.borderWidth = 2;
+    tabStyles.selected.radius =
+        static_cast<uint8_t>(tenorradius::leaf(tabBand - tabProps.tabInset.top - tabProps.tabInset.bottom));
   } else if (tabsFocused) {
     tabStyles.selected.background = fui::Paint::solid(fui::Color::Black);
     tabStyles.selected.foreground = fui::Paint::solid(fui::Color::White);
@@ -458,7 +455,7 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   fui::tabBar(screen.frame(), theRect, tabProps);
 
   if (thanhTheChay) {
-    veMuiTenThe(screen, tabRect, leMuiTen);
+    veMuiTenThe(tabRect, leMuiTen);
   }
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 }

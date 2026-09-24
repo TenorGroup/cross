@@ -97,10 +97,13 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
 
     @classmethod
     def mask_v(cls, cx, top):
+        # v1.0.14: chu V "con nua" chung (tenorchrome::drawMoreChevron), mo 11 moi ben, sau 8,
+        # net ba diem theo chieu doc (khoang 2,4 diem vuong goc canh). Ban hai diem cu nhat qua.
         pixels = set()
-        for d in range(2):
-            pixels.update(cls.diem_duong(cx - 11, top + d, cx, top + 7 + d))
-            pixels.update(cls.diem_duong(cx, top + 7 + d, cx + 11, top + d))
+        for t in range(-11, 12):
+            doc = 8 - (abs(t) * 16 + 11) // 22
+            for d in range(3):
+                pixels.add((cx + t, top + doc + d))
         return pixels
 
     def v_candidates(self, ten):

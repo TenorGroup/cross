@@ -259,7 +259,9 @@ class HomeCardFollowupTest(unittest.TestCase):
         log, shots = self.launch('2500:RIGHT;4500:RIGHT;7000:QUIT',
                                  [(2000, 'stats-a'), (4000, 'stats-b'), (6500, 'stats-c')])
         stats = CARD_STATS.findall(log)
-        self.assertEqual([rows for rows, _ in stats], ['1f', '1f', '01'], log[-4000:])
+        # v1.0.14: the expected finish is the second row. A has a date, B is more than a year out
+        # (7 % since 10/08), C has no record.
+        self.assertEqual([rows for rows, _ in stats], ['3f', '3f', '01'], log[-4000:])
         a, b, c = shots['stats-a'], shots['stats-b'], shots['stats-c']
         for image in (a, b, c):
             self.assertTrue(self.ink(image, self.COVER))

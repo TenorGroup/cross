@@ -47,6 +47,11 @@ for name in ('smallFooterSymbolsTopY', 'compactFooterTips', 'tipY'):
 for signature in ('std::vector<std::string> tipLines(', 'int tipLineY('):
     if signature in chrome:
         definitions.append(function(chrome, signature))
+# v1.0.14: the down chevron is the shared "more this way" V.
+for constant in re.findall(r'constexpr int MORE_BELOW_SPAN[^;]+;', chrome):
+    definitions.append(constant)
+if 'void tenorchrome::drawMoreChevron(' in chrome:
+    definitions.append(function(chrome, 'void tenorchrome::drawMoreChevron('))
 for name in ('tipTopY', 'tipLineCount', 'tipHeight', 'drawTip', 'moreBelowChevronTopY', 'drawMoreBelowChevron'):
     if f'tenorchrome::{name}(' in chrome:
         definitions.append(function(chrome, f'tenorchrome::{name}('))
@@ -64,6 +69,8 @@ definitions.append(function(renderer, 'GfxRenderer::wrappedText(').replace('GfxR
 for name in ('getTextInkTop', 'getTextInkBottom'):
     definitions.append(function(renderer, f'GfxRenderer::{name}('))
 declarations = '\n'.join(re.findall(r'^(?:bool|int|void) (?:smallFooterSymbolsTopY|compactFooterTips|tipY|tipTopY|tipLineCount|tipHeight|drawTip|moreBelowChevronTopY|drawMoreBelowChevron)\([^;]+;', header, re.M))
+declarations += '\n' + '\n'.join(re.findall(r'(?:enum class ChevronDir[^;]+;|constexpr int MORE_CHEVRON_[^;]+;|'
+                                             r'constexpr int moreChevronLength[^}]+}|void drawMoreChevron\([^;]+;)', header))
 fixture = Path(__file__).with_name('footer_tips.cpp').read_text()
 fixture = fixture.replace('// CHROME_DECLARATIONS', declarations)
 fixture = fixture.replace('// PRODUCTION_FUNCTIONS', '\n'.join(definitions))

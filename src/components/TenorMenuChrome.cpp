@@ -48,28 +48,22 @@ void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char
 }
 
 namespace {
+// The list's down chevron: 23 px across.
+constexpr int MORE_BELOW_SPAN = 11;
 // Khoang giua bieu tuong pin va chu so phan tram o ca hai chieu sap xep.
 constexpr int BATTERY_TEXT_GAP = 4;
 constexpr int STATUS_CORNER_INSET = 8;
-constexpr int SIBLING_CHEVRON_WIDTH = 8;
-constexpr int SIBLING_CHEVRON_HEIGHT = 11;
-constexpr int SIBLING_CHEVRON_THICKNESS = 2;
+// Half the list's down chevron, 15 px tall beside a 26 px label.
+constexpr int SIBLING_CHEVRON_SPAN = 7;
+constexpr int SIBLING_CHEVRON_WIDTH = tenorchrome::moreChevronLength(SIBLING_CHEVRON_SPAN);
+constexpr int SIBLING_CHEVRON_HEIGHT = 2 * SIBLING_CHEVRON_SPAN + 1;
 constexpr int SIBLING_EDGE = 18;
 constexpr int SIBLING_LABEL_GAP = 6;
 constexpr int SIBLING_CENTER_GAP = 16;
 
 void drawSiblingChevron(const GfxRenderer& r, const int x, const int y, const bool pointsRight) {
-  const int mid = y + SIBLING_CHEVRON_HEIGHT / 2;
-  const int tip = x + SIBLING_CHEVRON_WIDTH - SIBLING_CHEVRON_THICKNESS;
-  for (int dx = 0; dx < SIBLING_CHEVRON_THICKNESS; ++dx) {
-    if (pointsRight) {
-      r.drawLine(x + dx, y, tip + dx, mid);
-      r.drawLine(tip + dx, mid, x + dx, y + SIBLING_CHEVRON_HEIGHT - 1);
-    } else {
-      r.drawLine(tip + dx, y, x + dx, mid);
-      r.drawLine(x + dx, mid, tip + dx, y + SIBLING_CHEVRON_HEIGHT - 1);
-    }
-  }
+  tenorchrome::drawMoreChevron(r, x, y, pointsRight ? tenorchrome::ChevronDir::Right : tenorchrome::ChevronDir::Left,
+                               SIBLING_CHEVRON_SPAN);
 }
 }  // namespace
 
@@ -226,21 +220,32 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   r.drawText(SMALL_FONT_ID, trai + markWidth, y, name.c_str());
 }
 
+// Arms rise 8 px in 11, the slope of the list's down chevron readers already know. The stroke is
+// three pixels along the pointing axis, about 2.4 px across each arm: two (1.7 px) read faint
+// beside bold text on the panel. Drawn one short run per step across the axis, from |t| alone, so
+// left and right are exact mirror images.
+void tenorchrome::drawMoreChevron(const GfxRenderer& r, const int x, const int y, const ChevronDir dir,
+                                  const int span) {
+  const int depth = moreChevronLength(span) - MORE_CHEVRON_STROKE;
+  for (int t = -span; t <= span; ++t) {
+    const int along = depth - ((t < 0 ? -t : t) * depth * 2 + span) / (2 * span);
+    const int a = dir == ChevronDir::Left ? depth - along : along;
+    if (dir == ChevronDir::Down)
+      r.drawLine(x + span + t, y + a, x + span + t, y + a + MORE_CHEVRON_STROKE - 1);
+    else
+      r.drawLine(x + a, y + span + t, x + a + MORE_CHEVRON_STROKE - 1, y + span + t);
+  }
+}
+
 int tenorchrome::moreBelowChevronTopY(const GfxRenderer& renderer, const int hintTopY) {
   const int top = tipY(renderer) - 30;
-  // The chevron occupies nine rows. Leave two clear rows before the first tip.
-  return hintTopY >= 0 ? std::min(top, hintTopY - 11) : top;
+  // The chevron is moreChevronLength(MORE_BELOW_SPAN) rows tall. Leave two clear rows before the first tip.
+  return hintTopY >= 0 ? std::min(top, hintTopY - moreChevronLength(MORE_BELOW_SPAN) - 2) : top;
 }
 
 void tenorchrome::drawMoreBelowChevron(const GfxRenderer& renderer, const int hintTopY) {
-  constexpr int HALF_WIDTH = 11, HEIGHT = 7, THICKNESS = 2;
-  const int cx = renderer.getScreenWidth() / 2;
-  const int top = moreBelowChevronTopY(renderer, hintTopY);
-  // Hai nhip day mot diem: net mot diem tren e-ink nhat qua, nhin khong ra hinh.
-  for (int d = 0; d < THICKNESS; ++d) {
-    renderer.drawLine(cx - HALF_WIDTH, top + d, cx, top + HEIGHT + d);
-    renderer.drawLine(cx, top + HEIGHT + d, cx + HALF_WIDTH, top + d);
-  }
+  drawMoreChevron(renderer, renderer.getScreenWidth() / 2 - MORE_BELOW_SPAN, moreBelowChevronTopY(renderer, hintTopY),
+                  ChevronDir::Down, MORE_BELOW_SPAN);
 }
 
 int tenorchrome::smallFooterSymbolsTopY(const GfxRenderer& renderer) {

@@ -58,6 +58,14 @@ int tipY(const GfxRenderer& renderer, bool hasTextHints = false);
 int tipTopY(const GfxRenderer& renderer, const char* text, int linesAbove = 0, int maxLines = 4,
             bool hasTextHints = false);
 
+// The one "more this way" mark: an open V, never filled (filled triangles are the physical
+// buttons). `span` is half its opening across the pointing axis; the box it is drawn in is
+// 2 * span + 1 across by moreChevronLength(span) along, (x, y) its top left corner.
+enum class ChevronDir : uint8_t { Down, Left, Right };
+constexpr int MORE_CHEVRON_STROKE = 3;
+constexpr int moreChevronLength(const int span) { return (span * 8 + 5) / 11 + MORE_CHEVRON_STROKE; }
+void drawMoreChevron(const GfxRenderer& renderer, int x, int y, ChevronDir dir, int span);
+
 // Mui ten chu V o giua, ngay tren dong mach nuoc chan man: bao rang danh sach
 // con dong ben duoi. Thay cho cau "1-10 / 13" o goc tren, vi it ai nhin thanh
 // cuon va con so do lay mat cho cua ten the ben canh.

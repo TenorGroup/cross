@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "ReadingStatsStore.h"
+#include "util/NgayDocXong.h"
 #include "components/ReadingStatsFormat.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
@@ -16,9 +17,9 @@ void BookStatsActivity::onEnter() {
   RenderLock lock(*this);
   BookReadingRecord b;
   const bool readable = READING_STATS.readBook(path, b);
-  const StrId labels[] = {StrId::STR_STATS_BOOK_TIME, StrId::STR_STATS_MEAN_BOOK,   StrId::STR_STATS_READING_DAYS,
-                          StrId::STR_STATS_FIRST_DAY, StrId::STR_STATS_LAST_DAY,    StrId::STR_STATS_POSITION,
-                          StrId::STR_STATS_TURNS,     StrId::STR_STATS_MEASURE_NOTE};
+  const StrId labels[] = {StrId::STR_STATS_BOOK_TIME,   StrId::STR_STATS_MEAN_BOOK, StrId::STR_STATS_READING_DAYS,
+                          StrId::STR_STATS_FIRST_DAY,   StrId::STR_STATS_LAST_DAY,  StrId::STR_STATS_POSITION,
+                          StrId::STR_STATS_FINISH_ESTIMATE, StrId::STR_STATS_TURNS, StrId::STR_STATS_MEASURE_NOTE};
   char text[96];
   const uint64_t elapsed = static_cast<uint64_t>(b.minutes) * 60000 + b.remainderMs;
   readingstatsview::duration(elapsed, text, sizeof(text));
@@ -39,8 +40,9 @@ void BookStatsActivity::onEnter() {
       values[3 + i] = tr(STR_STATS_UNDATED);
   }
   values[5] = std::to_string(b.progress) + "%";
-  values[6] = std::to_string(b.turns);
-  values[7] = "";
+  values[6] = finishText(b, text, sizeof(text)) ? text : tr(STR_STATS_NO_SAMPLE);
+  values[7] = std::to_string(b.turns);
+  values[8] = "";
   if (!readable)
     for (auto& v : values) v = tr(STR_STATS_NOT_RECORDED);
   for (size_t i = 0; i < rows.size(); ++i) {
@@ -50,6 +52,33 @@ void BookStatsActivity::onEnter() {
   }
   UiListActivity::onEnter();
 }
+bool BookStatsActivity::finishText(const BookReadingRecord& b, char* text, const size_t size) {
+  const uint32_t today = ReadingStatsStore::currentDay();
+  const auto u = ngaydocxong::uocTinh(b.progress, b.startProgress, b.days, b.firstDay, b.lastDay, today);
+  switch (u.trangThai) {
+    case ngaydocxong::TrangThai::ChuaDu:
+      return false;
+    case ngaydocxong::TrangThai::DaXong:
+      snprintf(text, size, "%s", tr(STR_STATS_FINISHED));
+      break;
+    case ngaydocxong::TrangThai::QuaXa:
+      snprintf(text, size, tr(STR_STATS_FINISH_FAR), static_cast<unsigned>(ngaydocxong::TRAN_NGAY));
+      break;
+    case ngaydocxong::TrangThai::SoNgay:
+      snprintf(text, size, tr(STR_STATS_FINISH_IN_DAYS), static_cast<unsigned>(u.soNgay));
+      break;
+    case ngaydocxong::TrangThai::NgayCuThe:
+      // Day and month in the year the stats already date in; the year only when it changes.
+      if (u.ngay / 10000 == today / 10000)
+        snprintf(text, size, "%02u/%02u", static_cast<unsigned>(u.ngay % 100), static_cast<unsigned>(u.ngay / 100 % 100));
+      else
+        snprintf(text, size, "%02u/%02u/%04u", static_cast<unsigned>(u.ngay % 100),
+                 static_cast<unsigned>(u.ngay / 100 % 100), static_cast<unsigned>(u.ngay / 10000));
+      break;
+  }
+  return true;
+}
+
 void BookStatsActivity::buildScreen(UiScreen& screen) {
   const auto& m = UITheme::getInstance().getMetrics();
   screen.setContentMarginFromScreen(

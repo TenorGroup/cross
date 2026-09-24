@@ -11,7 +11,15 @@
 
 namespace {
 constexpr const char* RESET_FILE = "/.crosspoint/reading-stats.reset";
+// Main snapshot files this boot has read whole or written: MEMO_LEDGER the shared ledger,
+// MEMO_BOOK the active book's file. writeSnapshot() keeps a readable main file as the backup, and
+// knowing it is readable spares reading up to 32 KB back from the card before every write.
+// .crosspoint is closed to the web transfer and WebDAV, so only this store changes these files
+// while awake, and a wake is a boot that starts with nothing known.
+constexpr int MEMO_LEDGER = 0, MEMO_BOOK = 1;
+std::string knownReadable[2];
 bool finishReset() {
+  knownReadable[MEMO_LEDGER].clear();
   if (!Storage.exists(RESET_FILE)) return true;
   const char* main = ReadingStatsStore::getFilePath();
   const std::string backup = std::string(main) + ".bak";
@@ -20,6 +28,7 @@ bool finishReset() {
   return Storage.rename(RESET_FILE, main);
 }
 void cleanupBookSnapshots() {
+  knownReadable[MEMO_BOOK].clear();
   auto dir = Storage.open("/.crosspoint/reading-stats");
   unsigned scanned = 0;
   for (auto entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
@@ -98,7 +107,8 @@ SnapshotReadResult readOpenSnapshot(HalFile& file, size_t size, JsonDocument& do
   return !error && doc.is<JsonObject>() ? SnapshotReadResult::Ready : SnapshotReadResult::Invalid;
 }
 
-bool readSnapshot(const std::string& path, JsonDocument& doc) {
+// `memo` names the slot that learns the main file is readable when it reads whole, -1 for none.
+bool readSnapshot(const std::string& path, JsonDocument& doc, const int memo = -1) {
   using ReadResult = PersistableStoreBase::ReadResult;
   const auto read = [&doc](const std::string& file) {
     const auto result = PersistableStoreBase::readDocFromFileStatus(file.c_str(), doc, 32768);
@@ -108,6 +118,7 @@ bool readSnapshot(const std::string& path, JsonDocument& doc) {
   };
   const bool mainMissing = !Storage.exists(path.c_str());
   auto result = read(path);
+  if (memo >= 0) knownReadable[memo] = result == ReadResult::Ready ? path : std::string();
   if (result != ReadResult::Invalid) return result == ReadResult::Ready;
   // writeSnapshot() commits .tmp whole before it moves the main file aside, so a power cut
   // between its renames (an X3 on battery loses power in sleep) leaves the newest snapshot
@@ -126,11 +137,12 @@ bool readResetSnapshot(JsonDocument& doc) {
   if (!file) return false;
   return readOpenSnapshot(file, file.size(), doc, 32768) == SnapshotReadResult::Ready;
 }
-bool writeSnapshot(const std::string& path, const JsonDocument& doc) {
+bool writeSnapshot(const std::string& path, const JsonDocument& doc, const int memo = -1) {
   if (doc.overflowed()) return false;
   const std::string temporary = path + ".tmp", backup = path + ".bak";
-  bool readable = false;
-  if (Storage.exists(path.c_str())) {
+  bool readable = memo >= 0 && knownReadable[memo] == path;
+  if (memo >= 0) knownReadable[memo].clear();  // known again once the new main file is in place
+  if (!readable && Storage.exists(path.c_str())) {
     JsonDocument previous;
     const auto result = PersistableStoreBase::readDocFromFileStatus(path.c_str(), previous, 32768);
     if (result == PersistableStoreBase::ReadResult::Unavailable) return false;
@@ -145,7 +157,9 @@ bool writeSnapshot(const std::string& path, const JsonDocument& doc) {
     } else if (!Storage.remove(path.c_str()))
       return false;
   }
-  return Storage.rename(temporary.c_str(), path.c_str());
+  if (!Storage.rename(temporary.c_str(), path.c_str())) return false;
+  if (memo >= 0) knownReadable[memo] = path;
+  return true;
 }
 std::string bookFile(const std::string& path) {
   uint64_t hash = 14695981039346656037ULL;
@@ -192,7 +206,7 @@ bool ReadingStatsStore::saveToFile() const {
   if (Storage.exists(RESET_FILE)) return false;
   JsonDocument doc;
   toJson(doc);
-  return writeSnapshot(getFilePath(), doc);
+  return writeSnapshot(getFilePath(), doc, MEMO_LEDGER);
 }
 bool ReadingStatsStore::loadFromFile() {
   std::lock_guard<std::mutex> lock(storeMutex);
@@ -201,7 +215,7 @@ bool ReadingStatsStore::loadFromFile() {
   const bool pending = Storage.exists(RESET_FILE);
   const bool exists =
       pending || Storage.exists(getFilePath()) || Storage.exists((std::string(getFilePath()) + ".bak").c_str());
-  const bool loaded = (pending ? readResetSnapshot(doc) : readSnapshot(getFilePath(), doc)) &&
+  const bool loaded = (pending ? readResetSnapshot(doc) : readSnapshot(getFilePath(), doc, MEMO_LEDGER)) &&
                       fromJson(doc.as<JsonVariantConst>());
   // With no global file there is nothing to protect: refusing here left the store
   // unreadable for good, and no reading was recorded again.
@@ -274,6 +288,10 @@ uint16_t ReadingStatsStore::currentMinute() {
 }
 
 bool ReadingStatsStore::readBook(const std::string& path, BookReadingRecord& record) const {
+  return readBookFile(path, record, -1);
+}
+
+bool ReadingStatsStore::readBookFile(const std::string& path, BookReadingRecord& record, const int memo) const {
   if (!statisticsReadable) {
     record = {};
     return false;
@@ -283,7 +301,8 @@ bool ReadingStatsStore::readBook(const std::string& path, BookReadingRecord& rec
     return true;
   }
   JsonDocument doc;
-  if (!readSnapshot(bookFile(path), doc) || (path != (doc["path"] | "")) || (doc["bookEpoch"] | 0u) != bookEpoch) {
+  if (!readSnapshot(bookFile(path), doc, memo) || (path != (doc["path"] | "")) ||
+      (doc["bookEpoch"] | 0u) != bookEpoch) {
     record = {};
     return false;
   }
@@ -308,11 +327,13 @@ bool ReadingStatsStore::activateBook(const std::string& path, const uint8_t prog
   if (!activeBookPath.empty()) {
     JsonDocument doc;
     writeBook(doc.to<JsonObject>(), activeBookPath, activeBook, activeBookTitle, bookEpoch);
-    if (!Storage.ensureDirectoryExists("/.crosspoint/reading-stats") || !writeSnapshot(bookFile(activeBookPath), doc))
+    if (!Storage.ensureDirectoryExists("/.crosspoint/reading-stats") ||
+        !writeSnapshot(bookFile(activeBookPath), doc, MEMO_BOOK))
       return false;
   }
   BookReadingRecord next;
-  const bool exists = readBook(path, next);
+  // Read into the book slot: this file is the one the next activation archives.
+  const bool exists = readBookFile(path, next, MEMO_BOOK);
   if (!exists) next.startProgress = progress;
   activeBookPath = path;
   activeBookTitle = title;

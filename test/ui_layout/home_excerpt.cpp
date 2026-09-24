@@ -185,10 +185,35 @@ void statsColumn() {
   // The first row that does not fit ends the column: a later, shorter row is not squeezed in.
   bool gap = false;
   for (int row = 0; row < HOME_STAT_COUNT; ++row) {
+    if (!(in.rows & (1u << row))) continue;  // not asked for (the finish row, v1.0.14)
     if (!(crowded.rows & (1u << row))) gap = true;
     else assert(!gap);
   }
   puts("PASS: the stats column fits beside the cover and gives way to larger text");
+}
+
+void finishRow() {
+  // v1.0.14: the expected finish date is the second row, under the percent and its bar, when the
+  // record gives one (ngaydocxong::uocTinh); too little reading leaves it out.
+  static_assert(HOME_STAT_FINISH == HOME_STAT_READ + 1);
+  const uint64_t hours = (7 * 60 + 25) * 60000ull;
+  assert(homeStatRows(true, hours, 6, 20260805, 20260817, true) == (ALL_STATS | bit(HOME_STAT_FINISH)));
+  assert(homeStatRows(true, hours, 6, 20260805, 20260817, false) == ALL_STATS);
+  assert(homeStatRows(false, hours, 6, 20260805, 20260817, true) == bit(HOME_STAT_READ));
+  // X3 default size: five rows fit beside the cover, so the span gives way (the book stats screen
+  // still has the first and last reading days).
+  const auto card = homeCardLayout(x3(2));
+  HomeStatsInput in;
+  in.top = card.coverY;
+  in.bottom = card.coverY + card.coverH;
+  in.labelLineHeight = 21;
+  in.valueLineHeight = 33;
+  in.rows = ALL_STATS | bit(HOME_STAT_FINISH);
+  const auto column = homeStatsLayout(in);
+  assert(column.rows == (in.rows & ~bit(HOME_STAT_SPAN)));
+  assert(column.labelY[HOME_STAT_FINISH] >= column.barY + 6 + 6);
+  assert(column.labelY[HOME_STAT_TOTAL] > column.valueY[HOME_STAT_FINISH]);
+  puts("PASS: the finish row follows the percent and the span gives way at the default size");
 }
 
 int main() {
@@ -213,5 +238,6 @@ int main() {
   markedQuotePick();
   cardGeometry();
   statRows();
+  finishRow();
   statsColumn();
 }

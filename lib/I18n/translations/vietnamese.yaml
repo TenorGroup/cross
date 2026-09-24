@@ -830,3 +830,13 @@ STR_BLE_BIND_NEXT_CHAPTER: "Gán nút chương sau"
 STR_BLE_BIND_PREV_CHAPTER: "Gán nút chương trước"
 STR_BLE_BIND_HOLD: "giữ lâu"
 STR_BLE_BIND_FULL: "Hết chỗ gán nút"
+
+STR_RECENT_STAT_FINISH: "Dự kiến xong"
+
+STR_STATS_FINISH_ESTIMATE: "Dự kiến đọc xong"
+
+STR_STATS_FINISHED: "Đã đọc xong"
+
+STR_STATS_FINISH_FAR: "Hơn %u ngày nữa"
+
+STR_STATS_FINISH_IN_DAYS: "Còn khoảng %u ngày"

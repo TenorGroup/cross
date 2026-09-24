@@ -13,6 +13,7 @@ constants='\n'.join(re.findall(r'constexpr int SIBLING_[^;]+;',s))
 fixture=r"""
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -33,7 +34,7 @@ struct GfxRenderer {
  void drawText(int f,int x,int y,const char* s,bool,EpdFontFamily::Style st,BidiUtils::BidiBaseDir d,int t) const {
    text.push_back({x,y,getTextWidth(f,s,st,d,t),getLineHeight(f)});
  }
- void drawLine(int x,int y,int endX,int endY) const {
+ void drawLine(int x,int y,int endX,int endY,bool=true) const {
    int dx=std::abs(endX-x),sx=x<endX?1:-1,dy=-std::abs(endY-y),sy=y<endY?1:-1,err=dx+dy;
    for(;;) { ink.emplace_back(x,y); if(x==endX&&y==endY)break; int e=2*err;
      if(e>=dy){err+=dy;x+=sx;} if(e<=dx){err+=dx;y+=sy;}
@@ -79,7 +80,14 @@ int main() {
  return failures?1:0;
 }
 """
-fixture=fixture.replace('// PRODUCTION',constants+'\n'+function('void drawSiblingChevron(')+'\n'+function('void tenorchrome::drawSiblingDestinations('))
+# The sibling arrows are the shared "more this way" V (drawMoreChevron), declared in the header.
+h = (ROOT / 'src/components/TenorMenuChrome.h').read_text()
+chevron = '\n'.join(re.findall(r'(?:enum class ChevronDir[^;]+;|constexpr int MORE_CHEVRON_[^;]+;|'
+                               r'constexpr int moreChevronLength[^}]+})', h))
+production = ('namespace tenorchrome {\n' + chevron + '\nvoid drawMoreChevron(const GfxRenderer&,int,int,ChevronDir,int);\n}\n'
+              + function('void tenorchrome::drawMoreChevron(') + '\n' + constants + '\n'
+              + function('void drawSiblingChevron(') + '\n' + function('void tenorchrome::drawSiblingDestinations('))
+fixture=fixture.replace('// PRODUCTION',production)
 with tempfile.TemporaryDirectory(prefix='sibling-arrows-') as temp:
     src=Path(temp)/'test.cpp';exe=Path(temp)/'test';src.write_text(fixture)
     subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-UNDEBUG',str(src),'-o',str(exe)],check=True)

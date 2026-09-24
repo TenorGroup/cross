@@ -22,6 +22,7 @@
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/bookmark.h"
+#include "TenorRadius.h"
 #include "fontIds.h"
 
 // Internal constants
@@ -722,9 +723,12 @@ Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message) cons
 
   const bool useRoundedPopup = metrics.popupCornerRadius > 0;
   if (useRoundedPopup) {
+    // A one-line notice is a leaf of its own height, framed concentrically: the sheet radius
+    // (28) on a 57 px block made a pill.
+    const int radius = metrics.roundedMarks ? tenorradius::leaf(h) : metrics.popupCornerRadius;
     renderer.fillRoundedRect(x - frameThickness, y - frameThickness, w + frameThickness * 2, h + frameThickness * 2,
-                             metrics.popupCornerRadius + frameThickness, Color::White);
-    renderer.fillRoundedRect(x, y, w, h, metrics.popupCornerRadius, Color::Black);
+                             tenorradius::container(radius, frameThickness), Color::White);
+    renderer.fillRoundedRect(x, y, w, h, radius, Color::Black);
   } else {
     renderer.fillRect(x - frameThickness, y - frameThickness, w + frameThickness * 2, h + frameThickness * 2, true);
     renderer.fillRect(x, y, w, h, false);

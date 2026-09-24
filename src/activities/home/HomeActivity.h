@@ -129,9 +129,12 @@ class HomeActivity final : public UiTabListActivity {
   // book shown on an earlier visit reads one file instead of decoding the cover and laying out the
   // text again (about 250 to 430 ms on the X3). Written after the frame that built them.
   std::string cardFilePending;
-  uint32_t cardFileKey = 0;
+  uint32_t cardFileCoverKey = 0, cardFileKey = 0;
   uint8_t cardFileThumb = 0;
-  bool loadCardFile(const std::string& path, uint32_t key, const std::string& thumbPath);
+  int16_t cardFileCover = 0;
+  // What a card file still shows: nothing, the cover alone (the text changed), or the whole card.
+  enum class CardFile : uint8_t { None, Cover, Whole };
+  CardFile loadCardFile(const std::string& path, uint32_t coverKey, uint32_t key, const std::string& thumbPath);
   void saveCardFile();
   // A book whose card thumbnail is still missing: the reader writes it from the cover page or as
   // it closes, and a book read to the power key each time never took either route. The card asks

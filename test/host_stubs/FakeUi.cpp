@@ -15,6 +15,7 @@
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/RenderLock.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiAppHost.h"
 
@@ -149,6 +150,7 @@ void drawTip(const GfxRenderer&, const char*, int, int, bool) {}
 void drawHeader(const GfxRenderer&, const char*, const char*) {}
 int moreBelowChevronTopY(const GfxRenderer&, int) { return 696; }
 void drawMoreBelowChevron(const GfxRenderer&, int) {}
+void drawMoreChevron(const GfxRenderer&, int, int, ChevronDir, int) {}
 }  // namespace tenorchrome
 
 // Persist only in memory in the input harness; simulator tests cover SD failures.
