@@ -21,8 +21,12 @@ sees black, white and the image back to back instead of a white panel while a co
 A gray cover is decoded once and dithered as it is drawn, not once per gray plane.
 
 Fixtures are made up here: a four-tone cover drawn with PIL, an invented title and quote.
-Set SLEEP_BW_SHOTS to a directory to keep the screenshots as PNG. Set SLEEP_BASE_PROGRAM to an
-earlier simulator_x3_uc8279 build to check that every sleep image keeps the same pixels.
+Set SLEEP_BW_SHOTS to a directory to keep the screenshots as PNG.
+
+Every sleep image must keep the pixels of the build before v1.0.13 (8ea0e55). Those frames are
+kept in fixtures/sleep_golden/, so the check needs no second build. To record them again from an
+earlier simulator_x3_uc8279 build, set SLEEP_GOLDEN_RECORD to that program; the run then writes
+the frames and reports itself skipped, which the gate counts as a failure.
 """
 
 import io
@@ -37,11 +41,13 @@ import tempfile
 import unittest
 import zipfile
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 SHOTS = os.environ.get('SLEEP_BW_SHOTS')
+GOLDEN = Path(__file__).resolve().parent / 'fixtures/sleep_golden'
+RECORD = os.environ.get('SLEEP_GOLDEN_RECORD')
 SLEEP_AT = 2500
 BOOK = '/books/vuon-sau-nha.epub'
 TITLE = 'Khu vườn sau nhà'
@@ -49,6 +55,9 @@ QUOTE = 'Buổi chiều, mấy chậu húng quế ngoài hiên lại thơm như 
 PANEL_OP = re.compile(r'displayBuffer, mode=\d|displayGrayscaleBase, mode=\d|displayGrayBuffer')
 CLEAR_STEP = re.compile(r'\[SLP\] clear (?:black|white)|displayBuffer, mode=\d|displayGrayscaleBase, mode=\d|displayGrayBuffer')
 COVER_BOX = (48, 596, 144, 741)  # SleepQuoteLayout.h, the cover tile of the quote screen
+# The reading statistics screen prints today's date under its title and the last seven days
+# under its chart, so a recorded frame keeps every pixel but those two lines of text.
+TODAY_LINES = {9: ((0, 80, 528, 104), (0, 366, 528, 386))}
 
 
 def cover_jpeg():
@@ -96,6 +105,32 @@ def quote_name(record):
     year, month, date = record['day'] // 10000, record['day'] // 100 % 100, record['day'] % 100
     day = (year - 2020) * 372 + (month - 1) * 31 + (date - 1)
     return f"{book_key(record['path']) << 32 | day << 16 | record['gio'] << 4:016x}.json"
+
+
+def save_golden(image, path):
+    """Two-level frames go in as one bit per pixel, the rest as 8-bit gray: both lossless."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if set(image.getdata()) <= {0, 255}:
+        image = image.convert('1', dither=Image.Dither.NONE)
+    image.save(path, optimize=True)
+
+
+def golden_mismatch(image, path, skip=()):
+    """None when the frame matches the recorded one pixel for pixel outside `skip`, else what differs."""
+    if not path.exists():
+        return f'no golden frame {path.name}'
+    golden = Image.open(path).convert('L')
+    if golden.size != image.size:
+        return f'{path.name}: size {image.size}, golden {golden.size}'
+    image = image.copy()
+    for box in skip:
+        golden.paste(255, box)
+        image.paste(255, box)
+    diff = ImageChops.difference(golden, image)
+    box = diff.getbbox()
+    if box is None:
+        return None
+    return f'{path.name}: {sum(diff.point(lambda v: 1 if v else 0).histogram()[1:])} pixels differ in {box}'
 
 
 class SleepEndsBwTest(unittest.TestCase):
@@ -243,28 +278,30 @@ class SleepEndsBwTest(unittest.TestCase):
             with self.subTest(screen=name):
                 self.assertEqual(len(re.findall(r'\[BMP\] Timing bpp=', sleep)), 1, sleep)
 
-    @unittest.skipUnless(os.environ.get('SLEEP_BASE_PROGRAM'), 'set SLEEP_BASE_PROGRAM to an earlier build')
     def test_same_pixels_as_base(self):
-        # The same sleep, on the same fixtures, from the earlier build and from this one: the image
-        # left on the glass must match pixel for pixel, switch on and off.
-        base = Path(os.environ['SLEEP_BASE_PROGRAM'])
+        # The same sleep, on the same fixtures, as the earlier build: the image left on the glass
+        # must match its recorded frame pixel for pixel, switch on and off.
         cases = [(mode, {}) for mode in (0, 1, 2, 3, 5, 8, 9, 10)]
         cases += [(mode, {'sleepBwRefresh': 0}) for mode in (2, 3, 8, 10)]
         for mode, settings in cases:
             with self.subTest(sleepScreen=mode, settings=settings):
-                images = []
-                for side, program in (('truoc', base), ('sau', None)):
-                    name = f'giong-{mode}-{len(settings)}-{side}'
-                    if mode == 10:
-                        sd = self.quote_sd(name, settings)
-                    else:
-                        sd = self.make_sd(name, mode, {'openEpubPath': BOOK} if mode == 3 else None, settings)
-                    if mode == 2:
-                        (sd / 'sleep.bmp').write_bytes(gray_bmp(528, 792))
-                    if mode == 3:
-                        write_epub(sd / BOOK.lstrip('/'))
-                    images.append(self.sleep_once(sd, name, program)[2])
-                self.assertEqual(images[0].tobytes(), images[1].tobytes())
+                name = f'giong-{mode}-{len(settings)}'
+                if mode == 10:
+                    sd = self.quote_sd(name, settings)
+                else:
+                    sd = self.make_sd(name, mode, {'openEpubPath': BOOK} if mode == 3 else None, settings)
+                if mode == 2:
+                    (sd / 'sleep.bmp').write_bytes(gray_bmp(528, 792))
+                if mode == 3:
+                    write_epub(sd / BOOK.lstrip('/'))
+                image = self.sleep_once(sd, name, Path(RECORD) if RECORD else None)[2]
+                path = GOLDEN / f'bw-{mode}-{len(settings)}.png'
+                if RECORD:
+                    save_golden(image, path)
+                else:
+                    self.assertIsNone(golden_mismatch(image, path, TODAY_LINES.get(mode, ())))
+        if RECORD:
+            self.skipTest(f'recorded golden frames from {RECORD}')
 
     def test_every_other_mode_ends_on_bw_full(self):
         for mode in (0, 1, 2, 5, 6, 7, 9):

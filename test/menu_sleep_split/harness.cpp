@@ -68,6 +68,7 @@ struct CrossPointWebServer {
   Language requestLanguage() const { return Language::EN; }
   void handleGetSettings() const;
 };
+#include "StatusItems.inc"
 #include "Web.inc"
 static int checks=0;
 static bool check(bool value, const char* message) {

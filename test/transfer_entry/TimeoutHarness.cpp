@@ -89,13 +89,41 @@ struct FakeLatch {
   }
 };
 
+// The book a session was opened from, as the SD card and the reader see it.
+struct FakeStorage {
+  std::string present;
+  bool exists(const char* path) const { return present == path; }
+} Storage;
+struct FakeRenderer {};
+static bool readerAllocFails = false;
+struct ReaderActivity {
+  std::string path;
+  static std::unique_ptr<ReaderActivity> create(FakeRenderer&, MappedInputManager&, const std::string& path, bool) {
+    if (readerAllocFails) return nullptr;
+    auto reader = std::make_unique<ReaderActivity>();
+    reader->path = path;
+    return reader;
+  }
+};
+struct FakeActivityManager {
+  std::unique_ptr<ReaderActivity> reopened;
+  int replacements = 0;
+  void replaceActivity(std::unique_ptr<ReaderActivity>&& activity) {
+    reopened = std::move(activity);
+    ++replacements;
+  }
+} activityManager;
+
 enum class WebServerActivityState { SERVER_RUNNING, SHUTTING_DOWN, AP_STARTING };
 struct CrossPointWebServerActivity {
   WebServerActivityState state = WebServerActivityState::SERVER_RUNNING;
   bool isApMode = true;
   std::unique_ptr<FakeServer> webServer = std::make_unique<FakeServer>();
   MappedInputManager mappedInput;
+  FakeRenderer renderer;
   FakeLatch backLatch;
+  std::string returnBook;
+  bool toBook = false;
   unsigned long lastHandleClientTime = 0;
   unsigned long firstDisconnectAt = 0;
   static constexpr unsigned long WIFI_ABANDON_MS = 300000;
@@ -109,19 +137,12 @@ struct CrossPointWebServerActivity {
     if (webServer && webServer->inHandler) throw std::runtime_error("exit inside HTTP handler");
     ++exits;
   }
-  void stopServerAndGoHome() {
-    state = WebServerActivityState::SHUTTING_DOWN;
-    backLatch.stop();
-    stopDnsServer();
-    if (webServer) {
-      webServer->stop();
-      webServer.reset();
-    }
-    onGoHome();
-  }
+  void leave();
+  void stopServerAndLeave();
   void loop();
 };
 
+#include "production-exit.inc"
 #include "production-loop.inc"
 
 void require(bool condition, const char* message) {
@@ -138,15 +159,31 @@ void resetGlobals() {
   dnsServer = &dns;
   dns.calls = 0;
   WiFi.connection = WL_CONNECTED;
+  Storage.present.clear();
+  readerAllocFails = false;
+  activityManager.reopened.reset();
+  activityManager.replacements = 0;
 }
 
-void requireCleanExit(const CrossPointWebServerActivity& activity) {
-  require(activity.exits == 1, "activity did not exit exactly once");
+// Cleanup that every exit runs, whichever screen comes next.
+void requireCleanStop(const CrossPointWebServerActivity& activity) {
   require(activity.state == WebServerActivityState::SHUTTING_DOWN, "activity did not enter shutdown state");
   require(!activity.webServer, "server owner survived exit");
   require(serverStops == 1, "server was not stopped exactly once");
   require(activity.backLatch.stops == 1, "Back latch was not stopped exactly once");
   require(dnsStops == 1 && dnsServer == nullptr, "DNS server was not stopped");
+}
+
+void requireCleanExit(const CrossPointWebServerActivity& activity) {
+  require(activity.exits == 1 && activityManager.replacements == 0, "activity did not go Home exactly once");
+  requireCleanStop(activity);
+}
+
+void requireBookReturn(const CrossPointWebServerActivity& activity, const std::string& book) {
+  require(activity.exits == 0 && activity.toBook, "exit from a book went Home");
+  require(activityManager.replacements == 1 && activityManager.reopened &&
+              activityManager.reopened->path == book, "exit did not reopen the book it came from");
+  requireCleanStop(activity);
 }
 
 void run(const std::string& name) {
@@ -174,6 +211,28 @@ void run(const std::string& name) {
     activity.backLatch.pending = true;
     activity.loop();
     require(serverCalls == 0 && expiryChecks == 0, "Back waited behind a request");
+    requireCleanExit(activity);
+  } else if (name == "book-back-reopens-book" || name == "book-idle-timeout-reopens-book") {
+    activity.returnBook = Storage.present = "/books/sample.epub";
+    if (name == "book-back-reopens-book") activity.backLatch.pending = true;
+    else server->expired = true;
+    activity.loop();
+    requireBookReturn(activity, "/books/sample.epub");
+  } else if (name == "book-home-gesture-goes-home") {
+    activity.returnBook = Storage.present = "/books/sample.epub";
+    activity.mappedInput.home = true;
+    activity.loop();
+    require(serverCalls == 0, "Home gesture waited behind a request");
+    requireCleanExit(activity);
+  } else if (name == "book-gone-goes-home" || name == "book-reader-alloc-fails-goes-home") {
+    activity.returnBook = "/books/sample.epub";
+    if (name == "book-reader-alloc-fails-goes-home") {
+      Storage.present = activity.returnBook;
+      readerAllocFails = true;
+    }
+    activity.backLatch.pending = true;
+    activity.loop();
+    require(!activity.toBook, "a book that could not reopen was marked as the exit");
     requireCleanExit(activity);
   } else {
     throw std::runtime_error("unknown scenario");

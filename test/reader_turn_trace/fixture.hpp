@@ -115,6 +115,8 @@ struct ReaderActivity {
   void requestUpdate() { ++updates; }
   void updateReadingTime(bool) {}
   void chotSoLieuDoc() {}
+  // The open's state and recent-list writes; the turn queue never depends on them.
+  void commitOpen() {}
   virtual void onPause();
   virtual void onResume();
   virtual void onExit() {}

@@ -519,6 +519,9 @@ class StatsContractTest(unittest.TestCase):
         kb = KichBan(self)
         _sach_gia(kb, 2)
         hom_nay = self._fixture_reset(kb)
+        # A cold boot re-arms a cleared splash flag and saves state.json, so the file here is the one
+        # a finished boot leaves: the flag is already set and only the reset could still change it.
+        kb.dat_state(openEpubPath="/sach1.txt", readerActivityLoadCount=3, showBootScreen=True)
         state_truoc = (kb.store / "state.json").read_text()
         log = kb.chay(f"{TOP_THONG_KE};2600:RIGHT;2900:RIGHT;3200:RIGHT;3500:RIGHT;3900:CONFIRM;"
                       "4700:RIGHT;5200:CONFIRM;6200:QUIT")

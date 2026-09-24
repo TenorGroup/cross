@@ -61,7 +61,9 @@ class StatsResetPendingTest(unittest.TestCase):
         (store / "settings.json").write_text(
             json.dumps({"language": language, "uiTheme": 4, "sleepTimeout": 10}), encoding="utf-8"
         )
-        state = b'{"openEpubPath":"/book.txt","readerActivityLoadCount":3,"showBootScreen":false}'
+        # A cold boot re-arms a cleared splash flag and saves state.json; with the flag already set
+        # the boot leaves these bytes alone, so only the reset could change them.
+        state = b'{"openEpubPath":"/book.txt","readerActivityLoadCount":3,"showBootScreen":true}'
         (store / "state.json").write_bytes(state)
         main = (
             b'{"schema":3,"bookEpoch":0,"ngay":[[20260920,12,30]],'

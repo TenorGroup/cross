@@ -6,9 +6,11 @@ It is kept in flash as one compressed frame, the smallest form of it; flash on t
 nearly full. The frame must stay what it was, pixel for pixel.
 
 The simulator offers absolute gray planes on every panel; CROSSPOINT_SIM_NO_ABSOLUTE_GRAY makes
-the Tenor screen take its fallback, as the UC8253 X3 does. Set SLEEP_BASE_PROGRAM to an earlier
-build of the same simulator (with that switch) to compare the frames; TEST_PROGRAM is this one.
-Set SLEEP_BW_SHOTS to a directory to keep the screenshots as PNG.
+the Tenor screen take its fallback, as the UC8253 X3 does. The frames of the build before the
+packed art (e4ece80 with that switch) are kept in fixtures/sleep_golden/, so the comparison needs
+no second build. To record them again from an earlier build of the same simulator, set
+SLEEP_GOLDEN_RECORD to that program; the run then writes the frames and reports itself skipped,
+which the gate counts as a failure. Set SLEEP_BW_SHOTS to a directory to keep the screenshots as PNG.
 """
 
 import json
@@ -20,11 +22,12 @@ import subprocess
 import tempfile
 import unittest
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
-BASE = os.environ.get('SLEEP_BASE_PROGRAM')
+GOLDEN = Path(__file__).resolve().parent / 'fixtures/sleep_golden'
+RECORD = os.environ.get('SLEEP_GOLDEN_RECORD')
 SHOTS = os.environ.get('SLEEP_BW_SHOTS')
 ART = REPO / 'src/components/ManNguTenor.h'
 
@@ -87,7 +90,6 @@ class TenorFallbackTest(unittest.TestCase):
         self.assertGreater(sum(1 for p in image.getdata() if p == 0), 10000)
         self.assertEqual(re.findall(r'displayBuffer, mode=\d', part)[-1], 'displayBuffer, mode=0')
 
-    @unittest.skipUnless(BASE, 'set SLEEP_BASE_PROGRAM to an earlier build')
     def test_same_pixels_as_base(self):
         # Home and a book held sideways (the reader turns the screen back upright on the way out),
         # switch on and off.
@@ -97,9 +99,20 @@ class TenorFallbackTest(unittest.TestCase):
                 with self.subTest(**case):
                     extra = dict(settings, orientation=1) if from_book else settings
                     label = f'{"sach-ngang" if from_book else "home"}-{len(settings)}'
-                    images = [self.sleep(program, f'{label}-{side}', extra, from_book)[1]
-                              for side, program in (('truoc', Path(BASE)), ('sau', PROGRAM))]
-                    self.assertEqual(images[0].tobytes(), images[1].tobytes())
+                    image = self.sleep(Path(RECORD) if RECORD else PROGRAM, label, extra, from_book)[1]
+                    path = GOLDEN / f'tenor-fallback-{label}.png'
+                    if RECORD:
+                        # The fallback is black and white only, so one bit per pixel is lossless.
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        image.convert('1', dither=Image.Dither.NONE).save(path, optimize=True)
+                        continue
+                    self.assertTrue(path.exists(), f'no golden frame {path.name}')
+                    golden = Image.open(path).convert('L')
+                    self.assertEqual(golden.size, image.size)
+                    diff = ImageChops.difference(golden, image)
+                    self.assertIsNone(diff.getbbox(), f'{path.name}: pixels differ in {diff.getbbox()}')
+        if RECORD:
+            self.skipTest(f'recorded golden frames from {RECORD}')
 
 
 if __name__ == '__main__':

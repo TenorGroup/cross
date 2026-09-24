@@ -100,12 +100,18 @@ struct CrossPointWebServerActivity {
   int lastWifiBars = 3;
   int paints = 0;
   int exits = 0;
+  // Every session here opens outside a book, so each exit lands on Home.
+  std::string returnBook;
   void requestUpdate() { ++paints; }
   void onGoHome() {
     if (webServer && webServer->inHandler) throw std::runtime_error("exit inside HTTP handler");
     ++exits;
   }
-  void stopServerAndGoHome() {
+  void leave() {
+    if (!returnBook.empty()) throw std::runtime_error("session outside a book asked for a book");
+    onGoHome();
+  }
+  void stopServerAndLeave() {
     state = WebServerActivityState::SHUTTING_DOWN;
     backLatch.stop();
     stopDnsServer();
@@ -113,7 +119,7 @@ struct CrossPointWebServerActivity {
       webServer->stop();
       webServer.reset();
     }
-    onGoHome();
+    leave();
   }
   void loop();
 #include "production-delay.inc"

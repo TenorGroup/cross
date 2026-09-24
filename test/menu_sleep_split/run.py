@@ -31,7 +31,8 @@ def method(text, sig):
 paths = ['src/SettingsList.h', 'src/MenuCustomization.h', 'src/MenuCustomization.cpp',
          'src/activities/settings/SettingsActivity.h', 'src/activities/settings/SettingsActivity.cpp',
          'src/activities/settings/SettingsTabs.h', 'src/activities/settings/SettingsTabs.cpp',
-         'src/activities/home/HomeActivity.cpp', 'src/network/CrossPointWebServer.cpp', 'lib/I18n/I18nKeys.h']
+         'src/activities/home/HomeActivity.cpp', 'src/network/CrossPointWebServer.cpp', 'lib/I18n/I18nKeys.h',
+         'src/CrossPointSettings.cpp']
 (out / 'source-manifest.json').write_text(json.dumps({x: hashlib.sha256((r/x).read_bytes()).hexdigest() for x in paths}, indent=2)+'\n')
 (out / 'SettingsList.h').write_text((r / paths[0]).read_text())
 header = (r / paths[3]).read_text()
@@ -56,6 +57,13 @@ home = home[:home.index('\n    }')]
 (out / 'HomeSettings.inc').write_text(home.split('{', 1)[1].replace('      break;', ''))
 web = (r / 'src/network/CrossPointWebServer.cpp').read_text()
 (out / 'Web.inc').write_text(method(web, 'void CrossPointWebServer::handleGetSettings() const'))
+# The serializer first adopts the status bar switches for the stored mode, so the
+# production adopt step and the mode table it reads are compiled in as well.
+settings = (r / 'src/CrossPointSettings.cpp').read_text()
+adopt = 'void CrossPointSettings::adoptReaderStatusItems()'
+(out / 'StatusItems.inc').write_text(
+    settings[settings.index('namespace {\n// What each reader status bar mode shows'):settings.index(adopt)] +
+    method(settings, adopt))
 keys = (r / 'lib/I18n/I18nKeys.h').read_text()
 keys = re.findall(r'^\s*(STR_[A-Z0-9_]+)\s*,', keys[keys.index('enum class StrId'):], re.M)
 (out / 'KeyNames.inc').write_text(',\n'.join(json.dumps(x) for x in keys))

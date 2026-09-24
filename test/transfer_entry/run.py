@@ -35,6 +35,7 @@ class TransferEntryContract(unittest.TestCase):
         cls.activity_header = (cls.repo / "src/activities/network/CrossPointWebServerActivity.h").read_text()
         cls.chooser = (cls.repo / "src/activities/network/NetworkModeSelectionActivity.cpp").read_text()
         cls.chooser_header = (cls.repo / "src/activities/network/NetworkModeSelectionActivity.h").read_text()
+        cls.manager = (cls.repo / "src/activities/ActivityManager.cpp").read_text()
 
     def test_entry_always_opens_mode_chooser(self):
         body = function_body(self.activity, "void CrossPointWebServerActivity::onEnter()")
@@ -50,7 +51,14 @@ class TransferEntryContract(unittest.TestCase):
 
     def test_back_from_entry_returns_home(self):
         enter = function_body(self.activity, "void CrossPointWebServerActivity::onEnter()")
-        self.assertRegex(enter, r"result\.isCancelled\s*\)\s*\{\s*onGoHome\(\)")
+        self.assertRegex(enter, r"result\.isCancelled\s*\)\s*\{\s*leave\(\)")
+        # Only a session opened from a book carries a book back; Home and Settings
+        # open it without one, so leave() ends on Home for them.
+        entry = function_body(self.manager, "void ActivityManager::goToFileTransfer()")
+        self.assertIn("isReaderActivity() ? APP_STATE.openEpubPath : std::string()", entry)
+        leave = function_body(self.activity, "void CrossPointWebServerActivity::leave()")
+        self.assertRegex(leave, r"^[^{]*\{\s*if \(!returnBook\.empty\(\) &&")
+        self.assertTrue(leave.rstrip("} \n").endswith("onGoHome();"))
         self.assertIn("void onBackButton() override { onCancel(); }", self.chooser_header)
         cancel = function_body(self.chooser, "void NetworkModeSelectionActivity::onCancel()")
         self.assertIn("result.isCancelled = true", cancel)
@@ -60,14 +68,14 @@ class TransferEntryContract(unittest.TestCase):
         body = function_body(self.activity, "void CrossPointWebServerActivity::onWifiSelectionComplete")
         self.assertNotIn("buttonOnlyFlow", body)
         self.assertIn("make_unique<NetworkModeSelectionActivity>", body)
-        self.assertRegex(body, r"result\.isCancelled\s*\)\s*\{\s*onGoHome\(\)")
+        self.assertRegex(body, r"result\.isCancelled\s*\)\s*\{\s*leave\(\)")
 
     def test_calibre_return_reopens_same_chooser(self):
         body = function_body(self.activity, "void CrossPointWebServerActivity::onNetworkModeSelected")
         calibre = body.index("mode == NetworkMode::CONNECT_CALIBRE")
         reopen = body.index("make_unique<NetworkModeSelectionActivity>", calibre)
         self.assertGreater(reopen, calibre)
-        self.assertIn("onGoHome()", body[reopen:])
+        self.assertRegex(body[reopen:], r"result\.isCancelled\s*\)\s*\{\s*leave\(\)")
 
     def test_hotspot_branch_still_starts_access_point(self):
         body = function_body(self.activity, "void CrossPointWebServerActivity::onNetworkModeSelected")
@@ -108,15 +116,15 @@ class TransferEntryContract(unittest.TestCase):
         handled = loop.index("webServer->handleClient()")
         expired = loop.index("webServer->sessionIdleExpired(millis())")
         self.assertGreater(expired, handled)
-        self.assertIn("stopServerAndGoHome()", loop[expired:])
-        cleanup = function_body(self.activity, "void CrossPointWebServerActivity::stopServerAndGoHome()")
+        self.assertIn("stopServerAndLeave()", loop[expired:])
+        cleanup = function_body(self.activity, "void CrossPointWebServerActivity::stopServerAndLeave()")
         order = [cleanup.index(statement) for statement in (
             "state = WebServerActivityState::SHUTTING_DOWN",
             "backLatch.stop()",
             "stopDnsServer()",
             "webServer->stop()",
             "webServer.reset()",
-            "onGoHome()",
+            "leave()",
         )]
         self.assertEqual(order, sorted(order))
 
@@ -154,6 +162,10 @@ def run_behavior(activity_path: Path, output: Path, cxx: str, remove_idle_guard:
 
     output.mkdir(parents=True, exist_ok=True)
     (output / "production-loop.inc").write_text(loop)
+    # Every exit, Home or back into the book it came from, runs through these two.
+    (output / "production-exit.inc").write_text(
+        function_body(source, "void CrossPointWebServerActivity::leave()") + "\n\n" +
+        function_body(source, "void CrossPointWebServerActivity::stopServerAndLeave()") + "\n")
     binary = output / "transfer-entry-timeout"
     here = Path(__file__).resolve().parent
     compile_run = subprocess.run(
@@ -166,7 +178,9 @@ def run_behavior(activity_path: Path, output: Path, cxx: str, remove_idle_guard:
         print(compile_run.stdout + compile_run.stderr, end="")
         return False
 
-    cases = ("idle-timeout", "active-session", "expires-during-handler", "back-before-handler")
+    cases = ("idle-timeout", "active-session", "expires-during-handler", "back-before-handler",
+             "book-back-reopens-book", "book-idle-timeout-reopens-book", "book-home-gesture-goes-home",
+             "book-gone-goes-home", "book-reader-alloc-fails-goes-home")
     results = []
     for case in cases:
         run = subprocess.run([str(binary), case], capture_output=True, text=True)

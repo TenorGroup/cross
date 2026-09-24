@@ -154,6 +154,14 @@ struct UITheme {
 };
 struct { uint8_t frontButtonBack = 0, uiTextSize = 0; } SETTINGS;
 HalGPIO gpio;
+// The book return compiled with startWebServer; these sessions open outside a book.
+struct { bool exists(const char*) const { return false; } } Storage;
+struct ReaderActivity {
+  static std::unique_ptr<ReaderActivity> create(FakeRenderer&, MappedInputManager&, const std::string&, bool) {
+    return nullptr;
+  }
+};
+struct { void replaceActivity(std::unique_ptr<ReaderActivity>&&) { require(false, "session outside a book reopened one"); } } activityManager;
 enum class WebServerActivityState { SERVER_RUNNING, SHUTTING_DOWN, AP_STARTING };
 struct CrossPointWebServerActivity {
   WebServerActivityState state = WebServerActivityState::SERVER_RUNNING;
@@ -165,6 +173,8 @@ struct CrossPointWebServerActivity {
   unsigned long lastHandleClientTime = 0, firstDisconnectAt = 0;
   static constexpr unsigned long WIFI_ABANDON_MS = 300000;
   int consecutiveDisconnects = 0, lastWifiBars = 3, exits = 0, updates = 0;
+  std::string returnBook;
+  bool toBook = false;
   void requestUpdate() { ++updates; }
   void onGoHome() {
     require(!webServer || !webServer->inHandler, "activity exited during an unfinished upload handler");
@@ -172,7 +182,8 @@ struct CrossPointWebServerActivity {
   }
   void loop();
   void startWebServer();
-  void stopServerAndGoHome();
+  void leave();
+  void stopServerAndLeave();
 #include "production-delay.inc"
 };
 #include "production-loop.inc"
