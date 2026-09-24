@@ -35,10 +35,11 @@ class ContentOpfParser final : public Print {
   bool failed = false;
   void failIo();
 
-  // Index for fast idref→href lookup (binary search over .items.bin)
+  // Index for fast idref→href lookup (binary search over .items.bin). Eight
+  // bytes per manifest item: a hash hit is confirmed against the id stored in
+  // .items.bin, so no length field is needed to separate collisions.
   struct ItemIndexEntry {
     uint32_t idHash;      // FNV-1a hash of itemId
-    uint16_t idLen;       // length for collision reduction
     uint32_t fileOffset;  // offset in .items.bin
   };
   std::deque<ItemIndexEntry> itemIndex;

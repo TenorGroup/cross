@@ -1,5 +1,6 @@
 #include "ContentOpfParser.h"
 
+#include <Arduino.h>
 #include <FsHelpers.h>
 #include <Logging.h>
 #include <Serialization.h>
@@ -14,6 +15,10 @@ constexpr char MEDIA_TYPE_NCX[] = "application/x-dtbncx+xml";
 constexpr char MEDIA_TYPE_CSS[] = "text/css";
 constexpr char MEDIA_TYPE_IMAGE_PREFIX[] = "image/";
 constexpr char itemCacheFile[] = "/.items.bin";
+// The manifest index grows by one entry per item, thousands for a web novel.
+// std::deque aborts the firmware when it cannot get a node, so growth stops
+// with a clean parse failure while this much heap is still free.
+constexpr uint32_t ITEM_INDEX_MIN_FREE_HEAP = 16 * 1024;
 
 bool startsWithImageMediaType(const std::string& mediaType) {
   constexpr size_t prefixLen = sizeof(MEDIA_TYPE_IMAGE_PREFIX) - 1;
@@ -155,9 +160,8 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
     // search. Without this, small/medium manifests fell back to an O(spine × manifest)
     // linear rescan of .items.bin per itemref (up to ~200ms/item at large scale).
     if (!self->itemIndex.empty()) {
-      std::sort(self->itemIndex.begin(), self->itemIndex.end(), [](const ItemIndexEntry& a, const ItemIndexEntry& b) {
-        return a.idHash < b.idHash || (a.idHash == b.idHash && a.idLen < b.idLen);
-      });
+      std::sort(self->itemIndex.begin(), self->itemIndex.end(),
+                [](const ItemIndexEntry& a, const ItemIndexEntry& b) { return a.idHash < b.idHash; });
       self->useItemIndex = true;
       LOG_DBG("COF", "Using fast index for %zu manifest items", self->itemIndex.size());
     }
@@ -221,12 +225,17 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
       self->failIo();
       return;
     }
-    if (self->tempItemStore) {
-      ItemIndexEntry entry;
-      entry.idHash = fnvHash(itemId);
-      entry.idLen = static_cast<uint16_t>(itemId.size());
-      entry.fileOffset = itemOffset;
-      self->itemIndex.push_back(entry);
+    // Only spine resolution reads the index; the CSS-only reparse has no cache.
+    if (self->tempItemStore && self->cache) {
+      // A node holds dozens of entries, so checking every 32 pushes still sees
+      // each allocation coming.
+      if (self->itemIndex.size() % 32 == 0 && ESP.getFreeHeap() < ITEM_INDEX_MIN_FREE_HEAP) {
+        LOG_ERR("COF", "Book too large: manifest index stopped at %u items, heap %u",
+                static_cast<unsigned>(self->itemIndex.size()), static_cast<unsigned>(ESP.getFreeHeap()));
+        self->failIo();
+        return;
+      }
+      self->itemIndex.push_back({fnvHash(itemId), itemOffset});
     }
 
     if (itemId == self->coverItemId) {
@@ -284,14 +293,9 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
 
           if (self->useItemIndex) {
             // Fast path: binary search
-            uint32_t targetHash = fnvHash(idref);
-            uint16_t targetLen = static_cast<uint16_t>(idref.size());
-
-            auto it = std::lower_bound(self->itemIndex.begin(), self->itemIndex.end(),
-                                       ItemIndexEntry{targetHash, targetLen, 0},
-                                       [](const ItemIndexEntry& a, const ItemIndexEntry& b) {
-                                         return a.idHash < b.idHash || (a.idHash == b.idHash && a.idLen < b.idLen);
-                                       });
+            const uint32_t targetHash = fnvHash(idref);
+            auto it = std::lower_bound(self->itemIndex.begin(), self->itemIndex.end(), targetHash,
+                                       [](const ItemIndexEntry& a, const uint32_t hash) { return a.idHash < hash; });
 
             // Check for match (may need to check a few due to hash collisions)
             while (it != self->itemIndex.end() && it->idHash == targetHash) {

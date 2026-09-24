@@ -507,6 +507,11 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
     return false;
   }
   LOG_DBG("EBP", "OPF pass completed in %lu ms", millis() - opfStart);
+#ifdef TENOR_PRESS_PROBE
+  // min is the boot-wide low-water mark: a drop here was taken by this pass.
+  LOG_INF("EBP", "INDEX_STAGE name=opf free=%u largest=%u min=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()), static_cast<unsigned>(ESP.getMinFreeHeap()));
+#endif
 
   // TOC Pass - try EPUB 3 nav first, fall back to NCX
   const uint32_t tocStart = millis();
@@ -539,6 +544,10 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
     return false;
   }
   LOG_DBG("EBP", "TOC pass completed in %lu ms", millis() - tocStart);
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("EBP", "INDEX_STAGE name=toc free=%u largest=%u min=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()), static_cast<unsigned>(ESP.getMinFreeHeap()));
+#endif
 
   // Close the cache files
   if (!bookMetadataCache->endWrite()) {

@@ -355,11 +355,16 @@ bool Section::loadBuildCss(BuildContext* ctx) {
 
 std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ctxPtr, const ReaderRenderSpec& spec,
                                                                 const std::function<void()>& popupFn) {
-  // Collect TOC anchors for this spine so the parser can insert page breaks at chapter boundaries
+  // Collect TOC anchors for this spine so the parser can insert page breaks at chapter boundaries.
+  // A novel shipped as one XHTML file can carry thousands: each is a heap string the parser keeps
+  // and scans for every id, so only the spine's first MAX_TOC_ANCHORS break pages. The cut is by
+  // TOC position, never by build progress, so every build of a spine paginates the same way; later
+  // anchors are still recorded under the parser's ordinary id budget.
+  constexpr size_t MAX_TOC_ANCHORS = 256;
   std::vector<std::string> tocAnchors;
   const int startTocIndex = epub->getTocIndexForSpineIndex(spineIndex);
   if (startTocIndex >= 0) {
-    for (int i = startTocIndex; i < epub->getTocItemsCount(); i++) {
+    for (int i = startTocIndex; i < epub->getTocItemsCount() && tocAnchors.size() < MAX_TOC_ANCHORS; i++) {
       auto entry = epub->getTocItem(i);
       if (entry.spineIndex != spineIndex) break;
       if (!entry.anchor.empty()) {

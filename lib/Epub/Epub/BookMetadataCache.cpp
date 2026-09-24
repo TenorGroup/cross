@@ -1,5 +1,6 @@
 #include "BookMetadataCache.h"
 
+#include <Arduino.h>
 #include <BufferedFile.h>
 #include <Logging.h>
 #include <Serialization.h>
@@ -18,6 +19,16 @@ constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
 // Buffer size for the buildBookBin streams. 3 buffers x 4KB, transient (freed on
 // return); 4KB = 8 SD sectors per transfer, enough to stop the sector-cache thrash.
 constexpr size_t BUILD_IO_BUFFER_SIZE = 4096;
+// Heap kept free while the per-spine indexes grow. The firmware has no
+// exceptions, so a std::deque that cannot get memory aborts the device; the
+// passes below size their working sets from free heap minus this reserve and
+// refuse the book instead of aborting when even a small working set won't fit.
+constexpr uint32_t INDEX_HEAP_RESERVE = 16 * 1024;
+constexpr uint32_t BOOKBIN_HEAP_RESERVE = 32 * 1024;
+// book.bin is written in chunks of spine items; each item in a chunk holds a
+// zip lookup target, its inflated size and its first TOC index.
+constexpr size_t BOOKBIN_ITEM_BYTES = sizeof(ZipFile::SizeTarget) + sizeof(uint32_t) + sizeof(int16_t);
+constexpr int BOOKBIN_MIN_CHUNK = 64;
 
 #ifdef TENOR_UI_ACCEPTANCE
 // Logical metadata operations. BufferedFileReader/Writer may coalesce these
@@ -197,21 +208,23 @@ bool BookMetadataCache::beginTocPass() {
   }
 
   if (spineCount >= LARGE_SPINE_THRESHOLD) {
+    // Without the index every TOC entry rescans the spine file (minutes at
+    // thousands of chapters), so a book whose index does not fit is refused.
+    const uint32_t needed = static_cast<uint32_t>(spineCount) * sizeof(SpineHrefIndexEntry) + INDEX_HEAP_RESERVE;
+    if (ESP.getFreeHeap() < needed) {
+      LOG_ERR("BMC", "Book too large: %d spine items need %u B of heap, %u free", spineCount,
+              static_cast<unsigned>(needed), static_cast<unsigned>(ESP.getFreeHeap()));
+      tocFile.close();
+      spineFile.close();
+      return false;
+    }
     spineHrefIndex.clear();
     spineHrefIndex.resize(spineCount);
     spineFile.seek(0);
     for (int i = 0; i < spineCount; i++) {
-      auto entry = readSpineEntry(spineFile);
-      SpineHrefIndexEntry idx;
-      idx.hrefHash = fnvHash64(entry.href);
-      idx.hrefLen = static_cast<uint16_t>(entry.href.size());
-      idx.spineIndex = static_cast<int16_t>(i);
-      spineHrefIndex[i] = idx;
+      spineHrefIndex[i] = hrefKey(readSpineEntry(spineFile).href, static_cast<int16_t>(i));
     }
-    std::sort(spineHrefIndex.begin(), spineHrefIndex.end(),
-              [](const SpineHrefIndexEntry& a, const SpineHrefIndexEntry& b) {
-                return a.hrefHash < b.hrefHash || (a.hrefHash == b.hrefHash && a.hrefLen < b.hrefLen);
-              });
+    std::sort(spineHrefIndex.begin(), spineHrefIndex.end());
     spineFile.seek(0);
     useSpineHrefIndex = true;
     LOG_DBG("BMC", "Using fast index for %d spine items", spineCount);
@@ -325,112 +338,104 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
     serialization::writePod(bookOut, pos + lutOffset + lutSize + spineBytes);
   }
 
-  // LUTs complete
-  // Loop through spines from spine file matching up TOC indexes, calculating cumulative size and writing to book.bin
-
-  // Build spineIndex->tocIndex mapping in one pass (O(n) instead of O(n*m))
-  std::deque<int16_t> spineToTocIndex(spineCount, -1);
-  tocIn.seek(0);
-  for (int j = 0; j < tocCount; j++) {
-    auto tocEntry = readTocEntryFrom(tocIn);
-    if (tocEntry.spineIndex >= 0 && tocEntry.spineIndex < spineCount) {
-      if (spineToTocIndex[tocEntry.spineIndex] == -1) {
-        spineToTocIndex[tocEntry.spineIndex] = static_cast<int16_t>(j);
-      }
-    }
+  // LUTs complete. Spine entries are written in chunks sized from free heap so
+  // the working set stays bounded at any chapter count. A book that fits one
+  // chunk takes exactly the passes it always took: one TOC scan for the
+  // spine->TOC mapping and one zip central-directory scan for the sizes.
+  const bool useBatchSizes = spineCount >= LARGE_SPINE_THRESHOLD;
+  int chunk = spineCount;
+  if (useBatchSizes) {
+    const uint32_t freeHeap = ESP.getFreeHeap();
+    const uint32_t budget = freeHeap > BOOKBIN_HEAP_RESERVE ? freeHeap - BOOKBIN_HEAP_RESERVE : 0;
+    chunk = static_cast<int>(std::min<uint32_t>(spineCount, budget / BOOKBIN_ITEM_BYTES));
   }
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("BMC", "BOOKBIN spines=%d toc=%d chunk=%d free=%u largest=%u min=%u", spineCount, tocCount, chunk,
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
+          static_cast<unsigned>(ESP.getMinFreeHeap()));
+#endif
 
   ZipFile zip(epubPath);
   // Pre-open zip file to speed up size calculations
-  if (!zip.open()) {
-    LOG_ERR("BMC", "Could not open EPUB zip for size calculations");
+  if (chunk < std::min<int>(spineCount, BOOKBIN_MIN_CHUNK) || !zip.open()) {
+    LOG_ERR("BMC", "Could not size spine items: chunk %d, heap %u", chunk, static_cast<unsigned>(ESP.getFreeHeap()));
     // Explicit close() required: member variables persist beyond function scope
     bookFile.close();
     spineFile.close();
     tocFile.close();
+    Storage.remove((cachePath + bookBinFile).c_str());
     return false;
   }
   // NOTE: We intentionally skip calling loadAllFileStatSlims() here.
   // For large EPUBs (2000+ chapters), pre-loading all ZIP central directory entries
   // into memory causes OOM crashes on ESP32-C3's limited ~380KB RAM.
-  // Instead, for large books we use a one-pass batch lookup that scans the ZIP
-  // central directory once and matches against spine targets using hash comparison.
+  // Instead, for large books we use a batch lookup that scans the ZIP
+  // central directory once per chunk and matches against spine targets using hash comparison.
   // This is O(n*log(m)) instead of O(n*m) while avoiding memory exhaustion.
   // See: https://github.com/crosspoint-reader/crosspoint-reader/issues/134
 
-  std::deque<uint32_t> spineSizes;
-  bool useBatchSizes = false;
-
-  if (spineCount >= LARGE_SPINE_THRESHOLD) {
-    LOG_DBG("BMC", "Using batch size lookup for %d spine items", spineCount);
-
-    std::deque<ZipFile::SizeTarget> targets;
-    targets.resize(spineCount);
-
-    spineIn.seek(0);
-    for (int i = 0; i < spineCount; i++) {
-      auto entry = readSpineEntryFrom(spineIn);
-      std::string path = FsHelpers::normalisePath(entry.href);
-
-      ZipFile::SizeTarget t;
-      t.hash = ZipFile::fnvHash64(path.c_str(), path.size());
-      t.len = static_cast<uint16_t>(path.size());
-      t.index = static_cast<uint16_t>(i);
-      targets[i] = t;
-    }
-
-    std::sort(targets.begin(), targets.end(), [](const ZipFile::SizeTarget& a, const ZipFile::SizeTarget& b) {
-      return a.hash < b.hash || (a.hash == b.hash && a.len < b.len);
-    });
-
-    spineSizes.resize(spineCount, 0);
-    int matched = zip.fillUncompressedSizes(targets, spineSizes);
-    LOG_DBG("BMC", "Batch lookup matched %d/%d spine items", matched, spineCount);
-
-    targets.clear();
-    targets.shrink_to_fit();
-
-    useBatchSizes = true;
-  }
-
   uint32_t cumSize = 0;
-  spineIn.seek(0);
   int lastSpineTocIndex = -1;
-  for (int i = 0; i < spineCount; i++) {
-    auto spineEntry = readSpineEntryFrom(spineIn);
+  spineIn.seek(0);
+  for (int first = 0; first < spineCount; first += chunk) {
+    const int count = std::min(chunk, spineCount - first);
 
-    spineEntry.tocIndex = spineToTocIndex[i];
-
-    // Not a huge deal if we don't fine a TOC entry for the spine entry, this is expected behaviour for EPUBs
-    // Logging here is for debugging
-    if (spineEntry.tocIndex == -1) {
-      LOG_DBG("BMC", "Warning: Could not find TOC entry for spine item %d: %s, using title from last section", i,
-              spineEntry.href.c_str());
-      spineEntry.tocIndex = lastSpineTocIndex;
+    // First TOC entry of each spine item in this chunk, in one TOC pass.
+    std::deque<int16_t> spineToTocIndex(count, -1);
+    tocIn.seek(0);
+    for (int j = 0; j < tocCount; j++) {
+      const int local = readTocEntryFrom(tocIn).spineIndex - first;
+      if (local >= 0 && local < count && spineToTocIndex[local] == -1) {
+        spineToTocIndex[local] = static_cast<int16_t>(j);
+      }
     }
-    lastSpineTocIndex = spineEntry.tocIndex;
 
-    size_t itemSize = 0;
+    std::deque<uint32_t> spineSizes(count, 0);
     if (useBatchSizes) {
-      itemSize = spineSizes[i];
+      const size_t chunkStart = spineIn.position();
+      std::deque<ZipFile::SizeTarget> targets(count);
+      for (int i = 0; i < count; i++) {
+        const std::string path = FsHelpers::normalisePath(readSpineEntryFrom(spineIn).href);
+        targets[i] = {ZipFile::fnvHash64(path.c_str(), path.size()), static_cast<uint16_t>(path.size()),
+                      static_cast<uint16_t>(i)};
+      }
+      std::sort(targets.begin(), targets.end(), [](const ZipFile::SizeTarget& a, const ZipFile::SizeTarget& b) {
+        return a.hash < b.hash || (a.hash == b.hash && a.len < b.len);
+      });
+      const int matched = zip.fillUncompressedSizes(targets, spineSizes);
+      LOG_DBG("BMC", "Batch lookup matched %d/%d spine items", matched, count);
+      (void)matched;
+      spineIn.seek(chunkStart);
+    }
+
+    for (int i = 0; i < count; i++) {
+      auto spineEntry = readSpineEntryFrom(spineIn);
+      spineEntry.tocIndex = spineToTocIndex[i];
+
+      // Not a huge deal if we don't fine a TOC entry for the spine entry, this is expected behaviour for EPUBs
+      // Logging here is for debugging
+      if (spineEntry.tocIndex == -1) {
+        LOG_DBG("BMC", "Warning: Could not find TOC entry for spine item %d: %s, using title from last section",
+                first + i, spineEntry.href.c_str());
+        spineEntry.tocIndex = lastSpineTocIndex;
+      }
+      lastSpineTocIndex = spineEntry.tocIndex;
+
+      // Small books look every item up directly; a batch miss falls back the same way.
+      size_t itemSize = spineSizes[i];
       if (itemSize == 0) {
         const std::string path = FsHelpers::normalisePath(spineEntry.href);
         if (!zip.getInflatedFileSize(path.c_str(), &itemSize)) {
           LOG_ERR("BMC", "Warning: Could not get size for spine item: %s", path.c_str());
         }
       }
-    } else {
-      const std::string path = FsHelpers::normalisePath(spineEntry.href);
-      if (!zip.getInflatedFileSize(path.c_str(), &itemSize)) {
-        LOG_ERR("BMC", "Warning: Could not get size for spine item: %s", path.c_str());
-      }
+
+      cumSize += itemSize;
+      spineEntry.cumulativeSize = cumSize;
+
+      // Write out spine data to book.bin
+      writeSpineEntryTo(bookOut, spineEntry);
     }
-
-    cumSize += itemSize;
-    spineEntry.cumulativeSize = cumSize;
-
-    // Write out spine data to book.bin
-    writeSpineEntryTo(bookOut, spineEntry);
   }
   // Close opened zip file
   zip.close();
@@ -508,18 +513,10 @@ void BookMetadataCache::createTocEntry(const std::string& title, const std::stri
   int16_t spineIndex = -1;
 
   if (useSpineHrefIndex) {
-    uint64_t targetHash = fnvHash64(href);
-    uint16_t targetLen = static_cast<uint16_t>(href.size());
-
-    auto it =
-        std::lower_bound(spineHrefIndex.begin(), spineHrefIndex.end(), SpineHrefIndexEntry{targetHash, targetLen, 0},
-                         [](const SpineHrefIndexEntry& a, const SpineHrefIndexEntry& b) {
-                           return a.hrefHash < b.hrefHash || (a.hrefHash == b.hrefHash && a.hrefLen < b.hrefLen);
-                         });
-
-    while (it != spineHrefIndex.end() && it->hrefHash == targetHash && it->hrefLen == targetLen) {
+    const auto key = hrefKey(href, 0);
+    const auto it = std::lower_bound(spineHrefIndex.begin(), spineHrefIndex.end(), key);
+    if (it != spineHrefIndex.end() && it->sameKey(key)) {
       spineIndex = it->spineIndex;
-      break;
     }
 
     if (spineIndex == -1) {
@@ -556,6 +553,7 @@ bool BookMetadataCache::load() {
   loaded = false;
   tocCursor.reset();
   cumulativeSizes.reset();
+  itemSizes.reset();
   spineCount = tocCount = 0;
   if (bookFile) bookFile.close();
   if (!Storage.openFileForRead("BMC", cachePath + bookBinFile, bookFile)) return false;
@@ -565,6 +563,7 @@ bool BookMetadataCache::load() {
     tocCursor.reset();
     bookFile.close();
     cumulativeSizes.reset();
+    itemSizes.reset();
     spineCount = tocCount = 0;
     return false;
   };
@@ -585,7 +584,9 @@ bool BookMetadataCache::load() {
       lutOffset > fileSize || lutSize > fileSize - lutOffset)
     return fail();
 
-  cumulativeSizes = makeUniqueNoThrow<uint32_t[]>(spineCount);
+  itemSizes = makeUniqueNoThrow<uint16_t[]>(spineCount);
+  cumulativeSizes =
+      makeUniqueNoThrow<uint32_t[]>(itemSizes ? (spineCount + CUMULATIVE_STRIDE - 1) / CUMULATIVE_STRIDE : spineCount);
   if (!cumulativeSizes) return fail();
 
   // Two sequential streams validate every LUT pointer and record, including the
@@ -598,14 +599,31 @@ bool BookMetadataCache::load() {
   serialization::BufferedFileReader dataBuffer(bookFile, BUILD_IO_BUFFER_SIZE);
   MetadataReader lut(lutBuffer, lutOffset + lutSize);
   MetadataReader data(dataBuffer, fileSize);
+  uint32_t previous = 0;
   for (uint16_t i = 0; i < spineCount; ++i) {
     uint32_t offset = 0;
     if (!lut.pod(offset) || offset != data.position()) return fail();
     const auto entry = readSpineEntryFrom(data);
     if (!data.ok() || entry.tocIndex < -1 || entry.tocIndex >= static_cast<int>(tocCount) ||
-        (i > 0 && entry.cumulativeSize < cumulativeSizes[i - 1]))
+        entry.cumulativeSize < previous)
       return fail();
-    cumulativeSizes[i] = entry.cumulativeSize;
+    if (itemSizes && entry.cumulativeSize - previous > UINT16_MAX) {
+      // First chapter of 64 KB or more: expand what was read into a flat table.
+      auto flat = makeUniqueNoThrow<uint32_t[]>(spineCount);
+      if (!flat) return fail();
+      for (uint16_t k = 0; k < i; ++k) {
+        flat[k] = k % CUMULATIVE_STRIDE == 0 ? cumulativeSizes[k / CUMULATIVE_STRIDE] : flat[k - 1] + itemSizes[k];
+      }
+      cumulativeSizes = std::move(flat);
+      itemSizes.reset();
+    }
+    if (!itemSizes) {
+      cumulativeSizes[i] = entry.cumulativeSize;
+    } else {
+      itemSizes[i] = static_cast<uint16_t>(entry.cumulativeSize - previous);
+      if (i % CUMULATIVE_STRIDE == 0) cumulativeSizes[i / CUMULATIVE_STRIDE] = entry.cumulativeSize;
+    }
+    previous = entry.cumulativeSize;
   }
   for (uint16_t i = 0; i < tocCount; ++i) {
     uint32_t offset = 0;
@@ -709,7 +727,11 @@ uint32_t BookMetadataCache::getCumulativeSize(const int index) const {
   if (!loaded || !cumulativeSizes || index < 0 || index >= spineCount) {
     return 0;
   }
-  return cumulativeSizes[index];
+  if (!itemSizes) return cumulativeSizes[index];
+  const int first = index / CUMULATIVE_STRIDE * CUMULATIVE_STRIDE;
+  uint32_t total = cumulativeSizes[first / CUMULATIVE_STRIDE];
+  for (int i = first + 1; i <= index; ++i) total += itemSizes[i];
+  return total;
 }
 
 BookMetadataCache::SpineEntry BookMetadataCache::getSpineEntry(const int index) {

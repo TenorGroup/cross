@@ -64,16 +64,31 @@ class BookMetadataCache {
   std::unique_ptr<serialization::BufferedFileWriter> passOut;
 
   // Cumulative spine sizes, cached in RAM at load() so progress/percent lookups are
-  // O(1) instead of 2 seeks + a heap-allocating SpineEntry read per access (4 bytes
-  // per spine item; <1KB for typical books).
-  std::unique_ptr<uint32_t[]> cumulativeSizes;
+  // O(1) instead of 2 seeks + a heap-allocating SpineEntry read per access. The
+  // table stays resident beside the page-turner radio for the whole session, so
+  // chapter sizes that fit 16 bits are kept as two bytes each plus one exact
+  // running total per CUMULATIVE_STRIDE items; a book with a chapter of 64 KB
+  // or more keeps a flat table of four bytes per item.
+  static constexpr uint16_t CUMULATIVE_STRIDE = 32;
+  std::unique_ptr<uint32_t[]> cumulativeSizes;  // flat table, or one total per stride
+  std::unique_ptr<uint16_t[]> itemSizes;        // per-item sizes; null for a flat table
 
-  // Index for fast href→spineIndex lookup (used only for large EPUBs)
+  // Index for fast href→spineIndex lookup (used only for large EPUBs). The
+  // key is the low 48 bits of the FNV-1a 64-bit hash: eight bytes per spine
+  // item instead of sixteen, and still no expected collision at 32k items.
   struct SpineHrefIndexEntry {
-    uint64_t hrefHash;  // FNV-1a 64-bit hash
-    uint16_t hrefLen;   // length for collision reduction
+    uint32_t hashLow;
+    uint16_t hashHigh;
     int16_t spineIndex;
+    bool operator<(const SpineHrefIndexEntry& o) const {
+      return hashHigh < o.hashHigh || (hashHigh == o.hashHigh && hashLow < o.hashLow);
+    }
+    bool sameKey(const SpineHrefIndexEntry& o) const { return hashHigh == o.hashHigh && hashLow == o.hashLow; }
   };
+  static SpineHrefIndexEntry hrefKey(const std::string& href, const int16_t spineIndex) {
+    const uint64_t hash = fnvHash64(href);
+    return {static_cast<uint32_t>(hash), static_cast<uint16_t>(hash >> 32), spineIndex};
+  }
   std::deque<SpineHrefIndexEntry> spineHrefIndex;
   bool useSpineHrefIndex = false;
 
