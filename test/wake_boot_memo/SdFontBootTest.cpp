@@ -192,7 +192,10 @@ TEST(SdFontMemo, KeepsOneFamilyExactly) {
   EXPECT_FALSE(sdfontmemo::restore(memo, true, "Bokerlamm", back));
 }
 
-TEST(SdFontMemo, AnyChangedByteIsNoMemo) {
+// The memo is only read on a wake from deep sleep, after the boot before it rewrote it, so it is
+// not checksummed. Whatever it says is checked where it matters: the tag, the family name and the
+// bounds here, the file names by the load itself (MemoOfAFileGoneFromTheCardFallsBackToTheWalk).
+TEST(SdFontMemo, WrongTagNameOrBoundsIsNoMemo) {
   SdCardFontFamilyInfo info;
   info.name = "Bokerlam";
   info.stems = {"Bokerlam-SD"};
@@ -200,12 +203,23 @@ TEST(SdFontMemo, AnyChangedByteIsNoMemo) {
   sdfontmemo::Memo memo{};
   ASSERT_TRUE(sdfontmemo::save(info, memo));
   SdCardFontFamilyInfo back;
-  for (const size_t at : {offsetof(sdfontmemo::Memo, name) + 1, offsetof(sdfontmemo::Memo, stem) + 3,
-                          offsetof(sdfontmemo::Memo, count), offsetof(sdfontmemo::Memo, sizes)}) {
-    auto broken = memo;
-    reinterpret_cast<uint8_t*>(&broken)[at] ^= 0x10;
-    EXPECT_FALSE(sdfontmemo::restore(broken, true, "Bokerlam", back)) << at;
+  auto broken = memo;
+  broken.magic ^= 1;
+  EXPECT_FALSE(sdfontmemo::restore(broken, true, "Bokerlam", back));
+  broken = memo;
+  broken.name[1] ^= 0x10;
+  EXPECT_FALSE(sdfontmemo::restore(broken, true, "Bokerlam", back));
+  for (const uint8_t count : {uint8_t{0}, uint8_t{sdfontmemo::MAX_SIZES + 1}, uint8_t{255}}) {
+    broken = memo;
+    broken.count = count;
+    EXPECT_FALSE(sdfontmemo::restore(broken, true, "Bokerlam", back)) << int(count);
   }
+  broken = memo;
+  memset(broken.name, 'x', sizeof(broken.name));
+  EXPECT_FALSE(sdfontmemo::restore(broken, true, "Bokerlam", back));
+  broken = memo;
+  memset(broken.stem, 'x', sizeof(broken.stem));
+  EXPECT_FALSE(sdfontmemo::restore(broken, true, "Bokerlam", back));
   sdfontmemo::Memo zero{};
   EXPECT_FALSE(sdfontmemo::restore(zero, true, "", back));
 }

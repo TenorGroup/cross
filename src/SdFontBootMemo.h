@@ -2,7 +2,6 @@
 
 #include <SdCardFontRegistry.h>
 
-#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -20,25 +19,12 @@ constexpr size_t MAX_SIZES = 24;
 
 struct Memo {
   uint32_t magic;
-  uint32_t sum;
   char name[32];
   char stem[40];
   uint8_t hiddenRoot;
   uint8_t count;
   uint8_t sizes[MAX_SIZES];
 };
-
-// FNV-1a over the fields from name to the last size: they sit back to back, so padding never
-// enters the sum.
-inline uint32_t checksum(const Memo& memo) {
-  const auto* bytes = reinterpret_cast<const uint8_t*>(&memo);
-  uint32_t hash = 2166136261u;
-  for (size_t i = offsetof(Memo, name); i < offsetof(Memo, sizes) + MAX_SIZES; ++i) {
-    hash ^= bytes[i];
-    hash *= 16777619u;
-  }
-  return hash;
-}
 
 // False, with the memo cleared, for a family the memo cannot describe.
 inline bool save(const SdCardFontFamilyInfo& family, Memo& memo) {
@@ -55,7 +41,6 @@ inline bool save(const SdCardFontFamilyInfo& family, Memo& memo) {
   memcpy(memo.stem, family.stems[0].c_str(), family.stems[0].size());
   memo.hiddenRoot = family.hiddenRoot ? 1 : 0;
   memo.count = static_cast<uint8_t>(family.files.size());
-  memo.sum = checksum(memo);
   memo.magic = MAGIC;
   return true;
 }
@@ -63,14 +48,13 @@ inline bool save(const SdCardFontFamilyInfo& family, Memo& memo) {
 // Fills `out`, an empty family, with the one named `wanted` from the memo; false when this boot
 // must scan.
 inline bool restore(const Memo& memo, const bool deepSleepWake, const char* wanted, SdCardFontFamilyInfo& out) {
-  if (!deepSleepWake || memo.magic != MAGIC || memo.sum != checksum(memo) || memo.count == 0 ||
+  if (!deepSleepWake || memo.magic != MAGIC || memo.count == 0 ||
       memo.count > MAX_SIZES || memo.name[sizeof(memo.name) - 1] != '\0' || memo.stem[sizeof(memo.stem) - 1] != '\0' ||
       strcmp(memo.name, wanted) != 0) {
     return false;
   }
-  out.name = memo.name;
-  out.stems.push_back(out.name);  // one entry, then its text: reuses the registry's own insert
-  out.stems.back() = memo.stem;
+  out.name = std::string(memo.name);
+  out.stems.push_back(std::string(memo.stem));
   out.hiddenRoot = memo.hiddenRoot != 0;
   for (uint8_t i = 0; i < memo.count; ++i) out.files.push_back({memo.sizes[i], 0, 0});
   return true;

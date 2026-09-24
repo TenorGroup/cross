@@ -199,7 +199,6 @@ void HalGPIO::begin() {
   if (panelmemo::read(panelMemo, esp_reset_reason() == ESP_RST_DEEPSLEEP, controller, variant)) {
     BoardConfig::ACTIVE.displayController = static_cast<BoardConfig::DisplayController>(controller);
     BoardConfig::ACTIVE.displayControllerVariant = variant;
-    LOG_INF("HW", "Panel controller kept from sleep: %u", controller);
   } else {
     panelMemo = {};
     freeink::applyXteinkDisplayController();

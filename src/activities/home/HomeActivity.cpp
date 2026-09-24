@@ -55,6 +55,8 @@
 
 namespace fui = freeink::ui;
 
+void saveAppState();  // main.cpp
+
 namespace {
 constexpr StrId TAB_NAMES[HomeActivity::TAB_COUNT] = {StrId::STR_HOME_TAB_RECENT, StrId::STR_HOME_TAB_FOLDER,
                                                       StrId::STR_HOME_TAB_STATS, StrId::STR_SETTINGS_TITLE,
@@ -691,9 +693,11 @@ void HomeActivity::render(RenderLock&&) {
           static_cast<unsigned long>(chromeUs), static_cast<unsigned long>(uiUs),
           static_cast<unsigned long>(footerUs), rebuildPasses);
 #endif
-  cleanInitialRefresh = false;
   LOG_INF("HOME", "Frame row=%d top=%d total=%lums heap=%u", ringPos(), activeNav().top,
           static_cast<unsigned long>(millis() - started), ESP.getFreeHeap());
+  // The wake's first frame is up: now write the splash setup() re-armed (see setup()).
+  if (cleanInitialRefresh) saveAppState();
+  cleanInitialRefresh = false;
 }
 
 bool HomeActivity::storeCoverBuffer() {
@@ -981,14 +985,10 @@ void HomeActivity::drawRecentCard() {
   const char* author = book.author.empty() ? tr(STR_RECENT_NO_AUTHOR) : book.author.c_str();
   renderer.drawText(UI_10_FONT_ID, card.textX, card.authorY,
                     renderer.truncatedText(UI_10_FONT_ID, author, card.textW).c_str());
-  // Where the build time goes, one mark per step, logged with the build total below.
-  uint32_t marks[6];
-  marks[0] = millis();
   // A saved quote of the book goes in curly quotes; the page excerpt the reader left on is shown
   // as it is, as in the approved drawings.
   bool quoted = false;
   const auto excerpt = cardExcerpt(shown, quoted);
-  marks[1] = millis();
   const bool cjkExcerpt = homeExcerptUsesUiFont(excerpt.c_str());
   const int quoteFont = excerpt.empty() ? SMALL_FONT_ID : cjkExcerpt ? UI_12_FONT_ID : serifFont;
   const auto quoteStyle = excerpt.empty() || cjkExcerpt ? EpdFontFamily::REGULAR : EpdFontFamily::ITALIC;
@@ -1000,14 +1000,12 @@ void HomeActivity::drawRecentCard() {
   // on the X3. Prewarm once; the slot is released after the card is cached.
   auto* fcm = renderer.getFontCacheManager();
   if (fcm) fcm->prewarmCache(quoteFont, quote.c_str(), static_cast<uint8_t>(1u << quoteStyle));
-  marks[2] = millis();
   y = card.excerptY;
   for (const auto& line : renderer.wrappedText(quoteFont, quote.c_str(), card.textW, card.excerptLines, quoteStyle)) {
     renderer.drawText(quoteFont, card.textX, y, line.c_str(), true, quoteStyle);
     y += renderer.getLineHeight(quoteFont);
   }
   const int textBottom = std::min(y, card.ruleY - 1);
-  marks[3] = millis();
   // The reader writes a thumbnail at the card's own height and one at the theme's; the card's is
   // drawn at its own size, the theme's is the fallback for a book not opened since that began.
   bool image = false;
@@ -1035,7 +1033,6 @@ void HomeActivity::drawRecentCard() {
   // would not cover: a few hundred pixels, no second buffer, and the cached card keeps them.
   renderer.maskRoundedRectOutsideCorners(card.coverX, card.coverY, card.coverW, card.coverH,
                                          tenorradius::cover(card.coverW));
-  marks[4] = millis();
   // Cache the cover and the text block, including typography, only while Home owns them.
   // onPause/onExit release this bounded region before a book or network screen opens.
   coverRectX = card.coverX;
@@ -1050,7 +1047,6 @@ void HomeActivity::drawRecentCard() {
   coverBufferBook = shown;
   coverRendered = true;
   if (fcm) fcm->releaseBuiltinPageCaches();  // the card is now a cached bitmap
-  marks[5] = millis();
   loadCardStats(book);
   const int barY = drawCardStats(card);
   drawOtherBookRow(shown, card.ruleY, card.rowY);
@@ -1058,12 +1054,8 @@ void HomeActivity::drawRecentCard() {
   LOG_INF("HOME_PROBE", "card_build_us=%lu cache_bytes=%u", static_cast<unsigned long>(micros() - cardStartedUs),
           static_cast<unsigned>(coverBufferSize));
 #endif
-  const uint32_t finished = millis();
-  LOG_INF("HOME", "Recent card build=%lums cache=%u cover=%d title=%lu quote=%lu warm=%lu text=%lu image=%lu keep=%lu",
-          static_cast<unsigned long>(finished - started), static_cast<unsigned>(coverBufferSize), coverHeight,
-          static_cast<unsigned long>(marks[0] - started), static_cast<unsigned long>(marks[1] - marks[0]),
-          static_cast<unsigned long>(marks[2] - marks[1]), static_cast<unsigned long>(marks[3] - marks[2]),
-          static_cast<unsigned long>(marks[4] - marks[3]), static_cast<unsigned long>(marks[5] - marks[4]));
+  LOG_INF("HOME", "Recent card build=%lums cache=%u cover=%d", static_cast<unsigned long>(millis() - started),
+          static_cast<unsigned>(coverBufferSize), coverHeight);
   LOG_INF("HOME", "Card stats rows=%02x bar=%d", static_cast<unsigned>(cardStats.rows), barY);
 }
 

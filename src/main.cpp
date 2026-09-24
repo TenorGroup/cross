@@ -338,9 +338,15 @@ static bool loadSleepFrameBuffer() {
     Storage.remove(SLEEP_FRAME_FILE);
     return false;
   }
-  Storage.remove(SLEEP_FRAME_FILE);
+  // Kept: every sleep rewrites or removes it before the flag that reads it is cleared again, and a
+  // wake cut off before its first frame retries from the same frame. Deleting it was a card write
+  // on the wake path.
   return true;
 }
+
+// Home's first frame after a wake writes the re-armed splash through this one copy of the store's
+// save, which setup() and the sleep path already link.
+void saveAppState() { APP_STATE.saveToFile(); }
 
 static void sleepUntilPowerButton() {
 #ifndef SIMULATOR
@@ -678,6 +684,8 @@ void setup() {
                             : isPersistedSleepWake ? BootResume::SplashlessWake
                                                    : BootResume::Splash;
   bool needsWakeRefresh = false;
+  const bool wakeToBook = isSleepWake && SETTINGS.wakeIntoBook && APP_STATE.lastSleepFromReader &&
+                          !APP_STATE.openEpubPath.empty() && Storage.exists(APP_STATE.openEpubPath.c_str());
 
   setupDisplayAndFonts(resume != BootResume::Splash);
   logHeapMark("display-and-fonts");
@@ -688,16 +696,18 @@ void setup() {
       // panel keeps showing the pre-reboot popup until that first paint lands.
       break;
     case BootResume::SplashlessWake: {
-      // One-shot flag: re-arm the splash for the next ordinary boot. Save
-      // before any painting so a hang in the blocking paint path can't strand
-      // us in a splashless-with-no-frame loop on the next boot.
-      const uint32_t wakeStarted = millis();
+      // One-shot flag: re-arm the splash for the next ordinary boot. Set here,
+      // written once the first frame is up (HomeActivity::render); every other
+      // first screen writes it now, before it paints. Until then the card still
+      // says "asleep", so a wake cut off before its first frame (power lost, a
+      // hang) is simply repeated from the same kept frame. Writing in memory
+      // first means a sleep started meanwhile clears it again, and whichever
+      // save runs last writes that. A crash reboot shows the splash and
+      // re-arms the flag below.
       APP_STATE.showBootScreen = true;
-      APP_STATE.saveToFile();
-      const uint32_t stateSaved = millis();
-      const bool frameRestored = Storage.exists(SLEEP_FRAME_FILE) && loadSleepFrameBuffer();
-      const uint32_t frameRead = millis();
-      if (frameRestored) {
+      if (recoveryFirmwareMode || rebootedFromPanic || wakeToBook) APP_STATE.saveToFile();
+      const uint32_t wakeStarted = millis();
+      if (Storage.exists(SLEEP_FRAME_FILE) && loadSleepFrameBuffer()) {
         if (gpio.deviceIsX3()) {
           // Restore controller RAM without activating a waveform. The first
           // Home/Reader paint cleans directly from this retained sleep frame.
@@ -705,12 +715,15 @@ void setup() {
         }
         LOG_DBG("MAIN", "Restored sleep frame baseline");
       }
-      LOG_INF("BOOT", "Wake state=%lu frame=%lu panel=%lu ms", static_cast<unsigned long>(stateSaved - wakeStarted),
-              static_cast<unsigned long>(frameRead - stateSaved), static_cast<unsigned long>(millis() - frameRead));
+      LOG_INF("BOOT", "Wake frame=%lu ms", static_cast<unsigned long>(millis() - wakeStarted));
       needsWakeRefresh = true;
       break;
     }
     case BootResume::Splash:
+      if (!APP_STATE.showBootScreen) {
+        APP_STATE.showBootScreen = true;
+        APP_STATE.saveToFile();
+      }
       activityManager.goToBoot();
       break;
   }
@@ -718,7 +731,6 @@ void setup() {
   // Output polarity is resolved per render by ActivityManager (night mode
   // inverts only the reading surfaces), so nothing to restore here.
 
-  const uint32_t routeStarted = millis();
   if (recoveryFirmwareMode) {
     // Skip normal home/reader routing: jump straight into the SD firmware picker.
     activityManager.replaceActivity(
@@ -734,8 +746,7 @@ void setup() {
     // through to the sleep-wake "resume reader" logic, which fires on stale
     // openEpubPath + lastSleepFromReader from a prior session.
     activityManager.goHome(snapshotHomeMenu);
-  } else if (isSleepWake && SETTINGS.wakeIntoBook && APP_STATE.lastSleepFromReader &&
-             !APP_STATE.openEpubPath.empty() && Storage.exists(APP_STATE.openEpubPath.c_str())) {
+  } else if (wakeToBook) {
     // Wake straight back into the book that was open at sleep. The reader's
     // first paint is a cleaning waveform (allowFastInitialRefresh stays false),
     // which is the pass that takes the retained sleep frame off the panel.
@@ -743,7 +754,6 @@ void setup() {
   } else {
     activityManager.goHome(HomeMenuItem::RECENT_CONTINUE, needsWakeRefresh);
   }
-  LOG_INF("BOOT", "First screen entered in %lu ms", static_cast<unsigned long>(millis() - routeStarted));
 
   if (resume == BootResume::Silent) {
     // Block until the first paint physically completes. refreshDisplay()

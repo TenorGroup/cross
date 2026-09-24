@@ -2335,23 +2335,29 @@ bool GfxRenderer::drawBitmapCover(const Bitmap& bitmap, int x, int y, int width,
   const float cropY = (sourceH - height / scale) / 2;
   auto* pixels = static_cast<uint8_t*>(malloc((sourceW + 3) / 4));
   auto* row = static_cast<uint8_t*>(malloc(bitmap.getRowBytes()));
-  if (!pixels || !row) {
+  // The source column of each screen column, worked out once: without an FPU the float divide per
+  // pixel cost more than the whole row decode (about 480 ms for the 237 x 356 Home card on the X3).
+  auto* columns = static_cast<int16_t*>(malloc(sizeof(int16_t) * width));
+  if (!pixels || !row || !columns) {
     free(pixels);
     free(row);
+    free(columns);
     return false;
   }
+  for (int dx = 0; dx < width; ++dx) columns[dx] = std::min(sourceW - 1, int(cropX + dx / scale));
   int destY = bitmap.isTopDown() ? 0 : height - 1;
   const int step = bitmap.isTopDown() ? 1 : -1;
   for (int sourceRow = 0; sourceRow < sourceH && destY >= 0 && destY < height; ++sourceRow) {
     if (bitmap.readNextRow(pixels, row) != BmpReaderError::Ok) {
       free(pixels);
       free(row);
+      free(columns);
       return false;
     }
     const int sy = bitmap.isTopDown() ? sourceRow : sourceH - 1 - sourceRow;
     while (destY >= 0 && destY < height && std::min(sourceH - 1, int(cropY + destY / scale)) == sy) {
       for (int dx = 0; dx < width; ++dx) {
-        const int sx = std::min(sourceW - 1, int(cropX + dx / scale));
+        const int sx = columns[dx];
         const auto value = (pixels[sx / 4] >> (6 - (sx % 4) * 2)) & 3;
         drawPixel(x + dx, y + destY, value < 2);
       }
@@ -2360,6 +2366,7 @@ bool GfxRenderer::drawBitmapCover(const Bitmap& bitmap, int x, int y, int width,
   }
   free(pixels);
   free(row);
+  free(columns);
   preserveImagePolarity(x, y, width, height);
   return true;
 }

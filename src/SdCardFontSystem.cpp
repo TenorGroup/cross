@@ -31,12 +31,6 @@ bool wokeFromDeepSleep() {
 #endif
 }
 
-void logCatalog(const int families) {
-  const auto heap = HalMemory::getInternalHeap();
-  LOG_INF("HEAP", "fonts-sd-registry free=%u largest=%u families=%d", static_cast<unsigned>(heap.freeBytes),
-          static_cast<unsigned>(heap.largestBlockBytes), families);
-}
-
 void snapFontPointSizeTo(const uint8_t availablePointSize) {
   if (availablePointSize == 0 || availablePointSize == SETTINGS.fontPointSize) return;
   LOG_DBG("SDFS", "Font size %u unavailable, snapping to %u", SETTINGS.fontPointSize, availablePointSize);
@@ -82,7 +76,6 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
       SETTINGS.clearSdFontFamily();
     }
   }
-  if (catalog_.load(std::memory_order_acquire) == CATALOG_PENDING) logCatalog(-1);
 }
 
 void SdCardFontSystem::markRegistryDirty() {
@@ -99,7 +92,9 @@ bool SdCardFontSystem::readCatalogIfPending() const {
   uint8_t expected = CATALOG_PENDING;
   if (catalog_.compare_exchange_strong(expected, CATALOG_READING, std::memory_order_acq_rel)) {
     registry_.discover();
-    logCatalog(registry_.getFamilyCount());
+    const auto heap = HalMemory::getInternalHeap();
+    LOG_INF("HEAP", "fonts-sd-registry free=%u largest=%u families=%d", static_cast<unsigned>(heap.freeBytes),
+            static_cast<unsigned>(heap.largestBlockBytes), registry_.getFamilyCount());
     catalog_.store(CATALOG_READY, std::memory_order_release);
     return true;
   }
