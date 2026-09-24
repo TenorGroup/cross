@@ -635,11 +635,12 @@ void SleepActivity::onEnter() {
     return renderTransparentCustomSleepScreen();
   }
 
-  // The switch promises a refresh the reader can see. On X3 a GC pass only drives the pixels
-  // that change, so the page underneath ghosts into a sleep image painted straight over it.
-  // Drive every pixel black, then white, first; quick resume and transparent keep the page
-  // itself and have returned above.
-  if (SleepGrayPlanes::wanted()) {
+  // The switch promises a refresh the reader can see. On the UC8279 X3 a GC pass only drives
+  // the pixels that change, so the page underneath ghosts into a sleep image painted straight
+  // over it. Drive every pixel black, then white, first; quick resume and transparent keep the
+  // page itself and have returned above. The earlier UC8253 X3 already flashes the whole panel
+  // on every full refresh, so it skips the extra passes.
+  if (SleepGrayPlanes::wanted() && display.getController() == HalDisplay::Controller::UC8279) {
     for (const uint8_t fill : {uint8_t{0x00}, uint8_t{0xFF}}) {
       LOG_DBG("SLP", "clear %s", fill == 0x00 ? "black" : "white");
       renderer.clearScreen(fill);
@@ -1190,8 +1191,8 @@ void SleepActivity::renderQuoteSleepScreen() const {
   const bool gray = hasCover && cover.hasGreyscale();
   if (gray && caps.supported()) {
     // Same panel sequence as the Tenor screen (X3BrandScreen.cpp): on X3 the two planes fold
-    // into one dithered B/W frame and a single GC pass shows it, which also clears what the
-    // reader left on the glass. setRenderMode(BW) would cancel an absolute pass once it has
+    // into one dithered B/W frame shown by a GC pass; the black and white passes in onEnter
+    // have already cleared what the reader left on the UC8279 glass. setRenderMode(BW) would cancel an absolute pass once it has
     // begun, so inside the pass the mode only moves between the planes.
     const bool fold = SleepGrayPlanes::wanted();
     SleepGrayPlanes planes(renderer, fold);

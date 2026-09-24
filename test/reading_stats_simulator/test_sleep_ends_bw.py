@@ -150,7 +150,7 @@ class SleepEndsBwTest(unittest.TestCase):
             self.assertNotIn('[SLP] clear black', steps, steps)
         self.assertTrue(ops, sleep)
         self.assertEqual(ops[-1], 'displayBuffer, mode=0', ops)
-        # No gray waveform anywhere in the sleep path: the full refresh already clears the page.
+        # No gray waveform anywhere in the sleep path.
         self.assertNotIn('displayGrayBuffer', ops)
         self.assertEqual([op for op in ops if op.startswith('displayGrayscaleBase')], [])
 
@@ -234,6 +234,20 @@ class SleepEndsBwTest(unittest.TestCase):
                     found = self.dither_blocks(image, (0, 0, 528, 792))
                     self.assertGreater(found[4], 100, found)
                     self.assertGreater(found[12], 100, found)
+
+    @unittest.skipUnless(os.environ.get('SLEEP_UC8253_PROGRAM'), 'set SLEEP_UC8253_PROGRAM to a simulator_x3 build')
+    def test_uc8253_paints_without_clear(self):
+        # The black and white passes exist for the UC8279, whose GC pass drives only the pixels that
+        # change. The earlier UC8253 X3 rewrites its previous-frame plane white on every full refresh,
+        # so each such refresh already flashes the whole panel: extra passes there only add flashes.
+        global PROGRAM
+        saved, PROGRAM = PROGRAM, Path(os.environ['SLEEP_UC8253_PROGRAM'])
+        try:
+            sd = self.make_sd('uc8253-tenor', 8)
+            log, sleep, image = self.sleep_once(sd, 'uc8253-tenor')
+        finally:
+            PROGRAM = saved
+        self.assertNotIn('[SLP] clear', sleep)
 
     def test_switch_on_by_default_and_when_set(self):
         # The fixtures above write no sleepBwRefresh key: those runs are the default.

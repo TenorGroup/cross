@@ -32,9 +32,10 @@ bool renderX3BrandScreen(GfxRenderer& renderer, const bool boot) {
     if (boot) renderer.drawCenteredText(SMALL_FONT_ID, x3brand::HEIGHT - 30, CROSSPOINT_VERSION);
     return true;
   };
-  // Sleep folds the two planes into one dithered B/W frame and shows it with a single GC pass
-  // (SleepGrayPlanes.h): the glass holds it unpowered for hours, and the GC pass also erases
-  // what the reader left there. Boot keeps the absolute gray waveform: it is repainted within
+  // Sleep folds the two planes into one dithered B/W frame and shows it with a GC pass
+  // (SleepGrayPlanes.h): the glass holds it unpowered for hours. On the UC8279 a GC pass only
+  // drives the pixels that change, so SleepActivity first drives the panel black and white to
+  // erase what the reader left there. Boot keeps the absolute gray waveform: it is repainted within
   // seconds, and the controller init already forces GC on the next two content paints.
   const bool fold = !boot && SleepGrayPlanes::wanted();
   SleepGrayPlanes planes(renderer, fold);
