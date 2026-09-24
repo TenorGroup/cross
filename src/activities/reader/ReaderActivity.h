@@ -63,7 +63,8 @@ class ReaderActivity : public Activity {
   // remote report or a chapter jump still replaces the queue with its own direction.
   static constexpr int8_t MAX_QUEUED_TURNS = 8;
   void queuePageTurn(bool isForward, bool isLocal, const char* reason);
-  int8_t pendingExternalTurn = 0;
+  // Atomic: the render task reads it to skip a gray pass nobody will see (nextScreenWaiting).
+  std::atomic<int8_t> pendingExternalTurn{0};
   bool pendingTurnIsLocal = false;
   bool pendingExternalChapter = false;
   uint32_t pendingExternalGeneration = 0;
@@ -101,6 +102,9 @@ class ReaderActivity : public Activity {
   virtual void onEndOfBookRendered() {}
 
   bool handleBackNavigation();
+  // Set once Back has asked to leave. The render task reads it: a paint still running then skips
+  // its gray pass instead of holding the exit behind it.
+  std::atomic<bool> leaving{false};
   /** True while the end-of-book suggestion menu is on screen and owning input. */
   bool endOfBookMenuActive() const;
   bool handleEndOfBookMenu(bool suppressConfirmRelease = false);
@@ -152,6 +156,10 @@ class ReaderActivity : public Activity {
   // closed, or by onExit() (sleep included), so a crash in the menu loses at most the reading
   // since the last checkpoint, the same bound as a crash on the page.
   bool pauseKeepsStatsInRam = false;
+  // The page's excerpt for the recent card. Home reads it from RAM; recent.json is rewritten by
+  // onExit() after Home's first frame, so a power cut before then loses only the excerpt.
+  void rememberExcerpt(const std::string& text);
+  bool excerptUnsaved = false;
 
  public:
   void loop() override;

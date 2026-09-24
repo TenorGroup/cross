@@ -35,6 +35,8 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
   void addBook(const std::string& path, const std::string& title, const std::string& author,
                const std::string& coverBmpPath);
 
+  // RAM only; true when the excerpt changed and recent.json needs a save. Home reads it from RAM,
+  // so the reader leaves the file for after Home's first frame (ReaderActivity::onExit).
   bool rememberExcerpt(const std::string& path, const std::string& text);
   void updateBook(const std::string& path, const std::string& title, const std::string& author,
                   const std::string& coverBmpPath);

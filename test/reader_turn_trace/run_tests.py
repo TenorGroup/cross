@@ -53,7 +53,9 @@ trace_match = re.search(r"(#ifdef TENOR_(?:UI_ACCEPTANCE|TURN_TRACE)\n  struct T
 trace_fields = trace_match.group(1) if trace_match else ""
 trace_present = bool(trace_match)
 epub_trace_match = re.search(r"(?m)^  TurnTrace pendingManualTurnTrace;", epub_header)
-epub_fields = re.search(r"(?m)^  int8_t pendingManualTurn = 0;", epub_header).group(0)
+# v1.0.14 made the queue atomic so the render task can read it; the projection takes either form.
+epub_fields = re.search(r"(?m)^  (?:int8_t pendingManualTurn = 0|std::atomic<int8_t> pendingManualTurn\{0\});",
+                        epub_header).group(0)
 if epub_trace_match:
     epub_fields += "\n#ifdef TENOR_TURN_TRACE\n" + epub_trace_match.group(0) + "\n#endif"
 names = ["pageTurn", "pageTurnLocked", "luotLatTrangNgoai", "processExternalPageTurn", "onPause", "onResume", "loop"]

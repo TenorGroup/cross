@@ -150,5 +150,5 @@ bool RecentBooksStore::rememberExcerpt(const std::string& path, const std::strin
       std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& b) { return b.path == path; });
   if (found == recentBooks.end() || found->excerpt == text) return false;
   found->excerpt = text;
-  return saveToFile();
+  return true;
 }

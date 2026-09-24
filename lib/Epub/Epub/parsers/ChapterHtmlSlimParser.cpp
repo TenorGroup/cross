@@ -2204,7 +2204,9 @@ void ChapterHtmlSlimParser::trackCheckpointEnd(const XML_Char* name) {
   checkpointPrefix_.resize(checkpointPrefixEnds_[checkpointDepth_]);
   // The block-closing path constructs a fresh empty ParsedText and clears
   // currentCssStyle. Soft-flush and inline boundaries carry more layout state.
-  if (replayingCheckpoint_ || buildFailed_ || completedPageCount <= stepStartPages_ ||
+  // A page finished in this step, or a requested checkpoint once any page is done (a restore needs one).
+  const bool pageBoundary = completedPageCount > stepStartPages_ || (checkpointWanted_ && completedPageCount > 0);
+  if (replayingCheckpoint_ || buildFailed_ || !pageBoundary ||
       !isHeaderOrBlock(name) || strcmp(name, "br") == 0 || !insideBody ||
       checkpointUnsupported_ != 0 || checkpointDepth_ == 0 || skipUntilDepth != INT_MAX ||
       boldUntilDepth != INT_MAX || italicUntilDepth != INT_MAX || partWordBufferIndex != 0 ||
@@ -2225,6 +2227,13 @@ void ChapterHtmlSlimParser::trackCheckpointEnd(const XML_Char* name) {
   if (XML_StopParser(xmlParser_, XML_TRUE) == XML_STATUS_ERROR) return;
   checkpointOffset_ = static_cast<uint32_t>(offset);
   checkpointReady_ = true;
+  checkpointWanted_ = false;
+}
+
+bool ChapterHtmlSlimParser::requestCheckpoint() {
+  if (!checkpointAllowed_ || buildFailed_) return false;
+  checkpointWanted_ = true;
+  return true;
 }
 
 bool ChapterHtmlSlimParser::hasCheckpoint() const {

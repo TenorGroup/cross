@@ -141,6 +141,15 @@ void ReaderActivity::onExit() {
   // rebuilt by the next page prewarm, so hand them back here.
   if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
 
+  if (excerptUnsaved) {
+    excerptUnsaved = false;
+    if (sleeping) {
+      RECENT_BOOKS.saveToFile();
+    } else {
+      activityManager.deferWrite([] { RECENT_BOOKS.saveToFile(); });
+    }
+  }
+
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   if (!preview) {
     APP_STATE.readerActivityLoadCount = 0;
@@ -153,6 +162,10 @@ void ReaderActivity::onExit() {
 
   endOfBookOptions.reset();
   endOfBookOptionsReady.store(false, std::memory_order_release);
+}
+
+void ReaderActivity::rememberExcerpt(const std::string& text) {
+  if (RECENT_BOOKS.rememberExcerpt(bookPath, text)) excerptUnsaved = true;
 }
 
 void ReaderActivity::updateReadingTime(const bool active) {
@@ -218,7 +231,11 @@ void ReaderActivity::onResume() {
   statsActive = false;
 }
 
-bool ReaderActivity::handleBackNavigation() { return ReaderUtils::handleBackNavigation(mappedInput, activityManager); }
+bool ReaderActivity::handleBackNavigation() {
+  if (!ReaderUtils::handleBackNavigation(mappedInput, activityManager)) return false;
+  leaving.store(true, std::memory_order_release);
+  return true;
+}
 
 void ReaderActivity::clearEndOfBookOptionsIfNeeded() {
   if (isAtEndOfBook() || !endOfBookOptionsReady.load(std::memory_order_acquire)) return;
@@ -411,7 +428,8 @@ bool ReaderActivity::pageTurn(const bool isForward) {
 }
 
 void ReaderActivity::queuePageTurn(const bool isForward, const bool isLocal, const char* reason) {
-  const int queued = isLocal && pendingTurnIsLocal && !pendingExternalChapter ? pendingExternalTurn : 0;
+  int queued = 0;
+  if (isLocal && pendingTurnIsLocal && !pendingExternalChapter) queued = pendingExternalTurn;
   pendingExternalTurn =
       static_cast<int8_t>(std::clamp<int>(queued + (isForward ? 1 : -1), -MAX_QUEUED_TURNS, MAX_QUEUED_TURNS));
   pendingExternalChapter = false;

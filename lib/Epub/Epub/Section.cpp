@@ -593,7 +593,15 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     return false;
   }
   if (partial_) {
+#ifdef TENOR_PRESS_PROBE
+    const uint32_t restoreStarted = millis();
+    const bool restored = restorePartialBuild();
+    LOG_INF("SCT", "RESTORE ok=%u pages=%u ms=%lu", restored ? 1u : 0u, static_cast<unsigned>(partialPageCount_),
+            static_cast<unsigned long>(millis() - restoreStarted));
+    if (restored) {
+#else
     if (restorePartialBuild()) {
+#endif
       LOG_INF("SCT", "Resumed checkpoint: %u pages, HTML byte %u", builtPageCount_,
               static_cast<unsigned>(build_->parser->parseBytesConsumed()));
     } else {
@@ -615,7 +623,12 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
         abandonBuild();
         return false;
       }
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("SCT", "Partial checkpoint unavailable; rebuilding from chapter start pages=%u",
+              static_cast<unsigned>(partialPageCount_));
+#else
       LOG_DBG("SCT", "Partial checkpoint unavailable; rebuilding from chapter start");
+#endif
     }
   }
 #ifdef TENOR_UI_ACCEPTANCE
@@ -704,10 +717,48 @@ bool Section::restorePartialBuild() {
   return previous.close();
 }
 
+bool Section::stepHeapAvailable() {
+  return ESP.getFreeHeap() >= BUILD_STEP_MIN_FREE_HEAP && ESP.getMaxAllocHeap() >= BUILD_STEP_MIN_MAX_ALLOC;
+}
+
+// A checkpoint exists only right after the step that reached it, and a build yields on its time
+// budget far more often than on a finished page. Parking there failed, and the partial written
+// instead had no checkpoint, so every later turn laid the chapter out again from its first page
+// (783 to 857 ms a turn on the X3). One more paragraph of parsing is far cheaper.
+bool Section::reachCheckpoint() {
+  auto& parser = *build_->parser;
+  if (parser.hasCheckpoint()) return true;
+  if (builtPageCount_ == 0 || !parser.requestCheckpoint()) return false;
+  const uint32_t started = millis();
+  unsigned steps = 0;
+  while (!parser.hasCheckpoint() && steps < CHECKPOINT_REACH_MAX_STEPS &&
+         millis() - started < CHECKPOINT_REACH_MAX_MS && stepHeapAvailable()) {
+    const auto status = parser.parseStep();
+    ++steps;
+    if (status == ChapterHtmlSlimParser::ParseStatus::Error || build_->failed) break;
+    if (status == ChapterHtmlSlimParser::ParseStatus::Done) {
+      // The chapter ended first: the whole of it is laid out, nothing is left to hold.
+      return finalizeBuild();
+    }
+  }
+  build_->bytesConsumed = parser.parseBytesConsumed();
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("SCT", "CHECKPOINT_REACH ok=%u steps=%u ms=%lu pages=%u", parser.hasCheckpoint() ? 1u : 0u, steps,
+          static_cast<unsigned long>(millis() - started), static_cast<unsigned>(builtPageCount_));
+#endif
+  return parser.hasCheckpoint();
+}
+
 bool Section::parkBuild() {
   if (!build_ || build_->failed) return false;
   if (!build_->parser) return true;
-  if (!build_->parser->hasCheckpoint()) return false;
+  if (!reachCheckpoint()) {
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("SCT", "PARK_FAIL reason=no_checkpoint pages=%u", static_cast<unsigned>(builtPageCount_));
+#endif
+    return false;
+  }
+  if (!build_) return true;
 #ifdef TENOR_UI_ACCEPTANCE
   const auto started = millis();
 #endif
@@ -720,6 +771,9 @@ bool Section::parkBuild() {
   const bool closed = checkpoint.close();
   if (!written || !closed) {
     Storage.remove(checkpointTmpPath().c_str());
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("SCT", "PARK_FAIL reason=write pages=%u", static_cast<unsigned>(builtPageCount_));
+#endif
     return false;
   }
   build_->bytesConsumed = build_->parser->parseBytesConsumed();
@@ -787,7 +841,7 @@ bool Section::buildSomeMore(const int maxPages) {
 #endif
   unsigned steps = 0;
   for (;;) {
-    if (ESP.getFreeHeap() < BUILD_STEP_MIN_FREE_HEAP || ESP.getMaxAllocHeap() < BUILD_STEP_MIN_MAX_ALLOC) {
+    if (!stepHeapAvailable()) {
       LOG_ERR("SCT", "Build starved of heap free=%u largest=%u; parking after %u pages",
               static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
               static_cast<unsigned>(builtPageCount_));
@@ -851,6 +905,30 @@ std::optional<uint16_t> Section::findAnchor(const std::string& anchor) const {
   // Fall back to the on-disk anchor map: a finalized section, or a partial whose map
   // covers everything up to its watermark (nullopt past it -- build further and retry).
   return getPageForAnchor(anchor);
+}
+
+float Section::laidOutFraction() const {
+  if (build_ && builtPageCount_ >= pageCount && build_->totalBytes > 0) {
+    return std::min(1.0f, static_cast<float>(build_->bytesConsumed) / static_cast<float>(build_->totalBytes));
+  }
+  if (partial_ && partialTotalBytes_ > 0) {
+    return std::min(1.0f, static_cast<float>(partialBytesConsumed_) / static_cast<float>(partialTotalBytes_));
+  }
+  return build_ ? 0.0f : 1.0f;
+}
+
+uint16_t Section::pageAtFraction(const float fraction) const {
+  if (pageCount == 0) return 0;
+  const float laidOut = laidOutFraction();
+  const float share = laidOut > 0 ? std::min(1.0f, fraction / laidOut) : 1.0f;
+  const int page = static_cast<int>(share * static_cast<float>(pageCount));
+  return static_cast<uint16_t>(std::min(page, static_cast<int>(pageCount) - 1));
+}
+
+bool Section::coversVisibleTextOffset(const uint32_t offset) const {
+  if (pageCount < 2) return false;
+  const auto lastStart = getVisibleTextOffsetForPage(pageCount - 1);
+  return lastStart.has_value() && offset < *lastStart;
 }
 
 uint16_t Section::estimatedTotalPages() const {
@@ -1027,10 +1105,20 @@ bool Section::finalizeBuild() {
 
 void Section::suspendBuild() {
   if (!build_) return;
+#ifdef TENOR_PRESS_PROBE
+  // Teardown cost on the exit path: a parked build is reloaded only to be written out.
+  const uint32_t suspendStarted = millis();
+  const bool wasParked = !build_->parser;
+#endif
   if (build_->failed || !resumeParkedBuild() || build_->parser->hasFailed()) {
     abandonBuild();
     return;
   }
+  // The partial written below carries a checkpoint only when the parser sits at one; without it
+  // the next open lays the chapter out again from its first page.
+  // The chapter may end on the way: finalized (or failed to finalize), nothing is left to suspend.
+  if (builtPageCount_ > 0) reachCheckpoint();
+  if (!build_) return;
 
   // Only worth persisting if this build produced pages a pre-existing partial doesn't
   // already cover; otherwise keep the older (bigger) partial and just drop the tmp.
@@ -1065,6 +1153,10 @@ void Section::suspendBuild() {
   build_->lut.close();
   Storage.remove(lutTmpPath().c_str());
   Storage.remove(checkpointTmpPath().c_str());
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("SCT", "SUSPEND ms=%lu parked=%u committed=%u pages=%u", static_cast<unsigned long>(millis() - suspendStarted),
+          wasParked ? 1u : 0u, committed ? 1u : 0u, static_cast<unsigned>(builtPageCount_));
+#endif
   build_.reset();
   buildComplete_ = false;
   pageCount = partial_ ? partialPageCount_ : 0;

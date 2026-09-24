@@ -20,7 +20,6 @@
 #include "ReaderFontChon.h"
 #include "ReaderFontSizes.h"
 #include "ReaderUtils.h"
-#include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -651,7 +650,7 @@ void TxtReaderActivity::onExit() {
     auto excerpt = makeUniqueNoThrow<readingexcerpt::Builder>();
     if (excerpt) {
       for (const auto& line : currentPageLines) excerpt->line(line);
-      RECENT_BOOKS.rememberExcerpt(bookPath, excerpt->result());
+      rememberExcerpt(excerpt->result());
     }
   }
   ReaderActivity::onExit();

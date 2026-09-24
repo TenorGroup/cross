@@ -6,6 +6,7 @@ template<class F> void test(const char* name, F fn) {
   freeink::ble::readerStartDeferredState = false;
   freeink::ble::idleStoppedState = false;
   freeink::ble::stopForIdleCalls = freeink::ble::rearmRequests = 0;
+  freeink::ble::stopForIdleResult = true;
   clockMs = 1000; popupCount = buildErrors = 0; popupAtMs = 0; thumbs = {}; tenorchrome::enabledState = true;
   activityManager.sleepTransitionState = false; openWrites = {}; ImageBlock::hook = nullptr;
   try { fn(); std::cout << "PASS " << name << '\n'; }
@@ -623,6 +624,15 @@ int main() {
     require(buildErrors == 0 && r.section, "starved build reported as index failure");
     require(r.section->pageCount > r.section->currentPage, "starved build did not finish after radio release");
     require(r.radioReleasedForBuild, "radio release not remembered for rearm");
+  });
+  test("radio still up after the release timeout goes straight to the memory notice", [] {
+    EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = true; r.section->canPark = true;
+    r.section->starveUntilRadioStopped = true; r.section->currentPage = r.section->pageCount;
+    freeink::ble::stopForIdleResult = false;
+    { RenderLock held; r.foreground(); }
+    require(freeink::ble::stopForIdleCalls >= 1, "radio release not attempted");
+    require(r.section && r.section->ticks == 1, "retried the build with the radio still holding its heap");
+    require(buildErrors == 0 && popupCount == 1, "a radio still up did not fall back to the memory notice");
   });
   test("BLE enabled cold first page releases resident parser before first paint", [] {
     EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = true;

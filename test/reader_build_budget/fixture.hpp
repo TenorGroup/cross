@@ -90,7 +90,9 @@ inline bool busy() { return busyState; }
 inline bool initializing() { return initializingState; }
 inline bool readerStartDeferred() { return readerStartDeferredState; }
 inline bool idleStopped() { return idleStoppedState; }
-inline bool stopForIdle() { ++stopForIdleCalls; idleStoppedState = true; return true; }
+// False models a radio that does not come down within the release timeout.
+inline bool stopForIdleResult = true;
+inline bool stopForIdle() { ++stopForIdleCalls; if (stopForIdleResult) idleStoppedState = true; return stopForIdleResult; }
 inline void requestRearm() { ++rearmRequests; }
 inline bool heldForBuildState = false;
 inline void setRadioHeldForBuild(bool held) { heldForBuildState = held; }

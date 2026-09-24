@@ -61,6 +61,12 @@ class Section {
   std::unique_ptr<ChapterHtmlSlimParser> makeBuildParser(BuildContext* context, const ReaderRenderSpec& spec,
                                                          const std::function<void()>& popupFn = nullptr);
   bool resumeParkedBuild();
+  // Parse on to the next checkpoint, within CHECKPOINT_REACH_MAX_MS / _STEPS and the step heap floor.
+  // True with the parser at a checkpoint, or with the build finalized because the chapter ended.
+  bool reachCheckpoint();
+  static bool stepHeapAvailable();
+  static constexpr uint32_t CHECKPOINT_REACH_MAX_MS = 100;
+  static constexpr unsigned CHECKPOINT_REACH_MAX_STEPS = 24;
   std::unique_ptr<BuildContext> build_;
   bool buildComplete_ = false;
   bool buildStarved_ = false;
@@ -139,6 +145,19 @@ class Section {
   void suspendBuild();
   // True when a partial file was loaded: pageCount is a watermark, not the chapter total.
   bool isPartial() const { return partial_; }
+
+  // Share of the chapter's HTML behind the readable pages (0..1): the active build's parse
+  // position, a loaded partial's watermark, or 1 once laid out to the end.
+  float laidOutFraction() const;
+  // True once there is a readable page and the readable pages reach `fraction` of the chapter.
+  bool laidOutTo(float fraction) const { return pageCount > 0 && laidOutFraction() >= fraction; }
+  // The page at a share of the chapter (a go-to-percent target). A finished chapter scales its
+  // page count; one still being laid out scales the pages it has by the share they cover, so a
+  // jump only has to lay out as far as its target.
+  uint16_t pageAtFraction(float fraction) const;
+  // True when a readable page other than the last starts past `offset`, so the page holding it is
+  // known without laying out more (a partial's last page may run on past its watermark).
+  bool coversVisibleTextOffset(uint32_t offset) const;
 
   // Unified page read: from the active build if it has reached the page, otherwise from
   // the on-disk file (finalized section, or a partial the rebuild hasn't caught up to).

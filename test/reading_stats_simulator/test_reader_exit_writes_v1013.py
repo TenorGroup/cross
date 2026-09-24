@@ -56,7 +56,8 @@ class ReaderExitWritesTest(unittest.TestCase):
         tail = log[closed:]
         written = DEFERRED.search(tail)
         self.assertIsNotNone(written, "the reader's closing writes were not left for after the frame\n" + tail[-3000:])
-        self.assertEqual(written.group(1), "2")
+        # Stats and state.json; since v1.0.14 the new excerpt's recent.json joins them.
+        self.assertEqual(written.group(1), "3")
         frame = HOME_FRAME.search(tail)
         self.assertIsNotNone(frame, tail[-3000:])
         self.assertLess(frame.start(), written.start(), "the writes ran before Home was drawn")

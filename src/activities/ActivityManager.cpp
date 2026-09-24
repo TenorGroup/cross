@@ -330,7 +330,14 @@ void ActivityManager::flushDeferredWrites() {
     if (!slot) break;
     const auto write = slot;
     slot = nullptr;
+#ifdef TENOR_PRESS_PROBE
+    // One line per write: a slow card shows here as one file, not as the whole batch.
+    const uint32_t writeStarted = millis();
     write();
+    LOG_INF("ACT", "Deferred write i=%u ms=%lu", count, static_cast<unsigned long>(millis() - writeStarted));
+#else
+    write();
+#endif
     ++count;
   }
   LOG_INF("ACT", "Deferred writes n=%u ms=%lu", count, static_cast<unsigned long>(millis() - started));

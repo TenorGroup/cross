@@ -127,6 +127,13 @@ void SdCardFont::resetStyleMiniData(PerStyle& s) {
   // allocations, and this floor keeps retained fonts out of the way of section
   // builds and the render path's own floors.
   if (ESP.getFreeHeap() < MINI_RETAIN_MIN_FREE_HEAP) {
+#ifdef TENOR_PRESS_PROBE
+    // Whether a page's glyphs are dropped here, so the next turn reads them from the card again.
+    if (s.miniBitmapCapacity > 0) {
+      LOG_INF("FCM", "MINI_FREE free=%u cap=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+              static_cast<unsigned>(s.miniBitmapCapacity));
+    }
+#endif
     freeStyleMiniData(s);
     return;
   }

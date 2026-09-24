@@ -1916,4 +1916,224 @@ TEST_F(SectionCacheTest, CorruptCanonicalWithBackupIsRejectedAndRegenerated) {
   retryAndCheckEveryWord();
 }
 
+
+// v1.0.14: a checkpoint exists only right after the parse step that finished a page. A build that
+// yields on its step or time budget instead (the usual stop on the X3, 20 ms a tick) could neither
+// be parked nor leave a checkpoint in its partial file, so the next open laid the chapter out again
+// from its first page (783 to 857 ms a turn on the X3). Parking and suspending now parse on to the
+// next checkpoint first. Every stop must park, and the pages must stay byte-identical to a cold build.
+std::string streakChapter(ReaderRenderSpec& spec) {
+  // Tall pages hold many paragraphs, so most ticks end on the step budget with no page finished.
+  spec.viewportWidth = 480;
+  spec.viewportHeight = 1600;
+  std::string html = "<html><body><section>";
+  for (unsigned paragraph = 0; paragraph < 160; ++paragraph) {
+    html += "<p>";
+    for (unsigned word = 0; word < 40; ++word) html += "streak" + std::to_string(paragraph) + "w" + std::to_string(word) + " ";
+    html += "</p>";
+  }
+  return html + "</section></body></html>";
+}
+
+TEST_F(SectionCacheTest, EveryBuildStopParksAtTheNextCheckpointAndMatchesColdPages) {
+  epub->contents = streakChapter(spec);
+  std::filesystem::remove(cache());
+  std::filesystem::remove(root / "html/0.html");
+  const auto signaturePath = root / "streak-page-signature.bin";
+  std::vector<std::string> coldPages;
+  std::string cold;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.createSectionFile(spec));
+    std::cout << "SECTION_STREAK cold_pages=" << section.pageCount << " html=" << epub->contents.size() << "\n";
+    ASSERT_GT(section.pageCount, 8u);
+    for (uint16_t page = 0; page < section.pageCount; ++page) {
+      const auto loaded = section.loadPage(page);
+      ASSERT_NE(loaded, nullptr);
+      std::string signature;
+      ASSERT_TRUE(serializedPageSignature(*loaded, signaturePath, signature));
+      coldPages.push_back(std::move(signature));
+    }
+    cold = bytes(cache());
+  }
+  std::filesystem::remove(cache());
+
+  Section section(epub, 0, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  unsigned stops = 0, parked = 0;
+  while (section.isBuilding()) {
+    ASSERT_TRUE(section.buildSomeMore(1));
+    if (!section.isBuilding()) break;
+    // A restore needs one finished page, so a stop before the first one has nothing to keep.
+    if (section.pageCount == 0) continue;
+    ++stops;
+    if (parkSection(section) && sectionIsParked(section)) ++parked;
+    if (!section.isBuilding()) break;
+    ASSERT_LT(stops, 2000u);
+  }
+  std::cout << "SECTION_STREAK stops=" << stops << " parked=" << parked << "\n";
+  ASSERT_GT(stops, 10u);
+  EXPECT_EQ(parked, stops) << "a stop without a checkpoint could not be parked";
+  ASSERT_TRUE(section.isBuildComplete());
+  ASSERT_EQ(section.pageCount, coldPages.size());
+  EXPECT_EQ(bytes(cache()), cold);
+  for (uint16_t page = 0; page < section.pageCount; ++page) {
+    const auto loaded = section.loadPage(page);
+    ASSERT_NE(loaded, nullptr);
+    std::string signature;
+    ASSERT_TRUE(serializedPageSignature(*loaded, signaturePath, signature));
+    EXPECT_EQ(signature, coldPages[page]) << page;
+  }
+}
+
+TEST_F(SectionCacheTest, PartialLeftAtAStopWithoutCheckpointStillCarriesOne) {
+  epub->contents = streakChapter(spec);
+  std::filesystem::remove(root / "html/0.html");
+  std::filesystem::remove(cache());
+  std::string cold;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.createSectionFile(spec));
+    cold = bytes(cache());
+  }
+  // Every stop in the first pages: each close must leave a partial that resumes from its checkpoint.
+  for (unsigned extra = 0; extra < 12; ++extra) {
+    SCOPED_TRACE(extra);
+    std::filesystem::remove(cache());
+    uint16_t watermark = 0;
+    {
+      Section section(epub, 0, renderer);
+      ASSERT_TRUE(section.startBuild(spec));
+      while (section.pageCount == 0) ASSERT_TRUE(section.buildSomeMore(1));
+      for (unsigned tick = 0; tick < extra; ++tick) ASSERT_TRUE(section.buildSomeMore(1));
+      ASSERT_TRUE(section.isBuilding());
+      section.suspendBuild();
+      ASSERT_TRUE(section.isPartial());
+      watermark = section.pageCount;
+    }
+    const std::string partial = bytes(cache());
+    const auto checkpoint = checkpointOffset(partial);
+    ASSERT_TRUE(checkpoint.has_value());
+    EXPECT_LT(*checkpoint, partial.size()) << "the partial file carries no checkpoint";
+    Section reopened(epub, 0, renderer);
+    ASSERT_TRUE(reopened.loadSectionFile(spec));
+    ASSERT_EQ(reopened.pageCount, watermark);
+    storageMetrics::begin();
+    storageMetrics::watchPrefix(root.string() + "/html/0.html", 0, 64);
+    ASSERT_TRUE(reopened.startBuild(spec));
+    storageMetrics::enabled = false;
+    EXPECT_EQ(storageMetrics::prefixReadBytes, 0u) << "the chapter was laid out again from its first byte";
+    ASSERT_TRUE(reopened.buildSomeMore(0));
+    ASSERT_TRUE(reopened.isBuildComplete());
+    EXPECT_EQ(bytes(cache()), cold);
+  }
+}
+
+
+// v1.0.14: go-to-percent laid out the whole chapter before showing the target page, seconds on a
+// long chapter with the indexing popup up. It now lays out only as far as the target share, and
+// the page it lands on matches the page the finished chapter gives for the same share.
+TEST_F(SectionCacheTest, PercentTargetLaysOutOnlyToItsShareAndLandsOnTheFinishedPage) {
+  epub->contents = streakChapter(spec);
+  std::filesystem::remove(root / "html/0.html");
+  std::filesystem::remove(cache());
+  uint16_t fullCount = 0;
+  std::vector<uint16_t> finishedTargets;
+  const std::array<float, 5> shares = {0.0f, 0.2f, 0.5f, 0.73f, 0.99f};
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.createSectionFile(spec));
+    fullCount = section.pageCount;
+    EXPECT_FLOAT_EQ(section.laidOutFraction(), 1.0f);
+    for (const float share : shares) {
+      // The finished chapter keeps the formula the reader always used.
+      const int expected = std::min(static_cast<int>(share * static_cast<float>(fullCount)), fullCount - 1);
+      EXPECT_EQ(section.pageAtFraction(share), expected) << share;
+      finishedTargets.push_back(section.pageAtFraction(share));
+    }
+  }
+  for (size_t i = 0; i < shares.size(); ++i) {
+    SCOPED_TRACE(shares[i]);
+    std::filesystem::remove(cache());
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.startBuild(spec));
+    while (!section.isBuildComplete() && !section.laidOutTo(shares[i])) ASSERT_TRUE(section.buildSomeMore(8));
+    if (shares[i] < 0.9f) {
+      EXPECT_TRUE(section.isBuilding());
+      EXPECT_LE(section.pageCount, static_cast<uint16_t>(shares[i] * fullCount) + 3) << "laid out past the target";
+    }
+    const int landed = section.pageAtFraction(shares[i]);
+    EXPECT_LE(std::abs(landed - static_cast<int>(finishedTargets[i])), 1) << landed << " vs " << finishedTargets[i];
+    ASSERT_NE(section.loadPage(landed), nullptr);
+  }
+}
+
+TEST_F(SectionCacheTest, PartialCoversAnOffsetOnlyBeforeItsLastPage) {
+  epub->contents = streakChapter(spec);
+  std::filesystem::remove(root / "html/0.html");
+  std::filesystem::remove(cache());
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.startBuild(spec));
+    while (section.pageCount < 5) ASSERT_TRUE(section.buildSomeMore(1));
+    section.suspendBuild();
+  }
+  Section partial(epub, 0, renderer);
+  ASSERT_TRUE(partial.loadSectionFile(spec));
+  ASSERT_TRUE(partial.isPartial());
+  const auto last = partial.getVisibleTextOffsetForPage(partial.pageCount - 1);
+  const auto second = partial.getVisibleTextOffsetForPage(1);
+  ASSERT_TRUE(last.has_value() && second.has_value());
+  EXPECT_TRUE(partial.coversVisibleTextOffset(*second));
+  EXPECT_TRUE(partial.coversVisibleTextOffset(*last - 1));
+  // The last page may run on past the watermark: its offset still needs the layout.
+  EXPECT_FALSE(partial.coversVisibleTextOffset(*last));
+  EXPECT_FALSE(partial.coversVisibleTextOffset(*last + 500));
+}
+
+
+// A suspend near the end of a chapter whose tail cannot hold a checkpoint (a table) parses on to
+// the chapter's end. The build then finishes instead of leaving a partial, and the file matches
+// the cold build.
+TEST_F(SectionCacheTest, SuspendThatReachesTheChapterEndFinishesTheBuild) {
+  epub->contents = streakChapter(spec);
+  const std::string tail = "</section></body></html>";
+  epub->contents.resize(epub->contents.size() - tail.size());
+  const size_t tableStart = epub->contents.size();
+  epub->contents += "<table>";
+  for (unsigned row = 0; row < 12; ++row) {
+    epub->contents += "<tr><td>";
+    for (unsigned word = 0; word < 30; ++word) epub->contents += "cell" + std::to_string(row) + "w" + std::to_string(word) + " ";
+    epub->contents += "</td></tr>";
+  }
+  epub->contents += "</table>" + tail;
+  std::filesystem::remove(root / "html/0.html");
+  std::filesystem::remove(cache());
+  std::string cold;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.createSectionFile(spec));
+    cold = bytes(cache());
+  }
+  std::filesystem::remove(cache());
+  const float inTable = static_cast<float>(tableStart + 400) / static_cast<float>(epub->contents.size());
+  bool finished = false;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.startBuild(spec));
+    while (section.isBuilding() && section.laidOutFraction() < inTable) ASSERT_TRUE(section.buildSomeMore(1));
+    ASSERT_TRUE(section.isBuilding()) << "the fixture finished before its table";
+    section.suspendBuild();
+    finished = !section.isPartial();
+  }
+  std::cout << "SECTION_TAIL finished=" << finished << "\n";
+  if (!finished) {
+    Section reopened(epub, 0, renderer);
+    ASSERT_TRUE(reopened.loadSectionFile(spec));
+    ASSERT_TRUE(reopened.startBuild(spec));
+    ASSERT_TRUE(reopened.buildSomeMore(0));
+  }
+  EXPECT_EQ(bytes(cache()), cold);
+}
+
 }

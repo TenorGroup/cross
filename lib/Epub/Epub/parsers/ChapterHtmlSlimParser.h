@@ -168,6 +168,8 @@ class ChapterHtmlSlimParser {
   size_t checkpointUnsupported_ = 0;
   bool checkpointAllowed_ = true;
   bool checkpointReady_ = false;
+  // Set by requestCheckpoint(): the next eligible block close stops the parse, page finished or not.
+  bool checkpointWanted_ = false;
   bool replayingCheckpoint_ = false;
   bool xmlSuspended_ = false;
   bool finalBuffer_ = false;
@@ -264,6 +266,10 @@ class ChapterHtmlSlimParser {
   void abortParse();   // tear down without flushing (error / abandon)
 
   bool hasCheckpoint() const;
+  // Checkpoints normally come only after a step that finished a page. A caller that must park the
+  // parser asks for one at the next eligible block close instead. False when this chapter cannot
+  // checkpoint at all (unsupported encoding or prolog), so the caller need not parse on for one.
+  bool requestCheckpoint();
   bool writeCheckpoint(HalFile& file);
   // Call on a newly begun parser. A failed restore requires a fresh parser.
   bool restoreCheckpoint(HalFile& file, uint16_t expectedPages);
