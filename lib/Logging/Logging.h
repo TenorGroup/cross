@@ -65,6 +65,10 @@ void logPrintf(const char* level, const char* origin, const char* format, ...);
 #define LOG_INF(origin, format, ...)
 #endif
 
+#ifdef TENOR_PRESS_PROBE
+void probeLogDump();
+#endif
+
 std::string getLastLogs();
 void clearLastLogs();
 // Validates the RTC log state (magic word + logHead range). Returns true if

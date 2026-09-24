@@ -476,6 +476,10 @@ HalGPIO::WakeupReason HalGPIO::getWakeupReason() const {
       (wakeupCause == ESP_SLEEP_WAKEUP_GPIO || wakeupCause == ESP_SLEEP_WAKEUP_EXT1)) {
     return WakeupReason::PowerButton;
   }
+#ifdef TENOR_PRESS_PROBE
+  // CMD:WAKE_TIMER: a timed wake stands in for the power button, so wake can be measured over the cable.
+  if (resetReason == ESP_RST_DEEPSLEEP && wakeupCause == ESP_SLEEP_WAKEUP_TIMER) return WakeupReason::PowerButton;
+#endif
   if (wakeupCause == ESP_SLEEP_WAKEUP_UNDEFINED && resetReason == ESP_RST_POWERON && !usbConnected &&
       coldBootImpliesPowerButton()) {
     return WakeupReason::PowerButton;

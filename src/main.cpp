@@ -197,6 +197,19 @@ EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 RTC_NOINIT_ATTR uint32_t silentRebootMagic;
 RTC_NOINIT_ATTR uint32_t silentRebootTarget;
 RTC_NOINIT_ATTR uint32_t silentRebootHomeMenu;
+
+#ifdef TENOR_PRESS_PROBE
+#include <BatteryMonitor.h>
+#include <esp_sleep.h>
+// CMD:WAKE_TIMER <s>: every later sleep also arms a timed wake, which boots like a
+// power-button wake. The RTC clock runs through deep sleep, so the time from the
+// wake to the first app instruction is measured, bootloader included.
+RTC_NOINIT_ATTR uint32_t probeWakeMagic;
+RTC_NOINIT_ATTR uint32_t probeWakeSeconds;
+RTC_NOINIT_ATTR uint64_t probeWakeTargetUs;
+constexpr uint32_t PROBE_WAKE_MAGIC = 0x57414B45;
+extern "C" uint64_t esp_rtc_get_time_us(void);
+#endif
 constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
 constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
 constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
@@ -396,6 +409,13 @@ void enterDeepSleep(bool fromTimeout = false) {
   Storage.prepareForDeepSleep();
   LOG_INF("SLP", "Timing ready-to-sleep=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
   LOG_DBG("MAIN", "Entering deep sleep");
+#ifdef TENOR_PRESS_PROBE
+  if (probeWakeMagic == PROBE_WAKE_MAGIC && probeWakeSeconds > 0) {
+    const uint64_t us = static_cast<uint64_t>(probeWakeSeconds) * 1000000ULL;
+    esp_sleep_enable_timer_wakeup(us);
+    probeWakeTargetUs = esp_rtc_get_time_us() + us;
+  }
+#endif
 
   sleepUntilPowerButton();
 }
@@ -498,6 +518,17 @@ void setup() {
   silentRebootTarget = 0;
   silentRebootHomeMenu = 0;
 
+#ifdef TENOR_PRESS_PROBE
+  const bool probeTimerWake = esp_reset_reason() == ESP_RST_DEEPSLEEP &&
+                              esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER &&
+                              probeWakeMagic == PROBE_WAKE_MAGIC;
+  if (probeTimerWake) {
+    LOG_INF("PROBE", "timer wake pre-app=%ld ms",
+            static_cast<long>((static_cast<int64_t>(esp_rtc_get_time_us()) - static_cast<int64_t>(probeWakeTargetUs)) /
+                              1000) -
+                static_cast<long>(millis()));
+  }
+#endif
   gpio.begin();
   powerManager.begin();
   logHeapMark("boot");
@@ -507,7 +538,14 @@ void setup() {
   // boot - but defer the sleep-or-boot decision until SETTINGS is loaded below:
   // click-to-wake is a setting, and an X4 battery power-off cuts all power, so
   // only SD state survives to the next boot.
-  const bool wakeHoldVerified = wakeupReason != HalGPIO::WakeupReason::PowerButton || gpio.verifyPowerButtonWakeup();
+  const unsigned long verifyStarted = millis();
+  bool wakeHoldVerified = wakeupReason != HalGPIO::WakeupReason::PowerButton || gpio.verifyPowerButtonWakeup();
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("PROBE", "wake verify=%lu ms", millis() - verifyStarted);
+  wakeHoldVerified = wakeHoldVerified || probeTimerWake;
+#else
+  (void)verifyStarted;
+#endif
 
   // X4 Pro and X4 Classic both map BTN_UP to GPIO0 - an ESP32-S3 boot strap - so
   // gate recovery on the non-strap Down key (GPIO7) to avoid a stuck-in-recovery loop.
@@ -1170,6 +1208,19 @@ void loop() {
         I18N.setLanguage(static_cast<Language>(SETTINGS.language));
         activityManager.goHome();
         logSerial.printf("UI_LANGUAGE:RESTORED\n");
+#endif
+#ifdef TENOR_PRESS_PROBE
+      } else if (cmd.startsWith("WAKE_TIMER ")) {
+        probeWakeSeconds = static_cast<uint32_t>(cmd.substring(11).toInt());
+        probeWakeMagic = PROBE_WAKE_MAGIC;
+        logSerial.printf("WAKE_TIMER:%u\n", static_cast<unsigned>(probeWakeSeconds));
+      } else if (cmd == "LOGDUMP") {
+        probeLogDump();
+      } else if (cmd == "BATT") {
+        const BatteryMonitor battery;
+        const auto st = battery.readStatus();
+        logSerial.printf("BATT:soc=%u,mv=%u,charging=%d,shown=%u,t=%lu\n", st.percentage, st.millivolts, st.charging,
+                         powerManager.getBatteryPercentage(), millis());
 #endif
       } else if (cmd == "HOME") {
         activityManager.goHome();

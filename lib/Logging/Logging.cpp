@@ -19,6 +19,25 @@ RTC_NOINIT_ATTR size_t logHead = 0;
 RTC_NOINIT_ATTR uint32_t rtcLogMagic;
 static constexpr uint32_t LOG_RTC_MAGIC = 0xDEADBEEF;
 
+#ifdef TENOR_PRESS_PROBE
+// Probe builds keep a RAM copy of the log from boot, so a wake measured over a cable that
+// only reconnects after USB enumerates still has its earliest lines (CMD:LOGDUMP).
+static char probeLog[6144];
+static size_t probeLogLen = 0;
+static void probeLogAppend(const char* line) {
+  const size_t n = strlen(line);
+  if (probeLogLen + n > sizeof(probeLog)) return;
+  memcpy(probeLog + probeLogLen, line, n);
+  probeLogLen += n;
+}
+void probeLogDump() {
+  logSerial.printf("LOGDUMP_START:%u\n", static_cast<unsigned>(probeLogLen));
+  logSerial.write(reinterpret_cast<const uint8_t*>(probeLog), probeLogLen);
+  logSerial.printf("LOGDUMP_END\n");
+  probeLogLen = 0;
+}
+#endif
+
 void addToLogRingBuffer(const char* message) {
   // Add the message to the ring buffer, overwriting old messages if necessary.
   // If the magic is wrong or logHead is out of range (RTC_NOINIT_ATTR garbage
@@ -73,6 +92,9 @@ void logPrintf(const char* level, const char* origin, const char* format, ...) {
   }
 #endif
   addToLogRingBuffer(buf);
+#ifdef TENOR_PRESS_PROBE
+  probeLogAppend(buf);
+#endif
 }
 
 std::string getLastLogs() {

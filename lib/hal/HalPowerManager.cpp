@@ -147,8 +147,15 @@ uint16_t HalPowerManager::getBatteryPercentage() const {
     _batteryLastPollMs = now;
     uint16_t percent = 0;
     if (!battery.readPercentageChecked(percent)) {
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("BAT", "soc read failed task=%s", pcTaskGetName(nullptr));
+#endif
       return _batteryCachedPercent;
     }
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("BAT", "soc=%u prev=%d task=%s", static_cast<unsigned>(percent), _batteryCachedPercent,
+            pcTaskGetName(nullptr));
+#endif
     _batteryCachedPercent = percent;
     return _batteryCachedPercent;
   }
