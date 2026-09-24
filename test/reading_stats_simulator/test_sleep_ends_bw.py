@@ -16,8 +16,13 @@ The switch "Black and white refresh before sleep" (settings key `sleepBwRefresh`
 chooses this path. It is on when settings.json has no such key; off gives back the v1.0.11
 panel sequence unchanged.
 
+The black and white passes run once the sleep image is complete in RAM (v1.0.13): the reader
+sees black, white and the image back to back instead of a white panel while a cover decodes.
+A gray cover is decoded once and dithered as it is drawn, not once per gray plane.
+
 Fixtures are made up here: a four-tone cover drawn with PIL, an invented title and quote.
-Set SLEEP_BW_SHOTS to a directory to keep the screenshots as PNG.
+Set SLEEP_BW_SHOTS to a directory to keep the screenshots as PNG. Set SLEEP_BASE_PROGRAM to an
+earlier simulator_x3_uc8279 build to check that every sleep image keeps the same pixels.
 """
 
 import io
@@ -111,19 +116,19 @@ class SleepEndsBwTest(unittest.TestCase):
         (store / 'state.json').write_text(json.dumps(dict({'showBootScreen': False}, **(state or {}))))
         return sd
 
-    def run_sim(self, sd, script, shots):
+    def run_sim(self, sd, script, shots, program=None):
         env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
         env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(sd), CROSSPOINT_SIM_INPUT_SCRIPT=script,
                    CROSSPOINT_SIM_SCREENSHOTS=shots)
-        run = subprocess.run([str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=40)
+        run = subprocess.run([str(program or PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=40)
         log = run.stdout + run.stderr
         self.assertEqual(run.returncode, 0, log)
         return log
 
-    def sleep_once(self, sd, label):
+    def sleep_once(self, sd, label, program=None):
         times = [SLEEP_AT + 50 * i for i in range(1, 90)]
         log = self.run_sim(sd, f'{SLEEP_AT}:SLEEP;{SLEEP_AT + 5000}:QUIT',
-                           ';'.join(f'{t}:{sd / f"shot-{t}.bmp"}' for t in times))
+                           ';'.join(f'{t}:{sd / f"shot-{t}.bmp"}' for t in times), program)
         self.assertIn('Entering activity: Sleep', log)
         self.assertIn('Entering deep sleep', log)
         sleep = log.split('Entering activity: Sleep', 1)[1].split('Entering deep sleep', 1)[0]
@@ -136,7 +141,7 @@ class SleepEndsBwTest(unittest.TestCase):
             image.save(Path(SHOTS) / f'{label}.png')
         return log, sleep, image
 
-    def assert_ends_on_bw_full(self, sleep, clears=True):
+    def assert_ends_on_bw_full(self, sleep, clears=True, blank=False):
         ops = PANEL_OP.findall(sleep)
         # The switch promises a refresh the reader can see. A GC pass on this panel only drives
         # the pixels that change, so the page underneath ghosts into a sleep image painted over it.
@@ -146,6 +151,14 @@ class SleepEndsBwTest(unittest.TestCase):
         expected = ['[SLP] clear black', 'displayBuffer, mode=0', '[SLP] clear white', 'displayBuffer, mode=0']
         if clears:
             self.assertEqual(steps[:4], expected, steps)
+            # The image is complete before the first pass: black, white and the image follow each
+            # other with no decoding in between, so the panel never sits white while a cover loads.
+            before, after = sleep.split('[SLP] clear black', 1)
+            self.assertNotIn('[BMP] Timing', after)
+            # The blank screen is what the white pass leaves: a third pass would change nothing.
+            self.assertEqual(steps, expected + ([] if blank else ['displayBuffer, mode=0']), steps)
+            if not blank:
+                self.assertIn('[SLP] Timing frame-ready', before)
         else:
             self.assertNotIn('[SLP] clear black', steps, steps)
         self.assertTrue(ops, sleep)
@@ -218,6 +231,41 @@ class SleepEndsBwTest(unittest.TestCase):
         self.assertGreater(found[4], 100, found)
         self.assertGreater(found[12], 100, found)
 
+    def test_gray_cover_is_decoded_once(self):
+        # Each decode of the cover reads the whole file from the card; on the X3 that is most of a
+        # second per pass. The dithered frame needs the cover's levels only once.
+        _, (_, cover_sleep, _) = self.cover_cache()
+        _, quote_sleep, _ = self.sleep_once(self.quote_sd('quote-once'), 'trich-dan-mot-lan')
+        sd = self.make_sd('custom-once', 2)
+        (sd / 'sleep.bmp').write_bytes(gray_bmp(528, 792))
+        _, custom_sleep, _ = self.sleep_once(sd, 'anh-rieng-mot-lan')
+        for name, sleep in (('cover', cover_sleep), ('quote', quote_sleep), ('custom', custom_sleep)):
+            with self.subTest(screen=name):
+                self.assertEqual(len(re.findall(r'\[BMP\] Timing bpp=', sleep)), 1, sleep)
+
+    @unittest.skipUnless(os.environ.get('SLEEP_BASE_PROGRAM'), 'set SLEEP_BASE_PROGRAM to an earlier build')
+    def test_same_pixels_as_base(self):
+        # The same sleep, on the same fixtures, from the earlier build and from this one: the image
+        # left on the glass must match pixel for pixel, switch on and off.
+        base = Path(os.environ['SLEEP_BASE_PROGRAM'])
+        cases = [(mode, {}) for mode in (0, 1, 2, 3, 5, 8, 9, 10)]
+        cases += [(mode, {'sleepBwRefresh': 0}) for mode in (2, 3, 8, 10)]
+        for mode, settings in cases:
+            with self.subTest(sleepScreen=mode, settings=settings):
+                images = []
+                for side, program in (('truoc', base), ('sau', None)):
+                    name = f'giong-{mode}-{len(settings)}-{side}'
+                    if mode == 10:
+                        sd = self.quote_sd(name, settings)
+                    else:
+                        sd = self.make_sd(name, mode, {'openEpubPath': BOOK} if mode == 3 else None, settings)
+                    if mode == 2:
+                        (sd / 'sleep.bmp').write_bytes(gray_bmp(528, 792))
+                    if mode == 3:
+                        write_epub(sd / BOOK.lstrip('/'))
+                    images.append(self.sleep_once(sd, name, program)[2])
+                self.assertEqual(images[0].tobytes(), images[1].tobytes())
+
     def test_every_other_mode_ends_on_bw_full(self):
         for mode in (0, 1, 2, 5, 6, 7, 9):
             with self.subTest(sleepScreen=mode):
@@ -228,7 +276,7 @@ class SleepEndsBwTest(unittest.TestCase):
                     (sd / 'sleep-overlay.bmp').write_bytes(gray_bmp(200, 200))
                 log, sleep, image = self.sleep_once(sd, f'che-do-{mode}')
                 self.assertIn(f'Sleep screen mode={mode},', log)
-                self.assert_ends_on_bw_full(sleep, clears=mode not in (6, 7))
+                self.assert_ends_on_bw_full(sleep, clears=mode not in (6, 7), blank=mode == 5)
                 self.assertEqual(self.grays(image), 0)
                 if mode == 2:
                     found = self.dither_blocks(image, (0, 0, 528, 792))
@@ -263,7 +311,9 @@ class SleepEndsBwTest(unittest.TestCase):
     def test_switch_off_keeps_the_v1011_waveforms(self):
         off = {'sleepBwRefresh': 0}
         # The whole panel sequence of v1.0.11 on this simulator, per mode: the Tenor and quote
-        # screens run one GC ghost clear and then the gray pass; quick resume adds the moon with
+        # screens run one GC pass to the image's B/W threshold and then the gray pass (on the UC8279
+        # that GC pass leaves unchanged pixels undriven, so the page can still ghost with the
+        # switch off; the switch is what buys the extra passes); quick resume adds the moon with
         # the soft base waveform; the blank screen is one HALF refresh.
         whole = {8: ['displayBuffer, mode=0', 'displayGrayBuffer'],
                  10: ['displayBuffer, mode=0', 'displayGrayBuffer'],

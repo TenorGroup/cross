@@ -1,6 +1,10 @@
 #include "SdCardFontSystem.h"
 
+#include <Arduino.h>
 #include <HalMemory.h>
+#ifndef SIMULATOR
+#include <esp_system.h>
+#endif
 
 #include <GfxRenderer.h>
 #include <Logging.h>
@@ -10,10 +14,28 @@
 #include "CrossPointSettings.h"
 #include "ReaderFontSizes.h"
 #include "ReaderInkWeight.h"
+#include "SdFontBootMemo.h"
 #include "components/UIScale.h"
 #include "fontIds.h"
 
 namespace {
+
+// Survives deep sleep, not power loss (SdFontBootMemo.h).
+RTC_NOINIT_ATTR sdfontmemo::Memo bootMemo;
+
+bool wokeFromDeepSleep() {
+#ifdef SIMULATOR
+  return false;  // the simulator wakes as a new process: no RTC memory survives its sleep
+#else
+  return esp_reset_reason() == ESP_RST_DEEPSLEEP;
+#endif
+}
+
+void logCatalog(const int families) {
+  const auto heap = HalMemory::getInternalHeap();
+  LOG_INF("HEAP", "fonts-sd-registry free=%u largest=%u families=%d", static_cast<unsigned>(heap.freeBytes),
+          static_cast<unsigned>(heap.largestBlockBytes), families);
+}
 
 void snapFontPointSizeTo(const uint8_t availablePointSize) {
   if (availablePointSize == 0 || availablePointSize == SETTINGS.fontPointSize) return;
@@ -33,13 +55,6 @@ struct UiFontSize {
 }  // namespace
 
 void SdCardFontSystem::begin(GfxRenderer& renderer) {
-  registry_.discover();
-  {
-    const auto heap = HalMemory::getInternalHeap();
-    LOG_INF("HEAP", "fonts-sd-registry free=%u largest=%u families=%d", static_cast<unsigned>(heap.freeBytes),
-            static_cast<unsigned>(heap.largestBlockBytes), registry_.getFamilyCount());
-  }
-
   // Register this system as the SD font ID resolver in settings.
   // Uses a static trampoline since CrossPointSettings stores a plain function pointer.
   SETTINGS.sdFontIdResolver = [](void* ctx, const char* familyName, uint8_t pointSize) -> int {
@@ -47,31 +62,76 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
   };
   SETTINGS.sdFontResolverCtx = this;
 
-  // If user has a saved SD font selection, load it
-  if (SETTINGS.sdFontFamilyName[0] != '\0') {
-    const auto* family = registry_.findFamily(SETTINGS.sdFontFamilyName);
-    if (family) {
-      if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize, readerInk::physical(SETTINGS.readerInkWeight))) {
-        snapFontPointSizeTo(manager_.currentPointSize());
-        loadedRequestWeight_ = SETTINGS.readerInkWeight;
-        setupUiFallbacks(renderer);
-        LOG_DBG("SDFS", "Loaded SD card font family: %s", SETTINGS.sdFontFamilyName);
-      } else {
-        LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", SETTINGS.sdFontFamilyName);
-        SETTINGS.clearSdFontFamily();
-      }
-    } else {
-      LOG_DBG("SDFS", "SD font family not found on card: %s (clearing)", SETTINGS.sdFontFamilyName);
+  // The first screen needs no font catalog beyond the saved family, so the walk over every
+  // family folder waits for its first use (registry()). A wake from deep sleep finds the saved
+  // family in the memo the boot before left; any other boot, or a memo whose file no longer
+  // loads, walks the card now, as before.
+  catalog_.store(CATALOG_PENDING, std::memory_order_release);
+  const char* saved = SETTINGS.sdFontFamilyName;
+  const bool fromMemo = saved[0] != '\0' && sdfontmemo::restore(bootMemo, wokeFromDeepSleep(), saved, bootFamily_);
+  bootMemo = sdfontmemo::Memo{};  // rewritten below by a load that succeeds
+  if (saved[0] != '\0' && !(fromMemo && loadSelected(renderer, bootFamily_))) {
+    bootFamily_.name.clear();  // familyNamed() no longer answers from the memo
+    readCatalogIfPending();
+    const auto* family = registry_.findFamily(saved);
+    if (!family) {
+      LOG_DBG("SDFS", "SD font family not found on card: %s (clearing)", saved);
+      SETTINGS.clearSdFontFamily();
+    } else if (!loadSelected(renderer, *family)) {
+      LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", saved);
       SETTINGS.clearSdFontFamily();
     }
   }
+  if (catalog_.load(std::memory_order_acquire) == CATALOG_PENDING) logCatalog(-1);
+}
 
-  LOG_DBG("SDFS", "SD font system ready (%d families discovered)", registry_.getFamilyCount());
+void SdCardFontSystem::markRegistryDirty() {
+  bootMemo = sdfontmemo::Memo{};
+  registryDirty_.store(true, std::memory_order_release);
+}
+
+const SdCardFontRegistry& SdCardFontSystem::registry() const {
+  readCatalogIfPending();
+  return registry_;
+}
+
+bool SdCardFontSystem::readCatalogIfPending() const {
+  uint8_t expected = CATALOG_PENDING;
+  if (catalog_.compare_exchange_strong(expected, CATALOG_READING, std::memory_order_acq_rel)) {
+    registry_.discover();
+    logCatalog(registry_.getFamilyCount());
+    catalog_.store(CATALOG_READY, std::memory_order_release);
+    return true;
+  }
+  while (catalog_.load(std::memory_order_acquire) == CATALOG_READING) delay(1);
+  return false;
+}
+
+const SdCardFontFamilyInfo* SdCardFontSystem::familyNamed(const std::string& name) const {
+  if (catalog_.load(std::memory_order_acquire) == CATALOG_PENDING && !bootFamily_.name.empty() &&
+      bootFamily_.name == name) {
+    return &bootFamily_;
+  }
+  readCatalogIfPending();
+  return registry_.findFamily(name);
+}
+
+bool SdCardFontSystem::loadSelected(GfxRenderer& renderer, const SdCardFontFamilyInfo& family) {
+  if (!manager_.loadFamily(family, renderer, SETTINGS.fontPointSize, readerInk::physical(SETTINGS.readerInkWeight))) {
+    return false;
+  }
+  snapFontPointSizeTo(manager_.currentPointSize());
+  loadedRequestWeight_ = SETTINGS.readerInkWeight;
+  sdfontmemo::save(family, bootMemo);
+  setupUiFallbacks(renderer);
+  LOG_DBG("SDFS", "Loaded SD font family: %s", family.name.c_str());
+  return true;
 }
 
 void SdCardFontSystem::releaseForOta(GfxRenderer& renderer) {
   manager_.unloadAll(renderer);
   registry_ = SdCardFontRegistry{};
+  catalog_.store(CATALOG_READY, std::memory_order_release);  // an unread catalog stays unread
   registryDirty_.store(true, std::memory_order_release);
 }
 
@@ -83,7 +143,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   const bool registryWasDirty = registryDirty_.exchange(false, std::memory_order_acquire);
   if (registryWasDirty) {
     LOG_DBG("SDFS", "Registry dirty — re-discovering fonts");
-    registry_.discover();
+    if (!readCatalogIfPending()) registry_.discover();
   }
 
   const char* wantedFamily = SETTINGS.sdFontFamilyName;
@@ -105,7 +165,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   // just rediscovered (file may have been replaced on disk).
   bool familyMatches = (currentFamily == wantedFamily);
   if (familyMatches) {
-    const auto* family = registry_.findFamily(wantedFamily);
+    const auto* family = familyNamed(wantedFamily);
     if (!family) {
       LOG_DBG("SDFS", "SD font family disappeared: %s (clearing)", wantedFamily);
       manager_.unloadAll(renderer);
@@ -130,14 +190,9 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     manager_.unloadAll(renderer);
   }
 
-  const auto* family = registry_.findFamily(wantedFamily);
+  const auto* family = familyNamed(wantedFamily);
   if (family) {
-    if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize, readerInk::physical(SETTINGS.readerInkWeight))) {
-      snapFontPointSizeTo(manager_.currentPointSize());
-      loadedRequestWeight_ = SETTINGS.readerInkWeight;
-      setupUiFallbacks(renderer);
-      LOG_DBG("SDFS", "Loaded SD font family: %s", wantedFamily);
-    } else {
+    if (!loadSelected(renderer, *family)) {
       LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", wantedFamily);
       SETTINGS.clearSdFontFamily();
     }
@@ -157,7 +212,7 @@ void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {
   const std::string& familyName = manager_.currentFamilyName();
   if (familyName.empty()) return;  // no SD family loaded — nothing to fall back to
 
-  const auto* family = registry_.findFamily(familyName);
+  const auto* family = familyNamed(familyName);
   if (!family) return;
 
   // Probe the already-loaded reader-size font before paying for the UI sizes:
@@ -201,7 +256,7 @@ int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t /*pointSize*
 }
 
 uint8_t SdCardFontSystem::availableWeightMask() const {
-  const auto* family = registry_.findFamily(SETTINGS.sdFontFamilyName);
+  const auto* family = familyNamed(SETTINGS.sdFontFamilyName);
   const auto* file = family ? family->findNearestSize(SETTINGS.fontPointSize) : nullptr;
   return file ? readerInk::publicMask(family->weights(*file)) : 1;
 }

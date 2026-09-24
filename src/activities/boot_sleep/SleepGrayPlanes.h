@@ -17,6 +17,17 @@ class SleepGrayPlanes {
   // costs flash for its guarded construction each time.
   static void decide(bool x3, uint8_t setting) { on = x3 && setting; }
   static bool wanted() { return on; }
+  // The UC8279 X3 drives only the pixels a GC pass changes, so a sleep image that replaces the
+  // page first has the panel driven black, then white. Set once per sleep by SleepActivity for
+  // those screens; show() runs the two passes once the finished frame is held in RAM, so black,
+  // white and the image follow each other with no wait for decoding in between.
+  static void clearFirst(bool on) { clear = on; }
+  // Passes still owed because no frame was shown (a screen that failed part way, or the blank
+  // screen, which they already paint): run them, which leaves the panel and the framebuffer
+  // white. False when none were owed.
+  static bool settle(GfxRenderer& renderer);
+  // Pattern rows per level for GfxRenderer::drawBitmap: the same dots show() folds the planes to.
+  static const uint8_t LEVELS[4][4];
   SleepGrayPlanes(GfxRenderer& renderer, bool fold) : renderer(renderer), fold(fold) {}
   ~SleepGrayPlanes();  // out of line: one copy of the seven frees, not one per caller
   // Overlay (nudge) pictures, once the B/W frame is drawn: stands for displayGrayscaleBase(HALF).
@@ -26,6 +37,7 @@ class SleepGrayPlanes {
   // The LSB plane is in the framebuffer: stands for copyGrayscaleLsbBuffers().
   void lsb();
   // The MSB plane is in the framebuffer: stands for copyGrayscaleMsbBuffers() + displayGrayBuffer().
+  // Folding, the finished B/W frame in the framebuffer is shown the same way.
   void show();
 
  private:
@@ -37,6 +49,8 @@ class SleepGrayPlanes {
   bool overlay = false;
   bool shown = false;
   static inline bool on = false;
+  static inline bool clear = false;
+  static void clearPasses(GfxRenderer& renderer);
   std::unique_ptr<uint8_t[]> kept[CHUNKS];
   bool keep();
 };

@@ -687,13 +687,17 @@ void setup() {
       // Splash skipped: the routing block below picks the target activity; the
       // panel keeps showing the pre-reboot popup until that first paint lands.
       break;
-    case BootResume::SplashlessWake:
+    case BootResume::SplashlessWake: {
       // One-shot flag: re-arm the splash for the next ordinary boot. Save
       // before any painting so a hang in the blocking paint path can't strand
       // us in a splashless-with-no-frame loop on the next boot.
+      const uint32_t wakeStarted = millis();
       APP_STATE.showBootScreen = true;
       APP_STATE.saveToFile();
-      if (Storage.exists(SLEEP_FRAME_FILE) && loadSleepFrameBuffer()) {
+      const uint32_t stateSaved = millis();
+      const bool frameRestored = Storage.exists(SLEEP_FRAME_FILE) && loadSleepFrameBuffer();
+      const uint32_t frameRead = millis();
+      if (frameRestored) {
         if (gpio.deviceIsX3()) {
           // Restore controller RAM without activating a waveform. The first
           // Home/Reader paint cleans directly from this retained sleep frame.
@@ -701,8 +705,11 @@ void setup() {
         }
         LOG_DBG("MAIN", "Restored sleep frame baseline");
       }
+      LOG_INF("BOOT", "Wake state=%lu frame=%lu panel=%lu ms", static_cast<unsigned long>(stateSaved - wakeStarted),
+              static_cast<unsigned long>(frameRead - stateSaved), static_cast<unsigned long>(millis() - frameRead));
       needsWakeRefresh = true;
       break;
+    }
     case BootResume::Splash:
       activityManager.goToBoot();
       break;
@@ -711,6 +718,7 @@ void setup() {
   // Output polarity is resolved per render by ActivityManager (night mode
   // inverts only the reading surfaces), so nothing to restore here.
 
+  const uint32_t routeStarted = millis();
   if (recoveryFirmwareMode) {
     // Skip normal home/reader routing: jump straight into the SD firmware picker.
     activityManager.replaceActivity(
@@ -735,6 +743,7 @@ void setup() {
   } else {
     activityManager.goHome(HomeMenuItem::RECENT_CONTINUE, needsWakeRefresh);
   }
+  LOG_INF("BOOT", "First screen entered in %lu ms", static_cast<unsigned long>(millis() - routeStarted));
 
   if (resume == BootResume::Silent) {
     // Block until the first paint physically completes. refreshDisplay()

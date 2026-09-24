@@ -1368,12 +1368,12 @@ bool GfxRenderer::drawBitmapAbsolutePlanes(const Bitmap& bitmap) const {
 }
 
 bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, const int maxWidth, const int maxHeight,
-                             const float cropX, const float cropY) const {
+                             const float cropX, const float cropY, const uint8_t (*levelRows)[4]) const {
   const uint32_t started = micros();
   uint32_t readUs = 0;
   if (fontCacheManager_ && fontCacheManager_->isScanning()) return false;
   // For 1-bit bitmaps, use optimized 1-bit rendering path (no crop support for 1-bit)
-  if (bitmap.is1Bit() && cropX == 0.0f && cropY == 0.0f) {
+  if (bitmap.is1Bit() && cropX == 0.0f && cropY == 0.0f && !levelRows) {
     return drawBitmap1Bit(bitmap, x, y, maxWidth, maxHeight);
   }
 
@@ -1411,22 +1411,49 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
   const int outputRowSize = (bitmap.getWidth() + 3) / 4;
   auto* outputRow = static_cast<uint8_t*>(malloc(outputRowSize));
   auto* rowBytes = static_cast<uint8_t*>(malloc(bitmap.getRowBytes()));
+  // The screen column of each source column, worked out once: the float multiply and floor per
+  // pixel cost more than the SD read on the X3 (no FPU), and every row repeats them.
+  auto* columns = static_cast<int16_t*>(malloc(sizeof(int16_t) * bitmap.getWidth()));
 
-  if (!outputRow || !rowBytes) {
+  if (!outputRow || !rowBytes || !columns) {
     LOG_ERR("GFX", "!! Failed to allocate BMP row buffers");
     free(outputRow);
     free(rowBytes);
+    free(columns);
     return false;
   }
-
-  for (int bmpY = 0; bmpY < (bitmap.getHeight() - cropPixY); bmpY++) {
+  int endX = cropPixX;  // one past the last source column that lands on the screen
+  for (int bmpX = cropPixX; bmpX < bitmap.getWidth() - cropPixX; bmpX++) {
+    int screenX = bmpX - cropPixX;
+    if (isScaled) {
+      screenX = std::floor(screenX * scale);
+    }
+    screenX += x;  // the offset should not be scaled
+    if (screenX >= getScreenWidth()) {
+      break;
+    }
+    columns[bmpX] = static_cast<int16_t>(screenX);
+    endX = bmpX + 1;
+  }
+  // Where every pixel is written (dithered, or an absolute gray plane), a screen pixel that later
+  // source pixels land on again keeps only the last write: a cover shrunk into a small tile skips
+  // most of them.
+  const bool writesAll = levelRows || (renderMode != BW && absoluteGrayPlanes);
+  for (int bmpX = cropPixX; writesAll && bmpX + 1 < endX; bmpX++) {
+    if (columns[bmpX] == columns[bmpX + 1]) columns[bmpX] = -1;
+  }
+  const auto rowOf = [&](const int bmpY) {
     // The BMP's (0, 0) is the bottom-left corner (if the height is positive, top-left if negative).
     // Screen's (0, 0) is the top-left corner.
     int screenY = -cropPixY + (bitmap.isTopDown() ? bmpY : bitmap.getHeight() - 1 - bmpY);
     if (isScaled) {
       screenY = std::floor(screenY * scale);
     }
-    screenY += y;  // the offset should not be scaled
+    return screenY + y;  // the offset should not be scaled
+  };
+
+  for (int bmpY = 0; bmpY < (bitmap.getHeight() - cropPixY); bmpY++) {
+    const int screenY = rowOf(bmpY);
     if (screenY >= getScreenHeight()) {
       break;
     }
@@ -1438,6 +1465,7 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
       LOG_ERR("GFX", "Failed to read row %d from bitmap", bmpY);
       free(outputRow);
       free(rowBytes);
+      free(columns);
       return false;
     }
 
@@ -1449,23 +1477,23 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
       // Skip the row if it's outside the crop area
       continue;
     }
+    if (writesAll && bmpY + 1 < bitmap.getHeight() - cropPixY && rowOf(bmpY + 1) == screenY) {
+      continue;  // the next row lands on the same screen row
+    }
 
-    for (int bmpX = cropPixX; bmpX < bitmap.getWidth() - cropPixX; bmpX++) {
-      int screenX = bmpX - cropPixX;
-      if (isScaled) {
-        screenX = std::floor(screenX * scale);
-      }
-      screenX += x;  // the offset should not be scaled
-      if (screenX >= getScreenWidth()) {
-        break;
-      }
+    for (int bmpX = cropPixX; bmpX < endX; bmpX++) {
+      const int screenX = columns[bmpX];
       if (screenX < 0) {
         continue;
       }
 
       const uint8_t val = outputRow[bmpX / 4] >> (6 - ((bmpX * 2) % 8)) & 0x3;
 
-      if (renderMode == BW && val < 3) {
+      if (levelRows) {
+        int phyX, phyY;
+        rotateCoordinates(orientation, screenX, screenY, &phyX, &phyY, panelWidth, panelHeight);
+        drawPixel(screenX, screenY, !((levelRows[val][phyY & 3] >> (7 - (phyX & 7))) & 1));
+      } else if (renderMode == BW && val < 3) {
         drawPixel(screenX, screenY);
       } else if (renderMode == GRAYSCALE_LSB || renderMode == GRAYSCALE_MSB) {
         const auto pixel = grayPlanePixel(val, renderMode == GRAYSCALE_MSB, absoluteGrayPlanes);
@@ -1476,6 +1504,7 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
 
   free(outputRow);
   free(rowBytes);
+  free(columns);
 
   const int sourceWidth = bitmap.getWidth() - cropPixX * 2;
   const int sourceHeight = bitmap.getHeight() - cropPixY * 2;

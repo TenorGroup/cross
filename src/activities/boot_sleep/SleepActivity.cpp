@@ -50,9 +50,15 @@ constexpr size_t MAX_SLEEP_FILE_NAME_LEN = 256;
 constexpr uint8_t MIN_VISIBLE_ALPHA = 8;
 
 // X3 ends every sleep screen on a full GC refresh, the one state its unpowered glass holds for
-// hours (SleepGrayPlanes.h). Otherwise the single HALF refresh (stock parity).
-__attribute__((noinline)) HalDisplay::RefreshMode sleepRefresh() {
-  return SleepGrayPlanes::wanted() ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH;
+// hours (SleepGrayPlanes.h), shown through SleepGrayPlanes so the black and white passes, when
+// owed, run with the frame already finished. Otherwise `other`: the single HALF refresh (stock
+// parity) unless the caller says so.
+__attribute__((noinline)) void showSleepFrame(GfxRenderer& renderer,
+                                              const HalDisplay::RefreshMode other = HalDisplay::HALF_REFRESH) {
+  if (SleepGrayPlanes::wanted())
+    SleepGrayPlanes(renderer, true).show();
+  else
+    renderer.displayBuffer(other);
 }
 
 struct BitmapPlacement {
@@ -637,40 +643,45 @@ void SleepActivity::onEnter() {
 
   // The switch promises a refresh the reader can see. On the UC8279 X3 a GC pass only drives
   // the pixels that change, so the page underneath ghosts into a sleep image painted straight
-  // over it. Drive every pixel black, then white, first; quick resume and transparent keep the
-  // page itself and have returned above. The earlier UC8253 X3 already flashes the whole panel
-  // on every full refresh, so it skips the extra passes.
-  if (SleepGrayPlanes::wanted() && display.getController() == HalDisplay::Controller::UC8279) {
-    for (const uint8_t fill : {uint8_t{0x00}, uint8_t{0xFF}}) {
-      LOG_DBG("SLP", "clear %s", fill == 0x00 ? "black" : "white");
-      renderer.clearScreen(fill);
-      renderer.displayBuffer(HalDisplay::FULL_REFRESH);
-    }
-  }
+  // over it. Every pixel is driven black, then white, once the image is ready in RAM
+  // (SleepGrayPlanes::show); quick resume and transparent keep the page itself and have returned
+  // above. The earlier UC8253 X3 already flashes the whole panel on every full refresh, so it
+  // skips the extra passes.
+  SleepGrayPlanes::clearFirst(SleepGrayPlanes::wanted() &&
+                              display.getController() == HalDisplay::Controller::UC8279);
 
   // These modes replace the whole screen. Paint only the completed sleep frame.
   switch (settings.sleepScreen) {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::BLANK):
-      return renderBlankSleepScreen();
+      renderBlankSleepScreen();
+      break;
     case (CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM):
-      return renderCustomSleepScreen();
+      renderCustomSleepScreen();
+      break;
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER):
-      return renderCoverSleepScreen();
+      renderCoverSleepScreen();
+      break;
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_CUSTOM):
       if (APP_STATE.lastSleepFromReader) {
-        return renderCoverSleepScreen();
+        renderCoverSleepScreen();
       } else {
-        return renderCustomSleepScreen();
+        renderCustomSleepScreen();
       }
+      break;
     case (CrossPointSettings::SLEEP_SCREEN_MODE::STATS):
-      return renderStatsSleepScreen();
+      renderStatsSleepScreen();
+      break;
     case (CrossPointSettings::SLEEP_SCREEN_MODE::TENOR):
-      return renderTenorSleepScreen();
+      renderTenorSleepScreen();
+      break;
     case (CrossPointSettings::SLEEP_SCREEN_MODE::QUOTE):
-      return renderQuoteSleepScreen();
+      renderQuoteSleepScreen();
+      break;
     default:
-      return renderDefaultSleepScreen();
+      renderDefaultSleepScreen();
+      break;
   }
+  SleepGrayPlanes::settle(renderer);
 }
 
 // Man ngu mac dinh cua tenor/cross: an pham branding nen thang vao firmware, nen khong ai
@@ -709,7 +720,7 @@ void SleepActivity::renderTenorSleepScreen() const {
     }
   }
 
-  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  showSleepFrame(renderer, HalDisplay::FULL_REFRESH);
 }
 
 void SleepActivity::renderCustomSleepScreen() const {
@@ -775,7 +786,7 @@ void SleepActivity::renderDefaultSleepScreen() const {
     renderer.invertScreen();
   }
 
-  renderer.displayBuffer(sleepRefresh());
+  showSleepFrame(renderer);
 }
 
 void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool preserveBackground) const {
@@ -800,9 +811,21 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
   const bool combined = absolute && absoluteCaps.base == HalDisplay::GrayscaleBase::Combined;
   LOG_INF("SLP", "Sleep image %dx%d, absolute=%u, combined=%u", bitmap.getWidth(), bitmap.getHeight(), absolute,
           combined);
+  const bool fold = SleepGrayPlanes::wanted();
+  // Folding, the two absolute planes would only be folded into one dithered frame: dither the
+  // image as it is decoded instead, one read of the file where the planes took one each.
+  if (absolute && fold) {
+    if (!renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY, SleepGrayPlanes::LEVELS)) {
+      LOG_ERR("SLP", "Incomplete grayscale image; keeping the current display");
+      return;
+    }
+    SleepGrayPlanes(renderer, true).show();
+    LOG_INF("SLP", "Timing bitmap-visible=%lu ms", static_cast<unsigned long>(millis() - started));
+    return;
+  }
 
   if (!combined && !renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY)) {
-    renderer.displayBuffer(sleepRefresh());
+    showSleepFrame(renderer);
     return;
   }
 
@@ -811,7 +834,6 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
     renderer.invertScreen();
   }
 
-  const bool fold = SleepGrayPlanes::wanted();
   SleepGrayPlanes planes(renderer, fold);
   if (absolute) {
     if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute)) return;
@@ -822,7 +844,7 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
     // the differential nudge then lands unevenly (blotchy noise in gray areas).
     if (!planes.base()) return;
   } else {
-    renderer.displayBuffer(sleepRefresh());
+    showSleepFrame(renderer);
   }
 
   LOG_INF("SLP", "Timing bitmap-base=%lu ms", static_cast<unsigned long>(millis() - started));
@@ -1054,7 +1076,9 @@ void SleepActivity::renderLastScreenSleepScreen() const {
 
 void SleepActivity::renderBlankSleepScreen() const {
   renderer.clearScreen();
-  renderer.displayBuffer(sleepRefresh());
+  // The black and white passes, when owed, end on the blank page itself: a third pass would
+  // change no pixel.
+  if (!SleepGrayPlanes::settle(renderer)) showSleepFrame(renderer);
 }
 
 void SleepActivity::renderStatsSleepScreen() const {
@@ -1062,7 +1086,7 @@ void SleepActivity::renderStatsSleepScreen() const {
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   renderer.clearScreen();
   readingstatsview::drawSleep(renderer);
-  renderer.displayBuffer(sleepRefresh());
+  showSleepFrame(renderer);
 }
 
 void SleepActivity::renderQuoteSleepScreen() const {
@@ -1159,6 +1183,7 @@ void SleepActivity::renderQuoteSleepScreen() const {
   // One frame in the current render mode. Text and the mark come out black in every mode
   // this is called in (B/W, or an absolute gray plane, where glyphs are drawn as B/W); the
   // cover follows the mode, so each plane gets its own bits of the cover.
+  const uint8_t(*coverLevels)[4] = nullptr;  // dithered as decoded when set
   const auto drawFrame = [&](const bool withCover) {
     renderer.clearScreen();
     drawQuoteMark(renderer, GLYPH_X, GLYPH_Y);
@@ -1176,7 +1201,7 @@ void SleepActivity::renderQuoteSleepScreen() const {
     renderer.drawText(SMALL_FONT_ID, textX, y, place);
     if (!withCover) return true;
     const bool drawn = cover.rewindToData() == BmpReaderError::Ok &&
-                       renderer.drawBitmap(cover, MARGIN_X, ROW_TOP, COVER_W, COVER_H, cropX, cropY);
+                       renderer.drawBitmap(cover, MARGIN_X, ROW_TOP, COVER_W, COVER_H, cropX, cropY, coverLevels);
     // Rounded like every cover (components/themes/TenorRadius.h): the page's white back over the
     // corners, in the B/W frame and in each absolute gray plane alike, where white is also the
     // cleared state.
@@ -1190,33 +1215,40 @@ void SleepActivity::renderQuoteSleepScreen() const {
   const bool x3 = gpio.deviceIsX3();
   const bool gray = hasCover && cover.hasGreyscale();
   if (gray && caps.supported()) {
-    // Same panel sequence as the Tenor screen (X3BrandScreen.cpp): on X3 the two planes fold
-    // into one dithered B/W frame shown by a GC pass; the black and white passes in onEnter
-    // have already cleared what the reader left on the UC8279 glass. setRenderMode(BW) would cancel an absolute pass once it has
-    // begun, so inside the pass the mode only moves between the planes.
+    // Same end state as the Tenor screen (X3BrandScreen.cpp): on X3 the gray cover becomes one
+    // dithered B/W frame shown by a GC pass, after the black and white passes on the UC8279
+    // (SleepGrayPlanes::show). Folding, the cover is dithered as it is decoded, so this first
+    // B/W frame is already the final one. setRenderMode(BW) would cancel an absolute pass once
+    // it has begun, so inside the pass the mode only moves between the planes.
     const bool fold = SleepGrayPlanes::wanted();
     SleepGrayPlanes planes(renderer, fold);
     renderer.setRenderMode(GfxRenderer::BW);
+    if (fold) coverLevels = SleepGrayPlanes::LEVELS;
     bool ready = drawFrame(true);
-    // Folding off, X3 runs one GC pass of the B/W frame first: the absolute gray pass that
-    // follows has no erase phase of its own.
-    if (ready && x3 && !fold) {
-      renderer.displayBuffer(HalDisplay::FULL_REFRESH);
-      ready = caps.base == HalDisplay::GrayscaleBase::Combined || drawFrame(true);
+    if (fold) {
+      if (ready) planes.show();
+    } else {
+      // X3 runs one GC pass of the B/W frame first: the absolute gray pass that follows has no
+      // erase phase of its own. On the UC8279 that pass leaves pixels whose color does not
+      // change undriven, so the page can still ghost; the switch is what buys the full passes.
+      if (ready && x3) {
+        renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+        ready = caps.base == HalDisplay::GrayscaleBase::Combined || drawFrame(true);
+      }
+      if (ready) ready = renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute);
+      if (ready) renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
+      if (ready) ready = drawFrame(true);
+      if (ready) planes.lsb();
+      if (ready) renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
+      if (ready) ready = drawFrame(true);
+      if (ready) planes.show();
     }
-    if (ready) ready = renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute);
-    if (ready) renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
-    if (ready) ready = drawFrame(true);
-    if (ready) planes.lsb();
-    if (ready) renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
-    if (ready) ready = drawFrame(true);
-    if (ready) planes.show();
     renderer.setRenderMode(GfxRenderer::BW);  // also cancels a failed partial pass
     LOG_INF("SLP", "Sleep quote gray ready=%u visible=%lu ms", ready, static_cast<unsigned long>(millis() - started));
     if (ready) return;
     // A cover that fails to read part way through: show the words alone.
     drawFrame(false);
-    renderer.displayBuffer(x3 ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
+    showSleepFrame(renderer, x3 ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
     return;
   }
 
@@ -1224,7 +1256,7 @@ void SleepActivity::renderQuoteSleepScreen() const {
   const bool coverDrawn = drawFrame(hasCover);
   if (!coverDrawn) drawFrame(false);
   if (!gray || !coverDrawn) {
-    renderer.displayBuffer(x3 ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
+    showSleepFrame(renderer, x3 ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
     LOG_INF("SLP", "Sleep quote bw visible=%lu ms", static_cast<unsigned long>(millis() - started));
     return;
   }

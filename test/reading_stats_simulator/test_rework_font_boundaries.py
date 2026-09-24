@@ -77,7 +77,9 @@ class ReworkFontBoundariesTest(unittest.TestCase):
         # One LEFT wraps rows 1..N directly to the final installed family.
         saved, log = self.run_sim(self.READING + ';5000:DOWN;5800:DOWN;6600:LEFT;'
                                                   '8200:CONFIRM;10000:BACK;12000:QUIT')
-        self.assertIn(f'SD font system ready ({total - 2} families discovered)', log)
+        # Since v1.0.13 the boot leaves the catalog unread when nothing on the first screen needs
+        # it; the font list reads it here and reports the count in the heap line.
+        self.assertRegex(log, rf'fonts-sd-registry free=\d+ largest=\d+ families={total - 2}\n')
         self.assertEqual(log.count('Entering activity: TextSettings'), 1, log)
         self.assertEqual(saved['sdFontFamilyName'], f'Audit{total - 3:03}', log)
         self.assertEqual(log.count('Entering activity: EpubReaderMenu'), 1, log)

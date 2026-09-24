@@ -2,6 +2,7 @@
 #include <ButtonEdgeLatch.h>
 #include <HalGPIO.h>
 #include <Logging.h>
+#include <PanelMemo.h>
 #include <PowerManager.h>
 #include <Preferences.h>
 #include <SPI.h>
@@ -178,6 +179,11 @@ void HalGPIO::injectPresses(const uint8_t buttonIndex, const uint16_t holdMs, co
 }
 #endif
 
+#if FREEINK_MCU_C3
+// Survives deep sleep, not power loss; read only on a deep-sleep wake (PanelMemo.h).
+static RTC_NOINIT_ATTR panelmemo::Memo panelMemo;
+#endif
+
 void HalGPIO::begin() {
 #if FREEINK_MCU_C3
   _deviceType = detectDeviceTypeWithFingerprint();
@@ -187,7 +193,23 @@ void HalGPIO::begin() {
   // checks the OEM hw_calib/screenType value first, then falls back to its
   // two-pass display-bus probe. X3's facade keys panel selection off the sibling
   // board profile, so preserve a detected UC8279 through setDisplayX3().
-  freeink::applyXteinkDisplayController();
+  // A wake from deep sleep reuses the answer instead (PanelMemo.h). Only a clean
+  // verdict is kept: an unknown ID or a BUSY timeout is probed again next time.
+  uint8_t controller = 0, variant = 0;
+  if (panelmemo::read(panelMemo, esp_reset_reason() == ESP_RST_DEEPSLEEP, controller, variant)) {
+    BoardConfig::ACTIVE.displayController = static_cast<BoardConfig::DisplayController>(controller);
+    BoardConfig::ACTIVE.displayControllerVariant = variant;
+    LOG_INF("HW", "Panel controller kept from sleep: %u", controller);
+  } else {
+    panelMemo = {};
+    freeink::applyXteinkDisplayController();
+    const auto& probe = freeink::getXteinkDisplayProbeDiag();
+    if (probe.valid && !probe.busyTimedOut &&
+        probe.verdict != static_cast<uint8_t>(freeink::DisplayControllerVerdict::Inconclusive)) {
+      panelMemo = panelmemo::make(static_cast<uint8_t>(BoardConfig::ACTIVE.displayController),
+                                  BoardConfig::ACTIVE.displayControllerVariant);
+    }
+  }
   if (deviceIsX3() && BoardConfig::ACTIVE.displayController == BoardConfig::DisplayController::UC8279) {
     BoardConfig::selectDevice(BoardConfig::Board::XteinkX3Uc8279);
   }

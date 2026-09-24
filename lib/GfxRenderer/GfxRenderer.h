@@ -276,8 +276,11 @@ class GfxRenderer {
   void drawImage(const uint8_t bitmap[], int x, int y, int width, int height) const;
   void drawIcon(const uint8_t bitmap[], int x, int y, int size) const;
   bool drawBitmapAbsolutePlanes(const Bitmap& bitmap) const;
+  // With `levelRows`, every pixel of the image is written black or white by its level's ordered
+  // pattern: bit (7 - panel x & 7) of levelRows[level][panel y & 3], set for white. One decode then
+  // gives the dithered frame the absolute LSB and MSB planes would fold into.
   bool drawBitmap(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight, float cropX = 0,
-                  float cropY = 0) const;
+                  float cropY = 0, const uint8_t (*levelRows)[4] = nullptr) const;
   bool drawBitmap1Bit(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight) const;
   // Counter-invert content images in the logical framebuffer so output-level
   // dark mode leaves their original polarity unchanged.

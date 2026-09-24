@@ -160,6 +160,7 @@ add_subdirectory(ui_layout)
 add_subdirectory(button_symbols)
 
 add_subdirectory(dropcap_raster)
+add_subdirectory(wake_boot_memo)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME FormatterCliSafety COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/clang_format_cli/test_cli.py")

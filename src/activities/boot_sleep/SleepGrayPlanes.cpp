@@ -16,7 +16,25 @@ constexpr uint8_t DARK[4] = {0xAA, 0x00, 0xAA, 0x00};
 constexpr uint8_t LIGHT[4] = {0xFF, 0x55, 0xFF, 0x55};
 }  // namespace
 
+const uint8_t SleepGrayPlanes::LEVELS[4][4] = {{0, 0, 0, 0}, {DARK[0], DARK[1], DARK[2], DARK[3]},
+                                                {LIGHT[0], LIGHT[1], LIGHT[2], LIGHT[3]}, {0xFF, 0xFF, 0xFF, 0xFF}};
+
 SleepGrayPlanes::~SleepGrayPlanes() = default;
+
+void SleepGrayPlanes::clearPasses(GfxRenderer& renderer) {
+  for (const uint8_t fill : {uint8_t{0x00}, uint8_t{0xFF}}) {
+    LOG_DBG("SLP", "clear %s", fill == 0x00 ? "black" : "white");
+    renderer.clearScreen(fill);
+    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  }
+}
+
+bool SleepGrayPlanes::settle(GfxRenderer& renderer) {
+  if (!clear) return false;
+  clear = false;
+  clearPasses(renderer);
+  return true;
+}
 
 bool SleepGrayPlanes::keep() {
   const uint8_t* fb = renderer.getFrameBuffer();
@@ -27,7 +45,7 @@ bool SleepGrayPlanes::keep() {
     kept[c].reset(new (std::nothrow) uint8_t[n]);  // no zero fill, the copy below fills it
     if (!kept[c]) {
       for (auto& piece : kept) piece.reset();
-      LOG_ERR("SLP", "Sleep dither: no heap, plain B/W");
+      LOG_ERR("SLP", "Sleep frame: no heap to keep it");
       return false;
     }
     memcpy(kept[c].get(), fb + at, n);
@@ -62,21 +80,31 @@ void SleepGrayPlanes::show() {
   }
   if (shown) return;
   shown = true;
+  uint8_t* fb = renderer.getFrameBuffer();
+  const size_t size = renderer.getBufferSize();
+  const auto at = [&](const size_t i) -> uint8_t& {
+    return kept[i >> CHUNK_BITS][i & ((size_t{1} << CHUNK_BITS) - 1)];
+  };
   // Without a kept plane the framebuffer is shown as it is: the MSB plane is the image's own
-  // B/W threshold.
+  // B/W threshold. The folded frame goes into the kept pieces, where it outlives the passes.
   if (kept[0]) {
-    uint8_t* fb = renderer.getFrameBuffer();
-    const size_t size = renderer.getBufferSize();
     const size_t rowBytes = renderer.getDisplayWidthBytes();
     for (size_t i = 0; i < size; i++) {
       const int y = static_cast<int>(i / rowBytes) & 3;
-      const uint8_t k = kept[i >> CHUNK_BITS][i & ((size_t{1} << CHUNK_BITS) - 1)];
+      const uint8_t k = at(i);
       // Absolute planes: LSB (kept) white on levels 1 and 3, MSB white on 2 and 3. Overlay: the
       // kept B/W frame, and an MSB mask white on both gray levels, which share a checkerboard.
-      fb[i] = overlay ? k | (fb[i] & (0xAA >> (y & 1))) : (fb[i] & (k | LIGHT[y])) | (k & DARK[y]);
+      at(i) = overlay ? k | (fb[i] & (0xAA >> (y & 1))) : (fb[i] & (k | LIGHT[y])) | (k & DARK[y]);
     }
-    for (auto& piece : kept) piece.reset();
   }
+  LOG_INF("SLP", "Timing frame-ready at=%lu", static_cast<unsigned long>(millis()));
   renderer.setRenderMode(GfxRenderer::BW);  // also cancels an absolute pass that was begun
+  // No heap to hold the frame: it is shown without the passes rather than lost to them.
+  if (clear && (kept[0] || keep())) clearPasses(renderer);
+  clear = false;
+  for (size_t from = 0, c = 0; kept[0] && from < size; from += size_t{1} << CHUNK_BITS, c++) {
+    memcpy(fb + from, kept[c].get(), std::min(size - from, size_t{1} << CHUNK_BITS));
+  }
+  for (auto& piece : kept) piece.reset();
   renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 }
