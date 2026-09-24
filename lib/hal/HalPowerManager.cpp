@@ -31,10 +31,18 @@ void HalPowerManager::begin() {
   normalFreq = getCpuFrequencyMhz();
   modeMutex = xSemaphoreCreateMutex();
   assert(modeMutex != nullptr);
-  // setup() and loop() share one task. Read once here so the first paint, drawn by the
-  // render task, already has a real value.
+  // setup() and loop() share one task, and this runs before the render task exists. Read
+  // once here so the first paint, drawn by the render task, already has a real value.
   _gaugeTask = xTaskGetCurrentTaskHandle();
-  getBatteryPercentage();
+  pollGauge();
+}
+
+void HalPowerManager::pollGauge() const {
+  if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) getBatteryPercentage();
+}
+
+bool HalPowerManager::mayReadGauge() const {
+  return _gaugeTask == nullptr || xTaskGetCurrentTaskHandle() == _gaugeTask;
 }
 
 void HalPowerManager::setPowerSaving(bool enabled) {
@@ -147,7 +155,7 @@ uint16_t HalPowerManager::getBatteryPercentage() const {
     // Wire hands its receive buffer back before read(), so a read from a second task can
     // take the other transaction's reply bytes: on an X3 that showed as a charge that
     // jumped anywhere from 0 to 100%. Only the loop task talks to the gauge.
-    if (_gaugeTask != nullptr && xTaskGetCurrentTaskHandle() != _gaugeTask) return _batteryCachedPercent;
+    if (!mayReadGauge()) return _batteryCachedPercent;
     const unsigned long now = millis();
     if (_batteryLastPollMs != 0 && (now - _batteryLastPollMs) < BATTERY_POLL_MS) {
       return _batteryCachedPercent;

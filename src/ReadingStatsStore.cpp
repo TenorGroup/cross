@@ -100,18 +100,26 @@ SnapshotReadResult readOpenSnapshot(HalFile& file, size_t size, JsonDocument& do
 
 bool readSnapshot(const std::string& path, JsonDocument& doc) {
   using ReadResult = PersistableStoreBase::ReadResult;
-  const auto result = PersistableStoreBase::readDocFromFileStatus(path.c_str(), doc, 32768);
-  if (result == ReadResult::Unavailable) return false;
-  if (result == ReadResult::Ready && doc.is<JsonObject>()) return true;
-  doc.clear();
-  const auto backup = PersistableStoreBase::readDocFromFileStatus((path + ".bak").c_str(), doc, 32768);
-  if (backup == ReadResult::Ready && doc.is<JsonObject>()) return true;
-  doc.clear();
-  // writeSnapshot() commits .tmp whole before its renames, so a power cut between them
-  // (an X3 on battery loses power in sleep) leaves the newest snapshot only there.
-  return backup != ReadResult::Unavailable &&
-         PersistableStoreBase::readDocFromFileStatus((path + ".tmp").c_str(), doc, 32768) == ReadResult::Ready &&
-         doc.is<JsonObject>();
+  const auto read = [&doc](const std::string& file) {
+    const auto result = PersistableStoreBase::readDocFromFileStatus(file.c_str(), doc, 32768);
+    if (result == ReadResult::Ready && doc.is<JsonObject>()) return ReadResult::Ready;
+    doc.clear();
+    return result == ReadResult::Unavailable ? result : ReadResult::Invalid;
+  };
+  const bool mainMissing = !Storage.exists(path.c_str());
+  auto result = read(path);
+  if (result != ReadResult::Invalid) return result == ReadResult::Ready;
+  // writeSnapshot() commits .tmp whole before it moves the main file aside, so a power cut
+  // between its renames (an X3 on battery loses power in sleep) leaves the newest snapshot
+  // in .tmp, beside an older .bak. A readable main file stays first: a reset leaves an older
+  // .tmp beside the main file it writes.
+  if (mainMissing) {
+    result = read(path + ".tmp");
+    if (result != ReadResult::Invalid) return result == ReadResult::Ready;
+  }
+  result = read(path + ".bak");
+  if (result != ReadResult::Invalid) return result == ReadResult::Ready;
+  return !mainMissing && read(path + ".tmp") == ReadResult::Ready;
 }
 bool readResetSnapshot(JsonDocument& doc) {
   auto file = Storage.open(RESET_FILE);

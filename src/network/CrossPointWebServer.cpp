@@ -1454,6 +1454,13 @@ void CrossPointWebServer::handlePostSettings() {
       uiTextSizeApplied = true;
     }
   }
+  // The page sends every changed value at once. Switches sent with a new mode belong to that
+  // mode, so the mode goes first and the switches start from what it shows.
+  const int statusBarMode = doc["readerStatusBarMode"] | -1;
+  if (statusBarMode >= 0 && statusBarMode < CrossPointSettings::READER_STATUS_BAR_MODE_COUNT) {
+    SETTINGS.readerStatusBarMode = static_cast<uint8_t>(statusBarMode);
+    SETTINGS.adoptReaderStatusItems();
+  }
 
   for (const auto& s : settings) {
     if (!s.key) continue;

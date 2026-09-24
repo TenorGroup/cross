@@ -150,6 +150,45 @@ void exactBoundAndAllocation() {
   check(deny.hits > 0, "real ArduinoJson allocation fault reached");
   check(snapshot() == original, "allocation failure retains all bytes");
 }
+
+// writeSnapshot() moves the main file aside only once .tmp is whole, so a cut between its
+// two renames leaves the newest snapshot in .tmp beside the older .bak.
+void cutBetweenRenames(bool perBook) {
+  readFault = {};
+  seed();
+  const std::string path = perBook ? bookFile("/Books/io-test.epub") : ReadingStatsStore::getFilePath();
+  const std::string label = perBook ? "book" : "global";
+  check(Storage.writeFile((path + ".bak").c_str(), "{\"schema\":4,\"saved\":1}"), "seed older bak");
+  check(Storage.writeFile((path + ".tmp").c_str(), "{\"schema\":4,\"saved\":2}"), "seed newer tmp");
+  JsonDocument actual;
+  check(readSnapshot(path, actual) && actual["saved"].as<unsigned>() == 2,
+        label + " cut between renames loads the newer tmp, not the older bak");
+  const auto original = snapshot();
+  injectReadFault(path + ".tmp", "open", 0);
+  check(!readSnapshot(path, actual), label + " unreadable tmp refuses the older bak");
+  check(readFault.hits > 0, label + " tmp fault reached");
+  check(snapshot() == original, label + " unreadable tmp keeps every byte");
+  readFault = {};
+}
+
+// A readable main file stays first even beside a readable .tmp. The reset path removes the
+// main file and .bak but leaves .tmp, so a .tmp from a save cut before a reset is older
+// than the main file the reset wrote; nothing in the file tells the two cases apart.
+void resetKeepsMainOverOlderTmp() {
+  readFault = {};
+  seed();
+  const std::string path = ReadingStatsStore::getFilePath();
+  check(Storage.writeFile(path.c_str(), document("4")), "seed main before reset");
+  check(Storage.writeFile((path + ".tmp").c_str(), "{\"schema\":4,\"ngay\":[[20200101,99,99]]}"),
+        "seed tmp from a save cut before the reset");
+  check(READING_STATS.loadFromFile(), "load before reset");
+  check(READING_STATS.resetStatistics(true) == ReadingStatsStore::ResetResult::Complete, "reset completes");
+  check(Storage.exists((path + ".tmp").c_str()), "reset leaves the older tmp");
+  check(READING_STATS.loadFromFile(), "load after reset");
+  JsonDocument actual;
+  READING_STATS.toJson(actual);
+  check(actual["ngay"].size() == 0, "the older tmp does not bring back statistics the reset cleared");
+}
 }  // namespace
 
 int main() {
@@ -161,6 +200,9 @@ int main() {
     for (const auto* suffix : {".davbak", ".bak", ".bak.davbak"}) recoveryUnavailable(suffix, kind);
   }
   exactBoundAndAllocation();
+  cutBetweenRenames(false);
+  cutBetweenRenames(true);
+  resetKeepsMainOverOlderTmp();
   std::filesystem::remove_all(fixtureRoot);
   std::cout << "RESULT " << checks - failures << '/' << checks << " assertions passed\n";
   return failures ? 1 : 0;

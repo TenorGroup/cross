@@ -48,6 +48,15 @@ class HalPowerManager {
   // task reads the gauge; other tasks (the render task) get the loop's last reading.
   uint16_t getBatteryPercentage() const;
 
+  // The main loop's battery poll: refreshes the gauge reading the render task draws. A board
+  // without a gauge reads its ADC divider only when the battery is drawn, because the loop
+  // runs every 10 ms and the button ladder timer owns that ADC unit.
+  void pollGauge() const;
+
+  // True on the only task allowed to talk to an I2C battery gauge (the loop task, which also
+  // runs setup()). Every gauge read asks here, the charging check in HalGPIO included.
+  bool mayReadGauge() const;
+
   // RAII helper class to manage power saving locks
   // Usage: create an instance of Lock in a scope to disable power saving, for example when running a task that needs
   // full performance. When the Lock instance is destroyed (goes out of scope), power saving will be re-enabled.

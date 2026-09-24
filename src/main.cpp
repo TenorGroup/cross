@@ -824,8 +824,10 @@ void loop() {
 
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   mappedInputManager.update();
-  // The render task draws the battery from the value polled here (at most every 1.5 s).
-  powerManager.getBatteryPercentage();
+#ifndef SIMULATOR
+  // The render task draws the gauge reading polled here (at most every 1.5 s).
+  powerManager.pollGauge();
+#endif
 
 #if CROSSPOINT_BLE_HID_HOST
   // Resolve the radio handoff before USB's early return. Activity onEnter() can

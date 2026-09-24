@@ -2,6 +2,9 @@
 #include <BoardConfig.h>
 class HalGPIO {
  public:
+  // isUsbConnected() is compiled from lib/hal/HalGPIO.cpp by gauge_task.py.
+  bool lastUsbConnected = false;
+  bool isUsbConnected() const;
   bool isXteinkDevice() const { return BoardConfig::ACTIVE.board != BoardConfig::Board::Other; }
   bool deviceIsX3() const { return BoardConfig::ACTIVE.board == BoardConfig::Board::X3; }
   bool deviceIsX4() const { return BoardConfig::ACTIVE.board == BoardConfig::Board::X4; }

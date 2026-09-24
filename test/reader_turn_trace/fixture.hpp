@@ -81,6 +81,7 @@ struct ReaderActivity {
   std::unique_ptr<EndOfBookOptions> endOfBookOptions = std::make_unique<EndOfBookOptions>();
   bool preview = false;
   uint16_t trangDaLat = 0;
+  bool pauseKeepsStatsInRam = false;
   int updates = 0;
   bool ready = true;
   bool allowed = true;
@@ -114,7 +115,8 @@ struct ReaderActivity {
   bool handleEndOfBookPageTurn(bool, bool) { return false; }
   void requestUpdate() { ++updates; }
   void updateReadingTime(bool) {}
-  void chotSoLieuDoc() {}
+  int statsSaves = 0;
+  void chotSoLieuDoc() { ++statsSaves; }
   // The open's state and recent-list writes; the turn queue never depends on them.
   void commitOpen() {}
   virtual void onPause();
