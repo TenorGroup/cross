@@ -6,7 +6,7 @@
 #include "activities/settings/FontDownloadActivity.h"
 #include "network/HttpDownloader.h"
 #endif
-#ifdef TENOR_UI_ACCEPTANCE
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
 #include "activities/network/CrossPointWebServerActivity.h"
 #endif
 #ifdef TENOR_OTA_ACCEPTANCE
@@ -766,7 +766,7 @@ void setup() {
   allowSleepAt = millis() + 2000;
 }
 
-#ifdef TENOR_UI_ACCEPTANCE
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
 template <typename Visitor>
 static bool visitDiagnosticSetting(const String& key, Visitor&& visitor) {
   if (key == "blePageTurnerEnabled") {
@@ -1097,7 +1097,7 @@ void loop() {
         if (button >= 0) gpio.injectPresses(button, hold, count, gap);
         logSerial.printf("PRESS:button=%d,hold=%u,count=%u,gap=%u,t=%lu\n", button, hold, count, gap, millis());
 #endif
-#ifdef TENOR_UI_ACCEPTANCE
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
       } else if (cmd == "UI_READER_NEXT" || cmd == "UI_READER_PREV") {
         const bool queued = activityManager.pageTurn(cmd == "UI_READER_NEXT");
         logSerial.printf("UI_READER:synthetic_external=1,queued=%d,generation=%u\n", queued,
@@ -1124,6 +1124,7 @@ void loop() {
                          freeink::ble::busy(), freeink::ble::initializing(),
                          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 #endif
+#ifdef TENOR_UI_ACCEPTANCE
       } else if (cmd == "FILE_TRANSFER_AUTOCONNECT") {
         auto activity = makeUniqueNoThrow<CrossPointWebServerActivity>(renderer, mappedInputManager);
         if (activity) {
@@ -1137,6 +1138,7 @@ void loop() {
         activityManager.stepHomeForTest(cmd == "HOME_NEXT" ? 1 : -1);
       } else if (cmd.startsWith("HOME_TAB ")) {
         activityManager.tabHomeForTest(cmd.substring(9).toInt());
+#endif
       } else if (cmd.startsWith("SET ")) {
         // CMD:SET <ten-json>=<so>: dat mot cai dat so nguyen bang dung ten JSON
         // cua no (SettingsList.h), luu xuong the va tra ve gia tri da ghi. Chi
