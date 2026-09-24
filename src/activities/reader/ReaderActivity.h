@@ -147,6 +147,11 @@ class ReaderActivity : public Activity {
   // onEnter() leaves them pending; the first tick after the frame, or the exit, writes them.
   bool openCommitPending = false;
   void commitOpen();
+  // Set for the reader menu only: writing the stats checkpoint held the menu back 245 ms on the
+  // X3. The record stays in RAM and is written by the next 30 s checkpoint once the menu has
+  // closed, or by onExit() (sleep included), so a crash in the menu loses at most the reading
+  // since the last checkpoint, the same bound as a crash on the page.
+  bool pauseKeepsStatsInRam = false;
 
  public:
   void loop() override;

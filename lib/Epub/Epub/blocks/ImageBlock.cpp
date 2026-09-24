@@ -30,6 +30,10 @@ void ImageBlock::setExtractor(void* ctx, ExtractFn fn) {
   extractFn = fn;
 }
 
+ImageBlock::ThumbHook* ImageBlock::thumbHook = nullptr;
+
+void ImageBlock::setThumbHook(ThumbHook* hook) { thumbHook = hook; }
+
 bool ImageBlock::imageExists() const { return Storage.exists(imagePath.c_str()); }
 
 namespace {
@@ -416,7 +420,9 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
 #if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
   const unsigned long decodeStarted = millis();
 #endif
+  config.thumbs = thumbHook ? thumbHook->open(srcPath) : nullptr;
   bool success = decoder->decodeToFramebuffer(imagePath, renderer, config);
+  if (config.thumbs) thumbHook->close(success);
 #if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
   LOG_INF("IMG", "FIRST_VIEW extract=%lu decode=%lu ms size=%u %dx%d", decodeStarted - firstViewStarted,
           millis() - decodeStarted, static_cast<unsigned>(fileSize), width, height);

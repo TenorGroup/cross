@@ -192,7 +192,8 @@ void ReaderActivity::onPause() {
   const unsigned long started = millis();
 #endif
   updateReadingTime(false);
-  chotSoLieuDoc();
+  if (!pauseKeepsStatsInRam) chotSoLieuDoc();
+  pauseKeepsStatsInRam = false;
 #ifdef TENOR_TURN_TRACE
   LOG_INF("READER", "PAUSE_SAVE t=%lu ms=%lu", started, millis() - started);
 #endif

@@ -58,6 +58,7 @@ class Epub {
   std::string getThumbBmpPath(int height) const;
   // Writes the 1-bit cover thumbnail for each height not on the card yet.
   void generateThumbBmps(const int* heights, int count) const;
+  bool isCoverImage(const std::string& href) const;
   uint8_t* readItemContentsToBytes(const std::string& itemHref, size_t* size = nullptr,
                                    bool trailingNullByte = false) const;
   bool readItemContentsToStream(const std::string& itemHref, Print& out, size_t chunkSize,

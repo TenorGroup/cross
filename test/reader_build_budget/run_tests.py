@@ -82,11 +82,14 @@ for name in ['pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildS
 if 'EpubReaderActivity::writePendingThumbs(' not in cpp:
     functions.append('void EpubReaderActivity::writePendingThumbs() {}')
 reader = (reader_source / 'src/activities/reader/ReaderActivity.cpp').read_text()
-functions += [function(name, reader, 'ReaderActivity') for name in ['luotLatTrangNgoai', 'processExternalPageTurn', 'pageTurnLocked', 'onTick']
+functions += [function(name, reader, 'ReaderActivity') for name in ['luotLatTrangNgoai', 'processExternalPageTurn', 'pageTurnLocked', 'onTick',
+                                                                   'updateReadingTime', 'chotSoLieuDoc', 'onPause']
               + (['queuePageTurn'] if 'ReaderActivity::queuePageTurn(' in reader else [])]
 # The tail of onEnter() from the reading-stats activation on: where the open writes its state.
 on_enter = function('onEnter', reader, 'ReaderActivity')
 functions.append('void ReaderActivity::openTail() {\n' + on_enter[on_enter.index('  statsEnabled = READING_STATS.activateBook'):])
+# Whether opening the reader menu asks the pause to keep the stats in RAM.
+functions.append('constexpr bool kMenuKeepsStats = %s;' % ('true' if 'pauseKeepsStatsInRam = true' in function('openReaderMenu') else 'false'))
 # A reader that writes the open inside onEnter() (the previous release) has nothing left to commit.
 functions.append(function('commitOpen', reader, 'ReaderActivity') if 'ReaderActivity::commitOpen(' in reader
                  else 'void ReaderActivity::commitOpen() {}')

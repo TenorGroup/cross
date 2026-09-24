@@ -4,6 +4,7 @@
 #include <Epub/FootnoteEntry.h>
 #include <Epub/PageLink.h>
 #include <Epub/Section.h>
+#include <Epub/blocks/ImageBlock.h>
 
 #include <atomic>
 #include <memory>
@@ -83,6 +84,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // are missing (the card's own, then the theme's); onExit() writes them as the reader closes.
   int pendingThumbHeights[2] = {};
   uint8_t pendingThumbCount = 0;
+  // Builds them while the cover page decodes the cover, when the book opens on it.
+  std::unique_ptr<ImageBlock::ThumbHook> coverThumbs;  // a CoverThumbCapture (EpubReaderActivity.cpp)
   void writePendingThumbs();
   unsigned long lastRenderCompleteMs = 0;
   bool bookmarkRemoved = false;

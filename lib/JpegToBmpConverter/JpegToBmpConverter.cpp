@@ -12,6 +12,7 @@
 #include <cstring>
 
 #include "BitmapHelpers.h"
+#include "GrayThumb.h"
 
 // ============================================================================
 // IMAGE PROCESSING OPTIONS - Toggle these to test different configurations
@@ -78,45 +79,6 @@ void writeBmpHeader8bit(Print& bmpOut, const int width, const int height) {
     bmpOut.write(static_cast<uint8_t>(i));  // Green
     bmpOut.write(static_cast<uint8_t>(i));  // Red
     bmpOut.write(static_cast<uint8_t>(0));  // Reserved
-  }
-}
-
-// Helper function: Write BMP header with 1-bit color depth (black and white)
-static void writeBmpHeader1bit(Print& bmpOut, const int width, const int height) {
-  // Calculate row padding (each row must be multiple of 4 bytes)
-  const int bytesPerRow = (width + 31) / 32 * 4;  // 1 bit per pixel, round up to 4-byte boundary
-  const int imageSize = bytesPerRow * height;
-  const uint32_t fileSize = 62 + imageSize;  // 14 (file header) + 40 (DIB header) + 8 (palette) + image
-
-  // BMP File Header (14 bytes)
-  bmpOut.write('B');
-  bmpOut.write('M');
-  write32(bmpOut, fileSize);  // File size
-  write32(bmpOut, 0);         // Reserved
-  write32(bmpOut, 62);        // Offset to pixel data (14 + 40 + 8)
-
-  // DIB Header (BITMAPINFOHEADER - 40 bytes)
-  write32(bmpOut, 40);
-  write32Signed(bmpOut, width);
-  write32Signed(bmpOut, -height);  // Negative height = top-down bitmap
-  write16(bmpOut, 1);              // Color planes
-  write16(bmpOut, 1);              // Bits per pixel (1 bit)
-  write32(bmpOut, 0);              // BI_RGB (no compression)
-  write32(bmpOut, imageSize);
-  write32(bmpOut, 2835);  // xPixelsPerMeter (72 DPI)
-  write32(bmpOut, 2835);  // yPixelsPerMeter (72 DPI)
-  write32(bmpOut, 2);     // colorsUsed
-  write32(bmpOut, 2);     // colorsImportant
-
-  // Color Palette (2 colors x 4 bytes = 8 bytes)
-  // Format: Blue, Green, Red, Reserved (BGRA)
-  // Note: In 1-bit BMP, palette index 0 = black, 1 = white
-  uint8_t palette[8] = {
-      0x00, 0x00, 0x00, 0x00,  // Color 0: Black
-      0xFF, 0xFF, 0xFF, 0x00   // Color 1: White
-  };
-  for (const uint8_t i : palette) {
-    bmpOut.write(i);
   }
 }
 

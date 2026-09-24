@@ -11,6 +11,10 @@
    instead of at full size.
 4. The reading pages (the cover page and a text page) are unchanged: their screenshots land in
    CROSSPOINT_TEST_ARTIFACTS for a pixel comparison between two builds.
+5. A book that opens on its cover page decodes the cover for that page anyway (the X3 spent 0,9 s
+   copying it out of the book and 2,1 s decoding it). Writing the thumbnails copied and decoded
+   it twice more when the reader closed: 5,6 s on the Home key. They now take the rows of the
+   page's own decode, and must match what the cover decode gives.
 """
 import os
 from pathlib import Path
@@ -20,9 +24,9 @@ import tempfile
 import unittest
 import zipfile
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageFilter
 
-from test_home_card_v1011 import CARD_BUILD, FIXTURE, PROGRAM, THUMB, cover_jpeg
+from test_home_card_v1011 import CARD_BUILD, FIXTURE, PROGRAM, THUMB, cover_jpeg, epub_with_cover
 
 PATH = '/sach/cuon-moi.epub'
 TITLE = 'Cuốn sách mới mở'
@@ -31,6 +35,17 @@ TITLE = 'Cuốn sách mới mở'
 RADIO_HEAP = {'CROSSPOINT_SIM_FREE_HEAP': '61204', 'CROSSPOINT_SIM_MAX_ALLOC_HEAP': '55284'}
 GRID = re.compile(r'Scaling source (\d+)x(\d+) \(decode grid (\d+)x(\d+)\) -> (\d+)x(\d+)')
 COVER_BOX = (24, 124, 260, 480)
+# The route a thumbnail took: page=1 when it was written from the cover page's own decode.
+THUMB_ROUTE = re.compile(r'Cover thumbnail (\d+) px: \d+ ms, ok=1, page=(\d)')
+
+
+def blurred_error(thumb, reference):
+    """Mean absolute difference of two images seen at reading distance (dither blurred away)."""
+    size = thumb.size
+    a = thumb.convert('L').filter(ImageFilter.GaussianBlur(2))
+    b = reference.resize(size, Image.BOX).filter(ImageFilter.GaussianBlur(2))
+    diff = ImageChops.difference(a, b)
+    return sum(i * n for i, n in enumerate(diff.histogram())) / (size[0] * size[1])
 
 
 def book_with_cover_page(target):
@@ -70,7 +85,7 @@ class NewBookCoverTest(unittest.TestCase):
         artifacts = os.environ.get('CROSSPOINT_TEST_ARTIFACTS')
         self.artifacts = Path(artifacts) if artifacts else None
 
-    def launch(self, heap):
+    def launch(self, heap, book_path=None):
         # Home, Select opens the book on its cover page; the reader sits idle for six seconds (well
         # past the idle pass), Right shows a text page, Back returns to the Recent card.
         env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
@@ -78,6 +93,10 @@ class NewBookCoverTest(unittest.TestCase):
         env.update(heap, SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(self.sd),
                    CROSSPOINT_SIM_INPUT_SCRIPT='1500:CONFIRM;7500:RIGHT;9500:BACK;13000:QUIT',
                    CROSSPOINT_SIM_SCREENSHOTS=';'.join(f'{ms}:{self.sd / (name + ".bmp")}' for ms, name in shots))
+        if book_path:
+            (self.store / 'recent.json').write_text(
+                '{"books": [{"path": "%s", "title": "%s", "author": "Tenor", "coverBmpPath": ""}]}' % (book_path, TITLE),
+                encoding='utf-8')
         run = subprocess.run([str(PROGRAM)], cwd=Path(__file__).resolve().parents[2], env=env,
                              capture_output=True, text=True, timeout=120)
         log = run.stdout + run.stderr
@@ -109,11 +128,16 @@ class NewBookCoverTest(unittest.TestCase):
         self.assertGreaterEqual(last_page, 0, log[-4000:])
         written = [(m.start(), int(m.group(1)), m.group(3)) for m in THUMB.finditer(log)]
         self.assertEqual([h for _, h, ok in written if ok == '1'], [356, 226], log[-6000:])
-        early = [h for at, h, _ in written if at < last_page]
+        # A thumbnail taken from the cover page's own decode costs no decode of its own.
+        separate = [m.start() for m in THUMB.finditer(log) if not log.startswith(', page=1', m.end())]
+        early = [at for at in separate if at < last_page]
         self.assertEqual(early, [], 'cover thumbnail decoded while the page was on screen')
 
     def test_thumbnail_decodes_a_reduced_grid(self):
-        log, _ = self.launch({})
+        # A book with a cover but no cover page: the thumbnails decode the cover file.
+        other = '/sach/khong-trang-bia.epub'
+        epub_with_cover(self.sd / other.lstrip('/'))
+        log, _ = self.launch({}, other)
         grids = [tuple(map(int, m.groups())) for m in GRID.finditer(log)]
         self.assertTrue(grids, log[-6000:])
         for src_w, src_h, grid_w, grid_h, out_w, out_h in grids:
@@ -121,6 +145,49 @@ class NewBookCoverTest(unittest.TestCase):
             self.assertLess(grid_w, src_w, grids)
             self.assertGreaterEqual(grid_w, out_w, grids)
             self.assertGreaterEqual(grid_h, out_h, grids)
+
+    def test_cover_page_pixels_make_the_thumbnails(self):
+        # The radio starts only after the first page, so the decode sees the heap before it.
+        log, shots = self.launch({})
+        routes = THUMB_ROUTE.findall(log)
+        self.assertEqual(routes, [('356', '1'), ('226', '1')], log[-6000:])
+        # Nothing reaches the card while the cover decodes: the files come after the first page.
+        first_page = log.find('Rendered page in')
+        self.assertGreaterEqual(first_page, 0, log[-4000:])
+        self.assertGreater(THUMB_ROUTE.search(log).start(), first_page, 'thumbnail written during the page decode')
+        # No second decode of the cover: the JPEG converter logs its grid for every thumbnail.
+        self.assertIsNone(GRID.search(log), 'the cover was decoded again for the thumbnails')
+        builds = CARD_BUILD.findall(log)
+        self.assertEqual(int(builds[-1][2]), 356, 'the card drew no cover for the new book')
+
+    def test_page_thumbnail_matches_the_cover_decode(self):
+        log, _ = self.launch({})
+        self.assertEqual([h for h, route in THUMB_ROUTE.findall(log)], ['356', '226'], log[-6000:])
+        from_page = {h: Image.open(self.thumbs(h)[0]).copy() for h in (356, 226)}
+        # The same cover in a book with no cover page takes the cover decode.
+        other = '/sach/khong-trang-bia.epub'
+        epub_with_cover(self.sd / other.lstrip('/'))
+        log, _ = self.launch({}, other)
+        self.assertEqual(len(GRID.findall(log)), 2, log[-6000:])
+        cover = Image.open(__import__('io').BytesIO(cover_jpeg())).convert('L')
+        report = {}
+        for height in (356, 226):
+            decoded = [p for p in self.thumbs(height) if Image.open(p).copy() != from_page[height]]
+            self.assertEqual(len(decoded), 1, self.thumbs(height))
+            decoded = Image.open(decoded[0]).copy()
+            page = from_page[height]
+            self.assertEqual(page.height, height)
+            self.assertLessEqual(abs(page.width - decoded.width), 1, (page.size, decoded.size))
+            page_error = blurred_error(page, cover)
+            decode_error = blurred_error(decoded, cover)
+            report[height] = (page.size, decoded.size, round(page_error, 2), round(decode_error, 2))
+            if self.artifacts:
+                page.save(self.artifacts / f'thumb-{height}-page.png')
+                decoded.save(self.artifacts / f'thumb-{height}-decode.png')
+            # Within the dither of the cover decode: a 1-bit thumbnail blurred at radius 2 still
+            # carries several gray levels of error either way.
+            self.assertLessEqual(page_error, decode_error + 3.0, report)
+        print('THUMB_ROUTE_MEASURE', report)
 
 
 if __name__ == '__main__':

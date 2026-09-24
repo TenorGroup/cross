@@ -6,6 +6,8 @@
 
 #include "Block.h"
 
+class GrayThumb;
+
 class ImageBlock final : public Block {
  public:
   ImageBlock(const std::string& imagePath, const std::string& srcPath, int16_t width, int16_t height);
@@ -36,6 +38,16 @@ class ImageBlock final : public Block {
   using ExtractFn = bool (*)(void* ctx, const char* srcPath, const char* destPath);
   static void setExtractor(void* ctx, ExtractFn fn);
 
+  // The Recent card's cover thumbnail rides on the first decode of the book's cover image, set
+  // by the reader while a thumbnail is missing. open() hands back a thumbnail to feed when
+  // srcPath is that cover, and close() is told whether the decode finished.
+  struct ThumbHook {
+    virtual ~ThumbHook() = default;
+    virtual GrayThumb* open(const std::string& srcPath) = 0;
+    virtual void close(bool decoded) = 0;
+  };
+  static void setThumbHook(ThumbHook* hook);
+
   BlockType getType() override { return IMAGE_BLOCK; }
   bool isEmpty() override { return false; }
 
@@ -51,4 +63,5 @@ class ImageBlock final : public Block {
 
   static void* extractCtx;
   static ExtractFn extractFn;
+  static ThumbHook* thumbHook;
 };

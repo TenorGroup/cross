@@ -7,7 +7,7 @@ template<class F> void test(const char* name, F fn) {
   freeink::ble::idleStoppedState = false;
   freeink::ble::stopForIdleCalls = freeink::ble::rearmRequests = 0;
   clockMs = 1000; popupCount = buildErrors = 0; popupAtMs = 0; thumbs = {}; tenorchrome::enabledState = true;
-  activityManager.sleepTransitionState = false; openWrites = {};
+  activityManager.sleepTransitionState = false; openWrites = {}; ImageBlock::hook = nullptr;
   try { fn(); std::cout << "PASS " << name << '\n'; }
   catch (const std::exception& e) { ++failures; std::cout << "FAIL " << name << ": " << e.what() << '\n'; }
 }
@@ -309,6 +309,9 @@ int main() {
     // One look per height: the card's own and the theme's.
     require(thumbs.existsChecks == 2, "open path stopped looking for the cover thumbnails");
     require(thumbs.generated == 0, "open path still paid for the cover thumbnail");
+    // A cover page drawn before the exit writes them from its own decode.
+    require(ImageBlock::hook && ImageBlock::hook == r.coverThumbs.get(),
+            "the cover page decode was not asked for them");
     ESP.free = 116768; ESP.largest = 90100;
     r.lastRenderCompleteMs = millis();
     for (int pass = 0; pass < 3; ++pass) {
@@ -369,6 +372,7 @@ int main() {
     r.section->building = r.section->partial = false;
     r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
     r.openThumbStep();
+    require(!ImageBlock::hook, "a book with its thumbnails still hooks the cover decode");
     ESP.free = 116768; ESP.largest = 90100;
     r.lastRenderCompleteMs = millis();
     clockMs += 500;
@@ -376,6 +380,32 @@ int main() {
     r.writePendingThumbs();
     require(thumbs.generated == 0, "warm open regenerated an existing thumbnail");
     require(thumbs.loans == 0, "warm open borrowed the framebuffer for nothing");
+  });
+  // Pausing for the reader menu wrote the reading-stats checkpoint first: 245 ms on the X3 before
+  // the menu could paint (r18-k2: PAUSE_SAVE ms=245). The menu keeps the record in RAM; the reader
+  // writes it on its next 30 s checkpoint after the menu closes, or on its exit (sleep included).
+  test("the reader menu opens without writing the stats; the next checkpoint writes them", [] {
+    EpubReaderActivity r; r.statsEnabled = true; r.statsActive = true; r.pageReady = true;
+    r.statsLastMs = r.statsSavedMs = r.statsDayPollMs = millis();
+    clockMs += 20000;  // twenty seconds of reading before the menu
+    r.pauseKeepsStatsInRam = true;
+    r.onPause();
+    require(openWrites.statsSaves == 0, "the menu waited on a stats write");
+    require(r.statsDirty, "the reading before the menu was not recorded");
+    clockMs += 12000;  // menu time, the reader does not tick
+    r.onTick();       // first tick back on the page: past the 30 s checkpoint
+    require(openWrites.statsSaves == 1, "the checkpoint after the menu did not write the stats");
+    clockMs += 5000;
+    r.onPause();  // a later screen that is not the menu
+    require(openWrites.statsSaves == 2, "the menu flag leaked into a later pause");
+    require(kMenuKeepsStats, "openReaderMenu does not ask the pause to keep the stats in RAM");
+  });
+  test("other screens over the reader still write the stats as they open", [] {
+    EpubReaderActivity r; r.statsEnabled = true; r.statsActive = true; r.pageReady = true;
+    r.statsLastMs = r.statsSavedMs = r.statsDayPollMs = millis();
+    clockMs += 20000;
+    r.onPause();
+    require(openWrites.statsSaves == 1, "a child screen opened with unsaved reading stats");
   });
   // state.json and the recent list are read by the next boot and by Home only. Writing them in
   // onEnter() put two SD writes (and a pass over every recent book on the card) ahead of the

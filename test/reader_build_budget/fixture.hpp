@@ -184,6 +184,17 @@ struct Epub {
   // The one-height call of the previous release, so its reader still compiles for a red run.
   bool generateThumbBmp(int height) const { generateThumbBmps(&height, 1); return true; }
 };
+// The cover page's decode writes the thumbnails through this hook (ImageBlock::ThumbHook).
+struct ImageBlock {
+  struct ThumbHook { virtual ~ThumbHook() = default; };
+  static inline ThumbHook* hook = nullptr;
+  static void setThumbHook(ThumbHook* h) { hook = h; }
+};
+struct CoverThumbCapture : ImageBlock::ThumbHook {
+  CoverThumbCapture(const Epub&, const int*, int) {}
+};
+template <class T, class... A>
+std::unique_ptr<T> makeUniqueNoThrow(A&&... args) { return std::make_unique<T>(std::forward<A>(args)...); }
 struct Manager {
   bool sleepTransitionState = false;
   uint32_t activityGeneration() const { return 1; }
@@ -191,7 +202,7 @@ struct Manager {
 } activityManager;
 struct EndMenu { bool menuActive() const { return false; } };
 // The open's own writes: state.json and the recent list (ReaderActivity::onEnter and commitOpen).
-struct OpenWrites { int stateSaves = 0, recentAdds = 0; } openWrites;
+struct OpenWrites { int stateSaves = 0, recentAdds = 0, statsSaves = 0; } openWrites;
 struct AppState {
   std::string openEpubPath;
   void saveToFile() { ++openWrites.stateSaves; }
@@ -204,6 +215,9 @@ struct RecentBooks {
 struct ReadingStats {
   bool activateBook(const std::string&, int, const std::string&) { return true; }
   uint32_t currentDay() const { return 1; }
+  void record(uint32_t, uint32_t, uint16_t, int) {}
+  void observeHabits(uint32_t, uint16_t, uint32_t) {}
+  bool saveToFile() { ++openWrites.statsSaves; return true; }
 } READING_STATS;
 struct ReaderActivity {
   int pendingExternalTurn = 0, requests = 0, trangDaLat = 0;
@@ -212,7 +226,10 @@ struct ReaderActivity {
   std::atomic<bool> endOfBookOptionsReady{false};
   // What the tail of onEnter(), onTick() and commitOpen() touch.
   std::string bookPath = "/sach/moi.epub";
-  bool statsEnabled = false, openCommitPending = false;
+  bool statsEnabled = false, openCommitPending = false, statsActive = false, statsDirty = false;
+  // Set by the reader menu's open (EpubReaderActivity::openReaderMenu); the previous release had
+  // no such flag and wrote the stats on every pause.
+  bool pauseKeepsStatsInRam = false;
   uint32_t statsLastMs = 0, statsSavedMs = 0, statsDayPollMs = 0, statsDay = 0;
   std::atomic<bool> pageReady{false};
   std::string getBookTitle() const { return "Tieu de"; }
@@ -221,8 +238,7 @@ struct ReaderActivity {
   struct Info { int progressPercent = 0; };
   Info getScreenshotInfo() const { return {}; }
   bool readingPageVisible() const { return true; }
-  void updateReadingTime(bool) {}
-  void chotSoLieuDoc() {}
+  void updateReadingTime(bool); void chotSoLieuDoc(); void onPause();
   void openTail(); void onTick(); void commitOpen();
   std::unique_ptr<EndMenu> endOfBookOptions = std::make_unique<EndMenu>();
   virtual ~ReaderActivity() = default;
@@ -242,6 +258,7 @@ struct ReaderActivity {
 struct EpubReaderActivity : ReaderActivity {
   std::unique_ptr<Section> section = std::make_unique<Section>();
   std::unique_ptr<Epub> epub = std::make_unique<Epub>();
+  std::unique_ptr<ImageBlock::ThumbHook> coverThumbs;
 @@FIELDS@@
   ReaderRenderer renderer;
   // A button edge in this pass; the idle steps wait for a quiet pass.

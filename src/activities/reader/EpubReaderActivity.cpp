@@ -5,6 +5,7 @@
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
+#include <GrayThumb.h>
 #include <HalDisplay.h>
 #include <HalFrontlight.h>
 #include <HalGPIO.h>
@@ -185,10 +186,64 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
   }
 }
 
+// The missing cover thumbnails of a new book, built in RAM while its cover page decodes the cover
+// (ImageBlock::ThumbHook) and written once that page is on the panel. The X3 otherwise copied the
+// cover out of the book again and decoded it twice more when the reader closed: 5,6 s on the Home
+// key (r18-k1). The card's height is built from the decode; the theme's smaller one is scaled
+// from it when the files are written. One try per book open; whatever is not written here is
+// written by writePendingThumbs() as before.
+class CoverThumbCapture final : public ImageBlock::ThumbHook {
+  const Epub& epub;
+  const int* heights;
+  int count;
+  std::unique_ptr<GrayThumb> thumb;
+  bool ready = false;
+
+ public:
+  CoverThumbCapture(const Epub& epub, const int* heights, const int count)
+      : epub(epub), heights(heights), count(count) {}
+
+  GrayThumb* open(const std::string& srcPath) override {
+    if (count == 0 || thumb || !FsHelpers::hasJpgExtension(srcPath) || !epub.isCoverImage(srcPath)) return nullptr;
+    thumb = makeUniqueNoThrow<GrayThumb>(heights[0]);
+    return thumb.get();
+  }
+
+  void close(const bool decoded) override {
+    ready = decoded && thumb && thumb->finish();
+    if (!ready) thumb.reset();
+    count = 0;
+  }
+
+  // Writes what the decode built. True when every missing height is on the card now.
+  bool write() {
+    if (!ready) return false;
+    ready = false;
+    const unsigned long started = millis();
+    int written = 0;
+    for (int i = 0; i < 2 && heights[i] > 0 && (i == 0 || heights[1] < heights[0]); i++) {
+      const auto path = epub.getThumbBmpPath(heights[i]);
+      HalFile file;
+      const bool ok = Storage.openFileForWrite("ERS", path, file) &&
+                      (i == 0 ? thumb->writeTo(file) : thumb->writeScaled(heights[i], file));
+      file.close();
+      if (!ok) {
+        Storage.remove(path.c_str());
+        break;
+      }
+      LOG_INF("ERS", "Cover thumbnail %d px: %lu ms, ok=1, page=1", heights[i], millis() - started);
+      written++;
+    }
+    thumb.reset();
+    return written > 0 && (written == 2 || heights[1] == 0);
+  }
+};
+
 }  // namespace
 
 EpubReaderActivity::~EpubReaderActivity() {
   ImageBlock::setExtractor(nullptr, nullptr);
+  ImageBlock::setThumbHook(nullptr);
   discardOverlayPage();  // free the overlay's page snapshot if one is held
 
   if (footnoteDepth > 0 && epub) {
@@ -323,6 +378,11 @@ bool EpubReaderActivity::loadBook() {
       if (height > 0 && !Storage.exists(epub->getThumbBmpPath(height).c_str()))
         pendingThumbHeights[pendingThumbCount++] = height;
     }
+    if (pendingThumbCount > 0) {
+      if (pendingThumbCount < 2) pendingThumbHeights[1] = 0;
+      coverThumbs = makeUniqueNoThrow<CoverThumbCapture>(*epub, pendingThumbHeights, pendingThumbCount);
+      ImageBlock::setThumbHook(coverThumbs.get());
+    }
   }
 #ifdef TENOR_TURN_TRACE
   LOG_INF("ERS", "LOAD_STAGES epub=%lu progress=%lu marks=%lu quotes=%lu thumbs=%lu uncached=%u",
@@ -390,6 +450,7 @@ void EpubReaderActivity::openReaderMenu() {
   const int bookProgressPercent = bookPercentFor(position);
   const uint8_t readerStatusBarHeightBeforeMenu = readerStatusBarHeight();
 
+  pauseKeepsStatsInRam = true;
   startActivityForResult(
       std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), position.displayPage(),
                                                position.totalPages, bookProgressPercent, SETTINGS.orientation,
@@ -1565,6 +1626,7 @@ bool EpubReaderActivity::launchKOReaderSync() {
     discardOverlayPage();
     ImageBlock::releaseRenderCache();
     ImageBlock::setExtractor(nullptr, nullptr);
+    ImageBlock::setThumbHook(nullptr);
     section.reset();
     if (auto* fcm = renderer.getFontCacheManager()) {
       fcm->releaseSdFontCaches();
@@ -2300,6 +2362,9 @@ void EpubReaderActivity::renderBook() {
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     lastRenderCompleteMs = millis();
     if (!pendingQuoteEdit.empty()) quoteEditPageShown = true;
+    // The page is on the panel: write the cover thumbnails its decode built, before the page
+    // counts as ready and the page-turner radio starts.
+    if (coverThumbs && static_cast<CoverThumbCapture&>(*coverThumbs).write()) pendingThumbCount = 0;
   }
 
   if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||

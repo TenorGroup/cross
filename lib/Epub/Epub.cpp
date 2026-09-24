@@ -558,6 +558,9 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   if (!bookMetadataCache->cleanupTmpFiles()) {
     LOG_DBG("EBP", "Could not cleanup tmp files - ignoring");
   }
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+  const uint32_t cssStart = millis();
+#endif
 
   if (!skipLoadingCss) {
     // Parse CSS before reloading book.bin to leave more heap for CSS rule-table growth.
@@ -573,6 +576,10 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
     LOG_ERR("EBP", "Failed to reload cache after writing");
     return false;
   }
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+  LOG_INF("EBP", "INDEX_STAGES opf=%lu toc=%lu book=%lu css_reload=%lu", tocStart - opfStart, buildStart - tocStart,
+          cssStart - buildStart, millis() - cssStart);
+#endif
 
   LOG_DBG("EBP", "Loaded ePub: %s", filepath.c_str());
   return true;
@@ -732,8 +739,14 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds) const {
 std::string Epub::getThumbBmpPath() const { return cachePath + "/thumb_[HEIGHT].bmp"; }
 std::string Epub::getThumbBmpPath(int height) const { return cachePath + "/thumb_" + std::to_string(height) + ".bmp"; }
 
+bool Epub::isCoverImage(const std::string& href) const {
+  return bookMetadataCache && bookMetadataCache->isLoaded() && !href.empty() &&
+         href == bookMetadataCache->coreMetadata.coverItemHref;
+}
+
 // One pass for every missing height. The cover is copied out of the book once and each
 // thumbnail decodes that copy: copying it per height paid the zip read and the SD write twice.
+// A book that opened on its cover page has its thumbnails already (ImageBlock::ThumbHook).
 void Epub::generateThumbBmps(const int* heights, const int count) const {
   if (!bookMetadataCache || !bookMetadataCache->isLoaded()) {
     LOG_ERR("EBP", "Cannot generate thumb BMP, cache not loaded");
@@ -762,7 +775,8 @@ void Epub::generateThumbBmps(const int* heights, const int count) const {
     HalFile cover;
     if (!copied) {
       if (!Storage.openFileForWrite("EBP", coverTempPath, cover)) return;
-      readItemContentsToStream(coverImageHref, cover, 1024);
+      // The page extractor's chunk: 1 KB writes took 1,5 s for a 257 KB cover on the X3.
+      readItemContentsToStream(coverImageHref, cover, 8192);
 #if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
       LOG_INF("EBP", "THUMB_COPY ms=%lu bytes=%u", millis() - started, static_cast<unsigned>(cover.size()));
 #endif
@@ -786,7 +800,7 @@ void Epub::generateThumbBmps(const int* heights, const int count) const {
       LOG_ERR("EBP", "Failed to generate thumb BMP from cover image");
       Storage.remove(thumbPath.c_str());
     }
-    LOG_INF("EBP", "Cover thumbnail %d px: %lu ms, ok=%u", height, millis() - started, success ? 1u : 0u);
+    LOG_INF("EBP", "Cover thumbnail %d px: %lu ms, ok=%u, page=0", height, millis() - started, success ? 1u : 0u);
   }
   if (copied) Storage.remove(coverTempPath.c_str());
 }

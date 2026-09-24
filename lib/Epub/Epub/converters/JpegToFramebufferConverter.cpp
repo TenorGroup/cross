@@ -2,6 +2,7 @@
 
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
+#include <GrayThumb.h>
 #include <HalStorage.h>
 #include <JPEGDEC.h>
 #include <Logging.h>
@@ -46,6 +47,9 @@ struct JpegContext {
 
   PixelCache cache;
   bool caching{false};
+
+  // Cover thumbnail fed the same decoded blocks (RenderConfig::thumbs), null when it declined.
+  GrayThumb* thumbs{nullptr};
 
   uint32_t lastYieldMs{0};  // throttle state for yieldDuringDecode()
 };
@@ -134,6 +138,10 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
   const int blockH = pDraw->iHeight;
 
   if (stride <= 0 || blockH <= 0 || validW <= 0) return 1;
+
+  if (ctx->thumbs) {
+    ctx->thumbs->block(pDraw->x, pDraw->y, validW, blockH, pixels, stride);
+  }
 
   const bool useDithering = ctx->config->useDithering;
   bool caching = ctx->caching;
@@ -490,6 +498,19 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
       ctx.caching = false;
     }
   }
+
+  // A JPEGDEC block is one MCU row: at most 16 source rows, fewer on the reduced grids.
+  if (config.thumbs && config.thumbs->start(ctx.scaledSrcWidth, ctx.scaledSrcHeight, 16 / jpegScaleDenom)) {
+    ctx.thumbs = config.thumbs;
+  }
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+  if (config.thumbs) {
+    const int rows = 16 / jpegScaleDenom;
+    LOG_INF("IMG", "THUMB_START grid=%dx%d rows=%d bytes=%u ok=%u free=%u", ctx.scaledSrcWidth, ctx.scaledSrcHeight,
+            rows, static_cast<unsigned>(GrayThumb::bufferBytes(356, ctx.scaledSrcWidth, ctx.scaledSrcHeight, rows)),
+            ctx.thumbs ? 1u : 0u, static_cast<unsigned>(ESP.getFreeHeap()));
+  }
+#endif
 
   unsigned long decodeStart = millis();
   ctx.lastYieldMs = decodeStart;
