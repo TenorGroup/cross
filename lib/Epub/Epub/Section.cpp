@@ -1,5 +1,7 @@
 #include "Section.h"
 
+#include "BuildStageProbe.h"
+
 #include <Arduino.h>
 #include <HalMemory.h>
 #include <HalStorage.h>
@@ -403,6 +405,10 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
           ctxPtr->parser->failBuild();
           return;
         }
+#ifdef TENOR_PRESS_PROBE
+        ++buildprobe::pages;
+#endif
+        BUILD_PROBE_SCOPE(PageWrite);
         const uint32_t position = this->onPageComplete(std::move(page));
         const PageLutEntry entry{position, paragraphIndex, listItemIndex, visibleTextOffset};
         if (position == 0 || !ctxPtr->lut.seek(static_cast<size_t>(builtPageCount_) * sizeof(entry)) ||
@@ -789,6 +795,7 @@ bool Section::parkAtLastCheckpoint() {
 }
 
 bool Section::parkBuild() {
+  BUILD_PROBE_SCOPE(Park);
   if (!build_ || build_->failed) return false;
   if (!build_->parser) return true;
   if (!reachCheckpoint()) {
@@ -839,6 +846,7 @@ bool Section::parkBuild() {
 bool Section::resumeParkedBuild() {
   if (!build_ || build_->failed) return false;
   if (build_->parser) return true;
+  BUILD_PROBE_SCOPE(Resume);
 #ifdef TENOR_UI_ACCEPTANCE
   const auto started = millis();
 #endif
@@ -873,6 +881,7 @@ bool Section::resumeParkedBuild() {
 }
 
 bool Section::buildSomeMore(const int maxPages) {
+  BUILD_PROBE_SCOPE(Tick);
   if (!build_ || !resumeParkedBuild()) {
     LOG_ERR("SCT", "Unable to resume section build");
     if (build_) abandonBuild();

@@ -1,5 +1,7 @@
 #include "ChapterHtmlSlimParser.h"
 
+#include "../BuildStageProbe.h"
+
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalMemory.h>
@@ -2515,6 +2517,7 @@ bool ChapterHtmlSlimParser::beginParse() {
 
 ChapterHtmlSlimParser::ParseStatus ChapterHtmlSlimParser::parseStep() {
   if (buildFailed_ || !xmlParser_ || !parseFile_) return ParseStatus::Error;
+  BUILD_PROBE_SCOPE(Step);
   checkpointReady_ = false;
   stepStartPages_ = completedPageCount;
 #ifdef TENOR_UI_ACCEPTANCE
@@ -2563,7 +2566,13 @@ ChapterHtmlSlimParser::ParseStatus ChapterHtmlSlimParser::parseStep() {
     return ParseStatus::Error;
   }
 
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t readStarted = micros();
+#endif
   const auto len = parseFile_.read(buf, PARSE_BUFFER_SIZE);
+#ifdef TENOR_PRESS_PROBE
+  buildprobe::us[buildprobe::Read] += micros() - readStarted;
+#endif
 #ifdef TENOR_UI_ACCEPTANCE
   ++parseReadCalls_;
   if (len > 0) {

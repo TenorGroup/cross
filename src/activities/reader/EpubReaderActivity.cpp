@@ -1,5 +1,6 @@
 #include "EpubReaderActivity.h"
 
+#include <Epub/BuildStageProbe.h>
 #include <Epub/Page.h>
 #include <Epub/blocks/TextBlock.h>
 #include <FontCacheManager.h>
@@ -61,8 +62,12 @@
 // Where a jump to another place in the book began; the paint that lands it logs JUMP_BUILD and,
 // once readable, READABLE_BOUND. Press-probe builds only.
 #ifdef TENOR_PRESS_PROBE
-#define TRACE_JUMP_BEGIN(source) \
-  LOG_INF("ERS", "JUMP_BEGIN src=%s spine=%d t=%lu", source, currentSpineIndex, static_cast<unsigned long>(millis()))
+#define TRACE_JUMP_BEGIN(source)                                                                                  \
+  do {                                                                                                            \
+    LOG_INF("ERS", "JUMP_BEGIN src=%s spine=%d t=%lu", source, currentSpineIndex,                                 \
+            static_cast<unsigned long>(millis()));                                                                \
+    buildprobe::reset();                                                                                          \
+  } while (0)
 #else
 #define TRACE_JUMP_BEGIN(source)
 #endif
@@ -999,6 +1004,9 @@ void EpubReaderActivity::loop() {
     if (lock.acquired() && (lookAhead || backgroundBuildCanTick())) {
       if (lookAhead) lookAheadPage = section->currentPage;
       const unsigned long tickStarted = millis();
+#ifdef TENOR_PRESS_PROBE
+      if (lookAhead) buildprobe::reset();
+#endif
 #ifdef TENOR_TURN_TRACE
       const unsigned startedExtension = lookAhead && !section->isBuilding() ? 1u : 0u;
 #endif
@@ -1045,6 +1053,9 @@ void EpubReaderActivity::loop() {
       if (lookAhead)
         LOG_INF("ERS", "LOOK_AHEAD start=%u pages=%u ms=%lu", startedExtension,
                 section ? static_cast<unsigned>(section->pageCount) : 0u, millis() - tickStarted);
+#endif
+#ifdef TENOR_PRESS_PROBE
+      if (lookAhead) buildprobe::log("look_ahead");
 #endif
     }
   }
@@ -2487,6 +2498,7 @@ void EpubReaderActivity::renderBook() {
               static_cast<unsigned long>(millis() - jumpBuildStarted), currentSpineIndex, section->currentPage,
               static_cast<unsigned>(section->pageCount), section->isPartial() ? 1u : 0u,
               section->isBuilding() ? 1u : 0u);
+      buildprobe::log("jump");
     }
 #endif
   }
