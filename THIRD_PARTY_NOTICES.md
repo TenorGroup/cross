@@ -4,7 +4,7 @@ The root MIT licence applies to the application code covered by that licence. It
 
 ## Which release these notices cover
 
-The dependency list below describes v1.0.14. Match notices to the firmware release you downloaded; library versions changed between releases.
+The dependency list below describes v1.0.15. Match notices to the firmware release you downloaded; library versions changed between releases.
 
 | Firmware release | wolfSSL version | Bundled COPYING | Source licence notice |
 | --- | --- | --- | --- |
@@ -17,11 +17,12 @@ The dependency list below describes v1.0.14. Match notices to the firmware relea
 | v1.0.12 | wolfSSL 5.9.2 | GNU GPL version 3 | GPL version 3 or any later version, or a separate commercial licence |
 | v1.0.13 | wolfSSL 5.9.2 | GNU GPL version 3 | GPL version 3 or any later version, or a separate commercial licence |
 | v1.0.14 | wolfSSL 5.9.2 | GNU GPL version 3 | GPL version 3 or any later version, or a separate commercial licence |
+| v1.0.15 | wolfSSL 5.9.2 | GNU GPL version 3 | GPL version 3 or any later version, or a separate commercial licence |
 | v1.0.9 | wolfSSL 5.9.2 | GNU GPL version 3 | GPL version 3 or any later version, or a separate commercial licence |
 
 For v1.0.1, see the [licence archive supplied with that release](https://github.com/TenorGroup/cross-releases/releases/download/v1.0.1/tenor-cross-v1.0.1-licenses.zip). For v1.0.2 and v1.0.3, see [COPYING](third_party/wolfssl/COPYING), [LICENSING](third_party/wolfssl/LICENSING) and [source provenance](third_party/wolfssl/PROVENANCE.md). The historical GPL v2 COPYING is retained at `licenses/historical/v1.0.1/Arduino-wolfSSL/COPYING` for its original dependency version. The current PlatformIO dependency is also named `Arduino-wolfSSL`; its 5.9.2 COPYING and LICENSING are retained verbatim in both `third_party/wolfssl/` and `licenses/dependencies/Arduino-wolfSSL/`.
 
-## Dependencies in v1.0.14
+## Dependencies in v1.0.15
 
 - CrossPoint Reader: copyright Dave Allie and contributors, MIT. Original notices in source files remain.
 - FreeInk SDK: MIT, copyright FreeInk. The SDK NOTICE preserves the Open X4 E-Paper Contributors attribution. Lucide icons retain their ISC and MIT notices in the nested submodule.
@@ -39,7 +40,7 @@ For v1.0.1, see the [licence archive supplied with that release](https://github.
 
 The complete licence obligations of a compiled image depend on its linked components. Firmware built with the bundled wolfSSL uses the GPLv3 distribution route; the root MIT licence does not relicense those dependencies. Release source archives must include the linked sources, build scripts and configuration described in the release manifest. Historical binaries require a separate source/version match.
 
-The UI font sources used for v1.0.14 are retained under `lib/EpdFont/builtinFonts/source/Geist/` and `lib/EpdFont/builtinFonts/source/BeVietnamPro/`, each with its SIL Open Font License text. `Geist/ui-source-manifest.json` records the source hashes for both families. The release licence archive includes these source fonts and preserves the original family notices.
+The UI font sources used for v1.0.15 are retained under `lib/EpdFont/builtinFonts/source/Geist/` and `lib/EpdFont/builtinFonts/source/BeVietnamPro/`, each with its SIL Open Font License text. `Geist/ui-source-manifest.json` records the source hashes for both families. The release licence archive includes these source fonts and preserves the original family notices.
 
 Official references: [wolfSSL licensing](https://www.wolfssl.com/license/), [GNU linking FAQ](https://www.gnu.org/licenses/gpl-faq.html#GPLStaticVsDynamic), [GNU GPL compatibility](https://www.gnu.org/licenses/license-list.html#apache2).
 
