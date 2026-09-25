@@ -425,6 +425,9 @@ constexpr Motion WALK[] = {{0.1f, 0.0f, 1.3f, 20.0f},
 // Put down hard on a table: one knock, then a small rebound.
 constexpr Motion KNOCK[] = {{1.2f, 0.0f, 2.0f, 0.0f}, {-0.3f, 0.0f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f, 0.0f}};
 
+// A hard push one way held over two polls, as when the device is set down on a table.
+constexpr Motion PUSH[] = {{1.9f, 0.0f, 1.0f, 0.0f}, {1.9f, 0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f, 0.0f}};
+
 void armReaderAndShake(const uint8_t shakeAction, const uint8_t strength = 1) {
   SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_NORMAL;
   SETTINGS.orientation = CrossPointOrientation::PORTRAIT;
@@ -490,6 +493,9 @@ void walkingAndKnocksAreNotShakes() {
   settle(Route::Reader);
   c = play(Route::Reader, KNOCK, 3);
   expect(c.shakes == 0, "knock", "one knock on a table must not count as a shake");
+  settle(Route::Reader);
+  c = play(Route::Reader, PUSH, 3);
+  expect(c.shakes == 0, "push", "two strong jolts the same way are a push, not a shake");
 }
 
 // A shake whose side jolt peaks at `g` on a given strength.
