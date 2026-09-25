@@ -20,6 +20,7 @@
 
 #include "CrossPointSettings.h"
 #include "KOReaderCredentialStore.h"
+#include "QuickAction.h"
 #include "ReaderFontSizes.h"
 #include "activities/settings/SettingsActivity.h"
 #include "platform/SimulatorBoardCompat.h"
@@ -435,25 +436,16 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           "longPressButtonBehavior", StrId::STR_CAT_CONTROLS));
     v.push_back(SettingInfo::Enum(StrId::STR_LONG_PRESS_MENU, &CrossPointSettings::longPressMenuFunction,
                           buildLongPressMenuValues(hasTilt), "longPressMenuFunction", StrId::STR_CAT_CONTROLS));
-#if FREEINK_CAP_TOUCH
+    // Short power press and hard shake share one list of actions (QuickAction.h).
     v.push_back(SettingInfo::Enum(StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
-                          {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH,
-                           StrId::STR_FOOTNOTES, StrId::STR_CONFIRM},
-                          "shortPwrBtn", StrId::STR_CAT_CONTROLS));
-#else
-    v.push_back(SettingInfo::Enum(
-            StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
-            {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH, StrId::STR_FOOTNOTES},
-            "shortPwrBtn", StrId::STR_CAT_CONTROLS));
-#endif
+                          quickaction::powerLabels(), "shortPwrBtn", StrId::STR_CAT_CONTROLS));
     v.push_back(SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
                             "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS));
     if (hasTilt) {
       // A hard shake runs one of the power button's actions on any screen. Last in
       // Controls, so no row above it moves.
       v.push_back(SettingInfo::Enum(StrId::STR_SHAKE_ACTION, &CrossPointSettings::shakeAction,
-                            {StrId::STR_STATE_OFF, StrId::STR_FORCE_REFRESH, StrId::STR_SLEEP, StrId::STR_PAGE_TURN},
-                            "shakeAction", StrId::STR_CAT_CONTROLS));
+                            quickaction::shakeLabels(), "shakeAction", StrId::STR_CAT_CONTROLS));
       v.push_back(SettingInfo::Enum(StrId::STR_SHAKE_STRENGTH, &CrossPointSettings::shakeStrength,
                             {StrId::STR_TILT_LIGHT, StrId::STR_UI_SIZE_MEDIUM, StrId::STR_TILT_STRONG},
                             "shakeStrength", StrId::STR_CAT_CONTROLS));

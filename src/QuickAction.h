@@ -1,43 +1,89 @@
 #pragma once
 
+#include <I18nKeys.h>
+
 #include <cstdint>
+#include <iterator>
+#include <vector>
 
 #include "CrossPointSettings.h"
 
 // The short actions a short power press or a hard shake runs from the main loop,
-// on whatever screen is in front. One decision for both: what the configured
-// action means here, or nothing.
+// on whatever screen is in front. One list of them for both settings, and one
+// decision for both: what the configured action means here, or nothing.
 namespace quickaction {
 
 enum class Trigger : uint8_t { PowerRelease, Shake };
-enum class Outcome : uint8_t { None, Refresh, Sleep, PageForward };
+enum class Outcome : uint8_t { None, Refresh, Sleep, PageForward, Back, Confirm };
 
-// The power button's action (a SHORT_PWRBTN value) behind a SHAKE_ACTION value.
-inline uint8_t shakeAsPowerAction(const uint8_t shakeAction) {
-  switch (shakeAction) {
-    case CrossPointSettings::SHAKE_REFRESH:
-      return CrossPointSettings::FORCE_REFRESH;
-    case CrossPointSettings::SHAKE_SLEEP:
-      return CrossPointSettings::SLEEP;
-    case CrossPointSettings::SHAKE_PAGE_TURN:
-      return CrossPointSettings::PAGE_TURN;
-    default:
-      return CrossPointSettings::IGNORE;
+struct Choice {
+  uint8_t action;  // A SHORT_PWRBTN value
+  StrId label;
+};
+
+// Every short action, in the power button's stored order: its setting keeps the
+// value, so a new action goes last and none moves.
+inline constexpr Choice CHOICES[] = {
+    {CrossPointSettings::IGNORE, StrId::STR_IGNORE},
+    {CrossPointSettings::SLEEP, StrId::STR_SLEEP},
+    {CrossPointSettings::PAGE_TURN, StrId::STR_PAGE_TURN},
+    {CrossPointSettings::FORCE_REFRESH, StrId::STR_FORCE_REFRESH},
+    {CrossPointSettings::FOOTNOTES, StrId::STR_FOOTNOTES},
+    {CrossPointSettings::PWR_CONFIRM, StrId::STR_SELECT},
+    {CrossPointSettings::BACK, StrId::STR_SHAKE_BACK},
+};
+constexpr bool choicesInValueOrder() {
+  for (uint8_t i = 0; i < std::size(CHOICES); ++i) {
+    if (CHOICES[i].action != i) return false;
   }
+  return std::size(CHOICES) == CrossPointSettings::SHORT_PWRBTN_COUNT;
+}
+static_assert(choicesInValueOrder(), "one choice per short action, at its stored value");
+
+// The shake setting's own order over the same actions, stored by place: Off first
+// (the Ignore action), then the ones that make sense on any screen.
+inline constexpr uint8_t SHAKE_ORDER[] = {CrossPointSettings::IGNORE,    CrossPointSettings::FORCE_REFRESH,
+                                          CrossPointSettings::SLEEP,     CrossPointSettings::PAGE_TURN,
+                                          CrossPointSettings::BACK,      CrossPointSettings::PWR_CONFIRM};
+
+// The rows of the two settings, built from CHOICES.
+inline std::vector<StrId> powerLabels() {
+  std::vector<StrId> labels;
+  for (const auto& choice : CHOICES) labels.push_back(choice.label);
+  return labels;
+}
+inline std::vector<StrId> shakeLabels() {
+  std::vector<StrId> labels;
+  for (const uint8_t action : SHAKE_ORDER) {
+    labels.push_back(action == CrossPointSettings::IGNORE ? StrId::STR_STATE_OFF : CHOICES[action].label);
+  }
+  return labels;
 }
 
-// `action` is a SHORT_PWRBTN value. A page turn means something only in a book,
-// so elsewhere it does nothing. For the button, Sleep fires on the press itself
-// (getPowerButtonDuration) and Page Turn, Footnotes and Confirm are read by the
-// reader and the input map, so its release only ever refreshes from here.
-inline Outcome resolve(const uint8_t action, const Trigger trigger, const bool foregroundReader) {
+// The short action behind a shake setting value; unknown values do nothing.
+inline uint8_t shakeAsPowerAction(const uint8_t shakeAction) {
+  return shakeAction < std::size(SHAKE_ORDER) ? SHAKE_ORDER[shakeAction] : CrossPointSettings::IGNORE;
+}
+
+// `action` is a SHORT_PWRBTN value. A page turn means something only in a book, so
+// elsewhere it does nothing. Back and Select are pressed like the real keys, and each
+// screen takes or ignores them as it does those. For the button, Sleep fires on the
+// press itself (getPowerButtonDuration), Page Turn and Footnotes are read by the
+// reader, and on touch boards the input map makes the release Select itself.
+inline Outcome resolve(const uint8_t action, const Trigger trigger, const bool foregroundReader,
+                       const bool touchPowerSelect = false) {
+  const bool shake = trigger == Trigger::Shake;
   switch (action) {
     case CrossPointSettings::FORCE_REFRESH:
       return Outcome::Refresh;
     case CrossPointSettings::SLEEP:
-      return trigger == Trigger::Shake ? Outcome::Sleep : Outcome::None;
+      return shake ? Outcome::Sleep : Outcome::None;
     case CrossPointSettings::PAGE_TURN:
-      return trigger == Trigger::Shake && foregroundReader ? Outcome::PageForward : Outcome::None;
+      return shake && foregroundReader ? Outcome::PageForward : Outcome::None;
+    case CrossPointSettings::PWR_CONFIRM:
+      return shake || !touchPowerSelect ? Outcome::Confirm : Outcome::None;
+    case CrossPointSettings::BACK:
+      return Outcome::Back;
     default:
       return Outcome::None;
   }

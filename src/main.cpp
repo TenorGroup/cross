@@ -848,7 +848,11 @@ static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
 
 // Runs a short action on the screen in front, or nothing where it has no meaning there.
 static void runQuickAction(const uint8_t action, const quickaction::Trigger trigger) {
-  switch (quickaction::resolve(action, trigger, activityManager.isForegroundReaderActivity())) {
+  // Long enough for two 10 ms samples to agree, short of any hold action.
+  [[maybe_unused]] static constexpr uint16_t QUICK_PRESS_HOLD_MS = 60;
+  const quickaction::Outcome outcome =
+      quickaction::resolve(action, trigger, activityManager.isForegroundReaderActivity(), gpio.hasTouch());
+  switch (outcome) {
     case quickaction::Outcome::Refresh:
       LOG_DBG("MAIN", "Manual screen refresh triggered");
       if (!activityManager.handleForcedRefresh()) {
@@ -861,6 +865,14 @@ static void runQuickAction(const uint8_t action, const quickaction::Trigger trig
       break;
     case quickaction::Outcome::PageForward:
       activityManager.pageTurn(true);
+      break;
+    case quickaction::Outcome::Back:
+    case quickaction::Outcome::Confirm:
+#ifndef SIMULATOR  // no motion sensor there, so no shake reaches this
+      // One short press of the key through the real input path, as if pressed.
+      gpio.injectPresses(outcome == quickaction::Outcome::Back ? SETTINGS.frontButtonBack : SETTINGS.frontButtonConfirm,
+                         QUICK_PRESS_HOLD_MS, 1, 0);
+#endif
       break;
     case quickaction::Outcome::None:
       break;

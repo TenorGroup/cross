@@ -158,6 +158,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     FORCE_REFRESH = 3,
     FOOTNOTES = 4,
     PWR_CONFIRM = 5,
+    BACK = 6,  // Stored by value: new actions go last (quickaction::CHOICES)
     SHORT_PWRBTN_COUNT
   };
 
@@ -213,9 +214,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     TILT_STRENGTH_COUNT
   };
 
-  // What a hard shake does, on every screen (IMU boards). Persisted by index; each
-  // value but Off names one of the power button's short actions (quickaction::resolve).
-  enum SHAKE_ACTION { SHAKE_OFF = 0, SHAKE_REFRESH = 1, SHAKE_SLEEP = 2, SHAKE_PAGE_TURN = 3, SHAKE_ACTION_COUNT };
 
   enum TOUCH_READER_CONTROLS {
     TOUCH_READER_OFF = 0,
@@ -432,7 +430,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // choice survives being switched off and on again.
   uint8_t tiltPageTurnLastOn = TILT_NORMAL;
   // Hard shake action, and how hard the shake must be (a TILT_STRENGTH).
-  uint8_t shakeAction = SHAKE_OFF;
+  uint8_t shakeAction = 0;  // Off; a place in quickaction::SHAKE_ORDER
   uint8_t shakeStrength = TILT_STRENGTH_MEDIUM;
   // Touch screen reader zones/gestures on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_SWIPE;

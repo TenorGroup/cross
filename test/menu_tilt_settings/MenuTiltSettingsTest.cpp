@@ -60,7 +60,8 @@ int runPowerWake() {
 }
 
 // A short power press and a hard shake share one decision: what the action means on
-// the screen in front, or nothing there.
+// the screen in front, or nothing there. Back and Select are pressed like the keys on
+// every screen; the screen takes or ignores them as it does the real ones.
 int runQuickActions() {
   using quickaction::Outcome;
   using quickaction::Trigger;
@@ -74,29 +75,90 @@ int runQuickActions() {
   for (const auto& screen : SCREENS) {
     for (uint8_t action = 0; action < CrossPointSettings::SHORT_PWRBTN_COUNT; ++action) {
       Outcome shake = Outcome::None;
-      if (action == CrossPointSettings::FORCE_REFRESH) shake = Outcome::Refresh;
-      if (action == CrossPointSettings::SLEEP) shake = Outcome::Sleep;
-      if (action == CrossPointSettings::PAGE_TURN && screen.reader) shake = Outcome::PageForward;
-      const Outcome power = action == CrossPointSettings::FORCE_REFRESH ? Outcome::Refresh : Outcome::None;
-      if (quickaction::resolve(action, Trigger::Shake, screen.reader) != shake) {
+      Outcome power = Outcome::None;
+      Outcome touchPower = Outcome::None;
+      switch (action) {
+        case CrossPointSettings::FORCE_REFRESH:
+          shake = power = touchPower = Outcome::Refresh;
+          break;
+        case CrossPointSettings::SLEEP:
+          shake = Outcome::Sleep;  // the button sleeps on its press
+          break;
+        case CrossPointSettings::PAGE_TURN:
+          if (screen.reader) shake = Outcome::PageForward;  // the button's own turn is the reader's
+          break;
+        case CrossPointSettings::PWR_CONFIRM:
+          shake = power = Outcome::Confirm;  // touch boards: the input map selects on the release
+          break;
+        case CrossPointSettings::BACK:
+          shake = power = touchPower = Outcome::Back;
+          break;
+        default:
+          break;
+      }
+      const bool reader = screen.reader;
+      if (quickaction::resolve(action, Trigger::Shake, reader) != shake ||
+          quickaction::resolve(action, Trigger::Shake, reader, true) != shake) {
         std::printf("FAIL shake action %u on %s\n", action, screen.name);
         ok = false;
       }
-      if (quickaction::resolve(action, Trigger::PowerRelease, screen.reader) != power) {
+      if (quickaction::resolve(action, Trigger::PowerRelease, reader) != power ||
+          quickaction::resolve(action, Trigger::PowerRelease, reader, true) != touchPower) {
         std::printf("FAIL power release action %u on %s\n", action, screen.name);
         ok = false;
       }
     }
   }
-  using quickaction::shakeAsPowerAction;
-  ok = expect(shakeAsPowerAction(CrossPointSettings::SHAKE_OFF) == CrossPointSettings::IGNORE &&
-                  shakeAsPowerAction(CrossPointSettings::SHAKE_REFRESH) == CrossPointSettings::FORCE_REFRESH &&
-                  shakeAsPowerAction(CrossPointSettings::SHAKE_SLEEP) == CrossPointSettings::SLEEP &&
-                  shakeAsPowerAction(CrossPointSettings::SHAKE_PAGE_TURN) == CrossPointSettings::PAGE_TURN &&
-                  shakeAsPowerAction(CrossPointSettings::SHAKE_ACTION_COUNT) == CrossPointSettings::IGNORE,
-              "each shake choice names its power button action, Off and unknown do nothing") &&
+
+  // Both settings list the one catalog: the button every action at its stored value,
+  // the shake Off then Refresh, Sleep, Page turn, Back, Select.
+  const std::vector<StrId> power = quickaction::powerLabels();
+  ok = expect(power == std::vector<StrId>{StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN,
+                                          StrId::STR_FORCE_REFRESH, StrId::STR_FOOTNOTES, StrId::STR_SELECT,
+                                          StrId::STR_SHAKE_BACK},
+              "the power button lists every action, old ones at their old places") &&
+       ok;
+  ok = expect(quickaction::shakeLabels() ==
+                  std::vector<StrId>{StrId::STR_STATE_OFF, StrId::STR_FORCE_REFRESH, StrId::STR_SLEEP,
+                                     StrId::STR_PAGE_TURN, StrId::STR_SHAKE_BACK, StrId::STR_SELECT},
+              "the shake lists Off, Refresh, Sleep, Page turn, Back, Select") &&
+       ok;
+  for (uint8_t place = 0; place < std::size(quickaction::SHAKE_ORDER); ++place) {
+    const uint8_t action = quickaction::shakeAsPowerAction(place);
+    ok = expect(place == 0 ? action == CrossPointSettings::IGNORE
+                           : quickaction::CHOICES[action].label == quickaction::shakeLabels()[place],
+                "each shake row runs the action its label names") &&
+         ok;
+  }
+  ok = expect(quickaction::shakeAsPowerAction(std::size(quickaction::SHAKE_ORDER)) == CrossPointSettings::IGNORE,
+              "an unknown shake value does nothing") &&
        ok;
   std::printf("menu_tilt_settings=action:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
+// A settings file from before the shared list: every short power value it can hold
+// reads back as the same action.
+int runPowerValuesKept() {
+  CrossPointSettings& settings = SETTINGS;
+  bool ok = true;
+  for (uint8_t value = CrossPointSettings::IGNORE; value <= CrossPointSettings::PWR_CONFIRM; ++value) {
+    JsonDocument old;
+    old["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
+    old["shortPwrBtn"] = value;
+    settings.shortPwrBtn = CrossPointSettings::IGNORE;
+    ok = expect(settings.fromJson(old.as<JsonVariantConst>()), "old power setting loads") && ok;
+    ok = expect(settings.shortPwrBtn == value && quickaction::CHOICES[value].action == value,
+                "an old power value keeps its action") &&
+         ok;
+  }
+  JsonDocument back;
+  back["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
+  back["shortPwrBtn"] = CrossPointSettings::BACK;
+  ok = expect(settings.fromJson(back.as<JsonVariantConst>()) && settings.shortPwrBtn == CrossPointSettings::BACK,
+              "the new Back value round trips") &&
+       ok;
+  std::printf("menu_tilt_settings=power-values:%s\n", ok ? "GREEN" : "RED");
   return ok ? 0 : 1;
 }
 
@@ -105,7 +167,7 @@ int runQuickActions() {
 int runShakeSettings() {
   halTiltSensor.available = true;
   CrossPointSettings& settings = SETTINGS;
-  bool ok = expect(settings.shakeAction == CrossPointSettings::SHAKE_OFF &&
+  bool ok = expect(settings.shakeAction == 0 &&
                        settings.shakeStrength == CrossPointSettings::TILT_STRENGTH_MEDIUM,
                    "a new card starts with shake Off, strength Medium");
   const auto& catalog = getBaseSettingsList();
@@ -119,9 +181,8 @@ int runShakeSettings() {
        ok;
   ok = expect(action->type == SettingType::ENUM && action->category == StrId::STR_CAT_CONTROLS &&
                   action->nameId == StrId::STR_SHAKE_ACTION && action->valuePtr == &CrossPointSettings::shakeAction &&
-                  action->enumValues == std::vector<StrId>{StrId::STR_STATE_OFF, StrId::STR_FORCE_REFRESH,
-                                                           StrId::STR_SLEEP, StrId::STR_PAGE_TURN},
-              "action row lists Off, Refresh, Sleep, Page turn in SHAKE_ACTION order") &&
+                  action->enumValues == quickaction::shakeLabels(),
+              "action row lists the shake's choices from the shared catalog") &&
        ok;
   ok = expect(isStrengthEnum(*strength, StrId::STR_SHAKE_STRENGTH, &CrossPointSettings::shakeStrength),
               "strength row reuses Light, Medium, Strong") &&
@@ -131,40 +192,39 @@ int runShakeSettings() {
   before["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
   before["tiltPageTurn"] = CrossPointSettings::TILT_NORMAL;
   ok = expect(settings.fromJson(before.as<JsonVariantConst>()), "file from before the shake rows loads") && ok;
-  ok = expect(settings.shakeAction == CrossPointSettings::SHAKE_OFF &&
-                  settings.shakeStrength == CrossPointSettings::TILT_STRENGTH_MEDIUM,
+  ok = expect(settings.shakeAction == 0 && settings.shakeStrength == CrossPointSettings::TILT_STRENGTH_MEDIUM,
               "a file without the keys keeps shake Off, strength Medium") &&
        ok;
   {
     JsonDocument saved;
     settings.toJson(saved);
-    ok = expect((saved["shakeAction"] | uint8_t{255}) == CrossPointSettings::SHAKE_OFF &&
+    ok = expect((saved["shakeAction"] | uint8_t{255}) == 0 &&
                     (saved["shakeStrength"] | uint8_t{255}) == CrossPointSettings::TILT_STRENGTH_MEDIUM,
                 "the next save writes both keys") &&
          ok;
   }
-  for (uint8_t a = 0; a < CrossPointSettings::SHAKE_ACTION_COUNT; ++a) {
+  const uint8_t shakeCount = static_cast<uint8_t>(std::size(quickaction::SHAKE_ORDER));
+  for (uint8_t a = 0; a < shakeCount; ++a) {
     for (uint8_t st = 0; st < CrossPointSettings::TILT_STRENGTH_COUNT; ++st) {
       settings.shakeAction = a;
       settings.shakeStrength = st;
       JsonDocument saved;
       settings.toJson(saved);
-      settings.shakeAction = CrossPointSettings::SHAKE_OFF;
+      settings.shakeAction = 0;
       settings.shakeStrength = CrossPointSettings::TILT_STRENGTH_MEDIUM;
       ok = expect(settings.fromJson(saved.as<JsonVariantConst>()), "shake JSON loads") && ok;
       ok = expect(settings.shakeAction == a && settings.shakeStrength == st, "every action and strength round trips") &&
            ok;
     }
   }
-  settings.shakeAction = CrossPointSettings::SHAKE_OFF;
+  settings.shakeAction = 0;
   settings.shakeStrength = CrossPointSettings::TILT_STRENGTH_MEDIUM;
   JsonDocument corrupt;
   corrupt["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
-  corrupt["shakeAction"] = CrossPointSettings::SHAKE_ACTION_COUNT;
+  corrupt["shakeAction"] = shakeCount;
   corrupt["shakeStrength"] = 200;
   ok = expect(settings.fromJson(corrupt.as<JsonVariantConst>()), "corrupt shake JSON loads") && ok;
-  ok = expect(settings.shakeAction == CrossPointSettings::SHAKE_OFF &&
-                  settings.shakeStrength == CrossPointSettings::TILT_STRENGTH_MEDIUM,
+  ok = expect(settings.shakeAction == 0 && settings.shakeStrength == CrossPointSettings::TILT_STRENGTH_MEDIUM,
               "out-of-range values keep Off and Medium") &&
        ok;
   std::printf("menu_tilt_settings=shake:%s\n", ok ? "GREEN" : "RED");
@@ -178,6 +238,7 @@ int main(int argc, char** argv) {
   if (std::strcmp(argv[1], "power") == 0) return runPowerWake();
   if (std::strcmp(argv[1], "action") == 0) return runQuickActions();
   if (std::strcmp(argv[1], "shake") == 0) return runShakeSettings();
+  if (std::strcmp(argv[1], "power-values") == 0) return runPowerValuesKept();
   const bool hasImu = std::strcmp(argv[1], "imu") == 0;
   if (!hasImu && std::strcmp(argv[1], "no-imu") != 0) return 2;
 
