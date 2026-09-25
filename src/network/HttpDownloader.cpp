@@ -470,10 +470,13 @@ bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent, c
 }
 
 bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username,
-                              const std::string& password, const char* rootCA, bool allowRedirects) {
+                              const std::string& password, const char* rootCA, bool allowRedirects,
+                              ProgressCallback progress, bool* cancelFlag) {
   LOG_DBG("HTTP", "Fetching");
   Sink sink;
   sink.write = onData;
+  sink.progress = std::move(progress);
+  sink.cancelFlag = cancelFlag;
   return runGetSecure(url, username, password, sink, false, rootCA, allowRedirects) == OK;
 }
 

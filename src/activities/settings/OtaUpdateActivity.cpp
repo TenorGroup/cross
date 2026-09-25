@@ -217,6 +217,8 @@ void OtaUpdateActivity::runUpdateInstall() {
     if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
   }
   LOG_INF("OTA", "Install start heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  if (!backLatch.start(gpio, mappedInput.physicalBack())) LOG_ERR("OTA", "Cannot start Back sampler");
+  updater.setCancelCheck([](void* ctx) { return static_cast<OtaUpdateActivity*>(ctx)->backLatch.latched(); }, this);
   const auto res = updater.installUpdate(
       [](void* ctx) {
         // immediate=true notifies the render task directly. The default deferred path only
@@ -225,8 +227,15 @@ void OtaUpdateActivity::runUpdateInstall() {
         static_cast<OtaUpdateActivity*>(ctx)->requestUpdate(true);
       },
       this);
+  backLatch.stop();
 
   LOG_INF("OTA", "Install result=%d bytes=%u", res, static_cast<unsigned>(updater.getProcessedSize()));
+  // Back leaves at once: its own press and release are still queued for the next loop pass,
+  // so a result screen would close on them anyway. The old firmware keeps running.
+  if (res == OtaUpdater::CANCELLED_ERROR) {
+    finish();
+    return;
+  }
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update failed: %d", res);
     {

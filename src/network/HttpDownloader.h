@@ -43,10 +43,12 @@ class HttpDownloader {
                        const std::string& password = "");
 
   /**
-   * Stream the response body to onData as it arrives, without buffering it.
+   * Stream the response body to onData as it arrives, without buffering it. progress also runs
+   * while the server is silent; a true *cancelFlag then ends the transfer, as in downloadToFile.
    */
   static bool fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username = "",
-                       const std::string& password = "", const char* rootCA = nullptr, bool allowRedirects = true);
+                       const std::string& password = "", const char* rootCA = nullptr, bool allowRedirects = true,
+                       ProgressCallback progress = nullptr, bool* cancelFlag = nullptr);
 
   /**
    * Download a file to the SD card with optional credentials.

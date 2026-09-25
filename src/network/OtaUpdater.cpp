@@ -134,6 +134,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   // the inactive OTA slot, but esp_ota_abort() below means it never becomes
   // the boot target.
   board_tag::Scanner tagScanner;
+  bool cancelled = false;
   const bool fetchOk = HttpDownloader::fetchUrl(
       otaUrl,
       [&](const uint8_t* data, size_t len) {
@@ -180,13 +181,24 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
         }
         return true;
       },
-      "", "", ota_trust::ROOT_CA, false);
+      "", "", ota_trust::ROOT_CA, false,
+      [&](size_t, size_t) {
+        if (cancelCheck && cancelCheck(cancelCtx)) cancelled = true;
+      },
+      &cancelled);
   uint8_t digest[32];
   mbedtls_sha256_finish(&sha, digest);
   mbedtls_sha256_free(&sha);
 
   /* Return back to default power saving for WiFi in case of failing */
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+
+  if (cancelled) {
+    // The partly written slot is released; the boot partition was never touched.
+    LOG_INF("OTA", "Firmware install cancelled at %zu bytes", processedSize);
+    esp_ota_abort(otaHandle);
+    return CANCELLED_ERROR;
+  }
 
   if (wrongChip || tagScanner.mismatch()) {
     LOG_ERR("OTA", "Firmware install aborted: wrong device");
