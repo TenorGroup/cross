@@ -7,6 +7,7 @@
 #include <Memory.h>
 #include <Serialization.h>
 
+#include <algorithm>
 #include <cstring>
 
 #include "../../../../src/fontIds.h"
@@ -309,14 +310,30 @@ bool TextBlock::serialize(HalFile& file) const {
     return false;
   }
 
+  // The scalars around the arena go out in one write each instead of one per field: a chapter
+  // build wrote a page as some 700 small writes, each through the storage lock (X3 r40, 15 ms a
+  // page). The bytes are the fields back to back, exactly what writePod wrote one at a time.
+  uint8_t fields[32];
+  size_t used = 0;
+  const auto put = [&fields, &used](const auto& value) {
+    memcpy(fields + used, &value, sizeof(value));
+    used += sizeof(value);
+  };
+  const auto flush = [&file, &fields, &used] {
+    const bool ok = file.write(fields, used) == used;
+    used = 0;
+    return ok;
+  };
+
   // Word data: scalars, then the arena verbatim -- its in-memory layout is
   // exactly the on-disk layout (see TextBlock.h), so one write covers all
   // per-word arrays and the text blob.
-  if (!serialization::writePod(file, numWords)) return false;
-  if (!serialization::writePod(file, static_cast<uint8_t>(focusPresent ? 1 : 0))) return false;
-  if (!serialization::writePod(file, textBytes)) return false;
-  if (!serialization::writePod(file, dropCapHeight)) return false;
-  if (!serialization::writePod(file, letterSpacing)) return false;
+  put(numWords);
+  put(static_cast<uint8_t>(focusPresent ? 1 : 0));
+  put(textBytes);
+  put(dropCapHeight);
+  put(letterSpacing);
+  if (!flush()) return false;
   if (numWords > 0) {
     const size_t size = arenaSize(numWords, focusPresent, textBytes);
     if (file.write(arena.get(), size) != size) {
@@ -325,28 +342,36 @@ bool TextBlock::serialize(HalFile& file) const {
     }
   }
 
-  // Ruby text data
-  for (size_t i = 0; i < numWords; i++) {
-    if (!serialization::writeString(file, (i < rubyTexts.size()) ? rubyTexts[i] : std::string())) return false;
+  // Ruby text data: a length and the text per word. A line without ruby is a zero length per word.
+  if (rubyTexts.empty()) {
+    static constexpr uint8_t kZeroLengths[64] = {};
+    for (size_t left = static_cast<size_t>(numWords) * sizeof(uint32_t); left > 0;) {
+      const size_t chunk = std::min(left, sizeof(kZeroLengths));
+      if (file.write(kZeroLengths, chunk) != chunk) return false;
+      left -= chunk;
+    }
+  } else {
+    for (size_t i = 0; i < numWords; i++) {
+      if (!serialization::writeString(file, (i < rubyTexts.size()) ? rubyTexts[i] : std::string())) return false;
+    }
   }
 
   // Style (alignment + margins/padding/indent)
-  if (!serialization::writePod(file, blockStyle.alignment)) return false;
-  if (!serialization::writePod(file, blockStyle.textAlignDefined)) return false;
-  if (!serialization::writePod(file, blockStyle.marginTop)) return false;
-  if (!serialization::writePod(file, blockStyle.marginBottom)) return false;
-  if (!serialization::writePod(file, blockStyle.marginLeft)) return false;
-  if (!serialization::writePod(file, blockStyle.marginRight)) return false;
-  if (!serialization::writePod(file, blockStyle.paddingTop)) return false;
-  if (!serialization::writePod(file, blockStyle.paddingBottom)) return false;
-  if (!serialization::writePod(file, blockStyle.paddingLeft)) return false;
-  if (!serialization::writePod(file, blockStyle.paddingRight)) return false;
-  if (!serialization::writePod(file, blockStyle.textIndent)) return false;
-  if (!serialization::writePod(file, blockStyle.textIndentDefined)) return false;
-  if (!serialization::writePod(file, blockStyle.isRtl)) return false;
-  if (!serialization::writePod(file, blockStyle.directionDefined)) return false;
-
-  return true;
+  put(blockStyle.alignment);
+  put(blockStyle.textAlignDefined);
+  put(blockStyle.marginTop);
+  put(blockStyle.marginBottom);
+  put(blockStyle.marginLeft);
+  put(blockStyle.marginRight);
+  put(blockStyle.paddingTop);
+  put(blockStyle.paddingBottom);
+  put(blockStyle.paddingLeft);
+  put(blockStyle.paddingRight);
+  put(blockStyle.textIndent);
+  put(blockStyle.textIndentDefined);
+  put(blockStyle.isRtl);
+  put(blockStyle.directionDefined);
+  return flush();
 }
 
 std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {

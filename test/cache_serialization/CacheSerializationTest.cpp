@@ -113,6 +113,49 @@ TEST(CacheSerialization, InvalidFocusAndBoolMetadataRejectsPage) {
   EXPECT_EQ(Page::deserialize(file), nullptr);
 }
 
+// A chapter build wrote each line of text as one write per field and one per word for its empty
+// ruby lengths, each through the storage lock: some 700 small writes a page (X3 r40, 15 ms a page).
+// A line now takes a handful of writes, and it reads back field for field.
+TEST(CacheSerialization, TextLineGoesOutInAFewWritesAndReadsBackWhole) {
+  std::vector<std::string> words;
+  std::vector<int16_t> xs;
+  for (int i = 0; i < 40; ++i) {
+    words.push_back("w" + std::to_string(i));
+    xs.push_back(static_cast<int16_t>(i * 12));
+  }
+  BlockStyle style;
+  style.alignment = CssTextAlign::Right;
+  style.textAlignDefined = true;
+  style.marginTop = 1; style.marginBottom = 2; style.marginLeft = 3; style.marginRight = 4;
+  style.paddingTop = 5; style.paddingBottom = 6; style.paddingLeft = 7; style.paddingRight = 8;
+  style.textIndent = -9; style.textIndentDefined = true; style.isRtl = true; style.directionDefined = true;
+  Page page;
+  page.elements.push_back(std::make_unique<PageLine>(
+      std::make_unique<TextBlock>(words, xs, std::vector<EpdFontFamily::Style>(40, EpdFontFamily::BOLD),
+                                  std::vector<uint8_t>{}, std::vector<uint16_t>{}, style),
+      10, 20));
+  HalFile file;
+  ASSERT_TRUE(page.serialize(file));
+  EXPECT_LE(file.writeCalls, 16u) << "a line of 40 words took " << file.writeCalls << " writes";
+  file.offset = 0;
+  const auto back = Page::deserialize(file);
+  ASSERT_NE(back, nullptr);
+  EXPECT_EQ(file.offset, file.bytes.size());
+  const auto* text = static_cast<PageLine*>(back->elements[0].get())->getBlock();
+  ASSERT_EQ(text->wordCount(), 40);
+  EXPECT_STREQ(text->wordText(39), "w39");
+  EXPECT_TRUE(text->getRubyTexts().empty());
+  const auto& got = text->getBlockStyle();
+  EXPECT_EQ(got.alignment, CssTextAlign::Right);
+  EXPECT_TRUE(got.textAlignDefined);
+  EXPECT_EQ(got.marginTop, 1); EXPECT_EQ(got.marginBottom, 2); EXPECT_EQ(got.marginLeft, 3);
+  EXPECT_EQ(got.marginRight, 4); EXPECT_EQ(got.paddingTop, 5); EXPECT_EQ(got.paddingBottom, 6);
+  EXPECT_EQ(got.paddingLeft, 7); EXPECT_EQ(got.paddingRight, 8); EXPECT_EQ(got.textIndent, -9);
+  EXPECT_TRUE(got.textIndentDefined);
+  EXPECT_TRUE(got.isRtl);
+  EXPECT_TRUE(got.directionDefined);
+}
+
 TEST(CacheSerialization, ShortWriteAtEveryFieldFailsWholePage) {
   const Page page = textPage();
   HalFile complete;
