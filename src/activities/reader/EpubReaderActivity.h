@@ -232,10 +232,15 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr unsigned long INDEX_QUIET_MS = 1500;
   static constexpr unsigned long INDEX_RETRY_MS = 10000;
   static constexpr uint8_t INDEX_MAX_FAILURES = 3;
+  // Steps stopped by a key one after another before the index is given up for the visit: a step
+  // loses at most a chunk now, but a reader who never pauses long enough still gets the radio back.
+  static constexpr uint8_t INDEX_MAX_STOPS = 40;
   unsigned long indexRetryAtMs = 0;
   uint8_t indexFailures = 0;
+  uint8_t indexStops = 0;
   bool indexStepDue() const;
   void runIndexStep();
+  void dropSectionsLaidOutWithoutToc();
   void showMemoryError();
   void forgetPendingJump();
   void stayAfterStarvedJump();

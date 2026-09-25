@@ -20,10 +20,15 @@ SO_CHUONG = 5000
 DOAN = 'Mua nang gio chieu sang toi mat tay long viec chu sach trang pho cho. ' * 30
 
 
-def write_epub(path: Path, mot_tep: bool, so_chuong: int = SO_CHUONG, chuong_dau: int = 1) -> None:
-    """EPUB2 co toc.ncx; chu tu bia, du dai de moi chuong sinh vai trang."""
+def write_epub(path: Path, mot_tep: bool, so_chuong: int = SO_CHUONG, chuong_dau: int = 1,
+               neo_giua: bool = False) -> None:
+    """EPUB2 co toc.ncx; chu tu bia, du dai de moi chuong sinh vai trang.
+
+    neo_giua: tep chuong dau chua them mot chuong bat dau o <span id="giua">, co muc luc rieng."""
     ten = [f'c{i:05d}' for i in range(1, so_chuong + 1)]
     dich = [f'mot.xhtml#{t}' for t in ten] if mot_tep else [f'{t}.xhtml' for t in ten]
+    if neo_giua:
+        dich.insert(1, 'c00001.xhtml#giua')
     muc = ''.join(f'<navPoint id="n{i}" playOrder="{i}"><navLabel><text>Chuong {i}</text></navLabel>'
                   f'<content src="{d}"/></navPoint>' for i, d in enumerate(dich, 1))
     if mot_tep:
@@ -45,6 +50,8 @@ def write_epub(path: Path, mot_tep: bool, so_chuong: int = SO_CHUONG, chuong_dau
         else:
             for i, t in enumerate(ten, 1):
                 doan = DOAN * (chuong_dau if i == 1 else 1)
+                if neo_giua and i == 1:
+                    doan += f'</p><p><span id="giua">Chuong giua</span> {DOAN * 2}'
                 epub.writestr(f'{t}.xhtml', f'{mo}<h2>Chuong {i}</h2><p>{doan}</p></body></html>')
         epub.writestr('toc.ncx',
                       '<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">'
@@ -70,8 +77,8 @@ class HugeBookTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def chay(self, ten: str, mot_tep: bool, script: str, so_chuong: int = SO_CHUONG, chuong_dau: int = 1,
-             **them) -> str:
-        write_epub(self.sd / f'books/{ten}', mot_tep, so_chuong, chuong_dau)
+             neo_giua: bool = False, **them) -> str:
+        write_epub(self.sd / f'books/{ten}', mot_tep, so_chuong, chuong_dau, neo_giua)
         (self.store / 'recent.json').write_text(json.dumps({'books': [{'path': f'/books/{ten}', 'title': 'Sach'}]}))
         (self.store / 'settings.json').write_text(json.dumps({'language': 'VI', 'fontSize': 14,
                                                                'longPressButtonBehavior': 1}))
@@ -133,6 +140,16 @@ class HugeBookTest(unittest.TestCase):
         self.assertTrue(self.luc(log, r'Book index complete'), log[-1500:])
         # Bo dan da cat lai van dan tiep khi lat.
         self.assertEqual(self.moc(log), [(0, 0), (0, 1), (0, 2)])
+
+    def test_neo_muc_luc_trong_chuong_dan_luc_chi_muc_do(self):
+        # Soat v1016 VANG-2: chuong dan luc chi muc con do khong co neo muc luc; chi muc xong ma
+        # bo dem chuong van nam lai thi nhay muc luc toi neo giua tep khong toi dau ca.
+        log = self.chay('tach.epub', False, '1000:CONFIRM;7000:RIGHT:1000;10000:QUIT', neo_giua=True,
+                        CROSSPOINT_SIM_FREE_HEAP='100000', CROSSPOINT_SIM_MAX_ALLOC_HEAP='90000')
+        xong = self.luc(log, r'Book index complete')
+        self.assertTrue(xong and xong[0] < 7000, log[-1500:])
+        self.assertIn("Resolved anchor 'giua'", log, log[-1500:])
+        self.assertNotIn("Anchor 'giua' not in the chapter's map", log)
 
     def test_lat_trang_trong_luc_chi_muc_nen_cho(self):
         # Moi cu bam doi lai buoc nen: buoc chi chay khi trang da len va may yen INDEX_QUIET_MS.

@@ -17,6 +17,8 @@
 #include <esp_system.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -594,10 +596,57 @@ void EpubReaderActivity::runIndexStep() {
   const Epub::IndexStep step = epub->indexSome([] { return gpio.rawInputActive(); });
   if (step == Epub::IndexStep::Done) {
     tocSpineCached = -1;  // the chapter's TOC range can be read now
-    LOG_INF("ERS", "Book index complete");
+    LOG_PROBE("ERS", "Book index complete");
+    dropSectionsLaidOutWithoutToc();
   } else if (step == Epub::IndexStep::Failed) {
     indexRetryAtMs = millis() + INDEX_RETRY_MS;
     if (++indexFailures == INDEX_MAX_FAILURES) LOG_ERR("ERS", "Book index given up");
+  }
+  if (step != Epub::IndexStep::Stopped) {
+    indexStops = 0;
+  } else if (++indexStops == INDEX_MAX_STOPS) {
+    indexFailures = INDEX_MAX_FAILURES;
+    LOG_ERR("ERS", "Book index given up");
+  }
+}
+
+// Every section on the card was laid out while the book had no TOC (book.part starts with an empty
+// sections folder), so none of them breaks pages at, or can find, its chapter's TOC anchors: a TOC
+// jump to a chapter inside one of them went nowhere. The ones whose chapter has such anchors go,
+// and the chapter on screen is laid out again from the words the reader is at.
+void EpubReaderActivity::dropSectionsLaidOutWithoutToc() {
+  std::vector<int> spines;
+  {
+    auto dir = Storage.open((epub->getCachePath() + "/sections").c_str());
+    if (!dir) return;
+    char name[32];
+    // The chapters laid out while the index was building: a handful, bounded all the same.
+    constexpr size_t MAX_SECTIONS = 256;
+    for (auto entry = dir.openNextFile(); entry && spines.size() < MAX_SECTIONS; entry = dir.openNextFile()) {
+      entry.getName(name, sizeof(name));
+      entry.close();
+      char* end = nullptr;
+      const long spine = std::strtol(name, &end, 10);
+      if (end != name && std::strcmp(end, ".bin") == 0) spines.push_back(static_cast<int>(spine));
+    }
+  }
+  for (const int spine : spines) {
+    const int first = epub->getTocIndexForSpineIndex(spine);
+    bool anchored = false;
+    for (int i = std::max(first, 0); first >= 0 && i < epub->getTocItemsCount() && !anchored; ++i) {
+      const auto entry = epub->getTocItem(i);
+      if (entry.spineIndex != spine) break;
+      anchored = !entry.anchor.empty();
+    }
+    if (!anchored) continue;
+    if (section && spine == currentSpineIndex) {
+      rememberCurrentContentOffset();
+      cachedSpineIndex = currentSpineIndex;
+      cachedChapterTotalPageCount = section->pageCount;
+      nextPageNumber = section->currentPage;
+      section.reset();
+    }
+    Section(epub, spine, renderer).clearCache();
   }
 }
 

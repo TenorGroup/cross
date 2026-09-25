@@ -117,6 +117,8 @@ constexpr size_t CARD_THUMB_MIN_FREE_HEAP = 96 * 1024;
 // quarter for the other tasks and the allocator. Home sat at 86 to 91 KB after reading, under
 // the old 96 KB, so the thumbnail came one visit and not the next.
 constexpr size_t CARD_THUMB_REF_MIN_FREE_HEAP = 72 * 1024;
+// Copying the cover out of the book inflates through a 32 KB window that must come in one block.
+constexpr size_t CARD_THUMB_MIN_LARGEST_BLOCK = 36 * 1024;
 }  // namespace
 
 HomeActivity::HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -1249,9 +1251,10 @@ void HomeActivity::writeMissingThumb(const int index) {
   std::string href;
   const bool ref = coverref::load(epub.getCachePath(), href);
   const size_t heap = ESP.getFreeHeap();
-  LOG_INF("HOME", "Card cover ref ok=%u ms=%lu free=%u", ref ? 1u : 0u, millis() - refStarted,
+  LOG_PROBE("HOME", "Card cover ref ok=%u ms=%lu free=%u", ref ? 1u : 0u, millis() - refStarted,
           static_cast<unsigned>(heap));
-  if (heap >= (ref ? CARD_THUMB_REF_MIN_FREE_HEAP : CARD_THUMB_MIN_FREE_HEAP)) {
+  if (heap >= (ref ? CARD_THUMB_REF_MIN_FREE_HEAP : CARD_THUMB_MIN_FREE_HEAP) &&
+      ESP.getMaxAllocHeap() >= CARD_THUMB_MIN_LARGEST_BLOCK) {
     LOG_INF("HOME", "Card thumbnail write %d", index);
     GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
     const int heights[] = {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight};
