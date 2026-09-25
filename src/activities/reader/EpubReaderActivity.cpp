@@ -9,6 +9,7 @@
 #include <HalDisplay.h>
 #include <HalFrontlight.h>
 #include <HalGPIO.h>
+#include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -586,6 +587,9 @@ void EpubReaderActivity::runIndexStep() {
     backgroundBuildSuspended = true;
     suspendBackgroundBuild();
   }
+  // The loop drops the CPU to its low-power clock after 3 s without a key, which is when steps
+  // run: at that clock the TOC step took 57 s on the X3 (r21) against 5 s in the foreground.
+  HalPowerManager::Lock fullSpeed;
   // Straight from the key hardware: this pass is held until the step returns.
   const Epub::IndexStep step = epub->indexSome([] { return gpio.rawInputActive(); });
   if (step == Epub::IndexStep::Done) {
