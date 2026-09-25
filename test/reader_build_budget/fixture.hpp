@@ -148,6 +148,7 @@ struct Section {
   bool isBuildComplete() const { return complete; }
   std::optional<int> anchorPage;
   std::optional<int> findAnchor(const std::string&) const { return anchorPage; }
+  std::optional<int> findAnchorDuringBuild(const std::string&) const { return anchorPage; }
   bool buildReachedVisibleTextOffset(uint32_t) const { return false; }
   // Share of the chapter laid out: 40 pages make the whole chapter here.
   int estimatedTotalPages() const { return pageCount; }

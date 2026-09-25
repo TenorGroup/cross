@@ -2293,8 +2293,12 @@ void EpubReaderActivity::renderBook() {
             return;
           }
           bool completedBuildTick = false;
+          // An anchor jump looks for its anchor among the pages this build lays out. The section
+          // file cannot hold it: it was looked up above, and the build does not write that file
+          // until it completes. Asking the file after every tick opened it once per ~20 ms tick
+          // (X3 r05: 94 pages in 6.5 s, "Failed to open" between every tick).
           while (!section->isBuildComplete() &&
-                 (anchorJump               ? !section->findAnchor(pendingAnchor)
+                 (anchorJump               ? !section->findAnchorDuringBuild(pendingAnchor)
                   : offsetJump.has_value() ? !section->buildReachedVisibleTextOffset(*offsetJump)
                                            : static_cast<int>(section->pageCount) <= target)) {
             if (completedBuildTick && buildPopupPending && millis() - buildStartMs >= BUILD_POPUP_DEADLINE_MS) {
