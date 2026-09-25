@@ -86,6 +86,14 @@ else:
         (source_root / "src/activities/ActivityManager.cpp").read_text(),
         "activity manager does not exclude pending transitions from the tab owner",
     )
+    require(
+        r"if \(mappedInputManager\.wasReleased\(MappedInputManager::Button::Power\)\) \{\s*"
+        r"runQuickAction\(SETTINGS\.shortPwrBtn, quickaction::Trigger::PowerRelease\);\s*\}\s*"
+        r"if \(halTiltSensor\.wasShaken\(\)\) \{\s*"
+        r"runQuickAction\(quickaction::shakeAsPowerAction\(SETTINGS\.shakeAction\), quickaction::Trigger::Shake\);",
+        main_source,
+        "short power press and hard shake do not share the one action route",
+    )
     main_tilt_route = extract_function(
         main_source, r"static void updateTiltSensorForForegroundActivity\s*\("
     )

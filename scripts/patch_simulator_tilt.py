@@ -1,4 +1,4 @@
-"""Keep the pinned simulator tilt facade aligned with the vertical gesture HAL."""
+"""Keep the pinned simulator tilt facade aligned with the vertical gesture and shake HAL."""
 from pathlib import Path
 
 Import("env")
@@ -35,5 +35,12 @@ patch(root / "HalTiltSensor.h", [(
     "  // Flick strength per axis: nothing to tune without a gyro.\n"
     "  void setStrength(const uint8_t /*horizontal*/, const uint8_t /*vertical*/) {}\n"
     "  bool hadActivity() { return false; }\n",
+    1,
+), (
+    "  void clearPendingEvents() {}\n",
+    "  // Hard shake: no accelerometer either, so no shake ever comes.\n"
+    "  void configureShake(const uint8_t /*action*/, const uint8_t /*strength*/) {}\n"
+    "  bool wasShaken() { return false; }\n"
+    "  void clearPendingEvents() {}\n",
     1,
 )])

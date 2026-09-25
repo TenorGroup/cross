@@ -4,15 +4,6 @@
 
 HalTiltSensor halTiltSensor;  // Singleton instance
 
-bool HalTiltSensor::readGyro(float& gx, float& gy, float& gz) const {
-  Imu::Sample sample;
-  if (!_sdkImu.read(sample)) return false;
-  gx = sample.gx;
-  gy = sample.gy;
-  gz = sample.gz;
-  return true;
-}
-
 void HalTiltSensor::begin() {
   _available = _sdkImu.begin();
   if (_available) {
@@ -43,6 +34,8 @@ bool HalTiltSensor::wake() {
   _lastTiltMs = millis();
   _lastVerticalTiltMs = millis();
   _wakeMs = millis();
+  _shakeBaselineValid = false;
+  _shakeCandidate = false;
   _isAwake = true;
   return true;
 }
@@ -59,6 +52,7 @@ bool HalTiltSensor::deepSleep() {
 
   clearPendingEvents();
   clearPendingVerticalEvents();
+  _shakeEvent = false;
   _inTilt = false;
   _inVerticalTilt = false;
   _isAwake = false;
@@ -85,9 +79,11 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
 
   const bool horizontalEnabled = mode != CrossPointTiltPageTurn::TILT_OFF;
   const bool verticalEnabled = verticalMode != CrossPointTiltPageTurn::TILT_OFF;
+  // A hard shake is watched on every screen, so its setting alone keeps the sensor awake.
+  const bool sampling = _shakeEnabled;
 
   // State machine: wake up or sleep based on the enabled flags
-  if (!horizontalEnabled && !verticalEnabled) {
+  if (!horizontalEnabled && !verticalEnabled && !sampling) {
     if (_isAwake) _isAwake = !deepSleep();
     return;
   }
@@ -97,7 +93,7 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   // to return to neutral before another event can fire.
   const bool horizontalArmed = horizontalEnabled && gestureTargetActive;
   const bool verticalArmed = verticalEnabled && verticalTargetActive;
-  if (!horizontalArmed && !verticalArmed) {
+  if (!horizontalArmed && !verticalArmed && !sampling) {
     return;
   }
 
@@ -117,10 +113,13 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   }
   _lastPollMs = now;
 
-  float gx, gy, gz;
-  if (!readGyro(gx, gy, gz)) {
+  Imu::Sample sample;
+  if (!_sdkImu.read(sample)) {
     return;
   }
+  const float gx = sample.gx;
+  const float gy = sample.gy;
+  if (_shakeEnabled) pollShake(now, sample);
 
   // Map the gyro axes to the screen axes based on reader orientation. On the
   // X3 PCB: X axis = left/right in portrait, Y axis = left/right in landscape,
@@ -160,13 +159,13 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
       // Check for new tilt gesture (with cooldown)
       if ((now - _lastTiltMs) >= COOLDOWN_MS) {
         if (tiltAxis > _rateThresholdDps) {
-          _tiltForwardEvent = true;
+          emitTilt(HELD_FORWARD, now);
           _hadActivity = true;
           _inTilt = true;
           _lastTiltMs = now;
           LOG_INF("GYR", "Forward Trigger=(%.1f) dps", tiltAxis);
         } else if (tiltAxis < -_rateThresholdDps) {
-          _tiltBackEvent = true;
+          emitTilt(HELD_BACK, now);
           _hadActivity = true;
           _inTilt = true;
           _lastTiltMs = now;
@@ -176,33 +175,122 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
     }
   }
 
-  if (!verticalArmed) {
-    return;
+  if (verticalArmed) {
+    if (_inVerticalTilt) {
+      if (fabsf(verticalAxis) < NEUTRAL_RATE_DPS) {
+        _inVerticalTilt = false;
+      }
+    } else if ((now - _lastVerticalTiltMs) >= COOLDOWN_MS) {
+      if (verticalAxis > _verticalRateThresholdDps) {
+        emitTilt(HELD_DOWN, now);
+        _hadActivity = true;
+        _inVerticalTilt = true;
+        _lastVerticalTiltMs = now;
+        LOG_INF("GYR", "Down Trigger=(%.1f) dps", verticalAxis);
+      } else if (verticalAxis < -_verticalRateThresholdDps) {
+        emitTilt(HELD_UP, now);
+        _hadActivity = true;
+        _inVerticalTilt = true;
+        _lastVerticalTiltMs = now;
+        LOG_INF("GYR", "Up Trigger=(%.1f) dps", verticalAxis);
+      }
+    }
   }
 
-  if (_inVerticalTilt) {
-    if (fabsf(verticalAxis) < NEUTRAL_RATE_DPS) {
-      _inVerticalTilt = false;
-    }
-    return;
-  }
-  if ((now - _lastVerticalTiltMs) < COOLDOWN_MS) {
-    return;
-  }
-  if (verticalAxis > _verticalRateThresholdDps) {
-    _tiltDownEvent = true;
-    _hadActivity = true;
-    _inVerticalTilt = true;
-    _lastVerticalTiltMs = now;
-    LOG_INF("GYR", "Down Trigger=(%.1f) dps", verticalAxis);
-  } else if (verticalAxis < -_verticalRateThresholdDps) {
-    _tiltUpEvent = true;
-    _hadActivity = true;
-    _inVerticalTilt = true;
-    _lastVerticalTiltMs = now;
-    LOG_INF("GYR", "Up Trigger=(%.1f) dps", verticalAxis);
-  }
+  releaseHeldTilt(now);
 }
+
+void HalTiltSensor::raiseTiltEvents(const uint8_t bits) {
+  if (bits & HELD_FORWARD) _tiltForwardEvent = true;
+  if (bits & HELD_BACK) _tiltBackEvent = true;
+  if (bits & HELD_UP) _tiltUpEvent = true;
+  if (bits & HELD_DOWN) _tiltDownEvent = true;
+}
+
+void HalTiltSensor::emitTilt(const uint8_t heldBit, const unsigned long now) {
+  if (!_shakeEnabled) {
+    raiseTiltEvents(heldBit);
+    return;
+  }
+  // Inside a shake the flick is part of it: dropped, and its latch still has to
+  // come back to neutral before the next one.
+  if (static_cast<long>(now - _tiltLockUntilMs) < 0) return;
+  _heldTilt |= heldBit;
+  _heldTiltMs = now;
+}
+
+void HalTiltSensor::releaseHeldTilt(const unsigned long now) {
+  if (_heldTilt == 0 || _shakeCandidate || _shakeMoving || (now - _heldTiltMs) < POLL_INTERVAL_MS) return;
+  raiseTiltEvents(_heldTilt);
+  _heldTilt = 0;
+}
+
+void HalTiltSensor::pollShake(const unsigned long now, const Imu::Sample& sample) {
+  // Whole mg. The baseline follows slowly (1/8 per poll), so it holds gravity and
+  // the grip but not a jolt that reverses within a few polls.
+  const int32_t mg[3] = {static_cast<int32_t>(sample.ax * 1000.0f), static_cast<int32_t>(sample.ay * 1000.0f),
+                         static_cast<int32_t>(sample.az * 1000.0f)};
+  if (!_shakeBaselineValid) {
+    for (int i = 0; i < 3; ++i) _shakeBaseline[i] = mg[i];
+    _shakeBaselineValid = true;
+    _shakeMoving = false;
+    return;
+  }
+  int32_t jolt[3];
+  for (int i = 0; i < 3; ++i) {
+    jolt[i] = mg[i] - _shakeBaseline[i];
+    _shakeBaseline[i] += jolt[i] / 8;
+  }
+  if (_shakeCandidate && (now - _shakeCandidateMs) > SHAKE_WINDOW_MS) _shakeCandidate = false;
+
+  const int32_t lengthSq = jolt[0] * jolt[0] + jolt[1] * jolt[1] + jolt[2] * jolt[2];
+  // Past half the peak the hand is jolting: a held flick waits for it to settle.
+  _shakeMoving = 4 * lengthSq > _shakePeakMg * _shakePeakMg;
+  if (lengthSq <= _shakePeakMg * _shakePeakMg) return;
+
+  // Still shaking after a shake: the tilt lock runs on.
+  if (static_cast<long>(now - _tiltLockUntilMs) < 0) _tiltLockUntilMs = now + SHAKE_TILT_LOCK_MS;
+
+  const int32_t dot = jolt[0] * _shakeCandidateMg[0] + jolt[1] * _shakeCandidateMg[1] + jolt[2] * _shakeCandidateMg[2];
+  if (_shakeCandidate && dot < 0) {
+    _shakeCandidate = false;
+    if (_shaken && (now - _lastShakeMs) < SHAKE_REST_MS) return;
+    _shaken = true;
+    _lastShakeMs = now;
+    _shakeEvent = true;
+    _hadActivity = true;
+    _heldTilt = 0;
+    _tiltLockUntilMs = now + SHAKE_TILT_LOCK_MS;
+    LOG_INF("GYR", "Shake jolt=(%ld,%ld,%ld) mg", static_cast<long>(jolt[0]), static_cast<long>(jolt[1]),
+            static_cast<long>(jolt[2]));
+    return;
+  }
+  _shakeCandidate = true;
+  _shakeCandidateMs = now;
+  for (int i = 0; i < 3; ++i) _shakeCandidateMg[i] = jolt[i];
+}
+
+void HalTiltSensor::configureShake(const uint8_t action, const uint8_t strength) {
+  _shakePeakMg = SHAKE_PEAK_MG_BY_STRENGTH[strength < 3 ? strength : 1];
+  const bool enabled = action != 0;
+  if (_shakeEnabled && !enabled) {
+    // Anything held for a shake that can no longer come goes through.
+    raiseTiltEvents(_heldTilt);
+    _heldTilt = 0;
+    _shakeEvent = false;
+    _shakeCandidate = false;
+    _shakeMoving = false;
+    _tiltLockUntilMs = 0;
+  }
+  _shakeEnabled = enabled;
+}
+
+bool HalTiltSensor::wasShaken() {
+  const bool val = _shakeEvent;
+  _shakeEvent = false;
+  return val;
+}
+
 
 bool HalTiltSensor::wasTiltedForward() {
   const bool val = _tiltForwardEvent;
@@ -250,6 +338,7 @@ bool HalTiltSensor::hadActivity() {
 void HalTiltSensor::clearPendingEvents() {
   _tiltForwardEvent = false;
   _tiltBackEvent = false;
+  _heldTilt &= static_cast<uint8_t>(~(HELD_FORWARD | HELD_BACK));
   _hadActivity = false;
   // Intentionally preserve _inTilt so a held tilt doesn't retrigger on next poll
 }
@@ -257,5 +346,6 @@ void HalTiltSensor::clearPendingEvents() {
 void HalTiltSensor::clearPendingVerticalEvents() {
   _tiltUpEvent = false;
   _tiltDownEvent = false;
+  _heldTilt &= static_cast<uint8_t>(~(HELD_UP | HELD_DOWN));
   // Same reasoning as clearPendingEvents: _inVerticalTilt stays put.
 }

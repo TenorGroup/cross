@@ -822,6 +822,10 @@ STR_TILT_LIGHT: "Nhẹ"
 
 STR_TILT_STRONG: "Mạnh"
 
+STR_SHAKE_ACTION: "Lắc mạnh"
+
+STR_SHAKE_STRENGTH: "Độ mạnh cú lắc"
+
 STR_SLEEP_BW_REFRESH: "Làm mới đen trắng trước khi ngủ"
 
 STR_CHAPTER_NAME: "Tên chương"

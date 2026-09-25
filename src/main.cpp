@@ -59,6 +59,7 @@
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
+#include "QuickAction.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
@@ -830,6 +831,7 @@ static bool visitDiagnosticSetting(const String& key, Visitor&& visitor) {
 static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
                                                    const bool foregroundActivityManagesTiltSensor) {
   halTiltSensor.setStrength(SETTINGS.tiltStrengthH, SETTINGS.tiltStrengthV);
+  halTiltSensor.configureShake(SETTINGS.shakeAction, SETTINGS.shakeStrength);
   if (foregroundReader) {
     // Row tilt belongs to the menu screens: the reader keeps the page-turn axis
     // and nothing else, so the vertical channel is disarmed on the way in.
@@ -838,6 +840,27 @@ static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
   } else if (!foregroundActivityManagesTiltSensor) {
     halTiltSensor.configureVerticalGesture(CrossPointTiltPageTurn::TILT_OFF, false);
     halTiltSensor.update(CrossPointTiltPageTurn::TILT_OFF, SETTINGS.orientation, false);
+  }
+}
+
+// Runs a short action on the screen in front, or nothing where it has no meaning there.
+static void runQuickAction(const uint8_t action, const quickaction::Trigger trigger) {
+  switch (quickaction::resolve(action, trigger, activityManager.isForegroundReaderActivity())) {
+    case quickaction::Outcome::Refresh:
+      LOG_DBG("MAIN", "Manual screen refresh triggered");
+      if (!activityManager.handleForcedRefresh()) {
+        RenderLock lock;
+        renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+      }
+      break;
+    case quickaction::Outcome::Sleep:
+      enterDeepSleep();
+      break;
+    case quickaction::Outcome::PageForward:
+      activityManager.pageTurn(true);
+      break;
+    case quickaction::Outcome::None:
+      break;
   }
 }
 
@@ -1727,14 +1750,12 @@ void loop() {
   }
 #endif
 
-  // Refresh screen when power button is short-pressed with FORCE_REFRESH setting.
-  if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FORCE_REFRESH &&
-      mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
-    LOG_DBG("MAIN", "Manual screen refresh triggered");
-    if (!activityManager.handleForcedRefresh()) {
-      RenderLock lock;
-      renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-    }
+  // Short power press and hard shake: the same actions, one decision (quickaction::resolve).
+  if (mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
+    runQuickAction(SETTINGS.shortPwrBtn, quickaction::Trigger::PowerRelease);
+  }
+  if (halTiltSensor.wasShaken()) {
+    runQuickAction(quickaction::shakeAsPowerAction(SETTINGS.shakeAction), quickaction::Trigger::Shake);
   }
 
   // Refresh the battery icon when USB is plugged or unplugged.

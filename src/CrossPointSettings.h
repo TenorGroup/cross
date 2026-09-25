@@ -213,6 +213,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     TILT_STRENGTH_COUNT
   };
 
+  // What a hard shake does, on every screen (IMU boards). Persisted by index; each
+  // value but Off names one of the power button's short actions (quickaction::resolve).
+  enum SHAKE_ACTION { SHAKE_OFF = 0, SHAKE_REFRESH = 1, SHAKE_SLEEP = 2, SHAKE_PAGE_TURN = 3, SHAKE_ACTION_COUNT };
+
   enum TOUCH_READER_CONTROLS {
     TOUCH_READER_OFF = 0,
     TOUCH_READER_ON = 1,
@@ -427,6 +431,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // The mode a quick toggle turns tilt page turn back on to, so an Inverted
   // choice survives being switched off and on again.
   uint8_t tiltPageTurnLastOn = TILT_NORMAL;
+  // Hard shake action, and how hard the shake must be (a TILT_STRENGTH).
+  uint8_t shakeAction = SHAKE_OFF;
+  uint8_t shakeStrength = TILT_STRENGTH_MEDIUM;
   // Touch screen reader zones/gestures on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_SWIPE;
   // Reader menu open gesture (SHOW_READER_MENU: off / center tap / bottom-edge

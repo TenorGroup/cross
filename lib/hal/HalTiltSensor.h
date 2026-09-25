@@ -52,7 +52,43 @@ class HalTiltSensor {
 
   mutable unsigned long _lastPollMs = 0;
 
-  bool readGyro(float& gx, float& gy, float& gz) const;
+  // Hard shake channel, watched on every screen while its action is not Off. A
+  // shake is two strong jolts in opposite directions: the acceleration left after
+  // a slow baseline (gravity and how the device is held) passes the peak, then
+  // passes it again pointing the other way within SHAKE_WINDOW_MS. Squared
+  // lengths and dot products in whole mg, no square root. A wrist flick that
+  // turns a page rotates the device and stays under the peak.
+  bool _shakeEnabled = false;
+  bool _shakeEvent = false;  // Consumed by wasShaken()
+  int32_t _shakePeakMg = 1500;
+  bool _shakeBaselineValid = false;
+  int32_t _shakeBaseline[3] = {};
+  bool _shakeCandidate = false;  // One jolt seen, waiting for the opposite one
+  bool _shakeMoving = false;     // Last jolt past half the peak
+  int32_t _shakeCandidateMg[3] = {};
+  unsigned long _shakeCandidateMs = 0;
+  bool _shaken = false;  // A shake has fired since wake (the rest applies)
+  unsigned long _lastShakeMs = 0;
+  unsigned long _tiltLockUntilMs = 0;
+  // Tilt events found while shake is on wait one poll here (bits below), and as
+  // long as a jolt waits for its opposite or the hand still jolts past half the
+  // peak: a shake drops them, anything else lets them through.
+  uint8_t _heldTilt = 0;
+  unsigned long _heldTiltMs = 0;
+  static constexpr uint8_t HELD_FORWARD = 1, HELD_BACK = 2, HELD_UP = 4, HELD_DOWN = 8;
+
+  // Shake peak per strength (Light, Medium, Strong), in mg of acceleration beyond
+  // the baseline. Starting values under the +-2 g full scale, waiting on hand
+  // measurements (IMU_LOG): the one place to change them.
+  static constexpr int32_t SHAKE_PEAK_MG_BY_STRENGTH[] = {1200, 1500, 1800};
+  static constexpr unsigned long SHAKE_WINDOW_MS = 400;     // Opposite jolt must follow within this
+  static constexpr unsigned long SHAKE_REST_MS = 1500;      // Minimum ms between two shakes
+  static constexpr unsigned long SHAKE_TILT_LOCK_MS = 800;  // Tilts ignored after a shake's last jolt
+
+  void pollShake(unsigned long now, const Imu::Sample& sample);
+  void raiseTiltEvents(uint8_t bits);
+  void emitTilt(uint8_t heldBit, unsigned long now);
+  void releaseHeldTilt(unsigned long now);
 
  public:
   // Call after BoardConfig has selected the active device.
@@ -67,6 +103,9 @@ class HalTiltSensor {
   // True if an IMU is present on this device
   bool isAvailable() const { return _available; }
 
+  // True while the sensor is sampling (not in standby).
+  bool isAwake() const { return _isAwake; }
+
   // Flick strength per axis (CrossPointSettings::TILT_STRENGTH): 0 Light,
   // 1 Medium, 2 Strong. Out-of-range values read as Medium.
   void setStrength(uint8_t horizontal, uint8_t vertical);
@@ -77,6 +116,14 @@ class HalTiltSensor {
   static bool shouldDiscardPendingEvents(const uint8_t mode, const bool gestureTargetActive) {
     return mode == CrossPointTiltPageTurn::TILT_OFF || !gestureTargetActive;
   }
+
+  // Arms the hard shake channel from its settings: any action but 0 (Off) keeps
+  // the sensor awake on every screen and watches for shakes; strength is a
+  // TILT_STRENGTH index (out of range reads as Medium). Called once per loop pass.
+  void configureShake(uint8_t action, uint8_t strength);
+
+  // Returns true once per hard shake, consumed on read.
+  bool wasShaken();
 
   // Returns true once per tilt-forward gesture (next page direction).
   // Consumed on read - subsequent calls return false until next gesture.

@@ -268,7 +268,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 
     const bool hasTilt = halTiltSensor.isAvailable();
     // 70 unconditional descriptors; the IMU branch adds reader, tab and row tilt
-    // settings and the two flick strengths.
+    // settings, the two flick strengths and the two hard shake rows.
     // Cold-catalog tests cover each capability branch and the IMU variant.
     constexpr size_t fixedCount = 70
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
@@ -279,7 +279,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 #endif
         ;
     std::vector<SettingInfo> v;
-    v.reserve(fixedCount + (hasTilt ? 5 : 0));
+    v.reserve(fixedCount + (hasTilt ? 7 : 0));
     // --- Display ---
     v.push_back(SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
                           {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
@@ -448,6 +448,16 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 #endif
     v.push_back(SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
                             "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS));
+    if (hasTilt) {
+      // A hard shake runs one of the power button's actions on any screen. Last in
+      // Controls, so no row above it moves.
+      v.push_back(SettingInfo::Enum(StrId::STR_SHAKE_ACTION, &CrossPointSettings::shakeAction,
+                            {StrId::STR_STATE_OFF, StrId::STR_FORCE_REFRESH, StrId::STR_SLEEP, StrId::STR_PAGE_TURN},
+                            "shakeAction", StrId::STR_CAT_CONTROLS));
+      v.push_back(SettingInfo::Enum(StrId::STR_SHAKE_STRENGTH, &CrossPointSettings::shakeStrength,
+                            {StrId::STR_TILT_LIGHT, StrId::STR_UI_SIZE_MEDIUM, StrId::STR_TILT_STRONG},
+                            "shakeStrength", StrId::STR_CAT_CONTROLS));
+    }
 
     // --- System ---
     v.push_back(SettingInfo::Value(

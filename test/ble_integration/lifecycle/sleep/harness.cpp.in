@@ -102,6 +102,8 @@ struct Settings {
   uint8_t orientation = 0;
   uint8_t tiltStrengthH = 1;
   uint8_t tiltStrengthV = 1;
+  uint8_t shakeAction = 0;
+  uint8_t shakeStrength = 1;
   CrossPointSettings::SLEEP_SCREEN_MODE sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::TENOR;
   CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN quickResumeSleepScreen = CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::NONE;
 } SETTINGS;
@@ -146,6 +148,7 @@ struct TiltBoundary {
     if (!gestureTargetActive) activity = false;
   }
   void setStrength(uint8_t, uint8_t) {}
+  void configureShake(uint8_t, uint8_t) {}
   void configureVerticalGesture(uint8_t mode, bool gestureTargetActive) {
     verticalMode = mode;
     verticalTargetActive = gestureTargetActive;
