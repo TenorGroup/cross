@@ -1,5 +1,6 @@
 #include "ZipFile.h"
 
+#include <Arduino.h>
 #include <HalStorage.h>
 #include <InflateStream.h>
 #include <Logging.h>
@@ -73,12 +74,15 @@ bool ZipFile::loadAllFileStatSlims() {
   char itemName[256];
   fileStatSlimCache.clear();
   fileStatSlimCache.reserve(zipDetails.totalEntries);
+  [[maybe_unused]] const unsigned long cdStarted = millis();
+  [[maybe_unused]] unsigned cdEntries = 0;
 
   while (file.available()) {
     file.read(&sig, 4);
     if (sig != 0x02014b50) break;  // End of list
 
     FileStatSlim fileStat = {};
+    cdEntries++;
 
     file.seekCur(6);
     file.read(&fileStat.method, 2);
@@ -104,6 +108,7 @@ bool ZipFile::loadAllFileStatSlims() {
     // Skip the rest of this entry (extra field + comment)
     file.seekCur(m + k);
   }
+  ZIP_CD_LOG("ZIP", "CD_SCAN kind=all entries=%u ms=%lu found=%u", cdEntries, millis() - cdStarted, cdEntries);
 
   // Set cursor to start of central directory for sequential access
   lastCentralDirPos = zipDetails.centralDirOffset;
@@ -136,6 +141,8 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
 
   uint32_t sig;
   char itemName[256];
+  [[maybe_unused]] const unsigned long cdStarted = millis();
+  [[maybe_unused]] unsigned cdEntries = 0;
 
   while (true) {
     uint32_t entryStart = file.position();
@@ -155,6 +162,7 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
     if (wrapped && entryStart >= startPos) {
       break;
     }
+    cdEntries++;
 
     file.seekCur(6);
     file.read(&fileStat->method, 2);
@@ -188,6 +196,7 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
     // Skip extra field + comment
     file.seekCur(m + k);
   }
+  ZIP_CD_LOG("ZIP", "CD_SCAN kind=find entries=%u ms=%lu found=%u", cdEntries, millis() - cdStarted, found ? 1u : 0u);
 
   return found;
 }
@@ -317,10 +326,13 @@ int ZipFile::fillUncompressedSizes(std::deque<SizeTarget>& targets, std::deque<u
   const int targetCount = static_cast<int>(targets.size());
   uint32_t sig;
   char itemName[256];
+  [[maybe_unused]] const unsigned long cdStarted = millis();
+  [[maybe_unused]] unsigned cdEntries = 0;
 
   while (file.available()) {
     file.read(&sig, 4);
     if (sig != 0x02014b50) break;
+    cdEntries++;
 
     file.seekCur(6);
     uint16_t method;
@@ -365,6 +377,8 @@ int ZipFile::fillUncompressedSizes(std::deque<SizeTarget>& targets, std::deque<u
 
     file.seekCur(m + k);
   }
+  ZIP_CD_LOG("ZIP", "CD_SCAN kind=sizes entries=%u ms=%lu found=%u", cdEntries, millis() - cdStarted,
+             static_cast<unsigned>(matched));
 
   return matched;
 }

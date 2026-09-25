@@ -1,10 +1,20 @@
 #pragma once
+#include <Arduino.h>
 #include <HalStorage.h>
+#include <Logging.h>
 
 #include <deque>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+
+// Every walk of the central directory logs its entries and time (CD_SCAN): at the measurement build's
+// level on the probe builds, at debug level elsewhere.
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+#define ZIP_CD_LOG LOG_INF
+#else
+#define ZIP_CD_LOG LOG_DBG
+#endif
 
 class ZipFile {
  public:
@@ -107,12 +117,15 @@ class ZipFile {
 
     uint32_t sig;
     char itemName[256];
+    [[maybe_unused]] const unsigned long cdStarted = millis();
+    [[maybe_unused]] unsigned cdEntries = 0;
 
     while (file.available()) {
       file.read(&sig, 4);
       if (sig != 0x02014b50) {
         break;
       }
+      cdEntries++;
 
       file.seekCur(12);
       uint32_t crc32, compressedSize;
@@ -135,6 +148,7 @@ class ZipFile {
 
       file.seekCur(m + k);
     }
+    ZIP_CD_LOG("ZIP", "CD_SCAN kind=enum entries=%u ms=%lu found=%u", cdEntries, millis() - cdStarted, cdEntries);
 
     if (!wasOpen) {
       close();
