@@ -298,6 +298,7 @@ struct EpubReaderActivity : ReaderActivity {
   uint32_t lastPageTurnTime = 0;
   std::atomic<bool> deferredClearPending{false};
   bool deferBackgroundBuildForBle() const; bool buildTickHeapGate(); bool backgroundBuildStartHeapGate(); bool backgroundBuildCanTick(); void suspendBackgroundBuild();
+  bool indexStepDue() const { return false; } void runIndexStep() {}
   bool releaseRadioForBuild(); void showMemoryError(); void generatePendingThumb(); void writePendingThumbs();
   void backgroundTick(); void foreground(); bool skipLoopDelay(); bool latTrangThat(bool);
   // loadBook()'s cover-thumbnail tail and loop()'s idle region, projected verbatim.

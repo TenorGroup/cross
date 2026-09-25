@@ -26,7 +26,7 @@ struct RenderLock { struct TryTake{}; static inline bool busy=false; bool owns=f
 struct Activity {virtual ~Activity()=default;virtual bool isReaderActivity() const {return true;}};
 struct ActivityManager {enum class PendingAction{None,Push};PendingAction pendingAction=PendingAction::None;
  std::shared_ptr<Activity>currentActivity;uint32_t generation=1;
- bool sleepTransition=false;bool exclusive=false,preventSleep=false;bool requiresExclusiveStorageLoop()const{return exclusive;}bool preventAutoSleep()const{return preventSleep;}bool isForegroundReaderReady()const;void goToReader(const std::string&){}bool pageTurn(bool);bool chapterSkip(bool);uint32_t activityGeneration()const{return generation;}
+ bool sleepTransition=false;bool exclusive=false,preventSleep=false;bool requiresExclusiveStorageLoop()const{return exclusive;}bool preventAutoSleep()const{return preventSleep;}bool isForegroundReaderReady()const;bool foregroundReaderHoldsRadio()const{return false;}void goToReader(const std::string&){}bool pageTurn(bool);bool chapterSkip(bool);uint32_t activityGeneration()const{return generation;}
  bool isForegroundReaderActivity()const{return pendingAction==PendingAction::None&&currentActivity&&currentActivity->isReaderActivity();}
 };
 ActivityManager activityManager;

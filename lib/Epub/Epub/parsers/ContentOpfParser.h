@@ -1,4 +1,5 @@
 #pragma once
+#include <BufferedFile.h>
 #include <Print.h>
 
 #include <algorithm>
@@ -30,6 +31,12 @@ class ContentOpfParser final : public Print {
   ParserState state = START;
   BookMetadataCache* cache;
   HalFile tempItemStore;
+  // .items.bin is written, then looked up, between zip reads that share SdFat's one sector cache:
+  // unbuffered, the X3 spent 0,7 s writing and 0,9 s looking up the items of a 5.000-chapter book.
+  // Spine order mostly follows the manifest, so a small read window serves runs of lookups.
+  std::unique_ptr<serialization::BufferedFileWriter> itemOut;
+  std::unique_ptr<serialization::BufferedFileReader> itemIn;
+  bool readItemString(std::string& value);
   std::string coverItemId;
   bool hasExplicitStartReference = false;
   bool failed = false;

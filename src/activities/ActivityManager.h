@@ -143,6 +143,7 @@ class ActivityManager {
   bool isForegroundReaderActivity() const;
   bool isForegroundActivityManagingTiltSensor() const;
   bool isForegroundReaderReady() const;
+  bool foregroundReaderHoldsRadio() const;
   uint32_t activityGeneration() const { return activityGeneration_; }
 
   // Queue an external page action on the ready foreground reader. True means

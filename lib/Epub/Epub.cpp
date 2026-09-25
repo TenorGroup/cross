@@ -16,6 +16,67 @@
 #include "Epub/parsers/TocNavParser.h"
 #include "Epub/parsers/TocNcxParser.h"
 
+namespace {
+// Forwards the inflated bytes to a parser until `stop` answers true, then refuses them, which ends
+// the zip stream: a background step stops within one 1 KB slice of parsing.
+class StopSink final : public Print {
+  Print& to;
+  const BookMetadataCache::StopFn stop;
+
+ public:
+  StopSink(Print& to, const BookMetadataCache::StopFn stop) : to(to), stop(stop) {}
+  size_t write(uint8_t b) override { return write(&b, 1); }
+  size_t write(const uint8_t* buffer, size_t size) override { return stop() ? 0 : to.write(buffer, size); }
+};
+// The stop question of the index step running now, latched: once it answers true, every later
+// check of the step does too, and indexSome tells a stopped step from a failed one.
+BookMetadataCache::StopFn stepStop = nullptr;
+bool stepStopped = false;
+bool askStepStop() {
+  if (!stepStopped && stepStop && stepStop()) stepStopped = true;
+  return stepStopped;
+}
+}  // namespace
+
+#ifdef TENOR_PRESS_PROBE
+namespace {
+// Forwards the inflated bytes to a parser and counts the time spent inside it, so a stream's
+// time splits into zip read plus inflate, and parse.
+class TimedSink final : public Print {
+  Print& to;
+
+ public:
+  explicit TimedSink(Print& to) : to(to) {}
+  size_t write(uint8_t b) override { return write(&b, 1); }
+  size_t write(const uint8_t* buffer, size_t size) override {
+    const uint32_t started = micros();
+    const size_t n = to.write(buffer, size);
+    indexProbe.parseUs += micros() - started;
+    return n;
+  }
+};
+// Milliseconds of the parts of the pass running now; printed and cleared per pass.
+struct PassProbe {
+  unsigned long containerMs = 0, findMs = 0, streamMs = 0;
+} passProbe;
+
+void printPassProbe(const char* pass, const unsigned long extraMs) {
+  LOG_INF("EBP",
+          "INDEX_SPLIT %s container=%lu find=%lu stream=%lu parse=%lu manifest_io=%lu spine_lookup=%lu "
+          "spine_write=%lu toc_entries=%lu items=%u extra=%lu",
+          pass, passProbe.containerMs, passProbe.findMs, passProbe.streamMs,
+          static_cast<unsigned long>(indexProbe.parseUs / 1000),
+          static_cast<unsigned long>(indexProbe.manifestIoUs / 1000),
+          static_cast<unsigned long>(indexProbe.spineLookupUs / 1000),
+          static_cast<unsigned long>(indexProbe.spineWriteUs / 1000),
+          static_cast<unsigned long>(indexProbe.tocEntryUs / 1000), static_cast<unsigned>(indexProbe.manifestItems),
+          extraMs);
+  passProbe = {};
+  indexProbe = {};
+}
+}  // namespace
+#endif
+
 bool Epub::findContentOpfFile(std::string* contentOpfFile) const {
   const auto containerPath = "META-INF/container.xml";
   size_t containerSize;
@@ -50,6 +111,9 @@ bool Epub::findContentOpfFile(std::string* contentOpfFile) const {
 
 bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, const bool writeSpineEntries) {
   std::string contentOpfFilePath;
+#ifdef TENOR_PRESS_PROBE
+  unsigned long stepStarted = millis();
+#endif
   if (!findContentOpfFile(&contentOpfFilePath)) {
     LOG_ERR("EBP", "Could not find content.opf in zip");
     return false;
@@ -58,12 +122,20 @@ bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, const 
   contentBasePath = contentOpfFilePath.substr(0, contentOpfFilePath.find_last_of('/') + 1);
 
   LOG_DBG("EBP", "Parsing content.opf: %s", contentOpfFilePath.c_str());
+#ifdef TENOR_PRESS_PROBE
+  passProbe.containerMs = millis() - stepStarted;
+  stepStarted = millis();
+#endif
 
   size_t contentOpfSize;
   if (!getItemSize(contentOpfFilePath, &contentOpfSize)) {
     LOG_ERR("EBP", "Could not get size of content.opf");
     return false;
   }
+#ifdef TENOR_PRESS_PROBE
+  passProbe.findMs = millis() - stepStarted;
+  stepStarted = millis();
+#endif
 
   ContentOpfParser opfParser(getCachePath(), getBasePath(), contentOpfSize,
                              writeSpineEntries ? bookMetadataCache.get() : nullptr);
@@ -72,10 +144,18 @@ bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, const 
     return false;
   }
 
-  if (!readItemContentsToStream(contentOpfFilePath, opfParser, 1024)) {
+#ifdef TENOR_PRESS_PROBE
+  TimedSink opfSink(opfParser);
+#else
+  Print& opfSink = opfParser;
+#endif
+  if (!readItemContentsToStream(contentOpfFilePath, opfSink, 1024)) {
     LOG_ERR("EBP", "Could not read content.opf");
     return false;
   }
+#ifdef TENOR_PRESS_PROBE
+  passProbe.streamMs = millis() - stepStarted;
+#endif
 
   // Grab data from opfParser into epub. Normalize titles to NFC so NFD (combining
   // mark) text renders correctly - the device fonts have no mark positioning.
@@ -147,7 +227,7 @@ bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, const 
   return true;
 }
 
-bool Epub::parseTocNcxFile() const {
+bool Epub::parseTocNcxFile(BookMetadataCache* target, const BookMetadataCache::StopFn stop) const {
   // the ncx file should have been specified in the content.opf file
   if (tocNcxItem.empty()) {
     LOG_DBG("EBP", "No ncx file specified");
@@ -156,13 +236,16 @@ bool Epub::parseTocNcxFile() const {
 
   LOG_DBG("EBP", "Parsing toc ncx file: %s", tocNcxItem.c_str());
 
+#ifdef TENOR_PRESS_PROBE
+  unsigned long stepStarted = millis();
+#endif
   size_t ncxSize;
   if (!getItemSize(tocNcxItem, &ncxSize)) {
     LOG_ERR("EBP", "Could not get size of toc ncx file");
     return false;
   }
 
-  TocNcxParser ncxParser(contentBasePath, ncxSize, bookMetadataCache.get());
+  TocNcxParser ncxParser(contentBasePath, ncxSize, target);
 
   if (!ncxParser.setup()) {
     LOG_ERR("EBP", "Could not setup toc ncx parser");
@@ -171,16 +254,27 @@ bool Epub::parseTocNcxFile() const {
 
   // Stream the decompressed NCX straight into the parser instead of round-tripping
   // through a temp file on the SD card (decompress -> write -> reopen -> reread -> delete).
-  if (!readItemContentsToStream(tocNcxItem, ncxParser, 1024)) {
+#ifdef TENOR_PRESS_PROBE
+  passProbe.findMs = millis() - stepStarted;
+  stepStarted = millis();
+  TimedSink ncxSink(ncxParser);
+#else
+  Print& ncxSink = ncxParser;
+#endif
+  StopSink stopSink(ncxSink, stop);
+  if (!readItemContentsToStream(tocNcxItem, stop ? static_cast<Print&>(stopSink) : ncxSink, 1024)) {
     LOG_ERR("EBP", "Could not read toc ncx file");
     return false;
   }
+#ifdef TENOR_PRESS_PROBE
+  passProbe.streamMs = millis() - stepStarted;
+#endif
 
   LOG_DBG("EBP", "Parsed TOC items");
   return true;
 }
 
-bool Epub::parseTocNavFile() const {
+bool Epub::parseTocNavFile(BookMetadataCache* target, const BookMetadataCache::StopFn stop) const {
   // the nav file should have been specified in the content.opf file (EPUB 3)
   if (tocNavItem.empty()) {
     LOG_DBG("EBP", "No nav file specified");
@@ -189,6 +283,9 @@ bool Epub::parseTocNavFile() const {
 
   LOG_DBG("EBP", "Parsing toc nav file: %s", tocNavItem.c_str());
 
+#ifdef TENOR_PRESS_PROBE
+  unsigned long stepStarted = millis();
+#endif
   size_t navSize;
   if (!getItemSize(tocNavItem, &navSize)) {
     LOG_ERR("EBP", "Could not get size of toc nav file");
@@ -198,7 +295,7 @@ bool Epub::parseTocNavFile() const {
   // Note: We can't use `contentBasePath` here as the nav file may be in a different folder to the content.opf
   // and the HTMLX nav file will have hrefs relative to itself
   const std::string navContentBasePath = tocNavItem.substr(0, tocNavItem.find_last_of('/') + 1);
-  TocNavParser navParser(navContentBasePath, navSize, bookMetadataCache.get());
+  TocNavParser navParser(navContentBasePath, navSize, target);
 
   if (!navParser.setup()) {
     LOG_ERR("EBP", "Could not setup toc nav parser");
@@ -207,10 +304,21 @@ bool Epub::parseTocNavFile() const {
 
   // Stream the decompressed nav document straight into the parser instead of round-tripping
   // through a temp file on the SD card (decompress -> write -> reopen -> reread -> delete).
-  if (!readItemContentsToStream(tocNavItem, navParser, 1024)) {
+#ifdef TENOR_PRESS_PROBE
+  passProbe.findMs = millis() - stepStarted;
+  stepStarted = millis();
+  TimedSink navSink(navParser);
+#else
+  Print& navSink = navParser;
+#endif
+  StopSink stopSink(navSink, stop);
+  if (!readItemContentsToStream(tocNavItem, stop ? static_cast<Print&>(stopSink) : navSink, 1024)) {
     LOG_ERR("EBP", "Could not read toc nav file");
     return false;
   }
+#ifdef TENOR_PRESS_PROBE
+  passProbe.streamMs = millis() - stepStarted;
+#endif
 
   LOG_DBG("EBP", "Parsed TOC nav items");
   return true;
@@ -424,7 +532,14 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   cssParser.reset(new CssParser(cachePath));
 
   // Try to load existing cache first
-  if (bookMetadataCache->load()) {
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long metaStarted = millis();
+#endif
+  if (bookMetadataCache->load(/*allowPartial=*/true)) {
+#ifdef TENOR_PRESS_PROBE
+    const unsigned long cssStarted = millis();
+#endif
+    if (bookMetadataCache->isPartial()) restoreTocSource();
     if (!skipLoadingCss) {
       const CssParser::CacheStatus cacheStatus = cssParser->inspectCache();
       CssParser::CacheLoadResult cacheLoadResult = CssParser::CacheLoadResult::Invalid;
@@ -453,7 +568,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
         }
         bookMetadataCache.reset();
         bookMetadataCache.reset(new BookMetadataCache(cachePath));
-        if (!bookMetadataCache->load()) {
+        if (!bookMetadataCache->load(/*allowPartial=*/true)) {
           LOG_ERR("EBP", "Failed to reload cache after CSS rebuild");
           return false;
         }
@@ -471,6 +586,10 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
     // resident pins tens of KB for the whole reading session (more on warm resume into
     // an already-cached chapter, where createSectionFile never runs to clear it).
     cssParser->clear();
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("EBP", "INDEX_SPLIT reopen meta=%lu css=%lu spines=%d toc=%d", cssStarted - metaStarted,
+            millis() - cssStarted, bookMetadataCache->getSpineCount(), bookMetadataCache->getTocCount());
+#endif
     LOG_DBG("EBP", "Loaded ePub: %s", filepath.c_str());
     return true;
   }
@@ -503,10 +622,49 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
     LOG_ERR("EBP", "Could not parse content.opf");
     return false;
   }
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long discoverStarted = millis();
+#endif
   discoverCssFilesFromZip();
+#ifdef TENOR_PRESS_PROBE
+  // extra: the zip directory walk that finds stylesheets the manifest left out.
+  printPassProbe("opf", millis() - discoverStarted);
+#endif
   if (!bookMetadataCache->endContentOpfPass()) {
     LOG_ERR("EBP", "Could not end writing content.opf pass");
     return false;
+  }
+  if (BookMetadataCache::indexesInBackground(bookMetadataCache->getSpineCount())) {
+#ifdef TENOR_PRESS_PROBE
+    const unsigned long partStart = millis();
+#endif
+    // Thousands of chapters: the book opens on its chapter list (book.part); the TOC and the
+    // chapter sizes follow from indexSome() while it is read.
+    bookMetadataCache->endWrite();
+    if (!bookMetadataCache->writePart(bookMetadata, {tocNcxItem, tocNavItem, contentBasePath})) {
+      LOG_ERR("EBP", "Could not write book.part");
+      return false;
+    }
+    LOG_INF("EBP", "Chapter list ready in %lu ms", millis() - indexingStart);
+#ifdef TENOR_PRESS_PROBE
+    const unsigned long partCssStart = millis();
+#endif
+    if (!skipLoadingCss) {
+      bookMetadataCache.reset();
+      if (parseCssFiles(cssParser->inspectCache()) != CssParser::ParseResult::Error) {
+        Storage.removeDir((cachePath + "/sections").c_str());
+      }
+    }
+    bookMetadataCache.reset(new BookMetadataCache(cachePath));
+    if (!bookMetadataCache->load(/*allowPartial=*/true)) {
+      LOG_ERR("EBP", "Failed to reload cache after writing");
+      return false;
+    }
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("EBP", "INDEX_STAGES opf=%lu part=%lu css_reload=%lu background=1", partStart - opfStart,
+            partCssStart - partStart, millis() - partCssStart);
+#endif
+    return true;
   }
   LOG_DBG("EBP", "OPF pass completed in %lu ms", millis() - opfStart);
 #ifdef TENOR_PRESS_PROBE
@@ -527,13 +685,13 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   // Try EPUB 3 nav document first (preferred)
   if (!tocNavItem.empty()) {
     LOG_DBG("EBP", "Attempting to parse EPUB 3 nav document");
-    tocParsed = parseTocNavFile();
+    tocParsed = parseTocNavFile(bookMetadataCache.get(), nullptr);
   }
 
   // Fall back to NCX if nav parsing failed or wasn't available
   if (!tocParsed && !tocNcxItem.empty()) {
     LOG_DBG("EBP", "Falling back to NCX TOC");
-    tocParsed = parseTocNcxFile();
+    tocParsed = parseTocNcxFile(bookMetadataCache.get(), nullptr);
   }
 
   if (!tocParsed) {
@@ -545,6 +703,9 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
     LOG_ERR("EBP", "Could not end writing toc pass");
     return false;
   }
+#ifdef TENOR_PRESS_PROBE
+  printPassProbe("toc", 0);
+#endif
   LOG_DBG("EBP", "TOC pass completed in %lu ms", millis() - tocStart);
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("EBP", "INDEX_STAGE name=toc free=%u largest=%u min=%u", static_cast<unsigned>(ESP.getFreeHeap()),
@@ -582,11 +743,17 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   }
 
   // Reload the cache from disk so it's in the correct state
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long reloadStarted = millis();
+#endif
   bookMetadataCache.reset(new BookMetadataCache(cachePath));
   if (!bookMetadataCache->load()) {
     LOG_ERR("EBP", "Failed to reload cache after writing");
     return false;
   }
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("EBP", "INDEX_SPLIT css parse=%lu reload=%lu", reloadStarted - cssStart, millis() - reloadStarted);
+#endif
 #if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
   LOG_INF("EBP", "INDEX_STAGES opf=%lu toc=%lu book=%lu css_reload=%lu", tocStart - opfStart, buildStart - tocStart,
           cssStart - buildStart, millis() - cssStart);
@@ -594,6 +761,58 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
 
   LOG_DBG("EBP", "Loaded ePub: %s", filepath.c_str());
   return true;
+}
+
+void Epub::restoreTocSource() {
+  const auto& source = bookMetadataCache->tocSource;
+  tocNcxItem = source.ncxItem;
+  tocNavItem = source.navItem;
+  contentBasePath = source.basePath;
+}
+
+bool Epub::indexComplete() const {
+  return bookMetadataCache && bookMetadataCache->isLoaded() && !bookMetadataCache->isPartial();
+}
+
+Epub::IndexStep Epub::indexSome(const BookMetadataCache::StopFn stop) {
+  if (!bookMetadataCache || !bookMetadataCache->isLoaded()) return IndexStep::Failed;
+  if (!bookMetadataCache->isPartial()) return IndexStep::Done;
+  stepStop = stop;
+  stepStopped = false;
+  const BookMetadataCache::StopFn ask = askStepStop;
+  const unsigned long started = millis();
+  const char* step;
+  bool ok;
+  if (!BookMetadataCache::deferredTocReady(cachePath)) {
+    step = "toc";
+    BookMetadataCache pass(cachePath);
+    ok = pass.beginDeferredTocPass();
+    // EPUB 3 nav first, NCX when that fails, as the one-pass build; a book with neither has no TOC.
+    bool parsed = false;
+    if (ok && !tocNavItem.empty()) parsed = parseTocNavFile(&pass, ask);
+    if (ok && !parsed && !stepStopped && !tocNcxItem.empty()) parseTocNcxFile(&pass, ask);
+    // A stopped pass leaves only its temporary file, which the next pass overwrites.
+    ok = !stepStopped && ok && pass.endDeferredTocPass();
+#ifdef TENOR_PRESS_PROBE
+    printPassProbe("toc_bg", 0);
+#endif
+  } else if (!bookMetadataCache->bookBinReady()) {
+    step = "book";
+    ok = bookMetadataCache->buildBookBinFromPart(filepath, ask);
+  } else {
+    step = "load";
+    auto full = makeUniqueNoThrow<BookMetadataCache>(cachePath);
+    ok = full && full->load(/*allowPartial=*/false, ask);
+    if (ok) {
+      bookMetadataCache = std::move(full);
+      bookMetadataCache->removePartFiles();
+    }
+  }
+  LOG_INF("EBP", "INDEX_BG step=%s ms=%lu ok=%u stopped=%u free=%u largest=%u", step, millis() - started, ok ? 1u : 0u,
+          stepStopped ? 1u : 0u, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  if (stepStopped) return IndexStep::Stopped;
+  if (!ok) return IndexStep::Failed;
+  return bookMetadataCache->isPartial() ? IndexStep::More : IndexStep::Done;
 }
 
 bool Epub::clearCache() const {

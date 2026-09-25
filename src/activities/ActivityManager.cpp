@@ -585,6 +585,10 @@ bool ActivityManager::isForegroundReaderReady() const {
   return isForegroundReaderActivity() && static_cast<ReaderActivity*>(currentActivity.get())->isPageReady();
 }
 
+bool ActivityManager::foregroundReaderHoldsRadio() const {
+  return isForegroundReaderActivity() && static_cast<ReaderActivity*>(currentActivity.get())->holdsRadio();
+}
+
 bool ActivityManager::pageTurn(const bool forward) {
   if (!isForegroundReaderReady() || sleepTransition) return false;
   return static_cast<ReaderActivity*>(currentActivity.get())->luotLatTrangNgoai(forward);

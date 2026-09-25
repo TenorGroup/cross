@@ -310,7 +310,7 @@ bool ReadingStatsStore::readBookFile(const std::string& path, BookReadingRecord&
   return true;
 }
 
-bool ReadingStatsStore::activateBook(const std::string& path, const uint8_t progress, const std::string& title) {
+bool ReadingStatsStore::activateBook(const std::string& path, const int progress, const std::string& title) {
   // Each X3 wake is a boot. A read the boot could not finish is retried here, or the
   // whole session up to the next sleep would go unrecorded.
   if (!statisticsReadable) loadFromFile();
@@ -334,7 +334,7 @@ bool ReadingStatsStore::activateBook(const std::string& path, const uint8_t prog
   BookReadingRecord next;
   // Read into the book slot: this file is the one the next activation archives.
   const bool exists = readBookFile(path, next, MEMO_BOOK);
-  if (!exists) next.startProgress = progress;
+  if (!exists) next.startProgress = static_cast<uint8_t>(std::clamp(progress, 0, 100));
   activeBookPath = path;
   activeBookTitle = title;
   activeBook = next;
@@ -342,7 +342,7 @@ bool ReadingStatsStore::activateBook(const std::string& path, const uint8_t prog
   return true;
 }
 
-void ReadingStatsStore::record(const uint32_t day, const uint32_t ms, const uint16_t turns, const uint8_t progress) {
+void ReadingStatsStore::record(const uint32_t day, const uint32_t ms, const uint16_t turns, const int progress) {
   kho.gopMilliseconds(day, ms, turns);
   const uint64_t total =
       std::min<uint64_t>(static_cast<uint64_t>(activeBook.minutes) * 60000 + activeBook.remainderMs + ms,
@@ -350,7 +350,7 @@ void ReadingStatsStore::record(const uint32_t day, const uint32_t ms, const uint
   activeBook.minutes = total / 60000;
   activeBook.remainderMs = total % 60000;
   activeBook.turns += std::min<uint32_t>(turns, UINT32_MAX - activeBook.turns);
-  activeBook.progress = std::min<uint8_t>(progress, 100);
+  if (progress >= 0) activeBook.progress = static_cast<uint8_t>(std::min(progress, 100));
   if ((ms || turns) && day && day > activeBook.lastDay) {
     if (!activeBook.firstDay) activeBook.firstDay = day;
     activeBook.lastDay = day;

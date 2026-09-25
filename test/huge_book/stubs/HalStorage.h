@@ -14,6 +14,11 @@
 struct TestFile {
   std::vector<uint8_t> bytes;
 };
+// Card calls, each an SD transaction's worth of overhead on the device.
+struct CardCalls {
+  size_t reads = 0, writes = 0, seeks = 0;
+};
+inline CardCalls cardCalls;
 class HalFile {
  public:
   std::shared_ptr<TestFile> data;
@@ -30,12 +35,14 @@ class HalFile {
   size_t size() const { return data ? data->bytes.size() : 0; }
   int available() const { return static_cast<int>(size() - std::min(size(), pos)); }
   bool seek(size_t p) {
+    ++cardCalls.seeks;
     if (!data || p > size()) return false;
     pos = p;
     return true;
   }
   bool seekCur(long delta) { return seek(pos + delta); }
   int read(void* dst, size_t n) {
+    ++cardCalls.reads;
     if (!data) return -1;
     const size_t got = pos < size() ? std::min(n, size() - pos) : 0;
     if (got) memcpy(dst, data->bytes.data() + pos, got);
@@ -43,6 +50,7 @@ class HalFile {
     return static_cast<int>(got);
   }
   size_t write(const void* src, size_t n) {
+    ++cardCalls.writes;
     if (!data) return 0;
     heapcap::Untracked guard;
     if (pos + n > size()) data->bytes.resize(pos + n);
@@ -78,6 +86,15 @@ struct TestStorage {
   bool remove(const char* p) {
     heapcap::Untracked guard;
     return files.erase(p) != 0;
+  }
+  // Like SdFat: the new name must not exist yet.
+  bool rename(const char* from, const char* to) {
+    heapcap::Untracked guard;
+    auto it = files.find(from);
+    if (it == files.end() || files.count(to)) return false;
+    files[to] = it->second;
+    files.erase(it);
+    return true;
   }
 };
 inline TestStorage Storage;

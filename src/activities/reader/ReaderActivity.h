@@ -125,6 +125,10 @@ class ReaderActivity : public Activity {
   // lenh sau thay lenh truoc, giong hai luot lat trang lien tiep.
   bool luotNhayChuongNgoai(bool isForward);
 
+  // True while the reader keeps the page-turner radio from starting: a book still building its
+  // index in the background needs the heap the radio would take.
+  virtual bool holdsRadio() const { return false; }
+
   static std::unique_ptr<ReaderActivity> create(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                 std::string path, bool allowFastInitialRefresh, bool preview = false);
 

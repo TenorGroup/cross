@@ -994,8 +994,10 @@ void loop() {
         bleReaderRetryAtMs = 0;
         if (bleHid.isRunning()) bleReaderRetries = 0;
       }
+      // A book still building its index in the background keeps the radio off until the index
+      // is whole (EpubReaderActivity::holdsRadio); the device keys work meanwhile.
       if (foregroundReader && activityManager.isForegroundReaderReady() && !bleReaderBeginAttempted &&
-          !freeink::ble::idleStopped() && !bleHid.isStopping()) {
+          !freeink::ble::idleStopped() && !bleHid.isStopping() && !activityManager.foregroundReaderHoldsRadio()) {
         bleReaderBeginAttempted = true;
         if (!bleHid.isRunning()) {
           const bool started = freeink::ble::beginAsync(renderer);

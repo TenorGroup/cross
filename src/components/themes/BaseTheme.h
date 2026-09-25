@@ -251,6 +251,7 @@ class BaseTheme {
                               const std::function<UIIcon(int index)>& rowIcon) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
+  // bookProgress in percent; negative when the book's progress is not known yet.
   static void drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage, const int pageCount,
                             std::string title, const int paddingBottom = 0, const int textYOffset = 0,
                             const bool fillMargin = true, const bool isPageBookmarked = false,

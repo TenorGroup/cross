@@ -32,9 +32,11 @@ class Epub {
 
   bool findContentOpfFile(std::string* contentOpfFile) const;
   bool parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, bool writeSpineEntries = true);
-  bool parseTocNcxFile() const;
-  bool parseTocNavFile() const;
+  bool parseTocNcxFile(BookMetadataCache* target, BookMetadataCache::StopFn stop) const;
+  bool parseTocNavFile(BookMetadataCache* target, BookMetadataCache::StopFn stop) const;
   void discoverCssFilesFromZip();
+  // A book loaded from book.part takes back where its TOC lives from there.
+  void restoreTocSource();
   CssParser::ParseResult parseCssFiles(CssParser::CacheStatus existingCacheStatus) const;
 
  public:
@@ -44,7 +46,23 @@ class Epub {
   }
   ~Epub() = default;
   std::string& getBasePath() { return contentBasePath; }
+  // A book of thousands of chapters (BookMetadataCache::indexesInBackground) loads with its
+  // chapters and metadata only the first time: indexComplete() is false and indexSome() builds
+  // the TOC and chapter sizes afterwards.
   bool load(bool buildIfMissing = true, bool skipLoadingCss = false);
+  // False while the TOC and the chapter sizes are still missing: the book has no TOC entries,
+  // and getBookSize() and every cumulative size answer 0, which is not the book's progress.
+  bool indexComplete() const;
+  enum class IndexStep : uint8_t {
+    Done,     // the whole index is loaded
+    More,     // a step finished; call again
+    Stopped,  // `stop` answered true; the step's work is dropped and redone by the next call
+    Failed,   // the step could not run (memory, card); the next call tries it again
+  };
+  // Runs the next step of an unfinished index: the TOC pass, then book.bin, then its load. Every
+  // step leaves either its whole result on the card or nothing, so a stop, a power cut or a
+  // reopen at any point resumes at a step boundary. `stop` is asked every few milliseconds.
+  IndexStep indexSome(BookMetadataCache::StopFn stop);
   bool clearCache() const;
   void setupCacheDir() const;
   const std::string& getCachePath() const;

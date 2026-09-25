@@ -9,8 +9,24 @@
 #include <string>
 #include <vector>
 
+#ifdef TENOR_PRESS_PROBE
+// Microseconds a first-open index build spends in each part, printed as INDEX_SPLIT lines.
+struct IndexProbe {
+  uint32_t parseUs = 0;        // inside the XML parsers, their card work included
+  uint32_t manifestIoUs = 0;   // OPF manifest items written to .items.bin
+  uint32_t spineLookupUs = 0;  // spine idrefs looked up in .items.bin
+  uint32_t spineWriteUs = 0;   // spine entries written to spine.bin.tmp
+  uint32_t tocEntryUs = 0;     // TOC entries matched to the spine and written to toc.bin.tmp
+  uint32_t manifestItems = 0;
+};
+extern IndexProbe indexProbe;
+#endif
+
 class BookMetadataCache {
  public:
+  // Asked between the steps of a long pass; true gives the pass up.
+  using StopFn = bool (*)();
+
   struct BookMetadata {
     std::string title;
     std::string author;
@@ -52,6 +68,10 @@ class BookMetadataCache {
   uint16_t tocCount;
   bool loaded;
   bool buildMode;
+  // Loaded from book.part: chapters and metadata only, no TOC and no chapter sizes.
+  bool partial = false;
+  // Set by beginDeferredTocPass: TOC entries are written unmatched, buildBookBinFromPart matches them.
+  bool deferTocMatch = false;
 
   HalFile bookFile;
   // Temp file handles during build
@@ -104,6 +124,20 @@ class BookMetadataCache {
     return hash;
   }
 
+  // Where buildBookBinFrom reads and writes. The background build reads the chapters from book.part
+  // and matches each TOC entry to its chapter itself (resolveToc).
+  struct BookBinSource {
+    const char* spineFile;
+    uint32_t spineStart;
+    const char* tocFile;
+    const char* outFile;
+    bool resolveToc;
+    uint16_t spines;
+    uint16_t tocs;
+  };
+  bool buildBookBinFrom(const std::string& epubPath, const BookMetadata& metadata, const BookBinSource& source,
+                        StopFn stop);
+
   uint32_t writeSpineEntry(HalFile& file, const SpineEntry& entry) const;
   uint32_t writeTocEntry(HalFile& file, const TocEntry& entry) const;
   SpineEntry readSpineEntry(HalFile& file) const;
@@ -129,6 +163,41 @@ class BookMetadataCache {
 
   // Post-processing to update mappings and sizes
   bool buildBookBin(const std::string& epubPath, const BookMetadata& metadata);
+
+  // A book of this many chapters opens on its chapter list alone (book.part) and builds its TOC
+  // and chapter sizes afterwards, a step at a time (Epub::indexSome). The one rule for which
+  // books do that.
+  static bool indexesInBackground(int spineCount) { return spineCount >= LARGE_SPINE_THRESHOLD; }
+
+  // Where a book's TOC lives inside the EPUB, kept in book.part so a reopen can finish the index
+  // without parsing content.opf again.
+  struct TocSource {
+    std::string ncxItem;
+    std::string navItem;
+    std::string basePath;
+  };
+  TocSource tocSource;
+
+  // After endContentOpfPass: writes book.part from the spine pass (through a temporary file) and
+  // removes the spine pass file.
+  bool writePart(const BookMetadata& metadata, const TocSource& source);
+  // The background TOC pass: entries are written without their chapter (matched later), so it
+  // needs no spine index in memory. endDeferredTocPass keeps the finished pass under its own name
+  // and records the entry count; an unfinished pass is never taken for a finished one.
+  bool beginDeferredTocPass();
+  bool endDeferredTocPass();
+  // Whether a finished background TOC pass is on the card, and its entry count.
+  static bool deferredTocReady(const std::string& cachePath, uint16_t* entries = nullptr);
+  // Builds book.bin from book.part and the finished TOC pass. `stop` is asked between steps; when
+  // it answers true, or on any failure, nothing of the build is left behind and false is returned.
+  // Needs a cache loaded from book.part.
+  bool buildBookBinFromPart(const std::string& epubPath, StopFn stop);
+  // Whether the card holds an index this cache can load (book.bin, or book.part).
+  static bool indexOnCard(const std::string& cachePath);
+  // Whether the background build has left book.bin on the card, not loaded yet.
+  bool bookBinReady() const;
+  // Removes book.part and the background pass files once book.bin is loaded.
+  void removePartFiles() const;
 
   // Independent sequential stream: random lookups cannot disturb its position.
   // One 2 KB buffer exists for the lifetime of the cursor.
@@ -160,8 +229,10 @@ class BookMetadataCache {
  public:
   std::unique_ptr<TocCursor> openTocCursor(int start = 0) const;
 
-  // Reading phase (read mode)
-  bool load();
+  // Reading phase (read mode). With `allowPartial`, a missing book.bin falls back to book.part.
+  // `stop` is asked while the records are checked; a stopped load fails.
+  bool load(bool allowPartial = false, StopFn stop = nullptr);
+  bool isPartial() const { return partial; }
   SpineEntry getSpineEntry(int index);
   TocEntry getTocEntry(int index);
   // Cumulative byte size up to and including the given spine item (0 if out of range

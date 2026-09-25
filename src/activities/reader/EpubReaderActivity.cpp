@@ -300,7 +300,7 @@ bool EpubReaderActivity::loadBook() {
     return false;
   }
 
-  const bool uncached = !Storage.exists((loadedEpub->getCachePath() + "/book.bin").c_str());
+  const bool uncached = !BookMetadataCache::indexOnCard(loadedEpub->getCachePath());
   if (uncached) {
     disableFastInitialRefresh();
 #ifdef TENOR_PRESS_PROBE
@@ -447,6 +447,7 @@ ChapterPosition EpubReaderActivity::chapterPosition() const {
 }
 
 int EpubReaderActivity::bookPercentFor(const ChapterPosition& position) const {
+  if (epub && !epub->indexComplete()) return -1;  // unknown until the chapter sizes are built
   if (!epub || epub->getBookSize() == 0 || !position.hasTotal()) return 0;
   // The page index can run past the chapter's estimated total while it is still
   // building, so the fraction is clamped before the cast.
@@ -550,6 +551,39 @@ bool EpubReaderActivity::backgroundBuildCanTick() {
   if (backgroundBuildSuspended) return false;
   if (section->isBuildParked()) return backgroundBuildStartHeapGate();
   return buildTickHeapGate();
+}
+
+bool EpubReaderActivity::waitsForIndex() {
+  if (!epub || epub->indexComplete()) return false;
+  showIndexingMessage = true;
+  indexingMessageTime = millis();
+  requestUpdate();
+  return true;
+}
+
+bool EpubReaderActivity::holdsRadio() const {
+  return !preview && epub && !epub->indexComplete() && indexFailures < INDEX_MAX_FAILURES;
+}
+
+bool EpubReaderActivity::indexStepDue() const {
+  return holdsRadio() && section && !section->isBuilding() && overlay == Overlay::None &&
+         !automaticPageTurnActive && !pendingPercentJump && pendingAnchor.empty() && pendingQuoteEdit.empty() &&
+         lastRenderCompleteMs != 0 && millis() - lastRenderCompleteMs > INDEX_QUIET_MS &&
+         (indexRetryAtMs == 0 || static_cast<long>(millis() - indexRetryAtMs) >= 0);
+}
+
+void EpubReaderActivity::runIndexStep() {
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired()) return;
+  // Straight from the key hardware: this pass is held until the step returns.
+  const Epub::IndexStep step = epub->indexSome([] { return gpio.rawInputActive(); });
+  if (step == Epub::IndexStep::Done) {
+    tocSpineCached = -1;  // the chapter's TOC range can be read now
+    LOG_INF("ERS", "Book index complete");
+  } else if (step == Epub::IndexStep::Failed) {
+    indexRetryAtMs = millis() + INDEX_RETRY_MS;
+    if (++indexFailures == INDEX_MAX_FAILURES) LOG_ERR("ERS", "Book index given up");
+  }
 }
 
 bool EpubReaderActivity::releaseRadioForBuild() {
@@ -991,6 +1025,8 @@ void EpubReaderActivity::loop() {
     }
   }
 
+  if (!inputThisPass && indexStepDue()) runIndexStep();
+
   if (handlePreviewInput()) return;
 
   // A paint that had a turn waiting behind it left its progress write; the turn's own paint
@@ -1029,6 +1065,11 @@ void EpubReaderActivity::loop() {
 
   if (showDictionaryMessage && (millis() - dictionaryMessageTime) >= ReaderUtils::BOOKMARK_MESSAGE_DURATION_MS) {
     showDictionaryMessage = false;
+    requestUpdate();
+  }
+
+  if (showIndexingMessage && (millis() - indexingMessageTime) >= ReaderUtils::BOOKMARK_MESSAGE_DURATION_MS) {
+    showIndexingMessage = false;
     requestUpdate();
   }
 
@@ -1110,6 +1151,7 @@ void EpubReaderActivity::loop() {
   if (confirmLongPressed) {
     switch (SETTINGS.longPressMenuFunction) {
       case CrossPointSettings::LP_MENU_BOOKMARK:
+        if (waitsForIndex()) break;
         addBookmark();
         showBookmarkMessage = true;
         bookmarkMessageTime = millis();
@@ -1146,7 +1188,7 @@ void EpubReaderActivity::loop() {
   if (mappedInput.wasHomeKeyHold() && !endOfBookMenuOpen) {
     switch (SETTINGS.longPressMenuFunction) {
       case CrossPointSettings::LP_MENU_BOOKMARK:
-        if (!showBookmarkMessage) {
+        if (!showBookmarkMessage && !waitsForIndex()) {
           addBookmark();
           showBookmarkMessage = true;
           bookmarkMessageTime = millis();
@@ -1455,6 +1497,18 @@ void EpubReaderActivity::jumpToPercent(int percent) {
 }
 
 void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuAction action, const MenuResult& menu) {
+  // The chapter list, percent jump, sync and bookmarks read the TOC or the chapter sizes.
+  switch (action) {
+    case EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER:
+    case EpubReaderMenuActivity::MenuAction::GO_TO_PERCENT:
+    case EpubReaderMenuActivity::MenuAction::SYNC:
+    case EpubReaderMenuActivity::MenuAction::BOOKMARKS:
+    case EpubReaderMenuActivity::MenuAction::TOGGLE_BOOKMARK:
+      if (waitsForIndex()) return;
+      break;
+    default:
+      break;
+  }
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
     loadCachedBookmarks();
     if (result.isCancelled) {
@@ -1741,6 +1795,7 @@ void EpubReaderActivity::toggleTiltFromReader() {
 
 bool EpubReaderActivity::launchKOReaderSync() {
   if (!KOREADER_STORE.hasCredentials()) return false;
+  if (waitsForIndex()) return true;
 
   RenderLock renderLock;
 
@@ -2632,6 +2687,10 @@ void EpubReaderActivity::renderBook() {
     GUI.drawPopup(renderer, tr(STR_DICT_NO_DICT_SET));
   }
 
+  if (showIndexingMessage) {
+    GUI.drawPopup(renderer, tr(STR_INDEXING));
+  }
+
   // Toolbar menu: overlay the toolbar / panel on top of the freshly rendered page.
   if (overlay != Overlay::None && usesToolbarMenu()) {
     // The page just re-rendered under the overlay: refresh the snapshot that
@@ -3143,7 +3202,10 @@ void EpubReaderActivity::renderStatusBar() const {
   const int currentPage = section ? section->currentPage + 1 : 1;
   const float pageCount = section ? section->estimatedTotalPages() : 1;
   const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
-  const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
+  // Unknown (-1, not drawn) while the book still builds its chapter sizes.
+  const float bookProgress = !epub                   ? 0
+                             : !epub->indexComplete() ? -1
+                                                      : epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100;
 
   std::string title;
   int textYOffset = 0;
@@ -3155,6 +3217,9 @@ void EpubReaderActivity::renderStatusBar() const {
     if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
       textYOffset += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
     }
+  } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE && epub && !epub->indexComplete()) {
+    // No TOC yet: the book's title stands in for the chapter's.
+    title = epub->getTitle();
   } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
     title = tr(STR_UNNAMED);
     if (epub) {
@@ -3289,6 +3354,7 @@ void EpubReaderActivity::discardOverlayPage() {
 }
 
 void EpubReaderActivity::openOverlay(Overlay target) {
+  if (target == Overlay::Contents && waitsForIndex()) return;
   const Overlay previous = overlay;
   overlay = target;
   if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
@@ -3859,6 +3925,7 @@ void EpubReaderActivity::activateMoreRow(int row) {
   overlay = Overlay::None;
   discardOverlayPage();
   if (action == MA::TOGGLE_BOOKMARK) {
+    if (waitsForIndex()) return;
     // No child activity here to trigger the re-render the list menu relies on:
     // show the same confirmation popup the long-press path does.
     addBookmark();
@@ -4020,7 +4087,9 @@ ScreenshotInfo EpubReaderActivity::getScreenshotInfo() const {
   if (section) {
     info.currentPage = section->currentPage + 1;
     info.totalPages = section->estimatedTotalPages();
-    if (epub && epub->getBookSize() > 0 && info.totalPages > 0) {
+    if (epub && !epub->indexComplete()) {
+      info.progressPercent = -1;  // unknown: the reading record keeps the book's last one
+    } else if (epub && epub->getBookSize() > 0 && info.totalPages > 0) {
       const float chapterProgress = static_cast<float>(section->currentPage) / static_cast<float>(info.totalPages);
       int pct = static_cast<int>(epub->calculateProgress(currentSpineIndex, chapterProgress) * 100.0f + 0.5f);
       if (pct < 0) pct = 0;
