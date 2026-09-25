@@ -10,6 +10,9 @@
 #include <cmath>
 #include <cstring>
 #include <string_view>
+#include <type_traits>
+
+#include "CssNumber.h"
 
 namespace {
 
@@ -87,14 +90,20 @@ void forEachDelimitedToken(std::string_view s, Pred isDelimiter, F&& fn) {
 // Parse the entirety of s as a number into `out`. Accepts an optional leading
 // '+' (which std::from_chars rejects by spec) so callers can pass CSS-style
 // signed numbers without manual trimming. Returns false on empty input, a
-// non-numeric suffix, or any from_chars error.
+// non-numeric suffix, or any from_chars error. A float goes through
+// cssnumber::parse, which gives what std::from_chars gives for the numbers
+// tryInterpretLength hands over, without libstdc++'s 21 KB float parser.
 template <typename T>
 bool tryParseNumber(std::string_view s, T& out) {
   const char* begin = s.data();
   const char* end = s.data() + s.size();
   if (begin < end && *begin == '+') ++begin;
-  const auto r = std::from_chars(begin, end, out);
-  return r.ec == std::errc{} && r.ptr == end;
+  if constexpr (std::is_same_v<T, float>) {
+    return cssnumber::parse(begin, end, out);
+  } else {
+    const auto r = std::from_chars(begin, end, out);
+    return r.ec == std::errc{} && r.ptr == end;
+  }
 }
 
 // Collect up to 4 whitespace-separated tokens for a CSS edge-value shorthand
