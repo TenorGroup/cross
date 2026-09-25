@@ -121,8 +121,18 @@ class ChapterHtmlSlimParser {
   // Anchor-to-page mapping: tracks which page each HTML id attribute lands on
   int completedPageCount = 0;
   std::vector<std::pair<std::string, uint16_t>> anchorData;
-  std::string pendingAnchorId;          // deferred until after previous text block is flushed
-  std::vector<std::string> tocAnchors;  // the list of anchors that are TOC chapter boundaries
+  std::string pendingAnchorId;  // deferred until after previous text block is flushed
+  // Sorted anchorKey() hashes of every anchor this spine's TOC points at. Each one is a chapter
+  // boundary and a jump target: it breaks the page and is kept in anchorData ahead of ordinary
+  // ids, because a jump that cannot find it lands on the wrong page.
+  std::shared_ptr<const std::vector<uint32_t>> tocAnchors;
+  size_t tocAnchorsHeld_ = SIZE_MAX;  // chapter targets in anchorData; SIZE_MAX = not counted yet
+  bool tocAnchorDropLogged_ = false;
+  bool isTocAnchor(const std::string& id) const;
+  bool anchorTableCanGrow() const;
+  size_t tocAnchorsAhead();
+  void reserveTocAnchors();
+  void recordPendingAnchor();
   uint16_t xpathParagraphIndex = 0;
   uint16_t xpathListItemIndex = 0;
   // Canonical reading-position counter: zero-based Unicode codepoints in visible
@@ -222,7 +232,7 @@ class ChapterHtmlSlimParser {
       const uint8_t dropCapMode,
       const std::function<void(std::unique_ptr<Page>, uint16_t, uint16_t, uint32_t)>& completePageFn,
       const bool embeddedStyle, const std::string& contentBase, const std::string& imageBasePath,
-      const uint8_t imageRendering = 0, std::vector<std::string> tocAnchors = {},
+      const uint8_t imageRendering = 0, std::shared_ptr<const std::vector<uint32_t>> tocAnchors = nullptr,
       const std::function<void()>& popupFn = nullptr, const CssParser* cssParser = nullptr,
       const uint8_t paragraphIndent = 0, const int8_t letterSpacing = 0, const uint8_t wordSpacing = 0)
 
@@ -247,7 +257,9 @@ class ChapterHtmlSlimParser {
         imageRendering(imageRendering),
         contentBase(contentBase),
         imageBasePath(imageBasePath),
-        tocAnchors(std::move(tocAnchors)) {}
+        tocAnchors(std::move(tocAnchors)) {
+    reserveTocAnchors();
+  }
 
   ~ChapterHtmlSlimParser();
 
@@ -278,6 +290,12 @@ class ChapterHtmlSlimParser {
   bool hasFailed() const { return buildFailed_; }
 
   void addLineToPage(std::unique_ptr<TextBlock> line, uint32_t visibleOffset);
+  // True when a chapter target still ahead has no slot left, the anchor table cannot grow, and a
+  // table for every target would fit once the reader stops the radio. The build then starves (and
+  // lays out later, with more heap) rather than drop a target a TOC jump would miss.
+  bool tocAnchorsNeedHeap();
+  // FNV-1a 32-bit hash that identifies a TOC anchor (see tocAnchors).
+  static uint32_t anchorKey(const char* id, size_t length);
   const std::vector<std::pair<std::string, uint16_t>>& getAnchors() const { return anchorData; }
   std::vector<std::pair<std::string, uint16_t>> takeAnchors() { return std::move(anchorData); }
 

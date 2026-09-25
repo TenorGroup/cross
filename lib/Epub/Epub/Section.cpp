@@ -1,6 +1,7 @@
 #include "Section.h"
 
 #include <Arduino.h>
+#include <HalMemory.h>
 #include <HalStorage.h>
 
 #include <algorithm>
@@ -355,22 +356,31 @@ bool Section::loadBuildCss(BuildContext* ctx) {
 
 std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ctxPtr, const ReaderRenderSpec& spec,
                                                                 const std::function<void()>& popupFn) {
-  // Collect TOC anchors for this spine so the parser can insert page breaks at chapter boundaries.
-  // A novel shipped as one XHTML file can carry thousands: each is a heap string the parser keeps
-  // and scans for every id, so only the spine's first MAX_TOC_ANCHORS break pages. The cut is by
-  // TOC position, never by build progress, so every build of a spine paginates the same way; later
-  // anchors are still recorded under the parser's ordinary id budget.
-  constexpr size_t MAX_TOC_ANCHORS = 256;
-  std::vector<std::string> tocAnchors;
-  const int startTocIndex = epub->getTocIndexForSpineIndex(spineIndex);
-  if (startTocIndex >= 0) {
-    for (int i = startTocIndex; i < epub->getTocItemsCount() && tocAnchors.size() < MAX_TOC_ANCHORS; i++) {
-      auto entry = epub->getTocItem(i);
+  // Every anchor this spine's TOC points at breaks the page and must stay findable for a jump. The
+  // parser tests ids against 4-byte hashes (8 KB at most); they are read from the TOC once per
+  // build, because a resumed parser rereading thousands of TOC entries would cost seconds on every
+  // page-ahead tick. Past MAX_TOC_ANCHORS (a single-file book v1.0.13 could not open at all) later
+  // chapters paginate as plain text, the same on every build.
+  if (!ctxPtr->tocAnchors) {
+    constexpr size_t MAX_TOC_ANCHORS = 2048;
+    constexpr size_t TOC_ANCHOR_MIN_FREE_HEAP = 16 * 1024;
+    auto hashes = std::make_shared<std::vector<uint32_t>>();
+    const int startTocIndex = epub->getTocIndexForSpineIndex(spineIndex);
+    for (int i = std::max(startTocIndex, 0); startTocIndex >= 0 && i < epub->getTocItemsCount(); i++) {
+      const auto entry = epub->getTocItem(i);
       if (entry.spineIndex != spineIndex) break;
-      if (!entry.anchor.empty()) {
-        tocAnchors.push_back(std::move(entry.anchor));
+      if (entry.anchor.empty()) continue;
+      if (hashes->size() == MAX_TOC_ANCHORS) break;
+      // Stop short of the heap floor: past it the later chapters paginate as plain text.
+      if (hashes->size() == hashes->capacity() &&
+          HalMemory::getDefaultHeap().largestBlockBytes < TOC_ANCHOR_MIN_FREE_HEAP + 2 * hashes->size() * 4) {
+        LOG_ERR("SCT", "TOC anchors cut at %u for heap", static_cast<unsigned>(hashes->size()));
+        break;
       }
+      hashes->push_back(ChapterHtmlSlimParser::anchorKey(entry.anchor.data(), entry.anchor.size()));
     }
+    std::sort(hashes->data(), hashes->data() + hashes->size());
+    ctxPtr->tocAnchors = std::move(hashes);
   }
 
   // The parser stores the path/contentBase/imageBasePath by reference, so they must
@@ -412,7 +422,7 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
         pageCount = std::max(pageCount, builtPageCount_);
         ctxPtr->lastVisibleTextOffset = visibleTextOffset;
       },
-      spec.embeddedStyle, ctxPtr->contentBase, ctxPtr->imageBasePath, spec.imageRendering, tocAnchors, popupFn,
+      spec.embeddedStyle, ctxPtr->contentBase, ctxPtr->imageBasePath, spec.imageRendering, ctxPtr->tocAnchors, popupFn,
       ctxPtr->cssParser, spec.paragraphIndent, spec.letterSpacing, spec.wordSpacing);
 }
 
@@ -869,7 +879,7 @@ bool Section::buildSomeMore(const int maxPages) {
 #endif
   unsigned steps = 0;
   for (;;) {
-    if (!stepHeapAvailable()) {
+    if (!stepHeapAvailable() || build_->parser->tocAnchorsNeedHeap()) {
       LOG_ERR("SCT", "Build starved of heap free=%u largest=%u; parking after %u pages",
               static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
               static_cast<unsigned>(builtPageCount_));

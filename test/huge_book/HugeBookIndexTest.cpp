@@ -292,11 +292,12 @@ TEST(HugeBookIndex, LoadedSizeTableStaysSmall) {
     const Book book = makeBook(Kind::Split, 5000);
     ASSERT_TRUE(indexBook(book, SIZE_MAX).ok);
     heapcap::reset(SIZE_MAX);
-    size_t resident = 0;
+    size_t resident = 0, peak = 0;
     {
       BookMetadataCache cache(cachePath);
       ASSERT_TRUE(cache.load());
       resident = heapcap::live;
+      peak = heapcap::peak;
       heapcap::stop();
       uint32_t total = 0;
       for (int i = 0; i < 5000; ++i) {
@@ -304,10 +305,14 @@ TEST(HugeBookIndex, LoadedSizeTableStaysSmall) {
         ASSERT_EQ(cache.getCumulativeSize(i), total) << "spine " << i;
       }
     }
-    printf("HUGE_INDEX resident n=5000 big_chapter=%d bytes=%zu\n", big, resident);
+    printf("HUGE_INDEX resident n=5000 big_chapter=%d bytes=%zu peak=%zu\n", big, resident, peak);
     // Two bytes per chapter plus one running total per 32; a book with a
     // chapter of 64 KB or more keeps four bytes per chapter.
     EXPECT_LE(resident, big ? 5000u * 4 + 4096 : 5000u * 2 + 5000u / 8 + 4096);
+    // Load may also hold its two 4 KB read buffers, never both tables at once:
+    // the radio heap has room for one flat table, not for a flat table on top
+    // of the compact one.
+    EXPECT_LE(peak, (big ? 5000u * 4 : 5000u * 2 + 5000u / 8) + 2 * 4096 + 4096);
   }
   bigChapter = 0;
 }

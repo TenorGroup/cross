@@ -608,14 +608,16 @@ bool BookMetadataCache::load() {
         entry.cumulativeSize < previous)
       return fail();
     if (itemSizes && entry.cumulativeSize - previous > UINT16_MAX) {
-      // First chapter of 64 KB or more: expand what was read into a flat table.
-      auto flat = makeUniqueNoThrow<uint32_t[]>(spineCount);
-      if (!flat) return fail();
-      for (uint16_t k = 0; k < i; ++k) {
-        flat[k] = k % CUMULATIVE_STRIDE == 0 ? cumulativeSizes[k / CUMULATIVE_STRIDE] : flat[k - 1] + itemSizes[k];
-      }
-      cumulativeSizes = std::move(flat);
+      // First chapter of 64 KB or more: the book needs the flat table. Free the compact one first
+      // so the two never share the heap (a load with the radio up has room for one), then read the
+      // spine again from the top.
       itemSizes.reset();
+      cumulativeSizes.reset();
+      cumulativeSizes = makeUniqueNoThrow<uint32_t[]>(spineCount);
+      if (!cumulativeSizes || !lut.seek(lutOffset) || !data.seek(lutOffset + lutSize)) return fail();
+      previous = 0;
+      i = UINT16_MAX;  // the loop increment wraps it to 0
+      continue;
     }
     if (!itemSizes) {
       cumulativeSizes[i] = entry.cumulativeSize;

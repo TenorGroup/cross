@@ -37,6 +37,9 @@ class Section {
   struct BuildContext {
     std::unique_ptr<ChapterHtmlSlimParser> parser;
     std::vector<std::pair<std::string, uint16_t>> parkedAnchors;
+    // Hashes of the spine's TOC anchors, read from the TOC once per build and shared with every
+    // parser it resumes (see makeBuildParser).
+    std::shared_ptr<const std::vector<uint32_t>> tocAnchors;
     // The checkpoint file written by the last park: its page count, parse offset and anchor count.
     // Pages are written only once finished, so while no page has finished since, that file still
     // describes the build exactly and a starved parser can park there again (parkAtLastCheckpoint).

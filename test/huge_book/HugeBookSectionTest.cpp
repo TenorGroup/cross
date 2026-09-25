@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <optional>
@@ -15,6 +16,18 @@
 namespace {
 // Heap left to the reader while the radio runs (X3, BLE on).
 constexpr size_t RADIO_HEAP = 45 * 1024;
+// Heap once the reader stops the radio for a starved build (releaseRadioForBuild).
+constexpr size_t RADIO_RELEASED_HEAP = 110 * 1024;
+
+// A build that starves of heap parks; the reader then stops the radio once and
+// lays out again. Anything else that stops the build is a failure.
+bool buildTick(Section& section, int pages, bool& released) {
+  if (section.buildSomeMore(pages)) return true;
+  if (!section.buildStarved() || released) return false;
+  released = true;
+  heapcap::cap = std::max(heapcap::cap, RADIO_RELEASED_HEAP);
+  return true;
+}
 
 class HugeBookSection : public ::testing::Test {
  protected:
@@ -22,6 +35,7 @@ class HugeBookSection : public ::testing::Test {
   std::shared_ptr<Epub> epub = std::make_shared<Epub>();
   GfxRenderer renderer;
   ReaderRenderSpec spec;
+  bool radioReleased = false;
 
   void SetUp() override {
     root = std::filesystem::temp_directory_path() /
@@ -41,14 +55,53 @@ class HugeBookSection : public ::testing::Test {
   }
   // One XHTML file, one short chapter per TOC anchor: several chapters fit on
   // one page unless the TOC boundary starts a fresh page.
-  void makeBook(int chapters) {
+  // idsPerChapter > 0 gives every paragraph an id, as some converters do; those
+  // ids compete with the chapter anchors for the parser's anchor budget.
+  void makeBook(int chapters, int idsPerChapter = 0) {
     epub->tocCount = chapters;
     epub->contents = "<html><body>";
     for (int i = 0; i < chapters; ++i) {
-      epub->contents += "<h2 id=\"" + Epub::anchorFor(i) + "\">Chuong " + std::to_string(i + 1) +
-                        "</h2><p>mua nang gio chieu sang toi mat tay long viec</p>";
+      epub->contents += "<h2 id=\"" + Epub::anchorFor(i) + "\">Chuong " + std::to_string(i + 1) + "</h2>";
+      if (idsPerChapter == 0) epub->contents += "<p>mua nang gio chieu sang toi mat tay long viec</p>";
+      for (int k = 0; k < idsPerChapter; ++k) {
+        epub->contents += "<p id=\"p" + std::to_string(i) + "_" + std::to_string(k) + "\">mua nang gio</p>";
+      }
     }
     epub->contents += "</body></html>";
+  }
+  // Lays out the way the reader does for a TOC jump: a few pages per tick,
+  // parked between ticks, until the target anchor is on a page or the chapter
+  // ends. Returns the target's page, or nothing when the jump would miss.
+  std::optional<uint16_t> buildToAnchor(Section& section, const std::string& anchor) {
+    if (!section.startBuild(spec)) return std::nullopt;
+    bool& released = radioReleased = false;
+    for (int tick = 0; tick < 20000 && !section.isBuildComplete() && !section.findAnchor(anchor); ++tick) {
+      if (!buildTick(section, 3, released)) return std::nullopt;
+      if (!section.isBuildComplete()) section.parkBuild();
+    }
+    return section.findAnchor(anchor);
+  }
+  // A chapter jump is right when the target page holds the chapter start: after
+  // the previous chapter's page and before the next one's.
+  void expectChapterJump(int chapters, int target, size_t cap) {
+    makeBook(chapters, 5);
+    std::filesystem::remove_all(root / "sections");
+    std::filesystem::remove_all(root / "html");
+    Section section(epub, 0, renderer);
+    heapcap::reset(cap);
+    const auto page = buildToAnchor(section, Epub::anchorFor(target - 1));
+    const unsigned aborts = heapcap::aborts;
+    const size_t peak = heapcap::peak;
+    heapcap::stop();
+    printf("HUGE_SECTION jump chapters=%d target=%d cap=%zu page=%d built=%u complete=%d peak=%zu aborts=%u first=%zu "
+           "radio_released=%d\n",
+           chapters, target, cap == SIZE_MAX ? 0 : cap, page ? *page : -1, section.pageCount,
+           section.isBuildComplete() ? 1 : 0, peak, aborts, heapcap::firstAbortSize, radioReleased ? 1 : 0);
+    EXPECT_EQ(aborts, 0u) << "device would abort";
+    ASSERT_TRUE(page.has_value()) << "chapter " << target << " is not in the anchor map: the jump lands on page 0";
+    const auto before = section.findAnchor(Epub::anchorFor(target - 2));
+    ASSERT_TRUE(before.has_value()) << "chapter " << target - 1;
+    EXPECT_GT(*page, *before) << "chapter " << target << " must start its own page";
   }
 };
 }  // namespace
@@ -82,8 +135,9 @@ TEST_F(HugeBookSection, FiveThousandAnchorsStartAndTurnUnderRadioHeap) {
   ASSERT_TRUE(started);
   // Lay out pages the way the reader does while reading on: a few pages per
   // tick, parking the parser between ticks to free render heap.
+  bool released = false;
   for (int tick = 0; tick < 40 && section.isBuilding(); ++tick) {
-    ASSERT_TRUE(section.buildSomeMore(2));
+    ASSERT_TRUE(buildTick(section, 2, released));
     section.parkBuild();
   }
   const size_t peak = heapcap::peak;
@@ -132,4 +186,22 @@ TEST_F(HugeBookSection, PaginationDoesNotDependOnParking) {
   Section section(epub, 0, renderer);
   ASSERT_TRUE(section.loadSectionFile(spec));
   for (int i = 0; i < 600; ++i) EXPECT_TRUE(section.getPageForAnchor(Epub::anchorFor(i)).has_value()) << i;
+}
+
+// Review finding D1: a single-file book whose paragraphs carry ids used up the
+// parser's id budget early, and from the 257th chapter on a TOC jump found no
+// anchor and fell back to the first page. v1.0.13 jumped right.
+TEST_F(HugeBookSection, TocJumpPastTheIdBudgetLandsOnTheChapter) {
+  expectChapterJump(300, 280, SIZE_MAX);
+  expectChapterJump(700, 650, SIZE_MAX);
+}
+
+// The same jumps with the page-turner radio running.
+TEST_F(HugeBookSection, TocJumpPastTheIdBudgetUnderRadioHeap) {
+  expectChapterJump(300, 280, RADIO_HEAP);
+  expectChapterJump(700, 650, RADIO_HEAP);
+  // Too tight to reserve the chapter table: the build starves, the reader stops
+  // the radio, and the jump still lands on the chapter.
+  expectChapterJump(700, 650, 34 * 1024);
+  EXPECT_TRUE(radioReleased);
 }

@@ -2,6 +2,7 @@
 
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
+#include <HalMemory.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -46,6 +47,18 @@ constexpr size_t TEXT_BLOCK_SOFT_FLUSH_WORDS_WITH_CSS = 320;
 // every text fragment (e.g. Kobo KePub spans). The cap prevents unbounded heap growth
 // on resource-constrained devices (~380KB heap). TOC anchors bypass this cap.
 constexpr size_t MAX_ANCHORS_PER_CHAPTER = 1024;
+// The anchor table grows by doubling into one new contiguous block. Growth has to leave this much
+// heap behind; when it cannot, ordinary ids give way so the chapter targets still fit.
+constexpr size_t ANCHOR_GROWTH_HEADROOM = 16 * 1024;
+// A parser for a spine with TOC anchors reserves room for all of them (plus a few ordinary ids) up
+// front, under the same headroom.
+constexpr size_t ANCHOR_RESERVE_SLACK = 32;
+// Below this many free slots the build checks that the chapter targets ahead still fit.
+constexpr size_t ANCHOR_STEP_MARGIN = 64;
+// A full table up to this size fits once the reader stops the radio, so a build short of room
+// for it starves instead of dropping a target. Past it no heap holds the table and targets that
+// find no slot are dropped.
+constexpr size_t ANCHOR_TABLE_STARVE_MAX = 32 * 1024;
 
 namespace {
 constexpr uint32_t CHECKPOINT_MAGIC = 0x43504b31;
@@ -335,13 +348,87 @@ void ChapterHtmlSlimParser::updateEffectiveInlineStyle() {
   }
 }
 
+uint32_t ChapterHtmlSlimParser::anchorKey(const char* id, const size_t length) {
+  uint32_t hash = 2166136261u;
+  for (size_t i = 0; i < length; i++) {
+    hash ^= static_cast<uint8_t>(id[i]);
+    hash *= 16777619u;
+  }
+  return hash;
+}
+
+// Searched through plain pointers: the firmware already carries that instantiation.
+static bool hasTocAnchor(const std::vector<uint32_t>* keys, const char* id, const size_t length) {
+  if (!keys) return false;
+  return std::binary_search(keys->data(), keys->data() + keys->size(), ChapterHtmlSlimParser::anchorKey(id, length));
+}
+
+bool ChapterHtmlSlimParser::isTocAnchor(const std::string& id) const {
+  return hasTocAnchor(tocAnchors.get(), id.data(), id.size());
+}
+
+bool ChapterHtmlSlimParser::anchorTableCanGrow() const {
+  const size_t next = std::max<size_t>(anchorData.capacity() * 2, 8) * sizeof(anchorData[0]);
+  return HalMemory::getDefaultHeap().largestBlockBytes >= next + ANCHOR_GROWTH_HEADROOM;
+}
+
+size_t ChapterHtmlSlimParser::tocAnchorsAhead() {
+  if (!tocAnchors) return 0;
+  if (tocAnchorsHeld_ == SIZE_MAX) {
+    // Counted once, after any checkpoint restore; kept current by recordPendingAnchor.
+    tocAnchorsHeld_ = std::count_if(anchorData.begin(), anchorData.end(),
+                                    [this](const auto& anchor) { return isTocAnchor(anchor.first); });
+  }
+  return tocAnchors->size() - std::min(tocAnchors->size(), tocAnchorsHeld_);
+}
+
+// Room for every chapter target now: a table that must double later, with the radio up, may find
+// no block for it. A table past ANCHOR_TABLE_STARVE_MAX is not held up front (it would sit in the
+// heap from the first page of a huge single-file book); it grows as the heap allows.
+void ChapterHtmlSlimParser::reserveTocAnchors() {
+  if (!tocAnchors || tocAnchors->empty()) return;
+  if ((tocAnchors->size() + ANCHOR_RESERVE_SLACK) * sizeof(anchorData[0]) > ANCHOR_TABLE_STARVE_MAX) return;
+  const size_t largest = HalMemory::getDefaultHeap().largestBlockBytes;
+  const size_t fits = largest > ANCHOR_GROWTH_HEADROOM ? (largest - ANCHOR_GROWTH_HEADROOM) / sizeof(anchorData[0]) : 0;
+  const size_t want = std::min(tocAnchors->size() + ANCHOR_RESERVE_SLACK, fits);
+  if (want > anchorData.capacity()) anchorData.reserve(want);
+}
+
+bool ChapterHtmlSlimParser::tocAnchorsNeedHeap() {
+  if (!tocAnchors || tocAnchors->empty()) return false;
+  const size_t room = anchorData.capacity() - anchorData.size();
+  if (room >= ANCHOR_STEP_MARGIN || room >= tocAnchorsAhead()) return false;
+  if ((tocAnchors->size() + ANCHOR_RESERVE_SLACK) * sizeof(anchorData[0]) > ANCHOR_TABLE_STARVE_MAX) return false;
+  return !anchorTableCanGrow();
+}
+
+// Appends pendingAnchorId. Entries are only ever appended (a park rolls the table back by count).
+// When the table is full and cannot grow, an ordinary id is dropped, and so is an ordinary id that
+// would take a slot a chapter target still ahead needs.
+void ChapterHtmlSlimParser::recordPendingAnchor() {
+  const bool chapter = isTocAnchor(pendingAnchorId);
+  const size_t room = anchorData.capacity() - anchorData.size();
+  const size_t targets = tocAnchors ? tocAnchors->size() : 0;
+  // Cheap tests first: the heap query walks the allocator and ids arrive by the thousand.
+  const bool keep = room > targets || (chapter ? room > 0 : room > tocAnchorsAhead()) || anchorTableCanGrow();
+  if (keep) {
+    anchorData.push_back({std::move(pendingAnchorId), static_cast<uint16_t>(completedPageCount)});
+    if (chapter && tocAnchorsHeld_ != SIZE_MAX) ++tocAnchorsHeld_;
+  } else if (chapter && !tocAnchorDropLogged_) {
+    tocAnchorDropLogged_ = true;
+    LOG_ERR("EHP", "No heap for TOC anchor %s: %u anchors held", pendingAnchorId.c_str(),
+            static_cast<unsigned>(anchorData.size()));
+  }
+  pendingAnchorId.clear();
+}
+
 void ChapterHtmlSlimParser::flushPendingAnchor() {
   if (buildFailed_) return;
   if (pendingAnchorId.empty()) return;
 
   // If the pending anchor is a TOC chapter boundary, force a page break after the previous
   // block is flushed so the chapter starts on a fresh page.
-  if (std::find(tocAnchors.begin(), tocAnchors.end(), pendingAnchorId) != tocAnchors.end()) {
+  if (isTocAnchor(pendingAnchorId)) {
     chapterInitialPending = true;
     if (currentPage && !currentPage->elements.empty()) {
       if (!emitCurrentPage()) return;
@@ -354,8 +441,7 @@ void ChapterHtmlSlimParser::flushPendingAnchor() {
   }
 
   // Record deferred anchor after previous block is flushed (and any TOC page break)
-  anchorData.push_back({std::move(pendingAnchorId), static_cast<uint16_t>(completedPageCount)});
-  pendingAnchorId.clear();
+  recordPendingAnchor();
 }
 
 void ChapterHtmlSlimParser::setCurrentPageVisibleOffset(const uint32_t offset) {
@@ -538,10 +624,7 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
   setCurrentPageVisibleOffset(visibleTextOffset);
   currentPageNextY = static_cast<int16_t>(currentPageNextY + ruleThickness + bottomSpacing);
 
-  if (!pendingAnchorId.empty()) {
-    anchorData.push_back({std::move(pendingAnchorId), static_cast<uint16_t>(completedPageCount)});
-    pendingAnchorId.clear();
-  }
+  if (!pendingAnchorId.empty()) recordPendingAnchor();
 }
 
 void ChapterHtmlSlimParser::fallbackTableRowToStacked() {
@@ -792,8 +875,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
         // of thousands of them per chapter, exhausting the heap. TOC anchors are
         // always recorded regardless of element type, since they drive page breaks.
         const char* idValue = atts[i + 1];
-        const bool isTocAnchor =
-            std::find(self->tocAnchors.begin(), self->tocAnchors.end(), idValue) != self->tocAnchors.end();
+        const bool isTocAnchor = hasTocAnchor(self->tocAnchors.get(), idValue, strlen(idValue));
         if (isTocAnchor || (!isNonNavigableInlineElement(name) && self->anchorData.size() < MAX_ANCHORS_PER_CHAPTER)) {
           // Flush a displaced anchor before overwriting. Consecutive non-block elements
           // (e.g. <aside id="fn1">text</aside><aside id="fn2">) with no intervening block
@@ -2319,6 +2401,7 @@ bool ChapterHtmlSlimParser::restoreCheckpoint(HalFile& file, const uint16_t expe
   currentTextBlock->resetDropCap();
   pendingAnchorId.clear();
   anchorData.clear();
+  tocAnchorsHeld_ = SIZE_MAX;
   bool pagePresent = false;
   if (!reader.pod(currentPageNextY) || !reader.pod(imageCounter) || !reader.pod(dropCapBottom) ||
       !reader.pod(visibleTextOffset) || !reader.pod(partWordVisibleOffset) ||
@@ -2615,10 +2698,7 @@ bool ChapterHtmlSlimParser::finishParse() {
   if (currentTextBlock) {
     makePages();
     if (buildFailed_) return false;
-    if (!pendingAnchorId.empty()) {
-      anchorData.push_back({std::move(pendingAnchorId), static_cast<uint16_t>(completedPageCount)});
-      pendingAnchorId.clear();
-    }
+    if (!pendingAnchorId.empty()) recordPendingAnchor();
     setCurrentPageVisibleOffset(visibleTextOffset);
   }
   if (!emitCurrentPage()) return false;

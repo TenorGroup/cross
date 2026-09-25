@@ -401,7 +401,7 @@ TEST_F(ChapterHtmlSlimParserTest, DropCapDoesNotRepeatAndTocResetsIt) {
   EXPECT_GT(block(1).getDropCapHeight(), 0);
   EXPECT_EQ(block(2).getDropCapHeight(), 0);
   EXPECT_GE(parser.currentPage->elements[2]->yPos - parser.currentPage->elements[1]->yPos, 32);
-  parser.tocAnchors.push_back("next");
+  parser.tocAnchors = std::make_shared<const std::vector<uint32_t>>(1, ChapterHtmlSlimParser::anchorKey("next", 4));
   parser.pendingAnchorId = "next";
   parser.completePageFn = [](auto, auto, auto, auto) {};
   paragraph("p", "Gamma");
@@ -588,7 +588,7 @@ TEST_F(ChapterHtmlSlimParserTest, ForcedTocAnchorStartsFreshPageWithoutGapAndKee
       "",
       "",
       0,
-      {"toc-next"},
+      std::make_shared<const std::vector<uint32_t>>(1, ChapterHtmlSlimParser::anchorKey("toc-next", 8)),
       nullptr,
       &parserCss,
       2,
