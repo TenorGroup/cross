@@ -37,6 +37,8 @@ GRID = re.compile(r'Scaling source (\d+)x(\d+) \(decode grid (\d+)x(\d+)\) -> (\
 COVER_BOX = (24, 124, 260, 480)
 # The route a thumbnail took: page=1 when it was written from the cover page's own decode.
 THUMB_ROUTE = re.compile(r'Cover thumbnail (\d+) px: \d+ ms, ok=1, page=(\d)')
+# v1.0.16: one decode of the cover file for both thumbnails, logged with its grid's scale.
+SHARED_DECODE = re.compile(r'Cover thumbnail decode: \d+ ms, scale=1/(\d), ok=1')
 
 
 def blurred_error(thumb, reference):
@@ -139,7 +141,10 @@ class NewBookCoverTest(unittest.TestCase):
         epub_with_cover(self.sd / other.lstrip('/'))
         log, _ = self.launch({}, other)
         grids = [tuple(map(int, m.groups())) for m in GRID.finditer(log)]
-        self.assertTrue(grids, log[-6000:])
+        scales = [int(scale) for scale in SHARED_DECODE.findall(log)]
+        self.assertTrue(grids or scales, log[-6000:])
+        # The shared decode picks its grid by the same rule (JpegScale.h): a half covers 236 x 356 here.
+        self.assertTrue(all(scale > 1 for scale in scales), scales)
         for src_w, src_h, grid_w, grid_h, out_w, out_h in grids:
             # The smallest grid that still covers the thumbnail in both axes.
             self.assertLess(grid_w, src_w, grids)
@@ -168,7 +173,7 @@ class NewBookCoverTest(unittest.TestCase):
         other = '/sach/khong-trang-bia.epub'
         epub_with_cover(self.sd / other.lstrip('/'))
         log, _ = self.launch({}, other)
-        self.assertEqual(len(GRID.findall(log)), 2, log[-6000:])
+        self.assertEqual(len(GRID.findall(log)) + len(SHARED_DECODE.findall(log)), 1, log[-6000:])
         cover = Image.open(__import__('io').BytesIO(cover_jpeg())).convert('L')
         report = {}
         for height in (356, 226):
@@ -185,10 +190,11 @@ class NewBookCoverTest(unittest.TestCase):
                 page.save(self.artifacts / f'thumb-{height}-page.png')
                 decoded.save(self.artifacts / f'thumb-{height}-decode.png')
             # Within the dither of the cover decode: a 1-bit thumbnail blurred at radius 2 still
-            # carries several gray levels of error either way. The page's 226 is scaled from its 356
-            # after that one is dithered, so it is dithered twice (a known debt): v1.0.14 measured
-            # 6.75 against 2.93 there, where the Atkinson thumbnails of v1.0.13 gave 12.85 and 10.81.
-            self.assertLessEqual(page_error, decode_error + (3.0 if height == 356 else 4.0), report)
+            # carries several gray levels of error either way. The page's 226 was scaled from its 356
+            # after that one was dithered, so it was dithered twice: v1.0.14 measured 6.75 against
+            # 2.93 there, where the Atkinson thumbnails of v1.0.13 gave 12.85 and 10.81. v1.0.16 feeds
+            # it the page decode's gray as well (GrayThumb::alsoFeed): 2.96 against 2.93.
+            self.assertLessEqual(page_error, decode_error + 3.0, report)
         print('THUMB_ROUTE_MEASURE', report)
 
 

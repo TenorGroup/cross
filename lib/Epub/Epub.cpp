@@ -2,6 +2,7 @@
 
 #include <BitmapHelpers.h>
 #include <FsHelpers.h>
+#include <GrayThumb.h>
 #include <HalStorage.h>
 #include <JpegToBmpConverter.h>
 #include <Logging.h>
@@ -769,12 +770,81 @@ void Epub::generateThumbBmps(const int* heights, const int count) const {
     LOG_ERR("EBP", "Cannot generate thumb BMP, cache not loaded");
     return;
   }
+  generateThumbBmps(bookMetadataCache->coreMetadata.coverItemHref, heights, count);
+}
 
-  const auto& coverImageHref = bookMetadataCache->coreMetadata.coverItemHref;
+void Epub::generateThumbBmps(const std::string& coverImageHref, const int* heights, const int count) const {
   const bool jpg = FsHelpers::hasJpgExtension(coverImageHref);
   const bool png = !jpg && FsHelpers::hasPngExtension(coverImageHref);
   const auto coverTempPath = getCachePath() + (jpg ? "/.cover.jpg" : "/.cover.png");
   bool copied = false;
+  const auto copyCover = [&]() {
+    if (copied) return true;
+    HalFile cover;
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+    const unsigned long started = millis();
+#endif
+    if (!Storage.openFileForWrite("EBP", coverTempPath, cover)) return false;
+    // The page extractor's chunk: 1 KB writes took 1,5 s for a 257 KB cover on the X3.
+    readItemContentsToStream(coverImageHref, cover, 8192);
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+    LOG_INF("EBP", "THUMB_COPY ms=%lu bytes=%u", millis() - started, static_cast<unsigned>(cover.size()));
+#endif
+    // Explicitly close() file before reopening for reading
+    cover.close();
+    copied = true;
+    return true;
+  };
+  // Written under a temporary name and renamed once whole: whether a thumbnail is missing is
+  // decided by its name alone, so a write cut by power loss or sleep must not leave that name.
+  const auto writeThumb = [this](const int height, const GrayThumb& thumb, const GrayThumb* larger) {
+    const auto thumbPath = getThumbBmpPath(height);
+    const std::string partPath = thumbPath + ".tmp";
+    Storage.remove(partPath.c_str());
+    HalFile file;
+    bool ok = Storage.openFileForWrite("EBP", partPath, file) &&
+              (larger ? larger->writeScaled(height, file) : thumb.writeTo(file));
+    file.close();
+    ok = ok && Storage.rename(partPath.c_str(), thumbPath.c_str());
+    if (!ok) Storage.remove(partPath.c_str());
+    return ok;
+  };
+
+  // A JPEG cover is decoded once for the largest missing height and the next one (GrayThumb): the
+  // X3 spent 0,9 s decoding a 900 x 1350 cover a second time for the theme's 226 px. What this
+  // pass does not write (a cover smaller than the card, a progressive one) is decoded per height
+  // below.
+  int big = -1, small = -1;
+  for (int i = 0; jpg && i < count; i++) {
+    if (Storage.exists(getThumbBmpPath(heights[i]).c_str())) continue;
+    if (big < 0 || heights[i] > heights[big]) {
+      small = big;
+      big = i;
+    } else if (small < 0 || heights[i] > heights[small]) {
+      small = i;
+    }
+  }
+  if (big >= 0 && heights[big] > 0) {
+    const unsigned long started = millis();
+    GrayThumb bigThumb(heights[big]), smallThumb(small >= 0 ? heights[small] : 0);
+    const bool linked = small >= 0 && heights[small] > 0 && heights[small] < heights[big];
+    if (linked) bigThumb.alsoFeed(&smallThumb);
+    HalFile cover;
+    int scale = 0;
+    const bool decoded = copyCover() && Storage.openFileForRead("EBP", coverTempPath, cover) &&
+                         JpegToBmpConverter::jpegFileToGrayThumb(cover, bigThumb, &scale);
+    cover.close();
+    LOG_INF("EBP", "Cover thumbnail decode: %lu ms, scale=1/%d, ok=%u", millis() - started, scale, decoded ? 1u : 0u);
+    if (decoded && writeThumb(heights[big], bigThumb, nullptr)) {
+      LOG_INF("EBP", "Cover thumbnail %d px: %lu ms, ok=1, page=0 scale=1/%d", heights[big], millis() - started, scale);
+      const unsigned long smallStarted = millis();
+      // Short of heap for both, the theme's is scaled from the card's, as on the cover page.
+      if (linked && writeThumb(heights[small], smallThumb, smallThumb.ready() ? nullptr : &bigThumb))
+        LOG_INF("EBP", "Cover thumbnail %d px: %lu ms, ok=1, page=0 scale=1/%d", heights[small],
+                millis() - smallStarted, scale);
+    }
+  }
+
   for (int i = 0; i < count; i++) {
     const int height = heights[i];
     const auto thumbPath = getThumbBmpPath(height);
@@ -790,19 +860,7 @@ void Epub::generateThumbBmps(const int* heights, const int count) const {
     // The first height's time includes the copy out of the book.
     const unsigned long started = millis();
     HalFile cover;
-    if (!copied) {
-      if (!Storage.openFileForWrite("EBP", coverTempPath, cover)) return;
-      // The page extractor's chunk: 1 KB writes took 1,5 s for a 257 KB cover on the X3.
-      readItemContentsToStream(coverImageHref, cover, 8192);
-#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
-      LOG_INF("EBP", "THUMB_COPY ms=%lu bytes=%u", millis() - started, static_cast<unsigned>(cover.size()));
-#endif
-      // Explicitly close() file before reopening for reading
-      cover.close();
-      copied = true;
-    }
-    // Written under a temporary name and renamed once whole: whether a thumbnail is missing is
-    // decided by its name alone, so a write cut by power loss or sleep must not leave that name.
+    if (!copyCover()) return;
     const std::string partPath = thumbPath + ".tmp";
     Storage.remove(partPath.c_str());
     if (!Storage.openFileForRead("EBP", coverTempPath, cover) ||

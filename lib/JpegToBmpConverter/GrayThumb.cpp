@@ -74,10 +74,13 @@ bool GrayThumb::start(const int srcW, const int srcH, const int blockRows, const
   if (!ring || !bits || !ditherer || !ditherer->isValid()) return false;
   memset(ring.get(), 0, static_cast<size_t>(ringRows) * outWidth * 2);
   memset(bits.get(), 0, static_cast<size_t>(rowBytes) * outHeight);
+  // Checked against the heap this one left: without room the smaller one is scaled from this one.
+  if (sibling && !sibling->start(srcW, srcH, blockRows, margin)) sibling = nullptr;
   return true;
 }
 
 void GrayThumb::block(const int x, const int y, const int w, const int h, const uint8_t* gray, const int stride) {
+  if (sibling) sibling->block(x, y, w, h, gray, stride);
   if (failed || !ring) return;
   const int xEnd = std::min(x + w, srcWidth);
   // A new block row: every thumbnail row above its first source row is complete.
@@ -126,6 +129,7 @@ void GrayThumb::emitBelow(const int limit) {
 }
 
 bool GrayThumb::finish() {
+  if (sibling) sibling->finish();
   if (failed || !ring || fedTo < srcHeight) return false;
   emitBelow(outHeight);
   ring.reset();

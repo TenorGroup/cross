@@ -198,14 +198,15 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
 // The missing cover thumbnails of a new book, built in RAM while its cover page decodes the cover
 // (ImageBlock::ThumbHook) and written once that page is on the panel. The X3 otherwise copied the
 // cover out of the book again and decoded it twice more when the reader closed: 5,6 s on the Home
-// key (r18-k1). The card's height is built from the decode; the theme's smaller one is scaled
-// from it when the files are written. One try per book open; whatever is not written here is
-// written by writePendingThumbs() as before.
+// key (r18-k1). Both heights are built from the decode (GrayThumb::alsoFeed); when the heap under
+// the page has room for the card's alone, the theme's is scaled from it when the files are
+// written. One try per book open; whatever is not written here is written by writePendingThumbs()
+// as before.
 class CoverThumbCapture final : public ImageBlock::ThumbHook {
   const Epub& epub;
   const int* heights;
   int count;
-  std::unique_ptr<GrayThumb> thumb;
+  std::unique_ptr<GrayThumb> thumb, small;
   bool ready = false;
 
  public:
@@ -215,12 +216,19 @@ class CoverThumbCapture final : public ImageBlock::ThumbHook {
   GrayThumb* open(const std::string& srcPath) override {
     if (count == 0 || thumb || !FsHelpers::hasJpgExtension(srcPath) || !epub.isCoverImage(srcPath)) return nullptr;
     thumb = makeUniqueNoThrow<GrayThumb>(heights[0]);
+    if (thumb && count > 1 && heights[1] > 0 && heights[1] < heights[0]) {
+      small = makeUniqueNoThrow<GrayThumb>(heights[1]);
+      thumb->alsoFeed(small.get());
+    }
     return thumb.get();
   }
 
   void close(const bool decoded) override {
     ready = decoded && thumb && thumb->finish();
-    if (!ready) thumb.reset();
+    if (!ready) {
+      thumb.reset();
+      small.reset();
+    }
     count = 0;
   }
 
@@ -238,7 +246,9 @@ class CoverThumbCapture final : public ImageBlock::ThumbHook {
       Storage.remove(part.c_str());
       HalFile file;
       bool ok = Storage.openFileForWrite("ERS", part, file) &&
-                (i == 0 ? thumb->writeTo(file) : thumb->writeScaled(heights[i], file));
+                (i == 0                    ? thumb->writeTo(file)
+                 : small && small->ready() ? small->writeTo(file)
+                                           : thumb->writeScaled(heights[i], file));
       file.close();
       ok = ok && Storage.rename(part.c_str(), path.c_str());
       if (!ok) {
@@ -249,6 +259,7 @@ class CoverThumbCapture final : public ImageBlock::ThumbHook {
       written++;
     }
     thumb.reset();
+    small.reset();
     return written > 0 && (written == 2 || heights[1] == 0);
   }
 };

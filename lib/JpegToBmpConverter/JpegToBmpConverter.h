@@ -2,6 +2,7 @@
 
 #include <HalStorage.h>
 
+class GrayThumb;
 class Print;
 class ZipFile;
 
@@ -18,4 +19,9 @@ class JpegToBmpConverter {
   // Convert to 1-bit BMP (black and white only, no grays) for fast home screen rendering
   static bool jpegFileTo1BitBmpStreamWithSize(HalFile& jpegFile, Print& bmpOut, int targetMaxWidth,
                                               int targetMaxHeight);
+  // Decodes the cover once into `thumb` and the smaller one it feeds (GrayThumb::alsoFeed), on the
+  // smallest grid that still covers `thumb`. False when the thumbnail declines that grid (a cover
+  // smaller than the card, a progressive stream's eighth) or the heap: the caller then decodes per
+  // height with jpegFileTo1BitBmpStreamWithSize. `scale` receives the grid's denominator.
+  static bool jpegFileToGrayThumb(HalFile& jpegFile, GrayThumb& thumb, int* scale);
 };

@@ -26,6 +26,7 @@ void* take(size_t size) {
   if (tracking) {
     trackedBytes += size;
     ++trackedCount;
+    ESP.taken += size;
   }
   return std::malloc(size ? size : 1);
 }
@@ -178,6 +179,41 @@ int main() {
     const size_t common = GrayThumb::bufferBytes(356, 780, 1227, 16);
     std::printf("780x1227 cover page: %zu bytes\n", common);
     check(common <= 14432 + 64, "the card's shape takes more heap than the 0.6 rule on a common cover");
+  }
+  {
+    // The theme's thumbnail fed the same blocks as the card's: area averaged from the decoded gray,
+    // the pixels its own decode gives. writeScaled() dithered the card's dithered bits a second time.
+    GrayThumb big(356), small(226);
+    big.alsoFeed(&small);
+    ESP.freeHeap = 200000;
+    ESP.taken = 0;
+    tracking = true;
+    const bool started = big.start(W, H, ROWS);
+    tracking = false;
+    check(started && feed(big, W, H, ROWS, 128) && small.ready(), "one feed does not give both thumbnails");
+    Output card, theme;
+    check(big.writeTo(card) && card.bytes == reference(W, H, 356), "the card's thumbnail changed beside the theme's");
+    check(small.writeTo(theme) && theme.bytes == reference(W, H, 226),
+          "the theme's thumbnail is not area averaged from the decode");
+  }
+  {
+    // Heap for the card's thumbnail alone (the X3 cover page with its render margin): the card's
+    // comes through whole, the theme's stays out and falls back to writeScaled().
+    GrayThumb big(356), small(226);
+    big.alsoFeed(&small);
+    ESP.freeHeap = static_cast<uint32_t>(GrayThumb::bufferBytes(356, W, H, ROWS) + GrayThumb::RENDER_MARGIN + 1024);
+    ESP.taken = 0;
+    tracking = true;
+    const bool started = big.start(W, H, ROWS);
+    tracking = false;
+    check(started && feed(big, W, H, ROWS, 128), "the card's thumbnail gave way to the theme's");
+    check(!small.ready(), "the theme's thumbnail started past the render margin");
+    ESP.taken = 0;  // written once the page is on the panel, with the decoder gone
+    Output card, theme;
+    check(big.writeTo(card) && card.bytes == reference(W, H, 356), "the card's thumbnail without the theme's");
+    check(big.writeScaled(226, theme) && theme.bytes.size() == 62 + static_cast<size_t>(20) * 238,
+          "the fallback theme thumbnail");
+    ESP.freeHeap = 90000;  // the heap of the cases below
   }
   {
     // One block row of 16 on a grid start() was told had 8: the thumbnail is dropped, not smeared.

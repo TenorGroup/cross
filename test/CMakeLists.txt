@@ -107,6 +107,7 @@ add_subdirectory(ble_page_turner_runtime)
 add_subdirectory(truncated_text)
 add_subdirectory(png_bmp_converter)
 add_subdirectory(cover_thumb_ram)
+add_subdirectory(cover_jpeg_decode)
 
 add_subdirectory(keyboard_sync)
 

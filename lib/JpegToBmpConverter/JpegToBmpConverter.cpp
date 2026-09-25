@@ -8,11 +8,13 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
 #include "BitmapHelpers.h"
 #include "GrayThumb.h"
+#include "JpegScale.h"
 
 // ============================================================================
 // IMAGE PROCESSING OPTIONS - Toggle these to test different configurations
@@ -128,6 +130,11 @@ namespace {
 constexpr int MAX_MCU_HEIGHT = 16;
 constexpr size_t JPEG_DECODER_SIZE = 20 * 1024;
 constexpr size_t MIN_FREE_HEAP = JPEG_DECODER_SIZE + 32 * 1024;
+// Heap a cover thumbnail decode leaves the rest of the device (it runs as the reader closes and on
+// an idle Home card, with no page render around it).
+constexpr size_t FILE_THUMB_MARGIN = 16 * 1024;
+constexpr int MAX_IMAGE_WIDTH = 2048;
+constexpr int MAX_IMAGE_HEIGHT = 3072;
 constexpr uint32_t FP_ONE = 1UL << 16;
 
 // Static file pointer for JPEGDEC open callback.
@@ -503,9 +510,6 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
 
   LOG_DBG("JPG", "JPEG dimensions: %dx%d", srcWidth, srcHeight);
 
-  constexpr int MAX_IMAGE_WIDTH = 2048;
-  constexpr int MAX_IMAGE_HEIGHT = 3072;
-
   if (srcWidth <= 0 || srcHeight <= 0 || srcWidth > MAX_IMAGE_WIDTH || srcHeight > MAX_IMAGE_HEIGHT) {
     LOG_DBG("JPG", "Image too large or invalid (%dx%d), max supported: %dx%d", srcWidth, srcHeight, MAX_IMAGE_WIDTH,
             MAX_IMAGE_HEIGHT);
@@ -524,18 +528,13 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
     coverScaleSize(srcWidth, srcHeight, targetWidth, targetHeight, crop, &outWidth, &outHeight);
   }
 
-  // JPEGDEC forces progressive streams to JPEG_SCALE_EIGHTH in DecodeJPEG, so callback
-  // coordinates and MCU buffering use the reduced decode grid. A 1-bit thumbnail keeps a small
-  // fraction of a baseline cover's pixels, and JPEGDEC can decode straight to a half, quarter
-  // or eighth of the source. That spares the inverse transform and this file's area averaging
-  // for pixels the scaler would only sum away; take the smallest grid still covering the output.
-  int decodeScale = progressiveDecode ? 8 : 1;
-  if (oneBit && targetWidth > 0 && targetHeight > 0) {
-    while (decodeScale < 8 && (srcWidth + 2 * decodeScale - 1) / (2 * decodeScale) >= outWidth &&
-           (srcHeight + 2 * decodeScale - 1) / (2 * decodeScale) >= outHeight) {
-      decodeScale *= 2;
-    }
-  }
+  // Callback coordinates and MCU buffering use the reduced decode grid (JpegScale.h): the smallest
+  // grid still covering the output, for the screen cover as for a thumbnail. Without a target the
+  // output is the source and the grid the full one (an eighth for a progressive stream).
+  int decodeOption = 0;
+  const int decodeScale = chooseJpegScale(std::max(static_cast<float>(outWidth) / srcWidth,
+                                                   static_cast<float>(outHeight) / srcHeight),
+                                          progressiveDecode, decodeOption);
   const int scaleSrcWidth = (srcWidth + decodeScale - 1) / decodeScale;
   const int scaleSrcHeight = (srcHeight + decodeScale - 1) / decodeScale;
   if (targetWidth <= 0 || targetHeight <= 0) {
@@ -650,11 +649,7 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   jpeg->setPixelType(EIGHT_BIT_GRAYSCALE);
   jpeg->setUserPointer(&ctx);
 
-  rc = jpeg->decode(0, 0,
-                    progressiveDecode || decodeScale == 1 ? 0
-                    : decodeScale == 2                    ? JPEG_SCALE_HALF
-                    : decodeScale == 4                    ? JPEG_SCALE_QUARTER
-                                                          : JPEG_SCALE_EIGHTH);
+  rc = jpeg->decode(0, 0, decodeOption);
 
   if (rc == 1 && ctx.smoothUpscale && !ctx.error) {
     finishSmoothUpscale(&ctx);
@@ -688,4 +683,51 @@ bool JpegToBmpConverter::jpegFileToBmpStreamWithSize(HalFile& jpegFile, Print& b
 bool JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(HalFile& jpegFile, Print& bmpOut, int targetMaxWidth,
                                                          int targetMaxHeight) {
   return jpegFileToBmpStreamInternal(jpegFile, bmpOut, targetMaxWidth, targetMaxHeight, true, true);
+}
+
+namespace {
+struct GrayThumbCtx {
+  GrayThumb* thumb;
+  uint8_t blocksSinceYield;
+};
+
+int grayThumbDrawCallback(JPEGDRAW* pDraw) {
+  auto* ctx = reinterpret_cast<GrayThumbCtx*>(pDraw->pUser);
+  if (++ctx->blocksSinceYield >= 16) {
+    ctx->blocksSinceYield = 0;
+    yieldToIdle();
+  }
+  ctx->thumb->block(pDraw->x, pDraw->y, pDraw->iWidthUsed, pDraw->iHeight, reinterpret_cast<uint8_t*>(pDraw->pPixels),
+                    pDraw->iWidth);
+  return 1;
+}
+}  // namespace
+
+bool JpegToBmpConverter::jpegFileToGrayThumb(HalFile& jpegFile, GrayThumb& thumb, int* scale) {
+  *scale = 0;
+  if (ESP.getFreeHeap() < MIN_FREE_HEAP) return false;
+  s_jpegFile = &jpegFile;
+  const auto jpeg = makeUniqueNoThrow<JPEGDEC>();
+  if (!jpeg || jpeg->open("", bmpJpegOpen, bmpJpegClose, bmpJpegRead, bmpJpegSeek, grayThumbDrawCallback) != 1)
+    return false;
+  const ScopedCleanup cleanup{[&jpeg]() { jpeg->close(); }};
+  const int srcWidth = jpeg->getWidth();
+  const int srcHeight = jpeg->getHeight();
+  if (srcWidth <= 0 || srcHeight <= 0 || srcWidth > MAX_IMAGE_WIDTH || srcHeight > MAX_IMAGE_HEIGHT) return false;
+  // The grid the per-height decode takes for this thumbnail, so the card's pixels stay its own.
+  int outWidth = 0, outHeight = 0;
+  coverScaleSize(srcWidth, srcHeight, thumbWidthFor(thumb.targetHeight()), thumb.targetHeight(), true, &outWidth,
+                 &outHeight);
+  int option = 0;
+  const int denom = chooseJpegScale(
+      std::max(static_cast<float>(outWidth) / srcWidth, static_cast<float>(outHeight) / srcHeight),
+      jpeg->getJPEGType() == JPEG_MODE_PROGRESSIVE, option);
+  // A JPEGDEC block is one MCU row: at most 16 source rows, reduced with the grid.
+  if (!thumb.start((srcWidth + denom - 1) / denom, (srcHeight + denom - 1) / denom, 16 / denom, FILE_THUMB_MARGIN))
+    return false;
+  *scale = denom;
+  GrayThumbCtx ctx{&thumb, 0};
+  jpeg->setPixelType(EIGHT_BIT_GRAYSCALE);
+  jpeg->setUserPointer(&ctx);
+  return jpeg->decode(0, 0, option) == 1 && thumb.finish();
 }
