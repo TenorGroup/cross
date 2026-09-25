@@ -13,7 +13,8 @@ if(SDFAT_PARTITION_SOURCES)
   if(NOT SDFAT_ALLOC_UNPATCHED)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     execute_process(COMMAND ${Python3_EXECUTABLE} "${REPO_ROOT}/scripts/patch_sdfat.py"
-                            "${SDFAT_COPY}/FatLib/FatPartition.cpp" RESULT_VARIABLE SDFAT_PATCHED)
+                            "${SDFAT_COPY}/FatLib/FatPartition.cpp" "${SDFAT_COPY}/FatLib/FatPartition.h"
+                    RESULT_VARIABLE SDFAT_PATCHED)
     if(NOT SDFAT_PATCHED EQUAL 0)
       message(FATAL_ERROR "scripts/patch_sdfat.py failed on ${SDFAT_COPY}")
     endif()

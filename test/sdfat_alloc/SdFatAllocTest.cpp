@@ -90,6 +90,57 @@ TEST(SdFatAlloc, NewFilesAfterADeleteDoNotWalkTheUsedClusters) {
   EXPECT_LT(first + second + third, 60u);
 }
 
+// The X3 mounts the card on every wake. SdFat began each mount's search at the first cluster, so
+// the first new file after a wake walked every used cluster below the free space.
+TEST(SdFatAlloc, AMountStartsWhereTheLastSessionStopped) {
+  Card card(16ull << 30);
+  ASSERT_TRUE(card.fill("/books1.bin", (4ull << 30) - (1u << 20)));
+  ASSERT_TRUE(card.fill("/books2.bin", (4ull << 30) - (1u << 20)));
+  ASSERT_TRUE(card.write("/last.bin", "x", 1));
+  FatVolume woken;
+  ASSERT_TRUE(woken.begin(&card.device));
+  const size_t before = card.device.reads;
+  FatFile file;
+  ASSERT_TRUE(file.open(&woken, "/new.bin", O_RDWR | O_CREAT));
+  ASSERT_EQ(file.write("y", 1), 1);
+  ASSERT_TRUE(file.close());
+  const size_t reads = card.device.reads - before;
+  printf("SDFAT_ALLOC first_after_mount reads=%zu\n", reads);
+  // Unpatched: some 2.000 FAT sectors below the free space.
+  EXPECT_LT(reads, 30u);
+}
+
+// The hint is only a hint: one pointing into used clusters, or past the card, still allocates.
+TEST(SdFatAlloc, AWrongHintStillAllocates) {
+  Card card(4ull << 30);
+  ASSERT_EQ(card.volume.fatType(), 32);
+  ASSERT_TRUE(card.write("/a.bin", "a", 1));
+  ASSERT_TRUE(card.write("/b.bin", "b", 1));
+  // The partition's first sector from the MBR; FSInfo is the sector after it, next-free at 492.
+  uint8_t sector[512];
+  card.device.readSector(0, sector);
+  const uint32_t start = sector[454] | sector[455] << 8 | sector[456] << 16 | uint32_t{sector[457]} << 24;
+  for (const uint32_t hint : {3u, 0x7FFFFFFFu}) {
+    card.device.readSector(start + 1, sector);
+    ASSERT_EQ(sector[0], 0x52);  // "RRaA", the FSInfo lead signature
+    memcpy(sector + 492, &hint, 4);
+    card.device.writeSector(start + 1, sector);
+    FatVolume woken;
+    ASSERT_TRUE(woken.begin(&card.device));
+    FatFile file;
+    char name[16];
+    snprintf(name, sizeof(name), "/h%u.bin", hint);
+    ASSERT_TRUE(file.open(&woken, name, O_RDWR | O_CREAT));
+    EXPECT_EQ(file.write("y", 1), 1) << "hint " << hint;
+    EXPECT_TRUE(file.close());
+    FatFile a;
+    char back = 0;
+    ASSERT_TRUE(a.open(&woken, "/a.bin", O_RDONLY));
+    EXPECT_EQ(a.read(&back, 1), 1);
+    EXPECT_EQ(back, 'a') << "a new file must not take a used cluster";
+  }
+}
+
 // With the search start moving forward only, a cluster freed below it must still be found once
 // every cluster above it is taken.
 TEST(SdFatAlloc, ClustersFreedBelowTheStartAreFoundWhenTheCardIsFull) {
