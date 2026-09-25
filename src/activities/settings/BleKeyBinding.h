@@ -85,9 +85,12 @@ inline const char* actionName(const Action action) {
   return kNames[static_cast<uint8_t>(action) <= 4 ? static_cast<uint8_t>(action) : 0];
 }
 
-// "3:1=02" (report id 3, byte 1, value 0x02); "1=02" for an any-report default slot.
+// "3:1=02" (report id 3, byte 1, value 0x02); "1=02" for an any-report default slot;
+// "0x43" for a button known only by the key the decoder read (byte index 0xFF).
 inline void formatCode(char* out, const size_t n, const Binding b) {
-  if (b & kAnyReportBit) {
+  if (((b >> 8) & 0xFF) == 0xFF) {
+    snprintf(out, n, "0x%02X", static_cast<unsigned>(b & 0xFF));
+  } else if (b & kAnyReportBit) {
     snprintf(out, n, "%u=%02X", static_cast<unsigned>((b >> 8) & 0xFF), static_cast<unsigned>(b & 0xFF));
   } else {
     snprintf(out, n, "%u:%u=%02X", static_cast<unsigned>((b >> 16) & 0xFF), static_cast<unsigned>((b >> 8) & 0xFF),

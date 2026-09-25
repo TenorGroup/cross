@@ -10,7 +10,7 @@
 #include "activities/reader/ReaderMenuLayout.h"
 #undef tr
 const char* testTranslation(StrId id, const char* name) {
-  return id == StrId::STR_BLE_LAST_KEY ? "key %s" : name;
+  return id == StrId::STR_BLE_LAST_KEY || id == StrId::STR_BLE_BIND_DONE ? "key %s" : name;
 }
 #define tr(id) testTranslation(StrId::id, #id)
 #define LOG_INF(...) (void)0
@@ -100,7 +100,8 @@ struct BlePageTurnerActivity : UiListActivity {
   std::vector<fui::ListItem> rowItems_;
   bool rowsDirty = false, bindWaitActive_ = false;
   std::string bindNotice_, bindValues_[4], statusValue_, statusText_ = "ready";
-  uint32_t lastRawCode_ = 0;
+  uint32_t lastRawCode_ = 0, learnCode_ = 0;
+  blebinding::Action bindAction_ = blebinding::Action::NextPage;
   std::vector<blebinding::Action> waited, cleared;
   int updates = 0;
   int listCount() const override { return rowItems_.size(); }
@@ -110,6 +111,7 @@ struct BlePageTurnerActivity : UiListActivity {
   void startBindWait(blebinding::Action a) { bindWaitActive_ = true; waited.push_back(a); }
   void clearBind(blebinding::Action a) { cleared.push_back(a); }
   void clearBindForRow(int index);
+  void finishLearn(bool sawRelease, uint32_t heldMs);
   void rebuildRows();
   void refreshValues();
   void activateIndex(int index);
@@ -244,6 +246,18 @@ int main() {
       screen.optionPopup.callback(1);
     }
     require(SETTINGS.bleRemoteCount == 0, "forgetting a device keeps its binding table");
+    // The link drops while the screen waits for the release: nothing is learned and
+    // the notice says no button arrived. "No room" would send the user to clear rows.
+    SETTINGS = {}; backend::live = false;
+    screen.bindWaitActive_ = true; screen.learnCode_ = 0x030102; screen.bindAction_ = blebinding::Action::NextChapter;
+    screen.finishLearn(true, 60);
+    require(SETTINGS.bleRemoteCount == 0 && SETTINGS.saves == 0, "a lost link still wrote a table");
+    require(screen.bindNotice_ == "STR_BLE_BIND_NONE", "a lost link was reported as a full table");
+    backend::live = true;
+    screen.bindWaitActive_ = true; screen.learnCode_ = 0x030102;
+    screen.finishLearn(true, 60);
+    require(SETTINGS.bleRemoteCount == 1 && SETTINGS.saves == 1 && screen.bindNotice_ == "key 3:1=02",
+            "a learned button on a live link was not stored and shown");
     backend::live = false;
   }
   Reader reader;

@@ -1290,7 +1290,8 @@ void loop() {
         // CMD:BLE_RAW <hex bytes>: one HID frame through the real ingest path, as if the
         // remote had sent it; the next loop pass routes it. With no remote connected the
         // route takes the built-in three-button table, so the hot path from frame to page
-        // or chapter can be timed with no hand on a remote. Open a book first.
+        // or chapter can be timed with no hand on a remote. Open a book first. With no
+        // bytes it only reports `overflow`, the raw presses dropped since boot.
         uint8_t frame[16];
         size_t n = 0;
         const char* p = cmd.c_str() + 7;
@@ -1306,8 +1307,8 @@ void loop() {
         }
         const unsigned long t0 = micros();
         bleHid.onReportIngest(frame, n);
-        logSerial.printf("BLE_RAW:len=%u,ingest_us=%lu,running=%d,t=%lu\n", static_cast<unsigned>(n), micros() - t0,
-                         bleHid.isRunning(), millis());
+        logSerial.printf("BLE_RAW:len=%u,ingest_us=%lu,running=%d,overflow=%u,t=%lu\n", static_cast<unsigned>(n),
+                         micros() - t0, bleHid.isRunning(), bleHid.rawOverflows(), millis());
 #endif
 #endif
 #ifdef TENOR_PRESS_PROBE

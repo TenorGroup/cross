@@ -372,7 +372,11 @@ void BlePageTurnerActivity::finishLearn(const bool sawRelease, const uint32_t he
                                                             backend::connectedAddr(), backend::connectedName());
   char ma[16];
   blebinding::formatCode(ma, sizeof(ma), code);
-  if (bang == nullptr || !blebinding::learn(*bang, bindAction_, code, giu)) {
+  if (!backend::connected()) {
+    // The link dropped while waiting for the release: nothing to bind it to.
+    bindNotice_ = tr(STR_BLE_BIND_NONE);
+    LOG_INF("BLE", "Link lost while learning %s", ma);
+  } else if (bang == nullptr || !blebinding::learn(*bang, bindAction_, code, giu)) {
     bindNotice_ = tr(STR_BLE_BIND_FULL);
     LOG_INF("BLE", "Binding table full; %s not bound to %s", ma, blebinding::actionName(bindAction_));
   } else {

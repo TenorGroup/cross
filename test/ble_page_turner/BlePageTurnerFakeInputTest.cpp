@@ -696,6 +696,16 @@ TEST_F(RemoteBindingTest, ClearedTableKeepsItsAddressAndGoesBackToTheKeyPath) {
   EXPECT_EQ(tap({0x02, 0x00, 0x00}).next, 1);
 }
 
+TEST(BleBindingTableTest, KeyIdentityReadsAsTheKeyCode) {
+  // A button known only by the key the decoder read (byte index 0xFF) is shown as
+  // that key code, not as a byte position that does not exist.
+  char text[16];
+  blebinding::formatCode(text, sizeof text, blebinding::makeBinding(0xFFFF43, false, blebinding::Action::NextPage));
+  EXPECT_STREQ(text, "0x43");
+  blebinding::formatCode(text, sizeof text, blebinding::makeBinding(0x030102, false, blebinding::Action::NextPage));
+  EXPECT_STREQ(text, "3:1=02");
+}
+
 TEST(BleBindingTableTest, FullTableRefusesAndGarbageIsNotValid) {
   blebinding::RemoteTable t{};
   const blebinding::Action actions[4] = {blebinding::Action::NextPage, blebinding::Action::PrevPage,
