@@ -117,10 +117,10 @@ HalGPIO::DeviceType detectDeviceTypeWithFingerprint() {
   return HalGPIO::DeviceType::X4;
 }
 
-#ifdef TENOR_PRESS_PROBE
-// Synthetic presses for on-device latency measurement. They enter through the
-// SDK button hook, so they take the same debounce, held-time and edge path as
-// a real contact: a press that no sample catches twice is lost like a real one.
+// Synthetic presses: a hard shake's Back and Select, and the measurement build's
+// timed presses. They enter through the SDK button hook, so they take the same
+// debounce, held-time and edge path as a real contact: a press that no sample
+// catches twice is lost like a real one. (The T5S3 keeps its own hook and has no IMU.)
 struct PressPlan {
   unsigned long startMs;
   uint16_t holdMs;
@@ -143,6 +143,7 @@ uint8_t plannedButtons() {
   return down ? pressPlan.mask : 0;
 }
 
+#ifdef TENOR_PRESS_PROBE
 // Main loop: one line per planned press once its contact is over, stamped with
 // its physical start so latency is measured from the finger. seen=0 means no
 // sample ran while the contact was closed.
@@ -161,7 +162,6 @@ void reportPlannedPresses() {
 
 }  // namespace
 
-#ifdef TENOR_PRESS_PROBE
 void HalGPIO::injectPresses(const uint8_t buttonIndex, const uint16_t holdMs, const uint16_t count,
                             const uint16_t gapMs) {
   // Every press follows a gap, the first one included, so a single press with a
@@ -178,7 +178,6 @@ void HalGPIO::injectPresses(const uint8_t buttonIndex, const uint16_t holdMs, co
   std::atomic_thread_fence(std::memory_order_release);
   pressPlan.count = pressPlan.periodMs == 0 ? 0 : count;
 }
-#endif
 
 #if FREEINK_MCU_C3
 // Survives deep sleep, not power loss; read only on a deep-sleep wake (PanelMemo.h).
@@ -330,7 +329,6 @@ void HalGPIO::sampleButtonAdc(InputManager::ButtonAdcSample& first, InputManager
   ladderInUse.store(true, std::memory_order_release);
   inputMgr.readButtonAdc(first, second);
   ladderInUse.store(false, std::memory_order_release);
-#ifdef TENOR_PRESS_PROBE
   // A planned press on a first-ladder key reaches the direct ladder readers too (the
   // file transfer Back latch), as a real contact would.
   const uint8_t planned = plannedButtons();
@@ -340,7 +338,6 @@ void HalGPIO::sampleButtonAdc(InputManager::ButtonAdcSample& first, InputManager
       if (first.raw <= 0) first.raw = 1;
     }
   }
-#endif
 }
 
 bool HalGPIO::isPressed(uint8_t buttonIndex) const {

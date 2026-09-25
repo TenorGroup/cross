@@ -158,6 +158,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     FORCE_REFRESH = 3,
     FOOTNOTES = 4,
     PWR_CONFIRM = 5,
+    BACK = 6,  // Stored by value: new actions go last (quickaction::CHOICES)
     SHORT_PWRBTN_COUNT
   };
 
@@ -212,6 +213,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     TILT_STRENGTH_STRONG = 2,
     TILT_STRENGTH_COUNT
   };
+
 
   enum TOUCH_READER_CONTROLS {
     TOUCH_READER_OFF = 0,
@@ -427,6 +429,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // The mode a quick toggle turns tilt page turn back on to, so an Inverted
   // choice survives being switched off and on again.
   uint8_t tiltPageTurnLastOn = TILT_NORMAL;
+  // Hard shake action, and how hard the shake must be (a TILT_STRENGTH).
+  uint8_t shakeAction = 0;  // Off; a place in quickaction::SHAKE_ORDER
+  uint8_t shakeStrength = TILT_STRENGTH_MEDIUM;
   // Touch screen reader zones/gestures on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_SWIPE;
   // Reader menu open gesture (SHOW_READER_MENU: off / center tap / bottom-edge

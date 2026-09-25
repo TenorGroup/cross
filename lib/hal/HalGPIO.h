@@ -126,11 +126,10 @@ class HalGPIO {
   bool wasSwipe(float& nxStart, float& nyStart, float& nxEnd, float& nyEnd) const;
   bool wasTouchActivity() const;
   void setSharedConfirmPowerShortPressEmitsPower(bool enabled);
-#ifdef TENOR_PRESS_PROBE
-  // Measurement builds only: plays `count` presses of one button, each held
+  // Plays `count` presses of one button through the real input path, each held
   // `holdMs` and each preceded by `gapMs` of release, the first one included.
+  // A hard shake's Back and Select, and the measurement build's CMD:PRESS.
   void injectPresses(uint8_t buttonIndex, uint16_t holdMs, uint16_t count, uint16_t gapMs);
-#endif
 
   // Verify that the physical power button remains held through input debounce.
   // Returns true if verification succeeded, false if device should return to sleep.

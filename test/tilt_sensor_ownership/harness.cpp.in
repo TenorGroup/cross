@@ -1,4 +1,6 @@
 #include <cstdio>
+#include <string>
+#include <vector>
 
 #include "HalTiltSensor.h"
 
@@ -13,6 +15,9 @@ struct FakeImuState {
   bool readOk = true;
   bool sleepOk = true;
   bool wakeOk = true;
+  float ax = 0.0f;
+  float ay = 0.0f;
+  float az = 1.0f;  // at rest, face up
   float gx = 400.0f;
   float gy = 0.0f;
   float gz = 0.0f;
@@ -27,6 +32,8 @@ struct TestSettings {
   uint8_t orientation = CrossPointOrientation::PORTRAIT;
   uint8_t tiltStrengthH = 1;  // Medium
   uint8_t tiltStrengthV = 1;
+  uint8_t shakeAction = 0;    // Off
+  uint8_t shakeStrength = 1;  // Medium
 } SETTINGS;
 
 int failures = 0;
@@ -70,6 +77,9 @@ void tabReachesForwardTiltAfterOneWake() {
   for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
     runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
   }
+  expect(!halTiltSensor.wasTiltedForward(), "tab-one-owner", "a menu waits for the flick to come back");
+  imu.gx = 0.0f;  // fakeMillis is 700: the wrist comes back
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
 
   expect(imu.wakeCalls == 1, "tab-one-owner", "tab must wake IMU once across stabilization");
   expect(imu.sleepCalls == sleepAfterBegin, "tab-one-owner", "main must not re-sleep active tab IMU");
@@ -132,21 +142,27 @@ void modalKeepsTheTabLifecycleAndLatch() {
 
   fakeMillis = 650;
   runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
-  expect(halTiltSensor.wasTiltedForward(), "tab-modal", "resumed tab must complete its original wake and cooldown window");
-
   fakeMillis = 700;
   runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
-  expect(!halTiltSensor.wasTiltedForward(), "neutral-latch", "held tilt must not repeat before neutral");
+  expect(!halTiltSensor.wasTiltedForward(), "neutral-latch", "a flick held turned waits and does not repeat");
 
   imu.gx = 0.0f;
   fakeMillis = 750;
   runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  expect(halTiltSensor.wasTiltedForward(), "tab-modal", "resumed tab completes its wake and cooldown window once back");
   imu.gx = 400.0f;
   fakeMillis = 800;
   runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  imu.gx = 0.0f;
+  fakeMillis = 850;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
   expect(!halTiltSensor.wasTiltedForward(), "cooldown", "neutral alone must not bypass cooldown");
 
+  imu.gx = 400.0f;
   fakeMillis = 1250;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  imu.gx = 0.0f;
+  fakeMillis = 1300;
   runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
   expect(halTiltSensor.wasTiltedForward(), "neutral-latch", "neutral plus cooldown must allow the next tilt");
 }
@@ -161,22 +177,40 @@ void verticalChannelFiresOnTheOtherAxis() {
   for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
     runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
   }
+  expect(!halTiltSensor.wasTiltedDown(), "vertical-axis", "a row flick waits for the hand to come back");
+  imu.gy = 0.0f;  // fakeMillis is 700
+  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
 
   expect(halTiltSensor.wasTiltedDown(), "vertical-axis", "portrait gy must report a step down");
   expect(!halTiltSensor.wasTiltedUp(), "vertical-axis", "one gesture must not fire both directions");
   expect(!halTiltSensor.wasTiltedForward() && !halTiltSensor.wasTiltedBack(), "vertical-axis",
          "the vertical axis must leave the horizontal channel silent");
 
-  // Held past the trigger: one gesture stays one event until neutral plus cooldown.
-  fakeMillis = 700;
-  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
-  expect(!halTiltSensor.wasTiltedDown(), "vertical-latch", "held vertical tilt must not repeat before neutral");
-
-  imu.gy = 0.0f;
-  fakeMillis = 750;
-  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  // Turned and left turned, as when the device is picked up: dropped, and the
+  // latch keeps it from firing again until neutral plus cooldown.
   imu.gy = 400.0f;
-  fakeMillis = 1250;
+  for (fakeMillis = 1350; fakeMillis <= 2400; fakeMillis += 50) {
+    imu.az = fakeMillis < 1500 ? 1.0f : 0.5f;
+    imu.ay = fakeMillis < 1500 ? 0.0f : -0.86f;
+    runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+    if (fakeMillis >= 1500) imu.gy = 0.0f;
+  }
+  expect(!halTiltSensor.wasTiltedDown() && !halTiltSensor.wasTiltedUp(), "vertical-pickup",
+         "a turn that leaves the device turned 60 degrees moves no row");
+
+  // Back at rest long enough for the baseline to follow, then a real nod.
+  imu.ay = 0.0f;
+  imu.az = 1.0f;
+  for (fakeMillis = 2450; fakeMillis <= 3050; fakeMillis += 50) {
+    runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  }
+  imu.gy = 400.0f;
+  fakeMillis = 3100;
+  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  imu.gy = 0.0f;
+  fakeMillis = 3150;
+  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  fakeMillis = 3200;
   runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
   expect(halTiltSensor.wasTiltedDown(), "vertical-latch", "neutral plus cooldown must allow the next vertical tilt");
 }
@@ -209,6 +243,8 @@ void verticalChannelObeysItsOwnModeAndGate() {
   for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
     runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_INVERTED);
   }
+  imu.gy = 0.0f;
+  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_INVERTED);
   expect(halTiltSensor.wasTiltedUp(), "vertical-inverted", "Inverted must turn the same motion into a step up");
   expect(!halTiltSensor.wasTiltedDown(), "vertical-inverted", "Inverted must not also report a step down");
 }
@@ -223,6 +259,8 @@ void verticalChannelFollowsOrientationLikeTheHorizontalOne() {
   for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
     runMenuTick(CrossPointTiltPageTurn::TILT_OFF, CrossPointTiltPageTurn::TILT_NORMAL);
   }
+  imu.gx = 0.0f;
+  runMenuTick(CrossPointTiltPageTurn::TILT_OFF, CrossPointTiltPageTurn::TILT_NORMAL);
   expect(halTiltSensor.wasTiltedDown(), "vertical-orientation", "landscape CW must read the vertical axis off gx");
 
   resetSensor();
@@ -232,6 +270,8 @@ void verticalChannelFollowsOrientationLikeTheHorizontalOne() {
   for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
     runMenuTick(CrossPointTiltPageTurn::TILT_OFF, CrossPointTiltPageTurn::TILT_NORMAL);
   }
+  imu.gy = 0.0f;
+  runMenuTick(CrossPointTiltPageTurn::TILT_OFF, CrossPointTiltPageTurn::TILT_NORMAL);
   expect(halTiltSensor.wasTiltedUp(), "vertical-orientation", "an upside-down screen must mirror the vertical axis");
   SETTINGS.orientation = CrossPointOrientation::PORTRAIT;
 }
@@ -278,6 +318,8 @@ bool menuRowMovesAt(const float gy, const uint8_t strength) {
   for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
     runMenuTick(CrossPointTiltPageTurn::TILT_OFF, CrossPointTiltPageTurn::TILT_NORMAL);
   }
+  imu.gy = 0.0f;  // the nod comes back
+  runMenuTick(CrossPointTiltPageTurn::TILT_OFF, CrossPointTiltPageTurn::TILT_NORMAL);
   return halTiltSensor.wasTiltedDown();
 }
 
@@ -304,15 +346,388 @@ void flickStrengthSetsEachAxisThreshold() {
   SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
   SETTINGS.tiltStrengthH = 2;
   SETTINGS.tiltStrengthV = 0;
-  imu.gx = 300.0f;
+  imu.gx = 240.0f;  // under a menu's Strong side start (250)
   imu.gy = 200.0f;
   for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
     runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
   }
+  imu.gx = 0.0f;
+  imu.gy = 0.0f;
+  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
   expect(halTiltSensor.wasTiltedDown(), "strength-split", "Light up/down must fire at 200 dps");
-  expect(!halTiltSensor.wasTiltedForward(), "strength-split", "Strong side must hold at 300 dps");
+  expect(!halTiltSensor.wasTiltedForward(), "strength-split", "Strong side must hold at 240 dps");
   SETTINGS.tiltStrengthH = 1;
   SETTINGS.tiltStrengthV = 1;
+}
+
+// ---- Hard shake ----------------------------------------------------------
+// One motion sample per 50 ms poll: acceleration in g, side rotation in dps.
+struct Motion {
+  float ax, ay, az, gx;
+};
+
+struct Counts {
+  int shakes = 0;
+  int forward = 0;
+  int back = 0;
+  int up = 0;
+  int down = 0;
+  unsigned long firstShakeMs = 0;
+  unsigned long lastShakeMs = 0;
+  unsigned long minShakeGapMs = 0;
+};
+
+enum class Route { Reader, Plain };
+
+void tick(const Route route) {
+  if (route == Route::Reader) {
+    runReaderTick();
+  } else {
+    updateTiltSensorForForegroundActivity(false, false);
+  }
+}
+
+// Consumes events after every poll, as the main loop does between polls.
+void collect(Counts& counts) {
+  if (halTiltSensor.wasShaken()) {
+    if (counts.shakes > 0) {
+      const unsigned long gap = fakeMillis - counts.lastShakeMs;
+      if (counts.minShakeGapMs == 0 || gap < counts.minShakeGapMs) counts.minShakeGapMs = gap;
+    } else {
+      counts.firstShakeMs = fakeMillis;
+    }
+    counts.lastShakeMs = fakeMillis;
+    ++counts.shakes;
+  }
+  if (halTiltSensor.wasTiltedForward()) ++counts.forward;
+  if (halTiltSensor.wasTiltedBack()) ++counts.back;
+  if (halTiltSensor.wasTiltedUp()) ++counts.up;
+  if (halTiltSensor.wasTiltedDown()) ++counts.down;
+}
+
+// Device at rest face up, awake and past its settling time, baseline seeded.
+void settle(const Route route) {
+  resetSensor();
+  imu.ax = 0.0f;
+  imu.ay = 0.0f;
+  imu.az = 1.0f;
+  imu.gx = 0.0f;
+  imu.gy = 0.0f;
+  for (fakeMillis = 0; fakeMillis <= 800; fakeMillis += 50) tick(route);
+}
+
+Counts play(const Route route, const Motion* motion, const int count, const int repeat = 1) {
+  Counts counts;
+  for (int r = 0; r < repeat; ++r) {
+    for (int i = 0; i < count; ++i) {
+      fakeMillis += 50;
+      imu.ax = motion[i].ax;
+      imu.ay = motion[i].ay;
+      imu.az = motion[i].az;
+      imu.gx = motion[i].gx;
+      tick(route);
+      collect(counts);
+    }
+  }
+  // Back at rest long enough for any held flick to come out.
+  imu.ax = 0.0f;
+  imu.ay = 0.0f;
+  imu.az = 1.0f;
+  imu.gx = 0.0f;
+  for (int i = 0; i < 40; ++i) {
+    fakeMillis += 50;
+    tick(route);
+    collect(counts);
+  }
+  return counts;
+}
+
+// A side flick that turns a page: the wrist rotates fast, gravity leans over.
+constexpr Motion FLICK[] = {{0.3f, 0.0f, 0.95f, 400.0f}, {0.5f, 0.0f, 0.87f, 350.0f}, {0.5f, 0.0f, 0.87f, 0.0f}};
+// A hard shake side to side, about 5 Hz, the wrist twisting with it.
+constexpr Motion SHAKE[] = {{1.9f, 0.0f, 1.0f, 400.0f},
+                            {1.9f, 0.0f, 1.0f, 400.0f},
+                            {-1.9f, 0.0f, 1.0f, -400.0f},
+                            {-1.9f, 0.0f, 1.0f, -400.0f}};
+// The same shake with the twist one poll ahead of the jolt.
+constexpr Motion SHAKE_TWIST_FIRST[] = {{0.0f, 0.0f, 1.0f, 400.0f},
+                                        {1.9f, 0.0f, 1.0f, 400.0f},
+                                        {1.9f, 0.0f, 1.0f, 0.0f},
+                                        {-1.9f, 0.0f, 1.0f, -400.0f},
+                                        {-1.9f, 0.0f, 1.0f, 0.0f}};
+// A wind-up: the twist and a building jolt two polls ahead of the full one.
+constexpr Motion SHAKE_WINDUP[] = {{0.8f, 0.0f, 1.0f, 400.0f},
+                                   {0.9f, 0.0f, 1.0f, 400.0f},
+                                   {1.9f, 0.0f, 1.0f, 400.0f},
+                                   {-1.9f, 0.0f, 1.0f, -400.0f},
+                                   {-1.9f, 0.0f, 1.0f, 0.0f}};
+// Walking with the device: small bounce, no rotation to speak of.
+constexpr Motion WALK[] = {{0.1f, 0.0f, 1.3f, 20.0f},
+                           {0.0f, 0.0f, 1.0f, 0.0f},
+                           {-0.1f, 0.0f, 0.7f, -20.0f},
+                           {0.0f, 0.0f, 1.0f, 0.0f}};
+
+void armReaderAndShake(const uint8_t shakeAction, const uint8_t strength = 1) {
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_NORMAL;
+  SETTINGS.orientation = CrossPointOrientation::PORTRAIT;
+  SETTINGS.tiltStrengthH = 1;
+  SETTINGS.shakeAction = shakeAction;
+  SETTINGS.shakeStrength = strength;
+}
+
+void aFlickIsNotAShake() {
+  armReaderAndShake(1);
+  settle(Route::Reader);
+  const Counts c = play(Route::Reader, FLICK, 3);
+  expect(c.shakes == 0, "flick-not-shake", "a page-turn flick must not count as a shake");
+  expect(c.forward == 1 && c.back == 0, "flick-not-shake", "the flick must still turn one page forward");
+}
+
+void aFlickWaitsOnePollAtMost() {
+  armReaderAndShake(1);
+  settle(Route::Reader);
+  imu.gx = 400.0f;
+  fakeMillis += 50;
+  runReaderTick();
+  expect(!halTiltSensor.wasTiltedForward(), "flick-hold", "with shake on, a flick waits one poll for a jolt");
+  imu.gx = 0.0f;
+  fakeMillis += 50;
+  runReaderTick();
+  expect(halTiltSensor.wasTiltedForward(), "flick-hold", "with no jolt the flick comes out on the next poll");
+}
+
+void aShakeIsNotAPageTurn() {
+  armReaderAndShake(1);
+  settle(Route::Reader);
+  Counts c = play(Route::Reader, SHAKE, 4);
+  expect(c.shakes == 1, "shake-not-turn", "one hard shake must count once");
+  expect(c.forward == 0 && c.back == 0, "shake-not-turn", "a hard shake must not turn a page");
+
+  settle(Route::Reader);
+  c = play(Route::Reader, SHAKE_TWIST_FIRST, 5);
+  expect(c.shakes == 1, "shake-twist-first", "a twist one poll ahead of the jolt is still one shake");
+  expect(c.forward == 0 && c.back == 0, "shake-twist-first", "and still no page turn");
+
+  settle(Route::Reader);
+  c = play(Route::Reader, SHAKE_WINDUP, 5);
+  expect(c.shakes == 1, "shake-windup", "a shake that builds over two polls is one shake");
+  expect(c.forward == 0 && c.back == 0, "shake-windup", "a flick held while the hand jolts does not turn a page");
+}
+
+void shakesRespectTheRest() {
+  armReaderAndShake(1);
+  settle(Route::Reader);
+  // A snap every half second for three seconds, the wrist twisting with each.
+  Motion snaps[10];
+  snaps[0] = {1.9f, 0.0f, 1.0f, 400.0f};
+  for (int i = 1; i < 10; ++i) snaps[i] = {0.0f, 0.0f, 1.0f, 0.0f};
+  const Counts c = play(Route::Reader, snaps, 10, 6);
+  expect(c.shakes == 2, "shake-rest", "six snaps in three seconds count as two shakes, 1.5 s apart");
+  expect(c.minShakeGapMs >= 1500, "shake-rest", "two shakes must be at least 1.5 s apart");
+  expect(c.forward == 0 && c.back == 0, "shake-rest", "no page turns while shaking");
+}
+
+void walkingIsNotAShake() {
+  armReaderAndShake(1, 0);  // Light: the easiest to set off
+  settle(Route::Reader);
+  const Counts c = play(Route::Reader, WALK, 4, 15);
+  expect(c.shakes == 0, "walk", "walking with the device must not count as a shake");
+}
+
+// One snap one way, peaking at `g` past the baseline, on a given strength.
+bool shakesAt(const float g, const uint8_t strength) {
+  armReaderAndShake(1, strength);
+  settle(Route::Reader);
+  const Motion motion[] = {{g, 0.0f, 1.0f, 0.0f}};
+  return play(Route::Reader, motion, 1).shakes == 1;
+}
+
+void shakeStrengthSetsThePeak() {
+  // Light 1100 mg, Medium 1200 mg, Strong 1700 mg of jolt; one snap is enough.
+  expect(shakesAt(1.15f, 0), "shake-strength", "Light must take a 1.15 g snap");
+  expect(!shakesAt(1.05f, 0), "shake-strength", "Light must ignore a 1.05 g snap");
+  expect(shakesAt(1.25f, 1), "shake-strength", "Medium must take a 1.25 g snap");
+  expect(!shakesAt(1.15f, 1), "shake-strength", "Medium must ignore a 1.15 g snap");
+  expect(shakesAt(1.75f, 2), "shake-strength", "Strong must take a 1.75 g snap");
+  expect(!shakesAt(1.65f, 2), "shake-strength", "Strong must ignore a 1.65 g snap");
+  expect(!shakesAt(1.15f, 9) && shakesAt(1.25f, 9), "shake-strength", "an unknown strength must behave as Medium");
+}
+
+// ---- Replay of three hand-held X3 runs (shake-replay.csv.gz, IMU_LOG at the firmware poll).
+// Run 1: yen still, nghieng-* page-turn flicks, lac-* ten snaps each (lac-nhe was shaken two
+// or three times a go), di-lai walking, dat-ban put down hard and picked up. Run 2, on a menu:
+// yen2, gat ten row nods, cam-len-ban ten pick-ups from a table, cam-len-dui ten from the lap,
+// lac1-* one snap each (lac1-nhe and lac1-manh hold nine clear snaps each). Run 3: the same on
+// a menu (gat3, cam-len-ban3, cam-len-dui3, nghieng-the3 tab flicks, lac1-vua3, lac1-manh3),
+// then in a book: lat-trang3 page flicks, cam-len-dui-sach3 pick-ups from the lap.
+struct ReplaySample {
+  std::string segment;
+  unsigned long ms;
+  int ax, ay, az, gx, gy;
+};
+
+std::vector<ReplaySample> loadReplay(const char* path) {
+  std::vector<ReplaySample> samples;
+  FILE* file = path ? std::fopen(path, "r") : nullptr;
+  if (!file) return samples;
+  char line[160];
+  while (std::fgets(line, sizeof(line), file)) {
+    char segment[32];
+    ReplaySample s{};
+    if (line[0] == '#' || std::sscanf(line, "%31[^,],%lu,%d,%d,%d,%d,%d", segment, &s.ms, &s.ax, &s.ay, &s.az,
+                                      &s.gx, &s.gy) != 7)
+      continue;
+    s.segment = segment;
+    samples.push_back(s);
+  }
+  std::fclose(file);
+  return samples;
+}
+
+void holdSample(const ReplaySample& s) {
+  imu.ax = static_cast<float>(s.ax) / 1000.0f;
+  imu.ay = static_cast<float>(s.ay) / 1000.0f;
+  imu.az = static_cast<float>(s.az) / 1000.0f;
+  imu.gx = static_cast<float>(s.gx);
+  imu.gy = static_cast<float>(s.gy);
+}
+
+enum class Screen { Reader, Menu };
+
+// A menu as the second run had it: side flicks step tabs, up/down flicks (Light) move rows.
+void screenTick(const Screen screen) {
+  if (screen == Screen::Reader) {
+    runReaderTick();
+    return;
+  }
+  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+}
+
+// The sensor woken and settled on the segment's first sample, then every sample at
+// its own poll time.
+Counts replaySegment(const std::vector<ReplaySample>& all, const std::string& segment, const uint8_t shakeAction,
+                     const uint8_t strength, const Screen screen = Screen::Reader) {
+  armReaderAndShake(shakeAction, strength);
+  SETTINGS.tiltPageTurn =
+      screen == Screen::Reader ? CrossPointTiltPageTurn::TILT_NORMAL : CrossPointTiltPageTurn::TILT_OFF;
+  SETTINGS.tiltStrengthV = 0;
+  resetSensor();
+  Counts counts;
+  bool started = false;
+  for (const auto& s : all) {
+    if (s.segment != segment) continue;
+    holdSample(s);
+    if (!started) {
+      for (fakeMillis = s.ms - 800; fakeMillis < s.ms; fakeMillis += 50) screenTick(screen);
+      started = true;
+    }
+    fakeMillis = s.ms;
+    screenTick(screen);
+    collect(counts);
+  }
+  for (int i = 0; i < 12; ++i) {
+    fakeMillis += 50;
+    screenTick(screen);
+    collect(counts);
+  }
+  SETTINGS.tiltStrengthV = 1;
+  return counts;
+}
+
+void handHeldRunReplays(const char* path) {
+  const auto samples = loadReplay(path);
+  if (!expect(samples.size() > 18000, "replay", "all three hand-held runs must load")) return;
+  struct Expected {
+    const char* segment;
+    int shakes[3];  // Light, Medium, Strong
+  };
+  // Light takes every clear snap, Medium all but one 1178 mg snap, Strong wants 1700 mg.
+  // lac-nhe of the first run was shaken on and on, which is not one snap.
+  constexpr Expected SEGMENTS[] = {
+      {"yen", {0, 0, 0}},          {"nghieng-nhe", {0, 0, 0}},  {"nghieng-vua", {0, 0, 0}},
+      {"nghieng-manh", {0, 0, 0}}, {"lac-nhe", {7, 7, 7}},      {"lac-vua", {10, 10, 10}},
+      {"lac-manh", {10, 10, 10}},  {"di-lai", {0, 0, 0}},       {"dat-ban", {0, 0, 0}},
+      {"yen2", {0, 0, 0}},         {"gat", {0, 0, 0}},          {"cam-len-ban", {0, 0, 0}},
+      {"cam-len-dui", {0, 0, 0}},  {"lac1-nhe", {9, 9, 7}},     {"lac1-vua", {10, 10, 9}},
+      {"lac1-manh", {9, 9, 9}},    {"gat3", {0, 0, 0}},         {"cam-len-ban3", {0, 0, 0}},
+      {"cam-len-dui3", {0, 0, 0}}, {"nghieng-the3", {0, 0, 0}}, {"lac1-vua3", {10, 9, 6}},
+      {"lac1-manh3", {10, 10, 10}}, {"lat-trang3", {0, 0, 0}},  {"cam-len-dui-sach3", {0, 0, 0}}};
+  for (const auto& e : SEGMENTS) {
+    const bool shaking = std::string(e.segment).rfind("lac", 0) == 0;
+    const Counts off = replaySegment(samples, e.segment, 0, 1);
+    for (uint8_t strength = 0; strength < 3; ++strength) {
+      const Counts on = replaySegment(samples, e.segment, 1, strength);
+      char label[64];
+      std::snprintf(label, sizeof(label), "replay %s strength %u", e.segment, strength);
+      expect(on.shakes == e.shakes[strength], label, "shakes as measured");
+      if (shaking) {
+        expect(on.forward + on.back == 0, label, "no page turns while shaking");
+      } else {
+        expect(on.forward + on.back == off.forward + off.back, label, "shake on keeps every page turn of shake Off");
+      }
+    }
+  }
+  const auto turns = [&](const char* segment) {
+    const Counts c = replaySegment(samples, segment, 0, 1);
+    return c.forward + c.back;
+  };
+  expect(turns("nghieng-nhe") == 2 && turns("nghieng-vua") == 10 && turns("nghieng-manh") == 10, "replay",
+         "the replayed flicks turn the pages the device turned");
+
+  // On a menu: nods move rows, pick-ups move nothing, side flicks step tabs.
+  const auto menu = [&](const char* segment) { return replaySegment(samples, segment, 1, 1, Screen::Menu); };
+  for (const char* segment : {"gat", "gat3"}) {
+    const Counts c = menu(segment);
+    char label[64];
+    std::snprintf(label, sizeof(label), "replay menu %s", segment);
+    expect(c.up + c.down >= 9 && c.forward + c.back == 0 && c.shakes == 0, label,
+           "nine of ten nods move a row, no tab, no shake");
+  }
+  Counts c = menu("nghieng-the3");
+  expect(c.forward + c.back >= 9 && c.up + c.down == 0, "replay menu nghieng-the3", "nine of ten tab flicks step a tab");
+  for (const char* segment :
+       {"cam-len-ban", "cam-len-dui", "cam-len-ban3", "cam-len-dui3", "dat-ban", "di-lai", "yen", "yen2"}) {
+    c = menu(segment);
+    char label[64];
+    std::snprintf(label, sizeof(label), "replay menu %s", segment);
+    expect(c.up + c.down + c.forward + c.back == 0, label, "picking up or carrying moves no row and no tab");
+  }
+  c = menu("nghieng-vua");
+  expect(c.forward + c.back == 10, "replay menu nghieng-vua", "each side flick steps a tab once it comes back");
+}
+
+void shakeOffLeavesTiltAsItWas() {
+  armReaderAndShake(0);
+  settle(Route::Reader);
+  imu.gx = 400.0f;
+  fakeMillis += 50;
+  runReaderTick();
+  expect(halTiltSensor.wasTiltedForward(), "shake-off", "with shake Off a flick turns the page on its own poll");
+  settle(Route::Reader);
+  const Counts c = play(Route::Reader, SHAKE, 4);
+  expect(c.shakes == 0, "shake-off", "with shake Off nothing is reported as a shake");
+}
+
+void shakeKeepsTheSensorAwakeOnEveryScreen() {
+  // Every tilt setting Off, a plain screen: the sensor sleeps unless shake is on.
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  SETTINGS.shakeAction = 0;
+  settle(Route::Plain);
+  expect(imu.wakeCalls == 0, "shake-awake", "with shake Off and no tilt the sensor stays in standby");
+
+  SETTINGS.shakeAction = 1;
+  settle(Route::Plain);
+  const int sleepsAfterBegin = imu.sleepCalls;
+  expect(imu.wakeCalls == 1 && halTiltSensor.isAwake(), "shake-awake", "shake alone wakes the sensor once");
+  const Counts c = play(Route::Plain, SHAKE, 4);
+  expect(c.shakes == 1, "shake-awake", "a shake is seen on a screen with no tilt at all");
+  expect(imu.wakeCalls == 1 && imu.sleepCalls == sleepsAfterBegin, "shake-awake", "and the sensor kept sampling");
+
+  SETTINGS.shakeAction = 0;
+  fakeMillis += 50;
+  tick(Route::Plain);
+  expect(imu.sleepCalls == sleepsAfterBegin + 1 && !halTiltSensor.isAwake(), "shake-awake",
+         "turning shake Off puts the sensor back in standby");
 }
 
 }  // namespace
@@ -329,7 +744,7 @@ bool Imu::begin() {
 
 bool Imu::read(Sample& out) {
   ++imu.readCalls;
-  out = Sample{0.0f, 0.0f, 0.0f, imu.gx, imu.gy, imu.gz};
+  out = Sample{imu.ax, imu.ay, imu.az, imu.gx, imu.gy, imu.gz};
   return begun_ && imu.readOk;
 }
 
@@ -347,7 +762,7 @@ bool Imu::wake() {
 
 @MAIN_TILT_ROUTE@
 
-int main() {
+int main(int argc, char** argv) {
   tabReachesForwardTiltAfterOneWake();
   readerKeepsItsExistingOwner();
   plainActivitySleepsExactlyOnce();
@@ -358,6 +773,15 @@ int main() {
   verticalChannelFollowsOrientationLikeTheHorizontalOne();
   readerNeverSeesTheVerticalChannel();
   flickStrengthSetsEachAxisThreshold();
+  aFlickIsNotAShake();
+  aFlickWaitsOnePollAtMost();
+  aShakeIsNotAPageTurn();
+  shakesRespectTheRest();
+  walkingIsNotAShake();
+  shakeStrengthSetsThePeak();
+  handHeldRunReplays(argc > 1 ? argv[1] : nullptr);
+  shakeOffLeavesTiltAsItWas();
+  shakeKeepsTheSensorAwakeOnEveryScreen();
   std::printf("tilt_sensor_ownership: %d failed assertions\n", failures);
   return failures == 0 ? 0 : 1;
 }

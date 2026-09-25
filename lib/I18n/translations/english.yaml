@@ -822,6 +822,12 @@ STR_TILT_LIGHT: "Light"
 
 STR_TILT_STRONG: "Strong"
 
+STR_SHAKE_ACTION: "Hard shake"
+
+STR_SHAKE_STRENGTH: "Shake strength"
+
+STR_SHAKE_BACK: "Back"
+
 STR_SLEEP_BW_REFRESH: "Black and white refresh before sleep"
 
 STR_CHAPTER_NAME: "Chapter name"

@@ -59,6 +59,7 @@
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
+#include "QuickAction.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
@@ -841,6 +842,10 @@ static bool visitDiagnosticSetting(const String& key, Visitor&& visitor) {
 static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
                                                    const bool foregroundActivityManagesTiltSensor) {
   halTiltSensor.setStrength(SETTINGS.tiltStrengthH, SETTINGS.tiltStrengthV);
+  halTiltSensor.configureShake(SETTINGS.shakeAction, SETTINGS.shakeStrength);
+  // Menus wait for a side flick to come back (picking the device up is not a tab
+  // step); the reader keeps page turns immediate.
+  halTiltSensor.confirmSideFlicks(!foregroundReader);
   if (foregroundReader) {
     // Row tilt belongs to the menu screens: the reader keeps the page-turn axis
     // and nothing else, so the vertical channel is disarmed on the way in.
@@ -851,6 +856,81 @@ static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
     halTiltSensor.update(CrossPointTiltPageTurn::TILT_OFF, SETTINGS.orientation, false);
   }
 }
+
+// Runs a short action on the screen in front, or nothing where it has no meaning there.
+static void runQuickAction(const uint8_t action, const quickaction::Trigger trigger) {
+  // Long enough for two 10 ms samples to agree, short of any hold action.
+  [[maybe_unused]] static constexpr uint16_t QUICK_PRESS_HOLD_MS = 60;
+  const quickaction::Outcome outcome =
+      quickaction::resolve(action, trigger, activityManager.isForegroundReaderActivity(), gpio.hasTouch());
+  switch (outcome) {
+    case quickaction::Outcome::Refresh:
+      LOG_DBG("MAIN", "Manual screen refresh triggered");
+      if (!activityManager.handleForcedRefresh()) {
+        RenderLock lock;
+        renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+      }
+      break;
+    case quickaction::Outcome::Sleep:
+      enterDeepSleep();
+      break;
+    case quickaction::Outcome::PageForward:
+      activityManager.pageTurn(true);
+      break;
+    case quickaction::Outcome::Back:
+    case quickaction::Outcome::Confirm:
+#ifndef SIMULATOR  // no motion sensor there, so no shake reaches this
+      // One short press of the key through the real input path, as if pressed.
+      gpio.injectPresses(outcome == quickaction::Outcome::Back ? SETTINGS.frontButtonBack : SETTINGS.frontButtonConfirm,
+                         QUICK_PRESS_HOLD_MS, 1, 0);
+#endif
+      break;
+    case quickaction::Outcome::None:
+      break;
+  }
+}
+
+#if defined(TENOR_PRESS_PROBE) && !defined(SIMULATOR)
+// CMD:CUR_LOG <s>: for the next <s> seconds, one fuel gauge line every 10 s (average and
+// instant current in mA, voltage, whether the motion sensor samples, the shake action),
+// kept in RAM too, so a run with the cable out is read back with CMD:CUR_LOG and no number.
+struct CurLogRow {
+  uint32_t ms;
+  int16_t avgMa, curMa;
+  uint16_t mv;
+  uint8_t imuAwake, shakeAction;
+};
+static CurLogRow curLogRows[96];
+static uint8_t curLogCount = 0;
+static unsigned long curLogUntilMs = 0, curLogNextMs = 0;
+
+static void printCurLogRow(const CurLogRow& r) {
+  logSerial.printf("CUR:t=%lu,avg=%d,cur=%d,mv=%u,imu=%u,shake=%u\n", static_cast<unsigned long>(r.ms), r.avgMa,
+                   r.curMa, r.mv, r.imuAwake, r.shakeAction);
+}
+
+static void curLogTick() {
+  if (curLogUntilMs == 0 || static_cast<long>(millis() - curLogNextMs) < 0) return;
+  if (static_cast<long>(millis() - curLogUntilMs) > 0) {
+    curLogUntilMs = 0;
+    return;
+  }
+  curLogNextMs = millis() + 10000;
+  const uint8_t addr = BoardConfig::ACTIVE.batteryGauge.gaugeAddr;
+  const auto reg16 = [addr](const uint8_t reg) -> int {
+    Wire.beginTransmission(addr);
+    Wire.write(reg);
+    if (addr == 0 || Wire.endTransmission(false) != 0 || Wire.requestFrom(addr, uint8_t{2}, uint8_t{1}) < 2) return -1;
+    const int lo = Wire.read();
+    return lo | (Wire.read() << 8);
+  };
+  const CurLogRow row{static_cast<uint32_t>(millis()), static_cast<int16_t>(reg16(0x14)),
+                      static_cast<int16_t>(reg16(0x0C)), static_cast<uint16_t>(reg16(0x08)),
+                      static_cast<uint8_t>(halTiltSensor.isAwake()), SETTINGS.shakeAction};
+  if (curLogCount < sizeof(curLogRows) / sizeof(curLogRows[0])) curLogRows[curLogCount++] = row;
+  printCurLogRow(row);
+}
+#endif
 
 #if defined(TENOR_GAUGE_LOG) && !defined(SIMULATOR)
 // Measurement build only: one fuel gauge line a minute while awake (and one at every boot), kept in
@@ -906,6 +986,9 @@ void loop() {
 #endif
 #if defined(TENOR_GAUGE_LOG) && !defined(SIMULATOR)
   gaugeLogTick();
+#endif
+#if defined(TENOR_PRESS_PROBE) && !defined(SIMULATOR)
+  curLogTick();
 #endif
 
 #if CROSSPOINT_BLE_HID_HOST
@@ -1477,6 +1560,34 @@ void loop() {
         const auto st = battery.readStatus();
         logSerial.printf("BATT:soc=%u,mv=%u,charging=%d,shown=%u,t=%lu\n", st.percentage, st.millivolts, st.charging,
                          powerManager.getBatteryPercentage(), millis());
+      } else if (cmd.startsWith("IMU_LOG ")) {
+        // CMD:IMU_LOG <s> [fast]: raw motion samples for <s> seconds (at most 600). Plain: one
+        // "IMU:" line per poll the firmware really makes (50 ms), while every screen and the
+        // shake and tilt channels keep running. fast: blocks this loop and reads at 224 Hz.
+        const unsigned long seconds = std::min(600L, std::max(0L, cmd.substring(8).toInt()));
+        if (cmd.endsWith(" fast")) {
+          halTiltSensor.probeFastLog(seconds * 1000UL);
+        } else {
+          halTiltSensor.probeLogUntil(millis() + seconds * 1000UL);
+          logSerial.printf("IMU_LOG:seconds=%lu,shake=%u,strength=%u,tilt=%u,t=%lu\n", seconds, SETTINGS.shakeAction,
+                           SETTINGS.shakeStrength, SETTINGS.tiltPageTurn, millis());
+        }
+      } else if (cmd.startsWith("IMU_MARK ")) {
+        // CMD:IMU_MARK <label>: names the part of an IMU_LOG run that follows (do-lac/phan_tich_lac.py).
+        logSerial.printf("IMU_MARK:%lu,%s\n", millis(), cmd.substring(9).c_str());
+#ifndef SIMULATOR
+      } else if (cmd.startsWith("CUR_LOG")) {
+        const long seconds = cmd.length() > 8 ? cmd.substring(8).toInt() : 0;
+        if (seconds > 0) {
+          curLogCount = 0;
+          curLogNextMs = millis();
+          curLogUntilMs = millis() + static_cast<unsigned long>(seconds) * 1000UL;
+          logSerial.printf("CUR_LOG:seconds=%ld,shake=%u,t=%lu\n", seconds, SETTINGS.shakeAction, millis());
+        } else {
+          for (uint8_t i = 0; i < curLogCount; ++i) printCurLogRow(curLogRows[i]);
+          logSerial.printf("CUR_LOG_END:rows=%u\n", curLogCount);
+        }
+#endif
       } else if (cmd == "GAUGE") {
         // CMD:GAUGE: the BQ27220 registers behind the percentage, read once from this loop.
         const uint8_t addr = BoardConfig::ACTIVE.batteryGauge.gaugeAddr;
@@ -1741,14 +1852,12 @@ void loop() {
   }
 #endif
 
-  // Refresh screen when power button is short-pressed with FORCE_REFRESH setting.
-  if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FORCE_REFRESH &&
-      mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
-    LOG_DBG("MAIN", "Manual screen refresh triggered");
-    if (!activityManager.handleForcedRefresh()) {
-      RenderLock lock;
-      renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-    }
+  // Short power press and hard shake: the same actions, one decision (quickaction::resolve).
+  if (mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
+    runQuickAction(SETTINGS.shortPwrBtn, quickaction::Trigger::PowerRelease);
+  }
+  if (halTiltSensor.wasShaken()) {
+    runQuickAction(quickaction::shakeAsPowerAction(SETTINGS.shakeAction), quickaction::Trigger::Shake);
   }
 
   // Refresh the battery icon when USB is plugged or unplugged.
