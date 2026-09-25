@@ -1,8 +1,8 @@
 """KIỂM: tuỳ chọn "Thức dậy là vào sách" (wakeIntoBook).
 
-Thức dậy từ ngủ sâu bằng nút nguồn: bật tuỳ chọn thì vào thẳng sách đang mở,
-tắt thì về Trang chủ như cũ. Ngủ từ màn khác, hoặc sách đã bị xoá thì vẫn về
-Trang chủ. Khung chạy theo test_wake_refresh.py: state.json showBootScreen
+Thức dậy từ ngủ sâu bằng nút nguồn: bật tuỳ chọn thì vào thẳng cuốn đọc gần
+nhất, dù máy ngủ từ trong sách hay từ màn khác; tắt thì về Trang chủ như cũ.
+Sách đã bị xoá thì về Trang chủ. Khung chạy theo test_wake_refresh.py: state.json showBootScreen
 false + CROSSPOINT_SIM_WAKE_REASON=power.
 """
 
@@ -106,13 +106,13 @@ class WakeIntoBookTest(unittest.TestCase):
         self.assertNotIn("EpubReader", self.da_vao(log),
                          f"tat tuy chon ma van vao trinh doc\n{log[-4000:]}")
 
-    # --- 4. ngủ từ màn khác: về Trang chủ -----------------------------------
-    def test_4_ngu_tu_man_khac_thi_ve_trang_chu(self):
+    # --- 4. ngủ từ màn khác (Trang chủ, tự ngủ): vẫn vào cuốn đọc gần nhất ---
+    def test_4_ngu_tu_man_khac_van_vao_sach_gan_nhat(self):
         log = self.chay(wake_into_book=1, last_sleep_from_reader=False)
-        self.assertIn("Home", self.da_vao(log), f"khong ve Trang chu\n{log[-4000:]}")
+        vao = self.da_vao(log)
 
-        self.assertNotIn("EpubReader", self.da_vao(log),
-                         f"ngu tu man khac ma van vao trinh doc\n{log[-4000:]}")
+        self.assertIn("EpubReader", vao, f"ngu tu man khac thi khong vao sach\n{log[-4000:]}")
+        self.assertNotIn("Home", self.truoc(vao, "EpubReader"), "Trang chu khong duoc hien truoc trinh doc")
 
     # --- 5. sách đã bị xoá khỏi thẻ: về Trang chủ ---------------------------
     def test_5_sach_da_xoa_thi_ve_trang_chu(self):
