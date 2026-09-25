@@ -98,6 +98,7 @@ void stopDnsServer() {
 static int fakeServerCalls = 0;
 static int fakeServerStops = 0;
 static bool fakeServerCompleted = false;
+static int fakeServerCancels = 0;
 static bool applierPresentAtBegin = false;
 struct FakeServer {
   bool inHandler = false;
@@ -106,8 +107,10 @@ struct FakeServer {
   int calls = 0;
   bool completed = false;
   std::function<bool(uint8_t)> uiTextSizeApplier;
+  std::function<bool()> uploadCancel;
   bool isRunning() const { return running; }
   void setUiTextSizeApplier(std::function<bool(uint8_t)> applier) { uiTextSizeApplier = std::move(applier); }
+  void setUploadCancel(std::function<bool()> cancel) { uploadCancel = std::move(cancel); }
   void begin() {
     applierPresentAtBegin = static_cast<bool>(uiTextSizeApplier);
     running = true;
@@ -116,7 +119,16 @@ struct FakeServer {
     ++calls;
     ++fakeServerCalls;
     inHandler = true;
-    vTaskDelay(handlerMs);
+    // An upload arriving in 10 ms chunks; like the real server, each chunk asks the owner
+    // whether to drop it, and a drop ends the request early.
+    for (unsigned ms = 0; ms < handlerMs; ms += 10) {
+      if (uploadCancel && uploadCancel()) {
+        ++fakeServerCancels;
+        inHandler = false;
+        return;
+      }
+      vTaskDelay(handlerMs - ms < 10 ? handlerMs - ms : 10);
+    }
     completed = true;
     fakeServerCompleted = true;
     inHandler = false;
@@ -193,7 +205,10 @@ void run(const std::string& name) {
   HalGPIO gpio;
   if (name == "physical-pulse-in-handler") {
     CrossPointWebServerActivity activity;
-    require(activity.backLatch.start(gpio, 0), "sampler start failed");
+    // The production start: it wires the upload cancel to the latch and starts the sampler.
+    activity.state = WebServerActivityState::AP_STARTING;
+    activity.startWebServer();
+    require(activity.backLatch.active(), "sampler start failed");
     settle();
     activity.mappedInput.update();
     std::thread pulse([] { vTaskDelay(35); tap(0, 80); });
@@ -208,7 +223,9 @@ void run(const std::string& name) {
               << activity.mappedInput.physical.buttonPressStart << " main_release="
               << activity.mappedInput.physical.buttonPressFinish << " exits=" << activity.exits << '\n';
     require(activity.exits == 1, "physical Back entirely inside handler was lost");
-    require(fakeServerCompleted, "upload handler was interrupted before completion");
+    // Back inside a running upload drops it rather than waiting for it to finish.
+    require(!fakeServerCompleted && fakeServerCancels == 1, "Back waited for the upload to finish");
+    require(millis() - before < 270, "the upload held the loop past the Back tap");
     require(fakeServerCalls == 1, "another HTTP request ran before pending exit");
     require(!activity.webServer && fakeServerStops == 1 && dnsStops == 1,
             "Back exit skipped synchronous server or DNS cleanup");
