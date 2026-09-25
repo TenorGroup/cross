@@ -24,6 +24,25 @@ int main() {
     require(popupCount == 0, "sub-deadline restore painted indexing popup");
     require(r.pagesUntilFullRefresh == 5, "sub-deadline restore changed refresh cadence");
   });
+  // Presses queued behind a paint ran past the laid-out pages. Each page on the way was laid out,
+  // then loaded, warmed and drawn only to be dropped before the panel: ~400 ms a page (X3 r03).
+  test("a turn queued behind the paint stops it once its page is laid out", [] {
+    for (const char* waiting : {static_cast<const char*>(nullptr), "queued"}) {
+      EpubReaderActivity r; r.section->building = false;
+      r.section->currentPage = r.section->pageCount = r.section->oldPages = 30;
+      r.section->restoredPagesAfterStart = 30; r.section->startMs = 900;
+      r.nextScreen = waiting;
+      { RenderLock held; r.foreground(); }
+      require(r.section && r.section->pageCount > 30, "the page the turn stepped onto was not laid out");
+      if (!waiting) {
+        require(!r.paintDropped && r.repositions == 1, "a paint with nothing queued behind it stopped");
+        continue;
+      }
+      require(r.paintDropped, "a page the queue has left went on to be loaded and drawn");
+      require(r.repositions == 0, "the paint went past the layout of a page the queue has left");
+      require(r.progressSaveDeferred, "the dropped paint did not leave its progress write to the next one");
+    }
+  });
   test("15000ms restore with successful first tick stays silent", [] {
     EpubReaderActivity r; r.section->building = false;
     r.section->currentPage = r.section->pageCount = r.section->oldPages = 30;

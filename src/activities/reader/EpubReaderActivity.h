@@ -51,6 +51,12 @@ class EpubReaderActivity final : public ReaderActivity {
   unsigned long pageTurnDuration = 0UL;
   // Atomic: the render task reads it to drop a paint nobody will see (nextScreenWaiting).
   std::atomic<int8_t> pendingManualTurn{0};
+  // When the last page turn press came in. A text page waits for the panel until
+  // TURN_BURST_HOLD_MS after it, so the next press of a burst drops the page and one refresh
+  // shows where the burst ends. A lone press pays what is left of the window after the page is
+  // laid out and drawn: the X3 took 207-250 ms to get there (r03).
+  std::atomic<unsigned long> lastTurnPressMs{0};
+  static constexpr unsigned long TURN_BURST_HOLD_MS = 250;
   // Why the page being painted is about to be replaced (a queued turn, a chapter jump waiting for
   // the render lock, the reader closing), or nullptr. Before anything reaches the panel any of these
   // drops the paint. Once the page is readable only leaving it (Back, a held chapter jump) cuts the

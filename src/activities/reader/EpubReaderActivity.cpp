@@ -1378,6 +1378,7 @@ void EpubReaderActivity::loop() {
   currentTurnTrace = detectTurnTrace((touch.prev || touch.next) ? "touch" : turns.fromTilt ? "tilt" : "button",
                                      !prevPageTriggered);
 #endif
+  lastTurnPressMs.store(millis(), std::memory_order_relaxed);
   // Anything still queued goes first, so a new press joins the queue behind it, and so does a
   // press while the page on screen still waits for its layout.
   if (turnGuardActive || pendingManualTurn != 0 || pageAwaitsLayout()) {
@@ -2475,6 +2476,22 @@ void EpubReaderActivity::renderBook() {
     }
   }
 
+  // A turn queued behind this one (or Back, or a jump) leads past the page just laid out. It goes
+  // no further than its layout: loading it, warming its glyphs and drawing it only to drop it
+  // before the panel cost ~400 ms a page when queued turns ran past the laid-out pages (X3 r03).
+  if (const char* reason = nextScreenWaiting()) {
+    LOG_DBG("ERS", "Paint dropped before display: %s", reason);
+#ifdef TENOR_TURN_TRACE
+    tracePaint("ABORT", reason);
+    logTurnTrace("RENDERED", appliedTurnTrace, "dropped");
+    appliedTurnTrace = {};
+#endif
+    paintDropped.store(true, std::memory_order_release);
+    progressSaveDeferred.store(true, std::memory_order_release);
+    lastRenderCompleteMs = millis();
+    return;
+  }
+
   applyDeferredReposition();
 
   renderer.clearScreen();
@@ -2856,6 +2873,17 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // lead: one refresh instead of this page's ~1.2 s and then the next. Image pages already showed
   // their placeholder and keep their paint.
   if (!pageHasImages) {
+    // The first press of a burst reached the panel before the second came (X3 r03: 3 ms before
+    // it), and the burst took two refreshes. The page waits out the burst window of the last press.
+    [[maybe_unused]] bool held = false;
+    while (!nextScreenWaiting() &&
+           millis() - lastTurnPressMs.load(std::memory_order_relaxed) < TURN_BURST_HOLD_MS) {
+      held = true;
+      delay(5);
+    }
+#ifdef TENOR_TURN_TRACE
+    if (held) tracePaint("BURST_HOLD_END", "text");
+#endif
     if (const char* reason = nextScreenWaiting()) {
       LOG_DBG("ERS", "Paint dropped before display: %s", reason);
 #ifdef TENOR_TURN_TRACE

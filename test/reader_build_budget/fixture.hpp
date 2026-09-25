@@ -341,6 +341,11 @@ struct EpubReaderActivity : ReaderActivity {
   void stayAfterStarvedJump();
   void showBuildPopup(GfxRenderer&, int&);
   void loadPageForRender();
-  bool applyDeferredReposition() { return false; }
+  // What renderBook goes on to after the layout: the reposition, then loading and drawing the page.
+  int repositions = 0;
+  bool applyDeferredReposition() { ++repositions; return false; }
+  // Why the page being painted is about to be replaced (EpubReaderActivity::nextScreenWaiting).
+  const char* nextScreen = nullptr;
+  const char* nextScreenWaiting() const { return nextScreen; }
 @@LAYOUT@@
 };

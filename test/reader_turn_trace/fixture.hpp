@@ -158,6 +158,8 @@ struct EpubReaderActivity : ReaderActivity {
   int chapters = 2;
   // Cleared by onPause: the screen over the reader draws into the framebuffer.
   std::atomic<bool> pageFrameShown{false};
+  // Stamped by every page turn press (EpubReaderActivity::loop).
+  std::atomic<unsigned long> lastTurnPressMs{0};
 @@EPUB_FIELDS@@
   void layout(const int page, const int pages, const bool building) {
     if (!section) section = std::make_unique<Section>();
