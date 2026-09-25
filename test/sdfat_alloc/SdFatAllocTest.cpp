@@ -290,10 +290,17 @@ TEST(SdFatAlloc, AnyHintStillAllocatesFreeClustersOnly) {
     ASSERT_TRUE(card.fill(("/r" + std::to_string(round)).c_str(), 32ull << 20)) << "hint " << hint;
     card.check({"r1", "r2", "r3", "r4", "r5"});
   }
-  // Broken lead signature: the sector is never written again.
+  // A lead signature broken while mounted (another device wrote the card, a bad sector): the
+  // write-back reads the sector again and leaves it alone. Then after a remount as well.
+  ASSERT_TRUE(card.write("/pre.bin", "p", 1));
   Sector broken = card.device.peek(card.fsInfoSector());
   broken[0] ^= 0xFF;
   card.device.poke(card.fsInfoSector(), broken);
+  card.device.logWrites = true;
+  ASSERT_TRUE(card.fill("/mounted.bin", 64ull << 20));
+  card.device.logWrites = false;
+  for (const auto& w : card.device.writes) EXPECT_NE(w.sector, card.fsInfoSector());
+  card.device.writes.clear();
   card.remount();
   card.device.logWrites = true;
   ASSERT_TRUE(card.fill("/big.bin", 64ull << 20));
@@ -431,6 +438,7 @@ TEST(SdFatAlloc, SyncBeforePowerCutPutsCachedSectorsOnTheCard) {
     const Sector fat = card.device.peek(card.volume.fatStartSector() + cluster * 2 / 512);
     const uint32_t entry = fat[cluster * 2 % 512] | fat[cluster * 2 % 512 + 1] << 8;
     EXPECT_EQ(memcmp(data.data(), "abc", 3) == 0, synced) << "data sector, synced=" << synced;
-    EXPECT_EQ(entry != 0, synced) << "FAT entry, synced=" << synced;
+    // With one shared cache the FAT sector already went out when the data sector came in.
+    if (synced) EXPECT_NE(entry, 0u) << "FAT entry";
   }
 }

@@ -90,8 +90,8 @@ CPP = [
         """//------------------------------------------------------------------------------
 // Writes FSInfo's next-free hint once the search start has moved 512 clusters on, or moved back,
 // so the next mount starts near where allocation stopped. What the data cache holds goes out
-// first; the FSInfo sector is changed only in its next-free field, and only while its signatures
-// hold. It goes out with the data cache.
+// first, the FSInfo sector is read from the card again, and it is changed only in its next-free
+// field and only while its signatures hold. It goes out with the data cache.
 __attribute__((noinline)) void FatPartition::noteNextFree(Cluster_t cluster) {
   if (!m_fsInfoSector) {
     return;
@@ -104,6 +104,8 @@ __attribute__((noinline)) void FatPartition::noteNextFree(Cluster_t cluster) {
   if (!cache->sync()) {
     return;
   }
+  // From the card, not a copy the cache may still hold.
+  cache->invalidate();
   FsInfo_t* fsi = reinterpret_cast<FsInfo_t*>(
       dataCachePrepare(m_fsInfoSector, FsCache::CACHE_FOR_READ));
   if (!fsi) {
