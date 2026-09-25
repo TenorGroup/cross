@@ -19,6 +19,8 @@ constexpr char itemCacheFile[] = "/.items.bin";
 // std::deque aborts the firmware when it cannot get a node, so growth stops
 // with a clean parse failure while this much heap is still free.
 constexpr uint32_t ITEM_INDEX_MIN_FREE_HEAP = 16 * 1024;
+constexpr size_t ITEM_WRITE_BUFFER = 4096;
+constexpr size_t ITEM_READ_WINDOW = 1024;
 
 bool startsWithImageMediaType(const std::string& mediaType) {
   constexpr size_t prefixLen = sizeof(MEDIA_TYPE_IMAGE_PREFIX) - 1;
@@ -36,6 +38,14 @@ bool startsWithImageMediaType(const std::string& mediaType) {
   return true;
 }
 }  // namespace
+
+// One length-prefixed string of .items.bin at the lookup window's position.
+bool ContentOpfParser::readItemString(std::string& value) {
+  uint32_t length = 0;
+  if (itemIn->read(&length, sizeof(length)) != sizeof(length) || length > 4096) return false;
+  value.resize(length);
+  return length == 0 || itemIn->read(value.data(), length) == length;
+}
 
 void ContentOpfParser::failIo() {
   failed = true;
@@ -57,6 +67,8 @@ bool ContentOpfParser::setup() {
 
 ContentOpfParser::~ContentOpfParser() {
   destroyXmlParser(parser);
+  itemOut.reset();
+  itemIn.reset();
   if (tempItemStore) {
     tempItemStore.close();
   }
@@ -145,6 +157,9 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
       self->failIo();
       return;
     }
+    // Buffer OOM is fine: the writer passes writes straight through.
+    self->itemOut = makeUniqueNoThrow<serialization::BufferedFileWriter>(self->tempItemStore, ITEM_WRITE_BUFFER);
+    if (!self->itemOut) self->failIo();
     return;
   }
 
@@ -152,6 +167,11 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
     self->state = IN_SPINE;
     if (!Storage.openFileForRead("COF", self->cachePath + itemCacheFile, self->tempItemStore)) {
       LOG_ERR("COF", "Couldn't open temp items file for reading");
+      self->failIo();
+      return;
+    }
+    self->itemIn = makeUniqueNoThrow<serialization::BufferedFileReader>(self->tempItemStore, ITEM_READ_WINDOW);
+    if (!self->itemIn) {
       self->failIo();
       return;
     }
@@ -221,13 +241,14 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
 #endif
     // Capture the offset, then publish an index entry only after both fields
     // are complete. The same metadata budget is enforced by the cache reader.
-    const uint32_t itemOffset = static_cast<uint32_t>(self->tempItemStore.position());
-    if (itemId.size() > 4096 || href.size() > 4096 ||
-        !serialization::writeString(self->tempItemStore, itemId) ||
-        !serialization::writeString(self->tempItemStore, href)) {
+    // A failed write shows when the manifest ends and the writer is flushed.
+    const uint32_t itemOffset = static_cast<uint32_t>(self->itemOut->position());
+    if (itemId.size() > 4096 || href.size() > 4096) {
       self->failIo();
       return;
     }
+    serialization::writeString(*self->itemOut, itemId);
+    serialization::writeString(*self->itemOut, href);
 #ifdef TENOR_PRESS_PROBE
     indexProbe.manifestIoUs += micros() - ioStarted;
     indexProbe.manifestItems++;
@@ -309,14 +330,13 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
 
             // Check for match (may need to check a few due to hash collisions)
             while (it != self->itemIndex.end() && it->idHash == targetHash) {
-              serialization::CheckedReader reader(self->tempItemStore);
               std::string itemId;
-              if (!reader.seek(it->fileOffset) || !reader.string(itemId)) {
+              if (!self->itemIn->seek(it->fileOffset) || !self->readItemString(itemId)) {
                 self->failIo();
                 return;
               }
               if (itemId == idref) {
-                if (!reader.string(href)) {
+                if (!self->readItemString(href)) {
                   self->failIo();
                   return;
                 }
@@ -328,14 +348,13 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
           } else {
             // Fallback linear scan, only reached when the index is empty (no manifest
             // items). The fast binary-search path above is used for all real manifests.
-            serialization::CheckedReader reader(self->tempItemStore);
-            if (!reader.seek(0)) {
+            if (!self->itemIn->seek(0)) {
               self->failIo();
               return;
             }
             std::string itemId;
-            while (reader.remaining()) {
-              if (!reader.string(itemId) || !reader.string(href)) {
+            while (self->itemIn->position() < self->tempItemStore.size()) {
+              if (!self->readItemString(itemId) || !self->readItemString(href)) {
                 self->failIo();
                 return;
               }
@@ -417,6 +436,7 @@ void XMLCALL ContentOpfParser::endElement(void* userData, const XML_Char* name) 
 
   if (self->state == IN_SPINE && xmlLocalNameEquals(name, "spine")) {
     self->state = IN_PACKAGE;
+    self->itemIn.reset();
     if (!self->tempItemStore.close()) self->failIo();
     return;
   }
@@ -429,6 +449,12 @@ void XMLCALL ContentOpfParser::endElement(void* userData, const XML_Char* name) 
 
   if (self->state == IN_MANIFEST && xmlLocalNameEquals(name, "manifest")) {
     self->state = IN_PACKAGE;
+    const bool written = self->itemOut && self->itemOut->flush();
+    self->itemOut.reset();
+    if (!written) {
+      self->failIo();
+      return;
+    }
     const bool synced = self->tempItemStore.sync();
     const bool closed = self->tempItemStore.close();
     if (!synced || !closed) self->failIo();

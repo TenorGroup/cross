@@ -330,3 +330,33 @@ TEST(HugeBookIndex, LargestBookThatFitsOpenHeap) {
   printf("HUGE_INDEX largest_split_open_heap fits=%d refused=%d\n", fits, refused);
   EXPECT_GE(fits, 5000);
 }
+
+// The OPF pass writes the manifest to .items.bin and looks every spine item up in it, between zip
+// reads sharing the card's one sector cache. X3 r08 (5.000 chapters): 0,7 s of manifest writes and
+// 0,9 s of lookups, one small card call per field. Both now go through buffers.
+TEST(HugeBookIndex, OpfPassReachesTheCardInBlocks) {
+  const Book book = makeBook(Kind::Split, 5000);
+  {
+    heapcap::Untracked guard;
+    Storage.files.clear();
+  }
+  cardCalls = {};
+  {
+    BookMetadataCache cache(cachePath);
+    ASSERT_TRUE(cache.beginWrite() && cache.beginContentOpfPass());
+    {
+      ContentOpfParser opf(cachePath, basePath, book.opf.size(), &cache);
+      ASSERT_TRUE(opf.setup() && feed(opf, book.opf));
+    }
+    ASSERT_TRUE(cache.endContentOpfPass());
+    ASSERT_EQ(cache.getSpineCount(), 5000);
+  }
+  printf("HUGE_INDEX opf_card_calls n=5000 reads=%zu writes=%zu seeks=%zu\n", cardCalls.reads, cardCalls.writes,
+         cardCalls.seeks);
+  // One card call per 1-4 KB block, not per field: 5.000 items used to take 20.000 writes and
+  // 25.000 reads and seeks.
+  EXPECT_LT(cardCalls.writes, 1000u);
+  EXPECT_LT(cardCalls.reads, 1500u);
+  EXPECT_LT(cardCalls.seeks, 1500u);
+}
+
