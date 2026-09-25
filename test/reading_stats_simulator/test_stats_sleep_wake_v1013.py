@@ -73,6 +73,8 @@ class Card:
         (self.store / "settings.json").write_text(json.dumps(values))
         (self.store / "state.json").write_text(
             json.dumps({"showBootScreen": False, "openEpubPath": open_path, "lastSleepFromReader": True}))
+        # The wake opens the book only while it is in Recent, as it is once it has been opened.
+        (self.store / "recent.json").write_text(json.dumps({"books": [{"path": open_path, "title": "Book"}]}))
 
     def run(self, before, after, extra_env=None, timeout=240):
         env = {k: v for k, v in os.environ.items() if not k.startswith("CROSSPOINT_SIM_")}

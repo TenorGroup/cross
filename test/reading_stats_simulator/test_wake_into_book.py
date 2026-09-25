@@ -29,7 +29,7 @@ class WakeIntoBookTest(unittest.TestCase):
     maxDiff = None
 
     def chay(self, wake_into_book, last_sleep_from_reader=True, open_path=SACH, dat_sach=True, script="4000:QUIT",
-             timeout=30):
+             timeout=30, trong_gan_day=True):
         tmp = tempfile.TemporaryDirectory(prefix="cross-wake-book-")
         self.addCleanup(tmp.cleanup)
         sd = Path(tmp.name)
@@ -44,6 +44,9 @@ class WakeIntoBookTest(unittest.TestCase):
             "openEpubPath": open_path,
             "lastSleepFromReader": last_sleep_from_reader,
         }))
+        # A book once opened is in Recent; the wake only reopens a book still there.
+        gan_day = [{"path": open_path, "title": "Sach"}] if trong_gan_day else []
+        (store / "recent.json").write_text(json.dumps({"books": gan_day}))
         env = {k: v for k, v in os.environ.items() if not k.startswith("CROSSPOINT_SIM_")}
         env.update(
             SDL_VIDEODRIVER="dummy",
@@ -121,6 +124,13 @@ class WakeIntoBookTest(unittest.TestCase):
 
         self.assertNotIn("EpubReader", self.da_vao(log),
                          f"sach da xoa ma van vao trinh doc\n{log[-4000:]}")
+
+    # --- 6. sách đã bị xoá khỏi Gần đây: về Trang chủ, không mở lại ---------
+    def test_6_sach_da_xoa_khoi_gan_day_thi_ve_trang_chu(self):
+        log = self.chay(wake_into_book=1, trong_gan_day=False)
+        self.assertIn("Home", self.da_vao(log), f"khong ve Trang chu\n{log[-4000:]}")
+        self.assertNotIn("EpubReader", self.da_vao(log),
+                         f"sach da xoa khoi Gan day ma van mo lai\n{log[-4000:]}")
 
 if __name__ == "__main__":
     unittest.main()

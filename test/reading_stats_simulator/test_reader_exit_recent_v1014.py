@@ -37,6 +37,8 @@ class ReaderExitRecentTest(unittest.TestCase):
             {"language": "EN", "clockHasBeenSynced": 1, "clockUtcOffsetQ": 48, "wakeIntoBook": 1}))
         (store / "state.json").write_text(
             json.dumps({"showBootScreen": False, "openEpubPath": BOOK, "lastSleepFromReader": True}))
+        # The wake opens the book only while it is in Recent, as it is once it has been opened.
+        (store / "recent.json").write_text(json.dumps({"books": [{"path": BOOK, "title": "Book"}]}))
         return sd
 
     def run_card(self, sd, script):
