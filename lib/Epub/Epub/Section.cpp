@@ -410,13 +410,14 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
 #endif
         BUILD_PROBE_SCOPE(PageWrite);
         const uint32_t position = this->onPageComplete(std::move(page));
-        const PageLutEntry entry{position, paragraphIndex, listItemIndex, visibleTextOffset};
-        if (position == 0 || !ctxPtr->lut.seek(static_cast<size_t>(builtPageCount_) * sizeof(entry)) ||
-            ctxPtr->lut.write(&entry, sizeof(entry)) != sizeof(entry)) {
+        if (position == 0 ||
+            (ctxPtr->lutPendingCount == BuildContext::LUT_PENDING_MAX && !flushLutPending(*ctxPtr))) {
           ctxPtr->failed = true;
           ctxPtr->parser->failBuild();
           return;
         }
+        ctxPtr->lutPending[ctxPtr->lutPendingCount++] =
+            PageLutEntry{position, paragraphIndex, listItemIndex, visibleTextOffset};
 #ifdef TENOR_UI_ACCEPTANCE
         if (builtPageCount_ == 0) {
           LOG_DBG("SCT", "EPUB_PAGE_FIRST spine=%d visible=%u file_offset=%u free=%u largest=%u", spineIndex,
@@ -1059,7 +1060,8 @@ bool Section::commitBuildFile(const uint8_t version, const uint32_t bytesConsume
 #endif
     return false;
   };
-  if (build_->failed || build_->parser->hasFailed() || !file || !build_->lut) return failCommit();
+  if (build_->failed || build_->parser->hasFailed() || !file || !build_->lut || !flushLutPending(*build_))
+    return failCommit();
 
   // Fixed 768-byte heap workspace, independent of chapter length and render-task stack.
   constexpr size_t ENTRIES_PER_BLOCK = 64;
@@ -1246,9 +1248,22 @@ void Section::abandonBuild() {
 }
 
 bool Section::readBuildEntry(const uint16_t page, PageLutEntry& entry) const {
-  return build_ && page < builtPageCount_ &&
-         build_->lut.seek(static_cast<size_t>(page) * sizeof(entry)) &&
-         serialization::readPod(build_->lut, entry);
+  if (!build_ || page >= builtPageCount_) return false;
+  const uint16_t inFile = builtPageCount_ - build_->lutPendingCount;
+  if (page >= inFile) {
+    entry = build_->lutPending[page - inFile];
+    return true;
+  }
+  return build_->lut.seek(static_cast<size_t>(page) * sizeof(entry)) && serialization::readPod(build_->lut, entry);
+}
+
+bool Section::flushLutPending(BuildContext& build) {
+  if (build.lutPendingCount == 0) return true;
+  const size_t first = builtPageCount_ - build.lutPendingCount;
+  const size_t bytes = build.lutPendingCount * sizeof(PageLutEntry);
+  if (!build.lut.seek(first * sizeof(PageLutEntry)) || build.lut.write(build.lutPending, bytes) != bytes) return false;
+  build.lutPendingCount = 0;
+  return true;
 }
 
 std::unique_ptr<Page> Section::loadPageDuringBuild(const int page) {

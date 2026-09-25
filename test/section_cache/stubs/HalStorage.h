@@ -13,6 +13,8 @@ inline uint64_t htmlReadCalls = 0, htmlReadBytes = 0, htmlWriteCalls = 0, htmlWr
 inline uint64_t cacheReadCalls = 0, cacheReadBytes = 0, cacheWriteCalls = 0, cacheWriteBytes = 0,
                 cacheSeekCalls = 0;
 inline uint64_t renameCalls = 0;
+// Writes to the page index staging file (<section>.lut.part) while a build runs.
+inline uint64_t lutWriteCalls = 0;
 inline std::string prefixSourcePath, prefixStagingPath;
 inline size_t prefixBegin = 0, prefixEnd = 0;
 inline uint64_t prefixReadCalls = 0, prefixReadBytes = 0, prefixWriteCalls = 0, prefixWriteBytes = 0;
@@ -22,7 +24,7 @@ inline void begin() {
   readCalls = readBytes = writeCalls = writeBytes = seekCalls = sidecarMaxBytes = 0;
   htmlReadCalls = htmlReadBytes = htmlWriteCalls = htmlWriteBytes = htmlSeekCalls = 0;
   cacheReadCalls = cacheReadBytes = cacheWriteCalls = cacheWriteBytes = cacheSeekCalls = 0;
-  renameCalls = 0;
+  renameCalls = lutWriteCalls = 0;
   prefixReadCalls = prefixReadBytes = prefixWriteCalls = prefixWriteBytes = 0;
   prefixSourcePath.clear(); prefixStagingPath.clear(); prefixBegin = prefixEnd = 0;
   enabled = true;
@@ -51,6 +53,7 @@ inline void recordRead(const std::string& path, size_t at, size_t count) {
 inline void recordWrite(const std::string& path, size_t at, size_t count) {
   ++writeCalls;
   writeBytes += count;
+  if (path.ends_with(".lut.part")) ++lutWriteCalls;
   if (isHtml(path)) {
     ++htmlWriteCalls;
     htmlWriteBytes += count;
