@@ -53,35 +53,29 @@ class HalTiltSensor {
   mutable unsigned long _lastPollMs = 0;
 
   // Hard shake channel, watched on every screen while its action is not Off. A
-  // shake is two strong jolts in opposite directions: the acceleration left after
-  // a slow baseline (gravity and how the device is held) passes the peak, then
-  // passes it again pointing the other way within SHAKE_WINDOW_MS. Squared
-  // lengths and dot products in whole mg, no square root. A wrist flick that
-  // turns a page rotates the device and stays under the peak.
+  // shake is one jolt, the way people give it: the acceleration left after a slow
+  // baseline (gravity and how the device is held) passes the peak. Squared length
+  // in whole mg, no square root. A wrist flick that turns a page rotates the
+  // device and stays under half the peak; putting it down stays under the peak.
   bool _shakeEnabled = false;
   bool _shakeEvent = false;  // Consumed by wasShaken()
-  int32_t _shakePeakMg = 1500;
+  int32_t _shakePeakMg = 1600;
   bool _shakeBaselineValid = false;
   int32_t _shakeBaseline[3] = {};
-  bool _shakeCandidate = false;  // One jolt seen, waiting for the opposite one
-  bool _shakeMoving = false;     // Last jolt past half the peak
-  int32_t _shakeCandidateMg[3] = {};
-  unsigned long _shakeCandidateMs = 0;
+  bool _shakeMoving = false;  // Last jolt past half the peak
   bool _shaken = false;  // A shake has fired since wake (the rest applies)
   unsigned long _lastShakeMs = 0;
   unsigned long _tiltLockUntilMs = 0;
   // Tilt events found while shake is on wait one poll here (bits below), and as
-  // long as a jolt waits for its opposite or the hand still jolts past half the
-  // peak: a shake drops them, anything else lets them through.
+  // long as the hand still jolts past half the peak: a shake drops them, anything
+  // else lets them through.
   uint8_t _heldTilt = 0;
   unsigned long _heldTiltMs = 0;
   static constexpr uint8_t HELD_FORWARD = 1, HELD_BACK = 2, HELD_UP = 4, HELD_DOWN = 8;
 
-  // Shake peak per strength (Light, Medium, Strong), in mg of acceleration beyond
-  // the baseline. Starting values under the +-2 g full scale, waiting on hand
-  // measurements (IMU_LOG): the one place to change them.
-  static constexpr int32_t SHAKE_PEAK_MG_BY_STRENGTH[] = {1200, 1500, 1800};
-  static constexpr unsigned long SHAKE_WINDOW_MS = 400;     // Opposite jolt must follow within this
+  // Shake peak per strength (Light, Medium, Strong), mg of jolt past the baseline; change only here.
+  // X3 hand run (shake-replay): put down hard <= 1030 mg, Light +270; weakest one-snap shake 2152 mg, Strong -250.
+  static constexpr int32_t SHAKE_PEAK_MG_BY_STRENGTH[] = {1300, 1600, 1900};
   static constexpr unsigned long SHAKE_REST_MS = 1500;      // Minimum ms between two shakes
   static constexpr unsigned long SHAKE_TILT_LOCK_MS = 800;  // Tilts ignored after a shake's last jolt
 

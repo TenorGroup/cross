@@ -2,6 +2,7 @@
 """Compile the production IMU state machine against foreground-owner routes."""
 
 import argparse
+import gzip
 from pathlib import Path
 import re
 import shutil
@@ -133,7 +134,10 @@ with tempfile.TemporaryDirectory(prefix="tilt-sensor-ownership-") as temporary_d
     if build.returncode:
         sys.exit(build.returncode)
 
-    run = subprocess.run([str(executable)], text=True, capture_output=True)
+    # A hand-held X3 run, replayed through the real detector.
+    replay = output / "shake-replay.csv"
+    replay.write_bytes(gzip.decompress((test_root / "shake-replay.csv.gz").read_bytes()))
+    run = subprocess.run([str(executable), str(replay)], text=True, capture_output=True)
     if run.stdout:
         print(run.stdout, end="")
     if run.stderr:
