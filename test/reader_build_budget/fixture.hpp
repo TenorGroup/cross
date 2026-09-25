@@ -221,6 +221,10 @@ struct CoverThumbCapture : ImageBlock::ThumbHook {
 };
 template <class T, class... A>
 std::unique_ptr<T> makeUniqueNoThrow(A&&... args) { return std::make_unique<T>(std::forward<A>(args)...); }
+struct Gpio {
+  bool usbChanged = false;
+  bool wasUsbStateChanged() const { return usbChanged; }
+} gpio;
 struct Manager {
   bool sleepTransitionState = false;
   uint32_t activityGeneration() const { return 1; }
@@ -289,6 +293,11 @@ struct EpubReaderActivity : ReaderActivity {
   ReaderRenderer renderer;
   // A button edge in this pass; the idle steps wait for a quiet pass.
   int8_t pendingManualTurn = 0;
+  // The status bar redrawn alone after a USB edge (EpubReaderActivity::repaintStatusBarAlone).
+  bool statusBarStale = false;
+  std::atomic<bool> paintDropped{false};
+  int statusRepaints = 0;
+  void repaintStatusBarAlone() { ++statusRepaints; }
   struct Input { bool edge = false; bool wasAnyPressed() const { return edge; } bool wasAnyReleased() const { return false; } } mappedInput;
   int pagesUntilFullRefresh = 0;
   bool automaticPageTurnActive = false;

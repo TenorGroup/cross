@@ -66,6 +66,16 @@ class EpubReaderActivity final : public ReaderActivity {
   std::atomic<bool> progressSaveDeferred{false};
   // The last owed write failed on the card; the idle pass stops retrying it (RenderLock guards it).
   bool progressSaveFailed = false;
+  // The framebuffer holds exactly the page frame on the panel: set when renderBook ends on a
+  // page, cleared when a paint begins and when another screen covers the reader. Under RenderLock.
+  std::atomic<bool> pageFrameShown{false};
+  // That page leaves the panel as it is under a fast differential refresh that only changes the
+  // status bar (see renderContents), and the charging state its status bar shows.
+  bool pageFrameKeepsUnderFast = false;
+  bool pageFrameUsb = false;
+  // USB power came or went; the main loop redraws the status bar alone on a quiet pass.
+  bool statusBarStale = false;
+  void repaintStatusBarAlone();
   void saveProgressIfMoved();
 #ifdef TENOR_TURN_TRACE
   TurnTrace pendingManualTurnTrace;
