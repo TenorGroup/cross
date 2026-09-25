@@ -828,6 +828,47 @@ static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
   }
 }
 
+#if defined(TENOR_GAUGE_LOG) && !defined(SIMULATOR)
+// Measurement build only: one fuel gauge line a minute while awake (and one at every boot), kept in
+// RAM and rewritten whole to /v1016/pin/<boot>-<part>.csv, so a battery run can be read off the card.
+static void gaugeLogTick() {
+  static unsigned long last = 0;
+  static std::string lines;
+  static unsigned part = 0;
+  static long boot = 0;
+  if (last != 0 && millis() - last < 60000) return;
+  last = millis();
+  if (boot == 0) boot = static_cast<long>(time(nullptr));
+  const uint8_t addr = BoardConfig::ACTIVE.batteryGauge.gaugeAddr;
+  const auto reg16 = [addr](const uint8_t reg) -> int {
+    Wire.beginTransmission(addr);
+    Wire.write(reg);
+    if (addr == 0 || Wire.endTransmission(false) != 0 || Wire.requestFrom(addr, uint8_t{2}, uint8_t{1}) < 2) return -1;
+    const int lo = Wire.read();
+    return lo | (Wire.read() << 8);
+  };
+  char row[128];
+  snprintf(row, sizeof(row), "%ld,%lu,%d,%d,%d,%d,%d,%d,0x%04x,%s\n", static_cast<long>(time(nullptr)), millis(),
+           reg16(0x08), static_cast<int16_t>(reg16(0x0C)), static_cast<int16_t>(reg16(0x14)), reg16(0x10),
+           reg16(0x12), reg16(0x2C), reg16(0x0A), activityManager.isReaderActivity() ? "doc" : "khac");
+  lines += row;
+  Storage.mkdir("/v1016");
+  Storage.mkdir("/v1016/pin");
+  char path[64];
+  snprintf(path, sizeof(path), "/v1016/pin/%ld-%u.csv", boot, part);
+  HalFile file;
+  if (Storage.openFileForWrite("GLOG", path, file)) {
+    file.print("epoch,ms,mv,cur,avg,rm,fcc,soc,flags,man\n");
+    file.write(reinterpret_cast<const uint8_t*>(lines.data()), lines.size());
+    file.close();
+  }
+  if (lines.size() > 6000) {
+    lines.clear();
+    part++;
+  }
+}
+#endif
+
 void loop() {
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
@@ -838,6 +879,9 @@ void loop() {
 #ifndef SIMULATOR
   // The render task draws the gauge reading polled here (at most every 1.5 s).
   powerManager.pollGauge();
+#endif
+#if defined(TENOR_GAUGE_LOG) && !defined(SIMULATOR)
+  gaugeLogTick();
 #endif
 
 #if CROSSPOINT_BLE_HID_HOST
