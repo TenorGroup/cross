@@ -39,7 +39,7 @@ helper = repo / 'src/util/FileTransferBackLatch.cpp'
 (out / 'source-hashes.json').write_text(json.dumps({str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in [source, helper, here / 'BackLatch.cpp']} | {'compiled-loop': hashlib.sha256(loop.encode()).hexdigest(), 'compiled-input': hashlib.sha256((out / 'production-input.inc').read_bytes()).hexdigest()}, indent=2) + '\n')
 binary = out / 'back-latch'
 subprocess.run([a.cxx, '-std=c++17', '-pthread', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-DCROSSPOINT_EMULATED=0', '-I' + str(here / 'stubs'), '-I' + str(repo / 'src/util'), '-I' + str(out), str(helper), str(here / 'BackLatch.cpp'), '-o', str(binary)], check=True)
-cases = ('physical-pulse-in-handler', 'idle-pulse', 'held-on-entry', 'reentry-clears-old', 'unmapped', 'zero-chatter-mapping3', 'oom-start', 'oom-activity', 'ui-size-callback', 'zero-chatter-activity', 'unsupported-board', 'destruction-joins', 'mapping-out-of-range', 'back-on-side-key-in-handler', 'second-ladder-back')
+cases = ('physical-pulse-in-handler', 'idle-pulse', 'held-on-entry', 'reentry-clears-old', 'unmapped', 'zero-chatter-mapping3', 'oom-start', 'oom-activity', 'ui-size-callback', 'zero-chatter-activity', 'unsupported-board', 'destruction-joins', 'mapping-out-of-range', 'stalled-upload-back', 'back-on-side-key-in-handler', 'second-ladder-back')
 results = []
 for name in cases:
     run = subprocess.run([str(binary), name], capture_output=True, text=True)

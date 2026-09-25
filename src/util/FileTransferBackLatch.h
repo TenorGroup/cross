@@ -25,6 +25,12 @@ class FileTransferBackLatch {
   // A tap waiting for consume(), left in place. Safe from the upload handler.
   bool latched() const { return task && pending.load(std::memory_order_acquire) == generation; }
   bool active() const { return task != nullptr; }
+  // Runs on the sampler task right after a tap latches, so the owner can wake a main task
+  // stuck in a blocking wait. Set before start(); it must be safe from another task.
+  void setTapHook(void (*hook)(void*), void* context) {
+    tapHook = hook;
+    tapContext = context;
+  }
   uint32_t stackFreeBytes() const { return stackFree.load(std::memory_order_relaxed); }
 
  private:
@@ -32,6 +38,8 @@ class FileTransferBackLatch {
   TaskHandle_t task = nullptr;
   HalGPIO* input = nullptr;
   uint8_t back = 0;
+  void (*tapHook)(void*) = nullptr;
+  void* tapContext = nullptr;
   uint32_t generation = 0;
   std::atomic<uint32_t> pending{0};
   std::atomic<bool> stopping{false};

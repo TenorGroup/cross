@@ -102,6 +102,7 @@ static int fakeServerCalls = 0;
 static int fakeServerStops = 0;
 static bool fakeServerCompleted = false;
 static int fakeServerCancels = 0;
+static int fakeServerStallEnds = 0;
 static bool applierPresentAtBegin = false;
 struct FakeServer {
   bool inHandler = false;
@@ -109,11 +110,15 @@ struct FakeServer {
   unsigned handlerMs = 270;
   int calls = 0;
   bool completed = false;
+  // The sender stopped mid-upload with the connection open.
+  bool stalled = false;
+  std::atomic<bool> interrupted{false};
   std::function<bool(uint8_t)> uiTextSizeApplier;
   std::function<bool()> uploadCancel;
   bool isRunning() const { return running; }
   void setUiTextSizeApplier(std::function<bool(uint8_t)> applier) { uiTextSizeApplier = std::move(applier); }
   void setUploadCancel(std::function<bool()> cancel) { uploadCancel = std::move(cancel); }
+  void interruptUpload() { interrupted = true; }
   void begin() {
     applierPresentAtBegin = static_cast<bool>(uiTextSizeApplier);
     running = true;
@@ -122,6 +127,16 @@ struct FakeServer {
     ++calls;
     ++fakeServerCalls;
     inHandler = true;
+    if (stalled) {
+      // Like WebServer waiting for the next upload byte: it polls the client every 2 ms and
+      // gives up after 5 s. No chunk arrives, so the per-chunk cancel is never asked; an
+      // interrupted socket reads as a dropped client at the next poll.
+      const auto begin = millis();
+      while (millis() - begin < 5000 && !interrupted) vTaskDelay(2);
+      ++fakeServerStallEnds;
+      inHandler = false;
+      return;
+    }
     // An upload arriving in 10 ms chunks; like the real server, each chunk asks the owner
     // whether to drop it, and a drop ends the request early.
     for (unsigned ms = 0; ms < handlerMs; ms += 10) {
@@ -235,6 +250,30 @@ void run(const std::string& name) {
     require(activity.mappedInput.physical.buttonPressStart == 0, "fixture sampled pulse in main");
     activity.backLatch.stop();
     require(activity.backLatch.stackFreeBytes() == 1176, "stack watermark not retained at stop");
+    return;
+  }
+  if (name == "stalled-upload-back") {
+    CrossPointWebServerActivity activity;
+    activity.state = WebServerActivityState::AP_STARTING;
+    activity.startWebServer();
+    require(activity.backLatch.active(), "sampler start failed");
+    activity.webServer->stalled = true;
+    settle();
+    activity.mappedInput.update();
+    std::thread pulse([] { vTaskDelay(35); tap(0, 80); });
+    const auto before = millis();
+    activity.loop();
+    const auto held = millis() - before;
+    pulse.join();
+    if (!activity.exits && activity.webServer) {
+      activity.webServer->stalled = false;
+      activity.webServer->handlerMs = 0;
+      activity.loop();
+    }
+    std::cout << "stalled_handler_ms=" << held << " exits=" << activity.exits << '\n';
+    require(fakeServerStallEnds == 1, "stalled upload fixture did not run");
+    require(held < 600, "a stalled upload held Back until the library read timeout");
+    require(activity.exits == 1 && fakeServerCalls == 1, "Back during a stalled upload did not leave at once");
     return;
   }
   if (name == "back-on-side-key-in-handler") {

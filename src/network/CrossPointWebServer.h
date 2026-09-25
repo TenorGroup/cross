@@ -5,6 +5,7 @@
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -105,6 +106,11 @@ class CrossPointWebServer {
   // file is removed and the client disconnected, so the request no longer holds the loop.
   void setUploadCancel(std::function<bool()> cancel);
 
+  // Safe from another task. A sender that stops mid-upload leaves the library waiting 5 s
+  // for the next byte, with no chunk to ask the cancel above; this ends that wait at once,
+  // and the upload aborts and removes its partial file.
+  void interruptUpload();
+
   // Start the web server (call after WiFi is connected)
   void begin();
 
@@ -139,6 +145,9 @@ class CrossPointWebServer {
   std::function<bool(uint8_t)> uiTextSizeApplier;
   std::function<bool()> uploadCancel;
   bool uploadCancelled();
+  // Socket of the HTTP upload being read, for interruptUpload(); -1 between uploads.
+  std::atomic<int> uploadSocket{-1};
+  void noteUploadSocket();
 
   void noteSessionActivity();
   void noteTransferActivity(size_t bytes);

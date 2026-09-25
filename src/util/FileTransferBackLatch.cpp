@@ -96,6 +96,7 @@ void FileTransferBackLatch::poll(void* context) {
         } else if (pressed && !fired) {
           fired = true;
           self->pending.store(session, std::memory_order_release);
+          if (self->tapHook) self->tapHook(self->tapContext);
         }
       }
     }
