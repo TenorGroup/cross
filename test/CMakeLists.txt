@@ -78,6 +78,8 @@ add_subdirectory(so_lieu_doc)
 add_subdirectory(reading_habits)
 add_subdirectory(finish_estimate)
 
+add_subdirectory(wake_book)
+
 add_subdirectory(book_metadata_cache)
 
 add_subdirectory(web_path)

@@ -84,6 +84,7 @@
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
+#include "util/WakeBook.h"
 
 #ifdef FREEINK_TLS_AUDIT
 // Diagnostic parent avoids retaining the font manifest or resuming the Home cover.
@@ -687,9 +688,15 @@ void setup() {
                             : isPersistedSleepWake ? BootResume::SplashlessWake
                                                    : BootResume::Splash;
   bool needsWakeRefresh = false;
-  // The book last opened, wherever the sleep started (Home, a timeout, settings).
-  const bool wakeToBook = isSleepWake && SETTINGS.wakeIntoBook && !APP_STATE.openEpubPath.empty() &&
-                          Storage.exists(APP_STATE.openEpubPath.c_str());
+  // A crash may have come from the book that was open: the next wake does not reopen it.
+  if (rebootedFromPanic && !APP_STATE.openEpubPath.empty()) {
+    APP_STATE.openEpubPath.clear();
+    APP_STATE.saveToFile();
+  }
+  const std::string wakeBook =
+      wakebook::bookToOpen(isSleepWake, SETTINGS.wakeIntoBook, APP_STATE.openEpubPath, RECENT_BOOKS.getBooks(),
+                           [](const std::string& path) { return Storage.exists(path.c_str()); });
+  const bool wakeToBook = !wakeBook.empty();
 
   setupDisplayAndFonts(resume != BootResume::Splash);
   logHeapMark("display-and-fonts");
@@ -747,14 +754,13 @@ void setup() {
     activityManager.goToReader(APP_STATE.openEpubPath);
   } else if (resume == BootResume::Silent) {
     // target == home (or reader with no open book): land on home - don't fall
-    // through to the sleep-wake "resume reader" logic, which fires on stale
-    // openEpubPath + lastSleepFromReader from a prior session.
+    // through to the wake-into-book branch below.
     activityManager.goHome(snapshotHomeMenu);
   } else if (wakeToBook) {
     // Wake straight into the book last opened. The reader's
     // first paint is a cleaning waveform (allowFastInitialRefresh stays false),
     // which is the pass that takes the retained sleep frame off the panel.
-    activityManager.goToReader(APP_STATE.openEpubPath);
+    activityManager.goToReader(wakeBook);
   } else {
     activityManager.goHome(HomeMenuItem::RECENT_CONTINUE, needsWakeRefresh);
   }
@@ -1319,6 +1325,8 @@ void loop() {
         logSerial.printf("WAKE_TIMER:%u\n", static_cast<unsigned>(probeWakeSeconds));
       } else if (cmd == "LOGDUMP") {
         probeLogDump();
+      } else if (cmd == "PANIC") {
+        abort();  // a crash reboot, for the paths that follow one
       } else if (cmd.startsWith("I2C_RACE ")) {
         // Two tasks on the gauge at once, as the render task and the loop did: a second task
         // reads state of charge while this loop reads the current register. Any reading far

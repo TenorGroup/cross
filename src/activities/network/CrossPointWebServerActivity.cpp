@@ -181,8 +181,8 @@ void CrossPointWebServerActivity::onExit() {
   Activity::onExit();
 
   // Sleep taken here ends a detour from the book. main saved the sleep origin
-  // before closing this screen, so record it as a sleep from the reader and
-  // let the wake-into-book setting decide the wake, as it would in the book.
+  // before closing this screen, so record it as a sleep from the reader: the
+  // sleep screen then shows the book, as it would from inside it.
   if (!returnBook.empty() && activityManager.isSleepTransition()) {
     APP_STATE.lastSleepFromReader = true;
     APP_STATE.saveToFile();
