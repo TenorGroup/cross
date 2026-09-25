@@ -34,6 +34,13 @@ bool RecentBooksStore::fromJson(JsonVariantConst doc) {
     book.title = obj["title"] | "";
     book.author = obj["author"] | "";
     book.coverBmpPath = obj["coverBmpPath"] | "";
+    // Entries saved before the card-shaped thumbnails still name the old stretched files; point them
+    // at the new name so Home builds the new thumbnail instead of drawing the old one.
+    static constexpr char kOldThumb[] = "/thumb_[HEIGHT].bmp";
+    const size_t oldAt = book.coverBmpPath.rfind(kOldThumb);
+    if (oldAt != std::string::npos && oldAt + sizeof(kOldThumb) - 1 == book.coverBmpPath.size()) {
+      book.coverBmpPath.replace(oldAt, sizeof(kOldThumb) - 1, "/thumb2_[HEIGHT].bmp");
+    }
     const char* excerpt = obj["excerpt"] | "";
     if (strlen(excerpt) <= 384) book.excerpt = excerpt;
     recentBooks.push_back(book);
