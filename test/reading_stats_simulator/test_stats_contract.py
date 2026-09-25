@@ -49,6 +49,7 @@ import unittest
 from pathlib import Path
 
 from PIL import Image, ImageChops
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get("TEST_PROGRAM", REPO / ".pio/build/simulator_x3_uc8279/program"))
@@ -139,7 +140,7 @@ class KichBan:
                    "sleepTimeout": 120, "globalStatusBarMode": 0}
         cai_dat.update(them)
         self.bien_co = cai_dat["clockUtcOffsetQ"]
-        (self.store / "settings.json").write_text(json.dumps(cai_dat))
+        (self.store / "settings.json").write_text(json.dumps(truoc_tenor(cai_dat)))
         return cai_dat
 
     def dat_state(self, **them):

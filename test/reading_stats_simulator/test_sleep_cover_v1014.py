@@ -28,6 +28,7 @@ import zipfile
 from PIL import Image, ImageDraw
 
 from test_sleep_quote_v1011 import quote_id
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 COVER_BOX = (48, 596, 144, 741)  # SleepQuoteLayout.h, the quote screen's cover tile
@@ -81,7 +82,7 @@ class SleepCoverTest(unittest.TestCase):
         sd = self.root / name
         store = sd / '.crosspoint'
         store.mkdir(parents=True)
-        (store / 'settings.json').write_text(json.dumps(dict({'language': 'VI', 'sleepScreen': mode}, **(settings or {}))))
+        (store / 'settings.json').write_text(json.dumps(truoc_tenor(dict({'language': 'VI', 'sleepScreen': mode}, **(settings or {})))))
         (store / 'state.json').write_text(json.dumps(dict({'showBootScreen': False}, **(state or {}))))
         return sd
 

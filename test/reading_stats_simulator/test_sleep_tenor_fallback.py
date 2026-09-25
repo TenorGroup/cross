@@ -25,6 +25,7 @@ import tempfile
 import unittest
 
 from PIL import Image, ImageChops
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
@@ -59,7 +60,7 @@ class TenorFallbackTest(unittest.TestCase):
         sd = self.root / name
         store = sd / '.crosspoint'
         store.mkdir(parents=True)
-        (store / 'settings.json').write_text(json.dumps(dict({'language': 'EN', 'sleepScreen': 8}, **settings)))
+        (store / 'settings.json').write_text(json.dumps(truoc_tenor(dict({'language': 'EN', 'sleepScreen': 8}, **settings))))
         (store / 'state.json').write_text(json.dumps({'showBootScreen': False}))
         script = '4200:SLEEP;9000:QUIT'
         if from_book:

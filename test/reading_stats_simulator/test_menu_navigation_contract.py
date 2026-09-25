@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from PIL import Image
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
@@ -33,7 +34,7 @@ class MenuNavigationContractTest(unittest.TestCase):
         self.write_pins([])
 
     def write_settings(self):
-        (self.store / 'settings.json').write_text(json.dumps(self.settings))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
 
     def write_pins(self, pins):
         (self.store / 'menu-customization.json').write_text(json.dumps({

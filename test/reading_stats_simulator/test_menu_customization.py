@@ -7,7 +7,7 @@ o=Path(os.environ.get('MENU_TEST_OUTPUT', '/tmp/tenor-menu-tests'));o.mkdir(pare
 p=Path(os.environ.get('TEST_PROGRAM', str(r/'.pio/build/simulator_x3_uc8279/program')))
 def run(name,script,shots=(),state=None,settings=None,reuse=None):
  sd=o/('sd-'+(reuse or name));s=sd/'.crosspoint';s.mkdir(parents=True,exist_ok=True)
- if not reuse: (s/'settings.json').write_text(json.dumps(dict(language='VI',uiTheme=4,sleepScreen=8,**(settings or {}))))
+ if not reuse: (s/'settings.json').write_text(json.dumps(truoc_tenor(dict(language='VI',uiTheme=4,sleepScreen=8,**(settings or {})))))
  if state is not None: (s/'menu-customization.json').write_text(json.dumps(state))
  env={k:v for k,v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')};env.update(SDL_VIDEODRIVER='dummy',CROSSPOINT_SIM_SD=str(sd),CROSSPOINT_SIM_INPUT_SCRIPT=script,CROSSPOINT_SIM_SCREENSHOTS=';'.join(f'{ms}:{o}/{name}-{label}.bmp' for ms,label in shots))
  a=subprocess.run([str(p)],env=env,cwd=r,capture_output=True,text=True,timeout=45);(o/(name+'.log')).write_text(a.stdout+a.stderr);assert a.returncode==0,a.stderr
@@ -24,6 +24,7 @@ t=sys.modules[__name__]
 import json,concurrent.futures,time
 from pathlib import Path
 from PIL import Image,ImageChops
+from cai_dat_truoc_tenor import truoc_tenor
 
 def saved(sd,name):return json.loads((sd/'.crosspoint'/name).read_text())
 def state(pins=(),**overrides):

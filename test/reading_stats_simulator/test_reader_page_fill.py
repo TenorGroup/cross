@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
@@ -84,7 +85,7 @@ class ReaderPageFillTest(unittest.TestCase):
               'statusBarTitle': 1, 'statusBarBattery': 1, 'statusBarChapterPageCount': 1,
               'statusBarBookProgressPercentage': 1}
         st.update(them)
-        (self.store / 'settings.json').write_text(json.dumps(st))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(st)))
         state = self.store / 'state.json'
         if state.exists():
             state.unlink()

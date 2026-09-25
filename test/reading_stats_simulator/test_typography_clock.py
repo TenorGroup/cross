@@ -9,6 +9,7 @@ import unittest
 import zipfile
 
 from PIL import Image, ImageChops
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = REPO / '.pio/build/simulator_x3_uc8279/program'
@@ -56,7 +57,7 @@ class TypographyClockTest(unittest.TestCase):
         (self.store / 'recent.json').write_text(json.dumps({'books': [{'path': '/audit.epub', 'title': 'Paragraph fixture'}]}))
 
     def run_sim(self, events, captures, timeout=25):
-        (self.store / 'settings.json').write_text(json.dumps(self.settings))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
         env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
         env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(self.sd),
                    CROSSPOINT_SIM_INPUT_SCRIPT=events,

@@ -31,6 +31,7 @@ import unittest
 import zipfile
 
 from PIL import Image, ImageDraw
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
@@ -128,10 +129,10 @@ class SleepQuoteTest(unittest.TestCase):
             write_epub(sd / book.lstrip('/'), title)
             store = sd / '.crosspoint'
             store.mkdir(parents=True)
-            (store / 'settings.json').write_text(json.dumps({'language': 'VI', 'sleepScreen': 3}))
+            (store / 'settings.json').write_text(json.dumps(truoc_tenor({'language': 'VI', 'sleepScreen': 3})))
             (store / 'state.json').write_text(json.dumps({'showBootScreen': False, 'openEpubPath': book}))
             log = cls.run_sim(sd, f'{SLEEP_AT}:SLEEP;9000:QUIT')
-            (store / 'settings.json').write_text(json.dumps({'language': 'VI', 'sleepScreen': 3, 'sleepBwRefresh': 0}))
+            (store / 'settings.json').write_text(json.dumps(truoc_tenor({'language': 'VI', 'sleepScreen': 3, 'sleepBwRefresh': 0})))
             log += cls.run_sim(sd, f'{SLEEP_AT}:SLEEP;9000:QUIT')
             made = list(store.glob('epub_*/cover_*.bmp'))
             assert len(made) == 2, 'Cover sleeps made no black and white and 4-level covers\n' + log
@@ -143,7 +144,7 @@ class SleepQuoteTest(unittest.TestCase):
         write_epub(sd / BROKEN_BOOK.lstrip('/'), BROKEN_TITLE, cover=b'\xff\xd8\xff\xe0 not a jpeg ' * 40)
         store = sd / '.crosspoint'
         store.mkdir(parents=True)
-        (store / 'settings.json').write_text(json.dumps({'language': 'VI', 'sleepScreen': 3}))
+        (store / 'settings.json').write_text(json.dumps(truoc_tenor({'language': 'VI', 'sleepScreen': 3})))
         (store / 'state.json').write_text(json.dumps({'showBootScreen': False, 'openEpubPath': BROKEN_BOOK}))
         log = cls.run_sim(sd, f'{SLEEP_AT}:SLEEP;9000:QUIT')
         assert list(store.glob('epub_*/book.bin')) and not list(store.glob('epub_*/cover_*')), log
@@ -183,7 +184,7 @@ class SleepQuoteTest(unittest.TestCase):
         for book in covers:
             for cache in self.caches[book]:
                 shutil.copytree(cache, store / cache.name)
-        (store / 'settings.json').write_text(json.dumps(settings or {'language': 'VI', 'sleepScreen': 10}))
+        (store / 'settings.json').write_text(json.dumps(truoc_tenor(settings or {'language': 'VI', 'sleepScreen': 10})))
         (store / 'state.json').write_text(json.dumps({'showBootScreen': False}))
         return sd
 

@@ -47,6 +47,7 @@ import unittest
 import zipfile
 
 from PIL import Image, ImageChops, ImageDraw
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
@@ -152,7 +153,7 @@ class SleepEndsBwTest(unittest.TestCase):
         sd = self.root / name
         store = sd / '.crosspoint'
         store.mkdir(parents=True)
-        (store / 'settings.json').write_text(json.dumps(dict({'language': 'VI', 'sleepScreen': mode}, **(settings or {}))))
+        (store / 'settings.json').write_text(json.dumps(truoc_tenor(dict({'language': 'VI', 'sleepScreen': mode}, **(settings or {})))))
         (store / 'state.json').write_text(json.dumps(dict({'showBootScreen': False}, **(state or {}))))
         return sd
 
@@ -232,8 +233,8 @@ class SleepEndsBwTest(unittest.TestCase):
             write_epub(sd / BOOK.lstrip('/'))
             type(self).cover_sd = sd
             type(self).cover_run = self.sleep_once(sd, 'bia-sach')
-            (sd / '.crosspoint/settings.json').write_text(json.dumps({'language': 'VI', 'sleepScreen': 3,
-                                                                      'sleepBwRefresh': 0}))
+            (sd / '.crosspoint/settings.json').write_text(json.dumps(truoc_tenor({'language': 'VI', 'sleepScreen': 3,
+                                                                      'sleepBwRefresh': 0})))
             self.sleep_once(sd, 'bia-sach-tat')
             self.assertEqual(len(list((sd / '.crosspoint').glob('epub_*/cover_*.bmp'))), 2)
         return type(self).cover_sd, type(self).cover_run

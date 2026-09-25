@@ -48,6 +48,8 @@ void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings
   }
 }
 
+CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
+
 uint8_t CrossPointSettings::sleepTimeoutEnumToMinutes(const uint8_t legacyValue) {
   switch (legacyValue) {
     case SLEEP_1_MIN:
@@ -73,6 +75,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["textSpacingVersion"] = 3;
   doc["paragraphIndentVersion"] = 1;
   doc["readerInkWeightVersion"] = readerInk::SCHEMA_VERSION;
+  doc["tenorPresetVersion"] = TENOR_PRESET_VERSION;
   const CrossPointSettings& s = *this;
 
   // Duyet THANG bang tinh, khong chep ra vector rieng: duong nay chay moi lan
@@ -468,6 +471,13 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     bleRemotes[bleRemoteCount++] = t;
   }
   if (doc["blePageTurnerEnabled"].isNull()) {
+    needsResave = true;
+  }
+
+  // Last on purpose: every fold above has already read its stamp, so a value set here is
+  // what gets saved, and the stamp keeps a later change of the owner's from being undone.
+  if ((doc["tenorPresetVersion"] | uint8_t{0}) < TENOR_PRESET_VERSION) {
+    applyTenorPreset();
     needsResave = true;
   }
 

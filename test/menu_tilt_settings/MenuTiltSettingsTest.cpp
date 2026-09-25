@@ -85,6 +85,7 @@ int main(int argc, char** argv) {
          ok;
     settings.tiltTabNavigation = CrossPointSettings::TILT_OFF;
     JsonDocument injected;
+    injected["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
     injected["tiltTabNavigation"] = CrossPointSettings::TILT_NORMAL;
     ok = expect(settings.fromJson(injected.as<JsonVariantConst>()), "non-IMU JSON loads") && ok;
     ok = expect(settings.tiltTabNavigation == CrossPointSettings::TILT_OFF, "non-IMU JSON stays default") && ok;
@@ -113,9 +114,9 @@ int main(int argc, char** argv) {
               "row tilt descriptor uses independent field in Controls") &&
        ok;
   ok = expect(rowTilt == menuTilt + 1, "row tilt row sits directly after tab tilt") && ok;
-  ok = expect(settings.tiltMenuNavigation == CrossPointSettings::TILT_OFF, "row tilt defaults off") && ok;
+  ok = expect(settings.tiltMenuNavigation == CrossPointSettings::TILT_NORMAL, "row tilt starts on the setup") && ok;
 
-  // Strength rows follow the tilt rows in Controls, one per axis, Medium by default.
+  // Strength rows follow the tilt rows in Controls, one per axis.
   ok = expect(strengthH && strengthV, "both strength descriptors present") && ok;
   if (strengthH && strengthV) {
   ok = expect(isStrengthEnum(*strengthH, StrId::STR_TILT_STRENGTH_H, &CrossPointSettings::tiltStrengthH) &&
@@ -124,11 +125,12 @@ int main(int argc, char** argv) {
        ok;
   ok = expect(strengthH == rowTilt + 1 && strengthV == rowTilt + 2, "strength rows sit right after row tilt") && ok;
   ok = expect(settings.tiltStrengthH == CrossPointSettings::TILT_STRENGTH_MEDIUM &&
-                  settings.tiltStrengthV == CrossPointSettings::TILT_STRENGTH_MEDIUM,
-              "both strengths default to Medium") &&
+                  settings.tiltStrengthV == CrossPointSettings::TILT_STRENGTH_LIGHT,
+              "side strength starts Medium, up/down Light as the tenor/cross setup") &&
        ok;
   {
     JsonDocument input;
+    input["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
     input["tiltStrengthH"] = CrossPointSettings::TILT_STRENGTH_LIGHT;
     input["tiltStrengthV"] = CrossPointSettings::TILT_STRENGTH_STRONG;
     ok = expect(settings.fromJson(input.as<JsonVariantConst>()), "strength JSON loads") && ok;
@@ -141,6 +143,7 @@ int main(int argc, char** argv) {
     settings.tiltStrengthH = CrossPointSettings::TILT_STRENGTH_MEDIUM;
     settings.tiltStrengthV = CrossPointSettings::TILT_STRENGTH_MEDIUM;
     JsonDocument corrupt;
+    corrupt["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
     corrupt["tiltStrengthH"] = CrossPointSettings::TILT_STRENGTH_COUNT;
     corrupt["tiltStrengthV"] = 200;
     ok = expect(settings.fromJson(corrupt.as<JsonVariantConst>()), "corrupt strength JSON loads") && ok;
@@ -172,7 +175,9 @@ int main(int argc, char** argv) {
 
   settings.tiltPageTurn = CrossPointSettings::TILT_OFF;
   settings.tiltTabNavigation = CrossPointSettings::TILT_OFF;
+  settings.tiltMenuNavigation = CrossPointSettings::TILT_OFF;
   JsonDocument oldJson;
+  oldJson["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
   oldJson["tiltPageTurn"] = CrossPointSettings::TILT_NVERTED;
   ok = expect(settings.fromJson(oldJson.as<JsonVariantConst>()), "old settings JSON loads") && ok;
   ok = expect(settings.tiltPageTurn == CrossPointSettings::TILT_NVERTED &&
@@ -190,6 +195,7 @@ int main(int argc, char** argv) {
       settings.tiltTabNavigation = CrossPointSettings::TILT_OFF;
       settings.tiltMenuNavigation = CrossPointSettings::TILT_OFF;
       JsonDocument input;
+      input["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
       input["tiltPageTurn"] = readerMode;
       input["tiltTabNavigation"] = menuMode;
       input["tiltMenuNavigation"] = rowMode;
@@ -212,6 +218,7 @@ int main(int argc, char** argv) {
   settings.tiltTabNavigation = CrossPointSettings::TILT_OFF;
   settings.tiltMenuNavigation = CrossPointSettings::TILT_OFF;
   JsonDocument corruptJson;
+  corruptJson["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
   corruptJson["tiltPageTurn"] = CrossPointSettings::TILT_NORMAL;
   corruptJson["tiltTabNavigation"] = CrossPointSettings::TILT_PAGE_TURN_COUNT;
   corruptJson["tiltMenuNavigation"] = CrossPointSettings::TILT_PAGE_TURN_COUNT;

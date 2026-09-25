@@ -13,6 +13,10 @@
 #include "SettingsList.h"
 #include "activities/util/KeyboardLayoutSet.h"
 
+// The settings constructor is defined in src/CrossPointSettings.cpp, outside this slice;
+// it only lays the tenor/cross setup over the member initializers, as this one does.
+CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
+
 static bool measuring = false;
 static size_t allocs = 0, bytes = 0, largest = 0;
 void* operator new(size_t n) {

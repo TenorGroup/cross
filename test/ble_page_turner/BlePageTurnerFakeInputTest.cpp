@@ -36,6 +36,10 @@
 #include "HidDescriptors.h"
 #include "HidKeymap.h"
 
+// The settings constructor is defined in src/CrossPointSettings.cpp, outside this slice;
+// it only lays the tenor/cross setup over the member initializers, as this one does.
+CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
+
 using namespace freeink;  // test-only: the SDK's namespace
 
 namespace {

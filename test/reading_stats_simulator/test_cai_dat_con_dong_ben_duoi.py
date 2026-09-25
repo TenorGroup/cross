@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from PIL import Image
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get("TEST_PROGRAM", REPO / ".pio/build/simulator_x3_uc8279/program"))
@@ -43,7 +44,7 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
         self.sd = Path(self.tmp.name)
         self.store = self.sd / ".crosspoint"
         self.store.mkdir()
-        (self.store / "settings.json").write_text(json.dumps({"language": "VI"}))
+        (self.store / "settings.json").write_text(json.dumps(truoc_tenor({"language": "VI"})))
         (self.store / "state.json").write_text(
             json.dumps({"openEpubPath": "", "lastSleepFromReader": False, "showBootScreen": False}))
         ART.mkdir(parents=True, exist_ok=True)
@@ -65,7 +66,7 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
         sd = self.sd / name
         store = sd / ".crosspoint"
         store.mkdir(parents=True)
-        (store / "settings.json").write_text(json.dumps(settings))
+        (store / "settings.json").write_text(json.dumps(truoc_tenor(settings)))
         (store / "state.json").write_text(
             json.dumps({"openEpubPath": "", "lastSleepFromReader": False, "showBootScreen": False}))
         return sd

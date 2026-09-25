@@ -10,8 +10,11 @@
 
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
  private:
-  // Private constructor for singleton
-  CrossPointSettings() = default;
+  // Private constructor for singleton. A card with no settings file runs on what this
+  // leaves behind, so the tenor/cross setup goes over the upstream initializers below.
+  // Out of line on purpose: inline, the member-by-member initialization was copied into
+  // each function that inlined getInstance(), about 4 KB of flash.
+  CrossPointSettings();
 
   friend class PersistableStore<CrossPointSettings>;
 
@@ -541,6 +544,28 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // otherwise the press must have been held through verification.
   static bool acceptPowerWake(const uint8_t shortPwrBtnSetting, const bool holdVerified) {
     return holdVerified || shortPwrBtnSetting == SLEEP;
+  }
+
+  // The tenor/cross reading setup (v1.0.14), the one list of its fields and values. It is
+  // the default of a new card, and fromJson moves a file without the stamp onto it once,
+  // after the older version folds so none of them rewrites a value set here. Language,
+  // Bluetooth, auto-sleep and the button map are left to the owner.
+  static constexpr uint8_t TENOR_PRESET_VERSION = 1;
+  void applyTenorPreset() {
+    extraParagraphSpacing = readerSpacing::VERY_NARROW;
+    lineSpacing = readerSpacing::NARROW;
+    wordSpacing = readerSpacing::WIDE;
+    paragraphIndent = 2;  // wide
+    readerInkWeight = 1;
+    frontButtonFollowOrientation = 1;
+    longPressMenuFunction = LP_MENU_KOSYNC;
+    shortPwrBtn = FORCE_REFRESH;
+    sleepScreen = QUOTE;
+    statusBarClock = STATUS_BAR_CLOCK_RIGHT;
+    tiltMenuNavigation = TILT_NORMAL;
+    tiltPageTurn = TILT_NORMAL;
+    tiltStrengthV = TILT_STRENGTH_LIGHT;
+    tiltTabNavigation = TILT_NVERTED;
   }
 
   // Tilt page turn quick toggle: Off goes back to the last mode that was on.

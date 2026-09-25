@@ -18,6 +18,7 @@ import tempfile
 import unittest
 
 from PIL import Image
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
@@ -49,7 +50,7 @@ class QuickActionsV1012Test(unittest.TestCase):
     def write_settings(self, **fields):
         settings = {'language': 'VI', 'sleepTimeout': 10}
         settings.update(fields)
-        (self.store / 'settings.json').write_text(json.dumps(settings))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(settings)))
 
     def saved(self):
         return json.loads((self.store / 'settings.json').read_text())

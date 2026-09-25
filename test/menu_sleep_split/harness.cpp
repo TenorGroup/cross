@@ -14,6 +14,9 @@
 #include "MenuCustomization.h"
 #include "activities/util/KeyboardLayoutSet.h"
 #include "Boundaries.inc"
+// The settings constructor is defined in src/CrossPointSettings.cpp, outside this slice;
+// it only lays the tenor/cross setup over the member initializers, as this one does.
+CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
 namespace menucustom {
 State& state() { static State data; return data; }
 bool save() { return true; }

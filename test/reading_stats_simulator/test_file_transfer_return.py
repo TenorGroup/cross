@@ -29,6 +29,7 @@ import zipfile
 from pathlib import Path
 
 from PIL import Image, ImageChops
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get("TEST_PROGRAM", REPO / ".pio/build/simulator_x3_uc8279/program"))
@@ -101,7 +102,7 @@ class FileTransferReturnTest(unittest.TestCase):
     def settings(self, **fields):
         data = {"language": "VI", "sleepTimeout": 10, "globalStatusBarMode": 0}
         data.update(fields)
-        (self.store / "settings.json").write_text(json.dumps(data))
+        (self.store / "settings.json").write_text(json.dumps(truoc_tenor(data)))
 
     def run_sim(self, name, events, shots=(), end=None, env_extra=None, during=None):
         """`events` are 'ms:KEY' or 'ms:KEY:holdms'; `shots` are (ms, name); `during` is (seconds, fn)."""

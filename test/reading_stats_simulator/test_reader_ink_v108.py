@@ -17,6 +17,7 @@ import unittest
 import zipfile
 
 from PIL import Image, ImageChops
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PHYSICAL = (0, 2, 3, 4)
@@ -132,7 +133,7 @@ class ReaderInkV108Test(unittest.TestCase):
         (self.store / 'recent.json').write_text(json.dumps({'books': [dict(path=f'/ink.{extension}', title='Ink fixture')]}))
 
     def run_sim(self, name, script='1000:CONFIRM;5200:BACK;6100:QUIT', captures=((4300, 'page'),)):
-        (self.store / 'settings.json').write_text(json.dumps(self.settings))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
         # Each process starts at Home; book progress/cache are retained separately.
         (self.store / 'state.json').write_text(json.dumps(dict(openEpubPath='', lastSleepFromReader=False,
                                                             showBootScreen=False, readerActivityLoadCount=0)))

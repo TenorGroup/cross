@@ -12,6 +12,7 @@ import unittest
 from PIL import Image, ImageChops
 
 from test_quotes_v1011 import write_quote
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('CROSSPOINT_SIM_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
@@ -25,7 +26,7 @@ class QuotesPreviewTest(unittest.TestCase):
         self.store.mkdir()
         shutil.copy(REPO / 'test/epubs/test_dictionary_synonyms.epub', self.sd / 'audit.epub')
         language = os.environ.get('CROSSPOINT_TEST_LANGUAGE', 'VI')
-        (self.store / 'settings.json').write_text(json.dumps({'language':language, 'sleepTimeout':10, 'readerFavorites':[18]}))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor({'language':language, 'sleepTimeout':10, 'readerFavorites':[18]})))
         # Nhip 17/09/2026: thieu recent.json thi the GAN DAY rong, con tro kep ve dai the va mot nhip
         # CONFIRM khong mo duoc sach. Them dung mot muc de mot nhip CONFIRM mo cuon fixture.
         (self.store / 'recent.json').write_text(json.dumps({'books':[{'path':'/audit.epub','title':'Synonym Lookup Test'}]}))

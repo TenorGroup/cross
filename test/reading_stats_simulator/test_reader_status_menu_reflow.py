@@ -11,6 +11,7 @@ import zipfile
 
 import numpy as np
 from PIL import Image
+from cai_dat_truoc_tenor import truoc_tenor
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -124,7 +125,7 @@ class ReaderStatusMenuReflowTest(unittest.TestCase):
                 "clockUtcOffsetQ": 76,
                 "clockHasBeenSynced": 1,
             }
-            (store / "settings.json").write_text(json.dumps(settings) + "\n", encoding="utf-8")
+            (store / "settings.json").write_text(json.dumps(truoc_tenor(settings)) + "\n", encoding="utf-8")
             (store / "state.json").write_text(
                 json.dumps(
                     {

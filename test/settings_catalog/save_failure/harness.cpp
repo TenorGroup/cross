@@ -16,6 +16,9 @@
 static bool persistOk = true;
 static unsigned writes = 0, errors = 0;
 void CrossPointSettings::toJson(JsonDocument& doc) const { doc["test"] = deviceName; }
+// The settings constructor is defined in src/CrossPointSettings.cpp, outside this slice;
+// it only lays the tenor/cross setup over the member initializers, as this one does.
+CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
 bool PersistableStoreBase::writeDocToFile(const char*, const JsonDocument&) {
   ++writes;
   return persistOk;

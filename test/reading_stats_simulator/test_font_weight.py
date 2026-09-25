@@ -2,6 +2,7 @@
 import json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 import test_rework_font_boundaries as boundaries
+from cai_dat_truoc_tenor import truoc_tenor
 REPO=boundaries.REPO
 
 class FontWeightTest(unittest.TestCase):
@@ -26,8 +27,8 @@ class FontWeightTest(unittest.TestCase):
         shutil.copyfile(REPO/'test/epubs/test_kerning_ligature.epub',self.sd/'books/sach.epub')
         (self.store/'recent.json').write_text(json.dumps({'books':[{'path':'/books/sach.epub','title':'Trial'}]}))
         shutil.copytree(self.pack,self.sd/'.fonts/Trial')
-        self.settings=dict(language='VI',fontSize=26,sdFontFamilyName='Trial',readerInkWeightVersion=1,
-                           readerInkWeight=1,sleepTimeout=10)
+        self.settings=truoc_tenor(dict(language='VI',fontSize=26,sdFontFamilyName='Trial',readerInkWeightVersion=1,
+                                       readerInkWeight=1,sleepTimeout=10))
 
     def test_installed_26_and_persistence(self):
         saved,log=self.run_sim('1000:CONFIRM;1700:CONFIRM;8500:QUIT')

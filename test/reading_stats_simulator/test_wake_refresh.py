@@ -9,6 +9,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -20,7 +21,7 @@ class WakeRefreshTest(unittest.TestCase):
             store = sd / ".crosspoint"
             store.mkdir()
             (store / "state.json").write_text(json.dumps({"showBootScreen": False}))
-            (store / "settings.json").write_text(json.dumps({"language": "EN"}))
+            (store / "settings.json").write_text(json.dumps(truoc_tenor({"language": "EN"})))
             if quick_resume:
                 (store / "sleep_frame.bin").write_bytes(b"\xff" * (528 * 792 // 8))
             env = os.environ.copy()
@@ -57,7 +58,7 @@ class WakeRefreshTest(unittest.TestCase):
             sd = Path(directory)
             store = sd / ".crosspoint"
             store.mkdir()
-            (store / "settings.json").write_text(json.dumps({"language": "EN", "sleepScreen": 8}))
+            (store / "settings.json").write_text(json.dumps(truoc_tenor({"language": "EN", "sleepScreen": 8})))
             env = {k: v for k, v in os.environ.items() if not k.startswith("CROSSPOINT_SIM_")}
             env.update(
                 SDL_VIDEODRIVER="dummy", CROSSPOINT_SIM_SD=str(sd),
@@ -95,9 +96,9 @@ class WakeRefreshTest(unittest.TestCase):
                 store = sd / ".crosspoint"
                 store.mkdir()
                 shutil.copy(REPO / "test/epubs/test_dictionary_synonyms.epub", sd / "audit.epub")
-                (store / "settings.json").write_text(json.dumps({
+                (store / "settings.json").write_text(json.dumps(truoc_tenor({
                     "language": "EN", "sleepScreen": sleep_screen, "textAntiAliasing": 0,
-                }))
+                })))
                 # Nhip 17/09/2026: mot muc recent.json de the GAN DAY co dung mot hang; nho do MOT
                 # nhip CONFIRM mo duoc sach truoc khi ngu (truoc day the rong nen khong mo duoc).
                 (store / "recent.json").write_text(json.dumps({"books": [{"path": "/audit.epub", "title": "Audit"}]}))
@@ -142,7 +143,7 @@ class WakeRefreshTest(unittest.TestCase):
             header = struct.pack("<2sIHHI", b"BM", 54 + len(pixels), 0, 0, 54)
             header += struct.pack("<IiiHHIIiiII", 40, 32, 32, 1, 24, 0, len(pixels), 0, 0, 0, 0)
             (sd / "sleep.bmp").write_bytes(header + pixels)
-            (store / "settings.json").write_text(json.dumps({"language": "EN", "sleepScreen": 2}))
+            (store / "settings.json").write_text(json.dumps(truoc_tenor({"language": "EN", "sleepScreen": 2})))
             env = {k: v for k, v in os.environ.items() if not k.startswith("CROSSPOINT_SIM_")}
             env.update(
                 SDL_VIDEODRIVER="dummy", CROSSPOINT_SIM_SD=str(sd),

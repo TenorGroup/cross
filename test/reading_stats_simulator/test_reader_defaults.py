@@ -61,16 +61,23 @@ class ReaderDefaultsTest(unittest.TestCase):
             return json.loads((store / 'settings.json').read_text())
 
     def test_mac_dinh_bon_loai_gian_deu_o_muc_mac_dinh(self):
+        # Tu v1.0.14 the moi va file chua co tenorPresetVersion chay bo cai dat tenor/cross:
+        # dong Hep, chu Rong, doan Sieu hep; gian ky tu van Mac dinh.
         saved = self.boot({})
-        for key in ('lineSpacing', 'letterSpacing', 'wordSpacing', 'extraParagraphSpacing'):
-            self.assertEqual(saved[key], MAC_DINH, key)
+        mong_doi = {'lineSpacing': HEP, 'letterSpacing': MAC_DINH, 'wordSpacing': RONG,
+                    'extraParagraphSpacing': SIEU_HEP}
+        for key, muc in mong_doi.items():
+            self.assertEqual(saved[key], muc, key)
         self.assertEqual(saved['textSpacingVersion'], 3)
+        self.assertEqual(saved['tenorPresetVersion'], 1)
         self.assertEqual(saved['fontSize'], 16)
 
     def test_bang_di_cu(self):
         for ten, (vao, ra) in FIXTURES.items():
             with self.subTest(fixture=ten):
-                saved = self.boot(vao)
+                # Chi kiem bang quy doi: file co dau tenorPresetVersion nen khong bi dua sang bo
+                # cai dat tenor/cross (luot dua do co bai rieng o test/tenor_preset).
+                saved = self.boot(dict(vao, tenorPresetVersion=1))
                 for key, mong_doi in ra.items():
                     self.assertEqual(saved[key], mong_doi, f'{ten}: {key}')
                 self.assertEqual(saved['textSpacingVersion'], 3, ten)
@@ -80,7 +87,8 @@ class ReaderDefaultsTest(unittest.TestCase):
         for muc in range(5):
             with self.subTest(muc=muc):
                 saved = self.boot({'lineSpacing': muc, 'letterSpacing': muc, 'wordSpacing': muc,
-                                   'extraParagraphSpacing': muc, 'textSpacingVersion': 3})
+                                   'extraParagraphSpacing': muc, 'textSpacingVersion': 3,
+                                   'tenorPresetVersion': 1})
                 for key in ('lineSpacing', 'letterSpacing', 'wordSpacing', 'extraParagraphSpacing'):
                     self.assertEqual(saved[key], muc, f'{key} o muc {muc}')
 

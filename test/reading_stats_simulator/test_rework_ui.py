@@ -31,6 +31,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
@@ -47,7 +48,7 @@ class ReworkUiTest(unittest.TestCase):
         shutil.copy(EPUB, self.sd / 'books/sach.epub')
         (self.store / 'recent.json').write_text(json.dumps({'books': [{'path': '/books/sach.epub', 'title': 'Sach'}]}))
         self.settings = {'language': 'VI', 'fontSize': 14, 'screenInverted': 0}
-        (self.store / 'settings.json').write_text(json.dumps(self.settings))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -111,7 +112,7 @@ class ReworkUiTest(unittest.TestCase):
                   '3000:RIGHT;3500:RIGHT;4000:CONFIRM;'
                   '4700:DOWN;5300:UP;5900:CONFIRM;7000:QUIT')
         self.settings['tenorSideArrows'] = 1
-        (self.store / 'settings.json').write_text(json.dumps(self.settings))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
         log = self.run_sim(script)
         self.assertEqual(self.saved()['tenorSideArrows'], 1, log)
 
@@ -122,7 +123,7 @@ class ReworkUiTest(unittest.TestCase):
                   '3000:RIGHT;3500:RIGHT;4200:DOWN;4700:DOWN;5300:CONFIRM;6700:BACK;'
                   '8100:UP;8600:UP;9200:LEFT;9800:CONFIRM;11200:QUIT')
         self.settings['screenInverted'] = 0
-        (self.store / 'settings.json').write_text(json.dumps(self.settings))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
         log = self.run_sim(script)
         self.assertEqual(self.saved()['screenInverted'], 1, log)
         self.assertEqual(self.saved()['tenorSideArrows'], 1, log)
@@ -166,7 +167,7 @@ class ReworkUiTest(unittest.TestCase):
         script = ('1000:UP;1600:RIGHT;2200:CONFIRM;'
                   '3000:RIGHT;3500:RIGHT;4000:RIGHT;4500:RIGHT;5000:RIGHT;5600:CONFIRM;7000:QUIT')
         self.settings['statusBarClock'] = 2
-        (self.store / 'settings.json').write_text(json.dumps(self.settings))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
         log = self.run_sim(script)
         self.assertNotIn('Entering activity: StatusBarSettings', log)
         self.assertEqual(self.saved()['statusBarClock'], 1, log)
@@ -209,7 +210,7 @@ class ReworkUiTest(unittest.TestCase):
         # turns"), nen mot the nho gia tri 3 (Co chu) phai khong con tac dung gi: giu Phai/Trai
         # khong doi co chu, khong lat trang du, va khong mo man nao.
         self.settings['longPressButtonBehavior'] = 3
-        (self.store / 'settings.json').write_text(json.dumps(self.settings))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
         script = (self.OPEN_BOOK + ';3000:RIGHT:900;5200:RIGHT:900;7400:RIGHT:900;9600:LEFT:900;'
                   '12000:QUIT')
         log = self.run_sim(script)
@@ -237,7 +238,7 @@ class ReworkUiTest(unittest.TestCase):
         (self.sd / 'books/ghi-chu.txt').write_text('Dong chu mau de kiem giu nut doi co.\n' * 400)
         (self.store / 'recent.json').write_text(json.dumps({'books': [{'path': '/books/ghi-chu.txt', 'title': 'Ghi chu'}]}))
         self.settings['longPressButtonBehavior'] = 3
-        (self.store / 'settings.json').write_text(json.dumps(self.settings))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
         log = self.run_sim('1000:CONFIRM;4000:RIGHT:1500;8000:QUIT')
         self.assertIn('Entering activity: TxtReader', log)
         # 1) Gia tri cu trong file bi ep ve OFF ngay khi nap (migration co chu y).

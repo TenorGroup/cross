@@ -2,9 +2,14 @@
 #include <HalGPIO.h>
 #include <gtest/gtest.h>
 
+#include "CrossPointSettings.h"
 #include "activities/UiListActivity.h"
 #include "activities/UiTabListActivity.h"
 #include "util/ButtonNavigator.h"
+
+// The settings constructor is defined in src/CrossPointSettings.cpp, outside this slice;
+// it only lays the tenor/cross setup over the member initializers, as this one does.
+CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
 
 namespace faketest {
 extern bool pressed[8];
