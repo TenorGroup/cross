@@ -650,6 +650,15 @@ const std::string& Epub::getLanguage() const {
   return bookMetadataCache->coreMetadata.language;
 }
 
+const std::string& Epub::getCoverHref() const {
+  static std::string blank;
+  if (!bookMetadataCache || !bookMetadataCache->isLoaded()) {
+    return blank;
+  }
+
+  return bookMetadataCache->coreMetadata.coverItemHref;
+}
+
 std::string Epub::getCoverBmpPath(bool cropped, bool originalThresholds, const bool oneBit) const {
   const auto coverFileName = std::string("cover") +
                              (oneBit               ? "_1b"

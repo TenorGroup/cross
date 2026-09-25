@@ -42,6 +42,7 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "components/ReadingStatsFormat.h"
 #include "components/ReadingStatsView.h"
+#include "util/CoverRef.h"
 #include "components/HomeStatsNavigation.h"
 #include "components/HomeExcerptStyle.h"
 #include "components/SettledListRender.h"
@@ -1239,8 +1240,15 @@ void HomeActivity::writeMissingThumb(const int index) {
     LOG_INF("HOME", "Card thumbnail write %d", index);
     GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
     Epub epub(path, "/.crosspoint");
-    if (epub.load(false, true)) {
-      const int heights[] = {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight};
+    const int heights[] = {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight};
+    // Where the reader left the cover's path: the book's index is not loaded to find it.
+    const unsigned long refStarted = millis();
+    std::string href;
+    const bool ref = coverref::load(epub.getCachePath(), href);
+    LOG_INF("HOME", "Card cover ref ok=%u ms=%lu", ref ? 1u : 0u, millis() - refStarted);
+    if (ref) {
+      epub.generateThumbBmps(href, heights, 2);
+    } else if (epub.load(false, true)) {
       epub.generateThumbBmps(heights, 2);
     }
   }

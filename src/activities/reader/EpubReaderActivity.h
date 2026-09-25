@@ -101,6 +101,9 @@ class EpubReaderActivity final : public ReaderActivity {
   // are missing (the card's own, then the theme's); onExit() writes them as the reader closes.
   int pendingThumbHeights[2] = {};
   uint8_t pendingThumbCount = 0;
+  // The thumbnails were owed at the open: once its first frame is up, the book tells Home where its
+  // cover is (coverref), should they still be owed then.
+  bool coverRefPending = false;
   // Builds them while the cover page decodes the cover, when the book opens on it.
   std::unique_ptr<ImageBlock::ThumbHook> coverThumbs;  // a CoverThumbCapture (EpubReaderActivity.cpp)
   void writePendingThumbs();

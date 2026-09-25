@@ -21,6 +21,7 @@
 #include <limits>
 
 #include "../../util/BookmarkFile.h"
+#include "../../util/CoverRef.h"
 #include "BookmarkEntry.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -410,6 +411,7 @@ bool EpubReaderActivity::loadBook() {
       if (pendingThumbCount < 2) pendingThumbHeights[1] = 0;
       coverThumbs = makeUniqueNoThrow<CoverThumbCapture>(*epub, pendingThumbHeights, pendingThumbCount);
       ImageBlock::setThumbHook(coverThumbs.get());
+      coverRefPending = true;
     }
   }
 #ifdef TENOR_TURN_TRACE
@@ -775,6 +777,18 @@ void EpubReaderActivity::loop() {
   if (!epub) {
     finish();
     return;
+  }
+
+  // The open is committed, so its first frame is up. Thumbnails still owed are written as the
+  // reader closes, but not on the power key; Home then writes them, and without this file it loads
+  // the whole book to find the cover (1,3 s for 5.000 chapters on the X3).
+  if (coverRefPending && !openCommitPending) {
+    coverRefPending = false;
+    std::string saved;
+    if (pendingThumbCount > 0 && !(coverref::load(epub->getCachePath(), saved) && saved == epub->getCoverHref())) {
+      const bool ok = coverref::save(epub->getCachePath(), epub->getCoverHref());
+      LOG_DBG("ERS", "Cover ref saved ok=%u", ok ? 1u : 0u);
+    }
   }
 
   // Someone else turned the screen while this reader was stacked (the control

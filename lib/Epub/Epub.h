@@ -52,6 +52,7 @@ class Epub {
   const std::string& getTitle() const;
   const std::string& getAuthor() const;
   const std::string& getLanguage() const;
+  const std::string& getCoverHref() const;
   // `oneBit`: the black and white cover a folded X3 sleep screen shows (originalThresholds unused).
   std::string getCoverBmpPath(bool cropped = false, bool originalThresholds = false, bool oneBit = false) const;
   bool generateCoverBmp(bool cropped = false, bool originalThresholds = false, bool oneBit = false) const;
