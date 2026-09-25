@@ -1,6 +1,10 @@
 #include "HalTiltSensor.h"
 
 #include <Logging.h>
+#ifdef TENOR_PRESS_PROBE
+#include <BoardConfig.h>
+#include <Wire.h>
+#endif
 
 HalTiltSensor halTiltSensor;  // Singleton instance
 
@@ -80,7 +84,12 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   const bool horizontalEnabled = mode != CrossPointTiltPageTurn::TILT_OFF;
   const bool verticalEnabled = verticalMode != CrossPointTiltPageTurn::TILT_OFF;
   // A hard shake is watched on every screen, so its setting alone keeps the sensor awake.
+#ifdef TENOR_PRESS_PROBE
+  const bool probeLogging = _probeLogUntilMs != 0 && static_cast<long>(millis() - _probeLogUntilMs) < 0;
+  const bool sampling = _shakeEnabled || probeLogging;
+#else
   const bool sampling = _shakeEnabled;
+#endif
 
   // State machine: wake up or sleep based on the enabled flags
   if (!horizontalEnabled && !verticalEnabled && !sampling) {
@@ -119,6 +128,13 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   }
   const float gx = sample.gx;
   const float gy = sample.gy;
+#ifdef TENOR_PRESS_PROBE
+  if (probeLogging) {
+    logSerial.printf("IMU:%lu,%d,%d,%d,%d,%d,%d\n", now, static_cast<int>(sample.ax * 1000.0f),
+                     static_cast<int>(sample.ay * 1000.0f), static_cast<int>(sample.az * 1000.0f),
+                     static_cast<int>(sample.gx), static_cast<int>(sample.gy), static_cast<int>(sample.gz));
+  }
+#endif
   if (_shakeEnabled) pollShake(now, sample);
 
   // Map the gyro axes to the screen axes based on reader orientation. On the
@@ -291,6 +307,58 @@ bool HalTiltSensor::wasShaken() {
   return val;
 }
 
+#ifdef TENOR_PRESS_PROBE
+void HalTiltSensor::probeFastLog(const unsigned long ms) {
+  if (!_available) return;
+  const bool wasAwake = _isAwake;
+  if (!wasAwake && !wake()) return;
+  // QMI8658 at its 224 Hz setting: CTRL2 accel +-2 g, CTRL3 gyro +-512 dps, ODR code 5.
+  // The address is whichever one answers WHO_AM_I, as the SDK's begin() finds it.
+  const auto& sensors = BoardConfig::ACTIVE.sensors;
+  uint8_t addr = 0;
+  for (const uint8_t candidate : {sensors.imuAddr, static_cast<uint8_t>(sensors.imuAddr == 0x6A ? 0x6B : 0x6A)}) {
+    Wire.beginTransmission(candidate);
+    Wire.write(0x00);
+    if (Wire.endTransmission(false) == 0 && Wire.requestFrom(candidate, uint8_t{1}, uint8_t{1}) == 1 &&
+        Wire.read() == 0x05) {
+      addr = candidate;
+      break;
+    }
+  }
+  const auto writeReg = [addr](const uint8_t reg, const uint8_t value) {
+    Wire.beginTransmission(addr);
+    Wire.write(reg);
+    Wire.write(value);
+    Wire.endTransmission();
+  };
+  const bool fast = sensors.imuType == BoardConfig::ImuType::Qmi8658 && addr != 0;
+  if (fast) {
+    writeReg(0x03, 0x05);
+    writeReg(0x04, 0x55);
+  }
+  logSerial.printf("IMUF_BEGIN:fast=%d,t=%lu\n", fast, millis());
+  delay(WAKE_STABILIZE_MS);
+  const unsigned long start = millis();
+  unsigned long nextUs = micros();
+  while (millis() - start < ms) {
+    Imu::Sample s;
+    if (_sdkImu.read(s)) {
+      logSerial.printf("IMUF:%lu,%d,%d,%d,%d,%d,%d\n", micros(), static_cast<int>(s.ax * 1000.0f),
+                       static_cast<int>(s.ay * 1000.0f), static_cast<int>(s.az * 1000.0f), static_cast<int>(s.gx),
+                       static_cast<int>(s.gy), static_cast<int>(s.gz));
+    }
+    nextUs += fast ? 4460 : 35700;
+    while (static_cast<long>(micros() - nextUs) < 0) delay(1);
+  }
+  if (fast) {
+    writeReg(0x03, 0x08);
+    writeReg(0x04, 0x58);
+  }
+  logSerial.printf("IMUF_END:t=%lu\n", millis());
+  if (!wasAwake) _isAwake = !deepSleep();
+  _shakeBaselineValid = false;
+}
+#endif
 
 bool HalTiltSensor::wasTiltedForward() {
   const bool val = _tiltForwardEvent;

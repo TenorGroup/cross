@@ -85,6 +85,10 @@ class HalTiltSensor {
   static constexpr unsigned long SHAKE_REST_MS = 1500;      // Minimum ms between two shakes
   static constexpr unsigned long SHAKE_TILT_LOCK_MS = 800;  // Tilts ignored after a shake's last jolt
 
+#ifdef TENOR_PRESS_PROBE
+  unsigned long _probeLogUntilMs = 0;
+#endif
+
   void pollShake(unsigned long now, const Imu::Sample& sample);
   void raiseTiltEvents(uint8_t bits);
   void emitTilt(uint8_t heldBit, unsigned long now);
@@ -124,6 +128,15 @@ class HalTiltSensor {
 
   // Returns true once per hard shake, consumed on read.
   bool wasShaken();
+
+#ifdef TENOR_PRESS_PROBE
+  // Measurement build, CMD:IMU_LOG: each poll prints its raw sample until
+  // `untilMs`, and the sensor stays awake for it.
+  void probeLogUntil(unsigned long untilMs) { _probeLogUntilMs = untilMs; }
+  // CMD:IMU_LOG <s> fast: blocks for `ms`, sampling at the chip's 224 Hz, then
+  // restores the 28 Hz rate the firmware reads at.
+  void probeFastLog(unsigned long ms);
+#endif
 
   // Returns true once per tilt-forward gesture (next page direction).
   // Consumed on read - subsequent calls return false until next gesture.
