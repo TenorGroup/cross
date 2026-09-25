@@ -115,6 +115,7 @@ add_subdirectory(keyboard_sync)
 add_subdirectory(file_transfer_loop)
 add_subdirectory(file_transfer_back_latch)
 add_subdirectory(ota_back_cancel)
+add_subdirectory(silent_boot_paint)
 
 add_subdirectory(sd_font_lifetime)
 
