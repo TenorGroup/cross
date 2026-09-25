@@ -87,6 +87,17 @@
 #include "util/ScreenshotUtil.h"
 #include "util/WakeBook.h"
 
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+// The serial commands scan integers and words only. newlib's sscanf brings its float scanner and
+// strtod (13 KB of flash); siscanf is the same scanner without floats, already linked for the
+// time zone. Other C libraries (the simulator) have sscanf alone.
+#ifdef _NEWLIB_VERSION
+#define SCAN_COMMAND siscanf
+#else
+#define SCAN_COMMAND sscanf
+#endif
+#endif
+
 #ifdef FREEINK_TLS_AUDIT
 // Diagnostic parent avoids retaining the font manifest or resuming the Home cover.
 class TlsAuditActivity final : public Activity {
@@ -1213,7 +1224,7 @@ void loop() {
         unsigned hold = 0, count = 0, gap = 0;
         const bool sideSwapped = SETTINGS.sideButtonLayout == CrossPointSettings::NEXT_PREV;
         int button = -1;
-        if (sscanf(cmd.c_str() + 6, "%11s %u %u %u", name, &hold, &count, &gap) == 4) {
+        if (SCAN_COMMAND(cmd.c_str() + 6, "%11s %u %u %u", name, &hold, &count, &gap) == 4) {
           const String n(name);
           if (n == "NEXT") button = SETTINGS.frontButtonRight;
           if (n == "PREV") button = SETTINGS.frontButtonLeft;
@@ -1314,7 +1325,7 @@ void loop() {
       } else if (cmd.startsWith("FONT_TEST ")) {
         char family[32] = {};
         unsigned point = 0, weight = 0;
-        if (sscanf(cmd.c_str() + 10, "%31s %u %u", family, &point, &weight) == 3 && point >= 12 && point <= 26 &&
+        if (SCAN_COMMAND(cmd.c_str() + 10, "%31s %u %u", family, &point, &weight) == 3 && point >= 12 && point <= 26 &&
             weight < readerInk::LEVEL_COUNT && sdFontSystem.registry().findFamily(family)) {
           const uint32_t started = millis();
           {
@@ -1351,7 +1362,7 @@ void loop() {
         const char* p = cmd.c_str() + 7;
         unsigned v = 0;
         int used = 0;
-        while (n < sizeof(frame) && sscanf(p, " %x%n", &v, &used) == 1) {
+        while (n < sizeof(frame) && SCAN_COMMAND(p, " %x%n", &v, &used) == 1) {
           frame[n++] = static_cast<uint8_t>(v);
           p += used;
         }
