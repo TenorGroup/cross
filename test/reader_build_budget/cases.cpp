@@ -324,8 +324,9 @@ int main() {
     r.writePendingThumbs();
     // The card's own height first: it is the one the card draws.
     require((thumbs.heights == std::vector<int>{356, 226}), "closing the reader did not write both thumbnails");
-    // A loan returns the framebuffer white; nothing needs the bytes here.
-    require(thumbs.loans == 0, "closing thumbnail borrowed the framebuffer");
+    // The copy's 32 KB inflate window comes out of the framebuffer, which the next screen redraws
+    // whole: X3 r19 lost both thumbnails when the heap's largest block fell 12 bytes short.
+    require(thumbs.loans == 1, "closing thumbnail did not borrow the framebuffer");
     r.writePendingThumbs();
     require(thumbs.generated == 2, "a second close wrote the thumbnails again");
   });

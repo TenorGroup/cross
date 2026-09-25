@@ -437,6 +437,10 @@ void EpubReaderActivity::writePendingThumbs() {
 #endif
   // The decode holds the page still for 1 to 3 s on the X3; say so on the panel first.
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  // The cover's copy out of the book inflates through a 32 KB window in one block, which a
+  // reading session can leave the heap without (X3 r19: 32.756 B largest, both thumbnails lost).
+  // The framebuffer holds nothing Home keeps, so it is lent for the pass.
+  GfxRenderer::FrameBufferLoan loan(renderer);
   epub->generateThumbBmps(pendingThumbHeights, pendingThumbCount);
   pendingThumbCount = 0;
 }
