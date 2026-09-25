@@ -1,6 +1,9 @@
 #pragma once
 #include <HalStorage.h>
 #include <Memory.h>
+#ifdef TENOR_PRESS_PROBE
+#include <Arduino.h>
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -38,7 +41,7 @@ class BufferedFileWriter {
       flushBuffer();
     }
     if (len >= cap) {  // also the cap == 0 passthrough
-      okFlag &= file.write(p, len) == len;
+      okFlag &= writeThrough(p, len);
       return;
     }
     // Typed local: cppcheck misreads unique_ptr<uint8_t[]>::get() arithmetic as void*.
@@ -59,8 +62,21 @@ class BufferedFileWriter {
  private:
   void flushBuffer() {
     if (fill == 0) return;
-    okFlag &= file.write(buf.get(), fill) == fill;
+    okFlag &= writeThrough(buf.get(), fill);
     fill = 0;
+  }
+
+  bool writeThrough(const uint8_t* p, const size_t len) {
+#ifdef TENOR_PRESS_PROBE
+    const size_t at = file.position();
+    const unsigned long started = millis();
+    const bool whole = file.write(p, len) == len;
+    slowestWriteMs = std::max<unsigned long>(slowestWriteMs, millis() - started);
+    if (!whole && firstShortAt < 0) firstShortAt = static_cast<long>(at);
+    return whole;
+#else
+    return file.write(p, len) == len;
+#endif
   }
 
   HalFile& file;
@@ -69,6 +85,13 @@ class BufferedFileWriter {
   size_t fill = 0;
   size_t pos;
   bool okFlag = true;
+#ifdef TENOR_PRESS_PROBE
+
+ public:
+  // The slowest card write so far, and the file position of the first short one (INDEX_WRITE).
+  unsigned long slowestWriteMs = 0;
+  long firstShortAt = -1;
+#endif
 };
 
 class BufferedFileReader {

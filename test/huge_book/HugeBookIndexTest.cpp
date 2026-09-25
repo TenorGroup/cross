@@ -360,3 +360,233 @@ TEST(HugeBookIndex, OpfPassReachesTheCardInBlocks) {
   EXPECT_LT(cardCalls.seeks, 1500u);
 }
 
+// ---------------------------------------------------------------------------
+// Background index: a book of thousands of chapters opens on its chapter list
+// (book.part) and builds the TOC and chapter sizes afterwards, a step at a
+// time (Epub::load, Epub::indexSome). Same card, same parsers, driven in the
+// order those two run them.
+namespace {
+const std::string partPath = cachePath + "/book.part";
+const std::string binPath = cachePath + "/book.bin";
+
+void resetCard(const Book& book) {
+  heapcap::Untracked guard;
+  Storage.files.clear();
+  zipModel = {};
+  zipModel.entries = book.zip;
+}
+
+std::vector<uint8_t> fileBytes(const std::string& path) {
+  heapcap::Untracked guard;
+  const auto it = Storage.files.find(path);
+  return it == Storage.files.end() ? std::vector<uint8_t>{} : it->second->bytes;
+}
+
+// Epub::load's build path for a large book: the OPF pass, then book.part.
+bool writeChapterList(const Book& book) {
+  BookMetadataCache::BookMetadata metadata;
+  BookMetadataCache cache(cachePath);
+  if (!cache.beginWrite() || !cache.beginContentOpfPass()) return false;
+  {
+    ContentOpfParser opf(cachePath, basePath, book.opf.size(), &cache);
+    if (!opf.setup() || !feed(opf, book.opf)) return false;
+    metadata.title = opf.title;
+  }
+  if (!cache.endContentOpfPass() || !BookMetadataCache::indexesInBackground(cache.getSpineCount())) return false;
+  cache.endWrite();
+  return cache.writePart(metadata, {"", basePath + "nav.xhtml", basePath});
+}
+
+// indexSome's TOC step. Without `finish` the pass is cut the way a power cut or a stop cuts it.
+bool tocStep(const Book& book, const bool finish = true) {
+  BookMetadataCache pass(cachePath);
+  if (!pass.beginDeferredTocPass()) return false;
+  TocNavParser nav(basePath, book.nav.size(), &pass);
+  if (!nav.setup() || !feed(nav, book.nav)) return false;
+  return !finish || pass.endDeferredTocPass();
+}
+
+// indexSome's book.bin step, from a cache loaded the way the reader holds it.
+bool bookStep(const BookMetadataCache::StopFn stop = nullptr) {
+  BookMetadataCache part(cachePath);
+  return part.load(/*allowPartial=*/true) && part.buildBookBinFromPart(epubPath, stop);
+}
+
+// A stop question that answers true from its `stopAfter`-th call on.
+int stopAfter = 0, stopAsked = 0;
+bool stopCounter() { return ++stopAsked >= stopAfter; }
+bool neverStop() { return false; }
+
+bool indexInBackground(const Book& book) {
+  resetCard(book);
+  return writeChapterList(book) && tocStep(book) && bookStep();
+}
+
+std::vector<uint8_t> onePassBookBin(const Book& book) {
+  EXPECT_TRUE(indexBook(book, SIZE_MAX).ok);
+  return fileBytes(binPath);
+}
+}  // namespace
+
+TEST(BackgroundIndex, OnlyBooksOfFourHundredChaptersOrMore) {
+  EXPECT_FALSE(BookMetadataCache::indexesInBackground(30));
+  EXPECT_FALSE(BookMetadataCache::indexesInBackground(399));
+  EXPECT_TRUE(BookMetadataCache::indexesInBackground(400));
+  EXPECT_TRUE(BookMetadataCache::indexesInBackground(5000));
+}
+
+// The first page needs the chapter list and the book's metadata, nothing more: no zip
+// directory scan for chapter sizes, no TOC. Every chapter can be opened from book.part.
+TEST(BackgroundIndex, ChapterListIsReadableBeforeTheTocAndSizes) {
+  const int n = 5000;
+  const Book book = makeBook(Kind::Split, n);
+  resetCard(book);
+  ASSERT_TRUE(writeChapterList(book));
+  EXPECT_EQ(zipModel.scans, 0u);
+  EXPECT_EQ(zipModel.scannedEntries, 0u);
+  EXPECT_FALSE(Storage.exists(binPath.c_str()));
+  EXPECT_FALSE(Storage.exists((cachePath + "/spine.bin.tmp").c_str())) << "book.part replaces the spine pass file";
+
+  BookMetadataCache complete(cachePath);
+  EXPECT_FALSE(complete.load()) << "a caller that needs sizes never gets a partial index";
+
+  BookMetadataCache cache(cachePath);
+  ASSERT_TRUE(cache.load(/*allowPartial=*/true));
+  EXPECT_TRUE(cache.isPartial());
+  EXPECT_EQ(cache.getSpineCount(), n);
+  EXPECT_EQ(cache.getTocCount(), 0);
+  EXPECT_EQ(cache.coreMetadata.title, "Sách thử");
+  EXPECT_EQ(cache.tocSource.navItem, basePath + "nav.xhtml");
+  EXPECT_EQ(cache.tocSource.basePath, basePath);
+  for (int i : {0, 1, 3999, n - 1}) {
+    const auto spine = cache.getSpineEntry(i);
+    EXPECT_EQ(spine.href, basePath + "c" + pad5(i + 1) + ".xhtml");
+    EXPECT_EQ(spine.tocIndex, -1);
+    EXPECT_EQ(cache.getCumulativeSize(i), 0u) << "no size may pass for the book's progress";
+  }
+}
+
+// The background steps end in the very book.bin the one-pass build writes.
+TEST(BackgroundIndex, StepsBuildTheSameBookBinAsOnePass) {
+  for (int n : {400, 2000, 5000}) {
+    const Book book = makeBook(Kind::Split, n);
+    const auto expected = onePassBookBin(book);
+    ASSERT_FALSE(expected.empty());
+    ASSERT_TRUE(indexInBackground(book)) << n;
+    EXPECT_EQ(fileBytes(binPath), expected) << n;
+    EXPECT_FALSE(Storage.exists((cachePath + "/book.bin.tmp").c_str()));
+    BookMetadataCache cache(cachePath);
+    ASSERT_TRUE(cache.load(/*allowPartial=*/true));
+    EXPECT_FALSE(cache.isPartial());
+    cache.removePartFiles();
+    EXPECT_FALSE(Storage.exists(partPath.c_str()));
+    expectSplitCache(n);
+  }
+}
+
+// A TOC with an entry for a file outside the spine, two entries for one chapter and chapters with
+// none: the chunked match gives the same chapters the in-memory index gave.
+TEST(BackgroundIndex, TocMatchingAgreesWithOnePassOnIrregularTocs) {
+  Book book = makeBook(Kind::Split, 1200);
+  {
+    heapcap::Untracked guard;
+    const std::string extra = "<li><a href=\"missing.xhtml\">Lạc</a></li><li><a href=\"c00007.xhtml\">Lặp</a></li>";
+    const size_t at = book.nav.find("<li><a href=\"c00010.xhtml\"");
+    book.nav.insert(at, extra);
+    const std::string gap = "<li><a href=\"c00500.xhtml\">Chương 500: Mưa nắng</a></li>";
+    book.nav.erase(book.nav.find(gap), gap.size());
+  }
+  const auto expected = onePassBookBin(book);
+  ASSERT_TRUE(indexInBackground(book));
+  EXPECT_EQ(fileBytes(binPath), expected);
+}
+
+// Every stop point of the book.bin step leaves no book.bin and no temporary file behind, and the
+// next run from the same card still ends in the one-pass bytes.
+TEST(BackgroundIndex, StoppedBookStepLeavesNothingAndResumes) {
+  const Book book = makeBook(Kind::Split, 2000);
+  const auto expected = onePassBookBin(book);
+  resetCard(book);
+  ASSERT_TRUE(writeChapterList(book) && tocStep(book));
+  int stopPoints = 0;
+  for (int k = 1;; ++k) {
+    stopAfter = k;
+    stopAsked = 0;
+    const bool built = bookStep(stopCounter);
+    if (built) break;
+    ++stopPoints;
+    EXPECT_FALSE(Storage.exists(binPath.c_str())) << "stop " << k;
+    EXPECT_FALSE(Storage.exists((cachePath + "/book.bin.tmp").c_str())) << "stop " << k;
+    ASSERT_LT(k, 1000);
+  }
+  EXPECT_GT(stopPoints, 10) << "the step must be stoppable all along";
+  EXPECT_EQ(fileBytes(binPath), expected);
+}
+
+// A TOC pass cut before its end (stop, power cut, sleep) is never taken for a finished one.
+TEST(BackgroundIndex, CutTocPassIsRedoneFromTheStart) {
+  const Book book = makeBook(Kind::Split, 2000);
+  const auto expected = onePassBookBin(book);
+  resetCard(book);
+  ASSERT_TRUE(writeChapterList(book));
+  ASSERT_TRUE(tocStep(book, /*finish=*/false));
+  EXPECT_FALSE(BookMetadataCache::deferredTocReady(cachePath));
+  EXPECT_FALSE(bookStep()) << "book.bin cannot be built on a cut TOC pass";
+  EXPECT_FALSE(Storage.exists(binPath.c_str()));
+  // The count lands after toc.bin: toc.bin alone is not a finished pass either.
+  ASSERT_TRUE(tocStep(book));
+  {
+    heapcap::Untracked guard;
+    Storage.files.erase(cachePath + "/toc.count");
+  }
+  EXPECT_FALSE(BookMetadataCache::deferredTocReady(cachePath));
+  ASSERT_TRUE(tocStep(book) && bookStep());
+  EXPECT_EQ(fileBytes(binPath), expected);
+}
+
+// The step that swaps the index in stops like the others, and fails without touching the card.
+TEST(BackgroundIndex, StoppedLoadFailsAndLoadsLater) {
+  const Book book = makeBook(Kind::Split, 5000);
+  ASSERT_TRUE(indexInBackground(book));
+  stopAfter = 3;
+  stopAsked = 0;
+  BookMetadataCache stopped(cachePath);
+  EXPECT_FALSE(stopped.load(false, stopCounter));
+  EXPECT_FALSE(stopped.isLoaded());
+  BookMetadataCache later(cachePath);
+  EXPECT_TRUE(later.load(false, neverStop));
+  EXPECT_FALSE(later.isPartial());
+}
+
+// A cache written by the previous release (book.bin, version 10) still opens as a whole index.
+TEST(BackgroundIndex, OnePassCacheStillLoadsWhole) {
+  const Book book = makeBook(Kind::Split, 5000);
+  resetCard(book);
+  ASSERT_TRUE(indexBook(book, SIZE_MAX).ok);
+  BookMetadataCache cache(cachePath);
+  ASSERT_TRUE(cache.load(/*allowPartial=*/true));
+  EXPECT_FALSE(cache.isPartial());
+  EXPECT_EQ(cache.getTocCount(), 5000);
+}
+
+// The reader runs these steps with the radio held off but beside a page: the TOC step keeps no
+// index of the chapters in memory, and the book.bin step fits beside the reader.
+TEST(BackgroundIndex, StepsFitBesideTheReader) {
+  constexpr size_t READER_IDLE_HEAP = 60 * 1024;
+  const Book book = makeBook(Kind::Split, 5000);
+  resetCard(book);
+  ASSERT_TRUE(writeChapterList(book));
+  heapcap::reset(SIZE_MAX);
+  ASSERT_TRUE(tocStep(book));
+  const size_t tocPeak = heapcap::peak;
+  heapcap::reset(READER_IDLE_HEAP);
+  const bool built = bookStep();
+  const size_t bookPeak = heapcap::peak;
+  const unsigned aborts = heapcap::aborts;
+  heapcap::stop();
+  printf("HUGE_INDEX background n=5000 peak_toc=%zu peak_book=%zu cap=%zu\n", tocPeak, bookPeak, READER_IDLE_HEAP);
+  EXPECT_EQ(aborts, 0u);
+  EXPECT_TRUE(built);
+  // The one-pass TOC pass holds 8 bytes per chapter (40 KB here) on top of the parser.
+  EXPECT_LT(tocPeak, 5000u * 8);
+}

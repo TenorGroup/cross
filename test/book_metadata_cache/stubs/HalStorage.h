@@ -42,10 +42,11 @@ class HalFile {
     pos += n;
     return n;
   }
-  void close() {
+  bool close() {
     if (!data) throw std::logic_error("HalFile::close on null implementation");
     data.reset();
     pos = 0;
+    return true;
   }
 };
 struct TestStorage {
@@ -64,5 +65,12 @@ struct TestStorage {
   }
   bool exists(const char* p) const { return files.count(p); }
   bool remove(const char* p) { return files.erase(p); }
+  bool rename(const char* from, const char* to) {
+    auto it = files.find(from);
+    if (it == files.end() || files.count(to)) return false;
+    files[to] = it->second;
+    files.erase(it);
+    return true;
+  }
 };
 inline TestStorage Storage;
