@@ -6,6 +6,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 #include <algorithm>
 #include <cstdlib>
 #include <vector>
@@ -229,6 +230,13 @@ struct Manager {
   bool sleepTransitionState = false;
   uint32_t activityGeneration() const { return 1; }
   bool isSleepTransition() const { return sleepTransitionState; }
+  // Writes left for the next screen's first frame (ActivityManager::deferWrite).
+  std::vector<void (*)()> deferred;
+  void deferWrite(void (*write)()) { deferred.push_back(write); }
+  void nextScreenFramed() {
+    for (auto write : deferred) write();
+    deferred.clear();
+  }
 } activityManager;
 struct EndMenu { bool menuActive() const { return false; } };
 // The open's own writes: state.json and the recent list (ReaderActivity::onEnter and commitOpen).

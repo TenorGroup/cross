@@ -8,7 +8,8 @@ template<class F> void test(const char* name, F fn) {
   freeink::ble::stopForIdleCalls = freeink::ble::rearmRequests = 0;
   freeink::ble::stopForIdleResult = true;
   clockMs = 1000; popupCount = buildErrors = 0; popupAtMs = 0; thumbs = {}; tenorchrome::enabledState = true;
-  activityManager.sleepTransitionState = false; openWrites = {}; ImageBlock::hook = nullptr;
+  activityManager.sleepTransitionState = false; activityManager.deferred.clear(); openWrites = {};
+  ImageBlock::hook = nullptr;
   try { fn(); std::cout << "PASS " << name << '\n'; }
   catch (const std::exception& e) { ++failures; std::cout << "FAIL " << name << ": " << e.what() << '\n'; }
 }
@@ -411,6 +412,7 @@ int main() {
     require(openWrites.statsSaves == 1, "the checkpoint after the menu did not write the stats");
     clockMs += 5000;
     r.onPause();  // a later screen that is not the menu
+    activityManager.nextScreenFramed();
     require(openWrites.statsSaves == 2, "the menu flag leaked into a later pause");
     require(kMenuKeepsStats, "openReaderMenu does not ask the pause to keep the stats in RAM");
   });
@@ -426,12 +428,21 @@ int main() {
     require(openWrites.statsSaves == 0, "text settings waited on a stats write");
     require(r.statsDirty, "the reading before text settings was not recorded");
   });
-  test("other screens over the reader still write the stats as they open", [] {
+  // Any other screen over the reader wrote the checkpoint before its first frame: 367 ms on the X3
+  // in front of the quote selector (r12: PAUSE_SAVE ms=367). It is written once that screen's first
+  // frame is up, or as the screen closes (ActivityManager flushes deferred writes on every exit).
+  test("other screens over the reader write the stats after their first frame", [] {
     EpubReaderActivity r; r.statsEnabled = true; r.statsActive = true; r.pageReady = true;
     r.statsLastMs = r.statsSavedMs = r.statsDayPollMs = millis();
     clockMs += 20000;
     r.onPause();
-    require(openWrites.statsSaves == 1, "a child screen opened with unsaved reading stats");
+    require(openWrites.statsSaves == 0, "a child screen waited on a stats write before its first frame");
+    require(activityManager.deferred.size() == 1, "the reading before the child screen was left unwritten");
+    activityManager.nextScreenFramed();
+    require(openWrites.statsSaves == 1, "the child screen's first frame did not bring the stats write");
+    clockMs += 1000;
+    r.onPause();  // nothing read since: nothing to write
+    require(activityManager.deferred.empty(), "an unchanged record was written again");
   });
   // state.json and the recent list are read by the next boot and by Home only. Writing them in
   // onEnter() put two SD writes (and a pass over every recent book on the card) ahead of the
