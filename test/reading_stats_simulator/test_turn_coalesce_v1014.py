@@ -77,7 +77,7 @@ class TurnCoalesceTest(unittest.TestCase):
 
     def test_queued_presses_keep_the_gray_pass(self):
         log, _ = self.run_sim("rhythm", base.presses("DOWN", 60, 3, 150), START + 6000)
-        print(f"rhythm: skipped={SKIPPED.findall(log)} pages={self.pages(log)}")
+        print(f"rhythm: gray_dropped={SKIPPED.findall(log)} pages={self.pages(log)}")
         self.assertNotIn("queued", SKIPPED.findall(log), "a queued turn still cut the gray pass short")
         self.assertEqual(self.pages(log)[-1], 3)
 
