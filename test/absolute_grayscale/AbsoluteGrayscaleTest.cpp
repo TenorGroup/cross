@@ -18,9 +18,10 @@ TEST(AbsoluteGrayscale, DitherersReportEachRowAllocationFailure) {
     AtkinsonDitherer atkinson(8);
     rowAllocationToFail = -1;
     EXPECT_FALSE(atkinson.isValid());
-
-    rowAllocationToFail = row;
-    Atkinson1BitDitherer oneBit(8);
+  }
+  {
+    rowAllocationToFail = 0;
+    FloydSteinberg1BitDitherer oneBit(8);
     rowAllocationToFail = -1;
     EXPECT_FALSE(oneBit.isValid());
   }
@@ -31,7 +32,7 @@ TEST(AbsoluteGrayscale, DitherersReportEachRowAllocationFailure) {
     EXPECT_FALSE(floyd.isValid());
   }
   AtkinsonDitherer atkinson(8);
-  Atkinson1BitDitherer oneBit(8);
+  FloydSteinberg1BitDitherer oneBit(8);
   FloydSteinbergDitherer floyd(8);
   EXPECT_TRUE(atkinson.isValid());
   EXPECT_TRUE(oneBit.isValid());
@@ -118,4 +119,28 @@ TEST(AbsoluteGrayscale, PackedRowsMatchPixelMappingInEveryOrientation) {
       EXPECT_EQ(msb[i], expectedMsb[i]);
     }
   }
+}
+
+// The 1-bit dither keeps a flat tone: its share of white matches the tone within a few levels, from
+// deep shadow to near paper. Atkinson lost 32 to black and 224 to white.
+TEST(AbsoluteGrayscale, OneBitDitherKeepsFlatTones) {
+  constexpr int W = 64, H = 64;
+  for (const int tone : {16, 32, 64, 96, 128, 160, 192, 224, 240}) {
+    FloydSteinberg1BitDitherer dither(W);
+    ASSERT_TRUE(dither.isValid());
+    int white = 0;
+    for (int y = 0; y < H; ++y) {
+      for (int i = 0; i < W; ++i) white += dither.processPixel(tone, dither.at(i));
+      dither.nextRow();
+    }
+    EXPECT_NEAR(white * 255.0 / (W * H), tone, 4.0) << "tone " << tone;
+  }
+}
+
+// Odd rows run right to left: the error of a row's last pixel lands on the next row's first.
+TEST(AbsoluteGrayscale, OneBitDitherRunsSerpentine) {
+  FloydSteinberg1BitDitherer dither(5);
+  for (int i = 0; i < 5; ++i) EXPECT_EQ(dither.at(i), i);
+  dither.nextRow();
+  for (int i = 0; i < 5; ++i) EXPECT_EQ(dither.at(i), 4 - i);
 }

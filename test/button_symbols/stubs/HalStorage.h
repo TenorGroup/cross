@@ -32,6 +32,12 @@ struct HalFile {
     offset_ += actual;
     return static_cast<int>(actual);
   }
+  int read() {
+    uint8_t byte = 0;
+    return read(&byte, 1) == 1 ? byte : -1;
+  }
+  bool seekCur(const int delta) { return seekSet(offset_ + delta); }
+  explicit operator bool() const { return bytes != nullptr; }
   size_t write(const uint8_t*, size_t size) { return size; }
   void close() { bytes = nullptr; }
 };

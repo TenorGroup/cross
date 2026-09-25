@@ -1372,10 +1372,6 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
   const uint32_t started = micros();
   uint32_t readUs = 0;
   if (fontCacheManager_ && fontCacheManager_->isScanning()) return false;
-  // For 1-bit bitmaps, use optimized 1-bit rendering path (no crop support for 1-bit)
-  if (bitmap.is1Bit() && cropX == 0.0f && cropY == 0.0f && !levelRows) {
-    return drawBitmap1Bit(bitmap, x, y, maxWidth, maxHeight);
-  }
 
   float scale = 1.0f;
   bool isScaled = false;
@@ -1400,11 +1396,27 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
     hasTargetBounds = true;
   }
 
-  if (hasTargetBounds && fitScale < 1.0f) {
+  // A crop worked out in float can leave the image a fraction of a pixel over the bounds: that is
+  // not a shrink, and scaling by 0.99999 dropped a whole row.
+  const bool over =
+      (maxWidth > 0 && croppedWidth >= maxWidth + 1.0f) || (maxHeight > 0 && croppedHeight >= maxHeight + 1.0f);
+  if (hasTargetBounds && fitScale < 1.0f && over) {
     scale = fitScale;
     isScaled = true;
   }
   LOG_DBG("GFX", "Scaling by %f - %s", scale, isScaled ? "scaled" : "not scaled");
+  // A black and white 1-bit image drawn 1:1 goes to the framebuffer row by row; its white leaves
+  // the page as it is, as below.
+  if (bitmap.is1Bit() && !isScaled && !levelRows && renderMode == BW && x >= 0 && y >= 0 &&
+      drawBitmapRows(bitmap, x, y, cropPixX, cropPixY, std::min(bitmap.getWidth() - 2 * cropPixX, getScreenWidth() - x),
+                     std::min(bitmap.getHeight() - 2 * cropPixY, getScreenHeight() - y), false)) {
+    preserveImagePolarity(x, y, bitmap.getWidth() - 2 * cropPixX, bitmap.getHeight() - 2 * cropPixY);
+    return true;
+  }
+  // Other 1-bit bitmaps without a crop keep their own path.
+  if (bitmap.is1Bit() && cropX == 0.0f && cropY == 0.0f && !levelRows) {
+    return drawBitmap1Bit(bitmap, x, y, maxWidth, maxHeight);
+  }
 
   // Calculate output row size (2 bits per pixel, packed into bytes)
   // IMPORTANT: Use int, not uint8_t, to avoid overflow for images > 1020 pixels wide
@@ -2330,6 +2342,12 @@ int GfxRenderer::getTextInkBottom(int fontId, const char* text, EpdFontFamily::S
 bool GfxRenderer::drawBitmapCover(const Bitmap& bitmap, int x, int y, int width, int height) const {
   if (width <= 0 || height <= 0 || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) return false;
   const int sourceW = bitmap.getWidth(), sourceH = bitmap.getHeight();
+  // A thumbnail of the card's shape fills the card 1:1, cropped at the centre (v1.0.14).
+  if (sourceW >= width && sourceH >= height && (sourceW == width || sourceH == height) &&
+      drawBitmapRows(bitmap, x, y, (sourceW - width) / 2, (sourceH - height) / 2, width, height, true)) {
+    preserveImagePolarity(x, y, width, height);
+    return true;
+  }
   const float scale = std::max(float(width) / sourceW, float(height) / sourceH);
   const float cropX = (sourceW - width / scale) / 2;
   const float cropY = (sourceH - height / scale) / 2;
@@ -2369,6 +2387,60 @@ bool GfxRenderer::drawBitmapCover(const Bitmap& bitmap, int x, int y, int width,
   free(columns);
   preserveImagePolarity(x, y, width, height);
   return true;
+}
+
+void GfxRenderer::drawBitRow(const uint8_t* bits, const int from, const int count, const int x, const int y,
+                             const bool opaque) const {
+  int x0, y0, x1, y1, x2, y2;
+  rotateCoordinates(orientation, x, y, &x0, &y0, panelWidth, panelHeight);
+  rotateCoordinates(orientation, x + count - 1, y, &x1, &y1, panelWidth, panelHeight);
+  rotateCoordinates(orientation, x + 1, y, &x2, &y2, panelWidth, panelHeight);
+  const bool onPanel = !_stripActive && std::min(x0, x1) >= 0 && std::max(x0, x1) < panelWidth &&
+                       std::min(y0, y1) >= 0 && std::max(y0, y1) < panelHeight;
+  // Along one screen row every pixel moves the same step through the panel's rows and columns.
+  const int stride = panelWidthBytes * 8;
+  int bit = y0 * stride + x0;
+  const int step = (y2 - y0) * stride + (x2 - x0);
+  for (int i = 0; i < count; ++i, bit += step) {
+    const int s = from + i;
+    const bool white = (bits[s >> 3] << (s & 7)) & 0x80;
+    if (!onPanel) {
+      if (!white || opaque) drawPixel(x + i, y, !white);
+      continue;
+    }
+    // Black clears the bit, white sets it when opaque and keeps it otherwise.
+    const uint8_t mask = 0x80 >> (bit & 7);
+    uint8_t& byte = frameBuffer[bit >> 3];
+    byte = (byte & ~(white && !opaque ? 0 : mask)) | (white && opaque ? mask : 0);
+  }
+}
+
+bool GfxRenderer::drawBitmapRows(const Bitmap& bitmap, const int x, const int y, const int srcX, const int srcY,
+                                 const int w, const int h, const bool opaque) const {
+  if (!bitmap.isBlackWhite() || w <= 0 || h <= 0) return false;
+  const uint32_t started = micros();
+  uint32_t readUs = 0;
+  auto* row = static_cast<uint8_t*>(malloc(bitmap.getRowBytes()));
+  if (!row) return false;
+  bool ok = true;
+  for (int r = 0; r < bitmap.getHeight(); ++r) {
+    const int sy = bitmap.isTopDown() ? r : bitmap.getHeight() - 1 - r;
+    if (bitmap.isTopDown() && sy >= srcY + h) break;  // the rest of the file lies below the crop
+    const uint32_t readStart = micros();
+    ok = bitmap.readRawRow(row) == BmpReaderError::Ok;
+    readUs += micros() - readStart;
+    if (!ok) break;
+    if (sy >= srcY && sy < srcY + h) drawBitRow(row, srcX, w, x, y + sy - srcY, opaque);
+  }
+  free(row);
+  LOG_INF("BMP", "Timing bpp=%u mode=%u decode=%lu total=%lu ms", bitmap.getBpp(), renderMode,
+          static_cast<unsigned long>(readUs / 1000), static_cast<unsigned long>((micros() - started) / 1000));
+  return ok;
+}
+
+void GfxRenderer::drawBits(const uint8_t* bits, const int stride, const int srcX, const int srcY, const int w,
+                           const int h, const int x, const int y) const {
+  for (int r = 0; r < h; ++r) drawBitRow(bits + (srcY + r) * stride, srcX, w, x, y + r, true);
 }
 
 int GfxRenderer::getTextHeight(const int fontId) const {

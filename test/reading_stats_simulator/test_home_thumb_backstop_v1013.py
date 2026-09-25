@@ -61,7 +61,7 @@ class HomeThumbBackstopTest(unittest.TestCase):
         return log, images
 
     def thumbs(self, height):
-        return sorted(self.store.glob(f'epub_*/thumb_{height}.bmp'))
+        return sorted(self.store.glob(f'epub_*/thumb2_{height}.bmp'))
 
     def test_book_left_with_the_power_key_gets_its_cover_on_home(self):
         # Home, open the book (text first page), read, sleep with the power key; wake to Home and

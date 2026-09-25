@@ -70,6 +70,8 @@ class Bitmap {
   ~Bitmap();
   BmpReaderError parseHeaders();
   BmpReaderError readNextRow(uint8_t* data, uint8_t* rowBuffer) const;
+  // The next row as the file stores it, getRowBytes() long.
+  BmpReaderError readRawRow(uint8_t* rowBuffer) const;
   BmpReaderError rewindToData() const;
   int getWidth() const { return width; }
   int getHeight() const { return height; }
@@ -77,6 +79,8 @@ class Bitmap {
   bool hasGreyscale() const { return bpp > 1; }
   int getRowBytes() const { return rowBytes; }
   bool is1Bit() const { return bpp == 1; }
+  // 1 bit, entry 0 black and entry 1 white, as readNextRow maps them: stored rows are the pixels.
+  bool isBlackWhite() const { return bpp == 1 && paletteLum[0] < 64 && paletteLum[1] >= 192; }
   uint16_t getBpp() const { return bpp; }
 
  private:

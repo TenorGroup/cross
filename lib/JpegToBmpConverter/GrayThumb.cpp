@@ -10,10 +10,6 @@
 #include "BitmapHelpers.h"
 
 namespace {
-// Heap the rest of the page render keeps after start() (the decoder and pixel cache band are
-// already out of it by then).
-constexpr size_t RENDER_MARGIN = 64 * 1024;
-
 void put32(uint8_t* p, const uint32_t v) {
   p[0] = v & 0xFF;
   p[1] = (v >> 8) & 0xFF;
@@ -47,14 +43,10 @@ GrayThumb::~GrayThumb() = default;
 
 bool GrayThumb::plan(const int srcW, const int srcH, const int blockRows) {
   if (srcW <= 0 || srcH <= 0 || blockRows <= 0) return false;
-  // Same size rule as jpegFileTo1BitBmpStreamWithSize: fill height x 0.6 height, keep aspect.
-  const float scaleToFitWidth = static_cast<float>(static_cast<int>(height * 0.6)) / srcW;
-  const float scaleToFitHeight = static_cast<float>(height) / srcH;
-  const float scale = scaleToFitWidth > scaleToFitHeight ? scaleToFitWidth : scaleToFitHeight;
+  // Same size rule as the cover-file thumbnail (Epub::generateThumbBmps): fill the card's shape.
   srcWidth = srcW;
   srcHeight = srcH;
-  outWidth = static_cast<int>(srcW * scale);
-  outHeight = static_cast<int>(srcH * scale);
+  coverScaleSize(srcW, srcH, thumbWidthFor(height), height, true, &outWidth, &outHeight);
   if (outWidth < 1 || outHeight < 1 || outWidth > srcW || outHeight > srcH) return false;
   scaleX = (static_cast<uint32_t>(srcW) << 16) / outWidth;
   scaleY = (static_cast<uint32_t>(srcH) << 16) / outHeight;
@@ -70,15 +62,15 @@ size_t GrayThumb::bufferBytes(const int height, const int srcW, const int srcH, 
   GrayThumb t(height);
   if (!t.plan(srcW, srcH, blockRows)) return 0;
   return static_cast<size_t>(t.rowBytes) * t.outHeight + static_cast<size_t>(t.ringRows) * t.outWidth * 2 +
-         static_cast<size_t>(t.outWidth + 4) * 6 + sizeof(Atkinson1BitDitherer);
+         static_cast<size_t>(t.outWidth + 2) * 2 + sizeof(FloydSteinberg1BitDitherer);
 }
 
-bool GrayThumb::start(const int srcW, const int srcH, const int blockRows) {
+bool GrayThumb::start(const int srcW, const int srcH, const int blockRows, const size_t margin) {
   const size_t bytes = bufferBytes(height, srcW, srcH, blockRows);
-  if (bytes == 0 || !plan(srcW, srcH, blockRows) || ESP.getFreeHeap() < bytes + RENDER_MARGIN) return false;
+  if (bytes == 0 || !plan(srcW, srcH, blockRows) || ESP.getFreeHeap() < bytes + margin) return false;
   ring = makeUniqueNoThrow<uint16_t[]>(static_cast<size_t>(ringRows) * outWidth);
   bits = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(rowBytes) * outHeight);
-  ditherer = makeUniqueNoThrow<Atkinson1BitDitherer>(outWidth);
+  ditherer = makeUniqueNoThrow<FloydSteinberg1BitDitherer>(outWidth);
   if (!ring || !bits || !ditherer || !ditherer->isValid()) return false;
   memset(ring.get(), 0, static_cast<size_t>(ringRows) * outWidth * 2);
   memset(bits.get(), 0, static_cast<size_t>(rowBytes) * outHeight);
@@ -121,7 +113,8 @@ void GrayThumb::emitBelow(const int limit) {
     const int y1 = std::min(static_cast<int>((static_cast<uint64_t>(nextEmit + 1) * scaleY + 0xFFFF) >> 16), srcHeight);
     const int rows = std::max(y1 - y0, 1);
     uint8_t* dst = &bits[nextEmit * rowBytes];
-    for (int ox = 0; ox < outWidth; ox++) {
+    for (int i = 0; i < outWidth; i++) {
+      const int ox = ditherer->at(i);
       const int s0 = static_cast<int>((static_cast<uint32_t>(ox) * scaleX) >> 16);
       const int s1 = std::min(static_cast<int>((static_cast<uint32_t>(ox + 1) * scaleX) >> 16), srcWidth);
       const int count = std::max(s1 - s0, 1) * rows;

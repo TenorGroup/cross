@@ -52,8 +52,9 @@ class Epub {
   const std::string& getTitle() const;
   const std::string& getAuthor() const;
   const std::string& getLanguage() const;
-  std::string getCoverBmpPath(bool cropped = false, bool originalThresholds = false) const;
-  bool generateCoverBmp(bool cropped = false, bool originalThresholds = false) const;
+  // `oneBit`: the black and white cover a folded X3 sleep screen shows (originalThresholds unused).
+  std::string getCoverBmpPath(bool cropped = false, bool originalThresholds = false, bool oneBit = false) const;
+  bool generateCoverBmp(bool cropped = false, bool originalThresholds = false, bool oneBit = false) const;
   std::string getThumbBmpPath() const;
   std::string getThumbBmpPath(int height) const;
   // Writes the 1-bit cover thumbnail for each height not on the card yet.

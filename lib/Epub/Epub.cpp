@@ -1,5 +1,6 @@
 #include "Epub.h"
 
+#include <BitmapHelpers.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
 #include <JpegToBmpConverter.h>
@@ -648,15 +649,18 @@ const std::string& Epub::getLanguage() const {
   return bookMetadataCache->coreMetadata.language;
 }
 
-std::string Epub::getCoverBmpPath(bool cropped, bool originalThresholds) const {
-  const auto coverFileName =
-      std::string("cover") + (originalThresholds ? "_original" : "_legacy_v2") + (cropped ? "_crop" : "");
+std::string Epub::getCoverBmpPath(bool cropped, bool originalThresholds, const bool oneBit) const {
+  const auto coverFileName = std::string("cover") +
+                             (oneBit               ? "_1b"
+                              : originalThresholds ? "_original"
+                                                   : "_legacy_v2") +
+                             (cropped ? "_crop" : "");
   return cachePath + "/" + coverFileName + ".bmp";
 }
 
-bool Epub::generateCoverBmp(bool cropped, bool originalThresholds) const {
+bool Epub::generateCoverBmp(bool cropped, bool originalThresholds, const bool oneBit) const {
   // Already generated, return true
-  if (Storage.exists(getCoverBmpPath(cropped, originalThresholds).c_str())) {
+  if (Storage.exists(getCoverBmpPath(cropped, originalThresholds, oneBit).c_str())) {
     return true;
   }
 
@@ -689,10 +693,11 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds) const {
     }
 
     HalFile coverBmp;
-    if (!Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, originalThresholds), coverBmp)) {
+    if (!Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, originalThresholds, oneBit), coverBmp)) {
       return false;
     }
-    const bool success = JpegToBmpConverter::jpegFileToBmpStream(coverJpg, coverBmp, cropped, originalThresholds);
+    const bool success =
+        JpegToBmpConverter::jpegFileToBmpStream(coverJpg, coverBmp, cropped, originalThresholds, oneBit);
     // Explicitly close() files before calling Storage.remove()
     coverJpg.close();
     coverBmp.close();
@@ -700,7 +705,7 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds) const {
 
     if (!success) {
       LOG_ERR("EBP", "Failed to generate BMP from cover image");
-      Storage.remove(getCoverBmpPath(cropped, originalThresholds).c_str());
+      Storage.remove(getCoverBmpPath(cropped, originalThresholds, oneBit).c_str());
     }
     LOG_DBG("EBP", "Generated BMP from JPG cover image, success: %s", success ? "yes" : "no");
     return success;
@@ -724,10 +729,10 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds) const {
     }
 
     HalFile coverBmp;
-    if (!Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, originalThresholds), coverBmp)) {
+    if (!Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, originalThresholds, oneBit), coverBmp)) {
       return false;
     }
-    const bool success = PngToBmpConverter::pngFileToBmpStream(coverPng, coverBmp, cropped, originalThresholds);
+    const bool success = PngToBmpConverter::pngFileToBmpStream(coverPng, coverBmp, cropped, originalThresholds, oneBit);
     // Explicitly close() files before calling Storage.remove()
     coverPng.close();
     coverBmp.close();
@@ -735,7 +740,7 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds) const {
 
     if (!success) {
       LOG_ERR("EBP", "Failed to generate BMP from PNG cover image");
-      Storage.remove(getCoverBmpPath(cropped, originalThresholds).c_str());
+      Storage.remove(getCoverBmpPath(cropped, originalThresholds, oneBit).c_str());
     }
     LOG_DBG("EBP", "Generated BMP from PNG cover image, success: %s", success ? "yes" : "no");
     return success;
@@ -745,8 +750,11 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds) const {
   return false;
 }
 
-std::string Epub::getThumbBmpPath() const { return cachePath + "/thumb_[HEIGHT].bmp"; }
-std::string Epub::getThumbBmpPath(int height) const { return cachePath + "/thumb_" + std::to_string(height) + ".bmp"; }
+// "thumb2": the card's shape (BitmapHelpers.h). A thumbnail is kept by its name alone, so the
+// name changed with the shape: the old "thumb_" files are never drawn again, and every book gets a
+// new thumbnail the next time it is opened.
+std::string Epub::getThumbBmpPath() const { return cachePath + "/thumb2_[HEIGHT].bmp"; }
+std::string Epub::getThumbBmpPath(int height) const { return cachePath + "/thumb2_" + std::to_string(height) + ".bmp"; }
 
 bool Epub::isCoverImage(const std::string& href) const {
   return bookMetadataCache && bookMetadataCache->isLoaded() && !href.empty() &&
@@ -802,7 +810,7 @@ void Epub::generateThumbBmps(const int* heights, const int count) const {
       break;
     }
     // Generate 1-bit BMP for fast home screen rendering (no gray passes needed)
-    const int width = height * 0.6;
+    const int width = thumbWidthFor(height);
     bool success =
         jpg ? JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(cover, thumbBmp, width, height)
             : PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(cover, thumbBmp, width, height);

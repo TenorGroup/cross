@@ -211,7 +211,7 @@ struct BmpConvertCtx {
 
   std::unique_ptr<AtkinsonDitherer> atkinsonDitherer;
   std::unique_ptr<FloydSteinbergDitherer> fsDitherer;
-  std::unique_ptr<Atkinson1BitDitherer> atkinson1BitDitherer;
+  std::unique_ptr<FloydSteinberg1BitDitherer> oneBitDitherer;
 
   uint8_t rowsSinceYield;
   uint8_t blocksSinceYield;
@@ -239,12 +239,11 @@ static void writeOutputRow(BmpConvertCtx* ctx, const uint8_t* srcRow, int outY) 
       ctx->bmpRow[x] = adjustPixel(srcRow[x]);
     }
   } else if (ctx->oneBit) {
-    for (int x = 0; x < ctx->outWidth; x++) {
-      const uint8_t bit = ctx->atkinson1BitDitherer ? ctx->atkinson1BitDitherer->processPixel(srcRow[x], x)
-                                                    : quantize1bit(srcRow[x], x, outY);
-      ctx->bmpRow[x / 8] |= (bit << (7 - (x % 8)));
+    for (int i = 0; i < ctx->outWidth; i++) {
+      const int x = ctx->oneBitDitherer->at(i);
+      ctx->bmpRow[x / 8] |= ctx->oneBitDitherer->processPixel(srcRow[x], x) << (7 - (x % 8));
     }
-    if (ctx->atkinson1BitDitherer) ctx->atkinson1BitDitherer->nextRow();
+    ctx->oneBitDitherer->nextRow();
   } else {
     for (int x = 0; x < ctx->outWidth; x++) {
       const uint8_t gray = adjustPixel(srcRow[x]);
@@ -360,13 +359,12 @@ static void flushScaledRow(BmpConvertCtx* ctx) {
       ctx->bmpRow[x] = adjustPixel(gray);
     }
   } else if (ctx->oneBit) {
-    for (int x = 0; x < ctx->outWidth; x++) {
+    for (int i = 0; i < ctx->outWidth; i++) {
+      const int x = ctx->oneBitDitherer->at(i);
       const uint8_t gray = (ctx->rowCount[x] > 0) ? (ctx->rowAccum[x] / ctx->rowCount[x]) : 0;
-      const uint8_t bit = ctx->atkinson1BitDitherer ? ctx->atkinson1BitDitherer->processPixel(gray, x)
-                                                    : quantize1bit(gray, x, ctx->currentOutY);
-      ctx->bmpRow[x / 8] |= (bit << (7 - (x % 8)));
+      ctx->bmpRow[x / 8] |= ctx->oneBitDitherer->processPixel(gray, x) << (7 - (x % 8));
     }
-    if (ctx->atkinson1BitDitherer) ctx->atkinson1BitDitherer->nextRow();
+    ctx->oneBitDitherer->nextRow();
   } else {
     for (int x = 0; x < ctx->outWidth; x++) {
       const uint8_t gray = adjustPixel((ctx->rowCount[x] > 0) ? (ctx->rowAccum[x] / ctx->rowCount[x]) : 0);
@@ -523,19 +521,7 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   bool needsScaling = false;
 
   if (targetWidth > 0 && targetHeight > 0 && (srcWidth != targetWidth || srcHeight != targetHeight)) {
-    const float scaleToFitWidth = static_cast<float>(targetWidth) / srcWidth;
-    const float scaleToFitHeight = static_cast<float>(targetHeight) / srcHeight;
-    float scale = 1.0f;
-    if (crop) {
-      scale = (scaleToFitWidth > scaleToFitHeight) ? scaleToFitWidth : scaleToFitHeight;
-    } else {
-      scale = (scaleToFitWidth < scaleToFitHeight) ? scaleToFitWidth : scaleToFitHeight;
-    }
-
-    outWidth = static_cast<int>(srcWidth * scale);
-    outHeight = static_cast<int>(srcHeight * scale);
-    if (outWidth < 1) outWidth = 1;
-    if (outHeight < 1) outHeight = 1;
+    coverScaleSize(srcWidth, srcHeight, targetWidth, targetHeight, crop, &outWidth, &outHeight);
   }
 
   // JPEGDEC forces progressive streams to JPEG_SCALE_EIGHTH in DecodeJPEG, so callback
@@ -640,9 +626,9 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   }
 
   if (oneBit) {
-    ctx.atkinson1BitDitherer = makeUniqueNoThrow<Atkinson1BitDitherer>(outWidth);
-    if (!ctx.atkinson1BitDitherer || !ctx.atkinson1BitDitherer->isValid()) {
-      LOG_ERR("JPG", "OOM: Atkinson1BitDitherer");
+    ctx.oneBitDitherer = makeUniqueNoThrow<FloydSteinberg1BitDitherer>(outWidth);
+    if (!ctx.oneBitDitherer || !ctx.oneBitDitherer->isValid()) {
+      LOG_ERR("JPG", "OOM: 1-bit ditherer");
       return false;
     }
   } else if (!USE_8BIT_OUTPUT) {
@@ -684,11 +670,12 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
 }
 
 // Core function: Convert JPEG file to 2-bit BMP (uses default target size)
-bool JpegToBmpConverter::jpegFileToBmpStream(HalFile& jpegFile, Print& bmpOut, bool crop, bool originalThresholds) {
+bool JpegToBmpConverter::jpegFileToBmpStream(HalFile& jpegFile, Print& bmpOut, bool crop, bool originalThresholds,
+                                             const bool oneBit) {
   // Use runtime display dimensions (swapped for portrait cover sizing)
   const int targetWidth = display.getDisplayHeight();
   const int targetHeight = display.getDisplayWidth();
-  return jpegFileToBmpStreamInternal(jpegFile, bmpOut, targetWidth, targetHeight, false, crop, originalThresholds);
+  return jpegFileToBmpStreamInternal(jpegFile, bmpOut, targetWidth, targetHeight, oneBit, crop, originalThresholds);
 }
 
 // Convert with custom target size (for thumbnails, 2-bit)

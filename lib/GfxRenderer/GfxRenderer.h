@@ -40,6 +40,12 @@ class GfxRenderer {
 
  private:
   static constexpr size_t BW_BUFFER_CHUNK_SIZE = 8000;  // 8KB chunks to allow for non-contiguous memory
+  // `count` pixels of a packed 1-bit row from bit `from` (a set bit white) to screen row y from x:
+  // black clears the pixel, white sets it only when `opaque`.
+  void drawBitRow(const uint8_t* bits, int from, int count, int x, int y, bool opaque) const;
+  // Rows [srcY, srcY + h), columns [srcX, srcX + w) of a black and white 1-bit BMP, 1:1 at (x, y),
+  // read as the file stores them. False, with nothing read, for any other BMP.
+  bool drawBitmapRows(const Bitmap& bitmap, int x, int y, int srcX, int srcY, int w, int h, bool opaque) const;
 
   HalDisplay& display;
   RenderMode renderMode;
@@ -282,6 +288,9 @@ class GfxRenderer {
   bool drawBitmap(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight, float cropX = 0,
                   float cropY = 0, const uint8_t (*levelRows)[4] = nullptr) const;
   bool drawBitmap1Bit(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight) const;
+  // A packed 1-bit picture in RAM (MSB first, a set bit white): its region [srcX, srcX + w) x
+  // [srcY, srcY + h) goes 1:1 to (x, y), every pixel written.
+  void drawBits(const uint8_t* bits, int stride, int srcX, int srcY, int w, int h, int x, int y) const;
   // Counter-invert content images in the logical framebuffer so output-level
   // dark mode leaves their original polarity unchanged.
   void preserveImagePolarity(int x, int y, int width, int height) const;

@@ -10,5 +10,7 @@ target_include_directories(CoverThumbRamTest PRIVATE
   ${REPO_ROOT}/lib/JpegToBmpConverter
   ${REPO_ROOT}/lib/GfxRenderer
   ${REPO_ROOT}/lib/Memory
+  ${REPO_ROOT}/lib/Utf8
+  ${REPO_ROOT}/src
 )
 add_test(NAME CoverThumbRam COMMAND CoverThumbRamTest)

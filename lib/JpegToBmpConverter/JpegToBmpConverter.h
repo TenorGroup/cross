@@ -10,7 +10,9 @@ class JpegToBmpConverter {
                                           bool oneBit, bool crop = true, bool originalThresholds = false);
 
  public:
-  static bool jpegFileToBmpStream(HalFile& jpegFile, Print& bmpOut, bool crop = true, bool originalThresholds = false);
+  // Screen-sized cover; `oneBit` dithers it straight to black and white (X3 sleep, folded).
+  static bool jpegFileToBmpStream(HalFile& jpegFile, Print& bmpOut, bool crop = true, bool originalThresholds = false,
+                                  bool oneBit = false);
   // Convert with custom target size (for thumbnails)
   static bool jpegFileToBmpStreamWithSize(HalFile& jpegFile, Print& bmpOut, int targetMaxWidth, int targetMaxHeight);
   // Convert to 1-bit BMP (black and white only, no grays) for fast home screen rendering

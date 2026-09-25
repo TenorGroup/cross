@@ -12,7 +12,9 @@ book path, the day code, the minute and a slot. The four records come from the
 long-title fixture, renamed; two more sit in a second, generated book.
 
 A book's cover reaches this screen only through the Cover sleep mode's cache, so the setup
-runs one real Cover sleep (sleepScreen 3) per book first and keeps what it cached.
+runs real Cover sleeps (sleepScreen 3) per book first, with the black and white switch on and off,
+and keeps what they cached. v1.0.14: with the switch on, the tile is that cover shrunk by area and
+dithered to black and white once (test_sleep_cover_v1014.py), no longer ordered patterns.
 
 Set SLEEP_QUOTE_SHOTS to a directory to keep the screenshots as PNG.
 """
@@ -129,8 +131,10 @@ class SleepQuoteTest(unittest.TestCase):
             (store / 'settings.json').write_text(json.dumps({'language': 'VI', 'sleepScreen': 3}))
             (store / 'state.json').write_text(json.dumps({'showBootScreen': False, 'openEpubPath': book}))
             log = cls.run_sim(sd, f'{SLEEP_AT}:SLEEP;9000:QUIT')
+            (store / 'settings.json').write_text(json.dumps({'language': 'VI', 'sleepScreen': 3, 'sleepBwRefresh': 0}))
+            log += cls.run_sim(sd, f'{SLEEP_AT}:SLEEP;9000:QUIT')
             made = list(store.glob('epub_*/cover_*.bmp'))
-            assert made, 'Cover sleep made no cover cache\n' + log
+            assert len(made) == 2, 'Cover sleeps made no black and white and 4-level covers\n' + log
             cls.caches[book] = list(store.glob('epub_*'))
             cls.books[book] = sd / book.lstrip('/')
         # A book whose cover image is broken: the Cover sleep builds its metadata cache but
@@ -215,11 +219,10 @@ class SleepQuoteTest(unittest.TestCase):
         return sum(1 for p in image.crop(box).getdata() if 20 < p < 235)
 
     def dithered(self, image, box):
-        """X3 shows the cover as an ordered dither (v1.0.12): aligned 4x4 cells holding a Bayer
-        gray, 4 of 16 pixels white (dark gray) or 12 of 16 (light gray)."""
-        px = image.load()
-        return sum(1 for y in range(box[1] // 4 * 4, box[3] - 3, 4) for x in range(box[0] // 4 * 4, box[2] - 3, 4)
-                   if sum(px[x + i, y + j] > 128 for i in range(4) for j in range(4)) in (4, 12))
+        """X3 shows the cover dithered to black and white (v1.0.14: by error diffusion, no longer an
+        ordered pattern): the fixture cover, dark with mid gray below, leaves most of the tile black.
+        Returned as black pixels per 100 of the tile, so 30 and up is a cover, under 20 is text."""
+        return self.ink(image, box) * 100 // ((box[2] - box[0]) * (box[3] - box[1]))
 
     def fit(self, log):
         match = FIT.search(log)
@@ -240,11 +243,11 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertIn(f'Sleep quote {name}', log)
         self.assertEqual(self.fit(log), (0, 1, 0, 1, 1))
         self.assert_quote_frame(image)
-        self.assertGreater(self.dithered(image, COVER_BOX), 200, 'cover tile has no gray levels')
+        self.assertGreater(self.dithered(image, COVER_BOX), 30, 'cover tile has no cover')
         sleep = self.sleep_part(log)
         # Black, white, then the sleep frame: the visible refresh the default switch promises.
         self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), ['0', '0', '0'], sleep)
-        self.assertIn('Sleep quote gray ready=1', sleep)
+        self.assertRegex(sleep, r'Sleep quote tile ms=\d+ from \d+x\d+ ok=1')
         self.assertNotIn('[BRAND] sleep ready=', sleep)
 
     def test_cover_corners_are_rounded_in_both_sleep_paths(self):
@@ -273,8 +276,8 @@ class SleepQuoteTest(unittest.TestCase):
                     edge = [px[cx + dx * i, cy + dy * j] for i in range(12, 40) for j in range(4)]
                     self.assertTrue(any(v < 235 for v in edge), f"no cover along the edge at ({cx}, {cy})")
                 # Dithered on the black-and-white path, gray levels on the gray one.
-                shades = self.dithered(image, COVER_BOX) if refresh else self.grays(image, COVER_BOX)
-                self.assertGreater(shades, 200, 'cover tile has no gray levels')
+                shades = self.dithered(image, COVER_BOX) > 30 if refresh else self.grays(image, COVER_BOX) > 200
+                self.assertTrue(shades, 'cover tile has no gray levels')
 
     def test_real_quote_fits_whole(self):
         name, raw = self.real[REAL_217]
@@ -287,7 +290,7 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertEqual(title, 3, log)
         self.assertIn(size, (0, 1, 2))
         self.assert_quote_frame(image)
-        self.assertGreater(self.dithered(image, COVER_BOX), 200)
+        self.assertGreater(self.dithered(image, COVER_BOX), 30)
 
     def test_long_quote_is_cut_at_fourteen(self):
         record = {'schema': 1, 'path': SECOND_BOOK, 'title': SECOND_TITLE, 'text': long_text(),
@@ -310,7 +313,7 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertEqual((cut, cover, title), (0, 0, 3), log)
         self.assert_quote_frame(image)
         self.assertEqual(self.grays(image, COVER_BOX), 0)
-        self.assertLess(self.dithered(image, COVER_BOX), 100)
+        self.assertLess(self.dithered(image, COVER_BOX), 20)
         # The title starts at the margin, inside where the tile would have been.
         self.assertGreater(self.ink(image, (48, 596, 144, 700)), 50)
         sleep = self.sleep_part(log)
@@ -335,7 +338,7 @@ class SleepQuoteTest(unittest.TestCase):
         made = re.search(r'Sleep quote cover made=1 ms=(\d+) bytes=(\d+)', log)
         self.assertIsNotNone(made, log)
         self.assertEqual(self.fit(log)[3], 1, log)
-        self.assertGreater(self.dithered(image, COVER_BOX), 200, 'made cover not drawn')
+        self.assertGreater(self.dithered(image, COVER_BOX), 30, 'made cover not drawn')
         covers = list((sd / '.crosspoint').glob('epub_*/cover_*.bmp'))
         self.assertEqual(len(covers), 1, covers)
         self.assertEqual(covers[0].stat().st_size, int(made.group(2)))
@@ -359,7 +362,7 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertIn('Sleep quote cover skipped: book not on card', log)
         self.assertEqual(self.fit(log)[3], 0, log)
         self.assertEqual(self.grays(image, COVER_BOX), 0)
-        self.assertLess(self.dithered(image, COVER_BOX), 100)
+        self.assertLess(self.dithered(image, COVER_BOX), 20)
         self.assertEqual(list((sd / '.crosspoint').glob('epub_*/cover_*.bmp')), [])
 
     def test_short_heap_skips_making_the_cover(self):
@@ -384,7 +387,7 @@ class SleepQuoteTest(unittest.TestCase):
         self.assertIn('Generating BMP from JPG cover image', log)
         self.assertEqual(self.fit(log)[3], 0, log)
         self.assertEqual(self.grays(image, COVER_BOX), 0)
-        self.assertLess(self.dithered(image, COVER_BOX), 100)
+        self.assertLess(self.dithered(image, COVER_BOX), 20)
         markers = list(cache.glob('epub_*/cover_*.fail'))
         self.assertEqual(len(markers), 1, list(cache.rglob('*')))
         self.assertEqual(list(cache.glob('epub_*/cover_*.bmp')), [])

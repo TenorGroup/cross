@@ -4,7 +4,7 @@
 #include <memory>
 
 class Print;
-class Atkinson1BitDitherer;
+class FloydSteinberg1BitDitherer;
 
 // 1-bit BMP header (top-down, black and white palette) shared by every thumbnail writer.
 void writeBmpHeader1bit(Print& bmpOut, int width, int height);
@@ -25,7 +25,10 @@ class GrayThumb {
   // blockRows is the tallest block the feeder hands over. False when the thumbnail would need more
   // pixels than the source has (a softer cover than the file decode gives), or when the heap
   // cannot spare the buffers and still leave the page render its margin.
-  bool start(int srcWidth, int srcHeight, int blockRows);
+  // Heap the rest of the page render keeps after start() (the decoder and pixel cache band are
+  // already out of it by then).
+  static constexpr size_t RENDER_MARGIN = 64 * 1024;
+  bool start(int srcWidth, int srcHeight, int blockRows, size_t margin = RENDER_MARGIN);
   // Gray pixels of the source block at (x, y), rows `stride` bytes apart. Blocks of one block row
   // arrive left to right, block rows top to bottom (JPEGDEC's raster MCU order).
   void block(int x, int y, int w, int h, const uint8_t* gray, int stride);
@@ -36,6 +39,10 @@ class GrayThumb {
   bool writeScaled(int height, Print& out) const;
 
   int width() const { return outWidth; }
+  int rows() const { return outHeight; }
+  // The finished rows once finish() said true: packed 1 bit per pixel, a set bit white.
+  const uint8_t* pixels() const { return bits.get(); }
+  int stride() const { return rowBytes; }
   // Bytes start() takes for a source of this size, for the heap check and for the tests.
   static size_t bufferBytes(int height, int srcWidth, int srcHeight, int blockRows);
 
@@ -49,5 +56,5 @@ class GrayThumb {
   bool failed = false;
   std::unique_ptr<uint16_t[]> ring;  // sums of the thumbnail rows still open, ringRows x outWidth
   std::unique_ptr<uint8_t[]> bits;   // finished rows, 1 bit per pixel, no BMP padding
-  std::unique_ptr<Atkinson1BitDitherer> ditherer;
+  std::unique_ptr<FloydSteinberg1BitDitherer> ditherer;
 };

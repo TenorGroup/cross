@@ -580,19 +580,8 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
 
   if (targetWidth > 0 && targetHeight > 0 &&
       (static_cast<int>(width) != targetWidth || static_cast<int>(height) != targetHeight)) {
-    const float scaleToFitWidth = static_cast<float>(targetWidth) / width;
-    const float scaleToFitHeight = static_cast<float>(targetHeight) / height;
-    float scale = 1.0;
-    if (crop) {
-      scale = (scaleToFitWidth > scaleToFitHeight) ? scaleToFitWidth : scaleToFitHeight;
-    } else {
-      scale = (scaleToFitWidth < scaleToFitHeight) ? scaleToFitWidth : scaleToFitHeight;
-    }
-
-    outWidth = static_cast<int>(width * scale);
-    outHeight = static_cast<int>(height * scale);
-    if (outWidth < 1) outWidth = 1;
-    if (outHeight < 1) outHeight = 1;
+    coverScaleSize(static_cast<int>(width), static_cast<int>(height), targetWidth, targetHeight, crop, &outWidth,
+                   &outHeight);
 
     scaleX_fp = (width << 16) / outWidth;
     scaleY_fp = (height << 16) / outHeight;
@@ -627,12 +616,12 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   // Create ditherers (same as JpegToBmpConverter)
   std::unique_ptr<AtkinsonDitherer> atkinsonDitherer;
   std::unique_ptr<FloydSteinbergDitherer> fsDitherer;
-  std::unique_ptr<Atkinson1BitDitherer> atkinson1BitDitherer;
+  std::unique_ptr<FloydSteinberg1BitDitherer> oneBitDitherer;
 
   if (oneBit) {
-    atkinson1BitDitherer = makeUniqueNoThrow<Atkinson1BitDitherer>(outWidth);
-    if (!atkinson1BitDitherer || !atkinson1BitDitherer->isValid()) {
-      LOG_ERR("PNG", "OOM: Atkinson1BitDitherer or row buffers");
+    oneBitDitherer = makeUniqueNoThrow<FloydSteinberg1BitDitherer>(outWidth);
+    if (!oneBitDitherer || !oneBitDitherer->isValid()) {
+      LOG_ERR("PNG", "OOM: 1-bit ditherer");
       free(rowBuffer);
       free(ctx.currentRow);
       free(ctx.previousRow);
@@ -718,14 +707,11 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
           rowBuffer[x] = adjustPixel(grayRow[x]);
         }
       } else if (oneBit) {
-        for (int x = 0; x < outWidth; x++) {
-          const uint8_t bit =
-              atkinson1BitDitherer ? atkinson1BitDitherer->processPixel(grayRow[x], x) : quantize1bit(grayRow[x], x, y);
-          const int byteIndex = x / 8;
-          const int bitOffset = 7 - (x % 8);
-          rowBuffer[byteIndex] |= (bit << bitOffset);
+        for (int i = 0; i < outWidth; i++) {
+          const int x = oneBitDitherer->at(i);
+          rowBuffer[x / 8] |= oneBitDitherer->processPixel(grayRow[x], x) << (7 - (x % 8));
         }
-        if (atkinson1BitDitherer) atkinson1BitDitherer->nextRow();
+        oneBitDitherer->nextRow();
       } else {
         for (int x = 0; x < outWidth; x++) {
           const uint8_t gray = adjustPixel(grayRow[x]);
@@ -784,15 +770,12 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
             rowBuffer[x] = adjustPixel(gray);
           }
         } else if (oneBit) {
-          for (int x = 0; x < outWidth; x++) {
+          for (int i = 0; i < outWidth; i++) {
+            const int x = oneBitDitherer->at(i);
             const uint8_t gray = (rowCount[x] > 0) ? (rowAccum[x] / rowCount[x]) : 0;
-            const uint8_t bit =
-                atkinson1BitDitherer ? atkinson1BitDitherer->processPixel(gray, x) : quantize1bit(gray, x, currentOutY);
-            const int byteIndex = x / 8;
-            const int bitOffset = 7 - (x % 8);
-            rowBuffer[byteIndex] |= (bit << bitOffset);
+            rowBuffer[x / 8] |= oneBitDitherer->processPixel(gray, x) << (7 - (x % 8));
           }
-          if (atkinson1BitDitherer) atkinson1BitDitherer->nextRow();
+          oneBitDitherer->nextRow();
         } else {
           for (int x = 0; x < outWidth; x++) {
             const uint8_t gray = adjustPixel((rowCount[x] > 0) ? (rowAccum[x] / rowCount[x]) : 0);
@@ -852,11 +835,12 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   return success;
 }
 
-bool PngToBmpConverter::pngFileToBmpStream(HalFile& pngFile, Print& bmpOut, bool crop, bool originalThresholds) {
+bool PngToBmpConverter::pngFileToBmpStream(HalFile& pngFile, Print& bmpOut, bool crop, bool originalThresholds,
+                                           const bool oneBit) {
   // Use runtime display dimensions (swapped for portrait cover sizing)
   const int targetWidth = display.getDisplayHeight();
   const int targetHeight = display.getDisplayWidth();
-  return pngFileToBmpStreamInternal(pngFile, bmpOut, targetWidth, targetHeight, false, crop, originalThresholds);
+  return pngFileToBmpStreamInternal(pngFile, bmpOut, targetWidth, targetHeight, oneBit, crop, originalThresholds);
 }
 
 bool PngToBmpConverter::pngFileToBmpStreamWithSize(HalFile& pngFile, Print& bmpOut, int targetMaxWidth,

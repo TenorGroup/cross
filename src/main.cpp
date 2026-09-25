@@ -376,18 +376,20 @@ void enterDeepSleep(bool fromTimeout = false) {
   // it visible until the first useful reader or home paint replaces it.
   APP_STATE.showBootScreen = false;
 
-  APP_STATE.saveToFile();
-
   // Commit to sleeping before goToSleep() runs the outgoing activity's onExit():
   // a WiFi activity would otherwise silentRestart() here and reboot instead.
   deepSleepInProgress = true;
+  const bool asleep = activityManager.goToSleep(fromTimeout);
+  if (asleep) LOG_INF("SLP", "Timing image-ready=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
+  // One write of the state, once the sleep screen is up: what that screen chose (the quote shown,
+  // the picture) goes in this write instead of a second write of the same file of its own.
+  APP_STATE.saveToFile();
   LOG_INF("SLP", "Timing save-state=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
-  if (!activityManager.goToSleep(fromTimeout)) {
+  if (!asleep) {
     deepSleepInProgress = false;
     autoSleepBlockedUntilInput = true;
     return;
   }
-  LOG_INF("SLP", "Timing image-ready=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
   const uint32_t retainedStarted = millis();
 
   // Absolute gray images leave their MSB plane, a B/W threshold of the final

@@ -57,7 +57,7 @@ add_test(NAME UiLayout.corner_cost COMMAND UiLayout_corner_cost)
 # Rounded blocks through the real GfxRenderer.cpp, with the button_symbols test's stubs and a RAM
 # framebuffer, so the corner shape is checked on the pixels the panel gets. The sleep dither rides
 # on the same recipe.
-foreach(name rounded_render rounded_border sleep_gray_planes)
+foreach(name rounded_render rounded_border sleep_gray_planes bitmap_rows)
 add_executable(UiLayout_${name} ${name}.cpp
   "${REPO_ROOT}/lib/GfxRenderer/GfxRenderer.cpp"
   "${REPO_ROOT}/lib/GfxRenderer/FontCacheManager.cpp"
@@ -79,6 +79,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   target_link_options(UiLayout_${name} PRIVATE -Wl,-dead_strip)
 else()
   target_link_options(UiLayout_${name} PRIVATE -Wl,--gc-sections)
+endif()
+if(name STREQUAL "bitmap_rows")
+  target_sources(UiLayout_${name} PRIVATE "${REPO_ROOT}/lib/GfxRenderer/Bitmap.cpp" "${REPO_ROOT}/lib/GfxRenderer/BitmapHelpers.cpp")
 endif()
 if(name STREQUAL "sleep_gray_planes")
   target_sources(UiLayout_${name} PRIVATE "${REPO_ROOT}/src/activities/boot_sleep/SleepGrayPlanes.cpp")

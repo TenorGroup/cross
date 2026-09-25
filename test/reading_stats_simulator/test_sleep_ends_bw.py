@@ -20,6 +20,11 @@ The black and white passes run once the sleep image is complete in RAM (v1.0.13)
 sees black, white and the image back to back instead of a white panel while a cover decodes.
 A gray cover is decoded once and dithered as it is drawn, not once per gray plane.
 
+v1.0.14: with the switch on, the book covers (the Cover screen, the quote screen's tile) are
+dithered straight to black and white once, from a black and white cover or the card thumbnail,
+and keep their tones (test_sleep_cover_v1014.py); the ordered patterns stay for the Tenor screen
+and gray pictures of the user's own. Their golden frames were recorded again for that.
+
 Fixtures are made up here: a four-tone cover drawn with PIL, an invented title and quote.
 Set SLEEP_BW_SHOTS to a directory to keep the screenshots as PNG.
 
@@ -220,14 +225,28 @@ class SleepEndsBwTest(unittest.TestCase):
         return found
 
     def cover_cache(self):
-        """One real Cover sleep makes the cover cache the quote screen reads."""
+        """Real Cover sleeps make the cover cache the quote screen reads: one with the switch on (the
+        black and white cover, kept as cover_run), one with it off (the 4-level cover)."""
         if getattr(type(self), 'cover_sd', None) is None:
             sd = self.make_sd('cover', 3, {'openEpubPath': BOOK})
             write_epub(sd / BOOK.lstrip('/'))
             type(self).cover_sd = sd
             type(self).cover_run = self.sleep_once(sd, 'bia-sach')
-            self.assertTrue(list((sd / '.crosspoint').glob('epub_*/cover_*.bmp')))
+            (sd / '.crosspoint/settings.json').write_text(json.dumps({'language': 'VI', 'sleepScreen': 3,
+                                                                      'sleepBwRefresh': 0}))
+            self.sleep_once(sd, 'bia-sach-tat')
+            self.assertEqual(len(list((sd / '.crosspoint').glob('epub_*/cover_*.bmp'))), 2)
         return type(self).cover_sd, type(self).cover_run
+
+    @staticmethod
+    def band_tones(image, box, count):
+        """Mean of the middle of each of `count` horizontal bands of `box`."""
+        x0, y0, x1, y1 = box
+        out = []
+        for i in range(count):
+            band = image.crop((x0 + 4, y0 + (y1 - y0) * i // count + 4, x1 - 4, y0 + (y1 - y0) * (i + 1) // count - 4))
+            out.append(round(sum(band.getdata()) / (band.width * band.height)))
+        return out
 
     def test_tenor_screen_is_a_dithered_bw_frame(self):
         log, sleep, image = self.sleep_once(self.make_sd('tenor', 8), 'man-ngu-tenor')
@@ -251,20 +270,23 @@ class SleepEndsBwTest(unittest.TestCase):
 
     def test_quote_screen_dithers_its_cover(self):
         log, sleep, image = self.sleep_once(self.quote_sd('quote'), 'man-ngu-trich-dan')
-        self.assertIn('Sleep quote gray ready=1', sleep)
+        self.assertIn('Sleep quote tile', sleep)
+        self.assertIn('Sleep quote bw visible', sleep)
         self.assert_ends_on_bw_full(sleep)
         self.assertEqual(self.grays(image), 0)
-        found = self.dither_blocks(image, COVER_BOX)
-        self.assertGreater(found[4], 10, found)
-        self.assertGreater(found[12], 10, found)
+        # The four tones of the cover, dithered: black, the two grays, white (the rounded corners
+        # and the tile's crop keep a few pixels off in the outer bands).
+        tones = self.band_tones(image, COVER_BOX, 4)
+        for tone, seen in zip((0, 35, 90, 255), tones):
+            self.assertLessEqual(abs(seen - tone), 20, tones)
 
     def test_cover_screen_dithers(self):
         _, (log, sleep, image) = self.cover_cache()
         self.assert_ends_on_bw_full(sleep)
         self.assertEqual(self.grays(image), 0)
-        found = self.dither_blocks(image, (0, 0, 528, 792))
-        self.assertGreater(found[4], 100, found)
-        self.assertGreater(found[12], 100, found)
+        tones = self.band_tones(image, (0, 0, 528, 792), 4)
+        for tone, seen in zip((0, 35, 90, 255), tones):
+            self.assertLessEqual(abs(seen - tone), 16, tones)
 
     def test_gray_cover_is_decoded_once(self):
         # Each decode of the cover reads the whole file from the card; on the X3 that is most of a
@@ -274,9 +296,12 @@ class SleepEndsBwTest(unittest.TestCase):
         sd = self.make_sd('custom-once', 2)
         (sd / 'sleep.bmp').write_bytes(gray_bmp(528, 792))
         _, custom_sleep, _ = self.sleep_once(sd, 'anh-rieng-mot-lan')
-        for name, sleep in (('cover', cover_sleep), ('quote', quote_sleep), ('custom', custom_sleep)):
+        for name, sleep in (('cover', cover_sleep), ('custom', custom_sleep)):
             with self.subTest(screen=name):
                 self.assertEqual(len(re.findall(r'\[BMP\] Timing bpp=', sleep)), 1, sleep)
+        # The quote screen reads its cover once, into the tile.
+        self.assertEqual(len(re.findall(r'Sleep quote tile ms=\d+ from \d+x\d+ ok=1', quote_sleep)), 1, quote_sleep)
+        self.assertNotIn('[BMP] Timing bpp=', quote_sleep)
 
     def test_same_pixels_as_base(self):
         # The same sleep, on the same fixtures, as the earlier build: the image left on the glass

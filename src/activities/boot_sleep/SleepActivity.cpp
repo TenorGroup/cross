@@ -6,6 +6,7 @@
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
+#include <GrayThumb.h>
 #include <HalDisplay.h>
 #include <HalGPIO.h>
 #include <HalStorage.h>
@@ -473,8 +474,8 @@ bool selectRandomSleepFile(const char* dirPath, const SleepRecentKind recentKind
   selectedPath = dirPath;
   selectedPath += "/";
   selectedPath += name.get();
+  // Saved with the rest of the state once the sleep screen is up (enterDeepSleep): one write.
   pushRecentSleepIndex(recentKind, randomFileIndex);
-  APP_STATE.saveToFile();
   return true;
 }
 
@@ -529,6 +530,27 @@ void drawQuoteMark(const GfxRenderer& renderer, const int x, const int y) {
   }
 }
 
+// The quote screen's small cover, folding to black and white: any cover bitmap on the card (the
+// card's thumbnail, a sleep cover) summed by area to the tile's size and dithered once. Sampling one
+// pixel in 5.5 of a 4-level cover folded into patterns lost its tones (64 came out as 127).
+bool makeSleepTile(GrayThumb& tile, const Bitmap& cover) {
+  const uint32_t started = millis();
+  const int w = cover.getWidth(), h = cover.getHeight();
+  const auto levels = makeUniqueNoThrow<uint8_t[]>((w + 3) / 4);
+  const auto raw = makeUniqueNoThrow<uint8_t[]>(cover.getRowBytes());
+  const auto gray = makeUniqueNoThrow<uint8_t[]>(w);
+  // Rows go in top to bottom; nothing is kept back for the rest of the sleep screen but these.
+  if (!cover.isTopDown() || !levels || !raw || !gray || !tile.start(w, h, 1, 0)) return false;
+  for (int y = 0; y < h; y++) {
+    if (cover.readNextRow(levels.get(), raw.get()) != BmpReaderError::Ok) return false;
+    for (int x = 0; x < w; x++) gray[x] = ((levels[x / 4] >> (6 - (x % 4) * 2)) & 3) * 85;
+    tile.block(0, y, w, 1, gray.get(), w);
+  }
+  const bool ok = tile.finish();
+  LOG_INF("SLP", "Sleep quote tile ms=%lu from %dx%d ok=%u", static_cast<unsigned long>(millis() - started), w, h, ok);
+  return ok;
+}
+
 // The sleep cover of `bookPath`, where the Cover sleep mode caches it: the variant that mode
 // would pick on this panel first, then any other variant already on the card. When none is
 // cached yet it is made once, now, with that mode's own generator and path, so later sleeps
@@ -538,14 +560,21 @@ void drawQuoteMark(const GfxRenderer& renderer, const int x, const int y) {
 // (sleepquote::keepCoverFailure) is kept as "<cover>.fail" next to the cover it would have
 // written, so a book whose cover image cannot be read costs one attempt instead of one per
 // sleep; clearing the book's cache removes the marker with it.
-std::string sleepCoverPath(const std::string& bookPath, const bool originalThresholds,
+// `oneBit` (folding to black and white): the tile is made from the book's card thumbnail when the
+// reader wrote one (11 KB to read), else from a black and white sleep cover, made as above.
+std::string sleepCoverPath(const std::string& bookPath, const bool originalThresholds, const bool oneBit,
                            const CrossPointSettings& settings) {
   if (!FsHelpers::hasEpubExtension(bookPath)) return {};
   Epub epub(bookPath, "/.crosspoint");
   const bool cropped = settings.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
-  for (int variant = 0; variant < 4; variant++) {
-    const std::string path = epub.getCoverBmpPath((variant & 1) ? !cropped : cropped,
-                                                  (variant & 2) ? !originalThresholds : originalThresholds);
+  // -3 the card thumbnail, -2 and -1 the black and white covers (this mode's crop first), 0 to 3
+  // the 4-level ones.
+  for (int variant = oneBit ? -3 : 0; variant < 4; variant++) {
+    const std::string path = variant == -3 ? epub.getThumbBmpPath(THUMB_SHAPE_H)
+                             : variant < 0
+                                 ? epub.getCoverBmpPath((variant & 1) ? !cropped : cropped, false, true)
+                                 : epub.getCoverBmpPath((variant & 1) ? !cropped : cropped,
+                                                        (variant & 2) ? !originalThresholds : originalThresholds);
     if (Storage.exists(path.c_str())) return path;
   }
   if (!Storage.exists(bookPath.c_str())) {
@@ -560,7 +589,7 @@ std::string sleepCoverPath(const std::string& bookPath, const bool originalThres
     return true;
   };
   if (heapShort(heapNow())) return {};
-  std::string path = epub.getCoverBmpPath(cropped, originalThresholds);
+  std::string path = epub.getCoverBmpPath(cropped, originalThresholds, oneBit);
   const std::string failed = path.substr(0, path.size() - 4) + ".fail";
   if (Storage.exists(failed.c_str())) {
     LOG_INF("SLP", "Sleep quote cover skipped: failed before");
@@ -577,7 +606,7 @@ std::string sleepCoverPath(const std::string& bookPath, const bool originalThres
   // above ran without it.
   const auto before = heapNow();
   if (heapShort(before)) return {};
-  if (!epub.generateCoverBmp(cropped, originalThresholds)) {
+  if (!epub.generateCoverBmp(cropped, originalThresholds, oneBit)) {
     const auto after = heapNow();
     const bool keep = sleepquote::keepCoverFailure(before, after);
     if (keep) Storage.writeFile(failed.c_str(), "1");
@@ -739,7 +768,6 @@ void SleepActivity::renderCustomSleepScreen() const {
     HalFile randFile;
     if (Storage.openFileForRead("SLP", selectedPath, randFile)) {
       LOG_DBG("SLP", "Randomly loading: %s", selectedPath.c_str());
-      delay(100);
       Bitmap bitmap(randFile, true,
                     renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported() &&
                         display.getController() == HalDisplay::Controller::SSD1677 &&
@@ -1023,12 +1051,16 @@ void SleepActivity::renderCoverSleepScreen() const {
       return (this->*renderNoCoverSleepScreen)();
     }
 
-    if (!lastEpub.generateCoverBmp(cropped, originalThresholds)) {
+    // Folding to black and white (X3), the cover is dithered to two levels once. A 4-level cover
+    // folded into patterns came out far too light: its dither spread error by the levels' values,
+    // the glass shows the patterns' share of white.
+    const bool oneBit = SleepGrayPlanes::wanted();
+    if (!lastEpub.generateCoverBmp(cropped, originalThresholds, oneBit)) {
       LOG_ERR("SLP", "Failed to generate cover bmp");
       return (this->*renderNoCoverSleepScreen)();
     }
 
-    coverBmpPath = lastEpub.getCoverBmpPath(cropped, originalThresholds);
+    coverBmpPath = lastEpub.getCoverBmpPath(cropped, originalThresholds, oneBit);
   } else {
     return (this->*renderNoCoverSleepScreen)();
   }
@@ -1095,8 +1127,8 @@ void SleepActivity::renderQuoteSleepScreen() const {
   }
   LOG_INF("SLP", "Sleep quote %s (%u of %u)", quotes::nameOf(ids[index]).c_str(), static_cast<unsigned>(index),
           static_cast<unsigned>(ids.size()));
+  // Saved with the rest of the state once the sleep screen is up (enterDeepSleep): one write.
   state.lastSleepQuote = ids[index];
-  state.saveToFile();
   std::vector<quotes::QuoteId>().swap(ids);
 
   releaseSdFontCachesForDecode(renderer);
@@ -1106,12 +1138,16 @@ void SleepActivity::renderQuoteSleepScreen() const {
                                   settings.sleepScreenCoverFilter ==
                                       CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
 
+  // Folding to black and white, the tile is made once in RAM (makeSleepTile) and drawn 1:1.
+  const bool fold = SleepGrayPlanes::wanted();
   HalFile coverFile;
-  const std::string coverPath = sleepCoverPath(quote.path, originalThresholds, settings);
+  const std::string coverPath = sleepCoverPath(quote.path, originalThresholds, fold, settings);
   const bool coverOpen = !coverPath.empty() && Storage.openFileForRead("SLP", coverPath, coverFile);
   Bitmap cover(coverFile);
-  const bool hasCover = coverOpen && cover.parseHeaders() == BmpReaderError::Ok && cover.getWidth() > 0 &&
-                        cover.getHeight() > 0;
+  bool hasCover =
+      coverOpen && cover.parseHeaders() == BmpReaderError::Ok && cover.getWidth() > 0 && cover.getHeight() > 0;
+  auto tile = fold ? makeUniqueNoThrow<GrayThumb>(COVER_H) : nullptr;
+  if (fold) hasCover = hasCover && tile && makeSleepTile(*tile, cover);
   // Trim the cover to the tile's own shape so it fills the tile instead of floating in it.
   float cropX = 0.0f;
   float cropY = 0.0f;
@@ -1170,7 +1206,6 @@ void SleepActivity::renderQuoteSleepScreen() const {
   // One frame in the current render mode. Text and the mark come out black in every mode
   // this is called in (B/W, or an absolute gray plane, where glyphs are drawn as B/W); the
   // cover follows the mode, so each plane gets its own bits of the cover.
-  const uint8_t(*coverLevels)[4] = nullptr;  // dithered as decoded when set
   const auto drawFrame = [&](const bool withCover) {
     renderer.clearScreen();
     drawQuoteMark(renderer, GLYPH_X, GLYPH_Y);
@@ -1187,8 +1222,11 @@ void SleepActivity::renderQuoteSleepScreen() const {
     if (!title.empty()) y += PLACE_GAP;
     renderer.drawText(SMALL_FONT_ID, textX, y, place);
     if (!withCover) return true;
-    const bool drawn = cover.rewindToData() == BmpReaderError::Ok &&
-                       renderer.drawBitmap(cover, MARGIN_X, ROW_TOP, COVER_W, COVER_H, cropX, cropY, coverLevels);
+    if (tile)
+      renderer.drawBits(tile->pixels(), tile->stride(), (tile->width() - COVER_W) / 2, (tile->rows() - COVER_H) / 2,
+                        COVER_W, COVER_H, MARGIN_X, ROW_TOP);
+    const bool drawn = tile || (cover.rewindToData() == BmpReaderError::Ok &&
+                                renderer.drawBitmap(cover, MARGIN_X, ROW_TOP, COVER_W, COVER_H, cropX, cropY));
     // Rounded like every cover (components/themes/TenorRadius.h): the page's white back over the
     // corners, in the B/W frame and in each absolute gray plane alike, where white is also the
     // cleared state.
@@ -1200,36 +1238,28 @@ void SleepActivity::renderQuoteSleepScreen() const {
 
   const uint32_t started = millis();
   const bool x3 = gpio.deviceIsX3();
-  const bool gray = hasCover && cover.hasGreyscale();
+  // Folding, the tile is already black and white: that frame takes the B/W path below.
+  const bool gray = hasCover && !tile && cover.hasGreyscale();
   if (gray && caps.supported()) {
-    // Same end state as the Tenor screen (X3BrandScreen.cpp): on X3 the gray cover becomes one
-    // dithered B/W frame shown by a GC pass, after the black and white passes on the UC8279
-    // (SleepGrayPlanes::show). Folding, the cover is dithered as it is decoded, so this first
-    // B/W frame is already the final one. setRenderMode(BW) would cancel an absolute pass once
-    // it has begun, so inside the pass the mode only moves between the planes.
-    const bool fold = SleepGrayPlanes::wanted();
-    SleepGrayPlanes planes(renderer, fold);
+    // The gray cover through the absolute planes. setRenderMode(BW) would cancel an absolute pass
+    // once it has begun, so inside the pass the mode only moves between the planes.
+    SleepGrayPlanes planes(renderer, false);
     renderer.setRenderMode(GfxRenderer::BW);
-    if (fold) coverLevels = SleepGrayPlanes::LEVELS;
     bool ready = drawFrame(true);
-    if (fold) {
-      if (ready) planes.show();
-    } else {
-      // X3 runs one GC pass of the B/W frame first: the absolute gray pass that follows has no
-      // erase phase of its own. On the UC8279 that pass leaves pixels whose color does not
-      // change undriven, so the page can still ghost; the switch is what buys the full passes.
-      if (ready && x3) {
-        renderer.displayBuffer(HalDisplay::FULL_REFRESH);
-        ready = caps.base == HalDisplay::GrayscaleBase::Combined || drawFrame(true);
-      }
-      if (ready) ready = renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute);
-      if (ready) renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
-      if (ready) ready = drawFrame(true);
-      if (ready) planes.lsb();
-      if (ready) renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
-      if (ready) ready = drawFrame(true);
-      if (ready) planes.show();
+    // X3 runs one GC pass of the B/W frame first: the absolute gray pass that follows has no
+    // erase phase of its own. On the UC8279 that pass leaves pixels whose color does not
+    // change undriven, so the page can still ghost; the switch is what buys the full passes.
+    if (ready && x3) {
+      renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+      ready = caps.base == HalDisplay::GrayscaleBase::Combined || drawFrame(true);
     }
+    if (ready) ready = renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute);
+    if (ready) renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
+    if (ready) ready = drawFrame(true);
+    if (ready) planes.lsb();
+    if (ready) renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
+    if (ready) ready = drawFrame(true);
+    if (ready) planes.show();
     renderer.setRenderMode(GfxRenderer::BW);  // also cancels a failed partial pass
     LOG_INF("SLP", "Sleep quote gray ready=%u visible=%lu ms", ready, static_cast<unsigned long>(millis() - started));
     if (ready) return;
@@ -1241,6 +1271,7 @@ void SleepActivity::renderQuoteSleepScreen() const {
 
   renderer.setRenderMode(GfxRenderer::BW);
   const bool coverDrawn = drawFrame(hasCover);
+  tile.reset();  // in the frame now; the black and white passes may want its heap
   if (!coverDrawn) drawFrame(false);
   if (!gray || !coverDrawn) {
     showSleepFrame(renderer, x3 ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
