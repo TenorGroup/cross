@@ -578,6 +578,24 @@ void EpubReaderActivity::forgetPendingJump() {
   pendingPageJump.reset();
 }
 
+// A jump or an open whose chapter the heap could not lay out. The section was made for that chapter
+// in this paint, so its page is 0: painted and saved, the reader would lose their place (review
+// V-A). With a saved place (a jump) the reader goes back there and paints it; with none yet (an
+// open) it keeps its target, pending offset included, and the memory notice stays until the next
+// input tries again. No page of the target chapter is painted or saved.
+void EpubReaderActivity::stayAfterStarvedJump() {
+  const bool backToSaved = lastSavedSpineIndex >= 0 && lastSavedSpineIndex != currentSpineIndex;
+  if (lastSavedSpineIndex >= 0) {
+    forgetPendingJump();
+    currentSpineIndex = lastSavedSpineIndex;
+    nextPageNumber = lastSavedPage;
+  }
+  section.reset();
+  // Only a move back to another chapter repaints: the saved chapter starving too stays put here
+  // instead of asking for the same paint again.
+  if (backToSaved) requestUpdate();
+}
+
 // Heap ran out while extending the section and nothing else could be freed. Keep the
 // pages already built and the reading position; the next input shows the last built page.
 void EpubReaderActivity::showMemoryError() {
@@ -2192,8 +2210,8 @@ void EpubReaderActivity::renderBook() {
             if (section->buildStarved()) {
               if (releaseRadioForBuild()) continue;
               buildPopupPending = false;
-              forgetPendingJump();
               showMemoryError();
+              stayAfterStarvedJump();
               return;
             }
             LOG_ERR("ERS", "Failed during incremental section build");
@@ -2279,8 +2297,8 @@ void EpubReaderActivity::renderBook() {
               if (section->buildStarved()) {
                 if (releaseRadioForBuild()) continue;
                 buildPopupPending = false;
-                forgetPendingJump();
                 showMemoryError();
+                stayAfterStarvedJump();
                 return;
               }
               LOG_ERR("ERS", "Failed during incremental section build");

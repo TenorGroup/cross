@@ -92,9 +92,12 @@ fixture = pathlib.Path(__file__).with_name('fixture.hpp').read_text().replace('@
 layout_hook = 'EpubReaderActivity::pageAwaitsLayout(' in cpp
 fixture = fixture.replace('@@LAYOUT@@', '  bool pageAwaitsLayout() const;' if layout_hook else '')
 functions = [function('buildTickHeapGate'), function('latTrangThat'), function('skipLoopDelay'), function('showBuildPopup')]
-for name in ['saveProgressIfMoved', 'pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'suspendBackgroundBuild', 'releaseRadioForBuild', 'showMemoryError', 'generatePendingThumb', 'writePendingThumbs']:
+for name in ['stayAfterStarvedJump', 'saveProgressIfMoved', 'pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'suspendBackgroundBuild', 'releaseRadioForBuild', 'showMemoryError', 'generatePendingThumb', 'writePendingThumbs']:
     if 'EpubReaderActivity::' + name + '(' in cpp:
         functions.append(function(name))
+# A reader before round 4 has no step after a starved jump.
+if 'EpubReaderActivity::stayAfterStarvedJump(' not in cpp:
+    functions.append('void EpubReaderActivity::stayAfterStarvedJump() {}')
 # A reader without the exit step (the previous release) writes nothing as it closes.
 if 'EpubReaderActivity::writePendingThumbs(' not in cpp:
     functions.append('void EpubReaderActivity::writePendingThumbs() {}')

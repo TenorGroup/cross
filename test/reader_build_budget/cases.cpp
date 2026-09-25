@@ -671,22 +671,53 @@ int main() {
     { RenderLock held; r.anchorLanding(); }
     require(r.section && r.section->currentPage == 12 && r.currentSpineIndex == 2, "a found anchor did not land");
   });
-  test("percent jump that runs out of heap forgets its target", [] {
-    EpubReaderActivity r; r.section->building = false; r.section->partial = false;
+  // A jump (percent, contents, anchor, held chapter) or an open whose target chapter the heap could
+  // not lay out. The section was created for that chapter this paint, so its current page is 0:
+  // painted and saved, the reader lost their place (review V-A). It goes back to the saved page, or
+  // with nothing saved yet (an open) keeps its target for the next try; either way nothing is saved.
+  const auto starvedTarget = [](EpubReaderActivity& r) {
+    r.section->building = false; r.section->partial = false;
     r.section->oldPages = r.section->pageCount = r.section->builtPages = 0; r.section->currentPage = 0;
     r.section->starveUntilRadioStopped = true; r.section->canPark = true;
-    r.pendingPercentJump = true; r.pendingSpineProgress = 0.6f;
+  };
+  // What the next paint would show and whether it writes the progress. A paint loads a missing
+  // section at nextPageNumber; with one, it shows its current page. Then it saves if the page moved.
+  const auto nextPaint = [](EpubReaderActivity& r) {
+    struct Landing { int spine, page; } landing{r.currentSpineIndex, r.section ? r.section->currentPage : r.nextPageNumber};
+    { RenderLock held; r.saveProgressIfMoved(); }
+    return landing;
+  };
+  test("percent jump that runs out of heap goes back to the saved page and saves nothing", [starvedTarget, nextPaint] {
+    EpubReaderActivity r; starvedTarget(r);
+    r.lastSavedSpineIndex = 1; r.lastSavedPage = 7; r.lastSavedPageCount = 19;
+    r.currentSpineIndex = 2; r.pendingPercentJump = true; r.pendingSpineProgress = 0.6f;
     { RenderLock held; r.percentJump(); }
     require(popupCount == 1 && buildErrors == 0, "starved percent build did not show the memory notice");
-    require(r.forgottenJumps == 1, "the percent target stays pending and lands on the next chapter loaded");
+    require(!r.pendingPercentJump, "the percent target stays pending and lands on the next chapter loaded");
+    const auto landing = nextPaint(r);
+    require(landing.spine == 1 && landing.page == 7, "the next paint shows page 0 of the target chapter");
+    require(r.saveAttempts == 0, "page 0 of the target chapter was saved as the progress");
   });
-  test("anchor jump that runs out of heap forgets its target", [] {
-    EpubReaderActivity r; r.section->building = false; r.section->partial = false;
-    r.section->oldPages = r.section->pageCount = r.section->builtPages = 0; r.section->currentPage = 0;
-    r.section->starveUntilRadioStopped = true; r.section->canPark = true;
-    { RenderLock held; r.initialResume(5); }
+  test("contents jump that runs out of heap goes back to the saved page and saves nothing", [starvedTarget, nextPaint] {
+    EpubReaderActivity r; starvedTarget(r);
+    r.lastSavedSpineIndex = 1; r.lastSavedPage = 7; r.lastSavedPageCount = 19;
+    r.currentSpineIndex = 2; r.pendingAnchor = "chuong-655";
+    { RenderLock held; r.initialResume(0); }
     require(popupCount == 1 && buildErrors == 0, "starved first build did not show the memory notice");
-    require(r.forgottenJumps == 1, "the jump target stays pending and lands on the next chapter loaded");
+    require(r.pendingAnchor.empty(), "the jump target stays pending and lands on the next chapter loaded");
+    const auto landing = nextPaint(r);
+    require(landing.spine == 1 && landing.page == 7, "the next paint shows page 0 of the target chapter");
+    require(r.saveAttempts == 0, "page 0 of the target chapter was saved as the progress");
+  });
+  test("opening a book that runs out of heap keeps its place for the next try and saves nothing", [starvedTarget, nextPaint] {
+    // Nothing saved in this visit yet: the place is the one the book opened at (chapter 3, page 12).
+    EpubReaderActivity r; starvedTarget(r);
+    r.currentSpineIndex = 3; r.nextPageNumber = 12;
+    { RenderLock held; r.initialResume(12); }
+    require(popupCount == 1 && buildErrors == 0, "starved open did not show the memory notice");
+    const auto landing = nextPaint(r);
+    require(landing.spine == 3 && landing.page == 12, "the next paint shows page 0 instead of the book's place");
+    require(r.saveAttempts == 0, "page 0 was saved over the book's place");
   });
   test("radio still up after the release timeout goes straight to the memory notice", [] {
     EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = true; r.section->canPark = true;

@@ -318,7 +318,9 @@ struct EpubReaderActivity : ReaderActivity {
   bool pendingPercentJump = false;
   float pendingSpineProgress = 0.0f;
   int forgottenJumps = 0;
-  void forgetPendingJump() { ++forgottenJumps; }
+  void forgetPendingJump() { ++forgottenJumps; pendingPercentJump = false; pendingAnchor.clear(); }
+  // Where a starved jump or open leaves the reader (EpubReaderActivity::stayAfterStarvedJump).
+  void stayAfterStarvedJump();
   void showBuildPopup(GfxRenderer&, int&);
   void loadPageForRender();
   bool applyDeferredReposition() { return false; }

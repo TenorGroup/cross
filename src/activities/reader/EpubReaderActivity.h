@@ -202,6 +202,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool releaseRadioForBuild();
   void showMemoryError();
   void forgetPendingJump();
+  void stayAfterStarvedJump();
   bool buildHeapPaused = false;
   static constexpr size_t RENDER_MIN_FREE_HEAP = 24 * 1024;
   static constexpr int BUILD_WINDOW_AHEAD = 5;
