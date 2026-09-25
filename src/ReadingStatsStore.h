@@ -46,14 +46,16 @@ class ReadingStatsStore : public PersistableStore<ReadingStatsStore> {
   ResetResult resetStatistics(bool all);
   bool saveToFile() const;
   bool loadFromFile();
-  bool activateBook(const std::string& path, uint8_t progress, const std::string& title = "");
+  // progress: 0-100, or negative while the book's progress is not known (its index is still
+  // being built); the record then keeps the last known one.
+  bool activateBook(const std::string& path, int progress, const std::string& title = "");
   bool readBook(const std::string& path, BookReadingRecord& record) const;
 
  private:
   bool readBookFile(const std::string& path, BookReadingRecord& record, int memo) const;
 
  public:
-  void record(uint32_t day, uint32_t ms, uint16_t turns, uint8_t progress);
+  void record(uint32_t day, uint32_t ms, uint16_t turns, int progress);
   static uint32_t currentDay();
   // Minute of the local day (0-1439) at the same moment currentDay() names, or NO_MINUTE
   // when the clock cannot be read. Records written without a clock keep the date only.

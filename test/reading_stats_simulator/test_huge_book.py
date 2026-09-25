@@ -20,9 +20,9 @@ SO_CHUONG = 5000
 DOAN = 'Mua nang gio chieu sang toi mat tay long viec chu sach trang pho cho. ' * 30
 
 
-def write_epub(path: Path, mot_tep: bool) -> None:
+def write_epub(path: Path, mot_tep: bool, so_chuong: int = SO_CHUONG) -> None:
     """EPUB2 co toc.ncx; chu tu bia, du dai de moi chuong sinh vai trang."""
-    ten = [f'c{i:05d}' for i in range(1, SO_CHUONG + 1)]
+    ten = [f'c{i:05d}' for i in range(1, so_chuong + 1)]
     dich = [f'mot.xhtml#{t}' for t in ten] if mot_tep else [f'{t}.xhtml' for t in ten]
     muc = ''.join(f'<navPoint id="n{i}" playOrder="{i}"><navLabel><text>Chuong {i}</text></navLabel>'
                   f'<content src="{d}"/></navPoint>' for i, d in enumerate(dich, 1))
@@ -68,8 +68,8 @@ class HugeBookTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def chay(self, ten: str, mot_tep: bool, script: str, **them) -> str:
-        write_epub(self.sd / f'books/{ten}', mot_tep)
+    def chay(self, ten: str, mot_tep: bool, script: str, so_chuong: int = SO_CHUONG, **them) -> str:
+        write_epub(self.sd / f'books/{ten}', mot_tep, so_chuong)
         (self.store / 'recent.json').write_text(json.dumps({'books': [{'path': f'/books/{ten}', 'title': 'Sach'}]}))
         (self.store / 'settings.json').write_text(json.dumps({'language': 'VI', 'fontSize': 14,
                                                                'longPressButtonBehavior': 1}))
@@ -105,6 +105,62 @@ class HugeBookTest(unittest.TestCase):
         self.assertEqual({s for s, _ in viTri}, {0}, f'mot tep XHTML: {viTri}')
         self.assertIn("Resolved anchor 'c00002'", log, f'giu nut phai toi neo chuong hai: {log[-600:]}')
         self.assertGreater(viTri[-1][1], 0, f'phai roi trang dau: {viTri}')
+
+    # Chi muc nen (book.part): trang dau truoc, muc luc va co chuong sau, tung buoc khi may ranh.
+    @staticmethod
+    def luc(log, mau):
+        """Moc [ms] cua moi dong khop `mau`."""
+        return [int(m) for m in re.findall(r'^\[(\d+)\][^\n]*' + mau, log, re.M)]
+
+    def test_nam_nghin_tep_doc_duoc_truoc_khi_chi_muc_xong(self):
+        log = self.chay('tach.epub', False, '1000:CONFIRM;8000:RIGHT;11000:QUIT',
+                        CROSSPOINT_SIM_FREE_HEAP='100000', CROSSPOINT_SIM_MAX_ALLOC_HEAP='90000')
+        trangDau = self.luc(log, r'Progress saved: spine=0 offset=\d+ page=0')
+        mucLuc = self.luc(log, r'INDEX_BG step=toc ms=\d+ ok=1')
+        xong = self.luc(log, r'Book index complete')
+        self.assertTrue(trangDau and mucLuc and xong, log[-1500:])
+        self.assertLess(trangDau[0], mucLuc[0], 'trang dau phai len truoc khi dung muc luc')
+        self.assertLess(xong[0], 8000)
+        self.assertIn((0, 1), self.moc(log))
+
+    def test_lat_trang_trong_luc_chi_muc_nen_cho(self):
+        # Moi cu bam doi lai buoc nen: buoc chi chay khi trang da len va may yen INDEX_QUIET_MS.
+        bam = ';'.join(f'{t}:RIGHT' for t in range(2200, 6200, 800))
+        log = self.chay('tach.epub', False, f'1000:CONFIRM;{bam};12000:QUIT',
+                        CROSSPOINT_SIM_FREE_HEAP='100000', CROSSPOINT_SIM_MAX_ALLOC_HEAP='90000')
+        buoc = self.luc(log, r'INDEX_BG step=')
+        self.assertTrue(buoc, log[-1500:])
+        self.assertGreater(buoc[0], 5400 + 1500, f'buoc nen chen giua cac cu bam: {buoc}')
+        # Chuong dau co bon trang: nam cu bam toi trang hai cua chuong hai.
+        self.assertEqual(self.moc(log)[-1], (1, 1), f'nam cu bam, nam trang: {self.moc(log)}')
+        self.assertTrue(self.luc(log, r'Book index complete'))
+
+    def test_back_giua_chung_roi_mo_lai_lam_tiep(self):
+        log = self.chay('tach.epub', False, '1000:CONFIRM;2000:BACK;4000:CONFIRM;9000:QUIT',
+                        CROSSPOINT_SIM_FREE_HEAP='100000', CROSSPOINT_SIM_MAX_ALLOC_HEAP='90000')
+        self.assertEqual(len(self.luc(log, r'Chapter list ready')), 1, 'mo lai dung book.part, khong doc lai OPF')
+        buoc = self.luc(log, r'INDEX_BG step=')
+        self.assertTrue(buoc and buoc[0] > 4000, f'chua buoc nao truoc Back: {buoc}')
+        self.assertTrue(self.luc(log, r'Book index complete'), log[-1500:])
+        boDem = list(self.store.glob('epub_*'))
+        self.assertEqual(len(boDem), 1)
+        self.assertTrue((boDem[0] / 'book.bin').exists())
+        self.assertFalse((boDem[0] / 'book.part').exists())
+
+    def test_ghi_the_hong_khi_dung_muc_luc_van_doc_duoc(self):
+        # X3 r08: ghi toc tmp hong lam may tu choi ca cuon sach 5.000 chuong.
+        log = self.chay('tach.epub', False, '1000:CONFIRM;16000:RIGHT;18000:QUIT',
+                        CROSSPOINT_SIM_FREE_HEAP='100000', CROSSPOINT_SIM_MAX_ALLOC_HEAP='90000',
+                        CROSSPOINT_SIM_SHORT_WRITE_FILE='toc.bin.tmp')
+        self.assertIn((0, 1), self.moc(log), 'van lat trang duoc')
+        self.assertTrue(self.luc(log, r'INDEX_BG step=toc ms=\d+ ok=0'), log[-1500:])
+        self.assertFalse(self.luc(log, r'Book index complete'))
+
+    def test_sach_thuong_giu_duong_cu(self):
+        log = self.chay('nho.epub', False, '1000:CONFIRM;4000:RIGHT;6000:QUIT', so_chuong=30)
+        self.assertFalse(self.luc(log, r'Chapter list ready'))
+        self.assertFalse(self.luc(log, r'INDEX_BG'))
+        self.assertIn((0, 1), self.moc(log))
 
 
 if __name__ == '__main__':

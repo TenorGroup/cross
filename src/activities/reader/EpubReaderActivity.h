@@ -93,6 +93,11 @@ class EpubReaderActivity final : public ReaderActivity {
   bool automaticPageTurnActive = false;
   bool showBookmarkMessage = false;
   bool showDictionaryMessage = false;
+  // "Indexing": a screen that needs the TOC or the chapter sizes was asked for before the book's
+  // index was whole (waitsForIndex).
+  bool showIndexingMessage = false;
+  unsigned long indexingMessageTime = 0UL;
+  bool waitsForIndex();
   unsigned long dictionaryMessageTime = 0UL;
   bool currentPageBookmarked = false;
   int idlePrewarmSpine = -1;
@@ -200,6 +205,18 @@ class EpubReaderActivity final : public ReaderActivity {
   bool radioReleasedForBuild = false;
   static constexpr unsigned long RADIO_RELEASE_TIMEOUT_MS = 3000;
   bool releaseRadioForBuild();
+  // A book opened on its chapter list builds its TOC and chapter sizes here (Epub::indexSome), one
+  // step per quiet pass once the page is up and no parser is alive. A key contact stops a step
+  // within milliseconds; its work is redone on a later quiet pass. A failed step waits
+  // INDEX_RETRY_MS; after INDEX_MAX_FAILURES the book stays on its chapter list for this visit
+  // and the radio is let go.
+  static constexpr unsigned long INDEX_QUIET_MS = 1500;
+  static constexpr unsigned long INDEX_RETRY_MS = 10000;
+  static constexpr uint8_t INDEX_MAX_FAILURES = 3;
+  unsigned long indexRetryAtMs = 0;
+  uint8_t indexFailures = 0;
+  bool indexStepDue() const;
+  void runIndexStep();
   void showMemoryError();
   void forgetPendingJump();
   void stayAfterStarvedJump();
@@ -324,6 +341,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void onReturnFromEndOfBook() override;
 
   bool skipLoopDelay() override;
+  bool holdsRadio() const override;
 
   ScreenshotInfo getScreenshotInfo() const override;
   CrossPointPosition getCurrentPosition() const;

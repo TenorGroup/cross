@@ -8,5 +8,5 @@ struct ScreenshotInfo {
   int spineIndex = -1;      // EPUB only: current spine/chapter index
   int currentPage = 0;      // 1-based page number
   int totalPages = 0;       // Total pages in chapter (EPUB) or book (TXT/XTC)
-  int progressPercent = 0;  // 0-100 whole-book progress
+  int progressPercent = 0;  // 0-100 whole-book progress; -1 while not known yet
 };

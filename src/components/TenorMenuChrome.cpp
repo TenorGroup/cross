@@ -164,7 +164,8 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   const bool hienGio = trongTrinhDoc ? spec.showsClock() : true;
   const bool hienTieuDe = trongTrinhDoc && spec.showsTitle();
   const bool hienSoTrang = trongTrinhDoc && spec.showChapterPageCount;
-  const bool hienTienDo = trongTrinhDoc && spec.showBookProgressPercent;
+  // A negative bookProgress is unknown (a book still building its index).
+  const bool hienTienDo = trongTrinhDoc && spec.showBookProgressPercent && bookProgress >= 0;
   const int width = r.getScreenWidth();
   const bool lon = !trongTrinhDoc && SETTINGS.globalStatusBarLarge();
   const int y = statusTextY(r.getScreenHeight(), lon, paddingBottom);

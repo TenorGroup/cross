@@ -791,16 +791,18 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   int leftClusterWidth = 0;
   int rightClusterWidth = 0;
 
-  if (sb.showBookProgressPercent || sb.showChapterPageCount) {
+  // A negative bookProgress is unknown (a book still building its index): no percent, no book bar.
+  const bool showBookPercent = sb.showBookProgressPercent && bookProgress >= 0;
+  if (showBookPercent || sb.showChapterPageCount) {
     // Right aligned text for progress counter
     char progressStr[32];
 
     // Draw the estimate marker separately so it can use the next UI font size.
     const bool showEstimate = pageCountEstimated && sb.showChapterPageCount;
 
-    if (sb.showBookProgressPercent && sb.showChapterPageCount) {
+    if (showBookPercent && sb.showChapterPageCount) {
       snprintf(progressStr, sizeof(progressStr), "%d/%d  %.0f%%", currentPage, pageCount, bookProgress);
-    } else if (sb.showBookProgressPercent) {
+    } else if (showBookPercent) {
       snprintf(progressStr, sizeof(progressStr), "%.0f%%", bookProgress);
     } else {
       snprintf(progressStr, sizeof(progressStr), "%d/%d", currentPage, pageCount);
@@ -829,7 +831,7 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
                              paddingBottom + (fillMargin ? 1 : 0);
     size_t progress;
     if (sb.progressBarMode == CrossPointSettings::STATUS_BAR_PROGRESS_BAR::BOOK_PROGRESS) {
-      progress = static_cast<size_t>(bookProgress);
+      progress = bookProgress > 0 ? static_cast<size_t>(bookProgress) : 0;
     } else {
       // Chapter progress
       progress = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) * 100 : 0;
