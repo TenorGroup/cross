@@ -31,6 +31,7 @@
 #include <Logging.h>
 #include <SPI.h>
 #include <WiFi.h>
+#include <Wire.h>
 #include <XteinkDetect.h>
 #include <builtinFonts/all.h>
 #if FREEINK_CAP_TOUCH
@@ -1403,6 +1404,21 @@ void loop() {
         const auto st = battery.readStatus();
         logSerial.printf("BATT:soc=%u,mv=%u,charging=%d,shown=%u,t=%lu\n", st.percentage, st.millivolts, st.charging,
                          powerManager.getBatteryPercentage(), millis());
+      } else if (cmd == "GAUGE") {
+        // CMD:GAUGE: the BQ27220 registers behind the percentage, read once from this loop.
+        const uint8_t addr = BoardConfig::ACTIVE.batteryGauge.gaugeAddr;
+        const auto reg16 = [addr](const uint8_t reg) -> int {
+          Wire.beginTransmission(addr);
+          Wire.write(reg);
+          if (addr == 0 || Wire.endTransmission(false) != 0 || Wire.requestFrom(addr, uint8_t{2}, uint8_t{1}) < 2)
+            return -1;
+          const int lo = Wire.read();
+          return lo | (Wire.read() << 8);
+        };
+        logSerial.printf(
+            "GAUGE:temp=%d,mv=%d,flags=0x%04x,cur=%d,rm=%d,fcc=%d,avg=%d,cyc=%d,soc=%d,soh=%d,dc=%d,t=%lu\n",
+            reg16(0x06), reg16(0x08), reg16(0x0A), static_cast<int16_t>(reg16(0x0C)), reg16(0x10), reg16(0x12),
+            static_cast<int16_t>(reg16(0x14)), reg16(0x2A), reg16(0x2C), reg16(0x2E), reg16(0x3C), millis());
 #endif
       } else if (cmd == "HOME") {
         activityManager.goHome();
