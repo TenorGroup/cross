@@ -717,8 +717,9 @@ void SleepActivity::onEnter() {
 // Man ngu mac dinh cua tenor/cross: an pham branding nen thang vao firmware, nen khong ai
 // phai chep file vao the nho moi co man ngu tu te.
 //
-// X3 khong co mat xam tuyet doi (X3 UC8253) ve ban du phong: mot khung den trang da cham san,
-// nen zlib, giai nen thang vao bo dem khung doc. Xem scripts/sinh_man_ngu.py.
+// An X3 without absolute gray planes (the UC8253 X3) draws the fallback: the same tenor/cross
+// picture, folded to black and white ahead of time as the UC8279 X3 folds it at sleep, zlib
+// packed and inflated straight into the portrait framebuffer. See scripts/sinh_man_ngu.py.
 void SleepActivity::renderTenorSleepScreen() const {
   releaseSdFontCachesForDecode(renderer);
   if (renderX3BrandScreen(renderer, false)) return;
