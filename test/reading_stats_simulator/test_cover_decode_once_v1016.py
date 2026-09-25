@@ -9,6 +9,9 @@
    cache after its first frame (cover.ref), and Home reads that instead.
 3. A cache from an earlier release has no cover.ref, and a damaged one or one of another version
    must read as missing: Home loads the book as before and still writes the thumbnails.
+4. Home wrote a missing thumbnail only with 96 KB free, sized for loading the book; after some
+   reading it sat at 86 to 91 KB, so the cover came one visit and not the next. With cover.ref the
+   copy out of the book is the peak (57.516 B on the X3): 72 KB will do. The old route keeps 96 KB.
 """
 import json
 import os
@@ -47,9 +50,11 @@ class CoverDecodeOnceTest(unittest.TestCase):
         artifacts = os.environ.get('CROSSPOINT_TEST_ARTIFACTS')
         self.artifacts = Path(artifacts) if artifacts else None
 
-    def launch(self, before, after=None):
+    def launch(self, before, after=None, heap=None):
         env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
         env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(self.sd), CROSSPOINT_SIM_INPUT_SCRIPT=before)
+        if heap:
+            env['CROSSPOINT_SIM_FREE_HEAP'] = str(heap)
         if after:
             env.update(CROSSPOINT_SIM_WAKE_REASON='power', CROSSPOINT_SIM_INPUT_SCRIPT_AFTER_WAKE=after)
         run = subprocess.run([str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=180)
@@ -104,6 +109,22 @@ class CoverDecodeOnceTest(unittest.TestCase):
         self.assertEqual(written, [356, 226], after[-4000:])
         builds = CARD_BUILD.findall(after)
         self.assertEqual(int(builds[-1][2]), 356, 'the card was not redrawn with its new cover')
+
+    def test_the_thumbnails_come_with_home_heap_after_reading(self):
+        # Home's heap after some reading on the X3 (r33: 86 to 91 KB).
+        self.launch('1500:CONFIRM;5000:RIGHT;7000:SLEEP;9000:POWER', '1000:QUIT')
+        self.assertTrue(self.refs(), 'precondition: the reader left cover.ref')
+        log = self.launch('9000:QUIT', None, heap=86 * 1024)
+        written = [int(h) for h, _, ok in THUMB.findall(log) if ok == '1']
+        self.assertEqual(written, [356, 226], 'no thumbnail with 86 KB free\n' + log[-4000:])
+
+    def test_the_old_route_still_waits_for_its_heap(self):
+        self.launch('1500:CONFIRM;5000:RIGHT;7000:SLEEP;9000:POWER', '1000:QUIT')
+        for ref in self.refs():
+            ref.unlink()
+        log = self.launch('9000:QUIT', None, heap=86 * 1024)
+        self.assertEqual(REF_READ.findall(log), ['0'], log[-4000:])
+        self.assertIsNone(THUMB.search(log), 'the book was loaded short of heap\n' + log[-4000:])
 
     def old_cache_then_home(self, damage):
         # The book read to the power key on one boot; its cover.ref then damaged, replaced by one of

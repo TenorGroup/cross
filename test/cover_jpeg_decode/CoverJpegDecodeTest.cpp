@@ -15,6 +15,7 @@
 #include <JpegScale.h>
 #include <JpegToBmpConverter.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -31,9 +32,25 @@ EspClass ESP;
 namespace {
 bool tracking = false;
 std::vector<size_t> arrays;
+// Bytes live now and at most since `peak` was reset, for what a decode holds at once.
+size_t live = 0, peak = 0;
+constexpr size_t HEAD = 16;
 void* take(size_t size, bool array) {
   if (tracking && array) arrays.push_back(size);
-  return std::malloc(size ? size : 1);
+  auto* p = static_cast<unsigned char*>(std::malloc(size + HEAD));
+  if (!p) return nullptr;
+  std::memcpy(p, &size, sizeof(size));
+  live += size;
+  peak = std::max(peak, live);
+  return p + HEAD;
+}
+void give(void* p) {
+  if (!p) return;
+  auto* head = static_cast<unsigned char*>(p) - HEAD;
+  size_t size;
+  std::memcpy(&size, head, sizeof(size));
+  live -= size;
+  std::free(head);
 }
 }  // namespace
 
@@ -47,10 +64,10 @@ void* operator new[](size_t size) {
 }
 void* operator new(size_t size, const std::nothrow_t&) noexcept { return take(size, false); }
 void* operator new[](size_t size, const std::nothrow_t&) noexcept { return take(size, true); }
-void operator delete(void* p) noexcept { std::free(p); }
-void operator delete[](void* p) noexcept { std::free(p); }
-void operator delete(void* p, size_t) noexcept { std::free(p); }
-void operator delete[](void* p, size_t) noexcept { std::free(p); }
+void operator delete(void* p) noexcept { give(p); }
+void operator delete[](void* p) noexcept { give(p); }
+void operator delete(void* p, size_t) noexcept { give(p); }
+void operator delete[](void* p, size_t) noexcept { give(p); }
 
 namespace {
 int failures = 0;
@@ -215,8 +232,15 @@ int main() {
     int scale = 0;
     arrays.clear();
     tracking = true;
+    const size_t liveBefore = live;
+    peak = live;
     const bool ok = JpegToBmpConverter::jpegFileToGrayThumb(file, big, &scale);
     tracking = false;
+    // Home writes a missing thumbnail with 72 KB free (HomeActivity.cpp): the decode's peak is the
+    // decoder (17.884 B on the X3, more here with 64-bit pointers) and both thumbnails.
+    const size_t decodePeak = peak - liveBefore;
+    std::printf("%s: decode peak %zu bytes (JPEGDEC %zu here)\n", name, decodePeak, sizeof(JPEGDEC));
+    check(decodePeak - sizeof(JPEGDEC) <= 24 * 1024, "the thumbnails of one decode take more than 24 KB");
     check(ok && big.ready() && small.ready(), "one decode gives both thumbnails");
     Output one, two, scaled;
     check(big.writeTo(one) && one.bytes == card, "the card's thumbnail differs from its own decode");
