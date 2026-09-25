@@ -1,4 +1,4 @@
-// The tenor/cross reading setup: fourteen settings a new card starts on, and that
+// The tenor/cross reading setup: thirteen settings a new card starts on, and that
 // a settings file written before the setup existed is moved onto exactly once.
 // Everything else in the file (language, remote, auto-sleep, button map, fonts)
 // must come through untouched, and a user who changes a setup value afterwards
@@ -31,7 +31,6 @@ constexpr Expected TENOR[] = {
     {"paragraphIndent", 2},
     {"readerInkWeight", 1},
     {"frontButtonFollowOrientation", 1},
-    {"longPressMenuFunction", 0},
     {"shortPwrBtn", 3},
     {"sleepScreen", 10},
     {"statusBarClock", 1},
@@ -143,7 +142,7 @@ int runBlankCard() {
               "blank card button map stays the stock one") &&
        ok;
   ok = expect(fresh["tenorPresetVersion"] == 1, "blank card is stamped, so its first save is never moved again") && ok;
-  // Only the fourteen moved: every other default matches the previous release's file
+  // Only the thirteen moved: every other default matches the previous release's file
   // (the font name there is what a card without the shipped font clears it to).
   JsonDocument before = previousRelease();
   before["sdFontFamilyName"] = SETTINGS.sdFontFamilyName;

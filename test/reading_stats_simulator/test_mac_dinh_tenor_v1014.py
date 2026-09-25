@@ -21,7 +21,7 @@ PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc
 
 BO_TENOR = {
     'extraParagraphSpacing': 1, 'lineSpacing': 2, 'wordSpacing': 3, 'paragraphIndent': 2,
-    'readerInkWeight': 1, 'frontButtonFollowOrientation': 1, 'longPressMenuFunction': 0,
+    'readerInkWeight': 1, 'frontButtonFollowOrientation': 1,
     'shortPwrBtn': 3, 'sleepScreen': 10, 'statusBarClock': 1, 'tiltMenuNavigation': 1,
     'tiltPageTurn': 1, 'tiltStrengthV': 0, 'tiltTabNavigation': 2,
 }

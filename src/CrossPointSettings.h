@@ -558,7 +558,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     paragraphIndent = 2;  // wide
     readerInkWeight = 1;
     frontButtonFollowOrientation = 1;
-    longPressMenuFunction = LP_MENU_KOSYNC;
     shortPwrBtn = FORCE_REFRESH;
     sleepScreen = QUOTE;
     statusBarClock = STATUS_BAR_CLOCK_RIGHT;
