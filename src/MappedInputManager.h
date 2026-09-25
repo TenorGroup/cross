@@ -117,6 +117,9 @@ class MappedInputManager {
   // True when the control axis is flipped relative to the physical buttons: always on touch boards,
   // or when button-only boards opt in, while the screen is currently INVERTED / LANDSCAPE_CCW.
   [[nodiscard]] bool isNavDirectionSwapped() const;
+  // The next release of this button reaches no screen: for a screen that leaves while the
+  // button that closed it is still held or queued, so its release does not close the next one.
+  void suppressNextRelease(Button button) const;
 
  private:
   HalGPIO& gpio;
@@ -141,7 +144,6 @@ class MappedInputManager {
   bool wasPowerConfirmClick() const;
 #endif
   void rememberTouchHeldTime() const;
-  void suppressNextRelease(Button button) const;
 
   mutable bool touchHeldOverrideValid = false;
   mutable unsigned long touchHeldOverrideMs = 0;

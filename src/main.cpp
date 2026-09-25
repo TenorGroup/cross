@@ -881,7 +881,7 @@ static void runQuickAction(const uint8_t action, const quickaction::Trigger trig
     case quickaction::Outcome::Confirm:
 #ifndef SIMULATOR  // no motion sensor there, so no shake reaches this
       // One short press of the key through the real input path, as if pressed.
-      gpio.injectPresses(outcome == quickaction::Outcome::Back ? SETTINGS.frontButtonBack : SETTINGS.frontButtonConfirm,
+      gpio.injectPresses(outcome == quickaction::Outcome::Back ? mappedInputManager.physicalBack() : SETTINGS.frontButtonConfirm,
                          QUICK_PRESS_HOLD_MS, 1, 0);
 #endif
       break;

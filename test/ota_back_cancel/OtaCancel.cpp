@@ -149,8 +149,11 @@ struct FakeRenderer {
   FakeFontCache* getFontCacheManager() { return nullptr; }
 };
 struct MappedInputManager {
+  enum class Button { Back };
   uint8_t backKey = 0;
+  mutable int suppressedBackReleases = 0;
   uint8_t physicalBack() const { return backKey; }
+  void suppressNextRelease(Button) const { ++suppressedBackReleases; }
 };
 struct OtaUpdateActivity;
 struct RenderLock {
@@ -214,6 +217,8 @@ void run(const std::string& name) {
               << " ended_after_release_ms=" << static_cast<long>(transferEndedAt - releasedAt) << '\n';
     require(activity.finishes == 1 && activity.state == OtaUpdateActivity::UPDATE_IN_PROGRESS,
             "Back during the download did not cancel it and leave");
+    require(activity.mappedInput.suppressedBackReleases == 1,
+            "the queued Back release would close the parent screen too");
     require(otaCalls.written < image.size(), "the download ran to its end");
     require(otaCalls.abort == 1 && otaCalls.end == 0 && otaCalls.setBoot == 0,
             "the cancelled slot was not released through the OTA API, or the boot slot changed");

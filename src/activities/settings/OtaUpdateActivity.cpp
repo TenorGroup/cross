@@ -233,6 +233,9 @@ void OtaUpdateActivity::runUpdateInstall() {
   // Back leaves at once: its own press and release are still queued for the next loop pass,
   // so a result screen would close on them anyway. The old firmware keeps running.
   if (res == OtaUpdater::CANCELLED_ERROR) {
+    // The Back release queued while the install blocked this loop would otherwise close the
+    // parent screen as well.
+    mappedInput.suppressNextRelease(MappedInputManager::Button::Back);
     finish();
     return;
   }
