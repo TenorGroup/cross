@@ -539,7 +539,13 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
 #ifdef TENOR_PRESS_PROBE
     const unsigned long cssStarted = millis();
 #endif
-    if (bookMetadataCache->isPartial()) restoreTocSource();
+    if (bookMetadataCache->isPartial()) {
+      restoreTocSource();
+    } else if (BookMetadataCache::indexesInBackground(bookMetadataCache->getSpineCount()) &&
+               bookMetadataCache->partFilesLeft()) {
+      // A power cut between the background build's last two steps left its files behind.
+      bookMetadataCache->removePartFiles();
+    }
     if (!skipLoadingCss) {
       const CssParser::CacheStatus cacheStatus = cssParser->inspectCache();
       CssParser::CacheLoadResult cacheLoadResult = CssParser::CacheLoadResult::Invalid;
@@ -645,7 +651,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
       LOG_ERR("EBP", "Could not write book.part");
       return false;
     }
-    LOG_INF("EBP", "Chapter list ready in %lu ms", millis() - indexingStart);
+    LOG_PROBE("EBP", "Chapter list ready in %lu ms", millis() - indexingStart);
 #ifdef TENOR_PRESS_PROBE
     const unsigned long partCssStart = millis();
 #endif
@@ -806,9 +812,12 @@ Epub::IndexStep Epub::indexSome(const BookMetadataCache::StopFn stop) {
     if (ok) {
       bookMetadataCache = std::move(full);
       bookMetadataCache->removePartFiles();
+    } else if (full && !stepStopped) {
+      // A book.bin that does not load is built again by the next step instead of failing forever.
+      bookMetadataCache->discardBookBin();
     }
   }
-  LOG_INF("EBP", "INDEX_BG step=%s ms=%lu ok=%u stopped=%u free=%u largest=%u", step, millis() - started, ok ? 1u : 0u,
+  LOG_PROBE("EBP", "INDEX_BG step=%s ms=%lu ok=%u stopped=%u free=%u largest=%u", step, millis() - started, ok ? 1u : 0u,
           stepStopped ? 1u : 0u, static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
   if (stepStopped) return IndexStep::Stopped;
   if (!ok) return IndexStep::Failed;
@@ -1014,12 +1023,17 @@ void Epub::generateThumbBmps(const std::string& coverImageHref, const int* heigh
 #endif
     if (!Storage.openFileForWrite("EBP", coverTempPath, cover)) return false;
     // The page extractor's chunk: 1 KB writes took 1,5 s for a 257 KB cover on the X3.
-    readItemContentsToStream(coverImageHref, cover, 8192);
+    const bool whole = readItemContentsToStream(coverImageHref, cover, 8192);
 #if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
     LOG_INF("EBP", "THUMB_COPY ms=%lu bytes=%u", millis() - started, static_cast<unsigned>(cover.size()));
 #endif
     // Explicitly close() file before reopening for reading
     cover.close();
+    if (!whole) {
+      // A copy cut short (no heap for the inflate window, a card error) is not decoded.
+      Storage.remove(coverTempPath.c_str());
+      return false;
+    }
     copied = true;
     return true;
   };
@@ -1062,7 +1076,7 @@ void Epub::generateThumbBmps(const std::string& coverImageHref, const int* heigh
     const bool decoded = copyCover() && Storage.openFileForRead("EBP", coverTempPath, cover) &&
                          JpegToBmpConverter::jpegFileToGrayThumb(cover, bigThumb, &scale);
     cover.close();
-    LOG_INF("EBP", "Cover thumbnail decode: %lu ms, scale=1/%d, ok=%u", millis() - started, scale, decoded ? 1u : 0u);
+    LOG_PROBE("EBP", "Cover thumbnail decode: %lu ms, scale=1/%d, ok=%u", millis() - started, scale, decoded ? 1u : 0u);
     if (decoded && writeThumb(heights[big], bigThumb, nullptr)) {
       LOG_INF("EBP", "Cover thumbnail %d px: %lu ms, ok=1, page=0 scale=1/%d", heights[big], millis() - started, scale);
       const unsigned long smallStarted = millis();

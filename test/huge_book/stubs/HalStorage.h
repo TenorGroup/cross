@@ -3,6 +3,8 @@
 // are allocated outside the heap cap.
 #include <HeapCapState.h>
 
+#include <fcntl.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -26,6 +28,13 @@ class HalFile {
   HalFile() = default;
   HalFile(const HalFile&) = delete;
   HalFile& operator=(const HalFile&) = delete;
+  HalFile(HalFile&& other) noexcept : data(std::move(other.data)), pos(other.pos) {}
+  HalFile& operator=(HalFile&& other) noexcept {
+    heapcap::Untracked guard;
+    data = std::move(other.data);
+    pos = other.pos;
+    return *this;
+  }
   ~HalFile() {
     heapcap::Untracked guard;
     data.reset();
@@ -83,6 +92,14 @@ struct TestStorage {
     return true;
   }
   bool exists(const char* p) const { return files.count(p) != 0; }
+  // O_RDWR on a file that exists: kept as it is, at position 0.
+  HalFile open(const char* path, int) {
+    heapcap::Untracked guard;
+    HalFile out;
+    auto it = files.find(path);
+    if (it != files.end()) out.data = it->second;
+    return out;
+  }
   bool remove(const char* p) {
     heapcap::Untracked guard;
     return files.erase(p) != 0;

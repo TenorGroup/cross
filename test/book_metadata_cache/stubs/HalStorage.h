@@ -1,4 +1,6 @@
 #pragma once
+#include <fcntl.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -42,6 +44,7 @@ class HalFile {
     pos += n;
     return n;
   }
+  bool sync() { return bool(data); }
   bool close() {
     if (!data) throw std::logic_error("HalFile::close on null implementation");
     data.reset();
@@ -65,6 +68,12 @@ struct TestStorage {
   }
   bool exists(const char* p) const { return files.count(p); }
   bool remove(const char* p) { return files.erase(p); }
+  HalFile open(const char* path, int) {
+    HalFile out;
+    auto it = files.find(path);
+    if (it != files.end()) out.data = it->second;
+    return out;
+  }
   bool rename(const char* from, const char* to) {
     auto it = files.find(from);
     if (it == files.end() || files.count(to)) return false;

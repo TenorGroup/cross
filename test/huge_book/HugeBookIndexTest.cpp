@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <map>
 #include <cstdio>
 #include <string>
 
@@ -417,6 +418,23 @@ int stopAfter = 0, stopAsked = 0;
 bool stopCounter() { return ++stopAsked >= stopAfter; }
 bool neverStop() { return false; }
 
+// The card's files, copied, to run a step again from the same state.
+using CardFiles = std::map<std::string, std::vector<uint8_t>>;
+CardFiles snapshot() {
+  heapcap::Untracked guard;
+  CardFiles files;
+  for (const auto& [path, file] : Storage.files) files[path] = file->bytes;
+  return files;
+}
+void restore(const CardFiles& files) {
+  heapcap::Untracked guard;
+  Storage.files.clear();
+  for (const auto& [path, bytes] : files) {
+    Storage.files[path] = std::make_shared<TestFile>();
+    Storage.files[path]->bytes = bytes;
+  }
+}
+
 bool indexInBackground(const Book& book) {
   resetCard(book);
   return writeChapterList(book) && tocStep(book) && bookStep();
@@ -503,24 +521,93 @@ TEST(BackgroundIndex, TocMatchingAgreesWithOnePassOnIrregularTocs) {
 
 // Every stop point of the book.bin step leaves no book.bin and no temporary file behind, and the
 // next run from the same card still ends in the one-pass bytes.
-TEST(BackgroundIndex, StoppedBookStepLeavesNothingAndResumes) {
+TEST(BackgroundIndex, StoppedBookStepLeavesNoBookBinAndResumes) {
   const Book book = makeBook(Kind::Split, 2000);
   const auto expected = onePassBookBin(book);
   resetCard(book);
   ASSERT_TRUE(writeChapterList(book) && tocStep(book));
+  const CardFiles afterToc = snapshot();
   int stopPoints = 0;
   for (int k = 1;; ++k) {
+    restore(afterToc);
     stopAfter = k;
     stopAsked = 0;
-    const bool built = bookStep(stopCounter);
-    if (built) break;
+    if (bookStep(stopCounter)) break;
     ++stopPoints;
     EXPECT_FALSE(Storage.exists(binPath.c_str())) << "stop " << k;
-    EXPECT_FALSE(Storage.exists((cachePath + "/book.bin.tmp").c_str())) << "stop " << k;
+    ASSERT_TRUE(bookStep()) << "resume after stop " << k;
+    EXPECT_EQ(fileBytes(binPath), expected) << "stop " << k;
     ASSERT_LT(k, 1000);
   }
   EXPECT_GT(stopPoints, 10) << "the step must be stoppable all along";
+}
+
+// X3 review: a reader turning a page every 7 s stopped the 8 to 10 s book.bin step every time and
+// the index never finished. A stopped step keeps the chunks it finished.
+TEST(BackgroundIndex, StoppedBookStepKeepsItsFinishedChunks) {
+  constexpr size_t STEP_HEAP = 60 * 1024;  // several chunks, as beside the reader
+  const Book book = makeBook(Kind::Split, 5000);
+  const auto expected = onePassBookBin(book);
+  resetCard(book);
+  ASSERT_TRUE(writeChapterList(book) && tocStep(book));
+  const CardFiles afterToc = snapshot();
+  // One uninterrupted step: how many chunks (zip directory scans) the book takes.
+  zipModel.scans = 0;
+  heapcap::reset(STEP_HEAP);
+  ASSERT_TRUE(bookStep());
+  heapcap::stop();
+  const size_t chunks = zipModel.scans;
+  ASSERT_GT(chunks, 2u);
+  // Stopped over and over, each time a little after the last chunk it could finish.
+  restore(afterToc);
+  zipModel.scans = 0;
+  int steps = 0;
+  bool built = false;
+  while (!built && steps < 50) {
+    stopAfter = 60;  // the LUTs, or one chunk and part of the next
+    stopAsked = 0;
+    heapcap::reset(STEP_HEAP);
+    built = bookStep(stopCounter);
+    heapcap::stop();
+    ++steps;
+  }
+  printf("HUGE_INDEX resumable_book chunks=%zu steps=%d scans=%zu\n", chunks, steps, zipModel.scans);
+  ASSERT_TRUE(built) << "a step that loses everything it did never finishes";
+  EXPECT_LE(zipModel.scans, 2 * chunks) << "each stop may redo the chunk it cut, no more";
   EXPECT_EQ(fileBytes(binPath), expected);
+  EXPECT_FALSE(Storage.exists((cachePath + "/book.ckpt").c_str()));
+}
+
+// X3 review: a book.bin of another cache version (a card from an earlier release) or a damaged
+// one hid book.part, and a book of 400 chapters or more would not open again.
+TEST(BackgroundIndex, UnusableBookBinDoesNotHideTheChapterList) {
+  const Book book = makeBook(Kind::Split, 2000);
+  auto stale = onePassBookBin(book);
+  ASSERT_FALSE(stale.empty());
+  stale[0] = 9;  // BOOK_CACHE_VERSION of an earlier release
+  auto put = [](const std::string& path, const std::vector<uint8_t>& bytes) {
+    heapcap::Untracked guard;
+    Storage.files[path] = std::make_shared<TestFile>();
+    Storage.files[path]->bytes = bytes;
+  };
+  resetCard(book);
+  put(binPath, stale);
+  ASSERT_TRUE(writeChapterList(book));
+  {
+    BookMetadataCache cache(cachePath);
+    ASSERT_TRUE(cache.load(/*allowPartial=*/true));
+    EXPECT_TRUE(cache.isPartial());
+    EXPECT_FALSE(cache.bookBinReady()) << "the build goes on to write its own book.bin";
+  }
+  // A book.bin damaged next to the chapter list (a card error, a cut write) is passed over too.
+  std::vector<uint8_t> cut = onePassBookBin(book);
+  cut.resize(cut.size() / 2);
+  resetCard(book);
+  ASSERT_TRUE(writeChapterList(book));
+  put(binPath, cut);
+  BookMetadataCache cache(cachePath);
+  ASSERT_TRUE(cache.load(/*allowPartial=*/true));
+  EXPECT_TRUE(cache.isPartial());
 }
 
 // A TOC pass cut before its end (stop, power cut, sleep) is never taken for a finished one.

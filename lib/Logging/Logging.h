@@ -65,6 +65,14 @@ void logPrintf(const char* level, const char* origin, const char* format, ...);
 #define LOG_INF(origin, format, ...)
 #endif
 
+// Measurement lines: info in the press probe build, debug everywhere else, so release builds
+// carry neither the call nor its text.
+#ifdef TENOR_PRESS_PROBE
+#define LOG_PROBE LOG_INF
+#else
+#define LOG_PROBE LOG_DBG
+#endif
+
 #ifdef TENOR_PRESS_PROBE
 void probeLogDump();
 #endif

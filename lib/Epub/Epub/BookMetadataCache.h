@@ -138,6 +138,9 @@ class BookMetadataCache {
   bool buildBookBinFrom(const std::string& epubPath, const BookMetadata& metadata, const BookBinSource& source,
                         StopFn stop);
 
+  // load() of book.bin (partFile false) or book.part.
+  bool loadFile(bool partFile, StopFn stop);
+
   uint32_t writeSpineEntry(HalFile& file, const SpineEntry& entry) const;
   uint32_t writeTocEntry(HalFile& file, const TocEntry& entry) const;
   SpineEntry readSpineEntry(HalFile& file) const;
@@ -198,6 +201,10 @@ class BookMetadataCache {
   bool bookBinReady() const;
   // Removes book.part and the background pass files once book.bin is loaded.
   void removePartFiles() const;
+  // Whether a power cut between the background build's last two steps left them on the card.
+  bool partFilesLeft() const;
+  // Removes a book.bin that would not load, so the background build writes it again.
+  void discardBookBin() const;
 
   // Independent sequential stream: random lookups cannot disturb its position.
   // One 2 KB buffer exists for the lifetime of the cursor.

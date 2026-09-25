@@ -39,6 +39,11 @@ constexpr char tmpBookPartFile[] = "/book.part.tmp";
 constexpr char tocDoneFile[] = "/toc.bin";
 constexpr char tocCountFile[] = "/toc.count";
 constexpr char tmpBookBinFile[] = "/book.bin.tmp";
+// Where a background book.bin build stands between two steps: the chunks written to
+// book.bin.tmp and the TOC matches so far. Rewritten (through a temporary name) after each chunk.
+constexpr char bookCkptFile[] = "/book.ckpt";
+constexpr char tmpBookCkptFile[] = "/book.ckpt.tmp";
+constexpr uint8_t BOOK_CKPT_VERSION = 1;
 constexpr uint8_t TOC_COUNT_VERSION = 1;
 // Buffer size for the buildBookBin streams. 3 buffers x 4KB, transient (freed on
 // return); 4KB = 8 SD sectors per transfer, enough to stop the sector-cache thrash.
@@ -180,6 +185,57 @@ BookMetadataCache::TocEntry readTocEntryFrom(F& file) {
   file.pod(entry.level);
   file.pod(entry.spineIndex);
   return file.ok() ? entry : decltype(entry){};
+}
+}  // namespace
+
+namespace {
+struct BookBinCheckpoint {
+  uint16_t spines = 0, tocs = 0, spinesDone = 0;
+  int16_t lastSpineTocIndex = -1;
+  uint32_t cumSize = 0, outBytes = 0, spineInPos = 0;
+};
+
+template <typename T>
+bool writeField(HalFile& file, const T& value) {
+  return file.write(&value, sizeof(value)) == sizeof(value);
+}
+template <typename T>
+bool readField(HalFile& file, T& value) {
+  return file.read(&value, sizeof(value)) == static_cast<int>(sizeof(value));
+}
+
+bool saveCheckpoint(const std::string& cachePath, const BookBinCheckpoint& c, const int16_t* tocSpine) {
+  const std::string tmp = cachePath + tmpBookCkptFile;
+  const std::string path = cachePath + bookCkptFile;
+  HalFile file;
+  if (!Storage.openFileForWrite("BMC", tmp, file)) return false;
+  bool ok = writeField(file, BOOK_CKPT_VERSION) && writeField(file, c.spines) && writeField(file, c.tocs) &&
+            writeField(file, c.spinesDone) && writeField(file, c.lastSpineTocIndex) && writeField(file, c.cumSize) &&
+            writeField(file, c.outBytes) && writeField(file, c.spineInPos);
+  const size_t tocBytes = sizeof(int16_t) * c.tocs;
+  ok = ok && (tocBytes == 0 || file.write(tocSpine, tocBytes) == tocBytes);
+  ok = file.close() && ok;
+  Storage.remove(path.c_str());
+  ok = ok && Storage.rename(tmp.c_str(), path.c_str());
+  if (!ok) Storage.remove(tmp.c_str());
+  return ok;
+}
+
+// A checkpoint of this very build: same chapter and TOC counts, whole.
+bool loadCheckpoint(const std::string& cachePath, const uint16_t spines, const uint16_t tocs, BookBinCheckpoint& c,
+                    int16_t* tocSpine) {
+  HalFile file;
+  if (!Storage.openFileForRead("BMC", cachePath + bookCkptFile, file)) return false;
+  uint8_t version = 0;
+  bool ok = readField(file, version) && version == BOOK_CKPT_VERSION && readField(file, c.spines) &&
+            readField(file, c.tocs) && c.spines == spines && c.tocs == tocs && readField(file, c.spinesDone) &&
+            readField(file, c.lastSpineTocIndex) && readField(file, c.cumSize) && readField(file, c.outBytes) &&
+            readField(file, c.spineInPos) && c.spinesDone <= spines;
+  const size_t tocBytes = sizeof(int16_t) * tocs;
+  ok = ok && (tocBytes == 0 || file.read(tocSpine, tocBytes) == static_cast<int>(tocBytes)) &&
+       file.position() == file.size();
+  file.close();
+  return ok;
 }
 }  // namespace
 
@@ -331,9 +387,36 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
   const uint16_t spines = source.spines;
   const uint16_t tocs = source.tocs;
   const std::string outPath = cachePath + source.outFile;
+  // The chapter of every TOC entry, when the TOC pass left them unmatched: two bytes per entry,
+  // taken before the chunk budget below.
+  std::unique_ptr<int16_t[]> tocSpine;
+  if (source.resolveToc && tocs > 0) {
+    tocSpine = makeUniqueNoThrow<int16_t[]>(tocs);
+    if (!tocSpine) {
+      LOG_ERR("BMC", "No heap for the TOC match");
+      return false;
+    }
+    std::fill(tocSpine.get(), tocSpine.get() + tocs, static_cast<int16_t>(-1));
+  }
+  // A background build (resolveToc) keeps a checkpoint at each chunk boundary, so a key press costs
+  // the chunk under way instead of the whole build: 8 to 10 s steps on the X3 never finished for a
+  // reader turning a page every 7 s.
+  const bool resumable = source.resolveToc;
+  BookBinCheckpoint ckpt;
+  bool resuming = resumable && loadCheckpoint(cachePath, spines, tocs, ckpt, tocSpine.get());
   // Open all three files, writing to meta, reading from spine and toc
   HalFile outFile, spineSrc, tocSrc;
-  if (!Storage.openFileForWrite("BMC", outPath, outFile)) {
+  if (resuming) {
+    // What the checkpoint covers is on the card; what a cut step wrote after it is written again.
+    outFile = Storage.open(outPath.c_str(), O_RDWR);
+    resuming = outFile && outFile.size() >= ckpt.outBytes && outFile.seek(ckpt.outBytes);
+    if (!resuming) {
+      if (outFile) outFile.close();
+      ckpt = BookBinCheckpoint{};
+      if (tocSpine) std::fill(tocSpine.get(), tocSpine.get() + tocs, static_cast<int16_t>(-1));
+    }
+  }
+  if (!resuming && !Storage.openFileForWrite("BMC", outPath, outFile)) {
     return false;
   }
 
@@ -360,15 +443,29 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
   serialization::BufferedFileReader tocBuffer(tocSrc, BUILD_IO_BUFFER_SIZE);
   MetadataReader tocIn(tocBuffer, tocSrc.size());
 
-  // A stopped or failed build leaves nothing: the output is removed and its name never read.
+  // A failed build leaves nothing: the output is removed and its name never read.
   auto abandon = [&]() {
     outFile.close();
     spineSrc.close();
     tocSrc.close();
     Storage.remove(outPath.c_str());
+    if (resumable) Storage.remove((cachePath + bookCkptFile).c_str());
+    return false;
+  };
+  // A stopped one-pass build does the same; a stopped background build keeps its checkpoint.
+  auto giveUp = [&]() {
+    if (!resumable) return abandon();
+    outFile.close();
+    spineSrc.close();
+    tocSrc.close();
     return false;
   };
   auto stopped = [&](const int i) { return stop && (i & 255) == 0 && stop(); };
+  auto checkpoint = [&](const int done, const uint32_t cum, const int lastToc) {
+    ckpt = {spines, tocs, static_cast<uint16_t>(done), static_cast<int16_t>(lastToc), cum,
+            static_cast<uint32_t>(bookOut.position()), static_cast<uint32_t>(spineIn.position())};
+    return bookOut.flush() && outFile.sync() && saveCheckpoint(cachePath, ckpt, tocSpine.get());
+  };
 
   constexpr uint32_t headerASize =
       sizeof(BOOK_CACHE_VERSION) + /* LUT Offset */ sizeof(uint32_t) + sizeof(spineCount) + sizeof(tocCount);
@@ -378,6 +475,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
   const uint32_t lutSize = sizeof(uint32_t) * spines + sizeof(uint32_t) * tocs;
   const uint32_t lutOffset = headerASize + metadataSize;
 
+  if (!resuming) {
   // Header A
   serialization::writePod(bookOut, BOOK_CACHE_VERSION);
   serialization::writePod(bookOut, lutOffset);
@@ -393,7 +491,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
   // Loop through spine entries, writing LUT positions
   spineIn.seek(source.spineStart);
   for (int i = 0; i < spines; i++) {
-    if (stopped(i)) return abandon();
+    if (stopped(i)) return giveUp();
     const uint32_t pos = spineIn.position() - source.spineStart;
     readSpineEntryFrom(spineIn);
     serialization::writePod(bookOut, pos + lutOffset + lutSize);
@@ -405,27 +503,18 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
   // Loop through toc entries, writing LUT positions
   tocIn.seek(0);
   for (int i = 0; i < tocs; i++) {
-    if (stopped(i)) return abandon();
+    if (stopped(i)) return giveUp();
     const uint32_t pos = tocIn.position();
     readTocEntryFrom(tocIn);
     serialization::writePod(bookOut, pos + lutOffset + lutSize + spineBytes);
+  }
+  spineIn.seek(source.spineStart);
+  if (resumable && !checkpoint(0, 0, -1)) return abandon();
   }
 
 #ifdef TENOR_PRESS_PROBE
   const unsigned long lutsMs = millis() - lutsStarted;
 #endif
-  // The chapter of every TOC entry, when the TOC pass left them unmatched: two bytes per entry,
-  // taken before the chunk budget below.
-  std::unique_ptr<int16_t[]> tocSpine;
-  if (source.resolveToc && tocs > 0) {
-    tocSpine = makeUniqueNoThrow<int16_t[]>(tocs);
-    if (!tocSpine) {
-      LOG_ERR("BMC", "No heap for the TOC match");
-      return abandon();
-    }
-    std::fill(tocSpine.get(), tocSpine.get() + tocs, static_cast<int16_t>(-1));
-  }
-
   // LUTs complete. Spine entries are written in chunks sized from free heap so
   // the working set stays bounded at any chapter count. A book that fits one
   // chunk takes exactly the passes it always took: one TOC scan for the
@@ -460,10 +549,10 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
   const auto targetLess = [](const ZipFile::SizeTarget& a, const ZipFile::SizeTarget& b) {
     return a.hash < b.hash || (a.hash == b.hash && a.len < b.len);
   };
-  uint32_t cumSize = 0;
-  int lastSpineTocIndex = -1;
-  spineIn.seek(source.spineStart);
-  for (int first = 0; first < spines; first += chunk) {
+  uint32_t cumSize = ckpt.cumSize;
+  int lastSpineTocIndex = ckpt.lastSpineTocIndex;
+  spineIn.seek(resuming ? ckpt.spineInPos : source.spineStart);
+  for (int first = ckpt.spinesDone; first < spines; first += chunk) {
     const int count = std::min(chunk, spines - first);
 #ifdef TENOR_PRESS_PROBE
     chunks++;
@@ -488,7 +577,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
     std::deque<int16_t> spineToTocIndex(count, -1);
     tocIn.seek(0);
     for (int j = 0; j < tocs; j++) {
-      if (stopped(j)) return abandon();
+      if (stopped(j)) return giveUp();
       const TocEntry tocEntry = readTocEntryFrom(tocIn);
       int spineIndex = tocEntry.spineIndex;
       if (tocSpine) {
@@ -521,7 +610,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
       LOG_DBG("BMC", "Batch lookup matched %d/%d spine items", matched, count);
       (void)matched;
     }
-    if (stop && stop()) return abandon();
+    if (stop && stop()) return giveUp();
 #ifdef TENOR_PRESS_PROBE
     zipSizeMs += millis() - stepStarted;
     stepStarted = millis();
@@ -558,6 +647,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
 #ifdef TENOR_PRESS_PROBE
     spineOutMs += millis() - stepStarted;
 #endif
+    if (resumable && !checkpoint(first + count, cumSize, lastSpineTocIndex)) return abandon();
   }
   // Close opened zip file
   zip.close();
@@ -568,7 +658,7 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
   // Loop through toc entries from toc file writing to book.bin
   tocIn.seek(0);
   for (int i = 0; i < tocs; i++) {
-    if (stopped(i)) return abandon();
+    if (stopped(i)) return giveUp();
     auto tocEntry = readTocEntryFrom(tocIn);
     if (tocSpine) tocEntry.spineIndex = tocSpine[i];
     writeTocEntryTo(bookOut, tocEntry);
@@ -592,13 +682,16 @@ bool BookMetadataCache::buildBookBinFrom(const std::string& epubPath, const Book
     return false;
   }
 
+  if (resumable) Storage.remove((cachePath + bookCkptFile).c_str());
   LOG_DBG("BMC", "Successfully built book.bin");
   return true;
 }
 
 bool BookMetadataCache::writePart(const BookMetadata& metadata, const TocSource& source) {
-  // Leftovers of an earlier background build belong to another chapter list.
+  // Leftovers of an earlier background build belong to another chapter list, and a book.bin this
+  // build could not load (another cache version, damaged) would stand in front of book.part.
   removePartFiles();
+  Storage.remove((cachePath + bookBinFile).c_str());
   const std::string partPath = cachePath + tmpBookPartFile;
   HalFile out, spines;
   if (!Storage.openFileForWrite("BMC", partPath, out)) return false;
@@ -654,6 +747,7 @@ bool BookMetadataCache::writePart(const BookMetadata& metadata, const TocSource&
 
 bool BookMetadataCache::beginDeferredTocPass() {
   Storage.remove((cachePath + tocCountFile).c_str());
+  Storage.remove((cachePath + bookCkptFile).c_str());
   if (!Storage.openFileForWrite("BMC", cachePath + tmpTocBinFile, tocFile)) return false;
   buildMode = true;
   deferTocMatch = true;
@@ -730,10 +824,16 @@ bool BookMetadataCache::indexOnCard(const std::string& cachePath) {
   return Storage.exists((cachePath + bookBinFile).c_str()) || Storage.exists((cachePath + bookPartFile).c_str());
 }
 
+void BookMetadataCache::discardBookBin() const { Storage.remove((cachePath + bookBinFile).c_str()); }
+
+bool BookMetadataCache::partFilesLeft() const { return Storage.exists((cachePath + bookPartFile).c_str()); }
+
 bool BookMetadataCache::bookBinReady() const { return Storage.exists((cachePath + bookBinFile).c_str()); }
 
 void BookMetadataCache::removePartFiles() const {
-  for (const char* name : {bookPartFile, tmpBookPartFile, tocDoneFile, tmpTocBinFile, tocCountFile, tmpBookBinFile}) {
+  // book.part last: while it is on the card, Epub::load knows something is left to remove.
+  for (const char* name : {tmpBookPartFile, tocDoneFile, tmpTocBinFile, tocCountFile, tmpBookBinFile, bookCkptFile,
+                           tmpBookCkptFile, bookPartFile}) {
     const std::string path = cachePath + name;
     if (Storage.exists(path.c_str())) Storage.remove(path.c_str());
   }
@@ -837,6 +937,13 @@ void BookMetadataCache::createTocEntry(const std::string& title, const std::stri
 /* ============= READING / LOADING FUNCTIONS ================ */
 
 bool BookMetadataCache::load(const bool allowPartial, const StopFn stop) {
+  // A book.bin this build cannot use (another cache version, cut short, damaged) must not hide
+  // book.part: nothing writes over it until the background build's own book.bin is whole.
+  if (loadFile(false, stop)) return true;
+  return allowPartial && !(stop && stop()) && loadFile(true, stop);
+}
+
+bool BookMetadataCache::loadFile(const bool partFile, const StopFn stop) {
   loaded = false;
   partial = false;
   tocCursor.reset();
@@ -844,10 +951,8 @@ bool BookMetadataCache::load(const bool allowPartial, const StopFn stop) {
   itemSizes.reset();
   spineCount = tocCount = 0;
   if (bookFile) bookFile.close();
-  if (!Storage.openFileForRead("BMC", cachePath + bookBinFile, bookFile)) {
-    if (!allowPartial || !Storage.openFileForRead("BMC", cachePath + bookPartFile, bookFile)) return false;
-    partial = true;
-  }
+  if (!Storage.openFileForRead("BMC", cachePath + (partFile ? bookPartFile : bookBinFile), bookFile)) return false;
+  partial = partFile;
 
   // `invalid` is false for a load given up at `stop`: nothing is wrong with the file then.
   const auto fail = [this](const bool invalid = true) {
