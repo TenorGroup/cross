@@ -31,7 +31,9 @@
 #include <Logging.h>
 #include <SPI.h>
 #include <WiFi.h>
-#include <Wire.h>
+#ifndef SIMULATOR
+#include <Wire.h>  // fuel gauge reads of the probe build; the simulator has no I2C
+#endif
 #include <XteinkDetect.h>
 #include <builtinFonts/all.h>
 #if FREEINK_CAP_TOUCH
