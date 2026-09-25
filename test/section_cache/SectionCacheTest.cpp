@@ -503,6 +503,39 @@ TEST_F(SectionCacheTest, FinalCommitBatchesSerializedLutColumns) {
   EXPECT_EQ(final, valid);
   checkLutWriteBudget(final);
 }
+// The X3 card has one sector cache. Each page's index entry went to the index file as the page was
+// written to the section file, so every page evicted the other file's sector and read it back: two
+// sector writes and two reads a page (r40, 15 ms a page). The entries now go a block at a time, and
+// a page whose entry is still waiting reads as any other.
+TEST_F(SectionCacheTest, PageIndexEntriesGoToTheirFileABlockAtATime) {
+  ASSERT_GT(fullPages, 128u);
+  std::filesystem::remove(cache());
+  Section section(epub, 0, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  storageMetrics::begin();
+  unsigned ticks = 0;
+  while (section.pageCount < 40u && section.isBuilding()) {
+    ASSERT_TRUE(section.buildSomeMore(1));
+    ASSERT_LT(++ticks, 1000u);
+  }
+  ASSERT_TRUE(section.isBuilding());
+  const uint16_t built = section.pageCount;
+  for (const uint16_t page : {uint16_t(0), uint16_t(31), uint16_t(32), uint16_t(built - 1)}) {
+    SCOPED_TRACE(page);
+    ASSERT_NE(section.loadPage(page), nullptr);
+    EXPECT_EQ(section.getVisibleTextOffsetForPage(page), pod<uint32_t>(valid, pod<uint32_t>(valid, 40) + 4 * page));
+  }
+  while (section.isBuilding() && !section.isBuildComplete()) {
+    ASSERT_TRUE(section.buildSomeMore(2));
+    ASSERT_LT(++ticks, 2000u);
+  }
+  const uint64_t lutWrites = storageMetrics::lutWriteCalls;
+  storageMetrics::enabled = false;
+  ASSERT_TRUE(section.isBuildComplete());
+  EXPECT_EQ(bytes(cache()), valid);
+  std::cout << "SECTION_LUT pages=" << fullPages << " lut_writes=" << lutWrites << "\n";
+  EXPECT_LE(lutWrites, fullPages / 32u + 2u) << "page index entries still go one page at a time";
+}
 TEST_F(SectionCacheTest, PartialSuspendBatchesSerializedLutColumnsAndResumes) {
   ASSERT_GT(fullPages, 130u);
   std::filesystem::remove(cache());

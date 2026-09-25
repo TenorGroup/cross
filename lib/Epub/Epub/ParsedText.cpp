@@ -1,5 +1,7 @@
 #include "ParsedText.h"
 
+#include "BuildStageProbe.h"
+
 #include <BidiUtils.h>
 #include <Epub/ReaderSpacing.h>
 #include <GfxRenderer.h>
@@ -744,6 +746,7 @@ bool ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
       styleMask |= static_cast<uint8_t>(1u << (static_cast<uint8_t>(s) & 0x03));
     }
     if (styleMask == 0) styleMask = 0x01;  // defensive: regular only
+    BUILD_PROBE_SCOPE(SdFont);
     renderer.ensureSdCardFontReady(fontId, words, hyphenationEnabled, styleMask);
   }
 
@@ -763,7 +766,14 @@ bool ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
       }
     }
   }
+#ifdef TENOR_PRESS_PROBE
+  uint32_t stageStarted = micros();
+#endif
   auto wordWidths = calculateWordWidths(renderer, fontId);
+#ifdef TENOR_PRESS_PROBE
+  buildprobe::us[buildprobe::Widths] += micros() - stageStarted;
+  stageStarted = micros();
+#endif
 
 #ifdef TENOR_UI_ACCEPTANCE
   const unsigned long widthsEndMs = millis();
@@ -781,7 +791,11 @@ bool ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   const unsigned long breaksEndMs = millis();
 #endif
   const size_t lineCount = includeLastLine ? lineBreakIndices.size() : lineBreakIndices.size() - 1;
+#ifdef TENOR_PRESS_PROBE
+  buildprobe::us[buildprobe::Breaks] += micros() - stageStarted;
+#endif
 
+  BUILD_PROBE_SCOPE(Extract);
   for (size_t i = 0; i < lineCount; ++i) {
     if (!extractLine(i, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore, lineBreakIndices, processLine,
                      renderer, fontId) || layoutFailed) {

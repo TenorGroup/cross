@@ -92,7 +92,8 @@ class TocDeepJumpTest(unittest.TestCase):
         print(f"anchor page={page} landed_ms={landed_ms} section_opens={opens} saved={saved[-3:]}")
         self.assertGreater(page, 20, "the anchor is not deep in its chapter; the test proves nothing")
         self.assertIn((1, page), saved, "the jump did not land on the anchor's page")
-        self.assertLessEqual(opens, 3, f"the jump opened the chapter's section file {opens} times")
+        # Once, to load it; it is not there yet, so its anchor map is not asked for either.
+        self.assertLessEqual(opens, 1, f"the jump opened the chapter's section file {opens} times")
 
 
 if __name__ == "__main__":

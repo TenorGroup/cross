@@ -52,6 +52,12 @@ class Section {
     uint32_t checkpointInPartialAt = 0;
     ReaderRenderSpec spec;
     HalFile lut;
+    // The last pages' entries, written to `lut` a block at a time. Written one per page, each
+    // entry evicted the section file's sector from the card's single sector cache and the next
+    // page read it back: two sector writes and two reads a page (X3 r40, 15 ms a page).
+    static constexpr uint16_t LUT_PENDING_MAX = 32;
+    PageLutEntry lutPending[LUT_PENDING_MAX];
+    uint16_t lutPendingCount = 0;
     uint32_t lastVisibleTextOffset = 0;
     bool failed = false;
     std::string parsePath;
@@ -110,6 +116,8 @@ class Section {
   std::string lutTmpPath() const { return filePath + ".lut.part"; }
   std::string checkpointTmpPath() const { return filePath + ".checkpoint.part"; }
   bool readBuildEntry(uint16_t page, PageLutEntry& entry) const;
+  // Writes the pending entries of `build` behind the ones already in its LUT file.
+  bool flushLutPending(BuildContext& build);
   std::unique_ptr<Page> loadPageAt(int page) const;
   // Read a page already laid out by the in-progress build (page < build LUT size), from
   // the partially-written tmp .bin without disturbing the build's write cursor.
