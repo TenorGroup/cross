@@ -112,6 +112,17 @@ void CrossPointWebServer::setUiTextSizeApplier(std::function<bool(uint8_t)> appl
   uiTextSizeApplier = std::move(applier);
 }
 
+void CrossPointWebServer::setUploadCancel(std::function<bool()> cancel) { uploadCancel = std::move(cancel); }
+
+// Drops the connection when the owner asks, so the WebServer read loop ends at once
+// (a disconnected client reads as the end of data) and handleClient() returns.
+bool CrossPointWebServer::uploadCancelled() {
+  if (!uploadCancel || !uploadCancel()) return false;
+  LOG_INF("WEB", "Upload cancelled by Back");
+  server->client().stop();
+  return true;
+}
+
 bool CrossPointWebServer::applyUiTextSizeSetting(const uint8_t value) {
   return uiTextSizeApplier && uiTextSizeApplier(value);
 }
@@ -892,6 +903,18 @@ void CrossPointWebServer::handleUpload(UploadState& state) {
 
     LOG_DBG("WEB", "[UPLOAD] File created successfully: %s", filePath.c_str());
   } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (uploadCancelled()) {
+      state.bufferPos = 0;
+      if (state.file) {
+        state.file.close();
+        String filePath = state.path;
+        if (!filePath.endsWith("/")) filePath += "/";
+        filePath += state.fileName;
+        Storage.remove(filePath.c_str());
+      }
+      state.error = trWeb(lang, StrId::STR_WEB_UPLOAD_ABORTED);
+      return;
+    }
     if (state.file && state.error.isEmpty()) {
       // Buffer incoming data and flush when buffer is full
       // This reduces SD card write operations and improves throughput
@@ -2171,6 +2194,14 @@ void CrossPointWebServer::handleFontUploadData() {
     }
 
     case UPLOAD_FILE_WRITE: {
+      if (uploadCancelled()) {
+        if (fontUpload.file) {  // only a file this upload opened is removed
+          fontUpload.file.close();
+          Storage.remove(fontUpload.filePath.c_str());
+        }
+        fontUpload.valid = false;
+        break;
+      }
       if (!fontUpload.valid) break;
       resetTaskWatchdogIfSubscribed();
 

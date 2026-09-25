@@ -101,6 +101,10 @@ class CrossPointWebServer {
   // RenderLock. A server without an owner callback rejects this setting.
   void setUiTextSizeApplier(std::function<bool(uint8_t)> applier);
 
+  // Asked on every received chunk of an HTTP upload. True drops that upload: the partial
+  // file is removed and the client disconnected, so the request no longer holds the loop.
+  void setUploadCancel(std::function<bool()> cancel);
+
   // Start the web server (call after WiFi is connected)
   void begin();
 
@@ -133,6 +137,8 @@ class CrossPointWebServer {
   bool udpActive = false;
   power_timeout::WebSessionLifecycle sessionLifecycle;
   std::function<bool(uint8_t)> uiTextSizeApplier;
+  std::function<bool()> uploadCancel;
+  bool uploadCancelled();
 
   void noteSessionActivity();
   void noteTransferActivity(size_t bytes);

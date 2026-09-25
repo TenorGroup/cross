@@ -387,6 +387,9 @@ void CrossPointWebServerActivity::startWebServer() {
     requestUpdate();
     return true;
   });
+  // A slow or stalled upload keeps handleClient() busy for as long as bytes trickle in;
+  // a Back tap latched meanwhile ends it instead of waiting behind it.
+  webServer->setUploadCancel([this] { return backLatch.latched(); });
   webServer->begin();
 
   if (webServer->isRunning()) {

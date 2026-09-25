@@ -22,6 +22,8 @@ class FileTransferBackLatch {
   bool start(HalGPIO& gpio, uint8_t physicalBack);
   void stop();
   bool consume();
+  // A tap waiting for consume(), left in place. Safe from the upload handler.
+  bool latched() const { return task && pending.load(std::memory_order_acquire) == generation; }
   bool active() const { return task != nullptr; }
   uint32_t stackFreeBytes() const { return stackFree.load(std::memory_order_relaxed); }
 
