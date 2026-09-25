@@ -2357,7 +2357,10 @@ void EpubReaderActivity::renderBook() {
           const bool willInflate = !section->hasHtmlCache();
           bool showPopup;
           if (anchorJump) {
-            showPopup = !section->findAnchor(pendingAnchor).has_value() && spineBytes > BUILD_POPUP_BYTE_THRESHOLD;
+            // With no section file loaded there is no anchor map to read: asking it opened a file
+            // that is not there (X3 r30, the second "Failed to open" at JUMP_BEGIN).
+            showPopup = !(cacheLoaded && section->findAnchor(pendingAnchor).has_value()) &&
+                        spineBytes > BUILD_POPUP_BYTE_THRESHOLD;
           } else {
             const bool targetAvailable = target < static_cast<int>(section->pageCount);
             showPopup = !targetAvailable && ((spineBytes > BUILD_POPUP_BYTE_THRESHOLD && willInflate) ||
