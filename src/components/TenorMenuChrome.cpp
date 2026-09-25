@@ -2,9 +2,11 @@
 
 #include <GfxRenderer.h>
 #include <HalClock.h>
+#include <HalGPIO.h>
 #include <HalPowerManager.h>
 
 #include <algorithm>
+#include <iterator>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -60,6 +62,29 @@ constexpr int SIBLING_CHEVRON_HEIGHT = 2 * SIBLING_CHEVRON_SPAN + 1;
 constexpr int SIBLING_EDGE = 18;
 constexpr int SIBLING_LABEL_GAP = 6;
 constexpr int SIBLING_CENTER_GAP = 16;
+
+// Charging bolt drawn alone in the battery body, one row per entry, bit 0 = leftmost pixel.
+// Drawn by hand on the pixel grid: a 3 px stroke, two rows of crossbar, the tips kept.
+constexpr uint16_t BOLT_SMALL[] = {0x070, 0x038, 0x01C, 0x00E, 0x0FF, 0x0FF, 0x038, 0x01C, 0x00E, 0x006};
+constexpr int BOLT_SMALL_WIDTH = 8;
+constexpr uint16_t BOLT_LARGE[] = {0x380, 0x1C0, 0x0E0, 0x070, 0x038, 0x01C, 0x3FF,
+                                   0x3FF, 0x0E0, 0x070, 0x038, 0x01C, 0x00E, 0x006};
+constexpr int BOLT_LARGE_WIDTH = 10;
+
+// Centres the bolt in a body of bodyWidth x bodyHeight at (x, y); the body stays empty around it.
+void drawChargingBolt(const GfxRenderer& r, const int x, const int y, const int bodyWidth, const int bodyHeight,
+                      const bool large) {
+  const uint16_t* rows = large ? BOLT_LARGE : BOLT_SMALL;
+  const int count = large ? static_cast<int>(std::size(BOLT_LARGE)) : static_cast<int>(std::size(BOLT_SMALL));
+  const int width = large ? BOLT_LARGE_WIDTH : BOLT_SMALL_WIDTH;
+  const int left = x + (bodyWidth - width) / 2;
+  const int top = y + (bodyHeight - count) / 2;
+  for (int j = 0; j < count; ++j) {
+    for (int i = 0; i < width; ++i) {
+      if (rows[j] >> i & 1u) r.drawPixel(left + i, top + j);
+    }
+  }
+}
 
 void drawSiblingChevron(const GfxRenderer& r, const int x, const int y, const bool pointsRight) {
   tenorchrome::drawMoreChevron(r, x, y, pointsRight ? tenorchrome::ChevronDir::Right : tenorchrome::ChevronDir::Left,
@@ -173,7 +198,10 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
     r.drawRoundedRect(bx, by, bodyWidth, batteryHeight, 1, BATTERY_RADIUS, true);
     r.fillRect(bx + bodyWidth, by + (batteryHeight - 4) / 2, 2, 4);
     const int fill = ((bodyWidth - 4) * percent + 50) / 100;
-    if (fill > 0) {
+    if (gpio.isUsbConnected()) {
+      // Charging: the bolt alone, the level stays readable in the number beside it.
+      drawChargingBolt(r, bx, by, bodyWidth, batteryHeight, lon);
+    } else if (fill > 0) {
       r.fillRoundedRect(bx + 2, by + 2, fill, batteryHeight - 4, tenorradius::nest(BATTERY_RADIUS, 2), Color::Black);
     }
     if (hienPhanTram) {
