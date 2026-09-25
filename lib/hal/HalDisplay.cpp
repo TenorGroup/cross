@@ -1,5 +1,8 @@
 #include <HalDisplay.h>
 #include <HalGPIO.h>
+#ifdef TENOR_PRESS_PROBE
+#include <Logging.h>
+#endif
 
 // Global HalDisplay instance
 HalDisplay display;
@@ -100,6 +103,27 @@ bool HalDisplay::toggleInverted() { return einkDisplay.toggleInverted(); }
 bool HalDisplay::isInverted() const { return einkDisplay.isInverted(); }
 
 void HalDisplay::deepSleep() { einkDisplay.deepSleep(); }
+
+void HalDisplay::idleIfQuiet() {
+#ifdef TENOR_PRESS_PROBE
+  // off: how long the power-down took. on: how long the rails stayed down,
+  // logged once the next paint has gone out (its PON wait prints on its own).
+  static uint32_t offStamp = 0;
+  static uint32_t offAt = 0;
+  if (offStamp && einkDisplay.lastCommandMs() != offStamp) {
+    LOG_INF("EPD", "POWER on ms=%lu", static_cast<unsigned long>(einkDisplay.lastCommandMs() - offAt));
+    offStamp = 0;
+  }
+  const uint32_t started = millis();
+  if (einkDisplay.idleIfQuiet(PANEL_QUIET_MS)) {
+    offAt = millis();
+    offStamp = einkDisplay.lastCommandMs();
+    LOG_INF("EPD", "POWER off ms=%lu", static_cast<unsigned long>(offAt - started));
+  }
+#else
+  einkDisplay.idleIfQuiet(PANEL_QUIET_MS);
+#endif
+}
 
 uint8_t* HalDisplay::getFrameBuffer() const { return einkDisplay.getFrameBuffer(); }
 

@@ -74,6 +74,12 @@ class HalDisplay {
 
   // Power management
   void deepSleep();
+  // Drop the panel's drive rails once nothing has reached it for
+  // PANEL_QUIET_MS. Turns inside the window keep them up and pay no power-on;
+  // an image left standing under them fades. Call with the render lock held so
+  // it never lands between the passes of one paint.
+  static constexpr uint32_t PANEL_QUIET_MS = 3000;
+  void idleIfQuiet();
 
   // Access to frame buffer
   uint8_t* getFrameBuffer() const;

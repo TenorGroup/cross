@@ -1682,6 +1682,16 @@ void loop() {
   gpio.startBackgroundSampling();
 #endif
 
+#ifndef SIMULATOR
+  // The one place the panel's drive rails are dropped on a standing screen.
+  // Outside the idle branch below on purpose: that branch is skipped while the
+  // radio is up, and a remote-driven reader stands still just the same.
+  {
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired()) display.idleIfQuiet();
+  }
+#endif
+
   // Add delay at the end of the loop to prevent tight spinning
   // When an activity requests skip loop delay (e.g., webserver running), use yield() for faster response
   // Otherwise, use longer delay to save power
