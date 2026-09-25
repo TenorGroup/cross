@@ -6,6 +6,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 #include <algorithm>
 #include <cstdlib>
 #include <vector>
@@ -147,6 +148,7 @@ struct Section {
   bool isBuildComplete() const { return complete; }
   std::optional<int> anchorPage;
   std::optional<int> findAnchor(const std::string&) const { return anchorPage; }
+  std::optional<int> findAnchorDuringBuild(const std::string&) const { return anchorPage; }
   bool buildReachedVisibleTextOffset(uint32_t) const { return false; }
   // Share of the chapter laid out: 40 pages make the whole chapter here.
   int estimatedTotalPages() const { return pageCount; }
@@ -221,10 +223,21 @@ struct CoverThumbCapture : ImageBlock::ThumbHook {
 };
 template <class T, class... A>
 std::unique_ptr<T> makeUniqueNoThrow(A&&... args) { return std::make_unique<T>(std::forward<A>(args)...); }
+struct Gpio {
+  bool usbChanged = false;
+  bool wasUsbStateChanged() const { return usbChanged; }
+} gpio;
 struct Manager {
   bool sleepTransitionState = false;
   uint32_t activityGeneration() const { return 1; }
   bool isSleepTransition() const { return sleepTransitionState; }
+  // Writes left for the next screen's first frame (ActivityManager::deferWrite).
+  std::vector<void (*)()> deferred;
+  void deferWrite(void (*write)()) { deferred.push_back(write); }
+  void nextScreenFramed() {
+    for (auto write : deferred) write();
+    deferred.clear();
+  }
 } activityManager;
 struct EndMenu { bool menuActive() const { return false; } };
 // The open's own writes: state.json and the recent list (ReaderActivity::onEnter and commitOpen).
@@ -289,6 +302,11 @@ struct EpubReaderActivity : ReaderActivity {
   ReaderRenderer renderer;
   // A button edge in this pass; the idle steps wait for a quiet pass.
   int8_t pendingManualTurn = 0;
+  // The status bar redrawn alone after a USB edge (EpubReaderActivity::repaintStatusBarAlone).
+  bool statusBarStale = false;
+  std::atomic<bool> paintDropped{false};
+  int statusRepaints = 0;
+  void repaintStatusBarAlone() { ++statusRepaints; }
   struct Input { bool edge = false; bool wasAnyPressed() const { return edge; } bool wasAnyReleased() const { return false; } } mappedInput;
   int pagesUntilFullRefresh = 0;
   bool automaticPageTurnActive = false;
@@ -324,6 +342,11 @@ struct EpubReaderActivity : ReaderActivity {
   void stayAfterStarvedJump();
   void showBuildPopup(GfxRenderer&, int&);
   void loadPageForRender();
-  bool applyDeferredReposition() { return false; }
+  // What renderBook goes on to after the layout: the reposition, then loading and drawing the page.
+  int repositions = 0;
+  bool applyDeferredReposition() { ++repositions; return false; }
+  // Why the page being painted is about to be replaced (EpubReaderActivity::nextScreenWaiting).
+  const char* nextScreen = nullptr;
+  const char* nextScreenWaiting() const { return nextScreen; }
 @@LAYOUT@@
 };

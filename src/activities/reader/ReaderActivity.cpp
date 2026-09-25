@@ -217,7 +217,16 @@ void ReaderActivity::onPause() {
   const unsigned long started = millis();
 #endif
   updateReadingTime(false);
-  if (!pauseKeepsStatsInRam) chotSoLieuDoc();
+  // Any other screen over the reader (the quote selector, the chapter list...) writes the
+  // checkpoint after its own first frame instead of before it: 367 ms on the X3 in front of the
+  // quote selector (r12). The record is in RAM until then, and the write runs as that screen
+  // closes if it closes first (sleep included). A power cut in between loses the reading since the
+  // last 30 s checkpoint, the bound a power cut on the page already has.
+  if (!pauseKeepsStatsInRam && statsEnabled && statsDirty) {
+    activityManager.deferWrite([] { READING_STATS.saveToFile(); });
+    statsDirty = false;
+    statsSavedMs = millis();
+  }
   pauseKeepsStatsInRam = false;
 #ifdef TENOR_TURN_TRACE
   LOG_INF("READER", "PAUSE_SAVE t=%lu ms=%lu", started, millis() - started);

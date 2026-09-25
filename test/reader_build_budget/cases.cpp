@@ -8,7 +8,8 @@ template<class F> void test(const char* name, F fn) {
   freeink::ble::stopForIdleCalls = freeink::ble::rearmRequests = 0;
   freeink::ble::stopForIdleResult = true;
   clockMs = 1000; popupCount = buildErrors = 0; popupAtMs = 0; thumbs = {}; tenorchrome::enabledState = true;
-  activityManager.sleepTransitionState = false; openWrites = {}; ImageBlock::hook = nullptr;
+  activityManager.sleepTransitionState = false; activityManager.deferred.clear(); openWrites = {};
+  ImageBlock::hook = nullptr;
   try { fn(); std::cout << "PASS " << name << '\n'; }
   catch (const std::exception& e) { ++failures; std::cout << "FAIL " << name << ": " << e.what() << '\n'; }
 }
@@ -22,6 +23,25 @@ int main() {
     require(r.section && r.section->ticks == 1 && r.section->pageCount > 30, "first tick did not cross restored watermark");
     require(popupCount == 0, "sub-deadline restore painted indexing popup");
     require(r.pagesUntilFullRefresh == 5, "sub-deadline restore changed refresh cadence");
+  });
+  // Presses queued behind a paint ran past the laid-out pages. Each page on the way was laid out,
+  // then loaded, warmed and drawn only to be dropped before the panel: ~400 ms a page (X3 r03).
+  test("a turn queued behind the paint stops it once its page is laid out", [] {
+    for (const char* waiting : {static_cast<const char*>(nullptr), "queued"}) {
+      EpubReaderActivity r; r.section->building = false;
+      r.section->currentPage = r.section->pageCount = r.section->oldPages = 30;
+      r.section->restoredPagesAfterStart = 30; r.section->startMs = 900;
+      r.nextScreen = waiting;
+      { RenderLock held; r.foreground(); }
+      require(r.section && r.section->pageCount > 30, "the page the turn stepped onto was not laid out");
+      if (!waiting) {
+        require(!r.paintDropped && r.repositions == 1, "a paint with nothing queued behind it stopped");
+        continue;
+      }
+      require(r.paintDropped, "a page the queue has left went on to be loaded and drawn");
+      require(r.repositions == 0, "the paint went past the layout of a page the queue has left");
+      require(r.progressSaveDeferred, "the dropped paint did not leave its progress write to the next one");
+    }
   });
   test("15000ms restore with successful first tick stays silent", [] {
     EpubReaderActivity r; r.section->building = false;
@@ -412,6 +432,7 @@ int main() {
     require(openWrites.statsSaves == 1, "the checkpoint after the menu did not write the stats");
     clockMs += 5000;
     r.onPause();  // a later screen that is not the menu
+    activityManager.nextScreenFramed();
     require(openWrites.statsSaves == 2, "the menu flag leaked into a later pause");
     require(kMenuKeepsStats, "openReaderMenu does not ask the pause to keep the stats in RAM");
   });
@@ -427,12 +448,21 @@ int main() {
     require(openWrites.statsSaves == 0, "text settings waited on a stats write");
     require(r.statsDirty, "the reading before text settings was not recorded");
   });
-  test("other screens over the reader still write the stats as they open", [] {
+  // Any other screen over the reader wrote the checkpoint before its first frame: 367 ms on the X3
+  // in front of the quote selector (r12: PAUSE_SAVE ms=367). It is written once that screen's first
+  // frame is up, or as the screen closes (ActivityManager flushes deferred writes on every exit).
+  test("other screens over the reader write the stats after their first frame", [] {
     EpubReaderActivity r; r.statsEnabled = true; r.statsActive = true; r.pageReady = true;
     r.statsLastMs = r.statsSavedMs = r.statsDayPollMs = millis();
     clockMs += 20000;
     r.onPause();
-    require(openWrites.statsSaves == 1, "a child screen opened with unsaved reading stats");
+    require(openWrites.statsSaves == 0, "a child screen waited on a stats write before its first frame");
+    require(activityManager.deferred.size() == 1, "the reading before the child screen was left unwritten");
+    activityManager.nextScreenFramed();
+    require(openWrites.statsSaves == 1, "the child screen's first frame did not bring the stats write");
+    clockMs += 1000;
+    r.onPause();  // nothing read since: nothing to write
+    require(activityManager.deferred.empty(), "an unchanged record was written again");
   });
   // state.json and the recent list are read by the next boot and by Home only. Writing them in
   // onEnter() put two SD writes (and a pass over every recent book on the card) ahead of the

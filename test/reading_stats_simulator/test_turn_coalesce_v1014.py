@@ -108,7 +108,9 @@ class TurnCoalesceTest(unittest.TestCase):
         self.assertEqual(log.count(FULL_GRAY), 2)
 
     def test_back_during_a_paint_skips_its_gray_pass_and_keeps_the_page(self):
-        log, _ = self.run_sim("back", f"{START}:DOWN:60;{START + 150}:BACK:60;", START + 5000)
+        # From v1.0.16 a page waits 250 ms after its press for the next press of a burst; Back
+        # comes once the page is on its way to the panel, during its refresh.
+        log, _ = self.run_sim("back", f"{START}:DOWN:60;{START + 300}:BACK:60;", START + 5000)
         self.assertIn("leaving", SKIPPED.findall(log), "Back waited for the gray pass of a page it leaves")
         self.assertIn("Entering activity: Home", log)
         self.assertEqual(self.pages(log)[-1], 1, "the page shown before Back was not saved")

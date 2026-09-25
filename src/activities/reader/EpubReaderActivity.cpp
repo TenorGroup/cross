@@ -890,6 +890,15 @@ void EpubReaderActivity::loop() {
   // waits for a quiet pass.
   const bool inputThisPass =
       mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() || pendingManualTurn != 0 || pendingExternalTurn != 0;
+  // USB power came or went while reading: the battery follows it now instead of on the next turn.
+  if (gpio.wasUsbStateChanged()) statusBarStale = true;
+  if (statusBarStale && !inputThisPass && readingPageVisible() && !paintDropped) {
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired()) {
+      statusBarStale = false;
+      repaintStatusBarAlone();
+    }
+  }
   if (!inputThisPass && section && (!section->isBuilding() || section->isBuildParked()) &&
       renderer.hasFrameBuffer() && lastRenderCompleteMs != 0 && millis() - lastRenderCompleteMs > IDLE_PREWARM_DEBOUNCE_MS &&
       ESP.getFreeHeap() > RENDER_MIN_FREE_HEAP && ESP.getMaxAllocHeap() > BACKGROUND_BUILD_MIN_MAX_ALLOC &&
@@ -1451,6 +1460,7 @@ void EpubReaderActivity::loop() {
   currentTurnTrace = detectTurnTrace((touch.prev || touch.next) ? "touch" : turns.fromTilt ? "tilt" : "button",
                                      !prevPageTriggered);
 #endif
+  lastTurnPressMs.store(millis(), std::memory_order_relaxed);
   // Anything still queued goes first, so a new press joins the queue behind it, and so does a
   // press while the page on screen still waits for its layout.
   if (turnGuardActive || pendingManualTurn != 0 || pageAwaitsLayout()) {
@@ -2192,6 +2202,7 @@ void EpubReaderActivity::renderBook() {
   LOG_INF("ERS", "Render simulator heap=%u", ESP.getFreeHeap());
 #endif
 #endif
+  pageFrameShown = false;
   currentPageLinks.clear();
   takePendingDeferredClear();  // page turns queue this instead of waiting for the lock
   if (!epub) return;
@@ -2378,8 +2389,12 @@ void EpubReaderActivity::renderBook() {
             return;
           }
           bool completedBuildTick = false;
+          // An anchor jump looks for its anchor among the pages this build lays out. The section
+          // file cannot hold it: it was looked up above, and the build does not write that file
+          // until it completes. Asking the file after every tick opened it once per ~20 ms tick
+          // (X3 r05: 94 pages in 6.5 s, "Failed to open" between every tick).
           while (!section->isBuildComplete() &&
-                 (anchorJump               ? !section->findAnchor(pendingAnchor)
+                 (anchorJump               ? !section->findAnchorDuringBuild(pendingAnchor)
                   : offsetJump.has_value() ? !section->buildReachedVisibleTextOffset(*offsetJump)
                                            : static_cast<int>(section->pageCount) <= target)) {
             if (completedBuildTick && buildPopupPending && millis() - buildStartMs >= BUILD_POPUP_DEADLINE_MS) {
@@ -2556,6 +2571,22 @@ void EpubReaderActivity::renderBook() {
     }
   }
 
+  // A turn queued behind this one (or Back, or a jump) leads past the page just laid out. It goes
+  // no further than its layout: loading it, warming its glyphs and drawing it only to drop it
+  // before the panel cost ~400 ms a page when queued turns ran past the laid-out pages (X3 r03).
+  if (const char* reason = nextScreenWaiting()) {
+    LOG_DBG("ERS", "Paint dropped before display: %s", reason);
+#ifdef TENOR_TURN_TRACE
+    tracePaint("ABORT", reason);
+    logTurnTrace("RENDERED", appliedTurnTrace, "dropped");
+    appliedTurnTrace = {};
+#endif
+    paintDropped.store(true, std::memory_order_release);
+    progressSaveDeferred.store(true, std::memory_order_release);
+    lastRenderCompleteMs = millis();
+    return;
+  }
+
   applyDeferredReposition();
 
   renderer.clearScreen();
@@ -2721,6 +2752,8 @@ void EpubReaderActivity::renderBook() {
     // through the sheet (see #2190 for the mechanism).
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
   }
+  pageFrameUsb = gpio.isUsbConnected();
+  pageFrameShown = true;
 }
 
 void EpubReaderActivity::onEndOfBookRendered() {
@@ -2901,6 +2934,13 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool combinedGrayscaleBase =
       tiledGrayscale && !pageHasImages && grayscale.base == HalDisplay::GrayscaleBase::Combined;
   const bool overlapRefresh = tiledGrayscale && grayscale.asyncBase && !pageHasImages;
+  // A fast refresh that changes only the status bar (repaintStatusBarAlone) drives only the pixels
+  // whose black or white value changes, and every gray pixel of a text page is black in that frame.
+  // The UC8279's fast bank leaves unchanged black pixels undriven, so the grays stay; the UC8253's
+  // drives them black for two frames, so there only a page without grays stays as painted. An image
+  // page's grays are not all black in that frame; its status bar waits for the next paint.
+  pageFrameKeepsUnderFast = gpio.deviceIsX3() && !pageHasImages &&
+                            (!needsTextGrayscale || display.getController() == HalDisplay::Controller::UC8279);
   auto renderGrayscalePass = [&]() {
     if (absoluteImageGrayscale || needsTextGrayscale) {
       page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
@@ -2932,6 +2972,17 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // lead: one refresh instead of this page's ~1.2 s and then the next. Image pages already showed
   // their placeholder and keep their paint.
   if (!pageHasImages) {
+    // The first press of a burst reached the panel before the second came (X3 r03: 3 ms before
+    // it), and the burst took two refreshes. The page waits out the burst window of the last press.
+    [[maybe_unused]] bool held = false;
+    while (!nextScreenWaiting() &&
+           millis() - lastTurnPressMs.load(std::memory_order_relaxed) < TURN_BURST_HOLD_MS) {
+      held = true;
+      delay(5);
+    }
+#ifdef TENOR_TURN_TRACE
+    if (held) tracePaint("BURST_HOLD_END", "text");
+#endif
     if (const char* reason = nextScreenWaiting()) {
       LOG_DBG("ERS", "Paint dropped before display: %s", reason);
 #ifdef TENOR_TURN_TRACE
@@ -3207,6 +3258,32 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
               tBwRender - tPrewarm, tDisplay - tBwRender, tEnd - t0);
     }
   }
+}
+
+// Caller owns RenderLock, on the main loop: the battery reads the fuel gauge, which only that task
+// may read. The status bar is drawn again over the page frame still in the framebuffer and sent
+// with one fast refresh; the page is not laid out, drawn or given a gray pass again.
+void EpubReaderActivity::repaintStatusBarAlone() {
+  if (!pageFrameShown || !pageFrameKeepsUnderFast || !tenorchrome::enabled() || preview ||
+      SETTINGS.readerStatusBarHidden() || !SETTINGS.statusBarSpec().showBattery)
+    return;
+  const bool usb = gpio.isUsbConnected();
+  if (usb == pageFrameUsb) return;
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long started = millis();
+#endif
+  const int top = tenorchrome::readerStatusTop(renderer.getScreenHeight());
+  renderer.fillRect(0, top, renderer.getScreenWidth(), renderer.getScreenHeight() - top, false);
+  auto scope = renderer.getFontCacheManager()->createPrewarmScope();
+  renderStatusBar();
+  scope.endScanAndPrewarm();
+  renderStatusBar();
+  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  pageFrameUsb = usb;
+  LOG_DBG("ERS", "Status bar repainted alone: usb=%d", usb ? 1 : 0);
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("ERS", "STATUS_REPAINT usb=%d ms=%lu", usb ? 1 : 0, millis() - started);
+#endif
 }
 
 void EpubReaderActivity::renderStatusBar() const {
@@ -4145,6 +4222,8 @@ CrossPointPosition EpubReaderActivity::getCurrentPosition() const {
 
 void EpubReaderActivity::onPause() {
   pendingManualTurn = 0;
+  // The screen that covers the reader draws into the framebuffer.
+  pageFrameShown = false;
 #ifdef TENOR_TURN_TRACE
   dropTurnTrace(pendingManualTurnTrace, "pause");
 #endif

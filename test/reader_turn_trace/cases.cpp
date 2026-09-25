@@ -450,12 +450,17 @@ int main() {
   });
   test("pause behind the reader menu keeps statistics in memory, once", [] {
     ReaderActivity reader;
+    reader.statsDirty = true;
     reader.pauseKeepsStatsInRam = true;
     reader.onPause();
-    require(reader.statsSaves == 0, "pause behind the menu wrote statistics to the card");
+    activityManager.nextScreenFramed();
+    require(reader.statsSaves == 0 && cardStatsSaves == 0, "pause behind the menu wrote statistics to the card");
     require(!reader.pauseKeepsStatsInRam, "the keep-in-memory flag outlived its pause");
     reader.onPause();
-    require(reader.statsSaves == 1, "the next pause did not write statistics");
+    require(reader.statsSaves == 0 && cardStatsSaves == 0,
+            "the next pause wrote statistics before its screen's first frame");
+    activityManager.nextScreenFramed();
+    require(reader.statsSaves + cardStatsSaves == 1, "the next pause did not write statistics");
   });
   std::cout << "RESULT " << tests - failures << "/" << tests << " passed\n";
   return failures ? 1 : 0;

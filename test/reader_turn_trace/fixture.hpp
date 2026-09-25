@@ -43,12 +43,23 @@ struct RenderLock {
 struct ActivityManager {
   uint32_t generation = 1;
   uint32_t activityGeneration() const { return generation; }
+  // Writes left for the next screen's first frame (deferWrite); nextScreenFramed runs them.
+  std::vector<void (*)()> deferred;
+  void deferWrite(void (*write)()) { deferred.push_back(write); }
+  void nextScreenFramed() {
+    for (auto write : deferred) write();
+    deferred.clear();
+  }
 } activityManager;
 struct EndOfBookOptions {
   bool menu = false;
   bool menuActive() const { return menu; }
 };
-struct ReadingStats { uint32_t currentDay() const { return 1; } } READING_STATS;
+int cardStatsSaves = 0;
+struct ReadingStats {
+  uint32_t currentDay() const { return 1; }
+  bool saveToFile() { ++cardStatsSaves; return true; }
+} READING_STATS;
 // What one pass of ReaderActivity::loop reads from the buttons; a test sets it before the pass.
 struct Renderer {};
 struct MappedInput {
@@ -88,8 +99,8 @@ struct ReaderActivity {
   bool changed = true;
   bool atEnd = false;
   int modelPage = 1;
-  uint32_t statsLastMs = 0, statsDayPollMs = 0, statsDay = 0;
-  bool statsActive = false;
+  uint32_t statsLastMs = 0, statsDayPollMs = 0, statsDay = 0, statsSavedMs = 0;
+  bool statsActive = false, statsEnabled = true, statsDirty = false;
   Renderer renderer;
   MappedInput mappedInput;
   virtual ~ReaderActivity() = default;
@@ -145,6 +156,10 @@ struct EpubReaderActivity : ReaderActivity {
   std::unique_ptr<Section> section = std::make_unique<Section>();
   int chapter = 0;
   int chapters = 2;
+  // Cleared by onPause: the screen over the reader draws into the framebuffer.
+  std::atomic<bool> pageFrameShown{false};
+  // Stamped by every page turn press (EpubReaderActivity::loop).
+  std::atomic<unsigned long> lastTurnPressMs{0};
 @@EPUB_FIELDS@@
   void layout(const int page, const int pages, const bool building) {
     if (!section) section = std::make_unique<Section>();

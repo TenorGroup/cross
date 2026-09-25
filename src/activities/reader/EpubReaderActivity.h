@@ -51,6 +51,12 @@ class EpubReaderActivity final : public ReaderActivity {
   unsigned long pageTurnDuration = 0UL;
   // Atomic: the render task reads it to drop a paint nobody will see (nextScreenWaiting).
   std::atomic<int8_t> pendingManualTurn{0};
+  // When the last page turn press came in. A text page waits for the panel until
+  // TURN_BURST_HOLD_MS after it, so the next press of a burst drops the page and one refresh
+  // shows where the burst ends. A lone press pays what is left of the window after the page is
+  // laid out and drawn: the X3 took 207-250 ms to get there (r03).
+  std::atomic<unsigned long> lastTurnPressMs{0};
+  static constexpr unsigned long TURN_BURST_HOLD_MS = 250;
   // Why the page being painted is about to be replaced (a queued turn, a chapter jump waiting for
   // the render lock, the reader closing), or nullptr. Before anything reaches the panel any of these
   // drops the paint. Once the page is readable only leaving it (Back, a held chapter jump) cuts the
@@ -66,6 +72,16 @@ class EpubReaderActivity final : public ReaderActivity {
   std::atomic<bool> progressSaveDeferred{false};
   // The last owed write failed on the card; the idle pass stops retrying it (RenderLock guards it).
   bool progressSaveFailed = false;
+  // The framebuffer holds exactly the page frame on the panel: set when renderBook ends on a
+  // page, cleared when a paint begins and when another screen covers the reader. Under RenderLock.
+  std::atomic<bool> pageFrameShown{false};
+  // That page leaves the panel as it is under a fast differential refresh that only changes the
+  // status bar (see renderContents), and the charging state its status bar shows.
+  bool pageFrameKeepsUnderFast = false;
+  bool pageFrameUsb = false;
+  // USB power came or went; the main loop redraws the status bar alone on a quiet pass.
+  bool statusBarStale = false;
+  void repaintStatusBarAlone();
   void saveProgressIfMoved();
 #ifdef TENOR_TURN_TRACE
   TurnTrace pendingManualTurnTrace;

@@ -36,6 +36,8 @@ inline int statusHeight(bool large = false) {
   return (large ? STATUS_HEIGHT_LARGE : STATUS_HEIGHT) + statusTextGrowth(large);
 }
 inline int readerBottomReserve() { return READER_BOTTOM_RESERVE + statusTextGrowth(); }
+// First row of the reader's status bar ink; the page's text stops READER_TEXT_TO_STATUS_GAP above it.
+inline int readerStatusTop(const int screenHeight) { return screenHeight - STATUS_INK_TOP - statusTextGrowth(); }
 inline int statusTextY(const int screenHeight, const bool large, const int paddingBottom = 0) {
   return screenHeight - STATUS_TEXT_LANE - (large ? STATUS_LARGE_TEXT_SHIFT : 0) - paddingBottom - statusTextGrowth(large);
 }
