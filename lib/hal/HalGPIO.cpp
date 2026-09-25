@@ -330,6 +330,17 @@ void HalGPIO::sampleButtonAdc(InputManager::ButtonAdcSample& first, InputManager
   ladderInUse.store(true, std::memory_order_release);
   inputMgr.readButtonAdc(first, second);
   ladderInUse.store(false, std::memory_order_release);
+#ifdef TENOR_PRESS_PROBE
+  // A planned press on a first-ladder key reaches the direct ladder readers too (the
+  // file transfer Back latch), as a real contact would.
+  const uint8_t planned = plannedButtons();
+  for (int8_t b = 0; b < 4; ++b) {
+    if (planned & (1u << b)) {
+      first.button = b;
+      if (first.raw <= 0) first.raw = 1;
+    }
+  }
+#endif
 }
 
 bool HalGPIO::isPressed(uint8_t buttonIndex) const {
