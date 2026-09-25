@@ -5,6 +5,7 @@
 #include <GrayThumb.h>
 #include <HalStorage.h>
 #include <JPEGDEC.h>
+#include <JpegScale.h>
 #include <Logging.h>
 #include <Memory.h>
 
@@ -99,25 +100,6 @@ int32_t jpegSeek(JPEGFILE* pFile, int32_t pos) {
 // Heap-allocate on demand so memory is only used during active decode.
 constexpr size_t JPEG_DECODER_APPROX_SIZE = 20 * 1024;
 constexpr size_t MIN_FREE_HEAP_FOR_JPEG = JPEG_DECODER_APPROX_SIZE + 16 * 1024;
-
-// Choose JPEGDEC's built-in scale factor for coarse downscaling.
-// Returns the scale denominator (1, 2, 4, or 8) and sets jpegScaleOption.
-int chooseJpegScale(float targetScale, int& jpegScaleOption) {
-  if (targetScale <= 0.125f) {
-    jpegScaleOption = JPEG_SCALE_EIGHTH;
-    return 8;
-  }
-  if (targetScale <= 0.25f) {
-    jpegScaleOption = JPEG_SCALE_QUARTER;
-    return 4;
-  }
-  if (targetScale <= 0.5f) {
-    jpegScaleOption = JPEG_SCALE_HALF;
-    return 2;
-  }
-  jpegScaleOption = 0;
-  return 1;
-}
 
 // Fixed-point 16.16 arithmetic avoids software float emulation on ESP32-C3 (no FPU).
 constexpr int FP_SHIFT = 16;
@@ -451,18 +433,9 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
     destHeight = (int)(srcHeight * targetScale);
   }
 
-  // Choose JPEGDEC built-in scaling for coarse downscaling.
-  // Progressive JPEGs: JPEGDEC forces JPEG_SCALE_EIGHTH internally (DC-only
-  // decode produces 1/8 resolution). We must match this to avoid the if/else
-  // priority chain in DecodeJPEG selecting a different scale.
+  // Choose JPEGDEC built-in scaling for coarse downscaling (progressive: an eighth, see JpegScale.h).
   int jpegScaleOption;
-  int jpegScaleDenom;
-  if (isProgressive) {
-    jpegScaleOption = JPEG_SCALE_EIGHTH;
-    jpegScaleDenom = 8;
-  } else {
-    jpegScaleDenom = chooseJpegScale(targetScale, jpegScaleOption);
-  }
+  const int jpegScaleDenom = chooseJpegScale(targetScale, isProgressive, jpegScaleOption);
 
   if (destWidth <= 0 || destHeight <= 0) {
     LOG_ERR("JPG", "Degenerate output dimensions %dx%d for %s, skipping render", destWidth, destHeight,

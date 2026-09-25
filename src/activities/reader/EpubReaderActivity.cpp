@@ -21,6 +21,7 @@
 #include <limits>
 
 #include "../../util/BookmarkFile.h"
+#include "../../util/CoverRef.h"
 #include "BookmarkEntry.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -198,14 +199,15 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
 // The missing cover thumbnails of a new book, built in RAM while its cover page decodes the cover
 // (ImageBlock::ThumbHook) and written once that page is on the panel. The X3 otherwise copied the
 // cover out of the book again and decoded it twice more when the reader closed: 5,6 s on the Home
-// key (r18-k1). The card's height is built from the decode; the theme's smaller one is scaled
-// from it when the files are written. One try per book open; whatever is not written here is
-// written by writePendingThumbs() as before.
+// key (r18-k1). Both heights are built from the decode (GrayThumb::alsoFeed); when the heap under
+// the page has room for the card's alone, the theme's is scaled from it when the files are
+// written. One try per book open; whatever is not written here is written by writePendingThumbs()
+// as before.
 class CoverThumbCapture final : public ImageBlock::ThumbHook {
   const Epub& epub;
   const int* heights;
   int count;
-  std::unique_ptr<GrayThumb> thumb;
+  std::unique_ptr<GrayThumb> thumb, small;
   bool ready = false;
 
  public:
@@ -215,12 +217,19 @@ class CoverThumbCapture final : public ImageBlock::ThumbHook {
   GrayThumb* open(const std::string& srcPath) override {
     if (count == 0 || thumb || !FsHelpers::hasJpgExtension(srcPath) || !epub.isCoverImage(srcPath)) return nullptr;
     thumb = makeUniqueNoThrow<GrayThumb>(heights[0]);
+    if (thumb && count > 1 && heights[1] > 0 && heights[1] < heights[0]) {
+      small = makeUniqueNoThrow<GrayThumb>(heights[1]);
+      thumb->alsoFeed(small.get());
+    }
     return thumb.get();
   }
 
   void close(const bool decoded) override {
     ready = decoded && thumb && thumb->finish();
-    if (!ready) thumb.reset();
+    if (!ready) {
+      thumb.reset();
+      small.reset();
+    }
     count = 0;
   }
 
@@ -238,7 +247,9 @@ class CoverThumbCapture final : public ImageBlock::ThumbHook {
       Storage.remove(part.c_str());
       HalFile file;
       bool ok = Storage.openFileForWrite("ERS", part, file) &&
-                (i == 0 ? thumb->writeTo(file) : thumb->writeScaled(heights[i], file));
+                (i == 0                    ? thumb->writeTo(file)
+                 : small && small->ready() ? small->writeTo(file)
+                                           : thumb->writeScaled(heights[i], file));
       file.close();
       ok = ok && Storage.rename(part.c_str(), path.c_str());
       if (!ok) {
@@ -249,6 +260,7 @@ class CoverThumbCapture final : public ImageBlock::ThumbHook {
       written++;
     }
     thumb.reset();
+    small.reset();
     return written > 0 && (written == 2 || heights[1] == 0);
   }
 };
@@ -399,6 +411,7 @@ bool EpubReaderActivity::loadBook() {
       if (pendingThumbCount < 2) pendingThumbHeights[1] = 0;
       coverThumbs = makeUniqueNoThrow<CoverThumbCapture>(*epub, pendingThumbHeights, pendingThumbCount);
       ImageBlock::setThumbHook(coverThumbs.get());
+      coverRefPending = true;
     }
   }
 #ifdef TENOR_TURN_TRACE
@@ -764,6 +777,18 @@ void EpubReaderActivity::loop() {
   if (!epub) {
     finish();
     return;
+  }
+
+  // The open is committed, so its first frame is up. Thumbnails still owed are written as the
+  // reader closes, but not on the power key; Home then writes them, and without this file it loads
+  // the whole book to find the cover (1,3 s for 5.000 chapters on the X3).
+  if (coverRefPending && !openCommitPending) {
+    coverRefPending = false;
+    std::string saved;
+    if (pendingThumbCount > 0 && !(coverref::load(epub->getCachePath(), saved) && saved == epub->getCoverHref())) {
+      const bool ok = coverref::save(epub->getCachePath(), epub->getCoverHref());
+      LOG_DBG("ERS", "Cover ref saved ok=%u", ok ? 1u : 0u);
+    }
   }
 
   // Someone else turned the screen while this reader was stacked (the control

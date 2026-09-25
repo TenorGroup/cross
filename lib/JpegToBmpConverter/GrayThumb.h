@@ -29,6 +29,11 @@ class GrayThumb {
   // already out of it by then).
   static constexpr size_t RENDER_MARGIN = 64 * 1024;
   bool start(int srcWidth, int srcHeight, int blockRows, size_t margin = RENDER_MARGIN);
+  // A smaller thumbnail fed the same blocks (the theme's height beside the card's), so it is area
+  // averaged from the decoded gray as the card's is. writeScaled() scales the card's dithered bits
+  // and dithers them again. start() starts it when the heap still has room after this one, and
+  // finish() closes it; ready() on it says whether it came through.
+  void alsoFeed(GrayThumb* smaller) { sibling = smaller; }
   // Gray pixels of the source block at (x, y), rows `stride` bytes apart. Blocks of one block row
   // arrive left to right, block rows top to bottom (JPEGDEC's raster MCU order).
   void block(int x, int y, int w, int h, const uint8_t* gray, int stride);
@@ -38,6 +43,9 @@ class GrayThumb {
   // The theme's smaller thumbnail, scaled from this one and written straight to out.
   bool writeScaled(int height, Print& out) const;
 
+  int targetHeight() const { return height; }
+  // Every row set: writeTo() writes it.
+  bool ready() const { return bits && nextEmit == outHeight; }
   int width() const { return outWidth; }
   int rows() const { return outHeight; }
   // The finished rows once finish() said true: packed 1 bit per pixel, a set bit white.
@@ -54,6 +62,7 @@ class GrayThumb {
   int nextEmit = 0, fedTo = 0;
   uint32_t scaleX = 0, scaleY = 0;
   bool failed = false;
+  GrayThumb* sibling = nullptr;
   std::unique_ptr<uint16_t[]> ring;  // sums of the thumbnail rows still open, ringRows x outWidth
   std::unique_ptr<uint8_t[]> bits;   // finished rows, 1 bit per pixel, no BMP padding
   std::unique_ptr<FloydSteinberg1BitDitherer> ditherer;

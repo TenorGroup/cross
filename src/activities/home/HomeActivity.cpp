@@ -42,6 +42,7 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "components/ReadingStatsFormat.h"
 #include "components/ReadingStatsView.h"
+#include "util/CoverRef.h"
 #include "components/HomeStatsNavigation.h"
 #include "components/HomeExcerptStyle.h"
 #include "components/SettledListRender.h"
@@ -108,7 +109,14 @@ uint32_t thumbTried[5] = {};
 uint8_t thumbTriedNext = 0;
 // Idle time on the card before Home decodes a missing cover (1 to 3 s under a notice).
 constexpr uint32_t CARD_THUMB_IDLE_MS = 3000;
+// Heap a missing thumbnail needs, with the book's index loaded to find the cover.
 constexpr size_t CARD_THUMB_MIN_FREE_HEAP = 96 * 1024;
+// With the cover's path from cover.ref: the copy out of the book is the peak, 57.516 B on the X3
+// (two 8 KB chunks, the 32 KB inflate window and the 8.364 B decompressor), above the decode
+// (the 17.884 B JPEG decoder and both thumbnails, about 19 KB for a 900 x 1350 cover). Plus a
+// quarter for the other tasks and the allocator. Home sat at 86 to 91 KB after reading, under
+// the old 96 KB, so the thumbnail came one visit and not the next.
+constexpr size_t CARD_THUMB_REF_MIN_FREE_HEAP = 72 * 1024;
 }  // namespace
 
 HomeActivity::HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -1235,12 +1243,21 @@ void HomeActivity::writeMissingThumb(const int index) {
   // The card is drawn again with its cover, and the decode gets the card's snapshot memory.
   freeCoverBuffer();
   coverRendered = false;
-  if (ESP.getFreeHeap() >= CARD_THUMB_MIN_FREE_HEAP) {
+  Epub epub(path, "/.crosspoint");
+  // Where the reader left the cover's path: the book's index is not loaded to find it.
+  const unsigned long refStarted = millis();
+  std::string href;
+  const bool ref = coverref::load(epub.getCachePath(), href);
+  const size_t heap = ESP.getFreeHeap();
+  LOG_INF("HOME", "Card cover ref ok=%u ms=%lu free=%u", ref ? 1u : 0u, millis() - refStarted,
+          static_cast<unsigned>(heap));
+  if (heap >= (ref ? CARD_THUMB_REF_MIN_FREE_HEAP : CARD_THUMB_MIN_FREE_HEAP)) {
     LOG_INF("HOME", "Card thumbnail write %d", index);
     GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-    Epub epub(path, "/.crosspoint");
-    if (epub.load(false, true)) {
-      const int heights[] = {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight};
+    const int heights[] = {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight};
+    if (ref) {
+      epub.generateThumbBmps(href, heights, 2);
+    } else if (epub.load(false, true)) {
       epub.generateThumbBmps(heights, 2);
     }
   }

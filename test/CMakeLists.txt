@@ -107,6 +107,7 @@ add_subdirectory(ble_page_turner_runtime)
 add_subdirectory(truncated_text)
 add_subdirectory(png_bmp_converter)
 add_subdirectory(cover_thumb_ram)
+add_subdirectory(cover_jpeg_decode)
 
 add_subdirectory(keyboard_sync)
 
@@ -133,6 +134,8 @@ add_subdirectory(webdav_handler_behavior)
 add_subdirectory(opf_cache_io)
 add_subdirectory(huge_book)
 add_subdirectory(thumb_name)
+add_subdirectory(cover_ref)
+add_subdirectory(zip_central_dir)
 
 add_subdirectory(txt_zip_io)
 
