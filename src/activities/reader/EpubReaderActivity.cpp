@@ -989,7 +989,7 @@ void EpubReaderActivity::loop() {
        (section->isPartial() && !section->isBuilding() && !partialRebuildStartFailed && buildViewportWidth > 0)) &&
       !backgroundBuildFailed && !backgroundBuildParkedThisLoop && deferBackgroundBuildForBle() &&
       !freeink::ble::initializing() && lookAheadPage != section->currentPage &&
-      section->currentPage + 1 >= static_cast<int>(section->pageCount) && lastRenderCompleteMs != 0 &&
+      section->currentPage + LOOK_AHEAD_PAGES >= static_cast<int>(section->pageCount) && lastRenderCompleteMs != 0 &&
       sincePaint > BUILD_WINDOW_QUIET_MS && sincePaint < BUILD_WINDOW_LATEST_MS;
   if (lookAhead ||
       (!inputThisPass && section &&
@@ -1011,11 +1011,11 @@ void EpubReaderActivity::loop() {
         LOG_ERR("ERS", "Failed to start look-ahead extension build");
       } else if (![&] {
                    // One tick is about 20 ms of parsing and often adds no page, so the look-ahead
-                   // keeps ticking until the page after this one is laid out; handing the parser
+                   // keeps ticking until the pages after this one are laid out; handing the parser
                    // back after one tick left the first turn to lay it out in its paint (r27-ui).
                    bool ticked = section->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK);
                    while (lookAhead && ticked && !section->isBuildComplete() &&
-                          static_cast<int>(section->pageCount) <= section->currentPage + 1 &&
+                          static_cast<int>(section->pageCount) <= section->currentPage + LOOK_AHEAD_PAGES &&
                           millis() - tickStarted < static_cast<unsigned long>(BUILD_WINDOW_MAX_MS))
                      ticked = section->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK);
                    return ticked;
@@ -1460,7 +1460,6 @@ void EpubReaderActivity::loop() {
   currentTurnTrace = detectTurnTrace((touch.prev || touch.next) ? "touch" : turns.fromTilt ? "tilt" : "button",
                                      !prevPageTriggered);
 #endif
-  lastTurnPressMs.store(millis(), std::memory_order_relaxed);
   // Anything still queued goes first, so a new press joins the queue behind it, and so does a
   // press while the page on screen still waits for its layout.
   if (turnGuardActive || pendingManualTurn != 0 || pageAwaitsLayout()) {
@@ -2972,17 +2971,6 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // lead: one refresh instead of this page's ~1.2 s and then the next. Image pages already showed
   // their placeholder and keep their paint.
   if (!pageHasImages) {
-    // The first press of a burst reached the panel before the second came (X3 r03: 3 ms before
-    // it), and the burst took two refreshes. The page waits out the burst window of the last press.
-    [[maybe_unused]] bool held = false;
-    while (!nextScreenWaiting() &&
-           millis() - lastTurnPressMs.load(std::memory_order_relaxed) < TURN_BURST_HOLD_MS) {
-      held = true;
-      delay(5);
-    }
-#ifdef TENOR_TURN_TRACE
-    if (held) tracePaint("BURST_HOLD_END", "text");
-#endif
     if (const char* reason = nextScreenWaiting()) {
       LOG_DBG("ERS", "Paint dropped before display: %s", reason);
 #ifdef TENOR_TURN_TRACE

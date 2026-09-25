@@ -51,12 +51,6 @@ class EpubReaderActivity final : public ReaderActivity {
   unsigned long pageTurnDuration = 0UL;
   // Atomic: the render task reads it to drop a paint nobody will see (nextScreenWaiting).
   std::atomic<int8_t> pendingManualTurn{0};
-  // When the last page turn press came in. A text page waits for the panel until
-  // TURN_BURST_HOLD_MS after it, so the next press of a burst drops the page and one refresh
-  // shows where the burst ends. A lone press pays what is left of the window after the page is
-  // laid out and drawn: the X3 took 207-250 ms to get there (r03).
-  std::atomic<unsigned long> lastTurnPressMs{0};
-  static constexpr unsigned long TURN_BURST_HOLD_MS = 250;
   // Why the page being painted is about to be replaced (a queued turn, a chapter jump waiting for
   // the render lock, the reader closing), or nullptr. Before anything reaches the panel any of these
   // drops the paint. Once the page is readable only leaving it (Back, a held chapter jump) cuts the
@@ -248,6 +242,10 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr int BUILD_WINDOW_LATEST_MS = 1200;
   // Bound on one look-ahead: the next page took 780 ms on the X3, a pathological one stops here.
   static constexpr int BUILD_WINDOW_MAX_MS = 1500;
+  // Pages the look-ahead keeps laid out past the one on screen. With one, the second page of a
+  // quick burst of two turns was laid out inside the paint: 432 ms of the 1.2 s that burst took
+  // (X3 r29). Once ahead, each turn lays out one page, as with one.
+  static constexpr int LOOK_AHEAD_PAGES = 2;
   int lookAheadPage = -1;
   // Last pass that saw the radio's start in flight. The window above counts from here too: the
   // radio starts right after a book's first page, and its start can outlast the window.

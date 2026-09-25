@@ -617,6 +617,33 @@ int main() {
     for (int n = 0; n < 10; ++n) r.backgroundTick();
     require(r.section->ticks == ticks, "look-ahead kept laying out past the next page");
   });
+  // Device evidence (r29, 26/09): the book opened on page 0 of a two-page partial. A quick burst
+  // of two turns went past page 1 onto page 2, which nothing had laid out: the paint laid it out
+  // (432 ms) and the burst took 1.2 s to be readable. The look-ahead keeps two pages ready.
+  test("look-ahead keeps two pages laid out past the one on screen", [] {
+    EpubReaderActivity r; r.section->canPark = true; SETTINGS.blePageTurnerEnabled = true;
+    freeink::ble::busyState = true; r.buildViewportWidth = 515;
+    r.section->building = false;
+    r.section->builtPages = r.section->oldPages = r.section->pageCount = 2;
+    r.section->restoredPagesAfterStart = 2;
+    r.section->currentPage = 0;
+    r.section->ticksPerPage = 8;  // 160 ms a page at 20 ms a tick, as r29's LOOK_AHEAD lines
+    ESP.free = 53144; ESP.largest = 31732;  // BLE-live heap on the X3 in r29
+    r.lastRenderCompleteMs = clockMs;
+    clockMs += 500;
+    r.backgroundTick();
+    require(r.section->pageCount > 2, "the second page past the one on screen is not laid out");
+    require(r.section->isBuildParked(), "parser was not handed back after the look-ahead");
+    const int ticks = r.section->ticks;
+    for (int n = 0; n < 10; ++n) r.backgroundTick();
+    require(r.section->pageCount == 3 && r.section->ticks == ticks, "look-ahead kept laying out past two pages");
+    // The next turn lays out one page more, not two.
+    r.section->currentPage = 1;
+    r.lastRenderCompleteMs = clockMs;
+    clockMs += 500;
+    r.backgroundTick();
+    require(r.section->pageCount == 4, "a turn inside the look-ahead did not keep two pages ready");
+  });
   test("look-ahead window opens when the radio's start ends, not at the paint", [] {
     EpubReaderActivity r; r.section->canPark = true; SETTINGS.blePageTurnerEnabled = true;
     freeink::ble::busyState = true; r.buildViewportWidth = 515;
