@@ -566,7 +566,7 @@ bool EpubReaderActivity::holdsRadio() const {
 }
 
 bool EpubReaderActivity::indexStepDue() const {
-  return holdsRadio() && section && !section->isBuilding() && overlay == Overlay::None &&
+  return holdsRadio() && section && overlay == Overlay::None &&
          !automaticPageTurnActive && !pendingPercentJump && pendingAnchor.empty() && pendingQuoteEdit.empty() &&
          lastRenderCompleteMs != 0 && millis() - lastRenderCompleteMs > INDEX_QUIET_MS &&
          (indexRetryAtMs == 0 || static_cast<long>(millis() - indexRetryAtMs) >= 0);
@@ -575,6 +575,13 @@ bool EpubReaderActivity::indexStepDue() const {
 void EpubReaderActivity::runIndexStep() {
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired()) return;
+  // A chapter's layout keeps its parser resident once the pages ahead are laid out, holding the
+  // heap a step needs, for as long as the chapter lasts (X3 r19: no step ran in 30 s). Park it the
+  // way the radio does; its pages stay, and it resumes when the reader nears the last of them.
+  if (section->isBuilding() && !section->isBuildParked()) {
+    backgroundBuildSuspended = true;
+    suspendBackgroundBuild();
+  }
   // Straight from the key hardware: this pass is held until the step returns.
   const Epub::IndexStep step = epub->indexSome([] { return gpio.rawInputActive(); });
   if (step == Epub::IndexStep::Done) {

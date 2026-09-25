@@ -20,7 +20,7 @@ SO_CHUONG = 5000
 DOAN = 'Mua nang gio chieu sang toi mat tay long viec chu sach trang pho cho. ' * 30
 
 
-def write_epub(path: Path, mot_tep: bool, so_chuong: int = SO_CHUONG) -> None:
+def write_epub(path: Path, mot_tep: bool, so_chuong: int = SO_CHUONG, chuong_dau: int = 1) -> None:
     """EPUB2 co toc.ncx; chu tu bia, du dai de moi chuong sinh vai trang."""
     ten = [f'c{i:05d}' for i in range(1, so_chuong + 1)]
     dich = [f'mot.xhtml#{t}' for t in ten] if mot_tep else [f'{t}.xhtml' for t in ten]
@@ -44,7 +44,8 @@ def write_epub(path: Path, mot_tep: bool, so_chuong: int = SO_CHUONG) -> None:
                                                     for i, t in enumerate(ten, 1)) + '</body></html>')
         else:
             for i, t in enumerate(ten, 1):
-                epub.writestr(f'{t}.xhtml', f'{mo}<h2>Chuong {i}</h2><p>{DOAN}</p></body></html>')
+                doan = DOAN * (chuong_dau if i == 1 else 1)
+                epub.writestr(f'{t}.xhtml', f'{mo}<h2>Chuong {i}</h2><p>{doan}</p></body></html>')
         epub.writestr('toc.ncx',
                       '<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">'
                       f'<head/><docTitle><text>Sach thu</text></docTitle><navMap>{muc}</navMap></ncx>')
@@ -68,8 +69,9 @@ class HugeBookTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def chay(self, ten: str, mot_tep: bool, script: str, so_chuong: int = SO_CHUONG, **them) -> str:
-        write_epub(self.sd / f'books/{ten}', mot_tep, so_chuong)
+    def chay(self, ten: str, mot_tep: bool, script: str, so_chuong: int = SO_CHUONG, chuong_dau: int = 1,
+             **them) -> str:
+        write_epub(self.sd / f'books/{ten}', mot_tep, so_chuong, chuong_dau)
         (self.store / 'recent.json').write_text(json.dumps({'books': [{'path': f'/books/{ten}', 'title': 'Sach'}]}))
         (self.store / 'settings.json').write_text(json.dumps({'language': 'VI', 'fontSize': 14,
                                                                'longPressButtonBehavior': 1}))
@@ -122,6 +124,15 @@ class HugeBookTest(unittest.TestCase):
         self.assertLess(trangDau[0], mucLuc[0], 'trang dau phai len truoc khi dung muc luc')
         self.assertLess(xong[0], 8000)
         self.assertIn((0, 1), self.moc(log))
+
+    def test_chuong_dau_dai_van_lap_chi_muc(self):
+        # X3 r19: chuong dau dai hon cac trang dan truoc, bo dan giu parser ca chuong, khong buoc
+        # nao chay. Heap nhu X3 luc ranh trong sach khi radio tat.
+        log = self.chay('tach.epub', False, '1000:CONFIRM;7000:RIGHT;7800:RIGHT;10000:QUIT', chuong_dau=60,
+                        CROSSPOINT_SIM_FREE_HEAP='70772', CROSSPOINT_SIM_MAX_ALLOC_HEAP='59380')
+        self.assertTrue(self.luc(log, r'Book index complete'), log[-1500:])
+        # Bo dan da cat lai van dan tiep khi lat.
+        self.assertEqual(self.moc(log), [(0, 0), (0, 1), (0, 2)])
 
     def test_lat_trang_trong_luc_chi_muc_nen_cho(self):
         # Moi cu bam doi lai buoc nen: buoc chi chay khi trang da len va may yen INDEX_QUIET_MS.
