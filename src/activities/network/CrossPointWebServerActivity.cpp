@@ -390,10 +390,13 @@ void CrossPointWebServerActivity::startWebServer() {
   // A slow or stalled upload keeps handleClient() busy for as long as bytes trickle in;
   // a Back tap latched meanwhile ends it instead of waiting behind it.
   webServer->setUploadCancel([this] { return backLatch.latched(); });
+  // A stalled upload asks no cancel: the tap itself cuts its socket.
+  backLatch.setTapHook([](void* server) { static_cast<CrossPointWebServer*>(server)->interruptUpload(); },
+                       webServer.get());
   webServer->begin();
 
   if (webServer->isRunning()) {
-    if (!backLatch.start(gpio, SETTINGS.frontButtonBack)) {
+    if (!backLatch.start(gpio, mappedInput.physicalBack())) {
       LOG_ERR("WEBACT", "Cannot start Back sampler");
       leave();
       return;

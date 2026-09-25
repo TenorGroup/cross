@@ -162,6 +162,11 @@ class ActivityManager {
   // Trigger a render and block until it completes.
   // Must NOT be called from the render task or while holding a RenderLock.
   void requestUpdateAndWait();
+
+  // requestUpdateAndWait() for a first screen entered outside loop(): the paint it waits
+  // for also draws the update that screen's onEnter() queued, so loop() does not paint the
+  // same frame a second time.
+  void requestFirstPaintAndWait();
 };
 
 extern ActivityManager activityManager;  // singleton, to be defined in main.cpp

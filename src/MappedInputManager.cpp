@@ -60,13 +60,15 @@ MappedInputManager::Button MappedInputManager::mapScreenDirection(const Button b
   return directions[orientation][direction];
 }
 
+uint8_t MappedInputManager::physicalBack() const { return SETTINGS.frontButtonBack; }
+
 bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint8_t) const) const {
   const auto sideLayout = SETTINGS.sideButtonLayout;
 
   switch (button) {
     case Button::Back:
       // Logical Back maps to user-configured front button.
-      return (gpio.*fn)(SETTINGS.frontButtonBack);
+      return (gpio.*fn)(physicalBack());
     case Button::Confirm:
       // Logical Confirm maps to user-configured front button.
       return (gpio.*fn)(SETTINGS.frontButtonConfirm);
@@ -394,7 +396,7 @@ MappedInputManager::Labels MappedInputManager::mapFrontLabels(const char* back, 
   // Build the label order based on the configured hardware mapping.
   auto labelForHardware = [&](uint8_t hw) -> const char* {
     // Compare against configured logical roles and return the matching label.
-    if (hw == SETTINGS.frontButtonBack) {
+    if (hw == physicalBack()) {
       return back;
     }
     if (hw == SETTINGS.frontButtonConfirm) {

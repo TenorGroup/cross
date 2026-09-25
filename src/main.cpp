@@ -224,6 +224,9 @@ RTC_NOINIT_ATTR uint32_t probeWakeSeconds;
 RTC_NOINIT_ATTR uint64_t probeWakeTargetUs;
 constexpr uint32_t PROBE_WAKE_MAGIC = 0x57414B45;
 extern "C" uint64_t esp_rtc_get_time_us(void);
+// CMD:KEEP_HEAP 1: the next Wi-Fi exits to Home end the session in place instead of the
+// silent restart, and report the heap they leave, to decide whether the restart is still needed.
+static bool probeKeepHeap = false;
 #endif
 constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
 constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
@@ -266,6 +269,14 @@ void silentRestart() {
   if (deepSleepInProgress) return;  // sleeping supersedes the heap-defrag reboot
 #if FREEINK_CAP_TOUCH
   if (finishWifiSessionWithoutRestart()) return;
+#endif
+#ifdef TENOR_PRESS_PROBE
+  if (probeKeepHeap) {
+    WiFi.mode(WIFI_OFF);
+    delay(100);
+    LOG_INF("PROBE", "Wi-Fi off without restart heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    return;
+  }
 #endif
   silentRebootTarget = SILENT_REBOOT_TARGET_HOME;
   silentRebootHomeMenu = static_cast<uint32_t>(activityManager.homeMenuOrigin());
@@ -785,7 +796,7 @@ void setup() {
     // new activity. Without the wait, an edge captured by gpio.update()
     // during boot dispatches against an invisible Home and the default
     // selectorIndex=0 opens the most-recent book.
-    activityManager.requestUpdateAndWait();
+    activityManager.requestFirstPaintAndWait();
     // Absorb any button held at this point into currentState as a non-edge:
     // two gpio.update() calls separated by > InputManager's 5ms debounce
     // transition the held bit through lastDebounceTime into currentState
@@ -1233,7 +1244,7 @@ void loop() {
           if (n == "SIDE_NEXT") button = sideSwapped ? HalGPIO::BTN_UP : HalGPIO::BTN_DOWN;
           if (n == "SIDE_PREV") button = sideSwapped ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP;
           if (n == "POWER") button = HalGPIO::BTN_POWER;
-          if (n == "BACK") button = SETTINGS.frontButtonBack;
+          if (n == "BACK") button = mappedInputManager.physicalBack();
           if (n == "CONFIRM") button = SETTINGS.frontButtonConfirm;
         }
         if (button >= 0) gpio.injectPresses(button, hold, count, gap);
@@ -1383,6 +1394,9 @@ void loop() {
         probeWakeSeconds = static_cast<uint32_t>(cmd.substring(11).toInt());
         probeWakeMagic = PROBE_WAKE_MAGIC;
         logSerial.printf("WAKE_TIMER:%u\n", static_cast<unsigned>(probeWakeSeconds));
+      } else if (cmd.startsWith("KEEP_HEAP ")) {
+        probeKeepHeap = cmd.substring(10).toInt() != 0;
+        logSerial.printf("KEEP_HEAP:%d\n", probeKeepHeap ? 1 : 0);
       } else if (cmd == "LOGDUMP") {
         probeLogDump();
       } else if (cmd == "PANIC") {

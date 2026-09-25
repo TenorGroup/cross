@@ -11,9 +11,17 @@ class OtaUpdater {
   size_t otaSize = 0;
   size_t processedSize = 0;
   size_t totalSize = 0;
+  bool (*cancelCheck)(void* ctx) = nullptr;
+  void* cancelCtx = nullptr;
 
  public:
   using ProgressCallback = void (*)(void* ctx);
+  // Asked between reads and while the server is silent; true stops the install.
+  using CancelCheck = bool (*)(void* ctx);
+  void setCancelCheck(CancelCheck check, void* ctx) {
+    cancelCheck = check;
+    cancelCtx = ctx;
+  }
 
   enum OtaUpdaterError {
     OK = 0,
@@ -25,6 +33,7 @@ class OtaUpdater {
     OOM_ERROR,
     WRONG_DEVICE_ERROR,
     INTEGRITY_ERROR,
+    CANCELLED_ERROR,
   };
 
   size_t getOtaSize() const { return otaSize; }

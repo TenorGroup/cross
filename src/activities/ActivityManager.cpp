@@ -651,6 +651,11 @@ void ActivityManager::requestUpdateAndWait() {
   ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 }
 
+void ActivityManager::requestFirstPaintAndWait() {
+  requestedUpdate = false;
+  requestUpdateAndWait();
+}
+
 // RenderLock
 
 RenderLock::RenderLock() {

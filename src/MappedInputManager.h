@@ -108,6 +108,9 @@ class MappedInputManager {
   // using the same live-orientation transform as ScreenLeft/Right/Up/Down.
   Labels mapDirectionalLabels(const char* back, const char* confirm, const char* left, const char* right,
                               const char* up, const char* down) const;
+  // The physical button (HalGPIO::BTN_*) logical Back reads. Code that samples the buttons
+  // itself asks here instead of reading the setting.
+  uint8_t physicalBack() const;
   // Returns the raw front button index that was pressed this frame (or -1 if none).
   int getPressedFrontButton() const;
 

@@ -12,6 +12,9 @@
 #include <WiFi.h>
 #include <esp_efuse.h>
 #include <esp_efuse_table.h>
+#ifndef SIMULATOR
+#include <lwip/sockets.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -121,6 +124,23 @@ bool CrossPointWebServer::uploadCancelled() {
   LOG_INF("WEB", "Upload cancelled by Back");
   server->client().stop();
   return true;
+}
+
+void CrossPointWebServer::noteUploadSocket() {
+#ifndef SIMULATOR
+  uploadSocket.store(server->client().fd(), std::memory_order_release);
+#endif
+}
+
+// Runs on the Back sampler task. With its read side shut, the socket reports the client
+// gone at the library's next poll for data (every 2 ms), so the upload aborts there. The
+// main task retracts the socket once the request is done; a tap racing that can at worst
+// shut a socket of this same session, which the tap is ending anyway.
+void CrossPointWebServer::interruptUpload() {
+#ifndef SIMULATOR
+  const int fd = uploadSocket.load(std::memory_order_acquire);
+  if (fd >= 0) shutdown(fd, SHUT_RD);
+#endif
 }
 
 bool CrossPointWebServer::applyUiTextSizeSetting(const uint8_t value) {
@@ -481,6 +501,7 @@ void CrossPointWebServer::handleClient() {
     if (wsServer) wsServer->disconnect(owner);
   }
   server->handleClient();
+  uploadSocket.store(-1, std::memory_order_release);
 
   // Handle WebSocket events
   if (wsServer) {
@@ -843,6 +864,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) {
   const HTTPUpload& upload = server->upload();
 
   if (upload.status == UPLOAD_FILE_START) {
+    noteUploadSocket();
     // Reset watchdog - this is the critical 1% crash point
     resetTaskWatchdogIfSubscribed();
 
@@ -978,6 +1000,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) {
       }
     }
   } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    uploadCancelled();    // logs a Back that cut a stalled upload
     state.bufferPos = 0;  // Discard buffered data
     if (state.file) {
       state.file.close();
@@ -2132,6 +2155,7 @@ void CrossPointWebServer::handleFontUploadData() {
 
   switch (upload.status) {
     case UPLOAD_FILE_START: {
+      noteUploadSocket();
       resetTaskWatchdogIfSubscribed();
       String family = server->arg("family");
       fontUpload.file = HalFile();
@@ -2265,6 +2289,7 @@ void CrossPointWebServer::handleFontUploadData() {
     }
 
     case UPLOAD_FILE_ABORTED: {
+      uploadCancelled();  // logs a Back that cut a stalled upload
       if (fontUpload.file) {
         fontUpload.file.close();
       }

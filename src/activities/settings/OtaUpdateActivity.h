@@ -5,6 +5,7 @@
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
 #include "network/OtaUpdater.h"
+#include "util/FileTransferBackLatch.h"
 
 namespace ota_power {
 constexpr uint32_t IDLE_TIMEOUT_MS = 5u * 60u * 1000u;
@@ -52,6 +53,8 @@ class OtaUpdateActivity : public Activity {
   // Cancel/Update confirmation over the version info (replaces the old
   // hand-rolled bottom tap rects).
   OptionPopup confirmPopup;
+  // The download holds the loop; a Back tap is sampled on its own task meanwhile.
+  FileTransferBackLatch backLatch;
 
   void onWifiSelectionComplete(bool success);
   void runUpdateInstall();
