@@ -346,7 +346,7 @@ void flickStrengthSetsEachAxisThreshold() {
   SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
   SETTINGS.tiltStrengthH = 2;
   SETTINGS.tiltStrengthV = 0;
-  imu.gx = 300.0f;
+  imu.gx = 240.0f;  // under a menu's Strong side start (250)
   imu.gy = 200.0f;
   for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
     runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
@@ -355,7 +355,7 @@ void flickStrengthSetsEachAxisThreshold() {
   imu.gy = 0.0f;
   runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
   expect(halTiltSensor.wasTiltedDown(), "strength-split", "Light up/down must fire at 200 dps");
-  expect(!halTiltSensor.wasTiltedForward(), "strength-split", "Strong side must hold at 300 dps");
+  expect(!halTiltSensor.wasTiltedForward(), "strength-split", "Strong side must hold at 240 dps");
   SETTINGS.tiltStrengthH = 1;
   SETTINGS.tiltStrengthV = 1;
 }
@@ -543,21 +543,23 @@ bool shakesAt(const float g, const uint8_t strength) {
 }
 
 void shakeStrengthSetsThePeak() {
-  // Light 1300 mg, Medium 1500 mg, Strong 1900 mg of jolt; one snap is enough.
-  expect(shakesAt(1.35f, 0), "shake-strength", "Light must take a 1.35 g snap");
-  expect(!shakesAt(1.25f, 0), "shake-strength", "Light must ignore a 1.25 g snap");
-  expect(shakesAt(1.55f, 1), "shake-strength", "Medium must take a 1.55 g snap");
-  expect(!shakesAt(1.45f, 1), "shake-strength", "Medium must ignore a 1.45 g snap");
-  expect(shakesAt(1.95f, 2), "shake-strength", "Strong must take a 1.95 g snap");
-  expect(!shakesAt(1.85f, 2), "shake-strength", "Strong must ignore a 1.85 g snap");
-  expect(!shakesAt(1.45f, 9) && shakesAt(1.55f, 9), "shake-strength", "an unknown strength must behave as Medium");
+  // Light 1100 mg, Medium 1200 mg, Strong 1700 mg of jolt; one snap is enough.
+  expect(shakesAt(1.15f, 0), "shake-strength", "Light must take a 1.15 g snap");
+  expect(!shakesAt(1.05f, 0), "shake-strength", "Light must ignore a 1.05 g snap");
+  expect(shakesAt(1.25f, 1), "shake-strength", "Medium must take a 1.25 g snap");
+  expect(!shakesAt(1.15f, 1), "shake-strength", "Medium must ignore a 1.15 g snap");
+  expect(shakesAt(1.75f, 2), "shake-strength", "Strong must take a 1.75 g snap");
+  expect(!shakesAt(1.65f, 2), "shake-strength", "Strong must ignore a 1.65 g snap");
+  expect(!shakesAt(1.15f, 9) && shakesAt(1.25f, 9), "shake-strength", "an unknown strength must behave as Medium");
 }
 
-// ---- Replay of two hand-held X3 runs (shake-replay.csv.gz, IMU_LOG at the firmware poll).
+// ---- Replay of three hand-held X3 runs (shake-replay.csv.gz, IMU_LOG at the firmware poll).
 // Run 1: yen still, nghieng-* page-turn flicks, lac-* ten snaps each (lac-nhe was shaken two
 // or three times a go), di-lai walking, dat-ban put down hard and picked up. Run 2, on a menu:
 // yen2, gat ten row nods, cam-len-ban ten pick-ups from a table, cam-len-dui ten from the lap,
-// lac1-* one snap each (lac1-nhe and lac1-manh hold nine clear snaps each).
+// lac1-* one snap each (lac1-nhe and lac1-manh hold nine clear snaps each). Run 3: the same on
+// a menu (gat3, cam-len-ban3, cam-len-dui3, nghieng-the3 tab flicks, lac1-vua3, lac1-manh3),
+// then in a book: lat-trang3 page flicks, cam-len-dui-sach3 pick-ups from the lap.
 struct ReplaySample {
   std::string segment;
   unsigned long ms;
@@ -572,9 +574,8 @@ std::vector<ReplaySample> loadReplay(const char* path) {
   while (std::fgets(line, sizeof(line), file)) {
     char segment[32];
     ReplaySample s{};
-    int gz = 0;
-    if (line[0] == '#' || std::sscanf(line, "%31[^,],%lu,%d,%d,%d,%d,%d,%d", segment, &s.ms, &s.ax, &s.ay, &s.az,
-                                      &s.gx, &s.gy, &gz) != 8)
+    if (line[0] == '#' || std::sscanf(line, "%31[^,],%lu,%d,%d,%d,%d,%d", segment, &s.ms, &s.ax, &s.ay, &s.az,
+                                      &s.gx, &s.gy) != 7)
       continue;
     s.segment = segment;
     samples.push_back(s);
@@ -635,18 +636,22 @@ Counts replaySegment(const std::vector<ReplaySample>& all, const std::string& se
 
 void handHeldRunReplays(const char* path) {
   const auto samples = loadReplay(path);
-  if (!expect(samples.size() > 12000, "replay", "both hand-held runs must load")) return;
+  if (!expect(samples.size() > 18000, "replay", "all three hand-held runs must load")) return;
   struct Expected {
     const char* segment;
     int shakes[3];  // Light, Medium, Strong
   };
-  // Every clear snap at Light and Medium but one 1388 mg snap at Medium; Strong wants 1900 mg.
+  // Light takes every clear snap, Medium all but one 1178 mg snap, Strong wants 1700 mg.
   // lac-nhe of the first run was shaken on and on, which is not one snap.
   constexpr Expected SEGMENTS[] = {
-      {"yen", {0, 0, 0}},          {"nghieng-nhe", {0, 0, 0}}, {"nghieng-vua", {0, 0, 0}}, {"nghieng-manh", {0, 0, 0}},
-      {"lac-nhe", {7, 7, 7}},      {"lac-vua", {10, 10, 10}},  {"lac-manh", {10, 10, 10}}, {"di-lai", {0, 0, 0}},
-      {"dat-ban", {0, 0, 0}},      {"yen2", {0, 0, 0}},        {"gat", {0, 0, 0}},         {"cam-len-ban", {0, 0, 0}},
-      {"cam-len-dui", {0, 0, 0}},  {"lac1-nhe", {9, 9, 6}},    {"lac1-vua", {10, 9, 8}},   {"lac1-manh", {9, 9, 9}}};
+      {"yen", {0, 0, 0}},          {"nghieng-nhe", {0, 0, 0}},  {"nghieng-vua", {0, 0, 0}},
+      {"nghieng-manh", {0, 0, 0}}, {"lac-nhe", {7, 7, 7}},      {"lac-vua", {10, 10, 10}},
+      {"lac-manh", {10, 10, 10}},  {"di-lai", {0, 0, 0}},       {"dat-ban", {0, 0, 0}},
+      {"yen2", {0, 0, 0}},         {"gat", {0, 0, 0}},          {"cam-len-ban", {0, 0, 0}},
+      {"cam-len-dui", {0, 0, 0}},  {"lac1-nhe", {9, 9, 7}},     {"lac1-vua", {10, 10, 9}},
+      {"lac1-manh", {9, 9, 9}},    {"gat3", {0, 0, 0}},         {"cam-len-ban3", {0, 0, 0}},
+      {"cam-len-dui3", {0, 0, 0}}, {"nghieng-the3", {0, 0, 0}}, {"lac1-vua3", {10, 9, 6}},
+      {"lac1-manh3", {10, 10, 10}}, {"lat-trang3", {0, 0, 0}},  {"cam-len-dui-sach3", {0, 0, 0}}};
   for (const auto& e : SEGMENTS) {
     const bool shaking = std::string(e.segment).rfind("lac", 0) == 0;
     const Counts off = replaySegment(samples, e.segment, 0, 1);
@@ -669,11 +674,19 @@ void handHeldRunReplays(const char* path) {
   expect(turns("nghieng-nhe") == 2 && turns("nghieng-vua") == 10 && turns("nghieng-manh") == 10, "replay",
          "the replayed flicks turn the pages the device turned");
 
-  // On a menu: nods move rows, pick-ups move nothing, page flicks still step tabs.
+  // On a menu: nods move rows, pick-ups move nothing, side flicks step tabs.
   const auto menu = [&](const char* segment) { return replaySegment(samples, segment, 1, 1, Screen::Menu); };
-  Counts c = menu("gat");
-  expect(c.up + c.down >= 9 && c.forward + c.back == 0, "replay gat", "nine of ten nods move a row, no tab");
-  for (const char* segment : {"cam-len-ban", "cam-len-dui", "dat-ban", "di-lai", "yen", "yen2"}) {
+  for (const char* segment : {"gat", "gat3"}) {
+    const Counts c = menu(segment);
+    char label[64];
+    std::snprintf(label, sizeof(label), "replay menu %s", segment);
+    expect(c.up + c.down >= 9 && c.forward + c.back == 0 && c.shakes == 0, label,
+           "nine of ten nods move a row, no tab, no shake");
+  }
+  Counts c = menu("nghieng-the3");
+  expect(c.forward + c.back >= 9 && c.up + c.down == 0, "replay menu nghieng-the3", "nine of ten tab flicks step a tab");
+  for (const char* segment :
+       {"cam-len-ban", "cam-len-dui", "cam-len-ban3", "cam-len-dui3", "dat-ban", "di-lai", "yen", "yen2"}) {
     c = menu(segment);
     char label[64];
     std::snprintf(label, sizeof(label), "replay menu %s", segment);

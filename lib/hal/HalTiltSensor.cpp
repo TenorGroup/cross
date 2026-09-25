@@ -40,6 +40,7 @@ bool HalTiltSensor::wake() {
   _wakeMs = millis();
   _baselineValid = false;
   _shakeRun = false;
+  _shakeSettling = false;
   _isAwake = true;
   return true;
 }
@@ -149,7 +150,7 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
       _baselineMg[i] += jolt[i] / 8;
     }
   }
-  if (_shakeEnabled) pollShake(now, jolt);
+  if (_shakeEnabled) pollShake(now, mg, jolt);
 
   // Map the gyro axes to the screen axes based on reader orientation. On the
   // X3 PCB: X axis = left/right in portrait, Y axis = left/right in landscape,
@@ -189,7 +190,8 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
     } else {
       // Check for new tilt gesture (with cooldown)
       if ((now - _lastTiltMs) >= COOLDOWN_MS) {
-        if (tiltAxis > _rateThresholdDps) {
+        const float sideRateDps = _confirmSide ? _menuSideRateDps : _rateThresholdDps;
+        if (tiltAxis > sideRateDps) {
           if (_confirmSide) {
             startFlick(_pendingSide, tiltAxis, HELD_FORWARD, now);
           } else {
@@ -199,7 +201,7 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
           _inTilt = true;
           _lastTiltMs = now;
           LOG_INF("GYR", "Forward Trigger=(%.1f) dps", tiltAxis);
-        } else if (tiltAxis < -_rateThresholdDps) {
+        } else if (tiltAxis < -sideRateDps) {
           if (_confirmSide) {
             startFlick(_pendingSide, tiltAxis, HELD_BACK, now);
           } else {
@@ -260,7 +262,7 @@ void HalTiltSensor::emitTilt(const uint8_t heldBit, const unsigned long now) {
 }
 
 void HalTiltSensor::releaseHeldTilt(const unsigned long now) {
-  if (_heldTilt == 0 || _shakeMoving || (now - _heldTiltMs) < POLL_INTERVAL_MS) return;
+  if (_heldTilt == 0 || _shakeMoving || _shakeRun || _shakeSettling || (now - _heldTiltMs) < POLL_INTERVAL_MS) return;
   raiseTiltEvents(_heldTilt);
   _heldTilt = 0;
 }
@@ -297,37 +299,62 @@ void HalTiltSensor::settleFlick(PendingFlick& flick, const float axis, const int
   }
 }
 
-void HalTiltSensor::pollShake(const unsigned long now, const int32_t (&jolt)[3]) {
+void HalTiltSensor::pollShake(const unsigned long now, const int32_t (&mg)[3], const int32_t (&jolt)[3]) {
   const int32_t lengthSq = jolt[0] * jolt[0] + jolt[1] * jolt[1] + jolt[2] * jolt[2];
   const int32_t peakSq = _shakePeakMg * _shakePeakMg;
+  constexpr int32_t runSq = SHAKE_RUN_MG * SHAKE_RUN_MG;
   // Past half the peak the hand is jolting: a held flick waits for it to settle.
   _shakeMoving = 4 * lengthSq > peakSq;
   // Still shaking after a shake: the tilt lock runs on.
   if (lengthSq > peakSq && static_cast<long>(now - _tiltLockUntilMs) < 0) _tiltLockUntilMs = now + SHAKE_TILT_LOCK_MS;
 
-  if (lengthSq > SHAKE_RUN_MG * SHAKE_RUN_MG) {
+  // A snap that has run its course counts once the device is calm and back near where it was.
+  if (_shakeSettling && lengthSq <= runSq && (now - _shakeSettleFromMs) >= SHAKE_SETTLE_MS) {
+    _shakeSettling = false;
+    // Within 40 degrees: cos^2 >= 37/64.
+    int64_t dot = 0, poseSq = 0, nowSq = 0;
+    for (int i = 0; i < 3; ++i) {
+      dot += static_cast<int64_t>(_shakeSettlePoseMg[i]) * mg[i];
+      poseSq += static_cast<int64_t>(_shakeSettlePoseMg[i]) * _shakeSettlePoseMg[i];
+      nowSq += static_cast<int64_t>(mg[i]) * mg[i];
+    }
+    if (dot > 0 && 64 * dot * dot >= 37 * poseSq * nowSq && (!_shaken || (now - _lastShakeMs) >= SHAKE_REST_MS)) {
+      _shaken = true;
+      _lastShakeMs = now;
+      _shakeEvent = true;
+      _hadActivity = true;
+      _heldTilt = 0;
+      _tiltLockUntilMs = now + SHAKE_TILT_LOCK_MS;
+      LOG_INF("GYR", "Shake peak^2=%ld mg^2", static_cast<long>(_shakeRunPeakSq));
+    }
+  }
+
+  if (lengthSq > runSq) {
     if (!_shakeRun) {
       _shakeRun = true;
       _shakeRunStartMs = now;
       _shakeRunPeakSq = 0;
+      // The baseline before this poll moved it: where the device was.
+      for (int i = 0; i < 3; ++i) _shakeRunPoseMg[i] = mg[i] - jolt[i];
     }
     _shakeRunLastMs = now;
-    if (lengthSq > _shakeRunPeakSq) _shakeRunPeakSq = lengthSq;
+    if (lengthSq > _shakeRunPeakSq) {
+      _shakeRunPeakSq = lengthSq;
+      _shakeRunPeakZ = jolt[2];
+    }
     return;
   }
   if (!_shakeRun) return;
-  // The run is over: a snap if it peaked high enough and ended soon enough.
+  // The run is over: a snap if it peaked high enough, in the screen's plane (|z| at most
+  // 0.8 of it, cos^2 41/64), and ended soon enough.
   _shakeRun = false;
   const unsigned long runMs = _shakeRunLastMs - _shakeRunStartMs;
   if (_shakeRunPeakSq <= peakSq || runMs > SHAKE_RUN_MAX_MS) return;
-  if (_shaken && (now - _lastShakeMs) < SHAKE_REST_MS) return;
-  _shaken = true;
-  _lastShakeMs = now;
-  _shakeEvent = true;
-  _hadActivity = true;
-  _heldTilt = 0;
-  _tiltLockUntilMs = now + SHAKE_TILT_LOCK_MS;
-  LOG_INF("GYR", "Shake run=%lu ms peak^2=%ld mg^2", runMs, static_cast<long>(_shakeRunPeakSq));
+  if (64 * _shakeRunPeakZ * _shakeRunPeakZ > 41 * _shakeRunPeakSq) return;
+  if (_shakeSettling) return;
+  _shakeSettling = true;
+  _shakeSettleFromMs = now;
+  for (int i = 0; i < 3; ++i) _shakeSettlePoseMg[i] = _shakeRunPoseMg[i];
 }
 
 void HalTiltSensor::configureShake(const uint8_t action, const uint8_t strength) {
@@ -340,6 +367,7 @@ void HalTiltSensor::configureShake(const uint8_t action, const uint8_t strength)
     _shakeEvent = false;
     _shakeMoving = false;
     _shakeRun = false;
+    _shakeSettling = false;
     _tiltLockUntilMs = 0;
   }
   _shakeEnabled = enabled;
@@ -422,7 +450,11 @@ void HalTiltSensor::setStrength(const uint8_t horizontal, const uint8_t vertical
   static constexpr float RATE_BY_STRENGTH[] = {190.0f, 270.0f, 360.0f};
   // Rows: measured nods peaked at 143 to 314 deg/sec, two of ten at 186 and 187, so Light is 180.
   static constexpr float ROW_RATE_BY_STRENGTH[] = {180.0f, 270.0f, 360.0f};
+  // Menus poll at ~85 ms when idle and confirm the return, so side flicks start lower
+  // there: measured tab flicks peaked at 161 to 512 deg/sec, three of ten under 270.
+  static constexpr float MENU_SIDE_RATE_BY_STRENGTH[] = {160.0f, 190.0f, 250.0f};
   _rateThresholdDps = RATE_BY_STRENGTH[horizontal < 3 ? horizontal : 1];
+  _menuSideRateDps = MENU_SIDE_RATE_BY_STRENGTH[horizontal < 3 ? horizontal : 1];
   _verticalRateThresholdDps = ROW_RATE_BY_STRENGTH[vertical < 3 ? vertical : 1];
 }
 

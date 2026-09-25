@@ -42,6 +42,7 @@ class HalTiltSensor {
   // Trigger speed per axis, set by setStrength(). Medium is the original
   // shared 270 deg/sec, so an untouched setting behaves as before.
   float _rateThresholdDps = 270.0f;
+  float _menuSideRateDps = 190.0f;  // Side flicks on menus, which wait for the return
   float _verticalRateThresholdDps = 270.0f;
 
   // Tuning constants
@@ -59,8 +60,10 @@ class HalTiltSensor {
 
   // Hard shake channel, watched on every screen while its action is not Off. A
   // shake is one snap: a run of polls whose jolt stays past SHAKE_RUN_MG, peaks
-  // past the strength's peak, and is over within SHAKE_RUN_MAX_MS. Picking the
-  // device up jolts as hard but for longer. Squared lengths, no square root.
+  // past the strength's peak mostly in the screen's plane (a nod jolts across it),
+  // is over within SHAKE_RUN_MAX_MS, and SHAKE_SETTLE_MS later leaves the device
+  // within 40 degrees of where it was (picking it up does not). Squared lengths
+  // and dot products, no square root.
   bool _shakeEnabled = false;
   bool _shakeEvent = false;  // Consumed by wasShaken()
   int32_t _shakePeakMg = 1500;
@@ -69,6 +72,11 @@ class HalTiltSensor {
   unsigned long _shakeRunStartMs = 0;
   unsigned long _shakeRunLastMs = 0;
   int32_t _shakeRunPeakSq = 0;
+  int32_t _shakeRunPeakZ = 0;      // Screen-normal part of the peak jolt
+  int32_t _shakeRunPoseMg[3] = {};  // Baseline when the run started
+  bool _shakeSettling = false;      // A run passed, waiting to see where the device settles
+  unsigned long _shakeSettleFromMs = 0;
+  int32_t _shakeSettlePoseMg[3] = {};
   bool _shaken = false;  // A shake has fired since wake (the rest applies)
   unsigned long _lastShakeMs = 0;
   unsigned long _tiltLockUntilMs = 0;
@@ -80,11 +88,13 @@ class HalTiltSensor {
   static constexpr uint8_t HELD_FORWARD = 1, HELD_BACK = 2, HELD_UP = 4, HELD_DOWN = 8;
 
   // Shake peak per strength (Light, Medium, Strong), mg of jolt past the baseline; change only here.
-  // X3 hand runs (shake-replay): nod <= 1218 mg, Light +80; weakest one-snap shake 2115 mg, Strong -215.
-  static constexpr int32_t SHAKE_PEAK_MG_BY_STRENGTH[] = {1300, 1500, 1900};
+  // X3 hand runs (shake-replay): put down <= 1030 mg; 1100 takes every snap, 1200 all but a 1178, 1700 all strong ones.
+  static constexpr int32_t SHAKE_PEAK_MG_BY_STRENGTH[] = {1100, 1200, 1700};
   static constexpr int32_t SHAKE_RUN_MG = 600;
   // Measured: one snap stays past 600 mg for at most 327 ms, a pick-up for at least 573 ms.
   static constexpr unsigned long SHAKE_RUN_MAX_MS = 400;
+  // Measured 100 ms after a run: snaps within 25 degrees of the start, pick-ups 65 or more.
+  static constexpr unsigned long SHAKE_SETTLE_MS = 100;
   static constexpr unsigned long SHAKE_REST_MS = 1500;      // Minimum ms between two shakes
   static constexpr unsigned long SHAKE_TILT_LOCK_MS = 800;  // Tilts ignored after a shake's last jolt
 
@@ -107,13 +117,13 @@ class HalTiltSensor {
   static constexpr float FLICK_RETURN_DPS = 150.0f;
   static constexpr unsigned long FLICK_RETURN_MS = 400;
   static constexpr float FLICK_CALM_DPS = 60.0f;
-  static constexpr unsigned long FLICK_WAIT_MS = 500;  // No return by then: dropped
+  static constexpr unsigned long FLICK_WAIT_MS = 600;  // No return by then: dropped (a slow nod took 580)
 
 #ifdef TENOR_PRESS_PROBE
   unsigned long _probeLogUntilMs = 0;
 #endif
 
-  void pollShake(unsigned long now, const int32_t (&jolt)[3]);
+  void pollShake(unsigned long now, const int32_t (&mg)[3], const int32_t (&jolt)[3]);
   void startFlick(PendingFlick& flick, float axis, uint8_t bit, unsigned long now);
   void settleFlick(PendingFlick& flick, float axis, const int32_t (&mg)[3], unsigned long now);
   void raiseTiltEvents(uint8_t bits);
