@@ -10,14 +10,18 @@ if(SDFAT_PARTITION_SOURCES)
   set(SDFAT_COPY "${CMAKE_CURRENT_BINARY_DIR}/sdfat")
   file(REMOVE_RECURSE "${SDFAT_COPY}")
   file(COPY "${SDFAT_SRC}/" DESTINATION "${SDFAT_COPY}")
-  if(NOT SDFAT_ALLOC_UNPATCHED)
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
-    execute_process(COMMAND ${Python3_EXECUTABLE} "${REPO_ROOT}/scripts/patch_sdfat.py"
-                            "${SDFAT_COPY}/FatLib/FatPartition.cpp" "${SDFAT_COPY}/FatLib/FatPartition.h"
-                    RESULT_VARIABLE SDFAT_PATCHED)
-    if(NOT SDFAT_PATCHED EQUAL 0)
-      message(FATAL_ERROR "scripts/patch_sdfat.py failed on ${SDFAT_COPY}")
-    endif()
+  # The libdep copy is patched by the firmware build; the unpatched run takes it back to the
+  # library's own text, so the tests show what the patch changes.
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  set(SDFAT_PATCH_ARGS "")
+  if(SDFAT_ALLOC_UNPATCHED)
+    set(SDFAT_PATCH_ARGS "--unpatch")
+  endif()
+  execute_process(COMMAND ${Python3_EXECUTABLE} "${REPO_ROOT}/scripts/patch_sdfat.py" ${SDFAT_PATCH_ARGS}
+                          "${SDFAT_COPY}/FatLib/FatPartition.cpp" "${SDFAT_COPY}/FatLib/FatPartition.h"
+                  RESULT_VARIABLE SDFAT_PATCHED)
+  if(NOT SDFAT_PATCHED EQUAL 0)
+    message(FATAL_ERROR "scripts/patch_sdfat.py failed on ${SDFAT_COPY}")
   endif()
   file(GLOB SDFAT_LIB_SOURCES "${SDFAT_COPY}/FatLib/*.cpp" "${SDFAT_COPY}/common/*.cpp")
   add_executable(SdFatAllocTest SdFatAllocTest.cpp ${SDFAT_LIB_SOURCES})
@@ -28,5 +32,5 @@ if(SDFAT_PARTITION_SOURCES)
   target_link_libraries(SdFatAllocTest PRIVATE GTest::gtest_main)
   gtest_discover_tests(SdFatAllocTest)
 else()
-  message(STATUS "sdfat_alloc: no SdFat in .pio/libdeps, test skipped")
+  message(WARNING "sdfat_alloc: no SdFat in .pio/libdeps (build a firmware environment first); SdFat allocation tests skipped")
 endif()

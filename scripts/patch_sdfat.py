@@ -1,34 +1,39 @@
 """
-PlatformIO pre-build script: SdFat's FAT cluster search, patched in every libdep copy.
+PlatformIO pre-build script: SdFat's FAT cluster search, patched in this environment's libdep.
 
 SdFat looks for a free cluster by walking the FAT one entry at a time from a search start, and
-freeing a cluster pulls that start back down to it. Once the freed clusters are used again, the
-next allocation walks the whole run of used clusters above them: on a card with gigabytes in use
-that is thousands of FAT sector reads. On the X3 it took 3,3 s for one new file of a 30-chapter
-book and 4,3 s for the folder of a new book cache, right after a book's cache was deleted.
+freeing a cluster pulled that start back down to it. Once the freed clusters were used again, the
+next allocation walked every used cluster above them: thousands of FAT sector reads on a card
+with gigabytes in use. On the X3 that was 3,3 s for one new file of a 30-chapter book and 4,3 s
+for the folder of a new book cache.
 
-The patch keeps the search start where the last allocation left it and lets both searches wrap
-to the first cluster once before giving up, so a cluster freed below the start is still found
-when the rest of the card is full.
+What the patch changes in FatLib/FatPartition.cpp and .h:
+  * a freed cluster no longer moves the search start; both searches (one cluster, a contiguous
+    run) wrap to the first cluster once, so clusters freed below the start are still found;
+  * a file grows into the cluster after its last one when that is free;
+  * a mount starts the search at FAT32's FSInfo next-free hint (SdFat never read it; the X3
+    mounts on every wake), and the search writes the hint back once it has moved 512 clusters
+    on or moved back. The FSInfo sector is written only after its three signatures check out,
+    and only its next-free field changes.
 
-A mount started the search at the first cluster, and the X3 mounts on every wake. FAT32 keeps a
-next-free hint in its FSInfo sector for this; SdFat never read or wrote it. The patch reads it at
-mount and writes it back each time the search start has moved 512 clusters on, one sector
-through the data cache. scripts/check_sdfat_patch.py fails a build whose ELF lacks the patch.
+scripts/check_sdfat_patch.py fails a build whose ELF lacks the patch.
 
-Idempotent: a file already carrying MARKER is left alone. A file whose text differs from what
-the patch expects stops the build. Also runs standalone on one FatPartition.cpp (host tests):
-    python3 scripts/patch_sdfat.py path/to/FatPartition.cpp
+Earlier versions of this patch are undone first; a source that matches neither the patch nor the
+library it was written for stops the build. Files are rewritten through a temporary file.
+Standalone (host tests):
+    python3 scripts/patch_sdfat.py [--unpatch] FatPartition.cpp FatPartition.h
 """
 
+import os
 from pathlib import Path
 import sys
 
-MARKER = "/* CrossPoint: FAT search keeps moving forward, FSInfo next-free hint */"
-# The first release of this patch, without the FSInfo hint: undone before this one is applied.
+MARKER = "/* CrossPoint SdFat patch 2 */"
+# Version 1 (search start kept, wraps; no FSInfo hint), undone before version 2 applies.
 MARKER_V1 = "/* CrossPoint: FAT search keeps moving forward */"
+V1_CPP = [('    updateFreeClusterCount(1);\n    if (cluster < m_allocSearchStart) {\n      m_allocSearchStart = cluster - 1;\n    }\n    cluster = next;', '    updateFreeClusterCount(1);\n    /* CrossPoint: FAT search keeps moving forward */\n    cluster = next;'), ('  Cluster_t find;\n  bool setStart;\n  if (m_allocSearchStart < current) {', '  Cluster_t find;\n  bool setStart;\n  Cluster_t wrapEnd = 0;  // after a wrap: where the search began\n  if (m_allocSearchStart < current) {'), ("    if (find > m_lastCluster) {\n      if (setStart) {\n        // Can't find space, checked all clusters.\n        DBG_FAIL_MACRO;\n        goto fail;\n      }\n      find = m_allocSearchStart;\n      setStart = true;\n      continue;\n    }\n    if (find == current) {\n      // Can't find space, already searched clusters after current.\n      DBG_FAIL_MACRO;\n      goto fail;\n    }", "    if (find > m_lastCluster || (setStart && !wrapEnd && find == current)) {\n      if (setStart) {\n        if (wrapEnd) {\n          // Can't find space, checked all clusters.\n          DBG_FAIL_MACRO;\n          goto fail;\n        }\n        // Clusters freed below the search start: one more pass from the first cluster.\n        wrapEnd = current > m_allocSearchStart ? current : m_allocSearchStart;\n        find = 1;\n        continue;\n      }\n      find = m_allocSearchStart;\n      setStart = true;\n      continue;\n    }\n    if (wrapEnd && find > wrapEnd) {\n      // Can't find space, checked all clusters.\n      DBG_FAIL_MACRO;\n      goto fail;\n    }\n    if (find == current) {\n      // Only reached after the wrap: the file's own last cluster.\n      continue;\n    }"), ("  // search the FAT for free clusters\n  while (1) {\n    if (endCluster > m_lastCluster) {\n      // Can't find space.\n      DBG_FAIL_MACRO;\n      goto fail;\n    }", "  // search the FAT for free clusters\n  bool wrapped = false;\n  while (1) {\n    if (endCluster > m_lastCluster) {\n      if (!wrapped && m_allocSearchStart > 1) {\n        wrapped = true;\n        setStart = false;\n        endCluster = bgnCluster = 2;\n        continue;\n      }\n      // Can't find space.\n      DBG_FAIL_MACRO;\n      goto fail;\n    }")]
 
-REPLACEMENTS = [
+CPP = [
     # freeChain: a freed cluster no longer pulls the search start down.
     (
         """    updateFreeClusterCount(1);
@@ -40,59 +45,12 @@ REPLACEMENTS = [
     """ + MARKER + """
     cluster = next;""",
     ),
-    # allocateCluster: past the last cluster, wrap to the first one once.
+    # allocateCluster, whole.
     (
-        """  Cluster_t find;
-  bool setStart;
-  if (m_allocSearchStart < current) {""",
-        """  Cluster_t find;
-  bool setStart;
-  Cluster_t wrapEnd = 0;  // after a wrap: where the search began
-  if (m_allocSearchStart < current) {""",
+        "bool FatPartition::allocateCluster(Cluster_t current, Cluster_t* next) {\n  Cluster_t find;\n  bool setStart;\n  if (m_allocSearchStart < current) {\n    // Try to keep file contiguous. Start just after current cluster.\n    find = current;\n    setStart = false;\n  } else {\n    find = m_allocSearchStart;\n    setStart = true;\n  }\n  while (1) {\n    find++;\n    if (find > m_lastCluster) {\n      if (setStart) {\n        // Can't find space, checked all clusters.\n        DBG_FAIL_MACRO;\n        goto fail;\n      }\n      find = m_allocSearchStart;\n      setStart = true;\n      continue;\n    }\n    if (find == current) {\n      // Can't find space, already searched clusters after current.\n      DBG_FAIL_MACRO;\n      goto fail;\n    }\n    uint32_t f;\n    int8_t fg = fatGet(find, &f);\n    if (fg < 0) {\n      DBG_FAIL_MACRO;\n      goto fail;\n    }\n    if (fg && f == 0) {\n      break;\n    }\n  }\n  if (setStart) {\n    m_allocSearchStart = find;\n  }\n  // Mark end of chain.\n  if (!fatPutEOC(find)) {\n    DBG_FAIL_MACRO;\n    goto fail;\n  }\n  if (current) {\n    // Link clusters.\n    if (!fatPut(current, find)) {\n      DBG_FAIL_MACRO;\n      goto fail;\n    }\n  }\n  updateFreeClusterCount(-1);\n  *next = find;\n  return true;\n\nfail:\n  return false;\n}\n",
+        "bool FatPartition::allocateCluster(Cluster_t current, Cluster_t* next) {\n  // A file grows into the cluster after its last one when that is free: files appended to over\n  // weeks (statistics, quotes) stay in one run. Otherwise one pass over the whole FAT from the\n  // search start, wrapping to the first cluster.\n  Cluster_t find = 0;\n  bool setStart = false;\n  if (current && current < m_lastCluster) {\n    uint32_t f;\n    int8_t fg = fatGet(current + 1, &f);\n    if (fg < 0) {\n      DBG_FAIL_MACRO;\n      goto fail;\n    }\n    if (fg && f == 0) {\n      find = current + 1;\n    }\n  }\n  if (!find) {\n    setStart = true;\n    Cluster_t candidate = m_allocSearchStart;\n    for (Cluster_t n = 1; n < m_lastCluster; n++) {\n      candidate = candidate >= m_lastCluster ? 2 : candidate + 1;\n      uint32_t f;\n      int8_t fg = fatGet(candidate, &f);\n      if (fg < 0) {\n        DBG_FAIL_MACRO;\n        goto fail;\n      }\n      if (fg && f == 0) {\n        find = candidate;\n        break;\n      }\n    }\n    if (!find) {\n      // Can't find space, checked all clusters.\n      DBG_FAIL_MACRO;\n      goto fail;\n    }\n  }\n  if (setStart) {\n    m_allocSearchStart = find;\n    noteNextFree(find);\n  }\n  // Mark end of chain.\n  if (!fatPutEOC(find)) {\n    DBG_FAIL_MACRO;\n    goto fail;\n  }\n  if (current) {\n    // Link clusters.\n    if (!fatPut(current, find)) {\n      DBG_FAIL_MACRO;\n      goto fail;\n    }\n  }\n  updateFreeClusterCount(-1);\n  *next = find;\n  return true;\n\nfail:\n  return false;\n}\n",
     ),
-    (
-        """    if (find > m_lastCluster) {
-      if (setStart) {
-        // Can't find space, checked all clusters.
-        DBG_FAIL_MACRO;
-        goto fail;
-      }
-      find = m_allocSearchStart;
-      setStart = true;
-      continue;
-    }
-    if (find == current) {
-      // Can't find space, already searched clusters after current.
-      DBG_FAIL_MACRO;
-      goto fail;
-    }""",
-        """    if (find > m_lastCluster || (setStart && !wrapEnd && find == current)) {
-      if (setStart) {
-        if (wrapEnd) {
-          // Can't find space, checked all clusters.
-          DBG_FAIL_MACRO;
-          goto fail;
-        }
-        // Clusters freed below the search start: one more pass from the first cluster.
-        wrapEnd = current > m_allocSearchStart ? current : m_allocSearchStart;
-        find = 1;
-        continue;
-      }
-      find = m_allocSearchStart;
-      setStart = true;
-      continue;
-    }
-    if (wrapEnd && find > wrapEnd) {
-      // Can't find space, checked all clusters.
-      DBG_FAIL_MACRO;
-      goto fail;
-    }
-    if (find == current) {
-      // Only reached after the wrap: the file's own last cluster.
-      continue;
-    }""",
-    ),
-    # allocContiguous: same wrap.
+    # allocContiguous: wrap once, and keep the FSInfo hint.
     (
         """  // search the FAT for free clusters
   while (1) {
@@ -116,26 +74,56 @@ REPLACEMENTS = [
       goto fail;
     }""",
     ),
-]
-
-
-HEADER_REPLACEMENTS = [
     (
-        """  Cluster_t m_allocSearchStart;      // Start cluster for alloc search.
-""",
-        """  Cluster_t m_allocSearchStart;      // Start cluster for alloc search.
-  """ + MARKER + """
-  Sector_t m_fsInfoSector = 0;       // FAT32 FSInfo sector, 0 when absent.
-  Cluster_t m_fsInfoNextFree = 0;    // Next-free hint last written there.
-  void noteNextFree(Cluster_t cluster);
-""",
+        """  if (setStart) {
+    m_allocSearchStart = endCluster;
+  }""",
+        """  if (setStart) {
+    m_allocSearchStart = endCluster;
+    noteNextFree(endCluster);
+  }""",
     ),
-]
-
-V1_REPLACEMENTS = [(old, new.replace(MARKER, MARKER_V1)) for old, new in REPLACEMENTS]
-
-REPLACEMENTS += [
-    # init: start the search at FSInfo's next-free hint.
+    # noteNextFree.
+    (
+        """//------------------------------------------------------------------------------
+// find a contiguous group of clusters""",
+        """//------------------------------------------------------------------------------
+// Writes FSInfo's next-free hint once the search start has moved 512 clusters on, or moved back,
+// so the next mount starts near where allocation stopped. What the data cache holds goes out
+// first; the FSInfo sector is changed only in its next-free field, and only while its signatures
+// hold. It goes out with the data cache.
+__attribute__((noinline)) void FatPartition::noteNextFree(Cluster_t cluster) {
+  if (!m_fsInfoSector) {
+    return;
+  }
+  const Cluster_t hint = cluster < m_lastCluster ? cluster + 1 : 2;
+  if (hint >= m_fsInfoNextFree && hint - m_fsInfoNextFree < 512) {
+    return;
+  }
+  FsCache* cache = dataCache();
+  if (!cache->sync()) {
+    return;
+  }
+  FsInfo_t* fsi = reinterpret_cast<FsInfo_t*>(
+      dataCachePrepare(m_fsInfoSector, FsCache::CACHE_FOR_READ));
+  if (!fsi) {
+    cache->invalidate();
+    return;
+  }
+  if (getLe32(fsi->leadSignature) != FSINFO_LEAD_SIGNATURE ||
+      getLe32(fsi->structSignature) != FSINFO_STRUCT_SIGNATURE ||
+      getLe32(fsi->trailSignature) != FSINFO_TRAIL_SIGNATURE) {
+    m_fsInfoSector = 0;
+    return;
+  }
+  setLe32(fsi->nextFree, hint);
+  cache->dirty();
+  m_fsInfoNextFree = hint;
+}
+//------------------------------------------------------------------------------
+// find a contiguous group of clusters""",
+    ),
+    # init: read FSInfo's next-free hint.
     (
         """  m_cache.setMirrorOffset(m_sectorsPerFat);
 #if USE_SEPARATE_FAT_CACHE
@@ -151,9 +139,11 @@ REPLACEMENTS += [
       const Sector_t sector = startSector + fsInfo;
       const FsInfo_t* fsi =
           reinterpret_cast<FsInfo_t*>(dataCachePrepare(sector, FsCache::CACHE_FOR_READ));
-      if (fsi && getLe32(fsi->leadSignature) == FSINFO_LEAD_SIGNATURE &&
-          getLe32(fsi->structSignature) == FSINFO_STRUCT_SIGNATURE &&
-          getLe32(fsi->trailSignature) == FSINFO_TRAIL_SIGNATURE) {
+      if (!fsi) {
+        m_cache.invalidate();
+      } else if (getLe32(fsi->leadSignature) == FSINFO_LEAD_SIGNATURE &&
+                 getLe32(fsi->structSignature) == FSINFO_STRUCT_SIGNATURE &&
+                 getLe32(fsi->trailSignature) == FSINFO_TRAIL_SIGNATURE) {
         m_fsInfoSector = sector;
         const uint32_t hint = getLe32(fsi->nextFree);
         if (hint >= 3 && hint <= m_lastCluster) {
@@ -169,79 +159,74 @@ REPLACEMENTS += [
 #endif  // USE_SEPARATE_FAT_CACHE
   return true;""",
     ),
+]
+
+HEADER = [
     (
-        """  updateFreeClusterCount(-1);
-  *next = find;""",
-        """  if (setStart) {
-    noteNextFree(find);
-  }
-  updateFreeClusterCount(-1);
-  *next = find;""",
-    ),
-    (
-        """  if (setStart) {
-    m_allocSearchStart = endCluster;
-  }""",
-        """  if (setStart) {
-    m_allocSearchStart = endCluster;
-    noteNextFree(endCluster);
-  }""",
-    ),
-    (
-        """//------------------------------------------------------------------------------
-// find a contiguous group of clusters""",
-        """//------------------------------------------------------------------------------
-// Writes FSInfo's next-free hint once the search start has moved 512 clusters on (or back), so
-// the next mount starts near where allocation stopped. The sector goes out with the data cache.
-__attribute__((noinline)) void FatPartition::noteNextFree(Cluster_t cluster) {
-  if (!m_fsInfoSector) {
-    return;
-  }
-  const Cluster_t hint = cluster < m_lastCluster ? cluster + 1 : 2;
-  if (hint >= m_fsInfoNextFree && hint - m_fsInfoNextFree < 512) {
-    return;
-  }
-  FsInfo_t* fsi = reinterpret_cast<FsInfo_t*>(
-      dataCachePrepare(m_fsInfoSector, FsCache::CACHE_FOR_WRITE));
-  if (!fsi) {
-    return;
-  }
-  setLe32(fsi->nextFree, hint);
-  m_fsInfoNextFree = hint;
-}
-//------------------------------------------------------------------------------
-// find a contiguous group of clusters""",
+        """  Cluster_t m_allocSearchStart;      // Start cluster for alloc search.
+""",
+        """  Cluster_t m_allocSearchStart;      // Start cluster for alloc search.
+  """ + MARKER + """
+  Sector_t m_fsInfoSector = 0;       // FAT32 FSInfo sector, 0 when absent.
+  Cluster_t m_fsInfoNextFree = 0;    // Next-free hint last written there.
+  void noteNextFree(Cluster_t cluster);
+""",
     ),
 ]
 
 
-def patch_file(path: Path) -> bool:
-    text = path.read_text()
+def _swap(text, pairs, path, forward):
+    for old, new in pairs:
+        before, after = (old, new) if forward else (new, old)
+        if text.count(before) != 1:
+            raise SystemExit("ERROR: SdFat patch does not match %s:\n%s" % (path, before))
+        text = text.replace(before, after)
+    return text
+
+
+def unpatched(text, path):
+    """The library's own text, from any version of this patch."""
+    header = path.suffix == ".h"
     if MARKER in text:
+        text = _swap(text, HEADER if header else CPP, path, forward=False)
+    elif MARKER_V1 in text and not header:
+        text = _swap(text, V1_CPP, path, forward=False)
+    return text
+
+
+def patched(text, path):
+    return _swap(unpatched(text, path), HEADER if path.suffix == ".h" else CPP, path, forward=True)
+
+
+def rewrite(path, unpatch=False):
+    path = Path(path)
+    text = path.read_text()
+    result = unpatched(text, path) if unpatch else patched(text, path)
+    if result == text:
         return False
-    if MARKER_V1 in text:
-        for old, new in V1_REPLACEMENTS:
-            text = text.replace(new, old)
-    replacements = HEADER_REPLACEMENTS if path.suffix == ".h" else REPLACEMENTS
-    for old, new in replacements:
-        if text.count(old) != 1:
-            raise SystemExit("ERROR: SdFat patch does not match %s:\n%s" % (path, old))
-        text = text.replace(old, new)
-    path.write_text(text)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(result)
+    os.replace(tmp, path)
     return True
 
 
-def patch_libdeps(project_dir: Path) -> None:
-    for name in ("FatPartition.cpp", "FatPartition.h"):
-        for source in project_dir.glob(".pio/libdeps/*/SdFat/src/FatLib/" + name):
-            if patch_file(source):
-                print("Patched SdFat FAT search: %s" % source.relative_to(project_dir))
+def patch_environment(env):
+    fatlib = Path(env.subst("$PROJECT_LIBDEPS_DIR")) / env.subst("$PIOENV") / "SdFat" / "src" / "FatLib"
+    sources = [fatlib / "FatPartition.cpp", fatlib / "FatPartition.h"]
+    if not all(source.is_file() for source in sources):
+        raise SystemExit("ERROR: SdFat not found at %s; it is pinned in lib_deps" % fatlib)
+    for source in sources:
+        if rewrite(source):
+            print("Patched SdFat FAT search: %s" % source)
 
 
 try:
     Import("env")  # noqa: F821 (SCons-injected global)
 except NameError:
-    for arg in sys.argv[1:]:
-        patch_file(Path(arg))
+    args = sys.argv[1:]
+    unpatch = "--unpatch" in args
+    for arg in args:
+        if arg != "--unpatch":
+            rewrite(arg, unpatch)
 else:
-    patch_libdeps(Path(env.subst("$PROJECT_DIR")))  # noqa: F821
+    patch_environment(env)  # noqa: F821
