@@ -195,6 +195,8 @@ class NewBookCoverTest(unittest.TestCase):
             # 2.93 there, where the Atkinson thumbnails of v1.0.13 gave 12.85 and 10.81. v1.0.16 feeds
             # it the page decode's gray as well (GrayThumb::alsoFeed): 2.96 against 2.93.
             self.assertLessEqual(page_error, decode_error + 3.0, report)
+            # Dithered twice, either route's 226 lands at 6,6 to 6,8 here.
+            self.assertLess(max(page_error, decode_error), 4.5, report)
         print('THUMB_ROUTE_MEASURE', report)
 
 
