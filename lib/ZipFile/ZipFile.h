@@ -1,20 +1,11 @@
 #pragma once
-#include <Arduino.h>
 #include <HalStorage.h>
-#include <Logging.h>
 
 #include <deque>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
-
-// Every walk of the central directory logs its entries and time (CD_SCAN): at the measurement build's
-// level on the probe builds, at debug level elsewhere.
-#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
-#define ZIP_CD_LOG LOG_INF
-#else
-#define ZIP_CD_LOG LOG_DBG
-#endif
 
 class ZipFile {
  public:
@@ -29,6 +20,19 @@ class ZipFile {
     uint32_t centralDirOffset;
     uint16_t totalEntries;
     bool isSet;
+  };
+
+  // One central directory entry as a walk hands it over. `name` points into the walk's buffer and
+  // lives until the visit returns; null for a name longer than 255 bytes.
+  struct CentralEntry {
+    uint16_t method;
+    uint16_t nameLen;
+    uint32_t crc32;
+    uint32_t compressedSize;
+    uint32_t uncompressedSize;
+    uint32_t localHeaderOffset;
+    uint32_t next;  // offset of the entry after this one
+    const char* name;
   };
 
   // Target for batch uncompressed size lookup (sorted by hash, then len)
@@ -59,6 +63,12 @@ class ZipFile {
   bool lastCentralDirPosValid = false;
 
   bool loadFileStatSlim(const char* filename, FileStatSlim* fileStat);
+  // Every walk of the central directory: block reads from `from` (0: its start), and with `wrap` on
+  // from its start up to `from`. `visit` returns true to stop. False when the zip cannot be read.
+  using Visit = bool (*)(void* ctx, const CentralEntry& entry);
+  bool walkCentralDir(uint32_t from, bool wrap, const char* kind, Visit visit, void* ctx);
+  // This zip as it is on the card now (path, size, directory), for lookups remembered across objects.
+  uint64_t zipKey() const;
   long getDataOffset(const FileStatSlim& fileStat);
   bool loadZipDetails();
 
@@ -101,58 +111,15 @@ class ZipFile {
   // hold CRCs.
   template <typename F>
   bool enumerateFileEntries(F&& callback) {
-    const bool wasOpen = isOpen();
-    if (!wasOpen && !open()) {
-      return false;
-    }
-
-    if (!loadZipDetails()) {
-      if (!wasOpen) {
-        close();
-      }
-      return false;
-    }
-
-    file.seek(zipDetails.centralDirOffset);
-
-    uint32_t sig;
-    char itemName[256];
-    [[maybe_unused]] const unsigned long cdStarted = millis();
-    [[maybe_unused]] unsigned cdEntries = 0;
-
-    while (file.available()) {
-      file.read(&sig, 4);
-      if (sig != 0x02014b50) {
-        break;
-      }
-      cdEntries++;
-
-      file.seekCur(12);
-      uint32_t crc32, compressedSize;
-      file.read(&crc32, 4);
-      file.read(&compressedSize, 4);
-      file.seekCur(4);
-      uint16_t nameLen, m, k;
-      file.read(&nameLen, 2);
-      file.read(&m, 2);
-      file.read(&k, 2);
-      file.seekCur(12);
-
-      if (nameLen < sizeof(itemName)) {
-        file.read(itemName, nameLen);
-        itemName[nameLen] = '\0';
-        callback(std::string_view{itemName, nameLen}, crc32, compressedSize);
-      } else {
-        file.seekCur(nameLen);
-      }
-
-      file.seekCur(m + k);
-    }
-    ZIP_CD_LOG("ZIP", "CD_SCAN kind=enum entries=%u ms=%lu found=%u", cdEntries, millis() - cdStarted, cdEntries);
-
-    if (!wasOpen) {
-      close();
-    }
-    return true;
+    using Callback = std::remove_reference_t<F>;
+    return walkCentralDir(
+        0, false, "enum",
+        [](void* ctx, const CentralEntry& entry) {
+          if (entry.name)
+            (*static_cast<Callback*>(ctx))(std::string_view{entry.name, entry.nameLen}, entry.crc32,
+                                           entry.compressedSize);
+          return false;
+        },
+        const_cast<void*>(static_cast<const void*>(&callback)));
   }
 };

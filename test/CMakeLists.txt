@@ -135,6 +135,7 @@ add_subdirectory(opf_cache_io)
 add_subdirectory(huge_book)
 add_subdirectory(thumb_name)
 add_subdirectory(cover_ref)
+add_subdirectory(zip_central_dir)
 
 add_subdirectory(txt_zip_io)
 

@@ -6,6 +6,10 @@
 #include <Logging.h>
 
 #include <algorithm>
+#include <cstring>
+#include <memory>
+#include <mutex>
+#include <new>
 
 struct ZipInflateCtx {
   HalFile* file = nullptr;
@@ -60,7 +64,139 @@ size_t zipFillCallback(void* vctx, const uint8_t** data) {
   *data = ctx->readBuf;
   return bytesRead;
 }
+
+// Every walk of the central directory logs its entries and time (CD_SCAN): at info level on the
+// measurement builds, at debug level elsewhere.
+#if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
+#define ZIP_CD_LOG LOG_INF
+#else
+#define ZIP_CD_LOG LOG_DBG
+#endif
+
+constexpr uint32_t CENTRAL_SIGNATURE = 0x02014b50;
+constexpr size_t CENTRAL_HEADER = 46;
+constexpr size_t MAX_NAME = 255;
+// The walk reads the directory in blocks: a book of 5.000 chapters has some 375 KB of it, and one
+// field at a time took about 70.000 calls under the card's lock (2,3 s on the X3 for the cover at
+// its end). 4 KB while the heap has eight times that; the smallest block that holds one whole
+// entry head and name comes from the stack.
+constexpr size_t WALK_BLOCK = 4096;
+constexpr size_t WALK_BLOCK_SMALL = 1024;
+constexpr size_t WALK_BLOCK_MIN = CENTRAL_HEADER + MAX_NAME;
+
+uint16_t le16(const uint8_t* p) { return static_cast<uint16_t>(p[0] | p[1] << 8); }
+uint32_t le32(const uint8_t* p) { return le16(p) | static_cast<uint32_t>(le16(p + 2)) << 16; }
+
+// A window of the zip in RAM: [start, start + len).
+class CentralReader {
+ public:
+  CentralReader(HalFile& file, uint8_t* buf, const size_t cap, const uint32_t end)
+      : file(file), buf(buf), cap(cap), end(end) {}
+  // Brings [at, at + need) into the window, reading a whole block from `at` when it is not there.
+  bool have(const uint32_t at, const size_t need) {
+    if (at >= start && at - start + need <= len) return true;
+    if (need > cap || at > end || need > end - at) return false;
+    const size_t want = std::min<size_t>(cap, end - at);
+    len = 0;
+    if (!file.seek(at)) return false;
+    const int got = file.read(buf, want);
+    reads++;
+    if (got < static_cast<int>(need)) return false;
+    start = at;
+    len = static_cast<size_t>(got);
+    return true;
+  }
+  const uint8_t* at(const uint32_t pos) const { return buf + (pos - start); }
+  unsigned reads = 0;
+
+ private:
+  HalFile& file;
+  uint8_t* buf;
+  size_t cap;
+  uint32_t end;
+  uint32_t start = 0;
+  size_t len = 0;
+};
+
+// Entries the zips answered lately, across ZipFile objects: the reader asks an item's size and then
+// its bytes from two new ZipFiles, and reads chapters in the order they sit in the directory. A slot
+// holds for the zip as it was (ZipFile::zipKey); a book replaced on the card misses and is walked.
+struct Known {
+  uint64_t zip = 0, name = 0;
+  uint16_t nameLen = 0;
+  uint32_t next = 0;
+  ZipFile::FileStatSlim stat = {};
+};
+constexpr size_t KNOWN_SLOTS = 8;
+Known known[KNOWN_SLOTS];
+size_t knownNext = 0;
+std::mutex knownLock;
 }  // namespace
+
+uint64_t ZipFile::zipKey() const {
+  uint8_t details[10];
+  const uint32_t size = static_cast<uint32_t>(const_cast<HalFile&>(file).size());
+  std::memcpy(details, &size, 4);
+  std::memcpy(details + 4, &zipDetails.centralDirOffset, 4);
+  std::memcpy(details + 8, &zipDetails.totalEntries, 2);
+  return fnvHash64(filePath.data(), filePath.size()) ^ fnvHash64(reinterpret_cast<const char*>(details), 10);
+}
+
+bool ZipFile::walkCentralDir(uint32_t from, const bool wrap, [[maybe_unused]] const char* kind, const Visit visit,
+                             void* ctx) {
+  const ScopedOpenClose zip{*this};
+  if (!zip || !loadZipDetails()) return false;
+  [[maybe_unused]] const unsigned long started = millis();
+  const uint32_t begin = zipDetails.centralDirOffset;
+  const uint32_t end = static_cast<uint32_t>(file.size());
+  if (from < begin) from = begin;
+  const size_t cap = ESP.getFreeHeap() >= 8 * WALK_BLOCK        ? WALK_BLOCK
+                     : ESP.getFreeHeap() >= 8 * WALK_BLOCK_SMALL ? WALK_BLOCK_SMALL
+                                                                 : 0;
+  const auto block = cap ? std::unique_ptr<uint8_t[]>(new (std::nothrow) uint8_t[cap]) : nullptr;
+  uint8_t small[WALK_BLOCK_MIN];
+  CentralReader reader(file, block ? block.get() : small, block ? cap : sizeof(small), end);
+
+  uint32_t pos = from;
+  bool wrapped = false, stopped = false;
+  [[maybe_unused]] unsigned entries = 0;
+  while (!(wrapped && pos >= from)) {
+    if (!reader.have(pos, CENTRAL_HEADER) || le32(reader.at(pos)) != CENTRAL_SIGNATURE) {
+      // The end of the directory (or of what is readable of it): once more from its start.
+      if (wrap && !wrapped && from != begin) {
+        wrapped = true;
+        pos = begin;
+        continue;
+      }
+      break;
+    }
+    const uint8_t* head = reader.at(pos);
+    CentralEntry entry;
+    entry.method = le16(head + 10);
+    entry.crc32 = le32(head + 16);
+    entry.compressedSize = le32(head + 20);
+    entry.uncompressedSize = le32(head + 24);
+    entry.nameLen = le16(head + 28);
+    const uint32_t extra = le16(head + 30) + static_cast<uint32_t>(le16(head + 32));
+    entry.localHeaderOffset = le32(head + 42);
+    entry.next = pos + CENTRAL_HEADER + entry.nameLen + extra;
+    entry.name = nullptr;
+    if (entry.nameLen <= MAX_NAME) {
+      // A name cut off by the end of the file ends the walk.
+      if (!reader.have(pos, CENTRAL_HEADER + entry.nameLen)) break;
+      entry.name = reinterpret_cast<const char*>(reader.at(pos) + CENTRAL_HEADER);
+    }
+    entries++;
+    if (visit(ctx, entry)) {
+      stopped = true;
+      break;
+    }
+    pos = entry.next;
+  }
+  ZIP_CD_LOG("ZIP", "CD_SCAN kind=%s entries=%u ms=%lu reads=%u block=%u found=%u", kind, entries,
+             millis() - started, reader.reads, static_cast<unsigned>(block ? cap : sizeof(small)), stopped ? 1u : 0u);
+  return true;
+}
 
 bool ZipFile::loadAllFileStatSlims() {
   const ScopedOpenClose zip{*this};
@@ -68,47 +204,18 @@ bool ZipFile::loadAllFileStatSlims() {
 
   if (!loadZipDetails()) return false;
 
-  file.seek(zipDetails.centralDirOffset);
-
-  uint32_t sig;
-  char itemName[256];
   fileStatSlimCache.clear();
   fileStatSlimCache.reserve(zipDetails.totalEntries);
-  [[maybe_unused]] const unsigned long cdStarted = millis();
-  [[maybe_unused]] unsigned cdEntries = 0;
-
-  while (file.available()) {
-    file.read(&sig, 4);
-    if (sig != 0x02014b50) break;  // End of list
-
-    FileStatSlim fileStat = {};
-    cdEntries++;
-
-    file.seekCur(6);
-    file.read(&fileStat.method, 2);
-    file.seekCur(8);
-    file.read(&fileStat.compressedSize, 4);
-    file.read(&fileStat.uncompressedSize, 4);
-    uint16_t nameLen, m, k;
-    file.read(&nameLen, 2);
-    file.read(&m, 2);
-    file.read(&k, 2);
-    file.seekCur(8);
-    file.read(&fileStat.localHeaderOffset, 4);
-
-    if (nameLen < sizeof(itemName)) {
-      file.read(itemName, nameLen);
-      itemName[nameLen] = '\0';
-      fileStatSlimCache.emplace(itemName, fileStat);
-    } else {
-      // Skip over oversized entry names to avoid writing past fixed buffer.
-      file.seekCur(nameLen);
-    }
-
-    // Skip the rest of this entry (extra field + comment)
-    file.seekCur(m + k);
-  }
-  ZIP_CD_LOG("ZIP", "CD_SCAN kind=all entries=%u ms=%lu found=%u", cdEntries, millis() - cdStarted, cdEntries);
+  walkCentralDir(0, false, "all",
+                 [](void* ctx, const CentralEntry& entry) {
+                   if (entry.name)
+                     static_cast<ZipFile*>(ctx)->fileStatSlimCache.emplace(
+                         std::string(entry.name, entry.nameLen),
+                         FileStatSlim{entry.method, entry.compressedSize, entry.uncompressedSize,
+                                      entry.localHeaderOffset});
+                   return false;
+                 },
+                 this);
 
   // Set cursor to start of central directory for sequential access
   lastCentralDirPos = zipDetails.centralDirOffset;
@@ -132,73 +239,50 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
 
   if (!loadZipDetails()) return false;
 
-  // Phase 1: Try scanning from cursor position first
-  uint32_t startPos = lastCentralDirPosValid ? lastCentralDirPos : zipDetails.centralDirOffset;
-  bool wrapped = false;
-  bool found = false;
-
-  file.seek(startPos);
-
-  uint32_t sig;
-  char itemName[256];
-  [[maybe_unused]] const unsigned long cdStarted = millis();
-  [[maybe_unused]] unsigned cdEntries = 0;
-
-  while (true) {
-    uint32_t entryStart = file.position();
-
-    if (file.read(&sig, 4) != 4 || sig != 0x02014b50) {
-      // End of central directory
-      if (!wrapped && lastCentralDirPosValid && startPos != zipDetails.centralDirOffset) {
-        // Wrap around to beginning
-        file.seek(zipDetails.centralDirOffset);
-        wrapped = true;
-        continue;
-      }
-      break;
-    }
-
-    // If we've wrapped and reached our start position, stop
-    if (wrapped && entryStart >= startPos) {
-      break;
-    }
-    cdEntries++;
-
-    file.seekCur(6);
-    file.read(&fileStat->method, 2);
-    file.seekCur(8);
-    file.read(&fileStat->compressedSize, 4);
-    file.read(&fileStat->uncompressedSize, 4);
-    uint16_t nameLen, m, k;
-    file.read(&nameLen, 2);
-    file.read(&m, 2);
-    file.read(&k, 2);
-    file.seekCur(8);
-    file.read(&fileStat->localHeaderOffset, 4);
-
-    if (nameLen < 256) {
-      file.read(itemName, nameLen);
-      itemName[nameLen] = '\0';
-
-      if (strcmp(itemName, filename) == 0) {
-        // Found it! Update cursor to next entry
-        file.seekCur(m + k);
-        lastCentralDirPos = file.position();
+  const size_t nameLen = strlen(filename);
+  const uint64_t key = zipKey();
+  const uint64_t name = fnvHash64(filename, nameLen);
+  // Where this object's last lookup ended, or else where the last one of this zip did.
+  uint32_t from = lastCentralDirPosValid ? lastCentralDirPos : 0;
+  {
+    const std::lock_guard<std::mutex> lock(knownLock);
+    for (size_t i = 0; i < KNOWN_SLOTS; i++) {
+      const Known& slot = known[(knownNext + KNOWN_SLOTS - 1 - i) % KNOWN_SLOTS];
+      if (slot.zip != key) continue;
+      if (slot.name == name && slot.nameLen == nameLen) {
+        *fileStat = slot.stat;
+        lastCentralDirPos = slot.next;
         lastCentralDirPosValid = true;
-        found = true;
-        break;
+        ZIP_CD_LOG("ZIP", "CD_SCAN kind=known entries=0 ms=0 reads=0 block=0 found=1");
+        return true;
       }
-    } else {
-      // Name too long, skip it
-      file.seekCur(nameLen);
+      if (from == 0) from = slot.next;
     }
-
-    // Skip extra field + comment
-    file.seekCur(m + k);
   }
-  ZIP_CD_LOG("ZIP", "CD_SCAN kind=find entries=%u ms=%lu found=%u", cdEntries, millis() - cdStarted, found ? 1u : 0u);
 
-  return found;
+  struct Search {
+    const char* name;
+    size_t nameLen;
+    FileStatSlim* stat;
+    uint32_t next;
+  } search{filename, nameLen, fileStat, 0};
+  walkCentralDir(from, true, "find",
+                 [](void* ctx, const CentralEntry& entry) {
+                   auto* s = static_cast<Search*>(ctx);
+                   if (!entry.name || entry.nameLen != s->nameLen || memcmp(entry.name, s->name, s->nameLen) != 0)
+                     return false;
+                   *s->stat = {entry.method, entry.compressedSize, entry.uncompressedSize, entry.localHeaderOffset};
+                   s->next = entry.next;
+                   return true;
+                 },
+                 &search);
+  if (search.next == 0) return false;
+  lastCentralDirPos = search.next;
+  lastCentralDirPosValid = true;
+  const std::lock_guard<std::mutex> lock(knownLock);
+  known[knownNext] = {key, name, static_cast<uint16_t>(nameLen), search.next, *fileStat};
+  knownNext = (knownNext + 1) % KNOWN_SLOTS;
+  return true;
 }
 
 long ZipFile::getDataOffset(const FileStatSlim& fileStat) {
@@ -315,72 +399,32 @@ int ZipFile::fillUncompressedSizes(std::deque<SizeTarget>& targets, std::deque<u
     return 0;
   }
 
-  const ScopedOpenClose zip{*this};
-  if (!zip) return 0;
-
-  if (!loadZipDetails()) return 0;
-
-  file.seek(zipDetails.centralDirOffset);
-
-  int matched = 0;
-  const int targetCount = static_cast<int>(targets.size());
-  uint32_t sig;
-  char itemName[256];
-  [[maybe_unused]] const unsigned long cdStarted = millis();
-  [[maybe_unused]] unsigned cdEntries = 0;
-
-  while (file.available()) {
-    file.read(&sig, 4);
-    if (sig != 0x02014b50) break;
-    cdEntries++;
-
-    file.seekCur(6);
-    uint16_t method;
-    file.read(&method, 2);
-    file.seekCur(8);
-    uint32_t compressedSize, uncompressedSize;
-    file.read(&compressedSize, 4);
-    file.read(&uncompressedSize, 4);
-    uint16_t nameLen, m, k;
-    file.read(&nameLen, 2);
-    file.read(&m, 2);
-    file.read(&k, 2);
-    file.seekCur(8);
-    uint32_t localHeaderOffset;
-    file.read(&localHeaderOffset, 4);
-
-    if (nameLen < 256) {
-      file.read(itemName, nameLen);
-      itemName[nameLen] = '\0';
-
-      uint64_t hash = fnvHash64(itemName, nameLen);
-      SizeTarget key = {hash, nameLen, 0};
-
-      auto it = std::lower_bound(targets.begin(), targets.end(), key, [](const SizeTarget& a, const SizeTarget& b) {
-        return a.hash < b.hash || (a.hash == b.hash && a.len < b.len);
-      });
-
-      while (it != targets.end() && it->hash == hash && it->len == nameLen) {
-        if (it->index < sizes.size()) {
-          sizes[it->index] = uncompressedSize;
-          matched++;
-        }
-        ++it;
-      }
-
-      if (matched >= targetCount) {
-        break;
-      }
-    } else {
-      file.seekCur(nameLen);
-    }
-
-    file.seekCur(m + k);
-  }
-  ZIP_CD_LOG("ZIP", "CD_SCAN kind=sizes entries=%u ms=%lu found=%u", cdEntries, millis() - cdStarted,
-             static_cast<unsigned>(matched));
-
-  return matched;
+  struct Fill {
+    std::deque<SizeTarget>& targets;
+    std::deque<uint32_t>& sizes;
+    int matched;
+  } fill{targets, sizes, 0};
+  walkCentralDir(0, false, "sizes",
+                 [](void* ctx, const CentralEntry& entry) {
+                   auto* f = static_cast<Fill*>(ctx);
+                   if (!entry.name) return false;
+                   const uint64_t hash = fnvHash64(entry.name, entry.nameLen);
+                   const SizeTarget key = {hash, entry.nameLen, 0};
+                   auto it = std::lower_bound(f->targets.begin(), f->targets.end(), key,
+                                              [](const SizeTarget& a, const SizeTarget& b) {
+                                                return a.hash < b.hash || (a.hash == b.hash && a.len < b.len);
+                                              });
+                   while (it != f->targets.end() && it->hash == hash && it->len == entry.nameLen) {
+                     if (it->index < f->sizes.size()) {
+                       f->sizes[it->index] = entry.uncompressedSize;
+                       f->matched++;
+                     }
+                     ++it;
+                   }
+                   return f->matched >= static_cast<int>(f->targets.size());
+                 },
+                 &fill);
+  return fill.matched;
 }
 
 uint8_t* ZipFile::readFileToMemory(const char* filename, size_t* size, const bool trailingNullByte) {
