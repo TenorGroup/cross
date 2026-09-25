@@ -25,7 +25,8 @@ if(SDFAT_PARTITION_SOURCES)
   endif()
   file(GLOB SDFAT_LIB_SOURCES "${SDFAT_COPY}/FatLib/*.cpp" "${SDFAT_COPY}/common/*.cpp")
   add_executable(SdFatAllocTest SdFatAllocTest.cpp ${SDFAT_LIB_SOURCES})
-  target_include_directories(SdFatAllocTest PRIVATE "${SDFAT_COPY}")
+  target_include_directories(SdFatAllocTest PRIVATE "${SDFAT_COPY}"
+                             "${REPO_ROOT}/freeink-sdk/libs/hardware/SDCardManager/include")
   target_compile_definitions(SdFatAllocTest PRIVATE ENABLE_ARDUINO_FEATURES=0 ENABLE_ARDUINO_SERIAL=0
                              ENABLE_ARDUINO_STRING=0 USE_BLOCK_DEVICE_INTERFACE=1 SPI_DRIVER_SELECT=3)
   target_compile_options(SdFatAllocTest PRIVATE -include "${CMAKE_CURRENT_SOURCE_DIR}/host_prelude.h" -w)

@@ -5,6 +5,7 @@
 // freed ones walked every used cluster above them, one FAT sector at a time. Every wake mounts
 // the card again, and each mount began the search at the first cluster.
 #include <FatLib/FatLib.h>
+#include <SdVolumeSync.h>
 #include <gtest/gtest.h>
 
 #include <array>
@@ -412,3 +413,24 @@ TEST(SdFatAlloc, RandomRoundsKeepTheCardConsistent) {
   }
 }
 
+// Sleep cuts the X3 card's power right after SDCardManager::shutdown(). SdFat still holds a data
+// sector and a FAT sector in its caches then (a write not yet closed); FsVolume::end() does not
+// write them, syncSdVolume does.
+TEST(SdFatAlloc, SyncBeforePowerCutPutsCachedSectorsOnTheCard) {
+  for (const bool synced : {false, true}) {
+    Card card(64ull << 20);
+    FatFile file;
+    ASSERT_TRUE(file.open(&card.volume, "/state.json", O_RDWR | O_CREAT));
+    ASSERT_EQ(file.write("abc", 3), 3);  // part of a sector: it stays in the data cache
+    const uint32_t cluster = file.firstCluster();
+    ASSERT_GE(cluster, 2u);
+    if (synced) EXPECT_TRUE(syncSdVolume(card.volume));
+    // The power cut: nothing reaches the card after this point.
+    const Sector data =
+        card.device.peek(card.volume.dataStartSector() + (cluster - 2) * card.volume.sectorsPerCluster());
+    const Sector fat = card.device.peek(card.volume.fatStartSector() + cluster * 2 / 512);
+    const uint32_t entry = fat[cluster * 2 % 512] | fat[cluster * 2 % 512 + 1] << 8;
+    EXPECT_EQ(memcmp(data.data(), "abc", 3) == 0, synced) << "data sector, synced=" << synced;
+    EXPECT_EQ(entry != 0, synced) << "FAT entry, synced=" << synced;
+  }
+}
