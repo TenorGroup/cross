@@ -2136,4 +2136,103 @@ TEST_F(SectionCacheTest, SuspendThatReachesTheChapterEndFinishesTheBuild) {
   EXPECT_EQ(bytes(cache()), cold);
 }
 
+
+// v1.0.14 round 2, from the X3 (r41): with the radio up the heap sits near free 46 KB / largest
+// 20 KB. A parked build resumed there can starve before its first step (free 16.8 KB, largest
+// 8 KB, below the step floor), so it cannot parse on to a checkpoint. It used to be written out as
+// a partial without one, and the next turn laid the chapter out again from its first page
+// (3.6 s with the indexing popup). No page was finished since the park, so the checkpoint written
+// at the park still describes it exactly: the build parks there again instead.
+TEST_F(SectionCacheTest, StarvedRightAfterAResumeParksAgainAtTheLastCheckpoint) {
+  epub->contents = streakChapter(spec);
+  std::filesystem::remove(root / "html/0.html");
+  std::filesystem::remove(cache());
+  std::string cold;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.createSectionFile(spec));
+    cold = bytes(cache());
+  }
+  std::filesystem::remove(cache());
+  const auto bleHeap = [] { ESP.freeHeap = 46 * 1024; ESP.maxAlloc = 20 * 1024; };
+  const auto starvedHeap = [] { ESP.freeHeap = 16820; ESP.maxAlloc = 8180; };
+  uint16_t watermark = 0;
+  {
+    bleHeap();
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.startBuild(spec));
+    while (section.pageCount < 4) ASSERT_TRUE(section.buildSomeMore(1));
+    ASSERT_TRUE(section.parkBuild());
+    ASSERT_TRUE(section.isBuildParked());
+    // The look-ahead resumes the parked parser and parses on without finishing a page (r41: last
+    // park at 19 pages, starved at 19 pages), then the heap drops under the step floor.
+    for (unsigned tries = 0;; ++tries) {
+      ASSERT_LT(tries, 50u);
+      watermark = section.pageCount;
+      ASSERT_TRUE(section.buildSomeMore(1));
+      if (section.pageCount == watermark) break;
+      ASSERT_TRUE(section.parkBuild());
+    }
+    ASSERT_FALSE(section.isBuildParked());
+    starvedHeap();
+    EXPECT_FALSE(section.buildSomeMore(2));
+    EXPECT_TRUE(section.buildStarved());
+    EXPECT_TRUE(section.isBuildParked()) << "a starved resume kept the parser resident without a checkpoint";
+    EXPECT_EQ(section.pageCount, watermark);
+    // The reader's release under heap pressure, still starved, then the close.
+    if (!section.isBuildParked()) section.suspendBuild();
+  }
+  ESP = {};
+  const std::string partial = bytes(cache());
+  const auto checkpoint = checkpointOffset(partial);
+  ASSERT_TRUE(checkpoint.has_value());
+  EXPECT_LT(*checkpoint, partial.size()) << "the partial file carries no checkpoint";
+  Section reopened(epub, 0, renderer);
+  ASSERT_TRUE(reopened.loadSectionFile(spec));
+  ASSERT_EQ(reopened.pageCount, watermark);
+  storageMetrics::begin();
+  storageMetrics::watchPrefix(root.string() + "/html/0.html", 0, 64);
+  ASSERT_TRUE(reopened.startBuild(spec));
+  storageMetrics::enabled = false;
+  EXPECT_EQ(storageMetrics::prefixReadBytes, 0u) << "the chapter was laid out again from its first byte";
+  ASSERT_TRUE(reopened.buildSomeMore(0));
+  EXPECT_EQ(bytes(cache()), cold);
+}
+
+// A page finished after the park moves the build past that checkpoint: parking back there would
+// drop the page. The build keeps the old fallback (partial without a checkpoint) and stays correct.
+TEST_F(SectionCacheTest, StarvedAfterANewPageKeepsTheOldFallback) {
+  epub->contents = streakChapter(spec);
+  std::filesystem::remove(root / "html/0.html");
+  std::filesystem::remove(cache());
+  std::string cold;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.createSectionFile(spec));
+    cold = bytes(cache());
+  }
+  std::filesystem::remove(cache());
+  {
+    ESP.freeHeap = 46 * 1024; ESP.maxAlloc = 20 * 1024;
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.startBuild(spec));
+    while (section.pageCount < 3) ASSERT_TRUE(section.buildSomeMore(1));
+    ASSERT_TRUE(section.parkBuild());
+    const uint16_t parkedPages = section.pageCount;
+    while (section.pageCount == parkedPages) ASSERT_TRUE(section.buildSomeMore(1));
+    ESP.freeHeap = 16820; ESP.maxAlloc = 8180;
+    EXPECT_FALSE(section.buildSomeMore(1));
+    EXPECT_TRUE(section.buildStarved());
+    EXPECT_TRUE(section.isBuilding());
+    EXPECT_GT(section.pageCount, parkedPages) << "a finished page was dropped";
+    if (!section.isBuildParked()) section.suspendBuild();
+  }
+  ESP = {};
+  Section reopened(epub, 0, renderer);
+  ASSERT_TRUE(reopened.loadSectionFile(spec));
+  ASSERT_TRUE(reopened.startBuild(spec));
+  ASSERT_TRUE(reopened.buildSomeMore(0));
+  EXPECT_EQ(bytes(cache()), cold);
+}
+
 }

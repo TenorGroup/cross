@@ -63,7 +63,7 @@ class ReaderActivity : public Activity {
   // remote report or a chapter jump still replaces the queue with its own direction.
   static constexpr int8_t MAX_QUEUED_TURNS = 8;
   void queuePageTurn(bool isForward, bool isLocal, const char* reason);
-  // Atomic: the render task reads it to skip a gray pass nobody will see (nextScreenWaiting).
+  // Atomic: the render task reads it to drop a paint nobody will see (nextScreenWaiting).
   std::atomic<int8_t> pendingExternalTurn{0};
   bool pendingTurnIsLocal = false;
   bool pendingExternalChapter = false;

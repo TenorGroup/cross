@@ -49,13 +49,19 @@ class EpubReaderActivity final : public ReaderActivity {
   std::optional<uint32_t> pendingOffsetJump;
   unsigned long lastPageTurnTime = 0UL;
   unsigned long pageTurnDuration = 0UL;
-  // Atomic: the render task reads it to skip a gray pass nobody will see (nextScreenWaiting).
+  // Atomic: the render task reads it to drop a paint nobody will see (nextScreenWaiting).
   std::atomic<int8_t> pendingManualTurn{0};
   // Why the page being painted is about to be replaced (a queued turn, a chapter jump waiting for
-  // the render lock, the reader closing), or nullptr. Its gray pass and progress write would only
-  // delay the next screen.
+  // the render lock, the reader closing), or nullptr. Before anything reaches the panel any of these
+  // drops the paint. Once the page is readable only leaving it (Back, a held chapter jump) cuts the
+  // gray pass: for queued turns that ended paints early, and presses that used to merge into one
+  // repaint each got their own (X3 r43, 27 refreshes where 19 were).
   const char* nextScreenWaiting() const;
+  const char* pageBeingLeft() const;
   std::atomic<bool> jumpWaiting{false};
+  // Set by renderContents when it returned before the panel was touched. The loop asks for a
+  // repaint if the presses that caused it cancelled out, or the panel would keep the old page.
+  std::atomic<bool> paintDropped{false};
   // Set by a paint that left its progress write to the next paint, an idle pass or the exit.
   std::atomic<bool> progressSaveDeferred{false};
   void saveProgressIfMoved();

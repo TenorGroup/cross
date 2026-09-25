@@ -1,13 +1,14 @@
-"""v1.0.14: a press waiting behind a paint skips that paint's gray pass.
+"""v1.0.14: presses that land while a page is still being built skip that page.
 
-On the X3 the gray pass runs after the page is readable (strips, a 156 ms waveform, cleanup), and
-the progress write follows it, all under the render lock. A press that arrived meanwhile waited
-about 500 ms for work nobody would see: the page it leaves is replaced by the next one. Back in
-the middle of a paint waited the same way before Home could start.
+Round one skipped the gray pass of any paint with a press waiting. On the X3 (r43) that ended
+paints earlier, so presses that used to merge into one repaint each got their own, and the last
+press did not reach its page sooner (27 refreshes where 19 were). The gray pass is kept again for
+queued turns; it is still dropped for Back and for a held chapter jump, which leave the page.
 
-Now, once the page is readable, a queued turn or a pending exit skips the gray pass and leaves the
-progress write for the next paint or an idle pass. A single press keeps the full paint, and the
-page the presses end on is painted exactly as a page reached one press at a time.
+What remains for queued turns happens before anything reaches the panel: a press that arrives
+while the page is laid out and drawn drops that paint, and the next paint goes straight to the
+page the presses add up to. A single press keeps the full paint, and the page is painted exactly
+as the same page reached one press at a time.
 """
 
 import json
@@ -23,7 +24,11 @@ import test_page_turn_presses as base
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get("TEST_PROGRAM", REPO / ".pio/build/simulator_x3_uc8279/program"))
 SKIPPED = re.compile(r"Gray pass skipped: (\w+)")
+DROPPED = re.compile(r"Paint dropped before display: (\w+)")
 FULL_GRAY = "Page render (tiled):"
+# One line per refresh the reader sends to the panel (plain or gray base).
+REFRESH = re.compile(r"to displayBuffer, mode=|displayGrayscaleBase, mode=")
+PRESS = re.compile(r"\[IN\] press t=(\d+)")
 SAVED = re.compile(r"Progress saved: spine=(\d+) offset=\d+ page=(\d+)")
 START = base.FIRST_PRESS_MS
 
@@ -70,18 +75,29 @@ class TurnCoalesceTest(unittest.TestCase):
     def pages(log):
         return [int(p) for s, p in SAVED.findall(log) if s == "0"]
 
-    def test_queued_presses_skip_the_gray_pass_and_end_on_the_same_page(self):
-        end = START + 6000
-        log, fast = self.run_sim("fast", base.presses("DOWN", 60, 3, 150), end, end - 500)
-        skipped = SKIPPED.findall(log)
-        print(f"fast: skipped={skipped} full_gray={log.count(FULL_GRAY)} pages={self.pages(log)}")
-        self.assertIn("queued", skipped, "a paint with a press waiting still ran its gray pass")
+    def test_queued_presses_keep_the_gray_pass(self):
+        log, _ = self.run_sim("rhythm", base.presses("DOWN", 60, 3, 150), START + 6000)
+        print(f"rhythm: skipped={SKIPPED.findall(log)} pages={self.pages(log)}")
+        self.assertNotIn("queued", SKIPPED.findall(log), "a queued turn still cut the gray pass short")
         self.assertEqual(self.pages(log)[-1], 3)
-        # The same page reached one press at a time, every paint complete.
-        slow_end = START + 3 * 1600 + 4000
-        slow_log, slow = self.run_sim("slow", base.presses("DOWN", 60, 3, 1540), slow_end, slow_end - 500)
-        self.assertEqual(SKIPPED.findall(slow_log), [])
-        self.assertEqual(self.pages(slow_log)[-1], 3)
+
+    def test_presses_during_the_build_go_straight_to_their_page(self):
+        # The book's first page takes about a second to lay out on the simulator (the open paint);
+        # two presses land inside it, before anything reaches the panel.
+        end = 7000
+        script = f"{base.OPEN_AT_MS + 500}:DOWN:60;{base.OPEN_AT_MS + 700}:DOWN:60;"
+        log, fast = self.run_sim("during", script, end, end - 500)
+        dropped = DROPPED.findall(log)
+        # Refreshes from the first page press on (the log starts at the reader's entry).
+        first = next(m for m in PRESS.finditer(log) if int(m.group(1)) >= base.OPEN_AT_MS + 400)
+        refreshes = len(REFRESH.findall(log[first.start():]))
+        print(f"during: dropped={dropped} refreshes={refreshes} pages={self.pages(log)}")
+        self.assertIn("queued", dropped, "a page the presses had already left was still put on the panel")
+        self.assertEqual(refreshes, 1, "more than one refresh for presses made during one paint")
+        self.assertEqual(self.pages(log)[-1], 2)
+        slow_log, slow = self.run_sim("steps", base.presses("DOWN", 60, 2, 1540), START + 5000, START + 4500)
+        self.assertEqual(DROPPED.findall(slow_log), [])
+        self.assertEqual(self.pages(slow_log)[-1], 2)
         self.assertEqual(page_body(fast), page_body(slow), "the page the presses end on is painted differently")
 
     def test_single_press_keeps_the_full_paint(self):

@@ -1245,6 +1245,10 @@ void EpubReaderActivity::loop() {
     if (changed && (!section || pageAwaitsLayout())) pendingManualTurn = remaining;
     if (changed) requestUpdate();
   }
+  if (paintDropped && pendingManualTurn == 0 && pendingExternalTurn == 0 && !RenderLock::peek()) {
+    paintDropped = false;
+    requestUpdate();
+  }
 
   const auto turns = ReaderUtils::detectPageTurn(mappedInput);
   const bool prevPageTriggered = turns.prev || touch.prev;
@@ -2498,7 +2502,19 @@ void EpubReaderActivity::renderBook() {
     discardOverlayPage();
 
     const auto start = millis();
+    paintDropped.store(false, std::memory_order_relaxed);
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+    if (paintDropped) {
+      // The next paint shows the page the queue leads to; it writes the progress, and anything
+      // this paint would have drawn over the page (a notice, a screenshot) waits for it too.
+      progressSaveDeferred.store(true, std::memory_order_release);
+      lastRenderCompleteMs = millis();
+#ifdef TENOR_TURN_TRACE
+      logTurnTrace("RENDERED", appliedTurnTrace, "dropped");
+      appliedTurnTrace = {};
+#endif
+      return;
+    }
 #ifdef TENOR_TURN_TRACE
     tracePaint("COMPLETE", readablePaintTraced ? "page" : "no_readable_bound");
     logTurnTrace("RENDERED", appliedTurnTrace, "page");
@@ -2512,7 +2528,7 @@ void EpubReaderActivity::renderBook() {
     if (coverThumbs && static_cast<CoverThumbCapture&>(*coverThumbs).write()) pendingThumbCount = 0;
   }
 
-  if (nextScreenWaiting()) {
+  if (pageBeingLeft()) {
     progressSaveDeferred.store(true, std::memory_order_release);
   } else {
     saveProgressIfMoved();
@@ -2609,9 +2625,14 @@ void EpubReaderActivity::takePendingDeferredClear() {
   }
 }
 
-const char* EpubReaderActivity::nextScreenWaiting() const {
+const char* EpubReaderActivity::pageBeingLeft() const {
   if (leaving.load(std::memory_order_acquire)) return "leaving";
   if (jumpWaiting.load(std::memory_order_acquire)) return "jump";
+  return nullptr;
+}
+
+const char* EpubReaderActivity::nextScreenWaiting() const {
+  if (const char* reason = pageBeingLeft()) return reason;
   if (pendingManualTurn != 0 || pendingExternalTurn != 0) return "queued";
   return nullptr;
 }
@@ -2749,6 +2770,22 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 #ifdef TENOR_TURN_TRACE
   tracePaint("BW_RENDER_END", pageHasImages ? "image" : "text");
 #endif
+  // Nothing has reached the panel yet. A press (or Back, or a chapter jump) that arrived while this
+  // page was laid out and drawn replaces it, so the next paint goes straight to where the presses
+  // lead: one refresh instead of this page's ~1.2 s and then the next. Image pages already showed
+  // their placeholder and keep their paint.
+  if (!pageHasImages) {
+    if (const char* reason = nextScreenWaiting()) {
+      LOG_DBG("ERS", "Paint dropped before display: %s", reason);
+#ifdef TENOR_TURN_TRACE
+      tracePaint("ABORT", reason);
+#endif
+      // A manual full refresh asked for this page is owed to the page that replaces it.
+      forcedRefreshPending = manualRefreshPending;
+      paintDropped.store(true, std::memory_order_release);
+      return;
+    }
+  }
 
   if (absoluteImageGrayscale) {
     const auto baseMode = cleanImageBasePending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH;
@@ -2885,9 +2922,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 #ifdef TENOR_TURN_TRACE
       if (!combinedGrayscaleBase && !absoluteImageGrayscale) traceReadablePaint("strip_wait");
 #endif
-      // The page is readable now. With the next screen already waiting, the ~500 ms of strips, gray
-      // waveform and cleanup below would only hold it back: the next paint replaces this page.
-      const char* grayNotRun = !scratch ? "scratch_oom" : nextScreenWaiting();
+      // The page is readable now. When the reader is leaving it (Back, a held chapter jump), the
+      // ~500 ms of strips, gray waveform and cleanup below would only hold the next screen back.
+      const char* grayNotRun = !scratch ? "scratch_oom" : pageBeingLeft();
       if (grayNotRun) {
         if (!scratch) {
           LOG_ERR("ERS", "OOM: grayscale strip scratch (%d bytes); skipping AA this page", gwBytes * STRIP_ROWS);
@@ -2917,7 +2954,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         const auto drawPlane = [&](const bool lsbPlane) {
           renderer.setRenderMode(lsbPlane ? GfxRenderer::GRAYSCALE_LSB : GfxRenderer::GRAYSCALE_MSB);
           for (int y = 0; y < gh; y += STRIP_ROWS) {
-            if ((stoppedBy = nextScreenWaiting())) return;
+            if ((stoppedBy = pageBeingLeft())) return;
             const int rows = (gh - y < STRIP_ROWS) ? (gh - y) : STRIP_ROWS;
             renderer.beginStripTarget(scratch.get(), y, rows);
             renderer.clearScreen(0x00);

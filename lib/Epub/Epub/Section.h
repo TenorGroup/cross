@@ -37,6 +37,13 @@ class Section {
   struct BuildContext {
     std::unique_ptr<ChapterHtmlSlimParser> parser;
     std::vector<std::pair<std::string, uint16_t>> parkedAnchors;
+    // The checkpoint file written by the last park: its page count, parse offset and anchor count.
+    // Pages are written only once finished, so while no page has finished since, that file still
+    // describes the build exactly and a starved parser can park there again (parkAtLastCheckpoint).
+    bool checkpointOnDisk = false;
+    uint16_t checkpointPages = 0;
+    uint32_t checkpointBytes = 0;
+    size_t checkpointAnchors = 0;
     ReaderRenderSpec spec;
     HalFile lut;
     uint32_t lastVisibleTextOffset = 0;
@@ -64,6 +71,7 @@ class Section {
   // Parse on to the next checkpoint, within CHECKPOINT_REACH_MAX_MS / _STEPS and the step heap floor.
   // True with the parser at a checkpoint, or with the build finalized because the chapter ended.
   bool reachCheckpoint();
+  bool parkAtLastCheckpoint();
   static bool stepHeapAvailable();
   static constexpr uint32_t CHECKPOINT_REACH_MAX_MS = 100;
   static constexpr unsigned CHECKPOINT_REACH_MAX_STEPS = 24;

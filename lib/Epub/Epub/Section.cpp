@@ -749,10 +749,32 @@ bool Section::reachCheckpoint() {
   return parser.hasCheckpoint();
 }
 
+// On the X3 with the radio up, a resumed look-ahead can starve (free 16.8 KB, largest 8 KB) before
+// it reaches a new checkpoint, and then cannot parse on to one. Written out without a checkpoint,
+// the chapter was laid out again from its first page on the next turn (3.6 s, r41). With no page
+// finished since the last park, the parser goes back to that park's checkpoint instead: the work
+// dropped is part of one page, laid out again on the next resume.
+bool Section::parkAtLastCheckpoint() {
+  auto& build = *build_;
+  if (!build.checkpointOnDisk || builtPageCount_ != build.checkpointPages) return false;
+  auto anchors = build.parser->takeAnchors();
+  if (anchors.size() < build.checkpointAnchors) return false;
+  anchors.resize(build.checkpointAnchors);
+  build.parkedAnchors = std::move(anchors);
+  build.bytesConsumed = build.checkpointBytes;
+  build.parser.reset();
+  if (build.cssParser) build.cssParser->clear();
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("SCT", "PARK_BACK pages=%u", static_cast<unsigned>(builtPageCount_));
+#endif
+  return true;
+}
+
 bool Section::parkBuild() {
   if (!build_ || build_->failed) return false;
   if (!build_->parser) return true;
   if (!reachCheckpoint()) {
+    if (build_ && build_->parser && parkAtLastCheckpoint()) return true;
 #ifdef TENOR_PRESS_PROBE
     LOG_INF("SCT", "PARK_FAIL reason=no_checkpoint pages=%u", static_cast<unsigned>(builtPageCount_));
 #endif
@@ -763,6 +785,8 @@ bool Section::parkBuild() {
   const auto started = millis();
 #endif
   HalFile checkpoint;
+  // Opening for write replaces the last park's checkpoint, successful or not.
+  build_->checkpointOnDisk = false;
   if (!Storage.openFileForWrite("SCT", checkpointTmpPath(), checkpoint)) return false;
   const bool written = build_->parser->writeCheckpoint(checkpoint) && checkpoint.sync();
 #ifdef TENOR_UI_ACCEPTANCE
@@ -778,6 +802,10 @@ bool Section::parkBuild() {
   }
   build_->bytesConsumed = build_->parser->parseBytesConsumed();
   build_->parkedAnchors = build_->parser->takeAnchors();
+  build_->checkpointOnDisk = true;
+  build_->checkpointPages = builtPageCount_;
+  build_->checkpointBytes = build_->bytesConsumed;
+  build_->checkpointAnchors = build_->parkedAnchors.size();
   build_->parser.reset();
   if (build_->cssParser) build_->cssParser->clear();
 #ifdef TENOR_UI_ACCEPTANCE
