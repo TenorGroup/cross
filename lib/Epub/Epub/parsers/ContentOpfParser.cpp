@@ -216,6 +216,9 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
       }
     }
 
+#ifdef TENOR_PRESS_PROBE
+    const uint32_t ioStarted = micros();
+#endif
     // Capture the offset, then publish an index entry only after both fields
     // are complete. The same metadata budget is enforced by the cache reader.
     const uint32_t itemOffset = static_cast<uint32_t>(self->tempItemStore.position());
@@ -225,6 +228,10 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
       self->failIo();
       return;
     }
+#ifdef TENOR_PRESS_PROBE
+    indexProbe.manifestIoUs += micros() - ioStarted;
+    indexProbe.manifestItems++;
+#endif
     // Only spine resolution reads the index; the CSS-only reparse has no cache.
     if (self->tempItemStore && self->cache) {
       // A node holds dozens of entries, so checking every 32 pushes still sees
@@ -290,6 +297,9 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
           const std::string idref = atts[i + 1];
           std::string href;
           bool found = false;
+#ifdef TENOR_PRESS_PROBE
+          const uint32_t lookupStarted = micros();
+#endif
 
           if (self->useItemIndex) {
             // Fast path: binary search
@@ -340,6 +350,9 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
             self->failIo();
             return;
           }
+#ifdef TENOR_PRESS_PROBE
+          indexProbe.spineLookupUs += micros() - lookupStarted;
+#endif
           self->cache->createSpineEntry(href);
         }
       }

@@ -9,6 +9,19 @@
 #include <string>
 #include <vector>
 
+#ifdef TENOR_PRESS_PROBE
+// Microseconds a first-open index build spends in each part, printed as INDEX_SPLIT lines.
+struct IndexProbe {
+  uint32_t parseUs = 0;        // inside the XML parsers, their card work included
+  uint32_t manifestIoUs = 0;   // OPF manifest items written to .items.bin
+  uint32_t spineLookupUs = 0;  // spine idrefs looked up in .items.bin
+  uint32_t spineWriteUs = 0;   // spine entries written to spine.bin.tmp
+  uint32_t tocEntryUs = 0;     // TOC entries matched to the spine and written to toc.bin.tmp
+  uint32_t manifestItems = 0;
+};
+extern IndexProbe indexProbe;
+#endif
+
 class BookMetadataCache {
  public:
   struct BookMetadata {

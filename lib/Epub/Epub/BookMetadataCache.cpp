@@ -11,6 +11,10 @@
 
 #include "FsHelpers.h"
 
+#ifdef TENOR_PRESS_PROBE
+IndexProbe indexProbe;
+#endif
+
 namespace {
 constexpr uint8_t BOOK_CACHE_VERSION = 10;  // v10: ignore ambiguous guide text references
 constexpr char bookBinFile[] = "/book.bin";
@@ -207,6 +211,9 @@ bool BookMetadataCache::beginTocPass() {
     return false;
   }
 
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long indexStarted = millis();
+#endif
   if (spineCount >= LARGE_SPINE_THRESHOLD) {
     // Without the index every TOC entry rescans the spine file (minutes at
     // thousands of chapters), so a book whose index does not fit is refused.
@@ -231,6 +238,9 @@ bool BookMetadataCache::beginTocPass() {
   } else {
     useSpineHrefIndex = false;
   }
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("BMC", "INDEX_SPLIT href_index ms=%lu spines=%d", millis() - indexStarted, spineCount);
+#endif
 
   // Wrapper OOM is fine: createTocEntry falls back to unbuffered writes.
   passOut = makeUniqueNoThrow<serialization::BufferedFileWriter>(tocFile, BUILD_IO_BUFFER_SIZE);
@@ -271,6 +281,11 @@ bool BookMetadataCache::endWrite() {
 }
 
 bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMetadata& metadata) {
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long lutsStarted = millis();
+  unsigned long tocScanMs = 0, zipSizeMs = 0, spineOutMs = 0;
+  int chunks = 0;
+#endif
   // Open all three files, writing to meta, reading from spine and toc
   if (!Storage.openFileForWrite("BMC", cachePath + bookBinFile, bookFile)) {
     return false;
@@ -338,6 +353,9 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
     serialization::writePod(bookOut, pos + lutOffset + lutSize + spineBytes);
   }
 
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long lutsMs = millis() - lutsStarted;
+#endif
   // LUTs complete. Spine entries are written in chunks sized from free heap so
   // the working set stays bounded at any chapter count. A book that fits one
   // chunk takes exactly the passes it always took: one TOC scan for the
@@ -379,6 +397,10 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
   spineIn.seek(0);
   for (int first = 0; first < spineCount; first += chunk) {
     const int count = std::min(chunk, spineCount - first);
+#ifdef TENOR_PRESS_PROBE
+    chunks++;
+    unsigned long stepStarted = millis();
+#endif
 
     // First TOC entry of each spine item in this chunk, in one TOC pass.
     std::deque<int16_t> spineToTocIndex(count, -1);
@@ -390,6 +412,10 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
       }
     }
 
+#ifdef TENOR_PRESS_PROBE
+    tocScanMs += millis() - stepStarted;
+    stepStarted = millis();
+#endif
     std::deque<uint32_t> spineSizes(count, 0);
     if (useBatchSizes) {
       const size_t chunkStart = spineIn.position();
@@ -407,6 +433,10 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
       (void)matched;
       spineIn.seek(chunkStart);
     }
+#ifdef TENOR_PRESS_PROBE
+    zipSizeMs += millis() - stepStarted;
+    stepStarted = millis();
+#endif
 
     for (int i = 0; i < count; i++) {
       auto spineEntry = readSpineEntryFrom(spineIn);
@@ -436,10 +466,16 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
       // Write out spine data to book.bin
       writeSpineEntryTo(bookOut, spineEntry);
     }
+#ifdef TENOR_PRESS_PROBE
+    spineOutMs += millis() - stepStarted;
+#endif
   }
   // Close opened zip file
   zip.close();
 
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long tocCopyStarted = millis();
+#endif
   // Loop through toc entries from toc file writing to book.bin
   tocIn.seek(0);
   for (int i = 0; i < tocCount; i++) {
@@ -448,6 +484,10 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
   }
 
   const bool written = bookOut.flush() && spineIn.ok() && tocIn.ok();
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("BMC", "INDEX_SPLIT book luts=%lu chunks=%d toc_scans=%lu zip_sizes=%lu spine_out=%lu toc_copy=%lu", lutsMs,
+          chunks, tocScanMs, zipSizeMs, spineOutMs, millis() - tocCopyStarted);
+#endif
 
   // Explicit close() required: member variables persist beyond function scope
   bookFile.close();
@@ -494,6 +534,9 @@ void BookMetadataCache::createSpineEntry(const std::string& href) {
     return;
   }
 
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t started = micros();
+#endif
   const SpineEntry entry(href, 0, -1);
   if (passOut) {
     writeSpineEntryTo(*passOut, entry);
@@ -501,6 +544,9 @@ void BookMetadataCache::createSpineEntry(const std::string& href) {
     writeSpineEntry(spineFile, entry);
   }
   spineCount++;
+#ifdef TENOR_PRESS_PROBE
+  indexProbe.spineWriteUs += micros() - started;
+#endif
 }
 
 void BookMetadataCache::createTocEntry(const std::string& title, const std::string& href, const std::string& anchor,
@@ -510,6 +556,9 @@ void BookMetadataCache::createTocEntry(const std::string& title, const std::stri
     return;
   }
 
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t started = micros();
+#endif
   int16_t spineIndex = -1;
 
   if (useSpineHrefIndex) {
@@ -545,6 +594,9 @@ void BookMetadataCache::createTocEntry(const std::string& title, const std::stri
     writeTocEntry(tocFile, entry);
   }
   tocCount++;
+#ifdef TENOR_PRESS_PROBE
+  indexProbe.tocEntryUs += micros() - started;
+#endif
 }
 
 /* ============= READING / LOADING FUNCTIONS ================ */
