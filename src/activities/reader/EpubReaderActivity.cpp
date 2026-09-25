@@ -630,6 +630,10 @@ void EpubReaderActivity::dropSectionsLaidOutWithoutToc() {
       if (end != name && std::strcmp(end, ".bin") == 0) spines.push_back(static_cast<int>(spine));
     }
   }
+  // The chapter on screen may still be laying out (its pages in a staging file, no .bin yet).
+  if (section && std::find(spines.begin(), spines.end(), currentSpineIndex) == spines.end()) {
+    spines.push_back(currentSpineIndex);
+  }
   for (const int spine : spines) {
     const int first = epub->getTocIndexForSpineIndex(spine);
     bool anchored = false;
