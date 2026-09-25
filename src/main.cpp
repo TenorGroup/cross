@@ -832,6 +832,9 @@ static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
                                                    const bool foregroundActivityManagesTiltSensor) {
   halTiltSensor.setStrength(SETTINGS.tiltStrengthH, SETTINGS.tiltStrengthV);
   halTiltSensor.configureShake(SETTINGS.shakeAction, SETTINGS.shakeStrength);
+  // Menus wait for a side flick to come back (picking the device up is not a tab
+  // step); the reader keeps page turns immediate.
+  halTiltSensor.confirmSideFlicks(!foregroundReader);
   if (foregroundReader) {
     // Row tilt belongs to the menu screens: the reader keeps the page-turn axis
     // and nothing else, so the vertical channel is disarmed on the way in.

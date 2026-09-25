@@ -149,6 +149,7 @@ struct TiltBoundary {
   }
   void setStrength(uint8_t, uint8_t) {}
   void configureShake(uint8_t, uint8_t) {}
+  void confirmSideFlicks(bool) {}
   void configureVerticalGesture(uint8_t mode, bool gestureTargetActive) {
     verticalMode = mode;
     verticalTargetActive = gestureTargetActive;

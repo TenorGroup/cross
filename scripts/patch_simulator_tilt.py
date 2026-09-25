@@ -43,4 +43,10 @@ patch(root / "HalTiltSensor.h", [(
     "  bool wasShaken() { return false; }\n"
     "  void clearPendingEvents() {}\n",
     1,
+), (
+    "  // Hard shake: no accelerometer either, so no shake ever comes.\n",
+    "  // Side flicks waiting for the hand to come back: none without a gyro.\n"
+    "  void confirmSideFlicks(const bool /*confirm*/) {}\n"
+    "  // Hard shake: no accelerometer either, so no shake ever comes.\n",
+    1,
 )])

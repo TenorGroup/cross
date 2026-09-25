@@ -52,17 +52,23 @@ class HalTiltSensor {
 
   mutable unsigned long _lastPollMs = 0;
 
+  // Slow baseline of the acceleration in whole mg (1/8 per poll): gravity and how
+  // the device is held. What is left over is the jolt of a poll.
+  bool _baselineValid = false;
+  int32_t _baselineMg[3] = {};
+
   // Hard shake channel, watched on every screen while its action is not Off. A
-  // shake is one jolt, the way people give it: the acceleration left after a slow
-  // baseline (gravity and how the device is held) passes the peak. Squared length
-  // in whole mg, no square root. A wrist flick that turns a page rotates the
-  // device and stays under half the peak; putting it down stays under the peak.
+  // shake is one snap: a run of polls whose jolt stays past SHAKE_RUN_MG, peaks
+  // past the strength's peak, and is over within SHAKE_RUN_MAX_MS. Picking the
+  // device up jolts as hard but for longer. Squared lengths, no square root.
   bool _shakeEnabled = false;
   bool _shakeEvent = false;  // Consumed by wasShaken()
-  int32_t _shakePeakMg = 1600;
-  bool _shakeBaselineValid = false;
-  int32_t _shakeBaseline[3] = {};
+  int32_t _shakePeakMg = 1500;
   bool _shakeMoving = false;  // Last jolt past half the peak
+  bool _shakeRun = false;     // Polls in a row past SHAKE_RUN_MG
+  unsigned long _shakeRunStartMs = 0;
+  unsigned long _shakeRunLastMs = 0;
+  int32_t _shakeRunPeakSq = 0;
   bool _shaken = false;  // A shake has fired since wake (the rest applies)
   unsigned long _lastShakeMs = 0;
   unsigned long _tiltLockUntilMs = 0;
@@ -74,16 +80,42 @@ class HalTiltSensor {
   static constexpr uint8_t HELD_FORWARD = 1, HELD_BACK = 2, HELD_UP = 4, HELD_DOWN = 8;
 
   // Shake peak per strength (Light, Medium, Strong), mg of jolt past the baseline; change only here.
-  // X3 hand run (shake-replay): put down hard <= 1030 mg, Light +270; weakest one-snap shake 2152 mg, Strong -250.
-  static constexpr int32_t SHAKE_PEAK_MG_BY_STRENGTH[] = {1300, 1600, 1900};
+  // X3 hand runs (shake-replay): nod <= 1218 mg, Light +80; weakest one-snap shake 2115 mg, Strong -215.
+  static constexpr int32_t SHAKE_PEAK_MG_BY_STRENGTH[] = {1300, 1500, 1900};
+  static constexpr int32_t SHAKE_RUN_MG = 600;
+  // Measured: one snap stays past 600 mg for at most 327 ms, a pick-up for at least 573 ms.
+  static constexpr unsigned long SHAKE_RUN_MAX_MS = 400;
   static constexpr unsigned long SHAKE_REST_MS = 1500;      // Minimum ms between two shakes
   static constexpr unsigned long SHAKE_TILT_LOCK_MS = 800;  // Tilts ignored after a shake's last jolt
+
+  // A flick on a menu counts once the hand has come back: the axis swings the
+  // other way past FLICK_RETURN_DPS within FLICK_RETURN_MS, or stops (under
+  // FLICK_CALM_DPS) with gravity back within 22 degrees of where it was. Picking
+  // the device up turns it as fast but leaves it turned. Row flicks always wait
+  // for this; side flicks only when confirmSideFlicks() says so (menus, not the
+  // reader, whose page turns keep their speed). Measured cost: rows ~0.38 s, tabs ~0.2 s.
+  struct PendingFlick {
+    bool active = false;
+    int8_t sign = 0;
+    uint8_t bit = 0;
+    unsigned long ms = 0;
+    int32_t poseMg[3] = {};
+  };
+  PendingFlick _pendingSide;
+  PendingFlick _pendingRow;
+  bool _confirmSide = false;
+  static constexpr float FLICK_RETURN_DPS = 150.0f;
+  static constexpr unsigned long FLICK_RETURN_MS = 400;
+  static constexpr float FLICK_CALM_DPS = 60.0f;
+  static constexpr unsigned long FLICK_WAIT_MS = 500;  // No return by then: dropped
 
 #ifdef TENOR_PRESS_PROBE
   unsigned long _probeLogUntilMs = 0;
 #endif
 
-  void pollShake(unsigned long now, const Imu::Sample& sample);
+  void pollShake(unsigned long now, const int32_t (&jolt)[3]);
+  void startFlick(PendingFlick& flick, float axis, uint8_t bit, unsigned long now);
+  void settleFlick(PendingFlick& flick, float axis, const int32_t (&mg)[3], unsigned long now);
   void raiseTiltEvents(uint8_t bits);
   void emitTilt(uint8_t heldBit, unsigned long now);
   void releaseHeldTilt(unsigned long now);
@@ -107,6 +139,10 @@ class HalTiltSensor {
   // Flick strength per axis (CrossPointSettings::TILT_STRENGTH): 0 Light,
   // 1 Medium, 2 Strong. Out-of-range values read as Medium.
   void setStrength(uint8_t horizontal, uint8_t vertical);
+
+  // Side flicks wait for the hand to come back before they count (menus), or
+  // count at once (the reader). Called once per loop pass.
+  void confirmSideFlicks(bool confirm) { _confirmSide = confirm; }
 
   // Poll the accelerometer and update tilt gesture state for an active target.
   void update(const uint8_t mode, const uint8_t orientation, const bool gestureTargetActive);
