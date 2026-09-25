@@ -130,6 +130,7 @@ add_subdirectory(webdav_handler_behavior)
 
 add_subdirectory(opf_cache_io)
 add_subdirectory(huge_book)
+add_subdirectory(thumb_name)
 
 add_subdirectory(txt_zip_io)
 

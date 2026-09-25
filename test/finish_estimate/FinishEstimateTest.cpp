@@ -72,3 +72,11 @@ TEST(FinishEstimate, MoreThanAYearIsTooFar) {
   // 365 days is still a date.
   EXPECT_EQ(tinh(50, 0, 30, 20250925, 20260924, 20260924).trangThai, TrangThai::NgayCuThe);
 }
+
+TEST(FinishEstimate, DateBeyondTheCalendarFallsBackToDays) {
+  // A clock set far ahead puts the date past the last day the calendar can name; the count
+  // of days is still right, so show that instead of an empty date.
+  const auto r = tinh(34, 0, 6, 20991205, 20991217, 20991217);
+  EXPECT_EQ(r.trangThai, TrangThai::SoNgay);
+  EXPECT_EQ(r.soNgay, 26u);
+}

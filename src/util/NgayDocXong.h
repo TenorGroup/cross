@@ -49,9 +49,9 @@ inline UocTinh uocTinh(const uint8_t progress, const uint8_t startProgress, cons
   r.soNgay = (con * khoang + daDoc - 1) / daDoc;
   if (r.soNgay > TRAN_NGAY) {
     r.trangThai = TrangThai::QuaXa;
-  } else if (homNay) {
+  } else if (homNay && (r.ngay = habits::dateKey(moc + r.soNgay)) != 0) {
+    // dateKey gives 0 past the last day it can name (a clock set far ahead): show the count.
     r.trangThai = TrangThai::NgayCuThe;
-    r.ngay = habits::dateKey(moc + r.soNgay);
   } else {
     r.trangThai = TrangThai::SoNgay;
   }

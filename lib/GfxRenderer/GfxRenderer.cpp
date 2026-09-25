@@ -18,6 +18,7 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <climits>
 #include <cstring>
 
 #include "CjkTextWrap.h"
@@ -1407,10 +1408,13 @@ bool GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
   LOG_DBG("GFX", "Scaling by %f - %s", scale, isScaled ? "scaled" : "not scaled");
   // A black and white 1-bit image drawn 1:1 goes to the framebuffer row by row; its white leaves
   // the page as it is, as below.
+  // An image under a pixel over its box is cut at the box, not left to spill onto its neighbours.
+  const int rowsW = std::min({bitmap.getWidth() - 2 * cropPixX, getScreenWidth() - x, maxWidth > 0 ? maxWidth : INT_MAX});
+  const int rowsH =
+      std::min({bitmap.getHeight() - 2 * cropPixY, getScreenHeight() - y, maxHeight > 0 ? maxHeight : INT_MAX});
   if (bitmap.is1Bit() && !isScaled && !levelRows && renderMode == BW && x >= 0 && y >= 0 &&
-      drawBitmapRows(bitmap, x, y, cropPixX, cropPixY, std::min(bitmap.getWidth() - 2 * cropPixX, getScreenWidth() - x),
-                     std::min(bitmap.getHeight() - 2 * cropPixY, getScreenHeight() - y), false)) {
-    preserveImagePolarity(x, y, bitmap.getWidth() - 2 * cropPixX, bitmap.getHeight() - 2 * cropPixY);
+      drawBitmapRows(bitmap, x, y, cropPixX, cropPixY, rowsW, rowsH, false)) {
+    preserveImagePolarity(x, y, rowsW, rowsH);
     return true;
   }
   // Other 1-bit bitmaps without a crop keep their own path.

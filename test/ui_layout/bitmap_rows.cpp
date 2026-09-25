@@ -147,6 +147,24 @@ int main() {
     std::printf("%s: 1-bit %.3f ms, 2-bit %.3f ms per draw\n", c.name, oneBit * 10, twoBit * 10);
     check(oneBit * 2 < twoBit, "a 1-bit bitmap drawn 1:1 is not twice as fast as the pixel path");
   }
+  {
+    // Half a pixel of crop leaves a 237-wide image under a pixel over a 236-wide box, so it is
+    // drawn 1:1: it must stop at the box, like the same picture already 236 wide.
+    renderer.setOrientation(GfxRenderer::Portrait);
+    constexpr int W = 237, H = 40;
+    std::vector<bool> ink(W * H), cut(236 * H);
+    for (int y = 0; y < H; ++y)
+      for (int x = 0; x < W; ++x) {
+        ink[y * W + x] = random() & 1;
+        if (x < 236) cut[y * 236 + x] = ink[y * W + x];
+      }
+    const auto over = render(renderer, bmp(ink, W, H, 1, true), [](GfxRenderer& r, const Bitmap& b) {
+      return r.drawBitmap(b, 0, 0, 236, 40, 0.5f / 237.0f, 0.0f);
+    });
+    const auto fits = render(renderer, bmp(cut, 236, H, 1, true),
+                             [](GfxRenderer& r, const Bitmap& b) { return r.drawBitmap(b, 0, 0, 236, 40); });
+    check(over == fits, "a 1-bit image under a pixel over its box stops at the box");
+  }
   if (failures) return 1;
   std::puts("PASS: 1-bit bitmaps go to the framebuffer row by row, pixel for pixel as before");
   return 0;
