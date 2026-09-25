@@ -17,8 +17,8 @@ class FileTransferBackLatch {
   FileTransferBackLatch(const FileTransferBackLatch&) = delete;
   FileTransferBackLatch& operator=(const FileTransferBackLatch&) = delete;
 
-  // Unsupported boards keep normal input. False means the sampler allocation
-  // failed on a supported board. The mapping is fixed for this session.
+  // Unsupported boards, and a Back on no button ladder, keep normal input. False means
+  // the sampler allocation failed on a supported board. The mapping is fixed for this session.
   bool start(HalGPIO& gpio, uint8_t physicalBack);
   void stop();
   bool consume();

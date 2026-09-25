@@ -393,7 +393,7 @@ void CrossPointWebServerActivity::startWebServer() {
   webServer->begin();
 
   if (webServer->isRunning()) {
-    if (!backLatch.start(gpio, SETTINGS.frontButtonBack)) {
+    if (!backLatch.start(gpio, mappedInput.physicalBack())) {
       LOG_ERR("WEBACT", "Cannot start Back sampler");
       leave();
       return;

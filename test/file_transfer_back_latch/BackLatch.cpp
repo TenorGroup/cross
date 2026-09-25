@@ -41,8 +41,10 @@ void HalGPIO::sampleButtonAdc(InputManager::ButtonAdcSample& first, InputManager
   insideSample = true;
   if (slowSample) vTaskDelay(30);
   const int key = rawKey.load();
-  first = {1, key == -1 ? 4095 : key == 0 ? 3610 : key == 1 ? 2500 : key == 2 ? 1200 : 0, key < 0 ? -1 : key};
-  second = {2, 4095, -1};
+  // Keys 0-3 sit on the first ladder, 4 and 5 (the side keys) on the second.
+  const bool front = key >= 0 && key < 4;
+  first = {1, !front ? 4095 : key == 0 ? 3610 : key == 1 ? 2500 : key == 2 ? 1200 : 0, front ? key : -1};
+  second = {2, key == 4 ? 1500 : key == 5 ? 500 : 4095, key == 4 || key == 5 ? key : -1};
   if (key == -2) { first = {1, 0, 3}; second = {2, 0, 5}; }
   ++samples;
   insideSample = false;
@@ -74,9 +76,10 @@ struct PhysicalInput {
 struct MappedInputManager {
   enum class Button { Back };
   PhysicalInput physical;
-  uint8_t physicalBack = 0;
+  uint8_t backKey = 0;
   void update() { physical.update(); }
-  bool wasReleased(Button) const { return (physical.releasedEvents & (1u << physicalBack)) != 0; }
+  uint8_t physicalBack() const { return backKey; }
+  bool wasReleased(Button) const { return (physical.releasedEvents & (1u << backKey)) != 0; }
   bool wasHomeGesture() const { return false; }
 };
 #define LOG_DBG(...) ((void)0)
@@ -234,6 +237,29 @@ void run(const std::string& name) {
     require(activity.backLatch.stackFreeBytes() == 1176, "stack watermark not retained at stop");
     return;
   }
+  if (name == "back-on-side-key-in-handler") {
+    // Back assigned to a physical key past the four front keys, on the second ladder.
+    SETTINGS.frontButtonBack = 4;
+    CrossPointWebServerActivity activity;
+    activity.mappedInput.backKey = 4;
+    activity.state = WebServerActivityState::AP_STARTING;
+    activity.startWebServer();
+    require(activity.backLatch.active(), "Back on physical key 4 has no sampler");
+    settle();
+    activity.mappedInput.update();
+    std::thread pulse([] { vTaskDelay(35); tap(4, 80); });
+    const auto before = millis();
+    activity.loop();
+    pulse.join();
+    if (!activity.exits && activity.webServer) {
+      activity.webServer->handlerMs = 0;
+      activity.loop();
+    }
+    std::cout << "side_key_handler_ms=" << millis() - before << " exits=" << activity.exits << '\n';
+    require(activity.exits == 1, "Back on physical key 4 inside an upload was lost");
+    require(!fakeServerCompleted && fakeServerCancels == 1, "Back on physical key 4 waited for the upload");
+    return;
+  }
   if (name == "oom-activity") {
     CrossPointWebServerActivity activity;
     activity.state = WebServerActivityState::AP_STARTING;
@@ -265,7 +291,7 @@ void run(const std::string& name) {
   }
   if (name == "zero-chatter-activity") {
     CrossPointWebServerActivity activity;
-    activity.mappedInput.physicalBack = 3;
+    activity.mappedInput.backKey = 3;
     activity.webServer->handlerMs = 0;
     require(activity.backLatch.start(gpio, 3), "sampler start failed");
     settle();
@@ -312,12 +338,14 @@ void run(const std::string& name) {
   }
   if (name == "unsupported-board" || name == "mapping-out-of-range") {
     if (name == "unsupported-board") BoardConfig::ACTIVE.inputStyle = BoardConfig::InputStyle::DigitalButtons;
-    require(latch.start(gpio, name == "mapping-out-of-range" ? 4 : 0), "fallback start reported OOM");
+    // Power (6) is on neither ladder; its Back stays with main input.
+    require(latch.start(gpio, name == "mapping-out-of-range" ? 6 : 0), "fallback start reported OOM");
     require(!latch.active() && created == 0 && !latch.consume(), "unsupported input started sampler");
     return;
   }
   if (name == "held-on-entry") rawKey = 0;
-  require(latch.start(gpio, name == "zero-chatter-mapping3" ? 3 : 0), "start failed");
+  const uint8_t back = name == "zero-chatter-mapping3" ? 3 : name == "second-ladder-back" ? 5 : 0;
+  require(latch.start(gpio, back), "start failed");
   settle();
   if (name == "idle-pulse") {
     tap(0); require(latch.consume(), "idle Back tap lost");
@@ -337,6 +365,11 @@ void run(const std::string& name) {
     tap(1); tap(2); tap(3);
     require(!latch.consume(), "unmapped physical key exited transfer");
     tap(0); require(latch.consume(), "configured Back lost");
+  } else if (name == "second-ladder-back") {
+    require(latch.active(), "Back on physical key 5 started no sampler");
+    tap(0); tap(3); tap(4);
+    require(!latch.consume(), "a key other than the assigned Back exited transfer");
+    tap(5); require(latch.consume(), "Back on physical key 5 was lost");
   } else if (name == "zero-chatter-mapping3") {
     for (int i = 0; i < 3; ++i) { tap(-2, 8); tap(3, 8); }
     require(!latch.consume(), "short zero transient became remapped Back");

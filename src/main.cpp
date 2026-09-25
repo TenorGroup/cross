@@ -1233,7 +1233,7 @@ void loop() {
           if (n == "SIDE_NEXT") button = sideSwapped ? HalGPIO::BTN_UP : HalGPIO::BTN_DOWN;
           if (n == "SIDE_PREV") button = sideSwapped ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP;
           if (n == "POWER") button = HalGPIO::BTN_POWER;
-          if (n == "BACK") button = SETTINGS.frontButtonBack;
+          if (n == "BACK") button = mappedInputManager.physicalBack();
           if (n == "CONFIRM") button = SETTINGS.frontButtonConfirm;
         }
         if (button >= 0) gpio.injectPresses(button, hold, count, gap);

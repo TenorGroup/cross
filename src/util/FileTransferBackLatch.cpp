@@ -22,7 +22,8 @@ bool FileTransferBackLatch::start(HalGPIO& gpio, const uint8_t physicalBack) {
   (void)gpio;
   return true;
 #else
-  if (BoardConfig::ACTIVE.inputStyle != BoardConfig::InputStyle::XteinkAdcLadder || physicalBack >= 4) return true;
+  if (BoardConfig::ACTIVE.inputStyle != BoardConfig::InputStyle::XteinkAdcLadder || physicalBack > HalGPIO::BTN_DOWN)
+    return true;
   input = &gpio;
   if (++generation == 0) ++generation;
   pending.store(0, std::memory_order_relaxed);
@@ -80,7 +81,8 @@ void FileTransferBackLatch::poll(void* context) {
     if (!valid) {
       candidateKnown = false;
     } else {
-      const bool down = first.button == physicalBack;
+      // Keys 0-3 classify on the first ladder, the side keys 4 and 5 on the second.
+      const bool down = first.button == physicalBack || second.button == physicalBack;
       if (!candidateKnown || down != candidateDown) {
         candidateKnown = true;
         candidateDown = down;
