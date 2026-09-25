@@ -64,6 +64,8 @@ class EpubReaderActivity final : public ReaderActivity {
   std::atomic<bool> paintDropped{false};
   // Set by a paint that left its progress write to the next paint, an idle pass or the exit.
   std::atomic<bool> progressSaveDeferred{false};
+  // The last owed write failed on the card; the idle pass stops retrying it (RenderLock guards it).
+  bool progressSaveFailed = false;
   void saveProgressIfMoved();
 #ifdef TENOR_TURN_TRACE
   TurnTrace pendingManualTurnTrace;
@@ -199,6 +201,7 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr unsigned long RADIO_RELEASE_TIMEOUT_MS = 3000;
   bool releaseRadioForBuild();
   void showMemoryError();
+  void forgetPendingJump();
   bool buildHeapPaused = false;
   static constexpr size_t RENDER_MIN_FREE_HEAP = 24 * 1024;
   static constexpr int BUILD_WINDOW_AHEAD = 5;

@@ -141,12 +141,11 @@ void ReaderActivity::onExit() {
   // rebuilt by the next page prewarm, so hand them back here.
   if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
 
-  if (excerptUnsaved) {
-    excerptUnsaved = false;
+  if (RECENT_BOOKS.hasUnsavedExcerpt()) {
     if (sleeping) {
-      RECENT_BOOKS.saveToFile();
+      RECENT_BOOKS.saveExcerpt();
     } else {
-      activityManager.deferWrite([] { RECENT_BOOKS.saveToFile(); });
+      activityManager.deferWrite([] { RECENT_BOOKS.saveExcerpt(); });
     }
   }
 
@@ -165,7 +164,7 @@ void ReaderActivity::onExit() {
 }
 
 void ReaderActivity::rememberExcerpt(const std::string& text) {
-  if (RECENT_BOOKS.rememberExcerpt(bookPath, text)) excerptUnsaved = true;
+  RECENT_BOOKS.rememberExcerpt(bookPath, text);
 }
 
 void ReaderActivity::updateReadingTime(const bool active) {
@@ -535,7 +534,16 @@ bool ReaderActivity::processExternalPageTurn() {
   return false;
 }
 
+// Back raises `leaving` and asks for Home; while that transition is pending the activity manager
+// does not run this loop. It runs again only if the exit was dropped (a sleep that replaced it and
+// then gave up): the reader stays, and a paint the flag cut short is painted again.
+void ReaderActivity::stayAfterDroppedExit() {
+  if (!leaving.exchange(false, std::memory_order_acq_rel)) return;
+  requestUpdate();
+}
+
 void ReaderActivity::loop() {
+  stayAfterDroppedExit();
   if (handlePreviewInput()) return;
   clearEndOfBookOptionsIfNeeded();
   if (handleEndOfBookMenu()) {

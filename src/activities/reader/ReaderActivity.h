@@ -105,6 +105,7 @@ class ReaderActivity : public Activity {
   // Set once Back has asked to leave. The render task reads it: a paint still running then skips
   // its gray pass instead of holding the exit behind it.
   std::atomic<bool> leaving{false};
+  void stayAfterDroppedExit();
   /** True while the end-of-book suggestion menu is on screen and owning input. */
   bool endOfBookMenuActive() const;
   bool handleEndOfBookMenu(bool suppressConfirmRelease = false);
@@ -159,7 +160,6 @@ class ReaderActivity : public Activity {
   // The page's excerpt for the recent card. Home reads it from RAM; recent.json is rewritten by
   // onExit() after Home's first frame, so a power cut before then loses only the excerpt.
   void rememberExcerpt(const std::string& text);
-  bool excerptUnsaved = false;
 
  public:
   void loop() override;

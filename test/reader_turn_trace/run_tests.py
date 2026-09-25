@@ -61,6 +61,10 @@ if epub_trace_match:
 names = ["pageTurn", "pageTurnLocked", "luotLatTrangNgoai", "processExternalPageTurn", "onPause", "onResume", "loop"]
 if "ReaderActivity::queuePageTurn(" in cpp:
     names.append("queuePageTurn")
+# A reader without it (before v1.0.14 round 3) never lowers the exit flag.
+stay_after_exit = "ReaderActivity::stayAfterDroppedExit(" in cpp
+if stay_after_exit:
+    names.append("stayAfterDroppedExit")
 if trace_present:
     names = ["detectTurnTrace", "logTurnTrace", "replaceQueuedTurnTrace", "dropTurnTrace"] + names
 
@@ -120,7 +124,8 @@ projection.write_text(fixture + "\n" + "\n\n".join(function(name) for name in na
                       "\n" + "\n\n".join((drain, manual, tick, external_tick, menu, settle)) + "\n" +
                       (function("pageAwaitsLayout", epub, "EpubReaderActivity") + "\n" if epub_layout else "") +
                       (function("onPause", epub, "EpubReaderActivity") if epub_pause else "") +
-                      "\n" + exit_method + "\n" + cases)
+                      "\n" + exit_method + "\n" +
+                      ("" if stay_after_exit else "void ReaderActivity::stayAfterDroppedExit() {}\n") + cases)
 (args.output / "source-hashes.json").write_text(json.dumps({
     str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in (reader_cpp, reader_h, epub_cpp, epub_h)
 }, indent=2))

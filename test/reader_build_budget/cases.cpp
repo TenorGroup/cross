@@ -625,6 +625,69 @@ int main() {
     require(r.section->pageCount > r.section->currentPage, "starved build did not finish after radio release");
     require(r.radioReleasedForBuild, "radio release not remembered for rearm");
   });
+  test("owed progress write waits for a section instead of being forgotten", [] {
+    EpubReaderActivity r; r.section.reset();
+    r.progressSaveDeferred = true;
+    { RenderLock held; r.saveProgressIfMoved(); }
+    require(r.progressSaveDeferred, "a chapter jump left no section and the owed write was dropped");
+  });
+  test("owed progress write that fails stays owed for the exit", [] {
+    EpubReaderActivity r; r.progressSaveDeferred = true; r.saveWorks = false;
+    { RenderLock held; r.saveProgressIfMoved(); }
+    require(r.saveAttempts == 1, "the owed write was not tried");
+    require(r.progressSaveDeferred, "a card error dropped the owed write");
+    r.saveWorks = true;
+    { RenderLock held; r.saveProgressIfMoved(); }
+    require(r.saveAttempts == 2 && !r.progressSaveDeferred, "the retry did not settle the owed write");
+  });
+  test("jump whose anchor is missing from the map stays on the saved page", [] {
+    // A one-file book whose anchor map outgrew the heap: the chapter's anchor is not in it.
+    EpubReaderActivity r; r.lastSavedSpineIndex = 1; r.lastSavedPage = 7; r.lastSavedPageCount = 19;
+    r.currentSpineIndex = 2; r.pendingAnchor = "chuong-280"; r.section->currentPage = 0;
+    const int before = r.requests;
+    { RenderLock held; r.anchorLanding(); }
+    require(r.pendingAnchor.empty(), "the missing anchor stays pending");
+    require(r.currentSpineIndex == 1 && r.nextPageNumber == 7, "the reader left the page it was on for the chapter's first page");
+    require(!r.section, "the chapter the jump could not place is still the one painted and saved");
+    require(r.requests == before + 1, "no repaint of the page the reader stays on");
+  });
+  test("jump within the chapter whose anchor is missing keeps the page", [] {
+    EpubReaderActivity r; r.lastSavedSpineIndex = 2; r.lastSavedPage = 7; r.lastSavedPageCount = 19;
+    r.currentSpineIndex = 2; r.pendingAnchor = "doan-12"; r.section->currentPage = 0;
+    { RenderLock held; r.anchorLanding(); }
+    require(r.section && r.section->currentPage == 7, "the reader left its page for the chapter's first page");
+  });
+  test("jump to a one-chapter file whose anchor is missing lands on its first page", [] {
+    // The file starts with its only chapter, so its first page is the right place, as before.
+    EpubReaderActivity r; r.lastSavedSpineIndex = 2; r.lastSavedPage = 7; r.lastSavedPageCount = 19;
+    r.currentSpineIndex = 1; r.pendingAnchor = "chuong-2"; r.section->currentPage = 0;
+    { RenderLock held; r.anchorLanding(); }
+    require(r.section && r.currentSpineIndex == 1 && r.section->currentPage == 0,
+            "a one-chapter file was left for the saved page");
+  });
+  test("jump whose anchor is found lands on it", [] {
+    EpubReaderActivity r; r.lastSavedSpineIndex = 1; r.lastSavedPage = 7;
+    r.currentSpineIndex = 2; r.pendingAnchor = "chuong-3"; r.section->anchorPage = 12;
+    { RenderLock held; r.anchorLanding(); }
+    require(r.section && r.section->currentPage == 12 && r.currentSpineIndex == 2, "a found anchor did not land");
+  });
+  test("percent jump that runs out of heap forgets its target", [] {
+    EpubReaderActivity r; r.section->building = false; r.section->partial = false;
+    r.section->oldPages = r.section->pageCount = r.section->builtPages = 0; r.section->currentPage = 0;
+    r.section->starveUntilRadioStopped = true; r.section->canPark = true;
+    r.pendingPercentJump = true; r.pendingSpineProgress = 0.6f;
+    { RenderLock held; r.percentJump(); }
+    require(popupCount == 1 && buildErrors == 0, "starved percent build did not show the memory notice");
+    require(r.forgottenJumps == 1, "the percent target stays pending and lands on the next chapter loaded");
+  });
+  test("anchor jump that runs out of heap forgets its target", [] {
+    EpubReaderActivity r; r.section->building = false; r.section->partial = false;
+    r.section->oldPages = r.section->pageCount = r.section->builtPages = 0; r.section->currentPage = 0;
+    r.section->starveUntilRadioStopped = true; r.section->canPark = true;
+    { RenderLock held; r.initialResume(5); }
+    require(popupCount == 1 && buildErrors == 0, "starved first build did not show the memory notice");
+    require(r.forgottenJumps == 1, "the jump target stays pending and lands on the next chapter loaded");
+  });
   test("radio still up after the release timeout goes straight to the memory notice", [] {
     EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = true; r.section->canPark = true;
     r.section->starveUntilRadioStopped = true; r.section->currentPage = r.section->pageCount;

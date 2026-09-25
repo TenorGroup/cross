@@ -2235,4 +2235,50 @@ TEST_F(SectionCacheTest, StarvedAfterANewPageKeepsTheOldFallback) {
   EXPECT_EQ(bytes(cache()), cold);
 }
 
+
+// A build resumed from a partial file's checkpoint (a reopened chapter) that starves before its
+// first new page parks back at that checkpoint too. It lives inside the partial file, not in a
+// park's checkpoint file, so the parked build later resumes from the partial file.
+TEST_F(SectionCacheTest, StarvedAfterARestoreParksBackAtThePartialCheckpoint) {
+  epub->contents = streakChapter(spec);
+  std::filesystem::remove(root / "html/0.html");
+  std::filesystem::remove(cache());
+  std::string cold;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.createSectionFile(spec));
+    cold = bytes(cache());
+  }
+  std::filesystem::remove(cache());
+  uint16_t watermark = 0;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.startBuild(spec));
+    while (section.pageCount < 4) ASSERT_TRUE(section.buildSomeMore(1));
+    section.suspendBuild();
+    ASSERT_TRUE(section.isPartial());
+    watermark = section.pageCount;
+  }
+  {
+    ESP.freeHeap = 46 * 1024; ESP.maxAlloc = 20 * 1024;
+    Section reopened(epub, 0, renderer);
+    ASSERT_TRUE(reopened.loadSectionFile(spec));
+    ASSERT_TRUE(reopened.startBuild(spec));
+    ASSERT_EQ(reopened.pageCount, watermark);
+    // Parse on without finishing a page, then the heap drops under the step floor.
+    ASSERT_TRUE(reopened.buildSomeMore(1));
+    ASSERT_EQ(reopened.pageCount, watermark) << "the fixture finished a page in one tick";
+    ESP.freeHeap = 16820; ESP.maxAlloc = 8180;
+    EXPECT_FALSE(reopened.buildSomeMore(1));
+    EXPECT_TRUE(reopened.buildStarved());
+    EXPECT_TRUE(reopened.isBuildParked()) << "a restored build could not park back at the partial's checkpoint";
+    EXPECT_EQ(reopened.pageCount, watermark);
+    ESP = {};
+    // Resumed later, from the partial file, it finishes exactly like a cold build.
+    while (!reopened.isBuildComplete()) ASSERT_TRUE(reopened.buildSomeMore(8));
+  }
+  ESP = {};
+  EXPECT_EQ(bytes(cache()), cold);
+}
+
 }

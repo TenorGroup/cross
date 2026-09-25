@@ -62,6 +62,23 @@ initial_resume = (
     ' auto showBuildError=[]{ ++buildErrors; };\n'
     ' if (!section->startBuild(renderSpec)) { section.reset(); buildPopupPending = false; showBuildError(); return; }\n' +
     render[initial_branch:initial_end] + '\n}')
+# The go-to-percent build of renderBook, verbatim: it lays out only up to the target share.
+percent_start = render.index('      if (pendingPercentJump) {')
+percent_end = render.index('{', percent_start) + 1
+depth = 1
+while depth:
+    depth += (render[percent_end] == '{') - (render[percent_end] == '}')
+    percent_end += 1
+percent_jump = ('void EpubReaderActivity::percentJump() {\n ReaderRenderSpec renderSpec;\n'
+                ' auto showBuildError=[]{ ++buildErrors; };\n' + render[percent_start:percent_end] + '\n}')
+# Where a chapter jump lands once its section is laid out: the anchor lookup, verbatim.
+anchor_start = render.index('    if (!pendingAnchor.empty()) {\n      const auto page = section->findAnchor(pendingAnchor);')
+anchor_end = render.index('{', anchor_start) + 1
+depth = 1
+while depth:
+    depth += (render[anchor_end] == '{') - (render[anchor_end] == '}')
+    anchor_end += 1
+anchor_landing = 'void EpubReaderActivity::anchorLanding() {\n' + render[anchor_start:anchor_end] + '\n}'
 start = render.index('    auto p = section->loadPage(section->currentPage);')
 end = render.index('    currentPageVisibleOffset = p->visibleTextOffset;', start)
 page_load = ('void EpubReaderActivity::loadPageForRender() {\n'
@@ -75,7 +92,7 @@ fixture = pathlib.Path(__file__).with_name('fixture.hpp').read_text().replace('@
 layout_hook = 'EpubReaderActivity::pageAwaitsLayout(' in cpp
 fixture = fixture.replace('@@LAYOUT@@', '  bool pageAwaitsLayout() const;' if layout_hook else '')
 functions = [function('buildTickHeapGate'), function('latTrangThat'), function('skipLoopDelay'), function('showBuildPopup')]
-for name in ['pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'suspendBackgroundBuild', 'releaseRadioForBuild', 'showMemoryError', 'generatePendingThumb', 'writePendingThumbs']:
+for name in ['saveProgressIfMoved', 'pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'suspendBackgroundBuild', 'releaseRadioForBuild', 'showMemoryError', 'generatePendingThumb', 'writePendingThumbs']:
     if 'EpubReaderActivity::' + name + '(' in cpp:
         functions.append(function(name))
 # A reader without the exit step (the previous release) writes nothing as it closes.
@@ -100,7 +117,7 @@ functions.append(function('commitOpen', reader, 'ReaderActivity') if 'ReaderActi
 assert loop.index('if (processExternalPageTurn()) return;') > loop.index('  if (handlePreviewInput()) return;')
 cases = pathlib.Path(__file__).with_name('cases.cpp').read_text()
 source = (fixture + '\n' + '\n'.join(functions) + '\n' + scheduler + '\n' + idle + '\n' + open_thumb + '\n' +
-          foreground + '\n' + initial_resume + '\n' + page_load + '\n' + cases)
+          foreground + '\n' + initial_resume + '\n' + percent_jump + '\n' + anchor_landing + '\n' + page_load + '\n' + cases)
 (a.output / 'projection.cpp').write_text(source)
 hash_sources = {
     'src/activities/reader/EpubReaderActivity.cpp': reader_source,

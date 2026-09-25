@@ -61,6 +61,8 @@ struct ReaderActivity:Activity{
  void onGoHome(){goHome++;}
  bool handleEndOfBookPageTurn(bool,bool);bool endOfBookMenuActive()const;
  bool handlePreviewInput();void clearEndOfBookOptionsIfNeeded(){}
+ // Lowers the exit flag after a dropped exit (ReaderActivity::stayAfterDroppedExit); no exit here.
+ void stayAfterDroppedExit(){}
  bool handleEndOfBookMenu(){return endOfBookMenuActive();}bool handleFormatInput(){if(mappedInput.confirm){formatCalls++;return true;}return false;}bool handleBackNavigation(){if(mappedInput.back){backCalls++;return true;}return false;}
  bool docCoChuMotNac(int){return false;}bool skipPages(int a){return pageTurn(a>0);}
  void updateReadingTime(bool);struct Shot{int progressPercent=25;};Shot getScreenshotInfo()const{return {};}

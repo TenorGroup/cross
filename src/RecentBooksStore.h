@@ -18,6 +18,7 @@ struct RecentBook {
 class RecentBooksStore : public PersistableStore<RecentBooksStore> {
  private:
   std::vector<RecentBook> recentBooks;
+  bool excerptUnsaved = false;
 
   static constexpr int MAX_RECENT_BOOKS = 10;
 
@@ -38,6 +39,10 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
   // RAM only; true when the excerpt changed and recent.json needs a save. Home reads it from RAM,
   // so the reader leaves the file for after Home's first frame (ReaderActivity::onExit).
   bool rememberExcerpt(const std::string& path, const std::string& text);
+  // An excerpt changed in RAM and not yet on the card. Owned here rather than by the reader, so a
+  // refused write is tried again at the next exit from any book.
+  bool hasUnsavedExcerpt() const { return excerptUnsaved; }
+  bool saveExcerpt();
   void updateBook(const std::string& path, const std::string& title, const std::string& author,
                   const std::string& coverBmpPath);
 

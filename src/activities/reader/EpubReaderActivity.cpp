@@ -568,6 +568,16 @@ bool EpubReaderActivity::releaseRadioForBuild() {
 #endif
 }
 
+// A jump whose target the heap could not lay out. The section stays, so nothing clears the
+// target the way loading a section does: left pending, it would land on the next chapter loaded
+// (a percent of it, an anchor, a page) and that wrong page would be saved as the progress.
+void EpubReaderActivity::forgetPendingJump() {
+  pendingPercentJump = false;
+  pendingAnchor.clear();
+  pendingOffsetJump.reset();
+  pendingPageJump.reset();
+}
+
 // Heap ran out while extending the section and nothing else could be freed. Keep the
 // pages already built and the reading position; the next input shows the last built page.
 void EpubReaderActivity::showMemoryError() {
@@ -732,6 +742,7 @@ bool EpubReaderActivity::pageAwaitsLayout() const {
 }
 
 void EpubReaderActivity::loop() {
+  stayAfterDroppedExit();
   if (!epub) {
     finish();
     return;
@@ -941,7 +952,7 @@ void EpubReaderActivity::loop() {
 
   // A paint that had a turn waiting behind it left its progress write; the turn's own paint
   // normally writes it, and a quiet pass writes it when that turn never came (opposite presses).
-  if (!inputThisPass && progressSaveDeferred.load(std::memory_order_acquire)) {
+  if (!inputThisPass && !progressSaveFailed && progressSaveDeferred.load(std::memory_order_acquire)) {
     RenderLock lock(RenderLock::TryTake{});
     if (lock.acquired()) saveProgressIfMoved();
   }
@@ -2181,6 +2192,7 @@ void EpubReaderActivity::renderBook() {
             if (section->buildStarved()) {
               if (releaseRadioForBuild()) continue;
               buildPopupPending = false;
+              forgetPendingJump();
               showMemoryError();
               return;
             }
@@ -2267,6 +2279,7 @@ void EpubReaderActivity::renderBook() {
               if (section->buildStarved()) {
                 if (releaseRadioForBuild()) continue;
                 buildPopupPending = false;
+                forgetPendingJump();
                 showMemoryError();
                 return;
               }
@@ -2309,9 +2322,30 @@ void EpubReaderActivity::renderBook() {
 
     if (!pendingAnchor.empty()) {
       const auto page = section->findAnchor(pendingAnchor);
+      // A file holding one chapter starts with it, so its first page is still the right place.
+      const auto severalChapters = [&] {
+        const int toc = epub->getTocIndexForSpineIndex(currentSpineIndex);
+        return toc >= 0 && toc + 1 < epub->getTocItemsCount() &&
+               epub->getTocItem(toc + 1).spineIndex == currentSpineIndex;
+      };
       if (page) {
         section->currentPage = *page;
         LOG_DBG("ERS", "Resolved anchor '%s' to page %d", pendingAnchor.c_str(), *page);
+      } else if (lastSavedSpineIndex >= 0 && severalChapters()) {
+        // The chapter is laid out and its anchor is not in the map (a one-file book whose map
+        // outgrew the heap). Its first page would be a guess, saved as the progress: the reader
+        // stays on the page it last saved instead, and nothing is written.
+        LOG_ERR("ERS", "Anchor '%s' not in the chapter's map; staying on the saved page", pendingAnchor.c_str());
+        pendingAnchor.clear();
+        if (lastSavedSpineIndex == currentSpineIndex) {
+          section->currentPage = lastSavedPage;
+        } else {
+          currentSpineIndex = lastSavedSpineIndex;
+          nextPageNumber = lastSavedPage;
+          section.reset();
+          requestUpdate();
+          return;
+        }
       }
       pendingAnchor.clear();
     }
@@ -2638,17 +2672,23 @@ const char* EpubReaderActivity::nextScreenWaiting() const {
 }
 
 // Caller owns RenderLock.
+// The owed flag (progressSaveDeferred) clears only once the position is on the card. With no
+// section (a chapter jump waiting for its paint) the paint that loads it writes; a card error leaves
+// it owed for the exit, and the idle pass does not retry it again until a paint succeeds.
 void EpubReaderActivity::saveProgressIfMoved() {
-  progressSaveDeferred.store(false, std::memory_order_relaxed);
   if (!section) return;
   if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||
       section->pageCount != lastSavedPageCount) {
-    if (saveProgress(currentSpineIndex, section->currentPage, section->estimatedTotalPages())) {
-      lastSavedSpineIndex = currentSpineIndex;
-      lastSavedPage = section->currentPage;
-      lastSavedPageCount = section->estimatedTotalPages();
+    if (!saveProgress(currentSpineIndex, section->currentPage, section->estimatedTotalPages())) {
+      progressSaveFailed = true;
+      return;
     }
+    lastSavedSpineIndex = currentSpineIndex;
+    lastSavedPage = section->currentPage;
+    lastSavedPageCount = section->estimatedTotalPages();
   }
+  progressSaveFailed = false;
+  progressSaveDeferred.store(false, std::memory_order_relaxed);
 }
 
 bool EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageCount) {

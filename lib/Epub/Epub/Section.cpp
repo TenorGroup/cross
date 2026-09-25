@@ -724,7 +724,15 @@ bool Section::restorePartialBuild() {
   }
   builtPageCount_ = pages;
   build_->lastVisibleTextOffset = previousVisible;
-  return previous.close();
+  if (!previous.close()) return false;
+  // The partial file stays in place until this build commits, so its checkpoint can serve a park
+  // back (parkAtLastCheckpoint) until the build lays out a page of its own.
+  build_->checkpointOnDisk = true;
+  build_->checkpointInPartialAt = static_cast<uint32_t>(extension);
+  build_->checkpointPages = pages;
+  build_->checkpointBytes = static_cast<uint32_t>(build_->parser->parseBytesConsumed());
+  build_->checkpointAnchors = build_->parser->getAnchors().size();
+  return true;
 }
 
 bool Section::stepHeapAvailable() {
@@ -813,6 +821,7 @@ bool Section::parkBuild() {
   build_->bytesConsumed = build_->parser->parseBytesConsumed();
   build_->parkedAnchors = build_->parser->takeAnchors();
   build_->checkpointOnDisk = true;
+  build_->checkpointInPartialAt = 0;
   build_->checkpointPages = builtPageCount_;
   build_->checkpointBytes = build_->bytesConsumed;
   build_->checkpointAnchors = build_->parkedAnchors.size();
@@ -834,7 +843,12 @@ bool Section::resumeParkedBuild() {
   const auto started = millis();
 #endif
   HalFile checkpoint;
-  if (!Storage.openFileForRead("SCT", checkpointTmpPath(), checkpoint)) return false;
+  const uint32_t inPartialAt = build_->checkpointInPartialAt;
+  if (!Storage.openFileForRead("SCT", inPartialAt ? filePath : checkpointTmpPath(), checkpoint)) return false;
+  if (inPartialAt && !checkpoint.seek(inPartialAt)) {
+    checkpoint.close();
+    return false;
+  }
   // The checkpoint restores anchors too. Release the parked map before allocating
   // the parser so the two copies never overlap in the render heap.
   std::vector<std::pair<std::string, uint16_t>>().swap(build_->parkedAnchors);

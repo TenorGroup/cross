@@ -145,8 +145,13 @@ struct Section {
   bool isBuildParked() const { return building && parked; }
   bool isPartial() const { return partial; }
   bool isBuildComplete() const { return complete; }
-  std::optional<int> findAnchor(const std::string&) const { return std::nullopt; }
+  std::optional<int> anchorPage;
+  std::optional<int> findAnchor(const std::string&) const { return anchorPage; }
   bool buildReachedVisibleTextOffset(uint32_t) const { return false; }
+  // Share of the chapter laid out: 40 pages make the whole chapter here.
+  int estimatedTotalPages() const { return pageCount; }
+  bool laidOutTo(float share) const { return complete || builtPages >= static_cast<int>(share * 40); }
+  template <class F> bool startBuild(const ReaderRenderSpec& spec, F&&) { return startBuild(spec); }
   bool startBuild(const ReaderRenderSpec&) { require(RenderLock::busy, "start without render lock"); ++starts; clockMs += startMs; if (failStart) return false; building = true; parked = false; builtPages = restoredPagesAfterStart; if (dropAfterStart) ESP.free = 29000; return true; }
   bool buildSomeMore(int n) {
     require(RenderLock::busy, "build without render lock"); ++ticks; clockMs += tickMs;
@@ -180,6 +185,18 @@ struct Section {
 };
 struct Epub {
   int getSpineItemsCount() const { return 3; }
+  // Spine of each table of contents entry: spine 2 is one file holding two chapters.
+  std::vector<int16_t> tocSpines{0, 1, 2, 2};
+  struct TocEntry {
+    int16_t spineIndex;
+  };
+  int getTocItemsCount() const { return static_cast<int>(tocSpines.size()); }
+  TocEntry getTocItem(const int i) const { return {tocSpines[i]}; }
+  int getTocIndexForSpineIndex(const int spine) const {
+    for (size_t i = 0; i < tocSpines.size(); ++i)
+      if (tocSpines[i] == spine) return static_cast<int>(i);
+    return -1;
+  }
   std::string getThumbBmpPath(int height) const { return "/thumb_" + std::to_string(height) + ".bmp"; }
   // Mirrors Epub::generateThumbBmps: an existing file is skipped and costs nothing.
   void generateThumbBmps(const int* heights, int count) const {
@@ -286,6 +303,22 @@ struct EpubReaderActivity : ReaderActivity {
   // loadBook()'s cover-thumbnail tail and loop()'s idle region, projected verbatim.
   void openThumbStep(); void idleStep();
   void initialResume(int target);
+  void percentJump();
+  // A chapter jump's anchor, resolved once its section is laid out (renderBook).
+  std::string pendingAnchor;
+  void anchorLanding();
+  // Progress write owed by a paint that skipped it (EpubReaderActivity::saveProgressIfMoved).
+  std::atomic<bool> progressSaveDeferred{false};
+  bool progressSaveFailed = false;
+  int lastSavedSpineIndex = -1, lastSavedPage = -1, lastSavedPageCount = -1;
+  int saveAttempts = 0; bool saveWorks = true;
+  bool saveProgress(int, int, int) { ++saveAttempts; return saveWorks; }
+  void saveProgressIfMoved();
+  // A jump the heap could not lay out: the reader forgets it (EpubReaderActivity::forgetPendingJump).
+  bool pendingPercentJump = false;
+  float pendingSpineProgress = 0.0f;
+  int forgottenJumps = 0;
+  void forgetPendingJump() { ++forgottenJumps; }
   void showBuildPopup(GfxRenderer&, int&);
   void loadPageForRender();
   bool applyDeferredReposition() { return false; }

@@ -439,6 +439,15 @@ int main() {
     require(reader.modelPage + reader.pendingManualTurn == 3,
             "button press read in the pass that applied a remote turn was dropped");
   });
+  test("an exit that never happened lets the reader paint again", [] {
+    // Back raised the flag; a sleep then replaced the Home transition and gave up, so the reader
+    // stays. Left up, the flag drops every text paint and the panel keeps the old page.
+    ReaderActivity reader;
+    reader.leaving = true;
+    reader.loop();
+    require(!reader.leaving, "the reader stayed but still counts as leaving");
+    require(reader.updates >= 1, "the page a dropped paint left behind is not painted again");
+  });
   test("pause behind the reader menu keeps statistics in memory, once", [] {
     ReaderActivity reader;
     reader.pauseKeepsStatsInRam = true;

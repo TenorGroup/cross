@@ -47,6 +47,9 @@ class Section {
     uint16_t checkpointPages = 0;
     uint32_t checkpointBytes = 0;
     size_t checkpointAnchors = 0;
+    // Nonzero when that checkpoint is the one inside the partial file at filePath (a restored
+    // build), at this byte offset; zero when it is the park's own checkpoint file.
+    uint32_t checkpointInPartialAt = 0;
     ReaderRenderSpec spec;
     HalFile lut;
     uint32_t lastVisibleTextOffset = 0;

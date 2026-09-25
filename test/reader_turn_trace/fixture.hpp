@@ -104,6 +104,9 @@ struct ReaderActivity {
   bool handleEndOfBookMenu() { return false; }
   bool handleFormatInput() { return false; }
   bool handleBackNavigation() { return false; }
+  // Raised by Back; the reader's loop runs again only when that exit was dropped.
+  std::atomic<bool> leaving{false};
+  void stayAfterDroppedExit();
   void loop();
   virtual bool latTrangThat(bool forward) {
     if (!changed) return false;
