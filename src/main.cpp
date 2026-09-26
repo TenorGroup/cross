@@ -419,13 +419,11 @@ void enterDeepSleep(bool fromTimeout = false) {
   }
   const uint32_t retainedStarted = millis();
 
-  // Absolute gray images leave their MSB plane, a B/W threshold of the final
-  // image. X3 can restore that baseline before its first clean wake refresh.
-  // Overlay gray masks do not represent the whole image.
-  const bool absoluteSleepFrame = gpio.deviceIsX3() && display.getController() == HalDisplay::Controller::UC8279 &&
-                                  SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT_CUSTOM;
-  if (isQuickResumeSleep || absoluteSleepFrame ||
-      SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TENOR) {
+  // The X3 UC8279 wakes by refreshing only the pixels that differ from the frame kept here, so it
+  // keeps the frame only when that frame is what the glass shows: not after a gray pass, whose
+  // levels no B/W frame names. Without a frame the wake drives every pixel instead.
+  const bool tenorScreen = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TENOR;
+  if (renderer.diffOnlyPanel() ? renderer.panelFrameKnown() : isQuickResumeSleep || tenorScreen) {
     saveSleepFrameBuffer();
   } else if (Storage.exists(SLEEP_FRAME_FILE)) {
     Storage.remove(SLEEP_FRAME_FILE);
@@ -725,6 +723,7 @@ void setup() {
   const bool wakeToBook = !wakeBook.empty();
 
   setupDisplayAndFonts(resume != BootResume::Splash);
+  renderer.setDiffOnlyPanel(gpio.deviceIsX3() && display.getController() == HalDisplay::Controller::UC8279);
   logHeapMark("display-and-fonts");
 
   switch (resume) {
@@ -751,6 +750,9 @@ void setup() {
           renderer.cleanupGrayscaleWithFrameBuffer();
         }
         LOG_DBG("MAIN", "Restored sleep frame baseline");
+      } else {
+        // Nothing says what the glass holds: the first paint drives every pixel.
+        renderer.redriveNextRefresh();
       }
       LOG_INF("BOOT", "Wake frame=%lu ms", static_cast<unsigned long>(millis() - wakeStarted));
       needsWakeRefresh = true;
@@ -761,6 +763,8 @@ void setup() {
         APP_STATE.showBootScreen = true;
         APP_STATE.saveToFile();
       }
+      // Whatever the glass kept from before this start is unknown to the controller.
+      renderer.redriveNextRefresh();
       activityManager.goToBoot();
       break;
   }

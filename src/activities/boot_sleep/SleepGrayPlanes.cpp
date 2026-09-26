@@ -4,6 +4,7 @@
 #include <Logging.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <new>
 
@@ -40,6 +41,14 @@ bool SleepGrayPlanes::keep() {
   const uint8_t* fb = renderer.getFrameBuffer();
   const size_t size = renderer.getBufferSize();
   if (size > (static_cast<size_t>(CHUNKS) << CHUNK_BITS)) return false;
+#ifdef SIMULATOR
+  // The heap a running BLE radio leaves at sleep has no room for the kept frame; lets a test
+  // walk that path.
+  if (std::getenv("CROSSPOINT_SIM_SLEEP_NO_HEAP")) {
+    LOG_ERR("SLP", "Sleep frame: no heap to keep it");
+    return false;
+  }
+#endif
   for (size_t at = 0, c = 0; at < size; at += size_t{1} << CHUNK_BITS, c++) {
     const size_t n = std::min(size - at, size_t{1} << CHUNK_BITS);
     kept[c].reset(new (std::nothrow) uint8_t[n]);  // no zero fill, the copy below fills it

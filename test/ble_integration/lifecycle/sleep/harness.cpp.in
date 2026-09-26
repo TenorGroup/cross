@@ -123,6 +123,10 @@ struct HalDisplay {
   Controller getController() { return Controller::UC8279; }
   void deepSleep() { ++displayOffCalls; events.push_back("display-off"); }
 } display;
+struct RendererBoundary {
+  bool diffOnlyPanel() const { return true; }
+  bool panelFrameKnown() const { return true; }
+} renderer;
 struct StorageBoundary {
   bool exists(const char*) { return false; }
   void remove(const char*) {}
