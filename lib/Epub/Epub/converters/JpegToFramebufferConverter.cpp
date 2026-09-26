@@ -52,6 +52,16 @@ struct JpegContext {
   // Cover thumbnail fed the same decoded blocks (RenderConfig::thumbs), null when it declined.
   GrayThumb* thumbs{nullptr};
 
+  // Downscale filter (see its branch in jpegDrawCallback). A destination pixel blends the two
+  // source rows and columns around its center, and those can straddle a block edge: the block
+  // above left its last row in carryRow (scaledSrcWidth bytes, null when it could not be had),
+  // the block to the left in this MCU row its last column in carryCol and the pixel above that
+  // in carryCorner.
+  uint8_t* carryRow{nullptr};
+  uint8_t carryCol[16]{};
+  uint8_t carryCorner{0};
+  int carryColBlockY{-1};
+
   uint32_t lastYieldMs{0};  // throttle state for yieldDuringDecode()
 };
 
@@ -106,6 +116,19 @@ constexpr int FP_SHIFT = 16;
 constexpr int32_t FP_ONE = 1 << FP_SHIFT;
 constexpr int32_t FP_MASK = FP_ONE - 1;
 
+// First destination index whose top (or left) source sample is at or past source index k, under
+// the center-aligned mapping s = (d + 0.5) * inv - 0.5 with inv in 16.16.
+int firstDstFrom(const int k, const int32_t inv) {
+  if (k <= 0) return 0;
+  const int64_t num = static_cast<int64_t>(2 * k + 1) * FP_ONE - inv;
+  return static_cast<int>((num + 2 * static_cast<int64_t>(inv) - 1) / (2 * static_cast<int64_t>(inv)));
+}
+
+// 16.16 source position of destination index d under that mapping (never negative when inv >= 1).
+inline int32_t centerSource(const int d, const int32_t inv) {
+  return static_cast<int32_t>((static_cast<int64_t>(2 * d + 1) * inv - FP_ONE) >> 1);
+}
+
 int jpegDrawCallback(JPEGDRAW* pDraw) {
   JpegContext* ctx = reinterpret_cast<JpegContext*>(pDraw->pUser);
   if (!ctx || !ctx->config || !ctx->renderer) return 0;
@@ -156,6 +179,101 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
   if (ctx->screenWidth - cfgX < clampXMax) clampXMax = ctx->screenWidth - cfgX;
   if (dstXStart < -cfgX) dstXStart = -cfgX;
   if (dstXEnd > clampXMax) dstXEnd = clampXMax;
+
+  // === Downscale (fineScale <= 1.0): bilinear around each destination pixel's center ===
+  // chooseJpegScale leaves a factor in (0,5; 1], so the two nearest source rows and columns cover
+  // the source cell. Destination rows and columns go to the block holding their lower source
+  // sample; the upper one then sits in this block or in what the previous blocks left (carry).
+  if (fineScaleFPX <= FP_ONE && fineScaleFPY <= FP_ONE && !(fineScaleFPX == FP_ONE && fineScaleFPY == FP_ONE) &&
+      blockH <= 16) {
+    const bool lastRow = srcYEnd >= ctx->scaledSrcHeight;
+    const bool lastCol = srcXEnd >= ctx->scaledSrcWidth;
+    int rowStart = firstDstFrom(blockY - 1, invScaleFPY);
+    int rowEnd = lastRow ? ctx->dstHeight : firstDstFrom(srcYEnd - 1, invScaleFPY);
+    int colStart = firstDstFrom(blockX - 1, invScaleFPX);
+    int colEnd = lastCol ? ctx->dstWidth : firstDstFrom(srcXEnd - 1, invScaleFPX);
+    if (rowStart < -cfgY) rowStart = -cfgY;
+    if (rowEnd > clampYMax) rowEnd = clampYMax;
+    if (colStart < -cfgX) colStart = -cfgX;
+    if (colEnd > clampXMax) colEnd = clampXMax;
+
+    const uint8_t* above = blockY > 0 && ctx->carryRow ? ctx->carryRow : nullptr;
+    const bool haveLeft = blockX > 0 && ctx->carryColBlockY == blockY;
+    const int lastSrcY = ctx->scaledSrcHeight - 1;
+    const int lastSrcX = ctx->scaledSrcWidth - 1;
+    // Row y of the source, indexed by absolute column, and the value left of this block on it.
+    const auto sourceRow = [&](int y, uint8_t& left) -> const uint8_t* {
+      if (y > lastSrcY) y = lastSrcY;
+      if (y < blockY) {
+        if (above) {
+          left = haveLeft ? ctx->carryCorner : above[blockX];
+          return above;
+        }
+        y = blockY;  // no row above: repeat the block's first row
+      }
+      const uint8_t* row = &pixels[(y - blockY) * stride] - blockX;
+      left = haveLeft ? ctx->carryCol[y - blockY] : row[blockX];
+      return row;
+    };
+
+    if (rowStart < rowEnd && colStart < colEnd) {
+      DirectPixelWriter pw;
+      pw.init(renderer);
+      DirectCacheWriter cw;
+      int cacheOriginY = 0;
+      if (caching) {
+        if (!ctx->cache.advanceTo(rowStart)) {
+          caching = false;
+          ctx->caching = false;
+        } else {
+          cw.init(ctx->cache.buffer, ctx->cache.bytesPerRow, ctx->cache.bandRows, ctx->cache.originX);
+          cacheOriginY = ctx->config->y + ctx->cache.bandStart;
+        }
+      }
+      for (int dstY = rowStart; dstY < rowEnd; dstY++) {
+        const int outY = cfgY + dstY;
+        pw.beginRow(outY);
+        if (caching) cw.beginRow(outY, cacheOriginY);
+        const int32_t syFP = centerSource(dstY, invScaleFPY);
+        const int32_t fy = syFP & FP_MASK;
+        const int y0 = syFP >> FP_SHIFT;
+        uint8_t left0, left1;
+        const uint8_t* row0 = sourceRow(y0, left0);
+        const uint8_t* row1 = sourceRow(y0 + 1, left1);
+        int32_t sxFP = centerSource(colStart, invScaleFPX);
+        for (int dstX = colStart; dstX < colEnd; dstX++, sxFP += invScaleFPX) {
+          const int outX = cfgX + dstX;
+          const int32_t fx = sxFP & FP_MASK;
+          const int x0 = sxFP >> FP_SHIFT;
+          const int x1 = x0 < lastSrcX ? x0 + 1 : lastSrcX;
+          const int a0 = x0 < blockX ? left0 : row0[x0];
+          const int a1 = x0 < blockX ? left1 : row1[x0];
+          const int top = (a0 * (FP_ONE - fx) + row0[x1] * fx) >> FP_SHIFT;
+          const int bot = (a1 * (FP_ONE - fx) + row1[x1] * fx) >> FP_SHIFT;
+          const uint8_t gray = static_cast<uint8_t>((top * (FP_ONE - fy) + bot * fy) >> FP_SHIFT);
+          uint8_t dithered;
+          if (useDithering) {
+            dithered = applyBayerDither4Level(gray, outX, outY);
+          } else {
+            dithered = gray / 85;
+            if (dithered > 3) dithered = 3;
+          }
+          pw.writePixel(outX, dithered);
+          if (caching) cw.writePixel(outX, dithered);
+        }
+      }
+    }
+
+    // What the next blocks need from this one: its last column for the block to its right, and
+    // its last row (and the pixel above its last column) for the MCU row below.
+    for (int r = 0; r < blockH; r++) ctx->carryCol[r] = pixels[r * stride + validW - 1];
+    ctx->carryColBlockY = blockY;
+    if (ctx->carryRow) {
+      ctx->carryCorner = ctx->carryRow[srcXEnd - 1];
+      memcpy(ctx->carryRow + blockX, &pixels[(blockH - 1) * stride], validW);
+    }
+    return 1;
+  }
 
   if (dstYStart >= dstYEnd || dstXStart >= dstXEnd) return 1;
 
@@ -312,7 +430,7 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
     return 1;
   }
 
-  // === Nearest-neighbor (downscale: fineScale < 1.0) ===
+  // === Nearest-neighbor (one axis up, the other down) ===
   for (int dstY = dstYStart; dstY < dstYEnd; dstY++) {
     const int outY = cfgY + dstY;
     pw.beginRow(outY);
@@ -455,6 +573,14 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
   LOG_DBG("JPG", "JPEG %dx%d -> %dx%d (scale %.2f, jpegScale 1/%d, fineScale %.2f)%s", srcWidth, srcHeight, destWidth,
           destHeight, targetScale, jpegScaleDenom, (float)destWidth / ctx.scaledSrcWidth,
           isProgressive ? " [progressive]" : "");
+
+  // The downscale filter's row carried across MCU rows (one byte per decoded column); without it
+  // a block's first destination rows repeat its first source row instead of blending.
+  std::unique_ptr<uint8_t[]> carryRow;
+  if (ctx.fineScaleFPX <= FP_ONE && ctx.fineScaleFPY <= FP_ONE) {
+    carryRow.reset(new (std::nothrow) uint8_t[ctx.scaledSrcWidth]);
+    ctx.carryRow = carryRow.get();
+  }
 
   // Set pixel type to 8-bit grayscale (must be after open())
   jpeg->setPixelType(EIGHT_BIT_GRAYSCALE);

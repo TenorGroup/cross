@@ -11,6 +11,18 @@
 // Streaming cache writer for 2-bit pixels (4 levels). Packs 4 pixels per byte,
 // MSB first.
 //
+// File layout: "PXC", a format byte, uint16 width, uint16 height, then the rows.
+// The format byte names how the pixels were made (scaling, dither): a file of
+// another format, or one from before the header had it (width and height only),
+// is not drawn, the image is decoded again and the file rewritten.
+namespace pxcfile {
+constexpr uint8_t FORMAT = 2;  // 2: area/bilinear downscale, Bayer 4x4
+constexpr size_t HEADER_BYTES = 8;
+inline bool headerIsCurrent(const uint8_t* header) {
+  return header[0] == 'P' && header[1] == 'X' && header[2] == 'C' && header[3] == FORMAT;
+}
+}  // namespace pxcfile
+//
 // The .pxc file is written incrementally in small row bands rather than holding
 // the whole decoded image in one heap buffer. A full-page image (e.g. 482x728)
 // needs ~88KB packed, which will not fit alongside the ~20KB JPEG decoder on a
@@ -104,9 +116,15 @@ struct PixelCache {
     }
     cachePathStr = cachePath;
 
-    uint16_t w16 = (uint16_t)w;
-    uint16_t h16 = (uint16_t)h;
-    if (file.write(&w16, 2) != 2 || file.write(&h16, 2) != 2) {
+    const uint8_t header[pxcfile::HEADER_BYTES] = {'P',
+                                                   'X',
+                                                   'C',
+                                                   pxcfile::FORMAT,
+                                                   static_cast<uint8_t>(w),
+                                                   static_cast<uint8_t>(w >> 8),
+                                                   static_cast<uint8_t>(h),
+                                                   static_cast<uint8_t>(h >> 8)};
+    if (file.write(header, sizeof(header)) != sizeof(header)) {
       LOG_ERR("IMG", "Failed to write cache header: %s", cachePath.c_str());
       abort();
       return false;
@@ -158,7 +176,7 @@ struct PixelCache {
     }
     file.close();
     LOG_DBG("IMG", "Cache written: %s (%dx%d, %d bytes)", cachePathStr.c_str(), width, height,
-            4 + bytesPerRow * height);
+            static_cast<int>(pxcfile::HEADER_BYTES) + bytesPerRow * height);
     ok = false;  // file handed off; nothing left to clean up
     return true;
   }

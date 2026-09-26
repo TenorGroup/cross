@@ -13,8 +13,10 @@
 
 #include "Epub/converters/DirectPixelWriter.h"
 #include "Epub/converters/ImageDecoderFactory.h"
+#include "Epub/converters/PixelCache.h"
 
-// Cache file format:
+// Cache file format (PixelCache.h, pxcfile):
+// - "PXC" and the format byte
 // - uint16_t width
 // - uint16_t height
 // - uint8_t pixels[...] - 2 bits per pixel, packed (4 pixels per byte), row-major order
@@ -49,9 +51,13 @@ std::string getCachePath(const std::string& imagePath) {
 
 bool readValidCacheHeader(HalFile& cacheFile, const int expectedWidth, const int expectedHeight, uint16_t& cachedWidth,
                           uint16_t& cachedHeight) {
-  if (cacheFile.read(&cachedWidth, 2) != 2 || cacheFile.read(&cachedHeight, 2) != 2) {
+  uint8_t header[pxcfile::HEADER_BYTES];
+  if (cacheFile.read(header, sizeof(header)) != static_cast<int>(sizeof(header)) ||
+      !pxcfile::headerIsCurrent(header)) {
     return false;
   }
+  cachedWidth = static_cast<uint16_t>(header[4] | header[5] << 8);
+  cachedHeight = static_cast<uint16_t>(header[6] | header[7] << 8);
 
   const int widthDiff = abs(cachedWidth - expectedWidth);
   const int heightDiff = abs(cachedHeight - expectedHeight);
@@ -60,7 +66,7 @@ bool readValidCacheHeader(HalFile& cacheFile, const int expectedWidth, const int
   }
 
   const size_t bytesPerRow = (cachedWidth + 3) / 4;
-  const size_t expectedSize = 4 + bytesPerRow * cachedHeight;
+  const size_t expectedSize = pxcfile::HEADER_BYTES + bytesPerRow * cachedHeight;
   return cacheFile.size() >= expectedSize;
 }
 
@@ -233,7 +239,7 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
 
   // Streaming fallback (slot didn't fit). A failed slot load may have consumed
   // part of the payload; rewind to just past the header.
-  cacheFile.seek(4);
+  cacheFile.seek(pxcfile::HEADER_BYTES);
 
   // Read several rows per SD access. A one-row-per-read loop here means
   // cachedHeight (~728) tiny reads through the storage mutex + SdFat; batching
