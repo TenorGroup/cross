@@ -784,6 +784,7 @@ void EpubReaderActivity::showMemoryError() {
   if (section->pageCount > 0 && section->currentPage >= static_cast<int>(section->pageCount)) {
     section->currentPage = section->pageCount - 1;
   }
+  settleBuildPopup();
   renderer.clearScreen();
   GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
   automaticPageTurnActive = false;
@@ -829,9 +830,19 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
   LOG_INF("ERS", "BUILD_POPUP src=deadline page=%d pages=%u partial=%u", section ? section->currentPage : -1,
           section ? static_cast<unsigned>(section->pageCount) : 0u, section && section->isPartial() ? 1u : 0u);
 #endif
-  GUI.drawPopup(renderer, tr(STR_INDEXING));
+  // The layout goes on while the panel shows the popup: waiting it out held a contents jump 390 ms
+  // (X3 r43). Nothing is drawn before settleBuildPopup().
+  GUI.drawPopup(renderer, tr(STR_INDEXING), false);
+  renderer.displayBufferAsync(HalDisplay::FAST_REFRESH);
+  buildPopupRefreshing = true;
   pagesUntilFullRefresh = 1;
   buildPopupPending = false;
+}
+
+void EpubReaderActivity::settleBuildPopup() {
+  if (!buildPopupRefreshing) return;
+  renderer.waitRefreshComplete();
+  buildPopupRefreshing = false;
 }
 
 void EpubReaderActivity::openDictionaryWordSelect(const bool quotation, const std::string& editName) {
@@ -2308,6 +2319,11 @@ void EpubReaderActivity::traceReadablePaint(const char* kind) {
 #endif
 
 void EpubReaderActivity::renderBook() {
+  // A build popup still refreshing when this paint ends is waited out before anything else draws.
+  struct PopupSettle {
+    EpubReaderActivity& reader;
+    ~PopupSettle() { reader.settleBuildPopup(); }
+  } popupSettle{*this};
 #ifdef TENOR_TURN_TRACE
   ++paintTraceSequence;
   paintTraceStarted = millis();
@@ -2340,6 +2356,7 @@ void EpubReaderActivity::renderBook() {
     logTurnTrace("FAILED", appliedTurnTrace, "index");
     appliedTurnTrace = {};
 #endif
+    settleBuildPopup();
     renderer.clearScreen();
     GUI.drawPopup(renderer, tr(STR_INDEX_FAILED));
     automaticPageTurnActive = false;
@@ -2712,6 +2729,7 @@ void EpubReaderActivity::renderBook() {
 
   applyDeferredReposition();
 
+  settleBuildPopup();
   renderer.clearScreen();
 
   if (section->pageCount == 0) {

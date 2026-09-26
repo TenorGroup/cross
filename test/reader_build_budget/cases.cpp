@@ -7,7 +7,7 @@ template<class F> void test(const char* name, F fn) {
   freeink::ble::idleStoppedState = false;
   freeink::ble::stopForIdleCalls = freeink::ble::rearmRequests = 0;
   freeink::ble::stopForIdleResult = true;
-  clockMs = 1000; popupCount = buildErrors = 0; popupAtMs = 0; thumbs = {}; tenorchrome::enabledState = true;
+  clockMs = 1000; popupCount = buildErrors = blockingPopups = 0; popupAtMs = 0; panelRefreshing = false; thumbs = {}; tenorchrome::enabledState = true;
   activityManager.sleepTransitionState = false; activityManager.deferred.clear(); openWrites = {};
   ImageBlock::hook = nullptr;
   try { fn(); std::cout << "PASS " << name << '\n'; }
@@ -113,6 +113,19 @@ int main() {
     require(popupCount == 0, "short extension painted indexing popup");
     require(r.pagesUntilFullRefresh == 5, "short extension changed refresh cadence");
     require(!r.buildPopupPending, "short extension left popup pending");
+  });
+  // X3 r43: a contents jump laid out 93 pages in 4.4 s and stood 390 ms of it on the popup's
+  // refresh. The layout goes on while the panel shows the popup, and the page waits for it.
+  test("a slow build lays out pages while its popup refreshes", [] {
+    EpubReaderActivity r; r.section->building = false; r.section->currentPage = 30;
+    r.section->tickMs = 400; r.pagesUntilFullRefresh = 5;
+    { RenderLock held; r.foreground(); }
+    require(r.section && r.section->pageCount > 30, "slow extension missed target");
+    require(popupCount == 1, "slow extension did not show its popup");
+    require(blockingPopups == 0 && r.section->ticksWhileRefreshing > 0,
+            "the layout waited out the popup's refresh before its next step");
+    require(!panelRefreshing, "the build handed the page a refresh still running");
+    require(r.pagesUntilFullRefresh == 1, "the popup did not schedule a full refresh");
   });
   test("slow watermark extension paints once after deadline", [] {
     EpubReaderActivity r; r.section->building = false; r.section->currentPage = 30;

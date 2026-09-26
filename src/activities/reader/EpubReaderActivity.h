@@ -267,6 +267,10 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr unsigned long BUILD_POPUP_DEADLINE_MS = 1000;
   bool buildPopupPending = false;
   void showBuildPopup(GfxRenderer& renderer, int& pagesUntilFullRefresh);
+  // The build popup's refresh runs beside the layout that follows it; settleBuildPopup() waits it
+  // out before anything else is drawn, and renderBook() never returns with it running.
+  bool buildPopupRefreshing = false;
+  void settleBuildPopup();
   bool applyDeferredReposition();
   void clearDeferredReposition();
   void rememberCurrentContentOffset();
