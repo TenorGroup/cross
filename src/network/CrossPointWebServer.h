@@ -5,7 +5,6 @@
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -13,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "UploadSocket.h"
 #include "WebTransferAuth.h"
 
 namespace power_timeout {
@@ -145,8 +145,8 @@ class CrossPointWebServer {
   std::function<bool(uint8_t)> uiTextSizeApplier;
   std::function<bool()> uploadCancel;
   bool uploadCancelled();
-  // Socket of the HTTP upload being read, for interruptUpload(); -1 between uploads.
-  std::atomic<int> uploadSocket{-1};
+  // Socket of the HTTP upload being read, for interruptUpload().
+  UploadSocket uploadSocket;
   void noteUploadSocket();
 
   void noteSessionActivity();
