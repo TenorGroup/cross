@@ -94,11 +94,12 @@ class ReworkUiTest(unittest.TestCase):
         self.assertEqual(log.count('Entering activity: EpubReaderMenu'), 1, log)
 
     # --- S1: man Cai dat khong thanh the, nut canh nhay nhom, vong chi gom dong ---------------
-    # Vao Cai dat > nhom Khac tu man chinh: the Cai dat (DOWN x4), roi RIGHT x8
-    # sang hang "Khac" trong danh sach nhom, Chon mo thang nhom do.
+    # Vao Cai dat > nhom Khac tu man chinh: the Cai dat (DOWN x4), roi RIGHT x9
+    # sang hang "Khac" trong danh sach nhom (Cam bien chuyen dong dung sau Dieu khien),
+    # Chon mo thang nhom do.
     VAO_THIET_BI = ('1000:DOWN;1500:DOWN;2000:DOWN;2500:DOWN;'
                     '3000:RIGHT;3250:RIGHT;3500:RIGHT;3750:RIGHT;4000:RIGHT;4250:RIGHT;4500:RIGHT;4750:RIGHT;'
-                    '5200:CONFIRM')
+                    '5000:RIGHT;5300:CONFIRM')
 
     def test_s1_nut_canh_sang_nhom_khac_dap_dong_1_va_chon_mo_ngay(self):
         # Nhóm Khác, dòng 1 là Đồng bộ KOReader; Chọn mở ngay, không phải bước vào dòng trước.
@@ -173,9 +174,10 @@ class ReworkUiTest(unittest.TestCase):
         self.assertEqual(self.saved()['statusBarClock'], 1, log)
 
     def test_h5_clock_is_first_row_in_system_after_sleep_split(self):
-        # Sleep and wake have their own group. System now starts with Clock.
+        # Sleep and wake have their own group. System now starts with Clock. Motion sensor
+        # sits between Controls and System: one more step right.
         script = ('1000:DOWN;1500:DOWN;2000:DOWN;2500:DOWN;'
-                  '3000:RIGHT;3300:RIGHT;3600:RIGHT;3900:RIGHT;4200:RIGHT;4600:CONFIRM;'
+                  '3000:RIGHT;3300:RIGHT;3600:RIGHT;3900:RIGHT;4200:RIGHT;4500:RIGHT;4900:CONFIRM;'
                   '5600:CONFIRM;7600:QUIT')
         log = self.run_sim(script)
         self.assertEqual(log.count('Entering activity: DongHoSettings'), 1, log)

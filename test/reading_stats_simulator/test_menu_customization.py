@@ -98,7 +98,7 @@ def opds():
  assert 'OpdsServerList' in (t.o/'opds.log').read_text()
 def groups():
  sd=t.run('groups','1000:UP;1500:RIGHT;2000:CONFIRM;2700:DOWN:1300;4500:BACK;5400:QUIT',[(4250,'display'),(5000,'home')])
- x=saved(sd,'menu-customization.json');assert x['tabs']['settings']==[7,0,1,2,3,4,5,6];assert x['tabs']['home']==[0,1,4,2,3]
+ x=saved(sd,'menu-customization.json');assert x['tabs']['settings']==[7,0,1,2,8,3,4,5,6];assert x['tabs']['home']==[0,1,4,2,3]
 
 def homeback():
  route('homeback','status/statusBarClock','Entering activity: StatusBarSettings',press='2700:BACK:1200;',shots=[(4100,'home')])
@@ -113,7 +113,7 @@ def recover():
 def normalize():
  s=state(['text/fontSize','text/fontSize','future/missing'],home=[4,4,255,0],settings=[6,6,123])
  sd=t.run('normalize','1000:DOWN:1200;2800:QUIT',[(2500,'order')],s)
- x=saved(sd,'menu-customization.json');assert x['pins']==['text/fontSize','future/missing'];assert x['tabs']['home']==[4,1,0,2,3];assert x['tabs']['settings']==[6,0,1,2,3,4,5,7]
+ x=saved(sd,'menu-customization.json');assert x['pins']==['text/fontSize','future/missing'];assert x['tabs']['home']==[4,1,0,2,3];assert x['tabs']['settings']==[6,0,1,2,3,4,5,7,8]
 def writefail():
  sd=t.o/'sd-writefail';d=sd/'.crosspoint/menu-customization.tmp';d.mkdir(parents=True,exist_ok=True);(d/'block').write_text('test')
  sd=t.run('writefail','1000:UP;1500:RIGHT;2000:CONFIRM;2700:CONFIRM:900;4300:QUIT',[(4000,'failed')])

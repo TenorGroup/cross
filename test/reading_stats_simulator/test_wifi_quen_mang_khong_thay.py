@@ -10,7 +10,8 @@ khong chua ten da luu. Do duoc:
   - log `[WIFI] Saved network not in range: <ten>` khi dung dong cho no;
   - sau khi giu nut Trai roi chon Quen, wifi.json khong con ten do nua.
 
-Ban do dieu huong: Home -> DOWN x4 = the Cai dat -> RIGHT x6 = nhom `Thiet bi`
+Ban do dieu huong: Home -> DOWN x4 = the Cai dat -> RIGHT x7 = nhom `Thiet bi`
+(Cam bien chuyen dong dung giua Dieu khien va He thong)
 -> CONFIRM mo man Cai dat tai nhom do. Trong
 nhom do vong bon dong: 1 Ngon ngu, 2 Ten may, 3 Mang Wi-Fi, 4 Ble page turner
 (thu tu do DONG_HANH_DONG trong SettingsActivity.cpp quyet dinh). Tu dong 1 bam
@@ -71,7 +72,7 @@ class WifiQuenMangKhongThayTest(unittest.TestCase):
         return [c["ssid"] for c in json.loads((self.store / "wifi.json").read_text()).get("credentials", [])]
 
     # Toi man chon mang: mo Cai dat o nhom Thiet bi roi vao dong 3.
-    TOI_MAN_MANG = ["DOWN"] * 4 + ["RIGHT"] * 6 + ["CONFIRM"] + ["RIGHT"] * 2 + ["CONFIRM"]
+    TOI_MAN_MANG = ["DOWN"] * 4 + ["RIGHT"] * 7 + ["CONFIRM"] + ["RIGHT"] * 2 + ["CONFIRM"]
 
     def test_1_mang_da_luu_khong_quet_thay_van_co_dong_rieng(self):
         log = self.chay(self.TOI_MAN_MANG + ["QUIT"])

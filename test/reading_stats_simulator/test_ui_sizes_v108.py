@@ -195,9 +195,10 @@ class UiSizesV108Test(unittest.TestCase):
         t.key("DOWN").shot("home-settings").key("RIGHT").key("CONFIRM").shot("display")
         t.key("CONFIRM").shot("popup").key("RIGHT").shot("popup-next").key("LEFT").key("CONFIRM")
         t.key("LEFT").shot("display-last").key("RIGHT")
-        t.key("DOWN", 5).shot("device").key("RIGHT").key("CONFIRM").shot("keyboard")
+        # Motion sensor sits between Controls and System: Device is six groups down, Reader four up.
+        t.key("DOWN", 6).shot("device").key("RIGHT").key("CONFIRM").shot("keyboard")
         t.key("RIGHT").key("CONFIRM").shot("keyboard-edit").key("BACK").shot("keyboard-return")
-        t.key("UP", 3).key("CONFIRM").shot("text-settings")
+        t.key("UP", 4).key("CONFIRM").shot("text-settings")
         t.key("LEFT").shot("text-settings-last").key("BACK")
         images, log = self.run_sim(sd, output, "matrix", t)
         self.assertIn("Entering activity: ReadingHabits", log)
