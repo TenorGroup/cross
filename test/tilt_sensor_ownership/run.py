@@ -145,7 +145,9 @@ with tempfile.TemporaryDirectory(prefix="tilt-sensor-ownership-") as temporary_d
     replay.write_bytes(gzip.decompress((test_root / "shake-replay.csv.gz").read_bytes()))
     flips = output / "flip-replay.csv"
     flips.write_bytes(gzip.decompress((test_root / "flip-replay.csv.gz").read_bytes()))
-    run = subprocess.run([str(executable), str(replay), str(flips)], text=True, capture_output=True)
+    nods = output / "nod-replay.csv"
+    nods.write_bytes(gzip.decompress((test_root / "nod-replay.csv.gz").read_bytes()))
+    run = subprocess.run([str(executable), str(replay), str(flips), str(nods)], text=True, capture_output=True)
     if run.stdout:
         print(run.stdout, end="")
     if run.stderr:

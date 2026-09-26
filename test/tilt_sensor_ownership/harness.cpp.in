@@ -700,6 +700,26 @@ void handHeldRunReplays(const char* path) {
   expect(c.forward + c.back == 10, "replay menu nghieng-vua", "each side flick steps a tab once it comes back");
 }
 
+// nod-replay.csv.gz: the 26/09 run on the Settings screen at the firmware poll (rows Light). The
+// device moved eight rows for gat4's ten nods, and the replay moves the same eight. The other two
+// never passed Light's 180 deg/sec on a poll (149 then 147, 137 then 125). A lower rate, or two
+// polls in a row past two thirds of it, takes them but also moves rows while picking the device
+// up from a table, flicking a tab, laying it down or turning the wrist, so the rate stays.
+void nodRunReplays(const char* path) {
+  const auto samples = loadReplay(path);
+  if (!expect(samples.size() > 6000, "nod-replay", "the 26/09 run must load")) return;
+  const auto menu = [&](const char* segment) { return replaySegment(samples, segment, 1, 1, Screen::Menu); };
+  Counts c = menu("gat4");
+  expect(c.up == 4 && c.down == 4 && c.forward + c.back == 0 && c.shakes == 0, "nod-replay gat4",
+         "the eight rows the device moved, four up and four down, no tab, no shake");
+  for (const char* segment : {"cam-len-dui4", "nghieng-the4", "nguon-tro-ve4", "nguon-chon4"}) {
+    c = menu(segment);
+    char label[64];
+    std::snprintf(label, sizeof(label), "nod-replay %s", segment);
+    expect(c.up + c.down == 0, label, "picking up, tab flicks and power presses move no row");
+  }
+}
+
 // ---- Face down and face up -------------------------------------------------
 // flip-replay.csv.gz: the 26/09 hand-held X3 run at 224 Hz (every fourth sample kept),
 // up-ngua six face-down placements each turned back up, the other segments knocks,
@@ -979,6 +999,7 @@ int main(int argc, char** argv) {
   shakeOffLeavesTiltAsItWas();
   shakeKeepsTheSensorAwakeOnEveryScreen();
   flipReplaysAsMeasured(argc > 2 ? argv[2] : nullptr, argc > 1 ? argv[1] : nullptr);
+  nodRunReplays(argc > 3 ? argv[3] : nullptr);
   faceDownWantsTheDeviceLyingStill();
   flipKeepsTheSensorAwakeOnEveryScreen();
   std::printf("tilt_sensor_ownership: %d failed assertions\n", failures);
