@@ -79,13 +79,15 @@ void drainKeys() {
   }
 }
 
-// One queued raw edge: button code (see blebinding), press or release, and when.
-bool takeRaw(uint32_t& code, bool& pressed, uint32_t& atMs) {
+// One queued raw edge: button code (see blebinding), press or release, when, and on a
+// release whether the press was the remote's rest frame (RawButtonEvent::wasRest).
+bool takeRaw(uint32_t& code, bool& pressed, uint32_t& atMs, bool& wasRest) {
   freeink::RawButtonEvent ev;
   if (!BleHid.popRawButton(ev)) return false;
   code = ev.code();
   pressed = ev.pressed;
   atMs = ev.atMs;
+  wasRest = ev.wasRest;
   return true;
 }
 
@@ -118,7 +120,7 @@ void disconnect() {}
 void forget(const char*) {}
 bool takeFailure(char*, const size_t) { return false; }
 void drainKeys() {}
-bool takeRaw(uint32_t&, bool&, uint32_t&) { return false; }
+bool takeRaw(uint32_t&, bool&, uint32_t&, bool&) { return false; }
 bool readerDeferred() { return false; }
 
 #endif
@@ -251,6 +253,8 @@ void BlePageTurnerActivity::rebuildRows() {
   them(tr(STR_BLE_BIND_PREV), ROW_BIND_PREV);
   them(tr(STR_BLE_BIND_NEXT_CHAPTER), ROW_BIND_NEXT_CHAPTER);
   them(tr(STR_BLE_BIND_PREV_CHAPTER), ROW_BIND_PREV_CHAPTER);
+  them(tr(STR_BLE_BIND_READER_MENU), ROW_BIND_READER_MENU);
+  them(tr(STR_BLE_BIND_SAVE_QUOTE), ROW_BIND_SAVE_QUOTE);
 
   const uint8_t bonds = backend::bondCount();
   for (uint8_t i = 0; i < bonds; i++) {
@@ -291,10 +295,10 @@ bool BlePageTurnerActivity::clampAfterNav() {
 }
 
 void BlePageTurnerActivity::refreshValues() {
-  if (rowItems_.size() < 7) return;
+  if (rowItems_.size() < 9) return;
   rowItems_[0].value = SETTINGS.blePageTurnerEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
   rowItems_[2].label = backend::scanning() ? tr(STR_BLE_STOP_SCAN) : tr(STR_BLE_SCAN);
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < 6; ++i) {
     bindValues_[i] = bindValue(static_cast<blebinding::Action>(i + 1));
     rowItems_[3 + i].value = bindValues_[i].c_str();
   }
@@ -343,12 +347,21 @@ void BlePageTurnerActivity::readPendingKeys() {
   uint32_t code = 0;
   bool pressed = false;
   uint32_t atMs = 0;
-  while (backend::takeRaw(code, pressed, atMs)) {
+  bool wasRest = false;
+  while (backend::takeRaw(code, pressed, atMs, wasRest)) {
     if (pressed) {
       lastRawCode_ = code;
       if (bindWaitActive_ && learnCode_ == 0) {
         learnCode_ = code;
         learnPressMs_ = atMs;
+      }
+    } else if (wasRest) {
+      // That "press" was the remote idling on a non-zero byte, read before its rest frame
+      // was known: no button. Learning keeps waiting for the next press.
+      if (lastRawCode_ == code) lastRawCode_ = 0;
+      if (bindWaitActive_ && code == learnCode_) {
+        learnCode_ = 0;
+        LOG_INF("BLE", "Rest frame ignored while learning");
       }
     } else if (bindWaitActive_ && code == learnCode_) {
       finishLearn(true, atMs - learnPressMs_);
@@ -496,7 +509,7 @@ void BlePageTurnerActivity::activateIndex(const int index) {
   // se lam xam mot o khong lien quan.
   app.clearTapFlash();
   const int16_t code = rowItems_[index].actionValue;
-  const bool hangGan = code >= ROW_BIND_NEXT && code <= ROW_BIND_PREV_CHAPTER;
+  const bool hangGan = code >= ROW_BIND_NEXT && code <= ROW_BIND_SAVE_QUOTE;
   // Mot nhip vao hang khac la nguoi dung doi y: thong bao cu va luot cho cu het hieu luc.
   if (!hangGan) {
     bindWaitActive_ = false;
@@ -540,7 +553,7 @@ void BlePageTurnerActivity::onRowLongPress(const int index) { clearBindForRow(in
 void BlePageTurnerActivity::clearBindForRow(const int index) {
   if (index < 0 || index >= static_cast<int>(rowItems_.size())) return;
   const int16_t code = rowItems_[index].actionValue;
-  if (code >= ROW_BIND_NEXT && code <= ROW_BIND_PREV_CHAPTER) {
+  if (code >= ROW_BIND_NEXT && code <= ROW_BIND_SAVE_QUOTE) {
     clearBind(static_cast<blebinding::Action>(code - ROW_BIND_NEXT + 1));
   }
 }

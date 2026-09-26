@@ -82,4 +82,37 @@ TEST(BleRemoteSettingsTest, GarbageSlotsAreDroppedAndOversizedTablesCut) {
   EXPECT_TRUE(resaved["bleRemotes"].isNull()) << "no table, no key";
 }
 
+// The reader menu and save quotation actions go into the same 4-bit action field: a
+// file written with them reads back with them, and a file from before them reads as it
+// always did.
+TEST(BleRemoteSettingsTest, ReaderShortcutActionsRoundTripAndOldSlotsStay) {
+  CrossPointSettings& settings = SETTINGS;
+  const uint32_t menuTap = blebinding::makeBinding(0x030001, false, blebinding::Action::ReaderMenu);
+  const uint32_t quoteHold = blebinding::makeBinding(0x030008, true, blebinding::Action::SaveQuote);
+  JsonDocument doc;
+  JsonObject r = doc["bleRemotes"].to<JsonArray>().add<JsonObject>();
+  r["addr"] = "AA:BB:CC:DD:EE:07";
+  JsonArray binds = r["binds"].to<JsonArray>();
+  binds.add(kNextChapterTap);  // a slot written before the two actions existed
+  binds.add(menuTap);
+  binds.add(quoteHold);
+  ASSERT_TRUE(settings.fromJson(doc.as<JsonVariantConst>()));
+  ASSERT_EQ(settings.bleRemoteCount, 1);
+  ASSERT_EQ(settings.bleRemotes[0].count, 3);
+  EXPECT_EQ(settings.bleRemotes[0].bindings[0], kNextChapterTap);
+  EXPECT_EQ(blebinding::lookup(settings.bleRemotes[0], 0x030001, false), blebinding::Action::ReaderMenu);
+  EXPECT_EQ(blebinding::lookup(settings.bleRemotes[0], 0x030008, true), blebinding::Action::SaveQuote);
+
+  JsonDocument resaved;
+  settings.toJson(resaved);
+  settings.bleRemoteCount = 0;
+  ASSERT_TRUE(settings.fromJson(resaved.as<JsonVariantConst>()));
+  ASSERT_EQ(settings.bleRemoteCount, 1);
+  ASSERT_EQ(settings.bleRemotes[0].count, 3);
+  EXPECT_EQ(settings.bleRemotes[0].bindings[1], menuTap);
+  EXPECT_EQ(settings.bleRemotes[0].bindings[2], quoteHold);
+  EXPECT_FALSE(blebinding::valid(blebinding::makeBinding(0x030001, false, static_cast<blebinding::Action>(7))))
+      << "an action past the list still reads as garbage";
+}
+
 }  // namespace

@@ -8,13 +8,13 @@
 
 #include "CrossPointSettings.h"
 
-// The short actions a short power press, a hard shake, face down, face up or a double tap
-// runs from the main loop, on whatever screen is in front. One list of them for every setting, and
-// one decision for all: what the configured action means here, or nothing.
+// The short actions a short power press, a hard shake, face down, face up, a double tap or a
+// Bluetooth remote button runs from the main loop, on whatever screen is in front. One list of
+// them for every setting, and one decision for all: what the configured action means here, or nothing.
 namespace quickaction {
 
-enum class Trigger : uint8_t { PowerRelease, Shake, FaceDown, FaceUp, DoubleTap };
-enum class Outcome : uint8_t { None, Refresh, Sleep, PageForward, Back, Confirm };
+enum class Trigger : uint8_t { PowerRelease, Shake, FaceDown, FaceUp, DoubleTap, Remote };
+enum class Outcome : uint8_t { None, Refresh, Sleep, PageForward, Back, Confirm, ReaderMenu, SaveQuote };
 
 struct Choice {
   uint8_t action;  // A SHORT_PWRBTN value
@@ -31,6 +31,8 @@ inline constexpr Choice CHOICES[] = {
     {CrossPointSettings::FOOTNOTES, StrId::STR_FOOTNOTES},
     {CrossPointSettings::PWR_CONFIRM, StrId::STR_SELECT},
     {CrossPointSettings::BACK, StrId::STR_SHAKE_BACK},
+    {CrossPointSettings::READER_MENU, StrId::STR_READER_MENU},
+    {CrossPointSettings::SAVE_QUOTE, StrId::STR_QUOTES_SAVE_ACTION},
 };
 constexpr bool choicesInValueOrder() {
   for (uint8_t i = 0; i < std::size(CHOICES); ++i) {
@@ -67,8 +69,9 @@ inline uint8_t shakeAsPowerAction(const uint8_t shakeAction) {
 }
 
 // `action` is a SHORT_PWRBTN value. The motion gestures (shake, face down, face up,
-// double tap) run every action themselves. A page turn means something only in a book, so
-// elsewhere it does nothing. Back and Select are pressed like the real keys, and each
+// double tap) and a remote button run every action themselves. A page turn, the reader
+// menu and save quotation mean something only in a book, so elsewhere they do nothing;
+// in a book the reader runs the last two through its own branches. Back and Select are pressed like the real keys, and each
 // screen takes or ignores them as it does those. For the button, Sleep fires on the
 // press itself (getPowerButtonDuration), Page Turn and Footnotes are read by the
 // reader, and on touch boards the input map makes the release Select itself.
@@ -86,6 +89,10 @@ inline Outcome resolve(const uint8_t action, const Trigger trigger, const bool f
       return gesture || !touchPowerSelect ? Outcome::Confirm : Outcome::None;
     case CrossPointSettings::BACK:
       return Outcome::Back;
+    case CrossPointSettings::READER_MENU:
+      return foregroundReader ? Outcome::ReaderMenu : Outcome::None;
+    case CrossPointSettings::SAVE_QUOTE:
+      return foregroundReader ? Outcome::SaveQuote : Outcome::None;
     default:
       return Outcome::None;
   }

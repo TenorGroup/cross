@@ -24,7 +24,10 @@ inline constexpr uint32_t kHoldMs = 700;
 // means the remote does not report it, and the button is learned as a tap.
 inline constexpr uint32_t kReleaseWaitMs = 2000;
 
-enum class Action : uint8_t { None, NextPage, PrevPage, NextChapter, PrevChapter };
+// Stored by value in settings.json (bits 28-31 of a slot): new actions go last. The four
+// moves are the remote's own; ReaderMenu and SaveQuote run the shared quick actions of
+// the same names (QuickAction.h), so they do what every other trigger of them does.
+enum class Action : uint8_t { None, NextPage, PrevPage, NextChapter, PrevChapter, ReaderMenu, SaveQuote };
 
 // One slot: bits 0-23 the button code (value | byte index << 8 | report id << 16),
 // bit 24 "hold", bit 25 "any report id" (built-in defaults only, since that remote's
@@ -54,7 +57,7 @@ constexpr Action actionOf(const Binding b) { return static_cast<Action>(b >> kAc
 // into a button that does something odd.
 constexpr bool valid(const Binding b) {
   return (b & ~(kCodeMask | kHoldBit | kAnyReportBit | 0xF0000000u)) == 0 && (b & 0xFFu) != 0 &&
-         actionOf(b) != Action::None && static_cast<uint8_t>(actionOf(b)) <= static_cast<uint8_t>(Action::PrevChapter);
+         actionOf(b) != Action::None && static_cast<uint8_t>(actionOf(b)) <= static_cast<uint8_t>(Action::SaveQuote);
 }
 
 constexpr bool matches(const Binding b, const uint32_t code, const bool hold) {
@@ -81,8 +84,9 @@ inline bool find(const RemoteTable& t, const Action action, Binding& out) {
 }
 
 inline const char* actionName(const Action action) {
-  static const char* const kNames[] = {"none", "next", "prev", "next_chapter", "prev_chapter"};
-  return kNames[static_cast<uint8_t>(action) <= 4 ? static_cast<uint8_t>(action) : 0];
+  static const char* const kNames[] = {"none",         "next",        "prev",      "next_chapter",
+                                       "prev_chapter", "reader_menu", "save_quote"};
+  return kNames[static_cast<uint8_t>(action) <= 6 ? static_cast<uint8_t>(action) : 0];
 }
 
 // "3:1=02" (report id 3, byte 1, value 0x02); "1=02" for an any-report default slot;

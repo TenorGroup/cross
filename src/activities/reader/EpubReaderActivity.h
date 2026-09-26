@@ -135,6 +135,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // cleared by renderBook when it ends on anything but a page, and by the next button press
   // before that page is shown.
   std::string pendingQuoteEdit;
+  // Shortcut asked by a quick action (requestShortcut), taken at the top of the next loop pass.
+  ReaderShortcut pendingShortcut = ReaderShortcut::None;
   // Set by renderBook once a page is on the panel while a reselection waits; the main loop
   // then opens the selector over that page.
   std::atomic<bool> quoteEditPageShown{false};
@@ -336,6 +338,7 @@ class EpubReaderActivity final : public ReaderActivity {
   uint8_t appliedOrientation = 0;
 
   bool externalPageTurnAllowed() const override;
+  bool requestShortcut(ReaderShortcut shortcut) override;
   bool manualPageTurnReady() const override;
   bool pageAwaitsLayout() const override;
   bool loadBook() override;

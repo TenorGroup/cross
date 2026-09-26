@@ -18,3 +18,8 @@ namespace ble {bool stopped=false,init=false,startSuccess=true,rearm=false;int s
  bool deferred=false;void setReaderStartDeferred(bool d){deferred=d;}bool readerStartDeferred(){return deferred;}bool beginAsync(int&){starts++;BleKeyboardHost::getInstance().running=startSuccess;return startSuccess;}
  void stopForIdle(){stopped=true;BleKeyboardHost::getInstance().end(0);}void suspendForTransition(){BleKeyboardHost::getInstance().end(0);}}
 }
+// The shared quick action catalog's one door (main.cpp runQuickAction): recorded, so a case
+// sees which catalog action a trigger asked for and from where.
+namespace quickaction {enum class Trigger : uint8_t {PowerRelease,Shake,FaceDown,FaceUp,DoubleTap,Remote};}
+std::vector<std::pair<uint8_t,quickaction::Trigger>> quickActions;
+void runQuickAction(const uint8_t action,const quickaction::Trigger trigger){quickActions.emplace_back(action,trigger);}

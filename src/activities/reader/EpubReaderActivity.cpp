@@ -866,6 +866,13 @@ bool EpubReaderActivity::externalPageTurnAllowed() const {
   return !preview && overlay == Overlay::None;
 }
 
+bool EpubReaderActivity::requestShortcut(const ReaderShortcut shortcut) {
+  // An open toolbar already owns the page; a preview owns its keys.
+  if (!externalPageTurnAllowed()) return false;
+  pendingShortcut = shortcut;
+  return true;
+}
+
 bool EpubReaderActivity::manualPageTurnReady() const {
   return millis() - lastPageTurnTime >= 200;
 }
@@ -880,6 +887,9 @@ bool EpubReaderActivity::pageAwaitsLayout() const {
 }
 
 void EpubReaderActivity::loop() {
+  // Taken once: a pass that returns before it reaches its branch below drops it, so it
+  // never fires later over a menu or overlay that owned this pass.
+  const ReaderShortcut shortcut = std::exchange(pendingShortcut, ReaderShortcut::None);
   stayAfterDroppedExit();
   if (!epub) {
     finish();
@@ -1236,6 +1246,13 @@ void EpubReaderActivity::loop() {
   const bool confirmLongPressed = !endOfBookMenuOpen && confirmHoldMs != 0 &&
                                   mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, confirmHoldMs);
   bool confirmReleased = mappedInput.wasReleased(MappedInputManager::Button::Confirm);
+  // A quick action's shortcut takes the branch the reader's own key takes: the quote
+  // selector as the menu's Save quotation opens it, the menu as a Confirm release.
+  if (shortcut == ReaderShortcut::Quote && !endOfBookMenuOpen) {
+    openDictionaryWordSelect(true);
+    return;
+  }
+  if (shortcut == ReaderShortcut::Menu && !endOfBookMenuOpen) confirmReleased = true;
   if (confirmLongPressed) {
     switch (SETTINGS.longPressMenuFunction) {
       case CrossPointSettings::LP_MENU_BOOKMARK:
