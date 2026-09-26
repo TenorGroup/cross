@@ -16,21 +16,14 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -64,6 +57,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-0-0-0-1": [
@@ -83,22 +87,15 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_DICTIONARY:0:",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -132,6 +129,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-0-0-1-0": [
@@ -151,22 +159,15 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -200,6 +201,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-0-0-1-1": [
@@ -219,23 +231,16 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_DICTIONARY:0:",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -269,6 +274,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-0-1-0-0": [
@@ -288,21 +304,14 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -336,6 +345,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-0-1-0-1": [
@@ -355,22 +375,15 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_DICTIONARY:0:",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -404,6 +417,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-0-1-1-0": [
@@ -423,22 +447,15 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -472,6 +489,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-0-1-1-1": [
@@ -491,23 +519,16 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_DICTIONARY:0:",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -541,6 +562,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-1-0-0-0": [
@@ -562,21 +594,14 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -610,6 +635,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-1-0-0-1": [
@@ -631,22 +667,15 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_DICTIONARY:0:",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -680,6 +709,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-1-0-1-0": [
@@ -701,22 +741,15 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -750,6 +783,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-1-0-1-1": [
@@ -771,23 +815,16 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_DICTIONARY:0:",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -821,6 +858,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-1-1-0-0": [
@@ -842,21 +890,14 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -890,6 +931,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-1-1-0-1": [
@@ -911,22 +963,15 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_DICTIONARY:0:",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
-      "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_SHORT_PWR_BTN:0:shortPwrBtn"
     ],
     [
       "STR_CLOCK:14:",
@@ -960,6 +1005,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-1-1-1-0": [
@@ -981,22 +1037,15 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -1030,6 +1079,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x3-1-1-1-1": [
@@ -1051,23 +1111,16 @@
       "STR_IMAGES:0:imageRendering",
       "STR_HIDE_READER_STATUS_BAR:0:readerStatusBarMode",
       "STR_SIDE_BTN_LAYOUT:0:sideButtonLayout",
-      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
       "STR_DICTIONARY:0:",
       "STR_CUSTOMISE_STATUS_BAR:2:"
     ],
     [
       "STR_REMAP_FRONT_BUTTONS:1:",
-      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
-      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
-      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
-      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
       "STR_FRONT_BTN_FOLLOW_ORIENTATION:0:frontButtonFollowOrientation",
       "STR_LONG_PRESS_BEHAVIOR:0:longPressButtonBehavior",
       "STR_LONG_PRESS_MENU:0:longPressMenuFunction",
       "STR_SHORT_PWR_BTN:0:shortPwrBtn",
-      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack",
-      "STR_SHAKE_ACTION:0:shakeAction",
-      "STR_SHAKE_STRENGTH:0:shakeStrength"
+      "STR_PWR_BTN_FOOTNOTE_BACK:0:pwrBtnFootnoteBack"
     ],
     [
       "STR_CLOCK:14:",
@@ -1101,6 +1154,17 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_SLEEP_BW_REFRESH:0:sleepBwRefresh",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
+    ],
+    [
+      "STR_TILT_PAGE_TURN:0:tiltPageTurn",
+      "STR_TILT_TAB_NAVIGATION:0:tiltTabNavigation",
+      "STR_TILT_MENU_NAVIGATION:0:tiltMenuNavigation",
+      "STR_TILT_STRENGTH_H:0:tiltStrengthH",
+      "STR_TILT_STRENGTH_V:0:tiltStrengthV",
+      "STR_SHAKE_ACTION:0:shakeAction",
+      "STR_SHAKE_STRENGTH:0:shakeStrength",
+      "STR_FACE_DOWN_ACTION:0:faceDownAction",
+      "STR_FACE_UP_ACTION:0:faceUpAction"
     ]
   ],
   "x4-0-0-0-0": [
@@ -1160,7 +1224,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-0-0-0-1": [
     [
@@ -1220,7 +1285,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-0-0-1-0": [
     [
@@ -1280,7 +1346,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-0-0-1-1": [
     [
@@ -1341,7 +1408,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-0-1-0-0": [
     [
@@ -1400,7 +1468,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-0-1-0-1": [
     [
@@ -1460,7 +1529,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-0-1-1-0": [
     [
@@ -1520,7 +1590,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-0-1-1-1": [
     [
@@ -1581,7 +1652,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-1-0-0-0": [
     [
@@ -1642,7 +1714,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-1-0-0-1": [
     [
@@ -1704,7 +1777,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-1-0-1-0": [
     [
@@ -1766,7 +1840,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-1-0-1-1": [
     [
@@ -1829,7 +1904,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-1-1-0-0": [
     [
@@ -1890,7 +1966,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-1-1-0-1": [
     [
@@ -1952,7 +2029,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-1-1-1-0": [
     [
@@ -2014,7 +2092,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "x4-1-1-1-1": [
     [
@@ -2077,7 +2156,8 @@
       "STR_QUICK_RESUME_TIMEOUT:0:quickResumeSleepScreen",
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-0-0-0-0": [
     [
@@ -2137,7 +2217,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-0-0-0-1": [
     [
@@ -2198,7 +2279,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-0-0-1-0": [
     [
@@ -2259,7 +2341,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-0-0-1-1": [
     [
@@ -2321,7 +2404,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-0-1-0-0": [
     [
@@ -2381,7 +2465,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-0-1-0-1": [
     [
@@ -2442,7 +2527,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-0-1-1-0": [
     [
@@ -2503,7 +2589,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-0-1-1-1": [
     [
@@ -2565,7 +2652,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-1-0-0-0": [
     [
@@ -2627,7 +2715,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-1-0-0-1": [
     [
@@ -2690,7 +2779,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-1-0-1-0": [
     [
@@ -2753,7 +2843,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-1-0-1-1": [
     [
@@ -2817,7 +2908,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-1-1-0-0": [
     [
@@ -2879,7 +2971,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-1-1-0-1": [
     [
@@ -2942,7 +3035,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-1-1-1-0": [
     [
@@ -3005,7 +3099,8 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ],
   "pro-1-1-1-1": [
     [
@@ -3069,6 +3164,7 @@
       "STR_WAKE_INTO_BOOK:0:wakeIntoBook",
       "STR_RESTORE_LIGHT_ON_WAKE:0:frontlightRestoreOnWake",
       "STR_TIME_TO_SLEEP:0:sleepTimeoutMinutes"
-    ]
+    ],
+    []
   ]
 }

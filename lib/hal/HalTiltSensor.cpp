@@ -41,6 +41,9 @@ bool HalTiltSensor::wake() {
   _baselineValid = false;
   _shakeRun = false;
   _shakeSettling = false;
+  _faceDown = false;
+  _flipLastValid = false;
+  _flipCalm = false;
   _isAwake = true;
   return true;
 }
@@ -58,6 +61,8 @@ bool HalTiltSensor::deepSleep() {
   clearPendingEvents();
   clearPendingVerticalEvents();
   _shakeEvent = false;
+  _faceDownEvent = false;
+  _faceUpEvent = false;
   _inTilt = false;
   _inVerticalTilt = false;
   _isAwake = false;
@@ -84,12 +89,13 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
 
   const bool horizontalEnabled = mode != CrossPointTiltPageTurn::TILT_OFF;
   const bool verticalEnabled = verticalMode != CrossPointTiltPageTurn::TILT_OFF;
-  // A hard shake is watched on every screen, so its setting alone keeps the sensor awake.
+  // A hard shake and face down or up are watched on every screen, so their settings alone
+  // keep the sensor awake.
 #ifdef TENOR_PRESS_PROBE
   const bool probeLogging = _probeLogUntilMs != 0 && static_cast<long>(millis() - _probeLogUntilMs) < 0;
-  const bool sampling = _shakeEnabled || probeLogging;
+  const bool sampling = _shakeEnabled || _flipEnabled || probeLogging;
 #else
-  const bool sampling = _shakeEnabled;
+  const bool sampling = _shakeEnabled || _flipEnabled;
 #endif
 
   // State machine: wake up or sleep based on the enabled flags
@@ -151,6 +157,7 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
     }
   }
   if (_shakeEnabled) pollShake(now, mg, jolt);
+  if (_flipEnabled) pollFlip(now, mg, gx, gy);
 
   // Map the gyro axes to the screen axes based on reader orientation. On the
   // X3 PCB: X axis = left/right in portrait, Y axis = left/right in landscape,
@@ -376,6 +383,67 @@ void HalTiltSensor::configureShake(const uint8_t action, const uint8_t strength)
 bool HalTiltSensor::wasShaken() {
   const bool val = _shakeEvent;
   _shakeEvent = false;
+  return val;
+}
+
+void HalTiltSensor::pollFlip(const unsigned long now, const int32_t (&mg)[3], const float gx, const float gy) {
+  if (_faceDown) {
+    if (mg[2] < -FLIP_UP_MG) {
+      _faceDown = false;
+      _faceUpEvent = true;
+      _hadActivity = true;
+      LOG_INF("GYR", "Face up");
+    }
+  } else {
+    bool calm = _flipLastValid && fabsf(gx) <= FLIP_CALM_DPS && fabsf(gy) <= FLIP_CALM_DPS;
+    for (int i = 0; i < 3; ++i) {
+      const int32_t step = mg[i] - _flipLastMg[i];
+      calm = calm && step <= FLIP_CALM_MG && step >= -FLIP_CALM_MG;
+    }
+    const int32_t lengthSq = mg[0] * mg[0] + mg[1] * mg[1] + mg[2] * mg[2];
+    if (calm && mg[2] > 0 && 64 * mg[2] * mg[2] >= 60 * lengthSq) {
+      // The run starts at the poll this one was compared with.
+      if (!_flipCalm) {
+        _flipCalm = true;
+        _flipCalmFromMs = _flipLastMs;
+      }
+      if (now - _flipCalmFromMs >= FLIP_DOWN_MS) {
+        _flipCalm = false;
+        _faceDown = true;
+        _faceDownEvent = true;
+        _hadActivity = true;
+        LOG_INF("GYR", "Face down");
+      }
+    } else {
+      _flipCalm = false;
+    }
+  }
+  for (int i = 0; i < 3; ++i) _flipLastMg[i] = mg[i];
+  _flipLastMs = now;
+  _flipLastValid = true;
+}
+
+void HalTiltSensor::configureFlip(const uint8_t faceDownAction, const uint8_t faceUpAction) {
+  const bool enabled = faceDownAction != 0 || faceUpAction != 0;
+  if (_flipEnabled && !enabled) {
+    _faceDown = false;
+    _faceDownEvent = false;
+    _faceUpEvent = false;
+    _flipLastValid = false;
+    _flipCalm = false;
+  }
+  _flipEnabled = enabled;
+}
+
+bool HalTiltSensor::wasTurnedFaceDown() {
+  const bool val = _faceDownEvent;
+  _faceDownEvent = false;
+  return val;
+}
+
+bool HalTiltSensor::wasTurnedFaceUp() {
+  const bool val = _faceUpEvent;
+  _faceUpEvent = false;
   return val;
 }
 

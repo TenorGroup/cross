@@ -29,10 +29,11 @@ enum class Action : uint8_t {
   BlePageTurner,
 };
 
-enum class Tab : uint8_t { SCREEN, READER, CONTROLS, SYSTEM, DEVICE, KEYBOARD, OTHER, SLEEP };
-inline constexpr int TAB_COUNT = 8;
+// MOTION is last by ID: a board without a motion sensor shows the tabs below it only.
+enum class Tab : uint8_t { SCREEN, READER, CONTROLS, SYSTEM, DEVICE, KEYBOARD, OTHER, SLEEP, MOTION };
+inline constexpr int TAB_COUNT = 9;
 // Display order is independent of stable persisted tab IDs.
-inline constexpr std::array<uint8_t, TAB_COUNT> DEFAULT_ORDER = {0, 7, 1, 2, 3, 4, 5, 6};
+inline constexpr std::array<uint8_t, TAB_COUNT> DEFAULT_ORDER = {0, 7, 1, 2, 8, 3, 4, 5, 6};
 
 // Nhan cua the.
 StrId tenThe(Tab tab);

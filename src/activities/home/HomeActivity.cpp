@@ -318,8 +318,9 @@ void HomeActivity::rebuildRows() {
       break;
     case Tab::CAI_DAT: {
       rowLabels.emplace_back(tr(STR_FILE_TRANSFER));
-      for (int i = 0; i < settingstabs::TAB_COUNT; ++i) {
-        const int id = menucustom::idAt(1, i, settingstabs::TAB_COUNT);
+      const int groups = deviceSettingsTabCount();
+      for (int i = 0; i < groups; ++i) {
+        const int id = menucustom::idAt(1, i, groups);
         settingsGroups.push_back(id);
         rowLabels.emplace_back(I18N.get(settingstabs::tenThe(static_cast<settingstabs::Tab>(id))));
       }

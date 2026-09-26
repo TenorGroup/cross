@@ -432,6 +432,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Hard shake action, and how hard the shake must be (a TILT_STRENGTH).
   uint8_t shakeAction = 0;  // Off; a place in quickaction::SHAKE_ORDER
   uint8_t shakeStrength = TILT_STRENGTH_MEDIUM;
+  // Face down and face up actions, each a place in quickaction::SHAKE_ORDER (0 = Off).
+  uint8_t faceDownAction = 0;
+  uint8_t faceUpAction = 0;
   // Touch screen reader zones/gestures on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_SWIPE;
   // Reader menu open gesture (SHOW_READER_MENU: off / center tap / bottom-edge

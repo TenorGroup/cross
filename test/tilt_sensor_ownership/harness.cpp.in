@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -34,6 +35,8 @@ struct TestSettings {
   uint8_t tiltStrengthV = 1;
   uint8_t shakeAction = 0;    // Off
   uint8_t shakeStrength = 1;  // Medium
+  uint8_t faceDownAction = 0;  // Off
+  uint8_t faceUpAction = 0;    // Off
 } SETTINGS;
 
 int failures = 0;
@@ -696,6 +699,190 @@ void handHeldRunReplays(const char* path) {
   expect(c.forward + c.back == 10, "replay menu nghieng-vua", "each side flick steps a tab once it comes back");
 }
 
+// ---- Face down and face up -------------------------------------------------
+// flip-replay.csv.gz: the 26/09 hand-held X3 run at 224 Hz (every fourth sample kept),
+// up-ngua six face-down placements each turned back up, the other segments knocks,
+// button presses, putting down and picking up, wrist turns and still reading; then a
+// run at the firmware poll. Played at the poll the firmware reads at: 50 ms in a book,
+// 85 and 100 ms on an idle menu, from every phase of the samples.
+struct FlipCounts {
+  int down = 0;
+  int up = 0;
+  std::string order;
+};
+
+void collectFlips(FlipCounts& counts) {
+  if (halTiltSensor.wasTurnedFaceDown()) {
+    ++counts.down;
+    counts.order += 'D';
+  }
+  if (halTiltSensor.wasTurnedFaceUp()) {
+    ++counts.up;
+    counts.order += 'U';
+  }
+}
+
+void armFlip(const uint8_t downAction, const uint8_t upAction) {
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_NORMAL;
+  SETTINGS.orientation = CrossPointOrientation::PORTRAIT;
+  SETTINGS.shakeAction = 0;
+  SETTINGS.faceDownAction = downAction;
+  SETTINGS.faceUpAction = upAction;
+}
+
+// Every sample of `segment` from `offsetMs` on, one poll each `pollMs` (0: every sample,
+// as logged at the firmware poll), on the reader at 50 ms and a plain screen otherwise.
+FlipCounts replayFlips(const std::vector<ReplaySample>& all, const std::string& segment, const unsigned long pollMs,
+                       const unsigned long offsetMs) {
+  armFlip(1, 1);
+  resetSensor();
+  const Route route = pollMs == 50 || pollMs == 0 ? Route::Reader : Route::Plain;
+  FlipCounts counts;
+  bool started = false;
+  unsigned long dueMs = 0;
+  for (const auto& s : all) {
+    if (s.segment != segment) continue;
+    if (!started) {
+      dueMs = s.ms + offsetMs;
+      holdSample(s);
+      for (fakeMillis = s.ms - 800; fakeMillis < s.ms; fakeMillis += 50) tick(route);
+      started = true;
+    }
+    if (s.ms < dueMs) continue;
+    while (pollMs != 0 && dueMs <= s.ms) dueMs += pollMs;
+    holdSample(s);
+    fakeMillis = s.ms;
+    tick(route);
+    collectFlips(counts);
+  }
+  armFlip(0, 0);
+  return counts;
+}
+
+void flipReplaysAsMeasured(const char* flipPath, const char* shakePath) {
+  const auto flips = loadReplay(flipPath);
+  if (!expect(flips.size() > 30000, "flip-replay", "the face-down run must load")) return;
+  const char* const FAST[] = {"go-hai-lung", "go-hai-nhanh", "go-mot",      "go-hai-canh", "bam-nut",
+                              "dat-xuong",   "up-ngua",      "xoay-co-tay", "cam-doc"};
+  for (const unsigned long pollMs : {50UL, 85UL, 100UL}) {
+    for (unsigned long offset = 0; offset < pollMs; offset += 9) {
+      for (const char* segment : FAST) {
+        const FlipCounts c = replayFlips(flips, segment, pollMs, offset);
+        char label[96];
+        std::snprintf(label, sizeof(label), "flip %s at %lu ms +%lu", segment, pollMs, offset);
+        if (std::string(segment) == "up-ngua") {
+          expect(c.down == 6 && c.up == 6 && c.order == "DUDUDUDUDUDU", label,
+                 "six face downs, each turned back up");
+        } else {
+          expect(c.down == 0 && c.up == 0, label, "no face down and no face up");
+        }
+      }
+    }
+  }
+  // Every run logged at the firmware poll: nothing in them is a face down.
+  std::vector<std::string> slow;
+  for (const auto& s : flips) {
+    if (std::find(std::begin(FAST), std::end(FAST), s.segment) == std::end(FAST) &&
+        std::find(slow.begin(), slow.end(), s.segment) == slow.end())
+      slow.push_back(s.segment);
+  }
+  expect(slow.size() == 8, "flip-replay", "the 20 Hz run holds its eight segments");
+  const auto shakes = loadReplay(shakePath);
+  for (const auto& s : shakes) {
+    if (std::find(slow.begin(), slow.end(), s.segment) == slow.end()) slow.push_back(s.segment);
+  }
+  for (const auto& segment : slow) {
+    const FlipCounts c = replayFlips(std::find_if(flips.begin(), flips.end(), [&](const ReplaySample& s) {
+                                       return s.segment == segment;
+                                     }) != flips.end()
+                                         ? flips
+                                         : shakes,
+                                     segment, 0, 0);
+    char label[96];
+    std::snprintf(label, sizeof(label), "flip 20 Hz %s", segment.c_str());
+    expect(c.down == 0 && c.up == 0, label, "no face down and no face up");
+  }
+}
+
+// Synthetic: the device laid face down on a table and left there, `holdMs` long, with
+// `dps` of side rotation while it lies there.
+// On the X3 the screen faces up at az -1 g, so the table here is under the back.
+void settleFaceUp() {
+  resetSensor();
+  imu.ax = 0.0f;
+  imu.ay = 0.0f;
+  imu.az = -1.0f;
+  imu.gx = 0.0f;
+  imu.gy = 0.0f;
+  for (fakeMillis = 0; fakeMillis <= 800; fakeMillis += 50) tick(Route::Plain);
+}
+
+FlipCounts layFaceDown(const unsigned long holdMs, const float dps = 0.0f) {
+  armFlip(1, 1);
+  settleFaceUp();
+  FlipCounts counts;
+  imu.ax = 0.02f;
+  imu.ay = 0.02f;
+  imu.az = 1.0f;
+  imu.gx = dps;
+  for (unsigned long t = 0; t <= holdMs; t += 50) {
+    fakeMillis += 50;
+    tick(Route::Plain);
+    collectFlips(counts);
+  }
+  return counts;
+}
+
+void faceDownWantsTheDeviceLyingStill() {
+  expect(layFaceDown(250).down == 0, "flip-hold", "a quarter second face down is not yet a face down");
+  expect(layFaceDown(500).down == 1, "flip-hold", "half a second lying face down is one");
+  expect(layFaceDown(2000).down == 1, "flip-hold", "lying there longer does not repeat it");
+  expect(layFaceDown(2000, 60.0f).down == 0, "flip-still", "face down but turning is not lying still");
+
+  // Face up counts only after a face down, and once.
+  FlipCounts c = layFaceDown(500);
+  imu.az = -1.0f;
+  for (int i = 0; i < 10; ++i) {
+    fakeMillis += 50;
+    tick(Route::Plain);
+    collectFlips(c);
+  }
+  expect(c.order == "DU", "flip-up", "turned back up after a face down: one face up");
+  armFlip(1, 1);
+  settleFaceUp();
+  c = FlipCounts{};
+  imu.az = 1.0f;
+  fakeMillis += 50;
+  tick(Route::Plain);
+  imu.az = -1.0f;
+  for (int i = 0; i < 10; ++i) {
+    fakeMillis += 50;
+    tick(Route::Plain);
+    collectFlips(c);
+  }
+  expect(c.down == 0 && c.up == 0, "flip-up", "no face up without a face down first");
+}
+
+void flipKeepsTheSensorAwakeOnEveryScreen() {
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  SETTINGS.shakeAction = 0;
+  SETTINGS.faceDownAction = 0;
+  SETTINGS.faceUpAction = 0;
+  settleFaceUp();
+  expect(imu.wakeCalls == 0, "flip-awake", "every motion setting Off: the sensor stays in standby");
+  SETTINGS.faceUpAction = 2;
+  settleFaceUp();
+  expect(imu.wakeCalls == 1 && halTiltSensor.isAwake(), "flip-awake", "a face up action alone wakes the sensor");
+  SETTINGS.faceUpAction = 0;
+  SETTINGS.faceDownAction = 3;
+  settleFaceUp();
+  expect(imu.wakeCalls == 1 && halTiltSensor.isAwake(), "flip-awake", "a face down action alone wakes the sensor");
+  SETTINGS.faceDownAction = 0;
+  fakeMillis += 50;
+  tick(Route::Plain);
+  expect(!halTiltSensor.isAwake(), "flip-awake", "both Off again: back in standby");
+}
+
 void shakeOffLeavesTiltAsItWas() {
   armReaderAndShake(0);
   settle(Route::Reader);
@@ -782,6 +969,9 @@ int main(int argc, char** argv) {
   handHeldRunReplays(argc > 1 ? argv[1] : nullptr);
   shakeOffLeavesTiltAsItWas();
   shakeKeepsTheSensorAwakeOnEveryScreen();
+  flipReplaysAsMeasured(argc > 2 ? argv[2] : nullptr, argc > 1 ? argv[1] : nullptr);
+  faceDownWantsTheDeviceLyingStill();
+  flipKeepsTheSensorAwakeOnEveryScreen();
   std::printf("tilt_sensor_ownership: %d failed assertions\n", failures);
   return failures == 0 ? 0 : 1;
 }

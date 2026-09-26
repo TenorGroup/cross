@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 #include <vector>
 
@@ -27,9 +28,20 @@ std::map<Tab, int> demTheoThe() {
 TEST(SettingsTabs, CuaDongHoNamTrongHeThong) { EXPECT_EQ(settingstabs::nhaCua(Action::Clock), Tab::SYSTEM); }
 
 TEST(SettingsTabs, TamTheCoBanPhimVaNgu) {
-  EXPECT_EQ(settingstabs::TAB_COUNT, 8);
   EXPECT_EQ(static_cast<int>(Tab::SLEEP), 7);
   EXPECT_EQ(settingstabs::nhaCua(Action::KeyboardLayouts), Tab::KEYBOARD);
+}
+
+// Motion sensor is the ninth tab, last by ID so a board without the sensor drops it and
+// no stored ID moves; it shows right after Controls.
+TEST(SettingsTabs, MotionSensorIsTheLastId) {
+  EXPECT_EQ(settingstabs::TAB_COUNT, 9);
+  EXPECT_EQ(static_cast<int>(Tab::MOTION), 8);
+  EXPECT_EQ(settingstabs::tenThe(Tab::MOTION), StrId::STR_CAT_MOTION);
+  const auto& order = settingstabs::DEFAULT_ORDER;
+  const auto controls = std::find(order.begin(), order.end(), static_cast<uint8_t>(Tab::CONTROLS));
+  ASSERT_NE(controls, order.end());
+  EXPECT_EQ(*(controls + 1), static_cast<uint8_t>(Tab::MOTION));
 }
 
 TEST(SettingsTabs, TheNaoCungCoNhan) {

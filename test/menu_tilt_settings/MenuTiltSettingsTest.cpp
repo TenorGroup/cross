@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 #include "QuickAction.h"
 #include "SettingsList.h"
@@ -26,7 +27,7 @@ bool isTiltEnum(const SettingInfo& setting, const StrId category) {
 }
 
 bool isStrengthEnum(const SettingInfo& setting, const StrId name, uint8_t CrossPointSettings::* field) {
-  return setting.type == SettingType::ENUM && setting.category == StrId::STR_CAT_CONTROLS && setting.nameId == name &&
+  return setting.type == SettingType::ENUM && setting.category == StrId::STR_CAT_MOTION && setting.nameId == name &&
          setting.valuePtr == field &&
          setting.enumValues ==
              std::vector<StrId>{StrId::STR_TILT_LIGHT, StrId::STR_UI_SIZE_MEDIUM, StrId::STR_TILT_STRONG};
@@ -59,8 +60,8 @@ int runPowerWake() {
   return ok ? 0 : 1;
 }
 
-// A short power press and a hard shake share one decision: what the action means on
-// the screen in front, or nothing there. Back and Select are pressed like the keys on
+// A short power press, a hard shake, face down and face up share one decision: what the
+// action means on the screen in front, or nothing there. Back and Select are pressed like the keys on
 // every screen; the screen takes or ignores them as it does the real ones.
 int runQuickActions() {
   using quickaction::Outcome;
@@ -101,6 +102,14 @@ int runQuickActions() {
           quickaction::resolve(action, Trigger::Shake, reader, true) != shake) {
         std::printf("FAIL shake action %u on %s\n", action, screen.name);
         ok = false;
+      }
+      // Face down and face up are motion gestures like the shake: the same outcome on every screen.
+      for (const Trigger flip : {Trigger::FaceDown, Trigger::FaceUp}) {
+        if (quickaction::resolve(action, flip, reader) != shake || quickaction::resolve(action, flip, reader, true) != shake) {
+          std::printf("FAIL %s action %u on %s\n", flip == Trigger::FaceDown ? "face down" : "face up", action,
+                      screen.name);
+          ok = false;
+        }
       }
       if (quickaction::resolve(action, Trigger::PowerRelease, reader) != power ||
           quickaction::resolve(action, Trigger::PowerRelease, reader, true) != touchPower) {
@@ -162,8 +171,8 @@ int runPowerValuesKept() {
   return ok ? 0 : 1;
 }
 
-// The two hard shake rows: last in Controls, Off and Medium on a new card and on a
-// file from before them, saved and read back, out-of-range values kept out.
+// The two hard shake rows: in Motion sensor after the flick strengths, Off and Medium on
+// a new card and on a file from before them, saved and read back, out-of-range values kept out.
 int runShakeSettings() {
   halTiltSensor.available = true;
   CrossPointSettings& settings = SETTINGS;
@@ -173,13 +182,11 @@ int runShakeSettings() {
   const auto& catalog = getBaseSettingsList();
   const SettingInfo* action = findSetting(catalog, "shakeAction");
   const SettingInfo* strength = findSetting(catalog, "shakeStrength");
-  const SettingInfo* footnoteBack = findSetting(catalog, "pwrBtnFootnoteBack");
-  ok = expect(action && strength && footnoteBack, "both shake rows present with the sensor") && ok;
-  if (!action || !strength || !footnoteBack) return 1;
-  ok = expect(action == footnoteBack + 1 && strength == footnoteBack + 2,
-              "shake rows follow the power button rows, so no Controls row above them moves") &&
-       ok;
-  ok = expect(action->type == SettingType::ENUM && action->category == StrId::STR_CAT_CONTROLS &&
+  const SettingInfo* strengthV = findSetting(catalog, "tiltStrengthV");
+  ok = expect(action && strength && strengthV, "both shake rows present with the sensor") && ok;
+  if (!action || !strength || !strengthV) return 1;
+  ok = expect(action == strengthV + 1 && strength == strengthV + 2, "shake rows follow the flick strengths") && ok;
+  ok = expect(action->type == SettingType::ENUM && action->category == StrId::STR_CAT_MOTION &&
                   action->nameId == StrId::STR_SHAKE_ACTION && action->valuePtr == &CrossPointSettings::shakeAction &&
                   action->enumValues == quickaction::shakeLabels(),
               "action row lists the shake's choices from the shared catalog") &&
@@ -231,6 +238,59 @@ int runShakeSettings() {
   return ok ? 0 : 1;
 }
 
+// Face down and face up: after the shake rows in Motion sensor, the shake's own list, Off on
+// a new card and on a file from before them, every value saved and read back, out-of-range Off.
+int runFlipSettings() {
+  halTiltSensor.available = true;
+  CrossPointSettings& settings = SETTINGS;
+  bool ok = expect(settings.faceDownAction == 0 && settings.faceUpAction == 0, "a new card starts with both Off");
+  const auto& catalog = getBaseSettingsList();
+  const SettingInfo* shakeStrength = findSetting(catalog, "shakeStrength");
+  const SettingInfo* down = findSetting(catalog, "faceDownAction");
+  const SettingInfo* up = findSetting(catalog, "faceUpAction");
+  ok = expect(shakeStrength && down && up, "both rows present with the sensor") && ok;
+  if (!shakeStrength || !down || !up) return 1;
+  ok = expect(down == shakeStrength + 1 && up == shakeStrength + 2, "face down, then face up, after the shake") && ok;
+  ok = expect(down->type == SettingType::ENUM && down->category == StrId::STR_CAT_MOTION &&
+                  down->nameId == StrId::STR_FACE_DOWN_ACTION && down->valuePtr == &CrossPointSettings::faceDownAction &&
+                  down->enumValues == quickaction::shakeLabels(),
+              "face down lists the shake's choices") &&
+       ok;
+  ok = expect(up->type == SettingType::ENUM && up->category == StrId::STR_CAT_MOTION &&
+                  up->nameId == StrId::STR_FACE_UP_ACTION && up->valuePtr == &CrossPointSettings::faceUpAction &&
+                  up->enumValues == quickaction::shakeLabels(),
+              "face up lists the shake's choices") &&
+       ok;
+
+  JsonDocument before;
+  before["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
+  before["shakeAction"] = 2;
+  ok = expect(settings.fromJson(before.as<JsonVariantConst>()), "file from before the rows loads") && ok;
+  ok = expect(settings.faceDownAction == 0 && settings.faceUpAction == 0 && settings.shakeAction == 2,
+              "a file without the keys keeps both Off and its shake") &&
+       ok;
+  const uint8_t count = static_cast<uint8_t>(std::size(quickaction::SHAKE_ORDER));
+  for (uint8_t a = 0; a < count; ++a) {
+    settings.faceDownAction = a;
+    settings.faceUpAction = static_cast<uint8_t>(count - 1 - a);
+    JsonDocument saved;
+    settings.toJson(saved);
+    settings.faceDownAction = settings.faceUpAction = 0;
+    ok = expect(settings.fromJson(saved.as<JsonVariantConst>()), "face JSON loads") && ok;
+    ok = expect(settings.faceDownAction == a && settings.faceUpAction == count - 1 - a, "every action round trips") &&
+         ok;
+  }
+  settings.faceDownAction = settings.faceUpAction = 0;
+  JsonDocument corrupt;
+  corrupt["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
+  corrupt["faceDownAction"] = count;
+  corrupt["faceUpAction"] = 200;
+  ok = expect(settings.fromJson(corrupt.as<JsonVariantConst>()), "corrupt face JSON loads") && ok;
+  ok = expect(settings.faceDownAction == 0 && settings.faceUpAction == 0, "out-of-range values keep Off") && ok;
+  std::printf("menu_tilt_settings=flip:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -238,6 +298,7 @@ int main(int argc, char** argv) {
   if (std::strcmp(argv[1], "power") == 0) return runPowerWake();
   if (std::strcmp(argv[1], "action") == 0) return runQuickActions();
   if (std::strcmp(argv[1], "shake") == 0) return runShakeSettings();
+  if (std::strcmp(argv[1], "flip") == 0) return runFlipSettings();
   if (std::strcmp(argv[1], "power-values") == 0) return runPowerValuesKept();
   const bool hasImu = std::strcmp(argv[1], "imu") == 0;
   if (!hasImu && std::strcmp(argv[1], "no-imu") != 0) return 2;
@@ -250,7 +311,7 @@ int main(int argc, char** argv) {
   CrossPointSettings& settings = SETTINGS;
   const SettingInfo* strengthH = findSetting(catalog, "tiltStrengthH");
   const SettingInfo* strengthV = findSetting(catalog, "tiltStrengthV");
-  bool ok = expect(catalog.size() == (hasImu ? 77U : 70U), "X3 descriptor count");
+  bool ok = expect(catalog.size() == (hasImu ? 79U : 70U), "X3 descriptor count");
   ok = expect(longPressValuesMatch(catalog, hasImu), "Confirm-hold list shows Reader menu and appends the new actions") &&
        ok;
 
@@ -274,6 +335,14 @@ int main(int argc, char** argv) {
                     saved["shakeAction"].isNull() && saved["shakeStrength"].isNull(),
                 "no shake rows and no shake keys without the sensor") &&
          ok;
+    ok = expect(findSetting(catalog, "faceDownAction") == nullptr && findSetting(catalog, "faceUpAction") == nullptr &&
+                    saved["faceDownAction"].isNull() && saved["faceUpAction"].isNull(),
+                "no face down or face up rows and keys without the sensor") &&
+         ok;
+    ok = expect(std::none_of(catalog.begin(), catalog.end(),
+                             [](const SettingInfo& s) { return s.category == StrId::STR_CAT_MOTION; }),
+                "no Motion sensor row without the sensor") &&
+         ok;
     std::printf("menu_tilt_settings=no-imu:%s\n", ok ? "GREEN" : "RED");
     return ok ? 0 : 1;
   }
@@ -281,22 +350,35 @@ int main(int argc, char** argv) {
   ok = expect(readerTilt && menuTilt && rowTilt, "all three tilt descriptors present") && ok;
   if (!readerTilt || !menuTilt || !rowTilt) return 1;
   ok = expect(readerTilt->nameId == StrId::STR_TILT_PAGE_TURN &&
-                  readerTilt->valuePtr == &CrossPointSettings::tiltPageTurn && isTiltEnum(*readerTilt, StrId::STR_CAT_READER),
-              "reader tilt descriptor stays unchanged") &&
+                  readerTilt->valuePtr == &CrossPointSettings::tiltPageTurn && isTiltEnum(*readerTilt, StrId::STR_CAT_MOTION),
+              "reader tilt descriptor keeps its key and values, in Motion sensor") &&
        ok;
   ok = expect(menuTilt->nameId == StrId::STR_TILT_TAB_NAVIGATION &&
-                  menuTilt->valuePtr == &CrossPointSettings::tiltTabNavigation && isTiltEnum(*menuTilt, StrId::STR_CAT_CONTROLS),
+                  menuTilt->valuePtr == &CrossPointSettings::tiltTabNavigation && isTiltEnum(*menuTilt, StrId::STR_CAT_MOTION),
               "tab tilt descriptor uses independent field") &&
        ok;
   ok = expect(rowTilt->nameId == StrId::STR_TILT_MENU_NAVIGATION &&
                   rowTilt->valuePtr == &CrossPointSettings::tiltMenuNavigation &&
-                  isTiltEnum(*rowTilt, StrId::STR_CAT_CONTROLS),
-              "row tilt descriptor uses independent field in Controls") &&
+                  isTiltEnum(*rowTilt, StrId::STR_CAT_MOTION),
+              "row tilt descriptor uses independent field in Motion sensor") &&
        ok;
+  ok = expect(menuTilt == readerTilt + 1, "tab tilt follows reader tilt") && ok;
+  // Every sensor row, in one tab and this order; none left in Reader or Controls.
+  {
+    std::vector<std::string> motion;
+    for (const auto& s : catalog) {
+      if (s.category == StrId::STR_CAT_MOTION && s.key) motion.emplace_back(s.key);
+    }
+    ok = expect(motion == std::vector<std::string>{"tiltPageTurn", "tiltTabNavigation", "tiltMenuNavigation",
+                                                   "tiltStrengthH", "tiltStrengthV", "shakeAction", "shakeStrength",
+                                                   "faceDownAction", "faceUpAction"},
+                "Motion sensor holds every sensor row, in order") &&
+         ok;
+  }
   ok = expect(rowTilt == menuTilt + 1, "row tilt row sits directly after tab tilt") && ok;
   ok = expect(settings.tiltMenuNavigation == CrossPointSettings::TILT_NORMAL, "row tilt starts on the setup") && ok;
 
-  // Strength rows follow the tilt rows in Controls, one per axis.
+  // Strength rows follow the tilt rows, one per axis.
   ok = expect(strengthH && strengthV, "both strength descriptors present") && ok;
   if (strengthH && strengthV) {
   ok = expect(isStrengthEnum(*strengthH, StrId::STR_TILT_STRENGTH_H, &CrossPointSettings::tiltStrengthH) &&

@@ -64,7 +64,7 @@ struct SettingsActivity {
   struct InputBoundary { bool hasTouch() const { return BoardConfig::hasTouch(); } } mappedInput;
   int selectedCategoryIndex = 0, settingsCount = 0;
   std::vector<SettingInfo> displaySettings, readerSettings, controlsSettings, systemSettings,
-                           deviceSettings, otherSettings, keyboardSettings, sleepSettings;
+                           deviceSettings, otherSettings, keyboardSettings, sleepSettings, motionSettings;
   const std::vector<SettingInfo>* currentSettings = nullptr;
   std::array<Cursor, settingstabs::TAB_COUNT> tabNavs{};
   unsigned rebuilds = 0;

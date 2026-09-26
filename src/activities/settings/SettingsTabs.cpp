@@ -20,6 +20,8 @@ StrId tenThe(const Tab tab) {
       return StrId::STR_CAT_OTHER;
     case Tab::KEYBOARD:
       return StrId::STR_CAT_KEYBOARD;
+    case Tab::MOTION:
+      return StrId::STR_CAT_MOTION;
   }
   return StrId::STR_CAT_SYSTEM;
 }

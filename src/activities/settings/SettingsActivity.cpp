@@ -67,9 +67,13 @@ std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe(const settingstabs::T
       return otherSettings;
     case settingstabs::Tab::KEYBOARD:
       return keyboardSettings;
+    case settingstabs::Tab::MOTION:
+      return motionSettings;
   }
   return systemSettings;
 }
+
+int SettingsActivity::tabCount() const { return deviceSettingsTabCount(); }
 
 void SettingsActivity::rebuildSettingsLists() {
   displaySettings.clear();
@@ -80,6 +84,7 @@ void SettingsActivity::rebuildSettingsLists() {
   otherSettings.clear();
   keyboardSettings.clear();
   sleepSettings.clear();
+  motionSettings.clear();
 
   // Pick up any fonts uploaded/deleted over the web server since the last
   // reader activity ran - otherwise the font-family picker shows stale list.
