@@ -81,6 +81,9 @@ class UITheme {
 };
 struct PrewarmScope { void endScanAndPrewarm() {} };
 struct FontCacheManager { PrewarmScope createPrewarmScope() { return {}; } };
+// Probe-only heap map; the release build compiles it away.
+inline void heapMapDump(const char*) {}
+
 namespace freeink::ble {
 inline bool busyState = false;
 inline bool initializingState = false;
