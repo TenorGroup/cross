@@ -1,5 +1,6 @@
 #include "BookMetadataCache.h"
 
+#include <Arduino.h>
 #include <BufferedFile.h>
 #include <Logging.h>
 #include <Serialization.h>
@@ -7,7 +8,6 @@
 #include <ZipFile.h>
 
 #include <deque>
-#include <optional>
 
 #include "FsHelpers.h"
 
@@ -19,6 +19,15 @@ constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
 // Buffer size for the buildBookBin streams. 3 buffers x 4KB, transient (freed on
 // return); 4KB = 8 SD sectors per transfer, enough to stop the sector-cache thrash.
 constexpr size_t BUILD_IO_BUFFER_SIZE = 4096;
+// The per-spine working sets below grow with the chapter count, and without
+// exceptions a std::deque that cannot get memory aborts the device. They are sized
+// from free heap minus these reserves, and a book that does not fit is refused.
+constexpr uint32_t TOC_INDEX_HEAP_RESERVE = 16 * 1024;
+constexpr uint32_t BOOK_BIN_HEAP_RESERVE = 32 * 1024;
+// buildBookBin works through the spine in chunks; each item of a chunk holds a zip
+// size lookup target, its inflated size and its first TOC index.
+constexpr size_t BOOK_BIN_ITEM_BYTES = sizeof(ZipFile::SizeTarget) + sizeof(uint32_t) + sizeof(int16_t);
+constexpr int BOOK_BIN_MIN_CHUNK = 64;
 
 // Entry (de)serializers, templated so they run over HalFile and the Buffered*
 // wrappers alike (two instantiations each -- a few hundred bytes of flash, in
@@ -110,6 +119,17 @@ bool BookMetadataCache::beginTocPass() {
   }
 
   if (spineCount >= LARGE_SPINE_THRESHOLD) {
+    // Without the index every TOC entry rescans the spine file (minutes at thousands
+    // of chapters), so a book whose index does not fit is refused.
+    const uint32_t needed = static_cast<uint32_t>(spineCount) * sizeof(SpineHrefIndexEntry) + TOC_INDEX_HEAP_RESERVE;
+    if (ESP.getFreeHeap() < needed) {
+      LOG_ERR("BMC", "Book too large: %d spine items need %u B of heap, %u free", spineCount,
+              static_cast<unsigned>(needed), static_cast<unsigned>(ESP.getFreeHeap()));
+      // Explicit close() required: member variables persist beyond function scope
+      tocFile.close();
+      spineFile.close();
+      return false;
+    }
     spineHrefIndex.clear();
     spineHrefIndex.resize(spineCount);
     spineFile.seek(0);
@@ -231,24 +251,30 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
     serialization::writePod(bookOut, pos + lutOffset + lutSize + spineBytes);
   }
 
-  // LUTs complete
-  // Loop through spines from spine file matching up TOC indexes, calculating cumulative size and writing to book.bin
-
-  // Build spineIndex->tocIndex mapping in one pass (O(n) instead of O(n*m))
-  std::deque<int16_t> spineToTocIndex(spineCount, -1);
-  tocIn.seek(0);
-  for (int j = 0; j < tocCount; j++) {
-    auto tocEntry = readTocEntryFrom(tocIn);
-    if (tocEntry.spineIndex >= 0 && tocEntry.spineIndex < spineCount) {
-      if (spineToTocIndex[tocEntry.spineIndex] == -1) {
-        spineToTocIndex[tocEntry.spineIndex] = static_cast<int16_t>(j);
-      }
-    }
+  // LUTs complete. Spine entries are written in chunks sized from free heap, so the
+  // working set stays bounded at any chapter count. A book that fits one chunk takes
+  // the passes it always took: one TOC scan for the spine->TOC mapping and, for large
+  // books, one zip central-directory scan for the sizes.
+  const bool isZip = !FsHelpers::hasTxtExtension(epubPath) && !FsHelpers::hasMarkdownExtension(epubPath);
+  const bool useBatchSizes = isZip && spineCount >= LARGE_SPINE_THRESHOLD;
+  int chunk = spineCount;
+  if (useBatchSizes) {
+    const uint32_t freeHeap = ESP.getFreeHeap();
+    const uint32_t budget = freeHeap > BOOK_BIN_HEAP_RESERVE ? freeHeap - BOOK_BIN_HEAP_RESERVE : 0;
+    chunk = static_cast<int>(std::min<uint32_t>(spineCount, budget / BOOK_BIN_ITEM_BYTES));
+  }
+  if (chunk < std::min<int>(spineCount, BOOK_BIN_MIN_CHUNK)) {
+    LOG_ERR("BMC", "Book too large: %u B of heap free to size %d spine items", static_cast<unsigned>(ESP.getFreeHeap()),
+            spineCount);
+    // Explicit close() required: member variables persist beyond function scope
+    bookFile.close();
+    spineFile.close();
+    tocFile.close();
+    Storage.remove((cachePath + bookBinFile).c_str());
+    return false;
   }
 
-  const bool isZip = !FsHelpers::hasTxtExtension(epubPath) && !FsHelpers::hasMarkdownExtension(epubPath);
   ZipFile zip(epubPath);
-  std::optional<std::deque<uint32_t>> spineSizes;
   size_t rawSize = 0;
   if (isZip) {
     // Pre-open zip file to speed up size calculations
@@ -263,37 +289,10 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
     // NOTE: We intentionally skip calling loadAllFileStatSlims() here.
     // For large EPUBs (2000+ chapters), pre-loading all ZIP central directory entries
     // into memory causes OOM crashes on ESP32-C3's limited ~380KB RAM.
-    // Instead, for large books we use a one-pass batch lookup that scans the ZIP
-    // central directory once and matches against spine targets using hash comparison.
+    // Instead, for large books we use a batch lookup that scans the ZIP central
+    // directory once per chunk and matches against spine targets using hash comparison.
     // This is O(n*log(m)) instead of O(n*m) while avoiding memory exhaustion.
     // See: https://github.com/crosspoint-reader/crosspoint-reader/issues/134
-
-    if (spineCount >= LARGE_SPINE_THRESHOLD) {
-      LOG_DBG("BMC", "Using batch size lookup for %d spine items", spineCount);
-
-      std::deque<ZipFile::SizeTarget> targets;
-      targets.resize(spineCount);
-
-      spineIn.seek(0);
-      for (int i = 0; i < spineCount; i++) {
-        auto entry = readSpineEntryFrom(spineIn);
-        std::string path = FsHelpers::normalisePath(entry.href);
-
-        ZipFile::SizeTarget t;
-        t.hash = ZipFile::fnvHash64(path.c_str(), path.size());
-        t.len = static_cast<uint16_t>(path.size());
-        t.index = static_cast<uint16_t>(i);
-        targets[i] = t;
-      }
-
-      std::sort(targets.begin(), targets.end(), [](const ZipFile::SizeTarget& a, const ZipFile::SizeTarget& b) {
-        return a.hash < b.hash || (a.hash == b.hash && a.len < b.len);
-      });
-
-      spineSizes.emplace(spineCount, 0);
-      int matched = zip.fillUncompressedSizes(targets, *spineSizes);
-      LOG_DBG("BMC", "Batch lookup matched %d/%d spine items", matched, spineCount);
-    }
   } else {
     HalFile rawFile;
     if (Storage.openFileForRead("BMC", epubPath, rawFile)) {
@@ -304,34 +303,66 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
   uint32_t cumSize = 0;
   spineIn.seek(0);
   int lastSpineTocIndex = -1;
-  for (int i = 0; i < spineCount; i++) {
-    auto spineEntry = readSpineEntryFrom(spineIn);
-    spineEntry.tocIndex = spineToTocIndex[i];
-    if (spineEntry.tocIndex == -1) {
-      if (isZip) {
-        LOG_DBG("BMC", "Warning: Could not find TOC entry for spine item %d: %s, using title from last section", i,
-                spineEntry.href.c_str());
-      }
-      spineEntry.tocIndex = lastSpineTocIndex;
-    }
-    lastSpineTocIndex = spineEntry.tocIndex;
+  for (int first = 0; first < spineCount; first += chunk) {
+    const int count = std::min(chunk, spineCount - first);
 
-    size_t itemSize = rawSize;
-    if (isZip) {
-      itemSize = spineSizes ? (*spineSizes)[i] : 0;
-      if (itemSize == 0) {
-        const std::string path = FsHelpers::normalisePath(spineEntry.href);
-        if (!zip.getInflatedFileSize(path.c_str(), &itemSize)) {
-          LOG_ERR("BMC", "Warning: Could not get size for spine item: %s", path.c_str());
+    // First TOC entry of each spine item in this chunk, in one TOC pass
+    std::deque<int16_t> spineToTocIndex(count, -1);
+    tocIn.seek(0);
+    for (int j = 0; j < tocCount; j++) {
+      const int local = readTocEntryFrom(tocIn).spineIndex - first;
+      if (local >= 0 && local < count && spineToTocIndex[local] == -1) {
+        spineToTocIndex[local] = static_cast<int16_t>(j);
+      }
+    }
+
+    std::deque<uint32_t> spineSizes;
+    if (useBatchSizes) {
+      spineSizes.resize(count, 0);
+      const size_t chunkStart = spineIn.position();
+      std::deque<ZipFile::SizeTarget> targets(count);
+      for (int i = 0; i < count; i++) {
+        const std::string path = FsHelpers::normalisePath(readSpineEntryFrom(spineIn).href);
+        targets[i] = {ZipFile::fnvHash64(path.c_str(), path.size()), static_cast<uint16_t>(path.size()),
+                      static_cast<uint16_t>(i)};
+      }
+      std::sort(targets.begin(), targets.end(), [](const ZipFile::SizeTarget& a, const ZipFile::SizeTarget& b) {
+        return a.hash < b.hash || (a.hash == b.hash && a.len < b.len);
+      });
+      const int matched = zip.fillUncompressedSizes(targets, spineSizes);
+      LOG_DBG("BMC", "Batch lookup matched %d/%d spine items", matched, count);
+      spineIn.seek(chunkStart);
+    }
+
+    for (int i = 0; i < count; i++) {
+      auto spineEntry = readSpineEntryFrom(spineIn);
+      spineEntry.tocIndex = spineToTocIndex[i];
+      if (spineEntry.tocIndex == -1) {
+        if (isZip) {
+          LOG_DBG("BMC", "Warning: Could not find TOC entry for spine item %d: %s, using title from last section",
+                  first + i, spineEntry.href.c_str());
+        }
+        spineEntry.tocIndex = lastSpineTocIndex;
+      }
+      lastSpineTocIndex = spineEntry.tocIndex;
+
+      size_t itemSize = rawSize;
+      if (isZip) {
+        // Small books look every item up directly; a batch miss falls back the same way.
+        itemSize = useBatchSizes ? spineSizes[i] : 0;
+        if (itemSize == 0) {
+          const std::string path = FsHelpers::normalisePath(spineEntry.href);
+          if (!zip.getInflatedFileSize(path.c_str(), &itemSize)) {
+            LOG_ERR("BMC", "Warning: Could not get size for spine item: %s", path.c_str());
+          }
         }
       }
-    }
 
-    cumSize += itemSize;
-    spineEntry.cumulativeSize = cumSize;
-    writeSpineEntryTo(bookOut, spineEntry);
+      cumSize += itemSize;
+      spineEntry.cumulativeSize = cumSize;
+      writeSpineEntryTo(bookOut, spineEntry);
+    }
   }
-  spineSizes.reset();
   if (isZip) zip.close();
 
   // Loop through toc entries from toc file writing to book.bin
