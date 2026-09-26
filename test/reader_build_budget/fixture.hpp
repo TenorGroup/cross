@@ -317,6 +317,8 @@ struct EpubReaderActivity : ReaderActivity {
   std::atomic<bool> deferredClearPending{false};
   bool deferBackgroundBuildForBle() const; bool buildTickHeapGate(); bool backgroundBuildStartHeapGate(); bool backgroundBuildCanTick(); void suspendBackgroundBuild();
   bool indexStepDue() const { return false; } void runIndexStep() {}
+  // The next chapter's early layout (EpubReaderActivity::prepareNextChapter) is covered by the simulator.
+  bool nextChapterDue(bool) { return false; } void prepareNextChapter() {}
   bool releaseRadioForBuild(); bool readyForRadio(); void showMemoryError(); void generatePendingThumb(); void writePendingThumbs();
   void backgroundTick(); void foreground(); bool skipLoopDelay(); bool latTrangThat(bool);
   // loadBook()'s cover-thumbnail tail and loop()'s idle region, projected verbatim.
