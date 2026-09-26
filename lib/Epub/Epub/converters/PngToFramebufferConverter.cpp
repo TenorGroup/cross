@@ -45,6 +45,15 @@ struct PngContext {
   uint8_t* grayLineBuffer{nullptr};
   uint8_t* alphaLineBuffer{nullptr};
   uint32_t lastYieldMs{0};  // throttle state for yieldDuringDecode()
+
+  // Downscale by area: each destination pixel averages the source cell it covers, summed one
+  // source row at a time into areaSums (dstWidth entries, null when the path does not apply).
+  // Cell bounds are 16.16 source steps per destination pixel; the open row is lastDstY + 1.
+  uint32_t* areaSums{nullptr};
+  uint8_t* areaGrays{nullptr};  // the closed destination row, dstWidth bytes after areaSums
+  uint32_t areaStepX{0};
+  uint32_t areaStepY{0};
+  uint32_t areaRows{0};  // row weight summed into the open destination row, 1/64 of a row
 };
 
 // File I/O callbacks use pFile->fHandle to access the HalFile*,
@@ -212,6 +221,91 @@ void convertLineToGray(const uint8_t* pPixels, uint8_t* grayLine, int width, int
   }
 }
 
+// One destination row of grays to the frame and the cache band, dithered like the point path.
+void writeDstRow(PngContext* ctx, DirectPixelWriter& pw, const int dstY, const uint8_t* grays) {
+  const int outY = ctx->config->y + dstY;
+  if (outY >= ctx->screenHeight) return;
+  pw.beginRow(outY);
+  bool caching = ctx->caching;
+  DirectCacheWriter cw;
+  if (caching) {
+    if (!ctx->cache.advanceTo(dstY)) {
+      caching = false;
+      ctx->caching = false;
+    } else {
+      cw.init(ctx->cache.buffer, ctx->cache.bytesPerRow, ctx->cache.bandRows, ctx->cache.originX);
+      cw.beginRow(outY, ctx->config->y + ctx->cache.bandStart);
+    }
+  }
+  const bool useDithering = ctx->config->useDithering;
+  for (int dstX = 0; dstX < ctx->dstWidth; dstX++) {
+    const int outX = ctx->config->x + dstX;
+    if (outX >= ctx->screenWidth) break;
+    uint8_t level;
+    if (useDithering) {
+      level = applyBayerDither4Level(grays[dstX], outX, outY);
+    } else {
+      level = grays[dstX] / 85;
+      if (level > 3) level = 3;
+    }
+    pw.writePixel(outX, level);
+    if (caching) cw.writePixel(outX, level);
+  }
+}
+
+// Share of source pixel or row `s` in the cell [from, to) (16.16), in 1/64 of a pixel.
+inline uint32_t areaShare(const uint32_t s, const uint32_t from, const uint32_t to) {
+  const uint32_t lo = std::max(s << 16, from), hi = std::min((s + 1) << 16, to);
+  return hi > lo ? (hi - lo) >> 10 : 0;
+}
+
+// Cell of destination column dstX in the visible source row, 16.16; the last one reaches its end.
+inline void areaColumn(const PngContext* ctx, const int dstX, uint32_t& from, uint32_t& to) {
+  from = static_cast<uint32_t>(dstX) * ctx->areaStepX;
+  to = dstX + 1 == ctx->dstWidth ? static_cast<uint32_t>(ctx->visibleWidth) << 16
+                                 : static_cast<uint32_t>(dstX + 1) * ctx->areaStepX;
+}
+
+// One source row of the area path. Each destination pixel is the source averaged over its cell,
+// pixels and rows weighted by how much of them the cell covers; a source row that crosses a cell
+// edge closes the destination row (written out) and starts the next with its remaining part.
+void addAreaRow(PngContext* ctx, const int visibleSrcY) {
+  const uint8_t* gray = ctx->grayLineBuffer + ctx->cropLeft;
+  const uint32_t row = static_cast<uint32_t>(visibleSrcY);
+  while (ctx->lastDstY + 1 < ctx->dstHeight) {
+    const int dstY = ctx->lastDstY + 1;
+    const uint32_t cellTop = static_cast<uint32_t>(dstY) * ctx->areaStepY;
+    const uint32_t cellBottom = dstY + 1 == ctx->dstHeight ? static_cast<uint32_t>(ctx->visibleHeight) << 16
+                                                           : static_cast<uint32_t>(dstY + 1) * ctx->areaStepY;
+    const uint32_t weightY = areaShare(row, cellTop, cellBottom);
+    if (weightY != 0) {
+      for (int dstX = 0; dstX < ctx->dstWidth; dstX++) {
+        uint32_t from, to, sum = 0;
+        areaColumn(ctx, dstX, from, to);
+        for (uint32_t s = from >> 16; s < (to + 0xFFFF) >> 16; s++) sum += gray[s] * areaShare(s, from, to);
+        ctx->areaSums[dstX] += sum * weightY;
+      }
+      ctx->areaRows += weightY;
+    }
+    if (((row + 1) << 16) < cellBottom) return;  // the cell goes on in the next source row
+    uint8_t* grays = ctx->areaGrays;
+    for (int dstX = 0; dstX < ctx->dstWidth; dstX++) {
+      uint32_t from, to, weightX = 0;
+      areaColumn(ctx, dstX, from, to);
+      for (uint32_t s = from >> 16; s < (to + 0xFFFF) >> 16; s++) weightX += areaShare(s, from, to);
+      const uint32_t cells = weightX * static_cast<uint32_t>(ctx->areaRows);
+      grays[dstX] = cells ? static_cast<uint8_t>((ctx->areaSums[dstX] + cells / 2) / cells) : 0;
+      ctx->areaSums[dstX] = 0;
+    }
+    ctx->areaRows = 0;
+    ctx->lastDstY = dstY;
+    DirectPixelWriter pw;
+    pw.init(*ctx->renderer);
+    writeDstRow(ctx, pw, dstY, grays);
+    if (((row + 1) << 16) == cellBottom) return;  // otherwise the row's rest starts the next cell
+  }
+}
+
 int pngDrawCallback(PNGDRAW* pDraw) {
   PngContext* ctx = reinterpret_cast<PngContext*>(pDraw->pUser);
   if (!ctx || !ctx->config || !ctx->renderer || !ctx->grayLineBuffer) return 0;
@@ -222,6 +316,14 @@ int pngDrawCallback(PNGDRAW* pDraw) {
   int srcWidth = ctx->srcWidth;
   if (srcY < ctx->cropTop || srcY >= ctx->cropTop + ctx->visibleHeight) return 1;
   const int visibleSrcY = srcY - ctx->cropTop;
+
+  if (ctx->areaSums) {
+    const uint32_t transparentColor = ctx->decoder ? ctx->decoder->getTransparentColor() : 0;
+    convertLineToGray(pDraw->pPixels, ctx->grayLineBuffer, srcWidth, pDraw->iPixelType, pDraw->iBpp, pDraw->pPalette,
+                      pDraw->iHasAlpha, transparentColor, nullptr);
+    addAreaRow(ctx, visibleSrcY);
+    return 1;
+  }
 
   // Map source rows with the exact output-height ratio. During downscaling,
   // multiple source rows can select the same output row; during upscaling, one
@@ -446,6 +548,20 @@ bool PngToFramebufferConverter::decodeToFramebuffer(const std::string& imagePath
   }
   ctx.grayLineBuffer = lineBuffers.get();
   ctx.alphaLineBuffer = retainAlpha ? ctx.grayLineBuffer + grayBufSize : nullptr;
+
+  // Shrinking without alpha to keep: average each destination pixel's source cell (area) instead of
+  // picking one source pixel from it. Without the sums the point path below still draws, as it does
+  // past a 16x shrink, where a cell's sum could outgrow 32 bits.
+  std::unique_ptr<uint32_t[]> areaSums;
+  if (!retainAlpha && ctx.dstWidth <= ctx.visibleWidth && ctx.dstHeight <= ctx.visibleHeight &&
+      (ctx.dstWidth < ctx.visibleWidth || ctx.dstHeight < ctx.visibleHeight) &&
+      ctx.visibleWidth < 16 * ctx.dstWidth && ctx.visibleHeight < 16 * ctx.dstHeight) {
+    areaSums.reset(new (std::nothrow) uint32_t[ctx.dstWidth + (ctx.dstWidth + 3) / 4]());
+    ctx.areaSums = areaSums.get();
+    ctx.areaGrays = areaSums ? reinterpret_cast<uint8_t*>(areaSums.get() + ctx.dstWidth) : nullptr;
+    ctx.areaStepX = static_cast<uint32_t>((static_cast<uint64_t>(ctx.visibleWidth) << 16) / ctx.dstWidth);
+    ctx.areaStepY = static_cast<uint32_t>((static_cast<uint64_t>(ctx.visibleHeight) << 16) / ctx.dstHeight);
+  }
 
   // Stream the pixel cache to disk. PNGdec delivers source scanlines top to
   // bottom and we emit at most one (downscaled) output row per callback, so the

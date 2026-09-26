@@ -1,7 +1,7 @@
 # What a deep-sleep wake may reuse from the boot before it instead of measuring again:
 # the panel controller the probe found and the SD reader font family the last boot loaded.
 add_executable(WakeBootMemoTest PanelMemoTest.cpp)
-target_include_directories(WakeBootMemoTest PRIVATE ${REPO_ROOT}/lib/hal)
+target_include_directories(WakeBootMemoTest PRIVATE ${REPO_ROOT}/lib/hal ${REPO_ROOT}/src)
 target_link_libraries(WakeBootMemoTest PRIVATE GTest::gtest_main)
 gtest_discover_tests(WakeBootMemoTest)
 

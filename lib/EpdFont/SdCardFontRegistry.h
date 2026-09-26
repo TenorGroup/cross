@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct SdCardFontFileInfo {
@@ -57,6 +58,8 @@ class SdCardFontRegistry {
   bool discover();
 
   const std::vector<SdCardFontFamilyInfo>& getFamilies() const { return families_; }
+  // Takes a catalog an earlier discover() read (kept across deep sleep) in place of a walk.
+  void adopt(std::vector<SdCardFontFamilyInfo> families) { families_ = std::move(families); }
   const SdCardFontFamilyInfo* findFamily(const std::string& name) const;
   int getFamilyIndex(const std::string& name) const;
   int getFamilyCount() const { return static_cast<int>(families_.size()); }

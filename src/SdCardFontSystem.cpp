@@ -22,6 +22,7 @@ namespace {
 
 // Survives deep sleep, not power loss (SdFontBootMemo.h).
 RTC_NOINIT_ATTR sdfontmemo::Memo bootMemo;
+RTC_NOINIT_ATTR sdfontmemo::Catalog catalogMemo;
 
 bool wokeFromDeepSleep() {
 #ifdef SIMULATOR
@@ -60,18 +61,34 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
   // family folder waits for its first use (registry()). A wake from deep sleep finds the saved
   // family in the memo the boot before left; any other boot, or a memo whose file no longer
   // loads, walks the card now, as before.
+  // The catalog itself comes back from the memo as well when the last walk fit in it.
   catalog_.store(CATALOG_PENDING, std::memory_order_release);
+  const bool wake = wokeFromDeepSleep();
+  std::vector<SdCardFontFamilyInfo> kept;
+  if (sdfontmemo::restoreCatalog(catalogMemo, wake, kept)) {
+    registry_.adopt(std::move(kept));
+    catalogKept_ = true;
+    catalog_.store(CATALOG_READY, std::memory_order_release);
+    LOG_PROBE("SDFS", "Catalog kept from sleep: families=%d", registry_.getFamilyCount());
+  } else {
+    catalogMemo.magic = 0;  // a restart keeps RTC memory: a later wake must not trust an old catalog
+  }
   const char* saved = SETTINGS.sdFontFamilyName;
-  const bool fromMemo = saved[0] != '\0' && sdfontmemo::restore(bootMemo, wokeFromDeepSleep(), saved, bootFamily_);
+  const bool fromMemo = saved[0] != '\0' && sdfontmemo::restore(bootMemo, wake, saved, bootFamily_);
   bootMemo = sdfontmemo::Memo{};  // rewritten below by a load that succeeds
   if (saved[0] != '\0' && !(fromMemo && loadSelected(renderer, bootFamily_))) {
     bootFamily_.name.clear();  // familyNamed() no longer answers from the memo
     readCatalogIfPending();
     const auto* family = registry_.findFamily(saved);
+    bool loaded = family && loadSelected(renderer, *family);
+    if (!loaded && walkIfCatalogKept()) {
+      family = registry_.findFamily(saved);
+      loaded = family && loadSelected(renderer, *family);
+    }
     if (!family) {
       LOG_DBG("SDFS", "SD font family not found on card: %s (clearing)", saved);
       SETTINGS.clearSdFontFamily();
-    } else if (!loadSelected(renderer, *family)) {
+    } else if (!loaded) {
       LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", saved);
       SETTINGS.clearSdFontFamily();
     }
@@ -80,6 +97,7 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
 
 void SdCardFontSystem::markRegistryDirty() {
   bootMemo = sdfontmemo::Memo{};
+  catalogMemo.magic = 0;
   registryDirty_.store(true, std::memory_order_release);
 }
 
@@ -91,7 +109,7 @@ const SdCardFontRegistry& SdCardFontSystem::registry() const {
 bool SdCardFontSystem::readCatalogIfPending() const {
   uint8_t expected = CATALOG_PENDING;
   if (catalog_.compare_exchange_strong(expected, CATALOG_READING, std::memory_order_acq_rel)) {
-    registry_.discover();
+    walkCatalog();
     const auto heap = HalMemory::getInternalHeap();
     LOG_INF("HEAP", "fonts-sd-registry free=%u largest=%u families=%d", static_cast<unsigned>(heap.freeBytes),
             static_cast<unsigned>(heap.largestBlockBytes), registry_.getFamilyCount());
@@ -100,6 +118,25 @@ bool SdCardFontSystem::readCatalogIfPending() const {
   }
   while (catalog_.load(std::memory_order_acquire) == CATALOG_READING) delay(1);
   return false;
+}
+
+void SdCardFontSystem::walkCatalog() const {
+  [[maybe_unused]] const unsigned long started = millis();
+  registry_.discover();
+  catalogKept_ = false;
+  // Fonts changed during the walk (web task) leave the flag set: that catalog is not kept.
+  const bool kept = sdfontmemo::saveCatalog(registry_.getFamilies(), catalogMemo) &&
+                    !registryDirty_.load(std::memory_order_acquire);
+  if (!kept) catalogMemo.magic = 0;
+  LOG_PROBE("SDFS", "Catalog walk: families=%d ms=%lu kept=%d", registry_.getFamilyCount(), millis() - started,
+            kept ? 1 : 0);
+}
+
+bool SdCardFontSystem::walkIfCatalogKept() const {
+  if (!catalogKept_) return false;
+  LOG_PROBE("SDFS", "Kept catalog does not load, walking the card");
+  walkCatalog();
+  return true;
 }
 
 const SdCardFontFamilyInfo* SdCardFontSystem::familyNamed(const std::string& name) const {
@@ -138,7 +175,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   const bool registryWasDirty = registryDirty_.exchange(false, std::memory_order_acquire);
   if (registryWasDirty) {
     LOG_DBG("SDFS", "Registry dirty — re-discovering fonts");
-    if (!readCatalogIfPending()) registry_.discover();
+    if (!readCatalogIfPending()) walkCatalog();
   }
 
   const char* wantedFamily = SETTINGS.sdFontFamilyName;
@@ -161,6 +198,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   bool familyMatches = (currentFamily == wantedFamily);
   if (familyMatches) {
     const auto* family = familyNamed(wantedFamily);
+    if (!family && walkIfCatalogKept()) family = familyNamed(wantedFamily);
     if (!family) {
       LOG_DBG("SDFS", "SD font family disappeared: %s (clearing)", wantedFamily);
       manager_.unloadAll(renderer);
@@ -186,8 +224,13 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   }
 
   const auto* family = familyNamed(wantedFamily);
+  bool loaded = family && loadSelected(renderer, *family);
+  if (!loaded && walkIfCatalogKept()) {
+    family = familyNamed(wantedFamily);
+    loaded = family && loadSelected(renderer, *family);
+  }
   if (family) {
-    if (!loadSelected(renderer, *family)) {
+    if (!loaded) {
       LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", wantedFamily);
       SETTINGS.clearSdFontFamily();
     }

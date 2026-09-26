@@ -13,6 +13,7 @@
 #include <esp_timer.h>
 
 #include <atomic>
+#include <cstring>
 
 // Global HalGPIO instance
 HalGPIO gpio;
@@ -196,17 +197,21 @@ void HalGPIO::begin() {
   // A wake from deep sleep reuses the answer instead (PanelMemo.h). Only a clean
   // verdict is kept: an unknown ID or a BUSY timeout is probed again next time.
   uint8_t controller = 0, variant = 0;
-  if (panelmemo::read(panelMemo, esp_reset_reason() == ESP_RST_DEEPSLEEP, controller, variant)) {
+  const bool deepSleepWake = esp_reset_reason() == ESP_RST_DEEPSLEEP;
+  if (panelmemo::read(panelMemo, deepSleepWake, controller, variant)) {
     BoardConfig::ACTIVE.displayController = static_cast<BoardConfig::DisplayController>(controller);
     BoardConfig::ACTIVE.displayControllerVariant = variant;
+    panelVerKnown_ = panelmemo::readVer(panelMemo, deepSleepWake, panelVer_);
   } else {
     panelMemo = {};
     freeink::applyXteinkDisplayController();
     const auto& probe = freeink::getXteinkDisplayProbeDiag();
+    panelVerKnown_ = probe.valid && probe.verBytesRead >= 3;
+    if (panelVerKnown_) memcpy(panelVer_, probe.ver, sizeof(panelVer_));
     if (probe.valid && !probe.busyTimedOut &&
         probe.verdict != static_cast<uint8_t>(freeink::DisplayControllerVerdict::Inconclusive)) {
       panelMemo = panelmemo::make(static_cast<uint8_t>(BoardConfig::ACTIVE.displayController),
-                                  BoardConfig::ACTIVE.displayControllerVariant);
+                                  BoardConfig::ACTIVE.displayControllerVariant, panelVerKnown_ ? panelVer_ : nullptr);
     }
   }
   if (deviceIsX3() && BoardConfig::ACTIVE.displayController == BoardConfig::DisplayController::UC8279) {
@@ -229,6 +234,12 @@ void HalGPIO::begin() {
   _deviceType = DeviceType::X4;
 #endif
   inputMgr.begin();
+}
+
+bool HalGPIO::panelVersion(uint8_t ver[3]) const {
+  if (!panelVerKnown_) return false;
+  memcpy(ver, panelVer_, sizeof(panelVer_));
+  return true;
 }
 
 namespace {

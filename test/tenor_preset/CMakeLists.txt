@@ -65,3 +65,33 @@ add_test(NAME TenorPresetOldFile COMMAND TenorPresetTest old-file)
 add_test(NAME TenorPresetOnlyOnce COMMAND TenorPresetTest once)
 add_test(NAME TenorPresetOldSpacingVersion COMMAND TenorPresetTest old-spacing)
 add_test(NAME TenorPresetNoImu COMMAND TenorPresetTest no-imu)
+
+# The same code built for Paper Mono, whose power key reaches the firmware only as a click.
+add_executable(TenorPresetPaperMonoTest
+  TenorPresetTest.cpp
+  ${REPO_ROOT}/test/settings_catalog/LinkStubs.cpp
+  ${REPO_ROOT}/src/CrossPointSettings.cpp
+  ${REPO_ROOT}/src/ReaderFontSizes.cpp
+  ${REPO_ROOT}/lib/I18n/I18n.cpp
+  ${REPO_ROOT}/lib/I18n/I18nStrings.cpp
+)
+target_compile_features(TenorPresetPaperMonoTest PRIVATE cxx_std_20)
+target_include_directories(TenorPresetPaperMonoTest BEFORE PRIVATE
+  ${REPO_ROOT}/test/menu_tilt_settings/stubs
+  ${REPO_ROOT}/test/host_stubs
+)
+target_include_directories(TenorPresetPaperMonoTest PRIVATE ${_inc_dirs})
+target_compile_definitions(TenorPresetPaperMonoTest PRIVATE
+  FREEINK_DEVICE_PAPERMONO=1
+  FREEINK_CAP_FRONTLIGHT=0
+  FREEINK_CAP_WARMLIGHT=0
+  ENABLE_ARDUINO_FEATURES=0
+  CROSSPOINT_VERSION="tenor-preset-test"
+)
+target_compile_options(TenorPresetPaperMonoTest PRIVATE -ffunction-sections -fdata-sections)
+if(APPLE)
+  target_link_options(TenorPresetPaperMonoTest PRIVATE -Wl,-dead_strip)
+else()
+  target_link_options(TenorPresetPaperMonoTest PRIVATE -Wl,--gc-sections)
+endif()
+add_test(NAME TenorPresetPaperMonoPowerClick COMMAND TenorPresetPaperMonoTest papermono)

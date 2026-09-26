@@ -3,6 +3,7 @@
 #include <SdCardFontManager.h>
 #include <esp_system.h>
 
+#include <cstddef>
 #include <string>
 
 #include "CrossPointSettings.h"
@@ -93,9 +94,9 @@ TEST_F(SdFontBoot, WakeLoadsTheLastFamilyWithoutWalkingTheCard) {
   EXPECT_EQ(hostDiscoveries, 0);
   EXPECT_EQ(hostLoads, coldLoads);
   EXPECT_EQ(wake.resolveFontId("Bokerlam", 14), 42);
-  // The first screen that lists fonts reads the whole catalog, once.
+  // The first screen that lists fonts finds the catalog the boot before read.
   EXPECT_EQ(wake.registry().getFamilyCount(), 2);
-  EXPECT_EQ(hostDiscoveries, 1);
+  EXPECT_EQ(hostDiscoveries, 0);
 }
 
 TEST_F(SdFontBoot, OnlyADeepSleepWakeTrustsTheMemo) {
@@ -139,7 +140,8 @@ TEST_F(SdFontBoot, MemoOfAnotherFamilyIsNotUsed) {
   boot(ESP_RST_POWERON, cold, r1);
   std::strcpy(hostSettings.sdFontFamilyName, "Other");
   boot(ESP_RST_DEEPSLEEP, wake, r2);
-  EXPECT_EQ(hostDiscoveries, 1);
+  // The family memo names Bokerlam; the catalog kept with it still has Other.
+  EXPECT_EQ(hostDiscoveries, 0);
   EXPECT_EQ(hostLoads.back(), "/fonts/Other/Other-SD_14.cpfont");
 }
 
@@ -150,6 +152,86 @@ TEST_F(SdFontBoot, FontsChangedInTheAppDropTheMemo) {
   cold.markRegistryDirty();
   boot(ESP_RST_DEEPSLEEP, wake, r2);
   EXPECT_EQ(hostDiscoveries, 1);
+}
+
+// After a wake the text settings, the font size and the reader menu list every family again. The
+// X3 walked its 31 family folders for that on the first screen after every wake (~300 ms); the
+// catalog the last walk read now sleeps in RTC memory with the family memo.
+TEST_F(SdFontBoot, WakeListsTheFontsWithoutWalkingTheCard) {
+  SdCardFontSystem cold;
+  GfxRenderer r1;
+  boot(ESP_RST_POWERON, cold, r1);
+  ASSERT_EQ(hostDiscoveries, 1);
+  for (int wakeCount = 0; wakeCount < 3; ++wakeCount) {
+    SdCardFontSystem wake;
+    GfxRenderer renderer;
+    boot(ESP_RST_DEEPSLEEP, wake, renderer);
+    EXPECT_EQ(wake.registry().getFamilyCount(), 2) << wakeCount;
+    const auto* family = wake.registry().findFamily("Bokerlam");
+    ASSERT_NE(family, nullptr);
+    std::vector<uint8_t> sizes;
+    for (const auto& file : family->files) sizes.push_back(file.pointSize);
+    EXPECT_EQ(sizes, (std::vector<uint8_t>{8, 10, 12, 14, 16, 18}));
+    hostSettings.fontPointSize = wakeCount % 2 ? 14 : 16;
+    wake.ensureLoaded(renderer);
+    EXPECT_EQ(wake.resolveFontId("Bokerlam", hostSettings.fontPointSize), 42);
+    EXPECT_EQ(hostDiscoveries, 0) << wakeCount;
+  }
+}
+
+// A catalog first read after the boot (no SD family saved) is kept all the same.
+TEST_F(SdFontBoot, CatalogReadOnFirstUseIsKeptForTheWake) {
+  hostSettings.sdFontFamilyName[0] = '\0';
+  SdCardFontSystem cold, wake;
+  GfxRenderer r1, r2;
+  boot(ESP_RST_POWERON, cold, r1);
+  EXPECT_EQ(cold.registry().getFamilyCount(), 2);
+  boot(ESP_RST_DEEPSLEEP, wake, r2);
+  EXPECT_EQ(wake.registry().getFamilyCount(), 2);
+  EXPECT_EQ(hostDiscoveries, 0);
+}
+
+// Fonts sent or downloaded in the app mark the catalog dirty: the next wake walks the card once,
+// and the walk the app runs for the new list is what the wake after it keeps.
+TEST_F(SdFontBoot, FontsChangedInTheAppWalkTheCardOnceMore) {
+  SdCardFontSystem cold;
+  GfxRenderer r1;
+  boot(ESP_RST_POWERON, cold, r1);
+  cold.markRegistryDirty();
+  {
+    SdCardFontSystem wake;
+    GfxRenderer r2;
+    boot(ESP_RST_DEEPSLEEP, wake, r2);
+    EXPECT_EQ(wake.registry().getFamilyCount(), 2);
+    EXPECT_EQ(hostDiscoveries, 1);
+    putOnCard(family("Sent", {14, 16}));
+    wake.markRegistryDirty();
+    wake.refreshIfDirty();
+    EXPECT_EQ(wake.registry().getFamilyCount(), 3);
+  }
+  SdCardFontSystem later;
+  GfxRenderer r3;
+  boot(ESP_RST_DEEPSLEEP, later, r3);
+  EXPECT_EQ(later.registry().getFamilyCount(), 3);
+  EXPECT_NE(later.registry().findFamily("Sent"), nullptr);
+  EXPECT_EQ(hostDiscoveries, 0);
+}
+
+// A family the kept catalog lists but the card lost while the device slept (card taken out)
+// walks the card before the setting is dropped, as the boot before the catalog memo did.
+TEST_F(SdFontBoot, KeptCatalogThatNoLongerLoadsWalksTheCard) {
+  SdCardFontSystem cold, wake;
+  GfxRenderer r1, r2;
+  boot(ESP_RST_POWERON, cold, r1);
+  std::strcpy(hostSettings.sdFontFamilyName, "Other");
+  hostCatalog.pop_back();
+  hostCatalog.push_back(family("Other", {12}, false));
+  hostCardFiles.erase("/fonts/Other/Other-SD_14.cpfont");
+  hostCardFiles.insert("/fonts/Other/Other-SD_12.cpfont");
+  boot(ESP_RST_DEEPSLEEP, wake, r2);
+  EXPECT_EQ(hostDiscoveries, 1);
+  EXPECT_EQ(hostLoads.back(), "/fonts/Other/Other-SD_12.cpfont");
+  EXPECT_EQ(std::string(hostSettings.sdFontFamilyName), "Other");
 }
 
 TEST_F(SdFontBoot, CjkFamilyGivesTheSameUiFallbacksFromTheMemo) {
@@ -246,4 +328,94 @@ TEST(SdFontMemo, FamiliesItCannotDescribeAreNotKept) {
     SdCardFontFamilyInfo back;
     EXPECT_FALSE(sdfontmemo::restore(memo, true, info->name.c_str(), back)) << info->name;
   }
+}
+
+namespace {
+// The X3 card of 26/09: 31 families, names as long as the real ones, eight sizes each, one of
+// them with two file stems.
+std::vector<SdCardFontFamilyInfo> thirtyOneFamilies() {
+  static const char* const names[] = {
+      "Alegreya", "AtkinsonHyperlegibleNext", "BeVietnamPro", "Bitter", "Bokerlam", "BokerlamSans",
+      "Bookerly", "DavidLibre", "Domitian", "Futura", "IBMPlexSerif", "Inter", "Literata", "Lora",
+      "Merriweather", "NotoSansCJKsc", "NotoSerif", "NotoSerifCJKsc", "OpenDyslexic", "PTSerif",
+      "Palatino", "RobotoSlab", "SourceSerif4", "SpectralLight", "Charis", "CrimsonPro",
+      "EBGaramond", "Gentium", "LibreBaskerville", "Newsreader", "Vollkorn"};
+  std::vector<SdCardFontFamilyInfo> out;
+  for (const char* name : names) {
+    SdCardFontFamilyInfo info;
+    info.name = name;
+    info.stems = {name};
+    info.hiddenRoot = std::string(name) != "Futura";
+    for (uint8_t size = 12; size <= 26; size += 2) info.files.push_back({size, 0, 0});
+    if (info.name == "Bokerlam") {
+      info.stems.push_back("Bokerlam-SD");
+      info.files.push_back({8, 0, 1});
+    }
+    out.push_back(info);
+  }
+  return out;
+}
+
+void expectSameCatalog(const std::vector<SdCardFontFamilyInfo>& a, const std::vector<SdCardFontFamilyInfo>& b) {
+  ASSERT_EQ(a.size(), b.size());
+  for (size_t i = 0; i < a.size(); ++i) {
+    EXPECT_EQ(a[i].name, b[i].name);
+    EXPECT_EQ(a[i].stems, b[i].stems);
+    EXPECT_EQ(a[i].hiddenRoot, b[i].hiddenRoot);
+    ASSERT_EQ(a[i].files.size(), b[i].files.size()) << a[i].name;
+    for (size_t f = 0; f < a[i].files.size(); ++f) {
+      EXPECT_EQ(a[i].files[f].pointSize, b[i].files[f].pointSize);
+      EXPECT_EQ(a[i].files[f].stem, b[i].files[f].stem);
+      EXPECT_EQ(a[i].files[f].style, b[i].files[f].style);
+    }
+  }
+}
+}  // namespace
+
+TEST(SdFontCatalogMemo, KeepsThe31FamilyCardExactly) {
+  const auto catalog = thirtyOneFamilies();
+  sdfontmemo::Catalog memo{};
+  ASSERT_TRUE(sdfontmemo::saveCatalog(catalog, memo));
+  std::vector<SdCardFontFamilyInfo> back;
+  ASSERT_TRUE(sdfontmemo::restoreCatalog(memo, true, back));
+  expectSameCatalog(catalog, back);
+  back.clear();
+  EXPECT_FALSE(sdfontmemo::restoreCatalog(memo, false, back));
+  EXPECT_TRUE(back.empty());
+}
+
+// Unlike the one-family memo, a wrong catalog is not caught by a load, so it carries a checksum:
+// a flipped bit anywhere, a wrong tag or length, or zeroed memory is no catalog.
+TEST(SdFontCatalogMemo, DamagedMemoIsNoCatalog) {
+  sdfontmemo::Catalog memo{};
+  ASSERT_TRUE(sdfontmemo::saveCatalog(thirtyOneFamilies(), memo));
+  std::vector<SdCardFontFamilyInfo> back;
+  const size_t used = offsetof(sdfontmemo::Catalog, data) + memo.bytes;  // bytes past it are unused
+  for (size_t i = 0; i < used; i += 3) {
+    auto broken = memo;
+    reinterpret_cast<uint8_t*>(&broken)[i] ^= 0x04;
+    back.clear();
+    EXPECT_FALSE(sdfontmemo::restoreCatalog(broken, true, back)) << i;
+  }
+  sdfontmemo::Catalog zero{};
+  EXPECT_FALSE(sdfontmemo::restoreCatalog(zero, true, back));
+  auto longer = memo;
+  longer.bytes = sizeof(memo.data) + 1;
+  EXPECT_FALSE(sdfontmemo::restoreCatalog(longer, true, back));
+}
+
+// A catalog too big for its RTC space is not kept: the wake walks the card as before.
+TEST(SdFontCatalogMemo, CatalogBeyondItsSpaceIsNotKept) {
+  std::vector<SdCardFontFamilyInfo> many;
+  for (int i = 0; i < 128; ++i) {
+    SdCardFontFamilyInfo info;
+    info.name = "Audit" + std::to_string(1000 + i);
+    info.stems = {info.name};
+    for (uint8_t size = 8; size <= 30; size += 2) info.files.push_back({size, 0, 0});
+    many.push_back(info);
+  }
+  sdfontmemo::Catalog memo{};
+  EXPECT_FALSE(sdfontmemo::saveCatalog(many, memo));
+  std::vector<SdCardFontFamilyInfo> back;
+  EXPECT_FALSE(sdfontmemo::restoreCatalog(memo, true, back));
 }
