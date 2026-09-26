@@ -37,6 +37,7 @@
 #include "EpubReaderUtils.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
+#include "HeapMapProbe.h"
 #include "MappedInputManager.h"
 #include "ProgressMapper.h"
 #include "QrDisplayActivity.h"
@@ -736,6 +737,7 @@ bool EpubReaderActivity::releaseRadioForBuild() {
   // A radio still up keeps its heap: another try at the build would starve again. The latch above
   // stays, so the caller goes to the memory notice once instead of waiting out a second timeout.
   if (!stopped) LOG_ERR("ERS", "Radio did not stop for the section build");
+  heapMapDump("radio-stopped-for-build");
   return stopped;
 #else
   return false;

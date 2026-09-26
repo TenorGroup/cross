@@ -55,6 +55,7 @@
 #include "CrossPointSettings.h"
 #include "BleIdleOff.h"
 #include "BlePageTurnerRuntime.h"
+#include "HeapMapProbe.h"
 #include "SettingsList.h"
 #include "CrossPointState.h"
 #include "KOReaderCredentialStore.h"
@@ -1714,6 +1715,8 @@ void loop() {
       } else if (cmd == "MEMORY") {
         logSerial.printf("MEMORY:%u,%u,%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
 #ifndef SIMULATOR
+      } else if (cmd == "HEAP_MAP") {
+        heapMapDump("command");
       } else if (cmd == "HEAP_INFO") {
         // Summary only: a per-block dump over serial tripped the watchdog.
         multi_heap_info_t info;

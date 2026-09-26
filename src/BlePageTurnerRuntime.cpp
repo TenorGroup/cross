@@ -1,5 +1,7 @@
 #include "BlePageTurnerRuntime.h"
 
+#include "HeapMapProbe.h"
+
 #include <GfxRenderer.h>
 
 #include <atomic>
@@ -44,6 +46,11 @@ std::atomic<uint32_t> startStackMinimum{0};
 void logSkipped(const char* reason, const HalMemory::HeapStats& heap) {
   LOG_ERR("BLE", "HID begin skipped (%s): free=%zu largest=%zu required_free=%zu required_largest=%zu", reason,
           heap.freeBytes, heap.largestBlockBytes, kMinimumFreeBytes, kMinimumLargestBlockBytes);
+  static uint8_t mapsLeft = 2;
+  if (mapsLeft > 0) {
+    mapsLeft--;
+    heapMapDump("ble-skipped");
+  }
 }
 
 bool beginOwned(GfxRenderer& renderer) {
