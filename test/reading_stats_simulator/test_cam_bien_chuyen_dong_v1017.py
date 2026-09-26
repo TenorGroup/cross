@@ -1,8 +1,8 @@
 """v1.0.17 Motion sensor settings tab, driven through the real X3 simulator UI.
 
 Every sensor row now lives in Settings > Motion sensor, right after Controls: page tilt,
-tab tilt, row tilt, the two flick strengths, the hard shake and its strength, face down
-and face up. A settings file written before the move keeps every value, and the rows
+tab tilt, row tilt, the two flick strengths, the hard shake and its strength, face down,
+face up and double tap. A settings file written before the move keeps every value, and the rows
 left behind in Controls are the other ones. The simulated X3 reports an IMU but has no
 gyro, so the rows are checked through what a press saves, and the screens by picture.
 
@@ -73,6 +73,10 @@ class MotionSensorTabTest(unittest.TestCase):
         with Image.open(self.sd / f'{name}.bmp') as image:
             return image.convert('1').tobytes()
 
+    def rows_ink(self, name):
+        with Image.open(self.sd / f'{name}.bmp') as image:
+            return image.convert('1').crop((0, 0, image.width, image.height - 60)).tobytes()
+
     def test_face_down_row_is_eighth_in_motion_sensor_and_old_values_stay(self):
         # Rows: page tilt, tab tilt, row tilt, side strength, up/down strength, shake, shake
         # strength, face down. Seven Right reach it; six choices open the picker on Off, one
@@ -92,6 +96,34 @@ class MotionSensorTabTest(unittest.TestCase):
         self.assertIn('Entering activity: Settings', log)
         saved = self.saved()
         self.assertEqual((saved['faceDownAction'], saved['faceUpAction']), (0, 2), log[-4000:])
+
+    def test_double_tap_row_is_last_in_motion_sensor(self):
+        # Nine Right reach the tenth row; the picker opens on Off, one Right is Refresh.
+        self.write_settings()
+        log = self.run_sim([*HOME_TO_MOTION, *[f'{4500 + 400 * i}:RIGHT' for i in range(9)], '8600:CONFIRM',
+                            '10300:RIGHT', '11000:CONFIRM'])
+        self.assertIn('Entering activity: Settings', log)
+        saved = self.saved()
+        self.assertEqual((saved['doubleTapAction'], saved['faceDownAction'], saved['faceUpAction']), (1, 0, 0),
+                         log[-4000:])
+        self.assertEqual({key: saved[key] for key in OLD_SENSOR_VALUES}, OLD_SENSOR_VALUES, log[-4000:])
+
+    def test_three_languages_show_the_double_tap_row(self):
+        # The cursor on the double tap row, in each language, as pictures without the status
+        # bar (its clock). Nine Right from the first row land on a tenth row, not back on the first.
+        pictures = {}
+        for language in ('VI', 'EN', 'ZH_HANS'):
+            shutil.rmtree(self.store)
+            self.store.mkdir()
+            self.write_settings(language=language)
+            tag = language.lower()
+            self.run_sim([*HOME_TO_MOTION, *[f'{4500 + 400 * i}:RIGHT' for i in range(9)]],
+                         shots=[(4300, f'first-row-{tag}'), (7500, f'face-up-row-{tag}'),
+                                (9000, f'double-tap-row-{tag}')])
+            pictures[language] = self.rows_ink(f'double-tap-row-{tag}')
+            self.assertTrue(self.rows_ink(f'first-row-{tag}') != pictures[language], f'{language}: not the first row')
+            self.assertTrue(self.rows_ink(f'face-up-row-{tag}') != pictures[language], f'{language}: not face up')
+        self.assertEqual(len(set(pictures.values())), 3, 'each language draws its own row')
 
     def test_first_motion_row_is_page_tilt(self):
         # A three-choice row steps in place: Reversed (2) goes round to Off.

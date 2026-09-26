@@ -8,12 +8,12 @@
 
 #include "CrossPointSettings.h"
 
-// The short actions a short power press, a hard shake, face down or face up runs from
-// the main loop, on whatever screen is in front. One list of them for every setting, and
+// The short actions a short power press, a hard shake, face down, face up or a double tap
+// runs from the main loop, on whatever screen is in front. One list of them for every setting, and
 // one decision for all: what the configured action means here, or nothing.
 namespace quickaction {
 
-enum class Trigger : uint8_t { PowerRelease, Shake, FaceDown, FaceUp };
+enum class Trigger : uint8_t { PowerRelease, Shake, FaceDown, FaceUp, DoubleTap };
 enum class Outcome : uint8_t { None, Refresh, Sleep, PageForward, Back, Confirm };
 
 struct Choice {
@@ -41,8 +41,8 @@ constexpr bool choicesInValueOrder() {
 static_assert(choicesInValueOrder(), "one choice per short action, at its stored value");
 
 // The shake setting's own order over the same actions, stored by place: Off first
-// (the Ignore action), then the ones that make sense on any screen. Face down and face
-// up list the same.
+// (the Ignore action), then the ones that make sense on any screen. Face down, face up
+// and double tap list the same.
 inline constexpr uint8_t SHAKE_ORDER[] = {CrossPointSettings::IGNORE,    CrossPointSettings::FORCE_REFRESH,
                                           CrossPointSettings::SLEEP,     CrossPointSettings::PAGE_TURN,
                                           CrossPointSettings::BACK,      CrossPointSettings::PWR_CONFIRM};
@@ -66,8 +66,8 @@ inline uint8_t shakeAsPowerAction(const uint8_t shakeAction) {
   return shakeAction < std::size(SHAKE_ORDER) ? SHAKE_ORDER[shakeAction] : CrossPointSettings::IGNORE;
 }
 
-// `action` is a SHORT_PWRBTN value. The motion gestures (shake, face down, face up)
-// run every action themselves. A page turn means something only in a book, so
+// `action` is a SHORT_PWRBTN value. The motion gestures (shake, face down, face up,
+// double tap) run every action themselves. A page turn means something only in a book, so
 // elsewhere it does nothing. Back and Select are pressed like the real keys, and each
 // screen takes or ignores them as it does those. For the button, Sleep fires on the
 // press itself (getPowerButtonDuration), Page Turn and Footnotes are read by the

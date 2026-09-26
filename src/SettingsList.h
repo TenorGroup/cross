@@ -269,7 +269,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 
     const bool hasTilt = halTiltSensor.isAvailable();
     // 70 unconditional descriptors; the IMU branch adds the Motion sensor tab: reader,
-    // tab and row tilt, the two flick strengths, the two hard shake rows, face down and face up.
+    // tab and row tilt, the two flick strengths, the two hard shake rows, face down, face up
+    // and double tap.
     // Cold-catalog tests cover each capability branch and the IMU variant.
     constexpr size_t fixedCount = 70
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
@@ -280,7 +281,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 #endif
         ;
     std::vector<SettingInfo> v;
-    v.reserve(fixedCount + (hasTilt ? 9 : 0));
+    v.reserve(fixedCount + (hasTilt ? 10 : 0));
     // --- Display ---
     v.push_back(SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
                           {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
@@ -465,8 +466,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
       v.push_back(SettingInfo::Enum(StrId::STR_TILT_STRENGTH_V, &CrossPointSettings::tiltStrengthV,
                             {StrId::STR_TILT_LIGHT, StrId::STR_UI_SIZE_MEDIUM, StrId::STR_TILT_STRONG},
                             "tiltStrengthV", StrId::STR_CAT_MOTION));
-      // A hard shake, face down and face up each run one of the power button's
-      // actions on any screen, chosen from the shake's list (QuickAction.h).
+      // A hard shake, face down, face up and a double tap each run one of the power
+      // button's actions on any screen, chosen from the shake's list (QuickAction.h).
       v.push_back(SettingInfo::Enum(StrId::STR_SHAKE_ACTION, &CrossPointSettings::shakeAction,
                             quickaction::shakeLabels(), "shakeAction", StrId::STR_CAT_MOTION));
       v.push_back(SettingInfo::Enum(StrId::STR_SHAKE_STRENGTH, &CrossPointSettings::shakeStrength,
@@ -476,6 +477,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                             quickaction::shakeLabels(), "faceDownAction", StrId::STR_CAT_MOTION));
       v.push_back(SettingInfo::Enum(StrId::STR_FACE_UP_ACTION, &CrossPointSettings::faceUpAction,
                             quickaction::shakeLabels(), "faceUpAction", StrId::STR_CAT_MOTION));
+      v.push_back(SettingInfo::Enum(StrId::STR_DOUBLE_TAP_ACTION, &CrossPointSettings::doubleTapAction,
+                            quickaction::shakeLabels(), "doubleTapAction", StrId::STR_CAT_MOTION));
     }
 
     // --- System ---

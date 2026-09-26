@@ -844,6 +844,7 @@ static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
   halTiltSensor.setStrength(SETTINGS.tiltStrengthH, SETTINGS.tiltStrengthV);
   halTiltSensor.configureShake(SETTINGS.shakeAction, SETTINGS.shakeStrength);
   halTiltSensor.configureFlip(SETTINGS.faceDownAction, SETTINGS.faceUpAction);
+  halTiltSensor.configureDoubleTap(SETTINGS.doubleTapAction);
   // Menus wait for a side flick to come back (picking the device up is not a tab
   // step); the reader keeps page turns immediate.
   halTiltSensor.confirmSideFlicks(!foregroundReader);
@@ -1853,8 +1854,8 @@ void loop() {
   }
 #endif
 
-  // Short power press, hard shake, face down and face up: the same actions, one decision
-  // (quickaction::resolve).
+  // Short power press, hard shake, face down, face up and double tap: the same actions, one
+  // decision (quickaction::resolve).
   if (mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
     runQuickAction(SETTINGS.shortPwrBtn, quickaction::Trigger::PowerRelease);
   }
@@ -1866,6 +1867,9 @@ void loop() {
   }
   if (halTiltSensor.wasTurnedFaceUp()) {
     runQuickAction(quickaction::shakeAsPowerAction(SETTINGS.faceUpAction), quickaction::Trigger::FaceUp);
+  }
+  if (halTiltSensor.wasDoubleTapped()) {
+    runQuickAction(quickaction::shakeAsPowerAction(SETTINGS.doubleTapAction), quickaction::Trigger::DoubleTap);
   }
 
   // Refresh the battery icon when USB is plugged or unplugged.

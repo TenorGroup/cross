@@ -852,3 +852,5 @@ STR_CAT_MOTION: "Motion sensor"
 STR_FACE_DOWN_ACTION: "Face down"
 
 STR_FACE_UP_ACTION: "Face up"
+
+STR_DOUBLE_TAP_ACTION: "Double tap"

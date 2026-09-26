@@ -37,6 +37,7 @@ struct TestSettings {
   uint8_t shakeStrength = 1;  // Medium
   uint8_t faceDownAction = 0;  // Off
   uint8_t faceUpAction = 0;    // Off
+  uint8_t doubleTapAction = 0;  // Off
 } SETTINGS;
 
 int failures = 0;
@@ -943,6 +944,14 @@ bool Imu::sleep() {
 bool Imu::wake() {
   ++imu.wakeCalls;
   return begun_ && imu.wakeOk;
+}
+
+// The tap engine is checked on a register-level chip in test/imu_double_tap.
+bool Imu::enableTap(const TapConfig&) { return begun_; }
+bool Imu::disableTap() { return begun_; }
+bool Imu::readTap(uint8_t& taps) {
+  taps = 0;
+  return begun_;
 }
 
 }  // namespace freeink

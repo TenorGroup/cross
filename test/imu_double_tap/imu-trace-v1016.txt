@@ -1,0 +1,162 @@
+# Double tap Off: every IMU transaction of harness.cpp's offScenario on release/v1.0.16
+# (lib/hal/HalTiltSensor at 87fb0720, freeink-sdk efe8e40), recorded with run.py --record.
+R 00 x1
+W 08=00
+W 02=60
+W 03=08
+W 04=58
+W 08=03
+W 08=00
+W 02=61
+W 02=60
+W 08=03
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+W 08=00
+W 02=61
+W 02=60
+W 08=03
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+R 3B x6
+R 35 x6
+W 08=00
+W 02=61
+R 00 x1
+W 08=00
+W 02=60
+W 03=08
+W 04=58
+W 08=03
+W 08=00
+W 02=61
