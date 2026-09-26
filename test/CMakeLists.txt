@@ -104,6 +104,7 @@ add_subdirectory(${REPO_ROOT}/freeink-sdk/libs/network/BleKeyboardHost/tests Ble
 # BTH2: duong page-turner BLE voi dau vao gia (report HID that -> luot lat trang).
 add_subdirectory(ble_page_turner)
 add_subdirectory(ble_page_turner_runtime)
+add_subdirectory(ble_heap_restart)
 add_subdirectory(truncated_text)
 add_subdirectory(png_bmp_converter)
 add_subdirectory(cover_thumb_ram)

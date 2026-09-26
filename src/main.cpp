@@ -1239,6 +1239,24 @@ void loop() {
   }
 #endif
 
+#if CROSSPOINT_BLE_HID_HOST
+  // A heap in pieces keeps the radio off until a restart (BleHeapRestart.h). Restart into the book
+  // only from a shown page with no radio start in flight, no sleep, no card or Wi-Fi session; the
+  // close waits out a paint and writes the reading place and every deferred write first.
+  if (freeink::ble::heapRestartWanted() && SETTINGS.blePageTurnerEnabled && bleReaderBeginAttempted &&
+      activityManager.isForegroundReaderReady() && !activityManager.isSleepTransition() && !dangChiemStorage &&
+      !freeink::ble::busy() && WiFi.getMode() == WIFI_MODE_NULL) {
+    const auto heap = HalMemory::getInternalHeap();
+    LOG_INF("BLE", "Heap fragmented for radio: free=%u largest=%u; silent restart to reader",
+            static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.largestBlockBytes));
+    freeink::ble::markHeapRestart();
+    activityManager.closeForRestart();
+    silentRestartToReader();
+    // Only a board that keeps its rails (touch) gets here without a restart: reopen the book.
+    activityManager.goToReader(APP_STATE.openEpubPath);
+  }
+#endif
+
   renderer.setFadingFix(SETTINGS.fadingFix);
 
   if (Serial && millis() - lastMemPrint >= 10000) {

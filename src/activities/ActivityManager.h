@@ -153,6 +153,9 @@ class ActivityManager {
   bool foregroundReaderHoldsRadio() const;
   // The foreground reader frees what it can before the radio starts (ReaderActivity::readyForRadio).
   bool readyForegroundReaderForRadio();
+  // Closes the foreground activity the way leaving it does and writes everything it deferred, so
+  // a restart right after reopens the book on the page it showed. Waits out a paint in flight.
+  void closeForRestart();
   uint32_t activityGeneration() const { return activityGeneration_; }
 
   // Queue an external page action on the ready foreground reader. True means

@@ -250,6 +250,56 @@ TEST_F(BlePageTurnerRuntimeTest, ExplicitAsyncBeginRestartsAfterIdleStop) {
   EXPECT_EQ(host.beginCalls, 1u);
 }
 
+// X3, 27/09/2026: the radio refused every 5 s for good with free=87308 largest=23540.
+TEST_F(BlePageTurnerRuntimeTest, ThirdFragmentedRefusalAsksForOneRestartUntilTheRadioComesUp) {
+  auto& host = freeink::BleKeyboardHost::getInstance();
+  ASSERT_TRUE(freeink::ble::begin(renderer));  // a radio that came up clears any earlier streak
+  host.reset();
+  HalMemory::internalHeap = {87308, 249216, 0, 23540};
+
+  EXPECT_FALSE(freeink::ble::begin(renderer));
+  EXPECT_FALSE(freeink::ble::begin(renderer));
+  EXPECT_FALSE(freeink::ble::heapRestartWanted());
+  EXPECT_FALSE(freeink::ble::begin(renderer));
+  EXPECT_TRUE(freeink::ble::heapRestartWanted());
+  EXPECT_EQ(host.beginCalls, 0u);
+
+  // The main loop commits the restart; the heap it finds is still in pieces.
+  freeink::ble::markHeapRestart();
+  EXPECT_FALSE(freeink::ble::heapRestartWanted());
+  for (int i = 0; i < 6; ++i) EXPECT_FALSE(freeink::ble::begin(renderer));
+  EXPECT_FALSE(freeink::ble::heapRestartWanted());
+
+  HalMemory::internalHeap = {kEnoughFree, 249216, 0, kEnoughLargest};
+  ASSERT_TRUE(freeink::ble::begin(renderer));
+  host.reset();
+  HalMemory::internalHeap = {87308, 249216, 0, 23540};
+  for (int i = 0; i < 3; ++i) EXPECT_FALSE(freeink::ble::begin(renderer));
+  EXPECT_TRUE(freeink::ble::heapRestartWanted());
+  freeink::ble::markHeapRestart();
+}
+
+TEST_F(BlePageTurnerRuntimeTest, ShortHeapAndPostInitRollbackNeverAskForARestart) {
+  auto& host = freeink::BleKeyboardHost::getInstance();
+  ASSERT_TRUE(freeink::ble::begin(renderer));
+  host.reset();
+
+  HalMemory::internalHeap = {kEnoughFree - 1, 249216, 0, 23540};
+  for (int i = 0; i < 5; ++i) EXPECT_FALSE(freeink::ble::begin(renderer));
+  EXPECT_FALSE(freeink::ble::heapRestartWanted());
+
+  // Two fragmented refusals, then a start the check let through and the stack rolled back.
+  HalMemory::internalHeap = {87308, 249216, 0, 23540};
+  EXPECT_FALSE(freeink::ble::begin(renderer));
+  EXPECT_FALSE(freeink::ble::begin(renderer));
+  HalMemory::internalHeap = {kEnoughFree, 249216, 0, kEnoughLargest};
+  host.changeHeapOnBegin = true;
+  host.heapAfterBegin = {87308, 249216, 0, 23540};
+  EXPECT_FALSE(freeink::ble::begin(renderer));
+  EXPECT_FALSE(freeink::ble::begin(renderer));
+  EXPECT_FALSE(freeink::ble::heapRestartWanted());
+}
+
 TEST(BlePageTurnerRuntimeSourceContractTest, AllAppBeginCallsUseTheRuntimeFunnel) {
   const std::string root = REPO_ROOT_PATH;
   auto read = [](const std::string& path) {

@@ -1,5 +1,6 @@
 #include "BlePageTurnerRuntime.h"
 
+#include "BleHeapRestart.h"
 #include "HeapMapProbe.h"
 
 #include <GfxRenderer.h>
@@ -19,6 +20,12 @@
 
 #include "FileTransferState.h"
 
+#ifdef ARDUINO
+#include <esp_attr.h>
+#else
+#define RTC_NOINIT_ATTR
+#endif
+
 #if defined(ESP_PLATFORM) || defined(ARDUINO)
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -28,8 +35,8 @@
 namespace freeink::ble {
 namespace {
 
-constexpr size_t kMinimumFreeBytes = 65536;
-constexpr size_t kMinimumLargestBlockBytes = 32768;
+using bleheap::kMinimumFreeBytes;
+using bleheap::kMinimumLargestBlockBytes;
 
 // One attempt at a time, across tasks. Written by the starter, read while the
 // worker finishes. The worker clears it before deleting itself.
@@ -42,6 +49,11 @@ std::optional<HalPowerManager::Lock> radioPowerLock;
 #ifdef TENOR_UI_ACCEPTANCE
 std::atomic<uint32_t> startStackMinimum{0};
 #endif
+// Outlives ESP.restart: the one heap restart already spent since the radio last came up.
+RTC_NOINIT_ATTR bleheap::Memo heapRestartMemo;
+// Written by the start (one at a time), read by main once no start is in flight.
+bleheap::Tracker heapTracker{heapRestartMemo};
+std::atomic<bool> heapRestartRequested{false};
 
 void logSkipped(const char* reason, const HalMemory::HeapStats& heap) {
   LOG_ERR("BLE", "HID begin skipped (%s): free=%zu largest=%zu required_free=%zu required_largest=%zu", reason,
@@ -79,8 +91,12 @@ bool beginOwned(GfxRenderer& renderer) {
   const auto heap = HalMemory::getInternalHeap();
   if (heap.freeBytes < kMinimumFreeBytes || heap.largestBlockBytes < kMinimumLargestBlockBytes) {
     logSkipped("insufficient-internal-heap", heap);
+    if (heapTracker.refused(heap.freeBytes, heap.largestBlockBytes)) {
+      heapRestartRequested.store(true, std::memory_order_release);
+    }
     return false;
   }
+  heapTracker.passed();
 
 #ifdef TENOR_PRESS_PROBE
   // What the stack comes up in: the reader released its layout parser before this (readyForRadio).
@@ -110,6 +126,8 @@ bool beginOwned(GfxRenderer& renderer) {
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("BLE", "HID begin kept free=%zu largest=%zu", after.freeBytes, after.largestBlockBytes);
 #endif
+  heapTracker.radioUp();
+  heapRestartRequested.store(false, std::memory_order_release);
   return true;
 }
 
@@ -142,6 +160,13 @@ uint32_t startStackHighWaterMark() { return startStackMinimum.load(std::memory_o
 #endif
 
 bool initializing() { return attemptInFlight.load(std::memory_order_acquire); }
+
+bool heapRestartWanted() { return heapRestartRequested.load(std::memory_order_acquire); }
+
+void markHeapRestart() {
+  heapTracker.restarting();
+  heapRestartRequested.store(false, std::memory_order_release);
+}
 
 bool busy() {
   if (attemptInFlight.load(std::memory_order_acquire)) return true;
@@ -214,6 +239,8 @@ bool stopForIdle() {
 bool freeink::ble::suspendForTransition(uint32_t) { return true; }
 bool freeink::ble::busy() { return false; }
 bool freeink::ble::initializing() { return false; }
+bool freeink::ble::heapRestartWanted() { return false; }
+void freeink::ble::markHeapRestart() {}
 #ifdef TENOR_UI_ACCEPTANCE
 uint32_t freeink::ble::startStackHighWaterMark() { return 0; }
 #endif

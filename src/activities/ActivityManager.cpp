@@ -347,6 +347,12 @@ void ActivityManager::flushDeferredWrites() {
   LOG_INF("ACT", "Deferred writes n=%u ms=%lu", count, static_cast<unsigned long>(millis() - started));
 }
 
+void ActivityManager::closeForRestart() {
+  RenderLock lock;
+  exitActivity(lock);
+  flushDeferredWrites();
+}
+
 void ActivityManager::exitActivity(const RenderLock& lock) {
   // Note: lock must be held by the caller
   if (currentActivity) {

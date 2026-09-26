@@ -50,6 +50,12 @@ void setReaderStartDeferred(bool deferred);
 void requestRearm();
 bool takeRearmRequest();
 
+// Set by the start after the heap refused the radio in pieces three times in a row
+// (bleheap::shouldRestart). The main loop restarts into the book once that is safe and calls
+// markHeapRestart() first, which keeps the next boot from asking again until the radio is up.
+bool heapRestartWanted();
+void markHeapRestart();
+
 // Set while the reader keeps the radio stopped for a starved section build. A local
 // key release must not restart it then: the start takes the heap the build is still
 // waiting for. requestRearm() ends the hold.
