@@ -558,11 +558,26 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     return holdVerified || shortPwrBtnSetting == SLEEP;
   }
 
+  // A power key that reaches the firmware only as a click (the Paper Mono PMIC) has no held
+  // press to sleep on, so a click sleeps under Sleep and under Ignore; any other action wins.
+  static constexpr bool powerClickSleeps(const uint8_t shortPwrBtnSetting) {
+    return shortPwrBtnSetting == SLEEP || shortPwrBtnSetting == IGNORE;
+  }
+
   // The tenor/cross reading setup (v1.0.14), the one list of its fields and values. It is
   // the default of a new card, and fromJson moves a file without the stamp onto it once,
   // after the older version folds so none of them rewrites a value set here. Language,
   // Bluetooth, auto-sleep and the button map are left to the owner.
   static constexpr uint8_t TENOR_PRESET_VERSION = 1;
+  // Force refresh on the power key, except where the key is a click that sleeps only under
+  // Ignore (powerClickSleeps): Paper Mono keeps Ignore, or its key could never sleep.
+  static constexpr uint8_t tenorPresetPowerAction() {
+#if defined(FREEINK_DEVICE_PAPERMONO) && FREEINK_DEVICE_PAPERMONO
+    return IGNORE;
+#else
+    return FORCE_REFRESH;
+#endif
+  }
   void applyTenorPreset() {
     extraParagraphSpacing = readerSpacing::VERY_NARROW;
     lineSpacing = readerSpacing::NARROW;
@@ -570,7 +585,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     paragraphIndent = 2;  // wide
     readerInkWeight = 1;
     frontButtonFollowOrientation = 1;
-    shortPwrBtn = FORCE_REFRESH;
+    shortPwrBtn = tenorPresetPowerAction();
     sleepScreen = QUOTE;
     statusBarClock = STATUS_BAR_CLOCK_RIGHT;
     tiltMenuNavigation = TILT_NORMAL;

@@ -261,6 +261,28 @@ int runNoImu() {
   return ok ? 0 : 1;
 }
 
+// (e) Paper Mono (built with FREEINK_DEVICE_PAPERMONO): its PMIC hands the power key over as a
+// click, and a click sleeps only under Sleep or Ignore. A new card, and a file from before the
+// setup, must still sleep on that click; an action the owner picks afterwards must keep it.
+int runPaperMono() {
+  bool ok = expect(CrossPointSettings::powerClickSleeps(SETTINGS.shortPwrBtn),
+                   "Paper Mono blank card sleeps on a power click");
+  settings_test_io::setNextRead(ownersFile());
+  ok = expect(SETTINGS.loadFromFile(), "previous release file loads") && ok;
+  ok = expect(CrossPointSettings::powerClickSleeps(SETTINGS.shortPwrBtn),
+              "Paper Mono previous release file still sleeps on a power click") &&
+       ok;
+  SETTINGS.shortPwrBtn = CrossPointSettings::FORCE_REFRESH;
+  ok = expect(SETTINGS.saveToFile(), "owner's power action saves") && ok;
+  ok = expect(SETTINGS.loadFromFile(), "owner's file loads") && ok;
+  ok = expect(SETTINGS.shortPwrBtn == CrossPointSettings::FORCE_REFRESH &&
+                  !CrossPointSettings::powerClickSleeps(SETTINGS.shortPwrBtn),
+              "Paper Mono owner's own power action wins over sleep") &&
+       ok;
+  std::printf("tenor_preset=papermono:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -272,5 +294,6 @@ int main(int argc, char** argv) {
   if (mode == "once") return runOnlyOnce();
   if (mode == "old-spacing") return runOldSpacing();
   if (mode == "no-imu") return runNoImu();
+  if (mode == "papermono") return runPaperMono();
   return 2;
 }
