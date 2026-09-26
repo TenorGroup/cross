@@ -64,4 +64,10 @@ patch(root / "HalTiltSensor.h", [(
     "  void configureDoubleTap(const uint8_t /*action*/) {}\n"
     "  bool wasDoubleTapped() { return false; }\n",
     1,
+), (
+    "  bool wasDoubleTapped() { return false; }\n",
+    "  bool wasDoubleTapped() { return false; }\n"
+    "  // The screen in front: no flick ever waits for the hand without a gyro.\n"
+    "  void noteScreen(const uint32_t /*screen*/) {}\n",
+    1,
 )])

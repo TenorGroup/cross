@@ -133,6 +133,11 @@ class ReaderActivity : public Activity {
   // index in the background needs the heap the radio would take.
   virtual bool holdsRadio() const { return false; }
 
+  // Asked on the main task right before the page-turner radio starts: frees what the reader can
+  // build again, so the radio's stack does not split the heap around it. False while it cannot yet
+  // (its page is painting); the radio waits for a later pass.
+  virtual bool readyForRadio() { return true; }
+
   static std::unique_ptr<ReaderActivity> create(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                 std::string path, bool allowFastInitialRefresh, bool preview = false);
 

@@ -577,6 +577,60 @@ bool EpubReaderActivity::holdsRadio() const {
   return !preview && epub && !epub->indexComplete() && indexFailures < INDEX_MAX_FAILURES;
 }
 
+bool EpubReaderActivity::readyForRadio() {
+  if (!section || !section->isBuilding() || section->isBuildParked()) return true;
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired()) return false;
+  // X3 r43: the radio came up beside the live layout parser and left a largest block of 32,756 B,
+  // under the 32,768 its own check keeps, so the start was rolled back and the parser parked 640 ms
+  // later anyway (the radio defers the build). Parked first, its pages stay and it resumes at its
+  // checkpoint.
+  backgroundBuildSuspended = true;
+  suspendBackgroundBuild();
+  return true;
+}
+
+// Turning into a chapter not laid out yet started its build inside the paint: 724 ms of the 1.6 s
+// the X3 took to a readable page (r39). On the last page of a whole chapter a quiet pass lays out
+// the next one's first pages into a partial section file, which the turn loads like any cached
+// page and the look-ahead extends. Only on the heap a build needs to start, so never beside the
+// radio, and only for a chapter small enough to unpack in a pass.
+bool EpubReaderActivity::nextChapterDue(const bool inputThisPass) {
+  if (inputThisPass || preview || !epub || !epub->indexComplete() || !section || section->isBuilding() ||
+      section->isPartial() || section->pageCount == 0 ||
+      section->currentPage < static_cast<int>(section->pageCount) - 1 || buildViewportWidth == 0 ||
+      lastRenderCompleteMs == 0 || millis() - lastRenderCompleteMs < NEXT_CHAPTER_QUIET_MS)
+    return false;
+  const int spine = currentSpineIndex + 1;
+  if (spine >= epub->getSpineItemsCount() || nextChapterPrepared == spine) return false;
+  const size_t bytes = epub->getCumulativeSpineItemSize(spine) - epub->getCumulativeSpineItemSize(spine - 1);
+  return bytes <= BUILD_POPUP_BYTE_THRESHOLD && backgroundBuildStartHeapGate();
+}
+
+void EpubReaderActivity::prepareNextChapter() {
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired()) return;
+  const int spine = currentSpineIndex + 1;
+  nextChapterPrepared = spine;
+  // At the clock the loop drops to after 3 s without a key the layout runs 12 times slower.
+  HalPowerManager::Lock fullSpeed;
+  const unsigned long started = millis();
+  const ReaderRenderSpec spec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
+  Section next(epub, spine, renderer, preview);
+  if (next.loadSectionFile(spec)) return;  // laid out already, whole or in part
+  // A key stops it between layout steps: the turn it asks for goes first, and lays out what is missing.
+  const auto keyDown = [] { return gpio.rawInputActive(); };
+  if (keyDown() || !next.startBuild(spec)) return;
+  while (!next.isBuildComplete() && static_cast<int>(next.pageCount) <= LOOK_AHEAD_PAGES && !keyDown() &&
+         millis() - started < static_cast<unsigned long>(BUILD_WINDOW_MAX_MS) &&
+         next.buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK)) {
+  }
+  // Only whole pages go to the card; a chapter laid out to its end is already there.
+  next.suspendBuild();
+  LOG_PROBE("ERS", "NEXT_CHAPTER spine=%d pages=%u ms=%lu", spine, static_cast<unsigned>(next.pageCount),
+          millis() - started);
+}
+
 bool EpubReaderActivity::indexStepDue() const {
   return holdsRadio() && section && overlay == Overlay::None &&
          !automaticPageTurnActive && !pendingPercentJump && pendingAnchor.empty() && pendingQuoteEdit.empty() &&
@@ -730,6 +784,7 @@ void EpubReaderActivity::showMemoryError() {
   if (section->pageCount > 0 && section->currentPage >= static_cast<int>(section->pageCount)) {
     section->currentPage = section->pageCount - 1;
   }
+  settleBuildPopup();
   renderer.clearScreen();
   GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
   automaticPageTurnActive = false;
@@ -775,9 +830,19 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
   LOG_INF("ERS", "BUILD_POPUP src=deadline page=%d pages=%u partial=%u", section ? section->currentPage : -1,
           section ? static_cast<unsigned>(section->pageCount) : 0u, section && section->isPartial() ? 1u : 0u);
 #endif
-  GUI.drawPopup(renderer, tr(STR_INDEXING));
+  // The layout goes on while the panel shows the popup: waiting it out held a contents jump 390 ms
+  // (X3 r43). Nothing is drawn before settleBuildPopup().
+  GUI.drawPopup(renderer, tr(STR_INDEXING), false);
+  renderer.displayBufferAsync(HalDisplay::FAST_REFRESH);
+  buildPopupRefreshing = true;
   pagesUntilFullRefresh = 1;
   buildPopupPending = false;
+}
+
+void EpubReaderActivity::settleBuildPopup() {
+  if (!buildPopupRefreshing) return;
+  renderer.waitRefreshComplete();
+  buildPopupRefreshing = false;
 }
 
 void EpubReaderActivity::openDictionaryWordSelect(const bool quotation, const std::string& editName) {
@@ -1122,6 +1187,8 @@ void EpubReaderActivity::loop() {
 #endif
     }
   }
+
+  if (nextChapterDue(inputThisPass)) prepareNextChapter();
 
   if (!inputThisPass && indexStepDue()) runIndexStep();
 
@@ -2269,6 +2336,11 @@ void EpubReaderActivity::traceReadablePaint(const char* kind) {
 #endif
 
 void EpubReaderActivity::renderBook() {
+  // A build popup still refreshing when this paint ends is waited out before anything else draws.
+  struct PopupSettle {
+    EpubReaderActivity& reader;
+    ~PopupSettle() { reader.settleBuildPopup(); }
+  } popupSettle{*this};
 #ifdef TENOR_TURN_TRACE
   ++paintTraceSequence;
   paintTraceStarted = millis();
@@ -2301,6 +2373,7 @@ void EpubReaderActivity::renderBook() {
     logTurnTrace("FAILED", appliedTurnTrace, "index");
     appliedTurnTrace = {};
 #endif
+    settleBuildPopup();
     renderer.clearScreen();
     GUI.drawPopup(renderer, tr(STR_INDEX_FAILED));
     automaticPageTurnActive = false;
@@ -2673,6 +2746,7 @@ void EpubReaderActivity::renderBook() {
 
   applyDeferredReposition();
 
+  settleBuildPopup();
   renderer.clearScreen();
 
   if (section->pageCount == 0) {

@@ -254,6 +254,12 @@ class EpubReaderActivity final : public ReaderActivity {
   // (X3 r29). Once ahead, each turn lays out one page, as with one.
   static constexpr int LOOK_AHEAD_PAGES = 2;
   int lookAheadPage = -1;
+  // The next chapter's first pages, laid out on a quiet pass on the last page of a whole chapter,
+  // once per chapter and visit (prepareNextChapter).
+  static constexpr unsigned long NEXT_CHAPTER_QUIET_MS = 1500;
+  int nextChapterPrepared = -1;
+  bool nextChapterDue(bool inputThisPass);
+  void prepareNextChapter();
   // Last pass that saw the radio's start in flight. The window above counts from here too: the
   // radio starts right after a book's first page, and its start can outlast the window.
   unsigned long radioSettledMs = 0;
@@ -263,6 +269,10 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr unsigned long BUILD_POPUP_DEADLINE_MS = 1000;
   bool buildPopupPending = false;
   void showBuildPopup(GfxRenderer& renderer, int& pagesUntilFullRefresh);
+  // The build popup's refresh runs beside the layout that follows it; settleBuildPopup() waits it
+  // out before anything else is drawn, and renderBook() never returns with it running.
+  bool buildPopupRefreshing = false;
+  void settleBuildPopup();
   bool applyDeferredReposition();
   void clearDeferredReposition();
   void rememberCurrentContentOffset();
@@ -367,6 +377,7 @@ class EpubReaderActivity final : public ReaderActivity {
 
   bool skipLoopDelay() override;
   bool holdsRadio() const override;
+  bool readyForRadio() override;
 
   ScreenshotInfo getScreenshotInfo() const override;
   CrossPointPosition getCurrentPosition() const;

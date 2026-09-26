@@ -19,6 +19,7 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
  private:
   std::vector<RecentBook> recentBooks;
   bool excerptUnsaved = false;
+  uint32_t openCount = 0;
 
   static constexpr int MAX_RECENT_BOOKS = 10;
 
@@ -66,6 +67,10 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
 
   // Get the list of recent books (most recent first)
   const std::vector<RecentBook>& getBooks() const { return recentBooks; }
+
+  // Books added since start, RAM only: a screen that kept a place in this list can tell a book
+  // was opened meanwhile and moved to the front.
+  uint32_t opened() const { return openCount; }
 
   // Get the count of recent books
   int getCount() const { return static_cast<int>(recentBooks.size()); }

@@ -34,6 +34,8 @@ class HalTiltSensor {
   // configureVerticalGesture(), read by wasTiltedUp()/wasTiltedDown().
   uint8_t _verticalMode = CrossPointTiltPageTurn::TILT_OFF;
   bool _verticalTargetActive = false;
+  // Screen the pending flicks started on (noteScreen).
+  uint32_t _screen = 0;
   bool _tiltUpEvent = false;             // Consumed by wasTiltedUp()
   bool _tiltDownEvent = false;           // Consumed by wasTiltedDown()
   bool _inVerticalTilt = false;          // Currently tilted past threshold
@@ -206,6 +208,11 @@ class HalTiltSensor {
   // Side flicks wait for the hand to come back before they count (menus), or
   // count at once (the reader). Called once per loop pass.
   void confirmSideFlicks(bool confirm) { _confirmSide = confirm; }
+
+  // The screen in front, as the activity manager counts them. A flick still waiting for the hand
+  // to come back belongs to the screen it started on, so another screen drops it. Called once per
+  // loop pass, before the screen polls.
+  void noteScreen(uint32_t screen);
 
   // Poll the accelerometer and update tilt gesture state for an active target.
   void update(const uint8_t mode, const uint8_t orientation, const bool gestureTargetActive);

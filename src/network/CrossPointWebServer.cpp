@@ -122,24 +122,23 @@ void CrossPointWebServer::setUploadCancel(std::function<bool()> cancel) { upload
 bool CrossPointWebServer::uploadCancelled() {
   if (!uploadCancel || !uploadCancel()) return false;
   LOG_INF("WEB", "Upload cancelled by Back");
+  uploadSocket.retract();
   server->client().stop();
   return true;
 }
 
 void CrossPointWebServer::noteUploadSocket() {
 #ifndef SIMULATOR
-  uploadSocket.store(server->client().fd(), std::memory_order_release);
+  uploadSocket.note(server->client().fd());
 #endif
 }
 
 // Runs on the Back sampler task. With its read side shut, the socket reports the client
 // gone at the library's next poll for data (every 2 ms), so the upload aborts there. The
-// main task retracts the socket once the request is done; a tap racing that can at worst
-// shut a socket of this same session, which the tap is ending anyway.
+// main task retracts the socket before the server closes it (UploadSocket).
 void CrossPointWebServer::interruptUpload() {
 #ifndef SIMULATOR
-  const int fd = uploadSocket.load(std::memory_order_acquire);
-  if (fd >= 0) shutdown(fd, SHUT_RD);
+  uploadSocket.interrupt([](const int fd) { shutdown(fd, SHUT_RD); });
 #endif
 }
 
@@ -249,6 +248,7 @@ void CrossPointWebServer::begin() {
   server->on(
       "/upload", HTTP_POST,
       [this] {
+        uploadSocket.retract();  // the body is read; the server closes the socket after this reply
         if (auth.authorize(*server, true, requestLanguage())) handleUploadPost(upload);
       },
       [this] {
@@ -296,6 +296,7 @@ void CrossPointWebServer::begin() {
   server->on(
       "/api/fonts/upload", HTTP_POST,
       [this] {
+        uploadSocket.retract();
         if (auth.authorize(*server, true, requestLanguage())) handleFontUpload();
       },
       [this] {
@@ -501,7 +502,7 @@ void CrossPointWebServer::handleClient() {
     if (wsServer) wsServer->disconnect(owner);
   }
   server->handleClient();
-  uploadSocket.store(-1, std::memory_order_release);
+  uploadSocket.retract();
 
   // Handle WebSocket events
   if (wsServer) {
@@ -1000,6 +1001,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) {
       }
     }
   } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    uploadSocket.retract();
     uploadCancelled();    // logs a Back that cut a stalled upload
     state.bufferPos = 0;  // Discard buffered data
     if (state.file) {
@@ -2289,6 +2291,7 @@ void CrossPointWebServer::handleFontUploadData() {
     }
 
     case UPLOAD_FILE_ABORTED: {
+      uploadSocket.retract();
       uploadCancelled();  // logs a Back that cut a stalled upload
       if (fontUpload.file) {
         fontUpload.file.close();

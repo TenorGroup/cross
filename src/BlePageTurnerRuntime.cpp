@@ -75,6 +75,10 @@ bool beginOwned(GfxRenderer& renderer) {
     return false;
   }
 
+#ifdef TENOR_PRESS_PROBE
+  // What the stack comes up in: the reader released its layout parser before this (readyForRadio).
+  LOG_INF("BLE", "HID begin heap free=%zu largest=%zu", heap.freeBytes, heap.largestBlockBytes);
+#endif
   // This function performs one attempt. Callers decide when a later explicit
   // user action is allowed to retry; there is no retry loop here.
   if (attemptCancelled.load(std::memory_order_acquire) || filetransfer::isActive()) return false;
@@ -96,6 +100,9 @@ bool beginOwned(GfxRenderer& renderer) {
     host.end(0);
     return false;
   }
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("BLE", "HID begin kept free=%zu largest=%zu", after.freeBytes, after.largestBlockBytes);
+#endif
   return true;
 }
 

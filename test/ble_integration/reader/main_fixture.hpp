@@ -15,7 +15,7 @@ namespace ble {bool stopped=false,init=false,startSuccess=true,rearm=false;int s
  bool held=false;bool radioHeldForBuild(){return held;}void setRadioHeldForBuild(bool h){held=h;}
  void requestRearm(){rearm=true;held=false;}bool takeRearmRequest(){bool r=rearm;rearm=false;return r;}
  bool idleStopped(){return stopped;}void setIdleStopped(bool s){stopped=s;}bool initializing(){return init;}
- bool deferred=false;void setReaderStartDeferred(bool d){deferred=d;}bool readerStartDeferred(){return deferred;}bool beginAsync(int&){starts++;BleKeyboardHost::getInstance().running=startSuccess;return startSuccess;}
+ bool deferred=false;void setReaderStartDeferred(bool d){deferred=d;}bool readerStartDeferred(){return deferred;}bool beginAsync(int&){starts++;radioSteps.emplace_back("start");BleKeyboardHost::getInstance().running=startSuccess;return startSuccess;}
  void stopForIdle(){stopped=true;BleKeyboardHost::getInstance().end(0);}void suspendForTransition(){BleKeyboardHost::getInstance().end(0);}}
 }
 // The shared quick action catalog's one door (main.cpp runQuickAction): recorded, so a case

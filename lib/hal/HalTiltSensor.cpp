@@ -625,6 +625,13 @@ void HalTiltSensor::setStrength(const uint8_t horizontal, const uint8_t vertical
   _verticalRateThresholdDps = ROW_RATE_BY_STRENGTH[vertical < 3 ? vertical : 1];
 }
 
+void HalTiltSensor::noteScreen(const uint32_t screen) {
+  if (screen == _screen) return;
+  _screen = screen;
+  clearPendingEvents();
+  clearPendingVerticalEvents();
+}
+
 void HalTiltSensor::configureVerticalGesture(const uint8_t mode, const bool gestureTargetActive) {
   _verticalMode = mode;
   _verticalTargetActive = gestureTargetActive;

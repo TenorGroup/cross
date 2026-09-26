@@ -101,12 +101,24 @@ inline void setRadioHeldForBuild(bool held) { heldForBuildState = held; }
 inline void delay(uint32_t ms) { clockMs += ms; }
 // Thumbnails written when the last popup went up, so a case can tell a notice came first.
 int popupGenerated = -1;
-struct Gui { void drawPopup(int, int) { ++popupCount; popupAtMs = millis(); popupGenerated = thumbs.generated; } } GUI;
+// The panel refreshing a frame the caller asked for without waiting (displayBufferAsync); layout
+// ticks count while it runs, and nothing may draw until the wait.
+inline bool panelRefreshing = false;
+int blockingPopups = 0;
+struct HalDisplay { enum RefreshMode { FAST_REFRESH, HALF_REFRESH }; };
+struct Gui {
+  void drawPopup(int, int, bool display = true) {
+    ++popupCount; popupAtMs = millis(); popupGenerated = thumbs.generated;
+    if (display) { require(!panelRefreshing, "a popup went up over a refresh still running"); ++blockingPopups; }
+  }
+} GUI;
 struct PageReadState { int failures = 0, reads = 0, clears = 0, abandons = 0, errors = 0; } pageReads;
 struct ReaderRenderer {
   operator int() const { return 0; }
   bool hasFrameBuffer() const { return true; }
-  void clearScreen() {}
+  void clearScreen() { require(!panelRefreshing, "drew over a refresh still running"); }
+  void displayBufferAsync(HalDisplay::RefreshMode) { panelRefreshing = true; }
+  void waitRefreshComplete() { panelRefreshing = false; }
   void drawCenteredText(int, int, int message, bool, int) { if (message == STR_PAGE_LOAD_ERROR) ++pageReads.errors; }
   void displayBuffer() {}
   FontCacheManager* getFontCacheManager() { return nullptr; }
@@ -125,6 +137,7 @@ struct Section {
   bool starveUntilRadioStopped = false, starved = false;
   bool buildStarved() const { return starved; }
   int starts = 0, ticks = 0, suspends = 0, parks = 0, resumes = 0, ticksPerPage = 0, ticksIntoPage = 0;
+  int ticksWhileRefreshing = 0;
   int restoredPagesAfterStart = 0;
   uint32_t startMs = 0, tickMs = 0;
   // Heap the park gives back, and what the parser takes again when it resumes.
@@ -157,6 +170,7 @@ struct Section {
   bool startBuild(const ReaderRenderSpec&) { require(RenderLock::busy, "start without render lock"); ++starts; clockMs += startMs; if (failStart) return false; building = true; parked = false; builtPages = restoredPagesAfterStart; if (dropAfterStart) ESP.free = 29000; return true; }
   bool buildSomeMore(int n) {
     require(RenderLock::busy, "build without render lock"); ++ticks; clockMs += tickMs;
+    if (panelRefreshing) ++ticksWhileRefreshing;
     if (parked) {
       parked = false; ++resumes;
       ESP.free = ESP.free > parserFootprint ? ESP.free - parserFootprint : 0;
@@ -317,7 +331,9 @@ struct EpubReaderActivity : ReaderActivity {
   std::atomic<bool> deferredClearPending{false};
   bool deferBackgroundBuildForBle() const; bool buildTickHeapGate(); bool backgroundBuildStartHeapGate(); bool backgroundBuildCanTick(); void suspendBackgroundBuild();
   bool indexStepDue() const { return false; } void runIndexStep() {}
-  bool releaseRadioForBuild(); void showMemoryError(); void generatePendingThumb(); void writePendingThumbs();
+  // The next chapter's early layout (EpubReaderActivity::prepareNextChapter) is covered by the simulator.
+  bool nextChapterDue(bool) { return false; } void prepareNextChapter() {}
+  bool releaseRadioForBuild(); bool readyForRadio(); void showMemoryError(); void settleBuildPopup(); void generatePendingThumb(); void writePendingThumbs();
   void backgroundTick(); void foreground(); bool skipLoopDelay(); bool latTrangThat(bool);
   // loadBook()'s cover-thumbnail tail and loop()'s idle region, projected verbatim.
   void openThumbStep(); void idleStep();

@@ -203,8 +203,11 @@ void HomeActivity::restoreNavigation(const MenuNavigationState& state) {
     const auto found = std::find(favoriteKeys.begin(), favoriteKeys.end(), state.selection);
     if (found != favoriteKeys.end()) activeNav().selected = static_cast<int>(found - favoriteKeys.begin()) + 1;
   } else if (activeTabId == Tab::RECENT) {
-    const auto found = std::find_if(recentBooks.begin(), recentBooks.end(),
-                                    [&](const RecentBook& book) { return book.path == state.selection; });
+    // A book opened since the cursor was kept is the first card now, and the card Home shows.
+    const auto found = state.booksOpened != RECENT_BOOKS.opened()
+                           ? recentBooks.end()
+                           : std::find_if(recentBooks.begin(), recentBooks.end(),
+                                          [&](const RecentBook& book) { return book.path == state.selection; });
     activeNav().selected =
         found == recentBooks.end() ? (recentBooks.empty() ? 0 : 1) : static_cast<int>(found - recentBooks.begin()) + 1;
   } else if (activeTabId == Tab::CAI_DAT) {
@@ -217,6 +220,7 @@ void HomeActivity::restoreNavigation(const MenuNavigationState& state) {
 void HomeActivity::captureNavigation(MenuNavigationState& state) const {
   UiTabListActivity::captureNavigation(state);
   state.selection.clear();
+  state.booksOpened = RECENT_BOOKS.opened();
   const int row = ringPos() - 1;
   if (activeTabId == Tab::FAVORITES) state.selection = favoriteKey(row);
   if (activeTabId == Tab::RECENT && row >= 0 && row < static_cast<int>(recentBooks.size()))

@@ -69,6 +69,7 @@ struct ActivityManager {
   bool isReaderActivity() { return currentActivity && currentActivity->name == "Reader"; }
   bool isForegroundReaderActivity() { return foregroundReader; }
   bool isForegroundActivityManagingTiltSensor() { return false; }
+  uint32_t activityGeneration() { return 0; }
   bool preventAutoSleep() { return false; }
   void requestUpdate() { requestedUpdate = true; }
   void replaceActivity(std::unique_ptr<Activity>&& next) {
@@ -159,6 +160,7 @@ struct TiltBoundary {
   void configureFlip(uint8_t, uint8_t) {}
   void configureDoubleTap(uint8_t) {}
   void confirmSideFlicks(bool) {}
+  void noteScreen(uint32_t) {}
   void configureVerticalGesture(uint8_t mode, bool gestureTargetActive) {
     verticalMode = mode;
     verticalTargetActive = gestureTargetActive;

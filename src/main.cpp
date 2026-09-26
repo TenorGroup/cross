@@ -1058,6 +1058,7 @@ void loop() {
   // Tab gestures are sampled by the activity at the end of the previous loop.
   // Preserve their activity before the foreground route clears the flag.
   const bool pendingTiltActivity = halTiltSensor.hadActivity();
+  halTiltSensor.noteScreen(activityManager.activityGeneration());
   const bool foregroundReader = activityManager.isForegroundReaderActivity();
   const bool foregroundActivityManagesTiltSensor = activityManager.isForegroundActivityManagingTiltSensor();
   updateTiltSensorForForegroundActivity(foregroundReader, foregroundActivityManagesTiltSensor);
@@ -1121,7 +1122,8 @@ void loop() {
       // A book still building its index in the background keeps the radio off until the index
       // is whole (EpubReaderActivity::holdsRadio); the device keys work meanwhile.
       if (foregroundReader && activityManager.isForegroundReaderReady() && !bleReaderBeginAttempted &&
-          !freeink::ble::idleStopped() && !bleHid.isStopping() && !activityManager.foregroundReaderHoldsRadio()) {
+          !freeink::ble::idleStopped() && !bleHid.isStopping() && !activityManager.foregroundReaderHoldsRadio() &&
+          (bleHid.isRunning() || activityManager.readyForegroundReaderForRadio())) {
         bleReaderBeginAttempted = true;
         if (!bleHid.isRunning()) {
           const bool started = freeink::ble::beginAsync(renderer);
