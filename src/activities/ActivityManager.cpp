@@ -603,6 +603,11 @@ bool ActivityManager::chapterSkip(const bool forward) {
   return static_cast<ReaderActivity*>(currentActivity.get())->luotNhayChuongNgoai(forward);
 }
 
+bool ActivityManager::readerShortcut(const ReaderShortcut shortcut) {
+  if (!isForegroundReaderReady() || sleepTransition) return false;
+  return static_cast<ReaderActivity*>(currentActivity.get())->requestShortcut(shortcut);
+}
+
 bool ActivityManager::handleForcedRefresh() { return currentActivity && currentActivity->handleForcedRefresh(); }
 
 bool ActivityManager::skipLoopDelay() const { return currentActivity && currentActivity->skipLoopDelay(); }

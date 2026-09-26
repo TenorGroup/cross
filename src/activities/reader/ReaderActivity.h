@@ -125,6 +125,10 @@ class ReaderActivity : public Activity {
   // lenh sau thay lenh truoc, giong hai luot lat trang lien tiep.
   bool luotNhayChuongNgoai(bool isForward);
 
+  // A shortcut asked from outside the reader's own keys (ActivityManager::readerShortcut).
+  // A format that has it runs it on its next pass; the others refuse it.
+  virtual bool requestShortcut(ReaderShortcut) { return false; }
+
   // True while the reader keeps the page-turner radio from starting: a book still building its
   // index in the background needs the heap the radio would take.
   virtual bool holdsRadio() const { return false; }

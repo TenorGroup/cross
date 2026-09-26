@@ -36,13 +36,15 @@ class BlePageTurnerActivity final : public UiListActivity {
     ROW_STATUS = 1,
     ROW_SCAN = 2,
     ROW_PAIRED_HEADER = 3,
-    // Four bind rows right after the scan row (rebuildRows decides the display
+    // Six bind rows right after the scan row (rebuildRows decides the display
     // order, not these values). Row code minus ROW_BIND_NEXT plus 1 is the row's
     // blebinding::Action.
     ROW_BIND_NEXT = 4,
     ROW_BIND_PREV = 5,
     ROW_BIND_NEXT_CHAPTER = 6,
     ROW_BIND_PREV_CHAPTER = 7,
+    ROW_BIND_READER_MENU = 8,
+    ROW_BIND_SAVE_QUOTE = 9,
     ROW_PAIRED_BASE = 100,
     ROW_DEVICE_HEADER = 200,
     ROW_DEVICE_BASE = 300,
@@ -71,7 +73,8 @@ class BlePageTurnerActivity final : public UiListActivity {
   // --- Per-button binding from raw frames (v1.0.14) --------------------------
   // While this screen is open the remote's input belongs to nobody else: both
   // queues are drained. The first press edge of a wait is the button learned, its
-  // release tells a tap from a hold; everything else only shows the last code.
+  // release tells a tap from a hold, or that the press was the remote's rest frame
+  // (then the wait goes on); everything else only shows the last code.
   void readPendingKeys();
   void startBindWait(blebinding::Action action);
   void finishLearn(bool sawRelease, uint32_t heldMs);
@@ -86,8 +89,8 @@ class BlePageTurnerActivity final : public UiListActivity {
   // Dong cua hang Trang thai sau khi ghep thong bao gan nut va ma vua nhan. La
   // thanh vien vi ListItem::value tro vao day, khong phai chuoi tam.
   std::string statusValue_;
-  // Values of the four bind rows, same reason: ListItem::value is a pointer.
-  std::string bindValues_[4];
+  // Values of the six bind rows, same reason: ListItem::value is a pointer.
+  std::string bindValues_[6];
   std::vector<freeink::ui::ListItem> rowItems_;
   OptionPopup optionPopup;
   bool rowsDirty = true;

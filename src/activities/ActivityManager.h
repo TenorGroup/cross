@@ -30,6 +30,9 @@ enum class HomeMenuItem {
   RECENT_CONTINUE
 };
 
+// A reader shortcut a quick action asks the foreground reader for (quickaction::Outcome).
+enum class ReaderShortcut : uint8_t { None, Menu, Quote };
+
 /**
  * ActivityManager
  *
@@ -155,6 +158,9 @@ class ActivityManager {
   bool pageTurn(bool forward);
   // Nhu pageTurn, nhung mot nac CHUONG (giu nut lat trang tren remote BLE).
   bool chapterSkip(bool forward);
+  // Ask the ready foreground reader to open its menu or its quote selector on its next
+  // pass. False where it cannot (no reader in front, a format without it, a preview).
+  bool readerShortcut(ReaderShortcut shortcut);
   bool handleForcedRefresh();
   bool skipLoopDelay() const;
   ScreenshotInfo getScreenshotInfo() const;

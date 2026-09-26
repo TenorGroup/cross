@@ -94,6 +94,12 @@ int runQuickActions() {
         case CrossPointSettings::BACK:
           shake = power = touchPower = Outcome::Back;
           break;
+        case CrossPointSettings::READER_MENU:  // the reader's own shortcuts: nothing elsewhere
+          if (screen.reader) shake = power = touchPower = Outcome::ReaderMenu;
+          break;
+        case CrossPointSettings::SAVE_QUOTE:
+          if (screen.reader) shake = power = touchPower = Outcome::SaveQuote;
+          break;
         default:
           break;
       }
@@ -103,11 +109,14 @@ int runQuickActions() {
         std::printf("FAIL shake action %u on %s\n", action, screen.name);
         ok = false;
       }
-      // Face down, face up and double tap are motion gestures like the shake: the same outcome on every screen.
-      for (const Trigger flip : {Trigger::FaceDown, Trigger::FaceUp, Trigger::DoubleTap}) {
+      // Face down, face up, double tap and a remote button are triggers like the shake: the
+      // same outcome on every screen.
+      for (const Trigger flip : {Trigger::FaceDown, Trigger::FaceUp, Trigger::DoubleTap, Trigger::Remote}) {
         if (quickaction::resolve(action, flip, reader) != shake || quickaction::resolve(action, flip, reader, true) != shake) {
           std::printf("FAIL %s action %u on %s\n",
-                      flip == Trigger::FaceDown ? "face down" : flip == Trigger::FaceUp ? "face up" : "double tap",
+                      flip == Trigger::FaceDown ? "face down" : flip == Trigger::FaceUp ? "face up"
+                                                           : flip == Trigger::DoubleTap ? "double tap"
+                                                                                        : "remote",
                       action, screen.name);
           ok = false;
         }
@@ -125,7 +134,8 @@ int runQuickActions() {
   const std::vector<StrId> power = quickaction::powerLabels();
   ok = expect(power == std::vector<StrId>{StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN,
                                           StrId::STR_FORCE_REFRESH, StrId::STR_FOOTNOTES, StrId::STR_SELECT,
-                                          StrId::STR_SHAKE_BACK},
+                                          StrId::STR_SHAKE_BACK, StrId::STR_READER_MENU,
+                                          StrId::STR_QUOTES_SAVE_ACTION},
               "the power button lists every action, old ones at their old places") &&
        ok;
   ok = expect(quickaction::shakeLabels() ==

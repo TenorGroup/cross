@@ -35,6 +35,8 @@ struct Settings {
   int saves = 0;
   void saveToFile() { ++saves; }
 } SETTINGS;
+uint32_t nowMs = 5000;
+uint32_t millis() { return nowMs; }
 namespace freeink::ble {
 void setIdleStopped(bool) {}
 void setReaderStartDeferred(bool) {}
@@ -62,6 +64,19 @@ void stopScan() { scan = false; }
 void connect(const char* addr) { connections.emplace_back(addr); }
 void disconnect() { live = false; }
 void forget(const char*) {}
+void drainKeys() {}
+// Raw edges the remote queued: button code, press or release, time, and whether the
+// release showed the press was the remote's rest frame.
+struct RawEdge { uint32_t code; bool pressed; uint32_t atMs; bool wasRest; };
+std::vector<RawEdge> raw;
+bool takeRaw(uint32_t& code, bool& pressed, uint32_t& atMs, bool& wasRest) {
+  if (raw.empty()) return false;
+  code = raw.front().code; pressed = raw.front().pressed; atMs = raw.front().atMs; wasRest = raw.front().wasRest;
+  raw.erase(raw.begin());
+  return true;
+}
+// The screen before the rest flag read edges without it.
+bool takeRaw(uint32_t& code, bool& pressed, uint32_t& atMs) { bool wasRest = false; return takeRaw(code, pressed, atMs, wasRest); }
 }
 void chupChuoi(char* dest, const char* src, size_t maxLen) {
   std::strncpy(dest, src, maxLen - 1); dest[maxLen - 1] = '\0';
@@ -99,8 +114,8 @@ struct BlePageTurnerActivity : UiListActivity {
   Popup optionPopup;
   std::vector<fui::ListItem> rowItems_;
   bool rowsDirty = false, bindWaitActive_ = false;
-  std::string bindNotice_, bindValues_[4], statusValue_, statusText_ = "ready";
-  uint32_t lastRawCode_ = 0, learnCode_ = 0;
+  std::string bindNotice_, bindValues_[6], statusValue_, statusText_ = "ready";
+  uint32_t lastRawCode_ = 0, learnCode_ = 0, learnPressMs_ = 0, bindWaitStartedMs_ = 0;
   blebinding::Action bindAction_ = blebinding::Action::NextPage;
   std::vector<blebinding::Action> waited, cleared;
   int updates = 0;
@@ -112,6 +127,7 @@ struct BlePageTurnerActivity : UiListActivity {
   void clearBind(blebinding::Action a) { cleared.push_back(a); }
   void clearBindForRow(int index);
   void finishLearn(bool sawRelease, uint32_t heldMs);
+  void readPendingKeys();
   void rebuildRows();
   void refreshValues();
   void activateIndex(int index);
@@ -213,19 +229,27 @@ int main() {
     }
   }
   {
-    // Four bind rows right after the scan row: next page, previous page, next chapter,
-    // previous chapter. A tap listens for that row's action; a hold clears exactly it.
+    // Six bind rows right after the scan row: next page, previous page, next chapter,
+    // previous chapter, reader menu, save quotation. A tap listens for that row's
+    // action; a hold clears exactly it.
     SETTINGS = {};
     backend::bonds.assign({"AA:BB:CC:DD:EE:F0"}); backend::devices.clear(); backend::live = true;
     BlePageTurnerActivity screen;
     screen.rebuildRows(); screen.refreshValues();
-    const blebinding::Action order[4] = {blebinding::Action::NextPage, blebinding::Action::PrevPage,
-                                         blebinding::Action::NextChapter, blebinding::Action::PrevChapter};
+    const blebinding::Action order[6] = {blebinding::Action::NextPage,    blebinding::Action::PrevPage,
+                                         blebinding::Action::NextChapter, blebinding::Action::PrevChapter,
+                                         blebinding::Action::ReaderMenu,  blebinding::Action::SaveQuote};
+    const char* labels[6] = {"STR_BLE_BIND_NEXT", "STR_BLE_BIND_PREV", "STR_BLE_BIND_NEXT_CHAPTER",
+                             "STR_BLE_BIND_PREV_CHAPTER", "STR_BLE_BIND_READER_MENU", "STR_BLE_BIND_SAVE_QUOTE"};
     int scanRow = -1;
     for (int i = 0; i < screen.listCount(); ++i)
       if (screen.rowItems_[i].actionValue == BlePageTurnerActivity::ROW_SCAN) scanRow = i;
-    require(scanRow >= 0 && scanRow + 4 < screen.listCount(), "bind rows follow the scan row");
-    for (int k = 0; k < 4; ++k) {
+    const bool sixRows = scanRow >= 0 && scanRow + 6 < screen.listCount();
+    require(sixRows, "bind rows follow the scan row");
+    for (int k = 0; sixRows && k < 6; ++k) {
+      require(std::strcmp(screen.rowItems_[scanRow + 1 + k].label, labels[k]) == 0, "bind row label in order");
+    }
+    for (int k = 0; sixRows && k < 6; ++k) {
       const int row = scanRow + 1 + k;
       require(screen.rowItems_[row].enabled && screen.rowItems_[row].value != nullptr, "bind row is live and shows a value");
       screen.activateIndex(row);
@@ -236,7 +260,7 @@ int main() {
               "holding a bind row clears its own action");
     }
     screen.clearBindForRow(0);
-    require(screen.cleared.size() == 4, "holding a non-bind row clears nothing");
+    require(screen.cleared.size() == 6, "holding a non-bind row clears nothing");
     // Forgetting a device forgets its button table too.
     blebinding::editableTable(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, "AA:BB:CC:DD:EE:F0", "Remote");
     require(SETTINGS.bleRemoteCount == 1, "table setup");
@@ -258,6 +282,38 @@ int main() {
     screen.finishLearn(true, 60);
     require(SETTINGS.bleRemoteCount == 1 && SETTINGS.saves == 1 && screen.bindNotice_ == "key 3:1=02",
             "a learned button on a live link was not stored and shown");
+    backend::live = false;
+  }
+  {
+    // Learning never stores a remote's rest frame as a button. A remote resting on a
+    // non-zero status byte, with no state report on connecting, reads its first press
+    // as that byte; the release that shows the rest frame says so, and the screen keeps
+    // waiting for the next press, which is the button.
+    SETTINGS = {}; backend::live = true; nowMs = 5000;
+    BlePageTurnerActivity screen;
+    screen.bindWaitActive_ = true; screen.bindWaitStartedMs_ = nowMs; screen.bindAction_ = blebinding::Action::ReaderMenu;
+    backend::raw = {{0x000012, true, 5100, false}, {0x000012, false, 5160, true}};
+    screen.readPendingKeys();
+    require(SETTINGS.bleRemoteCount == 0 && SETTINGS.saves == 0, "the rest frame was learned as a button");
+    require(screen.bindWaitActive_ && screen.learnCode_ == 0, "the wait ended on the rest frame");
+    require(screen.lastRawCode_ == 0, "the rest frame is shown as the last button");
+    nowMs = 6000;
+    backend::raw = {{0x000104, true, 5900, false}, {0x000104, false, 5960, false}};
+    screen.readPendingKeys();
+    require(SETTINGS.bleRemoteCount == 1 && SETTINGS.bleRemotes[0].count == 1 &&
+                SETTINGS.bleRemotes[0].bindings[0] ==
+                    blebinding::makeBinding(0x000104, false, blebinding::Action::ReaderMenu),
+            "the press after the rest frame was not learned");
+    require(!screen.bindWaitActive_, "learning did not end on the real button");
+    // A remote resting on zeros: its first press is the button, learned at once.
+    SETTINGS = {};
+    screen.bindWaitActive_ = true; screen.bindWaitStartedMs_ = nowMs; screen.bindAction_ = blebinding::Action::SaveQuote;
+    backend::raw = {{0x030102, true, 6100, false}, {0x030102, false, 6160, false}};
+    screen.readPendingKeys();
+    require(SETTINGS.bleRemoteCount == 1 && SETTINGS.bleRemotes[0].count == 1 &&
+                SETTINGS.bleRemotes[0].bindings[0] ==
+                    blebinding::makeBinding(0x030102, false, blebinding::Action::SaveQuote),
+            "a zero-rest remote's first press was not learned");
     backend::live = false;
   }
   Reader reader;

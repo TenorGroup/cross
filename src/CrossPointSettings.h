@@ -159,6 +159,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     FOOTNOTES = 4,
     PWR_CONFIRM = 5,
     BACK = 6,  // Stored by value: new actions go last (quickaction::CHOICES)
+    READER_MENU = 7,
+    SAVE_QUOTE = 8,
     SHORT_PWRBTN_COUNT
   };
 

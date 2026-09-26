@@ -127,6 +127,17 @@ int main(){
  nowMs+=1;p.pump();r->loop();require(r->chapterSkips==1&&r->trangDaLat==1,"hold did not skip one chapter at the threshold");
  nowMs+=300;canh(0x030102,false);p.pump();r->loop();require(r->chapterSkips==1&&r->trangDaLat==1,"the release after a hold acted");
  });
+ test("BLE table: reader menu and save quotation buttons go through the shared quick actions and turn nothing",[&]{
+ auto r=reader<EpubReaderActivity>();MainPump p;noiRemoteTen("Some Remote");quickActions.clear();
+ auto*t=blebinding::editableTable(SETTINGS.bleRemotes,SETTINGS.bleRemoteCount,"7d:de:5c:bd:ae:ca","Some Remote");
+ require(t&&blebinding::learn(*t,blebinding::Action::ReaderMenu,0x030001,false)&&blebinding::learn(*t,blebinding::Action::SaveQuote,0x030008,false),"table setup");p.pump();
+ nowMs=5000;canh(0x030001,true);p.pump();r->loop();nowMs+=60;canh(0x030001,false);p.pump();r->loop();
+ nowMs+=400;canh(0x030008,true);p.pump();r->loop();nowMs+=60;canh(0x030008,false);p.pump();r->loop();
+ const std::vector<std::pair<uint8_t,quickaction::Trigger>> want{{CrossPointSettings::READER_MENU,quickaction::Trigger::Remote},{CrossPointSettings::SAVE_QUOTE,quickaction::Trigger::Remote}};
+ require(quickActions==want,"a shortcut button did not ask the shared catalog once, as a remote");
+ require(page(*r)==1&&r->trangDaLat==0&&r->chapterSkips==0,"a shortcut button turned a page or a chapter");
+ require(p.lastSleepResetTime==nowMs-60,"a shortcut button did not reset the sleep clock");
+ });
  test("BLE router drops a table when the link goes to another remote",[&]{
  auto r=reader<EpubReaderActivity>();MainPump p;noiRemoteTen("Free3-R");p.pump();
  canh(0x030102,true);p.pump();r->loop();canh(0x030102,false);p.pump();r->loop();require(r->chapterSkips==1,"setup skip missing");

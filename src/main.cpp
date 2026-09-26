@@ -887,6 +887,11 @@ static void runQuickAction(const uint8_t action, const quickaction::Trigger trig
     case quickaction::Outcome::PageForward:
       activityManager.pageTurn(true);
       break;
+    case quickaction::Outcome::ReaderMenu:
+    case quickaction::Outcome::SaveQuote:
+      activityManager.readerShortcut(outcome == quickaction::Outcome::ReaderMenu ? ReaderShortcut::Menu
+                                                                                 : ReaderShortcut::Quote);
+      break;
     case quickaction::Outcome::Back:
     case quickaction::Outcome::Confirm:
 #ifndef SIMULATOR  // no motion sensor there, so no shake reaches this
@@ -1171,6 +1176,14 @@ void loop() {
         const bool quaBang = blebinding::routes(bleRouter.table);
         const auto lam = [&](const blebinding::Action a) {
           if (a == blebinding::Action::None) return;
+          if (a == blebinding::Action::ReaderMenu || a == blebinding::Action::SaveQuote) {
+            // Catalog actions: the remote asks for them like every other trigger does.
+            runQuickAction(a == blebinding::Action::ReaderMenu ? CrossPointSettings::READER_MENU
+                                                               : CrossPointSettings::SAVE_QUOTE,
+                           quickaction::Trigger::Remote);
+            bleInputActivity = true;
+            return;
+          }
           const bool toi = a == blebinding::Action::NextPage || a == blebinding::Action::NextChapter;
           const bool chuong = a == blebinding::Action::NextChapter || a == blebinding::Action::PrevChapter;
           if (chuong ? activityManager.chapterSkip(toi) : activityManager.pageTurn(toi)) bleInputActivity = true;
@@ -1464,24 +1477,38 @@ void loop() {
         // remote had sent it; the next loop pass routes it. With no remote connected the
         // route takes the built-in three-button table, so the hot path from frame to page
         // or chapter can be timed with no hand on a remote. Open a book first. With no
-        // bytes it only reports `overflow`, the raw presses dropped since boot.
+        // bytes it only reports `overflow`, the raw presses dropped since boot. Frames
+        // split by ',' go in back to back in this one pass, before the loop drains any:
+        // a burst of taps queued while the reader is busy.
         uint8_t frame[16];
-        size_t n = 0;
         const char* p = cmd.c_str() + 7;
-        unsigned v = 0;
-        int used = 0;
-        while (n < sizeof(frame) && SCAN_COMMAND(p, " %x%n", &v, &used) == 1) {
-          frame[n++] = static_cast<uint8_t>(v);
-          p += used;
-        }
         if (!bleHid.isConnected()) {
           bleRouter.table = blebinding::defaultTableFor("Free3");
           bleRouter.chosen = true;
         }
         const unsigned long t0 = micros();
-        bleHid.onReportIngest(frame, n);
-        logSerial.printf("BLE_RAW:len=%u,ingest_us=%lu,running=%d,overflow=%u,t=%lu\n", static_cast<unsigned>(n),
-                         micros() - t0, bleHid.isRunning(), bleHid.rawOverflows(), millis());
+        size_t n = 0;
+        unsigned frames = 0;
+        for (;;) {
+          size_t len = 0;
+          unsigned v = 0;
+          int used = 0;
+          while (len < sizeof(frame) && SCAN_COMMAND(p, " %x%n", &v, &used) == 1) {
+            frame[len++] = static_cast<uint8_t>(v);
+            p += used;
+          }
+          if (len > 0) {
+            bleHid.onReportIngest(frame, len);
+            ++frames;
+            n = len;
+          }
+          while (*p == ' ') ++p;
+          if (*p != ',') break;
+          ++p;
+        }
+        logSerial.printf("BLE_RAW:len=%u,frames=%u,ingest_us=%lu,running=%d,overflow=%u,t=%lu\n",
+                         static_cast<unsigned>(n), frames, micros() - t0, bleHid.isRunning(), bleHid.rawOverflows(),
+                         millis());
 #endif
 #endif
 #ifdef TENOR_PRESS_PROBE
