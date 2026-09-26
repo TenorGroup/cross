@@ -1616,6 +1616,13 @@ void loop() {
       } else if (cmd.startsWith("IMU_MARK ")) {
         // CMD:IMU_MARK <label>: names the part of an IMU_LOG run that follows (do-lac/phan_tich_lac.py).
         logSerial.printf("IMU_MARK:%lu,%s\n", millis(), cmd.substring(9).c_str());
+      } else if (cmd.startsWith("TAP_LOG ")) {
+        // CMD:TAP_LOG <s>: for <s> seconds (at most 600), with double tap on, one "IMU_FIFO:" line
+        // per poll (frames read, microseconds the read took, free and lowest heap) and one
+        // "IMU_TAP:" line per tap the detector finds (1 single, 2 double).
+        const unsigned long seconds = std::min(600L, std::max(0L, cmd.substring(8).toInt()));
+        halTiltSensor.probeTapLogUntil(millis() + seconds * 1000UL);
+        logSerial.printf("TAP_LOG:seconds=%lu,doubleTap=%u,t=%lu\n", seconds, SETTINGS.doubleTapAction, millis());
 #ifndef SIMULATOR
       } else if (cmd.startsWith("CUR_LOG")) {
         const long seconds = cmd.length() > 8 ? cmd.substring(8).toInt() : 0;

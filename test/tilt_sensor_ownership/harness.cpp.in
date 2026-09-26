@@ -1007,11 +1007,11 @@ bool Imu::wake() {
   return begun_ && imu.wakeOk;
 }
 
-// The tap engine is checked on a register-level chip in test/imu_double_tap.
-bool Imu::enableTap(const TapConfig&) { return begun_; }
-bool Imu::disableTap() { return begun_; }
-bool Imu::readTap(uint8_t& taps) {
-  taps = 0;
+// The FIFO is checked on a register-level chip in test/imu_double_tap.
+bool Imu::enableFifo() { return begun_; }
+bool Imu::disableFifo() { return begun_; }
+bool Imu::readFifo(FifoSink, void*, uint16_t& frames) {
+  frames = 0;
   return begun_;
 }
 
