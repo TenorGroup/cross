@@ -577,6 +577,19 @@ bool EpubReaderActivity::holdsRadio() const {
   return !preview && epub && !epub->indexComplete() && indexFailures < INDEX_MAX_FAILURES;
 }
 
+bool EpubReaderActivity::readyForRadio() {
+  if (!section || !section->isBuilding() || section->isBuildParked()) return true;
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired()) return false;
+  // X3 r43: the radio came up beside the live layout parser and left a largest block of 32,756 B,
+  // under the 32,768 its own check keeps, so the start was rolled back and the parser parked 640 ms
+  // later anyway (the radio defers the build). Parked first, its pages stay and it resumes at its
+  // checkpoint.
+  backgroundBuildSuspended = true;
+  suspendBackgroundBuild();
+  return true;
+}
+
 bool EpubReaderActivity::indexStepDue() const {
   return holdsRadio() && section && overlay == Overlay::None &&
          !automaticPageTurnActive && !pendingPercentJump && pendingAnchor.empty() && pendingQuoteEdit.empty() &&

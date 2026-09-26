@@ -148,6 +148,8 @@ class ActivityManager {
   bool isForegroundActivityManagingTiltSensor() const;
   bool isForegroundReaderReady() const;
   bool foregroundReaderHoldsRadio() const;
+  // The foreground reader frees what it can before the radio starts (ReaderActivity::readyForRadio).
+  bool readyForegroundReaderForRadio();
   uint32_t activityGeneration() const { return activityGeneration_; }
 
   // Queue an external page action on the ready foreground reader. True means

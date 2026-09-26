@@ -364,6 +364,7 @@ class EpubReaderActivity final : public ReaderActivity {
 
   bool skipLoopDelay() override;
   bool holdsRadio() const override;
+  bool readyForRadio() override;
 
   ScreenshotInfo getScreenshotInfo() const override;
   CrossPointPosition getCurrentPosition() const;
