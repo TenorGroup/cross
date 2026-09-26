@@ -2,7 +2,7 @@
 
 tenor/cross is e-reader firmware for the Xteink X3 and X4. It is a fork of [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) by Dave Allie and contributors, and it runs on the [FreeInk SDK](https://github.com/Free-Ink/freeink-sdk). The CrossPoint history is kept in this repository, so every upstream commit keeps its original author.
 
-The latest release is v1.0.16. The X4 Pro has no firmware in any release yet.
+The latest release is v1.0.17. The X4 Pro has no firmware in any release yet.
 
 ## What it adds to CrossPoint
 
@@ -13,6 +13,9 @@ Everything below has shipped in a tagged release. The version in brackets is the
 - Tilt page turning comes from CrossPoint and works on the X3, which has the motion sensor. tenor/cross adds two more gestures on top of it: a sideways flick switches tabs (v1.0.8) and an up or down flick moves the selection one row in lists and menus, like the up and down buttons (v1.0.9). Each has Off, Normal and Reversed. Picking the device up no longer triggers a stray tab switch or line jump (v1.0.16).
 - Side flick strength and Up/down flick strength can each be Light, Medium or Strong (v1.0.12).
 - Hard shake (X3) can Refresh the screen, Sleep, Turn the page, go Back or Select, and works on every screen. Off by default, with a Shake strength of Light, Medium or Strong (v1.0.16).
+- A Motion sensor tab in Settings holds every tilt and shake row (v1.0.17).
+- Face down and face up (X3) can each run an action you choose: Refresh, Sleep, Turn the page, Back or Select. Off by default (v1.0.17).
+- Double tap on the back (X3) runs an action you choose, Off by default (v1.0.17).
 
 ### Bluetooth page turners
 
@@ -43,10 +46,11 @@ Everything below has shipped in a tagged release. The version in brackets is the
 - A 5,000-chapter book with a cover now opens in about 9 seconds, down from about 28, with the Table of Contents built in the background while the book stays open (v1.0.16).
 - A book on the SD card opens for the first time in about 1.5 seconds, down from about 5 (v1.0.16).
 - The status bar's battery icon shows a lightning bolt while charging (v1.0.16).
+- X3 battery percent follows the real 650 mAh battery: the firmware loads that capacity into the battery chip, which otherwise counts against a 3,000 mAh default (v1.0.17).
 
 ### Home, statistics and sleep
 
-- Home has tabs, and any row can be pinned to Favorites (v1.0.0).
+- Home has tabs, and any row can be pinned to Favorites (v1.0.0). On the X3 the side buttons switch Home tabs, and holding one moves the current tab (v1.0.1).
 - The Recent tab shows one book at a time with its cover, reading time, reading days, progress and an expected finish date (v1.0.11 and v1.0.14).
 - A Book + quotation sleep screen draws a random saved quotation with the book's cover (v1.0.11).
 - On the X3, sleep can end with a full black and white refresh, which keeps grey levels on the sleep screen from drifting darker (v1.0.12).
@@ -61,7 +65,6 @@ English, Vietnamese and Simplified Chinese (v1.0.1 and v1.0.4).
 - File Transfer has no password. While its screen is open, anyone who can reach the device's page can read, upload or delete files on the card. Close the screen when you are done.
 - Timings in the release notes were measured on an X3 on USB power.
 - Some Bluetooth page turners connect but send reports the reader cannot decode.
-- X3 battery percent is calculated against a default capacity of 3,000 mAh, so it can read inaccurately against the true battery size.
 - A book with every chapter merged into one very large file can take close to two minutes to open the first time.
 
 Each release lists its own known issues.
