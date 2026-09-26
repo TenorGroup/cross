@@ -555,7 +555,7 @@ TEST(MenuCustomization, NormalizeDropsDuplicatesAndAppendsNewIds) {
   menucustom::State s;
   s.order[1] = {4, 4, 255, 0, 99, 0, 255, 255};
   s.normalize(1, 7);
-  EXPECT_EQ(s.order[1], (std::array<uint8_t, 8>{4, 0, 1, 2, 3, 5, 6, 0}));
+  EXPECT_EQ(s.order[1], (std::array<uint8_t, 9>{4, 0, 1, 2, 3, 5, 6, 0, 0}));
 }
 TEST(MenuCustomization, MovingTabRetainsIdAndStopsAtEdge) {
   auto& s = menucustom::state();

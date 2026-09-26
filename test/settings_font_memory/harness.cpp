@@ -88,7 +88,7 @@ struct SettingsActivity {
   bool routingClosed = false;
   int saves = 0;
   std::vector<SettingInfo> displaySettings, readerSettings, controlsSettings, systemSettings,
-                           deviceSettings, otherSettings, keyboardSettings, sleepSettings;
+                           deviceSettings, otherSettings, keyboardSettings, sleepSettings, motionSettings;
   const std::vector<SettingInfo>* currentSettings = nullptr;
   std::array<Cursor, settingstabs::TAB_COUNT> tabNavs{};
   std::vector<std::string> rowValues_;
@@ -138,7 +138,7 @@ bool catalogReleaseProbe() {
   bool ok = check(mem::live == 0, "shared catalog allocations released");
   std::printf("catalog_rows=%zu sizeof_SettingInfo=%zu allocated=%zu after_release=%zu\n",
               copied.size(), sizeof(SettingInfo), bytes, mem::live);
-  ok &= check(copied.size() == 77 && !webCopy.empty(), "77 base rows and owned web copy survive release");
+  ok &= check(copied.size() == 79 && !webCopy.empty(), "79 base rows and owned web copy survive release");
   clockCopy.valueSetter(1);
   ok &= check(clockCopy.valueGetter() == 1, "copied dynamic callback survives catalog release");
   SETTINGS.statusBarClock = CrossPointSettings::STATUS_BAR_CLOCK_HIDE;

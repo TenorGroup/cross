@@ -846,3 +846,9 @@ STR_STATS_FINISHED: "Đã đọc xong"
 STR_STATS_FINISH_FAR: "Hơn %u ngày nữa"
 
 STR_STATS_FINISH_IN_DAYS: "Còn khoảng %u ngày"
+
+STR_CAT_MOTION: "Cảm biến chuyển động"
+
+STR_FACE_DOWN_ACTION: "Úp máy"
+
+STR_FACE_UP_ACTION: "Ngửa máy"

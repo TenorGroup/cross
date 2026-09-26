@@ -1,6 +1,6 @@
 """v1.0.12 controls, driven through the real X3 simulator UI.
 
-Covers the two flick strength rows in Settings > Controls, the Confirm-hold function list
+Covers the two flick strength rows in Settings > Motion sensor, the Confirm-hold function list
 (Reader menu now on every board, then File transfer and the tilt toggle), the two quick
 actions at the end of the reader menu's Tools tab, and what a Confirm hold in a book does
 for each new function. The simulated X3 reports an IMU but has no gyro, so tilt settings
@@ -25,6 +25,8 @@ PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc
 
 # Home: Up opens the Settings tab; four Right from "File transfer" reach Controls; Select.
 HOME_TO_CONTROLS = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '3000:RIGHT', '3500:CONFIRM']
+# Motion sensor follows Controls: five Right.
+HOME_TO_MOTION = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '2800:RIGHT', '3100:RIGHT', '3500:CONFIRM']
 # Home: Select opens the recent book; Select again opens the reader menu; three Down to Tools.
 BOOK_TO_TOOLS = ['1000:CONFIRM', '3200:CONFIRM', '4400:DOWN', '5000:DOWN', '5600:DOWN']
 
@@ -84,21 +86,22 @@ class QuickActionsV1012Test(unittest.TestCase):
         with Image.open(self.sd / f'{name}.bmp') as image:
             return image.convert('L')
 
-    # ---- Settings > Controls ----
+    # ---- Settings > Motion sensor, Controls ----
 
     def test_side_flick_strength_row_saves_strong(self):
-        # Rows: remap, tab tilt, row tilt, side strength. Three Right reach it. A three-choice
+        # Rows: page tilt, tab tilt, row tilt, side strength. Three Right reach it. A three-choice
         # row steps in place, so one Select moves Medium to Strong and leaves up/down alone.
-        log = self.run_sim([*HOME_TO_CONTROLS, '4500:RIGHT', '5000:RIGHT', '5500:RIGHT', '6500:CONFIRM'],
-                           shots=[(4300, 'controls-rows'), (7700, 'controls-side-strong')])
+        log = self.run_sim([*HOME_TO_MOTION, '4500:RIGHT', '5000:RIGHT', '5500:RIGHT', '6500:CONFIRM'],
+                           shots=[(4300, 'motion-rows'), (7700, 'motion-side-strong')])
         self.assertIn('Entering activity: Settings', log)
         saved = self.saved()
         self.assertEqual((saved['tiltStrengthH'], saved['tiltStrengthV']), (2, 1), log[-4000:])
 
     def test_confirm_hold_list_offers_file_transfer(self):
-        # Eighth row of Controls is "Hold Select while reading". Its popup opens on Off
-        # (index 1); four Right move to File transfer (index 5).
-        rows = [f'{4500 + 400 * i}:RIGHT' for i in range(7)]
+        # Fourth row of Controls is "Hold Select while reading" (remap, follow orientation,
+        # long press, then it). Its popup opens on Off (index 1); four Right move to File
+        # transfer (index 5).
+        rows = [f'{4500 + 400 * i}:RIGHT' for i in range(3)]
         log = self.run_sim([*HOME_TO_CONTROLS, *rows, '8000:CONFIRM', '10000:RIGHT', '10400:RIGHT',
                             '10800:RIGHT', '11200:RIGHT', '12000:CONFIRM'],
                            shots=[(9800, 'confirm-hold-values')])

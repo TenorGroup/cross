@@ -8,7 +8,7 @@
 
 namespace menucustom {
 constexpr int GROUPS = 4;
-constexpr int MAX_TABS = 8;
+constexpr int MAX_TABS = 9;
 constexpr int MAX_PINS = 32;
 constexpr int KEY_SIZE = 64;
 // Keep saved v1 pin keys intact while matching their current setting routes.
@@ -61,15 +61,24 @@ inline int groupFor(const char* name) {
   if (strcmp(name, "TextSettings") == 0) return 3;
   return -1;
 }
+// Stored slot of the pos-th shown tab. Only IDs below count are shown, so a board with
+// fewer tabs than are stored (no motion sensor) steps over the ones it does not have.
+inline int slotAt(int group, int pos, int count) {
+  for (int i = 0, shown = 0; i < MAX_TABS; ++i) {
+    if (state().order[group][i] >= count) continue;
+    if (shown++ == pos) return i;
+  }
+  return -1;
+}
 inline int position(int group, int id, int count) {
   if (group < 0 || group >= GROUPS) return id;
   for (int i = 0; i < count; ++i)
-    if (state().order[group][i] == id) return i;
+    if (state().order[group][slotAt(group, i, count)] == id) return i;
   return 0;
 }
 inline int idAt(int group, int pos, int count) {
   if (pos < 0 || pos >= count) return 0;
-  return group >= 0 && group < GROUPS ? state().order[group][pos] : pos;
+  return group >= 0 && group < GROUPS ? state().order[group][slotAt(group, pos, count)] : pos;
 }
 inline int adjacent(int group, int id, int count, int direction) {
   return idAt(group, (position(group, id, count) + direction + count) % count, count);
@@ -78,9 +87,11 @@ inline bool moveTab(int group, int id, int count, int direction) {
   if (group < 0 || group >= GROUPS) return false;
   const int from = position(group, id, count), to = from + direction;
   if (to < 0 || to >= count) return false;
-  std::swap(state().order[group][from], state().order[group][to]);
+  auto& order = state().order[group];
+  const int a = slotAt(group, from, count), b = slotAt(group, to, count);
+  std::swap(order[a], order[b]);
   if (save()) return true;
-  std::swap(state().order[group][from], state().order[group][to]);
+  std::swap(order[a], order[b]);
   return false;
 }
 inline bool togglePin(const char* key) {

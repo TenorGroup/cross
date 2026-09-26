@@ -846,3 +846,9 @@ STR_STATS_FINISHED: "Finished"
 STR_STATS_FINISH_FAR: "More than %u days"
 
 STR_STATS_FINISH_IN_DAYS: "About %u days left"
+
+STR_CAT_MOTION: "Motion sensor"
+
+STR_FACE_DOWN_ACTION: "Face down"
+
+STR_FACE_UP_ACTION: "Face up"

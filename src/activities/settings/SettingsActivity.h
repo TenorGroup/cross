@@ -157,6 +157,7 @@ class SettingsActivity final : public UiTabListActivity {
   std::vector<SettingInfo> otherSettings;
   std::vector<SettingInfo> keyboardSettings;
   std::vector<SettingInfo> sleepSettings;
+  std::vector<SettingInfo> motionSettings;
   const std::vector<SettingInfo>* currentSettings = nullptr;
 
   // Mot cho duy nhat noi the nao giu danh sach nao. Truoc 14/09/2026 phep nay chep
@@ -186,7 +187,8 @@ class SettingsActivity final : public UiTabListActivity {
 
   // --- UiTabListActivity contract ---
   int listCount() const override { return settingsCount; }
-  int tabCount() const override { return categoryCount; }
+  // Motion sensor only on a board with one (deviceSettingsTabCount).
+  int tabCount() const override;
   int activeTab() const override { return selectedCategoryIndex; }
   const char* tabLabel(int index) const override {
     return I18N.get(settingstabs::tenThe(static_cast<settingstabs::Tab>(index)));

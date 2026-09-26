@@ -50,8 +50,8 @@ patch(root / "HalTiltSensor.h", [(
     "  // Hard shake: no accelerometer either, so no shake ever comes.\n",
     1,
 ), (
-    "  bool wasShaken() { return false; }\n",
-    "  bool wasShaken() { return false; }\n"
+    "  void clearPendingEvents() {}\n",
+    "  void clearPendingEvents() {}\n"
     "  // Face down and face up: no accelerometer, so the device never turns over.\n"
     "  void configureFlip(const uint8_t /*faceDownAction*/, const uint8_t /*faceUpAction*/) {}\n"
     "  bool wasTurnedFaceDown() { return false; }\n"

@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
   CrossPointWebServer web;
   web.handleGetSettings();
   bool ok=true;
-  ok &= check(settingstabs::TAB_COUNT==8,"eight settings tabs");
+  ok &= check(settingstabs::TAB_COUNT==9,"nine settings tabs");
   ok &= check(static_cast<int>(settingstabs::Tab::OTHER)==6,"old tab IDs preserved");
   SettingsActivity activity;
   activity.rebuildSettingsLists();
@@ -132,11 +132,13 @@ int main(int argc, char** argv) {
   web.server->output.clear(); web.handleGetSettings();
   ok &= check(before==web.server->output,"grouping and pin route leave web JSON byte identical");
   HomeSettings home; home.build();
-  const std::vector<int> desired={0,7,1,2,3,4,5,6};
-  ok &= check(home.settingsGroups==desired && home.rowLabels.size()==9,"Home exposes eight default ordered entries plus file transfer");
-  StrId labels[8]{};
-  ok &= check(settingstabs::dongCuaTheCaiDat(labels,8)==8,"Home label helper includes eight groups");
-  ok &= check(labels[7]==StrId::STR_CAT_OTHER,"default labels end with Other");
+  // Motion sensor follows Controls, and only with the sensor.
+  const std::vector<int> desired=imu?std::vector<int>{0,7,1,2,8,3,4,5,6}:std::vector<int>{0,7,1,2,3,4,5,6};
+  ok &= check(home.settingsGroups==desired && home.rowLabels.size()==desired.size()+1,"Home exposes the default ordered groups plus file transfer");
+  StrId labels[9]{};
+  ok &= check(settingstabs::dongCuaTheCaiDat(labels,9)==9,"Home label helper includes nine groups");
+  ok &= check(labels[8]==StrId::STR_CAT_OTHER,"default labels end with Other");
+  ok &= check(imu ? routes["settings/tiltPageTurn"]==8 && routes["settings/faceUpAction"]==8 : !routes.count("settings/tiltPageTurn"),"sensor rows resolve to Motion sensor, ID8, only with the sensor");
   for(int i=0;i<settingstabs::TAB_COUNT;++i) {
     ok &= check(settingstabs::tenThe(static_cast<settingstabs::Tab>(i))!=StrId::STR_NONE_OPT,"every tab named");
     for(int j=0;j<i;++j) ok &= check(settingstabs::tenThe(static_cast<settingstabs::Tab>(i))!=settingstabs::tenThe(static_cast<settingstabs::Tab>(j)),"tab labels unique");
