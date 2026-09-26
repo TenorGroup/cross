@@ -814,9 +814,9 @@ STR_READER_INK_2: "+2"
 
 STR_READER_INK_3: "+3"
 
-STR_TILT_STRENGTH_H: "Lực lắc ngang"
+STR_TILT_STRENGTH_H: "Lực nghiêng ngang"
 
-STR_TILT_STRENGTH_V: "Lực lắc dọc"
+STR_TILT_STRENGTH_V: "Lực nghiêng dọc"
 
 STR_TILT_LIGHT: "Nhẹ"
 
@@ -834,7 +834,7 @@ STR_CHAPTER_NAME: "Tên chương"
 
 STR_BLE_BIND_NEXT_CHAPTER: "Gán nút chương sau"
 STR_BLE_BIND_PREV_CHAPTER: "Gán nút chương trước"
-STR_BLE_BIND_HOLD: "giữ lâu"
+STR_BLE_BIND_HOLD: "giữ"
 STR_BLE_BIND_FULL: "Hết chỗ gán nút"
 
 STR_RECENT_STAT_FINISH: "Dự kiến xong"
