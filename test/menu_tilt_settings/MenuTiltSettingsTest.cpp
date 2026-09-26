@@ -59,8 +59,8 @@ int runPowerWake() {
   return ok ? 0 : 1;
 }
 
-// A short power press and a hard shake share one decision: what the action means on
-// the screen in front, or nothing there. Back and Select are pressed like the keys on
+// A short power press, a hard shake, face down and face up share one decision: what the
+// action means on the screen in front, or nothing there. Back and Select are pressed like the keys on
 // every screen; the screen takes or ignores them as it does the real ones.
 int runQuickActions() {
   using quickaction::Outcome;
@@ -101,6 +101,14 @@ int runQuickActions() {
           quickaction::resolve(action, Trigger::Shake, reader, true) != shake) {
         std::printf("FAIL shake action %u on %s\n", action, screen.name);
         ok = false;
+      }
+      // Face down and face up are motion gestures like the shake: the same outcome on every screen.
+      for (const Trigger flip : {Trigger::FaceDown, Trigger::FaceUp}) {
+        if (quickaction::resolve(action, flip, reader) != shake || quickaction::resolve(action, flip, reader, true) != shake) {
+          std::printf("FAIL %s action %u on %s\n", flip == Trigger::FaceDown ? "face down" : "face up", action,
+                      screen.name);
+          ok = false;
+        }
       }
       if (quickaction::resolve(action, Trigger::PowerRelease, reader) != power ||
           quickaction::resolve(action, Trigger::PowerRelease, reader, true) != touchPower) {

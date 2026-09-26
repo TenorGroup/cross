@@ -49,4 +49,12 @@ patch(root / "HalTiltSensor.h", [(
     "  void confirmSideFlicks(const bool /*confirm*/) {}\n"
     "  // Hard shake: no accelerometer either, so no shake ever comes.\n",
     1,
+), (
+    "  bool wasShaken() { return false; }\n",
+    "  bool wasShaken() { return false; }\n"
+    "  // Face down and face up: no accelerometer, so the device never turns over.\n"
+    "  void configureFlip(const uint8_t /*faceDownAction*/, const uint8_t /*faceUpAction*/) {}\n"
+    "  bool wasTurnedFaceDown() { return false; }\n"
+    "  bool wasTurnedFaceUp() { return false; }\n",
+    1,
 )])

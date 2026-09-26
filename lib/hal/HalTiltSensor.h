@@ -98,6 +98,27 @@ class HalTiltSensor {
   static constexpr unsigned long SHAKE_REST_MS = 1500;      // Minimum ms between two shakes
   static constexpr unsigned long SHAKE_TILT_LOCK_MS = 800;  // Tilts ignored after a shake's last jolt
 
+  // Face down and face up, watched on every screen while either action is not Off. Face
+  // down: gravity within 14 degrees of the screen's back (az > 0, az^2 >= 60/64 of the
+  // length squared), each axis within FLIP_CALM_MG of the poll before, side and up/down
+  // rotation under FLIP_CALM_DPS, for FLIP_DOWN_MS. Face up: after a face down, the
+  // screen turned up past FLIP_UP_MG. On the X3 the screen faces up at az -1 g.
+  bool _flipEnabled = false;
+  bool _faceDown = false;       // A face down fired and the screen has not come back up
+  bool _faceDownEvent = false;  // Consumed by wasTurnedFaceDown()
+  bool _faceUpEvent = false;    // Consumed by wasTurnedFaceUp()
+  bool _flipLastValid = false;
+  int32_t _flipLastMg[3] = {};
+  unsigned long _flipLastMs = 0;
+  bool _flipCalm = false;  // Lying face down and calm since _flipCalmFromMs
+  unsigned long _flipCalmFromMs = 0;
+  // X3 hand runs (flip-replay): six placements lay still face down 552 ms or more,
+  // wrist turns and pick-ups held a face-down pose at most 250 ms.
+  static constexpr unsigned long FLIP_DOWN_MS = 350;
+  static constexpr int32_t FLIP_CALM_MG = 250;
+  static constexpr float FLIP_CALM_DPS = 30.0f;
+  static constexpr int32_t FLIP_UP_MG = 400;
+
   // A flick on a menu counts once the hand has come back: the axis swings the
   // other way past FLICK_RETURN_DPS within FLICK_RETURN_MS, or stops (under
   // FLICK_CALM_DPS) with gravity back within 22 degrees of where it was. Picking
@@ -124,6 +145,7 @@ class HalTiltSensor {
 #endif
 
   void pollShake(unsigned long now, const int32_t (&mg)[3], const int32_t (&jolt)[3]);
+  void pollFlip(unsigned long now, const int32_t (&mg)[3], float gx, float gy);
   void startFlick(PendingFlick& flick, float axis, uint8_t bit, unsigned long now);
   void settleFlick(PendingFlick& flick, float axis, const int32_t (&mg)[3], unsigned long now);
   void raiseTiltEvents(uint8_t bits);
@@ -168,6 +190,14 @@ class HalTiltSensor {
 
   // Returns true once per hard shake, consumed on read.
   bool wasShaken();
+
+  // Arms face down and face up from their settings: either action but 0 (Off) keeps
+  // the sensor awake on every screen. Called once per loop pass.
+  void configureFlip(uint8_t faceDownAction, uint8_t faceUpAction);
+
+  // Returns true once per face down, and once per face up that follows one; consumed on read.
+  bool wasTurnedFaceDown();
+  bool wasTurnedFaceUp();
 
 #ifdef TENOR_PRESS_PROBE
   // Measurement build, CMD:IMU_LOG: each poll prints its raw sample until

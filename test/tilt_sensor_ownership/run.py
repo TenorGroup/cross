@@ -91,9 +91,13 @@ else:
         r"if \(mappedInputManager\.wasReleased\(MappedInputManager::Button::Power\)\) \{\s*"
         r"runQuickAction\(SETTINGS\.shortPwrBtn, quickaction::Trigger::PowerRelease\);\s*\}\s*"
         r"if \(halTiltSensor\.wasShaken\(\)\) \{\s*"
-        r"runQuickAction\(quickaction::shakeAsPowerAction\(SETTINGS\.shakeAction\), quickaction::Trigger::Shake\);",
+        r"runQuickAction\(quickaction::shakeAsPowerAction\(SETTINGS\.shakeAction\), quickaction::Trigger::Shake\);\s*\}\s*"
+        r"if \(halTiltSensor\.wasTurnedFaceDown\(\)\) \{\s*"
+        r"runQuickAction\(quickaction::shakeAsPowerAction\(SETTINGS\.faceDownAction\), quickaction::Trigger::FaceDown\);\s*\}\s*"
+        r"if \(halTiltSensor\.wasTurnedFaceUp\(\)\) \{\s*"
+        r"runQuickAction\(quickaction::shakeAsPowerAction\(SETTINGS\.faceUpAction\), quickaction::Trigger::FaceUp\);",
         main_source,
-        "short power press and hard shake do not share the one action route",
+        "short power press, hard shake, face down and face up do not share the one action route",
     )
     main_tilt_route = extract_function(
         main_source, r"static void updateTiltSensorForForegroundActivity\s*\("
@@ -134,10 +138,12 @@ with tempfile.TemporaryDirectory(prefix="tilt-sensor-ownership-") as temporary_d
     if build.returncode:
         sys.exit(build.returncode)
 
-    # A hand-held X3 run, replayed through the real detector.
+    # Hand-held X3 runs, replayed through the real detectors.
     replay = output / "shake-replay.csv"
     replay.write_bytes(gzip.decompress((test_root / "shake-replay.csv.gz").read_bytes()))
-    run = subprocess.run([str(executable), str(replay)], text=True, capture_output=True)
+    flips = output / "flip-replay.csv"
+    flips.write_bytes(gzip.decompress((test_root / "flip-replay.csv.gz").read_bytes()))
+    run = subprocess.run([str(executable), str(replay), str(flips)], text=True, capture_output=True)
     if run.stdout:
         print(run.stdout, end="")
     if run.stderr:
