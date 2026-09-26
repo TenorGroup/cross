@@ -157,19 +157,19 @@ class SleepEndsBwTest(unittest.TestCase):
         (store / 'state.json').write_text(json.dumps(dict({'showBootScreen': False}, **(state or {}))))
         return sd
 
-    def run_sim(self, sd, script, shots, program=None):
+    def run_sim(self, sd, script, shots, program=None, extra=None):
         env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
         env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(sd), CROSSPOINT_SIM_INPUT_SCRIPT=script,
-                   CROSSPOINT_SIM_SCREENSHOTS=shots)
+                   CROSSPOINT_SIM_SCREENSHOTS=shots, **(extra or {}))
         run = subprocess.run([str(program or PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=40)
         log = run.stdout + run.stderr
         self.assertEqual(run.returncode, 0, log)
         return log
 
-    def sleep_once(self, sd, label, program=None):
+    def sleep_once(self, sd, label, program=None, extra=None):
         times = [SLEEP_AT + 50 * i for i in range(1, 90)]
         log = self.run_sim(sd, f'{SLEEP_AT}:SLEEP;{SLEEP_AT + 5000}:QUIT',
-                           ';'.join(f'{t}:{sd / f"shot-{t}.bmp"}' for t in times), program)
+                           ';'.join(f'{t}:{sd / f"shot-{t}.bmp"}' for t in times), program, extra)
         self.assertIn('Entering activity: Sleep', log)
         self.assertIn('Entering deep sleep', log)
         sleep = log.split('Entering activity: Sleep', 1)[1].split('Entering deep sleep', 1)[0]
@@ -182,7 +182,7 @@ class SleepEndsBwTest(unittest.TestCase):
             image.save(Path(SHOTS) / f'{label}.png')
         return log, sleep, image
 
-    def assert_ends_on_bw_full(self, sleep, clears=True, blank=False):
+    def assert_ends_on_bw_full(self, sleep, clears=True, blank=False, ready_first=True):
         ops = PANEL_OP.findall(sleep)
         # The switch promises a refresh the reader can see. A GC pass on this panel only drives
         # the pixels that change, so the page underneath ghosts into a sleep image painted over it.
@@ -199,7 +199,9 @@ class SleepEndsBwTest(unittest.TestCase):
             # The blank screen is what the white pass leaves: a third pass would change nothing.
             self.assertEqual(steps, expected + ([] if blank else ['displayBuffer, mode=0']), steps)
             if not blank:
-                self.assertIn('[SLP] Timing frame-ready', before)
+                # The Tenor frame, folded ahead of time, is inflated after the passes in a few
+                # milliseconds (v1.0.17): keeping it through them took a framebuffer of heap.
+                self.assertIn('[SLP] Timing frame-ready', before if ready_first else after)
         else:
             self.assertNotIn('[SLP] clear black', steps, steps)
         self.assertTrue(ops, sleep)
@@ -251,11 +253,23 @@ class SleepEndsBwTest(unittest.TestCase):
 
     def test_tenor_screen_is_a_dithered_bw_frame(self):
         log, sleep, image = self.sleep_once(self.make_sd('tenor', 8), 'man-ngu-tenor')
-        self.assertIn('[BRAND] sleep ready=1', sleep)
-        self.assert_ends_on_bw_full(sleep)
+        # v1.0.17: the frame folded ahead of time (ManNguTenor.h), no gray plane decoded or kept.
+        self.assertIn('[BRAND] sleep folded ready=1', sleep)
+        self.assertNotIn('[BRAND] sleep ready=', sleep)
+        self.assert_ends_on_bw_full(sleep, ready_first=False)
         self.assertEqual(self.grays(image), 0)
         found = self.dither_blocks(image, (0, 0, 528, 792))
         self.assertGreater(found[4] + found[12], 200, found)
+
+    def test_tenor_screen_without_heap_for_a_kept_plane(self):
+        # A running BLE radio leaves about 45 KB at sleep, short of the framebuffer the folded
+        # planes were kept in: the light gray "tenor/" went missing then. The frame folded ahead
+        # of time needs none of it, so the screen is the recorded one, passes included.
+        sd = self.make_sd('tenor-no-heap', 8)
+        log, sleep, image = self.sleep_once(sd, 'man-ngu-tenor-het-heap', extra={'CROSSPOINT_SIM_SLEEP_NO_HEAP': '1'})
+        self.assertIsNone(golden_mismatch(image, GOLDEN / 'bw-8-0.png'))
+        self.assertNotIn('no heap to keep it', sleep)
+        self.assert_ends_on_bw_full(sleep, ready_first=False)
 
     def quote_sd(self, name, settings=None):
         cover_sd, _ = self.cover_cache()
@@ -368,7 +382,7 @@ class SleepEndsBwTest(unittest.TestCase):
                 if not settings:
                     self.assertNotIn('sleepBwRefresh', (sd / '.crosspoint/settings.json').read_text())
                 _, sleep, image = self.sleep_once(sd, f'bat-{len(settings)}')
-                self.assert_ends_on_bw_full(sleep)
+                self.assert_ends_on_bw_full(sleep, ready_first=False)
                 self.assertEqual(self.grays(image), 0)
 
     def test_switch_off_keeps_the_v1011_waveforms(self):

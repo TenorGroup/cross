@@ -77,6 +77,13 @@ class GfxRenderer {
   mutable HalDisplay::RefreshMode promotedRefresh_ = HalDisplay::FAST_REFRESH;
   // Swap in (and clear) the promoted mode, if one is pending.
   HalDisplay::RefreshMode applyPromotedRefresh(HalDisplay::RefreshMode refreshMode) const;
+  // Set while the controller's previous frame does not say what the glass shows (see
+  // redriveNextRefresh). Mutable for the same reason as the promotion above.
+  mutable bool redrivePending_ = false;
+  bool diffOnlyPanel_ = false;
+  // On a diff-only panel, with a redrive pending: make the frame's inverse the controller's
+  // previous frame, so the refresh drives every pixel, and ask for a full refresh. Clears the flag.
+  HalDisplay::RefreshMode applyRedrive(HalDisplay::RefreshMode refreshMode) const;
 
   // Tiled grayscale strip target. When active, drawPixel()/clearScreen()
   // operate on a caller-owned scratch holding one horizontal band of physical
@@ -216,6 +223,19 @@ class GfxRenderer {
     promotedRefreshPending_ = true;
     promotedRefresh_ = mode;
   }
+  // The panel refreshes only the pixels where the new frame differs from the controller's previous
+  // frame (the X3 UC8279), so what that previous frame does not describe stays on the glass. Set
+  // once the panel is known; on other panels a redrive request does nothing.
+  void setDiffOnlyPanel(const bool diffOnly) { diffOnlyPanel_ = diffOnly; }
+  bool diffOnlyPanel() const { return diffOnlyPanel_; }
+  // One-shot: the next displayBuffer()/displayBufferAsync() drives every pixel of a diff-only
+  // panel. Armed by a start that restored no frame and by a gray pass (its levels have no B/W
+  // name); a cleanup that re-describes the glass (cleanupGrayscaleWithFrameBuffer, restoreBwBuffer
+  // with a resync) disarms it.
+  void redriveNextRefresh() const { redrivePending_ = true; }
+  // False while a redrive is pending: the controller's previous frame, and the framebuffer that
+  // went with it, are not what the glass shows.
+  bool panelFrameKnown() const { return !redrivePending_; }
   // Non-blocking refresh: starts the waveform and returns so CPU work (e.g.
   // grayscale strip rendering) can overlap the panel's refresh time. The
   // framebuffer must stay untouched until waitRefreshComplete(). Falls back to

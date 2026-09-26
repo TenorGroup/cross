@@ -39,23 +39,20 @@ bool renderX3BrandScreen(GfxRenderer& renderer, const bool boot) {
     if (boot) renderer.drawCenteredText(SMALL_FONT_ID, x3brand::HEIGHT - 30, CROSSPOINT_VERSION);
     return true;
   };
-  // Sleep folds the two planes into one dithered B/W frame and shows it with a GC pass
-  // (SleepGrayPlanes.h): the glass holds it unpowered for hours. On the UC8279 a GC pass only
-  // drives the pixels that change, so SleepGrayPlanes::show first drives the panel black and white
-  // to erase what the reader left there. Boot keeps the absolute gray waveform: it is repainted
-  // within seconds, and the controller init already forces GC on the next two content paints.
-  const bool fold = !boot && SleepGrayPlanes::wanted();
-  SleepGrayPlanes planes(renderer, fold);
+  // Gray planes only: folded to black and white, the sleep art is the frame folded ahead of time
+  // (SleepActivity::renderTenorSleepScreen). Boot keeps the absolute gray waveform: it is repainted
+  // within seconds, and the first paint after it drives every pixel (GfxRenderer::redriveNextRefresh).
+  SleepGrayPlanes planes(renderer, false);
   // Ghost clear, gray sleep only. The absolute grayscale pass below is a single panel
   // activation with no erase phase, so whatever the reader left on the glass
   // shows through the art's large dark field. Drive one GC pass to the art's own
   // black and white threshold (the MSB plane) first. On the UC8253 that drives every pixel; on
   // the UC8279 it drives only the pixels whose color changes, so the page can still ghost here.
-  if (!boot && !fold && decode(msb, msbSize)) renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  if (!boot && decode(msb, msbSize)) renderer.displayBuffer(HalDisplay::FULL_REFRESH);
   // Separate-base panels (including the simulator) need a monochrome base.
   // X3 UC8279 defers its base and presents both absolute planes in one waveform.
-  bool ready = fold || caps.base == HalDisplay::GrayscaleBase::Combined || decode(msb, msbSize);
-  if (ready && !fold) ready = renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute);
+  bool ready = caps.base == HalDisplay::GrayscaleBase::Combined || decode(msb, msbSize);
+  if (ready) ready = renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute);
   if (ready) ready = decode(lsb, lsbSize);
   if (ready) planes.lsb();
   if (ready) ready = decode(msb, msbSize);

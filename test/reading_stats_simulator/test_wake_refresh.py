@@ -82,12 +82,14 @@ class WakeRefreshTest(unittest.TestCase):
             # Voi cong tac lam moi truoc khi ngu (mac dinh bat), man ngu chay DUNG BA lan GC:
             # to den, to trang, roi moi ve anh. Hai lan dau lai tung diem anh de bong trang doc
             # khong in vao anh ngu; thieu lan nao la bong chu trang truoc con lai.
+            # v1.0.17: folded, the screen is the frame folded ahead of time; its line is
+            # "[BRAND] sleep folded ready=".
             self.assertEqual(re.findall(r"displayBuffer, mode=(\d)", sleep), ["0", "0", "0"], log)
-            self.assertEqual(log.count("[BRAND] sleep ready=1"), 1, log)
+            self.assertEqual(log.count("[BRAND] sleep folded ready=1"), 1, log)
             self.assertIn("Restored sleep frame baseline", wake)
             self.assertEqual(re.findall(r"displayBuffer, mode=(\d)", wake), ["0", "2"], log)
             # Thuc day khong duoc ve lai anh ngu lan nua.
-            self.assertNotIn("[BRAND] sleep ready=", wake)
+            self.assertNotIn("[BRAND] sleep", wake)
 
     def test_epub_wake_has_no_intermediate_loading_frame(self):
         for sleep_screen in (8, 6):
@@ -131,7 +133,7 @@ class WakeRefreshTest(unittest.TestCase):
                 # de lam moi cuc bo) nen chi dung MOT lan ve, che do 0; neu sau nay doi ve lai
                 # trinh doc thi bai nay phai doi thanh hai lan nhu bai Tenor o tren.
                 self.assertEqual(re.findall(r"displayBuffer, mode=(\d)", wake), ["0"], log)
-                self.assertNotIn("[BRAND] sleep ready=", wake)
+                self.assertNotIn("[BRAND] sleep", wake)
 
     def test_custom_gray_sleep_restores_baseline_on_wake(self):
         with tempfile.TemporaryDirectory(prefix="cross-gray-sleep-") as directory:

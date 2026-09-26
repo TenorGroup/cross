@@ -717,26 +717,34 @@ void SleepActivity::onEnter() {
 // Man ngu mac dinh cua tenor/cross: an pham branding nen thang vao firmware, nen khong ai
 // phai chep file vao the nho moi co man ngu tu te.
 //
-// An X3 without absolute gray planes (the UC8253 X3) draws the fallback: the same tenor/cross
-// picture, folded to black and white ahead of time as the UC8279 X3 folds it at sleep, zlib
-// packed and inflated straight into the portrait framebuffer. See scripts/sinh_man_ngu.py.
+// Folded to black and white (the X3 with "Black and white refresh before sleep" on), and on an X3
+// without absolute gray planes (the UC8253 X3), the screen is the tenor/cross picture folded to
+// black and white ahead of time, the pixels SleepGrayPlanes::show would fold from the gray planes,
+// zlib packed and inflated straight into the portrait framebuffer. See scripts/sinh_man_ngu.py.
+// No gray plane is kept in the heap for it, so the heap a running BLE radio leaves is enough.
 void SleepActivity::renderTenorSleepScreen() const {
   releaseSdFontCachesForDecode(renderer);
-  if (renderX3BrandScreen(renderer, false)) return;
+  if (!SleepGrayPlanes::wanted() && renderX3BrandScreen(renderer, false)) return;
   // X3 artwork has a fixed pixel grid. Other panels retain the text fallback.
   if (!gpio.deviceIsX3()) {
     renderDefaultSleepScreen();
     return;
   }
+  // The black and white passes, when owed, run before the frame is inflated: it is rebuilt in a
+  // few milliseconds, where keeping it through them would take a second framebuffer of heap.
+  SleepGrayPlanes::settle(renderer);
   // The frame is stored upright, as the art was always drawn: the reader turns the screen back
   // upright on its way out, so this is the orientation the sleep screen meets.
   const auto orientation = renderer.getOrientation();
   renderer.setOrientation(GfxRenderer::Portrait);
   uint8_t* frame = renderer.getFrameBuffer();
-  if (decodeX3BrandPlane(mannogu::KHUNG, sizeof(mannogu::KHUNG), frame, renderer.getBufferSize()))
+  const uint32_t started = millis();
+  const bool ready = decodeX3BrandPlane(mannogu::KHUNG, sizeof(mannogu::KHUNG), frame, renderer.getBufferSize());
+  if (ready)
     showSleepFrame(renderer, HalDisplay::FULL_REFRESH);
   else
     renderDefaultSleepScreen();
+  LOG_INF("BRAND", "sleep folded ready=%u visible=%lu ms", ready, static_cast<unsigned long>(millis() - started));
   renderer.setOrientation(orientation);
 }
 

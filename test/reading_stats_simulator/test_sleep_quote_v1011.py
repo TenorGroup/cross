@@ -3,7 +3,7 @@
 Evidence read here, nothing assumed:
   - firmware log: `Sleep screen mode=`, `Sleep quote <name>`, the fit line
     `Sleep quote size=<i> lines=<n> cut=<0|1> cover=<0|1> title=<n>`, the panel calls
-    `displayBuffer, mode=<m>` and the Tenor fallback `[BRAND] sleep ready=1`;
+    `displayBuffer, mode=<m>` and the Tenor fallback `[BRAND] sleep folded ready=1`;
   - `.crosspoint/state.json` keys `lastSleepQuoteHi` and `lastSleepQuoteLo`;
   - screenshots taken while the sleep screen is on the panel.
 
@@ -249,7 +249,7 @@ class SleepQuoteTest(unittest.TestCase):
         # Black, white, then the sleep frame: the visible refresh the default switch promises.
         self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), ['0', '0', '0'], sleep)
         self.assertRegex(sleep, r'Sleep quote tile ms=\d+ from \d+x\d+ ok=1')
-        self.assertNotIn('[BRAND] sleep ready=', sleep)
+        self.assertNotIn('[BRAND] sleep', sleep)
 
     def test_cover_corners_are_rounded_in_both_sleep_paths(self):
         # The cover tile is rounded like every cover (TenorRadius.h cover(96) = 6 px, a continuous
@@ -417,7 +417,7 @@ class SleepQuoteTest(unittest.TestCase):
         log, _ = self.sleep_once(sd, 'S2-kho-trong')
         self.assertIn('Sleep screen mode=10', log)
         self.assertIn('Sleep quote: none of 0 readable', log)
-        self.assertIn('[BRAND] sleep ready=1', log)
+        self.assertIn('[BRAND] sleep folded ready=1', log)
 
     def test_two_sleeps_show_different_quotes(self):
         quotes = list(self.real.values())

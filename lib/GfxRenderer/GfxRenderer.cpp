@@ -1759,15 +1759,26 @@ HalDisplay::RefreshMode GfxRenderer::applyPromotedRefresh(const HalDisplay::Refr
   return promotedRefresh_;
 }
 
+HalDisplay::RefreshMode GfxRenderer::applyRedrive(const HalDisplay::RefreshMode refreshMode) const {
+  if (!redrivePending_) return refreshMode;
+  redrivePending_ = false;
+  if (!diffOnlyPanel_ || !frameBuffer) return refreshMode;
+  invertScreen();
+  display.cleanupGrayscaleBuffers(frameBuffer);
+  invertScreen();
+  LOG_INF("GFX", "Redrive every pixel");
+  return HalDisplay::FULL_REFRESH;
+}
+
 void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
   auto elapsed = millis() - start_ms;
-  refreshMode = applyPromotedRefresh(refreshMode);
+  refreshMode = applyRedrive(applyPromotedRefresh(refreshMode));
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer, mode=%d", elapsed, static_cast<int>(refreshMode));
   display.displayBuffer(refreshMode, fadingFix);
 }
 
 void GfxRenderer::displayBufferAsync(HalDisplay::RefreshMode refreshMode) const {
-  refreshMode = applyPromotedRefresh(refreshMode);
+  refreshMode = applyRedrive(applyPromotedRefresh(refreshMode));
   // The async path has no turn-off-screen hook, which the sunlight fading fix
   // relies on; keep those users on the blocking path.
   if (fadingFix) {
@@ -2577,6 +2588,7 @@ void GfxRenderer::displayGrayBuffer() const {
   LOG_DBG("GFX", "displayGrayBuffer");
   display.displayGrayBuffer(fadingFix);
   absoluteGrayPlanes = false;
+  redrivePending_ = true;
 }
 
 void GfxRenderer::setRenderMode(RenderMode mode) {
@@ -2670,6 +2682,7 @@ void GfxRenderer::restoreBwBuffer(const bool resyncPanelBaseline) {
 
   if (resyncPanelBaseline) {
     display.cleanupGrayscaleBuffers(frameBuffer);
+    redrivePending_ = false;
   }
 
   freeBwBufferChunks();
@@ -2683,6 +2696,7 @@ void GfxRenderer::restoreBwBuffer(const bool resyncPanelBaseline) {
 void GfxRenderer::cleanupGrayscaleWithFrameBuffer() const {
   if (frameBuffer) {
     display.cleanupGrayscaleBuffers(frameBuffer);
+    redrivePending_ = false;
   }
 }
 
