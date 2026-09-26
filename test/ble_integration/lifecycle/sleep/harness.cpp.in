@@ -167,6 +167,9 @@ struct TiltBoundary {
   bool verticalTargetActive = false;
   void deepSleep() {}
 } halTiltSensor;
+struct {
+  void abandon() {}
+} halGaugeCapacity;
 static const char* SLEEP_FRAME_FILE = "/sleep-frame";
 static bool deepSleepInProgress;
 // Both declarations permit execution of the historical and current bodies.

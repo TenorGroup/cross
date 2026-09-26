@@ -55,6 +55,7 @@ struct {
   int screenInverted = 0;
 } SETTINGS;
 std::atomic<bool> frameAfterDeferredWrite{false};
+std::atomic<bool> frameDrawn{false};
 
 struct Activity {
   std::atomic<int> paints{0};

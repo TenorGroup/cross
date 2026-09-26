@@ -47,6 +47,7 @@ namespace {
 // render task says when a frame has been drawn since.
 void (*deferredWrites[4])() = {};
 std::atomic<bool> frameAfterDeferredWrite{false};
+std::atomic<bool> frameDrawn{false};
 }  // namespace
 
 void ActivityManager::begin() {
@@ -83,6 +84,7 @@ void ActivityManager::renderTaskLoop() {
       display.setInverted(SETTINGS.screenInverted != 0);
       currentActivity->render(std::move(lock));
       frameAfterDeferredWrite.store(true, std::memory_order_release);
+      frameDrawn.store(true, std::memory_order_release);
     }
     // Notify any task blocked in requestUpdateAndWait() that the render is done.
     TaskHandle_t waiter = nullptr;
@@ -309,6 +311,8 @@ void ActivityManager::saveNavigation(Activity& activity) {
   activity.captureNavigation(state);
   navigationMemory.save(activity.navigationMemoryKey(), state);
 }
+
+bool ActivityManager::hasDrawnFrame() const { return frameDrawn.load(std::memory_order_acquire); }
 
 void ActivityManager::deferWrite(void (*write)()) {
   frameAfterDeferredWrite.store(false, std::memory_order_relaxed);

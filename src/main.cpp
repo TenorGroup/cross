@@ -32,6 +32,7 @@
 #include <SPI.h>
 #include <WiFi.h>
 #ifndef SIMULATOR
+#include <HalGaugeCapacity.h>
 #include <Wire.h>  // fuel gauge reads of the probe build; the simulator has no I2C
 #endif
 #include <XteinkDetect.h>
@@ -438,6 +439,9 @@ void enterDeepSleep(bool fromTimeout = false) {
   }
 
   halTiltSensor.deepSleep();
+#ifndef SIMULATOR
+  halGaugeCapacity.abandon();
+#endif
   display.deepSleep();
   Storage.prepareForDeepSleep();
   LOG_INF("SLP", "Timing ready-to-sleep=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
@@ -989,6 +993,8 @@ void loop() {
 #ifndef SIMULATOR
   // The render task draws the gauge reading polled here (at most every 1.5 s).
   powerManager.pollGauge();
+  // The battery's capacity into the gauge, once the first screen is up; never blocks.
+  if (activityManager.hasDrawnFrame()) halGaugeCapacity.tick();
 #endif
 #if defined(TENOR_GAUGE_LOG) && !defined(SIMULATOR)
   gaugeLogTick();
@@ -1605,10 +1611,13 @@ void loop() {
           const int lo = Wire.read();
           return lo | (Wire.read() << 8);
         };
+        // op: OperationStatus(), SEC bits 2:1 read 11 once sealed; cap: the capacity load of this start.
         logSerial.printf(
-            "GAUGE:temp=%d,mv=%d,flags=0x%04x,cur=%d,rm=%d,fcc=%d,avg=%d,cyc=%d,soc=%d,soh=%d,dc=%d,t=%lu\n",
+            "GAUGE:temp=%d,mv=%d,flags=0x%04x,cur=%d,rm=%d,fcc=%d,avg=%d,cyc=%d,soc=%d,soh=%d,dc=%d,op=0x%04x,cap=%s,"
+            "t=%lu\n",
             reg16(0x06), reg16(0x08), reg16(0x0A), static_cast<int16_t>(reg16(0x0C)), reg16(0x10), reg16(0x12),
-            static_cast<int16_t>(reg16(0x14)), reg16(0x2A), reg16(0x2C), reg16(0x2E), reg16(0x3C), millis());
+            static_cast<int16_t>(reg16(0x14)), reg16(0x2A), reg16(0x2C), reg16(0x2E), reg16(0x3C), reg16(0x3A),
+            halGaugeCapacity.status(), millis());
 #endif
       } else if (cmd == "HOME") {
         activityManager.goHome();
