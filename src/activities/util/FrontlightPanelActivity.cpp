@@ -306,7 +306,7 @@ void FrontlightPanelActivity::addSliderRow(UiScreen& screen, const char* label, 
   snprintf(pct, sizeof(pct), "%u%%", static_cast<unsigned>(value));
 
   // rowProps is a member (fui::SliderRowProps embeds a 324-byte StyleSet, well
-  // past the 256-byte budget a local gets - AGENTS.md). Every field that
+  // past the 256-byte budget a local gets). Every field that
   // varies between the two rows is reassigned here; the rest keep their
   // constructed defaults, which already match the panel's card language.
   rowProps.label = label;

@@ -41,7 +41,7 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
 
   // fui::SliderRowProps and fui::TileGridProps embed a 324-byte fui::StyleSet,
   // so the props the render path fills in live here instead of on the stack
-  // (AGENTS.md: locals stay under 256 bytes). The components take them by
+  // (locals stay under 256 bytes). The components take them by
   // const reference and draw immediately, so one instance per call site is
   // enough - every field either is reassigned on each use or keeps its
   // constructed default.
