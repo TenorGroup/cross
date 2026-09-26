@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <Imu.h>
 
+#include "TapDetector.h"
+
 // TODO: Move enums into new header and share with CrossPointSettings.h
 namespace CrossPointOrientation {
 enum Value : uint8_t { PORTRAIT = 0, LANDSCAPE_CW = 1, INVERTED = 2, LANDSCAPE_CCW = 3 };
@@ -121,34 +123,38 @@ class HalTiltSensor {
   static constexpr float FLIP_CALM_DPS = 30.0f;
   static constexpr int32_t FLIP_UP_MG = 400;
 
-  // Double tap on the back, watched on every screen while its action is not Off, by the
-  // chip's own tap engine (Imu::enableTap), whose flag each poll reads. Off never touches
-  // the chip, so every other gesture reads the setup it always had. A double tap counts
-  // only with the device where it was 0.5 to 1 s before (gravity within 12 degrees):
-  // laying it down, turning it over or taking it off a table knocks twice as well, but
-  // moves it. 26/09 knock run replay: taps held within 7.3 degrees, the others 17 or more.
+  // Double tap on the back, watched on every screen while its action is not Off. The chip's
+  // own tap engine never raised its flag on an X3 (26/09), so the firmware finds taps
+  // itself (TapDetector) in every accelerometer sample: both sensors stream at 224 Hz into
+  // the chip's FIFO (Imu::enableFifo) and each poll reads it out. Off never touches the
+  // FIFO, so every other gesture reads the setup it always had; on, they read the poll's
+  // last acceleration and the rotation as the 28 Hz rate gave it, the mean of each run of
+  // FIFO_GYRO_BLOCK frames (36 ms) held until the next. A double tap counts only with the
+  // device where it was 0.5 to 1 s before (gravity within 12 degrees): laying it down,
+  // turning it over or taking it off a table knocks twice as well, but moves it. 26/09
+  // knock run replay: taps held within 7.3 degrees, the others 17 or more.
   bool _doubleTapEnabled = false;
-  bool _tapArmed = false;        // The chip runs the tap engine (accelerometer at 224 Hz)
+  bool _tapArmed = false;        // The chip streams both sensors at 224 Hz into its FIFO
   bool _tapTried = false;        // Arming failed since the last wake: not retried until the next
-  bool _tapSeen = false;         // The last poll read the tap flag set
+  bool _tapFound = false;        // The detector found a double tap the next poll checks the pose of
   bool _doubleTapEvent = false;  // Consumed by wasDoubleTapped()
+  TapDetector _tapDetector;
+  static constexpr uint8_t FIFO_GYRO_BLOCK = 8;
+  int32_t _fifoGyroSum[3] = {};   // Raw rotation summed over the run being filled
+  uint8_t _fifoGyroFrames = 0;    // Frames in it
+  int32_t _fifoGyroHeld[3] = {};  // Sum of the last full run
+  int16_t _fifoAccel[3] = {};     // Raw acceleration of the last frame
   int32_t _tapPoseMg[2][3] = {};  // Baseline taken every TAP_POSE_MS, older first
   uint8_t _tapPoses = 0;          // Slots filled since the sensors last started
   unsigned long _tapPoseMs = 0;
   static constexpr unsigned long TAP_POSE_MS = 500;
-  // With the tap engine the accelerometer runs at 224 Hz, where a knock is a spike of 9 to
+  // With the FIFO the accelerometer runs at 224 Hz, where a knock is a spike of 9 to
   // 14 ms that the 28 Hz rate smoothed away, and an edge knock reads as a snap. A poll that
   // jolts past SHAKE_RUN_MG is read again KNOCK_CONFIRM_MS later (26/09 knock run replay).
   bool _knockPending = false;
   int32_t _knockMg[3] = {};
   unsigned long _knockMs = 0;
   static constexpr unsigned long KNOCK_CONFIRM_MS = 15;
-  // Chosen on the 26/09 knock run at 224 Hz through a software model of the engine
-  // (test/imu_double_tap), not yet measured on the chip: a peak past 0.65 g^2 of linear
-  // acceleration that is quiet again (under 0.4 g^2) after 7 samples (31 ms), 18 samples
-  // (80 ms) of quiet, and the second tap within 80 samples (357 ms) of the first; the
-  // averages at 1/16 and 1/4, the datasheet's own example. Knocks measured 140 to 232 ms apart.
-  static constexpr Imu::TapConfig TAP_CONFIG = {0, 7, 18, 80, 8, 32, 650, 400};
 
   // A flick on a menu counts once the hand has come back: the axis swings the
   // other way past FLICK_RETURN_DPS within FLICK_RETURN_MS, or stops (under
@@ -173,11 +179,14 @@ class HalTiltSensor {
 
 #ifdef TENOR_PRESS_PROBE
   unsigned long _probeLogUntilMs = 0;
+  unsigned long _probeTapLogUntilMs = 0;
 #endif
 
   void pollShake(unsigned long now, const int32_t (&mg)[3], const int32_t (&jolt)[3]);
   void pollFlip(unsigned long now, const int32_t (&mg)[3], float gx, float gy);
   void pollDoubleTap(unsigned long now);
+  bool readFifoSample(Imu::Sample& out);
+  static void takeFifoChunk(const Imu::RawFrame* frames, uint8_t count, bool gapBefore, void* context);
   void disarmTap();
   void startFlick(PendingFlick& flick, float axis, uint8_t bit, unsigned long now);
   void settleFlick(PendingFlick& flick, float axis, const int32_t (&mg)[3], unsigned long now);
@@ -238,7 +247,7 @@ class HalTiltSensor {
   bool wasTurnedFaceUp();
 
   // Arms double tap from its setting: any action but 0 (Off) keeps the sensor awake on
-  // every screen with the chip's tap engine on. Called once per loop pass.
+  // every screen with the chip's FIFO on. Called once per loop pass.
   void configureDoubleTap(uint8_t action) { _doubleTapEnabled = action != 0; }
 
   // Returns true once per double tap, consumed on read.
@@ -248,6 +257,9 @@ class HalTiltSensor {
   // Measurement build, CMD:IMU_LOG: each poll prints its raw sample until
   // `untilMs`, and the sensor stays awake for it.
   void probeLogUntil(unsigned long untilMs) { _probeLogUntilMs = untilMs; }
+  // CMD:TAP_LOG: with double tap on, each poll prints the FIFO frames it read, the time the
+  // read took and the free heap, and each tap the detector finds, until `untilMs`.
+  void probeTapLogUntil(unsigned long untilMs) { _probeTapLogUntilMs = untilMs; }
   // CMD:IMU_LOG <s> fast: blocks for `ms`, sampling at the chip's 224 Hz, then
   // restores the 28 Hz rate the firmware reads at.
   void probeFastLog(unsigned long ms);

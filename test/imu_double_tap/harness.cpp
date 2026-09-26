@@ -1,17 +1,22 @@
 // The SDK's QMI8658 driver and the tilt sensor HAL on a fake chip: every I2C transaction
-// is logged, and the chip answers the way its datasheet (QMI8658C Rev A, sections 5 and 10)
-// describes. Its tap engine is a software model of the datasheet's text, not measured on a
-// chip; the thresholds were chosen with it on the 26/09 knock run at 224 Hz.
+// is logged, and the chip answers the way its datasheet (QMI8658C Rev A, sections 5 and 8)
+// describes, FIFO included. Like the X3 measured on 26/09 it never raises its own tap flag,
+// so a double tap has to come from the firmware reading the samples.
 #include <Wire.h>
 
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <string>
 #include <vector>
 
 #include "HalTiltSensor.h"
+#if __has_include("TapDetector.h")
+#include "TapDetector.h"
+#define HAVE_TAP_DETECTOR
+#endif
 
 namespace {
 
@@ -32,144 +37,87 @@ struct Sample {
   int ax, ay, az, gx, gy;
 };
 
-// ---- Software model of the tap engine, from the datasheet's section 10.1 -----------------
-// Per accelerometer sample: the average follows the data by alpha, the linear acceleration is
-// the data less that average, its squared length starts a peak past PeakMagThr, and the
-// movement average (by gamma) must be under UDMThr at the end of PeakWindow for the peak to
-// be a tap. After a first tap, TapWindow must stay quiet; a second tap after it and within
-// DTapWindow of the first is a double tap, none is a single tap. Undefined motion restarts.
-struct TapModel {
-  uint8_t peakWindow = 0;
-  uint16_t tapWindow = 0, doubleTapWindow = 0;
-  float alpha = 0, gamma = 0, peak = 0, quiet = 0;
-  float average[3] = {};
-  bool averageValid = false;
-  float movement = 0;
-  enum State { Idle, FirstPeak, Quiet, WaitSecond, SecondPeak } state = Idle;
-  unsigned long n = 0, peakStart = 0, firstStart = 0;
-
-  void reset() {
-    averageValid = false;
-    movement = 0;
-    state = Idle;
-    n = 0;
-  }
-
-  // Returns 0, or 1 for a single tap and 2 for a double tap reported on this sample.
-  int step(const float ax, const float ay, const float az) {
-    const float a[3] = {ax, ay, az};
-    if (!averageValid) {
-      for (int i = 0; i < 3; ++i) average[i] = a[i];
-      averageValid = true;
-    }
-    float mag = 0;
-    for (int i = 0; i < 3; ++i) {
-      const float linear = a[i] - average[i];
-      mag += linear * linear;
-      average[i] += alpha * (a[i] - average[i]);
-    }
-    movement += gamma * (mag - movement);
-    int report = 0;
-    switch (state) {
-      case Idle:
-        if (mag >= peak) {
-          state = FirstPeak;
-          peakStart = firstStart = n;
-        }
-        break;
-      case FirstPeak:
-        if (n - peakStart >= peakWindow) state = movement < quiet ? Quiet : Idle;
-        break;
-      case Quiet:
-        if (n - firstStart >= static_cast<unsigned long>(tapWindow) + peakWindow) {
-          state = WaitSecond;
-        } else if (movement >= quiet || mag >= peak) {
-          state = Idle;
-        }
-        break;
-      case WaitSecond:
-        if (n - firstStart >= doubleTapWindow) {
-          report = 1;
-          state = Idle;
-        } else if (mag >= peak) {
-          state = SecondPeak;
-          peakStart = n;
-        }
-        break;
-      case SecondPeak:
-        if (n - peakStart >= peakWindow) {
-          if (movement < quiet) report = 2;
-          state = Idle;
-        }
-        break;
-    }
-    ++n;
-    return report;
-  }
-};
-
 // ---- The fake QMI8658 at 0x6B ---------------------------------------------------------
 constexpr uint8_t CHIP_ADDR = 0x6B;
+constexpr unsigned long SAMPLE_US = 4460;  // 224.2 Hz
 
 struct FakeChip {
   uint8_t regs[256] = {};
   uint8_t pointer = 0;
   bool completesCommands = true;
-  bool tapClearsOnRead = true;
   bool logging = true;
   std::vector<std::string> log;
-  uint8_t cal[2][6] = {};
-  bool calSet[2] = {};
-  TapModel model;
-  bool engineWasOn = false;
-  int engineReports[3] = {};  // by TAP_NUM
 
-  // The motion fed to the chip: its samples at 224 Hz, from `startMs` on.
+  // The motion fed to the chip: its samples at 224 Hz, from `startMs` on. Without a feed the
+  // chip samples the held pose at the same rate.
   const std::vector<Sample>* feed = nullptr;
   size_t next = 0;
   unsigned long startMs = 0;
+  unsigned long holdUs = 0;
   Sample latest{"", 0, 0, 0, -1000, 0, 0};
   // The 28 Hz output: every eighth sample, the mean of the last eight.
   Sample window[8] = {};
   int windowCount = 0;
   Sample held{"", 0, 0, 0, -1000, 0, 0};
 
-  void reset() { *this = FakeChip{}; regs[0x00] = 0x05; }
+  // FIFO (datasheet section 8): whole frames, the oldest dropped in stream mode.
+  std::deque<std::vector<uint8_t>> fifo;
+  std::vector<uint8_t> reading;  // What FIFO_DATA hands out in read mode
+  size_t readingNext = 0;
+  bool overflowed = false;
+  bool mixedRates = false;  // Both sensors into the FIFO at two rates, which it does not take
+  long framesTaken = 0, framesDropped = 0, framesRead = 0;
 
-  bool engineOn() const {
-    return (regs[0x09] & 0x01) && (regs[0x08] & 0x01) && (regs[0x03] & 0x0F) == 0x05;
+  void reset() {
+    *this = FakeChip{};
+    regs[0x00] = 0x05;
+    regs[0x08] = 0x00;
   }
 
-  void noteEngine() {
-    const bool on = engineOn();
-    if (on && !engineWasOn) {
-      model.reset();
-      model.peakWindow = cal[0][0];
-      model.tapWindow = static_cast<uint16_t>(cal[0][2] | cal[0][3] << 8);
-      model.doubleTapWindow = static_cast<uint16_t>(cal[0][4] | cal[0][5] << 8);
-      model.alpha = cal[1][0] / 128.0f;
-      model.gamma = cal[1][1] / 128.0f;
-      model.peak = static_cast<float>(cal[1][2] | cal[1][3] << 8) / 1000.0f;
-      model.quiet = static_cast<float>(cal[1][4] | cal[1][5] << 8) / 1000.0f;
+  bool accelOn() const { return regs[0x08] & 0x01; }
+  bool gyroOn() const { return regs[0x08] & 0x02; }
+  bool fifoOn() const { return (regs[0x14] & 0x03) != 0; }
+  bool readMode() const { return regs[0x14] & 0x80; }
+  size_t fifoDepth() const { return size_t{16} << ((regs[0x14] >> 2) & 0x03); }
+  size_t frameBytes() const { return (accelOn() ? 6 : 0) + (gyroOn() ? 6 : 0); }
+  size_t fifoBytes() const {
+    size_t bytes = 0;
+    for (const auto& frame : fifo) bytes += frame.size();
+    return bytes;
+  }
+
+  void command(const uint8_t value) {
+    if (value == 0x00) {
+      regs[0x2D] &= static_cast<uint8_t>(~0x80);
+      return;
     }
-    engineWasOn = on;
+    if (!completesCommands) return;
+    if (value == 0x04) {
+      fifo.clear();
+      overflowed = false;
+    } else if (value == 0x05) {
+      // Read mode: FIFO_DATA hands out what the FIFO holds, and new samples are dropped.
+      regs[0x14] |= 0x80;
+      reading.clear();
+      readingNext = 0;
+      for (const auto& frame : fifo) reading.insert(reading.end(), frame.begin(), frame.end());
+    }
+    regs[0x2D] |= 0x80;
   }
 
   void write(const uint8_t reg, const uint8_t value) {
-    regs[reg] = value;
-    if (reg == 0x0A) {
-      if (value == 0x0C && completesCommands) {
-        const uint8_t set = regs[0x12];
-        if (set == 1 || set == 2) {
-          std::memcpy(cal[set - 1], &regs[0x0B], 6);
-          calSet[set - 1] = true;
-        }
-        regs[0x2D] |= 0x80;
-      } else if (value == 0x00) {
-        regs[0x2D] &= static_cast<uint8_t>(~0x80);
+    if (reg == 0x14 && readMode() && !(value & 0x80)) {
+      // Out of read mode: what was read has left the FIFO.
+      size_t consumed = readingNext;
+      while (!fifo.empty() && consumed >= fifo.front().size()) {
+        consumed -= fifo.front().size();
+        fifo.pop_front();
+        ++framesRead;
       }
+      overflowed = false;
     }
-    noteEngine();
+    regs[reg] = value;
+    if (reg == 0x0A) command(value);
   }
 
   static void put16(uint8_t* at, const int value) {
@@ -193,46 +141,90 @@ struct FakeChip {
       put16(&out[10], 0);
       return out[reg - 0x35];
     }
-    const uint8_t value = regs[reg];
-    if (reg == 0x2F && tapClearsOnRead) regs[0x2F] &= static_cast<uint8_t>(~0x02);
-    return value;
+    if (reg == 0x15 || reg == 0x16) {
+      const size_t words = fifoBytes() / 2;
+      if (reg == 0x15) return static_cast<uint8_t>(words & 0xFF);
+      return static_cast<uint8_t>((fifo.size() >= fifoDepth() ? 0x80 : 0) | (overflowed ? 0x20 : 0) |
+                                  (fifo.empty() ? 0 : 0x10) | ((words >> 8) & 0x03));
+    }
+    if (reg == 0x17) return readMode() && readingNext < reading.size() ? reading[readingNext++] : 0;
+    return regs[reg];
   }
 
-  // Plays the fed samples up to `ms`.
+  // One sample of the sensors: the data registers, the 28 Hz stand-in and the FIFO.
+  void take(const Sample& s) {
+    latest = s;
+    window[windowCount % 8] = s;
+    if (++windowCount % 8 == 0) {
+      Sample mean{"", s.us, 0, 0, 0, 0, 0};
+      for (const auto& w : window) {
+        mean.ax += w.ax;
+        mean.ay += w.ay;
+        mean.az += w.az;
+        mean.gx += w.gx;
+        mean.gy += w.gy;
+      }
+      mean.ax /= 8;
+      mean.ay /= 8;
+      mean.az /= 8;
+      mean.gx /= 8;
+      mean.gy /= 8;
+      held = mean;
+    }
+    if (!fifoOn() || frameBytes() == 0) return;
+    if (accelOn() && gyroOn() && (regs[0x03] & 0x0F) != (regs[0x04] & 0x0F)) {
+      mixedRates = true;
+      return;
+    }
+    if (readMode()) {
+      ++framesDropped;
+      return;
+    }
+    std::vector<uint8_t> frame(frameBytes());
+    size_t at = 0;
+    if (accelOn()) {
+      put16(&frame[0], s.ax * 16384 / 1000);
+      put16(&frame[2], s.ay * 16384 / 1000);
+      put16(&frame[4], s.az * 16384 / 1000);
+      at = 6;
+    }
+    if (gyroOn()) {
+      put16(&frame[at], s.gx * 64);
+      put16(&frame[at + 2], s.gy * 64);
+      put16(&frame[at + 4], 0);
+    }
+    if (fifo.size() >= fifoDepth()) {
+      if ((regs[0x14] & 0x03) == 0x01) {
+        ++framesDropped;  // FIFO mode keeps the old ones
+        return;
+      }
+      fifo.pop_front();
+      ++framesDropped;
+      overflowed = true;
+    }
+    fifo.push_back(frame);
+    ++framesTaken;
+  }
+
+  // Plays the samples up to `ms`.
   void advanceTo(const unsigned long ms) {
-    if (!feed) return;
+    if (!feed) {
+      while (holdUs + SAMPLE_US <= ms * 1000UL) {
+        holdUs += SAMPLE_US;
+        Sample s = latest;
+        s.us = holdUs;
+        take(s);
+      }
+      return;
+    }
     while (next < feed->size()) {
       const Sample& s = (*feed)[next];
       const unsigned long at = startMs + ((s.us - (*feed)[0].us) / 1000);
       if (at > ms) break;
-      latest = s;
-      window[windowCount % 8] = s;
-      if (++windowCount % 8 == 0) {
-        Sample mean{"", s.us, 0, 0, 0, 0, 0};
-        for (const auto& w : window) {
-          mean.ax += w.ax;
-          mean.ay += w.ay;
-          mean.az += w.az;
-          mean.gx += w.gx;
-          mean.gy += w.gy;
-        }
-        mean.ax /= 8;
-        mean.ay /= 8;
-        mean.az /= 8;
-        mean.gx /= 8;
-        mean.gy /= 8;
-        held = mean;
-      }
-      if (engineOn()) {
-        const int report = model.step(s.ax / 1000.0f, s.ay / 1000.0f, s.az / 1000.0f);
-        if (report != 0) {
-          ++engineReports[report];
-          regs[0x2F] |= 0x02;
-          regs[0x59] = static_cast<uint8_t>(report | 0x30);
-        }
-      }
+      take(s);
       ++next;
     }
+    holdUs = ms * 1000UL;
   }
 
   // Holds one pose, as a device lying still.
@@ -283,7 +275,10 @@ uint8_t TwoWire::requestFrom(const uint8_t addr, const uint8_t len, uint8_t) {
   logLine("R %02X x%u", chip.pointer, len);
   rxBuffer.clear();
   rxNext = 0;
-  for (uint8_t i = 0; i < len; ++i) rxBuffer.push_back(chip.read(static_cast<uint8_t>(chip.pointer + i)));
+  // FIFO_DATA hands out the next byte on every read; other registers step on.
+  for (uint8_t i = 0; i < len; ++i) {
+    rxBuffer.push_back(chip.read(chip.pointer == 0x17 ? 0x17 : static_cast<uint8_t>(chip.pointer + i)));
+  }
   return len;
 }
 int TwoWire::read() { return rxNext < rxBuffer.size() ? rxBuffer[rxNext++] : -1; }
@@ -390,6 +385,13 @@ std::vector<std::string> readLines(const char* const path) {
   return lines;
 }
 
+bool isFifoOrTap(const std::string& line) {
+  for (const char* const prefix : {"W 09", "W 0A", "R 2F", "R 59", "W 13", "W 14", "R 15", "R 16", "R 17"}) {
+    if (line.rfind(prefix, 0) == 0) return true;
+  }
+  return false;
+}
+
 // Double tap Off: the chip sees exactly what v1.0.16 wrote and read, in the same order.
 void offIsTheV1016Setup(const char* const goldenPath) {
   const auto golden = readLines(goldenPath);
@@ -406,11 +408,8 @@ void offIsTheV1016Setup(const char* const goldenPath) {
     }
   }
   bool touched = false;
-  for (const auto& line : chip.log) {
-    touched = touched || line.rfind("W 09", 0) == 0 || line.rfind("W 0A", 0) == 0 || line.rfind("R 2F", 0) == 0 ||
-              line.rfind("R 59", 0) == 0;
-  }
-  expect(!touched, "off-v1016", "no tap register is written or read");
+  for (const auto& line : chip.log) touched = touched || isFifoOrTap(line);
+  expect(!touched, "off-v1016", "no FIFO or tap register is written or read");
 }
 
 size_t logIndex(const char* const line, const size_t from = 0) {
@@ -428,35 +427,50 @@ Settings awakePlain(const uint8_t doubleTap) {
   return s;
 }
 
-void onArmsTheEngineAsTheDatasheetSays() {
+void onStreamsBothSensorsIntoTheFifo() {
   boot();
   runFor(awakePlain(0), 500);
   const size_t before = chip.log.size();
   runFor(awakePlain(1), 20);
-  const std::vector<std::string> expected = {
-      "W 08=00", "W 09=80", "W 0B=07", "W 0C=00", "W 0D=12", "W 0E=00", "W 0F=50", "W 10=00", "W 12=01",
-      "W 0A=0C", "R 2D x1", "W 0A=00", "R 2D x1", "W 0B=08", "W 0C=20", "W 0D=8A", "W 0E=02", "W 0F=90",
-      "W 10=01", "W 12=02", "W 0A=0C", "R 2D x1", "W 0A=00", "R 2D x1", "W 03=05", "W 09=81", "W 08=03"};
+  // Sensors off, the CTRL9 done flag read from STATUSINT, the FIFO emptied and set to stream
+  // 128 frames, both sensors at 224 Hz (the FIFO takes two sensors only at one rate), on.
+  const std::vector<std::string> expected = {"W 08=00", "W 09=80", "W 0A=04", "R 2D x1", "W 0A=00", "R 2D x1",
+                                             "W 14=0E", "W 03=05", "W 04=55", "W 08=03"};
   const size_t armedEnd = std::min(chip.log.size(), before + expected.size());
   const std::vector<std::string> armed(chip.log.begin() + static_cast<long>(before),
                                        chip.log.begin() + static_cast<long>(armedEnd));
-  expect(armed == expected, "on-arm",
-         "both parameter sets with the sensors off, then accelerometer at 224 Hz, engine on, sensors on");
+  expect(armed == expected, "on-arm", "FIFO reset and set to stream with the sensors off, then both at 224 Hz, on");
   if (armed != expected) {
     for (const auto& line : armed) std::printf("  %s\n", line.c_str());
   }
-  expect(chip.regs[0x04] == 0x58, "on-arm", "the gyro keeps its 28 Hz");
-  expect(chip.calSet[0] && chip.calSet[1] && chip.engineOn(), "on-arm", "the chip took both sets and runs the engine");
 
-  // Polls read the tap flag, and nothing else new.
+  // Each poll empties the FIFO: count, read mode through CTRL9, whole frames at most eight at
+  // a time, write mode again. Nothing else, and no frame lost or read twice.
   const size_t armedAt = chip.log.size();
-  runFor(awakePlain(1), 1000);
-  int status = 0;
+  runFor(awakePlain(1), 2000);
+  int counts = 0, requests = 0, backToWrite = 0;
+  bool chunksWhole = true, registersRead = false;
   for (size_t i = armedAt; i < chip.log.size(); ++i) {
-    status += chip.log[i] == "R 2F x1";
-    expect(chip.log[i].rfind("W", 0) != 0, "on-poll", "polling writes nothing");
+    const std::string& line = chip.log[i];
+    counts += line == "R 15 x2";
+    requests += line == "W 0A=05";
+    backToWrite += line == "W 14=0E";
+    if (line.rfind("R 17 x", 0) == 0) {
+      const int bytes = std::atoi(line.c_str() + 6);
+      chunksWhole = chunksWhole && bytes > 0 && bytes <= 96 && bytes % 12 == 0;
+    }
+    registersRead = registersRead || line.rfind("R 35", 0) == 0 || line.rfind("R 3B", 0) == 0;
+    expect(line.rfind("W", 0) != 0 || line == "W 0A=05" || line == "W 0A=00" || line == "W 14=0E", "on-poll",
+           "polling writes only the FIFO read handshake");
   }
-  expect(status >= 12 && status <= 15, "on-poll", "one tap flag read per 50 ms poll after settling");
+  expect(counts >= 30 && counts <= 42, "on-poll", "one FIFO count per 50 ms poll after settling");
+  expect(requests == backToWrite && requests >= 30, "on-poll", "every read mode is ended");
+  expect(chunksWhole, "on-poll", "whole frames, at most eight per I2C read");
+  expect(!registersRead, "on-poll", "the samples come from the FIFO, not the data registers");
+  expect(!chip.mixedRates, "on-poll", "both sensors at one rate while they fill the FIFO");
+  expect(chip.framesDropped == 0, "on-poll", "no frame dropped at the poll rate");
+  expect(chip.framesRead + static_cast<long>(chip.fifo.size()) == chip.framesTaken, "on-poll",
+         "every frame taken is read once or still waits");
 }
 
 void offAgainPutsBackTheV1016Setup() {
@@ -464,31 +478,37 @@ void offAgainPutsBackTheV1016Setup() {
   runFor(awakePlain(1), 1000);
   const size_t before = chip.log.size();
   runFor(awakePlain(0), 20);
-  const std::vector<std::string> expected = {"W 08=00", "W 09=00", "W 03=08", "W 08=03"};
-  const std::vector<std::string> off(chip.log.begin() + static_cast<long>(before),
-                                     chip.log.begin() + static_cast<long>(std::min(chip.log.size(), before + 4)));
-  expect(off == expected, "on-off", "engine off, accelerometer back to 28 Hz, sensors on");
-  expect(chip.regs[0x03] == 0x08 && chip.regs[0x04] == 0x58 && chip.regs[0x09] == 0x00 && chip.regs[0x08] == 0x03,
+  const std::vector<std::string> expected = {"W 08=00", "W 14=00", "W 09=00", "W 03=08", "W 04=58", "W 08=03"};
+  const std::vector<std::string> off(
+      chip.log.begin() + static_cast<long>(before),
+      chip.log.begin() + static_cast<long>(std::min(chip.log.size(), before + expected.size())));
+  expect(off == expected, "on-off", "FIFO off, both sensors back to 28 Hz, on");
+  if (off != expected) {
+    for (const auto& line : off) std::printf("  %s\n", line.c_str());
+  }
+  expect(chip.regs[0x03] == 0x08 && chip.regs[0x04] == 0x58 && chip.regs[0x09] == 0x00 && chip.regs[0x08] == 0x03 &&
+             chip.regs[0x14] == 0x00,
          "on-off", "the registers v1.0.16 leaves");
   const size_t offAt = chip.log.size();
   runFor(awakePlain(0), 1000);
   for (size_t i = offAt; i < chip.log.size(); ++i) {
-    expect(chip.log[i] != "R 2F x1" && chip.log[i].rfind("W", 0) != 0, "on-off", "Off again polls as before");
+    expect(!isFifoOrTap(chip.log[i]) && chip.log[i].rfind("W", 0) != 0, "on-off", "Off again polls as before");
   }
 }
 
-void deviceSleepLeavesNoTapSetup() {
+void deviceSleepLeavesNoFifoSetup() {
   boot();
   runFor(awakePlain(1), 1000);
   const size_t before = chip.log.size();
   halTiltSensor.deepSleep();
-  const std::vector<std::string> expected = {"W 08=00", "W 09=00", "W 03=08", "W 08=03", "W 08=00", "W 02=61"};
+  const std::vector<std::string> expected = {"W 08=00", "W 14=00", "W 09=00", "W 03=08",
+                                             "W 04=58", "W 08=03", "W 08=00", "W 02=61"};
   const std::vector<std::string> slept(chip.log.begin() + static_cast<long>(before), chip.log.end());
-  expect(slept == expected, "sleep", "tap setup undone, then the usual standby");
-  // Awake again: armed again, the chip may have lost its parameters in standby.
+  expect(slept == expected, "sleep", "FIFO setup undone, then the usual standby");
+  // Awake again: set up again, the chip may have lost it in standby.
   const size_t awake = chip.log.size();
   runFor(awakePlain(1), 100);
-  expect(logIndex("W 09=81", awake) < chip.log.size(), "sleep", "waking with double tap on arms it again");
+  expect(logIndex("W 14=0E", awake) < chip.log.size(), "sleep", "waking with double tap on sets the FIFO up again");
 }
 
 void aChipThatNeverAnswersIsLeftAsV1016() {
@@ -499,45 +519,84 @@ void aChipThatNeverAnswersIsLeftAsV1016() {
   const size_t before = chip.log.size();
   runFor(awakePlain(1), 1000);
   int commands = 0;
-  for (size_t i = before; i < chip.log.size(); ++i) commands += chip.log[i] == "W 0A=0C";
+  for (size_t i = before; i < chip.log.size(); ++i) commands += chip.log[i] == "W 0A=04";
   expect(commands == 1, "timeout", "one try until the next wake");
-  expect(chip.regs[0x03] == 0x08 && chip.regs[0x09] == 0x00 && chip.regs[0x08] == 0x03, "timeout",
-         "the v1.0.16 setup is back and sampling");
+  expect(chip.regs[0x03] == 0x08 && chip.regs[0x04] == 0x58 && chip.regs[0x09] == 0x00 && chip.regs[0x08] == 0x03 &&
+             chip.regs[0x14] == 0x00,
+         "timeout", "the v1.0.16 setup is back and sampling");
   expect(fakeMillis - startMs < 1100, "timeout", "the wait for the chip is bounded");
 }
 
-// A report from the engine, with the device held still or moved between.
-int reportsSeen(const bool clearsOnRead, const int taps, const bool moved, const int reports = 1) {
-  boot();
-  chip.tapClearsOnRead = clearsOnRead;
-  runFor(awakePlain(1), 1500);
-  int seen = 0;
-  for (int r = 0; r < reports; ++r) {
-    if (moved) chip.hold(0, 0, 1000);  // turned over onto its screen
-    runFor(awakePlain(1), 200);
-    chip.regs[0x2F] |= 0x02;
-    chip.regs[0x59] = static_cast<uint8_t>(taps);
-    for (int i = 0; i < 100; ++i) {
-      fakeMillis += 10;
-      pass(awakePlain(1));
-      seen += halTiltSensor.wasDoubleTapped();
+// ---- Knocks made up sample by sample ----------------------------------------------------
+// The device lies at `pose` from `fromUs`; each knock is three samples 1200 mg into the back.
+std::vector<Sample> knocks(const int (&pose)[3], const std::vector<unsigned long>& knockMs, const unsigned long totalMs,
+                           const int (&before)[3], const unsigned long turnMs) {
+  std::vector<Sample> out;
+  for (unsigned long us = 0; us < totalMs * 1000UL; us += SAMPLE_US) {
+    const bool turned = us >= turnMs * 1000UL;
+    Sample s{"made", us, turned ? pose[0] : before[0], turned ? pose[1] : before[1], turned ? pose[2] : before[2], 0, 0};
+    for (const unsigned long k : knockMs) {
+      if (us >= k * 1000UL && us < k * 1000UL + 3 * SAMPLE_US) s.az += 1200;
     }
-    chip.regs[0x2F] &= static_cast<uint8_t>(~0x02);
-    runFor(awakePlain(1), 500);
+    out.push_back(s);
   }
+  return out;
+}
+
+int doubleTapsIn(const std::vector<Sample>& feed) {
+  boot();
+  chip.logging = false;
+  chip.hold(feed[0].ax, feed[0].ay, feed[0].az);
+  chip.feed = &feed;
+  chip.startMs = 0;
+  int seen = 0;
+  const unsigned long endMs = (feed.back().us / 1000) + 500;
+  while (fakeMillis < endMs) {
+    fakeMillis += 10;
+    chip.advanceTo(fakeMillis);
+    pass(awakePlain(1));
+    seen += halTiltSensor.wasDoubleTapped();
+  }
+  chip.feed = nullptr;
   return seen;
 }
 
-void theFlagCountsOncePerReport() {
-  expect(reportsSeen(true, 2, false) == 1, "flag", "a double tap is one event");
-  expect(reportsSeen(true, 2, false, 3) == 3, "flag", "three double taps are three events");
-  expect(reportsSeen(false, 2, false) == 1, "flag", "a flag that stays up is still one event");
-  expect(reportsSeen(false, 2, false, 3) == 3, "flag", "and each time it comes up again, one more");
-  expect(reportsSeen(true, 1, false) == 0, "flag", "a single tap is no event");
-  expect(reportsSeen(true, 2, true) == 0, "flag", "a double knock while the device turns over is dropped");
+void madeUpKnocks() {
+  const int still[3] = {-850, -100, -480};
+  const int over[3] = {0, 0, 1000};  // turned over onto its screen
+  expect(doubleTapsIn(knocks(still, {2000, 2200}, 3500, still, 0)) == 1, "made", "two knocks 200 ms apart are one");
+  expect(doubleTapsIn(knocks(still, {1500, 1700, 2600, 2760, 3700, 3930}, 5000, still, 0)) == 3, "made",
+         "three pairs are three double taps");
+  expect(doubleTapsIn(knocks(still, {2000}, 3500, still, 0)) == 0, "made", "one knock is no double tap");
+  expect(doubleTapsIn(knocks(still, {2000, 2500}, 3500, still, 0)) == 0, "made", "500 ms apart is too slow");
+  expect(doubleTapsIn(knocks(over, {2300, 2500}, 3500, still, 2000)) == 0, "made",
+         "a double knock while the device turns over is dropped");
 }
 
-// ---- The 26/09 knock run at 224 Hz, through the model and the real HAL -----------------
+// A knock read just before the loop stalls, and one 500 ms later found after it in a FIFO that
+// dropped the frames between: the detector starts over rather than count them as a pair.
+void aStallIsAGap() {
+  const int still[3] = {-850, -100, -480};
+  const auto feed = knocks(still, {2000, 2500}, 4000, still, 0);
+  boot();
+  chip.logging = false;
+  chip.hold(feed[0].ax, feed[0].ay, feed[0].az);
+  chip.feed = &feed;
+  int seen = 0;
+  while (fakeMillis < 4500) {
+    fakeMillis += 10;
+    chip.advanceTo(fakeMillis);
+    // The loop is busy from 40 ms after the first knock until 900 ms after it (a long paint).
+    if (fakeMillis > 2040 && fakeMillis < 2900) continue;
+    pass(awakePlain(1));
+    seen += halTiltSensor.wasDoubleTapped();
+  }
+  chip.feed = nullptr;
+  expect(chip.framesDropped > 0, "stall", "the FIFO filled up and dropped frames");
+  expect(seen == 0, "stall", "knocks with lost frames between are no double tap");
+}
+
+// ---- The 26/09 knock run at 224 Hz, through the firmware's detector and the real HAL -------
 std::vector<Sample> loadSamples(const char* const path) {
   std::vector<Sample> samples;
   FILE* file = path ? std::fopen(path, "r") : nullptr;
@@ -558,7 +617,6 @@ std::vector<Sample> loadSamples(const char* const path) {
 
 struct Counts {
   int doubles = 0;
-  int engineDoubles = 0;
   int shakes = 0, faceDown = 0, faceUp = 0, forward = 0, back = 0, up = 0, down = 0;
 };
 
@@ -583,7 +641,6 @@ Counts replay(const std::vector<Sample>& segment, const Settings& s, const unsig
     c.up += halTiltSensor.wasTiltedUp();
     c.down += halTiltSensor.wasTiltedDown();
   }
-  c.engineDoubles = chip.engineReports[2];
   chip.feed = nullptr;
   return c;
 }
@@ -593,13 +650,15 @@ void knockRunReplays(const char* const path) {
   if (!expect(all.size() > 90000, "knock-replay", "the 224 Hz run must load")) return;
   struct Expected {
     const char* segment;
-    int doubles;
+    int doubles;    // Through the HAL: what comes out as a double tap
+    int detector;   // The detector alone, before the pose check
   };
-  // Double taps that come through, and none from anything else. Clear pairs in the run: about
-  // eight on the back at an easy pace, ten fast, seven or eight on the edge.
-  constexpr Expected SEGMENTS[] = {{"go-hai-lung", 7}, {"go-hai-nhanh", 10}, {"go-hai-canh", 6},
-                                   {"go-mot", 0},      {"bam-nut", 0},       {"dat-xuong", 0},
-                                   {"up-ngua", 0},     {"xoay-co-tay", 0},   {"cam-doc", 0}};
+  // Clear pairs in the run: about eight on the back at an easy pace, ten fast, seven or eight
+  // on the edge. Putting the device down and turning it over knock twice as well; the pose
+  // check drops those.
+  constexpr Expected SEGMENTS[] = {{"go-hai-lung", 7, 7}, {"go-hai-nhanh", 10, 10}, {"go-hai-canh", 6, 6},
+                                   {"go-mot", 0, 0},      {"bam-nut", 0, 0},        {"dat-xuong", 0, 3},
+                                   {"up-ngua", 0, 5},     {"xoay-co-tay", 0, 0},    {"cam-doc", 0, 0}};
   const bool verbose = std::getenv("IMU_DOUBLE_TAP_VERBOSE") != nullptr;
   for (const auto& e : SEGMENTS) {
     std::vector<Sample> segment;
@@ -607,17 +666,24 @@ void knockRunReplays(const char* const path) {
       if (s.segment == e.segment) segment.push_back(s);
     }
     if (!expect(!segment.empty(), e.segment, "segment present")) continue;
+#ifdef HAVE_TAP_DETECTOR
+    TapDetector detector;
+    int found = 0;
+    for (const auto& s : segment) found += detector.step(s.ax, s.ay, s.az) == 2;
+    if (verbose) std::printf("%s: detector alone %d double taps\n", e.segment, found);
+    expect(found == e.detector, std::string("detector ") + e.segment, "double taps the detector finds on its own");
+#endif
     for (const unsigned long phase : {0UL, 13UL, 27UL, 41UL}) {
       const std::string label = std::string("knock-replay ") + e.segment + " +" + std::to_string(phase) + " ms";
       // Double tap alone, on a plain screen.
       Settings tapOnly;
       tapOnly.doubleTap = 1;
       const Counts tap = replay(segment, tapOnly, phase);
-      if (verbose) std::printf("%s: %d double taps (engine %d)\n", label.c_str(), tap.doubles, tap.engineDoubles);
+      if (verbose) std::printf("%s: %d double taps\n", label.c_str(), tap.doubles);
       expect(tap.doubles == e.doubles, label, "double taps as the run holds");
 
-      // Every other gesture on, in a book and on a menu: what they find with the accelerometer at
-      // 224 Hz must be what they find at the old 28 Hz.
+      // Every other gesture on, in a book and on a menu: what they find while the FIFO runs
+      // must be what they find at the old 28 Hz.
       for (const auto screen : {Settings::Reader, Settings::Menu}) {
         Settings every;
         every.screen = screen;
@@ -633,7 +699,7 @@ void knockRunReplays(const char* const path) {
         const std::string where = label + (screen == Settings::Reader ? " book" : " menu");
         if (verbose) {
           std::printf("%s: 28 Hz shakes %d down %d up %d turns %d/%d rows %d/%d; "
-                      "224 Hz shakes %d down %d up %d turns %d/%d rows %d/%d; doubles %d\n",
+                      "FIFO shakes %d down %d up %d turns %d/%d rows %d/%d; doubles %d\n",
                       where.c_str(), old.shakes, old.faceDown, old.faceUp, old.forward, old.back, old.up, old.down,
                       now.shakes, now.faceDown, now.faceUp, now.forward, now.back, now.up, now.down, now.doubles);
         }
@@ -660,11 +726,12 @@ void knockRunReplays(const char* const path) {
 
 int main(int argc, char** argv) {
   offIsTheV1016Setup(argc > 1 ? argv[1] : nullptr);
-  onArmsTheEngineAsTheDatasheetSays();
+  onStreamsBothSensorsIntoTheFifo();
   offAgainPutsBackTheV1016Setup();
-  deviceSleepLeavesNoTapSetup();
+  deviceSleepLeavesNoFifoSetup();
   aChipThatNeverAnswersIsLeftAsV1016();
-  theFlagCountsOncePerReport();
+  madeUpKnocks();
+  aStallIsAGap();
   knockRunReplays(argc > 2 ? argv[2] : nullptr);
   std::printf("imu_double_tap: %d failed assertions\n", failures);
   return failures == 0 ? 0 : 1;

@@ -47,7 +47,7 @@ bool HalTiltSensor::wake() {
   _flipLastValid = false;
   _flipCalm = false;
   _tapTried = false;
-  _tapSeen = false;
+  _tapFound = false;
   _tapPoses = 0;
   _knockPending = false;
   _isAwake = true;
@@ -130,12 +130,15 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   }
   if (_doubleTapEnabled && !_tapArmed && !_tapTried) {
     _tapTried = true;
-    _tapArmed = _sdkImu.enableTap(TAP_CONFIG);
-    LOG_INF("GYR", "Tap engine %s", _tapArmed ? "on" : "failed");
+    _tapArmed = _sdkImu.enableFifo();
+    LOG_INF("GYR", "IMU FIFO %s", _tapArmed ? "on" : "failed");
     // The sensors were stopped and restarted: settle as after a wake.
     _wakeMs = millis();
     _baselineValid = false;
-    _tapSeen = false;
+    _tapFound = false;
+    _tapDetector.reset();
+    _fifoGyroFrames = 0;
+    for (int i = 0; i < 3; ++i) _fifoGyroSum[i] = 0;
     _tapPoses = 0;
     _knockPending = false;
     return;
@@ -155,7 +158,7 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   _lastPollMs = now;
 
   Imu::Sample sample;
-  if (!_sdkImu.read(sample)) {
+  if (!(_tapArmed ? readFifoSample(sample) : _sdkImu.read(sample))) {
     return;
   }
   const float gx = sample.gx;
@@ -500,36 +503,89 @@ void HalTiltSensor::pollDoubleTap(const unsigned long now) {
     if (_tapPoses < 2) ++_tapPoses;
     _tapPoseMs = now;
   }
-  uint8_t taps = 0;
-  if (!_sdkImu.readTap(taps)) return;
+  if (!_tapFound) return;
+  _tapFound = false;
+  // Within 12 degrees: cos^2 >= 61/64.
+  int64_t dot = 0, poseSq = 0, nowSq = 0;
+  for (int i = 0; i < 3; ++i) {
+    dot += static_cast<int64_t>(_tapPoseMg[0][i]) * _baselineMg[i];
+    poseSq += static_cast<int64_t>(_tapPoseMg[0][i]) * _tapPoseMg[0][i];
+    nowSq += static_cast<int64_t>(_baselineMg[i]) * _baselineMg[i];
+  }
+  if (_tapPoses == 2 && dot > 0 && 64 * dot * dot >= 61 * poseSq * nowSq) {
+    _doubleTapEvent = true;
+    _hadActivity = true;
+    LOG_INF("GYR", "Double tap");
+  } else {
+    LOG_INF("GYR", "Double tap dropped: device moved");
+  }
+}
+
+bool HalTiltSensor::readFifoSample(Imu::Sample& out) {
 #ifdef TENOR_PRESS_PROBE
-  if (taps != 0) logSerial.printf("IMU_TAP:%lu,%u,seen=%d\n", now, taps, _tapSeen);
+  const unsigned long startUs = micros();
 #endif
-  // One report per time the flag comes up, whether reading it clears it or not.
-  if (taps == 2 && !_tapSeen) {
-    // Within 12 degrees: cos^2 >= 61/64.
-    int64_t dot = 0, poseSq = 0, nowSq = 0;
-    for (int i = 0; i < 3; ++i) {
-      dot += static_cast<int64_t>(_tapPoseMg[0][i]) * _baselineMg[i];
-      poseSq += static_cast<int64_t>(_tapPoseMg[0][i]) * _tapPoseMg[0][i];
-      nowSq += static_cast<int64_t>(_baselineMg[i]) * _baselineMg[i];
+  uint16_t frames = 0;
+  const bool read = _sdkImu.readFifo(takeFifoChunk, this, frames);
+  // A failed read may have lost frames: the detector starts over.
+  if (!read) _tapDetector.reset();
+#ifdef TENOR_PRESS_PROBE
+  if (_probeTapLogUntilMs != 0 && static_cast<long>(millis() - _probeTapLogUntilMs) < 0) {
+    logSerial.printf("IMU_FIFO:%lu,n=%u,us=%lu,ok=%d,heap=%lu,min=%lu\n", millis(), frames, micros() - startUs, read,
+                     static_cast<unsigned long>(ESP.getFreeHeap()), static_cast<unsigned long>(ESP.getMinFreeHeap()));
+  }
+#endif
+  if (!read || frames == 0) return false;
+  // The last acceleration, as a register read gives it; the rotation of the last full run.
+  const float accelScale = 1.0f / Imu::QMI8658_COUNTS_PER_G;
+  constexpr float gyroScale = 1.0f / (Imu::QMI8658_COUNTS_PER_DPS * FIFO_GYRO_BLOCK);
+  out.ax = _fifoAccel[0] * accelScale;
+  out.ay = _fifoAccel[1] * accelScale;
+  out.az = _fifoAccel[2] * accelScale;
+  out.gx = _fifoGyroHeld[0] * gyroScale;
+  out.gy = _fifoGyroHeld[1] * gyroScale;
+  out.gz = _fifoGyroHeld[2] * gyroScale;
+  return true;
+}
+
+void HalTiltSensor::takeFifoChunk(const Imu::RawFrame* const frames, const uint8_t count, const bool gapBefore,
+                                  void* const context) {
+  HalTiltSensor& self = *static_cast<HalTiltSensor*>(context);
+  // Frames were dropped before these: a tap cannot span the gap.
+  if (gapBefore) self._tapDetector.reset();
+  for (uint8_t f = 0; f < count; ++f) {
+    const Imu::RawFrame& frame = frames[f];
+    // Whole mg, as Imu::read() gives them.
+    const int taps = self._tapDetector.step(frame.ax * 1000 / Imu::QMI8658_COUNTS_PER_G,
+                                            frame.ay * 1000 / Imu::QMI8658_COUNTS_PER_G,
+                                            frame.az * 1000 / Imu::QMI8658_COUNTS_PER_G);
+    if (taps == 2) self._tapFound = true;
+#ifdef TENOR_PRESS_PROBE
+    if (taps != 0 && self._probeTapLogUntilMs != 0 && static_cast<long>(millis() - self._probeTapLogUntilMs) < 0) {
+      logSerial.printf("IMU_TAP:%lu,%d\n", millis(), taps);
     }
-    if (_tapPoses == 2 && dot > 0 && 64 * dot * dot >= 61 * poseSq * nowSq) {
-      _doubleTapEvent = true;
-      _hadActivity = true;
-      LOG_INF("GYR", "Double tap");
-    } else {
-      LOG_INF("GYR", "Double tap dropped: device moved");
+#endif
+    self._fifoAccel[0] = frame.ax;
+    self._fifoAccel[1] = frame.ay;
+    self._fifoAccel[2] = frame.az;
+    self._fifoGyroSum[0] += frame.gx;
+    self._fifoGyroSum[1] += frame.gy;
+    self._fifoGyroSum[2] += frame.gz;
+    if (++self._fifoGyroFrames == FIFO_GYRO_BLOCK) {
+      for (int i = 0; i < 3; ++i) {
+        self._fifoGyroHeld[i] = self._fifoGyroSum[i];
+        self._fifoGyroSum[i] = 0;
+      }
+      self._fifoGyroFrames = 0;
     }
   }
-  _tapSeen = taps != 0;
 }
 
 void HalTiltSensor::disarmTap() {
-  if (!_sdkImu.disableTap()) LOG_ERR("GYR", "Tap engine off failed");
+  if (!_sdkImu.disableFifo()) LOG_ERR("GYR", "IMU FIFO off failed");
   _tapArmed = false;
   _tapTried = false;
-  _tapSeen = false;
+  _tapFound = false;
   _doubleTapEvent = false;
   _tapPoses = 0;
   _knockPending = false;
@@ -549,7 +605,7 @@ void HalTiltSensor::probeFastLog(const unsigned long ms) {
   if (!_available) return;
   const bool wasAwake = _isAwake;
   if (!wasAwake && !wake()) return;
-  // Logged with the tap engine off; the next poll turns it back on.
+  // Logged with the FIFO off; the next poll turns it back on.
   if (_tapArmed) disarmTap();
   // QMI8658 at its 224 Hz setting: CTRL2 accel +-2 g, CTRL3 gyro +-512 dps, ODR code 5.
   // The address is whichever one answers WHO_AM_I, as the SDK's begin() finds it.
