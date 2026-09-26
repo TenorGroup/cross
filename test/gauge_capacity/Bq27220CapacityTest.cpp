@@ -50,29 +50,37 @@ class FakeGauge final : public Bq27220Capacity::Bus {
     return static_cast<uint16_t>((dm[address - DM_BASE] << 8) | dm[address - DM_BASE + 1]);
   }
 
-  bool write(const uint8_t reg, const uint8_t value) override {
-    char entry[16];
-    std::snprintf(entry, sizeof(entry), "W%02X=%02X", reg, value);
-    if (!record(entry)) return false;
+  bool write(const uint8_t reg, const uint8_t* data, const uint8_t count) override {
+    std::string entry = "W";
+    char hex[4];
+    std::snprintf(hex, sizeof(hex), "%02X=", reg);
+    entry += hex;
+    for (uint8_t i = 0; i < count; ++i) {
+      std::snprintf(hex, sizeof(hex), "%02X", data[i]);
+      entry += hex;
+    }
+    if (!record(entry.c_str())) return false;
     settle();
     if (reg == 0x00) {
-      controlLow = value;
-    } else if (reg == 0x01) {
-      subcommand(static_cast<uint16_t>(controlLow | (value << 8)));
-    } else if (reg == 0x3E) {
-      macAddress = static_cast<uint16_t>((macAddress & 0xFF00) | value);
-    } else if (reg == 0x3F) {
-      macAddress = static_cast<uint16_t>((macAddress & 0x00FF) | (value << 8));
-      loadBlock();
-    } else if (reg >= 0x40 && reg < 0x60) {
-      block[reg - 0x40] = value;
-    } else if (reg == 0x60) {
-      pendingSum = value;
-    } else if (reg == 0x61) {
-      commit(value);
+      // The X3's gauge takes a Control() subcommand only as one word: sent a byte at a time, SEALED,
+      // the unseal keys and the full access keys left OperationStatus() unchanged (measured 26/09/2026).
+      if (count != 2) return true;
+      const uint16_t code = static_cast<uint16_t>(data[0] | (data[1] << 8));
+      // Key words sent back to back were ignored on the X3; 1.5 s apart each took (26/09/2026).
+      const bool key = code == 0x0414 || code == 0x3672 || code == 0xFFFF;
+      if (key && keySeen && now - lastKeyAt < 1) return true;
+      if (key) {
+        keySeen = true;
+        lastKeyAt = now;
+      }
+      subcommand(code);
+      return true;
     }
+    for (uint8_t i = 0; i < count; ++i) writeByte(static_cast<uint8_t>(reg + i), data[i]);
     return true;
   }
+
+  void pause(uint32_t) override {}
 
   bool read(const uint8_t reg, uint8_t* out, const uint8_t count) override {
     char entry[16];
@@ -80,6 +88,12 @@ class FakeGauge final : public Bq27220Capacity::Bus {
     if (!record(entry)) return false;
     settle();
     for (uint8_t i = 0; i < count; ++i) out[i] = byteAt(static_cast<uint8_t>(reg + i));
+    // Reading MACDataSum() or MACDataLen() moved MACData() on to the next 32 bytes on the X3's gauge
+    // (26/09/2026).
+    if (reg <= 0x61 && reg + count > 0x60) {
+      macAddress = static_cast<uint16_t>(macAddress + 32);
+      loadBlock();
+    }
     return true;
   }
 
@@ -92,6 +106,21 @@ class FakeGauge final : public Bq27220Capacity::Bus {
 
  private:
   static constexpr uint8_t LENGTH = 0x24;  // 6.1 step 13
+
+  void writeByte(const uint8_t reg, const uint8_t value) {
+    if (reg == 0x3E) {
+      macAddress = static_cast<uint16_t>((macAddress & 0xFF00) | value);
+    } else if (reg == 0x3F) {
+      macAddress = static_cast<uint16_t>((macAddress & 0x00FF) | (value << 8));
+      loadBlock();
+    } else if (reg >= 0x40 && reg < 0x60) {
+      block[reg - 0x40] = value;
+    } else if (reg == 0x60) {
+      pendingSum = value;
+    } else if (reg == 0x61) {
+      commit(value);
+    }
+  }
 
   bool record(const char* entry) {
     const bool refused = failAt >= 0 && static_cast<int>(log.size()) == failAt;
@@ -174,9 +203,10 @@ class FakeGauge final : public Bq27220Capacity::Bus {
   std::array<uint8_t, 32> block{};
   std::array<uint8_t, 32> stored{};
   uint16_t macAddress = 0;
-  uint8_t controlLow = 0;
   uint8_t pendingSum = 0;
   uint16_t lastSub = 0;
+  bool keySeen = false;
+  uint32_t lastKeyAt = 0;
   bool enteringConfig = false;
   int64_t changeAt = -1;
 };
@@ -190,8 +220,8 @@ void run(Bq27220Capacity& load, FakeGauge& gauge, const uint32_t forMs = 20000) 
 }
 
 std::vector<std::string> param(const char* low, const char* oldSum) {
-  return {std::string("W3E=") + low,    "W3F=92", "R3E:2", "R60:1", "R61:1", "R40:1", "R41:1", "W40=02", "W41=8A",
-          std::string("W60=") + oldSum, "W61=24"};
+  return {std::string("W3E=") + low + "92", "R3E:2", "R40:2", "R60:2", std::string("W3E=") + low + "92", "W40=028A",
+          std::string("W60=") + oldSum + "24"};
 }
 
 std::vector<std::string> join(std::vector<std::vector<std::string>> parts) {
@@ -205,8 +235,8 @@ std::string checksumFor(FakeGauge& gauge, const uint16_t address, const uint16_t
   copy.setDm(address, value);
   // Select the block in a copy and read what 2.30 gives for it.
   copy.failAt = -1;
-  copy.write(0x3E, address & 0xFF);
-  copy.write(0x3F, address >> 8);
+  const uint8_t addressBytes[] = {static_cast<uint8_t>(address & 0xFF), static_cast<uint8_t>(address >> 8)};
+  copy.write(0x3E, addressBytes, 2);
   uint8_t sum = 0;
   copy.read(0x60, &sum, 1);
   char text[4];
@@ -225,15 +255,15 @@ TEST(Bq27220Capacity, LoadsTheBatteryCapacityInTheManualsOrder) {
 
   const auto expected = join({
       {"R3C:2", "R3A:2"},
-      {"W00=FF", "W01=FF", "W00=FF", "W01=FF"},  // FULL ACCESS: unsealed is not enough
+      {"W00=FFFF", "W00=FFFF"},  // FULL ACCESS: unsealed is not enough
       {"R3A:2"},
-      {"W00=90", "W01=00"},  // ENTER_CFG_UPDATE
+      {"W00=9000"},  // ENTER_CFG_UPDATE
       {"R3B:1"},             // 2 s later, already set
       param("9D", fccSum.c_str()),
       param("9F", dcSum.c_str()),
-      {"W00=91", "W01=00"},  // EXIT_CFG_UPDATE_REINIT
+      {"W00=9100"},  // EXIT_CFG_UPDATE_REINIT
       {"R3B:1"},
-      {"W00=30", "W01=00"},  // SEALED
+      {"W00=3000"},  // SEALED
       {"R3C:2"},
   });
   EXPECT_EQ(gauge.log, expected);
@@ -256,12 +286,14 @@ TEST(Bq27220Capacity, ReadsTheConfigUpdateFlagNoSoonerThanTwoSecondsAndAtMostTwi
   gauge.enterDelayMs = 3100;
   Bq27220Capacity load(TARGET);
   std::vector<uint32_t> reads;
+  uint32_t enteredAt = 0;
   for (uint32_t t = 0; t <= 20000 && load.result() == Bq27220Capacity::Result::Pending; t += 10) {
     gauge.now = t;
     const size_t before = gauge.log.size();
     load.tick(gauge, t);
     for (size_t i = before; i < gauge.log.size(); ++i) {
-      if (gauge.log[i] == "R3B:1") reads.push_back(t);
+      if (gauge.log[i] == "W00=9000") enteredAt = t;
+      if (gauge.log[i] == "R3B:1") reads.push_back(t - enteredAt);
     }
   }
   EXPECT_EQ(load.result(), Bq27220Capacity::Result::Loaded);
@@ -269,7 +301,7 @@ TEST(Bq27220Capacity, ReadsTheConfigUpdateFlagNoSoonerThanTwoSecondsAndAtMostTwi
   EXPECT_EQ(reads[0], 2000u);
   EXPECT_EQ(reads[1], 2500u);
   EXPECT_EQ(reads[2], 3000u);
-  EXPECT_EQ(reads[3], 3500u);  // set at 3100, seen here
+  EXPECT_EQ(reads[3], 3500u);  // set 3100 after the command, seen here
 }
 
 TEST(Bq27220Capacity, SealedGaugeTakesTheUnsealKeysFirstAndIsSealedAgain) {
@@ -277,9 +309,8 @@ TEST(Bq27220Capacity, SealedGaugeTakesTheUnsealKeysFirstAndIsSealedAgain) {
   gauge.sec = 3;
   Bq27220Capacity load(TARGET);
   run(load, gauge);
-  const std::vector<std::string> start(gauge.log.begin(), gauge.log.begin() + 11);
-  EXPECT_EQ(start, (std::vector<std::string>{"R3C:2", "R3A:2", "W00=14", "W01=04", "W00=72", "W01=36", "W00=FF",
-                                             "W01=FF", "W00=FF", "W01=FF", "R3A:2"}));
+  const std::vector<std::string> start(gauge.log.begin(), gauge.log.begin() + 7);
+  EXPECT_EQ(start, (std::vector<std::string>{"R3C:2", "R3A:2", "W00=1404", "W00=7236", "W00=FFFF", "W00=FFFF", "R3A:2"}));
   EXPECT_EQ(load.result(), Bq27220Capacity::Result::Loaded);
   EXPECT_EQ(gauge.sec, 3);
 }
@@ -344,8 +375,8 @@ TEST(Bq27220Capacity, ConfigUpdateThatNeverComesGivesUpWithoutWriting) {
     polls += entry == "R3B:1";
   }
   EXPECT_LE(polls, 8);  // 2 s to 5 s at two a second, then one after the exit
-  const std::vector<std::string> tail(gauge.log.end() - 7, gauge.log.end());
-  EXPECT_EQ(tail, (std::vector<std::string>{"R3B:1", "W00=92", "W01=00", "R3B:1", "W00=30", "W01=00", "R3C:2"}));
+  const std::vector<std::string> tail(gauge.log.end() - 5, gauge.log.end());
+  EXPECT_EQ(tail, (std::vector<std::string>{"R3B:1", "W00=9200", "R3B:1", "W00=3000", "R3C:2"}));
   EXPECT_EQ(gauge.reinits, 0);
   EXPECT_EQ(gauge.sec, 3);
 }
@@ -355,7 +386,7 @@ TEST(Bq27220Capacity, EveryRefusedTransactionEndsCleanSealedAndOnce) {
   Bq27220Capacity reference(TARGET);
   run(reference, clean);
   const size_t transactions = clean.log.size();
-  ASSERT_GT(transactions, 30u);
+  ASSERT_GT(transactions, 20u);
 
   for (size_t failAt = 0; failAt < transactions; ++failAt) {
     FakeGauge gauge;
@@ -376,7 +407,7 @@ TEST(Bq27220Capacity, EveryRefusedTransactionEndsCleanSealedAndOnce) {
     int enters = 0;
     bool sentSomething = false;
     for (const auto& entry : gauge.log) sentSomething |= entry[0] == 'W';
-    for (size_t i = 1; i < gauge.log.size(); ++i) enters += gauge.log[i - 1] == "W00=90" && gauge.log[i] == "W01=00";
+    for (const auto& entry : gauge.log) enters += entry == "W00=9000";
     EXPECT_LE(enters, 1);
     // Capacity and Learned Full Charge Capacity are either untouched or loaded, never anything else.
     EXPECT_TRUE(gauge.getDm(DM_DC) == 3000 || gauge.getDm(DM_DC) == TARGET);
@@ -395,17 +426,16 @@ TEST(Bq27220Capacity, EveryRefusedTransactionEndsCleanSealedAndOnce) {
     }
     const std::string refused = gauge.log[failAt];
     const bool sealRefused =
-        refused == "W00=30!" || (refused == "W01=00!" && failAt > 0 && gauge.log[failAt - 1] == "W00=30");
+        refused == "W00=3000!";
     if (!sealRefused) {
       EXPECT_EQ(gauge.sec, 3) << "sealed again";
       // The last subcommand sent is SEALED.
-      ASSERT_GE(gauge.log.size(), 3u);
-      EXPECT_EQ(gauge.log[gauge.log.size() - 3], "W00=30");
-      EXPECT_EQ(gauge.log[gauge.log.size() - 2], "W01=00");
+      ASSERT_GE(gauge.log.size(), 2u);
+      EXPECT_EQ(gauge.log[gauge.log.size() - 2], "W00=3000");
     }
     // A refused exit is not sent twice: the gauge leaves CONFIG UPDATE by itself after about
     // 240 s (TRM 4.6).
-    const bool exitRefused = refused == "W00=91!" || (refused == "W01=00!" && gauge.log[failAt - 1] == "W00=91");
+    const bool exitRefused = refused == "W00=9100!";
     if (!exitRefused) EXPECT_FALSE(gauge.cfgUpdate) << "out of CONFIG UPDATE";
   }
 }
@@ -413,20 +443,42 @@ TEST(Bq27220Capacity, EveryRefusedTransactionEndsCleanSealedAndOnce) {
 TEST(Bq27220Capacity, SleepDuringTheLoadLeavesConfigUpdateAndSealsAtOnce) {
   FakeGauge gauge;
   Bq27220Capacity load(TARGET);
-  gauge.now = 0;
-  load.tick(gauge, 0);
+  uint32_t t = 0;
+  bool entered = false;
+  for (; t <= 10000 && !entered; t += 10) {
+    gauge.now = t;
+    load.tick(gauge, t);
+    entered = !gauge.log.empty() && gauge.log.back() == "W00=9000";
+  }
   ASSERT_TRUE(load.running());
-  gauge.now = 1000;
+  gauge.now = t + 1000;
   const size_t before = gauge.log.size();
   load.abandon(gauge);
   const std::vector<std::string> after(gauge.log.begin() + static_cast<long>(before), gauge.log.end());
-  EXPECT_EQ(after, (std::vector<std::string>{"W00=92", "W01=00", "W00=30", "W01=00", "R3C:2"}));
+  EXPECT_EQ(after, (std::vector<std::string>{"W00=9200", "W00=3000", "R3C:2"}));
   EXPECT_EQ(load.result(), Bq27220Capacity::Result::Failed);
   EXPECT_FALSE(load.running());
   EXPECT_EQ(gauge.sec, 3);
-  gauge.now = 3000;
-  load.tick(gauge, 3000);
-  EXPECT_EQ(gauge.log.size(), before + 5);
+  gauge.now = t + 3000;
+  load.tick(gauge, t + 3000);
+  EXPECT_EQ(gauge.log.size(), before + 3);
+}
+
+TEST(Bq27220Capacity, SleepWhileTheKeysAreGoingOutOnlySeals) {
+  FakeGauge gauge;
+  Bq27220Capacity load(TARGET);
+  gauge.now = 0;
+  load.tick(gauge, 0);  // the check, then the first key word on the next tick
+  gauge.now = 10;
+  load.tick(gauge, 10);
+  ASSERT_TRUE(load.running());
+  const size_t before = gauge.log.size();
+  gauge.now = 1000;
+  load.abandon(gauge);
+  const std::vector<std::string> after(gauge.log.begin() + static_cast<long>(before), gauge.log.end());
+  EXPECT_EQ(after, (std::vector<std::string>{"W00=3000", "R3C:2"}));
+  EXPECT_EQ(gauge.sec, 3);
+  EXPECT_FALSE(gauge.cfgUpdate);
 }
 
 TEST(Bq27220Capacity, ChecksumReplacementMatchesTheWholeBlockSum) {

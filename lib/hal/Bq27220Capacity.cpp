@@ -10,13 +10,16 @@ constexpr uint8_t DESIGN_CAPACITY = 0x3C;         // DesignCapacity() (2.28)
 constexpr uint8_t MAC_CONTROL = 0x3E;             // ManufacturerAccessControl(), 0x3E and 0x3F
 constexpr uint8_t MAC_DATA = 0x40;                // MACData() (2.29)
 constexpr uint8_t MAC_DATA_SUM = 0x60;            // MACDataSum() (2.30)
-constexpr uint8_t MAC_DATA_LEN = 0x61;            // MACDataLen() (2.31)
 constexpr uint8_t MAC_DATA_LEN_MIN = 2 + 2 + 2;   // address, one two-byte parameter, sum and length
 constexpr uint8_t MAC_DATA_LEN_MAX = 2 + 32 + 2;  // a full 32-byte block: 0x24 in 6.1 step 13
 
 constexpr uint16_t UNSEAL_KEY_1 = 0x0414;  // 6.1 step 1
 constexpr uint16_t UNSEAL_KEY_2 = 0x3672;
 constexpr uint16_t FULL_ACCESS_KEY = 0xFFFF;         // 6.1 step 2, sent twice
+// Between two key words. Sent back to back the X3's gauge ignored them; 1.5 s apart each took
+// (measured 26/09/2026).
+constexpr uint32_t KEY_GAP_MS = 1500;
+constexpr uint32_t SELECT_SETTLE_MS = 10;
 constexpr uint16_t SEALED = 0x0030;                  // 2.2.15
 constexpr uint16_t ENTER_CFG_UPDATE = 0x0090;        // 2.2.21
 constexpr uint16_t EXIT_CFG_UPDATE_REINIT = 0x0091;  // 2.2.22
@@ -56,37 +59,56 @@ uint8_t Bq27220Capacity::replaceChecksum(const uint8_t oldSum, const uint8_t old
 }
 
 bool Bq27220Capacity::control(Bus& bus, const uint16_t subcommand) {
-  // The single-byte method of 6.1 step 1: above 100 kHz the gauge takes one-byte writes only (5.3).
-  return bus.write(CONTROL, subcommand & 0xFF) && bus.write(CONTROL + 1, subcommand >> 8);
+  // Both bytes in one write. The X3's gauge ignores the single-byte method of 6.1 step 1: sent a byte
+  // at a time, SEALED, the unseal keys and the full access keys left OperationStatus() unchanged;
+  // sent as one word each took (measured on an X3, 26/09/2026).
+  const uint8_t bytes[] = {static_cast<uint8_t>(subcommand & 0xFF), static_cast<uint8_t>(subcommand >> 8)};
+  return bus.write(CONTROL, bytes, 2);
 }
 
 Bq27220Capacity::Param Bq27220Capacity::writeParam(Bus& bus, const uint16_t address, const bool required) {
   const uint8_t addressLow = address & 0xFF;
   const uint8_t addressHigh = address >> 8;
   // Steps 5 and 6: the parameter's address into ManufacturerAccessControl().
-  if (!bus.write(MAC_CONTROL, addressLow) || !bus.write(MAC_CONTROL + 1, addressHigh)) return Param::Failed;
+  const uint8_t addressBytes[] = {addressLow, addressHigh};
+  detail = 1;
+  if (!bus.write(MAC_CONTROL, addressBytes, 2)) return Param::Failed;
+  // The gauge needs a moment to bring the block into MACData(): read at once, the X3's gauge still
+  // returned the previous block (measured 26/09/2026).
+  bus.pause(SELECT_SETTLE_MS);
   // 2.29: reading from ManufacturerAccessControl() first confirms the block MACData() now holds.
   uint8_t selected[2];
+  detail = 2;
   if (!bus.read(MAC_CONTROL, selected, 2) || selected[0] != addressLow || selected[1] != addressHigh) {
+    detailValue = static_cast<uint16_t>(selected[0] | (selected[1] << 8));
     return Param::Failed;
   }
-  // Steps 7 to 9: old checksum, block length, old value.
-  uint8_t oldSum = 0, length = 0, oldMsb = 0, oldLsb = 0;
-  if (!bus.read(MAC_DATA_SUM, &oldSum, 1) || !bus.read(MAC_DATA_LEN, &length, 1) || !bus.read(MAC_DATA, &oldMsb, 1) ||
-      !bus.read(MAC_DATA + 1, &oldLsb, 1)) {
-    return Param::Failed;
-  }
+  // Steps 7 to 9, the old value first: on the X3's gauge, reading MACDataSum() and MACDataLen()
+  // moves MACData() on to the next 32 bytes (measured 26/09/2026), so the block is selected again
+  // before the new value goes in.
+  uint8_t oldValue[2] = {}, sumAndLengthOld[2] = {};
+  detail = 3;
+  if (!bus.read(MAC_DATA, oldValue, 2) || !bus.read(MAC_DATA_SUM, sumAndLengthOld, 2)) return Param::Failed;
+  const uint8_t oldMsb = oldValue[0], oldLsb = oldValue[1];
+  const uint8_t oldSum = sumAndLengthOld[0], length = sumAndLengthOld[1];
+  detail = 4;
+  detailValue = static_cast<uint16_t>((length << 8) | oldSum);
   if (length < MAC_DATA_LEN_MIN || length > MAC_DATA_LEN_MAX) return Param::Failed;
+  detail = 5;
+  detailValue = static_cast<uint16_t>((oldMsb << 8) | oldLsb);
   if (((oldMsb << 8) | oldLsb) != TI_DEFAULT_MAH) return required ? Param::Failed : Param::Skipped;
   const uint8_t newMsb = target >> 8;
   const uint8_t newLsb = target & 0xFF;
   // Steps 10 to 13: new value, new checksum, then the length, which moves the block into RAM.
   wroteData = true;
-  if (!bus.write(MAC_DATA, newMsb) || !bus.write(MAC_DATA + 1, newLsb) ||
-      !bus.write(MAC_DATA_SUM, replaceChecksum(oldSum, oldMsb, oldLsb, newMsb, newLsb)) ||
-      !bus.write(MAC_DATA_LEN, length)) {
-    return Param::Failed;
-  }
+  if (!bus.write(MAC_CONTROL, addressBytes, 2)) return Param::Failed;
+  bus.pause(SELECT_SETTLE_MS);
+  // Checksum and length go together as one word (2.31), the value in one write like the rest.
+  const uint8_t value[] = {newMsb, newLsb};
+  const uint8_t sumAndLength[] = {replaceChecksum(oldSum, oldMsb, oldLsb, newMsb, newLsb), length};
+  detail = 6;
+  if (!bus.write(MAC_DATA, value, 2) || !bus.write(MAC_DATA_SUM, sumAndLength, 2)) return Param::Failed;
+  detail = 0;
   return Param::Written;
 }
 
@@ -119,14 +141,30 @@ void Bq27220Capacity::tick(Bus& bus, const uint32_t nowMs) {
         stage = Stage::Done;
         return;
       }
-      // Steps 1 and 2: unseal if sealed, then FULL ACCESS, which the gauge does not boot in.
+      // Steps 1 and 2: unseal if sealed, then FULL ACCESS, which the gauge does not boot in. One key
+      // word a tick, KEY_GAP_MS apart: the X3's gauge ignored keys sent back to back.
+      keyCount = 0;
+      if (security(status) == SEC_SEALED) {
+        keys[keyCount++] = UNSEAL_KEY_1;
+        keys[keyCount++] = UNSEAL_KEY_2;
+      }
+      if (security(status) != SEC_FULL_ACCESS) {
+        keys[keyCount++] = FULL_ACCESS_KEY;
+        keys[keyCount++] = FULL_ACCESS_KEY;
+      }
+      keysSent = 0;
       stage = Stage::Access;
-      if (security(status) == SEC_SEALED && !(control(bus, UNSEAL_KEY_1) && control(bus, UNSEAL_KEY_2))) {
-        return giveUp(bus, nowMs);
+      nextAt = nowMs;
+      return;
+    }
+    case Stage::Access: {
+      if (!due(nowMs, nextAt)) return;
+      if (keysSent < keyCount) {
+        if (!control(bus, keys[keysSent++])) return giveUp(bus, nowMs);
+        nextAt = nowMs + KEY_GAP_MS;
+        return;
       }
-      if (security(status) != SEC_FULL_ACCESS && !(control(bus, FULL_ACCESS_KEY) && control(bus, FULL_ACCESS_KEY))) {
-        return giveUp(bus, nowMs);
-      }
+      uint16_t status = 0;
       if (!readWord(bus, OPERATION_STATUS, status) || security(status) != SEC_FULL_ACCESS) return giveUp(bus, nowMs);
       // Step 3.
       inConfigUpdate = true;
@@ -176,7 +214,6 @@ void Bq27220Capacity::tick(Bus& bus, const uint32_t nowMs) {
       }
       return seal(bus);
     }
-    case Stage::Access:
     case Stage::Block:
     case Stage::Seal:
     case Stage::Done:

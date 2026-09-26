@@ -18,15 +18,16 @@ class WireGauge final : public Bq27220Capacity::Bus {
  public:
   explicit WireGauge(const uint8_t address) : addr(address) {}
 
-  bool write(const uint8_t reg, const uint8_t value) override {
+  bool write(const uint8_t reg, const uint8_t* data, const uint8_t count) override {
     Wire.beginTransmission(addr);
     Wire.write(reg);
-    Wire.write(value);
+    Wire.write(data, count);
     const bool ok = Wire.endTransmission() == 0;
     delayMicroseconds(66);
     return ok;
   }
 
+  void pause(const uint32_t ms) override { delay(ms); }
   bool read(const uint8_t reg, uint8_t* out, const uint8_t count) override {
     Wire.beginTransmission(addr);
     Wire.write(reg);
@@ -69,7 +70,8 @@ void HalGaugeCapacity::tick() {
   WireGauge bus(BoardConfig::ACTIVE.batteryGauge.gaugeAddr);
   load.tick(bus, millis());
   if (load.result() != Bq27220Capacity::Result::Pending && BoardConfig::ACTIVE.batteryGauge.designCapacityMah != 0) {
-    LOG_INF("BAT", "Gauge capacity %s dc=%u", status(), static_cast<unsigned>(load.designCapacity()));
+    LOG_INF("BAT", "Gauge capacity %s dc=%u detail=%u value=0x%04x", status(),
+            static_cast<unsigned>(load.designCapacity()), load.detail, load.detailValue);
   }
 }
 

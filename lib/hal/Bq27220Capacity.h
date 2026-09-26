@@ -15,8 +15,10 @@ class Bq27220Capacity {
  public:
   // The gauge's I2C transactions. The caller keeps them on the one task that owns the gauge.
   struct Bus {
-    virtual bool write(uint8_t reg, uint8_t value) = 0;               // one-byte write (TRM 5.3)
+    virtual bool write(uint8_t reg, const uint8_t* data, uint8_t count) = 0;  // one incremental write
+
     virtual bool read(uint8_t reg, uint8_t* out, uint8_t count) = 0;  // incremental read (TRM 5.1)
+    virtual void pause(uint32_t ms) = 0;
 
    protected:
     ~Bus() = default;
@@ -55,6 +57,17 @@ class Bq27220Capacity {
 
   uint16_t target;
   Stage stage = Stage::Check;
+  uint16_t keys[4] = {};
+  uint8_t keyCount = 0;
+  uint8_t keysSent = 0;
+
+ public:
+  // Where a Data Memory write stopped, for the log: 1 select, 2 read back (value = what came back),
+  // 3 reads, 4 length (value = length and sum), 5 old value (value = the old value), 6 writes.
+  uint8_t detail = 0;
+  uint16_t detailValue = 0;
+
+ private:
   Stage failStage = Stage::Check;
   Result outcome = Result::Pending;
   bool failed = false;
