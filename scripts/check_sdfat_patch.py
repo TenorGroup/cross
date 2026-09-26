@@ -23,6 +23,10 @@ def check_elf(path):
 
 def register_check(env):
     def verify(source, target, env):
+        # A custom_sdkconfig build first links a placeholder app from .dummy/ to rebuild the
+        # framework libraries; it has no SdFat, and failing it leaves the libraries half built.
+        if any("/.dummy/" in str(node) for node in source):
+            return
         check_elf(str(target[0]))
 
     env.AddPostAction("$BUILD_DIR/${PROGNAME}.elf", verify)
