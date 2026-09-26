@@ -99,7 +99,7 @@ class MyActivity final : public Activity {
 };
 ```
 
-Note that navigation callbacks like `goBack` are no longer stored - use `finish()` or `activityManager.goHome()` instead.
+Note that navigation callbacks like `goBack` are no longer stored — use `finish()` or `activityManager.goHome()` instead.
 
 ### 2. Replace Navigation Functions
 
@@ -150,7 +150,7 @@ Key differences:
 - **`startActivityForResult()`** pushes the current activity onto the stack and launches the child
 - **`setResult()`** stores a typed result on the child activity
 - **`finish()`** signals the manager to pop the child, call the result handler, and resume the parent
-- The parent is never deleted during this process - it's safely stored on the stack
+- The parent is never deleted during this process — it's safely stored on the stack
 
 ### 4. Update `render()` Signature
 
@@ -210,9 +210,9 @@ void requestUpdate(bool immediate = false);
 // immediate=true: sends notification to render task right away
 ```
 
-**When to use `immediate`**: Almost never. Deferred updates are batched - if `loop()` triggers multiple state changes that each call `requestUpdate()`, only one render happens. Use `immediate` only when you need the render to start before the current function returns (e.g., before a blocking network call).
+**When to use `immediate`**: Almost never. Deferred updates are batched — if `loop()` triggers multiple state changes that each call `requestUpdate()`, only one render happens. Use `immediate` only when you need the render to start before the current function returns (e.g., before a blocking network call).
 
-**`requestUpdateAndWait()`**: Blocks the calling task until the render completes. Use sparingly - it's designed for cases where you need the screen to reflect new state before proceeding (e.g., showing "Checking for update..." before calling a network API).
+**`requestUpdateAndWait()`**: Blocks the calling task until the render completes. Use sparingly — it's designed for cases where you need the screen to reflect new state before proceeding (e.g., showing "Checking for update..." before calling a network API).
 
 ### 7. Remove Stored Navigation Callbacks
 
@@ -244,7 +244,7 @@ This removes `std::function` overhead (~2-4KB per unique signature) and eliminat
 
 ### FreeRTOS Task Model
 
-The firmware runs on an ESP32-C3, a single-core RISC-V microcontroller. FreeRTOS provides cooperative and preemptive multitasking on this single core - only one task executes at any moment, and the scheduler switches between tasks at yield points (blocking calls, `vTaskDelay`, `taskYIELD`) or when a tick interrupt promotes a higher-priority task.
+The firmware runs on an ESP32-C3, a single-core RISC-V microcontroller. FreeRTOS provides cooperative and preemptive multitasking on this single core — only one task executes at any moment, and the scheduler switches between tasks at yield points (blocking calls, `vTaskDelay`, `taskYIELD`) or when a tick interrupt promotes a higher-priority task.
 
 There are two tasks relevant to the activity system:
 
@@ -280,7 +280,7 @@ class RenderLock {
   bool isLocked = false;
 public:
   explicit RenderLock();           // acquires activityManager.renderingMutex
-  explicit RenderLock(Activity&);  // same - Activity& param kept for compatibility
+  explicit RenderLock(Activity&);  // same — Activity& param kept for compatibility
   ~RenderLock();                   // releases mutex if still held
   void unlock();                   // early release
 };
@@ -293,14 +293,14 @@ public:
 void MyActivity::loop() {
   if (somethingChanged) {
     RenderLock lock;
-    state = newState;        // safe - render() can't run while lock is held
+    state = newState;        // safe — render() can't run while lock is held
   }
   requestUpdate();           // trigger render after lock is released
 }
 
 // In render(): lock is passed in, held for duration of render
 void MyActivity::render(RenderLock&&) {
-  // Lock is held - safe to read shared state
+  // Lock is held — safe to read shared state
   renderer.clearScreen();
   renderer.drawText(..., stateString, ...);
   renderer.displayBuffer();
@@ -444,10 +444,10 @@ Child calls: setResult(MyResult{...}); finish();
 
 **Creating background tasks that outlive the activity**: Any FreeRTOS task created in `onEnter()` must be deleted in `onExit()` before the activity is destroyed. The `ActivityManager` does not track or clean up background tasks.
 
-**Holding `RenderLock` across blocking calls**: The render task is blocked on the mutex while you hold the lock. Keep critical sections short - acquire, mutate state, release, then do blocking work.
+**Holding `RenderLock` across blocking calls**: The render task is blocked on the mutex while you hold the lock. Keep critical sections short — acquire, mutate state, release, then do blocking work.
 
 ```cpp
-// WRONG - blocks render for the entire network call
+// WRONG — blocks render for the entire network call
 void MyActivity::doNetworkStuff() {
   RenderLock lock;
   state = LOADING;
@@ -455,7 +455,7 @@ void MyActivity::doNetworkStuff() {
   state = DONE;
 }
 
-// CORRECT - release lock before blocking
+// CORRECT — release lock before blocking
 void MyActivity::doNetworkStuff() {
   {
     RenderLock lock;

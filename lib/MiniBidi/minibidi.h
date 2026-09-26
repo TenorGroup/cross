@@ -2,7 +2,7 @@
 #define MINIBIDI_H
 
 /*
- * minibidi.h - standalone header for ESP32C3 BiDi calculations
+ * minibidi.h — standalone header for ESP32C3 BiDi calculations
  *
  * Derived from [mintty](https://github.com/mintty/mintty/) (Thomas Wolff, MIT licence).
  * Includes: UAX#9 bidi (do_bidi) and Arabic contextual shaping (do_shape),
@@ -129,13 +129,13 @@ ucschar mirror(ucschar ch);
  *          caller (in logical order, before do_bidi) for ZWJ/ZWNJ support
  *   to:    output buffer, same size as line; non-Arabic entries are copied
  *          through unchanged.  An Alef absorbed by a Lam-Alef ligature is
- *          replaced with LIGATURE_PLACEHOLDER - filter it on emission.
+ *          replaced with LIGATURE_PLACEHOLDER — filter it on emission.
  *   count: number of characters (≤ BIDI_MAX_LINE)
  *
  *   Returns 1.
  *
  *   Ported from mintty src/minibidi.c (Ahmad Khalifa, Thomas Wolff,
- *   MIT licence), https://github.com/mintty/mintty - with CrossPoint
+ *   MIT licence), https://github.com/mintty/mintty — with CrossPoint
  *   extensions for Perso-Arabic letters and in-stream diacritics, see
  *   minibidi.c for details.
  */
@@ -144,7 +144,7 @@ int do_shape(bidi_char* line, bidi_char* to, int count);
 /*
  * do_bidi(autodir, paragraphLevel, line, count)
  *
- *   Applies UAX#9 Bidirectional Algorithm (rules P-L) to `line[0..count-1]`.
+ *   Applies UAX#9 Bidirectional Algorithm (rules P–L) to `line[0..count-1]`.
  *   Reorders the array in-place; sets line[i].wc to the mirrored form where
  *   required (rule L4).  Returns the resolved paragraph level (0=LTR, 1=RTL),
  *   or 0 if the line was left-to-right and no reordering was done.

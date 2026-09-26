@@ -36,8 +36,8 @@ namespace combiningMark {
 
 constexpr int MIN_GAP_PX = 1;
 
-/// Placement of a mark relative to its base glyph.  The default heuristic -
-/// centered over the base, raised clear of its top - suits Latin diacritics
+/// Placement of a mark relative to its base glyph.  The default heuristic —
+/// centered over the base, raised clear of its top — suits Latin diacritics
 /// and Arabic harakat, but misplaces the Hebrew niqqud whose identity depends
 /// on position: dagesh sits inside the letter body, the shin/sin dots
 /// distinguish the letter by sitting over its right/left arm, and holam hangs
@@ -188,8 +188,8 @@ typedef struct {
   const EpdKernClassEntry* kernLeftClasses;   ///< Sorted left-side class map (nullptr if none)
   const EpdKernClassEntry* kernRightClasses;  ///< Sorted right-side class map (nullptr if none)
   /// Split form of the two class maps, used by the built-in fonts instead of the packed
-  /// EpdKernClassEntry arrays above (which are left null for them). Same total size - 2 + 1 bytes
-  /// per entry either way - but measurably faster: the class lookups are ~96% of getKerning(),
+  /// EpdKernClassEntry arrays above (which are left null for them). Same total size — 2 + 1 bytes
+  /// per entry either way — but measurably faster: the class lookups are ~96% of getKerning(),
   /// and splitting them measured -13 to -14% on that path. Two reasons. The binary search only
   /// ever reads codepoints, so keeping the classId payload out of the searched array shrinks its
   /// footprint by a third; and a uint16 array is naturally aligned where a 3-byte packed struct
@@ -203,7 +203,7 @@ typedef struct {
   const uint16_t* kernRightCodepoints;  ///< nullptr when this font uses the packed form
   const uint8_t* kernRightClassIds;     ///< parallel to kernRightCodepoints
   const int8_t* kernMatrix;             ///< Flat leftClassCount x rightClassCount matrix, 4.4 fixed-point in pixels
-  /// Sparse (CSR) kerning - the built-in fonts use this instead of `kernMatrix`, which is left
+  /// Sparse (CSR) kerning — the built-in fonts use this instead of `kernMatrix`, which is left
   /// null for them. Measured across the built-in set, 86.6% of the dense matrix entries are zero,
   /// so storing only the non-zero ones is roughly a quarter of the size. Values are identical, so
   /// layout and pagination are unaffected. SD-card fonts keep the dense matrix, same reason as
@@ -226,7 +226,7 @@ typedef struct {
   /// Called by getGlyph() when a codepoint is not found in the interval table.
   /// Returns a valid EpdGlyph* with correct metadata, or nullptr to fall back to the
   /// replacement glyph.  The returned pointer is valid until the next glyphMissHandler
-  /// call that causes a ring-buffer eviction - callers must consume it (measure or draw)
+  /// call that causes a ring-buffer eviction — callers must consume it (measure or draw)
   /// before requesting another missed glyph.
   const EpdGlyph* (*glyphMissHandler)(void* ctx, uint32_t codepoint);
 

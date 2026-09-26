@@ -66,7 +66,7 @@ def xhtml(title, body):
 
 
 # ---------------------------------------------------------------------------
-# Chapter 1 - standalone <br> between paragraphs
+# Chapter 1 — standalone <br> between paragraphs
 # ---------------------------------------------------------------------------
 ch1 = xhtml("Ch1: Standalone br", f"""
 <h1>Ch 1: Standalone &lt;br&gt; Section Break</h1>
@@ -78,7 +78,7 @@ ch1 = xhtml("Ch1: Standalone br", f"""
 """)
 
 # ---------------------------------------------------------------------------
-# Chapter 2 - <br class="..."> CSS-classed section break (calibre style)
+# Chapter 2 — <br class="..."> CSS-classed section break (calibre style)
 # ---------------------------------------------------------------------------
 ch2 = xhtml("Ch2: Classed br", f"""
 <h1>Ch 2: &lt;br class="section-br"/&gt;</h1>
@@ -90,7 +90,7 @@ to Ch 1, even though the &lt;br&gt; carries a CSS class.</p>
 """)
 
 # ---------------------------------------------------------------------------
-# Chapter 3 - multiple consecutive <br> elements
+# Chapter 3 — multiple consecutive <br> elements
 # ---------------------------------------------------------------------------
 ch3 = xhtml("Ch3: Multiple br", f"""
 <h1>Ch 3: Multiple Consecutive &lt;br&gt; Elements</h1>
@@ -108,7 +108,7 @@ ch3 = xhtml("Ch3: Multiple br", f"""
 """)
 
 # ---------------------------------------------------------------------------
-# Chapter 4 - inline <br> inside a paragraph (line break, NOT a gap)
+# Chapter 4 — inline <br> inside a paragraph (line break, NOT a gap)
 # ---------------------------------------------------------------------------
 ch4 = xhtml("Ch4: Inline br", """
 <h1>Ch 4: Inline &lt;br&gt; Inside a Paragraph</h1>
@@ -120,7 +120,7 @@ separated by a blank line.</p>
 """)
 
 # ---------------------------------------------------------------------------
-# Chapter 5 - <br> following a heading
+# Chapter 5 — <br> following a heading
 # ---------------------------------------------------------------------------
 ch5 = xhtml("Ch5: br after heading", f"""
 <h1>Ch 5: &lt;br&gt; After a Heading</h1>
@@ -133,7 +133,7 @@ ch5 = xhtml("Ch5: br after heading", f"""
 """)
 
 # ---------------------------------------------------------------------------
-# Chapter 6 - <br> at very start of chapter (no spurious leading gap)
+# Chapter 6 — <br> at very start of chapter (no spurious leading gap)
 # ---------------------------------------------------------------------------
 ch6 = xhtml("Ch6: br at chapter start", f"""<br/>
 <h1>Ch 6: &lt;br&gt; at Chapter Start</h1>
@@ -143,7 +143,7 @@ area above it despite the &lt;br&gt; being the very first element.</p>
 """)
 
 # ---------------------------------------------------------------------------
-# Chapter 7 - <li><p> with bold+italic (issue #956 example 1)
+# Chapter 7 — <li><p> with bold+italic (issue #956 example 1)
 # ---------------------------------------------------------------------------
 ch7 = xhtml("Ch7: li>p bold italic", """
 <h1>Ch 7: &lt;li&gt;&lt;p&gt; with Bold+Italic</h1>
@@ -158,7 +158,7 @@ separate line above it. The bullet and text are inline.</p>
 """)
 
 # ---------------------------------------------------------------------------
-# Chapter 8 - <li><p> with nested <ul> (issue #956 example 2)
+# Chapter 8 — <li><p> with nested <ul> (issue #956 example 2)
 # ---------------------------------------------------------------------------
 ch8 = xhtml("Ch8: li>p nested ul", """
 <h1>Ch 8: &lt;li&gt;&lt;p&gt; with Nested List</h1>
@@ -177,7 +177,7 @@ indented further with its own bullets also inline.</p>
 """)
 
 # ---------------------------------------------------------------------------
-# Chapter 9 - <li> with direct text (no <p> wrapper, baseline)
+# Chapter 9 — <li> with direct text (no <p> wrapper, baseline)
 # ---------------------------------------------------------------------------
 ch9 = xhtml("Ch9: li direct text", """
 <h1>Ch 9: &lt;li&gt; Direct Text (Baseline)</h1>

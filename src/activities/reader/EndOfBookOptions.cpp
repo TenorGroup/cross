@@ -200,7 +200,7 @@ void EndOfBookOptions::render(GfxRenderer& renderer, const MappedInputManager& i
 
   // Suggestion menu: title, list (+ Home entry) and button hints. The hints are drawn at
   // the physical front buttons, which is a logical side/top edge in the rotated
-  // orientations - lay out inside the safe area so nothing hides behind them. Vertical
+  // orientations — lay out inside the safe area so nothing hides behind them. Vertical
   // positions derive from the safe-area height and font line heights so other panel
   // resolutions scale (review request on #2532).
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);

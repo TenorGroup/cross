@@ -27,15 +27,15 @@ There are three ways to install fonts:
    [crosspoint-fonts repository](https://github.com/crosspoint-reader/crosspoint-fonts)
 2. Copy font family folders to one of two locations on your SD card:
 
-   - `/.fonts/` - hidden directory (preferred; keeps the SD root tidy
+   - `/.fonts/` — hidden directory (preferred; keeps the SD root tidy
      when mounted on a desktop)
-   - `/fonts/` - visible directory (use this if your OS hides dot-files
+   - `/fonts/` — visible directory (use this if your OS hides dot-files
      and you'd rather see the folder in your file manager)
 
    Both roots are always scanned at boot and the results are merged: a
    family installed in `/fonts/` shows up even when `/.fonts/` also
    exists, and vice versa. The two roots only collide if the same family
-   name appears in both - in that case the copy in `/.fonts/` wins and
+   name appears in both — in that case the copy in `/.fonts/` wins and
    the duplicate in `/fonts/` is ignored.
 
        SD Card Root/
@@ -69,11 +69,11 @@ The fallback is **size-matched**. The built-in UI fonts render at 8 pt
 so CrossPoint loads your SD family at those sizes too and maps each UI font to
 its same-size SD font. CJK book names therefore appear at the same size as the
 Latin text around them. For this to work the family must contain `.cpfont`
-files at sizes **8, 10 and 12** (in addition to the reader sizes 12-18); any UI
+files at sizes **8, 10 and 12** (in addition to the reader sizes 12–18); any UI
 size missing from the family simply keeps showing boxes for CJK at that size.
 
 Note that **Settings > Reader > Font Size** lists every size the family ships,
-so a family built at 8,10,12,14,16,18 offers all six as reading sizes - the UI
+so a family built at 8,10,12,14,16,18 offers all six as reading sizes — the UI
 sizes are not hidden from the list. Reading at 8 pt is your call; if you would
 rather not see the small sizes there, convert two families (one with the UI
 sizes for fallback, one with only the reading sizes you want).
@@ -101,7 +101,7 @@ What this means in practice:
   that SD font is a `Mono` family, the Latin portion will appear half/full
   width.
 - If no SD font is selected (a built-in reading font is active), there is no
-  CJK fallback and the UI again shows boxes for CJK - pick a CJK SD font to
+  CJK fallback and the UI again shows boxes for CJK — pick a CJK SD font to
   restore it.
 
 ## Available Pre-Built Fonts
@@ -143,8 +143,8 @@ To convert your own TrueType/OpenType fonts:
 
 | Preset | Coverage |
 |--------|----------|
-| `ascii` | U+0020-U+007E (Basic Latin) |
-| `latin1` | U+0080-U+00FF (Latin-1 Supplement) |
+| `ascii` | U+0020–U+007E (Basic Latin) |
+| `latin1` | U+0080–U+00FF (Latin-1 Supplement) |
 | `latin-ext` | European languages (Latin + Extended-A/B + punctuation + ligatures) |
 | `greek` | Greek + Extended Greek |
 | `cyrillic` | Cyrillic + Supplement |
@@ -155,7 +155,7 @@ To convert your own TrueType/OpenType fonts:
 | `ethiopic` | Ethiopic + Extended |
 | `vietnamese` | Vietnamese subset (ơ/ư and combining marks) |
 | `ipa-chars` | IPA Extensions + Spacing Modifier Letters (phonetic transcription) |
-| `punctuation` | General punctuation (U+2000-U+206F) |
+| `punctuation` | General punctuation (U+2000–U+206F) |
 | `cjk` | CJK Unified Ideographs + Hiragana + Katakana + Fullwidth |
 | `hangul` | Korean Hangul syllables + Jamo + Compatibility Jamo |
 | `cherokee` | Cherokee (historic + supplement block) |
@@ -175,6 +175,6 @@ To list all presets with codepoint counts:
 
 ### Additional options
 
-`--force-autohint` - force FreeType's auto-hinter instead of the font's native hinting (useful when a font's built-in hints produce poor results at small sizes).
+`--force-autohint` — force FreeType's auto-hinter instead of the font's native hinting (useful when a font's built-in hints produce poor results at small sizes).
 
 Install custom fonts via the web interface or manual SD card copy.

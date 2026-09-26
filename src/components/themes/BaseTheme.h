@@ -35,7 +35,7 @@ struct ThemeMetrics {
   int listWithSubtitleRowHeight;
   // FreeInkUI list shape, consumed by uiThemeTokens() for screens rendered
   // through FreeInkApp: the theme supplies geometry and selection style, the
-  // uiScale fonts supply the sizes. Plain data by design - the eventual
+  // uiScale fonts supply the sizes. Plain data by design — the eventual
   // SD-card theme files will provide exactly these values.
   int listRowGap;          // vertical gap between rows
   int listRowRadius;       // row corner radius (RoundedRaff cards, Lyra pill)

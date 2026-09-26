@@ -61,7 +61,7 @@ std::string utf8ComposeNfc(const std::string& in) {
       }
       utf8AppendCodepoint(cp, out);
     } else {
-      // Hangul LV / LVT composition (Unicode 3.12, pure arithmetic - no
+      // Hangul LV / LVT composition (Unicode 3.12, pure arithmetic — no
       // tables): a modern leading consonant followed by a medial vowel
       // composes to an LV syllable in the U+AC00 block; an LV syllable
       // followed by a trailing consonant extends to LVT. macOS stores
@@ -117,7 +117,7 @@ uint32_t utf8NextCodepoint(const unsigned char** string) {
   // Validate continuation bytes before consuming them
   for (int i = 1; i < bytes; i++) {
     if ((chr[i] & 0xC0) != 0x80) {
-      // Missing or invalid continuation byte - skip all bytes consumed so far
+      // Missing or invalid continuation byte — skip all bytes consumed so far
       *string += i;
       return REPLACEMENT_GLYPH;
     }
@@ -174,7 +174,7 @@ int utf8SafeTruncateBuffer(const char* buf, int len) {
   int actualLen = len - leadPos;
 
   if (actualLen < expectedLen && leadPos > 0) {
-    // Incomplete UTF-8 sequence at the end - exclude it
+    // Incomplete UTF-8 sequence at the end — exclude it
     return leadPos;
   }
   return len;

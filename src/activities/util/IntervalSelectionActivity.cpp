@@ -107,7 +107,7 @@ void IntervalSelectionActivity::loop() {
   // Touch goes through the FreeInkApp: render() registered the slider, -/+ zones,
   // and Cancel/OK hit rects; the slider follows the finger via InputDrag. Runs
   // before the Back handler because the release of a drag can also register as a
-  // swipe (e.g. the left-edge rightward back gesture) - the drag must consume it
+  // swipe (e.g. the left-edge rightward back gesture) — the drag must consume it
   // so it can't cancel the dialog.
   const auto route = routeTouch(mappedInput, false, /*routeHeld=*/true);
   if (route.routed && app.invalidated()) requestUpdate();

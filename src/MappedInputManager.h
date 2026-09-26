@@ -56,8 +56,8 @@ class MappedInputManager {
   bool wasScreenTouchDown(int& x, int& y) const;
   // One-shot long-press from the SDK touch classifier, fired WHILE the finger
   // is still down (stationary contact held past the SDK threshold). Consuming
-  // it suppresses the remainder of the contact - its continued hold and its
-  // release edge - so the ensuing finger lift can't also tap-dismiss the popup
+  // it suppresses the remainder of the contact — its continued hold and its
+  // release edge — so the ensuing finger lift can't also tap-dismiss the popup
   // the long-press opened. The SDK owns that latch and self-clears it once the
   // contact ends.
   bool wasScreenLongPress(int& x, int& y) const;
@@ -69,7 +69,7 @@ class MappedInputManager {
   bool wasTapInRect(int x, int y, int width, int height) const;
 
   // Combined touch interaction for a band of equal rows with caller-supplied
-  // geometry - the shared hit-test for lists the theme helpers above do not
+  // geometry — the shared hit-test for lists the theme helpers above do not
   // cover (custom row heights, option prompts, menus). Down = a held
   // tap-candidate is on a row (update the selection highlight); Tap = a tap
   // released on one (activate). rowHeight limits the hit to the top rowHeight

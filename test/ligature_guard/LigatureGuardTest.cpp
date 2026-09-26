@@ -1,4 +1,4 @@
-// LigatureGuardTest - font GSUB ligatures must not re-process Arabic text.
+// LigatureGuardTest — font GSUB ligatures must not re-process Arabic text.
 //
 // Arabic contextual joining (including Lam-Alef) is resolved at render time by
 // do_shape() in MiniBidi, which emits Arabic presentation forms in visual
@@ -7,7 +7,7 @@
 //   FEDF (lam-initial) + FE8E (alef-final) -> FEFB (lam-alef isolated)
 // If EpdFont::getLigature() ran that pair over already-shaped text, a normal
 // Alef+Lam ("…ال…", shaped to FEDF FE8E) would be wrongly collapsed into a
-// Lam-Alef ligature - transposing the letters (e.g. کسالت -> کسلات).
+// Lam-Alef ligature — transposing the letters (e.g. کسالت -> کسلات).
 //
 // getLigature() therefore refuses any pair whose operands are Arabic
 // presentation forms. Latin ligatures (ff/fi/fl, keyed on ASCII) are kept.
@@ -55,7 +55,7 @@ TEST(LigatureGuard, ArabicPresentationFormPairSuppressed) {
 }
 
 // Base-codepoint Arabic ligatures (operands below the presentation-form
-// ranges) are NOT shaper output and must still apply - the guard is not
+// ranges) are NOT shaper output and must still apply — the guard is not
 // over-broad. Alef + combining maddah composes to precomposed آ (U+0622).
 TEST(LigatureGuard, BaseArabicCompositionKept) {
   EpdFontData data;
@@ -64,7 +64,7 @@ TEST(LigatureGuard, BaseArabicCompositionKept) {
 }
 
 // End-to-end: a shaped Alef+Lam fragment (FEDF followed by FE8E) must not
-// collapse - the two letters stay distinct, so کسالت keeps its ال.
+// collapse — the two letters stay distinct, so کسالت keeps its ال.
 TEST(LigatureGuard, ShapedAlefLamNotCollapsed) {
   EpdFontData data;
   const EpdFont font = makeFont(data);

@@ -79,9 +79,9 @@ The X4 Pro has a built-in frontlight with adjustable brightness and warmth. It i
 * **Quick toggle:** Double-click the **Power** button to turn the frontlight on or off instantly, without opening the panel.
 
 > [!NOTE]
-> Frontlight brightness and warmth are intentionally not listed in **[Display Settings](#361-display)** - the swipe panel is the only place to adjust them. The on/off state can also be toggled with the Power-button double-click above.
+> Frontlight brightness and warmth are intentionally not listed in **[Display Settings](#361-display)** — the swipe panel is the only place to adjust them. The on/off state can also be toggled with the Power-button double-click above.
 
-If the frontlight doesn't come back on after the device wakes from sleep, check **Restore Light on Wake** in **[Display Settings](#361-display)** (on by default). Turning it off is intentional if you'd rather have the light stay off on wake and switch it on yourself each time - but it's easy to forget you changed it.
+If the frontlight doesn't come back on after the device wakes from sleep, check **Restore Light on Wake** in **[Display Settings](#361-display)** (on by default). Turning it off is intentional if you'd rather have the light stay off on wake and switch it on yourself each time — but it's easy to forget you changed it.
 
 ---
 
@@ -277,7 +277,7 @@ The Settings screen allows you to configure the device's behavior. There are a f
   - "ON" - Vertical space will be added between paragraphs in Reading Mode
   - "OFF" - Paragraphs will not have vertical space added, but will have first-line indentation
 
-- **Dictionary**: Select the StarDict dictionary used for word lookups while reading, or "None" to disable lookups. *(Only shown when at least one dictionary folder exists under `/dictionaries/` on the SD card - see [docs/dictionary.md](docs/dictionary.md) for setup and usage.)*
+- **Dictionary**: Select the StarDict dictionary used for word lookups while reading, or "None" to disable lookups. *(Only shown when at least one dictionary folder exists under `/dictionaries/` on the SD card — see [docs/dictionary.md](docs/dictionary.md) for setup and usage.)*
 
 - **Text Anti-Aliasing**: Whether to show smooth grey edges (anti-aliasing) on text in reading mode. Note this slows down page turns slightly.
 
@@ -295,7 +295,7 @@ The Settings screen allows you to configure the device's behavior. There are a f
   
   - "Chapter Skip" (default) - Long-pressing skips to next/previous chapter
   - "Page Scroll" - Long-pressing scrolls a page up/down
-- **Long-press Menu**: Selects the function bound to holding the menu button (Confirm) while reading an EPUB. **Cycles through the available functions** each time the setting is selected - additional functions may be added in future releases, so this is not a binary on/off toggle. A short press of Confirm always opens the reader menu as normal:
+- **Long-press Menu**: Selects the function bound to holding the menu button (Confirm) while reading an EPUB. **Cycles through the available functions** each time the setting is selected — additional functions may be added in future releases, so this is not a binary on/off toggle. A short press of Confirm always opens the reader menu as normal:
   - "Bookmark" (default) - Hold Confirm (~0.4 second) to drop a bookmark at the current page.
   - "KOSync" - Hold Confirm (~1 second) to launch KOReader sync directly.
   - "Dictionary" - Hold Confirm (~0.4 second) to start dictionary word selection on the current page (see [docs/dictionary.md](docs/dictionary.md)).
@@ -621,7 +621,7 @@ See [docs/dictionary.md](docs/dictionary.md) for supported formats, setup, and w
 * **Return to Home:** Press the **Back** button to close the book and return to the **[Home](#31-home-screen)** screen.
 * **Return to Browse Files:** Press and hold the **Back** button to close the book and return to the **[Browse Files](#33-browse-files-screen)** screen.
 * **Reader Menu:** Press **Confirm** to open the **[Reader Menu](#5-reader-menu)**, which includes chapter navigation, reading options, and more.
-* **Long-press Confirm (configurable):** Holding **Confirm** runs the function chosen by the **Long-press Menu** setting in **[Controls Settings](#363-controls)** - "Bookmark" (default) drops a bookmark, "KOSync" launches KOReader Sync, "Dictionary" starts a word lookup, "Disabled" does nothing. A short press always opens the Reader Menu.
+* **Long-press Confirm (configurable):** Holding **Confirm** runs the function chosen by the **Long-press Menu** setting in **[Controls Settings](#363-controls)** — "Bookmark" (default) drops a bookmark, "KOSync" launches KOReader Sync, "Dictionary" starts a word lookup, "Disabled" does nothing. A short press always opens the Reader Menu.
 
 ### Supported Languages
 
@@ -631,7 +631,7 @@ CrossPoint renders text using the following Unicode character blocks, enabling s
 * **Cyrillic Script (Standard and Extended):** Covers Russian, Ukrainian, Belarusian, Bulgarian, Serbian, Macedonian, Kazakh, Kyrgyz, Mongolian, and others.
 * **Vietnamese:** Supported via extended Latin glyph coverage in the built-in reader fonts.
 
-The UI includes Arabic and Hebrew (menus use built-in fonts with presentation-form coverage). Built-in **reader** fonts do not cover Chinese, Japanese, Korean, Arabic, Greek, Hebrew, or Farsi for book text. **CJK, Hebrew, Arabic, Greek, and other extended scripts can be enabled for reading by installing custom SD card fonts** - see [Custom Fonts (SD Card)](#38-custom-fonts-sd-card).
+The UI includes Arabic and Hebrew (menus use built-in fonts with presentation-form coverage). Built-in **reader** fonts do not cover Chinese, Japanese, Korean, Arabic, Greek, Hebrew, or Farsi for book text. **CJK, Hebrew, Arabic, Greek, and other extended scripts can be enabled for reading by installing custom SD card fonts** — see [Custom Fonts (SD Card)](#38-custom-fonts-sd-card).
 
 ---
 
@@ -641,17 +641,17 @@ Press **Confirm** while reading to open the Reader Menu. From here you can acces
 
 Available options include:
 
-- **Select Chapter** - Open the table of contents to jump to a specific chapter (see [Chapter Selection](#51-chapter-selection) below).
-- **Footnotes** - Navigate to the footnotes for the current section *(only shown in books that contain footnotes)*.
-- **Look Up** - Select a word on the current page and show its dictionary definition (see [docs/dictionary.md](docs/dictionary.md)). Requires a dictionary to be selected in **Settings → Reader → Dictionary**.
-- **Reading Orientation** - Cycle through screen orientations without leaving the reader.
-- **Auto Turn (Pages Per Minute)** - Cycle through automatic page turn speed options for hands-free reading.
-- **Go to %** - Jump to a specific position in the book by percentage.
-- **Take screenshot** - Save a screenshot of the current page to the `screenshots/` folder.
-- **Show page as QR** - Display a QR code encoding the current reading position.
-- **Go Home** - Close the book and return to the Home screen.
-- **Sync Progress** - Push or pull reading progress with a KOReader sync server (see [KOReader Sync Quick Setup](#367-koreader-sync-quick-setup)).
-- **Delete Book Cache** - Clear the cached layout data for the current book, forcing a re-index on next open.
+- **Select Chapter** – Open the table of contents to jump to a specific chapter (see [Chapter Selection](#51-chapter-selection) below).
+- **Footnotes** – Navigate to the footnotes for the current section *(only shown in books that contain footnotes)*.
+- **Look Up** – Select a word on the current page and show its dictionary definition (see [docs/dictionary.md](docs/dictionary.md)). Requires a dictionary to be selected in **Settings → Reader → Dictionary**.
+- **Reading Orientation** – Cycle through screen orientations without leaving the reader.
+- **Auto Turn (Pages Per Minute)** – Cycle through automatic page turn speed options for hands-free reading.
+- **Go to %** – Jump to a specific position in the book by percentage.
+- **Take screenshot** – Save a screenshot of the current page to the `screenshots/` folder.
+- **Show page as QR** – Display a QR code encoding the current reading position.
+- **Go Home** – Close the book and return to the Home screen.
+- **Sync Progress** – Push or pull reading progress with a KOReader sync server (see [KOReader Sync Quick Setup](#367-koreader-sync-quick-setup)).
+- **Delete Book Cache** – Clear the cached layout data for the current book, forcing a re-index on next open.
 - **File Transfer** - Leave the book for the File Transfer screen. Reading progress is kept.
 - **Tilt Page Turn** *(X3 only)* - Switch tilt page turning off, or back on in the direction it had.
 
@@ -712,8 +712,8 @@ python3 scripts/debugging_monitor.py COM7                # Windows
 
 - Color-coded log output by category (errors, memory, display, EPUB parsing, etc.)
 - Live memory usage graph (free RAM, total RAM, max contiguous allocation) updated every second
-- Interactive command prompt - type a command and press Enter to send it to the device
-- Screenshot capture - saves the current display to `screenshot.bmp` when triggered by the device
+- Interactive command prompt — type a command and press Enter to send it to the device
+- Screenshot capture — saves the current display to `screenshot.bmp` when triggered by the device
 
 **Options:**
 

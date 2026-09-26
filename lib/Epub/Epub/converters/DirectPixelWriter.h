@@ -10,7 +10,7 @@
 // Direct framebuffer writer that eliminates per-pixel overhead from the image
 // rendering hot path.  Pre-computes orientation transform as linear coefficients
 // and caches render-mode state so the inner loop is: one multiply, one add,
-// one shift, and one AND per pixel - no branches, no method calls.
+// one shift, and one AND per pixel — no branches, no method calls.
 //
 // Caller is responsible for ensuring (outX, outY) are within screen bounds.
 // ImageBlock::render() already validates this before entering the pixel loop,
@@ -146,7 +146,7 @@ struct DirectPixelWriter {
 
   // Write a single 2-bit dithered pixel value to the framebuffer.
   // Must be called after beginRow() for the current row.
-  // No bounds checking - caller guarantees coordinates are valid.
+  // No bounds checking — caller guarantees coordinates are valid.
   inline void writePixel(int logicalX, uint8_t pixelValue, bool writeWhiteInBw = false) const {
     // Determine whether to draw based on render mode
     bool draw;

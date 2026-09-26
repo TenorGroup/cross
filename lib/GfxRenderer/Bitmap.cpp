@@ -149,7 +149,7 @@ BmpReaderError Bitmap::parseHeaders() {
   }
 
   // Check if palette luminances map cleanly to the display's 4 native gray levels.
-  // Native levels are 0, 85, 170, 255 - i.e. values where (lum >> 6) is lossless.
+  // Native levels are 0, 85, 170, 255 — i.e. values where (lum >> 6) is lossless.
   // If all palette entries are near a native level, we can skip dithering entirely.
   nativePalette = bpp <= 2;  // 1-bit and 2-bit are always native
   if (!nativePalette && colorsUsed > 0) {

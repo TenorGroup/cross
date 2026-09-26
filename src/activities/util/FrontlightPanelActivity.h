@@ -8,7 +8,7 @@
 // Top-anchored control center opened by a top-edge down-swipe, a status-bar tap,
 // or a button bound to "Control Center" (iOS Control Center style): a grabber,
 // the frontlight brightness/warmth sliders (on boards with a light), and a grid
-// of quick-setting tiles - night mode, ghost-cleanup refresh, reading
+// of quick-setting tiles — night mode, ghost-cleanup refresh, reading
 // orientation, and reader touch controls on/off. The
 // frontlight controls are always there: they are what the panel is for. Pure
 // 1-bit: no dithered fills, selection reads as a filled tile. The grabber sits
@@ -20,7 +20,7 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   uint8_t warmth = 50;
   bool lightOn = false;
   // lightOn is seeded from the live hardware state (Frontlight.isOn()), which
-  // legitimately diverges from the saved SETTINGS.frontlightOn preference -
+  // legitimately diverges from the saved SETTINGS.frontlightOn preference —
   // e.g. after a wake with frontlightRestoreOnWake off, the light stays off
   // live while the saved "was on" preference is deliberately kept (see
   // main.cpp's restoreLightOn). brightness/warmth have no such divergence
@@ -36,14 +36,14 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   int panelBottom = 0;
 
   // Quick-setting tiles, in grid order (2 columns): night mode, refresh,
-  // orientation, touch. Fixed set - shown on touch boards, absent elsewhere.
+  // orientation, touch. Fixed set — shown on touch boards, absent elsewhere.
   static constexpr int kTileCount = 4;
 
   // fui::SliderRowProps and fui::TileGridProps embed a 324-byte fui::StyleSet,
   // so the props the render path fills in live here instead of on the stack
   // (locals stay under 256 bytes). The components take them by
   // const reference and draw immediately, so one instance per call site is
-  // enough - every field either is reassigned on each use or keeps its
+  // enough — every field either is reassigned on each use or keeps its
   // constructed default.
   freeink::ui::SliderRowProps rowProps;
   freeink::ui::TileGridProps gridProps;
@@ -75,7 +75,7 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
 
   // One-shot: a tile that rewrote the whole frame (night mode) re-drives it
   // with the ghost-cleanup waveform on the next render. The "refresh" tile does
-  // not use this - it closes the panel and promotes the repaint underneath
+  // not use this — it closes the panel and promotes the repaint underneath
   // instead (GfxRenderer::promoteNextRefresh).
   bool cleanRefreshPending = false;
 

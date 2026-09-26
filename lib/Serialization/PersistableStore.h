@@ -27,7 +27,7 @@ class PersistableStoreBase {
   // reachable: the web server task saves settings while the main task can too.
   //
   // It is deliberately held across the SD write. That is safe only because the
-  // read path does NOT take it - derived stores build their snapshots (e.g.
+  // read path does NOT take it — derived stores build their snapshots (e.g.
   // CrossPointSettings::statusBarSpec) unlocked. If you ever lock this mutex on
   // a read path, you put it on the render path and stall rendering behind SD
   // I/O, and you create a storeMutex/storageMutex ordering hazard. Don't.
@@ -43,7 +43,7 @@ class PersistableStoreBase {
 
  public:
   // Public so non-store JSON files (e.g. per-book bookmarks) can reuse them
-  // instead of instantiating serializeJson/deserializeJson in their own TU -
+  // instead of instantiating serializeJson/deserializeJson in their own TU —
   // that per-TU duplication is exactly what this class exists to prevent.
 
   // Checks complete serialization and writes through checked staging/backup replacement.
@@ -80,7 +80,7 @@ class PersistableStoreBase {
  * - bool fromJson(JsonVariantConst doc);
  *
  * Note for implementers: read string values as `const char*` (e.g.
- * `obj["name"] | ""`), never as `| std::string("")` - ArduinoJson's
+ * `obj["name"] | ""`), never as `| std::string("")` — ArduinoJson's
  * std::string converter drags a per-TU copy of the whole JSON serializer
  * into flash via its serializeJson fallback.
  *

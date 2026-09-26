@@ -198,7 +198,7 @@ void WebDAVHandler::handlePropfind(WebServer& s) {
   HalFile root = Storage.open(path.c_str());
   if (!root) {
     if (path == "/") {
-      // Root should always work - send minimal response
+      // Root should always work — send minimal response
       s.setContentLength(CONTENT_LENGTH_UNKNOWN);
       s.send(207, "application/xml; charset=\"utf-8\"", "");
       s.sendContent(

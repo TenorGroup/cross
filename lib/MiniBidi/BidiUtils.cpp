@@ -142,7 +142,7 @@ bool applyBidiVisual(const char* utf8, std::string& out, int paragraphLevel) {
   const int level = autodir ? 0 : (paragraphLevel & 1);
 
   // Order matters (mintty does the same): do_bidi() first to obtain visual
-  // order, then do_shape() - contextual forms are resolved from *visual*
+  // order, then do_shape() — contextual forms are resolved from *visual*
   // adjacency, and shaping presentation forms must never be reordered.
   do_bidi(autodir, level, line, count);
   do_shape(line, shaped, count);

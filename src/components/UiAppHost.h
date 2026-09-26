@@ -44,7 +44,7 @@ class UiAppHost {
   void renderUi();
 
   // What loop-task routing saw this pass. `routed` is true when the gate was
-  // open and the snapshot carried relevant touch input - the invalidated()
+  // open and the snapshot carried relevant touch input — the invalidated()
   // repaint check belongs behind it, so a pending render requested elsewhere
   // is not re-requested on every idle pass.
   struct TouchRoute {

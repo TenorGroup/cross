@@ -82,7 +82,7 @@ class HalDisplay {
   // builds) without freeing it: the allocation never moves, so repeated loans
   // cannot fragment the heap (free+realloc measurably did). No display calls
   // between lend and return; the panel keeps its last refreshed image. The
-  // buffer comes back white - redraw fully. Returns nullptr if already lent.
+  // buffer comes back white — redraw fully. Returns nullptr if already lent.
   uint8_t* lendFrameBufferStorage(uint32_t* sizeOut);
   void returnFrameBufferStorage();
 

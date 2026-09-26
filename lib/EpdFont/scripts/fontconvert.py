@@ -102,7 +102,7 @@ intervals = [
     # (0x3400, 0x4DBF),
     # # Extension B
     # (0x20000, 0x2A6DF),
-    # # Extension C-F
+    # # Extension C–F
     # (0x2A700, 0x2EBEF),
     # # Extension G
     # (0x30000, 0x3134F),

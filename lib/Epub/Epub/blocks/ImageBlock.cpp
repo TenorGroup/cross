@@ -344,7 +344,7 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
   // Tiled grayscale (#2190): skip the whole image when it doesn't touch the
   // active band. The per-pixel writer already clips off-band pixels, but without
   // this each of the ~7 bands per plane re-ran the full cache load / pixel walk
-  // and discarded the result - the dominant cost of AA on image pages. The check
+  // and discarded the result — the dominant cost of AA on image pages. The check
   // is orientation-aware and returns true when no strip is active, so the BW
   // pass and non-tiled controllers render the image exactly as before.
   if (!renderer.glyphIntersectsStrip(x, y, x + width - 1, y + height - 1)) {

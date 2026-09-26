@@ -254,7 +254,7 @@ def build_manifest(
 
     # Top-level script-group display metadata (tag + English label), emitted in
     # catalog order and limited to groups actually used by ≥1 family. The device
-    # is fully data-driven from this - it holds no hardcoded script list.
+    # is fully data-driven from this — it holds no hardcoded script list.
     script_groups = [
         {"tag": tag, "label": label}
         for tag, label in SCRIPT_GROUPS

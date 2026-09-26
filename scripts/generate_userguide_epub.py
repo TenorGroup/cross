@@ -275,7 +275,7 @@ def build_epub():
     )
     book.add_item(style)
 
-    # Full-size cover image (480×800) - used by CrossPoint for home-screen thumbnail.
+    # Full-size cover image (480×800) — used by CrossPoint for home-screen thumbnail.
     # uid='cover-image' matches the EPUB 2 <meta name="cover" content="cover-image"/> value.
     cover_png_bytes = make_cover_png()
     cover_img_item = epub.EpubItem(
@@ -286,10 +286,10 @@ def build_epub():
     )
     cover_img_item.properties = ['cover-image']  # EPUB 3 manifest property
     book.add_item(cover_img_item)
-    # EPUB 2 cover declaration - CrossPoint's Tier 1 OPF lookup
+    # EPUB 2 cover declaration — CrossPoint's Tier 1 OPF lookup
     book.add_metadata('OPF', 'meta', '', {'name': 'cover', 'content': 'cover-image'})
 
-    # Cover page XHTML - first readable page in the spine
+    # Cover page XHTML — first readable page in the spine
     cover_page = epub.EpubHtml(title='CrossPoint User Guide', file_name='cover.xhtml', lang='en')
     cover_page.content = make_xhtml(
         'CrossPoint User Guide',
@@ -316,7 +316,7 @@ def build_epub():
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
 
-    # nav is excluded from the spine - CrossPoint locates it via properties="nav" in
+    # nav is excluded from the spine — CrossPoint locates it via properties="nav" in
     # the manifest and does not respect linear="no", so omitting it prevents it from
     # appearing as a readable page. Cover is the first spine item.
     book.spine = [cover_page] + epub_chapters

@@ -1,5 +1,5 @@
 /*
- * minibidi.c - Unicode Bidirectional Algorithm (UAX #9) for CrossPoint/ESP32C3
+ * minibidi.c — Unicode Bidirectional Algorithm (UAX #9) for CrossPoint/ESP32C3
  *
  * Original author:  Ahmad Khalifa (www.arabeyes.org, MIT licence)
  * Mintty changes:   Thomas Wolff (rules N0, W7/L1/X9 fixes, isolates)
@@ -128,7 +128,7 @@ ucschar mirror(ucschar c) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
- * Arabic contextual shaping - do_shape()
+ * Arabic contextual shaping — do_shape()
  *
  * Ported from mintty src/minibidi.c (https://github.com/mintty/mintty),
  * original author Ahmad Khalifa (www.arabeyes.org), maintained by
@@ -144,14 +144,14 @@ ucschar mirror(ucschar c) {
  *      cell, a proportional-text renderer must drop the character.
  *   3. The STYPE/SISOLATED macros became functions backed by a second
  *      lookup table covering Perso-Arabic letters outside mintty's native
- *      U+0621-U+064A range (Farsi پ چ ژ گ, Urdu ٹ ڈ ڑ ں ہ ے, plus Sindhi/
+ *      U+0621–U+064A range (Farsi پ چ ژ گ, Urdu ٹ ڈ ڑ ں ہ ے, plus Sindhi/
  *      Pashto/Kurdish letters).  Joining types are sourced from Unicode
  *      ArabicShaping.txt and presentation forms from UnicodeData.txt
  *      (Arabic Presentation Forms-A), both Unicode 17.0.0.  Letters with a
  *      joining type but no presentation-form codepoints keep their base
  *      codepoint (neighbours still shape correctly around them).
  *      U+200C/U+200D also get their ArabicShaping.txt types (U and C) so
- *      that in-stream ZWJ/ZWNJ - which mintty never has in its array -
+ *      that in-stream ZWJ/ZWNJ — which mintty never has in its array —
  *      affect adjacency the same way the joiners flags do.
  * ═══════════════════════════════════════════════════════════════════════ */
 
@@ -250,7 +250,7 @@ static const struct {
 };
 
 /* ── CrossPoint extension: presentation forms outside U+0621–U+064A ─────
- * Source: UnicodeData.txt, Arabic Presentation Forms-A (U+FB50-U+FBFF).
+ * Source: UnicodeData.txt, Arabic Presentation Forms-A (U+FB50–U+FBFF).
  * forms = number of consecutive presentation forms allocated for the
  * letter, always in the order isolated, final, initial, medial (matching
  * the SHAPE_* offsets below): 2 = isolated+final, 4 = all.
@@ -365,7 +365,7 @@ static int prev_non_nsm(const bidi_char* line, int i) {
 
 /* The Main shaping function (mintty, structure preserved).
  *
- * line: visual-order buffer - must have been passed through do_bidi() first
+ * line: visual-order buffer — must have been passed through do_bidi() first
  * to:   output buffer for the shaped data
  * count: number of characters in line
  */
@@ -467,7 +467,7 @@ int do_shape(bidi_char* line, bidi_char* to, int count) {
 
 /* ═══════════════════════════════════════════════════════════════════════
  * Directional Status Stack
- * (replaces GCC nested functions - ESP32C3 has no executable stack)
+ * (replaces GCC nested functions — ESP32C3 has no executable stack)
  * ═══════════════════════════════════════════════════════════════════════ */
 
 typedef struct {
@@ -504,7 +504,7 @@ static inline void dss_pop(DirStatusStack* s, uchar* emb, uchar* ovr, bool* isol
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
- * do_bidi()  - The main UAX#9 algorithm
+ * do_bidi()  — The main UAX#9 algorithm
  * ═══════════════════════════════════════════════════════════════════════ */
 
 int do_bidi(bool autodir, int paragraphLevel, bidi_char* line, int count) {

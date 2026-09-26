@@ -90,7 +90,7 @@ class ZipFile {
   // These functions will open and close the zip as needed
   uint8_t* readFileToMemory(const char* filename, size_t* size = nullptr, bool trailingNullByte = false);
   // allowEarlyStop: a short write from `out` is treated as the sink asking to
-  // stop (returns true) instead of a write failure - used by header probes
+  // stop (returns true) instead of a write failure — used by header probes
   // that only need the first bytes of an entry.
   bool readFileToStream(const char* filename, Print& out, size_t chunkSize, bool allowEarlyStop = false);
 

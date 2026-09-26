@@ -140,7 +140,7 @@ int8_t EpdFont::getKerning(const uint32_t leftCp, const uint32_t rightCp) const 
                            : lookupKernClass(data->kernRightClasses, data->kernRightEntryCount, rightCp);
   if (rc == 0) return 0;
 
-  // Sparse (built-in fonts): scan the row. Linear rather than binary - rows hold ~15 entries on
+  // Sparse (built-in fonts): scan the row. Linear rather than binary — rows hold ~15 entries on
   // average, short enough that the scan measured faster (worst-case mix +11% over dense against
   // +19% for std::lower_bound), and it should widen on hardware that reads these arrays through
   // a flash cache, since the scan walks forwards through a cache line.
@@ -164,7 +164,7 @@ int8_t EpdFont::getKerning(const uint32_t leftCp, const uint32_t rightCp) const 
 // do_shape() in MiniBidi, which emits presentation forms in visual order.
 // Font GSUB ligatures must not run a second pass over that output: a shaped
 // Alef+Lam ("…ال…") is FEDF+FE8E, which the font's Lam-Alef pairs would
-// wrongly re-collapse into FEFB/FEFC - transposing the letters (e.g. کسالت →
+// wrongly re-collapse into FEFB/FEFC — transposing the letters (e.g. کسالت →
 // کسلات). Latin ligatures (ff/fi/fl) key off ASCII and are unaffected.
 static inline bool isArabicPresentationForm(const uint32_t cp) {
   return (cp >= 0xFB50 && cp <= 0xFDFF) || (cp >= 0xFE70 && cp <= 0xFEFF);
@@ -235,7 +235,7 @@ const EpdGlyph* EpdFont::getGlyph(const uint32_t cp) const {
     }
   }
 
-  // Codepoint not in interval table - try on-demand loading (SD card fonts).
+  // Codepoint not in interval table — try on-demand loading (SD card fonts).
   if (data->glyphMissHandler) {
     const EpdGlyph* loaded = data->glyphMissHandler(data->glyphMissCtx, cp);
     if (loaded) return loaded;
@@ -258,7 +258,7 @@ bool EpdFont::hasCodepoint(const uint32_t cp) const {
   }
 
   // Interval table miss. SD card fonts only keep the current page's glyphs in
-  // their interval table - ask their full RAM-resident coverage index instead.
+  // their interval table — ask their full RAM-resident coverage index instead.
   if (data->coverageHandler) {
     return data->coverageHandler(data->glyphMissCtx, cp);
   }

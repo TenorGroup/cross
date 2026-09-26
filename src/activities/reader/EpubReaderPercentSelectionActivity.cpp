@@ -99,7 +99,7 @@ void EpubReaderPercentSelectionActivity::loop() {
   // Touch goes through the FreeInkApp: render() registered the slider and -/+ hit
   // rects; the slider follows the finger via InputDrag (dragPermille per held frame).
   // Runs before the Back handler because the release of a drag can also register as a
-  // swipe (e.g. the left-edge rightward back gesture) - the drag must consume it so it
+  // swipe (e.g. the left-edge rightward back gesture) — the drag must consume it so it
   // can't cancel the dialog or step the percent.
   const auto route = routeTouch(mappedInput, false, /*routeHeld=*/true);
   if (route.routed && app.invalidated()) requestUpdate();

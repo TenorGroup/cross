@@ -17,7 +17,7 @@ class EpubReaderBookmarksActivity final : public UiListActivity {
   std::string epubPath;
   std::vector<BookmarkEntry> bookmarks;
   // Row buffers derived from `bookmarks`, rebuilt only when it changes
-  // (onEnter() load, post-delete) instead of on every repaint - buildScreen()
+  // (onEnter() load, post-delete) instead of on every repaint — buildScreen()
   // used to re-compose a percentage/chapter/TOC-title subtitle string per
   // bookmark on every render (cursor move, tap flash, ...).
   std::vector<std::string> bookmarkSubtitles;

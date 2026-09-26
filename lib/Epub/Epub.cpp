@@ -158,7 +158,7 @@ bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, const 
 #endif
 
   // Grab data from opfParser into epub. Normalize titles to NFC so NFD (combining
-  // mark) text renders correctly - the device fonts have no mark positioning.
+  // mark) text renders correctly — the device fonts have no mark positioning.
   bookMetadata.title = utf8ComposeNfc(opfParser.title);
   bookMetadata.author = opfParser.author;
   bookMetadata.language = opfParser.language;

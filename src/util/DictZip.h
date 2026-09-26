@@ -26,7 +26,7 @@ enum class ExtractError : uint8_t {
   ReadError,   // file open / read / write / bad-offset failure (IO or a bogus
                // .idx offset), not a compression problem
   Decompress,  // the compressed stream itself was bad (inflate failed, or the
-               // .dz header/chunk table didn't parse) - corrupt/truncated .dz
+               // .dz header/chunk table didn't parse) — corrupt/truncated .dz
 };
 
 // Parse the dictzip header/chunk table. On failure, *outError (if provided)

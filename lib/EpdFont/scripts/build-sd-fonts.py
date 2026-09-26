@@ -127,10 +127,10 @@ def extract_static_instance(source_path: Path, axes: dict, family_name: str, sty
     # *new* TTFont, so rebinding `font` would otherwise strand the source's
     # file handle open until GC runs.
     #
-    # updateFontNames=True   - rewrite the name table so the saved font
+    # updateFontNames=True   — rewrite the name table so the saved font
     #                          reports its weight/style accurately rather
     #                          than retaining the variable-font names.
-    # optimize=False         - skip the gvar interpolation optimisation;
+    # optimize=False         — skip the gvar interpolation optimisation;
     #                          fully pinning every axis drops gvar anyway,
     #                          so the work would be wasted.
     source_font = TTFont(str(source_path))
@@ -389,7 +389,7 @@ def main():
 
     output_base.mkdir(parents=True, exist_ok=True)
 
-    # Download phase (sequential - avoids hammering servers)
+    # Download phase (sequential — avoids hammering servers)
     print(f"\n=== Đang chuẩn bị {len(families)} họ font ===\n")
     for family in families:
         for style_name, style_spec in family.get("styles", {}).items():

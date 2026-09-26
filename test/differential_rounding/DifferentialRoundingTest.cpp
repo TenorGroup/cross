@@ -278,7 +278,7 @@ TEST(EpdFont, KernSplitClassMapWithSparseMatrix) {
 }
 
 TEST(EpdFont, KernLookupEmptyRowIsZero) {
-  // Left class 1 stores nothing (offsets 0,0) - an empty range must not read past its row.
+  // Left class 1 stores nothing (offsets 0,0) — an empty range must not read past its row.
   static const uint16_t rowOffsets[] = {0, 0, 1};
   static const uint8_t cols[] = {0};
   static const int8_t values[] = {-2};

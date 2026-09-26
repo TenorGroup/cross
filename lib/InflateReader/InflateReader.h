@@ -19,8 +19,8 @@ enum class InflateStatus {
 // InflateStream (lib/miniz), which decodes several times faster.
 //
 // Two modes:
-//   init(false)  - one-shot: input is a contiguous buffer, call read() once.
-//   init(true)   - streaming: allocates a 32KB ring buffer for back-references
+//   init(false)  — one-shot: input is a contiguous buffer, call read() once.
+//   init(true)   — streaming: allocates a 32KB ring buffer for back-references
 //                  across multiple read() / readAtMost() calls.
 //
 // Streaming callback pattern:
@@ -63,7 +63,7 @@ class InflateReader {
   // Exists for allocation ordering. The ring is by far the largest block a
   // streaming decode needs, and on a heap where every allocation is carved from
   // one big free run, taking any smaller buffer first can leave the largest
-  // block just short of 32KB - measured on device at 32756 bytes against a
+  // block just short of 32KB — measured on device at 32756 bytes against a
   // 32768 requirement. A caller that allocates the ring FIRST, then its own
   // state, never hits that. The buffer must outlive the reader; deinit() does
   // not free it.

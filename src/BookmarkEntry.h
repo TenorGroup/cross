@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <string>
 
-// A single bookmark entry - a position in a book.
+// A single bookmark entry — a position in a book.
 struct BookmarkEntry {
   std::string xpath;    // XPath-like progress string
   std::string summary;  // First few words of a page to help identify it

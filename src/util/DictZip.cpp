@@ -28,7 +28,7 @@ bool readLe16(HalFile& file, uint16_t* out) {
 // buffered whole. A dictzip chunk is ~58KB uncompressed (measured at 18KB
 // compressed for a real dictionary), so the old whole-chunk buffer was a large
 // contiguous request made while the 32KB inflate window was about to be taken
-// as well - two big blocks live at once, on a heap that during a reading
+// as well — two big blocks live at once, on a heap that during a reading
 // session has well under 50KB free (#2744). This holds INPUT_BUF_BYTES instead.
 //
 // InflateReader MUST stay the first member: the uzlib callback receives only a
@@ -80,7 +80,7 @@ bool extractChunkSlice(HalFile& file, uint32_t compressedOffset, uint32_t compre
   // block 12 bytes short on device (largest=32756 against need=32768) even on a
   // barely fragmented heap. Ordering by size removes that failure mode: the ring
   // gets the big block while it is still whole, and the small buffers fit in
-  // what remains - or in one of the smaller free blocks.
+  // what remains — or in one of the smaller free blocks.
   auto window = makeUniqueNoThrow<uint8_t[]>(InflateReader::RING_BYTES);
   if (!window) return fail(ExtractError::LowMemory);
 
@@ -90,7 +90,7 @@ bool extractChunkSlice(HalFile& file, uint32_t compressedOffset, uint32_t compre
   src->remaining = compressedSize;
 
   // compressedOffset comes from the untrusted .dz chunk table, so an out-of-range
-  // seek is possible - guard it rather than reading from the prior position.
+  // seek is possible — guard it rather than reading from the prior position.
   if (!file.seekSet(compressedOffset)) return fail(ExtractError::ReadError);
 
   // `window` outlives the reader (declared above it, destroyed after), as
@@ -104,7 +104,7 @@ bool extractChunkSlice(HalFile& file, uint32_t compressedOffset, uint32_t compre
   if (!buf) return fail(ExtractError::LowMemory);
 
   // A decode failure after the callback hit an IO error is a read failure, not
-  // a corrupt stream - keep the two distinguishable for the caller.
+  // a corrupt stream — keep the two distinguishable for the caller.
   const auto decodeFail = [&src, &fail] {
     return fail(src->readFailed ? ExtractError::ReadError : ExtractError::Decompress);
   };
@@ -281,7 +281,7 @@ bool extractEntry(const char* path, uint32_t offset, uint32_t size, HalFile& out
   }
 
   // Should be exhausted given the bounds check + chunk math above; if not, the
-  // chunk table is inconsistent with the requested range - treat as corrupt.
+  // chunk table is inconsistent with the requested range — treat as corrupt.
   if (remaining != 0) return fail(ExtractError::Decompress);
   return true;
 }

@@ -149,7 +149,7 @@ const uint8_t* FontDecompressor::getBitmap(const EpdFontData* fontData, const Ep
     return &fontData->bitmap[glyph->dataOffset];
   }
 
-  // Check page buffer slots (populated by prewarmCache - one slot per font style)
+  // Check page buffer slots (populated by prewarmCache — one slot per font style)
   for (uint8_t s = 0; s < pageSlotCount; s++) {
     const auto& slot = pageSlots[s];
     if (slot.fontData != fontData || slot.glyphCount == 0) continue;
@@ -181,7 +181,7 @@ const uint8_t* FontDecompressor::getBitmap(const EpdFontData* fontData, const Ep
     return nullptr;
   }
 
-  // Check if hot group already has this group decompressed - if not, decompress it
+  // Check if hot group already has this group decompressed — if not, decompress it
   if (!(hotGroup != nullptr && hotGroupFont == fontData && hotGroupIndex == groupIndex)) {
     stats.cacheMisses++;
     const EpdFontGroup& group = fontData->groups[groupIndex];
@@ -485,7 +485,7 @@ int FontDecompressor::prewarmCache(const EpdFontData* fontData, const char* utf8
     }
 
     // Extract needed glyphs directly from the byte-aligned temp buffer, compacting on the fly.
-    // alignedOffset was pre-computed in step 3b - no full-group compact scan needed.
+    // alignedOffset was pre-computed in step 3b — no full-group compact scan needed.
     for (uint16_t i = 0; i < slot.glyphCount; i++) {
       if (slot.glyphs[i].bufferOffset != UINT32_MAX) continue;  // already extracted
       if (getGroupIndex(fontData, slot.glyphs[i].glyphIndex) != groupIdx) continue;

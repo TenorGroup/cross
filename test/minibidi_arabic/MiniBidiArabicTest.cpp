@@ -1,4 +1,4 @@
-// MiniBidiArabicTest - Arabic/Farsi/Urdu bidi + contextual shaping.
+// MiniBidiArabicTest — Arabic/Farsi/Urdu bidi + contextual shaping.
 //
 // Exercises the full BidiUtils::applyBidiVisual() pipeline (the single code
 // path shared by GfxRenderer::getTextWidth() and drawText()): UAX#9
@@ -60,7 +60,7 @@ TEST(ArabicShaping, SingleLetterIsolated) {
   EXPECT_EQ(shapeVisual({0x0628}), (CP{0xFE8F}));  // ب
 }
 
-// دار: dal and alef are right-joining, so no letter connects forward -
+// دار: dal and alef are right-joining, so no letter connects forward —
 // all three stay isolated. Visual order is reversed.
 TEST(ArabicShaping, RightJoinersStayIsolated) {
   EXPECT_EQ(shapeVisual({0x062F, 0x0627, 0x0631}), (CP{0xFEAD, 0xFE8D, 0xFEA9}));
@@ -110,8 +110,8 @@ TEST(ArabicShaping, LamAlefWithDiacriticBetween) {
 
 /* ── Harakat (diacritics) ────────────────────────────────────────────── */
 
-// كَتَبَ fully vocalized: harakat are transparent for joining - the letter
-// skeleton shapes exactly as كتب - and remain in the output stream. UAX#9
+// كَتَبَ fully vocalized: harakat are transparent for joining — the letter
+// skeleton shapes exactly as كتب — and remain in the output stream. UAX#9
 // rule L3: each mark is emitted after its base, so the renderer can overlay
 // it on the most recently drawn glyph.
 TEST(ArabicShaping, VocalizedTextJoinsAcrossHarakat) {
@@ -149,7 +149,7 @@ TEST(FarsiShaping, FarsiYehMedial) { EXPECT_EQ(shapeVisual({0x0633, 0x06CC, 0x06
 TEST(UrduShaping, RetroflexLetters) { EXPECT_EQ(shapeVisual({0x0679, 0x0688, 0x0691}), (CP{0xFB8C, 0xFB89, 0xFB68})); }
 
 // میں: noon ghunna (U+06BA) is dual-joining but only has isolated/final
-// presentation forms - final position works.
+// presentation forms — final position works.
 TEST(UrduShaping, NoonGhunnaFinal) { EXPECT_EQ(shapeVisual({0x0645, 0x06CC, 0x06BA}), (CP{0xFB9F, 0xFBFF, 0xFEE3})); }
 
 // ہے: heh goal initial + yeh barree final.
@@ -161,7 +161,7 @@ TEST(UrduShaping, HehGoalYehBarree) { EXPECT_EQ(shapeVisual({0x06C1, 0x06D2}), (
 TEST(SindhiShaping, BeehInitial) { EXPECT_EQ(shapeVisual({0x067B, 0x0627, 0x0631}), (CP{0xFEAD, 0xFE8E, 0xFB54})); }
 
 // Pashto ښه: seen-with-dots (U+069A) has a joining type but NO presentation
-// forms - it keeps its base codepoint while its neighbour still takes the
+// forms — it keeps its base codepoint while its neighbour still takes the
 // correct joined form.
 TEST(PashtoShaping, LetterWithoutPresentationFormsFallsBack) {
   EXPECT_EQ(shapeVisual({0x069A, 0x0647}), (CP{0xFEEA, 0x069A}));
@@ -198,7 +198,7 @@ TEST(JoinerShaping, ZwjForcesJoin) {
 
 /* ── Mixed-direction text ────────────────────────────────────────────── */
 
-// كتاب abc 123 - RTL paragraph: the Arabic (shaped) ends up rightmost;
+// كتاب abc 123 — RTL paragraph: the Arabic (shaped) ends up rightmost;
 // "abc 123" resolves to a single LTR run (rule W7 turns the European
 // numerals L after the strong L of "abc") and is placed as one block to
 // its left, keeping internal left-to-right order.
@@ -207,7 +207,7 @@ TEST(MixedDirection, ArabicLatinNumerals) {
             (CP{'a', 'b', 'c', ' ', '1', '2', '3', ' ', 0xFE8F, 0xFE8E, 0xFE98, 0xFEDB}));
 }
 
-// كتاب ١٢٣ - Arabic-Indic digits keep logical order (leftmost run reads
+// كتاب ١٢٣ — Arabic-Indic digits keep logical order (leftmost run reads
 // ١٢٣, not reversed).
 TEST(MixedDirection, ArabicIndicNumerals) {
   EXPECT_EQ(shapeVisual({0x0643, 0x062A, 0x0627, 0x0628, ' ', 0x0661, 0x0662, 0x0663}),
@@ -246,7 +246,7 @@ TEST(TransparentMark, RtlMarksAreTransparent) {
 }
 
 TEST(TransparentMark, LettersAndLatinMarksAreNot) {
-  EXPECT_FALSE(BidiUtils::isTransparentMark(0x0300));  // Latin combining grave - different path
+  EXPECT_FALSE(BidiUtils::isTransparentMark(0x0300));  // Latin combining grave — different path
   EXPECT_FALSE(BidiUtils::isTransparentMark(0x0628));  // Arabic beh
   EXPECT_FALSE(BidiUtils::isTransparentMark(0x05D0));  // Hebrew alef
   EXPECT_FALSE(BidiUtils::isTransparentMark(0x0661));  // Arabic-Indic digit

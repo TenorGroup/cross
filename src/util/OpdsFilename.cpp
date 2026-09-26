@@ -17,7 +17,7 @@ std::string opdsBookFilename(const std::string& author, const std::string& title
       break;
   }
   // sanitizeFilename caps at 100 bytes and never returns empty (falls back to
-  // "book"); ".epub" is appended after so the extension is never truncated -
+  // "book"); ".epub" is appended after so the extension is never truncated —
   // identical treatment to the previous inline construction.
   return StringUtils::sanitizeFilename(base) + ".epub";
 }
