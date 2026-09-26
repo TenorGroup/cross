@@ -40,6 +40,7 @@ go = extract(activity_path.read_text(), r"(?:bool|void) ActivityManager::goToSle
 main_source = main_path.read_text()
 tilt_update = re.search(
     r"const bool pendingTiltActivity = halTiltSensor\.hadActivity\(\);\s+"
+    r"(?:halTiltSensor\.noteScreen\(activityManager\.activityGeneration\(\)\);\s+)?"
     r"const bool foregroundReader = activityManager\.isForegroundReaderActivity\(\);\s+"
     r"const bool foregroundActivityManagesTiltSensor = activityManager\.isForegroundActivityManagingTiltSensor\(\);\s+"
     r"updateTiltSensorForForegroundActivity\(foregroundReader, foregroundActivityManagesTiltSensor\);",

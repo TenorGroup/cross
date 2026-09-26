@@ -171,6 +171,47 @@ void modalKeepsTheTabLifecycleAndLatch() {
   expect(halTiltSensor.wasTiltedForward(), "neutral-latch", "neutral plus cooldown must allow the next tilt");
 }
 
+// A flick on a menu waits for the hand to come back (up to 600 ms). A button that opens another
+// screen meanwhile takes the flick with the screen it started on: the hand coming back must not
+// step a tab or a row of the new one.
+void aWaitingFlickStaysWithItsScreen() {
+  resetSensor();
+  SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
+  halTiltSensor.noteScreen(1);
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  fakeMillis = 650;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  expect(!halTiltSensor.wasTiltedForward(), "flick-screen", "a side flick waits for the hand to come back");
+  halTiltSensor.noteScreen(2);
+  imu.gx = 0.0f;
+  fakeMillis = 750;
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  expect(!halTiltSensor.wasTiltedForward(), "flick-screen", "a side flick started on the screen before steps no tab here");
+  // The same screen again and again: its own flick counts.
+  imu.gx = 400.0f;
+  fakeMillis = 1250;
+  halTiltSensor.noteScreen(2);
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  imu.gx = 0.0f;
+  fakeMillis = 1300;
+  halTiltSensor.noteScreen(2);
+  runTabTick(CrossPointTiltPageTurn::TILT_NORMAL);
+  expect(halTiltSensor.wasTiltedForward(), "flick-screen", "a flick on the screen in front still steps it");
+
+  resetSensor();
+  imu.gx = 0.0f;
+  imu.gy = 400.0f;
+  halTiltSensor.noteScreen(1);
+  for (fakeMillis = 0; fakeMillis <= 650; fakeMillis += 50) {
+    runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  }
+  halTiltSensor.noteScreen(2);
+  imu.gy = 0.0f;  // fakeMillis is 700
+  runMenuTick(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointTiltPageTurn::TILT_NORMAL);
+  expect(!halTiltSensor.wasTiltedDown() && !halTiltSensor.wasTiltedUp(), "flick-screen",
+         "a row flick started on the screen before moves no row here");
+}
+
 void verticalChannelFiresOnTheOtherAxis() {
   resetSensor();
   SETTINGS.tiltPageTurn = CrossPointTiltPageTurn::TILT_OFF;
@@ -984,6 +1025,7 @@ int main(int argc, char** argv) {
   plainActivitySleepsExactlyOnce();
   tabOffSleepsThroughTheTabOwner();
   modalKeepsTheTabLifecycleAndLatch();
+  aWaitingFlickStaysWithItsScreen();
   verticalChannelFiresOnTheOtherAxis();
   verticalChannelObeysItsOwnModeAndGate();
   verticalChannelFollowsOrientationLikeTheHorizontalOne();

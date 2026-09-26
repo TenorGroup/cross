@@ -64,6 +64,12 @@ else:
         "main loop is not wired to the foreground tilt owner route",
     )
     require(
+        r"halTiltSensor\.noteScreen\(activityManager\.activityGeneration\(\)\);\s*"
+        r"const bool foregroundReader\s*=",
+        main_source,
+        "main loop does not tell the sensor which screen is in front before it polls",
+    )
+    require(
         r"virtual bool managesTiltSensor\(\) const\s*\{\s*return false;\s*\}",
         (source_root / "src/activities/Activity.h").read_text(),
         "base activity does not declare the tilt ownership boundary",

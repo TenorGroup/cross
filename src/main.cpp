@@ -1053,6 +1053,7 @@ void loop() {
   // Tab gestures are sampled by the activity at the end of the previous loop.
   // Preserve their activity before the foreground route clears the flag.
   const bool pendingTiltActivity = halTiltSensor.hadActivity();
+  halTiltSensor.noteScreen(activityManager.activityGeneration());
   const bool foregroundReader = activityManager.isForegroundReaderActivity();
   const bool foregroundActivityManagesTiltSensor = activityManager.isForegroundActivityManagingTiltSensor();
   updateTiltSensorForForegroundActivity(foregroundReader, foregroundActivityManagesTiltSensor);
