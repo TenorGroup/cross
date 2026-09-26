@@ -38,6 +38,13 @@ struct FontBoundary {
   void refreshIfDirty() { ++refreshes; }
   const SdCardFontRegistry& registry() const { return fonts; }
 } sdFontSystem;
+// The Device tab's read-only panel chip row reads the boot's probe and NVS on the device.
+namespace panelchip {
+const std::string& current() {
+  static const std::string value = "UC8279";
+  return value;
+}
+}  // namespace panelchip
 static std::vector<DictionaryEntry> discovered;
 namespace DictionaryRegistry {
 void discover(std::vector<DictionaryEntry>& out) { out = discovered; }

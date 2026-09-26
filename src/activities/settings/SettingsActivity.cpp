@@ -24,6 +24,7 @@
 #include "MappedInputManager.h"
 #include "OpdsServerListActivity.h"
 #include "OtaUpdateActivity.h"
+#include "PanelChip.h"
 #include "SdCardFontSystem.h"
 #include "SdFirmwareUpdateActivity.h"
 #include "SettingsList.h"
@@ -120,6 +121,7 @@ void SettingsActivity::rebuildSettingsLists() {
   if (!BoardConfig::hasTouch()) ++rowCounts[static_cast<int>(settingstabs::Tab::CONTROLS)];
   if (keyboard_layouts::COUNT > 1) ++rowCounts[static_cast<int>(settingstabs::Tab::KEYBOARD)];
   ++rowCounts[static_cast<int>(settingstabs::Tab::SYSTEM)];
+  ++rowCounts[static_cast<int>(settingstabs::Tab::DEVICE)];
   rowCounts[static_cast<int>(settingstabs::Tab::READER)] += 3 + (!dictionaries.empty() ? 1 : 0);
   for (size_t tab = 0; tab < rowCounts.size(); ++tab)
     danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).reserve(rowCounts[tab]);
@@ -164,6 +166,10 @@ void SettingsActivity::rebuildSettingsLists() {
   readerSettings.insert(readerSettings.begin() + 1,
                         SettingInfo::Action(StrId::STR_MANAGE_FONTS, SettingAction::DownloadFonts));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
+  // Read only, last on Device: the panel chip, for a photo sent with an ink report.
+  SettingInfo chip = SettingInfo::Action(StrId::STR_DISPLAY_CHIP, SettingAction::None);
+  chip.stringGetter = [] { return panelchip::current(); };
+  deviceSettings.push_back(std::move(chip));
 
   // A theme or conditional row can shorten an inactive category as well.
   for (size_t tab = 0; tab < tabNavs.size(); ++tab) {
@@ -652,6 +658,7 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
     }
     return std::to_string(SETTINGS.*(setting.valuePtr));
   }
+  if (setting.type == SettingType::ACTION && setting.stringGetter) return setting.stringGetter();
   return "";
 }
 

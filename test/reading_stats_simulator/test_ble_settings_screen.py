@@ -9,9 +9,11 @@ Bang chung, khong phai cam giac:
   - `.crosspoint/settings.json` khoa `blePageTurnerEnabled` truoc/sau.
 
 Ban do dieu huong do duoc (do lai bang anh, xem docstring cua class):
-  Home (the dau) -> DOWN x4 = the Cai dat; RIGHT x5 = nhom `Thiet bi`; CONFIRM mo
-  man Cai dat tai nhom do; trong nhom `Thiet bi` vong N dong bat dau o dong 1, va
-  dong 4 la `Ble page turner`; LEFT tu dong 1 quay ve dong 4, CONFIRM mo man BLE.
+  Home (the dau) -> DOWN x4 = the Cai dat; RIGHT x7 = nhom `Thiet bi` (v1.0.17 them nhom
+  Cam bien chuyen dong truoc He thong); CONFIRM mo
+  man Cai dat tai nhom do; trong nhom `Thiet bi` vong N dong bat dau o dong 1, dong 4
+  la `Ble page turner` va dong 5 (cuoi, v1.0.17) la chip man hinh chi doc; LEFT hai lan
+  tu dong 1 quay ve dong 4, CONFIRM mo man BLE.
   Trong man Cai dat: UP/DOWN doi nhom, RIGHT/LEFT di dong. Nhip phim >= 800 ms
   (nhip 900 ms tung bi hut mot nhip; bai nay dung 1200 ms).
 
@@ -101,17 +103,17 @@ class BleSettingsScreenTest(unittest.TestCase):
         return Image.open(path).convert("RGB")
 
     def test_man_ble_mo_duoc_va_khong_bat_duoc_khi_co_ble_tat(self):
-        # Home the dau -> the Cai dat (DOWN x4) -> nhom Thiet bi (RIGHT x5) ->
-        # mo man Cai dat (CONFIRM) -> mo man BLE (CONFIRM) -> thu bat (CONFIRM)
+        # Home the dau -> the Cai dat (DOWN x4) -> nhom Thiet bi (RIGHT x7) ->
+        # mo man Cai dat (CONFIRM) -> LEFT x2 -> mo man BLE (CONFIRM) -> thu bat (CONFIRM)
         # -> tat lai (CONFIRM) -> ra khoi man BLE (BACK) -> ra khoi Cai dat (BACK).
-        buoc = ["DOWN"] * 4 + ["RIGHT"] * 6 + ["CONFIRM", "LEFT", "CONFIRM", "CONFIRM", "CONFIRM"]
+        buoc = ["DOWN"] * 4 + ["RIGHT"] * 7 + ["CONFIRM", "LEFT", "LEFT", "CONFIRM", "CONFIRM", "CONFIRM"]
         # Moc chup: sau khi mo Cai dat, sau khi mo man BLE, sau moi nhip Chon.
-        mo_cai_dat, mo_ble = 2000 + 10 * NHIP_MS, 2000 + 12 * NHIP_MS
+        mo_cai_dat, mo_ble = 2000 + 11 * NHIP_MS, 2000 + 14 * NHIP_MS
         shots = [
             (mo_cai_dat + 900, "ble-cai-dat-nhom-thiet-bi"),
             (mo_ble + 900, "ble-man-hinh-1-khong-kha-dung"),
-            (2000 + 13 * NHIP_MS + 900, "ble-man-hinh-2-thu-bat"),
-            (2000 + 14 * NHIP_MS + 900, "ble-man-hinh-3-tat-lai"),
+            (2000 + 15 * NHIP_MS + 900, "ble-man-hinh-2-thu-bat"),
+            (2000 + 16 * NHIP_MS + 900, "ble-man-hinh-3-tat-lai"),
         ]
         buoc += ["BACK", "BACK", "QUIT"]
         log = self.chay(buoc, shots)
@@ -156,7 +158,7 @@ class BleSettingsScreenTest(unittest.TestCase):
         settings.json KHONG doi (khong hoc duoc nut nao).
         """
         # Hang Trang thai bo qua khi bam nut: RIGHT x2 toi "Gan nut lat toi".
-        buoc = ["DOWN"] * 4 + ["RIGHT"] * 6 + ["CONFIRM", "LEFT", "CONFIRM"] + ["RIGHT"] * 2 + ["CONFIRM"]
+        buoc = ["DOWN"] * 4 + ["RIGHT"] * 7 + ["CONFIRM", "LEFT", "LEFT", "CONFIRM"] + ["RIGHT"] * 2 + ["CONFIRM"]
         bat_cho = 2000 + (len(buoc) - 1) * NHIP_MS
         script = kich_ban(buoc) + f"{bat_cho + 17000}:QUIT;"
         shots = [

@@ -107,8 +107,9 @@ int main(int argc, char** argv) {
     counts.add(rows.size());
     for(const auto& row:rows) {
       const auto key=row.key?std::string("settings/")+row.key:"action/"+std::to_string(static_cast<int>(row.action));
-      ++occurrences[key];
+      // A row without key or action (the read-only panel chip row) has no route to collide on.
       if(!row.key && row.action==SettingAction::None) continue;
+      ++occurrences[key];
       // Tenor keeps the legacy action/2 pin on the battery and clock corners, so the
       // status bar row that shares its action is deliberately not pinnable there.
       if(tenor && row.action==SettingAction::CustomiseStatusBar) {

@@ -35,7 +35,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -108,7 +109,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -181,7 +183,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -255,7 +258,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -327,7 +331,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -400,7 +405,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -473,7 +479,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -547,7 +554,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -621,7 +629,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -696,7 +705,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -771,7 +781,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -847,7 +858,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -921,7 +933,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -996,7 +1009,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1071,7 +1085,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1147,7 +1162,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1219,7 +1235,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1280,7 +1297,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1341,7 +1359,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1403,7 +1422,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1463,7 +1483,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1524,7 +1545,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1585,7 +1607,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1647,7 +1670,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1709,7 +1733,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1772,7 +1797,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1835,7 +1861,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1899,7 +1926,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -1961,7 +1989,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2024,7 +2053,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2087,7 +2117,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2151,7 +2182,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2211,7 +2243,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2273,7 +2306,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2335,7 +2369,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2398,7 +2433,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2459,7 +2495,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2521,7 +2558,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2583,7 +2621,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2646,7 +2685,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2709,7 +2749,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2773,7 +2814,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2837,7 +2879,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2902,7 +2945,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -2965,7 +3009,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -3029,7 +3074,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -3093,7 +3139,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",
@@ -3158,7 +3205,8 @@
       "STR_LANGUAGE:9:",
       "STR_DEVICE_NAME:13:",
       "STR_WIFI_NETWORKS:5:",
-      "STR_BLE_PAGE_TURNER:17:"
+      "STR_BLE_PAGE_TURNER:17:",
+      "STR_DISPLAY_CHIP:0:"
     ],
     [
       "STR_KEYBOARD_GEOMETRY:0:keyboardAligned",

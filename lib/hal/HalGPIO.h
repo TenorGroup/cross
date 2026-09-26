@@ -60,6 +60,8 @@ class HalGPIO {
 
  private:
   DeviceType _deviceType = DeviceType::X4;
+  uint8_t panelVer_[3] = {};
+  bool panelVerKnown_ = false;
 
  public:
   HalGPIO() = default;
@@ -77,6 +79,9 @@ class HalGPIO {
 
   // Start button GPIO and setup SPI for screen and SD card
   void begin();
+  // The three VER bytes the display probe read at boot, or kept by the wake memo; false when
+  // none were read (no probe on this board, or the probe timed out).
+  bool panelVersion(uint8_t ver[3]) const;
   // Moves button sampling onto the timer. Call once the boot-time presses are
   // settled; later calls do nothing. Boards with touch keep sampling in update().
   void startBackgroundSampling();
