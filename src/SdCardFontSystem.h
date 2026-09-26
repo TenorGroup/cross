@@ -56,7 +56,7 @@ class SdCardFontSystem {
   /// without waiting for the reader activity to run ensureLoaded().
   void refreshIfDirty() {
     if (registryDirty_.exchange(false, std::memory_order_acquire) && !readCatalogIfPending()) {
-      registry_.discover();
+      walkCatalog();
     }
   }
 
@@ -66,6 +66,11 @@ class SdCardFontSystem {
   // Reads the catalog if the boot left it unread; true when this call read it. A second
   // task asking while the first reads waits for it instead of reading a half-built list.
   bool readCatalogIfPending() const;
+  // Walks the family folders on the card and keeps what it read for the next wake.
+  void walkCatalog() const;
+  // After a load failed on a catalog the last boot kept: walks the card once, true when it did
+  // (the caller looks the family up again).
+  bool walkIfCatalogKept() const;
   // The family called `name`: the one the boot memo described while the catalog is unread.
   const SdCardFontFamilyInfo* familyNamed(const std::string& name) const;
   // Loads `family` at the saved size and weight, remembers it for the next wake and sets up
@@ -81,6 +86,8 @@ class SdCardFontSystem {
 
   mutable SdCardFontRegistry registry_;
   mutable std::atomic<uint8_t> catalog_{CATALOG_READY};
+  // The catalog came from the RTC memo and has not been checked against the card since.
+  mutable bool catalogKept_ = false;
   // The family begin() loaded from the boot memo, answering for the catalog until it is read.
   // Not changed after begin(); an empty name means the boot did not use the memo.
   SdCardFontFamilyInfo bootFamily_;

@@ -17,6 +17,7 @@
 #include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
+#include "SdCardFontSystem.h"
 #include "SilentRestart.h"
 #include "UIFontTiers.h"
 #include "WifiSelectionActivity.h"
@@ -190,6 +191,8 @@ void CrossPointWebServerActivity::onExit() {
 
   if (runtimeStarted) {
     LOG_DBG("WEBACT", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
+    // Files sent in this session may be fonts: the catalog kept for the next wake is not trusted.
+    sdFontSystem.markRegistryDirty();
 
     state = WebServerActivityState::SHUTTING_DOWN;
     stopDnsServer();
