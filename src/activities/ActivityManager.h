@@ -122,6 +122,10 @@ class ActivityManager {
   // the screen too, so nothing waits past it. Main task only (onExit).
   void deferWrite(void (*write)());
 
+  // True once the render task has drawn a first frame since boot: work that must not delay the
+  // first screen waits for it. Any task.
+  bool hasDrawnFrame() const;
+
   // This will move current activity to stack instead of deleting it
   void pushActivity(std::unique_ptr<Activity>&& activity);
 
