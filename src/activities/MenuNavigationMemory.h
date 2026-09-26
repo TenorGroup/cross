@@ -15,6 +15,8 @@ struct MenuNavigationState {
   int committedTab = -1;
   std::string location;
   std::string selection;
+  // Home: books opened (RecentBooksStore::opened) when the cursor was kept.
+  uint32_t booksOpened = 0;
 };
 
 class MenuNavigationMemory {

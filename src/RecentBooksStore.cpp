@@ -61,6 +61,7 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
   }
 
   // Add to front, preserving the excerpt for this exact book.
+  ++openCount;
   recentBooks.insert(recentBooks.begin(), {path, title, author, coverBmpPath, std::move(excerpt)});
 
   // Trim to max size
