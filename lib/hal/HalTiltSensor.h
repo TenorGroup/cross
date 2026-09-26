@@ -119,6 +119,35 @@ class HalTiltSensor {
   static constexpr float FLIP_CALM_DPS = 30.0f;
   static constexpr int32_t FLIP_UP_MG = 400;
 
+  // Double tap on the back, watched on every screen while its action is not Off, by the
+  // chip's own tap engine (Imu::enableTap), whose flag each poll reads. Off never touches
+  // the chip, so every other gesture reads the setup it always had. A double tap counts
+  // only with the device where it was 0.5 to 1 s before (gravity within 12 degrees):
+  // laying it down, turning it over or taking it off a table knocks twice as well, but
+  // moves it. 26/09 knock run replay: taps held within 7.3 degrees, the others 17 or more.
+  bool _doubleTapEnabled = false;
+  bool _tapArmed = false;        // The chip runs the tap engine (accelerometer at 224 Hz)
+  bool _tapTried = false;        // Arming failed since the last wake: not retried until the next
+  bool _tapSeen = false;         // The last poll read the tap flag set
+  bool _doubleTapEvent = false;  // Consumed by wasDoubleTapped()
+  int32_t _tapPoseMg[2][3] = {};  // Baseline taken every TAP_POSE_MS, older first
+  uint8_t _tapPoses = 0;          // Slots filled since the sensors last started
+  unsigned long _tapPoseMs = 0;
+  static constexpr unsigned long TAP_POSE_MS = 500;
+  // With the tap engine the accelerometer runs at 224 Hz, where a knock is a spike of 9 to
+  // 14 ms that the 28 Hz rate smoothed away, and an edge knock reads as a snap. A poll that
+  // jolts past SHAKE_RUN_MG is read again KNOCK_CONFIRM_MS later (26/09 knock run replay).
+  bool _knockPending = false;
+  int32_t _knockMg[3] = {};
+  unsigned long _knockMs = 0;
+  static constexpr unsigned long KNOCK_CONFIRM_MS = 15;
+  // Chosen on the 26/09 knock run at 224 Hz through a software model of the engine
+  // (test/imu_double_tap), not yet measured on the chip: a peak past 0.65 g^2 of linear
+  // acceleration that is quiet again (under 0.4 g^2) after 7 samples (31 ms), 18 samples
+  // (80 ms) of quiet, and the second tap within 80 samples (357 ms) of the first; the
+  // averages at 1/16 and 1/4, the datasheet's own example. Knocks measured 140 to 232 ms apart.
+  static constexpr Imu::TapConfig TAP_CONFIG = {0, 7, 18, 80, 8, 32, 650, 400};
+
   // A flick on a menu counts once the hand has come back: the axis swings the
   // other way past FLICK_RETURN_DPS within FLICK_RETURN_MS, or stops (under
   // FLICK_CALM_DPS) with gravity back within 22 degrees of where it was. Picking
@@ -146,6 +175,8 @@ class HalTiltSensor {
 
   void pollShake(unsigned long now, const int32_t (&mg)[3], const int32_t (&jolt)[3]);
   void pollFlip(unsigned long now, const int32_t (&mg)[3], float gx, float gy);
+  void pollDoubleTap(unsigned long now);
+  void disarmTap();
   void startFlick(PendingFlick& flick, float axis, uint8_t bit, unsigned long now);
   void settleFlick(PendingFlick& flick, float axis, const int32_t (&mg)[3], unsigned long now);
   void raiseTiltEvents(uint8_t bits);
@@ -198,6 +229,13 @@ class HalTiltSensor {
   // Returns true once per face down, and once per face up that follows one; consumed on read.
   bool wasTurnedFaceDown();
   bool wasTurnedFaceUp();
+
+  // Arms double tap from its setting: any action but 0 (Off) keeps the sensor awake on
+  // every screen with the chip's tap engine on. Called once per loop pass.
+  void configureDoubleTap(uint8_t action) { _doubleTapEnabled = action != 0; }
+
+  // Returns true once per double tap, consumed on read.
+  bool wasDoubleTapped();
 
 #ifdef TENOR_PRESS_PROBE
   // Measurement build, CMD:IMU_LOG: each poll prints its raw sample until

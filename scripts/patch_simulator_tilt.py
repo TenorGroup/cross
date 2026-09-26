@@ -57,4 +57,11 @@ patch(root / "HalTiltSensor.h", [(
     "  bool wasTurnedFaceDown() { return false; }\n"
     "  bool wasTurnedFaceUp() { return false; }\n",
     1,
+), (
+    "  bool wasTurnedFaceUp() { return false; }\n",
+    "  bool wasTurnedFaceUp() { return false; }\n"
+    "  // Double tap: no accelerometer, so no tap ever comes.\n"
+    "  void configureDoubleTap(const uint8_t /*action*/) {}\n"
+    "  bool wasDoubleTapped() { return false; }\n",
+    1,
 )])

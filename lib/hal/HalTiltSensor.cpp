@@ -1,6 +1,8 @@
 #include "HalTiltSensor.h"
 
 #include <Logging.h>
+
+#include <cstdlib>
 #ifdef TENOR_PRESS_PROBE
 #include <BoardConfig.h>
 #include <Wire.h>
@@ -44,6 +46,10 @@ bool HalTiltSensor::wake() {
   _faceDown = false;
   _flipLastValid = false;
   _flipCalm = false;
+  _tapTried = false;
+  _tapSeen = false;
+  _tapPoses = 0;
+  _knockPending = false;
   _isAwake = true;
   return true;
 }
@@ -53,6 +59,8 @@ bool HalTiltSensor::deepSleep() {
     return false;
   }
 
+  // Asleep the chip keeps the setup it had without double tap.
+  if (_tapArmed) disarmTap();
   if (!_sdkImu.sleep()) {
     LOG_ERR("GYR", "IMU sleep failed");
     return false;
@@ -63,6 +71,7 @@ bool HalTiltSensor::deepSleep() {
   _shakeEvent = false;
   _faceDownEvent = false;
   _faceUpEvent = false;
+  _doubleTapEvent = false;
   _inTilt = false;
   _inVerticalTilt = false;
   _isAwake = false;
@@ -86,6 +95,8 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   if (!_available) {
     return;
   }
+  // Double tap turned Off: the chip goes back to the setup it had without it.
+  if (!_doubleTapEnabled && _tapArmed) disarmTap();
 
   const bool horizontalEnabled = mode != CrossPointTiltPageTurn::TILT_OFF;
   const bool verticalEnabled = verticalMode != CrossPointTiltPageTurn::TILT_OFF;
@@ -93,9 +104,9 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   // keep the sensor awake.
 #ifdef TENOR_PRESS_PROBE
   const bool probeLogging = _probeLogUntilMs != 0 && static_cast<long>(millis() - _probeLogUntilMs) < 0;
-  const bool sampling = _shakeEnabled || _flipEnabled || probeLogging;
+  const bool sampling = _shakeEnabled || _flipEnabled || _doubleTapEnabled || probeLogging;
 #else
-  const bool sampling = _shakeEnabled || _flipEnabled;
+  const bool sampling = _shakeEnabled || _flipEnabled || _doubleTapEnabled;
 #endif
 
   // State machine: wake up or sleep based on the enabled flags
@@ -117,6 +128,18 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
     _isAwake = wake();
     return;
   }
+  if (_doubleTapEnabled && !_tapArmed && !_tapTried) {
+    _tapTried = true;
+    _tapArmed = _sdkImu.enableTap(TAP_CONFIG);
+    LOG_INF("GYR", "Tap engine %s", _tapArmed ? "on" : "failed");
+    // The sensors were stopped and restarted: settle as after a wake.
+    _wakeMs = millis();
+    _baselineValid = false;
+    _tapSeen = false;
+    _tapPoses = 0;
+    _knockPending = false;
+    return;
+  }
 
   const unsigned long now = millis();
   // Stabilization: discard readings during gyro startup transient
@@ -124,7 +147,9 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
     return;
   }
 
-  if ((now - _lastPollMs) < POLL_INTERVAL_MS) {
+  if (_knockPending) {
+    if ((now - _knockMs) < KNOCK_CONFIRM_MS) return;
+  } else if ((now - _lastPollMs) < POLL_INTERVAL_MS) {
     return;
   }
   _lastPollMs = now;
@@ -144,8 +169,26 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
 #endif
   // Whole mg. The baseline follows slowly (1/8 per poll), so it holds gravity and
   // the grip but not a jolt, and it is where the device was before a flick.
-  const int32_t mg[3] = {static_cast<int32_t>(sample.ax * 1000.0f), static_cast<int32_t>(sample.ay * 1000.0f),
-                         static_cast<int32_t>(sample.az * 1000.0f)};
+  int32_t mg[3] = {static_cast<int32_t>(sample.ax * 1000.0f), static_cast<int32_t>(sample.ay * 1000.0f),
+                   static_cast<int32_t>(sample.az * 1000.0f)};
+  if (_tapArmed && _baselineValid) {
+    if (_knockPending) {
+      // Each axis keeps the reading nearer the baseline: a knock is gone by now, a snap is not.
+      _knockPending = false;
+      for (int i = 0; i < 3; ++i) {
+        if (std::abs(_knockMg[i] - _baselineMg[i]) < std::abs(mg[i] - _baselineMg[i])) mg[i] = _knockMg[i];
+      }
+    } else {
+      int32_t lengthSq = 0;
+      for (int i = 0; i < 3; ++i) lengthSq += (mg[i] - _baselineMg[i]) * (mg[i] - _baselineMg[i]);
+      if (lengthSq > SHAKE_RUN_MG * SHAKE_RUN_MG) {
+        for (int i = 0; i < 3; ++i) _knockMg[i] = mg[i];
+        _knockPending = true;
+        _knockMs = now;
+        return;
+      }
+    }
+  }
   int32_t jolt[3] = {};
   if (!_baselineValid) {
     for (int i = 0; i < 3; ++i) _baselineMg[i] = mg[i];
@@ -158,6 +201,7 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   }
   if (_shakeEnabled) pollShake(now, mg, jolt);
   if (_flipEnabled) pollFlip(now, mg, gx, gy);
+  if (_tapArmed) pollDoubleTap(now);
 
   // Map the gyro axes to the screen axes based on reader orientation. On the
   // X3 PCB: X axis = left/right in portrait, Y axis = left/right in landscape,
@@ -447,11 +491,66 @@ bool HalTiltSensor::wasTurnedFaceUp() {
   return val;
 }
 
+void HalTiltSensor::pollDoubleTap(const unsigned long now) {
+  if (_tapPoses == 0 || now - _tapPoseMs >= TAP_POSE_MS) {
+    for (int i = 0; i < 3; ++i) {
+      _tapPoseMg[0][i] = _tapPoseMg[1][i];
+      _tapPoseMg[1][i] = _baselineMg[i];
+    }
+    if (_tapPoses < 2) ++_tapPoses;
+    _tapPoseMs = now;
+  }
+  uint8_t taps = 0;
+  if (!_sdkImu.readTap(taps)) return;
+#ifdef TENOR_PRESS_PROBE
+  if (taps != 0) logSerial.printf("IMU_TAP:%lu,%u,seen=%d\n", now, taps, _tapSeen);
+#endif
+  // One report per time the flag comes up, whether reading it clears it or not.
+  if (taps == 2 && !_tapSeen) {
+    // Within 12 degrees: cos^2 >= 61/64.
+    int64_t dot = 0, poseSq = 0, nowSq = 0;
+    for (int i = 0; i < 3; ++i) {
+      dot += static_cast<int64_t>(_tapPoseMg[0][i]) * _baselineMg[i];
+      poseSq += static_cast<int64_t>(_tapPoseMg[0][i]) * _tapPoseMg[0][i];
+      nowSq += static_cast<int64_t>(_baselineMg[i]) * _baselineMg[i];
+    }
+    if (_tapPoses == 2 && dot > 0 && 64 * dot * dot >= 61 * poseSq * nowSq) {
+      _doubleTapEvent = true;
+      _hadActivity = true;
+      LOG_INF("GYR", "Double tap");
+    } else {
+      LOG_INF("GYR", "Double tap dropped: device moved");
+    }
+  }
+  _tapSeen = taps != 0;
+}
+
+void HalTiltSensor::disarmTap() {
+  if (!_sdkImu.disableTap()) LOG_ERR("GYR", "Tap engine off failed");
+  _tapArmed = false;
+  _tapTried = false;
+  _tapSeen = false;
+  _doubleTapEvent = false;
+  _tapPoses = 0;
+  _knockPending = false;
+  // The sensors were stopped and restarted: settle as after a wake.
+  _wakeMs = millis();
+  _baselineValid = false;
+}
+
+bool HalTiltSensor::wasDoubleTapped() {
+  const bool val = _doubleTapEvent;
+  _doubleTapEvent = false;
+  return val;
+}
+
 #ifdef TENOR_PRESS_PROBE
 void HalTiltSensor::probeFastLog(const unsigned long ms) {
   if (!_available) return;
   const bool wasAwake = _isAwake;
   if (!wasAwake && !wake()) return;
+  // Logged with the tap engine off; the next poll turns it back on.
+  if (_tapArmed) disarmTap();
   // QMI8658 at its 224 Hz setting: CTRL2 accel +-2 g, CTRL3 gyro +-512 dps, ODR code 5.
   // The address is whichever one answers WHO_AM_I, as the SDK's begin() finds it.
   const auto& sensors = BoardConfig::ACTIVE.sensors;

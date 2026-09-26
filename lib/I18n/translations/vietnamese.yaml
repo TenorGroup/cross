@@ -852,3 +852,5 @@ STR_CAT_MOTION: "Cảm biến chuyển động"
 STR_FACE_DOWN_ACTION: "Úp máy"
 
 STR_FACE_UP_ACTION: "Ngửa máy"
+
+STR_DOUBLE_TAP_ACTION: "Gõ hai cái"

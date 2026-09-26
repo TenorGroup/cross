@@ -67,7 +67,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-0-0-0-1": [
@@ -139,7 +140,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-0-0-1-0": [
@@ -211,7 +213,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-0-0-1-1": [
@@ -284,7 +287,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-0-1-0-0": [
@@ -355,7 +359,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-0-1-0-1": [
@@ -427,7 +432,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-0-1-1-0": [
@@ -499,7 +505,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-0-1-1-1": [
@@ -572,7 +579,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-1-0-0-0": [
@@ -645,7 +653,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-1-0-0-1": [
@@ -719,7 +728,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-1-0-1-0": [
@@ -793,7 +803,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-1-0-1-1": [
@@ -868,7 +879,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-1-1-0-0": [
@@ -941,7 +953,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-1-1-0-1": [
@@ -1015,7 +1028,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-1-1-1-0": [
@@ -1089,7 +1103,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x3-1-1-1-1": [
@@ -1164,7 +1179,8 @@
       "STR_SHAKE_ACTION:0:shakeAction",
       "STR_SHAKE_STRENGTH:0:shakeStrength",
       "STR_FACE_DOWN_ACTION:0:faceDownAction",
-      "STR_FACE_UP_ACTION:0:faceUpAction"
+      "STR_FACE_UP_ACTION:0:faceUpAction",
+      "STR_DOUBLE_TAP_ACTION:0:doubleTapAction"
     ]
   ],
   "x4-0-0-0-0": [
