@@ -614,8 +614,10 @@ void BlePageTurnerActivity::buildScreen(UiScreen& screen) {
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   if (rowsDirty) {
-    rebuildRows();
+    // Cleared before the rebuild: a row tapped on the loop while it runs (the bindings
+    // opening, Back closing them) marks the rows again instead of being lost.
     rowsDirty = false;
+    rebuildRows();
   }
   refreshValues();
 
