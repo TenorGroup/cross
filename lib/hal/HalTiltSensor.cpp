@@ -2,6 +2,7 @@
 
 #include <Logging.h>
 
+#include <algorithm>
 #include <cstdlib>
 #ifdef TENOR_PRESS_PROBE
 #include <BoardConfig.h>
@@ -72,6 +73,8 @@ bool HalTiltSensor::deepSleep() {
   _faceDownEvent = false;
   _faceUpEvent = false;
   _doubleTapEvent = false;
+  _screenTapEvent = false;
+  _edgeTapEvent = false;
   _inTilt = false;
   _inVerticalTilt = false;
   _isAwake = false;
@@ -515,17 +518,33 @@ void HalTiltSensor::pollDoubleTap(const unsigned long now) {
     nowSq += static_cast<int64_t>(_baselineMg[i]) * _baselineMg[i];
   }
   if (_tapPoses == 2 && dot > 0 && 64 * dot * dot >= 61 * poseSq * nowSq) {
-    _doubleTapEvent = true;
-    _hadActivity = true;
-    LOG_INF("GYR", "Double tap");
+    // Only a gesture that is on counts: the others' taps run nothing.
+    using Place = TapDetector::Place;
+    const bool back = _tapPlace == Place::Back, screen = _tapPlace == Place::Screen;
+    bool& event = back ? _doubleTapEvent : screen ? _screenTapEvent : _edgeTapEvent;
+    if (back ? _backTapOn : screen ? _screenTapOn : _edgeTapOn) {
+      event = true;
+      _hadActivity = true;
+    }
+    LOG_INF("GYR", "Double tap %s", back ? "back" : screen ? "screen" : "edge");
   } else {
     LOG_INF("GYR", "Double tap dropped: device moved");
   }
 }
 
+#ifdef TENOR_PRESS_PROBE
+namespace {
+constexpr uint16_t PROBE_FRAMES = 200;  // More than a full FIFO (128)
+Imu::RawFrame probeFrames[PROBE_FRAMES];
+bool probeFrameGap[PROBE_FRAMES];
+uint16_t probeFrameCount = 0;
+}  // namespace
+#endif
+
 bool HalTiltSensor::readFifoSample(Imu::Sample& out) {
 #ifdef TENOR_PRESS_PROBE
   const unsigned long startUs = micros();
+  probeFrameCount = 0;
 #endif
   uint16_t frames = 0;
   const bool read = _sdkImu.readFifo(takeFifoChunk, this, frames);
@@ -536,6 +555,7 @@ bool HalTiltSensor::readFifoSample(Imu::Sample& out) {
     logSerial.printf("IMU_FIFO:%lu,n=%u,us=%lu,ok=%d,heap=%lu,min=%lu\n", millis(), frames, micros() - startUs, read,
                      static_cast<unsigned long>(ESP.getFreeHeap()), static_cast<unsigned long>(ESP.getMinFreeHeap()));
   }
+  if (_probeFrameSink && probeFrameCount > 0) _probeFrameSink(probeFrames, probeFrameGap, probeFrameCount);
 #endif
   if (!read || frames == 0) return false;
   // The last acceleration, as a register read gives it; the rotation of the last full run.
@@ -558,13 +578,29 @@ void HalTiltSensor::takeFifoChunk(const Imu::RawFrame* const frames, const uint8
   for (uint8_t f = 0; f < count; ++f) {
     const Imu::RawFrame& frame = frames[f];
     // Whole mg, as Imu::read() gives them.
+    // The largest rotation on any axis in whole dps. A reading at the end of the scale is no
+    // reading: an X3's QMI8658 hands out the newest frame's gz near -32768 on every FIFO read (27/09,
+    // 283 of 283), and a hand turns the device 200 dps at most as it taps.
+    int32_t turn = 0;
+    for (const int16_t g : {frame.gx, frame.gy, frame.gz}) {
+      const int32_t magnitude = std::abs(static_cast<int32_t>(g));
+      if (magnitude < GYRO_NO_READING) turn = std::max(turn, magnitude / Imu::QMI8658_COUNTS_PER_DPS);
+    }
     const int taps = self._tapDetector.step(frame.ax * 1000 / Imu::QMI8658_COUNTS_PER_G,
                                             frame.ay * 1000 / Imu::QMI8658_COUNTS_PER_G,
-                                            frame.az * 1000 / Imu::QMI8658_COUNTS_PER_G);
-    if (taps == 2) self._tapFound = true;
+                                            frame.az * 1000 / Imu::QMI8658_COUNTS_PER_G, turn);
+    if (taps == 2) {
+      self._tapFound = true;
+      self._tapPlace = self._tapDetector.lastPlace();
+    }
 #ifdef TENOR_PRESS_PROBE
     if (taps != 0 && self._probeTapLogUntilMs != 0 && static_cast<long>(millis() - self._probeTapLogUntilMs) < 0) {
       logSerial.printf("IMU_TAP:%lu,%d\n", millis(), taps);
+    }
+    // Every frame the detector gets, raw counts, kept for the sink once the read is over.
+    if (self._probeFrameSink && probeFrameCount < PROBE_FRAMES) {
+      probeFrames[probeFrameCount] = frame;
+      probeFrameGap[probeFrameCount++] = gapBefore && f == 0;
     }
 #endif
     self._fifoAccel[0] = frame.ax;
@@ -589,11 +625,25 @@ void HalTiltSensor::disarmTap() {
   _tapTries = 0;
   _tapFound = false;
   _doubleTapEvent = false;
+  _screenTapEvent = false;
+  _edgeTapEvent = false;
   _tapPoses = 0;
   _knockPending = false;
   // The sensors were stopped and restarted: settle as after a wake.
   _wakeMs = millis();
   _baselineValid = false;
+}
+
+bool HalTiltSensor::wasScreenTapped() {
+  const bool val = _screenTapEvent;
+  _screenTapEvent = false;
+  return val;
+}
+
+bool HalTiltSensor::wasEdgeTapped() {
+  const bool val = _edgeTapEvent;
+  _edgeTapEvent = false;
+  return val;
 }
 
 bool HalTiltSensor::wasDoubleTapped() {

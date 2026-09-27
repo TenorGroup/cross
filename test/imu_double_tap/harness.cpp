@@ -35,6 +35,7 @@ struct Sample {
   std::string segment;
   unsigned long us;
   int ax, ay, az, gx, gy;
+  int gz = 0;
 };
 
 // ---- The fake QMI8658 at 0x6B ---------------------------------------------------------
@@ -101,6 +102,9 @@ struct FakeChip {
       reading.clear();
       readingNext = 0;
       for (const auto& frame : fifo) reading.insert(reading.end(), frame.begin(), frame.end());
+      // An X3's QMI8658 hands out the newest frame's gz as noise near -32768 (27/09 FIFO run: the
+      // last frame of every read, 283 of 283), the rest of the frame and every older one whole.
+      if (reading.size() >= 12 && frameBytes() == 12) put16(&reading[reading.size() - 2], -32600);
     }
     regs[0x2D] |= 0x80;
   }
@@ -138,7 +142,7 @@ struct FakeChip {
       put16(&out[4], a.az * 16384 / 1000);
       put16(&out[6], g.gx * 64);
       put16(&out[8], g.gy * 64);
-      put16(&out[10], 0);
+      put16(&out[10], g.gz * 64);
       return out[reg - 0x35];
     }
     if (reg == 0x15 || reg == 0x16) {
@@ -163,12 +167,14 @@ struct FakeChip {
         mean.az += w.az;
         mean.gx += w.gx;
         mean.gy += w.gy;
+        mean.gz += w.gz;
       }
       mean.ax /= 8;
       mean.ay /= 8;
       mean.az /= 8;
       mean.gx /= 8;
       mean.gy /= 8;
+      mean.gz /= 8;
       held = mean;
     }
     if (!fifoOn() || frameBytes() == 0) return;
@@ -191,7 +197,7 @@ struct FakeChip {
     if (gyroOn()) {
       put16(&frame[at], s.gx * 64);
       put16(&frame[at + 2], s.gy * 64);
-      put16(&frame[at + 4], 0);
+      put16(&frame[at + 4], s.gz * 64);
     }
     if (fifo.size() >= fifoDepth()) {
       if ((regs[0x14] & 0x03) == 0x01) {
@@ -294,6 +300,8 @@ struct Settings {
   uint8_t faceDown = 0;
   uint8_t faceUp = 0;
   uint8_t doubleTap = 0;
+  uint8_t screenTap = 0;
+  uint8_t edgeTap = 0;
   enum Screen { Plain, Reader, Menu } screen = Plain;
 };
 
@@ -304,7 +312,7 @@ void pass(const Settings& s) {
   halTiltSensor.configureFlip(s.faceDown, s.faceUp);
 #endif
 #ifdef HAVE_DOUBLE_TAP
-  halTiltSensor.configureDoubleTap(s.doubleTap);
+  halTiltSensor.configureDoubleTap(s.doubleTap, s.screenTap, s.edgeTap);
 #endif
   halTiltSensor.confirmSideFlicks(s.screen != Settings::Reader);
   if (s.screen == Settings::Reader) {
@@ -542,38 +550,54 @@ void aChipThatNeverAnswersIsLeftAsV1016() {
 }
 
 // ---- Knocks made up sample by sample ----------------------------------------------------
-// The device lies at `pose` from `fromUs`; each knock is three samples 1200 mg into the back.
+// The device lies at `pose` from `fromUs`; each knock is three samples 1200 mg as a knock pushes
+// it: on the back toward -z, on the screen toward +z, on a side edge along the screen's long side.
+enum class Knock { Back, Screen, Edge };
 std::vector<Sample> knocks(const int (&pose)[3], const std::vector<unsigned long>& knockMs, const unsigned long totalMs,
-                           const int (&before)[3], const unsigned long turnMs) {
+                           const int (&before)[3], const unsigned long turnMs, const Knock where = Knock::Back) {
   std::vector<Sample> out;
   for (unsigned long us = 0; us < totalMs * 1000UL; us += SAMPLE_US) {
     const bool turned = us >= turnMs * 1000UL;
     Sample s{"made", us, turned ? pose[0] : before[0], turned ? pose[1] : before[1], turned ? pose[2] : before[2], 0, 0};
     for (const unsigned long k : knockMs) {
-      if (us >= k * 1000UL && us < k * 1000UL + 3 * SAMPLE_US) s.az += 1200;
+      if (us >= k * 1000UL && us < k * 1000UL + 3 * SAMPLE_US) {
+        (where == Knock::Edge ? s.ay : s.az) += where == Knock::Back ? -1200 : 1200;
+      }
     }
     out.push_back(s);
   }
   return out;
 }
 
-int doubleTapsIn(const std::vector<Sample>& feed) {
+struct Taps {
+  int back = 0, screen = 0, edge = 0;
+};
+
+Taps tapsIn(const std::vector<Sample>& feed, const uint8_t backAction, const uint8_t screenAction,
+            const uint8_t edgeAction) {
   boot();
   chip.logging = false;
   chip.hold(feed[0].ax, feed[0].ay, feed[0].az);
   chip.feed = &feed;
   chip.startMs = 0;
-  int seen = 0;
+  Taps seen;
+  Settings s = awakePlain(backAction);
+  s.screenTap = screenAction;
+  s.edgeTap = edgeAction;
   const unsigned long endMs = (feed.back().us / 1000) + 500;
   while (fakeMillis < endMs) {
     fakeMillis += 10;
     chip.advanceTo(fakeMillis);
-    pass(awakePlain(1));
-    seen += halTiltSensor.wasDoubleTapped();
+    pass(s);
+    seen.back += halTiltSensor.wasDoubleTapped();
+    seen.screen += halTiltSensor.wasScreenTapped();
+    seen.edge += halTiltSensor.wasEdgeTapped();
   }
   chip.feed = nullptr;
   return seen;
 }
+
+int doubleTapsIn(const std::vector<Sample>& feed) { return tapsIn(feed, 1, 0, 0).back; }
 
 void madeUpKnocks() {
   const int still[3] = {-850, -100, -480};
@@ -582,6 +606,23 @@ void madeUpKnocks() {
   expect(doubleTapsIn(knocks(still, {1500, 1700, 2600, 2760, 3700, 3930}, 5000, still, 0)) == 3, "made",
          "three pairs are three double taps");
   expect(doubleTapsIn(knocks(still, {2000}, 3500, still, 0)) == 0, "made", "one knock is no double tap");
+  // The back, the screen and a side edge are three gestures: each comes out only as itself, and
+  // only when on.
+  const auto back = knocks(still, {2000, 2200}, 3500, still, 0);
+  const auto screen = knocks(still, {2000, 2200}, 3500, still, 0, Knock::Screen);
+  const auto edge = knocks(still, {2000, 2200}, 3500, still, 0, Knock::Edge);
+  Taps t = tapsIn(back, 1, 1, 1);
+  expect(t.back == 1 && t.screen == 0 && t.edge == 0, "made-place", "two knocks into the back are a back double tap");
+  t = tapsIn(screen, 1, 1, 1);
+  expect(t.back == 0 && t.screen == 1 && t.edge == 0, "made-place", "two knocks on the screen are a screen double tap");
+  t = tapsIn(edge, 1, 1, 1);
+  expect(t.back == 0 && t.screen == 0 && t.edge == 1, "made-place", "two knocks on the edge are an edge double tap");
+  t = tapsIn(edge, 1, 1, 0);
+  expect(t.back + t.screen + t.edge == 0, "made-place", "an edge double tap with the edge Off runs nothing");
+  t = tapsIn(screen, 1, 0, 1);
+  expect(t.back + t.screen + t.edge == 0, "made-place", "a screen double tap with the screen Off runs nothing");
+  t = tapsIn(back, 0, 1, 1);
+  expect(t.back + t.screen + t.edge == 0, "made-place", "a back double tap with the back Off runs nothing");
   expect(doubleTapsIn(knocks(still, {2000, 2500}, 3500, still, 0)) == 0, "made", "500 ms apart is too slow");
   expect(doubleTapsIn(knocks(over, {2300, 2500}, 3500, still, 2000)) == 0, "made",
          "a double knock while the device turns over is dropped");
@@ -615,12 +656,12 @@ std::vector<Sample> loadSamples(const char* const path) {
   std::vector<Sample> samples;
   FILE* file = path ? std::fopen(path, "r") : nullptr;
   if (!file) return samples;
-  char line[160];
+  char line[192];
   while (std::fgets(line, sizeof(line), file)) {
     char segment[32];
     Sample s{};
-    if (line[0] == '#' || std::sscanf(line, "%31[^,],%lu,%d,%d,%d,%d,%d", segment, &s.us, &s.ax, &s.ay, &s.az,
-                                      &s.gx, &s.gy) != 7)
+    if (line[0] == '#' || std::sscanf(line, "%31[^,],%lu,%d,%d,%d,%d,%d,%d", segment, &s.us, &s.ax, &s.ay, &s.az,
+                                      &s.gx, &s.gy, &s.gz) != 8)
       continue;
     s.segment = segment;
     samples.push_back(s);
@@ -630,7 +671,7 @@ std::vector<Sample> loadSamples(const char* const path) {
 }
 
 struct Counts {
-  int doubles = 0;
+  int doubles = 0, screens = 0, edges = 0;
   int shakes = 0, faceDown = 0, faceUp = 0, forward = 0, back = 0, up = 0, down = 0;
 };
 
@@ -647,6 +688,8 @@ Counts replay(const std::vector<Sample>& segment, const Settings& s, const unsig
     chip.advanceTo(fakeMillis);
     pass(s);
     c.doubles += halTiltSensor.wasDoubleTapped();
+    c.screens += halTiltSensor.wasScreenTapped();
+    c.edges += halTiltSensor.wasEdgeTapped();
     c.shakes += halTiltSensor.wasShaken();
     c.faceDown += halTiltSensor.wasTurnedFaceDown();
     c.faceUp += halTiltSensor.wasTurnedFaceUp();
@@ -659,20 +702,19 @@ Counts replay(const std::vector<Sample>& segment, const Settings& s, const unsig
   return c;
 }
 
-void knockRunReplays(const char* const path) {
+struct Expected {
+  const char* segment;
+  int backs;     // Through the HAL: double taps on the back
+  int screens;   // ... on the screen
+  int edges;     // ... and on a side edge
+  int detector;  // The detector alone, before the pose check and the direction
+};
+
+// `compareGestures`: also replay every other gesture at 28 Hz and through the FIFO. Their match
+// was tuned on the 26/09 run; the 27/09 run is for the taps only.
+void knockRunReplays(const char* const path, const std::vector<Expected>& SEGMENTS, const bool compareGestures) {
   const auto all = loadSamples(path);
-  if (!expect(all.size() > 90000, "knock-replay", "the 224 Hz run must load")) return;
-  struct Expected {
-    const char* segment;
-    int doubles;    // Through the HAL: what comes out as a double tap
-    int detector;   // The detector alone, before the pose check
-  };
-  // Clear pairs in the run: about eight on the back at an easy pace, ten fast, seven or eight
-  // on the edge. Putting the device down and turning it over knock twice as well; the pose
-  // check drops those.
-  constexpr Expected SEGMENTS[] = {{"go-hai-lung", 7, 7}, {"go-hai-nhanh", 10, 10}, {"go-hai-canh", 6, 6},
-                                   {"go-mot", 0, 0},      {"bam-nut", 0, 0},        {"dat-xuong", 0, 3},
-                                   {"up-ngua", 0, 5},     {"xoay-co-tay", 0, 0},    {"cam-doc", 0, 0}};
+  if (!expect(all.size() > 15000, "knock-replay", "the run must load")) return;
   const bool verbose = std::getenv("IMU_DOUBLE_TAP_VERBOSE") != nullptr;
   for (const auto& e : SEGMENTS) {
     std::vector<Sample> segment;
@@ -683,22 +725,32 @@ void knockRunReplays(const char* const path) {
 #ifdef HAVE_TAP_DETECTOR
     TapDetector detector;
     int found = 0;
-    for (const auto& s : segment) found += detector.step(s.ax, s.ay, s.az) == 2;
+    for (const auto& s : segment) {
+      found += detector.step(s.ax, s.ay, s.az, std::max({std::abs(s.gx), std::abs(s.gy), std::abs(s.gz)})) == 2;
+    }
     if (verbose) std::printf("%s: detector alone %d double taps\n", e.segment, found);
     expect(found == e.detector, std::string("detector ") + e.segment, "double taps the detector finds on its own");
 #endif
     for (const unsigned long phase : {0UL, 13UL, 27UL, 41UL}) {
       const std::string label = std::string("knock-replay ") + e.segment + " +" + std::to_string(phase) + " ms";
-      // Double tap alone, on a plain screen.
+      // Double tap alone, both gestures on, on a plain screen.
       Settings tapOnly;
       tapOnly.doubleTap = 1;
+      tapOnly.screenTap = 1;
+      tapOnly.edgeTap = 1;
       const Counts tap = replay(segment, tapOnly, phase);
-      if (verbose) std::printf("%s: %d double taps\n", label.c_str(), tap.doubles);
-      expect(tap.doubles == e.doubles, label, "double taps as the run holds");
+      if (verbose) {
+        std::printf("%s: %d on the back, %d on the screen, %d on an edge\n", label.c_str(), tap.doubles, tap.screens,
+                    tap.edges);
+      }
+      expect(tap.doubles == e.backs, label, "double taps on the back as the run holds");
+      expect(tap.screens == e.screens, label, "double taps on the screen as the run holds");
+      expect(tap.edges == e.edges, label, "double taps on an edge as the run holds");
 
       // Every other gesture on, in a book and on a menu: what they find while the FIFO runs
       // must be what they find at the old 28 Hz.
       for (const auto screen : {Settings::Reader, Settings::Menu}) {
+        if (!compareGestures) break;
         Settings every;
         every.screen = screen;
         every.tilt = CrossPointTiltPageTurn::TILT_NORMAL;
@@ -709,6 +761,8 @@ void knockRunReplays(const char* const path) {
         every.faceUp = 1;
         const Counts old = replay(segment, every, phase);
         every.doubleTap = 1;
+        every.screenTap = 1;
+        every.edgeTap = 1;
         const Counts now = replay(segment, every, phase);
         const std::string where = label + (screen == Settings::Reader ? " book" : " menu");
         if (verbose) {
@@ -725,7 +779,8 @@ void knockRunReplays(const char* const path) {
         expect(now.up == old.up && now.down == old.down, where, "rows as at 28 Hz");
         expect(std::abs(now.forward - old.forward) <= 1 && std::abs(now.back - old.back) <= 1, where,
                "side flicks within one of 28 Hz");
-        expect(now.doubles == tap.doubles, where, "and double tap finds the same with them on");
+        expect(now.doubles == tap.doubles && now.screens == tap.screens && now.edges == tap.edges, where,
+               "and double tap finds the same with them on");
         if (std::string(e.segment) == "up-ngua") {
           expect(now.faceDown == 6 && now.faceUp == 6, where, "six face downs, each turned back up");
         } else {
@@ -736,9 +791,38 @@ void knockRunReplays(const char* const path) {
   }
 }
 
+// IMU_DOUBLE_TAP_TABLE: one line per segment of a run, in file order, through the HAL with every
+// double tap on: "<segment> <back> <screen> <edge> <detector>". For choosing the thresholds.
+void printTable(const char* const path) {
+  const auto all = loadSamples(path);
+  std::vector<std::string> order;
+  for (const auto& s : all) {
+    if (order.empty() || order.back() != s.segment) order.push_back(s.segment);
+  }
+  for (const auto& name : order) {
+    std::vector<Sample> segment;
+    for (const auto& s : all) {
+      if (s.segment == name) segment.push_back(s);
+    }
+    TapDetector detector;
+    int found = 0;
+    for (const auto& s : segment) {
+      found += detector.step(s.ax, s.ay, s.az, std::max({std::abs(s.gx), std::abs(s.gy), std::abs(s.gz)})) == 2;
+    }
+    Settings on;
+    on.doubleTap = on.screenTap = on.edgeTap = 1;
+    const Counts c = replay(segment, on, 0);
+    std::printf("TABLE %s %d %d %d %d\n", name.c_str(), c.doubles, c.screens, c.edges, found);
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
+  if (std::getenv("IMU_DOUBLE_TAP_TABLE")) {
+    for (int i = 2; i < argc; ++i) printTable(argv[i]);
+    return 0;
+  }
   offIsTheV1016Setup(argc > 1 ? argv[1] : nullptr);
   onStreamsBothSensorsIntoTheFifo();
   offAgainPutsBackTheV1016Setup();
@@ -747,7 +831,38 @@ int main(int argc, char** argv) {
   aChipThatNeverAnswersIsLeftAsV1016();
   madeUpKnocks();
   aStallIsAGap();
-  knockRunReplays(argc > 2 ? argv[2] : nullptr);
+  // Expected per segment, through the HAL with every double tap on: on the back, on the screen,
+  // on an edge, and the detector's own count before the pose check. A finger reaching round the
+  // back (tro, traigo, phaigo) and the top edge (tren) push through the back and read as it.
+  // 26/09: the back at an easy pace and fast, an edge, and the controls.
+  knockRunReplays(argc > 2 ? argv[2] : nullptr, {
+      {"go-hai-lung", 7, 0, 0, 7}, {"go-hai-nhanh", 10, 0, 0, 10}, {"go-mot", 0, 0, 0, 0},
+      {"go-hai-canh", 0, 0, 7, 7}, {"bam-nut", 0, 0, 0, 0}, {"dat-xuong", 0, 0, 0, 0},
+      {"up-ngua", 0, 0, 0, 0}, {"xoay-co-tay", 0, 0, 0, 0}, {"cam-doc", 0, 0, 0, 0}}, true);
+  // 27/09: held in the right, then the left hand.
+  knockRunReplays(argc > 3 ? argv[3] : nullptr, {
+      {"phai-camphai-cai", 0, 0, 9, 9}, {"trai-camphai-tro", 3, 0, 0, 3}, {"lung-camphai-ngon", 9, 0, 0, 9},
+      {"phai-camphai-traigo", 0, 0, 0, 0}, {"bamnut-camphai", 0, 0, 0, 0}, {"bamnut2-camphai", 0, 0, 0, 0},
+      {"trai-camtrai-cai", 0, 0, 10, 10}, {"phai-camtrai-tro", 5, 0, 0, 5},
+      {"lung-camtrai-ngon", 9, 0, 0, 9}, {"trai-camtrai-phaigo", 0, 0, 1, 1}, {"bamnut-camtrai", 0, 0, 0, 0},
+      {"bamnut2-camtrai", 0, 0, 0, 0}, {"tren-go", 8, 0, 0, 8}, {"datxuong", 0, 0, 0, 0},
+      {"cam-doc", 0, 0, 0, 0}}, false);
+  // 27/09: switching hands, the other hand from outside, landscape.
+  knockRunReplays(argc > 4 ? argv[4] : nullptr, {
+      {"doitay", 0, 0, 0, 0}, {"phai-camtrai-ngoai", 0, 1, 7, 8}, {"trai-camphai-ngoai", 0, 0, 2, 2},
+      {"ngang-phai-cai", 0, 0, 7, 7}, {"ngang-trai-cai", 0, 0, 5, 5}, {"ngang-lung", 7, 0, 0, 7},
+      {"ngang-doc", 0, 0, 0, 0}}, false);
+  // 27/09: the screen; light taps, landscape and a table give nothing.
+  knockRunReplays(argc > 5 ? argv[5] : nullptr, {
+      {"manhinh-camphai-traigo", 0, 4, 0, 4}, {"manhinh-camphai-cai", 0, 3, 0, 3},
+      {"manhinh-camtrai-phaigo", 0, 4, 0, 4}, {"manhinh-camtrai-cai", 0, 6, 0, 6},
+      {"manhinh-nhe", 0, 0, 0, 0}, {"ngang-manhinh", 0, 0, 0, 0}, {"ban-manhinh", 0, 0, 0, 0},
+      {"ban-canh", 0, 0, 0, 0}, {"cham-manhinh", 0, 0, 0, 0}}, false);
+  // 27/09: the device's own FIFO frames, 186 Hz, with the chip's broken gz. The screen's first tap
+  // lands under the peak (about 460 mg) and the edge's pairs are missed: both stay experimental.
+  knockRunReplays(argc > 6 ? argv[6] : nullptr, {
+      {"lung-1", 3, 0, 0, 0}, {"manhinh-1", 0, 0, 0, 0}, {"canh-1", 0, 0, 0, 0},
+      {"lung-camphai", 6, 0, 0, 4}}, false);
   std::printf("imu_double_tap: %d failed assertions\n", failures);
   return failures == 0 ? 0 : 1;
 }

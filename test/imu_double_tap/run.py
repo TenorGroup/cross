@@ -62,9 +62,11 @@ with tempfile.TemporaryDirectory(prefix="imu-double-tap-") as temporary_dir:
     if args.record:
         sys.exit(subprocess.run([str(executable)]).returncode)
 
-    knocks = output / "tap-224hz.csv"
-    knocks.write_bytes(gzip.decompress((test_root / "tap-224hz.csv.gz").read_bytes()))
-    run = subprocess.run([str(executable), str(test_root / "imu-trace-v1016.txt"), str(knocks)], text=True,
+    runs = []
+    for name in ("tap-224hz.csv", "tap-224hz-canh.csv", "tap-224hz-canh2.csv", "tap-224hz-manhinh.csv", "tap-fifo.csv"):
+        runs.append(output / name)
+        runs[-1].write_bytes(gzip.decompress((test_root / (name + ".gz")).read_bytes()))
+    run = subprocess.run([str(executable), str(test_root / "imu-trace-v1016.txt"), *map(str, runs)], text=True,
                          capture_output=True)
     if run.stdout:
         print(run.stdout, end="")
