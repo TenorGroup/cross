@@ -857,6 +857,6 @@ STR_FACE_DOWN_ACTION: "Úp máy"
 
 STR_FACE_UP_ACTION: "Ngửa máy"
 
-STR_DOUBLE_TAP_ACTION: "Gõ hai cái vào lưng"
-STR_SCREEN_TAP_ACTION: "Gõ hai cái vào màn hình"
-STR_EDGE_TAP_ACTION: "Gõ hai cái vào cạnh"
+STR_DOUBLE_TAP_ACTION: "Gõ hai cái vào lưng máy"
+STR_SCREEN_TAP_ACTION: "Gõ hai cái lên màn hình"
+STR_EDGE_TAP_ACTION: "Gõ hai cái vào cạnh máy"

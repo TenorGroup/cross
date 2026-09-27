@@ -70,4 +70,12 @@ patch(root / "HalTiltSensor.h", [(
     "  // The screen in front: no flick ever waits for the hand without a gyro.\n"
     "  void noteScreen(const uint32_t /*screen*/) {}\n",
     1,
+), (
+    "  void noteScreen(const uint32_t /*screen*/) {}\n",
+    "  void noteScreen(const uint32_t /*screen*/) {}\n"
+    "  // Double tap on the back, the screen and a side edge: none without an accelerometer.\n"
+    "  void configureDoubleTap(const uint8_t /*back*/, const uint8_t /*screen*/, const uint8_t /*edge*/) {}\n"
+    "  bool wasScreenTapped() { return false; }\n"
+    "  bool wasEdgeTapped() { return false; }\n",
+    1,
 )])
