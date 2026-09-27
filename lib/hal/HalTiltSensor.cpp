@@ -46,7 +46,7 @@ bool HalTiltSensor::wake() {
   _faceDown = false;
   _flipLastValid = false;
   _flipCalm = false;
-  _tapTried = false;
+  _tapTries = 0;
   _tapFound = false;
   _tapPoses = 0;
   _knockPending = false;
@@ -128,10 +128,12 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
     _isAwake = wake();
     return;
   }
-  if (_doubleTapEnabled && !_tapArmed && !_tapTried) {
-    _tapTried = true;
+  if (_doubleTapEnabled && !_tapArmed && _tapTries < TAP_ARM_TRIES &&
+      (_tapTries == 0 || millis() - _tapTriedMs >= TAP_RETRY_MS)) {
+    ++_tapTries;
     _tapArmed = _sdkImu.enableFifo();
-    LOG_INF("GYR", "IMU FIFO %s", _tapArmed ? "on" : "failed");
+    _tapTriedMs = millis();
+    LOG_INF("GYR", "IMU FIFO %s (try %u)", _tapArmed ? "on" : "failed", _tapTries);
     // The sensors were stopped and restarted: settle as after a wake.
     _wakeMs = millis();
     _baselineValid = false;
@@ -584,7 +586,7 @@ void HalTiltSensor::takeFifoChunk(const Imu::RawFrame* const frames, const uint8
 void HalTiltSensor::disarmTap() {
   if (!_sdkImu.disableFifo()) LOG_ERR("GYR", "IMU FIFO off failed");
   _tapArmed = false;
-  _tapTried = false;
+  _tapTries = 0;
   _tapFound = false;
   _doubleTapEvent = false;
   _tapPoses = 0;

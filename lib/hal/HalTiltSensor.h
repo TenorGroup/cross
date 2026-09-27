@@ -54,6 +54,10 @@ class HalTiltSensor {
   static constexpr unsigned long COOLDOWN_MS = 600;        // Minimum ms between triggers
   static constexpr unsigned long POLL_INTERVAL_MS = 50;    // 20 Hz polling
   static constexpr unsigned long WAKE_STABILIZE_MS = 300;  // Ignore readings after wake
+  // X3: the first arm after waking from deep sleep times out (the chip just left power-down),
+  // a later one takes. A chip that never answers costs three bounded tries a wake.
+  static constexpr uint8_t TAP_ARM_TRIES = 3;
+  static constexpr unsigned long TAP_RETRY_MS = 1000;
 
   mutable unsigned long _lastPollMs = 0;
 
@@ -135,7 +139,8 @@ class HalTiltSensor {
   // knock run replay: taps held within 7.3 degrees, the others 17 or more.
   bool _doubleTapEnabled = false;
   bool _tapArmed = false;        // The chip streams both sensors at 224 Hz into its FIFO
-  bool _tapTried = false;        // Arming failed since the last wake: not retried until the next
+  uint8_t _tapTries = 0;         // Arming tries since the last wake, at most TAP_ARM_TRIES
+  unsigned long _tapTriedMs = 0;  // When the last one failed; the next waits TAP_RETRY_MS
   bool _tapFound = false;        // The detector found a double tap the next poll checks the pose of
   bool _doubleTapEvent = false;  // Consumed by wasDoubleTapped()
   TapDetector _tapDetector;

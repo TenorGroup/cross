@@ -511,20 +511,34 @@ void deviceSleepLeavesNoFifoSetup() {
   expect(logIndex("W 14=0E", awake) < chip.log.size(), "sleep", "waking with double tap on sets the FIFO up again");
 }
 
+// X3 26/09-27/09: waking from deep sleep with double tap on, the first arm, 20 ms after the
+// sensor left power-down, timed out every time (3/3), and double tap stayed dead until it was
+// turned off and on. A chip that answers later is armed on a later try.
+void aLateChipIsArmedOnALaterTry() {
+  boot();
+  chip.completesCommands = false;
+  runFor(awakePlain(1), 500);
+  chip.completesCommands = true;
+  const size_t before = chip.log.size();
+  runFor(awakePlain(1), 3000);
+  expect(logIndex("W 14=0E", before) < chip.log.size() && chip.regs[0x14] == 0x0E, "late",
+         "armed once the chip answers, without turning double tap off and on");
+}
+
 void aChipThatNeverAnswersIsLeftAsV1016() {
   boot();
   chip.completesCommands = false;
   runFor(awakePlain(0), 500);
   const unsigned long startMs = fakeMillis;
   const size_t before = chip.log.size();
-  runFor(awakePlain(1), 1000);
+  runFor(awakePlain(1), 10000);
   int commands = 0;
   for (size_t i = before; i < chip.log.size(); ++i) commands += chip.log[i] == "W 0A=04";
-  expect(commands == 1, "timeout", "one try until the next wake");
+  expect(commands == 3, "timeout", "three tries until the next wake");
   expect(chip.regs[0x03] == 0x08 && chip.regs[0x04] == 0x58 && chip.regs[0x09] == 0x00 && chip.regs[0x08] == 0x03 &&
              chip.regs[0x14] == 0x00,
          "timeout", "the v1.0.16 setup is back and sampling");
-  expect(fakeMillis - startMs < 1100, "timeout", "the wait for the chip is bounded");
+  expect(fakeMillis - startMs < 10200, "timeout", "the wait for the chip is bounded");
 }
 
 // ---- Knocks made up sample by sample ----------------------------------------------------
@@ -729,6 +743,7 @@ int main(int argc, char** argv) {
   onStreamsBothSensorsIntoTheFifo();
   offAgainPutsBackTheV1016Setup();
   deviceSleepLeavesNoFifoSetup();
+  aLateChipIsArmedOnALaterTry();
   aChipThatNeverAnswersIsLeftAsV1016();
   madeUpKnocks();
   aStallIsAGap();
