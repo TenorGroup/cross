@@ -93,6 +93,17 @@ TEST(BleHeapRestartTrackerTest, PassedHeapCheckDropsAnEarlierRequest) {
   EXPECT_FALSE(tracker.wanted.load());
 }
 
+// Asked in one book, then another book refused for a heap short in total: a restart cannot give
+// back bytes that book really uses, so the request is dropped.
+TEST(BleHeapRestartTrackerTest, HeapShortInTotalDropsAnEarlierRequest) {
+  bleheap::Memo memo{0};
+  bleheap::Tracker tracker{memo};
+  for (int i = 0; i < 3; ++i) tracker.refused(kFree, kLargest);
+  ASSERT_TRUE(tracker.wanted.load());
+  EXPECT_FALSE(tracker.refused(bleheap::kMinimumFreeBytes - 1, kLargest));
+  EXPECT_FALSE(tracker.wanted.load());
+}
+
 TEST(BleHeapRestartTrackerTest, RestartingClearsTheRequest) {
   bleheap::Memo memo{0};
   bleheap::Tracker tracker{memo};

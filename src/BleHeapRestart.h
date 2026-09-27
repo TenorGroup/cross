@@ -49,6 +49,7 @@ struct Tracker {
   bool refused(const size_t freeBytes, const size_t largestBlockBytes) {
     if (!fragmented(freeBytes, largestBlockBytes)) {
       fragmentedInRow = 0;
+      wanted.store(false, std::memory_order_release);
     } else if (fragmentedInRow < UINT8_MAX) {
       ++fragmentedInRow;
     }
