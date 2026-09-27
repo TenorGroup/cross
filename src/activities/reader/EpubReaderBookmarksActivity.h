@@ -25,6 +25,7 @@ class EpubReaderBookmarksActivity final : public UiListActivity {
   void rebuildBookmarkRowItems();
   bool confirmingDelete = false;
   OptionPopup confirmPopup;
+  OptionPopup* tiltPopup() override { return &confirmPopup; }
 
  public:
   explicit EpubReaderBookmarksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,

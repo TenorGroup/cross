@@ -22,7 +22,7 @@ constexpr int16_t TOUCH_TAB_BAR_HEIGHT = 50;
 UiTabListActivity::UiTabListActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiListActivity(name, renderer, mappedInput) {}
 
-void UiTabListActivity::loop() {
+void UiTabListActivity::pollTilt() {
   const bool acceptsTilt = acceptsTiltTabNavigation();
   const auto orientation = static_cast<CrossPointOrientation::Value>(renderer.getOrientation());
   halTiltSensor.update(SETTINGS.tiltTabNavigation, static_cast<uint8_t>(orientation), acceptsTilt);
@@ -33,32 +33,13 @@ void UiTabListActivity::loop() {
     const bool backward = halTiltSensor.wasTiltedBack();
     queueTiltTabNavigation(forward, backward);
   }
-  // Row tilt is the other gyro axis. It is armed after the poll above because
-  // that call carries the tab setting alone; the arming is read by the next
-  // poll, and this runs on every pass, so the sensor is never more than one
-  // pass behind the live setting and gate.
-  const bool acceptsRowTilt = acceptsTiltMenuNavigation();
-  halTiltSensor.configureVerticalGesture(SETTINGS.tiltMenuNavigation, acceptsRowTilt);
-  if (acceptsRowTilt) {
-    // Measured on the X3 22/09: the gesture the sensor labels Up is the one
-    // readers use to go down a row, so the two readings trade places here.
-    queueTiltMenuNavigation(halTiltSensor.wasTiltedDown(), halTiltSensor.wasTiltedUp());
-  }
-  UiListActivity::loop();
+  // Row tilt is the other gyro axis, armed after the poll above because that call carries the
+  // tab setting alone.
+  pollRowTilt();
 }
 
 bool UiTabListActivity::acceptsTiltTabNavigation() const {
   return tabCount() > 1 && allowsTiltTabNavigation();
-}
-
-bool UiTabListActivity::acceptsTiltMenuNavigation() const {
-  return listCount() > 0 && allowsTiltMenuNavigation();
-}
-
-bool UiTabListActivity::queueTiltMenuNavigation(const bool up, const bool down) {
-  if (!acceptsTiltMenuNavigation() || (!up && !down)) return false;
-  queueNavIntent(up ? NavIntent::StepPrev : NavIntent::StepNext);
-  return true;
 }
 
 bool UiTabListActivity::queueTiltTabNavigation(const bool forward, const bool backward) {

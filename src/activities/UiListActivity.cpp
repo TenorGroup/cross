@@ -1,6 +1,8 @@
 #include "UiListActivity.h"
 
+#include <CrossPointSettings.h>
 #include <GfxRenderer.h>
+#include <HalTiltSensor.h>
 #include <I18n.h>
 #include <Logging.h>
 
@@ -8,6 +10,7 @@
 
 #include "MappedInputManager.h"
 #include "MenuCustomization.h"
+#include "components/OptionPopup.h"
 #include "components/TenorMenuChrome.h"
 #include "components/SettledListRender.h"
 #include "components/UITheme.h"
@@ -226,7 +229,40 @@ bool UiListActivity::confirmReleased() {
 // Back never depends on the selection, so it is never held back.
 bool UiListActivity::backReleased() { return mappedInput.wasReleased(MappedInputManager::Button::Back); }
 
+void UiListActivity::pollTilt() {
+  const auto orientation = static_cast<CrossPointOrientation::Value>(renderer.getOrientation());
+  halTiltSensor.update(CrossPointTiltPageTurn::TILT_OFF, static_cast<uint8_t>(orientation), false);
+  pollRowTilt();
+}
+
+bool UiListActivity::acceptsTiltMenuNavigation() const { return listCount() > 0 && allowsTiltMenuNavigation(); }
+
+bool UiListActivity::queueTiltMenuNavigation(const bool up, const bool down) {
+  if (!acceptsTiltMenuNavigation() || (!up && !down)) return false;
+  queueNavIntent(up ? NavIntent::StepPrev : NavIntent::StepNext);
+  return true;
+}
+
+void UiListActivity::pollRowTilt() {
+  OptionPopup* const popup = tiltPopup();
+  const bool popupOpen = popup != nullptr && popup->isActive();
+  halTiltSensor.configureVerticalGesture(SETTINGS.tiltMenuNavigation, popupOpen || acceptsTiltMenuNavigation());
+  // Measured on the X3 22/09: the gesture the sensor labels Up is the one readers use to go down
+  // a row, so the two readings trade places here.
+  const bool up = halTiltSensor.wasTiltedDown();
+  const bool down = halTiltSensor.wasTiltedUp();
+  if (popupOpen) {
+    if (up || down) {
+      popup->step(up ? -1 : 1);
+      requestUpdate();
+    }
+    return;
+  }
+  queueTiltMenuNavigation(up, down);
+}
+
 void UiListActivity::loop() {
+  pollTilt();
   loopInput();
   // Apply what this pass queued right away when the panel is idle, so a press
   // is reflected before the next pass instead of ten milliseconds later.

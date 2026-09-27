@@ -95,6 +95,7 @@ class BlePageTurnerActivity final : public UiListActivity {
   std::string bindValues_[6];
   std::vector<freeink::ui::ListItem> rowItems_;
   OptionPopup optionPopup;
+  OptionPopup* tiltPopup() override { return &optionPopup; }
   bool rowsDirty = true;
   // The bind rows are open in place of the main rows; Back closes them.
   bool bindMode_ = false;

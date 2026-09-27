@@ -63,6 +63,14 @@ class OptionPopup {
     active = true;
   }
 
+  // One option down (1) or up (-1), with wrap: what the up and down buttons do, for a row tilt.
+  void step(const int direction) {
+    const int count = static_cast<int>(ownedStrings.size());
+    if (!active || count == 0) return;
+    selectedIndex = (selectedIndex + (direction > 0 ? 1 : -1) + count) % count;
+  }
+  int selected() const { return selectedIndex; }
+
   bool handleInput(MappedInputManager& input, const std::function<void()>& requestUpdate) {
     if (!active) return false;
 

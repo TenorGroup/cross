@@ -22,6 +22,7 @@ class StatusBarSettingsActivity final : public UiListActivity {
   bool supportsFavorites() const override { return true; }
   std::string favoriteKey(int row) const override;
   OptionPopup optionPopup;
+  OptionPopup* tiltPopup() override { return &optionPopup; }
 
   int visibleItemCount = 0;
 

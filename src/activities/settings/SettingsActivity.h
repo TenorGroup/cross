@@ -172,6 +172,7 @@ class SettingsActivity final : public UiTabListActivity {
   bool quickResumeTimeoutAutoEnabled = false;
 
   OptionPopup optionPopup;
+  OptionPopup* tiltPopup() override { return &optionPopup; }
 
   // Row structure (label/actionValue) for *currentSettings, rebuilt only when
   // the active category or a category's setting list changes

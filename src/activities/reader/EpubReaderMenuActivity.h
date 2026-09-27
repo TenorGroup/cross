@@ -92,6 +92,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   std::vector<MenuAction> favorites;
 
   OptionPopup optionPopup;
+  OptionPopup* tiltPopup() override { return &optionPopup; }
   std::string title = "Reader Menu";
   uint8_t pendingOrientation = 0;
   uint8_t selectedPageTurnOption = 0;

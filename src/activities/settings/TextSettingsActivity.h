@@ -103,6 +103,7 @@ class TextSettingsActivity final : public UiTabListActivity {
 
   const SdCardFontRegistry* registry_;
   OptionPopup optionPopup_;
+  OptionPopup* tiltPopup() override { return &optionPopup_; }
   std::vector<FontEntry> fonts_;
   std::vector<SizeEntry> sizes_;
   textsettings::PreviewLayout previewLayout_;  // cached preview line layout; relaid only on setting/geometry change

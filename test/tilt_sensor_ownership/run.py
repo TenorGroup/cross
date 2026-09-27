@@ -76,11 +76,16 @@ else:
     )
     require(
         r"bool managesTiltSensor\(\) const override\s*\{\s*return true;\s*\}",
-        (source_root / "src/activities/UiTabListActivity.h").read_text(),
-        "tab activity does not own its tilt update loop",
+        (source_root / "src/activities/UiListActivity.h").read_text(),
+        "list activity does not own its tilt update loop",
     )
     require(
-        r"void UiTabListActivity::loop\(\)\s*\{\s*"
+        r"void UiListActivity::loop\(\)\s*\{\s*pollTilt\(\);",
+        (source_root / "src/activities/UiListActivity.cpp").read_text(),
+        "list loop does not poll the sensor before its buttons",
+    )
+    require(
+        r"void UiTabListActivity::pollTilt\(\)\s*\{\s*"
         r"const bool acceptsTilt\s*=\s*acceptsTiltTabNavigation\(\);\s*"
         r"const auto orientation\s*=\s*static_cast<CrossPointOrientation::Value>\(renderer\.getOrientation\(\)\);\s*"
         r"halTiltSensor\.update\(SETTINGS\.tiltTabNavigation, static_cast<uint8_t>\(orientation\), acceptsTilt\);",

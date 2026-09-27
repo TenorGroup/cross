@@ -28,6 +28,7 @@ void operator delete(void* p) noexcept { std::free(p); }
 void operator delete(void* p, size_t) noexcept { std::free(p); }
 #include "MenuFavorites.h"
 #include "activities/UiTabListActivity.h"
+#include "components/OptionPopup.h"
 #include "util/ButtonNavigator.h"
 
 namespace faketest {
@@ -95,9 +96,11 @@ class FakeTabScreen final : public UiTabListActivity {
   bool queueTilt(const bool forward, const bool backward) { return queueTiltTabNavigation(forward, backward); }
   bool acceptsTiltRows() const { return acceptsTiltMenuNavigation(); }
   bool queueTiltRow(const bool up, const bool down) { return queueTiltMenuNavigation(up, down); }
+  OptionPopup popup;
 
  protected:
-  bool allowsTiltTabNavigation() const override { return !modalActive; }
+  bool allowsTiltTabNavigation() const override { return !modalActive && !popup.isActive(); }
+  OptionPopup* tiltPopup() override { return &popup; }
 
  public:
 
@@ -108,6 +111,16 @@ class FakeTabScreen final : public UiTabListActivity {
     event.value = index;
     onRowAction(event);
   }
+};
+
+// A list without tabs: a sub-screen such as the Bluetooth page or a reader's chapter list.
+class FakePlainScreen final : public UiListActivity {
+ public:
+  FakePlainScreen(GfxRenderer& renderer, MappedInputManager& input) : UiListActivity("FakePlain", renderer, input) {}
+  int listCount() const override { return kRowCount; }
+  void buildScreen(UiScreen&) override {}
+  void activateIndex(int) override {}
+  int selected() { return activeNav().selected; }
 };
 
 struct TabScreenFixture : public ::testing::Test {
@@ -327,6 +340,41 @@ TEST_F(TabScreenFixture, ModalChanNghiengDoc) {
   screen.loop();
   EXPECT_FALSE(tiltfixture::lastVerticalTargetActive);
   EXPECT_EQ(screen.ring(), before);
+}
+
+// A value list open over the rows takes the row tilt, as its own up and down buttons would.
+TEST_F(TabScreenFixture, NghiengDocDiTrongPopupChonGiaTri) {
+  SETTINGS.tiltMenuNavigation = CrossPointSettings::TILT_NORMAL;
+  const StrId options[3] = {StrId::STR_STATE_OFF, StrId::STR_STATE_ON, StrId::STR_STATE_OFF};
+  screen.popup.show(StrId::STR_STATE_OFF, options, 3, 0, [](int) {});
+  const int before = screen.ring();
+
+  tiltfixture::reset();
+  tiltfixture::injectPhysicalVertical();
+  screen.loop();
+  EXPECT_TRUE(tiltfixture::lastVerticalTargetActive) << "the open popup arms the row tilt";
+  EXPECT_EQ(screen.popup.selected(), 1) << "Normal steps one option down, as in the list";
+  EXPECT_EQ(screen.ring(), before) << "the rows under the popup stay put";
+
+  SETTINGS.tiltMenuNavigation = CrossPointSettings::TILT_NVERTED;
+  tiltfixture::reset();
+  tiltfixture::injectPhysicalVertical();
+  screen.loop();
+  EXPECT_EQ(screen.popup.selected(), 0);
+}
+
+// Deeper screens are lists without tabs; the row tilt walks them too.
+TEST_F(TabScreenFixture, NghiengDocDiDongOManKhongCoThe) {
+  SETTINGS.tiltMenuNavigation = CrossPointSettings::TILT_NORMAL;
+  FakePlainScreen plain{renderer, input};
+  plain.onEnter();
+  const int before = plain.selected();
+  tiltfixture::reset();
+  tiltfixture::injectPhysicalVertical();
+  plain.loop();
+  EXPECT_TRUE(tiltfixture::lastVerticalTargetActive);
+  EXPECT_EQ(plain.selected(), before + 1);
+  EXPECT_EQ(tiltfixture::lastMode, CrossPointSettings::TILT_OFF) << "no tab flick on a screen without tabs";
 }
 
 TEST_F(TabScreenFixture, ManKhongCoDongThiNghiengDocDungYen) {

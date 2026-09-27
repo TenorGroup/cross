@@ -20,10 +20,8 @@
 class UiTabListActivity : public UiListActivity {
  public:
   void onEnter() override;
-  void loop() override;
   void captureNavigation(MenuNavigationState& state) const override;
   void restoreNavigation(const MenuNavigationState& state) override;
-  bool managesTiltSensor() const override { return true; }
 
   struct CuaSoThe {
     int dau = 0;  // chi so the dau tien hien ra
@@ -73,13 +71,10 @@ class UiTabListActivity : public UiListActivity {
   virtual bool allowsTiltTabNavigation() const { return true; }
   bool acceptsTiltTabNavigation() const;
   bool queueTiltTabNavigation(bool forward, bool backward);
-  // Row tilt shares the modal gate with tab tilt: a popup owning the screen
-  // stands both of them down.
-  virtual bool allowsTiltMenuNavigation() const { return allowsTiltTabNavigation(); }
-  bool acceptsTiltMenuNavigation() const;
-  // One gesture is one row, wrap included: the same intents the two front
-  // buttons queue.
-  bool queueTiltMenuNavigation(bool up, bool down);
+  // Row tilt shares the modal gate with tab tilt: a popup owning the screen stands the rows down
+  // (a value list takes the row tilt itself, tiltPopup).
+  bool allowsTiltMenuNavigation() const override { return allowsTiltTabNavigation(); }
+  void pollTilt() override;
   // Moi man the tu quyet nghia cua Chon va Quay lai; luat chung tu 14/09/2026 dem: Chon o thanh
   // the buoc xuong dong dau, Quay lai roi man mot nhip.
   bool handleButtons() override = 0;

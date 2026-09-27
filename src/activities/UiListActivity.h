@@ -4,6 +4,8 @@
 #include "components/UiAppHost.h"
 #include "util/ButtonNavigator.h"
 
+class OptionPopup;
+
 // Base for activities hosting a single FreeInkUI list screen. UiAppHost owns
 // the app-hosting protocol (render target, FreeInkApp, uiReady handshake);
 // this base layers the list protocol on top: the touch-routing / swipe-scroll
@@ -26,6 +28,8 @@ class UiListActivity : public Activity, protected UiAppHost {
   void restoreNavigation(const MenuNavigationState& state) override;
   void loop() override;
   void render(RenderLock&&) override;
+  // Every list screen polls the motion sensor itself: the row tilt walks its rows.
+  bool managesTiltSensor() const override { return true; }
 
   // Kep con tro ve trong so dong dang co.
   //
@@ -126,6 +130,18 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Subclass clamp, run under the render lock after every applied intent and on
   // every pass with an empty queue (UiTabListActivity: the ring cursor).
   virtual bool clampAfterNav() { return false; }
+  // The motion sensor, once per pass before the buttons: a plain list takes the row tilt alone;
+  // UiTabListActivity adds the tab flick.
+  virtual void pollTilt();
+  // The row tilt, armed after the poll (the sensor reads the arming one pass later): one gesture
+  // is one row, wrap included, as the up and down buttons move. A value list open over the rows
+  // (tiltPopup) takes it instead.
+  void pollRowTilt();
+  virtual bool allowsTiltMenuNavigation() const { return true; }
+  bool acceptsTiltMenuNavigation() const;
+  bool queueTiltMenuNavigation(bool up, bool down);
+  // The screen's value list, when it has one; the row tilt steps it while it is open.
+  virtual OptionPopup* tiltPopup() { return nullptr; }
   // Release edges for Select/Back. A Select that arrives while moves are still
   // queued is remembered and reported on the pass that applies them, so it acts
   // on the row the user can see; with an empty queue it fires immediately. Back
