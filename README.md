@@ -2,7 +2,7 @@
 
 tenor/cross is e-reader firmware for the Xteink X3 and X4. It is a fork of [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) by Dave Allie and contributors, and it runs on the [FreeInk SDK](https://github.com/Free-Ink/freeink-sdk). The CrossPoint history is kept in this repository, so every upstream commit keeps its original author.
 
-The latest release is v1.0.17. The X4 Pro has no firmware in any release yet.
+The latest release is v1.0.18. The X4 Pro has no firmware in any release yet.
 
 ## What it adds to CrossPoint
 
@@ -15,12 +15,13 @@ Everything below has shipped in a tagged release. The version in brackets is the
 - Hard shake (X3) can Refresh the screen, Sleep, Turn the page, go Back or Select, and works on every screen. Off by default, with a Shake strength of Light, Medium or Strong (v1.0.16).
 - A Motion sensor tab in Settings holds every tilt and shake row (v1.0.17).
 - Face down and face up (X3) can each run an action you choose: Refresh, Sleep, Turn the page, Back or Select. Off by default (v1.0.17).
-- Double tap on the back (X3) runs an action you choose, Off by default (v1.0.17).
+- Double tap on the back (X3) runs an action you choose, Off by default (v1.0.17), and keeps working after the device sleeps and wakes (v1.0.18).
 
 ### Bluetooth page turners
 
 - Remote page turns go through the reader's normal input handling for EPUB, TXT and XTC, so they update the page, the reading statistics and the sleep timer the same way a button press does (v1.0.7).
-- Four binding rows: next page, previous page, next chapter and previous chapter. Select a row and press the remote button you want for it. A button that sends a different code when held can have a separate hold action (v1.0.14).
+- Binding rows for next page, previous page, next chapter and previous chapter. Select a row and press the remote button you want for it. A button that sends a different code when held can have a separate hold action (v1.0.14). Two more rows open the reading menu and save a quotation (v1.0.17). The 6 rows sit under one Bind buttons row, and devices found by a scan appear right under Scan for devices (v1.0.18).
+- In a very large book, when memory in pieces keeps the radio from starting 3 times in a row, the device saves the reading place and restarts quietly into the same page, once (v1.0.18).
 - Reading with Bluetooth on no longer re-indexes the chapter on every page turn, and a low-memory chapter build no longer restarts the reader (v1.0.9). With Bluetooth on, the reader lays out the next two pages ahead (v1.0.12).
 - The Free3 remote's page buttons were tested on an X3 (v1.0.8). Its third button goes to the next chapter on a tap and back one chapter on a hold (v1.0.14); that button was checked with recorded remote reports.
 - Bluetooth switches itself off after five minutes with no connected device (v1.0.7).
