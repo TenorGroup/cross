@@ -113,7 +113,10 @@ struct BlePageTurnerActivity : UiListActivity {
   struct App { void clearTapFlash() {} } app;
   Popup optionPopup;
   std::vector<fui::ListItem> rowItems_;
-  bool rowsDirty = false, bindWaitActive_ = false;
+  bool rowsDirty = false, bindWaitActive_ = false, bindMode_ = false, finished = false;
+  int16_t selectCode_ = -1;
+  void finish() { finished = true; }
+  void onBackButton();
   std::string bindNotice_, bindValues_[6], statusValue_, statusText_ = "ready";
   uint32_t lastRawCode_ = 0, learnCode_ = 0, learnPressMs_ = 0, bindWaitStartedMs_ = 0;
   blebinding::Action bindAction_ = blebinding::Action::NextPage;
@@ -229,11 +232,12 @@ int main() {
     }
   }
   {
-    // Six bind rows right after the scan row: next page, previous page, next chapter,
-    // previous chapter, reader menu, save quotation. A tap listens for that row's
-    // action; a hold clears exactly it.
+    // Found devices right under the scan row, then one "Button bindings" row; its six rows
+    // (next page, previous page, next chapter, previous chapter, reader menu, save
+    // quotation) open under the status row. A tap listens for that row's action; a hold
+    // clears exactly it; Back returns to the main rows on the bindings row.
     SETTINGS = {};
-    backend::bonds.assign({"AA:BB:CC:DD:EE:F0"}); backend::devices.clear(); backend::live = true;
+    backend::bonds.assign({"AA:BB:CC:DD:EE:F0"}); backend::devices.assign({"D1", "D2"}); backend::live = true;
     BlePageTurnerActivity screen;
     screen.rebuildRows(); screen.refreshValues();
     const blebinding::Action order[6] = {blebinding::Action::NextPage,    blebinding::Action::PrevPage,
@@ -241,11 +245,30 @@ int main() {
                                          blebinding::Action::ReaderMenu,  blebinding::Action::SaveQuote};
     const char* labels[6] = {"STR_BLE_BIND_NEXT", "STR_BLE_BIND_PREV", "STR_BLE_BIND_NEXT_CHAPTER",
                              "STR_BLE_BIND_PREV_CHAPTER", "STR_BLE_BIND_READER_MENU", "STR_BLE_BIND_SAVE_QUOTE"};
-    int scanRow = -1;
-    for (int i = 0; i < screen.listCount(); ++i)
-      if (screen.rowItems_[i].actionValue == BlePageTurnerActivity::ROW_SCAN) scanRow = i;
+    const auto rowOf = [&](int code) {
+      for (int i = 0; i < screen.listCount(); ++i)
+        if (screen.rowItems_[i].actionValue == code) return i;
+      return -1;
+    };
+    const int mainScan = rowOf(BlePageTurnerActivity::ROW_SCAN);
+    require(mainScan >= 0 && rowOf(BlePageTurnerActivity::ROW_DEVICE_BASE) == mainScan + 1 &&
+                rowOf(BlePageTurnerActivity::ROW_DEVICE_BASE + 1) == mainScan + 2,
+            "found devices sit right under the scan row");
+    for (int k = 0; k < 6; ++k)
+      require(rowOf(BlePageTurnerActivity::ROW_BIND_NEXT + k) < 0, "no bind row on the main rows");
+    const int menuRow = rowOf(BlePageTurnerActivity::ROW_BIND_MENU);
+    require(menuRow == mainScan + 3 && screen.rowItems_[menuRow].enabled, "one bindings row after the found devices");
+    require(menuRow >= 0 && menuRow < rowOf(BlePageTurnerActivity::ROW_PAIRED_BASE), "bindings row above the paired devices");
+    screen.activateIndex(menuRow);
+    require(screen.waited.empty(), "opening the bindings listens for no button");
+    screen.rebuildRows(); screen.refreshValues();
+    require(rowOf(BlePageTurnerActivity::ROW_SCAN) < 0 && rowOf(BlePageTurnerActivity::ROW_PAIRED_BASE) < 0 &&
+                rowOf(BlePageTurnerActivity::ROW_DEVICE_BASE) < 0,
+            "the bindings show only the bind rows and the status");
+    const int scanRow = rowOf(BlePageTurnerActivity::ROW_STATUS);
+    require(screen.nav.selected == scanRow + 1, "opening the bindings selects the first bind row");
     const bool sixRows = scanRow >= 0 && scanRow + 6 < screen.listCount();
-    require(sixRows, "bind rows follow the scan row");
+    require(sixRows, "bind rows follow the status row");
     for (int k = 0; sixRows && k < 6; ++k) {
       require(std::strcmp(screen.rowItems_[scanRow + 1 + k].label, labels[k]) == 0, "bind row label in order");
     }
@@ -261,6 +284,14 @@ int main() {
     }
     screen.clearBindForRow(0);
     require(screen.cleared.size() == 6, "holding a non-bind row clears nothing");
+    screen.onBackButton();
+    require(!screen.finished, "Back in the bindings stays on the screen");
+    screen.rebuildRows(); screen.refreshValues();
+    require(rowOf(BlePageTurnerActivity::ROW_SCAN) >= 0 && screen.nav.selected == rowOf(BlePageTurnerActivity::ROW_BIND_MENU),
+            "Back returns to the main rows on the bindings row");
+    screen.onBackButton();
+    require(screen.finished, "Back on the main rows leaves the screen");
+    backend::devices.clear();
     // Forgetting a device forgets its button table too.
     blebinding::editableTable(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, "AA:BB:CC:DD:EE:F0", "Remote");
     require(SETTINGS.bleRemoteCount == 1, "table setup");

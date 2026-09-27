@@ -157,10 +157,12 @@ class BleSettingsScreenTest(unittest.TestCase):
         Do duoc: dong trang thai doi tu cau cho sang cau khong nhan duoc, va
         settings.json KHONG doi (khong hoc duoc nut nao).
         """
-        # Hang Trang thai bo qua khi bam nut: RIGHT x2 toi "Gan nut lat toi".
-        buoc = ["DOWN"] * 4 + ["RIGHT"] * 7 + ["CONFIRM", "LEFT", "LEFT", "CONFIRM"] + ["RIGHT"] * 2 + ["CONFIRM"]
+        # Hang Trang thai bo qua khi bam nut: RIGHT x2 toi "Gan nut" (chua quet nen khong
+        # co thiet bi chen giua), CONFIRM mo cac hang gan nut, con tro dung o "Gan nut lat
+        # toi", CONFIRM bat dau cho. Het cho thi BACK chi dong cac hang gan nut, man van mo.
+        buoc = ["DOWN"] * 4 + ["RIGHT"] * 7 + ["CONFIRM", "LEFT", "LEFT", "CONFIRM"] + ["RIGHT"] * 2 + ["CONFIRM"] * 2
         bat_cho = 2000 + (len(buoc) - 1) * NHIP_MS
-        script = kich_ban(buoc) + f"{bat_cho + 17000}:QUIT;"
+        script = kich_ban(buoc) + f"{bat_cho + 16500}:BACK;{bat_cho + 17500}:QUIT;"
         shots = [
             (bat_cho + 3000, "ble-gan-nut-dang-cho"),
             (bat_cho + 16000, "ble-gan-nut-khong-nhan-duoc"),
@@ -171,6 +173,7 @@ class BleSettingsScreenTest(unittest.TestCase):
         self.assertEqual(log.count("Entering activity: KeyboardEntry"), 0, log[-3000:])
         self.assertIn("Waiting for a button to bind to next", log, log[-3000:])
         self.assertIn("Bind wait ended with no key", log, log[-3000:])
+        self.assertEqual(log.count("Exiting activity: BlePageTurner"), 0, log[-3000:])
 
         # Hai khung phai khac nhau: cau cho doi thanh cau khong nhan duoc.
         dang_cho, het_cho = (self.anh(ten) for ten in self.anh_dat)

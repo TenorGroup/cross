@@ -236,6 +236,12 @@ void BlePageTurnerActivity::capNhatTrangThai() {
 }
 
 void BlePageTurnerActivity::rebuildRows() {
+  // A found device or bond appearing moves the rows: the selection stays on its row.
+  int16_t keep = selectCode_;
+  if (keep < 0 && nav.selected >= 0 && nav.selected < static_cast<int>(rowItems_.size())) {
+    keep = rowItems_[nav.selected].actionValue;
+  }
+  selectCode_ = -1;
   rowItems_.clear();
 
   const auto them = [this](const char* label, const int16_t code) {
@@ -245,33 +251,44 @@ void BlePageTurnerActivity::rebuildRows() {
     rowItems_.push_back(item);
   };
 
-  them(tr(STR_BLE_PAGE_TURNER), ROW_ENABLE);
-  them(tr(STR_BLE_STATUS), ROW_STATUS);
-  rowItems_.back().enabled = false;
-  them(tr(STR_BLE_SCAN), ROW_SCAN);
-  them(tr(STR_BLE_BIND_NEXT), ROW_BIND_NEXT);
-  them(tr(STR_BLE_BIND_PREV), ROW_BIND_PREV);
-  them(tr(STR_BLE_BIND_NEXT_CHAPTER), ROW_BIND_NEXT_CHAPTER);
-  them(tr(STR_BLE_BIND_PREV_CHAPTER), ROW_BIND_PREV_CHAPTER);
-  them(tr(STR_BLE_BIND_READER_MENU), ROW_BIND_READER_MENU);
-  them(tr(STR_BLE_BIND_SAVE_QUOTE), ROW_BIND_SAVE_QUOTE);
-
-  const uint8_t bonds = backend::bondCount();
-  for (uint8_t i = 0; i < bonds; i++) {
-    them(backend::bondName(i)[0] != '\0' ? backend::bondName(i) : backend::bondAddr(i), ROW_PAIRED_BASE + i);
-    if (i == 0) rowItems_.back().sectionHeading = tr(STR_BLE_PAIRED_DEVICES);
-  }
-  if (bonds == 0) {
-    them(tr(STR_BLE_NO_DEVICES), ROW_NO_DEVICE);
+  if (bindMode_) {
+    them(tr(STR_BLE_STATUS), ROW_STATUS);
     rowItems_.back().enabled = false;
-    rowItems_.back().sectionHeading = tr(STR_BLE_PAIRED_DEVICES);
-  }
+    them(tr(STR_BLE_BIND_NEXT), ROW_BIND_NEXT);
+    them(tr(STR_BLE_BIND_PREV), ROW_BIND_PREV);
+    them(tr(STR_BLE_BIND_NEXT_CHAPTER), ROW_BIND_NEXT_CHAPTER);
+    them(tr(STR_BLE_BIND_PREV_CHAPTER), ROW_BIND_PREV_CHAPTER);
+    them(tr(STR_BLE_BIND_READER_MENU), ROW_BIND_READER_MENU);
+    them(tr(STR_BLE_BIND_SAVE_QUOTE), ROW_BIND_SAVE_QUOTE);
+  } else {
+    them(tr(STR_BLE_PAGE_TURNER), ROW_ENABLE);
+    them(tr(STR_BLE_STATUS), ROW_STATUS);
+    rowItems_.back().enabled = false;
+    them(tr(STR_BLE_SCAN), ROW_SCAN);
+    // Thiet bi quang cao duoc chi hien khi CO, ngay duoi dong Quet: mot dong "khong
+    // tim thay" thu hai se lam nguoi doc tuong dang co mot muc nua.
+    const uint8_t found = backend::deviceCount();
+    for (uint8_t i = 0; i < found; i++) {
+      them(backend::deviceName(i)[0] != '\0' ? backend::deviceName(i) : backend::deviceAddr(i), ROW_DEVICE_BASE + i);
+    }
+    them(tr(STR_BLE_BIND_BUTTONS), ROW_BIND_MENU);
 
-  // Thiet bi quang cao duoc chi hien khi CO: mot dong "khong tim thay" thu hai se
-  // lam nguoi doc tuong dang co mot muc nua.
-  const uint8_t found = backend::deviceCount();
-  for (uint8_t i = 0; i < found; i++) {
-    them(backend::deviceName(i)[0] != '\0' ? backend::deviceName(i) : backend::deviceAddr(i), ROW_DEVICE_BASE + i);
+    const uint8_t bonds = backend::bondCount();
+    for (uint8_t i = 0; i < bonds; i++) {
+      them(backend::bondName(i)[0] != '\0' ? backend::bondName(i) : backend::bondAddr(i), ROW_PAIRED_BASE + i);
+      if (i == 0) rowItems_.back().sectionHeading = tr(STR_BLE_PAIRED_DEVICES);
+    }
+    if (bonds == 0) {
+      them(tr(STR_BLE_NO_DEVICES), ROW_NO_DEVICE);
+      rowItems_.back().enabled = false;
+      rowItems_.back().sectionHeading = tr(STR_BLE_PAIRED_DEVICES);
+    }
+  }
+  for (int i = 0; keep >= 0 && i < static_cast<int>(rowItems_.size()); ++i) {
+    if (rowItems_[i].actionValue == keep) {
+      nav.selected = i;
+      break;
+    }
   }
   clampAfterNav();
 }
@@ -295,14 +312,6 @@ bool BlePageTurnerActivity::clampAfterNav() {
 }
 
 void BlePageTurnerActivity::refreshValues() {
-  if (rowItems_.size() < 9) return;
-  rowItems_[0].value = SETTINGS.blePageTurnerEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
-  rowItems_[2].label = backend::scanning() ? tr(STR_BLE_STOP_SCAN) : tr(STR_BLE_SCAN);
-  for (int i = 0; i < 6; ++i) {
-    bindValues_[i] = bindValue(static_cast<blebinding::Action>(i + 1));
-    rowItems_[3 + i].value = bindValues_[i].c_str();
-  }
-
   // Hang Trang thai: thong bao cua luot gan nut neu dang co, roi den trang thai
   // radio, va duoi cung la ma vua nhan khi man con mo.
   statusValue_ = bindNotice_.empty() ? statusText_ : bindNotice_;
@@ -314,7 +323,20 @@ void BlePageTurnerActivity::refreshValues() {
     statusValue_ += " - ";  // gop hai manh thanh mot dong
     statusValue_ += duoi;
   }
-  rowItems_[1].value = statusValue_.c_str();
+  for (auto& item : rowItems_) {
+    const int16_t code = item.actionValue;
+    if (code == ROW_ENABLE) {
+      item.value = SETTINGS.blePageTurnerEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+    } else if (code == ROW_STATUS) {
+      item.value = statusValue_.c_str();
+    } else if (code == ROW_SCAN) {
+      item.label = backend::scanning() ? tr(STR_BLE_STOP_SCAN) : tr(STR_BLE_SCAN);
+    } else if (code >= ROW_BIND_NEXT && code <= ROW_BIND_SAVE_QUOTE) {
+      const int i = code - ROW_BIND_NEXT;
+      bindValues_[i] = bindValue(static_cast<blebinding::Action>(i + 1));
+      item.value = bindValues_[i].c_str();
+    }
+  }
 }
 
 std::string BlePageTurnerActivity::bindValue(const blebinding::Action action) const {
@@ -517,6 +539,9 @@ void BlePageTurnerActivity::activateIndex(const int index) {
   }
   if (code == ROW_ENABLE) {
     toggleEnabled();
+  } else if (code == ROW_BIND_MENU) {
+    bindMode_ = true;
+    selectCode_ = ROW_BIND_NEXT;
   } else if (code == ROW_SCAN) {
     handleScanRow();
   } else if (hangGan) {
@@ -558,7 +583,24 @@ void BlePageTurnerActivity::clearBindForRow(const int index) {
   }
 }
 
-const char* BlePageTurnerActivity::headerTitle() const { return tr(STR_BLE_PAGE_TURNER); }
+void BlePageTurnerActivity::onBackButton() {
+  if (!bindMode_) {
+    finish();
+    return;
+  }
+  // A wait still open ends with the bindings; the notice goes with them.
+  bindMode_ = false;
+  bindWaitActive_ = false;
+  learnCode_ = 0;
+  bindNotice_.clear();
+  selectCode_ = ROW_BIND_MENU;
+  rowsDirty = true;
+  requestUpdate();
+}
+
+const char* BlePageTurnerActivity::headerTitle() const {
+  return bindMode_ ? tr(STR_BLE_BIND_BUTTONS) : tr(STR_BLE_PAGE_TURNER);
+}
 
 void BlePageTurnerActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();

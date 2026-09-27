@@ -839,6 +839,7 @@ STR_BLE_BIND_HOLD: "hold"
 STR_BLE_BIND_FULL: "Binding table is full"
 STR_BLE_BIND_READER_MENU: "Bind reader-menu button"
 STR_BLE_BIND_SAVE_QUOTE: "Bind save-quotation button"
+STR_BLE_BIND_BUTTONS: "Bind buttons"
 
 STR_RECENT_STAT_FINISH: "Finish by"
 

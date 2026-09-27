@@ -839,6 +839,7 @@ STR_BLE_BIND_HOLD: "giữ"
 STR_BLE_BIND_FULL: "Hết chỗ gán nút"
 STR_BLE_BIND_READER_MENU: "Gán nút mở menu đọc"
 STR_BLE_BIND_SAVE_QUOTE: "Gán nút lưu trích dẫn"
+STR_BLE_BIND_BUTTONS: "Gán nút"
 
 STR_RECENT_STAT_FINISH: "Dự kiến xong"
 

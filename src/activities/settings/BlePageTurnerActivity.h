@@ -36,15 +36,16 @@ class BlePageTurnerActivity final : public UiListActivity {
     ROW_STATUS = 1,
     ROW_SCAN = 2,
     ROW_PAIRED_HEADER = 3,
-    // Six bind rows right after the scan row (rebuildRows decides the display
-    // order, not these values). Row code minus ROW_BIND_NEXT plus 1 is the row's
-    // blebinding::Action.
+    // The six bind rows, shown under the status row once the bindings row opens them
+    // (rebuildRows decides the display order, not these values). Row code minus
+    // ROW_BIND_NEXT plus 1 is the row's blebinding::Action.
     ROW_BIND_NEXT = 4,
     ROW_BIND_PREV = 5,
     ROW_BIND_NEXT_CHAPTER = 6,
     ROW_BIND_PREV_CHAPTER = 7,
     ROW_BIND_READER_MENU = 8,
     ROW_BIND_SAVE_QUOTE = 9,
+    ROW_BIND_MENU = 10,
     ROW_PAIRED_BASE = 100,
     ROW_DEVICE_HEADER = 200,
     ROW_DEVICE_BASE = 300,
@@ -58,6 +59,7 @@ class BlePageTurnerActivity final : public UiListActivity {
   bool handleCustomInput() override;
   void stepSelection(int direction) override;
   bool clampAfterNav() override;
+  void onBackButton() override;
   const char* headerTitle() const override;
 
   void rebuildRows();
@@ -94,6 +96,10 @@ class BlePageTurnerActivity final : public UiListActivity {
   std::vector<freeink::ui::ListItem> rowItems_;
   OptionPopup optionPopup;
   bool rowsDirty = true;
+  // The bind rows are open in place of the main rows; Back closes them.
+  bool bindMode_ = false;
+  // Row the next rebuild selects; -1 keeps the selected row's code where it moved to.
+  int16_t selectCode_ = -1;
   uint32_t lastPollMs = 0;
   uint32_t lastStateSig = 0;
 
