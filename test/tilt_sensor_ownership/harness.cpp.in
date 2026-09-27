@@ -38,6 +38,8 @@ struct TestSettings {
   uint8_t faceDownAction = 0;  // Off
   uint8_t faceUpAction = 0;    // Off
   uint8_t doubleTapAction = 0;  // Off
+  uint8_t screenTapAction = 0;  // Off
+  uint8_t edgeTapAction = 0;    // Off
 } SETTINGS;
 
 int failures = 0;

@@ -108,6 +108,8 @@ struct Settings {
   uint8_t faceDownAction = 0;
   uint8_t faceUpAction = 0;
   uint8_t doubleTapAction = 0;
+  uint8_t screenTapAction = 0;
+  uint8_t edgeTapAction = 0;
   CrossPointSettings::SLEEP_SCREEN_MODE sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::TENOR;
   CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN quickResumeSleepScreen = CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::NONE;
 } SETTINGS;
@@ -158,7 +160,7 @@ struct TiltBoundary {
   void setStrength(uint8_t, uint8_t) {}
   void configureShake(uint8_t, uint8_t) {}
   void configureFlip(uint8_t, uint8_t) {}
-  void configureDoubleTap(uint8_t) {}
+  void configureDoubleTap(uint8_t, uint8_t, uint8_t) {}
   void confirmSideFlicks(bool) {}
   void noteScreen(uint32_t) {}
   void configureVerticalGesture(uint8_t mode, bool gestureTargetActive) {

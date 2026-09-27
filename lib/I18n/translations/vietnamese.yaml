@@ -851,10 +851,12 @@ STR_STATS_FINISH_FAR: "Hơn %u ngày nữa"
 
 STR_STATS_FINISH_IN_DAYS: "Còn khoảng %u ngày"
 
-STR_CAT_MOTION: "Cảm biến chuyển động"
+STR_CAT_MOTION: "Cử chỉ"
 
 STR_FACE_DOWN_ACTION: "Úp máy"
 
 STR_FACE_UP_ACTION: "Ngửa máy"
 
-STR_DOUBLE_TAP_ACTION: "Gõ hai cái"
+STR_DOUBLE_TAP_ACTION: "Gõ hai cái vào lưng"
+STR_SCREEN_TAP_ACTION: "Gõ hai cái vào màn hình"
+STR_EDGE_TAP_ACTION: "Gõ hai cái vào cạnh"

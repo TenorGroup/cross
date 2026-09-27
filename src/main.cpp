@@ -853,7 +853,7 @@ static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
   halTiltSensor.setStrength(SETTINGS.tiltStrengthH, SETTINGS.tiltStrengthV);
   halTiltSensor.configureShake(SETTINGS.shakeAction, SETTINGS.shakeStrength);
   halTiltSensor.configureFlip(SETTINGS.faceDownAction, SETTINGS.faceUpAction);
-  halTiltSensor.configureDoubleTap(SETTINGS.doubleTapAction);
+  halTiltSensor.configureDoubleTap(SETTINGS.doubleTapAction, SETTINGS.screenTapAction, SETTINGS.edgeTapAction);
   // Menus wait for a side flick to come back (picking the device up is not a tab
   // step); the reader keeps page turns immediate.
   halTiltSensor.confirmSideFlicks(!foregroundReader);
@@ -869,7 +869,55 @@ static void updateTiltSensorForForegroundActivity(const bool foregroundReader,
 }
 
 // Runs a short action on the screen in front, or nothing where it has no meaning there.
+#if defined(TENOR_TAP_LOG) && !defined(SIMULATOR)
+// Measurement build only: every double tap the gestures act on, and one line a minute awake, kept in
+// RAM and rewritten whole to /v1019/tap/<boot>-<part>.csv. Worn with no tap made on purpose, every
+// tap line is a false one and the minute lines are the hours it was measured over.
+static void tapLog(const char* const what) {
+  static std::string lines;
+  static unsigned part = 0;
+  static long boot = 0;
+  if (boot == 0) boot = static_cast<long>(time(nullptr));
+  char row[96];
+  snprintf(row, sizeof(row), "%ld,%lu,%s,%s\n", static_cast<long>(time(nullptr)), millis(), what,
+           activityManager.isReaderActivity() ? "doc" : "khac");
+  lines += row;
+  Storage.mkdir("/v1019");
+  Storage.mkdir("/v1019/tap");
+  char path[64];
+  snprintf(path, sizeof(path), "/v1019/tap/%ld-%u.csv", boot, part);
+  HalFile file;
+  if (Storage.openFileForWrite("TLOG", path, file)) {
+    file.print("epoch,ms,su_kien,man\n");
+    file.write(reinterpret_cast<const uint8_t*>(lines.data()), lines.size());
+    file.close();
+  }
+  if (lines.size() > 6000) {
+    lines.clear();
+    part++;
+  }
+}
+
+static void tapLogTick() {
+  static unsigned long last = 0;
+  if (last != 0 && millis() - last < 60000) return;
+  last = millis();
+  tapLog("phut");
+}
+#endif
+
+// The side button that turns the page forward (or back), as the side button layout sets it.
+[[maybe_unused]] static uint8_t sideButton(const bool forward) {
+  const bool swapped = SETTINGS.sideButtonLayout == CrossPointSettings::NEXT_PREV;
+  return forward != swapped ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP;
+}
+
 static void runQuickAction(const uint8_t action, const quickaction::Trigger trigger) {
+#if defined(TENOR_TAP_LOG) && !defined(SIMULATOR)
+  if (trigger == quickaction::Trigger::DoubleTap) tapLog("lung");
+  if (trigger == quickaction::Trigger::ScreenTap) tapLog("man-hinh");
+  if (trigger == quickaction::Trigger::EdgeTap) tapLog("canh");
+#endif
   // Long enough for two 10 ms samples to agree, short of any hold action.
   [[maybe_unused]] static constexpr uint16_t QUICK_PRESS_HOLD_MS = 60;
   const quickaction::Outcome outcome =
@@ -893,6 +941,11 @@ static void runQuickAction(const uint8_t action, const quickaction::Trigger trig
       activityManager.readerShortcut(outcome == quickaction::Outcome::ReaderMenu ? ReaderShortcut::Menu
                                                                                  : ReaderShortcut::Quote);
       break;
+    case quickaction::Outcome::SideForward:
+#ifndef SIMULATOR  // no motion sensor there, so no double tap reaches this
+      gpio.injectPresses(sideButton(true), QUICK_PRESS_HOLD_MS, 1, 0);
+#endif
+      break;
     case quickaction::Outcome::Back:
     case quickaction::Outcome::Confirm:
 #ifndef SIMULATOR  // no motion sensor there, so no shake reaches this
@@ -907,6 +960,37 @@ static void runQuickAction(const uint8_t action, const quickaction::Trigger trig
 }
 
 #if defined(TENOR_PRESS_PROBE) && !defined(SIMULATOR)
+static HalFile tapRecFile;
+static void tapRecFrames(const Imu::RawFrame* const frames, const bool* const gaps, const uint16_t count) {
+  if (!tapRecFile.isOpen()) return;
+  uint8_t record[13];
+  for (uint16_t i = 0; i < count; ++i) {
+    record[0] = gaps[i] ? 1 : 0;
+    memcpy(&record[1], &frames[i], 12);
+    tapRecFile.write(record, sizeof(record));
+  }
+}
+static void tapRecCommand(const String& cmd) {
+  if (cmd == "TAP_REC_START") {
+    Storage.mkdir("/v1019");
+    const bool ok = Storage.openFileForWrite("TREC", "/v1019/fifo.bin", tapRecFile);
+    halTiltSensor.probeFrameSink(ok ? tapRecFrames : nullptr);
+    logSerial.printf("TAP_REC:start,%d,t=%lu\n", ok, millis());
+  } else if (cmd == "TAP_REC_STOP") {
+    halTiltSensor.probeFrameSink(nullptr);
+    const size_t size = tapRecFile.isOpen() ? tapRecFile.size() : 0;
+    tapRecFile.close();
+    logSerial.printf("TAP_REC:stop,bytes=%u,t=%lu\n", static_cast<unsigned>(size), millis());
+  } else if (tapRecFile.isOpen()) {
+    uint8_t record[13] = {2};
+    const String label = cmd.substring(9);
+    memcpy(&record[1], label.c_str(), std::min<size_t>(12, label.length()));
+    tapRecFile.write(record, sizeof(record));
+    tapRecFile.flush();
+    logSerial.printf("TAP_MARK:%s,bytes=%u,t=%lu\n", label.c_str(), static_cast<unsigned>(tapRecFile.size()), millis());
+  }
+}
+
 // CMD:CUR_LOG <s>: for the next <s> seconds, one fuel gauge line every 10 s (average and
 // instant current in mA, voltage, whether the motion sensor samples, the shake action),
 // kept in RAM too, so a run with the cable out is read back with CMD:CUR_LOG and no number.
@@ -1001,6 +1085,9 @@ void loop() {
   powerManager.pollGauge();
   // The battery's capacity into the gauge, once the first screen is up; never blocks.
   if (activityManager.hasDrawnFrame()) halGaugeCapacity.tick();
+#endif
+#if defined(TENOR_TAP_LOG) && !defined(SIMULATOR)
+  tapLogTick();
 #endif
 #if defined(TENOR_GAUGE_LOG) && !defined(SIMULATOR)
   gaugeLogTick();
@@ -1364,14 +1451,13 @@ void loop() {
         // mid-render. Names follow the portrait reader mapping of the current settings.
         char name[12] = {};
         unsigned hold = 0, count = 0, gap = 0;
-        const bool sideSwapped = SETTINGS.sideButtonLayout == CrossPointSettings::NEXT_PREV;
         int button = -1;
         if (SCAN_COMMAND(cmd.c_str() + 6, "%11s %u %u %u", name, &hold, &count, &gap) == 4) {
           const String n(name);
           if (n == "NEXT") button = SETTINGS.frontButtonRight;
           if (n == "PREV") button = SETTINGS.frontButtonLeft;
-          if (n == "SIDE_NEXT") button = sideSwapped ? HalGPIO::BTN_UP : HalGPIO::BTN_DOWN;
-          if (n == "SIDE_PREV") button = sideSwapped ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP;
+          if (n == "SIDE_NEXT") button = sideButton(true);
+          if (n == "SIDE_PREV") button = sideButton(false);
           if (n == "POWER") button = HalGPIO::BTN_POWER;
           if (n == "BACK") button = mappedInputManager.physicalBack();
           if (n == "CONFIRM") button = SETTINGS.frontButtonConfirm;
@@ -1635,6 +1721,14 @@ void loop() {
       } else if (cmd.startsWith("IMU_MARK ")) {
         // CMD:IMU_MARK <label>: names the part of an IMU_LOG run that follows (do-lac/phan_tich_lac.py).
         logSerial.printf("IMU_MARK:%lu,%s\n", millis(), cmd.substring(9).c_str());
+      } else if (cmd == "TAP_REC_START" || cmd == "TAP_REC_STOP" || cmd.startsWith("TAP_MARK ")) {
+        // CMD:TAP_REC_START / TAP_MARK <label> / TAP_REC_STOP: every FIFO frame the tap detector
+        // gets, to /v1019/fifo.bin on the card (the USB link stalls under a stream of them). 13 bytes
+        // a frame: a flag (0, or 1 after lost frames) then ax ay az gx gy gz, int16 little endian raw
+        // counts; a mark is a flag 2 then 12 bytes of its label.
+#ifndef SIMULATOR
+        tapRecCommand(cmd);
+#endif
       } else if (cmd.startsWith("TAP_LOG ")) {
         // CMD:TAP_LOG <s>: for <s> seconds (at most 600), with double tap on, one "IMU_FIFO:" line
         // per poll (frames read, microseconds the read took, free and lowest heap) and one
@@ -1923,7 +2017,7 @@ void loop() {
   }
 #endif
 
-  // Short power press, hard shake, face down, face up and double tap: the same actions, one
+  // Short power press, hard shake, face down, face up and the double taps: the same actions, one
   // decision (quickaction::resolve).
   if (mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
     runQuickAction(SETTINGS.shortPwrBtn, quickaction::Trigger::PowerRelease);
@@ -1939,6 +2033,12 @@ void loop() {
   }
   if (halTiltSensor.wasDoubleTapped()) {
     runQuickAction(quickaction::shakeAsPowerAction(SETTINGS.doubleTapAction), quickaction::Trigger::DoubleTap);
+  }
+  if (halTiltSensor.wasScreenTapped()) {
+    runQuickAction(quickaction::shakeAsPowerAction(SETTINGS.screenTapAction), quickaction::Trigger::ScreenTap);
+  }
+  if (halTiltSensor.wasEdgeTapped()) {
+    runQuickAction(quickaction::shakeAsPowerAction(SETTINGS.edgeTapAction), quickaction::Trigger::EdgeTap);
   }
 
   // Refresh the battery icon when USB is plugged or unplugged.

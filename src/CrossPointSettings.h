@@ -437,8 +437,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Face down and face up actions, each a place in quickaction::SHAKE_ORDER (0 = Off).
   uint8_t faceDownAction = 0;
   uint8_t faceUpAction = 0;
-  // Double tap action, a place in quickaction::SHAKE_ORDER (0 = Off).
+  // Double tap on the back, on the screen and on a side edge, each a place in
+  // quickaction::SHAKE_ORDER (0 = Off). The key doubleTapAction predates the other two and stays.
   uint8_t doubleTapAction = 0;
+  uint8_t screenTapAction = 0;
+  uint8_t edgeTapAction = 0;
   // Touch screen reader zones/gestures on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_SWIPE;
   // Reader menu open gesture (SHOW_READER_MENU: off / center tap / bottom-edge

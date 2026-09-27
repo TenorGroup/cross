@@ -20,6 +20,6 @@ namespace ble {bool stopped=false,init=false,startSuccess=true,rearm=false;int s
 }
 // The shared quick action catalog's one door (main.cpp runQuickAction): recorded, so a case
 // sees which catalog action a trigger asked for and from where.
-namespace quickaction {enum class Trigger : uint8_t {PowerRelease,Shake,FaceDown,FaceUp,DoubleTap,Remote};}
+namespace quickaction {enum class Trigger : uint8_t {PowerRelease,Shake,FaceDown,FaceUp,DoubleTap,Remote,EdgeTap,ScreenTap};}
 std::vector<std::pair<uint8_t,quickaction::Trigger>> quickActions;
 void runQuickAction(const uint8_t action,const quickaction::Trigger trigger){quickActions.emplace_back(action,trigger);}

@@ -13,8 +13,8 @@
 // them for every setting, and one decision for all: what the configured action means here, or nothing.
 namespace quickaction {
 
-enum class Trigger : uint8_t { PowerRelease, Shake, FaceDown, FaceUp, DoubleTap, Remote };
-enum class Outcome : uint8_t { None, Refresh, Sleep, PageForward, Back, Confirm, ReaderMenu, SaveQuote };
+enum class Trigger : uint8_t { PowerRelease, Shake, FaceDown, FaceUp, DoubleTap, Remote, EdgeTap, ScreenTap };
+enum class Outcome : uint8_t { None, Refresh, Sleep, PageForward, Back, Confirm, ReaderMenu, SaveQuote, SideForward };
 
 struct Choice {
   uint8_t action;  // A SHORT_PWRBTN value
@@ -84,7 +84,12 @@ inline Outcome resolve(const uint8_t action, const Trigger trigger, const bool f
     case CrossPointSettings::SLEEP:
       return gesture ? Outcome::Sleep : Outcome::None;
     case CrossPointSettings::PAGE_TURN:
-      return gesture && foregroundReader ? Outcome::PageForward : Outcome::None;
+      // A double tap outside a book presses the side button the page turns with: on Home and in
+      // lists it steps as that button does.
+      if (gesture && foregroundReader) return Outcome::PageForward;
+      return trigger == Trigger::DoubleTap || trigger == Trigger::ScreenTap || trigger == Trigger::EdgeTap
+                 ? Outcome::SideForward
+                 : Outcome::None;
     case CrossPointSettings::PWR_CONFIRM:
       return gesture || !touchPowerSelect ? Outcome::Confirm : Outcome::None;
     case CrossPointSettings::BACK:

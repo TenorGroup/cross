@@ -268,9 +268,9 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
-    // 70 unconditional descriptors; the IMU branch adds the Motion sensor tab: reader,
+    // 70 unconditional descriptors; the IMU branch adds the Gestures tab: reader,
     // tab and row tilt, the two flick strengths, the two hard shake rows, face down, face up
-    // and double tap.
+    // and the three double taps.
     // Cold-catalog tests cover each capability branch and the IMU variant.
     constexpr size_t fixedCount = 70
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
@@ -281,7 +281,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 #endif
         ;
     std::vector<SettingInfo> v;
-    v.reserve(fixedCount + (hasTilt ? 10 : 0));
+    v.reserve(fixedCount + (hasTilt ? 12 : 0));
     // --- Display ---
     v.push_back(SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
                           {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
@@ -442,7 +442,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           quickaction::powerLabels(), "shortPwrBtn", StrId::STR_CAT_CONTROLS));
     v.push_back(SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
                             "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS));
-    // --- Motion sensor (only with the QMI8658 IMU, X3) ---
+    // --- Gestures (only with the QMI8658 IMU, X3) ---
     // Keys and values are the ones these rows had in Reader and Controls, so a saved
     // file reads the same here.
     if (hasTilt) {
@@ -479,6 +479,10 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                             quickaction::shakeLabels(), "faceUpAction", StrId::STR_CAT_MOTION));
       v.push_back(SettingInfo::Enum(StrId::STR_DOUBLE_TAP_ACTION, &CrossPointSettings::doubleTapAction,
                             quickaction::shakeLabels(), "doubleTapAction", StrId::STR_CAT_MOTION));
+      v.push_back(SettingInfo::Enum(StrId::STR_SCREEN_TAP_ACTION, &CrossPointSettings::screenTapAction,
+                            quickaction::shakeLabels(), "screenTapAction", StrId::STR_CAT_MOTION));
+      v.push_back(SettingInfo::Enum(StrId::STR_EDGE_TAP_ACTION, &CrossPointSettings::edgeTapAction,
+                            quickaction::shakeLabels(), "edgeTapAction", StrId::STR_CAT_MOTION));
     }
 
     // --- System ---
@@ -675,7 +679,7 @@ inline int deviceSettingsTab(const SettingInfo& setting) {
 }
 
 // Settings tabs this board shows: all of them with a motion sensor, else every one but
-// Motion sensor, the last by ID.
+// Gestures, the last by ID.
 static_assert(static_cast<int>(settingstabs::Tab::MOTION) == settingstabs::TAB_COUNT - 1,
               "a board without a motion sensor drops the last tab");
 inline int deviceSettingsTabCount() {

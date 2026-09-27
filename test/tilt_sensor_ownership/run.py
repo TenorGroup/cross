@@ -103,9 +103,13 @@ else:
         r"if \(halTiltSensor\.wasTurnedFaceUp\(\)\) \{\s*"
         r"runQuickAction\(quickaction::shakeAsPowerAction\(SETTINGS\.faceUpAction\), quickaction::Trigger::FaceUp\);\s*\}\s*"
         r"if \(halTiltSensor\.wasDoubleTapped\(\)\) \{\s*"
-        r"runQuickAction\(quickaction::shakeAsPowerAction\(SETTINGS\.doubleTapAction\), quickaction::Trigger::DoubleTap\);",
+        r"runQuickAction\(quickaction::shakeAsPowerAction\(SETTINGS\.doubleTapAction\), quickaction::Trigger::DoubleTap\);\s*\}\s*"
+        r"if \(halTiltSensor\.wasScreenTapped\(\)\) \{\s*"
+        r"runQuickAction\(quickaction::shakeAsPowerAction\(SETTINGS\.screenTapAction\), quickaction::Trigger::ScreenTap\);\s*\}\s*"
+        r"if \(halTiltSensor\.wasEdgeTapped\(\)\) \{\s*"
+        r"runQuickAction\(quickaction::shakeAsPowerAction\(SETTINGS\.edgeTapAction\), quickaction::Trigger::EdgeTap\);",
         main_source,
-        "short power press, hard shake, face down, face up and double tap do not share the one action route",
+        "short power press, hard shake, face down, face up and the double taps do not share the one action route",
     )
     main_tilt_route = extract_function(
         main_source, r"static void updateTiltSensorForForegroundActivity\s*\("

@@ -851,10 +851,12 @@ STR_STATS_FINISH_FAR: "More than %u days"
 
 STR_STATS_FINISH_IN_DAYS: "About %u days left"
 
-STR_CAT_MOTION: "Motion sensor"
+STR_CAT_MOTION: "Gestures"
 
 STR_FACE_DOWN_ACTION: "Face down"
 
 STR_FACE_UP_ACTION: "Face up"
 
-STR_DOUBLE_TAP_ACTION: "Double tap"
+STR_DOUBLE_TAP_ACTION: "Double tap on the back"
+STR_SCREEN_TAP_ACTION: "Double tap on the screen"
+STR_EDGE_TAP_ACTION: "Double tap on the edge"

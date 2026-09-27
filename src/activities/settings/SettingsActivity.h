@@ -187,7 +187,7 @@ class SettingsActivity final : public UiTabListActivity {
 
   // --- UiTabListActivity contract ---
   int listCount() const override { return settingsCount; }
-  // Motion sensor only on a board with one (deviceSettingsTabCount).
+  // Gestures only on a board with one (deviceSettingsTabCount).
   int tabCount() const override;
   int activeTab() const override { return selectedCategoryIndex; }
   const char* tabLabel(int index) const override {
