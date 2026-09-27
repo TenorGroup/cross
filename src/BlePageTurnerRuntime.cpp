@@ -53,7 +53,6 @@ std::atomic<uint32_t> startStackMinimum{0};
 RTC_NOINIT_ATTR bleheap::Memo heapRestartMemo;
 // Written by the start (one at a time), read by main once no start is in flight.
 bleheap::Tracker heapTracker{heapRestartMemo};
-std::atomic<bool> heapRestartRequested{false};
 
 void logSkipped(const char* reason, const HalMemory::HeapStats& heap) {
   LOG_ERR("BLE", "HID begin skipped (%s): free=%zu largest=%zu required_free=%zu required_largest=%zu", reason,
@@ -91,9 +90,7 @@ bool beginOwned(GfxRenderer& renderer) {
   const auto heap = HalMemory::getInternalHeap();
   if (heap.freeBytes < kMinimumFreeBytes || heap.largestBlockBytes < kMinimumLargestBlockBytes) {
     logSkipped("insufficient-internal-heap", heap);
-    if (heapTracker.refused(heap.freeBytes, heap.largestBlockBytes)) {
-      heapRestartRequested.store(true, std::memory_order_release);
-    }
+    heapTracker.refused(heap.freeBytes, heap.largestBlockBytes);
     return false;
   }
   heapTracker.passed();
@@ -127,7 +124,6 @@ bool beginOwned(GfxRenderer& renderer) {
   LOG_INF("BLE", "HID begin kept free=%zu largest=%zu", after.freeBytes, after.largestBlockBytes);
 #endif
   heapTracker.radioUp();
-  heapRestartRequested.store(false, std::memory_order_release);
   return true;
 }
 
@@ -161,11 +157,10 @@ uint32_t startStackHighWaterMark() { return startStackMinimum.load(std::memory_o
 
 bool initializing() { return attemptInFlight.load(std::memory_order_acquire); }
 
-bool heapRestartWanted() { return heapRestartRequested.load(std::memory_order_acquire); }
+bool heapRestartWanted() { return heapTracker.wanted.load(std::memory_order_acquire); }
 
 void markHeapRestart() {
   heapTracker.restarting();
-  heapRestartRequested.store(false, std::memory_order_release);
 }
 
 bool busy() {

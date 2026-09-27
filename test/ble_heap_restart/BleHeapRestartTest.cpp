@@ -80,6 +80,28 @@ TEST(BleHeapRestartTrackerTest, OneRestartSurvivesARestartUntilTheRadioComesUp) 
   }
 }
 
+// Asked in one book, then Home and another book whose heap passes: a later stack failure there
+// is not fragmentation and must not restart the device.
+TEST(BleHeapRestartTrackerTest, PassedHeapCheckDropsAnEarlierRequest) {
+  bleheap::Memo memo{0};
+  bleheap::Tracker tracker{memo};
+  EXPECT_FALSE(tracker.refused(kFree, kLargest));
+  EXPECT_FALSE(tracker.refused(kFree, kLargest));
+  ASSERT_TRUE(tracker.refused(kFree, kLargest));
+  EXPECT_TRUE(tracker.wanted.load());
+  tracker.passed();
+  EXPECT_FALSE(tracker.wanted.load());
+}
+
+TEST(BleHeapRestartTrackerTest, RestartingClearsTheRequest) {
+  bleheap::Memo memo{0};
+  bleheap::Tracker tracker{memo};
+  for (int i = 0; i < 3; ++i) tracker.refused(kFree, kLargest);
+  ASSERT_TRUE(tracker.wanted.load());
+  tracker.restarting();
+  EXPECT_FALSE(tracker.wanted.load());
+}
+
 TEST(BleHeapRestartTrackerTest, ColdBootGarbageInTheMemoIsNotARestart) {
   for (const uint32_t garbage : {0u, 0xFFFFFFFFu, 0xDEADBEEFu, bleheap::kRestartSpentMagic ^ 1u}) {
     bleheap::Memo memo{garbage};

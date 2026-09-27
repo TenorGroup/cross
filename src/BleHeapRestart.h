@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -40,6 +41,9 @@ struct Memo {
 struct Tracker {
   Memo& memo;
   uint8_t fragmentedInRow = 0;
+  // Asked by a refusal, read by the main loop, which restarts once a page is shown. The radio
+  // start runs on its own task.
+  std::atomic<bool> wanted{false};
 
   // A start the heap check refused. True when this refusal asks for the restart.
   bool refused(const size_t freeBytes, const size_t largestBlockBytes) {
@@ -48,15 +52,26 @@ struct Tracker {
     } else if (fragmentedInRow < UINT8_MAX) {
       ++fragmentedInRow;
     }
-    return shouldRestart(freeBytes, largestBlockBytes, fragmentedInRow, memo.magic == kRestartSpentMagic);
+    const bool restart =
+        shouldRestart(freeBytes, largestBlockBytes, fragmentedInRow, memo.magic == kRestartSpentMagic);
+    if (restart) wanted.store(true, std::memory_order_release);
+    return restart;
   }
-  // The heap check passed: a rollback or a stack failure after it is not fragmentation.
-  void passed() { fragmentedInRow = 0; }
+  // The heap check passed: a rollback or a stack failure after it is not fragmentation, and a
+  // restart asked earlier (another book, before Home) is no longer needed.
+  void passed() {
+    fragmentedInRow = 0;
+    wanted.store(false, std::memory_order_release);
+  }
   void radioUp() {
     fragmentedInRow = 0;
     memo.magic = 0;
+    wanted.store(false, std::memory_order_release);
   }
-  void restarting() { memo.magic = kRestartSpentMagic; }
+  void restarting() {
+    memo.magic = kRestartSpentMagic;
+    wanted.store(false, std::memory_order_release);
+  }
 };
 
 }  // namespace bleheap
