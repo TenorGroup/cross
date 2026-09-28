@@ -26,9 +26,11 @@ struct Radio {
   bool insideBegin = false;
   bool beginHadFullSpeed = false;
   bool endHadFullSpeed = false;
-  // The stack takes heap: the host's heap reads this after a successful begin.
+  // The stack takes heap: the host's heap reads this after a successful begin, and the heap
+  // from before once end() has stopped it.
   bool changeHeapOnBegin = false;
   bleturner::Heap heapAfterBegin{};
+  bleturner::Heap heapBeforeBegin{};
   std::function<void()> beginHook;
   std::string addr;
   std::string name;

@@ -353,6 +353,21 @@ TEST_F(TickTest, HeapRestartOnlyFromAQuietShownPage) {
   EXPECT_EQ(host().restarts, 1u);
 }
 
+// The book start rolls back on its heap three times (the first try and two 5 s retries), then
+// the book restarts into itself from its shown page.
+TEST_F(TickTest, BookWhoseStartsRollBackInPiecesRestartsIntoItself) {
+  host().heap = {80000, 61428};
+  radio().changeHeapOnBegin = true;
+  radio().heapAfterBegin = {28812, 26612};
+  for (int i = 0; i < 40 && host().restarts == 0; ++i) {
+    radio().now += 1000;
+    pass(fake::reading());
+  }
+  EXPECT_EQ(radio().beginCalls, 3u);
+  EXPECT_EQ(host().restarts, 1u);
+  EXPECT_TRUE(logged("Heap fragmented for radio: free=80000 largest=61428; silent restart to reader"));
+}
+
 TEST_F(TickTest, HoldsHeapWhileTheRadioOwnsOrAsksForIt) {
   EXPECT_FALSE(bleturner::holdsHeap());
   bleturner::tick(fake::reading());

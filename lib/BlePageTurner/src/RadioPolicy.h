@@ -68,8 +68,9 @@ constexpr Why radioVerdict(const RadioInputs& in) {
       return in.heap.freeBytes >= kMinimumFreeBytes ? Why::HeapInPieces : Why::HeapLow;
     case Phase::JustStarted:
       if (in.storageBusy) return Why::StorageBusy;
-      // The stack may come up and take the reader's last large block.
-      return in.heap.largestBlock >= kMinimumLargestBlockBytes ? Why::Ok : Why::HeapLow;
+      // The stack may come up and take the reader's last large block. The check before the start
+      // found the bytes, so a stack that leaves no whole block behind split the heap: in pieces.
+      return in.heap.largestBlock >= kMinimumLargestBlockBytes ? Why::Ok : Why::HeapInPieces;
     case Phase::Running:
       if (!in.enabled) return Why::Off;
       if (in.storageBusy) return Why::StorageBusy;
@@ -83,23 +84,18 @@ constexpr Why radioVerdict(const RadioInputs& in) {
 // --- The heap restart ------------------------------------------------------------
 // A heap in pieces keeps the radio off for good: leaving the book does not give the block
 // back (X3, 27/09/2026: free=87308 largest=23540 in the book and on Home alike, 61428 after
-// a restart). A restart into the same book is the cure. It is allowed once until the radio
-// comes up again, so a heap still in pieces after the restart cannot restart the device in a
-// loop.
+// a restart). It shows before the start (enough bytes, no block the stack can take) or right
+// after it (the stack came up and left no whole block for the reader: X3, 29/09/2026, the
+// 5,000-chapter book, 7 of 7 starts rolled back at largest 26,612). A restart into the same
+// book is the cure. It is allowed once until the radio comes up again, so a heap still in
+// pieces after the restart cannot restart the device in a loop.
 inline constexpr uint8_t kRefusalsBeforeRestart = 3;
 inline constexpr uint32_t kRestartSpentMagic = 0x42485231u;
 
-constexpr bool fragmented(const size_t freeBytes, const size_t largestBlock) {
-  RadioInputs in{};
-  in.phase = Phase::BeforeStart;
-  in.heap = {freeBytes, largestBlock};
-  return radioVerdict(in) == Why::HeapInPieces;
-}
-
-// The second decision, kept apart: restart to hand the radio a whole heap.
-constexpr bool shouldRestart(const size_t freeBytes, const size_t largestBlock, const uint8_t fragmentedInRow,
-                             const bool restartedSinceRadioUp) {
-  return !restartedSinceRadioUp && fragmented(freeBytes, largestBlock) && fragmentedInRow >= kRefusalsBeforeRestart;
+// The second decision, kept apart: restart to hand the radio a whole heap. `why` is the
+// verdict that ended this start (before or right after the stack came up).
+constexpr bool shouldRestart(const Why why, const uint8_t inPiecesInRow, const bool restartedSinceRadioUp) {
+  return !restartedSinceRadioUp && why == Why::HeapInPieces && inPiecesInRow >= kRefusalsBeforeRestart;
 }
 
 // Kept in RTC memory, so it outlives ESP.restart. Power-on garbage is anything but the magic and
@@ -116,21 +112,23 @@ struct Tracker {
   // shown.
   std::atomic<bool> wanted{false};
 
-  // A start the heap check refused. True when this refusal asks for the restart.
-  bool refused(const size_t freeBytes, const size_t largestBlock) {
-    if (!fragmented(freeBytes, largestBlock)) {
-      fragmentedInRow = 0;
-      wanted.store(false, std::memory_order_release);
+  // A start the heap ended: refused before the stack came up, or rolled back right after. A heap
+  // in pieces counts toward the restart; a heap short in total breaks the streak (a restart
+  // cannot give back bytes the book really uses) and drops a restart asked earlier. True when
+  // this one asks for the restart.
+  bool refused(const Why why) {
+    if (why != Why::HeapInPieces) {
+      inconclusive();
     } else if (fragmentedInRow < UINT8_MAX) {
       ++fragmentedInRow;
     }
-    const bool restart = shouldRestart(freeBytes, largestBlock, fragmentedInRow, memo.magic == kRestartSpentMagic);
+    const bool restart = shouldRestart(why, fragmentedInRow, memo.magic == kRestartSpentMagic);
     if (restart) wanted.store(true, std::memory_order_release);
     return restart;
   }
-  // The heap check passed: a rollback or a stack failure after it is not fragmentation, and a
-  // restart asked earlier (another book, before Home) is no longer needed.
-  void passed() {
+  // The start ended for a reason other than the heap (the stack failed, the start was cancelled,
+  // the card was taken): no sign of pieces, the streak starts again.
+  void inconclusive() {
     fragmentedInRow = 0;
     wanted.store(false, std::memory_order_release);
   }

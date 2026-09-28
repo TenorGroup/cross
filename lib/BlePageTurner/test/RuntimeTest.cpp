@@ -309,24 +309,69 @@ TEST_F(RuntimeTest, ThirdFragmentedRefusalAsksForOneRestartUntilTheRadioComesUp)
   EXPECT_TRUE(bleturner::detail::heapRestartWanted());
 }
 
-TEST_F(RuntimeTest, ShortHeapAndPostInitRollbackNeverAskForARestart) {
+TEST_F(RuntimeTest, ShortHeapNeverAsksForARestart) {
   ASSERT_TRUE(bleturner::switchOn());
   radio().running = false;
-
   host().heap = {kEnoughFree - 1, 23540};
   for (int i = 0; i < 5; ++i) EXPECT_FALSE(bleturner::switchOn());
   EXPECT_FALSE(bleturner::detail::heapRestartWanted());
+}
 
-  // Two fragmented refusals, then a start the check let through and the stack rolled back.
-  host().heap = {87308, 23540};
-  EXPECT_FALSE(bleturner::switchOn());
-  EXPECT_FALSE(bleturner::switchOn());
-  host().heap = {kEnoughFree, kEnoughLargest};
+// X3, 29/09/2026, the 5,000-chapter book: the heap check passed every time (free about 80 KB,
+// largest 61,428), the stack came up and left largest 26,612, so every start rolled back, 7 of
+// 7, and the restart that rescued the same book on 27/09 never came.
+TEST_F(RuntimeTest, PostInitRollbackInPiecesAsksForOneRestartUntilTheRadioComesUp) {
+  host().heap = {80000, 61428};
   radio().changeHeapOnBegin = true;
-  radio().heapAfterBegin = {87308, 23540};
+  radio().heapAfterBegin = {28812, 26612};
   EXPECT_FALSE(bleturner::switchOn());
   EXPECT_FALSE(bleturner::switchOn());
   EXPECT_FALSE(bleturner::detail::heapRestartWanted());
+  EXPECT_FALSE(bleturner::switchOn());
+  EXPECT_TRUE(bleturner::detail::heapRestartWanted());
+  EXPECT_EQ(radio().beginCalls, 3u);
+  EXPECT_NE(host().logs.back().find("rolled back (post-init-headroom): free=28812 largest=26612 required_largest=32768"),
+            std::string::npos);
+
+  // Restarted into the book; the same heap again: no second restart until the radio comes up.
+  bleturner::tick(fake::reading());
+  EXPECT_EQ(host().restarts, 1u);
+  fake::reset(/*keepMemo=*/true);
+  bleturner::begin(fake::hostFns(), config);
+  host().heap = {80000, 61428};
+  radio().changeHeapOnBegin = true;
+  radio().heapAfterBegin = {28812, 26612};
+  for (int i = 0; i < 6; ++i) EXPECT_FALSE(bleturner::switchOn());
+  EXPECT_FALSE(bleturner::detail::heapRestartWanted());
+}
+
+// Refusals before the start and rollbacks after it are one streak; a start the stack itself
+// failed says nothing about the heap and breaks it.
+TEST_F(RuntimeTest, RefusalsAndRollbacksInPiecesCountTogetherAndAStackFailureBreaksTheStreak) {
+  host().heap = {87308, 23540};
+  EXPECT_FALSE(bleturner::switchOn());
+  EXPECT_FALSE(bleturner::switchOn());
+  host().heap = {80000, 61428};
+  radio().changeHeapOnBegin = true;
+  radio().heapAfterBegin = {28812, 26612};
+  EXPECT_FALSE(bleturner::switchOn());
+  EXPECT_TRUE(bleturner::detail::heapRestartWanted());
+
+  fake::reset();
+  bleturner::begin(fake::hostFns(), config);
+  host().heap = {80000, 61428};
+  radio().changeHeapOnBegin = true;
+  radio().heapAfterBegin = {28812, 26612};
+  EXPECT_FALSE(bleturner::switchOn());
+  EXPECT_FALSE(bleturner::switchOn());
+  radio().beginResult = false;
+  EXPECT_FALSE(bleturner::switchOn());
+  radio().beginResult = true;
+  EXPECT_FALSE(bleturner::switchOn());
+  EXPECT_FALSE(bleturner::switchOn());
+  EXPECT_FALSE(bleturner::detail::heapRestartWanted());
+  EXPECT_FALSE(bleturner::switchOn());
+  EXPECT_TRUE(bleturner::detail::heapRestartWanted());
 }
 
 TEST_F(RuntimeTest, SleepWaitsForTheStopUpToItsTimeout) {

@@ -123,38 +123,41 @@ bool beginOwned() {
   }
 
   const Heap heap = host->heap();
-  if (radioVerdict(heapInputs(Phase::BeforeStart, heap, false)) != Why::Ok) {
+  const Why checked = radioVerdict(heapInputs(Phase::BeforeStart, heap, false));
+  if (checked != Why::Ok) {
     logSkipped("insufficient-internal-heap", heap);
-    heapTracker.refused(heap.freeBytes, heap.largestBlock);
+    heapTracker.refused(checked);
     return false;
   }
-  heapTracker.passed();
 
 #ifdef TENOR_PRESS_PROBE
   // What the stack comes up in: the reader released its layout parser before this (yieldForRadio).
   say(false, "HID begin heap free=%zu largest=%zu\n", heap.freeBytes, heap.largestBlock);
 #endif
   // One attempt. Callers decide when a later one is allowed; there is no retry loop here.
-  if (attemptCancelled.load(std::memory_order_acquire) || host->fileTransferActive()) return false;
-  if (!port::begin()) return false;
+  if (attemptCancelled.load(std::memory_order_acquire) || host->fileTransferActive() || !port::begin()) {
+    heapTracker.inconclusive();
+    return false;
+  }
   if (attemptCancelled.load(std::memory_order_acquire)) {
+    heapTracker.inconclusive();
     port::end(0);
     return false;
   }
 
   const Heap after = host->heap();
-  switch (radioVerdict(heapInputs(Phase::JustStarted, after, host->fileTransferActive()))) {
-    case Why::Ok:
-      break;
-    case Why::HeapLow:
-      say(true, "HID begin rolled back (post-init-headroom): free=%zu largest=%zu required_largest=%zu\n",
-          after.freeBytes, after.largestBlock, kMinimumLargestBlockBytes);
-      // The caller is already outside the render lock, so a bounded end keeps the loop moving.
-      port::end(0);
-      return false;
-    default:
-      port::end(0);
-      return false;
+  const Why started = radioVerdict(heapInputs(Phase::JustStarted, after, host->fileTransferActive()));
+  if (started == Why::HeapInPieces) {
+    say(true, "HID begin rolled back (post-init-headroom): free=%zu largest=%zu required_largest=%zu\n",
+        after.freeBytes, after.largestBlock, kMinimumLargestBlockBytes);
+    heapTracker.refused(started);
+  } else if (started != Why::Ok) {
+    heapTracker.inconclusive();
+  }
+  if (started != Why::Ok) {
+    // The caller is already outside the render lock, so a bounded end keeps the loop moving.
+    port::end(0);
+    return false;
   }
 #ifdef TENOR_PRESS_PROBE
   say(false, "HID begin kept free=%zu largest=%zu\n", after.freeBytes, after.largestBlock);

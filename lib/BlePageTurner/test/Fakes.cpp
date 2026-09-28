@@ -79,7 +79,10 @@ bool begin() {
   if (theRadio.beginHook) theRadio.beginHook();
   if (theRadio.beginResult) {
     theRadio.running = true;
-    if (theRadio.changeHeapOnBegin) fake::theHost.heap = theRadio.heapAfterBegin;
+    if (theRadio.changeHeapOnBegin) {
+      theRadio.heapBeforeBegin = fake::theHost.heap;
+      fake::theHost.heap = theRadio.heapAfterBegin;
+    }
   }
   theRadio.insideBegin = false;
   return theRadio.beginResult;
@@ -89,6 +92,7 @@ bool end(const uint32_t timeoutMs) {
   theRadio.lastEndTimeoutMs = timeoutMs;
   theRadio.endDuringBegin = theRadio.endDuringBegin || theRadio.insideBegin;
   theRadio.endHadFullSpeed = fake::theHost.fullSpeed;
+  if (theRadio.changeHeapOnBegin && theRadio.running && theRadio.endResult) fake::theHost.heap = theRadio.heapBeforeBegin;
   theRadio.running = false;
   theRadio.connected = false;
   theRadio.stopping = !theRadio.endResult;

@@ -99,8 +99,13 @@ TEST(RadioVerdictTest, Table) {
       // --- JustStarted: keep the stack only with the reader's block left ---
       {"started: exact block kept", with(Phase::JustStarted, [](RadioInputs& i) { i.heap = {40000, 32768}; }),
        Why::Ok},
+      // The heap check passed, so the bytes were there: a stack that leaves no whole block
+      // behind split the heap. It counts toward the restart like a refusal in pieces.
       {"started: block one byte short rolled back",
-       with(Phase::JustStarted, [](RadioInputs& i) { i.heap = {50000, 32767}; }), Why::HeapLow},
+       with(Phase::JustStarted, [](RadioInputs& i) { i.heap = {50000, 32767}; }), Why::HeapInPieces},
+      // X3, 29/09/2026, 5,000-chapter book: 7 of 7 starts rolled back with these numbers.
+      {"started: X3 big book", with(Phase::JustStarted, [](RadioInputs& i) { i.heap = {28812, 26612}; }),
+       Why::HeapInPieces},
       {"started: card taken meanwhile", with(Phase::JustStarted, [](RadioInputs& i) { i.storageBusy = true; }),
        Why::StorageBusy},
 
