@@ -25,3 +25,6 @@ inline BaseType_t xTaskCreate(void (*fn)(void*), const char*, uint32_t, void* ar
   return pdPASS;
 }
 inline void vTaskDelete(TaskHandle_t) { ++scheduler::deletes; }
+void delay(unsigned long amount);
+#define pdMS_TO_TICKS(ms) (ms)
+inline void vTaskDelay(uint32_t ticks) { delay(ticks); }

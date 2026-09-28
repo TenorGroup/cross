@@ -1,13 +1,13 @@
 #pragma once
 
 #include <ArduinoJson.h>
+#include <BlePageTurner.h>
 #include <Epub/ReaderRenderSpec.h>
 #include <Epub/ReaderSpacing.h>
 #include <PersistableStore.h>
 
 #include <cstdint>
 
-#include "activities/settings/BleKeyBinding.h"
 #include "util/HomeButtonInput.h"
 
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
@@ -524,75 +524,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t sleepBwRefresh = 1;
 
   // --- BLE page turner (BTH2) -------------------------------------------------
-  // Mac dinh TAT. Nam truong nay duoc luu tay trong toJson/fromJson (khong qua
-  // SettingsList) vi man hinh cua chung la BlePageTurnerActivity, khong phai
-  // man Cai dat chung. File v1.0.2 khong co nam khoa nay: doc len ra dung mac
-  // dinh duoi day, va khong truong cu nao bi mat.
-  //
-  // `blePeerAddr`/`blePeerName` la thiet bi nguoi dung da chon: giu lai de lan
-  // sau ket noi lai ma khong phai quet lai. `blePrevKeyUsage`/`bleNextKeyUsage`
-  // la ma HID usage THO da hoc duoc tu report da phan giai; 0 = chua hoc.
-  uint8_t blePageTurnerEnabled = 0;
-  char blePeerAddr[18] = "";
-  char blePeerName[32] = "";
-  uint8_t blePrevKeyUsage = 0;
-  uint8_t bleNextKeyUsage = 0;
-  // Per-remote button tables (by BLE address), key `bleRemotes`. The rules for
-  // learning, reading and lookup live in activities/settings/BleKeyBinding.h; this
-  // only holds the storage.
-  blebinding::RemoteTable bleRemotes[blebinding::kMaxRemotes] = {};
-  uint8_t bleRemoteCount = 0;
-
-  static constexpr uint8_t BLE_USAGE_NONE = 0;
-  // HID Usage Tables, Keyboard/Keypad (page 0x07): Left 0x50, Right 0x4F,
-  // Page Up 0x4B, Page Down 0x4E, Up 0x52, Down 0x51, Space 0x2C, Enter 0x28,
-  // Backspace 0x2A. Volume Up/Down and Scan Next/Prev live on the Consumer page
-  // (0x0C) and reach the app as the low byte of the 16-bit usage.
-  static constexpr uint8_t BLE_USAGE_LEFT = 0x50;
-  static constexpr uint8_t BLE_USAGE_RIGHT = 0x4F;
-  static constexpr uint8_t BLE_USAGE_PAGE_UP = 0x4B;
-  static constexpr uint8_t BLE_USAGE_PAGE_DOWN = 0x4E;
-  static constexpr uint8_t BLE_USAGE_UP = 0x52;
-  static constexpr uint8_t BLE_USAGE_DOWN = 0x51;
-  static constexpr uint8_t BLE_USAGE_SPACE = 0x2C;
-  static constexpr uint8_t BLE_USAGE_ENTER = 0x28;
-  static constexpr uint8_t BLE_USAGE_BACKSPACE = 0x2A;
-  static constexpr uint8_t BLE_USAGE_VOLUME_UP = 0xE9;
-  static constexpr uint8_t BLE_USAGE_VOLUME_DOWN = 0xEA;
-  static constexpr uint8_t BLE_USAGE_SCAN_NEXT = 0xB5;
-  static constexpr uint8_t BLE_USAGE_SCAN_PREV = 0xB6;
-
-  enum class BlePageAction : uint8_t { None = 0, PreviousPage, NextPage };
-
-  // Y nghia lat trang cua mot usage HID da phan giai. Nut DA HOC thay cho mac
-  // dinh cua dung chieu do: hoc roi thi nut cu khong con lat trang nua, neu
-  // khong nguoi dung khong bao gio bo duoc mot anh xa sai. Chua hoc gi thi bo
-  // nut mac dinh duoi day duoc nhan - van ban go binh thuong KHONG lat trang.
-  // Mot usage di kem modifier (Ctrl/Alt/...) khong tinh.
-  //
-  // Bo mac dinh phai du rong cho dieu khien gia: mot so remote chi gui mui ten
-  // Len/Xuong, Space, Enter, hoac phim am luong - khong phai bon nut ban phim
-  // chuan nhu ban dau.
-  BlePageAction blePageActionFor(const uint8_t usageId, const uint8_t mods) const {
-    if (!blePageTurnerEnabled || usageId == BLE_USAGE_NONE || mods != 0) return BlePageAction::None;
-    if (blePrevKeyUsage != BLE_USAGE_NONE && usageId == blePrevKeyUsage) return BlePageAction::PreviousPage;
-    if (bleNextKeyUsage != BLE_USAGE_NONE && usageId == bleNextKeyUsage) return BlePageAction::NextPage;
-    if (blePrevKeyUsage == BLE_USAGE_NONE && macDinhLatLui(usageId)) return BlePageAction::PreviousPage;
-    if (bleNextKeyUsage == BLE_USAGE_NONE && macDinhLatToi(usageId)) return BlePageAction::NextPage;
-    return BlePageAction::None;
-  }
-
-  // Bo nut mac dinh cua tung chieu khi chua hoc nut nao. Mot so remote chi gui
-  // mui ten Len/Xuong, Space, Enter, hoac phim am luong.
-  static constexpr bool macDinhLatLui(const uint8_t usageId) {
-    return usageId == BLE_USAGE_LEFT || usageId == BLE_USAGE_PAGE_UP || usageId == BLE_USAGE_UP ||
-           usageId == BLE_USAGE_BACKSPACE || usageId == BLE_USAGE_VOLUME_DOWN || usageId == BLE_USAGE_SCAN_PREV;
-  }
-  static constexpr bool macDinhLatToi(const uint8_t usageId) {
-    return usageId == BLE_USAGE_RIGHT || usageId == BLE_USAGE_PAGE_DOWN || usageId == BLE_USAGE_DOWN ||
-           usageId == BLE_USAGE_SPACE || usageId == BLE_USAGE_ENTER || usageId == BLE_USAGE_VOLUME_UP ||
-           usageId == BLE_USAGE_SCAN_NEXT;
-  }
+  // Mac dinh TAT. Luu tay trong toJson/fromJson (khong qua SettingsList) vi man
+  // hinh cua no la BlePageTurnerActivity, khong phai man Cai dat chung. Cac khoa
+  // JSON va luat doc/ghi nam o lib/BlePageTurner (BlePageTurnerJson.h), nen file
+  // cai dat cu doc len y nhu truoc.
+  bleturner::Config ble;
 
   static constexpr uint8_t MIN_SLEEP_TIMEOUT_MINUTES = 1;
   static constexpr uint8_t SLEEP_TIMEOUT_NEVER_MINUTES = 31;

@@ -102,6 +102,34 @@ inline bool heldForBuildState = false;
 inline void setRadioHeldForBuild(bool held) { heldForBuildState = held; }
 }  // namespace freeink::ble
 inline void delay(uint32_t ms) { clockMs += ms; }
+// The page turner module's contract (lib/BlePageTurner) over the knobs above: the reader asks
+// it whether the radio holds the heap, to release the radio for a starved build, and whether a
+// start is in flight.
+namespace bleturner {
+enum class BuildRelease : uint8_t { NotHeld, Released, StillUp };
+struct Status { bool starting = false; };
+inline bool holdsHeap() {
+  return SETTINGS.blePageTurnerEnabled &&
+         (freeink::ble::busyState || freeink::ble::initializingState || freeink::ble::readerStartDeferredState);
+}
+inline Status status() { Status s; s.starting = freeink::ble::initializingState; return s; }
+inline void afterPaint() { freeink::ble::requestRearm(); freeink::ble::heldForBuildState = false; }
+// Waits up to 3 s for a start in flight, then stops the radio, trying again for up to 3 s.
+inline BuildRelease beforeChapterBuild() {
+  if (!SETTINGS.blePageTurnerEnabled || freeink::ble::idleStoppedState) return BuildRelease::NotHeld;
+  const uint32_t started = clockMs;
+  while (freeink::ble::initializingState && clockMs - started < 3000) delay(20);
+  if (freeink::ble::initializingState) return BuildRelease::NotHeld;
+  freeink::ble::heldForBuildState = true;
+  const uint32_t stopStarted = clockMs;
+  bool stopped = freeink::ble::stopForIdle();
+  while (!stopped && clockMs - stopStarted < 3000) {
+    delay(20);
+    stopped = freeink::ble::stopForIdle();
+  }
+  return stopped ? BuildRelease::Released : BuildRelease::StillUp;
+}
+}  // namespace bleturner
 // Thumbnails written when the last popup went up, so a case can tell a notice came first.
 int popupGenerated = -1;
 // The panel refreshing a frame the caller asked for without waiting (displayBufferAsync); layout
@@ -338,7 +366,7 @@ struct EpubReaderActivity : ReaderActivity {
   bool indexStepDue() const { return false; } void runIndexStep() {}
   // The next chapter's early layout (EpubReaderActivity::prepareNextChapter) is covered by the simulator.
   bool nextChapterDue(bool) { return false; } void prepareNextChapter() {}
-  bool releaseRadioForBuild(); bool readyForRadio(); void showMemoryError(); void settleBuildPopup(); void generatePendingThumb(); void writePendingThumbs();
+  bool releaseRadioForBuild(); bool yieldForRadio(); void showMemoryError(); void settleBuildPopup(); void generatePendingThumb(); void writePendingThumbs();
   void backgroundTick(); void foreground(); bool skipLoopDelay(); bool latTrangThat(bool);
   // loadBook()'s cover-thumbnail tail and loop()'s idle region, projected verbatim.
   void openThumbStep(); void idleStep();

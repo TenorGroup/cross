@@ -7,10 +7,14 @@ inline unsigned renderLockAcquires = 0;
 
 class RenderLock {
  public:
+  struct TryTake {};
   RenderLock() {
     renderLockHeld = true;
     ++ble_runtime_test::renderLockAcquires;
   }
+  // Nobody else renders in this harness: a try always wins.
+  explicit RenderLock(TryTake) : RenderLock() {}
+  bool acquired() const { return true; }
   explicit RenderLock(void*) : RenderLock() {}
   RenderLock(const RenderLock&) = delete;
   RenderLock& operator=(const RenderLock&) = delete;

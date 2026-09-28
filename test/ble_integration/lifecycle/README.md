@@ -1,10 +1,10 @@
-# BLE lifecycle integration regressions
-
-The runtime harness compiles the complete production `BlePageTurnerRuntime.cpp`,
-its header and `FileTransferState.h` with the ESP/FreeRTOS path enabled. A queued
-scheduler and SDK callbacks reproduce cancellation before worker execution and
-suspension during initialization. The main power branch is extracted unchanged
-from `src/main.cpp` and executes in the same harness. Eleven scenarios cover
+The runtime harness compiles the page turner module as the firmware links it:
+`lib/BlePageTurner/src/Runtime.cpp` and `SdkRadio.cpp` (the wrapper over the SDK's
+BleKeyboardHost), plus `FileTransferState.h` and the firmware's own host functions for heap,
+cache release, file transfer and CPU speed, extracted unchanged from `src/BlePageTurnerHost.cpp`,
+with the ESP/FreeRTOS path enabled. A queued scheduler and SDK callbacks reproduce cancellation
+before worker execution and suspension during initialization. The main power branch is
+extracted unchanged from `src/main.cpp` and executes in the same harness. Eleven scenarios cover
 ownership, power locks, teardown, failed initialization and idle-stop status.
 
 The sleep harness executes the complete production `goToSleep` and

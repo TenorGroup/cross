@@ -58,6 +58,11 @@ void addToLogRingBuffer(const char* message) {
 void logPrintf(const char* level, const char* origin, const char* format, ...) {
   va_list args;
   va_start(args, format);
+  vlogPrintf(level, origin, format, args);
+  va_end(args);
+}
+
+void vlogPrintf(const char* level, const char* origin, const char* format, va_list args) {
   char buf[MAX_ENTRY_LEN];
   char* c = buf;
   // add timestamp, level and origin
@@ -66,7 +71,6 @@ void logPrintf(const char* level, const char* origin, const char* format, ...) {
     int len = snprintf(c, sizeof(buf), "[%lu] [%s] [%s] ", ms, level, origin);
     // error while writing => return
     if (len < 0) {
-      va_end(args);
       return;
     }
     // clamp c to be in buffer range
@@ -76,11 +80,9 @@ void logPrintf(const char* level, const char* origin, const char* format, ...) {
   {
     int len = vsnprintf(c, sizeof(buf) - (c - buf), format, args);
     if (len < 0) {
-      va_end(args);
       return;
     }
   }
-  va_end(args);
 #if FREEINK_LOG_TRANSPORT == FREEINK_LOG_TRANSPORT_ROM_PRINTF
   // Sticky's USB serial bridge uses UART0; ROM output also works before Serial0.begin().
   esp_rom_printf("%s", buf);

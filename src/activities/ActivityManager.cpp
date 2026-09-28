@@ -1,5 +1,6 @@
 #include "ActivityManager.h"
 
+#include <BlePageTurner.h>
 #include <BoardConfig.h>
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
@@ -13,7 +14,6 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
-#include "BlePageTurnerRuntime.h"
 #include "OpdsServerStore.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
@@ -176,11 +176,11 @@ void ActivityManager::loop() {
 #ifdef TENOR_PRESS_PROBE
     static uint32_t radioWaitFrom = 0;
     if (!radioWaitFrom) radioWaitFrom = millis() | 1;
-    if (!freeink::ble::suspendForTransition()) return;
+    if (!bleturner::beforeScreenChange()) return;
     LOG_INF("ACT", "Transition radio=%lu ms", static_cast<unsigned long>(millis() - radioWaitFrom));
     radioWaitFrom = 0;
 #else
-    if (!freeink::ble::suspendForTransition()) return;
+    if (!bleturner::beforeScreenChange()) return;
 #endif
     ++activityGeneration_;
 
@@ -626,8 +626,8 @@ bool ActivityManager::foregroundReaderHoldsRadio() const {
   return isForegroundReaderActivity() && static_cast<ReaderActivity*>(currentActivity.get())->holdsRadio();
 }
 
-bool ActivityManager::readyForegroundReaderForRadio() {
-  return !isForegroundReaderActivity() || static_cast<ReaderActivity*>(currentActivity.get())->readyForRadio();
+bool ActivityManager::yieldForegroundReaderForRadio() {
+  return !isForegroundReaderActivity() || static_cast<ReaderActivity*>(currentActivity.get())->yieldForRadio();
 }
 
 bool ActivityManager::pageTurn(const bool forward) {

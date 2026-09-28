@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Execute the production BLE runtime and main power path with controlled tasks."""
+"""Execute the page turner module (runtime and SDK wrapper), the firmware's host functions and
+the main power path with controlled tasks."""
 import argparse
 import hashlib
 import json
@@ -22,11 +23,27 @@ SCENARIOS = [
     "postinit_headroom_pending_teardown",
 ]
 SOURCE_FILES = [
-    "src/BlePageTurnerRuntime.cpp",
-    "src/BlePageTurnerRuntime.h",
+    "lib/BlePageTurner/src/Runtime.cpp",
+    "lib/BlePageTurner/src/SdkRadio.cpp",
+    "lib/BlePageTurner/include/BlePageTurner.h",
+    "src/BlePageTurnerHost.cpp",
     "src/FileTransferState.h",
     "src/main.cpp",
 ]
+
+
+def function(source, signature):
+    """One production function, by the text that starts it, through its closing brace."""
+    start = source.index(signature)
+    depth = 0
+    for index in range(source.index("{", start), len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start:index + 1] + "\n"
+    raise ValueError("Unclosed function: " + signature)
 
 
 def main():
@@ -43,16 +60,26 @@ def main():
     # Keep the production branch unchanged, including its conditional compile
     # guard and delays. Only the surrounding hardware boundaries are fakes.
     main_source = (source / "src/main.cpp").read_text()
-    tail_start = main_source.index("  if (activityManager.skipLoopDelay()) {")
+    tail_start = main_source.index("  if (skipLoopDelay) {")
     tail_end = main_source.index("\n}\n", tail_start)
     (output / "main_power.inc").write_text(main_source[tail_start:tail_end] + "\n")
+    # The host functions the module calls for heap, cache release, file transfer and CPU
+    # speed, as the firmware defines them.
+    host_source = (source / "src/BlePageTurnerHost.cpp").read_text()
+    host = "GfxRenderer* bleRenderer = nullptr;\nstd::optional<HalPowerManager::Lock> bleFullSpeed;\n"
+    for signature in ("bleturner::Heap bleHeap()", "bool bleReleaseCaches()", "bool bleFileTransfer()",
+                      "void bleHoldFullSpeed(const bool hold)"):
+        host += function(host_source, signature)
+    (output / "host_glue.inc").write_text(host)
+    module = source / "lib/BlePageTurner"
     command = [
         args.compiler, "-std=c++17", "-Wall", "-Wextra",
         "-DFREEINK_CAP_BLE_HID_HOST=1", "-DESP_PLATFORM=1",
         "-DCROSSPOINT_BLE_HID_HOST=1", "-I" + str(output),
         "-I" + str(HERE / "stubs"), "-I" + str(source / "src"),
+        "-I" + str(module / "include"), "-I" + str(module / "src"),
         str(HERE / "runtime_test.cpp"),
-        str(source / "src/BlePageTurnerRuntime.cpp"), "-o", str(binary),
+        str(module / "src/Runtime.cpp"), str(module / "src/SdkRadio.cpp"), "-o", str(binary),
     ]
     build = subprocess.run(command, cwd=output, text=True, capture_output=True)
     (output / "build.log").write_text(build.stdout + build.stderr)

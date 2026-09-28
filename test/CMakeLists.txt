@@ -110,8 +110,12 @@ add_subdirectory(${REPO_ROOT}/freeink-sdk/libs/network/BleKeyboardHost/tests Ble
 
 # BTH2: duong page-turner BLE voi dau vao gia (report HID that -> luot lat trang).
 add_subdirectory(ble_page_turner)
-add_subdirectory(ble_page_turner_runtime)
-add_subdirectory(ble_heap_restart)
+# The page turner module's own suite (it also runs alone, see its CMakeLists). Offline, its
+# ArduinoJson comes from the copy PlatformIO already fetched when there is one.
+if(NOT FETCHCONTENT_SOURCE_DIR_ARDUINOJSON AND IS_DIRECTORY "${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src")
+  set(FETCHCONTENT_SOURCE_DIR_ARDUINOJSON "${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson")
+endif()
+add_subdirectory(${REPO_ROOT}/lib/BlePageTurner/test BlePageTurnerTests)
 add_subdirectory(truncated_text)
 add_subdirectory(png_bmp_converter)
 add_subdirectory(cover_thumb_ram)
@@ -196,6 +200,7 @@ add_test(NAME FirmwareImageSize COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT
 add_test(NAME BuiltinFontMetadata COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/font_metadata/test_pooling.py")
 add_test(NAME TiltSensorForegroundOwnership COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tilt_sensor_ownership/run.py" --source "${REPO_ROOT}")
 add_test(NAME ImuDoubleTap COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/imu_double_tap/run.py" --source "${REPO_ROOT}")
+add_test(NAME BleRadioOwnership COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ble_radio_owner/run.py" --source "${REPO_ROOT}")
 add_test(NAME BleMenuUxRegression COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ble_menu_ux/run.py" "${REPO_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/ble-menu-ux")
 add_test(NAME InkQuickCycleContract COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ink_quick_cycle/test_contract.py")
 add_test(NAME MenuSleepSplitRegression COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/menu_sleep_split/run.py" --repo "${REPO_ROOT}" --output "${CMAKE_CURRENT_BINARY_DIR}/menu-sleep-split" --sanitize)

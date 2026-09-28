@@ -25,22 +25,15 @@ struct ListItem {
   const char* sectionHeading = nullptr;
 };
 }
-#include "activities/settings/BleKeyBinding.h"
-struct CrossPointSettings { static constexpr uint8_t BLE_USAGE_NONE = 0; };
+#include "BlePageTurner.h"
 struct Settings {
-  bool blePageTurnerEnabled = true;
-  char blePeerAddr[18] = {}, blePeerName[32] = {};
-  blebinding::RemoteTable bleRemotes[blebinding::kMaxRemotes] = {};
-  uint8_t bleRemoteCount = 0;
+  bleturner::Config ble;
   int saves = 0;
+  Settings() { ble.enabled = 1; }
   void saveToFile() { ++saves; }
 } SETTINGS;
 uint32_t nowMs = 5000;
 uint32_t millis() { return nowMs; }
-namespace freeink::ble {
-void setIdleStopped(bool) {}
-void setReaderStartDeferred(bool) {}
-}
 namespace backend {
 std::vector<std::string> bonds;
 std::vector<std::string> devices;
@@ -57,13 +50,28 @@ bool connected() { return live; }
 const char* connectedAddr() { return live ? "AA:BB:CC:DD:EE:F0" : ""; }
 const char* connectedName() { return live ? "Remote" : ""; }
 bool scanning() { return scan; }
-bool begin(int&) { ++begins; return true; }
-bool end() { return true; }
+bool begin() { ++begins; return true; }
+bool switchOff() { return true; }
 void startScan() { scan = true; }
 void stopScan() { scan = false; }
-void connect(const char* addr) { connections.emplace_back(addr); }
+// The module's pair(): a page turner switched off does not start the radio or connect.
+bool pair(const char* addr) {
+  if (!SETTINGS.ble.enabled) return false;
+  ++begins;
+  connections.emplace_back(addr);
+  return true;
+}
 void disconnect() { live = false; }
-void forget(const char*) {}
+// The module's forget(): the bond, its button table (the shared BleKeyBinding.h rule) and the
+// saved choice if it was this remote; true when the settings changed.
+bool forget(const char* addr) {
+  bool changed = bleturner::forgetRemote(SETTINGS.ble.remotes, SETTINGS.ble.remoteCount, addr);
+  if (std::strncmp(SETTINGS.ble.peerAddr, addr, sizeof(SETTINGS.ble.peerAddr)) == 0) {
+    SETTINGS.ble.peerAddr[0] = SETTINGS.ble.peerName[0] = '\0';
+    changed = true;
+  }
+  return changed;
+}
 void drainKeys() {}
 // Raw edges the remote queued: button code, press or release, time, and whether the
 // release showed the press was the remote's rest frame.
@@ -119,15 +127,15 @@ struct BlePageTurnerActivity : UiListActivity {
   void onBackButton();
   std::string bindNotice_, bindValues_[6], statusValue_, statusText_ = "ready";
   uint32_t lastRawCode_ = 0, learnCode_ = 0, learnPressMs_ = 0, bindWaitStartedMs_ = 0;
-  blebinding::Action bindAction_ = blebinding::Action::NextPage;
-  std::vector<blebinding::Action> waited, cleared;
+  bleturner::Action bindAction_ = bleturner::Action::NextPage;
+  std::vector<bleturner::Action> waited, cleared;
   int updates = 0;
   int listCount() const override { return rowItems_.size(); }
   void requestUpdate() { ++updates; }
   void capNhatTrangThai() {}
-  std::string bindValue(blebinding::Action) const { return "default"; }
-  void startBindWait(blebinding::Action a) { bindWaitActive_ = true; waited.push_back(a); }
-  void clearBind(blebinding::Action a) { cleared.push_back(a); }
+  std::string bindValue(bleturner::Action) const { return "default"; }
+  void startBindWait(bleturner::Action a) { bindWaitActive_ = true; waited.push_back(a); }
+  void clearBind(bleturner::Action a) { cleared.push_back(a); }
   void clearBindForRow(int index);
   void finishLearn(bool sawRelease, uint32_t heldMs);
   void readPendingKeys();
@@ -191,7 +199,7 @@ int main() {
             "More preserves old order: Bluetooth, then the appended File transfer");
   }
   for (const int bonds : {0, 1, 4}) for (const bool enabled : {false, true}) {
-    SETTINGS = {}; SETTINGS.blePageTurnerEnabled = enabled;
+    SETTINGS = {}; SETTINGS.ble.enabled = enabled;
     backend::bonds.clear(); backend::devices.clear(); backend::connections.clear(); backend::live = false;
     for (int i = 0; i < bonds; ++i) backend::bonds.push_back("AA:BB:CC:DD:EE:F" + std::to_string(i));
     BlePageTurnerActivity screen;
@@ -225,7 +233,7 @@ int main() {
         screen.activateIndex(i);
         require(screen.optionPopup.shows == shows + 1 && screen.optionPopup.options.size() == 2, "actual paired row opens two choices");
         screen.optionPopup.callback(0);
-        require(SETTINGS.blePeerAddr == backend::bonds[bond], "selected exact address saved");
+        require(SETTINGS.ble.peerAddr == backend::bonds[bond], "selected exact address saved");
         require(backend::connections.size() == calls + (enabled ? 1 : 0), "connect dispatch respects enabled setting");
         if (enabled) require(backend::connections.back() == backend::bonds[bond], "connect dispatch uses selected exact address");
       }
@@ -240,9 +248,9 @@ int main() {
     backend::bonds.assign({"AA:BB:CC:DD:EE:F0"}); backend::devices.assign({"D1", "D2"}); backend::live = true;
     BlePageTurnerActivity screen;
     screen.rebuildRows(); screen.refreshValues();
-    const blebinding::Action order[6] = {blebinding::Action::NextPage,    blebinding::Action::PrevPage,
-                                         blebinding::Action::NextChapter, blebinding::Action::PrevChapter,
-                                         blebinding::Action::ReaderMenu,  blebinding::Action::SaveQuote};
+    const bleturner::Action order[6] = {bleturner::Action::NextPage,    bleturner::Action::PrevPage,
+                                         bleturner::Action::NextChapter, bleturner::Action::PrevChapter,
+                                         bleturner::Action::ReaderMenu,  bleturner::Action::SaveQuote};
     const char* labels[6] = {"STR_BLE_BIND_NEXT", "STR_BLE_BIND_PREV", "STR_BLE_BIND_NEXT_CHAPTER",
                              "STR_BLE_BIND_PREV_CHAPTER", "STR_BLE_BIND_READER_MENU", "STR_BLE_BIND_SAVE_QUOTE"};
     const auto rowOf = [&](int code) {
@@ -293,25 +301,25 @@ int main() {
     require(screen.finished, "Back on the main rows leaves the screen");
     backend::devices.clear();
     // Forgetting a device forgets its button table too.
-    blebinding::editableTable(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, "AA:BB:CC:DD:EE:F0", "Remote");
-    require(SETTINGS.bleRemoteCount == 1, "table setup");
+    bleturner::editableTable(SETTINGS.ble.remotes, SETTINGS.ble.remoteCount, "AA:BB:CC:DD:EE:F0", "Remote");
+    require(SETTINGS.ble.remoteCount == 1, "table setup");
     for (int i = 0; i < screen.listCount(); ++i) {
       if (screen.rowItems_[i].actionValue != BlePageTurnerActivity::ROW_PAIRED_BASE) continue;
       screen.activateIndex(i);
       screen.optionPopup.callback(1);
     }
-    require(SETTINGS.bleRemoteCount == 0, "forgetting a device keeps its binding table");
+    require(SETTINGS.ble.remoteCount == 0, "forgetting a device keeps its binding table");
     // The link drops while the screen waits for the release: nothing is learned and
     // the notice says no button arrived. "No room" would send the user to clear rows.
     SETTINGS = {}; backend::live = false;
-    screen.bindWaitActive_ = true; screen.learnCode_ = 0x030102; screen.bindAction_ = blebinding::Action::NextChapter;
+    screen.bindWaitActive_ = true; screen.learnCode_ = 0x030102; screen.bindAction_ = bleturner::Action::NextChapter;
     screen.finishLearn(true, 60);
-    require(SETTINGS.bleRemoteCount == 0 && SETTINGS.saves == 0, "a lost link still wrote a table");
+    require(SETTINGS.ble.remoteCount == 0 && SETTINGS.saves == 0, "a lost link still wrote a table");
     require(screen.bindNotice_ == "STR_BLE_BIND_NONE", "a lost link was reported as a full table");
     backend::live = true;
     screen.bindWaitActive_ = true; screen.learnCode_ = 0x030102;
     screen.finishLearn(true, 60);
-    require(SETTINGS.bleRemoteCount == 1 && SETTINGS.saves == 1 && screen.bindNotice_ == "key 3:1=02",
+    require(SETTINGS.ble.remoteCount == 1 && SETTINGS.saves == 1 && screen.bindNotice_ == "key 3:1=02",
             "a learned button on a live link was not stored and shown");
     backend::live = false;
   }
@@ -322,28 +330,28 @@ int main() {
     // waiting for the next press, which is the button.
     SETTINGS = {}; backend::live = true; nowMs = 5000;
     BlePageTurnerActivity screen;
-    screen.bindWaitActive_ = true; screen.bindWaitStartedMs_ = nowMs; screen.bindAction_ = blebinding::Action::ReaderMenu;
+    screen.bindWaitActive_ = true; screen.bindWaitStartedMs_ = nowMs; screen.bindAction_ = bleturner::Action::ReaderMenu;
     backend::raw = {{0x000012, true, 5100, false}, {0x000012, false, 5160, true}};
     screen.readPendingKeys();
-    require(SETTINGS.bleRemoteCount == 0 && SETTINGS.saves == 0, "the rest frame was learned as a button");
+    require(SETTINGS.ble.remoteCount == 0 && SETTINGS.saves == 0, "the rest frame was learned as a button");
     require(screen.bindWaitActive_ && screen.learnCode_ == 0, "the wait ended on the rest frame");
     require(screen.lastRawCode_ == 0, "the rest frame is shown as the last button");
     nowMs = 6000;
     backend::raw = {{0x000104, true, 5900, false}, {0x000104, false, 5960, false}};
     screen.readPendingKeys();
-    require(SETTINGS.bleRemoteCount == 1 && SETTINGS.bleRemotes[0].count == 1 &&
-                SETTINGS.bleRemotes[0].bindings[0] ==
-                    blebinding::makeBinding(0x000104, false, blebinding::Action::ReaderMenu),
+    require(SETTINGS.ble.remoteCount == 1 && SETTINGS.ble.remotes[0].count == 1 &&
+                SETTINGS.ble.remotes[0].bindings[0] ==
+                    bleturner::makeBinding(0x000104, false, bleturner::Action::ReaderMenu),
             "the press after the rest frame was not learned");
     require(!screen.bindWaitActive_, "learning did not end on the real button");
     // A remote resting on zeros: its first press is the button, learned at once.
     SETTINGS = {};
-    screen.bindWaitActive_ = true; screen.bindWaitStartedMs_ = nowMs; screen.bindAction_ = blebinding::Action::SaveQuote;
+    screen.bindWaitActive_ = true; screen.bindWaitStartedMs_ = nowMs; screen.bindAction_ = bleturner::Action::SaveQuote;
     backend::raw = {{0x030102, true, 6100, false}, {0x030102, false, 6160, false}};
     screen.readPendingKeys();
-    require(SETTINGS.bleRemoteCount == 1 && SETTINGS.bleRemotes[0].count == 1 &&
-                SETTINGS.bleRemotes[0].bindings[0] ==
-                    blebinding::makeBinding(0x030102, false, blebinding::Action::SaveQuote),
+    require(SETTINGS.ble.remoteCount == 1 && SETTINGS.ble.remotes[0].count == 1 &&
+                SETTINGS.ble.remotes[0].bindings[0] ==
+                    bleturner::makeBinding(0x030102, false, bleturner::Action::SaveQuote),
             "a zero-rest remote's first press was not learned");
     backend::live = false;
   }

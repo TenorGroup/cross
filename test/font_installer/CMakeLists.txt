@@ -12,6 +12,7 @@
 #   .pio/libdeps/gh_release           ArduinoJson (populated by `pio run -e gh_release`)
 #   lib/Serialization                PersistableStore.h
 #   lib/Epub/Epub                    ReaderRenderSpec.h
+#   lib/BlePageTurner/include        BlePageTurner.h (the page turner's settings)
 #   lib/EpdFont                      SdCardFontRegistry.h (real header, host impl)
 # Stubbed for the host, and nothing else:
 #   stubs/HalStorage.h               ESP SD storage API, call-recorded
@@ -46,6 +47,7 @@ target_include_directories(FontInstallerTest PRIVATE
   ${REPO_ROOT}/lib/EpdFont
   ${REPO_ROOT}/lib/Serialization
   ${REPO_ROOT}/lib/Epub
+  ${REPO_ROOT}/lib/BlePageTurner/include
 )
 
 target_link_libraries(FontInstallerTest PRIVATE

@@ -1,5 +1,6 @@
 #include "EpubReaderActivity.h"
 
+#include <BlePageTurner.h>
 #include <Epub/BuildStageProbe.h>
 #include <Epub/Page.h>
 #include <Epub/blocks/TextBlock.h>
@@ -51,7 +52,6 @@
 #include "SdCardFontSystem.h"
 #include "activities/home/QuotesActivity.h"
 #include "activities/settings/BlePageTurnerActivity.h"
-#include "BlePageTurnerRuntime.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/HomeExcerptStyle.h"
 #include "components/TenorMenuChrome.h"
@@ -529,11 +529,7 @@ void EpubReaderActivity::openReaderMenu() {
 
 bool EpubReaderActivity::deferBackgroundBuildForBle() const {
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
-  // An enabled preference is idle configuration. Defer only while the radio
-  // owns or is acquiring its memory, or after the reader start was explicitly
-  // refused for memory. This keeps an idle radio from parking the parser.
-  return SETTINGS.blePageTurnerEnabled &&
-         (freeink::ble::busy() || freeink::ble::initializing() || freeink::ble::readerStartDeferred());
+  return bleturner::holdsHeap();
 #else
   return false;
 #endif
@@ -581,7 +577,7 @@ bool EpubReaderActivity::holdsRadio() const {
   return !preview && epub && !epub->indexComplete() && indexFailures < INDEX_MAX_FAILURES;
 }
 
-bool EpubReaderActivity::readyForRadio() {
+bool EpubReaderActivity::yieldForRadio() {
   if (!section || !section->isBuilding() || section->isBuildParked()) return true;
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired()) return false;
@@ -719,29 +715,14 @@ void EpubReaderActivity::dropSectionsLaidOutWithoutToc() {
 
 bool EpubReaderActivity::releaseRadioForBuild() {
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
-  if (radioReleasedForBuild || !SETTINGS.blePageTurnerEnabled || freeink::ble::idleStopped()) return false;
-  // Never tear down a start that is still in flight: the worker owns the
-  // NimBLE discovery and a cancel here leaves its callbacks pointing at a
-  // task that no longer exists. Wait for it to settle, then stop.
-  const unsigned long started = millis();
-  while (freeink::ble::initializing() && millis() - started < RADIO_RELEASE_TIMEOUT_MS) delay(20);
-  if (freeink::ble::initializing()) return false;
-  radioReleasedForBuild = true;
-  freeink::ble::setRadioHeldForBuild(true);
-  LOG_INF("ERS", "Section build starved of heap; stopping the radio until the page is shown free=%u largest=%u",
-          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
-  // The stop has its own timeout: a start that settled late must not leave it none.
-  const unsigned long stopStarted = millis();
-  bool stopped = freeink::ble::stopForIdle();
-  while (!stopped && millis() - stopStarted < RADIO_RELEASE_TIMEOUT_MS) {
-    delay(20);
-    stopped = freeink::ble::stopForIdle();
-  }
-  // A radio still up keeps its heap: another try at the build would starve again. The latch above
+  if (radioReleasedForBuild) return false;
+  const auto released = bleturner::beforeChapterBuild();
+  if (released == bleturner::BuildRelease::NotHeld) return false;
+  // A radio still up keeps its heap: another try at the build would starve again. The latch
   // stays, so the caller goes to the memory notice once instead of waiting out a second timeout.
-  if (!stopped) LOG_ERR("ERS", "Radio did not stop for the section build");
+  radioReleasedForBuild = true;
   heapMapDump("radio-stopped-for-build");
-  return stopped;
+  return released == bleturner::BuildRelease::Released;
 #else
   return false;
 #endif
@@ -1028,7 +1009,7 @@ void EpubReaderActivity::loop() {
     RenderLock lock(RenderLock::TryTake{});
     if (lock.acquired()) {
       radioReleasedForBuild = false;
-      freeink::ble::requestRearm();
+      bleturner::afterPaint();
     }
   }
 #endif
@@ -1157,11 +1138,11 @@ void EpubReaderActivity::loop() {
   // A book reopened on the last page of its partial cache has no parser to resume: the radio
   // starts before the extension can, so the extension starts here, as the first turn's paint
   // would start it (780 ms inside that paint on the X3).
-  if (freeink::ble::initializing()) radioSettledMs = millis();
+  if (bleturner::status().starting) radioSettledMs = millis();
   const unsigned long sincePaint = std::min(millis() - lastRenderCompleteMs, millis() - radioSettledMs);
   // Conditions that do not read the section; the rest is read under the lock below.
   const bool lookAheadWindow = !inputThisPass && !backgroundBuildFailed && !backgroundBuildParkedThisLoop &&
-                               deferBackgroundBuildForBle() && !freeink::ble::initializing() &&
+                               deferBackgroundBuildForBle() && !bleturner::status().starting &&
                                lastRenderCompleteMs != 0 && sincePaint > BUILD_WINDOW_QUIET_MS &&
                                sincePaint < BUILD_WINDOW_LATEST_MS;
   if (lookAheadWindow || (!inputThisPass && !backgroundBuildParkedThisLoop)) {

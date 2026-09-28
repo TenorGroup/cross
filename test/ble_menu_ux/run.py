@@ -83,7 +83,8 @@ cpp = args.output / "production-menu.cpp"
 cpp.write_text(fixture)
 exe = args.output / "ble-menu-ux"
 command = [args.compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
-           "-I" + str(args.source / "src"), "-I" + str(args.source / "lib/I18n"), str(cpp),
+           "-I" + str(args.source / "src"), "-I" + str(args.source / "lib/I18n"),
+           "-I" + str(args.source / "lib/BlePageTurner/include"), str(cpp),
            str(args.source / paths[2]), "-o", str(exe)]
 compile_result = subprocess.run(command, text=True, capture_output=True)
 (args.output / "compile.log").write_text(compile_result.stdout + compile_result.stderr)

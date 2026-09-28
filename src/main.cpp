@@ -13,6 +13,7 @@
 #include "activities/settings/OtaUpdateActivity.h"
 #endif
 #include <Arduino.h>
+#include <BlePageTurner.h>
 #include <BoardConfig.h>
 #include <Epub.h>
 #include <FontCacheManager.h>
@@ -50,9 +51,8 @@
 #include <esp_ota_ops.h>
 #endif
 
+#include "BlePageTurnerHost.h"
 #include "CrossPointSettings.h"
-#include "BleIdleOff.h"
-#include "BlePageTurnerRuntime.h"
 #include "HeapMapProbe.h"
 #include "SettingsList.h"
 #include "CrossPointState.h"
@@ -69,10 +69,9 @@
 #include "QuoteStore.h"
 #include "activities/home/QuotesActivity.h"
 
-// Page turner BLE: chi lien ket host cua SDK khi capability duoc bat (xem env x3-ble).
+// Page turner BLE: lib/BlePageTurner chi chay radio khi capability duoc bat (xem env x3-ble).
 #include "FileTransferState.h"
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
-#include <BleKeyboardHost.h>
 #define CROSSPOINT_BLE_HID_HOST 1
 #else
 #define CROSSPOINT_BLE_HID_HOST 0
@@ -311,6 +310,25 @@ void silentRestart() {
 void silentRestartToReader() { silentRestartTo(SILENT_REBOOT_TARGET_READER, "reader"); }
 
 void silentRestartToSettings() { silentRestartTo(SILENT_REBOOT_TARGET_SETTINGS, "settings"); }
+
+#if CROSSPOINT_BLE_HID_HOST
+static void runQuickAction(uint8_t action, quickaction::Trigger trigger);
+
+// The page turner's two doors that only this file has: a remote shortcut runs the catalog
+// action of the same name, and a heap in pieces restarts into the open book.
+static void runRemoteShortcut(const bleturner::Action shortcut) {
+  runQuickAction(shortcut == bleturner::Action::ReaderMenu ? CrossPointSettings::READER_MENU
+                                                           : CrossPointSettings::SAVE_QUOTE,
+                 quickaction::Trigger::Remote);
+}
+// The close waits out a paint and writes the reading place and every deferred write first.
+static void restartIntoOpenBook() {
+  activityManager.closeForRestart();
+  silentRestartToReader();
+  // Only a board that keeps its rails (touch) gets here without a restart: reopen the book.
+  activityManager.goToReader(APP_STATE.openEpubPath);
+}
+#endif
 
 void restartToHomeAfterStorageHandoff() {
   if (deepSleepInProgress) return;  // sleeping supersedes the storage handoff reboot
@@ -641,6 +659,9 @@ void setup() {
     SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_TOOLBAR;
   }
   SETTINGS.loadFromFile();
+#if CROSSPOINT_BLE_HID_HOST
+  beginPageTurner(renderer, SETTINGS.ble, runRemoteShortcut, restartIntoOpenBook);
+#endif
   logHeapMark("store-settings");
   // Push the saved timezone's POSIX rule into the clock (migrating the legacy
   // UTC-offset setting on first boot after the update).
@@ -854,7 +875,8 @@ static bool visitDiagnosticSetting(const String& key, Visitor&& visitor) {
   if (key == "blePageTurnerEnabled") {
     SettingInfo info;
     info.key = "blePageTurnerEnabled";
-    info.valuePtr = &CrossPointSettings::blePageTurnerEnabled;
+    info.valueGetter = []() -> uint8_t { return SETTINGS.ble.enabled; };
+    info.valueSetter = [](const uint8_t v) { SETTINGS.ble.enabled = v; };
     return visitor(info);
   }
   if (key == "fontFamily") return visitor(buildFontFamilySetting(&sdFontSystem.registry()));
@@ -1153,33 +1175,28 @@ void loop() {
 #endif
 
 #if CROSSPOINT_BLE_HID_HOST
-  // Resolve the radio handoff before USB's early return. Activity onEnter() can
-  // already have done blocking storage or Wi-Fi work before this loop resumes.
+  // Page turner BLE (lib/BlePageTurner): one pass before USB's early return, so a card handed
+  // over to USB or a file transfer stops the radio before anything else. Activity onEnter()
+  // can already have done blocking storage or Wi-Fi work before this loop resumes.
   bool bleInputActivity = false;
-  static bool bleReaderBeginAttempted = false;
-  static bool bleReaderReconnectConfigured = false;
-  // A start refused for memory is retried a few times once the reader has
-  // settled: the first page build holds the heap the radio needs and gives it
-  // back a few seconds later when the builder parks.
-  static constexpr unsigned long BLE_READER_RETRY_MS = 5000;
-  static constexpr uint8_t BLE_READER_RETRY_LIMIT = 6;
-  static unsigned long bleReaderRetryAtMs = 0;
-  static uint8_t bleReaderRetries = 0;
-  static uint32_t bleReaderGeneration = 0;
-  auto& bleHid = freeink::BleKeyboardHost::getInstance();
-  static uint32_t lastBleCleanupMs = 0;
-  static uint32_t bleIdleSinceMs = 0;
-  // Remote with a button table (learned, or the built-in default for its kind): the
-  // table picked once per link, and the tap/hold decision still waiting.
-  static blebinding::Router bleRouter;
-  if (bleHid.isStopping() && millis() - lastBleCleanupMs >= 250) {
-    lastBleCleanupMs = millis();
-    freeink::ble::suspendForTransition();  // Poll cancellation without blocking input.
-  }
-  const bool dangChiemStorage = activityManager.requiresExclusiveStorageLoop() || filetransfer::isActive();
-  if (dangChiemStorage) {
-    bleIdleSinceMs = 0;
-    freeink::ble::suspendForTransition();
+  {
+    bleturner::Scene scene{};
+    scene.where =
+        activityManager.isForegroundReaderActivity() ? bleturner::Where::Reader : bleturner::Where::Elsewhere;
+    scene.visit = activityManager.activityGeneration();
+    scene.pageShown = activityManager.isForegroundReaderReady();
+    // A book still building its index in the background keeps the radio off until the index
+    // is whole (EpubReaderActivity::holdsRadio); the device keys work meanwhile.
+    scene.bookIndexing = activityManager.foregroundReaderHoldsRadio();
+    scene.storageBusy = activityManager.requiresExclusiveStorageLoop() || filetransfer::isActive();
+    scene.wifiOn = WiFi.getMode() != WIFI_MODE_NULL;
+    scene.sleeping = activityManager.isSleepTransition();
+    // A page-key release or touch in the book grants one fresh start after the idle stop.
+    scene.localKey = mappedInputManager.wasReleased(MappedInputManager::Button::PageBack) ||
+                     mappedInputManager.wasReleased(MappedInputManager::Button::PageForward) ||
+                     mappedInputManager.wasReleased(MappedInputManager::Button::Left) ||
+                     mappedInputManager.wasReleased(MappedInputManager::Button::Right) || gpio.wasTouchActivity();
+    bleInputActivity = bleturner::tick(scene);
   }
 #endif
 
@@ -1206,199 +1223,6 @@ void loop() {
   const bool foregroundReader = activityManager.isForegroundReaderActivity();
   const bool foregroundActivityManagesTiltSensor = activityManager.isForegroundActivityManagingTiltSensor();
   updateTiltSensorForForegroundActivity(foregroundReader, foregroundActivityManagesTiltSensor);
-
-#if CROSSPOINT_BLE_HID_HOST
-  // Page turner BLE: callbacks only queue HID reports. Map each new report on
-  // main, then let the foreground reader coalesce one pending direction in its
-  // current activity generation. Unmapped/modifier reports do not reset timers.
-  {
-    // A saved opt-in starts only after the foreground reader has produced a
-    // page. Home needs its own cover/font memory before we can assess BLE's
-    // headroom. Each reader visit gets one attempt, avoiding allocation churn
-    // after a low-memory rejection. Pairing remains an explicit settings action.
-    const bool foregroundReader = activityManager.isForegroundReaderActivity();
-    const uint32_t generation = activityManager.activityGeneration();
-    if (!foregroundReader || !SETTINGS.blePageTurnerEnabled || generation != bleReaderGeneration) {
-      // A build hold belongs to one reader visit; the next visit may start the radio again.
-      if (generation != bleReaderGeneration) freeink::ble::setRadioHeldForBuild(false);
-      bleReaderBeginAttempted = false;
-      bleReaderReconnectConfigured = false;
-      bleRouter = blebinding::Router();  // settings may have changed the tables while away
-      bleReaderRetryAtMs = 0;
-      bleReaderRetries = 0;
-    }
-    bleReaderGeneration = generation;
-    // A page-key release or touch on the foreground reader grants one fresh
-    // attempt after idle-off. Repeated idle ticks never allocate/retry BLE.
-    const bool localReaderInput =
-        mappedInputManager.wasReleased(MappedInputManager::Button::PageBack) ||
-        mappedInputManager.wasReleased(MappedInputManager::Button::PageForward) ||
-        mappedInputManager.wasReleased(MappedInputManager::Button::Left) ||
-        mappedInputManager.wasReleased(MappedInputManager::Button::Right) || gpio.wasTouchActivity();
-    // A radio the reader stopped for a starved build restarts on the reader's request once
-    // its page is shown. Restarting it on a key release starved the build again and the
-    // start task held this loop for 2.85 s (X3, 23/09/2026).
-    if (foregroundReader && SETTINGS.blePageTurnerEnabled && freeink::ble::idleStopped() &&
-        ((localReaderInput && !freeink::ble::radioHeldForBuild()) || freeink::ble::takeRearmRequest())) {
-      freeink::ble::setIdleStopped(false);
-      bleReaderBeginAttempted = false;
-      bleReaderReconnectConfigured = false;
-      LOG_INF("BLE", "Reader input rearmed idle radio");
-    }
-    if (dangChiemStorage || !SETTINGS.blePageTurnerEnabled) {
-      bleIdleSinceMs = 0;
-      freeink::ble::suspendForTransition();
-    } else {
-      if (foregroundReader && bleReaderBeginAttempted && freeink::ble::readerStartDeferred() && !bleHid.isRunning() &&
-          !freeink::ble::initializing() && !freeink::ble::idleStopped() && bleReaderRetries < BLE_READER_RETRY_LIMIT) {
-        if (bleReaderRetryAtMs == 0) {
-          bleReaderRetryAtMs = millis() + BLE_READER_RETRY_MS;
-        } else if (millis() >= bleReaderRetryAtMs) {
-          bleReaderRetryAtMs = 0;
-          ++bleReaderRetries;
-          bleReaderBeginAttempted = false;
-          LOG_INF("BLE", "Retrying reader BLE start after memory refusal (%u)", static_cast<unsigned>(bleReaderRetries));
-        }
-      } else {
-        bleReaderRetryAtMs = 0;
-        if (bleHid.isRunning()) bleReaderRetries = 0;
-      }
-      // A book still building its index in the background keeps the radio off until the index
-      // is whole (EpubReaderActivity::holdsRadio); the device keys work meanwhile.
-      if (foregroundReader && activityManager.isForegroundReaderReady() && !bleReaderBeginAttempted &&
-          !freeink::ble::idleStopped() && !bleHid.isStopping() && !activityManager.foregroundReaderHoldsRadio() &&
-          (bleHid.isRunning() || activityManager.readyForegroundReaderForRadio())) {
-        bleReaderBeginAttempted = true;
-        if (!bleHid.isRunning()) {
-          const bool started = freeink::ble::beginAsync(renderer);
-          freeink::ble::setReaderStartDeferred(!started);
-          if (started) {
-            LOG_INF("BLE", "Reader BLE start requested");
-          } else {
-            LOG_ERR("BLE", "Reader BLE start deferred: insufficient memory or unavailable radio");
-          }
-        }
-      }
-      // Lau khong ai noi thi ha radio xuong. Khong co moc nay thi bat mot lan la
-      // radio chay mai, ma vong tiet kiem dien ben duoi co chu y giu CPU o toc do
-      // day chung nao radio con song, nen may nam im van an pin. Luat o BleIdleOff.h.
-      if (!freeink::ble::initializing() && bleHid.isRunning()) {
-        if (bleHid.isConnected() || bleIdleSinceMs == 0) bleIdleSinceMs = millis();
-        if (bleidle::shouldStop(true, bleHid.isConnected(), millis() - bleIdleSinceMs)) {
-          LOG_INF("BLE", "Radio idle for %u ms with nothing connected; stopping", bleidle::kIdleOffMs);
-          freeink::ble::stopForIdle();
-          bleIdleSinceMs = 0;
-        }
-      } else {
-        bleIdleSinceMs = 0;
-      }
-
-      if (foregroundReader && !freeink::ble::initializing() && bleHid.isRunning()) {
-        freeink::ble::setReaderStartDeferred(false);
-        if (!bleReaderReconnectConfigured && !bleHid.isStopping()) {
-          bleReaderReconnectConfigured = true;
-          if (SETTINGS.blePeerAddr[0] != '\0' &&
-              !bleHid.armSelectedPeerReconnect(SETTINGS.blePeerAddr)) {
-            LOG_INF("BLE", "Selected reader peer was not armed");
-          }
-        }
-        bleHid.poll();
-        // A remote with a table goes by RAW edges: each edge checks at most 8 slots of
-        // the connected remote's table, and a button the table does not name falls back
-        // to the old usage mapping. Without a table the raw ring is only drained and the
-        // key path below runs exactly as before.
-        freeink::RawButtonEvent tho;
-        bleRouter.follow(bleHid.isConnected());
-        if (bleRouter.linked && !bleRouter.chosen) {
-          // Edges queued while the reader was not in front (the remote stays linked on
-          // Home) do not belong to this page: drop them, so an old press cannot skip a
-          // chapter when the book opens.
-          while (bleHid.popRawButton(tho)) {
-          }
-          bleRouter.table = blebinding::tableFor(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, bleHid.connectedAddr(),
-                                                 bleHid.connectedName());
-          bleRouter.chosen = true;
-        }
-        const bool quaBang = blebinding::routes(bleRouter.table);
-        const auto lam = [&](const blebinding::Action a) {
-          if (a == blebinding::Action::None) return;
-          if (a == blebinding::Action::ReaderMenu || a == blebinding::Action::SaveQuote) {
-            // Catalog actions: the remote asks for them like every other trigger does.
-            runQuickAction(a == blebinding::Action::ReaderMenu ? CrossPointSettings::READER_MENU
-                                                               : CrossPointSettings::SAVE_QUOTE,
-                           quickaction::Trigger::Remote);
-            bleInputActivity = true;
-            return;
-          }
-          const bool toi = a == blebinding::Action::NextPage || a == blebinding::Action::NextChapter;
-          const bool chuong = a == blebinding::Action::NextChapter || a == blebinding::Action::PrevChapter;
-          if (chuong ? activityManager.chapterSkip(toi) : activityManager.pageTurn(toi)) bleInputActivity = true;
-        };
-        while (bleHid.popRawButton(tho)) {
-          if (!quaBang) continue;
-          const auto cu = SETTINGS.blePageActionFor(tho.keycode, tho.mods);
-          const auto hanhDong = blebinding::onRawEdge(
-              *bleRouter.table, tho.code(), tho.pressed, tho.atMs,
-              cu == CrossPointSettings::BlePageAction::NextPage       ? blebinding::Action::NextPage
-              : cu == CrossPointSettings::BlePageAction::PreviousPage ? blebinding::Action::PrevPage
-                                                                      : blebinding::Action::None,
-              bleRouter.wait);
-          lam(hanhDong);  // act first, log after: the log line is not on the page's clock
-          LOG_INF("BLE", "raw %u:%u=%02X %s -> %s", tho.reportId, tho.byteIndex, tho.value, tho.pressed ? "down" : "up",
-                  blebinding::actionName(hanhDong));
-        }
-        if (quaBang) {
-          const auto giu = blebinding::pollHold(bleRouter.wait, millis());
-          lam(giu);
-          if (giu != blebinding::Action::None) LOG_INF("BLE", "raw hold -> %s", blebinding::actionName(giu));
-        }
-        freeink::KeyEvent ev;
-        while (bleHid.popKey(ev)) {
-          // With a table the raw edge already decided this frame: its key event is only logged.
-          const auto hanhDong =
-              quaBang ? CrossPointSettings::BlePageAction::None : SETTINGS.blePageActionFor(ev.keycode, ev.mods);
-          // Mot dong cho MOI phim lay ra: day la duong chan doan cho nguoi cam
-          // dieu khien that (doc qua serial la biet remote gui ma nao).
-          LOG_INF("BLE", "key 0x%02X mods 0x%02X %s -> %s", ev.keycode, ev.mods, ev.pressed ? "down" : "up",
-                  hanhDong == CrossPointSettings::BlePageAction::PreviousPage  ? "previous"
-                  : hanhDong == CrossPointSettings::BlePageAction::NextPage    ? "next"
-                                                                               : "none");
-          if (hanhDong != CrossPointSettings::BlePageAction::PreviousPage &&
-              hanhDong != CrossPointSettings::BlePageAction::NextPage) {
-            continue;
-          }
-          // Only the press edge acts. Free3 reports a fixed release 60-100 ms after
-          // every press regardless of how long the button is held, so a hold cannot
-          // be told from a tap and the release frame carries nothing to act on.
-          if (!ev.pressed) continue;
-          // Enqueue once per new mapped report. A deferred repaint never
-          // generates another activity-timer reset on subsequent ticks.
-          if (activityManager.pageTurn(hanhDong == CrossPointSettings::BlePageAction::NextPage)) {
-            bleInputActivity = true;
-          }
-        }
-      }
-    }
-  }
-#endif
-
-#if CROSSPOINT_BLE_HID_HOST
-  // A heap in pieces keeps the radio off until a restart (BleHeapRestart.h). Restart into the book
-  // only from a shown page with no radio start in flight, no sleep, no card or Wi-Fi session; the
-  // close waits out a paint and writes the reading place and every deferred write first.
-  if (freeink::ble::heapRestartWanted() && SETTINGS.blePageTurnerEnabled && bleReaderBeginAttempted &&
-      activityManager.isForegroundReaderReady() && !activityManager.isSleepTransition() && !dangChiemStorage &&
-      !freeink::ble::busy() && WiFi.getMode() == WIFI_MODE_NULL) {
-    const auto heap = HalMemory::getInternalHeap();
-    LOG_INF("BLE", "Heap fragmented for radio: free=%u largest=%u; silent restart to reader",
-            static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.largestBlockBytes));
-    freeink::ble::markHeapRestart();
-    activityManager.closeForRestart();
-    silentRestartToReader();
-    // Only a board that keeps its rails (touch) gets here without a restart: reopen the book.
-    activityManager.goToReader(APP_STATE.openEpubPath);
-  }
-#endif
 
   renderer.setFadingFix(SETTINGS.fadingFix);
 
@@ -1530,24 +1354,21 @@ void loop() {
 #if CROSSPOINT_BLE_HID_HOST
       } else if (cmd == "BLE_TEST_BEGIN") {
         // In-memory only. A reset restores the saved user preference.
-        SETTINGS.blePageTurnerEnabled = 1;
-        const bool ok = freeink::ble::begin(renderer);
+        SETTINGS.ble.enabled = 1;
+        const bool ok = bleturner::switchOn();
         logSerial.printf("BLE_TEST:begin=%d,heap=%u,largest=%u\n", ok, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
       } else if (cmd == "BLE_TEST_END") {
-        SETTINGS.blePageTurnerEnabled = 0;
-        freeink::ble::setIdleStopped(false);
-        freeink::ble::setReaderStartDeferred(false);
-        const bool ended = freeink::ble::suspendForTransition(1000);
+        SETTINGS.ble.enabled = 0;
+        const bool ended = bleturner::switchOff();
         logSerial.printf("BLE_TEST:end=%d,heap=%u,largest=%u\n", ended, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
       } else if (cmd == "BLE_TEST_SCAN") {
-        auto& host = freeink::BleKeyboardHost::getInstance();
-        if (host.isRunning()) host.startScan(5000);
+        if (bleturner::status().running) bleturner::scan(5000);
       } else if (cmd == "BLE_TEST_STATUS") {
-        const auto& host = freeink::BleKeyboardHost::getInstance();
+        const auto ble = bleturner::status();
         logSerial.printf("BLE_TEST:enabled=%u,running=%d,scanning=%d,connected=%d,busy=%d,initializing=%d,heap=%u,largest=%u\n",
-                         SETTINGS.blePageTurnerEnabled, host.isRunning(), host.isScanning(), host.isConnected(),
-                         freeink::ble::busy(), freeink::ble::initializing(),
-                         ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+                         SETTINGS.ble.enabled, ble.running, ble.scanning, ble.connected,
+                         ble.starting || ble.running || ble.stopping, ble.starting, ESP.getFreeHeap(),
+                         ESP.getMaxAllocHeap());
 #endif
 #ifdef TENOR_UI_ACCEPTANCE
       } else if (cmd == "FILE_TRANSFER_AUTOCONNECT") {
@@ -1646,10 +1467,7 @@ void loop() {
         // a burst of taps queued while the reader is busy.
         uint8_t frame[16];
         const char* p = cmd.c_str() + 7;
-        if (!bleHid.isConnected()) {
-          bleRouter.table = blebinding::defaultTableFor("Free3");
-          bleRouter.chosen = true;
-        }
+        bleturner::injectFrame(nullptr, 0);
         const unsigned long t0 = micros();
         size_t n = 0;
         unsigned frames = 0;
@@ -1662,7 +1480,7 @@ void loop() {
             p += used;
           }
           if (len > 0) {
-            bleHid.onReportIngest(frame, len);
+            bleturner::injectFrame(frame, len);
             ++frames;
             n = len;
           }
@@ -1671,8 +1489,8 @@ void loop() {
           ++p;
         }
         logSerial.printf("BLE_RAW:len=%u,frames=%u,ingest_us=%lu,running=%d,overflow=%u,t=%lu\n",
-                         static_cast<unsigned>(n), frames, micros() - t0, bleHid.isRunning(), bleHid.rawOverflows(),
-                         millis());
+                         static_cast<unsigned>(n), frames, micros() - t0, bleturner::status().running,
+                         bleturner::rawOverflows(), millis());
 #endif
 #endif
 #ifdef TENOR_PRESS_PROBE
@@ -1902,8 +1720,9 @@ void loop() {
 #ifdef TENOR_UI_ACCEPTANCE
         logSerial.printf("STACK_INFO:render_free=%u,ble_start_min_free=%u,ble_busy=%d,ble_initializing=%d\n",
                          static_cast<unsigned>(activityManager.renderStackHighWaterMark()),
-                         static_cast<unsigned>(freeink::ble::startStackHighWaterMark()),
-                         freeink::ble::busy(), freeink::ble::initializing());
+                         static_cast<unsigned>(bleturner::startStackLeft()),
+                         bleturner::status().starting || bleturner::status().running || bleturner::status().stopping,
+                         bleturner::status().starting);
 #endif
 #endif
       } else if (cmd == "NETWORK") {
@@ -2190,7 +2009,8 @@ void loop() {
     // The BLE controller needs a steady clock: dropping the CPU to 80 MHz while
     // it connects ended in an HCI ack failure and an interrupt watchdog reset
     // (X3, 18/09/2026). Keep full speed while the radio is up.
-    const bool radioActive = freeink::ble::busy();
+    const auto ble = bleturner::status();
+    const bool radioActive = ble.starting || ble.running || ble.stopping;
 #else
     const bool radioActive = false;
 #endif

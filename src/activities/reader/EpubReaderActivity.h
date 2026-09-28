@@ -226,7 +226,6 @@ class EpubReaderActivity final : public ReaderActivity {
   // Set while the radio is stopped so a starved section build can finish. The reader
   // asks for a restart once the page is on screen.
   bool radioReleasedForBuild = false;
-  static constexpr unsigned long RADIO_RELEASE_TIMEOUT_MS = 3000;
   bool releaseRadioForBuild();
   // A book opened on its chapter list builds its TOC and chapter sizes here (Epub::indexSome), one
   // step per quiet pass once the page is up and no parser is alive. A key contact stops a step
@@ -386,7 +385,7 @@ class EpubReaderActivity final : public ReaderActivity {
 
   bool skipLoopDelay() override;
   bool holdsRadio() const override;
-  bool readyForRadio() override;
+  bool yieldForRadio() override;
 
   ScreenshotInfo getScreenshotInfo() const override;
   CrossPointPosition getCurrentPosition() const;

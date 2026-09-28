@@ -541,18 +541,18 @@ int main() {
     freeink::ble::busyState = false;
     freeink::ble::initializingState = false;
     freeink::ble::readerStartDeferredState = false;
-    require(r.readyForRadio(), "reader kept the radio waiting with its render lock free");
+    require(r.yieldForRadio(), "reader kept the radio waiting with its render lock free");
     require(r.section->isBuildParked() && r.section->parks == 1 && r.section->suspends == 0,
             "the radio was let start beside a live layout parser");
-    require(r.readyForRadio() && r.section->parks == 1, "a parked parser was parked again");
+    require(r.yieldForRadio() && r.section->parks == 1, "a parked parser was parked again");
     EpubReaderActivity painting; painting.section->canPark = true;
     {
       RenderLock paint;
-      require(!painting.readyForRadio(), "the radio was let start while the page painted");
+      require(!painting.yieldForRadio(), "the radio was let start while the page painted");
     }
     require(painting.section->parks == 0 && !painting.section->isBuildParked(), "a painting reader was parked");
     EpubReaderActivity laidOut; laidOut.section->building = false;
-    require(laidOut.readyForRadio() && laidOut.section->parks == 0, "a chapter laid out whole held the radio");
+    require(laidOut.yieldForRadio() && laidOut.section->parks == 0, "a chapter laid out whole held the radio");
   });
   test("BLE idle with enabled setting admits background parser", [] {
     EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = true; r.buildViewportWidth = 515;

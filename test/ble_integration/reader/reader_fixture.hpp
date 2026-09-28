@@ -28,14 +28,17 @@ struct RenderLock { struct TryTake{}; static inline bool busy=false; bool owns=f
 struct Activity {virtual ~Activity()=default;virtual bool isReaderActivity() const {return true;}};
 struct ActivityManager {enum class PendingAction{None,Push};PendingAction pendingAction=PendingAction::None;
  std::shared_ptr<Activity>currentActivity;uint32_t generation=1;
- bool sleepTransition=false;bool exclusive=false,preventSleep=false;bool requiresExclusiveStorageLoop()const{return exclusive;}bool preventAutoSleep()const{return preventSleep;}bool isForegroundReaderReady()const;bool foregroundReaderHoldsRadio()const{return false;}bool radioReady=true;int radioReadyAsks=0;bool readyForegroundReaderForRadio(){radioReadyAsks++;radioSteps.emplace_back("ready");return radioReady;}void goToReader(const std::string&){}bool pageTurn(bool);bool chapterSkip(bool);uint32_t activityGeneration()const{return generation;}
+ bool sleepTransition=false;bool exclusive=false,preventSleep=false;bool requiresExclusiveStorageLoop()const{return exclusive;}bool preventAutoSleep()const{return preventSleep;}bool isSleepTransition()const{return sleepTransition;}bool isForegroundReaderReady()const;bool foregroundReaderHoldsRadio()const{return false;}bool radioReady=true;int radioReadyAsks=0;bool yieldForegroundReaderForRadio(){radioReadyAsks++;radioSteps.emplace_back("ready");return radioReady;}void goToReader(const std::string&){}bool pageTurn(bool);bool chapterSkip(bool);uint32_t activityGeneration()const{return generation;}
  bool isForegroundReaderActivity()const{return pendingAction==PendingAction::None&&currentActivity&&currentActivity->isReaderActivity();}
 };
 ActivityManager activityManager;
 struct FakeInput{enum class Button{PageBack,PageForward,Left,Right,Back,Confirm};bool prev=false,next=false,back=false,confirm=false;bool released=false;int releasedButton=-1;bool wasReleased(Button button)const{if(button==Button::Back)return back;if(button==Button::Confirm)return confirm;return released&&(releasedButton<0||releasedButton==static_cast<int>(button));} unsigned long getHeldTime()const{return 0;}};
 using MappedInputManager=FakeInput;FakeInput mappedInputManager;
-@@BLEBINDING@@
-struct FakeSettings{static constexpr uint8_t READER_MENU=7,SAVE_QUOTE=8;blebinding::RemoteTable bleRemotes[blebinding::kMaxRemotes]={};uint8_t bleRemoteCount=0;enum Behavior{FONT_SIZE_STEP,CHAPTER_SKIP};Behavior longPressButtonBehavior=CHAPTER_SKIP;bool blePageTurnerEnabled=true;char blePeerAddr[18]={};enum class BlePageAction{PreviousPage,NextPage,None};BlePageAction blePageActionFor(int key,int mods)const{return mods?BlePageAction::None:(key==1?BlePageAction::NextPage:(key==2?BlePageAction::PreviousPage:BlePageAction::None));}}SETTINGS;
+#include "BlePageTurner.h"
+#include "Runtime.h"
+#include "RadioPort.h"
+// The page turner's saved settings: key 1 learned as Next, key 2 as Previous.
+struct FakeSettings{static constexpr uint8_t READER_MENU=7,SAVE_QUOTE=8;enum Behavior{FONT_SIZE_STEP,CHAPTER_SKIP};Behavior longPressButtonBehavior=CHAPTER_SKIP;bleturner::Config ble;}SETTINGS;
 using CrossPointSettings=FakeSettings;
 namespace ReaderUtils {constexpr int SKIP_HOLD_MS=500;
 struct Turns{bool prev=false,next=false,prevLongPressed=false,nextLongPressed=false,fromTilt=false;};

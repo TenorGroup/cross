@@ -6,21 +6,20 @@
 //     (tests/FakeBle.*). Dau vao bom vao la KHUNG REPORT HID THAT (8 byte, boot
 //     keyboard: byte 0 modifier, byte 2..7 usage) gui qua notify() - dung hinh
 //     dang ma mot remote page-turner gui. Khong co KeyEvent nao duoc tu tao.
-//   * CrossPointSettings::blePageActionFor (src/CrossPointSettings.h), dung loi goi
-//     ma src/main.cpp dung cho tung su kien lay ra khoi hang doi.
+//   * bleturner::pageActionFor (lib/BlePageTurner), dung loi goi ma module lat trang
+//     dung cho tung su kien lay ra khoi hang doi.
 //
 // DO DUOC: voi moi chuoi bom vao, bao nhieu luot lat trang duoc QUYET DINH va theo
 // huong nao (so lieu nam trong bao cao ban giao).
 //
-// GIOI HAN - doc truoc khi tin vao con so: bon luat sau nam trong khoi
-// `#if CROSSPOINT_BLE_HID_HOST` cua src/main.cpp (dong 687-741) va KHONG duoc bo
-// kiem nay phu: (1) toi da MOT luot lat cho moi vong lap, (2) mat ket noi host thi
+// GIOI HAN - doc truoc khi tin vao con so: bon luat sau nam trong tick() cua
+// lib/BlePageTurner (kiem rieng o TickTest cua module) va KHONG duoc bo kiem nay phu: (1) toi da MOT luot lat cho moi vong lap, (2) mat ket noi host thi
 // xoa luot cho, (3) roi trinh doc thi xoa luot cho + rong hang doi, (4) host khong
 // chay thi khong phat luot nao; cong them viec tam dung khi truyen tep va khoi phuc
 // co cong RAM 32.768 B. Bo kiem nay do o tang duoi: so SU KIEN ma host giao cho
 // ung dung, va so HANH DONG (Next/Previous) ma anh xa that quyet dinh. Mot chuoi ma
-// main.cpp rut het trong mot vong lap thi o day dem theo tung su kien, co y nhu vay:
-// chinh main.cpp moi la noi gop chung lai thanh mot luot.
+// module rut het trong mot vong lap thi o day dem theo tung su kien, co y nhu vay:
+// chinh tick() moi la noi gop chung lai thanh mot luot.
 
 #include <gtest/gtest.h>
 
@@ -29,22 +28,19 @@
 #include <vector>
 
 #include "BleKeyboardHost.h"
-#include "BleIdleOff.h"
-#include "CrossPointSettings.h"
-#include "activities/settings/BleKeyBinding.h"
+#include "BlePageTurner.h"
 #include "FakeBle.h"
 #include "HidDescriptors.h"
 #include "HidKeymap.h"
-
-// The settings constructor is defined in src/CrossPointSettings.cpp, outside this slice;
-// it only lays the tenor/cross setup over the member initializers, as this one does.
-CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
 
 using namespace freeink;  // test-only: the SDK's namespace
 
 namespace {
 
 constexpr char kAddr[] = "AA:BB:CC:DD:EE:FF";  // the remote that pairs and connects
+
+// The page turner's saved settings, as the host holds them.
+bleturner::Config config;
 
 // HID service characteristics the host discovers (HID 1.11 section 3.4).
 enum : uint16_t {
@@ -99,21 +95,14 @@ class PageTurnerFakeInputTest : public ::testing::Test {
  protected:
   void SetUp() override {
     fakeble::resetWorld();
-    savedEnabled_ = SETTINGS.blePageTurnerEnabled;
-    savedPrev_ = SETTINGS.blePrevKeyUsage;
-    savedNext_ = SETTINGS.bleNextKeyUsage;
     // The user turned the page turner on, and (unless a test says otherwise) no key
     // has been learned yet, so the four default usages are live.
-    SETTINGS.blePageTurnerEnabled = 1;
-    SETTINGS.blePrevKeyUsage = 0;
-    SETTINGS.bleNextKeyUsage = 0;
+    config = bleturner::Config{};
+    config.enabled = 1;
   }
 
   void TearDown() override {
     fakeble::endHost();
-    SETTINGS.blePageTurnerEnabled = savedEnabled_;
-    SETTINGS.blePrevKeyUsage = savedPrev_;
-    SETTINGS.bleNextKeyUsage = savedNext_;
   }
 
   // Pair and connect a fake remote that serves the boot keyboard report map.
@@ -188,14 +177,14 @@ class PageTurnerFakeInputTest : public ::testing::Test {
       }
       ++turns.events;
       turns.lastUsage = ev.keycode;
-      switch (SETTINGS.blePageActionFor(ev.keycode, ev.mods)) {
-        case CrossPointSettings::BlePageAction::PreviousPage:
+      switch (bleturner::pageActionFor(config, ev.keycode, ev.mods)) {
+        case bleturner::Action::PrevPage:
           ++turns.previous;
           break;
-        case CrossPointSettings::BlePageAction::NextPage:
+        case bleturner::Action::NextPage:
           ++turns.next;
           break;
-        case CrossPointSettings::BlePageAction::None:
+        default:
           break;
       }
     }
@@ -205,9 +194,6 @@ class PageTurnerFakeInputTest : public ::testing::Test {
  private:
   int reportChar_ = -1;
   int consumerChar_ = -1;
-  uint8_t savedEnabled_ = 0;
-  uint8_t savedPrev_ = 0;
-  uint8_t savedNext_ = 0;
 };
 
 // --- Mot phim da gan -> dung MOT luot, dung huong ----------------------------
@@ -273,7 +259,7 @@ TEST_F(PageTurnerFakeInputTest, ModifierPressesReachTheAppButTurnNoPage) {
 // --- Cong tac tat ------------------------------------------------------------
 
 TEST_F(PageTurnerFakeInputTest, DisabledPageTurnerTurnsNothing) {
-  SETTINGS.blePageTurnerEnabled = 0;
+  config.enabled = 0;
   connectRemote();
 
   press(kUsageRight);
@@ -289,7 +275,7 @@ TEST_F(PageTurnerFakeInputTest, DisabledPageTurnerTurnsNothing) {
 // --- Nut da hoc thay cho mac dinh cua dung huong do --------------------------
 
 TEST_F(PageTurnerFakeInputTest, LearnedKeyReplacesTheDefaultForThatDirection) {
-  SETTINGS.bleNextKeyUsage = kUsageEnter;  // a remote whose Next button is Enter
+  config.nextKeyUsage = kUsageEnter;  // a remote whose Next button is Enter
   connectRemote();
 
   press(kUsageEnter);
@@ -423,7 +409,7 @@ TEST_F(PageTurnerFakeInputTest, CheapRemoteDefaultsTurnPagesWithoutLearning) {
 }
 
 TEST_F(PageTurnerFakeInputTest, LearnedKeyRetiresTheNewDefaultForItsDirection) {
-  SETTINGS.bleNextKeyUsage = kUsageVolumeUp;  // a remote whose Next button is Volume Up
+  config.nextKeyUsage = kUsageVolumeUp;  // a remote whose Next button is Volume Up
   connectRemote();
 
   press(kUsageVolumeUp);
@@ -470,8 +456,8 @@ TEST_F(PageTurnerFakeInputTest, ConsumerVolumeRemoteIsDecodedAndTurnsThePage) {
 
 // --- Per-button binding from RAW frames ----------------------------------------
 //
-// The same chain src/main.cpp runs for the connected remote: pick the table by
-// address and name, drain raw edges, let blebinding::onRawEdge decide (falling back
+// The same chain the module's tick runs for the connected remote: pick the table by
+// address and name, drain raw edges, let bleturner::onRawEdge decide (falling back
 // to the old usage mapping for a button the table does not name), drain key events
 // and IGNORE them when there is a table.
 
@@ -488,13 +474,7 @@ class RemoteBindingTest : public PageTurnerFakeInputTest {
  protected:
   void SetUp() override {
     PageTurnerFakeInputTest::SetUp();
-    savedRemotes_ = SETTINGS.bleRemoteCount;
-    SETTINGS.bleRemoteCount = 0;
-    router_ = blebinding::Router();
-  }
-  void TearDown() override {
-    SETTINGS.bleRemoteCount = savedRemotes_;
-    PageTurnerFakeInputTest::TearDown();
+    router_ = bleturner::Router();
   }
 
   // The three-button remote (map rebuilt from the device log), advertised under
@@ -520,44 +500,39 @@ class RemoteBindingTest : public PageTurnerFakeInputTest {
     EXPECT_EQ(fakeble::allocationCount(), before) << "notification path allocated";
   }
 
-  void count(Routed& r, const blebinding::Action a) {
+  void count(Routed& r, const bleturner::Action a) {
     switch (a) {
-      case blebinding::Action::NextPage: ++r.next; break;
-      case blebinding::Action::PrevPage: ++r.previous; break;
-      case blebinding::Action::NextChapter: ++r.nextChapter; break;
-      case blebinding::Action::PrevChapter: ++r.previousChapter; break;
-      case blebinding::Action::None: break;
+      case bleturner::Action::NextPage: ++r.next; break;
+      case bleturner::Action::PrevPage: ++r.previous; break;
+      case bleturner::Action::NextChapter: ++r.nextChapter; break;
+      case bleturner::Action::PrevChapter: ++r.previousChapter; break;
+      default: break;
     }
   }
 
-  // One main-loop pass over everything the host queued, as src/main.cpp runs it.
+  // One main-loop pass over everything the host queued, as the module's tick runs it.
   Routed route(const uint32_t nowMs) {
     Routed r;
     router_.follow(fakeble::host().isConnected());
     if (router_.linked && !router_.chosen) {
-      router_.table = blebinding::tableFor(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount,
+      router_.table = bleturner::tableFor(config.remotes, config.remoteCount,
                                            fakeble::host().connectedAddr(), fakeble::host().connectedName());
       router_.chosen = true;
     }
-    const bool viaTable = blebinding::routes(router_.table);
+    const bool viaTable = bleturner::routes(router_.table);
     RawButtonEvent raw;
     while (fakeble::host().popRawButton(raw)) {
       if (!viaTable) continue;
-      const auto legacy = SETTINGS.blePageActionFor(raw.keycode, raw.mods);
-      count(r, blebinding::onRawEdge(*router_.table, raw.code(), raw.pressed, raw.atMs,
-                                     legacy == CrossPointSettings::BlePageAction::NextPage ? blebinding::Action::NextPage
-                                     : legacy == CrossPointSettings::BlePageAction::PreviousPage
-                                         ? blebinding::Action::PrevPage
-                                         : blebinding::Action::None,
-                                     router_.wait));
+      count(r, bleturner::onRawEdge(*router_.table, raw.code(), raw.pressed, raw.atMs,
+                                    bleturner::pageActionFor(config, raw.keycode, raw.mods), router_.wait));
     }
-    if (viaTable) count(r, blebinding::pollHold(router_.wait, nowMs));
+    if (viaTable) count(r, bleturner::pollHold(router_.wait, nowMs));
     KeyEvent ev;
     while (fakeble::host().popKey(ev)) {
       if (viaTable || !ev.pressed) continue;
-      const auto a = SETTINGS.blePageActionFor(ev.keycode, ev.mods);
-      if (a == CrossPointSettings::BlePageAction::NextPage) ++r.next;
-      if (a == CrossPointSettings::BlePageAction::PreviousPage) ++r.previous;
+      const auto a = bleturner::pageActionFor(config, ev.keycode, ev.mods);
+      if (a == bleturner::Action::NextPage) ++r.next;
+      if (a == bleturner::Action::PrevPage) ++r.previous;
     }
     return r;
   }
@@ -569,15 +544,14 @@ class RemoteBindingTest : public PageTurnerFakeInputTest {
     return route(fakeble::clockMs());
   }
 
-  blebinding::Router router_;
+  bleturner::Router router_;
   int media_ = -1;
-  uint8_t savedRemotes_ = 0;
 };
 
 TEST_F(RemoteBindingTest, ThreeButtonDefaultTapIsNextChapterAndHoldFrameIsPreviousChapter) {
   // The keycode bindings the page buttons were given on the old screen.
-  SETTINGS.bleNextKeyUsage = 0x02;
-  SETTINGS.blePrevKeyUsage = 0x01;
+  config.nextKeyUsage = 0x02;
+  config.prevKeyUsage = 0x01;
   connectThreeButton("Free3-R");
 
   const Routed third = tap({0x00, 0x02, 0x00});
@@ -598,8 +572,8 @@ TEST_F(RemoteBindingTest, ThreeButtonDefaultTapIsNextChapterAndHoldFrameIsPrevio
 }
 
 TEST_F(RemoteBindingTest, RemoteWithoutTableKeepsTodaysPath) {
-  SETTINGS.bleNextKeyUsage = 0x02;
-  SETTINGS.blePrevKeyUsage = 0x01;
+  config.nextKeyUsage = 0x02;
+  config.prevKeyUsage = 0x01;
   connectThreeButton("Some Remote");
   // No table: the page buttons turn through the key path exactly as before, and
   // the third button still does nothing.
@@ -612,7 +586,7 @@ TEST_F(RemoteBindingTest, RemoteWithoutTableKeepsTodaysPath) {
 TEST_F(RemoteBindingTest, LearningFromTheRawRingBindsEachButtonOfThisRemote) {
   connectThreeButton("Some Remote");
   // What the Bluetooth screen does: the first press edge, then its release.
-  const auto learnNext = [&](blebinding::Action action, std::initializer_list<uint8_t> press, uint32_t holdMs) {
+  const auto learnNext = [&](bleturner::Action action, std::initializer_list<uint8_t> press, uint32_t holdMs) {
     frame(press);
     fakeble::advanceMillis(holdMs);
     frame({0x00, 0x00, 0x00});
@@ -625,18 +599,18 @@ TEST_F(RemoteBindingTest, LearningFromTheRawRingBindsEachButtonOfThisRemote) {
     KeyEvent ev;
     while (fakeble::host().popKey(ev)) {
     }
-    blebinding::RemoteTable* table = blebinding::editableTable(
-        SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, fakeble::host().connectedAddr(), fakeble::host().connectedName());
+    bleturner::RemoteTable* table = bleturner::editableTable(
+        config.remotes, config.remoteCount, fakeble::host().connectedAddr(), fakeble::host().connectedName());
     ASSERT_NE(table, nullptr);
-    ASSERT_TRUE(blebinding::learn(*table, action, down.code(), up.atMs - down.atMs >= blebinding::kHoldMs));
+    ASSERT_TRUE(bleturner::learn(*table, action, down.code(), up.atMs - down.atMs >= bleturner::kHoldMs));
   };
-  learnNext(blebinding::Action::NextPage, {0x02, 0x00, 0x00}, 60);
-  learnNext(blebinding::Action::PrevPage, {0x01, 0x00, 0x00}, 60);
-  learnNext(blebinding::Action::NextChapter, {0x00, 0x02, 0x00}, 60);
-  learnNext(blebinding::Action::PrevChapter, {0x08, 0x00, 0x00}, 60);
-  ASSERT_EQ(SETTINGS.bleRemoteCount, 1);
-  EXPECT_STREQ(SETTINGS.bleRemotes[0].addr, kAddr);
-  EXPECT_EQ(SETTINGS.bleRemotes[0].count, 4);
+  learnNext(bleturner::Action::NextPage, {0x02, 0x00, 0x00}, 60);
+  learnNext(bleturner::Action::PrevPage, {0x01, 0x00, 0x00}, 60);
+  learnNext(bleturner::Action::NextChapter, {0x00, 0x02, 0x00}, 60);
+  learnNext(bleturner::Action::PrevChapter, {0x08, 0x00, 0x00}, 60);
+  ASSERT_EQ(config.remoteCount, 1);
+  EXPECT_STREQ(config.remotes[0].addr, kAddr);
+  EXPECT_EQ(config.remotes[0].count, 4);
 
   // Learned, then routed: the keycode bindings are not needed any more.
   EXPECT_EQ(tap({0x02, 0x00, 0x00}).next, 1);
@@ -647,11 +621,11 @@ TEST_F(RemoteBindingTest, LearningFromTheRawRingBindsEachButtonOfThisRemote) {
 
 TEST_F(RemoteBindingTest, TapAndHoldOnARemoteThatReportsTheRelease) {
   connectThreeButton("Some Remote");
-  blebinding::RemoteTable* table = blebinding::editableTable(
-      SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, fakeble::host().connectedAddr(), fakeble::host().connectedName());
+  bleturner::RemoteTable* table = bleturner::editableTable(
+      config.remotes, config.remoteCount, fakeble::host().connectedAddr(), fakeble::host().connectedName());
   ASSERT_NE(table, nullptr);
-  ASSERT_TRUE(blebinding::learn(*table, blebinding::Action::NextPage, 0x030102, false));
-  ASSERT_TRUE(blebinding::learn(*table, blebinding::Action::NextChapter, 0x030102, true));
+  ASSERT_TRUE(bleturner::learn(*table, bleturner::Action::NextPage, 0x030102, false));
+  ASSERT_TRUE(bleturner::learn(*table, bleturner::Action::NextChapter, 0x030102, true));
 
   // 100 ms tap: the tap action, once, on the release.
   frame({0x00, 0x02, 0x00});
@@ -674,91 +648,30 @@ TEST_F(RemoteBindingTest, TapAndHoldOnARemoteThatReportsTheRelease) {
 }
 
 TEST_F(RemoteBindingTest, OneRemotesTableIsNotAppliedToAnother) {
-  blebinding::RemoteTable* a = blebinding::editableTable(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount,
+  bleturner::RemoteTable* a = bleturner::editableTable(config.remotes, config.remoteCount,
                                                          "11:22:33:44:55:66", "Remote A");
   ASSERT_NE(a, nullptr);
-  ASSERT_TRUE(blebinding::learn(*a, blebinding::Action::NextChapter, 0x030102, false));
+  ASSERT_TRUE(bleturner::learn(*a, bleturner::Action::NextChapter, 0x030102, false));
   connectThreeButton("Remote B");
   EXPECT_EQ(tap({0x00, 0x02, 0x00}).total(), 0);
-  EXPECT_EQ(blebinding::tableFor(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, "11:22:33:44:55:66", "Remote A"), a);
-  EXPECT_TRUE(blebinding::forgetRemote(SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, "11:22:33:44:55:66"));
-  EXPECT_EQ(SETTINGS.bleRemoteCount, 0);
+  EXPECT_EQ(bleturner::tableFor(config.remotes, config.remoteCount, "11:22:33:44:55:66", "Remote A"), a);
+  EXPECT_TRUE(bleturner::forgetRemote(config.remotes, config.remoteCount, "11:22:33:44:55:66"));
+  EXPECT_EQ(config.remoteCount, 0);
 }
 
 TEST_F(RemoteBindingTest, ClearedTableKeepsItsAddressAndGoesBackToTheKeyPath) {
-  SETTINGS.bleNextKeyUsage = 0x02;
+  config.nextKeyUsage = 0x02;
   connectThreeButton("Free3-R");
-  blebinding::RemoteTable* table = blebinding::editableTable(
-      SETTINGS.bleRemotes, SETTINGS.bleRemoteCount, fakeble::host().connectedAddr(), fakeble::host().connectedName());
+  bleturner::RemoteTable* table = bleturner::editableTable(
+      config.remotes, config.remoteCount, fakeble::host().connectedAddr(), fakeble::host().connectedName());
   ASSERT_NE(table, nullptr);
   EXPECT_EQ(table->count, 2) << "an edit starts from the built-in default";
-  blebinding::clearAction(*table, blebinding::Action::NextChapter);
-  blebinding::clearAction(*table, blebinding::Action::PrevChapter);
+  bleturner::clearAction(*table, bleturner::Action::NextChapter);
+  bleturner::clearAction(*table, bleturner::Action::PrevChapter);
   EXPECT_EQ(table->count, 0);
   // Cleared by hand: the default must not come back, and the key path decides.
   EXPECT_EQ(tap({0x00, 0x02, 0x00}).total(), 0);
   EXPECT_EQ(tap({0x02, 0x00, 0x00}).next, 1);
 }
 
-TEST(BleBindingTableTest, KeyIdentityReadsAsTheKeyCode) {
-  // A button known only by the key the decoder read (byte index 0xFF) is shown as
-  // that key code, not as a byte position that does not exist.
-  char text[16];
-  blebinding::formatCode(text, sizeof text, blebinding::makeBinding(0xFFFF43, false, blebinding::Action::NextPage));
-  EXPECT_STREQ(text, "0x43");
-  blebinding::formatCode(text, sizeof text, blebinding::makeBinding(0x030102, false, blebinding::Action::NextPage));
-  EXPECT_STREQ(text, "3:1=02");
-}
-
-TEST(BleBindingTableTest, FullTableRefusesAndGarbageIsNotValid) {
-  blebinding::RemoteTable t{};
-  const blebinding::Action actions[4] = {blebinding::Action::NextPage, blebinding::Action::PrevPage,
-                                         blebinding::Action::NextChapter, blebinding::Action::PrevChapter};
-  // Four actions, each learned on a new button: four slots, the old ones replaced.
-  for (uint32_t round = 0; round < 3; ++round) {
-    for (int i = 0; i < 4; ++i) EXPECT_TRUE(blebinding::learn(t, actions[i], 0x030000 + round * 16 + i + 1, false));
-  }
-  EXPECT_EQ(t.count, 4);
-  // The same button gesture for a second action moves it, never doubles it.
-  EXPECT_TRUE(blebinding::learn(t, blebinding::Action::NextPage, 0x030000 + 32 + 2, false));
-  EXPECT_EQ(blebinding::lookup(t, 0x030000 + 32 + 2, false), blebinding::Action::NextPage);
-  EXPECT_EQ(t.count, 3);
-  // A full table (eight slots read back from the card) says so instead of overwriting.
-  t.count = blebinding::kMaxBindings;
-  for (uint8_t i = 0; i < t.count; ++i) {
-    t.bindings[i] = blebinding::makeBinding(0x010000 + i + 1, (i & 1) != 0, blebinding::Action::NextPage);
-  }
-  EXPECT_FALSE(blebinding::learn(t, blebinding::Action::PrevPage, 0x7F0001, false));
-  EXPECT_EQ(t.count, blebinding::kMaxBindings);
-  EXPECT_EQ(blebinding::lookup(t, 0x7F0001, false), blebinding::Action::None);
-
-  EXPECT_TRUE(blebinding::valid(blebinding::makeBinding(0x030102, true, blebinding::Action::PrevChapter)));
-  EXPECT_FALSE(blebinding::valid(blebinding::makeBinding(0x030102, false, blebinding::Action::None)));
-  EXPECT_FALSE(blebinding::valid(0x70030102u)) << "action out of range";
-  EXPECT_FALSE(blebinding::valid(0x18030102u)) << "unknown bit";
-  EXPECT_FALSE(blebinding::valid(blebinding::makeBinding(0x030100, false, blebinding::Action::NextPage)))
-      << "a zero value is a release, not a button";
-}
-
 }  // namespace
-
-// Radio khong co moc tu tat la may nam im van an pin: vong tiet kiem dien giu CPU
-// o toc do day chung nao radio con chay. Luat duoi day la thu dung radio xuong.
-TEST(BleIdleOffTest, RadioStopsOnlyAfterTheLimitAndOnlyWhenNobodyIsConnected) {
-  constexpr uint32_t limit = bleidle::kIdleOffMs;
-
-  // Chua toi han thi giu nguyen, du khong ai noi.
-  EXPECT_FALSE(bleidle::shouldStop(/*running=*/true, /*connected=*/false, limit - 1));
-  // Dung han va qua han thi ha xuong.
-  EXPECT_TRUE(bleidle::shouldStop(true, false, limit));
-  EXPECT_TRUE(bleidle::shouldStop(true, false, limit * 3));
-
-  // Dang noi thi khong bao gio tat: dieu khien lat trang im rat lau giua hai lan bam.
-  EXPECT_FALSE(bleidle::shouldStop(true, /*connected=*/true, limit * 100));
-
-  // Radio khong chay thi khong co gi de ha.
-  EXPECT_FALSE(bleidle::shouldStop(/*running=*/false, false, limit * 100));
-
-  // Han la nam phut, doi so nay la doi hanh vi nguoi dung thay duoc.
-  EXPECT_EQ(limit, 5u * 60u * 1000u);
-}

@@ -6,7 +6,7 @@
 #include <BoardConfig.h>
 
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
-#include "BlePageTurnerRuntime.h"
+#include <BlePageTurner.h>
 #endif
 
 // Runtime owner count for activities that share the radio and storage handoff.
@@ -22,7 +22,7 @@ inline bool isActive() { return ownerCount() != 0; }
 
 inline bool stopBleHostIfRunning() {
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
-  return freeink::ble::suspendForTransition(1000);
+  return bleturner::beforeScreenChange(1000);
 #else
   return true;
 #endif

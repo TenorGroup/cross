@@ -1,5 +1,6 @@
 #include "CrossPointSettings.h"
 
+#include <BlePageTurnerJson.h>
 #include <Epub/ReaderSpacing.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -151,22 +152,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   }
 
   // BLE page turner (BTH2) - managed by BlePageTurnerActivity, not SettingsList.
-  doc["blePageTurnerEnabled"] = blePageTurnerEnabled;
-  doc["blePeerAddr"] = blePeerAddr;
-  doc["blePeerName"] = blePeerName;
-  doc["blePrevKeyUsage"] = blePrevKeyUsage;
-  doc["bleNextKeyUsage"] = bleNextKeyUsage;
-  // One entry per remote: its address and its 32-bit slots. An empty table is written
-  // too: the user cleared it, and the built-in default must not come back.
-  if (bleRemoteCount > 0) {
-    JsonArray remotes = doc["bleRemotes"].to<JsonArray>();
-    for (uint8_t i = 0; i < bleRemoteCount && i < blebinding::kMaxRemotes; i++) {
-      JsonObject r = remotes.add<JsonObject>();
-      r["addr"] = bleRemotes[i].addr;
-      JsonArray binds = r["binds"].to<JsonArray>();
-      for (uint8_t j = 0; j < bleRemotes[i].count && j < blebinding::kMaxBindings; j++) binds.add(bleRemotes[i].bindings[j]);
-    }
-  }
+  bleturner::writeJson(ble, doc);
 }
 
 bool CrossPointSettings::fromJson(JsonVariantConst doc) {
@@ -477,26 +463,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // trong struct (tat, khong peer, chua hoc nut) va ghi lai file MOT lan de nam
   // khoa co mat tu day. Cac truong cu di qua vong lap chung o tren nen khong
   // truong nao bi mat.
-  blePageTurnerEnabled = (doc["blePageTurnerEnabled"] | uint8_t{0}) ? 1 : 0;
-  copyToField(blePeerAddr, doc["blePeerAddr"] | "", sizeof(blePeerAddr));
-  copyToField(blePeerName, doc["blePeerName"] | "", sizeof(blePeerName));
-  blePrevKeyUsage = doc["blePrevKeyUsage"] | uint8_t{0};
-  bleNextKeyUsage = doc["bleNextKeyUsage"] | uint8_t{0};
-  bleRemoteCount = 0;
-  for (const JsonObjectConst r : doc["bleRemotes"].as<JsonArrayConst>()) {
-    if (bleRemoteCount >= blebinding::kMaxRemotes) break;
-    const char* addr = r["addr"] | "";
-    if (addr[0] == '\0') continue;
-    // Build the entry aside first: the document's string may point into this very slot.
-    blebinding::RemoteTable t{};
-    copyToField(t.addr, addr, sizeof(t.addr));
-    for (const JsonVariantConst b : r["binds"].as<JsonArrayConst>()) {
-      if (t.count >= blebinding::kMaxBindings) break;
-      if (b.is<uint32_t>() && blebinding::valid(b.as<uint32_t>())) t.bindings[t.count++] = b.as<uint32_t>();
-    }
-    bleRemotes[bleRemoteCount++] = t;
-  }
-  if (doc["blePageTurnerEnabled"].isNull()) {
+  if (!bleturner::readJson(ble, doc)) {
     needsResave = true;
   }
 

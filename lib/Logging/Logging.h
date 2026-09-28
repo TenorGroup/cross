@@ -40,6 +40,8 @@ static HardwareSerial& logSerial = Serial;
 #endif
 
 void logPrintf(const char* level, const char* origin, const char* format, ...);
+// The same with the arguments already collected (a library that logs through the app).
+void vlogPrintf(const char* level, const char* origin, const char* format, va_list args);
 
 #ifdef ENABLE_SERIAL_LOG
 #if LOG_LEVEL >= 0
