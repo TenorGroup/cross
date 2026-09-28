@@ -57,7 +57,7 @@ EpdFontData bodyData = [] { EpdFontData data{}; data.advanceY = 33; return data;
 EpdFont captionFont(&captionData), subtitleFont(&subtitleData), bodyFont(&bodyData);
 EpdFontFamily smallFontFamily(&captionFont), ui10FontFamily(&subtitleFont), ui12FontFamily(&bodyFont);
 EpdFontFamily notoserif14FontFamily(&bodyFont);
-void setupDisplayAndFonts(bool);
+void setupDisplayAndFonts(bool, bool);
 
 void assertTier(GfxRenderer& target, uint8_t tier) {
   const auto spec = uiTextSizeSpec(tier);
@@ -122,7 +122,7 @@ int main(int argc,char** argv) {
     const int saved = std::atoi(argv[1]); assert(saved >= 0 && saved <= 2);
     SETTINGS.uiTextSize = static_cast<uint8_t>(saved);
     uiTestBootRegistration = true;
-    setupDisplayAndFonts(false);
+    setupDisplayAndFonts(false, true);
     firstPaint(SETTINGS.uiTextSize);
     std::printf("PASS: persisted tier %d applied under lock before first paint\n",saved);
   }

@@ -61,6 +61,9 @@ struct UITheme {
   struct Metrics {};
   const Metrics& getMetrics() const { static Metrics metrics; return metrics; }
 };
+namespace BoardConfig {
+inline bool hasHomeKey() { return false; }
+}
 namespace tenorchrome {
 bool enabled() { return false; }
 void drawSiblingDestinations(GfxRenderer&, const char*, const char*) {}
