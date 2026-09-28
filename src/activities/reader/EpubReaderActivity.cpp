@@ -157,6 +157,8 @@ EpubReaderActivity::~EpubReaderActivity() {
   // taking another here self-deadlocks (renderingMutex is non-recursive).
   settleOverlayRefresh();
   discardOverlayPage();  // free the overlay's page snapshot if one is held
+  // A radio still stopped for this book's build may start again in the next one.
+  if (radioReleasedForBuild.load()) bleturner::afterPaint();
 
   if (footnoteDepth > 0 && epub) {
     const SavedPosition& origin = savedPositions[0];
@@ -298,11 +300,13 @@ void EpubReaderActivity::openReaderMenu() {
       });
 }
 
-// Runs on the render task, under its lock, right before a chapter build. The page turner's radio
-// holds tens of KB while it runs; on a heap a build cannot count on, it stops until the page is shown.
+// Runs on the render task, under its lock, right before every chapter build. The page turner's
+// radio holds about 50 KB while it runs, and no heap figure taken before a build tells whether the
+// build fits next to it (X3: with the radio up, 55 KB free and a 47 KB block, a 6 KB chapter ran
+// out of memory). So the radio stops for every build and starts again once the chapter is built
+// and its page is shown.
 void EpubReaderActivity::makeRoomForChapterBuild() {
   if (radioReleasedForBuild.load()) return;
-  if (ESP.getFreeHeap() >= BACKGROUND_BUILD_MIN_FREE_HEAP && ESP.getMaxAllocHeap() >= CHAPTER_BUILD_MIN_BLOCK) return;
   radioReleasedForBuild = bleturner::beforeChapterBuild() != bleturner::BuildRelease::NotHeld;
 }
 
@@ -387,10 +391,11 @@ void EpubReaderActivity::loop() {
   rememberBookOnceRendered();
 
   // The radio stopped for a chapter build: once the render task has let go of the lock, that page
-  // is on screen and the radio may start again.
+  // is on screen; once the look-ahead below has finished the chapter, no parser is left alive and
+  // the radio may start again.
   if (radioReleasedForBuild.load()) {
     RenderLock lock(RenderLock::Mode::Try);
-    if (lock.ownsLock()) {
+    if (lock.ownsLock() && !(section && section->isBuilding())) {
       radioReleasedForBuild = false;
       bleturner::afterPaint();
     }
@@ -431,8 +436,10 @@ void EpubReaderActivity::loop() {
 
   {
     RenderLock lock(RenderLock::Mode::Try);
+    // Never next to the radio: once the reader reaches the watermark, the build starts in
+    // renderBook(), which stops the radio first.
     if (lock.ownsLock() && section && !section->isBuilding() && section->isPartial() && buildViewportWidth > 0 &&
-        !partialRebuildStartFailed &&
+        !partialRebuildStartFailed && !bleturner::holdsHeap() &&
         section->currentPage + PARTIAL_REBUILD_START_MARGIN >= static_cast<int>(section->pageCount)) {
       const ReaderRenderSpec buildSpec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
       if (!section->startBuild(buildSpec)) {
@@ -1152,9 +1159,12 @@ void EpubReaderActivity::onReturnFromEndOfBook() {
   }
 }
 
+// The look-ahead never builds next to the radio. While the radio is stopped for a build it runs to
+// the end of the chapter, so the radio comes back with no parser alive.
 bool EpubReaderActivity::backgroundBuildWanted() const {
-  return section && section->isBuilding() &&
-         (section->isPartial() || static_cast<int>(section->pageCount) < section->currentPage + BUILD_WINDOW_AHEAD);
+  return section && section->isBuilding() && !bleturner::holdsHeap() &&
+         (radioReleasedForBuild.load() || section->isPartial() ||
+          static_cast<int>(section->pageCount) < section->currentPage + BUILD_WINDOW_AHEAD);
 }
 
 bool EpubReaderActivity::skipLoopDelay() {
@@ -1369,7 +1379,9 @@ void EpubReaderActivity::renderBook() {
   }
 
   // The two loops below build on until the page to show exists.
-  if (section->currentPage >= static_cast<int>(section->pageCount)) makeRoomForChapterBuild();
+  if ((section->isPartial() || section->isBuilding()) && section->currentPage >= static_cast<int>(section->pageCount)) {
+    makeRoomForChapterBuild();
+  }
   if (section->isPartial() && section->currentPage >= static_cast<int>(section->pageCount)) {
     GUI.drawPopup(renderer, tr(STR_INDEXING));
     pagesUntilFullRefresh = 1;
