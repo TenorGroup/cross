@@ -55,9 +55,11 @@ class HalTiltSensor {
   static constexpr unsigned long POLL_INTERVAL_MS = 50;    // 20 Hz polling
   static constexpr unsigned long WAKE_STABILIZE_MS = 300;  // Ignore readings after wake
   // X3: the first arm after waking from deep sleep times out (the chip just left power-down),
-  // a later one takes. A chip that never answers costs three bounded tries a wake.
+  // a later one takes. Three tries a second apart, then one each TAP_SLOW_RETRY_MS for as long
+  // as double tap stays on: giving up left it dead until the next wake (rc.2, 28/09).
   static constexpr uint8_t TAP_ARM_TRIES = 3;
   static constexpr unsigned long TAP_RETRY_MS = 1000;
+  static constexpr unsigned long TAP_SLOW_RETRY_MS = 10000;
 
   mutable unsigned long _lastPollMs = 0;
 
@@ -142,8 +144,8 @@ class HalTiltSensor {
   bool _screenTapOn = false;
   bool _edgeTapOn = false;
   bool _tapArmed = false;        // The chip streams both sensors at 224 Hz into its FIFO
-  uint8_t _tapTries = 0;         // Arming tries since the last wake, at most TAP_ARM_TRIES
-  unsigned long _tapTriedMs = 0;  // When the last one failed; the next waits TAP_RETRY_MS
+  uint8_t _tapTries = 0;         // Arming tries since the last wake or since double tap was turned on
+  unsigned long _tapTriedMs = 0;  // When the last one failed
   bool _tapFound = false;        // The detector found a double tap the next poll checks the pose of
   TapDetector::Place _tapPlace = TapDetector::Place::Back;  // ... and where it landed
   bool _doubleTapEvent = false;  // Consumed by wasDoubleTapped()
@@ -267,6 +269,8 @@ class HalTiltSensor {
     _screenTapOn = screenAction != 0;
     _edgeTapOn = edgeAction != 0;
     _doubleTapEnabled = _backTapOn || _screenTapOn || _edgeTapOn;
+    // Turned off, the tries start over: turning it on again arms at once.
+    if (!_doubleTapEnabled) _tapTries = 0;
   }
 
   // Returns true once per double tap on the back, on the screen, or on a side edge; consumed on
