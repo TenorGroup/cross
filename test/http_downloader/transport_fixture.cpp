@@ -147,6 +147,50 @@ TEST_F(TransferRecord, ErrorStatus) {
   EXPECT_TRUE(sink.headers);
 }
 
+// The OTA image comes in parts: a part must continue the stream at the byte asked for.
+class WolfRange : public testing::Test {
+ protected:
+  void SetUp() override {
+    wire::reset();
+    wire::closeAfterReply = true;
+  }
+  HttpDownloader::DownloadError get(const std::string& reply, size_t first, size_t last) {
+    wire::replies = {reply};
+    sink.write = [this](const uint8_t* bytes, size_t n) {
+      payload.append(reinterpret_cast<const char*>(bytes), n);
+      return true;
+    };
+    range.first = first;
+    range.last = last;
+    return runGetWolf("http://fixture.test/fw.bin", "", "", sink, false, nullptr, false, &range);
+  }
+  Sink sink;
+  ByteRange range;
+  std::string payload;
+};
+TEST_F(WolfRange, AsksForThePartAndTakesAMatching206) {
+  EXPECT_EQ(get("HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 4-6/10\r\nContent-Length: 3\r\n\r\nefg", 4, 6),
+            HttpDownloader::OK);
+  EXPECT_NE(wire::requests[0].bytes.find("\r\nRange: bytes=4-6\r\n"), std::string::npos);
+  EXPECT_EQ(payload, "efg");
+  EXPECT_FALSE(range.whole);
+}
+TEST_F(WolfRange, RefusesAPartStartingElsewhere) {
+  EXPECT_NE(get("HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-2/10\r\nContent-Length: 3\r\n\r\nabc", 4, 6),
+            HttpDownloader::OK);
+  EXPECT_EQ(payload, "");
+}
+TEST_F(WolfRange, TakesTheWholeBodyForAPartFromZero) {
+  EXPECT_EQ(get("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nabcde", 0, 2), HttpDownloader::OK);
+  EXPECT_EQ(payload, "abcde");
+  EXPECT_TRUE(range.whole);
+}
+TEST_F(WolfRange, RefusesTheWholeBodyForALaterPart) {
+  EXPECT_NE(get("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nabcde", 3, 4), HttpDownloader::OK);
+  EXPECT_EQ(payload, "");
+  EXPECT_TRUE(range.whole);
+}
+
 class WolfRedirect : public testing::Test {
  protected:
   void SetUp() override { wire::reset(); }

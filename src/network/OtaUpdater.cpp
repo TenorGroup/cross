@@ -197,60 +197,97 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   bool cancelled = false;
   HttpDownloader::TransferStats transfer;
   // One block serves every 16 KB record of the image: re-allocating it per record let the heap
-  // fall to pieces mid-download (TlsRecordSlot.h).
+  // fall to pieces mid-download (TlsRecordSlot.h). With the image in parts no record is that big;
+  // the slot stays for a server that sends the whole body.
   std::optional<tls_slot::Scope> recordSlot;
   recordSlot.emplace();
-  const bool fetchOk = HttpDownloader::fetchUrl(
-      otaUrl,
-      [&](const uint8_t* data, size_t len) {
-        if (len > otaSize - processedSize) {
-          sizeOk = false;
-          return false;
-        }
-        if (hdrLen < sizeof(hdr)) {
-          const size_t take = std::min(len, sizeof(hdr) - hdrLen);
-          std::memcpy(hdr + hdrLen, data, take);
-          hdrLen += take;
-          if (hdrLen == sizeof(hdr)) {
-            uint16_t imageChip;
-            std::memcpy(&imageChip, hdr + 12, sizeof(imageChip));
-            const uint16_t deviceChip = firmware_flash::runningPartitionChipId();
-            if (hdr[0] != 0xE9 || deviceChip == 0xFFFF || imageChip != deviceChip) {
-              LOG_ERR("OTA", "wrong chip: image=0x%04X device=0x%04X", imageChip, deviceChip);
-              wrongChip = true;
-              return false;  // abort the transfer
-            }
-          }
-        }
-        tagScanner.feed(data, len);
-        if (tagScanner.mismatch()) {
-          LOG_ERR("OTA", "wrong board: image=%s device=%.*s", tagScanner.foundName(),
-                  static_cast<int>(board_tag::boardNameLen()), board_tag::boardName());
+  const HttpDownloader::DataCallback write = [&](const uint8_t* data, size_t len) {
+    if (len > otaSize - processedSize) {
+      sizeOk = false;
+      return false;
+    }
+    if (hdrLen < sizeof(hdr)) {
+      const size_t take = std::min(len, sizeof(hdr) - hdrLen);
+      std::memcpy(hdr + hdrLen, data, take);
+      hdrLen += take;
+      if (hdrLen == sizeof(hdr)) {
+        uint16_t imageChip;
+        std::memcpy(&imageChip, hdr + 12, sizeof(imageChip));
+        const uint16_t deviceChip = firmware_flash::runningPartitionChipId();
+        if (hdr[0] != 0xE9 || deviceChip == 0xFFFF || imageChip != deviceChip) {
+          LOG_ERR("OTA", "wrong chip: image=0x%04X device=0x%04X", imageChip, deviceChip);
+          wrongChip = true;
           return false;  // abort the transfer
         }
-        if (esp_ota_write(otaHandle, data, len) != ESP_OK) {
-          flashOk = false;
-          return false;  // abort the transfer
-        }
-        mbedtls_sha256_update(&sha, data, len);
-        processedSize += len;
-        // Fire the callback only on whole-percent change. Per-chunk updates wake the
-        // render task, whose framebuffer work contends with TLS on the internal arena,
-        // and e-ink can't repaint faster than a percent tick anyway.
-        if (onProgress && totalSize > 0) {
-          const int pct = static_cast<int>(static_cast<uint64_t>(processedSize) * 100 / totalSize);
-          if (pct != lastReportedPct) {
-            lastReportedPct = pct;
-            onProgress(ctx);
-          }
-        }
-        return true;
-      },
-      "", "", ota_trust::ROOT_CA, false,
-      [&](size_t, size_t) {
-        if (cancelCheck && cancelCheck(cancelCtx)) cancelled = true;
-      },
-      &cancelled, &transfer);
+      }
+    }
+    tagScanner.feed(data, len);
+    if (tagScanner.mismatch()) {
+      LOG_ERR("OTA", "wrong board: image=%s device=%.*s", tagScanner.foundName(),
+              static_cast<int>(board_tag::boardNameLen()), board_tag::boardName());
+      return false;  // abort the transfer
+    }
+    if (esp_ota_write(otaHandle, data, len) != ESP_OK) {
+      flashOk = false;
+      return false;  // abort the transfer
+    }
+    mbedtls_sha256_update(&sha, data, len);
+    processedSize += len;
+    // Fire the callback only on whole-percent change. Per-chunk updates wake the
+    // render task, whose framebuffer work contends with TLS on the internal arena,
+    // and e-ink can't repaint faster than a percent tick anyway.
+    if (onProgress && totalSize > 0) {
+      const int pct = static_cast<int>(static_cast<uint64_t>(processedSize) * 100 / totalSize);
+      if (pct != lastReportedPct) {
+        lastReportedPct = pct;
+        onProgress(ctx);
+      }
+    }
+    return true;
+  };
+  // The server sends each new connection's first ~220 KB in 1.4 and 4.2 KB TLS records and 16 KB
+  // records after that; a 16 KB record needs a ~16.4 KB buffer in one piece, and on the X3 the
+  // update boot did not have it at the first such record in 10 dry runs of 10 (all stopped at
+  // 219-254 KB). So the image comes in parts of PART_BYTES, each over a connection of its own, and
+  // every record stays small. A part that breaks is asked again from the byte it reached.
+  bool fetchOk = true;
+  parts = retries = 0;
+  uint32_t elapsedMs = 0;
+  uint32_t largestMin = 0;
+  while (processedSize < otaSize && !cancelled) {
+    const size_t first = processedSize;
+    const size_t last = std::min(otaSize, first + PART_BYTES) - 1;
+    HttpDownloader::TransferStats part;
+    bool whole = false;
+    const bool ok = HttpDownloader::fetchRange(
+        otaUrl, first, last, write, ota_trust::ROOT_CA,
+        [&](size_t, size_t) {
+          if (cancelCheck && cancelCheck(cancelCtx)) cancelled = true;
+        },
+        &cancelled, &part, &whole);
+    ++parts;
+    elapsedMs += part.elapsedMs;
+    if (part.largestMin && (!largestMin || part.largestMin < largestMin)) largestMin = part.largestMin;
+    transfer = part;
+    if (ok && processedSize > first) continue;
+    // A whole part with nothing new: the server has no more bytes; the size check below says so.
+    if (ok && !whole) break;
+    // What the stream held was wrong, or the user left: asking again cannot help.
+    if (cancelled || wrongChip || tagScanner.mismatch() || !flashOk || !sizeOk || whole) {
+      fetchOk = false;
+      break;
+    }
+    if (++retries > MAX_PART_RETRIES) {
+      fetchOk = false;
+      break;
+    }
+    LOG_INF("OTA", "Part from %u broke at %u, asking again (%u)", static_cast<unsigned>(first),
+            static_cast<unsigned>(processedSize), static_cast<unsigned>(retries));
+  }
+  transfer.bytes = processedSize;
+  transfer.total = otaSize;
+  transfer.elapsedMs = elapsedMs;
+  transfer.largestMin = largestMin;
   recordSlot.reset();
   recordTransfer(attempt, transfer);
   if (!attempt.total) attempt.total = otaSize;

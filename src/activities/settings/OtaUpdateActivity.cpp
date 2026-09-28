@@ -135,9 +135,10 @@ void OtaUpdateActivity::onEnter() {
 #endif
   WiFi.mode(WIFI_STA);
 #ifdef TENOR_PRESS_PROBE
+  probeStages = {heapBeforeWifi, largestBeforeWifi, ESP.getFreeHeap(), ESP.getMaxAllocHeap(), 0, 0};
   LOG_INF("OTA", "Wi-Fi start update-boot=%d dry-run=%d/%d heap=%u -> %u largest=%u -> %u", boot.armed,
           boot.dryRun() ? boot.dryRunsTotal - boot.dryRunsLeft + 1 : 0, boot.dryRunsTotal, heapBeforeWifi,
-          ESP.getFreeHeap(), largestBeforeWifi, ESP.getMaxAllocHeap());
+          probeStages.wifiHeap, largestBeforeWifi, probeStages.wifiLargest);
 #endif
 
   // Launch WiFi selection subactivity
@@ -179,13 +180,10 @@ void OtaUpdateActivity::render(RenderLock&&) {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
-  renderer.clearScreen();
-
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_UPDATE));
-  const auto height = renderer.getLineHeight(UI_10_FONT_ID);
-  const auto top = (pageHeight - height) / 2;
-
+  // During the download a frame runs beside the TLS reads on the same heap: decide first, and a
+  // skipped percent touches nothing (it used to clear and redraw the header, then return).
   float updaterProgress = 0;
+  const bool firstProgressFrame = state == UPDATE_IN_PROGRESS && lastUpdaterPercentage == UNINITIALIZED_PERCENTAGE;
   if (state == UPDATE_IN_PROGRESS) {
     LOG_DBG("OTA", "Update progress: %d / %d", updater.getProcessedSize(), updater.getTotalSize());
     updaterProgress = static_cast<float>(updater.getProcessedSize()) / static_cast<float>(updater.getTotalSize());
@@ -195,6 +193,16 @@ void OtaUpdateActivity::render(RenderLock&&) {
     }
     lastUpdaterPercentage = static_cast<int>(updaterProgress * 100);
   }
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t frameHeap = ESP.getFreeHeap();
+  const uint32_t frameLargest = ESP.getMaxAllocHeap();
+#endif
+
+  renderer.clearScreen();
+
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_UPDATE));
+  const auto height = renderer.getLineHeight(UI_10_FONT_ID);
+  const auto top = (pageHeight - height) / 2;
 
   if (state == CHECKING_FOR_UPDATE) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_CHECKING_UPDATE));
@@ -221,9 +229,14 @@ void OtaUpdateActivity::render(RenderLock&&) {
     // Percent label is drawn by BaseTheme::drawProgressBar; this slot is left intentionally empty
     // so the bytes line below stays at the same Y it was at when the activity drew its own percent.
     y += height + metrics.verticalSpacing;
-    renderer.drawCenteredText(
-        UI_10_FONT_ID, y,
-        (std::to_string(updater.getProcessedSize()) + " / " + std::to_string(updater.getTotalSize())).c_str());
+    // The first frame comes before any connection opens: every digit a later frame draws is
+    // decoded now, in white on the white page, so a compressed UI font sizes its glyph buffers
+    // here and later frames reuse them.
+    if (firstProgressFrame) renderer.drawCenteredText(UI_10_FONT_ID, y, "0123456789 /%", false);
+    char bytes[32];
+    snprintf(bytes, sizeof(bytes), "%u / %u", static_cast<unsigned>(updater.getProcessedSize()),
+             static_cast<unsigned>(updater.getTotalSize()));
+    renderer.drawCenteredText(UI_10_FONT_ID, y, bytes);
   } else if (state == NO_UPDATE) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_NO_UPDATE), true, EpdFontFamily::BOLD);
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
@@ -247,6 +260,11 @@ void OtaUpdateActivity::render(RenderLock&&) {
   }
 
   renderer.displayBuffer();
+#ifdef TENOR_PRESS_PROBE
+  if (state == UPDATE_IN_PROGRESS)
+    LOG_INF("OTA", "Frame %u%% heap=%u -> %u largest=%u -> %u", lastUpdaterPercentage, frameHeap, ESP.getFreeHeap(),
+            frameLargest, ESP.getMaxAllocHeap());
+#endif
 }
 
 void OtaUpdateActivity::recordAttempt(const char* op, const bool now) {
@@ -258,6 +276,8 @@ void OtaUpdateActivity::recordAttempt(const char* op, const bool now) {
 }
 
 #ifdef TENOR_PRESS_PROBE
+void probeKeepDryRunLine(const char* line);  // main.cpp
+
 // The real check and download against a test manifest, verified and closed like an install,
 // with the boot slot untouched. One run a boot; one machine-readable line, free heap around it.
 void OtaUpdateActivity::runDryRun() {
@@ -277,13 +297,21 @@ void OtaUpdateActivity::runDryRun() {
   if (auto* cache = renderer.getFontCacheManager()) cache->releaseBuiltinPageCaches();
   char fields[ota_log::LINE_BYTES];
   ota_log::formatFields(fields, sizeof(fields), updater.lastAttempt());
-  logSerial.printf(
-      "OTA_DRYRUN_RESULT %s op=%s run=%d/%d check_ms=%u before=%u before_largest=%u after=%u after_largest=%u "
-      "after_fonts=%u after_fonts_largest=%u\n",
-      fields, checked == OtaUpdater::OK ? "install" : "check", run, boot.dryRunsTotal, static_cast<unsigned>(checkMs),
-      static_cast<unsigned>(before), static_cast<unsigned>(beforeLargest), static_cast<unsigned>(after),
-      static_cast<unsigned>(afterLargest), static_cast<unsigned>(ESP.getFreeHeap()),
-      static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  char line[PROBE_LINE_BYTES];
+  snprintf(line, sizeof(line),
+           "OTA_DRYRUN_RESULT %s op=%s run=%d/%d check_ms=%u parts=%u retries=%u boot=%u/%u wifi=%u/%u install=%u/%u "
+           "before=%u before_largest=%u after=%u after_largest=%u after_fonts=%u after_fonts_largest=%u\n",
+           fields, checked == OtaUpdater::OK ? "install" : "check", run, boot.dryRunsTotal,
+           static_cast<unsigned>(checkMs), static_cast<unsigned>(updater.lastParts()),
+           static_cast<unsigned>(updater.lastRetries()), static_cast<unsigned>(probeStages.bootHeap),
+           static_cast<unsigned>(probeStages.bootLargest), static_cast<unsigned>(probeStages.wifiHeap),
+           static_cast<unsigned>(probeStages.wifiLargest), static_cast<unsigned>(probeStages.installHeap),
+           static_cast<unsigned>(probeStages.installLargest), static_cast<unsigned>(before),
+           static_cast<unsigned>(beforeLargest), static_cast<unsigned>(after), static_cast<unsigned>(afterLargest),
+           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  logSerial.print(line);
+  // The restart that follows drops the port: the next boot prints this line again (main.cpp).
+  probeKeepDryRunLine(line);
   recordAttempt("dryrun", true);
   // Back ends the series; any other result goes on to the next run, in a boot of its own.
   if (std::strcmp(updater.lastAttempt().err, "CANCELLED_ERROR") != 0) dryRunsAfter = boot.dryRunsLeft - 1;
@@ -295,13 +323,16 @@ void OtaUpdateActivity::runUpdateInstall() {
   {
     RenderLock lock(*this);
     state = UPDATE_IN_PROGRESS;
-  }
-  requestUpdateAndWait();
-  {
-    RenderLock lock(*this);
+    // Font caches go before the first progress frame, which then sizes the few glyph buffers the
+    // later frames reuse: nothing is allocated for a frame while the download runs.
     if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
   }
+  requestUpdateAndWait();
   LOG_INF("OTA", "Install start heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#ifdef TENOR_PRESS_PROBE
+  probeStages.installHeap = ESP.getFreeHeap();
+  probeStages.installLargest = ESP.getMaxAllocHeap();
+#endif
   if (!backLatch.start(gpio, mappedInput.physicalBack())) LOG_ERR("OTA", "Cannot start Back sampler");
   updater.setCancelCheck([](void* ctx) { return static_cast<OtaUpdateActivity*>(ctx)->backLatch.latched(); }, this);
   const auto res = updater.installUpdate(

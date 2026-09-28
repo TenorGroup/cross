@@ -242,6 +242,23 @@ extern "C" uint64_t esp_rtc_get_time_us(void);
 static bool probeKeepHeap = false;
 // CMD:OTA_DRYRUN: the test manifest the series of update boots reads.
 RTC_NOINIT_ATTR char probeDryRunUrl[160];
+// The last dry run's result line, printed again by the boot after it (the restart drops the port).
+constexpr uint32_t PROBE_DRYRUN_LINE_MAGIC = 0x4C494E45;
+RTC_NOINIT_ATTR uint32_t probeDryRunLineMagic;
+RTC_NOINIT_ATTR char probeDryRunLine[640];
+void probeKeepDryRunLine(const char* line) {
+  snprintf(probeDryRunLine, sizeof(probeDryRunLine), "%s", line);
+  probeDryRunLineMagic = PROBE_DRYRUN_LINE_MAGIC;
+}
+// Three times, 3, 6 and 10 s after boot, whenever the loop runs: the cable reader reattaches late.
+static void probeReprintDryRunLine() {
+  static uint8_t printed = 0;
+  static constexpr unsigned long AT_MS[] = {3000, 6000, 10000};
+  if (probeDryRunLineMagic != PROBE_DRYRUN_LINE_MAGIC || printed >= 3 || millis() < AT_MS[printed]) return;
+  probeDryRunLine[sizeof(probeDryRunLine) - 1] = '\0';
+  logSerial.printf("OTA_DRYRUN_PREV %u/3 %s", static_cast<unsigned>(printed + 1), probeDryRunLine);
+  if (++printed == 3) probeDryRunLineMagic = 0;
+}
 #endif
 constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
 constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
@@ -1182,6 +1199,9 @@ void loop() {
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;
 
+#ifdef TENOR_PRESS_PROBE
+  probeReprintDryRunLine();
+#endif
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   mappedInputManager.update();
 #ifndef SIMULATOR

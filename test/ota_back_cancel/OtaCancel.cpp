@@ -100,15 +100,16 @@ static int fetches = 0;
 // then honours the cancel flag.
 static bool fakeTransfer(const std::string& url, const HttpDownloader::DataCallback& onData,
                          const HttpDownloader::ProgressCallback& progress, const bool* cancelFlag,
-                         HttpDownloader::TransferStats* stats) {
+                         HttpDownloader::TransferStats* stats, size_t first = 0, size_t last = SIZE_MAX) {
   ++fetches;
   const unsigned long started = millis();
   if (stats) *stats = {200, true, 0, 0, 0, 0, 90000, 50000, 50000};
   if (url.find("/firmware/tenor-cross") == std::string::npos) return true;  // the manifest
-  size_t sent = 0;
+  size_t sent = first;
+  const size_t end = std::min(image.size(), last == SIZE_MAX ? SIZE_MAX : last + 1);
   unsigned long lastByte = millis();
   bool ok = true;
-  while (sent < image.size() - shortBy) {
+  while (sent < std::min(end, image.size() - shortBy)) {
     if (progress) progress(sent, image.size());
     if (cancelFlag && *cancelFlag) {
       ok = false;
@@ -123,7 +124,7 @@ static bool fakeTransfer(const std::string& url, const HttpDownloader::DataCallb
       continue;
     }
     vTaskDelay(4);
-    const size_t n = std::min<size_t>(1024, image.size() - sent);
+    const size_t n = std::min<size_t>(1024, end - sent);
     if (!onData(image.data() + sent, n)) {
       ok = false;
       break;
@@ -133,12 +134,19 @@ static bool fakeTransfer(const std::string& url, const HttpDownloader::DataCallb
   }
   transferEndedAt = millis();
   if (stats) {
-    stats->bytes = sent;
+    stats->bytes = sent - first;
     stats->total = image.size();
     stats->elapsedMs = transferEndedAt - started;
     stats->idleMs = transferEndedAt - lastByte;
   }
   return ok;
+}
+// The image in parts: bytes first..last of the same stream.
+bool HttpDownloader::fetchRange(const std::string& url, size_t first, size_t last, const DataCallback& onData,
+                                const char*, ProgressCallback progress, bool* cancelFlag, TransferStats* stats,
+                                bool* whole) {
+  if (whole) *whole = false;
+  return fakeTransfer(url, onData, progress, cancelFlag, stats, first, last);
 }
 #if FETCH_TAKES_CANCEL
 bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const std::string&,

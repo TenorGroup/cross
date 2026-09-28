@@ -33,7 +33,7 @@ main = (repo / 'src/main.cpp').read_text()
 header = (repo / 'src/SilentRestart.h').read_text()
 restart = block(main, 'void silentRestartToOta(')
 steps = [block(screen, 'void OtaUpdateActivity::' + f + '(') for f in
-         ('onWifiSelectionComplete', 'onExit', 'runUpdateInstall')]
+         ('onWifiSelectionComplete', 'onExit', 'runUpdateInstall', 'render')]
 dry = block(screen, 'void OtaUpdateActivity::runDryRun(')
 (out / 'production-restart.inc').write_text(
     re.search(r'void silentRestartToOta\([^;]*\);', header).group(0) + '\n' + restart)
@@ -107,7 +107,12 @@ cases = [('release', 'flag', 'normal-boot-is-not-an-update-boot'), ('release', '
          ('release', 'screen', 'update-boot-installs-without-asking'),
          ('release', 'screen', 'update-boot-failure-restarts-home'),
          ('release', 'screen', 'update-boot-without-wifi-restarts-home'),
-         ('probe', 'screen', 'dry-run-series-one-run-a-boot'), ('release', 'slot', 'slot-one-block-for-every-record'),
+         ('probe', 'screen', 'dry-run-series-one-run-a-boot'), ('release', 'screen', 'install-comes-in-parts'),
+         ('release', 'screen', 'broken-part-asks-again-from-reached-byte'),
+         ('release', 'screen', 'broken-parts-run-out'), ('release', 'screen', 'server-without-ranges-sends-whole-image'),
+         ('release', 'screen', 'range-ignored-after-first-part-fails'),
+         ('release', 'screen', 'progress-frames-allocate-nothing'),
+         ('probe', 'screen', 'progress-frames-allocate-nothing'), ('release', 'slot', 'slot-takes-the-record-size-when-short'), ('release', 'slot', 'slot-one-block-for-every-record'),
          ('release', 'slot', 'slot-leaves-other-requests-alone'), ('release', 'slot', 'slot-without-memory-falls-back')]
 results = [{'case': 'callers', 'exit': int(bool(problems)), 'log': '\n'.join(problems)}]
 for build, group, name in cases:

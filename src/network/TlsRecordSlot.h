@@ -24,11 +24,20 @@ class Slot {
   // The block for a request this size, or nullptr: the caller allocates normally.
   void* take(const size_t size) {
     if (size < MIN_BYTES) return nullptr;
-    if (size > BYTES || inUse_) {
+    if (size > BYTES || inUse_ || (block_ && size > size_)) {
       ++fallbacks_;
       return nullptr;
     }
-    if (!block_) block_ = allocate_(BYTES);
+    // Room for any record first; a heap without that much in one piece still gets this record's
+    // exact size, which a server's full records all share.
+    if (!block_) {
+      block_ = allocate_(BYTES);
+      size_ = BYTES;
+    }
+    if (!block_) {
+      block_ = allocate_(size);
+      size_ = size;
+    }
     if (!block_) {
       ++fallbacks_;
       return nullptr;
@@ -39,6 +48,7 @@ class Slot {
   }
 
   bool owns(const void* p) const { return p != nullptr && p == block_; }
+  size_t blockBytes() const { return size_; }
 
   // True when p was the slot's block: it stays allocated for the next record.
   bool give(void* p) {
@@ -52,6 +62,7 @@ class Slot {
   void end() {
     if (block_ && !inUse_) release_(block_);
     block_ = nullptr;
+    size_ = 0;
     inUse_ = false;
   }
 
@@ -62,6 +73,7 @@ class Slot {
   Malloc allocate_;
   Free release_;
   void* block_ = nullptr;
+  size_t size_ = 0;
   bool inUse_ = false;
   uint32_t served_ = 0;
   uint32_t fallbacks_ = 0;

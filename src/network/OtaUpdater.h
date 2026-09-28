@@ -18,6 +18,9 @@ class OtaUpdater {
   ota_log::Attempt attempt;
   unsigned long attemptStartMs = 0;
   const char* dryRunManifest = nullptr;
+  // The last install: connections it took, and parts asked again after a break.
+  uint32_t parts = 0;
+  uint32_t retries = 0;
 
  public:
   using ProgressCallback = void (*)(void* ctx);
@@ -49,6 +52,12 @@ class OtaUpdater {
 
   // How the last check or install ended, for the card log (OtaLog.h).
   const ota_log::Attempt& lastAttempt() const { return attempt; }
+
+  // Bytes a connection carries; below the ~220 KB after which the server's TLS records grow to 16 KB.
+  static constexpr size_t PART_BYTES = 192 * 1024;
+  static constexpr uint32_t MAX_PART_RETRIES = 5;
+  uint32_t lastParts() const { return parts; }
+  uint32_t lastRetries() const { return retries; }
 
   OtaUpdater() = default;
   bool isUpdateNewer() const;

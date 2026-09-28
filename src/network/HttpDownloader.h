@@ -69,6 +69,15 @@ class HttpDownloader {
                        ProgressCallback progress = nullptr, bool* cancelFlag = nullptr, TransferStats* stats = nullptr);
 
   /**
+   * Bytes first..last of a resource over a connection of its own, pinned to rootCA, no redirects:
+   * a 206 whose Content-Range starts at `first` streams its part to onData. A 200 (the whole body)
+   * is taken only when first is 0, and sets *whole. Otherwise as the streaming fetchUrl above.
+   */
+  static bool fetchRange(const std::string& url, size_t first, size_t last, const DataCallback& onData,
+                         const char* rootCA, ProgressCallback progress, bool* cancelFlag, TransferStats* stats,
+                         bool* whole);
+
+  /**
    * Download a file to the SD card with optional credentials.
    *
    * The legacy downgradeRedirectsToHttp flag is rejected by the TLS backend.

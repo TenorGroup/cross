@@ -94,6 +94,24 @@ struct Sink {
   }
 };
 
+// Bytes first..last of a resource. whole: the server sent the whole body instead (a 200), which
+// is taken only for a range starting at 0.
+struct ByteRange {
+  size_t first = 0;
+  size_t last = 0;
+  bool whole = false;
+};
+
+// "bytes <first>-<last>/<size>": the part a 206 carries starts where it was asked to.
+bool contentRangeStartsAt(const std::string& value, const size_t first) {
+  if (value.compare(0, 6, "bytes ") != 0) return false;
+  size_t start = 0;
+  size_t i = 6;
+  if (i >= value.size() || value[i] < '0' || value[i] > '9') return false;
+  for (; i < value.size() && value[i] >= '0' && value[i] <= '9'; ++i) start = start * 10 + (value[i] - '0');
+  return i < value.size() && value[i] == '-' && start == first;
+}
+
 bool isRedirect(int status) {
   return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
 }
@@ -169,7 +187,7 @@ struct WifiPowerSaveGuard {
 #if defined(FREEINK_NET_WOLFSSL)
 HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std::string& username,
                                          const std::string& password, Sink& sink, bool downgradeRedirectsToHttp,
-                                         const char* rootCA, bool allowRedirects) {
+                                         const char* rootCA, bool allowRedirects, ByteRange* range = nullptr) {
   if (downgradeRedirectsToHttp) return HttpDownloader::HTTP_ERROR;
   WifiPowerSaveGuard psGuard;
   std::string url = startUrl;
@@ -195,6 +213,7 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
     // append a second User-Agent header, which strict servers reject (aiohttp
     // answers 400 "Duplicate 'User-Agent' header found").
     http.setUserAgent("CrossPoint-ESP32-" CROSSPOINT_VERSION);
+    if (range) http.addHeader("Range", "bytes=" + std::to_string(range->first) + "-" + std::to_string(range->last));
     if (!username.empty() && !password.empty() && freeink::http_url::sameOrigin(startUrl, url)) {
       const std::string credentials = username + ":" + password;
       const String encoded = base64::encode(credentials.c_str());
@@ -202,9 +221,18 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
     }
 
     LOG_DBG("HTTP", "wolfSSL GET");
+    bool rangeChecked = false;
     const int status = http.GET(
-        [&http, &sink](const uint8_t* data, size_t len) {
-          if (http.getStatus() != 200) return true;
+        [&http, &sink, range, &rangeChecked](const uint8_t* data, size_t len) {
+          const int code = http.getStatus();
+          if (code != 200 && !(range && code == 206)) return true;
+          if (range && !rangeChecked) {
+            // A part that starts elsewhere, or a whole body after byte 0, cannot continue the stream.
+            rangeChecked = true;
+            range->whole = code == 200;
+            if (range->whole ? range->first != 0 : !contentRangeStartsAt(http.getHeader("content-range"), range->first))
+              return false;
+          }
           if (sink.total == 0 && http.hasContentLength()) sink.total = http.getContentLength();
           if (!sink.write(data, len)) return false;
           sink.downloaded += len;
@@ -235,7 +263,7 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
       url = std::move(nextUrl);
       continue;
     }
-    if (status != 200) {
+    if (status != 200 && !(range && status == 206)) {
       LOG_ERR("HTTP", "wolfSSL unexpected status: %d", status);
       return HttpDownloader::HTTP_ERROR;
     }
@@ -258,7 +286,10 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
 // that ends early as ESP_ERR_HTTP_INCOMPLETE_DATA, whereas the read loop streams
 // large/slow files and surfaces a short read directly.
 HttpDownloader::DownloadError runGet(const std::string& url, const std::string& username, const std::string& password,
-                                     Sink& sink, const char* rootCA, bool allowRedirects) {
+                                     Sink& sink, const char* rootCA, bool allowRedirects, ByteRange* range = nullptr) {
+  // No ranges on this transport: only a range from byte 0, answered with the whole body.
+  if (range && range->first != 0) return HttpDownloader::HTTP_ERROR;
+  if (range) range->whole = true;
   WifiPowerSaveGuard psGuard;
   if (sink.poll()) return HttpDownloader::ABORTED;
   esp_http_client_config_t config = {};
@@ -450,7 +481,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
 HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::string& username,
                                            const std::string& password, Sink& sink,
                                            bool downgradeRedirectsToHttp = false, const char* rootCA = nullptr,
-                                           bool allowRedirects = true) {
+                                           bool allowRedirects = true, ByteRange* range = nullptr) {
   if (downgradeRedirectsToHttp) return HttpDownloader::HTTP_ERROR;
 #ifndef SIMULATOR
   // Native simulator sockets use the host network independently of fake Wi-Fi.
@@ -461,9 +492,9 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
   }
 #endif
 #if defined(FREEINK_NET_WOLFSSL)
-  return runGetWolf(url, username, password, sink, downgradeRedirectsToHttp, rootCA, allowRedirects);
+  return runGetWolf(url, username, password, sink, downgradeRedirectsToHttp, rootCA, allowRedirects, range);
 #else
-  return runGet(url, username, password, sink, rootCA, allowRedirects);
+  return runGet(url, username, password, sink, rootCA, allowRedirects, range);
 #endif
 }
 }  // namespace
@@ -504,6 +535,35 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
   sink.cancelFlag = cancelFlag;
   sink.track = stats != nullptr;
   const bool ok = runGetSecure(url, username, password, sink, false, rootCA, allowRedirects) == OK;
+  if (stats) {
+    const unsigned long now = millis();
+    stats->status = sink.status;
+    stats->headers = sink.headers;
+    stats->bytes = sink.downloaded;
+    stats->total = sink.total;
+    stats->elapsedMs = now - sink.startMs;
+    stats->idleMs = now - (sink.lastDataMs ? sink.lastDataMs : sink.startMs);
+    stats->heap = sink.heap;
+    stats->largest = sink.largest;
+    stats->largestMin = sink.largestMin;
+  }
+  return ok;
+}
+
+bool HttpDownloader::fetchRange(const std::string& url, const size_t first, const size_t last,
+                                const DataCallback& onData, const char* rootCA, ProgressCallback progress,
+                                bool* cancelFlag, TransferStats* stats, bool* whole) {
+  LOG_DBG("HTTP", "Fetching range");
+  Sink sink;
+  sink.write = onData;
+  sink.progress = std::move(progress);
+  sink.cancelFlag = cancelFlag;
+  sink.track = stats != nullptr;
+  ByteRange range;
+  range.first = first;
+  range.last = last;
+  const bool ok = runGetSecure(url, "", "", sink, false, rootCA, false, &range) == OK;
+  if (whole) *whole = range.whole;
   if (stats) {
     const unsigned long now = millis();
     stats->status = sink.status;
