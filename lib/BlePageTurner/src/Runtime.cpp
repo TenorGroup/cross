@@ -420,7 +420,7 @@ bool tick(const Scene& s) {
       visit.attempted = true;
       if (!port::running()) {
         const bool started = detail::startAsync();
-        readerStartDeferred.store(!started, std::memory_order_relaxed);
+        if (!started) readerStartDeferred.store(true, std::memory_order_relaxed);
         if (started) {
           say(false, "Reader BLE start requested\n");
         } else {

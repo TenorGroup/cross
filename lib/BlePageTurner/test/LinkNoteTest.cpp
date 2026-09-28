@@ -252,3 +252,28 @@ TEST_F(LinkNoteTest, Journeys) {
 }
 
 }  // namespace
+
+// On the device the start task (priority 2) preempts the main loop (priority 1) on the
+// single-core C3, so a quick heap refusal finishes inside startAsync(). queueStarts=false
+// models that order.
+namespace {
+TEST(StartOrder, QuickRefusalInsideStartAsyncStillReportsFailedAndRetries) {
+  using bleturner::LinkNote;
+  fake::reset();
+  bleturner::Config config;
+  config.enabled = 1;
+  bleturner::begin(fake::hostFns(), config);
+  fake::radio().queueStarts = false;
+  fake::host().heap = {65535, 32768};  // HeapLow: refused before the stack
+  bleturner::tick(fake::reading());
+  bleturner::tick(fake::reading());
+  EXPECT_TRUE(bleturner::status().readerDeferred) << "refusal flag lost";
+  EXPECT_EQ(bleturner::linkNote(), LinkNote::Failed);
+  const unsigned createsBefore = fake::radio().creates;
+  for (int i = 0; i < 12; ++i) {
+    fake::radio().now += 1000;
+    bleturner::tick(fake::reading());
+  }
+  EXPECT_GT(fake::radio().creates, createsBefore) << "no retry after a refusal";
+}
+}  // namespace
