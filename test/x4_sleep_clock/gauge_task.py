@@ -32,7 +32,7 @@ def main():
     repo = (args.source_root or here.parents[1]).resolve()
     production = args.output.resolve() / 'production'
     production.mkdir(parents=True, exist_ok=True)
-    for name in ('HalPowerManager.cpp', 'HalPowerManager.h'):
+    for name in ('HalPowerManager.cpp', 'HalPowerManager.h', 'BattShown.cpp', 'BattShown.h'):
         shutil.copyfile(repo / 'lib/hal' / name, production / name)
     gpio = (repo / 'lib/hal/HalGPIO.cpp').read_text()
     (production / 'usb.inc').write_text(body(gpio, gpio.index('bool HalGPIO::isUsbConnected() const')) + '\n')
@@ -46,7 +46,7 @@ def main():
     cmd = [args.cxx, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined',
            '-fno-omit-frame-pointer', '-DSOC_PM_SUPPORT_EXT1_WAKEUP=0', f'-DLOOP_POLL={polls[0]}',
            '-I' + str(here / 'stubs'), '-I' + str(production), '-I' + str(here), '-I' + str(sdk / 'include'),
-           str(production / 'HalPowerManager.cpp'), str(sdk / 'src/PowerManager.cpp'),
+           str(production / 'HalPowerManager.cpp'), str(production / 'BattShown.cpp'), str(sdk / 'src/PowerManager.cpp'),
            str(here / 'gauge_task.cpp'), '-o', str(binary)]
     subprocess.run(cmd, check=True)
     run = subprocess.run([str(binary)], capture_output=True, text=True)

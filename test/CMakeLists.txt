@@ -157,6 +157,7 @@ add_subdirectory(clock_ntp_behavior)
 
 add_subdirectory(x4_sleep_clock)
 add_subdirectory(gauge_capacity)
+add_subdirectory(battery_display_smoothing)
 
 add_subdirectory(http_downloader)
 

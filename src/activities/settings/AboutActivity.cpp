@@ -4,7 +4,9 @@
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <HalFrontlight.h>
+#include <HalPowerManager.h>
 #include <HalTiltSensor.h>
+#include <I18n.h>
 #include <esp_mac.h>
 
 #include <cstdio>
@@ -27,6 +29,16 @@ enum MenuItem {
   ITEM_RTC,
   ITEM_IMU,
   ITEM_MAC,
+  // Raw BQ27220 registers (X3 only, appended past ITEM_COUNT); see AboutActivity.h.
+  ITEM_GAUGE_VOLTAGE = AboutActivity::ITEM_COUNT,
+  ITEM_GAUGE_CURRENT,
+  ITEM_GAUGE_REMAINING,
+  ITEM_GAUGE_FULL_CHARGE,
+  ITEM_GAUGE_DESIGN_CAPACITY,
+  ITEM_GAUGE_SOC,
+  ITEM_GAUGE_SOH,
+  ITEM_GAUGE_CYCLE_COUNT,
+  ITEM_GAUGE_FLAGS,
 };
 
 // Deliberately hardcoded English, exempt from the tr() rule: support reads
@@ -36,6 +48,20 @@ const char* const menuNames[AboutActivity::ITEM_COUNT] = {
     "Device", "Firmware",          "Chip",        "Flash", "Display Controller", "Resolution", "Touch", "Frontlight",
     "RTC",    "Tilt Sensor (IMU)", "MAC Address",
 };
+
+// Translated via I18n: unlike menuNames above, these are diagnostic labels a user
+// reads and photographs on their own device, not a support screenshot reference.
+const StrId gaugeMenuNames[AboutActivity::GAUGE_ITEM_COUNT] = {
+    StrId::STR_ABOUT_GAUGE_VOLTAGE,          StrId::STR_ABOUT_GAUGE_CURRENT,
+    StrId::STR_ABOUT_GAUGE_REMAINING,        StrId::STR_ABOUT_GAUGE_FULL_CHARGE,
+    StrId::STR_ABOUT_GAUGE_DESIGN_CAPACITY,  StrId::STR_ABOUT_GAUGE_SOC,
+    StrId::STR_ABOUT_GAUGE_SOH,              StrId::STR_ABOUT_GAUGE_CYCLE_COUNT,
+    StrId::STR_ABOUT_GAUGE_FLAGS,
+};
+
+// "-" when the gauge cache has no reading yet (About opened before the loop task's first
+// 30s-throttled poll landed); never 0, which would look like real telemetry.
+constexpr char NO_GAUGE_READING[] = "-";
 
 // Chip part numbers, not user prose — deliberately untranslated.
 const char* displayControllerName(const BoardConfig::DisplayController c) {
@@ -91,6 +117,17 @@ void AboutActivity::onEnter() {
     rowItems_[i].actionValue = static_cast<int16_t>(i);
   }
 
+  hasGauge_ = BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0;
+  if (hasGauge_) {
+    for (int i = 0; i < GAUGE_ITEM_COUNT; i++) {
+      const int row = ITEM_COUNT + i;
+      // gaugeMenuNames holds StrId values, not identifiers, so this calls I18n directly
+      // instead of the tr(id) macro (which stringifies its argument as `StrId::id`).
+      rowItems_[row].label = I18n::getInstance().get(gaugeMenuNames[i]);
+      rowItems_[row].actionValue = static_cast<int16_t>(row);
+    }
+  }
+
   char buf[32];
   // Hardware and firmware information is fixed after boot; fill it once here.
   // BoardConfig::ACTIVE reflects RUNTIME detection: selectDevice() picked the
@@ -115,6 +152,39 @@ void AboutActivity::onEnter() {
   esp_read_mac(mac, ESP_MAC_WIFI_STA);
   snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   rowValues_[ITEM_MAC] = buf;
+  // Gauge rows (if any) are filled by buildScreen()'s refreshGaugeRows() call, which runs
+  // right before every render, this first one included.
+}
+
+// Raw numbers, deliberately not run through getDisplayedBatteryPercentage()'s smoothing: this
+// screen exists so a user photo can be compared against the BQ27220 TRM directly (see
+// exploration/260929_pin-ao/NGHIEN-CUU-BQ27220.md). Reads only HalPowerManager's cache
+// (populated by the loop task in pollGauge(), at most once every 30s); no I2C from here.
+void AboutActivity::refreshGaugeRows() {
+  const auto& g = powerManager.gaugeDiagnostics();
+  if (!g.valid) {
+    for (int i = 0; i < GAUGE_ITEM_COUNT; i++) rowValues_[ITEM_COUNT + i] = NO_GAUGE_READING;
+    return;
+  }
+  char buf[24];
+  snprintf(buf, sizeof(buf), "%u mV", static_cast<unsigned>(g.millivolts));
+  rowValues_[ITEM_GAUGE_VOLTAGE] = buf;
+  snprintf(buf, sizeof(buf), "%d mA", static_cast<int>(g.averageCurrentMa));
+  rowValues_[ITEM_GAUGE_CURRENT] = buf;
+  snprintf(buf, sizeof(buf), "%u mAh", static_cast<unsigned>(g.remainingCapacityMah));
+  rowValues_[ITEM_GAUGE_REMAINING] = buf;
+  snprintf(buf, sizeof(buf), "%u mAh", static_cast<unsigned>(g.fullChargeCapacityMah));
+  rowValues_[ITEM_GAUGE_FULL_CHARGE] = buf;
+  snprintf(buf, sizeof(buf), "%u mAh", static_cast<unsigned>(g.designCapacityMah));
+  rowValues_[ITEM_GAUGE_DESIGN_CAPACITY] = buf;
+  snprintf(buf, sizeof(buf), "%u%%", static_cast<unsigned>(g.stateOfChargePercent));
+  rowValues_[ITEM_GAUGE_SOC] = buf;
+  snprintf(buf, sizeof(buf), "%u%%", static_cast<unsigned>(g.stateOfHealthPercent));
+  rowValues_[ITEM_GAUGE_SOH] = buf;
+  snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(g.cycleCount));
+  rowValues_[ITEM_GAUGE_CYCLE_COUNT] = buf;
+  snprintf(buf, sizeof(buf), "0x%04X", static_cast<unsigned>(g.statusFlags));
+  rowValues_[ITEM_GAUGE_FLAGS] = buf;
 }
 
 void AboutActivity::buildScreen(UiScreen& screen) {
@@ -123,13 +193,15 @@ void AboutActivity::buildScreen(UiScreen& screen) {
                                                 static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  for (int i = 0; i < ITEM_COUNT; i++) {
+  const int count = listCount();
+  if (hasGauge_) refreshGaugeRows();  // cheap: formats the loop task's cache, no I2C here
+  for (int i = 0; i < count; i++) {
     rowItems_[i].value = rowValues_[i].c_str();
   }
 
   fui::ListProps props;
   props.items = rowItems_;
-  props.count = ITEM_COUNT;
+  props.count = count;
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;

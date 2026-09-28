@@ -106,7 +106,7 @@ void BaseTheme::fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t
 
 void BaseTheme::drawBatteryLeft(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
   // Left aligned: icon on left, percentage on right (reader mode)
-  const uint16_t percentage = powerManager.getBatteryPercentage();
+  const uint16_t percentage = powerManager.getDisplayedBatteryPercentage();
   const int y = rect.y + 6;
 
   if (showPercentage) {
@@ -360,7 +360,7 @@ void BaseTheme::applyHeaderStatus(const GfxRenderer& renderer, freeink::ui::Head
 
   // Hiding the global status bar hides the header battery too (tenor/cross setting).
   status.showBattery = !SETTINGS.hideGlobalStatusBar;
-  const uint16_t percentage = powerManager.getBatteryPercentage();
+  const uint16_t percentage = powerManager.getDisplayedBatteryPercentage();
   status.battery.percent = static_cast<uint8_t>(percentage > 100 ? 100 : percentage);
   status.battery.charging = gpio.isUsbConnected();
   // Static label buffers: headers draw on the single render task, and the
@@ -903,7 +903,7 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     int batteryWidth = metrics.batteryWidth;
 
     if (showBatteryPercentage) {
-      const uint16_t percentage = powerManager.getBatteryPercentage();
+      const uint16_t percentage = powerManager.getDisplayedBatteryPercentage();
       // width of icon + spacing + text for layout purposes
       batteryWidth +=
           batteryPercentSpacing + renderer.getTextWidth(SMALL_FONT_ID, (std::to_string(percentage) + "%").c_str());

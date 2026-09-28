@@ -38,7 +38,46 @@ void HalPowerManager::begin() {
 }
 
 void HalPowerManager::pollGauge() const {
-  if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) getBatteryPercentage();
+  if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
+    getBatteryPercentage();
+    pollGaugeDiagnostics();
+  }
+}
+
+void HalPowerManager::pollGaugeDiagnostics() const {
+  // Same one-task-reads-the-gauge rule as getBatteryPercentage(): pollGauge() only ever runs
+  // on the loop task, but guard it anyway so a future caller from elsewhere fails safe instead
+  // of racing Wire's receive buffer (see the comment on getBatteryPercentage()).
+  if (!mayReadGauge()) return;
+  const unsigned long now = millis();
+  if (_gaugeDiagLastPollMs != 0 && (now - _gaugeDiagLastPollMs) < GAUGE_DIAG_POLL_MS) return;
+  _gaugeDiagLastPollMs = now;
+
+  const uint8_t addr = BoardConfig::ACTIVE.batteryGauge.gaugeAddr;
+  uint16_t value = 0;
+  bool ok = true;
+  ok &= X3GPIO::readI2CReg16LE(addr, BQ27220_VOLT_REG, &value);
+  _gaugeDiagnostics.millivolts = value;
+  ok &= X3GPIO::readI2CReg16LE(addr, BQ27220_AVG_CUR_REG, &value);
+  _gaugeDiagnostics.averageCurrentMa = static_cast<int16_t>(value);
+  ok &= X3GPIO::readI2CReg16LE(addr, BQ27220_RM_REG, &value);
+  _gaugeDiagnostics.remainingCapacityMah = value;
+  ok &= X3GPIO::readI2CReg16LE(addr, BQ27220_FCC_REG, &value);
+  _gaugeDiagnostics.fullChargeCapacityMah = value;
+  ok &= X3GPIO::readI2CReg16LE(addr, BQ27220_DC_REG, &value);
+  _gaugeDiagnostics.designCapacityMah = value;
+  ok &= X3GPIO::readI2CReg16LE(addr, BQ27220_SOC_REG, &value);
+  _gaugeDiagnostics.stateOfChargePercent = value;
+  ok &= X3GPIO::readI2CReg16LE(addr, BQ27220_SOH_REG, &value);
+  _gaugeDiagnostics.stateOfHealthPercent = value;
+  ok &= X3GPIO::readI2CReg16LE(addr, BQ27220_CYCLE_COUNT_REG, &value);
+  _gaugeDiagnostics.cycleCount = value;
+  ok &= X3GPIO::readI2CReg16LE(addr, BQ27220_STATUS_REG, &value);
+  _gaugeDiagnostics.statusFlags = value;
+  // A transient I2C failure leaves whichever fields were already read; `valid` only ever
+  // turns true (once every field has been read successfully at least once), so a screen
+  // showing it never regresses back to blank rows over one bad transaction.
+  if (ok) _gaugeDiagnostics.valid = true;
 }
 
 bool HalPowerManager::mayReadGauge() const {
@@ -184,6 +223,12 @@ uint16_t HalPowerManager::getBatteryPercentage() const {
     _batteryCachedPercent = (_batteryCachedPercent * 9 + battery.readPercentage() * 10) / 10;
   }
   return _batteryCachedPercent / 10;
+}
+
+uint16_t HalPowerManager::getDisplayedBatteryPercentage() const {
+  const uint16_t raw = getBatteryPercentage();
+  const uint8_t rawClamped = static_cast<uint8_t>(raw > 100 ? 100 : raw);
+  return battshown::next(_shownState, rawClamped, gpio.isUsbConnected(), millis());
 }
 
 HalPowerManager::Lock::Lock() {

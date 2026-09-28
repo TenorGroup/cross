@@ -9,6 +9,10 @@
 
 #include "fakes.inc"
 
+// HalPowerManager.cpp's getDisplayedBatteryPercentage() links against the production global
+// (unexercised here: this file only drives startDeepSleep()).
+HalGPIO gpio;
+
 int checks = 0, failures = 0, scenarios = 0;
 void check(bool value, const char* label) {
   ++checks;

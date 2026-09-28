@@ -24,9 +24,14 @@ bool readBQ27220CurrentMA(int16_t* currentMa) {
   *currentMa = 0;
   return true;
 }
+// readI2CReg16LE (the About screen's extra registers) has an inline fake in stubs/HalGPIO.h.
 }  // namespace X3GPIO
 
 #include "usb.inc"
+
+// HalPowerManager.cpp's getDisplayedBatteryPercentage() links against the production global
+// (unexercised here: nothing in this file calls it, only pollGauge()/getBatteryPercentage()).
+HalGPIO gpio;
 
 int checks = 0, failures = 0;
 void check(bool value, const char* label) {

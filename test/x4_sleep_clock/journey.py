@@ -45,7 +45,9 @@ def main():
     name, helper = extract(main_source, r'static void (sleepWithConfiguredButtons|sleepUntilPowerButton)\(\) \{')
     (production / 'helper.inc').write_text(f'#define DEVICE_SLEEP_HELPER {name}\n{helper}\n')
     hashes = {'src/main.cpp:' + name: hashlib.sha256(helper.encode()).hexdigest()}
-    for original in sorted((repo / 'lib/hal').glob('HalPowerManager.*')) + sorted((repo / 'lib/hal').glob('WakeButtons.h')):
+    for original in (sorted((repo / 'lib/hal').glob('HalPowerManager.*')) +
+                     sorted((repo / 'lib/hal').glob('BattShown.*')) +
+                     sorted((repo / 'lib/hal').glob('WakeButtons.h'))):
         shutil.copyfile(original, production / original.name)
         hashes[str(original.relative_to(repo))] = hashlib.sha256(original.read_bytes()).hexdigest()
     sdk = repo / 'freeink-sdk/libs/hardware/PowerManager'
@@ -53,8 +55,8 @@ def main():
     cmd = [args.cxx, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined',
            '-fno-omit-frame-pointer', '-DENABLE_SERIAL_LOG', '-DSOC_PM_SUPPORT_EXT1_WAKEUP=0',
            '-I' + str(here / 'stubs'), '-I' + str(production), '-I' + str(here), '-I' + str(sdk / 'include'),
-           str(production / 'HalPowerManager.cpp'), str(sdk / 'src/PowerManager.cpp'),
-           str(here / 'journey.cpp'), '-o', str(binary)]
+           str(production / 'HalPowerManager.cpp'), str(production / 'BattShown.cpp'),
+           str(sdk / 'src/PowerManager.cpp'), str(here / 'journey.cpp'), '-o', str(binary)]
     subprocess.run(cmd, check=True)
     run = subprocess.run([str(binary)], capture_output=True, text=True, check=True)
     measured = json.loads(run.stdout)

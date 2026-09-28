@@ -8,6 +8,7 @@
 
 #include <cassert>
 
+#include "BattShown.h"
 #include "HalGPIO.h"
 
 class HalPowerManager;
@@ -21,8 +22,39 @@ class HalPowerManager {
   mutable unsigned long _batteryLastPollMs = 0;  // Timestamp of last battery read in milliseconds
   TaskHandle_t _gaugeTask = nullptr;             // The loop task, the only one that reads an I2C gauge
 
+  // Display-smoothing state for getDisplayedBatteryPercentage(). That accessor is the only
+  // writer: every current caller runs on the render task (the same task that already draws
+  // the status bar and About screen from cached gauge values), so this needs no lock. A new
+  // caller from another task must not touch this directly.
+  mutable battshown::State _shownState;
+
   uint16_t normalSpeedLocks = 0;
   SemaphoreHandle_t modeMutex = nullptr;  // Protect the lock count and CPU-frequency transition
+
+  mutable unsigned long _gaugeDiagLastPollMs = 0;  // Timestamp of the last extra-register read
+
+ public:
+  // Extra BQ27220 registers for the About screen's diagnostic rows (X3 only). Deliberately
+  // raw, unsmoothed numbers, so a photo of them can be compared against the TRM directly.
+  // pollGauge() (loop task) is the only writer; every field reads 0/false until the first
+  // successful poll.
+  struct GaugeDiagnostics {
+    bool valid = false;
+    uint16_t millivolts = 0;
+    int16_t averageCurrentMa = 0;
+    uint16_t remainingCapacityMah = 0;
+    uint16_t fullChargeCapacityMah = 0;
+    uint16_t designCapacityMah = 0;
+    uint16_t stateOfChargePercent = 0;
+    uint16_t stateOfHealthPercent = 0;
+    uint16_t cycleCount = 0;
+    uint16_t statusFlags = 0;  // BatteryStatus() bit field
+  };
+  static constexpr unsigned long GAUGE_DIAG_POLL_MS = 30000;  // ms; well under any flash/heap budget
+
+ private:
+  mutable GaugeDiagnostics _gaugeDiagnostics;  // Cache; only pollGauge() (loop task) writes it
+  void pollGaugeDiagnostics() const;
 
  public:
 #if BOARD_HAS_PSRAM
@@ -46,7 +78,19 @@ class HalPowerManager {
 
   // Get battery percentage (range 0-100). On a board with an I2C gauge only the loop
   // task reads the gauge; other tasks (the render task) get the loop's last reading.
+  // This is the RAW gauge/ADC value: safety logic (low-battery sleep, charging decisions)
+  // must call this, never getDisplayedBatteryPercentage().
   uint16_t getBatteryPercentage() const;
+
+  // The single accessor every screen uses to show the battery percentage. Wraps
+  // getBatteryPercentage() with battshown::next() (BattShown.h): the raw value can jump
+  // (BQ27220 EDV hard-corrections; see exploration/260929_pin-ao/NGHIEN-CUU-BQ27220.md), so
+  // what the user sees is smoothed while safety logic keeps reading the raw number.
+  uint16_t getDisplayedBatteryPercentage() const;
+
+  // Cached copy of the extra BQ27220 registers, refreshed by pollGauge() at most every
+  // GAUGE_DIAG_POLL_MS. `.valid` is false on boards with no gauge, or before the first poll.
+  const GaugeDiagnostics& gaugeDiagnostics() const { return _gaugeDiagnostics; }
 
   // The main loop's battery poll: refreshes the gauge reading the render task draws. A board
   // without a gauge reads its ADC divider only when the battery is drawn, because the loop

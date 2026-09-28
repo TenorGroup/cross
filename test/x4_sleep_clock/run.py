@@ -21,7 +21,7 @@ def main():
     production = out / 'production'
     production.mkdir(exist_ok=True)
     hashes = {}
-    for name in ('HalPowerManager.cpp', 'HalPowerManager.h'):
+    for name in ('HalPowerManager.cpp', 'HalPowerManager.h', 'BattShown.cpp', 'BattShown.h'):
         original = repo / 'lib/hal' / name
         shutil.copyfile(original, production / name)
         hashes[str(original)] = hashlib.sha256(original.read_bytes()).hexdigest()
@@ -37,8 +37,8 @@ def main():
                '-fno-omit-frame-pointer', '-DENABLE_SERIAL_LOG', f'-DSOC_PM_SUPPORT_EXT1_WAKEUP={ext1}',
                f'-DSLEEP_HAS_PRESERVE_ARG={int(has_arg)}', '-I' + str(here / 'stubs'),
                '-I' + str(production), '-I' + str(sdk / 'include'),
-               str(production / 'HalPowerManager.cpp'), str(sdk / 'src/PowerManager.cpp'),
-               str(here / 'behavior.cpp'), '-o', str(binary)]
+               str(production / 'HalPowerManager.cpp'), str(production / 'BattShown.cpp'),
+               str(sdk / 'src/PowerManager.cpp'), str(here / 'behavior.cpp'), '-o', str(binary)]
         subprocess.run(cmd, check=True)
         run = subprocess.run([str(binary)], capture_output=True, text=True)
         (out / f'{soc}.log').write_text(run.stdout + run.stderr)

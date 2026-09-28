@@ -141,7 +141,7 @@ tenorchrome::StatusCornerBounds tenorchrome::statusCornerBounds(const GfxRendere
   char clock[12] = "--:--";
   halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1);
   const int timeWidth = r.getTextWidth(fontChu, clock);
-  const int percent = std::max(0, std::min(100, static_cast<int>(powerManager.getBatteryPercentage())));
+  const int percent = std::max(0, std::min(100, static_cast<int>(powerManager.getDisplayedBatteryPercentage())));
   char percentage[8];
   snprintf(percentage, sizeof(percentage), "%d", percent);
   const int batteryBlock = batteryWidth + BATTERY_TEXT_GAP + r.getTextWidth(fontChu, percentage);
@@ -179,7 +179,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   if (hienGio)
     r.drawText(fontChu, swap ? STATUS_CORNER_INSET : width - STATUS_CORNER_INSET - timeWidth, y, clock);
   const int by = statusIconTopY(r.getScreenHeight(), lon, paddingBottom);
-  const int percent = std::max(0, std::min(100, static_cast<int>(powerManager.getBatteryPercentage())));
+  const int percent = std::max(0, std::min(100, static_cast<int>(powerManager.getDisplayedBatteryPercentage())));
   char percentage[8];
   snprintf(percentage, sizeof(percentage), "%d", percent);
   const int batteryTextWidth = hienPhanTram ? r.getTextWidth(fontChu, percentage) : 0;

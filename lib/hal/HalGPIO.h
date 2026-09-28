@@ -29,6 +29,15 @@ struct esp_timer;  // esp_timer_handle_t, kept opaque so host test builds need n
 #define BQ27220_SOC_REG 0x2C   // StateOfCharge() command code (%)
 #define BQ27220_CUR_REG 0x0C   // Current() command code (signed mA)
 #define BQ27220_VOLT_REG 0x08  // Voltage() command code (mV)
+// Extra standard commands for the About screen's diagnostic rows (TRM SLUUBD4A chapter 2):
+// raw numbers only, never fed into anything the UI smooths or safety logic decides on.
+#define BQ27220_AVG_CUR_REG 0x14      // AverageCurrent() command code (signed mA)
+#define BQ27220_RM_REG 0x10           // RemainingCapacity() command code (mAh)
+#define BQ27220_FCC_REG 0x12          // FullChargeCapacity() command code (mAh)
+#define BQ27220_DC_REG 0x3C           // DesignCapacity() command code (mAh)
+#define BQ27220_SOH_REG 0x2E          // StateOfHealth() command code (%)
+#define BQ27220_CYCLE_COUNT_REG 0x2A  // CycleCount() command code
+#define BQ27220_STATUS_REG 0x0A       // BatteryStatus() command code (flag bits)
 
 // Analog DS3231 RTC I2C
 #define I2C_ADDR_DS3231 0x68  // RTC I2C address
@@ -39,6 +48,13 @@ struct esp_timer;  // esp_timer_handle_t, kept opaque so host test builds need n
 #define I2C_ADDR_QMI8658_ALT 0x6A    // IMU I2C fallback address
 #define QMI8658_WHO_AM_I_REG 0x00    // WHO_AM_I command code
 #define QMI8658_WHO_AM_I_VALUE 0x05  // WHO_AM_I expected value
+
+namespace X3GPIO {
+// One incremental Wire read of a 2-byte little-endian standard command register (TRM
+// chapter 2). Shared by every X3 gauge reader so there is one place that knows the
+// transaction shape; callers still own which task may talk to the gauge (HalPowerManager).
+bool readI2CReg16LE(uint8_t addr, uint8_t reg, uint16_t* outValue);
+}  // namespace X3GPIO
 
 class HalGPIO {
 #if CROSSPOINT_EMULATED == 0
