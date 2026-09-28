@@ -76,43 +76,19 @@ bool HalClock::utcOffsetMinutes(int& minutes) const {
   return true;
 }
 
-namespace {
-// UTC calendar date -> Unix epoch, no timezone involvement (newlib has no
-// timegm). Days-from-civil per Howard Hinnant's algorithm.
-time_t epochFromUtc(const Rtc::DateTime& dt) {
-  int y = dt.year;
-  const int m = dt.month;
-  y -= m <= 2;
-  const int era = (y >= 0 ? y : y - 399) / 400;
-  const unsigned yoe = static_cast<unsigned>(y - era * 400);
-  const unsigned doy = (153u * static_cast<unsigned>(m + (m > 2 ? -3 : 9)) + 2u) / 5u + dt.day - 1u;
-  const unsigned doe = yoe * 365u + yoe / 4u - yoe / 100u + doy;
-  const long days = static_cast<long>(era) * 146097L + static_cast<long>(doe) - 719468L;
-  return static_cast<time_t>(days) * 86400 + dt.hour * 3600L + dt.minute * 60L + dt.second;
-}
-}  // namespace
-
 void HalClock::setTimezone(const char* posixTz) {
   setenv("TZ", posixTz && posixTz[0] != '\0' ? posixTz : "UTC0", 1);
   tzset();
-  _lastPollMs = 0;  // re-derive local time under the new rule immediately
 }
 
+// The system clock is the one time source: begin() seeds it from the RTC and
+// syncFromNTP() sets it, so a board without an RTC shows the time after NTP,
+// and reading it keeps the RTC bus quiet.
 bool HalClock::localTime(struct tm& out) const {
-  if (!_available) return false;
-
-  const unsigned long now = millis();
-  if (_lastPollMs == 0 || (now - _lastPollMs) >= CLOCK_POLL_MS) {
-    Rtc::DateTime dt;
-    if (_sdkRtc.now(dt)) {
-      _cachedUtc = epochFromUtc(dt);
-      _hasCachedTime = true;
-    } else if (!_hasCachedTime) {
-      return false;
-    }
-    _lastPollMs = now != 0 ? now : 1;  // 0 doubles as the invalidation sentinel
-  }
-  localtime_r(&_cachedUtc, &out);
+  struct tm utc = {};
+  if (!readSystemTime(utc)) return false;
+  const time_t now = time(nullptr);
+  localtime_r(&now, &out);
   return true;
 }
 
@@ -166,7 +142,10 @@ bool HalClock::syncFromNTP() {
         return false;
       }
       LOG_INF("CLK", "System time synced from NTP");
-      if (!_available) return true;
+      if (!_available) {
+        setTimezone(savedTz);
+        return true;
+      }
 
       Rtc::DateTime dt;
       dt.year = static_cast<uint16_t>(timeinfo.tm_year + 1900);
@@ -177,9 +156,6 @@ bool HalClock::syncFromNTP() {
       dt.second = static_cast<uint8_t>(timeinfo.tm_sec);
       dt.weekday = static_cast<uint8_t>(timeinfo.tm_wday);
       if (_sdkRtc.set(dt)) {
-        _cachedUtc = epochFromUtc(dt);
-        _hasCachedTime = true;
-        _lastPollMs = 0;
         LOG_INF("CLK", "RTC set to %04u-%02u-%02u %02u:%02u:%02u UTC", dt.year, dt.month, dt.day, dt.hour, dt.minute,
                 dt.second);
       } else {

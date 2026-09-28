@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -45,6 +46,8 @@ const std::string& current() {
   return value;
 }
 }  // namespace panelchip
+// The theme row offers Cover Grid only with a PSRAM heap (#3657); the X3 and X4 have none.
+bool UITheme::supportsCoverGrid() { return false; }
 static std::vector<DictionaryEntry> discovered;
 namespace DictionaryRegistry {
 void discover(std::vector<DictionaryEntry>& out) { out = discovered; }
@@ -67,7 +70,8 @@ void KOReaderCredentialStore::setSendMetadata(bool) {}
 void KOReaderCredentialStore::setSyncBehavior(KOReaderSyncBehavior) {}
 
 struct SettingsActivity {
-  struct Cursor { int selected = 0; bool followOnBuild = false; };
+  // Same shape as freeink::ui::ListNav: the selection is atomic (read by the render task).
+  struct Cursor { std::atomic<int> selected{0}; bool followOnBuild = false; };
   struct InputBoundary { bool hasTouch() const { return BoardConfig::hasTouch(); } } mappedInput;
   int selectedCategoryIndex = 0, settingsCount = 0;
   std::vector<SettingInfo> displaySettings, readerSettings, controlsSettings, systemSettings,
@@ -198,7 +202,7 @@ int main(int argc, char** argv) {
     ok &= check(readers[dictionaryIndex].valueGetter() == 8, "category dictionary survives discovery lifetime");
   }
   const auto clockAction = std::find_if(activity.systemSettings.begin(), activity.systemSettings.end(), [](const auto& row) {
-    return row.action == SettingAction::Clock;
+    return row.action == SettingAction::ClockSettings;
   });
   ok &= check(clockAction != activity.systemSettings.end(), "clock action remains available without RTC hardware");
   if (tenor) {

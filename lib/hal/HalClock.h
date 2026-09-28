@@ -9,14 +9,9 @@ extern HalClock halClock;  // Singleton
 class HalClock {
   bool _available = false;
   mutable Rtc _sdkRtc;
-  // The RTC keeps UTC; local time comes from newlib's localtime_r under the
-  // POSIX TZ rule set via setTimezone(), so zones with DST are correct
-  // year-round. Cached as a UTC epoch to keep the RTC bus quiet.
-  mutable time_t _cachedUtc = 0;
-  mutable bool _hasCachedTime = false;
-  mutable unsigned long _lastPollMs = 0;
-
-  static constexpr unsigned long CLOCK_POLL_MS = 10000;  // 10 seconds
+  // The RTC keeps UTC and seeds the system clock at begin(); local time comes
+  // from newlib's localtime_r under the POSIX TZ rule set via setTimezone(),
+  // so zones with DST are correct year-round.
 
  public:
   // Call after BoardConfig has selected the active device.
@@ -35,7 +30,7 @@ class HalClock {
   void setTimezone(const char* posixTz);
 
   // Current wall-clock time in the configured timezone.
-  // Returns false if RTC is not available.
+  // Returns false until the system clock has valid time from NTP or the RTC.
   bool localTime(struct tm& out) const;
 
   // Get current local hour (0-23) and minute (0-59).

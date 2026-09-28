@@ -33,7 +33,12 @@ void reset() {
 }
 unsigned long millis() { return fake::ms; }
 void delay(unsigned long ms) { fake::ms += ms; }
-void configTzTime(const char*, const char*, const char*) { ++fake::ntpCalls; }
+// Like the ESP32 core, the SNTP setup writes its zone into the process TZ.
+void configTzTime(const char* tz, const char*, const char*) {
+  ++fake::ntpCalls;
+  setenv("TZ", tz, 1);
+  tzset();
+}
 int sntp_get_sync_status() {
   if (!fake::ntpResponds) return 0;
   fake::epoch = fake::ntpEpoch;
@@ -177,6 +182,15 @@ void noRtcDisplayAfterNtp() {
   CHECK(halClock.formatTime(text, sizeof(text)));
   CHECK(std::string(text) == "19:00");
 }
+void noRtcSyncKeepsDisplayZone() {
+  ++cases; fake::reset(); halClock.begin();
+  // The zone is set at boot, before any sync; NTP runs in UTC and must hand it back.
+  halClock.setTimezone("UTC-7");
+  CHECK(halClock.syncFromNTP());
+  char text[9] = {};
+  CHECK(halClock.formatTime(text, sizeof(text)));
+  CHECK(std::string(text) == "19:00");
+}
 void offlineMidnightAndRetainedWake() {
   ++cases; fake::reset(); halClock.begin();
   CHECK(halClock.syncFromNTP());
@@ -277,7 +291,7 @@ void failedSyncRetainsWorkingClock() {
 int main() {
   noRtcColdBoot(); failedRtcReadAndWrite(); goodRtcWrite(); ntpTimeout(); wifiDisconnected();
   invalidCompletedEpoch(); alreadyValidEpoch();
-  noRtcDisplayAfterNtp(); offlineMidnightAndRetainedWake(); fullPowerLossStaysUnknown();
+  noRtcDisplayAfterNtp(); noRtcSyncKeepsDisplayZone(); offlineMidnightAndRetainedWake(); fullPowerLossStaysUnknown();
   failedRtcWriteUsesFreshSystemTime(); rtcReadFailureKeepsTimeAdvancing();
   invalidRtcCalendarIsNotNormalized(); systemClockUpperBound();
   invalidRtcTimeAndLeapDates(); retainedSystemBeatsStaleRtc();

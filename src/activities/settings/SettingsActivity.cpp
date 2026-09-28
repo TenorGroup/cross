@@ -2,7 +2,6 @@
 
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
-#include <HalClock.h>
 #include <HalDisplay.h>
 #include <LibraryBuilder.h>
 #include <Logging.h>
@@ -174,15 +173,12 @@ void SettingsActivity::rebuildSettingsLists() {
     controlsSettings.insert(controlsSettings.begin(),
                             SettingInfo::Action(StrId::STR_HOME_BUTTON, SettingAction::HomeButton));
   }
-  // Clock configuration only exists where the RTC probe found hardware (on
-  // clockless boards there is nothing to set), and precedes file-management
-  // preferences.
-  if (halClock.isAvailable()) {
-    const auto files = std::find_if(systemSettings.begin(), systemSettings.end(), [](const SettingInfo& row) {
-      return row.valuePtr == &CrossPointSettings::showHiddenFiles;
-    });
-    systemSettings.insert(files, SettingInfo::Action(StrId::STR_CLOCK, SettingAction::ClockSettings));
-  }
+  // Clock precedes file-management preferences. It stays on boards without an
+  // RTC: the time comes from NTP there, and the zone and format still apply.
+  const auto files = std::find_if(systemSettings.begin(), systemSettings.end(), [](const SettingInfo& row) {
+    return row.valuePtr == &CrossPointSettings::showHiddenFiles;
+  });
+  systemSettings.insert(files, SettingInfo::Action(StrId::STR_CLOCK, SettingAction::ClockSettings));
   readerSettings.insert(readerSettings.begin(),
                         SettingInfo::Action(StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings));
   readerSettings.insert(readerSettings.begin() + 1,
