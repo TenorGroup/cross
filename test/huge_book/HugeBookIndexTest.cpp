@@ -9,6 +9,7 @@
 #include <ZipFile.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <map>
 #include <cstdio>
@@ -331,6 +332,45 @@ TEST(HugeBookIndex, LoadedSizeTableStaysSmall) {
     EXPECT_LE(huge.peak, ordinary.resident + 2048 + 2 * 4096 + 4096);
   }
   bigChapter = 0;
+}
+
+// The chapter sizes stay in book.bin; lookups read them a window of 32 chapters at a time. Reading
+// straight through the book, every page asks the book's size and the running totals before and
+// after the current chapter: the card is opened at most once per 32 chapters, never per page.
+// Finding the chapter at a byte offset (percent jump, progress sync) opens it at most once.
+TEST(HugeBookIndex, SizeLookupsReachTheCardOncePerWindow) {
+  const int n = 5000;
+  ASSERT_TRUE(indexBook(makeBook(Kind::Split, n), SIZE_MAX).ok);
+  std::vector<uint32_t> cumulative(n);
+  uint32_t total = 0;
+  for (int i = 0; i < n; ++i) cumulative[i] = total += chapterBytes(i + 1);
+  BookMetadataCache cache(cachePath);
+  ASSERT_TRUE(cache.load());
+  cardCalls = {};
+  for (int spine = 0; spine < n; ++spine) {
+    for (int page = 0; page < 3; ++page) {
+      ASSERT_EQ(cache.getCumulativeSize(n - 1), total);
+      ASSERT_EQ(spine > 0 ? cache.getCumulativeSize(spine - 1) : 0u, spine > 0 ? cumulative[spine - 1] : 0u);
+      ASSERT_EQ(cache.getCumulativeSize(spine), cumulative[spine]) << "spine " << spine;
+    }
+  }
+  printf("HUGE_INDEX size_lookups n=%d opens=%zu reads=%zu seeks=%zu\n", n, cardCalls.opens, cardCalls.reads,
+         cardCalls.seeks);
+  EXPECT_LE(cardCalls.opens, static_cast<size_t>((n + 31) / 32));
+
+  for (const int spine : {0, 1, 31, 32, 33, 2500, 4991, 4992, n - 2, n - 1}) {
+    for (const int64_t delta : {-1, 0, 1}) {
+      const int64_t target = static_cast<int64_t>(cumulative[spine]) + delta;
+      if (target < 0) continue;
+      const auto it = std::lower_bound(cumulative.begin(), cumulative.end(), static_cast<uint32_t>(target));
+      const int expected = it == cumulative.end() ? -1 : static_cast<int>(it - cumulative.begin());
+      cardCalls = {};
+      EXPECT_EQ(cache.getSpineIndexForSize(static_cast<uint32_t>(target)), expected) << "target " << target;
+      EXPECT_LE(cardCalls.opens, 1u) << "target " << target;
+    }
+  }
+  EXPECT_EQ(cache.getSpineIndexForSize(0), 0);
+  EXPECT_EQ(cache.getSpineIndexForSize(total + 1), -1);
 }
 
 // The largest split book the open heap indexes, found by bisection. Every

@@ -18,7 +18,7 @@ struct TestFile {
 };
 // Card calls, each an SD transaction's worth of overhead on the device.
 struct CardCalls {
-  size_t reads = 0, writes = 0, seeks = 0;
+  size_t reads = 0, writes = 0, seeks = 0, opens = 0;
 };
 inline CardCalls cardCalls;
 class HalFile {
@@ -79,6 +79,7 @@ struct TestStorage {
   std::map<std::string, std::shared_ptr<TestFile>> files;
   bool openFileForRead(const char*, const std::string& path, HalFile& out) {
     heapcap::Untracked guard;
+    ++cardCalls.opens;
     out.close();
     auto it = files.find(path);
     if (it == files.end()) return false;

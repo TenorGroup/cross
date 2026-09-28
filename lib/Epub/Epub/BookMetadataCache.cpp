@@ -8,6 +8,7 @@
 #include <ZipFile.h>
 
 #include <deque>
+#include <mutex>
 
 #include "FsHelpers.h"
 
@@ -58,6 +59,9 @@ constexpr uint32_t BOOKBIN_HEAP_RESERVE = 32 * 1024;
 // zip lookup target, its inflated size and its first TOC index.
 constexpr size_t BOOKBIN_ITEM_BYTES = sizeof(ZipFile::SizeTarget) + sizeof(uint32_t) + sizeof(int16_t);
 constexpr int BOOKBIN_MIN_CHUNK = 64;
+// Guards every loaded cache's size window: the reader's render task and its loop both ask for
+// sizes. One lock for the firmware's life, like ZipFile's, so no book open leaves one behind.
+std::mutex sizeWindowLock;
 
 #ifdef TENOR_UI_ACCEPTANCE
 // Logical metadata operations. BufferedFileReader/Writer may coalesce these
@@ -947,8 +951,9 @@ bool BookMetadataCache::loadFile(const bool partFile, const StopFn stop) {
   loaded = false;
   partial = false;
   tocCursor.reset();
-  cumulativeSizes.reset();
-  itemSizes.reset();
+  strideStarts.reset();
+  bookSize = 0;
+  windowFirst = -1;
   spineCount = tocCount = 0;
   if (bookFile) bookFile.close();
   if (!Storage.openFileForRead("BMC", cachePath + (partFile ? bookPartFile : bookBinFile), bookFile)) return false;
@@ -959,8 +964,9 @@ bool BookMetadataCache::loadFile(const bool partFile, const StopFn stop) {
     if (invalid) LOG_ERR("BMC", "Invalid or unreadable book.bin; rejecting cache");
     tocCursor.reset();
     bookFile.close();
-    cumulativeSizes.reset();
-    itemSizes.reset();
+    strideStarts.reset();
+    bookSize = 0;
+    windowFirst = -1;
     spineCount = tocCount = 0;
     return false;
   };
@@ -986,10 +992,8 @@ bool BookMetadataCache::loadFile(const bool partFile, const StopFn stop) {
 
   // book.part has no chapter sizes: no table, and getCumulativeSize answers 0.
   if (!partial) {
-    itemSizes = makeUniqueNoThrow<uint16_t[]>(spineCount);
-    cumulativeSizes = makeUniqueNoThrow<uint32_t[]>(
-        itemSizes ? (spineCount + CUMULATIVE_STRIDE - 1) / CUMULATIVE_STRIDE : spineCount);
-    if (!cumulativeSizes) return fail();
+    strideStarts = makeUniqueNoThrow<uint32_t[]>((spineCount + CUMULATIVE_STRIDE - 1) / CUMULATIVE_STRIDE);
+    if (!strideStarts) return fail();
   }
 
   // Two sequential streams validate every LUT pointer and record, including the
@@ -1013,24 +1017,8 @@ bool BookMetadataCache::loadFile(const bool partFile, const StopFn stop) {
         entry.cumulativeSize < previous)
       return fail();
     if (partial) continue;
-    if (itemSizes && entry.cumulativeSize - previous > UINT16_MAX) {
-      // First chapter of 64 KB or more: the book needs the flat table. Free the compact one first
-      // so the two never share the heap (a load with the radio up has room for one), then read the
-      // spine again from the top.
-      itemSizes.reset();
-      cumulativeSizes.reset();
-      cumulativeSizes = makeUniqueNoThrow<uint32_t[]>(spineCount);
-      if (!cumulativeSizes || !lut.seek(lutOffset) || !data.seek(lutOffset + lutSize)) return fail();
-      previous = 0;
-      i = UINT16_MAX;  // the loop increment wraps it to 0
-      continue;
-    }
-    if (!itemSizes) {
-      cumulativeSizes[i] = entry.cumulativeSize;
-    } else {
-      itemSizes[i] = static_cast<uint16_t>(entry.cumulativeSize - previous);
-      if (i % CUMULATIVE_STRIDE == 0) cumulativeSizes[i / CUMULATIVE_STRIDE] = entry.cumulativeSize;
-    }
+    if (i % CUMULATIVE_STRIDE == 0) strideStarts[i / CUMULATIVE_STRIDE] = previous;
+    if (i < CUMULATIVE_STRIDE) window[i] = entry.cumulativeSize;  // the first window comes free
     previous = entry.cumulativeSize;
   }
   for (uint16_t i = 0; i < tocCount; ++i) {
@@ -1041,6 +1029,10 @@ bool BookMetadataCache::loadFile(const bool partFile, const StopFn stop) {
     if (!data.ok() || entry.spineIndex < -1 || entry.spineIndex >= static_cast<int>(spineCount)) return fail();
   }
   if (data.position() != fileSize) return fail();
+  if (!partial) {
+    bookSize = previous;
+    windowFirst = 0;
+  }
   loaded = true;
   LOG_DBG("BMC", "Validated cache: %d spine, %d TOC entries", spineCount, tocCount);
   return true;
@@ -1133,14 +1125,66 @@ std::unique_ptr<BookMetadataCache::TocCursor> BookMetadataCache::openTocCursor(i
 }
 
 uint32_t BookMetadataCache::getCumulativeSize(const int index) const {
-  if (!loaded || !cumulativeSizes || index < 0 || index >= spineCount) {
+  if (!loaded || !strideStarts || index < 0 || index >= spineCount) {
     return 0;
   }
-  if (!itemSizes) return cumulativeSizes[index];
-  const int first = index / CUMULATIVE_STRIDE * CUMULATIVE_STRIDE;
-  uint32_t total = cumulativeSizes[first / CUMULATIVE_STRIDE];
-  for (int i = first + 1; i <= index; ++i) total += itemSizes[i];
-  return total;
+  // The book's total and each window's last total are in RAM: a page at the first item of a
+  // window asks the total before it without reading the previous window.
+  if (index == spineCount - 1) return bookSize;
+  const int stride = index / CUMULATIVE_STRIDE;
+  if (index % CUMULATIVE_STRIDE == CUMULATIVE_STRIDE - 1) return strideStarts[stride + 1];
+  std::lock_guard<std::mutex> lock(sizeWindowLock);
+  // A card that fails the read answers the total before the window: never past the true total,
+  // and totals still never fall from one item to the next, so no chapter size comes out negative.
+  if (windowFirst != stride * CUMULATIVE_STRIDE && !readSizeWindow(stride * CUMULATIVE_STRIDE)) {
+    return strideStarts[stride];
+  }
+  return window[index % CUMULATIVE_STRIDE];
+}
+
+bool BookMetadataCache::readSizeWindow(const int first) const {
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long started = millis();
+#endif
+  windowFirst = -1;
+  const int count = std::min<int>(CUMULATIVE_STRIDE, spineCount - first);
+  // Its own handle: getSpineEntry moves bookFile's position from the other task.
+  HalFile file;
+  if (!Storage.openFileForRead("BMC", cachePath + bookBinFile, file)) return false;
+  MetadataReader reader(file, file.size());
+  uint32_t offsets[CUMULATIVE_STRIDE];
+  if (!reader.seek(lutOffset + static_cast<uint32_t>(first) * sizeof(uint32_t)) ||
+      !reader.read(offsets, count * sizeof(uint32_t)))
+    return false;
+  uint32_t previous = strideStarts[first / CUMULATIVE_STRIDE];
+  for (int i = 0; i < count; ++i) {
+    // A spine record is its href, then its cumulative size: skip the href unread.
+    uint32_t hrefLength = 0, size = 0;
+    if (!reader.seek(offsets[i]) || !reader.pod(hrefLength) || hrefLength > MAX_METADATA_STRING_BYTES ||
+        !reader.seek(offsets[i] + sizeof(uint32_t) + hrefLength) || !reader.pod(size) || size < previous)
+      return false;
+    window[i] = previous = size;
+  }
+  const int next = first + count;
+  if (previous != (next < spineCount ? strideStarts[next / CUMULATIVE_STRIDE] : bookSize)) return false;
+  windowFirst = first;
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("BMC", "SIZE_WINDOW first=%d ms=%lu", first, millis() - started);
+#endif
+  return true;
+}
+
+int BookMetadataCache::getSpineIndexForSize(const uint32_t size) const {
+  if (!loaded || !strideStarts || size > bookSize) return -1;
+  // The answer lies in the first window whose last total reaches `size`.
+  const int strides = (spineCount + CUMULATIVE_STRIDE - 1) / CUMULATIVE_STRIDE;
+  const uint32_t* starts = strideStarts.get();
+  const int stride = static_cast<int>(std::lower_bound(starts + 1, starts + strides, size) - starts) - 1;
+  const int last = std::min<int>(spineCount, (stride + 1) * CUMULATIVE_STRIDE) - 1;
+  for (int i = stride * CUMULATIVE_STRIDE; i < last; ++i) {
+    if (getCumulativeSize(i) >= size) return i;
+  }
+  return last;
 }
 
 BookMetadataCache::SpineEntry BookMetadataCache::getSpineEntry(const int index) {

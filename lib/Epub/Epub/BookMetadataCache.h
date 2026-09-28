@@ -83,15 +83,18 @@ class BookMetadataCache {
   // wrapper serves whichever pass is active (spine, then toc).
   std::unique_ptr<serialization::BufferedFileWriter> passOut;
 
-  // Cumulative spine sizes, cached in RAM at load() so progress/percent lookups are
-  // O(1) instead of 2 seeks + a heap-allocating SpineEntry read per access. The
-  // table stays resident beside the page-turner radio for the whole session, so
-  // chapter sizes that fit 16 bits are kept as two bytes each plus one exact
-  // running total per CUMULATIVE_STRIDE items; a book with a chapter of 64 KB
-  // or more keeps a flat table of four bytes per item.
+  // Cumulative spine sizes. They stay resident beside the page-turner radio for the whole
+  // session, so RAM holds only the running total before every CUMULATIVE_STRIDE-th item and the
+  // book's total; the totals of one window of CUMULATIVE_STRIDE items are read from book.bin when
+  // a lookup falls outside the window held. Page turns ask the book's total and the current
+  // item's two totals, which that window and the stride table answer without the card.
   static constexpr uint16_t CUMULATIVE_STRIDE = 32;
-  std::unique_ptr<uint32_t[]> cumulativeSizes;  // flat table, or one total per stride
-  std::unique_ptr<uint16_t[]> itemSizes;        // per-item sizes; null for a flat table
+  std::unique_ptr<uint32_t[]> strideStarts;  // total before item w * CUMULATIVE_STRIDE
+  uint32_t bookSize = 0;
+  mutable int windowFirst = -1;  // first item of `window`, -1 when it holds none
+  mutable uint32_t window[CUMULATIVE_STRIDE] = {};
+  // Reads the totals of the window starting at `first` into `window`. Called under the size lock.
+  bool readSizeWindow(int first) const;
 
   // Index for fast href→spineIndex lookup (used only for large EPUBs). The
   // key is the low 48 bits of the FNV-1a 64-bit hash: eight bytes per spine
@@ -243,8 +246,11 @@ class BookMetadataCache {
   SpineEntry getSpineEntry(int index);
   TocEntry getTocEntry(int index);
   // Cumulative byte size up to and including the given spine item (0 if out of range
-  // or not loaded). Backed by the in-RAM cumulativeSizes cache populated in load().
+  // or not loaded, or loaded from book.part).
   uint32_t getCumulativeSize(int index) const;
+  // The first spine item whose cumulative size reaches `size`, -1 if none does. Reads at most one
+  // window of sizes from the card.
+  int getSpineIndexForSize(uint32_t size) const;
   int getSpineCount() const { return spineCount; }
   int getTocCount() const { return tocCount; }
   bool isLoaded() const { return loaded; }
