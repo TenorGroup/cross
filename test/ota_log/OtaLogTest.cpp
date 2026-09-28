@@ -139,6 +139,8 @@ TEST(OtaLog, StepFollowsHowFarTheResponseGot) {
   EXPECT_STREQ(ota_log::transferStep(404, true), "header");
   EXPECT_STREQ(ota_log::transferStep(302, true), "header");
   EXPECT_STREQ(ota_log::transferStep(200, true), "download");
+  // A 192 KB part answers 206; a body cut short there is a broken download too.
+  EXPECT_STREQ(ota_log::transferStep(206, true), "download");
 }
 
 TEST(OtaLog, WatchdogNamesTheTimeoutThatEndedIt) {

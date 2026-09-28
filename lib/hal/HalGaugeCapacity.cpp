@@ -61,9 +61,8 @@ const char* stageName(const Bq27220Capacity::Stage stage) {
 
 void HalGaugeCapacity::tick() {
   if (!started) {
-    const auto& gauge = BoardConfig::ACTIVE.batteryGauge;
-    const bool bq27220 = gauge.gaugeAddr != 0 && gauge.gaugeType == BoardConfig::GaugeType::Bq27220;
-    load = Bq27220Capacity(bq27220 ? gauge.designCapacityMah : 0);
+    const bool bq27220 = HalPowerManager::hasBq27220Gauge();
+    load = Bq27220Capacity(bq27220 ? BoardConfig::ACTIVE.batteryGauge.designCapacityMah : 0);
     started = true;
   }
   if (load.result() != Bq27220Capacity::Result::Pending || !powerManager.mayReadGauge()) return;

@@ -117,7 +117,7 @@ void AboutActivity::onEnter() {
     rowItems_[i].actionValue = static_cast<int16_t>(i);
   }
 
-  hasGauge_ = BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0;
+  hasGauge_ = HalPowerManager::hasBq27220Gauge();
   if (hasGauge_) {
     for (int i = 0; i < GAUGE_ITEM_COUNT; i++) {
       const int row = ITEM_COUNT + i;
@@ -157,8 +157,8 @@ void AboutActivity::onEnter() {
 }
 
 // Raw numbers, deliberately not run through getDisplayedBatteryPercentage()'s smoothing: this
-// screen exists so a user photo can be compared against the BQ27220 TRM directly (see
-// exploration/260929_pin-ao/NGHIEN-CUU-BQ27220.md). Reads only HalPowerManager's cache
+// screen exists so a user photo can be compared against the BQ27220 TRM directly. Reads only
+// HalPowerManager's cache
 // (populated by the loop task in pollGauge(), at most once every 30s); no I2C from here.
 void AboutActivity::refreshGaugeRows() {
   const auto& g = powerManager.gaugeDiagnostics();

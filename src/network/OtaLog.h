@@ -36,7 +36,7 @@ struct Attempt {
 // Where a transfer stopped, from the status line and whether the headers were read whole.
 inline const char* transferStep(const int status, const bool headers) {
   if (!headers) return status == 0 ? "connect" : "header";
-  return status == 200 ? "download" : "header";
+  return status == 200 || status == 206 ? "download" : "header";
 }
 
 // Which timeout ended a transfer. The TLS client gives up after timeoutMs without a byte.

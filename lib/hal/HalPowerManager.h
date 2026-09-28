@@ -84,9 +84,12 @@ class HalPowerManager {
 
   // The single accessor every screen uses to show the battery percentage. Wraps
   // getBatteryPercentage() with battshown::next() (BattShown.h): the raw value can jump
-  // (BQ27220 EDV hard-corrections; see exploration/260929_pin-ao/NGHIEN-CUU-BQ27220.md), so
+  // (BQ27220 EDV hard-corrections, TRM SLUUBD4A section 1.1.1), so
   // what the user sees is smoothed while safety logic keeps reading the raw number.
   uint16_t getDisplayedBatteryPercentage() const;
+  // The one answer to "is the gauge a BQ27220": the capacity load, the diagnostics read and
+  // the About rows all ask it. Other gauges (CW2017, AXP2101) have other registers.
+  static bool hasBq27220Gauge();
 
   // Cached copy of the extra BQ27220 registers, refreshed by pollGauge() at most every
   // GAUGE_DIAG_POLL_MS. `.valid` is false on boards with no gauge, or before the first poll.

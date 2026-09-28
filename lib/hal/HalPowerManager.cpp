@@ -44,11 +44,16 @@ void HalPowerManager::pollGauge() const {
   }
 }
 
+bool HalPowerManager::hasBq27220Gauge() {
+  const auto& gauge = BoardConfig::ACTIVE.batteryGauge;
+  return gauge.gaugeAddr != 0 && gauge.gaugeType == BoardConfig::GaugeType::Bq27220;
+}
+
 void HalPowerManager::pollGaugeDiagnostics() const {
   // Same one-task-reads-the-gauge rule as getBatteryPercentage(): pollGauge() only ever runs
   // on the loop task, but guard it anyway so a future caller from elsewhere fails safe instead
   // of racing Wire's receive buffer (see the comment on getBatteryPercentage()).
-  if (!mayReadGauge()) return;
+  if (!hasBq27220Gauge() || !mayReadGauge()) return;
   const unsigned long now = millis();
   if (_gaugeDiagLastPollMs != 0 && (now - _gaugeDiagLastPollMs) < GAUGE_DIAG_POLL_MS) return;
   _gaugeDiagLastPollMs = now;

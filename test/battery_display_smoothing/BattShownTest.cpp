@@ -1,5 +1,4 @@
-// Host test for battshown::next() - see BattShown.h for the rules and the research
-// behind them (exploration/260929_pin-ao/NGHIEN-CUU-BQ27220.md).
+// Host test for battshown::next() - see BattShown.h for the rules and why they exist.
 #include "BattShown.h"
 
 #include <gtest/gtest.h>

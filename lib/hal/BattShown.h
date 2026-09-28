@@ -7,8 +7,8 @@
 // The BQ27220 fuel gauge corrects its remaining-capacity estimate at three fixed
 // voltage thresholds (TRM SLUUBD4A section 1.1.1) and again whenever it re-measures
 // open-circuit voltage, both by design. A domestic X3 unit showed this as 26% then a
-// straight drop to 0%, and while charging 7% after one minute, then 55%, then 72%
-// (exploration/260929_pin-ao/NGHIEN-CUU-BQ27220.md). This module does not change the
+// straight drop to 0%, and while charging 7% after one minute, then 55%, then 72%.
+// This module does not change the
 // gauge or the raw value anything else reads; it only smooths the number a screen
 // draws, so safety logic (low-battery sleep, charging decisions) must keep reading
 // the raw percentage instead.
