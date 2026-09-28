@@ -41,6 +41,8 @@ constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING, StrId::STR_HYP
 
 // One label set for every spacing row: line, letter and paragraph spacing share
 // one five-value scale (readerSpacing::Level), so they share one label order.
+// No percent/pixel-offset word or character spacing labels: upstream's #3528
+// redesign is not taken (see RESOLUTION.md).
 constexpr StrId SPACING_LEVEL_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW, StrId::STR_TIGHT,
                                        StrId::STR_WIDE, StrId::STR_VERY_WIDE};
 constexpr StrId INK_WEIGHT_IDS[] = {StrId::STR_READER_INK_0, StrId::STR_READER_INK_1,
@@ -270,8 +272,6 @@ void TextSettingsActivity::render(RenderLock&&) {
 
   updatePreviewGeometry();
 
-  const auto pageWidth = renderer.getScreenWidth();
-
   const char* familyName = (currentFamilyIndex_ >= 0 && currentFamilyIndex_ < static_cast<int>(fonts_.size()))
                                ? fonts_[currentFamilyIndex_].name.c_str()
                                : "";
@@ -310,7 +310,6 @@ void TextSettingsActivity::render(RenderLock&&) {
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabelText(), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
 #ifdef TENOR_PRESS_PROBE
   const unsigned long painted = millis();
 #endif

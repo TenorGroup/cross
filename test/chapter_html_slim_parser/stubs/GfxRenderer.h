@@ -2,6 +2,7 @@
 
 #include <DropCap.h>
 #include <EpdFontFamily.h>
+#include <Utf8.h>
 
 #include <deque>
 #include <string>
@@ -40,7 +41,10 @@ class GfxRenderer {
   int getSpaceWidth(int, EpdFontFamily::Style, uint8_t = 0) const { return 4; }
   int getTextAdvanceX(int, const char* text, EpdFontFamily::Style, int spacing = 0, uint8_t = 0) const {
     int width = 0;
-    while (*text++) {
+    // Fixture metrics: every glyph (codepoint) is 8 px wide and combining marks take no
+    // advance, so multi-byte scripts (Hangul, CJK, Vietnamese) measure like Latin.
+    while (const uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
+      if (utf8IsCombiningMark(cp)) continue;
       if (width) width += spacing;
       width += 8;
     }
@@ -49,5 +53,5 @@ class GfxRenderer {
   int getKerning(int, uint32_t, uint32_t, EpdFontFamily::Style) const { return 0; }
   int getSpaceAdvance(int, uint32_t, uint32_t, EpdFontFamily::Style, uint8_t = 0) const { return 4; }
   bool isSdCardFont(int) const { return false; }
-  void ensureSdCardFontReady(int, const std::deque<std::string>&, bool, uint8_t) const {}
+  void ensureSdCardFontReady(int, const char* const*, const size_t*, size_t, bool, bool, uint8_t) const {}
 };

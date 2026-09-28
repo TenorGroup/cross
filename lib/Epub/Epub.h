@@ -30,8 +30,11 @@ class Epub {
   // CSS files
   std::vector<std::string> cssFiles;
 
-  bool findContentOpfFile(std::string* contentOpfFile) const;
-  bool parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, bool writeSpineEntries = true);
+  bool findContentOpfFile(std::string* contentOpfFile, ZipFile* sharedZip = nullptr) const;
+  // `metadataOnly` stops at the end of <metadata> (title, author, language). `sharedZip` reads
+  // through an already open zip instead of opening the book per item.
+  bool parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, bool writeSpineEntries = true,
+                       bool metadataOnly = false, ZipFile* sharedZip = nullptr);
   bool parseTocNcxFile(BookMetadataCache* target, BookMetadataCache::StopFn stop) const;
   bool parseTocNavFile(BookMetadataCache* target, BookMetadataCache::StopFn stop) const;
   void discoverCssFilesFromZip();
@@ -63,6 +66,8 @@ class Epub {
   // step leaves either its whole result on the card or nothing, so a stop, a power cut or a
   // reopen at any point resumes at a step boundary. `stop` is asked every few milliseconds.
   IndexStep indexSome(BookMetadataCache::StopFn stop);
+  // Title and author from the book's cache, or from content.opf alone when it has none.
+  bool loadMetadata(std::string& title, std::string& author);
   bool clearCache() const;
   void setupCacheDir() const;
   const std::string& getCachePath() const;
@@ -81,6 +86,10 @@ class Epub {
   // The same from the cover's path in the book, for a book whose index is not loaded (Home).
   void generateThumbBmps(const std::string& coverImageHref, const int* heights, int count) const;
   bool isCoverImage(const std::string& href) const;
+  // One height (see generateThumbBmps); true when a drawable thumbnail is on the card.
+  bool generateThumbBmp(int height) const;
+  // Locate the cover without building spine, TOC, or reading caches.
+  bool generateThumbBmpFromSource(int height);
   uint8_t* readItemContentsToBytes(const std::string& itemHref, size_t* size = nullptr,
                                    bool trailingNullByte = false) const;
   bool readItemContentsToStream(const std::string& itemHref, Print& out, size_t chunkSize,

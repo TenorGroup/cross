@@ -77,7 +77,9 @@ CHILD(SdFirmwareUpdateActivity);
 CHILD(FontDownloadActivity);
 CHILD(LanguageSelectActivity);
 CHILD(KeyboardLayoutsActivity);
-CHILD(DongHoSettingsActivity);
+CHILD(ClockSettingsActivity);
+CHILD(HomeButtonSettingsActivity);
+CHILD(AboutActivity);
 CHILD(IntervalSelectionActivity);
 struct TextSettingsActivity : ChildBoundary {
   using ChildBoundary::ChildBoundary;

@@ -228,7 +228,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
       const uint8_t fieldDefault = s.*(info.valuePtr);  // struct-initializer default, read before we overwrite it
       uint8_t v = doc[info.key] | fieldDefault;
       if (info.type == SettingType::ENUM) {
-        v = clamp(v, (uint8_t)info.enumValues.size(), fieldDefault);
+        v = clamp(v, (uint8_t)info.enumLabels().size(), fieldDefault);
       } else if (info.type == SettingType::TOGGLE) {
         v = clamp(v, (uint8_t)2, fieldDefault);
       } else if (info.type == SettingType::VALUE) {
@@ -289,6 +289,21 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   if ((doc["longPressButtonBehavior"] | uint8_t{OFF}) == FONT_SIZE_STEP) {
     longPressButtonBehavior = OFF;
     needsResave = true;
+  }
+
+  // Older files stored one combined touch mode under "touchReaderControls":
+  // 0=off, 1=tap, 2=swipe, 3=inverted tap. Split it into the master toggle
+  // plus the per-direction gesture pair (the generic loop above already folded
+  // out-of-range toggle values back to the On default).
+  if (doc["pageTurnGesture"].isNull() && doc["previousPageGesture"].isNull() &&
+      doc["touchReaderControls"].is<uint8_t>()) {
+    const uint8_t mode = doc["touchReaderControls"].as<uint8_t>();
+    if (mode >= 1 && mode <= 3) {
+      touchReaderControls = TOUCH_READER_ON;
+      pageTurnGesture = mode == 1 ? TAP_ONLY : mode == 2 ? SWIPE_ONLY : INVERTED_TAP;
+      previousPageGesture = pageTurnGesture;
+      needsResave = true;
+    }
   }
 
   if (doc["sleepTimeoutMinutes"].isNull() && !doc["sleepTimeout"].isNull()) {
@@ -400,6 +415,17 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // Font family - uses dynamic getter/setter in SettingsList so the generic loop skips it.
   const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
   fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);
+  if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
+      !doc["longPressMenuFunction"].isNull()) {
+    static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync, HomeButtonAction::Ignore,
+                                                  HomeButtonAction::Bookmark, HomeButtonAction::Dictionary,
+                                                  HomeButtonAction::ReaderMenu};
+    if (s.longPressMenuFunction < sizeof(LEGACY) / sizeof(LEGACY[0])) {
+      s.homeButtonLongPressAction = static_cast<uint8_t>(LEGACY[s.longPressMenuFunction]);
+      needsResave = true;
+    }
+  }
+
   // SD card font family name - not in SettingsList, load manually
   const char* sfn = doc["sdFontFamilyName"] | "";
   strncpy(sdFontFamilyName, sfn, sizeof(sdFontFamilyName) - 1);
@@ -528,7 +554,12 @@ CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
     spec.clockMode = statusBarClock == STATUS_BAR_CLOCK_LEFT ? STATUS_BAR_CLOCK_LEFT : STATUS_BAR_CLOCK_RIGHT;
   spec.xtcMode = XTC_STATUS_BAR_BOTTOM;
   spec.clock12h = clockFormat == 1;
-  spec.clockUtcOffsetQ = clockUtcOffsetQ;
+  // StatusBarSpec has no clockUtcOffsetQ field (#3562 removed it upstream);
+  // clock rendering reads SETTINGS.clockUtcOffsetQ directly (TenorMenuChrome.cpp).
+  spec.progressBarMode = statusBarProgressBar;
+  spec.progressBarHeightPx =
+      statusBarProgressBar != HIDE_PROGRESS ? static_cast<uint8_t>((statusBarProgressBarThickness + 1) * 2) : 0;
+  spec.xtcMode = xtcStatusBarMode;
   return spec;
 }
 
@@ -549,6 +580,11 @@ ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWid
   ReaderRenderSpec spec;
   spec.fontId = getReaderFontId();
   spec.lineCompression = getReaderLineCompression();
+  // Level-based spacing (see the field comments in CrossPointSettings.h): not
+  // upstream's percent-scale wordSpacing/characterSpacing, which would need a
+  // different "wordSpacing" JSON meaning. ReaderRenderSpec keeps these fields
+  // (extraParagraphSpacing as a level, letterSpacing in pixels, wordSpacing as
+  // a level) rather than upstream's wordSpacingPercent/characterSpacing.
   spec.extraParagraphSpacing = extraParagraphSpacing;
   spec.paragraphIndent = paragraphIndent;
   spec.letterSpacing = readerSpacing::letterPixels(letterSpacing);
@@ -569,6 +605,13 @@ float CrossPointSettings::getReaderLineCompression() const {
   // 0.90/0.95/1.00; with one five-level table the base is now expressed once and
   // each level adds a fixed step, so a Noto Sans reader keeps the 0.95 default
   // they already had and the other four levels move evenly around it.
+  //
+  // NOTE (cross-cluster, see RESOLUTION.md): upstream retuned the SD/vector-font
+  // WIDE/EXTRA_WIDE steps to 1.3/1.6 (vs the Bookerly-derived 1.1/1.2 baked into
+  // this formula) because those faces carry their own generous line height. That
+  // switch-based tuning was not ported into this unified formula - lineFactorOffset()
+  // in ReaderSpacing.h does not distinguish SD/vector fonts from built-ins. Worth
+  // revisiting there.
   const float base = (sdFontFamilyName[0] == '\0' && fontFamily == NOTOSANS) ? 0.95f : 1.00f;
   return base + readerSpacing::lineFactorOffset(lineSpacing);
 }

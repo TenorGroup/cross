@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <functional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -14,7 +15,9 @@
 enum class SettingType { TOGGLE, ENUM, ACTION, VALUE, STRING };
 
 // Danh sach dong hanh dong, va NHA cua tung dong, nam o SettingsTabs.h: do la du
-// lieu thuan nen bai kiem chay duoc tren may de ban (test/settings_tabs).
+// lieu thuan nen bai kiem chay duoc tren may de ban (test/settings_tabs). Includes
+// upstream's ClockSettings (#3562), HomeButton (#3516) and About (#3563) alongside
+// Tenor's own DeviceName/FileTransfer/BrowseOPDS/BlePageTurner actions.
 using SettingAction = settingstabs::Action;
 
 struct SettingInfo {
@@ -22,6 +25,7 @@ struct SettingInfo {
   SettingType type;
   uint8_t CrossPointSettings::* valuePtr = nullptr;
   std::vector<StrId> enumValues;
+  std::span<const StrId> staticEnumValues;
   std::vector<std::string> enumStringValues;  // runtime alternative to StrId enumValues (for SD card fonts etc.)
   SettingAction action = SettingAction::None;
 
@@ -57,6 +61,10 @@ struct SettingInfo {
     return *this;
   }
 
+  std::span<const StrId> enumLabels() const {
+    return staticEnumValues.empty() ? std::span<const StrId>(enumValues) : staticEnumValues;
+  }
+
   static SettingInfo Toggle(StrId nameId, uint8_t CrossPointSettings::* ptr, const char* key = nullptr,
                             StrId category = StrId::STR_NONE_OPT) {
     SettingInfo s;
@@ -75,6 +83,18 @@ struct SettingInfo {
     s.type = SettingType::ENUM;
     s.valuePtr = ptr;
     s.enumValues = std::move(values);
+    s.key = key;
+    s.category = category;
+    return s;
+  }
+
+  static SettingInfo StaticEnum(StrId nameId, uint8_t CrossPointSettings::* ptr, std::span<const StrId> values,
+                                const char* key = nullptr, StrId category = StrId::STR_NONE_OPT) {
+    SettingInfo s;
+    s.nameId = nameId;
+    s.type = SettingType::ENUM;
+    s.valuePtr = ptr;
+    s.staticEnumValues = values;
     s.key = key;
     s.category = category;
     return s;
@@ -220,6 +240,10 @@ class SettingsActivity final : public UiTabListActivity {
   void rebuildSettingsLists();
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
 
+  // Tenor's render() (Tenor tab chrome, sibling-tab arrows, save-failed popup)
+  // fully replaces the base sequence, so drawChrome()/drawFooter() are not
+  // overridden here (see render() below and RESOLUTION.md).
+
  public:
   static std::string settingValueText(const SettingInfo& setting);
   // theBanDau: the mo san khi vao man. Man chinh bay cac nhom cai dat thanh dong, bam
@@ -236,5 +260,5 @@ class SettingsActivity final : public UiTabListActivity {
   bool openPendingSettingsSibling() override;
   void restoreNavigation(const MenuNavigationState& state) override;
   void onExit() override;
-  void render(RenderLock&&) override;
+  void render(RenderLock&& lock) override;
 };

@@ -522,7 +522,9 @@ void CrossPointWebServerActivity::loop() {
 
       // Service one request pass, then let main sample input again. skipLoopDelay()
       // keeps the next pass immediate while the server is running. A synchronous
-      // handler finishes before ActivityManager can tear down the server.
+      // handler finishes before ActivityManager can tear down the server. This
+      // replaces upstream's up-to-500-iteration tight loop (#3652-style main-loop
+      // contention: a long blocking loop here starved input/render the same way).
       webServer->handleClient();
       lastHandleClientTime = millis();
       if (backLatch.consume()) {

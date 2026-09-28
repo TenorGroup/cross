@@ -172,6 +172,12 @@ class EpubReaderActivity final : public ReaderActivity {
   // overlay, letting panel->toolbar steps restore the page without a full
   // re-render. Discarded on close / whenever the page under the overlay changes.
   bool overlayPageStored = false;
+  // True while a deferred overlay chrome refresh (pushOverlayRefresh) may still
+  // be running on the panel. settleOverlayRefresh() must run before the
+  // framebuffer is touched or another differential refresh is pushed.
+  bool overlayRefreshPending = false;
+  void pushOverlayRefresh();
+  void settleOverlayRefresh();
   int autoTurnOption = 0;  // current auto page-turn rate index (More panel)
   std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
 
@@ -205,6 +211,8 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr size_t BACKGROUND_BUILD_START_MIN_MAX_ALLOC = 32 * 1024;
   bool deferBackgroundBuildForBle() const;
   bool backgroundBuildStartHeapGate();
+  // Reads the section: requires the render lock. Heap admission is checked separately by the tick.
+  bool backgroundBuildWanted() const;
   bool buildTickHeapGate();
   bool backgroundBuildCanTick();
   // Caller owns RenderLock. Heap-pressure suspension resumes only for an explicit target.
@@ -316,6 +324,7 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string moreRowName(int row) const;
   std::string moreRowValue(int row) const;
   void activateMoreRow(int row);
+  void openFootnoteSelect(bool reopenMenuOnCancel);
   // `editName` non-empty reopens that saved quote for reselection on the current page.
   void openDictionaryWordSelect(bool quotation = false, const std::string& editName = {});
   // Tools > Quotations in this book: the Quotes screen for this book only. A quote it hands

@@ -34,7 +34,9 @@ class TextSettingsActivity final : public UiTabListActivity {
   // silently confused with a StyleRow of equal value.
   // Layout order fixed by the approved plan: the four spacing kinds first, then
   // alignment, margin and paragraph indent. WordSpacing sits between letter and
-  // paragraph spacing.
+  // paragraph spacing. No CharacterSpacing row: that is upstream's #3528
+  // percent/pixel-offset redesign, not taken (see RESOLUTION.md) - Tenor's own
+  // LetterSpacing already covers inter-character spacing.
   enum class LayoutRow {
     LineSpacing,
     LetterSpacing,
@@ -56,6 +58,9 @@ class TextSettingsActivity final : public UiTabListActivity {
   void activateIndex(int index) override;
   void onTabAction(int index) override;
   void stepTab(int direction) override { switchTab(direction); }
+  // Tenor's render() (settled-list preview pane, TENOR_PRESS_PROBE timing) fully
+  // replaces the base sequence, so drawChrome()/drawFooter() are not overridden
+  // here (see render() below and RESOLUTION.md).
   bool handleButtons() override;
   bool handleCustomInput() override;
   bool allowsTiltTabNavigation() const override { return !optionPopup_.isActive(); }

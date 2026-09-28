@@ -19,6 +19,9 @@ __pycache__/
 .vscode/
 .idea/
 .history/
+.zed
+open-x4-sdk
+lib/EpdFont/fontsrc
 # Private project operations
 /exploration/
 /debate/

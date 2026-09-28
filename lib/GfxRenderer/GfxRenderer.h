@@ -13,14 +13,19 @@ enum class BidiBaseDir : signed char { AUTO = -1, LTR = 0, RTL = 1 };
 
 class FontCacheManager;
 class SdCardFont;
+class TtfEpdFont;
 
+#include <array>
 #include <cstring>
-#include <deque>
 #include <map>
 #include <string>
 #include <vector>
 
 #include "Bitmap.h"
+
+namespace glyphBitmap {
+struct Frame;
+}
 
 // Color representation: uint8_t mapped to 4x4 Bayer matrix dithering levels
 // 0 = transparent, 1-16 = gray levels (white to black)
@@ -65,6 +70,9 @@ class GfxRenderer {
   // fontCacheManager_ below.
   mutable std::map<int, SdCardFont*> sdCardFonts_;
   mutable std::map<int, uint16_t> sdCardFontScales_;  // fontId -> 8.8 fixed point scale (256=1.0x)
+  // TTF (vector) fonts: rebuilt per page by ensureSdCardFontReady(). Mutable for
+  // the same reason as sdCardFonts_ (const layout path triggers a rebuild).
+  mutable std::map<int, TtfEpdFont*> ttfFonts_;
 
   // Mutable because drawText() is const but needs to delegate scan-mode
   // recording to the (non-const) FontCacheManager. Same pragmatic compromise
@@ -96,6 +104,10 @@ class GfxRenderer {
   mutable int _stripY0 = 0;
   mutable int _stripRows = 0;
   mutable bool _stripActive = false;
+  mutable int clipLeft_ = 0;
+  mutable int clipTop_ = 0;
+  mutable int clipRight_ = 32767;
+  mutable int clipBottom_ = 32767;
 
   // CJK UI font fallback map: primary (built-in, Latin-only) UI font id -> a
   // size-matched SD-card font id that carries CJK glyphs. When a string drawn
@@ -191,6 +203,13 @@ class GfxRenderer {
   }
   const std::map<int, SdCardFont*>& getSdCardFonts() const { return sdCardFonts_; }
   bool isSdCardFont(int fontId) const { return sdCardFonts_.count(fontId) > 0; }
+  // TTF (vector) fonts rendered via TtfEpdFont/FreeInkFont. Registered like an
+  // ordinary EpdFontFamily (insertFont), plus tracked here so ensureSdCardFontReady()
+  // rebuilds their per-page glyph set on demand - the eager analogue of the SD
+  // font prewarm. The TtfEpdFont is owned by the caller (SdCardFontSystem).
+  void registerTtfFont(int fontId, TtfEpdFont* font) { ttfFonts_[fontId] = font; }
+  void unregisterTtfFont(int fontId) { ttfFonts_.erase(fontId); }
+  const std::map<int, TtfEpdFont*>& getTtfFonts() const { return ttfFonts_; }
   // Register/clear size-matched CJK UI fallbacks (see fallbackFontMap_).
   // setFallbackFont maps a primary UI font id to an SD font id of the same size.
   void setFallbackFont(int primaryFontId, int fallbackFontId) { fallbackFontMap_[primaryFontId] = fallbackFontId; }
@@ -199,8 +218,11 @@ class GfxRenderer {
   // (which holds a const GfxRenderer&) before measuring word widths. Safe to call on non-SD fonts (no-op).
   // styleMask: bitmask of styles to prepare (bit 0=regular, 1=bold, 2=italic, 3=bold-italic).
   void ensureSdCardFontReady(int fontId, const char* utf8Text, uint8_t styleMask = 0x0F) const;
-  void ensureSdCardFontReady(int fontId, const std::deque<std::string>& words, bool includeHyphen,
-                             uint8_t styleMask = 0x0F) const;
+  // Packed variant for the paragraph layout path: each segment holds
+  // consecutive NUL-terminated words (WordStore chunks), so a whole paragraph
+  // is scanned without materializing per-word strings.
+  void ensureSdCardFontReady(int fontId, const char* const* segments, const size_t* segmentLens, size_t segmentCount,
+                             bool includeSpace, bool includeHyphen, uint8_t styleMask = 0x0F) const;
 
   // Orientation control (affects logical width/height and coordinate transforms)
   void setOrientation(const Orientation o) { orientation = o; }
@@ -285,7 +307,20 @@ class GfxRenderer {
   int getWriteRows() const { return _stripActive ? _stripRows : panelHeight; }
 
   // Drawing
+  // UI drawing clip in logical coordinates; independent of panel orientation.
+  std::array<int, 4> getClipRect() const {
+    return {clipLeft_, clipTop_, clipRight_ - clipLeft_, clipBottom_ - clipTop_};
+  }
+  void setClipRect(int x, int y, int width, int height) const {
+    clipLeft_ = x;
+    clipTop_ = y;
+    clipRight_ = x + width;
+    clipBottom_ = y + height;
+  }
   void drawPixel(int x, int y, bool state = true) const;
+  // Draw glyph ink with clipping and orientation resolved once per glyph.
+  void drawGlyphBitmap(const uint8_t* bitmap, int width, int height, const glyphBitmap::Frame& frame, bool twoBit,
+                       RenderMode mode, bool state) const;
   void drawLine(int x1, int y1, int x2, int y2, bool state = true) const;
   void drawLine(int x1, int y1, int x2, int y2, int lineWidth, bool state) const;
   void drawRect(int x, int y, int width, int height, bool state = true) const;
@@ -305,8 +340,14 @@ class GfxRenderer {
   // With `levelRows`, every pixel of the image is written black or white by its level's ordered
   // pattern: bit (7 - panel x & 7) of levelRows[level][panel y & 3], set for white. One decode then
   // gives the dithered frame the absolute LSB and MSB planes would fold into.
+  // `whiteAsTransparent` leaves the framebuffer under the image's white pixels as it is (a sleep
+  // overlay drawn over the page).
   bool drawBitmap(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight, float cropX = 0,
-                  float cropY = 0, const uint8_t (*levelRows)[4] = nullptr) const;
+                  float cropY = 0, const uint8_t (*levelRows)[4] = nullptr, bool whiteAsTransparent = false) const;
+  bool drawBitmap(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight, float cropX, float cropY,
+                  bool whiteAsTransparent) const {
+    return drawBitmap(bitmap, x, y, maxWidth, maxHeight, cropX, cropY, nullptr, whiteAsTransparent);
+  }
   bool drawBitmap1Bit(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight) const;
   // A packed 1-bit picture in RAM (MSB first, a set bit white): its region [srcX, srcX + w) x
   // [srcY, srcY + h) goes 1:1 to (x, y), every pixel written.
@@ -326,6 +367,8 @@ class GfxRenderer {
   void writeFramebufferRegion(int x, int y, int w, int h, const uint8_t* src);
 
   // Text
+  // Layout may use advance-only SD font tables; rendered measurement includes kerning and ligatures.
+  enum class TextMeasureMode { Layout, Rendered };
   int getTextWidth(int fontId, const char* text, EpdFontFamily::Style style = EpdFontFamily::REGULAR,
                    BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO, int letterSpacing = 0) const;
   void drawCenteredText(int fontId, int y, const char* text, bool black = true,
@@ -348,12 +391,25 @@ class GfxRenderer {
   /// x-position builder all measure one gap.
   int getSpaceAdvance(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style,
                       uint8_t wordSpacing = 0) const;
-  /// Returns the kerning adjustment between two adjacent codepoints.
-  int getKerning(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const;
+  /// Returns the kerning adjustment between two adjacent codepoints, plus \p tracking pixels
+  /// unless either side is a space (or there is no left codepoint).
+  int getKerning(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style, int8_t tracking = 0) const;
   /// Whole-string advance. \p wordSpacing applies the U+0020 delta to every
   /// space in \p text (TXT layout measures and draws whole lines).
   int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style, int letterSpacing = 0,
                       uint8_t wordSpacing = 0) const;
+  /// The same advance for a given bidi base direction; Rendered mode skips the SD advance-table
+  /// fast path so kerning and ligatures count, as drawText draws them. \p tracking is the
+  /// letterSpacing above.
+  int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style, int8_t tracking,
+                      BidiUtils::BidiBaseDir baseDir, TextMeasureMode mode = TextMeasureMode::Layout) const;
+
+ private:
+  // Both getTextAdvanceX spellings measure here, so they can never disagree.
+  int textAdvanceX(int fontId, const char* text, EpdFontFamily::Style style, int letterSpacing, uint8_t wordSpacing,
+                   BidiUtils::BidiBaseDir baseDir, TextMeasureMode mode) const;
+
+ public:
   int getDropCapAdvance(int fontId, const char* text, EpdFontFamily::Style style, int height,
                         int letterSpacing = 0) const;
   int getDropCapWordWidth(int fontId, const char* text, EpdFontFamily::Style style, int height,

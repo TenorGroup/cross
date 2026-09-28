@@ -21,13 +21,16 @@
 namespace parserAllocationFault {
 size_t objectSize = 0;
 bool array = false;
+// Consecutive matching allocations to fail. An allocation the firmware retries after cache
+// eviction (ParsedText, the word arena, the TextBlock arena) needs two to stay failed.
+unsigned times = 1;
 unsigned hits = 0;
-void reset() { objectSize = 0; array = false; hits = 0; }
+void reset() { objectSize = 0; array = false; times = 1; hits = 0; }
 }
 
 void* operator new(size_t size, const std::nothrow_t&) noexcept {
   if (parserAllocationFault::objectSize == size) {
-    parserAllocationFault::objectSize = 0;
+    if (--parserAllocationFault::times == 0) parserAllocationFault::objectSize = 0;
     ++parserAllocationFault::hits;
     return nullptr;
   }
@@ -35,7 +38,7 @@ void* operator new(size_t size, const std::nothrow_t&) noexcept {
 }
 void* operator new[](size_t size, const std::nothrow_t&) noexcept {
   if (parserAllocationFault::array) {
-    parserAllocationFault::array = false;
+    if (--parserAllocationFault::times == 0) parserAllocationFault::array = false;
     ++parserAllocationFault::hits;
     return nullptr;
   }
@@ -130,15 +133,20 @@ TEST_F(ChapterHtmlSlimParserTest, PlainLineBreaksMatchUnannotatedRubyPath) {
     style.alignment = CssTextAlign::Left;
     style.textAlignDefined = true;
     const int spacing = static_cast<int>(next() % 17) - 8;
-    ParsedText plain(false, false, false, style, next() % 3, spacing, next() % 5);
+    const uint8_t indent = next() % 3;
+    const uint8_t wordSpacing = next() % 5;
+    // Word text lives in a move-only arena, so the annotated copy is built from the same draws.
+    ParsedText plain(false, false, false, style, indent, spacing, wordSpacing);
+    ParsedText annotated(false, false, false, style, indent, spacing, wordSpacing);
     const size_t count = 2 + next() % 40;
     for (size_t i = 0; i < count; ++i) {
-      plain.addWord(std::string(1 + next() % 14, static_cast<char>('a' + next() % 26)),
-                    static_cast<EpdFontFamily::Style>(next() % 4));
-      plain.wordContinues[i] = (next() & 8) != 0;
-      plain.wordNoSpaceBefore[i] = (next() & 8) != 0;
+      const std::string word(1 + next() % 14, static_cast<char>('a' + next() % 26));
+      const auto wordStyle = static_cast<EpdFontFamily::Style>(next() % 4);
+      plain.addWord(word, wordStyle);
+      annotated.addWord(word, wordStyle);
+      plain.wordContinues[i] = annotated.wordContinues[i] = (next() & 8) != 0;
+      plain.wordNoSpaceBefore[i] = annotated.wordNoSpaceBefore[i] = (next() & 8) != 0;
     }
-    ParsedText annotated = plain;
     annotated.rubyTexts.resize(count);
     auto plainWidths = plain.calculateWordWidths(renderer, 0);
     auto annotatedWidths = annotated.calculateWordWidths(renderer, 0);
@@ -150,7 +158,8 @@ TEST_F(ChapterHtmlSlimParserTest, PlainLineBreaksMatchUnannotatedRubyPath) {
     const auto actual = plain.computeLineBreaks(renderer, 0, pageWidth, plainWidths,
                                                plain.wordContinues, plain.wordNoSpaceBefore);
     ASSERT_EQ(actual, expected);
-    ASSERT_EQ(plain.words, annotated.words);
+    ASSERT_EQ(plain.words.size(), annotated.words.size());
+    for (size_t i = 0; i < plain.words.size(); ++i) ASSERT_EQ(plain.wordAt(i), annotated.wordAt(i));
     ASSERT_EQ(plainWidths, annotatedWidths);
   }
 }
@@ -268,8 +277,8 @@ TEST_F(ChapterHtmlSlimParserTest, SpanWithHiddenAttributeShouldBeSkipped) {
   ChapterHtmlSlimParser::characterData(&parser, " After ", 7);
 
   ASSERT_EQ(parser.currentTextBlock->size(), 2);
-  ASSERT_EQ(parser.currentTextBlock->words[0], "Before");
-  ASSERT_EQ(parser.currentTextBlock->words[1], "After");
+  ASSERT_EQ(parser.currentTextBlock->wordAt(0), "Before");
+  ASSERT_EQ(parser.currentTextBlock->wordAt(1), "After");
 }
 
 TEST_F(ChapterHtmlSlimParserTest, DivWithHiddenAttributeContentShouldBeSkipped) {
@@ -620,8 +629,10 @@ TEST_F(ChapterHtmlSlimParserTest, AllocationFailureRejectsChapterAndRetryConserv
     output << "</body></html>";
   }
   const std::string inputPath = path.string();
-  // The zero-size case targets the TextBlock arena's nothrow array allocation.
+  // The zero-size case targets the next nothrow array allocation: the word arena's chunk or the
+  // TextBlock arena. Both, and ParsedText, are retried once after cache eviction, so they fail twice.
   for (const size_t allocationSize : {sizeof(TextBlock), sizeof(PageLine), sizeof(Page), sizeof(ParsedText), size_t{0}}) {
+    const unsigned failures = allocationSize == 0 || allocationSize == sizeof(ParsedText) ? 2u : 1u;
     for (const unsigned failAfterPage : {2u, 49u}) {
     SCOPED_TRACE(allocationSize);
     for (const bool inject : {true, false}) {
@@ -639,12 +650,13 @@ TEST_F(ChapterHtmlSlimParserTest, AllocationFailureRejectsChapterAndRetryConserv
             if (inject && emitted == failAfterPage) {
               parserAllocationFault::objectSize = allocationSize;
               parserAllocationFault::array = allocationSize == 0;
+              parserAllocationFault::times = failures;
             }
           }, false, "", ""};
       const bool success = attempt.parseAndBuildPages();
       EXPECT_EQ(success, !inject);
       if (inject) {
-        EXPECT_EQ(parserAllocationFault::hits, 1u);
+        EXPECT_EQ(parserAllocationFault::hits, failures);
         const unsigned beforeFinish = emitted;
         EXPECT_FALSE(attempt.finishParse());
         EXPECT_EQ(emitted, beforeFinish);
@@ -664,9 +676,10 @@ TEST_F(ChapterHtmlSlimParserTest, FailedTextBlockKeepsLayoutFailureSticky) {
     text.addWord("conservation", EpdFontFamily::REGULAR);
     parserAllocationFault::reset();
     parserAllocationFault::array = true;
+    parserAllocationFault::times = 2;  // the TextBlock arena is retried once after cache eviction
     unsigned emitted = 0;
     EXPECT_FALSE(text.layoutAndExtractLines(renderer, 0, 200, [&](auto, auto) { ++emitted; }));
-    EXPECT_EQ(parserAllocationFault::hits, 1u);
+    EXPECT_EQ(parserAllocationFault::hits, 2u);
     EXPECT_EQ(emitted, 0u);
     EXPECT_EQ(text.size(), 1u);
     EXPECT_FALSE(text.layoutAndExtractLines(renderer, 0, 200, [&](auto, auto) { ++emitted; }));
@@ -859,4 +872,64 @@ TEST_F(ChapterHtmlSlimParserTest, ManyLegalRubyAnnotationsBoundAggregateBytes) {
   EXPECT_EQ(annotationBytes, 204800u);
   std::cout << "many legal ruby groups peak retained annotation bytes=" << peakAnnotationBytes << "\n";
   std::filesystem::remove(path);
+}
+
+TEST(KoreanLayout, HangulWordsStayWholeAndWrapAtSpaces) {
+  GfxRenderer renderer;
+  {
+    BlockStyle style;
+    style.alignment = CssTextAlign::Left;
+    style.textIndentDefined = true;
+    ParsedText text(false, false, false, style);
+    text.addWord("가나다", EpdFontFamily::REGULAR);
+    text.addWord("라마", EpdFontFamily::REGULAR);
+    text.addWord("3개를", EpdFontFamily::REGULAR);
+    text.addWord("iPhone을", EpdFontFamily::REGULAR);
+    std::vector<std::vector<std::string>> lines;
+    text.layoutAndExtractLines(renderer, 0, 60, [&](std::unique_ptr<TextBlock> line, auto) {
+      auto& words = lines.emplace_back();
+      for (uint16_t i = 0; i < line->wordCount(); ++i) words.emplace_back(line->wordText(i));
+    });
+    // 가나다 라마 is 24 + 4 + 16 px; adding 3개를 would need 72 px, and no break exists inside it.
+    const std::vector<std::vector<std::string>> expected{{"가나다", "라마"}, {"3개를"}, {"iPhone을"}};
+    EXPECT_EQ(lines, expected);
+  }
+}
+
+TEST(KoreanLayout, JustifiedHangulStretchesOnlyWordSpaces) {
+  GfxRenderer renderer;
+  BlockStyle style;
+  style.alignment = CssTextAlign::Justify;
+  style.textIndentDefined = true;
+  ParsedText text(false, false, false, style);
+  for (const char* word : {"가나", "다라", "마바", "사아"}) text.addWord(word, EpdFontFamily::REGULAR);
+  unsigned lines = 0;
+  text.layoutAndExtractLines(renderer, 0, 60, [&](std::unique_ptr<TextBlock> line, auto) {
+    if (lines++ != 0) return;
+    // 3 x 16 px words + 2 x 4 px spaces leave 4 px, split across the two spaces only.
+    ASSERT_EQ(line->wordCount(), 3);
+    EXPECT_EQ(line->wordXpos(0), 0);
+    EXPECT_EQ(line->wordXpos(1), 22);
+    EXPECT_EQ(line->wordXpos(2), 44);
+  });
+  EXPECT_EQ(lines, 2u);
+}
+
+TEST(KoreanLayout, HangulGluedAcrossInlineStyleIsUnbreakable) {
+  GfxRenderer renderer;
+  BlockStyle style;
+  style.alignment = CssTextAlign::Justify;
+  style.textIndentDefined = true;
+  ParsedText text(false, false, false, style);
+  text.addWord("가나", EpdFontFamily::REGULAR);
+  text.addWord("한국", EpdFontFamily::REGULAR);
+  text.addWord("어", EpdFontFamily::BOLD, false, /*attachToPrevious=*/true);
+  std::vector<std::vector<std::string>> lines;
+  text.layoutAndExtractLines(renderer, 0, 40, [&](std::unique_ptr<TextBlock> line, auto) {
+    auto& words = lines.emplace_back();
+    for (uint16_t i = 0; i < line->wordCount(); ++i) words.emplace_back(line->wordText(i));
+  });
+  // 가나 한국 fits in 36 px, but 어 is glued to 한국, so the whole word moves down.
+  const std::vector<std::vector<std::string>> expected{{"가나"}, {"한국", "어"}};
+  EXPECT_EQ(lines, expected);
 }

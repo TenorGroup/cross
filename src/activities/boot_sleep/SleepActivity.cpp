@@ -43,6 +43,12 @@
 
 namespace {
 
+HalDisplay::GrayscaleMode sleepGrayscaleMode(const GfxRenderer& renderer) {
+  return renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Direct).supported()
+             ? HalDisplay::GrayscaleMode::Direct
+             : HalDisplay::GrayscaleMode::Absolute;
+}
+
 // Kept separate from /sleep.bmp and /.sleep so alpha-overlay art does not mix with full-screen wallpapers.
 constexpr char TRANSPARENT_SLEEP_ROOT_BMP[] = "/sleep-overlay.bmp";
 constexpr char TRANSPARENT_SLEEP_ROOT_PNG[] = "/sleep-overlay.png";
@@ -368,10 +374,10 @@ AlphaOverlayResult tryRenderTransparentOverlayBmp(HalFile& file, GfxRenderer& re
 
   if (!renderTransparentOverlayPass(file, info, placement, renderer, row.get(), TransparentOverlayPass::BW))
     return AlphaOverlayResult::Error;
-  const bool absolute = renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
+  const bool absolute = renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported();
   SleepGrayPlanes planes(renderer, SleepGrayPlanes::wanted());
   if (absolute) {
-    if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute)) return AlphaOverlayResult::Error;
+    if (!renderer.displayGrayscaleBase(sleepGrayscaleMode(renderer))) return AlphaOverlayResult::Error;
   } else if (!planes.base()) {
     return AlphaOverlayResult::Rendered;
   }
@@ -635,14 +641,8 @@ void SleepActivity::onEnter() {
   LOG_INF("SLP", "Timing entered-image-render at=%lu", static_cast<unsigned long>(millis()));
   Activity::onEnter();
 
-  const bool frameWasInverted = display.isInverted();
   // One reference: each SETTINGS use expands the store's guarded construction again (flash).
   const auto& settings = SETTINGS;
-
-  // Sleep screens always use normal polarity. This activity draws directly
-  // from onEnter (outside ActivityManager's per-render polarity resolution),
-  // so clear any inversion left over from a night-mode reader render.
-  display.setInverted(false);
 
   const bool renderQuickResume =
       settings.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
@@ -652,8 +652,19 @@ void SleepActivity::onEnter() {
   SleepGrayPlanes::decide(gpio.deviceIsX3(), settings.sleepBwRefresh);
 
   if (renderQuickResume) {
+    // Quick Resume keeps the current frame as-is, so the driver's inversion
+    // state stays too: a night-mode page sleeps in night polarity, and the
+    // moon icon inverts with it at transfer like any other draw.
     return renderLastScreenSleepScreen();
   }
+
+  const bool frameWasInverted = display.isInverted();
+
+  // The remaining sleep screens draw fresh content in normal polarity. This
+  // activity draws directly from onEnter (outside ActivityManager's
+  // per-render polarity resolution), so clear any inversion left over from a
+  // night-mode reader render.
+  display.setInverted(false);
 
   if (settings.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT_CUSTOM) {
     // Transparent mode retains the current framebuffer. Materialize any
@@ -756,7 +767,7 @@ void SleepActivity::renderCustomSleepScreen() const {
   HalFile file;
   if (Storage.openFileForRead("SLP", "/sleep.bmp", file)) {
     Bitmap bitmap(file, true,
-                  renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported() &&
+                  renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
                       display.getController() == HalDisplay::Controller::SSD1677 &&
                       SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
     if (bitmap.parseHeaders() == BmpReaderError::Ok) {
@@ -778,7 +789,7 @@ void SleepActivity::renderCustomSleepScreen() const {
     if (Storage.openFileForRead("SLP", selectedPath, randFile)) {
       LOG_DBG("SLP", "Randomly loading: %s", selectedPath.c_str());
       Bitmap bitmap(randFile, true,
-                    renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported() &&
+                    renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
                         display.getController() == HalDisplay::Controller::SSD1677 &&
                         SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
       if (bitmap.parseHeaders() == BmpReaderError::Ok) {
@@ -830,8 +841,11 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
   const bool hasGreyscale =
       bitmap.hasGreyscale() && (preserveBackground || SETTINGS.sleepScreenCoverFilter ==
                                                           CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
-  const auto absoluteCaps = renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute);
-  const bool absolute = hasGreyscale && !preserveBackground && absoluteCaps.supported();
+  // One grayscale mode for the capability query and the base (Direct where the panel has it: one
+  // combined activation). Overlay pictures take the absolute planes too, their white left
+  // transparent (#3541).
+  const auto absoluteCaps = renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer));
+  const bool absolute = hasGreyscale && absoluteCaps.supported();
   const bool combined = absolute && absoluteCaps.base == HalDisplay::GrayscaleBase::Combined;
   LOG_INF("SLP", "Sleep image %dx%d, absolute=%u, combined=%u", bitmap.getWidth(), bitmap.getHeight(), absolute,
           combined);
@@ -839,7 +853,8 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
   // Folding, the two absolute planes would only be folded into one dithered frame: dither the
   // image as it is decoded instead, one read of the file where the planes took one each.
   if (absolute && fold) {
-    if (!renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY, SleepGrayPlanes::LEVELS)) {
+    if (!renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY, SleepGrayPlanes::LEVELS,
+                             preserveBackground)) {
       LOG_ERR("SLP", "Incomplete grayscale image; keeping the current display");
       return;
     }
@@ -848,7 +863,7 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
     return;
   }
 
-  if (!combined && !renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY)) {
+  if (!combined && !renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY, preserveBackground)) {
     showSleepFrame(renderer);
     return;
   }
@@ -860,7 +875,7 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
 
   SleepGrayPlanes planes(renderer, fold);
   if (absolute) {
-    if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute)) return;
+    if (!renderer.displayGrayscaleBase(sleepGrayscaleMode(renderer))) return;
   } else if (hasGreyscale) {
     // OEM grayscale pipeline base. Must stay HALF: the gray nudge LUT is
     // calibrated against the pixel state the single-pass HALF waveform leaves
@@ -873,7 +888,8 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
 
   LOG_INF("SLP", "Timing bitmap-base=%lu ms", static_cast<unsigned long>(millis() - started));
   // The one-pass decode uploads both planes itself; X3 folds them in the loop below instead.
-  if (absolute && !fold && x == 0 && y == 0 && cropX == 0 && cropY == 0) {
+  // It writes every pixel, so an overlay that keeps the page behind it takes the loop.
+  if (absolute && !fold && !preserveBackground && x == 0 && y == 0 && cropX == 0 && cropY == 0) {
     if (renderer.drawBitmapAbsolutePlanes(bitmap)) {
       LOG_INF("SLP", "Timing one-pass-planes=%lu ms", static_cast<unsigned long>(millis() - started));
       renderer.displayGrayBuffer();
@@ -890,9 +906,9 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
         ready = false;
         break;
       }
-      renderer.clearScreen(absolute ? 0xFF : 0x00);
+      if (!absolute || !preserveBackground) renderer.clearScreen(absolute ? 0xFF : 0x00);
       renderer.setRenderMode(plane);
-      if (!renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY)) {
+      if (!renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY, preserveBackground)) {
         ready = false;
         break;
       }
@@ -947,10 +963,10 @@ bool SleepActivity::renderTransparentOverlayPng(const std::string& path) const {
   LOG_DBG("SLP", "Rendering transparent PNG overlay: %s (%dx%d)", path.c_str(), dimensions.width, dimensions.height);
 
   if (!converter.decodeToFramebuffer(path, renderer, config)) return false;
-  const bool absolute = renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
+  const bool absolute = renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported();
   SleepGrayPlanes planes(renderer, SleepGrayPlanes::wanted());
   if (absolute) {
-    if (!renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute)) return false;
+    if (!renderer.displayGrayscaleBase(sleepGrayscaleMode(renderer))) return false;
   } else if (!planes.base()) {
     return true;
   }
@@ -1016,7 +1032,7 @@ void SleepActivity::renderCoverSleepScreen() const {
 
   // SSD absolute images use the new thresholds; other panels retain legacy tuning.
   const bool originalThresholds =
-      renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported() &&
+      renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
       display.getController() == HalDisplay::Controller::SSD1677 &&
       SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
   std::string coverBmpPath;
@@ -1090,16 +1106,18 @@ void SleepActivity::renderCoverSleepScreen() const {
 void SleepActivity::renderLastScreenSleepScreen() const {
   const auto pageHeight = renderer.getScreenHeight();
   renderer.drawImage(MoonIcon, 0, pageHeight - MOONICON_HEIGHT, MOONICON_WIDTH, MOONICON_HEIGHT);
-  // X3 can add the moon with the soft XTF_PRE_BW_MID base waveform, no flash, since the
-  // controller still holds the page. But that pass leaves pixels part driven, and the page can
-  // hold reader gray from the XTF_AA pass; it stays on the unpowered glass all night, so by
-  // default one GC flash is the cheaper cost.
+  // Only the moon differs from the displayed frame. X3 can add it with the soft XTF_PRE_BW_MID
+  // base waveform, no flash, since the controller still holds the page. But that pass leaves
+  // pixels part driven, and the page can hold reader gray from the XTF_AA pass; it stays on the
+  // unpowered glass all night, so by default one GC flash is the cheaper cost. Elsewhere a
+  // differential FAST update adds the moon without the flashing clean pass (which sweeps the
+  // panel through the inverse: a full white flash on a night-mode page).
   if (SleepGrayPlanes::wanted())
     renderer.displayBuffer(HalDisplay::FULL_REFRESH);
   else if (gpio.deviceIsX3())
     renderer.displayGrayscaleBase(HalDisplay::FAST_REFRESH);
   else
-    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
 
 void SleepActivity::renderBlankSleepScreen() const {

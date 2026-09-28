@@ -6,7 +6,7 @@
 #include "MenuCustomization.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
-#include "activities/settings/DongHoSettingsActivity.h"
+#include "activities/settings/ClockSettingsActivity.h"
 #include "activities/settings/KOReaderSettingsActivity.h"
 #include "activities/settings/OpdsServerListActivity.h"
 #include "activities/settings/StatusBarSettingsActivity.h"
@@ -14,10 +14,14 @@
 namespace menufavorites {
 namespace {
 constexpr Descriptor ITEMS[] = {
-    {"clock/clockFormat", StrId::STR_CLOCK_FORMAT, "clock", 0, 0},
-    {"clock/clockUtcOffsetQ", StrId::STR_CLOCK_UTC_OFFSET, "clock", 0, 1},
-    {"clock/sync", StrId::STR_CLOCK_SYNC_NOW, "clock", 0, 2},
-    {"clock/clockAutoTimezone", StrId::STR_CLOCK_AUTO_TIMEZONE, "clock", 0, 3},
+    // Row indices match ClockSettingsActivity's MenuItem enum (#3562 replaced
+    // the old UTC-offset picker with a named timezone + DST picker).
+    {"clock/clockTimezone", StrId::STR_TIMEZONE, "clock", 0, 0},
+    {"clock/clockDst", StrId::STR_CLOCK_DST, "clock", 0, 1},
+    {"clock/clockFormat", StrId::STR_CLOCK_FORMAT, "clock", 0, 2},
+    {"clock/clockShowInHeader", StrId::STR_CLOCK_IN_HEADER, "clock", 0, 3},
+    {"clock/sync", StrId::STR_CLOCK_SYNC_NOW, "clock", 0, 4},
+    {"clock/clockAutoTimezone", StrId::STR_CLOCK_AUTO_TIMEZONE, "clock", 0, 5},
     {"status/statusBarChapterPageCount", StrId::STR_CHAPTER_PAGE_COUNT, "status", 0, 0},
     {"status/statusBarBookProgressPercentage", StrId::STR_BOOK_PROGRESS_PERCENTAGE, "status", 0, 1},
     {"status/statusBarProgressBar", StrId::STR_PROGRESS_BAR, "status", 0, 2},
@@ -126,7 +130,7 @@ std::string value(const std::string& key, const std::vector<SettingInfo>& settin
         return SettingsActivity::settingValueText(buildTenorClockPlacementSetting(info));
     }
   }
-  if (item && strcmp(item->screen, "clock") == 0) return DongHoSettingsActivity::giaTriDong(item->row);
+  if (item && strcmp(item->screen, "clock") == 0) return ClockSettingsActivity::giaTriDong(item->row);
   if (item && strcmp(item->screen, "text") == 0) {
     if (item->tab == 2) return TextSettingsActivity::layoutValueText(item->row);
     if (item->tab == 3) return TextSettingsActivity::styleValueText(item->row);
@@ -171,7 +175,7 @@ std::unique_ptr<UiListActivity> open(const std::string& key, GfxRenderer& render
   } else if (!item) {
     return nullptr;
   } else if (strcmp(item->screen, "clock") == 0) {
-    result = makeUniqueNoThrow<DongHoSettingsActivity>(renderer, input);
+    result = makeUniqueNoThrow<ClockSettingsActivity>(renderer, input);
   } else if (strcmp(item->screen, "kosync") == 0) {
     result = makeUniqueNoThrow<KOReaderSettingsActivity>(renderer, input);
   } else if (strcmp(item->screen, "status") == 0) {

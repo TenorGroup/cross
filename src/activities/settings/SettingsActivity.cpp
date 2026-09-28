@@ -2,21 +2,26 @@
 
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
+#include <HalClock.h>
 #include <HalDisplay.h>
+#include <LibraryBuilder.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <WiFi.h>
 
 #include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstring>
 
+#include "AboutActivity.h"
 #include "BlePageTurnerActivity.h"
 #include "ButtonRemapActivity.h"
 #include "ClearCacheActivity.h"
+#include "ClockSettingsActivity.h"
 #include "CrossPointSettings.h"
-#include "DongHoSettingsActivity.h"
 #include "FontDownloadActivity.h"
+#include "HomeButtonSettingsActivity.h"
 #include "KOReaderSettingsActivity.h"
 #include "KeyboardLayoutsActivity.h"
 #include "activities/util/KeyboardLayoutSet.h"
@@ -28,6 +33,7 @@
 #include "SdCardFontSystem.h"
 #include "SdFirmwareUpdateActivity.h"
 #include "SettingsList.h"
+#include "SilentRestart.h"
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
 #include "UIFontTiers.h"
@@ -110,6 +116,7 @@ void SettingsActivity::rebuildSettingsLists() {
       {StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache},
       {StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates},
       {StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate},
+      {StrId::STR_ABOUT, SettingAction::About},
   };
   const auto& catalog = getBaseSettingsList();
   std::array<size_t, settingstabs::TAB_COUNT> rowCounts{};
@@ -137,6 +144,12 @@ void SettingsActivity::rebuildSettingsLists() {
       displaySettings.insert(afterLabels == displaySettings.end() ? afterLabels : afterLabels + 1,
                              buildTenorClockPlacementSetting(setting));
     } else {
+      // Home button settings are edited via the HomeButton action row's sub-screen
+      // (below), not as individual rows in the flat Controls list (#3516).
+      // longPressMenuFunction (legacy long-press-Confirm cycling) is superseded by
+      // the Home button's own long-press action on home-key boards.
+      if (home_button::isSetting(setting.valuePtr)) continue;
+      if (BoardConfig::hasHomeKey() && setting.valuePtr == &CrossPointSettings::longPressMenuFunction) continue;
       danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).push_back(setting);
     }
   }
@@ -156,11 +169,20 @@ void SettingsActivity::rebuildSettingsLists() {
     keyboardSettings.insert(keyboardSettings.begin(),
                             SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
   }
-  // Clock precedes file-management preferences.
-  const auto files = std::find_if(systemSettings.begin(), systemSettings.end(), [](const SettingInfo& row) {
-    return row.valuePtr == &CrossPointSettings::showHiddenFiles;
-  });
-  systemSettings.insert(files, SettingInfo::Action(StrId::STR_CLOCK, SettingAction::Clock));
+  // Home button shortcuts (#3516): a physical Home key only.
+  if (BoardConfig::hasHomeKey()) {
+    controlsSettings.insert(controlsSettings.begin(),
+                            SettingInfo::Action(StrId::STR_HOME_BUTTON, SettingAction::HomeButton));
+  }
+  // Clock configuration only exists where the RTC probe found hardware (on
+  // clockless boards there is nothing to set), and precedes file-management
+  // preferences.
+  if (halClock.isAvailable()) {
+    const auto files = std::find_if(systemSettings.begin(), systemSettings.end(), [](const SettingInfo& row) {
+      return row.valuePtr == &CrossPointSettings::showHiddenFiles;
+    });
+    systemSettings.insert(files, SettingInfo::Action(StrId::STR_CLOCK, SettingAction::ClockSettings));
+  }
   readerSettings.insert(readerSettings.begin(),
                         SettingInfo::Action(StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings));
   readerSettings.insert(readerSettings.begin() + 1,
@@ -175,7 +197,7 @@ void SettingsActivity::rebuildSettingsLists() {
   for (size_t tab = 0; tab < tabNavs.size(); ++tab) {
     const int count = static_cast<int>(danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).size());
     auto& cursor = tabNavs[tab];
-    cursor.selected = count == 0 ? 0 : std::clamp(cursor.selected, mappedInput.hasTouch() ? 0 : 1, count);
+    cursor.selected = count == 0 ? 0 : std::clamp(cursor.selected.load(), mappedInput.hasTouch() ? 0 : 1, count);
     cursor.followOnBuild = true;
   }
   currentSettings = &danhSachCuaThe(static_cast<settingstabs::Tab>(selectedCategoryIndex));
@@ -336,7 +358,7 @@ void SettingsActivity::stepTab(const int direction) {
 
 void SettingsActivity::dapXuongNhom() {
   auto& n = activeNav();
-  n.selected = settingsCount <= 0 ? 0 : std::clamp(n.selected, mappedInput.hasTouch() ? 0 : 1, settingsCount);
+  n.selected = settingsCount <= 0 ? 0 : std::clamp(n.selected.load(), mappedInput.hasTouch() ? 0 : 1, settingsCount);
   n.followOnBuild = true;
 }
 
@@ -394,6 +416,7 @@ bool SettingsActivity::handleButtons() {
 }
 
 void SettingsActivity::toggleCurrentSetting() {
+  mappedInput.resetHomeButtonInput();
   int selectedSetting = ringPos() - 1;
   if (selectedSetting < 0 || selectedSetting >= settingsCount) {
     return;
@@ -416,10 +439,10 @@ void SettingsActivity::toggleCurrentSetting() {
     SETTINGS.*(setting.valuePtr) = !currentValue;
   } else if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
     const uint8_t currentValue = SETTINGS.*(setting.valuePtr);
-    if (settingstabs::moTrinhChon(static_cast<int>(setting.enumValues.size()))) {
+    const auto enumLabels = setting.enumLabels();
+    if (settingstabs::moTrinhChon(static_cast<int>(enumLabels.size()))) {
       const auto valuePtr = setting.valuePtr;
-      optionPopup.show(setting.nameId, setting.enumValues.data(), static_cast<int>(setting.enumValues.size()),
-                       currentValue,
+      optionPopup.show(setting.nameId, enumLabels.data(), static_cast<int>(enumLabels.size()), currentValue,
                        [this, valuePtr, currentValue, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
                          if (valuePtr == &CrossPointSettings::uiTextSize) {
                            if (!applyUiSettingChange(valuePtr, static_cast<uint8_t>(idx))) {
@@ -441,7 +464,7 @@ void SettingsActivity::toggleCurrentSetting() {
       requestUpdate();
       return;
     }
-    const uint8_t newValue = (currentValue + 1) % static_cast<uint8_t>(setting.enumValues.size());
+    const uint8_t newValue = (currentValue + 1) % static_cast<uint8_t>(enumLabels.size());
     if (setting.valuePtr == &CrossPointSettings::uiTextSize) {
       if (!applyUiSettingChange(setting.valuePtr, newValue)) {
         requestUpdate();
@@ -453,7 +476,7 @@ void SettingsActivity::toggleCurrentSetting() {
     }
   } else if (setting.type == SettingType::ENUM && setting.valueGetter && setting.valueSetter) {
     const uint8_t totalValues = setting.enumStringValues.empty()
-                                    ? static_cast<uint8_t>(setting.enumValues.size())
+                                    ? static_cast<uint8_t>(setting.enumLabels().size())
                                     : static_cast<uint8_t>(setting.enumStringValues.size());
     const uint8_t cur = setting.valueGetter();
     if (settingstabs::moTrinhChon(totalValues)) {
@@ -467,7 +490,8 @@ void SettingsActivity::toggleCurrentSetting() {
       if (!setting.enumStringValues.empty()) {
         optionPopup.show(setting.nameId, setting.enumStringValues, cur, std::move(onSelect));
       } else {
-        optionPopup.show(setting.nameId, setting.enumValues.data(), static_cast<int>(setting.enumValues.size()), cur,
+        const auto enumLabels = setting.enumLabels();
+        optionPopup.show(setting.nameId, enumLabels.data(), static_cast<int>(enumLabels.size()), cur,
                          std::move(onSelect));
       }
       requestUpdate();
@@ -485,11 +509,28 @@ void SettingsActivity::toggleCurrentSetting() {
     auto resultHandler = [this](const ActivityResult&) { saveSettings(); };
 
     switch (setting.action) {
+      case SettingAction::HomeButton: {
+        // Activities must outlive this call and are owned by the activity stack.
+        auto activity = makeUniqueNoThrow<HomeButtonSettingsActivity>(renderer, mappedInput);
+        if (!activity) {
+          LOG_ERR("SET", "OOM: Home button settings");
+          return;
+        }
+        startActivityForResult(std::move(activity), [this](const ActivityResult&) { requestUpdate(); });
+        return;
+      }
       case SettingAction::RemapFrontButtons:
         startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::CustomiseStatusBar:
         startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::ClockSettings:
+        if (auto activity = makeUniqueNoThrow<ClockSettingsActivity>(renderer, mappedInput)) {
+          startActivityForResult(std::move(activity), resultHandler);
+        } else {
+          LOG_ERR("SETTINGS", "OOM: ClockSettingsActivity");
+        }
         break;
       case SettingAction::KOReaderSync:
         startActivityForResult(std::make_unique<KOReaderSettingsActivity>(renderer, mappedInput), resultHandler);
@@ -519,9 +560,28 @@ void SettingsActivity::toggleCurrentSetting() {
                                  requestUpdate();
                                });
         break;
-      case SettingAction::Network:
-        startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), resultHandler);
+      case SettingAction::Network: {
+        auto activity = makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, false);
+        if (!activity) {
+          LOG_ERR("SETTINGS", "OOM: WifiSelectionActivity");
+          return;
+        }
+        startActivityForResult(std::move(activity), [](const ActivityResult&) {
+          SETTINGS.saveToFile();
+          // Every other WiFi consumer hands the radio to a session it owns;
+          // these rows only save credentials, so nothing here would ever
+          // release the driver's heap. The scan alone brings it up, so tear
+          // down whether or not the user joined a network.
+          if (WiFi.getMode() == WIFI_MODE_NULL) return;
+          WiFi.disconnect(false);
+          delay(30);
+          // Unlike the onExit() teardowns, this runs from the loop task with
+          // no lock held; the restart popup paints straight to the panel.
+          RenderLock lock;
+          silentRestartToSettings();
+        });
         break;
+      }
       case SettingAction::ClearCache:
         startActivityForResult(std::make_unique<ClearCacheActivity>(renderer, mappedInput), resultHandler);
         break;
@@ -563,8 +623,12 @@ void SettingsActivity::toggleCurrentSetting() {
           LOG_ERR("SETTINGS", "OOM: KeyboardLayoutsActivity");
         }
         break;
-      case SettingAction::Clock:
-        startActivityForResult(std::make_unique<DongHoSettingsActivity>(renderer, mappedInput), resultHandler);
+      case SettingAction::About:
+        if (auto activity = makeUniqueNoThrow<AboutActivity>(renderer, mappedInput)) {
+          startActivityForResult(std::move(activity), nullptr);
+        } else {
+          LOG_ERR("SETTINGS", "OOM: AboutActivity");
+        }
         break;
       case SettingAction::None:
         // Do nothing
@@ -623,6 +687,7 @@ void SettingsActivity::openSleepTimeoutPicker() {
 }
 
 std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
+  if (setting.action == SettingAction::HomeButton) return tr(STR_CONFIGURE);
   if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
     if (setting.valuePtr == &CrossPointSettings::keyboardAxisSwapped) {
       return SETTINGS.keyboardAxisSwapped ? tr(STR_KEYBOARD_MOVE_VERTICAL) : tr(STR_KEYBOARD_MOVE_HORIZONTAL);
@@ -633,16 +698,18 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
     // Guard like the valueGetter branch below: a corrupt/migrated settings
     // byte must not index past the enum table.
     const uint8_t value = SETTINGS.*(setting.valuePtr);
-    if (value >= setting.enumValues.size()) return "";
-    return I18N.get(setting.enumValues[value]);
+    const auto enumLabels = setting.enumLabels();
+    if (value >= enumLabels.size()) return "";
+    return I18N.get(enumLabels[value]);
   }
   if (setting.type == SettingType::ENUM && setting.valueGetter) {
     const uint8_t value = setting.valueGetter();
     if (!setting.enumStringValues.empty() && value < setting.enumStringValues.size()) {
       return setting.enumStringValues[value];
     }
-    if (value < setting.enumValues.size()) {
-      return I18N.get(setting.enumValues[value]);
+    const auto enumLabels = setting.enumLabels();
+    if (value < enumLabels.size()) {
+      return I18N.get(enumLabels[value]);
     }
     return "";
   }
@@ -738,7 +805,7 @@ bool SettingsActivity::selectSettingsSibling(const int direction) {
       case SettingAction::TextSettings:
       case SettingAction::Language:
       case SettingAction::KeyboardLayouts:
-      case SettingAction::Clock:
+      case SettingAction::ClockSettings:
         return true;
       default:
         return false;
@@ -771,13 +838,7 @@ bool SettingsActivity::openPendingSettingsSibling() {
 void SettingsActivity::render(RenderLock&&) {
   if (optionPopup.processRender(renderer, mappedInput)) return;
 
-  const auto pageWidth = renderer.getScreenWidth();
-  const auto& metrics = UITheme::getInstance().getMetrics();
-
-  // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
-  // indicator; the rest of the screen renders through the app.
-  // Version rides in the header's trailing label slot: the footer position
-  // conflicts with button hints on non-touch devices.
+  // Tenor tab chrome: settled-list debounce, nav header, sibling-tab arrows.
   renderSettledList(activeNav(), [&] {
     renderer.clearScreen();
     drawNavigationHeader(tabLabel(activeTab()));

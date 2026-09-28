@@ -288,6 +288,8 @@ struct ReaderActivity {
   bool pauseKeepsStatsInRam = false;
   uint32_t statsLastMs = 0, statsSavedMs = 0, statsDayPollMs = 0, statsDay = 0;
   std::atomic<bool> pageReady{false};
+  // A laid-out page (or the end screen) reached the panel; an error screen sets only pageReady.
+  std::atomic<bool> pageRendered{false};
   std::string getBookTitle() const { return "Tieu de"; }
   std::string getBookAuthor() const { return "Tac gia"; }
   std::string getBookThumbBmpPath() const { return "/thumb_[HEIGHT].bmp"; }
@@ -332,7 +334,7 @@ struct EpubReaderActivity : ReaderActivity {
   int currentSpineIndex = 0, nextPageNumber = 0, pendingPageJump = 0;
   uint32_t lastPageTurnTime = 0;
   std::atomic<bool> deferredClearPending{false};
-  bool deferBackgroundBuildForBle() const; bool buildTickHeapGate(); bool backgroundBuildStartHeapGate(); bool backgroundBuildCanTick(); void suspendBackgroundBuild();
+  bool deferBackgroundBuildForBle() const; bool buildTickHeapGate(); bool backgroundBuildStartHeapGate(); bool backgroundBuildCanTick(); bool backgroundBuildWanted() const; void suspendBackgroundBuild();
   bool indexStepDue() const { return false; } void runIndexStep() {}
   // The next chapter's early layout (EpubReaderActivity::prepareNextChapter) is covered by the simulator.
   bool nextChapterDue(bool) { return false; } void prepareNextChapter() {}

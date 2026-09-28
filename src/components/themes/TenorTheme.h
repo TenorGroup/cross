@@ -24,6 +24,11 @@ inline constexpr ThemeMetrics values = [] {
   m.popupCornerRadius = tenorradius::container(m.listRowRadius, m.optionPopupInnerPadding);
   m.sheetRadius = m.popupCornerRadius;
   m.roundedMarks = true;
+  // Header and tab band as Tenor laid them out before the shared header metrics moved.
+  m.topPadding = 5;
+  m.batteryBarHeight = 40;
+  m.tabBarHeight = 40;
+  m.headerBatteryDetached = true;
   return m;
 }();
 // Locked here so a reordering above cannot quietly shrink every corner again.
@@ -35,8 +40,8 @@ static_assert(values.popupCornerRadius ==
 class TenorTheme final : public LyraTheme {
  public:
   void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const override;
-  void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
-                  const char* subtitle = nullptr) const override;
+  void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle = nullptr,
+                  bool backButton = true) const override;
   void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                        const char* btn4) const override;
 };

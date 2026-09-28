@@ -488,6 +488,7 @@ int main() {
     r.onTick();
     require(openWrites.recentAdds == 0, "the open was recorded before a frame reached the panel");
     r.pageReady = true;
+    r.pageRendered = true;
     r.onTick();
     require(openWrites.stateSaves == 1 && openWrites.recentAdds == 1, "the first frame did not record the open");
     r.onTick();
@@ -497,8 +498,21 @@ int main() {
     EpubReaderActivity r;
     r.openTail();
     r.endOfBookOptionsReady = true;
+    r.pageRendered = true;  // ReaderActivity::render marks the end screen as a rendered page
     r.onTick();
     require(openWrites.recentAdds == 1, "the end-of-book screen did not record the open");
+  });
+  // A book that cannot be laid out shows an error screen: that frame must not make it the book
+  // the next wake reopens, nor put it on the recent list.
+  test("an open whose first frame is an error screen is not recorded", [] {
+    EpubReaderActivity r;
+    r.openTail();
+    r.pageReady = true;
+    r.onTick();
+    r.onTick();
+    require(openWrites.stateSaves == 0 && openWrites.recentAdds == 0, "an error screen recorded the open");
+    r.commitOpen();
+    require(openWrites.stateSaves == 0 && openWrites.recentAdds == 0, "closing after an error screen recorded the open");
   });
   // Device evidence (serial-r14-rx.log): EPUB_PARK free=50564 then EPUB_RESUME free=28924,
   // so the parser takes back about 21 KB and lands under the 32 KB tick budget.

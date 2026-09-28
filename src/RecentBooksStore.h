@@ -16,12 +16,13 @@ struct RecentBook {
 };
 
 class RecentBooksStore : public PersistableStore<RecentBooksStore> {
+ public:
+  static constexpr int MAX_RECENT_BOOKS = 10;
+
  private:
   std::vector<RecentBook> recentBooks;
   bool excerptUnsaved = false;
   uint32_t openCount = 0;
-
-  static constexpr int MAX_RECENT_BOOKS = 10;
 
   RecentBooksStore() = default;
   ~RecentBooksStore() = default;

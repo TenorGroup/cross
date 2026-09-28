@@ -19,8 +19,9 @@ namespace {
 constexpr int16_t TOUCH_TAB_BAR_HEIGHT = 50;
 }
 
-UiTabListActivity::UiTabListActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : UiListActivity(name, renderer, mappedInput) {}
+UiTabListActivity::UiTabListActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                     const bool wantsTouchLongPress)
+    : UiListActivity(name, renderer, mappedInput, wantsTouchLongPress) {}
 
 void UiTabListActivity::pollTilt() {
   const bool acceptsTilt = acceptsTiltTabNavigation();
@@ -64,7 +65,7 @@ void UiTabListActivity::onEnter() {
 bool UiTabListActivity::clampAfterNav() {
   auto& cursor = activeNav();
   const int count = listCount();
-  const int selected = count <= 0 ? 0 : std::clamp(cursor.selected, mappedInput.hasTouch() ? 0 : 1, count);
+  const int selected = count <= 0 ? 0 : std::clamp(cursor.selected.load(), mappedInput.hasTouch() ? 0 : 1, count);
   if (selected == cursor.selected) return false;
   cursor.selected = selected;
   cursor.followOnBuild = true;
@@ -96,6 +97,10 @@ void UiTabListActivity::onRowAction(const fui::ActionEvent& event) {
   {
     RenderLock lock(*this);
     moveRingTo(event.value + 1);
+  }
+  if (event.longPress) {
+    onRowLongPress(event.value);
+    return;
   }
   activateIndex(event.value);
 }
@@ -375,6 +380,7 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
     }
     tabs[i].value = static_cast<int16_t>(that);
     tabs[i].selected = activeTab() == that;
+    tabs[i].indicator = tabIndicator(that);
   }
   tabProps.tabs = tabs;
   tabProps.count = static_cast<uint16_t>(count);
@@ -382,6 +388,17 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   const int16_t tabLineHeight = screen.target().lineHeight(tabProps.text.font);
   const int16_t preferredTabHeight = static_cast<int16_t>(preferredTabBarHeight());
   const int16_t tabBand = preferredTabHeight > tabLineHeight + 10 ? preferredTabHeight : tabLineHeight + 10;
+
+  if (tabPillMaxPad > 0) {
+    // Cap each pill at its label plus this padding: the equal-width slots (and
+    // so the tab positions) stay exactly where they were, only the pill stops
+    // stretching across the whole slot. The SDK shrinks the pill to content
+    // width and centers it in its slot when the horizontal contentInset is
+    // nonzero.
+    tabProps.contentInset.left = tabPillMaxPad;
+    tabProps.contentInset.right = tabPillMaxPad;
+  }
+
   // Legacy Lyra two-state treatment: with the selection on the tab band, the
   // band fills gray and the active tab is a solid pill; with the selection
   // down in the list, the band is plain and the active tab keeps a gray box

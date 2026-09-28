@@ -19,10 +19,12 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
+#include "HomeButtonSettings.h"
 #include "KOReaderCredentialStore.h"
 #include "QuickAction.h"
 #include "ReaderFontSizes.h"
 #include "activities/settings/SettingsActivity.h"
+#include "components/UITheme.h"
 #include "platform/SimulatorBoardCompat.h"
 #include "util/DictionaryRegistry.h"
 
@@ -214,6 +216,17 @@ inline SettingInfo buildTenorClockPlacementSetting(const SettingInfo& registered
   return setting;
 }
 
+// Tenor's TENOR theme keeps ordinal 4 (CrossPointSettings::TENOR_UI, the
+// shipped default), so it is listed before Cover Grid (#3657), which is
+// PSRAM-only and appended last, conditionally, rather than at the ordinal
+// upstream gave it (see the UI_THEME comment in CrossPointSettings.h).
+inline std::vector<StrId> homeThemeValues() {
+  std::vector<StrId> values = {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
+                               StrId::STR_THEME_ROUNDEDRAFF, StrId::STR_THEME_TENOR};
+  if (UITheme::supportsCoverGrid()) values.push_back(StrId::STR_THEME_COVER_GRID);
+  return values;
+}
+
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
 // ACTION-type entries and entries without a key are device-only.
@@ -268,11 +281,13 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
-    // 70 unconditional descriptors; the IMU branch adds the Gestures tab: reader,
-    // tab and row tilt, the two flick strengths, the two hard shake rows, face down, face up
-    // and the three double taps.
+    // 81 unconditional descriptors (70 plus the double-click power light, back-short-to-
+    // browser, three home button shortcuts, clockTimezone/clockDst/clockShowInHeader,
+    // libraryUseMetadata and the touch page-turn gesture pair - see RESOLUTION.md); the
+    // IMU branch adds the Gestures tab: reader, tab and row tilt, the two flick strengths,
+    // the two hard shake rows, face down, face up and the three double taps.
     // Cold-catalog tests cover each capability branch and the IMU variant.
-    constexpr size_t fixedCount = 70
+    constexpr size_t fixedCount = 81
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
                                   + 1
 #endif
@@ -283,10 +298,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     std::vector<SettingInfo> v;
     v.reserve(fixedCount + (hasTilt ? 12 : 0));
     // --- Display ---
-    v.push_back(SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
-                          {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
-                           StrId::STR_THEME_ROUNDEDRAFF, StrId::STR_THEME_TENOR},
-                          "uiTheme", StrId::STR_CAT_DISPLAY));
+    v.push_back(SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme, homeThemeValues(), "uiTheme",
+                          StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Enum(StrId::STR_UI_TEXT_SIZE, &CrossPointSettings::uiTextSize,
                           {StrId::STR_UI_SIZE_SMALL, StrId::STR_UI_SIZE_MEDIUM, StrId::STR_UI_SIZE_LARGE},
                           "uiTextSize", StrId::STR_CAT_DISPLAY));
@@ -408,16 +421,26 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                            StrId::STR_STATUS_BAR_CHAPTER_BATTERY},
                           "readerStatusBarMode", StrId::STR_CAT_READER));
     v.push_back(SettingInfo::Enum(StrId::STR_SIDE_BTN_LAYOUT, &CrossPointSettings::sideButtonLayout,
-                          {StrId::STR_PREV_NEXT, StrId::STR_NEXT_PREV, StrId::STR_DISABLED, StrId::STR_NEXT_NEXT},
+                          {StrId::STR_PREV_NEXT, StrId::STR_NEXT_PREV, StrId::STR_DISABLED, StrId::STR_NEXT_NEXT,
+                           StrId::STR_PREV_PREV},
                           "sideButtonLayout", StrId::STR_CAT_READER));
     v.push_back(SettingInfo::Enum(StrId::STR_READER_MENU_STYLE, &CrossPointSettings::readerMenuStyle,
                           {StrId::STR_MENU_STYLE_LIST, StrId::STR_MENU_STYLE_TOOLBAR}, "readerMenuStyle",
                           StrId::STR_CAT_READER));
     // --- Controls ---
-    v.push_back(SettingInfo::Enum(
-            StrId::STR_TOUCH_READER_CONTROLS, &CrossPointSettings::touchReaderControls,
-            {StrId::STR_STATE_OFF, StrId::STR_STATE_TAP, StrId::STR_STATE_SWIPE, StrId::STR_STATE_INVERTED_TAP},
-            "touchReaderControls", StrId::STR_CAT_CONTROLS));
+    // touchReaderControls is a master toggle (#3586); direction gestures are
+    // separate pageTurnGesture/previousPageGesture settings. All three are
+    // touch-only (settingHiddenOnThisBoard hides them without a touch controller).
+    v.push_back(SettingInfo::Toggle(StrId::STR_TOUCH_READER_CONTROLS, &CrossPointSettings::touchReaderControls,
+                            "touchReaderControls", StrId::STR_CAT_CONTROLS));
+    v.push_back(SettingInfo::Enum(StrId::STR_NEXT_PAGE_GESTURE, &CrossPointSettings::pageTurnGesture,
+                          {StrId::STR_TAP_AND_SWIPE, StrId::STR_TAP_ONLY, StrId::STR_SWIPE_ONLY,
+                           StrId::STR_INVERTED_TAP, StrId::STR_DISABLED},
+                          "pageTurnGesture", StrId::STR_CAT_CONTROLS));
+    v.push_back(SettingInfo::Enum(StrId::STR_PREV_PAGE_GESTURE, &CrossPointSettings::previousPageGesture,
+                          {StrId::STR_TAP_AND_SWIPE, StrId::STR_TAP_ONLY, StrId::STR_SWIPE_ONLY,
+                           StrId::STR_INVERTED_TAP, StrId::STR_DISABLED},
+                          "previousPageGesture", StrId::STR_CAT_CONTROLS));
     // Persisted under the legacy "tapForReaderMenu" key: old saves map
     // 0 = Off, 1 = Tap.
     v.push_back(SettingInfo::Enum(StrId::STR_SHOW_READER_MENU, &CrossPointSettings::showReaderMenu,
@@ -437,11 +460,21 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           "longPressButtonBehavior", StrId::STR_CAT_CONTROLS));
     v.push_back(SettingInfo::Enum(StrId::STR_LONG_PRESS_MENU, &CrossPointSettings::longPressMenuFunction,
                           buildLongPressMenuValues(hasTilt), "longPressMenuFunction", StrId::STR_CAT_CONTROLS));
+    // X4 Pro only; hidden elsewhere by settingHiddenOnThisBoard (#3089).
+    v.push_back(SettingInfo::Toggle(StrId::STR_DBL_CLICK_PWR_LIGHT, &CrossPointSettings::doubleClickPwrLight,
+                            "doubleClickPwrLight", StrId::STR_CAT_CONTROLS));
     // Short power press and hard shake share one list of actions (QuickAction.h).
     v.push_back(SettingInfo::Enum(StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
                           quickaction::powerLabels(), "shortPwrBtn", StrId::STR_CAT_CONTROLS));
     v.push_back(SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
                             "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS));
+    v.push_back(SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &CrossPointSettings::backShortToFileBrowser,
+                            "backShortToFileBrowser", StrId::STR_CAT_CONTROLS));
+    // Home button shortcuts (#3516): tap/double-tap/long-press, home-key boards only.
+    for (unsigned i = 0; i < 3; ++i) {
+      v.push_back(SettingInfo::StaticEnum(home_button::GESTURE_LABELS[i], home_button::FIELDS[i],
+                                          home_button::ACTION_LABELS, home_button::KEYS[i], StrId::STR_CAT_CONTROLS));
+    }
     // --- Gestures (only with the QMI8658 IMU, X3) ---
     // Keys and values are the ones these rows had in Reader and Controls, so a saved
     // file reads the same here.
@@ -492,6 +525,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
             "sleepTimeoutMinutes", StrId::STR_CAT_SYSTEM));
     v.push_back(SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles, "showHiddenFiles",
                             StrId::STR_CAT_SYSTEM));
+    v.push_back(SettingInfo::Toggle(StrId::STR_LIBRARY_USE_METADATA, &CrossPointSettings::libraryUseMetadata,
+                            "libraryUseMetadata", StrId::STR_CAT_SYSTEM));
     v.push_back(SettingInfo::Toggle(StrId::STR_REMOVE_READ_FROM_RECENTS, &CrossPointSettings::removeReadBooksFromRecents,
                             "removeReadBooksFromRecents", StrId::STR_CAT_SYSTEM));
     v.push_back(SettingInfo::Toggle(StrId::STR_MOVE_FINISHED_TO_READ, &CrossPointSettings::moveFinishedToReadFolder,
@@ -581,14 +616,24 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     v.push_back(SettingInfo::Enum(StrId::STR_XTC_STATUS_BAR, &CrossPointSettings::xtcStatusBarMode,
                           {StrId::STR_HIDE, StrId::STR_BOTTOM, StrId::STR_TOP}, "xtcStatusBarMode",
                           StrId::STR_CUSTOMISE_STATUS_BAR));
-    // Clock entries (web settings only; device UI uses ClockOffsetActivity for the offset).
-    // Range 0..104 = quarter-hour steps from UTC-12:00 to UTC+14:00, biased by 48.
+    // Clock entries (persistence + web settings; the device UI is
+    // ClockSettingsActivity under System settings).
     v.push_back(SettingInfo::Enum(StrId::STR_CLOCK, &CrossPointSettings::statusBarClock, std::move(statusBarClockValues),
                           "statusBarClock", StrId::STR_CUSTOMISE_STATUS_BAR));
     v.push_back(SettingInfo::Toggle(StrId::STR_CLOCK_AUTO_TIMEZONE, &CrossPointSettings::clockAutoTimezone, "clockAutoTimezone",
                             StrId::STR_CUSTOMISE_STATUS_BAR));
+    // LEGACY: retired quarter-hour UTC offset (biased by 48), still written so
+    // timezones::activeIndex() can migrate it into clockTimezone (#3562).
     v.push_back(SettingInfo::Value(StrId::STR_CLOCK_UTC_OFFSET, &CrossPointSettings::clockUtcOffsetQ, {0, 104, 1},
                            "clockUtcOffsetQ", StrId::STR_CUSTOMISE_STATUS_BAR));
+    // Index into the append-only table in src/util/Timezones.cpp; 255 = unset.
+    v.push_back(SettingInfo::Value(StrId::STR_TIMEZONE, &CrossPointSettings::clockTimezone, {0, 255, 1}, "clockTimezone",
+                           StrId::STR_CUSTOMISE_STATUS_BAR));
+    v.push_back(SettingInfo::Enum(StrId::STR_CLOCK_DST, &CrossPointSettings::clockDst,
+                          {StrId::STR_CLOCK_DST_AUTO, StrId::STR_STATE_ON, StrId::STR_STATE_OFF}, "clockDst",
+                          StrId::STR_CUSTOMISE_STATUS_BAR));
+    v.push_back(SettingInfo::Toggle(StrId::STR_CLOCK_IN_HEADER, &CrossPointSettings::clockShowInHeader, "clockShowHeader",
+                            StrId::STR_CUSTOMISE_STATUS_BAR));
     v.push_back(SettingInfo::Enum(StrId::STR_CLOCK_FORMAT, &CrossPointSettings::clockFormat,
                           {StrId::STR_CLOCK_FORMAT_24H, StrId::STR_CLOCK_FORMAT_12H}, "clockFormat",
                           StrId::STR_CUSTOMISE_STATUS_BAR));
@@ -614,10 +659,17 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 // Dong nao khong thuoc ve ban may nay. Tach rieng de duong luu va duong doc soi
 // duoc tung dong ma khong phai chep ca bang ra mot vector moi.
 inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
-  // Menu doc dang thanh cong cu la giao dien cham: may nut giu menu danh sach cu.
+  // Touch controls and the per-direction gestures they drive need a touch
+  // controller. The toolbar reader menu style does not (#3603 re-enabled it
+  // on button-only boards: the toolbar chrome is button-navigable).
   if (!BoardConfig::hasTouch() &&
-      (s.nameId == StrId::STR_TOUCH_READER_CONTROLS || s.nameId == StrId::STR_READER_MENU_STYLE))
+      (s.nameId == StrId::STR_TOUCH_READER_CONTROLS || s.nameId == StrId::STR_NEXT_PAGE_GESTURE ||
+       s.nameId == StrId::STR_PREV_PAGE_GESTURE))
     return true;
+  // X4 Pro only (#3089); the frontlight double-click shortcut needs its I2C frontlight.
+  if (!BoardConfig::isX4Pro() && s.nameId == StrId::STR_DBL_CLICK_PWR_LIGHT) return true;
+  // Home button shortcuts (#3516) need a physical Home key.
+  if (!BoardConfig::hasHomeKey() && home_button::isSetting(s.valuePtr)) return true;
   // Khong co den nen thi hai dong do ngoi khong. X3 va X4 khai NO_FRONTLIGHT,
   // X4 Pro co den nen giu lai. Phai hoi CA HAI kieu day den: mot bang day den qua
   // I2C chu khong phai PWM, chi hoi PWM la giau mat dong cua may that su co den.

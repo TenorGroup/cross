@@ -23,10 +23,12 @@ enum class Action : uint8_t {
   TextSettings,
   KeyboardLayouts,
   DeviceName,
-  Clock,
+  ClockSettings,
   FileTransfer,
   BrowseOPDS,
   BlePageTurner,
+  HomeButton,
+  About,
 };
 
 // MOTION is last by ID: a board without a motion sensor shows the tabs below it only.

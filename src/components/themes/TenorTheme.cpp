@@ -74,12 +74,13 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
   renderer.setOrientation(orig_orientation);
 }
 
-void TenorTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle) const {
+void TenorTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
+                            bool backButton) const {
   if (tenorchrome::enabled()) {
     tenorchrome::drawHeader(renderer, title);
     return;
   }
-  LyraTheme::drawHeader(renderer, rect, title, subtitle);
+  LyraTheme::drawHeader(renderer, rect, title, subtitle, backButton);
 }
 
 void TenorTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const {

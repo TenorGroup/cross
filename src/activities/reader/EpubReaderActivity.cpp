@@ -32,7 +32,7 @@
 #include "DictionaryWordSelectActivity.h"
 #include "EpubReaderBookmarksActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
-#include "EpubReaderFootnotesActivity.h"
+#include "EpubReaderFootnoteSelectActivity.h"
 #include "EpubReaderPercentSelectionActivity.h"
 #include "EpubReaderUtils.h"
 #include "KOReaderCredentialStore.h"
@@ -279,6 +279,9 @@ class CoverThumbCapture final : public ImageBlock::ThumbHook {
 EpubReaderActivity::~EpubReaderActivity() {
   ImageBlock::setExtractor(nullptr, nullptr);
   ImageBlock::setThumbHook(nullptr);
+  // ActivityManager destroys activities with its RenderLock already held;
+  // taking another here self-deadlocks (renderingMutex is non-recursive).
+  settleOverlayRefresh();
   discardOverlayPage();  // free the overlay's page snapshot if one is held
 
   if (footnoteDepth > 0 && epub) {
@@ -953,6 +956,40 @@ bool EpubReaderActivity::pageAwaitsLayout() const {
          section->currentPage >= static_cast<int>(section->pageCount);
 }
 
+void EpubReaderActivity::openFootnoteSelect(const bool reopenMenuOnCancel) {
+  if (!section || currentPageFootnotes.empty()) return;
+  if (currentPageFootnotes.size() == 1) {
+    navigateToHref(currentPageFootnotes[0].href, true);
+    return;
+  }
+
+  auto page = section->loadPage(section->currentPage);
+  if (!page) return;
+
+  // The page is drawn again under the markers, so it takes the margins the reader laid it out in.
+  int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
+  readingMargins(orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+  auto selector = makeUniqueNoThrow<EpubReaderFootnoteSelectActivity>(renderer, mappedInput, std::move(page),
+                                                                      orientedMarginLeft, orientedMarginTop);
+  if (!selector) {
+    LOG_ERR("ERS", "OOM: EpubReaderFootnoteSelectActivity");
+    return;
+  }
+  startActivityForResult(std::move(selector), [this, reopenMenuOnCancel](const ActivityResult& result) {
+    if (result.isCancelled) {
+      if (reopenMenuOnCancel) {
+        openReaderMenu();
+      } else {
+        requestUpdate();
+      }
+      return;
+    }
+    const auto& footnoteResult = std::get<FootnoteResult>(result.data);
+    navigateToHref(footnoteResult.href, true);
+    requestUpdate();
+  });
+}
+
 void EpubReaderActivity::loop() {
   // Taken once: a pass that returns before it reaches its branch below drops it, so it
   // never fires later over a menu or overlay that owned this pass.
@@ -1034,12 +1071,14 @@ void EpubReaderActivity::loop() {
       repaintStatusBarAlone();
     }
   }
-  if (!inputThisPass && section && (!section->isBuilding() || section->isBuildParked()) &&
-      renderer.hasFrameBuffer() && lastRenderCompleteMs != 0 && millis() - lastRenderCompleteMs > IDLE_PREWARM_DEBOUNCE_MS &&
-      ESP.getFreeHeap() > RENDER_MIN_FREE_HEAP && ESP.getMaxAllocHeap() > BACKGROUND_BUILD_MIN_MAX_ALLOC &&
-      (idlePrewarmSpine != currentSpineIndex || idlePrewarmPage != section->currentPage)) {
+  // The section and the framebuffer belong to the render task while it paints, and it can replace
+  // or free the section: every check that reads them runs under a lock taken without waiting, and
+  // a pass that finds the render task painting skips the work instead of stalling behind it.
+  if (!inputThisPass && lastRenderCompleteMs != 0 && millis() - lastRenderCompleteMs > IDLE_PREWARM_DEBOUNCE_MS &&
+      ESP.getFreeHeap() > RENDER_MIN_FREE_HEAP && ESP.getMaxAllocHeap() > BACKGROUND_BUILD_MIN_MAX_ALLOC) {
     RenderLock lock(RenderLock::TryTake{});
     if (lock.acquired() && section && (!section->isBuilding() || section->isBuildParked()) &&
+        renderer.hasFrameBuffer() &&
         (idlePrewarmSpine != currentSpineIndex || idlePrewarmPage != section->currentPage)) {
       idlePrewarmSpine = currentSpineIndex;
       idlePrewarmPage = section->currentPage;
@@ -1076,24 +1115,26 @@ void EpubReaderActivity::loop() {
   // A parked parser resumes on the next loop pass once the radio is idle and
   // the released heap is available. The latch stays set through the remainder
   // of the pass that performed the park, including skipLoopDelay().
-  if (section && section->isBuildParked() && backgroundBuildSuspended && !deferBackgroundBuildForBle() &&
-      backgroundBuildStartHeapGate()) {
-    backgroundBuildSuspended = false;
-  }
-  if (section && section->isBuilding() && !section->isBuildParked() &&
-      (backgroundBuildSuspended || backgroundBuildFailed || deferBackgroundBuildForBle() || !buildTickHeapGate())) {
+  if (backgroundBuildSuspended) {
     RenderLock lock(RenderLock::TryTake{});
-    if (lock.acquired()) {
+    if (lock.acquired() && section && section->isBuildParked() && !deferBackgroundBuildForBle() &&
+        backgroundBuildStartHeapGate()) {
+      backgroundBuildSuspended = false;
+    }
+  }
+  {
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired() && section && section->isBuilding() && !section->isBuildParked() &&
+        (backgroundBuildSuspended || backgroundBuildFailed || deferBackgroundBuildForBle() || !buildTickHeapGate())) {
       suspendBackgroundBuild();
       backgroundBuildParkedThisLoop = section && section->isBuildParked();
     }
   }
 
-  if (section && !section->isBuilding() && section->isPartial() && buildViewportWidth > 0 &&
-      !partialRebuildStartFailed && !backgroundBuildSuspended && backgroundBuildStartHeapGate() &&
-      section->currentPage + PARTIAL_REBUILD_START_MARGIN >= static_cast<int>(section->pageCount)) {
+  if (buildViewportWidth > 0 && !partialRebuildStartFailed && !backgroundBuildSuspended) {
     RenderLock lock(RenderLock::TryTake{});
     if (lock.acquired() && section && !section->isBuilding() && section->isPartial() &&
+        section->currentPage + PARTIAL_REBUILD_START_MARGIN >= static_cast<int>(section->pageCount) &&
         backgroundBuildStartHeapGate()) {
       const ReaderRenderSpec buildSpec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
       if (!section->startBuild(buildSpec)) {
@@ -1118,20 +1159,22 @@ void EpubReaderActivity::loop() {
   // would start it (780 ms inside that paint on the X3).
   if (freeink::ble::initializing()) radioSettledMs = millis();
   const unsigned long sincePaint = std::min(millis() - lastRenderCompleteMs, millis() - radioSettledMs);
-  const bool lookAhead =
-      !inputThisPass && section &&
-      (section->isBuildParked() ||
-       (section->isPartial() && !section->isBuilding() && !partialRebuildStartFailed && buildViewportWidth > 0)) &&
-      !backgroundBuildFailed && !backgroundBuildParkedThisLoop && deferBackgroundBuildForBle() &&
-      !freeink::ble::initializing() && lookAheadPage != section->currentPage &&
-      section->currentPage + LOOK_AHEAD_PAGES >= static_cast<int>(section->pageCount) && lastRenderCompleteMs != 0 &&
-      sincePaint > BUILD_WINDOW_QUIET_MS && sincePaint < BUILD_WINDOW_LATEST_MS;
-  if (lookAhead ||
-      (!inputThisPass && section &&
-       (section->isPartial() || static_cast<int>(section->pageCount) < section->currentPage + BUILD_WINDOW_AHEAD) &&
-       !backgroundBuildParkedThisLoop && backgroundBuildCanTick())) {
+  // Conditions that do not read the section; the rest is read under the lock below.
+  const bool lookAheadWindow = !inputThisPass && !backgroundBuildFailed && !backgroundBuildParkedThisLoop &&
+                               deferBackgroundBuildForBle() && !freeink::ble::initializing() &&
+                               lastRenderCompleteMs != 0 && sincePaint > BUILD_WINDOW_QUIET_MS &&
+                               sincePaint < BUILD_WINDOW_LATEST_MS;
+  if (lookAheadWindow || (!inputThisPass && !backgroundBuildParkedThisLoop)) {
     RenderLock lock(RenderLock::TryTake{});
-    if (lock.acquired() && (lookAhead || backgroundBuildCanTick())) {
+    const bool lookAhead =
+        lock.acquired() && lookAheadWindow && section &&
+        (section->isBuildParked() ||
+         (section->isPartial() && !section->isBuilding() && !partialRebuildStartFailed && buildViewportWidth > 0)) &&
+        lookAheadPage != section->currentPage &&
+        section->currentPage + LOOK_AHEAD_PAGES >= static_cast<int>(section->pageCount);
+    if (lock.acquired() &&
+        (lookAhead || (!inputThisPass && !backgroundBuildParkedThisLoop && backgroundBuildWanted() &&
+                       backgroundBuildCanTick()))) {
       if (lookAhead) lookAheadPage = section->currentPage;
       const unsigned long tickStarted = millis();
 #ifdef TENOR_PRESS_PROBE
@@ -1223,7 +1266,8 @@ void EpubReaderActivity::loop() {
     pendingReadFolderMove = false;
   }
 
-  const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
+  const auto touch =
+      ReaderUtils::detectTouchPageTurn(renderer, mappedInput, ReaderUtils::isRtlBookLanguage(epub->getLanguage()));
 
   if (showBookmarkMessage && (millis() - bookmarkMessageTime) >= ReaderUtils::BOOKMARK_MESSAGE_DURATION_MS) {
     showBookmarkMessage = false;
@@ -1261,6 +1305,18 @@ void EpubReaderActivity::loop() {
     discardOverlayPage();
     requestUpdate();
     return;
+  }
+
+  switch (mappedInput.homeButtonAction()) {
+    case HomeButtonAction::ReaderMenu:
+    case HomeButtonAction::Bookmark:
+    case HomeButtonAction::Sync:
+    case HomeButtonAction::Dictionary:
+    case HomeButtonAction::Footnotes:
+      automaticPageTurnActive = false;
+      break;
+    default:
+      break;
   }
 
   if (automaticPageTurnActive) {
@@ -1356,12 +1412,11 @@ void EpubReaderActivity::loop() {
     }
   }
 
-  // Home-key boards have no front Confirm button, so a Home-key hold runs the
-  // same user-selected long-press action. The SDK emits this event once per
-  // hold and suppresses the short Home tap for the same contact.
-  if (mappedInput.wasHomeKeyHold() && !endOfBookMenuOpen) {
-    switch (SETTINGS.longPressMenuFunction) {
-      case CrossPointSettings::LP_MENU_BOOKMARK:
+  // Home-key boards (touch boards with a capacitive key; X3 and X4 have none) run the action
+  // configured for the Home tap, double tap or hold.
+  if (!endOfBookMenuOpen) {
+    switch (mappedInput.homeButtonAction()) {
+      case HomeButtonAction::Bookmark:
         if (!showBookmarkMessage && !waitsForIndex()) {
           addBookmark();
           showBookmarkMessage = true;
@@ -1369,28 +1424,18 @@ void EpubReaderActivity::loop() {
           requestUpdate();
         }
         return;
-      case CrossPointSettings::LP_MENU_KOSYNC:
+      case HomeButtonAction::Sync:
         launchKOReaderSync();
         return;
-      case CrossPointSettings::LP_MENU_DICTIONARY:
-        if (!showDictionaryMessage) {
-          openDictionaryWordSelect();
-        }
+      case HomeButtonAction::Dictionary:
+        if (!showDictionaryMessage) openDictionaryWordSelect();
         return;
-      case CrossPointSettings::LP_MENU_READER_MENU:
-        if (usesToolbarMenu() && section) {
+      case HomeButtonAction::ReaderMenu:
+        if (usesToolbarMenu() && section)
           openOverlay(Overlay::Toolbar);
-        } else {
+        else
           openReaderMenu();
-        }
         return;
-      case CrossPointSettings::LP_MENU_FILE_TRANSFER:
-        activityManager.goToFileTransfer();
-        return;
-      case CrossPointSettings::LP_MENU_TILT_PAGE_TURN:
-        toggleTiltFromReader();
-        return;
-      case CrossPointSettings::LP_MENU_DISABLED:
       default:
         break;
     }
@@ -1434,25 +1479,14 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FOOTNOTES &&
-      mappedInput.wasReleased(MappedInputManager::Button::Power) &&
-      !mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+  if ((!endOfBookMenuOpen && mappedInput.homeButtonAction() == HomeButtonAction::Footnotes) ||
+      (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FOOTNOTES &&
+       mappedInput.wasReleased(MappedInputManager::Button::Power) &&
+       !mappedInput.wasReleased(MappedInputManager::Button::Down))) {
     if (footnoteDepth > 0) {
       restoreSavedPosition();
     } else {
-      if (currentPageFootnotes.size() == 1) {
-        navigateToHref(currentPageFootnotes[0].href, true);
-      } else if (currentPageFootnotes.size() > 1) {
-        startActivityForResult(
-            std::make_unique<EpubReaderFootnotesActivity>(renderer, mappedInput, currentPageFootnotes),
-            [this](const ActivityResult& result) {
-              if (!result.isCancelled) {
-                const auto& footnoteResult = std::get<FootnoteResult>(result.data);
-                navigateToHref(footnoteResult.href, true);
-              }
-              requestUpdate();
-            });
-      }
+      openFootnoteSelect(false);
     }
     return;
   }
@@ -1778,16 +1812,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
       break;
     }
     case EpubReaderMenuActivity::MenuAction::FOOTNOTES: {
-      startActivityForResult(std::make_unique<EpubReaderFootnotesActivity>(renderer, mappedInput, currentPageFootnotes),
-                             [this](const ActivityResult& result) {
-                               if (result.isCancelled) {
-                                 openReaderMenu();
-                                 return;
-                               }
-                               const auto& footnoteResult = std::get<FootnoteResult>(result.data);
-                               navigateToHref(footnoteResult.href, true);
-                               requestUpdate();
-                             });
+      openFootnoteSelect(true);
       break;
     }
     case EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS:
@@ -2299,9 +2324,14 @@ void EpubReaderActivity::onReturnFromEndOfBook() {
   }
 }
 
-bool EpubReaderActivity::skipLoopDelay() {
-  return backgroundBuildCanTick() &&
+bool EpubReaderActivity::backgroundBuildWanted() const {
+  return section && section->isBuilding() &&
          (section->isPartial() || static_cast<int>(section->pageCount) < section->currentPage + BUILD_WINDOW_AHEAD);
+}
+
+bool EpubReaderActivity::skipLoopDelay() {
+  // The main loop holds the render lock while querying this hint.
+  return backgroundBuildCanTick() && backgroundBuildWanted();
 }
 
 #ifdef TENOR_TURN_TRACE
@@ -2358,6 +2388,10 @@ void EpubReaderActivity::renderBook() {
 #endif
   pageFrameShown = false;
   currentPageLinks.clear();
+  // Runs under the render task's RenderLock; catches every requestUpdate()
+  // exit from the overlay while its deferred chrome refresh is still pending,
+  // before anything below touches the framebuffer.
+  settleOverlayRefresh();
   takePendingDeferredClear();  // page turns queue this instead of waiting for the lock
   if (!epub) return;
   // Read before the layout below settles it: a turn stepped past the pages laid out so far.
@@ -2377,6 +2411,8 @@ void EpubReaderActivity::renderBook() {
 #endif
     settleBuildPopup();
     renderer.clearScreen();
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     GUI.drawPopup(renderer, tr(STR_INDEX_FAILED));
     automaticPageTurnActive = false;
     // A reselection waits for its own page only; after a failed build the next page drawn is
@@ -2520,6 +2556,14 @@ void EpubReaderActivity::renderBook() {
             pagesUntilFullRefresh = 1;
           }
           buildPopupPending = !showPopup;
+          // Under TTF heap pressure (PSRAM boards only: X3 and X4 register no TTF font, so this is
+          // skipped there), shed every rebuildable font cache before the build; dropped glyphs
+          // re-fault on demand after it.
+          if (!renderer.getTtfFonts().empty()) {
+            if (auto* fcm = renderer.getFontCacheManager()) {
+              fcm->releaseSdFontCaches();
+            }
+          }
           const unsigned long buildStartMs = millis();
           bool started;
           {
@@ -2864,6 +2908,8 @@ void EpubReaderActivity::renderBook() {
     // The page is on the panel: write the cover thumbnails its decode built, before the page
     // counts as ready and the page-turner radio starts.
     if (coverThumbs && static_cast<CoverThumbCapture&>(*coverThumbs).write()) pendingThumbCount = 0;
+    // A laid-out page reached the panel: the open may now be committed (onTick, main task).
+    markPageRendered();
   }
 
   if (pageBeingLeft()) {
@@ -2910,7 +2956,7 @@ void EpubReaderActivity::renderBook() {
     // residue a FAST differential leaves under the chrome has not shown in
     // practice; restore a HALF cleanup here if text ever visibly ghosts
     // through the sheet (see #2190 for the mechanism).
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    pushOverlayRefresh();
   }
   pageFrameUsb = gpio.isUsbConnected();
   pageFrameShown = true;
@@ -3500,9 +3546,9 @@ static_assert(std::size(kDropCapIds) == readerSpacing::DROP_CAP_MODE_COUNT, "dro
 bool EpubReaderActivity::readingPageVisible() const { return section && overlay == Overlay::None && !isAtEndOfBook(); }
 
 bool EpubReaderActivity::usesToolbarMenu() const {
-  // Touch-first chrome: button boards always get the classic list menu, even
-  // if a settings file (e.g. an SD card moved from a touch board) says Toolbar.
-  return mappedInput.hasTouch() && SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TOOLBAR;
+  // Both board classes drive the same chrome: touch through the FreeInkUI tap
+  // targets, buttons through the focused-tool pill and the panel cursor.
+  return SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TOOLBAR;
 }
 
 std::string EpubReaderActivity::currentChapterTitle() const {
@@ -3594,8 +3640,33 @@ void EpubReaderActivity::discardOverlayPage() {
   overlayPageStored = false;
 }
 
+// Push freshly painted overlay chrome. Where the panel supports it the refresh
+// is fired deferred: the loop keeps polling input while the waveform runs, so
+// the chrome answers taps and buttons the moment it is visible instead of only
+// after a blocking displayBuffer() returns. Caller must hold the RenderLock.
+void EpubReaderActivity::pushOverlayRefresh() {
+  if (renderer.supportsAsyncRefresh()) {
+    renderer.displayBufferAsync(HalDisplay::FAST_REFRESH);
+    overlayRefreshPending = true;
+  } else {
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  }
+}
+
+// Wait out a pending deferred overlay refresh and reseed the panel's
+// differential baseline from the framebuffer: the shadow-free async path skips
+// the post-refresh resync, so without this the next FAST diff would run
+// against the frame from before the chrome and leave stale pixels on the
+// glass. Caller must hold the RenderLock.
+void EpubReaderActivity::settleOverlayRefresh() {
+  if (!overlayRefreshPending) return;
+  overlayRefreshPending = false;
+  renderer.cleanupGrayscaleWithFrameBuffer();  // waits, then reseeds the baseline
+}
+
 void EpubReaderActivity::openOverlay(Overlay target) {
   if (target == Overlay::Contents && waitsForIndex()) return;
+  mappedInput.resetHomeButtonInput();
   const Overlay previous = overlay;
   overlay = target;
   if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
@@ -3642,6 +3713,7 @@ void EpubReaderActivity::openOverlay(Overlay target) {
     // bar included) in the shared framebuffer, and painting the chrome from
     // the loop task at the same time interleaves the two frames.
     RenderLock lock;
+    settleOverlayRefresh();
     if (previous == Overlay::None) {
       // Snapshot the clean page so stepping back from a panel to the toolbar
       // (and closing, where supported) can restore it without a re-render.
@@ -3656,7 +3728,7 @@ void EpubReaderActivity::openOverlay(Overlay target) {
       overlayPageStored = renderer.storeBwBuffer();
     }
     renderOverlay();
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    pushOverlayRefresh();
   } else {
     requestUpdate();  // no page yet: renderBook() draws the overlay once it is
   }
@@ -3666,11 +3738,13 @@ void EpubReaderActivity::openOverlay(Overlay target) {
 // grayscale-AA pass restore the page snapshot and push one FAST refresh -- no
 // re-render, no flash; Xteink boards re-render to restore the AA planes.
 void EpubReaderActivity::closeOverlayToPage() {
+  mappedInput.resetHomeButtonInput();
   overlay = Overlay::None;
   overlayPopup.dismiss();  // an option picker cannot outlive its panel
   toolbarUi.reset();       // ~1 KB of interaction table + props, only needed while open
   if (!xteinkClassPanel() && overlayPageStored) {
     RenderLock lock;  // the render task shares the framebuffer
+    settleOverlayRefresh();
     // No baseline resync: the glass shows the chrome, and erasing it needs
     // the differential to keep diffing against the last pushed frame.
     renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
@@ -3709,10 +3783,9 @@ void EpubReaderActivity::renderOverlay() {
     return;
   }
 
-  // Panels (Contents / Text / More): a bottom sheet over the page + button hints.
+  // Panels (Contents / Text / More): a bottom sheet over the page.
   model.panel = true;
   if (!mappedInput.hasTouch()) {
-    model.bottomReserve = UITheme::getInstance().getMetrics().buttonHintsHeight;
     model.denseRows = true;
   }
   // Tap-first: the cursor is only drawn once a button has moved it, so a
@@ -3739,11 +3812,6 @@ void EpubReaderActivity::renderOverlay() {
   }
   toolbarUi->setModel(model);
   toolbarUi->render();
-
-  if (!mappedInput.hasTouch()) {
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  }
 }
 
 void EpubReaderActivity::handleOverlayInput() {
@@ -3759,11 +3827,12 @@ void EpubReaderActivity::handleOverlayInput() {
       // Dismissed or selected: erase the dialog -- clean page back, then the
       // panel over it (the dialog can overhang the sheet onto the page).
       RenderLock lock;
+      settleOverlayRefresh();
       if (overlayPageStored) {
         renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
         overlayPageStored = renderer.storeBwBuffer();
         renderOverlay();
-        renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+        pushOverlayRefresh();
       } else {
         requestUpdate();
       }
@@ -3772,8 +3841,9 @@ void EpubReaderActivity::handleOverlayInput() {
   }
   const auto fastRedraw = [this] {
     RenderLock lock;  // the render task shares the framebuffer
+    settleOverlayRefresh();
     renderOverlay();
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    pushOverlayRefresh();
   };
 
   // Jump to another spine item (chapter scrub). The overlay stays up and is
@@ -3870,6 +3940,10 @@ void EpubReaderActivity::handleOverlayInput() {
         overlayPopup.dismiss();
         discardOverlayPage();
         pauseKeepsStatsInRam = true;
+        {
+          RenderLock lock;  // the picker paints the framebuffer next
+          settleOverlayRefresh();
+        }
         startActivityForResult(std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(),
                                                                       TextSettingsActivity::Tab::Family),
                                [this](const ActivityResult&) {
@@ -3915,6 +3989,7 @@ void EpubReaderActivity::handleOverlayInput() {
     if (overlayPageStored) {
       {
         RenderLock lock;  // the render task shares the framebuffer
+        settleOverlayRefresh();
         // No baseline resync: the glass shows the panel, and erasing it needs
         // the differential to keep diffing against the last pushed frame.
         renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
@@ -4029,8 +4104,9 @@ void EpubReaderActivity::handleOverlayInput() {
 // on dismissal is the popup gate's restore in handleOverlayInput().
 void EpubReaderActivity::paintOverlayPopup() {
   RenderLock lock;
+  settleOverlayRefresh();
   overlayPopup.render(renderer);
-  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  pushOverlayRefresh();
 }
 
 void EpubReaderActivity::danLaiTrang() {
@@ -4111,6 +4187,10 @@ std::string EpubReaderActivity::moreRowValue(int row) const {
 void EpubReaderActivity::activateMoreRow(int row) {
   using MA = EpubReaderMenuActivity::MenuAction;
   if (row < 0 || row >= static_cast<int>(moreItems.size())) return;
+  {
+    RenderLock lock;  // several actions launch screens that paint the framebuffer
+    settleOverlayRefresh();
+  }
   const auto action = moreItems[row].action;
   // In-place toggles keep the panel open and re-render the page beneath it.
   switch (action) {
@@ -4164,7 +4244,17 @@ void EpubReaderActivity::activateMoreRow(int row) {
   }
   // Leaf actions open their own screen / perform the action; close the overlay first.
   overlay = Overlay::None;
-  discardOverlayPage();
+  if (action == MA::GO_TO_PERCENT && overlayPageStored) {
+    // The percent dialog is a popup over the current frame: wipe the toolbar
+    // chrome back to the clean page first so the dialog draws over the page,
+    // not the sheet. No refresh push — the dialog's first frame carries it.
+    RenderLock lock;
+    settleOverlayRefresh();
+    renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
+    overlayPageStored = false;
+  } else {
+    discardOverlayPage();
+  }
   if (action == MA::TOGGLE_BOOKMARK) {
     if (waitsForIndex()) return;
     // No child activity here to trigger the re-render the list menu relies on:

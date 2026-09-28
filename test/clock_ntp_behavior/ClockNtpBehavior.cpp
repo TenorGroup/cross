@@ -165,8 +165,11 @@ void noRtcDisplayAfterNtp() {
   ++cases; fake::reset(); halClock.begin();
   CHECK(halClock.syncFromNTP());
   expectDate(2026, 9, 19, 12, 0);
+  // formatTime() has no offset parameter since #3562: the display timezone is
+  // state, set via setTimezone() (POSIX TZ sign is inverted from UTC+N).
+  halClock.setTimezone("UTC-7");
   char text[9] = {};
-  CHECK(halClock.formatTime(text, sizeof(text), 76));
+  CHECK(halClock.formatTime(text, sizeof(text)));
   CHECK(std::string(text) == "19:00");
 }
 void offlineMidnightAndRetainedWake() {

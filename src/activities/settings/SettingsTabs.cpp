@@ -40,6 +40,7 @@ Tab nhaCua(const Action action) {
     case Action::DeviceName:
     case Action::Network:
     case Action::Language:
+    case Action::About:
       return Tab::DEVICE;
     case Action::KeyboardLayouts:
       return Tab::KEYBOARD;
@@ -51,8 +52,11 @@ Tab nhaCua(const Action action) {
     case Action::CheckForUpdates:
     case Action::SdFirmwareUpdate:
       return Tab::OTHER;
-    case Action::Clock:
+    case Action::ClockSettings:
       return Tab::SYSTEM;
+    // Home button shortcuts (#3516) sit with the other button remaps.
+    case Action::HomeButton:
+      return Tab::CONTROLS;
     case Action::None:
       break;
   }

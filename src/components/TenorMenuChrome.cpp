@@ -139,7 +139,7 @@ tenorchrome::StatusCornerBounds tenorchrome::statusCornerBounds(const GfxRendere
   const int fontChu = large ? UI_12_FONT_ID : SMALL_FONT_ID;
   const int batteryWidth = large ? 32 : 26;
   char clock[12] = "--:--";
-  halClock.formatTime(clock, sizeof(clock), SETTINGS.clockUtcOffsetQ, SETTINGS.clockFormat == 1);
+  halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1);
   const int timeWidth = r.getTextWidth(fontChu, clock);
   const int percent = std::max(0, std::min(100, static_cast<int>(powerManager.getBatteryPercentage())));
   char percentage[8];
@@ -174,7 +174,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   const int fontChu = lon ? UI_12_FONT_ID : SMALL_FONT_ID;
   const bool swap = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
   char clock[12] = "--:--";
-  halClock.formatTime(clock, sizeof(clock), SETTINGS.clockUtcOffsetQ, SETTINGS.clockFormat == 1);
+  halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1);
   const int timeWidth = r.getTextWidth(fontChu, clock);
   if (hienGio)
     r.drawText(fontChu, swap ? STATUS_CORNER_INSET : width - STATUS_CORNER_INSET - timeWidth, y, clock);

@@ -7,6 +7,7 @@
 #include <XmlParserUtils.h>
 
 #include <cctype>
+#include <cstring>
 
 #include "Epub/BookMetadataCache.h"
 
@@ -36,6 +37,39 @@ bool startsWithImageMediaType(const std::string& mediaType) {
   }
 
   return true;
+}
+
+bool isXmlWhitespace(const char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; }
+
+// Metadata text comes straight from the (untrusted) OPF; unbounded growth on
+// a multi-megabyte title would exhaust the heap. Downstream consumers truncate
+// far below this anyway, so overflow is clamped, not fatal.
+constexpr size_t MAX_METADATA_TEXT = 512;
+
+void appendMetadataText(std::string& out, const XML_Char* text, const int len, bool& spacePending,
+                        bool* separatorPending = nullptr) {
+  if (out.size() >= MAX_METADATA_TEXT) return;  // already clamped and logged
+  for (int i = 0; i < len; i++) {
+    const char c = text[i];
+    if (isXmlWhitespace(c)) {
+      spacePending = true;
+      continue;
+    }
+
+    if (out.size() >= MAX_METADATA_TEXT) {
+      LOG_DBG("COF", "Metadata text exceeds %u bytes; truncating", static_cast<unsigned>(MAX_METADATA_TEXT));
+      return;
+    }
+    if (separatorPending != nullptr && *separatorPending) {
+      out.append(", ");
+      *separatorPending = false;
+      spacePending = false;
+    } else if (spacePending && !out.empty()) {
+      out.push_back(' ');
+    }
+    spacePending = false;
+    out.push_back(c);
+  }
 }
 }  // namespace
 
@@ -69,6 +103,10 @@ ContentOpfParser::~ContentOpfParser() {
   destroyXmlParser(parser);
   itemOut.reset();
   itemIn.reset();
+  // Metadata-only and cover-only parses never create .items.bin.
+  if (metadataOnly || !cache) {
+    return;
+  }
   if (tempItemStore) {
     tempItemStore.close();
   }
@@ -112,6 +150,11 @@ size_t ContentOpfParser::write(const uint8_t* buffer, const size_t size) {
     currentBufferPos += toRead;
     remainingInBuffer -= toRead;
     remainingSize -= toRead;
+
+    if (metadataOnly && metadataComplete) {
+      const size_t processed = size - remainingInBuffer;
+      return processed < size ? processed : size - 1;
+    }
   }
 
   return size;
@@ -121,6 +164,15 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
   auto* self = static_cast<ContentOpfParser*>(userData);
   if (self->failed) return;
   (void)atts;
+
+  if (self->metadataOnly && self->metadataComplete) {
+    return;
+  }
+  if (self->metadataOnly && (xmlLocalNameEquals(name, "manifest") || xmlLocalNameEquals(name, "spine") ||
+                             xmlLocalNameEquals(name, "guide"))) {
+    self->metadataComplete = true;
+    return;
+  }
 
   if (self->state == START && xmlLocalNameEquals(name, "package")) {
     self->state = IN_PACKAGE;
@@ -136,22 +188,29 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
     // Only capture the first title element; subsequent ones are subtitles
     if (self->title.empty()) {
       self->state = IN_BOOK_TITLE;
+      self->metadataSpacePending = false;
     }
     return;
   }
 
   if (self->state == IN_METADATA && xmlLocalNameEquals(name, "creator")) {
     self->state = IN_BOOK_AUTHOR;
+    self->metadataSpacePending = false;
+    self->authorSeparatorPending = !self->author.empty();
     return;
   }
 
   if (self->state == IN_METADATA && xmlLocalNameEquals(name, "language")) {
     self->state = IN_BOOK_LANGUAGE;
+    self->metadataSpacePending = false;
     return;
   }
 
   if (self->state == IN_PACKAGE && xmlLocalNameEquals(name, "manifest")) {
     self->state = IN_MANIFEST;
+    // Only spine resolution reads .items.bin, and only a parse with a cache
+    // resolves the spine: the CSS-only and cover-only parses skip the file.
+    if (!self->cache) return;
     if (!Storage.openFileForWrite("COF", self->cachePath + itemCacheFile, self->tempItemStore)) {
       LOG_ERR("COF", "Couldn't open temp items file for writing");
       self->failIo();
@@ -165,15 +224,17 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
 
   if (self->state == IN_PACKAGE && xmlLocalNameEquals(name, "spine")) {
     self->state = IN_SPINE;
-    if (!Storage.openFileForRead("COF", self->cachePath + itemCacheFile, self->tempItemStore)) {
-      LOG_ERR("COF", "Couldn't open temp items file for reading");
-      self->failIo();
-      return;
-    }
-    self->itemIn = makeUniqueNoThrow<serialization::BufferedFileReader>(self->tempItemStore, ITEM_READ_WINDOW);
-    if (!self->itemIn) {
-      self->failIo();
-      return;
+    if (self->cache) {
+      if (!Storage.openFileForRead("COF", self->cachePath + itemCacheFile, self->tempItemStore)) {
+        LOG_ERR("COF", "Couldn't open temp items file for reading");
+        self->failIo();
+        return;
+      }
+      self->itemIn = makeUniqueNoThrow<serialization::BufferedFileReader>(self->tempItemStore, ITEM_READ_WINDOW);
+      if (!self->itemIn) {
+        self->failIo();
+        return;
+      }
     }
 
     // Sort the (unconditionally-built) item index so every idref lookup uses binary
@@ -192,7 +253,7 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
     self->state = IN_GUIDE;
     // TODO Remove print
     LOG_DBG("COF", "Entering guide state.");
-    if (!Storage.openFileForRead("COF", self->cachePath + itemCacheFile, self->tempItemStore)) {
+    if (self->cache && !Storage.openFileForRead("COF", self->cachePath + itemCacheFile, self->tempItemStore)) {
       LOG_ERR("COF", "Couldn't open temp items file for reading");
       self->failIo();
       return;
@@ -242,28 +303,31 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
     // Capture the offset, then publish an index entry only after both fields
     // are complete. The same metadata budget is enforced by the cache reader.
     // A failed write shows when the manifest ends and the writer is flushed.
-    const uint32_t itemOffset = static_cast<uint32_t>(self->itemOut->position());
-    if (itemId.size() > 4096 || href.size() > 4096) {
-      self->failIo();
-      return;
-    }
-    serialization::writeString(*self->itemOut, itemId);
-    serialization::writeString(*self->itemOut, href);
-#ifdef TENOR_PRESS_PROBE
-    indexProbe.manifestIoUs += micros() - ioStarted;
-    indexProbe.manifestItems++;
-#endif
-    // Only spine resolution reads the index; the CSS-only reparse has no cache.
-    if (self->tempItemStore && self->cache) {
-      // A node holds dozens of entries, so checking every 32 pushes still sees
-      // each allocation coming.
-      if (self->itemIndex.size() % 32 == 0 && ESP.getFreeHeap() < ITEM_INDEX_MIN_FREE_HEAP) {
-        LOG_ERR("COF", "Book too large: manifest index stopped at %u items, heap %u",
-                static_cast<unsigned>(self->itemIndex.size()), static_cast<unsigned>(ESP.getFreeHeap()));
+    // Parses without a cache (CSS-only, cover-only) open no writer.
+    if (self->itemOut) {
+      const uint32_t itemOffset = static_cast<uint32_t>(self->itemOut->position());
+      if (itemId.size() > 4096 || href.size() > 4096) {
         self->failIo();
         return;
       }
-      self->itemIndex.push_back({fnvHash(itemId), itemOffset});
+      serialization::writeString(*self->itemOut, itemId);
+      serialization::writeString(*self->itemOut, href);
+#ifdef TENOR_PRESS_PROBE
+      indexProbe.manifestIoUs += micros() - ioStarted;
+      indexProbe.manifestItems++;
+#endif
+      // Only spine resolution reads the index; the CSS-only reparse has no cache.
+      if (self->tempItemStore && self->cache) {
+        // A node holds dozens of entries, so checking every 32 pushes still sees
+        // each allocation coming.
+        if (self->itemIndex.size() % 32 == 0 && ESP.getFreeHeap() < ITEM_INDEX_MIN_FREE_HEAP) {
+          LOG_ERR("COF", "Book too large: manifest index stopped at %u items, heap %u",
+                  static_cast<unsigned>(self->itemIndex.size()), static_cast<unsigned>(ESP.getFreeHeap()));
+          self->failIo();
+          return;
+        }
+        self->itemIndex.push_back({fnvHash(itemId), itemOffset});
+      }
     }
 
     if (itemId == self->coverItemId) {
@@ -410,21 +474,22 @@ void XMLCALL ContentOpfParser::characterData(void* userData, const XML_Char* s, 
   auto* self = static_cast<ContentOpfParser*>(userData);
   if (self->failed) return;
 
+  if (self->metadataOnly && self->metadataComplete) {
+    return;
+  }
+
   if (self->state == IN_BOOK_TITLE) {
-    self->title.append(s, len);
+    appendMetadataText(self->title, s, len, self->metadataSpacePending);
     return;
   }
 
   if (self->state == IN_BOOK_AUTHOR) {
-    if (!self->author.empty()) {
-      self->author.append(", ");  // Add separator for multiple authors
-    }
-    self->author.append(s, len);
+    appendMetadataText(self->author, s, len, self->metadataSpacePending, &self->authorSeparatorPending);
     return;
   }
 
   if (self->state == IN_BOOK_LANGUAGE) {
-    self->language.append(s, len);
+    appendMetadataText(self->language, s, len, self->metadataSpacePending);
     return;
   }
 }
@@ -434,21 +499,26 @@ void XMLCALL ContentOpfParser::endElement(void* userData, const XML_Char* name) 
   if (self->failed) return;
   (void)name;
 
+  if (self->metadataOnly && self->metadataComplete) {
+    return;
+  }
+
   if (self->state == IN_SPINE && xmlLocalNameEquals(name, "spine")) {
     self->state = IN_PACKAGE;
     self->itemIn.reset();
-    if (!self->tempItemStore.close()) self->failIo();
+    if (self->tempItemStore && !self->tempItemStore.close()) self->failIo();
     return;
   }
 
   if (self->state == IN_GUIDE && xmlLocalNameEquals(name, "guide")) {
     self->state = IN_PACKAGE;
-    if (!self->tempItemStore.close()) self->failIo();
+    if (self->tempItemStore && !self->tempItemStore.close()) self->failIo();
     return;
   }
 
   if (self->state == IN_MANIFEST && xmlLocalNameEquals(name, "manifest")) {
     self->state = IN_PACKAGE;
+    if (!self->cache) return;  // no .items.bin was opened
     const bool written = self->itemOut && self->itemOut->flush();
     self->itemOut.reset();
     if (!written) {
@@ -478,6 +548,7 @@ void XMLCALL ContentOpfParser::endElement(void* userData, const XML_Char* name) 
 
   if (self->state == IN_METADATA && xmlLocalNameEquals(name, "metadata")) {
     self->state = IN_PACKAGE;
+    self->metadataComplete = true;
     return;
   }
 

@@ -1,8 +1,12 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <new>
+
+#include "../Memory/Memory.h"
 
 struct BmpHeader;
 
@@ -90,21 +94,21 @@ class FloydSteinberg1BitDitherer {
 // Less error buildup = fewer artifacts than Floyd-Steinberg
 class AtkinsonDitherer {
  public:
-  explicit AtkinsonDitherer(int width, bool originalThresholds = false)
-      : width(width), originalThresholds(originalThresholds) {
-    errorRow0 = new (std::nothrow) int16_t[width + 4]();  // Current row
-    errorRow1 = new (std::nothrow) int16_t[width + 4]();  // Next row
-    errorRow2 = new (std::nothrow) int16_t[width + 4]();  // Row after next
+  explicit AtkinsonDitherer(int width, bool originalThresholds = false) : originalThresholds(originalThresholds) {
+    if (width <= 0) return;
+    const size_t candidateRowSize = static_cast<size_t>(width) + 4;
+    if (candidateRowSize > SIZE_MAX / (3 * sizeof(int16_t))) return;
+    rowSize = candidateRowSize;
+    errorRows = makeUniqueNoThrow<int16_t[]>(rowSize * 3);
+    if (!errorRows) return;
+    errorRow0 = errorRows.get();
+    errorRow1 = errorRow0 + rowSize;
+    errorRow2 = errorRow1 + rowSize;
   }
 
   // Callers must check row allocation before processing pixels.
-  bool isValid() const { return errorRow0 && errorRow1 && errorRow2; }
+  bool isValid() const { return errorRows != nullptr; }
 
-  ~AtkinsonDitherer() {
-    delete[] errorRow0;
-    delete[] errorRow1;
-    delete[] errorRow2;
-  }
   // **1. EXPLICITLY DELETE THE COPY CONSTRUCTOR**
   AtkinsonDitherer(const AtkinsonDitherer& other) = delete;
 
@@ -113,7 +117,7 @@ class AtkinsonDitherer {
 
   uint8_t processPixel(int gray, int x) {
     // Add accumulated error
-    int adjusted = gray + errorRow0[x + 2];
+    int adjusted = gray + (isValid() ? errorRow0[x + 2] : 0);
     if (adjusted < 0) adjusted = 0;
     if (adjusted > 255) adjusted = 255;
 
@@ -150,6 +154,8 @@ class AtkinsonDitherer {
       }
     }
 
+    if (!isValid()) return quantized;
+
     // Calculate error (only distribute 6/8 = 75%)
     int error = (adjusted - quantizedValue) >> 3;  // error/8
 
@@ -165,24 +171,27 @@ class AtkinsonDitherer {
   }
 
   void nextRow() {
+    if (!isValid()) return;
     int16_t* temp = errorRow0;
     errorRow0 = errorRow1;
     errorRow1 = errorRow2;
     errorRow2 = temp;
-    memset(errorRow2, 0, (width + 4) * sizeof(int16_t));
+    memset(errorRow2, 0, rowSize * sizeof(int16_t));
   }
 
   void reset() {
-    memset(errorRow0, 0, (width + 4) * sizeof(int16_t));
-    memset(errorRow1, 0, (width + 4) * sizeof(int16_t));
-    memset(errorRow2, 0, (width + 4) * sizeof(int16_t));
+    if (!isValid()) return;
+    memset(errorRow0, 0, rowSize * sizeof(int16_t));
+    memset(errorRow1, 0, rowSize * sizeof(int16_t));
+    memset(errorRow2, 0, rowSize * sizeof(int16_t));
   }
 
  private:
-  const int width;
-  int16_t* errorRow0;
-  int16_t* errorRow1;
-  int16_t* errorRow2;
+  size_t rowSize{0};
+  std::unique_ptr<int16_t[]> errorRows;
+  int16_t* errorRow0 = nullptr;
+  int16_t* errorRow1 = nullptr;
+  int16_t* errorRow2 = nullptr;
   const bool originalThresholds;
 };
 
@@ -197,18 +206,19 @@ class AtkinsonDitherer {
 class FloydSteinbergDitherer {
  public:
   explicit FloydSteinbergDitherer(int width, bool originalThresholds = false)
-      : width(width), rowCount(0), originalThresholds(originalThresholds) {
-    errorCurRow = new (std::nothrow) int16_t[width + 2]();  // +2 for boundary handling
-    errorNextRow = new (std::nothrow) int16_t[width + 2]();
+      : rowCount(0), originalThresholds(originalThresholds) {
+    if (width <= 0) return;
+    const size_t candidateRowSize = static_cast<size_t>(width) + 2;
+    if (candidateRowSize > SIZE_MAX / (2 * sizeof(int16_t))) return;
+    rowSize = candidateRowSize;
+    errorRows = makeUniqueNoThrow<int16_t[]>(rowSize * 2);
+    if (!errorRows) return;
+    errorCurRow = errorRows.get();
+    errorNextRow = errorCurRow + rowSize;
   }
 
   // Callers must check row allocation before processing pixels.
-  bool isValid() const { return errorCurRow && errorNextRow; }
-
-  ~FloydSteinbergDitherer() {
-    delete[] errorCurRow;
-    delete[] errorNextRow;
-  }
+  bool isValid() const { return errorRows != nullptr; }
 
   // **1. EXPLICITLY DELETE THE COPY CONSTRUCTOR**
   FloydSteinbergDitherer(const FloydSteinbergDitherer& other) = delete;
@@ -220,7 +230,7 @@ class FloydSteinbergDitherer {
   // x is the logical x position (0 to width-1), direction handled internally
   uint8_t processPixel(int gray, int x) {
     // Add accumulated error to this pixel
-    int adjusted = gray + errorCurRow[x + 1];
+    int adjusted = gray + (isValid() ? errorCurRow[x + 1] : 0);
 
     // Clamp to valid range
     if (adjusted < 0) adjusted = 0;
@@ -259,6 +269,8 @@ class FloydSteinbergDitherer {
       }
     }
 
+    if (!isValid()) return quantized;
+
     // Calculate error
     int error = adjusted - quantizedValue;
 
@@ -290,12 +302,13 @@ class FloydSteinbergDitherer {
 
   // Call at the end of each row to swap buffers
   void nextRow() {
+    if (!isValid()) return;
     // Swap buffers
     int16_t* temp = errorCurRow;
     errorCurRow = errorNextRow;
     errorNextRow = temp;
     // Clear the next row buffer
-    memset(errorNextRow, 0, (width + 2) * sizeof(int16_t));
+    memset(errorNextRow, 0, rowSize * sizeof(int16_t));
     rowCount++;
   }
 
@@ -304,16 +317,18 @@ class FloydSteinbergDitherer {
 
   // Reset for a new image or MCU block
   void reset() {
-    memset(errorCurRow, 0, (width + 2) * sizeof(int16_t));
-    memset(errorNextRow, 0, (width + 2) * sizeof(int16_t));
+    if (!isValid()) return;
+    memset(errorCurRow, 0, rowSize * sizeof(int16_t));
+    memset(errorNextRow, 0, rowSize * sizeof(int16_t));
     rowCount = 0;
   }
 
  private:
-  const int width;
   int rowCount;
-  int16_t* errorCurRow;
-  int16_t* errorNextRow;
+  size_t rowSize{0};
+  std::unique_ptr<int16_t[]> errorRows;
+  int16_t* errorCurRow = nullptr;
+  int16_t* errorNextRow = nullptr;
   const bool originalThresholds;
 };
 // Packed levels are 0=black through 3=white. Destination indexes are in bits.

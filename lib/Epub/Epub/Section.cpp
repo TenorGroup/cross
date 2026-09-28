@@ -3,6 +3,8 @@
 #include "BuildStageProbe.h"
 
 #include <Arduino.h>
+#include <FontCacheManager.h>
+#include <GfxRenderer.h>
 #include <HalMemory.h>
 #include <HalStorage.h>
 
@@ -59,7 +61,11 @@ namespace {
 // v50 header would be read as a different setting; those caches are discarded.
 // v53: Discard caches whose older builders could silently omit failed lines.
 // v54: Rebuild pages whose CSS cascade could be skipped under low heap.
-constexpr uint8_t SECTION_FILE_VERSION = 54;
+// v55: Ordered lists number their items, list-style-type: none suppresses markers,
+//      <ul>/<ol> containers contribute their own margins/padding to child insets;
+//      Hangul words wrap at spaces (with hyphenation on they may also split at a
+//      line end) and justification no longer stretches between syllables.
+constexpr uint8_t SECTION_FILE_VERSION = 55;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
@@ -82,6 +88,9 @@ constexpr uint32_t HEADER_SIZE =
     sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
     sizeof(uint8_t) + sizeof(bool) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
     sizeof(uint32_t);
+// startBuild() keeps the SD font caches at or above this heap (see there).
+constexpr size_t BUILD_START_KEEP_FONT_CACHE_FREE = 64 * 1024;
+constexpr size_t BUILD_START_KEEP_FONT_CACHE_LARGEST = 32 * 1024;
 }  // namespace
 
 // Out-of-line so the unique_ptr<ChapterHtmlSlimParser> in BuildContext can be
@@ -437,6 +446,19 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   if (build_) {
     LOG_ERR("SCT", "startBuild called while a build is already active");
     return false;
+  }
+  // Reclaim rebuildable font caches before CSS and layout allocations when the heap is short of
+  // what a build needs to start: SD font glyph and advance caches grown by paging can leave the
+  // layout's first allocations no contiguous block. Only below the bar the reader's background
+  // builds must clear to start (64 KB free, 32 KB largest), so a background start beside a
+  // healthy heap keeps the caches the next page turn draws from.
+  if (ESP.getFreeHeap() < BUILD_START_KEEP_FONT_CACHE_FREE ||
+      ESP.getMaxAllocHeap() < BUILD_START_KEEP_FONT_CACHE_LARGEST) {
+    if (auto* fontCache = renderer.getFontCacheManager()) {
+      fontCache->releaseSdFontCaches();
+      LOG_DBG("SCT", "Build start: released SD font caches, free=%u largest=%u",
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+    }
   }
   buildComplete_ = false;
   builtPageCount_ = 0;
@@ -1135,6 +1157,7 @@ bool Section::commitBuildFile(const uint8_t version, const uint32_t bytesConsume
 bool Section::finalizeBuild() {
   // Flush the trailing page (emits the last page via the completePageFn into the LUT).
   if (!build_->parser->finishParse() || build_->failed) {
+    LOG_ERR("SCT", "Parse finalize failed; abandoning section build");
     abandonBuild();
     return false;
   }

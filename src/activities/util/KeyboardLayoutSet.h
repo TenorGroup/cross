@@ -16,8 +16,9 @@ struct LayoutInfo {
 // and append new layouts so SDK enum changes cannot reinterpret saved masks.
 inline constexpr LayoutInfo ALL[] = {
     {freeink::ui::KeyboardLayoutId::QwertyEn, Language::EN},
-    // Layouts for other UI languages were removed on 18/09/2026 together with
-    // their translations: the firmware ships English, Vietnamese and Chinese.
+    // Layouts for other UI languages (including upstream's new Arabic layout,
+    // #3430) were removed on 18/09/2026 together with their translations: the
+    // firmware ships English, Vietnamese and Chinese.
 };
 inline constexpr uint8_t COUNT = sizeof(ALL) / sizeof(ALL[0]);
 static_assert(COUNT <= 16, "keyboard layout mask is uint16_t");

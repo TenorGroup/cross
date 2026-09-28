@@ -726,6 +726,46 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
 
     downloadUrl_.assign(baseUrl_).append(str(file.name));
 
+    auto result = HttpDownloader::downloadToFile(
+        downloadUrl_, destPath,
+        [this](size_t downloaded, size_t total) {
+          fileProgress_ = downloaded;
+          fileTotal_ = total;
+          mappedInput.update(true);
+          if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
+              mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+            cancelRequested_ = true;
+          }
+          // Home cancels immediately; other configured actions are deferred to
+          // the next main-loop pass by the transfer input pump.
+          if (mappedInput.wasHomeGesture()) {
+            cancelRequested_ = true;
+            goHomeRequested_ = true;
+          }
+          requestUpdate(true);
+        },
+        // Bulk font transfers follow GitHub's release-asset redirect over plain
+        // HTTP: the CRC check below (manifest fetched over TLS) covers
+        // integrity, and skipping the second TLS session keeps the C3 heap out
+        // of MEMORY_E territory.
+        &cancelRequested_, "", "", /*downgradeRedirectsToHttp=*/true);
+
+    if (result == HttpDownloader::ABORTED) {
+      fontInstaller_.deleteFamily(str(family.name));
+      family.installed = false;
+      family.hasUpdate = false;
+      if (goHomeRequested_) {
+        onGoHome();
+        return;
+      }
+      {
+        RenderLock lock(*this);
+        state_ = FAMILY_LIST;
+        rowsDirty_ = true;  // installed/hasUpdate just changed above
+      }
+      return;
+    }
+
     if (!fontInstaller_.ensureFontDir(str(family.name), str(file.name))) {
       RenderLock lock(*this);
       state_ = ERROR;
@@ -919,7 +959,7 @@ void FontDownloadActivity::buildScreen(UiScreen& screen) {
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;               // air between the status and the row edge
-  syncListViewport(screen, props, /*hasSubtitle=*/state_ == FAMILY_LIST);
+  syncListViewport(screen, props);
   screen.list(props);
 }
 

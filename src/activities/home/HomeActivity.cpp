@@ -587,9 +587,9 @@ void HomeActivity::drawChrome() {
   // ngay duoi trong o anh bia va trong danh sach.
   if (tenorchrome::enabled())
     drawNavigationHeader(tabLabel(activeTab()));
-  else
+  else  // Home is the stack root: no back button in its header.
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding - metrics.topPadding},
-                   tabLabel(activeTab()));
+                   tabLabel(activeTab()), nullptr, false);
 
   if (activeTabId == Tab::STATS) {
     const auto* suggestion = habitSuggestion();
@@ -658,7 +658,7 @@ void HomeActivity::buildScreen(UiScreen& screen) {
     // them all: no "more below" chevron, and holding a front button reaches the first or last.
     auto& n = activeNav();
     const int count = listCount();
-    n.selected = count > 0 ? std::clamp(n.selected, 1, count) : 0;
+    n.selected = count > 0 ? std::clamp(n.selected.load(), 1, count) : 0;
     n.top = 0;
     n.visibleRows = std::max(1, count);
     n.drawnRows = count;

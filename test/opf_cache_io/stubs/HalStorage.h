@@ -39,11 +39,14 @@ class HalFile {
 };
 struct OpfStorage {
   std::map<std::string, std::shared_ptr<std::vector<uint8_t>>> files;
+  int writeOpens = 0, readOpens = 0;
   bool openFileForWrite(const char*, const std::string& path, HalFile& out) {
+    ++writeOpens;
     if (opfFaults.openWrite) return false;
     out.bytes = files[path] = std::make_shared<std::vector<uint8_t>>(); out.offset = 0; return true;
   }
   bool openFileForRead(const char*, const std::string& path, HalFile& out) {
+    ++readOpens;
     if (opfFaults.openRead || !files.count(path)) return false;
     out.bytes = files.at(path); out.offset = 0; return true;
   }

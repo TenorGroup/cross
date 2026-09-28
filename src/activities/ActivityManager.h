@@ -18,6 +18,9 @@
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 
+// The values ride through a silent restart in RTC memory (main.cpp), so new items go last.
+// LIBRARY is the Library screen (library/LibraryListActivity); tenor/cross Home has no entry for
+// it, so returning from it lands on the Recent tab.
 enum class HomeMenuItem {
   NONE,
   FILE_BROWSER,
@@ -27,7 +30,8 @@ enum class HomeMenuItem {
   SETTINGS_MENU,
   STATS_TAB,
   FAVORITES_TAB,
-  RECENT_CONTINUE
+  RECENT_CONTINUE,
+  LIBRARY
 };
 
 // A reader shortcut a quick action asks the foreground reader for (quickaction::Outcome).
@@ -111,7 +115,7 @@ class ActivityManager {
   // goi thang vao dung the, khoi bat nguoi ta nhay the lai tu dau.
   void goToSettings(int theBanDau = 0);
   void goToFileBrowser(std::string path = {});
-  void goToRecentBooks();
+  void goToLibrary();
   void goToBrowser();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   bool goToSleep(bool fromTimeout = false);

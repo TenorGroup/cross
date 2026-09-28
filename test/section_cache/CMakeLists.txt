@@ -28,6 +28,7 @@ add_executable(SectionCacheTest
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/css/CssParser.cpp
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/ParsedText.cpp
+  ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/WordStore.cpp
   ${SECTION_SOURCE_ROOT}/lib/Epub/Epub/converters/ImageDimsProbe.cpp
   ${SECTION_SOURCE_ROOT}/lib/Utf8/Utf8.cpp
 )

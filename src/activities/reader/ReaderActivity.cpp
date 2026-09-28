@@ -1,7 +1,6 @@
 #include "ReaderActivity.h"
 
 #include <FontCacheManager.h>
-
 #include <FsHelpers.h>
 #include <HalClock.h>
 #include <HalStorage.h>
@@ -60,6 +59,10 @@ void ReaderActivity::disableFastInitialRefresh() { pagesUntilFullRefresh = 0; }
 void ReaderActivity::onEnter() {
   Activity::onEnter();
 
+  // Heap ledger for field crash reports: free vs largest block distinguishes a
+  // leak (free falls) from fragmentation (free stable, largest collapses).
+  LOG_INF("MEM", "reader enter: free=%u max_block=%u", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+
   if (!Storage.exists(bookPath.c_str())) {
     LOG_ERR("READER", "File does not exist: %s", bookPath.c_str());
     finish();
@@ -106,6 +109,9 @@ void ReaderActivity::onEnter() {
 
 void ReaderActivity::commitOpen() {
   if (!openCommitPending) return;
+  // Only a book that put a page on the panel is remembered: one that cannot be laid out (an
+  // index or build error screen) must not come back on wake or head the Recent list.
+  if (!pageRendered.load(std::memory_order_acquire)) return;
   openCommitPending = false;
 #ifdef TENOR_TURN_TRACE
   const unsigned long started = millis();
@@ -120,6 +126,11 @@ void ReaderActivity::commitOpen() {
 void ReaderActivity::onExit() {
   Activity::onExit();
   commitOpen();
+  if (openCommitPending) {
+    // No page ever reached the panel: forget the book, so the state saved below does not reopen it.
+    openCommitPending = false;
+    if (APP_STATE.openEpubPath == bookPath) APP_STATE.openEpubPath.clear();
+  }
   pendingExternalTurn = 0;
 #ifdef TENOR_TURN_TRACE
   dropTurnTrace(pendingExternalTurnTrace, "exit");
@@ -148,6 +159,8 @@ void ReaderActivity::onExit() {
       activityManager.deferWrite([] { RECENT_BOOKS.saveExcerpt(); });
     }
   }
+
+  LOG_INF("MEM", "reader exit: free=%u max_block=%u", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   if (!preview) {
@@ -195,9 +208,9 @@ void ReaderActivity::chotSoLieuDoc() {
 }
 
 void ReaderActivity::onTick() {
-  // The first frame is on the panel: a page, or the end-of-book screen, which sets no pageReady.
-  if (openCommitPending &&
-      (pageReady.load(std::memory_order_acquire) || endOfBookOptionsReady.load(std::memory_order_acquire))) {
+  // The first page is on the panel, or the end-of-book screen (both mark pageRendered; an error
+  // screen does not, and commitOpen() waits for one of them).
+  if (openCommitPending && pageRendered.load(std::memory_order_acquire)) {
     commitOpen();
   }
   // Never stall the input loop on a paint in flight: try-take instead of
@@ -618,6 +631,7 @@ void ReaderActivity::render(RenderLock&&) {
     appliedTurnTrace = {};
 #endif
     onEndOfBookRendered();
+    markPageRendered();
     return;
   }
 

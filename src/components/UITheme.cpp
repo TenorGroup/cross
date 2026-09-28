@@ -3,6 +3,7 @@
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
+#include <HalMemory.h>
 #include <Logging.h>
 #include <Memory.h>
 
@@ -14,6 +15,7 @@
 #include "RecentBooksStore.h"
 #include "TenorMenuChrome.h"
 #include "UIThemeSizing.h"
+#include "components/CoverGridHomeUi.h"
 #include "components/themes/BaseTheme.h"
 #include "components/themes/TenorTheme.h"
 #include "components/themes/lyra/Lyra3CoversTheme.h"
@@ -32,8 +34,17 @@ void UITheme::reload() {
   setTheme(themeType);
 }
 
+bool UITheme::supportsCoverGrid() { return HalMemory::getPsramHeap().totalBytes > 0; }
+
+bool UITheme::hasCoverGridHome() { return SETTINGS.uiTheme == CrossPointSettings::COVER_GRID && supportsCoverGrid(); }
+
+void UITheme::drawCoverGridHome(CoverGridHomeUi& home) { home.renderUi(); }
+
 void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
   buttonSymbols::install();
+  // The cover grid needs PSRAM (X3 and X4 have none): without it the setting falls back to Lyra.
+  if (type == CrossPointSettings::COVER_GRID && !supportsCoverGrid()) type = CrossPointSettings::LYRA;
+
   switch (type) {
     case CrossPointSettings::UI_THEME::TENOR_UI: {
       LOG_DBG("UI", "Using tenor/cross theme");
@@ -51,11 +62,19 @@ void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
       currentTheme = std::make_unique<BaseTheme>();
       currentMetrics = &BaseMetrics::values;
       break;
-    case CrossPointSettings::UI_THEME::LYRA:
-      LOG_DBG("UI", "Using Lyra theme");
-      currentTheme = std::make_unique<LyraTheme>();
+    case CrossPointSettings::UI_THEME::COVER_GRID:
+    case CrossPointSettings::UI_THEME::LYRA: {
+      // The cover home owns its screen-lifetime UI state; other screens retain Lyra styling.
+      auto theme = makeUniqueNoThrow<LyraTheme>();
+      if (!theme) {
+        LOG_ERR("UI", "OOM: Lyra theme");
+        return;
+      }
+      currentTheme = std::move(theme);
       currentMetrics = &LyraMetrics::values;
+      LOG_DBG("UI", "Using Lyra theme");
       break;
+    }
     case CrossPointSettings::UI_THEME::ROUNDEDRAFF:
       LOG_DBG("UI", "Using RoundedRaff theme");
       currentTheme = std::make_unique<RoundedRaffTheme>();

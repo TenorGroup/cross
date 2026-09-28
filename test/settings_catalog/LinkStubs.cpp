@@ -77,10 +77,10 @@ HalGPIO gpio;
 InputManager::InputManager() {}
 
 #include "activities/settings/TextSettingsActivity.h"
-#include "activities/settings/DongHoSettingsActivity.h"
+#include "activities/settings/ClockSettingsActivity.h"
 std::string TextSettingsActivity::layoutValueText(int){return "layout-boundary";}
 std::string TextSettingsActivity::styleValueText(int){return "style-boundary";}
-std::string DongHoSettingsActivity::giaTriDong(int){return "clock-boundary";}
+std::string ClockSettingsActivity::giaTriDong(int){return "clock-boundary";}
 
 namespace tenorchrome {
 int tipLineCount(const GfxRenderer&, const char*, int) { return 0; }

@@ -3,7 +3,10 @@
 #include <DropCap.h>
 #include <EpdFontFamily.h>
 
-#include <deque>
+#include <FontCacheManager.h>
+
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 namespace BidiUtils {
@@ -49,5 +52,7 @@ class GfxRenderer {
   int getKerning(int, uint32_t, uint32_t, EpdFontFamily::Style) const { return 0; }
   int getSpaceAdvance(int, uint32_t, uint32_t, EpdFontFamily::Style, uint8_t = 0) const { return 4; }
   bool isSdCardFont(int) const { return false; }
-  void ensureSdCardFontReady(int, const std::deque<std::string>&, bool, uint8_t) const {}
+  void ensureSdCardFontReady(int, const char* const*, const size_t*, size_t, bool, bool, uint8_t) const {}
+  // No SD font caches on the host: Section::startBuild finds nothing to release.
+  FontCacheManager* getFontCacheManager() const { return nullptr; }
 };

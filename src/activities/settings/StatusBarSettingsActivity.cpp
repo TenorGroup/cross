@@ -17,7 +17,9 @@
 namespace fui = freeink::ui;
 
 namespace {
-// Menu items in their natural order. System time can come from RTC or NTP.
+// Menu items in their natural order. The clock position entry is appended only
+// when the RTC probe found hardware; time, zone, and format live in Settings >
+// System > Clock.
 enum MenuItem {
   ITEM_CHAPTER_PAGE_COUNT = 0,
   ITEM_BOOK_PROGRESS_PERCENTAGE,
@@ -26,7 +28,7 @@ enum MenuItem {
   ITEM_TITLE,
   ITEM_BATTERY,
   ITEM_XTC_STATUS_BAR,
-  ITEM_CLOCK,
+  ITEM_CLOCK,  // RTC boards only
   ITEM_COUNT
 };
 
@@ -44,6 +46,7 @@ const StrId menuNames[FULL_MENU_ITEMS] = {
     StrId::STR_XTC_STATUS_BAR,
     StrId::STR_CLOCK,
 };
+
 constexpr int PROGRESS_BAR_ITEMS = 3;
 const StrId progressBarNames[PROGRESS_BAR_ITEMS] = {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE};
 

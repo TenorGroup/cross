@@ -1,0 +1,25 @@
+find_package(EXPAT REQUIRED)
+
+add_executable(ContentOpfParserTest
+  ContentOpfParserTest.cpp
+  ${REPO_ROOT}/lib/Epub/Epub/parsers/ContentOpfParser.cpp
+)
+
+# The parser's own I/O stubs (buffered .items.bin, heap probe) are the ones opf_cache_io uses.
+target_include_directories(ContentOpfParserTest PRIVATE
+  ${REPO_ROOT}/test/opf_cache_io/stubs
+  ${REPO_ROOT}/test/chapter_html_slim_parser/stubs
+  ${REPO_ROOT}/lib/Epub
+  ${REPO_ROOT}/lib/Epub/Epub/parsers
+  ${REPO_ROOT}/lib/Serialization
+  ${REPO_ROOT}/lib/Memory
+  ${REPO_ROOT}/lib/XmlParserUtils
+)
+
+target_link_libraries(ContentOpfParserTest PRIVATE
+  crosspoint_test_common
+  EXPAT::EXPAT
+  GTest::gtest_main
+)
+
+gtest_discover_tests(ContentOpfParserTest)

@@ -28,6 +28,10 @@ class ReaderActivity : public Activity {
 
   std::unique_ptr<EndOfBookOptions> endOfBookOptions;
   std::atomic<bool> endOfBookOptionsReady{false};
+  // Set by the render task once a laid-out page (or the end-of-book screen) is on the panel;
+  // commitOpen() remembers the book only then.
+  std::atomic<bool> pageRendered{false};
+  void markPageRendered() { pageRendered.store(true, std::memory_order_release); }
 
   explicit ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
                           std::string bookPath, bool allowFastInitialRefresh);

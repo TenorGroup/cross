@@ -1,4 +1,5 @@
 #pragma once
+
 #include <ArduinoJson.h>
 #include <Epub/ReaderRenderSpec.h>
 #include <Epub/ReaderSpacing.h>
@@ -7,6 +8,7 @@
 #include <cstdint>
 
 #include "activities/settings/BleKeyBinding.h"
+#include "util/HomeButtonInput.h"
 
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
  private:
@@ -70,6 +72,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     STATUS_BAR_CLOCK_MODE_COUNT
   };
 
+  // Auto follows the timezone's baked DST rule; On/Off override it - the
+  // escape hatch for a zone whose law changed before the firmware caught up.
+  enum CLOCK_DST_MODE { CLOCK_DST_AUTO = 0, CLOCK_DST_ON = 1, CLOCK_DST_OFF = 2, CLOCK_DST_MODE_COUNT };
+
   enum ORIENTATION {
     PORTRAIT = 0,       // 480x800 logical coordinates (current default)
     LANDSCAPE_CW = 1,   // 800x480 logical coordinates, rotated 180° (swap top/bottom)
@@ -99,15 +105,16 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   };
 
   // Side button layout options
-  // Default: Up = Previous, Down = Next
-  // NEXT_NEXT is appended rather than slotted in beside its siblings: the value is
-  // persisted as a number, so inserting would silently change what an existing
-  // save means.
+  // Default: Up = Previous, Down = Next. NEXT_NEXT and PREV_PREV assign both
+  // buttons to the same direction for one-handed reading. Both are appended
+  // rather than slotted in beside their siblings: the value is persisted as a
+  // number, so inserting would silently change what an existing save means.
   enum SIDE_BUTTON_LAYOUT {
     PREV_NEXT = 0,
     NEXT_PREV = 1,
     SIDE_BUTTONS_DISABLED = 2,
     NEXT_NEXT = 3,
+    PREV_PREV = 4,
     SIDE_BUTTON_LAYOUT_COUNT
   };
 
@@ -150,7 +157,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     REFRESH_FREQUENCY_COUNT
   };
 
-  // Short power button press actions
+  // Short power button press actions. PWR_CONFIRM is only offered on touch
+  // boards (see SettingsList.h).
   enum SHORT_PWRBTN {
     IGNORE = 0,
     SLEEP = 1,
@@ -195,7 +203,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   };
 
   // UI Theme
-  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3, TENOR_UI = 4 };
+  // TENOR_UI is Tenor's shipped default (uiTheme's struct-initializer default
+  // below), so it keeps ordinal 4 for every device already storing it.
+  // COVER_GRID (#3657, PSRAM boards only) is appended after it rather than
+  // at the ordinal upstream gave it, since upstream's 4 collides with
+  // TENOR_UI: X3/X4 have no PSRAM and never reach this ordinal anyway.
+  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3, TENOR_UI = 4, COVER_GRID = 5 };
   enum UI_TEXT_SIZE { UI_TEXT_SMALL = 0, UI_TEXT_MEDIUM = 1, UI_TEXT_LARGE = 2, UI_TEXT_SIZE_COUNT };
 
   // Image rendering in EPUB reader
@@ -216,13 +229,22 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     TILT_STRENGTH_COUNT
   };
 
+  // touchReaderControls is now a master on/off (#3586); which gesture turns
+  // the page in each direction lives in the two PAGE_TURN_GESTURE fields
+  // below. Touch boards only (X3/X4 have no touch controller and hide this
+  // row entirely - see settingHiddenOnThisBoard).
+  enum TOUCH_READER_CONTROLS { TOUCH_READER_OFF = 0, TOUCH_READER_ON = 1, TOUCH_READER_CONTROLS_COUNT };
 
-  enum TOUCH_READER_CONTROLS {
-    TOUCH_READER_OFF = 0,
-    TOUCH_READER_ON = 1,
-    TOUCH_READER_SWIPE = 2,
-    TOUCH_READER_INVERTED_TAP = 3,
-    TOUCH_READER_CONTROLS_COUNT
+  // Per-direction reader page-turn gestures. INVERTED_TAP is tap-only; either
+  // direction set to it swaps both directions' shared tap zones (see
+  // ReaderUtils::detectTouchPageTurn).
+  enum PAGE_TURN_GESTURE {
+    TAP_AND_SWIPE = 0,
+    TAP_ONLY = 1,
+    SWIPE_ONLY = 2,
+    INVERTED_TAP = 3,
+    PAGE_TURN_GESTURE_DISABLED = 4,
+    PAGE_TURN_GESTURE_COUNT
   };
 
   // How the reader menu opens on touch boards. Persisted under the legacy
@@ -287,22 +309,38 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t statusBarTitle = CHAPTER_TITLE;
   uint8_t statusBarBattery = 1;
   uint8_t xtcStatusBarMode = XTC_STATUS_BAR_HIDE;
-  // Clock display in status bar (X3 only, requires DS3231 RTC)
+  // Clock display in status bar (any board whose RTC probe succeeds)
   uint8_t statusBarClock = STATUS_BAR_CLOCK_HIDE;
-  // Clock UTC offset in quarter-hour steps, biased by 48 so it fits in uint8_t.
-  // Value 48 = UTC+0, 0 = UTC-12:00, 104 = UTC+14:00.
-  // Quarter-hour granularity supports oddball zones like Nepal (+5:45) and Chatham (+12:45).
+  // LEGACY, kept for migration only: quarter-hour UTC offset biased by 48
+  // (48 = UTC+0). Superseded by clockTimezone; read once by
+  // timezones::activeIndex() when clockTimezone is unset.
   uint8_t clockUtcOffsetQ = 48;
   // Clock display format: 0 = 24-hour, 1 = 12-hour
   uint8_t clockFormat = 0;
+  // Tenor: resolve clockUtcOffsetQ from network lookup (src/network/TimezoneLookup.cpp)
+  // instead of a manual offset. Independent of upstream's named-timezone picker below.
   uint8_t clockAutoTimezone = 1;
+  // Index into the timezone table (src/util/Timezones.cpp, append-only).
+  // 255 = never chosen; falls back to the legacy UTC offset, then UTC.
+  uint8_t clockTimezone = 255;
+  // CLOCK_DST_MODE: follow the zone's DST rule, or force it on/off.
+  uint8_t clockDst = CLOCK_DST_AUTO;
+  // Show the clock opposite the battery in every header band that draws one.
+  uint8_t clockShowInHeader = 0;
   // Set once an NTP sync succeeds. Used to skip re-syncing on every WiFi connect.
   // Resetting to 0 (e.g. via the web UI) forces a re-sync on next WiFi connect.
   uint8_t clockHasBeenSynced = 0;
-  // Text rendering settings. Each of these three is a readerSpacing::Level, not
+  // Text rendering settings. Each of these four is a readerSpacing::Level, not
   // a private enum: the ordinal is what settings.json stores, and ReaderSpacing.h
   // turns it into the line factor, the letter delta and the paragraph gap.
   // toJson stamps textSpacingVersion 3; fromJson folds v1/v2 files into it.
+  //
+  // Upstream's own word/character spacing redesign (percent-scale wordSpacing,
+  // separate characterSpacing 0..4 offset) is NOT taken here: it retypes the
+  // "wordSpacing" JSON key from a 5-level ordinal to a 50..200 percent, which
+  // would misread every existing save. Tenor's unified Level-based scheme
+  // covers the same UX (letterSpacing already is upstream's characterSpacing
+  // idea, just under Tenor's own key) so no capability is lost.
   uint8_t extraParagraphSpacing = readerSpacing::LEVEL_DEFAULT;
   uint8_t letterSpacing = readerSpacing::LEVEL_DEFAULT;
   // readerSpacing::Level applied to the U+0020 advance. Joined the group at
@@ -314,6 +352,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t textAntiAliasing = 1;
   // Short power button click behaviour
   uint8_t shortPwrBtn = IGNORE;
+  // X4 Pro: double-click power toggles the frontlight. Disabling frees the
+  // power button for shortPwrBtn actions without the double-click wait.
+  uint8_t doubleClickPwrLight = 1;
+  uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
+  uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
+  uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
   // EPUB reading orientation settings
   // 0 = portrait (default), 1 = landscape clockwise, 2 = inverted, 3 = landscape counter-clockwise
   uint8_t orientation = PORTRAIT;
@@ -411,6 +455,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   char dictionaryName[32] = "";
   // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)
   uint8_t showHiddenFiles = 0;
+  // Show the title and author read from inside each book rather than its
+  // filename. Users can disable this to make index rebuilds skip EPUB parsing.
+  uint8_t libraryUseMetadata = 1;
   // Remove a book from the Recent Books list when its End-of-Book screen is reached (0 = off, 1 = on)
   uint8_t removeReadBooksFromRecents = 0;
   // Move epub to /Read/ folder on SD card when finished (0 = disabled, 1 = enabled)
@@ -442,8 +489,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t doubleTapAction = 0;
   uint8_t screenTapAction = 0;
   uint8_t edgeTapAction = 0;
-  // Touch screen reader zones/gestures on boards with a touch controller.
-  uint8_t touchReaderControls = TOUCH_READER_SWIPE;
+  // Master reader-touch toggle on boards with a touch controller.
+  uint8_t touchReaderControls = TOUCH_READER_ON;
+  // Which gestures turn the page in each direction (PAGE_TURN_GESTURE).
+  uint8_t pageTurnGesture = SWIPE_ONLY;
+  uint8_t previousPageGesture = SWIPE_ONLY;
   // Reader menu open gesture (SHOW_READER_MENU: off / center tap / bottom-edge
   // up-swipe). Only surfaced on home-key boards, where Home is the capacitive
   // key and the bottom edge is free; elsewhere it stays at the Tap default.
@@ -635,7 +685,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     bool showBatteryPercent = false;
     uint8_t clockMode = STATUS_BAR_CLOCK_HIDE;  // STATUS_BAR_CLOCK_MODE
     bool clock12h = false;
-    uint8_t clockUtcOffsetQ = 48;             // 48 = UTC+0
     uint8_t progressBarMode = HIDE_PROGRESS;  // STATUS_BAR_PROGRESS_BAR
     uint8_t progressBarHeightPx = 0;          // (thickness+1)*2; 0 when the bar is hidden
     uint8_t xtcMode = XTC_STATUS_BAR_HIDE;    // XTC_STATUS_BAR_MODE

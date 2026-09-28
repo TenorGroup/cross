@@ -30,6 +30,8 @@ class ContentOpfParser final : public Print {
   XML_Parser parser = nullptr;
   ParserState state = START;
   BookMetadataCache* cache;
+  const bool metadataOnly;
+  bool metadataComplete = false;
   HalFile tempItemStore;
   // .items.bin is written, then looked up, between zip reads that share SdFat's one sector cache:
   // unbuffered, the X3 spent 0,7 s writing and 0,9 s looking up the items of a 5.000-chapter book.
@@ -41,6 +43,11 @@ class ContentOpfParser final : public Print {
   bool hasExplicitStartReference = false;
   bool failed = false;
   void failIo();
+  // XML character data is allowed to arrive in several callbacks for one text
+  // node (notably around character references). Keep whitespace and creator
+  // separation as element state rather than inferring either from callbacks.
+  bool metadataSpacePending = false;
+  bool authorSeparatorPending = false;
 
   // Index for fast idref→href lookup (binary search over .items.bin). Eight
   // bytes per manifest item: a hash hit is confirmed against the id stored in
@@ -78,8 +85,12 @@ class ContentOpfParser final : public Print {
   std::vector<std::string> cssFiles;  // CSS stylesheet paths
 
   explicit ContentOpfParser(const std::string& cachePath, const std::string& baseContentPath, const size_t xmlSize,
-                            BookMetadataCache* cache)
-      : cachePath(cachePath), baseContentPath(baseContentPath), remainingSize(xmlSize), cache(cache) {}
+                            BookMetadataCache* cache, const bool metadataOnly = false)
+      : cachePath(cachePath),
+        baseContentPath(baseContentPath),
+        remainingSize(xmlSize),
+        cache(cache),
+        metadataOnly(metadataOnly) {}
   ~ContentOpfParser() override;
 
   bool setup();
