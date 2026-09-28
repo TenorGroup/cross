@@ -510,6 +510,8 @@ void SettingsActivity::toggleCurrentSetting() {
 
     switch (setting.action) {
       case SettingAction::HomeButton: {
+        // The row only exists with a home key; a build without one leaves this screen out.
+        if (!BoardConfig::hasHomeKey()) return;
         // Activities must outlive this call and are owned by the activity stack.
         auto activity = makeUniqueNoThrow<HomeButtonSettingsActivity>(renderer, mappedInput);
         if (!activity) {
