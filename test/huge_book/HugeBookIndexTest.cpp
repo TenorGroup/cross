@@ -286,34 +286,49 @@ TEST(HugeBookIndex, OrdinaryBooksKeepOneDirectoryScan) {
 
 // The size table stays resident for the whole reading session, next to the
 // page-turner radio. X3 r45b: reading a 2,000-chapter book with the radio on
-// already bottomed out at 23 KB free.
+// already bottomed out at 23 KB free. X3 v1.0.50: a 5,000-chapter book held a
+// 10,240 B block of chapter sizes beside the page; the radio's start then left
+// a 28,660 B largest block, under the 32,768 B it keeps, and it never stayed on.
+// A 5,000-chapter book may hold at most 2 KB more than a 30-chapter one.
+namespace {
+struct LoadedHeap {
+  size_t resident = 0, peak = 0, afterLookups = 0;
+};
+LoadedHeap loadAndReadSizes(int n) {
+  EXPECT_TRUE(indexBook(makeBook(Kind::Split, n), SIZE_MAX).ok);
+  LoadedHeap heap;
+  heapcap::reset(SIZE_MAX);
+  {
+    BookMetadataCache cache(cachePath);
+    EXPECT_TRUE(cache.load());
+    heap.resident = heapcap::live;
+    heap.peak = heapcap::peak;
+    uint32_t total = 0;
+    for (int i = 0; i < n; ++i) {
+      total += chapterBytes(i + 1);
+      EXPECT_EQ(cache.getCumulativeSize(i), total) << "spine " << i;
+    }
+    heap.afterLookups = heapcap::live;
+  }
+  heapcap::stop();
+  return heap;
+}
+}  // namespace
+
 TEST(HugeBookIndex, LoadedSizeTableStaysSmall) {
+  bigChapter = 0;
+  const LoadedHeap ordinary = loadAndReadSizes(30);
+  printf("HUGE_INDEX resident n=30 bytes=%zu peak=%zu\n", ordinary.resident, ordinary.peak);
   for (int big : {0, 777}) {
     bigChapter = big;
-    const Book book = makeBook(Kind::Split, 5000);
-    ASSERT_TRUE(indexBook(book, SIZE_MAX).ok);
-    heapcap::reset(SIZE_MAX);
-    size_t resident = 0, peak = 0;
-    {
-      BookMetadataCache cache(cachePath);
-      ASSERT_TRUE(cache.load());
-      resident = heapcap::live;
-      peak = heapcap::peak;
-      heapcap::stop();
-      uint32_t total = 0;
-      for (int i = 0; i < 5000; ++i) {
-        total += chapterBytes(i + 1);
-        ASSERT_EQ(cache.getCumulativeSize(i), total) << "spine " << i;
-      }
-    }
-    printf("HUGE_INDEX resident n=5000 big_chapter=%d bytes=%zu peak=%zu\n", big, resident, peak);
-    // Two bytes per chapter plus one running total per 32; a book with a
-    // chapter of 64 KB or more keeps four bytes per chapter.
-    EXPECT_LE(resident, big ? 5000u * 4 + 4096 : 5000u * 2 + 5000u / 8 + 4096);
-    // Load may also hold its two 4 KB read buffers, never both tables at once:
-    // the radio heap has room for one flat table, not for a flat table on top
-    // of the compact one.
-    EXPECT_LE(peak, (big ? 5000u * 4 : 5000u * 2 + 5000u / 8) + 2 * 4096 + 4096);
+    const LoadedHeap huge = loadAndReadSizes(5000);
+    printf("HUGE_INDEX resident n=5000 big_chapter=%d bytes=%zu peak=%zu after_lookups=%zu\n", big, huge.resident,
+           huge.peak, huge.afterLookups);
+    EXPECT_LE(huge.resident, ordinary.resident + 2048);
+    // Lookups keep nothing: the heap after a sweep of every chapter is the heap after load.
+    EXPECT_EQ(huge.afterLookups, huge.resident);
+    // Load may hold its two 4 KB read buffers on top.
+    EXPECT_LE(huge.peak, ordinary.resident + 2048 + 2 * 4096 + 4096);
   }
   bigChapter = 0;
 }
