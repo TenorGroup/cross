@@ -536,7 +536,7 @@ void aLateChipIsArmedOnALaterTry() {
          "armed once the chip answers, without turning double tap off and on");
 }
 
-// 28/09, rc.2 on the founder's X3: double tap dead after a wake until it was turned off, the
+// 28/09, rc.2 on an X3 in use: double tap dead after a wake until it was turned off, the
 // device slept and woke, and it was turned on again. Three failed tries used to end the arming
 // until the next wake, and turning double tap off and on did not start it again.
 void aChipLateForEveryQuickTryIsArmedLater() {
@@ -548,7 +548,7 @@ void aChipLateForEveryQuickTryIsArmedLater() {
   expect(chip.regs[0x14] == 0x0E, "late3", "armed once the chip answers, even after three failed tries");
 }
 
-// If the chip answers only after a power-down, as the founder's way back (a sleep with double
+// If the chip answers only after a power-down, as the way back seen in use (a sleep with double
 // tap off) hints, the tries that follow the first three power it down and up first.
 void aChipStuckUntilPoweredDownIsArmed() {
   boot();
@@ -905,7 +905,7 @@ int main(int argc, char** argv) {
   knockRunReplays(argc > 6 ? argv[6] : nullptr, {
       {"lung-1", 3, 0, 0, 0}, {"manhinh-1", 0, 2, 0, 0}, {"canh-1", 0, 0, 0, 0},
       {"lung-camphai", 6, 0, 0, 4}}, false);
-  // 28/09: the founder's last run, the device's own FIFO frames: the back, the screen upright, in
+  // 28/09: the last run, the device's own FIFO frames: the back, the screen upright, in
   // landscape, light and on a table, an edge, and the controls. Light taps and a table stay out.
   knockRunReplays(argc > 7 ? argv[7] : nullptr, {
       {"lung", 8, 0, 0, 7}, {"mh-doc", 0, 7, 0, 7}, {"mh-ngang", 0, 7, 0, 7}, {"mh-nhe", 0, 0, 0, 0},
