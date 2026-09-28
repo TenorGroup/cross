@@ -88,9 +88,12 @@ uint16_t firmware_flash::runningPartitionChipId() { return 5; }
 
 // A C3 image carrying this board's tag.
 static std::vector<uint8_t> image;
+const char* fixtureTag = "v9.9.9";
 size_t ReleaseJsonParser::getFirmwareSize() const { return image.size(); }
 static size_t stallAt = SIZE_MAX;
+static size_t shortBy = 0;  // the server ends the body early but cleanly
 static unsigned long transferEndedAt = 0;
+static int fetches = 0;
 
 // Stands in for the TLS transfer: 1 KB records every 4 ms, or silence from stallAt on
 // until the 10 s read timeout. Like the downloader's wait, every pass pumps progress and
@@ -98,13 +101,14 @@ static unsigned long transferEndedAt = 0;
 static bool fakeTransfer(const std::string& url, const HttpDownloader::DataCallback& onData,
                          const HttpDownloader::ProgressCallback& progress, const bool* cancelFlag,
                          HttpDownloader::TransferStats* stats) {
+  ++fetches;
   const unsigned long started = millis();
   if (stats) *stats = {200, true, 0, 0, 0, 0, 90000, 50000, 50000};
   if (url.find("/firmware/tenor-cross") == std::string::npos) return true;  // the manifest
   size_t sent = 0;
   unsigned long lastByte = millis();
   bool ok = true;
-  while (sent < image.size()) {
+  while (sent < image.size() - shortBy) {
     if (progress) progress(sent, image.size());
     if (cancelFlag && *cancelFlag) {
       ok = false;
@@ -216,6 +220,45 @@ void run(const std::string& name) {
     return activity.recorded[0].attempt;
   };
   const auto is = [](const char* a, const char* b) { return std::strcmp(a, b) == 0; };
+  if (name == "manifest-outside-firmware-dir-refused") {
+    activity.updater.setDryRun("https://example.com/firmware/x.json");
+    require(activity.updater.checkForUpdate() == OtaUpdater::HTTP_ERROR,
+            "a manifest outside the firmware directory was read");
+    require(fetches == 0 && is(activity.updater.lastAttempt().step, "url"), "the refused manifest was fetched");
+    return;
+  }
+  if (name == "dry-run-keeps-boot-slot" || name == "older-refused-without-dry-run" ||
+      name == "dry-run-short-image-released") {
+    fixtureTag = "v0.0.1";  // older than any running firmware
+    if (name == "dry-run-short-image-released") shortBy = 1024;
+    if (name != "older-refused-without-dry-run")
+      activity.updater.setDryRun("https://cross.tenor.vn/firmware/test/dry-run.json");
+    require(activity.updater.checkForUpdate() == OtaUpdater::OK, "the test manifest was not offered");
+    require(!activity.updater.isUpdateNewer(), "fixture should be older");
+    if (name == "older-refused-without-dry-run") {
+      require(activity.updater.installUpdate() == OtaUpdater::UPDATE_OLDER_ERROR && otaCalls.begin == 0,
+              "a real install took an older image");
+      require(is(activity.updater.lastAttempt().step, "version"), "the refusal was not recorded as the version step");
+      return;
+    }
+    activity.runUpdateInstall();
+    const auto& a = activity.updater.lastAttempt();
+    std::cout << name << " step=" << a.step << " err=" << a.err << " end=" << otaCalls.end
+              << " setBoot=" << otaCalls.setBoot << " abort=" << otaCalls.abort << '\n';
+    require(otaCalls.setBoot == 0, "the dry run switched the boot slot");
+    require(
+        activity.finishes == 0 && activity.recorded.empty() && activity.state == OtaUpdateActivity::UPDATE_IN_PROGRESS,
+        "the dry run went on to the install result screen");
+    if (name == "dry-run-keeps-boot-slot") {
+      require(
+          a.ok && is(a.step, "done") && otaCalls.written == image.size() && otaCalls.end == 1 && otaCalls.abort == 0,
+          "the dry run did not write, verify and close the whole image");
+    } else {
+      require(!a.ok && is(a.step, "verify") && is(a.err, "INTEGRITY_ERROR") && otaCalls.end == 0 && otaCalls.abort == 1,
+              "a short image was not released through the OTA API");
+    }
+    return;
+  }
   require(activity.updater.checkForUpdate() == OtaUpdater::OK && activity.updater.isUpdateNewer(),
           "fixture manifest was not offered");
   if (name == "no-back-installs") {

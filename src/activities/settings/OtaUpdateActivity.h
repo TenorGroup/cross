@@ -61,10 +61,22 @@ class OtaUpdateActivity : public Activity {
   // One line in the card's OTA log, after the result screen is drawn (now: it already is).
   void recordAttempt(const char* op, bool now = false);
   bool idleExitDue(unsigned long now, bool interaction);
+#ifdef TENOR_PRESS_PROBE
+  std::string dryRunUrl;
+  int dryRuns = 0;
+  void runDryRuns();
+#endif
 
  public:
   explicit OtaUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("OtaUpdate", renderer, mappedInput), updater() {}
+#ifdef TENOR_PRESS_PROBE
+  // CMD:OTA_DRYRUN: after Wi-Fi joins, check and download from manifestUrl `runs` times.
+  void setDryRun(const char* manifestUrl, int runs) {
+    dryRunUrl = manifestUrl;
+    dryRuns = runs;
+  }
+#endif
   void onEnter() override;
   void onExit() override;
   void loop() override;

@@ -108,7 +108,7 @@ TEST(OtaLog, DropsOldestLinesPastTheByteCap) {
   const auto kept = ota_log::keep(old.data(), old.size(), false, added);
   EXPECT_LE(kept.to - kept.from + added, ota_log::MAX_BYTES);
   EXPECT_GT(kept.to - kept.from + added + 250, ota_log::MAX_BYTES);  // no room was left unused
-  EXPECT_EQ((kept.to - kept.from) % 250, 0u);                      // whole lines only
+  EXPECT_EQ((kept.to - kept.from) % 250, 0u);                        // whole lines only
   EXPECT_EQ(kept.to, old.size());
 }
 

@@ -17,20 +17,20 @@ constexpr size_t LINE_BYTES = 256;
 // How one check or install ended. OtaUpdater fills it; formatFields() prints it.
 struct Attempt {
   bool ok = false;
-  const char* step = "none";  // ntp, heap, connect, header, download, parse, version, begin,
+  const char* step = "none";  // ntp, heap, url, connect, header, download, parse, version, begin,
                               // verify, flash, end, set_boot, done
   const char* err = "OK";
-  int http = 0;               // status line received, 0 when none arrived
+  int http = 0;  // status line received, 0 when none arrived
   uint32_t bytes = 0;
   uint32_t total = 0;
-  uint32_t ms = 0;            // the whole check or install
-  uint32_t xferMs = 0;        // the HTTP transfer alone
-  uint32_t idleMs = 0;        // since the last body byte (or the request) when the transfer ended
-  uint32_t heap = 0;          // free heap, last sample while the connection was up
-  uint32_t largest = 0;       // largest free block, same sample
-  uint32_t largestMin = 0;    // smallest largest block seen during the transfer
-  const char* wd = "none";    // idle: the read, handshake or header deadline; back: the user cancelled
-  int rssi = 0;               // 0 when the station is no longer associated
+  uint32_t ms = 0;          // the whole check or install
+  uint32_t xferMs = 0;      // the HTTP transfer alone
+  uint32_t idleMs = 0;      // since the last body byte (or the request) when the transfer ended
+  uint32_t heap = 0;        // free heap, last sample while the connection was up
+  uint32_t largest = 0;     // largest free block, same sample
+  uint32_t largestMin = 0;  // smallest largest block seen during the transfer
+  const char* wd = "none";  // idle: the read, handshake or header deadline; back: the user cancelled
+  int rssi = 0;             // 0 when the station is no longer associated
 };
 
 // Where a transfer stopped, from the status line and whether the headers were read whole.
@@ -70,7 +70,7 @@ inline size_t formatLine(char* out, const size_t cap, const long long utc, const
                          const Attempt& a) {
   size_t n = 0;
   const time_t t = static_cast<time_t>(utc);
-  struct tm parts {};
+  struct tm parts{};
   if (utc >= 1735689600 && gmtime_r(&t, &parts)) {
     n = clampWritten(snprintf(out, cap, "%04d-%02d-%02dT%02d:%02d:%02dZ", parts.tm_year + 1900, parts.tm_mon + 1,
                               parts.tm_mday, parts.tm_hour, parts.tm_min, parts.tm_sec),

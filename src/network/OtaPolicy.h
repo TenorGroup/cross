@@ -42,7 +42,8 @@ inline bool stableIsNewer(const char* current, const char* offered) {
   }
   return have.prerelease;
 }
-inline bool firmwareUrlAllowed(const char* url) {
+// A plain path under the pinned firmware directory, ending in suffix.
+inline bool firmwarePathAllowed(const char* url, const char* suffix) {
   constexpr char prefix[] = "https://cross.tenor.vn/firmware/";
   if (!url || std::strncmp(url, prefix, sizeof(prefix) - 1) != 0) return false;
   const char* path = url + sizeof(prefix) - 1;
@@ -53,8 +54,12 @@ inline bool firmwareUrlAllowed(const char* url) {
       return false;
   }
   const size_t n = std::strlen(path);
-  return n > 4 && std::strcmp(path + n - 4, ".bin") == 0;
+  const size_t m = std::strlen(suffix);
+  return n > m && std::strcmp(path + n - m, suffix) == 0;
 }
+inline bool firmwareUrlAllowed(const char* url) { return firmwarePathAllowed(url, ".bin"); }
+// Release manifests live beside the firmware; only the probe's dry run names one.
+inline bool manifestUrlAllowed(const char* url) { return firmwarePathAllowed(url, ".json"); }
 inline bool decodeDigest(const char* text, uint8_t* out) {
   if (!text || std::strncmp(text, "sha256:", 7) || std::strlen(text) != 71) return false;
   for (size_t i = 0; i < 64; ++i) {

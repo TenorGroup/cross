@@ -6,6 +6,8 @@
 #include <Memory.h>
 #include <WiFi.h>
 
+#include <cstring>
+
 #include "MappedInputManager.h"
 #include "FileTransferState.h"
 #include "SdCardFontSystem.h"
@@ -19,6 +21,9 @@
 void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {
     LOG_ERR("OTA", "WiFi connection failed, exiting");
+#ifdef TENOR_PRESS_PROBE
+    if (dryRuns > 0) logSerial.printf("OTA_DRYRUN_RESULT ok=0 step=wifi err=NO_WIFI run=0/%d\n", dryRuns);
+#endif
     finish();
     return;
   }
@@ -42,6 +47,13 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     RenderLock lock(*this);
     if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
   }
+#ifdef TENOR_PRESS_PROBE
+  if (dryRuns > 0) {
+    runDryRuns();
+    finish();
+    return;
+  }
+#endif
   LOG_INF("OTA", "Manifest start heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   const auto res = updater.checkForUpdate();
   LOG_INF("OTA", "Manifest check result=%d heap=%u", res, ESP.getFreeHeap());
@@ -221,6 +233,31 @@ void OtaUpdateActivity::recordAttempt(const char* op, const bool now) {
     activityManager.deferWrite(ota_log::writeStaged);
 }
 
+#ifdef TENOR_PRESS_PROBE
+// The real check and download against a test manifest, verified and closed like an install,
+// with the boot slot untouched. One machine-readable line a run, free heap around each run.
+void OtaUpdateActivity::runDryRuns() {
+  updater.setDryRun(dryRunUrl.c_str());
+  for (int run = 1; run <= dryRuns; ++run) {
+    const uint32_t before = ESP.getFreeHeap();
+    const auto checked = updater.checkForUpdate();
+    const uint32_t checkMs = updater.lastAttempt().ms;
+    if (checked == OtaUpdater::OK) runUpdateInstall();
+    // A progress frame may still be painting, and the card shares its bus: wait for it.
+    RenderLock lock(*this);
+    const uint32_t after = ESP.getFreeHeap();
+    char fields[ota_log::LINE_BYTES];
+    ota_log::formatFields(fields, sizeof(fields), updater.lastAttempt());
+    logSerial.printf("OTA_DRYRUN_RESULT %s op=%s run=%d/%d check_ms=%u before=%u after=%u after_largest=%u\n", fields,
+                     checked == OtaUpdater::OK ? "install" : "check", run, dryRuns, static_cast<unsigned>(checkMs),
+                     static_cast<unsigned>(before), static_cast<unsigned>(after),
+                     static_cast<unsigned>(ESP.getMaxAllocHeap()));
+    recordAttempt("dryrun", true);
+    if (std::strcmp(updater.lastAttempt().err, "CANCELLED_ERROR") == 0) break;
+  }
+}
+#endif
+
 void OtaUpdateActivity::runUpdateInstall() {
   LOG_DBG("OTA", "New update available, starting download...");
   {
@@ -246,6 +283,8 @@ void OtaUpdateActivity::runUpdateInstall() {
   backLatch.stop();
 
   LOG_INF("OTA", "Install result=%d bytes=%u", res, static_cast<unsigned>(updater.getProcessedSize()));
+  // Dry run (probe): the caller prints and records each run; no result screen.
+  if (updater.isDryRun()) return;
   // Back leaves at once: its own press and release are still queued for the next loop pass,
   // so a result screen would close on them anyway. The old firmware keeps running.
   if (res == OtaUpdater::CANCELLED_ERROR) {

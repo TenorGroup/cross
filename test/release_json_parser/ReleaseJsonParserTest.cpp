@@ -711,6 +711,17 @@ TEST(OtaPolicy, UrlPinsHttpsHostAndDirectory) {
                           "https://cross.tenor.vn/firmware/"})
     EXPECT_FALSE(ota_policy::firmwareUrlAllowed(url)) << url;
 }
+TEST(OtaPolicy, ManifestUrlPinsTheSameDirectory) {
+  EXPECT_TRUE(ota_policy::manifestUrlAllowed("https://cross.tenor.vn/firmware/test/dry-run.json"));
+  EXPECT_TRUE(ota_policy::manifestUrlAllowed("https://cross.tenor.vn/firmware/stable.json"));
+  for (const char* url :
+       {"http://cross.tenor.vn/firmware/test/a.json", "https://cross.tenor.vn.evil.test/firmware/a.json",
+        "https://cross.tenor.vn/firmware/../a.json", "https://cross.tenor.vn/firmware/a.json?q=x",
+        "https://cross.tenor.vn/firmware/test/a.bin", "https://cross.tenor.vn/firmware/.json",
+        "https://cross.tenor.vn/firmware/"})
+    EXPECT_FALSE(ota_policy::manifestUrlAllowed(url)) << url;
+  EXPECT_FALSE(ota_policy::firmwareUrlAllowed("https://cross.tenor.vn/firmware/test/dry-run.json"));
+}
 TEST(OtaPolicy, DigestRequiresAllBytesAndAlgorithm) {
   uint8_t digest[32];
   EXPECT_TRUE(

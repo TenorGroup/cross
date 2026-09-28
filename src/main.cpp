@@ -9,7 +9,7 @@
 #if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
 #include "activities/network/CrossPointWebServerActivity.h"
 #endif
-#ifdef TENOR_OTA_ACCEPTANCE
+#if defined(TENOR_OTA_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
 #include "activities/settings/OtaUpdateActivity.h"
 #endif
 #include <Arduino.h>
@@ -1494,6 +1494,23 @@ void loop() {
 #endif
 #endif
 #ifdef TENOR_PRESS_PROBE
+      } else if (cmd.startsWith("OTA_DRYRUN ")) {
+        // CMD:OTA_DRYRUN <manifest-url> [runs]: joins the saved Wi-Fi like the OTA screen, then runs
+        // the real check and download from a manifest under cross.tenor.vn/firmware/ into the spare
+        // slot, verified and closed like an install, whatever the version, never switching the boot
+        // slot. One OTA_DRYRUN_RESULT line a run (1-20 runs), then the screen closes.
+        String arg = cmd.substring(11);
+        arg.trim();
+        const int space = arg.indexOf(' ');
+        const String url = space < 0 ? arg : arg.substring(0, space);
+        const int runs = space < 0 ? 1 : std::max(1L, std::min(20L, arg.substring(space + 1).toInt()));
+        auto activity = makeUniqueNoThrow<OtaUpdateActivity>(renderer, mappedInputManager);
+        if (activity) {
+          activity->setDryRun(url.c_str(), runs);
+          activityManager.pushActivity(std::move(activity));
+        } else {
+          logSerial.printf("OTA_DRYRUN_RESULT ok=0 step=heap err=OOM_ERROR run=0/%d\n", runs);
+        }
       } else if (cmd.startsWith("WAKE_TIMER ")) {
         probeWakeSeconds = static_cast<uint32_t>(cmd.substring(11).toInt());
         probeWakeMagic = PROBE_WAKE_MAGIC;

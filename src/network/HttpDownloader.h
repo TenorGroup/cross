@@ -66,8 +66,7 @@ class HttpDownloader {
    */
   static bool fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username = "",
                        const std::string& password = "", const char* rootCA = nullptr, bool allowRedirects = true,
-                       ProgressCallback progress = nullptr, bool* cancelFlag = nullptr,
-                       TransferStats* stats = nullptr);
+                       ProgressCallback progress = nullptr, bool* cancelFlag = nullptr, TransferStats* stats = nullptr);
 
   /**
    * Download a file to the SD card with optional credentials.

@@ -84,10 +84,12 @@ OtaUpdater::OtaUpdaterError OtaUpdater::endAttempt(const OtaUpdaterError err, co
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   startAttempt();
+  const char* manifestUrl = dryRunManifest;
   updateAvailable = false;
   latestVersion.clear();
   otaUrl.clear();
   otaSize = totalSize = processedSize = 0;
+  if (manifestUrl && !ota_policy::manifestUrlAllowed(manifestUrl)) return endAttempt(HTTP_ERROR, "url");
   if (time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return endAttempt(HTTP_ERROR, "ntp");
   if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
       ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC)
@@ -107,7 +109,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   size_t received = 0;
   HttpDownloader::TransferStats transfer;
   const bool ok = HttpDownloader::fetchUrl(
-      latestReleaseUrl,
+      manifestUrl ? manifestUrl : latestReleaseUrl,
       [&](const uint8_t* data, size_t len) {
         if (len > 8192 - received) return false;
         received += len;
@@ -141,7 +143,9 @@ const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; 
 
 OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgress, void* ctx) {
   startAttempt();
-  if (!isUpdateNewer()) {
+  const bool dryRun = isDryRun();
+  // The dry run skips only the version rule; everything it writes is still checked below.
+  if (dryRun ? !updateAvailable : !isUpdateNewer()) {
     return endAttempt(UPDATE_OLDER_ERROR, "version");
   }
 
@@ -283,6 +287,8 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     LOG_ERR("OTA", "esp_ota_end failed: %s", esp_err_to_name(esp_err));
     return endAttempt(INTERNAL_UPDATE_ERROR, "end");
   }
+  // The verified image stays in the spare slot; the running firmware keeps booting.
+  if (dryRun) return endAttempt(OK, "done");
 
   esp_err = esp_ota_set_boot_partition(updatePartition);
   if (esp_err != ESP_OK) {

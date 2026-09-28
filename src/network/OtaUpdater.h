@@ -17,6 +17,7 @@ class OtaUpdater {
   void* cancelCtx = nullptr;
   ota_log::Attempt attempt;
   unsigned long attemptStartMs = 0;
+  const char* dryRunManifest = nullptr;
 
  public:
   using ProgressCallback = void (*)(void* ctx);
@@ -52,6 +53,11 @@ class OtaUpdater {
   OtaUpdater() = default;
   bool isUpdateNewer() const;
   const std::string& getLatestVersion() const;
+  // The probe's dry run: checkForUpdate() reads this manifest (under the firmware directory) instead
+  // of the release one, and installUpdate() writes, verifies and closes whatever version it offers,
+  // but never switches the boot slot. The caller keeps the string alive.
+  void setDryRun(const char* manifestUrl) { dryRunManifest = manifestUrl; }
+  bool isDryRun() const { return dryRunManifest != nullptr; }
   OtaUpdaterError checkForUpdate();
   OtaUpdaterError installUpdate(ProgressCallback onProgress = nullptr, void* ctx = nullptr);
 
