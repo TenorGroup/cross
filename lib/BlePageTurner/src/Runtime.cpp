@@ -64,6 +64,11 @@ uint32_t idleSinceMs = 0;
 // tap/hold decision still waiting.
 Router router;
 Scene lastScene{};
+// The book's link note (nextLinkNote): written on the main loop, read by the render task.
+std::atomic<LinkNote> linkNoteNow{LinkNote::None};
+// Since when the radio has been up without a break in this book visit. Main loop only.
+bool noteRadioUp = false;
+uint32_t noteRadioUpSinceMs = 0;
 
 void say(const bool error, const char* format, ...) {
   va_list args;
@@ -253,6 +258,20 @@ bool serveReader() {
   return acted;
 }
 
+void stepLinkNote(const bool entered, const bool acknowledged) {
+  NoteInputs in{};
+  in.entered = entered;
+  in.reading = lastScene.where == Where::Reader;
+  in.enabled = config->enabled != 0;
+  in.idleStopped = radioIdleStopped.load(std::memory_order_relaxed);
+  in.linked = port::connected();
+  in.refused = visit.attempted && readerStartDeferred.load(std::memory_order_relaxed) &&
+               !attemptInFlight.load(std::memory_order_acquire);
+  in.runningMs = noteRadioUp ? port::nowMs() - noteRadioUpSinceMs : 0;
+  in.acknowledged = acknowledged;
+  linkNoteNow.store(nextLinkNote(linkNoteNow.load(std::memory_order_relaxed), in), std::memory_order_relaxed);
+}
+
 }  // namespace
 
 namespace detail {
@@ -321,6 +340,9 @@ void resetForTests() {
   idleSinceMs = 0;
   router = Router();
   lastScene = Scene{};
+  linkNoteNow.store(LinkNote::None);
+  noteRadioUp = false;
+  noteRadioUpSinceMs = 0;
 }
 #endif
 
@@ -333,6 +355,8 @@ void begin(const Host& h, Config& c) {
 
 bool tick(const Scene& s) {
   bool acted = false;
+  // A book visit starts: the book comes in front, or another visit of it does.
+  const bool entered = s.where == Where::Reader && (lastScene.where != Where::Reader || s.visit != lastScene.visit);
   lastScene = s;
   // Finish a stop in the background without blocking input.
   if (port::stopping() && port::nowMs() - lastCleanupMs >= 250) {
@@ -422,6 +446,15 @@ bool tick(const Scene& s) {
     if (reader && !attemptInFlight.load(std::memory_order_acquire) && port::running()) acted = serveReader();
   }
 
+  const bool up = reader && port::running() && !attemptInFlight.load(std::memory_order_acquire);
+  if (!up) {
+    noteRadioUp = false;
+  } else if (!noteRadioUp || entered) {
+    noteRadioUp = true;
+    noteRadioUpSinceMs = port::nowMs();
+  }
+  stepLinkNote(entered, false);
+
   // A heap in pieces keeps the radio off until a restart. Restart into the book only from a
   // shown page with no radio start in flight, no sleep, no card or Wi-Fi session.
   if (detail::heapRestartWanted() && config->enabled && visit.attempted && reader && s.pageShown && !s.sleeping &&
@@ -505,6 +538,10 @@ Why why() {
   in.linked = port::connected();
   return radioVerdict(in);
 }
+
+LinkNote linkNote() { return linkNoteNow.load(std::memory_order_relaxed); }
+
+void acknowledgeLinkNote() { stepLinkNote(false, true); }
 
 bool switchOn() { return startSync(); }
 

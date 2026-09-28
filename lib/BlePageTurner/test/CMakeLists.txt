@@ -46,7 +46,7 @@ target_link_libraries(BlePageTurnerPolicyTest PRIVATE bleturner_test_flags GTest
 gtest_discover_tests(BlePageTurnerPolicyTest)
 
 # The runtime against a fake radio and a fake host.
-add_executable(BlePageTurnerRuntimeTest RuntimeTest.cpp TickTest.cpp Fakes.cpp ${BLETURNER_ROOT}/src/Runtime.cpp)
+add_executable(BlePageTurnerRuntimeTest RuntimeTest.cpp TickTest.cpp LinkNoteTest.cpp Fakes.cpp ${BLETURNER_ROOT}/src/Runtime.cpp)
 target_compile_definitions(BlePageTurnerRuntimeTest PRIVATE BLETURNER_TESTING)
 target_link_libraries(BlePageTurnerRuntimeTest PRIVATE bleturner_test_flags GTest::gtest_main)
 gtest_discover_tests(BlePageTurnerRuntimeTest)

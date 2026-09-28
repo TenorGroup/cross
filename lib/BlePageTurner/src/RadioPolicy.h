@@ -81,6 +81,40 @@ constexpr Why radioVerdict(const RadioInputs& in) {
   return Why::Off;
 }
 
+// --- The link note ---------------------------------------------------------------
+// A radio up this long in one book visit with nothing linked has failed to find the remote.
+inline constexpr uint32_t kLinkNoteFailMs = 20000;
+
+struct NoteInputs {
+  bool entered;       // this pass starts a book visit
+  bool reading;       // a book is in front
+  bool enabled;
+  bool idleStopped;   // the radio is off for idleness: nothing will try to link
+  bool linked;        // a remote is connected
+  bool refused;       // this visit's radio start was refused (heap rules, rollback)
+  uint32_t runningMs; // how long the radio has been up without a break in this visit
+  bool acknowledged;  // a page turn was applied
+};
+
+// The ONE answer to "what does the status bar say about the remote now".
+constexpr LinkNote nextLinkNote(const LinkNote note, const NoteInputs& in) {
+  if (!in.enabled || !in.reading) return LinkNote::None;
+  // Every visit starts over. A remote still linked has nothing to wait for, and a radio off for
+  // idleness does not try until a key of the device wakes it.
+  if (in.entered) return in.linked || in.idleStopped ? LinkNote::None : LinkNote::Connecting;
+  switch (note) {
+    case LinkNote::Connecting:
+      if (in.linked) return LinkNote::None;
+      return in.refused || in.runningMs >= kLinkNoteFailMs ? LinkNote::Failed : LinkNote::Connecting;
+    case LinkNote::Failed:
+      // Read once: the next page turn gives the title back, whatever the radio does meanwhile.
+      return in.acknowledged ? LinkNote::None : LinkNote::Failed;
+    case LinkNote::None:
+      return LinkNote::None;
+  }
+  return LinkNote::None;
+}
+
 // --- The heap restart ------------------------------------------------------------
 // A heap in pieces keeps the radio off for good: leaving the book does not give the block
 // back (X3, 27/09/2026: free=87308 largest=23540 in the book and on Home alike, 61428 after
