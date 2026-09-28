@@ -13,6 +13,7 @@ using esp_err_t = int;
 constexpr int ESP_OK = 0, WIFI_PS_NONE = 0, WIFI_PS_MIN_MODEM = 1;
 int esp_wifi_set_ps(int) { return ESP_OK; }
 struct HttpDownloader {
+  static constexpr uint32_t PINNED_CA_TIMEOUT_MS = 10000;
   using ProgressCallback = std::function<void(size_t, size_t)>;
   enum DownloadError { OK, HTTP_ERROR, FILE_ERROR, ABORTED };
 };
@@ -108,6 +109,44 @@ TEST_F(DownloadPump, PreservesFixedChunkedAndCloseDelimitedPayloads) {
 }
 
 #ifdef FREEINK_NET_WOLFSSL
+// The OTA failure record reads how far a failed transfer got off the sink.
+class TransferRecord : public testing::Test {
+ protected:
+  void SetUp() override {
+    wire::reset();
+    wire::closeAfterReply = true;
+  }
+  HttpDownloader::DownloadError get(const std::string& reply) {
+    wire::replies = {reply};
+    sink.write = [](const uint8_t*, size_t) { return true; };
+    return runDownload(sink);
+  }
+  Sink sink;
+};
+TEST_F(TransferRecord, BodyCutShort) {
+  EXPECT_EQ(get("HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\nabc"), HttpDownloader::HTTP_ERROR);
+  EXPECT_EQ(sink.status, 200);
+  EXPECT_TRUE(sink.headers);
+  EXPECT_EQ(sink.downloaded, 3u);
+  EXPECT_GT(sink.lastDataMs, sink.startMs);
+}
+TEST_F(TransferRecord, NoStatusLine) {
+  EXPECT_EQ(get(""), HttpDownloader::HTTP_ERROR);
+  EXPECT_EQ(sink.status, 0);
+  EXPECT_FALSE(sink.headers);
+  EXPECT_EQ(sink.lastDataMs, 0u);
+}
+TEST_F(TransferRecord, HeadersCutShort) {
+  EXPECT_EQ(get("HTTP/1.1 200 OK\r\nContent-Len"), HttpDownloader::HTTP_ERROR);
+  EXPECT_EQ(sink.status, 200);
+  EXPECT_FALSE(sink.headers);
+}
+TEST_F(TransferRecord, ErrorStatus) {
+  EXPECT_EQ(get("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n"), HttpDownloader::HTTP_ERROR);
+  EXPECT_EQ(sink.status, 503);
+  EXPECT_TRUE(sink.headers);
+}
+
 class WolfRedirect : public testing::Test {
  protected:
   void SetUp() override { wire::reset(); }

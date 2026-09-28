@@ -31,7 +31,7 @@ subprocess.run([a.cxx, '-std=c++17', '-pthread', '-Wall', '-Wextra', '-Werror', 
                 '-I' + str(out), str(here / 'OtaCancel.cpp'), str(repo / 'src/network/OtaUpdater.cpp'),
                 str(repo / 'src/network/FirmwareBoardTag.cpp'), str(repo / 'src/util/FileTransferBackLatch.cpp'),
                 '-o', str(binary)], check=True)
-cases = ('no-back-installs', 'back-mid-download', 'back-stalled-download')
+cases = ('no-back-installs', 'back-mid-download', 'back-stalled-download', 'stall-ends-on-idle-deadline')
 results = []
 for name in cases:
     run = subprocess.run([str(binary), name], capture_output=True, text=True)

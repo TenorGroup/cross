@@ -65,7 +65,12 @@ void testLog(const char*, const char* format, ...) {
   va_end(args);
   fake::logs += std::string(text) + '\n';
 }
+struct FakeEsp {
+  uint32_t getFreeHeap() const { return 0; }
+  uint32_t getMaxAllocHeap() const { return 0; }
+} ESP;
 struct HttpDownloader {
+  static constexpr uint32_t PINNED_CA_TIMEOUT_MS = 10000;
   using ProgressCallback = std::function<void(size_t, size_t)>;
   enum DownloadError { OK, HTTP_ERROR, FILE_ERROR, ABORTED };
 };

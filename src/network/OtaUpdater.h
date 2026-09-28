@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 
+#include "OtaLog.h"
+
 class OtaUpdater {
   bool updateAvailable = false;
   std::string latestVersion;
@@ -13,6 +15,8 @@ class OtaUpdater {
   size_t totalSize = 0;
   bool (*cancelCheck)(void* ctx) = nullptr;
   void* cancelCtx = nullptr;
+  ota_log::Attempt attempt;
+  unsigned long attemptStartMs = 0;
 
  public:
   using ProgressCallback = void (*)(void* ctx);
@@ -42,9 +46,16 @@ class OtaUpdater {
 
   size_t getTotalSize() const { return totalSize; }
 
+  // How the last check or install ended, for the card log (OtaLog.h).
+  const ota_log::Attempt& lastAttempt() const { return attempt; }
+
   OtaUpdater() = default;
   bool isUpdateNewer() const;
   const std::string& getLatestVersion() const;
   OtaUpdaterError checkForUpdate();
   OtaUpdaterError installUpdate(ProgressCallback onProgress = nullptr, void* ctx = nullptr);
+
+ private:
+  void startAttempt();
+  OtaUpdaterError endAttempt(OtaUpdaterError err, const char* step);
 };

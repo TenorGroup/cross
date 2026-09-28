@@ -96,7 +96,10 @@ static unsigned long transferEndedAt = 0;
 // until the 10 s read timeout. Like the downloader's wait, every pass pumps progress and
 // then honours the cancel flag.
 static bool fakeTransfer(const std::string& url, const HttpDownloader::DataCallback& onData,
-                         const HttpDownloader::ProgressCallback& progress, const bool* cancelFlag) {
+                         const HttpDownloader::ProgressCallback& progress, const bool* cancelFlag,
+                         HttpDownloader::TransferStats* stats) {
+  const unsigned long started = millis();
+  if (stats) *stats = {200, true, 0, 0, 0, 0, 90000, 50000, 50000};
   if (url.find("/firmware/tenor-cross") == std::string::npos) return true;  // the manifest
   size_t sent = 0;
   unsigned long lastByte = millis();
@@ -125,17 +128,24 @@ static bool fakeTransfer(const std::string& url, const HttpDownloader::DataCallb
     lastByte = millis();
   }
   transferEndedAt = millis();
+  if (stats) {
+    stats->bytes = sent;
+    stats->total = image.size();
+    stats->elapsedMs = transferEndedAt - started;
+    stats->idleMs = transferEndedAt - lastByte;
+  }
   return ok;
 }
 #if FETCH_TAKES_CANCEL
 bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const std::string&,
-                              const std::string&, const char*, bool, ProgressCallback progress, bool* cancelFlag) {
-  return fakeTransfer(url, onData, progress, cancelFlag);
+                              const std::string&, const char*, bool, ProgressCallback progress, bool* cancelFlag,
+                              TransferStats* stats) {
+  return fakeTransfer(url, onData, progress, cancelFlag, stats);
 }
 #else
 bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const std::string&,
                               const std::string&, const char*, bool) {
-  return fakeTransfer(url, onData, nullptr, nullptr);
+  return fakeTransfer(url, onData, nullptr, nullptr, nullptr);
 }
 #endif
 
@@ -156,6 +166,13 @@ struct MappedInputManager {
   void suppressNextRelease(Button) const { ++suppressedBackReleases; }
 };
 struct OtaUpdateActivity;
+// What the screen handed to the card log: the operation, whether it was written at once
+// (after a screen already drawn) or deferred to the next frame, and the attempt itself.
+struct Recorded {
+  std::string op;
+  bool now;
+  ota_log::Attempt attempt;
+};
 struct RenderLock {
   explicit RenderLock(OtaUpdateActivity&) {}
 };
@@ -179,7 +196,9 @@ struct OtaUpdateActivity {
   MappedInputManager mappedInput;
   void requestUpdate(bool = false) {}
   void requestUpdateAndWait() {}
+  std::vector<Recorded> recorded;
   void finish() { ++finishes; }
+  void recordAttempt(const char* op, bool now = false) { recorded.push_back({op, now, updater.lastAttempt()}); }
   void runUpdateInstall();
 };
 #include "production-install.inc"
@@ -191,6 +210,12 @@ void run(const std::string& name) {
   const char tag[] = "CROSSPOINT-BOARD-V1:x4;";
   std::memcpy(image.data() + 100, tag, sizeof(tag) - 1);
   OtaUpdateActivity activity;
+  const auto one = [&](const char* op, bool now) -> const ota_log::Attempt& {
+    require(activity.recorded.size() == 1, "the screen did not hand exactly one line to the card log");
+    require(activity.recorded[0].op == op && activity.recorded[0].now == now, "wrong operation or timing in the log");
+    return activity.recorded[0].attempt;
+  };
+  const auto is = [](const char* a, const char* b) { return std::strcmp(a, b) == 0; };
   require(activity.updater.checkForUpdate() == OtaUpdater::OK && activity.updater.isUpdateNewer(),
           "fixture manifest was not offered");
   if (name == "no-back-installs") {
@@ -199,6 +224,23 @@ void run(const std::string& name) {
     require(otaCalls.written == image.size() && otaCalls.end == 1 && otaCalls.setBoot == 1 && otaCalls.abort == 0,
             "an untouched download did not switch the boot slot");
     require(!activity.backLatch.active(), "Back sampler kept running after the install");
+    const auto& a = one("install", true);
+    require(a.ok && is(a.step, "done") && a.bytes == image.size() && a.total == image.size() && a.rssi == -67 &&
+                a.xferMs > 0 && is(a.wd, "none"),
+            "the success line lacks the bytes, time or signal");
+    return;
+  }
+  if (name == "stall-ends-on-idle-deadline") {
+    stallAt = 16 * 1024;
+    activity.runUpdateInstall();
+    require(activity.state == OtaUpdateActivity::FAILED && otaCalls.abort == 1 && otaCalls.setBoot == 0,
+            "a stalled download did not fail cleanly");
+    const auto& a = one("install", false);
+    std::cout << name << " step=" << a.step << " err=" << a.err << " bytes=" << a.bytes << " idle=" << a.idleMs
+              << " wd=" << a.wd << '\n';
+    require(!a.ok && is(a.step, "download") && is(a.err, "HTTP_ERROR") && a.http == 200 && a.bytes == stallAt &&
+                a.idleMs >= 10000 && is(a.wd, "idle") && a.heap == 90000 && a.largestMin == 50000,
+            "the failure line does not say the idle deadline ended the download");
     return;
   }
   if (name == "back-mid-download" || name == "back-stalled-download") {
@@ -224,6 +266,9 @@ void run(const std::string& name) {
             "the cancelled slot was not released through the OTA API, or the boot slot changed");
     require(transferEndedAt - releasedAt < 600, "Back took longer than 0.6 s to end the download");
     require(!activity.backLatch.active(), "Back sampler kept running after the install");
+    const auto& a = one("install", false);
+    require(is(a.err, "CANCELLED_ERROR") && is(a.wd, "back") && is(a.step, "download"),
+            "the cancelled download was not recorded as Back");
     return;
   }
   throw std::runtime_error("unknown case");

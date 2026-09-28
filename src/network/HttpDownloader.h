@@ -32,6 +32,24 @@ class HttpDownloader {
   // downloadToFile() and fail into their error UI instead.
   static constexpr uint32_t MIN_TLS_FREE_HEAP = 40000;
   static constexpr uint32_t MIN_TLS_MAX_ALLOC = 20000;
+  // A fetch pinned to its own root CA (OTA) gives up after this long without a byte: TLS
+  // handshake, response headers, or between two body reads.
+  static constexpr uint32_t PINNED_CA_TIMEOUT_MS = 10000;
+
+  // What a streaming fetch saw, for callers that record failures (OTA). The heap is sampled
+  // while the connection is up, every 200 ms at most, so it describes the transfer rather
+  // than the heap after the TLS session is freed.
+  struct TransferStats {
+    int status = 0;        // status line received, 0 when none arrived
+    bool headers = false;  // the response headers were read whole
+    uint32_t bytes = 0;
+    uint32_t total = 0;
+    uint32_t elapsedMs = 0;
+    uint32_t idleMs = 0;  // since the last body byte, or since the start when none came
+    uint32_t heap = 0;
+    uint32_t largest = 0;
+    uint32_t largestMin = 0;
+  };
 
   /**
    * Fetch text content from a URL with optional credentials.
@@ -48,7 +66,8 @@ class HttpDownloader {
    */
   static bool fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username = "",
                        const std::string& password = "", const char* rootCA = nullptr, bool allowRedirects = true,
-                       ProgressCallback progress = nullptr, bool* cancelFlag = nullptr);
+                       ProgressCallback progress = nullptr, bool* cancelFlag = nullptr,
+                       TransferStats* stats = nullptr);
 
   /**
    * Download a file to the SD card with optional credentials.

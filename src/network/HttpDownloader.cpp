@@ -60,10 +60,29 @@ struct Sink {
   std::string redirectLocation;
   bool redirectTooLong = false;
 #endif
+  // Transfer record for HttpDownloader::TransferStats; heap sampled only when track is set.
+  bool track = false;
+  int status = 0;
+  bool headers = false;
+  unsigned long startMs = millis();
+  unsigned long lastDataMs = 0;
+  unsigned long sampledMs = 0;
+  uint32_t heap = 0;
+  uint32_t largest = 0;
+  uint32_t largestMin = 0;
 
   bool poll(bool force = false) {
     if (cancelFlag && *cancelFlag) return true;
     const unsigned long now = millis();
+#ifndef SIMULATOR
+    // Not on the forced poll after the request: the TLS session is already freed there.
+    if (track && !force && (heap == 0 || now - sampledMs >= 200)) {
+      sampledMs = now;
+      heap = ESP.getFreeHeap();
+      largest = ESP.getMaxAllocHeap();
+      if (largestMin == 0 || largest < largestMin) largestMin = largest;
+    }
+#endif
     if (progress && (force || !pumped || now - lastPumpMs >= 25)) {
       lastPumpMs = now;
       pumped = true;
@@ -162,7 +181,7 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
     if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return HttpDownloader::HTTP_ERROR;
     if (sink.poll()) return HttpDownloader::ABORTED;
     freeink::SecureHttpClient http;
-    http.setTimeout(rootCA ? 10000 : HTTP_TIMEOUT_MS);
+    http.setTimeout(rootCA ? HttpDownloader::PINNED_CA_TIMEOUT_MS : HTTP_TIMEOUT_MS);
     if (rootCA) {
       if (url.rfind("https://", 0) != 0) return HttpDownloader::HTTP_ERROR;
       http.setCACert(rootCA);
@@ -189,6 +208,7 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
           if (sink.total == 0 && http.hasContentLength()) sink.total = http.getContentLength();
           if (!sink.write(data, len)) return false;
           sink.downloaded += len;
+          sink.lastDataMs = millis();
           return true;
         },
         [&http, &sink]() {
@@ -196,6 +216,8 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
           return sink.poll();
         });
 
+    sink.status = http.getStatus();
+    sink.headers = status >= 0;
     if (http.aborted() || sink.poll(true)) return HttpDownloader::ABORTED;
     if (status < 0) {
       LOG_ERR("HTTP", "wolfSSL request failed");
@@ -362,6 +384,8 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   }
 #endif
 
+  sink.status = status;
+  sink.headers = contentLength >= 0;
   if (contentLength < 0 || status != 200) {
     LOG_ERR("HTTP", "unexpected status: %d", status);
     esp_http_client_cleanup(client);
@@ -405,6 +429,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
       return HttpDownloader::FILE_ERROR;
     }
     sink.downloaded += read;
+    sink.lastDataMs = millis();
   }
 
   const bool complete = esp_http_client_is_complete_data_received(client);
@@ -471,13 +496,27 @@ bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent, c
 
 bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username,
                               const std::string& password, const char* rootCA, bool allowRedirects,
-                              ProgressCallback progress, bool* cancelFlag) {
+                              ProgressCallback progress, bool* cancelFlag, TransferStats* stats) {
   LOG_DBG("HTTP", "Fetching");
   Sink sink;
   sink.write = onData;
   sink.progress = std::move(progress);
   sink.cancelFlag = cancelFlag;
-  return runGetSecure(url, username, password, sink, false, rootCA, allowRedirects) == OK;
+  sink.track = stats != nullptr;
+  const bool ok = runGetSecure(url, username, password, sink, false, rootCA, allowRedirects) == OK;
+  if (stats) {
+    const unsigned long now = millis();
+    stats->status = sink.status;
+    stats->headers = sink.headers;
+    stats->bytes = sink.downloaded;
+    stats->total = sink.total;
+    stats->elapsedMs = now - sink.startMs;
+    stats->idleMs = now - (sink.lastDataMs ? sink.lastDataMs : sink.startMs);
+    stats->heap = sink.heap;
+    stats->largest = sink.largest;
+    stats->largestMin = sink.largestMin;
+  }
+  return ok;
 }
 
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,

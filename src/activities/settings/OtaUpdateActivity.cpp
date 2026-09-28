@@ -10,6 +10,7 @@
 #include "FileTransferState.h"
 #include "SdCardFontSystem.h"
 #include "SilentRestart.h"
+#include "activities/ActivityManager.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -60,6 +61,7 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
       RenderLock lock(*this);
       state = FAILED;
     }
+    recordAttempt("check");
     return;
   }
 
@@ -211,6 +213,14 @@ void OtaUpdateActivity::render(RenderLock&&) {
   renderer.displayBuffer();
 }
 
+void OtaUpdateActivity::recordAttempt(const char* op, const bool now) {
+  ota_log::stage(op, updater.lastAttempt());
+  if (now)
+    ota_log::writeStaged();
+  else
+    activityManager.deferWrite(ota_log::writeStaged);
+}
+
 void OtaUpdateActivity::runUpdateInstall() {
   LOG_DBG("OTA", "New update available, starting download...");
   {
@@ -243,6 +253,7 @@ void OtaUpdateActivity::runUpdateInstall() {
     // parent screen as well.
     mappedInput.suppressNextRelease(MappedInputManager::Button::Back);
     finish();
+    recordAttempt("install");
     return;
   }
   if (res != OtaUpdater::OK) {
@@ -253,6 +264,7 @@ void OtaUpdateActivity::runUpdateInstall() {
       state = FAILED;
     }
     requestUpdate();
+    recordAttempt("install");
     return;
   }
 
@@ -261,6 +273,7 @@ void OtaUpdateActivity::runUpdateInstall() {
     state = FINISHED;
   }
   requestUpdateAndWait();
+  recordAttempt("install", true);
   // Hold the completion screen briefly so the user sees it, then restart.
   delay(3000);
   {
