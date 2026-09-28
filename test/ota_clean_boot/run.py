@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""The update boot: the production screen steps and restart around the RTC flag, and the flag's
-callers in the sources. Release and probe builds of the screen."""
+"""The update boot: the production screen steps and restart around the RTC flag, the flag's
+callers in the sources, and the TLS record slot. Release and probe builds of the screen."""
 import argparse
 import json
 from pathlib import Path
@@ -96,7 +96,7 @@ flags = ['-std=c++17', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefi
          '-I' + str(repo / 'test/file_transfer_back_latch/stubs'),
          '-I' + str(repo / 'src/network'), '-I' + str(repo / 'lib/NetworkTrust'), '-I' + str(out)]
 sources = [str(here / 'OtaCleanBoot.cpp'), str(repo / 'src/network/OtaUpdater.cpp'),
-           str(repo / 'src/network/FirmwareBoardTag.cpp')]
+           str(repo / 'src/network/FirmwareBoardTag.cpp'), str(repo / 'src/network/TlsRecordSlot.cpp')]
 binaries = {}
 for build, extra in (('release', []), ('probe', ['-DTENOR_PRESS_PROBE'])):
     binaries[build] = out / f'ota-clean-boot-{build}'
@@ -107,7 +107,8 @@ cases = [('release', 'flag', 'normal-boot-is-not-an-update-boot'), ('release', '
          ('release', 'screen', 'update-boot-installs-without-asking'),
          ('release', 'screen', 'update-boot-failure-restarts-home'),
          ('release', 'screen', 'update-boot-without-wifi-restarts-home'),
-         ('probe', 'screen', 'dry-run-series-one-run-a-boot')]
+         ('probe', 'screen', 'dry-run-series-one-run-a-boot'), ('release', 'slot', 'slot-one-block-for-every-record'),
+         ('release', 'slot', 'slot-leaves-other-requests-alone'), ('release', 'slot', 'slot-without-memory-falls-back')]
 results = [{'case': 'callers', 'exit': int(bool(problems)), 'log': '\n'.join(problems)}]
 for build, group, name in cases:
     run = subprocess.run([str(binaries[build]), group, name], capture_output=True, text=True)

@@ -17,12 +17,14 @@
 
 #include <algorithm>
 #include <cstring>
+#include <optional>
 #include <string>
 
 #include "FirmwareBoardTag.h"
 #include "FirmwareFlasher.h"
 #include "OtaPolicy.h"
 #include "OtaTrust.h"
+#include "TlsRecordSlot.h"
 
 namespace {
 #ifdef TENOR_OTA_ACCEPTANCE
@@ -194,6 +196,10 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   board_tag::Scanner tagScanner;
   bool cancelled = false;
   HttpDownloader::TransferStats transfer;
+  // One block serves every 16 KB record of the image: re-allocating it per record let the heap
+  // fall to pieces mid-download (TlsRecordSlot.h).
+  std::optional<tls_slot::Scope> recordSlot;
+  recordSlot.emplace();
   const bool fetchOk = HttpDownloader::fetchUrl(
       otaUrl,
       [&](const uint8_t* data, size_t len) {
@@ -245,6 +251,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
         if (cancelCheck && cancelCheck(cancelCtx)) cancelled = true;
       },
       &cancelled, &transfer);
+  recordSlot.reset();
   recordTransfer(attempt, transfer);
   if (!attempt.total) attempt.total = otaSize;
   uint8_t digest[32];

@@ -16,6 +16,7 @@
 #include "HttpDownloader.h"
 #include "UpdateBoot.h"
 #include "OtaUpdater.h"
+#include "TlsRecordSlot.h"
 
 // The update screen's production steps (check, confirm, install, dry run, exit) and the
 // production restart into the update boot, around the RTC slot setup() takes on every boot.
@@ -294,12 +295,67 @@ void screenCases(const std::string& name) {
   throw std::runtime_error("unknown case");
 }
 
+// ---- The record slot: one block for every 16 KB record of the image.
+static int allocs = 0, frees = 0;
+static bool allocFails = false;
+static void* countingMalloc(size_t size) {
+  if (allocFails) return nullptr;
+  ++allocs;
+  return std::malloc(size);
+}
+static void countingFree(void* p) {
+  ++frees;
+  std::free(p);
+}
+void slotCases(const std::string& name) {
+  tls_slot::Slot slot(countingMalloc, countingFree);
+  const size_t record = 16384 + 17;  // a full application-data record as the server sends it
+  if (name == "slot-one-block-for-every-record") {
+    const void* first = nullptr;
+    for (int i = 0; i < 400; ++i) {
+      void* p = slot.take(record);
+      require(p != nullptr, "a record was not served from the slot");
+      if (!first) first = p;
+      require(p == first, "a record got a different block");
+      require(slot.give(p), "the slot's block was not recognised on free");
+    }
+    require(allocs == 1 && frees == 0 && slot.served() == 400, "the slot allocated more than once");
+    slot.end();
+    require(frees == 1, "ending the slot did not free its block");
+    return;
+  }
+  if (name == "slot-leaves-other-requests-alone") {
+    require(slot.take(4096) == nullptr, "a small request took the slot");
+    require(slot.take(tls_slot::BYTES + 1) == nullptr, "an oversized request took the slot");
+    void* p = slot.take(record);
+    require(p && slot.take(record) == nullptr, "a second record while the first is in use took the slot");
+    require(!slot.give(&allocs), "a pointer the slot does not own was kept");
+    require(slot.fallbacks() == 2, "the fallbacks were not counted");
+    slot.end();  // still in use: its owner frees it
+    require(frees == 0, "the slot freed a block still in use");
+    std::free(p);
+    return;
+  }
+  if (name == "slot-without-memory-falls-back") {
+    allocFails = true;
+    require(slot.take(record) == nullptr && slot.fallbacks() == 1, "a failed reservation was not a fallback");
+    allocFails = false;
+    void* p = slot.take(record);
+    require(p != nullptr, "the slot did not try again");
+    slot.give(p);
+    slot.end();
+    return;
+  }
+  throw std::runtime_error("unknown case");
+}
+
 int main(int argc, char** argv) {
   if (argc != 3) return 2;
   const std::string group = argv[1], name = argv[2];
   try {
     if (group == "flag") flagCases(name);
     if (group == "screen") screenCases(name);
+    if (group == "slot") slotCases(name);
     std::cout << "PASS " << name << '\n';
     return 0;
   } catch (const std::exception& e) {
