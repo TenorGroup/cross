@@ -46,6 +46,8 @@ struct FakeChip {
   uint8_t regs[256] = {};
   uint8_t pointer = 0;
   bool completesCommands = true;
+  // Answers no command until it has been powered down (CTRL1 SensorDisable) and up again.
+  bool answersAfterPowerDown = false;
   bool logging = true;
   std::vector<std::string> log;
 
@@ -121,6 +123,7 @@ struct FakeChip {
       overflowed = false;
     }
     regs[reg] = value;
+    if (reg == 0x02 && (value & 0x01) && answersAfterPowerDown) completesCommands = true;
     if (reg == 0x0A) command(value);
   }
 
@@ -545,6 +548,16 @@ void aChipLateForEveryQuickTryIsArmedLater() {
   expect(chip.regs[0x14] == 0x0E, "late3", "armed once the chip answers, even after three failed tries");
 }
 
+// If the chip answers only after a power-down, as the founder's way back (a sleep with double
+// tap off) hints, the tries that follow the first three power it down and up first.
+void aChipStuckUntilPoweredDownIsArmed() {
+  boot();
+  chip.completesCommands = false;
+  chip.answersAfterPowerDown = true;
+  runFor(awakePlain(1), 20000);
+  expect(chip.regs[0x14] == 0x0E, "stuck", "armed after the chip is powered down and up");
+}
+
 void turningDoubleTapOffAndOnTriesAgain() {
   boot();
   chip.completesCommands = false;
@@ -564,8 +577,11 @@ void aChipThatNeverAnswersIsLeftAsV1016() {
   runFor(awakePlain(1), 60000);
   int commands = 0;
   for (size_t i = before; i < chip.log.size(); ++i) commands += chip.log[i] == "W 0A=04";
-  // Three tries a second apart, then one each TAP_SLOW_RETRY_MS: a minute holds at most nine.
-  expect(commands >= 4 && commands <= 9, "timeout", "a few quick tries, then a slow one now and then");
+  int restarts = 0;
+  for (size_t i = before; i < chip.log.size(); ++i) restarts += chip.log[i] == "W 02=61";
+  // Three tries a second apart, 10 s, the chip powered down and up, three more: a minute holds
+  // five rounds of three, with a power-down between two rounds.
+  expect(commands == 15 && restarts == 4, "timeout", "three tries a round, the chip restarted between rounds");
   expect(chip.regs[0x03] == 0x08 && chip.regs[0x04] == 0x58 && chip.regs[0x09] == 0x00 && chip.regs[0x08] == 0x03 &&
              chip.regs[0x14] == 0x00,
          "timeout", "the v1.0.16 setup is back and sampling");
@@ -852,6 +868,7 @@ int main(int argc, char** argv) {
   deviceSleepLeavesNoFifoSetup();
   aLateChipIsArmedOnALaterTry();
   aChipLateForEveryQuickTryIsArmedLater();
+  aChipStuckUntilPoweredDownIsArmed();
   turningDoubleTapOffAndOnTriesAgain();
   aChipThatNeverAnswersIsLeftAsV1016();
   madeUpKnocks();

@@ -992,7 +992,7 @@ static void tapRecCommand(const String& cmd) {
 }
 
 // CMD:CAT <path>: a file from the card over the cable, "CAT_START:<bytes>", the bytes as they are,
-// then "CAT_END:<crc32>" (zlib's), for x3cat.py. The 1 ms send timeout is raised for the transfer
+// then "CAT_END:<crc32>" (zlib's). The 1 ms send timeout is raised for the transfer
 // only, so a full USB buffer waits for the host instead of dropping bytes.
 static void catCommand(const String& path) {
   HalFile file;
@@ -1007,14 +1007,18 @@ static void catCommand(const String& path) {
 #endif
   logSerial.printf("CAT_START:%u\n", static_cast<unsigned>(file.size()));
   int n;
-  while ((n = file.read(buf, sizeof(buf))) > 0) {
+  bool sending = true;
+  while (sending && (n = file.read(buf, sizeof(buf))) > 0) {
     for (int i = 0; i < n; ++i) {
       crc ^= buf[i];
       for (int b = 0; b < 8; ++b) crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
     }
     for (int sent = 0; sent < n;) {
       const size_t w = logSerial.write(buf + sent, n - sent);
-      if (w == 0) break;
+      if (w == 0) {
+        sending = false;  // The host stopped reading: the CRC tells it the file is short.
+        break;
+      }
       sent += static_cast<int>(w);
     }
   }

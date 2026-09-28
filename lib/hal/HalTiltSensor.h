@@ -55,8 +55,9 @@ class HalTiltSensor {
   static constexpr unsigned long POLL_INTERVAL_MS = 50;    // 20 Hz polling
   static constexpr unsigned long WAKE_STABILIZE_MS = 300;  // Ignore readings after wake
   // X3: the first arm after waking from deep sleep times out (the chip just left power-down),
-  // a later one takes. Three tries a second apart, then one each TAP_SLOW_RETRY_MS for as long
-  // as double tap stays on: giving up left it dead until the next wake (rc.2, 28/09).
+  // a later one takes. Three tries a second apart; if all fail, TAP_SLOW_RETRY_MS later the chip is
+  // powered down and up and three more follow, for as long as double tap stays on. Giving up left
+  // it dead until a sleep with double tap off (rc.2, 28/09).
   static constexpr uint8_t TAP_ARM_TRIES = 3;
   static constexpr unsigned long TAP_RETRY_MS = 1000;
   static constexpr unsigned long TAP_SLOW_RETRY_MS = 10000;

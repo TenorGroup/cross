@@ -32,8 +32,9 @@
 //
 // Chosen through this code (test/imu_double_tap) on runs of one X3 held by hand:
 // four read from the data registers (26-27/09, every place and the controls) and two from the
-// FIFO as the device reads it (27/09, 28/09). At 650 mg, 425 mg soft and 80 dps: 132 of 178
-// pairs at the right place on the register runs, one at a wrong one, none from the controls
+// FIFO as the device reads it (27/09, 28/09). At 650 mg, 425 mg soft and 80 dps: 132 of the 178
+// pairs scored at the right place on the register runs, 2 at a wrong place over all of them (a
+// finger of the other hand on an edge, read as the screen), none from the controls
 // (page presses, two quick presses, switching hands, putting down, turning over, reading, a thumb
 // on the screen). On the 28/09 FIFO run, 10 pairs each: 8 on the back, 7 on the screen upright, 7
 // in landscape, 10 on an edge, none from the controls. Soft peaks at 350 mg let a control

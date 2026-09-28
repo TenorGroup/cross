@@ -131,9 +131,16 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
     _isAwake = wake();
     return;
   }
-  const unsigned long tapRetryMs = _tapTries < TAP_ARM_TRIES ? TAP_RETRY_MS : TAP_SLOW_RETRY_MS;
-  if (_doubleTapEnabled && !_tapArmed && (_tapTries == 0 || millis() - _tapTriedMs >= tapRetryMs)) {
-    if (_tapTries < UINT8_MAX) ++_tapTries;
+  if (_doubleTapEnabled && !_tapArmed && _tapTries >= TAP_ARM_TRIES && millis() - _tapTriedMs >= TAP_SLOW_RETRY_MS) {
+    // Three tries failed: power the chip down and up, as a sleep does, and the wake tries three more.
+    LOG_INF("GYR", "IMU restart for FIFO");
+    _sdkImu.sleep();
+    _isAwake = false;
+    return;
+  }
+  if (_doubleTapEnabled && !_tapArmed && _tapTries < TAP_ARM_TRIES &&
+      (_tapTries == 0 || millis() - _tapTriedMs >= TAP_RETRY_MS)) {
+    ++_tapTries;
     _tapArmed = _sdkImu.enableFifo();
     _tapTriedMs = millis();
     LOG_INF("GYR", "IMU FIFO %s (try %u)", _tapArmed ? "on" : "failed", _tapTries);
