@@ -70,7 +70,7 @@ for name in ['HalTiltSensor', 'HalClock']:
         name + ' ' + instance + ';\n')
 incs = ['test/host_stubs', 'src', '.pio/libdeps/gh_release/ArduinoJson/src',
         'lib/Epub', 'lib/Logging', 'lib/EpdFont', 'lib/Serialization', 'lib/KOReaderSync',
-        'freeink-sdk/libs/hardware/BoardConfig/include', 'freeink-sdk/libs/ui/FreeInkUI/include', 'lib/I18n']
+        'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include', 'freeink-sdk/libs/ui/FreeInkUI/include', 'lib/I18n']
 cmd = [os.environ.get('CXX', 'c++'), '-std=c++20', '-O1', '-g', '-ffunction-sections',
        '-fdata-sections', '-Wl,-dead_strip' if platform.system() == 'Darwin' else '-Wl,--gc-sections',
        '-DFREEINK_DEVICE_X3=1', '-DFREEINK_DEVICE_X4=1', '-DENABLE_ARDUINO_FEATURES=0',

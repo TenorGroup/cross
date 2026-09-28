@@ -42,7 +42,7 @@ def method_slice(text, signature):
 include_paths = [
     'test/host_stubs', 'src', '.pio/libdeps/gh_release/ArduinoJson/src',
     'lib/Epub', 'lib/I18n', 'lib/Logging', 'lib/EpdFont', 'lib/Serialization',
-    'lib/KOReaderSync', 'freeink-sdk/libs/hardware/BoardConfig/include',
+    'lib/KOReaderSync', 'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include',
     'freeink-sdk/libs/ui/FreeInkUI/include',
 ]
 includes = ['-I' + str(ROOT / path) for path in include_paths]

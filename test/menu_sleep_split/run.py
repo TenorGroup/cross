@@ -72,7 +72,7 @@ for name in ['HalTiltSensor', 'HalClock']:
     (out / (name+'.h')).write_text('#pragma once\nclass '+name+' { public: bool available=false; bool isAvailable() const { return available; } };\nextern '+name+' '+instance+';\n')
 incs = ['test/host_stubs', 'src', '.pio/libdeps/gh_release/ArduinoJson/src', 'lib/Epub', 'lib/Logging',
         'lib/EpdFont', 'lib/Serialization', 'lib/KOReaderSync', 'lib/I18n',
-        'freeink-sdk/libs/hardware/BoardConfig/include', 'freeink-sdk/libs/ui/FreeInkUI/include']
+        'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include', 'freeink-sdk/libs/ui/FreeInkUI/include']
 common = [os.environ.get('CXX', 'c++'), '-std=c++20', '-O1', '-g', '-ffunction-sections', '-fdata-sections',
           '-Wl,-dead_strip' if platform.system() == 'Darwin' else '-Wl,--gc-sections',
           '-DENABLE_ARDUINO_FEATURES=0', '-DCROSSPOINT_VERSION="sleep-split"', '-I'+str(out)]
