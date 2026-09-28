@@ -794,6 +794,8 @@ STR_BLE_BIND_CLEAR: "Xoá gán"
 STR_BLE_BIND_DEFAULT: "Mặc định"
 STR_BLE_LAST_KEY: "nút vừa nhận %s"
 STR_BLE_READER_LOW_RAM: "Chưa chạy trong sách vì thiếu RAM"
+STR_BLE_LINKING: "Đang nối Bluetooth…"
+STR_BLE_LINK_FAILED: "Không nối được Bluetooth"
 
 STR_KEYBOARD_MOVE_HORIZONTAL: "Di chuyển ngang"
 

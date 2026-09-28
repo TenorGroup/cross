@@ -1,5 +1,7 @@
 #pragma once
 
+#include <BlePageTurner.h>
+
 #include <atomic>
 #include <memory>
 #include <string>
@@ -32,6 +34,17 @@ class ReaderActivity : public Activity {
   // commitOpen() remembers the book only then.
   std::atomic<bool> pageRendered{false};
   void markPageRendered() { pageRendered.store(true, std::memory_order_release); }
+
+  // The page turner's link note (bleturner::linkNote) in place of the status bar's title. Called
+  // where the title is about to be drawn: true when `title` now holds the note. It remembers the
+  // note it drew, so onTick redraws the status bar when the note changes.
+  bool linkNoteTitle(std::string& title) const;
+  // The note the status bar last drew and whether it drew the title slot at all. Under RenderLock.
+  mutable bleturner::LinkNote linkNoteDrawn = bleturner::LinkNote::None;
+  mutable bool linkNoteInTitle = false;
+  // The note changed since the status bar showed it: paint the page again. EPUB redraws its status
+  // bar alone where the panel allows it.
+  virtual void redrawLinkNote() { requestUpdate(); }
 
   explicit ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
                           std::string bookPath, bool allowFastInitialRefresh);

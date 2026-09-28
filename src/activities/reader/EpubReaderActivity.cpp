@@ -3432,11 +3432,18 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 // may read. The status bar is drawn again over the page frame still in the framebuffer and sent
 // with one fast refresh; the page is not laid out, drawn or given a gray pass again.
 void EpubReaderActivity::repaintStatusBarAlone() {
-  if (!pageFrameShown || !pageFrameKeepsUnderFast || !tenorchrome::enabled() || preview ||
-      SETTINGS.readerStatusBarHidden() || !SETTINGS.statusBarSpec().showBattery)
-    return;
+  if (!pageFrameShown || preview || SETTINGS.readerStatusBarHidden()) return;
+  const auto sb = SETTINGS.statusBarSpec();
   const bool usb = gpio.isUsbConnected();
-  if (usb == pageFrameUsb) return;
+  const bool usbChanged = sb.showBattery && usb != pageFrameUsb;
+  const bool noteChanged = sb.showsTitle() && bleturner::linkNote() != linkNoteDrawn;
+  if (!usbChanged && !noteChanged) return;
+  if (!pageFrameKeepsUnderFast || !tenorchrome::enabled()) {
+    // This page does not keep under a fast refresh of its status bar alone. The charging mark
+    // waits for the next paint; the link note is painted with the page now.
+    if (noteChanged) requestUpdate();
+    return;
+  }
 #ifdef TENOR_PRESS_PROBE
   const unsigned long started = millis();
 #endif
@@ -3450,7 +3457,8 @@ void EpubReaderActivity::repaintStatusBarAlone() {
   pageFrameUsb = usb;
   LOG_DBG("ERS", "Status bar repainted alone: usb=%d", usb ? 1 : 0);
 #ifdef TENOR_PRESS_PROBE
-  LOG_INF("ERS", "STATUS_REPAINT usb=%d ms=%lu", usb ? 1 : 0, millis() - started);
+  LOG_INF("ERS", "STATUS_REPAINT usb=%d note=%d ms=%lu", usb ? 1 : 0, static_cast<int>(linkNoteDrawn),
+          millis() - started);
 #endif
 }
 
@@ -3471,7 +3479,9 @@ void EpubReaderActivity::renderStatusBar() const {
   int textYOffset = 0;
   const auto sb = SETTINGS.statusBarSpec();
 
-  if (automaticPageTurnActive) {
+  if (sb.showsTitle() && linkNoteTitle(title)) {
+    // The page turner's link note stands in for the title, the automatic turn's line included.
+  } else if (automaticPageTurnActive) {
     title = tr(STR_AUTO_TURN_ENABLED) + std::to_string(60 * 1000 / pageTurnDuration);
     const uint8_t statusBarHeight = readerStatusBarHeight();
     if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {

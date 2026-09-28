@@ -765,6 +765,8 @@ STR_BLE_BIND_CLEAR: "清除设置"
 STR_BLE_BIND_DEFAULT: "默认"
 STR_BLE_LAST_KEY: "上次按键 %s"
 STR_BLE_READER_LOW_RAM: "内存不足，阅读时未启动"
+STR_BLE_LINKING: "Connecting Bluetooth…"
+STR_BLE_LINK_FAILED: "Bluetooth failed"
 
 STR_KEYBOARD_MOVE_HORIZONTAL: "水平移动"
 

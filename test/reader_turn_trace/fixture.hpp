@@ -81,6 +81,10 @@ struct Settings {
   enum { FONT_SIZE_STEP = 1, CHAPTER_SKIP = 2 };
   uint8_t longPressButtonBehavior = 0;
 } SETTINGS;
+// The page turner module: a page turn gives a Failed link note back to the title.
+namespace bleturner {
+inline void acknowledgeLinkNote() {}
+}  // namespace bleturner
 struct ReaderActivity {
   static constexpr int8_t MAX_QUEUED_TURNS = 8;
   int8_t pendingExternalTurn = 0;

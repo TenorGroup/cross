@@ -219,8 +219,24 @@ void ReaderActivity::onTick() {
   // sees two consecutive agreeing samples).
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired()) return;
+  // A remote linked, or the link failed, after the status bar showed the note: show it now rather
+  // than on the next turn. Asked once per change; the redraw marks what it drew.
+  if (linkNoteInTitle && bleturner::linkNote() != linkNoteDrawn && pageReady.load(std::memory_order_acquire) &&
+      readingPageVisible()) {
+    linkNoteInTitle = false;
+    redrawLinkNote();
+  }
   updateReadingTime(pageReady.load(std::memory_order_acquire) && readingPageVisible());
   if (millis() - statsSavedMs >= 30000) chotSoLieuDoc();
+}
+
+bool ReaderActivity::linkNoteTitle(std::string& title) const {
+  const auto note = bleturner::linkNote();
+  linkNoteDrawn = note;
+  linkNoteInTitle = true;
+  if (note == bleturner::LinkNote::None) return false;
+  title = note == bleturner::LinkNote::Connecting ? tr(STR_BLE_LINKING) : tr(STR_BLE_LINK_FAILED);
+  return true;
 }
 
 void ReaderActivity::onPause() {
@@ -433,6 +449,8 @@ bool ReaderActivity::pageTurnLocked(const bool isForward) {
   logTurnTrace("APPLIED", appliedTurnTrace, "page");
 #endif
   ++trangDaLat;
+  // A Failed link note has been read: the page this turn paints shows the title again.
+  bleturner::acknowledgeLinkNote();
   return true;
 }
 

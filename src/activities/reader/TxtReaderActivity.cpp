@@ -454,7 +454,7 @@ void TxtReaderActivity::renderStatusBar() const {
   }
   const float progress = totalPages > 0 ? (currentPage + 1) * 100.0f / totalPages : 0;
   std::string title;
-  if (SETTINGS.statusBarSpec().showsTitle()) {
+  if (SETTINGS.statusBarSpec().showsTitle() && !linkNoteTitle(title)) {
     title = txt->getTitle();
   }
   GUI.drawStatusBar(renderer, progress, currentPage + 1, totalPages, title);

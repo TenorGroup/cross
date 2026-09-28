@@ -794,6 +794,8 @@ STR_BLE_BIND_CLEAR: "Clear binding"
 STR_BLE_BIND_DEFAULT: "Default"
 STR_BLE_LAST_KEY: "last key %s"
 STR_BLE_READER_LOW_RAM: "Not running in books: low memory"
+STR_BLE_LINKING: "Connecting Bluetooth…"
+STR_BLE_LINK_FAILED: "Bluetooth failed"
 
 STR_KEYBOARD_MOVE_HORIZONTAL: "Move horizontally"
 

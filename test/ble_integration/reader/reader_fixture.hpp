@@ -13,6 +13,8 @@ inline std::vector<std::string> radioSteps;
 #include <cstring>
 #define LOG_INF(...) ((void)0)
 #define LOG_ERR(...) ((void)0)
+// A string's key stands for its text: a case reads which string the status bar got.
+#define tr(id) (#id)
 #define CROSSPOINT_BLE_HID_HOST 1
 #define NEW_PIPELINE @@NEW@@
 #define LAYOUT_HOOK @@LAYOUT@@
@@ -71,6 +73,9 @@ struct ReaderActivity:Activity{
  bool handleEndOfBookMenu(){return endOfBookMenuActive();}bool handleFormatInput(){if(mappedInput.confirm){formatCalls++;return true;}return false;}bool handleBackNavigation(){if(mappedInput.back){backCalls++;return true;}return false;}
  bool docCoChuMotNac(int){return false;}bool skipPages(int a){return pageTurn(a>0);}
  void updateReadingTime(bool);struct Shot{int progressPercent=25;};Shot getScreenshotInfo()const{return {};}
+ bool openCommitPending=false;std::atomic<bool>pageRendered{true};void commitOpen(){}void chotSoLieuDoc(){}virtual bool readingPageVisible()const{return !isAtEndOfBook();}
+ // The page turner's link note in the status bar's title slot (ReaderActivity::linkNoteTitle, onTick).
+ mutable bleturner::LinkNote linkNoteDrawn=bleturner::LinkNote::None;mutable bool linkNoteInTitle=false;bool linkNoteTitle(std::string&)const;virtual void redrawLinkNote(){requestUpdate();}void onTick();
  virtual void loop();
 };
 bool ActivityManager::isForegroundReaderReady()const{return isForegroundReaderActivity()&&static_cast<ReaderActivity*>(currentActivity.get())->isPageReady();}

@@ -157,5 +157,35 @@ int main(){
  require(r->chapterSkips==0&&r->trangDaLat==0,"a press queued before the reader pass acted");
  canh(0x030102,true);p.pump();r->loop();require(r->chapterSkips==1,"a fresh press after the table was chosen did not act");
  });
+ // The status bar's title slot while the page turner looks for the remote: the note, then the title.
+ // `draw` stands for the status bar the render task draws: the title slot asks linkNoteTitle first.
+ auto draw=[](const ReaderActivity&r){std::string title="Book";r.linkNoteTitle(title);return title;};
+ test("BLE link note: Connecting in the title until a remote links, then the title",[&]{
+ auto r=reader<TxtReaderActivity>();MainPump p;p.pump();
+ require(draw(*r)=="STR_BLE_LINKING","entering the book did not show Connecting");
+ r->onTick();p.pump();r->onTick();require(r->requests==0,"a note that did not change asked for a redraw");
+ noiRemote();p.pump();r->onTick();
+ require(r->requests==1,"the link did not redraw the status bar without a page turn");
+ require(draw(*r)=="Book","the title did not come back once the remote linked");
+ for(int i=0;i<5;i++){nowMs+=1000;p.pump();r->onTick();}require(r->requests==1,"the title redraw repeated");
+ });
+ test("BLE link note: Failed until the next page turn, then the title",[&]{
+ auto r=reader<TxtReaderActivity>();MainPump p;auto&host=freeink::BleKeyboardHost::getInstance();host.running=false;freeink::ble::startSuccess=false;
+ p.pump();require(draw(*r)=="STR_BLE_LINKING","entering the book did not show Connecting");
+ p.pump();r->onTick();require(r->requests==1,"the refusal did not redraw the status bar");
+ require(draw(*r)=="STR_BLE_LINK_FAILED","a refused radio did not show Failed");
+ nowMs+=1000;p.pump();r->onTick();require(r->requests==1&&draw(*r)=="STR_BLE_LINK_FAILED","Failed went before a page turn");
+ require(activityManager.pageTurn(true),"page turn");r->loop();
+ require(r->requests==2,"the page turn did not repaint once");require(draw(*r)=="Book","the page after the turn did not show the title");
+ r->onTick();require(r->requests==2,"the title after the turn asked for another redraw");
+ });
+ test("BLE link note: 20 s of radio without a link shows Failed",[&]{
+ auto r=reader<XtcReaderActivity>();MainPump p;p.pump();require(draw(*r)=="STR_BLE_LINKING","entering the book did not show Connecting");
+ nowMs+=19999;p.pump();r->onTick();require(r->requests==0&&draw(*r)=="STR_BLE_LINKING","Failed came before 20 s");
+ nowMs+=1;p.pump();r->onTick();require(r->requests==1&&draw(*r)=="STR_BLE_LINK_FAILED","20 s without a link did not show Failed");
+ });
+ test("BLE link note: page turner off shows the title",[&]{
+ SETTINGS.ble.enabled=0;auto r=reader<TxtReaderActivity>();MainPump p;p.pump();require(draw(*r)=="Book","a page turner that is off showed a note");
+ });
  std::cout<<"RESULT "<<tests-failures<<"/"<<tests<<" passed\n";return failures?1:0;
 }

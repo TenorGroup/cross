@@ -129,6 +129,10 @@ inline BuildRelease beforeChapterBuild() {
   }
   return stopped ? BuildRelease::Released : BuildRelease::StillUp;
 }
+// The status bar's link note: no remote in these cases, the title stays.
+enum class LinkNote : uint8_t { None, Connecting, Failed };
+inline LinkNote linkNote() { return LinkNote::None; }
+inline void acknowledgeLinkNote() {}
 }  // namespace bleturner
 // Thumbnails written when the last popup went up, so a case can tell a notice came first.
 int popupGenerated = -1;
@@ -326,6 +330,9 @@ struct ReaderActivity {
   bool readingPageVisible() const { return true; }
   void updateReadingTime(bool); void chotSoLieuDoc(); void onPause();
   void openTail(); void onTick(); void commitOpen();
+  bleturner::LinkNote linkNoteDrawn = bleturner::LinkNote::None;
+  bool linkNoteInTitle = false;
+  void redrawLinkNote() { requestUpdate(); }
   std::unique_ptr<EndMenu> endOfBookOptions = std::make_unique<EndMenu>();
   virtual ~ReaderActivity() = default;
   virtual bool latTrangThat(bool) = 0;

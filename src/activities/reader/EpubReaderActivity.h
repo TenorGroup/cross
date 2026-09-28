@@ -76,6 +76,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // USB power came or went; the main loop redraws the status bar alone on a quiet pass.
   bool statusBarStale = false;
   void repaintStatusBarAlone();
+  // The page turner's link note changed: the main loop redraws the status bar alone as for USB.
+  void redrawLinkNote() override { statusBarStale = true; }
   void saveProgressIfMoved();
 #ifdef TENOR_TURN_TRACE
   TurnTrace pendingManualTurnTrace;

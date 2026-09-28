@@ -65,7 +65,7 @@ new = 'processExternalPageTurn(' in body
 layout_hook = 'pageAwaitsLayout(' in head
 prefix = P(__file__).with_name('reader_fixture.hpp').read_text().replace('@@NEW@@', '1' if new else '0')
 prefix = prefix.replace('@@LAYOUT@@', '1' if layout_hook else '0')
-functions = [reader_fn(n) for n in ['pageTurn', 'luotLatTrangNgoai', 'handleEndOfBookPageTurn', 'endOfBookMenuActive', 'updateReadingTime', 'handlePreviewInput', 'loop']]
+functions = [reader_fn(n) for n in ['pageTurn', 'luotLatTrangNgoai', 'handleEndOfBookPageTurn', 'endOfBookMenuActive', 'updateReadingTime', 'handlePreviewInput', 'loop', 'onTick', 'linkNoteTitle']]
 if 'luotNhayChuongNgoai(' in body:
     functions.append(reader_fn('luotNhayChuongNgoai'))
 if new:
