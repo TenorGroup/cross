@@ -27,7 +27,11 @@ EPUB = REPO / 'test/epubs/test_kerning_ligature.epub'
 # can den vung day man hinh, nen do duoc phan noi dung ma moi mode de lai.
 MO_THU_MUC_DAI = '1000:DOWN;1500:CONFIRM;'
 DAY_DAY = 745  # tu day tro xuong la dai trang thai + nhan nut
-O_HANG_11 = (70, 700, 230, 708)
+# Hang 11 la hang xem truoc (partialTrailingRow). Tu SDK cua CrossPoint 1.6.5 hang nay ve theo
+# bo cuc hang thuong, cat o mep (chu tu y 705 thay vi 702), nen o do phu ca dai chu 700-724 va
+# dung o x 150, truoc dong goi y cua muc Lon (x 163-363 tu y 708). Ban v1.0.19 va ban nay do
+# cung so: Tat 516, Nho 0, Lon 0.
+O_HANG_11 = (70, 700, 150, 724)
 DAI_CHROME_DUOI = (765, 792)
 
 

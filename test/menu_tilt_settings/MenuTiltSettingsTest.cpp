@@ -402,7 +402,10 @@ int main(int argc, char** argv) {
   CrossPointSettings& settings = SETTINGS;
   const SettingInfo* strengthH = findSetting(catalog, "tiltStrengthH");
   const SettingInfo* strengthV = findSetting(catalog, "tiltStrengthV");
-  bool ok = expect(catalog.size() == (hasImu ? 82U : 70U), "X3 descriptor count");
+  // 1.6.5 added 11 rows (library metadata, time zone, DST, clock in header, Back to file
+  // browser, three Home button actions, two page gestures, double-click light); every
+  // existing row kept its place.
+  bool ok = expect(catalog.size() == (hasImu ? 93U : 81U), "X3 descriptor count");
   ok = expect(longPressValuesMatch(catalog, hasImu), "Confirm-hold list shows Reader menu and appends the new actions") &&
        ok;
 

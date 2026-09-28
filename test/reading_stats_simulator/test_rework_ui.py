@@ -180,7 +180,8 @@ class ReworkUiTest(unittest.TestCase):
                   '3000:RIGHT;3300:RIGHT;3600:RIGHT;3900:RIGHT;4200:RIGHT;4500:RIGHT;4900:CONFIRM;'
                   '5600:CONFIRM;7600:QUIT')
         log = self.run_sim(script)
-        self.assertEqual(log.count('Entering activity: DongHoSettings'), 1, log)
+        # The clock screen is ClockSettings since CrossPoint 1.6.5 (#3562).
+        self.assertEqual(log.count('Entering activity: ClockSettings'), 1, log)
 
     # --- H2: chinh nhanh co chu va font ngay trong menu doc, va giu nut lat trang doi co ------
     def test_h2_j1_co_chu_7_nhip_bang_popup_tai_co(self):

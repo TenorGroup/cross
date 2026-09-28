@@ -80,7 +80,8 @@ def status():
  assert saved(sd,'settings.json')['statusBarClock']==2
 
 def clock():
- sd=route('clock','clock/clockFormat','Entering activity: DongHoSettings',{'clockFormat':0})
+ # The clock screen is ClockSettings since 1.6.5 (#3562); the pinned format row still opens it and toggles.
+ sd=route('clock','clock/clockFormat','Entering activity: ClockSettings',{'clockFormat':0})
  assert saved(sd,'settings.json')['clockFormat']==1
 
 def kosync():

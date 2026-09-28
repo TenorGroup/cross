@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -80,7 +81,8 @@ std::string deobfuscateFromBase64(const char* s, size_t, bool* ok, bool* tooLong
 }
 
 struct SettingsActivity {
-  struct Cursor { int selected = 0; bool followOnBuild = false; };
+  // Same shape as freeink::ui::ListNav: the selection is atomic (read by the render task).
+  struct Cursor { std::atomic<int> selected{0}; bool followOnBuild = false; };
   struct Input { bool hasTouch() const { return BoardConfig::hasTouch(); } } mappedInput;
   int renderer = 0;
   int selectedCategoryIndex = static_cast<int>(settingstabs::Tab::READER), settingsCount = 0;
@@ -138,7 +140,7 @@ bool catalogReleaseProbe() {
   bool ok = check(mem::live == 0, "shared catalog allocations released");
   std::printf("catalog_rows=%zu sizeof_SettingInfo=%zu allocated=%zu after_release=%zu\n",
               copied.size(), sizeof(SettingInfo), bytes, mem::live);
-  ok &= check(copied.size() == 82 && !webCopy.empty(), "82 base rows and owned web copy survive release");
+  ok &= check(copied.size() == 93 && !webCopy.empty(), "93 base rows and owned web copy survive release");
   clockCopy.valueSetter(1);
   ok &= check(clockCopy.valueGetter() == 1, "copied dynamic callback survives catalog release");
   SETTINGS.statusBarClock = CrossPointSettings::STATUS_BAR_CLOCK_HIDE;

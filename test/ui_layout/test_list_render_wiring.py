@@ -26,7 +26,11 @@ class ListRenderWiring(unittest.TestCase):
             body = content.split(marker, 1)[1].split("\n}", 1)[0]
             self.assertIn("renderSettledList(", body, f"{name} bypasses measured viewport feedback")
             custom.append(name)
-        self.assertGreaterEqual(len(custom), 10)
+        # The clock screen is upstream's ClockSettingsActivity since 1.6.5 (#3562); it keeps
+        # UiListActivity::render(), which settles through renderSettledList(), where the
+        # Tenor clock screen it replaced had its own renderer. So nine custom, not ten.
+        self.assertIn("ClockSettingsActivity", inherited)
+        self.assertGreaterEqual(len(custom), 9)
         print("STRUCTURAL custom renderers:", ", ".join(custom))
         print("STRUCTURAL inherited renderers:", ", ".join(inherited))
 
