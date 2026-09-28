@@ -117,15 +117,25 @@ void SettingsActivity::rebuildSettingsLists() {
       {StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate},
       {StrId::STR_ABOUT, SettingAction::About},
   };
+  // Home button settings are edited via the HomeButton action row's sub-screen
+  // (below), not as individual rows in the flat Controls list (#3516).
+  // longPressMenuFunction (legacy long-press-Confirm cycling) is superseded by
+  // the Home button's own long-press action on home-key boards. The row count
+  // below and the list build apply the same rule, so every tab reserves exactly.
+  const auto listedAsRow = [](const SettingInfo& setting) {
+    if (home_button::isSetting(setting.valuePtr)) return false;
+    return !(BoardConfig::hasHomeKey() && setting.valuePtr == &CrossPointSettings::longPressMenuFunction);
+  };
   const auto& catalog = getBaseSettingsList();
   std::array<size_t, settingstabs::TAB_COUNT> rowCounts{};
   for (const auto& setting : catalog) {
     const int tab = deviceSettingsTab(setting);
-    if (tab >= 0) ++rowCounts[tab];
+    if (tab >= 0 && listedAsRow(setting)) ++rowCounts[tab];
   }
   for (const auto& row : DONG_HANH_DONG) ++rowCounts[static_cast<int>(settingstabs::nhaCua(row.viec))];
   if (!BoardConfig::hasTouch()) ++rowCounts[static_cast<int>(settingstabs::Tab::CONTROLS)];
   if (keyboard_layouts::COUNT > 1) ++rowCounts[static_cast<int>(settingstabs::Tab::KEYBOARD)];
+  if (BoardConfig::hasHomeKey()) ++rowCounts[static_cast<int>(settingstabs::Tab::CONTROLS)];
   ++rowCounts[static_cast<int>(settingstabs::Tab::SYSTEM)];
   ++rowCounts[static_cast<int>(settingstabs::Tab::DEVICE)];
   rowCounts[static_cast<int>(settingstabs::Tab::READER)] += 3 + (!dictionaries.empty() ? 1 : 0);
@@ -142,13 +152,7 @@ void SettingsActivity::rebuildSettingsLists() {
       });
       displaySettings.insert(afterLabels == displaySettings.end() ? afterLabels : afterLabels + 1,
                              buildTenorClockPlacementSetting(setting));
-    } else {
-      // Home button settings are edited via the HomeButton action row's sub-screen
-      // (below), not as individual rows in the flat Controls list (#3516).
-      // longPressMenuFunction (legacy long-press-Confirm cycling) is superseded by
-      // the Home button's own long-press action on home-key boards.
-      if (home_button::isSetting(setting.valuePtr)) continue;
-      if (BoardConfig::hasHomeKey() && setting.valuePtr == &CrossPointSettings::longPressMenuFunction) continue;
+    } else if (listedAsRow(setting)) {
       danhSachCuaThe(static_cast<settingstabs::Tab>(tab)).push_back(setting);
     }
   }
