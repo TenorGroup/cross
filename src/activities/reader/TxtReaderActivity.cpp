@@ -454,10 +454,11 @@ void TxtReaderActivity::renderStatusBar() const {
   }
   const float progress = totalPages > 0 ? (currentPage + 1) * 100.0f / totalPages : 0;
   std::string title;
-  if (SETTINGS.statusBarSpec().showsTitle() && !linkNoteTitle(title)) {
+  const bool linkNote = SETTINGS.statusBarSpec().showsTitle() && linkNoteTitle(title);
+  if (SETTINGS.statusBarSpec().showsTitle() && !linkNote) {
     title = txt->getTitle();
   }
-  GUI.drawStatusBar(renderer, progress, currentPage + 1, totalPages, title);
+  GUI.drawStatusBar(renderer, progress, currentPage + 1, totalPages, title, 0, 0, true, false, false, !linkNote);
 }
 
 bool TxtReaderActivity::latTrangThat(bool isForward) {

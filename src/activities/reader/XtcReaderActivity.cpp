@@ -142,8 +142,9 @@ void XtcReaderActivity::renderStatusBarOverlay(GfxRenderer& renderer, const Stat
   const int displayPage = static_cast<int>(currentPage) + 1;
   const float progress = pageCount > 0 ? (static_cast<float>(displayPage) * 100.0f) / pageCount : 0.0f;
   auto pageInfo = getStatusBarInfo();
-  if (sb.showsTitle()) linkNoteTitle(pageInfo.title);
-  GUI.drawStatusBar(renderer, progress, pageInfo.currentPage, pageInfo.pageCount, pageInfo.title, paddingBottom);
+  const bool linkNote = sb.showsTitle() && linkNoteTitle(pageInfo.title);
+  GUI.drawStatusBar(renderer, progress, pageInfo.currentPage, pageInfo.pageCount, pageInfo.title, paddingBottom, 0,
+                    true, false, false, !linkNote);
 }
 
 void XtcReaderActivity::renderPage() {

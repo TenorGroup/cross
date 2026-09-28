@@ -3479,7 +3479,8 @@ void EpubReaderActivity::renderStatusBar() const {
   int textYOffset = 0;
   const auto sb = SETTINGS.statusBarSpec();
 
-  if (sb.showsTitle() && linkNoteTitle(title)) {
+  const bool linkNote = sb.showsTitle() && linkNoteTitle(title);
+  if (linkNote) {
     // The page turner's link note stands in for the title, the automatic turn's line included.
   } else if (automaticPageTurnActive) {
     title = tr(STR_AUTO_TURN_ENABLED) + std::to_string(60 * 1000 / pageTurnDuration);
@@ -3504,7 +3505,7 @@ void EpubReaderActivity::renderStatusBar() const {
   }
 
   GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true, currentPageBookmarked,
-                    section ? section->isBuilding() : false);
+                    section ? section->isBuilding() : false, !linkNote);
 }
 
 // ---------------------------------------------------------------------------

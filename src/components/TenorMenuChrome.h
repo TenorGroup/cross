@@ -50,7 +50,8 @@ struct StatusCornerBounds {
 };
 StatusCornerBounds statusCornerBounds(const GfxRenderer& renderer, bool large);
 void drawStatus(const GfxRenderer& renderer, const char* title = nullptr, int currentPage = 0, int pageCount = 0,
-                float bookProgress = 0, int paddingBottom = 0, bool estimated = false, bool bookmarked = false);
+                float bookProgress = 0, int paddingBottom = 0, bool estimated = false, bool bookmarked = false,
+                bool titleIsName = true);
 // Small symbols can start one pixel above the battery box (the Select check).
 int smallFooterSymbolsTopY(const GfxRenderer& renderer);
 bool compactFooterTips(bool hasTextHints = false);

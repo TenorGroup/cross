@@ -155,7 +155,8 @@ tenorchrome::StatusCornerBounds tenorchrome::statusCornerBounds(const GfxRendere
 // duoc phep. Trong trinh doc, thanh nay theo dung sau muc nguoi dung chon
 // (StatusBarSpec); ngoai trinh doc no theo ba muc cua thanh chung.
 void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int currentPage, int pageCount,
-                             float bookProgress, int paddingBottom, bool estimated, bool bookmarked) {
+                             float bookProgress, int paddingBottom, bool estimated, bool bookmarked,
+                             bool titleIsName) {
   const bool trongTrinhDoc = title != nullptr;
   if (trongTrinhDoc ? SETTINGS.readerStatusBarHidden() : SETTINGS.globalStatusBarHidden()) return;
   const auto spec = SETTINGS.statusBarSpec();
@@ -239,8 +240,8 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   if (bookmarked) inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, trai + 6, y + 12, 10, true);
   if (!hienTieuDe) return;
   const int room = std::max(0, countX - trai - markWidth - 8);
-  // The colon only separates the name from counts; alone it would dangle.
-  const int colon = counts.empty() ? 0 : r.getTextWidth(SMALL_FONT_ID, ":");
+  // The colon only separates a name from counts; alone, or after a note, it would dangle.
+  const int colon = counts.empty() || !titleIsName ? 0 : r.getTextWidth(SMALL_FONT_ID, ":");
   std::string name = r.truncatedText(SMALL_FONT_ID, title, std::max(0, room - colon));
   // A room narrower than the ellipsis still gets one back, so measure what came back
   // and give up the name rather than draw it into the battery or the clock.
