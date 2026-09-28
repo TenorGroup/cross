@@ -14,8 +14,8 @@
 namespace fui = freeink::ui;
 using UiScreen = fui::Screen<24>;
 
-// Allocation instrumentation counts C++ allocations made by production row
-// construction. Raw filenames exist before the measured derived-row phase.
+// Allocation instrumentation counts C++ allocations made while the production
+// screen draws its rows. Raw filenames exist before the measured phase.
 static size_t liveBytes = 0, peakBytes = 0, allocationCount = 0, largestAllocation = 0;
 struct alignas(std::max_align_t) AllocationHeader { size_t size; };
 void* operator new(size_t size) {
@@ -77,8 +77,18 @@ struct Renderer {
 static int16_t drawLineHeight = 16;
 struct Draw : fui::DrawTarget {
   mutable size_t labels = 0;
-  char lastLabel[512]{};
-  uint8_t lastMaxLines = 0;
+  // Every label the list drew this pass, in draw order (names and extensions).
+  std::vector<std::string> drawn;
+  // Clipping, as the device's GfxRenderer target supports: the list draws the
+  // partial preview row only on a target that can clip it at the fold.
+  static constexpr fui::Rect NO_CLIP{0, 0, 32767, 32767};
+  fui::Rect clip = NO_CLIP;
+  std::vector<std::string> clippedLabels;
+  fui::Rect clipRect() const override { return clip; }
+  bool setClipRect(fui::Rect rect) override {
+    clip = rect;
+    return true;
+  }
   fui::Size measureText(fui::FontId, const char* text, fui::TextStyle) const override {
     return {static_cast<int16_t>(std::strlen(text) * 4), drawLineHeight};
   }
@@ -87,38 +97,40 @@ struct Draw : fui::DrawTarget {
   void stroke(fui::Rect, fui::Paint, uint8_t, uint8_t, uint8_t) override {}
   void line(fui::Point, fui::Point, uint8_t, fui::Paint) override {}
   void triangle(fui::Point, fui::Point, fui::Point, fui::Paint) override {}
-  void text(fui::Rect, const char* text, fui::TextStyle style) override {
+  void text(fui::Rect, const char* text, fui::TextStyle) override {
     if (text) {
+      drawn.emplace_back(text);
+      const bool clipped = clip.x != NO_CLIP.x || clip.y != NO_CLIP.y || clip.width != NO_CLIP.width ||
+                           clip.height != NO_CLIP.height;
+      if (clipped) clippedLabels.emplace_back(text);
       labels += std::strlen(text);
-      std::snprintf(lastLabel, sizeof(lastLabel), "%s", text);
-      lastMaxLines = style.maxLines;
     }
   }
   void bitmap(fui::Rect, fui::BitmapRef, fui::BitmapMode, fui::Paint, fui::Rotation) override {}
 };
 
-std::string getFileName(std::string filename);
 std::string getFileExtension(const std::string& filename);
+void formatFileName(const std::string& filename, char* buffer, size_t bufferSize);
+void formatFileExtension(const std::string& filename, char* buffer, size_t bufferSize);
 class FileBrowserActivity {
  public:
   enum class Mode { Books, PickFirmware };
   Mode mode = Mode::Books;
   std::string basepath = "/測試";
-  std::vector<std::string> files, rowNames, rowExtensions;
-  std::vector<fui::ListItem> rowItems;
-  bool rowsUseFileIcons = false;
-  int rowWindowFirst = -1;
+  std::vector<std::string> files;
+  static constexpr size_t ROW_NAME_BUF_SIZE = 512;
+  char rowNameBuf[ROW_NAME_BUF_SIZE]{};
+  char rowExtBuf[16]{};
+  static void provideRow(void* ctx, uint16_t index, fui::ListItem& item);
+  static constexpr int PREWARM_WINDOW = 24;
+  int prewarmedStart = -1;
+  void prewarmRowGlyphs(int start);
   Renderer renderer;
   fui::ListNav nav;
   struct { bool hasTouch() const { return false; } } mappedInput;
   int pinned = -1;
   static constexpr int ACTION_ROW = 1;
   int listCount() const { return static_cast<int>(files.size()); }
-#if WINDOWED
-  void rebuildRowItems(const int first, const int count);
-#else
-  void rebuildRowItems();
-#endif
   void buildScreen(UiScreen& screen);
   void syncListViewport(UiScreen& screen, fui::ListProps& props, bool hasSubtitle = false);
   void decoratePinnedRows(fui::ListProps&);
@@ -128,15 +140,22 @@ class FileBrowserActivity {
   fui::ListNav& activeNav() { return nav; }
   static int kepConTro(int selected, int count) { return std::clamp(selected, 0, std::max(0, count - 1)); }
   bool rowIsPinned(int index) const { return index == pinned; }
-  void invalidate() {
-    rowWindowFirst = -1;
-#if !WINDOWED
-    rebuildRowItems();
-#endif
-  }
+  // A new folder listing, as loadFiles() does: re-prewarm the visible window.
+  void invalidate() { prewarmedStart = -1; }
 };
 
 #include "production_rows.inc"
+
+static const char PIN_GLYPH[] = "\xEE\x84\x8A";
+// The label a row must show, from the production formatter.
+static std::string expectedLabel(const FileBrowserActivity& browser, int index) {
+  char name[FileBrowserActivity::ROW_NAME_BUF_SIZE];
+  formatFileName(browser.files[index], name, sizeof(name));
+  return browser.rowIsPinned(index) ? std::string(PIN_GLYPH) + name : std::string(name);
+}
+static bool wasDrawn(const Draw& draw, const std::string& label) {
+  return std::find(draw.drawn.begin(), draw.drawn.end(), label) != draw.drawn.end();
+}
 
 static fui::ThemeTokens theme;
 static void render(FileBrowserActivity& browser, int top, bool assertBound = true, bool follow = false,
@@ -152,41 +171,37 @@ static void render(FileBrowserActivity& browser, int top, bool assertBound = tru
   browser.nav.selected = top;
   browser.nav.followOnBuild = false;
   browser.pinned = top;
-  size_t finalPins = 0;
   if (follow) {
     browser.nav.top = std::max(0, top - browser.nav.visibleRows + 1);
     browser.nav.follow(browser.listCount());
   }
   // Wrapped labels can refine the viewport. Exercise the actual SDK list
-  // against the production materialized labels and absolute action values.
+  // against the production row provider and absolute action values.
   for (int pass = 0; pass < 32; ++pass) {
     interactions.clear();
+    draw.drawn.clear();
+    draw.clippedLabels.clear();
     UiScreen screen(frame, theme);
     browser.buildScreen(screen);
-    finalPins = pinDecorationCount;
-    if (verify) CHECK(pinDecorationCount <= 1);
-    if (verify && pinDecorationCount) {
-      CHECK(pinDecorations[0].row->actionValue == browser.pinned);
-      CHECK(std::strncmp(pinDecorations[0].row->label, "\xEE\x84\x8A", 3) == 0);
-    }
+    // Rows come from the provider, so no ListItem array is left to patch.
+    if (verify) CHECK(pinDecorationCount == 0);
     restorePinnedRows();
     if (!browser.nav.consumeRebuildNeeded()) break;
     CHECK(pass < 31);
   }
   if (!verify) return;
-  CHECK(finalPins == 1);
-  if (draw.lastMaxLines == 1) {
+  // The pinned row (Home Favourites) shows its glyph, exactly once.
+  size_t pins = 0;
+  for (const auto& label : draw.drawn) pins += label.compare(0, 3, PIN_GLYPH) == 0;
+  CHECK(pins == 1);
+  CHECK(wasDrawn(draw, expectedLabel(browser, browser.pinned)));
+  // The row past the fold is drawn clipped, as a preview of what comes next.
+  if (!draw.clippedLabels.empty()) {
     const int preview = browser.nav.top + browser.nav.drawnRows;
     CHECK(preview < browser.listCount());
-    CHECK(std::string(draw.lastLabel) == getFileName(browser.files[preview]));
+    CHECK(std::find(draw.clippedLabels.begin(), draw.clippedLabels.end(), expectedLabel(browser, preview)) !=
+          draw.clippedLabels.end());
     ++partialChecks;
-  }
-  const int first = WINDOWED ? browser.rowWindowFirst : 0;
-  for (size_t i = 0; i < browser.rowItems.size(); ++i) {
-    CHECK(browser.rowItems[i].actionValue == static_cast<int>(first + i));
-    CHECK(std::string(browser.rowItems[i].label) == getFileName(browser.files[first + i]));
-    CHECK(browser.rowItems[i].value == nullptr ||
-          std::string(browser.rowItems[i].value) == getFileExtension(browser.files[first + i]));
   }
   CHECK(interactions.count() > 0);
   CHECK(interactions.data()[0].value == browser.nav.top);
@@ -196,6 +211,10 @@ static void render(FileBrowserActivity& browser, int top, bool assertBound = tru
     CHECK(interaction.value >= browser.nav.top);
     CHECK(interaction.value < browser.listCount());
     selectionDrawn |= interaction.value == top;
+    // Every full row shows its own file's name and extension.
+    CHECK(wasDrawn(draw, expectedLabel(browser, interaction.value)));
+    const std::string extension = getFileExtension(browser.files[interaction.value]);
+    CHECK(extension.empty() || wasDrawn(draw, extension));
     // Hit testing must emit the global file index, including the last page.
     fui::InputSnapshot tap;
     tap.touchReleased = true;
@@ -206,7 +225,7 @@ static void render(FileBrowserActivity& browser, int top, bool assertBound = tru
   }
   CHECK(selectionDrawn);
   CHECK(!browser.nav.followPending);
-  if (assertBound) CHECK(browser.rowItems.size() <= static_cast<size_t>(browser.nav.visibleRows + 1));
+  (void)assertBound;
 }
 
 int main() {
@@ -228,13 +247,16 @@ int main() {
     render(browser, 0, false, false, false);
     const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - start).count();
-    std::printf("MEASURE count=%d derived_rows=%zu retained_bytes=%zu peak_bytes=%zu allocations=%zu "
+    std::printf("MEASURE count=%d retained_bytes=%zu peak_bytes=%zu allocations=%zu "
                 "largest_allocation=%zu prewarm_names=%zu prewarm_bytes=%zu first_paint_us=%lld sort_us=%lld\n",
-                total, browser.rowItems.size(), liveBytes - base, peakBytes - base, allocationCount,
+                total, liveBytes - base, peakBytes - base, allocationCount,
                 largestAllocation, browser.renderer.prewarmNames, browser.renderer.prewarmBytes,
                 static_cast<long long>(micros), static_cast<long long>(sortMicros));
-    CHECK(browser.rowItems.size() <= static_cast<size_t>(browser.nav.visibleRows + 1));
-    CHECK(browser.renderer.prewarmNames <= static_cast<size_t>(browser.nav.visibleRows + 2));
+    // Nothing per file stays behind after a paint, whatever the folder size.
+    CHECK(liveBytes == base);
+    // One bounded prewarm window plus the path band, never the whole folder.
+    CHECK(browser.renderer.prewarmNames <=
+          static_cast<size_t>(std::min(total, FileBrowserActivity::PREWARM_WINDOW) + 1));
     const auto prewarmed = browser.renderer.prewarmCalls;
     render(browser, 0);
     CHECK(browser.renderer.prewarmCalls == prewarmed);
@@ -245,11 +267,15 @@ int main() {
     UITheme::getInstance().icons = false;
     browser.files = {"a\xcc\x81/", "測試1.epub", "測試2.epub"};
     browser.invalidate();
-    render(browser, 0);
-    CHECK(std::string(browser.rowItems.front().label) == "[á]");
+    render(browser, 1);
+    fui::ListItem folder;
+    FileBrowserActivity::provideRow(&browser, 0, folder);
+    CHECK(std::string(folder.label) == "[á]");
+    CHECK(folder.value == nullptr);
     UITheme::getInstance().icons = true;
-    render(browser, 0);
-    CHECK(std::string(browser.rowItems.front().label) == "á");
+    render(browser, 1);
+    FileBrowserActivity::provideRow(&browser, 0, folder);
+    CHECK(std::string(folder.label) == "á");
   }
   // Names long enough to actually wrap at the viewport width. Follow a
   // selection near the bottom, forcing ListNav to refine its fixed-height
@@ -267,6 +293,6 @@ int main() {
   render(wrapped, 99, true, true);
   render(wrapped, 50, true, true);
   CHECK(partialChecks > 0);
-  std::printf("RESULT checks=%u failures=%u windowed=%d\n", checks, failures, WINDOWED);
+  std::printf("RESULT checks=%u failures=%u\n", checks, failures);
   return failures ? 1 : 0;
 }

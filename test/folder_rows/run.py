@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Compile the production row builder/screen with the actual SDK list renderer.
+"""Compile the production row provider/screen with the actual SDK list renderer.
 
 Only display/font I/O and activity wiring are stubbed. The source functions are
-extracted verbatim so the baseline can run the same end-to-end row assertions.
+extracted verbatim. Since #3600 the SDK list pulls each drawn row through
+FileBrowserActivity::provideRow(), so nothing per file is materialized.
 """
 import argparse
 from pathlib import Path
@@ -33,13 +34,14 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     source = args.source.read_text()
     signatures = [
-        "void FileBrowserActivity::rebuildRowItems(",
-        "std::string getFileName(std::string filename) {",
+        "void formatFileName(const std::string& filename, char* buffer, const size_t bufferSize) {",
+        "void formatFileExtension(const std::string& filename, char* buffer, const size_t bufferSize) {",
         "std::string getFileExtension(const std::string& filename) {",
+        "void FileBrowserActivity::provideRow(",
+        "void FileBrowserActivity::prewarmRowGlyphs(",
         "void FileBrowserActivity::buildScreen(UiScreen& screen) {",
     ]
     functions = "\n\n".join(function(source, sig) for sig in signatures)
-    windowed = "const int first" in functions.split("\n", 1)[0]
     base = (REPO / "src/activities/UiListActivity.cpp").read_text()
     pin_state = base[base.index("struct PinDecoration {"):base.index("}  // namespace")]
     base_methods = "\n\n".join(function(base, sig) for sig in [
@@ -50,7 +52,7 @@ def main():
     generated.write_text(pin_state + "\n" + base_methods + "\n" + functions)
     binary = args.output / "folder_rows"
     cmd = [args.compiler, "-std=c++20", "-O1", "-g", "-Wall", "-Wextra",
-           "-Wno-unused-parameter", f"-DWINDOWED={int(windowed)}",
+           "-Wno-unused-parameter",
            "-I" + str(args.output), "-I" + str(REPO / "freeink-sdk/libs/ui/FreeInkUI/include"),
            "-I" + str(REPO / "lib/Utf8"), "-I" + str(REPO / "lib/FsHelpers"),
            "-I" + str(REPO / "test/host_stubs"),
