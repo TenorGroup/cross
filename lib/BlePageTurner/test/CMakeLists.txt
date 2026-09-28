@@ -1,0 +1,37 @@
+# The page turner's own tests. They run alone, on a copy of lib/BlePageTurner and nothing else:
+#
+#   cmake -S lib/BlePageTurner/test -B build/bt && cmake --build build/bt && ctest --test-dir build/bt
+#
+# or inside a host's suite with add_subdirectory. They need no radio, no SDK and no host:
+# the radio is test/FakeRadio.cpp (the same RadioPort.h the SDK wrapper implements) and the host
+# is a set of fake functions. Offline builds point FetchContent at local copies:
+#   -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=<googletest>  -DFETCHCONTENT_SOURCE_DIR_ARDUINOJSON=<ArduinoJson>
+cmake_minimum_required(VERSION 3.16)
+project(ble_page_turner_tests CXX)
+
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+  set(CMAKE_CXX_STANDARD 20)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+  enable_testing()
+endif()
+
+include(FetchContent)
+if(NOT TARGET GTest::gtest_main)
+  FetchContent_Declare(googletest GIT_REPOSITORY https://github.com/google/googletest.git GIT_TAG v1.17.0)
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+  set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
+endif()
+include(GoogleTest)
+
+get_filename_component(BLETURNER_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+
+add_library(bleturner_test_flags INTERFACE)
+target_include_directories(bleturner_test_flags INTERFACE ${BLETURNER_ROOT}/include ${BLETURNER_ROOT}/src)
+target_compile_options(bleturner_test_flags INTERFACE -Wall -Wextra -Werror)
+
+add_executable(BlePageTurnerPolicyTest RadioVerdictTest.cpp)
+target_link_libraries(BlePageTurnerPolicyTest PRIVATE bleturner_test_flags GTest::gtest_main)
+gtest_discover_tests(BlePageTurnerPolicyTest)
