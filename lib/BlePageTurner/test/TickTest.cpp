@@ -132,6 +132,7 @@ TEST_F(TickTest, IdleFiveMinutesWithoutARemoteStopsAndAPageKeyRearms) {
   pass(fake::reading());
   EXPECT_FALSE(radio().running);
   EXPECT_TRUE(bleturner::status().idleStopped);
+  EXPECT_EQ(bleturner::why(), bleturner::Why::IdleNoLink);
   EXPECT_TRUE(logged("Radio idle for 300000 ms with nothing connected; stopping"));
   for (int i = 0; i < 20; ++i) pass(fake::reading());
   EXPECT_EQ(radio().creates, 1u) << "idle ticks never restart it";

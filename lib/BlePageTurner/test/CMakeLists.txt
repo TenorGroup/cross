@@ -58,7 +58,7 @@ target_link_libraries(BlePageTurnerNoRadioTest PRIVATE bleturner_test_flags GTes
 gtest_discover_tests(BlePageTurnerNoRadioTest)
 
 # The settings keys.
-add_executable(BlePageTurnerConfigTest ConfigJsonTest.cpp ${BLETURNER_ROOT}/src/ConfigJson.cpp)
+add_executable(BlePageTurnerConfigTest ConfigJsonTest.cpp)
 target_link_libraries(BlePageTurnerConfigTest PRIVATE bleturner_test_flags bleturner_arduinojson GTest::gtest_main)
 gtest_discover_tests(BlePageTurnerConfigTest)
 

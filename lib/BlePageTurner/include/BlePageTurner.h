@@ -172,9 +172,10 @@ struct Status {
   bool connecting;
   bool idleStopped;     // stopped for idleness, until a key or the user starts it again
   bool readerDeferred;  // the book's start was refused for memory
-  Why why;
 };
 Status status();
+// Why the radio may not be on at the last tick (Ok: it may), from radioVerdict.
+Why why();
 
 // --- Settings screen -------------------------------------------------------------
 struct Peer {
@@ -213,8 +214,8 @@ struct Event {
 bool pollEvent(Event& event);
 
 #ifdef TENOR_PRESS_PROBE
-// One HID frame through the real ingest path, as if the remote had sent it. With nothing
-// linked the next edges go through the built-in three-button table.
+// One HID frame through the real ingest path, as if the remote had sent it (len 0: none).
+// With nothing linked the next edges go through the built-in three-button table.
 void injectFrame(const uint8_t* frame, size_t len);
 unsigned rawOverflows();
 #endif

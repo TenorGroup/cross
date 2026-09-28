@@ -493,10 +493,14 @@ Status status() {
   st.connecting = port::connecting();
   st.idleStopped = radioIdleStopped.load(std::memory_order_relaxed);
   st.readerDeferred = readerStartDeferred.load(std::memory_order_relaxed);
-  RadioInputs in = inputsFor(st.running ? Phase::Running : Phase::Idle, lastScene);
-  in.linked = st.connected;
-  st.why = radioVerdict(in);
   return st;
+}
+
+Why why() {
+  const bool running = port::running();
+  RadioInputs in = inputsFor(running ? Phase::Running : Phase::Idle, lastScene);
+  in.linked = port::connected();
+  return radioVerdict(in);
 }
 
 bool switchOn() { return startSync(); }
@@ -551,7 +555,7 @@ void injectFrame(const uint8_t* frame, const size_t len) {
     router.table = defaultTableFor("Free3");
     router.chosen = true;
   }
-  port::inject(frame, len);
+  if (len > 0) port::inject(frame, len);
 }
 unsigned rawOverflows() { return port::rawOverflows(); }
 #endif

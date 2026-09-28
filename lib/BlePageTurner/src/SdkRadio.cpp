@@ -15,7 +15,9 @@
 namespace bleturner::port {
 namespace {
 
-freeink::BleKeyboardHost& hid() { return freeink::BleKeyboardHost::getInstance(); }
+// Looked up once: every call below is then a plain member call.
+freeink::BleKeyboardHost& radioHost = freeink::BleKeyboardHost::getInstance();
+freeink::BleKeyboardHost& hid() { return radioHost; }
 
 // Outlives ESP.restart: the one heap restart already spent since the radio last came up.
 RTC_NOINIT_ATTR Memo memo;
