@@ -47,6 +47,11 @@ class HalClock {
   // Returns false after a full power loss until a valid time source is available.
   bool getDateTime(uint16_t& year, uint8_t& month, uint8_t& day, uint8_t& hour, uint8_t& minute) const;
 
+  // Minutes the configured timezone is ahead of UTC right now (daylight saving
+  // included), from the same system clock getDateTime() reads. Returns false
+  // while that clock has no valid time.
+  bool utcOffsetMinutes(int& minutes) const;
+
   // Format the local time (configured timezone) into a caller-provided buffer.
   // 24h mode produces "HH:MM" (needs >=6 bytes); 12h mode produces "H:MM AM"/"HH:MM PM" (needs >=9 bytes).
   // use12Hour: when true, format as 12-hour clock with AM/PM suffix.

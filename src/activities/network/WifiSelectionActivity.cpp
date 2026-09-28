@@ -20,6 +20,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/TimezoneLookup.h"
+#include "util/Timezones.h"
 
 namespace fui = freeink::ui;
 
@@ -685,7 +686,10 @@ void WifiSelectionActivity::checkConnectionStatus() {
       }
       LOG_INF("WIFI", "Timezone begin heap=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
       const auto previousOffset = SETTINGS.clockUtcOffsetQ;
-      if (timezone_lookup::updateOffset() && SETTINGS.clockUtcOffsetQ != previousOffset) SETTINGS.saveToFile();
+      if (timezone_lookup::updateOffset() && SETTINGS.clockUtcOffsetQ != previousOffset) {
+        SETTINGS.saveToFile();
+        timezones::applyToClock();
+      }
       LOG_INF("WIFI", "Timezone done");
     }
 

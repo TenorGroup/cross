@@ -63,6 +63,19 @@ bool HalClock::getDateTime(uint16_t& year, uint8_t& month, uint8_t& day, uint8_t
   return true;
 }
 
+bool HalClock::utcOffsetMinutes(int& minutes) const {
+  struct tm utc = {};
+  if (!readSystemTime(utc)) return false;
+  const time_t now = time(nullptr);
+  struct tm local = {};
+  localtime_r(&now, &local);
+  int days = local.tm_yday - utc.tm_yday;
+  if (days > 1) days = -1;  // local is still on 31 Dec while UTC reached 1 Jan
+  if (days < -1) days = 1;  // local reached 1 Jan while UTC is still on 31 Dec
+  minutes = days * 1440 + (local.tm_hour - utc.tm_hour) * 60 + (local.tm_min - utc.tm_min);
+  return true;
+}
+
 namespace {
 // UTC calendar date -> Unix epoch, no timezone involvement (newlib has no
 // timegm). Days-from-civil per Howard Hinnant's algorithm.

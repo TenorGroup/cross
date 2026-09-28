@@ -270,7 +270,8 @@ static bool mocDiaPhuongBayGio(ngaygio::Moc& moc) {
   if (year < 2000 || year > 2099 || month < 1 || month > 12 || day < 1 ||
       day > ngaygio::soNgayTrongThang(year, month) || hour > 23 || minute > 59)
     return false;
-  const int offset = (std::min<int>(SETTINGS.clockUtcOffsetQ, 104) - 48) * 15;
+  int offset = 0;
+  if (!halClock.utcOffsetMinutes(offset)) return false;
   moc = ngaygio::doiSangDiaPhuong({year, month, day, hour, minute}, offset);
   return true;
 }
@@ -517,7 +518,8 @@ habits::Stamp ReadingStatsStore::habitStamp() {
     return {};
   const auto utcDay = habits::ordinal(year, month, day);
   if (!utcDay) return {};
-  const int offset = (std::min<int>(SETTINGS.clockUtcOffsetQ, 104) - 48) * 15;
+  int offset = 0;
+  if (!halClock.utcOffsetMinutes(offset)) return {};
   auto local = ngaygio::doiSangDiaPhuong({year, month, day, hour, minute}, offset);
   return {habits::ordinal(local.nam, local.thang, local.ngay), (utcDay - 1) * 1440 + hour * 60u + minute,
           static_cast<uint16_t>(local.gio * 60 + local.phut), static_cast<int16_t>(offset)};

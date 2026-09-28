@@ -37,6 +37,7 @@ void resetClock() {
   stored = {};
   SETTINGS = {};
   halClock = HalClock{};
+  halClock.setTimezone(nullptr);
 }
 }  // namespace fake
 
@@ -87,7 +88,8 @@ void noRtcNtpIgnoresHistoricalFlag() {
   ++scenarios;
   fake::resetClock();
   SETTINGS.clockHasBeenSynced = 0;
-  SETTINGS.clockUtcOffsetQ = 76;  // UTC+7.
+  SETTINGS.clockUtcOffsetQ = 76;  // UTC+7, the zone boot applies from it:
+  halClock.setTimezone("UTC-7:00");
   halClock.begin();
   CHECK(!halClock.isAvailable());
   CHECK(halClock.syncFromNTP());
@@ -125,6 +127,7 @@ void offsetMovesBothStatisticsClocksToNextDay() {
   fake::resetClock();
   SETTINGS.clockHasBeenSynced = 0;
   SETTINGS.clockUtcOffsetQ = 76;
+  halClock.setTimezone("UTC-7:00");
   fake::epoch = 1789848000;  // 2026-09-19 20:00 UTC, 2026-09-20 03:00 UTC+7.
   halClock.begin();
 
@@ -135,11 +138,28 @@ void offsetMovesBothStatisticsClocksToNextDay() {
   CHECK(stamp.offset == 420);
 }
 
+void chosenZoneWithDaylightSavingDatesStatistics() {
+  ++scenarios;
+  fake::resetClock();
+  SETTINGS.clockHasBeenSynced = 0;
+  SETTINGS.clockUtcOffsetQ = 48;  // the retired offset key no longer decides the local day
+  halClock.setTimezone("CET-1CEST,M3.5.0,M10.5.0/3");
+  fake::epoch = 1789855200;  // 2026-09-19 22:00 UTC, 2026-09-20 00:00 in Paris (summer time)
+  halClock.begin();
+
+  CHECK(ReadingStatsStore::currentDay() == 20260920u);
+  const auto stamp = ReadingStatsStore::habitStamp();
+  CHECK(stamp.day == habits::ordinal(2026, 9, 20));
+  CHECK(stamp.minute == 0);
+  CHECK(stamp.offset == 120);
+}
+
 void persistedOldAndUndatedStatisticsStayIntact() {
   ++scenarios;
   fake::resetClock();
   SETTINGS.clockHasBeenSynced = 0;
   SETTINGS.clockUtcOffsetQ = 76;
+  halClock.setTimezone("UTC-7:00");
 
   JsonDocument persisted;
   persisted["schema"] = 3;
@@ -198,6 +218,7 @@ int main() {
   noRtcNtpIgnoresHistoricalFlag();
   invalidClockStaysUndated();
   offsetMovesBothStatisticsClocksToNextDay();
+  chosenZoneWithDaylightSavingDatesStatistics();
   persistedOldAndUndatedStatisticsStayIntact();
   std::printf("%d scenarios, %d failures\n", scenarios, failures);
   return failures ? EXIT_FAILURE : EXIT_SUCCESS;

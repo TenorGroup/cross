@@ -131,7 +131,9 @@ size_t count() { return TABLE_COUNT; }
 uint8_t utcIndex() { return UTC_INDEX; }
 
 uint8_t activeIndex() {
-  if (SETTINGS.clockTimezone < TABLE_COUNT) return SETTINGS.clockTimezone;
+  // Tenor: automatic zone keeps the offset the network lookup wrote to the
+  // legacy key, so the picked zone only answers while automatic is off.
+  if (!SETTINGS.clockAutoTimezone && SETTINGS.clockTimezone < TABLE_COUNT) return SETTINGS.clockTimezone;
   // Legacy migration: the retired quarter-hour setting was a FIXED offset,
   // and users in DST regions set their current wall offset (the daylight one,
   // half the year), so it must map to a fixed "UTC±HH:MM" entry — matching a
