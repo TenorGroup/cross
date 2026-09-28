@@ -991,6 +991,40 @@ static void tapRecCommand(const String& cmd) {
   }
 }
 
+// CMD:CAT <path>: a file from the card over the cable, "CAT_START:<bytes>", the bytes as they are,
+// then "CAT_END:<crc32>" (zlib's), for x3cat.py. The 1 ms send timeout is raised for the transfer
+// only, so a full USB buffer waits for the host instead of dropping bytes.
+static void catCommand(const String& path) {
+  HalFile file;
+  if (!Storage.openFileForRead("CAT", path.c_str(), file)) {
+    logSerial.printf("CAT_FAIL:%s\n", path.c_str());
+    return;
+  }
+  static uint8_t buf[1024];
+  uint32_t crc = 0xFFFFFFFFu;
+#if LOG_SERIAL_HAS_TX_TIMEOUT
+  logSerial.setTxTimeoutMs(500);
+#endif
+  logSerial.printf("CAT_START:%u\n", static_cast<unsigned>(file.size()));
+  int n;
+  while ((n = file.read(buf, sizeof(buf))) > 0) {
+    for (int i = 0; i < n; ++i) {
+      crc ^= buf[i];
+      for (int b = 0; b < 8; ++b) crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+    }
+    for (int sent = 0; sent < n;) {
+      const size_t w = logSerial.write(buf + sent, n - sent);
+      if (w == 0) break;
+      sent += static_cast<int>(w);
+    }
+  }
+  file.close();
+  logSerial.printf("\nCAT_END:%08lx\n", static_cast<unsigned long>(~crc));
+#if LOG_SERIAL_HAS_TX_TIMEOUT
+  logSerial.setTxTimeoutMs(1);
+#endif
+}
+
 // CMD:CUR_LOG <s>: for the next <s> seconds, one fuel gauge line every 10 s (average and
 // instant current in mA, voltage, whether the motion sensor samples, the shake action),
 // kept in RAM too, so a run with the cable out is read back with CMD:CUR_LOG and no number.
@@ -1728,6 +1762,10 @@ void loop() {
         // counts; a mark is a flag 2 then 12 bytes of its label.
 #ifndef SIMULATOR
         tapRecCommand(cmd);
+#endif
+#ifndef SIMULATOR
+      } else if (cmd.startsWith("CAT ")) {
+        catCommand(cmd.substring(4));
 #endif
       } else if (cmd.startsWith("TAP_LOG ")) {
         // CMD:TAP_LOG <s>: for <s> seconds (at most 600), with double tap on, one "IMU_FIFO:" line
