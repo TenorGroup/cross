@@ -70,3 +70,11 @@ patch(root / "BoardConfig.h", [(
     "};\n",
     1,
 )])
+
+# The firmware asks one function whether the gauge is a BQ27220; the simulator has none.
+patch(root / "HalPowerManager.h", [(
+    "  uint16_t getDisplayedBatteryPercentage() const { return getBatteryPercentage(); }\n",
+    "  uint16_t getDisplayedBatteryPercentage() const { return getBatteryPercentage(); }\n"
+    "  static bool hasBq27220Gauge() { return false; }\n",
+    1,
+)])
