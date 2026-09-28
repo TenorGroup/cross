@@ -1,5 +1,6 @@
 #include "EpubReaderActivity.h"
 
+#include <BlePageTurner.h>
 #include <Epub/Page.h>
 #include <Epub/blocks/TextBlock.h>
 #include <FontCacheManager.h>
@@ -297,6 +298,14 @@ void EpubReaderActivity::openReaderMenu() {
       });
 }
 
+// Runs on the render task, under its lock, right before a chapter build. The page turner's radio
+// holds tens of KB while it runs; on a heap a build cannot count on, it stops until the page is shown.
+void EpubReaderActivity::makeRoomForChapterBuild() {
+  if (radioReleasedForBuild.load()) return;
+  if (ESP.getFreeHeap() >= BACKGROUND_BUILD_MIN_FREE_HEAP && ESP.getMaxAllocHeap() >= CHAPTER_BUILD_MIN_BLOCK) return;
+  radioReleasedForBuild = bleturner::beforeChapterBuild() != bleturner::BuildRelease::NotHeld;
+}
+
 bool EpubReaderActivity::buildTickHeapGate() {
   const size_t freeHeap = ESP.getFreeHeap();
   const size_t maxBlock = ESP.getMaxAllocHeap();
@@ -376,6 +385,16 @@ void EpubReaderActivity::loop() {
   }
 
   rememberBookOnceRendered();
+
+  // The radio stopped for a chapter build: once the render task has let go of the lock, that page
+  // is on screen and the radio may start again.
+  if (radioReleasedForBuild.load()) {
+    RenderLock lock(RenderLock::Mode::Try);
+    if (lock.ownsLock()) {
+      radioReleasedForBuild = false;
+      bleturner::afterPaint();
+    }
+  }
 
   // Someone else turned the screen while this reader was stacked (the control
   // center's orientation tile). Reflow before the next render, or the page
@@ -1228,6 +1247,7 @@ void EpubReaderActivity::renderBook() {
         const auto popupFn = [this]() {
           if (renderer.hasFrameBuffer()) GUI.drawPopup(renderer, tr(STR_INDEXING));
         };
+        makeRoomForChapterBuild();
         GfxRenderer::FrameBufferLoan loan(renderer);
         if (!section->createSectionFile(renderSpec, popupFn)) {
           LOG_ERR("ERS", "Failed to persist page data to SD");
@@ -1274,6 +1294,7 @@ void EpubReaderActivity::renderBook() {
               fcm->releaseSdFontCaches();
             }
           }
+          makeRoomForChapterBuild();
           LOG_DBG("ERS", "Heap before section build: %u (max block %u)", (unsigned)ESP.getFreeHeap(),
                   (unsigned)ESP.getMaxAllocHeap());
           const unsigned long buildStartMs = millis();
@@ -1347,6 +1368,8 @@ void EpubReaderActivity::renderBook() {
     }
   }
 
+  // The two loops below build on until the page to show exists.
+  if (section->currentPage >= static_cast<int>(section->pageCount)) makeRoomForChapterBuild();
   if (section->isPartial() && section->currentPage >= static_cast<int>(section->pageCount)) {
     GUI.drawPopup(renderer, tr(STR_INDEXING));
     pagesUntilFullRefresh = 1;

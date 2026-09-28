@@ -1,5 +1,6 @@
 #include "ActivityManager.h"
 
+#include <BlePageTurner.h>
 #include <BoardConfig.h>
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
@@ -133,6 +134,10 @@ void ActivityManager::loop() {
   }
 
   while (pendingAction != PendingAction::None) {
+    // The page turner's radio gives its heap back before the next screen allocates. Its teardown
+    // can span loop passes and runs outside the render lock.
+    if (!bleturner::beforeScreenChange()) return;
+    ++screenVisit;
     if (pendingAction == PendingAction::Pop) {
       RenderLock lock;
 
@@ -370,6 +375,24 @@ bool ActivityManager::isReaderActivity() const {
   return std::any_of(stackActivities.begin(), stackActivities.end(),
                      [](const auto& activity) { return activity->isReaderActivity(); }) ||
          (currentActivity && currentActivity->isReaderActivity());
+}
+
+bool ActivityManager::isForegroundReader() const {
+  return pendingAction == PendingAction::None && currentActivity && currentActivity->isReaderActivity();
+}
+
+bool ActivityManager::isForegroundReaderShown() const {
+  return isForegroundReader() &&
+         static_cast<const ReaderActivity*>(currentActivity.get())->pageRendered.load(std::memory_order_acquire);
+}
+
+bool ActivityManager::remoteTurn(const bool forward, const bool chapter) {
+  // A page on its way to the panel is left alone, like a device key during a render.
+  if (!isForegroundReaderShown() || RenderLock::peek()) return false;
+  auto* reader = static_cast<ReaderActivity*>(currentActivity.get());
+  const bool turned = chapter ? reader->skipPages(forward ? 1 : -1) : reader->pageTurn(forward);
+  if (turned) requestUpdate();
+  return turned;
 }
 
 bool ActivityManager::handleForcedRefresh() { return currentActivity && currentActivity->handleForcedRefresh(); }
