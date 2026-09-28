@@ -73,7 +73,7 @@ for mode in modes:
     descriptor = header[header.index('enum class SettingType'):
                         header.index('class SettingsActivity final')]
     (output / 'activities/settings/SettingsActivity.h').write_text(
-        '#pragma once\n#include <functional>\n#include <string>\n#include <vector>\n'
+        '#pragma once\n#include <functional>\n#include <span>\n#include <string>\n#include <vector>\n'
         '#include <I18n.h>\n#include "CrossPointSettings.h"\n'
         '#include "activities/settings/SettingsTabs.h"\n' + descriptor)
     state = next((line.strip() for line in header.splitlines()

@@ -40,6 +40,9 @@ int fallbackTier = -1;
 bool sdBegun = false;
 void logHeapMark(const char*) {}
 SdCardFontManager::~SdCardFontManager() = default;
+// Out of line since the vector-font path (#3646); nothing to own without PSRAM.
+SdCardFontSystem::SdCardFontSystem() = default;
+SdCardFontSystem::~SdCardFontSystem() = default;
 void SdCardFontSystem::begin(GfxRenderer&) { assert(uiTestLockDepth > 0); sdBegun = true; }
 void SdCardFontSystem::refreshUiFallbacks(GfxRenderer& target, uint8_t size) {
   assert(uiTestLockDepth > 0);

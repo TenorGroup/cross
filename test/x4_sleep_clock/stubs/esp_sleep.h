@@ -13,3 +13,5 @@ int esp_deep_sleep_enable_gpio_wakeup(uint64_t, int);
 int esp_sleep_enable_ext1_wakeup(uint64_t, int);
 void esp_sleep_config_gpio_isolate();
 [[noreturn]] void esp_deep_sleep_start();
+// Only read on the reset path after a rejected sleep entry, which the harness never takes.
+inline int esp_sleep_get_wakeup_cause() { return 0; }

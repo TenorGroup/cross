@@ -10,6 +10,10 @@
 
 #include <iostream>
 
+// A lookup that changes the zone applies it to the clock (util/Timezones.cpp sets the POSIX
+// TZ); the clock itself is outside this harness, which counts the lookups.
+void timezones::applyToClock() {}
+
 // Compile the chooser's production button dispatch, keeping only its unrelated
 // list model and ActivityManager transition boundary fake.
 struct UiListActivity {

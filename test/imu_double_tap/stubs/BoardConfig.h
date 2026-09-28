@@ -18,6 +18,10 @@ struct SensorsConfig {
   uint8_t i2cBus = 0;
   RtcType rtcType = RtcType::None;
   ImuType imuType = ImuType::None;
+  // Mount correction (upstream): the X3's QMI8658 is mounted in the board frame, no change.
+  bool imuSwapXY = false;
+  bool imuFlipX = false;
+  bool imuFlipY = false;
 };
 struct Board {
   SensorsConfig sensors;

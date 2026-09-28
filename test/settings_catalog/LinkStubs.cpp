@@ -15,6 +15,8 @@
 #include <HalTiltSensor.h>
 #include <SdCardFontRegistry.h>
 
+#include "components/UITheme.h"
+
 namespace settings_test_io {
 JsonDocument nextRead;
 int writes = 0;
@@ -28,6 +30,12 @@ void setNextRead(const JsonDocument& doc) {
 
 // The catalogue asks the tilt sensor whether the hardware is present.
 HalTiltSensor halTiltSensor;
+
+// getBaseSettingsList() calls UITheme::supportsCoverGrid() (#3657, upstream) to decide
+// whether Cover Grid is offered. A host build has no PSRAM heap, like the X3 and X4, so
+// this matches the real answer without linking all of UITheme.cpp (GfxRenderer,
+// TenorMenuChrome, ...).
+bool UITheme::supportsCoverGrid() { return false; }
 
 // The catalogue asks the SD-font registry which point sizes a family offers.
 // A host has no registry: no family is found, so the built-in size list is used.

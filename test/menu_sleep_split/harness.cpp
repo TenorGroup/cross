@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -23,7 +24,8 @@ bool save() { return true; }
 }
 struct RenderLock { template<class T> explicit RenderLock(T&) {} };
 struct SettingsActivity {
-  struct Cursor { int selected=0; bool followOnBuild=false; };
+  // Same shape as freeink::ui::ListNav: the selection is atomic (read by the render task).
+  struct Cursor { std::atomic<int> selected{0}; bool followOnBuild=false; };
   struct Input { bool hasTouch() const { return BoardConfig::hasTouch(); } } mappedInput;
   int selectedCategoryIndex=0, settingsCount=0;
   static constexpr int categoryCount=settingstabs::TAB_COUNT;

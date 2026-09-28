@@ -20,7 +20,13 @@
 namespace {
 std::array<void*, 32> arrayAllocations{};
 std::array<void*, 32> rawAllocations{};
-size_t failArrayBytes = 0;
+// Upstream #2332 moved the scanline, row and gray buffers from malloc to new[],
+// and both scaler row buffers are now uint32_t, so a byte size no longer names one
+// allocation. The test fails the Nth new[] call instead, for every N the decode makes.
+constexpr size_t NO_FAILURE = static_cast<size_t>(-1);
+size_t arrayCalls = 0;
+size_t failArrayCall = NO_FAILURE;
+std::array<size_t, 32> arraySizes{};
 bool failureInjected = false;
 
 void record(std::array<void*, 32>& slots, void* ptr) {
@@ -41,7 +47,9 @@ void forget(std::array<void*, 32>& slots, void* ptr) {
 }
 
 void* allocateArray(size_t size) {
-  if (size == failArrayBytes && !failureInjected) {
+  const size_t call = arrayCalls++;
+  if (call < arraySizes.size()) arraySizes[call] = size;
+  if (call == failArrayCall) {
     failureInjected = true;
     return nullptr;
   }
@@ -67,7 +75,7 @@ void testFree(void* ptr) {
 }  // namespace
 
 // These arrays belong only to the converter and its real ditherer. The test
-// harness uses fixed storage, so either scaler allocation can fail precisely.
+// harness uses fixed storage, so any one of them can fail precisely.
 void* operator new[](size_t size) {
   if (void* ptr = allocateArray(size)) return ptr;
   throw std::bad_alloc();
@@ -127,6 +135,7 @@ bool noLeaks() {
 
 int main() {
   Output baseline;
+  arrayCalls = 0;
   if (!decode(baseline) || !noLeaks() || baseline.size != 70 || baseline.bytes[0] != 'B' ||
       baseline.bytes[1] != 'M' || baseline.bytes[18] != 3 || baseline.bytes[28] != 1 ||
       baseline.bytes[62] != 0x40) {
@@ -134,28 +143,42 @@ int main() {
     return 1;
   }
 
-  for (size_t size : {3 * sizeof(uint32_t), 3 * sizeof(uint16_t)}) {
-    failArrayBytes = size;
+  const size_t calls = arrayCalls;
+  const std::array<size_t, 32> baselineSizes = arraySizes;
+  // The two scaler row buffers (accumulator and count, 3 output pixels each) must be among them.
+  size_t scalerBuffers = 0;
+  for (size_t i = 0; i < calls && i < arraySizes.size(); ++i) scalerBuffers += baselineSizes[i] == 3 * sizeof(uint32_t);
+  if (calls > arraySizes.size() || scalerBuffers < 2) {
+    std::printf("FAIL: decode made %zu new[] calls, %zu of them scaler-sized; expected both scaler buffers\n", calls,
+                scalerBuffers);
+    return 1;
+  }
+
+  for (size_t call = 0; call < calls; ++call) {
+    const size_t size = baselineSizes[call];
+    arrayCalls = 0;
+    failArrayCall = call;
     failureInjected = false;
     Output failed;
     bool returned = false;
     try {
       returned = decode(failed);
     } catch (const std::bad_alloc&) {
-      std::printf("FAIL: %zu-byte scaler allocation escaped as bad_alloc (firmware abort)\n", size);
+      std::printf("FAIL: new[] call %zu (%zu bytes) escaped as bad_alloc (firmware abort)\n", call, size);
       return 1;
     }
-    failArrayBytes = 0;
+    failArrayCall = NO_FAILURE;
     if (!failureInjected || returned || !noLeaks()) {
-      std::printf("FAIL: %zu-byte allocation was not rejected cleanly\n", size);
+      std::printf("FAIL: new[] call %zu (%zu bytes) was not rejected cleanly\n", call, size);
       return 1;
     }
     Output retry;
     if (!decode(retry) || !noLeaks() || retry.size != baseline.size || retry.bytes != baseline.bytes) {
-      std::printf("FAIL: decode after %zu-byte failure did not recover\n", size);
+      std::printf("FAIL: decode after new[] call %zu (%zu bytes) failed did not recover\n", call, size);
       return 1;
     }
-    std::printf("PASS: %zu-byte failure returned false, freed every buffer, retry BMP unchanged\n", size);
+    std::printf("PASS: new[] call %zu (%zu bytes) failed, decode returned false, freed every buffer, retry BMP unchanged\n",
+                call, size);
   }
   return 0;
 }

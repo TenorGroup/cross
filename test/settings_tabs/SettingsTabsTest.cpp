@@ -16,7 +16,8 @@ const std::vector<Action> kDongHanhDong = {
     Action::RemapFrontButtons, Action::CustomiseStatusBar, Action::KOReaderSync,    Action::OPDSBrowser,
     Action::Network,           Action::ClearCache,         Action::CheckForUpdates, Action::SdFirmwareUpdate,
     Action::Language,          Action::DownloadFonts,      Action::TextSettings,    Action::KeyboardLayouts,
-    Action::DeviceName,        Action::FileTransfer,       Action::BrowseOPDS,
+    Action::DeviceName,        Action::FileTransfer,       Action::BrowseOPDS,      Action::HomeButton,
+    Action::About,
 };
 
 std::map<Tab, int> demTheoThe() {
@@ -25,7 +26,7 @@ std::map<Tab, int> demTheoThe() {
   return dem;
 }
 
-TEST(SettingsTabs, CuaDongHoNamTrongHeThong) { EXPECT_EQ(settingstabs::nhaCua(Action::Clock), Tab::SYSTEM); }
+TEST(SettingsTabs, CuaDongHoNamTrongHeThong) { EXPECT_EQ(settingstabs::nhaCua(Action::ClockSettings), Tab::SYSTEM); }
 
 TEST(SettingsTabs, TamTheCoBanPhimVaNgu) {
   EXPECT_EQ(static_cast<int>(Tab::SLEEP), 7);

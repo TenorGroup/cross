@@ -63,7 +63,8 @@ struct PhysicalInput {
   unsigned long lastDebounceTime = 0, buttonPressStart = 0, buttonPressFinish = 0;
   unsigned long powerButtonPressStart = 0, powerButtonPressFinish = 0;
   bool touchPressedEvent = false, touchReleasedEvent = false, touchLongPressEvent = false;
-  bool multiTouchSwipeEvent = false, multiTouchRotationEvent = false, touchHomeKeyEvent = false;
+  bool multiTouchSwipeEvent = false, multiTouchRotationEvent = false, multiTouchPinchEvent = false;
+  bool touchHomeKeyEvent = false;
   bool touchHomeKeyTapEvent = false, touchHomeKeyLongEvent = false;
   uint8_t getState() const { return rawKey == -2 ? (1u << 3) : rawKey >= 0 ? (1u << rawKey) : 0; }
   void updateConfirmBackHold(unsigned long) {}

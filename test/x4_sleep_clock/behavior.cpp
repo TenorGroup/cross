@@ -12,6 +12,8 @@
 // HalPowerManager.cpp's getDisplayedBatteryPercentage() links against the production global
 // (unexercised here: this file only drives startDeepSleep()).
 HalGPIO gpio;
+// Battery on its own power: the shown percentage never takes the charging path here.
+bool HalGPIO::isUsbConnected() const { return lastUsbConnected; }
 
 int checks = 0, failures = 0, scenarios = 0;
 void check(bool value, const char* label) {

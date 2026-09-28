@@ -176,6 +176,18 @@ std::string utf8Text(const std::vector<uint32_t>& cps) {
 void checkAdvances(const SdCardFont& font, const std::vector<uint32_t>& cps) {
   for (uint32_t cp : cps) require(font.getAdvance(cp, 0) == advanceFor(cp), "advance matches cpfont glyph metric");
 }
+// Word batches go through the packed API the renderer uses: one segment of
+// consecutive NUL-terminated words, with the space slot reserved only when
+// there is more than one word (the renderer's own rule).
+int buildWordAdvances(SdCardFont& font, const std::deque<std::string>& words, bool includeHyphen, uint8_t styleMask,
+                      const char* extraText) {
+  std::string packed;
+  for (const std::string& word : words) packed.append(word).push_back('\0');
+  const char* segment = packed.data();
+  const size_t segmentLen = packed.size();
+  return font.buildAdvanceTablePacked(&segment, &segmentLen, 1, words.size() > 1, includeHyphen, styleMask,
+                                      extraText);
+}
 uint64_t advanceDigest(const SdCardFont& font, const std::vector<uint32_t>& cps) {
   uint64_t digest = 0;
   for (uint32_t cp : cps) digest = digest * 131 + font.getAdvance(cp, 0);
@@ -192,7 +204,7 @@ void testAdvanceLowHeap() {
   loadAdvanceFont(reference);
   loadAdvanceFont(constrained);
   require(reference.buildAdvanceTable(paragraph.c_str(), 1, extra.c_str()) == 0, "reference paragraph builds");
-  require(reference.buildAdvanceTable(words, true, 1, extra.c_str()) == 0, "reference word batch builds");
+  require(buildWordAdvances(reference, words, true, 1, extra.c_str()) == 0, "reference word batch builds");
   const std::vector<uint32_t> expected{'L', 'a', 't', 'i', 'n', ' ', 0x00e1, 0x0103, 0x0111, 0x01a1,
                                         0x01b0, 0x1ebf, 0x1ec7, 0x1ef3, '.', 'f', 'i', '-', 'A', 'z'};
   for (int repeat = 0; repeat < 3; ++repeat) {
@@ -200,7 +212,7 @@ void testAdvanceLowHeap() {
     allocationProbe::limit = 4096;
     allocationProbe::enabled = true;
     const int plainResult = constrained.buildAdvanceTable(paragraph.c_str(), 1, extra.c_str());
-    const int wordsResult = constrained.buildAdvanceTable(words, true, 1, extra.c_str());
+    const int wordsResult = buildWordAdvances(constrained, words, true, 1, extra.c_str());
     allocationProbe::enabled = false;
     std::printf("ADVANCE_LOW_HEAP repeat=%d plain=%d words=%d largest_array=%zu rejected=%u rejected_size=%zu\n",
                 repeat, plainResult, wordsResult, allocationProbe::largestAttempt,
@@ -260,7 +272,7 @@ void testAdvanceCap() {
   loadAdvanceFont(batch);
   std::deque<std::string> words{filler, filler.substr(0, 3)};
   const std::string extra = included + included + excluded;
-  require(batch.buildAdvanceTable(words, true, 1, extra.c_str()) == 0, "cap with extra text builds");
+  require(buildWordAdvances(batch, words, true, 1, extra.c_str()) == 0, "cap with extra text builds");
   require(batch.getAdvance(0x4e10, 0) == advanceFor(0x4e10), "extra text fills 4096th input slot");
   require(batch.getAdvance(0x4e00, 0) == 0, "extra text excludes 4097th unique input");
   require(batch.getAdvance(' ', 0) == advanceFor(' '), "space uses reserved cap slot");
@@ -338,7 +350,7 @@ struct Scene {
   SdCardFont font;
   HalDisplay display;
   GfxRenderer renderer{display};
-  FontCacheManager cache{renderer.getFontMap(), renderer.getSdCardFonts()};
+  FontCacheManager cache{renderer.getFontMap(), renderer.getSdCardFonts(), renderer.getTtfFonts()};
   Scene(bool regularLig, bool boldLig) {
     Storage.files["/fixture.cpfont"] = makeFont(regularLig, boldLig);
     require(font.load("/fixture.cpfont"), "load complete cpfont fixture");

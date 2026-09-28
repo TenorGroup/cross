@@ -13,6 +13,8 @@
 #include "fakes.inc"
 
 HalGPIO gpio;
+// Battery on its own power: the shown percentage never takes the charging path here.
+bool HalGPIO::isUsbConnected() const { return lastUsbConnected; }
 struct ClockBoundary {
   bool valid = false;
   bool hasValidTime() const { return valid; }

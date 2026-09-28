@@ -32,6 +32,7 @@ class Activity {
   virtual void onExit() {}
   virtual void loop() {}
   virtual bool saveInputBeforeHome() { return false; }
+  virtual bool preventAutoSleep() { return false; }
   virtual void render(RenderLock&&) {}
   void requestUpdate() {}
   void setResult(KeyboardResult r) {

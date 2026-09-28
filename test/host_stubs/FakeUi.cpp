@@ -88,6 +88,9 @@ int GfxRenderer::getTextWidth(int, const char* text, EpdFontFamily::Style, BidiU
   return text ? static_cast<int>(strlen(text)) * 8 : 0;
 }
 int GfxRenderer::getLineHeight(int) const { return 20; }
+int GfxRenderer::getFontAscenderSize(int) const { return 16; }
+// No font is loaded on the host, so a single-glyph label never takes the centred-glyph path.
+const EpdGlyph* EpdFontFamily::getGlyph(uint32_t, Style) const { return nullptr; }
 std::string GfxRenderer::truncatedText(int, const char* text, int, EpdFontFamily::Style, int) const {
   return text ? std::string(text) : std::string();
 }
@@ -104,6 +107,24 @@ const ThemeMetrics& UITheme::getMetrics() const {
   static const ThemeMetrics metrics{};
   return metrics;
 }
+// X3 and X4 have no PSRAM heap, so Cover Grid is never offered.
+bool UITheme::supportsCoverGrid() { return false; }
+
+// UITheme holds a BaseTheme as its fallback (#3657), so its vtable must link. The theme
+// never draws here: every virtual is a no-op, like the renderer calls above.
+void BaseTheme::fillBatteryIcon(const GfxRenderer&, Rect, uint16_t) const {}
+void BaseTheme::drawButtonHints(GfxRenderer&, const char*, const char*, const char*, const char*) const {}
+void BaseTheme::drawSideButtonHints(const GfxRenderer&, const char*, const char*) const {}
+int BaseTheme::getMenuRowHeight(const GfxRenderer&) const { return 20; }
+void BaseTheme::drawHeader(const GfxRenderer&, Rect, const char*, const char*, bool) const {}
+void BaseTheme::drawSubHeader(const GfxRenderer&, Rect, const char*, const char*) const {}
+void BaseTheme::drawRecentBookCover(GfxRenderer&, Rect, const std::vector<RecentBook>&, const int, bool&, bool&,
+                                    bool&, std::function<bool()>) const {}
+void BaseTheme::drawButtonMenu(GfxRenderer&, Rect, int, int, const std::function<std::string(int)>&,
+                               const std::function<UIIcon(int)>&) const {}
+Rect BaseTheme::drawPopup(const GfxRenderer&, const char*, bool) const { return Rect(); }
+void BaseTheme::fillPopupProgress(const GfxRenderer&, const Rect&, const int) const {}
+void BaseTheme::drawTextField(const GfxRenderer&, Rect, const int, bool, int, int) const {}
 
 // UiAppHost dung nguon THAT: no co san file rieng, gia lai re hon dung.
 

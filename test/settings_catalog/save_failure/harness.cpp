@@ -39,7 +39,18 @@ struct MappedInputManager {
   bool wasReleased(Button button) const { return button == Button::Confirm ? confirm : back; }
   struct Labels { const char *btn1, *btn2, *btn3, *btn4; };
   Labels mapLabels(const char* a, const char* b, const char* c, const char* d) { return {a,b,c,d}; }
+  // Home button shortcuts (#3516): a row toggle forgets a half-read home key tap.
+  void resetHomeButtonInput() {}
 };
+// The network row's WiFi teardown (#3613) runs only in a child's result callback,
+// which this harness never delivers; the radio is off throughout.
+enum WiFiMode { WIFI_MODE_NULL };
+struct WiFiBoundary {
+  WiFiMode getMode() const { return WIFI_MODE_NULL; }
+  void disconnect(bool) {}
+} WiFi;
+void delay(unsigned long) {}
+void silentRestartToSettings() {}
 struct GuiBoundary {
   std::string lastPopup;
   void drawButtonHints(GfxRenderer&, const char*, const char*, const char*, const char*) {}

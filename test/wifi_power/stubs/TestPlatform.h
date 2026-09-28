@@ -183,6 +183,7 @@ class Activity {
   virtual void onExit() {}
   virtual void loop() {}
   virtual void render(RenderLock&&) {}
+  virtual bool preventAutoSleep() { return false; }
   void requestUpdate(bool = false) { didRequestUpdate = true; }
   void startActivityForResult(std::unique_ptr<Activity>&& next, ActivityResultHandler handler) {
     child = std::move(next);
@@ -243,6 +244,7 @@ struct ListProps {
   int valueInset = 0;
   TextStyle labelText;
   bool balanceWrappedLabelWithValue = true;
+  bool partialTrailingRow = false;
   int selected = 0;
   int top = 0;
   int16_t rowHeight = 0;
@@ -289,6 +291,11 @@ class UiScreen {
   Frame& frame() { return valueFrame; }
   Target& target() { return valueTarget; }
   void list(const ListProps&) {}
+  // The list viewport sync (#3668): hands the selection to the props, like ListNav::syncToProps.
+  template <typename Nav>
+  void syncListViewport(Nav& nav, ListProps& props, int) {
+    props.selected = nav.selected;
+  }
 };
 inline void button(Frame&, Rect, const ButtonProps&) {}
 inline void optionDialog(Frame&, Rect, const OptionDialogProps&) {}

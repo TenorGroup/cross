@@ -33,18 +33,11 @@
 #include <vector>
 
 #include "SettingsList.h"
-#include "components/UITheme.h"
 
 namespace settings_test_io {
 extern int writes;
 void setNextRead(const JsonDocument& doc);
 }  // namespace settings_test_io
-
-// getBaseSettingsList() calls UITheme::supportsCoverGrid() (#3657, upstream) to decide
-// whether Cover Grid is offered. A host build has no PSRAM heap, so this matches the
-// real answer without linking all of UITheme.cpp (GfxRenderer, TenorMenuChrome, ...).
-// The class itself is declared by a header already pulled in through SettingsList.h.
-bool UITheme::supportsCoverGrid() { return false; }
 
 namespace {
 

@@ -39,7 +39,7 @@ header = (r / paths[3]).read_text()
 source = (r / paths[4]).read_text()
 (out / 'activities/settings').mkdir(parents=True, exist_ok=True)
 (out / 'activities/settings/SettingsActivity.h').write_text(
-    '#pragma once\n#include <functional>\n#include <string>\n#include <vector>\n#include <I18n.h>\n'
+    '#pragma once\n#include <functional>\n#include <span>\n#include <string>\n#include <vector>\n#include <I18n.h>\n'
     '#include "CrossPointSettings.h"\n#include "activities/settings/SettingsTabs.h"\n' +
     header[header.index('enum class SettingType'):header.index('class SettingsActivity final')])
 category = (r / 'test/settings_catalog/category/harness.cpp').read_text()

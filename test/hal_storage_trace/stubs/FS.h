@@ -40,6 +40,12 @@ class FsFile {
   size_t write(const uint8_t* src, size_t count) { return append(src, count); }
   size_t write(const void* src, size_t count) { return append(src, count); }
   size_t write(uint8_t value) { return append(&value, 1); }
+  // SdFat's FAT timestamp pair; the stub files carry no date (0 = unknown).
+  bool getModifyDateTime(uint16_t* date, uint16_t* time) const {
+    *date = 0;
+    *time = 0;
+    return opened;
+  }
   bool rename(const char* path) { name = path; return true; }
   bool isDirectory() const { return name == "/dir"; }
   void rewindDirectory() { cursor = 0; }
