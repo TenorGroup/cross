@@ -32,6 +32,38 @@ add_library(bleturner_test_flags INTERFACE)
 target_include_directories(bleturner_test_flags INTERFACE ${BLETURNER_ROOT}/include ${BLETURNER_ROOT}/src)
 target_compile_options(bleturner_test_flags INTERFACE -Wall -Wextra -Werror)
 
-add_executable(BlePageTurnerPolicyTest RadioVerdictTest.cpp)
+# ArduinoJson at the version the firmware pins (platformio.ini: bblanchon/ArduinoJson @ 7.4.2). A
+# local copy works too: only its src/ is used, never its own build.
+FetchContent_Declare(arduinojson GIT_REPOSITORY https://github.com/bblanchon/ArduinoJson.git GIT_TAG v7.4.2
+                     SOURCE_SUBDIR no-build)
+FetchContent_MakeAvailable(arduinojson)
+add_library(bleturner_arduinojson INTERFACE)
+target_include_directories(bleturner_arduinojson SYSTEM INTERFACE ${arduinojson_SOURCE_DIR}/src)
+
+# The rules, pure.
+add_executable(BlePageTurnerPolicyTest RadioVerdictTest.cpp HeapRestartTest.cpp KeyBindingTest.cpp)
 target_link_libraries(BlePageTurnerPolicyTest PRIVATE bleturner_test_flags GTest::gtest_main)
 gtest_discover_tests(BlePageTurnerPolicyTest)
+
+# The runtime against a fake radio and a fake host.
+add_executable(BlePageTurnerRuntimeTest RuntimeTest.cpp TickTest.cpp Fakes.cpp ${BLETURNER_ROOT}/src/Runtime.cpp)
+target_compile_definitions(BlePageTurnerRuntimeTest PRIVATE BLETURNER_TESTING)
+target_link_libraries(BlePageTurnerRuntimeTest PRIVATE bleturner_test_flags GTest::gtest_main)
+gtest_discover_tests(BlePageTurnerRuntimeTest)
+
+# A build without BLE.
+add_executable(BlePageTurnerNoRadioTest NoRadioTest.cpp ${BLETURNER_ROOT}/src/Runtime.cpp ${BLETURNER_ROOT}/src/NoRadio.cpp)
+target_compile_definitions(BlePageTurnerNoRadioTest PRIVATE BLETURNER_TESTING)
+target_link_libraries(BlePageTurnerNoRadioTest PRIVATE bleturner_test_flags GTest::gtest_main)
+gtest_discover_tests(BlePageTurnerNoRadioTest)
+
+# The settings keys.
+add_executable(BlePageTurnerConfigTest ConfigJsonTest.cpp ${BLETURNER_ROOT}/src/ConfigJson.cpp)
+target_link_libraries(BlePageTurnerConfigTest PRIVATE bleturner_test_flags bleturner_arduinojson GTest::gtest_main)
+gtest_discover_tests(BlePageTurnerConfigTest)
+
+# What the module may include.
+add_executable(BlePageTurnerSourceContractTest SourceContractTest.cpp)
+target_compile_definitions(BlePageTurnerSourceContractTest PRIVATE BLETURNER_ROOT_PATH="${BLETURNER_ROOT}")
+target_link_libraries(BlePageTurnerSourceContractTest PRIVATE bleturner_test_flags GTest::gtest_main)
+gtest_discover_tests(BlePageTurnerSourceContractTest)
