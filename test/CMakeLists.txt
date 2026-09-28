@@ -130,6 +130,7 @@ add_subdirectory(file_transfer_back_latch)
 add_subdirectory(upload_socket)
 add_subdirectory(ota_back_cancel)
 add_subdirectory(ota_log)
+add_subdirectory(ota_clean_boot)
 add_subdirectory(silent_boot_paint)
 
 add_subdirectory(sd_font_lifetime)

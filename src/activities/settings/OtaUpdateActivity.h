@@ -4,6 +4,7 @@
 
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
+#include "network/UpdateBoot.h"
 #include "network/OtaUpdater.h"
 #include "util/FileTransferBackLatch.h"
 
@@ -55,6 +56,11 @@ class OtaUpdateActivity : public Activity {
   OptionPopup confirmPopup;
   // The download holds the loop; a Back tap is sampled on its own task meanwhile.
   FileTransferBackLatch backLatch;
+  // Set when this screen was restarted into (the user already chose Update, or a dry run): it
+  // installs without asking again and restarts on its way out, whatever happened.
+  const update_boot::Request boot;
+  // The user chose Update: onExit restarts into the update boot instead of Home.
+  bool restartIntoInstall = false;
 
   void onWifiSelectionComplete(bool success);
   void runUpdateInstall();
@@ -63,19 +69,18 @@ class OtaUpdateActivity : public Activity {
   bool idleExitDue(unsigned long now, bool interaction);
 #ifdef TENOR_PRESS_PROBE
   std::string dryRunUrl;
-  int dryRuns = 0;
-  void runDryRuns();
+  // Dry runs still to do after this boot's; the next boot does the next one.
+  uint8_t dryRunsAfter = 0;
+  void runDryRun();
 #endif
 
  public:
-  explicit OtaUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("OtaUpdate", renderer, mappedInput), updater() {}
+  explicit OtaUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                             const update_boot::Request& bootRequest = {})
+      : Activity("OtaUpdate", renderer, mappedInput), updater(), boot(bootRequest) {}
 #ifdef TENOR_PRESS_PROBE
-  // CMD:OTA_DRYRUN: after Wi-Fi joins, check and download from manifestUrl `runs` times.
-  void setDryRun(const char* manifestUrl, int runs) {
-    dryRunUrl = manifestUrl;
-    dryRuns = runs;
-  }
+  // CMD:OTA_DRYRUN, in the update boot: after Wi-Fi joins, check and download from manifestUrl once.
+  void setDryRun(const char* manifestUrl) { dryRunUrl = manifestUrl; }
 #endif
   void onEnter() override;
   void onExit() override;

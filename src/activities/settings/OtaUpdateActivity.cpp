@@ -22,7 +22,9 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {
     LOG_ERR("OTA", "WiFi connection failed, exiting");
 #ifdef TENOR_PRESS_PROBE
-    if (dryRuns > 0) logSerial.printf("OTA_DRYRUN_RESULT ok=0 step=wifi err=NO_WIFI run=0/%d\n", dryRuns);
+    if (boot.dryRun())
+      logSerial.printf("OTA_DRYRUN_RESULT ok=0 step=wifi err=NO_WIFI run=%d/%d\n",
+                       boot.dryRunsTotal - boot.dryRunsLeft + 1, boot.dryRunsTotal);
 #endif
     finish();
     return;
@@ -48,8 +50,8 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
   }
 #ifdef TENOR_PRESS_PROBE
-  if (dryRuns > 0) {
-    runDryRuns();
+  if (boot.dryRun()) {
+    runDryRun();
     finish();
     return;
   }
@@ -91,6 +93,11 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   runUpdateInstall();
   return;
 #endif
+  // The user chose Update in the boot before this one: install now, on this boot's heap.
+  if (boot.armed) {
+    runUpdateInstall();
+    return;
+  }
   {
     RenderLock lock(*this);
     state = WAITING_CONFIRMATION;
@@ -99,11 +106,10 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   // Default the selection to Update so the hardware Confirm button installs,
   // matching the pre-popup layout (Back = cancel, Confirm = update).
   confirmPopup.show(tr(STR_NEW_UPDATE), options, 2, 1, [this](const int idx) {
-    if (idx == 1) {
-      runUpdateInstall();
-    } else {
-      finish();
-    }
+    // Update: this session's heap is short of Wi-Fi plus a 16 KB TLS record in one piece
+    // (measured failing 10 of 10 from Home), so onExit restarts and the next boot installs.
+    restartIntoInstall = idx == 1;
+    finish();
   });
   requestUpdate();
 }
@@ -123,7 +129,16 @@ void OtaUpdateActivity::onEnter() {
 
   // Turn on WiFi immediately
   LOG_DBG("OTA", "Turning on WiFi...");
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t heapBeforeWifi = ESP.getFreeHeap();
+  const uint32_t largestBeforeWifi = ESP.getMaxAllocHeap();
+#endif
   WiFi.mode(WIFI_STA);
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("OTA", "Wi-Fi start update-boot=%d dry-run=%d/%d heap=%u -> %u largest=%u -> %u", boot.armed,
+          boot.dryRun() ? boot.dryRunsTotal - boot.dryRunsLeft + 1 : 0, boot.dryRunsTotal, heapBeforeWifi,
+          ESP.getFreeHeap(), largestBeforeWifi, ESP.getMaxAllocHeap());
+#endif
 
   // Launch WiFi selection subactivity
   LOG_DBG("OTA", "Launching WifiSelectionActivity...");
@@ -137,13 +152,22 @@ void OtaUpdateActivity::onExit() {
   // Success path reboots via the SHUTTING_DOWN state's plain ESP.restart()
   // (loop() above) so the new firmware boots normally. Back-out paths land
   // here with wifi still active; silent-restart to free the LWIP/mbedTLS
-  // fragmentation, same as the other wifi activities.
-  if (runtimeStarted) {
-    if (WiFi.getMode() != WIFI_MODE_NULL) {
-      WiFi.disconnect(false);
-      delay(30);
-      silentRestart();
-    }
+  // fragmentation, same as the other wifi activities. Update restarts into
+  // the update boot instead, and the update boot itself always restarts: it
+  // never runs the normal screens, which it started without their fonts.
+  const bool wifiOn = runtimeStarted && WiFi.getMode() != WIFI_MODE_NULL;
+  if (wifiOn) {
+    WiFi.disconnect(false);
+    delay(30);
+  }
+  if (restartIntoInstall) {
+    silentRestartToOta();
+#ifdef TENOR_PRESS_PROBE
+  } else if (dryRunsAfter > 0) {
+    silentRestartToOta(dryRunsAfter, boot.dryRunsTotal);
+#endif
+  } else if (wifiOn || boot.armed) {
+    silentRestart();
   }
   // Release after Wi-Fi teardown. The main loop may resume BLE once this owner
   // and any nested owner have both gone away.
@@ -235,26 +259,34 @@ void OtaUpdateActivity::recordAttempt(const char* op, const bool now) {
 
 #ifdef TENOR_PRESS_PROBE
 // The real check and download against a test manifest, verified and closed like an install,
-// with the boot slot untouched. One machine-readable line a run, free heap around each run.
-void OtaUpdateActivity::runDryRuns() {
+// with the boot slot untouched. One run a boot; one machine-readable line, free heap around it.
+void OtaUpdateActivity::runDryRun() {
   updater.setDryRun(dryRunUrl.c_str());
-  for (int run = 1; run <= dryRuns; ++run) {
-    const uint32_t before = ESP.getFreeHeap();
-    const auto checked = updater.checkForUpdate();
-    const uint32_t checkMs = updater.lastAttempt().ms;
-    if (checked == OtaUpdater::OK) runUpdateInstall();
-    // A progress frame may still be painting, and the card shares its bus: wait for it.
-    RenderLock lock(*this);
-    const uint32_t after = ESP.getFreeHeap();
-    char fields[ota_log::LINE_BYTES];
-    ota_log::formatFields(fields, sizeof(fields), updater.lastAttempt());
-    logSerial.printf("OTA_DRYRUN_RESULT %s op=%s run=%d/%d check_ms=%u before=%u after=%u after_largest=%u\n", fields,
-                     checked == OtaUpdater::OK ? "install" : "check", run, dryRuns, static_cast<unsigned>(checkMs),
-                     static_cast<unsigned>(before), static_cast<unsigned>(after),
-                     static_cast<unsigned>(ESP.getMaxAllocHeap()));
-    recordAttempt("dryrun", true);
-    if (std::strcmp(updater.lastAttempt().err, "CANCELLED_ERROR") == 0) break;
-  }
+  const int run = boot.dryRunsTotal - boot.dryRunsLeft + 1;
+  const uint32_t before = ESP.getFreeHeap();
+  const uint32_t beforeLargest = ESP.getMaxAllocHeap();
+  LOG_INF("OTA", "Manifest start heap=%u largest=%u", before, beforeLargest);
+  const auto checked = updater.checkForUpdate();
+  const uint32_t checkMs = updater.lastAttempt().ms;
+  if (checked == OtaUpdater::OK) runUpdateInstall();
+  // A progress frame may still be painting, and the card shares its bus: wait for it.
+  RenderLock lock(*this);
+  const uint32_t after = ESP.getFreeHeap();
+  const uint32_t afterLargest = ESP.getMaxAllocHeap();
+  // What the progress frames' title glyphs still hold, apart from what the transfer left.
+  if (auto* cache = renderer.getFontCacheManager()) cache->releaseBuiltinPageCaches();
+  char fields[ota_log::LINE_BYTES];
+  ota_log::formatFields(fields, sizeof(fields), updater.lastAttempt());
+  logSerial.printf(
+      "OTA_DRYRUN_RESULT %s op=%s run=%d/%d check_ms=%u before=%u before_largest=%u after=%u after_largest=%u "
+      "after_fonts=%u after_fonts_largest=%u\n",
+      fields, checked == OtaUpdater::OK ? "install" : "check", run, boot.dryRunsTotal, static_cast<unsigned>(checkMs),
+      static_cast<unsigned>(before), static_cast<unsigned>(beforeLargest), static_cast<unsigned>(after),
+      static_cast<unsigned>(afterLargest), static_cast<unsigned>(ESP.getFreeHeap()),
+      static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  recordAttempt("dryrun", true);
+  // Back ends the series; any other result goes on to the next run, in a boot of its own.
+  if (std::strcmp(updater.lastAttempt().err, "CANCELLED_ERROR") != 0) dryRunsAfter = boot.dryRunsLeft - 1;
 }
 #endif
 

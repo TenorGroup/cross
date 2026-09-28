@@ -9,9 +9,8 @@
 #if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
 #include "activities/network/CrossPointWebServerActivity.h"
 #endif
-#if defined(TENOR_OTA_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
 #include "activities/settings/OtaUpdateActivity.h"
-#endif
+#include "network/UpdateBoot.h"
 #include <Arduino.h>
 #include <BlePageTurner.h>
 #include <BoardConfig.h>
@@ -224,6 +223,8 @@ RTC_NOINIT_ATTR uint32_t silentRebootMagic;
 RTC_NOINIT_ATTR uint32_t silentRebootTarget;
 RTC_NOINIT_ATTR uint32_t silentRebootHomeMenu;
 RTC_NOINIT_ATTR uint32_t silentRebootPayload;
+// The restart into the update screen (UpdateBoot.h): armed only by silentRestartToOta().
+RTC_NOINIT_ATTR update_boot::Slot otaBootSlot;
 
 #ifdef TENOR_PRESS_PROBE
 #include <BatteryMonitor.h>
@@ -239,12 +240,15 @@ extern "C" uint64_t esp_rtc_get_time_us(void);
 // CMD:KEEP_HEAP 1: the next Wi-Fi exits to Home end the session in place instead of the
 // silent restart, and report the heap they leave, to decide whether the restart is still needed.
 static bool probeKeepHeap = false;
+// CMD:OTA_DRYRUN: the test manifest the series of update boots reads.
+RTC_NOINIT_ATTR char probeDryRunUrl[160];
 #endif
 constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
 constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
 constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
 constexpr uint32_t SILENT_REBOOT_TARGET_SETTINGS = 2;
-constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_SETTINGS;
+constexpr uint32_t SILENT_REBOOT_TARGET_OTA = 3;
+constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_OTA;
 constexpr uint32_t SILENT_REBOOT_LIGHT_ON = 1U << 0;
 
 // How the device is coming back to life, resolved once at boot. Both resume
@@ -310,6 +314,12 @@ void silentRestart() {
 void silentRestartToReader() { silentRestartTo(SILENT_REBOOT_TARGET_READER, "reader"); }
 
 void silentRestartToSettings() { silentRestartTo(SILENT_REBOOT_TARGET_SETTINGS, "settings"); }
+
+void silentRestartToOta(const uint8_t dryRunsLeft, const uint8_t dryRunsTotal) {
+  if (deepSleepInProgress) return;
+  update_boot::arm(otaBootSlot, dryRunsLeft, dryRunsTotal);
+  silentRestartTo(SILENT_REBOOT_TARGET_OTA, "ota");
+}
 
 #if CROSSPOINT_BLE_HID_HOST
 static void runQuickAction(uint8_t action, quickaction::Trigger trigger);
@@ -492,7 +502,8 @@ static void logHeapMark(const char* tag) {
           static_cast<unsigned>(heap.largestBlockBytes), static_cast<unsigned>(heap.minFreeBytes));
 }
 
-void setupDisplayAndFonts(bool seamless = false) {
+// sdFonts false: the update boot, whose screen draws built-in fonts only (UpdateBoot.h).
+void setupDisplayAndFonts(bool seamless = false, bool sdFonts = true) {
 #if !FREEINK_MCU_C3
   // C3 resolves its controller in HalGPIO::begin() before SPI claims the
   // display pins. X4 Pro skips that C3-only path, so probe here before
@@ -541,7 +552,7 @@ void setupDisplayAndFonts(bool seamless = false) {
   logHeapMark("fonts-builtin");
 
   // Discover and load SD card fonts
-  sdFontSystem.begin(renderer);
+  if (sdFonts) sdFontSystem.begin(renderer);
   if (!applyUiFontSize(renderer, SETTINGS.uiTextSize)) {
     LOG_ERR("MAIN", "Unable to apply saved UI font size");
   }
@@ -584,6 +595,10 @@ void setup() {
   silentRebootTarget = 0;
   silentRebootHomeMenu = 0;
   silentRebootPayload = 0;
+  // Spent here on every boot, like the flags above: whatever ends the update boot, the next one
+  // is a normal boot unless the update screen arms another.
+  const update_boot::Request otaBoot = update_boot::take(otaBootSlot);
+  const bool updateBoot = isSilentReboot && snapshotTarget == SILENT_REBOOT_TARGET_OTA && otaBoot.armed;
 
 #ifdef TENOR_PRESS_PROBE
   const bool probeTimerWake = esp_reset_reason() == ESP_RST_DEEPSLEEP &&
@@ -763,7 +778,7 @@ void setup() {
                            [](const std::string& path) { return Storage.exists(path.c_str()); });
   const bool wakeToBook = !wakeBook.empty();
 
-  setupDisplayAndFonts(resume != BootResume::Splash);
+  setupDisplayAndFonts(resume != BootResume::Splash, !updateBoot);
   renderer.setDiffOnlyPanel(gpio.deviceIsX3() && display.getController() == HalDisplay::Controller::UC8279);
   logHeapMark("display-and-fonts");
 
@@ -820,6 +835,17 @@ void setup() {
   } else if (rebootedFromPanic) {
     // If we rebooted from a panic, go to crash report screen to show the panic info
     activityManager.goToCrashReport();
+  } else if (updateBoot) {
+    // Straight to the update, on the heap of a fresh boot; the screen restarts on its way out.
+    auto update = makeUniqueNoThrow<OtaUpdateActivity>(renderer, mappedInputManager, otaBoot);
+#ifdef TENOR_PRESS_PROBE
+    probeDryRunUrl[sizeof(probeDryRunUrl) - 1] = '\0';
+    if (update && otaBoot.dryRun()) update->setDryRun(probeDryRunUrl);
+#endif
+    if (update)
+      activityManager.replaceActivity(std::move(update));
+    else
+      activityManager.goHome();
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_READER &&
              !APP_STATE.openEpubPath.empty()) {
     activityManager.goToReader(APP_STATE.openEpubPath);
@@ -1495,21 +1521,27 @@ void loop() {
 #endif
 #ifdef TENOR_PRESS_PROBE
       } else if (cmd.startsWith("OTA_DRYRUN ")) {
-        // CMD:OTA_DRYRUN <manifest-url> [runs]: joins the saved Wi-Fi like the OTA screen, then runs
-        // the real check and download from a manifest under cross.tenor.vn/firmware/ into the spare
-        // slot, verified and closed like an install, whatever the version, never switching the boot
-        // slot. One OTA_DRYRUN_RESULT line a run (1-20 runs), then the screen closes.
+        // CMD:OTA_DRYRUN <manifest-url> [runs]: restarts into the update boot like a confirmed update,
+        // joins the saved Wi-Fi, then runs the real check and download from a manifest under
+        // cross.tenor.vn/firmware/ into the spare slot, verified and closed like an install, whatever
+        // the version, never switching the boot slot. One run a boot and one OTA_DRYRUN_RESULT line
+        // a run (1-20 runs); after the last run the device restarts to Home. Send it from Home.
         String arg = cmd.substring(11);
         arg.trim();
         const int space = arg.indexOf(' ');
         const String url = space < 0 ? arg : arg.substring(0, space);
         const int runs = space < 0 ? 1 : std::max(1L, std::min(20L, arg.substring(space + 1).toInt()));
-        auto activity = makeUniqueNoThrow<OtaUpdateActivity>(renderer, mappedInputManager);
-        if (activity) {
-          activity->setDryRun(url.c_str(), runs);
-          activityManager.pushActivity(std::move(activity));
+        if (url.length() >= sizeof(probeDryRunUrl)) {
+          logSerial.printf("OTA_DRYRUN_RESULT ok=0 step=url err=HTTP_ERROR run=0/%d\n", runs);
         } else {
-          logSerial.printf("OTA_DRYRUN_RESULT ok=0 step=heap err=OOM_ERROR run=0/%d\n", runs);
+          // The path of a confirmed update: restart into the update boot, one run a boot.
+          std::memcpy(probeDryRunUrl, url.c_str(), url.length() + 1);
+          logSerial.printf("OTA_DRYRUN_START runs=%d heap=%u largest=%u\n", runs, ESP.getFreeHeap(),
+                           ESP.getMaxAllocHeap());
+          delay(3000);  // the serial reader takes this line before the port drops for the restart
+          activityManager.closeForRestart();
+          silentRestartToOta(static_cast<uint8_t>(runs), static_cast<uint8_t>(runs));
+          activityManager.goHome();  // only when a sleep superseded the restart
         }
       } else if (cmd.startsWith("WAKE_TIMER ")) {
         probeWakeSeconds = static_cast<uint32_t>(cmd.substring(11).toInt());
