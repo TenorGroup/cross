@@ -10,6 +10,8 @@
 #include "activities/Activity.h"
 
 class ReaderActivity : public Activity {
+  friend class ActivityManager;  // turns pages for a Bluetooth remote (ActivityManager::remoteTurn)
+
  protected:
   std::string bookPath;
   int pagesUntilFullRefresh = 0;

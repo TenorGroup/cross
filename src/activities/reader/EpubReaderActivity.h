@@ -133,6 +133,11 @@ class EpubReaderActivity final : public ReaderActivity {
   bool backgroundBuildWanted() const;
   bool buildTickHeapGate();
   bool buildHeapPaused = false;
+  // Bluetooth page turner: a chapter build on a heap this short stops the radio until the page is
+  // shown. 32 KiB is the one whole block a build opens (the inflate ring).
+  static constexpr size_t CHAPTER_BUILD_MIN_BLOCK = 32 * 1024;
+  std::atomic<bool> radioReleasedForBuild{false};
+  void makeRoomForChapterBuild();
   static constexpr size_t RENDER_MIN_FREE_HEAP = 24 * 1024;
   static constexpr int BUILD_WINDOW_AHEAD = 5;
   static constexpr int PARTIAL_REBUILD_START_MARGIN = 15;
