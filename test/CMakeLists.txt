@@ -84,3 +84,4 @@ add_subdirectory(protected_paths)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME TrustedTimeTimezone COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_trusted_time.py)
+add_subdirectory(${REPO_ROOT}/lib/BlePageTurner/test BlePageTurnerTests)
