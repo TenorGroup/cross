@@ -12,6 +12,13 @@
 // double tap, none is a single tap. Other motion starts over. Whole mg and integers, no floating
 // point.
 //
+// Softer peaks, past SOFT_PEAK_MG2: a first one going into the screen, and any second one pushing
+// the same way as the first. A tap on the glass of a device held upright or in landscape lands at
+// 400 to 700 mg, and one of the pair is often under PEAK_MG2 (28/09 run). A peak the other way
+// is not a second tap: it is the case ringing back or the thumb drawing back before it taps,
+// and taking it as the second put the pair at the wrong place (27/09 thumb runs). A soft first
+// peak in any other direction let putting down, turning over and switching hands through.
+//
 // Where it landed: the linear acceleration over the first DIRECTION_SAMPLES of both taps. A tap
 // pushes the device away from the finger, and the case rings back with the other sign only from
 // the third or fourth sample (27/09 waveforms). Along z and negative it went into the back,
@@ -24,14 +31,13 @@
 // second holds the first one's turn (27/09 replay: counting both dropped 33 of 39 back taps).
 //
 // Chosen through this code (test/imu_double_tap) on runs of one X3 held by hand:
-// four read from the data registers (26-27/09, every place and the controls) and one from the
-// FIFO as the device reads it. At 650 mg and 80 dps: 106 of 178 pairs at the right place on the
-// register runs, one at a wrong one, none from the controls (page presses, two quick presses,
-// switching hands, putting down, turning over, reading, a thumb on the screen); lower peaks or a
-// looser stillness check found a few more and let controls through. On the FIFO run, 9 of 13 on
-// the back, but a first tap on the screen lands near 460 mg and the edge's pairs were missed:
-// the screen and the edge are experimental. Missed on every run: light taps on the screen, the
-// screen in landscape, anything with the device lying on a table.
+// four read from the data registers (26-27/09, every place and the controls) and two from the
+// FIFO as the device reads it (27/09, 28/09). At 650 mg, 425 mg soft and 80 dps: 132 of 178
+// pairs at the right place on the register runs, one at a wrong one, none from the controls
+// (page presses, two quick presses, switching hands, putting down, turning over, reading, a thumb
+// on the screen). On the 28/09 FIFO run, 10 pairs each: 8 on the back, 7 on the screen upright, 7
+// in landscape, 10 on an edge, none from the controls. Soft peaks at 350 mg let a control
+// through. Missed on every run: light taps on the screen, anything with the device on a table.
 class TapDetector {
  public:
   enum class Place : uint8_t { Back, Screen, Edge };
@@ -44,6 +50,7 @@ class TapDetector {
   static constexpr int32_t ALPHA = 8;                // In 1/128
   static constexpr int32_t GAMMA = 32;               // In 1/128
   static constexpr int32_t PEAK_MG2 = 422500;        // 650 mg
+  static constexpr int32_t SOFT_PEAK_MG2 = 180625;   // 425 mg
   static constexpr int32_t QUIET_MG2 = 400000;
   static constexpr uint32_t STILL_SAMPLES = 45;  // 242 ms
   static constexpr int32_t STILL_DPS = 80;
@@ -99,7 +106,7 @@ class TapDetector {
     int report = 0;
     switch (_state) {
       case IDLE:
-        if (mag >= PEAK_MG2 && still) {
+        if ((mag >= PEAK_MG2 || (mag >= SOFT_PEAK_MG2 && intoScreen(linear))) && still) {
           _state = FIRST_PEAK;
           _peakStart = _firstStart = _n;
           for (int i = 0; i < 3; ++i) _direction[i] = linear[i] / 128;
@@ -119,7 +126,7 @@ class TapDetector {
         if (_n - _firstStart >= DOUBLE_TAP_WINDOW) {
           report = 1;
           _state = IDLE;
-        } else if (mag >= PEAK_MG2) {
+        } else if (mag >= SOFT_PEAK_MG2 && sameWay(linear)) {
           _state = SECOND_PEAK;
           _peakStart = _n;
           for (int i = 0; i < 3; ++i) _direction[i] += linear[i] / 128;
@@ -137,6 +144,17 @@ class TapDetector {
   }
 
  private:
+  static bool intoScreen(const int32_t* const linear) {
+    const int32_t x = linear[0] < 0 ? -linear[0] : linear[0];
+    const int32_t y = linear[1] < 0 ? -linear[1] : linear[1];
+    return linear[2] > x && linear[2] > y;
+  }
+  // Along the first tap's direction, which holds only that tap's samples while waiting.
+  bool sameWay(const int32_t* const linear) const {
+    int64_t dot = 0;
+    for (int i = 0; i < 3; ++i) dot += static_cast<int64_t>(linear[i]) * _direction[i];
+    return dot > 0;
+  }
   enum State : uint8_t { IDLE, FIRST_PEAK, QUIET, WAIT_SECOND, SECOND_PEAK };
   bool _averageValid = false;
   State _state = IDLE;

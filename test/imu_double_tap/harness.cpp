@@ -861,33 +861,39 @@ int main(int argc, char** argv) {
   // back (tro, traigo, phaigo) and the top edge (tren) push through the back and read as it.
   // 26/09: the back at an easy pace and fast, an edge, and the controls.
   knockRunReplays(argc > 2 ? argv[2] : nullptr, {
-      {"go-hai-lung", 7, 0, 0, 7}, {"go-hai-nhanh", 10, 0, 0, 10}, {"go-mot", 0, 0, 0, 0},
+      {"go-hai-lung", 8, 0, 0, 8}, {"go-hai-nhanh", 10, 0, 0, 10}, {"go-mot", 0, 0, 0, 0},
       {"go-hai-canh", 0, 0, 7, 7}, {"bam-nut", 0, 0, 0, 0}, {"dat-xuong", 0, 0, 0, 0},
       {"up-ngua", 0, 0, 0, 0}, {"xoay-co-tay", 0, 0, 0, 0}, {"cam-doc", 0, 0, 0, 0}}, true);
   // 27/09: held in the right, then the left hand.
   knockRunReplays(argc > 3 ? argv[3] : nullptr, {
-      {"phai-camphai-cai", 0, 0, 9, 9}, {"trai-camphai-tro", 3, 0, 0, 3}, {"lung-camphai-ngon", 9, 0, 0, 9},
+      {"phai-camphai-cai", 0, 0, 9, 9}, {"trai-camphai-tro", 5, 0, 0, 5}, {"lung-camphai-ngon", 9, 0, 0, 9},
       {"phai-camphai-traigo", 0, 0, 0, 0}, {"bamnut-camphai", 0, 0, 0, 0}, {"bamnut2-camphai", 0, 0, 0, 0},
-      {"trai-camtrai-cai", 0, 0, 10, 10}, {"phai-camtrai-tro", 5, 0, 0, 5},
-      {"lung-camtrai-ngon", 9, 0, 0, 9}, {"trai-camtrai-phaigo", 0, 0, 1, 1}, {"bamnut-camtrai", 0, 0, 0, 0},
+      {"trai-camtrai-cai", 0, 0, 10, 10}, {"phai-camtrai-tro", 8, 0, 0, 8},
+      {"lung-camtrai-ngon", 10, 0, 0, 10}, {"trai-camtrai-phaigo", 0, 1, 3, 4}, {"bamnut-camtrai", 0, 0, 0, 0},
       {"bamnut2-camtrai", 0, 0, 0, 0}, {"tren-go", 8, 0, 0, 8}, {"datxuong", 0, 0, 0, 0},
       {"cam-doc", 0, 0, 0, 0}}, false);
   // 27/09: switching hands, the other hand from outside, landscape.
   knockRunReplays(argc > 4 ? argv[4] : nullptr, {
-      {"doitay", 0, 0, 0, 0}, {"phai-camtrai-ngoai", 0, 1, 7, 8}, {"trai-camphai-ngoai", 0, 0, 2, 2},
-      {"ngang-phai-cai", 0, 0, 7, 7}, {"ngang-trai-cai", 0, 0, 5, 5}, {"ngang-lung", 7, 0, 0, 7},
+      {"doitay", 0, 0, 0, 0}, {"phai-camtrai-ngoai", 0, 1, 8, 9}, {"trai-camphai-ngoai", 0, 0, 5, 5},
+      {"ngang-phai-cai", 0, 0, 8, 8}, {"ngang-trai-cai", 0, 0, 8, 8}, {"ngang-lung", 7, 0, 0, 7},
       {"ngang-doc", 0, 0, 0, 0}}, false);
   // 27/09: the screen; light taps, landscape and a table give nothing.
   knockRunReplays(argc > 5 ? argv[5] : nullptr, {
-      {"manhinh-camphai-traigo", 0, 4, 0, 4}, {"manhinh-camphai-cai", 0, 3, 0, 3},
-      {"manhinh-camtrai-phaigo", 0, 4, 0, 4}, {"manhinh-camtrai-cai", 0, 6, 0, 6},
+      {"manhinh-camphai-traigo", 0, 8, 0, 8}, {"manhinh-camphai-cai", 0, 7, 0, 7},
+      {"manhinh-camtrai-phaigo", 0, 8, 0, 8}, {"manhinh-camtrai-cai", 0, 10, 0, 10},
       {"manhinh-nhe", 0, 0, 0, 0}, {"ngang-manhinh", 0, 0, 0, 0}, {"ban-manhinh", 0, 0, 0, 0},
       {"ban-canh", 0, 0, 0, 0}, {"cham-manhinh", 0, 0, 0, 0}}, false);
   // 27/09: the device's own FIFO frames, 186 Hz, with the chip's broken gz. The screen's first tap
   // lands under the peak (about 460 mg) and the edge's pairs are missed: both stay experimental.
   knockRunReplays(argc > 6 ? argv[6] : nullptr, {
-      {"lung-1", 3, 0, 0, 0}, {"manhinh-1", 0, 0, 0, 0}, {"canh-1", 0, 0, 0, 0},
+      {"lung-1", 3, 0, 0, 0}, {"manhinh-1", 0, 2, 0, 0}, {"canh-1", 0, 0, 0, 0},
       {"lung-camphai", 6, 0, 0, 4}}, false);
+  // 28/09: the founder's last run, the device's own FIFO frames: the back, the screen upright, in
+  // landscape, light and on a table, an edge, and the controls. Light taps and a table stay out.
+  knockRunReplays(argc > 7 ? argv[7] : nullptr, {
+      {"lung", 8, 0, 0, 7}, {"mh-doc", 0, 7, 0, 7}, {"mh-ngang", 0, 7, 0, 7}, {"mh-nhe", 0, 0, 0, 0},
+      {"canh", 0, 0, 10, 10}, {"ban", 0, 0, 0, 0}, {"camdoc", 0, 0, 0, 0}, {"bamnut", 0, 0, 0, 0},
+      {"datxuong", 0, 0, 0, 0}, {"upngua", 0, 0, 0, 0}}, false);
   std::printf("imu_double_tap: %d failed assertions\n", failures);
   return failures == 0 ? 0 : 1;
 }
