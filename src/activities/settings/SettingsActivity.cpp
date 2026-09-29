@@ -399,9 +399,15 @@ void SettingsActivity::toggleCurrentSetting() {
         });
         break;
       }
-      case SettingAction::Bluetooth:
-        startActivityForResult(std::make_unique<BleSettingsActivity>(renderer, mappedInput), resultHandler);
+      case SettingAction::Bluetooth: {
+        auto activity = makeUniqueNoThrow<BleSettingsActivity>(renderer, mappedInput);
+        if (!activity) {
+          LOG_ERR("SETTINGS", "OOM: BleSettingsActivity");
+          return;
+        }
+        startActivityForResult(std::move(activity), resultHandler);
         break;
+      }
       case SettingAction::ClearCache:
         startActivityForResult(std::make_unique<ClearCacheActivity>(renderer, mappedInput), resultHandler);
         break;
