@@ -1,29 +1,20 @@
-find_package(EXPAT REQUIRED)
-
-# Indexes books with thousands of chapters under a heap cap: the real OPF, nav
-# and book.bin passes over an in-memory SD card, with every operator new counted.
 add_executable(HugeBookIndexTest
   HugeBookIndexTest.cpp
-  HeapCap.cpp
   ${REPO_ROOT}/lib/Epub/Epub/BookMetadataCache.cpp
-  ${REPO_ROOT}/lib/Epub/Epub/parsers/ContentOpfParser.cpp
-  ${REPO_ROOT}/lib/Epub/Epub/parsers/TocNavParser.cpp
+  ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
 target_include_directories(HugeBookIndexTest PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/stubs
-  ${CMAKE_CURRENT_SOURCE_DIR}
   ${REPO_ROOT}/lib/Epub
-  ${REPO_ROOT}/lib/Epub/Epub
-  ${REPO_ROOT}/lib/Epub/Epub/parsers
-  ${REPO_ROOT}/lib/Serialization
   ${REPO_ROOT}/lib/Memory
-  ${REPO_ROOT}/lib/XmlParserUtils
+  ${REPO_ROOT}/lib/Serialization
+  ${REPO_ROOT}/lib/Utf8
+  ${REPO_ROOT}/test/chapter_html_slim_parser/stubs
 )
 
 target_link_libraries(HugeBookIndexTest PRIVATE
   crosspoint_test_common
-  EXPAT::EXPAT
   GTest::gtest_main
 )
 
