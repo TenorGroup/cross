@@ -17,6 +17,7 @@ namespace {
 constexpr int16_t ROW_ENABLE = -1;
 constexpr int16_t ROW_SCAN = -2;
 constexpr int16_t ROW_NONE = -3;
+constexpr int16_t ROW_LEARN = -4;
 constexpr int16_t ROW_FOUND = 0;   // + index of a device the scan found
 constexpr int16_t ROW_BOND = 100;  // + index of a paired remote
 constexpr uint32_t SCAN_MS = 15000;
@@ -40,6 +41,7 @@ void BleSettingsActivity::loop() {
   if (millis() - lastPollMs < 250) return;
   lastPollMs = millis();
   if (SETTINGS.ble.enabled) bleturner::service();
+  if (learnStage != 0) stepLearning();
   if (signature() == shownSignature) return;  // an e-ink repaint only when something changed
   refresh();
   requestUpdate();
@@ -99,6 +101,13 @@ void BleSettingsActivity::refresh() {
   scan.label = st.scanning ? tr(STR_BT_STOP_SCAN) : tr(STR_BT_SCAN);
   scan.actionValue = ROW_SCAN;
   rows.push_back(scan);
+  if (st.connected) {
+    fui::ListItem learn;
+    learn.label = tr(STR_BT_LEARN_KEYS);
+    learn.subtitle = learnNote;
+    learn.actionValue = ROW_LEARN;
+    rows.push_back(learn);
+  }
   for (uint8_t i = 0; i < found; ++i) {
     fui::ListItem item;
     item.label = labels[i].c_str();
@@ -139,6 +148,8 @@ void BleSettingsActivity::activateIndex(const int index) {
     SETTINGS.saveToFile();
   } else if (code == ROW_SCAN) {
     bleturner::scan(bleturner::status().scanning ? 0 : SCAN_MS);
+  } else if (code == ROW_LEARN) {
+    startLearning();
   } else if (code >= ROW_BOND) {
     const std::string addr = bleturner::bond(static_cast<uint8_t>(code - ROW_BOND)).addr;
     if (bleturner::forget(addr.c_str())) SETTINGS.saveToFile();
@@ -155,6 +166,67 @@ void BleSettingsActivity::activateIndex(const int index) {
   }
   refresh();
   requestUpdate();
+}
+
+void BleSettingsActivity::startLearning() {
+  bleturner::Event ev;
+  while (bleturner::pollEvent(ev)) {
+  }  // presses from before the row was chosen are not the answer
+  learnStage = 1;
+  learnCode = 0;
+  learnSinceMs = millis();
+  learnNote = tr(STR_BT_PRESS_NEXT);
+}
+
+void BleSettingsActivity::stepLearning() {
+  const uint8_t stage = learnStage;
+  bleturner::Event ev;
+  while (learnStage == stage && bleturner::pollEvent(ev)) {
+    if (ev.pressed) {
+      if (learnStage == 2 && ev.code == nextCode) continue;  // one button cannot turn both ways
+      learnCode = ev.code;
+      learnSinceMs = millis();
+    } else if (ev.code == learnCode) {
+      if (ev.wasRest) {
+        learnCode = 0;  // the remote idling on a non-zero byte, not a button
+      } else {
+        keepLearned();
+      }
+    }
+  }
+  if (learnStage == stage) {
+    // A remote that never reports the release: the press alone is the answer.
+    if (learnCode != 0 && millis() - learnSinceMs >= bleturner::kReleaseWaitMs) {
+      keepLearned();
+    } else if (learnCode == 0 && millis() - learnSinceMs >= bleturner::kWaitMs) {
+      learnStage = 0;
+      learnNote = tr(STR_BT_NO_KEY);
+    }
+  }
+  if (learnStage != stage) {
+    refresh();
+    requestUpdate();
+  }
+}
+
+void BleSettingsActivity::keepLearned() {
+  // The remote's saved table, or a new one from its built-in default (a Free3 keeps its
+  // chapter button), so both page buttons go by their raw edges like the chapter button.
+  const auto peer = bleturner::linked();
+  bleturner::RemoteTable* table =
+      bleturner::editableTable(SETTINGS.ble.remotes, SETTINGS.ble.remoteCount, peer.addr, peer.name);
+  const auto action = learnStage == 1 ? bleturner::Action::NextPage : bleturner::Action::PrevPage;
+  if (table == nullptr || !bleturner::learn(*table, action, learnCode, false)) {
+    learnStage = 0;
+    learnNote = tr(STR_BT_KEYS_NOT_SAVED);
+    return;
+  }
+  SETTINGS.saveToFile();
+  if (learnStage == 1) nextCode = learnCode;
+  learnCode = 0;
+  learnSinceMs = millis();
+  learnStage = learnStage == 1 ? 2 : 0;
+  learnNote = learnStage == 2 ? tr(STR_BT_PRESS_PREV) : tr(STR_BT_KEYS_SAVED);
 }
 
 void BleSettingsActivity::buildScreen(UiScreen& screen) {
