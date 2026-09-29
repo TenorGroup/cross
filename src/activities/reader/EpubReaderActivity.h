@@ -138,6 +138,7 @@ class EpubReaderActivity final : public ReaderActivity {
   // page is shown.
   std::atomic<bool> radioReleasedForBuild{false};
   void makeRoomForChapterBuild();
+  bool inputOverPage() const override { return overlay != Overlay::None || ReaderActivity::inputOverPage(); }
   // "Connecting Bluetooth…" or "Bluetooth failed" in place of the status bar title.
   mutable LinkNoteTitle linkNoteTitle;
   static constexpr size_t RENDER_MIN_FREE_HEAP = 24 * 1024;
