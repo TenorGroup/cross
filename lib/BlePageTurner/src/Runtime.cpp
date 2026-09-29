@@ -64,6 +64,12 @@ uint32_t idleSinceMs = 0;
 // tap/hold decision still waiting.
 Router router;
 Scene lastScene{};
+// The remote the settings screen is pairing: it becomes the chosen one once it links. Main loop only.
+struct Pairing {
+  char addr[sizeof(Config::peerAddr)] = "";
+  char name[sizeof(Config::peerName)] = "";
+};
+Pairing pairing;
 // The book's link note (nextLinkNote): written on the main loop, read by the render task.
 std::atomic<LinkNote> linkNoteNow{LinkNote::None};
 // Since when the radio has been up without a break in this book visit. Main loop only.
@@ -355,6 +361,7 @@ void resetForTests() {
   idleSinceMs = 0;
   router = Router();
   lastScene = Scene{};
+  pairing = Pairing{};
   linkNoteNow.store(LinkNote::None);
   noteRadioUp = false;
   noteRadioUpSinceMs = 0;
@@ -566,11 +573,28 @@ bool switchOff() {
   return detail::suspend(1000);
 }
 
-void service() { port::poll(); }
+bool service() {
+  port::poll();
+  if (pairing.addr[0] == '\0' || !port::connected() ||
+      strncmp(port::linked().addr, pairing.addr, sizeof(pairing.addr)) != 0) {
+    return false;
+  }
+  memcpy(config->peerAddr, pairing.addr, sizeof(config->peerAddr));
+  memcpy(config->peerName, pairing.name, sizeof(config->peerName));
+  pairing = Pairing{};
+  return true;
+}
 
 void scan(const uint32_t durationMs) { port::scan(durationMs); }
 
-bool pair(const char* addr) { return config->enabled && switchOn() && port::connect(addr); }
+bool pair(const char* addr, const char* name) {
+  // Only a candidate until it links: a pairing that fails must not replace a bonded choice with
+  // an address the stack cannot reconnect (the reader takes presses from the chosen remote only).
+  pairing = Pairing{};
+  strncpy(pairing.addr, addr, sizeof(pairing.addr) - 1);
+  strncpy(pairing.name, name, sizeof(pairing.name) - 1);
+  return config->enabled && switchOn() && port::connect(addr);
+}
 
 void disconnect() { port::disconnect(); }
 

@@ -4,8 +4,6 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 
-#include <cstring>
-
 #include "CrossPointSettings.h"
 #include "I18nKeys.h"
 #include "MappedInputManager.h"
@@ -21,11 +19,6 @@ constexpr int16_t ROW_LEARN = -4;
 constexpr int16_t ROW_FOUND = 0;   // + index of a device the scan found
 constexpr int16_t ROW_BOND = 100;  // + index of a paired remote
 constexpr uint32_t SCAN_MS = 15000;
-
-void copyField(char* dest, const char* src, const size_t size) {
-  strncpy(dest, src, size - 1);
-  dest[size - 1] = '\0';
-}
 }  // namespace
 
 void BleSettingsActivity::onEnter() {
@@ -40,7 +33,8 @@ void BleSettingsActivity::loop() {
   UiListActivity::loop();
   if (millis() - lastPollMs < 250) return;
   lastPollMs = millis();
-  if (SETTINGS.ble.enabled) bleturner::service();
+  // A remote being paired that links becomes the chosen one: save it.
+  if (SETTINGS.ble.enabled && bleturner::service()) SETTINGS.saveToFile();
   if (learnStage != 0) stepLearning();
   if (signature() == shownSignature) return;  // an e-ink repaint only when something changed
   refresh();
@@ -154,13 +148,13 @@ void BleSettingsActivity::activateIndex(const int index) {
     const std::string addr = bleturner::bond(static_cast<uint8_t>(code - ROW_BOND)).addr;
     if (bleturner::forget(addr.c_str())) SETTINGS.saveToFile();
   } else if (code >= ROW_FOUND) {
-    // The remote chosen here is the one the reader reconnects to.
+    // The remote paired here becomes the one the reader reconnects to once it links (service());
+    // a pairing that fails keeps the remote chosen before.
     const auto peer = bleturner::found(static_cast<uint8_t>(code - ROW_FOUND));
-    copyField(SETTINGS.ble.peerAddr, peer.addr, sizeof(SETTINGS.ble.peerAddr));
-    copyField(SETTINGS.ble.peerName, peer.name, sizeof(SETTINGS.ble.peerName));
+    const std::string addr = peer.addr;
+    const std::string name = peer.name;
     bleturner::scan(0);
-    SETTINGS.saveToFile();
-    bleturner::pair(SETTINGS.ble.peerAddr);
+    bleturner::pair(addr.c_str(), name.c_str());
   } else {
     return;
   }
