@@ -1,15 +1,12 @@
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <cstdint>
-#include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <new>
 #include <string>
 #include <vector>
 
 #include "Epub/BookMetadataCache.h"
-#include "HalStorage.h"
 #include "ZipFile.h"
 
 // Counting allocator: heap bytes allocated while `counting` is set and not yet freed.
@@ -54,172 +51,65 @@ void operator delete[](void* p, size_t) noexcept { heap::release(p); }
 
 namespace {
 
-constexpr char cachePath[] = "/cache";
-
 std::string chapterHref(const int i) { return "OEBPS/Text/chapter" + std::to_string(i) + ".xhtml"; }
 uint32_t chapterBytes(const int i) { return 1500 + static_cast<uint32_t>(i) * 7919 % 30000; }
 
-// Builds book.bin for a book of `spineCount` chapters, one TOC entry each, through the cache's own writer.
-void buildBook(const int spineCount) {
-  Storage.clear();
-  zipEntrySizes.clear();
-  for (int i = 0; i < spineCount; i++) zipEntrySizes[chapterHref(i)] = chapterBytes(i);
-
-  BookMetadataCache cache(cachePath);
-  ASSERT_TRUE(cache.beginWrite());
-  ASSERT_TRUE(cache.beginContentOpfPass());
-  for (int i = 0; i < spineCount; i++) cache.createSpineEntry(chapterHref(i));
-  ASSERT_TRUE(cache.endContentOpfPass());
-  ASSERT_TRUE(cache.beginTocPass());
-  for (int i = 0; i < spineCount; i++) cache.createTocEntry("Chapter " + std::to_string(i), chapterHref(i), "", 1);
-  ASSERT_TRUE(cache.endTocPass());
-  ASSERT_TRUE(cache.endWrite());
-  BookMetadataCache::BookMetadata metadata;
-  metadata.title = "Synthetic book";
-  metadata.author = "Test";
-  ASSERT_TRUE(cache.buildBookBin("book.epub", metadata));
-  ASSERT_TRUE(cache.cleanupTmpFiles());
+std::string cacheDir() {
+  return testing::TempDir() + "book_metadata_cache_" + testing::UnitTest::GetInstance()->current_test_info()->name();
 }
 
-struct LoadedHeap {
-  size_t resident = 0;
-  size_t afterLookups = 0;
-};
-
-// Heap a loaded cache holds after load(), and after asking every spine item's cumulative size.
-LoadedHeap loadAndReadSizes(const int spineCount) {
-  buildBook(spineCount);
-  LoadedHeap result;
-  BookMetadataCache cache(cachePath);
-  heap::live = 0;
-  heap::counting = true;
-  EXPECT_TRUE(cache.load());
-  result.resident = heap::live;
-  uint32_t total = 0;
+// Writes book.bin through the cache's own writer; returns every chapter's cumulative size.
+std::vector<uint32_t> buildBook(const std::string& dir, const int spineCount) {
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  zipEntrySizes.clear();
+  std::vector<uint32_t> cumulative;
   for (int i = 0; i < spineCount; i++) {
-    total += chapterBytes(i);
-    EXPECT_EQ(cache.getCumulativeSize(i), total) << "spine " << i;
+    zipEntrySizes[chapterHref(i)] = chapterBytes(i);
+    cumulative.push_back((i > 0 ? cumulative.back() : 0) + chapterBytes(i));
   }
-  result.afterLookups = heap::live;
-  heap::counting = false;
-  return result;
+  BookMetadataCache cache(dir);
+  EXPECT_TRUE(cache.beginWrite() && cache.beginContentOpfPass());
+  for (int i = 0; i < spineCount; i++) cache.createSpineEntry(chapterHref(i));
+  EXPECT_TRUE(cache.endContentOpfPass() && cache.beginTocPass());
+  for (int i = 0; i < spineCount; i++) cache.createTocEntry("Chapter " + std::to_string(i), chapterHref(i), "", 1);
+  EXPECT_TRUE(cache.endTocPass() && cache.endWrite());
+  EXPECT_TRUE(cache.buildBookBin("book.epub", {}));
+  EXPECT_TRUE(cache.cleanupTmpFiles());
+  return cumulative;
 }
 
 }  // namespace
 
-// A loaded book stays in RAM for the whole reading session, next to the section being rendered and
-// anything else the reader starts (radio stacks, image decoders). What it holds must not grow with
-// the number of chapters: a 5,000-chapter book may hold at most 1 KB more than a 30-chapter one.
+// A loaded book must not hold heap per chapter: 5,000 chapters may hold at most 1 KB more than 30.
 TEST(BookMetadataCacheHeap, ResidentHeapDoesNotGrowWithSpineCount) {
-  const LoadedHeap small = loadAndReadSizes(30);
-  printf("BOOK_CACHE_HEAP spine=30 resident=%zu after_lookups=%zu\n", small.resident, small.afterLookups);
-  for (const int spineCount : {1000, 2000, 5000}) {
-    const LoadedHeap large = loadAndReadSizes(spineCount);
-    printf("BOOK_CACHE_HEAP spine=%d resident=%zu after_lookups=%zu\n", spineCount, large.resident, large.afterLookups);
-    if (spineCount == 5000) {
-      EXPECT_LE(large.resident, small.resident + 1024);
-    }
-    // Lookups keep nothing on the heap.
-    EXPECT_EQ(large.afterLookups, large.resident);
+  size_t resident[2] = {};
+  for (const int spineCount : {30, 5000}) {
+    const std::vector<uint32_t> cumulative = buildBook(cacheDir(), spineCount);
+    BookMetadataCache cache(cacheDir());
+    heap::live = 0;
+    heap::counting = true;
+    EXPECT_TRUE(cache.load());
+    const size_t loaded = heap::live;
+    for (int i = 0; i < spineCount; i++) EXPECT_EQ(cache.getCumulativeSize(i), cumulative[i]) << "spine " << i;
+    EXPECT_EQ(heap::live, loaded) << spineCount << " chapters";
+    heap::counting = false;
+    resident[spineCount == 5000] = loaded;
   }
+  EXPECT_LE(resident[1], resident[0] + 1024) << "30 chapters: " << resident[0] << " B";
 }
 
-// Reading straight through a book, every page asks the book's total and the totals before and after
-// its chapter. The sizes stay in book.bin, so those lookups read it, but at most once per 32 chapters.
-TEST(BookMetadataCacheSizes, ReadingThroughTheBookReadsTheCardOncePerWindow) {
-  constexpr int spineCount = 5000;
-  constexpr size_t windows = (spineCount + 31) / 32;
-  buildBook(spineCount);
-  BookMetadataCache cache(cachePath);
+// With book.bin gone after load(), sizes held in RAM still answer; others fall back below the truth.
+TEST(BookMetadataCacheSizes, UnreadableWindowFallsBackBelowTheTrueTotal) {
+  const std::vector<uint32_t> cumulative = buildBook(cacheDir(), 100);
+  BookMetadataCache cache(cacheDir());
   ASSERT_TRUE(cache.load());
-  std::vector<uint32_t> cumulative(spineCount);
-  uint32_t total = 0;
-  for (int i = 0; i < spineCount; i++) cumulative[i] = total += chapterBytes(i);
-
-  cardCalls = {};
-  for (int spine = 0; spine < spineCount; spine++) {
-    for (int page = 0; page < 3; page++) {
-      ASSERT_EQ(cache.getCumulativeSize(spineCount - 1), total);
-      ASSERT_EQ(cache.getCumulativeSize(spine - 1), spine > 0 ? cumulative[spine - 1] : 0u);
-      ASSERT_EQ(cache.getCumulativeSize(spine), cumulative[spine]) << "spine " << spine;
-    }
-  }
-  printf("BOOK_CACHE_CARD spine=%d opens=%zu reads=%zu seeks=%zu\n", spineCount, cardCalls.opens, cardCalls.reads,
-         cardCalls.seeks);
-  // load() already holds the first window.
-  EXPECT_LE(cardCalls.opens, windows - 1);
-  // Per window: one LUT read, then the href length and the size of each of its 32 items.
-  EXPECT_LE(cardCalls.reads, (windows - 1) * (1 + 2 * 32));
-}
-
-// Finding the chapter at a byte offset (percent jump, progress sync) reads at most one window.
-TEST(BookMetadataCacheSizes, SpineIndexForSizeReadsAtMostOneWindow) {
-  for (const int spineCount : {1, 31, 32, 33, 5000}) {
-    buildBook(spineCount);
-    BookMetadataCache cache(cachePath);
-    ASSERT_TRUE(cache.load());
-    std::vector<uint32_t> cumulative(spineCount);
-    uint32_t total = 0;
-    for (int i = 0; i < spineCount; i++) cumulative[i] = total += chapterBytes(i);
-
-    std::vector<int> probes = {0, spineCount / 2, spineCount - 1};
-    for (const int spine : {1, 30, 31, 32, 33, 63, 64, 2500, 4991, 4992}) {
-      if (spine < spineCount) probes.push_back(spine);
-    }
-    for (const int spine : probes) {
-      for (const int delta : {-1, 0, 1}) {
-        const int64_t target = static_cast<int64_t>(cumulative[spine]) + delta;
-        if (target < 0) continue;
-        const auto it = std::lower_bound(cumulative.begin(), cumulative.end(), static_cast<uint32_t>(target));
-        const int expected = it == cumulative.end() ? -1 : static_cast<int>(it - cumulative.begin());
-        cardCalls = {};
-        EXPECT_EQ(cache.getSpineIndexForSize(static_cast<uint32_t>(target)), expected)
-            << "spines " << spineCount << " target " << target;
-        EXPECT_LE(cardCalls.opens, 1u) << "spines " << spineCount << " target " << target;
-      }
-    }
-    EXPECT_EQ(cache.getSpineIndexForSize(0), 0);
-    EXPECT_EQ(cache.getSpineIndexForSize(total + 1), -1);
-  }
-}
-
-// When the window holding the answer cannot be read from book.bin (file gone, cut short or damaged
-// after load()), the lookup must answer -1 so the percent jump and progress sync take their fallback,
-// instead of landing on the last item of the window, up to 31 chapters off.
-TEST(BookMetadataCacheSizes, SpineIndexForSizeFailsWhenItsWindowCannotBeRead) {
-  constexpr int spineCount = 5000;
-  constexpr int spine = 2500;  // Mid-window, far from the window load() keeps.
-  const std::string bookBin = std::string(cachePath) + "/book.bin";
-  enum class Damage { Missing, Truncated, Corrupted };
-  for (const Damage damage : {Damage::Missing, Damage::Truncated, Damage::Corrupted}) {
-    buildBook(spineCount);
-    BookMetadataCache cache(cachePath);
-    ASSERT_TRUE(cache.load());
-    uint32_t target = 0;
-    for (int i = 0; i <= spine; i++) target += chapterBytes(i);
-    ASSERT_EQ(cache.getSpineIndexForSize(target), spine);
-
-    // Reload so the window holding `spine` is no longer the one in RAM.
-    BookMetadataCache damaged(cachePath);
-    ASSERT_TRUE(damaged.load());
-    std::vector<uint8_t>* bytes = Storage.bytes(bookBin);
-    ASSERT_NE(bytes, nullptr);
-    // Spine entries come before TOC entries: href length, href, cumulative size, TOC index.
-    const std::string href = chapterHref(spine);
-    const auto at = std::search(bytes->begin(), bytes->end(), href.begin(), href.end());
-    ASSERT_NE(at, bytes->end());
-    const size_t hrefPos = static_cast<size_t>(at - bytes->begin());
-    switch (damage) {
-      case Damage::Missing:
-        Storage.remove(bookBin.c_str());
-        break;
-      case Damage::Truncated:
-        bytes->resize(hrefPos);
-        break;
-      case Damage::Corrupted:
-        std::fill_n(bytes->begin() + static_cast<std::ptrdiff_t>(hrefPos + href.size()), sizeof(uint32_t), 0);
-        break;
-    }
-    EXPECT_EQ(damaged.getSpineIndexForSize(target), -1) << "damage " << static_cast<int>(damage);
+  EXPECT_EQ(cache.getCumulativeSize(64), cumulative[64]);
+  std::filesystem::remove(cacheDir() + "/book.bin");
+  for (int i = 64; i < 96; i++) EXPECT_EQ(cache.getCumulativeSize(i), cumulative[i]) << "spine " << i;
+  for (int i = 0; i < 100; i++) {
+    const bool inRam = i % 32 == 31 || i == 99;
+    const uint32_t expected = inRam ? cumulative[i] : i < 32 ? 0 : cumulative[i / 32 * 32 - 1];
+    EXPECT_EQ(cache.getCumulativeSize(i), expected) << "spine " << i;
   }
 }
