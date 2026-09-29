@@ -585,6 +585,12 @@ void EpubReaderActivity::loop() {
     }
   }
 
+  // The remote linked, or failed to, after the status bar showed its note: paint the page again.
+  {
+    RenderLock lock(RenderLock::Mode::Try);
+    if (lock.ownsLock() && linkNoteTitle.repaint(bleturner::linkNote())) requestUpdate();
+  }
+
   // Someone else turned the screen while this reader was stacked (the control
   // center's orientation tile). Reflow before the next render, or the page
   // would be drawn with a layout built for the previous frame size.
@@ -1335,6 +1341,8 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
 
 bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
   if (!section) return false;
+  // A "Bluetooth failed" note has been read: the page this turn paints shows the title again.
+  bleturner::acknowledgeLinkNote();
   {
     RenderLock lock;
     clearDeferredReposition();
@@ -1376,6 +1384,7 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
 
 bool EpubReaderActivity::skipPages(int amount) {
   if (!section) return false;
+  bleturner::acknowledgeLinkNote();
   if (amount > 0) {
     RenderLock lock;
     nextPageNumber = 0;
@@ -2296,7 +2305,10 @@ void EpubReaderActivity::renderStatusBar() const {
   int textYOffset = 0;
   const auto sb = SETTINGS.statusBarSpec();
 
-  if (automaticPageTurnActive) {
+  const auto note = linkNoteTitle.draw(sb.showsTitle(), bleturner::linkNote());
+  if (note != bleturner::LinkNote::None) {
+    title = note == bleturner::LinkNote::Connecting ? tr(STR_BT_CONNECTING) : tr(STR_BT_FAILED);
+  } else if (automaticPageTurnActive) {
     title = tr(STR_AUTO_TURN_ENABLED) + std::to_string(60 * 1000 / pageTurnDuration);
     const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
     if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
