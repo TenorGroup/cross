@@ -251,6 +251,40 @@ TEST_F(TickTest, SelectedRemoteIsArmedOnceBeforeTheFirstPoll) {
   EXPECT_EQ(radio().armCalls, 2u) << "a new visit arms it again";
 }
 
+// The chosen remote's reconnect could not be armed and the stack linked another bonded
+// remote: its presses are dropped, and the book still waits for the chosen one.
+TEST_F(TickTest, OnlyTheChosenRemoteTurnsPages) {
+  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  running();
+  radio().connected = true;
+  radio().addr = "11:22:33:44:55:66";
+  radio().name = "Other Remote";
+  pass(fake::reading());
+  radio().keys = {{bleturner::kUsageRight, 0, true}};
+  edge(0x030102, true);
+  EXPECT_FALSE(pass(fake::reading()));
+  EXPECT_TRUE(host().delivered.empty());
+  EXPECT_TRUE(radio().keys.empty() && radio().raw.empty()) << "dropped, not kept for a later link";
+  EXPECT_EQ(bleturner::linkNote(), bleturner::LinkNote::Connecting) << "the chosen remote has not linked";
+  link("Some Remote");
+  pass(fake::reading());
+  radio().keys = {{bleturner::kUsageRight, 0, true}};
+  EXPECT_TRUE(pass(fake::reading()));
+  EXPECT_EQ(host().delivered, (std::vector<Action>{Action::NextPage}));
+  EXPECT_EQ(bleturner::linkNote(), bleturner::LinkNote::None);
+}
+
+TEST_F(TickTest, WithNoChosenRemoteAnyLinkedRemoteTurnsPages) {
+  running();
+  radio().connected = true;
+  radio().addr = "11:22:33:44:55:66";
+  radio().name = "Other Remote";
+  pass(fake::reading());
+  radio().keys = {{bleturner::kUsageRight, 0, true}};
+  EXPECT_TRUE(pass(fake::reading()));
+  EXPECT_EQ(host().delivered, (std::vector<Action>{Action::NextPage}));
+}
+
 TEST_F(TickTest, ThreeButtonRemoteTapSkipsAChapterAndItsHoldFrameGoesBack) {
   running();
   link("Free3-R");
