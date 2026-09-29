@@ -305,14 +305,26 @@ void EpubReaderActivity::openReaderMenu() {
 // radio holds about 50 KB while it runs, and no heap figure taken before a build tells whether the
 // build fits next to it (X3: with the radio up, 55 KB free and a 47 KB block, a 6 KB chapter ran
 // out of memory). So the radio stops for every build and starts again once the chapter is built
-// and its page is shown. When it does not stop in time, or a start is still settling, the build is
-// refused rather than run next to it.
+// and its page is shown. A radio that did not stop within the module's 3 s, or a start still
+// settling, usually lets go soon after: the build waits up to BUILD_ROOM_WAIT_MS more, then is
+// refused rather than run next to it. The stop finishes on the main loop (the module's tick) and
+// the start on its own task; neither needs the render lock this task holds.
 bool EpubReaderActivity::makeRoomForChapterBuild() {
-  if (!radioReleasedForBuild.load()) {
-    radioReleasedForBuild = bleturner::beforeChapterBuild() != bleturner::BuildRelease::NotHeld;
-  }
-  if (chapterBuildMayRun(bleturner::status())) return true;
-  LOG_ERR("ERS", "Bluetooth radio still holds the heap; chapter build refused");
+  bool asked = false;
+  const auto roomMade = [this, &asked] {
+    // The first ask stops the radio. A later one asks again only once a start that was still
+    // settling has left the radio up.
+    if (!radioReleasedForBuild.load() && (!asked || !bleturner::status().starting)) {
+      radioReleasedForBuild = bleturner::beforeChapterBuild() != bleturner::BuildRelease::NotHeld;
+    }
+    asked = true;
+    return chapterBuildMayRun(bleturner::status());
+  };
+  const auto nowMs = [] { return static_cast<uint32_t>(millis()); };
+  const auto nap = [](const uint32_t ms) { delay(ms); };
+  if (waitForBuildRoom(roomMade, nowMs, nap, BUILD_ROOM_WAIT_MS, BUILD_ROOM_STEP_MS)) return true;
+  LOG_ERR("ERS", "Bluetooth radio still holds the heap after %u ms; chapter build refused",
+          static_cast<unsigned>(BUILD_ROOM_WAIT_MS));
   return false;
 }
 
@@ -1200,11 +1212,11 @@ void EpubReaderActivity::renderBook() {
     GUI.drawPopup(renderer, tr(STR_SAVE_PROGRESS_FAILED));
   };
 
-  const auto showBuildError = [this]() {
+  const auto showBuildError = [this](const char* message = nullptr) {
     renderer.clearScreen();
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-    GUI.drawPopup(renderer, tr(STR_INDEX_FAILED));
+    GUI.drawPopup(renderer, message ? message : tr(STR_INDEX_FAILED));
     automaticPageTurnActive = false;
   };
 
@@ -1274,7 +1286,7 @@ void EpubReaderActivity::renderBook() {
         };
         if (!makeRoomForChapterBuild()) {
           section.reset();
-          showBuildError();
+          showBuildError(tr(STR_BT_BUILD_REFUSED));
           return;
         }
         GfxRenderer::FrameBufferLoan loan(renderer);
@@ -1326,7 +1338,7 @@ void EpubReaderActivity::renderBook() {
           if (!makeRoomForChapterBuild()) {
             section.reset();
             buildPopupPending = false;
-            showBuildError();
+            showBuildError(tr(STR_BT_BUILD_REFUSED));
             return;
           }
           LOG_DBG("ERS", "Heap before section build: %u (max block %u)", (unsigned)ESP.getFreeHeap(),
@@ -1406,7 +1418,7 @@ void EpubReaderActivity::renderBook() {
   if ((section->isPartial() || section->isBuilding()) && section->currentPage >= static_cast<int>(section->pageCount) &&
       !makeRoomForChapterBuild()) {
     section.reset();
-    showBuildError();
+    showBuildError(tr(STR_BT_BUILD_REFUSED));
     return;
   }
   if (section->isPartial() && section->currentPage >= static_cast<int>(section->pageCount)) {
