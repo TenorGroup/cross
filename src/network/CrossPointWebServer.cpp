@@ -775,6 +775,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
       }
     }
   } else if (upload.status == UPLOAD_FILE_END) {
+    if (!server->client().connected()) return;
     if (state.file) {
       // Flush any remaining buffered data
       if (!flushUploadBuffer(state)) {
