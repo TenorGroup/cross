@@ -30,3 +30,57 @@ TEST(ChapterBuildGate, RefusedWhileTheRadioHoldsOrTakesTheHeap) {
   starting.starting = true;
   EXPECT_FALSE(chapterBuildMayRun(starting));
 }
+
+namespace {
+// A clock that only moves when the wait sleeps.
+struct FakeClock {
+  uint32_t nowMs = 1000;
+  unsigned asks = 0;
+  bool wait(const uint32_t readyAtMs, const uint32_t waitMs) {
+    const uint32_t started = nowMs;
+    return waitForBuildRoom(
+        [&] {
+          ++asks;
+          return nowMs - started >= readyAtMs;
+        },
+        [&] { return nowMs; }, [&](const uint32_t ms) { nowMs += ms; }, waitMs, 50);
+  }
+};
+}  // namespace
+
+TEST(ChapterBuildGate, ReadyAtOnceDoesNotWait) {
+  FakeClock clock;
+  EXPECT_TRUE(clock.wait(0, 5000));
+  EXPECT_EQ(clock.nowMs, 1000u);
+  EXPECT_EQ(clock.asks, 1u);
+}
+
+// The radio stops a little after the module's own 3 s budget: the build waits for it.
+TEST(ChapterBuildGate, RadioThatStopsAfterASecondLetsTheBuildRun) {
+  FakeClock clock;
+  EXPECT_TRUE(clock.wait(1000, 5000));
+  EXPECT_GE(clock.nowMs - 1000, 1000u);
+  EXPECT_LT(clock.nowMs - 1000, 1050u);
+}
+
+TEST(ChapterBuildGate, RadioThatNeverStopsIsRefusedAfterTheWait) {
+  FakeClock clock;
+  EXPECT_FALSE(clock.wait(UINT32_MAX, 5000));
+  EXPECT_GE(clock.nowMs - 1000, 5000u);
+  EXPECT_LT(clock.nowMs - 1000, 5050u);
+}
+
+// The first ask is the module's own stop, which can take seconds: the extra wait starts after it.
+TEST(ChapterBuildGate, TheWaitStartsAfterASlowFirstAsk) {
+  uint32_t nowMs = 0;
+  unsigned asks = 0;
+  const bool ok = waitForBuildRoom(
+      [&] {
+        if (asks++ == 0) nowMs += 3000;
+        return false;
+      },
+      [&] { return nowMs; }, [&](const uint32_t ms) { nowMs += ms; }, 5000, 50);
+  EXPECT_FALSE(ok);
+  EXPECT_GE(nowMs, 8000u);
+  EXPECT_LT(nowMs, 8050u);
+}
