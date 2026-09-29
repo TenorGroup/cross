@@ -25,6 +25,7 @@
 
 #include "../../util/BookmarkFile.h"
 #include "BookmarkEntry.h"
+#include "ChapterBuildGate.h"
 #include "ClipSelectionActivity.h"
 #include "ClippingStore.h"
 #include "CrossPointSettings.h"
@@ -355,10 +356,15 @@ void EpubReaderActivity::openReaderMenu() {
 // radio holds about 50 KB while it runs, and no heap figure taken before a build tells whether the
 // build fits next to it (X3: with the radio up, 55 KB free and a 47 KB block, a 6 KB chapter ran
 // out of memory). So the radio stops for every build and starts again once the chapter is built
-// and its page is shown.
-void EpubReaderActivity::makeRoomForChapterBuild() {
-  if (radioReleasedForBuild.load()) return;
-  radioReleasedForBuild = bleturner::beforeChapterBuild() != bleturner::BuildRelease::NotHeld;
+// and its page is shown. When it does not stop in time, or a start is still settling, the build is
+// refused rather than run next to it.
+bool EpubReaderActivity::makeRoomForChapterBuild() {
+  if (!radioReleasedForBuild.load()) {
+    radioReleasedForBuild = bleturner::beforeChapterBuild() != bleturner::BuildRelease::NotHeld;
+  }
+  if (chapterBuildMayRun(bleturner::status())) return true;
+  LOG_ERR("ERS", "Bluetooth radio still holds the heap; chapter build refused");
+  return false;
 }
 
 bool EpubReaderActivity::buildTickHeapGate() {
@@ -1588,7 +1594,11 @@ void EpubReaderActivity::renderBook() {
         const auto popupFn = [this]() {
           if (renderer.hasFrameBuffer()) GUI.drawPopup(renderer, tr(STR_INDEXING));
         };
-        makeRoomForChapterBuild();
+        if (!makeRoomForChapterBuild()) {
+          section.reset();
+          showBuildError();
+          return;
+        }
         GfxRenderer::FrameBufferLoan loan(renderer);
         if (!section->createSectionFile(renderSpec, popupFn)) {
           LOG_ERR("ERS", "Failed to persist page data to SD");
@@ -1635,7 +1645,12 @@ void EpubReaderActivity::renderBook() {
               fcm->releaseSdFontCaches();
             }
           }
-          makeRoomForChapterBuild();
+          if (!makeRoomForChapterBuild()) {
+            section.reset();
+            buildPopupPending = false;
+            showBuildError();
+            return;
+          }
           LOG_DBG("ERS", "Heap before section build: %u (max block %u)", (unsigned)ESP.getFreeHeap(),
                   (unsigned)ESP.getMaxAllocHeap());
           const unsigned long buildStartMs = millis();
@@ -1710,8 +1725,11 @@ void EpubReaderActivity::renderBook() {
   }
 
   // The two loops below build on until the page to show exists.
-  if ((section->isPartial() || section->isBuilding()) && section->currentPage >= static_cast<int>(section->pageCount)) {
-    makeRoomForChapterBuild();
+  if ((section->isPartial() || section->isBuilding()) && section->currentPage >= static_cast<int>(section->pageCount) &&
+      !makeRoomForChapterBuild()) {
+    section.reset();
+    showBuildError();
+    return;
   }
   if (section->isPartial() && section->currentPage >= static_cast<int>(section->pageCount)) {
     GUI.drawPopup(renderer, tr(STR_INDEXING));
