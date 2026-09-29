@@ -2,8 +2,6 @@
 
 #include <Logging.h>
 
-#include "TiltPickUp.h"
-
 HalTiltSensor halTiltSensor;  // Singleton instance
 
 void HalTiltSensor::begin() {
@@ -35,7 +33,6 @@ bool HalTiltSensor::wake() {
   _lastPollMs = millis();
   _lastTiltMs = millis();
   _wakeMs = millis();
-  _baselineValid = false;
   _isAwake = true;
   return true;
 }
@@ -72,9 +69,7 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
 
   // If disabled, skip the rest of the polling logic and avoid unnecessary I2C traffic in non-reader activities
   if ((mode == CrossPointTiltPageTurn::TILT_OFF) || !inReader) {
-    // Off the reader the pose goes stale, and a flick still settling belongs to the page it started on.
     _baselineValid = false;
-    _flickPending = false;
     return;
   }
 
@@ -98,12 +93,8 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   const int32_t mg[3] = {static_cast<int32_t>(sample.ax * 1000.0f), static_cast<int32_t>(sample.ay * 1000.0f),
                          static_cast<int32_t>(sample.az * 1000.0f)};
   if (!_baselineValid) {
-    // The pose a flick has to come back to is taken with the device still: back in the book from a
-    // menu while it is still moving, no flick is armed until it settles.
-    if (fabsf(gx) >= NEUTRAL_RATE_DPS || fabsf(gy) >= NEUTRAL_RATE_DPS) return;
     for (int i = 0; i < 3; ++i) _baselineMg[i] = mg[i];
     _baselineValid = true;
-    return;
   }
 
   // Map the gyro axis to left/right tilt based on reader orientation.
@@ -128,13 +119,22 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   }
 
   if (_flickPending) {
-    const auto verdict = TiltPickUp::settle(_flickPoseMg, mg, tiltAxis, now - _flickMs);
-    if (verdict == TiltPickUp::Verdict::Flick) {
-      _flickPending = false;
-      (_flickForward ? _tiltForwardEvent : _tiltBackEvent) = true;
-    } else if (verdict == TiltPickUp::Verdict::PickUp) {
+    int64_t dot = 0, poseSq = 0, nowSq = 0;
+    for (int i = 0; i < 3; ++i) {
+      dot += static_cast<int64_t>(_flickPoseMg[i]) * mg[i];
+      poseSq += static_cast<int64_t>(_flickPoseMg[i]) * _flickPoseMg[i];
+      nowSq += static_cast<int64_t>(mg[i]) * mg[i];
+    }
+    // A flick comes to rest near its pose; a pick-up stays turned, and lifting adds to gravity.
+    const bool gravityOnly =
+        nowSq >= (1000 - REST_MG) * (1000 - REST_MG) && nowSq <= (1000 + REST_MG) * (1000 + REST_MG);
+    if (now - _flickMs > FLICK_WAIT_MS) {
       _flickPending = false;
       LOG_INF("GYR", "Tilt dropped: device picked up");
+    } else if (fabsf(tiltAxis) < CALM_RATE_DPS && gravityOnly && dot > 0 &&
+               64 * dot * dot >= POSE_COS_SQ64 * poseSq * nowSq) {
+      _flickPending = false;
+      (_flickForward ? _tiltForwardEvent : _tiltBackEvent) = true;
     }
   }
 
@@ -165,11 +165,8 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   for (int i = 0; i < 3; ++i) _baselineMg[i] += (mg[i] - _baselineMg[i]) / 8;
 }
 
-// The page turns once TiltPickUp::settle() says the device is back at rest; picking it up drops it.
-// A flick still waiting keeps its place: a swing back past the trigger rate before it comes to
-// rest would otherwise turn the page the wrong way.
 void HalTiltSensor::startFlick(const bool forward, const unsigned long now) {
-  if (_flickPending) return;
+  if (_flickPending) return;  // A swing back must not replace a waiting flick
   _flickPending = true;
   _flickForward = forward;
   _flickMs = now;
@@ -197,7 +194,6 @@ bool HalTiltSensor::hadActivity() {
 void HalTiltSensor::clearPendingEvents() {
   _tiltForwardEvent = false;
   _tiltBackEvent = false;
-  _flickPending = false;
   _hadActivity = false;
   // Intentionally preserve _inTilt so a held tilt doesn't retrigger on next poll
 }

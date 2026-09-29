@@ -29,12 +29,11 @@ class HalTiltSensor {
   unsigned long _lastTiltMs = 0;   // Debounce / cooldown
   unsigned long _wakeMs = 0;       // Timestamp of last wake() for stabilization
 
-  // Slow baseline of the acceleration in mg (1/8 per poll): where the device
-  // was before a flick.
+  // Acceleration in mg, averaged 1/8 per poll: the pose before a flick
   bool _baselineValid = false;
   int32_t _baselineMg[3] = {};
 
-  // A flick that fired and waits for TiltPickUp::settle() to tell it from a pick-up.
+  // A flick turns the page once at rest near its pose; otherwise it was a pick-up
   bool _flickPending = false;
   bool _flickForward = false;
   unsigned long _flickMs = 0;
@@ -46,6 +45,10 @@ class HalTiltSensor {
   static constexpr unsigned long COOLDOWN_MS = 600;        // Minimum ms between triggers
   static constexpr unsigned long POLL_INTERVAL_MS = 50;    // 20 Hz polling
   static constexpr unsigned long WAKE_STABILIZE_MS = 300;  // Ignore readings after wake
+  static constexpr float CALM_RATE_DPS = 60.0f;            // At rest: slower than this
+  static constexpr int64_t REST_MG = 100;                  // At rest: within this of 1 g
+  static constexpr int64_t POSE_COS_SQ64 = 55;             // Near the pose: within 22 deg (cos^2 >= 55/64)
+  static constexpr unsigned long FLICK_WAIT_MS = 800;      // Not at rest near the pose by then: a pick-up
 
   mutable unsigned long _lastPollMs = 0;
 

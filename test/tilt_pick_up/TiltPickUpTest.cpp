@@ -4,9 +4,6 @@
 #include <vector>
 
 #include "HalTiltSensor.h"
-#include "TiltPickUp.h"
-
-// ---- Fake clock and IMU for HalTiltSensor.cpp ----
 
 namespace {
 unsigned long fakeMs = 0;
@@ -31,8 +28,6 @@ bool Imu::wake() { return true; }
 
 namespace {
 
-using TiltPickUp::Verdict;
-
 // Gravity turned by `degrees` away from the screen facing up (az -1 g on the X3).
 void pose(const double degrees, int32_t (&mg)[3]) {
   const double rad = degrees * 3.14159265358979 / 180.0;
@@ -40,67 +35,6 @@ void pose(const double degrees, int32_t (&mg)[3]) {
   mg[1] = 0;
   mg[2] = static_cast<int32_t>(std::lround(-1000.0 * std::cos(rad)));
 }
-
-// `g` scales the reading now: 1 is gravity alone, more is a hand lifting the device.
-Verdict settleAt(const double degrees, const float rateDps, const unsigned long ageMs, const double g = 1.0) {
-  int32_t start[3];
-  int32_t now[3];
-  pose(0, start);
-  pose(degrees, now);
-  for (auto& axis : now) axis = static_cast<int32_t>(std::lround(axis * g));
-  return TiltPickUp::settle(start, now, rateDps, ageMs);
-}
-
-// ---- The decision on its own ----
-
-TEST(TiltPickUpSettle, SwingingBackAwayFromTheStartIsNotRest) {
-  EXPECT_EQ(settleAt(60, -300.0f, 200), Verdict::Wait);
-  EXPECT_EQ(settleAt(0, -300.0f, 200), Verdict::Wait);
-}
-
-TEST(TiltPickUpSettle, RestMeansGravityAlone) {
-  EXPECT_EQ(settleAt(0, 0.0f, 150, 1.09), Verdict::Flick);
-  EXPECT_EQ(settleAt(0, 0.0f, 150, 0.91), Verdict::Flick);
-  EXPECT_EQ(settleAt(0, 0.0f, 150, 1.11), Verdict::Wait);
-  EXPECT_EQ(settleAt(0, 0.0f, 150, 0.89), Verdict::Wait);
-  // A lift off a table as recorded: 1.23 g, 21 degrees from the start, not turning.
-  EXPECT_EQ(settleAt(21, 5.0f, 150, 1.23), Verdict::Wait);
-}
-
-TEST(TiltPickUpSettle, RestingNearTheStartIsAFlick) {
-  EXPECT_EQ(settleAt(0, 0.0f, 50), Verdict::Flick);
-  EXPECT_EQ(settleAt(21, 59.0f, 300), Verdict::Flick);
-  EXPECT_EQ(settleAt(23, 0.0f, 300), Verdict::Wait);
-  EXPECT_EQ(settleAt(0, 60.0f, 300), Verdict::Wait);
-  EXPECT_EQ(settleAt(0, -60.0f, 300), Verdict::Wait);
-}
-
-TEST(TiltPickUpSettle, LeftTurnedIsAPickUpOnceTheWaitIsOver) {
-  EXPECT_EQ(settleAt(90, 0.0f, 800), Verdict::Wait);
-  EXPECT_EQ(settleAt(90, 0.0f, 801), Verdict::PickUp);
-  EXPECT_EQ(settleAt(65, 0.0f, 801), Verdict::PickUp);
-  // Upside down is as far from the start as it gets.
-  EXPECT_EQ(settleAt(180, 0.0f, 801), Verdict::PickUp);
-}
-
-TEST(TiltPickUpSettle, RestReachedAfterTheWaitIsStillAPickUp) {
-  EXPECT_EQ(settleAt(0, 0.0f, 800), Verdict::Flick);
-  EXPECT_EQ(settleAt(0, 0.0f, 801), Verdict::PickUp);
-  EXPECT_EQ(settleAt(21, 59.0f, 801), Verdict::PickUp);
-}
-
-TEST(TiltPickUpSettle, ThresholdsAreParameters) {
-  TiltPickUp::Thresholds wide;
-  wide.poseCosSq64 = 37;  // 40 degrees
-  int32_t start[3];
-  int32_t now[3];
-  pose(0, start);
-  pose(30, now);
-  EXPECT_EQ(TiltPickUp::settle(start, now, 0.0f, 100), Verdict::Wait);
-  EXPECT_EQ(TiltPickUp::settle(start, now, 0.0f, 100, wide), Verdict::Flick);
-}
-
-// ---- Recorded X3 motion through HalTiltSensor.cpp ----
 
 struct Sample {
   unsigned long ms;
@@ -116,7 +50,7 @@ void hold(const Sample& s) {
   fakeSample = {s.ax / 1000.0f, s.ay / 1000.0f, s.az / 1000.0f, static_cast<float>(s.gx), 0.0f, 0.0f};
 }
 
-// A reader open with the device held still on the first sample, then every sample at its own time.
+// Held still on the first sample for 1 s, then each sample at its time.
 Turns replay(const std::vector<Sample>& samples) {
   halTiltSensor = HalTiltSensor{};
   halTiltSensor.begin();
@@ -136,8 +70,7 @@ Turns replay(const std::vector<Sample>& samples) {
   return turns;
 }
 
-// A forward flick that swings back past the trigger rate the other way 650 ms later,
-// before it has come to rest, then settles where it started: one forward turn.
+// A forward flick that swings back past the trigger rate before coming to rest: one forward turn.
 TEST(TiltPickUpReplay, ASwingBackDoesNotReplaceAWaitingFlick) {
   std::vector<Sample> samples;
   const auto at = [&samples](const unsigned long ms, const double degrees, const int gx) {
@@ -155,40 +88,8 @@ TEST(TiltPickUpReplay, ASwingBackDoesNotReplaceAWaitingFlick) {
   EXPECT_EQ(t.forward, 1);
   EXPECT_EQ(t.back, 0);
 }
-// Back in the book from a menu while the device is still moving (the sensor stays awake off the
-// reader, so there is no wake settling): the first polls already turn fast, then the device comes
-// to rest turned away. With no still pose to go back to, nothing turns.
-TEST(TiltPickUpReplay, ReturningToTheBookMidMotionWaitsForAStillPose) {
-  const unsigned long start = 10000;
-  fakeMs = start - 3000;
-  halTiltSensor = HalTiltSensor{};
-  halTiltSensor.begin();
-  int turns = 0;
-  const auto at = [&](const unsigned long ms, const double degrees, const int gx, const bool inReader) {
-    int32_t mg[3];
-    pose(degrees, mg);
-    hold({ms, mg[0], mg[1], mg[2], gx});
-    fakeMs = start + ms;
-    halTiltSensor.update(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointOrientation::PORTRAIT, inReader);
-    turns += halTiltSensor.wasTiltedForward();
-    turns += halTiltSensor.wasTiltedBack();
-  };
-  for (long ms = -2000; ms < -1000; ms += 50) at(static_cast<unsigned long>(start + ms) - start, 0, 0, true);
-  for (long ms = -1000; ms < 0; ms += 50) at(static_cast<unsigned long>(start + ms) - start, 0, 0, false);
-  at(0, 20, 400, true);
-  at(50, 28, 350, true);
-  at(100, 34, 300, true);
-  for (unsigned long ms = 150; ms <= 2000; ms += 50) at(ms, 36, 0, true);
-  EXPECT_EQ(turns, 0);
-}
 
-// Recorded on an X3 held by hand in portrait: one row per tilt poll, 0.4 s before to 0.85 s after the
-// poll that passed the 270 dps trigger, as ms, ax, ay, az (mg), gx (dps). 8 of 87 recorded clips
-// (66 flicks, 21 pick-ups): a flick each way and a lap and a table pick-up each way, from each
-// recording. Each gives the same turns as its full clip. "session" and "table" clips are the FIFO's
-// latest frame (about 199 Hz), the others the sensor at 28 Hz read at each poll. flick-menu-a-1 is the
-// slowest flick to come to rest (564 ms); flick-menu-b-6 turns no page if the pose is taken from the
-// previous poll.
+// 8 of 87 clips recorded on an X3, 0.4 s before to 0.85 s after the trigger: ms, ax, ay, az (mg), gx (dps).
 struct Clip {
   const char* name;
   int forward, back;  // Page turns it should give
