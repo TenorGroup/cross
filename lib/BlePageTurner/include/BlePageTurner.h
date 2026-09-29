@@ -197,11 +197,14 @@ struct Peer {
 bool switchOn();
 // The user turned it off: clears the reasons and stops, waiting up to 1 s.
 bool switchOff();
-// Connection work while the settings screen is open.
-void service();
+// Connection work while the settings screen is open. True when it changed the Config (a remote
+// being paired linked and became the chosen one): the host saves it.
+bool service();
 // Scans for durationMs; 0 stops a scan.
 void scan(uint32_t durationMs);
-bool pair(const char* addr);
+// Pairs (or connects) this remote. It becomes the chosen one only once it links (service()); a
+// pairing that fails leaves the choice as it was.
+bool pair(const char* addr, const char* name);
 void disconnect();
 // Forgets the bond, its button table and, if it was the chosen remote, the choice.
 // True when the Config changed (the host saves it).

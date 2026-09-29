@@ -397,11 +397,11 @@ TEST_F(RuntimeTest, SwitchOffClearsReasonsAndStopsWithOneSecond) {
 }
 
 TEST_F(RuntimeTest, PairStartsTheRadioThenConnects) {
-  EXPECT_TRUE(bleturner::pair("AA:BB:CC:DD:EE:01"));
+  EXPECT_TRUE(bleturner::pair("AA:BB:CC:DD:EE:01", "Remote"));
   EXPECT_TRUE(radio().running);
   ASSERT_EQ(radio().connects.size(), 1u);
   config.enabled = 0;
-  EXPECT_FALSE(bleturner::pair("AA:BB:CC:DD:EE:02")) << "a page turner switched off does not pair";
+  EXPECT_FALSE(bleturner::pair("AA:BB:CC:DD:EE:02", "Remote")) << "a page turner switched off does not pair";
   EXPECT_EQ(radio().connects.size(), 1u);
 }
 

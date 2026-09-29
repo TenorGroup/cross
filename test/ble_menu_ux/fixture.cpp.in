@@ -55,7 +55,7 @@ bool switchOff() { return true; }
 void startScan() { scan = true; }
 void stopScan() { scan = false; }
 // The module's pair(): a page turner switched off does not start the radio or connect.
-bool pair(const char* addr) {
+bool pair(const char* addr, const char*) {
   if (!SETTINGS.ble.enabled) return false;
   ++begins;
   connections.emplace_back(addr);

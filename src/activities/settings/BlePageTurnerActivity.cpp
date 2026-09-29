@@ -31,7 +31,8 @@ bool switchOff() { return bleturner::switchOff(); }
 bool stopping() { return bleturner::status().stopping; }
 bool running() { return bleturner::status().running; }
 bool idleStopped() { return bleturner::status().idleStopped; }
-void poll() { bleturner::service(); }
+// True when a remote being paired linked and became the chosen one: the settings are saved.
+bool poll() { return bleturner::service(); }
 bool scanning() { return bleturner::status().scanning; }
 void startScan() { bleturner::scan(15000); }
 void stopScan() { bleturner::scan(0); }
@@ -45,7 +46,7 @@ bool connected() { return bleturner::status().connected; }
 bool connecting() { return bleturner::status().connecting; }
 const char* connectedName() { return bleturner::linked().name; }
 const char* connectedAddr() { return bleturner::linked().addr; }
-bool pair(const char* addr) { return bleturner::pair(addr); }
+bool pair(const char* addr, const char* name) { return bleturner::pair(addr, name); }
 void disconnect() { bleturner::disconnect(); }
 // Quen ca bond, bang nut cua no va lua chon da luu neu trung: true = cai dat da doi.
 bool forget(const char* addr) { return bleturner::forget(addr); }
@@ -123,7 +124,7 @@ void BlePageTurnerActivity::loop() {
   const uint32_t now = millis();
   if (now - lastPollMs < 250) return;  // nhip 4 lan/giay: du muot cho e-ink, khong quay CPU
   lastPollMs = now;
-  if (SETTINGS.ble.enabled && backend::running()) backend::poll();
+  if (SETTINGS.ble.enabled && backend::running() && backend::poll()) SETTINGS.saveToFile();
 
   if (trangThaiSig() == lastStateSig) return;  // khong co gi doi thi khong ve lai: e-ink tra gia cho moi khung
   // capNhatTrangThai() chot luon lastStateSig, nen mot nhip bam tay da cap nhat
@@ -432,16 +433,17 @@ void BlePageTurnerActivity::handleScanRow() {
 void BlePageTurnerActivity::openPairedPopup(const int bondIndex) {
   if (bondIndex < 0 || bondIndex >= backend::bondCount()) return;
   const std::string addr = backend::bondAddr(bondIndex);
+  const std::string name = backend::bondName(bondIndex);
   const bool dangNoi = backend::connected();
   const StrId options[2] = {dangNoi ? StrId::STR_BLE_DISCONNECT : StrId::STR_BLE_CONNECT, StrId::STR_BLE_FORGET};
-  optionPopup.show(StrId::STR_BLE_PAIRED_DEVICES, options, 2, 0, [this, addr, dangNoi](const int idx) {
+  optionPopup.show(StrId::STR_BLE_PAIRED_DEVICES, options, 2, 0, [this, addr, name, dangNoi](const int idx) {
     if (idx == 0) {
       if (dangNoi) {
         backend::disconnect();
       } else {
         chupChuoi(SETTINGS.ble.peerAddr, addr.c_str(), sizeof(SETTINGS.ble.peerAddr));
         SETTINGS.saveToFile();
-        backend::pair(SETTINGS.ble.peerAddr);
+        backend::pair(SETTINGS.ble.peerAddr, name.c_str());
       }
     } else if (backend::forget(addr.c_str())) {
       SETTINGS.saveToFile();
@@ -482,10 +484,8 @@ void BlePageTurnerActivity::activateIndex(const int index) {
   } else if (code >= ROW_DEVICE_BASE && code < ROW_DEVICE_BASE + static_cast<int16_t>(backend::deviceCount())) {
     const int dev = code - ROW_DEVICE_BASE;
     backend::stopScan();
-    chupChuoi(SETTINGS.ble.peerAddr, backend::deviceAddr(dev), sizeof(SETTINGS.ble.peerAddr));
-    chupChuoi(SETTINGS.ble.peerName, backend::deviceName(dev), sizeof(SETTINGS.ble.peerName));
-    SETTINGS.saveToFile();
-    backend::pair(SETTINGS.ble.peerAddr);
+    // Chi thanh remote da chon khi noi duoc (bleturner::service): ghep hong giu nguyen remote cu.
+    backend::pair(backend::deviceAddr(dev), backend::deviceName(dev));
   } else {
     return;  // dong tieu de / dong "khong tim thay": khong co viec gi
   }
