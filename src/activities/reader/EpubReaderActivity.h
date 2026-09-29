@@ -122,9 +122,9 @@ class EpubReaderActivity final : public ReaderActivity {
   bool buildTickHeapGate();
   bool buildHeapPaused = false;
   // Bluetooth page turner: every chapter build stops the radio until the chapter is built and its
-  // page is shown.
+  // page is shown. False: the radio still holds or is taking the heap, and the build must not run.
   std::atomic<bool> radioReleasedForBuild{false};
-  void makeRoomForChapterBuild();
+  bool makeRoomForChapterBuild();
   bool inputOverPage() const override { return overlay != Overlay::None || ReaderActivity::inputOverPage(); }
   // "Connecting Bluetooth…" or "Bluetooth failed" in place of the status bar title.
   mutable LinkNoteTitle linkNoteTitle;
