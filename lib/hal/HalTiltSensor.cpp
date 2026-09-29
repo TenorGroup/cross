@@ -69,7 +69,7 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
 
   // If disabled, skip the rest of the polling logic and avoid unnecessary I2C traffic in non-reader activities
   if ((mode == CrossPointTiltPageTurn::TILT_OFF) || !inReader) {
-    _baselineValid = false;
+    _baselineValid = _flickPending = false;
     return;
   }
 
