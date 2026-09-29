@@ -10,8 +10,8 @@
 // alone. While a hand lifts the device, the lift adds to gravity and can hold
 // the reading near the starting pose, and the device can swing back on the way.
 //
-// The defaults come from an X3 held by hand; the recorded runs are in
-// test/tilt_pick_up/x3-tilt-flicks-and-pick-ups.csv.
+// The defaults come from an X3 held by hand; clips of the recorded runs replay
+// in test/tilt_pick_up/TiltPickUpTest.cpp.
 namespace TiltPickUp {
 
 struct Thresholds {

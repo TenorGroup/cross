@@ -1,9 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <string>
 #include <vector>
 
 #include "HalTiltSensor.h"
@@ -103,85 +100,50 @@ TEST(TiltPickUpSettle, ThresholdsAreParameters) {
   EXPECT_EQ(TiltPickUp::settle(start, now, 0.0f, 100, wide), Verdict::Flick);
 }
 
-// ---- Recorded X3 runs through HalTiltSensor ----
+// ---- Recorded X3 motion through HalTiltSensor.cpp ----
 
 struct Sample {
   unsigned long ms;
-  int ax, ay, az, gx;
+  int ax, ay, az, gx;  // mg, and dps on the portrait side axis
 };
 
-struct Clip {
-  std::string name;
-  std::string expected;  // forward, back or none
-  std::vector<Sample> samples;
+struct Turns {
+  int forward = 0;
+  int back = 0;
 };
-
-std::vector<Clip> loadClips() {
-  std::vector<Clip> clips;
-  FILE* file = std::fopen(TILT_CLIPS_PATH, "r");
-  if (!file) return clips;
-  char line[128];
-  while (std::fgets(line, sizeof(line), file)) {
-    if (line[0] == '#') continue;
-    char name[48];
-    char expected[16];
-    if (std::sscanf(line, "clip,%47[^,],%15s", name, expected) == 2) {
-      clips.push_back({name, expected, {}});
-      continue;
-    }
-    Sample s{};
-    if (!clips.empty() && std::sscanf(line, "%lu,%d,%d,%d,%d", &s.ms, &s.ax, &s.ay, &s.az, &s.gx) == 5) {
-      clips.back().samples.push_back(s);
-    }
-  }
-  std::fclose(file);
-  return clips;
-}
 
 void hold(const Sample& s) {
   fakeSample = {s.ax / 1000.0f, s.ay / 1000.0f, s.az / 1000.0f, static_cast<float>(s.gx), 0.0f, 0.0f};
 }
 
-void tick() { halTiltSensor.update(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointOrientation::PORTRAIT, true); }
-
-struct Result {
-  int forward = 0;
-  int back = 0;
-  long delayMs = -1;  // From the poll past the trigger rate to the page turn
-};
-
-// A reader open with the device held still on the clip's first sample, then
-// every sample at its own time.
-Result replay(const Clip& clip) {
+// A reader open with the device held still on the first sample, then every sample at its own time.
+Turns replay(const std::vector<Sample>& samples) {
   halTiltSensor = HalTiltSensor{};
   halTiltSensor.begin();
   const unsigned long start = 10000;
-  hold(clip.samples.front());
-  for (fakeMs = start - 1000; fakeMs < start; fakeMs += 50) tick();
-  Result result;
-  long triggerMs = -1;
-  for (const auto& s : clip.samples) {
+  hold(samples.front());
+  Turns turns;
+  for (fakeMs = start - 1000; fakeMs < start; fakeMs += 50) {
+    halTiltSensor.update(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointOrientation::PORTRAIT, true);
+  }
+  for (const auto& s : samples) {
     hold(s);
     fakeMs = start + s.ms;
-    tick();
-    if (triggerMs < 0 && std::abs(s.gx) > 270) triggerMs = static_cast<long>(s.ms);
-    const bool forward = halTiltSensor.wasTiltedForward();
-    const bool back = halTiltSensor.wasTiltedBack();
-    if ((forward || back) && result.delayMs < 0) result.delayMs = static_cast<long>(s.ms) - triggerMs;
-    result.forward += forward;
-    result.back += back;
+    halTiltSensor.update(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointOrientation::PORTRAIT, true);
+    turns.forward += halTiltSensor.wasTiltedForward();
+    turns.back += halTiltSensor.wasTiltedBack();
   }
-  return result;
+  return turns;
 }
 
 // A forward flick that swings back past the trigger rate the other way 650 ms later,
 // before it has come to rest, then settles where it started: one forward turn.
 TEST(TiltPickUpReplay, ASwingBackDoesNotReplaceAWaitingFlick) {
-  Clip clip{"swing-back", "forward", {}};
-  const auto at = [&clip](const unsigned long ms, const double degrees, const int gx) {
+  std::vector<Sample> samples;
+  const auto at = [&samples](const unsigned long ms, const double degrees, const int gx) {
     int32_t mg[3];
     pose(degrees, mg);
-    clip.samples.push_back({ms, mg[0], mg[1], mg[2], gx});
+    samples.push_back({ms, mg[0], mg[1], mg[2], gx});
   };
   for (unsigned long ms = 0; ms < 500; ms += 50) at(ms, 0, 0);
   at(500, 30, 400);
@@ -189,11 +151,10 @@ TEST(TiltPickUpReplay, ASwingBackDoesNotReplaceAWaitingFlick) {
   at(1100, 40, 0);
   at(1150, 20, -400);
   for (unsigned long ms = 1200; ms <= 2500; ms += 50) at(ms, 0, 0);
-  const Result r = replay(clip);
-  EXPECT_EQ(r.forward, 1);
-  EXPECT_EQ(r.back, 0);
+  const Turns t = replay(samples);
+  EXPECT_EQ(t.forward, 1);
+  EXPECT_EQ(t.back, 0);
 }
-
 // Back in the book from a menu while the device is still moving (the sensor stays awake off the
 // reader, so there is no wake settling): the first polls already turn fast, then the device comes
 // to rest turned away. With no still pose to go back to, nothing turns.
@@ -221,30 +182,134 @@ TEST(TiltPickUpReplay, ReturningToTheBookMidMotionWaitsForAStillPose) {
   EXPECT_EQ(turns, 0);
 }
 
-TEST(TiltPickUpReplay, FlicksStillTurnAndPickUpsDoNot) {
-  const auto clips = loadClips();
-  ASSERT_EQ(clips.size(), 87u) << "missing " << TILT_CLIPS_PATH;
-  int flicks = 0;
-  int pickUps = 0;
-  long longestDelay = 0;
-  for (const auto& clip : clips) {
-    const Result r = replay(clip);
-    if (clip.expected == "none") {
-      ++pickUps;
-      EXPECT_EQ(r.forward + r.back, 0) << clip.name << ": picking the device up turned a page";
-      continue;
-    }
-    ++flicks;
-    const bool forward = clip.expected == "forward";
-    EXPECT_EQ(r.forward, forward ? 1 : 0) << clip.name;
-    EXPECT_EQ(r.back, forward ? 0 : 1) << clip.name;
-    EXPECT_LE(r.delayMs, static_cast<long>(TiltPickUp::Thresholds{}.maxWaitMs))
-        << clip.name << ": the page turned too late";
-    if (r.delayMs > longestDelay) longestDelay = r.delayMs;
-  }
-  EXPECT_EQ(flicks, 66);
-  EXPECT_EQ(pickUps, 21);
-  std::printf("flicks %d, pick-ups %d, longest delay %ld ms\n", flicks, pickUps, longestDelay);
+// Recorded on an X3 held by hand in portrait: one row per tilt poll, 0.4 s before to 0.85 s after the
+// poll that passed the 270 dps trigger, as ms, ax, ay, az (mg), gx (dps). 8 of 87 recorded clips
+// (66 flicks, 21 pick-ups): a flick each way and a lap and a table pick-up each way, from each
+// recording. Each gives the same turns as its full clip. "session" and "table" clips are the FIFO's
+// latest frame (about 199 Hz), the others the sensor at 28 Hz read at each poll. flick-menu-a-1 is the
+// slowest flick to come to rest (564 ms); flick-menu-b-6 turns no page if the pose is taken from the
+// previous poll.
+struct Clip {
+  const char* name;
+  int forward, back;  // Page turns it should give
+  std::vector<Sample> samples;
+};
+
+const Clip kFlicks[] = {
+    {"flick-menu-a-1",
+     1,
+     0,
+     {{0, -859, -6, -485, -10},
+      {85, -861, -15, -476, -12},
+      {168, -854, -5, -476, -9},
+      {260, -878, -25, -411, 37},
+      {347, -853, -407, -198, 370},
+      {437, -894, -507, -249, -55},
+      {498, -885, -425, -419, -223},
+      {559, -887, -235, -383, -107},
+      {615, -844, -140, -453, -75},
+      {667, -858, -177, -406, -96},
+      {728, -837, -91, -403, -70},
+      {789, -836, -58, -484, -66},
+      {850, -844, -26, -543, -65},
+      {911, -837, -27, -502, 7},
+      {972, -841, -29, -511, -18},
+      {1033, -850, -69, -511, 1},
+      {1086, -852, -19, -499, -15},
+      {1136, -839, -37, -512, -3},
+      {1197, -844, -42, -505, -5}}},
+    {"flick-menu-b-6",
+     0,
+     1,
+     {{0, -659, 4, -739, -8},        {92, -662, 17, -686, -5},      {175, -606, 52, -386, 246},
+      {265, -799, -856, -739, 45},   {325, -679, -456, -522, -196}, {386, -671, -271, -472, -285},
+      {441, -721, -268, -656, -110}, {493, -661, -129, -664, -125}, {554, -665, -32, -679, -46},
+      {615, -667, -50, -733, -66},   {676, -666, -17, -673, 6},     {737, -669, -33, -746, -6},
+      {798, -674, -32, -714, 0},     {852, -682, -61, -718, -1},    {904, -694, -94, -743, -25},
+      {954, -678, -43, -686, -11},   {1015, -683, -55, -743, -14},  {1076, -681, -31, -678, -2},
+      {1137, -688, -63, -719, -7},   {1198, -680, -45, -655, -7}}},
+    {"flick-session-1",
+     1,
+     0,
+     {{0, -783, -51, -560, -15},     {50, -823, -18, -616, -22},    {100, -782, -84, -689, -27},
+      {150, -719, -44, -617, -14},   {200, -789, -19, -616, -19},   {250, -801, 5, -605, -14},
+      {300, -792, -15, -617, -7},    {350, -806, -55, -680, 16},    {400, -858, 106, -633, 458},
+      {450, -443, -882, -811, 490},  {500, -609, -471, -274, 77},   {550, -667, -401, -157, -290},
+      {600, -509, -431, -689, -324}, {650, -724, -294, -387, -213}, {700, -813, -70, -672, -68},
+      {750, -755, -205, -646, -61},  {800, -814, -24, -546, -24},   {850, -764, -96, -723, -25},
+      {900, -797, -64, -606, -35},   {950, -766, -77, -660, -10},   {1000, -779, -32, -606, -24},
+      {1050, -789, -35, -570, -18},  {1100, -797, 12, -632, -19},   {1150, -807, -29, -562, -14},
+      {1200, -789, 7, -602, -14},    {1250, -776, -40, -604, -12}}},
+    {"flick-session-16", 0, 1, {{0, -813, 36, -553, -9},      {50, -815, 45, -544, -13},   {100, -813, 39, -555, -8},
+                                {150, -820, 57, -548, -11},   {200, -815, 39, -567, -9},   {250, -808, 35, -562, -9},
+                                {300, -810, 36, -554, -9},    {350, -760, -22, -589, -68}, {400, -790, -1, -616, -407},
+                                {450, -947, 390, -286, -430}, {500, -977, 319, 370, 25},   {550, -980, 380, -71, 108},
+                                {600, -946, 349, -141, 234},  {650, -887, 245, -442, 198}, {700, -794, 44, -540, 102},
+                                {750, -754, -1, -627, 68},    {800, -769, -24, -583, 16},  {850, -787, 1, -543, 17},
+                                {900, -797, 31, -575, -25},   {950, -819, 38, -548, -9},   {1000, -806, 38, -576, -19},
+                                {1050, -798, 25, -588, -10},  {1100, -796, 18, -568, -12}, {1150, -798, 25, -574, -7},
+                                {1200, -791, 16, -580, -12},  {1250, -799, 32, -570, -9}}}};
+
+const Clip kPickUps[] = {
+    {"pickup-lap-book-5",
+     0,
+     0,
+     {{0, -427, -279, -817, -3},    {53, -333, -247, -698, 26},  {106, -197, -183, -558, 65},
+      {159, -58, -506, -440, 207},  {212, -3, -731, -527, 130},  {265, 156, -790, -460, 100},
+      {318, 283, -723, -385, 162},  {372, 695, -864, -467, 308}, {425, 633, -1295, -460, 244},
+      {478, 533, -1248, -103, -95}, {531, 557, -987, -65, -95},  {584, 694, -719, -67, 11},
+      {642, 691, -731, -246, 3},    {699, 770, -715, -273, -10}, {757, 785, -805, 29, -22},
+      {816, 758, -867, -11, -37},   {876, 761, -850, -16, 7},    {927, 862, -517, 97, 7},
+      {977, 828, -572, -21, 34},    {1027, 789, -688, -150, 40}, {1077, 835, -527, -106, -15},
+      {1132, 806, -577, -168, -25}, {1193, 833, -523, 58, -30}}},
+    {"pickup-lap-book-1",
+     0,
+     0,
+     {{0, 677, -650, -394, -45},    {53, 520, -748, -435, -12},   {106, 347, -1109, -811, -75},
+      {159, 261, -1111, -777, -99}, {212, 66, -937, -570, -19},   {265, 9, -929, -612, -8},
+      {318, -37, -861, -629, -202}, {371, -84, -636, -545, -292}, {424, -144, 235, -637, -186},
+      {477, -355, 132, -565, -92},  {530, -463, 6, -637, 8},      {583, -511, -68, -724, 38},
+      {636, -533, -59, -789, 4},    {690, -503, 93, -826, -5},    {744, -533, 61, -794, -18},
+      {797, -561, 45, -851, -13},   {850, -575, 26, -817, -16},   {903, -602, -37, -812, -4},
+      {956, -570, 7, -822, -12},    {1009, -563, -12, -768, -1},  {1062, -554, 4, -780, -5},
+      {1115, -556, 16, -797, 0},    {1168, -560, 27, -831, -3},   {1221, -569, 17, -854, -4}}},
+    {"pickup-table-1",
+     0,
+     0,
+     {{0, 15, 7, -1007, -9},          {50, 16, 7, -1003, -9},         {100, 16, 7, -1005, -9},
+      {150, 16, 6, -1003, -9},        {200, 13, 4, -1005, -9},        {250, 72, 70, -1020, -18},
+      {300, -26, 90, -978, -36},      {350, -98, -50, -941, 133},     {400, 120, 469, -236, 411},
+      {450, 245, -590, -1087, 36},    {500, -50, -736, -1723, -90},   {550, -155, -410, -1153, -5},
+      {600, -350, -345, -1050, -140}, {650, -328, -285, -1072, -172}, {700, -482, -190, -1103, -317},
+      {750, -346, 22, -551, -273},    {800, -421, 152, -786, -427},   {850, -624, 354, -374, -292},
+      {900, -611, 360, -745, 150},    {950, -616, 191, -667, 310},    {1000, -617, -153, -573, 54},
+      {1050, -659, 222, -704, 67},    {1100, -679, 229, -657, -3},    {1150, -836, 227, -874, 1},
+      {1200, -744, 207, -404, -3},    {1250, -818, 144, -487, 24}}},
+    {"pickup-table-5",
+     0,
+     0,
+     {{0, 28, 35, -1003, -9},        {50, 22, -16, -1004, -13},     {100, -13, -46, -995, -10},
+      {150, 14, 17, -1002, -9},      {200, 15, 15, -1002, -8},      {250, 10, 13, -1006, -9},
+      {300, -37, -157, -1031, -34},  {350, -71, -36, -1018, -70},   {400, -420, 264, -1846, -459},
+      {450, 1146, 70, 139, -238},    {500, -19, 297, -1717, -141},  {550, -279, 937, -702, -111},
+      {600, -424, 855, 570, -512},   {650, -366, 694, -644, 146},   {700, -405, 463, -594, 95},
+      {750, -653, 452, -567, 280},   {800, -745, -101, -305, -128}, {850, -874, -127, -452, 40},
+      {900, -848, -6, -184, 49},     {950, -829, 51, 149, 49},      {1000, -750, -97, -275, -38},
+      {1050, -795, -1, -237, 4},     {1100, -879, -42, -94, -5},    {1150, -923, -23, -330, 10},
+      {1200, -930, -124, -250, -16}, {1250, -1034, -44, -251, 1}}}};
+
+void expectTurns(const Clip& clip) {
+  const Turns t = replay(clip.samples);
+  EXPECT_EQ(t.forward, clip.forward) << clip.name;
+  EXPECT_EQ(t.back, clip.back) << clip.name;
+}
+
+TEST(TiltPickUpReplay, RecordedFlicksTurnOnePage) {
+  for (const auto& clip : kFlicks) expectTurns(clip);
+}
+
+TEST(TiltPickUpReplay, RecordedPickUpsTurnNothing) {
+  for (const auto& clip : kPickUps) expectTurns(clip);
 }
 
 }  // namespace
