@@ -162,8 +162,10 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
 }
 
 // The page turns once TiltPickUp::settle() says the device is back at rest; picking it up drops it.
-// A flick still waiting when the next one fires is dropped: the device never came to rest.
+// A flick still waiting keeps its place: a swing back past the trigger rate before it comes to
+// rest would otherwise turn the page the wrong way.
 void HalTiltSensor::startFlick(const bool forward, const unsigned long now) {
+  if (_flickPending) return;
   _flickPending = true;
   _flickForward = forward;
   _flickMs = now;

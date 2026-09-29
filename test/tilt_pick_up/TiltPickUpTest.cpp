@@ -174,6 +174,26 @@ Result replay(const Clip& clip) {
   return result;
 }
 
+// A forward flick that swings back past the trigger rate the other way 650 ms later,
+// before it has come to rest, then settles where it started: one forward turn.
+TEST(TiltPickUpReplay, ASwingBackDoesNotReplaceAWaitingFlick) {
+  Clip clip{"swing-back", "forward", {}};
+  const auto at = [&clip](const unsigned long ms, const double degrees, const int gx) {
+    int32_t mg[3];
+    pose(degrees, mg);
+    clip.samples.push_back({ms, mg[0], mg[1], mg[2], gx});
+  };
+  for (unsigned long ms = 0; ms < 500; ms += 50) at(ms, 0, 0);
+  at(500, 30, 400);
+  for (unsigned long ms = 550; ms < 1100; ms += 50) at(ms, 40, 100);
+  at(1100, 40, 0);
+  at(1150, 20, -400);
+  for (unsigned long ms = 1200; ms <= 2500; ms += 50) at(ms, 0, 0);
+  const Result r = replay(clip);
+  EXPECT_EQ(r.forward, 1);
+  EXPECT_EQ(r.back, 0);
+}
+
 TEST(TiltPickUpReplay, FlicksStillTurnAndPickUpsDoNot) {
   const auto clips = loadClips();
   ASSERT_EQ(clips.size(), 87u) << "missing " << TILT_CLIPS_PATH;
