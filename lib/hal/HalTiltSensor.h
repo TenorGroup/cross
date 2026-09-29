@@ -29,6 +29,17 @@ class HalTiltSensor {
   unsigned long _lastTiltMs = 0;   // Debounce / cooldown
   unsigned long _wakeMs = 0;       // Timestamp of last wake() for stabilization
 
+  // Slow baseline of the acceleration in mg (1/8 per poll): where the device
+  // was before a flick.
+  bool _baselineValid = false;
+  int32_t _baselineMg[3] = {};
+
+  // A flick that fired and waits for TiltPickUp::settle() to tell it from a pick-up.
+  bool _flickPending = false;
+  bool _flickForward = false;
+  unsigned long _flickMs = 0;
+  int32_t _flickPoseMg[3] = {};
+
   // Tuning constants
   static constexpr float RATE_THRESHOLD_DPS = 270.0f;      // Deg/sec speed to trigger flick
   static constexpr float NEUTRAL_RATE_DPS = 50.0f;         // Must stop moving below this rate before next trigger
@@ -38,7 +49,7 @@ class HalTiltSensor {
 
   mutable unsigned long _lastPollMs = 0;
 
-  bool readGyro(float& gx, float& gy, float& gz) const;
+  void startFlick(bool forward, unsigned long now);
 
  public:
   // Call after BoardConfig has selected the active device.
