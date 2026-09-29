@@ -44,20 +44,30 @@ void pose(const double degrees, int32_t (&mg)[3]) {
   mg[2] = static_cast<int32_t>(std::lround(-1000.0 * std::cos(rad)));
 }
 
-Verdict settleAt(const double degrees, const float rateDps, const unsigned long ageMs) {
+// `g` scales the reading now: 1 is gravity alone, more is a hand lifting the device.
+Verdict settleAt(const double degrees, const float rateDps, const unsigned long ageMs, const double g = 1.0) {
   int32_t start[3];
   int32_t now[3];
   pose(0, start);
   pose(degrees, now);
+  for (auto& axis : now) axis = static_cast<int32_t>(std::lround(axis * g));
   return TiltPickUp::settle(start, now, rateDps, ageMs);
 }
 
 // ---- The decision on its own ----
 
-TEST(TiltPickUpSettle, SwingBackSoonIsAFlick) {
-  EXPECT_EQ(settleAt(90, -150.0f, 400), Verdict::Flick);
-  EXPECT_EQ(settleAt(90, -149.0f, 400), Verdict::Wait);
-  EXPECT_EQ(settleAt(90, -300.0f, 401), Verdict::Wait);
+TEST(TiltPickUpSettle, SwingingBackAwayFromTheStartIsNotRest) {
+  EXPECT_EQ(settleAt(60, -300.0f, 200), Verdict::Wait);
+  EXPECT_EQ(settleAt(0, -300.0f, 200), Verdict::Wait);
+}
+
+TEST(TiltPickUpSettle, RestMeansGravityAlone) {
+  EXPECT_EQ(settleAt(0, 0.0f, 150, 1.09), Verdict::Flick);
+  EXPECT_EQ(settleAt(0, 0.0f, 150, 0.91), Verdict::Flick);
+  EXPECT_EQ(settleAt(0, 0.0f, 150, 1.11), Verdict::Wait);
+  EXPECT_EQ(settleAt(0, 0.0f, 150, 0.89), Verdict::Wait);
+  // A lift off a table as recorded: 1.23 g, 21 degrees from the start, not turning.
+  EXPECT_EQ(settleAt(21, 5.0f, 150, 1.23), Verdict::Wait);
 }
 
 TEST(TiltPickUpSettle, RestingNearTheStartIsAFlick) {
@@ -69,11 +79,11 @@ TEST(TiltPickUpSettle, RestingNearTheStartIsAFlick) {
 }
 
 TEST(TiltPickUpSettle, LeftTurnedIsAPickUpOnceTheWaitIsOver) {
-  EXPECT_EQ(settleAt(90, 0.0f, 600), Verdict::Wait);
-  EXPECT_EQ(settleAt(90, 0.0f, 601), Verdict::PickUp);
-  EXPECT_EQ(settleAt(65, 0.0f, 601), Verdict::PickUp);
+  EXPECT_EQ(settleAt(90, 0.0f, 800), Verdict::Wait);
+  EXPECT_EQ(settleAt(90, 0.0f, 801), Verdict::PickUp);
+  EXPECT_EQ(settleAt(65, 0.0f, 801), Verdict::PickUp);
   // Upside down is as far from the start as it gets.
-  EXPECT_EQ(settleAt(180, 0.0f, 601), Verdict::PickUp);
+  EXPECT_EQ(settleAt(180, 0.0f, 801), Verdict::PickUp);
 }
 
 TEST(TiltPickUpSettle, ThresholdsAreParameters) {
@@ -160,7 +170,7 @@ Result replay(const Clip& clip) {
 
 TEST(TiltPickUpReplay, FlicksStillTurnAndPickUpsDoNot) {
   const auto clips = loadClips();
-  ASSERT_EQ(clips.size(), 63u) << "missing " << TILT_CLIPS_PATH;
+  ASSERT_EQ(clips.size(), 87u) << "missing " << TILT_CLIPS_PATH;
   int flicks = 0;
   int pickUps = 0;
   long longestDelay = 0;
@@ -175,11 +185,12 @@ TEST(TiltPickUpReplay, FlicksStillTurnAndPickUpsDoNot) {
     const bool forward = clip.expected == "forward";
     EXPECT_EQ(r.forward, forward ? 1 : 0) << clip.name;
     EXPECT_EQ(r.back, forward ? 0 : 1) << clip.name;
-    EXPECT_LE(r.delayMs, 600) << clip.name << ": the page turned too late";
+    EXPECT_LE(r.delayMs, static_cast<long>(TiltPickUp::Thresholds{}.maxWaitMs))
+        << clip.name << ": the page turned too late";
     if (r.delayMs > longestDelay) longestDelay = r.delayMs;
   }
-  EXPECT_EQ(flicks, 48);
-  EXPECT_EQ(pickUps, 15);
+  EXPECT_EQ(flicks, 66);
+  EXPECT_EQ(pickUps, 21);
   std::printf("flicks %d, pick-ups %d, longest delay %ld ms\n", flicks, pickUps, longestDelay);
 }
 

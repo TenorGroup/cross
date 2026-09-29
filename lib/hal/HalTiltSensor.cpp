@@ -124,8 +124,7 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   }
 
   if (_flickPending) {
-    const float rate = _flickForward ? tiltAxis : -tiltAxis;
-    const auto verdict = TiltPickUp::settle(_flickPoseMg, mg, rate, now - _flickMs);
+    const auto verdict = TiltPickUp::settle(_flickPoseMg, mg, tiltAxis, now - _flickMs);
     if (verdict == TiltPickUp::Verdict::Flick) {
       _flickPending = false;
       (_flickForward ? _tiltForwardEvent : _tiltBackEvent) = true;
@@ -162,7 +161,8 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   for (int i = 0; i < 3; ++i) _baselineMg[i] += (mg[i] - _baselineMg[i]) / 8;
 }
 
-// The page turns once TiltPickUp::settle() says the hand came back; picking the device up drops it.
+// The page turns once TiltPickUp::settle() says the device is back at rest; picking it up drops it.
+// A flick still waiting when the next one fires is dropped: the device never came to rest.
 void HalTiltSensor::startFlick(const bool forward, const unsigned long now) {
   _flickPending = true;
   _flickForward = forward;
