@@ -73,8 +73,6 @@ class Epub {
   int getSpineIndexForTocIndex(int tocIndex) const;
   int getTocIndexForSpineIndex(int spineIndex) const;
   size_t getCumulativeSpineItemSize(int spineIndex) const;
-  // The first spine item whose cumulative size reaches `bytes`, -1 if none does.
-  int getSpineIndexForSize(size_t bytes) const;
   int getSpineIndexForTextReference() const;
 
   size_t getBookSize() const;
