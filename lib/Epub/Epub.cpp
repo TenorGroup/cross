@@ -1018,6 +1018,8 @@ int Epub::getSpineIndexForSize(const size_t bytes) const {
   if (!bookMetadataCache || !bookMetadataCache->isLoaded()) {
     return -1;
   }
+  // Sizes are 32-bit in book.bin: an offset past that is past the end, not wrapped to the start.
+  if (static_cast<uint64_t>(bytes) > UINT32_MAX) return -1;
   return bookMetadataCache->getSpineIndexForSize(static_cast<uint32_t>(bytes));
 }
 
