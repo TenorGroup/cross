@@ -82,10 +82,12 @@ TEST(RadioVerdictTest, Table) {
        with(Phase::BeforeStart,
             [](RadioInputs& i) { i.heap = {kMinimumFreeBytes - 1, kMinimumLargestBlockBytes - 1}; }),
        Why::HeapLow},
-      {"start: card busy first", with(Phase::BeforeStart, [](RadioInputs& i) {
-         i.storageBusy = true;
-         i.heap = {0, 0};
-       }),
+      {"start: card busy first",
+       with(Phase::BeforeStart,
+            [](RadioInputs& i) {
+              i.storageBusy = true;
+              i.heap = {0, 0};
+            }),
        Why::StorageBusy},
       {"start: only heap and card count",
        with(Phase::BeforeStart,
@@ -97,8 +99,7 @@ TEST(RadioVerdictTest, Table) {
        Why::Ok},
 
       // --- JustStarted: keep the stack only with the reader's block left ---
-      {"started: exact block kept", with(Phase::JustStarted, [](RadioInputs& i) { i.heap = {40000, 32768}; }),
-       Why::Ok},
+      {"started: exact block kept", with(Phase::JustStarted, [](RadioInputs& i) { i.heap = {40000, 32768}; }), Why::Ok},
       // The heap check passed, so the bytes were there: a stack that leaves no whole block
       // behind split the heap. It counts toward the restart like a refusal in pieces.
       {"started: block one byte short rolled back",
@@ -114,18 +115,20 @@ TEST(RadioVerdictTest, Table) {
       {"running: turned off", with(Phase::Running, [](RadioInputs& i) { i.enabled = false; }), Why::Off},
       {"running: card busy", with(Phase::Running, [](RadioInputs& i) { i.storageBusy = true; }), Why::StorageBusy},
       {"running: heap never stops it", with(Phase::Running, [](RadioInputs& i) { i.heap = {0, 0}; }), Why::Ok},
-      {"running: outside the book it stays",
-       with(Phase::Running, [](RadioInputs& i) { i.where = Where::Elsewhere; }), Why::Ok},
-      {"running: idle just under the limit",
-       with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs - 1; }), Why::Ok},
+      {"running: outside the book it stays", with(Phase::Running, [](RadioInputs& i) { i.where = Where::Elsewhere; }),
+       Why::Ok},
+      {"running: idle just under the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs - 1; }),
+       Why::Ok},
       {"running: idle at the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs; }),
        Why::IdleNoLink},
       {"running: idle long past", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs * 3; }),
        Why::IdleNoLink},
-      {"running: a linked remote is never idle", with(Phase::Running, [](RadioInputs& i) {
-         i.linked = true;
-         i.idleMs = kIdleOffMs * 100;
-       }),
+      {"running: a linked remote is never idle",
+       with(Phase::Running,
+            [](RadioInputs& i) {
+              i.linked = true;
+              i.idleMs = kIdleOffMs * 100;
+            }),
        Why::Ok},
   };
   for (const Row& row : rows) {

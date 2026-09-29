@@ -330,8 +330,9 @@ TEST_F(RuntimeTest, PostInitRollbackInPiecesAsksForOneRestartUntilTheRadioComesU
   EXPECT_FALSE(bleturner::switchOn());
   EXPECT_TRUE(bleturner::detail::heapRestartWanted());
   EXPECT_EQ(radio().beginCalls, 3u);
-  EXPECT_NE(host().logs.back().find("rolled back (post-init-headroom): free=28812 largest=26612 required_largest=32768"),
-            std::string::npos);
+  EXPECT_NE(
+      host().logs.back().find("rolled back (post-init-headroom): free=28812 largest=26612 required_largest=32768"),
+      std::string::npos);
 
   // Restarted into the book; the same heap again: no second restart until the radio comes up.
   bleturner::tick(fake::reading());

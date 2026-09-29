@@ -86,14 +86,14 @@ constexpr Why radioVerdict(const RadioInputs& in) {
 inline constexpr uint32_t kLinkNoteFailMs = 20000;
 
 struct NoteInputs {
-  bool entered;       // this pass starts a book visit
-  bool reading;       // a book is in front
+  bool entered;  // this pass starts a book visit
+  bool reading;  // a book is in front
   bool enabled;
-  bool idleStopped;   // the radio is off for idleness: nothing will try to link
-  bool linked;        // a remote is connected
-  bool refused;       // this visit's radio start was refused (heap rules, rollback)
-  uint32_t runningMs; // how long the radio has been up without a break in this visit
-  bool acknowledged;  // a page turn was applied
+  bool idleStopped;    // the radio is off for idleness: nothing will try to link
+  bool linked;         // a remote is connected
+  bool refused;        // this visit's radio start was refused (heap rules, rollback)
+  uint32_t runningMs;  // how long the radio has been up without a break in this visit
+  bool acknowledged;   // a page turn was applied
 };
 
 // The ONE answer to "what does the status bar say about the remote now".

@@ -35,11 +35,11 @@ uint32_t nowMs() { return 0; }
 void sleepMs(uint32_t) {}
 Memo& restartMemo() { return memo; }
 
-#ifdef TENOR_PRESS_PROBE
+#ifdef BLE_PAGE_TURNER_PROBE
 void inject(const uint8_t*, size_t) {}
 unsigned rawOverflows() { return 0; }
 #endif
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef BLE_PAGE_TURNER_STACK_PROBE
 uint32_t startStackLeft() { return 0; }
 #endif
 

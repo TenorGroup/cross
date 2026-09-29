@@ -33,7 +33,8 @@ inline void writeJson(const Config& config, JsonDocument& doc) {
       JsonObject r = remotes.add<JsonObject>();
       r["addr"] = config.remotes[i].addr;
       JsonArray binds = r["binds"].to<JsonArray>();
-      for (uint8_t j = 0; j < config.remotes[i].count && j < kMaxBindings; j++) binds.add(config.remotes[i].bindings[j]);
+      for (uint8_t j = 0; j < config.remotes[i].count && j < kMaxBindings; j++)
+        binds.add(config.remotes[i].bindings[j]);
     }
   }
 }

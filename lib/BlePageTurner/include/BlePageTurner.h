@@ -139,8 +139,8 @@ struct Scene {
   bool bookIndexing;  // the book still builds its index in the background
   bool storageBusy;   // USB drive or file transfer owns the card
   bool wifiOn;
-  bool sleeping;      // on the way to sleep
-  bool localKey;      // a page key (or touch) of the device was released this pass
+  bool sleeping;  // on the way to sleep
+  bool localKey;  // a page key (or touch) of the device was released this pass
 };
 
 void begin(const Host& host, Config& config);
@@ -223,13 +223,15 @@ struct Event {
 };
 bool pollEvent(Event& event);
 
-#ifdef TENOR_PRESS_PROBE
+// Measurement builds only. The host defines BLE_PAGE_TURNER_PROBE for the injection hook and the
+// radio's heap log lines, BLE_PAGE_TURNER_STACK_PROBE for the start task's stack figure.
+#ifdef BLE_PAGE_TURNER_PROBE
 // One HID frame through the real ingest path, as if the remote had sent it (len 0: none).
 // With nothing linked the next edges go through the built-in three-button table.
 void injectFrame(const uint8_t* frame, size_t len);
 unsigned rawOverflows();
 #endif
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef BLE_PAGE_TURNER_STACK_PROBE
 uint32_t startStackLeft();
 #endif
 

@@ -135,7 +135,7 @@ bool beginOwned() {
     return false;
   }
 
-#ifdef TENOR_PRESS_PROBE
+#ifdef BLE_PAGE_TURNER_PROBE
   // What the stack comes up in: the reader released its layout parser before this (yieldForRadio).
   say(false, "HID begin heap free=%zu largest=%zu\n", heap.freeBytes, heap.largestBlock);
 #endif
@@ -164,7 +164,7 @@ bool beginOwned() {
     port::end(0);
     return false;
   }
-#ifdef TENOR_PRESS_PROBE
+#ifdef BLE_PAGE_TURNER_PROBE
   say(false, "HID begin kept free=%zu largest=%zu\n", after.freeBytes, after.largestBlock);
 #endif
   heapTracker.radioUp();
@@ -589,7 +589,7 @@ bool pollEvent(Event& event) {
   return true;
 }
 
-#ifdef TENOR_PRESS_PROBE
+#ifdef BLE_PAGE_TURNER_PROBE
 void injectFrame(const uint8_t* frame, const size_t len) {
   if (!port::connected()) {
     router.table = defaultTableFor("Free3");
@@ -599,7 +599,7 @@ void injectFrame(const uint8_t* frame, const size_t len) {
 }
 unsigned rawOverflows() { return port::rawOverflows(); }
 #endif
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef BLE_PAGE_TURNER_STACK_PROBE
 uint32_t startStackLeft() { return port::startStackLeft(); }
 #endif
 

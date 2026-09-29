@@ -86,9 +86,9 @@ TEST(BleConfigJsonTest, GarbageSlotsAreDroppedAndOversizedTablesCut) {
   a["addr"] = "AA:BB:CC:DD:EE:01";
   JsonArray binds = a["binds"].to<JsonArray>();
   binds.add(kNextChapterTap);
-  binds.add(0x70030102u);  // action out of range
-  binds.add(0x18030102u);  // unknown bit
-  binds.add("text");       // not a number
+  binds.add(0x70030102u);                                     // action out of range
+  binds.add(0x18030102u);                                     // unknown bit
+  binds.add("text");                                          // not a number
   binds.add(makeBinding(0x030100, false, Action::NextPage));  // zero value
   for (uint32_t i = 1; i <= 12; ++i) binds.add(makeBinding(0x020000 + i, false, Action::NextPage));
   JsonObject noAddr = remotes.add<JsonObject>();
@@ -145,7 +145,8 @@ TEST(BleConfigJsonTest, ReaderShortcutActionsRoundTripAndOldSlotsStay) {
   ASSERT_EQ(c.remotes[0].count, 3);
   EXPECT_EQ(c.remotes[0].bindings[1], menuTap);
   EXPECT_EQ(c.remotes[0].bindings[2], quoteHold);
-  EXPECT_FALSE(valid(makeBinding(0x030001, false, static_cast<Action>(7)))) << "an action past the list still reads as garbage";
+  EXPECT_FALSE(valid(makeBinding(0x030001, false, static_cast<Action>(7))))
+      << "an action past the list still reads as garbage";
 }
 
 }  // namespace

@@ -36,8 +36,8 @@ void hostLog(bool error, const char* format, va_list args) {
   theHost.logs.push_back(std::string(error ? "ERR " : "INF ") + line);
 }
 void hostMap(const char* tag) { theHost.maps.push_back(tag); }
-const bleturner::Host kHost{hostHeap, hostRelease, hostDeliver, hostYield, hostTransfer,
-                            hostRestart, hostHold, hostLog, hostMap};
+const bleturner::Host kHost{hostHeap,    hostRelease, hostDeliver, hostYield, hostTransfer,
+                            hostRestart, hostHold,    hostLog,     hostMap};
 }  // namespace
 
 Radio& radio() { return theRadio; }
@@ -92,7 +92,8 @@ bool end(const uint32_t timeoutMs) {
   theRadio.lastEndTimeoutMs = timeoutMs;
   theRadio.endDuringBegin = theRadio.endDuringBegin || theRadio.insideBegin;
   theRadio.endHadFullSpeed = fake::theHost.fullSpeed;
-  if (theRadio.changeHeapOnBegin && theRadio.running && theRadio.endResult) fake::theHost.heap = theRadio.heapBeforeBegin;
+  if (theRadio.changeHeapOnBegin && theRadio.running && theRadio.endResult)
+    fake::theHost.heap = theRadio.heapBeforeBegin;
   theRadio.running = false;
   theRadio.connected = false;
   theRadio.stopping = !theRadio.endResult;
@@ -125,9 +126,7 @@ bool armReconnect(const char* addr) {
   theRadio.events.emplace_back("arm");
   return theRadio.armResult;
 }
-Peer linked() {
-  return theRadio.connected ? Peer{theRadio.addr.c_str(), theRadio.name.c_str()} : Peer{"", ""};
-}
+Peer linked() { return theRadio.connected ? Peer{theRadio.addr.c_str(), theRadio.name.c_str()} : Peer{"", ""}; }
 void scan(const uint32_t durationMs) {
   theRadio.scanMs = durationMs;
   theRadio.scanning = durationMs != 0;

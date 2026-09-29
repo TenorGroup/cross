@@ -269,8 +269,11 @@ TEST_F(TickTest, KeyPathWithoutATableTurnsOnPressesOnly) {
   running();
   link("Some Remote");
   pass(fake::reading());
-  radio().keys = {{bleturner::kUsageRight, 0, true}, {bleturner::kUsageRight, 0, false},
-                  {bleturner::kUsagePageUp, 0, true}, {bleturner::kUsageRight, 0x02, true}, {0x04, 0, true}};
+  radio().keys = {{bleturner::kUsageRight, 0, true},
+                  {bleturner::kUsageRight, 0, false},
+                  {bleturner::kUsagePageUp, 0, true},
+                  {bleturner::kUsageRight, 0x02, true},
+                  {0x04, 0, true}};
   EXPECT_TRUE(pass(fake::reading()));
   EXPECT_EQ(host().delivered, (std::vector<Action>{Action::NextPage, Action::PrevPage}));
   EXPECT_TRUE(logged("key 0x4F mods 0x00 down -> next"));

@@ -23,8 +23,7 @@ struct RawEdge {
   bool wasRest = false;
   uint32_t atMs = 0;
   uint32_t code() const {
-    return static_cast<uint32_t>(value) | static_cast<uint32_t>(byteIndex) << 8 |
-           static_cast<uint32_t>(reportId) << 16;
+    return static_cast<uint32_t>(value) | static_cast<uint32_t>(byteIndex) << 8 | static_cast<uint32_t>(reportId) << 16;
   }
 };
 
@@ -67,11 +66,11 @@ void sleepMs(uint32_t ms);
 // Survives a restart (RTC memory on the device).
 Memo& restartMemo();
 
-#ifdef TENOR_PRESS_PROBE
+#ifdef BLE_PAGE_TURNER_PROBE
 void inject(const uint8_t* frame, size_t len);
 unsigned rawOverflows();
 #endif
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef BLE_PAGE_TURNER_STACK_PROBE
 uint32_t startStackLeft();
 #endif
 

@@ -22,13 +22,13 @@ freeink::BleKeyboardHost& hid() { return radioHost; }
 // Outlives ESP.restart: the one heap restart already spent since the radio last came up.
 RTC_NOINIT_ATTR Memo memo;
 
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef BLE_PAGE_TURNER_STACK_PROBE
 std::atomic<uint32_t> startStackMinimum{0};
 #endif
 
 void startTaskEntry(void*) {
   detail::startTask();
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef BLE_PAGE_TURNER_STACK_PROBE
   startStackMinimum.store(uxTaskGetStackHighWaterMark(nullptr), std::memory_order_release);
 #endif
   vTaskDelete(nullptr);
@@ -96,11 +96,11 @@ uint32_t nowMs() { return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
 void sleepMs(const uint32_t ms) { vTaskDelay(pdMS_TO_TICKS(ms)); }
 Memo& restartMemo() { return memo; }
 
-#ifdef TENOR_PRESS_PROBE
+#ifdef BLE_PAGE_TURNER_PROBE
 void inject(const uint8_t* frame, const size_t len) { hid().onReportIngest(frame, len); }
 unsigned rawOverflows() { return hid().rawOverflows(); }
 #endif
-#ifdef TENOR_UI_ACCEPTANCE
+#ifdef BLE_PAGE_TURNER_STACK_PROBE
 uint32_t startStackLeft() { return startStackMinimum.load(std::memory_order_acquire); }
 #endif
 

@@ -107,9 +107,10 @@ inline void formatCode(char* out, const size_t n, const Binding b) {
 // chapter. The two page buttons are NOT here: they keep the old usage mapping exactly
 // as before, so what the user bound them to is not overridden. This is data only; the
 // lookup knows nothing about this remote.
-constexpr RemoteTable kThreeButtonDefault = {
-    "", 2, {makeBinding(0x000102, false, Action::NextChapter) | kAnyReportBit,
-            makeBinding(0x000008, false, Action::PrevChapter) | kAnyReportBit}};
+constexpr RemoteTable kThreeButtonDefault = {"",
+                                             2,
+                                             {makeBinding(0x000102, false, Action::NextChapter) | kAnyReportBit,
+                                              makeBinding(0x000008, false, Action::PrevChapter) | kAnyReportBit}};
 
 inline const RemoteTable* defaultTableFor(const char* name) {
   return name != nullptr && strncmp(name, "Free3", 5) == 0 ? &kThreeButtonDefault : nullptr;
@@ -117,8 +118,7 @@ inline const RemoteTable* defaultTableFor(const char* name) {
 
 // Table of the connected remote: the saved one for its address, else the default for
 // its name, else none (nullptr = the old usage path, exactly as today). Writes nothing.
-inline const RemoteTable* tableFor(const RemoteTable* tables, const uint8_t count, const char* addr,
-                                   const char* name) {
+inline const RemoteTable* tableFor(const RemoteTable* tables, const uint8_t count, const char* addr, const char* name) {
   if (addr == nullptr || addr[0] == '\0') return nullptr;
   for (uint8_t i = 0; i < count; ++i) {
     if (strncmp(tables[i].addr, addr, sizeof(tables[i].addr)) == 0) return &tables[i];
