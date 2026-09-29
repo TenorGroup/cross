@@ -75,4 +75,6 @@ add_subdirectory(absolute_grayscale)
 add_subdirectory(sd_card_font)
 add_subdirectory(glyph_bitmap)
 
+add_subdirectory(ble_link_note_title)
+
 add_subdirectory(${REPO_ROOT}/lib/BlePageTurner/test BlePageTurnerTests)

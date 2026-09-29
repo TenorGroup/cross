@@ -13,6 +13,7 @@
 #include "BookmarkEntry.h"
 #include "ChapterPosition.h"
 #include "EpubReaderMenuActivity.h"
+#include "LinkNoteTitle.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
 #include "ReaderToolbarUi.h"
@@ -124,6 +125,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // page is shown.
   std::atomic<bool> radioReleasedForBuild{false};
   void makeRoomForChapterBuild();
+  // "Connecting Bluetooth…" or "Bluetooth failed" in place of the status bar title.
+  mutable LinkNoteTitle linkNoteTitle;
   static constexpr size_t RENDER_MIN_FREE_HEAP = 24 * 1024;
   static constexpr int BUILD_WINDOW_AHEAD = 5;
   static constexpr int PARTIAL_REBUILD_START_MARGIN = 15;
