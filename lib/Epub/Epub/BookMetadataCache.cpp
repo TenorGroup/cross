@@ -561,8 +561,14 @@ int BookMetadataCache::getSpineIndexForSize(const uint32_t size) const {
   const auto next = std::lower_bound(windowStarts.begin() + 1, windowStarts.end(), size);
   const int first = static_cast<int>(next - windowStarts.begin() - 1) * SIZE_WINDOW;
   const int last = std::min<int>(spineCount, first + SIZE_WINDOW) - 1;
-  for (int i = first; i < last; i++) {
-    if (getCumulativeSize(i) >= size) return i;
+  if (first < last) {
+    std::lock_guard<std::mutex> lock(sizeWindowLock);
+    // A window that cannot be read answers -1 so callers take their fallback, instead of
+    // landing on its last item.
+    if (windowFirst != first && !readSizeWindow(first)) return -1;
+    for (int i = first; i < last; i++) {
+      if (window[i - first] >= size) return i;
+    }
   }
   return last;
 }

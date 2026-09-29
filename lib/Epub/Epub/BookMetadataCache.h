@@ -131,8 +131,8 @@ class BookMetadataCache {
   // Cumulative byte size up to and including the given spine item (0 if out of range
   // or not loaded). Reads at most one window of sizes from book.bin.
   uint32_t getCumulativeSize(int index) const;
-  // The first spine item whose cumulative size reaches `size`, -1 if none does. Reads at
-  // most one window of sizes from book.bin.
+  // The first spine item whose cumulative size reaches `size`, -1 if none does or its window
+  // cannot be read. Reads at most one window of sizes from book.bin.
   int getSpineIndexForSize(uint32_t size) const;
   int getSpineCount() const { return spineCount; }
   int getTocCount() const { return tocCount; }

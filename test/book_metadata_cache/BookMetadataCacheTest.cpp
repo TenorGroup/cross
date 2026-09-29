@@ -182,3 +182,44 @@ TEST(BookMetadataCacheSizes, SpineIndexForSizeReadsAtMostOneWindow) {
     EXPECT_EQ(cache.getSpineIndexForSize(total + 1), -1);
   }
 }
+
+// When the window holding the answer cannot be read from book.bin (file gone, cut short or damaged
+// after load()), the lookup must answer -1 so the percent jump and progress sync take their fallback,
+// instead of landing on the last item of the window, up to 31 chapters off.
+TEST(BookMetadataCacheSizes, SpineIndexForSizeFailsWhenItsWindowCannotBeRead) {
+  constexpr int spineCount = 5000;
+  constexpr int spine = 2500;  // Mid-window, far from the window load() keeps.
+  const std::string bookBin = std::string(cachePath) + "/book.bin";
+  enum class Damage { Missing, Truncated, Corrupted };
+  for (const Damage damage : {Damage::Missing, Damage::Truncated, Damage::Corrupted}) {
+    buildBook(spineCount);
+    BookMetadataCache cache(cachePath);
+    ASSERT_TRUE(cache.load());
+    uint32_t target = 0;
+    for (int i = 0; i <= spine; i++) target += chapterBytes(i);
+    ASSERT_EQ(cache.getSpineIndexForSize(target), spine);
+
+    // Reload so the window holding `spine` is no longer the one in RAM.
+    BookMetadataCache damaged(cachePath);
+    ASSERT_TRUE(damaged.load());
+    std::vector<uint8_t>* bytes = Storage.bytes(bookBin);
+    ASSERT_NE(bytes, nullptr);
+    // Spine entries come before TOC entries: href length, href, cumulative size, TOC index.
+    const std::string href = chapterHref(spine);
+    const auto at = std::search(bytes->begin(), bytes->end(), href.begin(), href.end());
+    ASSERT_NE(at, bytes->end());
+    const size_t hrefPos = static_cast<size_t>(at - bytes->begin());
+    switch (damage) {
+      case Damage::Missing:
+        Storage.remove(bookBin.c_str());
+        break;
+      case Damage::Truncated:
+        bytes->resize(hrefPos);
+        break;
+      case Damage::Corrupted:
+        std::fill_n(bytes->begin() + static_cast<std::ptrdiff_t>(hrefPos + href.size()), sizeof(uint32_t), 0);
+        break;
+    }
+    EXPECT_EQ(damaged.getSpineIndexForSize(target), -1) << "damage " << static_cast<int>(damage);
+  }
+}

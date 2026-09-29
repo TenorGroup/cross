@@ -89,6 +89,11 @@ class HalStorage {
   bool exists(const char* path) const { return files.count(path) != 0; }
   bool remove(const char* path) { return files.erase(path) != 0; }
   void clear() { files.clear(); }
+  // Test access to a stored file's bytes, nullptr when absent.
+  std::vector<uint8_t>* bytes(const std::string& path) {
+    const auto it = files.find(path);
+    return it == files.end() ? nullptr : it->second.get();
+  }
 
  private:
   std::map<std::string, std::shared_ptr<std::vector<uint8_t>>> files;
