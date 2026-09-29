@@ -24,6 +24,7 @@
 #include "network/CrossPointWebServerActivity.h"
 #include "network/UsbDriveActivity.h"
 #include "reader/ReaderActivity.h"
+#include "reader/RemoteTurnGate.h"
 #include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/BmpViewerActivity.h"
@@ -387,9 +388,12 @@ bool ActivityManager::isForegroundReaderShown() const {
 }
 
 bool ActivityManager::remoteTurn(const bool forward, const bool chapter) {
-  // A page on its way to the panel is left alone, like a device key during a render.
-  if (!isForegroundReaderShown() || RenderLock::peek()) return false;
+  if (!isForegroundReader()) return false;
   auto* reader = static_cast<ReaderActivity*>(currentActivity.get());
+  if (!remoteTurnAccepted(reader->pageRendered.load(std::memory_order_acquire), RenderLock::peek(),
+                          reader->inputOverPage())) {
+    return false;
+  }
   const bool turned = chapter ? reader->skipPages(forward ? 1 : -1) : reader->pageTurn(forward);
   if (turned) requestUpdate();
   return turned;
