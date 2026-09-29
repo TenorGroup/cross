@@ -194,6 +194,33 @@ TEST(TiltPickUpReplay, ASwingBackDoesNotReplaceAWaitingFlick) {
   EXPECT_EQ(r.back, 0);
 }
 
+// Back in the book from a menu while the device is still moving (the sensor stays awake off the
+// reader, so there is no wake settling): the first polls already turn fast, then the device comes
+// to rest turned away. With no still pose to go back to, nothing turns.
+TEST(TiltPickUpReplay, ReturningToTheBookMidMotionWaitsForAStillPose) {
+  const unsigned long start = 10000;
+  fakeMs = start - 3000;
+  halTiltSensor = HalTiltSensor{};
+  halTiltSensor.begin();
+  int turns = 0;
+  const auto at = [&](const unsigned long ms, const double degrees, const int gx, const bool inReader) {
+    int32_t mg[3];
+    pose(degrees, mg);
+    hold({ms, mg[0], mg[1], mg[2], gx});
+    fakeMs = start + ms;
+    halTiltSensor.update(CrossPointTiltPageTurn::TILT_NORMAL, CrossPointOrientation::PORTRAIT, inReader);
+    turns += halTiltSensor.wasTiltedForward();
+    turns += halTiltSensor.wasTiltedBack();
+  };
+  for (long ms = -2000; ms < -1000; ms += 50) at(static_cast<unsigned long>(start + ms) - start, 0, 0, true);
+  for (long ms = -1000; ms < 0; ms += 50) at(static_cast<unsigned long>(start + ms) - start, 0, 0, false);
+  at(0, 20, 400, true);
+  at(50, 28, 350, true);
+  at(100, 34, 300, true);
+  for (unsigned long ms = 150; ms <= 2000; ms += 50) at(ms, 36, 0, true);
+  EXPECT_EQ(turns, 0);
+}
+
 TEST(TiltPickUpReplay, FlicksStillTurnAndPickUpsDoNot) {
   const auto clips = loadClips();
   ASSERT_EQ(clips.size(), 87u) << "missing " << TILT_CLIPS_PATH;

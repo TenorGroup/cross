@@ -98,8 +98,12 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   const int32_t mg[3] = {static_cast<int32_t>(sample.ax * 1000.0f), static_cast<int32_t>(sample.ay * 1000.0f),
                          static_cast<int32_t>(sample.az * 1000.0f)};
   if (!_baselineValid) {
+    // The pose a flick has to come back to is taken with the device still: back in the book from a
+    // menu while it is still moving, no flick is armed until it settles.
+    if (fabsf(gx) >= NEUTRAL_RATE_DPS || fabsf(gy) >= NEUTRAL_RATE_DPS) return;
     for (int i = 0; i < 3; ++i) _baselineMg[i] = mg[i];
     _baselineValid = true;
+    return;
   }
 
   // Map the gyro axis to left/right tilt based on reader orientation.
