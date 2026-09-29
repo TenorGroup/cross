@@ -201,6 +201,13 @@ bool act(const Action a) {
   return taken || a == Action::ReaderMenu || a == Action::SaveQuote;
 }
 
+// A linked remote whose presses the book takes: the chosen one, or any when none is chosen.
+// When the chosen remote could not be armed, the stack may link another bonded remote.
+bool chosenLinked() {
+  if (!port::connected()) return false;
+  return config->peerAddr[0] == '\0' || strncmp(port::linked().addr, config->peerAddr, sizeof(config->peerAddr)) == 0;
+}
+
 // The book in front with the radio up: arm the chosen remote, drain both queues.
 bool serveReader() {
   bool acted = false;
@@ -216,7 +223,16 @@ bool serveReader() {
   // remote's table, and a button the table does not name falls back to the key mapping.
   // Without a table the raw ring is only drained and the key path below decides.
   port::RawEdge raw;
-  router.follow(port::connected());
+  port::KeyPress key;
+  const bool linked = chosenLinked();
+  router.follow(linked);
+  if (port::connected() && !linked) {
+    unsigned dropped = 0;
+    while (port::popRaw(raw)) ++dropped;
+    while (port::popKey(key)) ++dropped;
+    if (dropped > 0) say(false, "%u presses from %s dropped: not the chosen remote\n", dropped, port::linked().addr);
+    return false;
+  }
   if (router.linked && !router.chosen) {
     // Edges queued while the book was not in front (the remote stays linked on Home) do not
     // belong to this page: an old press must not skip a chapter when the book opens.
@@ -240,7 +256,6 @@ bool serveReader() {
     acted = act(held) || acted;
     if (held != Action::None) say(false, "raw hold -> %s\n", actionName(held));
   }
-  port::KeyPress key;
   while (port::popKey(key)) {
     // With a table the raw edge already decided this frame: its key event is only logged.
     const Action a = viaTable ? Action::None : pageActionFor(*config, key.keycode, key.mods);
@@ -264,7 +279,7 @@ void stepLinkNote(const bool entered, const bool acknowledged) {
   in.reading = lastScene.where == Where::Reader;
   in.enabled = config->enabled != 0;
   in.idleStopped = radioIdleStopped.load(std::memory_order_relaxed);
-  in.linked = port::connected();
+  in.linked = chosenLinked();
   in.refused = visit.attempted && readerStartDeferred.load(std::memory_order_relaxed) &&
                !attemptInFlight.load(std::memory_order_acquire);
   in.runningMs = noteRadioUp ? port::nowMs() - noteRadioUpSinceMs : 0;
@@ -431,7 +446,7 @@ bool tick(const Scene& s) {
     // Nothing connected for long: radio down. Otherwise it keeps the CPU at full speed and a
     // device lying still eats its battery.
     if (!attemptInFlight.load(std::memory_order_acquire) && port::running()) {
-      in.linked = port::connected();
+      in.linked = chosenLinked();
       if (in.linked || idleSinceMs == 0) idleSinceMs = port::nowMs();
       in.phase = Phase::Running;
       in.idleMs = port::nowMs() - idleSinceMs;
