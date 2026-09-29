@@ -1014,6 +1014,13 @@ size_t Epub::getCumulativeSpineItemSize(const int spineIndex) const {
   return bookMetadataCache->getCumulativeSize(spineIndex);
 }
 
+int Epub::getSpineIndexForSize(const size_t bytes) const {
+  if (!bookMetadataCache || !bookMetadataCache->isLoaded()) {
+    return -1;
+  }
+  return bookMetadataCache->getSpineIndexForSize(static_cast<uint32_t>(bytes));
+}
+
 BookMetadataCache::SpineEntry Epub::getSpineItem(const int spineIndex) const {
   if (!bookMetadataCache || !bookMetadataCache->isLoaded()) {
     LOG_ERR("EBP", "getSpineItem called but cache not loaded");

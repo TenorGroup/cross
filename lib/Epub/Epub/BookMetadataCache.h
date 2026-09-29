@@ -63,10 +63,19 @@ class BookMetadataCache {
   // wrapper serves whichever pass is active (spine, then toc).
   std::unique_ptr<serialization::BufferedFileWriter> passOut;
 
-  // Cumulative spine sizes, cached in RAM at load() so progress/percent lookups are
-  // O(1) instead of 2 seeks + a heap-allocating SpineEntry read per access (4 bytes
-  // per spine item; <1KB for typical books).
-  std::vector<uint32_t> cumulativeSizes;
+  // Cumulative spine sizes stay in book.bin. A loaded cache is resident for the whole
+  // reading session, so RAM holds only the total before every SIZE_WINDOW-th spine item
+  // and the book's total, plus the totals of one window of SIZE_WINDOW items, read from
+  // book.bin when a lookup falls outside it. A page asks the book's total and its item's
+  // two totals: the window and windowStarts answer them, so reading straight through a
+  // book reads the card once per SIZE_WINDOW items.
+  static constexpr uint16_t SIZE_WINDOW = 32;
+  std::vector<uint32_t> windowStarts;  // total before item w * SIZE_WINDOW
+  uint32_t bookSize = 0;
+  mutable int windowFirst = -1;  // first item held in `window`, -1 when it holds none
+  mutable uint32_t window[SIZE_WINDOW] = {};
+  // Reads the totals of the window starting at `first`. Called with the window lock held.
+  bool readSizeWindow(int first) const;
 
   // Index for fast href→spineIndex lookup (used only for large EPUBs)
   struct SpineHrefIndexEntry {
@@ -120,8 +129,11 @@ class BookMetadataCache {
   SpineEntry getSpineEntry(int index);
   TocEntry getTocEntry(int index);
   // Cumulative byte size up to and including the given spine item (0 if out of range
-  // or not loaded). Backed by the in-RAM cumulativeSizes cache populated in load().
+  // or not loaded). Reads at most one window of sizes from book.bin.
   uint32_t getCumulativeSize(int index) const;
+  // The first spine item whose cumulative size reaches `size`, -1 if none does. Reads at
+  // most one window of sizes from book.bin.
+  int getSpineIndexForSize(uint32_t size) const;
   int getSpineCount() const { return spineCount; }
   int getTocCount() const { return tocCount; }
   bool isLoaded() const { return loaded; }

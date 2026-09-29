@@ -719,17 +719,9 @@ void EpubReaderActivity::jumpToPercent(int percent) {
   const int spineCount = epub->getSpineItemsCount();
   if (spineCount == 0) return;
 
-  int targetSpineIndex = spineCount - 1;
-  size_t prevCumulative = 0;
-
-  for (int i = 0; i < spineCount; i++) {
-    const size_t cumulative = epub->getCumulativeSpineItemSize(i);
-    if (targetSize <= cumulative) {
-      targetSpineIndex = i;
-      prevCumulative = (i > 0) ? epub->getCumulativeSpineItemSize(i - 1) : 0;
-      break;
-    }
-  }
+  const int found = epub->getSpineIndexForSize(targetSize);
+  const int targetSpineIndex = found >= 0 ? found : spineCount - 1;
+  const size_t prevCumulative = found > 0 ? epub->getCumulativeSpineItemSize(found - 1) : 0;
 
   const size_t cumulative = epub->getCumulativeSpineItemSize(targetSpineIndex);
   const size_t spineSize = (cumulative > prevCumulative) ? (cumulative - prevCumulative) : 0;
