@@ -274,6 +274,39 @@ TEST_F(TickTest, OnlyTheChosenRemoteTurnsPages) {
   EXPECT_EQ(bleturner::linkNote(), bleturner::LinkNote::None);
 }
 
+// Remote A is chosen and bonded. Pairing remote B fails: A stays the chosen one, and when A links
+// again in the book its presses turn pages.
+TEST_F(TickTest, FailedPairingKeepsTheChosenRemote) {
+  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  strcpy(config.peerName, "Free3-R");
+  EXPECT_TRUE(bleturner::pair("11:22:33:44:55:66", "Remote B"));
+  EXPECT_EQ(radio().connects, (std::vector<std::string>{"11:22:33:44:55:66"}));
+  EXPECT_FALSE(bleturner::service()) << "B never linked";
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  EXPECT_STREQ(config.peerName, "Free3-R");
+  pass(fake::reading());
+  link("Some Remote");  // A again
+  pass(fake::reading());
+  radio().keys = {{bleturner::kUsageRight, 0, true}};
+  EXPECT_TRUE(pass(fake::reading()));
+  EXPECT_EQ(host().delivered, (std::vector<Action>{Action::NextPage}));
+}
+
+TEST_F(TickTest, PairedRemoteBecomesTheChosenOneOnceItLinks) {
+  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  EXPECT_TRUE(bleturner::pair("11:22:33:44:55:66", "Remote B"));
+  radio().connected = true;
+  radio().addr = "7d:de:5c:bd:ae:ca";  // A linked meanwhile: not the remote being paired
+  EXPECT_FALSE(bleturner::service());
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  radio().addr = "11:22:33:44:55:66";
+  radio().name = "Remote B";
+  EXPECT_TRUE(bleturner::service()) << "the host saves the new choice";
+  EXPECT_STREQ(config.peerAddr, "11:22:33:44:55:66");
+  EXPECT_STREQ(config.peerName, "Remote B");
+  EXPECT_FALSE(bleturner::service()) << "saved once";
+}
+
 TEST_F(TickTest, WithNoChosenRemoteAnyLinkedRemoteTurnsPages) {
   running();
   radio().connected = true;
