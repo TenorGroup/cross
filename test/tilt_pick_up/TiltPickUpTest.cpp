@@ -86,6 +86,12 @@ TEST(TiltPickUpSettle, LeftTurnedIsAPickUpOnceTheWaitIsOver) {
   EXPECT_EQ(settleAt(180, 0.0f, 801), Verdict::PickUp);
 }
 
+TEST(TiltPickUpSettle, RestReachedAfterTheWaitIsStillAPickUp) {
+  EXPECT_EQ(settleAt(0, 0.0f, 800), Verdict::Flick);
+  EXPECT_EQ(settleAt(0, 0.0f, 801), Verdict::PickUp);
+  EXPECT_EQ(settleAt(21, 59.0f, 801), Verdict::PickUp);
+}
+
 TEST(TiltPickUpSettle, ThresholdsAreParameters) {
   TiltPickUp::Thresholds wide;
   wide.poseCosSq64 = 37;  // 40 degrees

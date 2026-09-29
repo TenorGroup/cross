@@ -27,6 +27,8 @@ enum class Verdict : uint8_t { Wait, Flick, PickUp };
 // rateDps: the tilt axis now. ageMs: time since the flick triggered.
 inline Verdict settle(const int32_t (&startMg)[3], const int32_t (&nowMg)[3], const float rateDps,
                       const unsigned long ageMs, const Thresholds& t = Thresholds{}) {
+  // Past the wait, even a return to the start is dropped.
+  if (ageMs > t.maxWaitMs) return Verdict::PickUp;
   if (std::fabs(rateDps) < t.calmDps) {
     // 64-bit: the squares of the dot products overflow 32 bits.
     int64_t dot = 0, startSq = 0, nowSq = 0;
@@ -40,7 +42,7 @@ inline Verdict settle(const int32_t (&startMg)[3], const int32_t (&nowMg)[3], co
     const bool gravityOnly = nowSq >= low * low && nowSq <= high * high;
     if (gravityOnly && dot > 0 && 64 * dot * dot >= t.poseCosSq64 * startSq * nowSq) return Verdict::Flick;
   }
-  return ageMs > t.maxWaitMs ? Verdict::PickUp : Verdict::Wait;
+  return Verdict::Wait;
 }
 
 }  // namespace TiltPickUp
