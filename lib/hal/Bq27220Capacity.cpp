@@ -128,12 +128,28 @@ void Bq27220Capacity::tick(Bus& bus, const uint32_t nowMs) {
       }
       uint16_t status = 0;
       if (!readWord(bus, DESIGN_CAPACITY, dcRead) ||
-          (dcRead == TI_DEFAULT_MAH && !readWord(bus, OPERATION_STATUS, status))) {
+          ((dcRead == TI_DEFAULT_MAH || dcRead == target) && !readWord(bus, OPERATION_STATUS, status))) {
         // Nothing was sent to the gauge: nothing to undo.
         failStage = stage;
         outcome = Result::Failed;
         stage = Stage::Done;
         return;
+      }
+      checkStatus = status;
+      const bool inConfig = (status >> 8) & CFGUPDATE_BIT;
+      if (dcRead == target && (inConfig || security(status) != SEC_SEALED)) {
+        // The target is in, but a load cut short (sleep, or a refused exit or SEALED) left the gauge
+        // in CONFIG UPDATE, where it stops gauging, or unsealed. DesignCapacity() reading the target
+        // means a block was written, so the exit reinitializes, as at the end of a load (step 14).
+        resealing = true;
+        if (!inConfig) return seal(bus);
+        stage = Stage::WaitExit;
+        if (!control(bus, EXIT_CFG_UPDATE_REINIT)) {
+          failed = true;
+          failStage = stage;
+          return seal(bus);
+        }
+        return wait(nowMs, Stage::WaitExit);
       }
       if (dcRead != TI_DEFAULT_MAH) {
         // Already loaded since the gauge last lost power, or a battery someone else configured.
@@ -241,7 +257,7 @@ void Bq27220Capacity::seal(Bus& bus) {
     failed = true;
   }
   if (!readWord(bus, DESIGN_CAPACITY, dcRead)) dcRead = 0;
-  outcome = !failed && dcRead == target ? Result::Loaded : Result::Failed;
+  outcome = failed || dcRead != target ? Result::Failed : resealing ? Result::Resealed : Result::Loaded;
   if (outcome == Result::Failed && !failed) failStage = stage;
   stage = Stage::Done;
 }

@@ -17,6 +17,6 @@ class HalGaugeCapacity {
   void tick();
   // Before deep sleep: a load under way leaves CONFIG UPDATE and seals the gauge at once.
   void abandon();
-  // "none", "pending", "not-needed", "loaded" or "failed:<stage>", for the probe build.
+  // "none", "pending", "not-needed", "loaded", "resealed" or "failed:<stage>", for the probe build.
   const char* status() const;
 };

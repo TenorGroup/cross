@@ -24,7 +24,9 @@ class Bq27220Capacity {
     ~Bus() = default;
   };
 
-  enum class Result : uint8_t { Pending, NotNeeded, Loaded, Failed };
+  // Resealed: the target was already in, but the gauge was left in CONFIG UPDATE or unsealed (a
+  // load cut short before a restart), and the check took it out and sealed it.
+  enum class Result : uint8_t { Pending, NotNeeded, Loaded, Resealed, Failed };
   // Where the load is, or where it gave up.
   enum class Stage : uint8_t { Check, Access, WaitEnter, Block, WaitExit, Seal, Done };
 
@@ -42,6 +44,8 @@ class Bq27220Capacity {
   bool running() const { return stage != Stage::Check && stage != Stage::Done; }
   // DesignCapacity() read after sealing (or the one that needed no load), 0 when unread.
   uint16_t designCapacity() const { return dcRead; }
+  // OperationStatus() read by the check, 0 when unread.
+  uint16_t statusAtCheck() const { return checkStatus; }
 
   // TRM 6.1 step 11: the new MACDataSum() from the old one, replacing one two-byte parameter.
   static uint8_t replaceChecksum(uint8_t oldSum, uint8_t oldMsb, uint8_t oldLsb, uint8_t newMsb, uint8_t newLsb);
@@ -73,7 +77,9 @@ class Bq27220Capacity {
   bool failed = false;
   bool inConfigUpdate = false;  // ENTER_CFG_UPDATE sent, no exit sent yet
   bool wroteData = false;       // a MACData() write was started
+  bool resealing = false;       // the check found the target in, the gauge not yet sealed
   uint16_t dcRead = 0;
+  uint16_t checkStatus = 0;
   uint32_t sentAt = 0;
   uint32_t nextAt = 0;
 };

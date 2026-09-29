@@ -315,8 +315,8 @@ TEST(Bq27220Capacity, SealedGaugeTakesTheUnsealKeysFirstAndIsSealedAgain) {
   EXPECT_EQ(gauge.sec, 3);
 }
 
-TEST(Bq27220Capacity, AnyCapacityOtherThanTheDefaultIsLeftAlone) {
-  for (const uint16_t dc : {uint16_t{650}, uint16_t{2999}, uint16_t{3001}, uint16_t{1200}, uint16_t{0}}) {
+TEST(Bq27220Capacity, AnyCapacityOtherThanTheDefaultOrTheTargetIsLeftAlone) {
+  for (const uint16_t dc : {uint16_t{2999}, uint16_t{3001}, uint16_t{1200}, uint16_t{0}}) {
     FakeGauge gauge;
     gauge.setDm(DM_DC, dc);
     Bq27220Capacity load(TARGET);
@@ -326,6 +326,51 @@ TEST(Bq27220Capacity, AnyCapacityOtherThanTheDefaultIsLeftAlone) {
     EXPECT_EQ(gauge.getDm(DM_DC), dc);
     EXPECT_EQ(gauge.sec, 2) << "the access mode is not touched either";
   }
+}
+
+// A load cut short before a restart (sleep, or a refused exit or SEALED) can leave the target in
+// Data Memory with the gauge still in CONFIG UPDATE or unsealed. The check at the next start puts
+// that right instead of taking the target for a finished load.
+TEST(Bq27220Capacity, TargetLeftInConfigUpdateIsExitedWithReinitAndSealed) {
+  FakeGauge gauge;
+  gauge.setDm(DM_DC, TARGET);
+  gauge.sec = 1;  // CONFIG UPDATE is only entered with FULL ACCESS
+  gauge.cfgUpdate = true;
+  Bq27220Capacity load(TARGET);
+  run(load, gauge);
+  EXPECT_EQ(gauge.log, (std::vector<std::string>{"R3C:2", "R3A:2", "W00=9100", "R3B:1", "W00=3000", "R3C:2"}));
+  EXPECT_EQ(load.result(), Bq27220Capacity::Result::Resealed);
+  EXPECT_EQ(load.statusAtCheck() & 0x0400, 0x0400);
+  EXPECT_EQ(gauge.reinits, 1);
+  EXPECT_FALSE(gauge.cfgUpdate);
+  EXPECT_EQ(gauge.sec, 3);
+  EXPECT_EQ(gauge.getDm(DM_DC), TARGET);
+}
+
+TEST(Bq27220Capacity, TargetLeftUnsealedIsSealed) {
+  for (const uint8_t sec : {uint8_t{1}, uint8_t{2}}) {
+    FakeGauge gauge;
+    gauge.setDm(DM_DC, TARGET);
+    gauge.sec = sec;
+    Bq27220Capacity load(TARGET);
+    run(load, gauge);
+    EXPECT_EQ(gauge.log, (std::vector<std::string>{"R3C:2", "R3A:2", "W00=3000", "R3C:2"})) << int{sec};
+    EXPECT_EQ(load.result(), Bq27220Capacity::Result::Resealed) << int{sec};
+    EXPECT_EQ(gauge.sec, 3) << int{sec};
+    EXPECT_EQ(gauge.reinits, 0) << int{sec};
+  }
+}
+
+TEST(Bq27220Capacity, TargetAlreadySealedSendsNothing) {
+  FakeGauge gauge;
+  gauge.setDm(DM_DC, TARGET);
+  gauge.sec = 3;
+  Bq27220Capacity load(TARGET);
+  run(load, gauge);
+  for (const auto& entry : gauge.log) EXPECT_NE(entry[0], 'W') << entry;
+  EXPECT_EQ(load.result(), Bq27220Capacity::Result::NotNeeded);
+  EXPECT_EQ(gauge.sec, 3);
+  EXPECT_FALSE(gauge.cfgUpdate);
 }
 
 TEST(Bq27220Capacity, NoTargetMeansNoBusTraffic) {
