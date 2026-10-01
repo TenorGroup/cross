@@ -3,9 +3,11 @@
 #include <cstdint>
 
 // Loads the fitted battery's capacity into a BQ27220 fuel gauge that still holds TI's 3000 mAh
-// default, following the Data Memory update of the BQ27220 Technical Reference Manual (SLUUBD4A,
-// section 6.1). The gauge keeps that memory in RAM only (TRM 3.1, 8.1.4): a power-on reset, such
-// as a battery run flat, brings 3000 mAh back, so the check runs at every start.
+// default, or whose FullChargeCapacity() reads more than a quarter above it (a capacity learned
+// against that default), following the Data Memory update of the BQ27220 Technical Reference
+// Manual (SLUUBD4A, section 6.1). The gauge keeps that memory in RAM only (TRM 3.1, 8.1.4): a
+// power-on reset, such as a battery run flat, brings 3000 mAh back, so the check runs at every
+// start.
 //
 // Nothing here blocks: tick() makes the bus transactions that are due and returns, and the waits
 // the gauge needs are deadlines against the clock passed in. Every path that unlocked the gauge
@@ -67,7 +69,8 @@ class Bq27220Capacity {
 
  public:
   // Where a Data Memory write stopped, for the log: 1 select, 2 read back (value = what came back),
-  // 3 reads, 4 length (value = length and sum), 5 old value (value = the old value), 6 writes.
+  // 3 reads, 4 length (value = length and sum), 5 old value neither replaced nor the target (value =
+  // the old value), 6 writes.
   uint8_t detail = 0;
   uint16_t detailValue = 0;
 

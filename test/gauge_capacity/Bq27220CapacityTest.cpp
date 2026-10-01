@@ -212,8 +212,8 @@ class FakeGauge final : public Bq27220Capacity::Bus {
 };
 
 // Ticks the load every 10 ms, as the main loop would, until it ends or the time runs out.
-void run(Bq27220Capacity& load, FakeGauge& gauge, const uint32_t forMs = 20000) {
-  for (uint32_t t = 0; t <= forMs && load.result() == Bq27220Capacity::Result::Pending; t += 10) {
+void run(Bq27220Capacity& load, FakeGauge& gauge, const uint32_t forMs = 20000, const uint32_t fromMs = 0) {
+  for (uint32_t t = fromMs; t <= fromMs + forMs && load.result() == Bq27220Capacity::Result::Pending; t += 10) {
     gauge.now = t;
     load.tick(gauge, t);
   }
@@ -364,6 +364,8 @@ TEST(Bq27220Capacity, TargetLeftUnsealedIsSealed) {
 TEST(Bq27220Capacity, TargetAlreadySealedSendsNothing) {
   FakeGauge gauge;
   gauge.setDm(DM_DC, TARGET);
+  gauge.setDm(DM_FCC, TARGET);
+  gauge.fullChargeCapacity = TARGET;
   gauge.sec = 3;
   Bq27220Capacity load(TARGET);
   run(load, gauge);
@@ -381,15 +383,68 @@ TEST(Bq27220Capacity, NoTargetMeansNoBusTraffic) {
   EXPECT_EQ(load.result(), Bq27220Capacity::Result::NotNeeded);
 }
 
+// Learned on the cell: below the target, or up to a quarter above it.
 TEST(Bq27220Capacity, ALearnedFullChargeCapacityIsKept) {
-  FakeGauge gauge;
-  gauge.setDm(DM_FCC, 820);
-  Bq27220Capacity load(TARGET);
-  run(load, gauge);
-  EXPECT_EQ(load.result(), Bq27220Capacity::Result::Loaded);
-  EXPECT_EQ(gauge.getDm(DM_FCC), 820);
-  EXPECT_EQ(gauge.getDm(DM_DC), TARGET);
-  EXPECT_EQ(gauge.commits, 1);
+  for (const uint16_t learned : {uint16_t{560}, uint16_t{800}}) {
+    FakeGauge gauge;
+    gauge.setDm(DM_FCC, learned);
+    Bq27220Capacity load(TARGET);
+    run(load, gauge);
+    EXPECT_EQ(load.result(), Bq27220Capacity::Result::Loaded) << learned;
+    EXPECT_EQ(gauge.getDm(DM_FCC), learned);
+    EXPECT_EQ(gauge.getDm(DM_DC), TARGET);
+    EXPECT_EQ(gauge.commits, 1);
+
+    FakeGauge loaded;
+    loaded.setDm(DM_DC, TARGET);
+    loaded.setDm(DM_FCC, learned);
+    loaded.fullChargeCapacity = learned;
+    loaded.sec = 3;
+    Bq27220Capacity again(TARGET);
+    run(again, loaded);
+    EXPECT_EQ(again.result(), Bq27220Capacity::Result::NotNeeded) << learned;
+    for (const auto& entry : loaded.log) EXPECT_NE(entry[0], 'W') << entry;
+  }
+}
+
+// A Learned Full Charge Capacity of 2744 mAh, one learning cycle (at most 256 mAh down, TRM 1.1.3)
+// from TI's 3000 default, kept FullChargeCapacity() at 2744 on an X3 whose DesignCapacity() read
+// 650 (field report on v1.0.50, 02/10/2026). It is replaced whether DesignCapacity() still reads
+// 3000 or was loaded before, and the next start finishes a load that a refused step cut short.
+TEST(Bq27220Capacity, CapacityLearnedAgainstTheDefaultIsReplaced) {
+  for (const uint16_t dc : {uint16_t{3000}, TARGET}) {
+    FakeGauge start;
+    start.sec = 3;
+    start.setDm(DM_DC, dc);
+    start.setDm(DM_FCC, 2744);
+    start.fullChargeCapacity = 2744;
+    FakeGauge gauge = start;
+    Bq27220Capacity load(TARGET);
+    run(load, gauge);
+    EXPECT_EQ(load.result(), Bq27220Capacity::Result::Loaded) << dc;
+    EXPECT_EQ(gauge.getDm(DM_FCC), TARGET) << dc;
+    EXPECT_EQ(gauge.getDm(DM_DC), TARGET) << dc;
+    EXPECT_EQ(gauge.fullChargeCapacity, TARGET) << dc;
+    EXPECT_EQ(gauge.reinits, 1) << dc;
+    EXPECT_FALSE(gauge.cfgUpdate);
+    EXPECT_EQ(gauge.sec, 3);
+
+    for (size_t failAt = 0; failAt < gauge.log.size(); ++failAt) {
+      FakeGauge cut = start;
+      cut.failAt = static_cast<int>(failAt);
+      Bq27220Capacity first(TARGET);
+      run(first, cut);
+      cut.failAt = -1;
+      Bq27220Capacity next(TARGET);
+      run(next, cut, 20000, 60000);  // the next start, its clock past the first one's
+      SCOPED_TRACE(std::to_string(dc) + " " + std::to_string(failAt) + " " + gauge.log[failAt]);
+      EXPECT_EQ(cut.getDm(DM_FCC), TARGET);
+      EXPECT_EQ(cut.getDm(DM_DC), TARGET);
+      EXPECT_EQ(cut.fullChargeCapacity, TARGET);
+      EXPECT_FALSE(cut.cfgUpdate);
+      EXPECT_EQ(cut.sec, 3);
+    }
+  }
 }
 
 TEST(Bq27220Capacity, DataMemoryDisagreeingWithDesignCapacityIsNotWritten) {
