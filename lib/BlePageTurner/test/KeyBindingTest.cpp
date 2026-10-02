@@ -59,6 +59,17 @@ TEST(BleBindingTableTest, FullTableRefusesAndGarbageIsNotValid) {
   EXPECT_FALSE(valid(makeBinding(0x030100, false, Action::NextPage))) << "a zero value is a release, not a button";
 }
 
+TEST(BleBindingTableTest, KeypageTurnsBothWaysOutOfTheBox) {
+  // "BOOX Keypage" as logged on the X3: the upper button notifies "02 00 00", the lower
+  // "01 00 00", both on report 3.
+  const RemoteTable* t = tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "BOOX Keypage");
+  ASSERT_TRUE(routes(t));
+  EXPECT_EQ(lookup(*t, 0x030002, false), Action::NextPage);
+  EXPECT_EQ(lookup(*t, 0x030001, false), Action::PrevPage);
+  EXPECT_EQ(tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "Free3-R"), &kThreeButtonDefault);
+  EXPECT_EQ(tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "Other"), nullptr);
+}
+
 TEST(BlePageActionTest, DefaultKeysTurnUntilADirectionIsLearned) {
   Config c;
   c.enabled = 1;

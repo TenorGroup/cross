@@ -112,8 +112,19 @@ constexpr RemoteTable kThreeButtonDefault = {"",
                                              {makeBinding(0x000102, false, Action::NextChapter) | kAnyReportBit,
                                               makeBinding(0x000008, false, Action::PrevChapter) | kAnyReportBit}};
 
+// The two-button remote named "BOOX Keypage": upper button "02 00 00", lower "01 00 00",
+// both on report 3 (measured on the X3). Its decoded usages turn no page, so both
+// buttons are named here: upper = next page, lower = previous page.
+constexpr RemoteTable kKeypageDefault = {"",
+                                         2,
+                                         {makeBinding(0x030002, false, Action::NextPage),
+                                          makeBinding(0x030001, false, Action::PrevPage)}};
+
 inline const RemoteTable* defaultTableFor(const char* name) {
-  return name != nullptr && strncmp(name, "Free3", 5) == 0 ? &kThreeButtonDefault : nullptr;
+  if (name == nullptr) return nullptr;
+  if (strncmp(name, "Free3", 5) == 0) return &kThreeButtonDefault;
+  if (strncmp(name, "BOOX Keypage", 12) == 0) return &kKeypageDefault;
+  return nullptr;
 }
 
 // Table of the connected remote: the saved one for its address, else the default for
