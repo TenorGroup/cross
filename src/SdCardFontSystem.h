@@ -65,6 +65,9 @@ class SdCardFontSystem {
   /// wake would load without reading the catalog (SdFontBootMemo.h).
   /// Thread-safe: can be called from the web server task.
   void markRegistryDirty();
+  // Frees the catalog list when the RTC memo can bring it back: the next registry() restores it
+  // without walking the card. False when it stays (unread, fonts changed, or not kept).
+  bool releaseCatalog();
 
   /// If the registry is dirty, re-scan the SD card now and clear the flag.
   /// Used by the web UI so uploaded/deleted fonts appear in the list

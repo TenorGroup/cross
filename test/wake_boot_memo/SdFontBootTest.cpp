@@ -419,3 +419,37 @@ TEST(SdFontCatalogMemo, CatalogBeyondItsSpaceIsNotKept) {
   std::vector<SdCardFontFamilyInfo> back;
   EXPECT_FALSE(sdfontmemo::restoreCatalog(memo, true, back));
 }
+
+// A book has no use for the catalog list. Released when the book opens, the next registry use
+// (a font menu) brings it back from the RTC memo the walk left, without walking the card again.
+TEST_F(SdFontBoot, ReleasedCatalogComesBackWithoutWalkingTheCard) {
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  boot(ESP_RST_POWERON, system, renderer);
+  ASSERT_EQ(hostDiscoveries, 1);
+  EXPECT_TRUE(system.releaseCatalog());
+  EXPECT_EQ(system.registry().getFamilyCount(), 2);
+  const auto* family = system.registry().findFamily("Bokerlam");
+  ASSERT_NE(family, nullptr);
+  EXPECT_EQ(family->files.size(), 6u);
+  EXPECT_EQ(hostDiscoveries, 1);
+  system.ensureLoaded(renderer);
+  EXPECT_EQ(system.resolveFontId("Bokerlam", hostSettings.fontPointSize), 42);
+}
+
+// A catalog the memo cannot bring back stays: fonts changed in the app, or never read yet.
+TEST_F(SdFontBoot, CatalogTheMemoCannotBringBackIsKept) {
+  SdCardFontSystem system;
+  GfxRenderer renderer;
+  boot(ESP_RST_POWERON, system, renderer);
+  system.markRegistryDirty();
+  EXPECT_FALSE(system.releaseCatalog());
+
+  hostSettings.sdFontFamilyName[0] = '\0';
+  SdCardFontSystem unread;
+  GfxRenderer r2;
+  boot(ESP_RST_POWERON, unread, r2);
+  EXPECT_FALSE(unread.releaseCatalog());
+  EXPECT_EQ(unread.registry().getFamilyCount(), 2);
+  EXPECT_EQ(hostDiscoveries, 1);
+}

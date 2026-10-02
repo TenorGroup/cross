@@ -136,6 +136,15 @@ void SdCardFontSystem::markRegistryDirty() {
   registryDirty_.store(true, std::memory_order_release);
 }
 
+bool SdCardFontSystem::releaseCatalog() {
+  // Only a list the memo still holds goes: the memo is cleared when fonts change in the app.
+  if (catalogMemo.magic != sdfontmemo::CATALOG_MAGIC || registryDirty_.load(std::memory_order_acquire)) return false;
+  uint8_t expected = CATALOG_READY;
+  if (!catalog_.compare_exchange_strong(expected, CATALOG_PENDING, std::memory_order_acq_rel)) return false;
+  registry_.adopt({});
+  return true;
+}
+
 const SdCardFontRegistry& SdCardFontSystem::registry() const {
   readCatalogIfPending();
   return registry_;
@@ -144,7 +153,14 @@ const SdCardFontRegistry& SdCardFontSystem::registry() const {
 bool SdCardFontSystem::readCatalogIfPending() const {
   uint8_t expected = CATALOG_PENDING;
   if (catalog_.compare_exchange_strong(expected, CATALOG_READING, std::memory_order_acq_rel)) {
-    walkCatalog();
+    // A list released while the memo held it (releaseCatalog) comes back from the memo. The
+    // boot leaves the catalog unread only with the memo cleared, so it walks the card.
+    std::vector<SdCardFontFamilyInfo> kept;
+    if (sdfontmemo::restoreCatalog(catalogMemo, true, kept)) {
+      registry_.adopt(std::move(kept));
+    } else {
+      walkCatalog();
+    }
     const auto heap = HalMemory::getInternalHeap();
     LOG_INF("HEAP", "fonts-sd-registry free=%u largest=%u families=%d", static_cast<unsigned>(heap.freeBytes),
             static_cast<unsigned>(heap.largestBlockBytes), registry_.getFamilyCount());
