@@ -453,3 +453,24 @@ TEST_F(SdFontBoot, CatalogTheMemoCannotBringBackIsKept) {
   EXPECT_EQ(unread.registry().getFamilyCount(), 2);
   EXPECT_EQ(hostDiscoveries, 1);
 }
+
+// After a wake the boot memo's family answered for the catalog until its first read. A released
+// catalog must not bring that old family back: a size added since the wake would snap away.
+TEST_F(SdFontBoot, ReleasedCatalogDoesNotAnswerWithTheWakeFamily) {
+  SdCardFontSystem cold, wake;
+  GfxRenderer r1, renderer;
+  boot(ESP_RST_POWERON, cold, r1);
+  boot(ESP_RST_DEEPSLEEP, wake, renderer);
+  hostCatalog[0].files.push_back({20, 0, 0});
+  hostCardFiles.insert("/.fonts/Bokerlam/Bokerlam-SD_20.cpfont");
+  wake.markRegistryDirty();
+  wake.refreshIfDirty();
+  hostSettings.fontPointSize = 20;
+  wake.ensureLoaded(renderer);
+  ASSERT_EQ(hostLoads.back(), "/.fonts/Bokerlam/Bokerlam-SD_20.cpfont");
+  ASSERT_TRUE(wake.releaseCatalog());
+  hostLoads.clear();
+  wake.ensureLoaded(renderer);
+  EXPECT_EQ(hostSettings.fontPointSize, 20) << "the released catalog answered with the wake's family";
+  EXPECT_TRUE(hostLoads.empty() || hostLoads.back() == "/.fonts/Bokerlam/Bokerlam-SD_20.cpfont");
+}

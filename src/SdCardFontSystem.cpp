@@ -142,6 +142,8 @@ bool SdCardFontSystem::releaseCatalog() {
   uint8_t expected = CATALOG_READY;
   if (!catalog_.compare_exchange_strong(expected, CATALOG_PENDING, std::memory_order_acq_rel)) return false;
   registry_.adopt({});
+  // The wake's family answers only until the boot's first read: past that it may be out of date.
+  bootFamily_.name.clear();
   return true;
 }
 
@@ -158,6 +160,7 @@ bool SdCardFontSystem::readCatalogIfPending() const {
     std::vector<SdCardFontFamilyInfo> kept;
     if (sdfontmemo::restoreCatalog(catalogMemo, true, kept)) {
       registry_.adopt(std::move(kept));
+      catalogKept_ = true;  // a family that no longer loads walks the card (walkIfCatalogKept)
     } else {
       walkCatalog();
     }

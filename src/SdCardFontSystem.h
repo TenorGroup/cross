@@ -131,7 +131,7 @@ class SdCardFontSystem {
   // The catalog came from the RTC memo and has not been checked against the card since.
   mutable bool catalogKept_ = false;
   // The family begin() loaded from the boot memo, answering for the catalog until it is read.
-  // Not changed after begin(); an empty name means the boot did not use the memo.
+  // Set by begin() and cleared by releaseCatalog(); an empty name means it does not answer.
   SdCardFontFamilyInfo bootFamily_;
   SdCardFontManager manager_;
   uint8_t loadedRequestWeight_ = 0;
