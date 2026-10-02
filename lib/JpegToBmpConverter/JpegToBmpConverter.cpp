@@ -551,8 +551,9 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
     needsScaling = true;
   }
 
-  const bool smoothUpscale =
-      progressiveDecode && needsScaling && scaleSrcWidth <= outWidth && scaleSrcHeight <= outHeight;
+  // A cover narrower than its output grows by linear interpolation, baseline or progressive; area
+  // averaging has nothing to average there and only repeats source pixels.
+  const bool smoothUpscale = needsScaling && scaleSrcWidth <= outWidth && scaleSrcHeight <= outHeight;
 
   // Write BMP header with output dimensions
   int bytesPerRow;

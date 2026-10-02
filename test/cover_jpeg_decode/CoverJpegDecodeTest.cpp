@@ -221,6 +221,33 @@ int main() {
     for (const size_t s : arrays) largest = std::max(largest, s);
     std::printf("2-bit 1200x1800 -> 528x792: largest array %zu bytes\n", largest);
   }
+  {
+    // A baseline cover narrower than the screen grows by linear interpolation, as a progressive one
+    // does: the black / white edge of a 128 x 192 cover (an MCU boundary, so no ringing) spreads over
+    // a few output columns as gray. Repeating source pixels keeps it a step, only levels 0 and 3.
+    const auto jpeg = fixture("edge-128x192.jpg");
+    HalFile file(jpeg);
+    Output out;
+    check(JpegToBmpConverter::jpegFileToBmpStream(file, out, true, false, false), "2-bit upscale decodes");
+    const int w = out.bytes.size() > 30 ? le32(out.bytes, 18) : 0, h = out.bytes.size() > 30 ? -le32(out.bytes, 22) : 0;
+    const int stride = (w * 2 + 31) / 32 * 4;
+    check(w == 528 && h == 792 && out.bytes.size() == 70 + static_cast<size_t>(stride) * h, "the upscaled cover is 528 x 792");
+    int minMid = 1 << 30, outside = 0;
+    for (int y = 0; w == 528 && y < h; y++) {
+      int mid = 0;
+      for (int x = 0; x < w; x++) {
+        const int level = (out.bytes[70 + y * stride + x / 4] >> (6 - x % 4 * 2)) & 3;
+        if (level == 1 || level == 2) {
+          mid++;
+          if (x < 255 || x > 275) outside++;
+        }
+      }
+      minMid = std::min(minMid, mid);
+    }
+    std::printf("2-bit 128x192 -> 528x792: gray pixels per row at least %d, outside the edge %d\n", minMid, outside);
+    check(minMid >= 1, "an upscaled edge has no gray transition");
+    check(outside == 0, "gray pixels away from the edge");
+  }
   for (const char* name : {"cover-900x1350.jpg", "cover-1200x1800.jpg"}) {
     // 2. Both thumbnails from one decode.
     const auto jpeg = fixture(name);

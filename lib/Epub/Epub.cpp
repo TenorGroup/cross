@@ -956,6 +956,9 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds, const bool on
     LOG_DBG("EBP", "Generating BMP from JPG cover image (%s mode%s)", cropped ? "cropped" : "fit",
             originalThresholds ? ", original thresholds" : "");
     const auto coverJpgTempPath = getCachePath() + "/.cover.jpg";
+#ifdef TENOR_PRESS_PROBE
+    const unsigned long coverStartMs = millis();
+#endif
 
     HalFile coverJpg;
     if (!Storage.openFileForWrite("EBP", coverJpgTempPath, coverJpg)) {
@@ -973,12 +976,19 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds, const bool on
     if (!Storage.openFileForWrite("EBP", getCoverBmpPath(cropped, originalThresholds, oneBit), coverBmp)) {
       return false;
     }
+#ifdef TENOR_PRESS_PROBE
+    const unsigned long convertStartMs = millis();
+#endif
     const bool success =
         JpegToBmpConverter::jpegFileToBmpStream(coverJpg, coverBmp, cropped, originalThresholds, oneBit);
     // Explicitly close() files before calling Storage.remove()
     coverJpg.close();
     coverBmp.close();
     Storage.remove(coverJpgTempPath.c_str());
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("EBP", "Cover BMP build total=%lu ms convert=%lu ms oneBit=%d ok=%d", millis() - coverStartMs,
+            millis() - convertStartMs, oneBit ? 1 : 0, success ? 1 : 0);
+#endif
 
     if (!success) {
       LOG_ERR("EBP", "Failed to generate BMP from cover image");
