@@ -16,6 +16,7 @@
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "SettingsList.h"
 #include "TxtReaderActivity.h"
 #include "XtcReaderActivity.h"
 #include "components/TenorMenuChrome.h"
@@ -58,6 +59,14 @@ void ReaderActivity::disableFastInitialRefresh() { pagesUntilFullRefresh = 0; }
 
 void ReaderActivity::onEnter() {
   Activity::onEnter();
+
+  // The settings catalog (~13.7 KB, built at boot to read settings.json) has no use in a book.
+  // Returned here, at a transition under the render lock as its release requires, it is heap
+  // the page builder and the radio need. Settings screens and saves rebuild it on demand.
+  {
+    RenderLock lock(*this);
+    releaseBaseSettingsList();
+  }
 
   // Heap ledger for field crash reports: free vs largest block distinguishes a
   // leak (free falls) from fragmentation (free stable, largest collapses).
