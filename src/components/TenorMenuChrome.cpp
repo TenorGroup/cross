@@ -161,7 +161,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   if (trongTrinhDoc ? SETTINGS.readerStatusBarHidden() : SETTINGS.globalStatusBarHidden()) return;
   const auto spec = SETTINGS.statusBarSpec();
   const bool hienPin = trongTrinhDoc ? spec.showBattery : true;
-  const bool hienPhanTram = trongTrinhDoc ? spec.showBatteryPercent : true;
+  const bool hienPhanTram = (trongTrinhDoc ? spec.showBatteryPercent : true) && SETTINGS.batteryPercentShown(trongTrinhDoc);
   const bool hienGio = trongTrinhDoc ? spec.showsClock() : true;
   const bool hienTieuDe = trongTrinhDoc && spec.showsTitle();
   const bool hienSoTrang = trongTrinhDoc && spec.showChapterPageCount;

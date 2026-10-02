@@ -287,6 +287,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   bool globalStatusBarHidden() const { return globalStatusBarMode == GLOBAL_STATUS_BAR_OFF; }
   bool globalStatusBarLarge() const { return globalStatusBarMode == GLOBAL_STATUS_BAR_LARGE; }
   bool readerStatusBarHidden() const { return readerStatusBarMode == READER_STATUS_BAR_OFF; }
+  // Hide Battery %: the one place that says whether the number beside the battery is drawn.
+  bool batteryPercentShown(const bool inReader) const {
+    return hideBatteryPercentage == HIDE_NEVER || (hideBatteryPercentage == HIDE_READER && !inReader);
+  }
   // The chapter name (statusBarTitle), chapter page count and book percentage each
   // have their own switch; Off, battery and clock stay with readerStatusBarMode.
   // statusBarItemsMode names the mode the three switches belong to. The reader menu

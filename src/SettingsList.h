@@ -691,7 +691,6 @@ inline int deviceSettingsTab(const SettingInfo& setting) {
       setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes ||
       setting.valuePtr == &CrossPointSettings::frontlightRestoreOnWake)
     return static_cast<int>(settingstabs::Tab::SLEEP);
-  if (setting.valuePtr == &CrossPointSettings::hideBatteryPercentage) return -1;
   if (setting.valuePtr == &CrossPointSettings::statusBarClock)
     return static_cast<int>(settingstabs::Tab::SCREEN);
   if (setting.category == StrId::STR_CAT_DISPLAY) {

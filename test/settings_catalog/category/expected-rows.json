@@ -6,6 +6,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -86,6 +87,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -167,6 +169,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -248,6 +251,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -330,6 +334,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -410,6 +415,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -491,6 +497,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -572,6 +579,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -654,6 +662,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -720,6 +729,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -787,6 +797,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -854,6 +865,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -922,6 +934,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -988,6 +1001,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -1055,6 +1069,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -1122,6 +1137,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
       "STR_NIGHT_MODE:0:screenInverted"
@@ -1190,6 +1206,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
@@ -1258,6 +1275,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
@@ -1327,6 +1345,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
@@ -1396,6 +1415,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
@@ -1466,6 +1486,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
@@ -1534,6 +1555,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
@@ -1603,6 +1625,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
@@ -1672,6 +1695,7 @@
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
+      "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_NIGHT_MODE:0:screenInverted"
     ],

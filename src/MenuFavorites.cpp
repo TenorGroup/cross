@@ -93,7 +93,6 @@ StrId label(const std::string& key, const std::vector<SettingInfo>& settings) {
   if (key.rfind("settings/", 0) == 0) {
     for (const auto& info : settings) {
       if (settingHiddenOnThisBoard(info) || !info.key || key.compare(9, std::string::npos, info.key) != 0) continue;
-      if (info.valuePtr == &CrossPointSettings::hideBatteryPercentage) return StrId::STR_NONE_OPT;
       if (info.valuePtr == &CrossPointSettings::fadingFix && (BoardConfig::isX4Pro() || BoardConfig::isX4Classic()))
         return StrId::STR_NONE_OPT;
       if (info.valuePtr == &CrossPointSettings::pwrBtnFootnoteBack &&
