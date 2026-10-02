@@ -121,7 +121,7 @@ void GrayThumb::emitBelow(const int limit) {
       const int s0 = static_cast<int>((static_cast<uint32_t>(ox) * scaleX) >> 16);
       const int s1 = std::min(static_cast<int>((static_cast<uint32_t>(ox + 1) * scaleX) >> 16), srcWidth);
       const int count = std::max(s1 - s0, 1) * rows;
-      dst[ox / 8] |= ditherer->processPixel(acc[ox] / count, ox) << (7 - (ox % 8));
+      dst[ox >> 3] |= ditherer->processPixel(acc[ox] / count, ox) << (7 - (ox & 7));
       acc[ox] = 0;
     }
     ditherer->nextRow();

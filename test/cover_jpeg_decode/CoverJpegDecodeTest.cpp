@@ -186,6 +186,116 @@ std::vector<uint8_t> fileThumb(const std::vector<uint8_t>& jpeg, int height) {
   return out.bytes;
 }
 
+// FNV-1a of a BMP: the packing code (bit index, mask, shift) must move no byte.
+uint64_t fnv(const std::vector<uint8_t>& b) {
+  uint64_t h = 1469598103934665603ULL;
+  for (const uint8_t c : b) h = (h ^ c) * 1099511628211ULL;
+  return h;
+}
+
+struct Golden {
+  const char* key;
+  uint64_t hash;
+};
+// Hashes of the BMPs each output path writes today: widths of every residue modulo 8 (528, 203, 97,
+// 101, 227, 150 ...), 1-bit and 2-bit packing, thumbnails, upscale and downscale.
+constexpr Golden kGolden[] = {
+    {"edge-128x192.jpg screen 2-bit fill", 0xa18e09906521de99ULL},
+    {"edge-128x192.jpg screen 2-bit fit", 0xa18e09906521de99ULL},
+    {"edge-128x192.jpg screen 2-bit original", 0xe9657f2388775f25ULL},
+    {"edge-128x192.jpg screen 1-bit", 0x2cb787efaf179e9bULL},
+    {"edge-128x192.jpg 2-bit 203x301", 0x685d8815f07726d3ULL},
+    {"edge-128x192.jpg 2-bit 97x130", 0x55e57ca42765b289ULL},
+    {"edge-128x192.jpg 1-bit 101x151", 0x602da45427a3663aULL},
+    {"edge-128x192.jpg 1-bit 227x340", 0x342e86cb0c1a7a54ULL},
+    {"edge-128x192.jpg thumb 356", 0xf6f673c2c752b132ULL},
+    {"edge-128x192.jpg thumb 226", 0x45957461d9503960ULL},
+    {"edge-128x192.jpg thumb 301", 0x8cba3d2750c3f544ULL},
+    {"edge-128x192.jpg thumb 151", 0xce12700b657cc59fULL},
+    {"edge-128x192.jpg thumb 151 card", 0xce12700b657cc59fULL},
+    {"edge-128x192.jpg thumb 151 theme", 0x5dddac61badbbc0eULL},
+    {"edge-128x192.jpg thumb 151 scaled", 0x0d59f09c5a318a8eULL},
+    {"cover-180x270.jpg screen 2-bit fill", 0xda9cd2ea5e73d977ULL},
+    {"cover-180x270.jpg screen 2-bit fit", 0xda9cd2ea5e73d977ULL},
+    {"cover-180x270.jpg screen 2-bit original", 0x86d068d90347fb69ULL},
+    {"cover-180x270.jpg screen 1-bit", 0x3d4f47d782a8a8e8ULL},
+    {"cover-180x270.jpg 2-bit 203x301", 0x64ae95e77f74941cULL},
+    {"cover-180x270.jpg 2-bit 97x130", 0x1e9b89471c2d749eULL},
+    {"cover-180x270.jpg 1-bit 101x151", 0x9f42bbe4bd549cfaULL},
+    {"cover-180x270.jpg 1-bit 227x340", 0x8d67981491caeb7dULL},
+    {"cover-180x270.jpg thumb 356", 0x0ba6bcd823283351ULL},
+    {"cover-180x270.jpg thumb 226", 0xef19aab49cdf3b3fULL},
+    {"cover-180x270.jpg thumb 226 card", 0xef19aab49cdf3b3fULL},
+    {"cover-180x270.jpg thumb 226 theme", 0x6f344254839e6de6ULL},
+    {"cover-180x270.jpg thumb 226 scaled", 0xcdcfd6dc182365b4ULL},
+    {"cover-180x270.jpg thumb 301", 0x83ad86dddcd7fd36ULL},
+    {"cover-180x270.jpg thumb 151", 0x3f8dc8c6138d9b89ULL},
+    {"cover-180x270.jpg thumb 151 card", 0x3f8dc8c6138d9b89ULL},
+    {"cover-180x270.jpg thumb 151 theme", 0xf9d0d9faf8106b56ULL},
+    {"cover-180x270.jpg thumb 151 scaled", 0x838051e97eb18000ULL},
+    {"cover-900x1350.jpg screen 2-bit fill", 0x426fd1f62a0cb728ULL},
+    {"cover-900x1350.jpg screen 2-bit fit", 0x426fd1f62a0cb728ULL},
+    {"cover-900x1350.jpg screen 2-bit original", 0x2d587304a4b18489ULL},
+    {"cover-900x1350.jpg screen 1-bit", 0xd929544b46d5a5fcULL},
+    {"cover-900x1350.jpg 2-bit 203x301", 0xab065454d591dec8ULL},
+    {"cover-900x1350.jpg 2-bit 97x130", 0xbba73ee114589e07ULL},
+    {"cover-900x1350.jpg 1-bit 101x151", 0xf4a8a410d894e76fULL},
+    {"cover-900x1350.jpg 1-bit 227x340", 0xe41ee49a1dd791e2ULL},
+    {"cover-900x1350.jpg thumb 356", 0x29e8443a6fc62facULL},
+    {"cover-900x1350.jpg thumb 356 card", 0x29e8443a6fc62facULL},
+    {"cover-900x1350.jpg thumb 356 theme", 0x48dddb03ff0d949aULL},
+    {"cover-900x1350.jpg thumb 356 scaled", 0x2af6af67a2ecbb16ULL},
+    {"cover-900x1350.jpg thumb 226", 0x2d7099016a453283ULL},
+    {"cover-900x1350.jpg thumb 226 card", 0x2d7099016a453283ULL},
+    {"cover-900x1350.jpg thumb 226 theme", 0x63ffb7b7a563e3a5ULL},
+    {"cover-900x1350.jpg thumb 226 scaled", 0x376d2a8bc352960eULL},
+    {"cover-900x1350.jpg thumb 301", 0x9000b53b4f23a09dULL},
+    {"cover-900x1350.jpg thumb 301 card", 0x9000b53b4f23a09dULL},
+    {"cover-900x1350.jpg thumb 301 theme", 0xd59b6398ccc17663ULL},
+    {"cover-900x1350.jpg thumb 301 scaled", 0x5769f7fccb45400bULL},
+    {"cover-900x1350.jpg thumb 151", 0xb61723a33e657f1bULL},
+    {"cover-900x1350.jpg thumb 151 card", 0xb61723a33e657f1bULL},
+    {"cover-900x1350.jpg thumb 151 theme", 0x6ac109fb8e604c98ULL},
+    {"cover-900x1350.jpg thumb 151 scaled", 0x4c2cbebd9635157aULL},
+    {"cover-1200x1800.jpg screen 2-bit fill", 0xf88eedc762a9141aULL},
+    {"cover-1200x1800.jpg screen 2-bit fit", 0xf88eedc762a9141aULL},
+    {"cover-1200x1800.jpg screen 2-bit original", 0x96c8e460e3ef4ba2ULL},
+    {"cover-1200x1800.jpg screen 1-bit", 0x7f56e2fbbaf32da3ULL},
+    {"cover-1200x1800.jpg 2-bit 203x301", 0xc100ceeaf674b16dULL},
+    {"cover-1200x1800.jpg 2-bit 97x130", 0x0c75ec1093f6aa69ULL},
+    {"cover-1200x1800.jpg 1-bit 101x151", 0x2c302e0a719ff93fULL},
+    {"cover-1200x1800.jpg 1-bit 227x340", 0xebe58da23d5a69a4ULL},
+    {"cover-1200x1800.jpg thumb 356", 0xb18c3bcd1a75ecffULL},
+    {"cover-1200x1800.jpg thumb 356 card", 0xb18c3bcd1a75ecffULL},
+    {"cover-1200x1800.jpg thumb 356 theme", 0xcc446c10c049462bULL},
+    {"cover-1200x1800.jpg thumb 356 scaled", 0xfa07b66220dc8051ULL},
+    {"cover-1200x1800.jpg thumb 226", 0x1b362742abe499e9ULL},
+    {"cover-1200x1800.jpg thumb 226 card", 0x1b362742abe499e9ULL},
+    {"cover-1200x1800.jpg thumb 226 theme", 0x01e093a16ecfd9e5ULL},
+    {"cover-1200x1800.jpg thumb 226 scaled", 0x7a980b1eafbd3bb2ULL},
+    {"cover-1200x1800.jpg thumb 301", 0x2aece473a109744fULL},
+    {"cover-1200x1800.jpg thumb 301 card", 0x2aece473a109744fULL},
+    {"cover-1200x1800.jpg thumb 301 theme", 0x803ea79daaab4506ULL},
+    {"cover-1200x1800.jpg thumb 301 scaled", 0x82dcd18cdc3ea039ULL},
+    {"cover-1200x1800.jpg thumb 151", 0x77713d254c93720cULL},
+    {"cover-1200x1800.jpg thumb 151 card", 0x77713d254c93720cULL},
+    {"cover-1200x1800.jpg thumb 151 theme", 0x2e550bcf5cdc525dULL},
+    {"cover-1200x1800.jpg thumb 151 scaled", 0xfc89c540dc3acf39ULL},
+};
+
+void checkGolden(const std::string& key, const std::vector<uint8_t>& bytes) {
+  const uint64_t got = fnv(bytes);
+  for (const Golden& g : kGolden) {
+    if (key != g.key) continue;
+    check(g.hash == got, key.c_str());
+    if (g.hash != got)
+      std::printf("GOLD got {\"%s\", 0x%016llxULL},\n", key.c_str(), static_cast<unsigned long long>(got));
+    return;
+  }
+  std::printf("GOLD new {\"%s\", 0x%016llxULL},\n", key.c_str(), static_cast<unsigned long long>(got));
+  check(false, ("no golden for " + key).c_str());
+}
+
 bool has(const std::vector<size_t>& sizes, size_t size) {
   for (const size_t s : sizes)
     if (s == size) return true;
@@ -231,7 +341,8 @@ int main() {
     check(JpegToBmpConverter::jpegFileToBmpStream(file, out, true, false, false), "2-bit upscale decodes");
     const int w = out.bytes.size() > 30 ? le32(out.bytes, 18) : 0, h = out.bytes.size() > 30 ? -le32(out.bytes, 22) : 0;
     const int stride = (w * 2 + 31) / 32 * 4;
-    check(w == 528 && h == 792 && out.bytes.size() == 70 + static_cast<size_t>(stride) * h, "the upscaled cover is 528 x 792");
+    check(w == 528 && h == 792 && out.bytes.size() == 70 + static_cast<size_t>(stride) * h,
+          "the upscaled cover is 528 x 792");
     int minMid = 1 << 30, outside = 0;
     for (int y = 0; w == 528 && y < h; y++) {
       int mid = 0;
@@ -292,6 +403,48 @@ int main() {
     check(after <= before * 1.05 + 0.2, "the theme's thumbnail moved away from its cover");
     check(after < twice, "the theme's thumbnail is no nearer its cover than the twice dithered one");
     check(scale == (std::string(name) == "cover-900x1350.jpg" ? 2 : 4), "decode grid");
+  }
+  for (const char* name : {"edge-128x192.jpg", "cover-180x270.jpg", "cover-900x1350.jpg", "cover-1200x1800.jpg"}) {
+    // 3. Byte for byte: every converter output, so a change to how a row is packed shows at once.
+    const auto jpeg = fixture(name);
+    const std::string n = name;
+    using Conv = JpegToBmpConverter;
+    const auto bmp = [&](const char* what, auto&& convert) {
+      HalFile file(jpeg);
+      Output out;
+      check(convert(file, out), what);
+      checkGolden(n + " " + what, out.bytes);
+    };
+    bmp("screen 2-bit fill",
+        [](HalFile& f, Output& o) { return Conv::jpegFileToBmpStream(f, o, true, false, false); });
+    bmp("screen 2-bit fit",
+        [](HalFile& f, Output& o) { return Conv::jpegFileToBmpStream(f, o, false, false, false); });
+    bmp("screen 2-bit original",
+        [](HalFile& f, Output& o) { return Conv::jpegFileToBmpStream(f, o, true, true, false); });
+    bmp("screen 1-bit",
+        [](HalFile& f, Output& o) { return Conv::jpegFileToBmpStream(f, o, true, false, true); });
+    bmp("2-bit 203x301",
+        [](HalFile& f, Output& o) { return Conv::jpegFileToBmpStreamWithSize(f, o, 203, 301); });
+    bmp("2-bit 97x130",
+        [](HalFile& f, Output& o) { return Conv::jpegFileToBmpStreamWithSize(f, o, 97, 130); });
+    bmp("1-bit 101x151",
+        [](HalFile& f, Output& o) { return Conv::jpegFileTo1BitBmpStreamWithSize(f, o, 101, 151); });
+    bmp("1-bit 227x340",
+        [](HalFile& f, Output& o) { return Conv::jpegFileTo1BitBmpStreamWithSize(f, o, 227, 340); });
+    for (const int height : {356, 226, 301, 151}) {
+      const std::string key = n + " thumb " + std::to_string(height);
+      checkGolden(key, fileThumb(jpeg, height));
+      GrayThumb big(height), small(height * 2 / 3);
+      big.alsoFeed(&small);
+      HalFile file(jpeg);
+      int scale = 0;
+      if (!JpegToBmpConverter::jpegFileToGrayThumb(file, big, &scale)) continue;
+      Output card, theme, scaled;
+      check(big.writeTo(card) && small.writeTo(theme) && big.writeScaled(height * 2 / 3, scaled), "gray thumbs write");
+      checkGolden(key + " card", card.bytes);
+      checkGolden(key + " theme", theme.bytes);
+      checkGolden(key + " scaled", scaled.bytes);
+    }
   }
   {
     // A cover smaller than the card is declined: the reader's per-height decode scales it up.
