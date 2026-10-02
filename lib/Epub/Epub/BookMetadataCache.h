@@ -69,7 +69,6 @@ class BookMetadataCache {
   uint32_t bookSize = 0;
   mutable int windowFirst = -1;
   mutable uint32_t window[SIZE_WINDOW] = {};
-  bool readSizeWindow(int first) const;
 
   // Index for fast href→spineIndex lookup (used only for large EPUBs)
   struct SpineHrefIndexEntry {

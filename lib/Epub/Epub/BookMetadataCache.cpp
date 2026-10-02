@@ -23,10 +23,6 @@ constexpr size_t BUILD_IO_BUFFER_SIZE = 4096;
 // The render task and the main loop both ask for sizes.
 std::mutex sizeWindowLock;
 
-bool readU32(HalFile& file, uint32_t& value) {
-  return file.read(&value, sizeof(value)) == static_cast<int>(sizeof(value));
-}
-
 // Entry (de)serializers, templated so they run over HalFile and the Buffered*
 // wrappers alike (two instantiations each -- a few hundred bytes of flash, in
 // exchange for the build path streaming at SD speed instead of per-pod).
@@ -484,6 +480,8 @@ bool BookMetadataCache::load() {
 
   // Spine entries follow the LUTs in index order; keep every SIZE_WINDOW-th cumulative size.
   windowStarts.clear();
+  bookSize = 0;
+  windowFirst = -1;
   windowStarts.reserve((spineCount + SIZE_WINDOW - 1) / SIZE_WINDOW);
   const uint32_t lutSize = (static_cast<uint32_t>(spineCount) + tocCount) * sizeof(uint32_t);
   bookFile.seek(lutOffset + lutSize);
@@ -506,29 +504,19 @@ uint32_t BookMetadataCache::getCumulativeSize(const int index) const {
   const int first = index / SIZE_WINDOW * SIZE_WINDOW;
   if (index - first == SIZE_WINDOW - 1) return windowStarts[index / SIZE_WINDOW + 1];
   std::lock_guard<std::mutex> lock(sizeWindowLock);
-  if (windowFirst != first && !readSizeWindow(first)) return windowStarts[index / SIZE_WINDOW];
+  if (windowFirst != first) {
+    windowFirst = -1;
+    // Own handle: getSpineEntry() moves bookFile.
+    HalFile file;
+    if (!Storage.openFileForRead("BMC", cachePath + bookBinFile, file)) return windowStarts[index / SIZE_WINDOW];
+    uint32_t pos;
+    file.seek(lutOffset + sizeof(uint32_t) * first);
+    serialization::readPod(file, pos);
+    file.seek(pos);
+    for (int i = 0; i < SIZE_WINDOW && first + i < spineCount; i++) window[i] = readSpineEntry(file).cumulativeSize;
+    windowFirst = first;
+  }
   return window[index - first];
-}
-
-bool BookMetadataCache::readSizeWindow(const int first) const {
-  windowFirst = -1;
-  // Own handle: getSpineEntry() moves bookFile.
-  HalFile file;
-  uint32_t pos = 0;
-  if (!Storage.openFileForRead("BMC", cachePath + bookBinFile, file) ||
-      !file.seek(lutOffset + sizeof(uint32_t) * first) || !readU32(file, pos) || !file.seek(pos)) {
-    return false;
-  }
-  // Spine entry: href length, href, cumulative size, TOC index.
-  for (int i = 0; i < SIZE_WINDOW && first + i < spineCount; i++) {
-    uint32_t hrefLen = 0;
-    if (!readU32(file, hrefLen) || !file.seek(file.position() + hrefLen) || !readU32(file, window[i]) ||
-        !file.seek(file.position() + sizeof(int16_t))) {
-      return false;
-    }
-  }
-  windowFirst = first;
-  return true;
 }
 
 BookMetadataCache::SpineEntry BookMetadataCache::getSpineEntry(const int index) {
