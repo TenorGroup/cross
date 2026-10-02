@@ -74,7 +74,9 @@ bool contains(const std::vector<std::string>& keys, const char* key) {
 // the same thing for sleepBwRefresh ("Only an X3 writes this row, and the host build is
 // not one").
 const std::vector<std::string> HOST_BOARD_HIDDEN = {"sleepBwRefresh", "frontlightBrightness",
-                                                     "frontlightWarmth"};
+                                                     "frontlightWarmth",
+                                                     // Retired in v1.0.52: still in the old files, no longer saved.
+                                                     "uiTheme"};
 
 // Every key present in `before` must equal the same key in `after`, except keys in
 // `skip` (checked separately, with their expected new meaning spelled out at the
@@ -206,6 +208,18 @@ int runOlderFile() {
   return ok ? 0 : 1;
 }
 
+// v1.0.52 dropped the UI theme choice: a file that still stores an old theme loads, and the next
+// save no longer writes the key (an older release reading it back takes its own default).
+int runLegacyTheme() {
+  JsonDocument before = readFixture("settings-v1.0.19.json");
+  before["uiTheme"] = 1;  // Lyra, a value tenor/cross never wrote
+  settings_test_io::setNextRead(before);
+  bool ok = expect(SETTINGS.loadFromFile(), "file with an old theme loads");
+  ok = expect(saved()["uiTheme"].isNull(), "uiTheme is no longer saved") && ok;
+  std::printf("settings_upgrade=legacy-theme:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
 // A synthetic addendum, not one of the three real files: none of them carry
 // "touchReaderControls" (it is touch-only, and every real fixture here is an X3), so the
 // one true migration this merge (#3586) introduces never fires on real Tenor hardware
@@ -239,5 +253,6 @@ int main(int argc, char** argv) {
   if (mode == "v1018") return runRealFile("settings-v1.0.18.json", "v1.0.18");
   if (mode == "older") return runOlderFile();
   if (mode == "touch-migration") return runTouchMigration();
+  if (mode == "legacy-theme") return runLegacyTheme();
   return 2;
 }

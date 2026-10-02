@@ -1,7 +1,6 @@
 {
   "x3-0-0-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -80,7 +79,6 @@
   ],
   "x3-0-0-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -160,7 +158,6 @@
   ],
   "x3-0-0-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -240,7 +237,6 @@
   ],
   "x3-0-0-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -321,7 +317,6 @@
   ],
   "x3-0-1-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -400,7 +395,6 @@
   ],
   "x3-0-1-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -480,7 +474,6 @@
   ],
   "x3-0-1-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -560,7 +553,6 @@
   ],
   "x3-0-1-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -641,7 +633,6 @@
   ],
   "x3-1-0-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -722,7 +713,6 @@
   ],
   "x3-1-0-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -804,7 +794,6 @@
   ],
   "x3-1-0-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -886,7 +875,6 @@
   ],
   "x3-1-0-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -969,7 +957,6 @@
   ],
   "x3-1-1-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1050,7 +1037,6 @@
   ],
   "x3-1-1-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1132,7 +1118,6 @@
   ],
   "x3-1-1-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1214,7 +1199,6 @@
   ],
   "x3-1-1-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1297,7 +1281,6 @@
   ],
   "x4-0-0-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -1362,7 +1345,6 @@
   ],
   "x4-0-0-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -1428,7 +1410,6 @@
   ],
   "x4-0-0-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -1494,7 +1475,6 @@
   ],
   "x4-0-0-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -1561,7 +1541,6 @@
   ],
   "x4-0-1-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -1626,7 +1605,6 @@
   ],
   "x4-0-1-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -1692,7 +1670,6 @@
   ],
   "x4-0-1-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -1758,7 +1735,6 @@
   ],
   "x4-0-1-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -1825,7 +1801,6 @@
   ],
   "x4-1-0-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1892,7 +1867,6 @@
   ],
   "x4-1-0-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1960,7 +1934,6 @@
   ],
   "x4-1-0-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -2028,7 +2001,6 @@
   ],
   "x4-1-0-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -2097,7 +2069,6 @@
   ],
   "x4-1-1-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -2164,7 +2135,6 @@
   ],
   "x4-1-1-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -2232,7 +2202,6 @@
   ],
   "x4-1-1-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -2300,7 +2269,6 @@
   ],
   "x4-1-1-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -2369,7 +2337,6 @@
   ],
   "pro-0-0-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -2436,7 +2403,6 @@
   ],
   "pro-0-0-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -2504,7 +2470,6 @@
   ],
   "pro-0-0-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -2572,7 +2537,6 @@
   ],
   "pro-0-0-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -2641,7 +2605,6 @@
   ],
   "pro-0-1-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -2708,7 +2671,6 @@
   ],
   "pro-0-1-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -2776,7 +2738,6 @@
   ],
   "pro-0-1-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -2844,7 +2805,6 @@
   ],
   "pro-0-1-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
@@ -2913,7 +2873,6 @@
   ],
   "pro-1-0-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -2982,7 +2941,6 @@
   ],
   "pro-1-0-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -3052,7 +3010,6 @@
   ],
   "pro-1-0-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -3122,7 +3079,6 @@
   ],
   "pro-1-0-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -3193,7 +3149,6 @@
   ],
   "pro-1-1-0-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -3262,7 +3217,6 @@
   ],
   "pro-1-1-0-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -3332,7 +3286,6 @@
   ],
   "pro-1-1-1-0": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -3402,7 +3355,6 @@
   ],
   "pro-1-1-1-1": [
     [
-      "STR_UI_THEME:0:uiTheme",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",

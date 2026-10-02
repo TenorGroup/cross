@@ -2,7 +2,6 @@
 #include <cstdio>
 #include "components/themes/BaseTheme.h"
 #include "components/themes/TenorTheme.h"
-#include "components/themes/roundedraff/RoundedRaffTheme.h"
 #include "components/UIScale.h"
 #if __has_include("components/UIThemeSizing.h")
 #include "components/UIThemeSizing.h"
@@ -10,7 +9,7 @@
 ThemeMetrics uiSizedThemeMetrics(ThemeMetrics metrics, uint8_t) { return metrics; }
 #endif
 int main() {
-  const ThemeMetrics themes[] = {BaseMetrics::values, LyraMetrics::values, TenorMetrics::values, RoundedRaffMetrics::values};
+  const ThemeMetrics themes[] = {BaseMetrics::values, LyraMetrics::values, TenorMetrics::values};
   for (const auto& baseline : themes) {
     const auto small = uiSizedThemeMetrics(baseline, 0);
     assert(small.headerHeight == baseline.headerHeight);

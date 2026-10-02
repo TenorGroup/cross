@@ -82,7 +82,7 @@ class MacDinhTenorTest(unittest.TestCase):
 
     def giu_nguyen(self, truoc, luu):
         for khoa, gia_tri in truoc.items():
-            if khoa in BO_TENOR or khoa in DAU:
+            if khoa in BO_TENOR or khoa in DAU or khoa == 'uiTheme':  # uiTheme: v1.0.52 no longer saves it
                 continue
             self.assertEqual(luu.get(khoa), gia_tri, khoa)
 

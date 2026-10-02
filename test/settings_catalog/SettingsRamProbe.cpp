@@ -29,7 +29,7 @@ int main(int argc,char**argv){
  std::vector<DictionaryEntry> dictionaries; dictionaries.push_back({"Long dictionary folder name for allocation one"}); dictionaries.push_back({"Long dictionary folder name for allocation two"});
  if(mode=="home" || mode=="home-file") {
   auto&pins=menucustom::state();pins.pinCount=mode=="home"?3:1;
-  strcpy(pins.pins[0].data(),mode=="home"?"settings/uiTheme":"bookid/test");
+  strcpy(pins.pins[0].data(),mode=="home"?"settings/uiTextSize":"bookid/test");
   strcpy(pins.pins[1].data(),"text/fontFamily");strcpy(pins.pins[2].data(),"text/fontSize");
   strcpy(SETTINGS.sdFontFamilyName,families[0].name.c_str());
   std::vector<std::string> keys,values,labels;
@@ -48,7 +48,7 @@ int main(int argc,char**argv){
   std::printf("dynamic_values_after_catalog_destroyed=GREEN font=%s size=%s\n",fontValue.c_str(),sizeValue.c_str());return 0;
  }
  if(mode=="favorites") {
-  mem::start();{auto id=menufavorites::label("settings/uiTheme");if(id!=StrId::STR_UI_THEME)return 3;auto value=menufavorites::value("settings/uiTheme",&registry);if(value.empty())return 7;mem::report("one_favorite_direct",1,0);}
+  mem::start();{auto id=menufavorites::label("settings/uiTextSize");if(id!=StrId::STR_UI_TEXT_SIZE)return 3;auto value=menufavorites::value("settings/uiTextSize",&registry);if(value.empty())return 7;mem::report("one_favorite_direct",1,0);}
   std::printf("released_live=%zu\n",mem::live);bool ok=mem::largest<base.size()*sizeof(SettingInfo);std::printf("no_full_catalog_allocation=%s\n",ok?"GREEN":"RED");return ok?0:1;
  }
  if(mode=="category"){

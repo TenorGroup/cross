@@ -203,11 +203,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   };
 
   // UI Theme
-  // TENOR_UI is Tenor's shipped default (uiTheme's struct-initializer default
-  // below), so it keeps ordinal 4 for every device already storing it.
-  // COVER_GRID (#3657, PSRAM boards only) is appended after it rather than
-  // at the ordinal upstream gave it, since upstream's 4 collides with
-  // TENOR_UI: X3/X4 have no PSRAM and never reach this ordinal anyway.
+  // tenor/cross is the only theme. uiTheme is no longer a setting: it is neither read from
+  // nor written to settings.json, and keeps TENOR_UI (ordinal 4, what earlier releases stored).
+  // The other ordinals are the retired themes; nothing selects them any more.
   enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3, TENOR_UI = 4, COVER_GRID = 5 };
   enum UI_TEXT_SIZE { UI_TEXT_SMALL = 0, UI_TEXT_MEDIUM = 1, UI_TEXT_LARGE = 2, UI_TEXT_SIZE_COUNT };
 

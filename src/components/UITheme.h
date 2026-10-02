@@ -7,8 +7,7 @@
 
 #include "CrossPointSettings.h"
 #include "components/themes/BaseTheme.h"
-
-class CoverGridHomeUi;
+#include "components/themes/TenorTheme.h"
 
 class UITheme {
   // Static instance
@@ -36,11 +35,8 @@ class UITheme {
                                       int maxLines, bool black = true,
                                       EpdFontFamily::Style style = EpdFontFamily::REGULAR,
                                       TextVerticalAlignment verticalAlignment = TextVerticalAlignment::CENTER);
-  static bool supportsCoverGrid();
-  static bool hasCoverGridHome();
-  static void drawCoverGridHome(CoverGridHomeUi& home);
   void reload();
-  void setTheme(CrossPointSettings::UI_THEME type);
+  void setTheme();
   static std::string getCoverThumbPath(std::string coverBmpPath, int coverHeight);
   static UIIcon getFileIcon(const std::string& filename);
   // Thanh trang thai co hai pham vi doc lap: ngoai trinh doc (menu) va trong
@@ -52,7 +48,7 @@ class UITheme {
 
  private:
   BaseTheme fallbackTheme;
-  const ThemeMetrics* currentMetrics = &BaseMetrics::values;
+  const ThemeMetrics* currentMetrics = &TenorMetrics::values;
   std::unique_ptr<BaseTheme> currentTheme;
   mutable ThemeMetrics adjustedMetrics;
   mutable bool metricsValid = false;

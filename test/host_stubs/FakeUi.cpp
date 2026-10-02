@@ -107,8 +107,6 @@ const ThemeMetrics& UITheme::getMetrics() const {
   static const ThemeMetrics metrics{};
   return metrics;
 }
-// X3 and X4 have no PSRAM heap, so Cover Grid is never offered.
-bool UITheme::supportsCoverGrid() { return false; }
 
 // UITheme holds a BaseTheme as its fallback (#3657), so its vtable must link. The theme
 // never draws here: every virtual is a no-op, like the renderer calls above.

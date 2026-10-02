@@ -46,8 +46,6 @@ const std::string& current() {
   return value;
 }
 }  // namespace panelchip
-// The theme row offers Cover Grid only with a PSRAM heap (#3657); the X3 and X4 have none.
-bool UITheme::supportsCoverGrid() { return false; }
 static std::vector<DictionaryEntry> discovered;
 namespace DictionaryRegistry {
 void discover(std::vector<DictionaryEntry>& out) { out = discovered; }
@@ -158,12 +156,8 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 8; ++i)
       discovered.push_back({std::to_string(i) + " Dictionary long owned label", "book"});
   const auto& catalog = getBaseSettingsList();
-  const auto themeRow = std::find_if(catalog.begin(), catalog.end(), [](const auto& row) {
-    return row.valuePtr == &CrossPointSettings::uiTheme;
-  });
-  ok &= check(themeRow != catalog.end() && themeRow + 1 != catalog.end() &&
-              (themeRow + 1)->valuePtr == &CrossPointSettings::uiTextSize,
-              "UI text size immediately follows theme");
+  ok &= check(!catalog.empty() && catalog.front().valuePtr == &CrossPointSettings::uiTextSize,
+              "UI text size is the first catalog row");
   SettingsActivity activity;
   for (auto& cursor : activity.tabNavs) cursor.selected = 10000;
   measuring = true;

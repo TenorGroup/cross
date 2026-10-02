@@ -179,10 +179,9 @@ class MenuNavigationContractTest(unittest.TestCase):
         self.settings['globalStatusBarMode'] = 0
         self.write_settings()
         log, saved = self.run_keys(
-            # Display begins on UI theme. UI text size is row 2 and the
-            # global status bar is row 3.
-            self.group(0) + ['RIGHT', 'RIGHT', 'CONFIRM', 'BACK', 'CONFIRM'],
-            [(3300, 'small'), (3850, 'off-live'), (5100, 'off-reopened')])
+            # Display begins on UI text size. The global status bar is row 2.
+            self.group(0) + ['RIGHT', 'CONFIRM', 'BACK', 'CONFIRM'],
+            [(2800, 'small'), (3350, 'off-live'), (4600, 'off-reopened')])
         self.assertEqual(saved['globalStatusBarMode'], 1, log)
 
         def footer_ink(name):

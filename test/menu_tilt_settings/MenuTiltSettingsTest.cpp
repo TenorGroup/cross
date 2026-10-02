@@ -404,8 +404,8 @@ int main(int argc, char** argv) {
   const SettingInfo* strengthV = findSetting(catalog, "tiltStrengthV");
   // 1.6.5 added 11 rows (library metadata, time zone, DST, clock in header, Back to file
   // browser, three Home button actions, two page gestures, double-click light); every
-  // existing row kept its place.
-  bool ok = expect(catalog.size() == (hasImu ? 93U : 81U), "X3 descriptor count");
+  // existing row kept its place. v1.0.52 then dropped the UI theme row.
+  bool ok = expect(catalog.size() == (hasImu ? 92U : 80U), "X3 descriptor count");
   ok = expect(longPressValuesMatch(catalog, hasImu), "Confirm-hold list shows Reader menu and appends the new actions") &&
        ok;
 

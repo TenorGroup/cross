@@ -1,6 +1,6 @@
 #include "RecordingTarget.h"
 int main() {
-  const ThemeMetrics themes[] = {BaseMetrics::values, LyraMetrics::values, TenorMetrics::values, RoundedRaffMetrics::values};
+  const ThemeMetrics themes[] = {BaseMetrics::values, LyraMetrics::values, TenorMetrics::values};
   const char* labels[] = {"Cỡ chữ giao diện", "UI text size", "界面字号"};
   int scenarios = 0;
   for (auto baseline : themes) for (uint8_t tier : {1, 2}) for (int width : {480, 528}) for (auto label : labels) {

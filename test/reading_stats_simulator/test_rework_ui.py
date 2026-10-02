@@ -163,10 +163,10 @@ class ReworkUiTest(unittest.TestCase):
 
     # --- H5: thanh trang thai theo dung nguong 4, dong ho tach ra man rieng trong He thong ------
     def test_h5_clock_corners_change_directly_in_display(self):
-        # Display row 6 cycles corner positions in place. UI text size was
-        # inserted at row 2 in v1.0.8.
+        # Display row 5 cycles corner positions in place (UI text size, status bar mode,
+        # side arrows and button labels come before it).
         script = ('1000:UP;1600:RIGHT;2200:CONFIRM;'
-                  '3000:RIGHT;3500:RIGHT;4000:RIGHT;4500:RIGHT;5000:RIGHT;5600:CONFIRM;7000:QUIT')
+                  '3000:RIGHT;3500:RIGHT;4000:RIGHT;4500:RIGHT;5600:CONFIRM;7000:QUIT')
         self.settings['statusBarClock'] = 2
         (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(self.settings)))
         log = self.run_sim(script)

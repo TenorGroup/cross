@@ -193,8 +193,9 @@ class UiSizesV108Test(unittest.TestCase):
             t.key("RIGHT")
         t.key("CONFIRM").shot("habits").key("BACK")
         t.key("DOWN").shot("home-settings").key("RIGHT").key("CONFIRM").shot("display")
-        t.key("CONFIRM").shot("popup").key("RIGHT").shot("popup-next").key("LEFT").key("CONFIRM")
-        t.key("LEFT").shot("display-last").key("RIGHT")
+        # Refresh frequency (row 5) is the Display row that opens a popup.
+        t.key("RIGHT", 5).key("CONFIRM").shot("popup").key("RIGHT").shot("popup-next").key("LEFT").key("CONFIRM")
+        t.key("RIGHT", 2).shot("display-last").key("RIGHT")
         # Motion sensor sits between Controls and System: Device is six groups down, Reader four up.
         t.key("DOWN", 6).shot("device").key("RIGHT").key("CONFIRM").shot("keyboard")
         t.key("RIGHT").key("CONFIRM").shot("keyboard-edit").key("BACK").shot("keyboard-return")
@@ -234,7 +235,7 @@ class UiSizesV108Test(unittest.TestCase):
         self.assertIsNotNone(ImageChops.difference(images["keyboard"], images["keyboard-edit"]).getbbox())
         saved = json.loads((sd / ".crosspoint/settings.json").read_text())
         self.assertEqual(saved["uiTextSize"], tier)
-        self.assertEqual(saved["uiTheme"], 4)
+        self.assertNotIn("uiTheme", saved)
         self.assertEqual(saved["fontSize"], 14)
         self.assertTrue(saved["deviceName"].startswith("Reader-ABCDEFGHIJKLMNOPQR"))
         self.assertEqual(len(saved["deviceName"]), len("Reader-ABCDEFGHIJKLMNOPQR") + 1)
@@ -276,7 +277,7 @@ class UiSizesV108Test(unittest.TestCase):
         glyph_heights = []
         for tier in (1, 2, 0):
             # Each process starts at Home. A single Confirm cycles the size row.
-            t = Timeline().key("UP").key("RIGHT").key("CONFIRM").key("RIGHT").shot("before")
+            t = Timeline().key("UP").key("RIGHT").key("CONFIRM").shot("before")
             t.key("CONFIRM").shot("after").key("BACK").key("DOWN").shot("home-after")
             images, log = self.run_sim(sd, output, f"set-{tier}", t)
             self.assertIn("Exiting activity: Settings", log)

@@ -216,17 +216,6 @@ inline SettingInfo buildTenorClockPlacementSetting(const SettingInfo& registered
   return setting;
 }
 
-// Tenor's TENOR theme keeps ordinal 4 (CrossPointSettings::TENOR_UI, the
-// shipped default), so it is listed before Cover Grid (#3657), which is
-// PSRAM-only and appended last, conditionally, rather than at the ordinal
-// upstream gave it (see the UI_THEME comment in CrossPointSettings.h).
-inline std::vector<StrId> homeThemeValues() {
-  std::vector<StrId> values = {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
-                               StrId::STR_THEME_ROUNDEDRAFF, StrId::STR_THEME_TENOR};
-  if (UITheme::supportsCoverGrid()) values.push_back(StrId::STR_THEME_COVER_GRID);
-  return values;
-}
-
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
 // ACTION-type entries and entries without a key are device-only.
@@ -281,13 +270,13 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
-    // 81 unconditional descriptors (70 plus the double-click power light, back-short-to-
+    // 80 unconditional descriptors (69 plus the double-click power light, back-short-to-
     // browser, three home button shortcuts, clockTimezone/clockDst/clockShowInHeader,
     // libraryUseMetadata and the touch page-turn gesture pair - see RESOLUTION.md); the
     // IMU branch adds the Gestures tab: reader, tab and row tilt, the two flick strengths,
     // the two hard shake rows, face down, face up and the three double taps.
     // Cold-catalog tests cover each capability branch and the IMU variant.
-    constexpr size_t fixedCount = 81
+    constexpr size_t fixedCount = 80
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
                                   + 1
 #endif
@@ -298,8 +287,6 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     std::vector<SettingInfo> v;
     v.reserve(fixedCount + (hasTilt ? 12 : 0));
     // --- Display ---
-    v.push_back(SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme, homeThemeValues(), "uiTheme",
-                          StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Enum(StrId::STR_UI_TEXT_SIZE, &CrossPointSettings::uiTextSize,
                           {StrId::STR_UI_SIZE_SMALL, StrId::STR_UI_SIZE_MEDIUM, StrId::STR_UI_SIZE_LARGE},
                           "uiTextSize", StrId::STR_CAT_DISPLAY));

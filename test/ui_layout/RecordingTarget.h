@@ -6,7 +6,6 @@
 #include <vector>
 #include "components/UIThemeSizing.h"
 #include "components/themes/TenorTheme.h"
-#include "components/themes/roundedraff/RoundedRaffTheme.h"
 namespace fui = freeink::ui;
 struct Target : fui::DrawTarget {
   UITextSizeSpec spec;

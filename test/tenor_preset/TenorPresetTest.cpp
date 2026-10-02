@@ -105,6 +105,7 @@ bool othersKept(const JsonDocument& before, const JsonDocument& after, const cha
   for (const JsonPairConst kv : before.as<JsonObjectConst>()) {
     const char* key = kv.key().c_str();
     if (inSetup(key) || isStamp(key)) continue;
+    if (std::string(key) == "uiTheme") continue;  // retired in v1.0.52: read from nowhere, written nowhere
     if (after[key] != kv.value()) {
       std::string was, now;
       serializeJson(kv.value(), was);
