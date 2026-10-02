@@ -83,14 +83,12 @@ static bool check(bool value, const char* message) {
 }
 int main(int argc, char** argv) {
   const std::string board=argc>1?argv[1]:"x3";
-  const bool tenor=argc>2?std::atoi(argv[2]):true;
-  const bool imu=argc>3?std::atoi(argv[3]):true;
-  const bool optional=argc>4?std::atoi(argv[4]):false;
+  const bool imu=argc>2?std::atoi(argv[2]):true;
+  const bool optional=argc>3?std::atoi(argv[3]):false;
   BoardConfig::ACTIVE=board=="x3"?BoardConfig::XTEINK_X3:board=="x4"?BoardConfig::XTEINK_X4:BoardConfig::XTEINK_X4_PRO;
   gpio.x3=board=="x3";
   halTiltSensor.available=imu;
   halClock.available=optional;
-  SETTINGS.uiTheme=tenor?CrossPointSettings::TENOR_UI:CrossPointSettings::CLASSIC;
   SETTINGS.shortPwrBtn=optional?CrossPointSettings::FOOTNOTES:CrossPointSettings::IGNORE;
   if(optional) discovered.push_back({"Dictionary", "dict"});
   CrossPointWebServer web;
@@ -114,7 +112,7 @@ int main(int argc, char** argv) {
       ++occurrences[key];
       // Tenor keeps the legacy action/2 pin on the battery and clock corners, so the
       // status bar row that shares its action is deliberately not pinnable there.
-      if(tenor && row.action==SettingAction::CustomiseStatusBar) {
+      if(row.action==SettingAction::CustomiseStatusBar) {
         activity.selectCategory(tab);
         ok &= check(activity.favoriteKey(static_cast<int>(&row-rows.data())).empty(),"Tenor status bar row is not pinnable");
         continue;

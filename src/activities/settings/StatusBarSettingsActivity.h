@@ -11,9 +11,8 @@ class StatusBarSettingsActivity final : public UiListActivity {
  public:
   explicit StatusBarSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
-  // Must equal ITEM_COUNT in the .cpp (static_assert'd there) - the max
-  // possible row count (RTC-equipped devices show all of them).
-  static constexpr int MAX_STATUS_BAR_ITEMS = 8;
+  // Must equal the number of TENOR_ROWS in the .cpp (static_assert'd there).
+  static constexpr int MAX_STATUS_BAR_ITEMS = 4;
 
   void onEnter() override;
   std::string navigationLabel() const override { return I18N.get(StrId::STR_CUSTOMISE_STATUS_BAR); }

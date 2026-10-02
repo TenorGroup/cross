@@ -765,14 +765,11 @@ TEST(MenuFavoritesCompatibility, LegacyStatusPinsShowCurrentLabels) {
 }
 
 TEST(MenuFavoritesCompatibility, MissingRtcKeepsSystemTimePinsReachable) {
-  const auto originalTheme = SETTINGS.uiTheme;
-  SETTINGS.uiTheme = CrossPointSettings::TENOR_UI;
   ASSERT_FALSE(halClock.isAvailable());
   EXPECT_EQ(menufavorites::label("status/statusBarClock", {}), StrId::STR_STATUS_CORNERS);
   EXPECT_EQ(menufavorites::label("action/2", {}), StrId::STR_STATUS_CORNERS);
   EXPECT_EQ(menufavorites::label("clock/clockFormat", {}), StrId::STR_CLOCK_FORMAT);
   EXPECT_EQ(menufavorites::label("action/14", {}), StrId::STR_CLOCK);
-  SETTINGS.uiTheme = originalTheme;
 }
 
 

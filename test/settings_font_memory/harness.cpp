@@ -190,7 +190,6 @@ bool catalogReleaseProbe() {
 int main() {
   BoardConfig::ACTIVE = BoardConfig::XTEINK_X3;
   gpio.x3 = true; halTiltSensor.available = true;
-  SETTINGS.uiTheme = CrossPointSettings::TENOR_UI;
   (void)I18N.get(StrId::STR_SETTINGS_TITLE);
   bool ok = catalogReleaseProbe();
   for (const bool dictionaries : {false, true}) {

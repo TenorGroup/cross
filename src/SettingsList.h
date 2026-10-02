@@ -691,11 +691,8 @@ inline int deviceSettingsTab(const SettingInfo& setting) {
       setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes ||
       setting.valuePtr == &CrossPointSettings::frontlightRestoreOnWake)
     return static_cast<int>(settingstabs::Tab::SLEEP);
-  const bool tenor = SETTINGS.uiTheme == CrossPointSettings::TENOR_UI;
-  if (tenor && setting.valuePtr == &CrossPointSettings::hideBatteryPercentage) return -1;
-  if (!tenor && (setting.valuePtr == &CrossPointSettings::tenorButtonSymbols ||
-                 setting.valuePtr == &CrossPointSettings::tenorSideArrows)) return -1;
-  if (tenor && setting.valuePtr == &CrossPointSettings::statusBarClock)
+  if (setting.valuePtr == &CrossPointSettings::hideBatteryPercentage) return -1;
+  if (setting.valuePtr == &CrossPointSettings::statusBarClock)
     return static_cast<int>(settingstabs::Tab::SCREEN);
   if (setting.category == StrId::STR_CAT_DISPLAY) {
     if (setting.valuePtr == &CrossPointSettings::fadingFix &&

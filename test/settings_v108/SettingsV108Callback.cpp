@@ -5,7 +5,6 @@
 struct GfxRenderer {};
 
 struct CrossPointSettings {
-  uint8_t uiTheme = 0;
   uint8_t uiTextSize = 0;
   uint8_t other = 0;
 } SETTINGS;

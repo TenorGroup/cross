@@ -93,28 +93,20 @@ StrId label(const std::string& key, const std::vector<SettingInfo>& settings) {
   if (key.rfind("settings/", 0) == 0) {
     for (const auto& info : settings) {
       if (settingHiddenOnThisBoard(info) || !info.key || key.compare(9, std::string::npos, info.key) != 0) continue;
-      if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI &&
-          info.valuePtr == &CrossPointSettings::hideBatteryPercentage)
-        return StrId::STR_NONE_OPT;
+      if (info.valuePtr == &CrossPointSettings::hideBatteryPercentage) return StrId::STR_NONE_OPT;
       if (info.valuePtr == &CrossPointSettings::fadingFix && (BoardConfig::isX4Pro() || BoardConfig::isX4Classic()))
         return StrId::STR_NONE_OPT;
       if (info.valuePtr == &CrossPointSettings::pwrBtnFootnoteBack &&
           SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::FOOTNOTES)
         return StrId::STR_NONE_OPT;
-      if ((info.valuePtr == &CrossPointSettings::tenorButtonSymbols ||
-           info.valuePtr == &CrossPointSettings::tenorSideArrows) &&
-          SETTINGS.uiTheme != CrossPointSettings::TENOR_UI)
-        return StrId::STR_NONE_OPT;
-      if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && info.valuePtr == &CrossPointSettings::statusBarClock)
-        return StrId::STR_STATUS_CORNERS;
+      if (info.valuePtr == &CrossPointSettings::statusBarClock) return StrId::STR_STATUS_CORNERS;
       return info.nameId;
     }
   }
-  if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && key == "action/2")
-    return StrId::STR_STATUS_CORNERS;
+  if (key == "action/2") return StrId::STR_STATUS_CORNERS;
   const auto* item = find(key);
   if (!item) return StrId::STR_NONE_OPT;
-  if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && strcmp(item->screen, "status") == 0)
+  if (strcmp(item->screen, "status") == 0)
     return key == "status/statusBarClock" ? StrId::STR_STATUS_CORNERS : StrId::STR_NONE_OPT;
   if (key == "action/1" && BoardConfig::hasTouch()) return StrId::STR_NONE_OPT;
   return item->label;
@@ -123,8 +115,7 @@ std::string value(const std::string& key, const std::vector<SettingInfo>& settin
   const char* canonical = menucustom::canonicalPinKey(key.c_str());
   if (canonical != key.c_str()) return value(canonical, settings);
   const auto* item = find(key);
-  if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI &&
-      (key == "status/statusBarClock" || key == "settings/statusBarClock" || key == "action/2")) {
+  if (key == "status/statusBarClock" || key == "settings/statusBarClock" || key == "action/2") {
     for (const auto& info : settings) {
       if (info.valuePtr == &CrossPointSettings::statusBarClock)
         return SettingsActivity::settingValueText(buildTenorClockPlacementSetting(info));
@@ -166,11 +157,7 @@ std::unique_ptr<UiListActivity> open(const std::string& key, GfxRenderer& render
   const auto* item = find(key);
   std::unique_ptr<UiListActivity> result;
   bool activate = true;
-  std::string launchKey = key;
-  if (key == "settings/statusBarClock" && SETTINGS.uiTheme != CrossPointSettings::TENOR_UI) {
-    result = makeUniqueNoThrow<StatusBarSettingsActivity>(renderer, input);
-    launchKey = "status/statusBarClock";
-  } else if (key.rfind("settings/", 0) == 0 || key.rfind("action/", 0) == 0) {
+  if (key.rfind("settings/", 0) == 0 || key.rfind("action/", 0) == 0) {
     result = makeUniqueNoThrow<SettingsActivity>(renderer, input);
   } else if (!item) {
     return nullptr;
@@ -187,7 +174,7 @@ std::unique_ptr<UiListActivity> open(const std::string& key, GfxRenderer& render
   } else if (strcmp(item->screen, "opds") == 0) {
     result = makeUniqueNoThrow<OpdsServerListActivity>(renderer, input);
   }
-  if (result) result->launchFavorite(launchKey, activate);
+  if (result) result->launchFavorite(key, activate);
   return result;
 }
 }  // namespace menufavorites

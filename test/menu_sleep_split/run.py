@@ -98,9 +98,9 @@ for profile in ['c3', 'pro', 'persistence']:
     if profile == 'persistence':
         cases = [([], 'persistence')]
     else:
-        cases = [([board, str(theme), str(imu), str(optional)], f'{board}-{theme}-{imu}-{optional}')
+        cases = [([board, str(imu), str(optional)], f'{board}-{imu}-{optional}')
                  for board in (['pro'] if profile == 'pro' else ['x3', 'x4'])
-                 for theme in [0, 1] for imu in [0, 1] for optional in [0, 1]]
+                 for imu in [0, 1] for optional in [0, 1]]
     for argv, case in cases:
         run = subprocess.run([str(out/profile), *argv], capture_output=True, text=True)
         (out/(case+'.log')).write_text(run.stdout+run.stderr)

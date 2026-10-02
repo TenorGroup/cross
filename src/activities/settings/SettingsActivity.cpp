@@ -145,8 +145,7 @@ void SettingsActivity::rebuildSettingsLists() {
   for (const auto& setting : catalog) {
     const int tab = deviceSettingsTab(setting);
     if (tab < 0) continue;
-    if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI &&
-        setting.valuePtr == &CrossPointSettings::statusBarClock) {
+    if (setting.valuePtr == &CrossPointSettings::statusBarClock) {
       const auto afterLabels = std::find_if(displaySettings.begin(), displaySettings.end(), [](const SettingInfo& row) {
         return row.valuePtr == &CrossPointSettings::tenorButtonSymbols;
       });
@@ -330,15 +329,6 @@ bool SettingsActivity::applyUiSettingChange(uint8_t CrossPointSettings::* valueP
     resetUi();
     return true;
   }
-  // Theme changes take effect immediately, on this screen - reload the theme
-  // and re-derive the app's tokens so the very next repaint is in the new look.
-  if (valuePtr != &CrossPointSettings::uiTheme) {
-    return true;
-  }
-  UITheme::getInstance().reload();
-  // Re-derive the shared tokens for the new look; the gate stays closed until
-  // the repaint that rebuilds the interaction table in the new layout.
-  resetUi();
   return true;
 }
 
@@ -875,16 +865,14 @@ std::string SettingsActivity::favoriteKey(const int row) const {
   if (item.key) return std::string("settings/") + item.key;
   // Tenor keeps the old action/2 pin pointing at the battery and clock corners
   // (focusFavorite below), so this row cannot be pinned there under that key.
-  if (item.action == SettingAction::CustomiseStatusBar && SETTINGS.uiTheme == CrossPointSettings::TENOR_UI)
+  if (item.action == SettingAction::CustomiseStatusBar)
     return {};
   if (item.action != SettingAction::None) return "action/" + std::to_string(static_cast<int>(item.action));
   return {};
 }
 int SettingsActivity::focusFavorite(const std::string& key) {
   // Existing action pins keep their key after the Tenor-only child is removed.
-  const std::string target = SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && key == "action/2"
-                                 ? "settings/statusBarClock"
-                                 : key;
+  const std::string target = key == "action/2" ? "settings/statusBarClock" : key;
   for (int tab = 0; tab < categoryCount; ++tab) {
     const auto& items = danhSachCuaThe(static_cast<settingstabs::Tab>(tab));
     for (size_t row = 0; row < items.size(); ++row) {

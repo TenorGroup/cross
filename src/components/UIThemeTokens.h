@@ -4,10 +4,8 @@
 
 #include "UITheme.h"
 
-// Menu text enlargement belongs to tenor/cross. Other themes keep their size.
-inline const freeink::ui::TextStyle& uiMenuLabelText(const freeink::ui::ThemeTokens& theme) {
-  return SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? theme.bodyText : theme.smallText;
-}
+// Menu text enlargement belongs to tenor/cross.
+inline const freeink::ui::TextStyle& uiMenuLabelText(const freeink::ui::ThemeTokens& theme) { return theme.bodyText; }
 
 // Merges the active UITheme's shape (row gaps, radii, insets, selection
 // style) with the uiScale-derived sizes into FreeInkUI theme tokens: the

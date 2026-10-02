@@ -139,7 +139,7 @@ void FileBrowserActivity::provideRow(void* ctx, const uint16_t index, fui::ListI
   if (self->rowExtBuf[0] != '\0') {
     item.value = self->rowExtBuf;
   }
-  item.icon = listIconFor(UITheme::getFileIcon(entry), SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? 32 : 0);
+  item.icon = listIconFor(UITheme::getFileIcon(entry), 32);
   item.actionValue = static_cast<int16_t>(index);
 }
 
@@ -167,7 +167,7 @@ void FileBrowserActivity::prewarmRowGlyphs(const int start) {
     int count;
   } prewarmCtx{this, clamped, count};
   renderer.prewarmFallbackText(
-      SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? uiScaleSpec().bodyFontId : uiScaleSpec().smallFontId,
+      uiScaleSpec().bodyFontId,
       [](const void* ctx, uint32_t i) -> const char* {
         auto* c = const_cast<PrewarmCtx*>(static_cast<const PrewarmCtx*>(ctx));
         if (i < static_cast<uint32_t>(c->count)) {

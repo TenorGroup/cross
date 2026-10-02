@@ -62,7 +62,7 @@ void EpubReaderMenuActivity::rebuildRows() {
 const char* EpubReaderMenuActivity::tabLabel(const int index) const { return I18N.get(TAB_NAMES[index]); }
 
 freeink::ui::BitmapRef EpubReaderMenuActivity::tabIcon(const int index) const {
-  if (SETTINGS.uiTheme != CrossPointSettings::TENOR_UI || index < 0 || index >= readermenu::TAB_COUNT) return {};
+  if (index < 0 || index >= readermenu::TAB_COUNT) return {};
   static const freeink::Icon* const icons[] = {&icon_tenor_home_favorites_32, &icon_tenor_reader_position_32,
                                                &icon_tenor_reader_reading_32, &icon_tenor_reader_tools_32};
   freeink::ui::BitmapRef result;

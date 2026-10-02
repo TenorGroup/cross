@@ -138,17 +138,15 @@ static bool dynamicLifetime() {
 int main(int argc, char** argv) {
   const bool enforce = argc > 1 && std::string(argv[1]) == "--enforce";
   const std::string board = argc > 2 ? argv[2] : "x3";
-  const bool tenor = argc > 3 ? std::atoi(argv[3]) : true;
-  const bool rtc = argc > 4 ? std::atoi(argv[4]) : true;
-  const bool footnotes = argc > 5 ? std::atoi(argv[5]) : true;
-  const bool hasDictionaries = argc > 6 ? std::atoi(argv[6]) : true;
+  const bool rtc = argc > 3 ? std::atoi(argv[3]) : true;
+  const bool footnotes = argc > 4 ? std::atoi(argv[4]) : true;
+  const bool hasDictionaries = argc > 5 ? std::atoi(argv[5]) : true;
   if (board == "x3") BoardConfig::ACTIVE = BoardConfig::XTEINK_X3;
   else if (board == "x4") BoardConfig::ACTIVE = BoardConfig::XTEINK_X4;
   else BoardConfig::ACTIVE = BoardConfig::XTEINK_X4_PRO;
   gpio.x3 = board == "x3";
   halTiltSensor.available = gpio.x3;
   halClock.available = rtc;
-  SETTINGS.uiTheme = tenor ? CrossPointSettings::TENOR_UI : CrossPointSettings::CLASSIC;
   SETTINGS.shortPwrBtn = footnotes ? CrossPointSettings::FOOTNOTES : CrossPointSettings::IGNORE;
   bool ok = true;
   fonts(sdFontSystem.fonts, 128);
@@ -166,8 +164,8 @@ int main(int argc, char** argv) {
   const size_t firstAllocs = allocs, firstBytes = bytes, firstLargest = largest;
   ok &= check(sdFontSystem.refreshes == 1 && activity.rebuilds == 1, "actual rebuild called discovery boundary and row renderer");
   size_t total = 0, capacity = 0;
-  std::printf("{\"board\":\"%s\",\"tenor\":%d,\"rtc\":%d,\"footnotes\":%d,\"dictionaries\":%d,\"sizeof\":%zu,\"catalog\":%zu,\"allocs\":%zu,\"bytes\":%zu,\"largest\":%zu,\"tabs\":[",
-              board.c_str(), tenor, rtc, footnotes, hasDictionaries, sizeof(SettingInfo), catalog.size(), firstAllocs, firstBytes, firstLargest);
+  std::printf("{\"board\":\"%s\",\"rtc\":%d,\"footnotes\":%d,\"dictionaries\":%d,\"sizeof\":%zu,\"catalog\":%zu,\"allocs\":%zu,\"bytes\":%zu,\"largest\":%zu,\"tabs\":[",
+              board.c_str(), rtc, footnotes, hasDictionaries, sizeof(SettingInfo), catalog.size(), firstAllocs, firstBytes, firstLargest);
   for (int tab = 0; tab < settingstabs::TAB_COUNT; ++tab) {
     const auto& rows = activity.danhSachCuaThe(static_cast<settingstabs::Tab>(tab));
     total += rows.size(); capacity += rows.capacity();
@@ -199,7 +197,7 @@ int main(int argc, char** argv) {
     return row.action == SettingAction::ClockSettings;
   });
   ok &= check(clockAction != activity.systemSettings.end(), "clock action remains available without RTC hardware");
-  if (tenor) {
+  {
     const auto labels = std::find_if(activity.displaySettings.begin(), activity.displaySettings.end(), [](const auto& row) {
       return row.valuePtr == &CrossPointSettings::tenorButtonSymbols;
     });

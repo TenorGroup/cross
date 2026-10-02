@@ -10,7 +10,7 @@
 void BootActivity::onEnter() {
   Activity::onEnter();
 
-  if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && renderX3BrandScreen(renderer, true)) return;
+  if (renderX3BrandScreen(renderer, true)) return;
 
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();

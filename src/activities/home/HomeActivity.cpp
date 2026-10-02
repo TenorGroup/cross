@@ -51,7 +51,6 @@
 #include "components/UIThemeTokens.h"
 #include "components/X3SleepCover.h"
 #include "components/themes/TenorRadius.h"
-#include "components/icons/homeTabIcons.h"
 #include "components/icons/tenorHomeTabIcons.h"
 #include "fontIds.h"
 
@@ -133,12 +132,9 @@ freeink::ui::BitmapRef HomeActivity::tabIcon(const int index) const {
   static const freeink::Icon* const ANH[TAB_COUNT] = {&icon_tenor_home_recent_32, &icon_tenor_home_folder_32,
                                                       &icon_tenor_home_stats_32, &icon_tenor_home_settings_32,
                                                       &icon_tenor_home_favorites_32};
-  static const freeink::Icon* const original[TAB_COUNT] = {&icon_home_recent_24, &icon_home_folder_24,
-                                                           &icon_home_stats_24, &icon_home_settings_24,
-                                                           &icon_tenor_home_favorites_32};
   freeink::ui::BitmapRef b;
   if (index < 0 || index >= TAB_COUNT) return b;
-  const auto* icon = SETTINGS.uiTheme == CrossPointSettings::TENOR_UI ? ANH[index] : original[index];
+  const auto* icon = ANH[index];
   b.data = icon->bits;
   b.width = icon->w;
   b.height = icon->h;
@@ -626,13 +622,11 @@ void HomeActivity::drawChrome() {
 // to agree on one number.
 int HomeActivity::tabBarTop() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  return SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && !mappedInput.hasTouch()
-             ? tenorchrome::tabTop()
-             : metrics.topPadding + metrics.headerHeight;
+  return tenorchrome::enabled() ? tenorchrome::tabTop() : metrics.topPadding + metrics.headerHeight;
 }
 
 int HomeActivity::preferredTabBarHeight() const {
-  if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && !mappedInput.hasTouch()) {
+  if (tenorchrome::enabled()) {
     // Include 2 px above, 4 below and the divider: the filled box equals a row.
     return tenorchrome::tabHeight();
   }
@@ -641,7 +635,7 @@ int HomeActivity::preferredTabBarHeight() const {
 
 int HomeActivity::coverTileTop() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  if (SETTINGS.uiTheme != CrossPointSettings::TENOR_UI || mappedInput.hasTouch())
+  if (!tenorchrome::enabled())
     return metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight;
   return tabBarTop() + preferredTabBarHeight() + 16;
 }

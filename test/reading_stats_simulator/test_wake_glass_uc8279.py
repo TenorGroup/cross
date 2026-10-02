@@ -124,11 +124,9 @@ class WakeGlassTest(unittest.TestCase):
         self.assert_glass_follows_every_frame_after_start(records)
 
     def test_cold_start_after_a_sleep(self):
-        for name, theme in (('cold-tenor', 4), ('cold-classic', 0)):
-            with self.subTest(name):
-                records, log = self.journey(name, {'sleepScreen': 8, 'uiTheme': theme}, cold=True)
-                self.assertIn('Entering activity: Boot', log.split('Entering deep sleep', 1)[1])
-                self.assert_glass_follows_every_frame_after_start(records)
+        records, log = self.journey('cold-tenor', {'sleepScreen': 8}, cold=True)
+        self.assertIn('Entering activity: Boot', log.split('Entering deep sleep', 1)[1])
+        self.assert_glass_follows_every_frame_after_start(records)
 
 
 if __name__ == '__main__':

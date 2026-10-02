@@ -5,3 +5,4 @@ class HalGPIO {
   bool hasTouch() const { return touch; }
   bool touch = false;
 };
+extern HalGPIO gpio;

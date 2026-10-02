@@ -202,11 +202,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LONG_PRESS_BUTTON_BEHAVIOR_COUNT
   };
 
-  // UI Theme
-  // tenor/cross is the only theme. uiTheme is no longer a setting: it is neither read from
-  // nor written to settings.json, and keeps TENOR_UI (ordinal 4, what earlier releases stored).
-  // The other ordinals are the retired themes; nothing selects them any more.
-  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3, TENOR_UI = 4, COVER_GRID = 5 };
   enum UI_TEXT_SIZE { UI_TEXT_SMALL = 0, UI_TEXT_MEDIUM = 1, UI_TEXT_LARGE = 2, UI_TEXT_SIZE_COUNT };
 
   // Image rendering in EPUB reader
@@ -424,8 +419,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Long-press Confirm function in EPUB reader (cycles through LONG_PRESS_MENU_FUNCTION values).
   // Defaults to Disabled so shortcut-based bookmark toggling remains opt-in.
   uint8_t longPressMenuFunction = LP_MENU_DISABLED;
-  // UI Theme
-  uint8_t uiTheme = TENOR_UI;
   // UI font tier. Persisted ordinals: 0 Small, 1 Medium, 2 Large.
   uint8_t uiTextSize = UI_TEXT_SMALL;
   // Tenor-only appearance preferences; existing themes retain their own hints.

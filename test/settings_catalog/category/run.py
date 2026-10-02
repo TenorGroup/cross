@@ -139,14 +139,13 @@ for mode in modes:
 fixture = json.loads((HERE / 'expected-rows.json').read_text())
 updated_fixture = {}
 results = []
-for board, tenor, rtc, footnotes, dictionaries in itertools.product(
-        ['x3', 'x4', 'pro'], [0, 1], [0, 1], [0, 1], [0, 1]):
+for board, rtc, footnotes, dictionaries in itertools.product(
+        ['x3', 'x4', 'pro'], [0, 1], [0, 1], [0, 1]):
     pair = {}
-    case = '-'.join(map(str, [board, tenor, rtc, footnotes, dictionaries]))
+    case = '-'.join(map(str, [board, rtc, footnotes, dictionaries]))
     for mode in modes:
         binary = OUT / mode / ('pro' if board == 'pro' else 'c3')
-        command = [str(binary), '--enforce', board, str(tenor), str(rtc),
-                   str(footnotes), str(dictionaries)]
+        command = [str(binary), '--enforce', board, str(rtc), str(footnotes), str(dictionaries)]
         run = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         (OUT / mode / (case + '.stderr')).write_text(run.stderr)
         (OUT / mode / (case + '.json')).write_text(run.stdout)

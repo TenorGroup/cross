@@ -1,20 +1,18 @@
 #include "ButtonSymbols.h"
 
-#include <HalGPIO.h>
 #include <I18n.h>
 
 #include <cstring>
 
 #include "CrossPointSettings.h"
+#include "TenorMenuChrome.h"
 #include "fontIds.h"
-extern HalGPIO gpio;
 namespace buttonSymbols {
 using inlineSymbols::Shape;
 bool font(int id) { return id == UI_10_FONT_ID || id == UI_12_FONT_ID || id == SMALL_FONT_ID; }
 inlineSymbols::Spec resolve(int id) {
   if (id == 10)
-    return {SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && !gpio.hasTouch() ? Shape::MarginStar : Shape::Star,
-            nullptr};
+    return {tenorchrome::enabled() ? Shape::MarginStar : Shape::Star, nullptr};
   if (id == 9) return {Shape::Erase, nullptr};
   if (id == 6) return {Shape::Star, nullptr};
   constexpr Shape shapes[] = {Shape::Select, Shape::Back, Shape::Up, Shape::Down, Shape::Left, Shape::Right};
@@ -24,7 +22,7 @@ inlineSymbols::Spec resolve(int id) {
     id = (id == 7) != reverse ? 5 : 4;
   }
   if (id < 0 || id > 5) return {Shape::None, ""};
-  if (SETTINGS.uiTheme == CrossPointSettings::TENOR_UI && SETTINGS.tenorButtonSymbols && !gpio.hasTouch())
+  if (tenorchrome::enabled() && SETTINGS.tenorButtonSymbols)
     return {shapes[id], nullptr};
   const StrId labels[] = {StrId::STR_SELECT,   StrId::STR_BACK,     StrId::STR_DIR_UP,
                           StrId::STR_DIR_DOWN, StrId::STR_DIR_LEFT, StrId::STR_DIR_RIGHT};
