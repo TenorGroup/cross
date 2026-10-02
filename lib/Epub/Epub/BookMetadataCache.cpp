@@ -271,31 +271,28 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
     if (spineCount >= LARGE_SPINE_THRESHOLD) {
       LOG_DBG("BMC", "Using batch size lookup for %d spine items", spineCount);
 
-      // Targets are 16 B per spine item, so build them in chunks to bound huge books.
-      constexpr int SIZE_LOOKUP_CHUNK = 2048;
+      std::deque<ZipFile::SizeTarget> targets;
       spineSizes.emplace(spineCount, 0);
       int matched = 0;
+
       spineIn.seek(0);
-      for (int first = 0; first < spineCount; first += SIZE_LOOKUP_CHUNK) {
-        std::deque<ZipFile::SizeTarget> targets;
-        targets.resize(std::min(SIZE_LOOKUP_CHUNK, spineCount - first));
+      for (int i = 0; i < spineCount; i++) {
+        auto entry = readSpineEntryFrom(spineIn);
+        std::string path = FsHelpers::normalisePath(entry.href);
 
-        for (size_t i = 0; i < targets.size(); i++) {
-          auto entry = readSpineEntryFrom(spineIn);
-          std::string path = FsHelpers::normalisePath(entry.href);
-
-          ZipFile::SizeTarget t;
-          t.hash = ZipFile::fnvHash64(path.c_str(), path.size());
-          t.len = static_cast<uint16_t>(path.size());
-          t.index = static_cast<uint16_t>(first + i);
-          targets[i] = t;
-        }
+        ZipFile::SizeTarget t;
+        t.hash = ZipFile::fnvHash64(path.c_str(), path.size());
+        t.len = static_cast<uint16_t>(path.size());
+        t.index = static_cast<uint16_t>(i);
+        targets.push_back(t);
+        // Targets take 16 B per spine item, so look sizes up 2,048 items at a time.
+        if (targets.size() < 2048 && i + 1 < spineCount) continue;
 
         std::sort(targets.begin(), targets.end(), [](const ZipFile::SizeTarget& a, const ZipFile::SizeTarget& b) {
           return a.hash < b.hash || (a.hash == b.hash && a.len < b.len);
         });
-
         matched += zip.fillUncompressedSizes(targets, *spineSizes);
+        targets.clear();
       }
       LOG_DBG("BMC", "Batch lookup matched %d/%d spine items", matched, spineCount);
     }
