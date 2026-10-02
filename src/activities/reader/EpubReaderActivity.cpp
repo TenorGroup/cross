@@ -713,7 +713,19 @@ void EpubReaderActivity::dropSectionsLaidOutWithoutToc() {
   }
 }
 
-bool EpubReaderActivity::releaseRadioForBuild() {
+bool EpubReaderActivity::releaseHeapForBuild() {
+  // The rebuildable font caches go first, once a paint. X3 with a remote linked, 02/10: six
+  // builds starved at about 16,180 B free against a 16,384 B floor, each one stopping the radio
+  // (~51 KB) and dropping the remote until the page was shown.
+  if (!fontsShedForBuild) {
+    fontsShedForBuild = true;
+    if (auto* fcm = renderer.getFontCacheManager()) {
+      fcm->releaseSdFontCaches();
+      LOG_INF("ERS", "Font caches shed for a starved build free=%u largest=%u",
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+      return true;
+    }
+  }
 #if defined(FREEINK_CAP_BLE_HID_HOST) && FREEINK_CAP_BLE_HID_HOST
   if (radioReleasedForBuild) return false;
   const auto released = bleturner::beforeChapterBuild();
@@ -2360,6 +2372,7 @@ void EpubReaderActivity::renderBook() {
 #endif
 #endif
   pageFrameShown = false;
+  fontsShedForBuild = false;
   currentPageLinks.clear();
   // Runs under the render task's RenderLock; catches every requestUpdate()
   // exit from the overlay while its deferred chrome refresh is still pending,
@@ -2478,7 +2491,7 @@ void EpubReaderActivity::renderBook() {
           }
           if (!section->buildSomeMore(BUILD_PAGES_PER_CHUNK)) {
             if (section->buildStarved()) {
-              if (releaseRadioForBuild()) continue;
+              if (releaseHeapForBuild()) continue;
               buildPopupPending = false;
               showMemoryError();
               stayAfterStarvedJump();
@@ -2580,7 +2593,7 @@ void EpubReaderActivity::renderBook() {
 #endif
             if (!section->buildSomeMore(BUILD_PAGES_PER_CHUNK)) {
               if (section->buildStarved()) {
-                if (releaseRadioForBuild()) continue;
+                if (releaseHeapForBuild()) continue;
                 buildPopupPending = false;
                 showMemoryError();
                 stayAfterStarvedJump();
@@ -2689,7 +2702,7 @@ void EpubReaderActivity::renderBook() {
 #endif
         if (!section->buildSomeMore(BUILD_PAGES_PER_CHUNK)) {
           if (section->buildStarved()) {
-            if (releaseRadioForBuild()) continue;
+            if (releaseHeapForBuild()) continue;
             buildPopupPending = false;
             showMemoryError();
             return;
@@ -2715,7 +2728,7 @@ void EpubReaderActivity::renderBook() {
 #endif
       if (!section->buildSomeMore(BUILD_PAGES_PER_CHUNK)) {
         if (section->buildStarved()) {
-          if (releaseRadioForBuild()) continue;
+          if (releaseHeapForBuild()) continue;
           showMemoryError();
           return;
         }

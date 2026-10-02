@@ -80,7 +80,13 @@ class UITheme {
   ThemeMetrics metrics_;
 };
 struct PrewarmScope { void endScanAndPrewarm() {} };
-struct FontCacheManager { PrewarmScope createPrewarmScope() { return {}; } };
+// Rebuildable font caches the reader may shed for a starved build; counts each shed.
+inline int fontSheds = 0;
+struct FontCacheManager {
+  PrewarmScope createPrewarmScope() { return {}; }
+  void releaseSdFontCaches() { ++fontSheds; }
+};
+inline FontCacheManager fontCaches;
 // Probe-only heap map; the release build compiles it away.
 inline void heapMapDump(const char*) {}
 
@@ -156,7 +162,7 @@ struct ReaderRenderer {
   void waitRefreshComplete() { panelRefreshing = false; }
   void drawCenteredText(int, int, int message, bool, int) { if (message == STR_PAGE_LOAD_ERROR) ++pageReads.errors; }
   void displayBuffer() {}
-  FontCacheManager* getFontCacheManager() { return nullptr; }
+  FontCacheManager* getFontCacheManager() { return &fontCaches; }
   // The real loan hands the framebuffer bytes to a build phase and returns it
   // WHITE, so only a caller that redraws the whole screen may take one.
   class FrameBufferLoan {
@@ -170,6 +176,9 @@ struct Section {
   bool building = true, partial = true, complete = false, parked = false, canPark = false;
   bool failStart = false, failTick = false, dropAfterTick = false, dropAfterStart = false;
   bool starveUntilRadioStopped = false, starved = false;
+  // Starved until the reader sheds its font caches (a remote linked, X3 02/10: 16,184 B free
+  // against the 16,384 B floor).
+  bool starveUntilFontsShed = false;
   bool buildStarved() const { return starved; }
   int starts = 0, ticks = 0, suspends = 0, parks = 0, resumes = 0, ticksPerPage = 0, ticksIntoPage = 0;
   int ticksWhileRefreshing = 0;
@@ -211,7 +220,8 @@ struct Section {
       ESP.free = ESP.free > parserFootprint ? ESP.free - parserFootprint : 0;
     }
     if (failTick) return false;
-    starved = starveUntilRadioStopped && !freeink::ble::idleStoppedState;
+    starved = (starveUntilRadioStopped && !freeink::ble::idleStoppedState) ||
+              (starveUntilFontsShed && fontSheds == 0);
     if (starved) { parked = canPark; return false; }
     // The real tick yields after about 20 ms of parsing (Section::buildSomeMore), so on the X3 one
     // page takes dozens of ticks. ticksPerPage > 0 models that: a page lands every that many ticks.
@@ -373,7 +383,7 @@ struct EpubReaderActivity : ReaderActivity {
   bool indexStepDue() const { return false; } void runIndexStep() {}
   // The next chapter's early layout (EpubReaderActivity::prepareNextChapter) is covered by the simulator.
   bool nextChapterDue(bool) { return false; } void prepareNextChapter() {}
-  bool releaseRadioForBuild(); bool yieldForRadio(); void showMemoryError(); void settleBuildPopup(); void generatePendingThumb(); void writePendingThumbs();
+  bool releaseHeapForBuild(); bool yieldForRadio(); void showMemoryError(); void settleBuildPopup(); void generatePendingThumb(); void writePendingThumbs();
   void backgroundTick(); void foreground(); bool skipLoopDelay(); bool latTrangThat(bool);
   // loadBook()'s cover-thumbnail tail and loop()'s idle region, projected verbatim.
   void openThumbStep(); void idleStep();

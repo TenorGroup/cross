@@ -228,7 +228,10 @@ class EpubReaderActivity final : public ReaderActivity {
   // Set while the radio is stopped so a starved section build can finish. The reader
   // asks for a restart once the page is on screen.
   bool radioReleasedForBuild = false;
-  bool releaseRadioForBuild();
+  // Set once a paint has shed the font caches for a starved build: a second starve in the same
+  // paint stops the radio instead.
+  bool fontsShedForBuild = false;
+  bool releaseHeapForBuild();
   // A book opened on its chapter list builds its TOC and chapter sizes here (Epub::indexSome), one
   // step per quiet pass once the page is up and no parser is alive. A key contact stops a step
   // within milliseconds; its work is redone on a later quiet pass. A failed step waits

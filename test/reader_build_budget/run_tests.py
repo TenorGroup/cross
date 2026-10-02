@@ -86,13 +86,13 @@ page_load = ('void EpubReaderActivity::loadPageForRender() {\n'
 # Constants and state declarations come from the real header, avoiding a second policy.
 declarations = []
 for line in header.splitlines():
-    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD|RENDER_MIN_FREE_HEAP|THUMB_IDLE|LOOK_AHEAD_PAGES)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t (?:pageLoadRetryCount|pendingThumbCount)|size_t parkedParserFootprint|unsigned long (?:lastRenderCompleteMs|radioSettledMs)|int (?:idlePrewarmSpine|idlePrewarmPage|pendingThumbHeight|lookAheadPage)|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|buildPopupRefreshing|radioReleasedForBuild|pendingThumbGeneration|coverRefPending)|uint16_t buildViewport)', line):
+    if re.match(r'  (?:static constexpr (?:size_t|int) (?:BACKGROUND_BUILD|BUILD_WINDOW|BUILD_PAGES|PARTIAL_REBUILD|RENDER_MIN_FREE_HEAP|THUMB_IDLE|LOOK_AHEAD_PAGES)|static constexpr unsigned long (?:BUILD_POPUP_DEADLINE_MS|RADIO_RELEASE_TIMEOUT_MS)|static constexpr uint8_t MAX_PAGE_LOAD_RETRIES|uint8_t (?:pageLoadRetryCount|pendingThumbCount)|size_t parkedParserFootprint|unsigned long (?:lastRenderCompleteMs|radioSettledMs)|int (?:idlePrewarmSpine|idlePrewarmPage|pendingThumbHeight|lookAheadPage)|bool (?:buildHeapPaused|backgroundBuildSuspended|backgroundBuildFailed|partialRebuildStartFailed|buildPopupPending|buildPopupRefreshing|radioReleasedForBuild|fontsShedForBuild|pendingThumbGeneration|coverRefPending)|uint16_t buildViewport)', line):
         declarations.append(line)
 fixture = pathlib.Path(__file__).with_name('fixture.hpp').read_text().replace('@@FIELDS@@', '\n'.join(declarations))
 layout_hook = 'EpubReaderActivity::pageAwaitsLayout(' in cpp
 fixture = fixture.replace('@@LAYOUT@@', '  bool pageAwaitsLayout() const;' if layout_hook else '')
 functions = [function('buildTickHeapGate'), function('latTrangThat'), function('skipLoopDelay'), function('showBuildPopup')]
-for name in ['stayAfterStarvedJump', 'saveProgressIfMoved', 'pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'backgroundBuildWanted', 'suspendBackgroundBuild', 'releaseRadioForBuild', 'yieldForRadio', 'settleBuildPopup', 'showMemoryError', 'generatePendingThumb', 'writePendingThumbs']:
+for name in ['stayAfterStarvedJump', 'saveProgressIfMoved', 'pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'backgroundBuildWanted', 'suspendBackgroundBuild', 'releaseHeapForBuild', 'yieldForRadio', 'settleBuildPopup', 'showMemoryError', 'generatePendingThumb', 'writePendingThumbs']:
     if 'EpubReaderActivity::' + name + '(' in cpp:
         functions.append(function(name))
 # A reader before round 4 has no step after a starved jump.

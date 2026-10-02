@@ -16,7 +16,7 @@
 namespace {
 // Heap left to the reader while the radio runs (X3, BLE on).
 constexpr size_t RADIO_HEAP = 45 * 1024;
-// Heap once the reader stops the radio for a starved build (releaseRadioForBuild).
+// Heap once the reader stops the radio for a starved build (releaseHeapForBuild).
 constexpr size_t RADIO_RELEASED_HEAP = 110 * 1024;
 
 // A build that starves of heap parks; the reader then stops the radio once and

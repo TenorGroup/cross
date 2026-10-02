@@ -7,6 +7,7 @@ template<class F> void test(const char* name, F fn) {
   freeink::ble::idleStoppedState = false;
   freeink::ble::stopForIdleCalls = freeink::ble::rearmRequests = 0;
   freeink::ble::stopForIdleResult = true;
+  fontSheds = 0;
   clockMs = 1000; popupCount = buildErrors = blockingPopups = 0; popupAtMs = 0; panelRefreshing = false; thumbs = {}; tenorchrome::enabledState = true;
   activityManager.sleepTransitionState = false; activityManager.deferred.clear(); openWrites = {};
   ImageBlock::hook = nullptr;
@@ -730,6 +731,17 @@ int main() {
     require(buildErrors == 0 && r.section, "starved build reported as index failure");
     require(r.section->pageCount > r.section->currentPage, "starved build did not finish after radio release");
     require(r.radioReleasedForBuild, "radio release not remembered for rearm");
+    require(fontSheds == 1, "the radio was stopped before the font caches were shed");
+  });
+  test("starved extension sheds the font caches and keeps the radio", [] {
+    EpubReaderActivity r; SETTINGS.blePageTurnerEnabled = true; r.section->canPark = true;
+    r.section->starveUntilFontsShed = true; r.section->currentPage = r.section->pageCount;
+    { RenderLock held; r.foreground(); }
+    require(fontSheds == 1, "font caches not shed for a starved build");
+    require(freeink::ble::stopForIdleCalls == 0, "radio stopped although the font caches were enough");
+    require(buildErrors == 0 && popupCount == 0 && r.section, "starved build fell to a notice");
+    require(r.section->pageCount > r.section->currentPage, "starved build did not finish after the shed");
+    require(!r.radioReleasedForBuild, "radio release flagged although it stayed up");
   });
   test("owed progress write waits for a section instead of being forgotten", [] {
     EpubReaderActivity r; r.section.reset();
@@ -831,7 +843,9 @@ int main() {
     freeink::ble::stopForIdleResult = false;
     { RenderLock held; r.foreground(); }
     require(freeink::ble::stopForIdleCalls >= 1, "radio release not attempted");
-    require(r.section && r.section->ticks == 1, "retried the build with the radio still holding its heap");
+    // One tick starves, one more runs after the font caches are shed; none after the radio stays up.
+    require(fontSheds == 1, "font caches not shed before the radio");
+    require(r.section && r.section->ticks == 2, "retried the build with the radio still holding its heap");
     require(buildErrors == 0 && popupCount == 1, "a radio still up did not fall back to the memory notice");
   });
   test("BLE enabled cold first page releases resident parser before first paint", [] {
