@@ -207,11 +207,22 @@ bool act(const Action a) {
   return taken || a == Action::ReaderMenu || a == Action::SaveQuote;
 }
 
-// A linked remote whose presses the book takes: the chosen one, or any when none is chosen.
-// When the chosen remote could not be armed, the stack may link another bonded remote.
+// The chosen remote is one the stack can link again. v1.0.50 saved the choice before a pairing
+// completed, so a choice can name a remote that never bonded.
+bool chosenBonded() {
+  for (uint8_t i = 0; i < port::bondCount(); ++i) {
+    if (strncmp(port::bond(i).addr, config->peerAddr, sizeof(config->peerAddr)) == 0) return true;
+  }
+  return false;
+}
+
+// A linked remote whose presses the book takes: the chosen one, or any when none is chosen (or
+// the choice is not bonded). When the chosen remote could not be armed, the stack may link
+// another bonded remote.
 bool chosenLinked() {
   if (!port::connected()) return false;
-  return config->peerAddr[0] == '\0' || strncmp(port::linked().addr, config->peerAddr, sizeof(config->peerAddr)) == 0;
+  return config->peerAddr[0] == '\0' || strncmp(port::linked().addr, config->peerAddr, sizeof(config->peerAddr)) == 0 ||
+         !chosenBonded();
 }
 
 // The book in front with the radio up: arm the chosen remote, drain both queues.

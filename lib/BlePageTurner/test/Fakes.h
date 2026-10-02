@@ -44,6 +44,8 @@ struct Radio {
   unsigned polls = 0;
   uint32_t scanMs = 0;
   std::vector<std::string> connects;
+  // Bonded remotes, by address. Both addresses the tests use are bonded unless a test says not.
+  std::vector<std::string> bonds{"7d:de:5c:bd:ae:ca", "11:22:33:44:55:66"};
   std::vector<std::string> forgotten;
   // The start task: queued until runStart() when queueStarts, else run at once.
   bool queueStarts = false;

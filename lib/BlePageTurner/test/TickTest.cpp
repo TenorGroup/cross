@@ -307,6 +307,21 @@ TEST_F(TickTest, PairedRemoteBecomesTheChosenOneOnceItLinks) {
   EXPECT_FALSE(bleturner::service()) << "saved once";
 }
 
+// v1.0.50 saved the choice before a pairing completed. A choice left on a remote that never bonded
+// cannot link again: the bonded remote that does link turns pages instead of being dropped.
+TEST_F(TickTest, AChoiceThatIsNotBondedDoesNotBlockTheLinkedRemote) {
+  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  radio().bonds = {"11:22:33:44:55:66"};
+  running();
+  radio().connected = true;
+  radio().addr = "11:22:33:44:55:66";
+  radio().name = "Remote A";
+  pass(fake::reading());
+  radio().keys = {{bleturner::kUsageRight, 0, true}};
+  EXPECT_TRUE(pass(fake::reading()));
+  EXPECT_EQ(host().delivered, (std::vector<Action>{Action::NextPage}));
+}
+
 TEST_F(TickTest, WithNoChosenRemoteAnyLinkedRemoteTurnsPages) {
   running();
   radio().connected = true;

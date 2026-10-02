@@ -138,8 +138,8 @@ bool connect(const char* addr) {
 void disconnect() { theRadio.connected = false; }
 void forget(const char* addr) { theRadio.forgotten.emplace_back(addr); }
 bool takeConnectFailure(char*, size_t) { return false; }
-uint8_t bondCount() { return 0; }
-Peer bond(uint8_t) { return {"", ""}; }
+uint8_t bondCount() { return static_cast<uint8_t>(theRadio.bonds.size()); }
+Peer bond(const uint8_t index) { return {theRadio.bonds[index].c_str(), ""}; }
 uint8_t foundCount() { return 0; }
 Peer found(uint8_t) { return {"", ""}; }
 bool spawnStart() {
