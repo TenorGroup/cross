@@ -51,22 +51,23 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
   // Drop stale entries first so a new add can't evict a valid book in their stead.
   pruneMissing();
 
-  // Remove existing entry if present
   auto it =
       std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
-  std::string excerpt;
-  if (it != recentBooks.end()) {
-    excerpt = std::move(it->excerpt);
-    recentBooks.erase(it);
-  }
-
-  // Add to front, preserving the excerpt for this exact book.
   ++openCount;
-  recentBooks.insert(recentBooks.begin(), {path, title, author, coverBmpPath, std::move(excerpt)});
-
-  // Trim to max size
-  if (recentBooks.size() > MAX_RECENT_BOOKS) {
-    recentBooks.resize(MAX_RECENT_BOOKS);
+  if (it != recentBooks.end()) {
+    // Move the existing entry, excerpt included, to the front instead of copying it. The reader calls
+    // this after its first render, so fresh string buffers would land among reader allocations and
+    // outlive them, splitting the largest free block once the reader exits (CrossPoint #3830).
+    std::rotate(recentBooks.begin(), it, it + 1);
+    RecentBook& book = recentBooks.front();
+    if (book.title != title) book.title = title;
+    if (book.author != author) book.author = author;
+    if (book.coverBmpPath != coverBmpPath) book.coverBmpPath = coverBmpPath;
+  } else {
+    recentBooks.insert(recentBooks.begin(), {path, title, author, coverBmpPath, std::string()});
+    if (recentBooks.size() > MAX_RECENT_BOOKS) {
+      recentBooks.resize(MAX_RECENT_BOOKS);
+    }
   }
 
   saveToFile();
