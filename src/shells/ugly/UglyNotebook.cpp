@@ -30,7 +30,7 @@
 namespace ugly {
 namespace {
 constexpr int FIRST_BASELINE = 180;
-constexpr int ROW_HEIGHT = 56;
+constexpr int ROW_HEIGHT = 52;  // ten rows fit: the Settings page (file transfer and nine groups) is one page
 constexpr int TEXT_X = 92;
 constexpr StrId SUBTITLES[homerows::PAGE_COUNT] = {StrId::STR_UGLY_SUB_RECENT, StrId::STR_UGLY_SUB_FOLDER,
                                                    StrId::STR_UGLY_SUB_STATS, StrId::STR_UGLY_SUB_SETTINGS,
@@ -42,7 +42,7 @@ int id(const homerows::Page p) { return static_cast<int>(p); }
 
 int Notebook::pagePosition() const { return menucustom::position(0, id(page), homerows::PAGE_COUNT); }
 
-int Notebook::rowsPerPage() const { return std::max(1, (renderer.getScreenHeight() - 150 - FIRST_BASELINE) / ROW_HEIGHT + 1); }
+int Notebook::rowsPerPage() const { return std::max(1, (renderer.getScreenHeight() - 140 - FIRST_BASELINE) / ROW_HEIGHT + 1); }
 
 void Notebook::load() {
   rows = Rows{};
