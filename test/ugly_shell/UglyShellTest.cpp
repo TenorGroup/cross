@@ -1,9 +1,12 @@
 // tenor/ugly: what the shell decides without a panel, and the font it draws with.
 #include <gtest/gtest.h>
 
+#include <functional>
 #include <set>
 #include <string>
 #include <vector>
+
+#include <Utf8.h>
 
 #include "shells/ugly/UglyLogic.h"
 #include "shells/ugly/UglyTables.h"
@@ -110,6 +113,56 @@ TEST(Pages, RowsOfANotebookPage) {
   EXPECT_EQ(cycle(0, -1, 5), 4);
   EXPECT_EQ(cycle(4, 1, 5), 0);
   EXPECT_EQ(cycle(0, 1, 0), 0);
+}
+
+// The cut of a long line: the one-pass walk gives what shaving one character at a time and measuring the
+// whole string again gave, for every string and every width.
+std::string shave(const std::string& text, const int maxWidth, const std::function<int(int, uint32_t)>& adv) {
+  const auto width = [&](const std::vector<uint32_t>& cps) {
+    int w = 0;
+    for (size_t i = 0; i < cps.size(); ++i) w += adv(static_cast<int>(i), cps[i]);
+    return w;
+  };
+  std::vector<uint32_t> cps;
+  const auto* p = reinterpret_cast<const unsigned char*>(text.c_str());
+  while (const uint32_t cp = utf8NextCodepoint(&p)) cps.push_back(cp);
+  if (width(cps) <= maxWidth) return text;
+  while (!cps.empty()) {
+    cps.pop_back();
+    auto cut = cps;
+    cut.insert(cut.end(), 3, static_cast<uint32_t>('.'));
+    if (width(cut) <= maxWidth) {
+      std::string out;
+      for (const uint32_t cp : cps) utf8AppendCodepoint(cp, out);
+      return out + "...";
+    }
+  }
+  return "";
+}
+
+TEST(Ellipsis, WalkOnceEqualsShaveAndMeasure) {
+  // Advances that differ by character and by position, like the baked font with its jump step.
+  const std::function<int(int, uint32_t)> adv = [](const int pos, const uint32_t cp) {
+    return 9 + static_cast<int>(cp % 7) + jumpStep(pos, cp) + (cp == '.' ? -4 : 0);
+  };
+  const std::vector<uint32_t> alphabet = {'a', 'b', ' ', 'W', 'i', '.', '1', 0xE1, 0x1EA1, 0x1EC7, 0x111, 0x4E09};
+  uint32_t seed = 12345;
+  const auto next = [&seed] { return seed = seed * 1664525u + 1013904223u; };
+  int cut = 0, whole = 0, none = 0;
+  for (int round = 0; round < 3000; ++round) {
+    std::string text;
+    const int length = static_cast<int>(next() >> 24) % 60;
+    for (int i = 0; i < length; ++i) utf8AppendCodepoint(alphabet[(next() >> 16) % alphabet.size()], text);
+    const int maxWidth = static_cast<int>(next() >> 20) % 700;
+    const int keep = ellipsisKeep(text.c_str(), maxWidth, adv);
+    const std::string expected = shave(text, maxWidth, adv);
+    const std::string got = keep == -1 ? text : keep == -2 ? std::string() : text.substr(0, keep) + "...";
+    ASSERT_EQ(got, expected) << "text=[" << text << "] maxWidth=" << maxWidth;
+    (keep == -1 ? whole : keep == -2 ? none : cut)++;
+  }
+  EXPECT_GT(cut, 300) << "the sample must cut lines";
+  EXPECT_GT(whole, 100);
+  EXPECT_GT(none, 20) << "and have widths where even the dots do not fit";
 }
 
 TEST(FolderCap, FollowsTheHeapAndNeverPassesTheCeiling) {

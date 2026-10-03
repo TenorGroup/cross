@@ -12,6 +12,14 @@ import unittest
 
 from ugly_common import Card, digest, entered, ink, notebook_pages
 
+CUT_NAMES_DIGEST = '943f249c736889124a0e9dbe2b9a4941e6c0081ec03a34e7fa65b90f5546e561'
+# Every width from a name that fits to one cut to a few letters, with marks, and one the baked font lacks.
+LONG_NAMES = ['a.txt', 'Hành trình dài của một người.txt', 'Hành trình dài của một người đọc sách.txt',
+             'Hành trình dài của một người đọc sách không bao giờ chịu đọc hết một cuốn.txt',
+             'Dế Mèn phiêu lưu ký bản đầy đủ có tranh minh hoạ của nhiều hoạ sĩ khác nhau.txt',
+             'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW.txt',
+             'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii.txt',
+             '三体 Vấn đề ba vật thể phần hai Hắc ám rừng rậm.txt']
 PAGE_ORDER = [0, 1, 4, 2, 3]  # Recent, Folder, Favorites, Stats, Settings: the default order of tenor/cross
 
 
@@ -107,6 +115,12 @@ class UglyShellTest(unittest.TestCase):
         vi = self.card().run('3000:QUIT', [(2000, 'x')])[1]['x']
         en = self.card(language='EN').run('3000:QUIT', [(2000, 'x')])[1]['x']
         self.assertNotEqual(digest(vi), digest(en))
+
+    def test_long_file_names_are_cut_where_they_always_were(self):
+        # The one-pass cut must give the pixels the shave-and-measure cut gave (the digest is taken from that build).
+        log, shots = self.card(books=[], files=LONG_NAMES).run('1000:RIGHT;1800:RIGHT;4000:QUIT', [(3200, 'folder')])
+        self.assertEqual(notebook_pages(log)[-1], 1, log[-800:])
+        self.assertEqual(digest(shots['folder']), CUT_NAMES_DIGEST)
 
     def folder_rows(self, log):
         return [int(n) for n in re.findall(r'Notebook frame page=1 row=\d+ rows=(\d+)', log)]

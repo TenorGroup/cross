@@ -1,9 +1,11 @@
 #pragma once
 // Pure decisions of the tenor/ugly shell: integer only, no hardware, so a host test runs them as they are.
-#include <cstddef>
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <string>
+
+#include <Utf8.h>
 
 namespace ugly::logic {
 
@@ -115,6 +117,23 @@ int layout(const Token* tokens, const int count, const int maxWidth, const int s
 inline int pageOf(const int selected, const int rows) { return rows > 0 ? selected / rows : 0; }
 inline int pageTop(const int selected, const int rows) { return pageOf(selected, rows) * rows; }
 inline int pageCount(const int count, const int rows) { return rows > 0 && count > 0 ? (count + rows - 1) / rows : 1; }
+
+// Where to cut a line so that it ends in "..." and fits `maxWidth`, in one pass over the characters.
+// adv(pos, cp) is the advance of the character at index pos, jump step included. Returns -1 when the
+// whole line fits, -2 when nothing fits (not even the dots alone), else the bytes of the text to keep:
+// the longest piece, shorter than the whole, that still fits with its dots.
+template <class Advance>
+int ellipsisKeep(const char* text, const int maxWidth, Advance adv) {
+  const auto* start = reinterpret_cast<const unsigned char*>(text);
+  const auto* p = start;
+  int cursor = 0, pos = 0, keep = -2;
+  while (*p) {
+    if (cursor + adv(pos, '.') + adv(pos + 1, '.') + adv(pos + 2, '.') <= maxWidth) keep = static_cast<int>(p - start);
+    cursor += adv(pos, utf8NextCodepoint(&p));
+    ++pos;
+  }
+  return cursor <= maxWidth ? -1 : keep;
+}
 
 // How many names of the card root the Folder page may hold, from the heap left. Each row costs a string
 // slot (the vector doubles, so twice that must fit in one block) and its name on the heap, and some heap

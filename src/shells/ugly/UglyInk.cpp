@@ -155,6 +155,21 @@ int ascent(const Size s) { return ASCENT[static_cast<int>(s)]; }
 
 std::string fit(const GfxRenderer& r, const Size s, const std::string& utf8, const int maxWidth) {
   std::string out = utf8ComposeNfc(utf8);
+  const int fid = idOf(s);
+  if (covered(r, fid, out.c_str()) && covered(r, fid, "...")) {
+    // The baked font draws every cut of this line, and its advances add up character by character:
+    // measure once, cut once.
+    const int keep = logic::ellipsisKeep(out.c_str(), maxWidth, [&](const int pos, const uint32_t cp) {
+      char one[5];
+      encode(cp, one);
+      return r.getTextAdvanceX(fid, one, EpdFontFamily::REGULAR) + logic::jumpStep(pos, cp);
+    });
+    if (keep == -1) return out;
+    if (keep < 0) return std::string();
+    out.resize(static_cast<size_t>(keep));
+    return out + "...";
+  }
+  // A character the baked font lacks puts the line in the UI font, which is measured whole: shave and measure.
   if (width(r, s, out.c_str()) <= maxWidth) return out;
   while (!out.empty()) {
     utf8RemoveLastChar(out);
