@@ -99,7 +99,7 @@ else:
         "activity manager does not exclude pending transitions from the tab owner",
     )
     require(
-        r"if \(mappedInputManager\.wasReleased\(MappedInputManager::Button::Power\)\) \{\s*"
+        r"if \(mappedInputManager\.wasReleased\(MappedInputManager::Button::Power\) && activityManager\.hasDrawnFrame\(\)\) \{\s*"
         r"runQuickAction\(SETTINGS\.shortPwrBtn, quickaction::Trigger::PowerRelease\);\s*\}\s*"
         r"if \(halTiltSensor\.wasShaken\(\)\) \{\s*"
         r"runQuickAction\(quickaction::shakeAsPowerAction\(SETTINGS\.shakeAction\), quickaction::Trigger::Shake\);\s*\}\s*"

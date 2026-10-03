@@ -1996,8 +1996,9 @@ void loop() {
 #endif
 
   // Short power press, hard shake, face down, face up and the double taps: the same actions, one
-  // decision (quickaction::resolve).
-  if (mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
+  // decision (quickaction::resolve). A release before the first frame is on the glass is dropped:
+  // the action would run on top of the frame being drawn and flash the screen once more.
+  if (mappedInputManager.wasReleased(MappedInputManager::Button::Power) && activityManager.hasDrawnFrame()) {
     runQuickAction(SETTINGS.shortPwrBtn, quickaction::Trigger::PowerRelease);
   }
   if (halTiltSensor.wasShaken()) {
