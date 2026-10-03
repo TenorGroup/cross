@@ -992,11 +992,20 @@ void setup() {
       otaState == ESP_OTA_IMG_PENDING_VERIFY) {
     // SD, settings and activity startup succeeded. Wait for the first physical paint.
     activityManager.requestUpdateAndWait();
-    const esp_err_t verified = esp_ota_mark_app_valid_cancel_rollback();
 #if FREEINK_DEVICE_X4PRO
-    boot_trial::passed();
+    // Back and Confirm live on the touch controller: an image that cannot bring it up leaves the
+    // unit without a way to reach the SD installer. Stay on trial; the watchdog falls back.
+    if (!gpio.hasTouch()) {
+      LOG_ERR("OTA", "Boot self-check: no touch controller, left on trial");
+    } else
 #endif
-    LOG_INF("OTA", "Boot self-check complete: %s", esp_err_to_name(verified));
+    {
+      const esp_err_t verified = esp_ota_mark_app_valid_cancel_rollback();
+#if FREEINK_DEVICE_X4PRO
+      boot_trial::passed();
+#endif
+      LOG_INF("OTA", "Boot self-check complete: %s", esp_err_to_name(verified));
+    }
   }
 #endif
   allowSleepAt = millis() + 2000;
