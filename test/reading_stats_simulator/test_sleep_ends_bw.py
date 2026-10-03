@@ -430,7 +430,7 @@ class SleepEndsBwTest(unittest.TestCase):
                 self.assertEqual(PANEL_OP.findall(sleep)[-1], 'displayGrayBuffer')
 
     def test_settings_row_turns_the_switch_off(self):
-        # Settings, Sleep: the switch is the seventh row, after "Wake into the book" and "Starting up notice"; the fixture turns it on.
+        # Settings, Sleep: the switch is the seventh row, after "Wake into the book" and "Wake-up notice"; the fixture turns it on.
         sd = self.make_sd('cai-dat', 8, settings={'uiTheme': 4})
         shot = sd / 'hang.bmp'
         after = sd / 'sau-khi-bam.bmp'
