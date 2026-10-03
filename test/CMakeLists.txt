@@ -125,6 +125,7 @@ add_subdirectory(image_downscale)
 add_subdirectory(css_number)
 
 add_subdirectory(keyboard_sync)
+add_subdirectory(keyboard_layout_mask)
 
 add_subdirectory(file_transfer_loop)
 add_subdirectory(file_transfer_back_latch)

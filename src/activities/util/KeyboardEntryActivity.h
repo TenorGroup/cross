@@ -63,9 +63,7 @@ class KeyboardEntryActivity : public Activity {
   // layouts (with the always-visible number row); the URL layers are
   // app-defined tables in the .cpp.
   freeink::ui::KeyboardLayoutId layoutId = freeink::ui::KeyboardLayoutId::QwertyEn;
-  // Asks the SDK for a layout variant with the language key. Only the Latin
-  // layouts honour it; the Cyrillic, Hebrew and Arabic tables carry the key
-  // either way.
+  // Asks the SDK for a layout variant with the language key.
   // Resolved once in onEnter(): the set cannot change while a keyboard is on
   // screen, and currentLayout() runs on every loop pass.
   bool showLangKey = false;
