@@ -5,12 +5,16 @@ namespace battshown {
 namespace {
 constexpr uint32_t STEP_INTERVAL_MS = 60000;  // one point at most per this many ms while discharging
 constexpr uint8_t EMPTY_THRESHOLD = 2;        // raw at or below this skips the rate limit entirely
+// Raw more than this many points from shown is the gauge re-estimating (a capacity reinit, an OCV
+// correction) or a first read that failed: show it at once. A coulomb-counted SoC moves one point
+// at a time.
+constexpr uint8_t SNAP_GAP = 5;
 }  // namespace
 
 uint8_t next(State& s, uint8_t raw, const bool charging, const uint32_t nowMs) {
   if (raw > 100) raw = 100;
 
-  if (!s.hasValue) {
+  if (!s.hasValue || raw > s.shown + SNAP_GAP || raw + SNAP_GAP < s.shown) {
     s.hasValue = true;
     s.shown = raw;
     s.lastStepMs = nowMs;

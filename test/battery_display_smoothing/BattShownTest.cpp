@@ -29,13 +29,13 @@ TEST(BattShown, DischargingNeverRisesWhenRawTicksUp) {
 TEST(BattShown, DischargingDropsAtMostOnePointPerMinute) {
   battshown::State s;
   battshown::next(s, 50, false, 0);
-  // raw drops far below shown at t=0, but shown may only step down once the
+  // raw drops a few points below shown at t=0, but shown may only step down once the
   // 60s cooldown has elapsed, one point per call.
-  EXPECT_EQ(battshown::next(s, 30, false, 100), 50) << "too soon to step";
-  EXPECT_EQ(battshown::next(s, 30, false, MINUTE_MS - 1), 50) << "still too soon";
-  EXPECT_EQ(battshown::next(s, 30, false, MINUTE_MS), 49) << "one minute elapsed: one point";
-  EXPECT_EQ(battshown::next(s, 30, false, MINUTE_MS + 500), 49) << "cooldown restarted";
-  EXPECT_EQ(battshown::next(s, 30, false, 2 * MINUTE_MS), 48);
+  EXPECT_EQ(battshown::next(s, 46, false, 100), 50) << "too soon to step";
+  EXPECT_EQ(battshown::next(s, 46, false, MINUTE_MS - 1), 50) << "still too soon";
+  EXPECT_EQ(battshown::next(s, 46, false, MINUTE_MS), 49) << "one minute elapsed: one point";
+  EXPECT_EQ(battshown::next(s, 46, false, MINUTE_MS + 500), 49) << "cooldown restarted";
+  EXPECT_EQ(battshown::next(s, 46, false, 2 * MINUTE_MS), 48);
 }
 
 TEST(BattShown, DischargingEmptyBypassesTheRateLimit) {
@@ -115,6 +115,30 @@ TEST(BattShown, UserSequenceCharge7Then55Then72) {
   EXPECT_EQ(battshown::next(s, 55, true, t), 55) << "charging shows the jump immediately";
   t += 120000;  // "2 minutes later"
   EXPECT_EQ(battshown::next(s, 72, true, t), 72);
+}
+
+// v1.0.51 on Duy Anh's X3 (03/10/2026): the first frame drew 84 % from RM/FCC with the old learned
+// FCC 2744; 13 s later the capacity load reinit the gauge to FCC 650, RM 448, SoC 69 %. The status
+// bar must show 69 at the next redraw, not ease down for 20 minutes.
+TEST(BattShown, DischargingFollowsALargeGaugeReestimateAtOnce) {
+  battshown::State s;
+  EXPECT_EQ(battshown::next(s, 84, false, 1800), 84);
+  EXPECT_EQ(battshown::next(s, 69, false, 41800), 69);
+}
+
+// A first read that failed leaves the cache at 0; the next good read must replace it, not stay 0.
+TEST(BattShown, AFailedFirstReadDoesNotPinZero) {
+  battshown::State s;
+  EXPECT_EQ(battshown::next(s, 0, false, 1800), 0);
+  EXPECT_EQ(battshown::next(s, 69, false, 3300), 69);
+}
+
+// Up to five points is still eased: one point a minute, as before.
+TEST(BattShown, FivePointsBelowStillEasesDown) {
+  battshown::State s;
+  battshown::next(s, 74, false, 0);
+  EXPECT_EQ(battshown::next(s, 69, false, 1000), 74);
+  EXPECT_EQ(battshown::next(s, 69, false, MINUTE_MS + 1000), 73);
 }
 
 }  // namespace
