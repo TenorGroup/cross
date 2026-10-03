@@ -113,12 +113,14 @@ void UiTabListActivity::forgetOtherTabs() {
   }
 }
 
-void UiTabListActivity::moveRingTo(const int ringIndex) {
+void UiTabListActivity::moveRingTo(const int ringIndex, const int direction) {
   auto& n = activeNav();
   n.selected = ringIndex;
   n.followPending = ringIndex > 0;
   if (ringIndex == 0) {
     n.top = 0;
+  } else if (direction != 0) {
+    n.top = ButtonNavigator::pageTopAfterStep(ringIndex - 1, n.top, n.pageRowsFor(listCount()), listCount(), direction);
   } else {
     // Pull the viewport to the row (ring - 1); ListNav::follow reads
     // n.selected as a row index, so compute directly here.
@@ -193,9 +195,9 @@ void UiTabListActivity::stepSelection(const int direction) {
   }
   const int ring = ringPos();
   if (direction > 0) {
-    moveRingTo(ring <= 0 || ring >= count ? 1 : ring + 1);
+    moveRingTo(ring <= 0 || ring >= count ? 1 : ring + 1, 1);
   } else {
-    moveRingTo(ring <= 1 || ring > count ? count : ring - 1);
+    moveRingTo(ring <= 1 || ring > count ? count : ring - 1, -1);
   }
 }
 

@@ -42,6 +42,12 @@ class ButtonNavigator final {
   [[nodiscard]] static int nextIndex(int currentIndex, int totalItems);
   [[nodiscard]] static int previousIndex(int currentIndex, int totalItems);
 
+  // Top row of the viewport after a one-row step landed on `selected`. The single rule for how a
+  // list scrolls under the front buttons: a row still in view keeps the page; stepping past the
+  // last row flips to the next page with the selection on its first row; stepping before the first
+  // row (or wrapping from the first to the last) flips back with the selection on its last row.
+  [[nodiscard]] static int pageTopAfterStep(int selected, int top, int rowsPerPage, int totalItems, int direction);
+
   [[nodiscard]] static int nextPageIndex(int currentIndex, int totalItems, int itemsPerPage);
   [[nodiscard]] static int previousPageIndex(int currentIndex, int totalItems, int itemsPerPage);
 

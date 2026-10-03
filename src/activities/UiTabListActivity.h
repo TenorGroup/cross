@@ -123,7 +123,9 @@ class UiTabListActivity : public UiListActivity {
   // Move to a ring position: tab bar rewinds the viewport, a row pulls the
   // viewport to itself. Landing on a row in a tab other than the one that last
   // held the cursor drops every other tab's remembered position (see rowTab).
-  void moveRingTo(int ringIndex);
+  // A row step passes its direction (+1/-1) so the viewport flips by whole pages
+  // (ButtonNavigator::pageTopAfterStep); 0 pulls it the minimal amount.
+  void moveRingTo(int ringIndex, int direction = 0);
   void commitTabNavigation();
 
   static constexpr int16_t MUI_TEN_LE = 14;   // mang le moi ben, danh cho mui ten

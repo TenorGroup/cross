@@ -411,6 +411,32 @@ TEST_F(TabScreenFixture, NutMatTruocQuayTrongCacDongKhongVaoThanhThe) {
   EXPECT_EQ(screen.ring(), kRowCount) << "hang dau lui lai phai quay ve hang cuoi";
 }
 
+// v1.0.52: the tab lists (Home File tab, Settings...) flip by whole pages too; they have no page button.
+TEST_F(TabScreenFixture, RowStepPastPageEdgeFlipsWholePage) {
+  screen.rows = 30;
+  screen.state().visibleRows = 10;
+  screen.state().drawnRows = 10;
+  screen.state().drawnCount = 30;
+  screen.state().top = 0;
+  screen.state().followOnBuild = false;
+  for (int i = 1; i < 10; ++i) tap(HalGPIO::BTN_RIGHT);
+  ASSERT_EQ(screen.ring(), 10);  // row 9, last row of page 1
+  EXPECT_EQ(screen.state().top, 0);
+  tap(HalGPIO::BTN_RIGHT);
+  EXPECT_EQ(screen.ring(), 11);  // row 10 opens page 2
+  EXPECT_EQ(screen.state().top, 10);
+  tap(HalGPIO::BTN_LEFT);
+  EXPECT_EQ(screen.ring(), 10);  // back to the last row of page 1
+  EXPECT_EQ(screen.state().top, 0);
+  tap(HalGPIO::BTN_LEFT);
+  tap(HalGPIO::BTN_LEFT);
+  EXPECT_EQ(screen.state().top, 0);
+  for (int i = 0; i < 7; ++i) tap(HalGPIO::BTN_LEFT);  // row 7 down to row 0
+  tap(HalGPIO::BTN_LEFT);  // row 0 wraps to row 29: last page, full, selection on its last row
+  EXPECT_EQ(screen.ring(), 30);
+  EXPECT_EQ(screen.state().top, 20);
+}
+
 TEST_F(TabScreenFixture, ChonSauBoundaryKichHoatHangDau) {
   for (int i = 1; i < kRowCount; ++i) tap(HalGPIO::BTN_RIGHT);
   tap(HalGPIO::BTN_RIGHT);
@@ -564,6 +590,60 @@ TEST_F(PagedListFixture, FrontTapMovesOneRowAndHoldJumpsOnceToBoundary) {
   release(HalGPIO::BTN_LEFT);
   EXPECT_EQ(screen.state().selected, 100);
   EXPECT_EQ(screen.state().top, 100);
+}
+// v1.0.52: a front-button step past the page edge flips the whole page (no row-by-row crawl).
+TEST_F(PagedListFixture, StepPastLastRowFlipsToNextPageWithSelectionOnItsFirstRow) {
+  screen.state().top = 100;
+  screen.state().selected = 111;
+  release(HalGPIO::BTN_RIGHT);
+  EXPECT_EQ(screen.state().selected, 112);
+  EXPECT_EQ(screen.state().top, 100);  // still the last row of the page
+  release(HalGPIO::BTN_RIGHT);
+  EXPECT_EQ(screen.state().selected, 113);
+  EXPECT_EQ(screen.state().top, 113);
+}
+TEST_F(PagedListFixture, StepBeforeFirstRowFlipsBackWithSelectionOnItsLastRow) {
+  screen.state().top = 113;
+  screen.state().selected = 113;
+  release(HalGPIO::BTN_LEFT);
+  EXPECT_EQ(screen.state().selected, 112);
+  EXPECT_EQ(screen.state().top, 100);
+}
+TEST_F(PagedListFixture, StepInsideThePageKeepsTheViewport) {
+  screen.state().top = 100;
+  screen.state().selected = 104;
+  release(HalGPIO::BTN_RIGHT);
+  release(HalGPIO::BTN_LEFT);
+  release(HalGPIO::BTN_LEFT);
+  EXPECT_EQ(screen.state().selected, 103);
+  EXPECT_EQ(screen.state().top, 100);
+}
+TEST_F(PagedListFixture, WrapKeepsPageFlipAtBothEnds) {
+  screen.state().top = 0;
+  screen.state().selected = 0;
+  release(HalGPIO::BTN_LEFT);
+  EXPECT_EQ(screen.state().selected, 2087);
+  EXPECT_EQ(screen.state().top, 2075);  // last page full, selection on its last row
+  release(HalGPIO::BTN_RIGHT);
+  EXPECT_EQ(screen.state().selected, 0);
+  EXPECT_EQ(screen.state().top, 0);
+}
+TEST_F(PagedListFixture, FlipUsesRowsTheLastBuildDrewNotTheEstimate) {
+  screen.state().drawnRows = 7;  // wrapped names: 7 of the 13 estimated rows fit
+  screen.state().top = 0;
+  screen.state().selected = 6;
+  release(HalGPIO::BTN_RIGHT);
+  EXPECT_EQ(screen.state().selected, 7);
+  EXPECT_EQ(screen.state().top, 7);
+}
+TEST_F(PagedListFixture, ShortListNeverFlips) {
+  screen.count = 9;
+  screen.state().drawnCount = 9;
+  screen.state().top = 0;
+  screen.state().selected = 8;
+  release(HalGPIO::BTN_RIGHT);
+  EXPECT_EQ(screen.state().selected, 0);
+  EXPECT_EQ(screen.state().top, 0);
 }
 TEST_F(PagedListFixture, PageAtBoundaryClampsInsteadOfWrapping) {
   release(HalGPIO::BTN_UP);

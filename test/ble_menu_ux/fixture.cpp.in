@@ -91,11 +91,15 @@ void chupChuoi(char* dest, const char* src, size_t maxLen) {
 }
 struct Nav {
   int selected = 0;
+  int top = 0;
+  bool followPending = false;
+  int pageRowsFor(int count) const { return count; }
   void follow(int) {}
 };
 struct ButtonNavigator {
   static int nextIndex(int index, int count) { return (index + 1) % count; }
   static int previousIndex(int index, int count) { return (index + count - 1) % count; }
+  static int pageTopAfterStep(int, int top, int, int, int) { return top; }  // the bound list fits one page
 };
 struct UiListActivity {
   virtual ~UiListActivity() = default;

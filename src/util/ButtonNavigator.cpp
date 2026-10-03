@@ -87,6 +87,14 @@ int ButtonNavigator::previousIndex(const int currentIndex, const int totalItems)
   return (currentIndex + totalItems - 1) % totalItems;
 }
 
+int ButtonNavigator::pageTopAfterStep(const int selected, const int top, const int rowsPerPage, const int totalItems,
+                                     const int direction) {
+  if (totalItems <= 0 || rowsPerPage <= 0 || totalItems <= rowsPerPage) return 0;
+  if (selected >= top && selected < top + rowsPerPage) return top;
+  if (direction > 0) return selected;
+  return selected - rowsPerPage + 1 > 0 ? selected - rowsPerPage + 1 : 0;
+}
+
 int ButtonNavigator::nextPageIndex(const int currentIndex, const int totalItems, const int itemsPerPage) {
   if (totalItems <= 0 || itemsPerPage <= 0) return 0;
 
