@@ -89,6 +89,8 @@
 #include "fontIds.h"
 #include "UIFontTiers.h"
 #include "ReaderInkWeight.h"
+#include "platform/BootTrial.h"
+#include "platform/FirmwareProbe.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
@@ -605,6 +607,17 @@ void setup() {
 #if LOG_SERIAL_HAS_TX_TIMEOUT
   logSerial.setTxTimeoutMs(1);  // This is a load-bearing 1. Do not modify.
 #endif
+#if ARDUINO_USB_CDC_ON_BOOT && defined(ARDUINO_USB_MODE) && !ARDUINO_USB_MODE
+  // Native USB CDC reboots into ROM download on a host's DTR/RTS reset sequence; a board that
+  // cannot be reached in download mode would stay there until reset by hand.
+  logSerial.enableReboot(false);
+#endif
+#endif
+#if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+  boot_trial::begin();
+#endif
+#if defined(TENOR_PRESS_PROBE) && FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+  fwprobe::onBoot();  // CMD:ROLLBACK_TEST crashes the boots it was armed for, here
 #endif
 
   HalSystem::begin();
@@ -980,6 +993,9 @@ void setup() {
     // SD, settings and activity startup succeeded. Wait for the first physical paint.
     activityManager.requestUpdateAndWait();
     const esp_err_t verified = esp_ota_mark_app_valid_cancel_rollback();
+#if FREEINK_DEVICE_X4PRO
+    boot_trial::passed();
+#endif
     LOG_INF("OTA", "Boot self-check complete: %s", esp_err_to_name(verified));
   }
 #endif
@@ -1656,6 +1672,10 @@ void loop() {
         logSerial.printf("KEEP_HEAP:%d\n", probeKeepHeap ? 1 : 0);
       } else if (cmd == "LOGDUMP") {
         probeLogDump();
+#if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
+      } else if (fwprobe::command(cmd)) {
+        // EFUSE, OTA_STATE, FLASH_DUMP, SD_FLASH, ROLLBACK_TEST: handled there
+#endif
       } else if (cmd == "PANIC") {
         abort();  // a crash reboot, for the paths that follow one
       } else if (cmd.startsWith("I2C_RACE ")) {

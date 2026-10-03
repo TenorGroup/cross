@@ -3,7 +3,11 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+#if defined(ARDUINO_USB_MODE) && !ARDUINO_USB_MODE
+#include <USBCDC.h>  // Serial is native USB (TinyUSB) CDC
+#else
 #include <HWCDC.h>
+#endif
 #endif
 
 #include <string>
@@ -32,7 +36,11 @@ won't trigger deprecation warnings.
 #endif
 
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+#if defined(ARDUINO_USB_MODE) && !ARDUINO_USB_MODE
+static USBCDC& logSerial = Serial;
+#else
 static HWCDC& logSerial = Serial;
+#endif
 #define LOG_SERIAL_HAS_TX_TIMEOUT 1
 #else
 static HardwareSerial& logSerial = Serial;

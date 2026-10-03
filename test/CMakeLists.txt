@@ -88,6 +88,7 @@ add_subdirectory(reading_habits)
 add_subdirectory(finish_estimate)
 
 add_subdirectory(wake_book)
+add_subdirectory(rollback_probe)
 
 add_subdirectory(book_metadata_cache)
 

@@ -4,7 +4,8 @@
 #include <sdkconfig.h>
 #endif
 
-#if defined(ARDUINO_ARCH_ESP32) && CONFIG_IDF_TARGET_ESP32S3 && FREEINK_CAP_USB_MSC
+// Native-USB builds (ARDUINO_USB_MODE=0) keep the OTG PHY: their serial port is TinyUSB CDC.
+#if defined(ARDUINO_ARCH_ESP32) && CONFIG_IDF_TARGET_ESP32S3 && FREEINK_CAP_USB_MSC && ARDUINO_USB_MODE
 
 #include <Arduino.h>
 #include <esp_err.h>
