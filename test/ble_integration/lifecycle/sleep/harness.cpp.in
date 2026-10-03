@@ -94,7 +94,7 @@ struct ActivityManager {
 
 struct HalPowerManager { struct Lock {}; void setPowerSaving(bool) {} } powerManager;
 struct CrossPointSettings {
-  enum class SLEEP_SCREEN_MODE { QUICK_RESUME, TRANSPARENT_CUSTOM, TENOR };
+  enum class SLEEP_SCREEN_MODE { QUICK_RESUME, TRANSPARENT_CUSTOM, TENOR, UGLY };
   enum class QUICK_RESUME_SLEEP_SCREEN { QUICK_RESUME_AFTER_TIMEOUT, NONE };
 };
 struct Settings {

@@ -2,7 +2,9 @@
 """tenor/ugly: generated files are the generators' output, the strings keep the writing rules, and the
 shell's strings are used by the shell alone."""
 import argparse
+import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,8 +24,22 @@ def check(ok, message):
         failures.append(message)
 
 
+def pick_python():
+    """The first interpreter that has numpy and PIL, the two the generators draw with."""
+    env = {k: v for k, v in os.environ.items() if k != 'PYTHONPATH'}
+    for candidate in (sys.executable, '/usr/bin/python3', shutil.which('python3') or ''):
+        if candidate and subprocess.run([candidate, '-c', 'import numpy, PIL'], env=env, capture_output=True).returncode == 0:
+            return candidate, env
+    failures.append('no interpreter with numpy and PIL: the generators cannot run')
+    return None, env
+
+
+PYTHON, ENV = pick_python()
+
+
 def run(*args):
-    subprocess.run([sys.executable, *map(str, args)], check=True, capture_output=True)
+    if PYTHON:
+        subprocess.run([PYTHON, *map(str, args)], check=True, capture_output=True, env=ENV)
 
 
 with tempfile.TemporaryDirectory() as t:
@@ -31,14 +47,14 @@ with tempfile.TemporaryDirectory() as t:
     # Strokes and pictures are pure arithmetic: the committed files are exactly what the scripts write.
     run(repo / 'scripts/ugly/gen_tables.py', t)
     run(repo / 'scripts/ugly/gen_art.py', t)
-    for name in ('UglyTables.h', 'UglyArt.h'):
+    for name in ('UglyTables.h', 'UglyArt.h') if PYTHON else ():
         check((t / name).read_bytes() == (repo / 'src/shells/ugly' / name).read_bytes(),
               name + ' is not what scripts/ugly writes: run the script and commit the result')
     # The font draws with FreeType, so the same script run twice must agree with itself.
     for n in (1, 2):
         (t / ('f%d' % n)).mkdir()
         run(repo / 'scripts/ugly/gen_font.py', t / ('f%d' % n))
-    for px in (22, 30, 38, 52):
+    for px in (22, 30, 38, 52) if PYTHON else ():
         a = (t / 'f1' / ('ugly_%d.h' % px)).read_bytes()
         b = (t / 'f2' / ('ugly_%d.h' % px)).read_bytes()
         check(a == b, 'ugly_%d.h is not the same twice' % px)

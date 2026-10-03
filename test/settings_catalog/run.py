@@ -17,11 +17,16 @@ activity=(repo/'src/activities/settings/SettingsActivity.cpp').read_text()
 start=activity.index('std::string SettingsActivity::settingValueText(')
 end=activity.index('\nvoid SettingsActivity::buildScreen',start)
 (out/'SettingsValueSlice.cpp').write_text('#include "SettingsList.h"\n#include "components/TenorMenuChrome.h"\n'+activity[start:end]+'\n')
-def home_slice(home_source, destination):
- text=home_source.read_text()
- start=text.index('  if (activeTabId == Tab::FAVORITES && menucustom::state().pinCount > 0) {')
- end=text.index('  rowItems.reserve(rowLabels.size());',start)
- block=text[start:end]
+def home_slice(rows_source, destination):
+ # The Favorites page rows are listed by homerows::favorites(), shared by both shells: compile that.
+ text=rows_source.read_text()
+ start=text.index('Favorites favorites() {')
+ i=text.index('{',start)+1
+ depth=1
+ while depth:
+  depth+=(text[i]=='{')-(text[i]=='}')
+  i+=1
+ block=text[start:i]
  destination.write_text('''#include "SettingsList.h"
 #include "MenuFavorites.h"
 #include "MenuCustomization.h"
@@ -32,16 +37,24 @@ bool isFileKey(const std::string& key) { return key.rfind("folder/", 0) == 0 || 
 std::string pathFor(const std::string&) { return "/books/probe.epub"; }
 }
 std::string utf8ComposeNfc(const std::string& value){return value;}
+static const SdCardFontRegistry* gRegistry=nullptr;
+struct FontSystemBoundary { const SdCardFontRegistry& registry()const{return *gRegistry;} } sdFontSystem;
+namespace homerows {
+struct Favorites { std::vector<std::string> keys, values, labels; };
+'''+block+'''
+}
 void runHomeFavorites(const SdCardFontRegistry& registry,std::vector<std::string>& favoriteKeys,
  std::vector<std::string>& favoriteValues,std::vector<std::string>& rowLabels) {
- enum class Tab { FAVORITES };
- const auto activeTabId=Tab::FAVORITES;
- struct FontSystemBoundary { const SdCardFontRegistry& ref;const SdCardFontRegistry& registry()const{return ref;} };
- const FontSystemBoundary sdFontSystem{registry};
-'''+block+'}\n')
+ gRegistry=&registry;
+ auto pins=homerows::favorites();
+ favoriteKeys=std::move(pins.keys);
+ favoriteValues=std::move(pins.values);
+ for(auto& label:pins.labels) rowLabels.push_back(std::move(label));
+}
+''')
  return block
 
-home_block=home_slice(repo/'src/activities/home/HomeActivity.cpp',out/'HomeFavoritesSlice.cpp')
+home_block=home_slice(repo/'src/activities/home/HomeRows.cpp',out/'HomeFavoritesSlice.cpp')
 incs=[here/'stubs',repo/'test/host_stubs',repo/'src',repo/'freeink-sdk/libs/hardware/BoardConfig/include']
 incs += sorted((repo/'.pio/libdeps/gh_release').glob('*/src'))
 # SDK test stubs are independent hardware doubles, never production headers.
@@ -56,8 +69,8 @@ incs=list(dict.fromkeys(incs))
 legacy_header=out/'LegacyCapabilities.h'
 legacy_header.write_text('#include <BoardConfig.h>\n#undef FREEINK_CAP_FRONTLIGHT\n#undef FREEINK_CAP_WARMLIGHT\n')
 sources=[here/'SettingsRamProbe.cpp',here/'LinkStubs.cpp',out/'SettingsValueSlice.cpp',out/'HomeFavoritesSlice.cpp',repo/'src/MenuFavorites.cpp',repo/'src/CrossPointSettings.cpp',repo/'src/ReaderFontSizes.cpp',repo/'lib/I18n/I18n.cpp',repo/'lib/I18n/I18nStrings.cpp']
-manifest={'source_sha256':{str(p.relative_to(repo)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [repo/'src/SettingsList.h',repo/'src/MenuFavorites.cpp',repo/'src/CrossPointSettings.cpp',repo/'src/activities/settings/SettingsActivity.cpp',repo/'src/activities/home/HomeActivity.cpp']}}
-manifest['excerpts_sha256']={'HomeActivity_favorites_block':hashlib.sha256(home_block.encode()).hexdigest(),'settingValueText':hashlib.sha256(activity[start:end].encode()).hexdigest()}
+manifest={'source_sha256':{str(p.relative_to(repo)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [repo/'src/SettingsList.h',repo/'src/MenuFavorites.cpp',repo/'src/CrossPointSettings.cpp',repo/'src/activities/settings/SettingsActivity.cpp',repo/'src/activities/home/HomeRows.cpp']}}
+manifest['excerpts_sha256']={'HomeRows_favorites':hashlib.sha256(home_block.encode()).hexdigest(),'settingValueText':hashlib.sha256(activity[start:end].encode()).hexdigest()}
 cm='cmake_minimum_required(VERSION 3.16)\nproject(settings_ram_regression CXX)\nset(CMAKE_CXX_STANDARD 20)\nenable_testing()\n'
 variants=[(*caps,False) for caps in itertools.product([0,1],repeat=3)]+[(0,0,0,True)]
 for front,warm,touch,legacy in variants:

@@ -220,6 +220,25 @@ int runLegacyTheme() {
   return ok ? 0 : 1;
 }
 
+// tenor/ugly (v1.0.53): the shell is a saved choice. A file from before it has no key and loads as
+// tenor/cross, a stored 1 is the ugly shell, a value nothing wrote falls back to tenor/cross.
+int runShell() {
+  JsonDocument before = readFixture("settings-v1.0.19.json");
+  settings_test_io::setNextRead(before);
+  bool ok = expect(SETTINGS.loadFromFile(), "file from before the shell loads");
+  ok = expect(SETTINGS.uiShell == 0, "no uiShell key is tenor/cross") && ok;
+  ok = expect(saved()["uiShell"] == 0, "and the next save writes it") && ok;
+  before["uiShell"] = 1;
+  settings_test_io::setNextRead(before);
+  ok = expect(SETTINGS.loadFromFile() && SETTINGS.uiShell == 1, "a stored 1 is the ugly shell") && ok;
+  before["uiShell"] = 7;
+  SETTINGS.uiShell = 0;  // a load starts from the struct default, as a boot does
+  settings_test_io::setNextRead(before);
+  ok = expect(SETTINGS.loadFromFile() && SETTINGS.uiShell == 0, "a value nothing wrote is tenor/cross") && ok;
+  std::printf("settings_upgrade=shell:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
 // A synthetic addendum, not one of the three real files: none of them carry
 // "touchReaderControls" (it is touch-only, and every real fixture here is an X3), so the
 // one true migration this merge (#3586) introduces never fires on real Tenor hardware
@@ -254,5 +273,6 @@ int main(int argc, char** argv) {
   if (mode == "older") return runOlderFile();
   if (mode == "touch-migration") return runTouchMigration();
   if (mode == "legacy-theme") return runLegacyTheme();
+  if (mode == "shell") return runShell();
   return 2;
 }

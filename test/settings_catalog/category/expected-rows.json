@@ -1,6 +1,7 @@
 {
   "x3-0-0-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -83,6 +84,7 @@
   ],
   "x3-0-0-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -166,6 +168,7 @@
   ],
   "x3-0-1-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -249,6 +252,7 @@
   ],
   "x3-0-1-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -333,6 +337,7 @@
   ],
   "x3-1-0-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -415,6 +420,7 @@
   ],
   "x3-1-0-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -498,6 +504,7 @@
   ],
   "x3-1-1-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -581,6 +588,7 @@
   ],
   "x3-1-1-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -665,6 +673,7 @@
   ],
   "x4-0-0-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -732,6 +741,7 @@
   ],
   "x4-0-0-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -800,6 +810,7 @@
   ],
   "x4-0-1-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -868,6 +879,7 @@
   ],
   "x4-0-1-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -937,6 +949,7 @@
   ],
   "x4-1-0-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1004,6 +1017,7 @@
   ],
   "x4-1-0-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1072,6 +1086,7 @@
   ],
   "x4-1-1-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1140,6 +1155,7 @@
   ],
   "x4-1-1-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1209,6 +1225,7 @@
   ],
   "pro-0-0-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1278,6 +1295,7 @@
   ],
   "pro-0-0-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1348,6 +1366,7 @@
   ],
   "pro-0-1-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1418,6 +1437,7 @@
   ],
   "pro-0-1-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1489,6 +1509,7 @@
   ],
   "pro-1-0-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1558,6 +1579,7 @@
   ],
   "pro-1-0-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1628,6 +1650,7 @@
   ],
   "pro-1-1-0": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1698,6 +1721,7 @@
   ],
   "pro-1-1-1": [
     [
+      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",

@@ -154,8 +154,9 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 8; ++i)
       discovered.push_back({std::to_string(i) + " Dictionary long owned label", "book"});
   const auto& catalog = getBaseSettingsList();
-  ok &= check(!catalog.empty() && catalog.front().valuePtr == &CrossPointSettings::uiTextSize,
-              "UI text size is the first catalog row");
+  ok &= check(catalog.size() > 1 && catalog[0].valuePtr == &CrossPointSettings::uiShell &&
+                  catalog[1].valuePtr == &CrossPointSettings::uiTextSize,
+              "the interface row is the first catalog row and UI text size follows it");
   SettingsActivity activity;
   for (auto& cursor : activity.tabNavs) cursor.selected = 10000;
   measuring = true;

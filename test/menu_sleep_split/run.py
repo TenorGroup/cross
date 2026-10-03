@@ -31,7 +31,7 @@ def method(text, sig):
 paths = ['src/SettingsList.h', 'src/MenuCustomization.h', 'src/MenuCustomization.cpp',
          'src/activities/settings/SettingsActivity.h', 'src/activities/settings/SettingsActivity.cpp',
          'src/activities/settings/SettingsTabs.h', 'src/activities/settings/SettingsTabs.cpp',
-         'src/activities/home/HomeActivity.cpp', 'src/network/CrossPointWebServer.cpp', 'lib/I18n/I18nKeys.h',
+         'src/activities/home/HomeRows.cpp', 'src/network/CrossPointWebServer.cpp', 'lib/I18n/I18nKeys.h',
          'src/CrossPointSettings.cpp']
 (out / 'source-manifest.json').write_text(json.dumps({x: hashlib.sha256((r/x).read_bytes()).hexdigest() for x in paths}, indent=2)+'\n')
 (out / 'SettingsList.h').write_text((r / paths[0]).read_text())
@@ -51,10 +51,11 @@ sigs = ['std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe', 'void Sett
         'std::string SettingsActivity::favoriteKey(', 'int SettingsActivity::focusFavorite(']
 methods = ''.join(method(source, s) for s in sigs)
 (out / 'Methods.inc').write_text(methods)
-home = (r / 'src/activities/home/HomeActivity.cpp').read_text()
-home = home[home.index('case Tab::CAI_DAT: {'):]
-home = home[:home.index('\n    }')]
-(out / 'HomeSettings.inc').write_text(home.split('{', 1)[1].replace('      break;', ''))
+# The Settings page rows are listed by homerows::settingsGroups(), shared by both shells: compile that.
+rows = (r / 'src/activities/home/HomeRows.cpp').read_text()
+(out / 'HomeSettings.inc').write_text(
+    'namespace homerows {\nstruct SettingsGroups { std::vector<int> ids; std::vector<std::string> labels; };\n' +
+    method(rows, 'SettingsGroups settingsGroups()') + '}\n')
 web = (r / 'src/network/CrossPointWebServer.cpp').read_text()
 (out / 'Web.inc').write_text(method(web, 'void CrossPointWebServer::handleGetSettings() const'))
 # The serializer first adopts the status bar switches for the stored mode, so the

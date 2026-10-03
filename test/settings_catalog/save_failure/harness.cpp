@@ -27,6 +27,8 @@ bool PersistableStoreBase::writeDocToFile(const char*, const JsonDocument&) {
 #define LOG_ERR(...) (++errors)
 
 struct RenderLock {};
+// Choosing another shell draws Home again: outside what this harness measures.
+namespace shell { inline void changed() {} }
 struct GfxRenderer {
   unsigned clears = 0, displayed = 0, popups = 0, popupAtDisplay = 0;
   void clearScreen() { ++clears; popups = 0; }

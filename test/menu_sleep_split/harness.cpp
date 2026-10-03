@@ -46,11 +46,15 @@ struct SettingsActivity {
   int focusFavorite(const std::string&);
 };
 #include "Methods.inc"
+#include "HomeSettings.inc"
 struct HomeSettings {
   std::vector<int> settingsGroups;
   std::vector<std::string> rowLabels;
   void build() {
-#include "HomeSettings.inc"
+    rowLabels.emplace_back(tr(STR_FILE_TRANSFER));
+    auto groups = homerows::settingsGroups();
+    settingsGroups = std::move(groups.ids);
+    for (auto& label : groups.labels) rowLabels.push_back(std::move(label));
   }
 };
 // Preserve symbolic label identities across unrelated translation regeneration.
