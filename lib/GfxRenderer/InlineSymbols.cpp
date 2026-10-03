@@ -39,6 +39,13 @@ void configure(Resolver resolver, FontFilter filter) {
   resolve = resolver;
   accepts = filter;
 }
+void drawMarginPin(const GfxRenderer& r, int top) {
+  // Tim dac 9x8, cung o 9x9 cua ngoi sao cu, mui tim cham day o.
+  constexpr unsigned rows[] = {0x0C6, 0x1EF, 0x1FF, 0x1FF, 0x0FE, 0x07C, 0x038, 0x010};
+  for (int dy = 0; dy < 8; ++dy)
+    for (int dx = 0; dx < 9; ++dx)
+      if (rows[dy] & (1u << (8 - dx))) r.drawPixel(13 + dx, top + 1 + dy, true);
+}
 void drawShape(const GfxRenderer& r, Shape shape, int x, int y, int size, bool black) {
   const int h = std::max(3, size / 2);
   if (shape == Shape::Up || shape == Shape::Down) {
@@ -83,15 +90,8 @@ int text(const GfxRenderer& r, int font, int x, int y, const char* str, bool dra
     const int id = marker(p);
     if (id >= 0) {
       const auto spec = resolve(id);
-      if (spec.shape == Shape::MarginStar) {
-        if (draw) {
-          // Nine pixel star stays legible at the margin, clear of side arrows.
-          constexpr unsigned rows[] = {0x010, 0x010, 0x038, 0x1FF, 0x0FE, 0x07C, 0x06C, 0x0C6, 0x082};
-          const int top = y + r.getFontAscenderSize(font) - 10;
-          for (int dy = 0; dy < 9; ++dy)
-            for (int dx = 0; dx < 9; ++dx)
-              if (rows[dy] & (1u << (8 - dx))) r.drawPixel(13 + dx, top + dy, true);
-        }
+      if (spec.shape == Shape::MarginPin) {
+        if (draw) drawMarginPin(r, y + r.getFontAscenderSize(font) - 10);
       } else if (spec.label) {
         if (draw) r.drawText(font, x + advance, y, spec.label, black, style);
         advance += r.getTextAdvanceX(font, spec.label, style);

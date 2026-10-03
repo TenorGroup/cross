@@ -208,6 +208,23 @@ int main() {
   checkShape("Select", inlineSymbols::Shape::Select, "\xEE\x84\x80", drawOldSelectShape,
              /*enforceOldBounds=*/false);
 
+  // Dong da ghim (Yeu thich) mang dau tim 9x8 o le trai. Ma E10A trong inlineSymbols::text
+  // goi dung ham nay.
+  {
+    clear();
+    constexpr int kRowY = 300;
+    inlineSymbols::drawMarginPin(renderer, kRowY - 4);
+    static const char* const kTim[] = {".##...##.", "####.####", "#########", "#########",
+                                       ".#######.", "..#####..", "...###...", "....#...."};
+    const auto ink = scanAround(17, kRowY, 30);
+    check(ink.any && ink.maxX - ink.minX == 8 && ink.maxY - ink.minY == 7, "dau ghim: khung muc khong phai 9x8");
+    bool khop = ink.any;
+    for (int dy = 0; dy < 8 && khop; ++dy)
+      for (int dx = 0; dx < 9; ++dx)
+        if (isInk(ink.minX + dx, ink.minY + dy) != (kTim[dy][dx] == '#')) khop = false;
+    check(khop, "dau ghim: hinh khong phai trai tim");
+  }
+
   std::printf(
       "%s: Back arrow and Select tick ink bounds match horizontalBounds() and differ from the glyphs they "
       "replaced, at net 14 and 18\n",

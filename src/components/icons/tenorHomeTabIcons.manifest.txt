@@ -3,4 +3,4 @@ tenor_home_recent = clock
 tenor_home_folder = folder
 tenor_home_stats = chart-column
 tenor_home_settings = settings
-tenor_home_favorites = star
+tenor_home_favorites = heart

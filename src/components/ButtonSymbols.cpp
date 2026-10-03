@@ -12,7 +12,7 @@ using inlineSymbols::Shape;
 bool font(int id) { return id == UI_10_FONT_ID || id == UI_12_FONT_ID || id == SMALL_FONT_ID; }
 inlineSymbols::Spec resolve(int id) {
   if (id == 10)
-    return {tenorchrome::enabled() ? Shape::MarginStar : Shape::Star, nullptr};
+    return {tenorchrome::enabled() ? Shape::MarginPin : Shape::Star, nullptr};
   if (id == 9) return {Shape::Erase, nullptr};
   if (id == 6) return {Shape::Star, nullptr};
   constexpr Shape shapes[] = {Shape::Select, Shape::Back, Shape::Up, Shape::Down, Shape::Left, Shape::Right};
