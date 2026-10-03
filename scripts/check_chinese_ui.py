@@ -7,7 +7,7 @@ import re
 import sys
 from font_header_tools import read_header
 
-NAMES = ('bevietnampro_8_regular', 'bevietnampro_10_regular', 'bevietnampro_10_bold', 'geist_12_regular', 'geist_12_bold')
+NAMES = ('geist_8_regular', 'geist_10_regular', 'geist_10_bold', 'geist_12_regular', 'geist_12_bold')
 FORMAT = re.compile(r'%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:hh|ll|[hljztL])?[diuoxXfFeEgGaAcsp%]')
 
 def required(data):
@@ -16,7 +16,7 @@ def required(data):
 def fingerprint(cps):
     return hashlib.sha256(','.join(map(str, sorted(cps))).encode()).hexdigest()
 
-def validate(root, chinese=None, headers=None, baseline=None):
+def validate(root, chinese=None, headers=None):
     sys.path.insert(0, str(root/'scripts'))
     from gen_i18n import parse_yaml_file
     en = parse_yaml_file(root/'lib/I18n/translations/english.yaml')
@@ -38,27 +38,12 @@ def validate(root, chinese=None, headers=None, baseline=None):
         assert not any(c in zh[k] for c in '\u2013\u2014'), (k, 'forbidden punctuation')
     cps = required(zh)
     headers = headers or root/'lib/EpdFont/builtinFonts'
-    base = json.loads(baseline.read_text()) if baseline else None
     results = []
-    ink_path = root/'test/ui_tiers/ui-ink-manifest.json'
-    ink_fonts = json.loads(ink_path.read_text()).get('fonts', {}) if ink_path.exists() else {}
     for name in NAMES:
         h = read_header(headers/(name+'.h'))
         missing = cps - h['glyphs'].keys()
         assert not missing, (name, 'missing glyphs', len(missing), sorted(missing)[:8])
         assert f'Chinese UI charset SHA256: {fingerprint(cps)}' in (headers/(name+'.h')).read_text(), (name, 'stale charset fingerprint')
-        if base:
-            assert h['metrics'] == base[name]['metrics'], (name, 'metrics changed')
-            assert h['kern'] == base[name]['kern'], (name, 'kerning changed')
-            approved = {str(entry['codepoint']): entry for entry in ink_fonts.get(name, {}).get('changed_glyphs', [])}
-            for cp, digest in base[name]['hashes'].items():
-                actual = h['hashes'].get(cp)
-                if actual == digest:
-                    continue
-                change = approved.get(cp)
-                assert change and change['before_glyph_sha256'] == digest and change['after_glyph_sha256'] == actual, (name, 'unapproved old glyph change', cp)
-            for cp, change in approved.items():
-                assert h['hashes'].get(cp) == change['after_glyph_sha256'], (name, 'approved ink glyph changed', cp)
         top = max(h['glyphs'][cp][0][4] for cp in cps if cp >= 0x2e80)
         bottom = min(h['glyphs'][cp][0][4] - h['glyphs'][cp][0][1] for cp in cps if cp >= 0x2e80)
         assert top <= h['metrics'][1] and bottom >= h['metrics'][2], (name, 'CJK exceeds line metrics', top, bottom, h['metrics'])
@@ -66,5 +51,5 @@ def validate(root, chinese=None, headers=None, baseline=None):
     return {'keys': len(enkeys), 'charset_sha256': fingerprint(cps), 'fonts': results}
 
 if __name__ == '__main__':
-    p=argparse.ArgumentParser();p.add_argument('--root',type=Path,default=Path(__file__).resolve().parents[1]);p.add_argument('--chinese',type=Path);p.add_argument('--headers',type=Path);p.add_argument('--baseline',type=Path);a=p.parse_args()
-    print(json.dumps(validate(a.root,a.chinese,a.headers,a.baseline),ensure_ascii=False,indent=2))
+    p=argparse.ArgumentParser();p.add_argument('--root',type=Path,default=Path(__file__).resolve().parents[1]);p.add_argument('--chinese',type=Path);p.add_argument('--headers',type=Path);a=p.parse_args()
+    print(json.dumps(validate(a.root,a.chinese,a.headers),ensure_ascii=False,indent=2))

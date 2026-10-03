@@ -31,7 +31,7 @@ CPFONT_DIR = HERE / "cpfont"
 MANIFEST = CPFONT_DIR / "fonts.json"
 
 # Ghim nguồn chính thức: google/fonts main, ofl/notosanssc. FONT_SHA256 trùng
-# SOURCE_SHA trong scripts/build_chinese_ui.py, tức đúng tệp firmware đang dùng.
+# SOURCE_SHA trong scripts/build_ui_fonts.py, tức đúng tệp firmware đang dùng.
 FONT_SHA256 = "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da"
 OFL_SHA256 = "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9"
 

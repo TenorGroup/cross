@@ -10,8 +10,8 @@
 #include <EpdFontFamily.h>
 #include <CjkTextWrap.h>
 #include <Utf8.h>
-#include <builtinFonts/bevietnampro_8_regular.h>
-#include <builtinFonts/bevietnampro_10_regular.h>
+#include <builtinFonts/geist_8_regular.h>
+#include <builtinFonts/geist_10_regular.h>
 #include <builtinFonts/geist_12_regular.h>
 
 constexpr int SMALL_FONT_ID = 1;
@@ -42,10 +42,10 @@ struct GfxRenderer {
   int fontOverride = -1;
   const EpdFontData& font() const {
     const int face = fontOverride < 0 ? SETTINGS.uiTextSize : fontOverride;
-    return face == 0 ? bevietnampro_8_regular : face == 1 ? bevietnampro_10_regular : geist_12_regular;
+    return face == 0 ? geist_8_regular : face == 1 ? geist_10_regular : geist_12_regular;
   }
   const EpdFont& fontObject() const {
-    static const EpdFont fonts[] = {EpdFont(&bevietnampro_8_regular), EpdFont(&bevietnampro_10_regular), EpdFont(&geist_12_regular)};
+    static const EpdFont fonts[] = {EpdFont(&geist_8_regular), EpdFont(&geist_10_regular), EpdFont(&geist_12_regular)};
     return fonts[SETTINGS.uiTextSize];
   }
   const std::map<int, EpdFontFamily> fontMap = {{SMALL_FONT_ID, EpdFontFamily(&fontObject())}};
@@ -256,9 +256,11 @@ int main() {
                   r.getTextWidth(1, label), r.ys.size(), r.attemptedInkTop, r.attemptedInkBottom, boxTop, boxBottom);
       check(r.attemptedInkTop >= boxTop && r.attemptedInkBottom <= boxBottom,
             "fallback label ink escapes its box into panel edge or dither");
-      if (std::strcmp(label, "Cập nhật") == 0 || std::strcmp(label, "Chọn mạng") == 0)
+      // A two-word action wraps only when it is wider than one line holds: Geist 8 sets "Cập nhật" in 69 px.
+      const bool wraps = r.getTextWidth(1, label) > 72;
+      if (wraps && (std::strcmp(label, "Cập nhật") == 0 || std::strcmp(label, "Chọn mạng") == 0))
         check(r.ys.size() == 2, "readable two-word action lost its second line");
-      if (std::strcmp(label, "Cập nhật") == 0)
+      if (wraps && std::strcmp(label, "Cập nhật") == 0)
         check(r.paintedText == std::vector<std::string>{"Cập", "nhật"}, "update action lost letters or accents");
       if (std::strcmp(label, "Chọn mạng") == 0)
         check(r.paintedText == std::vector<std::string>{"Chọn", "mạng"}, "network action lost letters or accents");

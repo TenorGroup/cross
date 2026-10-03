@@ -82,8 +82,8 @@ ruby -rdigest -e 'puts [
 
 echo "#define UI_10_FONT_ID ($(
 ruby -rdigest -e 'puts [
-  "./bevietnampro_10_regular.h",
-  "./bevietnampro_10_bold.h",
+  "./geist_10_regular.h",
+  "./geist_10_bold.h",
 ].map{|f| Digest::SHA256.hexdigest(File.read(f)).to_i(16) }.sum % (2 ** 32) - (2 ** 31)'
 ))"
 
@@ -96,7 +96,7 @@ ruby -rdigest -e 'puts [
 
 echo "#define SMALL_FONT_ID ($(
 ruby -rdigest -e 'puts [
-  "./bevietnampro_8_regular.h",
+  "./geist_8_regular.h",
 ].map{|f| Digest::SHA256.hexdigest(File.read(f)).to_i(16) }.sum % (2 ** 32) - (2 ** 31)'
 ))"
 

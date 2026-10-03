@@ -58,7 +58,7 @@ struct HomeCardLayout {
 };
 inline HomeCardLayout homeCardLayout(const HomeCardInput& in) {
   constexpr int COVER_W = HOME_CARD_COVER_W, COVER_H = HOME_CARD_COVER_H, COVER_MIN_H = 120;
-  constexpr int MARGIN = 24, STATS_GAP = 22, COVER_GAP = 18, AUTHOR_GAP = 2, EXCERPT_GAP = 8, RULE_GAP = 16, ROW_GAP = 8;
+  constexpr int MARGIN = 24, STATS_GAP = 22, COVER_GAP = 18, AUTHOR_GAP = 2, EXCERPT_GAP = 7, RULE_GAP = 15, ROW_GAP = 8;
   constexpr int TITLE_LINES = 2, EXCERPT_LINES = 3;
   HomeCardLayout card;
   card.textX = MARGIN;

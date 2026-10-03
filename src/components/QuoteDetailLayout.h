@@ -19,7 +19,7 @@ constexpr int16_t GLYPH_GAP = 20;
 constexpr int16_t HEADER_RIGHT_INSET = 18;
 
 // The meta block under the quote: book title (Noto Serif italic 12), then chapter, the
-// day and time, and the page, each in Be Vietnam Pro 10 (mockup D2). Every gap here is a
+// day and time, and the page, each in Geist 10 (mockup D2). Every gap here is a
 // fixed design choice, not derived from a font's own metrics, because this block's fonts
 // never change with the reader's settings the way the quote body's does.
 constexpr int16_t META_RULE_GAP = 30;    // last body line to the short rule

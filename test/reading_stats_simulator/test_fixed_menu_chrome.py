@@ -45,7 +45,10 @@ def hints():
  # glyph, so both are a touch taller at the smallest tier than the shapes they
  # replaced: the small gap is 1px (not 2px) at tier 0, and the large band
  # grows by up to 2px. Re-measured 23/09/2026 against the new glyphs.
- growth=(0,5,12);large_bands=((729,744),(686,702),(670,690));small_gaps=(1,2,2)
+ # 03/10/2026: the tier 0 and tier 1 captions are Geist 8 and Geist 10, one pixel taller than the fonts
+ # before them (22 against 21, 27 against 26), so their large bands sit one pixel higher:
+ # (728,743) where it was (729,744), and (685,701) where it was (686,702).
+ growth=(0,5,12);large_bands=((728,743),(685,701),(670,690));small_gaps=(1,2,2)
  for tier in range(3):
   row={'tier':tier}
   for mode in (0,2):

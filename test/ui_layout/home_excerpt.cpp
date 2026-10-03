@@ -59,7 +59,7 @@ void markedQuotePick() {
   puts("PASS: a marked quote not shown yet is the one on the card");
 }
 
-// X3 at the default text size: Geist 12 title (33), Be Vietnam Pro 10 author and bottom row (26),
+// X3 at the default text size: Geist 12 title (33), Geist 10 author and bottom row (27),
 // Noto Serif 12 italic excerpt (34). Top is under the tab row, bottom is the top of the hint band.
 HomeCardInput x3(int titleLines) {
   HomeCardInput in;
@@ -68,16 +68,17 @@ HomeCardInput x3(int titleLines) {
   in.bottom = 752;
   in.titleLineHeight = 33;
   in.titleLines = titleLines;
-  in.authorLineHeight = 26;
+  in.authorLineHeight = 27;
   in.excerptLineHeight = 34;
-  in.rowLineHeight = 26;
+  in.rowLineHeight = 27;
   return in;
 }
 
 void cardGeometry() {
   // The approved two-column drawing (H4): cover 236 x 356 at the left margin under the tab row, the
   // reading stats to its right, then title, author, three lines of excerpt at the cover's left edge
-  // across the full width, and the rule and the other-book row above the footer.
+  // across the full width, and the rule and the other-book row above the footer. Geist 10 sets the
+  // author and bottom lines at 27 (the font before it, 26), so the excerpt and rule gaps take 1 px each.
   const auto card = homeCardLayout(x3(2));
   assert(card.coverW == 236 && card.coverH == 356);
   assert(card.coverX == 24 && card.coverY == 124);
@@ -85,11 +86,11 @@ void cardGeometry() {
   assert(card.textX == 24 && card.textW == 480);
   assert(card.titleY == 124 + 356 + 18);
   assert(card.authorY == card.titleY + 2 * 33 + 2);
-  assert(card.excerptY == card.authorY + 26 + 8);
+  assert(card.excerptY == card.authorY + 27 + 7);
   assert(card.excerptLines == 3);
-  assert(card.rowY == 752 - 26);
+  assert(card.rowY == 752 - 27);
   assert(card.ruleY == card.rowY - 8);
-  assert(card.excerptY + 3 * 34 + 16 <= card.ruleY);
+  assert(card.excerptY + 3 * 34 + 15 <= card.ruleY);
 
   // A one-line title moves the author and excerpt up; the cover keeps its size, so switching
   // books does not make the cover jump.
@@ -109,7 +110,7 @@ void cardGeometry() {
   assert(big.coverX == 24);
   assert(big.statsX == 24 + big.coverW + 22 && big.statsRight == 504);
   assert(big.excerptLines == 3);
-  assert(big.excerptY + 3 * 45 + 16 <= big.ruleY);
+  assert(big.excerptY + 3 * 45 + 15 <= big.ruleY);
 
   // A short screen: the cover stops at its floor and the excerpt drops lines instead, never below
   // one line and never past the rule.
@@ -143,24 +144,24 @@ void statRows() {
 }
 
 void statsColumn() {
-  // X3 default: Be Vietnam Pro 8 labels (21), Geist 12 bold values (33), beside a 356 px cover.
+  // X3 default: Geist 8 labels (22), Geist 12 bold values (33), beside a 356 px cover.
   const auto card = homeCardLayout(x3(2));
   HomeStatsInput in;
   in.top = card.coverY;
   in.bottom = card.coverY + card.coverH;
-  in.labelLineHeight = 21;
+  in.labelLineHeight = 22;
   in.valueLineHeight = 33;
   in.rows = ALL_STATS;
   const auto column = homeStatsLayout(in);
   assert(column.rows == ALL_STATS);
   assert(column.labelY[HOME_STAT_READ] == card.coverY + 2);
-  assert(column.valueY[HOME_STAT_READ] == column.labelY[HOME_STAT_READ] + 21);
+  assert(column.valueY[HOME_STAT_READ] == column.labelY[HOME_STAT_READ] + 22);
   // The progress bar sits under the percent, then the next label.
   assert(column.barY >= column.valueY[HOME_STAT_READ] + 33 - 6);
   assert(column.labelY[HOME_STAT_TOTAL] >= column.barY + 6 + 6);
   for (int row = HOME_STAT_TOTAL; row < HOME_STAT_COUNT; ++row) {
     assert(column.labelY[row] > column.valueY[row - 1]);
-    assert(column.valueY[row] == column.labelY[row] + 21);
+    assert(column.valueY[row] == column.labelY[row] + 22);
   }
   // The last value ends inside the cover's height, so the title below is not pushed down.
   assert(column.valueY[HOME_STAT_SPAN] + 33 <= in.bottom);
@@ -206,7 +207,7 @@ void finishRow() {
   HomeStatsInput in;
   in.top = card.coverY;
   in.bottom = card.coverY + card.coverH;
-  in.labelLineHeight = 21;
+  in.labelLineHeight = 22;
   in.valueLineHeight = 33;
   in.rows = ALL_STATS | bit(HOME_STAT_FINISH);
   const auto column = homeStatsLayout(in);

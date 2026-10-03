@@ -27,7 +27,7 @@ phát hành thì phải qua bước đóng gói pack + manifest riêng và đư�
   `commit: 523d033d6cb47f4a80c58a35753646f5c3608a78`
 
 Tệp nguồn này **trùng khít** tệp mà firmware đang dùng để dựng glyph tiếng Trung
-cho giao diện: `scripts/build_chinese_ui.py` đã ghim
+cho giao diện: `scripts/build_ui_fonts.py` đã ghim
 `SOURCE_SHA = a3041811…8af0da`, và sha256 tải về ở đây bằng đúng giá trị đó.
 Đây là lý do chọn họ này thay vì thêm một họ CJK mới: giấy phép OFL đã có sẵn
 trong bộ phát hành (`licenses/fonts/NotoSansSC-OFL.txt`), không phát sinh nghĩa vụ
@@ -93,7 +93,7 @@ Bản ứng viên v1.0.3 dùng 6.254.455/6.553.600 byte flash (95,4%) — một 
 phối hợp lệ là **thẻ SD** (`docs/sd-card-fonts.md`), không phải nhúng vào binary.
 
 Lưu ý khi đóng gói: mặc định của trục `wght` là **100 (Thin)**; muốn ra độ đậm
-đọc sách phải instance 400/500 như `scripts/build_chinese_ui.py` đang làm.
+đọc sách phải instance 400/500 như `scripts/build_ui_fonts.py` đang làm.
 
 ### Lệnh dựng lại đúng hai tệp `.cpfont` này
 

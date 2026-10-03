@@ -16,7 +16,7 @@ constexpr int16_t BAND_WIDTH = 528;
 constexpr int16_t BAND_TOP = 0;
 constexpr int16_t BAND_BOTTOM = 640;
 
-// Noto Serif 14, Geist Bold 12, and Be Vietnam Pro 8, as the generated fonts measure at
+// Noto Serif 14, Geist Bold 12, and Geist 8, as the generated fonts measure at
 // 150 DPI (ascent + descent from the .ttf, the same figures fontIds.h's fonts resolve to).
 constexpr int16_t BODY_LINE = 40;
 constexpr int16_t NUMBER_LINE = 34;

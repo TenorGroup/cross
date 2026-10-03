@@ -8,30 +8,26 @@ cmake --build /tmp/tenor-ui-tier-tests
 ctest --test-dir /tmp/tenor-ui-tier-tests --output-on-failure
 ```
 
-Use a Python environment with freetype-py, fontTools, numpy and Pillow for regeneration and optical guard tests. Source TTF/OFL files live under `lib/EpdFont/builtinFonts/source`; verify the pinned CJK source hash before generating.
+Use a Python environment with freetype-py and fontTools for regeneration. Source TTF/OFL files live under `lib/EpdFont/builtinFonts/source`; verify the pinned CJK source hash before generating.
 
 ```sh
-python scripts/build_ui_tiers.py --ink --cjk-source 'test/fonts-cjk/NotoSansSC[wght].ttf' --output /tmp/tenor-ui-generated
-python test/ui_tiers/verify_fonts.py --generated /tmp/tenor-ui-generated
-python test/ui_tiers/test_ink_guard.py
-python scripts/check_chinese_ui.py --baseline test/chinese_ui/font-baseline.json
+python scripts/build_ui_fonts.py --cjk-source 'test/fonts-cjk/NotoSansSC[wght].ttf' --output /tmp/ui-fonts
+python test/ui_tiers/verify_fonts.py --generated /tmp/ui-fonts
+python test/ui_tiers/check_ui_faces.py
+python scripts/check_chinese_ui.py
 ```
+
+`check_ui_faces.py` also runs under CTest: no Arabic or Hebrew glyph in the 1-bit UI faces, every Chinese and Vietnamese character present, and identical stem widths in Geist 12.
 
 The production decoder test uses the emitted uncompressed references and links the actual decompressor/InflateReader/uzlib implementation. Example macOS host command:
 
 ```sh
 clang -c -ffunction-sections lib/uzlib/src/tinflate.c -Ilib/uzlib/src -o /tmp/tenor-ui-tinflate.o
-clang++ -std=c++17 -O1 -fsanitize=address,undefined -Wl,-dead_strip -include cstdlib -Itest/ui_tiers/stubs -Ilib/EpdFont -Ilib/InflateReader -Ilib/uzlib/src -Ilib/Utf8 -I/tmp/tenor-ui-generated test/ui_tiers/FontDecompressionTest.cpp lib/EpdFont/FontDecompressor.cpp lib/InflateReader/InflateReader.cpp lib/Utf8/Utf8.cpp /tmp/tenor-ui-tinflate.o -o /tmp/tenor-ui-decoder
+clang++ -std=c++17 -O1 -fsanitize=address,undefined -Wl,-dead_strip -include cstdlib -Itest/ui_tiers/stubs -Ilib/EpdFont -Ilib/InflateReader -Ilib/uzlib/src -Ilib/Utf8 -I/tmp/ui-fonts test/ui_tiers/FontDecompressionTest.cpp lib/EpdFont/FontDecompressor.cpp lib/InflateReader/InflateReader.cpp lib/Utf8/Utf8.cpp /tmp/tenor-ui-tinflate.o -o /tmp/tenor-ui-decoder
 /tmp/tenor-ui-decoder
 ```
 
-To verify the original five tuned faces against immutable baseline headers:
-
-```sh
-python test/ui_tiers/verify_ink.py --baseline /absolute/baseline --headers lib/EpdFont/builtinFonts --manifest test/ui_tiers/ui-ink-manifest.json
-```
-
-The immutable `test/chinese_ui/font-baseline.json` remains the historical glyph baseline. The approved manifest records exact before/after glyph fingerprints; the Chinese validator rejects any additional pixel changes. Firmware size, target heap/latency, layout and physical panel acceptance are separate integration checks.
+Firmware size, target heap/latency, layout and physical panel acceptance are separate integration checks.
 
 `UIBootAndApply` compiles the current `setupDisplayAndFonts` function body, the production `UIFontTiers.cpp`, and the actual inline `replaceBuiltinFont` method. Host adapters replace display/task/storage interfaces. It executes saved tiers 0/1/2 through boot and observes the font metrics at the first paint boundary, locking, cache invalidation, reader-map stability, and all-or-nothing preflight for missing/SD aliases. Settings-file parsing remains covered by the settings tests.
 

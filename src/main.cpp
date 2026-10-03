@@ -205,13 +205,12 @@ EpdFontFamily notosans18FontFamily(&notosans18RegularFont, &notosans18BoldFont, 
 
 #endif  // OMIT_FONTS
 
-// Font he thong: Geist cam tieu de, Be Vietnam Pro cam chu than va nhan nut.
-// Ca hai deu du dau tieng Viet; do 14/09 tren 44 ky tu nguyen am hai dau.
-EpdFont smallFont(&bevietnampro_8_regular);
+// Font he thong: mot ho Geist cho moi co (8, 10, 12; 14 va 16 nam o UIFontTiers.cpp), chu Han tu Noto Sans SC.
+EpdFont smallFont(&geist_8_regular);
 EpdFontFamily smallFontFamily(&smallFont);
 
-EpdFont ui10RegularFont(&bevietnampro_10_regular);
-EpdFont ui10BoldFont(&bevietnampro_10_bold);
+EpdFont ui10RegularFont(&geist_10_regular);
+EpdFont ui10BoldFont(&geist_10_bold);
 EpdFontFamily ui10FontFamily(&ui10RegularFont, &ui10BoldFont);
 
 EpdFont ui12RegularFont(&geist_12_regular);
