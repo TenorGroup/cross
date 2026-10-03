@@ -22,7 +22,9 @@ class RenderLock {
   RenderLock() { ++uiTestLockDepth; }
   ~RenderLock() { --uiTestLockDepth; }
 };
-struct { uint8_t uiTextSize = 0; } SETTINGS;
+struct { uint8_t uiTextSize = 0; uint8_t sleepScreen = 0; } SETTINGS;
+struct CrossPointSettings { enum { UGLY = 11 }; };
+namespace shell { inline bool isUgly() { return false; } }
 struct {
   bool begun = false;
   void begin(bool) { begun = true; }
@@ -33,6 +35,7 @@ struct {
 } activityManager;
 struct { bool init() { return true; } } fontDecompressor;
 GfxRenderer renderer;
+namespace ugly { inline void ensureFonts(GfxRenderer&) {} }
 FontCacheManager fontCacheManager;
 SdCardFontSystem sdFontSystem;
 int fallbackRefreshCount = 0;

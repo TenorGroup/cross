@@ -17,7 +17,6 @@
 #include "UIFontTiers.h"
 #include "UglyLogic.h"
 #include "UglyTables.h"
-#include "activities/RenderLock.h"
 #include "fontIds.h"
 #include "fonts/ugly_22.h"
 #include "fonts/ugly_30.h"
@@ -140,7 +139,6 @@ void polyline(const GfxRenderer& r, const int (*pts)[2], const int n, const int 
 
 void ensureFonts(GfxRenderer& r) {
   if (r.getFontMap().count(FONT_IDS[0])) return;
-  RenderLock lock;
   r.insertFont(FONT_IDS[0], EpdFontFamily(&FONT22));
   r.insertFont(FONT_IDS[1], EpdFontFamily(&FONT30));
   r.insertFont(FONT_IDS[2], EpdFontFamily(&FONT38));

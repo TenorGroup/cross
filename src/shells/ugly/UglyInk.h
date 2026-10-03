@@ -18,8 +18,9 @@ namespace ugly {
 
 enum class Size : uint8_t { S22, S30, S38, S52 };
 
-// Registers the four fonts with the renderer once (takes the render lock, so call it from the main
-// task and never while holding that lock).
+// Registers the four fonts with the renderer once. It takes no lock: boot calls it under the lock it
+// holds for the other fonts when the shell is in use, and the three screens and the sleep screen call
+// it from onEnter, before they ask for a frame. Never call it from a draw that can overlap another.
 void ensureFonts(GfxRenderer& renderer);
 
 // Baseline-anchored text. Returns the advance. A string with a character the baked font lacks (a

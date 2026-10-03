@@ -82,6 +82,31 @@ for path in list((repo / 'src').rglob('*.cpp')) + list((repo / 'src').rglob('*.h
     if 'STR_UGLY_' in path.read_text(errors='ignore'):
         check(False, '%s names a STR_UGLY_ string outside src/shells/ugly' % rel)
 
+
+
+def body(text, signature):
+    """The braces of the function that starts at `signature`, or '' when it is not there."""
+    start = text.find(signature)
+    if start < 0:
+        return ''
+    level, i = 0, text.index('{', start)
+    first = i
+    while True:
+        level += text[i] == '{'
+        level -= text[i] == '}'
+        i += 1
+        if level == 0:
+            return text[first:i]
+
+
+# The pen's fonts go in at boot, never through the lock of a draw: a lock taken inside a path that already
+# holds it would hang the device for good.
+ink = (repo / 'src/shells/ugly/UglyInk.cpp').read_text()
+check(body(ink, 'void ensureFonts(') != '', 'ensureFonts is gone from UglyInk.cpp')
+check('RenderLock' not in body(ink, 'void ensureFonts('), 'ensureFonts takes the render lock')
+boot = body((repo / 'src/main.cpp').read_text(), 'void setupDisplayAndFonts(')
+check('ugly::ensureFonts' in boot, 'boot does not register the tenor/ugly fonts when the shell is in use')
+
 if failures:
     print('\n'.join('FAIL: ' + f for f in failures))
     sys.exit(1)
