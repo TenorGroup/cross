@@ -69,6 +69,7 @@ add_subdirectory(word_select_repeat)
 add_subdirectory(content_opf_parser)
 add_subdirectory(chapter_position)
 add_subdirectory(home_button)
+add_subdirectory(ugly_shell)
 
 add_subdirectory(inflate_stream)
 add_subdirectory(fs_helpers)
