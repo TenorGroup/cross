@@ -143,7 +143,7 @@ class WakeGlassTest(unittest.TestCase):
                 sd = Path(self.temp.name) / ('short-' + name)
                 store = sd / '.crosspoint'
                 store.mkdir(parents=True)
-                (store / 'settings.json').write_text(json.dumps(truoc_tenor({'language': 'EN', 'sleepScreen': 8})))
+                (store / 'settings.json').write_text(json.dumps(truoc_tenor({'language': 'EN', 'sleepScreen': 8, 'sleepBwFold': 1})))
                 (store / 'state.json').write_text(json.dumps({'showBootScreen': False}))
                 (store / 'sleep_frame.bin').write_bytes(b'\xff' * glass_model.PANEL_BYTES)
                 trace = sd / 'panel.trace'
