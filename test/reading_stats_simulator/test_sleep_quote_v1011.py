@@ -461,8 +461,9 @@ class SleepQuoteTest(unittest.TestCase):
                 image = Image.open(shot).convert('L')
                 if SHOTS:
                     image.save(Path(SHOTS) / f'cai-dat-{language}.png')
-                # The popup's selected row (the new value) is a filled bar with light text.
-                self.assertGreater(self.ink(image.resize((528, 792)), (90, 445, 440, 492)), 8000)
+                # The popup's selected row (the new value) is a filled bar with light text. The list has one
+                # more value (the tenor/ugly doodle), so a page of four now ends one place lower.
+                self.assertGreater(self.ink(image.resize((528, 792)), (90, 412, 440, 458)), 8000)
                 self.assertEqual(json.loads((sd / '.crosspoint/settings.json').read_text())['sleepScreen'], 10)
 
     def test_chinese_place_line(self):

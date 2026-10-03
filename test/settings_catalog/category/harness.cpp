@@ -154,9 +154,14 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 8; ++i)
       discovered.push_back({std::to_string(i) + " Dictionary long owned label", "book"});
   const auto& catalog = getBaseSettingsList();
-  ok &= check(catalog.size() > 1 && catalog[0].valuePtr == &CrossPointSettings::uiShell &&
-                  catalog[1].valuePtr == &CrossPointSettings::uiTextSize,
-              "the interface row is the first catalog row and UI text size follows it");
+  ok &= check(!catalog.empty() && catalog.front().valuePtr == &CrossPointSettings::uiTextSize,
+              "UI text size is the first catalog row");
+  const auto shellRow = std::find_if(catalog.begin(), catalog.end(), [](const auto& row) {
+    return row.valuePtr == &CrossPointSettings::uiShell;
+  });
+  ok &= check(shellRow != catalog.end() && shellRow + 1 != catalog.end() &&
+                  (shellRow + 1)->valuePtr == &CrossPointSettings::screenInverted,
+              "the interface row sits just above night mode, the last screen row");
   SettingsActivity activity;
   for (auto& cursor : activity.tabNavs) cursor.selected = 10000;
   measuring = true;

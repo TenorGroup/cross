@@ -108,8 +108,9 @@ class UglyShellTest(unittest.TestCase):
 
     def test_the_interface_row_switches_the_shell_and_draws_home_again(self):
         card = self.card(shell=0, sleepScreen=10)
-        # Home (tenor/cross) -> Settings tab (UP) -> group Display (RIGHT) -> open (CONFIRM) -> first row: Interface
-        log, _ = card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2800:CONFIRM;5000:QUIT')
+        # Home (tenor/cross) -> Settings tab (UP) -> group Display (RIGHT) -> open (CONFIRM) -> the row before the
+        # first wraps to night mode, one more is Interface
+        log, _ = card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;6000:QUIT')
         names = entered(log)
         self.assertEqual(names[-1], 'UglyDiary', names)
         saved = card.settings()
@@ -118,8 +119,8 @@ class UglyShellTest(unittest.TestCase):
 
     def test_the_way_back_to_tenor_cross(self):
         card = self.card(shell=1, sleepScreen=11)
-        # diary -> Settings page (Left) -> Display (Down, Confirm) -> first row: Interface
-        log, _ = card.run('1000:LEFT;1800:DOWN;2400:CONFIRM;3600:CONFIRM;6000:QUIT')
+        # diary -> Settings page (Left) -> Display (Down, Confirm) -> two rows back from the first: Interface
+        log, _ = card.run('1000:LEFT;1800:DOWN;2400:CONFIRM;3200:LEFT;3600:LEFT;4400:CONFIRM;7000:QUIT')
         self.assertEqual(entered(log)[-1], 'Home', entered(log))
         saved = card.settings()
         self.assertEqual(saved['uiShell'], 0)
@@ -127,7 +128,7 @@ class UglyShellTest(unittest.TestCase):
 
     def test_a_sleep_screen_chosen_by_hand_survives_a_change_of_shell(self):
         card = self.card(shell=0, sleepScreen=3)  # the cover
-        card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2800:CONFIRM;5000:QUIT')
+        card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;6000:QUIT')
         self.assertEqual(card.settings()['sleepScreen'], 3)
 
     def test_the_sleep_screen_is_the_doodle_and_a_line_of_abuse(self):

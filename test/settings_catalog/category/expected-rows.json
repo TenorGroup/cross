@@ -1,7 +1,6 @@
 {
   "x3-0-0-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -10,6 +9,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -84,7 +84,6 @@
   ],
   "x3-0-0-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -93,6 +92,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -168,7 +168,6 @@
   ],
   "x3-0-1-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -177,6 +176,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -252,7 +252,6 @@
   ],
   "x3-0-1-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -261,6 +260,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -337,7 +337,6 @@
   ],
   "x3-1-0-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -346,6 +345,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -420,7 +420,6 @@
   ],
   "x3-1-0-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -429,6 +428,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -504,7 +504,6 @@
   ],
   "x3-1-1-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -513,6 +512,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -588,7 +588,6 @@
   ],
   "x3-1-1-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -597,6 +596,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -673,7 +673,6 @@
   ],
   "x4-0-0-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -682,6 +681,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -741,7 +741,6 @@
   ],
   "x4-0-0-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -750,6 +749,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -810,7 +810,6 @@
   ],
   "x4-0-1-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -819,6 +818,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -879,7 +879,6 @@
   ],
   "x4-0-1-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -888,6 +887,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -949,7 +949,6 @@
   ],
   "x4-1-0-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -958,6 +957,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -1017,7 +1017,6 @@
   ],
   "x4-1-0-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1026,6 +1025,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -1086,7 +1086,6 @@
   ],
   "x4-1-1-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1095,6 +1094,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -1155,7 +1155,6 @@
   ],
   "x4-1-1-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1164,6 +1163,7 @@
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
       "STR_SUNLIGHT_FADING_FIX:0:fadingFix",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -1225,7 +1225,6 @@
   ],
   "pro-0-0-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1233,6 +1232,7 @@
       "STR_STATUS_CORNERS:0:statusBarClock",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -1295,7 +1295,6 @@
   ],
   "pro-0-0-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1303,6 +1302,7 @@
       "STR_STATUS_CORNERS:0:statusBarClock",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -1366,7 +1366,6 @@
   ],
   "pro-0-1-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1374,6 +1373,7 @@
       "STR_STATUS_CORNERS:0:statusBarClock",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -1437,7 +1437,6 @@
   ],
   "pro-0-1-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1445,6 +1444,7 @@
       "STR_STATUS_CORNERS:0:statusBarClock",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -1509,7 +1509,6 @@
   ],
   "pro-1-0-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1517,6 +1516,7 @@
       "STR_STATUS_CORNERS:0:statusBarClock",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -1579,7 +1579,6 @@
   ],
   "pro-1-0-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1587,6 +1586,7 @@
       "STR_STATUS_CORNERS:0:statusBarClock",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -1650,7 +1650,6 @@
   ],
   "pro-1-1-0": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1658,6 +1657,7 @@
       "STR_STATUS_CORNERS:0:statusBarClock",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [
@@ -1721,7 +1721,6 @@
   ],
   "pro-1-1-1": [
     [
-      "STR_UI_SHELL:0:uiShell",
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
@@ -1729,6 +1728,7 @@
       "STR_STATUS_CORNERS:0:statusBarClock",
       "STR_HIDE_BATTERY:0:hideBatteryPercentage",
       "STR_REFRESH_FREQ:0:refreshFrequency",
+      "STR_UI_SHELL:0:uiShell",
       "STR_NIGHT_MODE:0:screenInverted"
     ],
     [

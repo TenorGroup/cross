@@ -304,9 +304,6 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     std::vector<SettingInfo> v;
     v.reserve(fixedCount + (hasTilt ? 12 : 0));
     // --- Display ---
-    // The shell is chosen at run time: 0 tenor/cross (what every earlier release shows), 1 tenor/ugly.
-    v.push_back(SettingInfo::Enum(StrId::STR_UI_SHELL, &CrossPointSettings::uiShell,
-                          {StrId::STR_SHELL_CROSS, StrId::STR_SHELL_UGLY}, "uiShell", StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Enum(StrId::STR_UI_TEXT_SIZE, &CrossPointSettings::uiTextSize,
                           {StrId::STR_UI_SIZE_SMALL, StrId::STR_UI_SIZE_MEDIUM, StrId::STR_UI_SIZE_LARGE},
                           "uiTextSize", StrId::STR_CAT_DISPLAY));
@@ -327,6 +324,9 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           "refreshFrequency", StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
                             StrId::STR_CAT_DISPLAY));
+    // Just above night mode, so the first rows and the last row of the screen group keep their place. The shell is chosen at run time: 0 tenor/cross (what every earlier release shows), 1 tenor/ugly.
+    v.push_back(SettingInfo::Enum(StrId::STR_UI_SHELL, &CrossPointSettings::uiShell,
+                          {StrId::STR_SHELL_CROSS, StrId::STR_SHELL_UGLY}, "uiShell", StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Toggle(StrId::STR_NIGHT_MODE, &CrossPointSettings::screenInverted, "screenInverted",
                             StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Enum(StrId::STR_SLEEP_SCREEN, &CrossPointSettings::sleepScreen, std::move(sleepScreenValues),
