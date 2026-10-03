@@ -82,6 +82,8 @@ class UglyShellTest(unittest.TestCase):
         log, shots = self.card().run('1000:DOWN;1600:DOWN;2200:CONFIRM;4000:QUIT', [(3500, 'desk')])
         self.assertEqual(entered(log)[-1], 'UglyDesk')
         self.assertGreater(ink(shots['desk']), 6000, 'six drawn objects, a ring and labels')
+        # the measuring line says what the picture cost the heap: the plane in bytes and the largest block left
+        self.assertRegex(log, r'Desk frame total=\d+ms plane=52272B heap=\d+ largest=\d+')
 
     def test_the_desk_walks_round_all_six_objects(self):
         script = '1000:DOWN;1600:DOWN;2200:CONFIRM;' + ''.join('%d:DOWN;' % (3000 + 600 * i) for i in range(6)) + '8000:QUIT'

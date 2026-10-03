@@ -107,6 +107,11 @@ check('RenderLock' not in body(ink, 'void ensureFonts('), 'ensureFonts takes the
 boot = body((repo / 'src/main.cpp').read_text(), 'void setupDisplayAndFonts(')
 check('ugly::ensureFonts' in boot, 'boot does not register the tenor/ugly fonts when the shell is in use')
 
+# A desk whose picture cannot be unpacked (the heap is fragmented) says so in the log, then draws the labels.
+desk = (repo / 'src/shells/ugly/UglyDesk.cpp').read_text()
+check(re.search(r'if \(!decodeX3BrandPlane\([^;]*\)\) \{[^}]*LOG_ERR[^}]*clearScreen', desk) is not None,
+      'the desk does not log the failed picture before it draws the bare table')
+
 if failures:
     print('\n'.join('FAIL: ' + f for f in failures))
     sys.exit(1)

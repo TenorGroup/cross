@@ -48,8 +48,13 @@ void Desk::onEnter() {
 
 void Desk::render(RenderLock&&) {
   [[maybe_unused]] const uint32_t started = millis();
-  if (!decodeX3BrandPlane(art::DESK, sizeof(art::DESK), renderer.getFrameBuffer(), renderer.getBufferSize()))
+  // The picture needs the decompressor's state (~8 KB in one block) from a heap BLE leaves fragmented. When it
+  // cannot be had the desk is a bare table with the labels and the ring, and the log says how much was left.
+  if (!decodeX3BrandPlane(art::DESK, sizeof(art::DESK), renderer.getFrameBuffer(), renderer.getBufferSize())) {
+    LOG_ERR("UGLY", "Desk picture not drawn (plane %u B): heap=%u largest=%u", static_cast<unsigned>(renderer.getBufferSize()),
+            ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     renderer.clearScreen();
+  }
 
   // The pages' own words, centred under their objects.
   Box ring[COUNT];
@@ -86,7 +91,8 @@ void Desk::render(RenderLock&&) {
   statusBar(renderer, mappedInput, {true, true, true, true});
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
-  LOG_INF("UGLY", "Desk frame total=%lums", static_cast<unsigned long>(millis() - started));
+  LOG_INF("UGLY", "Desk frame total=%lums plane=%uB heap=%u largest=%u", static_cast<unsigned long>(millis() - started),
+          static_cast<unsigned>(renderer.getBufferSize()), ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 #endif
 }
 
