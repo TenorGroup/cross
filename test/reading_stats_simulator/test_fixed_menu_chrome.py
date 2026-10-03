@@ -22,14 +22,14 @@ def reader():
  name='reader-layout';sd=t.o/('sd-'+name);sd.mkdir(parents=True,exist_ok=True);shutil.copy(t.r/'test/epubs/test_kerning_ligature.epub',sd/'book.epub')
  t.run(name,'1000:DOWN;1700:CONFIRM;8000:CONFIRM;9100:DOWN;9900:DOWN;10800:CONFIRM;12700:DOWN;14500:BACK;16200:QUIT',[(1400,'home'),(8700,'favorites'),(9500,'position'),(10400,'reading'),(12100,'text'),(14000,'text-tab')],settings={'readerFavorites':[16,17,13],'readerFavoriteCount':3,'readerFavoritesDaDat':1})
  log=(t.o/(name+'.log')).read_text();assert log.count('Entering activity: TextSettings')==1,log[-3000:]
- # Shared tab underline geometry, each band occupies exactly the same rows.
+ # Shared tab bar geometry, each band occupies exactly the same rows.
  for label in ['home','favorites','position','reading','text','text-tab']:
   im=Image.open(t.o/(name+'-'+label+'.png')).convert('L')
   dark=[]
   for y in range(50,120):
    n=sum(im.getpixel((x,y))<100 for x in range(20,im.width-20))
    if n>=30:dark.append(y)
-  assert max(dark)==107,(label,min(dark),max(dark))
+  assert max(dark)==112,(label,min(dark),max(dark))  # the round bar, rows 53..112
   assert min(dark)>=53,(label,min(dark))
  print('PASS reader font-menu removal, old pins, shared tab bottom',flush=True)
 def hints():

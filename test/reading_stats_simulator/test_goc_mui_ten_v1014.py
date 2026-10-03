@@ -81,23 +81,32 @@ class CornersArrowsTest(unittest.TestCase):
     def dark(image, x, y):
         return image.getpixel((x, y)) < 128
 
+    @staticmethod
+    def solid(image, x, y):
+        """Black ink with a black neighbour. The bar's grey ring and the grey icons are every other
+        pixel, so they never touch one sideways or up and down; the selected pill's ring and icon do."""
+        if not 0 <= x < image.width or not 0 <= y < image.height or image.getpixel((x, y)) >= 128:
+            return False
+        return any(0 <= x + dx < image.width and 0 <= y + dy < image.height and image.getpixel((x + dx, y + dy)) < 128
+                   for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+
     def cursor_profile(self, image):
         """Ink margins of the tab cursor's top and bottom four rows, from its own edges.
 
-        The tab band is rows 53..112 at the smallest text size. The cursor's top rows hold no icon,
-        so the first inked row of the band is the cursor's top edge; its columns bound the block.
+        The tab bar is rows 53..112 at the smallest text size. The selected pill's top rows hold no
+        icon, so the first solid row of the band is the pill's top edge; its columns bound the block.
         """
         band = range(53, 113)
-        top = next(y for y in band if any(self.dark(image, x, y) for x in range(image.width)))
-        xs = [x for x in range(image.width) if self.dark(image, x, top)]
-        lo, hi = max(0, min(xs) - 12), min(image.width, max(xs) + 12)
-        rows = [y for y in band if any(self.dark(image, x, y) for x in range(lo, hi))]
+        top = next(y for y in band if any(self.solid(image, x, y) for x in range(image.width)))
+        xs = [x for x in range(image.width) if self.solid(image, x, top)]
+        lo, hi = max(0, min(xs) - 60), min(image.width, max(xs) + 60)  # wider than the pill, so its own ends bound it
+        rows = [y for y in band if any(self.solid(image, x, y) for x in range(lo, hi))]
         bottom = max(rows)
-        cols = [x for x in range(lo, hi) if any(self.dark(image, x, y) for y in range(top, bottom + 1))]
+        cols = [x for x in range(lo, hi) if any(self.solid(image, x, y) for y in range(top, bottom + 1))]
         left, right = min(cols), max(cols)
 
         def margins(y):
-            ink = [x for x in range(left, right + 1) if self.dark(image, x, y)]
+            ink = [x for x in range(left, right + 1) if self.solid(image, x, y)]
             return (ink[0] - left, right - ink[-1]) if ink else None
         return ([margins(top + i) for i in range(4)], [margins(bottom - i) for i in range(4)],
                 (left, top, right, bottom))

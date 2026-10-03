@@ -36,8 +36,8 @@ FRAME = re.compile(r"Frame row=(\d+) top=(\d+) total=(\d+)ms")
 # `Recent card build=42ms cache=12345`
 BUILD = re.compile(r"Recent card build=(\d+)ms cache=(\d+)")
 
-# TenorMenuChrome: TAB_TOP = 5 + 48, TAB_HEIGHT = 59, tile = TAB_TOP + TAB_HEIGHT + 16.
-COVER_TILE_TOP = 128
+# TenorMenuChrome: TAB_TOP = 5 + 48, TAB_HEIGHT = 60, tile = TAB_TOP + TAB_HEIGHT + 16.
+COVER_TILE_TOP = 129
 TEN_DOC = ("Mot doan van ban du dai de trinh doc mo nhanh. " * 40 + "\n") * 4
 
 # So do doc duoc, ghi ra artefact de doi chieu voi bao cao.

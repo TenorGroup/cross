@@ -24,7 +24,7 @@ PRESS = re.compile(r'\[IN\] press t=(\d+)')
 REFRESH = re.compile(r'^\[(\d+)\] .*from clearScreen to displayBuffer', re.M)
 FILES = 30
 PITCH = 56  # row pitch of the X3 list in px
-LIST_TOP, LIST_BOTTOM = 110, 730
+LIST_TOP, LIST_BOTTOM = 120, 730  # the tab bar ends at row 112 and its grey ring would pass the solid-black probe
 
 
 def highlight_top(img):
