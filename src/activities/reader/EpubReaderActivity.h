@@ -196,9 +196,13 @@ class EpubReaderActivity final : public ReaderActivity {
   SavedPosition savedPositions[MAX_FOOTNOTE_DEPTH] = {};
   int footnoteDepth = 0;
   // The back-stack outlives the reader (sleep, home) in links.bin so Back
-  // still returns to where a followed link was tapped.
+  // still returns to where a followed link was tapped. The card is touched after a frame, never
+  // before: open only reads the file and the first frame's tick removes it (linkStackOnCard), the
+  // exit writes it after the next screen's first frame (ActivityManager::deferWrite) or at once
+  // when the device sleeps. Preview neither reads nor removes it.
   void saveLinkStack() const;
   void loadLinkStack();
+  bool linkStackOnCard = false;
 
   uint16_t buildViewportWidth = 0;
   uint16_t buildViewportHeight = 0;

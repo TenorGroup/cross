@@ -284,7 +284,7 @@ EpubReaderActivity::~EpubReaderActivity() {
   settleOverlayRefresh();
   discardOverlayPage();  // free the overlay's page snapshot if one is held
 
-  if (footnoteDepth > 0 && epub) saveLinkStack();
+  if (epub) saveLinkStack();
 
   section.reset();
   if (pendingReadFolderMove && epub) {
@@ -389,7 +389,7 @@ bool EpubReaderActivity::loadBook() {
 #ifdef TENOR_TURN_TRACE
   const unsigned long progressRead = millis();
 #endif
-  loadLinkStack();
+  if (!preview) loadLinkStack();
   loadCachedBookmarks();
 #ifdef TENOR_TURN_TRACE
   const unsigned long bookmarksRead = millis();
@@ -1001,6 +1001,19 @@ void EpubReaderActivity::loop() {
       const bool ok = coverref::save(epub->getCachePath(), epub->getCoverHref());
       LOG_DBG("ERS", "Cover ref saved ok=%u", ok ? 1u : 0u);
     }
+  }
+
+  // The first frame is up: the stack lives in RAM now, so the file read at the open goes. An
+  // unclean shutdown then cannot bring a stale stack back; the exit writes it again.
+  if (linkStackOnCard && !openCommitPending) {
+    linkStackOnCard = false;
+#ifdef TENOR_PRESS_PROBE
+    const unsigned long dropStarted = millis();
+#endif
+    Storage.remove((epub->getCachePath() + "/links.bin").c_str());
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("ERS", "LINKS_DROP ms=%lu", millis() - dropStarted);
+#endif
   }
 
   // Someone else turned the screen while this reader was stacked (the control
@@ -2021,7 +2034,7 @@ bool EpubReaderActivity::launchKOReaderSync() {
       localKoPos = ProgressMapper::toSavedProgress(epub, localPos);
     }
     // The destructor can no longer save the back-stack once epub is gone.
-    if (footnoteDepth > 0) saveLinkStack();
+    saveLinkStack();
     epub.reset();
   }
   LOG_DBG("KOSync", "Epub released (heap after: %u)", (unsigned)ESP.getFreeHeap());
@@ -4318,26 +4331,82 @@ void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool s
   LOG_DBG("ERS", "Navigated to spine %d for href: %s", targetSpineIndex, hrefStr.c_str());
 }
 
-void EpubReaderActivity::saveLinkStack() const {
-  // [depth] then depth x (spine u16 LE, page u16 LE)
-  uint8_t data[1 + MAX_FOOTNOTE_DEPTH * 4];
-  size_t size = 0;
-  data[size++] = static_cast<uint8_t>(footnoteDepth);
-  for (int i = 0; i < footnoteDepth; i++) {
-    const SavedPosition& pos = savedPositions[i];
-    data[size++] = pos.spineIndex & 0xFF;
-    data[size++] = (pos.spineIndex >> 8) & 0xFF;
-    data[size++] = pos.pageNumber & 0xFF;
-    data[size++] = (pos.pageNumber >> 8) & 0xFF;
+namespace {
+// The back-stack as the screen after the reader writes it (ActivityManager::deferWrite takes a plain
+// function). Empty bytes: the file is only to be removed.
+std::string stagedLinksPath;
+std::string stagedLinksBytes;
+
+void writeStagedLinks() {
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long started = millis();
+#endif
+  const std::string path = std::move(stagedLinksPath);
+  const std::string bytes = std::move(stagedLinksBytes);
+  stagedLinksPath.clear();
+  stagedLinksBytes.clear();
+  if (bytes.empty()) {
+    Storage.remove(path.c_str());
+  } else {
+    // Whole under a temporary name, then renamed (SdFat's rename does not overwrite): a cut write
+    // leaves a stray .tmp, never a torn links.bin.
+    const std::string part = path + ".tmp";
+    HalFile f;
+    bool ok = Storage.openFileForWrite("ERS", part, f) &&
+              f.write(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()) == bytes.size();
+    f.close();
+    if (ok) Storage.remove(path.c_str());
+    ok = ok && Storage.rename(part.c_str(), path.c_str());
+    if (!ok) {
+      LOG_ERR("ERS", "Failed to write link stack");
+      Storage.remove(part.c_str());
+    }
   }
-  HalFile f;
-  if (!Storage.openFileForWrite("ERS", epub->getCachePath() + "/links.bin", f)) return;
-  if (f.write(data, size) != size) LOG_ERR("ERS", "Failed to write link stack");
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("ERS", "%s bytes=%u ms=%lu", bytes.empty() ? "LINKS_DROP" : "LINKS_SAVE", static_cast<unsigned>(bytes.size()),
+          millis() - started);
+#endif
+}
+}  // namespace
+
+void EpubReaderActivity::saveLinkStack() const {
+  // Nothing in the stack and no file left from the open: nothing to do.
+  if (footnoteDepth == 0 && !linkStackOnCard) return;
+  stagedLinksPath = epub->getCachePath() + "/links.bin";
+  stagedLinksBytes.clear();
+  if (footnoteDepth > 0) {
+    // [depth] then depth x (spine u16 LE, page u16 LE)
+    stagedLinksBytes.push_back(static_cast<char>(footnoteDepth));
+    for (int i = 0; i < footnoteDepth; i++) {
+      const SavedPosition& pos = savedPositions[i];
+      stagedLinksBytes.push_back(static_cast<char>(pos.spineIndex & 0xFF));
+      stagedLinksBytes.push_back(static_cast<char>((pos.spineIndex >> 8) & 0xFF));
+      stagedLinksBytes.push_back(static_cast<char>(pos.pageNumber & 0xFF));
+      stagedLinksBytes.push_back(static_cast<char>((pos.pageNumber >> 8) & 0xFF));
+    }
+  }
+  // Sleep powers the card down next; any other exit leaves it for after the next screen's frame.
+  if (activityManager.isSleepTransition()) {
+    writeStagedLinks();
+  } else {
+    activityManager.deferWrite(writeStagedLinks);
+  }
 }
 
+// Reads only. The file stays until the first frame is up (loop()), so open writes nothing to the
+// card in front of that frame.
 void EpubReaderActivity::loadLinkStack() {
+#ifdef TENOR_PRESS_PROBE
+  const unsigned long started = millis();
+#endif
   const std::string path = epub->getCachePath() + "/links.bin";
-  if (!Storage.exists(path.c_str())) return;
+  if (!Storage.exists(path.c_str())) {
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("ERS", "LINKS_LOAD depth=0 ms=%lu", millis() - started);
+#endif
+    return;
+  }
+  linkStackOnCard = true;
   {
     HalFile f;
     uint8_t data[1 + MAX_FOOTNOTE_DEPTH * 4];
@@ -4359,9 +4428,9 @@ void EpubReaderActivity::loadLinkStack() {
       }
     }
   }
-  // Consumed once: a later exit rewrites it, and an unclean shutdown must not
-  // resurrect a stale stack.
-  Storage.remove(path.c_str());
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("ERS", "LINKS_LOAD depth=%d ms=%lu", footnoteDepth, millis() - started);
+#endif
 }
 
 void EpubReaderActivity::restoreSavedPosition() {
