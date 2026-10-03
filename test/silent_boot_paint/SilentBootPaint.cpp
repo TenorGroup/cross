@@ -52,6 +52,12 @@ struct {
   void setInverted(bool) {}
 } display;
 struct {
+  void waitRefreshComplete() {}
+} renderer;
+struct SleepActivity {
+  static bool takeWakeNoticeRunning() { return false; }
+};
+struct {
   int screenInverted = 0;
 } SETTINGS;
 std::atomic<bool> frameAfterDeferredWrite{false};

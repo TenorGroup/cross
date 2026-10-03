@@ -430,11 +430,11 @@ class SleepEndsBwTest(unittest.TestCase):
                 self.assertEqual(PANEL_OP.findall(sleep)[-1], 'displayGrayBuffer')
 
     def test_settings_row_turns_the_switch_off(self):
-        # Settings, Sleep: the switch is the sixth row, after "Wake into the book"; the fixture turns it on.
+        # Settings, Sleep: the switch is the seventh row, after "Wake into the book" and "Starting up notice"; the fixture turns it on.
         sd = self.make_sd('cai-dat', 8, settings={'uiTheme': 4})
         shot = sd / 'hang.bmp'
         after = sd / 'sau-khi-bam.bmp'
-        rows = ';'.join(f'{3200 + 400 * i}:RIGHT' for i in range(5))
+        rows = ';'.join(f'{3200 + 400 * i}:RIGHT' for i in range(6))
         log = self.run_sim(sd, f'1000:UP;1500:RIGHT;2000:RIGHT;2500:CONFIRM;{rows};5600:CONFIRM;7600:QUIT',
                            f'5400:{shot};7000:{after}')
         for path, label in ((shot, 'cai-dat-hang-moi'), (after, 'cai-dat-hang-moi-da-tat')):

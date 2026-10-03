@@ -40,6 +40,36 @@ def tree_hash(root):
     return digest.hexdigest()
 
 
+OP_BEGIN, OP_DISPLAY = 1, 2
+ROW_BYTES = 792 // 8
+
+
+def read_trace(path):
+    """The panel trace as (op, a, b, payload) per call (scripts/patch_simulator_panel_trace.py)."""
+    data = Path(path).read_bytes()
+    calls, at = [], 0
+    while at < len(data):
+        assert data[at:at + 1] == b'T', at
+        length = int.from_bytes(data[at + 8:at + 12], 'little')
+        calls.append((data[at + 1], data[at + 2], data[at + 3], data[at + 12:at + 12 + length]))
+        at += 12 + length
+    return calls
+
+
+def changed_box(one, other):
+    """Bounding box (x0, x1, y0, y1), in panel pixels, of where two frames differ; None when alike."""
+    x0 = y0 = 10 ** 9
+    x1 = y1 = -1
+    for index, (p, q) in enumerate(zip(one, other)):
+        if p != q:
+            y, byte = divmod(index, ROW_BYTES)
+            for bit in range(8):
+                if (p ^ q) & (0x80 >> bit):
+                    x = byte * 8 + bit
+                    x0, x1, y0, y1 = min(x0, x), max(x1, x), min(y0, y), max(y1, y)
+    return (x0, x1, y0, y1) if x1 >= 0 else None
+
+
 def gray_picture(sd):
     (sd / 'sleep.bmp').write_bytes(gray_bmp(528, 792))
 
@@ -171,6 +201,44 @@ class WakeGlassTest(unittest.TestCase):
         self.assertNotIn('not held', wake)
         self.assertIn('Entering activity: Home', wake)
         self.assert_glass_follows_every_frame_after_start(records)
+
+    def wake_displays(self, name):
+        """(the panel calls before the wake's start, the B/W refreshes of the wake itself)."""
+        calls = read_trace(Path(self.temp.name) / name / 'panel.trace')
+        start = max(i for i, call in enumerate(calls) if call[0] == OP_BEGIN)
+        return ([c for c in calls[:start] if c[0] == OP_DISPLAY], [c for c in calls[start:] if c[0] == OP_DISPLAY])
+
+    def test_the_wake_notice_goes_over_the_kept_sleep_frame(self):
+        records, _ = self.journey('notice', {'sleepScreen': 8, 'wakeNotice': 1})
+        self.assert_glass_follows_every_frame_after_start(records)
+        asleep, woke = self.wake_displays('notice')
+        # One fast refresh, then Home's clean one: the sleep screen stays and gets the label.
+        self.assertEqual([call[1] for call in woke], [2, 0])
+        kept = (Path(self.temp.name) / 'notice/.crosspoint/sleep_frame.bin').read_bytes()
+        label = changed_box(kept, woke[0][3])
+        self.assertIsNotNone(label)
+        # The same place as the going-to-sleep notice over Home (the call before the three sleep
+        # screen refreshes): the same panel columns, the same centre line.
+        going = changed_box(asleep[-5][3], asleep[-4][3])
+        self.assertLessEqual(abs(label[0] - going[0]) + abs(label[1] - going[1]), 8, (label, going))
+        self.assertLessEqual(abs(label[2] + label[3] - going[2] - going[3]), 4, (label, going))
+        # The refresh drives that band and nothing else.
+        notice = [r for r in records if r['op'] == 'display'][-2]
+        self.assertEqual(notice['bank'], 'du')
+        self.assertGreater(notice['driven'], 0)
+        self.assertLessEqual(notice['driven'], (label[1] - label[0] + 1) * (label[3] - label[2] + 1))
+
+    def test_no_wake_notice_when_off_without_a_kept_frame_or_for_a_tap(self):
+        # Off is the default: the wake is the refresh of the first screen and nothing else.
+        for name, settings in (('off', {'sleepScreen': 8}),
+                               ('gray', {'sleepScreen': 8, 'sleepBwFold': 0, 'wakeNotice': 1}),
+                               ('tap', {'sleepScreen': 8, 'shortPwrBtn': 1, 'wakeNotice': 1})):
+            with self.subTest(name):
+                records, log = self.journey(name, settings)
+                self.assert_glass_follows_every_frame_after_start(records)
+                _, woke = self.wake_displays(name)
+                self.assertEqual([call[1] for call in woke], [0])
+                self.assertNotIn('Wake notice shown', log.split('Entering deep sleep', 1)[1])
 
     def test_cold_start_after_a_sleep(self):
         records, log = self.journey('cold-tenor', {'sleepScreen': 8}, cold=True)

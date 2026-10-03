@@ -286,13 +286,13 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
-    // 80 unconditional descriptors (69 plus the double-click power light, back-short-to-
+    // 81 unconditional descriptors (69 plus the double-click power light, back-short-to-
     // browser, three home button shortcuts, clockTimezone/clockDst/clockShowInHeader,
-    // libraryUseMetadata and the touch page-turn gesture pair - see RESOLUTION.md); the
+    // libraryUseMetadata and the touch page-turn gesture pair - see RESOLUTION.md, and the starting up notice); the
     // IMU branch adds the Gestures tab: reader, tab and row tilt, the two flick strengths,
     // the two hard shake rows, face down, face up and the three double taps.
     // Cold-catalog tests cover each capability branch and the IMU variant.
-    constexpr size_t fixedCount = 80
+    constexpr size_t fixedCount = 81
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
                                   + 1
 #endif
@@ -337,6 +337,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Enum(StrId::STR_WAKE_INTO_BOOK, &CrossPointSettings::wakeIntoBook,
                           {StrId::STR_STATE_OFF, StrId::STR_STATE_ON}, "wakeIntoBook", StrId::STR_CAT_DISPLAY));
+    v.push_back(SettingInfo::Toggle(StrId::STR_WAKE_NOTICE, &CrossPointSettings::wakeNotice, "wakeNotice",
+                                    StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Toggle(StrId::STR_SLEEP_BW_REFRESH, &CrossPointSettings::sleepBwFold, "sleepBwFold",
                                     StrId::STR_CAT_DISPLAY));
 #if FREEINK_CAP_FRONTLIGHT
@@ -681,8 +683,10 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
   // Cu chi mo menu doc chi co nghia o may con phim Home cam ung, vi cho khac thi
   // vuot canh duoi la ve Home va cham giua moi la duong chinh.
   if (!BoardConfig::hasHomeKey() && s.nameId == StrId::STR_SHOW_READER_MENU) return true;
-  // Only X3 sleeps with its panel unpowered; the other boards keep their sleep refresh.
-  if (s.nameId == StrId::STR_SLEEP_BW_REFRESH && BoardConfig::ACTIVE.board != BoardConfig::Board::XteinkX3 &&
+  // Only X3 sleeps with its panel unpowered; the other boards keep their sleep refresh and wake with
+  // no kept frame to draw the notice over.
+  if ((s.nameId == StrId::STR_SLEEP_BW_REFRESH || s.nameId == StrId::STR_WAKE_NOTICE) &&
+      BoardConfig::ACTIVE.board != BoardConfig::Board::XteinkX3 &&
       BoardConfig::ACTIVE.board != BoardConfig::Board::XteinkX3Uc8279)
     return true;
   if (BoardConfig::hasTouch() &&
@@ -702,6 +706,7 @@ inline int deviceSettingsTab(const SettingInfo& setting) {
       setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||
       setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen ||
       setting.valuePtr == &CrossPointSettings::wakeIntoBook ||
+      setting.valuePtr == &CrossPointSettings::wakeNotice ||
       setting.valuePtr == &CrossPointSettings::sleepBwFold ||
       setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes ||
       setting.valuePtr == &CrossPointSettings::frontlightRestoreOnWake)

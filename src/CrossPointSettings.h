@@ -516,6 +516,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Wake straight back into the book that was open when deep sleep began,
   // instead of returning to Home. 0 = off, 1 = on.
   uint8_t wakeIntoBook = 0;
+  // X3 UC8279: a wake to Home from a kept sleep frame draws the "Starting up" notice over the sleep
+  // screen first (measured +270 ms to Home done). 0 = off (default), 1 = on.
+  uint8_t wakeNotice = 0;
   // X3 only: end every sleep screen on one full black and white refresh, gray art as an
   // ordered dither (v1.0.12). 0 = gray waveforms, real 4-level gray (default since v1.0.52),
   // 1 = fold to black and white. Stored as "sleepBwFold": the v1.0.12 to v1.0.51 key

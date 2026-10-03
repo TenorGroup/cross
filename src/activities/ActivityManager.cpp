@@ -90,6 +90,9 @@ void ActivityManager::renderTaskLoop() {
     // where the main task deletes the activity between the null-check and render().
     RenderLock lock;
     if (currentActivity && !sleepTransition) {
+      // A refresh still running from before (the wake notice) reads the framebuffer to the end:
+      // nothing draws over it until it is done. Without a notice there is nothing to wait for.
+      if (SleepActivity::takeWakeNoticeRunning()) renderer.waitRefreshComplete();
       HalPowerManager::Lock powerLock;  // Ensure we don't go into low-power mode while rendering
       // Night mode is a global output polarity applied to every activity.
       // The sleep screen forces normal polarity itself (SleepActivity).

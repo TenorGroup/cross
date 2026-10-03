@@ -64,6 +64,7 @@
 #include "SdCardFontSystem.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "activities/boot_sleep/SleepActivity.h"
 #include "activities/home/BookStatsActivity.h"
 #include "QuoteStore.h"
 #include "activities/home/QuotesActivity.h"
@@ -815,6 +816,7 @@ void setup() {
   renderer.setDiffOnlyPanel(gpio.deviceIsX3() && display.getController() == HalDisplay::Controller::UC8279);
   logHeapMark("display-and-fonts");
 
+  bool sleepFrameKept = false;
   if (resume == BootResume::SplashlessWake) {
     // One-shot flag: re-arm the splash for the next ordinary boot. Set here,
     // written once the first frame is up (HomeActivity::render); every other
@@ -829,6 +831,7 @@ void setup() {
     // first paint can start the moment the hold is judged. This reaches neither the glass nor the card.
     const uint32_t wakeStarted = millis();
     if (Storage.exists(SLEEP_FRAME_FILE) && loadSleepFrameBuffer()) {
+      sleepFrameKept = true;
       if (gpio.deviceIsX3()) {
         // Restore controller RAM without activating a waveform. The first
         // Home/Reader paint cleans directly from this retained sleep frame.
@@ -858,6 +861,30 @@ void setup() {
       sleepUntilPowerButton();
     }
   }
+
+  // A wake on its way to Home, with the hold just judged and the "Wake-up notice" setting on (off by
+  // default): the sleep screen stays and takes the notice the going-to-sleep one has, in one fast
+  // refresh over the kept frame that the first screen then cleans. Not with the quick press on Sleep
+  // (no window was waited out, so the notice would only delay Home). Off, nothing here runs.
+  const bool wakeNotice = SETTINGS.wakeNotice != 0 && watchWakeHold && renderer.diffOnlyPanel() &&
+                          SETTINGS.shortPwrBtn != CrossPointSettings::SLEEP && !recoveryFirmwareMode &&
+                          !rebootedFromPanic && !updateBoot && !wakeToBook;
+  // Not without the frame (what the glass shows is not known).
+  if (wakeNotice && sleepFrameKept) {
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("BOOT", "Wake label kick=%lu", static_cast<unsigned long>(millis()));
+#endif
+    SleepActivity::showStartingUp(renderer);
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("BOOT", "Wake label started=%lu", static_cast<unsigned long>(millis()));
+#endif
+  }
+#ifdef TENOR_WAKE_LABEL_GRAY
+  // The same for a sleep screen the card keeps no frame of (a gray one): off unless the build asks.
+  if (wakeNotice && resume == BootResume::SplashlessWake && !sleepFrameKept) {
+    SleepActivity::showStartingUpOverGray(renderer);
+  }
+#endif
 
   switch (resume) {
     case BootResume::Silent:

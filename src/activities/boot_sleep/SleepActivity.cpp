@@ -644,6 +644,59 @@ void SleepActivity::showEnteringSleep(GfxRenderer& renderer) {
   }
 }
 
+namespace {
+bool wakeNoticeRunning = false;  // set by the main task before the first paint is asked for
+}
+
+bool SleepActivity::takeWakeNoticeRunning() {
+  const bool running = wakeNoticeRunning;
+  wakeNoticeRunning = false;
+  return running;
+}
+
+void SleepActivity::showStartingUp(GfxRenderer& renderer) {
+  // Drawn into the kept sleep frame in the framebuffer, started and left running: the first screen
+  // waits for it (ActivityManager) before it draws over that frame, which the refresh still reads.
+  GUI.drawPopup(renderer, tr(STR_STARTING_UP), false);
+  renderer.displayBufferAsync();
+  wakeNoticeRunning = true;
+  LOG_INF("SLP", "Wake notice shown");
+}
+
+#ifdef TENOR_WAKE_LABEL_GRAY
+void SleepActivity::showStartingUpOverGray(GfxRenderer& renderer) {
+  // The card keeps no frame of a gray sleep screen, so what the glass shows is not known. The
+  // controller's two planes are written to agree everywhere but under the label: white in both
+  // outside it, where nothing is then driven and the picture stays, and the label in one plane
+  // with its inverse in the other inside it, where every pixel of the box is driven to the label.
+  // The first screen after it drives every pixel again (the redrive the wake already armed).
+  const int ring = UITheme::getInstance().getMetrics().popupFrameThickness;
+  renderer.clearScreen();
+  const Rect box = GUI.drawPopup(renderer, tr(STR_STARTING_UP), false);
+  const int x = std::max(0, box.x - ring);
+  const int y = std::max(0, box.y - ring);
+  const int w = std::min(renderer.getScreenWidth() - x, box.width + ring * 2);
+  const int h = std::min(renderer.getScreenHeight() - y, box.height + ring * 2);
+  const size_t bytes = renderer.getRegionByteSize(x, y, w, h);
+  auto label = makeUniqueNoThrow<uint8_t[]>(bytes);
+  if (!label || !renderer.copyRegionToBuffer(x, y, w, h, label.get(), bytes)) return;
+  for (size_t i = 0; i < bytes; ++i) label[i] = ~label[i];
+  renderer.copyBufferToRegion(x, y, w, h, label.get(), bytes);
+  renderer.cleanupGrayscaleWithFrameBuffer();  // both planes: white, and the inverse label
+  for (size_t i = 0; i < bytes; ++i) label[i] = ~label[i];
+  renderer.copyBufferToRegion(x, y, w, h, label.get(), bytes);
+  // Through the panel itself: the renderer would take the redrive for this refresh.
+  if (renderer.supportsAsyncRefresh()) {
+    display.displayBufferAsync(HalDisplay::FAST_REFRESH);
+  } else {
+    display.displayBuffer(HalDisplay::FAST_REFRESH, false);
+  }
+  renderer.redriveNextRefresh();
+  wakeNoticeRunning = true;
+  LOG_INF("SLP", "Wake notice shown over an unknown frame");
+}
+#endif
+
 void SleepActivity::onEnter() {
   READING_STATS.markHabitsSleep();
   LOG_INF("SLP", "Timing entered-image-render at=%lu", static_cast<unsigned long>(millis()));
