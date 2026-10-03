@@ -279,6 +279,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     sleepScreenValues[CrossPointSettings::TENOR] = StrId::STR_SLEEP_TENOR;
     sleepScreenValues[CrossPointSettings::STATS] = StrId::STR_SLEEP_STATS;
     sleepScreenValues[CrossPointSettings::QUOTE] = StrId::STR_SLEEP_QUOTE;
+    sleepScreenValues[CrossPointSettings::UGLY] = StrId::STR_SLEEP_UGLY;
 
     std::vector<StrId> statusBarClockValues(CrossPointSettings::STATUS_BAR_CLOCK_MODE_COUNT);
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_HIDE] = StrId::STR_HIDE;
@@ -286,13 +287,13 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
-    // 81 unconditional descriptors (69 plus the double-click power light, back-short-to-
+    // 82 unconditional descriptors (70 plus the double-click power light, back-short-to-
     // browser, three home button shortcuts, clockTimezone/clockDst/clockShowInHeader,
     // libraryUseMetadata and the touch page-turn gesture pair - see RESOLUTION.md, and the starting up notice); the
     // IMU branch adds the Gestures tab: reader, tab and row tilt, the two flick strengths,
     // the two hard shake rows, face down, face up and the three double taps.
     // Cold-catalog tests cover each capability branch and the IMU variant.
-    constexpr size_t fixedCount = 81
+    constexpr size_t fixedCount = 82
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
                                   + 1
 #endif
@@ -303,6 +304,9 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     std::vector<SettingInfo> v;
     v.reserve(fixedCount + (hasTilt ? 12 : 0));
     // --- Display ---
+    // The shell is chosen at run time: 0 tenor/cross (what every earlier release shows), 1 tenor/ugly.
+    v.push_back(SettingInfo::Enum(StrId::STR_UI_SHELL, &CrossPointSettings::uiShell,
+                          {StrId::STR_SHELL_CROSS, StrId::STR_SHELL_UGLY}, "uiShell", StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Enum(StrId::STR_UI_TEXT_SIZE, &CrossPointSettings::uiTextSize,
                           {StrId::STR_UI_SIZE_SMALL, StrId::STR_UI_SIZE_MEDIUM, StrId::STR_UI_SIZE_LARGE},
                           "uiTextSize", StrId::STR_CAT_DISPLAY));

@@ -36,6 +36,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     STATS = 9,
     // A random saved quote with the small cover of its book (v1.0.11).
     QUOTE = 10,
+    // The tenor/ugly doodle and a line of abuse (the default sleep screen of that shell).
+    UGLY = 11,
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
@@ -427,6 +429,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t longPressMenuFunction = LP_MENU_DISABLED;
   // UI font tier. Persisted ordinals: 0 Small, 1 Medium, 2 Large.
   uint8_t uiTextSize = UI_TEXT_SMALL;
+  // Which shell draws Home: 0 tenor/cross, 1 tenor/ugly. A settings file without the key loads as 0.
+  uint8_t uiShell = 0;
   // Tenor-only appearance preferences; existing themes retain their own hints.
   uint8_t tenorButtonSymbols = 1;
   uint8_t tenorSideArrows = 1;
