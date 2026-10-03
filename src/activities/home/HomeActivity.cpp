@@ -24,6 +24,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "DocThuMuc.h"
+#include "HomeRows.h"
 #include "FileFavorites.h"
 #include "MappedInputManager.h"
 #include "MenuCustomization.h"
@@ -59,9 +60,8 @@ namespace fui = freeink::ui;
 void saveAppState();  // main.cpp
 
 namespace {
-constexpr StrId TAB_NAMES[HomeActivity::TAB_COUNT] = {StrId::STR_HOME_TAB_RECENT, StrId::STR_HOME_TAB_FOLDER,
-                                                      StrId::STR_HOME_TAB_STATS, StrId::STR_SETTINGS_TITLE,
-                                                      StrId::STR_READER_TAB_FAVORITES};
+constexpr const StrId (&TAB_NAMES)[homerows::PAGE_COUNT] = homerows::PAGE_TITLES;
+static_assert(homerows::PAGE_COUNT == HomeActivity::TAB_COUNT, "the two shells list the same five pages");
 // Newest quote id of each book when Home last showed it (see homeQuoteIndex). It lives in RAM
 // across Home visits and is lost at power-off, after which the card simply picks at random.
 struct SeenQuote {
@@ -309,45 +309,25 @@ void HomeActivity::rebuildRows() {
       }
       statsRowsEnlarged = enlarged;
       if (enlarged) rowLabels.emplace_back(statsPage ? tr(STR_PREV_PAGE) : tr(STR_NEXT_PAGE));
-      rowLabels.emplace_back(tr(STR_READING_HABITS));
-      rowLabels.emplace_back(tr(STR_STATS_BY_BOOK));
-      rowLabels.emplace_back(tr(STR_STATS_MONTH));
-      rowLabels.emplace_back(tr(STR_QUOTES));
-      rowLabels.emplace_back(tr(STR_STATS_RESET_ALL));
-      rowLabels.emplace_back(tr(STR_STATS_RESET_HABITS));
+      for (const StrId id : homerows::STATS_ROWS) rowLabels.emplace_back(I18N.get(id));
       break;
     }
     case Tab::FAVORITES:
       break;
     case Tab::CAI_DAT: {
       rowLabels.emplace_back(tr(STR_FILE_TRANSFER));
-      const int groups = deviceSettingsTabCount();
-      for (int i = 0; i < groups; ++i) {
-        const int id = menucustom::idAt(1, i, groups);
-        settingsGroups.push_back(id);
-        rowLabels.emplace_back(I18N.get(settingstabs::tenThe(static_cast<settingstabs::Tab>(id))));
-      }
+      auto groups = homerows::settingsGroups();
+      settingsGroups = std::move(groups.ids);
+      for (auto& label : groups.labels) rowLabels.push_back(std::move(label));
       break;
     }
   }
 
-  if (activeTabId == Tab::FAVORITES && menucustom::state().pinCount > 0) {
-    for (int i = 0; i < menucustom::state().pinCount; ++i) {
-      const std::string key = menucustom::state().pins[i].data();
-      if (filefavorites::isFileKey(key)) {
-        const auto path = filefavorites::pathFor(key);
-        favoriteKeys.push_back(key);
-        favoriteValues.emplace_back(key.rfind("folder/", 0) == 0 ? tr(STR_HOME_TAB_FOLDER) : "");
-        rowLabels.push_back(path.empty() ? tr(STR_DICT_NOT_FOUND)
-                                         : utf8ComposeNfc(path.substr(path.find_last_of('/') + 1)));
-        continue;
-      }
-      const auto name = menufavorites::label(key);
-      if (name == StrId::STR_NONE_OPT) continue;
-      favoriteKeys.push_back(key);
-      favoriteValues.push_back(menufavorites::value(key, &sdFontSystem.registry()));
-      rowLabels.emplace_back(I18N.get(name));
-    }
+  if (activeTabId == Tab::FAVORITES) {
+    auto pins = homerows::favorites();
+    favoriteKeys = std::move(pins.keys);
+    favoriteValues = std::move(pins.values);
+    for (auto& label : pins.labels) rowLabels.push_back(std::move(label));
   }
   rowItems.reserve(rowLabels.size());
   for (size_t i = 0; i < rowLabels.size(); i++) {
@@ -798,16 +778,7 @@ void HomeActivity::freeCoverBuffer() {
   coverBufferBook = -1;
 }
 
-void HomeActivity::loadRecentBooks() {
-  recentBooks.clear();
-  const auto& books = RECENT_BOOKS.getBooks();
-  recentBooks.reserve(std::min(books.size(), RECENT_LIMIT));
-  for (const RecentBook& book : books) {
-    if (RecentBooksStore::isMissing(book)) continue;
-    recentBooks.push_back(book);
-    if (recentBooks.size() == RECENT_LIMIT) break;
-  }
-}
+void HomeActivity::loadRecentBooks() { recentBooks = homerows::recent(RECENT_LIMIT); }
 
 void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToReader(path); }
 
