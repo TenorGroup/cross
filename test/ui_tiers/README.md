@@ -17,7 +17,7 @@ python test/ui_tiers/check_ui_faces.py
 python scripts/check_chinese_ui.py
 ```
 
-`check_ui_faces.py` also runs under CTest: no Arabic or Hebrew glyph in the 1-bit UI faces, every Chinese and Vietnamese character present, and identical stem widths in Geist 12.
+`check_ui_faces.py` also runs under CTest: no Arabic or Hebrew glyph in the 1-bit UI faces, every Chinese and Vietnamese character present, identical stem widths in Geist 12, and marks above a letter that leave the plain letter untouched under them, with a breve that keeps its bowl at 10 and 12. The faces are autohinted for even stems, but the autohinter crushes stacked marks, so `fontconvert.py --native-marks` takes the marks from the font's own hinting.
 
 The production decoder test uses the emitted uncompressed references and links the actual decompressor/InflateReader/uzlib implementation. Example macOS host command:
 

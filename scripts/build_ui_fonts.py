@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Regenerate every built-in UI face: Geist, FreeType autohint, Chinese UI subset of Noto Sans SC.
+"""Regenerate every built-in UI face: Geist, FreeType autohint with the marks above a letter taken from
+the font's own hinting (the autohinter crushes stacked Vietnamese marks), Chinese UI subset of Noto Sans SC.
 
 Sizes 8, 10 and 12 are 1-bit and uncompressed. Sizes 14 and 16 are 2-bit mono coverage,
 DEFLATE-grouped (2048 B), each next to an uncompressed `-reference.h` for the decoder test.
@@ -37,7 +38,7 @@ BUILTIN = ROOT/'lib/EpdFont/builtinFonts'
 def convert(out, name, size, style, cjk_cps, charset, compressed, suffix=''):
     geist = f'lib/EpdFont/builtinFonts/source/Geist/Geist-{style}.ttf'
     cjk = out/f'NotoSansSC-UI-{500 if style == "Bold" else 400}.ttf'
-    command = [sys.executable, 'lib/EpdFont/scripts/fontconvert.py', name, str(size), geist, str(cjk), '--force-autohint']
+    command = [sys.executable, 'lib/EpdFont/scripts/fontconvert.py', name, str(size), geist, str(cjk), '--force-autohint', '--native-marks']
     if compressed:
         command += ['--2bit', '--mono-coverage', '--compress', '--max-group-bytes', '2048']
     for cp in cjk_cps:

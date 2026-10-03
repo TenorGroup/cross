@@ -31,6 +31,8 @@ and gray pictures of the user's own. Their golden frames were recorded again for
 v1.0.52: the gray book cover (switch off) is made with the even thresholds 43/128/213 on the X3
 UC8279 too, so the golden frames bw-3-1.png and bw-10-1.png (the gray cover, the gray quote tile)
 were recorded again from this build; the other frames are untouched.
+Later in v1.0.52 the UI faces take the marks above a letter from the font's own hinting, so
+bw-0-0.png, bw-1-0.png and bw-9-0.png were recorded again: only the pixels of those marks moved.
 
 Fixtures are made up here: a four-tone cover drawn with PIL, an invented title and quote.
 Set SLEEP_BW_SHOTS to a directory to keep the screenshots as PNG.

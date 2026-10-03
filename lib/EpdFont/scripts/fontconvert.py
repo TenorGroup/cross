@@ -4,6 +4,7 @@ import sys
 import re
 import math
 import argparse
+import unicodedata
 from collections import namedtuple
 
 # Force UTF-8 stdout so that `python fontconvert.py … > foo.h` on Windows
@@ -23,10 +24,13 @@ parser.add_argument("--additional-intervals", dest="additional_intervals", actio
 parser.add_argument("--compress", dest="compress", action="store_true", help="Nén bitmap glyph bằng DEFLATE theo nhóm.")
 parser.add_argument("--zopfli", dest="zopfli", action="store_true", help="Use Zopfli for the DEFLATE backend instead of zlib. Tạo luồng raw-DEFLATE chuẩn (bộ giải nén uzlib trên máy đọc được nguyên vẹn), thường nhỏ hơn zlib -9 vài phần trăm nhưng nén chậm hơn nhiều. Cần --compress và gói 'zopfli'.")
 parser.add_argument("--force-autohint", dest="force_autohint", action="store_true", help="Buộc dùng auto-hinter của FreeType thay cho hinting gốc. Giúp độ dày nét đều hơn với font có hinting TrueType yếu hoặc không có.")
+parser.add_argument("--native-marks", dest="native_marks", action="store_true", help="With --force-autohint: draw the marks above a letter (acute, grave, circumflex, tilde, breve, hook) with the font's own hinting, set over the autohinted letter at their native gap. The autohinter squeezes stacked marks, such as a breve under an acute, into a blob.")
 parser.add_argument("--pnum", dest="pnum", action="store_true", help="Dùng chữ số tỉ lệ (tính năng pnum của OpenType) thay cho chữ số tabular mặc định. Giảm khoảng trống giữa các chữ số trong dòng chữ.")
 parser.add_argument("--mono-coverage", action="store_true", help="Store binary coverage in 2-bit form for compression; preserves the 1-bit threshold.")
 parser.add_argument("--max-group-bytes", type=int, default=65536, help="Maximum decompressed bitmap bytes per compressed group (default: 65536).")
 args = parser.parse_args()
+if args.native_marks and not args.force_autohint:
+    parser.error("--native-marks requires --force-autohint")
 if args.mono_coverage and not args.is2Bit:
     parser.error("--mono-coverage requires --2bit")
 if not 1 <= args.max_group_bytes <= 65536:
@@ -275,6 +279,41 @@ def load_glyph(code_point):
         face_index += 1
     return None
 
+MARKS_ABOVE = {0x0300, 0x0301, 0x0302, 0x0303, 0x0306, 0x0309}
+Coverage = namedtuple("Coverage", ["buffer", "width", "rows"])
+
+def rendered(face, glyph_index, flags):
+    face.load_glyph(glyph_index, flags)
+    b, g = face.glyph.bitmap, face.glyph
+    buffer = b.buffer
+    return {(g.bitmap_left + x, g.bitmap_top - y): buffer[y * b.pitch + x]
+            for y in range(b.rows) for x in range(b.width) if buffer[y * b.pitch + x]}, g.bitmap_top
+
+def native_marks(face, code_point):
+    """The autohinted letter without its marks above, plus the ink the marks add to that letter under
+    the font's own hinting, moved down by the rows the autohinter took off the letter (x-height or cap
+    height). None when there is nothing to swap.
+    Returns (coverage, left, top) in FreeType's bitmap convention; face.glyph is left on code_point."""
+    parts = unicodedata.normalize("NFD", chr(code_point))
+    letter = unicodedata.normalize("NFC", "".join(c for c in parts if ord(c) not in MARKS_ABOVE))
+    letter = {"i": "\u0131", "j": "\u0237"}.get(letter, letter)  # the marks replace the dot
+    index = face.get_char_index(code_point)
+    if len(letter) != 1 or letter == chr(code_point) or not face.get_char_index(ord(letter)):
+        return None
+    hinted, hinted_top = rendered(face, face.get_char_index(ord(letter)), load_flags)
+    native, native_top = rendered(face, face.get_char_index(ord(letter)), freetype.FT_LOAD_RENDER)
+    marked, _ = rendered(face, index, freetype.FT_LOAD_RENDER)
+    shift = native_top - hinted_top
+    for (x, y), v in marked.items():
+        if (x, y) not in native:  # a horn stands as tall as the marks, so split by ink, not by row
+            hinted[(x, y - shift)] = max(v, hinted.get((x, y - shift), 0))
+    face.load_glyph(index, load_flags)
+    xs = [x for x, _ in hinted]; ys = [y for _, y in hinted]
+    left, top = min(xs), max(ys)
+    width, rows = max(xs) - left + 1, top - min(ys) + 1
+    buffer = [hinted.get((left + x, top - y), 0) for y in range(rows) for x in range(width)]
+    return Coverage(buffer, width, rows), left, top
+
 unmerged_intervals = sorted(intervals + add_ints)
 intervals = []
 unvalidated_intervals = []
@@ -304,7 +343,9 @@ all_glyphs = []
 for i_start, i_end in intervals:
     for code_point in range(i_start, i_end + 1):
         face = load_glyph(code_point)
-        bitmap = face.glyph.bitmap
+        bitmap, left, top = face.glyph.bitmap, face.glyph.bitmap_left, face.glyph.bitmap_top
+        if args.native_marks:
+            bitmap, left, top = native_marks(face, code_point) or (bitmap, left, top)
 
         # Build out 4-bit greyscale bitmap
         pixels4g = []
@@ -378,8 +419,8 @@ for i_start, i_end in intervals:
             # We use linearHoriAdvance (16.16 fixed-point, unhinted) instead of
             # advance.x (26.6 fixed-point, grid-fitted to whole pixels by hinter)
             advance_x = fp4_from_ft16_16(face.glyph.linearHoriAdvance),
-            left = face.glyph.bitmap_left,
-            top = face.glyph.bitmap_top,
+            left = left,
+            top = top,
             data_length = len(packed),
             data_offset = total_size,
             code_point = code_point,
