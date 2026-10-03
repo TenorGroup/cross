@@ -70,8 +70,6 @@ struct Pairing {
   char name[sizeof(Config::peerName)] = "";
 };
 Pairing pairing;
-// A pairing became the chosen remote and the host has not saved it yet. Main loop only.
-bool choiceUnsaved = false;
 // The book's link note (nextLinkNote): written on the main loop, read by the render task.
 std::atomic<LinkNote> linkNoteNow{LinkNote::None};
 // Since when the radio has been up without a break in this book visit. Main loop only.
@@ -209,23 +207,22 @@ bool act(const Action a) {
   return taken || a == Action::ReaderMenu || a == Action::SaveQuote;
 }
 
-// The ONE answer to "which remote is the chosen one" when presses are read: the saved choice if
-// the stack can link it again, else none. v1.0.50 saved the choice before a pairing completed, so
-// a choice can name a remote that never bonded. The write side is service().
-const char* chosenAddr() {
-  if (config->peerAddr[0] == '\0') return "";
+// The chosen remote is one the stack can link again. v1.0.50 saved the choice before a pairing
+// completed, so a choice can name a remote that never bonded.
+bool chosenBonded() {
   for (uint8_t i = 0; i < port::bondCount(); ++i) {
-    if (strncmp(port::bond(i).addr, config->peerAddr, sizeof(config->peerAddr)) == 0) return config->peerAddr;
+    if (strncmp(port::bond(i).addr, config->peerAddr, sizeof(config->peerAddr)) == 0) return true;
   }
-  return "";
+  return false;
 }
 
-// A linked remote whose presses the book takes: the chosen one, or any when none is chosen.
-// When the chosen remote could not be armed, the stack may link another bonded remote.
+// A linked remote whose presses the book takes: the chosen one, or any when none is chosen (or
+// the choice is not bonded). When the chosen remote could not be armed, the stack may link
+// another bonded remote.
 bool chosenLinked() {
   if (!port::connected()) return false;
-  const char* chosen = chosenAddr();
-  return chosen[0] == '\0' || strncmp(port::linked().addr, chosen, sizeof(config->peerAddr)) == 0;
+  return config->peerAddr[0] == '\0' || strncmp(port::linked().addr, config->peerAddr, sizeof(config->peerAddr)) == 0 ||
+         !chosenBonded();
 }
 
 // The book in front with the radio up: arm the chosen remote, drain both queues.
@@ -376,7 +373,6 @@ void resetForTests() {
   router = Router();
   lastScene = Scene{};
   pairing = Pairing{};
-  choiceUnsaved = false;
   linkNoteNow.store(LinkNote::None);
   noteRadioUp = false;
   noteRadioUpSinceMs = 0;
@@ -395,8 +391,6 @@ bool tick(const Scene& s) {
   // A book visit starts: the book comes in front, or another visit of it does.
   const bool entered = s.where == Where::Reader && (lastScene.where != Where::Reader || s.visit != lastScene.visit);
   lastScene = s;
-  // A pairing started on the settings screen finishes here when the screen was left meanwhile.
-  if (pairing.addr[0] != '\0') service();
   // Finish a stop in the background without blocking input.
   if (port::stopping() && port::nowMs() - lastCleanupMs >= 250) {
     lastCleanupMs = port::nowMs();
@@ -599,14 +593,7 @@ bool service() {
   memcpy(config->peerAddr, pairing.addr, sizeof(config->peerAddr));
   memcpy(config->peerName, pairing.name, sizeof(config->peerName));
   pairing = Pairing{};
-  choiceUnsaved = true;
   return true;
-}
-
-bool takeUnsavedChoice() {
-  const bool unsaved = choiceUnsaved;
-  choiceUnsaved = false;
-  return unsaved;
 }
 
 void scan(const uint32_t durationMs) { port::scan(durationMs); }

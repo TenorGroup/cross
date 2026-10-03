@@ -86,6 +86,9 @@ bool takeRaw(uint32_t& code, bool& pressed, uint32_t& atMs, bool& wasRest) {
 // The screen before the rest flag read edges without it.
 bool takeRaw(uint32_t& code, bool& pressed, uint32_t& atMs) { bool wasRest = false; return takeRaw(code, pressed, atMs, wasRest); }
 }
+void chupChuoi(char* dest, const char* src, size_t maxLen) {
+  std::strncpy(dest, src, maxLen - 1); dest[maxLen - 1] = '\0';
+}
 struct Nav {
   int selected = 0;
   int top = 0;
@@ -233,11 +236,8 @@ int main() {
         const size_t calls = backend::connections.size();
         screen.activateIndex(i);
         require(screen.optionPopup.shows == shows + 1 && screen.optionPopup.options.size() == 2, "actual paired row opens two choices");
-        std::strcpy(SETTINGS.ble.peerAddr, "11:22:33:44:55:66");
-        const int saved = SETTINGS.saves;
         screen.optionPopup.callback(0);
-        require(SETTINGS.ble.peerAddr == std::string("11:22:33:44:55:66") && SETTINGS.saves == saved,
-                "Connect row leaves the chosen remote alone until the link completes");
+        require(SETTINGS.ble.peerAddr == backend::bonds[bond], "selected exact address saved");
         require(backend::connections.size() == calls + (enabled ? 1 : 0), "connect dispatch respects enabled setting");
         if (enabled) require(backend::connections.back() == backend::bonds[bond], "connect dispatch uses selected exact address");
       }

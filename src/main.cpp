@@ -1311,8 +1311,6 @@ void loop() {
                      mappedInputManager.wasReleased(MappedInputManager::Button::Right) || gpio.wasTouchActivity();
     bleInputActivity = bleturner::tick(scene);
   }
-  // A remote that finished pairing became the chosen one, on this or any screen.
-  if (bleturner::takeUnsavedChoice()) SETTINGS.saveToFile();
 #endif
 
   if (activityManager.requiresExclusiveStorageLoop()) {

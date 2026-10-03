@@ -307,33 +307,6 @@ TEST_F(TickTest, PairedRemoteBecomesTheChosenOneOnceItLinks) {
   EXPECT_FALSE(bleturner::service()) << "saved once";
 }
 
-// The Bluetooth screen is left while the pairing is still in flight: the link completes on Home
-// and the remote becomes the chosen one then, saved once.
-TEST_F(TickTest, PairingThatLinksAfterTheScreenIsLeftChoosesTheRemote) {
-  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
-  strcpy(config.peerName, "Free3-R");
-  running();
-  EXPECT_TRUE(bleturner::pair("11:22:33:44:55:66", "Remote B"));
-  Scene away = fake::reading();
-  away.where = bleturner::Where::Elsewhere;
-  pass(away);
-  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca") << "not chosen before it links";
-  EXPECT_FALSE(bleturner::takeUnsavedChoice());
-  radio().connected = true;
-  radio().addr = "11:22:33:44:55:66";
-  radio().name = "Remote B";
-  pass(away);
-  EXPECT_STREQ(config.peerAddr, "11:22:33:44:55:66");
-  EXPECT_STREQ(config.peerName, "Remote B");
-  EXPECT_TRUE(bleturner::takeUnsavedChoice());
-  pass(away);
-  pass(fake::reading());
-  EXPECT_FALSE(bleturner::takeUnsavedChoice()) << "saved once";
-  radio().keys = {{bleturner::kUsageRight, 0, true}};
-  EXPECT_TRUE(pass(fake::reading()));
-  EXPECT_EQ(host().delivered, (std::vector<Action>{Action::NextPage}));
-}
-
 // v1.0.50 saved the choice before a pairing completed. A choice left on a remote that never bonded
 // cannot link again: the bonded remote that does link turns pages instead of being dropped.
 TEST_F(TickTest, AChoiceThatIsNotBondedDoesNotBlockTheLinkedRemote) {
