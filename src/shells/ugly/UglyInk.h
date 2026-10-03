@@ -10,6 +10,12 @@ class MappedInputManager;
 
 namespace ugly {
 
+// The per-frame log lines are measurement. They exist in the probe build, and in the simulator where
+// the tests read them; a release build carries neither the strings nor the heap query.
+#if defined(TENOR_PRESS_PROBE) || defined(SIMULATOR)
+#define UGLY_FRAME_LOG 1
+#endif
+
 enum class Size : uint8_t { S22, S30, S38, S52 };
 
 // Registers the four fonts with the renderer once (takes the render lock, so call it from the main

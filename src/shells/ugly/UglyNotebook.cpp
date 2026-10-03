@@ -93,7 +93,7 @@ void Notebook::onEnter() {
 }
 
 void Notebook::render(RenderLock&&) {
-  const uint32_t started = millis();
+  [[maybe_unused]] const uint32_t started = millis();
   renderer.clearScreen();
   const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
   const int pos = pagePosition();
@@ -142,8 +142,10 @@ void Notebook::render(RenderLock&&) {
   statusBar(renderer, mappedInput, {true, count > 0, true, true});
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
-  LOG_INF("UGLY", "Notebook frame page=%d row=%d total=%lums heap=%u", id(page), cur, static_cast<unsigned long>(millis() - started),
-          ESP.getFreeHeap());
+#ifdef UGLY_FRAME_LOG
+  LOG_INF("UGLY", "Notebook frame page=%d row=%d rows=%d total=%lums heap=%u", id(page), cur, count,
+          static_cast<unsigned long>(millis() - started), ESP.getFreeHeap());
+#endif
 }
 
 void Notebook::turn(const int step) {

@@ -75,7 +75,7 @@ void Diary::buildSentence() {
 
 void Diary::onEnter() {
   Screen::onEnter();
-  const uint32_t started = millis();
+  [[maybe_unused]] const uint32_t started = millis();
   ensureFonts(renderer);
   const auto books = homerows::recent(1);
   hasBook = !books.empty();
@@ -102,12 +102,14 @@ void Diary::onEnter() {
   words[wordCount++] = SWAP;
   if (deskAvailable(renderer)) words[wordCount++] = DESK;
   selected = 0;
+#ifdef UGLY_FRAME_LOG
   LOG_INF("UGLY", "Diary prepare=%lums", static_cast<unsigned long>(millis() - started));
+#endif
   requestUpdate();
 }
 
 void Diary::render(RenderLock&&) {
-  const uint32_t started = millis();
+  [[maybe_unused]] const uint32_t started = millis();
   renderer.clearScreen();
   const int w = renderer.getScreenWidth();
   const int maxWidth = w - 2 * MARGIN;
@@ -157,7 +159,9 @@ void Diary::render(RenderLock&&) {
   statusBar(renderer, mappedInput, {hasBook, true, true, true});
 
   renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+#ifdef UGLY_FRAME_LOG
   LOG_INF("UGLY", "Diary frame total=%lums heap=%u", static_cast<unsigned long>(millis() - started), ESP.getFreeHeap());
+#endif
   if (cleanInitialRefresh) wakeStatePending = true;
   cleanInitialRefresh = false;
 }

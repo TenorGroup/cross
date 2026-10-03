@@ -47,7 +47,7 @@ void Desk::onEnter() {
 }
 
 void Desk::render(RenderLock&&) {
-  const uint32_t started = millis();
+  [[maybe_unused]] const uint32_t started = millis();
   if (!decodeX3BrandPlane(art::DESK, sizeof(art::DESK), renderer.getFrameBuffer(), renderer.getBufferSize()))
     renderer.clearScreen();
 
@@ -85,7 +85,9 @@ void Desk::render(RenderLock&&) {
   circle(renderer, Circle::Object, ring[selected], selected == READING ? 8 : 16, selected == READING ? 12 : 24);
   statusBar(renderer, mappedInput, {true, true, true, true});
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+#ifdef UGLY_FRAME_LOG
   LOG_INF("UGLY", "Desk frame total=%lums", static_cast<unsigned long>(millis() - started));
+#endif
 }
 
 void Desk::open() {
