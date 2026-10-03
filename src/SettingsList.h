@@ -749,6 +749,9 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                                               const std::vector<DictionaryEntry>* dictionaries = nullptr) {
   std::vector<SettingInfo> v = getBaseSettingsList();
   v.erase(std::remove_if(v.begin(), v.end(), settingHiddenOnThisBoard), v.end());
+  // The web page saves values without shell::changed(), so the shell is chosen on the device only.
+  v.erase(std::remove_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.valuePtr == &CrossPointSettings::uiShell; }),
+          v.end());
   if (registry && registry->getFamilyCount() > 0) {
     auto it = std::find_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.nameId == StrId::STR_FONT_FAMILY; });
     if (it != v.end()) {

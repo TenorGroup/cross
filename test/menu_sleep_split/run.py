@@ -110,6 +110,10 @@ for profile in ['c3', 'pro', 'persistence']:
             measured = json.loads(run.stdout)
             (out/(case+'-web.json')).write_text(json.dumps(measured['web'], sort_keys=True, indent=2)+'\n')
             result.update({k:v for k,v in measured.items() if k != 'web'})
+            # The shell is chosen on the device: changing it from the page would skip shell::changed().
+            if any(row['key'] in ('uiShell',) for row in measured['web']):
+                result['shell_row_on_web'] = True
+                result['exit'] = 1
             if hashlib.sha256((out/(case+'-web.json')).read_bytes()).hexdigest() != expected_web[case]:
                 result['web_schema_mismatch'] = True
                 result['exit'] = 1
