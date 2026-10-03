@@ -14,35 +14,51 @@ bool visible(const char* name, bool showHidden) {
 }  // namespace
 
 bool doc(const char* const duongDan, const bool hienFileAn, const Loc loc, char* const dem, const size_t demCo,
-         std::vector<std::string>& ra) {
+         std::vector<std::string>& ra, const size_t tran, bool* const quaTran) {
   ra.clear();
+  if (quaTran) *quaTran = false;
   if (dem == nullptr || demCo == 0) return false;
 
   auto goc = Storage.open(duongDan);
   if (!goc || !goc.isDirectory()) return false;
   goc.rewindDirectory();
 
+  // Het cho thi dung han: giu mot danh sach cut con te hon khong giu.
+  const auto conCho = [&] {
+    if (tran == 0 || ra.size() < tran) return true;
+    if (quaTran) *quaTran = true;
+    return false;
+  };
   for (auto muc = goc.openNextFile(); muc; muc = goc.openNextFile()) {
     muc.getName(dem, demCo);
     // File an, va thu muc rac cua Windows.
     if (!visible(dem, hienFileAn)) continue;
 
     if (muc.isDirectory()) {
+      if (!conCho()) break;
       ra.emplace_back(std::string(dem) + "/");
       continue;
     }
 
     const std::string_view ten{dem};
     if (loc == Loc::Firmware) {
-      if (FsHelpers::checkFileExtension(ten, ".bin")) ra.emplace_back(ten);
+      if (FsHelpers::checkFileExtension(ten, ".bin")) {
+        if (!conCho()) break;
+        ra.emplace_back(ten);
+      }
       continue;
     }
     if (FsHelpers::hasEpubExtension(ten) || FsHelpers::hasXtcExtension(ten) || FsHelpers::hasTxtExtension(ten) ||
         FsHelpers::hasMarkdownExtension(ten) || FsHelpers::hasBmpExtension(ten) || FsHelpers::hasPngExtension(ten)) {
+      if (!conCho()) break;
       ra.emplace_back(ten);
     }
   }
   goc.close();
+  if (quaTran && *quaTran) {
+    std::vector<std::string>().swap(ra);
+    return true;
+  }
   FsHelpers::sortFileList(ra);
   return true;
 }

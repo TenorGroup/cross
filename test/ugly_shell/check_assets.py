@@ -112,6 +112,14 @@ desk = (repo / 'src/shells/ugly/UglyDesk.cpp').read_text()
 check(re.search(r'if \(!decodeX3BrandPlane\([^;]*\)\) \{[^}]*LOG_ERR[^}]*clearScreen', desk) is not None,
       'the desk does not log the failed picture before it draws the bare table')
 
+# The notebook reads the card outside the render lock and keeps the Folder names once.
+book = (repo / 'src/shells/ugly/UglyNotebook.cpp').read_text()
+check(re.search(r'\b(load|reload|read|turn)\(', body(book, 'bool Notebook::onKey(')) is None,
+      'Notebook::onKey reads the card while the key queue holds the render lock')
+folder = book[book.find('case homerows::Page::Folder: {'):book.find('case homerows::Page::Stats:')]
+check('labels' not in folder, 'the Folder page keeps a second copy of the names')
+check('folderCap' in folder, 'the Folder page has no ceiling')
+
 if failures:
     print('\n'.join('FAIL: ' + f for f in failures))
     sys.exit(1)

@@ -24,9 +24,9 @@ def yesterday():
 
 
 class Card:
-    """A temporary SD card. `shell` is the uiShell value, `books` the recent list (title, file)."""
+    """A temporary SD card. `shell` is the uiShell value, `books` the recent list (title, file), `files` more names in the root."""
 
-    def __init__(self, shell=1, books=BOOKS, stats=True, **settings):
+    def __init__(self, shell=1, books=BOOKS, stats=True, files=(), **settings):
         self.temp = tempfile.TemporaryDirectory(prefix='cross-ugly-')
         self.sd = Path(self.temp.name)
         self.store = self.sd / '.crosspoint'
@@ -35,6 +35,8 @@ class Card:
         for i, (title, name) in enumerate(books):
             (self.sd / name).write_text(('Fixture text %d. ' % i) * 400)
             recent.append({'path': '/' + name, 'title': title, 'author': 'R. L. Stevenson'})
+        for name in files:
+            (self.sd / name).write_text('x')
         (self.store / 'recent.json').write_text(json.dumps({'books': recent}))
         merged = dict(SETTINGS, uiShell=shell, **settings)
         (self.store / 'settings.json').write_text(json.dumps(merged))

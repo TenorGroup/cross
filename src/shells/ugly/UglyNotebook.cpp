@@ -40,55 +40,70 @@ constexpr StrId EMPTY[homerows::PAGE_COUNT] = {StrId::STR_UGLY_EMPTY_RECENT, Str
 int id(const homerows::Page p) { return static_cast<int>(p); }
 }  // namespace
 
-int Notebook::pagePosition() const { return menucustom::position(0, id(page), homerows::PAGE_COUNT); }
+int Notebook::pagePosition(const homerows::Page p) const { return menucustom::position(0, id(p), homerows::PAGE_COUNT); }
 
 int Notebook::rowsPerPage() const { return std::max(1, (renderer.getScreenHeight() - 140 - FIRST_BASELINE) / ROW_HEIGHT + 1); }
 
-void Notebook::load() {
-  rows = Rows{};
-  switch (page) {
+Notebook::Rows Notebook::read(const homerows::Page p) const {
+  Rows r;
+  switch (p) {
     case homerows::Page::Recent: {
       // The book being read is in the diary and on the desk: the page lists the others.
       auto books = homerows::recent(RecentBooksStore::MAX_RECENT_BOOKS);
       if (!books.empty()) books.erase(books.begin());
-      for (const auto& b : books) rows.labels.push_back(utf8ComposeNfc(b.title));
-      rows.books = std::move(books);
+      for (const auto& b : books) r.labels.push_back(utf8ComposeNfc(b.title));
+      r.books = std::move(books);
       break;
     }
     case homerows::Page::Folder: {
+      // A card can hold any number of names, the heap cannot: the root is read up to a ceiling drawn from the
+      // heap left, and a root past it is refused whole, with a line saying so.
       constexpr size_t BUFFER = 500;
+      r.cap = logic::folderCap(ESP.getFreeHeap(), ESP.getMaxAllocHeap());
       auto buffer = makeUniqueNoThrow<char[]>(BUFFER);
-      if (buffer) docthumuc::doc("/", SETTINGS.showHiddenFiles, docthumuc::Loc::Sach, buffer.get(), BUFFER, rows.folder);
-      for (const auto& name : rows.folder) rows.labels.push_back(utf8ComposeNfc(name));
+      if (!buffer || r.cap == 0)
+        r.tooMany = true;
+      else
+        docthumuc::doc("/", SETTINGS.showHiddenFiles, docthumuc::Loc::Sach, buffer.get(), BUFFER, r.folder, r.cap, &r.tooMany);
       break;
     }
     case homerows::Page::Stats:
-      for (const StrId s : homerows::STATS_ROWS) rows.labels.emplace_back(I18N.get(s));
+      for (const StrId s : homerows::STATS_ROWS) r.labels.emplace_back(I18N.get(s));
       break;
     case homerows::Page::Settings: {
-      rows.labels.emplace_back(tr(STR_FILE_TRANSFER));
+      r.labels.emplace_back(tr(STR_FILE_TRANSFER));
       auto groups = homerows::settingsGroups();
-      rows.groups = std::move(groups.ids);
-      for (auto& label : groups.labels) rows.labels.push_back(std::move(label));
+      r.groups = std::move(groups.ids);
+      for (auto& label : groups.labels) r.labels.push_back(std::move(label));
       break;
     }
     case homerows::Page::Favorites: {
       auto pins = homerows::favorites();
-      rows.keys = std::move(pins.keys);
-      rows.values = std::move(pins.values);
-      rows.labels = std::move(pins.labels);
+      r.keys = std::move(pins.keys);
+      r.values = std::move(pins.values);
+      r.labels = std::move(pins.labels);
       break;
     }
   }
-  const int last = static_cast<int>(rows.labels.size()) - 1;
-  cursor[id(page)] = std::clamp(cursor[id(page)], 0, std::max(0, last));
+  return r;
+}
+
+void Notebook::adopt(Rows&& fresh) {
+  rows = std::move(fresh);
+  cursor[id(page)] = std::clamp(cursor[id(page)], 0, std::max(0, rowCount() - 1));
+}
+
+void Notebook::reload() {
+  Rows fresh = read(page);
+  RenderLock lock;
+  adopt(std::move(fresh));
 }
 
 void Notebook::onEnter() {
   Screen::onEnter();
   ensureFonts(renderer);
   menucustom::load();
-  load();
+  adopt(read(page));
   requestUpdate();
 }
 
@@ -96,7 +111,7 @@ void Notebook::render(RenderLock&&) {
   [[maybe_unused]] const uint32_t started = millis();
   renderer.clearScreen();
   const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
-  const int pos = pagePosition();
+  const int pos = pagePosition(page);
 
   line(renderer, 70, 0, 71, h - 80, 501);
   const char* title = I18N.get(homerows::PAGE_TITLES[id(page)]);
@@ -107,10 +122,14 @@ void Notebook::render(RenderLock&&) {
   text(renderer, Size::S22, w - 30 - width(renderer, Size::S22, number), 60, number);
   text(renderer, Size::S22, TEXT_X, 124, fit(renderer, Size::S22, I18N.get(SUBTITLES[id(page)]), w - TEXT_X - 30).c_str());
 
-  const int count = static_cast<int>(rows.labels.size());
+  const int count = rowCount();
   const int perPage = rowsPerPage();
   const int cur = cursor[id(page)];
-  if (count == 0) {
+  if (rows.tooMany) {
+    char said[160];
+    snprintf(said, sizeof(said), tr(STR_UGLY_FOLDER_TOO_MANY), static_cast<int>(rows.cap));
+    paragraph(renderer, Size::S30, TEXT_X, FIRST_BASELINE, w - TEXT_X - 30, 44, said);
+  } else if (count == 0) {
     const StrId empty = EMPTY[id(page)];
     if (empty != StrId::STR_NONE_OPT) paragraph(renderer, Size::S30, TEXT_X, FIRST_BASELINE, w - TEXT_X - 30, 44, I18N.get(empty));
   }
@@ -124,7 +143,7 @@ void Notebook::render(RenderLock&&) {
       text(renderer, Size::S22, w - 30 - vw, base, rows.values[row].c_str());
       room -= vw + 16;
     }
-    const std::string label = fit(renderer, Size::S30, rows.labels[row], room);
+    const std::string label = fit(renderer, Size::S30, labelAt(row), room);
     const int lw = text(renderer, Size::S30, TEXT_X, base, label.c_str());
     if (row == cur) circle(renderer, Circle::Row, {TEXT_X, base - 26, TEXT_X + lw, base + 8}, 12, 9);
   }
@@ -148,14 +167,21 @@ void Notebook::render(RenderLock&&) {
 #endif
 }
 
-void Notebook::turn(const int step) {
-  const int pos = logic::cycle(pagePosition(), step, homerows::PAGE_COUNT);
-  page = static_cast<homerows::Page>(menucustom::idAt(0, pos, homerows::PAGE_COUNT));
-  load();
+// The turn of a page is decided under the lock (cheap), its rows are read after it (afterKeys): a card read
+// under the lock would stop the render task for as long as the card takes.
+void Notebook::afterKeys() {
+  if (want == page) return;
+  Rows fresh = read(want);
+  {
+    RenderLock lock;
+    page = want;
+    adopt(std::move(fresh));
+  }
+  requestUpdate();
 }
 
 void Notebook::activate(const int row) {
-  if (row < 0 || row >= static_cast<int>(rows.labels.size())) return;
+  if (row < 0 || row >= rowCount()) return;
   switch (page) {
     case homerows::Page::Recent: {
       const std::string path = rows.books[row].path;
@@ -203,10 +229,7 @@ void Notebook::activate(const int row) {
       const int group = rows.groups[row - 1];
       then([this, group] {
         startActivityForResult(makeUniqueNoThrow<SettingsActivity>(renderer, mappedInput, group, true),
-                               [this](const ActivityResult&) {
-                                 RenderLock lock;
-                                 load();
-                               });
+                               [this](const ActivityResult&) { reload(); });
       });
       return;
     }
@@ -228,10 +251,7 @@ void Notebook::activate(const int row) {
         }
         auto target = menufavorites::open(key, renderer, mappedInput);
         if (target)
-          startActivityForResult(std::move(target), [this](const ActivityResult&) {
-            RenderLock lock;
-            load();
-          });
+          startActivityForResult(std::move(target), [this](const ActivityResult&) { reload(); });
       });
       return;
     }
@@ -239,7 +259,10 @@ void Notebook::activate(const int row) {
 }
 
 bool Notebook::onKey(const Key key) {
-  const int count = static_cast<int>(rows.labels.size());
+  // A turn in flight: keys on the page about to be left would act on rows that are going away. Back and more
+  // turns still count.
+  if (want != page && key != Key::Back && key != Key::Left && key != Key::Right) return false;
+  const int count = rowCount();
   int& cur = cursor[id(page)];
   switch (key) {
     case Key::Up:
@@ -255,11 +278,10 @@ bool Notebook::onKey(const Key key) {
       cur = std::min(std::max(0, count - 1), cur + rowsPerPage());
       return true;
     case Key::Left:
-      turn(-1);
-      return true;
     case Key::Right:
-      turn(1);
-      return true;
+      want = static_cast<homerows::Page>(
+          menucustom::idAt(0, logic::cycle(pagePosition(want), key == Key::Left ? -1 : 1, homerows::PAGE_COUNT), homerows::PAGE_COUNT));
+      return false;
     case Key::Confirm:
       activate(cur);
       return false;

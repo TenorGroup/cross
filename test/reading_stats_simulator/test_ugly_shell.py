@@ -108,6 +108,31 @@ class UglyShellTest(unittest.TestCase):
         en = self.card(language='EN').run('3000:QUIT', [(2000, 'x')])[1]['x']
         self.assertNotEqual(digest(vi), digest(en))
 
+    def folder_rows(self, log):
+        return [int(n) for n in re.findall(r'Notebook frame page=1 row=\d+ rows=(\d+)', log)]
+
+    def test_a_root_with_too_many_names_is_refused_whole_with_a_line_saying_so(self):
+        # 5 books are on the card already: 1995 names fit the ceiling of 2000, 2001 do not.
+        script = '1000:RIGHT;1800:RIGHT;5000:QUIT'
+        fits = self.card(files=['f%04d.txt' % i for i in range(1990)]).run(script, timeout=120)[0]
+        self.assertEqual(self.folder_rows(fits), [1995], fits[-800:])
+        card = self.card(files=['f%04d.txt' % i for i in range(1996)])
+        log, shots = card.run(script, [(4000, 'refused')], timeout=120)
+        self.assertEqual(self.folder_rows(log), [0], log[-800:])
+        # a notice in the place of the rows, and the screen still answers a turn of the page
+        self.assertGreater(ink(shots['refused'], (0, 150, 528, 330)), 400)
+        again, _ = card.run('1000:RIGHT;1800:RIGHT;2600:RIGHT;3400:LEFT;5000:QUIT', timeout=120)
+        self.assertEqual(notebook_pages(again)[-3:], [1, 4, 1])
+
+    def test_the_ceiling_follows_the_heap_that_is_left(self):
+        # (30000 - 16384) / 80 = 170 names with 1 MB in one block; a heap of 30000 bytes allows 170, 18000 allows 20
+        files = ['g%03d.txt' % i for i in range(100)]
+        script = '1000:RIGHT;1800:RIGHT;4000:QUIT'
+        roomy = self.card(files=files).run(script, CROSSPOINT_SIM_FREE_HEAP='30000')[0]
+        self.assertEqual(self.folder_rows(roomy), [105], roomy[-800:])
+        tight = self.card(files=files).run(script, CROSSPOINT_SIM_FREE_HEAP='18000')[0]
+        self.assertEqual(self.folder_rows(tight), [0], tight[-800:])
+
     def test_the_interface_row_switches_the_shell_and_draws_home_again(self):
         card = self.card(shell=0, sleepScreen=10)
         # Home (tenor/cross) -> Settings tab (UP) -> group Display (RIGHT) -> open (CONFIRM) -> the row before the

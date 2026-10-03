@@ -20,6 +20,9 @@ class Screen : public Activity {
   Screen(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput) : Activity(name, renderer, mappedInput) {}
   // Runs with the render lock held: change the state, return true when the screen must be drawn again.
   virtual bool onKey(Key key) = 0;
+  // Runs after a pass of keys, with the lock released and the screen staying: the place for work that reads the
+  // card, which must never happen under the lock. Ask for the frame yourself when it changes something.
+  virtual void afterKeys() {}
   // Leaving the screen goes through here: it runs after the lock is released, in the same pass.
   void then(std::function<void()> next) { later = std::move(next); }
   // The hold threshold of Up and Down, in ms.

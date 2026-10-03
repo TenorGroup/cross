@@ -23,7 +23,10 @@ enum class Loc : uint8_t {
 // Ghi ten cac muc vao `ra`, thu muc mang dau '/' o cuoi, da sap xep theo FsHelpers.
 // `dem` la vung nho muon de hung ten file; ham nay KHONG tu cap phat.
 // Tra ve false khi khong mo duoc thu muc, va luc do `ra` rong.
-bool doc(const char* duongDan, bool hienFileAn, Loc loc, char* dem, size_t demCo, std::vector<std::string>& ra);
+// `tran` > 0 la so muc toi da: vuot thi dung doc, `ra` rong, *quaTran = true (ham van tra ve true). Man
+// nao danh sach lon theo so tep tren the thi dat tran; 0 la khong gioi han, nhu moi noi goi cu.
+bool doc(const char* duongDan, bool hienFileAn, Loc loc, char* dem, size_t demCo, std::vector<std::string>& ra,
+         size_t tran = 0, bool* quaTran = nullptr);
 
 // Adjacent visible sibling folder in natural order, wrapping at either end.
 // Holds only candidate names, never the whole parent directory in RAM.

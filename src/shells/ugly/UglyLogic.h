@@ -1,7 +1,9 @@
 #pragma once
 // Pure decisions of the tenor/ugly shell: integer only, no hardware, so a host test runs them as they are.
 #include <cstddef>
+#include <algorithm>
 #include <cstdint>
+#include <string>
 
 namespace ugly::logic {
 
@@ -113,6 +115,16 @@ int layout(const Token* tokens, const int count, const int maxWidth, const int s
 inline int pageOf(const int selected, const int rows) { return rows > 0 ? selected / rows : 0; }
 inline int pageTop(const int selected, const int rows) { return pageOf(selected, rows) * rows; }
 inline int pageCount(const int count, const int rows) { return rows > 0 && count > 0 ? (count + rows - 1) / rows : 1; }
+
+// How many names of the card root the Folder page may hold, from the heap left. Each row costs a string
+// slot (the vector doubles, so twice that must fit in one block) and its name on the heap, and some heap
+// stays for the frame and the card library. 0 means the page refuses the root rather than run out.
+inline constexpr size_t FOLDER_MAX_ROWS = 2000, FOLDER_HEAP_KEEP = 16 * 1024, FOLDER_BYTES_PER_ROW = 80;
+inline size_t folderCap(const size_t freeHeap, const size_t largestBlock) {
+  const size_t byFree = freeHeap > FOLDER_HEAP_KEEP ? (freeHeap - FOLDER_HEAP_KEEP) / FOLDER_BYTES_PER_ROW : 0;
+  const size_t byBlock = largestBlock / (2 * sizeof(std::string));
+  return std::min({FOLDER_MAX_ROWS, byFree, byBlock});
+}
 
 // A step on a cycle of `count` stops.
 inline int cycle(const int index, const int step, const int count) {

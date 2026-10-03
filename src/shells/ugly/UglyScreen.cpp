@@ -41,6 +41,7 @@ void Screen::loop() {
     next();
     return;
   }
+  afterKeys();
   if (changed) requestUpdate();
 }
 

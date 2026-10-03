@@ -112,6 +112,24 @@ TEST(Pages, RowsOfANotebookPage) {
   EXPECT_EQ(cycle(0, 1, 0), 0);
 }
 
+TEST(FolderCap, FollowsTheHeapAndNeverPassesTheCeiling) {
+  EXPECT_EQ(folderCap(0, 0), 0u);
+  EXPECT_EQ(folderCap(FOLDER_HEAP_KEEP, 1 << 20), 0u) << "nothing left after what the screen keeps";
+  EXPECT_EQ(folderCap(1 << 20, 1 << 20), FOLDER_MAX_ROWS) << "a roomy heap still stops at the ceiling";
+  EXPECT_EQ(folderCap(30000, 1 << 20), 170u);
+  // BLE on: about 45 KB free in blocks of 24 KB, which is still room for a few hundred names
+  EXPECT_GT(folderCap(45 * 1024, 24 * 1024), 300u);
+  // a block too small for the vector to double in bounds the list whatever the total
+  EXPECT_EQ(folderCap(1 << 20, 4800), 4800 / (2 * sizeof(std::string)));
+  size_t last = 0;
+  for (size_t free = 0; free < 400 * 1024; free += 997) {
+    const size_t cap = folderCap(free, free);
+    EXPECT_GE(cap, last) << "more heap never means a lower ceiling";
+    EXPECT_LE(cap * FOLDER_BYTES_PER_ROW + FOLDER_HEAP_KEEP, std::max(free, FOLDER_HEAP_KEEP));
+    last = cap;
+  }
+}
+
 TEST(Circles, EndsCrossAndStayNearTheBox) {
   using namespace ugly;
   for (const auto* pts : {CIRCLE_WORD, CIRCLE_OBJECT, CIRCLE_ROW}) {
