@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bake the Mansalva handwriting font used by the tenor/ugly shell.
 
-python3 scripts/ugly/gen_font.py        (writes src/shells/ugly/fonts/ugly_<px>.h)
+python3 scripts/ugly/gen_font.py [out-dir]   (default src/shells/ugly/fonts, files ugly_<px>.h)
 
 Every character gets one fixed deviation from a seed made of (code point, size): rotation up to 7
 degrees, size -12% to +18%, baseline shift up to 2 px at size 22 (scaled with the size) and an
@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / 'lib/EpdFont/builtinFonts/source/Mansalva/Mansalva-Regular.ttf'
-OUT = ROOT / 'src/shells/ugly/fonts'
+OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'src/shells/ugly/fonts'
 
 FULL = (list(range(0x20, 0x7F)) + list(range(0xC0, 0x100)) + [0xD7 - 0xD7 + 0x102, 0x103, 0x110, 0x111, 0x128, 0x129,
         0x168, 0x169, 0x1A0, 0x1A1, 0x1AF, 0x1B0] + list(range(0x1EA0, 0x1EFA)) +
