@@ -506,14 +506,19 @@ uint32_t BookMetadataCache::getCumulativeSize(const int index) const {
   std::lock_guard<std::mutex> lock(sizeWindowLock);
   if (windowFirst != first) {
     windowFirst = -1;
-    // Own handle: getSpineEntry() moves bookFile.
+    // Own handle: getSpineEntry() moves bookFile. A failed read answers the total before the window.
     HalFile file;
-    if (!Storage.openFileForRead("BMC", cachePath + bookBinFile, file)) return windowStarts[index / SIZE_WINDOW];
-    uint32_t pos;
-    file.seek(lutOffset + sizeof(uint32_t) * first);
-    serialization::readPod(file, pos);
-    file.seek(pos);
-    for (int i = 0; i < SIZE_WINDOW && first + i < spineCount; i++) window[i] = readSpineEntry(file).cumulativeSize;
+    uint32_t pos = 0;
+    const auto u32 = [&file](uint32_t& v) { return file.read(&v, sizeof(v)) == static_cast<int>(sizeof(v)); };
+    bool ok = Storage.openFileForRead("BMC", cachePath + bookBinFile, file) &&
+              file.seek(lutOffset + sizeof(uint32_t) * first) && u32(pos) && file.seek(pos);
+    // Spine entry: href length, href, cumulative size, TOC index.
+    for (int i = 0; ok && i < SIZE_WINDOW && first + i < spineCount; i++) {
+      uint32_t hrefLen = 0;
+      ok = u32(hrefLen) && file.seek(file.position() + hrefLen) && u32(window[i]) &&
+           file.seek(file.position() + sizeof(int16_t));
+    }
+    if (!ok) return windowStarts[index / SIZE_WINDOW];
     windowFirst = first;
   }
   return window[index - first];
