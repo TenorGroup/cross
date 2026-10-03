@@ -136,6 +136,7 @@ add_subdirectory(ota_clean_boot)
 add_subdirectory(silent_boot_paint)
 
 add_subdirectory(sd_font_lifetime)
+add_subdirectory(shed_parser)
 
 add_subdirectory(storage_recovery)
 add_subdirectory(hal_storage_trace)

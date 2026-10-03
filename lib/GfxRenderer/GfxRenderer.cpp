@@ -2255,7 +2255,10 @@ int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint3
                             const EpdFontFamily::Style style, const int8_t tracking) const {
   const auto fontIt = fontMap.find(fontId);
   if (fontIt == fontMap.end()) return 0;
-  const int kernFP = fontIt->second.getKerning(leftCp, rightCp, style);      // 4.4 fixed-point
+  // A SD font's kern tables are those of the page last prewarmed, so what they answer follows cache
+  // residency: a shed, or a cold start, would lay the same chapter out differently. Layout measures
+  // an SD font without kerning, as its advance table does; drawing kerns from its own page's tables.
+  const int kernFP = sdCardFonts_.count(fontId) ? 0 : fontIt->second.getKerning(leftCp, rightCp, style);  // 4.4 fixed-point
   return fp4::toPixel(kernFP) + trackingBetween(leftCp, rightCp, tracking);  // snap 4.4 fixed-point to nearest pixel
 }
 
