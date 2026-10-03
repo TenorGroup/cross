@@ -287,13 +287,13 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_LEFT] = StrId::STR_DIR_LEFT;
 
     const bool hasTilt = halTiltSensor.isAvailable();
-    // 82 unconditional descriptors (70 plus the double-click power light, back-short-to-
+    // 83 unconditional descriptors (71 plus the double-click power light, back-short-to-
     // browser, three home button shortcuts, clockTimezone/clockDst/clockShowInHeader,
     // libraryUseMetadata and the touch page-turn gesture pair - see RESOLUTION.md, and the starting up notice); the
     // IMU branch adds the Gestures tab: reader, tab and row tilt, the two flick strengths,
     // the two hard shake rows, face down, face up and the three double taps.
     // Cold-catalog tests cover each capability branch and the IMU variant.
-    constexpr size_t fixedCount = 82
+    constexpr size_t fixedCount = 83
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
                                   + 1
 #endif
@@ -550,6 +550,11 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           {StrId::STR_FMT_AUTHOR_TITLE, StrId::STR_FMT_TITLE_AUTHOR, StrId::STR_FMT_TITLE},
                           "opdsFilenameFormat"));
 
+    // The sleep screen tenor/ugly took over: persisted only, category-less (so not on the device) and kept
+    // off the web page by getSettingsList().
+    v.push_back(SettingInfo::Value(StrId::STR_UI_SHELL, &CrossPointSettings::uiShellSleepMemo,
+                           {0, CrossPointSettings::SLEEP_SCREEN_MODE_COUNT, 1}, "uiShellSleepMemo"));
+
     // Frontlight quick-panel state: persisted and web-exposed, but hidden
     // from the on-device Settings screen because the swipe panel owns it.
     v.push_back(SettingInfo::Value(StrId::STR_BRIGHTNESS, &CrossPointSettings::frontlightBrightness, {0, 100, 5},
@@ -750,7 +755,10 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
   std::vector<SettingInfo> v = getBaseSettingsList();
   v.erase(std::remove_if(v.begin(), v.end(), settingHiddenOnThisBoard), v.end());
   // The web page saves values without shell::changed(), so the shell is chosen on the device only.
-  v.erase(std::remove_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.valuePtr == &CrossPointSettings::uiShell; }),
+  v.erase(std::remove_if(v.begin(), v.end(),
+                         [](const SettingInfo& s) {
+                           return s.valuePtr == &CrossPointSettings::uiShell || s.valuePtr == &CrossPointSettings::uiShellSleepMemo;
+                         }),
           v.end());
   if (registry && registry->getFamilyCount() > 0) {
     auto it = std::find_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.nameId == StrId::STR_FONT_FAMILY; });

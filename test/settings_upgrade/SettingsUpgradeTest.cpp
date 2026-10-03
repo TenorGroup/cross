@@ -235,6 +235,13 @@ int runShell() {
   SETTINGS.uiShell = 0;  // a load starts from the struct default, as a boot does
   settings_test_io::setNextRead(before);
   ok = expect(SETTINGS.loadFromFile() && SETTINGS.uiShell == 0, "a value nothing wrote is tenor/cross") && ok;
+  // The sleep screen the shell took over is remembered across a restart; none taken is 0.
+  ok = expect(SETTINGS.uiShellSleepMemo == 0, "no memo key is nothing taken") && ok;
+  ok = expect(saved()["uiShellSleepMemo"] == 0, "and the next save writes it") && ok;
+  before["uiShellSleepMemo"] = 9;
+  settings_test_io::setNextRead(before);
+  ok = expect(SETTINGS.loadFromFile() && SETTINGS.uiShellSleepMemo == 9, "a stored memo loads") && ok;
+  ok = expect(saved()["uiShellSleepMemo"] == 9, "and is saved back") && ok;
   std::printf("settings_upgrade=shell:%s\n", ok ? "GREEN" : "RED");
   return ok ? 0 : 1;
 }

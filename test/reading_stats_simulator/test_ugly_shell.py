@@ -126,6 +126,19 @@ class UglyShellTest(unittest.TestCase):
         self.assertEqual(saved['uiShell'], 0)
         self.assertEqual(saved['sleepScreen'], 10, 'the doodle gives way to the quotation')
 
+    def test_the_way_out_gives_back_the_sleep_screen_the_way_in_took(self):
+        # Three screens a user can have on arrival: the tenor picture, the quotation, one picked by hand.
+        for before in (8, 10, 3):
+            card = self.card(shell=0, sleepScreen=before)
+            card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;6000:QUIT')
+            inside = card.settings()
+            self.assertEqual(inside['uiShell'], 1)
+            self.assertEqual(inside['sleepScreen'], 11 if before != 3 else 3)
+            card.run('1000:LEFT;1800:DOWN;2400:CONFIRM;3200:LEFT;3600:LEFT;4400:CONFIRM;7000:QUIT')
+            outside = card.settings()
+            self.assertEqual(outside['uiShell'], 0)
+            self.assertEqual(outside['sleepScreen'], before, 'sleep screen %d before the visit' % before)
+
     def test_a_sleep_screen_chosen_by_hand_survives_a_change_of_shell(self):
         card = self.card(shell=0, sleepScreen=3)  # the cover
         card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;6000:QUIT')

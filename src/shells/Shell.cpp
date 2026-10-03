@@ -16,11 +16,22 @@ std::unique_ptr<Activity> makeHome(GfxRenderer& renderer, MappedInputManager& ma
 
 void changed() {
   auto& settings = SETTINGS;
+  using S = CrossPointSettings;
   // The two sleep screens tenor/cross ships with (the tenor picture, and the quotation the first-run setup
-  // picks) give way to the doodle; leaving, the doodle gives way to the quotation. Any other choice stays.
-  const bool shipped = settings.sleepScreen == CrossPointSettings::TENOR || settings.sleepScreen == CrossPointSettings::QUOTE;
-  if (isUgly() && shipped) settings.sleepScreen = CrossPointSettings::UGLY;
-  if (!isUgly() && settings.sleepScreen == CrossPointSettings::UGLY) settings.sleepScreen = CrossPointSettings::QUOTE;
+  // picks) give way to the doodle, and the one given way is remembered; leaving, it comes back. A doodle
+  // with nothing remembered gives way to the quotation. Any other choice stays.
+  if (isUgly()) {
+    if (settings.sleepScreen == S::TENOR || settings.sleepScreen == S::QUOTE) {
+      settings.uiShellSleepMemo = static_cast<uint8_t>(settings.sleepScreen + 1);
+      settings.sleepScreen = S::UGLY;
+    }
+  } else {
+    if (settings.sleepScreen == S::UGLY) {
+      const uint8_t memo = settings.uiShellSleepMemo ? static_cast<uint8_t>(settings.uiShellSleepMemo - 1) : S::QUOTE;
+      settings.sleepScreen = memo == S::TENOR || memo == S::QUOTE ? memo : S::QUOTE;
+    }
+    settings.uiShellSleepMemo = 0;
+  }
   settings.saveToFile();
   activityManager.goHome(HomeMenuItem::RECENT_CONTINUE);
 }
