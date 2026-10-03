@@ -75,6 +75,7 @@ void Diary::buildSentence() {
 
 void Diary::onEnter() {
   Screen::onEnter();
+  const uint32_t started = millis();
   ensureFonts(renderer);
   const auto books = homerows::recent(1);
   hasBook = !books.empty();
@@ -101,6 +102,7 @@ void Diary::onEnter() {
   words[wordCount++] = SWAP;
   if (deskAvailable(renderer)) words[wordCount++] = DESK;
   selected = 0;
+  LOG_INF("UGLY", "Diary prepare=%lums", static_cast<unsigned long>(millis() - started));
   requestUpdate();
 }
 

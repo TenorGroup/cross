@@ -40,11 +40,13 @@ For v1.0.1, see the [licence archive supplied with that release](https://github.
 - WebSockets: retain its LGPL licence and libb64 notices in `licenses/dependencies/WebSockets/`.
 - FreeType 2.13.2: dual-licensed; the FreeType Project Licence is included with its required attribution. Portions of this software are copyright the FreeType Project (www.freetype.org). All rights reserved.
 - FreeInkBook's embedded expat, miniz, pngle and hyphenation patterns retain their notices in the SDK tree.
-- Noto Sans, Noto Serif, Noto Sans Arabic, Noto Sans Hebrew, Noto Sans SC, Geist, Be Vietnam Pro and OpenDyslexic: retain the supplied SIL Open Font License texts. Noto Sans SC's licence is in `licenses/fonts/`. Other family notices accompany their source fonts.
+- Noto Sans, Noto Serif, Noto Sans Arabic, Noto Sans Hebrew, Noto Sans SC, Geist, Be Vietnam Pro, Mansalva and OpenDyslexic: retain the supplied SIL Open Font License texts. Noto Sans SC's licence is in `licenses/fonts/`. Other family notices accompany their source fonts.
 - Ubuntu fonts: retain the Ubuntu Font Licence in the font source directory.
 - ESP-IDF, Arduino-ESP32 and platform toolchain components are fetched by PlatformIO and retain their package licences. Their licences also apply to redistributable portions incorporated in firmware.
 
 The complete licence obligations of a compiled image depend on its linked components. Firmware built with the bundled wolfSSL uses the GPLv3 distribution route; the root MIT licence does not relicense those dependencies. Release source archives must include the linked sources, build scripts and configuration described in the release manifest. Historical binaries require a separate source/version match.
+
+Mansalva (copyright 2022 The Mansalva Project Authors, SIL Open Font License 1.1) is the handwriting face of the tenor/ugly shell. Its source font and licence are in `lib/EpdFont/builtinFonts/source/Mansalva/`, and `scripts/ugly/gen_font.py` bakes it, one fixed variant per character, into `src/shells/ugly/fonts/`.
 
 The UI font sources used for v1.0.51 are retained under `lib/EpdFont/builtinFonts/source/Geist/` and `lib/EpdFont/builtinFonts/source/BeVietnamPro/`, each with its SIL Open Font License text. `Geist/ui-source-manifest.json` records the source hashes for both families. The release licence archive includes these source fonts and preserves the original family notices.
 
