@@ -41,9 +41,46 @@ bool longPressValuesMatch(const std::vector<SettingInfo>& catalog, const bool ha
   std::vector<StrId> expected{StrId::STR_KOSYNC,     StrId::STR_DISABLED,    StrId::STR_BOOKMARK_OPTION,
                               StrId::STR_DICTIONARY, StrId::STR_READER_MENU, StrId::STR_FILE_TRANSFER};
   if (hasImu) expected.push_back(StrId::STR_TILT_PAGE_TURN);
+  expected.push_back(StrId::STR_QUOTES_SAVE_ACTION);
   return longPress->enumValues == expected &&
          expected.size() == (hasImu ? CrossPointSettings::LONG_PRESS_MENU_FUNCTION_COUNT
                                     : CrossPointSettings::LONG_PRESS_MENU_FUNCTION_COUNT - 1U);
+}
+
+// Label of each stored Confirm-hold number (0-7), whatever list position a board shows it at.
+constexpr StrId LONG_PRESS_LABELS[] = {StrId::STR_KOSYNC,     StrId::STR_DISABLED,    StrId::STR_BOOKMARK_OPTION,
+                                       StrId::STR_DICTIONARY, StrId::STR_READER_MENU, StrId::STR_FILE_TRANSFER,
+                                       StrId::STR_TILT_PAGE_TURN, StrId::STR_QUOTES_SAVE_ACTION};
+
+// Every stored Confirm-hold number reads back as itself and saves as itself; the list shows its label at the
+// position the board offers it. Without an IMU the tilt number (6) is not offered and falls back to Off, while
+// Save quotation (7) takes list position 6 and is still stored as 7.
+bool longPressStoreKept(const std::vector<SettingInfo>& catalog, const bool hasImu) {
+  const SettingInfo* longPress = findSetting(catalog, "longPressMenuFunction");
+  if (!expect(longPress && longPress->valueGetter && longPress->valueSetter, "Confirm-hold row maps list position to number")) {
+    return false;
+  }
+  bool ok = true;
+  for (int stored = 0; stored < 10; ++stored) {
+    JsonDocument in;
+    in["tenorPresetVersion"] = CrossPointSettings::TENOR_PRESET_VERSION;
+    in["longPressMenuFunction"] = stored;
+    SETTINGS.longPressMenuFunction = CrossPointSettings::LP_MENU_DISABLED;
+    ok = expect(SETTINGS.fromJson(in.as<JsonVariantConst>()), "Confirm-hold JSON loads") && ok;
+    const bool offered = stored < 8 && (hasImu || stored != 6);
+    const uint8_t want = offered ? static_cast<uint8_t>(stored) : CrossPointSettings::LP_MENU_DISABLED;
+    ok = expect(SETTINGS.longPressMenuFunction == want, "stored Confirm-hold number is kept, an unoffered one falls to Off") && ok;
+    JsonDocument out;
+    SETTINGS.toJson(out);
+    ok = expect(out["longPressMenuFunction"].as<int>() == want, "Confirm-hold number saves as the number it holds") && ok;
+    const uint8_t position = longPress->valueGetter();
+    ok = expect(position < longPress->enumValues.size() && longPress->enumValues[position] == LONG_PRESS_LABELS[want],
+                "list position shows the label of the stored function") &&
+         ok;
+    longPress->valueSetter(position);
+    ok = expect(SETTINGS.longPressMenuFunction == want, "choosing the shown position stores the same number") && ok;
+  }
+  return ok;
 }
 
 // A short press wakes the device only where a short press also puts it to sleep.
@@ -408,6 +445,7 @@ int main(int argc, char** argv) {
   bool ok = expect(catalog.size() == (hasImu ? 92U : 80U), "X3 descriptor count");
   ok = expect(longPressValuesMatch(catalog, hasImu), "Confirm-hold list shows Reader menu and appends the new actions") &&
        ok;
+  ok = longPressStoreKept(catalog, hasImu) && ok;
 
   if (!hasImu) {
     ok = expect(readerTilt == nullptr && menuTilt == nullptr && rowTilt == nullptr && strengthH == nullptr &&

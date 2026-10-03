@@ -173,9 +173,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   };
 
   // Long-press Confirm action while reading an EPUB. The setting cycles through these values.
-  // Persisted in settings.json by index: any new function (e.g. dictionary, bookmark) MUST use a
-  // value >= 2 and be appended at the END of the enumValues array in SettingsList.h, otherwise the
-  // stored indices shift and existing saves are silently misinterpreted.
+  // Persisted in settings.json by number: a new function takes the next number after the last one and
+  // is appended at the END of this enum, otherwise stored numbers shift and existing saves are silently
+  // misinterpreted. The row in SettingsList.h maps list position to number (buildLongPressMenuSetting).
   enum LONG_PRESS_MENU_FUNCTION {
     LP_MENU_KOSYNC = 0,
     LP_MENU_DISABLED = 1,
@@ -183,9 +183,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LP_MENU_DICTIONARY = 3,
     LP_MENU_READER_MENU = 4,
     LP_MENU_FILE_TRANSFER = 5,
-    // Last on purpose: boards without an IMU drop it from the list without
-    // shifting any stored index.
+    // Boards without an IMU leave this one out of the list; its number stays reserved.
     LP_MENU_TILT_PAGE_TURN = 6,
+    // Runs the reader menu's Save quotation (the quote selector). Appended after the tilt toggle, so
+    // every earlier save reads as before; the list shows it at position 6 on a board without an IMU.
+    LP_MENU_SAVE_QUOTE = 7,
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
 

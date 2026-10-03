@@ -188,14 +188,30 @@ inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& di
   return s;
 }
 
-// Indexed by CrossPointSettings::LONG_PRESS_MENU_FUNCTION. The tilt toggle is
-// last, so a board without an IMU drops it without shifting a stored index.
-inline std::vector<StrId> buildLongPressMenuValues(const bool hasTilt) {
-  static constexpr StrId VALUES[] = {StrId::STR_KOSYNC,      StrId::STR_DISABLED,      StrId::STR_BOOKMARK_OPTION,
-                                     StrId::STR_DICTIONARY,  StrId::STR_READER_MENU,   StrId::STR_FILE_TRANSFER,
-                                     StrId::STR_TILT_PAGE_TURN};
-  static_assert(std::size(VALUES) == CrossPointSettings::LONG_PRESS_MENU_FUNCTION_COUNT, "one label per function");
-  return {VALUES, VALUES + std::size(VALUES) - (hasTilt ? 0 : 1)};
+// Hold-Select row. The list shows the functions this board offers, in stored-number order; what is saved is
+// the number (CrossPointSettings.cpp saves and loads it by hand, like the dictionary). A board without an IMU
+// leaves the tilt toggle out, so there Save quotation sits at list position 6 and is still stored as 7.
+inline SettingInfo buildLongPressMenuSetting(const bool hasTilt) {
+  static constexpr StrId LABELS[] = {StrId::STR_KOSYNC,     StrId::STR_DISABLED,        StrId::STR_BOOKMARK_OPTION,
+                                     StrId::STR_DICTIONARY, StrId::STR_READER_MENU,     StrId::STR_FILE_TRANSFER,
+                                     StrId::STR_TILT_PAGE_TURN, StrId::STR_QUOTES_SAVE_ACTION};
+  static_assert(std::size(LABELS) == CrossPointSettings::LONG_PRESS_MENU_FUNCTION_COUNT, "one label per function");
+  std::vector<StrId> offered;
+  for (uint8_t number = 0; number < std::size(LABELS); ++number) {
+    if (hasTilt || number != CrossPointSettings::LP_MENU_TILT_PAGE_TURN) offered.push_back(LABELS[number]);
+  }
+  const uint8_t skipped = hasTilt ? 0 : 1;  // list positions after the tilt number sit one lower
+  return SettingInfo::DynamicEnum(
+      StrId::STR_LONG_PRESS_MENU, std::move(offered),
+      [skipped]() -> uint8_t {
+        const uint8_t number = SETTINGS.longPressMenuFunction;
+        return number > CrossPointSettings::LP_MENU_TILT_PAGE_TURN ? number - skipped : number;
+      },
+      [skipped](const uint8_t position) {
+        SETTINGS.longPressMenuFunction =
+            position >= CrossPointSettings::LP_MENU_TILT_PAGE_TURN ? position + skipped : position;
+      },
+      "longPressMenuFunction", StrId::STR_CAT_CONTROLS);
 }
 
 // Tenor shows the two visible corner layouts. Legacy value 0 reads as right,
@@ -445,8 +461,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
                            StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION},
                           "longPressButtonBehavior", StrId::STR_CAT_CONTROLS));
-    v.push_back(SettingInfo::Enum(StrId::STR_LONG_PRESS_MENU, &CrossPointSettings::longPressMenuFunction,
-                          buildLongPressMenuValues(hasTilt), "longPressMenuFunction", StrId::STR_CAT_CONTROLS));
+    v.push_back(buildLongPressMenuSetting(hasTilt));
     // X4 Pro only; hidden elsewhere by settingHiddenOnThisBoard (#3089).
     v.push_back(SettingInfo::Toggle(StrId::STR_DBL_CLICK_PWR_LIGHT, &CrossPointSettings::doubleClickPwrLight,
                             "doubleClickPwrLight", StrId::STR_CAT_CONTROLS));

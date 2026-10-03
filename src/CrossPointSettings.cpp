@@ -122,6 +122,9 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // option lists depend on the SD font registry), so the generic loop skips them.
   doc["fontFamily"] = fontFamily;
   doc["fontSize"] = fontPointSize;
+  // Hold-Select function - list position differs from the number on a board without an IMU, so the
+  // row in SettingsList is dynamic and the generic loop skips it. Saved as the number.
+  doc["longPressMenuFunction"] = longPressMenuFunction;
   // SD card font family name - not in SettingsList, save manually
   doc["sdFontFamilyName"] = sdFontFamilyName;
   // Dictionary folder name - uses dynamic getter/setter in SettingsList, save manually
@@ -401,6 +404,13 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // Font family - uses dynamic getter/setter in SettingsList so the generic loop skips it.
   const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
   fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);
+  // Hold-Select function - dynamic row too. A number this board does not offer (the tilt toggle without an IMU,
+  // or one from a newer file) keeps the default, as the generic loop's clamp did.
+  const uint8_t storedLongPress = doc["longPressMenuFunction"] | longPressMenuFunction;
+  if (storedLongPress < LONG_PRESS_MENU_FUNCTION_COUNT &&
+      (halTiltSensor.isAvailable() || storedLongPress != LP_MENU_TILT_PAGE_TURN)) {
+    longPressMenuFunction = storedLongPress;
+  }
   if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
       !doc["longPressMenuFunction"].isNull()) {
     static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync, HomeButtonAction::Ignore,

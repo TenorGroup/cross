@@ -1399,6 +1399,10 @@ void EpubReaderActivity::loop() {
       case CrossPointSettings::LP_MENU_TILT_PAGE_TURN:
         toggleTiltFromReader();
         return;
+      case CrossPointSettings::LP_MENU_SAVE_QUOTE:
+        // What the reader menu's Save quotation runs: the quote selector on this page.
+        openDictionaryWordSelect(true);
+        return;
       case CrossPointSettings::LP_MENU_DISABLED:
       default:
         break;
@@ -1958,6 +1962,7 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
     case CrossPointSettings::LP_MENU_READER_MENU:
     case CrossPointSettings::LP_MENU_FILE_TRANSFER:
     case CrossPointSettings::LP_MENU_TILT_PAGE_TURN:
+    case CrossPointSettings::LP_MENU_SAVE_QUOTE:
       return ReaderUtils::BOOKMARK_HOLD_MS;
     case CrossPointSettings::LP_MENU_KOSYNC:
       return KOREADER_STORE.hasCredentials() ? ReaderUtils::GO_HOME_MS : 0;
