@@ -321,7 +321,7 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   constexpr int MAX_TABS = 5;
   fui::TabBarProps tabProps;
   tabProps.action = ACTION_TAB;
-  tabProps.iconSize = 32;
+  tabProps.iconSize = 40;
   tabProps.inputMask = fui::InputTouch;
   // Pill shape and label size are theme-driven. Lyra uses equal-width slots
   // with small labels so wide text (e.g. "Controls") still fits at large UI scales.

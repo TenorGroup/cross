@@ -63,8 +63,8 @@ const char* EpubReaderMenuActivity::tabLabel(const int index) const { return I18
 
 freeink::ui::BitmapRef EpubReaderMenuActivity::tabIcon(const int index) const {
   if (index < 0 || index >= readermenu::TAB_COUNT) return {};
-  static const freeink::Icon* const icons[] = {&icon_tenor_home_favorites_32, &icon_tenor_reader_position_32,
-                                               &icon_tenor_reader_reading_32, &icon_tenor_reader_tools_32};
+  static const freeink::Icon* const icons[] = {&icon_tenor_home_favorites_40, &icon_tenor_reader_position_40,
+                                               &icon_tenor_reader_reading_40, &icon_tenor_reader_tools_40};
   freeink::ui::BitmapRef result;
   result.data = icons[index]->bits;
   result.width = icons[index]->w;

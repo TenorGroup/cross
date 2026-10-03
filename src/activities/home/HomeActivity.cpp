@@ -129,9 +129,9 @@ HomeActivity::HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInpu
 freeink::ui::BitmapRef HomeActivity::tabIcon(const int index) const {
   // freeink::Icon dung the Mask1: bit 1 la de trong, bit 0 la ve muc. Doi sang BitmapRef
   // ngay tai cho, vi day la noi duy nhat can phep doi nay.
-  static const freeink::Icon* const ANH[TAB_COUNT] = {&icon_tenor_home_recent_32, &icon_tenor_home_folder_32,
-                                                      &icon_tenor_home_stats_32, &icon_tenor_home_settings_32,
-                                                      &icon_tenor_home_favorites_32};
+  static const freeink::Icon* const ANH[TAB_COUNT] = {&icon_tenor_home_recent_40, &icon_tenor_home_folder_40,
+                                                      &icon_tenor_home_stats_40, &icon_tenor_home_settings_40,
+                                                      &icon_tenor_home_favorites_40};
   freeink::ui::BitmapRef b;
   if (index < 0 || index >= TAB_COUNT) return b;
   const auto* icon = ANH[index];

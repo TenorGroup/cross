@@ -1,0 +1,238 @@
+"""Icon set for tenor/cross (round set, 04/10/2026), drawn by net.py.
+
+Rounding rules (grid 24, radius measured at the stroke CENTRE):
+- BO_LON 3: corners of big shapes (side 8 or more).
+- BO_VUA 2: corners of small shapes, tab shoulders, arrow and chevron tips.
+- BO_LOM 1.5: concave joints (tab foot, ribbon notch, book spine), so the inside of the stroke is round too.
+Stroke ends and joints are always round. Grid 24, drawing area 20 (margin 2).
+"""
+import math
+from net import G, smin, sd_rrect
+
+BO_LON, BO_VUA, BO_LOM = 3, 2, 1.5
+H = {}
+
+
+def reg(name, vi):
+    def d(f):
+        H[name] = (vi, f)
+        return f
+    return d
+
+
+@reg('gan_day', 'Gan day: dong ho')
+def _(g):
+    g.circle(12, 12, 9.5)
+    g.rpoly((12, 7), (12, 12), (15.5, 14.5), r=BO_LOM)
+
+
+def heart_pts(cx=12, top=4, tip=21.2, half=10, lob=5.4):
+    """Vien tim: 2 thuy tron, 2 canh thang tiep tuyen xuong mui. Tra (diem, ban kinh bo tung dinh)."""
+    lx, rx = cx - half + lob, cx + half - lob
+    cy = top + lob
+    T = (cx, tip)
+
+    def tang(ox, side):                      # diem tiep tuyen tu mui toi vong thuy, phia ngoai
+        dx, dy = T[0] - ox, T[1] - cy
+        d = math.hypot(dx, dy)
+        a = math.atan2(dy, dx) + side * math.acos(lob / d)
+        return a
+    aL = tang(lx, 1)
+    aR = tang(rx, -1)
+    aCL = -math.acos((cx - lx) / lob)        # cho thuy trai cham truc giua (khe tren)
+    pts, rs = [], []
+    # thuy trai: tu tiep tuyen duoi, vong qua trai, len dinh, toi khe
+    a1 = aCL
+    while a1 < aL:
+        a1 += 2 * math.pi
+    for k in range(25):
+        a = aL + (a1 - aL) * k / 24
+        pts.append((lx + lob * math.cos(a), cy + lob * math.sin(a)))
+        rs.append(0)
+    rs[-1] = 1.6                               # khe giua bo nhe
+    aCR = math.pi + math.acos((cx - lx) / lob)
+    b1 = aR
+    while b1 < aCR:
+        b1 += 2 * math.pi
+    for k in range(1, 25):
+        a = aCR + (b1 - aCR) * k / 24
+        pts.append((rx + lob * math.cos(a), cy + lob * math.sin(a)))
+        rs.append(0)
+    pts.append(T)
+    rs.append(4)                               # mui tim tron
+    return pts, rs
+
+
+@reg('yeu_tim', 'Yeu thich: tim')
+def _(g):
+    g.snap = False
+    p, r = heart_pts()
+    g.rpoly(*p, r=r, closed=True)
+    g.snap = True
+
+
+@reg('thu_muc_hop', 'Thu muc C: tui lien tab (hop mem)')
+def _(g):
+    def f(x, y):
+        body = sd_rrect(x, y, 3, 7.5, 21, 19.5, BO_LON)
+        tab = sd_rrect(x, y, 3, 4, 12, 10, BO_VUA)
+        return smin(body, tab, 2.5)
+    g.sdf(f)
+
+
+@reg('cai_dat', 'Cai dat: 2 thanh truot, num o dau')
+def _(g):
+    g.line((3, 7), (12, 7))
+    g.circle(18, 7, 3)
+    g.line((12, 17), (21, 17))
+    g.circle(6, 17, 3)
+
+
+@reg('thong_ke', 'Thong ke: 3 cot')
+def _(g):
+    g.line((5, 20), (5, 14))
+    g.line((12, 20), (12, 9))
+    g.line((19, 20), (19, 4))
+
+
+@reg('vi_tri', 'Vi tri: ruy bang')
+def _(g):
+    g.rpoly((6.5, 3), (17.5, 3), (17.5, 21), (12, 16.5), (6.5, 21),
+            r=[BO_VUA, BO_VUA, BO_LOM, BO_LOM, BO_LOM], closed=True)
+
+
+@reg('doc', 'Doc: sach mo')
+def _(g):
+    g.rpoly((12, 6.5), (21, 4.5), (21, 18.5), (12, 20), (3, 18.5), (3, 4.5),
+            r=[BO_LON, BO_VUA, BO_VUA, BO_LON, BO_VUA, BO_VUA], closed=True)
+    g.line((12, 7.5), (12, 19.5))
+
+
+@reg('cong_cu', 'Cong cu A: luoi 4 o bo')
+def _(g):
+    for x, y in ((3, 3), (13.5, 3), (3, 13.5), (13.5, 13.5)):
+        g.rrect(x, y, x + 7.5, y + 7.5, BO_VUA)
+
+
+@reg('tep_sach', 'Tep sach: sach dong')
+def _(g):
+    g.rpoly((7.5, 21.5), (19, 21.5), (19, 2.5), (5, 2.5), (5, 19), r=[0, BO_VUA, BO_VUA, BO_LON, 0])
+    g.arc(7.5, 19, 2.5, 90, 270)
+    g.line((7.5, 16.5), (19, 16.5))
+
+
+def page(g, x0=5, y0=2.5, x1=19, y1=21.5, fold=5.5):
+    g.rpoly((x1 - fold, y0), (x0, y0), (x0, y1), (x1, y1), (x1, y0 + fold),
+            r=[BO_LOM, BO_LON, BO_LON, BO_LON, BO_LOM], closed=True)
+    g.rpoly((x1 - fold, y0 + 0.5), (x1 - fold, y0 + fold), (x1 - 0.5, y0 + fold), r=BO_VUA)
+
+
+@reg('tep_chu', 'Tep chu: trang co dong')
+def _(g):
+    page(g)
+    g.line((9, 13), (15, 13))
+    g.line((9, 17), (15, 17))
+
+
+@reg('tep_anh', 'Tep anh')
+def _(g):
+    g.rrect(3, 4, 21, 20, BO_LON)
+    g.circle(8.5, 9.5, 1.6)
+    g.rpoly((3.5, 18.5), (10, 12), (15.5, 17.5), (21, 13), r=BO_VUA)
+
+
+@reg('tep', 'Tep khac: trang gap goc')
+def _(g):
+    page(g)
+
+
+@reg('wifi', 'Ket noi mang: Wi-Fi')
+def _(g):
+    g.arc(12, 20, 15.5, 222, 318)
+    g.arc(12, 20, 10.5, 225, 315)
+    g.arc(12, 20, 5.5, 230, 310)
+    g.dot(12, 20, 1.9)
+
+
+@reg('thu_vien', 'Calibre: ke sach')
+def _(g):
+    g.line((5, 3.5), (5, 20.5))
+    g.line((10, 3.5), (10, 20.5))
+    g.snap = False
+    g.rpoly((14, 6), (17.6, 5), (21.6, 19.5), (18, 20.5), r=BO_LOM, closed=True)
+    g.snap = True
+
+
+@reg('diem_phat', 'Tao diem phat')
+def _(g):
+    g.dot(12, 12, 2.2)
+    g.arc(12, 12, 5.5, 135, 225)
+    g.arc(12, 12, 5.5, 315, 45)
+    g.arc(12, 12, 10, 140, 220)
+    g.arc(12, 12, 10, 320, 40)
+
+
+def khay(g):
+    g.rpoly((3.5, 14), (3.5, 20.5), (20.5, 20.5), (20.5, 14), r=BO_LON)
+
+
+@reg('tai_xuong', 'Lay ban may chu')
+def _(g):
+    g.line((12, 3.5), (12, 15))
+    g.rpoly((7, 10), (12, 15), (17, 10), r=BO_LOM)
+    khay(g)
+
+
+@reg('tai_len', 'Day ban may len')
+def _(g):
+    g.line((12, 3.5), (12, 15))
+    g.rpoly((7, 8.5), (12, 3.5), (17, 8.5), r=BO_LOM)
+    khay(g)
+
+
+@reg('tim', 'Tim kiem: kinh lup')
+def _(g):
+    g.circle(10.5, 10.5, 7)
+    g.line((15.5, 15.5), (20.5, 20.5))
+
+
+@reg('muc_luc', 'Muc luc')
+def _(g):
+    for y in (6, 12, 18):
+        g.dot(4.5, y, 1.9)
+        g.line((9.5, y), (20.5, y))
+
+
+@reg('chu', 'Chu: Aa')
+def _(g):
+    g.rpoly((2.5, 19.5), (7.25, 4.5), (12, 19.5), r=BO_VUA)
+    g.line((4.3, 14), (10.2, 14))
+    g.circle(17.9, 15.6, 3.3)
+    g.line((21.2, 12.3), (21.2, 19.5))
+
+
+@reg('them', 'Them: 3 cham')
+def _(g):
+    for x in (5, 12, 19):
+        g.dot(x, 12, 2)
+
+
+@reg('lui', 'Buoc lui')
+def _(g):
+    g.rpoly((15, 4.5), (7.5, 12), (15, 19.5), r=BO_VUA)
+
+
+@reg('toi', 'Buoc toi')
+def _(g):
+    g.rpoly((9, 4.5), (16.5, 12), (9, 19.5), r=BO_VUA)
+
+
+@reg('trang_khuyet', 'Mat trang (man ngu), sung tron')
+def _(g):
+    k = 2.4                                    # co vao k roi no ra k: hai sung thanh cung ban kinh k
+
+    def f(x, y):
+        d1 = math.hypot(x - 12, y - 12) - 9.5
+        d2 = math.hypot(x - 16.5, y - 7.5) - 7.5
+        return max(d1 + k, -(d2 - k)) - k
+    g.sdf(f)

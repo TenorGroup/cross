@@ -12,6 +12,8 @@
 #include "components/UIThemeTokens.h"
 #include "components/icons/customListIcons.h"
 #include "components/icons/listIcons.h"
+#include "components/icons/tenorRowIcons.h"
+#include "components/icons/tenorTransferIcons.h"
 
 // Shared glue for activities hosting a FreeInkApp: the font-bound render
 // target and the touch snapshot FreeInkApp routing consumes.
