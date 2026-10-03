@@ -37,6 +37,7 @@
 #include "components/UITheme.h"
 #include "components/X3BrandCodec.h"
 #include "components/X3BrandScreen.h"
+#include "shells/ugly/UglySleep.h"
 #include "components/themes/TenorRadius.h"
 #include "fontIds.h"
 #include "images/MoonIcon.h"
@@ -779,6 +780,9 @@ void SleepActivity::onEnter() {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::QUOTE):
       renderQuoteSleepScreen();
       break;
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::UGLY):
+      renderUglySleepScreen();
+      break;
     default:
       renderDefaultSleepScreen();
       break;
@@ -817,6 +821,28 @@ void SleepActivity::renderTenorSleepScreen() const {
   else
     renderDefaultSleepScreen();
   LOG_INF("BRAND", "sleep folded ready=%u visible=%lu ms", ready, static_cast<unsigned long>(millis() - started));
+  renderer.setOrientation(orientation);
+}
+
+// The tenor/ugly sleep screen: a doodle and one line of abuse, folded to black and white ahead of time
+// (scripts/ugly/gen_art.py), inflated straight into the framebuffer like the tenor/cross fallback.
+void SleepActivity::renderUglySleepScreen() const {
+  releaseSdFontCachesForDecode(renderer);
+  if (!gpio.deviceIsX3()) {
+    renderDefaultSleepScreen();
+    return;
+  }
+  // Passes owed before the frame, run first: the frame is rebuilt in a few milliseconds.
+  SleepGrayPlanes::settle(renderer);
+  const auto orientation = renderer.getOrientation();
+  renderer.setOrientation(GfxRenderer::Portrait);
+  const uint32_t started = millis();
+  const bool ready = ugly::drawSleep(renderer);
+  if (ready)
+    showSleepFrame(renderer, HalDisplay::FULL_REFRESH);
+  else
+    renderDefaultSleepScreen();
+  LOG_INF("UGLY", "sleep ready=%u visible=%lu ms", ready, static_cast<unsigned long>(millis() - started));
   renderer.setOrientation(orientation);
 }
 

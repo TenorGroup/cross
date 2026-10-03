@@ -22,6 +22,7 @@
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
+#include "shells/Shell.h"
 #include "library/LibraryListActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/UsbDriveActivity.h"
@@ -541,7 +542,8 @@ void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::
 }
 
 void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefresh) {
-  if (initialMenuItem == HomeMenuItem::NONE) initialMenuItem = homeMenuOrigin();
+  // The saved cursor of the tenor/cross Home means nothing to another shell.
+  if (initialMenuItem == HomeMenuItem::NONE && !shell::isUgly()) initialMenuItem = homeMenuOrigin();
   if (initialMenuItem == HomeMenuItem::NONE && currentActivity) {
     const auto& activityName = currentActivity->name;
     if (activityName == "FileBrowser") {
@@ -556,7 +558,7 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
       initialMenuItem = HomeMenuItem::SETTINGS_MENU;
     }
   }
-  replaceActivity(std::make_unique<HomeActivity>(renderer, mappedInput, initialMenuItem, cleanInitialRefresh));
+  replaceActivity(shell::makeHome(renderer, mappedInput, initialMenuItem, cleanInitialRefresh));
 }
 void ActivityManager::goToCrashReport() { replaceActivity(std::make_unique<CrashActivity>(renderer, mappedInput)); }
 
@@ -746,7 +748,7 @@ bool RenderLock::peek() { return xQueuePeek(activityManager.renderingMutex, NULL
 #ifdef TENOR_UI_ACCEPTANCE
 void ActivityManager::stepHomeForTest(int direction) {
   RenderLock lock;
-  if (currentActivity && currentActivity->isHomeActivity())
+  if (currentActivity && currentActivity->name == "Home")
     static_cast<HomeActivity*>(currentActivity.get())->stepForTest(direction);
 }
 
@@ -754,7 +756,7 @@ void ActivityManager::tabHomeForTest(int index) {
   // KHONG lay RenderLock o day: HomeActivity::selectTab da lay RenderLock(*this), va renderingMutex duoc
   // tao bang xSemaphoreCreateMutex nen KHONG tai nhap - lay lan hai se treo vinh vien (dung loi da lam
   // vong lap chinh thoi phuc vu lenh serial sau CMD:HOME_TAB). Lay dung MOT lan, tai cho da co san.
-  if (currentActivity && currentActivity->isHomeActivity())
+  if (currentActivity && currentActivity->name == "Home")
     static_cast<HomeActivity*>(currentActivity.get())->tabForTest(index);
 }
 #endif

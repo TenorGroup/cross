@@ -26,6 +26,7 @@
 #include "activities/util/KeyboardLayoutSet.h"
 #include "LanguageSelectActivity.h"
 #include "MappedInputManager.h"
+#include "shells/Shell.h"
 #include "OpdsServerListActivity.h"
 #include "OtaUpdateActivity.h"
 #include "PanelChip.h"
@@ -638,6 +639,8 @@ void SettingsActivity::toggleCurrentSetting() {
   }
   saveSettings();
   rebuildSettingsLists();
+  // Another shell draws Home: go and draw it.
+  if (changedValuePtr == &CrossPointSettings::uiShell) shell::changed();
 }
 
 void SettingsActivity::syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged) {

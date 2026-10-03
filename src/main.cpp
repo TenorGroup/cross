@@ -484,7 +484,9 @@ void enterDeepSleep(bool fromTimeout = false) {
   // The X3 UC8279 wakes by refreshing only the pixels that differ from the frame kept here, so it
   // keeps the frame only when that frame is what the glass shows: not after a gray pass, whose
   // levels no B/W frame names. Without a frame the wake drives every pixel instead.
-  const bool tenorScreen = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TENOR;
+  // The tenor/ugly doodle is a black and white frame kept the same way.
+  const bool tenorScreen = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TENOR ||
+                           SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::UGLY;
   if (renderer.diffOnlyPanel() ? renderer.panelFrameKnown() : isQuickResumeSleep || tenorScreen) {
     saveSleepFrameBuffer();
   } else if (Storage.exists(SLEEP_FRAME_FILE)) {

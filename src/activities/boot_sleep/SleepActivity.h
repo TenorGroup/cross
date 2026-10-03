@@ -34,6 +34,7 @@ class SleepActivity final : public Activity {
   void renderBlankSleepScreen() const;
   // Man ngu mac dinh cua tenor/cross, an pham nen thang vao firmware.
   void renderTenorSleepScreen() const;
+  void renderUglySleepScreen() const;
   void renderStatsSleepScreen() const;
   // A random saved quote with its book's small cover, title and place (mockup S2).
   void renderQuoteSleepScreen() const;
