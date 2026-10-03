@@ -13,6 +13,7 @@
 #include <TtfEpdFont.h>
 #include <esp_heap_caps.h>
 
+#include <array>
 #include <iterator>
 
 #include "CrossPointSettings.h"
@@ -81,6 +82,15 @@ struct UiFontSize {
   int fontId;
   uint8_t pointSize;
 };
+
+// The three UI faces at the point sizes of the chosen UI text size. One table
+// for the .cpfont and the TrueType fallbacks, so they cannot drift apart.
+std::array<UiFontSize, 3> uiFontSizes(const uint8_t uiTextSize) {
+  const auto spec = uiTextSizeSpec(uiTextSize);
+  return {{{SMALL_FONT_ID, spec.captionPointSize},
+           {UI_10_FONT_ID, spec.subtitlePointSize},
+           {UI_12_FONT_ID, spec.bodyPointSize}}};
+}
 
 }  // namespace
 
@@ -347,11 +357,7 @@ void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {
     return;
   }
 
-  const auto spec = uiTextSizeSpec(uiTextSize_);
-  const UiFontSize sizes[] = {{SMALL_FONT_ID, spec.captionPointSize},
-                              {UI_10_FONT_ID, spec.subtitlePointSize},
-                              {UI_12_FONT_ID, spec.bodyPointSize}};
-  for (const auto& ui : sizes) {
+  for (const auto& ui : uiFontSizes(uiTextSize_)) {
     const int sdFontId = manager_.loadFamilyExtraSize(*family, renderer, ui.pointSize);
     if (sdFontId != 0) {
       renderer.setFallbackFont(ui.fontId, sdFontId);
@@ -527,7 +533,7 @@ void SdCardFontSystem::setupTtfUiFallbacks(GfxRenderer& renderer) {
   // internal DRAM, and the build must win: below this floor, skip the
   // fallback (built-in bitmap UI fonts keep covering Latin UI text).
   static constexpr size_t kUiFallbackMinInternalHeap = 160 * 1024;
-  for (const auto& ui : kUiFontSizes) {
+  for (const auto& ui : uiFontSizes(uiTextSize_)) {
     if (heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) == 0) {
       const size_t internalFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
       if (internalFree < kUiFallbackMinInternalHeap) {
