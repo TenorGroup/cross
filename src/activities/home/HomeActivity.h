@@ -63,7 +63,7 @@ class HomeActivity final : public UiTabListActivity {
   int tabCount() const override { return TAB_COUNT; }
   int activeTab() const override { return static_cast<int>(activeTabId); }
   const char* tabLabel(int index) const override;
-  freeink::ui::BitmapRef tabIcon(int index) const override;
+  freeink::ui::BitmapRef tabIcon(int index, bool bold) const override;
   void onTabAction(int index) override;
   void stepTab(int direction) override;
 

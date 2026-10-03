@@ -61,14 +61,17 @@ void EpubReaderMenuActivity::rebuildRows() {
 
 const char* EpubReaderMenuActivity::tabLabel(const int index) const { return I18N.get(TAB_NAMES[index]); }
 
-freeink::ui::BitmapRef EpubReaderMenuActivity::tabIcon(const int index) const {
+freeink::ui::BitmapRef EpubReaderMenuActivity::tabIcon(const int index, const bool bold) const {
   if (index < 0 || index >= readermenu::TAB_COUNT) return {};
   static const freeink::Icon* const icons[] = {&icon_tenor_home_favorites_40, &icon_tenor_reader_position_40,
                                                &icon_tenor_reader_reading_40, &icon_tenor_reader_tools_40};
+  static const freeink::Icon* const bolds[] = {&icon_tenor_home_favorites_bold_40, &icon_tenor_reader_position_bold_40,
+                                               &icon_tenor_reader_reading_bold_40, &icon_tenor_reader_tools_bold_40};
+  const freeink::Icon* const* set = bold ? bolds : icons;
   freeink::ui::BitmapRef result;
-  result.data = icons[index]->bits;
-  result.width = icons[index]->w;
-  result.height = icons[index]->h;
+  result.data = set[index]->bits;
+  result.width = set[index]->w;
+  result.height = set[index]->h;
   result.format = freeink::ui::BitmapFormat::Mask1;
   result.progmem = false;
   return result;

@@ -17,6 +17,109 @@ namespace fui = freeink::ui;
 
 namespace {
 constexpr int16_t TOUCH_TAB_BAR_HEIGHT = 50;
+
+// A round-ended bar (radius h / 2) in pixel-centre arithmetic doubled to stay integer.
+bool inPill(const int px, const int py, const int x, const int y, const int w, const int h) {
+  if (px < x || py < y || px >= x + w || py >= y + h) return false;
+  const int r = h / 2;
+  int dx = 0;
+  if (px < x + r) {
+    dx = 2 * (x + r) - (2 * px + 1);
+  } else if (px >= x + w - r) {
+    dx = (2 * px + 1) - 2 * (x + w - r);
+  } else {
+    return true;
+  }
+  const int dy = 2 * py + 1 - (2 * y + h);
+  return dx * dx + dy * dy < 4 * r * r;
+}
+
+// Ring of `thick` px just inside a round-ended bar; grey = every other pixel, (x + y) even.
+void drawPillRing(const GfxRenderer& g, const int x, const int y, const int w, const int h, const int thick,
+                  const bool grey) {
+  const int r = h / 2;
+  const auto plot = [&](const int px, const int py) {
+    if (!grey || ((px + py) & 1) == 0) g.drawPixel(px, py, true);
+  };
+  for (int py = y; py < y + h; ++py) {
+    const bool band = py < y + thick || py >= y + h - thick;
+    for (int px = x; px < x + w; ++px) {
+      if (px >= x + r && px < x + w - r) {
+        if (band) plot(px, py);
+        continue;
+      }
+      if (inPill(px, py, x, y, w, h) && !inPill(px, py, x + thick, y + thick, w - 2 * thick, h - 2 * thick))
+        plot(px, py);
+    }
+  }
+}
+
+// Mask1 icon (bit 0 = ink) drawn at 50%: ink kept where x + y is even in the icon's own coordinates, so
+// every tab shows the same dots whatever its place on the screen.
+void drawGreyIcon(const GfxRenderer& g, const fui::BitmapRef& icon, const int x, const int y) {
+  const int stride = (icon.width + 7) / 8;
+  for (int j = 0; j < icon.height; ++j)
+    for (int i = 0; i < icon.width; ++i) {
+      const bool ink = ((icon.data[j * stride + i / 8] >> (7 - i % 8)) & 1) == 0;
+      if (ink && ((i + j) & 1) == 0) g.drawPixel(x + i, y + j, true);
+    }
+}
+}  // namespace
+
+void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh, const fui::TabItem* tabs,
+                                        const int count, const fui::TextStyle& chu) {
+  constexpr int LE = 8;         // bar margin from the screen edge
+  constexpr int KHE = 6;        // bar ring to selected pill, all round
+  constexpr int ICON = 40;
+  constexpr int PILL_ICON_W = 84;
+  constexpr int INDICATOR = 6;  // sort arrow beside a label
+  const int x0 = thanh.x + LE, w = thanh.width - 2 * LE, h = thanh.height, y0 = thanh.y;
+  drawPillRing(renderer, x0, y0, w, h, 2, true);
+  if (count <= 0) return;
+  const bool icons = static_cast<bool>(tabs[0].icon);
+  const int slotW = (w - 2 * KHE) / count;
+  // Icon tabs: the pill's ends sit concentric with the bar's, the centres spread evenly between them.
+  const int first = x0 + KHE + PILL_ICON_W / 2, last = x0 + w - 1 - KHE - PILL_ICON_W / 2;
+  fui::TextStyle label = chu;
+  label.align = fui::TextAlign::Center;
+  label.color = fui::Color::Black;
+  label.inverted = false;
+  for (int i = 0; i < count; ++i) {
+    const fui::TabItem& tab = tabs[i];
+    int cx, pillW;
+    int16_t labelW = 0;
+    if (icons) {
+      cx = count > 1 ? first + (2 * (last - first) * i + (count - 1)) / (2 * (count - 1)) : x0 + w / 2;
+      pillW = PILL_ICON_W;
+    } else {
+      cx = x0 + KHE + slotW * i + slotW / 2;
+      labelW = tab.label ? screen.target().measureText(label.font, tab.label, label).width : 0;
+      pillW = std::min(slotW - 4, labelW + 28);
+    }
+    if (tab.selected) drawPillRing(renderer, cx - pillW / 2, y0 + KHE, pillW, h - 2 * KHE, 3, false);
+    if (icons) {
+      const int ix = cx - ICON / 2, iy = y0 + (h - ICON) / 2;
+      if (tab.selected)
+        screen.target().bitmap(fui::Rect{static_cast<int16_t>(ix), static_cast<int16_t>(iy), ICON, ICON}, tab.icon,
+                               fui::BitmapMode::Center, fui::Paint::solid(fui::Color::Black));
+      else
+        drawGreyIcon(renderer, tab.icon, ix, iy);
+      continue;
+    }
+    if (!tab.label) continue;
+    const int row = labelW + (tab.indicator != fui::TabIndicator::None ? 4 + INDICATOR : 0);
+    const int lx = cx - row / 2;
+    screen.target().text(fui::Rect{static_cast<int16_t>(lx), static_cast<int16_t>(y0), labelW, static_cast<int16_t>(h)},
+                         tab.label, label);
+    if (tab.indicator == fui::TabIndicator::None) continue;
+    const int tx = lx + labelW + 4, mid = y0 + h / 2, half = INDICATOR / 2;
+    const bool up = tab.indicator == fui::TabIndicator::Up;
+    screen.target().triangle(
+        fui::Point{static_cast<int16_t>(up ? tx + half : tx), static_cast<int16_t>(up ? mid - half : mid - half)},
+        fui::Point{static_cast<int16_t>(up ? tx : tx + INDICATOR), static_cast<int16_t>(up ? mid + half : mid - half)},
+        fui::Point{static_cast<int16_t>(up ? tx + INDICATOR : tx + half), static_cast<int16_t>(mid + half)},
+        fui::Paint::solid(fui::Color::Black));
+  }
 }
 
 UiTabListActivity::UiTabListActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -344,11 +447,16 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
     tabProps.tabInset = tabsFocused ? fui::Insets{2, 4, 4, 4} : fui::Insets{2, 4, 0, 4};
     tabProps.contentInset = fui::Insets{2, 0, 2, 0};
   }
-  if (tenorHome) tabProps.tabInset = fui::Insets{2, 4, 4, 4};
+  if (tenorHome) {
+    // veThanhTheTenor draws the bar itself; these two only size a slot for theVuaMan (a label plus 14 px
+    // each side, the pill's own padding).
+    tabProps.tabInset = fui::Insets{0, 0, 0, 0};
+    tabProps.contentInset = fui::Insets{0, 14, 0, 14};
+  }
   int16_t nhanRongNhat = 0;
   for (int i = 0; i < tabCount(); i++) {
     // The ve bang bieu tuong thi be rong la be rong anh, khong phai be rong chu.
-    const fui::BitmapRef anh = tabIcon(i);
+    const fui::BitmapRef anh = tabIcon(i, false);
     if (anh) {
       if (static_cast<int16_t>(anh.width) > nhanRongNhat) nhanRongNhat = static_cast<int16_t>(anh.width);
       continue;
@@ -372,7 +480,7 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
     // Chi so THAT trong danh sach the. Phai giu dung, vi `value` la thu cham tay gui
     // nguoc ve onTabAction(): gui chi so trong cua so la cham nham the.
     const int that = menucustom::idAt(menucustom::groupFor(name.c_str()), cuaSoDau + i, tabCount());
-    const fui::BitmapRef anh = tabIcon(that);
+    const fui::BitmapRef anh = tabIcon(that, activeTab() == that);
     if (anh) {
       // Bieu tuong THAY cho chu, khong phai dung canh chu: de ca hai thi o phai chua
       // duoc ca anh lan chu, va so the vua man tut xuong.
@@ -410,15 +518,7 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   tabStyles.explicitlySet = true;
   tabStyles.normal.foreground = fui::Paint::solid(fui::Color::Black);
   if (tenorHome) {
-    // Gray inside a 2 px black ring. The ring's solid ink draws the corner: a gray dither alone
-    // samples it on even pixels only, in a phase that moves with each tab's position, so every
-    // tab showed a different corner. A leaf of the cursor's own height.
-    tabStyles.selected.background = fui::Paint::dither(fui::Color::LightGray);
-    tabStyles.selected.foreground = fui::Paint::solid(fui::Color::Black);
-    tabStyles.selected.border = fui::Paint::solid(fui::Color::Black);
-    tabStyles.selected.borderWidth = 2;
-    tabStyles.selected.radius =
-        static_cast<uint8_t>(tenorradius::leaf(tabBand - tabProps.tabInset.top - tabProps.tabInset.bottom));
+    // Drawn by veThanhTheTenor: no pill styles.
   } else if (tabsFocused) {
     tabStyles.selected.background = fui::Paint::solid(fui::Color::Black);
     tabStyles.selected.foreground = fui::Paint::solid(fui::Color::White);
@@ -452,7 +552,10 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   if (tabsFocused && !metrics.tabPillFullSlot && !tenorHome) {
     screen.target().fill(tabRect, fui::Paint::dither(fui::Color::LightGray));
   }
-  fui::tabBar(screen.frame(), theRect, tabProps);
+  if (tenorHome)
+    veThanhTheTenor(screen, theRect, tabs, count, tabProps.text);
+  else
+    fui::tabBar(screen.frame(), theRect, tabProps);
 
   if (thanhTheChay) {
     veMuiTenThe(tabRect, leMuiTen);

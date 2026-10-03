@@ -61,7 +61,8 @@ class UiTabListActivity : public UiListActivity {
   virtual int tabCount() const = 0;
   virtual int activeTab() const = 0;
   virtual const char* tabLabel(int index) const = 0;
-  virtual freeink::ui::BitmapRef tabIcon(int /*index*/) const { return {}; }
+  // `bold` asks for the selected tab's heavier drawing (stroke 4); the others are drawn grey in stroke 3.
+  virtual freeink::ui::BitmapRef tabIcon(int /*index*/, bool /*bold*/) const { return {}; }
   virtual freeink::ui::TabIndicator tabIndicator(int) const { return freeink::ui::TabIndicator::None; }
 
   // Touch tap on a tab pill (bounds already checked).
@@ -131,6 +132,10 @@ class UiTabListActivity : public UiListActivity {
   static constexpr int16_t MUI_TEN_LE = 14;   // mang le moi ben, danh cho mui ten
   static constexpr int MUI_TEN_NUA = 5;       // nua do mo chu V: cao 11, rong 7
   void veMuiTenThe(const freeink::ui::Rect& thanh, int16_t le);
+  // Tenor buttons-only bar: one round bar, grey 2 px ring; the selected tab a round white pill with a
+  // black 3 px ring and a stroke-4 icon, the others grey stroke-3 icons (or labels).
+  void veThanhTheTenor(UiScreen& screen, const freeink::ui::Rect& thanh, const freeink::ui::TabItem* tabs, int count,
+                       const freeink::ui::TextStyle& chu);
 
   // The shared tab band: theme-driven pill treatment (label-hugging Lyra vs
   // full-slot RoundedRaff), Lyra focused band wash, always-on divider.

@@ -110,8 +110,10 @@ def _(g):
 
 @reg('cong_cu', 'Cong cu A: luoi 4 o bo')
 def _(g):
-    for x, y in ((3, 3), (13.5, 3), (3, 13.5), (13.5, 13.5)):
-        g.rrect(x, y, x + 7.5, y + 7.5, BO_VUA)
+    # At stroke 4 the cells shrink so the gap between them stays open (7.5 wide leaves 1 px).
+    s = 7.5 if g.w < 4 else 6.5
+    for x, y in ((3, 3), (21 - s, 3), (3, 21 - s), (21 - s, 21 - s)):
+        g.rrect(x, y, x + s, y + s, BO_VUA)
 
 
 @reg('tep_sach', 'Tep sach: sach dong')
