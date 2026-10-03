@@ -15,6 +15,9 @@
 #include <BlePageTurner.h>
 #include <BoardConfig.h>
 #include <Epub.h>
+#ifdef TENOR_PRESS_PROBE
+#include <Epub/BuildStageProbe.h>
+#endif
 #include <FontCacheManager.h>
 #include <FontDecompressor.h>
 #include <GfxRenderer.h>
@@ -1635,6 +1638,12 @@ void loop() {
         probeWakeHoldMs = static_cast<uint32_t>(cmd.substring(10).toInt());
         probeWakeHoldMagic = PROBE_WAKE_MAGIC;
         logSerial.printf("WAKE_HOLD:%u\n", static_cast<unsigned>(probeWakeHoldMs));
+      } else if (cmd.startsWith("STARVE_BUILD ")) {
+        // CMD:STARVE_BUILD <n>: the n-th heap check of a chapter build step fails once (once, then
+        // the count is spent). Sends the build down the starved path: park, shed the font caches,
+        // resume. Send it before the press that builds.
+        buildprobe::starveAfterSteps = static_cast<uint32_t>(std::max(0L, cmd.substring(13).toInt()));
+        logSerial.printf("STARVE_BUILD:%u\n", static_cast<unsigned>(buildprobe::starveAfterSteps));
       } else if (cmd.startsWith("KEEP_HEAP ")) {
         probeKeepHeap = cmd.substring(10).toInt() != 0;
         logSerial.printf("KEEP_HEAP:%d\n", probeKeepHeap ? 1 : 0);

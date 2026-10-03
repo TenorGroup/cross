@@ -14,6 +14,9 @@ namespace buildprobe {
 enum Stage : uint8_t { Tick, Resume, Park, Step, Read, SdFont, Widths, Breaks, Extract, PageWrite, StageCount };
 inline uint32_t us[StageCount] = {};
 inline uint32_t pages = 0;
+// STARVE_BUILD <n>: the n-th heap check of a build step answers "starved" once, so Section parks
+// the build and the reader sheds the font caches and resumes, on a heap that is not short at all.
+inline uint32_t starveAfterSteps = 0;
 struct Scope {
   Stage stage;
   uint32_t started;

@@ -765,6 +765,9 @@ bool Section::restorePartialBuild() {
 }
 
 bool Section::stepHeapAvailable() {
+#ifdef TENOR_PRESS_PROBE
+  if (buildprobe::starveAfterSteps != 0 && --buildprobe::starveAfterSteps == 0) return false;
+#endif
   return ESP.getFreeHeap() >= BUILD_STEP_MIN_FREE_HEAP && ESP.getMaxAllocHeap() >= BUILD_STEP_MIN_MAX_ALLOC;
 }
 
