@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <InputManager.h>
 
+#include "WakeHold.h"
+
 struct esp_timer;  // esp_timer_handle_t, kept opaque so host test builds need no IDF header
 
 // Display SPI pins (custom pins for XteinkX4, not hardware SPI defaults)
@@ -70,6 +72,16 @@ class HalGPIO {
   // edges it collects wait until update() hands them to the next frame.
   esp_timer* sampleTimer = nullptr;
   static void sampleButtons(void* self);
+
+  // The power key's hold through a wake (beginPowerWakeHold): a 5 ms timer feeds the watch.
+  wakehold::Watch wakeWatch;
+  esp_timer* wakeTimer = nullptr;
+  bool wakeHoldResult = true;
+  static void sampleWakeHold(void* self);
+  bool powerKeyDown() const;
+#ifdef TENOR_PRESS_PROBE
+  uint32_t probeHoldUntilMs = 0;
+#endif
 
  public:
   enum class DeviceType : uint8_t { X4, X3 };
@@ -157,6 +169,21 @@ class HalGPIO {
   // Returns true if verification succeeded, false if device should return to sleep.
   // Should only be called when wakeup reason is PowerButton.
   bool verifyPowerButtonWakeup();
+
+  // The same check split in three, so the boot can run while the X3's 400 ms hold is waited out.
+  // beginPowerWakeHold() takes the first sample and starts the watch. powerWakeHeld() answers from
+  // what the watch has seen so far and never waits. endPowerWakeHold() stops the watch and, with
+  // waitFull, waits out what is left of the window, then answers whether the hold held. Boards
+  // without that window run verifyPowerButtonWakeup() inside begin and answer from it.
+  // Only for a PowerButton wake; end must follow begin once.
+  void beginPowerWakeHold();
+  bool powerWakeHeld();
+  bool endPowerWakeHold(bool waitFull);
+#ifdef TENOR_PRESS_PROBE
+  // CMD:WAKE_HOLD <ms>: the power key reads as down until this many ms after the app started,
+  // so a timed wake can stand in for a hold of a given length.
+  void setProbeWakeHold(const uint32_t untilMs) { probeHoldUntilMs = untilMs; }
+#endif
 
   // Check if USB is connected
   bool isUsbConnected() const;

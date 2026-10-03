@@ -65,6 +65,6 @@ assert 'statusBarClock' not in helper and 'clockHasBeenSynced' not in helper, \
 outside = source[:start] + source[end:]
 outside = re.sub(r'//[^\n]*', '', outside)
 assert 'powerManager.startDeepSleep(' not in outside, 'Device sleep bypasses the shared helper'
-assert len(re.findall(r'\bsleepUntilPowerButton\(\);', outside)) == 3, \
-    'Review normal sleep, rejected wake, and USB boot sleep routes after topology changes'
-print('PASS structural main sleep wiring: runtime epoch policy, three routes, no direct bypass')
+assert len(re.findall(r'\bsleepUntilPowerButton\(\);', outside)) == 4, \
+    'Review normal sleep, the two rejected wake routes (early, final), and USB boot sleep after topology changes'
+print('PASS structural main sleep wiring: runtime epoch policy, four routes, no direct bypass')

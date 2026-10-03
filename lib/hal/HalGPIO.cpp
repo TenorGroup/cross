@@ -478,6 +478,59 @@ bool HalGPIO::verifyPowerButtonWakeup() {
   return heldAtFirstSample && inputMgr.isPowerButtonPhysicallyPressed();
 }
 
+bool HalGPIO::powerKeyDown() const {
+#ifdef TENOR_PRESS_PROBE
+  if (probeHoldUntilMs) return millis() < probeHoldUntilMs;
+#endif
+  return inputMgr.isPowerButtonPhysicallyPressed();
+}
+
+void HalGPIO::sampleWakeHold(void* self) {
+  auto* gpio = static_cast<HalGPIO*>(self);
+  gpio->wakeWatch.sample(gpio->powerKeyDown(), millis());
+}
+
+void HalGPIO::beginPowerWakeHold() {
+  // The X3 is the one board with the long window; every other board keeps the check as it was.
+  if (!deviceIsX3() || BoardConfig::ACTIVE.input.power < 0) {
+    wakeHoldResult = verifyPowerButtonWakeup();
+    return;
+  }
+  wakeWatch.start(powerKeyDown(), millis(), 400);
+  const esp_timer_create_args_t args{sampleWakeHold, this, ESP_TIMER_TASK, "wakehold", true};
+  if (esp_timer_create(&args, &wakeTimer) != ESP_OK || esp_timer_start_periodic(wakeTimer, 5000) != ESP_OK) {
+    // No timer: wait the window out here, as before.
+    if (wakeTimer) esp_timer_delete(wakeTimer);
+    wakeTimer = nullptr;
+    wakeHoldResult = verifyPowerButtonWakeup();
+    return;
+  }
+  // The key's debounced state, settled the way the blocking check left it: the recovery chord check
+  // and the loop's swallow of the wake's release both read it.
+  inputMgr.update();
+  for (const unsigned long settling = millis(); inputMgr.isDebouncePending() && millis() - settling < 20;) {
+    delay(1);
+    inputMgr.update();
+  }
+}
+
+bool HalGPIO::powerWakeHeld() {
+  if (!wakeTimer) return wakeHoldResult;
+  wakeWatch.sample(powerKeyDown(), millis());  // a look of its own, whatever the timer has seen
+  return wakeWatch.early();
+}
+
+bool HalGPIO::endPowerWakeHold(const bool waitFull) {
+  if (!wakeTimer) return wakeHoldResult;
+  while (waitFull && wakeWatch.remainingMs(millis()) > 0) delay(1);
+  wakeWatch.sample(powerKeyDown(), millis());
+  esp_timer_stop(wakeTimer);
+  esp_timer_delete(wakeTimer);
+  wakeTimer = nullptr;
+  wakeHoldResult = waitFull ? wakeWatch.final(millis()) : wakeWatch.early();
+  return wakeHoldResult;
+}
+
 bool HalGPIO::isUsbConnected() const {
   if (deviceIsX3()) {
     // Other tasks (the render task drawing a charging bolt) get the loop's last answer:

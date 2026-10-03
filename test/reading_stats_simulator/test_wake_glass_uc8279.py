@@ -16,6 +16,7 @@ and off, a sleep frame cut short on the card, Quick resume, and a cold start aft
 boot picture and with the classic boot screen.
 """
 
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -27,6 +28,16 @@ from test_sleep_ends_bw import BOOK, gray_bmp, write_epub
 
 SLEEP_THEN_WAKE = '3000:SLEEP;6000:POWER;12000:QUIT'
 AFTER_WAKE = '2500:QUIT'
+
+
+def tree_hash(root):
+    """Names and contents of every file under `root`: what a wake that gave up must leave as it was."""
+    digest = hashlib.sha256()
+    for path in sorted(Path(root).rglob('*')):
+        if path.is_file() and path.name != 'panel.trace':
+            digest.update(str(path.relative_to(root)).encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
 def gray_picture(sd):
@@ -122,6 +133,43 @@ class WakeGlassTest(unittest.TestCase):
 
     def test_quick_resume(self):
         records, _ = self.journey('quick-resume', {'sleepScreen': 6})
+        self.assert_glass_follows_every_frame_after_start(records)
+
+    def test_a_wake_that_is_not_held_leaves_glass_and_card_alone(self):
+        # A short press wakes the chip and the boot goes on while the hold is watched: the kept frame
+        # goes back into the controller, but nothing reaches the glass and nothing the card.
+        for name, when, ops in (('early', 'early', []), ('final', 'final', ['begin', 'cleanup', 'deep_sleep'])):
+            with self.subTest(name):
+                sd = Path(self.temp.name) / ('short-' + name)
+                store = sd / '.crosspoint'
+                store.mkdir(parents=True)
+                (store / 'settings.json').write_text(json.dumps(truoc_tenor({'language': 'EN', 'sleepScreen': 8})))
+                (store / 'state.json').write_text(json.dumps({'showBootScreen': False}))
+                (store / 'sleep_frame.bin').write_bytes(b'\xff' * glass_model.PANEL_BYTES)
+                trace = sd / 'panel.trace'
+                code, log = glass_model.run_simulator(sd, trace, '3000:SLEEP;6000:QUIT')
+                self.assertEqual(code, 0, log)
+                self.assertIn('Entering deep sleep', log)
+                before = tree_hash(sd)
+                asleep = len(glass_model.replay(self.tool, trace))
+                code, wake = glass_model.run_simulator(sd, trace, '2500:QUIT', wake='power',
+                                                       extra={'CROSSPOINT_SIM_WAKE_RELEASED': when})
+                self.assertEqual(code, 0, wake)
+                self.assertIn('Power-button wake not held', wake)
+                self.assertNotIn('Entering activity', wake)
+                self.assertEqual('Wake frame' in wake, when == 'final')
+                self.assertEqual(tree_hash(sd), before)
+                records = glass_model.replay(self.tool, trace)[asleep:]
+                self.assertEqual([r['op'] for r in records], ops)
+                self.assertEqual([r for r in records if 'anomaly' in r], [])
+
+    def test_a_tap_wakes_when_the_quick_press_is_sleep(self):
+        # With the quick press on Sleep a tap locks the device, so a tap also wakes it: no hold needed.
+        records, log = self.journey('tap-wakes', {'sleepScreen': 8, 'shortPwrBtn': 1},
+                                    extra={'CROSSPOINT_SIM_WAKE_RELEASED': 'final'})
+        wake = log.split('Entering deep sleep', 1)[1]
+        self.assertNotIn('not held', wake)
+        self.assertIn('Entering activity: Home', wake)
         self.assert_glass_follows_every_frame_after_start(records)
 
     def test_cold_start_after_a_sleep(self):

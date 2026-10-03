@@ -234,6 +234,10 @@ RTC_NOINIT_ATTR update_boot::Slot otaBootSlot;
 // wake to the first app instruction is measured, bootloader included.
 RTC_NOINIT_ATTR uint32_t probeWakeMagic;
 RTC_NOINIT_ATTR uint32_t probeWakeSeconds;
+// CMD:WAKE_HOLD <ms>: the next timed wakes read the power key as held until this many ms after the
+// app started (0 clears it), so the hold check runs as it does for a real press.
+RTC_NOINIT_ATTR uint32_t probeWakeHoldMagic;
+RTC_NOINIT_ATTR uint32_t probeWakeHoldMs;
 RTC_NOINIT_ATTR uint64_t probeWakeTargetUs;
 constexpr uint32_t PROBE_WAKE_MAGIC = 0x57414B45;
 extern "C" uint64_t esp_rtc_get_time_us(void);
@@ -637,14 +641,21 @@ void setup() {
   // boot - but defer the sleep-or-boot decision until SETTINGS is loaded below:
   // click-to-wake is a setting, and an X4 battery power-off cuts all power, so
   // only SD state survives to the next boot.
-  const unsigned long verifyStarted = millis();
-  bool wakeHoldVerified = wakeupReason != HalGPIO::WakeupReason::PowerButton || gpio.verifyPowerButtonWakeup();
+  // The hold that wakes is watched from here, while the stores, the display and the fonts load: it
+  // is judged early where the settings can tell (below), and for good just before the first thing
+  // that reaches the glass or the card.
+  bool watchWakeHold = wakeupReason == HalGPIO::WakeupReason::PowerButton;
 #ifdef TENOR_PRESS_PROBE
-  LOG_INF("PROBE", "wake verify=%lu ms", millis() - verifyStarted);
-  wakeHoldVerified = wakeHoldVerified || probeTimerWake;
-#else
-  (void)verifyStarted;
+  const bool probeHold = probeTimerWake && probeWakeHoldMagic == PROBE_WAKE_MAGIC && probeWakeHoldMs > 0;
+  // A plain timed wake stands in for a hold already verified: nothing to watch.
+  if (probeTimerWake && !probeHold) watchWakeHold = false;
+  if (probeHold) {
+    gpio.setProbeWakeHold(probeWakeHoldMs);
+    LOG_INF("PROBE", "wake hold simulated until=%lu ms", static_cast<unsigned long>(probeWakeHoldMs));
+  }
 #endif
+  [[maybe_unused]] const unsigned long holdBegan = millis();
+  if (watchWakeHold) gpio.beginPowerWakeHold();
 
   // X4 Pro and X4 Classic both map BTN_UP to GPIO0 - an ESP32-S3 boot strap - so
   // gate recovery on the non-strap Down key (GPIO7) to avoid a stuck-in-recovery loop.
@@ -666,6 +677,7 @@ void setup() {
   // We need 6 open files concurrently when parsing a new chapter
   if (!Storage.begin()) {
     LOG_ERR("MAIN", "SD card initialization failed");
+    if (watchWakeHold) gpio.endPowerWakeHold(false);
     setupDisplayAndFonts(isSilentReboot);
     activityManager.goToFullScreenMessage("SD card error", EpdFontFamily::BOLD);
     return;
@@ -725,11 +737,15 @@ void setup() {
   Frontlight.begin(SETTINGS.frontlightBrightness, SETTINGS.frontlightWarmth, restoreLightOn);
 
   switch (wakeupReason) {
-    case HalGPIO::WakeupReason::PowerButton:
+    case HalGPIO::WakeupReason::PowerButton: {
       // With Short Power Button Press = Sleep, a single click wakes on any
       // device, X3 included, so the tap that locks also unlocks; otherwise the
       // button must still be held (ghost-wake debounce).
-      if (!CrossPointSettings::acceptPowerWake(SETTINGS.shortPwrBtn, wakeHoldVerified)) {
+      const bool heldSoFar = !watchWakeHold || gpio.powerWakeHeld();
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("PROBE", "wake hold begin=%lu early=%lu held=%u", holdBegan, millis(), heldSoFar);
+#endif
+      if (!CrossPointSettings::acceptPowerWake(SETTINGS.shortPwrBtn, heldSoFar)) {
         LOG_DBG("MAIN", "Power-button wake not held through verification, sleeping");
         halTiltSensor.deepSleep();
         Storage.prepareForDeepSleep();
@@ -737,6 +753,7 @@ void setup() {
       }
       wakePowerReleasePending = true;
       break;
+    }
     case HalGPIO::WakeupReason::AfterUSBPower:
       // Most devices return to sleep after a USB-powered cold boot.
       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
@@ -799,38 +816,59 @@ void setup() {
   renderer.setDiffOnlyPanel(gpio.deviceIsX3() && display.getController() == HalDisplay::Controller::UC8279);
   logHeapMark("display-and-fonts");
 
+  if (resume == BootResume::SplashlessWake) {
+    // One-shot flag: re-arm the splash for the next ordinary boot. Set here,
+    // written once the first frame is up (HomeActivity::render); every other
+    // first screen writes it now, before it paints. Until then the card still
+    // says "asleep", so a wake cut off before its first frame (power lost, a
+    // hang) is simply repeated from the same kept frame. Writing in memory
+    // first means a sleep started meanwhile clears it again, and whichever
+    // save runs last writes that. A crash reboot shows the splash and
+    // re-arms the flag below.
+    APP_STATE.showBootScreen = true;
+    // The kept frame goes back into the controller while the hold is still being watched, so the
+    // first paint can start the moment the hold is judged. This reaches neither the glass nor the card.
+    const uint32_t wakeStarted = millis();
+    if (Storage.exists(SLEEP_FRAME_FILE) && loadSleepFrameBuffer()) {
+      if (gpio.deviceIsX3()) {
+        // Restore controller RAM without activating a waveform. The first
+        // Home/Reader paint cleans directly from this retained sleep frame.
+        renderer.cleanupGrayscaleWithFrameBuffer();
+      }
+      LOG_DBG("MAIN", "Restored sleep frame baseline");
+    } else {
+      // Nothing says what the glass holds: the first paint drives every pixel.
+      renderer.redriveNextRefresh();
+    }
+    LOG_INF("BOOT", "Wake frame=%lu ms", static_cast<unsigned long>(millis() - wakeStarted));
+  }
+
+  if (watchWakeHold) {
+    // The hold's last word, before anything reaches the glass or the card. With the quick press set
+    // to Sleep a tap is enough to wake, so nothing waits for the window.
+    [[maybe_unused]] const unsigned long finalAt = millis();
+    const bool held = gpio.endPowerWakeHold(SETTINGS.shortPwrBtn != CrossPointSettings::SLEEP);
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("PROBE", "wake hold final=%lu wait=%lu held=%u", finalAt, millis() - finalAt, held);
+#endif
+    if (!CrossPointSettings::acceptPowerWake(SETTINGS.shortPwrBtn, held)) {
+      LOG_DBG("MAIN", "Power-button wake not held through the window, sleeping");
+      halTiltSensor.deepSleep();
+      display.deepSleep();
+      Storage.prepareForDeepSleep();
+      sleepUntilPowerButton();
+    }
+  }
+
   switch (resume) {
     case BootResume::Silent:
       // Splash skipped: the routing block below picks the target activity; the
       // panel keeps showing the pre-reboot popup until that first paint lands.
       break;
-    case BootResume::SplashlessWake: {
-      // One-shot flag: re-arm the splash for the next ordinary boot. Set here,
-      // written once the first frame is up (HomeActivity::render); every other
-      // first screen writes it now, before it paints. Until then the card still
-      // says "asleep", so a wake cut off before its first frame (power lost, a
-      // hang) is simply repeated from the same kept frame. Writing in memory
-      // first means a sleep started meanwhile clears it again, and whichever
-      // save runs last writes that. A crash reboot shows the splash and
-      // re-arms the flag below.
-      APP_STATE.showBootScreen = true;
+    case BootResume::SplashlessWake:
       if (recoveryFirmwareMode || rebootedFromPanic || wakeToBook) APP_STATE.saveToFile();
-      const uint32_t wakeStarted = millis();
-      if (Storage.exists(SLEEP_FRAME_FILE) && loadSleepFrameBuffer()) {
-        if (gpio.deviceIsX3()) {
-          // Restore controller RAM without activating a waveform. The first
-          // Home/Reader paint cleans directly from this retained sleep frame.
-          renderer.cleanupGrayscaleWithFrameBuffer();
-        }
-        LOG_DBG("MAIN", "Restored sleep frame baseline");
-      } else {
-        // Nothing says what the glass holds: the first paint drives every pixel.
-        renderer.redriveNextRefresh();
-      }
-      LOG_INF("BOOT", "Wake frame=%lu ms", static_cast<unsigned long>(millis() - wakeStarted));
       needsWakeRefresh = true;
       break;
-    }
     case BootResume::Splash:
       if (!APP_STATE.showBootScreen) {
         APP_STATE.showBootScreen = true;
@@ -1567,6 +1605,10 @@ void loop() {
         probeWakeSeconds = static_cast<uint32_t>(cmd.substring(11).toInt());
         probeWakeMagic = PROBE_WAKE_MAGIC;
         logSerial.printf("WAKE_TIMER:%u\n", static_cast<unsigned>(probeWakeSeconds));
+      } else if (cmd.startsWith("WAKE_HOLD ")) {
+        probeWakeHoldMs = static_cast<uint32_t>(cmd.substring(10).toInt());
+        probeWakeHoldMagic = PROBE_WAKE_MAGIC;
+        logSerial.printf("WAKE_HOLD:%u\n", static_cast<unsigned>(probeWakeHoldMs));
       } else if (cmd.startsWith("KEEP_HEAP ")) {
         probeKeepHeap = cmd.substring(10).toInt() != 0;
         logSerial.printf("KEEP_HEAP:%d\n", probeKeepHeap ? 1 : 0);
