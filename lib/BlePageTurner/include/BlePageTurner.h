@@ -197,9 +197,12 @@ struct Peer {
 bool switchOn();
 // The user turned it off: clears the reasons and stops, waiting up to 1 s.
 bool switchOff();
-// Connection work while the settings screen is open. True when it changed the Config (a remote
-// being paired linked and became the chosen one): the host saves it.
+// Connection work for a pairing in flight; tick() runs it too, so a pairing finishes with the
+// settings screen closed. True when a remote being paired linked and became the chosen one.
 bool service();
+// True once per remote that became the chosen one (service() or tick() did it): the host saves
+// the settings. Main loop.
+bool takeUnsavedChoice();
 // Scans for durationMs; 0 stops a scan.
 void scan(uint32_t durationMs);
 // Pairs (or connects) this remote. It becomes the chosen one only once it links (service()); a

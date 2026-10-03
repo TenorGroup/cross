@@ -31,8 +31,8 @@ bool switchOff() { return bleturner::switchOff(); }
 bool stopping() { return bleturner::status().stopping; }
 bool running() { return bleturner::status().running; }
 bool idleStopped() { return bleturner::status().idleStopped; }
-// True when a remote being paired linked and became the chosen one: the settings are saved.
-bool poll() { return bleturner::service(); }
+// A remote being paired that links becomes the chosen one (main loop saves the settings).
+void poll() { bleturner::service(); }
 bool scanning() { return bleturner::status().scanning; }
 void startScan() { bleturner::scan(15000); }
 void stopScan() { bleturner::scan(0); }
@@ -69,11 +69,6 @@ bool takeRaw(uint32_t& code, bool& pressed, uint32_t& atMs, bool& wasRest) {
 bool readerDeferred() { return bleturner::status().readerDeferred; }
 
 }  // namespace backend
-
-void chupChuoi(char* dest, const char* src, const size_t maxLen) {
-  strncpy(dest, src, maxLen - 1);
-  dest[maxLen - 1] = '\0';
-}
 
 }  // namespace
 
@@ -124,7 +119,7 @@ void BlePageTurnerActivity::loop() {
   const uint32_t now = millis();
   if (now - lastPollMs < 250) return;  // nhip 4 lan/giay: du muot cho e-ink, khong quay CPU
   lastPollMs = now;
-  if (SETTINGS.ble.enabled && backend::running() && backend::poll()) SETTINGS.saveToFile();
+  if (SETTINGS.ble.enabled && backend::running()) backend::poll();
 
   if (trangThaiSig() == lastStateSig) return;  // khong co gi doi thi khong ve lai: e-ink tra gia cho moi khung
   // capNhatTrangThai() chot luon lastStateSig, nen mot nhip bam tay da cap nhat
@@ -441,9 +436,8 @@ void BlePageTurnerActivity::openPairedPopup(const int bondIndex) {
       if (dangNoi) {
         backend::disconnect();
       } else {
-        chupChuoi(SETTINGS.ble.peerAddr, addr.c_str(), sizeof(SETTINGS.ble.peerAddr));
-        SETTINGS.saveToFile();
-        backend::pair(SETTINGS.ble.peerAddr, name.c_str());
+        // Chi thanh remote da chon khi noi duoc (bleturner::service): noi hong giu nguyen remote cu.
+        backend::pair(addr.c_str(), name.c_str());
       }
     } else if (backend::forget(addr.c_str())) {
       SETTINGS.saveToFile();
