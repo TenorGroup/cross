@@ -1,4 +1,8 @@
-"""Observe the refresh requested by the real Home screen on a persisted wake."""
+"""Observe the refresh requested by the real Home screen on a persisted wake.
+
+The sleep fixtures turn "Black and white refresh before sleep" (sleepBwFold) on: the kept frame these
+wakes restore is the folded one, and the switch is off by default since v1.0.52.
+"""
 
 import json
 import os
@@ -58,7 +62,7 @@ class WakeRefreshTest(unittest.TestCase):
             sd = Path(directory)
             store = sd / ".crosspoint"
             store.mkdir()
-            (store / "settings.json").write_text(json.dumps(truoc_tenor({"language": "EN", "sleepScreen": 8})))
+            (store / "settings.json").write_text(json.dumps(truoc_tenor({"language": "EN", "sleepScreen": 8, "sleepBwFold": 1})))
             env = {k: v for k, v in os.environ.items() if not k.startswith("CROSSPOINT_SIM_")}
             env.update(
                 SDL_VIDEODRIVER="dummy", CROSSPOINT_SIM_SD=str(sd),
@@ -99,7 +103,7 @@ class WakeRefreshTest(unittest.TestCase):
                 store.mkdir()
                 shutil.copy(REPO / "test/epubs/test_dictionary_synonyms.epub", sd / "audit.epub")
                 (store / "settings.json").write_text(json.dumps(truoc_tenor({
-                    "language": "EN", "sleepScreen": sleep_screen, "textAntiAliasing": 0,
+                    "language": "EN", "sleepScreen": sleep_screen, "textAntiAliasing": 0, "sleepBwFold": 1,
                 })))
                 # Nhip 17/09/2026: mot muc recent.json de the GAN DAY co dung mot hang; nho do MOT
                 # nhip CONFIRM mo duoc sach truoc khi ngu (truoc day the rong nen khong mo duoc).
@@ -145,7 +149,7 @@ class WakeRefreshTest(unittest.TestCase):
             header = struct.pack("<2sIHHI", b"BM", 54 + len(pixels), 0, 0, 54)
             header += struct.pack("<IiiHHIIiiII", 40, 32, 32, 1, 24, 0, len(pixels), 0, 0, 0, 0)
             (sd / "sleep.bmp").write_bytes(header + pixels)
-            (store / "settings.json").write_text(json.dumps(truoc_tenor({"language": "EN", "sleepScreen": 2})))
+            (store / "settings.json").write_text(json.dumps(truoc_tenor({"language": "EN", "sleepScreen": 2, "sleepBwFold": 1})))
             env = {k: v for k, v in os.environ.items() if not k.startswith("CROSSPOINT_SIM_")}
             env.update(
                 SDL_VIDEODRIVER="dummy", CROSSPOINT_SIM_SD=str(sd),

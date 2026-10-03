@@ -110,11 +110,11 @@ class TenorFallbackTest(unittest.TestCase):
         # line of text along its foot.
         golden = Image.open(GOLDEN).convert('L')
         self.assertFalse(foot_text_line(golden))
-        for settings in ({}, {'sleepBwRefresh': 0}):
+        for settings in ({'sleepBwFold': 1}, {'sleepBwFold': 0}):
             for from_book in (False, True):
                 with self.subTest(settings=settings, from_book=from_book):
                     extra = dict(settings, orientation=1) if from_book else settings
-                    label = f'{"sach-ngang" if from_book else "home"}-{len(settings)}'
+                    label = f'{"sach-ngang" if from_book else "home"}-{settings["sleepBwFold"]}'
                     image = self.sleep(label, extra, from_book)[1]
                     self.assertFalse(foot_text_line(image), f'{label}: a line of text along the foot')
                     self.assertEqual(golden.size, image.size)

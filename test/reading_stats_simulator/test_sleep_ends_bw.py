@@ -12,9 +12,12 @@ Evidence read here, nothing assumed:
     `displayGrayscaleBase, mode=<m>`, `displayGrayBuffer`);
   - the screenshot taken at the deep-sleep present, i.e. the frame left on the glass.
 
-The switch "Black and white refresh before sleep" (settings key `sleepBwRefresh`, v1.0.12)
-chooses this path. It is on when settings.json has no such key; off gives back the v1.0.11
-panel sequence unchanged.
+The switch "Black and white refresh before sleep" (v1.0.12) chooses this path. Its settings key
+is `sleepBwFold` since v1.0.52 and it is OFF when settings.json has no such key (the old key
+`sleepBwRefresh`, 1 on every card, is no longer read): the X3 UC8279 then sleeps on real 4-level
+gray (test_sleep_x3_gray_v1052.py). This file checks the folded path, so make_sd turns the switch
+on in every fixture unless a test says otherwise (`fold=None` writes no key); off gives back the
+v1.0.11 panel sequence unchanged.
 
 The black and white passes run once the sleep image is complete in RAM (v1.0.13): the reader
 sees black, white and the image back to back instead of a white panel while a cover decodes.
@@ -24,6 +27,10 @@ v1.0.14: with the switch on, the book covers (the Cover screen, the quote screen
 dithered straight to black and white once, from a black and white cover or the card thumbnail,
 and keep their tones (test_sleep_cover_v1014.py); the ordered patterns stay for the Tenor screen
 and gray pictures of the user's own. Their golden frames were recorded again for that.
+
+v1.0.52: the gray book cover (switch off) is made with the even thresholds 43/128/213 on the X3
+UC8279 too, so the golden frames bw-3-1.png and bw-10-1.png (the gray cover, the gray quote tile)
+were recorded again from this build; the other frames are untouched.
 
 Fixtures are made up here: a four-tone cover drawn with PIL, an invented title and quote.
 Set SLEEP_BW_SHOTS to a directory to keep the screenshots as PNG.
@@ -149,11 +156,14 @@ class SleepEndsBwTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
-    def make_sd(self, name, mode, state=None, settings=None):
+    def make_sd(self, name, mode, state=None, settings=None, fold=1):
         sd = self.root / name
         store = sd / '.crosspoint'
         store.mkdir(parents=True)
-        (store / 'settings.json').write_text(json.dumps(truoc_tenor(dict({'language': 'VI', 'sleepScreen': mode}, **(settings or {})))))
+        base = {'language': 'VI', 'sleepScreen': mode}
+        if fold is not None:
+            base['sleepBwFold'] = fold
+        (store / 'settings.json').write_text(json.dumps(truoc_tenor(dict(base, **(settings or {})))))
         (store / 'state.json').write_text(json.dumps(dict({'showBootScreen': False}, **(state or {}))))
         return sd
 
@@ -236,7 +246,7 @@ class SleepEndsBwTest(unittest.TestCase):
             type(self).cover_sd = sd
             type(self).cover_run = self.sleep_once(sd, 'bia-sach')
             (sd / '.crosspoint/settings.json').write_text(json.dumps(truoc_tenor({'language': 'VI', 'sleepScreen': 3,
-                                                                      'sleepBwRefresh': 0})))
+                                                                      'sleepBwFold': 0})))
             self.sleep_once(sd, 'bia-sach-tat')
             self.assertEqual(len(list((sd / '.crosspoint').glob('epub_*/cover_*.bmp'))), 2)
         return type(self).cover_sd, type(self).cover_run
@@ -322,7 +332,7 @@ class SleepEndsBwTest(unittest.TestCase):
         # The same sleep, on the same fixtures, as the earlier build: the image left on the glass
         # must match its recorded frame pixel for pixel, switch on and off.
         cases = [(mode, {}) for mode in (0, 1, 2, 3, 5, 8, 9, 10)]
-        cases += [(mode, {'sleepBwRefresh': 0}) for mode in (2, 3, 8, 10)]
+        cases += [(mode, {'sleepBwFold': 0}) for mode in (2, 3, 8, 10)]
         for mode, settings in cases:
             with self.subTest(sleepScreen=mode, settings=settings):
                 name = f'giong-{mode}-{len(settings)}'
@@ -374,19 +384,23 @@ class SleepEndsBwTest(unittest.TestCase):
             PROGRAM = saved
         self.assertNotIn('[SLP] clear', sleep)
 
-    def test_switch_on_by_default_and_when_set(self):
-        # The fixtures above write no sleepBwRefresh key: those runs are the default.
-        for settings in ({}, {'sleepBwRefresh': 1}):
-            with self.subTest(settings=settings):
-                sd = self.make_sd(f'bat-{len(settings)}', 8, settings=settings)
-                if not settings:
-                    self.assertNotIn('sleepBwRefresh', (sd / '.crosspoint/settings.json').read_text())
-                _, sleep, image = self.sleep_once(sd, f'bat-{len(settings)}')
-                self.assert_ends_on_bw_full(sleep, ready_first=False)
-                self.assertEqual(self.grays(image), 0)
+    def test_switch_off_by_default_and_on_when_set(self):
+        # v1.0.52: no key, or only the old key `sleepBwRefresh` at 1 (what earlier releases wrote on
+        # every card), is the gray path; the new key at 1 folds to black and white.
+        for name, settings, fold in (('mac-dinh', {}, None), ('khoa-cu', {'sleepBwRefresh': 1}, None),
+                                     ('bat', {}, 1)):
+            with self.subTest(name):
+                sd = self.make_sd(f'bat-{name}', 8, settings=settings, fold=fold)
+                _, sleep, image = self.sleep_once(sd, f'bat-{name}')
+                if fold:
+                    self.assert_ends_on_bw_full(sleep, ready_first=False)
+                    self.assertEqual(self.grays(image), 0)
+                else:
+                    self.assertEqual(PANEL_OP.findall(sleep), ['displayBuffer, mode=0', 'displayGrayBuffer'])
+                    self.assertGreater(self.grays(image), 1000)
 
     def test_switch_off_keeps_the_v1011_waveforms(self):
-        off = {'sleepBwRefresh': 0}
+        off = {'sleepBwFold': 0}
         # The whole panel sequence of v1.0.11 on this simulator, per mode: the Tenor and quote
         # screens run one GC pass to the image's B/W threshold and then the gray pass (on the UC8279
         # that GC pass leaves unchanged pixels undriven, so the page can still ghost with the
@@ -416,7 +430,7 @@ class SleepEndsBwTest(unittest.TestCase):
                 self.assertEqual(PANEL_OP.findall(sleep)[-1], 'displayGrayBuffer')
 
     def test_settings_row_turns_the_switch_off(self):
-        # Settings, Sleep: the switch is the sixth row, after "Wake into the book", and is on.
+        # Settings, Sleep: the switch is the sixth row, after "Wake into the book"; the fixture turns it on.
         sd = self.make_sd('cai-dat', 8, settings={'uiTheme': 4})
         shot = sd / 'hang.bmp'
         after = sd / 'sau-khi-bam.bmp'
@@ -429,7 +443,7 @@ class SleepEndsBwTest(unittest.TestCase):
                 Path(SHOTS).mkdir(parents=True, exist_ok=True)
                 image.save(Path(SHOTS) / f'{label}.png')
         saved = json.loads((sd / '.crosspoint/settings.json').read_text())
-        self.assertEqual(saved.get('sleepBwRefresh'), 0, log)
+        self.assertEqual(saved.get('sleepBwFold'), 0, log)
 
 if __name__ == '__main__':
     unittest.main()

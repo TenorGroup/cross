@@ -517,8 +517,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // instead of returning to Home. 0 = off, 1 = on.
   uint8_t wakeIntoBook = 0;
   // X3 only: end every sleep screen on one full black and white refresh, gray art as an
-  // ordered dither (v1.0.12). 0 keeps the v1.0.11 gray waveforms. 1 = on (default).
-  uint8_t sleepBwRefresh = 1;
+  // ordered dither (v1.0.12). 0 = gray waveforms, real 4-level gray (default since v1.0.52),
+  // 1 = fold to black and white. Stored as "sleepBwFold": the v1.0.12 to v1.0.51 key
+  // "sleepBwRefresh" held 1 on every card by default, and is no longer read.
+  uint8_t sleepBwFold = 0;
 
   // --- BLE page turner (BTH2) -------------------------------------------------
   // Mac dinh TAT. Luu tay trong toJson/fromJson (khong qua SettingsList) vi man

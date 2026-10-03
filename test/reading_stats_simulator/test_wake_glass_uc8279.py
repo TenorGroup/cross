@@ -8,7 +8,8 @@ controller RAM and the glass (glass_model.py, glass/uc8279_glass.cpp, rules at t
 file). Once the device has started again, every B/W frame it shows must be on the glass pixel for
 pixel: a pixel left over is the ghost of the sleep screen or of the boot picture.
 
-Journeys: the Tenor sleep screen folded to black and white (the default), the same without heap
+Journeys (the fixtures turn "Black and white refresh before sleep", key sleepBwFold, on unless a
+journey sets it off; it is off by default since v1.0.52): the Tenor sleep screen folded to black and white, the same without heap
 for the kept plane, the gray sleep images with "Black and white refresh before sleep" off (Tenor,
 a gray picture of the user's own, a book cover), the transparent sleep screen with the switch on
 and off, a sleep frame cut short on the card, Quick resume, and a cold start after a sleep with the Tenor
@@ -56,7 +57,7 @@ class WakeGlassTest(unittest.TestCase):
         sd = Path(self.temp.name) / name
         store = sd / '.crosspoint'
         store.mkdir(parents=True)
-        (store / 'settings.json').write_text(json.dumps(truoc_tenor(dict({'language': 'EN'}, **settings))))
+        (store / 'settings.json').write_text(json.dumps(truoc_tenor(dict({'language': 'EN', 'sleepBwFold': 1}, **settings))))
         (store / 'state.json').write_text(json.dumps(dict({'showBootScreen': False}, **(state or {}))))
         # The first process wakes onto a white glass whose frame it knows, so every pixel it leaves
         # comes from the journey itself.
@@ -103,7 +104,7 @@ class WakeGlassTest(unittest.TestCase):
                 ('picture-gray', {'sleepScreen': 2}, gray_picture, None),
                 ('cover-gray', {'sleepScreen': 3}, book, {'openEpubPath': BOOK})):
             with self.subTest(name):
-                records, log = self.journey(name, dict(settings, sleepBwRefresh=0), pre, state=state)
+                records, log = self.journey(name, dict(settings, sleepBwFold=0), pre, state=state)
                 self.assertIn('displayGrayBuffer', log.split('Entering deep sleep', 1)[0])
                 self.assert_glass_follows_every_frame_after_start(records)
 
@@ -116,7 +117,7 @@ class WakeGlassTest(unittest.TestCase):
     def test_transparent_sleep_screen(self):
         for name, switch in (('transparent', 1), ('transparent-gray', 0)):
             with self.subTest(name):
-                records, _ = self.journey(name, {'sleepScreen': 7, 'sleepBwRefresh': switch}, overlay_picture)
+                records, _ = self.journey(name, {'sleepScreen': 7, 'sleepBwFold': switch}, overlay_picture)
                 self.assert_glass_follows_every_frame_after_start(records)
 
     def test_quick_resume(self):

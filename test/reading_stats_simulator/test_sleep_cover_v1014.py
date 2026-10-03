@@ -1,4 +1,5 @@
-"""v1.0.14 sleep covers on the X3 with "Black and white refresh before sleep" on (the default).
+"""v1.0.14 sleep covers on the X3 with "Black and white refresh before sleep" on (settings key
+sleepBwFold; since v1.0.52 off by default, so these fixtures turn it on).
 
 1. The Cover sleep screen. The cover was cached as a 4-level picture dithered for gray, and the
    X3 then folded those levels into black and white patterns: the dither had spread its error by
@@ -82,7 +83,7 @@ class SleepCoverTest(unittest.TestCase):
         sd = self.root / name
         store = sd / '.crosspoint'
         store.mkdir(parents=True)
-        (store / 'settings.json').write_text(json.dumps(truoc_tenor(dict({'language': 'VI', 'sleepScreen': mode}, **(settings or {})))))
+        (store / 'settings.json').write_text(json.dumps(truoc_tenor(dict({'language': 'VI', 'sleepScreen': mode, 'sleepBwFold': 1}, **(settings or {})))))
         (store / 'state.json').write_text(json.dumps(dict({'showBootScreen': False}, **(state or {}))))
         return sd
 

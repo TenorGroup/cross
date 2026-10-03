@@ -129,10 +129,10 @@ class SleepQuoteTest(unittest.TestCase):
             write_epub(sd / book.lstrip('/'), title)
             store = sd / '.crosspoint'
             store.mkdir(parents=True)
-            (store / 'settings.json').write_text(json.dumps(truoc_tenor({'language': 'VI', 'sleepScreen': 3})))
+            (store / 'settings.json').write_text(json.dumps(truoc_tenor({'language': 'VI', 'sleepScreen': 3, 'sleepBwFold': 1})))
             (store / 'state.json').write_text(json.dumps({'showBootScreen': False, 'openEpubPath': book}))
             log = cls.run_sim(sd, f'{SLEEP_AT}:SLEEP;9000:QUIT')
-            (store / 'settings.json').write_text(json.dumps(truoc_tenor({'language': 'VI', 'sleepScreen': 3, 'sleepBwRefresh': 0})))
+            (store / 'settings.json').write_text(json.dumps(truoc_tenor({'language': 'VI', 'sleepScreen': 3, 'sleepBwFold': 0})))
             log += cls.run_sim(sd, f'{SLEEP_AT}:SLEEP;9000:QUIT')
             made = list(store.glob('epub_*/cover_*.bmp'))
             assert len(made) == 2, 'Cover sleeps made no black and white and 4-level covers\n' + log
@@ -184,7 +184,7 @@ class SleepQuoteTest(unittest.TestCase):
         for book in covers:
             for cache in self.caches[book]:
                 shutil.copytree(cache, store / cache.name)
-        (store / 'settings.json').write_text(json.dumps(truoc_tenor(settings or {'language': 'VI', 'sleepScreen': 10})))
+        (store / 'settings.json').write_text(json.dumps(truoc_tenor({'sleepBwFold': 1, **(settings or {'language': 'VI', 'sleepScreen': 10})})))
         (store / 'state.json').write_text(json.dumps({'showBootScreen': False}))
         return sd
 
@@ -254,16 +254,16 @@ class SleepQuoteTest(unittest.TestCase):
     def test_cover_corners_are_rounded_in_both_sleep_paths(self):
         # The cover tile is rounded like every cover (TenorRadius.h cover(96) = 6 px, a continuous
         # corner reaching about 1.6 r along each edge), on X3's dithered black-and-white path
-        # (sleepBwRefresh on, the default) and on the gray path (off). The fixture's cover is dark
+        # (sleepBwFold on; the fixtures turn it on, it is off by default since v1.0.52) and on the gray path (off). The fixture's cover is dark
         # at the top and mid gray at the bottom, so a square tile has ink in every corner.
         record = {'schema': 1, 'path': SECOND_BOOK, 'title': SECOND_TITLE, 'text': SHORT_TEXT,
                   'spine': 2, 'page': 4, 'day': 20260923, 'gio': 600}
         name = f'{quote_id(record, 0):016x}.json'
         x0, y0, x1, y1 = COVER_BOX[0], COVER_BOX[1], COVER_BOX[2] - 1, COVER_BOX[3] - 1
         for refresh in (1, 0):
-            with self.subTest(sleepBwRefresh=refresh):
+            with self.subTest(sleepBwFold=refresh):
                 sd = self.make_sd([(name, json.dumps(record, ensure_ascii=False).encode())], covers=[SECOND_BOOK],
-                                  settings={'language': 'VI', 'sleepScreen': 10, 'sleepBwRefresh': refresh})
+                                  settings={'language': 'VI', 'sleepScreen': 10, 'sleepBwFold': refresh})
                 log, image = self.sleep_once(sd, f'S2-bia-bo-goc-{refresh}')
                 self.assertEqual(self.fit(log)[3], 1, log)
                 px = image.load()

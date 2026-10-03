@@ -82,9 +82,14 @@ class MacDinhTenorTest(unittest.TestCase):
 
     def giu_nguyen(self, truoc, luu):
         for khoa, gia_tri in truoc.items():
-            if khoa in BO_TENOR or khoa in DAU or khoa == 'uiTheme':  # uiTheme: v1.0.52 no longer saves it
+            # uiTheme: v1.0.52 no longer saves it. sleepBwRefresh: v1.0.52 reads and saves the switch as
+            # sleepBwFold, so the old key (1 on every card, the old default) is dropped and the fold
+            # starts off (checked below).
+            if khoa in BO_TENOR or khoa in DAU or khoa in ('uiTheme', 'sleepBwRefresh'):
                 continue
             self.assertEqual(luu.get(khoa), gia_tri, khoa)
+        self.assertNotIn('sleepBwRefresh', luu)
+        self.assertEqual(luu.get('sleepBwFold'), 0, 'an old file turned the black and white fold back on')
 
     def test_the_trong(self):
         luu, log = self.khoi_dong()

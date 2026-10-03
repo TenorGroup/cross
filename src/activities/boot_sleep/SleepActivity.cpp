@@ -49,6 +49,14 @@ HalDisplay::GrayscaleMode sleepGrayscaleMode(const GfxRenderer& renderer) {
              : HalDisplay::GrayscaleMode::Absolute;
 }
 
+// The one place that picks the even gray thresholds (43/128/213, cache file "_original") for a
+// picture drawn through absolute gray planes: every panel that has them, the X3 UC8279 included.
+// The UC8253 X3 has none, supported() is false there, and it keeps the legacy thresholds.
+bool sleepOriginalThresholds(const GfxRenderer& renderer, const uint8_t coverFilter) {
+  return renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
+         coverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
+}
+
 // Kept separate from /sleep.bmp and /.sleep so alpha-overlay art does not mix with full-screen wallpapers.
 constexpr char TRANSPARENT_SLEEP_ROOT_BMP[] = "/sleep-overlay.bmp";
 constexpr char TRANSPARENT_SLEEP_ROOT_PNG[] = "/sleep-overlay.png";
@@ -649,7 +657,7 @@ void SleepActivity::onEnter() {
       (fromTimeout &&
        settings.quickResumeSleepScreen == CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_AFTER_TIMEOUT);
   LOG_INF("SLP", "Sleep screen mode=%u, quick=%u", settings.sleepScreen, renderQuickResume);
-  SleepGrayPlanes::decide(gpio.deviceIsX3(), settings.sleepBwRefresh);
+  SleepGrayPlanes::decide(gpio.deviceIsX3(), settings.sleepBwFold);
 
   if (renderQuickResume) {
     // Quick Resume keeps the current frame as-is, so the driver's inversion
@@ -767,9 +775,7 @@ void SleepActivity::renderCustomSleepScreen() const {
   HalFile file;
   if (Storage.openFileForRead("SLP", "/sleep.bmp", file)) {
     Bitmap bitmap(file, true,
-                  renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
-                      display.getController() == HalDisplay::Controller::SSD1677 &&
-                      SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
+                  sleepOriginalThresholds(renderer, SETTINGS.sleepScreenCoverFilter));
     if (bitmap.parseHeaders() == BmpReaderError::Ok) {
       LOG_DBG("SLP", "Loading: /sleep.bmp");
       renderBitmapSleepScreen(bitmap);
@@ -789,9 +795,7 @@ void SleepActivity::renderCustomSleepScreen() const {
     if (Storage.openFileForRead("SLP", selectedPath, randFile)) {
       LOG_DBG("SLP", "Randomly loading: %s", selectedPath.c_str());
       Bitmap bitmap(randFile, true,
-                    renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
-                        display.getController() == HalDisplay::Controller::SSD1677 &&
-                        SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
+                    sleepOriginalThresholds(renderer, SETTINGS.sleepScreenCoverFilter));
       if (bitmap.parseHeaders() == BmpReaderError::Ok) {
         renderBitmapSleepScreen(bitmap);
         randFile.close();
@@ -1030,11 +1034,7 @@ void SleepActivity::renderCoverSleepScreen() const {
     return (this->*renderNoCoverSleepScreen)();
   }
 
-  // SSD absolute images use the new thresholds; other panels retain legacy tuning.
-  const bool originalThresholds =
-      renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
-      display.getController() == HalDisplay::Controller::SSD1677 &&
-      SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
+  const bool originalThresholds = sleepOriginalThresholds(renderer, SETTINGS.sleepScreenCoverFilter);
   std::string coverBmpPath;
   bool cropped = SETTINGS.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
 
@@ -1161,9 +1161,7 @@ void SleepActivity::renderQuoteSleepScreen() const {
   releaseSdFontCachesForDecode(renderer);
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   const auto caps = renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute);
-  const bool originalThresholds = caps.supported() && display.getController() == HalDisplay::Controller::SSD1677 &&
-                                  settings.sleepScreenCoverFilter ==
-                                      CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
+  const bool originalThresholds = sleepOriginalThresholds(renderer, settings.sleepScreenCoverFilter);
 
   // Folding to black and white, the tile is made once in RAM (makeSleepTile) and drawn 1:1.
   const bool fold = SleepGrayPlanes::wanted();
