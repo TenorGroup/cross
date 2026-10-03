@@ -17,6 +17,11 @@
 #include <unordered_map>
 #include <vector>
 
+// The library's own setting must be the one the build asked for. CMake builds with -w, so without
+// scripts/sdfat_patches/0002 the -D flag is redefined back to 0 and nothing says so.
+static_assert(USE_SEPARATE_FAT_CACHE == SDFAT_EXPECT_SEPARATE_FAT_CACHE,
+              "USE_SEPARATE_FAT_CACHE is not what the build set: scripts/sdfat_patches/0002 missing");
+
 namespace {
 using Sector = std::array<uint8_t, 512>;
 
@@ -29,6 +34,9 @@ class SparseCard final : public FsBlockDeviceInterface {
   explicit SparseCard(Sector_t sectors) : sectors(sectors) {}
   size_t reads = 0;
   bool logWrites = false;
+  // A read of this sector fills the buffer and then reports failure, as SHARED_SPI does when
+  // CMD12 fails after the data arrived.
+  Sector_t failAfterCopy = 0xFFFFFFFF;
   std::vector<Write> writes;
 
   bool isBusy() override { return false; }
@@ -36,7 +44,7 @@ class SparseCard final : public FsBlockDeviceInterface {
     ++reads;
     const Sector s = peek(sector);
     memcpy(dst, s.data(), 512);
-    return sector < sectors;
+    return sector < sectors && sector != failAfterCopy;
   }
   bool readSectors(Sector_t sector, uint8_t* dst, size_t count) override {
     for (size_t i = 0; i < count; ++i) readSector(sector + i, dst + 512 * i);
@@ -441,4 +449,28 @@ TEST(SdFatAlloc, SyncBeforePowerCutPutsCachedSectorsOnTheCard) {
     // With one shared cache the FAT sector already went out when the data sector came in.
     if (synced) EXPECT_NE(entry, 0u) << "FAT entry";
   }
+}
+
+// SHARED_SPI: readSectors() fills the buffer and then CMD12 fails, so readSector() returns false
+// with the new sector's bytes already in the cache buffer. The cache must not go on claiming the
+// old sector number: a write-back would put the new bytes there (both FAT copies, for a FAT sector).
+TEST(SdFatAlloc, FailedReadLeavesNoNewBytesUnderTheOldSectorNumber) {
+  SparseCard device(1024);
+  Sector a{}, b{};
+  a.fill(0xAA);
+  b.fill(0xBB);
+  device.poke(10, a);
+  device.poke(11, b);
+  FsCache cache;
+  cache.init(&device);
+  ASSERT_NE(cache.prepare(10, FsCache::CACHE_FOR_READ), nullptr);
+  device.failAfterCopy = 11;
+  EXPECT_EQ(cache.prepare(11, FsCache::CACHE_FOR_READ), nullptr);
+  device.failAfterCopy = 0xFFFFFFFF;
+  const uint8_t* again = cache.prepare(10, FsCache::CACHE_FOR_WRITE);
+  ASSERT_NE(again, nullptr);
+  EXPECT_EQ(again[0], 0xAA) << "sector 10 read back as another sector's bytes";
+  EXPECT_TRUE(cache.sync());
+  EXPECT_EQ(device.peek(10), a) << "write-back damaged sector 10";
+  EXPECT_EQ(device.peek(11), b);
 }
