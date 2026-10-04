@@ -49,10 +49,10 @@ def check_files(tmp):
 
 
 def check_display_group(tmp):
-    # Settings -> Display: the side arrow and button label rows are gone (9 rows became 7).
+    # Settings -> Display: 7 rows, followed by the rounded frame at y485-487.
     (group,) = run(fresh(tmp, 'dg'), f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,128', [7500])
-    assert ink(group, (30, 545, 200, 585)) == 0 and ink(group, (30, 485, 200, 520)) == 0, \
-        'the Display group still has 8 or 9 rows'
+    assert ink(group, (30, 440, 200, 475)) > 0.01, 'the final clock placement row is missing'
+    assert ink(group, (30, 500, 200, 710)) == 0, 'the Display group has extra rows below clock placement'
 
 
 def check_pin_popup(tmp):

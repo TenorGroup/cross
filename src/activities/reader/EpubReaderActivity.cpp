@@ -4078,6 +4078,8 @@ void EpubReaderActivity::renderOverlay() {
   if (overlay == Overlay::Contents) {
     model.panelTitle = tr(STR_TOOL_CONTENTS);
     model.itemCount = epub->getTocItemsCount();
+    const int currentTocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
+    model.rowMarked = [currentTocIndex](int i) { return currentTocIndex >= 0 && i == currentTocIndex; };
     model.rowText = [this](int i) {
       const auto item = epub->getTocItem(i);
       const int depth = item.level > 1 ? (item.level - 1) * 2 : 0;

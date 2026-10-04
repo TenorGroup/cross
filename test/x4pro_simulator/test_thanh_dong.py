@@ -5,6 +5,8 @@ root) and the screen's name (from x 152, read only). The top of the screen is th
 Runs the X4 Pro simulator (pio run -e simulator_x4pro). X4PRO_PROGRAM picks another build.
 """
 import tempfile
+import os
+import re
 import zipfile
 from pathlib import Path
 
@@ -20,6 +22,19 @@ def fresh(tmp, name):
     folder = Path(tmp) / name
     folder.mkdir()
     return folder
+
+
+def capture(folder, names, images):
+    output = os.environ.get('X4PRO_TEST_SHOTS')
+    if output:
+        target = Path(output) / folder.name
+        target.mkdir(parents=True, exist_ok=True)
+        (target/'simulator.log').write_text((folder/'simulator.log').read_text())
+        for name, image in zip(names, images): image.save(target/(name+'.png'))
+
+
+def require_reader(folder):
+    assert 'Entering activity: EpubReader' in (folder/'simulator.log').read_text(), 'fixture never entered Reader'
 
 
 def same(a, b, box=SAME):
@@ -57,11 +72,18 @@ def check_back_keeps_list(tmp):
 
 
 def check_book_zone(tmp):
-    # A book -> its menu -> Vi tri -> Chon chuong -> the zone icon (an open book): the page, not the menu.
-    page, contents, back = run(fresh(tmp, 'bz'), '3000:TAP:240,300;7000:TAP:240,400;9500:TAP:180,754;'
-                                                  '12500:TAP:240,134;15500:TAP:114,754', [6800, 15000, 18000])
-    assert ink(contents, (84, 724, 144, 784)) > 0.08, 'the contents have no zone icon'
-    assert same(page, back, (0, 0, 480, 700)), 'the zone icon of the contents did not lead to the page'
+    # Inline Contents uses the common reader tool bar; foot Back returns to the book page.
+    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
+    folder = fresh(tmp, 'bz')
+    page, contents, back = run(folder, f'{open_book};9500:TAP:240,400;'
+                              '12000:TAP:148,754;15500:TAP:46,754',
+                              [9000,14500,18000], write_books=toc_book)
+    require_reader(folder)
+    capture(folder, ('page','contents','back'), (page,contents,back))
+    assert not same(page, contents, (16,364,464,710)), 'Contents never opened'
+    assert ink(contents, (32,370,160,398)) > 0.04, 'Contents sheet has no heading'
+    assert ink(contents, (128,730,168,774)) > 0.08, 'Contents tool is missing from the reader bar'
+    assert same(page, back, (0,0,480,700)), 'foot Back from Contents did not lead to the book page'
 
 
 def check_reader_menu_back(tmp):
@@ -82,10 +104,14 @@ def check_keyboard_back(tmp):
 def check_chosen_row(tmp):
     # The chapter being read is the chosen row of the contents: a tick at its end, no "Dang doc".
     open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
-    (contents,) = run(fresh(tmp, 'ch'), f'{open_book};9500:TAP:240,400;12000:TAP:180,754;14500:TAP:240,134',
+    folder = fresh(tmp, 'ch')
+    (contents,) = run(folder, f'{open_book};9500:TAP:240,400;12000:TAP:148,754',
                       [17000], write_books=toc_book)
-    assert ink(contents, (420, 45, 450, 95)) > 0.03, 'no tick at the end of the chapter being read'
-    assert ink(contents, (250, 45, 415, 95)) == 0, 'the chapter being read still says so in words'
+    require_reader(folder)
+    capture(folder, ('contents',), (contents,))
+    assert ink(contents, (32,370,160,398)) > 0.04, 'Contents never opened'
+    assert ink(contents, (416,408,448,458)) > 0.03, 'no tick at the end of the chapter being read'
+    assert ink(contents, (300,408,416,458)) == 0, 'the chapter being read still says so in words'
 
 
 def check_row_chevron(tmp):
@@ -94,7 +120,10 @@ def check_row_chevron(tmp):
     card, group = run(fresh(tmp, 'rc'), f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,{ROW[SYSTEM]}', [4800, 7800])
     assert ink(card, (436, 40, 452, 600)) > 0.01, 'the Settings card rows have no ">"'
     assert ink(group, (436, 40, 452, 100)) > 0.02, 'Dong ho has no ">"'
-    assert ink(group, (436, 104, 456, 160)) == 0, 'a row changed in place has a ">" or its value under it'
+    # The actual first-row chevron occupies x437..443. The old crop included x436,
+    # where TAT ends: two pixels belonging to the last T, outside that corridor.
+    assert ink(group, (400,104,437,160)) > 0.02, 'toggle value is missing'
+    assert ink(group, (437,104,444,160)) == 0, 'a row changed in place has a ">" or its value under it'
 
 
 def check_status_strip(tmp):
@@ -141,28 +170,60 @@ def toc_book(sach, chapters=24):
 
 
 def check_contents_page(tmp):
-    # The contents open on the page that holds the chapter being read, pages counted from the first line:
-    # read chapter 15 (page 2, its fourth line), open the contents again, see page 2 as a flick showed it.
-    contents = '9500:TAP:240,400;12000:TAP:180,754;14500:TAP:240,134'
+    # Five rows fit the approved sheet. Two swipes reach chapters 11..15; tap 15,
+    # then open again: current chapter is the first row and carries the chosen tick.
+    folder = fresh(tmp, 'cp')
     open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
-    page2, again = run(fresh(tmp, 'cp'), f'{open_book};{contents};17500:SWIPE:240,600,240,200,150;'
-                       '20500:TAP:240,254;' + contents.replace('9500', '24000').replace('12000', '26500')
-                       .replace('14500', '29000'), [20000, 32000], write_books=toc_book)
-    # The first rows only: the chapter now read (further down) is bold.
-    assert same(page2, again, (0, 30, 300, 220)), 'the contents opened on a page of their own'
+    page3, chapter15, again = run(folder, f'{open_book};9500:TAP:240,400;12000:TAP:148,754;'
+        '14500:SWIPE:240,650,240,420,150;17000:SWIPE:240,650,240,420,150;'
+        '19500:TAP:240,681;22500:TAP:240,400;25000:TAP:148,754',
+        [19000,21500,27500], write_books=toc_book)
+    require_reader(folder)
+    capture(folder, ('chapters-11-15','chapter15','current-chapter-contents'), (page3,chapter15,again))
+    assert 'Progress saved: spine=14 ' in (folder/'simulator.log').read_text(), 'fixture did not read chapter 15'
+    assert ink(page3,(32,370,160,398)) > 0.04 and ink(again,(32,370,160,398)) > 0.04, 'Contents never opened'
+    assert ink(again,(416,408,448,458)) > 0.03, 'current chapter did not open as the chosen first row'
+    # Chapter 15 was row 5; reopening must move the viewport to its chosen first row.
+    assert not same(page3,again,(32,404,410,466)), 'Contents ignored current chapter and reused old viewport'
+
+
+def toc_without_current(sach, empty=False):
+    toc_book(sach,2)
+    path=sach/'a-muc-luc.epub'
+    with zipfile.ZipFile(path) as z: parts={n:z.read(n) for n in z.namelist()}
+    ncx=parts['toc.ncx'].decode()
+    ncx=re.sub(r'<navPoint[^>]*>.*?</navPoint>', '' if empty else lambda m: '' if 'id="n1"' in m.group() else m.group(), ncx)
+    parts['toc.ncx']=ncx.encode()
+    with zipfile.ZipFile(path,'w') as z:
+        for name,data in parts.items(): z.writestr(name,data)
+
+
+def check_contents_unmatched(tmp):
+    for empty in (False,True):
+        folder=fresh(tmp,'toc-empty' if empty else 'toc-unmatched')
+        (contents,)=run(folder,f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68;'
+            '9500:TAP:240,400;12000:TAP:148,754',[14500],write_books=lambda sach: toc_without_current(sach,empty))
+        require_reader(folder)
+        capture(folder,('contents',),(contents,))
+        assert ink(contents,(32,370,160,398)) > 0.04, 'empty/unmatched fixture never opened Contents'
+        for row in range(5):
+            # Tick slots stay inside the five fixed rows, above the frame border at y708.
+            top=408+62*row
+            assert ink(contents,(416,top,448,top+50)) == 0, 'empty/unmatched TOC marked an unrelated row'
 
 
 def main():
     with tempfile.TemporaryDirectory(prefix='x4pro-dyn-') as tmp:
         failed = 0
-        for check in (check_settings_row_tap, check_sub_screen_bar, check_zone_tap, check_book_zone, check_back_keeps_list, check_contents_page, check_file_root, check_status_strip, check_row_chevron, check_chosen_row, check_reader_menu_back, check_keyboard_back):
+        for check in (check_settings_row_tap, check_sub_screen_bar, check_zone_tap, check_book_zone, check_back_keeps_list, check_contents_page, check_file_root, check_status_strip, check_row_chevron, check_chosen_row, check_reader_menu_back, check_keyboard_back, check_contents_unmatched):
             try:
                 check(tmp)
                 print('ok   ', check.__name__)
             except AssertionError as error:
                 failed += 1
                 print('RED  ', check.__name__, '-', error)
-    print('RED' if failed else 'GREEN: X4 Pro dynamic bar')
+    assert not failed, f'{failed} dynamic bar checks failed'
+    print('GREEN: X4 Pro dynamic bar')
 
 
 if __name__ == '__main__':
