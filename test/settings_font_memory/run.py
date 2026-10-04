@@ -45,6 +45,7 @@ descriptor = header[header.index('enum class SettingType'):header.index('class S
     '#include "activities/settings/SettingsTabs.h"\n' + descriptor)
 methods = ''.join(method(source, sig) for sig in [
     'std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe',
+    'bool SettingsActivity::listedAsRow(',
     'void SettingsActivity::rebuildSettingsLists()',
     'void SettingsActivity::rebuildRowItems()'])
 for name in ['onPause', 'onResume']:

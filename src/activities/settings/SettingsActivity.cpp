@@ -83,6 +83,19 @@ std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe(const settingstabs::T
 
 int SettingsActivity::tabCount() const { return deviceSettingsTabCount(); }
 
+bool SettingsActivity::listedAsRow(const SettingInfo& setting) {
+  if (home_button::isSetting(setting.valuePtr)) return false;
+  if (setting.valuePtr == &CrossPointSettings::uiUglyLevel) return ugly::logic::levelRowShown(SETTINGS.uiShell);
+  return !(BoardConfig::hasHomeKey() && setting.nameId == StrId::STR_LONG_PRESS_MENU);
+}
+
+bool SettingsActivity::applyUiTextSize(GfxRenderer& renderer, const uint8_t size) {
+  if (!applyUiFontSize(renderer, size)) return false;
+  SETTINGS.uiTextSize = size;
+  UITheme::getInstance().reload();
+  return true;
+}
+
 void SettingsActivity::rebuildSettingsLists() {
   displaySettings.clear();
   readerSettings.clear();
@@ -124,11 +137,7 @@ void SettingsActivity::rebuildSettingsLists() {
   // longPressMenuFunction (legacy long-press-Confirm cycling) is superseded by
   // the Home button's own long-press action on home-key boards. The row count
   // below and the list build apply the same rule, so every tab reserves exactly.
-  const auto listedAsRow = [](const SettingInfo& setting) {
-    if (home_button::isSetting(setting.valuePtr)) return false;
-    if (setting.valuePtr == &CrossPointSettings::uiUglyLevel) return ugly::logic::levelRowShown(SETTINGS.uiShell);
-    return !(BoardConfig::hasHomeKey() && setting.nameId == StrId::STR_LONG_PRESS_MENU);
-  };
+
   const auto& catalog = getBaseSettingsList();
   std::array<size_t, settingstabs::TAB_COUNT> rowCounts{};
   for (const auto& setting : catalog) {
@@ -287,6 +296,8 @@ void SettingsActivity::rebuildRowItems() {
     item.label = I18N.get(settings[i].nameId);
     item.actionValue = static_cast<int16_t>(i);
     item.opensNext = settingOpensNext(settings[i]);
+    // tenor/ugly is a limited edition: the row that offers it says so.
+    if (settings[i].valuePtr == &CrossPointSettings::uiShell && shell::uglyOffered()) item.subtitle = shell::uglyLimitNote();
     rowItems_.push_back(item);
   }
 }
@@ -324,12 +335,10 @@ void SettingsActivity::onExit() {
 bool SettingsActivity::applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr, const uint8_t newValue) {
   if (valuePtr == &CrossPointSettings::uiTextSize) {
     RenderLock lock(*this);
-    if (!applyUiFontSize(renderer, newValue)) {
+    if (!applyUiTextSize(renderer, newValue)) {
       LOG_ERR("SETTINGS", "Applying UI text size failed");
       return false;
     }
-    SETTINGS.uiTextSize = newValue;
-    UITheme::getInstance().reload();
     resetUi();
     return true;
   }
@@ -436,8 +445,9 @@ void SettingsActivity::toggleCurrentSetting() {
     const auto enumLabels = setting.enumLabels();
     if (settingstabs::moTrinhChon(static_cast<int>(enumLabels.size()))) {
       const auto valuePtr = setting.valuePtr;
+      const StrId name = setting.nameId;
       optionPopup.show(setting.nameId, enumLabels.data(), static_cast<int>(enumLabels.size()), currentValue,
-                       [this, valuePtr, currentValue, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
+                       [this, valuePtr, currentValue, sleepScreenChanged, quickResumeTimeoutChanged, name](int idx) {
                          if (valuePtr == &CrossPointSettings::uiTextSize) {
                            if (!applyUiSettingChange(valuePtr, static_cast<uint8_t>(idx))) {
                              requestUpdate();
@@ -453,6 +463,7 @@ void SettingsActivity::toggleCurrentSetting() {
                            return;
                          }
                          saveSettings();
+                         noteValue(name);
                          rebuildSettingsLists();
                        });
       requestUpdate();
@@ -461,6 +472,7 @@ void SettingsActivity::toggleCurrentSetting() {
     const uint8_t newValue = (currentValue + 1) % static_cast<uint8_t>(enumLabels.size());
     // Going from tenor/cross to tenor/ugly asks first, in the pen of tenor/ugly; coming back asks nothing.
     if (setting.valuePtr == &CrossPointSettings::uiShell && newValue == static_cast<uint8_t>(shell::Kind::Ugly)) {
+      if (!shell::uglyOffered()) return;  // the limited edition is over: the row stays on tenor/cross
       startActivityForResult(ugly::makeSwitchConfirm(renderer, mappedInput), [this, newValue](const ActivityResult& result) {
         if (result.isCancelled) {
           requestUpdate();
@@ -488,10 +500,12 @@ void SettingsActivity::toggleCurrentSetting() {
     const uint8_t cur = setting.valueGetter();
     if (settingstabs::moTrinhChon(totalValues)) {
       const auto valueSetter = setting.valueSetter;
-      auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
+      const StrId name = setting.nameId;
+      auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged, name](int idx) {
         valueSetter(idx);
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
         saveSettings();
+        noteValue(name);
         rebuildSettingsLists();
       };
       if (!setting.enumStringValues.empty()) {
@@ -654,9 +668,15 @@ void SettingsActivity::toggleCurrentSetting() {
     return;
   }
   saveSettings();
+  shell::valueChanged(setting);
   rebuildSettingsLists();
   // Another shell draws Home: go and draw it.
   if (changedValuePtr == &CrossPointSettings::uiShell) shell::changed();
+}
+
+void SettingsActivity::noteValue(const StrId name) {
+  for (const auto& row : *currentSettings)
+    if (row.nameId == name) return shell::valueChanged(row);
 }
 
 void SettingsActivity::syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged) {

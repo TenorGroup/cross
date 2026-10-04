@@ -4,6 +4,10 @@
 
 #include "util/HomeButtonInput.h"
 
+#if FREEINK_DEVICE_X4PRO
+#include <Scribble.h>
+#endif
+
 class GfxRenderer;
 namespace freeink {
 namespace ui {
@@ -45,6 +49,18 @@ class MappedInputManager {
   // Home-key actions so the next main-loop pass can dispatch them, while the
   // current action remains available for immediate Home cancellation.
   void update(bool deferHomeButtonAction = false) const;
+#if FREEINK_DEVICE_X4PRO
+  // A scribbled gesture decided this frame (an X over a row, a ring round one, a tap, a swipe),
+  // in logical px. Fed in update() from the same contact the SDK reads off the GT911 on this
+  // task, so it adds no bus traffic. An X's first stroke is held up to scribble::PAIR_MS.
+  bool wasScribble(scribble::Result& out) const;
+  // The stroke that ended this frame (its samples), or nullptr: for a screen that draws it back.
+  const scribble::Stroke* endedStroke() const { return scribbler.endedStroke(); }
+#ifdef TENOR_PRESS_PROBE
+  // CMD:STROKE_LOG: each stroke and each decision printed, labelled for test/scribble.
+  void setStrokeLog(bool on, const char* label) const;
+#endif
+#endif
 #if FREEINK_CAP_TOUCH
   // X4 Pro delays a single power click until its frontlight double-click window
   // expires. The main loop supplies that one-frame event here.
@@ -164,5 +180,10 @@ class MappedInputManager {
   mutable uint16_t suppressedReleaseButtons = 0;
 #if FREEINK_CAP_TOUCH
   bool powerConfirmClickFrame = false;
+#endif
+#if FREEINK_DEVICE_X4PRO
+  void stepScribble() const;
+  mutable scribble::Scribbler scribbler;
+  mutable scribble::Result scribbleFrame;
 #endif
 };

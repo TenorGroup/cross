@@ -48,7 +48,8 @@ with tempfile.TemporaryDirectory() as t:
     run(repo / 'scripts/ugly/gen_tables.py', t)
     run(repo / 'scripts/ugly/gen_art.py', t)
     run(repo / 'scripts/ugly/gen_sleep_set.py', t)
-    for name in ('UglyTables.h', 'UglyArt.h', 'UglySleepData.h') if PYTHON else ():
+    run(repo / 'scripts/ugly/gen_quips.py', t)
+    for name in ('UglyTables.h', 'UglyArt.h', 'UglySleepData.h', 'UglyQuips.h') if PYTHON else ():
         check((t / name).read_bytes() == (repo / 'src/shells/ugly' / name).read_bytes(),
               name + ' is not what scripts/ugly writes: run the script and commit the result')
     # The font draws with FreeType, so the same script run twice must agree with itself.
@@ -60,6 +61,35 @@ with tempfile.TemporaryDirectory() as t:
         b = (t / 'f2' / ('ugly_%d.h' % px)).read_bytes()
         check(a == b, 'ugly_%d.h is not the same twice' % px)
         check(len(a) > 10000, 'ugly_%d.h looks empty' % px)
+
+# The lines of abuse: each block inflates to the table's lines, in the order the slots count them, and the
+# marks point at every 32nd line.
+import zlib  # noqa: E402
+
+sys.path.insert(0, str(repo / 'scripts/ugly'))
+import gen_quips  # noqa: E402
+
+order, table, blocks, loose = gen_quips.build()
+header = (repo / 'src/shells/ugly/UglyQuips.h').read_text()
+for lang in ('vi', 'en'):
+    name = lang.upper()
+    m = re.search(r'inline constexpr uint8_t %s\[\] = \{(.*?)\};' % name, header, re.S)
+    packed = bytes(int(b, 16) for b in re.findall(r'0x([0-9a-f]{2})', m.group(1)))
+    lines = zlib.decompress(packed).split(b'\0')[:-1]
+    check([l.decode() for l in lines] == [r[lang] for r in order], '%s block is not the table in slot order' % name)
+    marks = [int(x) for x in re.search(r'%s_AT\[\] = \{(.*?)\}' % name, header).group(1).split(',')]
+    raw = zlib.decompress(packed)
+    for k, at in enumerate(marks[:-1]):
+        check(at == 0 or raw[at - 1] == 0, '%s mark %d is not at a line start' % (name, k))
+    check(marks[-1] == len(raw), '%s last mark is not the block size' % name)
+for r in order:
+    for lang in ('vi', 'en'):
+        check(not any(c in r[lang] for c in ('—', '–', '·')), 'quip %s uses a dash or a middle dot' % r['key'])
+check(len(table) > 200, 'the quip slots look empty')
+said = set()
+for path in (repo / 'src').rglob('*.cpp'):
+    said |= set(re.findall(r'\bQuip::(\w+)', path.read_text(errors='ignore')))
+check(said == gen_quips.SAID, 'the events src says (%s) are not gen_quips.SAID' % sorted(said ^ gen_quips.SAID))
 
 # The writing rules, on the Vietnamese and English lines of the shell.
 FORBIDDEN = ('—', '–', '·')

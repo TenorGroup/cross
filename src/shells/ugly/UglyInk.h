@@ -71,4 +71,26 @@ struct Hints {
 // button that does something on this screen.
 void statusBar(const GfxRenderer& renderer, const MappedInputManager& input, Hints hints);
 
+#if FREEINK_DEVICE_X4PRO
+// The touch layout (UglyTouch.h). The top band: `left` (a date, a title), the clock, and the battery with
+// its percent written inside it when it fits.
+void topBar(const GfxRenderer& renderer, const char* left);
+// The bottom band over the Home key: "< prev", the word for one step back with an arrow down to the
+// key that does the same, "next >". An empty or null string leaves its cell blank.
+void navRow(const GfxRenderer& renderer, const char* prev, const char* back, const char* next);
+// A hand-drawn arrow centred at (x, y), pointing down or up.
+void arrow(const GfxRenderer& renderer, int x, int y, bool down, int length);
+// A scrap of paper clipped on: rubbed out to white (no row left half erased), edged by pen. A torn edge
+// is a zigzag; an edge left whole gets a folded corner (bottom) or the clip (top).
+void paper(const GfxRenderer& renderer, int top, int bottom, bool tornTop, bool tornBottom, uint32_t seed);
+// A box ticked or empty, its right edge at x.
+void tickBox(const GfxRenderer& renderer, int x, int y, bool ticked);
+// A small heart centred at (x, y).
+void heart(const GfxRenderer& renderer, int x, int y);
+// The black pixels of `box` in a 528x792 X3 portrait plane (UglyArt.h), drawn moved by (dx, dy).
+void liftArt(const GfxRenderer& renderer, const uint8_t* plane, const Box& box, int dx, int dy);
+// A stroke of the user's finger, drawn back with a 3 px pen.
+void penPath(const GfxRenderer& renderer, const int16_t* xs, const int16_t* ys, int n);
+#endif
+
 }  // namespace ugly

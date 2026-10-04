@@ -737,6 +737,7 @@ void setup() {
   // Push the saved timezone's POSIX rule into the clock (migrating the legacy
   // UTC-offset setting on first boot after the update).
   timezones::applyToClock();
+  shell::expireIfOver();  // tenor/ugly is a limited edition: past its last day the device is tenor/cross again
   RECENT_BOOKS.loadFromFile();
   logHeapMark("store-recent");
   // Quote files written before v1.0.11 are renamed to the per-book scheme here, before the
@@ -1715,6 +1716,18 @@ void loop() {
         logSerial.printf("USB_DRIVE:t=%lu\n", millis());
         coldlog::flush("usb-drive");
         activityManager.goToUsbDrive();
+#endif
+#if FREEINK_DEVICE_X4PRO
+      } else if (cmd.startsWith("STROKE_LOG ")) {
+        // CMD:STROKE_LOG 1 <label> / STROKE_LOG 0: every stroke drawn on the glass and what the
+        // scribble recognizer made of it (STROKE, SCRIBBLE lines), the label naming what the person
+        // was asked to draw (cross, circle, swipe, tap). test/scribble/log_to_samples.py turns the
+        // lines into test samples.
+        const String arg = cmd.substring(11);
+        const int space = arg.indexOf(' ');
+        const String label = space > 0 ? arg.substring(space + 1) : String("-");
+        mappedInputManager.setStrokeLog(arg.toInt() != 0, label.c_str());
+        logSerial.printf("STROKE_LOG:%d,%s\n", arg.toInt() != 0 ? 1 : 0, label.c_str());
 #endif
       } else if (cmd == "PANIC") {
 #if TENOR_COLD_LOG

@@ -78,6 +78,7 @@ struct SettingsActivity {
   unsigned rebuilds = 0;
   void rebuildRowItems() { ++rebuilds; }
   std::vector<SettingInfo>& danhSachCuaThe(settingstabs::Tab tab);
+  static bool listedAsRow(const SettingInfo& setting);
   void rebuildSettingsLists();
 };
 #include "CategoryMethods.inc"

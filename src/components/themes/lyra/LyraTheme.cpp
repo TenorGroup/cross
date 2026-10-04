@@ -13,17 +13,7 @@
 
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
-#include "components/icons/blocks.h"
-#include "components/icons/book.h"
-#include "components/icons/bookmark.h"
 #include "components/icons/cover.h"
-#include "components/icons/folder.h"
-#include "components/icons/hotspot.h"
-#include "components/icons/library.h"
-#include "components/icons/recent.h"
-#include "components/icons/settings2.h"
-#include "components/icons/transfer.h"
-#include "components/icons/wifi.h"
 #include "fontIds.h"
 
 // Internal constants
@@ -32,36 +22,8 @@ constexpr int hPaddingInSelection = 8;
 constexpr int cornerRadius = 6;
 constexpr int topHintButtonY = 345;
 constexpr int maxListValueWidth = 200;
-constexpr int mainMenuIconSize = 32;
 constexpr int mainMenuColumns = 2;
 int coverWidth = 0;
-
-const uint8_t* iconForName(UIIcon icon) {
-  switch (icon) {
-    case UIIcon::Folder:
-      return FolderIcon;
-    case UIIcon::Book:
-      return BookIcon;
-    case UIIcon::Recent:
-      return RecentIcon;
-    case UIIcon::Settings:
-      return Settings2Icon;
-    case UIIcon::Transfer:
-      return TransferIcon;
-    case UIIcon::Library:
-      return LibraryIcon;
-    case UIIcon::Wifi:
-      return WifiIcon;
-    case UIIcon::Hotspot:
-      return HotspotIcon;
-    case UIIcon::Bookmark:
-      return BookmarkIcon;
-    case UIIcon::Blocks:
-      return BlocksIcon;
-    default:
-      return nullptr;
-  }
-}
 }  // namespace
 
 void LyraTheme::fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t percentage) const {
@@ -309,39 +271,4 @@ void LyraTheme::drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) c
                     rect.y + rect.height / 2 - renderer.getLineHeight(UI_12_FONT_ID) - 2, tr(STR_NO_OPEN_BOOK), true,
                     EpdFontFamily::BOLD);
   renderer.drawText(UI_10_FONT_ID, rect.x + padding, rect.y + rect.height / 2 + 2, tr(STR_START_READING), true);
-}
-
-void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
-                               const std::function<std::string(int index)>& buttonLabel,
-                               const std::function<UIIcon(int index)>& rowIcon) const {
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  for (int i = 0; i < buttonCount; ++i) {
-    int tileWidth = rect.width - LyraMetrics::values.contentSidePadding * 2;
-    Rect tileRect = Rect{rect.x + LyraMetrics::values.contentSidePadding,
-                         rect.y + i * (metrics.menuRowHeight + metrics.menuSpacing), tileWidth,
-                         metrics.menuRowHeight};
-
-    const bool selected = selectedIndex == i;
-
-    if (selected) {
-      renderer.fillRoundedRect(tileRect.x, tileRect.y, tileRect.width, tileRect.height, cornerRadius, Color::LightGray);
-    }
-
-    std::string labelStr = buttonLabel(i);
-    const char* label = labelStr.c_str();
-    int textX = tileRect.x + 16;
-    const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-    const int textY = tileRect.y + (metrics.menuRowHeight - lineHeight) / 2;
-
-    if (rowIcon != nullptr) {
-      UIIcon icon = rowIcon(i);
-      const uint8_t* iconBitmap = iconForName(icon);
-      if (iconBitmap != nullptr) {
-        renderer.drawIcon(iconBitmap, textX, textY, mainMenuIconSize);
-        textX += mainMenuIconSize + hPaddingInSelection + 2;
-      }
-    }
-
-    renderer.drawText(UI_12_FONT_ID, textX, textY, label, true);
-  }
 }

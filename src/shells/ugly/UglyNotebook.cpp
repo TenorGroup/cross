@@ -22,10 +22,17 @@
 #include "activities/home/ReadingHistoryActivity.h"
 #include "ReadingStatsStore.h"
 #include "UglyLogic.h"
+#include "UglyQuip.h"
 #include "UglyShell.h"
 #include "activities/ActivityManager.h"
 #include "activities/RenderLock.h"
 #include "activities/settings/SettingsActivity.h"
+#if FREEINK_DEVICE_X4PRO
+#include "SettingsList.h"
+#include "UglyTouch.h"
+#include "shells/Shell.h"
+#include "util/BookCacheUtils.h"
+#endif
 
 namespace ugly {
 namespace {
@@ -47,14 +54,22 @@ int id(const homerows::Page p) { return static_cast<int>(p); }
 
 int Notebook::pagePosition(const homerows::Page p) const { return menucustom::position(0, id(p), homerows::PAGE_COUNT); }
 
+const char* Notebook::subtitle() const { return jab.empty() ? I18N.get(SUBTITLES[id(page)]) : jab.c_str(); }
+
 int Notebook::subtitleLines() const {
   const int room = renderer.getScreenWidth() - TEXT_X - SUBTITLE_INDENT - SUBTITLE_EDGE;
-  return std::min(2, paragraph(renderer, Size::S30, 0, 0, room, SUBTITLE_LINE, I18N.get(SUBTITLES[id(page)]), false));
+  return std::min(2, paragraph(renderer, Size::S30, 0, 0, room, SUBTITLE_LINE, subtitle(), false));
 }
 
 int Notebook::firstBaseline() const { return FIRST_BASELINE + (subtitleLines() - 1) * 30; }
 
-int Notebook::rowsPerPage() const { return std::max(1, (renderer.getScreenHeight() - 140 - firstBaseline()) / ROW_HEIGHT + 1); }
+int Notebook::rowsPerPage() const {
+#if FREEINK_DEVICE_X4PRO
+  return touch::ROWS;
+#else
+  return std::max(1, (renderer.getScreenHeight() - 140 - firstBaseline()) / ROW_HEIGHT + 1);
+#endif
+}
 
 Notebook::Rows Notebook::read(const homerows::Page p) const {
   Rows r;
@@ -107,8 +122,10 @@ void Notebook::adopt(Rows&& fresh) {
 
 void Notebook::reload() {
   Rows fresh = read(page);
+  std::string noted = takeNoted();  // a value changed on the screen this page opened says its line here
   RenderLock lock;
   adopt(std::move(fresh));
+  if (!noted.empty()) jab = std::move(noted);
 }
 
 void Notebook::onEnter() {
@@ -116,10 +133,18 @@ void Notebook::onEnter() {
   ensureFonts(renderer);
   menucustom::load();
   adopt(read(page));
+  jab = quip(Quip::OpenPage, id(page));
+#if FREEINK_DEVICE_X4PRO
+  scribbles = loadScribbles();
+#endif
   requestUpdate();
 }
 
 void Notebook::render(RenderLock&&) {
+#if FREEINK_DEVICE_X4PRO
+  renderTouch();
+  return;
+#endif
   [[maybe_unused]] const uint32_t started = millis();
   renderer.clearScreen();
   const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
@@ -133,7 +158,7 @@ void Notebook::render(RenderLock&&) {
   snprintf(number, sizeof(number), "%d/%d", pos + 1, homerows::PAGE_COUNT);
   text(renderer, Size::S22, w - 30 - width(renderer, Size::S22, number), 60, number);
   paragraph(renderer, Size::S30, TEXT_X + SUBTITLE_INDENT, SUBTITLE_BASELINE, w - TEXT_X - SUBTITLE_INDENT - SUBTITLE_EDGE, SUBTITLE_LINE,
-            I18N.get(SUBTITLES[id(page)]));
+            subtitle());
   const int first = firstBaseline();
   line(renderer, TEXT_X, first - 40, w - 30, first - 38, 611);  // a pen rule closes the note off before the first row
 
@@ -183,12 +208,17 @@ void Notebook::render(RenderLock&&) {
 // The turn of a page is decided under the lock (cheap), its rows are read after it (afterKeys): a card read
 // under the lock would stop the render task for as long as the card takes.
 void Notebook::afterKeys() {
+#if FREEINK_DEVICE_X4PRO
+  doJob();
+#endif
   if (want == page) return;
   Rows fresh = read(want);
+  std::string line = quip(Quip::OpenPage, id(want));
   {
     RenderLock lock;
     page = want;
     adopt(std::move(fresh));
+    jab = std::move(line);
   }
   requestUpdate();
 }
@@ -240,6 +270,11 @@ void Notebook::activate(const int row) {
         return;
       }
       const int group = rows.groups[row - 1];
+#if FREEINK_DEVICE_X4PRO
+      // The touch shell has its own page for a group: a touch changes a value where it stands.
+      then([this, group] { openGroup(group); });
+      return;
+#endif
       then([this, group] {
         startActivityForResult(makeUniqueNoThrow<SettingsActivity>(renderer, mappedInput, group, true),
                                [this](const ActivityResult&) { reload(); });
@@ -272,6 +307,15 @@ void Notebook::activate(const int row) {
 }
 
 bool Notebook::onKey(const Key key) {
+#if FREEINK_DEVICE_X4PRO
+  said.clear();
+  if (pop != Pop::None) return onPopTouch(key);
+  if (key >= Key::Tap) return onTouch(key);
+  if (group >= 0) {  // a group's rows are on the page: only the way back leaves it, as the swipes and the bottom band
+    if (key == Key::Back) then([this] { closeGroup(); });
+    return false;
+  }
+#endif
   // A turn in flight: keys on the page about to be left would act on rows that are going away. Back and more
   // turns still count.
   if (want != page && key != Key::Back && key != Key::Left && key != Key::Right) return false;
@@ -304,8 +348,531 @@ bool Notebook::onKey(const Key key) {
                                                                 : makeDiary(renderer, mappedInput, false));
       });
       return false;
+    default:
+      break;
   }
   return false;
 }
+
+#if FREEINK_DEVICE_X4PRO
+// ======================= the touch screen =======================
+namespace {
+// Which scribbles the user has drawn once: two bits, one byte on the card.
+constexpr const char* SCRIBBLES_FILE = "/.crosspoint/ugly-scribbles.txt";
+using touch::ROW;
+using touch::rowTop;
+constexpr int ASK_WIDTH = 400;
+constexpr homerows::Page TEACH_PAGES[] = {homerows::Page::Folder, homerows::Page::Recent, homerows::Page::Favorites};
+}  // namespace
+
+int Notebook::askLines(const bool shellAsk) const {
+  return paragraph(renderer, Size::S30, 0, 0, ASK_WIDTH, 0, shellAsk ? tr(STR_UGLY_X4_SHELL_ASK) : tr(STR_UGLY_X4_DELETE_ASK), false);
+}
+
+unsigned Notebook::loadScribbles() {
+  const String raw = Storage.readFile(SCRIBBLES_FILE);
+  return raw.length() ? static_cast<unsigned>(raw[0] - '0') & (touch::USED_CROSS | touch::USED_RING) : 0u;
+}
+
+int Notebook::rowsShown() const { return std::clamp(rowCount() - topShown(), 0, touch::ROWS); }
+
+void Notebook::turnRows(const int direction) {
+  const int count = rowCount();
+  if (count <= touch::ROWS) return;
+  const int pages = logic::pageCount(count, touch::ROWS);
+  top() = logic::cycle(topShown() / touch::ROWS, direction, pages) * touch::ROWS;
+}
+
+// ---- a settings group as a page ----
+void Notebook::openGroup(const int id) {
+  std::vector<SettingInfo> list;
+  for (const auto& s : getBaseSettingsList())
+    if (deviceSettingsTab(s) == id && SettingsActivity::listedAsRow(s)) list.push_back(s);
+  Rows fresh;
+  for (const auto& s : list) {
+    fresh.labels.emplace_back(I18N.get(s.nameId));
+    fresh.values.push_back(s.type == SettingType::TOGGLE ? std::string() : SettingsActivity::settingValueText(s));
+  }
+  // Every other row of the group (Wi-Fi, keyboards, fonts, the sleep screen...) is one row away on the old screen.
+  fresh.labels.emplace_back(tr(STR_UGLY_X4_REST));
+  fresh.values.emplace_back();
+  const std::string line =
+      quip(Quip::OpenGroup, logic::quipKey(I18N.get(settingstabs::tenThe(static_cast<settingstabs::Tab>(id)), Language::VI)));
+  {
+    RenderLock lock;
+    group = id;
+    groupTop = 0;
+    settings = std::move(list);
+    rows = std::move(fresh);
+    said = line;
+  }
+  requestUpdate();
+}
+
+void Notebook::closeGroup() {
+  Rows fresh = read(page);
+  {
+    RenderLock lock;
+    group = -1;
+    std::vector<SettingInfo>().swap(settings);
+    adopt(std::move(fresh));
+  }
+  requestUpdate();
+}
+
+int Notebook::valueCount(const SettingInfo& s) const {
+  if (s.type == SettingType::TOGGLE) return 2;
+  return static_cast<int>(s.enumStringValues.empty() ? s.enumLabels().size() : s.enumStringValues.size());
+}
+
+int Notebook::valueNow(const SettingInfo& s) const {
+  return s.valuePtr ? SETTINGS.*(s.valuePtr) : s.valueGetter ? s.valueGetter() : 0;
+}
+
+std::string Notebook::valueLabel(const SettingInfo& s, const int value) const {
+  if (s.type == SettingType::TOGGLE) return value ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+  if (!s.enumStringValues.empty()) return s.enumStringValues[value];
+  return I18N.get(s.enumLabels()[value]);
+}
+
+void Notebook::setValue(const int row, const int value) {
+  const SettingInfo& s = settings[row];
+  if (s.valuePtr == &CrossPointSettings::uiTextSize) {
+    if (!SettingsActivity::applyUiTextSize(renderer, static_cast<uint8_t>(value))) return;
+  } else if (s.valuePtr) {
+    SETTINGS.*(s.valuePtr) = static_cast<uint8_t>(value);
+  } else {
+    s.valueSetter(static_cast<uint8_t>(value));
+  }
+  if (s.type != SettingType::TOGGLE) rows.values[row] = SettingsActivity::settingValueText(s);
+  job = Job::Save;
+  said = quip(Quip::SetValue, valueKey(s));
+}
+
+void Notebook::tapSetting(const int row, const int pageRow) {
+  const int group = this->group;
+  if (row >= static_cast<int>(settings.size()) || !SettingsActivity::changesInPlace(settings[row])) {
+    // The old screen of the group, for every row a touch cannot change where it stands.
+    then([this, group] {
+      startActivityForResult(makeUniqueNoThrow<SettingsActivity>(renderer, mappedInput, group, true),
+                             [this, group](const ActivityResult&) { openGroup(group); });
+    });
+    return;
+  }
+  const SettingInfo& s = settings[row];
+  if (s.valuePtr == &CrossPointSettings::uiShell) {  // the whole device changes face: ask once
+    pop = Pop::Shell;
+    popRow = row;
+    ask = touch::placeAsk(rowTop(pageRow), askLines(true), rowTop(pageRow) + ROW / 2);
+    return;
+  }
+  const int count = valueCount(s), now = valueNow(s);
+  switch (touch::changeFor(count, settingstabs::moTrinhChon(count))) {
+    case touch::Change::Tick:
+    case touch::Change::Next:
+      setValue(row, logic::cycle(now, 1, count));
+      break;
+    case touch::Change::Paper:
+      pop = Pop::Values;
+      popRow = row;
+      paper = touch::placePaper(rowTop(pageRow), count, now);
+      break;
+  }
+}
+
+// ---- rows that are files ----
+std::string Notebook::pathOf(const int row, bool& folder) const {
+  folder = false;
+  if (row < 0 || row >= rowCount()) return {};
+  if (page == homerows::Page::Folder) {
+    const std::string& name = rows.folder[row];
+    folder = !name.empty() && name.back() == '/';
+    return "/" + (folder ? name.substr(0, name.size() - 1) : name);
+  }
+  if (page == homerows::Page::Recent && group < 0) return rows.books[row].path;
+  return {};
+}
+
+bool Notebook::pinned(const int row) const {
+  if (page == homerows::Page::Favorites) return true;
+  bool folder = false;
+  const std::string path = pathOf(row, folder);
+  return !path.empty() && menucustom::state().find(filefavorites::keyFor(path, folder).c_str()) >= 0;
+}
+
+// The card work a touch asked for: after the lock, before the frame that shows what it did.
+void Notebook::doJob() {
+  const Job now = job;
+  const int row = jobRow;
+  job = Job::None;
+  if (now == Job::None) return;
+  if (scribblesChanged) {
+    scribblesChanged = false;
+    const char bits[2] = {static_cast<char>('0' + scribbles), 0};
+    Storage.mkdir("/.crosspoint");
+    Storage.writeFile(SCRIBBLES_FILE, String(bits));
+  }
+  if (now == Job::Save) {
+    requestUpdate();  // the value is drawn now; the save follows the frame
+    SETTINGS.saveToFile();
+    return;
+  }
+  if (now == Job::Leave) {  // the shell says its goodbye on its own page, then tenor/cross draws Home
+    requestUpdateAndWait();
+    SETTINGS.uiShell = static_cast<uint8_t>(shell::Kind::Cross);
+    shell::changed();
+    return;
+  }
+  bool folder = false;
+  const std::string path = pathOf(row, folder);
+  const std::string name = row >= 0 && row < rowCount() ? labelAt(row) : std::string();
+  char line[200] = "";
+  bool reread = false;
+  if (now == Job::Pin) {
+    RenderLock lock;
+    if (page == homerows::Page::Favorites) {
+      const std::string& key = rows.keys[row];
+      const bool off = filefavorites::isFileKey(key) ? filefavorites::unpin(key) : menucustom::togglePin(key.c_str());
+      if (off) snprintf(line, sizeof(line), tr(STR_UGLY_X4_UNPINNED), name.c_str());
+      reread = off;
+    } else if (!path.empty()) {
+      const bool was = pinned(row);
+      if (filefavorites::toggle(path, folder)) {
+        snprintf(line, sizeof(line), was ? tr(STR_UGLY_X4_UNPINNED) : tr(STR_UGLY_X4_PINNED), name.c_str());
+        // Once both scribbles are known, the line that taught how to undo it gives way to abuse.
+        const std::string mock = touch::teachScribbles(scribbles) ? std::string() : quip(was ? Quip::Unpin : Quip::Pin, 0, 0, 0, name.c_str());
+        if (!mock.empty()) snprintf(line, sizeof(line), "%s", mock.c_str());
+      } else {
+        snprintf(line, sizeof(line), "%s", tr(STR_UGLY_X4_PIN_FULL));
+      }
+    }
+  } else if (now == Job::Info && !path.empty()) {
+    HalFile f;
+    const bool open = !folder && Storage.openFileForRead("UGLY", path.c_str(), f);
+    snprintf(line, sizeof(line), tr(STR_UGLY_X4_INFO_LINE), name.c_str(), open ? static_cast<int>((f.size() + 1023) / 1024) : 0);
+    if (open) f.close();
+  } else if (now == Job::Delete && !path.empty() && !folder) {
+    clearBookCache(path);
+    const bool gone = Storage.remove(path.c_str());
+    snprintf(line, sizeof(line), gone ? tr(STR_UGLY_X4_DELETED) : tr(STR_UGLY_X4_DELETE_FAIL), name.c_str());
+    const std::string mock = gone ? quip(Quip::Delete, 0, 0, 0, name.c_str()) : std::string();
+    if (!mock.empty()) snprintf(line, sizeof(line), "%s", mock.c_str());
+    reread = gone;
+  }
+  Rows fresh;
+  if (reread) fresh = read(page);
+  {
+    RenderLock lock;
+    if (reread) adopt(std::move(fresh));
+    top() = std::min(topShown(), std::max(0, rowCount() - 1) / touch::ROWS * touch::ROWS);
+    said = line;
+  }
+  requestUpdate();
+}
+
+// ---- touches on the page ----
+bool Notebook::onTouch(const Key key) {
+  if (want != page) return false;
+  const bool lists = std::find(std::begin(TEACH_PAGES), std::end(TEACH_PAGES), page) != std::end(TEACH_PAGES) && group < 0;
+  switch (key) {
+    case Key::SwipeLeft:
+      return group < 0 && onKey(Key::Right);
+    case Key::SwipeRight:
+      return group < 0 && onKey(Key::Left);
+    case Key::SwipeUp:
+      turnRows(1);
+      return true;
+    case Key::SwipeDown:
+      turnRows(-1);
+      return true;
+    case Key::Tap: {
+      const touch::Hit hit = touch::notebookAt(touchX, touchY);
+      switch (hit.spot) {
+        case touch::Spot::Row:
+          if (hit.row >= rowsShown()) return false;
+          if (group >= 0)
+            tapSetting(topShown() + hit.row, hit.row);
+          else
+            activate(topShown() + hit.row);
+          return pop != Pop::None;  // a value changed is drawn by its job, after the lock
+        case touch::Spot::Foot:
+          turnRows(1);
+          return rowCount() > touch::ROWS;
+        case touch::Spot::Prev:
+          return group < 0 && onKey(Key::Left);
+        case touch::Spot::Next:
+          return group < 0 && onKey(Key::Right);
+        case touch::Spot::Back:
+          return onKey(Key::Back);
+        case touch::Spot::None:
+          return false;
+      }
+      return false;
+    }
+    case Key::Hold: {
+      const touch::Hit hit = touch::notebookAt(touchX, touchY);
+      if (!lists || hit.spot != touch::Spot::Row || hit.row >= rowsShown()) return false;
+      const int row = topShown() + hit.row;
+      bool folder = false;
+      taskCount = 0;
+      tasks[taskCount++] = Task::Pin;
+      if (!pathOf(row, folder).empty() && !folder) tasks[taskCount++] = Task::Info;
+      if (page == homerows::Page::Folder && !folder) tasks[taskCount++] = Task::Delete;
+      pop = Pop::Tasks;
+      popRow = row;
+      paper = touch::placePaper(rowTop(hit.row), taskCount, 0);
+      return true;
+    }
+    case Key::Cross:
+    case Key::Ring:
+    case Key::Scrawl: {
+      if (!lists) return false;
+      showInk = true;
+      const int pageRow = touch::scribbleRow(touchX, touchY, rowsShown());
+      if (key == Key::Scrawl || pageRow < 0) {
+        said = tr(STR_UGLY_X4_GESTURE_MISS);
+        return true;
+      }
+      const int row = topShown() + pageRow;
+      const unsigned used = key == Key::Cross ? touch::USED_CROSS : touch::USED_RING;
+      if (!(scribbles & used)) {
+        scribbles |= used;
+        scribblesChanged = true;
+      }
+      if (key == Key::Ring) {
+        job = Job::Pin;
+        jobRow = row;
+        return false;  // the frame follows the card work
+      }
+      bool folder = false;
+      if (page != homerows::Page::Folder || pathOf(row, folder).empty() || folder) {
+        said = tr(STR_UGLY_X4_NOT_HERE);
+        return true;
+      }
+      // Ask before a delete, "bin it" a row clear of where the finger lifted.
+      const Ink& last = ink[inkCount ? inkCount - 1 : 0];
+      const int liftY = last.n ? last.y[last.n - 1] : touchY;
+      pop = Pop::Ask;
+      popRow = row;
+      ask = touch::placeAsk(rowTop(pageRow), askLines(false), liftY);
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
+// ---- touches while a paper is open ----
+bool Notebook::onPopTouch(const Key key) {
+  if (key == Key::Back) {
+    pop = Pop::None;
+    return true;
+  }
+  if (key != Key::Tap) return false;
+  const int row = popRow;
+  switch (pop) {
+    case Pop::Values: {
+      const int count = valueCount(settings[row]);
+      int value = -1;
+      switch (touch::paperAt(paper, touchX, touchY, value)) {
+        case touch::PaperSpot::Value:
+          pop = Pop::None;
+          if (value == valueNow(settings[row])) return true;
+          setValue(row, value);
+          return job == Job::None;  // else its job draws the frame
+        case touch::PaperSpot::MoreAbove:
+        case touch::PaperSpot::MoreBelow:
+          paper = touch::scrollPaper(paper, count, touch::paperAt(paper, touchX, touchY, value) == touch::PaperSpot::MoreBelow);
+          return true;
+        case touch::PaperSpot::Outside:
+          pop = Pop::None;
+          return true;
+        case touch::PaperSpot::Inside:
+          return false;
+      }
+      return false;
+    }
+    case Pop::Tasks: {
+      int value = -1;
+      const auto spot = touch::paperAt(paper, touchX, touchY, value);
+      if (spot == touch::PaperSpot::Inside) return false;
+      pop = Pop::None;
+      if (spot != touch::PaperSpot::Value) return true;
+      switch (tasks[value]) {
+        case Task::Pin:
+          job = Job::Pin;
+          jobRow = row;
+          return false;
+        case Task::Info:
+          job = Job::Info;
+          jobRow = row;
+          return false;
+        case Task::Delete:
+          pop = Pop::Ask;
+          popRow = row;
+          ask = touch::placeAsk(rowTop(row - topShown()), askLines(false), touchY);
+          return true;
+      }
+      return true;
+    }
+    case Pop::Ask:
+    case Pop::Shell: {
+      const auto spot = touch::askAt(ask, touchX, touchY);
+      if (spot == touch::AskSpot::Inside) return false;
+      const Pop was = pop;
+      pop = Pop::None;
+      if (spot != touch::AskSpot::Yes) return true;
+      if (was == Pop::Ask) {
+        job = Job::Delete;
+        jobRow = row;
+        return false;
+      }
+      said = quip(Quip::ShellCross);
+      job = Job::Leave;
+      return false;
+    }
+    case Pop::None:
+      break;
+  }
+  return false;
+}
+
+// ---- the frame ----
+void Notebook::renderTouch() {
+  [[maybe_unused]] const uint32_t started = millis();
+  renderer.clearScreen();
+  const int pos = pagePosition(page);
+  line(renderer, touch::MARGIN_X + 2, 0, touch::MARGIN_X + 3, touch::NAV_TOP - 8, 501);
+  const char* title = I18N.get(homerows::PAGE_TITLES[id(page)]);
+  const int tw = text(renderer, Size::S52, touch::TEXT_X, touch::TITLE_BASE, title);
+  underline(renderer, touch::TEXT_X, touch::TEXT_X + tw, touch::TITLE_BASE + 12, 17, 3);
+  if (group < 0) {
+    char number[12];
+    snprintf(number, sizeof(number), "%d/%d", pos + 1, homerows::PAGE_COUNT);
+    text(renderer, Size::S22, touch::TEXT_R - width(renderer, Size::S22, number), touch::TITLE_BASE - 16, number);
+  }
+  const bool lists = std::find(std::begin(TEACH_PAGES), std::end(TEACH_PAGES), page) != std::end(TEACH_PAGES) && group < 0;
+  const char* sub = !said.empty() ? said.c_str()
+                    : group >= 0 ? I18N.get(settingstabs::tenThe(static_cast<settingstabs::Tab>(group)))
+                    : lists && touch::teachScribbles(scribbles) ? tr(STR_UGLY_X4_HINT_GESTURE)
+                                                                : nullptr;
+  if (!sub && !jab.empty()) sub = jab.c_str();
+  if (!sub) sub = I18N.get(SUBTITLES[id(page)]);
+  text(renderer, Size::S22, touch::TEXT_X, touch::SUB_BASE, fit(renderer, Size::S22, sub, touch::TEXT_R - touch::TEXT_X).c_str());
+
+  const int count = rowCount();
+  const int first = topShown();
+  if (rows.tooMany) {
+    char tooMany[160];
+    snprintf(tooMany, sizeof(tooMany), tr(STR_UGLY_FOLDER_TOO_MANY), static_cast<int>(rows.cap));
+    paragraph(renderer, Size::S30, touch::TEXT_X, rowTop(0) + 42, touch::TEXT_R - touch::TEXT_X, 44, tooMany);
+  } else if (count == 0) {
+    const StrId empty = EMPTY[id(page)];
+    if (empty != StrId::STR_NONE_OPT)
+      paragraph(renderer, Size::S30, touch::TEXT_X, rowTop(0) + 42, touch::TEXT_R - touch::TEXT_X, 44, I18N.get(empty));
+  }
+  for (int i = 0; i < touch::ROWS && first + i < count; ++i) {
+    const int row = first + i, base = rowTop(i) + 42;
+    int room = touch::TEXT_R - touch::TEXT_X;
+    if (group >= 0 && row < static_cast<int>(settings.size()) && settings[row].type == SettingType::TOGGLE) {
+      tickBox(renderer, touch::TEXT_R - 4, rowTop(i) + 30, valueNow(settings[row]) != 0);
+      room -= 40;
+    } else if (row < static_cast<int>(rows.values.size()) && !rows.values[row].empty()) {
+      const int vw = width(renderer, Size::S22, rows.values[row].c_str());
+      text(renderer, Size::S22, touch::TEXT_R - vw, base, rows.values[row].c_str());
+      room -= vw + 16;
+    } else if (lists && pinned(row)) {
+      heart(renderer, touch::TEXT_R - 14, rowTop(i) + 32);
+      room -= 40;
+    }
+    text(renderer, Size::S30, touch::TEXT_X, base, fit(renderer, Size::S30, labelAt(row), room).c_str());
+  }
+  if (count > touch::ROWS) {
+    char of[24];
+    snprintf(of, sizeof(of), tr(STR_UGLY_PAGE_OF), first / touch::ROWS + 1, logic::pageCount(count, touch::ROWS));
+    const int ow = width(renderer, Size::S22, of);
+    text(renderer, Size::S22, 240 - ow / 2, touch::FOOT_TOP + 36, of);
+    arrow(renderer, 240 + ow / 2 + 16, touch::FOOT_TOP + 28, true, 18);
+  }
+  if (group >= 0) {
+    char back[48];
+    snprintf(back, sizeof(back), tr(STR_UGLY_X4_BACK_PARENT), title);
+    navRow(renderer, nullptr, back, nullptr);
+  } else {
+    const auto neighbour = [&](const int step) {
+      return I18N.get(homerows::PAGE_TITLES[menucustom::idAt(0, logic::cycle(pos, step, homerows::PAGE_COUNT), homerows::PAGE_COUNT)]);
+    };
+    navRow(renderer, neighbour(-1), tr(STR_UGLY_X4_BACK_DESK), neighbour(1));
+  }
+  topBar(renderer, nullptr);
+
+  if (showInk) {  // the scribble, drawn back once with what it did
+    for (int k = 0; k < inkCount; ++k) penPath(renderer, ink[k].x, ink[k].y, ink[k].n);
+    showInk = false;
+  }
+
+  switch (pop) {
+    case Pop::Values:
+    case Pop::Tasks: {
+      const bool values = pop == Pop::Values;
+      ugly::paper(renderer, paper.top, paper.bottom, paper.hiddenAbove > 0, paper.hiddenBelow > 0, 750);
+      const std::string label = (values ? std::string(I18N.get(settings[popRow].nameId)) : labelAt(popRow)) + ":";
+      char more[32];
+      const touch::Paper& p = paper;
+      const std::string head = fit(renderer, Size::S22, label, 380);
+      if (p.hiddenAbove) {
+        text(renderer, Size::S22, 44, p.top + 28, head.c_str());
+        arrow(renderer, 56, p.top + 46, false, 16);
+        snprintf(more, sizeof(more), tr(STR_UGLY_X4_MORE), p.hiddenAbove);
+        text(renderer, Size::S22, 76, p.top + 54, more);
+      } else {
+        text(renderer, Size::S22, 44, p.top + 30, head.c_str());
+      }
+      const int now = values ? valueNow(settings[popRow]) : -1;
+      for (int k = p.first; k <= p.last; ++k) {
+        const int rt = touch::paperRowTop(p, k);
+        std::string option;
+        if (values) {
+          option = valueLabel(settings[popRow], k);
+        } else {
+          const bool on = pinned(popRow);
+          option = tasks[k] == Task::Pin ? (on ? tr(STR_UGLY_X4_UNPIN) : tr(STR_UGLY_X4_PIN))
+                   : tasks[k] == Task::Info ? tr(STR_UGLY_X4_INFO)
+                                            : tr(STR_UGLY_X4_DELETE);
+        }
+        const std::string shown = fit(renderer, Size::S30, option, 360);
+        const int ow = text(renderer, Size::S30, 80, rt + 42, shown.c_str());
+        if (k == now) circle(renderer, Circle::Row, {80, rt + 16, 80 + ow, rt + 50}, 14, 9);
+      }
+      if (p.hiddenBelow) {
+        const int yb = p.bottom - touch::PAPER_MORE;
+        arrow(renderer, 56, yb + 30, true, 20);
+        snprintf(more, sizeof(more), tr(STR_UGLY_X4_MORE), p.hiddenBelow);
+        text(renderer, Size::S22, 76, yb + 38, more);
+      }
+      break;
+    }
+    case Pop::Ask:
+    case Pop::Shell: {
+      const bool shellAsk = pop == Pop::Shell;
+      ugly::paper(renderer, ask.top, ask.bottom, false, false, 770);
+      paragraph(renderer, Size::S30, 48, ask.textBase, ASK_WIDTH, touch::ASK_LINE,
+                shellAsk ? tr(STR_UGLY_X4_SHELL_ASK) : tr(STR_UGLY_X4_DELETE_ASK));
+      text(renderer, Size::S30, 80, ask.noTop + 42, shellAsk ? tr(STR_UGLY_X4_SHELL_NO) : tr(STR_UGLY_X4_DELETE_NO));
+      const int yw = text(renderer, Size::S30, 80, ask.yesTop + 42, shellAsk ? tr(STR_UGLY_X4_SHELL_YES) : tr(STR_UGLY_X4_DELETE));
+      underline(renderer, 76, 80 + yw, ask.yesTop + 52, 775, 2);
+      break;
+    }
+    case Pop::None:
+      break;
+  }
+
+  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+#ifdef UGLY_FRAME_LOG
+  LOG_INF("UGLY", "Notebook frame page=%d group=%d top=%d rows=%d pop=%d total=%lums", id(page), group, first, count,
+          static_cast<int>(pop), static_cast<unsigned long>(millis() - started));
+#endif
+}
+#endif
 
 }  // namespace ugly

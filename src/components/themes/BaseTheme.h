@@ -232,6 +232,8 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .capsuleRadius = 0};
 }
 
+// Only TenorTheme (over LyraTheme) draws: a step LyraTheme overrides draws nothing here (the bare fallback
+// of UITheme, built only when the theme cannot be allocated), so no unused body sits in flash.
 class BaseTheme {
  public:
   virtual ~BaseTheme() = default;
@@ -244,15 +246,15 @@ class BaseTheme {
   static void drawProgressBar(const GfxRenderer& renderer, Rect rect, size_t current, size_t total);
   void drawBatteryLeft(const GfxRenderer& renderer, Rect rect,
                        bool showPercentage = true) const;  // Left aligned (reader mode)
-  virtual void fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t percentage) const;
+  virtual void fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t percentage) const {}
   virtual void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
-                               const char* btn4) const;
+                               const char* btn4) const {}
   // Shared by every theme's drawButtonHints(): centres a hint label in its box,
   // wrapping to two lines rather than overflowing when it's too wide to fit.
   static void drawHintLabel(const GfxRenderer& renderer, int fontId, const char* label, int x, int boxWidth, int boxTop,
                             int boxHeight, int singleLineYOffset);
-  virtual void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const;
-  // Menu row height as DRAWN by drawButtonMenu. HomeActivity builds its touch
+  virtual void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const {}
+  // Menu row height as drawn by the theme. HomeActivity builds its touch
   // grid from this, so hit bands always match the visuals (RoundedRaff derives
   // its row height from the font, not the metrics table).
   virtual int getMenuRowHeight(const GfxRenderer& renderer) const;
@@ -273,13 +275,10 @@ class BaseTheme {
   // layouts hug the corner with a legacy 12px inset instead of the padding).
   static int headerStatusInset();
   virtual void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
-                             const char* rightLabel = nullptr) const;
+                             const char* rightLabel = nullptr) const {}
   virtual void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                    const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
-                                   bool& bufferRestored, std::function<bool()> storeCoverBuffer) const;
-  virtual void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
-                              const std::function<std::string(int index)>& buttonLabel,
-                              const std::function<UIIcon(int index)>& rowIcon) const;
+                                   bool& bufferRestored, std::function<bool()> storeCoverBuffer) const {}
   // `display` false leaves the panel refresh to the caller (a popup refreshing beside other work).
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message, bool display = true) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;

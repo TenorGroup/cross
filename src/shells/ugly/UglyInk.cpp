@@ -7,6 +7,7 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -18,6 +19,9 @@
 #include "UIFontTiers.h"
 #include "UglyLogic.h"
 #include "UglyTables.h"
+#if FREEINK_DEVICE_X4PRO
+#include "UglyTouch.h"
+#endif
 #include "fontIds.h"
 #include "fonts/ugly_22.h"
 #include "fonts/ugly_30.h"
@@ -397,5 +401,112 @@ void statusBar(const GfxRenderer& r, const MappedInputManager& input, const Hint
   for (int i = 0; i < 4; ++i)
     if (marks[i] && marks[i][0]) mark(r, marks[i][0] == 'b' ? Mark::Back : marks[i][0] == 'c' ? Mark::Tick : marks[i][0] == 'u' ? Mark::Up : Mark::Down, centres[i], y);
 }
+
+#if FREEINK_DEVICE_X4PRO
+void topBar(const GfxRenderer& r, const char* left) {
+  if (left && *left) text(r, Size::S22, 24, 34, fit(r, Size::S22, left, 300).c_str());
+  constexpr int X0 = 412, X1 = 456, Y0 = 12, Y1 = 37;
+  const int body[5][2] = {{X0, Y0 + 1}, {X1, Y0}, {X1 + 1, Y1}, {X0 - 1, Y1 + 1}, {X0, Y0 + 1}};
+  polyline(r, body, 5, 2);
+  stroke(r, X1 + 2, Y0 + 8, X1 + 6, Y0 + 8, 2);
+  stroke(r, X1 + 6, Y0 + 8, X1 + 6, Y1 - 8, 2);
+  stroke(r, X1 + 6, Y1 - 8, X1 + 2, Y1 - 8, 2);
+  const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
+  char pct[6];
+  snprintf(pct, sizeof(pct), "%d", level);
+  const int pw = width(r, Size::S22, pct);
+  if (pw <= X1 - X0 - 6) {
+    text(r, Size::S22, (X0 + X1) / 2 - pw / 2, Y1 - 5, pct);
+  } else {  // no room for the number: the level in pen strokes, as on the X3
+    for (int px = X0 + 3; px < X0 + 3 + (X1 - X0 - 6) * level / 100; px += 3) stroke(r, px, Y0 + 4, px + 1, Y1 - 4, 1);
+  }
+  char clock[10];
+  if (SETTINGS.clockShowInHeader && clockstatus::hasValidTime() && halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1))
+    text(r, Size::S22, 400 - width(r, Size::S22, clock), 34, clock);
+}
+
+void arrow(const GfxRenderer& r, const int x, const int y, const bool down, const int length) {
+  const int s = down ? 1 : -1;
+  stroke(r, x, y - s * length / 2, x + 1, y + s * length / 2, 2);
+  stroke(r, x - 7, y + s * (length / 2 - 8), x + 1, y + s * length / 2, 2);
+  stroke(r, x + 1, y + s * length / 2, x + 8, y + s * (length / 2 - 9), 2);
+}
+
+void navRow(const GfxRenderer& r, const char* prev, const char* back, const char* next) {
+  constexpr int BASE = 758;
+  if (prev && *prev) text(r, Size::S30, 16, BASE, (std::string("< ") + prev).c_str());
+  if (back && *back) {
+    text(r, Size::S22, 240 - width(r, Size::S22, back) / 2, BASE - 6, back);
+    arrow(r, 240, BASE + 12, true, 18);
+  }
+  if (next && *next) {
+    const std::string after = std::string(next) + " >";
+    text(r, Size::S30, 464 - width(r, Size::S30, after.c_str()), BASE, after.c_str());
+  }
+}
+
+namespace {
+// A torn edge: a zigzag across the paper at y.
+void torn(const GfxRenderer& r, const int y, const uint32_t seed) {
+  int px = 24, py = y - 5;
+  for (int k = 1, x = 38; x <= 468; ++k, x += 14) {
+    const int yy = y + (k % 2 ? 5 : -5) + logic::wobble(seed, k, 1);
+    stroke(r, px, py, x, yy, 2);
+    px = x;
+    py = yy;
+  }
+}
+}  // namespace
+
+void paper(const GfxRenderer& r, const int top, const int bottom, const bool tornTop, const bool tornBottom, const uint32_t seed) {
+  const int e0 = touch::rubEdge(top - 12, true), e1 = touch::rubEdge(bottom + 12, false);
+  r.fillRect(8, std::max(0, e0), 466, std::min(800, e1) - std::max(0, e0), false);
+  if (tornTop) torn(r, top, seed);
+  else line(r, 24, top + 2, 466, top - 3, seed, 2);
+  if (tornBottom) torn(r, bottom, seed + 1);
+  else line(r, 26, bottom + 3, 468, bottom, seed + 1, 2);
+  line(r, 466, top - 3, 468, bottom, seed + 2, 2);
+  line(r, 24, top + 2, 26, bottom + 3, seed + 3, 2);
+  if (!tornBottom) stroke(r, 442, bottom + 1, 467, bottom - 24, 1);  // a folded corner
+  if (!tornTop) {  // the clip
+    const int clip[5][2] = {{214, top + 12}, {266, top + 11}, {260, top - 8}, {220, top - 7}, {214, top + 12}};
+    polyline(r, clip, 5, 2);
+    const int a[4][2] = {{224, top - 7}, {228, top - 22}, {240, top - 25}, {236, top - 8}};
+    const int b[4][2] = {{244, top - 8}, {250, top - 23}, {258, top - 20}, {256, top - 7}};
+    polyline(r, a, 4, 2);
+    polyline(r, b, 4, 2);
+  }
+}
+
+void tickBox(const GfxRenderer& r, const int x, const int y, const bool ticked) {
+  const int box[5][2] = {{x - 22, y - 10}, {x, y - 11}, {x + 1, y + 10}, {x - 23, y + 11}, {x - 22, y - 10}};
+  polyline(r, box, 5, 2);
+  if (ticked) {
+    stroke(r, x - 18, y - 1, x - 12, y + 7, 3);
+    stroke(r, x - 12, y + 7, x + 4, y - 16, 3);
+  }
+}
+
+void heart(const GfxRenderer& r, const int x, const int y) {
+  const int h[11][2] = {{x, y + 11}, {x - 9, y + 2}, {x - 11, y - 4}, {x - 8, y - 9}, {x - 3, y - 9}, {x, y - 4},
+                        {x + 3, y - 9}, {x + 8, y - 10}, {x + 12, y - 4}, {x + 9, y + 3}, {x + 1, y + 11}};
+  polyline(r, h, 11, 2);
+}
+
+void liftArt(const GfxRenderer& r, const uint8_t* plane, const Box& box, const int dx, const int dy) {
+  // Row 527 - x, column y, a set bit is white (scripts/ugly/gen_art.py).
+  const int x0 = std::max(0, box.x0), x1 = std::min(logic::FRAME_W - 1, box.x1);
+  const int y0 = std::max(0, box.y0), y1 = std::min(logic::FRAME_H - 1, box.y1);
+  for (int x = x0; x <= x1; ++x) {
+    const uint8_t* row = plane + (logic::FRAME_W - 1 - x) * (logic::FRAME_H / 8);
+    for (int y = y0; y <= y1; ++y)
+      if (!(row[y / 8] & (0x80 >> (y % 8)))) r.drawPixel(x + dx, y + dy);
+  }
+}
+
+void penPath(const GfxRenderer& r, const int16_t* xs, const int16_t* ys, const int n) {
+  for (int i = 0; i + 1 < n; ++i) stroke(r, xs[i], ys[i], xs[i + 1], ys[i + 1], 3);
+}
+#endif
 
 }  // namespace ugly

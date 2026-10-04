@@ -33,7 +33,7 @@ output.mkdir(parents=True, exist_ok=True)
 
 source_path = repo / 'src/activities/settings/SettingsActivity.cpp'
 source = source_path.read_text()
-callback = method_slice(source, 'bool SettingsActivity::applyUiSettingChange')
+callback = method_slice(source, 'bool SettingsActivity::applyUiTextSize') + method_slice(source, 'bool SettingsActivity::applyUiSettingChange')
 (output / 'ApplyUiSettingChange.inc').write_text(callback)
 (output / 'source-manifest.json').write_text(json.dumps({
     'src/activities/settings/SettingsActivity.cpp': hashlib.sha256(source.encode()).hexdigest(),

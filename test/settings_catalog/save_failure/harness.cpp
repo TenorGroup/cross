@@ -31,6 +31,8 @@ struct RenderLock {};
 namespace shell {
 enum class Kind : uint8_t { Cross = 0, Ugly = 1 };
 inline bool isUgly() { return SETTINGS.uiShell == static_cast<uint8_t>(Kind::Ugly); }
+inline bool uglyOffered() { return true; }
+inline void valueChanged(const SettingInfo&) {}
 void changed();
 }  // namespace shell
 // Choosing tenor/ugly asks first, in a box of its own: outside what this harness measures.
@@ -94,6 +96,11 @@ struct IntervalResult { int value = 1; };
 struct ActivityResult { bool isCancelled = false; std::variant<KeyboardResult, IntervalResult> data; };
 enum class InputType { Text };
 struct ChildBoundary { template<class... Args> explicit ChildBoundary(Args&&...) {} };
+namespace ugly {
+std::unique_ptr<ChildBoundary> makeSwitchConfirm(GfxRenderer&, MappedInputManager&) {
+  return std::make_unique<ChildBoundary>();
+}
+}
 #define CHILD(name) struct name : ChildBoundary { using ChildBoundary::ChildBoundary; }
 CHILD(ButtonRemapActivity);
 CHILD(StatusBarSettingsActivity);
@@ -177,6 +184,7 @@ struct SettingsActivity {
   bool saveSettings();
   bool handleButtons();
   void toggleCurrentSetting();
+  void noteValue(StrId name);
   void openSleepTimeoutPicker();
   bool showWakeHint() const;
   void render(RenderLock&&);

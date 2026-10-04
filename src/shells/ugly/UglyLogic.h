@@ -330,6 +330,34 @@ inline int gridStep(const Point* p, const int n, const int cur, const GridDir di
   return hit < 0 ? cur : hit;
 }
 
+// ---- the lines of abuse (UglyQuip.h, scripts/ugly/gen_quips.py) ----
+// The key of the Vietnamese words of an event: FNV-1a over them joined by '=', folded to 16 bits.
+inline uint16_t quipKey(const char* words, const char* more = nullptr) {
+  uint32_t h = 2166136261u;
+  for (const char* part : {words, more}) {
+    if (!part) continue;
+    if (part == more) h = (h ^ '=') * 16777619u;
+    for (const auto* p = reinterpret_cast<const unsigned char*>(part); *p; ++p) h = (h ^ *p) * 16777619u;
+  }
+  return static_cast<uint16_t>(h ^ (h >> 16));
+}
+// The slot of an event, its key and condition, else of the same event and key with no condition; -1 none.
+// `Slot` is quips::Slot: key, what (event << 4 | condition), count.
+template <class Slot>
+int quipSlot(const Slot* slots, const int n, const int event, const uint16_t key, const int when) {
+  int plain = -1;
+  for (int i = 0; i < n; ++i) {
+    if (slots[i].key != key || (slots[i].what >> 4) != event) continue;
+    if ((slots[i].what & 15) == when) return i;
+    if ((slots[i].what & 15) == 0) plain = i;
+  }
+  return plain;
+}
+// Which of `count` lines: the day moves them on, and so does each time the event speaks.
+inline int quipTurn(const int days, const int turn, const int count) {
+  return count <= 0 ? 0 : static_cast<int>((static_cast<uint32_t>(days) + static_cast<uint32_t>(turn)) % static_cast<uint32_t>(count));
+}
+
 // A step on a cycle of `count` stops.
 inline int cycle(const int index, const int step, const int count) {
   return count <= 0 ? 0 : ((index + step) % count + count) % count;

@@ -10,6 +10,7 @@
 
 #include <Utf8.h>
 
+#include "shells/ShellLimit.h"
 #include "shells/ugly/UglyLogic.h"
 #include "shells/ugly/UglyTables.h"
 #include "shells/ugly/fonts/ugly_22.h"
@@ -536,3 +537,23 @@ TEST(Grid, ALoneObjectStaysStill) {
 }
 
 }  // namespace
+
+// ---- the limited edition (shells/ShellLimit.h) ----
+TEST(Limit, NoLastDayNeverEnds) {
+  EXPECT_FALSE(shell::limit::over(0, 20261019));
+  EXPECT_FALSE(shell::limit::over(0, 20991231));
+}
+
+TEST(Limit, EndsTheDayAfterTheLastDay) {
+  EXPECT_FALSE(shell::limit::over(20261019, 20261018));
+  EXPECT_FALSE(shell::limit::over(20261019, 20261019));
+  EXPECT_TRUE(shell::limit::over(20261019, 20261020));
+  EXPECT_TRUE(shell::limit::over(20261019, 20270101));
+}
+
+TEST(Limit, AClockNeverSetDoesNotEndIt) {
+  EXPECT_FALSE(shell::limit::over(20261019, 0));         // no clock at all
+  EXPECT_FALSE(shell::limit::over(20261019, 20000101));  // the clock's first day after a flat battery
+  EXPECT_FALSE(shell::limit::over(20261019, 20251231));
+  EXPECT_TRUE(shell::limit::over(20251231, 20260101));   // 2026 is a clock that has been set
+}

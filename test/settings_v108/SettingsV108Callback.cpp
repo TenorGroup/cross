@@ -57,6 +57,7 @@ struct SettingsActivity {
   AtomicFlag saveFailed;
   int resets = 0;
   void resetUi() { ++resets; }
+  static bool applyUiTextSize(GfxRenderer& renderer, uint8_t size);
   bool applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr, uint8_t previousValue);
 };
 

@@ -36,6 +36,7 @@ LINES = [
     ('d', 'Toàn đọc lúc nửa đêm, vừa đi ăn trộm vừa đọc à?', 'Always reading at midnight. Burgling and reading at once?'),
     ('d', 'Đọc đêm nhiều vậy, mày là dơi hả? Ngủ đi.', 'So much night reading. Are you a bat? Go to sleep.'),
     ('f', 'Gần sáng rồi. Ngủ giờ này cho có lệ thôi.', 'Almost sunrise. Sleeping now is a formality.'),
+    ('f', 'Giờ này còn đọc? Mày trực hộ mặt trời à?', "Still reading? Covering the sun's shift?"),
     ('g', 'Sáng bảnh mắt mới ngủ. Cú đêm chính hiệu.', "Going to bed when it's already bright out. A true night owl."),
     ('h', 'Ngủ sáng hả? Sếp nào cho nghỉ mà sướng thế.', 'Morning nap? Which boss lets you get away with that?'),
     ('h', 'Chưa trưa đã ngủ, đời nó nhàn thật.', 'Napping before noon. Must be nice.'),

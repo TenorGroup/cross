@@ -41,6 +41,7 @@ struct SettingsActivity {
     settingsCount=currentSettings->size();
   }
   std::vector<SettingInfo>& danhSachCuaThe(settingstabs::Tab);
+  static bool listedAsRow(const SettingInfo& setting);
   void rebuildSettingsLists();
   std::string favoriteKey(int) const;
   int focusFavorite(const std::string&);

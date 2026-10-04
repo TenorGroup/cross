@@ -6,6 +6,9 @@
 #include "RecentBooksStore.h"
 #include "UglyLogic.h"
 #include "UglyScreen.h"
+#if FREEINK_DEVICE_X4PRO
+#include "UglyTouch.h"
+#endif
 #include "activities/home/HomeRows.h"
 
 namespace ugly {
@@ -45,6 +48,13 @@ class Diary final : public Screen {
   int wordCount = 0;
   int selected = 0;  // index in words[]
   int shift = 0;     // room the greeting of a wake took above the title, kept for the frames after it
+#if FREEINK_DEVICE_X4PRO
+  // The underlined words as last drawn, for the finger (UglyTouch.h). Written by the frame, read under the lock.
+  touch::Word drawn[3];
+  Word drawnId[3];
+  int drawnCount = 0;
+  bool onTouch(Key key);
+#endif
 };
 
 }  // namespace ugly

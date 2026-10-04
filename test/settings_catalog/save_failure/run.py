@@ -83,6 +83,7 @@ for mode in modes:
     source = sources[paths[1]]
     signatures = ['bool SettingsActivity::handleButtons()',
                   'void SettingsActivity::toggleCurrentSetting()',
+                  'void SettingsActivity::noteValue(',
                   'void SettingsActivity::openSleepTimeoutPicker()',
                   'void SettingsActivity::render(RenderLock&&)']
     if 'bool SettingsActivity::showWakeHint() const' in source:
@@ -91,8 +92,11 @@ for mode in modes:
         signatures.insert(0, 'bool SettingsActivity::saveSettings()')
     (output / 'Methods.inc').write_text(''.join(method_slice(source, signature)
                                                for signature in signatures))
+    shell_source = sources['src/shells/Shell.cpp']
+    settle = ('namespace {\n' + method_slice(shell_source, 'void settle()') + '}\n'
+              if 'void settle()' in shell_source else '')
     (output / 'ShellChanged.inc').write_text(
-        'namespace shell {\n' + method_slice(sources['src/shells/Shell.cpp'], 'void changed()') + '}\n')
+        'namespace shell {\n' + settle + method_slice(shell_source, 'void changed()') + '}\n')
     sanitizer = ['-fsanitize=address,undefined', '-fno-omit-frame-pointer'] if args.sanitize else []
     dead_strip = '-Wl,-dead_strip' if platform.system() == 'Darwin' else '-Wl,--gc-sections'
     command = [os.environ.get('CXX', 'c++'), '-std=c++20', '-g', '-O1', *sanitizer,

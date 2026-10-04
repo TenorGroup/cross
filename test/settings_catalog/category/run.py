@@ -108,6 +108,7 @@ for mode in modes:
         '#include "activities/settings/SettingsTabs.h"\n' + descriptor)
     methods = method_slice(sources[paths[2]],
                            'std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe')
+    methods += method_slice(sources[paths[2]], 'bool SettingsActivity::listedAsRow(')
     methods += method_slice(sources[paths[2]], 'void SettingsActivity::rebuildSettingsLists()')
     (output / 'CategoryMethods.inc').write_text(methods)
     for name in ['HalTiltSensor', 'HalClock']:

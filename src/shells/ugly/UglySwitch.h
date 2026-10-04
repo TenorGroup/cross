@@ -21,6 +21,9 @@ class SwitchConfirm final : public Screen {
   enum Choice : int { YES, NO, COUNT };
   void answer(bool yes);
   int selected = NO;
+#if FREEINK_DEVICE_X4PRO
+  Box drawn[COUNT] = {};  // the two lines as last drawn, for the finger: a tap on one answers it
+#endif
 };
 
 }  // namespace ugly

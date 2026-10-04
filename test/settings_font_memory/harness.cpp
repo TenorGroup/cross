@@ -48,6 +48,10 @@ void operator delete(void* p, size_t) noexcept { ::operator delete(p); }
 void operator delete[](void* p, size_t) noexcept { ::operator delete(p); }
 #include "Boundaries.inc"
 namespace fui = freeink::ui;
+namespace shell {
+bool uglyOffered() { return false; }
+const char* uglyLimitNote() { return ""; }
+}
 struct ActivityResult { bool isCancelled = false; };
 struct FontDownloadActivity {
   template<class A, class B> FontDownloadActivity(A&, B&) {}
@@ -102,6 +106,7 @@ struct SettingsActivity {
     resultHandler = std::move(handler);
   }
   std::vector<SettingInfo>& danhSachCuaThe(settingstabs::Tab);
+  static bool listedAsRow(const SettingInfo& setting);
   void rebuildSettingsLists();
   void rebuildRowItems();
   void onPause();

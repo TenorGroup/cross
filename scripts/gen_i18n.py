@@ -215,6 +215,8 @@ def load_translations(
     # String keys come from English (order matters)
     english_data = parsed[english_file]
     string_keys = [k for k in english_data if not k.startswith("_")]
+    # Strings of one device go last, so the other builds leave them out without moving an id.
+    string_keys = [k for k in string_keys if not _device_only(k)] + [k for k in string_keys if _device_only(k)]
 
     # Validate all keys are valid C++ identifiers
     for key in string_keys:
@@ -508,8 +510,10 @@ def generate_keys_header(
     # StrId enum
     lines.append("// String IDs")
     lines.append("enum class StrId : uint16_t {")
-    for key in string_keys:
+    for i, key in enumerate(string_keys):
+        _device_guard(lines, string_keys, i)
         lines.append(f"  {key},")
+    _device_guard(lines, string_keys, len(string_keys))
     lines.append("  // Sentinel - must be last")
     lines.append("  _COUNT")
     lines.append("};")
@@ -716,10 +720,19 @@ def generate_strings_cpp(
                 )
 
         # Flat string data blob — all strings concatenated with \0 separators.
+        # The device-only strings are the last ones, behind their guard.
+        device_from = next((i for i, k in enumerate(string_keys) if _device_only(k)), len(string_keys))
+        blob_device = sum(1 for k in string_keys[device_from:]
+                          if is_english or translations[k][lang_idx] != translations[k][0])
+        blob_shared = len(blob_strings) - blob_device
         lines.append(f"const char STRINGS_{code}_DATA[] =")
-        for text in blob_strings:
+        for i, text in enumerate(blob_strings):
+            if i == blob_shared and blob_device:
+                lines.append(f"#if {DEVICE_GUARD}")
             _append_string_data_entry(lines, text)
-        if not blob_strings:
+        if blob_device:
+            lines.append("#endif")
+        if not blob_shared:
             _append_string_data_entry(lines, "")
         lines.append(";")
         lines.append("")
@@ -727,9 +740,14 @@ def generate_strings_cpp(
         # Offset table — one uint16_t per StrId
         lines.append(f"const uint16_t OFFSETS_{code}[] = {{")
         chunk_size = 12
-        for i in range(0, len(offsets), chunk_size):
-            chunk = offsets[i : i + chunk_size]
-            lines.append("    " + ", ".join(str(o) for o in chunk) + ",")
+        for part, (a, b) in enumerate(((0, device_from), (device_from, len(offsets)))):
+            if part == 1 and b > a:
+                lines.append(f"#if {DEVICE_GUARD}")
+            for i in range(a, b, chunk_size):
+                chunk = offsets[i : min(i + chunk_size, b)]
+                lines.append("    " + ", ".join(str(o) for o in chunk) + ",")
+            if part == 1 and b > a:
+                lines.append("#endif")
         lines.append("};")
         lines.append("")
 
@@ -812,6 +830,23 @@ def _print_language_table(
         f"  Flash: {dedup_size:>7,} B strings (deduped)  +  {offset_table_size:>6,} B offset tables"
         f"  =  {current_total:>7,} B"
     )
+
+
+# Strings only the touch shell of the X4 Pro speaks: kept out of the other builds' tables.
+DEVICE_PREFIX = "STR_UGLY_X4_"
+DEVICE_GUARD = "FREEINK_DEVICE_X4PRO"
+
+
+def _device_only(key: str) -> bool:
+    return key.startswith(DEVICE_PREFIX)
+
+
+def _device_guard(lines: List[str], keys: List[str], i: int) -> None:
+    """Opens the guard before the first device-only key, closes it after the last."""
+    if i < len(keys) and _device_only(keys[i]) and (i == 0 or not _device_only(keys[i - 1])):
+        lines.append(f"#if {DEVICE_GUARD}")
+    elif i == len(keys) and keys and _device_only(keys[-1]):
+        lines.append("#endif")
 
 
 def _append_string_data_entry(lines: List[str], text: str) -> None:

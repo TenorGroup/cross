@@ -47,7 +47,8 @@ boundaries = category[category.index('HalTiltSensor halTiltSensor;'):category.in
 (out / 'Boundaries.inc').write_text(boundaries)
 fields = header[header.index('  std::vector<SettingInfo> displaySettings;'):header.index('  const std::vector<SettingInfo>* currentSettings')]
 (out / 'Fields.inc').write_text(fields)
-sigs = ['std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe', 'void SettingsActivity::rebuildSettingsLists()',
+sigs = ['std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe', 'bool SettingsActivity::listedAsRow(',
+        'void SettingsActivity::rebuildSettingsLists()',
         'std::string SettingsActivity::favoriteKey(', 'int SettingsActivity::focusFavorite(']
 methods = ''.join(method(source, s) for s in sigs)
 (out / 'Methods.inc').write_text(methods)

@@ -246,6 +246,7 @@ class SettingsActivity final : public UiTabListActivity {
   void enterCategory(int categoryIndex);
   static void veTenNhomCoMuiTen(const GfxRenderer& r, int x0, int yGiua, const char* ten);
   void toggleCurrentSetting();
+  void noteValue(StrId name);  // tells the shell which row changed (shell::valueChanged)
   void openSleepTimeoutPicker();
   void rebuildSettingsLists();
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
@@ -256,6 +257,23 @@ class SettingsActivity final : public UiTabListActivity {
 
  public:
   static std::string settingValueText(const SettingInfo& setting);
+  // Whether a row of the catalog is listed on its tab (the Home key's own rows and, with a Home key, the
+  // long-press menu row are not). The one rule for this screen and the touch shell's settings page.
+  static bool listedAsRow(const SettingInfo& setting);
+  // The UI text size: the fonts, the setting and the theme together. False, with nothing changed, when the
+  // fonts cannot be had.
+  static bool applyUiTextSize(GfxRenderer& renderer, uint8_t size);
+  // A row another screen may change where it stands, a toggle or a list of values written straight into
+  // the setting: toggleCurrentSetting does nothing more for it than write, save and rebuild (uiTextSize
+  // through applyUiTextSize, uiShell through shell::changed). Rows it treats apart (the sleep screen pair
+  // keeps quick resume in step, the sleep timer has its own picker, the clock row is rebuilt) are not.
+  static bool changesInPlace(const SettingInfo& s) {
+    if (s.type != SettingType::TOGGLE && s.type != SettingType::ENUM) return false;
+    if (!s.valuePtr && !(s.valueGetter && s.valueSetter)) return false;
+    if (s.inTextSettings || s.nameId == StrId::STR_TIME_TO_SLEEP) return false;
+    return s.valuePtr != &CrossPointSettings::sleepScreen && s.valuePtr != &CrossPointSettings::quickResumeSleepScreen &&
+           s.valuePtr != &CrossPointSettings::statusBarClock;
+  }
   // theBanDau: the mo san khi vao man. Man chinh bay cac nhom cai dat thanh dong, bam
   // mot dong la vao thang the do, khoi phai nhay the lai tu dau.
   std::string navigationMemoryKey() const override { return name + ":" + std::to_string(theBanDau); }

@@ -17,13 +17,23 @@ void saveAppState();  // main.cpp
 
 namespace ugly {
 namespace {
+#if FREEINK_DEVICE_X4PRO
+// Lines 64 px apart: each line with an underlined word is a band the finger can hit (UglyTouch.h).
+constexpr int MARGIN = 32;
+constexpr int LINE = 64;
+constexpr int TITLE_BASELINE = 104;  // where the notebook pages write theirs (touch::TITLE_BASE)
+constexpr int FIRST_BASELINE = 176;  // the sentence starts under the title and its line
+constexpr int HINTS_ROOM = 100;      // the band over the Home key starts at 720; the last line stays clear of it
+constexpr int WAKE_BASELINE = 78;    // the greeting of a wake, under the top band
+#else
 constexpr int MARGIN = 40;
 constexpr int LINE = 58;
-constexpr int MIN_LINE = 46;     // tighter than this and the letters of two lines meet
 constexpr int HINTS_ROOM = 104;  // the page hints sit 52 px over the foot; the last line and the circle round it stay clear of them
 constexpr int TITLE_BASELINE = 78;   // where the notebook pages write theirs
 constexpr int FIRST_BASELINE = 150;  // the sentence starts under the title and its line
 constexpr int WAKE_BASELINE = 34;    // the greeting of a wake, above the title
+#endif
+constexpr int MIN_LINE = 46;  // tighter than this and the letters of two lines meet
 constexpr int WAKE_LINE = 26;
 
 std::vector<std::string> splitWords(const char* text) {
@@ -163,6 +173,9 @@ void Diary::render(RenderLock&&) {
   std::string last;  // the words of the last paragraph, for the frame log
   int lowest = 0;
 #endif
+#if FREEINK_DEVICE_X4PRO
+  drawnCount = 0;
+#endif
   for (size_t i = 0; i < tokens.size(); ++i) {
     if (!tokens[i].text) {
 #ifdef UGLY_FRAME_LOG
@@ -181,14 +194,30 @@ void Diary::render(RenderLock&&) {
     if (tokens[i].id > 0) {
       box[tokens[i].id] = {x, base - ascent(Size::S38), x + placed[i].w, base + 12};
       underline(renderer, x, x + placed[i].w, base + 12, 13u * static_cast<uint32_t>(tokens[i].id));
+#if FREEINK_DEVICE_X4PRO
+      if (drawnCount < 3) {
+        drawn[drawnCount] = {base, x, x + placed[i].w};
+        drawnId[drawnCount++] = static_cast<Word>(tokens[i].id);
+      }
+#endif
     }
   }
   if (!wake.empty()) paragraph(renderer, Size::S22, MARGIN, WAKE_BASELINE, maxWidth, WAKE_LINE, wake.c_str());
-  const Word now = words[selected];
+  [[maybe_unused]] const Word now = words[selected];
+#if FREEINK_DEVICE_X4PRO
+  // No ring to walk with: the finger goes straight to the words. Today's date, the clock and the battery on
+  // top; the two pages next door over the Home key.
+  char date[12] = "";
+  if (const uint32_t today = ReadingStatsStore::currentDay())
+    snprintf(date, sizeof(date), "%d/%d", static_cast<int>(today % 100), static_cast<int>((today / 100) % 100));
+  topBar(renderer, date);
+  navRow(renderer, tr(STR_SETTINGS_TITLE), nullptr, tr(STR_HOME_TAB_RECENT));
+#else
   circle(renderer, Circle::Word, box[now], 8, 16);
 
   pageHints(renderer, tr(STR_SETTINGS_TITLE), tr(STR_HOME_TAB_RECENT), renderer.getScreenHeight() - 52);
   statusBar(renderer, mappedInput, {hasBook, true, true, true});
+#endif
 
   renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
@@ -214,7 +243,42 @@ void Diary::openPage(const homerows::Page page) {
   then([this, page] { activityManager.replaceActivity(makeNotebook(renderer, mappedInput, page)); });
 }
 
+#if FREEINK_DEVICE_X4PRO
+bool Diary::onTouch(const Key key) {
+  switch (key) {
+    case Key::SwipeLeft:
+      openPage(homerows::Page::Recent);
+      break;
+    case Key::SwipeRight:
+      openPage(homerows::Page::Settings);
+      break;
+    case Key::Tap: {
+      const touch::Hit hit = touch::notebookAt(touchX, touchY);
+      if (hit.spot == touch::Spot::Prev) {
+        openPage(homerows::Page::Settings);
+        break;
+      }
+      if (hit.spot == touch::Spot::Next) {
+        openPage(homerows::Page::Recent);
+        break;
+      }
+      const int at = touch::wordAt(drawn, drawnCount, touchX, touchY);
+      if (at < 0) break;
+      for (int i = 0; i < wordCount; ++i)
+        if (words[i] == drawnId[at]) selected = i;
+      return onKey(Key::Confirm);
+    }
+    default:
+      break;
+  }
+  return false;
+}
+#endif
+
 bool Diary::onKey(const Key key) {
+#if FREEINK_DEVICE_X4PRO
+  if (key >= Key::Tap) return onTouch(key);
+#endif
   switch (key) {
     case Key::Up:
     case Key::UpHold:
@@ -246,6 +310,8 @@ bool Diary::onKey(const Key key) {
           break;
       }
       return false;
+    default:
+      break;
   }
   return false;
 }

@@ -10,12 +10,14 @@
 
 #include "MappedInputManager.h"
 #include "activities/Activity.h"
+#include "shells/Shell.h"
 
 namespace ugly {
 namespace {
 constexpr int SIDE = 30;       // the paper frame's distance from the edge
 constexpr int PAD = 30;        // text from the frame
 constexpr int BODY_LINE = 40;
+constexpr int NOTE_LINE = 30;
 constexpr int OPTION_STEP = 66;
 }  // namespace
 
@@ -32,13 +34,17 @@ void SwitchConfirm::render(RenderLock&&) {
   const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
   const int x = SIDE + PAD, room = w - 2 * x;
   const char* body = tr(STR_UGLY_SWITCH_ASK);
+  const char* note = shell::uglyLimitNote();  // a limited edition, said under the question in the small pen
   const int lines = paragraph(renderer, Size::S30, x, 0, room, BODY_LINE, body, false);
+  const int noteLines = paragraph(renderer, Size::S22, x, 0, room, NOTE_LINE, note, false);
   const int bodyHeight = (lines - 1) * BODY_LINE;
-  // Frame top to bottom: padding, the body, a gap, the two options, padding. The whole is centred above the bar.
-  const int total = PAD + 30 + bodyHeight + 70 + OPTION_STEP + 30;
+  const int noteHeight = 46 + (noteLines - 1) * NOTE_LINE;
+  // Frame top to bottom: padding, the body, the note, a gap, the two options, padding. The whole is centred above the bar.
+  const int total = PAD + 30 + bodyHeight + noteHeight + 70 + OPTION_STEP + 30;
   const int top = std::max(40, (h - 110 - total) / 2);
   const int bodyBase = top + PAD + 30;
-  const int firstOption = bodyBase + bodyHeight + 80;
+  const int noteBase = bodyBase + bodyHeight + 46;
+  const int firstOption = noteBase + (noteLines - 1) * NOTE_LINE + 80;
   const int bottom = firstOption + OPTION_STEP + 30;
 
   // One shaky stroke per side, each with its own seed: a sheet of paper torn out and laid down crooked.
@@ -48,6 +54,7 @@ void SwitchConfirm::render(RenderLock&&) {
   line(renderer, SIDE + 2, bottom - 3, SIDE, top, 704, 2);
 
   paragraph(renderer, Size::S30, x, bodyBase, room, BODY_LINE, body);
+  paragraph(renderer, Size::S22, x, noteBase, room, NOTE_LINE, note);
   const char* labels[COUNT] = {tr(STR_UGLY_SWITCH_YES), tr(STR_UGLY_SWITCH_NO)};
   Box box[COUNT] = {};
   for (int i = 0; i < COUNT; ++i) {
@@ -57,6 +64,9 @@ void SwitchConfirm::render(RenderLock&&) {
     box[i] = {x + 20, base - ascent(Size::S38), x + 20 + lw, base + 10};
   }
   circle(renderer, Circle::Row, box[selected], 14, 10);
+#if FREEINK_DEVICE_X4PRO
+  for (int i = 0; i < COUNT; ++i) drawn[i] = box[i];
+#endif
 
   statusBar(renderer, mappedInput, {true, true, true, true});
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
@@ -76,6 +86,16 @@ void SwitchConfirm::answer(const bool yes) {
 }
 
 bool SwitchConfirm::onKey(const Key key) {
+#if FREEINK_DEVICE_X4PRO
+  if (key == Key::Tap) {  // a line answers across the whole paper, a band of OPTION_STEP round its words
+    for (int i = 0; i < COUNT; ++i)
+      if (touchY >= drawn[i].y0 - 20 && touchY < drawn[i].y0 - 20 + OPTION_STEP) {
+        answer(i == YES);
+        return false;
+      }
+    return false;
+  }
+#endif
   switch (key) {
     case Key::Up:
     case Key::UpHold:

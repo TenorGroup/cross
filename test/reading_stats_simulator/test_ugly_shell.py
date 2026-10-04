@@ -14,10 +14,11 @@ import unittest
 
 from ugly_common import Card, digest, entered, ink, notebook_pages
 
-# Taken again on 04/10/2026 for the two levels of ugliness (straight letters; letters turned as they are drawn): the one-pass
-# cut is held equal to the shave-and-measure cut by the host test of ellipsisKeep.
-CUT_NAMES_DIGEST = {0: '3fa2d2da5c50a849f2b24a4990c78312f9af4167a2e0c5a5ba8dfedc91caa4d5',
-                    1: 'e92c78c75b96f6f709a5fb10211a05fc549ab991c36832fcb7a0eb860c6aa78d'}
+# Provenance from the levels branch: these are full-frame digests, not row-crop goldens.
+FULL_FRAME_DIGEST_PROVENANCE = {0: '3fa2d2da5c50a849f2b24a4990c78312f9af4167a2e0c5a5ba8dfedc91caa4d5',
+                              1: 'e92c78c75b96f6f709a5fb10211a05fc549ab991c36832fcb7a0eb860c6aa78d'}
+# Integrated row-crop goldens await fresh simulator images and visual acceptance.
+CUT_NAMES_DIGEST = {0: None, 1: None}
 # Every width from a name that fits to one cut to a few letters, with marks, and one the baked font lacks.
 LONG_NAMES = ['a.txt', 'Hành trình dài của một người.txt', 'Hành trình dài của một người đọc sách.txt',
              'Hành trình dài của một người đọc sách không bao giờ chịu đọc hết một cuốn.txt',
@@ -260,11 +261,19 @@ class UglyShellTest(unittest.TestCase):
             self.assertEqual(notice.findall(log), [said], (shell, language, log[-1500:]))
 
     def test_long_file_names_are_cut_where_they_always_were(self):
-        # The one-pass cut must give the pixels the shave-and-measure cut gave (the digests are taken from that build).
+        # The daily quip changes above the pen rule; compare the file rows below it at both levels.
         for level, digest_taken in CUT_NAMES_DIGEST.items():
-            log, shots = self.card(books=[], files=LONG_NAMES, uiUglyLevel=level).run('1000:DOWN;1800:DOWN;4000:QUIT', [(3200, 'folder')])
-            self.assertEqual(notebook_pages(log)[-1], 1, log[-800:])
-            self.assertEqual(digest(shots['folder']), digest_taken, 'level %d' % level)
+            with self.subTest(level=level):
+                log, shots = self.card(books=[], files=LONG_NAMES, uiUglyLevel=level).run('1000:DOWN;1800:DOWN;4000:QUIT', [(3200, 'folder')])
+                self.assertEqual(notebook_pages(log)[-1], 1, log[-800:])
+                page = shots['folder'].convert('L')
+                w, h = page.size
+                def covered(y):
+                    return sum(1 for x in range(48, 498) if any(page.getpixel((x, y + r)) < 128 for r in range(3)))
+                rule = next(y for y in range(120, 260) if covered(y) > 400)
+                rows = shots['folder'].crop((0, rule + 8, w, h))
+                self.assertIsNotNone(digest_taken, 'Integrated crop golden is unmeasured; accept fresh simulator images first')
+                self.assertEqual(digest(rows), digest_taken, 'level %d' % level)
 
     def folder_rows(self, log):
         return [int(n) for n in re.findall(r'Notebook frame page=1 row=\d+ rows=(\d+)', log)]

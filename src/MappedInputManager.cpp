@@ -8,6 +8,12 @@
 #include <algorithm>
 #include <cstdlib>
 
+#if FREEINK_DEVICE_X4PRO && defined(TENOR_PRESS_PROBE)
+#include <Logging.h>
+
+#include <cstdio>
+#endif
+
 #include "CrossPointSettings.h"
 #include "components/HeaderBackTapTarget.h"
 #include "components/UITheme.h"
@@ -37,7 +43,68 @@ void MappedInputManager::update(const bool deferHomeButtonAction) const {
   for (uint8_t value = 0; value <= static_cast<uint8_t>(Button::ScreenDown); ++value) {
     if (!isPressed(static_cast<Button>(value))) longPressFiredButtons &= ~(1u << value);
   }
+#if FREEINK_DEVICE_X4PRO
+  stepScribble();
+#endif
 }
+
+#if FREEINK_DEVICE_X4PRO
+#ifdef TENOR_PRESS_PROBE
+namespace {
+bool strokeLogOn = false;
+char strokeLabel[16] = "";
+unsigned long strokeLiftAt = 0;
+// The log goes to a file on the card: a capped count of strokes a switch-on, and at most
+// STROKE_LOG_POINTS points a line (about 1 KB), every k-th one when the stroke has more.
+constexpr int STROKE_LOG_MAX = 40, STROKE_LOG_POINTS = 64;
+int strokesLogged = 0;
+}  // namespace
+
+void MappedInputManager::setStrokeLog(const bool on, const char* label) const {
+  strokeLogOn = on;
+  strokesLogged = 0;
+  snprintf(strokeLabel, sizeof(strokeLabel), "%s", label && *label ? label : "-");
+}
+#endif
+
+void MappedInputManager::stepScribble() const {
+  scribbleFrame = {};
+  if (!gpio.hasTouch()) return;
+  int x = 0;
+  int y = 0;
+  const bool down = isScreenTouchHeld(x, y);
+  scribbleFrame = scribbler.step(down, x, y, millis());
+#ifdef TENOR_PRESS_PROBE
+  if (!strokeLogOn || strokesLogged >= STROKE_LOG_MAX) return;
+  if (const scribble::Stroke* s = scribbler.endedStroke()) {
+    // One line a stroke, read back by test/scribble/log_to_samples.py: n= is checked against the
+    // points that arrive, so a line cut short is dropped there.
+    const int every = (s->n + STROKE_LOG_POINTS - 1) / STROKE_LOG_POINTS;
+    const int shown = (s->n + every - 1) / every;
+    logSerial.printf("STROKE lbl=%s n=%d gap=%lu pts=", strokeLabel, shown, s->t0 - strokeLiftAt);
+    for (int i = 0, prev = 0; i < s->n; i += every) {
+      logSerial.printf("%d,%d,%u;", s->p[i].x, s->p[i].y, i ? static_cast<unsigned>(s->p[i].t - s->p[prev].t) : 0u);
+      prev = i;
+    }
+    logSerial.printf("\n");
+    strokeLiftAt = millis();
+    ++strokesLogged;
+  }
+  if (scribbleFrame.kind != scribble::Kind::None) {
+    const auto& r = scribbleFrame;
+    logSerial.printf("SCRIBBLE lbl=%s kind=%s strokes=%u at=%d,%d box=%d,%d,%d,%d\n", strokeLabel,
+                     scribble::kindName(r.kind), static_cast<unsigned>(r.strokes), r.x, r.y, r.box.x0, r.box.y0,
+                     r.box.x1, r.box.y1);
+  }
+#endif
+}
+
+bool MappedInputManager::wasScribble(scribble::Result& out) const {
+  if (scribbleFrame.kind == scribble::Kind::None) return false;
+  out = scribbleFrame;
+  return true;
+}
+#endif
 
 bool MappedInputManager::isNavDirectionSwapped() const {
   // Touch boards always follow the rendered orientation; button-only boards keep the user toggle.

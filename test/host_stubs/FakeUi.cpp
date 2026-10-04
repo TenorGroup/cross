@@ -110,16 +110,8 @@ const ThemeMetrics& UITheme::getMetrics() const {
 
 // UITheme holds a BaseTheme as its fallback (#3657), so its vtable must link. The theme
 // never draws here: every virtual is a no-op, like the renderer calls above.
-void BaseTheme::fillBatteryIcon(const GfxRenderer&, Rect, uint16_t) const {}
-void BaseTheme::drawButtonHints(GfxRenderer&, const char*, const char*, const char*, const char*) const {}
-void BaseTheme::drawSideButtonHints(const GfxRenderer&, const char*, const char*) const {}
 int BaseTheme::getMenuRowHeight(const GfxRenderer&) const { return 20; }
 void BaseTheme::drawHeader(const GfxRenderer&, Rect, const char*, const char*, bool) const {}
-void BaseTheme::drawSubHeader(const GfxRenderer&, Rect, const char*, const char*) const {}
-void BaseTheme::drawRecentBookCover(GfxRenderer&, Rect, const std::vector<RecentBook>&, const int, bool&, bool&,
-                                    bool&, std::function<bool()>) const {}
-void BaseTheme::drawButtonMenu(GfxRenderer&, Rect, int, int, const std::function<std::string(int)>&,
-                               const std::function<UIIcon(int)>&) const {}
 Rect BaseTheme::drawPopup(const GfxRenderer&, const char*, bool) const { return Rect(); }
 void BaseTheme::fillPopupProgress(const GfxRenderer&, const Rect&, const int) const {}
 void BaseTheme::drawTextField(const GfxRenderer&, Rect, const int, bool, int, int) const {}
