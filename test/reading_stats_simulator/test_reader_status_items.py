@@ -17,10 +17,12 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
-ARTIFACTS = Path(os.environ['STATUS_ITEMS_ARTIFACTS']) if os.environ.get('STATUS_ITEMS_ARTIFACTS') else None
+ARTIFACTS = os.environ.get('STATUS_ITEMS_ARTIFACTS') or os.environ.get('CROSSPOINT_TEST_ARTIFACTS')
+ARTIFACTS = Path(ARTIFACTS) if ARTIFACTS else None
 
 # Corner blocks sit 8 px in from the edge; content keeps 14 px from them. A gap of
 # 10 blank columns is wider than any space inside a word group or the battery.
@@ -88,7 +90,7 @@ class ReaderStatusItemsTest(unittest.TestCase):
     def run_sim(self, name, settings, script=None, shot=3400, book='short'):
         st = {'language': 'VI', 'fontSize': 14, 'statusBarClock': 1}
         st.update(settings)
-        (self.store / 'settings.json').write_text(json.dumps(st))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(st)))
         (self.store / 'recent.json').write_text(
             json.dumps({'books': [{'path': f'/books/{book}.epub', 'title': 'Status items fixture'}]}))
         state = self.store / 'state.json'
@@ -225,7 +227,7 @@ class ReaderStatusItemsTest(unittest.TestCase):
         script = ';'.join(events + [f'{t + 800}:CONFIRM', f'{t + 2400}:BACK', f'{t + 3200}:BACK',
                                     f'{t + 4000}:QUIT'])
         st = {'language': 'VI', 'statusBarClock': 1, 'readerStatusBarMode': DEFAULT}
-        (self.store / 'settings.json').write_text(json.dumps(st))
+        (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(st)))
         (self.store / 'state.json').write_text(json.dumps({'openEpubPath': '', 'lastSleepFromReader': False,
                                                            'showBootScreen': False}))
         env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
