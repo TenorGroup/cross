@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Bake the pictures of the tenor/ugly shell: python3 scripts/ugly/gen_art.py [out-dir]
 
-Writes src/shells/ugly/UglyArt.h: the desk of tier 2 (six objects, no labels) and the sleep doodle,
-both as 528x792 1-bit pictures laid out as the X3 portrait framebuffer and zlib packed, so the
-firmware inflates them straight into the framebuffer. Strokes are one wobbly line from a seed, the
+Writes src/shells/ugly/UglyArt.h: the desk of tier 2 (6 objects, no labels),
+a 528x792 1-bit picture laid out as the X3 portrait framebuffer and zlib packed, so the
+firmware inflates it straight into the framebuffer. Strokes are one wobbly line from a seed, the
 same way for every run, so the output is byte for byte the same each time.
 """
 import math
@@ -115,17 +115,6 @@ def desk():
     return m
 
 
-def sleeper():
-    """A book under a moon, three z's climbing away from it."""
-    m = Man()
-    book(m, 264, 420, 0.82)
-    mx, my, r = 448, 352, 38  # a crescent: the outer rim, then the rim of the bite taken out of it
-    m.run(circ(mx, my, r, 60, 300, 20) + circ(mx + 0.5 * r, my, 0.87 * r, 270, 90, 20), 801, amp=0.8, step=18)
-    for i, (zx, zy, s) in enumerate(((214, 372, 16), (262, 322, 24), (330, 262, 34))):  # z z Z
-        m.run([(zx, zy), (zx + s, zy - 2), (zx, zy + s), (zx + s + 2, zy + s)], 810 + i, amp=0.9, step=14, w=3)
-    return m
-
-
 def emit(name, man, out):
     raw = man.packed()
     packed = zlib.compress(raw, 9)
@@ -143,8 +132,6 @@ def main(out_dir=None):
            '// 528x792 1-bit pictures as the X3 portrait framebuffer, zlib packed (52272 bytes raw each).',
            '#pragma once', '', '#include <cstdint>', '', 'namespace ugly::art {', '']
     emit('DESK', desk(), out)
-    out.append('')
-    emit('SLEEP', sleeper(), out)
     out += ['', '}  // namespace ugly::art', '']
     (Path(out_dir) if out_dir else ROOT / 'src/shells/ugly').joinpath('UglyArt.h').write_text('\n'.join(out))
 
