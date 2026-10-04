@@ -28,7 +28,14 @@ bool PersistableStoreBase::writeDocToFile(const char*, const JsonDocument&) {
 
 struct RenderLock {};
 // Choosing another shell draws Home again: outside what this harness measures.
-namespace shell { inline void changed() {} }
+namespace shell {
+enum class Kind : uint8_t { Cross = 0, Ugly = 1 };
+inline void changed() {}
+}  // namespace shell
+// Choosing tenor/ugly asks first, in a box of its own: outside what this harness measures.
+namespace ugly {
+template <class R, class I> inline std::unique_ptr<int> makeSwitchConfirm(R&, I&) { return nullptr; }
+}  // namespace ugly
 struct GfxRenderer {
   unsigned clears = 0, displayed = 0, popups = 0, popupAtDisplay = 0;
   void clearScreen() { ++clears; popups = 0; }

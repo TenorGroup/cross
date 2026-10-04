@@ -78,7 +78,8 @@ TEST(SleepSet, BothLanguagesCarryTheSameCodesInTheSameOrder) {
 TEST(SleepSet, EveryCodeThePickersAskForHasLines) {
   const std::string vi = text(true);
   for (char c : std::string("abdfghijlmnopqrstu")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 1) << c;
-  for (char c : std::string("fhimnopqrtu")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 2) << c;
+  // f held 2 lines until the review of 04/10 cut the one about the face: it keeps the one about the dawn.
+  for (char c : std::string("himnopqrtu")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 2) << c;
 }
 
 TEST(SleepSet, WritingRulesHold) {
