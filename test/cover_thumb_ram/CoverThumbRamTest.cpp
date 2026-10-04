@@ -133,6 +133,11 @@ static_assert(thumbWidthFor(sleepquote::COVER_H) == sleepquote::COVER_W,
               "the quote sleep tile is not the card's shape");
 
 int main() {
+  check(THUMB_SHAPE_W == HOME_CARD_COVER_W && THUMB_SHAPE_H == HOME_CARD_COVER_H,
+        "thumbnail proportions use the Recent card dimensions");
+  for (int height = 120; height <= HOME_CARD_COVER_H; ++height)
+    check(thumbWidthFor(height) == height * HOME_CARD_COVER_W / HOME_CARD_COVER_H,
+          "thumbnail width matches the card at every supported height");
   {
     // Whole pixels on the side that decides: float scales came out one short for many sizes.
     int w = 0, h = 0;

@@ -133,7 +133,7 @@ class HomeCardFollowupTest(unittest.TestCase):
         return ImageChops.invert(image.crop(box)).getbbox() is not None
 
     def thumbs(self, height):
-        return sorted(self.store.glob(f'epub_*/thumb2_{height}.bmp'))
+        return sorted(self.store.glob(f'epub_*/thumb3_{height}.bmp'))
 
     # --- 1. cover thumbnail at the card's height ---------------------------------------------
     def test_idle_pass_writes_the_card_sized_thumbnail_and_the_card_draws_it(self):

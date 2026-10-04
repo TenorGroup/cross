@@ -1,6 +1,8 @@
 // tenor/ugly sleep set: the 8 doodles, the sentences, what picks them, and that every sentence fits.
 #include <gtest/gtest.h>
 
+#include <I18n.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -61,15 +63,14 @@ uint64_t hashOf(const std::vector<Seg>& segs) {
 
 TEST(SleepSet, FoundersLinesAreWordForWord) {
   const std::string vi = text(true);
-  for (const char* line : {"Tao ngủ đây, mai nhớ thức tao dậy. Còn giờ thì kệ cmm, zz Z Z",
-                           "Được sếp nghỉ cho ăn trưa mới kêu tao dậy chứ gì.", "Toàn đọc lúc nửa đêm, vừa đi ăn trộm vừa đọc à?"})
+  for (const char* line : {"Tao ngủ đây, mai nhớ thức tao dậy. Còn giờ thì kệ cmm, zz Z Z", "Toàn đọc lúc nửa đêm, vừa đi ăn trộm vừa đọc à?"})
     EXPECT_NE(vi.find(line), std::string::npos) << line;
+  EXPECT_STREQ(I18N.get(StrId::STR_UGLY_WAKE_Q1, Language::VI), "Được sếp nghỉ cho ăn trưa mới kêu tao dậy chứ gì.");
 }
 
 TEST(SleepSet, BothLanguagesCarryTheSameCodesInTheSameOrder) {
-  auto vi = records(text(true));
+  const auto vi = records(text(true));
   const auto en = records(text(false));
-  vi.erase(std::remove_if(vi.begin(), vi.end(), [](const auto& r) { return r.first >= 'm'; }), vi.end());  // English has no wake lines
   ASSERT_EQ(vi.size(), en.size());
   for (size_t i = 0; i < vi.size(); ++i) EXPECT_EQ(vi[i].first, en[i].first) << i;
   EXPECT_GE(vi.size(), 15u);
@@ -77,9 +78,9 @@ TEST(SleepSet, BothLanguagesCarryTheSameCodesInTheSameOrder) {
 
 TEST(SleepSet, EveryCodeThePickersAskForHasLines) {
   const std::string vi = text(true);
-  for (char c : std::string("abdfghijlmnopqrstu")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 1) << c;
+  for (char c : std::string("abdfghijl")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 1) << c;
   // f held 2 lines until the review of 04/10 cut the one about the face: it keeps the one about the dawn.
-  for (char c : std::string("himnopqrtu")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 2) << c;
+  for (char c : std::string("hi")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 2) << c;
 }
 
 TEST(SleepSet, WritingRulesHold) {
@@ -189,29 +190,22 @@ TEST(SleepSet, SleepSentenceKnowsNothingReadTodayAndTheHabit) {
 }
 
 TEST(SleepSet, WakeSentenceFollowsTheHourOfWaking) {
-  const std::string vi = text(true), en = text(false);
   Context c;
   c.day = 20261004;
-  EXPECT_EQ(wakeLine(vi.data(), vi.size(), c).text, nullptr) << "no hour, no greeting";
+  EXPECT_EQ(wakeLineIndex(c), -1) << "no hour, no greeting";
   c.hour = 11;
-  std::set<std::string> lines;
+  std::set<int> lines;
   for (uint32_t d = 20261001; d <= 20261010; ++d) {
     c.day = d;
-    const Record r = wakeLine(vi.data(), vi.size(), c);
-    ASSERT_NE(r.text, nullptr);
-    lines.insert(std::string(r.text, r.len));
-    EXPECT_EQ(std::string(r.text, r.len), std::string(wakeLine(vi.data(), vi.size(), c).text, r.len)) << "the same day, the same greeting";
+    const int line = wakeLineIndex(c);
+    lines.insert(line);
+    EXPECT_EQ(line, wakeLineIndex(c)) << "the same day, the same greeting";
   }
   EXPECT_EQ(lines.size(), 2u) << "the two lines for 11 to 13 o'clock";
-  EXPECT_TRUE(lines.count("Được sếp nghỉ cho ăn trưa mới kêu tao dậy chứ gì."));
+  EXPECT_EQ(lines, (std::set<int>{8, 9}));
+  const int beforeHabit = wakeLineIndex(c);
   c.nightReader = true;
-  bool habit = false;
-  for (uint32_t d = 20261001; d <= 20261020; ++d) {
-    c.day = d;
-    const Record r = wakeLine(en.data(), en.size(), c);
-    habit |= std::string(r.text, r.len).find("Burgling") != std::string::npos;
-  }
-  EXPECT_TRUE(habit) << "a night reader gets the habit line some mornings";
+  EXPECT_EQ(wakeLineIndex(c), beforeHabit) << "the reading habit must not select a line that tells the reader to sleep";
 }
 
 // The hour of the day to its code, written out here on its own, hour by hour.
@@ -224,12 +218,15 @@ TEST(SleepSet, EveryHourMapsToItsBand) {
       if (line == s) return k;
     return '?';
   };
-  const char wakeHours[] = {'m','m','m','m','m','n','n','o','o','p','p','q','q','r','r','r','r','s','s','t','t','t','u','u'};
+  const int wakeFirst[] = {0,0,0,0,0,2,2,4,4,6,6,8,8,10,10,10,10,12,12,13,13,13,15,15};
+  const int wakeCount[] = {2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2};
   const char sleepHours[] = {'f','f','f','f','f','g','g','g','g','h','h','h','i','i','j','j','j','j','k','k','k','k','l','l'};
   for (int h = 0; h < 24; ++h) {
     Context c;
     c.day = 20261004, c.hour = h;
-    EXPECT_EQ(codeOf(wakeLine(vi.data(), vi.size(), c)), wakeHours[h]) << "wake at " << h;
+    const int wake = wakeLineIndex(c);
+    EXPECT_GE(wake, wakeFirst[h]) << "wake at " << h;
+    EXPECT_LT(wake, wakeFirst[h] + wakeCount[h]) << "wake at " << h << " gave " << wake;
     for (uint32_t n = 0; n < 12; ++n) {
       c.count = n;
       const char got = codeOf(sleepLine(vi.data(), vi.size(), c));
@@ -291,15 +288,14 @@ TEST(SleepSet, EverySentenceIsInTheBakedFontAndFits) {
   for (bool vi : {true, false})
     for (const auto& [code, raw] : records(text(vi))) {
       const std::string& s = raw;
-      const bool wake = code >= 'm';
-      if (wake) {
-        EXPECT_LE(linesOf(ugly_22, s, 400), 2) << s;
-      } else if (code != 'd') {
-        EXPECT_LE(linesOf(ugly_38, s, 400), 4) << s;
-      } else {
-        EXPECT_LE(linesOf(ugly_38, s, 400), 4) << s;
-        EXPECT_LE(linesOf(ugly_22, s, 400), 2) << s;
-      }
+      EXPECT_LE(linesOf(ugly_38, s, 400), 4) << code << s;
     }
+  for (const StrId id : WAKE_LINES) {
+    const char* vi = I18N.get(id, Language::VI);
+    const char* en = I18N.get(id, Language::EN);
+    EXPECT_LE(linesOf(ugly_22, vi, 400), 2) << vi;
+    EXPECT_LE(linesOf(ugly_22, en, 400), 2) << en;
+    EXPECT_STREQ(I18N.get(id, Language::ZH_HANS), en) << "Chinese keeps the English wake line";
+  }
 }
 }  // namespace

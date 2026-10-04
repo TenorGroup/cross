@@ -2,9 +2,9 @@
 """Bake the sleep set of the tenor/ugly shell: python3 scripts/ugly/gen_sleep_set.py [out-dir] [--md file] [--preview dir]
 
 Writes src/shells/ugly/UglySleepData.h: 8 doodles as vector strokes (anchor points as int8 steps plus
-a wobble seed, drawn by the firmware with the ugly pen) and the sleep and wake sentences in Vietnamese
-and English, one zlib stream per block so the firmware inflates only what it shows. Everything is
-fixed text and fixed numbers, so the output is the same byte for byte on every run.
+a wobble seed, drawn by the firmware with the ugly pen) and the sleep sentences in Vietnamese and
+English, one zlib stream per block so the firmware inflates only what it shows. Everything is fixed
+text and fixed numbers, so the output is the same byte for byte on every run.
 
 Stream of the pictures (the wobble seed of stroke k of picture p is (p * 7 + k * 3 + 1) % 64): u8 count, then per picture u8 strokes, then per stroke
   u8 points, u8 width, u8 x0 / 2, u8 y0 / 2, then (points - 1) pairs of int8 (dx / 2, dy / 2).
@@ -20,11 +20,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CW, CH = 480, 440
 STEP, AMP = 40, 2  # the firmware adds a wobbling point every STEP px of a long segment
+SENTENCE_CAP = 128
 
 # ---------------------------------------------------------------- sentences
-# code: a sleep line (a generic, b nothing read today, d night reader,
-# f..l by the hour of going to sleep: 0-5, 5-9, 9-12, 12-14, 14-18, 18-22, 22-24) or a wake line (m..u by
-# the hour of waking: 0-5, 5-7, 7-9, 9-11, 11-13, 13-17, 17-19, 19-22, 22-24).
+# code: a generic sleep line, b nothing read today, d night reader, f..l by the hour of going to sleep:
+# 0-5, 5-9, 9-12, 12-14, 14-18, 18-22, 22-24. Wake lines live in the i18n YAML files.
 LINES = [
     ('a', 'Tao ngủ đây, mai nhớ thức tao dậy. Còn giờ thì kệ cmm, zz Z Z', "I'm out. Wake me up tomorrow. Until then, screw everything, zz Z Z"),
     ('a', 'Tắt máy rồi. Mày cũng tắt cái mồm đi mà ngủ.', 'Powered off. Now zip it and go to sleep too.'),
@@ -43,23 +43,6 @@ LINES = [
     ('i', 'Cơm xong ngủ liền. Chuẩn bài dân nhàn.', 'Eat, then sleep. Textbook loafer.'),
     ('j', 'Chiều chiều ngủ, tối nay thao thức cho coi.', "A late-afternoon nap, tonight you'll toss and turn. Watch."),
     ('l', 'Đi ngủ đúng giờ. Hiếm lắm, ghi nhận.', 'In bed on schedule. Rare. Noted.'),
-    ('m', 'Giờ này thức làm gì, mất ngủ hay mất nết?', 'Awake at this hour. Insomnia or bad habits?'),
-    ('m', 'Giữa đêm bật máy lên đọc. Ma còn đang ngủ đó cha.', 'Powering me on in the dead of night. Even ghosts are asleep.'),
-    ('n', 'Dậy sớm vậy chi, gà còn chưa gáy.', "Up this early? The roosters haven't even started."),
-    ('n', 'Tờ mờ sáng đã cầm máy. Giả bộ chăm chỉ à?', 'Holding me before sunrise. Putting on a hardworking act?'),
-    ('o', 'Sáng nay lết được ra khỏi giường, ghi nhận.', 'Dragged yourself out of bed this morning. Noted.'),
-    ('o', 'Dậy rồi hả. Cà phê chưa mà đã đòi đọc?', 'Awake already? No coffee yet and you want to read?'),
-    ('p', 'Muộn vậy mới dậy. Buổi sáng chạy đi đâu mất rồi.', 'Up this late. The morning has run off.'),
-    ('p', 'Gần trưa mới dậy. Đời mày sao mà nhàn.', 'Waking up near noon. Must be nice.'),
-    ('q', 'Được sếp nghỉ cho ăn trưa mới kêu tao dậy chứ gì.', 'Only when the boss lets you eat lunch do you wake me, right?'),
-    ('q', '11 giờ trưa mới mở mắt. Ngủ nướng có tâm vl.', 'Eyes open at 11 a.m. Now that\'s dedicated sleeping in.'),
-    ('r', 'Giữa chiều mới thức, coi như hết cả ngày.', 'Awake mid-afternoon. The day is basically over.'),
-    ('r', 'Ngủ gì mà lâu vậy, mốc luôn rồi hả?', 'Slept that long? Gone moldy yet?'),
-    ('s', 'Chiều tà mới lên đồ đọc sách. Sống chậm vl.', 'Reading at sunset. Living slow.'),
-    ('t', 'Tối rồi mới cầm tao lên. Hôm nay bận gì vậy?', 'Evening, and now you pick me up. Busy doing what?'),
-    ('t', 'Đọc buổi tối cho ra dáng. Lát lại ngủ gật.', "Reading in the evening, how proper. You'll nod off soon."),
-    ('u', 'Gần nửa đêm mới đọc. Sáng mai dậy kiểu gì?', "Almost midnight and you're still reading. How will you wake up tomorrow?"),
-    ('u', 'Giờ này bật máy là định thức tới sáng hả?', 'Switching me on now? Planning to stay up till dawn?'),
 ]
 
 # ---------------------------------------------------------------- strokes
@@ -258,8 +241,11 @@ def strokes_blob():
 
 
 def text_blob(col):
-    # The English block leaves out the wake lines: the flash of the X3 is spent on Vietnamese first.
-    return ''.join(code + rest[col] + '\n' for code, *rest in LINES if col == 0 or code < 'm').encode('utf-8')
+    records = [(code, rest[col]) for code, *rest in LINES]
+    for code, text in records:
+        size = len(text.encode('utf-8'))
+        assert size < SENTENCE_CAP, '%s line is %d UTF-8 bytes, exceeds the firmware sentence buffer' % (code, size)
+    return ''.join(code + text + '\n' for code, text in records).encode('utf-8')
 
 
 # ---------------------------------------------------------------- reference of the firmware's pen (preview only)
@@ -338,7 +324,7 @@ def main():
         i = args.index('--preview'); preview_dir = args[i + 1]; del args[i:i + 2]
     out_dir = Path(args[0]) if args else ROOT / 'src/shells/ugly'
     out = ['// Generated by scripts/ugly/gen_sleep_set.py. Do not edit by hand.', '//',
-           '// The sleep doodles as strokes and the sleep and wake sentences, one zlib stream each.',
+           '// The sleep doodles as strokes and the sleep sentences, one zlib stream each.',
            '#pragma once', '', '#include <cstdint>', '', 'namespace ugly::sleepdata {', '']
     total = 0
     for name, raw in (('PICTURES', strokes_blob()), ('TEXT_VI', text_blob(0)), ('TEXT_EN', text_blob(1))):
@@ -355,11 +341,9 @@ def main():
         write_md(md)
 
 
-NAMES = {'a': 'ngủ, chung', 'b': 'ngủ, hôm nay đọc 0 phút', 'd': 'ngủ hoặc thức, thói quen đọc đêm (23-5 giờ chiếm từ 40% thời gian đọc)',
+NAMES = {'a': 'ngủ, chung', 'b': 'ngủ, hôm nay đọc 0 phút', 'd': 'ngủ, thói quen đọc đêm (23-5 giờ chiếm từ 40% thời gian đọc)',
          'f': 'ngủ lúc 0-5 giờ', 'g': 'ngủ lúc 5-9 giờ',
-         'h': 'ngủ lúc 9-12 giờ', 'i': 'ngủ lúc 12-14 giờ', 'j': 'ngủ lúc 14-18 giờ', 'k': 'ngủ lúc 18-22 giờ', 'l': 'ngủ lúc 22-24 giờ',
-         'm': 'thức lúc 0-5 giờ', 'n': 'thức lúc 5-7 giờ', 'o': 'thức lúc 7-9 giờ', 'p': 'thức lúc 9-11 giờ', 'q': 'thức lúc 11-13 giờ',
-         'r': 'thức lúc 13-17 giờ', 's': 'thức lúc 17-19 giờ', 't': 'thức lúc 19-22 giờ', 'u': 'thức lúc 22-24 giờ'}
+         'h': 'ngủ lúc 9-12 giờ', 'i': 'ngủ lúc 12-14 giờ', 'j': 'ngủ lúc 14-18 giờ', 'k': 'ngủ lúc 18-22 giờ', 'l': 'ngủ lúc 22-24 giờ'}
 
 
 def write_md(path):

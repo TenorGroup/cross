@@ -196,7 +196,7 @@ class CardFTest(unittest.TestCase):
 
     def test_card_file_has_the_new_magic_and_a_cold_card_equals_a_warm_one(self):
         for shot in (self.en, self.vi):
-            cards = sorted(shot.store.glob('epub_*/thumb2_450.bmp.card*'))
+            cards = sorted(shot.store.glob('epub_*/thumb3_450.bmp.card*'))
             self.assertTrue(cards, 'no card file written')
             self.assertEqual(cards[0].read_bytes()[:4], b'CRD4')
             self.assertIn('Recent card file=', shot.warm_log)
@@ -235,7 +235,7 @@ class CardFTest(unittest.TestCase):
 
     def test_an_old_format_card_file_is_not_read(self):
         shot = self.en
-        card = sorted(shot.store.glob('epub_*/thumb2_450.bmp.card*'))[0]
+        card = sorted(shot.store.glob('epub_*/thumb3_450.bmp.card*'))[0]
         data = bytearray(card.read_bytes())
         data[:4] = b'CRD3'
         card.write_bytes(bytes(data))

@@ -31,8 +31,8 @@ enum class BmpRowOrder { BottomUp, TopDown };
 // Every cover thumbnail has the Recent card's cover shape (HOME_CARD_COVER_W x HOME_CARD_COVER_H in
 // HomeExcerptStyle.h), so the card draws it 1:1. The earlier 0.6 x height came out narrower than
 // the card for most covers, and the card stretched it by repeating columns and rows.
-constexpr int THUMB_SHAPE_W = 236;
-constexpr int THUMB_SHAPE_H = 356;
+constexpr int THUMB_SHAPE_W = 298;
+constexpr int THUMB_SHAPE_H = 450;
 constexpr int thumbWidthFor(const int height) { return height * THUMB_SHAPE_W / THUMB_SHAPE_H; }
 
 // A source scaled to fill (`crop`) or to fit inside a target, in whole pixels. The side that

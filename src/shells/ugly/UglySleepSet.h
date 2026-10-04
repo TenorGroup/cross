@@ -8,6 +8,8 @@
 #include <cstdlib>
 #include <string>
 
+#include <I18nKeys.h>
+
 #include "UglyLogic.h"
 
 class GfxRenderer;
@@ -29,7 +31,8 @@ struct Context {
   bool nightReader = false;
 };
 
-// Line codes in the text stream (see gen_sleep_set.py): a generic sleep line, b nothing read today, d night reader, f..l the hour of going to sleep, m..u the hour of waking.
+// Line codes in the text stream (see gen_sleep_set.py): a generic sleep line, b nothing read today,
+// d night reader, f..l the hour of going to sleep.
 inline int sleepBand(const int hour) {
   static constexpr int8_t TOP[7] = {5, 9, 12, 14, 18, 22, 24};
   for (int i = 0; i < 7; ++i)
@@ -102,14 +105,22 @@ inline Record sleepLine(const char* block, const size_t size, const Context& c) 
   return pickFrom(block, size, "a", 1, select / 3);
 }
 
-// The sentence of a wake: by the hour, the same one all day. Nothing when the clock does not know the hour.
-inline Record wakeLine(const char* block, const size_t size, const Context& c) {
-  if (c.hour < 0) return {};
-  char codes[2];
-  int n = 0;
-  codes[n++] = static_cast<char>('m' + wakeBand(c.hour));
-  if (c.nightReader) codes[n++] = 'd';
-  return pickFrom(block, size, codes, n, c.day == 0 ? 0u : static_cast<uint32_t>(logic::civilDays(c.day)));
+inline constexpr StrId WAKE_LINES[] = {
+    StrId::STR_UGLY_WAKE_M1, StrId::STR_UGLY_WAKE_M2, StrId::STR_UGLY_WAKE_N1, StrId::STR_UGLY_WAKE_N2,
+    StrId::STR_UGLY_WAKE_O1, StrId::STR_UGLY_WAKE_O2, StrId::STR_UGLY_WAKE_P1, StrId::STR_UGLY_WAKE_P2,
+    StrId::STR_UGLY_WAKE_Q1, StrId::STR_UGLY_WAKE_Q2, StrId::STR_UGLY_WAKE_R1, StrId::STR_UGLY_WAKE_R2,
+    StrId::STR_UGLY_WAKE_S1, StrId::STR_UGLY_WAKE_T1, StrId::STR_UGLY_WAKE_T2, StrId::STR_UGLY_WAKE_U1,
+    StrId::STR_UGLY_WAKE_U2,
+};
+
+// The i18n wake line: by the hour, the same one all day. -1 when the clock does not know the hour.
+inline int wakeLineIndex(const Context& c) {
+  if (c.hour < 0) return -1;
+  static constexpr uint8_t FIRST[9] = {0, 2, 4, 6, 8, 10, 12, 13, 15};
+  static constexpr uint8_t COUNT[9] = {2, 2, 2, 2, 2, 2, 1, 2, 2};
+  const int band = wakeBand(c.hour);
+  const uint32_t select = c.day == 0 ? 0u : static_cast<uint32_t>(logic::civilDays(c.day));
+  return FIRST[band] + static_cast<int>(select % COUNT[band]);
 }
 
 // The record as a sentence in `out` (cap bytes, cut to fit, always ended). Returns out.

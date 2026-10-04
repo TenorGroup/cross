@@ -465,7 +465,6 @@ void SettingsActivity::toggleCurrentSetting() {
           return;
         }
         SETTINGS.uiShell = newValue;
-        saveSettings();
         rebuildSettingsLists();
         shell::changed();
       });

@@ -993,7 +993,7 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card) {
       const std::string part(run, end);
       const auto style = number ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
       if (x - card.statsX + renderer.getTextWidth(UI_12_FONT_ID, part.c_str(), style) > width) {
-        LOG_INF("HOME", "Card stat cut row=%d", row);
+        LOG_PROBE("HOME", "Card stat cut row=%d", row);
         break;
       }
       renderer.drawText(UI_12_FONT_ID, x, y, part.c_str(), true, style);
@@ -1145,8 +1145,17 @@ void HomeActivity::drawRecentCard() {
     if (!Storage.openFileForRead("HOME", UITheme::getCoverThumbPath(book.coverBmpPath, height), file)) continue;
     if (height == HOME_CARD_COVER_H) cardFileThumb = 1;
     Bitmap bitmap(file);
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("HOME", "CARD_COVER_START height=%d free=%u largest=%u", height, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    const uint32_t coverStarted = millis();
+#endif
     if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0)
       image = renderer.drawBitmapCover(bitmap, card.coverX, card.coverY, card.coverW, card.coverH);
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("HOME", "CARD_COVER_END height=%d ms=%lu ok=%u free=%u largest=%u", height,
+            static_cast<unsigned long>(millis() - coverStarted), image ? 1u : 0u,
+            ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
     if (image) coverHeight = height;
   }
   if (!image) {
@@ -1182,6 +1191,10 @@ void HomeActivity::drawRecentCard() {
   textRectW = card.textW;
   textRectH = std::max(0, textBottom - card.titleY);
   coverBufferStored = storeCoverBuffer();
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("HOME", "CARD_STORE bytes=%u ok=%u free=%u largest=%u", static_cast<unsigned>(coverBufferSize),
+          coverBufferStored ? 1u : 0u, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
   coverBufferBook = shown;
   coverRendered = true;
   if (coverBufferStored && !cardPath.empty()) {

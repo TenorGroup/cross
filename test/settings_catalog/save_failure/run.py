@@ -63,7 +63,8 @@ for mode in modes:
         return (ROOT / path).read_text()
 
     paths = ['src/activities/settings/SettingsActivity.h',
-             'src/activities/settings/SettingsActivity.cpp']
+             'src/activities/settings/SettingsActivity.cpp',
+             'src/shells/Shell.cpp']
     sources = {path: read(path) for path in paths}
     manifest[mode] = {path: hashlib.sha256(text.encode()).hexdigest()
                       for path, text in sources.items()}
@@ -90,6 +91,8 @@ for mode in modes:
         signatures.insert(0, 'bool SettingsActivity::saveSettings()')
     (output / 'Methods.inc').write_text(''.join(method_slice(source, signature)
                                                for signature in signatures))
+    (output / 'ShellChanged.inc').write_text(
+        'namespace shell {\n' + method_slice(sources['src/shells/Shell.cpp'], 'void changed()') + '}\n')
     sanitizer = ['-fsanitize=address,undefined', '-fno-omit-frame-pointer'] if args.sanitize else []
     dead_strip = '-Wl,-dead_strip' if platform.system() == 'Darwin' else '-Wl,--gc-sections'
     command = [os.environ.get('CXX', 'c++'), '-std=c++20', '-g', '-O1', *sanitizer,

@@ -61,15 +61,14 @@ uint8_t* unpack(const uint8_t* packed, const size_t packedSize, const size_t raw
   return out;
 }
 
-// The sentence of a sleep or a wake in the language the screen speaks (Vietnamese, else English), into out.
-// False when the day has none (a wake with no hour) or the text cannot be unpacked.
-bool sentence(const bool wake, const Context& c, char* out) {
+// The sentence of a sleep in the language the screen speaks (Vietnamese, else English), into out.
+bool sleepSentence(const Context& c, char* out) {
   const bool vi = I18N.getLanguage() == Language::VI;
   const size_t raw = vi ? sleepdata::TEXT_VI_RAW : sleepdata::TEXT_EN_RAW;
   const uint8_t* text = vi ? unpack(sleepdata::TEXT_VI, sizeof(sleepdata::TEXT_VI), raw) : unpack(sleepdata::TEXT_EN, sizeof(sleepdata::TEXT_EN), raw);
   if (!text) return false;
   const auto* block = reinterpret_cast<const char*>(text);
-  const Record r = wake ? wakeLine(block, raw, c) : sleepLine(block, raw, c);
+  const Record r = sleepLine(block, raw, c);
   if (r.text) copy(r, out, SENTENCE_CAP);
   std::free(const_cast<uint8_t*>(text));
   return r.text != nullptr;
@@ -92,15 +91,15 @@ bool drawScreen(GfxRenderer& r) {
                                  [&](int x0, int y0, int x1, int y1, int seed, int width) { line(r, x0, y0, x1, y1, seed, width); });
   std::free(pictures);
   char text[SENTENCE_CAP];
-  if (!drawn || !sentence(false, c, text)) return false;
+  if (!drawn || !sleepSentence(c, text)) return false;
   paragraph(r, Size::S38, 40 + ox, oy + 120, w - 80 - 2 * ox, 58, text);
   return true;
 }
 
 std::string wakeSentence() {
-  char text[SENTENCE_CAP];
   const Context c = gather();
-  return c.hour >= 0 && sentence(true, c, text) ? text : std::string();
+  const int line = wakeLineIndex(c);
+  return line >= 0 ? I18N.get(WAKE_LINES[line]) : std::string();
 }
 
 }  // namespace ugly::sleepset

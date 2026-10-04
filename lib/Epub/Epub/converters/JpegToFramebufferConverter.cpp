@@ -613,10 +613,17 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
   }
 #endif
 
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("IMG", "COVER_DECODE_START free=%u largest=%u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
   unsigned long decodeStart = millis();
   ctx.lastYieldMs = decodeStart;
   rc = jpeg->decode(0, 0, jpegScaleOption);
   unsigned long decodeTime = millis() - decodeStart;
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("IMG", "COVER_DECODE ms=%lu ok=%u thumb=%u free=%u largest=%u", decodeTime, rc == 1 ? 1u : 0u,
+          ctx.thumbs ? 1u : 0u, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+#endif
 
   if (rc != 1) {
     LOG_ERR("JPG", "Decode failed (rc=%d, lastError=%d)", rc, jpeg->getLastError());

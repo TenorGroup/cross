@@ -27,10 +27,11 @@ bool PersistableStoreBase::writeDocToFile(const char*, const JsonDocument&) {
 #define LOG_ERR(...) (++errors)
 
 struct RenderLock {};
-// Choosing another shell draws Home again: outside what this harness measures.
+// Run the production shell change below against the same persistence counter.
 namespace shell {
 enum class Kind : uint8_t { Cross = 0, Ugly = 1 };
-inline void changed() {}
+inline bool isUgly() { return SETTINGS.uiShell == static_cast<uint8_t>(Kind::Ugly); }
+void changed();
 }  // namespace shell
 // Choosing tenor/ugly asks first, in a box of its own: outside what this harness measures.
 namespace ugly {
@@ -80,7 +81,14 @@ void drawTip(GfxRenderer&, const char*, int, int = 4) {}
 }
 struct GpioBoundary { bool deviceIsX3() const { return true; } } gpio;
 struct FontBoundary { const int& registry() { static int registry; return registry; } } sdFontSystem;
-struct ManagerBoundary { void goToFileTransfer() {} void goToBrowser() {} } activityManager;
+enum class HomeMenuItem { RECENT_CONTINUE };
+struct ManagerBoundary {
+  unsigned home = 0;
+  void goToFileTransfer() {}
+  void goToBrowser() {}
+  void goHome(HomeMenuItem) { ++home; }
+} activityManager;
+#include "ShellChanged.inc"
 struct KeyboardResult { std::string text; };
 struct IntervalResult { int value = 1; };
 struct ActivityResult { bool isCancelled = false; std::variant<KeyboardResult, IntervalResult> data; };
@@ -267,6 +275,23 @@ int main() {
     activity.optionPopup.choose(3);
     ok &= check(activity.uiSizeSeenDuringApply == 1, "popup UI apply sees the previous setting");
     ok &= check(SETTINGS.uiTextSize == 3, "popup UI apply publishes candidate before save");
+    ++scenarios;
+  }
+  {
+    SettingsActivity activity;
+    SETTINGS.uiShell = static_cast<uint8_t>(shell::Kind::Cross);
+    SETTINGS.sleepScreen = CrossPointSettings::QUOTE;
+    SETTINGS.uiShellSleepMemo = 0;
+    row(activity, SettingInfo::Enum(StrId::STR_UI_SHELL, &CrossPointSettings::uiShell,
+         {StrId::STR_SHELL_CROSS, StrId::STR_SHELL_UGLY}));
+    persistOk = true;
+    const unsigned writesBefore = writes;
+    const unsigned homesBefore = activityManager.home;
+    activity.toggleCurrentSetting();
+    ok &= check(static_cast<bool>(activity.childCallback), "ugly confirmation callback registered");
+    activity.childCallback(ActivityResult{});
+    ok &= check(writes == writesBefore + 1, "confirmed shell switch is persisted once");
+    ok &= check(activityManager.home == homesBefore + 1, "confirmed shell switch redraws Home");
     ++scenarios;
   }
   for (bool strings : {false,true}) {

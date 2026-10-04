@@ -1037,9 +1037,8 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds, const bool on
   return false;
 }
 
-// "thumb2": the card's shape (BitmapHelpers.h). A thumbnail is kept by its name alone, so the
-// name changed with the shape: the old "thumb_" files are never drawn again, and every book gets a
-// new thumbnail the next time it is opened.
+// Keep thumb2 caches: the selected theme (226), Recent card (450) and sleep tile (145)
+// retain their pixel dimensions when the shape ratio changes from 236/356 to 298/450.
 std::string Epub::getThumbBmpPath() const { return cachePath + "/thumb2_[HEIGHT].bmp"; }
 std::string Epub::getThumbBmpPath(int height) const { return cachePath + "/thumb2_" + std::to_string(height) + ".bmp"; }
 
