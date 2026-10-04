@@ -23,6 +23,7 @@
 #include "KOReaderCredentialStore.h"
 #include "QuickAction.h"
 #include "ReaderFontSizes.h"
+#include "shells/ugly/UglyLevel.h"
 #include "activities/settings/SettingsActivity.h"
 #include "components/UITheme.h"
 #include "platform/SimulatorBoardCompat.h"
@@ -293,7 +294,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     // IMU branch adds the Gestures tab: reader, tab and row tilt, the two flick strengths,
     // the two hard shake rows, face down, face up and the three double taps.
     // Cold-catalog tests cover each capability branch and the IMU variant.
-    constexpr size_t fixedCount = 83
+    constexpr size_t fixedCount = 84
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
                                   + 1
 #endif
@@ -327,6 +328,9 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     // Just above night mode, so the first rows and the last row of the screen group keep their place. The shell is chosen at run time: 0 tenor/cross (what every earlier release shows), 1 tenor/ugly.
     v.push_back(SettingInfo::Enum(StrId::STR_UI_SHELL, &CrossPointSettings::uiShell,
                           {StrId::STR_SHELL_CROSS, StrId::STR_SHELL_UGLY}, "uiShell", StrId::STR_CAT_DISPLAY));
+    // Right under the shell. The screen lists it only while the shell is tenor/ugly (SettingsActivity), the saved file keeps it always.
+    v.push_back(SettingInfo::Enum(StrId::STR_SHELL_LEVEL, &CrossPointSettings::uiUglyLevel,
+                          {StrId::STR_SHELL_LEVEL_PLAIN, StrId::STR_SHELL_LEVEL_AF}, "uiUglyLevel", StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Toggle(StrId::STR_NIGHT_MODE, &CrossPointSettings::screenInverted, "screenInverted",
                             StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Enum(StrId::STR_SLEEP_SCREEN, &CrossPointSettings::sleepScreen, std::move(sleepScreenValues),
@@ -757,7 +761,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
   // The web page saves values without shell::changed(), so the shell is chosen on the device only.
   v.erase(std::remove_if(v.begin(), v.end(),
                          [](const SettingInfo& s) {
-                           return s.valuePtr == &CrossPointSettings::uiShell || s.valuePtr == &CrossPointSettings::uiShellSleepMemo;
+                           return s.valuePtr == &CrossPointSettings::uiShell || s.valuePtr == &CrossPointSettings::uiUglyLevel ||
+                                  s.valuePtr == &CrossPointSettings::uiShellSleepMemo;
                          }),
           v.end());
   if (registry && registry->getFamilyCount() > 0) {

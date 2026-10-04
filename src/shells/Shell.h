@@ -5,14 +5,13 @@
 #include <memory>
 
 #include "activities/ActivityManager.h"
+#include "ShellKind.h"
 
 class Activity;
 class GfxRenderer;
 class MappedInputManager;
 
 namespace shell {
-
-enum class Kind : uint8_t { Cross = 0, Ugly = 1 };
 
 Kind current();
 inline bool isUgly() { return current() == Kind::Ugly; }

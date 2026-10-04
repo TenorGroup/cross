@@ -13,7 +13,6 @@
 #include <SdCardFontRegistry.h>
 #include "SettingsList.h"
 #include "activities/util/KeyboardLayoutSet.h"
-
 // The settings constructor is defined in src/CrossPointSettings.cpp, outside this slice;
 // it only lays the tenor/cross setup over the member initializers, as this one does.
 CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
@@ -159,9 +158,10 @@ int main(int argc, char** argv) {
   const auto shellRow = std::find_if(catalog.begin(), catalog.end(), [](const auto& row) {
     return row.valuePtr == &CrossPointSettings::uiShell;
   });
-  ok &= check(shellRow != catalog.end() && shellRow + 1 != catalog.end() &&
-                  (shellRow + 1)->valuePtr == &CrossPointSettings::screenInverted,
-              "the interface row sits just above night mode, the last screen row");
+  ok &= check(shellRow != catalog.end() && shellRow + 2 != catalog.end() &&
+                  (shellRow + 1)->valuePtr == &CrossPointSettings::uiUglyLevel &&
+                  (shellRow + 2)->valuePtr == &CrossPointSettings::screenInverted,
+              "the interface row and the ugliness row sit just above night mode, the last screen row");
   SettingsActivity activity;
   for (auto& cursor : activity.tabNavs) cursor.selected = 10000;
   measuring = true;
@@ -215,6 +215,28 @@ int main(int argc, char** argv) {
   activity.rebuildSettingsLists();
   measuring = false;
   if (enforce) ok &= check(largest < catalog.size()*sizeof(SettingInfo), "repeat rebuild has no full-catalog allocation");
+  {
+    // The row "Ugliness" is on the screen only while the shell is tenor/ugly, right under the interface row.
+    const auto listed = [&] {
+      const auto& rows = activity.displaySettings;
+      return std::find_if(rows.begin(), rows.end(), [](const auto& row) { return row.valuePtr == &CrossPointSettings::uiUglyLevel; });
+    };
+    ok &= check(listed() == activity.displaySettings.end(), "tenor/cross does not list the ugliness row");
+    const size_t without = activity.displaySettings.size();
+    SETTINGS.uiShell = 1;
+    activity.rebuildSettingsLists();
+    const auto at = listed();
+    ok &= check(at != activity.displaySettings.end() && at != activity.displaySettings.begin() &&
+                    (at - 1)->valuePtr == &CrossPointSettings::uiShell && at + 1 != activity.displaySettings.end() &&
+                    (at + 1)->valuePtr == &CrossPointSettings::screenInverted,
+                "tenor/ugly lists the ugliness row right under the interface row");
+    ok &= check(activity.displaySettings.size() == without + 1 && activity.displaySettings.capacity() == activity.displaySettings.size(),
+                "and reserves exactly one row more");
+    ok &= check(activity.tabNavs.size() > 0 && at->enumLabels().size() == 2, "two levels");
+    SETTINGS.uiShell = 0;
+    activity.rebuildSettingsLists();
+    ok &= check(listed() == activity.displaySettings.end(), "and leaving tenor/ugly takes the row away again");
+  }
   ok &= dynamicLifetime();
   std::printf("\n");
   return ok ? 0 : 1;

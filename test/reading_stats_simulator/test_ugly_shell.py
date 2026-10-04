@@ -14,10 +14,10 @@ import unittest
 
 from ugly_common import Card, digest, entered, ink, notebook_pages
 
-# Taken again on 04/10/2026 (evening): the note under the title moved in and got a pen rule, the rows and their cuts are
-# as they were. Before that: the notebook text moved 44 px towards the edge, so every cut is wider and the page differs;
-# the one-pass cut is held equal to the shave-and-measure cut by the host test of ellipsisKeep.
-CUT_NAMES_DIGEST = '1bac6947b95113cd339e988ac8ba5009fc4a8b5012321c3b2bcb8dbeaad50e84'
+# Taken again on 04/10/2026 for the two levels of ugliness (straight letters; letters turned as they are drawn): the one-pass
+# cut is held equal to the shave-and-measure cut by the host test of ellipsisKeep.
+CUT_NAMES_DIGEST = {0: '3fa2d2da5c50a849f2b24a4990c78312f9af4167a2e0c5a5ba8dfedc91caa4d5',
+                    1: 'e92c78c75b96f6f709a5fb10211a05fc549ab991c36832fcb7a0eb860c6aa78d'}
 # Every width from a name that fits to one cut to a few letters, with marks, and one the baked font lacks.
 LONG_NAMES = ['a.txt', 'Hành trình dài của một người.txt', 'Hành trình dài của một người đọc sách.txt',
              'Hành trình dài của một người đọc sách không bao giờ chịu đọc hết một cuốn.txt',
@@ -29,6 +29,11 @@ LONG_NAMES = ['a.txt', 'Hành trình dài của một người.txt', 'Hành trì
 DIARY_FRAME = re.compile(r'Diary frame total=\d+ms heap=\d+ title="(?P<title>[^"]*)" last="(?P<last>[^"]*)" '
                          r'sel=(?P<sel>\d) box=(?P<x0>-?\d+),(?P<y0>-?\d+),(?P<x1>-?\d+),(?P<y1>-?\d+) bottom=(?P<bottom>\d+)')
 PAGE_ORDER = [0, 1, 4, 2, 3]  # Recent, Folder, Favorites, Stats, Settings: the default order of tenor/cross
+
+
+# Inside tenor/ugly: diary -> Settings page (edge Up) -> Display (front Right, Confirm) -> three rows back from the first:
+# night mode, the row "Độ xấu" (listed only here, under Interface), Interface. Confirm turns the shell back to tenor/cross.
+BACK_TO_THE_ROW = '1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4000:LEFT;4800:CONFIRM;7000:QUIT'
 
 
 class UglyShellTest(unittest.TestCase):
@@ -43,6 +48,36 @@ class UglyShellTest(unittest.TestCase):
         # A page of handwriting: ink in the sentence, ink in the status bar, nothing under the sentence.
         self.assertGreater(ink(shots['diary'], (0, 80, 528, 560)), 3000)
         self.assertGreater(ink(shots['diary'], (0, 750, 528, 792)), 150)
+
+    def test_two_levels_of_ugliness(self):
+        # Founder 04/10/2026: "ugly af" turns, shrinks and lifts every letter as it is drawn and is the default (a card
+        # without the key too); "ugly" draws the straight baked letters, nothing jumps.
+        diary = {}
+        for name, extra in (('none', {}), ('af', {'uiUglyLevel': 1}), ('plain', {'uiUglyLevel': 0}), ('plain again', {'uiUglyLevel': 0})):
+            log, shots = self.card(**extra).run('3000:QUIT', [(2000, 'd')])
+            diary[name] = shots['d']
+            self.assertEqual(entered(log), ['Boot', 'UglyDiary'], (name, log[-800:]))
+            self.assertGreater(ink(shots['d'], (0, 80, 528, 560)), 3000, name)
+        self.assertEqual(digest(diary['none']), digest(diary['af']), 'no key is ugly af')
+        self.assertNotEqual(digest(diary['plain']), digest(diary['af']))
+        self.assertEqual(digest(diary['plain']), digest(diary['plain again']), 'each level is deterministic')
+        # the same sentence, as much ink either way: the turn changes pixels, not the amount of writing by much
+        plain, af = ink(diary['plain'], (0, 80, 528, 560)), ink(diary['af'], (0, 80, 528, 560))
+        self.assertLess(abs(plain - af) * 100, 25 * plain, (plain, af))
+
+    def test_the_ugliness_row_cycles_in_tenor_ugly_and_the_file_keeps_it_in_tenor_cross(self):
+        # Inside tenor/ugly the row sits under Interface: from the first row of the group, two rows back.
+        to_the_row = '1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4400:CONFIRM;6000:QUIT'
+        card = self.card(shell=1)
+        card.run(to_the_row)
+        self.assertEqual((card.settings()['uiShell'], card.settings()['uiUglyLevel']), (1, 0), 'af (the default) turns to ugly')
+        card.run(to_the_row)
+        self.assertEqual(card.settings()['uiUglyLevel'], 1, 'and round again')
+        # A visit to tenor/cross does not lose the level, and the row is not on its screen (the shell row is the one
+        # two rows back there, as test_choosing_tenor_ugly_asks_first_and_the_pen_starts_on_no relies on).
+        away = self.card(shell=1, uiUglyLevel=0)
+        away.run(BACK_TO_THE_ROW)
+        self.assertEqual((away.settings()['uiShell'], away.settings()['uiUglyLevel']), (0, 0))
 
     def test_cross_shell_keeps_home_and_none_of_the_voice(self):
         log, _ = self.card(shell=0).run('1000:RIGHT;2000:LEFT;3000:QUIT')
@@ -225,10 +260,11 @@ class UglyShellTest(unittest.TestCase):
             self.assertEqual(notice.findall(log), [said], (shell, language, log[-1500:]))
 
     def test_long_file_names_are_cut_where_they_always_were(self):
-        # The one-pass cut must give the pixels the shave-and-measure cut gave (the digest is taken from that build).
-        log, shots = self.card(books=[], files=LONG_NAMES).run('1000:DOWN;1800:DOWN;4000:QUIT', [(3200, 'folder')])
-        self.assertEqual(notebook_pages(log)[-1], 1, log[-800:])
-        self.assertEqual(digest(shots['folder']), CUT_NAMES_DIGEST)
+        # The one-pass cut must give the pixels the shave-and-measure cut gave (the digests are taken from that build).
+        for level, digest_taken in CUT_NAMES_DIGEST.items():
+            log, shots = self.card(books=[], files=LONG_NAMES, uiUglyLevel=level).run('1000:DOWN;1800:DOWN;4000:QUIT', [(3200, 'folder')])
+            self.assertEqual(notebook_pages(log)[-1], 1, log[-800:])
+            self.assertEqual(digest(shots['folder']), digest_taken, 'level %d' % level)
 
     def folder_rows(self, log):
         return [int(n) for n in re.findall(r'Notebook frame page=1 row=\d+ rows=(\d+)', log)]
@@ -268,8 +304,7 @@ class UglyShellTest(unittest.TestCase):
 
     def test_the_way_back_to_tenor_cross(self):
         card = self.card(shell=1, sleepScreen=11)
-        # diary -> Settings page (edge Up) -> Display (front Right, Confirm) -> two rows back from the first: Interface
-        log, _ = card.run('1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4400:CONFIRM;7000:QUIT')
+        log, _ = card.run(BACK_TO_THE_ROW)
         self.assertEqual(entered(log)[-1], 'Home', entered(log))
         saved = card.settings()
         self.assertEqual(saved['uiShell'], 0)
@@ -283,7 +318,7 @@ class UglyShellTest(unittest.TestCase):
             inside = card.settings()
             self.assertEqual(inside['uiShell'], 1)
             self.assertEqual(inside['sleepScreen'], 11 if before != 3 else 3)
-            card.run('1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4400:CONFIRM;7000:QUIT')
+            card.run(BACK_TO_THE_ROW)
             outside = card.settings()
             self.assertEqual(outside['uiShell'], 0)
             self.assertEqual(outside['sleepScreen'], before, 'sleep screen %d before the visit' % before)
@@ -327,7 +362,7 @@ class UglyShellTest(unittest.TestCase):
 
     def test_coming_back_to_tenor_cross_asks_nothing(self):
         card = self.card(shell=1, sleepScreen=11)
-        log, _ = card.run('1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4400:CONFIRM;7000:QUIT')
+        log, _ = card.run(BACK_TO_THE_ROW)
         self.assertNotIn('UglySwitch', entered(log))
         self.assertEqual(card.settings()['uiShell'], 0)
 

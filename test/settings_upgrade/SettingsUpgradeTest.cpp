@@ -223,9 +223,11 @@ int runLegacyTheme() {
 // tenor/ugly (v1.0.53): the shell is a saved choice. A file from before it has no key and loads as
 // tenor/cross, a stored 1 is the ugly shell, a value nothing wrote falls back to tenor/cross.
 int runShell() {
+  const uint8_t freshLevel = SETTINGS.uiUglyLevel;  // the struct default, before anything is loaded
   JsonDocument before = readFixture("settings-v1.0.19.json");
   settings_test_io::setNextRead(before);
   bool ok = expect(SETTINGS.loadFromFile(), "file from before the shell loads");
+  ok = expect(freshLevel == 1, "a fresh settings object is ugly af") && ok;
   ok = expect(SETTINGS.uiShell == 0, "no uiShell key is tenor/cross") && ok;
   ok = expect(saved()["uiShell"] == 0, "and the next save writes it") && ok;
   before["uiShell"] = 1;
@@ -242,6 +244,22 @@ int runShell() {
   settings_test_io::setNextRead(before);
   ok = expect(SETTINGS.loadFromFile() && SETTINGS.uiShellSleepMemo == 9, "a stored memo loads") && ok;
   ok = expect(saved()["uiShellSleepMemo"] == 9, "and is saved back") && ok;
+  // How ugly the shell is: a file without the key, or with a value nothing wrote, is "ugly af" (1); a stored 0 stays 0,
+  // and the key is saved whatever the shell, so a visit to tenor/cross does not lose it.
+  JsonDocument level = readFixture("settings-v1.0.19.json");
+  SETTINGS.uiUglyLevel = freshLevel;
+  settings_test_io::setNextRead(level);
+  ok = expect(SETTINGS.loadFromFile() && SETTINGS.uiUglyLevel == 1, "no uiUglyLevel key is ugly af") && ok;
+  ok = expect(saved()["uiUglyLevel"] == 1, "and the next save writes it") && ok;
+  level["uiUglyLevel"] = 0;
+  settings_test_io::setNextRead(level);
+  ok = expect(SETTINGS.loadFromFile() && SETTINGS.uiUglyLevel == 0, "a stored 0 is plain ugly") && ok;
+  SETTINGS.uiShell = 0;
+  ok = expect(saved()["uiUglyLevel"] == 0, "tenor/cross still saves it") && ok;
+  level["uiUglyLevel"] = 9;
+  SETTINGS.uiUglyLevel = freshLevel;
+  settings_test_io::setNextRead(level);
+  ok = expect(SETTINGS.loadFromFile() && SETTINGS.uiUglyLevel == 1, "a value nothing wrote is ugly af") && ok;
   std::printf("settings_upgrade=shell:%s\n", ok ? "GREEN" : "RED");
   return ok ? 0 : 1;
 }

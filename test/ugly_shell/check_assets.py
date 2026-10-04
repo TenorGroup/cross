@@ -103,6 +103,16 @@ def body(text, signature):
 # The pen's fonts go in at boot, never through the lock of a draw: a lock taken inside a path that already
 # holds it would hang the device for good.
 ink = (repo / 'src/shells/ugly/UglyInk.cpp').read_text()
+letter = body(ink, 'Letter letterOf(')
+check(letter.count('getGlyph(') == 1 and letter.count('logic::warpOf(') == 1,
+      'a letter must resolve its glyph and warp once')
+for signature in ('int stepOf(', 'void drawWarped('):
+    check('getGlyph(' not in body(ink, signature) and 'logic::warpOf(' not in body(ink, signature),
+          signature + ' must reuse the prepared letter')
+text_run = body(ink, 'int run(')
+check(text_run.count('letterOf(') == 1 and 'drawWarped(r, s, letter,' in text_run and
+      'stepOf(r, s, af, pos, cp, letter)' in text_run,
+      'drawing and measuring must share the prepared letter')
 check(body(ink, 'void ensureFonts(') != '', 'ensureFonts is gone from UglyInk.cpp')
 check('RenderLock' not in body(ink, 'void ensureFonts('), 'ensureFonts takes the render lock')
 boot = body((repo / 'src/main.cpp').read_text(), 'void setupDisplayAndFonts(')

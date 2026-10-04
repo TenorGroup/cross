@@ -24,7 +24,9 @@ PAGE = (0, 0, 528, 740)  # the page without the footer (the clock lives there)
 # Pages of the fixture drawn by tenor/cross before the hand heading existed (sha256 of the 1-bit page).
 CROSS_PAGE_1 = '179b0f49cab19056'
 CROSS_PAGE_2 = '40e89bcf13f3cccb'
-UGLY_PAGE_1 = '9f0f9f9e5ac12752'
+# The hand heading at each level of ugliness (retaken 04/10/2026: the letters are baked straight, "ugly af" turns them as they are drawn).
+UGLY_PAGE_1 = 'aaa6f97e3a6d02f3'  # ugly af, the default
+UGLY_PAGE_1_PLAIN = '0962d92615d39beb'
 
 
 def write_epub(path, toc_title, heading):
@@ -77,6 +79,15 @@ class ChapterTitleTest(unittest.TestCase):
         self.assertEqual(page_digest(shots['p1'], (0, foot, 528, 740)), page_digest(cross['p1'], (0, foot, 528, 740)))
         self.assertEqual(page_digest(shots['p2']), CROSS_PAGE_2, 'the second page is a page of the reading font')
         self.assertEqual(page_digest(shots['p1']), UGLY_PAGE_1, 'the strokes are the same on every draw')
+
+    def test_the_heading_at_the_plain_level_is_straight_and_the_body_is_the_same(self):
+        log, shots = self.open_book(self.card(1, uiUglyLevel=0), turn=True)
+        self.assertEqual(page_digest(shots['p1']), UGLY_PAGE_1_PLAIN)
+        self.assertNotEqual(UGLY_PAGE_1_PLAIN, UGLY_PAGE_1)
+        top, bottom = self.band(log)
+        cross = self.open_book(self.card(0))[1]
+        foot = bottom + 8
+        self.assertEqual(page_digest(shots['p1'], (0, foot, 528, 740)), page_digest(cross['p1'], (0, foot, 528, 740)))
 
     def test_the_heading_is_gone_from_the_gray_passes(self):
         # With anti-aliased text the page has gray pixels; the hand heading is pure black, so nothing of

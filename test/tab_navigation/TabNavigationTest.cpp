@@ -852,6 +852,22 @@ TEST(MenuFavoritesCompatibility, MissingRtcKeepsSystemTimePinsReachable) {
   EXPECT_EQ(menufavorites::label("action/14", {}), StrId::STR_CLOCK);
 }
 
+TEST(MenuFavoritesCompatibility, UglinessPinFollowsTheSelectedShell) {
+  const auto savedShell = SETTINGS.uiShell;
+  const std::vector<SettingInfo> settings = {
+      SettingInfo::Enum(StrId::STR_SHELL_LEVEL, &CrossPointSettings::uiUglyLevel, {}, "uiUglyLevel"),
+  };
+  SETTINGS.uiShell = 1;
+  EXPECT_EQ(menufavorites::label("settings/uiUglyLevel", settings), StrId::STR_SHELL_LEVEL);
+  SETTINGS.uiShell = 0;
+  EXPECT_EQ(menufavorites::label("settings/uiUglyLevel", settings), StrId::STR_NONE_OPT);
+  SETTINGS.uiShell = 255;
+  EXPECT_EQ(menufavorites::label("settings/uiUglyLevel", settings), StrId::STR_NONE_OPT);
+  SETTINGS.uiShell = 1;
+  EXPECT_EQ(menufavorites::label("settings/uiUglyLevel", settings), StrId::STR_SHELL_LEVEL);
+  SETTINGS.uiShell = savedShell;
+}
+
 
 // Luu cai dat khong duoc doi mot khoi bo nho lien lon. Duong nay chay moi lan
 // nguoi dung bat mot tuy chon, doi co chu, gan nut, hay xep lai mot dong ghim.

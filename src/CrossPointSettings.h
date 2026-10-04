@@ -431,6 +431,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t uiTextSize = UI_TEXT_SMALL;
   // Which shell draws Home: 0 tenor/cross, 1 tenor/ugly. A settings file without the key loads as 0.
   uint8_t uiShell = 0;
+  // How ugly tenor/ugly draws its letters: 0 ugly (straight), 1 ugly af (turned as they are drawn). A settings file without the key loads as 1.
+  uint8_t uiUglyLevel = 1;
   // The sleep screen tenor/ugly took over when the user went in, as that screen + 1 (0 = none taken). Leaving
   // gives it back. Persisted in settings.json, never shown on the device or the web page.
   uint8_t uiShellSleepMemo = 0;

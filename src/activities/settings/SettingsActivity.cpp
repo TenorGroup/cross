@@ -126,6 +126,7 @@ void SettingsActivity::rebuildSettingsLists() {
   // below and the list build apply the same rule, so every tab reserves exactly.
   const auto listedAsRow = [](const SettingInfo& setting) {
     if (home_button::isSetting(setting.valuePtr)) return false;
+    if (setting.valuePtr == &CrossPointSettings::uiUglyLevel) return ugly::logic::levelRowShown(SETTINGS.uiShell);
     return !(BoardConfig::hasHomeKey() && setting.nameId == StrId::STR_LONG_PRESS_MENU);
   };
   const auto& catalog = getBaseSettingsList();

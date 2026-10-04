@@ -6,7 +6,7 @@
 
 namespace shell {
 
-Kind current() { return SETTINGS.uiShell == static_cast<uint8_t>(Kind::Ugly) ? Kind::Ugly : Kind::Cross; }
+Kind current() { return kindOf(SETTINGS.uiShell); }
 
 std::unique_ptr<Activity> makeHome(GfxRenderer& renderer, MappedInputManager& mappedInput, const HomeMenuItem item,
                                    const bool cleanInitialRefresh) {

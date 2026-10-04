@@ -3,12 +3,12 @@
 
 python3 scripts/ugly/gen_font.py [out-dir]   (default src/shells/ugly/fonts, files ugly_<px>.h)
 
-Every character gets one fixed deviation from a seed made of (code point, size): rotation up to 7
-degrees, size -12% to +18%, baseline shift up to 2 px at size 22 (scaled with the size) and an
-advance of 88% to 104%. The result is a 1-bit EpdFontData with no kerning and no compression, so
-the stock renderer draws it like the built-in UI fonts. Pure Python (PIL, numpy), deterministic.
+The letters are baked straight: nominal size, no turn, on the baseline, with the advance of the font.
+The mode "ugly af" of the shell turns, shrinks and lifts them while it draws (UglyLogic.h, warpOf);
+the mode "ugly" draws them as they are. The result is a 1-bit EpdFontData with no kerning and no
+compression, so the stock renderer draws it like the built-in UI fonts. Pure Python (PIL, numpy),
+deterministic.
 """
-import random
 import sys
 from pathlib import Path
 
@@ -33,16 +33,13 @@ ADVANCE_Y = {22: 30, 30: 40, 38: 50, 52: 68}
 
 
 def variant(ch, px):
-    """(mask, advance, dy, canvas, font advance) of one character, as ve.py bakes it."""
-    r = random.Random('%d-%d-%d' % (ord(ch), 0, px))
-    sz = px * (1 + r.uniform(-0.12, 0.18))
-    ft = ImageFont.truetype(str(SRC), max(10, int(round(sz))))
-    w = int(sz * 3) + 8
+    """(mask, advance, dy, canvas, font advance) of one character at its nominal size, straight."""
+    ft = ImageFont.truetype(str(SRC), px)
+    w = int(px * 3) + 8
     im = Image.new('L', (w, w), 0)
     ImageDraw.Draw(im).text((w // 2, w // 2), ch, font=ft, fill=255, anchor='ms')
-    im = im.rotate(r.uniform(-7, 7), resample=Image.BICUBIC, center=(w // 2, w // 2))
     fadv = ft.getlength(ch)
-    return np.array(im) >= 128, fadv * r.uniform(0.88, 1.04), r.uniform(-2, 2) * px / 22, w, fadv
+    return np.array(im) >= 128, fadv, 0, w, fadv
 
 
 def bake(px, cps):

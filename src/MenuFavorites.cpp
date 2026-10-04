@@ -6,6 +6,7 @@
 #include "MenuCustomization.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
+#include "shells/ugly/UglyLevel.h"
 #include "activities/settings/ClockSettingsActivity.h"
 #include "activities/settings/KOReaderSettingsActivity.h"
 #include "activities/settings/OpdsServerListActivity.h"
@@ -93,6 +94,8 @@ StrId label(const std::string& key, const std::vector<SettingInfo>& settings) {
   if (key.rfind("settings/", 0) == 0) {
     for (const auto& info : settings) {
       if (settingHiddenOnThisBoard(info) || !info.key || key.compare(9, std::string::npos, info.key) != 0) continue;
+      if (info.valuePtr == &CrossPointSettings::uiUglyLevel && !ugly::logic::levelRowShown(SETTINGS.uiShell))
+        return StrId::STR_NONE_OPT;
       if (info.valuePtr == &CrossPointSettings::fadingFix && (BoardConfig::isX4Pro() || BoardConfig::isX4Classic()))
         return StrId::STR_NONE_OPT;
       if (info.valuePtr == &CrossPointSettings::pwrBtnFootnoteBack &&

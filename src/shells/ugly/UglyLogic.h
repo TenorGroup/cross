@@ -8,6 +8,8 @@
 
 #include <Utf8.h>
 
+#include "UglyLevel.h"
+
 namespace ugly::logic {
 
 // The X3 portrait frame the baked pictures fill.
@@ -29,6 +31,85 @@ inline int jumpDy(const int pos, const uint32_t cp, const int px) {
 inline int jumpStep(const int pos, const uint32_t cp) {
   static constexpr int8_t STEP[5] = {0, 1, -1, 0, 1};
   return STEP[jumpSelector(pos, cp)];
+}
+
+// What turns one letter of the baked font at draw time: the same letter at the same size is always turned
+// the same way. Integers only (the C3 has no FPU). Ranges as the baked font had them: up to 7 degrees,
+// size 88% to 118%, up to 2 px of lift at size 22 (scaled with the size), advance 88% to 104% of the
+// scaled one. sinQ12 and cosQ12 are in 1/4096.
+struct Warp {
+  int sinQ12, cosQ12;
+  int scalePct, dy, stepPct;
+};
+inline constexpr Warp NO_WARP = {0, 4096, 100, 0, 100};
+
+inline uint32_t warpHash(const uint32_t cp, const int px, const uint32_t salt) {
+  uint32_t h = cp * 73856093u ^ static_cast<uint32_t>(px) * 19349663u ^ salt * 83492791u;
+  h ^= h >> 15;
+  h *= 2246822519u;
+  h ^= h >> 13;
+  h *= 3266489917u;
+  return h ^ (h >> 16);
+}
+
+inline Warp warpOf(const uint32_t cp, const int px) {
+  Warp w;
+  const int eighths = static_cast<int>(warpHash(cp, px, 1) % 113u) - 56;  // -7 to +7 degrees in 1/8 degree
+  w.sinQ12 = eighths * 143 / 16;                                          // sin of a small angle, in 1/4096
+  w.cosQ12 = 4096 - ((w.sinQ12 * w.sinQ12) >> 13);
+  w.scalePct = 88 + static_cast<int>(warpHash(cp, px, 2) % 31u);
+  w.dy = (static_cast<int>(warpHash(cp, px, 3) % 17u) - 8) * px / 88;
+  w.stepPct = 88 + static_cast<int>(warpHash(cp, px, 4) % 17u);
+  return w;
+}
+
+// Advance in pixels of a letter whose font advance is `advanceQ4` (1/16 px), after the warp.
+inline int warpAdvance(const int advanceQ4, const Warp& w) {
+  return (advanceQ4 * w.scalePct * w.stepPct / 10000 + 8) >> 4;
+}
+
+// A box in pixels from the pen (x right, y down from the baseline); x1 and y1 are exclusive.
+struct WarpBox {
+  int x0, y0, x1, y1;
+};
+inline constexpr WarpBox NO_CLIP = {-4096, -4096, 4096, 4096};
+
+// Turns a straight glyph (1 bit per pixel, rows packed one after the other, `left` and `top` as the font gives
+// them) about the middle of its advance on the baseline, scales it by w.scalePct and lifts it by w.dy, then
+// calls plot(x, y) for every inked pixel of the result that falls inside `clip`, x and y counted from the pen on
+// the baseline. Each destination pixel looks up the source pixel under its centre, so the work is the size of the
+// box, not of the ink.
+template <class Plot>
+inline WarpBox warpGlyph(const uint8_t* bits, const int gw, const int gh, const int left, const int top, const int advanceQ4,
+                         const Warp& w, const WarpBox& clip, Plot plot) {
+  const int pivot = advanceQ4 * 8;  // half the advance in 1/256 px
+  // Forward, to find the box: the four corners of the source.
+  int minX = 1 << 30, minY = 1 << 30, maxX = -(1 << 30), maxY = -(1 << 30);
+  for (int c = 0; c < 4; ++c) {
+    const int dx = ((c & 1 ? left + gw : left) << 8) - pivot, dy = (c & 2 ? -top + gh : -top) << 8;
+    const int fx = (w.cosQ12 * dx - w.sinQ12 * dy) / 4096 * w.scalePct / 100;
+    const int fy = (w.sinQ12 * dx + w.cosQ12 * dy) / 4096 * w.scalePct / 100;
+    minX = std::min(minX, pivot + fx);
+    maxX = std::max(maxX, pivot + fx);
+    minY = std::min(minY, (w.dy << 8) + fy);
+    maxY = std::max(maxY, (w.dy << 8) + fy);
+  }
+  const WarpBox box = {std::max(minX >> 8, clip.x0), std::max(minY >> 8, clip.y0), std::min((maxX >> 8) + 1, clip.x1),
+                       std::min((maxY >> 8) + 1, clip.y1)};
+  // Backward, per pixel: the matrix that undoes the turn and the scale, in 1/4096.
+  const int a = w.cosQ12 * 100 / w.scalePct, b = w.sinQ12 * 100 / w.scalePct;
+  const int offU = (pivot << 12) - (left << 20), offV = top << 20;
+  for (int y = box.y0; y < box.y1; ++y) {
+    const int qy = (y << 8) + 128 - (w.dy << 8), qx0 = (box.x0 << 8) + 128 - pivot;
+    int u = a * qx0 + b * qy + offU, v = a * qy - b * qx0 + offV;
+    for (int x = box.x0; x < box.x1; ++x, u += a << 8, v -= b << 8) {
+      const int i = u >> 20, j = v >> 20;
+      if (static_cast<unsigned>(i) >= static_cast<unsigned>(gw) || static_cast<unsigned>(j) >= static_cast<unsigned>(gh)) continue;
+      const int bit = j * gw + i;
+      if ((bits[bit >> 3] >> (7 - (bit & 7))) & 1) plot(x, y);
+    }
+  }
+  return box;
 }
 
 // Hash offset in [-range, range] for the i-th point of a stroke drawn with `seed`.

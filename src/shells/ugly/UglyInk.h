@@ -1,7 +1,7 @@
 #pragma once
-// The pen of the tenor/ugly shell: baked Mansalva letters that jump by integers, circles and
-// underlines drawn from fixed tables, hand-drawn battery and button hints. Everything is
-// deterministic, so a screen drawn twice has the same pixels.
+// The pen of the tenor/ugly shell: baked straight Mansalva letters, which the level "ugly af" turns, shrinks and
+// lets jump as they are drawn, circles and underlines drawn from fixed tables, hand-drawn battery and button
+// hints. Everything is deterministic, so a screen drawn twice has the same pixels.
 #include <GfxRenderer.h>
 
 #include <cstdint>

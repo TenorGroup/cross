@@ -13,6 +13,7 @@
 
 #include "ClockStatus.h"
 #include "CrossPointSettings.h"
+#include "Epub/converters/DirectPixelWriter.h"
 #include "MappedInputManager.h"
 #include "UIFontTiers.h"
 #include "UglyLogic.h"
@@ -30,6 +31,7 @@ constexpr int PIXELS[4] = {22, 30, 38, 52};
 // Ink above the baseline of a capital with its mark, per size, for placing boxes.
 constexpr int ASCENT[4] = {20, 28, 36, 48};
 const EpdFont FONT22(&ugly_22), FONT30(&ugly_30), FONT38(&ugly_38), FONT52(&ugly_52);
+const EpdFont* const FONTS[4] = {&FONT22, &FONT30, &FONT38, &FONT52};
 
 // A chapter title keeps this much clear at each side, and this much below its last line for the underline.
 constexpr int TITLE_SIDE = 8, TITLE_UNDERLINE_ROOM = 5;
@@ -75,6 +77,53 @@ bool covered(const GfxRenderer& r, const int fid, const char* utf8) {
 
 int fallbackFont(const Size s) { return s == Size::S22 || s == Size::S30 ? UI_12_FONT_ID : UI_TITLE_FONT_ID; }
 
+// "ugly af" turns, shrinks and lifts every letter as it is drawn and lets the line jump; "ugly" draws the straight baked
+// letters as they are. The setting is read here, at draw time, so a change shows on the next screen.
+bool wild() { return logic::levelOf(SETTINGS.uiUglyLevel) == logic::Level::Af; }
+
+struct Letter {
+  const EpdGlyph* glyph;
+  logic::Warp warp;
+};
+
+Letter letterOf(const Size s, const bool af, const uint32_t cp) {
+  const EpdGlyph* glyph = af && cp != ' ' ? FONTS[static_cast<int>(s)]->getGlyph(cp) : nullptr;
+  return {glyph, glyph ? logic::warpOf(cp, pixelsOf(s)) : logic::NO_WARP};
+}
+
+// Advance in pixels of one letter. Drawing and measuring ask this and nothing else, so the two cannot disagree.
+int stepOf(const GfxRenderer& r, const Size s, const bool af, const int pos, const uint32_t cp, const Letter& letter) {
+  if (letter.glyph) return logic::warpAdvance(letter.glyph->advanceX, letter.warp) + logic::jumpStep(pos, cp);
+  char one[5];
+  encode(cp, one);
+  return r.getTextAdvanceX(idOf(s), one, EpdFontFamily::REGULAR) + (af ? logic::jumpStep(pos, cp) : 0);
+}
+
+// One straight glyph turned by its warp, its pen on (x, baseline). Its ink goes straight into the frame buffer, as
+// the images do: a call of drawPixel for each of some 20000 pixels of a screen is what the baked letters did not cost.
+void drawWarped(const GfxRenderer& r, const Size s, const Letter& letter, const int x, const int baseline, const bool black) {
+  if (r.isFontCacheScanning()) return;  // the prewarm pass only collects what a page will draw
+  const EpdFont& font = *FONTS[static_cast<int>(s)];
+  const EpdGlyph* g = letter.glyph;
+  if (!g) return;
+  DirectPixelWriter pen;
+  pen.init(const_cast<GfxRenderer&>(r));  // it only reads the renderer; its signature is the images', which hold a non-const one
+  // The black and white pass on a whole frame: the frame buffer is one run of bits, so a pixel is one step along each axis.
+  const int rowBits = pen.displayWidthBytes * 8;
+  const int stepX = pen.phyYStepX * rowBits + pen.phyXStepX, stepY = pen.phyYStepY * rowBits + pen.phyXStepY;
+  const int from = (pen.phyYBase + x * pen.phyYStepX + baseline * pen.phyYStepY) * rowBits + pen.phyXBase + x * pen.phyXStepX +
+                   baseline * pen.phyXStepY;
+  logic::warpGlyph(font.data->bitmap + g->dataOffset, g->width, g->height, g->left, g->top, g->advanceX, letter.warp,
+                   {-x, -baseline, r.getScreenWidth() - x, r.getScreenHeight() - baseline}, [&](const int px, const int py) {
+                     const int bit = from + px * stepX + py * stepY;
+                     const uint8_t mask = 0x80 >> (bit & 7);
+                     if (black)
+                       pen.fb[bit >> 3] &= ~mask;
+                     else
+                       pen.fb[bit >> 3] |= mask;
+                   });
+}
+
 // One pass for drawing and measuring, so the two cannot disagree.
 int run(const GfxRenderer& r, const Size s, const int x, const int baseline, const std::string& text, const bool black,
         const bool draw) {
@@ -84,15 +133,23 @@ int run(const GfxRenderer& r, const Size s, const int x, const int baseline, con
     if (draw) r.drawText(fb, x, baseline - r.getFontAscenderSize(fb), text.c_str(), black);
     return r.getTextAdvanceX(fb, text.c_str(), EpdFontFamily::REGULAR);
   }
+  const bool af = wild();
   const int px = pixelsOf(s);
   const int top = baseline - r.getFontAscenderSize(fid);
   int cursor = x, pos = 0;
   const auto* p = reinterpret_cast<const unsigned char*>(text.c_str());
   char one[5];
   while (const uint32_t cp = utf8NextCodepoint(&p)) {
-    encode(cp, one);
-    if (draw && cp != ' ') r.drawText(fid, cursor, top + logic::jumpDy(pos, cp, px), one, black);
-    cursor += r.getTextAdvanceX(fid, one, EpdFontFamily::REGULAR) + logic::jumpStep(pos, cp);
+    const Letter letter = letterOf(s, af, cp);
+    if (draw && cp != ' ') {
+      if (af) {
+        drawWarped(r, s, letter, cursor, baseline + logic::jumpDy(pos, cp, px), black);
+      } else {
+        encode(cp, one);
+        r.drawText(fid, cursor, top, one, black);
+      }
+    }
+    cursor += stepOf(r, s, af, pos, cp, letter);
     ++pos;
   }
   return cursor - x;
@@ -162,10 +219,9 @@ std::string fit(const GfxRenderer& r, const Size s, const std::string& utf8, con
   if (covered(r, fid, out.c_str()) && covered(r, fid, "...")) {
     // The baked font draws every cut of this line, and its advances add up character by character:
     // measure once, cut once.
+    const bool af = wild();
     const int keep = logic::ellipsisKeep(out.c_str(), maxWidth, [&](const int pos, const uint32_t cp) {
-      char one[5];
-      encode(cp, one);
-      return r.getTextAdvanceX(fid, one, EpdFontFamily::REGULAR) + logic::jumpStep(pos, cp);
+      return stepOf(r, s, af, pos, cp, letterOf(s, af, cp));
     });
     if (keep == -1) return out;
     if (keep < 0) return std::string();

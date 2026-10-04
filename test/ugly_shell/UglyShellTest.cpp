@@ -1,7 +1,9 @@
 // tenor/ugly: what the shell decides without a panel, and the font it draws with.
 #include <gtest/gtest.h>
 
+#include <cctype>
 #include <functional>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -257,6 +259,185 @@ TEST(Font, BodySizesStartAt28) {
   (void)g;
   EXPECT_GE(ugly_30.advanceY, 38);
   EXPECT_GE(ugly_38.advanceY, ugly_30.advanceY);
+}
+
+// The two levels of ugliness.
+TEST(Level, UglyAfIsTheDefaultAndTheOnlyOtherWayIsZero) {
+  EXPECT_EQ(levelOf(0), Level::Plain);
+  EXPECT_EQ(levelOf(1), Level::Af);
+  EXPECT_EQ(levelOf(2), Level::Af) << "a value nobody knows is the default";
+  EXPECT_EQ(levelOf(255), Level::Af);
+}
+
+TEST(Level, TheRowIsThereOnlyInTheUglyShell) {
+  EXPECT_TRUE(levelRowShown(1)) << "the saved shell 1 is tenor/ugly";
+  EXPECT_FALSE(levelRowShown(0));
+  EXPECT_FALSE(levelRowShown(7)) << "a value nothing wrote is tenor/cross, as shell::current() reads it";
+  for (int saved = 0; saved <= 255; ++saved) {
+    const auto kind = shell::kindOf(static_cast<uint8_t>(saved));
+    EXPECT_EQ(kind, saved == static_cast<uint8_t>(shell::Kind::Ugly) ? shell::Kind::Ugly : shell::Kind::Cross);
+    EXPECT_EQ(levelRowShown(static_cast<uint8_t>(saved)), kind == shell::Kind::Ugly);
+  }
+}
+
+// Every glyph of the four baked fonts, with the font it comes from.
+struct BakedGlyph {
+  uint32_t cp;
+  int px;
+  const EpdFontData* font;
+  const EpdGlyph* glyph;
+};
+std::vector<BakedGlyph> bakedGlyphs() {
+  std::vector<BakedGlyph> all;
+  for (const auto& entry : {std::make_pair(22, &ugly_22), std::make_pair(30, &ugly_30), std::make_pair(38, &ugly_38), std::make_pair(52, &ugly_52)})
+    for (uint32_t i = 0; i < entry.second->intervalCount; ++i) {
+      const auto& r = entry.second->intervals[i];
+      for (uint32_t cp = r.first; cp <= r.last; ++cp)
+        if (cp != 0x20) all.push_back({cp, entry.first, entry.second, &entry.second->glyph[r.offset + cp - r.first]});
+    }
+  return all;
+}
+
+using Ink = std::set<std::pair<int, int>>;
+Ink straightInk(const BakedGlyph& b) {
+  Ink ink;
+  const auto* bits = b.font->bitmap + b.glyph->dataOffset;
+  for (int j = 0; j < b.glyph->height; ++j)
+    for (int i = 0; i < b.glyph->width; ++i) {
+      const int bit = j * b.glyph->width + i;
+      if ((bits[bit >> 3] >> (7 - (bit & 7))) & 1) ink.insert({b.glyph->left + i, -b.glyph->top + j});
+    }
+  return ink;
+}
+Ink warpedInk(const BakedGlyph& b, const Warp& w) {
+  Ink ink;
+  warpGlyph(b.font->bitmap + b.glyph->dataOffset, b.glyph->width, b.glyph->height, b.glyph->left, b.glyph->top, b.glyph->advanceX, w, NO_CLIP,
+            [&](const int x, const int y) { ink.insert({x, y}); });
+  return ink;
+}
+
+TEST(Warp, NoWarpGivesTheStraightGlyphPixelForPixel) {
+  for (const auto& b : bakedGlyphs()) ASSERT_EQ(warpedInk(b, NO_WARP), straightInk(b)) << "U+" << std::hex << b.cp << " at " << std::dec << b.px;
+}
+
+TEST(Warp, AClipBoxKeepsExactlyTheInkInsideIt) {
+  for (const auto& b : bakedGlyphs()) {
+    const Warp w = warpOf(b.cp, b.px);
+    const Ink all = warpedInk(b, w);
+    for (const WarpBox clip : {WarpBox{-3, -10, 9, 4}, WarpBox{0, -b.px, 40, 0}, WarpBox{5, 5, 6, 6}, WarpBox{-50, -50, -40, -40}}) {
+      Ink inside;
+      warpGlyph(b.font->bitmap + b.glyph->dataOffset, b.glyph->width, b.glyph->height, b.glyph->left, b.glyph->top, b.glyph->advanceX, w, clip,
+                [&](const int x, const int y) { inside.insert({x, y}); });
+      Ink wanted;
+      for (const auto& p : all)
+        if (p.first >= clip.x0 && p.first < clip.x1 && p.second >= clip.y0 && p.second < clip.y1) wanted.insert(p);
+      ASSERT_EQ(inside, wanted) << "U+" << std::hex << b.cp << " at " << std::dec << b.px;
+    }
+  }
+}
+
+TEST(Warp, TheRealWarpTurnsEveryLetterAndKeepsItsInk) {
+  int same = 0, total = 0;
+  for (const auto& b : bakedGlyphs()) {
+    const Ink straight = straightInk(b), turned = warpedInk(b, warpOf(b.cp, b.px));
+    ++total;
+    if (turned == straight) ++same;
+    // the scale is 88% to 118% on both axes: the ink is 77% to 139% of what it was, give or take the rounding of small marks
+    if (straight.size() >= 40) {
+      EXPECT_GT(turned.size() * 100, straight.size() * 65) << "U+" << std::hex << b.cp << " at " << std::dec << b.px;
+      EXPECT_LT(turned.size() * 100, straight.size() * 155) << "U+" << std::hex << b.cp << " at " << std::dec << b.px;
+    }
+  }
+  EXPECT_LT(same * 50, total) << "at most 2% of the letters may come out as they went in";
+}
+
+// Pieces of ink that touch (even by a corner): a stroke the turn cuts through makes one more.
+int pieces(const Ink& ink) {
+  Ink left = ink;
+  int count = 0;
+  while (!left.empty()) {
+    ++count;
+    std::vector<std::pair<int, int>> todo = {*left.begin()};
+    left.erase(left.begin());
+    while (!todo.empty()) {
+      const auto at = todo.back();
+      todo.pop_back();
+      for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx) {
+          const auto it = left.find({at.first + dx, at.second + dy});
+          if (it == left.end()) continue;
+          todo.push_back(*it);
+          left.erase(it);
+        }
+    }
+  }
+  return count;
+}
+
+TEST(Warp, TheLettersKeepTheirStrokesAtEverySizeMarksOfVietnameseIncluded) {
+  // A one pixel line of a small mark can fall between the pixels the turn looks at: a capital with its marks, or a
+  // sign like % and <, may come apart. The plain letters and the digits never do, and at most 2% of all may.
+  int broken = 0, total = 0;
+  for (const auto& b : bakedGlyphs()) {
+    const int before = pieces(straightInk(b)), after = pieces(warpedInk(b, warpOf(b.cp, b.px)));
+    ++total;
+    if (after <= before) continue;
+    ++broken;
+    EXPECT_FALSE(std::isalnum(static_cast<int>(b.cp < 0x80 ? b.cp : 0))) << "U+" << std::hex << b.cp << " at " << std::dec << b.px << " breaks";
+  }
+  EXPECT_LE(broken * 50, total) << broken << " of " << total;
+}
+
+TEST(Warp, TheSameLetterIsTurnedTheSameWayAndNeighboursDiffer) {
+  std::set<int> angles, scales, lifts;
+  for (uint32_t cp = 'a'; cp <= 'z'; ++cp) {
+    const Warp a = warpOf(cp, 38), b = warpOf(cp, 38);
+    EXPECT_EQ(a.sinQ12, b.sinQ12);
+    EXPECT_EQ(a.scalePct, b.scalePct);
+    angles.insert(a.sinQ12);
+    scales.insert(a.scalePct);
+    lifts.insert(a.dy);
+  }
+  EXPECT_GE(angles.size(), 15u);
+  EXPECT_GE(scales.size(), 12u);
+  EXPECT_GE(lifts.size(), 4u);
+}
+
+TEST(Warp, StaysInTheRangesTheBakedFontHad) {
+  for (const auto& b : bakedGlyphs()) {
+    const Warp w = warpOf(b.cp, b.px);
+    EXPECT_LE(std::abs(w.sinQ12), 500) << "7 degrees";
+    EXPECT_GE(w.cosQ12, 4060);
+    EXPECT_GE(w.scalePct, 88);
+    EXPECT_LE(w.scalePct, 118);
+    EXPECT_GE(w.stepPct, 88);
+    EXPECT_LE(w.stepPct, 104);
+    EXPECT_LE(std::abs(w.dy), 2 * b.px / 22 + 1);
+  }
+  EXPECT_EQ(warpAdvance(176, NO_WARP), 11) << "an advance of 11 px stays 11 px";
+  EXPECT_EQ(warpAdvance(176, {0, 4096, 118, 0, 104}), 13);
+  EXPECT_EQ(warpAdvance(176, {0, 4096, 88, 0, 88}), 9);
+}
+
+// A fingerprint of the pixels a few letters come out as, so a change to the arithmetic cannot pass unseen.
+uint32_t fingerprint(const BakedGlyph& b) {
+  uint32_t h = 2166136261u;
+  for (const auto& p : warpedInk(b, warpOf(b.cp, b.px))) {
+    h = (h ^ static_cast<uint32_t>(p.first + 128)) * 16777619u;
+    h = (h ^ static_cast<uint32_t>(p.second + 128)) * 16777619u;
+  }
+  return h;
+}
+
+TEST(Warp, FewLettersComeOutAsTheApprovedPictures) {
+  std::map<std::pair<uint32_t, int>, uint32_t> got;
+  for (const auto& b : bakedGlyphs())
+    if ((b.cp == 'a' || b.cp == 'g' || b.cp == 0x1EAD || b.cp == 0x110) && (b.px == 22 || b.px == 38)) got[{b.cp, b.px}] = fingerprint(b);
+  // Taken on 04/10/2026 from the letters of the pictures in rc3/hai-muc-xau (a, g, Đ and ậ at 22 and 38).
+  const std::map<std::pair<uint32_t, int>, uint32_t> approved = {
+      {{0x61, 22}, 0xC78404FEu},   {{0x61, 38}, 0xE0B1A418u},  {{0x67, 22}, 0xB69DA9F9u},   {{0x67, 38}, 0x40F6F9B1u},
+      {{0x110, 22}, 0x25191E2Eu},  {{0x110, 38}, 0x9EE30EB7u}, {{0x1EAD, 22}, 0x31314435u}, {{0x1EAD, 38}, 0x8F5E76C7u}};
+  EXPECT_EQ(got, approved);
 }
 
 TEST(ChapterTitle, FoldingIgnoresCaseBlanksAndPunctuation) {
