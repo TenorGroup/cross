@@ -5,7 +5,7 @@
 #include "util/HomeButtonInput.h"
 
 #if FREEINK_DEVICE_X4PRO
-#include <Scribble.h>
+#include "../lib/hal/Scribble.h"
 #endif
 
 class GfxRenderer;

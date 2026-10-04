@@ -45,15 +45,29 @@ def main():
     base = (REPO / "src/activities/UiListActivity.cpp").read_text()
     pin_state = base[base.index("struct PinDecoration {"):base.index("}  // namespace")]
     base_methods = "\n\n".join(function(base, sig) for sig in [
+        "void UiListActivity::frameRows(",
         "void UiListActivity::syncListViewport(",
         "void UiListActivity::decoratePinnedRows(",
     ]).replace("UiListActivity::", "FileBrowserActivity::")
+    chrome = (REPO / "src/components/TenorMenuChrome.h").read_text()
+    start = chrome.index("#if defined(FREEINK_DEVICE_X4PRO)")
+    shell = chrome[start:chrome.index("#endif", start) + len("#endif")]
+    foot_x = next(line for line in chrome.splitlines() if line.startswith("constexpr int FOOT_BACK_X"))
+    browser_header = (REPO / "src/activities/home/FileBrowserActivity.h").read_text()
+    row_opens = function(browser_header, "bool rowOpens(int row) const override").replace(
+        "bool rowOpens(int row) const override", "bool FileBrowserActivity::rowOpens(int row) const")
+    base_header = (REPO / "src/activities/UiListActivity.h").read_text()
+    framed = function(base_header, "virtual bool listFramed() const").replace(
+        "virtual bool listFramed() const", "bool FileBrowserActivity::listFramed() const")
     generated = args.output / "production_rows.inc"
-    generated.write_text(pin_state + "\n" + base_methods + "\n" + functions)
+    generated.write_text("namespace tenorchrome {\n" + shell + "\n" + foot_x + "\n}\n" +
+                         framed + "\n" + row_opens + "\n" + pin_state + "\n" + base_methods + "\n" + functions)
     binary = args.output / "folder_rows"
     cmd = [args.compiler, "-std=c++20", "-O1", "-g", "-Wall", "-Wextra",
            "-Wno-unused-parameter",
            "-I" + str(args.output), "-I" + str(REPO / "freeink-sdk/libs/ui/FreeInkUI/include"),
+           "-I" + str(REPO / "src"),
+           "-I" + str(REPO / "freeink-sdk/libs/assets/Icons/include"),
            "-I" + str(REPO / "lib/Utf8"), "-I" + str(REPO / "lib/FsHelpers"),
            "-I" + str(REPO / "test/host_stubs"),
            str(HERE / "FolderRowsRegression.cpp"), str(REPO / "lib/Utf8/Utf8.cpp"),

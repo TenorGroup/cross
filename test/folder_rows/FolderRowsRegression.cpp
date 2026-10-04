@@ -1,4 +1,6 @@
 #include <FreeInkApp.h>
+#include <FreeInkUIIcon.h>
+#include "components/icons/tenorRowMarks.h"
 #include <FsHelpers.h>
 #include <Utf8.h>
 
@@ -57,7 +59,7 @@ struct Scale { int bodyFontId = 1, smallFontId = 0; };
 static Scale uiScaleSpec() { return {}; }
 static fui::TextStyle uiMenuLabelText(const fui::ThemeTokens& theme) { return theme.bodyText; }
 static constexpr int SMALL_FONT_ID = 0;
-enum { STR_FILE_SIDE_ACTIONS, STR_NO_BIN_FILES, STR_NO_FILES_FOUND };
+enum { STR_FILE_SIDE_ACTIONS, STR_NO_BIN_FILES, STR_NO_FILES_FOUND, STR_FOLDER_TOO_MANY };
 static const char* tr(int) { return "empty"; }
 namespace tenorchrome { int tipHeight(...) { return 0; } }
 
@@ -128,6 +130,11 @@ class FileBrowserActivity {
   fui::ListNav nav;
   struct { bool hasTouch() const { return false; } } mappedInput;
   int pinned = -1;
+  int pageAnchorRow = -1;
+  bool tooMany = false, rowsFramed = false, rowsHaveIcons = false;
+  bool rowOpens(int row) const;
+  bool listFramed() const;
+  void frameRows(fui::ListProps& props);
   static constexpr int ACTION_ROW = 1;
   int listCount() const { return static_cast<int>(files.size()); }
   void buildScreen(UiScreen& screen);

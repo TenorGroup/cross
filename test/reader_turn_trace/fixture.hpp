@@ -42,6 +42,8 @@ struct RenderLock {
 };
 struct ActivityManager {
   uint32_t generation = 1;
+  bool toReaderPage = false;
+  bool returningToReaderPage() const { return toReaderPage; }
   uint32_t activityGeneration() const { return generation; }
   // Writes left for the next screen's first frame (deferWrite); nextScreenFramed runs them.
   std::vector<void (*)()> deferred;

@@ -58,6 +58,7 @@ struct Heap { size_t free = 80000, largest = 60000; size_t getFreeHeap() { retur
 struct ReaderRenderSpec {};
 struct Settings {
   bool blePageTurnerEnabled = false;
+  int saves = 0; void saveToFile() { ++saves; }
   int getReaderFontId() const { return 0; }
   ReaderRenderSpec readerRenderSpec(int, int) { return {}; }
 } SETTINGS;
@@ -360,6 +361,13 @@ struct ReaderActivity {
 };
 struct EpubReaderActivity : ReaderActivity {
   std::unique_ptr<Section> section = std::make_unique<Section>();
+  bool xemTruoc = false, xemTruocTrenMan = false, textSettingsDirty = false;
+  int8_t xemTruocLat = 0;
+  std::unique_ptr<Section> catchUp;
+  std::atomic<uint8_t> textCloseFrame{0};
+  // Preview catch-up is covered by the simulator; reject active preview in this projection.
+  void catchUpTick(bool) { require(!xemTruoc, "preview catch-up needs the simulator"); }
+  void flushTextSettingsLocked();
   std::unique_ptr<Epub> epub = std::make_unique<Epub>();
   std::unique_ptr<ImageBlock::ThumbHook> coverThumbs;
 @@FIELDS@@

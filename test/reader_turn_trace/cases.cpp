@@ -6,6 +6,7 @@ void test(const char* name, const std::function<void()>& run) {
   nowMs = 1000;
   RenderLock::busy = false;
   activityManager.generation = 1;
+  activityManager.toReaderPage = false;
   passTurns = {};
   events.clear();
   try { run(); std::cout << "PASS " << name << '\n'; }
@@ -43,6 +44,12 @@ std::string eventText(const char* phase, unsigned id) {
 }
 
 int main() {
+  test("menu return to reader page requests its paint", [] {
+    EpubReaderActivity reader; reader.pendingManualTurn = 1;
+    activityManager.toReaderPage = true;
+    reader.cancelManualForReaderMenu();
+    require(reader.pendingManualTurn == 0 && reader.updates == 1, "menu return did not clear the queue and repaint");
+  });
   test("external TryTake retains detection time and id", [] {
     ReaderActivity reader;
     require(reader.luotLatTrangNgoai(true), "external input rejected");

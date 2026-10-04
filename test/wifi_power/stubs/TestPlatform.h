@@ -276,18 +276,27 @@ struct Theme {
   TextStyle bodyText, smallText;
   int16_t rowHeight = 40;
   int16_t listRowGap = 0;
+  int16_t spaceMd = 8;
 };
 struct Frame {};
 struct Target {};
 class UiScreen {
  public:
   Theme valueTheme;
+  Rect content;
   Frame valueFrame;
   Target valueTarget;
   void setContentMarginFromScreen(Insets) {}
   void centeredText(const char*, TextStyle) {}
   Theme& theme() { return valueTheme; }
-  Rect body() const { return {}; }
+  Rect body() const { return content; }
+  // Same bounded bottom reservation as the SDK Screen, with fake display I/O.
+  Rect takeBottom(int16_t height) {
+    height = std::clamp<int16_t>(height, 0, content.height);
+    const Rect band{content.x, static_cast<int16_t>(content.y + content.height - height), content.width, height};
+    content.height = static_cast<int16_t>(content.height - height);
+    return band;
+  }
   Frame& frame() { return valueFrame; }
   Target& target() { return valueTarget; }
   void list(const ListProps&) {}
@@ -331,6 +340,8 @@ class UiAppHost {
  protected:
   FakeUiApp app;
   explicit UiAppHost(GfxRenderer&) {}
+  // The production X3 chrome compiles out this touch-only branch.
+  int swipeRows(MappedInputManager&, freeink::ui::ListNav&, int, int);
   void resetUi() {}
   void renderUi() {}
   RouteResult routeTouch(MappedInputManager&, bool = false) { return {}; }
@@ -480,6 +491,7 @@ class HalClock {
 inline HalClock halClock;
 
 struct CrossPointSettings {
+  uint8_t uiTextSize = 0;
   int clockHasBeenSynced = 0;
   int clockAutoTimezone = 0;
   uint8_t clockUtcOffsetQ = 48;

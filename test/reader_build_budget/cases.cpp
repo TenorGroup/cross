@@ -15,6 +15,15 @@ template<class F> void test(const char* name, F fn) {
   catch (const std::exception& e) { ++failures; std::cout << "FAIL " << name << ": " << e.what() << '\n'; }
 }
 int main() {
+  test("text close write waits for its frame, quiet input and render lock", [] {
+    EpubReaderActivity r; r.textSettingsDirty = true; r.textCloseFrame = 1;
+    r.idleStep(); require(SETTINGS.saves == 0, "write before close frame");
+    r.textCloseFrame = 2; r.mappedInput.edge = true;
+    r.idleStep(); require(SETTINGS.saves == 0, "write during input");
+    r.mappedInput.edge = false;
+    { RenderLock held; r.idleStep(); require(SETTINGS.saves == 0, "write during paint"); }
+    r.idleStep(); r.idleStep(); require(SETTINGS.saves == 1 && !r.textSettingsDirty && r.textCloseFrame == 0, "close write not settled once");
+  });
   test("900ms restore with successful first tick stays silent", [] {
     EpubReaderActivity r; r.section->building = false;
     r.section->currentPage = r.section->pageCount = r.section->oldPages = 30;

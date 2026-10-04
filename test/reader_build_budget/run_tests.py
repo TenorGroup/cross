@@ -92,7 +92,7 @@ fixture = pathlib.Path(__file__).with_name('fixture.hpp').read_text().replace('@
 layout_hook = 'EpubReaderActivity::pageAwaitsLayout(' in cpp
 fixture = fixture.replace('@@LAYOUT@@', '  bool pageAwaitsLayout() const;' if layout_hook else '')
 functions = [function('buildTickHeapGate'), function('latTrangThat'), function('skipLoopDelay'), function('showBuildPopup')]
-for name in ['stayAfterStarvedJump', 'saveProgressIfMoved', 'pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'backgroundBuildWanted', 'suspendBackgroundBuild', 'releaseHeapForBuild', 'yieldForRadio', 'settleBuildPopup', 'showMemoryError', 'generatePendingThumb', 'writePendingThumbs']:
+for name in ['stayAfterStarvedJump', 'saveProgressIfMoved', 'pageAwaitsLayout', 'deferBackgroundBuildForBle', 'backgroundBuildStartHeapGate', 'backgroundBuildCanTick', 'backgroundBuildWanted', 'suspendBackgroundBuild', 'releaseHeapForBuild', 'yieldForRadio', 'settleBuildPopup', 'showMemoryError', 'generatePendingThumb', 'writePendingThumbs', 'flushTextSettingsLocked']:
     if 'EpubReaderActivity::' + name + '(' in cpp:
         functions.append(function(name))
 # A reader before round 4 has no step after a starved jump.
