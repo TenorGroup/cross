@@ -86,6 +86,7 @@ add_subdirectory(settings_tabs)
 add_subdirectory(settings_row_navigation)
 add_subdirectory(ngay_gio)
 add_subdirectory(so_lieu_doc)
+add_subdirectory(lich_30)
 add_subdirectory(reading_habits)
 add_subdirectory(finish_estimate)
 

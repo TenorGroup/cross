@@ -174,6 +174,9 @@ class UiListActivity : public Activity, protected UiAppHost {
   virtual void drawChrome();
   // Button hints, drawn after the app renders. Default: Back/Select/Up/Down.
   virtual void drawFooter();
+  // The side-button arrows (Tenor chrome, setting tenorSideArrows). A screen with a drawing level with them,
+  // where they would read as part of it, turns them off.
+  virtual bool showsSideArrows() const { return true; }
 
   // --- helpers ---------------------------------------------------------------
   // Measure visibleRows for the screen band, apply follow-on-build, clamp the

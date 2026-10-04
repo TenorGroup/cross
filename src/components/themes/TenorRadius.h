@@ -26,6 +26,9 @@
 //    nest(outerR, inset)     a block set inside a rounded one: outer radius less the inset, never
 //                            under 2.
 //    cover(w)                book covers: a sixteenth of the width, never under 6 px.
+//    tile(side)              a square that stands for a value with no text in it (a day of the 30-day
+//                            grid): seven twenty-fifths of the side, rounder than a leaf so a row of
+//                            them reads as tiles. 40 px gives 11, 35 px gives 9.
 //    fitted(r, pad)          a mark that hugs text keeps at most the radius whose corner stays off
 //                            text inset `pad` px.
 namespace tenorradius {
@@ -48,6 +51,8 @@ constexpr int nest(const int outerRadius, const int inset) {
 // Covers come in very different sizes: a fixed corner that suits a small sleep-screen cover
 // vanishes on the Recent card. A sixteenth of the width reads as rounded at every cover size.
 constexpr int cover(const int width) { return (width + 8) / 16 > 6 ? (width + 8) / 16 : 6; }
+
+constexpr int tile(const int side) { return side * 7 / 25; }
 
 // At the column where the content starts, a corner of radius r still covers
 // r - sqrt(2 r pad - pad^2) px from the top; that stays within `pad` while r <= (2 + sqrt 2) pad,

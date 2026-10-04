@@ -407,7 +407,7 @@ void UiListActivity::renderUi() {
 }
 
 void UiListActivity::drawPageHints() {
-  if (!tenorchrome::enabled() || !SETTINGS.tenorSideArrows) return;
+  if (!tenorchrome::enabled() || !SETTINGS.tenorSideArrows || !showsSideArrows()) return;
   constexpr int cy = 195;
   const int right = renderer.getScreenWidth() - 1 - 4;  // mirror of column 4 on the left
   // Paint after the list: drawing during screen construction is covered by
