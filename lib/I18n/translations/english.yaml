@@ -937,4 +937,7 @@ STR_UGLY_FOLDER_TOO_MANY: "More than %d files in the root of the card. Too many 
 STR_UGLY_EMPTY_FAVORITES: "Nothing pinned. You like nothing?"
 STR_UGLY_PAGE_OF: "page %d/%d"
 STR_SLEEP_UGLY: "tenor/ugly"
+STR_UGLY_SWITCH_ASK: "This is the ugliest interface you have ever seen, and it is very rude to you. Are you sure you want to switch?"
+STR_UGLY_SWITCH_YES: "Bring it on"
+STR_UGLY_SWITCH_NO: "No, too scary"
 STR_UGLY_YAWNING: "Yawning..."

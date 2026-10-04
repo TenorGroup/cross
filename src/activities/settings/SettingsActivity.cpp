@@ -27,6 +27,7 @@
 #include "LanguageSelectActivity.h"
 #include "MappedInputManager.h"
 #include "shells/Shell.h"
+#include "shells/ugly/UglyShell.h"
 #include "OpdsServerListActivity.h"
 #include "OtaUpdateActivity.h"
 #include "PanelChip.h"
@@ -456,6 +457,20 @@ void SettingsActivity::toggleCurrentSetting() {
       return;
     }
     const uint8_t newValue = (currentValue + 1) % static_cast<uint8_t>(enumLabels.size());
+    // Going from tenor/cross to tenor/ugly asks first, in the pen of tenor/ugly; coming back asks nothing.
+    if (setting.valuePtr == &CrossPointSettings::uiShell && newValue == static_cast<uint8_t>(shell::Kind::Ugly)) {
+      startActivityForResult(ugly::makeSwitchConfirm(renderer, mappedInput), [this, newValue](const ActivityResult& result) {
+        if (result.isCancelled) {
+          requestUpdate();
+          return;
+        }
+        SETTINGS.uiShell = newValue;
+        saveSettings();
+        rebuildSettingsLists();
+        shell::changed();
+      });
+      return;
+    }
     if (setting.valuePtr == &CrossPointSettings::uiTextSize) {
       if (!applyUiSettingChange(setting.valuePtr, newValue)) {
         requestUpdate();

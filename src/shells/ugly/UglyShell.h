@@ -18,6 +18,8 @@ std::unique_ptr<Activity> makeDesk(GfxRenderer& renderer, MappedInputManager& ma
 bool deskAvailable(const GfxRenderer& renderer);
 // Tier 3, the notebook, opened on one of the five pages.
 std::unique_ptr<Activity> makeNotebook(GfxRenderer& renderer, MappedInputManager& mappedInput, homerows::Page page);
+// The box Settings raises before the interface turns to tenor/ugly: finishes with isCancelled false only when the user dared.
+std::unique_ptr<Activity> makeSwitchConfirm(GfxRenderer& renderer, MappedInputManager& mappedInput);
 // Where a screen that closed lands: the notebook page it belongs to, else the diary.
 std::unique_ptr<Activity> makeHome(GfxRenderer& renderer, MappedInputManager& mappedInput, HomeMenuItem item,
                                    bool cleanInitialRefresh);

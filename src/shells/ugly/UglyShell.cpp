@@ -3,6 +3,7 @@
 #include "UglyDesk.h"
 #include "UglyDiary.h"
 #include "UglyNotebook.h"
+#include "UglySwitch.h"
 
 namespace ugly {
 
@@ -16,6 +17,10 @@ std::unique_ptr<Activity> makeDesk(GfxRenderer& renderer, MappedInputManager& ma
 
 std::unique_ptr<Activity> makeNotebook(GfxRenderer& renderer, MappedInputManager& mappedInput, const homerows::Page page) {
   return std::make_unique<Notebook>(renderer, mappedInput, page);
+}
+
+std::unique_ptr<Activity> makeSwitchConfirm(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return std::make_unique<SwitchConfirm>(renderer, mappedInput);
 }
 
 std::unique_ptr<Activity> makeHome(GfxRenderer& renderer, MappedInputManager& mappedInput, const HomeMenuItem item,

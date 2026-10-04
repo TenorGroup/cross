@@ -937,4 +937,7 @@ STR_UGLY_FOLDER_TOO_MANY: "Trên thẻ có hơn %d tệp nằm ngoài các thư 
 STR_UGLY_EMPTY_FAVORITES: "Chưa ghim gì hết. Mày không thích gì à?"
 STR_UGLY_PAGE_OF: "trang %d/%d"
 STR_SLEEP_UGLY: "tenor/xấu"
+STR_UGLY_SWITCH_ASK: "Giao diện này là giao diện xấu nhất bạn từng thấy, và nó rất hỗn với bạn, bạn chắc chắn muốn chuyển đổi chứ?"
+STR_UGLY_SWITCH_YES: "Sợ gì"
+STR_UGLY_SWITCH_NO: "thôi, sợ lắm"
 STR_UGLY_YAWNING: "Đang ngáp..."

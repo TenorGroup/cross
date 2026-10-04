@@ -150,17 +150,26 @@ class UglyShellTest(unittest.TestCase):
         # the measuring line says what the picture cost the heap: the plane in bytes and the largest block left
         self.assertRegex(log, r'Desk frame sel=2 total=\d+ms plane=52272B heap=\d+ largest=\d+')
 
-    def test_the_desk_is_walked_by_place_and_never_wraps(self):
+    def test_the_desk_is_walked_by_place_and_has_no_dead_end(self):
         # Desk::Object: 0 Stats (calendar, top right), 1 Recent (clock), 2 Reading (the open book), 3 Folder (stack,
         # bottom left), 4 Favorites (note, bottom right), 5 Settings (lamp, top left). Front LEFT / RIGHT go up / down,
-        # edge UP / DOWN go left / right; a step with nowhere to go draws no new frame.
+        # edge UP / DOWN go left / right. Founder changed his mind on 04/10 evening: at an edge a button leads on to
+        # the next column (up, down) or the next row (left, right), and wraps from the last to the first.
         steps = [('LEFT', 1), ('DOWN', 0), ('RIGHT', 2), ('LEFT', 0),  # Reading up: the clock; right: Stats; down: the book, whatever the circle was on; up again: Stats, not the clock
-                 ('UP', 1), ('UP', 5), ('UP', None),                   # left along the top row to the edge, and stop
-                 ('RIGHT', 2), ('RIGHT', 3), ('DOWN', 4), ('DOWN', None), ('RIGHT', None),
-                 ('LEFT', 2), ('DOWN', None), ('LEFT', 0)]             # Reading is a row of one; up from it follows the x of the note: Stats
-        script = '1000:RIGHT;1600:RIGHT;2200:CONFIRM;' + ''.join('%d:%s;' % (3000 + 600 * i, key) for i, (key, _) in enumerate(steps)) + '14000:QUIT'
+                 ('UP', 1), ('UP', 5),                                 # left along the top row to its start
+                 ('UP', 4),                                            # left off the start of the first row: the last of the bottom row
+                 ('RIGHT', 5),                                         # down off the bottom of the last column: the highest of the first
+                 ('LEFT', 4),                                          # up off the top of the first column: the lowest of the last
+                 ('DOWN', 5),                                          # right off the end of the last row: the first of the first row
+                 ('UP', 4),
+                 ('LEFT', 2), ('DOWN', 3),                              # right off a row of one: the first of the row below
+                 ('UP', 2),                                            # left off the start of the bottom row: the last of the row above
+                 ('RIGHT', 3),
+                 ('RIGHT', 1),                                         # down off the bottom of the first column: the top of the next
+                 ('LEFT', 3)]                                          # up off the top of the middle column: the bottom of the first
+        script = '1000:RIGHT;1600:RIGHT;2200:CONFIRM;' + ''.join('%d:%s;' % (3000 + 600 * i, key) for i, (key, _) in enumerate(steps)) + '15000:QUIT'
         log, _ = self.card().run(script)
-        wanted = [2] + [sel for _, sel in steps if sel is not None]
+        wanted = [2] + [sel for _, sel in steps]
         self.assertEqual([int(n) for n in re.findall(r'Desk frame sel=(\d+)', log)], wanted, log[-1500:])
 
     def test_screens_are_deterministic(self):
@@ -224,7 +233,7 @@ class UglyShellTest(unittest.TestCase):
         card = self.card(shell=0, sleepScreen=10)
         # Home (tenor/cross) -> Settings tab (UP) -> group Display (RIGHT) -> open (CONFIRM) -> the row before the
         # first wraps to night mode, one more is Interface
-        log, _ = card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;6000:QUIT')
+        log, _ = card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;4600:LEFT;5200:CONFIRM;7500:QUIT')
         names = entered(log)
         self.assertEqual(names[-1], 'UglyDiary', names)
         saved = card.settings()
@@ -244,7 +253,7 @@ class UglyShellTest(unittest.TestCase):
         # Three screens a user can have on arrival: the tenor picture, the quotation, one picked by hand.
         for before in (8, 10, 3):
             card = self.card(shell=0, sleepScreen=before)
-            card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;6000:QUIT')
+            card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;4600:LEFT;5200:CONFIRM;7500:QUIT')
             inside = card.settings()
             self.assertEqual(inside['uiShell'], 1)
             self.assertEqual(inside['sleepScreen'], 11 if before != 3 else 3)
@@ -255,8 +264,46 @@ class UglyShellTest(unittest.TestCase):
 
     def test_a_sleep_screen_chosen_by_hand_survives_a_change_of_shell(self):
         card = self.card(shell=0, sleepScreen=3)  # the cover
-        card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;6000:QUIT')
+        card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;4600:LEFT;5200:CONFIRM;7500:QUIT')
         self.assertEqual(card.settings()['sleepScreen'], 3)
+
+    # Founder 04/10/2026 evening: going from tenor/cross to tenor/ugly asks first, in the pen of tenor/ugly. The pen starts
+    # on the line that says no; Back says no; coming back to tenor/cross asks nothing.
+    TO_THE_BOX = '1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;'
+    SWITCH_FRAME = re.compile(r'Switch frame total=(\d+)ms sel=(\d) lines=(\d+) frame=(-?\d+),(-?\d+),(-?\d+),(-?\d+) box=(-?\d+),(-?\d+),(-?\d+),(-?\d+)')
+
+    def test_choosing_tenor_ugly_asks_first_and_the_pen_starts_on_no(self):
+        card = self.card(shell=0, sleepScreen=10)
+        log, shots = card.run(self.TO_THE_BOX + '9000:QUIT', [(5500, 'box')])
+        self.assertIn('UglySwitch', entered(log), entered(log))
+        frames = self.SWITCH_FRAME.findall(log)
+        self.assertEqual(len(frames), 1, log[-1500:])
+        self.assertEqual(frames[0][1], '1', 'the pen starts on "thôi, sợ lắm"')
+        self.assertGreater(ink(shots['box'], (0, 60, 528, 700)), 2500, 'a frame, a paragraph, two lines and a ring')
+        self.assertEqual(card.settings()['uiShell'], 0, 'nothing changes until the user dares')
+        print('SWITCH_FRAME_MS', frames[0][0])
+
+    def test_no_and_back_leave_the_shell_as_it_was(self):
+        for leave in ('5000:CONFIRM;', '5000:BACK;'):
+            card = self.card(shell=0, sleepScreen=10)
+            log, shots = card.run(self.TO_THE_BOX + leave + '8000:QUIT', [(4800, 'box'), (7000, 'after')])
+            self.assertEqual(entered(log)[-1], 'UglySwitch', (leave, entered(log)))
+            self.assertNotEqual(digest(shots['box']), digest(shots['after']), leave + ': the box is gone and Settings is drawn again')
+            saved = card.settings()
+            self.assertEqual((saved['uiShell'], saved['sleepScreen']), (0, 10), leave)
+
+    def test_daring_switches_and_the_box_is_walked_with_the_front_buttons(self):
+        card = self.card(shell=0, sleepScreen=10)
+        log, _ = card.run(self.TO_THE_BOX + '5000:LEFT;5600:RIGHT;6200:LEFT;6800:CONFIRM;9500:QUIT')
+        self.assertEqual([f[1] for f in self.SWITCH_FRAME.findall(log)], ['1', '0', '1', '0'], log[-1500:])
+        self.assertEqual(entered(log)[-1], 'UglyDiary', entered(log))
+        self.assertEqual(card.settings()['uiShell'], 1)
+
+    def test_coming_back_to_tenor_cross_asks_nothing(self):
+        card = self.card(shell=1, sleepScreen=11)
+        log, _ = card.run('1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4400:CONFIRM;7000:QUIT')
+        self.assertNotIn('UglySwitch', entered(log))
+        self.assertEqual(card.settings()['uiShell'], 0)
 
     def test_the_sleep_screen_is_the_doodle_and_a_line_of_abuse(self):
         a = self.card(sleepScreen=11).run('1500:SLEEP;6000:QUIT', [(5000, 'z')])
