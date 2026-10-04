@@ -10,6 +10,7 @@
 #include "CrossPointState.h"
 #include "ReadingStatsStore.h"
 #include "UglyShell.h"
+#include "UglySleepSet.h"
 #include "activities/ActivityManager.h"
 
 void saveAppState();  // main.cpp
@@ -91,6 +92,7 @@ void Diary::onEnter() {
   if (hasBook && READING_STATS.readBook(book.path, record)) percent = record.progress;
   kind = logic::diaryKind(hasBook, lastDay, today, &days);
   buildSentence();
+  if (cleanInitialRefresh) wake = sleepset::wakeSentence();  // the first frame after a wake greets the user
   ask = tr(STR_UGLY_DIARY_ASK);
   readText = tr(STR_UGLY_DIARY_READ);
   orText = tr(STR_UGLY_DIARY_OR);
@@ -149,6 +151,7 @@ void Diary::render(RenderLock&&) {
       underline(renderer, x, x + placed[i].w, base + 12, 13u * static_cast<uint32_t>(tokens[i].id));
     }
   }
+  if (!wake.empty()) paragraph(renderer, Size::S22, MARGIN, 34, maxWidth, 26, wake.c_str());
   const Word now = words[selected];
   circle(renderer, Circle::Word, box[now], 8, 16);
 
@@ -161,6 +164,7 @@ void Diary::render(RenderLock&&) {
 #endif
   if (cleanInitialRefresh) wakeStatePending = true;
   cleanInitialRefresh = false;
+  wake.clear();
 }
 
 void Diary::onTick() {

@@ -1,6 +1,7 @@
 #include "SleepActivity.h"
 
 #include <BitmapHelpers.h>
+#include <BoardConfig.h>
 #include <Epub.h>
 #include <Epub/converters/PngToFramebufferConverter.h>
 #include <FontCacheManager.h>
@@ -826,11 +827,11 @@ void SleepActivity::renderTenorSleepScreen() const {
   renderer.setOrientation(orientation);
 }
 
-// The tenor/ugly sleep screen: a doodle and one line of abuse, folded to black and white ahead of time
-// (scripts/ugly/gen_art.py), inflated straight into the framebuffer like the tenor/cross fallback.
+// The tenor/ugly sleep screen: one of 8 doodles drawn from strokes with the ugly pen, and a line of abuse
+// (scripts/ugly/gen_sleep_set.py). The X3 and the X4 Pro show it; other boards keep the default screen.
 void SleepActivity::renderUglySleepScreen() const {
   releaseSdFontCachesForDecode(renderer);
-  if (!gpio.deviceIsX3()) {
+  if (!gpio.deviceIsX3() && !BoardConfig::isX4Pro()) {
     renderDefaultSleepScreen();
     return;
   }
@@ -841,7 +842,7 @@ void SleepActivity::renderUglySleepScreen() const {
   const uint32_t started = millis();
   const bool ready = ugly::drawSleep(renderer);
   if (ready)
-    showSleepFrame(renderer, HalDisplay::FULL_REFRESH);
+    showSleepFrame(renderer, gpio.deviceIsX3() ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
   else
     renderDefaultSleepScreen();
   LOG_INF("UGLY", "sleep ready=%u visible=%lu ms", ready, static_cast<unsigned long>(millis() - started));
