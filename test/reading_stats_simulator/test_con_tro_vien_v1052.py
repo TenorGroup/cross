@@ -10,11 +10,13 @@ import os
 import shutil
 import subprocess
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
 from PIL import Image
 
+import test_quotes_v1011 as quotes
 from pill_row import RING, dark, ink_inside, pill_band, pill_extent
 
 REPO = Path(__file__).resolve().parents[2]
@@ -24,23 +26,35 @@ HEART_LEFT_MARGIN_GAP = 1  # white columns between the pin mark and the ring (th
 
 
 class ConTroVienTest(unittest.TestCase):
-    def run_sim(self, script, shots, settings=None, files=8, epub=False):
+    def run_sim(self, script, shots, settings=None, files=8, epub=False, saved_quotes=False):
         tmp = tempfile.mkdtemp(prefix='cross-con-tro-vien-')
         self.addCleanup(shutil.rmtree, tmp, True)
         sd = Path(tmp)
         store = sd / '.crosspoint'
         store.mkdir()
+        if saved_quotes:
+            # The Quotes screens' own seed and settings (test_quotes_v1011.py), so its home route holds.
+            (store / 'quotes').mkdir()
+            (store / 'quotes/.ten-v2').write_text('2')
+            quotes.QuotesV1011Test.three_books(types.SimpleNamespace(quotes=store / 'quotes'))
+            shutil.copy(REPO / 'test/epubs/test_dictionary_synonyms.epub', sd / 'audit.epub')
+            (store / 'settings.json').write_text(json.dumps({'language': 'VI', 'sleepTimeout': 10}))
+            (store / 'recent.json').write_text(json.dumps(
+                {'books': [{'path': '/audit.epub', 'title': 'Synonym Lookup Test'}]}))
+            files = 0
         for i in range(files):
             (sd / f'tep{i:02d}.txt').write_text('Original test text.\n' * 15)
         recent = []
-        if epub:
+        if epub and not saved_quotes:
             import test_chapter_hold as hold
             (sd / 'books').mkdir()
             hold.write_epub(sd / 'books/sach.epub', chuong=8)
             recent = [{'path': '/books/sach.epub', 'title': 'Sach', 'author': 'A', 'coverBmpPath': '', 'excerpt': 'x'}]
-        (store / 'recent.json').write_text(json.dumps({'books': recent}))
-        (store / 'settings.json').write_text(json.dumps(dict(
-            {'language': 'VI', 'uiTheme': 4, 'sleepTimeoutMinutes': 31, 'globalStatusBarMode': 1}, **(settings or {}))))
+        if not saved_quotes:
+            (store / 'recent.json').write_text(json.dumps({'books': recent}))
+            (store / 'settings.json').write_text(json.dumps(dict(
+                {'language': 'VI', 'uiTheme': 4, 'sleepTimeoutMinutes': 31, 'globalStatusBarMode': 1},
+                **(settings or {}))))
         (store / 'state.json').write_text(json.dumps({
             'openEpubPath': '', 'lastSleepFromReader': False, 'showBootScreen': False}))
         env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
@@ -51,9 +65,9 @@ class ConTroVienTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, log[-4000:])
         return {label: Image.open(sd / f'{label}.bmp').convert('L') for _, label in shots}
 
-    def check_pill(self, image, name, label_free_x=None, mirrored=False, bounds=(14, None)):
+    def check_pill(self, image, name, label_free_x=None, mirrored=False, bounds=(14, None), top=120):
         """The ring, the white inside and the round ends of the selected row."""
-        band = pill_band(image)
+        band = pill_band(image, top=top)
         self.assertIsNotNone(band, f'{name}: no pill ring on screen')
         h = band[1] - band[0]
         self.assertTrue(44 <= h <= 90, f'{name}: pill height {h}')
@@ -124,6 +138,34 @@ class ConTroVienTest(unittest.TestCase):
         inner = [x for x in range(left + 8, left + 40) for y in range(mid - 10, mid + 11) if dark(px, x, y)]
         self.assertTrue(inner, 'the icon is missing')
         self.assertGreaterEqual(min(inner) - left, 10, 'the icon touches the ring')
+
+
+    def check_mark(self, image, region, name):
+        """A small mark (the Quotes top row's label, a number): ring 3 px, white inside, round corners."""
+        x0, x1, y0, y1 = region
+        px = image.load()
+        dots = [(x, y) for x in range(x0, x1) for y in range(y0, y1) if dark(px, x, y)]
+        self.assertTrue(dots, f'{name}: nothing on screen')
+        left, right = min(x for x, _ in dots), max(x for x, _ in dots)
+        top, bottom = min(y for _, y in dots), max(y for _, y in dots)
+        mid = (top + bottom) // 2
+        run = 0
+        while dark(px, left + run, mid):
+            run += 1
+        self.assertEqual(run, RING, f'{name}: ring is {run} px at the end')
+        self.assertGreater(px[left + RING + 2, mid], 250, f'{name}: inside the ring is not white')
+        self.assertGreater(px[left, top], 250, f'{name}: the corner is square')
+        return left, right, top, bottom
+
+    def test_quotes_screen_marks_are_pills(self):
+        # Book list (cursor on the first book), top row (LEFT), number box of the first quote ("All, newest").
+        im = self.run_sim(quotes.HOME_TO_QUOTES + ';8000:LEFT;9200:CONFIRM;10400:RIGHT;12000:QUIT',
+                          [(7400, 'books'), (8800, 'top'), (11000, 'number')], saved_quotes=True)
+        band, left, right = self.check_pill(im['books'], 'quotes-book-row', label_free_x=420, top=100)
+        self.assertEqual((left, right), (20, 507), 'the book row pill spans the band')
+        # The label sits past the pill's curved end; the count keeps off the right end.
+        self.check_mark(im['top'], (0, 330, 50, 91), 'quotes-top-row')
+        self.check_mark(im['number'], (14, 52, 95, 140), 'quotes-number')
 
 
 def right_probe(image):

@@ -12,6 +12,7 @@
 #include "QuoteDetailActivity.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 #include "components/themes/TenorRadius.h"
 #include "fontIds.h"
 
@@ -49,6 +50,25 @@ constexpr int TOP_ROW_MARK_PAD = 6;
 int markRadius(const int width, const int height, const int pad) {
   return tenorradius::fitted(tenorradius::leaf(std::min(width, height)), pad);
 }
+
+// The mark under the cursor: button devices (X3, X4) get the white pill ringed in black their lists
+// use, touch devices keep the black block with white text. `onBlack` says which text colour to draw.
+bool pillMarks() { return !BoardConfig::hasTouch(); }
+bool onBlack(const bool marked) { return marked && !pillMarks(); }
+void drawMark(const GfxRenderer& renderer, const int x, const int y, const int width, const int height,
+              const int radius) {
+  if (pillMarks())
+    tenorDrawPill(renderer, x, y, width, height);
+  else
+    renderer.fillRoundedRect(x, y, width, height, radius, Color::Black);
+}
+
+// A pill's curved ends cut into a mark sized to its text: the top row's mark reaches this far past its
+// label, and a book row's text sits this much further in, so the ring clears the first and last letters.
+int topRowMarkPad() { return pillMarks() ? TENOR_PILL_RING + TENOR_PILL_SIDE_PADDING : TOP_ROW_MARK_PAD; }
+int bookRowTextInset() { return pillMarks() ? 12 : 0; }
+// A book row's pill is 2 px taller each way, so its ring clears the title's accents and the date's descenders.
+int bookRowMarkGrow() { return pillMarks() ? 2 : 0; }
 
 constexpr char OPEN_QUOTE[] = "\xe2\x80\x9c";
 constexpr char CLOSE_QUOTE[] = "\xe2\x80\x9d";
@@ -477,11 +497,11 @@ void QuotesActivity::drawTopRow(const char* label) const {
   const bool marked = selected < 0;
   if (marked) {
     const int width = renderer.getTextWidth(TOP_ROW_FONT_ID, label);
-    renderer.fillRoundedRect(row.x - TOP_ROW_MARK_PAD, row.y - quotelist::SORT_ROW_PAD, width + 2 * TOP_ROW_MARK_PAD,
-                             row.height, markRadius(width + 2 * TOP_ROW_MARK_PAD, row.height, TOP_ROW_MARK_PAD),
-                             Color::Black);
+    const int pad = topRowMarkPad();
+    drawMark(renderer, row.x - pad, row.y - quotelist::SORT_ROW_PAD, width + 2 * pad, row.height,
+             markRadius(width + 2 * pad, row.height, pad));
   }
-  renderer.drawText(TOP_ROW_FONT_ID, row.x, row.y, label, !marked);
+  renderer.drawText(TOP_ROW_FONT_ID, row.x, row.y, label, !onBlack(marked));
   renderer.drawLine(row.x, row.dividerY, row.x + row.width, row.dividerY);
 }
 
@@ -505,12 +525,11 @@ void QuotesActivity::drawBlocks() const {
     const int boxY = block.numberBoxY + (m.bodyLineHeight - block.numberBoxHeight) / 2;
     const bool marked = first + i == selected;
     if (marked) {
-      renderer.fillRoundedRect(
-          block.numberBoxX, boxY, block.numberBoxWidth, block.numberBoxHeight,
-          markRadius(block.numberBoxWidth, block.numberBoxHeight, quotelist::NUMBER_BOX_PAD), Color::Black);
+      drawMark(renderer, block.numberBoxX, boxY, block.numberBoxWidth, block.numberBoxHeight,
+               markRadius(block.numberBoxWidth, block.numberBoxHeight, quotelist::NUMBER_BOX_PAD));
     }
     renderer.drawText(NUMBER_FONT_ID, block.numberBoxX + (block.numberBoxWidth - numberWidth) / 2, boxY, number,
-                      !marked, EpdFontFamily::BOLD);
+                      !onBlack(marked), EpdFontFamily::BOLD);
     if (entry.readable) renderer.drawText(BODY_FONT_ID, block.hangingQuoteX, block.textY, OPEN_QUOTE);
     for (size_t line = 0; line < entry.lines.size(); ++line) {
       renderer.drawText(BODY_FONT_ID, block.textX, block.textY + static_cast<int>(line) * block.lineStep,
@@ -543,18 +562,21 @@ void QuotesActivity::drawBookRows() const {
     // so the next row does not look joined to it.
     if (marked) {
       const int markHeight = row.height - quotelist::DIVIDER_GAP / 2;
-      renderer.fillRoundedRect(row.x, row.y, row.width, markHeight,
-                               markRadius(row.width, markHeight, quotelist::BOOK_ROW_PAD), Color::Black);
+      const int grow = bookRowMarkGrow();
+      drawMark(renderer, row.x, row.y - grow, row.width, markHeight + 2 * grow,
+               markRadius(row.width, markHeight, quotelist::BOOK_ROW_PAD));
     }
     char count[12];
     snprintf(count, sizeof(count), "%d", entry.count);
     const int countWidth = renderer.getTextWidth(NUMBER_FONT_ID, count, EpdFontFamily::BOLD);
-    renderer.drawText(NUMBER_FONT_ID, row.countRightX - countWidth, row.countY, count, !marked, EpdFontFamily::BOLD);
-    const int titleRoom = row.countRightX - countWidth - quotelist::BOOK_ROW_PAD - row.titleX;
+    const int inset = bookRowTextInset();
+    const int titleX = row.titleX + inset, countRightX = row.countRightX - inset;
+    renderer.drawText(NUMBER_FONT_ID, countRightX - countWidth, row.countY, count, !onBlack(marked), EpdFontFamily::BOLD);
+    const int titleRoom = countRightX - countWidth - quotelist::BOOK_ROW_PAD - titleX;
     auto title = renderer.truncatedText(NUMBER_FONT_ID, entry.title.c_str(), titleRoom);
     tidyEllipsis(title);
-    renderer.drawText(NUMBER_FONT_ID, row.titleX, row.titleY, title.c_str(), !marked);
-    renderer.drawText(DATE_FONT_ID, row.dateX, row.dateY, entry.latest.c_str(), !marked);
+    renderer.drawText(NUMBER_FONT_ID, titleX, row.titleY, title.c_str(), !onBlack(marked));
+    renderer.drawText(DATE_FONT_ID, row.dateX + inset, row.dateY, entry.latest.c_str(), !onBlack(marked));
     y = static_cast<int16_t>(y + row.height);
   }
 }

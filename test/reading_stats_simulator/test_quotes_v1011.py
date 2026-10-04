@@ -24,6 +24,8 @@ import zipfile
 
 from PIL import Image
 
+from pill_row import pill_band
+
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).resolve().parent / 'fixtures'
 PROGRAM = Path(os.environ.get('CROSSPOINT_SIM_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
@@ -253,10 +255,10 @@ class QuotesV1011Test(unittest.TestCase):
         page, total, books, count, keys = pages[-1]
         self.assertEqual((page, total, books, count), (1, 1, 3, 6))
         self.assertEqual(keys, [book_key(SEA[0]), book_key(RIVER[0]), book_key(HILL[0])])
-        # The first row is the cursor's stop on entry: a filled band across the row.
+        # The first row is the cursor's stop on entry: a white pill ringed in black across the row.
         image = self.shot('b1-books')
-        band = filled_rows(image, 40, image.width - 40, 90, 220)
-        self.assertGreaterEqual(len(band), 40, f'no filled row for the selected book: {band[:3]}')
+        band = pill_band(image, top=100, bottom=220)
+        self.assertIsNotNone(band, 'no pill for the selected book')
 
     def test_list_inside_one_book_is_its_own_quotes_newest_first(self):
         ids = self.three_books()
@@ -274,7 +276,7 @@ class QuotesV1011Test(unittest.TestCase):
         # Back returns to the list of books, which is still on screen.
         self.assertIn('Popped from activity stack', log)
         after = self.shot('b2-back')
-        self.assertGreaterEqual(len(filled_rows(after, 40, after.width - 40, 170, 300)), 40)
+        self.assertIsNotNone(pill_band(after, top=100, bottom=300), 'no pill for the selected book')
 
     def test_all_newest_with_two_quotes_fits_one_page(self):
         q = self.quotes
@@ -287,7 +289,9 @@ class QuotesV1011Test(unittest.TestCase):
         self.assertTrue(entry, log[-4000:])
         self.assertEqual(entry[-1][2:], (1, 1, 2, [self.id_of(second), self.id_of(first)]))
         top = self.shot('a4-top-row')
-        self.assertGreaterEqual(len(filled_rows(top, 22, 150, 50, 100)), 10, 'top row is not marked')
+        # Only the top row's mark reaches past the text margin: ring ink in the left columns.
+        marked = [y for x in range(3, 8) for y in range(50, 91) if top.load()[x, y] < 128]
+        self.assertTrue(marked, 'top row is not marked')
         tops = []
         for name in ('a1-all-newest', 'a1-second'):
             image = self.shot(name)

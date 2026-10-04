@@ -1,6 +1,7 @@
 #pragma once
 #include <BoardConfig.h>
 #include <FreeInkUIGfxRenderer.h>
+#include <GfxRenderer.h>
 
 #include "UITheme.h"
 
@@ -25,6 +26,14 @@ inline void tenorPillSelection(freeink::ui::StyleSet& styles) {
   styles.selected.borderWidth = TENOR_PILL_RING;
   styles.focused = styles.selected;
   styles.active = styles.selected;
+}
+
+// The same pill for screens that draw their own marks: a black ring, white inside, ends of half the height.
+// The inner pill is concentric, so the ring is the same 3 px all round.
+inline void tenorDrawPill(const GfxRenderer& renderer, const int x, const int y, const int width, const int height) {
+  renderer.fillRoundedRect(x, y, width, height, TENOR_PILL_RADIUS, Color::Black);
+  renderer.fillRoundedRect(x + TENOR_PILL_RING, y + TENOR_PILL_RING, width - 2 * TENOR_PILL_RING,
+                           height - 2 * TENOR_PILL_RING, TENOR_PILL_RADIUS, Color::White);
 }
 
 // Merges the active UITheme's shape (row gaps, radii, insets, selection
