@@ -285,6 +285,7 @@ void SettingsActivity::rebuildRowItems() {
     fui::ListItem item;
     item.label = I18N.get(settings[i].nameId);
     item.actionValue = static_cast<int16_t>(i);
+    item.opensNext = settingOpensNext(settings[i]);
     rowItems_.push_back(item);
   }
 }

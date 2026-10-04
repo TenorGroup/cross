@@ -335,6 +335,7 @@ void HomeActivity::rebuildRows() {
   for (size_t i = 0; i < rowLabels.size(); i++) {
     fui::ListItem item;
     item.label = rowLabels[i].c_str();
+    item.opensNext = activeTabId == Tab::CAI_DAT;
     if (activeTabId == Tab::FAVORITES) item.value = favoriteValues[i].c_str();
     item.actionValue = static_cast<int16_t>(i);
     rowItems.push_back(item);

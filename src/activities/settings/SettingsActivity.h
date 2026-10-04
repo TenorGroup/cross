@@ -160,6 +160,16 @@ struct SettingInfo {
   }
 };
 
+inline bool settingOpensNext(const SettingInfo& setting) {
+  if (setting.nameId == StrId::STR_TIME_TO_SLEEP) return true;
+  if (setting.type == SettingType::ACTION) return setting.action != SettingAction::None;
+  if (setting.type != SettingType::ENUM) return false;
+  const size_t count = setting.valuePtr == nullptr && !setting.enumStringValues.empty()
+                           ? setting.enumStringValues.size()
+                           : setting.enumLabels().size();
+  return settingstabs::moTrinhChon(static_cast<int>(count));
+}
+
 class SettingsActivity final : public UiTabListActivity {
   int selectedCategoryIndex = 0;  // Currently selected category
   const bool fromHomeGroup;
