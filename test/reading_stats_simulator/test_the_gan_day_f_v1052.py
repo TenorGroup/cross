@@ -221,7 +221,7 @@ class CardFTest(unittest.TestCase):
     def test_no_card_snapshot_is_held_in_ram_once_the_card_is_on_the_card(self):
         # X3, 04/10: the 298 x 450 card kept 23.706 B in RAM against 19.215 B, and Home's free heap read
         # 72.280 B against 77.392 B. The snapshot is only a copy of the card file, so it goes after the frame.
-        held = re.compile(r'Frame row=\d+ top=\d+ total=\d+ms heap=\d+ held=(\d+)')
+        held = re.compile(r'Frame row=\d+ top=\d+ total=\d+ms heap=\d+ held=(\d+) largest=\d+')
         for shot in (self.en, self.vi):
             for name, log in (('cold', shot.log), ('warm', shot.warm_log)):
                 seen = held.findall(log)

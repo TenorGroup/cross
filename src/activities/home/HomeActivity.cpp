@@ -725,8 +725,8 @@ void HomeActivity::render(RenderLock&&) {
   // The card file holds what the snapshot holds, so the RAM copy goes: 23.706 B on the X3 against
   // 19.215 B of the 236 x 356 card, free heap 72.280 B against 77.392 B. A repaint reads the file.
   if (cardOnCard && tenorchrome::enabled()) freeCoverBuffer();
-  LOG_INF("HOME", "Frame row=%d top=%d total=%lums heap=%u held=%u", ringPos(), activeNav().top, frameMs,
-          ESP.getFreeHeap(), static_cast<unsigned>(coverBufferSize));
+  LOG_INF("HOME", "Frame row=%d top=%d total=%lums heap=%u held=%u largest=%u", ringPos(), activeNav().top, frameMs,
+          ESP.getFreeHeap(), static_cast<unsigned>(coverBufferSize), static_cast<unsigned>(ESP.getMaxAllocHeap()));
   // The wake's first frame is up: the main task writes the splash setup() re-armed (onTick).
   if (cleanInitialRefresh) wakeStatePending = true;
   cleanInitialRefresh = false;

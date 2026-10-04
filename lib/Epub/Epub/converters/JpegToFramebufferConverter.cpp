@@ -606,7 +606,9 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
   if (config.thumbs) {
     const int rows = 16 / jpegScaleDenom;
     LOG_INF("IMG", "THUMB_START grid=%dx%d rows=%d bytes=%u ok=%u free=%u", ctx.scaledSrcWidth, ctx.scaledSrcHeight,
-            rows, static_cast<unsigned>(GrayThumb::bufferBytes(config.thumbs->targetHeight(), ctx.scaledSrcWidth, ctx.scaledSrcHeight, rows)),
+            rows,
+            static_cast<unsigned>(
+                GrayThumb::bufferBytes(config.thumbs->targetHeight(), ctx.scaledSrcWidth, ctx.scaledSrcHeight, rows)),
             ctx.thumbs ? 1u : 0u, static_cast<unsigned>(ESP.getFreeHeap()));
   }
 #endif
