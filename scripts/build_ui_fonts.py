@@ -21,7 +21,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'scripts'))
-from check_chinese_ui import fingerprint, required
+from check_chinese_ui import FILE_NAME_CJK, fingerprint, required
 from gen_i18n import parse_yaml_file
 
 SOURCE_SHA = 'a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da'
@@ -66,7 +66,7 @@ def main():
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=True)
     cps = required(parse_yaml_file(ROOT/'lib/I18n/translations/chinese.yaml'))
-    wanted = cps | set(map(ord, '界面字号小中大'))
+    wanted = cps | set(map(ord, '界面字号小中大' + FILE_NAME_CJK))
     cjk_cps = sorted(cp for cp in wanted if cp >= 0x2e80)
     font = TTFont(args.cjk_source, recalcTimestamp=False)
     options = subset.Options(); options.layout_features = []

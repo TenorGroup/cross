@@ -10,6 +10,10 @@ from font_header_tools import read_header
 NAMES = ('geist_8_regular', 'geist_10_regular', 'geist_10_bold', 'geist_12_regular', 'geist_12_bold')
 FORMAT = re.compile(r'%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:hh|ll|[hljztL])?[diuoxXfFeEgGaAcsp%]')
 
+# Characters that card file and folder names use but no translation does ("自带外部字体" lost its 外).
+# Each one is a glyph in every UI face (about 0.7 KB of flash for all 9): add with care, report the cost.
+FILE_NAME_CJK = '外'
+
 def required(data):
     return {ord(c) for k, v in data.items() if k.startswith('STR_') or k == '_language_name' for c in v if c not in '\n\r\t' and not 0xe000 <= ord(c) <= 0xf8ff}
 
@@ -41,7 +45,7 @@ def validate(root, chinese=None, headers=None):
     results = []
     for name in NAMES:
         h = read_header(headers/(name+'.h'))
-        missing = cps - h['glyphs'].keys()
+        missing = (cps | set(map(ord, FILE_NAME_CJK))) - h['glyphs'].keys()
         assert not missing, (name, 'missing glyphs', len(missing), sorted(missing)[:8])
         assert f'Chinese UI charset SHA256: {fingerprint(cps)}' in (headers/(name+'.h')).read_text(), (name, 'stale charset fingerprint')
         top = max(h['glyphs'][cp][0][4] for cp in cps if cp >= 0x2e80)
