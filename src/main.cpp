@@ -90,6 +90,7 @@
 #include "UIFontTiers.h"
 #include "ReaderInkWeight.h"
 #include "platform/BootTrial.h"
+#include "platform/ColdLog.h"
 #include "platform/FirmwareProbe.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
@@ -510,6 +511,9 @@ void enterDeepSleep(bool fromTimeout = false) {
   halGaugeCapacity.abandon();
 #endif
   display.deepSleep();
+#if TENOR_COLD_LOG
+  coldlog::flush("sleep");
+#endif
   Storage.prepareForDeepSleep();
   LOG_INF("SLP", "Timing ready-to-sleep=%lu ms", static_cast<unsigned long>(millis() - sleepStarted));
   LOG_DBG("MAIN", "Entering deep sleep");
@@ -1177,6 +1181,7 @@ static void tapRecCommand(const String& cmd) {
 // then "CAT_END:<crc32>" (zlib's). The 1 ms send timeout is raised for the transfer
 // only, so a full USB buffer waits for the host instead of dropping bytes.
 static void catCommand(const String& path) {
+  [[maybe_unused]] LogSerialBinary binary;
   HalFile file;
   if (!Storage.openFileForRead("CAT", path.c_str(), file)) {
     logSerial.printf("CAT_FAIL:%s\n", path.c_str());
@@ -1386,13 +1391,20 @@ void loop() {
 
   // Handle incoming serial commands,
   // nb: we use logSerial from logging to avoid deprecation warnings
-  if (logSerial.available() > 0) {
-    String line = logSerial.readStringUntil('\n');
+  // In the X4 Pro probe build a line can also come from the card's script (platform/ColdLog.h).
+  String line;
+  if (logSerial.available() > 0) line = logSerial.readStringUntil('\n');
+#if TENOR_COLD_LOG
+  else
+    line = coldlog::nextLine(activityManager.hasDrawnFrame());
+#endif
+  if (line.length() > 0) {
     if (line.startsWith("CMD:")) {
       powerManager.setPowerSaving(false);
       String cmd = line.substring(4);
       cmd.trim();
       if (cmd == "SCREENSHOT") {
+        [[maybe_unused]] LogSerialBinary binary;
         const uint32_t bufferSize = display.getBufferSize();
         logSerial.printf("SCREENSHOT_START:%d\n", bufferSize);
         uint8_t* buf = display.getFrameBuffer();
@@ -1684,8 +1696,26 @@ void loop() {
 #if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
       } else if (fwprobe::command(cmd)) {
         // EFUSE, OTA_STATE, FLASH_DUMP, SD_FLASH, ROLLBACK_TEST: handled there
+      } else if (cmd.startsWith("SHOT ")) {
+        // CMD:SHOT <path>: the framebuffer to the card as the screenshot keys save it, a 1-bit BMP
+        // turned to the panel's portrait orientation.
+        String path = cmd.substring(5);
+        path.trim();
+        RenderLock lock;
+        const bool ok = ScreenshotUtil::saveFramebufferAsBmp(path.c_str(), renderer.getFrameBuffer(),
+                                                             renderer.getDisplayWidth(), renderer.getDisplayHeight());
+        logSerial.printf("SHOT:ok=%d,path=%s\n", ok, path.c_str());
+      } else if (cmd == "USB_DRIVE") {
+        // CMD:USB_DRIVE: USB Drive, opened as the menu opens it. The log goes to the card first, the
+        // host owns the card from here; its eject restarts the unit, which then runs the next script.
+        logSerial.printf("USB_DRIVE:t=%lu\n", millis());
+        coldlog::flush("usb-drive");
+        activityManager.goToUsbDrive();
 #endif
       } else if (cmd == "PANIC") {
+#if TENOR_COLD_LOG
+        coldlog::flush("panic");
+#endif
         abort();  // a crash reboot, for the paths that follow one
       } else if (cmd.startsWith("I2C_RACE ")) {
         // Two tasks on the gauge at once, as the render task and the loop did: a second task

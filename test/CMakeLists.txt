@@ -89,6 +89,7 @@ add_subdirectory(finish_estimate)
 
 add_subdirectory(wake_book)
 add_subdirectory(rollback_probe)
+add_subdirectory(cold_script)
 
 add_subdirectory(book_metadata_cache)
 
