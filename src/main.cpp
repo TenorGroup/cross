@@ -67,7 +67,6 @@
 #include "SdCardFontSystem.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
-#include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
 #include "activities/boot_sleep/SleepActivity.h"
 #include "activities/home/BookStatsActivity.h"
@@ -584,9 +583,10 @@ void setupDisplayAndFonts(bool seamless = false, bool sdFonts = true) {
   renderer.insertFont(UI_TITLE_FONT_ID, uiFontTierFamily(UIFontRole::Title, 0));
   renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
   logHeapMark("fonts-builtin");
-  // tenor/ugly: its four fonts go in under this lock when the shell or the sleep screen is in use, so no
-  // draw path takes the lock for them later. tenor/cross pays nothing.
-  if (shell::isUgly() || SETTINGS.sleepScreen == CrossPointSettings::UGLY) ugly::ensureFonts(renderer);
+  // tenor/ugly: its four fonts always go in, under this lock like the others, so no screen registers them while
+  // the render task reads the font table (the box that asks before the shell turns to tenor/ugly is drawn from
+  // tenor/cross). Four table entries, no glyph data: the faces live in flash.
+  ugly::ensureFonts(renderer);
 
   // Discover and load SD card fonts
   if (sdFonts) sdFontSystem.begin(renderer);
