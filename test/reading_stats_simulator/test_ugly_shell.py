@@ -129,6 +129,31 @@ class UglyShellTest(unittest.TestCase):
         self.assertGreater(ink(page, (16, 0, 34, 700)), 500, 'the pen line runs down the page near the edge')
         self.assertEqual(ink(page, (62, 0, 80, 24)), 0, 'and not where it used to be')
 
+    def test_the_subtitle_is_a_note_in_the_margin_not_one_more_row(self):
+        # Founder, real X3, 04/10/2026: the sneer under the title looked like the first row of the list. It now starts
+        # further in than the rows, and a pen rule closes it off before the first row (no height taken: the Settings
+        # page still holds its ten rows).
+        for turns, name in ((0, 'Recent'), (3, 'Stats')):
+            script = '1000:DOWN;' + ''.join('%d:DOWN;' % (1800 + 600 * i) for i in range(turns)) + '5200:QUIT'
+            _, shots = self.card().run(script, [(4500, 'page')])
+            page = shots['page']
+
+            def leftmost(box):
+                part = page.crop(box)
+                xs = [i % part.width for i, p in enumerate(part.getdata()) if p == 0]
+                return box[0] + min(xs)
+
+            # the rows: the middle of the left edges of three rows under the first (one letter may swing out)
+            note = leftmost((40, 100, 528, 134))
+            row = sorted(leftmost((40, 208 + 52 * i, 528, 240 + 52 * i)) for i in range(3))[1]
+            self.assertGreaterEqual(note - row, 24, (name, 'the note starts further in than the rows', note, row))
+            # a pen rule: some three rows of the page carry ink in nearly every column from the text edge to the right edge
+            def covered(y):
+                part = page.crop((48, y, 498, y + 3))
+                px = list(part.getdata())
+                return sum(1 for x in range(part.width) if any(px[r * part.width + x] == 0 for r in range(3)))
+            self.assertGreater(max(covered(y) for y in range(120, 200)), 400, (name, 'a pen rule between the note and the list'))
+
     def test_continue_reading_opens_the_book(self):
         log, _ = self.card().run('1000:CONFIRM;4000:QUIT')
         self.assertIn('Entering activity: TxtReader', log)

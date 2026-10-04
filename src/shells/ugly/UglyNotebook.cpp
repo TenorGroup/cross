@@ -35,6 +35,7 @@ constexpr int TEXT_X = 48;      // was 92: the margin line and the text hug the 
 constexpr int MARGIN_X = 26;    // was 70
 constexpr int SUBTITLE_BASELINE = 126;
 constexpr int SUBTITLE_LINE = 34;
+constexpr int SUBTITLE_INDENT = 34;  // the note under the title sits further in than the rows, so it does not read as one
 constexpr StrId SUBTITLES[homerows::PAGE_COUNT] = {StrId::STR_UGLY_SUB_RECENT, StrId::STR_UGLY_SUB_FOLDER,
                                                    StrId::STR_UGLY_SUB_STATS, StrId::STR_UGLY_SUB_SETTINGS,
                                                    StrId::STR_UGLY_SUB_FAVORITES};
@@ -46,7 +47,7 @@ int id(const homerows::Page p) { return static_cast<int>(p); }
 int Notebook::pagePosition(const homerows::Page p) const { return menucustom::position(0, id(p), homerows::PAGE_COUNT); }
 
 int Notebook::subtitleLines() const {
-  const int room = renderer.getScreenWidth() - TEXT_X - 30;
+  const int room = renderer.getScreenWidth() - TEXT_X - SUBTITLE_INDENT - 30;
   return std::min(2, paragraph(renderer, Size::S30, 0, 0, room, SUBTITLE_LINE, I18N.get(SUBTITLES[id(page)]), false));
 }
 
@@ -130,8 +131,10 @@ void Notebook::render(RenderLock&&) {
   char number[12];
   snprintf(number, sizeof(number), "%d/%d", pos + 1, homerows::PAGE_COUNT);
   text(renderer, Size::S22, w - 30 - width(renderer, Size::S22, number), 60, number);
-  paragraph(renderer, Size::S30, TEXT_X, SUBTITLE_BASELINE, w - TEXT_X - 30, SUBTITLE_LINE, I18N.get(SUBTITLES[id(page)]));
+  paragraph(renderer, Size::S30, TEXT_X + SUBTITLE_INDENT, SUBTITLE_BASELINE, w - TEXT_X - SUBTITLE_INDENT - 30, SUBTITLE_LINE,
+            I18N.get(SUBTITLES[id(page)]));
   const int first = firstBaseline();
+  line(renderer, TEXT_X, first - 40, w - 30, first - 38, 611);  // a pen rule closes the note off before the first row
 
   const int count = rowCount();
   const int perPage = rowsPerPage();
