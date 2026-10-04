@@ -119,9 +119,11 @@ class ConTroVienTest(unittest.TestCase):
         band, left, right = self.check_pill(im, 'icon-row', label_free_x=right_probe(im))
         px = im.load()
         mid = (band[0] + band[1]) // 2
-        inner = [x for x in range(left + RING, left + 40) for y in range(mid - 10, mid + 11) if dark(px, x, y)]
+        # The icon starts past the ring's curved end: nothing dark between the ring (inner edge at most 6 px in)
+        # and the icon, which sits at the row's side padding.
+        inner = [x for x in range(left + 8, left + 40) for y in range(mid - 10, mid + 11) if dark(px, x, y)]
         self.assertTrue(inner, 'the icon is missing')
-        self.assertGreaterEqual(min(inner) - (left + RING), 3, 'the icon touches the ring')
+        self.assertGreaterEqual(min(inner) - left, 10, 'the icon touches the ring')
 
 
 def right_probe(image):
