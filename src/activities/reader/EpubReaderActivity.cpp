@@ -57,6 +57,9 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
+#include "shells/ugly/UglyLogic.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ReadingExcerpt.h"
@@ -3100,6 +3103,46 @@ void EpubReaderActivity::drawQuoteHighlights(const Page& page, const int fontId,
   }
 }
 
+namespace {
+// The chapter's own heading when the tenor/ugly shell writes it by hand: the first page of a chapter
+// that opens with the heading the table of contents names, how many of its lines the heading takes
+// and the band it stands in. lines is 0 when the page is drawn as laid out. Nothing here touches the
+// layout, so the pages, the saved position and the section cache are the same in both shells.
+struct HandHeading {
+  size_t lines = 0;
+  int top = 0, bottom = 0;
+  std::string title;
+};
+
+HandHeading handHeading(const GfxRenderer& renderer, const Epub& epub, const int spine, const Page& page,
+                        const int fontId, const int marginTop) {
+  constexpr int MAX_HEADING_LINES = 4;
+  HandHeading heading;
+  const int toc = epub.getTocIndexForSpineIndex(spine);
+  if (toc < 0 || page.hasImages()) return heading;
+  heading.title = epub.getTocItem(toc).title;
+  std::string lines[MAX_HEADING_LINES];
+  int count = 0;
+  for (const auto& element : page.elements) {
+    if (count == MAX_HEADING_LINES || element->getTag() != TAG_PageLine) break;
+    const TextBlock* block = static_cast<const PageLine&>(*element).getBlock();
+    for (uint16_t i = 0; block && i < block->wordCount(); ++i) {
+      if (i) lines[count] += ' ';
+      lines[count] += block->wordText(i);
+    }
+    ++count;
+  }
+  const int taken = ugly::logic::headingLines(lines, count, ugly::logic::foldTitle(heading.title));
+  if (taken == 0) return heading;
+  heading.top = marginTop + page.elements.front()->yPos;
+  heading.bottom = static_cast<size_t>(taken) < page.elements.size()
+                       ? marginTop + page.elements[taken]->yPos
+                       : heading.top + taken * renderer.getLineHeight(fontId);
+  heading.lines = taken;
+  return heading;
+}
+}  // namespace
+
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                         const int orientedMarginRight, const int orientedMarginBottom,
                                         const int orientedMarginLeft) {
@@ -3111,9 +3154,34 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     ~PxcSlotGuard() { ImageBlock::releaseRenderCache(); }
   } pxcSlotGuard;
 
+  // The page body. With the hand heading of the tenor/ugly shell the heading's own lines are left out
+  // and, on the black and white pass only (the gray passes would turn the strokes gray), the chapter
+  // title is written in their place. A title that does not fit the band leaves the heading as laid out.
+  HandHeading heading;
+  if (shell::isUgly() && !preview && section && section->currentPage == 0) {
+    heading = handHeading(renderer, *epub, currentSpineIndex, *page, fontId, orientedMarginTop);
+    if (heading.lines && !ugly::chapterTitle(renderer, heading.title.c_str(), orientedMarginLeft,
+                                             renderer.getScreenWidth() - orientedMarginRight, heading.top,
+                                             heading.bottom, false))
+      heading.lines = 0;
+    LOG_DBG("ERS", "Hand heading lines=%u band=%d-%d", static_cast<unsigned>(heading.lines), heading.top,
+            heading.bottom);
+  }
+  const auto renderPageBody = [&](const bool withTitle) {
+    if (heading.lines == 0) {
+      page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
+      return;
+    }
+    for (size_t i = heading.lines; i < page->elements.size(); ++i)
+      page->elements[i]->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
+    if (withTitle)
+      ugly::chapterTitle(renderer, heading.title.c_str(), orientedMarginLeft,
+                         renderer.getScreenWidth() - orientedMarginRight, heading.top, heading.bottom, true);
+  };
+
   auto* fcm = renderer.getFontCacheManager();
   auto scope = fcm->createPrewarmScope();
-  page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
+  renderPageBody(false);
   // Scan the status bar too: a CJK book/chapter title redirected to the SD
   // fallback font joins the page's single batch prewarm instead of triggering
   // its own SD pass after the scope ends.
@@ -3153,7 +3221,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                             (!needsTextGrayscale || display.getController() == HalDisplay::Controller::UC8279);
   auto renderGrayscalePass = [&]() {
     if (absoluteImageGrayscale || needsTextGrayscale) {
-      page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
+      renderPageBody(false);
     } else {
       page->renderImages(renderer, fontId, orientedMarginLeft, orientedMarginTop);
     }
@@ -3170,7 +3238,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     renderer.clearScreen();
   }
 
-  page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
+  renderPageBody(true);
   drawQuoteHighlights(*page, fontId, orientedMarginLeft, orientedMarginTop);
   renderStatusBar();
   const auto tBwRender = millis();

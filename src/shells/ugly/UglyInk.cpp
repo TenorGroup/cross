@@ -31,6 +31,9 @@ constexpr int PIXELS[4] = {22, 30, 38, 52};
 constexpr int ASCENT[4] = {20, 28, 36, 48};
 const EpdFont FONT22(&ugly_22), FONT30(&ugly_30), FONT38(&ugly_38), FONT52(&ugly_52);
 
+// A chapter title keeps this much clear at each side, and this much below its last line for the underline.
+constexpr int TITLE_SIDE = 8, TITLE_UNDERLINE_ROOM = 5;
+
 int idOf(const Size s) { return FONT_IDS[static_cast<int>(s)]; }
 int pixelsOf(const Size s) { return PIXELS[static_cast<int>(s)]; }
 
@@ -197,6 +200,48 @@ int paragraph(const GfxRenderer& r, const Size s, const int x, const int baselin
                                   [&](const char* t) { return width(r, s, t); }, placed.data());
   for (size_t i = 0; i < tokens.size(); ++i) text(r, s, x + placed[i].x, baseline + placed[i].line * lineHeight, tokens[i].text);
   return lines;
+}
+
+bool chapterTitle(const GfxRenderer& r, const char* utf8, const int x0, const int x1, const int top, const int bottom,
+                  const bool draw) {
+  const std::string title = utf8ComposeNfc(utf8);
+  std::vector<std::string> words;
+  for (size_t from = 0; from < title.size();) {
+    const size_t blank = title.find(' ', from);
+    if (blank != from) words.push_back(title.substr(from, blank == std::string::npos ? blank : blank - from));
+    if (blank == std::string::npos) break;
+    from = blank + 1;
+  }
+  if (words.empty()) return false;
+  std::vector<logic::Token> tokens;
+  for (const auto& word : words) tokens.push_back({word.c_str(), 0, false});
+  const int maxWidth = x1 - x0 - 2 * TITLE_SIDE;
+  for (const Size s : {Size::S38, Size::S30, Size::S22}) {
+    if (!covered(r, idOf(s), title.c_str())) return false;
+    std::vector<logic::Placed> placed(tokens.size());
+    const int lines = logic::layout(tokens.data(), static_cast<int>(tokens.size()), maxWidth, width(r, s, "a") / 2 + 4,
+                                    [&](const char* t) { return width(r, s, t); }, placed.data());
+    const int px = pixelsOf(s), pitch = px * 5 / 4;
+    const int need = ASCENT[static_cast<int>(s)] + (lines - 1) * pitch + px / 4 + TITLE_UNDERLINE_ROOM;
+    int lineWidth[3] = {0, 0, 0};
+    bool fits = lines <= 3 && need <= bottom - top;
+    for (size_t i = 0; fits && i < placed.size(); ++i) {
+      lineWidth[placed[i].line] = std::max(lineWidth[placed[i].line], placed[i].x + placed[i].w);
+      fits = lineWidth[placed[i].line] <= maxWidth;
+    }
+    if (!fits) continue;
+    if (!draw) return true;
+    const int first = top + (bottom - top - need) / 2 + ASCENT[static_cast<int>(s)];
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      const int line = placed[i].line;
+      text(r, s, x0 + (x1 - x0 - lineWidth[line]) / 2 + placed[i].x, first + line * pitch, tokens[i].text);
+    }
+    const int last = first + (lines - 1) * pitch;
+    const int left = x0 + (x1 - x0 - lineWidth[lines - 1]) / 2;
+    underline(r, left, left + lineWidth[lines - 1], last + px / 4, static_cast<uint32_t>(title.size()));
+    return true;
+  }
+  return false;
 }
 
 void circle(const GfxRenderer& r, const Circle role, const Box& box, const int padX, const int padY, const int w) {

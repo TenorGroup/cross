@@ -35,6 +35,12 @@ std::string fit(const GfxRenderer& renderer, Size size, const std::string& utf8,
 // A plain sentence broken into lines of at most maxWidth, one under another. Returns the lines used.
 int paragraph(const GfxRenderer& renderer, Size size, int x, int baseline, int maxWidth, int lineHeight, const char* utf8);
 
+// A chapter title written by hand: one to three lines centred between x0 and x1, in the largest pen
+// size that fits the band from top to bottom, with a shaky underline under the last line. Returns
+// false and draws nothing when no size fits, or when the baked font lacks a letter of the title (the
+// heading in the book stays then). `draw` false only asks whether it would fit.
+bool chapterTitle(const GfxRenderer& renderer, const char* utf8, int x0, int x1, int top, int bottom, bool draw);
+
 struct Box {
   int x0, y0, x1, y1;
 };
