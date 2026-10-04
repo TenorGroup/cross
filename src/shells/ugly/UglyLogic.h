@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 
 #include <Utf8.h>
@@ -179,6 +180,38 @@ inline int headingLines(const std::string* lines, const int count, const std::st
     if (joined.size() >= foldedTitle.size()) return joined == foldedTitle ? i + 1 : 0;
   }
   return 0;
+}
+
+// Walking a picture by where things are, as the on-screen keyboard walks its grid. A row is the things whose
+// centres sit within rowTol of each other vertically. Up and Down go to the nearest row above or below and pick
+// the centre nearest to fromX (the x where the last sideways step ended, so down and up again comes back);
+// Left and Right stay in the row and stop at its edge. Returns `cur` when there is nowhere to go.
+struct Point {
+  int x, y;
+};
+enum class GridDir : uint8_t { Up, Down, Left, Right };
+inline int gridStep(const Point* p, const int n, const int cur, const GridDir dir, const int fromX, const int rowTol) {
+  const auto sameRow = [&](const int i) { return std::abs(p[i].y - p[cur].y) <= rowTol; };
+  int best = cur;
+  if (dir == GridDir::Left || dir == GridDir::Right) {
+    const int sign = dir == GridDir::Right ? 1 : -1;
+    for (int i = 0; i < n; ++i)
+      if (i != cur && sameRow(i) && (p[i].x - p[cur].x) * sign > 0 &&
+          (best == cur || (p[i].x - p[cur].x) * sign < (p[best].x - p[cur].x) * sign))
+        best = i;
+    return best;
+  }
+  const int sign = dir == GridDir::Down ? 1 : -1;
+  int rowY = 0;
+  bool found = false;
+  for (int i = 0; i < n; ++i)  // the nearest row in that direction
+    if ((p[i].y - p[cur].y) * sign > rowTol && (!found || (p[i].y - p[cur].y) * sign < (rowY - p[cur].y) * sign)) {
+      rowY = p[i].y;
+      found = true;
+    }
+  for (int i = 0; i < n && found; ++i)
+    if (std::abs(p[i].y - rowY) <= rowTol && (best == cur || std::abs(p[i].x - fromX) < std::abs(p[best].x - fromX))) best = i;
+  return best;
 }
 
 // A step on a cycle of `count` stops.

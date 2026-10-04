@@ -271,4 +271,52 @@ TEST(ChapterTitle, HeadingTakesTheFewestLinesThatSayTheTitle) {
   EXPECT_EQ(headingLines(one, 2, foldTitle("...")), 0) << "a title of marks only matches nothing";
 }
 
+// The desk by the centres of its six objects (the boxes of UglyDesk.cpp): lamp (Settings), clock (Recent) and
+// calendar (Stats) on top, the open book in the middle, the stack of books (Folder) and the note (Favorites) below.
+// Indexes follow Desk::Object: STATS, RECENT, READING, FOLDER, FAVORITES, SETTINGS.
+const Point DESK[6] = {{425, 151}, {261, 152}, {265, 400}, {138, 613}, {401, 592}, {111, 154}};
+enum { STATS, RECENT, READING, FOLDER, FAVORITES, SETTINGS };
+int go(const int from, const GridDir dir, const int anchor = -1) {
+  return gridStep(DESK, 6, from, dir, anchor < 0 ? DESK[from].x : anchor, 60);
+}
+
+TEST(Grid, DownFromTheCalendarLandsOnTheBookBeingRead) {
+  EXPECT_EQ(go(STATS, GridDir::Down), READING);
+  EXPECT_EQ(go(RECENT, GridDir::Down), READING);
+  EXPECT_EQ(go(SETTINGS, GridDir::Down), READING);
+}
+
+TEST(Grid, UpAndDownGoToTheNeighbouringRowAndPickTheNearestCentre) {
+  EXPECT_EQ(go(READING, GridDir::Up), RECENT);       // 265 is nearest to the clock at 261
+  EXPECT_EQ(go(READING, GridDir::Down), FOLDER);     // 127 from the stack, 136 from the note
+  EXPECT_EQ(go(FAVORITES, GridDir::Up), READING);
+  EXPECT_EQ(go(FOLDER, GridDir::Up), READING);
+}
+
+TEST(Grid, ARoundTripReturnsToTheObjectItStartedFrom) {
+  // the anchor is the x where the last sideways step ended: down and up again is the identity
+  for (int start : {STATS, RECENT, SETTINGS}) {
+    const int x = DESK[start].x;
+    const int mid = gridStep(DESK, 6, start, GridDir::Down, x, 60);
+    EXPECT_EQ(gridStep(DESK, 6, mid, GridDir::Up, x, 60), start);
+  }
+}
+
+TEST(Grid, SidewaysStaysInTheRowAndStopsAtTheEdge) {
+  EXPECT_EQ(go(SETTINGS, GridDir::Right), RECENT);
+  EXPECT_EQ(go(RECENT, GridDir::Right), STATS);
+  EXPECT_EQ(go(STATS, GridDir::Right), STATS);       // no wrap
+  EXPECT_EQ(go(SETTINGS, GridDir::Left), SETTINGS);
+  EXPECT_EQ(go(FOLDER, GridDir::Right), FAVORITES);
+  EXPECT_EQ(go(FAVORITES, GridDir::Right), FAVORITES);
+  EXPECT_EQ(go(READING, GridDir::Left), READING);    // a row of one: sideways stands still
+  EXPECT_EQ(go(READING, GridDir::Right), READING);
+}
+
+TEST(Grid, NoRowAboveOrBelowStandsStill) {
+  EXPECT_EQ(go(STATS, GridDir::Up), STATS);
+  EXPECT_EQ(go(FOLDER, GridDir::Down), FOLDER);
+  EXPECT_EQ(go(FAVORITES, GridDir::Down), FAVORITES);
+}
+
 }  // namespace

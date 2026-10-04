@@ -11,6 +11,7 @@ namespace ugly {
 
 class Screen : public Activity {
  public:
+  // Up and Down are the front buttons (up and down the screen), Left and Right the edge buttons (sideways).
   enum class Key : uint8_t { Up, Down, Left, Right, Confirm, Back, UpHold, DownHold };
   void loop() final;
   // The three tiers are Home: holding Back does not throw them out to Home again.
@@ -25,7 +26,7 @@ class Screen : public Activity {
   virtual void afterKeys() {}
   // Leaving the screen goes through here: it runs after the lock is released, in the same pass.
   void then(std::function<void()> next) { later = std::move(next); }
-  // The hold threshold of Up and Down, in ms.
+  // The hold threshold of the front buttons, in ms.
   static constexpr unsigned long HOLD_MS = 700;
 
  private:

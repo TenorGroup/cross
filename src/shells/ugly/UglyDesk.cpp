@@ -24,6 +24,7 @@ constexpr Place PLACES[6] = {
     {{352, 66, 498, 236}, StrId::STR_HOME_TAB_STATS},    {{210, 80, 312, 225}, StrId::STR_HOME_TAB_RECENT},
     {{75, 286, 455, 515}, StrId::STR_UGLY_DESK_READING}, {{36, 558, 240, 668}, StrId::STR_HOME_TAB_FOLDER},
     {{322, 512, 480, 672}, StrId::STR_READER_TAB_FAVORITES}, {{36, 60, 186, 248}, StrId::STR_SETTINGS_TITLE}};
+constexpr int ROW_TOLERANCE = 60;  // objects whose centres lie this close vertically share a row
 constexpr homerows::Page PAGES[6] = {homerows::Page::Stats,   homerows::Page::Recent,    homerows::Page::Recent,
                                      homerows::Page::Folder,  homerows::Page::Favorites, homerows::Page::Settings};
 }  // namespace
@@ -91,7 +92,7 @@ void Desk::render(RenderLock&&) {
   statusBar(renderer, mappedInput, {true, true, true, true});
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
-  LOG_INF("UGLY", "Desk frame total=%lums plane=%uB heap=%u largest=%u", static_cast<unsigned long>(millis() - started),
+  LOG_INF("UGLY", "Desk frame sel=%d total=%lums plane=%uB heap=%u largest=%u", selected, static_cast<unsigned long>(millis() - started),
           static_cast<unsigned>(renderer.getBufferSize()), ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 #endif
 }
@@ -108,26 +109,41 @@ void Desk::open() {
   then([this, page] { activityManager.replaceActivity(makeNotebook(renderer, mappedInput, page)); });
 }
 
+// By place, not by turn: up and down go to the row above or below, sideways stays in the row.
 bool Desk::onKey(const Key key) {
+  logic::Point centres[COUNT];
+  for (int i = 0; i < COUNT; ++i) centres[i] = {(PLACES[i].box.x0 + PLACES[i].box.x1) / 2, (PLACES[i].box.y0 + PLACES[i].box.y1) / 2};
+  logic::GridDir dir;
   switch (key) {
     case Key::Up:
     case Key::UpHold:
-    case Key::Left:
-      selected = (selected + COUNT - 1) % COUNT;
-      return true;
+      dir = logic::GridDir::Up;
+      break;
     case Key::Down:
     case Key::DownHold:
+      dir = logic::GridDir::Down;
+      break;
+    case Key::Left:
+      dir = logic::GridDir::Left;
+      break;
     case Key::Right:
-      selected = (selected + 1) % COUNT;
-      return true;
+      dir = logic::GridDir::Right;
+      break;
     case Key::Confirm:
       open();
       return false;
     case Key::Back:
       then([this] { activityManager.replaceActivity(makeDiary(renderer, mappedInput, false)); });
       return false;
+    default:
+      return false;
   }
-  return false;
+  if (anchorX < 0) anchorX = centres[selected].x;
+  const int next = logic::gridStep(centres, COUNT, selected, dir, anchorX, ROW_TOLERANCE);
+  if (next == selected) return false;
+  selected = next;
+  if (dir == logic::GridDir::Left || dir == logic::GridDir::Right) anchorX = centres[selected].x;
+  return true;
 }
 
 }  // namespace ugly

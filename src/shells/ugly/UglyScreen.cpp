@@ -11,13 +11,15 @@ void Screen::push(const Key key) {
 
 void Screen::loop() {
   using Button = MappedInputManager::Button;
-  // A hold is reported once, while the button is down, and eats the release that follows.
-  if (mappedInput.wasLongPressed(Button::Up, HOLD_MS)) push(Key::UpHold);
-  else if (mappedInput.wasReleased(Button::Up)) push(Key::Up);
-  if (mappedInput.wasLongPressed(Button::Down, HOLD_MS)) push(Key::DownHold);
-  else if (mappedInput.wasReleased(Button::Down)) push(Key::Down);
-  if (mappedInput.wasReleased(Button::Left)) push(Key::Left);
-  if (mappedInput.wasReleased(Button::Right)) push(Key::Right);
+  // As in tenor/cross: the two front buttons (Left, Right) walk up and down, the two edge buttons (Up, Down) go
+  // sideways, to the page next door. A hold on a front button is reported once, while it is down, and eats the
+  // release that follows.
+  if (mappedInput.wasLongPressed(Button::Left, HOLD_MS)) push(Key::UpHold);
+  else if (mappedInput.wasReleased(Button::Left)) push(Key::Up);
+  if (mappedInput.wasLongPressed(Button::Right, HOLD_MS)) push(Key::DownHold);
+  else if (mappedInput.wasReleased(Button::Right)) push(Key::Down);
+  if (mappedInput.wasReleased(Button::Up)) push(Key::Left);
+  if (mappedInput.wasReleased(Button::Down)) push(Key::Right);
   if (mappedInput.wasReleased(Button::Confirm)) push(Key::Confirm);
   if (mappedInput.wasReleased(Button::Back)) push(Key::Back);
   if (count == 0) return;
