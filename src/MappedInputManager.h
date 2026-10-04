@@ -102,6 +102,9 @@ class MappedInputManager {
   RowTouch colTouch(int& col, int left, int colStep, int colCount, int yStart, int yEnd, int colWidth = 0) const;
 
   SwipeDir wasSwipe() const;
+  // An up or down swipe in this pass: its vertical travel (negative: the finger went up) and how long
+  // the finger was down.
+  bool wasVerticalSwipe(int& dy, unsigned long& heldMs) const;
   // Back = left-to-right swipe anchored at the left edge. Public so swipe-mode
   // page turns (reader) can exclude it from a plain SwipeDir::Right.
   bool wasBackGesture() const;
@@ -178,6 +181,8 @@ class MappedInputManager {
   mutable unsigned long touchHeldOverrideAt = 0;
   mutable uint16_t longPressFiredButtons = 0;
   mutable uint16_t suppressedReleaseButtons = 0;
+  mutable bool footBackTap = false;           // update(): this frame's tap on "<" is Back
+  mutable unsigned long lastFootBackMs = 0;   // when the last one was
 #if FREEINK_CAP_TOUCH
   bool powerConfirmClickFrame = false;
 #endif

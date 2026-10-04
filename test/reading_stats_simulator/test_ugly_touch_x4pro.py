@@ -6,7 +6,7 @@ a setting of two or three values changes on the tap, four and more open a paper 
 Interface row asks once before leaving the shell; an X over a file asks before it bins it, a ring pins.
 
 Needs an X4 Pro simulator build (env simulator_x4pro, TEST_PROGRAM pointing at it) whose script input
-can move a finger (PATH and stepped SWIPE); skipped when there is none.
+can move a finger (PATH and stepped SWIPE); required when this suite runs.
 """
 import json
 import os
@@ -29,8 +29,12 @@ def frames(log):
     return re.findall(r'Notebook frame page=(\d+) group=(-?\d+) top=(\d+) rows=(\d+) pop=(\d+)', log)
 
 
-@unittest.skipUnless(HAVE, 'no X4 Pro simulator build')
 class UglyTouchX4ProTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not HAVE:
+            raise AssertionError(f"X4 Pro simulator is required: {PROGRAM}")
+
     def card(self, **kw):
         card = Card(**kw)
         self.addCleanup(card.close)

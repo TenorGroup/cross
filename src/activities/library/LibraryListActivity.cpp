@@ -18,6 +18,7 @@
 #include "RecentBooksStore.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/icons/headerIcons.h"
@@ -224,6 +225,9 @@ void LibraryListActivity::activateIndex(const int index) {
   if (groupsCollapsed) {
     expandGroup(index);
   } else {
+    // openSelectedBook reads the ring position; a tap on the touch shell leaves the ring alone
+    // (no cursor row), so it names the row it landed on here.
+    if (tenorchrome::kTouchShell) activeNav().selected = index + 1;
     openSelectedBook();
   }
 }

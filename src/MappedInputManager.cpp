@@ -43,6 +43,17 @@ void MappedInputManager::update(const bool deferHomeButtonAction) const {
   for (uint8_t value = 0; value <= static_cast<uint8_t>(Button::ScreenDown); ++value) {
     if (!isPressed(static_cast<Button>(value))) longPressFiredButtons &= ~(1u << value);
   }
+  // A tap on the bar's "<" in this frame is Back, unless it follows the last one too closely.
+  footBackTap = false;
+  int tapX = 0;
+  int tapY = 0;
+  if (wasScreenTapped(tapX, tapY) && HeaderBackTapTarget::footContains(tapX, tapY)) {
+    const unsigned long now = millis();
+    if (!lastFootBackMs || now - lastFootBackMs >= HeaderBackTapTarget::FOOT_BACK_GUARD_MS) {
+      footBackTap = true;
+      lastFootBackMs = now | 1;
+    }
+  }
 #if FREEINK_DEVICE_X4PRO
   stepScribble();
 #endif
@@ -351,6 +362,19 @@ MappedInputManager::SwipeDir MappedInputManager::wasSwipe() const {
   }
 }
 
+bool MappedInputManager::wasVerticalSwipe(int& dy, unsigned long& heldMs) const {
+  int sx = 0;
+  int sy = 0;
+  int ex = 0;
+  int ey = 0;
+  if (!decodeSwipe(sx, sy, ex, ey)) return false;
+  const auto dir = fui::swipeDirection(sx, sy, ex, ey);
+  if (dir != fui::SwipeDir::Up && dir != fui::SwipeDir::Down) return false;
+  dy = ey - sy;
+  heldMs = gpio.lastTouchHeldMs();
+  return true;
+}
+
 // Edge classification (which swipe counts as an edge gesture) lives in the
 // SDK; only the MEANING of each edge - back, menu, home, light panel, and the
 // home-key remap - is decided here.
@@ -371,10 +395,11 @@ bool MappedInputManager::wasBackGesture() const {
   // swipe so every activity's existing Back handling picks it up.
   int tapX = 0;
   int tapY = 0;
-  if (wasScreenTapped(tapX, tapY) && HeaderBackTapTarget::contains(tapX, tapY)) {
+  if (wasScreenTapped(tapX, tapY) && HeaderBackTapTarget::headerContains(tapX, tapY)) {
     rememberTouchHeldTime();
     return true;
   }
+  if (wasScreenTapped(tapX, tapY) && HeaderBackTapTarget::footContains(tapX, tapY)) return footBackTap;
   // Back = left-to-right swipe starting near the left edge. Edge-anchored so that
   // mid-screen horizontal swipes stay available to activities that consume
   // SwipeDir::Left/Right (e.g. percent selection, image viewer).

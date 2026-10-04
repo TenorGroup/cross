@@ -17,6 +17,7 @@
 #include "MappedInputManager.h"
 #include "WifiCredentialStore.h"
 #include "activities/util/KeyboardEntryActivity.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/TimezoneLookup.h"
@@ -986,11 +987,20 @@ void WifiSelectionActivity::loop() {
     if (!networks.empty()) {
       // Swipes scroll the viewport; the selection stays put and button
       // navigation pulls the view back to it.
-      const auto swipe = mappedInput.wasSwipe();
-      if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
-        const int delta = swipe == MappedInputManager::SwipeDir::Up ? listNav.visibleRows : -listNav.visibleRows;
-        if (listNav.scrollBy(delta, static_cast<int>(networks.size()))) requestUpdate();
-        return;
+      if (tenorchrome::kTouchShell) {
+        // Touch: the one rule for every list (UiAppHost::swipeRows).
+        const int delta = swipeRows(mappedInput, listNav, static_cast<int>(networks.size()), ACTION_ROW);
+        if (delta != 0) {
+          if (listNav.scrollBy(delta, static_cast<int>(networks.size()))) requestUpdate();
+          return;
+        }
+      } else {
+        const auto swipe = mappedInput.wasSwipe();
+        if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
+          const int delta = swipe == MappedInputManager::SwipeDir::Up ? listNav.visibleRows : -listNav.visibleRows;
+          if (listNav.scrollBy(delta, static_cast<int>(networks.size()))) requestUpdate();
+          return;
+        }
       }
     }
 
@@ -1133,6 +1143,18 @@ void WifiSelectionActivity::buildListScreen(UiScreen& screen) {
   // Tap opens; long-press a saved network forgets it (physical buttons stay in loop()).
   props.inputMask = fui::InputTouch | fui::InputLongPress;
   props.valueInset = 8;  // air between the signal bars and the row edge
+  if (mappedInput.hasTouch()) {
+    // Touch has no Right key to scan again with, and a list that always ends in the hidden network
+    // never shows the empty-list retry: keep a retry button under the rows.
+    const auto& theme = screen.theme();
+    const fui::Rect b = screen.takeBottom(static_cast<int16_t>(theme.rowHeight + theme.spaceMd));
+    fui::ButtonProps scan;
+    scan.label = tr(STR_RETRY);
+    scan.action = ACTION_SCAN;
+    scan.inputMask = fui::InputTouch;
+    scan.text = theme.bodyText;
+    fui::button(screen.frame(), fui::Rect{b.x, b.y, b.width, static_cast<int16_t>(theme.rowHeight)}, scan);
+  }
   // Long SSIDs grow their row to a second line; the trailing value is
   // just the short status glyphs, so skip the balanced 60%-band wrap cap.
   props.labelText = screen.theme().bodyText;

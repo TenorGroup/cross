@@ -1820,11 +1820,13 @@ void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
   auto elapsed = millis() - start_ms;
   refreshMode = applyRedrive(applyPromotedRefresh(refreshMode));
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer, mode=%d", elapsed, static_cast<int>(refreshMode));
+  if (preDisplayHook) preDisplayHook(*this);
   display.displayBuffer(refreshMode, fadingFix);
 }
 
 void GfxRenderer::displayBufferAsync(HalDisplay::RefreshMode refreshMode) const {
   refreshMode = applyRedrive(applyPromotedRefresh(refreshMode));
+  if (preDisplayHook) preDisplayHook(*this);
   // The async path has no turn-off-screen hook, which the sunlight fading fix
   // relies on; keep those users on the blocking path.
   if (fadingFix) {

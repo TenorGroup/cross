@@ -474,6 +474,11 @@ int EpubReaderActivity::bookPercentFor(const ChapterPosition& position) const {
 
 void EpubReaderActivity::openReaderMenu() {
   pendingManualTurn = 0;
+  // The zone icon of a screen opened from the menu leads to the page, not back to the menu.
+  if (activityManager.returningToReaderPage()) {
+    requestUpdate();
+    return;
+  }
 #ifdef TENOR_TURN_TRACE
   dropTurnTrace(pendingManualTurnTrace, "reader_menu");
   LOG_INF("ERS", "MENU_REQUEST t=%lu", millis());
@@ -3631,7 +3636,8 @@ bool EpubReaderActivity::readingPageVisible() const { return section && overlay 
 bool EpubReaderActivity::usesToolbarMenu() const {
   // Both board classes drive the same chrome: touch through the FreeInkUI tap
   // targets, buttons through the focused-tool pill and the panel cursor.
-  return SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TOOLBAR;
+  // The X4 Pro always opens the tenor/cross list menu, whatever an earlier firmware saved.
+  return !tenorchrome::kTouchShell && SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TOOLBAR;
 }
 
 std::string EpubReaderActivity::currentChapterTitle() const {

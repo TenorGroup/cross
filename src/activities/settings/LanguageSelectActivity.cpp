@@ -9,6 +9,7 @@
 #include "CrossPointSettings.h"
 #include "I18nKeys.h"
 #include "MappedInputManager.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 
@@ -35,7 +36,11 @@ void LanguageSelectActivity::onEnter() {
     fui::ListItem item;
     item.label = I18N.getLanguageName(static_cast<Language>(SORTED_LANGUAGE_INDICES[i]));
     if (SORTED_LANGUAGE_INDICES[i] == currentLang) {
-      item.value = tr(STR_SELECTED);
+      // Touch: the language in use is the chosen row (bold, a tick), no word.
+      if (tenorchrome::kTouchShell)
+        item.chosen = true;
+      else
+        item.value = tr(STR_SELECTED);
     }
     item.actionValue = static_cast<int16_t>(i);
     rowItems[i] = item;

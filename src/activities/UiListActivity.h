@@ -1,10 +1,9 @@
 #pragma once
 
 #include "activities/Activity.h"
+#include "components/OptionPopup.h"
 #include "components/UiAppHost.h"
 #include "util/ButtonNavigator.h"
-
-class OptionPopup;
 
 // Base for activities hosting a single FreeInkUI list screen. UiAppHost owns
 // the app-hosting protocol (render target, FreeInkApp, uiReady handshake);
@@ -55,9 +54,31 @@ class UiListActivity : public Activity, protected UiAppHost {
   }
 
  protected:
+  // A pin toggle for the selected row (or `row`), applied by the next loop pass that can take the render lock.
+  void queuePinToggle(const int row = -1) {
+    pendingPin = true;
+    pendingPinFromTouch = true;
+    pendingPinRow = row;
+  }
+  // Touch: the actions of a held row in one menu anchored to it (rowMenu). `anchorAction`/`anchorValue`
+  // name the hit the menu hangs from: the row itself, or another touch target (the Home card's lines).
+  OptionPopup rowMenu;
+  void showRowMenu(const StrId* labels, int count, std::function<void(int)> onSelect, freeink::ui::ActionId anchorAction,
+                   int anchorValue);
   void renderUi();
   bool tabBandDrawn = false;
   void reserveFixedMenuContent(UiScreen& screen);
+  // Touch (dynamic bar rule 7, C1): list rows in a round grey frame, grey dotted rules between them.
+  // syncListViewport and syncTabListViewport set the rows in (frameRows); renderUi draws the frame.
+  virtual bool listFramed() const { return true; }
+  // A row that opens a deeper screen: drawRowFrame ends it with the grey ">" (its value stands before it).
+  virtual bool rowOpens(int row) const { return false; }
+  void frameRows(freeink::ui::ListProps& props);
+  void drawRowFrame();
+  bool rowsFramed = false;
+  // Rows a page turn keeps from the page before: the faded first row of a framed list.
+  int fadeKeepRows() const { return rowsFramed ? 1 : 0; }
+  bool rowsHaveIcons = false;
   // Base-owned row action; subclass-registered actions start at ACTION_USER.
   static constexpr freeink::ui::ActionId ACTION_ROW = 1;
   static constexpr freeink::ui::ActionId ACTION_USER = 2;
@@ -77,7 +98,8 @@ class UiListActivity : public Activity, protected UiAppHost {
   virtual void activateIndex(int index) = 0;
   // Touch long-press on a row; only fires when the subclass opted in via the
   // wantsTouchLongPress constructor flag (rows must also carry InputLongPress).
-  virtual void onRowLongPress(int index) {}
+  // Default on the touch shell: a row that can be pinned offers Pin or Unpin in the row menu.
+  virtual void onRowLongPress(int index);
   // The selection/viewport state the loop, sync, and row dispatch operate on.
   // Default is the single `nav` member; UiTabListActivity redirects it to the
   // active tab's per-tab state.
@@ -231,6 +253,7 @@ class UiListActivity : public Activity, protected UiAppHost {
   bool activateFavorite = true;
   bool favoriteSaveFailed = false;
   int favoriteHintY = -1;
+  int pageAnchorRow = -1;  // touch: the row whose page the next layout shows (syncListViewport)
   NavIntent navQueue[NAV_QUEUE_SIZE];
   uint8_t navQueueHead = 0;
   uint8_t navQueueCount = 0;
@@ -238,4 +261,6 @@ class UiListActivity : public Activity, protected UiAppHost {
   // confirmReleased), and a pin hold waiting for a pass that can take the lock.
   bool pendingConfirm = false;
   bool pendingPin = false;
+  bool pendingPinFromTouch = false;  // for the log line only
+  int pendingPinRow = -1;
 };

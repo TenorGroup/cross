@@ -110,12 +110,15 @@ void EpubReaderMenuActivity::napGhim() {
   favorites.clear();
   for (uint8_t i = 0; i < SETTINGS.readerFavoriteCount && i < CrossPointSettings::READER_FAVORITE_MAX; i++) {
     const auto action = static_cast<MenuAction>(SETTINGS.readerFavorites[i]);
-    if (action != MenuAction::FONT_SIZE && action != MenuAction::FONT_FAMILY) favorites.push_back(action);
+    // Touch: the font size row opens its popup in the menu, so it may be pinned.
+    if ((action != MenuAction::FONT_SIZE || tenorchrome::kTouchShell) && action != MenuAction::FONT_FAMILY)
+      favorites.push_back(action);
   }
   // Chua tung ghim gi thi lay ban mac dinh. Danh sach RONG la mot lua chon that: nguoi
   // doc go het moi muc ra, va luc do tab Yeu thich phai rong chu khong tu moc lai.
   if (SETTINGS.readerFavoriteCount == 0 && !SETTINGS.readerFavoritesDaDat) {
     favorites.assign(std::begin(readermenu::DEFAULT_FAVORITES), std::end(readermenu::DEFAULT_FAVORITES));
+    if (tenorchrome::kTouchShell) favorites.insert(favorites.begin(), MenuAction::FONT_SIZE);
   }
 }
 
@@ -201,6 +204,8 @@ void EpubReaderMenuActivity::closeCancelled() {
 }
 
 bool EpubReaderMenuActivity::handleHomeGesture() {
+  // Touch: the Home key leaves the book (Home), "<" in the bar closes the menu.
+  if (tenorchrome::kTouchShell) return false;
   closeCancelled();
   return true;
 }

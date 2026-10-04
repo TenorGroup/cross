@@ -1,4 +1,5 @@
 #pragma once
+#include <BoardConfig.h>
 #include <HalGPIO.h>
 
 #include "CrossPointSettings.h"
@@ -10,7 +11,60 @@ constexpr int HEADER_HEIGHT = 48;
 constexpr int TAB_TOP = HEADER_TOP + HEADER_HEIGHT;
 constexpr int TAB_HEIGHT = 60;
 constexpr int CONTENT_TOP = TAB_TOP + TAB_HEIGHT + 16;
-inline bool enabled() { return !gpio.hasTouch(); }
+// The X4 Pro draws every screen in tenor/cross like the button readers; it has no front buttons, so
+// it shows no button hints or tips that name a button. Fixed at build time: the X3 and X4 builds
+// compile the touch branches out.
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+constexpr bool kTouchShell = true;
+#else
+constexpr bool kTouchShell = false;
+#endif
+inline bool enabled() { return kTouchShell || !gpio.hasTouch(); }
+// A tip that names a front button (one of the button symbols U+E100..U+E109) has nothing to point at
+// on the touch shell.
+inline bool tipShown(const char* text) {
+  if (!kTouchShell || !text) return true;
+  for (const char* c = text; c[0] && c[1] && c[2]; ++c)
+    if (static_cast<unsigned char>(c[0]) == 0xEE && static_cast<unsigned char>(c[1]) == 0x84 &&
+        static_cast<unsigned char>(c[2]) >= 0x80 && static_cast<unsigned char>(c[2]) <= 0x89)
+      return false;
+  return true;
+}
+constexpr int TOUCH_BAR_BOTTOM_GAP = 16;
+// Dynamic bar (touch shell): every screen has one bar at the foot, 60 px tall and 16 px over the bottom
+// edge, the same place and size on every screen; only what it holds changes. Each screen declares
+// what it needs (footBarFor), and one function draws it and records where a tap on it goes:
+//   Tabs: the zone's root, its cards drawn by the tab list itself (Home, the reader menu).
+//   Full: a screen below another: "<" (one level back), the zone's round icon (to the zone's root)
+//         and the screen's name, read only.
+//   BackOnly: "<" alone, the screen's own content takes the rest of the foot (a keyboard, the reader
+//             menu's cards).
+// The rows above stop 8 px over it.
+enum class FootBar : uint8_t { None, Tabs, Full, BackOnly };
+// Where a screen belongs: the Home card it was reached from, or the book open under it.
+enum class Zone : uint8_t { Recent, File, Favorites, Stats, Settings, Book };
+FootBar footBarFor(const char* activityName);
+inline bool wantsFootBack(const char* activityName) {
+  const FootBar bar = footBarFor(activityName);
+  return bar == FootBar::Full || bar == FootBar::BackOnly;
+}
+constexpr int FOOT_BACK_SIZE = 60;
+constexpr int FOOT_BACK_X = 16;
+constexpr int FOOT_PILL_GAP = 8;
+inline int footBackTop(const int screenHeight) { return screenHeight - TOUCH_BAR_BOTTOM_GAP - FOOT_BACK_SIZE; }
+inline int footBackReserve() { return TOUCH_BAR_BOTTOM_GAP + FOOT_BACK_SIZE + 8; }
+// The title a screen's header names, kept for the bar's name pill (the touch shell draws no title row).
+void noteScreenTitle(const char* title);
+const char* screenTitle();
+// A short note for the middle of the status strip (the items of a folder), for the screen that set it.
+void noteStatus(const char* text);
+// True when the "B" of a remote linking should blink now: the caller repaints the screen (one refresh).
+bool bluetoothBlinkDue();
+void drawFootBar(const GfxRenderer& renderer, FootBar bar, Zone zone);
+// A ring of `thick` px just inside a round-ended bar; grey = every other pixel.
+void drawPillRing(const GfxRenderer& g, int x, int y, int w, int h, int thick, bool grey);
+// The same ring inside a box with corners of radius r (a row menu, a group of list rows).
+void drawRoundRing(const GfxRenderer& g, int x, int y, int w, int h, int r, int thick, bool grey);
 constexpr int STATUS_HEIGHT = 32;
 constexpr int STATUS_TEXT_LANE = 24;
 constexpr int STATUS_ICON_TOP_OFFSET = 5;
@@ -24,10 +78,19 @@ constexpr int STATUS_INK_TOP = STATUS_TEXT_LANE - 2;
 // thuc te dao dong 1-9 px tuy muc gian dong, va co trang thieu 1 px la mat ca dong.
 constexpr int READER_TEXT_TO_STATUS_GAP = 2;
 constexpr int READER_BOTTOM_RESERVE = STATUS_INK_TOP + READER_TEXT_TO_STATUS_GAP;
-inline int headerHeight() { return HEADER_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).bodyLineHeight - 33; }
+// Touch: the header row is the status strip alone (clock, a note, radio icons, battery); the title went
+// to the bar at the foot and the tab band is there too.
+constexpr int TOUCH_STRIP_HEIGHT = 24;
+inline int headerHeight() {
+  return kTouchShell ? TOUCH_STRIP_HEIGHT - HEADER_TOP : HEADER_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).bodyLineHeight - 33;
+}
 inline int tabTop() { return HEADER_TOP + headerHeight(); }
 inline int tabHeight() { return TAB_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).subtitleLineHeight - 26; }
-inline int contentTop() { return tabTop() + tabHeight() + 16; }
+inline int contentTop() { return kTouchShell ? TOUCH_STRIP_HEIGHT + 6 : tabTop() + tabHeight() + 16; }
+// Touch shell: the tab bar sits at the foot of the screen, 16 px above the Home key under the glass,
+// and what the button readers put under their tab band moves up by the band.
+inline int touchBarTop(const int screenHeight) { return screenHeight - TOUCH_BAR_BOTTOM_GAP - tabHeight(); }
+inline int contentTopUnderTabs() { return contentTop(); }
 inline int statusTextGrowth(bool large = false) {
   const auto text = uiTextSizeSpec(SETTINGS.uiTextSize);
   return large ? text.bodyLineHeight - 33 : text.captionLineHeight - 21;
@@ -68,6 +131,9 @@ enum class ChevronDir : uint8_t { Down, Left, Right };
 constexpr int MORE_CHEVRON_STROKE = 3;
 constexpr int moreChevronLength(const int span) { return (span * 8 + 5) / 11 + MORE_CHEVRON_STROKE; }
 void drawMoreChevron(const GfxRenderer& renderer, int x, int y, ChevronDir dir, int span);
+// Touch: the grey ">" at the end of a list row that opens a deeper screen, its box (x, y) as above.
+constexpr int ROW_CHEVRON_SPAN = 7;
+void drawRowChevron(const GfxRenderer& renderer, int x, int y);
 
 // Mui ten chu V o giua, ngay tren dong mach nuoc chan man: bao rang danh sach
 // con dong ben duoi. Thay cho cau "1-10 / 13" o goc tren, vi it ai nhin thanh

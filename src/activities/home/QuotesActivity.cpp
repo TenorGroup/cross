@@ -494,7 +494,7 @@ void QuotesActivity::ensureWrapped(Block& block, const int maxLines, const int p
 
 void QuotesActivity::drawTopRow(const char* label) const {
   const auto row = quotelist::sortRow(topRowMetrics());
-  const bool marked = selected < 0;
+  const bool marked = selected < 0 && !tenorchrome::kTouchShell;
   if (marked) {
     const int width = renderer.getTextWidth(TOP_ROW_FONT_ID, label);
     const int pad = topRowMarkPad();
@@ -523,7 +523,7 @@ void QuotesActivity::drawBlocks() const {
                                         static_cast<int16_t>(numberWidth), static_cast<int16_t>(quoteWidth), shape.gap);
     // The number sits level with the quote's first line rather than at its top edge.
     const int boxY = block.numberBoxY + (m.bodyLineHeight - block.numberBoxHeight) / 2;
-    const bool marked = first + i == selected;
+    const bool marked = first + i == selected && !tenorchrome::kTouchShell;
     if (marked) {
       drawMark(renderer, block.numberBoxX, boxY, block.numberBoxWidth, block.numberBoxHeight,
                markRadius(block.numberBoxWidth, block.numberBoxHeight, quotelist::NUMBER_BOX_PAD));
@@ -557,7 +557,7 @@ void QuotesActivity::drawBookRows() const {
   for (int i = 0; i < rowCount; ++i) {
     const auto& entry = rows[i];
     const auto row = quotelist::bookRow(m, y);
-    const bool marked = first + i == selected;
+    const bool marked = first + i == selected && !tenorchrome::kTouchShell;
     // The mark covers the title and date lines only; the row's trailing gap stays white
     // so the next row does not look joined to it.
     if (marked) {

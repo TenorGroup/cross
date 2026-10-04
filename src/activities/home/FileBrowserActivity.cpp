@@ -104,9 +104,19 @@ void FileBrowserActivity::loadFiles() {
   }
   // Cai gi la muc doc duoc, cai gi bi giau, thu tu sap xep: chot o docthumuc, dung chung
   // voi the Folder cua man chinh.
+  // A folder can hold any number of names, the heap cannot: read up to a ceiling drawn from the heap left,
+  // and refuse a folder past it whole, with a line saying so.
+  const size_t cap = docthumuc::tran(ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  tooMany = false;
+  if (cap == 0) {
+    files.clear();
+    tooMany = true;
+    return;
+  }
   docthumuc::doc(basepath.c_str(), SETTINGS.showHiddenFiles,
                  mode == Mode::PickFirmware ? docthumuc::Loc::Firmware : docthumuc::Loc::Sach, fileNameBuffer.get(),
-                 NAME_BUFFER_SIZE, files);
+                 NAME_BUFFER_SIZE, files, cap, &tooMany);
+  if (tooMany) LOG_INF("FILES", "%s holds more than %u names: refused", basepath.c_str(), static_cast<unsigned>(cap));
 }
 
 // fui::ListProps::rowProvider - formats row `index` from files[index] into the
@@ -136,11 +146,12 @@ void FileBrowserActivity::provideRow(void* ctx, const uint16_t index, fui::ListI
   }
   item.label = self->rowNameBuf;
   formatFileExtension(entry, self->rowExtBuf, sizeof(self->rowExtBuf));
-  if (self->rowExtBuf[0] != '\0') {
+  if (self->rowExtBuf[0] != '\0' && !tenorchrome::kTouchShell) {
     item.value = self->rowExtBuf;
   }
   item.icon = listIconFor(UITheme::getFileIcon(entry), 32);
   item.actionValue = static_cast<int16_t>(index);
+  item.opensNext = tenorchrome::kTouchShell && self->rowOpens(static_cast<int>(index));
 }
 
 // Batch-prewarm the CJK fallback glyphs for a bounded window of display names
@@ -357,24 +368,53 @@ void FileBrowserActivity::activateSelected() {
 }
 
 void FileBrowserActivity::showEntryActions() {
-  if (mode != Mode::Books || files.empty() || optionPopup.isActive() || nav.selected < 0 ||
+  if (mode != Mode::Books || files.empty() || rowMenu.isActive() || nav.selected < 0 ||
       nav.selected >= listCount()) {
     return;
   }
 
   const bool isDirectory = files[nav.selected].back() == '/';
-  static constexpr StrId FILE_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_DELETE, StrId::STR_RENAME};
-  static constexpr StrId DIRECTORY_OPTIONS[] = {StrId::STR_OPEN, StrId::STR_DELETE};
-  optionPopup.show(StrId::STR_FILENAME, isDirectory ? DIRECTORY_OPTIONS : FILE_OPTIONS, isDirectory ? 2 : 3, 0,
-                   [this](const int index) {
-                     if (index == 0) {
-                       activateSelected();
-                     } else if (index == 1) {
-                       deleteSelected();
-                     } else if (index == 2) {
-                       startRename();
-                     }
-                   });
+  // Touch has no Select to hold, so the menu carries the pin, and a tap already opens: Pin or Unpin,
+  // Rename, Delete, anchored to the row.
+  enum class Do : uint8_t { Open, Pin, Delete, Rename };
+  Do actions[4];
+  StrId labels[4];
+  int count = 0;
+  const auto add = [&](const Do what, const StrId label) {
+    actions[count] = what;
+    labels[count++] = label;
+  };
+  if (tenorchrome::kTouchShell) {
+    add(Do::Pin, rowIsPinned(nav.selected) ? StrId::STR_UNPIN_FAVORITE : StrId::STR_PIN_FAVORITE);
+    if (!isDirectory) add(Do::Rename, StrId::STR_RENAME);
+    add(Do::Delete, StrId::STR_DELETE);
+  } else {
+    add(Do::Open, StrId::STR_OPEN);
+    add(Do::Delete, StrId::STR_DELETE);
+    if (!isDirectory) add(Do::Rename, StrId::STR_RENAME);
+  }
+  const auto onSelect = [this, actions, count](const int index) {
+    if (index < 0 || index >= count) return;
+    switch (actions[index]) {
+      case Do::Open:
+        activateSelected();
+        break;
+      case Do::Pin:
+        queuePinToggle();
+        break;
+      case Do::Delete:
+        deleteSelected();
+        break;
+      case Do::Rename:
+        startRename();
+        break;
+    }
+  };
+  if (tenorchrome::kTouchShell) {
+    showRowMenu(labels, count, onSelect, ACTION_ROW, nav.selected);
+    return;
+  }
+  rowMenu.show(StrId::STR_FILENAME, labels, count, 0, onSelect);
   requestUpdate();
 }
 
@@ -496,12 +536,12 @@ void FileBrowserActivity::renameSelectedFile(const std::string& oldPath, const s
 }
 
 bool FileBrowserActivity::handleCustomInput() {
-  if (optionPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
-
   // Holding PageBack is the hardware-button shortcut for delete: it reaches the
   // same confirm dialog as Delete in the entry-actions popup, for devices with
   // no touch to long-press a row.
-  if (mode == Mode::Books && mappedInput.wasLongPressed(MappedInputManager::Button::PageBack, 700)) {
+  // Not on the touch shell: its rows have no cursor, so the held key would delete a row nobody chose.
+  if (!tenorchrome::kTouchShell && mode == Mode::Books &&
+      mappedInput.wasLongPressed(MappedInputManager::Button::PageBack, 700)) {
     deleteSelected();
     return true;
   }
@@ -574,7 +614,11 @@ bool FileBrowserActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // Short press: go up one directory, or go home if at root
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
-      if (basepath != "/") {
+      // Touch: the root of File is the File card of Home, so a folder right under it goes back there.
+      if (tenorchrome::kTouchShell && mode == Mode::Books && basepath != "/" &&
+          basepath.find('/', 1) == std::string::npos) {
+        activityManager.goHome(HomeMenuItem::FILE_BROWSER);
+      } else if (basepath != "/") {
         const std::string oldPath = basepath;
 
         {
@@ -610,10 +654,6 @@ bool FileBrowserActivity::handleButtons() {
   return false;
 }
 
-void FileBrowserActivity::render(RenderLock&& lock) {
-  if (optionPopup.processRender(renderer, mappedInput)) return;
-  UiListActivity::render(std::move(lock));
-}
 
 std::string getFileExtension(const std::string& filename) {
   if (filename.back() == '/') {
@@ -630,7 +670,7 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
                                                 static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  if (mode == Mode::Books && !SETTINGS.globalStatusBarHidden()) {
+  if (mode == Mode::Books && !SETTINGS.globalStatusBarHidden() && !tenorchrome::kTouchShell) {
     const int actions = tenorchrome::tipHeight(renderer, tr(STR_FILE_SIDE_ACTIONS), 3);
     screen.takeBottom(static_cast<int16_t>(28 + actions));
   }
@@ -638,8 +678,12 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   // Full path band at the bottom: separator on top, left-truncated so the
   // deepest directory stays visible.
   const int pathLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
-  const fui::Rect band = screen.takeBottom(static_cast<int16_t>(pathLineHeight + metrics.verticalSpacing));
+  // Touch: the foot of the screen is for the tab bar, so no path band; the header names the folder.
+  const fui::Rect band = tenorchrome::kTouchShell
+                             ? fui::Rect{}
+                             : screen.takeBottom(static_cast<int16_t>(pathLineHeight + metrics.verticalSpacing));
   const auto drawPath = [&]() {
+    if (tenorchrome::kTouchShell) return;
     screen.target().fill(fui::Rect{band.x, band.y, band.width, 3}, fui::Paint::solid(fui::Color::Black));
     const int pathY =
         band.y + metrics.verticalSpacing / 2 + (band.height - metrics.verticalSpacing / 2 - pathLineHeight) / 2;
@@ -666,7 +710,9 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
 
   if (files.empty()) {
     drawPath();
-    screen.centeredText(mode == Mode::PickFirmware ? tr(STR_NO_BIN_FILES) : tr(STR_NO_FILES_FOUND),
+    screen.centeredText(tooMany ? tr(STR_FOLDER_TOO_MANY)
+                                : mode == Mode::PickFirmware ? tr(STR_NO_BIN_FILES)
+                                                             : tr(STR_NO_FILES_FOUND),
                         screen.theme().bodyText);
     return;
   }
@@ -711,6 +757,12 @@ void FileBrowserActivity::drawChrome() {
   const std::string prefix = mode == Mode::Books && !root ? label + basepath.substr(0, basepath.rfind('/')) : "";
   if (tenorchrome::enabled()) {
     tenorchrome::drawHeader(renderer, folderName.c_str(), prefix.c_str());
+    // Touch: the status strip says how many items the folder holds.
+    if (tenorchrome::kTouchShell && !files.empty()) {
+      char count[24];
+      snprintf(count, sizeof(count), tr(STR_FOLDER_ITEM_COUNT), static_cast<unsigned>(files.size()));
+      tenorchrome::noteStatus(count);
+    }
   } else {
     const std::string title = prefix.empty() ? folderName : prefix + "/" + folderName;
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, title.c_str());

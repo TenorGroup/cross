@@ -9,6 +9,7 @@
 #include <Utf8.h>
 
 #include "UglyLevel.h"
+#include "activities/home/DocThuMuc.h"
 
 namespace ugly::logic {
 
@@ -217,15 +218,11 @@ int ellipsisKeep(const char* text, const int maxWidth, Advance adv) {
   return cursor <= maxWidth ? -1 : keep;
 }
 
-// How many names of the card root the Folder page may hold, from the heap left. Each row costs a string
-// slot (the vector doubles, so twice that must fit in one block) and its name on the heap, and some heap
-// stays for the frame and the card library. 0 means the page refuses the root rather than run out.
-inline constexpr size_t FOLDER_MAX_ROWS = 2000, FOLDER_HEAP_KEEP = 16 * 1024, FOLDER_BYTES_PER_ROW = 80;
-inline size_t folderCap(const size_t freeHeap, const size_t largestBlock) {
-  const size_t byFree = freeHeap > FOLDER_HEAP_KEEP ? (freeHeap - FOLDER_HEAP_KEEP) / FOLDER_BYTES_PER_ROW : 0;
-  const size_t byBlock = largestBlock / (2 * sizeof(std::string));
-  return std::min({FOLDER_MAX_ROWS, byFree, byBlock});
-}
+// How many names of the card root the Folder page may hold: the shared decision of the folder lists.
+using docthumuc::FOLDER_BYTES_PER_ROW;
+using docthumuc::FOLDER_HEAP_KEEP;
+using docthumuc::FOLDER_MAX_ROWS;
+inline size_t folderCap(const size_t freeHeap, const size_t largestBlock) { return docthumuc::tran(freeHeap, largestBlock); }
 
 // A title as it is compared: composed, letters lowercased, blanks and marks of punctuation dropped, so
 // a heading that differs from the table of contents only in case, in a colon or in a double space is

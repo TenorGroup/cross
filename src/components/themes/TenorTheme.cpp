@@ -18,6 +18,11 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
   // Tat thanh trang thai ngoai trinh doc thi khong con nhan nut.
   if (SETTINGS.globalStatusBarHidden()) return;
   if (gpio.hasTouch()) {
+    // No front buttons to label: the touch shell keeps only the status line of this band.
+    if (tenorchrome::kTouchShell &&
+        (renderer.getRenderMode() == GfxRenderer::BW || !renderer.grayPlanesAreAbsolute())) {
+      tenorchrome::drawStatus(renderer);
+    }
     return;
   }
 

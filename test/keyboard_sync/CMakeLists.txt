@@ -18,6 +18,6 @@ target_include_directories(KeyboardSyncTest PRIVATE
   ${REPO_ROOT}/freeink-sdk/libs/ui/FreeInkUI/include
 )
 target_link_libraries(KeyboardSyncTest PRIVATE Threads::Threads)
-foreach(case enter insert backspace clear cursor password password_utf8 utf8_wrap input_time_short input_time_long touch completion cancel viewport timeout_disabled timeout_wrap timeout_input_reset timeout_normal_cancel stress)
+foreach(case enter insert backspace clear cursor password password_utf8 utf8_wrap input_time_short input_time_long touch completion cancel viewport landscape_viewport timeout_disabled timeout_wrap timeout_input_reset timeout_normal_cancel stress)
   add_test(NAME KeyboardSync.${case} COMMAND KeyboardSyncTest ${case})
 endforeach()

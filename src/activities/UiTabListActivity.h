@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "activities/UiListActivity.h"
+#include "components/TenorMenuChrome.h"
 
 // UiListActivity variant for screens with a tab band above the list (Settings,
 // Text Settings). Navigation keeps position 0 for the tab bar and 1..N for
@@ -100,7 +101,11 @@ class UiTabListActivity : public UiListActivity {
   freeink::ui::ListNav& activeNav() override;
   // Ring position of the active tab (0 = tab bar) for const contexts.
   int ringPos() const;
-  int favoriteSelectedRow() override { return ringPos() - 1; }
+  // Touch: a tap opens the row and moves neither the cursor nor the viewport, so the row last tapped is
+  // the one a hold pins. A screen whose ring means something on touch (Home's Recent card steps
+  // between books by it) says so here.
+  virtual bool touchRowMovesRing() const { return false; }
+  int favoriteSelectedRow() override { return tenorchrome::kTouchShell && !touchRowMovesRing() ? touchedRow : ringPos() - 1; }
   // ACTION_ROW lands as ring = row + 1, then activateIndex(row).
   void onRowAction(const freeink::ui::ActionEvent& event) override;
   // Release walks the row ring; continuous hold steps the tab. Both queue an
@@ -176,5 +181,6 @@ class UiTabListActivity : public UiListActivity {
   int rowTab = -1;
   void forgetOtherTabs();
 
+  int touchedRow = -1;
   static void tabActionTrampoline(const freeink::ui::ActionEvent& event, void* user);
 };

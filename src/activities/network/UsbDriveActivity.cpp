@@ -104,11 +104,15 @@ void UsbDriveActivity::loop() {
   const bool canExitWithInput = state == State::WaitingForHost || startFailed;
   if (canExitWithInput && (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
                            mappedInput.wasPressed(MappedInputManager::Button::Power) || mappedInput.wasHomeGesture())) {
+    LOG_INF("USB", "USB Drive left by input (state=%d, startFailed=%d)", static_cast<int>(state),
+            static_cast<int>(startFailed));
     restartToHome();
     return;
   }
 
   if (state == State::Ejected || state == State::Disconnected || state == State::Unsupported) {
+    LOG_INF("USB", "USB Drive ended by host state %s",
+            state == State::Ejected ? "Ejected" : state == State::Disconnected ? "Disconnected" : "Unsupported");
     restartToHome();
   }
 }

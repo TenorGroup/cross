@@ -40,6 +40,7 @@
 #include "UIFontTiers.h"
 #include "activities/reader/ReaderActivity.h"
 #include "activities/settings/SettingsActivity.h"
+#include "FileBrowserActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/ReadingStatsFormat.h"
 #include "components/ReadingStatsView.h"
@@ -124,7 +125,7 @@ constexpr size_t CARD_THUMB_MIN_LARGEST_BLOCK = 36 * 1024;
 
 HomeActivity::HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                            const HomeMenuItem initialMenuItemValue, const bool cleanInitialRefresh)
-    : UiTabListActivity("Home", renderer, mappedInput),
+    : UiTabListActivity("Home", renderer, mappedInput, tenorchrome::kTouchShell),
       initialMenuItem(initialMenuItemValue),
       cleanInitialRefresh(cleanInitialRefresh) {}
 
@@ -178,6 +179,7 @@ void HomeActivity::onEnter() {
   rebuildRows();
 
   UiTabListActivity::onEnter();  // sizes the per-tab state; needs listCount()
+  app.on(ACTION_OTHER_BOOK, &HomeActivity::otherBookTrampoline, this);
   if (initialMenuItem == HomeMenuItem::RECENT_CONTINUE) {
     activeNav().selected = recentBooks.empty() ? 0 : 1;
     activeNav().top = 0;
@@ -301,7 +303,16 @@ void HomeActivity::rebuildRows() {
       break;
     case Tab::FOLDER:
       docGocTheNho();
-      for (const auto& muc : mucTheNho) rowLabels.push_back(muc);
+      for (const auto& muc : mucTheNho) {
+        // Touch: the File card is the root of File, its rows as a folder's rows (name, icon).
+        if (tenorchrome::kTouchShell) {
+          char name[128];
+          formatFileName(muc, name, sizeof(name));
+          rowLabels.emplace_back(name);
+        } else {
+          rowLabels.push_back(muc);
+        }
+      }
       break;
     case Tab::STATS: {
       const bool enlarged = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
@@ -335,8 +346,10 @@ void HomeActivity::rebuildRows() {
   for (size_t i = 0; i < rowLabels.size(); i++) {
     fui::ListItem item;
     item.label = rowLabels[i].c_str();
-    item.opensNext = activeTabId == Tab::CAI_DAT;
+    item.opensNext = activeTabId == Tab::CAI_DAT || (tenorchrome::kTouchShell && rowOpens(static_cast<int>(i)));
     if (activeTabId == Tab::FAVORITES) item.value = favoriteValues[i].c_str();
+    if (tenorchrome::kTouchShell && activeTabId == Tab::FOLDER)
+      item.icon = listIconFor(UITheme::getFileIcon(mucTheNho[i]), 32);
     item.actionValue = static_cast<int16_t>(i);
     rowItems.push_back(item);
   }
@@ -405,7 +418,8 @@ void HomeActivity::activateIndex(const int index) {
                                  rebuildRows();
                                  const auto found = std::find(settingsGroups.begin(), settingsGroups.end(), group);
                                  activeNav().selected = static_cast<int>(found - settingsGroups.begin()) + 2;
-                                 activeNav().followOnBuild = true;
+                                 // Touch has no cursor to bring into view: the list stays where it was.
+                                 activeNav().followOnBuild = !tenorchrome::kTouchShell;
                                });
       }
       return;
@@ -445,6 +459,14 @@ void HomeActivity::activateIndex(const int index) {
 }
 
 bool HomeActivity::handleButtons() {
+  // Touch: a sideways swipe on the Recent card steps between books, as the front buttons do.
+  if (tenorchrome::kTouchShell && activeTabId == Tab::RECENT) {
+    const auto swipe = mappedInput.wasSwipe();
+    if (swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Right) {
+      queueNavIntent(swipe == MappedInputManager::SwipeDir::Left ? NavIntent::StepNext : NavIntent::StepPrev);
+      return true;
+    }
+  }
   // Holding the front previous button brings the card back to the most recent book.
   // Queued like every other move: the loop must not wait for the panel.
   if (activeTabId == Tab::RECENT && tenorchrome::enabled() &&
@@ -623,7 +645,7 @@ int HomeActivity::coverTileTop() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   if (!tenorchrome::enabled())
     return metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight;
-  return tabBarTop() + preferredTabBarHeight() + 16;
+  return tabBarTop() + (tenorchrome::kTouchShell ? 0 : preferredTabBarHeight()) + 16;
 }
 
 void HomeActivity::buildScreen(UiScreen& screen) {
@@ -645,6 +667,18 @@ void HomeActivity::buildScreen(UiScreen& screen) {
     n.drawnCount = count;
     n.followOnBuild = false;
     n.followPending = false;
+    // Touch: the whole card opens the book it shows.
+    if (tenorchrome::kTouchShell && count > 0) {
+      const fui::Rect body = screen.body();
+      // A hold pins or unpins the book shown, like holding Select on the button readers.
+      screen.frame().hit(body, ACTION_ROW, static_cast<int16_t>(shownRecent()), fui::InputTouch | fui::InputLongPress);
+      // The "other books" line steps to the next book instead of opening the one shown.
+      if (count > 1) {
+        constexpr int16_t STRIP = 56;
+        screen.frame().hit(fui::Rect{body.x, static_cast<int16_t>(body.y + body.height - STRIP), body.width, STRIP},
+                           ACTION_OTHER_BOOK, 0, fui::InputTouch | fui::InputLongPress);
+      }
+    }
     return;
   }
   // Leave the cover tile's band to drawChrome(); the list starts under it.
@@ -653,11 +687,23 @@ void HomeActivity::buildScreen(UiScreen& screen) {
   if (activeTabId == Tab::STATS) screen.takeTop(static_cast<int16_t>(statsPanelHeight() + 12));
 
   if (activeTabId == Tab::FAVORITES && rowItems.empty()) {
-    tenorchrome::drawTip(renderer, tr(STR_HOME_FAVORITES_HINT), 0, 6);
+    // The tip names front buttons, which the touch shell has none of.
+    if (tenorchrome::kTouchShell) {
+      // Up to 3 lines, centred in the body: the sentence is longer than one line of the body font.
+      fui::TextStyle style = screen.theme().bodyText;
+      style.align = fui::TextAlign::Center;
+      style.maxLines = 3;
+      const fui::Rect body = screen.body();
+      const int16_t height = static_cast<int16_t>(3 * screen.target().lineHeight(style.font));
+      screen.target().text(fui::Rect{static_cast<int16_t>(body.x + 32), static_cast<int16_t>(body.y + (body.height - height) / 2),
+                                     static_cast<int16_t>(body.width - 64), height},
+                           tr(STR_FAVORITES_EMPTY_TOUCH), style);
+    } else
+      tenorchrome::drawTip(renderer, tr(STR_HOME_FAVORITES_HINT), 0, 6);
     return;
   }
   if (activeTabId == Tab::FOLDER && rowItems.empty()) {
-    screen.centeredText(tr(STR_NO_FILES_FOUND), screen.theme().bodyText);
+    screen.centeredText(mucQuaNhieu ? tr(STR_FOLDER_TOO_MANY) : tr(STR_NO_FILES_FOUND), screen.theme().bodyText);
     return;
   }
 
@@ -670,6 +716,7 @@ void HomeActivity::buildScreen(UiScreen& screen) {
   props.count = static_cast<uint16_t>(rowItems.size());
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
+  if (tenorchrome::kTouchShell) props.inputMask |= fui::InputLongPress;  // hold a row to pin it
   props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
   syncTabListViewport(screen, props);
@@ -677,6 +724,7 @@ void HomeActivity::buildScreen(UiScreen& screen) {
 }
 
 void HomeActivity::render(RenderLock&&) {
+  if (rowMenu.processRender(renderer, mappedInput)) return;
   if (activeTabId == Tab::STATS && statsRowsEnlarged != (normalizedUiTextSize(SETTINGS.uiTextSize) != 0))
     rebuildRows();
 #ifdef TENOR_UI_ACCEPTANCE
@@ -788,8 +836,6 @@ void HomeActivity::freeCoverBuffer() {
 
 void HomeActivity::loadRecentBooks() { recentBooks = homerows::recent(RECENT_LIMIT); }
 
-void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToReader(path); }
-
 void HomeActivity::docGocTheNho() {
   // Vung nho hung ten file muon roi tra ngay trong ham nay. Giu no song suot doi man
   // chinh la an them RAM ma khong lam cuon sach de doc hon.
@@ -799,7 +845,29 @@ void HomeActivity::docGocTheNho() {
     mucTheNho.clear();
     return;
   }
-  docthumuc::doc("/", SETTINGS.showHiddenFiles, docthumuc::Loc::Sach, dem.get(), DEM_CO, mucTheNho);
+  // Past the ceiling the heap allows the root is refused whole (see docthumuc::tran).
+  const size_t cap = docthumuc::tran(ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  mucQuaNhieu = cap == 0;
+  if (cap == 0) {
+    mucTheNho.clear();
+    return;
+  }
+  docthumuc::doc("/", SETTINGS.showHiddenFiles, docthumuc::Loc::Sach, dem.get(), DEM_CO, mucTheNho, cap, &mucQuaNhieu);
+}
+
+bool HomeActivity::rowOpens(const int row) const {
+  // Settings groups and the stats screens open a screen; a folder opens its rows; a book opens the book.
+  if (activeTabId == Tab::CAI_DAT || activeTabId == Tab::STATS) return true;
+  return activeTabId == Tab::FOLDER && row >= 0 && row < static_cast<int>(mucTheNho.size()) &&
+         !mucTheNho[row].empty() && mucTheNho[row].back() == '/';
+}
+
+void HomeActivity::showOtherBookMenu() {
+  const int count = static_cast<int>(recentBooks.size());
+  if (count < 2) return;
+  const int next = (shownRecent() + 1) % count;
+  const StrId label = rowIsPinned(next) ? StrId::STR_UNPIN_FAVORITE : StrId::STR_PIN_FAVORITE;
+  showRowMenu(&label, 1, [this, next](int) { queuePinToggle(next); }, ACTION_OTHER_BOOK, 0);
 }
 
 std::string HomeActivity::favoriteKey(int row) const {
@@ -820,7 +888,8 @@ void HomeActivity::favoritesChanged() {
   rebuildRows();
   activeNav().selected = std::min(selected, listCount());
   if (listCount() && activeNav().selected <= 0) activeNav().selected = 1;
-  activeNav().followOnBuild = true;
+  // Touch has no cursor to bring into view: the list keeps its place.
+  activeNav().followOnBuild = !tenorchrome::kTouchShell;
 }
 bool HomeActivity::giuNutDiDong(int direction) {
   if (activeTabId != Tab::FAVORITES) return false;

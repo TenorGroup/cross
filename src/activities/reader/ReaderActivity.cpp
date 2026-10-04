@@ -30,6 +30,9 @@ ReaderActivity::ReaderActivity(const char* name, GfxRenderer& renderer, MappedIn
     const int refreshFrequency = SETTINGS.getRefreshFrequency();
     pagesUntilFullRefresh = refreshFrequency > 1 ? refreshFrequency : 2;
   }
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("READER", "FIRST_PAINT fast_ok=%d pages_until_full=%d", allowFastInitialRefresh ? 1 : 0, pagesUntilFullRefresh);
+#endif
 }
 
 std::unique_ptr<ReaderActivity> ReaderActivity::create(GfxRenderer& renderer, MappedInputManager& mappedInput,

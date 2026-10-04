@@ -714,6 +714,10 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
 // there when needed. Return -1 for rows hidden in device categories.
 inline int deviceSettingsTab(const SettingInfo& setting) {
   if (settingHiddenOnThisBoard(setting)) return -1;
+  // X4 Pro: three rows made for front buttons do nothing here. They leave the lists, not the saved file.
+  if (BoardConfig::isX4Pro() && (setting.nameId == StrId::STR_SIDE_ARROW_HINTS || setting.nameId == StrId::STR_BUTTON_LABELS ||
+                                 setting.nameId == StrId::STR_READER_MENU_STYLE))
+    return -1;
   if (setting.valuePtr == &CrossPointSettings::sleepScreen ||
       setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode ||
       setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||

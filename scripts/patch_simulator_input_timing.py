@@ -131,3 +131,55 @@ patch(
         ),
     ],
 )
+
+# A slow drag of 60 px or more (the flick's own distance) is a swipe whatever its duration, as in
+# InputManager::wasSwipe. A dependency patched when the distance was 160 px moves to 60 first.
+_gpio = root / "HalGPIO.cpp"
+_was = _gpio.read_text()
+_now = _was.replace("std::abs(dx) < 160 && std::abs(dy) < 160)", "std::abs(dx) < 60 && std::abs(dy) < 60)")
+if _now != _was:
+    _gpio.write_text(_now)
+patch(
+    root / "HalGPIO.cpp",
+    [
+        (
+            "  if (!touchState.releasedThisFrame || touchState.suppressed ||\n"
+            "      touchState.lastHeldMs > TOUCH_SWIPE_MAX_MS)\n"
+            "    return false;\n"
+            "  const float dx =\n"
+            "      (touchState.currentNx - touchState.startNx) * HalDisplay::DISPLAY_WIDTH;\n"
+            "  const float dy =\n"
+            "      (touchState.currentNy - touchState.startNy) * HalDisplay::DISPLAY_HEIGHT;\n",
+            "  if (!touchState.releasedThisFrame || touchState.suppressed)\n"
+            "    return false;\n"
+            "  const float dx =\n"
+            "      (touchState.currentNx - touchState.startNx) * HalDisplay::DISPLAY_WIDTH;\n"
+            "  const float dy =\n"
+            "      (touchState.currentNy - touchState.startNy) * HalDisplay::DISPLAY_HEIGHT;\n"
+            "  if (touchState.lastHeldMs > TOUCH_SWIPE_MAX_MS && std::abs(dx) < 60 && std::abs(dy) < 60)\n"
+            "    return false;\n",
+        ),
+    ],
+)
+
+# A SWIPE in the input script moves the finger: one point 20 ms after the touch-down, at the far end, so a
+# slow drag is a drag and not a hold (the real panel reports the finger all along).
+patch(
+    root / "HalGPIO.cpp",
+    [
+        ("  TouchDown,\n  TouchUp,\n", "  TouchDown,\n  TouchMove,\n  TouchUp,\n"),
+        (
+            "    case SyntheticAction::TouchUp:\n      endTouch(event.logicalNx, event.logicalNy);\n      break;\n",
+            "    case SyntheticAction::TouchMove:\n      moveTouch(event.logicalNx, event.logicalNy);\n      break;\n"
+            "    case SyntheticAction::TouchUp:\n      endTouch(event.logicalNx, event.logicalNy);\n      break;\n",
+        ),
+        (
+            "          syntheticEvents.push_back(\n"
+            "              {atMs + duration, SyntheticAction::TouchUp, -1, x2, y2});\n",
+            "          if (swipe)\n"
+            "            syntheticEvents.push_back({atMs + 20, SyntheticAction::TouchMove, -1, x2, y2});\n"
+            "          syntheticEvents.push_back(\n"
+            "              {atMs + duration, SyntheticAction::TouchUp, -1, x2, y2});\n",
+        ),
+    ],
+)

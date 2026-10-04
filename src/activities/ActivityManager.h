@@ -16,6 +16,9 @@
 #include "util/ScreenshotInfo.h"
 
 class Activity;    // forward declaration
+namespace tenorchrome {
+enum class Zone : uint8_t;
+}
 class RenderLock;  // forward declaration
 
 // The values ride through a silent restart in RTC memory (main.cpp), so new items go last.
@@ -85,6 +88,7 @@ class ActivityManager {
   std::atomic<bool> requestedUpdate{false};
   bool sleepTransition = false;
   bool homeAfterInput = false;
+  bool toReaderPage = false;
   uint32_t activityGeneration_ = 0;
   MenuNavigationMemory navigationMemory;
   void restoreNavigation();
@@ -100,6 +104,14 @@ class ActivityManager {
   ~ActivityManager() { assert(false); /* should never be called */ };
 
   MenuNavigationMemory& menuNavigationMemory() { return navigationMemory; }
+  // The name of the screen in front, for the one hook that draws the touch shell's dynamic bar.
+  const char* currentName() const;
+  HomeMenuItem homeKeyTarget() const;
+  // The zone the screen in front belongs to, and where the bar's zone icon leads.
+  tenorchrome::Zone footZone() const;
+  void goZoneRoot();
+  // True while the zone icon closes the screens above the book: the book does not reopen its menu.
+  bool returningToReaderPage() const { return toReaderPage; }
 
   HomeMenuItem homeMenuOrigin() const;
   void begin();

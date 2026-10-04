@@ -71,6 +71,11 @@ for name in ('getTextInkTop', 'getTextInkBottom'):
 declarations = '\n'.join(re.findall(r'^(?:bool|int|void) (?:smallFooterSymbolsTopY|compactFooterTips|tipY|tipTopY|tipLineCount|tipHeight|drawTip|moreBelowChevronTopY|drawMoreBelowChevron)\([^;]+;', header, re.M))
 declarations += '\n' + '\n'.join(re.findall(r'(?:enum class ChevronDir[^;]+;|constexpr int MORE_CHEVRON_[^;]+;|'
                                              r'constexpr int moreChevronLength[^}]+}|void drawMoreChevron\([^;]+;)', header))
+# The touch shell's gate: the button reader's value, and the tip filter as written.
+if 'kTouchShell' in header:
+    declarations += '\nconstexpr bool kTouchShell = false;\n' + function(header, 'inline bool tipShown(')
+    if 'touchBarTop' in header:
+        declarations += '\ninline int touchBarTop(int screenHeight) { return screenHeight; }'
 fixture = Path(__file__).with_name('footer_tips.cpp').read_text()
 fixture = fixture.replace('// CHROME_DECLARATIONS', declarations)
 fixture = fixture.replace('// PRODUCTION_FUNCTIONS', '\n'.join(definitions))

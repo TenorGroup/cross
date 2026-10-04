@@ -72,7 +72,7 @@ void TextSettingsActivity::onEnter() {
   UiTabListActivity::onEnter();
 
   metrics_ = UITheme::getInstance().getMetrics();
-  afterHeader = tenorchrome::enabled() ? tenorchrome::contentTop()
+  afterHeader = tenorchrome::enabled() ? tenorchrome::contentTopUnderTabs()
                                        : metrics_.topPadding + metrics_.headerHeight + metrics_.verticalSpacing;
   bottomReserved = metrics_.buttonHintsHeight + metrics_.verticalSpacing;
   updatePreviewGeometry();
@@ -216,10 +216,10 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
   for (int i = 0; i < count; i++) {
     switch (tab_) {
       case Tab::Family:
-        rowValues_[i] = (i == currentFamilyIndex_) ? tr(STR_SELECTED) : "";
+        rowValues_[i] = (i == currentFamilyIndex_ && !tenorchrome::kTouchShell) ? tr(STR_SELECTED) : "";
         break;
       case Tab::Size:
-        rowValues_[i] = (i == currentSizeIndex_) ? tr(STR_SELECTED) : "";
+        rowValues_[i] = (i == currentSizeIndex_ && !tenorchrome::kTouchShell) ? tr(STR_SELECTED) : "";
         break;
       case Tab::Layout:
         rowValues_[i] = layoutValueText(i);
@@ -231,6 +231,9 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
         break;
     }
     rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
+    // Touch: the font or size in use is the chosen row (bold, a tick), no word.
+    rowItems_[i].chosen = tenorchrome::kTouchShell && ((tab_ == Tab::Family && i == currentFamilyIndex_) ||
+                                                       (tab_ == Tab::Size && i == currentSizeIndex_));
   }
 
   fui::ListProps props;

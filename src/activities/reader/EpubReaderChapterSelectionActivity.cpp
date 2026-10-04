@@ -50,6 +50,7 @@ void EpubReaderChapterSelectionActivity::onEnter() {
     tocIndex = 0;
   }
   nav.selected = tocIndex;
+  currentTocIndex = tocIndex;
 }
 
 // Materialize the ListItem/label window starting at `start` (clamped). TOC
@@ -80,6 +81,13 @@ void EpubReaderChapterSelectionActivity::refreshTocWindow(const int start) {
     fui::ListItem item;
     item.label = windowLabels[i].c_str();
     item.actionValue = static_cast<int16_t>(clamped + i);
+    if (!filterNumber && clamped + i == currentTocIndex) {
+      // Touch: the chapter being read is the chosen row (bold, a tick), no word.
+      if (tenorchrome::kTouchShell)
+        item.chosen = true;
+      else
+        item.value = tr(STR_NOW_READING);
+    }
     windowItems[i] = item;
   }
   windowStart = clamped;

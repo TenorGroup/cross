@@ -50,6 +50,9 @@ const ThemeMetrics& UITheme::getMetrics() const {
       // nut tra ve 0 va vung an toan lay lai dung phan do.
       adjustedMetrics.buttonHintsHeight = 0;
     }
+    // Touch shell: the header row is the status strip alone; screens laid out under the header band
+    // start right under the strip.
+    if (tenorchrome::kTouchShell) adjustedMetrics.headerHeight = tenorchrome::TOUCH_STRIP_HEIGHT - adjustedMetrics.topPadding;
     metricsForTextSize = textSize;
     metricsForTouch = touch;
     metricsForHiddenStatusBar = statusBarHidden;
@@ -68,8 +71,10 @@ Rect UITheme::getScreenSafeArea(const GfxRenderer& renderer, bool hasFrontButton
   const ThemeMetrics metrics = getMetrics();
   // Dai day that = max(nhan nut, lan trang thai cua pham vi nay). Khi thanh Tat thi
   // ca hai deu 0 va vung noi dung lay lai dung phan do.
-  const int daiDay =
-      hasFrontButtonHints ? std::max<int>(metrics.buttonHintsHeight, getStatusBarHeight(scope)) : 0;
+  // Touch shell: the status strip is at the top and the foot belongs to the dynamic bar.
+  const int daiDay = !hasFrontButtonHints         ? 0
+                     : tenorchrome::kTouchShell ? tenorchrome::footBackReserve()
+                                                : std::max<int>(metrics.buttonHintsHeight, getStatusBarHeight(scope));
   switch (orientation) {
     case GfxRenderer::Orientation::Portrait:
       safeArea.height -= daiDay;

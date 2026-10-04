@@ -90,8 +90,10 @@ class LogSerialTee {
     return sent;
   }
   int available() { return port.available(); }
+  size_t readBytes(uint8_t* buffer, size_t length) { return port.readBytes(buffer, length); }
   String readStringUntil(char end) { return port.readStringUntil(end); }
   void begin(unsigned long baud) { port.begin(baud); }
+  size_t setRxBufferSize(size_t size) { return port.setRxBufferSize(size); }
   void end() { port.end(); }
   void setTxTimeoutMs(uint32_t ms) { port.setTxTimeoutMs(ms); }
   void enableReboot(bool on) { port.enableReboot(on); }

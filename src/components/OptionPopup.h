@@ -11,7 +11,9 @@
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "components/OptionPopupLayout.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UiAppHelpers.h"
+#include "fontIds.h"
 
 // Modal option picker drawn over the current screen (no clear) via
 // fui::optionDialog. Touch hit-testing is the SDK's InteractionBuffer: each
@@ -65,6 +67,17 @@ class OptionPopup {
     activate(currentIndex, std::move(onSelect));
   }
 
+  // Touch shell: the actions of a held row in a menu anchored to the row, no title: under it when the
+  // row is in the upper half and the menu fits over the bar at the foot, else over it; left on the list's
+  // margin. A tap outside closes it.
+  void showAnchored(const freeink::ui::Rect& row, const StrId* optionIds, int optionCount,
+                    std::function<void(int)> onSelect) {
+    show(StrId::STR_NONE_OPT, optionIds, optionCount, 0, std::move(onSelect));
+    title.clear();
+    anchor = row;
+    anchored = true;
+  }
+
   // One option down (1) or up (-1), with wrap: what the up and down buttons do, for a row tilt.
   void step(const int direction) {
     const int count = static_cast<int>(ownedStrings.size());
@@ -108,7 +121,7 @@ class OptionPopup {
           requestUpdate();
           return true;
         }
-        if (snap.touchPressed) {
+        if (snap.touchPressed && !anchored) {
           // Touch-down on an option moves the highlight (route() latched the
           // hit as the active interaction; read it back, no re-hit-testing).
           const int16_t idx = interactions.activeIndex();
@@ -177,6 +190,12 @@ class OptionPopup {
     // InteractionBuffer::beginPublishCycle().
     interactions.beginPublishCycle();
     fui::Frame<INTERACTION_CAPACITY> frame(target, device, noInput, interactions);
+    if (anchored) {
+      renderAnchored(renderer, frame, device.screen());
+      interactions.publish();
+      uiReady = true;
+      return;
+    }
 
     const auto& metrics = UITheme::getInstance().getMetrics();
     const int totalOptions = static_cast<int>(ownedStrings.size());
@@ -333,6 +352,36 @@ class OptionPopup {
   static constexpr freeink::ui::ActionId ACTION_CHROME = 2;
   static constexpr freeink::ui::ActionId ACTION_PAGE = 3;
 
+  template <typename Frame>
+  void renderAnchored(const GfxRenderer& renderer, Frame& frame, const freeink::ui::Rect& screen) const {
+    namespace fui = freeink::ui;
+    constexpr int font = UI_12_FONT_ID, ROW = 56, PAD = 6, TEXT_X = 24, RADIUS = 20, GAP = 4;
+    const int count = std::min<int>(static_cast<int>(ownedStrings.size()), MAX_OPTIONS);
+    int textWidth = 0;
+    for (int i = 0; i < count; ++i) textWidth = std::max(textWidth, renderer.getTextWidth(font, ownedStrings[i].c_str()));
+    const int x = tenorchrome::FOOT_BACK_X;
+    const int w = std::min<int>(screen.width - 2 * x, std::max(180, textWidth + 2 * TEXT_X));
+    const int h = count * ROW + 2 * PAD;
+    const int top = tenorchrome::contentTop(), bottom = screen.height - tenorchrome::footBackReserve() + 8;
+    const int below = anchor.y + anchor.height + GAP, above = anchor.y - GAP - h;
+    const bool upperHalf = anchor.y + anchor.height / 2 < screen.height / 2;
+    int y = upperHalf && below + h <= bottom ? below : above >= top ? above : below + h <= bottom ? below : bottom - h;
+    y = std::max(top, y);
+    renderer.fillRoundedRect(x, y, w, h, RADIUS, Color::White);
+    tenorchrome::drawRoundRing(renderer, x, y, w, h, RADIUS, 2, true);
+    frame.hit(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w), static_cast<int16_t>(h)},
+              ACTION_CHROME, 0, fui::InputTouch);
+    for (int i = 0; i < count; ++i) {
+      const int ry = y + PAD + i * ROW;
+      renderer.drawText(font, x + TEXT_X, ry + (ROW - renderer.getLineHeight(font)) / 2, ownedStrings[i].c_str());
+      if (i + 1 < count)
+        for (int px = x + TEXT_X; px < x + w - TEXT_X; ++px)
+          if (((px + ry + ROW - 1) & 1) == 0) renderer.drawPixel(px, ry + ROW - 1, true);
+      frame.hit(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(ry), static_cast<int16_t>(w), static_cast<int16_t>(ROW)},
+                ACTION_OPTION, static_cast<int16_t>(i), fui::InputTouch);
+    }
+  }
+
   // Every option stays selectable, not only the first MAX_OPTIONS: longer lists page (see render).
   // An empty list is dismissed by the first handleInput().
   void activate(int currentIndex, std::function<void(int)> onSelect) {
@@ -340,9 +389,12 @@ class OptionPopup {
     onSelectCallback = std::move(onSelect);
     uiReady = false;
     active = true;
+    anchored = false;
   }
 
   bool active = false;
+  bool anchored = false;
+  freeink::ui::Rect anchor{};
   std::string title;
   std::string headline;
   std::vector<std::string> ownedStrings;

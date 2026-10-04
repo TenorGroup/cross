@@ -209,11 +209,20 @@ void OpdsBookBrowserActivity::loop() {
     if (!entries.empty()) {
       // Swipes scroll the viewport; the selection stays put (it may scroll
       // off-screen) and button navigation pulls the view back to it.
-      const auto swipe = mappedInput.wasSwipe();
-      if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
-        const int delta = swipe == MappedInputManager::SwipeDir::Up ? listNav.visibleRows : -listNav.visibleRows;
-        if (listNav.scrollBy(delta, static_cast<int>(entries.size()))) requestUpdate();
-        return;
+      if (tenorchrome::kTouchShell) {
+        // Touch: the one rule for every list (UiAppHost::swipeRows).
+        const int delta = swipeRows(mappedInput, listNav, static_cast<int>(entries.size()), ACTION_ROW);
+        if (delta != 0) {
+          if (listNav.scrollBy(delta, static_cast<int>(entries.size()))) requestUpdate();
+          return;
+        }
+      } else {
+        const auto swipe = mappedInput.wasSwipe();
+        if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
+          const int delta = swipe == MappedInputManager::SwipeDir::Up ? listNav.visibleRows : -listNav.visibleRows;
+          if (listNav.scrollBy(delta, static_cast<int>(entries.size()))) requestUpdate();
+          return;
+        }
       }
 
       const auto moveSelection = [this](const int index) {

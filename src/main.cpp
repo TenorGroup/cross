@@ -14,6 +14,8 @@
 #include <Arduino.h>
 #include <BlePageTurner.h>
 #include <BoardConfig.h>
+
+#include "activities/reader/FirstPaint.h"
 #include <Epub.h>
 #ifdef TENOR_PRESS_PROBE
 #include <Epub/BuildStageProbe.h>
@@ -90,6 +92,7 @@
 #include "ReaderInkWeight.h"
 #include "platform/BootTrial.h"
 #include "platform/ColdLog.h"
+#include "platform/PutFile.h"
 #include "platform/FirmwareProbe.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
@@ -270,6 +273,21 @@ static void probeReprintDryRunLine() {
   logSerial.printf("OTA_DRYRUN_PREV %u/3 %s", static_cast<unsigned>(printed + 1), probeDryRunLine);
   if (++printed == 3) probeDryRunLineMagic = 0;
 }
+#if FREEINK_CAP_TOUCH && !defined(SIMULATOR)
+#include "platform/TouchProbe.h"
+// CMD:TAP / CMD:SWIPE: a scripted finger, fed to the GT911 read on this loop task in the app's coordinates.
+static touchprobe::Plan probeTouchPlan;
+static int8_t probeTouchHook(uint16_t& x, uint16_t& y) {
+  int ax = 0, ay = 0;
+  const int8_t state = touchprobe::sample(probeTouchPlan, millis(), ax, ay);
+  if (state > 0) {
+    const auto& t = BoardConfig::ACTIVE.touch;
+    touchprobe::toTouch(ax, ay, renderer.getOrientation(), renderer.getDisplayWidth(), renderer.getDisplayHeight(),
+                        t.rawMaxX - t.rawMinX, t.rawMaxY - t.rawMinY, x, y);
+  }
+  return state;
+}
+#endif
 #endif
 constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
 constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
@@ -607,6 +625,9 @@ void setup() {
   // enumeration proceed asynchronously so users do not pay this startup cost.
   delay(250);
 #endif
+#ifdef TENOR_PRESS_PROBE
+  logSerial.setRxBufferSize(8192);  // CMD:PUT: a 4096 byte window must fit while the card is written
+#endif
   Serial.begin(115200);
 #if LOG_SERIAL_HAS_TX_TIMEOUT
   logSerial.setTxTimeoutMs(1);  // This is a load-bearing 1. Do not modify.
@@ -725,8 +746,8 @@ void setup() {
   // Touch boards default the reader menu to the toolbar overlay instead of the
   // full-screen list. Seeded before the load: fromJson() falls back to the
   // in-memory value only when the file carries no readerMenuStyle key, so a
-  // user's saved choice (either style) still wins.
-  if (gpio.hasTouch()) {
+  // user's saved choice (either style) still wins. The X4 Pro opens the list menu, as the X3 does.
+  if (gpio.hasTouch() && !FREEINK_DEVICE_X4PRO) {
     SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_TOOLBAR;
   }
   SETTINGS.loadFromFile();
@@ -1217,6 +1238,76 @@ static void catCommand(const String& path) {
 #endif
 }
 
+// CMD:PUT <path> <size> <crc32 as 8 hex digits>: the file comes over the cable and is written to the card.
+// "PUT:READY <size>" says the card is open; the host then sends <size> raw bytes, at most 4096 before it
+// reads "PUT:ACK <bytes so far>". The bytes go to <path>.tmp in 1024 byte pieces (nothing is allocated by
+// size), the sum is checked, and a match renames the file over <path>: "PUT:OK <size> <crc>". Otherwise
+// the .tmp is removed and the line is "PUT:FAIL <reason>". 10 s without a byte is a failure.
+static void putCommand(const String& args) {
+  putfile::Command cmd;
+  if (!putfile::parse(args.c_str(), cmd)) {
+    logSerial.printf("PUT:FAIL bad command\n");
+    return;
+  }
+  const std::string tmpPath = cmd.path + ".tmp";
+  HalFile file;
+  if (!Storage.openFileForWrite("PUT", tmpPath.c_str(), file)) {
+    logSerial.printf("PUT:FAIL cannot open %s\n", tmpPath.c_str());
+    return;
+  }
+  struct Port {
+    size_t sinceAck = 0, total = 0;
+    size_t read(uint8_t* buf, size_t max) {
+      const int waiting = logSerial.available();
+      if (waiting <= 0) {
+        delay(1);
+        return 0;
+      }
+      return logSerial.readBytes(buf, std::min<size_t>(max, static_cast<size_t>(waiting)));
+    }
+  } port;
+  struct Sink {
+    HalFile& file;
+    Port& port;
+    bool write(const uint8_t* buf, size_t n) {
+      if (file.write(buf, n) != n) return false;
+      port.total += n;
+      port.sinceAck += n;
+      if (port.sinceAck >= 4096) {
+        port.sinceAck = 0;
+        logSerial.printf("PUT:ACK %u\n", static_cast<unsigned>(port.total));
+      }
+      return true;
+    }
+  } sink{file, port};
+  struct Clock {
+    uint32_t now() { return millis(); }
+  } clock;
+  static uint8_t buf[1024];
+#if LOG_SERIAL_HAS_TX_TIMEOUT
+  logSerial.setTxTimeoutMs(500);
+#endif
+  logSerial.printf("PUT:READY %u\n", static_cast<unsigned>(cmd.size));
+  uint32_t crc = 0;
+  const putfile::Result result = putfile::receive(cmd, port, sink, clock, buf, sizeof(buf), 10000, &crc);
+  file.close();
+  if (result == putfile::Result::Ok) {
+    Storage.remove(cmd.path.c_str());
+    if (Storage.rename(tmpPath.c_str(), cmd.path.c_str())) {
+      logSerial.printf("PUT:OK %u %08lx\n", static_cast<unsigned>(cmd.size), static_cast<unsigned long>(crc));
+    } else {
+      Storage.remove(tmpPath.c_str());
+      logSerial.printf("PUT:FAIL rename\n");
+    }
+  } else {
+    Storage.remove(tmpPath.c_str());
+    logSerial.printf("PUT:FAIL %s\n", putfile::reason(result));
+  }
+#if LOG_SERIAL_HAS_TX_TIMEOUT
+  logSerial.setTxTimeoutMs(1);
+#endif
+}
+
 // CMD:CUR_LOG <s>: for the next <s> seconds, one fuel gauge line every 10 s (average and
 // instant current in mA, voltage, whether the motion sensor samples, the shake action),
 // kept in RAM too, so a run with the cable out is read back with CMD:CUR_LOG and no number.
@@ -1503,6 +1594,27 @@ void loop() {
         }
         if (button >= 0) gpio.injectPresses(button, hold, count, gap);
         logSerial.printf("PRESS:button=%d,hold=%u,count=%u,gap=%u,t=%lu\n", button, hold, count, gap, millis());
+#if FREEINK_CAP_TOUCH && !defined(SIMULATOR)
+      } else if (cmd.startsWith("TAP ") || cmd.startsWith("SWIPE ")) {
+        // CMD:TAP <x> <y> [holdMs] and CMD:SWIPE <x0> <y0> <x1> <y1> <ms>, in the coordinates the app
+        // draws in (portrait 480 x 800): one finger down, held or moved over the given time, then lifted.
+        const bool tap = cmd.startsWith("TAP ");
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        unsigned ms = 80;
+        bool ok = false;
+        if (tap) {
+          ok = SCAN_COMMAND(cmd.c_str() + 4, "%d %d %u", &x0, &y0, &ms) >= 2;
+          x1 = x0;
+          y1 = y0;
+        } else {
+          ok = SCAN_COMMAND(cmd.c_str() + 6, "%d %d %d %d %u", &x0, &y0, &x1, &y1, &ms) == 5;
+        }
+        if (ok) {
+          probeTouchPlan = touchprobe::swipe(x0, y0, x1, y1, ms);
+          InputManager::setTouchProbeHook(probeTouchHook);
+        }
+        logSerial.printf("TOUCH:ok=%d,from=%d,%d,to=%d,%d,ms=%u,t=%lu\n", ok, x0, y0, x1, y1, ms, millis());
+#endif
 #endif
 #if defined(TENOR_UI_ACCEPTANCE) || defined(TENOR_PRESS_PROBE)
       } else if (cmd == "UI_READER_NEXT" || cmd == "UI_READER_PREV") {
@@ -1698,6 +1810,14 @@ void loop() {
         logSerial.printf("KEEP_HEAP:%d\n", probeKeepHeap ? 1 : 0);
       } else if (cmd == "LOGDUMP") {
         probeLogDump();
+#if LOG_SERIAL_HAS_TX_TIMEOUT
+      } else if (cmd.startsWith("TXTIMEOUT ")) {
+        // CMD:TXTIMEOUT <ms>: the serial write timeout until the next restart, for the long dumps
+        // (LOGDUMP, CAT, SCREENSHOT) over a CDC port that drops bytes at the load-bearing 1 ms.
+        const long ms = std::max(1L, std::min(5000L, cmd.substring(10).toInt()));
+        logSerial.setTxTimeoutMs(static_cast<uint32_t>(ms));
+        logSerial.printf("TXTIMEOUT:%ld\n", ms);
+#endif
 #if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
       } else if (fwprobe::command(cmd)) {
         // EFUSE, OTA_STATE, FLASH_DUMP, SD_FLASH, ROLLBACK_TEST: handled there
@@ -1837,6 +1957,10 @@ void loop() {
       } else if (cmd.startsWith("CAT ")) {
         catCommand(cmd.substring(4));
 #endif
+#ifndef SIMULATOR
+      } else if (cmd.startsWith("PUT ")) {
+        putCommand(cmd.substring(4));
+#endif
       } else if (cmd.startsWith("TAP_LOG ")) {
         // CMD:TAP_LOG <s>: for <s> seconds (at most 600), with double tap on, one "IMU_FIFO:" line
         // per poll (frames read, microseconds the read took, free and lowest heap) and one
@@ -1885,7 +2009,7 @@ void loop() {
         // ban nghiem thu qua USB). Duong dan tinh tu goc the nho.
         const String duongDan = cmd.substring(10);
         if (duongDan.startsWith("/")) {
-          activityManager.goToReader(duongDan.c_str());
+          activityManager.goToReader(duongDan.c_str(), fastFirstPaint(BoardConfig::isX4Pro(), ReaderOpen::FromMenu));
           logSerial.printf("OPEN_BOOK:%s\n", duongDan.c_str());
         } else {
           logSerial.printf("OPEN_BOOK:INVALID\n");
@@ -1893,7 +2017,7 @@ void loop() {
       } else if (cmd == "READ_RECENT") {
         const auto& books = RECENT_BOOKS.getBooks();
         if (!books.empty()) {
-          activityManager.goToReader(books.front().path);
+          activityManager.goToReader(books.front().path, fastFirstPaint(BoardConfig::isX4Pro(), ReaderOpen::FromMenu));
           // Named on the cable so a test can reopen this book afterwards and leave Recent as found.
           logSerial.printf("READ_RECENT:%s\n", books.front().path.c_str());
         }

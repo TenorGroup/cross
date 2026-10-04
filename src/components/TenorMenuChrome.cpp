@@ -3,20 +3,213 @@
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <HalGPIO.h>
+#include <BlePageTurner.h>
 #include <HalPowerManager.h>
+#include <WiFi.h>
 
 #include <algorithm>
+#include <cstring>
 #include <iterator>
 #include <cstdio>
 #include <string>
 #include <vector>
 
 #include "ButtonSymbols.h"
+#include "HeaderBackTapTarget.h"
+#include "activities/Activity.h"
+#include "StatusGlyphs.h"
+#include "icons/tenorHomeTabIcons.h"
+#include "icons/tenorStatusIcons.h"
+#include "icons/tenorReaderTabIcons.h"
 #include "UITheme.h"
 #include "fontIds.h"
 #include "themes/TenorRadius.h"
 
+namespace {
+// A round-ended bar (radius h / 2) in pixel-centre arithmetic doubled to stay integer.
+bool inPill(const int px, const int py, const int x, const int y, const int w, const int h) {
+  if (px < x || py < y || px >= x + w || py >= y + h) return false;
+  const int r = h / 2;
+  int dx = 0;
+  if (px < x + r) {
+    dx = 2 * (x + r) - (2 * px + 1);
+  } else if (px >= x + w - r) {
+    dx = (2 * px + 1) - 2 * (x + w - r);
+  } else {
+    return true;
+  }
+  const int dy = 2 * py + 1 - (2 * y + h);
+  return dx * dx + dy * dy < 4 * r * r;
+}
+
+// A box with corners of radius r, same doubled arithmetic.
+bool inRound(const int px, const int py, const int x, const int y, const int w, const int h, const int r) {
+  if (px < x || py < y || px >= x + w || py >= y + h) return false;
+  int dx = 0, dy = 0;
+  if (px < x + r) dx = 2 * (x + r) - (2 * px + 1);
+  else if (px >= x + w - r) dx = (2 * px + 1) - 2 * (x + w - r);
+  if (py < y + r) dy = 2 * (y + r) - (2 * py + 1);
+  else if (py >= y + h - r) dy = (2 * py + 1) - 2 * (y + h - r);
+  return dx <= 0 || dy <= 0 || dx * dx + dy * dy < 4 * r * r;
+}
+
+}  // namespace
+
+void tenorchrome::drawRoundRing(const GfxRenderer& g, const int x, const int y, const int w, const int h, const int r,
+                                const int thick, const bool grey) {
+  const auto plot = [&](const int px, const int py) {
+    if (!grey || ((px + py) & 1) == 0) g.drawPixel(px, py, true);
+  };
+  const int ri = std::max(0, r - thick);
+  for (int py = y; py < y + h; ++py) {
+    if (py >= y + r && py < y + h - r) {
+      // Straight sides: only the two edges.
+      for (int i = 0; i < thick; ++i) {
+        plot(x + i, py);
+        plot(x + w - 1 - i, py);
+      }
+      continue;
+    }
+    for (int px = x; px < x + w; ++px)
+      if (inRound(px, py, x, y, w, h, r) && !inRound(px, py, x + thick, y + thick, w - 2 * thick, h - 2 * thick, ri))
+        plot(px, py);
+  }
+}
+
+// Ring of `thick` px just inside a round-ended bar; grey = every other pixel, (x + y) even.
+void tenorchrome::drawPillRing(const GfxRenderer& g, const int x, const int y, const int w, const int h, const int thick,
+                  const bool grey) {
+  const int r = h / 2;
+  const auto plot = [&](const int px, const int py) {
+    if (!grey || ((px + py) & 1) == 0) g.drawPixel(px, py, true);
+  };
+  for (int py = y; py < y + h; ++py) {
+    const bool band = py < y + thick || py >= y + h - thick;
+    for (int px = x; px < x + w; ++px) {
+      if (px >= x + r && px < x + w - r) {
+        if (band) plot(px, py);
+        continue;
+      }
+      if (inPill(px, py, x, y, w, h) && !inPill(px, py, x + thick, y + thick, w - 2 * thick, h - 2 * thick))
+        plot(px, py);
+    }
+  }
+}
+
+
+namespace {
+// Screens below another one, with a back to it: the settings groups and what they open, the file and
+// library lists, Wi-Fi, the reader's contents. Dialogs, the reader page and the like are not here.
+constexpr const char* FULL_BAR[] = {
+    "About", "BlePageTurner", "BookStats", "BookStatsLibrary", "ButtonRemap", "CalibreConnect", "ClearCache",
+    "ClockSettings", "ClockSync", "CrossPointWebServer", "EpubReaderBookmarks", "EpubReaderChapterSelection",
+    "FileBrowser", "FontDownload", "HomeButtonSettings", "KOReaderAuth", "KOReaderSettings", "KOReaderSync",
+    "KeyboardLayouts", "LanguageSelect", "NetworkModeSelection", "OpdsBookBrowser", "OpdsServerList",
+    "OpdsSettings", "QrDisplay", "QuoteDetail", "Quotes", "ReadingHabits", "ReadingHistory", "Settings",
+    "StatusBarSettings", "TimezonePicker", "WifiSelection", "XtcReaderChapterSelection"};
+// "<" at the left, the screen's own content in the rest of the foot: the keyboard of an input screen,
+// the cards of a screen with cards (the reader menu: "<" goes back a level, from the top level it
+// closes the menu; the text settings; the library).
+constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "TextSettings", "Library"};
+// Zone roots that draw their own cards at the foot.
+constexpr const char* TABS_BAR[] = {"Home"};
+
+template <size_t N>
+bool named(const char* const (&names)[N], const char* activityName) {
+  for (const char* name : names)
+    if (std::strcmp(name, activityName) == 0) return true;
+  return false;
+}
+
+// The header's title, for the bar of the screen that drew it: a screen that draws no header gets no
+// name from the one before it.
+char noted[96] = {};
+uint32_t notedGeneration = UINT32_MAX;
+
+// Mask1 icon (bit 0 = ink), solid.
+void drawIcon(const GfxRenderer& r, const freeink::Icon& icon, const int x, const int y) {
+  const int stride = (icon.w + 7) / 8;
+  for (int j = 0; j < icon.h; ++j)
+    for (int i = 0; i < icon.w; ++i)
+      if (((icon.bits[j * stride + i / 8] >> (7 - i % 8)) & 1) == 0) r.drawPixel(x + i, y + j, true);
+}
+
+const freeink::Icon& zoneIcon(const tenorchrome::Zone zone) {
+  switch (zone) {
+    case tenorchrome::Zone::File:
+      return icon_tenor_home_folder_40;
+    case tenorchrome::Zone::Favorites:
+      return icon_tenor_home_favorites_40;
+    case tenorchrome::Zone::Stats:
+      return icon_tenor_home_stats_40;
+    case tenorchrome::Zone::Settings:
+      return icon_tenor_home_settings_40;
+    case tenorchrome::Zone::Book:
+      return icon_tenor_reader_reading_40;
+    case tenorchrome::Zone::Recent:
+      break;
+  }
+  return icon_tenor_home_recent_40;
+}
+}  // namespace
+
+tenorchrome::FootBar tenorchrome::footBarFor(const char* activityName) {
+  if (!kTouchShell || !activityName) return FootBar::None;
+  if (named(FULL_BAR, activityName)) return FootBar::Full;
+  if (named(BACK_ONLY_BAR, activityName)) return FootBar::BackOnly;
+  if (named(TABS_BAR, activityName)) return FootBar::Tabs;
+  return FootBar::None;
+}
+
+void tenorchrome::noteScreenTitle(const char* title) {
+  snprintf(noted, sizeof(noted), "%s", title ? title : "");
+  notedGeneration = activityManager.activityGeneration();
+}
+
+const char* tenorchrome::screenTitle() {
+  return notedGeneration == activityManager.activityGeneration() ? noted : "";
+}
+
+void tenorchrome::drawFootBar(const GfxRenderer& r, const FootBar bar, const Zone zone) {
+  HeaderBackTapTarget::clearFoot();
+  if (bar != FootBar::Full && bar != FootBar::BackOnly) return;
+  constexpr int SIZE = FOOT_BACK_SIZE, ICON = 40;
+  const int y = footBackTop(r.getScreenHeight());
+  int x = FOOT_BACK_X;
+  // "<": the open chevron of the list marks, 3 px stroke, centred in its ring.
+  drawPillRing(r, x, y, SIZE, SIZE, 2, true);
+  constexpr int SPAN = 9;
+  drawMoreChevron(r, x + (SIZE - moreChevronLength(SPAN)) / 2 - 1, y + SIZE / 2 - SPAN, ChevronDir::Left, SPAN);
+  HeaderBackTapTarget::setFoot(x, y, SIZE, SIZE);
+  if (bar == FootBar::BackOnly) return;
+  // The zone's icon, alone in its ring: a tap leads to the zone's root.
+  x += SIZE + FOOT_PILL_GAP;
+  drawPillRing(r, x, y, SIZE, SIZE, 2, true);
+  drawIcon(r, zoneIcon(zone), x + (SIZE - ICON) / 2, y + (SIZE - ICON) / 2);
+  HeaderBackTapTarget::setZone(x, y, SIZE, SIZE);
+  // The screen's name in a pill that hugs it, cut with an ellipsis at the bar's end. Read only.
+  const char* title = screenTitle();
+  if (!*title) return;
+  constexpr int PAD_LEFT = 18, PAD_RIGHT = 22, font = UI_12_FONT_ID;
+  x += SIZE + FOOT_PILL_GAP;
+  const int room = r.getScreenWidth() - FOOT_BACK_X - x - PAD_LEFT - PAD_RIGHT;
+  const std::string name = r.truncatedText(font, title, room, EpdFontFamily::REGULAR);
+  const int width = PAD_LEFT + r.getTextWidth(font, name.c_str(), EpdFontFamily::REGULAR) + PAD_RIGHT;
+  drawPillRing(r, x, y, width, SIZE, 2, true);
+  r.drawText(font, x + PAD_LEFT, y + (SIZE - r.getLineHeight(font)) / 2, name.c_str(), true, EpdFontFamily::REGULAR);
+}
+
 void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char* prefix) {
+  // Touch: no title row. The name goes to the bar at the foot (or the strip, on a screen without one);
+  // a tap on the strip of a screen that names where it came from still goes back there.
+  if (kTouchShell) {
+    noteScreenTitle(title);
+    if (prefix && *prefix)
+      HeaderBackTapTarget::set(0, 0, r.getScreenWidth(), tabTop());
+    else
+      HeaderBackTapTarget::clear();
+    return;
+  }
   constexpr int x = 18, rightReserve = 18, tracking = 1;
   constexpr int font = UI_12_FONT_ID;
   constexpr auto dir = BidiUtils::BidiBaseDir::AUTO;
@@ -135,6 +328,90 @@ void tenorchrome::drawSiblingDestinations(const GfxRenderer& r, const char* prev
   drawSiblingChevron(r, rightChevronX, chevronY, true);
 }
 
+namespace {
+// Touch status strip (dynamic bar rule 10): the clock at the left, a note in the middle, the radios
+// that are on (18 px icons) and the battery at the right.
+constexpr int STRIP_LEFT = 18, STRIP_ICON = 18, STRIP_ICON_GAP = 6, STRIP_BATTERY_GAP = 8, STRIP_NOTE_AIR = 12;
+char stripNote[48] = {};
+// "B" while the remote links: shown every other blink, so each blink is one refresh, and it stops at
+// BT_LINK_GIVE_UP_MS (the strip calls it lost then).
+constexpr unsigned long BT_BLINK_MS = 2000;
+bool blinkShown = true;
+uint32_t stripNoteGeneration = UINT32_MAX;
+
+statusglyph::Bt bluetoothNow() {
+  // Remembered across frames: a link seen once makes a later loss a loss, not a new attempt.
+  static bool wasLinked = false;
+  static unsigned long linkingSince = 0;
+  const auto st = bleturner::status();
+  const bool on = st.running || st.starting;
+  if (st.connected) wasLinked = true;
+  if (!on) wasLinked = false;
+  if (!on || st.connected) linkingSince = 0;
+  else if (!linkingSince) linkingSince = millis() | 1;
+  return statusglyph::bluetooth(on, st.connected, wasLinked, linkingSince ? millis() - linkingSince : 0);
+}
+
+void drawStripMiddle(const GfxRenderer& r, const int y, const int clockEnd, const int batteryX, const int font) {
+  int x = batteryX - STRIP_BATTERY_GAP;
+  const int iconY = (tenorchrome::TOUCH_STRIP_HEIGHT - STRIP_ICON) / 2;
+  const auto icon = [&](const freeink::Icon& i) {
+    x -= STRIP_ICON;
+    drawIcon(r, i, x, iconY);
+    x -= STRIP_ICON_GAP;
+  };
+  if (WiFi.getMode() != WIFI_MODE_NULL) icon(icon_status_wifi_18);
+  switch (bluetoothNow()) {
+    case statusglyph::Bt::Linked:
+      icon(icon_status_bluetooth_18);
+      break;
+    case statusglyph::Bt::Lost:
+      icon(icon_status_bluetooth_lost_18);
+      break;
+    case statusglyph::Bt::Linking: {
+      const int w = r.getTextWidth(font, "B", EpdFontFamily::BOLD);
+      x -= w;
+      if (blinkShown) r.drawText(font, x, y, "B", true, EpdFontFamily::BOLD);
+      x -= STRIP_ICON_GAP;
+      break;
+    }
+    case statusglyph::Bt::None:
+      break;
+  }
+  // The middle: what the screen notes (the items of a folder), else the name of a screen whose bar
+  // does not hold it.
+  const char* note = stripNoteGeneration == activityManager.activityGeneration() ? stripNote : "";
+  if (!*note) {
+    const auto bar = tenorchrome::footBarFor(activityManager.currentName());
+    if (bar == tenorchrome::FootBar::None || bar == tenorchrome::FootBar::BackOnly) note = tenorchrome::screenTitle();
+  }
+  if (!*note) return;
+  const int left = clockEnd + STRIP_NOTE_AIR, right = x + STRIP_ICON_GAP - STRIP_NOTE_AIR;
+  const int half = std::min(r.getScreenWidth() / 2 - left, right - r.getScreenWidth() / 2);
+  if (half <= 0) return;
+  const std::string text = r.truncatedText(font, note, 2 * half);
+  r.drawText(font, r.getScreenWidth() / 2 - r.getTextWidth(font, text.c_str()) / 2, y, text.c_str());
+}
+}  // namespace
+
+bool tenorchrome::bluetoothBlinkDue() {
+  static unsigned long last = 0;
+  if (bluetoothNow() != statusglyph::Bt::Linking) {
+    blinkShown = true;
+    return false;
+  }
+  const unsigned long now = millis();
+  if (now - last < BT_BLINK_MS) return false;
+  last = now;
+  blinkShown = !blinkShown;
+  return true;
+}
+
+void tenorchrome::noteStatus(const char* text) {
+  snprintf(stripNote, sizeof(stripNote), "%s", text ? text : "");
+  stripNoteGeneration = activityManager.activityGeneration();
+}
+
 tenorchrome::StatusCornerBounds tenorchrome::statusCornerBounds(const GfxRenderer& r, const bool large) {
   const int fontChu = large ? UI_12_FONT_ID : SMALL_FONT_ID;
   const int batteryWidth = large ? 32 : 26;
@@ -169,17 +446,19 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   const bool hienTienDo = trongTrinhDoc && spec.showBookProgressPercent && bookProgress >= 0;
   const int width = r.getScreenWidth();
   const bool lon = !trongTrinhDoc && SETTINGS.globalStatusBarLarge();
-  const int y = statusTextY(r.getScreenHeight(), lon, paddingBottom);
   const int batteryWidth = lon ? 32 : 26;
   const int batteryHeight = lon ? 18 : 14;
   const int fontChu = lon ? UI_12_FONT_ID : SMALL_FONT_ID;
+  // Touch shell: outside the reader the clock and the battery sit on the header row, battery rightmost;
+  // the foot of the screen belongs to the tab bar.
+  const bool top = kTouchShell && !trongTrinhDoc;
+  const int y = top ? HEADER_TOP + (headerHeight() - r.getLineHeight(fontChu)) / 2
+                    : statusTextY(r.getScreenHeight(), lon, paddingBottom);
   const bool swap = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
   char clock[12] = "--:--";
   halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1);
   const int timeWidth = r.getTextWidth(fontChu, clock);
-  if (hienGio)
-    r.drawText(fontChu, swap ? STATUS_CORNER_INSET : width - STATUS_CORNER_INSET - timeWidth, y, clock);
-  const int by = statusIconTopY(r.getScreenHeight(), lon, paddingBottom);
+  const int by = top ? y + STATUS_ICON_TOP_OFFSET : statusIconTopY(r.getScreenHeight(), lon, paddingBottom);
   const int percent = std::max(0, std::min(100, static_cast<int>(powerManager.getDisplayedBatteryPercentage())));
   char percentage[8];
   snprintf(percentage, sizeof(percentage), "%d", percent);
@@ -187,8 +466,14 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   const int batteryBlock = batteryWidth + (hienPhanTram ? BATTERY_TEXT_GAP + batteryTextWidth : 0);
   // Pin nam o ben DOI dien voi dong ho (hoac ben trai khi khong hien dong ho), nen
   // muc 5 (ten chuong & pin) khong day pin sang phai nhu khi vang dong ho.
-  const bool batteryRight = hienGio && swap;
+  const bool batteryRight = top || (hienGio && swap);
   const int batteryBlockX = batteryRight ? width - STATUS_CORNER_INSET - batteryBlock : STATUS_CORNER_INSET;
+  if (hienGio)
+    r.drawText(fontChu,
+               top    ? STRIP_LEFT
+               : swap ? STATUS_CORNER_INSET
+                      : width - STATUS_CORNER_INSET - timeWidth,
+               y, clock);
   const int bx = batteryRight ? width - STATUS_CORNER_INSET - batteryWidth : batteryBlockX;
   if (hienPin) {
     // Tong be rong gom ca dau pin 2 px, de vien ngoai dung inset.
@@ -210,6 +495,10 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
       const int textX = batteryRight ? batteryBlockX : bx + batteryWidth + BATTERY_TEXT_GAP;
       r.drawText(fontChu, textX, y, percentage);
     }
+  }
+  if (top) {
+    drawStripMiddle(r, y, hienGio ? STRIP_LEFT + timeWidth : STRIP_LEFT, batteryBlockX, fontChu);
+    return;
   }
   if (!hienTieuDe && !hienSoTrang && !hienTienDo) return;
   // Hai ben neo vao dung khoi goc dang co, cach mot khoang nho.
@@ -267,6 +556,17 @@ void tenorchrome::drawMoreChevron(const GfxRenderer& r, const int x, const int y
   }
 }
 
+// The same stroke as drawMoreChevron, every other pixel: grey like an unselected card icon.
+void tenorchrome::drawRowChevron(const GfxRenderer& r, const int x, const int y) {
+  constexpr int span = ROW_CHEVRON_SPAN;
+  const int depth = moreChevronLength(span) - MORE_CHEVRON_STROKE;
+  for (int t = -span; t <= span; ++t) {
+    const int a = depth - ((t < 0 ? -t : t) * depth * 2 + span) / (2 * span);
+    for (int i = 0; i < MORE_CHEVRON_STROKE; ++i)
+      if (((x + a + i + y + span + t) & 1) == 0) r.drawPixel(x + a + i, y + span + t, true);
+  }
+}
+
 int tenorchrome::moreBelowChevronTopY(const GfxRenderer& renderer, const int hintTopY) {
   const int top = tipY(renderer) - 30;
   // The chevron is moreChevronLength(MORE_BELOW_SPAN) rows tall. Leave two clear rows before the first tip.
@@ -283,11 +583,12 @@ int tenorchrome::smallFooterSymbolsTopY(const GfxRenderer& renderer) {
 }
 
 bool tenorchrome::compactFooterTips(const bool hasTextHints) {
-  return enabled() && SETTINGS.tenorButtonSymbols && !SETTINGS.globalStatusBarHidden() &&
+  return !kTouchShell && enabled() && SETTINGS.tenorButtonSymbols && !SETTINGS.globalStatusBarHidden() &&
          !SETTINGS.globalStatusBarLarge() && !hasTextHints;
 }
 
 int tenorchrome::tipY(const GfxRenderer& renderer, const bool hasTextHints) {
+  if (kTouchShell) return touchBarTop(renderer.getScreenHeight()) - 8 - renderer.getLineHeight(SMALL_FONT_ID);
   if (compactFooterTips(hasTextHints)) {
     return smallFooterSymbolsTopY(renderer) - 2 - renderer.getLineHeight(SMALL_FONT_ID);
   }
@@ -367,7 +668,7 @@ int tenorchrome::tipHeight(const GfxRenderer& renderer, const char* text, int ma
 void tenorchrome::drawTip(const GfxRenderer& renderer, const char* text, int linesAbove, int maxLines,
                           const bool hasTextHints) {
   // Global status-bar Off also hides contextual footer tips.
-  if (SETTINGS.globalStatusBarHidden()) return;
+  if (SETTINGS.globalStatusBarHidden() || !tipShown(text)) return;
   constexpr int font = SMALL_FONT_ID;
   const auto lines = tipLines(renderer, text, maxLines);
   if (lines.empty()) return;

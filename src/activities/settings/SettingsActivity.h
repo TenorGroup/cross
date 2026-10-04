@@ -232,6 +232,10 @@ class SettingsActivity final : public UiTabListActivity {
   bool handleCustomInput() override;
   bool allowsTiltTabNavigation() const override { return !optionPopup.isActive(); }
   bool supportsFavorites() const override { return true; }
+  // A row that opens a screen; a switch or a value list is changed in place.
+  bool rowOpens(int row) const override {
+    return currentSettings && row >= 0 && row < settingsCount && (*currentSettings)[row].type == SettingType::ACTION;
+  }
   std::string favoriteKey(int row) const override;
   int focusFavorite(const std::string& key) override;
   // Vong con tro CHI GOM DONG (S1, chot 14/09/2026 dem): khong con vi tri 0 cua thanh the.

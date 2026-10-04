@@ -53,7 +53,7 @@ namespace fui = freeink::ui;
 
 SettingsActivity::SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const int theBanDau,
                                    const bool fromHomeGroup)
-    : UiTabListActivity("Settings", renderer, mappedInput),
+    : UiTabListActivity("Settings", renderer, mappedInput, /*wantsTouchLongPress=*/tenorchrome::kTouchShell),
       fromHomeGroup(fromHomeGroup),
       theBanDau(theBanDau >= 0 && theBanDau < settingstabs::TAB_COUNT ? theBanDau : 0) {}
 
@@ -312,7 +312,9 @@ void SettingsActivity::onTabAction(const int index) {
 
 void SettingsActivity::activateIndex(const int index) {
   if (optionPopup.isActive()) return;
-  (void)index;  // toggleCurrentSetting reads the ring position
+  // toggleCurrentSetting reads the ring position; a tap on the touch shell leaves the ring alone
+  // (no cursor row), so it names the row it landed on here.
+  if (tenorchrome::kTouchShell) activeNav().selected = index + 1;
   // Most rows repaint a different surface (popup, sub-activity, new value);
   // a lingering tap flash would gray an unrelated element.
   app.clearTapFlash();
@@ -787,6 +789,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   props.count = static_cast<uint16_t>(rowItems_.size());
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
+  if (tenorchrome::kTouchShell) props.inputMask |= fui::InputLongPress;  // hold a row: its menu (Pin)
   props.valueInset = 8;               // air between the value and the row edge
   // Titles match the value's font size (smallText) so both sides of a row
   // read as one unit; labels that still don't fit wrap onto a second line.
@@ -868,6 +871,7 @@ bool SettingsActivity::openPendingSettingsSibling() {
 
 void SettingsActivity::render(RenderLock&&) {
   if (optionPopup.processRender(renderer, mappedInput)) return;
+  if (rowMenu.processRender(renderer, mappedInput)) return;
 
   // Tenor tab chrome: settled-list debounce, nav header, sibling-tab arrows.
   renderSettledList(activeNav(), [&] {
@@ -876,7 +880,8 @@ void SettingsActivity::render(RenderLock&&) {
     renderUi();
   });
 
-  if (tenorchrome::enabled() && tabCount() > 1) {
+  // Touch: no sibling line, the only way back is "<" in the bar at the foot.
+  if (tenorchrome::enabled() && !tenorchrome::kTouchShell && tabCount() > 1) {
     tenorchrome::drawSiblingDestinations(renderer, tabLabel(adjacentTab(-1)), tabLabel(adjacentTab(1)));
   }
 

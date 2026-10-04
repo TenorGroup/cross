@@ -18,6 +18,7 @@ class GfxRenderer {
   mutable bool invalidUtf8Seen = false;
   int advancePerByte = 8;
   uint8_t uiTier = 0;
+  int screenWidth = 528, screenHeight = 792;
   struct TextRun { int font, x, y; std::string text; };
   mutable std::vector<TextRun> runs;
   void inspectUtf8(const char* text) const {
@@ -47,8 +48,8 @@ class GfxRenderer {
   void getOrientedViewableTRBL(int* top, int* right, int* bottom, int* left) const {
     *top = 9; *right = 7; *bottom = 7; *left = 7;
   }
-  int getScreenWidth() const { return 528; }
-  int getScreenHeight() const { return 792; }
+  int getScreenWidth() const { return screenWidth; }
+  int getScreenHeight() const { return screenHeight; }
   int getLineHeight(int font) const { return uiTier == 0 ? 20 : font == SMALL_FONT_ID ? uiTextSizeSpec(uiTier).captionLineHeight : uiTextSizeSpec(uiTier).bodyLineHeight; }
   int getTextAdvanceX(int, const char* s, EpdFontFamily::Style) const { inspectUtf8(s); return std::strlen(s) * advancePerByte; }
   int getTextWidth(int, const char* s) const { inspectUtf8(s); return std::strlen(s) * advancePerByte; }

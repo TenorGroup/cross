@@ -5,7 +5,9 @@
 #include <vector>
 
 #include "activities/UiListActivity.h"
-#include "components/OptionPopup.h"
+
+// The name a folder entry shows: no trailing slash, no extension (the File card of Home uses it too).
+void formatFileName(const std::string& filename, char* buffer, size_t bufferSize);
 
 class FileBrowserActivity final : public UiListActivity {
  public:
@@ -30,7 +32,6 @@ class FileBrowserActivity final : public UiListActivity {
   void restoreDirectory();
   std::vector<std::string> files;
   std::unique_ptr<char[]> fileNameBuffer;
-  OptionPopup optionPopup;
 
   // Pull-based rows: the SDK list resolves each drawn row on demand through
   // provideRow() (fui::ListProps::rowProvider), so the only per-file
@@ -65,7 +66,11 @@ class FileBrowserActivity final : public UiListActivity {
   // root), and Confirm activates on release while a hold opens file actions.
   bool handleCustomInput() override;
   bool handleButtons() override;
+  bool tooMany = false;  // the folder holds more names than the heap allows: nothing is listed
   bool supportsFavorites() const override { return mode == Mode::Books; }
+  bool rowOpens(int row) const override {
+    return row >= 0 && row < static_cast<int>(files.size()) && files[row].back() == '/';
+  }
   std::string favoriteKey(int row) const override;
   bool toggleFavorite(int row) override;
   // Header shows the current folder name (battery indicator via GUI.drawHeader);
@@ -87,5 +92,4 @@ class FileBrowserActivity final : public UiListActivity {
   void captureNavigation(MenuNavigationState& state) const override;
   void restoreNavigation(const MenuNavigationState& state) override;
   void onExit() override;
-  void render(RenderLock&& lock) override;
 };

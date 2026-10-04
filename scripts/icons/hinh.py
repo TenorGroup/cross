@@ -162,6 +162,22 @@ def _(g):
     g.dot(12, 20, 1.9)
 
 
+@reg('bluetooth', 'Remote Bluetooth da noi (vong 5b, founder duyet 04/10)')
+def _(g):
+    g.poly((7, 7), (17, 17), (12, 22), (12, 2), (17, 7), (7, 17))
+
+
+@reg('bluetooth_hong', 'Remote Bluetooth rot hoac noi hong: hinh tren, mot gach cheo')
+def _(g):
+    g.poly((7, 7), (17, 17), (12, 22), (12, 2), (17, 7), (7, 17))
+    g.line((3, 3), (21, 21))
+
+
+@reg('chon', 'Gia tri dang dung trong danh sach chon: dau tick')
+def _(g):
+    g.rpoly((5, 12.5), (10, 17.5), (19, 6.5), r=BO_VUA)
+
+
 @reg('thu_vien', 'Calibre: ke sach')
 def _(g):
     g.line((5, 3.5), (5, 20.5))

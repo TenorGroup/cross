@@ -19,39 +19,6 @@ namespace fui = freeink::ui;
 namespace {
 constexpr int16_t TOUCH_TAB_BAR_HEIGHT = 50;
 
-// A round-ended bar (radius h / 2) in pixel-centre arithmetic doubled to stay integer.
-bool inPill(const int px, const int py, const int x, const int y, const int w, const int h) {
-  if (px < x || py < y || px >= x + w || py >= y + h) return false;
-  const int r = h / 2;
-  int dx = 0;
-  if (px < x + r) {
-    dx = 2 * (x + r) - (2 * px + 1);
-  } else if (px >= x + w - r) {
-    dx = (2 * px + 1) - 2 * (x + w - r);
-  } else {
-    return true;
-  }
-  const int dy = 2 * py + 1 - (2 * y + h);
-  return dx * dx + dy * dy < 4 * r * r;
-}
-
-// Black ring of `thick` px just inside a round-ended pill.
-void drawPillRing(const GfxRenderer& g, const int x, const int y, const int w, const int h, const int thick) {
-  const int r = h / 2;
-  const auto plot = [&](const int px, const int py) { g.drawPixel(px, py, true); };
-  for (int py = y; py < y + h; ++py) {
-    const bool band = py < y + thick || py >= y + h - thick;
-    for (int px = x; px < x + w; ++px) {
-      if (px >= x + r && px < x + w - r) {
-        if (band) plot(px, py);
-        continue;
-      }
-      if (inPill(px, py, x, y, w, h) && !inPill(px, py, x + thick, y + thick, w - 2 * thick, h - 2 * thick))
-        plot(px, py);
-    }
-  }
-}
-
 // Mask1 icon (bit 0 = ink) drawn at 50%: ink kept where x + y is even in the icon's own coordinates, so
 // every tab shows the same dots whatever its place on the screen.
 void drawGreyIcon(const GfxRenderer& g, const fui::BitmapRef& icon, const int x, const int y) {
@@ -72,6 +39,7 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
   constexpr int PILL_ICON_W = 84;
   constexpr int INDICATOR = 6;  // sort arrow beside a label
   const int x0 = thanh.x + LE, w = thanh.width - 2 * LE, h = thanh.height, y0 = thanh.y;
+  tenorchrome::drawPillRing(renderer, x0, y0, w, h, 2, true);
   if (count <= 0) return;
   const bool icons = static_cast<bool>(tabs[0].icon);
   const int slotW = (w - 2 * KHE) / count;
@@ -81,6 +49,26 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
   label.align = fui::TextAlign::Center;
   label.color = fui::Color::Black;
   label.inverted = false;
+  // Text tabs: each pill is its label plus 14 px a side, and the pills are spread with equal air between
+  // them inside the bar, so a long label ("Phong chu") does not touch the bar's ring. Equal slots when
+  // the labels do not fit that way.
+  int textCentre[5] = {};
+  bool spread = false;
+  if (tenorchrome::kTouchShell && !icons && count <= 5) {
+    int widths[5] = {}, total = 0;
+    for (int i = 0; i < count; ++i) {
+      widths[i] = (tabs[i].label ? screen.target().measureText(label.font, tabs[i].label, label).width : 0) + 28;
+      total += widths[i];
+    }
+    const int inner = w - 2 * KHE;
+    const int air = total <= inner ? (inner - total) / count : -1;
+    spread = air >= 0;
+    int x = x0 + KHE + (air >= 0 ? air / 2 : 0);
+    for (int i = 0; i < count; ++i) {
+      textCentre[i] = air >= 0 ? x + widths[i] / 2 : x0 + KHE + slotW * i + slotW / 2;
+      x += widths[i] + (air >= 0 ? air : 0);
+    }
+  }
   for (int i = 0; i < count; ++i) {
     const fui::TabItem& tab = tabs[i];
     int cx, pillW;
@@ -89,11 +77,23 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
       cx = count > 1 ? first + (2 * (last - first) * i + (count - 1)) / (2 * (count - 1)) : x0 + w / 2;
       pillW = PILL_ICON_W;
     } else {
-      cx = x0 + KHE + slotW * i + slotW / 2;
+      cx = spread ? textCentre[i] : x0 + KHE + slotW * i + slotW / 2;
       labelW = tab.label ? screen.target().measureText(label.font, tab.label, label).width : 0;
-      pillW = std::min(slotW - 4, labelW + 28);
+      pillW = spread ? labelW + 28 : std::min(slotW - 4, labelW + 28);
     }
-    if (tab.selected) drawPillRing(renderer, cx - pillW / 2, y0 + KHE, pillW, h - 2 * KHE, 3);
+    if (tenorchrome::kTouchShell) {
+      // The whole bar height, split halfway between neighbouring tabs: every point of the bar picks a tab.
+      const auto centre = [&](const int j) {
+        if (!icons) return spread ? textCentre[j] : x0 + KHE + slotW * j + slotW / 2;
+        return count > 1 ? first + (2 * (last - first) * j + (count - 1)) / (2 * (count - 1)) : x0 + w / 2;
+      };
+      const int left = i == 0 ? thanh.x : (centre(i - 1) + cx) / 2;
+      const int right = i == count - 1 ? thanh.right() : (cx + centre(i + 1)) / 2;
+      screen.frame().hit(fui::Rect{static_cast<int16_t>(left), static_cast<int16_t>(y0),
+                                   static_cast<int16_t>(right - left), static_cast<int16_t>(h)},
+                         ACTION_TAB, tab.value, fui::InputTouch);
+    }
+    if (tab.selected) tenorchrome::drawPillRing(renderer, cx - pillW / 2, y0 + KHE, pillW, h - 2 * KHE, 3, false);
     if (icons) {
       const int ix = cx - ICON / 2, iy = y0 + (h - ICON) / 2;
       if (tab.selected)
@@ -194,7 +194,9 @@ void UiTabListActivity::tabActionTrampoline(const fui::ActionEvent& event, void*
 }
 
 void UiTabListActivity::onRowAction(const fui::ActionEvent& event) {
-  {
+  if (tenorchrome::kTouchShell && !touchRowMovesRing()) {
+    touchedRow = event.value;
+  } else {
     RenderLock lock(*this);
     moveRingTo(event.value + 1);
   }
@@ -304,6 +306,7 @@ void UiTabListActivity::stepSelection(const int direction) {
 void UiTabListActivity::applyFirstRow() { moveRingTo(listCount() > 0 ? 1 : 0); }
 
 void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& props, const bool hasSubtitle) {
+  frameRows(props);
   reserveFixedMenuContent(screen);
   reserveFavoriteHint(screen);
   decoratePinnedRows(props);
@@ -339,7 +342,8 @@ void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& pr
   }
   n.scrollBy(0, count);  // clamp to range
   props.topIndex = static_cast<uint16_t>(n.top);
-  props.selectedIndex = static_cast<int16_t>(n.selected - 1);  // -1 = tab band focused
+  // -1 = tab band focused; the touch shell shows no cursor row at all.
+  props.selectedIndex = tenorchrome::kTouchShell ? int16_t{-1} : static_cast<int16_t>(n.selected - 1);
   props.nav = &n;  // actual wrapped-row layout corrects the estimated viewport
 }
 
@@ -538,11 +542,27 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   tabStyles.focused = tabStyles.selected;
   tabStyles.active = tabStyles.selected;
   tabProps.tabStyles = tabStyles;
-  const fui::Rect contentTabRect = screen.takeTop(tabBand);
   const fui::Rect frameRect = screen.frame().screen();
-  // Tab chrome is a full-width screen band like the legacy GUI tab bar. The
-  // remaining list content still stays inside the device safe area.
-  const fui::Rect tabRect{frameRect.x, contentTabRect.y, frameRect.width, contentTabRect.height};
+  fui::Rect tabRect;
+  if (tenorchrome::kTouchShell) {
+    // Touch: the bar sits at the foot, 16 px in from both sides (veThanhTheTenor insets 8 more) and
+    // 16 px above the Home key; the list stops 8 px above it.
+    const int16_t barTop = static_cast<int16_t>(frameRect.bottom() - tenorchrome::TOUCH_BAR_BOTTOM_GAP - tabBand);
+    const int bodyBottom = screen.body().y + screen.body().height;
+    if (bodyBottom > barTop - 8) screen.takeBottom(static_cast<int16_t>(bodyBottom - (barTop - 8)));
+    // A screen with "<" in its bar (the reader menu) keeps the cards right of it.
+    const int16_t left = tenorchrome::wantsFootBack(name.c_str())
+                             ? static_cast<int16_t>(tenorchrome::FOOT_BACK_X + tenorchrome::FOOT_BACK_SIZE +
+                                                    tenorchrome::FOOT_PILL_GAP - 8)
+                             : int16_t{8};
+    tabRect = fui::Rect{static_cast<int16_t>(frameRect.x + left), barTop,
+                        static_cast<int16_t>(frameRect.width - left - 8), tabBand};
+  } else {
+    const fui::Rect contentTabRect = screen.takeTop(tabBand);
+    // Tab chrome is a full-width screen band like the legacy GUI tab bar. The
+    // remaining list content still stays inside the device safe area.
+    tabRect = fui::Rect{frameRect.x, contentTabRect.y, frameRect.width, contentTabRect.height};
+  }
   // O the nam trong phan giua; hai mang le hai ben danh cho mui ten.
   const fui::Rect theRect{static_cast<int16_t>(tabRect.x + leMuiTen), tabRect.y,
                           static_cast<int16_t>(tabRect.width - 2 * leMuiTen), tabRect.height};

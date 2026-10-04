@@ -1,6 +1,7 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "activities/util/KeyboardLayoutSet.h"
 #include "components/UITheme.h"
+#include "components/TenorMenuChrome.h"
 
 #include <atomic>
 #include <chrono>
@@ -282,6 +283,40 @@ static void run(const std::string& test) {
       require(!f.renderer.invalidUtf8Seen, "viewport split UTF-8");
     }
     SETTINGS.uiTextSize = 0;
+  } else if (test == "landscape_viewport") {
+    tenorchrome::kTouchShell = true;
+    SETTINGS.uiTextSize = 0;
+    const std::string initial = "BEGIN" + std::string(128, 'W') + "END";
+    for (const size_t position : {size_t{0}, initial.size() / 2, initial.size()}) {
+      Fixture f(initial);
+      f.renderer.screenWidth = 800;
+      f.renderer.screenHeight = 480;
+      f.hold(Button::Up);
+      for (size_t i = initial.size(); i > position; --i) f.tap(Button::Left);
+      f.render();
+      for (const auto& run : f.renderer.runs)
+        require(run.y == 30, "landscape field escaped its one-line viewport");
+      f.hold(Button::Right);
+      std::string expected = initial;
+      expected.insert(position, " ");
+      require(f.completed() == expected, "insert landed at the wrong scrolled cursor position");
+      f.render();
+      f.hold(Button::Left);
+      require(f.completed() == initial, "delete landed at the wrong scrolled cursor position");
+      f.render();
+      require(!f.renderer.invalidUtf8Seen, "landscape viewport split UTF-8");
+      f.input.reset();
+      f.input.tap = true;
+      f.input.touchX = 80;  // 40 px margin + 5 glyph advances of 8 px.
+      f.input.touchY = 35;
+      f.activity.loop();
+      f.hold(Button::Right);
+      expected = initial;
+      expected.insert((position / 90) * 90 + 5, " ");
+      require(f.completed() == expected, "field hit mapped to the wrong scrolled cursor position");
+      f.hold(Button::Left);
+      require(f.completed() == initial, "delete after field hit damaged the original text");
+    }
   } else if (test == "cancel") {
     for (int mode = 0; mode < 3; ++mode) {
       keyboard_test::cancelled = false;

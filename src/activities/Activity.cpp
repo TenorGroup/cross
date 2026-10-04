@@ -1,5 +1,9 @@
 #include "Activity.h"
 
+#include <BoardConfig.h>
+
+#include "reader/FirstPaint.h"
+
 #include <algorithm>
 
 #include "ActivityManager.h"
@@ -17,7 +21,9 @@ void Activity::requestUpdateAndWait() { activityManager.requestUpdateAndWait(); 
 
 void Activity::onGoHome(HomeMenuItem item) { activityManager.goHome(item); }
 
-void Activity::onSelectBook(const std::string& path) { activityManager.goToReader(path); }
+void Activity::onSelectBook(const std::string& path) {
+  activityManager.goToReader(path, fastFirstPaint(BoardConfig::isX4Pro(), ReaderOpen::FromMenu));
+}
 
 void Activity::startActivityForResult(std::unique_ptr<Activity>&& activity, ActivityResultHandler resultHandler) {
   if (!activity) {

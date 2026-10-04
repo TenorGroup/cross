@@ -162,6 +162,10 @@ void drawHeader(const GfxRenderer&, const char*, const char*) {}
 int moreBelowChevronTopY(const GfxRenderer&, int) { return 696; }
 void drawMoreBelowChevron(const GfxRenderer&, int) {}
 void drawMoreChevron(const GfxRenderer&, int, int, ChevronDir, int) {}
+void drawRoundRing(const GfxRenderer&, int, int, int, int, int, int, bool) {}
+void drawRowChevron(const GfxRenderer&, int, int) {}
+void drawPillRing(const GfxRenderer&, int, int, int, int, int, bool) {}
+FootBar footBarFor(const char*) { return FootBar::None; }
 }  // namespace tenorchrome
 
 // Persist only in memory in the input harness; simulator tests cover SD failures.

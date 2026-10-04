@@ -19,6 +19,7 @@ STR_RESUME: "Resume"
 STR_NO_OPEN_BOOK: "No open book"
 STR_START_READING: "Start reading below"
 STR_NO_FILES_FOUND: "No files found"
+STR_FOLDER_TOO_MANY: "This folder has too many files to list. Move some into subfolders."
 STR_SELECT_CHAPTER: "Select Chapter"
 STR_TOOL_CONTENTS: "Contents"
 STR_TOOL_TEXT: "Text"
@@ -583,6 +584,10 @@ STR_MENU_PINNED: "Hold : Unpin"
 STR_MENU_SAVE_FAILED: "Could not save menu"
 
 STR_HOME_FAVORITES_HINT: "Hold  on a setting, book or folder to pin or unpin.\nIn Favorites, hold  or  to reorder."
+STR_FAVORITES_EMPTY_TOUCH: "Touch and hold a book in Recent to pin it here. In Files, touch and hold, then choose Pin."
+STR_NOW_READING: "Reading"
+STR_PIN_FAVORITE: "Pin"
+STR_UNPIN_FAVORITE: "Unpin"
 
 STR_FILE_SIDE_ACTIONS: "Hold : Preview   : Delete"
 
@@ -967,3 +972,4 @@ STR_UGLY_SWITCH_ASK: "This is the ugliest interface you have ever seen, and it i
 STR_UGLY_SWITCH_YES: "Bring it on"
 STR_UGLY_SWITCH_NO: "No, too scary"
 STR_UGLY_YAWNING: "Yawning..."
+STR_FOLDER_ITEM_COUNT: "%u items"

@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -27,6 +28,17 @@ enum class Loc : uint8_t {
 // nao danh sach lon theo so tep tren the thi dat tran; 0 la khong gioi han, nhu moi noi goi cu.
 bool doc(const char* duongDan, bool hienFileAn, Loc loc, char* dem, size_t demCo, std::vector<std::string>& ra,
          size_t tran = 0, bool* quaTran = nullptr);
+
+// How many names a folder page may hold, from the heap left: the one decision for every screen that lists a
+// card folder (tenor/cross Home and File, and the tenor/ugly Folder page). Each row costs a string slot (the
+// vector doubles, so twice that must fit in one block) and its name on the heap, and some heap stays for the
+// frame and the card library. 0 means refuse the folder rather than run out. Pass the result as `tran`.
+inline constexpr size_t FOLDER_MAX_ROWS = 2000, FOLDER_HEAP_KEEP = 16 * 1024, FOLDER_BYTES_PER_ROW = 80;
+inline size_t tran(const size_t freeHeap, const size_t largestBlock) {
+  const size_t byFree = freeHeap > FOLDER_HEAP_KEEP ? (freeHeap - FOLDER_HEAP_KEEP) / FOLDER_BYTES_PER_ROW : 0;
+  const size_t byBlock = largestBlock / (2 * sizeof(std::string));
+  return std::min({FOLDER_MAX_ROWS, byFree, byBlock});
+}
 
 // Adjacent visible sibling folder in natural order, wrapping at either end.
 // Holds only candidate names, never the whole parent directory in RAM.

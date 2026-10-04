@@ -44,6 +44,11 @@ SETS = [
         ('file', 'tep'), ('wifi', 'wifi'), ('library', 'thu_vien'), ('radio_tower', 'diem_phat'),
         ('bookmark', 'vi_tri')]),
     ('tenorTransferIcons.h', 24, 2, [('download', 'tai_xuong'), ('upload', 'tai_len')]),
+    # The status strip at the top of the touch shell: shown only while the radio is on.
+    ('tenorStatusIcons.h', 18, 2, [('status_wifi', 'wifi'), ('status_bluetooth', 'bluetooth'),
+                                   ('status_bluetooth_lost', 'bluetooth_hong')]),
+    # The mark of the value in use at the end of a row in a list of choices (touch shell).
+    ('tenorRowMarks.h', 24, 2, [('row_chosen', 'chon')]),
     ('search32.h', 32, 2, [('search', 'tim')]),
     ('readerToolbarIcons.h', 24, 2, [
         ('reader_contents', 'muc_luc'), ('reader_text', 'chu'), ('reader_more', 'them'),

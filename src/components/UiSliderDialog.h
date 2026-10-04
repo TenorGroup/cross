@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "MappedInputManager.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "components/UiAppHost.h"
@@ -101,6 +102,12 @@ inline void buildSliderDialogScreen(UiAppHost::UiScreen& screen, freeink::ui::Gf
       fui::clampI16(screen.target().lineHeight(theme.bodyText.font) + metrics.optionPopupSelectionVPadding * 2);
   // Square -/+ buttons; Confirm flexes into the remaining row width so its
   // label never truncates on large-font themes.
+  if (tenorchrome::kTouchShell) {
+    // 8.62 px/mm: a finger-sized button is 60 px (7 mm), with a label that reads at a glance.
+    props.buttonHeight = std::max<int16_t>(props.buttonHeight, 60);
+    props.buttonText = theme.titleText;
+    props.buttonText.bold = true;
+  }
   options[0].width = props.buttonHeight;
   options[1].width = props.buttonHeight;
 

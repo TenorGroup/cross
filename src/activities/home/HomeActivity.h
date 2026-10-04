@@ -71,10 +71,25 @@ class HomeActivity final : public UiTabListActivity {
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   bool handleButtons() override;
+  static constexpr freeink::ui::ActionId ACTION_OTHER_BOOK = ACTION_TAB_USER;
+  static void otherBookTrampoline(const freeink::ui::ActionEvent& event, void* user) {
+    auto* self = static_cast<HomeActivity*>(user);
+    // Touch: a hold on the line offers the actions of the book it names, anchored to the line.
+    if (event.longPress) {
+      self->showOtherBookMenu();
+      return;
+    }
+    self->queueNavIntent(NavIntent::StepNext);
+  }
+  void showOtherBookMenu();
+  bool touchRowMovesRing() const override { return activeTabId == Tab::RECENT; }
+  bool listFramed() const override { return activeTabId != Tab::RECENT; }  // the card is no list
+  bool rowOpens(int row) const override;
   bool supportsFavorites() const override { return activeTabId != Tab::STATS; }
   std::string favoriteKey(int row) const override;
   void favoritesChanged() override;
   bool toggleFavorite(int row) override;
+  bool mucQuaNhieu = false;  // the card root holds more names than the heap allows: nothing is listed
   bool favoriteFileMissing = false;
   std::optional<StrId> statsResetTip;
   uint8_t statsPage = 0;
@@ -178,5 +193,4 @@ class HomeActivity final : public UiTabListActivity {
   void drawOtherBookRow(int shown, int ruleY, int rowY);
   const char* habitSuggestion() const;
   void loadRecentBooks();
-  void onSelectBook(const std::string& path);
 };

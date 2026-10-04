@@ -9,6 +9,7 @@
 class EpubReaderChapterSelectionActivity final : public UiListActivity {
   std::shared_ptr<Epub> epub;
   int currentSpineIndex = 0;
+  int currentTocIndex = -1;  // the chapter being read, marked at the end of its row
 
   // Windowed row buffers: TOC entries are SD-backed (BookMetadataCache LUT
   // reads), so only the rows around the viewport are materialized. A

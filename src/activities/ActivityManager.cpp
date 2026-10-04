@@ -19,6 +19,7 @@
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
 #include "components/HeaderBackTapTarget.h"
+#include "components/TenorMenuChrome.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
@@ -53,7 +54,51 @@ std::atomic<bool> frameAfterDeferredWrite{false};
 std::atomic<bool> frameDrawn{false};
 }  // namespace
 
+// The Home key leads to the main screen, which is its Recent card on the touch shell, whatever card was last open.
+HomeMenuItem ActivityManager::homeKeyTarget() const {
+  return tenorchrome::kTouchShell ? HomeMenuItem::RECENTS : HomeMenuItem::NONE;
+}
+
+const char* ActivityManager::currentName() const { return currentActivity ? currentActivity->name.c_str() : nullptr; }
+
+namespace {
+// Touch shell: the frame about to reach the panel gets the dynamic bar the screen in front declares.
+void drawFootBar(const GfxRenderer& r) {
+  tenorchrome::drawFootBar(r, tenorchrome::footBarFor(activityManager.currentName()), activityManager.footZone());
+}
+}  // namespace
+
+tenorchrome::Zone ActivityManager::footZone() const {
+  if (isReaderActivity()) return tenorchrome::Zone::Book;
+  switch (homeMenuOrigin()) {
+    case HomeMenuItem::FILE_BROWSER:
+      return tenorchrome::Zone::File;
+    case HomeMenuItem::STATS_TAB:
+      return tenorchrome::Zone::Stats;
+    case HomeMenuItem::SETTINGS_MENU:
+      return tenorchrome::Zone::Settings;
+    case HomeMenuItem::FAVORITES_TAB:
+      return tenorchrome::Zone::Favorites;
+    default:
+      return tenorchrome::Zone::Recent;
+  }
+}
+
+// The zone's icon in the bar: back to the book's page, or to the Home card the screen was reached from.
+// Each screen above the book closes as its Back would (a cancelled result), one per pass.
+void ActivityManager::goZoneRoot() {
+  if (!isReaderActivity()) {
+    goHome(homeMenuOrigin());
+    return;
+  }
+  if (currentActivity->isReaderActivity()) return;
+  toReaderPage = true;
+  currentActivity->result.isCancelled = true;
+  popActivity();
+}
+
 void ActivityManager::begin() {
+  if (tenorchrome::kTouchShell) GfxRenderer::preDisplayHook = &drawFootBar;
 #if defined(configNUM_CORES) && configNUM_CORES > 1
   constexpr BaseType_t renderTaskCore = 1;
 #else
@@ -146,8 +191,28 @@ void ActivityManager::loop() {
         if (heldBack) homeAfterInput = true;
         return;
       }
-      goHome();
+      goHome(homeKeyTarget());
       return;
+    }
+    // Touch: the Home key from the Home screen itself brings it back to its default card, Recent.
+    if (tenorchrome::kTouchShell && currentActivity->isHomeActivity() && mappedInput.wasHomeGesture() &&
+        homeMenuOrigin() != HomeMenuItem::RECENTS) {
+      goHome(HomeMenuItem::RECENTS);
+      return;
+    }
+
+    // Touch: the "B" of a remote that links blinks in the status strip (not over a book's page).
+    if (tenorchrome::kTouchShell && !currentActivity->isReaderActivity() && tenorchrome::bluetoothBlinkDue())
+      requestUpdate();
+
+    // Touch: the zone's icon in the dynamic bar.
+    if (tenorchrome::kTouchShell) {
+      int tx = 0;
+      int ty = 0;
+      if (mappedInput.wasScreenTapped(tx, ty) && HeaderBackTapTarget::zoneContains(tx, ty)) {
+        goZoneRoot();
+        return;
+      }
     }
 
     // Tap-first control-center entry: a tap on the status-bar band of the
@@ -161,7 +226,9 @@ void ActivityManager::loop() {
       int tx = 0;
       int ty = 0;
       // The header back button shares this band; its taps stay Back.
-      statusBarTap = mappedInput.wasScreenTapped(tx, ty) && ty < 44 && !HeaderBackTapTarget::contains(tx, ty);
+      // Touch: the status strip alone, so a tap on the first row of a list is the row's.
+      const int band = tenorchrome::kTouchShell ? tenorchrome::TOUCH_STRIP_HEIGHT : 44;
+      statusBarTap = mappedInput.wasScreenTapped(tx, ty) && ty < band && !HeaderBackTapTarget::contains(tx, ty);
     }
     // Both ways in are touch gestures, so a build without a touch board leaves the panel out.
     if (BoardConfig::hasTouch() && currentActivity->name != "FrontlightPanel" &&
@@ -231,8 +298,18 @@ void ActivityManager::loop() {
         if (homeAfterInput) {
           homeAfterInput = false;
           lock.unlock();
-          goHome();
+          goHome(homeKeyTarget());
           continue;
+        }
+        // On the way down to the book's page (the zone icon): the next screen closes too.
+        if (toReaderPage) {
+          if (currentActivity->isReaderActivity()) {
+            toReaderPage = false;
+          } else if (pendingAction == PendingAction::None) {
+            currentActivity->result.isCancelled = true;
+            popActivity();
+            continue;
+          }
         }
         if (pendingAction == PendingAction::None) {
           lock.unlock();
@@ -270,6 +347,7 @@ void ActivityManager::loop() {
         // The parent's header back rect must not route taps on the pushed
         // screen (which may draw no header of its own).
         HeaderBackTapTarget::clear();
+        HeaderBackTapTarget::clearFoot();
         LOG_DBG("ACT", "Pushed to activity stack, new size = %zu", stackActivities.size());
       }
       pendingAction = PendingAction::None;
@@ -413,6 +491,7 @@ void ActivityManager::restoreNavigation() {
   // The outgoing screen's header back button must not eat taps on the next
   // screen; the next header draw re-records it.
   HeaderBackTapTarget::clear();
+  HeaderBackTapTarget::clearFoot();
 }
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {

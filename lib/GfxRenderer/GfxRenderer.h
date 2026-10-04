@@ -236,6 +236,9 @@ class GfxRenderer {
   int getScreenHeight() const;
   void tapToLogical(float nx, float ny, int& outX, int& outY) const;
   void displayBuffer(HalDisplay::RefreshMode refreshMode = HalDisplay::FAST_REFRESH) const;
+  // Called with the frame just before it goes to the panel (displayBuffer and displayBufferAsync): the
+  // touch shell draws the foot back button there, so every screen gets it from one place.
+  static inline void (*preDisplayHook)(const GfxRenderer&) = nullptr;
   // One-shot: the next displayBuffer()/displayBufferAsync() call uses `mode`
   // instead of what its caller asked for, then the override clears itself.
   // Lets a closing overlay (the control center's refresh tile) hand a

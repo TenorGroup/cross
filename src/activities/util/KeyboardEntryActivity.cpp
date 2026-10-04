@@ -14,12 +14,20 @@
 #include "components/UITheme.h"
 #include "components/themes/TenorRadius.h"
 #include "fontIds.h"
+#if defined(FREEINK_DEVICE_X4PRO)
+#include "UIFontTiers.h"
+#endif
 
 namespace fui = freeink::ui;
 
 namespace {
 
 constexpr fui::ActionId ACTION_KEY = 1;
+
+bool singleLineInput(const GfxRenderer& renderer) {
+  return normalizedUiTextSize(SETTINGS.uiTextSize) != 0 ||
+         (tenorchrome::kTouchShell && renderer.getScreenWidth() > renderer.getScreenHeight());
+}
 
 // ---------------------------------------------------------------------------
 // URL layers. The SDK builtin layouts have no URL variant (":", "/", ".", the
@@ -501,7 +509,7 @@ bool KeyboardEntryActivity::cursorPositionFromPoint(const int x, const int y, si
       return true;
     }
 
-    if (normalizedUiTextSize(SETTINGS.uiTextSize) != 0 || lineEndIdx == static_cast<int>(displayText.length())) {
+    if (singleLineInput(renderer) || lineEndIdx == static_cast<int>(displayText.length())) {
       break;
     }
 
@@ -523,6 +531,7 @@ bool KeyboardEntryActivity::cursorPositionFromPoint(const int x, const int y, si
 
 int KeyboardEntryActivity::inputTop() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
+  if (tenorchrome::kTouchShell) return tenorchrome::contentTop();
   if (normalizedUiTextSize(SETTINGS.uiTextSize) != 0)
     return metrics.topPadding + (tenorchrome::enabled() ? tenorchrome::headerHeight() : metrics.headerHeight) +
            metrics.verticalSpacing;
@@ -530,7 +539,7 @@ int KeyboardEntryActivity::inputTop() const {
 }
 
 int KeyboardEntryActivity::inputWindowStart(std::string& displayText, int maxWidth) const {
-  if (normalizedUiTextSize(SETTINGS.uiTextSize) == 0) return 0;
+  if (!singleLineInput(renderer)) return 0;
   int start = 0;
   while (start < static_cast<int>(displayText.size())) {
     const int end = lineBreakEnd(displayText, start, maxWidth);
@@ -546,20 +555,35 @@ fui::Rect KeyboardEntryActivity::keyboardRect() const {
   const int pageHeight = renderer.getScreenHeight();
   const int rows = currentLayout().rowCount;
   const int gap = metrics.keyboardKeySpacing;
+  const bool landscape = pageWidth > pageHeight;
+  const int rowGap = tenorchrome::kTouchShell ? (landscape ? 0 : fui::KeyboardProps{}.rowGap) : gap;
   const bool enlarged = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
-  const int keyHeight = enlarged ? renderer.getLineHeight(UI_12_FONT_ID) + renderer.getLineHeight(SMALL_FONT_ID) + 8
-                                 : metrics.keyboardKeyHeight;
-  const int height = rows * keyHeight + (rows > 1 ? (rows - 1) * gap : 0);
+  int keyHeight = enlarged ? renderer.getLineHeight(UI_12_FONT_ID) + renderer.getLineHeight(SMALL_FONT_ID) + 8
+                           : metrics.keyboardKeyHeight;
+  if (tenorchrome::kTouchShell) {
+    const int inputBottom = inputTop() + renderer.getLineHeight(UI_12_FONT_ID) + metrics.verticalSpacing + 8;
+    const int bottomGap = landscape ? 4 : metrics.verticalSpacing + 8;
+    const int available = tenorchrome::footBackTop(pageHeight) - bottomGap - inputBottom;
+    keyHeight = std::min(landscape ? 60 : std::max(60, keyHeight),
+                         std::max(1, (available - (rows - 1) * rowGap) / rows));
+  }
+  const int height = rows * keyHeight + (rows > 1 ? (rows - 1) * rowGap : 0);
   const int width = pageWidth * metrics.keyboardWidthPercent / 100;
   const int x = (pageWidth - width) / 2;
   int insetTop = 0, insetRight = 0, insetBottom = 0, insetLeft = 0;
   if (enlarged) renderer.getOrientedViewableTRBL(&insetTop, &insetRight, &insetBottom, &insetLeft);
-  const int footerReserve = std::max(metrics.buttonHintsHeight, insetBottom);
-  const int y = enlarged ? pageHeight - footerReserve - height -
+  // Touch: the keys sit over the foot of the screen, where "<" keeps a place of its own.
+  const int hints = tenorchrome::kTouchShell ? tenorchrome::footBackReserve() : metrics.buttonHintsHeight;
+  const int footerReserve = std::max(hints, insetBottom);
+  const int y = tenorchrome::kTouchShell ? tenorchrome::footBackTop(pageHeight) - height -
+                                             (landscape ? 4 : metrics.verticalSpacing + 8)
+                : enlarged ? pageHeight - footerReserve - height -
                                (12 + 2 * renderer.getLineHeight(SMALL_FONT_ID))
-                         : pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing - height +
+                         : pageHeight - hints - metrics.verticalSpacing - height +
                                metrics.keyboardVerticalOffset -
-                               (tenorchrome::enabled() ? 28 + 6 * renderer.getLineHeight(SMALL_FONT_ID) : 0);
+                               (tenorchrome::enabled() && !tenorchrome::kTouchShell
+                                    ? 28 + 6 * renderer.getLineHeight(SMALL_FONT_ID)
+                                    : 0);
   return fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(width),
                    static_cast<int16_t>(height)};
 }
@@ -655,7 +679,8 @@ void KeyboardEntryActivity::loopLocked(const InputFrame& input, bool& complete) 
     if (result.activeChanged) {
       requestUpdate();
     }
-    if (input.touchDown || input.tapped) {
+    // A tap on "<" in the bar is Back (input.back), not a touch on the keys.
+    if ((input.touchDown || input.tapped) && !input.back.released) {
       return;
     }
   }
@@ -947,7 +972,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
       } else {
         renderer.drawText(UI_12_FONT_ID, lineStartX, inputStartY + inputHeight, lineText.c_str());
       }
-      if (normalizedUiTextSize(SETTINGS.uiTextSize) != 0 || lineEndIdx == static_cast<int>(displayText.length())) {
+      if (singleLineInput(renderer) || lineEndIdx == static_cast<int>(displayText.length())) {
         break;
       }
 
@@ -994,7 +1019,8 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     }
   }
 
-  if (normalizedUiTextSize(SETTINGS.uiTextSize) == 0 && hintVisible && !text.empty()) {
+  // The tips below name front buttons; the touch shell has none.
+  if (!tenorchrome::kTouchShell && normalizedUiTextSize(SETTINGS.uiTextSize) == 0 && hintVisible && !text.empty()) {
     const int hintLh = renderer.getLineHeight(SMALL_FONT_ID);
     const int underlineY = inputStartY + inputHeight + lineHeight + metrics.verticalSpacing;
     const int hintY = underlineY + 4;
@@ -1036,7 +1062,8 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     tipCount = 5 + (inputType == InputType::Url ? 1 : 0);
   }
 
-  if (normalizedUiTextSize(SETTINGS.uiTextSize) != 0) {
+  if (tenorchrome::kTouchShell) {
+  } else if (normalizedUiTextSize(SETTINGS.uiTextSize) != 0) {
     const char* contextual = cursorMode ? tr(STR_KB_HINT_RETURN_KEYBOARD) : tr(STR_KB_HINT_EDIT_ENTRY);
     if (cursorMode && inputType == InputType::Password)
       contextual = passwordVisible ? tr(STR_KB_HINT_HIDE_PASSWORD) : tr(STR_KB_HINT_SHOW_PASSWORD);
@@ -1101,6 +1128,23 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   fui::GfxRendererTarget target(renderer);
   target.setFont(fui::GfxRendererTarget::FONT_SMALL, SMALL_FONT_ID);
   target.setFont(fui::GfxRendererTarget::FONT_BODY, UI_12_FONT_ID);
+#if defined(FREEINK_DEVICE_X4PRO)
+  // Compact landscape rows keep both digit and alternate complete. Reuse the
+  // existing fixed families without rebinding the user's input/status fonts.
+  const int rowGap = renderer.getScreenWidth() > renderer.getScreenHeight() ? 0 : fui::KeyboardProps{}.rowGap;
+  const int rowHeight = (kbRect.height - (currentLayout().rowCount - 1) * rowGap) /
+                        currentLayout().rowCount;
+  if (normalizedUiTextSize(SETTINGS.uiTextSize) != 0 &&
+      rowHeight < renderer.getLineHeight(UI_12_FONT_ID) + renderer.getLineHeight(SMALL_FONT_ID) + 8) {
+    constexpr int KEY_BODY_FONT_ID = 0x4b424f44, KEY_ALT_FONT_ID = 0x4b414c54;
+    if (renderer.getFontMap().find(KEY_BODY_FONT_ID) == renderer.getFontMap().end()) {
+      renderer.insertFont(KEY_BODY_FONT_ID, uiFontTierFamily(UIFontRole::Subtitle, 0));
+      renderer.insertFont(KEY_ALT_FONT_ID, uiFontTierFamily(UIFontRole::Caption, 0));
+    }
+    target.setFont(fui::GfxRendererTarget::FONT_BODY, KEY_BODY_FONT_ID);
+    target.setFont(fui::GfxRendererTarget::FONT_SMALL, KEY_ALT_FONT_ID);
+  }
+#endif
   const fui::DeviceContext device = target.deviceContext();
   const fui::InputSnapshot noInput{};
   fui::Frame<56> frame(target, device, noInput, interactions);
@@ -1122,6 +1166,10 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   props.altText.font = fui::GfxRendererTarget::FONT_SMALL;
   props.stackAlternates = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
   props.gap = static_cast<int16_t>(metrics.keyboardKeySpacing);
+  if (tenorchrome::kTouchShell && renderer.getScreenWidth() > renderer.getScreenHeight()) {
+    props.rowGap = 0;
+    props.minTouchSize = 60;
+  }
   // The key cursor is a leaf of a key's short side (keys of one unit: ten to the widest row);
   // unselected keys have no fill or border, so only the cursor shows it.
   if (metrics.roundedMarks) {
@@ -1133,7 +1181,8 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   props.padding = fui::Insets{0, 0, 0, 0};
   // Fingers land low on the bottom row (occlusion) and there is no key below
   // to catch the miss - extend its hit band down to the button hints bar.
-  const int hintsTop = renderer.getScreenHeight() - metrics.buttonHintsHeight;
+  const int hintsTop = renderer.getScreenHeight() -
+                       (tenorchrome::kTouchShell ? tenorchrome::footBackReserve() : metrics.buttonHintsHeight);
   props.bottomHitOverflow = static_cast<int16_t>(std::max(0, hintsTop - (kbRect.y + kbRect.height)));
   fui::keyboard(frame, kbRect, props);
   interactions.publish();
