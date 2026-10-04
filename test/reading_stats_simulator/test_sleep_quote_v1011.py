@@ -31,6 +31,8 @@ import unittest
 import zipfile
 
 from PIL import Image, ImageDraw
+
+from pill_row import pill_band
 from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
@@ -461,9 +463,11 @@ class SleepQuoteTest(unittest.TestCase):
                 image = Image.open(shot).convert('L')
                 if SHOTS:
                     image.save(Path(SHOTS) / f'cai-dat-{language}.png')
-                # The popup's selected row (the new value) is a filled bar with light text. The list has one
-                # more value (the tenor/ugly doodle), so a page of four now ends one place lower.
-                self.assertGreater(self.ink(image.resize((528, 792)), (90, 412, 440, 458)), 8000)
+                # The popup's selected row (the new value) is a white pill ringed in black (v1.0.52). The list
+                # has one more value (the tenor/ugly doodle), so a page of four now ends one place lower.
+                band = pill_band(image.resize((528, 792)), 300, 600)
+                self.assertIsNotNone(band, 'no selected pill in the popup')
+                self.assertTrue(400 <= band[0] and band[1] <= 470, band)
                 self.assertEqual(json.loads((sd / '.crosspoint/settings.json').read_text())['sleepScreen'], 10)
 
     def test_chinese_place_line(self):

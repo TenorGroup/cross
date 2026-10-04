@@ -50,6 +50,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops
 from cai_dat_truoc_tenor import truoc_tenor
+from pill_row import pill_band
 
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get("TEST_PROGRAM", REPO / ".pio/build/simulator_x3_uc8279/program"))
@@ -100,21 +101,9 @@ def _dem_dai_ink(image, y0, y1):
 
 
 def _hop_chon(image, y0):
-    """Dai dong dam lien tuc (hop cua hang dang chon); None neu khong thay."""
-    px = image.load()
-    x0, x1 = 24, image.width - 24
-    can = ((x1 - x0) // 2) * 0.7
-    dai, bat_dau = [], None
-    for y in range(y0, image.height):
-        toi = sum(1 for x in range(x0, x1, 2) if sum(px[x, y]) < 300) > can
-        if toi and bat_dau is None:
-            bat_dau = y
-        if not toi and bat_dau is not None:
-            dai.append((bat_dau, y - 1))
-            bat_dau = None
-    if bat_dau is not None:
-        dai.append((bat_dau, image.height - 1))
-    return max(dai, key=lambda r: r[1] - r[0]) if dai else None
+    """Hang dang chon la vien trang vien den (v1.0.52): (dong tren, dong duoi) gom ca vien; None neu khong thay."""
+    band = pill_band(image, y0, image.height)
+    return (band[0], band[1] - 1) if band else None
 
 
 def _ty_le(image):

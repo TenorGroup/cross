@@ -16,6 +16,8 @@ import unittest
 
 from PIL import Image, ImageChops
 
+from pill_row import pill_band
+
 REPO = Path(__file__).resolve().parents[2]
 ART = Path(os.environ.get("CROSSPOINT_TEST_ARTIFACTS", REPO.parent / "research/ui-layout/simulator"))
 BODY_LINES = (33, 38, 43)
@@ -51,24 +53,8 @@ class Timeline:
 
 
 def selected_band(image, top=125, bottom=700):
-    """Longest mostly black list-row fill, excluding header/footer surfaces."""
-    gray = image.convert("L")
-    pixels = gray.load()
-    # Sample the inner left fill before glyphs begin. A wide scan splits the
-    # band at long white labels and reports a fraction of its true height.
-    xs = range(26, 30)
-    bands = []
-    start = None
-    for y in range(top, min(bottom, image.height)):
-        filled = sum(pixels[x, y] < 100 for x in xs) > len(xs) * 0.65
-        if filled and start is None:
-            start = y
-        elif not filled and start is not None:
-            bands.append((start, y))
-            start = None
-    if start is not None:
-        bands.append((start, bottom))
-    return max(bands, key=lambda b: b[1] - b[0]) if bands else None
+    """Rows of the selected list row, from its top ring line to its bottom one (a white pill since v1.0.52)."""
+    return pill_band(image, top, min(bottom, image.height))
 
 
 def other_book_row(image):
@@ -95,9 +81,9 @@ def other_book_row(image):
 
 
 def selected_text_ink(image, band):
-    """Measure real white glyph ink inside a black selected row, in label area."""
-    crop = image.crop((42, band[0] + 3, 270, band[1] - 3)).convert("L")
-    return crop.point(lambda p: 255 if p > 180 else 0).getbbox()
+    """Measure real glyph ink inside the pill, in the label area (x from 56, past the ring's curved end)."""
+    crop = image.crop((56, band[0] + 3, 270, band[1] - 3)).convert("L")
+    return crop.point(lambda p: 255 if p < 100 else 0).getbbox()
 
 
 class UiSizesV108Test(unittest.TestCase):
@@ -225,7 +211,7 @@ class UiSizesV108Test(unittest.TestCase):
             except AssertionError as error:
                 raise AssertionError(f"{locale} tier{tier} {label}: {error}") from error
         glyphs = selected_text_ink(images["display"], measured["display"])
-        self.assertIsNotNone(glyphs, "Selected setting label has no visible white glyph ink")
+        self.assertIsNotNone(glyphs, "Selected setting label has no visible glyph ink")
         if tier:
             measured["stats-page1"] = self.assert_row(images["stats-page1"], tier)
             self.assertIsNotNone(ImageChops.difference(images["stats-page0"], images["stats-page1"]).getbbox())
