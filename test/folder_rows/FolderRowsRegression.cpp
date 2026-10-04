@@ -143,6 +143,9 @@ class FileBrowserActivity {
   void invalidate() { prewarmedStart = -1; }
 };
 
+// The value in src/components/UIThemeTokens.h, which the extracted syncListViewport reads.
+static constexpr int16_t TENOR_PILL_ROW_PADDING_Y = 7;
+
 #include "production_rows.inc"
 
 static const char PIN_GLYPH[] = "\xEE\x84\x8A";
