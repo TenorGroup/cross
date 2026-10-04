@@ -524,6 +524,19 @@ uint32_t BookMetadataCache::getCumulativeSize(const int index) const {
   return window[index - first];
 }
 
+int BookMetadataCache::getSpineIndexForSize(const uint32_t size) const {
+  if (!loaded || spineCount == 0 || size > bookSize) return -1;
+  // windowStarts[w] is the total through item w * SIZE_WINDOW - 1, so the answer lies in the window
+  // before the first start that reaches `size`. Its last total comes from RAM and always reaches it.
+  const auto next = std::lower_bound(windowStarts.begin() + 1, windowStarts.end(), size);
+  const int first = static_cast<int>(next - windowStarts.begin() - 1) * SIZE_WINDOW;
+  const int last = std::min<int>(spineCount, first + SIZE_WINDOW) - 1;
+  for (int i = first; i < last; i++) {
+    if (getCumulativeSize(i) >= size) return i;
+  }
+  return last;
+}
+
 BookMetadataCache::SpineEntry BookMetadataCache::getSpineEntry(const int index) {
   if (!loaded) {
     LOG_ERR("BMC", "getSpineEntry called but cache not loaded");

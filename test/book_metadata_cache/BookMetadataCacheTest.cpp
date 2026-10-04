@@ -1,3 +1,4 @@
+#include <HalStorage.h>
 #include <gtest/gtest.h>
 
 #include <cstdlib>
@@ -54,7 +55,10 @@ void operator delete[](void* p, size_t) noexcept { heap::release(p); }
 namespace {
 
 std::string chapterHref(const int i) { return "OEBPS/Text/chapter" + std::to_string(i) + ".xhtml"; }
-uint32_t chapterBytes(const int i) { return 1500 + static_cast<uint32_t>(i) * 7919 % 30000; }
+// Empty chapters, some across the window edge at item 32, give equal running totals.
+uint32_t chapterBytes(const int i) {
+  return (i % 37 == 5 || (i >= 30 && i < 35)) ? 0 : 1500 + static_cast<uint32_t>(i) * 7919 % 30000;
+}
 
 std::string cacheDir() {
   return testing::TempDir() + "book_metadata_cache_" + testing::UnitTest::GetInstance()->current_test_info()->name();
@@ -115,4 +119,28 @@ TEST(BookMetadataCacheSizes, TruncatedWindowFallsBackToTheTotalBeforeIt) {
   std::filesystem::resize_file(path, href + chapterHref(64).size());  // just before item 64's size
   EXPECT_EQ(cache.getCumulativeSize(63), cumulative[63]);
   EXPECT_EQ(cache.getCumulativeSize(64), cumulative[63]);
+}
+
+// The lookup answers what a scan of every item answers, for every boundary, and reads at most one window.
+TEST(BookMetadataCacheSizes, SpineIndexForSizeMatchesLinearScan) {
+  for (const int spineCount : {100, 5000}) {
+    const std::vector<uint32_t> cumulative = buildBook(cacheDir(), spineCount);
+    BookMetadataCache scanned(cacheDir());
+    BookMetadataCache cache(cacheDir());
+    ASSERT_TRUE(scanned.load() && cache.load());
+    std::vector<uint32_t> totals;
+    for (int i = 0; i < spineCount; i++) totals.push_back(scanned.getCumulativeSize(i));
+    const uint32_t bookSize = cumulative.back();
+    std::vector<uint32_t> targets = {0, bookSize - 1, bookSize, bookSize + 1, 0};
+    for (const uint32_t total : cumulative) targets.insert(targets.end(), {total - 1, total, total + 1});
+    for (const uint32_t size : targets) {
+      int expected = -1;
+      for (int i = 0; i < spineCount && expected < 0; i++) {
+        if (totals[i] >= size) expected = i;
+      }
+      const int opens = Storage.readOpens;
+      EXPECT_EQ(cache.getSpineIndexForSize(size), expected) << spineCount << " items, size " << size;
+      EXPECT_LE(Storage.readOpens - opens, 1) << spineCount << " items, size " << size;
+    }
+  }
 }
