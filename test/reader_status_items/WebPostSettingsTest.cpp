@@ -33,6 +33,12 @@ DeserializationError deserializeJson(JsonDocument& doc, const String& text) {
 }
 }  // namespace
 
+// The clock zone is pushed into the clock by timezones::applyToClock(); the fake counts the calls.
+namespace timezones {
+int applied = 0;
+inline void applyToClock() { ++applied; }
+}  // namespace timezones
+
 struct CrossPointWebServer {
   FakeRequest* server = nullptr;
   Language requestLanguage() const { return Language::EN; }
@@ -110,12 +116,27 @@ void modeAlone() {
   expect(shows({true, true, true}), "a mode alone shows what its name says");
   expect(reloadShows({true, true, true}), "a mode alone survives a reload");
 }
+
+void zoneReachesTheClock() {
+  loadCard();
+  SETTINGS.clockAutoTimezone = 1;
+  SETTINGS.clockDst = 0;
+  timezones::applied = 0;
+  expect(post("{\"clockAutoTimezone\":0}") == 200, "auto timezone off saved");
+  expect(timezones::applied == 1, "turning Auto timezone off pushes the zone into the clock");
+  expect(post("{\"clockDst\":1}") == 200, "dst saved");
+  expect(timezones::applied == 2, "a new Dst pushes the zone into the clock");
+  expect(post("{\"clockDst\":1}") == 200, "same dst saved again");
+  expect(post("{\"readerStatusBarMode\":2}") == 200, "an unrelated setting saved");
+  expect(timezones::applied == 2, "a page that leaves the zone alone does not touch the clock");
+}
 }  // namespace
 
 int main() {
   modeAndSwitchTogether();
   switchAlone();
   modeAlone();
+  zoneReachesTheClock();
   std::printf("web_post_settings:%s (%d failures)\n", failures ? "RED" : "GREEN", failures);
   return failures ? 1 : 0;
 }
