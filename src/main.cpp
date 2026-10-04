@@ -1566,6 +1566,10 @@ void loop() {
         }
         if (dat) {
           SETTINGS.saveToFile();
+          // The clock zone is pushed into HalClock by the screens that change it; a SET has to do
+          // the same. Note that clockAutoTimezone=1 (the default) overrides clockTimezone.
+          if (kv.startsWith("clockTimezone=") || kv.startsWith("clockDst=") || kv.startsWith("clockAutoTimezone="))
+            timezones::applyToClock();
           logSerial.printf("SET:%s\n", kv.c_str());
         } else {
           logSerial.printf("SET:INVALID:%s\n", kv.c_str());

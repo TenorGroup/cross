@@ -90,8 +90,9 @@ void ClockSettingsActivity::activateIndex(const int index) {
         // Look the zone up immediately, over whatever radio connection is
         // already up, rather than waiting for the next WiFi connect.
         if (timezone_lookup::updateOffset()) SETTINGS.saveToFile();
-        timezones::applyToClock();
       }
+      // Either way the zone that answers has changed: the looked-up one, or the one picked by hand.
+      timezones::applyToClock();
       requestUpdate();
       return;
     default:
