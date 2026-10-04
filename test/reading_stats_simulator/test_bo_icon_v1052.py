@@ -1,7 +1,7 @@
 """v1.0.52: Home tab bar of tenor/cross on X3 and X4.
 
-One round bar 60 px high (x 8 to 519 of 528) with a grey 2 px ring, white inside. The selected tab is a
-white 84x48 pill with a black 3 px ring and a stroke-4 black icon; the other icons are stroke 3, grey:
+A 60 px high band (x 8 to 519 of 528) with no outline of its own (the grey 2 px ring went on 04/10), white
+all through. The selected tab is a white 84x48 pill with a black 3 px ring and a stroke-4 black icon; the other icons are stroke 3, grey:
 ink kept where x + y is even in the icon's own 40x40 box, the same dots on every tab. The tab centres
 run from the bar's first end cap to its last (first = 8 + 6 + 42, last = 519 - 6 - 42). The headers on
 disk must be what scripts/icons/sinh.py makes from hinh.py.
@@ -56,9 +56,10 @@ class BarTest(unittest.TestCase):
             assert run.returncode == 0, (run.stdout + run.stderr)[-3000:]
             with Image.open(shot) as image:
                 cls.dark = np.array(image.convert('L')) < 128
-        # Top of the bar: first dark row in a column the header text does not reach.
-        col = cls.dark[BAND[0]:BAND[1], 264:266].any(axis=1)
-        cls.y0 = BAND[0] + int(np.argmax(col)) if col.any() else None
+        # Top of the band: the second tab's grey icon sits 10 px under it.
+        w = icon(ORDER[1], 3, True)
+        ys, _ = np.where((sliding_window_view(cls.dark[BAND[0]:BAND[1]], w.shape) == w).all(axis=(2, 3)))
+        cls.y0 = BAND[0] + int(ys[0]) - 10 if len(ys) == 1 else None
 
     def px(self, x, y):
         return bool(self.dark[y, x])
@@ -73,24 +74,20 @@ class BarTest(unittest.TestCase):
         band = self.dark[BAND[0]:BAND[1]]
         self.assertEqual(hits(band, icon(ORDER[0], 4, False)), 1)
 
-    def test_bar_is_60_high_with_a_grey_ring_and_white_inside(self):
+    def test_band_has_no_outline_and_is_white_between_the_tabs(self):
         y0 = self.y0
-        self.assertIsNotNone(y0, 'no bar in the tab band')
+        self.assertIsNotNone(y0, 'no tab icon in the tab band')
+        # The old ring: 2 px top and bottom, every other pixel, across the span between the tabs.
         for x in range(120, 420):
-            for dy in (0, 1, 58, 59):  # 2 px ring top and bottom, every other pixel
-                self.assertEqual(self.px(x, y0 + dy), (x + y0 + dy) % 2 == 0, (x, dy))
-            for dy in (2, 3, 4, 5, 54, 55, 56, 57):  # white between the ring and the icons
+            for dy in (0, 1, 2, 3, 4, 5, 54, 55, 56, 57, 58, 59):
                 self.assertFalse(self.px(x, y0 + dy), (x, dy))
-        # Ends at x 8 and 519 on the middle row.
-        mid = y0 + 30
-        self.assertTrue(any(self.px(x, mid) for x in (8, 9)))
-        self.assertFalse(any(self.px(x, mid) for x in (6, 7)))
-        self.assertTrue(any(self.px(x, mid) for x in (518, 519)))
-        self.assertFalse(any(self.px(x, mid) for x in (520, 521)))
+        # The old ends at x 8 and 519: nothing left of the first pill (x 14) or right of the last (x 512).
+        self.assertFalse(self.dark[y0:y0 + 60, 0:14].any(), 'ink left of the first pill')
+        self.assertFalse(self.dark[y0:y0 + 60, 513:528].any(), 'ink right of the last pill')
 
     def test_selected_pill_is_white_inside_a_black_3px_ring(self):
         y0 = self.y0
-        self.assertIsNotNone(y0, 'no bar in the tab band')
+        self.assertIsNotNone(y0, 'no tab icon in the tab band')
         cx = 8 + 6 + 42
         left, right, top, bottom = cx - 42, cx + 41, y0 + 6, y0 + 53  # 84 x 48
         for x in range(left + 24, right - 24):  # the straight part of the ring
@@ -113,7 +110,7 @@ class BarTest(unittest.TestCase):
 
     def test_tab_centres_run_between_the_end_caps(self):
         y0 = self.y0
-        self.assertIsNotNone(y0, 'no bar in the tab band')
+        self.assertIsNotNone(y0, 'no tab icon in the tab band')
         first, last = 8 + 6 + 42, 519 - 6 - 42
         want = [first + (2 * (last - first) * i + 4) // 8 for i in range(5)]
         band = self.dark[BAND[0]:BAND[1]]

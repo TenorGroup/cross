@@ -35,13 +35,10 @@ bool inPill(const int px, const int py, const int x, const int y, const int w, c
   return dx * dx + dy * dy < 4 * r * r;
 }
 
-// Ring of `thick` px just inside a round-ended bar; grey = every other pixel, (x + y) even.
-void drawPillRing(const GfxRenderer& g, const int x, const int y, const int w, const int h, const int thick,
-                  const bool grey) {
+// Black ring of `thick` px just inside a round-ended pill.
+void drawPillRing(const GfxRenderer& g, const int x, const int y, const int w, const int h, const int thick) {
   const int r = h / 2;
-  const auto plot = [&](const int px, const int py) {
-    if (!grey || ((px + py) & 1) == 0) g.drawPixel(px, py, true);
-  };
+  const auto plot = [&](const int px, const int py) { g.drawPixel(px, py, true); };
   for (int py = y; py < y + h; ++py) {
     const bool band = py < y + thick || py >= y + h - thick;
     for (int px = x; px < x + w; ++px) {
@@ -70,12 +67,11 @@ void drawGreyIcon(const GfxRenderer& g, const fui::BitmapRef& icon, const int x,
 void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh, const fui::TabItem* tabs,
                                         const int count, const fui::TextStyle& chu) {
   constexpr int LE = 8;         // bar margin from the screen edge
-  constexpr int KHE = 6;        // bar ring to selected pill, all round
+  constexpr int KHE = 6;        // band top to the selected pill
   constexpr int ICON = 40;
   constexpr int PILL_ICON_W = 84;
   constexpr int INDICATOR = 6;  // sort arrow beside a label
   const int x0 = thanh.x + LE, w = thanh.width - 2 * LE, h = thanh.height, y0 = thanh.y;
-  drawPillRing(renderer, x0, y0, w, h, 2, true);
   if (count <= 0) return;
   const bool icons = static_cast<bool>(tabs[0].icon);
   const int slotW = (w - 2 * KHE) / count;
@@ -97,7 +93,7 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
       labelW = tab.label ? screen.target().measureText(label.font, tab.label, label).width : 0;
       pillW = std::min(slotW - 4, labelW + 28);
     }
-    if (tab.selected) drawPillRing(renderer, cx - pillW / 2, y0 + KHE, pillW, h - 2 * KHE, 3, false);
+    if (tab.selected) drawPillRing(renderer, cx - pillW / 2, y0 + KHE, pillW, h - 2 * KHE, 3);
     if (icons) {
       const int ix = cx - ICON / 2, iy = y0 + (h - ICON) / 2;
       if (tab.selected)
