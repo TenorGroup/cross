@@ -183,14 +183,41 @@ inline int headingLines(const std::string* lines, const int count, const std::st
 }
 
 // Walking a picture by where things are, as the on-screen keyboard walks its grid. A row is the things whose
-// centres sit within rowTol of each other vertically. Up and Down go to the nearest row above or below and pick
-// the centre nearest to fromX (the x where the last sideways step ended, so down and up again comes back);
-// Left and Right stay in the row and stop at its edge. Returns `cur` when there is nowhere to go.
+// centres sit within rowTol of each other vertically, a column the same horizontally. Up and Down go to the
+// nearest row above or below and pick the centre nearest to fromX (the x where the last sideways step ended, so
+// down and up again comes back); Left and Right stay in the row. There is no dead end: Down off the bottom goes
+// to the top of the next column on the right (the last column wraps to the first), Up off the top goes to the
+// bottom of the next column on the left (the first wraps to the last), Right off the end of a row goes to the
+// first thing of the row below (the last row wraps to the first), Left off the start goes to the last thing of the
+// row above. Returns `cur` only when there is nowhere else to go.
 struct Point {
   int x, y;
 };
 enum class GridDir : uint8_t { Up, Down, Left, Right };
 inline int gridStep(const Point* p, const int n, const int cur, const GridDir dir, const int fromX, const int rowTol) {
+  // Among the things on the line at `at` (a row when !byX, a column when byX), the one furthest along the other
+  // axis: the largest value when `last`, else the smallest.
+  const auto pick = [&](const bool byX, const int at, const bool last) {
+    int best = -1;
+    for (int i = 0; i < n; ++i) {
+      if (std::abs((byX ? p[i].x : p[i].y) - at) > rowTol) continue;
+      const int across = byX ? p[i].y : p[i].x, bestAcross = best < 0 ? 0 : (byX ? p[best].y : p[best].x);
+      if (best < 0 || (last ? across > bestAcross : across < bestAcross)) best = i;
+    }
+    return best;
+  };
+  // The line coordinate nearest to cur's beyond rowTol in a direction (sign +1 or -1); none left, the far end.
+  const auto nextLine = [&](const bool byX, const int sign) {
+    const int from = byX ? p[cur].x : p[cur].y;
+    int near = 0, far = 0;
+    bool haveNear = false, haveFar = false;
+    for (int i = 0; i < n; ++i) {
+      const int v = byX ? p[i].x : p[i].y;
+      if ((v - from) * sign > rowTol && (!haveNear || (v - from) * sign < (near - from) * sign)) near = v, haveNear = true;
+      if (!haveFar || (v - far) * sign < 0) far = v, haveFar = true;  // the end the other way round, for the wrap
+    }
+    return haveNear ? near : far;
+  };
   const auto sameRow = [&](const int i) { return std::abs(p[i].y - p[cur].y) <= rowTol; };
   int best = cur;
   if (dir == GridDir::Left || dir == GridDir::Right) {
@@ -199,7 +226,11 @@ inline int gridStep(const Point* p, const int n, const int cur, const GridDir di
       if (i != cur && sameRow(i) && (p[i].x - p[cur].x) * sign > 0 &&
           (best == cur || (p[i].x - p[cur].x) * sign < (p[best].x - p[cur].x) * sign))
         best = i;
-    return best;
+    if (best != cur) return best;
+    // End of the row: first (Right) or last (Left) thing of the row below (above), wrapping round.
+    const int row = nextLine(false, sign);
+    const int hit = pick(false, row, dir == GridDir::Left);
+    return hit < 0 ? cur : hit;
   }
   const int sign = dir == GridDir::Down ? 1 : -1;
   int rowY = 0;
@@ -211,7 +242,11 @@ inline int gridStep(const Point* p, const int n, const int cur, const GridDir di
     }
   for (int i = 0; i < n && found; ++i)
     if (std::abs(p[i].y - rowY) <= rowTol && (best == cur || std::abs(p[i].x - fromX) < std::abs(p[best].x - fromX))) best = i;
-  return best;
+  if (found) return best;
+  // Off the bottom (top): the top (bottom) of the next column to the right (left), wrapping round.
+  const int col = nextLine(true, sign);
+  const int hit = pick(true, col, dir == GridDir::Up);
+  return hit < 0 ? cur : hit;
 }
 
 // A step on a cycle of `count` stops.

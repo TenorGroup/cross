@@ -312,21 +312,46 @@ TEST(Grid, ARoundTripReturnsToTheObjectItStartedFrom) {
   }
 }
 
-TEST(Grid, SidewaysStaysInTheRowAndStopsAtTheEdge) {
+TEST(Grid, SidewaysStaysInTheRowUntilItsEdge) {
   EXPECT_EQ(go(SETTINGS, GridDir::Right), RECENT);
   EXPECT_EQ(go(RECENT, GridDir::Right), STATS);
-  EXPECT_EQ(go(STATS, GridDir::Right), STATS);       // no wrap
-  EXPECT_EQ(go(SETTINGS, GridDir::Left), SETTINGS);
+  EXPECT_EQ(go(RECENT, GridDir::Left), SETTINGS);
   EXPECT_EQ(go(FOLDER, GridDir::Right), FAVORITES);
-  EXPECT_EQ(go(FAVORITES, GridDir::Right), FAVORITES);
-  EXPECT_EQ(go(READING, GridDir::Left), READING);    // a row of one: sideways stands still
-  EXPECT_EQ(go(READING, GridDir::Right), READING);
+  EXPECT_EQ(go(FAVORITES, GridDir::Left), FOLDER);
 }
 
-TEST(Grid, NoRowAboveOrBelowStandsStill) {
-  EXPECT_EQ(go(STATS, GridDir::Up), STATS);
-  EXPECT_EQ(go(FOLDER, GridDir::Down), FOLDER);
-  EXPECT_EQ(go(FAVORITES, GridDir::Down), FAVORITES);
+// Founder changed his mind on 04/10 evening: no dead end at the edge of the desk.
+TEST(Grid, DownOffTheBottomGoesToTheTopOfTheNextColumnAndWrapsAtTheLast) {
+  EXPECT_EQ(go(FOLDER, GridDir::Down), RECENT);       // column of the stack -> column of the clock and the book: its highest
+  EXPECT_EQ(go(FAVORITES, GridDir::Down), SETTINGS);  // last column -> first column: its highest (the lamp)
+}
+
+TEST(Grid, UpOffTheTopGoesToTheBottomOfTheNextColumnOnTheLeftAndWrapsAtTheFirst) {
+  EXPECT_EQ(go(STATS, GridDir::Up), READING);         // calendar column -> clock and book column: its lowest
+  EXPECT_EQ(go(RECENT, GridDir::Up), FOLDER);         // -> lamp and stack column: its lowest
+  EXPECT_EQ(go(SETTINGS, GridDir::Up), FAVORITES);    // first column -> last column: its lowest (the note)
+}
+
+TEST(Grid, RightOffTheEndOfARowGoesToTheFirstOfTheRowBelowAndWrapsAtTheLastRow) {
+  EXPECT_EQ(go(STATS, GridDir::Right), READING);      // top row -> middle row
+  EXPECT_EQ(go(READING, GridDir::Right), FOLDER);     // a row of one -> bottom row, leftmost
+  EXPECT_EQ(go(FAVORITES, GridDir::Right), SETTINGS); // last row -> first row, leftmost
+}
+
+TEST(Grid, LeftOffTheStartOfARowGoesToTheLastOfTheRowAboveAndWrapsAtTheFirstRow) {
+  EXPECT_EQ(go(FOLDER, GridDir::Left), READING);
+  EXPECT_EQ(go(READING, GridDir::Left), STATS);       // middle row -> top row, rightmost
+  EXPECT_EQ(go(SETTINGS, GridDir::Left), FAVORITES);  // first row -> last row, rightmost
+}
+
+TEST(Grid, EveryButtonMovesFromEveryObjectOfTheDesk) {
+  for (int i = 0; i < 6; ++i)
+    for (GridDir d : {GridDir::Up, GridDir::Down, GridDir::Left, GridDir::Right}) EXPECT_NE(go(i, d), i) << i << " " << int(d);
+}
+
+TEST(Grid, ALoneObjectStaysStill) {
+  const Point one[1] = {{100, 100}};
+  for (GridDir d : {GridDir::Up, GridDir::Down, GridDir::Left, GridDir::Right}) EXPECT_EQ(gridStep(one, 1, 0, d, 100, 60), 0);
 }
 
 }  // namespace
