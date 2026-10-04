@@ -19,7 +19,12 @@ namespace ugly {
 namespace {
 constexpr int MARGIN = 40;
 constexpr int LINE = 58;
-constexpr int FIRST_BASELINE = 120;
+constexpr int MIN_LINE = 46;     // tighter than this and the letters of two lines meet
+constexpr int HINTS_ROOM = 104;  // the page hints sit 52 px over the foot; the last line and the circle round it stay clear of them
+constexpr int TITLE_BASELINE = 78;   // where the notebook pages write theirs
+constexpr int FIRST_BASELINE = 150;  // the sentence starts under the title and its line
+constexpr int WAKE_BASELINE = 34;    // the greeting of a wake, above the title
+constexpr int WAKE_LINE = 26;
 
 std::vector<std::string> splitWords(const char* text) {
   std::vector<std::string> out;
@@ -93,6 +98,7 @@ void Diary::onEnter() {
   kind = logic::diaryKind(hasBook, lastDay, today, &days);
   buildSentence();
   if (cleanInitialRefresh) wake = sleepset::wakeSentence();  // the first frame after a wake greets the user
+  titleText = tr(STR_UGLY_DIARY_TITLE);
   ask = tr(STR_UGLY_DIARY_ASK);
   readText = tr(STR_UGLY_DIARY_READ);
   orText = tr(STR_UGLY_DIARY_OR);
@@ -117,6 +123,14 @@ void Diary::render(RenderLock&&) {
   const int maxWidth = w - 2 * MARGIN;
   const int space = width(renderer, Size::S38, "a") / 2 + 4;
 
+  // A wake greets above the title: the title and the sentence step down for it, and keep the room after the greeting goes.
+  if (!wake.empty()) {
+    const int lines = paragraph(renderer, Size::S22, MARGIN, WAKE_BASELINE, maxWidth, WAKE_LINE, wake.c_str(), false);
+    shift = std::max(shift, WAKE_BASELINE + (lines - 1) * WAKE_LINE + 16 - (TITLE_BASELINE - ascent(Size::S52)));
+  }
+  const int tw = text(renderer, Size::S52, MARGIN, TITLE_BASELINE + shift, titleText.c_str());
+  underline(renderer, MARGIN, MARGIN + tw, TITLE_BASELINE + shift + 14, 17, 3);
+
   std::vector<logic::Token> tokens;
   for (const auto& word : sentence) tokens.push_back({word.c_str(), 0, false});
   tokens.push_back({nullptr, 0, false});
@@ -134,16 +148,34 @@ void Diary::render(RenderLock&&) {
     tokens.push_back({nullptr, 0, false});
     tokens.push_back({alsoText.c_str(), 0, false});
     tokens.push_back({deskText.c_str(), DESK, false});
+    tokens.push_back({"?", 0, true});
   }
 
   std::vector<logic::Placed> placed(tokens.size());
-  logic::layout(tokens.data(), static_cast<int>(tokens.size()), maxWidth, space,
-                [&](const char* t) { return width(renderer, Size::S38, t); }, placed.data());
+  const int lines = logic::layout(tokens.data(), static_cast<int>(tokens.size()), maxWidth, space,
+                                  [&](const char* t) { return width(renderer, Size::S38, t); }, placed.data());
+  // A long sentence tightens the lines so the last one stays above the page hints.
+  const int first = FIRST_BASELINE + shift;
+  const int step = lines > 1 ? std::clamp((renderer.getScreenHeight() - HINTS_ROOM - first) / (lines - 1), MIN_LINE, LINE) : LINE;
 
   Box box[4] = {};
+#ifdef UGLY_FRAME_LOG
+  std::string last;  // the words of the last paragraph, for the frame log
+  int lowest = 0;
+#endif
   for (size_t i = 0; i < tokens.size(); ++i) {
-    if (!tokens[i].text) continue;
-    const int base = FIRST_BASELINE + placed[i].line * LINE;
+    if (!tokens[i].text) {
+#ifdef UGLY_FRAME_LOG
+      last.clear();
+#endif
+      continue;
+    }
+    const int base = first + placed[i].line * step;
+#ifdef UGLY_FRAME_LOG
+    lowest = std::max(lowest, base + 12);
+    if (!last.empty() && !tokens[i].attach) last += ' ';
+    last += tokens[i].text;
+#endif
     const int x = MARGIN + placed[i].x;
     text(renderer, Size::S38, x, base, tokens[i].text);
     if (tokens[i].id > 0) {
@@ -151,7 +183,7 @@ void Diary::render(RenderLock&&) {
       underline(renderer, x, x + placed[i].w, base + 12, 13u * static_cast<uint32_t>(tokens[i].id));
     }
   }
-  if (!wake.empty()) paragraph(renderer, Size::S22, MARGIN, 34, maxWidth, 26, wake.c_str());
+  if (!wake.empty()) paragraph(renderer, Size::S22, MARGIN, WAKE_BASELINE, maxWidth, WAKE_LINE, wake.c_str());
   const Word now = words[selected];
   circle(renderer, Circle::Word, box[now], 8, 16);
 
@@ -160,7 +192,9 @@ void Diary::render(RenderLock&&) {
 
   renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
-  LOG_INF("UGLY", "Diary frame total=%lums heap=%u", static_cast<unsigned long>(millis() - started), ESP.getFreeHeap());
+  LOG_INF("UGLY", "Diary frame total=%lums heap=%u title=\"%s\" last=\"%s\" sel=%d box=%d,%d,%d,%d bottom=%d",
+          static_cast<unsigned long>(millis() - started), ESP.getFreeHeap(), titleText.c_str(), last.c_str(), static_cast<int>(now),
+          box[now].x0, box[now].y0, box[now].x1, box[now].y1, lowest);
 #endif
   if (cleanInitialRefresh) wakeStatePending = true;
   cleanInitialRefresh = false;

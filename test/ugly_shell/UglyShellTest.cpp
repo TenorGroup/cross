@@ -241,6 +241,16 @@ TEST(Font, TitleSizeHasTheLettersOfThePageNames) {
   checkFont(ugly_52, wanted, "ugly_52");
 }
 
+TEST(Font, TitleSizeHasTheLettersOfTheDiaryTitle) {
+  // The diary wears a title in the pen of the notebook pages: a letter the title size lacks puts it in the UI font.
+  std::vector<uint32_t> wanted;
+  for (const char* title : {"Nhật ký", "Diary"}) {
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(title);
+    while (const uint32_t cp = utf8NextCodepoint(&p)) wanted.push_back(cp);
+  }
+  checkFont(ugly_52, wanted, "ugly_52");
+}
+
 TEST(Font, BodySizesStartAt28) {
   // The hook of ư and ơ is lost below 28 px: the sizes that carry sentences and rows are 30 and 38.
   const auto& g = ugly_30.glyph[0];

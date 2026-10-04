@@ -23,9 +23,10 @@ FULL = (list(range(0x20, 0x7F)) + list(range(0xC0, 0x100)) + [0xD7 - 0xD7 + 0x10
         0x168, 0x169, 0x1A0, 0x1A1, 0x1AF, 0x1B0] + list(range(0x1EA0, 0x1EFA)) +
         [0x2018, 0x2019, 0x201C, 0x201D, 0x2026])
 FULL = sorted(set(FULL) - {0xD7, 0xF7})
-# Page titles are the few words of the five Home pages (Vietnamese and English) plus digits.
+# Page titles are the few words of the five Home pages (Vietnamese and English) plus digits, and the title of the diary.
 TITLE_TEXT = ('Gần đây Thư mục Yêu thích Thống kê Cài đặt File Recent Folder Favorites Stats Settings '
-              'Gửi Giao diện Hiển thị Đọc Điều khiển Hệ thống Thiết bị Khác Bàn phím Ngủ Cử chỉ Sách Mở 0123456789/')
+              'Gửi Giao diện Hiển thị Đọc Điều khiển Hệ thống Thiết bị Khác Bàn phím Ngủ Cử chỉ Sách Mở 0123456789/ '
+              'Nhật ký Diary')
 TITLE = sorted({ord(c) for c in TITLE_TEXT})
 SIZES = {22: FULL, 30: FULL, 38: FULL, 52: TITLE}
 ADVANCE_Y = {22: 30, 30: 40, 38: 50, 52: 68}

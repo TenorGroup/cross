@@ -40,10 +40,11 @@ class Diary final : public Screen {
   logic::DiaryKind kind = logic::DiaryKind::NoBook;
   std::vector<std::string> sentence;   // words of the first paragraph
   std::string wake;                    // the greeting of the first frame after a wake
-  std::string ask, readText, orText, swapText, alsoText, deskText;
+  std::string titleText, ask, readText, orText, swapText, alsoText, deskText;
   Word words[3];
   int wordCount = 0;
   int selected = 0;  // index in words[]
+  int shift = 0;     // room the greeting of a wake took above the title, kept for the frames after it
 };
 
 }  // namespace ugly

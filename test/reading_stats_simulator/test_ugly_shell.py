@@ -24,6 +24,9 @@ LONG_NAMES = ['a.txt', 'Hành trình dài của một người.txt', 'Hành trì
              'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW.txt',
              'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii.txt',
              '三体 Vấn đề ba vật thể phần hai Hắc ám rừng rậm.txt']
+# The log line of a diary frame: the title, the last line, the selected word and its box, the lowest ink of the sentence.
+DIARY_FRAME = re.compile(r'Diary frame total=\d+ms heap=\d+ title="(?P<title>[^"]*)" last="(?P<last>[^"]*)" '
+                         r'sel=(?P<sel>\d) box=(?P<x0>-?\d+),(?P<y0>-?\d+),(?P<x1>-?\d+),(?P<y1>-?\d+) bottom=(?P<bottom>\d+)')
 PAGE_ORDER = [0, 1, 4, 2, 3]  # Recent, Folder, Favorites, Stats, Settings: the default order of tenor/cross
 
 
@@ -91,6 +94,34 @@ class UglyShellTest(unittest.TestCase):
         self.assertEqual(entered(log), ['Boot', 'UglyDiary'], 'a front button never leaves the diary')
         self.assertNotEqual(digest(shots['start']), digest(shots['next']), 'RIGHT moves the circle')
         self.assertEqual(digest(shots['start']), digest(shots['back']), 'LEFT brings it back')
+
+    def test_the_diary_is_titled_on_top_and_the_sentence_still_fits(self):
+        # Founder 04/10/2026: the diary wears a title, in the pen of the notebook pages, above the sentence.
+        for language, name in (('VI', 'Nhật ký'), ('EN', 'Diary')):
+            log, shots = self.card(language=language).run('3000:QUIT', [(2000, 'd')])
+            self.assertGreater(ink(shots['d'], (0, 30, 528, 84)), 500, (language, name, 'a title above the sentence'))
+            self.assertIn('title="%s"' % name, log, log[-1500:])
+            self.assertLessEqual(int(DIARY_FRAME.search(log).group('bottom')), 700, 'the last line stays above the page hints')
+
+    def test_the_longest_sentence_still_fits_under_the_title(self):
+        # A title cut at 300 px and the long English sentence of a book left alone for weeks: the lines draw closer
+        # together rather than run into the page hints.
+        long_title = 'Hành trình dài của một người đọc sách không bao giờ chịu đọc hết một cuốn'
+        card = self.card(language='EN', books=[(long_title, 'b0.txt')])
+        (card.store / 'reading-stats.json').write_text('{"ngay": [[20260901, 12, 34]]}')
+        log, _ = card.run('3000:QUIT')
+        self.assertLessEqual(int(DIARY_FRAME.search(log).group('bottom')), 700, log[-1500:])
+
+    def test_the_last_line_of_the_diary_asks_for_the_whole_lot(self):
+        # Founder 04/10/2026: "Hay muốn xem cả lò nhà mày có gì?", the underlined part is the button.
+        for language, said in (('VI', 'Hay muốn xem cả lò nhà mày có gì?'), ('EN', 'Or wanna see the whole damn lot?')):
+            log, _ = self.card(language=language).run('1000:RIGHT;1600:RIGHT;2400:QUIT')
+            last = DIARY_FRAME.search(log).group('last')
+            self.assertEqual(last, said, language)
+            walked = [m for m in DIARY_FRAME.finditer(log)][-1]
+            self.assertEqual(walked.group('sel'), '3', 'two front buttons walk to the desk')
+            box = [int(walked.group(k)) for k in ('x0', 'y0', 'x1', 'y1')]
+            self.assertTrue(0 < box[0] < box[2] <= 528 - 20 and box[3] <= 700, box)
 
     def test_the_margin_of_the_notebook_hugs_the_edge_of_the_screen(self):
         _, shots = self.card().run('1000:DOWN;2500:QUIT', [(2000, 'page')])

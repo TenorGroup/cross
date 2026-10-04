@@ -10,7 +10,7 @@ import unittest
 from ugly_common import Card, digest, ink
 
 DOODLE = (0, 320, 528, 792)  # where a doodle lives
-TOP = (0, 0, 528, 78)  # where the greeting of the diary is written
+TOP = (0, 0, 528, 32)  # where the greeting of the diary is written, above the title of the diary
 
 
 def sleep(day, count=0, hour=14, name='z', **extra):
@@ -54,7 +54,9 @@ class UglySleepSetTest(unittest.TestCase):
         awake = card.sd / 'awake.bmp'
         card.run('1500:SLEEP;6000:POWER', CROSSPOINT_SIM_INPUT_SCRIPT_AFTER_WAKE='4000:QUIT',
                  CROSSPOINT_SIM_SCREENSHOTS_AFTER_WAKE='2500:%s' % awake, **env)
-        self.assertGreater(ink(Image.open(awake).convert('1'), TOP), 150, 'the greeting is written above the diary')
+        greeted = Image.open(awake).convert('1')
+        self.assertGreater(ink(greeted, TOP), 150, 'the greeting is written above the diary')
+        self.assertEqual(ink(greeted, (0, 70, 528, 79)), 0, 'the title of the diary steps down under the greeting')
         # A plain start is not a wake: the same hour, no greeting.
         _, shots = card.run('4000:QUIT', [(2000, 'b')], CROSSPOINT_SIM_UGLY_SLEEP='20261004,,11')
         self.assertLess(ink(shots['b'], TOP), 20)
