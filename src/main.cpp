@@ -69,6 +69,7 @@
 #include "SdCardFontSystem.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
 #include "activities/boot_sleep/SleepActivity.h"
 #include "activities/home/BookStatsActivity.h"
