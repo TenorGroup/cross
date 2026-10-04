@@ -249,4 +249,26 @@ TEST(Font, BodySizesStartAt28) {
   EXPECT_GE(ugly_38.advanceY, ugly_30.advanceY);
 }
 
+TEST(ChapterTitle, FoldingIgnoresCaseBlanksAndPunctuation) {
+  EXPECT_EQ(foldTitle("Chương 3. Gió ngoài bãi"), foldTitle("CHƯƠNG 3:  GIÓ NGOÀI BÃI"));
+  EXPECT_EQ(foldTitle("Ơ Ư Đ Ạ Ế"), foldTitle("ơ ư đ ạ ế"));
+  EXPECT_EQ(foldTitle("Chu\xC6\xA1ng"), foldTitle("Chuo\xCC\x9Bng")) << "a decomposed hook is the same letter";
+  EXPECT_NE(foldTitle("Chương 3"), foldTitle("Chương 4"));
+  EXPECT_EQ(foldTitle("\xE2\x80\x9C...\xE2\x80\x9D"), "") << "quotes and dots alone fold to nothing";
+}
+
+TEST(ChapterTitle, HeadingTakesTheFewestLinesThatSayTheTitle) {
+  const std::string title = foldTitle("Chương 3. Gió ngoài bãi");
+  const std::string one[] = {"Chương 3. Gió ngoài bãi", "Gió lên từ phía bãi"};
+  EXPECT_EQ(headingLines(one, 2, title), 1);
+  const std::string two[] = {"Chương 3.", "Gió ngoài bãi", "Gió lên từ phía bãi"};
+  EXPECT_EQ(headingLines(two, 3, title), 2);
+  const std::string none[] = {"Gió lên từ phía bãi, mang theo mùi rong", "Chương 3. Gió ngoài bãi"};
+  EXPECT_EQ(headingLines(none, 2, title), 0) << "a title further down the page is not the heading";
+  const std::string longer[] = {"Chương 3. Gió ngoài bãi lớn", "x"};
+  EXPECT_EQ(headingLines(longer, 2, title), 0) << "the lines must say the title and nothing more";
+  EXPECT_EQ(headingLines(one, 0, title), 0);
+  EXPECT_EQ(headingLines(one, 2, foldTitle("...")), 0) << "a title of marks only matches nothing";
+}
+
 }  // namespace

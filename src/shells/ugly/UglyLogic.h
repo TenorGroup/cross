@@ -145,6 +145,42 @@ inline size_t folderCap(const size_t freeHeap, const size_t largestBlock) {
   return std::min({FOLDER_MAX_ROWS, byFree, byBlock});
 }
 
+// A title as it is compared: composed, letters lowercased, blanks and marks of punctuation dropped, so
+// a heading that differs from the table of contents only in case, in a colon or in a double space is
+// still the same title. Vietnamese capitals fold; a script without case is left as it is.
+inline uint32_t foldLetter(const uint32_t cp) {
+  if (cp >= 'A' && cp <= 'Z') return cp + 32;
+  if (cp >= 0xC0 && cp <= 0xDE && cp != 0xD7) return cp + 32;
+  if (cp == 0x1AF) return 0x1B0;
+  const bool even = (cp >= 0x100 && cp <= 0x137) || (cp >= 0x14A && cp <= 0x177) || cp == 0x1A0 ||
+                    (cp >= 0x1EA0 && cp <= 0x1EFF);
+  return even && (cp & 1) == 0 ? cp + 1 : cp;
+}
+
+inline std::string foldTitle(const std::string& utf8) {
+  const std::string composed = utf8ComposeNfc(utf8);
+  std::string out;
+  const auto* p = reinterpret_cast<const unsigned char*>(composed.c_str());
+  while (const uint32_t cp = utf8NextCodepoint(&p)) {
+    const bool mark = cp < 0x80 ? !((cp >= '0' && cp <= '9') || (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z'))
+                                : (cp == 0xA0 || (cp >= 0x2000 && cp <= 0x206F) || cp == 0x3000);
+    if (!mark) utf8AppendCodepoint(foldLetter(cp), out);
+  }
+  return out;
+}
+
+// How many of the first lines of a page are the chapter's own heading: the fewest lines, at most
+// `count`, whose text joined is the folded `title`. 0 when the page does not open with it.
+inline int headingLines(const std::string* lines, const int count, const std::string& foldedTitle) {
+  if (foldedTitle.empty()) return 0;
+  std::string joined;
+  for (int i = 0; i < count; ++i) {
+    joined += foldTitle(lines[i]);
+    if (joined.size() >= foldedTitle.size()) return joined == foldedTitle ? i + 1 : 0;
+  }
+  return 0;
+}
+
 // A step on a cycle of `count` stops.
 inline int cycle(const int index, const int step, const int count) {
   return count <= 0 ? 0 : ((index + step) % count + count) % count;
