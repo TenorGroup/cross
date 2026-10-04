@@ -66,4 +66,51 @@ inline constexpr CirclePoint CIRCLE_ROW[] = {
 };
 inline constexpr int CIRCLE_ROW_COUNT = 85;
 
+// Marks over the buttons: pen points in 1/16 px around the centre of the mark, drawn from the first to the last.
+inline constexpr CirclePoint MARK_LEFT[] = {
+    {157, 18}, {116, 13}, {64, 16}, {27, 9}, {-23, 3}, {-76, 3},
+    {-113, -4}, {-157, -3}, {-136, -39}, {-97, -61}, {-71, -94}, {-52, -130},
+    {-76, -102}, {-97, -66}, {-137, -27}, {-164, 4}, {-133, 33}, {-106, 64},
+    {-81, 89}, {-44, 125},
+};
+inline constexpr int MARK_LEFT_COUNT = 20;
+
+inline constexpr CirclePoint MARK_RIGHT[] = {
+    {-156, 13}, {-121, 21}, {-73, 6}, {-21, 7}, {28, 3}, {75, 2},
+    {116, 9}, {162, 4}, {135, -39}, {109, -63}, {73, -100}, {51, -127},
+    {82, -92}, {111, -63}, {135, -30}, {158, 4}, {129, 36}, {111, 66},
+    {71, 101}, {50, 125},
+};
+inline constexpr int MARK_RIGHT_COUNT = 20;
+
+inline constexpr CirclePoint MARK_UP[] = {
+    {20, 164}, {19, 108}, {13, 67}, {10, 18}, {2, -24}, {1, -69},
+    {-5, -120}, {2, -161}, {-32, -129}, {-66, -110}, {-92, -75}, {-126, -47},
+    {-89, -78}, {-60, -106}, {-31, -130}, {-2, -164}, {32, -129}, {65, -105},
+    {98, -81}, {125, -50},
+};
+inline constexpr int MARK_UP_COUNT = 20;
+
+inline constexpr CirclePoint MARK_DOWN[] = {
+    {-14, -157}, {-18, -107}, {-16, -66}, {-15, -19}, {-12, 26}, {-1, 72},
+    {-3, 120}, {5, 156}, {-32, 139}, {-61, 103}, {-99, 83}, {-132, 51},
+    {-91, 71}, {-66, 101}, {-31, 130}, {4, 164}, {29, 138}, {58, 98},
+    {98, 80}, {131, 53},
+};
+inline constexpr int MARK_DOWN_COUNT = 20;
+
+inline constexpr CirclePoint MARK_TICK[] = {
+    {-145, -12}, {-107, 23}, {-75, 71}, {-52, 116}, {-22, 70}, {10, 36},
+    {36, -2}, {76, -43}, {105, -80}, {135, -126}, {159, -160},
+};
+inline constexpr int MARK_TICK_COUNT = 11;
+
+inline constexpr CirclePoint MARK_BACK[] = {
+    {148, 124}, {150, 105}, {164, 54}, {180, -7}, {166, -36}, {142, -63},
+    {119, -97}, {84, -109}, {47, -131}, {6, -132}, {-62, -119}, {-112, -98},
+    {-146, -91}, {-149, -92}, {-115, -127}, {-85, -167}, {-53, -191}, {-79, -155},
+    {-107, -129}, {-141, -99}, {-107, -73}, {-74, -44}, {-49, -16},
+};
+inline constexpr int MARK_BACK_COUNT = 23;
+
 }  // namespace ugly

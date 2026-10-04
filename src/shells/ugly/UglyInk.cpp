@@ -183,7 +183,7 @@ std::string fit(const GfxRenderer& r, const Size s, const std::string& utf8, con
 }
 
 int paragraph(const GfxRenderer& r, const Size s, const int x, const int baseline, const int maxWidth, const int lineHeight,
-              const char* utf8) {
+              const char* utf8, const bool draw) {
   const std::string composed = utf8ComposeNfc(utf8);
   std::vector<std::string> words;
   size_t from = 0;
@@ -198,6 +198,7 @@ int paragraph(const GfxRenderer& r, const Size s, const int x, const int baselin
   std::vector<logic::Placed> placed(tokens.size());
   const int lines = logic::layout(tokens.data(), static_cast<int>(tokens.size()), maxWidth, width(r, s, "a") / 2 + 4,
                                   [&](const char* t) { return width(r, s, t); }, placed.data());
+  if (!draw) return lines;
   for (size_t i = 0; i < tokens.size(); ++i) text(r, s, x + placed[i].x, baseline + placed[i].line * lineHeight, tokens[i].text);
   return lines;
 }
@@ -304,32 +305,26 @@ void battery(const GfxRenderer& r, const int x, const int y, const int percent) 
 }
 
 namespace {
-void glyph(const GfxRenderer& r, const char kind, const int cx, const int cy) {
-  switch (kind) {
-    case 'b': {  // back: an arrow that turns round
-      const int a[4][2] = {{cx + 9, cy + 7}, {cx + 10, cy - 3}, {cx + 4, cy - 7}, {cx - 9, cy - 6}};
-      polyline(r, a, 4, 2);
-      stroke(r, cx - 3, cy - 12, cx - 10, cy - 6, 2);
-      stroke(r, cx - 10, cy - 6, cx - 3, cy - 1, 2);
-      break;
-    }
-    case 'l':
-      stroke(r, cx + 4, cy - 9, cx - 5, cy, 2);
-      stroke(r, cx - 5, cy, cx + 4, cy + 9, 2);
-      break;
-    case 'r':
-      stroke(r, cx - 4, cy - 9, cx + 5, cy, 2);
-      stroke(r, cx + 5, cy, cx - 4, cy + 9, 2);
-      break;
-    case 'c':
-      stroke(r, cx - 9, cy - 1, cx - 3, cy + 7, 2);
-      stroke(r, cx - 3, cy + 7, cx + 10, cy - 10, 2);
-      break;
-    default:
-      break;
-  }
-}
+// 1/16 px to px, rounded away from zero.
+int sixteenths(const int v) { return (v + (v < 0 ? -8 : 8)) / 16; }
 }  // namespace
+
+void mark(const GfxRenderer& r, const Mark m, const int cx, const int cy) {
+  static constexpr const CirclePoint* TABLES[6] = {MARK_LEFT, MARK_RIGHT, MARK_UP, MARK_DOWN, MARK_TICK, MARK_BACK};
+  static constexpr int COUNTS[6] = {MARK_LEFT_COUNT, MARK_RIGHT_COUNT, MARK_UP_COUNT, MARK_DOWN_COUNT, MARK_TICK_COUNT, MARK_BACK_COUNT};
+  const auto* pts = TABLES[static_cast<int>(m)];
+  const int n = COUNTS[static_cast<int>(m)];
+  for (int i = 1; i < n; ++i)
+    stroke(r, cx + sixteenths(pts[i - 1].x), cy + sixteenths(pts[i - 1].y), cx + sixteenths(pts[i].x), cy + sixteenths(pts[i].y), 2);
+}
+
+void pageHints(const GfxRenderer& r, const char* before, const char* after, const int baseline) {
+  const int w = r.getScreenWidth();
+  mark(r, Mark::Left, 32, baseline - 7);
+  text(r, Size::S22, 52, baseline, before);
+  mark(r, Mark::Right, w - 32, baseline - 7);
+  text(r, Size::S22, w - 52 - width(r, Size::S22, after), baseline, after);
+}
 
 void statusBar(const GfxRenderer& r, const MappedInputManager& input, const Hints hints) {
   const int w = r.getScreenWidth(), h = r.getScreenHeight();
@@ -338,12 +333,13 @@ void statusBar(const GfxRenderer& r, const MappedInputManager& input, const Hint
   char clock[10];
   if (SETTINGS.clockShowInHeader && clockstatus::hasValidTime() && halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1))
     text(r, Size::S22, w - 14 - width(r, Size::S22, clock), y + 8, clock);
-  const auto labels = input.mapLabels(hints.back ? "b" : "", hints.confirm ? "c" : "", hints.left ? "l" : "", hints.right ? "r" : "");
+  // Front Left and Right walk up and down the screen, so their marks point up and down.
+  const auto labels = input.mapLabels(hints.back ? "b" : "", hints.confirm ? "c" : "", hints.left ? "u" : "", hints.right ? "d" : "");
   static constexpr int WIDE[4] = {105, 197, 331, 423}, NARROW[4] = {98, 186, 294, 382};
   const int* centres = w >= 528 ? WIDE : NARROW;
   const char* marks[4] = {labels.btn1, labels.btn2, labels.btn3, labels.btn4};
   for (int i = 0; i < 4; ++i)
-    if (marks[i] && marks[i][0]) glyph(r, marks[i][0], centres[i], y);
+    if (marks[i] && marks[i][0]) mark(r, marks[i][0] == 'b' ? Mark::Back : marks[i][0] == 'c' ? Mark::Tick : marks[i][0] == 'u' ? Mark::Up : Mark::Down, centres[i], y);
 }
 
 }  // namespace ugly

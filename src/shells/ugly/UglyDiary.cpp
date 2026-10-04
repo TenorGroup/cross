@@ -152,10 +152,7 @@ void Diary::render(RenderLock&&) {
   const Word now = words[selected];
   circle(renderer, Circle::Word, box[now], 8, 16);
 
-  const int hintY = renderer.getScreenHeight() - 52;
-  text(renderer, Size::S22, 20, hintY, (std::string("< ") + tr(STR_SETTINGS_TITLE)).c_str());
-  const std::string recent = std::string(tr(STR_HOME_TAB_RECENT)) + " >";
-  text(renderer, Size::S22, w - 20 - width(renderer, Size::S22, recent.c_str()), hintY, recent.c_str());
+  pageHints(renderer, tr(STR_SETTINGS_TITLE), tr(STR_HOME_TAB_RECENT), renderer.getScreenHeight() - 52);
   statusBar(renderer, mappedInput, {hasBook, true, true, true});
 
   renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);

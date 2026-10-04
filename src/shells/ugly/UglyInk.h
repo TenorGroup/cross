@@ -32,8 +32,9 @@ int ascent(Size size);
 // The first character of `utf8` shortened with an ellipsis so the result fits `maxWidth`.
 std::string fit(const GfxRenderer& renderer, Size size, const std::string& utf8, int maxWidth);
 
-// A plain sentence broken into lines of at most maxWidth, one under another. Returns the lines used.
-int paragraph(const GfxRenderer& renderer, Size size, int x, int baseline, int maxWidth, int lineHeight, const char* utf8);
+// A plain sentence broken into lines of at most maxWidth, one under another. Returns the lines used (with draw false it only counts them).
+int paragraph(const GfxRenderer& renderer, Size size, int x, int baseline, int maxWidth, int lineHeight, const char* utf8,
+              bool draw = true);
 
 // A chapter title written by hand: one to three lines centred between x0 and x1, in the largest pen
 // size that fits the band from top to bottom, with a shaky underline under the last line. Returns
@@ -56,6 +57,13 @@ void tick(const GfxRenderer& renderer, int x, int y);
 // A battery drawn by hand with its level as pen strokes, no percent.
 void battery(const GfxRenderer& renderer, int x, int y, int percent);
 
+// A hand-drawn mark, one pen stroke from a baked table, about 20 px across, centred on (cx, cy).
+enum class Mark : uint8_t { Left, Right, Up, Down, Tick, Back };
+void mark(const GfxRenderer& renderer, Mark m, int cx, int cy);
+// The page next door on each side, over the lower corners: a drawn arrow beside a short name.
+void pageHints(const GfxRenderer& renderer, const char* before, const char* after, int baseline);
+
+// left and right are the front Left and Right buttons, which walk up and down the screen.
 struct Hints {
   bool back = false, confirm = false, left = false, right = false;
 };
