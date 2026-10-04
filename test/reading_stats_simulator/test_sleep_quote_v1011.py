@@ -36,6 +36,13 @@ from pill_row import pill_band
 from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
+
+# The suite adapter sets this from its reviewed profile and frozen binary hash.
+# Standalone execution uses the UC8279 program path below.
+DISPLAY_CONTROLLER = os.environ.get('TEST_DISPLAY_CONTROLLER', 'UC8279')
+if DISPLAY_CONTROLLER not in ('UC8279', 'UC8253'):
+    raise ValueError('TEST_DISPLAY_CONTROLLER must be UC8279 or UC8253')
+SLEEP_FULL_MODES = ['0', '0', '0'] if DISPLAY_CONTROLLER == 'UC8279' else ['0']
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 # Four records shaped like a real reader's store: one book with a very long title, one day,
 # no minute, anchored, and a 190-character quote among them.
@@ -248,8 +255,8 @@ class SleepQuoteTest(unittest.TestCase):
         self.assert_quote_frame(image)
         self.assertGreater(self.dithered(image, COVER_BOX), 30, 'cover tile has no cover')
         sleep = self.sleep_part(log)
-        # Black, white, then the sleep frame: the visible refresh the default switch promises.
-        self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), ['0', '0', '0'], sleep)
+        # UC8279 clears black/white before the frame; UC8253 FULL cleans the panel in 1 paint.
+        self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), SLEEP_FULL_MODES, sleep)
         self.assertRegex(sleep, r'Sleep quote tile ms=\d+ from \d+x\d+ ok=1')
         self.assertNotIn('[BRAND] sleep', sleep)
 
@@ -320,8 +327,8 @@ class SleepQuoteTest(unittest.TestCase):
         # The title starts at the margin, inside where the tile would have been.
         self.assertGreater(self.ink(image, (48, 596, 144, 700)), 50)
         sleep = self.sleep_part(log)
-        # Black, white, then the sleep frame: the visible refresh the default switch promises.
-        self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), ['0', '0', '0'], sleep)
+        # UC8279 clears black/white before the frame; UC8253 FULL cleans the panel in 1 paint.
+        self.assertEqual(re.findall(r'displayBuffer, mode=(\d)', sleep), SLEEP_FULL_MODES, sleep)
 
     def book_without_cover(self, name, raw, book_on_card=True):
         """The quote's book as a reader leaves it: the book file and its metadata cache, but

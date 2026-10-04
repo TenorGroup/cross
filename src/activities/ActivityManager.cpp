@@ -55,9 +55,9 @@ std::atomic<bool> frameAfterDeferredWrite{false};
 std::atomic<bool> frameDrawn{false};
 }  // namespace
 
-// The Home key leads to the main screen, which is its Recent card on the touch shell, whatever card was last open.
+// The Home key leads to the active shell's main screen: Diary for Ugly, Recent for touch Cross.
 HomeMenuItem ActivityManager::homeKeyTarget() const {
-  return tenorchrome::kTouchShell ? HomeMenuItem::RECENTS : HomeMenuItem::NONE;
+  return tenorchrome::kTouchShell && !shell::isUgly() ? HomeMenuItem::RECENTS : HomeMenuItem::NONE;
 }
 
 const char* ActivityManager::currentName() const { return currentActivity ? currentActivity->name.c_str() : nullptr; }

@@ -17,6 +17,13 @@ from cai_dat_truoc_tenor import truoc_tenor
 
 REPO = Path(__file__).resolve().parents[2]
 
+# The suite adapter sets this from its reviewed profile and frozen binary hash.
+# Standalone execution uses the UC8279 program path below.
+DISPLAY_CONTROLLER = os.environ.get('TEST_DISPLAY_CONTROLLER', 'UC8279')
+if DISPLAY_CONTROLLER not in ('UC8279', 'UC8253'):
+    raise ValueError('TEST_DISPLAY_CONTROLLER must be UC8279 or UC8253')
+SLEEP_FULL_MODES = ['0', '0', '0'] if DISPLAY_CONTROLLER == 'UC8279' else ['0']
+
 
 class WakeRefreshTest(unittest.TestCase):
     def check_wake(self, quick_resume):
@@ -83,12 +90,11 @@ class WakeRefreshTest(unittest.TestCase):
             # nhu tien de cu. Y dinh bai giu nguyen: moi buoc ve chi chay MOT lan.
             # Trong ban simulator duong xam khong tu log tung buoc, dau vet duy nhat cua no la
             # dong "[BRAND] sleep ready=" o cuoi X3BrandScreen, nen dem dong do de bat ca ve hai lan.
-            # Voi cong tac lam moi truoc khi ngu (mac dinh bat), man ngu chay DUNG BA lan GC:
-            # to den, to trang, roi moi ve anh. Hai lan dau lai tung diem anh de bong trang doc
-            # khong in vao anh ngu; thieu lan nao la bong chu trang truoc con lai.
+            # UC8279 folds with 3 FULL paints: black, white, then the finished frame.
+            # UC8253 FULL already flashes the whole panel, so the frame is 1 FULL paint.
             # v1.0.17: folded, the screen is the frame folded ahead of time; its line is
             # "[BRAND] sleep folded ready=".
-            self.assertEqual(re.findall(r"displayBuffer, mode=(\d)", sleep), ["0", "0", "0"], log)
+            self.assertEqual(re.findall(r"displayBuffer, mode=(\d)", sleep), SLEEP_FULL_MODES, log)
             self.assertEqual(log.count("[BRAND] sleep folded ready=1"), 1, log)
             self.assertIn("Restored sleep frame baseline", wake)
             self.assertEqual(re.findall(r"displayBuffer, mode=(\d)", wake), ["0", "2"], log)
@@ -164,7 +170,11 @@ class WakeRefreshTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, log)
             self.assertIn("Entering deep sleep", log)
             wake = log.split("Entering deep sleep", 1)[1]
-            self.assertIn("Restored sleep frame baseline", wake)
+            if DISPLAY_CONTROLLER == 'UC8279':
+                self.assertIn("Restored sleep frame baseline", wake)
+            else:
+                self.assertNotIn("Restored sleep frame baseline", wake)
+                self.assertFalse((store / "sleep_frame.bin").exists(), "UC8253 custom sleep kept a frame")
             self.assertIn("Sleep image 32x32, absolute=1", log)
             self.assertEqual(re.findall(r"displayBuffer, mode=(\d)", wake), ["0", "2"], log)
 

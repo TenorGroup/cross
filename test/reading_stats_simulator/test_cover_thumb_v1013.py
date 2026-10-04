@@ -113,7 +113,7 @@ class NewBookCoverTest(unittest.TestCase):
         return log, images
 
     def thumbs(self, height):
-        return sorted(self.store.glob(f'epub_*/thumb3_{height}.bmp'))
+        return sorted(self.store.glob(f'epub_*/thumb2_{height}.bmp'))
 
     def test_radio_heap_still_gives_the_card_its_cover(self):
         log, shots = self.launch(RADIO_HEAP)

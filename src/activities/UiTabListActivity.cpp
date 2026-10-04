@@ -39,7 +39,7 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
   constexpr int PILL_ICON_W = 84;
   constexpr int INDICATOR = 6;  // sort arrow beside a label
   const int x0 = thanh.x + LE, w = thanh.width - 2 * LE, h = thanh.height, y0 = thanh.y;
-  tenorchrome::drawPillRing(renderer, x0, y0, w, h, 2, true);
+  if (tenorchrome::kTouchShell) tenorchrome::drawPillRing(renderer, x0, y0, w, h, 2, true);
   if (count <= 0) return;
   const bool icons = static_cast<bool>(tabs[0].icon);
   const int slotW = (w - 2 * KHE) / count;

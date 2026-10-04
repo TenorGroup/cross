@@ -3,6 +3,7 @@
 
 #include <cctype>
 #include <functional>
+#include <limits>
 #include <map>
 #include <set>
 #include <string>
@@ -166,6 +167,16 @@ TEST(Ellipsis, WalkOnceEqualsShaveAndMeasure) {
   EXPECT_GT(cut, 300) << "the sample must cut lines";
   EXPECT_GT(whole, 100);
   EXPECT_GT(none, 20) << "and have widths where even the dots do not fit";
+}
+
+TEST(FolderCap, SharedListsFollowHeapAndActionIndex) {
+  EXPECT_EQ(docthumuc::tran(0, 0), 0u);
+  EXPECT_EQ(docthumuc::tran(FOLDER_HEAP_KEEP, 1 << 20), 0u);
+  EXPECT_GE(docthumuc::tran(1 << 20, 1 << 20), 5000u);
+  EXPECT_EQ(docthumuc::tran(30000, 1 << 20), 170u);
+  EXPECT_EQ(docthumuc::tran(1 << 20, 4800), 4800 / (2 * sizeof(std::string)));
+  const size_t roomy = std::numeric_limits<size_t>::max();
+  EXPECT_EQ(docthumuc::tran(roomy, roomy), static_cast<size_t>(std::numeric_limits<int16_t>::max()));
 }
 
 TEST(FolderCap, FollowsTheHeapAndNeverPassesTheCeiling) {

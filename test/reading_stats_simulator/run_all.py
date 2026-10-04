@@ -3,6 +3,7 @@
 import argparse
 import ast
 import concurrent.futures
+import fcntl
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -12,6 +13,7 @@ import re
 import runpy
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -47,9 +49,42 @@ def child(path, program):
 
     class FrozenPopen(original):
         def __init__(self, args, *positional, **keyword):
-            if isinstance(args, (list, tuple)) and args and Path(args[0]).resolve() == DEFAULT_PROGRAM.resolve():
-                args = [str(program), *args[1:]]
-            super().__init__(args, *positional, **keyword)
+            lease = None
+            if isinstance(args, (list, tuple)) and args:
+                executable = Path(args[0]).resolve()
+                if executable in (DEFAULT_PROGRAM.resolve(), program.resolve()):
+                    args = [str(program), *args[1:]]
+                    env = dict(os.environ if keyword.get('env') is None else keyword['env'])
+                    if 'CROSSPOINT_SIM_HTTP_PORT' not in env:
+                        leases = Path(tempfile.gettempdir()) / f'cross-sim-ports-{os.getuid()}'
+                        leases.mkdir(mode=0o700, exist_ok=True)
+                        for _ in range(32):
+                            try:
+                                with socket.socket() as probe:
+                                    probe.bind(('127.0.0.1', 0))
+                                    port = probe.getsockname()[1] & ~1
+                                if not 1024 <= port <= 65534:
+                                    continue
+                                lease = (leases / str(port)).open('a')
+                                fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                                with socket.socket() as http, socket.socket() as ws:
+                                    http.bind(('127.0.0.1', port))
+                                    ws.bind(('127.0.0.1', port + 1))
+                                env['CROSSPOINT_SIM_HTTP_PORT'] = str(port)
+                                keyword['pass_fds'] = (*keyword.get('pass_fds', ()), lease.fileno())
+                                break
+                            except OSError:
+                                if lease is not None:
+                                    lease.close()
+                                    lease = None
+                        else:
+                            raise RuntimeError('No free simulator HTTP/WebSocket port pair')
+                    keyword['env'] = env
+            try:
+                super().__init__(args, *positional, **keyword)
+            finally:
+                if lease is not None:
+                    lease.close()
 
     subprocess.Popen = FrozenPopen
     sys.path.insert(0, str(HERE))

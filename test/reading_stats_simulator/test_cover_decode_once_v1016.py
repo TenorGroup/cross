@@ -63,7 +63,7 @@ class CoverDecodeOnceTest(unittest.TestCase):
         return log
 
     def thumbs(self, height):
-        return sorted(self.store.glob(f'epub_*/thumb3_{height}.bmp'))
+        return sorted(self.store.glob(f'epub_*/thumb2_{height}.bmp'))
 
     def refs(self):
         return sorted(self.store.glob('epub_*/cover.ref'))
@@ -74,7 +74,7 @@ class CoverDecodeOnceTest(unittest.TestCase):
         self.artifacts.mkdir(parents=True, exist_ok=True)
         for height in (450, 226):
             for path in self.thumbs(height):
-                shutil.copy(path, self.artifacts / f'{name}-thumb3_{height}.bmp')
+                shutil.copy(path, self.artifacts / f'{name}-thumb2_{height}.bmp')
 
     def test_both_thumbnails_come_from_one_decode(self):
         # Home, open the book, turn a page, Back to Home: the reader writes the thumbnails as it closes.
