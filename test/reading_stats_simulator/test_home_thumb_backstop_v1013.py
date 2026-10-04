@@ -19,7 +19,7 @@ from test_home_card_v1011 import CARD_BUILD, PROGRAM, THUMB, epub_with_cover
 
 PATH = '/sach/cuon-moi.epub'
 TITLE = 'Cuốn sách mới mở'
-COVER = (24, 124, 260, 480)
+COVER = (24, 124, 322, 574)
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -72,11 +72,11 @@ class HomeThumbBackstopTest(unittest.TestCase):
         self.assertIsNone(THUMB.search(log[:woke]), 'precondition: the reader wrote a thumbnail')
         after = log[woke:]
         written = [int(h) for h, _, ok in THUMB.findall(after) if ok == '1']
-        self.assertEqual(written, [356, 226], 'Home did not write the missing thumbnails\n' + after[-4000:])
-        self.assertTrue(self.thumbs(356) and self.thumbs(226))
+        self.assertEqual(written, [450, 226], 'Home did not write the missing thumbnails\n' + after[-4000:])
+        self.assertTrue(self.thumbs(450) and self.thumbs(226))
         builds = CARD_BUILD.findall(after)
         self.assertEqual(int(builds[0][2]), 0, 'the card had a cover before Home wrote one')
-        self.assertEqual(int(builds[-1][2]), 356, 'the card was not redrawn with its new cover')
+        self.assertEqual(int(builds[-1][2]), 450, 'the card was not redrawn with its new cover')
         # The notice goes up before the decode.
         self.assertLess(after.index('Card thumbnail write'), THUMB.search(after).start())
 

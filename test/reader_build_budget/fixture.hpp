@@ -66,7 +66,7 @@ struct StorageStub {
 } Storage;
 struct ThemeMetrics { int homeCoverHeight = 226; };
 // The tenor Recent card and the height it draws the cover at (components/HomeExcerptStyle.h).
-inline constexpr int HOME_CARD_COVER_H = 356;
+inline constexpr int HOME_CARD_COVER_H = 450;
 namespace tenorchrome {
 inline bool enabledState = true;
 inline bool enabled() { return enabledState; }

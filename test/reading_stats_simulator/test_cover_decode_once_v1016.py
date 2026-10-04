@@ -1,6 +1,6 @@
 """v1.0.16 cover thumbnails of a book with a large cover, and Home's card without the book's index.
 
-1. A book whose first page is text gets its two cover thumbnails (the card's 356 px and the theme's
+1. A book whose first page is text gets its two cover thumbnails (the card's 450 px and the theme's
    226 px) as the reader closes. Each used to decode the cover on its own: 3,4 s and 0,9 s for a
    900 x 1350 cover on the X3, on the Home key. One decode now makes both.
 2. A book read to the power key each time never wrote them; Home writes them once the card sits
@@ -72,7 +72,7 @@ class CoverDecodeOnceTest(unittest.TestCase):
         if not self.artifacts:
             return
         self.artifacts.mkdir(parents=True, exist_ok=True)
-        for height in (356, 226):
+        for height in (450, 226):
             for path in self.thumbs(height):
                 shutil.copy(path, self.artifacts / f'{name}-thumb2_{height}.bmp')
 
@@ -81,11 +81,11 @@ class CoverDecodeOnceTest(unittest.TestCase):
         log = self.launch('1500:CONFIRM;5000:RIGHT;7000:BACK;11000:QUIT')
         self.keep('back')
         written = [int(h) for h, _, ok in THUMB.findall(log) if ok == '1']
-        self.assertEqual(written, [356, 226], log[-6000:])
-        self.assertTrue(self.thumbs(356) and self.thumbs(226))
+        self.assertEqual(written, [450, 226], log[-6000:])
+        self.assertTrue(self.thumbs(450) and self.thumbs(226))
         self.assertEqual(len(DECODES.findall(log)), 1, 'the cover was decoded once per thumbnail\n' + log[-6000:])
         builds = CARD_BUILD.findall(log)
-        self.assertEqual(int(builds[-1][2]), 356, 'the card was not drawn with its cover')
+        self.assertEqual(int(builds[-1][2]), 450, 'the card was not drawn with its cover')
 
     def power_key_then_home(self):
         # Open the book (text first page), read, sleep with the power key; wake to Home and leave the
@@ -106,9 +106,9 @@ class CoverDecodeOnceTest(unittest.TestCase):
         self.assertEqual(REF_READ.findall(after), ['1'], after[-4000:])
         self.assertIsNone(INDEX_LOAD.search(after), 'Home loaded the book to write its thumbnails\n' + after[-4000:])
         written = [int(h) for h, _, ok in THUMB.findall(after) if ok == '1']
-        self.assertEqual(written, [356, 226], after[-4000:])
+        self.assertEqual(written, [450, 226], after[-4000:])
         builds = CARD_BUILD.findall(after)
-        self.assertEqual(int(builds[-1][2]), 356, 'the card was not redrawn with its new cover')
+        self.assertEqual(int(builds[-1][2]), 450, 'the card was not redrawn with its new cover')
 
     def test_the_thumbnails_come_with_home_heap_after_reading(self):
         # Home's heap after some reading on the X3 (r33: 86 to 91 KB).
@@ -116,7 +116,7 @@ class CoverDecodeOnceTest(unittest.TestCase):
         self.assertTrue(self.refs(), 'precondition: the reader left cover.ref')
         log = self.launch('9000:QUIT', None, heap=86 * 1024)
         written = [int(h) for h, _, ok in THUMB.findall(log) if ok == '1']
-        self.assertEqual(written, [356, 226], 'no thumbnail with 86 KB free\n' + log[-4000:])
+        self.assertEqual(written, [450, 226], 'no thumbnail with 86 KB free\n' + log[-4000:])
 
     def test_the_old_route_still_waits_for_its_heap(self):
         self.launch('1500:CONFIRM;5000:RIGHT;7000:SLEEP;9000:POWER', '1000:QUIT')
@@ -132,11 +132,11 @@ class CoverDecodeOnceTest(unittest.TestCase):
         self.launch('1500:CONFIRM;5000:RIGHT;7000:SLEEP;9000:POWER', '1000:QUIT')
         refs = self.refs()
         self.assertEqual(len(refs), 1, refs)
-        self.assertFalse(self.thumbs(356), 'precondition: no thumbnail yet')
+        self.assertFalse(self.thumbs(450), 'precondition: no thumbnail yet')
         damage(refs[0])
         log = self.launch('9000:QUIT', None)
         written = [int(h) for h, _, ok in THUMB.findall(log) if ok == '1']
-        self.assertEqual(written, [356, 226], 'Home wrote no thumbnail from an old cache\n' + log[-4000:])
+        self.assertEqual(written, [450, 226], 'Home wrote no thumbnail from an old cache\n' + log[-4000:])
         self.assertIsNotNone(INDEX_LOAD.search(log), 'the old route did not load the book')
         return log
 

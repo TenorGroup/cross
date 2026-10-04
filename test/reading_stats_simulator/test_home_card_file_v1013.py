@@ -27,7 +27,7 @@ CARD_BUILD = re.compile(r'Recent card build=\d+ms')
 CARD_FILE = re.compile(r'Recent card file=\d+ms')
 # Cover, text block and the other-book row of the default X3 card (528 x 792).
 CARD = (0, 124, 528, 756)
-COVER = (24, 124, 260, 480)
+COVER = (24, 124, 322, 574)
 TEXT = (40, 498, 488, 712)
 
 BOOKS = [
@@ -60,7 +60,7 @@ class HomeCardFileTest(unittest.TestCase):
             shutil.copy(REPO / 'test/epubs/test_dictionary_synonyms.epub', target)
             covers = f'/.crosspoint/home-covers/{book_key(path):08x}_[HEIGHT].bmp'
             if index < 2:
-                cover(self.thumb(covers), title, 356)
+                cover(self.thumb(covers), title, 450)
             self.books.append({'path': path, 'title': title, 'author': author, 'coverBmpPath': covers,
                                'excerpt': excerpt})
         self.write_recent()
@@ -73,7 +73,7 @@ class HomeCardFileTest(unittest.TestCase):
         (folder / '.ten-v2').write_text('2')
 
     def thumb(self, covers):
-        return self.sd / covers.lstrip('/').replace('[HEIGHT]', '356')
+        return self.sd / covers.lstrip('/').replace('[HEIGHT]', '450')
 
     def write_recent(self):
         (self.store / 'recent.json').write_text(json.dumps({'books': self.books}, ensure_ascii=False),
@@ -123,7 +123,7 @@ class HomeCardFileTest(unittest.TestCase):
         # The first book was read further (new page excerpt); the third got its thumbnail.
         self.books[0]['excerpt'] = 'Buổi sáng hôm ấy cả làng ra bãi, thuyền lớn thuyền nhỏ nằm san sát.'
         self.write_recent()
-        cover(self.thumb(self.books[2]['coverBmpPath']), BOOKS[2][1], 356)
+        cover(self.thumb(self.books[2]['coverBmpPath']), BOOKS[2][1], 450)
         log, after = self.launch('after-', self.WALK, self.SHOTS)
         self.assertEqual(len(CARD_BUILD.findall(log)), 2, log[-4000:])
         self.assertEqual(len(CARD_FILE.findall(log)), 1, log[-4000:])

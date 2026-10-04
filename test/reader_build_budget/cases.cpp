@@ -357,7 +357,7 @@ int main() {
     require(thumbs.generated == 0, "idle pass decoded the cover under the page being read");
     r.writePendingThumbs();
     // The card's own height first: it is the one the card draws.
-    require((thumbs.heights == std::vector<int>{356, 226}), "closing the reader did not write both thumbnails");
+    require((thumbs.heights == std::vector<int>{450, 226}), "closing the reader did not write both thumbnails");
     // The copy's 32 KB inflate window comes out of the framebuffer, which the next screen redraws
     // whole: X3 r19 lost both thumbnails when the heap's largest block fell 12 bytes short.
     require(thumbs.loans == 1, "closing thumbnail did not borrow the framebuffer");
@@ -375,7 +375,7 @@ int main() {
       r.idleStep();
     }
     r.writePendingThumbs();
-    require((thumbs.heights == std::vector<int>{356, 226}),
+    require((thumbs.heights == std::vector<int>{450, 226}),
             "a book read with the radio on reached Home without a cover");
   });
   test("book opened before the card thumbnail gets it when the reader closes", [] {
@@ -384,7 +384,7 @@ int main() {
     r.section->currentPage = 4; r.section->pageCount = r.section->oldPages = 5;
     r.openThumbStep();
     r.writePendingThumbs();
-    require(thumbs.heights == std::vector<int>{356}, "only the missing card thumbnail should be generated");
+    require(thumbs.heights == std::vector<int>{450}, "only the missing card thumbnail should be generated");
   });
   test("other themes keep the theme thumbnail alone", [] {
     EpubReaderActivity r; tenorchrome::enabledState = false;

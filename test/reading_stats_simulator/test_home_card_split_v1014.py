@@ -23,8 +23,8 @@ class HomeCardSplitTest(v1013.HomeCardFileTest):
         self.write_recent()
         log, after = self.launch('after-', self.WALK, self.SHOTS)
         builds = KEPT.findall(log)
-        # The first book: text laid out again over its saved 356 px cover. The others read whole.
-        self.assertEqual(builds, [('356', '1')], log[-4000:])
+        # The first book: text laid out again over its saved 450 px cover. The others read whole.
+        self.assertEqual(builds, [('450', '1')], log[-4000:])
         self.assertFalse(self.same(first['a'], after['a'], TEXT), 'new excerpt not drawn')
         self.assertTrue(self.same(first['a'], after['a'], COVER))
         # The same card drawn from nothing, with no card files on the card.
@@ -38,11 +38,11 @@ class HomeCardSplitTest(v1013.HomeCardFileTest):
     def test_cover_change_still_draws_the_whole_card(self):
         self.launch('first-', self.WALK, self.SHOTS)
         # The third book got its thumbnail since: its saved cover is stale, text or not.
-        cover(self.thumb(self.books[2]['coverBmpPath']), BOOKS[2][1], 356)
+        cover(self.thumb(self.books[2]['coverBmpPath']), BOOKS[2][1], 450)
         self.books[2]['excerpt'] = 'Chiều xuống, sương tan dần trên đồi chè.'
         self.write_recent()
         log, _ = self.launch('after-', self.WALK, self.SHOTS)
-        self.assertEqual(KEPT.findall(log), [('356', '0')], log[-4000:])
+        self.assertEqual(KEPT.findall(log), [('450', '0')], log[-4000:])
 
 
 # The v1.0.13 cases run from their own module.

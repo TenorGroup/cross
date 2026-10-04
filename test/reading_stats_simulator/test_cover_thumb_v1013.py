@@ -34,7 +34,7 @@ TITLE = 'Cuốn sách mới mở'
 # MEM Free: 61204 bytes, MaxAlloc: 55284 bytes).
 RADIO_HEAP = {'CROSSPOINT_SIM_FREE_HEAP': '61204', 'CROSSPOINT_SIM_MAX_ALLOC_HEAP': '55284'}
 GRID = re.compile(r'Scaling source (\d+)x(\d+) \(decode grid (\d+)x(\d+)\) -> (\d+)x(\d+)')
-COVER_BOX = (24, 124, 260, 480)
+COVER_BOX = (24, 124, 322, 574)
 # The route a thumbnail took: page=1 when it was written from the cover page's own decode.
 THUMB_ROUTE = re.compile(r'Cover thumbnail (\d+) px: \d+ ms, ok=1, page=(\d)')
 # v1.0.16: one decode of the cover file for both thumbnails, logged with its grid's scale.
@@ -117,10 +117,10 @@ class NewBookCoverTest(unittest.TestCase):
 
     def test_radio_heap_still_gives_the_card_its_cover(self):
         log, shots = self.launch(RADIO_HEAP)
-        self.assertTrue(self.thumbs(356), 'no 356 px thumbnail with the radio heap\n' + log[-6000:])
+        self.assertTrue(self.thumbs(450), 'no 450 px thumbnail with the radio heap\n' + log[-6000:])
         builds = CARD_BUILD.findall(log)
         self.assertTrue(builds, log[-4000:])
-        self.assertEqual(int(builds[-1][2]), 356, 'the card drew no cover for the new book')
+        self.assertEqual(int(builds[-1][2]), 450, 'the card drew no cover for the new book')
         self.assertIsNotNone(ImageChops.invert(shots['home'].crop(COVER_BOX)).getbbox(), 'cover area is blank')
 
     def test_no_cover_decode_while_the_page_is_read(self):
@@ -129,7 +129,7 @@ class NewBookCoverTest(unittest.TestCase):
         last_page = log.rfind('Rendered page in')
         self.assertGreaterEqual(last_page, 0, log[-4000:])
         written = [(m.start(), int(m.group(1)), m.group(3)) for m in THUMB.finditer(log)]
-        self.assertEqual([h for _, h, ok in written if ok == '1'], [356, 226], log[-6000:])
+        self.assertEqual([h for _, h, ok in written if ok == '1'], [450, 226], log[-6000:])
         # A thumbnail taken from the cover page's own decode costs no decode of its own.
         separate = [m.start() for m in THUMB.finditer(log) if not log.startswith(', page=1', m.end())]
         early = [at for at in separate if at < last_page]
@@ -143,7 +143,7 @@ class NewBookCoverTest(unittest.TestCase):
         grids = [tuple(map(int, m.groups())) for m in GRID.finditer(log)]
         scales = [int(scale) for scale in SHARED_DECODE.findall(log)]
         self.assertTrue(grids or scales, log[-6000:])
-        # The shared decode picks its grid by the same rule (JpegScale.h): a half covers 236 x 356 here.
+        # The shared decode picks its grid by the same rule (JpegScale.h): a half covers 298 x 450 here.
         self.assertTrue(all(scale > 1 for scale in scales), scales)
         for src_w, src_h, grid_w, grid_h, out_w, out_h in grids:
             # The smallest grid that still covers the thumbnail in both axes.
@@ -155,7 +155,7 @@ class NewBookCoverTest(unittest.TestCase):
         # The radio starts only after the first page, so the decode sees the heap before it.
         log, shots = self.launch({})
         routes = THUMB_ROUTE.findall(log)
-        self.assertEqual(routes, [('356', '1'), ('226', '1')], log[-6000:])
+        self.assertEqual(routes, [('450', '1'), ('226', '1')], log[-6000:])
         # Nothing reaches the card while the cover decodes: the files come after the first page.
         first_page = log.find('Rendered page in')
         self.assertGreaterEqual(first_page, 0, log[-4000:])
@@ -163,12 +163,12 @@ class NewBookCoverTest(unittest.TestCase):
         # No second decode of the cover: the JPEG converter logs its grid for every thumbnail.
         self.assertIsNone(GRID.search(log), 'the cover was decoded again for the thumbnails')
         builds = CARD_BUILD.findall(log)
-        self.assertEqual(int(builds[-1][2]), 356, 'the card drew no cover for the new book')
+        self.assertEqual(int(builds[-1][2]), 450, 'the card drew no cover for the new book')
 
     def test_page_thumbnail_matches_the_cover_decode(self):
         log, _ = self.launch({})
-        self.assertEqual([h for h, route in THUMB_ROUTE.findall(log)], ['356', '226'], log[-6000:])
-        from_page = {h: Image.open(self.thumbs(h)[0]).copy() for h in (356, 226)}
+        self.assertEqual([h for h, route in THUMB_ROUTE.findall(log)], ['450', '226'], log[-6000:])
+        from_page = {h: Image.open(self.thumbs(h)[0]).copy() for h in (450, 226)}
         # The same cover in a book with no cover page takes the cover decode.
         other = '/sach/khong-trang-bia.epub'
         epub_with_cover(self.sd / other.lstrip('/'))
@@ -176,7 +176,7 @@ class NewBookCoverTest(unittest.TestCase):
         self.assertEqual(len(GRID.findall(log)) + len(SHARED_DECODE.findall(log)), 1, log[-6000:])
         cover = Image.open(__import__('io').BytesIO(cover_jpeg())).convert('L')
         report = {}
-        for height in (356, 226):
+        for height in (450, 226):
             decoded = [p for p in self.thumbs(height) if Image.open(p).copy() != from_page[height]]
             self.assertEqual(len(decoded), 1, self.thumbs(height))
             decoded = Image.open(decoded[0]).copy()
@@ -190,7 +190,7 @@ class NewBookCoverTest(unittest.TestCase):
                 page.save(self.artifacts / f'thumb-{height}-page.png')
                 decoded.save(self.artifacts / f'thumb-{height}-decode.png')
             # Within the dither of the cover decode: a 1-bit thumbnail blurred at radius 2 still
-            # carries several gray levels of error either way. The page's 226 was scaled from its 356
+            # carries several gray levels of error either way. The page's 226 was scaled from its 450
             # after that one was dithered, so it was dithered twice: v1.0.14 measured 6.75 against
             # 2.93 there, where the Atkinson thumbnails of v1.0.13 gave 12.85 and 10.81. v1.0.16 feeds
             # it the page decode's gray as well (GrayThumb::alsoFeed): 2.96 against 2.93.

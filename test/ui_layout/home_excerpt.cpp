@@ -75,51 +75,56 @@ HomeCardInput x3(int titleLines) {
 }
 
 void cardGeometry() {
-  // The approved two-column drawing (H4): cover 236 x 356 at the left margin under the tab row, the
-  // reading stats to its right, then title, author, three lines of excerpt at the cover's left edge
-  // across the full width, and the rule and the other-book row above the footer. Geist 10 sets the
-  // author and bottom lines at 27 (the font before it, 26), so the excerpt and rule gaps take 1 px each.
+  // Plan F (04/10): cover 298 x 450 at the left margin under the tab row, the reading stats in a 160 px
+  // column to its right (a third of the 480 px text width), then title, author and one line of excerpt at
+  // the cover's left edge across the full width, and the rule and the other-book row above the footer.
+  // The cover is sized for a one-line title and its excerpt line; a two-line title drops the excerpt.
   const auto card = homeCardLayout(x3(2));
-  assert(card.coverW == 236 && card.coverH == 356);
+  assert(card.coverW == 298 && card.coverH == 450);
   assert(card.coverX == 24 && card.coverY == 124);
-  assert(card.statsX == 24 + 236 + 22 && card.statsRight == 528 - 24);
+  assert(card.statsX == 24 + 298 + 22 && card.statsRight == 528 - 24);
+  assert(card.statsRight - card.statsX == 160);
   assert(card.textX == 24 && card.textW == 480);
-  assert(card.titleY == 124 + 356 + 18);
+  assert(card.titleY == 124 + 450 + 18);
   assert(card.authorY == card.titleY + 2 * 33 + 2);
-  assert(card.excerptY == card.authorY + 27 + 7);
-  assert(card.excerptLines == 3);
+  assert(card.excerptLines == 0);
   assert(card.rowY == 752 - 27);
   assert(card.ruleY == card.rowY - 8);
-  assert(card.excerptY + 3 * 34 + 15 <= card.ruleY);
+  assert(card.authorY + 27 + 15 <= card.ruleY);
 
-  // A one-line title moves the author and excerpt up; the cover keeps its size, so switching
-  // books does not make the cover jump.
+  // A one-line title moves the author up and leaves room for one line of excerpt; the cover keeps its
+  // size, so switching books does not make the cover jump.
   const auto shortTitle = homeCardLayout(x3(1));
-  assert(shortTitle.coverH == 356 && shortTitle.coverY == 124);
+  assert(shortTitle.coverH == 450 && shortTitle.coverY == 124);
   assert(shortTitle.authorY == shortTitle.titleY + 33 + 2);
-  assert(shortTitle.excerptLines == 3);
+  assert(shortTitle.excerptLines == 1);
+  assert(shortTitle.excerptY == shortTitle.authorY + 27 + 7);
+  assert(shortTitle.excerptY + 34 + 15 <= shortTitle.ruleY);
 
   // Larger text: Geist 16 title (43) and Noto Serif 16 excerpt (45). The cover gives up height,
-  // keeps its 236:356 shape and its left edge, and the stats column takes the width it gives up.
+  // keeps its 298:450 shape and its left edge, and the stats column takes the width it gives up.
   auto large = x3(2);
   large.titleLineHeight = 43;
   large.excerptLineHeight = 45;
   const auto big = homeCardLayout(large);
-  assert(big.coverH < 356 && big.coverH >= 200);
-  assert(big.coverW == big.coverH * 236 / 356);
+  assert(big.coverH < 450 && big.coverH >= 200);
+  assert(big.coverW == big.coverH * 298 / 450);
   assert(big.coverX == 24);
   assert(big.statsX == 24 + big.coverW + 22 && big.statsRight == 504);
-  assert(big.excerptLines == 3);
-  assert(big.excerptY + 3 * 45 + 15 <= big.ruleY);
+  assert(big.excerptLines == 0);
+  // A one-line title keeps its excerpt line at the larger size, on the same cover.
+  auto largeShort = large;
+  largeShort.titleLines = 1;
+  const auto bigShort = homeCardLayout(largeShort);
+  assert(bigShort.coverH == big.coverH && bigShort.excerptLines == 1);
+  assert(bigShort.excerptY + 45 + 15 <= bigShort.ruleY);
 
-  // A short screen: the cover stops at its floor and the excerpt drops lines instead, never below
-  // one line and never past the rule.
+  // A short screen: the cover stops at its floor and the excerpt is dropped, never drawn past the rule.
   auto shortScreen = x3(2);
-  shortScreen.bottom = 480;
+  shortScreen.bottom = 330;
   const auto small = homeCardLayout(shortScreen);
   assert(small.coverH == 120);
-  assert(small.excerptLines >= 1 && small.excerptLines < 3);
-  assert(small.excerptY + small.excerptLines * 34 <= small.ruleY);
+  assert(small.excerptLines == 0);
   puts("PASS: card geometry matches the approved drawing and gives way to larger text");
 }
 
@@ -144,25 +149,32 @@ void statRows() {
 }
 
 void statsColumn() {
-  // X3 default: Geist 8 labels (22), Geist 12 bold values (33), beside a 356 px cover.
+  // X3 default: Geist 10 labels (27), Geist 12 bold values (33, 8 rows under the baseline), beside a
+  // 450 px cover.
   const auto card = homeCardLayout(x3(2));
   HomeStatsInput in;
   in.top = card.coverY;
   in.bottom = card.coverY + card.coverH;
-  in.labelLineHeight = 22;
+  in.labelLineHeight = 27;
   in.valueLineHeight = 33;
+  in.valueTail = 8;
   in.rows = ALL_STATS;
   const auto column = homeStatsLayout(in);
   assert(column.rows == ALL_STATS);
   assert(column.labelY[HOME_STAT_READ] == card.coverY + 2);
-  assert(column.valueY[HOME_STAT_READ] == column.labelY[HOME_STAT_READ] + 22);
+  assert(column.valueY[HOME_STAT_READ] == column.labelY[HOME_STAT_READ] + 27);
   // The progress bar sits under the percent, then the next label.
+  assert(HOME_STATS_BAR_H >= 8);
   assert(column.barY >= column.valueY[HOME_STAT_READ] + 33 - 6);
-  assert(column.labelY[HOME_STAT_TOTAL] >= column.barY + 6 + 6);
+  assert(column.labelY[HOME_STAT_TOTAL] >= column.barY + HOME_STATS_BAR_H + 6);
   for (int row = HOME_STAT_TOTAL; row < HOME_STAT_COUNT; ++row) {
     assert(column.labelY[row] > column.valueY[row - 1]);
-    assert(column.valueY[row] == column.labelY[row] + 22);
+    assert(column.valueY[row] == column.labelY[row] + 27);
   }
+  // The gap under the bar equals the gap between the groups below it, measured to the same line: from a
+  // value's baseline (its line bottom less the tail), and from the bar's bottom, to the next label.
+  assert(column.labelY[HOME_STAT_TOTAL] - (column.barY + HOME_STATS_BAR_H) ==
+         column.labelY[HOME_STAT_AVERAGE] - (column.valueY[HOME_STAT_TOTAL] + 33 - in.valueTail));
   // The last value ends inside the cover's height, so the title below is not pushed down.
   assert(column.valueY[HOME_STAT_SPAN] + 33 <= in.bottom);
 
@@ -178,6 +190,7 @@ void statsColumn() {
   in.bottom = in.top + 240;
   in.labelLineHeight = 28;
   in.valueLineHeight = 43;
+  in.valueTail = 10;
   const auto crowded = homeStatsLayout(in);
   assert(crowded.rows & bit(HOME_STAT_READ));
   assert(!(crowded.rows & bit(HOME_STAT_SPAN)));
@@ -207,12 +220,13 @@ void finishRow() {
   HomeStatsInput in;
   in.top = card.coverY;
   in.bottom = card.coverY + card.coverH;
-  in.labelLineHeight = 22;
+  in.labelLineHeight = 27;
   in.valueLineHeight = 33;
+  in.valueTail = 8;
   in.rows = ALL_STATS | bit(HOME_STAT_FINISH);
   const auto column = homeStatsLayout(in);
   assert(column.rows == (in.rows & ~bit(HOME_STAT_SPAN)));
-  assert(column.labelY[HOME_STAT_FINISH] >= column.barY + 6 + 6);
+  assert(column.labelY[HOME_STAT_FINISH] >= column.barY + HOME_STATS_BAR_H + 6);
   assert(column.labelY[HOME_STAT_TOTAL] > column.valueY[HOME_STAT_FINISH]);
   puts("PASS: the finish row follows the percent and the span gives way at the default size");
 }

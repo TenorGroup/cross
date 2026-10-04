@@ -89,7 +89,7 @@ class HomeRecentCardTest(unittest.TestCase):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / 'test/epubs' / epub, target)
         covers = f'/.crosspoint/home-covers/{book_key(path):08x}_[HEIGHT].bmp'
-        cover(self.sd / covers.lstrip('/').replace('[HEIGHT]', '356'), title.split(':')[0], 356)
+        cover(self.sd / covers.lstrip('/').replace('[HEIGHT]', '450'), title.split(':')[0], 450)
         return {'path': path, 'title': title, 'author': author, 'coverBmpPath': covers, 'excerpt': excerpt}
 
     def write_recent(self, books):
@@ -135,8 +135,8 @@ class HomeRecentCardTest(unittest.TestCase):
 
     # Regions of the default X3 card (528 x 792): cover, text block, other-book row, left arrow,
     # the footer tip lane the pin hint used, and the four footer hint cells.
-    COVER = (24, 124, 260, 480)
-    TEXT = (40, 498, 488, 712)
+    COVER = (24, 124, 322, 574)
+    TEXT = (24, 590, 504, 712)
     ROW = (40, 712, 488, 756)
     LEFT_ARROW = (10, 722, 30, 756)
     FOOTER = (0, 756, 528, 792)
@@ -279,7 +279,8 @@ class HomeRecentCardTest(unittest.TestCase):
                     # The cover (with the stats beside it) is one tall run; then title, author, excerpt.
                     cover_run = next(i for i, (first, last) in enumerate(runs) if last - first > 100)
                     lines = runs[cover_run + 1:]
-                    self.assertGreaterEqual(len(lines), title_lines + 2, f'{name}: {runs}')
+                    # Title lines, the author, and one line of excerpt; a two-line title leaves no room for it.
+                    self.assertEqual(len(lines), title_lines + (1 if title_lines == 2 else 2), f'{name}: {runs}')
                     heights = [last - first + 1 for first, last in lines]
                     if name.startswith('short') and size < 2:
                         self.assertGreater(heights[0], base[size], f'{name}: title {heights[0]} rows, {runs}')

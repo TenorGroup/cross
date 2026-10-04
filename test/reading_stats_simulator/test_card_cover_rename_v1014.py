@@ -48,7 +48,7 @@ class CardCoverRenameTest(unittest.TestCase):
 
         log = self.home_only()
         self.assertTrue(CARD_BUILD.findall(log), 'the card was not built\n' + log[-4000:])
-        self.assertTrue((cache / 'thumb2_356.bmp').exists(),
+        self.assertTrue((cache / 'thumb2_450.bmp').exists(),
                         'the card kept the old thumbnail name\n' + log[-4000:])
 
 

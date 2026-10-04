@@ -71,13 +71,13 @@ class ThumbCutWriteTest(unittest.TestCase):
         return env
 
     def cut_during_first_thumbnail(self):
-        """Open the book, go back to Home, and kill the program once a 356 px thumbnail file appears."""
+        """Open the book, go back to Home, and kill the program once a 450 px thumbnail file appears."""
         process = subprocess.Popen([str(PROGRAM)], cwd=REPO, env=self.env('1500:CONFIRM;5000:BACK;60000:QUIT'),
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.monotonic() + 60
         try:
             while time.monotonic() < deadline and process.poll() is None:
-                if list(self.store.glob('epub_*/thumb2_356.bmp*')):
+                if list(self.store.glob('epub_*/thumb2_450.bmp*')):
                     process.send_signal(signal.SIGKILL)
                     break
                 time.sleep(0.0005)
@@ -85,7 +85,7 @@ class ThumbCutWriteTest(unittest.TestCase):
             if process.poll() is None:
                 process.kill()
             process.wait()
-        self.assertTrue(list(self.store.glob('epub_*/thumb2_356.bmp*')), 'no thumbnail write began')
+        self.assertTrue(list(self.store.glob('epub_*/thumb2_450.bmp*')), 'no thumbnail write began')
 
     def test_cut_thumbnail_is_written_again_whole(self):
         self.cut_during_first_thumbnail()
@@ -93,11 +93,11 @@ class ThumbCutWriteTest(unittest.TestCase):
                              capture_output=True, text=True, timeout=180)
         log = run.stdout + run.stderr
         self.assertEqual(run.returncode, 0, log[-4000:])
-        thumbs = sorted(self.store.glob('epub_*/thumb2_356.bmp'))
+        thumbs = sorted(self.store.glob('epub_*/thumb2_450.bmp'))
         self.assertEqual(len(thumbs), 1, log[-4000:])
         with Image.open(thumbs[0]) as image:
             image.load()
-            self.assertEqual(image.height, 356, 'the thumbnail is not a whole image')
+            self.assertEqual(image.height, 450, 'the thumbnail is not a whole image')
         self.assertEqual(list(self.store.glob('epub_*/*.tmp')), [], 'a cut write was left behind')
 
 

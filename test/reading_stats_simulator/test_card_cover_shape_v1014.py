@@ -1,7 +1,7 @@
 """v1.0.14 Recent card cover drawn at the thumbnail's own pixels.
 
-1. The thumbnail rule was width = 0.6 x height, the card's cover is 236 x 356 (0.663). A cover
-   narrower than the card came out narrower than 236 and the card stretched it by repeating
+1. The thumbnail rule was width = 0.6 x height, the card's cover is 298 x 450 (0.662; 236 x 356 before 04/10). A cover
+   narrower than the card came out narrower than 298 and the card stretched it by repeating
    columns and rows: on the X3 a 780 x 1227 cover showed 9 doubled columns and 15 doubled rows.
    The thumbnail now takes the card's own shape, so the card draws it 1:1, cropped at the centre.
    Both routes are checked: the cover file decoded when the reader closes, and the cover page's
@@ -32,8 +32,8 @@ from test_home_card_v1011 import CARD_BUILD, FIXTURE, PROGRAM
 
 PATH = '/sach/bia-hep.epub'
 TITLE = 'Bìa hẹp hơn khung thẻ'
-COVER_W, COVER_H = 780, 1227  # a common portrait cover, narrower than the card's 236:356
-CARD = (24, 124, 260, 480)  # the cover on the default X3 card (HomeExcerptStyle.h)
+COVER_W, COVER_H = 780, 1227  # a common portrait cover, narrower than the card's 298:450
+CARD = (24, 124, 322, 574)  # the cover on the default X3 card (HomeExcerptStyle.h)
 INSET = 12  # clear of the rounded corners
 TONES = (32, 64, 128, 192, 224)
 THUMBS = re.compile(r'Cover thumbnail (\d+) px: \d+ ms, ok=1, page=(\d)')
@@ -132,12 +132,12 @@ class CardCoverShapeTest(unittest.TestCase):
         write_book(self.sd / PATH.lstrip('/'), cover_page)
         log, home = self.home_after_reading(label)
         routes = THUMBS.findall(log)
-        self.assertIn(('356', '1' if cover_page else '0'), routes, log[-6000:])
+        self.assertIn(('450', '1' if cover_page else '0'), routes, log[-6000:])
         builds = CARD_BUILD.findall(log)
-        self.assertTrue(builds and int(builds[-1][2]) == 356, 'the card drew no 356 px thumbnail\n' + log[-4000:])
-        thumbs = sorted(self.store.glob('epub_*/thumb*_356.bmp'))
+        self.assertTrue(builds and int(builds[-1][2]) == 450, 'the card drew no 450 px thumbnail\n' + log[-4000:])
+        thumbs = sorted(self.store.glob('epub_*/thumb*_450.bmp'))
         self.assertEqual(len(thumbs), 1, thumbs)
-        self.assertNotEqual(thumbs[0].name, 'thumb_356.bmp', 'a thumbnail of the old rule would be kept')
+        self.assertNotEqual(thumbs[0].name, 'thumb_450.bmp', 'a thumbnail of the old rule would be kept')
         with Image.open(thumbs[0]) as thumb:
             size = thumb.size
         x0, y0, x1, y1 = CARD
@@ -146,13 +146,15 @@ class CardCoverShapeTest(unittest.TestCase):
         print('CARD_SHAPE', label, 'thumbnail', size, 'doubled columns', cols, 'rows', rows)
         self.assertEqual((cols, rows), (0, 0), f'{label}: the card stretched its thumbnail')
         # The card's width, and the cover's height at that width.
-        self.assertEqual(size, (236, COVER_H * 236 // COVER_W), size)
+        # The cover decode rounds the height (469), the page decode floors it (468); the card crops both to 450.
+        self.assertEqual(size[0], 298, size)
+        self.assertIn(size[1], (COVER_H * 298 // COVER_W, COVER_H * 298 // COVER_W + 1), size)
 
     def test_thumbnail_keeps_the_cover_tones(self):
         cover = tone_jpeg()
         write_book(self.sd / PATH.lstrip('/'), False, cover)
         self.home_after_reading('tong')
-        thumbs = sorted(self.store.glob('epub_*/thumb*_356.bmp'))
+        thumbs = sorted(self.store.glob('epub_*/thumb*_450.bmp'))
         self.assertEqual(len(thumbs), 1, thumbs)
         with Image.open(thumbs[0]) as image:
             thumb = image.convert('L')

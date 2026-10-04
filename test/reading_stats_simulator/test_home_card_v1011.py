@@ -1,6 +1,6 @@
 """v1.0.11 Recent card, second pass: a sharp cover, the newest quote after a restart, reading stats.
 
-1. The reader writes a cover thumbnail at the card's own height (356 px) on the idle pass after the
+1. The reader writes a cover thumbnail at the card's own height (450 px since 04/10, 356 before) on the idle pass after the
    first page, beside the theme's smaller one, and the card draws it. A book opened before that
    (only the small thumbnail on the card) gets the large one the next time it is opened; until
    then the card falls back to the small one.
@@ -85,8 +85,8 @@ def epub_with_cover(target):
 class HomeCardFollowupTest(unittest.TestCase):
     # Regions of the default X3 card (528 x 792): the cover at the left margin, the stats column to
     # its right, the text block under both.
-    COVER = (24, 124, 260, 480)
-    STATS = (282, 124, 504, 480)
+    COVER = (24, 124, 322, 574)
+    STATS = (344, 124, 504, 574)
     # The first footer hint cell, clear of the battery reading on its left, and the band above it
     # that a two-line text label reached.
     BACK_HINT = (68, 770, 150, 792)
@@ -148,23 +148,23 @@ class HomeCardFollowupTest(unittest.TestCase):
         # First open: Select opens the book, the idle pass after the first page writes both
         # thumbnails, Back returns to the card.
         log, first = self.launch('1500:CONFIRM;9000:BACK;12500:QUIT', [(12000, 'first-open')])
-        big, = self.thumbs(356) or [None]
-        self.assertIsNotNone(big, 'no 356 px thumbnail after the idle pass\n' + log[-6000:])
+        big, = self.thumbs(450) or [None]
+        self.assertIsNotNone(big, 'no 450 px thumbnail after the idle pass\n' + log[-6000:])
         timings = THUMB.findall(log)
         heights = [int(h) for h, _, ok in timings if ok == '1']
-        self.assertIn(356, heights, log[-4000:])
+        self.assertIn(450, heights, log[-4000:])
         # The card's own height first: it is the one the card draws.
-        self.assertEqual(int(timings[0][0]), 356, timings)
-        small_height = next(h for h in heights if h != 356)
+        self.assertEqual(int(timings[0][0]), 450, timings)
+        small_height = next(h for h in heights if h != 450)
         small = self.thumbs(small_height)
         self.assertTrue(small, 'the theme thumbnail is still written')
         with Image.open(big) as image:
-            self.assertEqual(image.height, 356)
-            self.assertGreaterEqual(image.width, 213)
+            self.assertEqual(image.height, 450)
+            self.assertGreaterEqual(image.width, 270)
             big_size = (image.width, image.height)
         builds = CARD_BUILD.findall(log)
         self.assertTrue(builds, log[-4000:])
-        self.assertEqual(int(builds[-1][2]), 356, 'card did not draw the 356 px thumbnail')
+        self.assertEqual(int(builds[-1][2]), 450, 'card did not draw the 450 px thumbnail')
         self.assertTrue(self.ink(first['first-open'], self.COVER))
         self.report = {'timings': timings, 'big': (big.stat().st_size, big_size),
                        'small': (small[0].stat().st_size, small_height)}
@@ -176,9 +176,9 @@ class HomeCardFollowupTest(unittest.TestCase):
         log, shots = self.launch('2500:CONFIRM;9500:BACK;13000:QUIT', [(2000, 'old-book'), (12500, 'reopened')])
         builds = CARD_BUILD.findall(log)
         self.assertEqual(int(builds[0][2]), small_height, 'card did not fall back to the small thumbnail')
-        self.assertEqual(int(builds[-1][2]), 356)
-        self.assertTrue(self.thumbs(356))
-        self.assertEqual([int(h) for h, _, _ in THUMB.findall(log)], [356], 'only the missing one is written')
+        self.assertEqual(int(builds[-1][2]), 450)
+        self.assertTrue(self.thumbs(450))
+        self.assertEqual([int(h) for h, _, _ in THUMB.findall(log)], [450], 'only the missing one is written')
         self.assertTrue(self.ink(shots['old-book'], self.COVER))
         self.assertIsNotNone(ImageChops.difference(shots['old-book'].crop(self.COVER),
                                                    shots['reopened'].crop(self.COVER)).getbbox(),
@@ -265,15 +265,15 @@ class HomeCardFollowupTest(unittest.TestCase):
         a, b, c = shots['stats-a'], shots['stats-b'], shots['stats-c']
         for image in (a, b, c):
             self.assertTrue(self.ink(image, self.COVER))
-            self.assertTrue(self.ink(image, (282, 124, 504, 190)), 'no percent row')
+            self.assertTrue(self.ink(image, (344, 124, 504, 200)), 'no percent row')
         # A and B fill the column; C stops after its percent row.
-        self.assertTrue(self.ink(a, (282, 400, 504, 480)))
-        self.assertFalse(self.ink(c, (282, 190, 504, 480)), 'rows drawn for a book with no record')
+        self.assertTrue(self.ink(a, (344, 400, 504, 574)))
+        self.assertFalse(self.ink(c, (344, 205, 504, 574)), 'rows drawn for a book with no record')
         # The progress bar: filled for 34 % of its width, outlined after that.
         bar = int(stats[0][1])
         self.assertGreater(bar, 124)
-        mid = bar + 3
-        self.assertEqual(a.getpixel((286, mid)), 0)
+        mid = bar + 5
+        self.assertEqual(a.getpixel((352, mid)), 0)
         self.assertEqual(a.getpixel((450, mid)), 255)
         self.assertEqual(a.getpixel((450, bar)), 0)
         self.assertNotEqual(ImageChops.difference(a.crop(self.STATS), b.crop(self.STATS)).getbbox(), None)

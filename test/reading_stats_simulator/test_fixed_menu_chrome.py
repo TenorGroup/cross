@@ -29,8 +29,9 @@ def reader():
   for y in range(50,120):
    n=sum(im.getpixel((x,y))<100 for x in range(20,im.width-20))
    if n>=30:dark.append(y)
-  assert max(dark)==112,(label,min(dark),max(dark))  # the round bar, rows 53..112
-  assert min(dark)>=53,(label,min(dark))
+  # The bar has no outline since 04/10: the selected pill's ring, rows 59..106 of the band 53..112.
+  assert max(dark)==106,(label,min(dark),max(dark))
+  assert min(dark)==59,(label,min(dark))
  print('PASS reader font-menu removal, old pins, shared tab bottom',flush=True)
 def hints():
  name='hints';sd=t.o/('sd-'+name);(sd/'books').mkdir(parents=True,exist_ok=True);(sd/'books/a').mkdir(exist_ok=True)

@@ -94,7 +94,7 @@ struct CardFileHead {
   uint8_t thumb;
   int16_t cover;
 };
-constexpr uint32_t CARD_FILE_MAGIC = 0x33445243;  // "CRD3": the cover keyed apart from the text
+constexpr uint32_t CARD_FILE_MAGIC = 0x34445243;  // "CRD4": cover 298 x 450, one line of excerpt
 
 uint32_t fnv(uint32_t hash, const void* data, size_t size) {
   for (const auto* p = static_cast<const uint8_t*>(data); size--; ++p) hash = (hash ^ *p) * 16777619u;
@@ -926,9 +926,9 @@ void HomeActivity::loadCardStats(const int index) {
   values[HOME_STAT_SPAN] = text;
 }
 
-// Label in the small face, value in the title face (bold), stepping down one size when the value is
+// Label in the subtitle face, value in the body face (bold), stepping down one size when the value is
 // wider than the column, as in the approved drawing. Returns the top of the progress bar, -1 when
-// none is drawn.
+// none is drawn. The reading span stays on the book's stats screen: the card shows five rows.
 int HomeActivity::drawCardStats(const HomeCardLayout& card) {
   static constexpr StrId LABELS[HOME_STAT_COUNT] = {StrId::STR_RECENT_STAT_READ,    StrId::STR_RECENT_STAT_FINISH,
                                                     StrId::STR_RECENT_STAT_TOTAL,   StrId::STR_RECENT_STAT_AVERAGE,
@@ -936,24 +936,38 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card) {
   HomeStatsInput in;
   in.top = card.coverY;
   in.bottom = card.coverY + card.coverH;
-  in.labelLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  in.labelLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   in.valueLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-  in.rows = cardStats.rows;
+  in.valueTail = in.valueLineHeight - renderer.getFontAscenderSize(UI_12_FONT_ID);
+  in.rows = cardStats.rows & ~(1u << HOME_STAT_SPAN);
   const auto column = homeStatsLayout(in);
   const int width = card.statsRight - card.statsX;
   for (int row = 0; row < HOME_STAT_COUNT; ++row) {
     if (!(column.rows & (1u << row))) continue;
-    renderer.drawText(SMALL_FONT_ID, card.statsX, column.labelY[row], I18N.get(LABELS[row]));
+    renderer.drawText(UI_10_FONT_ID, card.statsX, column.labelY[row],
+                      renderer.truncatedText(UI_10_FONT_ID, I18N.get(LABELS[row]), width).c_str());
     const char* value = cardStats.values[row].c_str();
-    const bool fits = renderer.getTextWidth(UI_12_FONT_ID, value, EpdFontFamily::BOLD) <= width;
-    const int font = fits ? UI_12_FONT_ID : UI_10_FONT_ID;
-    renderer.drawText(font, card.statsX, column.valueY[row],
+    // Down a size at a time until the value fits, on one baseline; the last size cuts with an ellipsis.
+    int font = UI_12_FONT_ID;
+    for (const int smaller : {UI_10_FONT_ID, SMALL_FONT_ID}) {
+      if (renderer.getTextWidth(font, value, EpdFontFamily::BOLD) <= width) break;
+      font = smaller;
+    }
+    if (renderer.getTextWidth(font, value, EpdFontFamily::BOLD) > width) LOG_INF("HOME", "Card stat cut row=%d", row);
+    renderer.drawText(font, card.statsX,
+                      column.valueY[row] + renderer.getFontAscenderSize(UI_12_FONT_ID) -
+                          renderer.getFontAscenderSize(font),
                       renderer.truncatedText(font, value, width, EpdFontFamily::BOLD).c_str(), true,
                       EpdFontFamily::BOLD);
   }
   if (column.barY >= 0 && cardStats.recorded) {
-    renderer.drawRect(card.statsX, column.barY, width, HOME_STATS_BAR_H);
-    renderer.fillRect(card.statsX, column.barY, width * cardStats.percent / 100, HOME_STATS_BAR_H);
+    // A round track with a 2 px edge; the part read is black inside it, round at both ends.
+    constexpr int EDGE = 2;
+    renderer.drawRoundedRect(card.statsX, column.barY, width, HOME_STATS_BAR_H, EDGE, HOME_STATS_BAR_H / 2, true);
+    const int read = (width - 2 * EDGE) * cardStats.percent / 100;
+    if (read > 0)
+      renderer.fillRoundedRect(card.statsX + EDGE, column.barY + EDGE, read, HOME_STATS_BAR_H - 2 * EDGE,
+                               (HOME_STATS_BAR_H - 2 * EDGE) / 2, Color::Black);
     return column.barY;
   }
   return -1;
@@ -974,7 +988,7 @@ void HomeActivity::drawRecentCard() {
   // Above both the tip lane and the hint band, which grows with the larger text sizes.
   in.bottom = std::min(tenorchrome::tipY(renderer) + 6,
                        renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight);
-  in.titleLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
+  in.titleLineHeight = renderer.getLineHeight(UI_TITLE_FONT_ID);  // the cover is sized for the title's own face
   in.titleLines = 2;
   in.authorLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   in.excerptLineHeight = renderer.getLineHeight(serifFont);
@@ -1069,8 +1083,9 @@ void HomeActivity::drawRecentCard() {
   // (the decompressor keeps one hot group), which made this card cost ~620 ms
   // on the X3. Prewarm once; the slot is released after the card is cached.
   auto* fcm = renderer.getFontCacheManager();
-  if (fcm) fcm->prewarmCache(quoteFont, quote.c_str(), static_cast<uint8_t>(1u << quoteStyle));
-  y = card.excerptY;
+  if (fcm && card.excerptLines > 0) fcm->prewarmCache(quoteFont, quote.c_str(), static_cast<uint8_t>(1u << quoteStyle));
+  // A two-line title leaves no room for the excerpt.
+  y = card.excerptLines > 0 ? card.excerptY : card.authorY + in.authorLineHeight;
   for (const auto& line : renderer.wrappedText(quoteFont, quote.c_str(), card.textW, card.excerptLines, quoteStyle)) {
     renderer.drawText(quoteFont, card.textX, y, line.c_str(), true, quoteStyle);
     y += renderer.getLineHeight(quoteFont);

@@ -140,7 +140,7 @@ class SleepCoverTest(unittest.TestCase):
 
     def test_quote_tile_comes_from_the_card_thumbnail(self):
         sd, _, log, sleep, image = self.quote_after_reading('trich-dan-dai-tong')
-        self.assertTrue(list((sd / '.crosspoint').glob('epub_*/thumb*_356.bmp')), 'no card thumbnail\n' + log[-4000:])
+        self.assertTrue(list((sd / '.crosspoint').glob('epub_*/thumb*_450.bmp')), 'no card thumbnail\n' + log[-4000:])
         seen = band_tones(image, (COVER_BOX[0], COVER_BOX[1], COVER_BOX[2], COVER_BOX[3]), len(TONES))
         tile = re.findall(r'Sleep quote tile .*', sleep)
         print('SLEEP_QUOTE_TILE', list(zip(TONES, seen)), tile, re.findall(r'\[BMP\] Timing.*', sleep))

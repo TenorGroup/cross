@@ -148,7 +148,7 @@ int main() {
   // X3: a 1600x2560 cover on its half grid (800x1280), 4:2:0 MCU rows of 8 at that grid.
   constexpr int W = 800, H = 1280, ROWS = 8;
   {
-    GrayThumb thumb(356);
+    GrayThumb thumb(HOME_CARD_COVER_H);
     ESP.freeHeap = 90000;
     tracking = true;
     trackedBytes = trackedCount = 0;
@@ -159,31 +159,34 @@ int main() {
     const size_t feedCount = trackedCount;
     tracking = false;
     check(started, "start with the X3 heap at the cover decode");
-    // The X3 bar: the lowest free heap of a new book open stays above ~70 KB.
-    check(startBytes <= 14 * 1024, "the decode side takes more than 14 KB");
-    check(startBytes == GrayThumb::bufferBytes(356, W, H, ROWS), "start takes what bufferBytes says");
+    // The X3 bar: the lowest free heap of a new book open stays above ~70 KB. The card's cover went from
+    // 236 x 356 to 298 x 450 on 04/10: 13.706 B became 21.104 B. start() still keeps RENDER_MARGIN free.
+    check(startBytes <= 21 * 1024 + 256, "the decode side takes more than 21 KB");
+    check(startBytes == GrayThumb::bufferBytes(HOME_CARD_COVER_H, W, H, ROWS), "start takes what bufferBytes says");
     check(feedCount == 0, "feeding the decode allocates");
     check(finished, "every row of the thumbnail in");
     Output out;
-    check(thumb.writeTo(out) && out.bytes == reference(W, H, 356),
+    check(thumb.writeTo(out) && out.bytes == reference(W, H, HOME_CARD_COVER_H),
           "the thumbnail differs from the cover-file decode");
     Output small;
+    ESP.taken = 0;  // written once the page is on the panel, with the decoder gone
     const bool scaled = thumb.writeScaled(226, small);
-    // 236 x 377 in, the card's shape at 226 high is 149 wide: 149 x 238.
+    // The card's shape at 226 high is 149 wide: 149 x 238.
     check(scaled && small.bytes.size() == 62 + static_cast<size_t>(20) * 238 && small.bytes[18] == 149 &&
               small.bytes[22] == static_cast<uint8_t>(-238),
           "the theme thumbnail is not 149x238 scaled from the card's");
     std::printf("decode side: %zu bytes, thumbnail %zu bytes\n", startBytes, out.bytes.size());
     // A 780x1227 cover decoded 1:1 for its page, 4:2:0 blocks of 16 rows: the X3 log of v1.0.13 had
-    // 14.432 B for the thumbnail of the 0.6 rule. The card's shape must not take more heap there.
-    const size_t common = GrayThumb::bufferBytes(356, 780, 1227, 16);
+    // 14.432 B for the thumbnail of the 0.6 rule, the 236 x 356 card 14.470 B. The 298 x 450 card takes
+    // 22.588 B there, 8.1 KB more, which this bound holds it to.
+    const size_t common = GrayThumb::bufferBytes(HOME_CARD_COVER_H, 780, 1227, 16);
     std::printf("780x1227 cover page: %zu bytes\n", common);
-    check(common <= 14432 + 64, "the card's shape takes more heap than the 0.6 rule on a common cover");
+    check(common <= 22588 + 64, "the card's shape takes more heap than measured on a common cover");
   }
   {
     // The theme's thumbnail fed the same blocks as the card's: area averaged from the decoded gray,
     // the pixels its own decode gives. writeScaled() dithered the card's dithered bits a second time.
-    GrayThumb big(356), small(226);
+    GrayThumb big(HOME_CARD_COVER_H), small(226);
     big.alsoFeed(&small);
     ESP.freeHeap = 200000;
     ESP.taken = 0;
@@ -192,16 +195,16 @@ int main() {
     tracking = false;
     check(started && feed(big, W, H, ROWS, 128) && small.ready(), "one feed does not give both thumbnails");
     Output card, theme;
-    check(big.writeTo(card) && card.bytes == reference(W, H, 356), "the card's thumbnail changed beside the theme's");
+    check(big.writeTo(card) && card.bytes == reference(W, H, HOME_CARD_COVER_H), "the card's thumbnail changed beside the theme's");
     check(small.writeTo(theme) && theme.bytes == reference(W, H, 226),
           "the theme's thumbnail is not area averaged from the decode");
   }
   {
     // Heap for the card's thumbnail alone (the X3 cover page with its render margin): the card's
     // comes through whole, the theme's stays out and falls back to writeScaled().
-    GrayThumb big(356), small(226);
+    GrayThumb big(HOME_CARD_COVER_H), small(226);
     big.alsoFeed(&small);
-    ESP.freeHeap = static_cast<uint32_t>(GrayThumb::bufferBytes(356, W, H, ROWS) + GrayThumb::RENDER_MARGIN + 1024);
+    ESP.freeHeap = static_cast<uint32_t>(GrayThumb::bufferBytes(HOME_CARD_COVER_H, W, H, ROWS) + GrayThumb::RENDER_MARGIN + 1024);
     ESP.taken = 0;
     tracking = true;
     const bool started = big.start(W, H, ROWS);
@@ -210,19 +213,19 @@ int main() {
     check(!small.ready(), "the theme's thumbnail started past the render margin");
     ESP.taken = 0;  // written once the page is on the panel, with the decoder gone
     Output card, theme;
-    check(big.writeTo(card) && card.bytes == reference(W, H, 356), "the card's thumbnail without the theme's");
+    check(big.writeTo(card) && card.bytes == reference(W, H, HOME_CARD_COVER_H), "the card's thumbnail without the theme's");
     check(big.writeScaled(226, theme) && theme.bytes.size() == 62 + static_cast<size_t>(20) * 238,
           "the fallback theme thumbnail");
     ESP.freeHeap = 90000;  // the heap of the cases below
   }
   {
     // One block row of 16 on a grid start() was told had 8: the thumbnail is dropped, not smeared.
-    GrayThumb thumb(356);
+    GrayThumb thumb(HOME_CARD_COVER_H);
     check(thumb.start(W, H, 8) && !feed(thumb, W, H, 16, 128), "a block taller than declared was accepted");
   }
   {
     // Blocks out of raster order.
-    GrayThumb thumb(356);
+    GrayThumb thumb(HOME_CARD_COVER_H);
     std::vector<uint8_t> block(8 * W, 128);
     check(thumb.start(W, H, 8), "start");
     thumb.block(0, 400, W, 8, block.data(), W);
@@ -231,7 +234,7 @@ int main() {
   }
   {
     // A decode that stops early leaves no half thumbnail.
-    GrayThumb thumb(356);
+    GrayThumb thumb(HOME_CARD_COVER_H);
     std::vector<uint8_t> block(8 * W, 128);
     check(thumb.start(W, H, 8), "start");
     for (int y = 0; y < H - 8; y += 8) thumb.block(0, y, W, 8, block.data(), W);
@@ -240,7 +243,7 @@ int main() {
   {
     // Too little heap, or a source smaller than the thumbnail: declined, and the book falls back
     // to the cover-file decode when the reader closes.
-    GrayThumb low(356), small(356);
+    GrayThumb low(HOME_CARD_COVER_H), small(HOME_CARD_COVER_H);
     ESP.freeHeap = 70000;
     check(!low.start(W, H, 8), "started with the page render's margin gone");
     ESP.freeHeap = 200000;

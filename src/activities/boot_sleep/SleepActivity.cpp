@@ -32,6 +32,7 @@
 #include "SleepGrayPlanes.h"
 #include "SleepQuoteLayout.h"
 #include "activities/reader/ReaderUtils.h"
+#include "components/HomeExcerptStyle.h"
 #include "components/ManNguTenor.h"
 #include "components/QuoteMarkGlyph.h"
 #include "components/ReadingStatsView.h"
@@ -578,7 +579,7 @@ bool makeSleepTile(GrayThumb& tile, const Bitmap& cover) {
 // written, so a book whose cover image cannot be read costs one attempt instead of one per
 // sleep; clearing the book's cache removes the marker with it.
 // `oneBit` (folding to black and white): the tile is made from the book's card thumbnail when the
-// reader wrote one (11 KB to read), else from a black and white sleep cover, made as above.
+// reader wrote one (17 KB to read), else from a black and white sleep cover, made as above.
 std::string sleepCoverPath(const std::string& bookPath, const bool originalThresholds, const bool oneBit,
                            const CrossPointSettings& settings) {
   if (!FsHelpers::hasEpubExtension(bookPath)) return {};
@@ -587,7 +588,7 @@ std::string sleepCoverPath(const std::string& bookPath, const bool originalThres
   // -3 the card thumbnail, -2 and -1 the black and white covers (this mode's crop first), 0 to 3
   // the 4-level ones.
   for (int variant = oneBit ? -3 : 0; variant < 4; variant++) {
-    const std::string path = variant == -3 ? epub.getThumbBmpPath(THUMB_SHAPE_H)
+    const std::string path = variant == -3 ? epub.getThumbBmpPath(HOME_CARD_COVER_H)
                              : variant < 0
                                  ? epub.getCoverBmpPath((variant & 1) ? !cropped : cropped, false, true)
                                  : epub.getCoverBmpPath((variant & 1) ? !cropped : cropped,

@@ -30,20 +30,23 @@ inline size_t homeQuoteIndex(const uint64_t* ids, const size_t count, const uint
   return randomValue % count;
 }
 
-// Cover size on the card at the default text size; larger text shrinks it in the same shape.
-constexpr int HOME_CARD_COVER_W = 236;
-constexpr int HOME_CARD_COVER_H = 356;
+// Cover size on the card at the default text size; larger text shrinks it in the same shape. The
+// stats column to its right is a third of the 480 px text width (160 px).
+constexpr int HOME_CARD_COVER_W = 298;
+constexpr int HOME_CARD_COVER_H = 450;
 
 // The Recent card, top to bottom: the cover at the left margin with the book's reading stats in a
-// column to its right, then title (up to two lines), author and up to three lines of excerpt from
-// the cover's left edge across the width, then a rule and the other-book row just above the footer. Line heights come from the
+// column to its right, then title (up to two lines), author and one line of excerpt from the
+// cover's left edge across the width, then a rule and the other-book row just above the footer.
+// The cover is sized for a one-line title and its one line of excerpt, and a two-line title takes
+// that line's room: the excerpt goes first, the cover keeps its size. Line heights come from the
 // flash fonts in use, so a larger text size shrinks the cover instead of pushing text off screen.
 struct HomeCardInput {
   int screenWidth = 0;
   int top = 0;     // first row under the tab band
   int bottom = 0;  // last row the other-book row may use
   int titleLineHeight = 0;      // the line the cover is sized for
-  int titleDrawLineHeight = 0;  // the title font's own line when larger, 0 when the same
+  int titleDrawLineHeight = 0;  // the line this book's title is drawn in when it differs, else 0
   int titleLines = 0;  // lines the title actually wraps to, 1 or 2
   int authorLineHeight = 0;
   int excerptLineHeight = 0;
@@ -59,16 +62,16 @@ struct HomeCardLayout {
 inline HomeCardLayout homeCardLayout(const HomeCardInput& in) {
   constexpr int COVER_W = HOME_CARD_COVER_W, COVER_H = HOME_CARD_COVER_H, COVER_MIN_H = 120;
   constexpr int MARGIN = 24, STATS_GAP = 22, COVER_GAP = 18, AUTHOR_GAP = 2, EXCERPT_GAP = 7, RULE_GAP = 15, ROW_GAP = 8;
-  constexpr int TITLE_LINES = 2, EXCERPT_LINES = 3;
+  constexpr int EXCERPT_LINES = 1;
   HomeCardLayout card;
   card.textX = MARGIN;
   card.textW = in.screenWidth - 2 * MARGIN;
   card.rowY = in.bottom - in.rowLineHeight;
   card.ruleY = card.rowY - ROW_GAP;
-  // The cover is sized for a two-line title whatever this book's title is, so it keeps one size
-  // while the reader steps between books. A larger title font takes its extra rows from the
-  // excerpt, which then shows fewer lines, so the cover stays at its thumbnail's size.
-  const int text = COVER_GAP + TITLE_LINES * in.titleLineHeight + AUTHOR_GAP + in.authorLineHeight + EXCERPT_GAP +
+  // The cover is sized for a one-line title and one line of excerpt whatever this book's title is,
+  // so it keeps one size while the reader steps between books. A second title line takes the
+  // excerpt's room, so a two-line title shows no excerpt.
+  const int text = COVER_GAP + in.titleLineHeight + AUTHOR_GAP + in.authorLineHeight + EXCERPT_GAP +
                    EXCERPT_LINES * in.excerptLineHeight + RULE_GAP;
   const int room = card.ruleY - in.top - text;
   card.coverH = room > COVER_H ? COVER_H : room < COVER_MIN_H ? COVER_MIN_H : room;
@@ -82,7 +85,7 @@ inline HomeCardLayout homeCardLayout(const HomeCardInput& in) {
       card.titleY + in.titleLines * (in.titleDrawLineHeight ? in.titleDrawLineHeight : in.titleLineHeight) + AUTHOR_GAP;
   card.excerptY = card.authorY + in.authorLineHeight + EXCERPT_GAP;
   const int lines = in.excerptLineHeight > 0 ? (card.ruleY - RULE_GAP - card.excerptY) / in.excerptLineHeight : 0;
-  card.excerptLines = lines > EXCERPT_LINES ? EXCERPT_LINES : lines < 1 ? 1 : lines;
+  card.excerptLines = lines > EXCERPT_LINES ? EXCERPT_LINES : lines < 0 ? 0 : lines;
   return card;
 }
 
@@ -121,6 +124,7 @@ inline uint8_t homeStatRows(const bool recorded, const uint64_t elapsedMs, const
 struct HomeStatsInput {
   int top = 0, bottom = 0;
   int labelLineHeight = 0, valueLineHeight = 0;
+  int valueTail = 0;  // value line height less its ascender: the empty rows under a value's baseline
   uint8_t rows = 0;
 };
 struct HomeStatsLayout {
@@ -128,9 +132,11 @@ struct HomeStatsLayout {
   int barY = -1;  // top of the progress bar, -1 when the percent row is not drawn
   uint8_t rows = 0;  // the rows that fit
 };
-constexpr int HOME_STATS_BAR_H = 6;
+constexpr int HOME_STATS_BAR_H = 10;
+// Between groups: from a value's baseline, or from the bottom of the progress bar, to the next label's
+// line. The bar has no tail under it, so it is given the value's, and both gaps look the same.
 inline HomeStatsLayout homeStatsLayout(const HomeStatsInput& in) {
-  constexpr int TOP_PAD = 2, BAR_GAP = 2, ROW_GAP = 12;
+  constexpr int TOP_PAD = 2, BAR_GAP = 2, ROW_GAP = 16;
   HomeStatsLayout column;
   int y = in.top + TOP_PAD;
   for (int row = 0; row < HOME_STAT_COUNT; ++row) {
@@ -144,7 +150,7 @@ inline HomeStatsLayout homeStatsLayout(const HomeStatsInput& in) {
     column.valueY[row] = valueY;
     if (row == HOME_STAT_READ) column.barY = barY;
     column.rows |= 1u << row;
-    y = end + ROW_GAP;
+    y = end + ROW_GAP + (row == HOME_STAT_READ ? in.valueTail : 0);
   }
   return column;
 }
