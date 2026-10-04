@@ -257,7 +257,7 @@ void ActivityManager::loop() {
     }
     // Touch: the Home key from the Home screen itself brings it back to its default card, Recent.
     if (tenorchrome::kTouchShell && currentActivity->isHomeActivity() && mappedInput.wasHomeGesture() &&
-        homeMenuOrigin() != HomeMenuItem::RECENTS) {
+        (bottomHome || homeMenuOrigin() != HomeMenuItem::RECENTS)) {
       goHome(HomeMenuItem::RECENTS);
       return;
     }

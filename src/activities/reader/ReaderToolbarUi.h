@@ -25,7 +25,11 @@ class MappedInputManager;
 // clears the screen: the page stays visible around the chrome.
 class ReaderToolbarUi : public UiAppHost {
  public:
-  enum class Event { None = 0, Dismiss = 1, Tool = 2, PrevChapter = 3, NextChapter = 4, Scrub = 5, Row = 6, Choice = 7 };
+  enum class Event { None = 0, Dismiss = 1, Tool = 2, PrevChapter = 3, NextChapter = 4, Scrub = 5, Row = 6, Choice = 7,
+                     SizeStep = 8, SizeEntry = 9, SpacingDraft = 10, SpacingCommit = 11, NumericKey = 12 };
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  enum class TextView : uint8_t { None, Rows, Fonts, Spacing, PointSize };
+#endif
   // Choice: value = row * kChoiceStride + the value's place along the row.
   static constexpr int kChoiceStride = 8;
 
@@ -56,6 +60,13 @@ class ReaderToolbarUi : public UiAppHost {
     // Button boards keep the theme's denser list row height (as every other
     // list does there); touch boards use FreeInkUI's finger-sized rows.
     bool denseRows = false;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    TextView textView = TextView::None;
+    int spacingPlace = 2, spacingDraftPermille = 500;
+    std::function<const char*(int)> spacingLabel;
+    const char* numericDraft = nullptr;
+    const char* numericHint = nullptr;
+#endif
   };
 
   struct Routed {
@@ -86,6 +97,9 @@ class ReaderToolbarUi : public UiAppHost {
   freeink::ui::ListNav& nav() { return nav_; }
   // Rows one page holds, measured after the first render.
   int visibleRows() const { return nav_.pageRows(); }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  int scrollRows(const MappedInputManager& input, int count) const;
+#endif
 
  private:
   static void screenFn(UiScreen& screen, void* user);
@@ -112,4 +126,11 @@ class ReaderToolbarUi : public UiAppHost {
   freeink::ui::Rect pageIndicatorRect_{};
   void drawMarkedRows(UiScreen& screen, const freeink::ui::Rect& listRect, int16_t rowH, int16_t rowGap, int windowCount);
   void drawChoices(UiScreen& screen, const freeink::ui::Rect& listRect, int16_t rowH, int16_t rowGap, int windowCount);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  void buildX4Toolbar(UiScreen& screen);
+  void buildX4Panel(UiScreen& screen);
+  void buildX4Tools(UiScreen& screen);
+  void buildX4Spacing(UiScreen& screen, const freeink::ui::Rect& frame);
+  void buildX4Keypad(UiScreen& screen, const freeink::ui::Rect& frame);
+#endif
 };

@@ -3750,8 +3750,12 @@ bool EpubReaderActivity::readingPageVisible() const { return section && overlay 
 bool EpubReaderActivity::usesToolbarMenu() const {
   // Both board classes drive the same chrome: touch through the FreeInkUI tap
   // targets, buttons through the focused-tool pill and the panel cursor.
-  // The X4 Pro always opens the tenor/cross list menu, whatever an earlier firmware saved.
+  // The X4 Pro opens the touch toolbar, including when an earlier firmware saved another menu style.
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  return true;
+#else
   return !tenorchrome::kTouchShell && SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TOOLBAR;
+#endif
 }
 
 std::string EpubReaderActivity::currentChapterTitle() const {
@@ -3771,10 +3775,22 @@ std::string EpubReaderActivity::textRowValue(int row) const {
   static constexpr StrId kFamily[] = {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS};
   switch (row) {
     case 0:  // opens the family list: the value, then the chevron
-      if (SETTINGS.sdFontFamilyName[0] != '\0') return std::string(SETTINGS.sdFontFamilyName) + "  >";
-      return std::string(I18N.get(kFamily[SETTINGS.fontFamily % CrossPointSettings::FONT_FAMILY_COUNT])) + "  >";
+      if (SETTINGS.sdFontFamilyName[0] != '\0') return std::string(SETTINGS.sdFontFamilyName)
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+          + "  >"
+#endif
+          ;
+      return std::string(I18N.get(kFamily[SETTINGS.fontFamily % CrossPointSettings::FONT_FAMILY_COUNT]))
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+          + "  >"
+#endif
+          ;
     case 1:
-      return std::to_string(SETTINGS.fontPointSize) + " pt";
+      return std::to_string(SETTINGS.fontPointSize)
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+          + " pt"
+#endif
+          ;
     case 2:
       return I18N.get(kSpacingIds[readerSpacing::clampLevel(SETTINGS.lineSpacing)]);
     case 3:
@@ -3916,7 +3932,11 @@ void EpubReaderActivity::openOverlay(Overlay target) {
     textCloseFrame.store(0, std::memory_order_relaxed);
   }
   overlay = target;
-  fontLevel = false;
+  textDepth = TextDepth::Rows;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  spacingDragging = false;
+  pointSizeDraft.clear();
+#endif
   fontFamilies.clear();
   if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
   if (previous == Overlay::None) toolbarUi->begin();
@@ -3991,6 +4011,9 @@ void EpubReaderActivity::closeOverlayToPage() {
   bool frameUp = false;
   {
     RenderLock lock;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    tenorchrome::noteReaderFootBar(false, false, -1);
+#endif
     overlay = Overlay::None;
     overlayPopup.dismiss();
     toolbarUi.reset();
@@ -4012,12 +4035,20 @@ void EpubReaderActivity::renderOverlay() {
   if (!epub || (!section && !xemTruoc) || !toolbarUi) return;
 
   ReaderToolbarUi::Model model;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  const int chromeTool = overlay == Overlay::Contents ? 0 : overlay == Overlay::Text ? 1 : overlay == Overlay::More ? 2 : -1;
+  tenorchrome::noteReaderFootBar(overlay != Overlay::None,
+                               overlay == Overlay::Text && textDepth == TextDepth::PointSize, chromeTool);
+#endif
   // The toolbar's tool pill is the button-navigation cursor: tap-first (same
   // convention as the panel lists), it only shows once a button has moved it.
   // Panels override below: there the pill marks the open panel on every board.
   model.activeTool = (overlay == Overlay::Toolbar && !panelCursorShown) ? -1 : focusedTool;
   // Strings the model points at live here until render() returns.
   std::string chapterTitle, pageInfo;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  std::string numericHint;
+#endif
 
   if (overlay == Overlay::Toolbar) {
     chapterTitle = currentChapterTitle();
@@ -4053,7 +4084,23 @@ void EpubReaderActivity::renderOverlay() {
       return std::string(depth, ' ') + item.title;
     };
   } else if (overlay == Overlay::Text) {
-    if (fontLevel) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    model.textView = textDepth == TextDepth::Fonts ? ReaderToolbarUi::TextView::Fonts
+                     : textDepth == TextDepth::Spacing ? ReaderToolbarUi::TextView::Spacing
+                     : textDepth == TextDepth::PointSize ? ReaderToolbarUi::TextView::PointSize
+                                                        : ReaderToolbarUi::TextView::Rows;
+    model.spacingPlace = textChoiceInUse(2);
+    model.spacingDraftPermille = spacingDraftPermille;
+    model.spacingLabel = [](int place) { return I18N.get(kSpacingIds[kSpacingByPlace[place]]); };
+    model.numericDraft = pointSizeDraft.c_str();
+    if (textDepth == TextDepth::PointSize) {
+      const auto sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
+      if (!sizes.empty()) numericHint = std::to_string(sizes.front()) + "-" + std::to_string(sizes.back()) +
+          " pt; " + tr(STR_DONE) + ": " + std::to_string(snapToNearestPointSize(sizes, enteredPointSize())) + " pt";
+      model.numericHint = numericHint.c_str();
+    }
+#endif
+    if (textDepth == TextDepth::Fonts) {
       model.panelTitle = tr(STR_FONT);
       model.itemCount = static_cast<int>(fontFamilies.size());
       model.sheetRows = kTextRowCount;  // the frame of the Text rows
@@ -4064,9 +4111,11 @@ void EpubReaderActivity::renderOverlay() {
       model.itemCount = kTextRowCount;
       model.rowText = [this](int i) { return textRowName(i); };
       model.rowValue = [this](int i) { return textRowValue(i); };
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
       model.choiceCount = textChoiceCount;
       model.choiceInUse = textChoiceInUse;
       model.choiceIcon = textChoiceIcon;
+#endif
     }
   } else {
     model.panelTitle = tr(STR_TOOL_MORE);
@@ -4128,6 +4177,18 @@ void EpubReaderActivity::handleOverlayInput() {
     return tool == 0 ? Overlay::Contents : (tool == 1 ? Overlay::Text : Overlay::More);
   };
 
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  // Mapped Back includes the native button, edge gesture and chrome target.
+  // Handle it before FUI's consumed-touch return so the common foot Back advances one level.
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (overlay == Overlay::Text && textDepth != TextDepth::Rows)
+      leaveFontLevel();
+    else
+      closeOverlayToPage();
+    return;
+  }
+#endif
+
   // Touch first: FreeInkUI routes the frame against the tap targets the last
   // render registered and hands back the action it mapped to.
   const auto routed = toolbarUi->route(mappedInput);
@@ -4188,20 +4249,30 @@ void EpubReaderActivity::handleOverlayInput() {
 
   // --- Panels (Contents / Text / More) ---
   const int count = overlay == Overlay::Contents ? epub->getTocItemsCount()
-                    : overlay == Overlay::Text   ? (fontLevel ? static_cast<int>(fontFamilies.size()) : kTextRowCount)
+                    : overlay == Overlay::Text   ? (textDepth == TextDepth::Fonts ? static_cast<int>(fontFamilies.size()) : kTextRowCount)
                                                  : static_cast<int>(moreItems.size());
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
   const int pageRows = std::max(1, toolbarUi->visibleRows());
+#endif
 
   // Activate the highlighted row: change a value / jump to a chapter / run an
   // action. Shared by the Confirm button and a row tap.
-  const auto activateRow = [this, count, &fastRedraw] {
+  const auto activateRow = [this, count] {
     if (panelIndex < 0 || panelIndex >= count) return;
     if (overlay == Overlay::Text) {
-      if (fontLevel) {
+      if (textDepth == TextDepth::Fonts) {
         chooseFontFamily(panelIndex);
       } else if (panelIndex == 0) {
         enterFontLevel();
-      } else {
+      }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+      else if (panelIndex == 1) {
+        enterTextDepth(TextDepth::PointSize);
+      } else if (panelIndex == 2) {
+        enterTextDepth(TextDepth::Spacing);
+      }
+#endif
+      else {
         cycleTextRow(panelIndex);
       }
     } else if (overlay == Overlay::Contents) {
@@ -4229,7 +4300,12 @@ void EpubReaderActivity::handleOverlayInput() {
   // Steps up to the toolbar -- the Back button and a tap on the page above
   // the sheet.
   const auto dismissPanel = [this, &fastRedraw] {
-    if (overlay == Overlay::Text && fontLevel) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    if (overlay == Overlay::Text && textDepth != TextDepth::Rows) leaveFontLevel();
+    else closeOverlayToPage();
+    return;
+#endif
+    if (overlay == Overlay::Text && textDepth == TextDepth::Fonts) {
       leaveFontLevel();  // one level up: the Text rows
       return;
     }
@@ -4255,6 +4331,7 @@ void EpubReaderActivity::handleOverlayInput() {
   // Pages the list by one screen of rows through the nav (measured page size,
   // no-op at the ends). A shown cursor rides along so the buttons continue
   // from what is visible; on touch boards only the viewport moves.
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
   const auto pageList = [this, count, pageRows, &fastRedraw](int direction) {
     if (count <= 0) return;
     const bool moved = toolbarUi->nav().scrollBy(direction * pageRows, count);
@@ -4265,8 +4342,67 @@ void EpubReaderActivity::handleOverlayInput() {
     }
     if (moved) fastRedraw();
   };
+#endif
+
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (overlay == Overlay::Text && textDepth == TextDepth::Spacing) {
+    if (routed.event == ReaderToolbarUi::Event::SpacingDraft || routed.event == ReaderToolbarUi::Event::SpacingCommit) {
+      bool draftChanged;
+      {
+        RenderLock lock;
+        const int draft = std::clamp(routed.permille, 0, 1000);
+        draftChanged = draft != spacingDraftPermille;
+        spacingDraftPermille = draft;
+        spacingDragging = true;
+      }
+      if (routed.event == ReaderToolbarUi::Event::SpacingDraft) {
+        if (draftChanged) fastRedraw();
+        return;
+      }
+    }
+    if (spacingDragging && mappedInput.wasScreenTouchReleased()) {
+      int place;
+      {
+        RenderLock lock;
+        spacingDragging = false;
+        place = (spacingDraftPermille * 4 + 500) / 1000;
+        spacingDraftPermille = place * 250;
+      }
+      const bool changed = place != textChoiceInUse(2);
+      chooseTextValue(2, place);
+      if (!changed) fastRedraw();
+      return;
+    }
+  }
+#endif
 
   switch (routed.event) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    case ReaderToolbarUi::Event::SizeStep:
+      if (overlay == Overlay::Text && textDepth == TextDepth::Rows) stepMenuPointSize(routed.value);
+      return;
+    case ReaderToolbarUi::Event::SizeEntry:
+      if (overlay == Overlay::Text && textDepth == TextDepth::Rows) enterTextDepth(TextDepth::PointSize);
+      return;
+    case ReaderToolbarUi::Event::NumericKey:
+      if (overlay == Overlay::Text && textDepth == TextDepth::PointSize) {
+        if (routed.value == 11) {
+          if (!pointSizeDraft.empty()) {
+            const auto sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
+            applyMenuPointSize(snapToNearestPointSize(sizes, enteredPointSize()));
+          }
+          leaveFontLevel();
+        } else {
+          {
+            RenderLock lock;
+            if (routed.value == 10) { if (!pointSizeDraft.empty()) pointSizeDraft.pop_back(); }
+            else if (routed.value >= 0 && routed.value <= 9 && pointSizeDraft.size() < 3) pointSizeDraft += static_cast<char>('0' + routed.value);
+          }
+          fastRedraw();
+        }
+      }
+      return;
+#endif
     case ReaderToolbarUi::Event::Dismiss:
       dismissPanel();
       return;
@@ -4280,7 +4416,7 @@ void EpubReaderActivity::handleOverlayInput() {
       return;
     }
     case ReaderToolbarUi::Event::Choice:
-      if (overlay == Overlay::Text && !fontLevel) {
+      if (overlay == Overlay::Text && textDepth == TextDepth::Rows) {
         chooseTextValue(routed.value / ReaderToolbarUi::kChoiceStride, routed.value % ReaderToolbarUi::kChoiceStride);
       }
       return;
@@ -4288,10 +4424,12 @@ void EpubReaderActivity::handleOverlayInput() {
       // A tap on the right-edge strip pages the sheet instead (upper half =
       // previous page, lower half = next): swipes are unreliable on etched
       // glass, and a long contents list needs a fast way through.
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
       if (routed.x >= renderer.getScreenWidth() - 44) {
         pageList(routed.y >= renderer.getScreenHeight() - (renderer.getScreenHeight() * 62) / 200 ? 1 : -1);
         return;
       }
+#endif
       panelIndex = routed.value;
       panelCursorShown = false;
       activateRow();
@@ -4303,11 +4441,21 @@ void EpubReaderActivity::handleOverlayInput() {
   // FUI routes every touch frame over the sheet, so a swipe's frames count as
   // routed (without dispatching -- too much travel for a tap) and the gesture
   // would otherwise never be seen.
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  const bool listView = overlay != Overlay::Text || textDepth == TextDepth::Rows || textDepth == TextDepth::Fonts;
+  const int rowDelta = listView ? toolbarUi->scrollRows(mappedInput, count) : 0;
+  if (rowDelta != 0) {
+    panelCursorShown = false;
+    if (toolbarUi->nav().scrollBy(rowDelta, count)) fastRedraw();
+    return;
+  }
+#else
   const auto swipe = mappedInput.wasSwipe();
   if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
     pageList(swipe == MappedInputManager::SwipeDir::Up ? 1 : -1);
     return;
   }
+#endif
   if (routed.routed) return;  // consumed by the chrome (title band, dead space)
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
@@ -4496,12 +4644,12 @@ bool EpubReaderActivity::docCoChuMotNac(const int huong) {
 // Font level of the Text panel. Both steps change one level inside the same sheet: the old chrome is
 // wiped back to the clean page (no refresh) and the new level is pushed in one fast refresh.
 void EpubReaderActivity::enterFontLevel() {
+  RenderLock lock;  // the render task shares the framebuffer and family list
   fontFamilies = fontdoc::danhSachHo(&sdFontSystem.registry());
-  fontLevel = true;
+  textDepth = TextDepth::Fonts;
   panelIndex = fontdoc::hoDangDung(&sdFontSystem.registry());
   toolbarUi->nav().reset(panelIndex);
   if (!panelCursorShown) toolbarUi->nav().top = panelIndex;
-  RenderLock lock;  // the render task shares the framebuffer
   settleOverlayRefresh();
   if (overlayPageStored) {
     renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
@@ -4513,7 +4661,11 @@ void EpubReaderActivity::enterFontLevel() {
 
 void EpubReaderActivity::leaveFontLevel() {
   RenderLock lock;  // the render task may be reading the family list
-  fontLevel = false;
+  textDepth = TextDepth::Rows;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  spacingDragging = false;
+  pointSizeDraft.clear();
+#endif
   fontFamilies.clear();
   fontFamilies.shrink_to_fit();
   panelIndex = 0;
@@ -4526,6 +4678,48 @@ void EpubReaderActivity::leaveFontLevel() {
   renderOverlay();
   pushOverlayRefresh();
 }
+
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+uint8_t EpubReaderActivity::enteredPointSize() const {
+  int value = 0;
+  for (const char digit : pointSizeDraft) value = std::min(255, value * 10 + digit - '0');
+  return static_cast<uint8_t>(value);
+}
+
+void EpubReaderActivity::enterTextDepth(const TextDepth depth) {
+  RenderLock lock;
+  textDepth = depth;
+  spacingDragging = false;
+  spacingDraftPermille = textChoiceInUse(2) * 250;
+  pointSizeDraft = depth == TextDepth::PointSize ? std::to_string(SETTINGS.fontPointSize) : "";
+  toolbarUi->nav().reset();
+  settleOverlayRefresh();
+  if (overlayPageStored) {
+    renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
+    overlayPageStored = renderer.storeBwBuffer();
+  }
+  renderOverlay();
+  pushOverlayRefresh();
+}
+
+void EpubReaderActivity::applyMenuPointSize(const uint8_t pointSize) {
+  {
+    RenderLock lock;
+    if (pointSize == SETTINGS.fontPointSize) return;
+    fontdoc::apCo(renderer, pointSize);
+    invalidateTextSettingsLocked();
+  }
+  applyTextSettingLive();
+}
+
+void EpubReaderActivity::stepMenuPointSize(const int direction) {
+  const auto sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
+  if (sizes.empty()) return;
+  const int current = fontdoc::coDangDung(sizes);
+  const int next = std::clamp(current + direction, 0, static_cast<int>(sizes.size()) - 1);
+  applyMenuPointSize(sizes[next]);
+}
+#endif
 
 // A family picked in the list: the page above the sheet is laid out again in it (the preview) and
 // the sheet stays on the list.
@@ -4576,7 +4770,12 @@ void EpubReaderActivity::flushTextSettingsLocked() {
 }
 
 void EpubReaderActivity::panelClosedLocked(const bool leaving, const bool frameUp) {
-  fontLevel = false;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  tenorchrome::noteReaderFootBar(false, false, -1);
+  spacingDragging = false;
+  pointSizeDraft.clear();
+#endif
+  textDepth = TextDepth::Rows;
   if (leaving) {
     textCloseFrame.store(0, std::memory_order_relaxed);
     if (textSettingsDirty) {
@@ -5023,6 +5222,10 @@ CrossPointPosition EpubReaderActivity::getCurrentPosition() const {
 }
 
 void EpubReaderActivity::onPause() {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  tenorchrome::noteReaderFootBar(false, false, -1);
+  if (toolbarUi) toolbarUi->closeRouting();
+#endif
   pendingManualTurn = 0;
   // The screen that covers the reader draws into the framebuffer.
   pageFrameShown = false;

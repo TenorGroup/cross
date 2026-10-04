@@ -125,6 +125,18 @@ bool named(const char* const (&names)[N], const char* activityName) {
 // name from the one before it.
 char noted[96] = {};
 uint32_t notedGeneration = UINT32_MAX;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+struct ReaderFootBarNote {
+  bool open = false, keypad = false;
+  int activeTool = -1;
+  uint32_t generation = UINT32_MAX;
+} readerFootBar;
+bool readerFootBarActive() {
+  const char* name = activityManager.currentName();
+  return readerFootBar.open && readerFootBar.generation == activityManager.activityGeneration() &&
+         name && strcmp(name, "EpubReader") == 0;
+}
+#endif
 
 // Mask1 icon (bit 0 = ink), solid.
 void drawIcon(const GfxRenderer& r, const freeink::Icon& icon, const int x, const int y) {
@@ -170,8 +182,24 @@ const char* tenorchrome::screenTitle() {
   return notedGeneration == activityManager.activityGeneration() ? noted : "";
 }
 
-void tenorchrome::drawFootBar(const GfxRenderer& r, const FootBar bar, const Zone zone) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+void tenorchrome::noteReaderFootBar(const bool open, const bool keypad, const int activeTool) {
+  readerFootBar = {open, keypad, activeTool, activityManager.activityGeneration()};
+  if (!open) HeaderBackTapTarget::clearFoot();
+}
+#endif
+
+void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone) {
   HeaderBackTapTarget::clearFoot();
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  const bool reader = readerFootBarActive();
+  if (reader) {
+    bar = FootBar::BackOnly;
+    // The reader owns this band while its menu is open, including the page's status footer.
+    r.fillRect(0, footBackTop(r.getScreenHeight()) - 12, r.getScreenWidth(),
+               r.getScreenHeight() - footBackTop(r.getScreenHeight()) + 12, false);
+  }
+#endif
   if (bar != FootBar::Full && bar != FootBar::BackOnly) return;
   constexpr int SIZE = FOOT_BACK_SIZE, ICON = 40;
   const int y = footBackTop(r.getScreenHeight());
@@ -181,6 +209,22 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, const FootBar bar, const Zon
   constexpr int SPAN = 9;
   drawMoreChevron(r, x + (SIZE - moreChevronLength(SPAN)) / 2 - 1, y + SIZE / 2 - SPAN, ChevronDir::Left, SPAN);
   HeaderBackTapTarget::setFoot(x, y, SIZE, SIZE);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (reader && !readerFootBar.keypad) {
+    const freeink::Icon* normal[] = {&icon_tenor_reader_position_40, &icon_tenor_reader_reading_40,
+                                     &icon_tenor_reader_tools_40};
+    const freeink::Icon* bold[] = {&icon_tenor_reader_position_bold_40, &icon_tenor_reader_reading_bold_40,
+                                   &icon_tenor_reader_tools_bold_40};
+    const int left = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), 0).x;
+    drawPillRing(r, left, y, r.getScreenWidth() - FOOT_BACK_X - left, SIZE, 2, true);
+    for (int i = 0; i < 3; ++i) {
+      const auto cell = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), i);
+      const bool active = i == readerFootBar.activeTool;
+      if (active) drawPillRing(r, cell.x + 12, y + 8, cell.width - 24, SIZE - 16, 3, false);
+      drawIcon(r, *(active ? bold[i] : normal[i]), cell.x + (cell.width - ICON) / 2, y + (SIZE - ICON) / 2);
+    }
+  }
+#endif
   if (bar == FootBar::BackOnly) return;
   // The zone's icon, alone in its ring: a tap leads to the zone's root.
   x += SIZE + FOOT_PILL_GAP;

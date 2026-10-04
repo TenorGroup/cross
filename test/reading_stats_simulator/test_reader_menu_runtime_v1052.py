@@ -164,7 +164,7 @@ int main() {
         header = (REPO / 'src/activities/reader/ReaderToolbarUi.h').read_text()
         host = (REPO / 'src/components/UiAppHost.h').read_text()
         alias = re.search(r'using UiApp = .*?;', host).group(0)
-        events = re.search(r'  enum class Event \{.*?;', header).group(0)
+        events = re.search(r'  enum class Event \{.*?;', header, re.S).group(0)
         routed = re.search(r'  struct Routed \{.*?\n  };', header, re.S).group(0)
         constants = '\n'.join(re.findall(r'^constexpr fui::ActionId .*?;', text, re.M)).replace(
             'constexpr', '[[maybe_unused]] constexpr')

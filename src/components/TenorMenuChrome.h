@@ -61,6 +61,17 @@ void noteStatus(const char* text);
 // True when the "B" of a remote linking should blink now: the caller repaints the screen (one refresh).
 bool bluetoothBlinkDue();
 void drawFootBar(const GfxRenderer& renderer, FootBar bar, Zone zone);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+// Reader view data for the existing pre-display hook. The reader owns its depth and drafts.
+void noteReaderFootBar(bool open, bool keypad, int activeTool);
+struct ReaderToolRect { int x, y, width, height; };
+inline ReaderToolRect readerToolRect(const int width, const int height, const int tool) {
+  const int left = FOOT_BACK_X + FOOT_BACK_SIZE + FOOT_PILL_GAP;
+  const int room = width - FOOT_BACK_X - left;
+  const int x = left + room * tool / 3;
+  return {x, footBackTop(height), left + room * (tool + 1) / 3 - x, FOOT_BACK_SIZE};
+}
+#endif
 // A ring of `thick` px just inside a round-ended bar; grey = every other pixel.
 void drawPillRing(const GfxRenderer& g, int x, int y, int w, int h, int thick, bool grey);
 // The same ring inside a box with corners of radius r (a row menu, a group of list rows).

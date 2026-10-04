@@ -43,6 +43,7 @@ def run(folder, script, shots, settings=None, extra_books=0, sim_env=None, write
                CROSSPOINT_SIM_INPUT_SCRIPT=(script + ';' if script else '') + f'{max(shots) + 600}:QUIT',
                CROSSPOINT_SIM_SCREENSHOTS=';'.join(f'{ms}:{folder}/{ms}.bmp' for ms in shots))
     result = subprocess.run([str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+    (folder / "simulator.log").write_text(result.stdout + result.stderr)
     assert result.returncode == 0, result.stderr[-1500:]
     return [Image.open(folder / f'{ms}.bmp').convert('L') for ms in shots]
 

@@ -87,7 +87,9 @@ struct EpubReaderActivity {
  uint32_t xemTruocDich=0,xemTruocInputMs=0;
  static constexpr uint32_t CATCH_UP_QUIET_MS=QUIET;
  static constexpr int CATCH_UP_MAX_FAILS=3;
- bool textSettingsDirty=false,fontLevel=false;
+ bool textSettingsDirty=false;
+ enum class TextDepth:uint8_t{Rows,Fonts,Spacing,PointSize};
+ TextDepth textDepth=TextDepth::Rows;
  std::vector<int> fontFamilies;
  enum class Overlay{None,Text};Overlay overlay=Overlay::None;
  std::atomic<bool> paintDropped{false};

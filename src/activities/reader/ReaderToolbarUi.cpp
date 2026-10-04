@@ -10,6 +10,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
+#include "components/TenorMenuChrome.h"
 #include "components/icons/readerToolbarIcons.h"
 
 namespace fui = freeink::ui;
@@ -22,6 +23,12 @@ constexpr fui::ActionId ACTION_NEXT = 4;     // scrub row: next chapter
 constexpr fui::ActionId ACTION_SCRUB = 5;    // progress track: dragPermille along the book
 constexpr fui::ActionId ACTION_ROW = 6;      // panel list row, value = row index
 constexpr fui::ActionId ACTION_CHOICE = 7;   // a value icon on a row, value = row * kChoiceStride + place
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+constexpr fui::ActionId ACTION_SIZE_STEP = 8;
+constexpr fui::ActionId ACTION_SIZE_ENTRY = 9;
+constexpr fui::ActionId ACTION_SPACING = 10;
+constexpr fui::ActionId ACTION_NUMERIC = 12;
+#endif
 
 // Scrub row: two small round-cornered chapter buttons flanking a thin progress
 // track with a round knob -- the reading page's chrome is light, so the
@@ -72,6 +79,9 @@ ReaderToolbarUi::Routed ReaderToolbarUi::route(const MappedInputManager& input) 
   // (dragPermille set), and re-paginating a chapter per frame would be seconds
   // of work per swipe.
   if (pending_.event == Event::Scrub && !touch.snap.touchReleased) pending_.event = Event::None;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (pending_.event == Event::SpacingDraft && touch.snap.touchReleased) pending_.event = Event::SpacingCommit;
+#endif
   return pending_;
 }
 
@@ -81,6 +91,9 @@ void ReaderToolbarUi::onAction(const fui::ActionEvent& event, void* user) {
   out.value = event.value;
   out.permille = event.dragPermille;
   if (event.action >= ACTION_DISMISS && event.action <= ACTION_CHOICE) out.event = static_cast<Event>(event.action);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (event.action >= ACTION_SIZE_STEP && event.action <= ACTION_NUMERIC) out.event = static_cast<Event>(event.action);
+#endif
   if (out.event == Event::Scrub && event.dragPermille < 0) out.event = Event::None;
   // A handled action repaints through the reader's own fast path, not through
   // app.invalidate(): the page underneath is the reader's to draw.
@@ -128,6 +141,10 @@ void ReaderToolbarUi::buildToolRow(UiScreen& screen, const fui::LayoutAnchor anc
 }
 
 void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  buildX4Toolbar(screen);
+  return;
+#endif
   const auto& tokens = screen.theme();
 
   // Sheet height from its content: scrub row, meta line, tool row, and the
@@ -277,6 +294,10 @@ void ReaderToolbarUi::drawChoices(UiScreen& screen, const fui::Rect& listRect, c
 }
 
 void ReaderToolbarUi::buildPanel(UiScreen& screen) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  buildX4Panel(screen);
+  return;
+#endif
   const auto& tokens = screen.theme();
   const fui::Rect safe = screen.frame().safeRect();
 
@@ -393,3 +414,202 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     screen.target().text(pageIndicatorRect_, buf, pageStyle);
   }
 }
+
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+namespace {
+fui::Rect readerFrame(const fui::Rect& screen, const int height) {
+  return {16, static_cast<int16_t>(tenorchrome::footBackTop(screen.height) - 12 - height),
+          static_cast<int16_t>(screen.width - 32), static_cast<int16_t>(height)};
+}
+}
+
+int ReaderToolbarUi::scrollRows(const MappedInputManager& input, const int count) const {
+  return swipeRows(input, nav_, count, ACTION_ROW);
+}
+
+void ReaderToolbarUi::buildX4Tools(UiScreen& screen) {
+  if (model_.textView == TextView::PointSize) return;
+  const auto bounds = screen.frame().screen();
+  for (int i = 0; i < 3; ++i) {
+    const auto r = tenorchrome::readerToolRect(bounds.width, bounds.height, i);
+    screen.frame().hit({static_cast<int16_t>(r.x), static_cast<int16_t>(r.y),
+                        static_cast<int16_t>(r.width), static_cast<int16_t>(r.height)},
+                       ACTION_TOOL, static_cast<int16_t>(i), fui::InputTouch);
+  }
+}
+
+void ReaderToolbarUi::buildX4Toolbar(UiScreen& screen) {
+  const auto& tokens = screen.theme();
+  const auto bounds = screen.frame().screen();
+  const auto frame = readerFrame(bounds, 116);
+  const auto ink = fui::Paint::solid(fui::Color::Black);
+  screen.target().fill(frame, fui::Paint::solid(fui::Color::White), 20);
+  screen.target().stroke(frame, fui::Paint::dither(fui::Color::LightGray), 2, 20);
+  screen.frame().hit({0, 0, bounds.width, frame.y}, ACTION_DISMISS, 0, fui::InputTouch);
+  stepProps_ = fui::ButtonProps{};
+  stepProps_.inputMask = fui::InputTouch;
+  stepProps_.minTouchSize = 60;
+  stepProps_.icon = fui::bitmapFromIcon(icon_reader_back_24);
+  stepProps_.action = ACTION_PREV;
+  screen.button(stepProps_, {static_cast<int16_t>(frame.x + 8), static_cast<int16_t>(frame.y + 8), 60, 60});
+  stepProps_.icon = fui::bitmapFromIcon(icon_reader_next_24);
+  stepProps_.action = ACTION_NEXT;
+  screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 68), static_cast<int16_t>(frame.y + 8), 60, 60});
+  const fui::Rect track{static_cast<int16_t>(frame.x + 76), static_cast<int16_t>(frame.y + 8),
+                        static_cast<int16_t>(frame.width - 152), 60};
+  const int16_t cy = static_cast<int16_t>(track.y + 30);
+  screen.target().fill({track.x, cy, track.width, 2}, ink);
+  const int16_t kx = static_cast<int16_t>(track.x + (track.width - 1) * std::clamp(model_.progressPermille, 0, 1000) / 1000);
+  screen.target().fill({static_cast<int16_t>(kx - 8), static_cast<int16_t>(cy - 7), 16, 16}, ink, 8);
+  screen.frame().hit(track, ACTION_SCRUB, 0, fui::InputTouch | fui::InputDrag);
+  fui::TextStyle style = tokens.smallText;
+  style.maxLines = 1;
+  const int16_t lineH = screen.target().lineHeight(style.font);
+  const fui::Rect meta{static_cast<int16_t>(frame.x + 16), static_cast<int16_t>(frame.bottom() - lineH - 12),
+                       static_cast<int16_t>(frame.width - 32), lineH};
+  style.align = fui::TextAlign::Right;
+  const int16_t infoW = model_.pageInfo ? screen.target().measureText(style.font, model_.pageInfo, style).width : 0;
+  if (model_.pageInfo) screen.target().text(meta, model_.pageInfo, style);
+  style.align = fui::TextAlign::Left;
+  if (model_.chapterTitle) screen.target().text({meta.x, meta.y, static_cast<int16_t>(std::max(0, meta.width - infoW - 12)), lineH}, model_.chapterTitle, style);
+  buildX4Tools(screen);
+}
+
+void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
+  const auto& tokens = screen.theme();
+  const auto bounds = screen.frame().screen();
+  const auto frame = readerFrame(bounds, 350);
+  screen.target().fill(frame, fui::Paint::solid(fui::Color::White), 20);
+  screen.frame().hit({0, 0, bounds.width, frame.y}, ACTION_DISMISS, 0, fui::InputTouch);
+  fui::TextStyle header = tokens.smallText;
+  header.bold = true;
+  header.maxLines = 1;
+  screen.target().text({static_cast<int16_t>(frame.x + 16), static_cast<int16_t>(frame.y + 4),
+                        static_cast<int16_t>(frame.width - 32), 36}, model_.panelTitle, header);
+  if (model_.textView == TextView::Spacing) {
+    buildX4Spacing(screen, frame);
+  } else if (model_.textView == TextView::PointSize) {
+    buildX4Keypad(screen, frame);
+  } else {
+    const bool rows = model_.textView == TextView::Rows;
+    const bool fonts = model_.textView == TextView::Fonts;
+    const fui::Rect listRect{frame.x, static_cast<int16_t>(frame.y + 40), frame.width,
+                            static_cast<int16_t>(fonts ? 286 : 310)};
+    const int count = std::max(0, model_.itemCount);
+    listProps_ = fui::ListProps{};
+    listProps_.count = static_cast<uint16_t>(count);
+    listProps_.action = ACTION_ROW;
+    listProps_.inputMask = fui::InputTouch;
+    listProps_.rowHeight = 62;
+    listProps_.rowGap = 0;
+    listProps_.sidePadding = 16;
+    listProps_.rowInset = 0;
+    listProps_.centerSingleLine = true;
+    listProps_.labelText = tokens.bodyText;
+    listProps_.labelText.maxLines = 1;
+    listProps_.valueText = tokens.smallText;
+    listProps_.valueText.bold = true;
+    listProps_.valueText.maxLines = 1;
+    listProps_.chosenMark = fui::bitmapFromIcon(icon_reader_tick_24);
+    listProps_.partialTrailingRow = fonts;
+    listProps_.scrollIndicatorInset = 4;
+    listProps_.rowStyles = fui::defaultListRowStyles();
+    nav_.selected = std::clamp(model_.selectedIndex, -1, count - 1);
+    nav_.followOnBuild = nav_.selected >= 0;
+    nav_.followPending = false;
+    nav_.syncToProps(listRect, 62, 0, count, listProps_);
+    const int windowCount = std::min({nav_.visibleRows + (fonts ? 1 : 0), count - nav_.top, kMaxWindow});
+    for (int i = 0; i < windowCount; ++i) {
+      const int index = nav_.top + i;
+      windowLabels_[i] = model_.rowText ? model_.rowText(index) : std::string();
+      windowValues_[i] = model_.rowValue ? model_.rowValue(index) : std::string();
+      fui::ListItem item;
+      item.label = rows && index == 1 ? "" : windowLabels_[i].c_str();
+      item.value = windowValues_[i].empty() || (rows && index == 1) ? nullptr : windowValues_[i].c_str();
+      item.actionValue = static_cast<int16_t>(index);
+      item.chosen = model_.rowMarked && model_.rowMarked(index);
+      item.opensNext = rows && (index == 0 || index == 2);
+      windowItems_[i] = item;
+    }
+    listProps_.items = windowItems_;
+    listProps_.itemsWindowFirst = static_cast<uint16_t>(nav_.top);
+    listProps_.itemsWindowCount = static_cast<uint16_t>(std::max(0, windowCount));
+    if (count > 0) fui::list(screen.frame(), listRect, listProps_);
+    if (rows) {
+      const int16_t y = static_cast<int16_t>(listRect.y + 62);
+      fui::TextStyle label = tokens.bodyText;
+      label.maxLines = 1;
+      screen.target().text({static_cast<int16_t>(frame.x + 16), y, static_cast<int16_t>(frame.width - 236), 62}, windowLabels_[1].c_str(), label);
+      stepProps_ = fui::ButtonProps{};
+      stepProps_.inputMask = fui::InputTouch;
+      stepProps_.minTouchSize = 60;
+      stepProps_.text = tokens.bodyText;
+      stepProps_.action = ACTION_SIZE_STEP;
+      stepProps_.label = "-";
+      stepProps_.value = -1;
+      screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 204), y, 60, 62});
+      stepProps_.label = windowValues_[1].c_str();
+      stepProps_.action = ACTION_SIZE_ENTRY;
+      stepProps_.value = 0;
+      screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 140), y, 72, 62});
+      stepProps_.label = "+";
+      stepProps_.action = ACTION_SIZE_STEP;
+      stepProps_.value = 1;
+      screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 64), y, 60, 62});
+    }
+  }
+  screen.target().stroke(frame, fui::Paint::dither(fui::Color::LightGray), 2, 20);
+  buildX4Tools(screen);
+}
+
+void ReaderToolbarUi::buildX4Spacing(UiScreen& screen, const fui::Rect& frame) {
+  const auto& tokens = screen.theme();
+  const auto ink = fui::Paint::solid(fui::Color::Black);
+  const int16_t left = static_cast<int16_t>(frame.x + 48);
+  const int16_t width = static_cast<int16_t>(frame.width - 96);
+  const int16_t y = static_cast<int16_t>(frame.y + 150);
+  screen.target().fill({left, y, width, 2}, ink);
+  for (int i = 0; i < 5; ++i) {
+    const int16_t x = static_cast<int16_t>(left + (width - 1) * i / 4);
+    screen.target().fill({x, static_cast<int16_t>(y - 10), 2, 22}, ink);
+    fui::TextStyle style = tokens.smallText;
+    style.bold = i == model_.spacingPlace;
+    style.align = fui::TextAlign::Center;
+    style.maxLines = 2;
+    if (model_.spacingLabel) screen.target().text({static_cast<int16_t>(x - 44), static_cast<int16_t>(y + 24), 88, 100}, model_.spacingLabel(i), style);
+  }
+  const int16_t knobX = static_cast<int16_t>(left + (width - 1) * std::clamp(model_.spacingDraftPermille, 0, 1000) / 1000);
+  screen.target().fill({static_cast<int16_t>(knobX - 10), static_cast<int16_t>(y - 9), 20, 20}, ink, 10);
+  // One drag target spans the same endpoints as the ordinal ruler.
+  screen.frame().hit({left, static_cast<int16_t>(y - 50), width, 100}, ACTION_SPACING, 0, fui::InputTouch | fui::InputDrag);
+}
+
+void ReaderToolbarUi::buildX4Keypad(UiScreen& screen, const fui::Rect& frame) {
+  const auto& tokens = screen.theme();
+  fui::TextStyle numeric = tokens.titleText;
+  numeric.bold = true;
+  numeric.align = fui::TextAlign::Center;
+  screen.target().text({static_cast<int16_t>(frame.x + 16), static_cast<int16_t>(frame.y + 40), 104, 52}, model_.numericDraft, numeric);
+  fui::TextStyle hint = tokens.smallText;
+  hint.font = fui::GfxRendererTarget::FONT_LABEL;
+  hint.align = fui::TextAlign::Center;
+  hint.maxLines = 1;
+  screen.target().text({static_cast<int16_t>(frame.x + 120), static_cast<int16_t>(frame.y + 40),
+                        static_cast<int16_t>(frame.width - 136), 52}, model_.numericHint, hint);
+  fui::KeyGridKey keys[12];
+  static const char* digits[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
+  for (int i = 0; i < 9; ++i) { keys[i].label = digits[i]; keys[i].value = i + 1; }
+  keys[9].kind = fui::KeyKind::Delete; keys[9].value = 10;
+  keys[10].label = digits[9]; keys[10].value = 0;
+  keys[11].kind = fui::KeyKind::Ok; keys[11].label = tr(STR_DONE); keys[11].value = 11;
+  static fui::KeyGridProps props;
+  props = fui::KeyGridProps{};
+  props.keys = keys;
+  props.rows = 4; props.cols = 3;
+  props.action = ACTION_NUMERIC; props.inputMask = fui::InputTouch;
+  props.labelText = tokens.bodyText;
+  props.minTouchSize = 60; props.gap = 4; props.radius = 8;
+  fui::keyGrid(screen.frame(), {static_cast<int16_t>(frame.x + 8), static_cast<int16_t>(frame.y + 92),
+                               static_cast<int16_t>(frame.width - 16), 252}, props);
+}
+#endif

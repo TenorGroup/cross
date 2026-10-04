@@ -190,7 +190,17 @@ class EpubReaderActivity final : public ReaderActivity {
   void flushTextSettings();
   // The Font row opens a second level inside the Text panel: the same sheet lists the families
   // (the 2 built in, then the card's), the page above is the preview. Back returns to the rows.
-  bool fontLevel = false;
+  enum class TextDepth : uint8_t { Rows, Fonts, Spacing, PointSize };
+  TextDepth textDepth = TextDepth::Rows;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  int spacingDraftPermille = 500;
+  bool spacingDragging = false;
+  std::string pointSizeDraft;
+  void enterTextDepth(TextDepth depth);
+  void stepMenuPointSize(int direction);
+  void applyMenuPointSize(uint8_t pointSize);
+  uint8_t enteredPointSize() const;
+#endif
   std::vector<fontdoc::Ho> fontFamilies;
   void enterFontLevel();
   void leaveFontLevel();
