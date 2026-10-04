@@ -14,6 +14,7 @@
 #include "components/TenorMenuChrome.h"
 #include "components/SettledListRender.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
@@ -376,6 +377,8 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
     const auto& metrics = UITheme::getInstance().getMetrics();
     rowHeight = static_cast<int16_t>(hasSubtitle ? metrics.listWithSubtitleRowHeight : metrics.listRowHeight);
     props.rowHeight = rowHeight;
+    // A row with a subtitle grows to its text plus this padding, so the selected pill's ring clears a descender.
+    props.rowPaddingY = TENOR_PILL_ROW_PADDING_Y;
   }
   const int rowGap = props.rowGap >= 0 ? props.rowGap : screen.theme().listRowGap;
   reserveMoreBelowChevron(screen, rowHeight, rowGap);

@@ -11,6 +11,7 @@
 #include "MenuCustomization.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 #include "components/themes/TenorRadius.h"
 
 namespace fui = freeink::ui;
@@ -323,6 +324,8 @@ void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& pr
     // Wrapped (maxLines > 1) labels grow only their own row: list() sizes
     // wrapped items per-row, so the dense height stays for the rest.
     props.rowHeight = rowHeight;
+    // A row with a subtitle grows to its text plus this padding, so the selected pill's ring clears a descender.
+    props.rowPaddingY = TENOR_PILL_ROW_PADDING_Y;
   }
   const int rowGap = props.rowGap >= 0 ? props.rowGap : screen.theme().listRowGap;
   reserveMoreBelowChevron(screen, rowHeight, rowGap);
