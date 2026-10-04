@@ -2332,7 +2332,7 @@ void ChapterHtmlSlimParser::trackCheckpointEnd(const XML_Char* name) {
   // currentCssStyle. Soft-flush and inline boundaries carry more layout state.
   // A page finished in this step, or a requested checkpoint once any page is done (a restore needs one).
   const bool pageBoundary = completedPageCount > stepStartPages_ || (checkpointWanted_ && completedPageCount > 0);
-  if (replayingCheckpoint_ || buildFailed_ || !pageBoundary ||
+  if (replayingCheckpoint_ || buildFailed_ || (!pageBoundary && !resumePointFn) ||
       !isHeaderOrBlock(name) || strcmp(name, "br") == 0 || !insideBody ||
       checkpointUnsupported_ != 0 || checkpointDepth_ == 0 || skipUntilDepth != INT_MAX ||
       boldUntilDepth != INT_MAX || italicUntilDepth != INT_MAX || partWordBufferIndex != 0 ||
@@ -2350,6 +2350,11 @@ void ChapterHtmlSlimParser::trackCheckpointEnd(const XML_Char* name) {
       context[contextOffset] != '<' || context[contextOffset + 1] != '/') return;
   const int64_t offset = sourceOffsetBase_ + XML_GetCurrentByteIndex(xmlParser_) + eventBytes;
   if (offset <= 0 || offset >= static_cast<int64_t>(parseFile_.size())) return;
+  if (resumePointFn) {
+    resumePointFn(ResumePoint{static_cast<uint32_t>(offset), visibleTextOffset, imageCounter}, checkpointPrefix_,
+                  checkpointPrologBytes_);
+  }
+  if (!pageBoundary) return;
   if (XML_StopParser(xmlParser_, XML_TRUE) == XML_STATUS_ERROR) return;
   checkpointOffset_ = static_cast<uint32_t>(offset);
   checkpointReady_ = true;
@@ -2472,6 +2477,47 @@ bool ChapterHtmlSlimParser::restoreCheckpoint(HalFile& file, const uint16_t expe
   checkpointOffset_ = offset;
   checkpointReady_ = true;
   return true;
+}
+
+bool ChapterHtmlSlimParser::restoreResumePoint(const std::string& prologAndPrefix, const ResumePoint& point,
+                                               const uint32_t pageStart) {
+  if (prologAndPrefix.empty() || point.offset == 0 || point.offset >= parseFile_.size() || point.imageCounter < 0 ||
+      point.visible > pageStart) return false;
+  replayingCheckpoint_ = true;
+  const auto xmlStatus =
+      XML_Parse(xmlParser_, prologAndPrefix.data(), static_cast<int>(prologAndPrefix.size()), XML_FALSE);
+  replayingCheckpoint_ = false;
+  if (xmlStatus != XML_STATUS_OK || buildFailed_ || !insideBody || checkpointDepth_ == 0 ||
+      skipUntilDepth != INT_MAX || completedPageCount != 0 || !currentTextBlock || !currentTextBlock->isEmpty() ||
+      !parseFile_.seek(point.offset)) return false;
+  currentCssStyle.reset();
+  updateEffectiveInlineStyle();
+  currentTextBlock->resetDropCap();
+  pendingAnchorId.clear();
+  anchorData.clear();
+  visibleTextOffset = point.visible;
+  currentPageVisibleOffset = point.visible;
+  imageCounter = point.imageCounter;
+  chapterInitialPending = false;  // the chapter's first letter is behind us
+  sourceOffsetBase_ = static_cast<int64_t>(point.offset) - prologAndPrefix.size();
+  startPageAt(pageStart);
+  return true;
+}
+
+void ChapterHtmlSlimParser::startPageAt(const uint32_t pageStart) {
+  holdingLines_ = pageStart > 0;
+  holdUntil_ = pageStart;
+  heldLine_.reset();
+}
+
+// Leaves holding: what was laid out before the held line goes, the held line opens the page.
+bool ChapterHtmlSlimParser::placeHeldLine() {
+  holdingLines_ = false;
+  if (!createPage()) return false;  // drops whatever was laid out before the page start
+  if (!heldLine_) return true;
+  auto line = std::move(heldLine_);
+  addLineToPage(std::move(line), heldLineOffset_);
+  return !buildFailed_;
 }
 
 ChapterHtmlSlimParser::~ChapterHtmlSlimParser() { abortParse(); }
@@ -2784,6 +2830,11 @@ bool ChapterHtmlSlimParser::createPage() {
 
 bool ChapterHtmlSlimParser::emitCurrentPage() {
   if (buildFailed_) return false;
+  if (holdingLines_) {
+    if (heldLine_) return placeHeldLine() && emitCurrentPage();  // the page ends right after the held line
+    currentPage.reset();  // laid out before the page asked for
+    return true;
+  }
   if (!currentPage) return true;
   completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex, currentPageVisibleOffset);
   if (buildFailed_) return false;
@@ -2811,6 +2862,14 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
 void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const uint32_t visibleOffset) {
   if (buildFailed_) return;
   if (!line || !line->valid()) { failBuild(); return; }
+  if (holdingLines_) {
+    if (visibleOffset <= holdUntil_) {  // this line starts at or before the page start: it may hold it
+      heldLine_ = std::move(line);
+      heldLineOffset_ = visibleOffset;
+      return;
+    }
+    if (!placeHeldLine()) return;
+  }
   const int ascender = renderer.getFontAscenderSize(fontId);
   const int rubyShift = line->getRubyShift(ascender);
   const int lineHeight = renderer.getLineHeight(fontId, lineCompression) + rubyShift;

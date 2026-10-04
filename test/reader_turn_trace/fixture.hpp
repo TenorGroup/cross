@@ -203,6 +203,10 @@ struct EpubReaderActivity : ReaderActivity {
   void drainThenInput(bool prevTriggered, bool prevPageTriggered, bool touchTriggered, bool fromTilt);
   void externalThenInput(bool prevTriggered, bool prevPageTriggered, bool touchTriggered, bool fromTilt);
   void cancelManualForReaderMenu();
+  bool xemTruoc = false;
+  void panelClosedLocked(bool,bool) {}
+  void panelClosed(bool leaving = false, bool frameUp = false) {}
+  void dropCatchUp() {}
 @@EPUB_ON_PAUSE@@
   void onExit() override;
 };

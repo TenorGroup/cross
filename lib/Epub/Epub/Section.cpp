@@ -9,6 +9,7 @@
 #include <HalStorage.h>
 
 #include <algorithm>
+#include <array>
 #include <Logging.h>
 #include <Memory.h>
 #include <RecoverableFile.h>
@@ -402,12 +403,16 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
   LOG_DBG("SCT", "EPUB_BUILD stage=parser_before free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
           static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
-  return makeUniqueNoThrow<ChapterHtmlSlimParser>(
+  auto parser = makeUniqueNoThrow<ChapterHtmlSlimParser>(
       epub, ctxPtr->parsePath, renderer, spec.fontId, spec.lineCompression, spec.extraParagraphSpacing,
       spec.paragraphAlignment, spec.viewportWidth, spec.viewportHeight, spec.hyphenationEnabled, spec.dropCapMode,
       [this, ctxPtr](std::unique_ptr<Page> page, const uint16_t paragraphIndex, const uint16_t listItemIndex,
                      const uint32_t visibleTextOffset) {
         if (ctxPtr->failed) return;
+        if (ctxPtr->previewSink) {
+          ctxPtr->previewSink(std::move(page), visibleTextOffset);
+          return;
+        }
         // The serialized page count is uint16_t. Refuse overflow explicitly.
         if (builtPageCount_ == UINT16_MAX) {
           ctxPtr->failed = true;
@@ -437,9 +442,163 @@ std::unique_ptr<ChapterHtmlSlimParser> Section::makeBuildParser(BuildContext* ct
         ++builtPageCount_;
         pageCount = std::max(pageCount, builtPageCount_);
         ctxPtr->lastVisibleTextOffset = visibleTextOffset;
+        if (ctxPtr->ddOn) ddRecord(*ctxPtr);
       },
       spec.embeddedStyle, ctxPtr->contentBase, ctxPtr->imageBasePath, spec.imageRendering, ctxPtr->tocAnchors, popupFn,
       ctxPtr->cssParser, spec.paragraphIndent, spec.letterSpacing, spec.wordSpacing);
+  if (parser && ctxPtr->ddOn) {
+    parser->resumePointFn = [ctxPtr](const ChapterHtmlSlimParser::ResumePoint& point, const std::string& prefix,
+                                     const uint16_t prologBytes) {
+      constexpr size_t MAX_PREFIXES = 8;
+      auto& prefixes = ctxPtr->ddPrefixes;
+      size_t id = prefixes.size();
+      for (size_t i = prefixes.size(); i-- > 0;) {
+        if (prefixes[i] == prefix) {
+          id = i;
+          break;
+        }
+      }
+      if (id == prefixes.size()) {
+        if (prefixes.size() == MAX_PREFIXES || prefix.size() > UINT16_MAX) {
+          ctxPtr->ddLastValid = false;  // a later page goes back to a point before this one
+          return;
+        }
+        prefixes.push_back(prefix);
+      }
+      ctxPtr->ddProlog = prologBytes;
+      ctxPtr->ddLast = DdRecord{point.offset, point.visible, static_cast<uint16_t>(point.imageCounter),
+                                static_cast<uint8_t>(id), 0};
+      ctxPtr->ddLastValid = point.imageCounter >= 0 && point.imageCounter <= UINT16_MAX;
+    };
+  }
+  return parser;
+}
+
+namespace {
+// "DD01", tied to the layout engine's version: a parser that judges resume points differently starts over.
+constexpr uint32_t DD_MAGIC = 0x31304444u ^ SECTION_FILE_VERSION;
+constexpr size_t DD_HEADER = 16;           // magic, html size, count, prolog bytes, prefix count, complete
+}  // namespace
+
+std::string Section::ddPath() const {
+  return epub->getCachePath() + "/sections/" + std::to_string(spineIndex) + ".dd";
+}
+
+bool Section::ddComplete(const uint32_t htmlSize) const {
+  HalFile f;
+  if (!Storage.openFileForRead("SCT", ddPath(), f)) return false;
+  uint32_t magic = 0, size = 0, count = 0;
+  uint16_t prolog = 0;
+  uint8_t prefixes = 0, complete = 0;
+  return serialization::readPod(f, magic) && serialization::readPod(f, size) && serialization::readPod(f, count) &&
+         serialization::readPod(f, prolog) && serialization::readPod(f, prefixes) &&
+         serialization::readPod(f, complete) && magic == DD_MAGIC && size == htmlSize && complete == 1;
+}
+
+bool Section::ddOpen(BuildContext& ctx, const bool seed) {
+  HalFile html;
+  if (!Storage.openFileForRead("SCT", ctx.parsePath, html)) return false;
+  const uint32_t htmlSize = html.size();
+  html.close();
+  if (htmlSize == 0 || ddComplete(htmlSize)) return false;
+  const std::string tmp = ddPath() + ".part";
+  ctx.ddOn = Storage.openFileForWrite("SCT", tmp, ctx.dd) &&
+             ctx.dd.write(std::array<uint8_t, DD_HEADER>{}.data(), DD_HEADER) == DD_HEADER;
+  if (!ctx.ddOn) {
+    ctx.dd.close();
+    Storage.remove(tmp.c_str());
+    return false;
+  }
+  HalFile old;
+  uint32_t magic = 0, size = 0, count = 0;
+  uint16_t prolog = 0;
+  uint8_t prefixes = 0, complete = 0;
+  if (!seed || !Storage.openFileForRead("SCT", ddPath(), old) || !serialization::readPod(old, magic) ||
+      !serialization::readPod(old, size) || !serialization::readPod(old, count) ||
+      !serialization::readPod(old, prolog) || !serialization::readPod(old, prefixes) ||
+      !serialization::readPod(old, complete) || magic != DD_MAGIC || size != htmlSize || count == 0 ||
+      DD_HEADER + static_cast<uint64_t>(count) * sizeof(DdRecord) > old.size())
+    return true;
+  DdRecord block[16];
+  for (uint32_t i = 0; i < count;) {
+    const uint32_t n = std::min<uint32_t>(16, count - i);
+    const size_t bytes = n * sizeof(DdRecord);
+    if (old.read(block, bytes) != static_cast<int>(bytes) || ctx.dd.write(block, bytes) != bytes) {
+      ddClose(ctx, false, false);
+      return false;
+    }
+    ctx.ddLastWritten = block[n - 1].offset;
+    i += n;
+  }
+  ctx.ddCount = count;
+  ctx.ddProlog = prolog;
+  for (uint8_t i = 0; i < prefixes; ++i) {
+    uint16_t length = 0;
+    std::string prefix;
+    if (!serialization::readPod(old, length) || length > old.size()) break;
+    prefix.resize(length);
+    if (old.read(prefix.data(), length) != static_cast<int>(length)) break;
+    ctx.ddPrefixes.push_back(std::move(prefix));
+  }
+  if (ctx.ddPrefixes.size() != prefixes) {  // records pointing at a prefix that is not there
+    ddClose(ctx, false, false);
+    return false;
+  }
+  return true;
+}
+
+// A page has just finished: the next one starts after the last point the parser reported.
+void Section::ddRecord(BuildContext& ctx) {
+  if (!ctx.ddLastValid || ctx.ddLast.offset <= ctx.ddLastWritten) return;
+  if (ctx.ddPendingCount == BuildContext::DD_PENDING_MAX && !ddFlush(ctx)) {
+    ddClose(ctx, false, false);
+    return;
+  }
+  ctx.ddPending[ctx.ddPendingCount++] = ctx.ddLast;
+  ctx.ddLastWritten = ctx.ddLast.offset;
+}
+
+bool Section::ddFlush(BuildContext& ctx) {
+  if (ctx.ddPendingCount == 0) return true;
+  const size_t bytes = ctx.ddPendingCount * sizeof(DdRecord);
+  if (!ctx.dd.seek(DD_HEADER + ctx.ddCount * sizeof(DdRecord)) || ctx.dd.write(ctx.ddPending, bytes) != bytes)
+    return false;
+  ctx.ddCount += ctx.ddPendingCount;
+  ctx.ddPendingCount = 0;
+  return true;
+}
+
+// keep: write the prefixes and the header, and put the file in place (tmp, then rename).
+void Section::ddClose(BuildContext& ctx, const bool keep, const bool complete) {
+  if (!ctx.ddOn) return;
+  ctx.ddOn = false;
+  const std::string tmp = ddPath() + ".part";
+  bool ok = keep && ddFlush(ctx) && ctx.ddCount > 0;
+  if (ok && !complete) {  // a build that stopped early keeps a file that reaches further
+    HalFile old;
+    uint32_t magic = 0, size = 0, count = 0;
+    if (Storage.openFileForRead("SCT", ddPath(), old) && serialization::readPod(old, magic) &&
+        serialization::readPod(old, size) && serialization::readPod(old, count) && magic == DD_MAGIC &&
+        size == ctx.totalBytes && count >= ctx.ddCount)
+      ok = false;
+  }
+  for (size_t i = 0; ok && i < ctx.ddPrefixes.size(); ++i) {
+    const auto& prefix = ctx.ddPrefixes[i];
+    ok = serialization::writePod(ctx.dd, static_cast<uint16_t>(prefix.size())) &&
+         ctx.dd.write(prefix.data(), prefix.size()) == prefix.size();
+  }
+  ok = ok && ctx.dd.seek(0) && serialization::writePod(ctx.dd, DD_MAGIC) &&
+       serialization::writePod(ctx.dd, ctx.totalBytes) && serialization::writePod(ctx.dd, ctx.ddCount) &&
+       serialization::writePod(ctx.dd, ctx.ddProlog) &&
+       serialization::writePod(ctx.dd, static_cast<uint8_t>(ctx.ddPrefixes.size())) &&
+       serialization::writePod(ctx.dd, static_cast<uint8_t>(complete ? 1 : 0)) && ctx.dd.sync();
+  ok = ctx.dd.close() && ok;
+  if (ok) {
+    Storage.remove(ddPath().c_str());
+    ok = Storage.rename(tmp.c_str(), ddPath().c_str());
+  }
+  if (!ok) Storage.remove(tmp.c_str());
+  std::vector<std::string>().swap(ctx.ddPrefixes);
 }
 
 bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void()>& popupFn) {
@@ -600,7 +759,11 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   ctx->imageBasePath = epub->getCachePath() + (preview_ ? "/preview_img_" : "/img_") + std::to_string(spineIndex) + "_";
 
   ctx->spec = spec;
+  // Resume points: a build from the chapter top writes them; one resumed from a partial carries the
+  // points already on the card on (the next-chapter look-ahead leaves a 3-page partial behind).
+  if (!preview_) ddOpen(*ctx, partial_);
   if (!loadBuildCss(ctx.get())) {
+    ddClose(*ctx, false, false);
     ctx->lut.close();
     Storage.remove(lutTmpPath().c_str());
     file.close();
@@ -614,6 +777,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     LOG_ERR("SCT", "OOM: ChapterHtmlSlimParser free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
             static_cast<unsigned>(ESP.getMaxAllocHeap()));
     if (ctx->cssParser) ctx->cssParser->clear();
+    ddClose(*ctx, false, false);
     ctx->lut.close();
     Storage.remove(lutTmpPath().c_str());
     file.close();
@@ -647,6 +811,8 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
       // A legacy or damaged checkpoint keeps the readable partial and starts a
       // fresh parser. Recreate both staging files after any failed prefix copy.
       build_->parser.reset();
+      ddClose(*build_, false, false);
+      ddOpen(*build_, false);  // laid out again from the top: its own points, from the first
       file.close();
       build_->lut.close();
       builtPageCount_ = 0;
@@ -971,6 +1137,104 @@ bool Section::buildSomeMore(const int maxPages) {
   }
 }
 
+std::unique_ptr<Page> Section::previewPage(const ReaderRenderSpec& spec, const uint32_t pageStart) {
+  if (build_ || !stepHeapAvailable()) return nullptr;
+  const uint32_t started = millis();
+  const std::string htmlPath = epub->getCachePath() + "/html/" + std::to_string(spineIndex) + ".html";
+  // The nearest resume point at or before the page start, and the ancestors to replay there.
+  std::string replay;
+  ChapterHtmlSlimParser::ResumePoint point{0, 0, 0};
+  {
+    HalFile html, dd;
+    if (!Storage.openFileForRead("SCT", htmlPath, html) || !Storage.openFileForRead("SCT", ddPath(), dd)) return nullptr;
+    uint32_t magic = 0, size = 0, count = 0;
+    uint16_t prolog = 0;
+    uint8_t prefixCount = 0, complete = 0;
+    if (!serialization::readPod(dd, magic) || !serialization::readPod(dd, size) || !serialization::readPod(dd, count) ||
+        !serialization::readPod(dd, prolog) || !serialization::readPod(dd, prefixCount) ||
+        !serialization::readPod(dd, complete) || magic != DD_MAGIC || size != html.size() || count == 0 ||
+        DD_HEADER + static_cast<uint64_t>(count) * sizeof(DdRecord) > dd.size())
+      return nullptr;
+    DdRecord block[16];
+    DdRecord best{};
+    bool found = false;
+    for (uint32_t i = 0; i < count;) {
+      const uint32_t n = std::min<uint32_t>(16, count - i);
+      if (dd.read(block, n * sizeof(DdRecord)) != static_cast<int>(n * sizeof(DdRecord))) return nullptr;
+      uint32_t j = 0;
+      for (; j < n && block[j].visible <= pageStart; ++j) {
+        best = block[j];
+        found = true;
+      }
+      if (j < n) break;
+      i += n;
+    }
+    // Too far from the nearest point, the preview would cost what laying the chapter out costs.
+    constexpr uint32_t PREVIEW_MAX_CHARS = 6000;
+    if (pageStart - (found ? best.visible : 0) > PREVIEW_MAX_CHARS) return nullptr;
+    if (found) {
+      if (best.prefix >= prefixCount || !dd.seek(DD_HEADER + count * sizeof(DdRecord))) return nullptr;
+      std::string prefix;
+      for (uint8_t i = 0; i <= best.prefix; ++i) {
+        uint16_t length = 0;
+        if (!serialization::readPod(dd, length) || length > dd.size()) return nullptr;
+        prefix.resize(length);
+        if (dd.read(prefix.data(), length) != static_cast<int>(length)) return nullptr;
+      }
+      replay.resize(prolog);
+      if (prolog > html.size() || html.read(replay.data(), prolog) != static_cast<int>(prolog)) return nullptr;
+      replay += prefix;
+      point = ChapterHtmlSlimParser::ResumePoint{best.offset, best.visible, best.imageCounter};
+    }
+  }
+
+  auto ctx = makeUniqueNoThrow<BuildContext>();
+  if (!ctx) return nullptr;
+  ctx->spec = spec;
+  ctx->parsePath = htmlPath;
+  const auto localPath = epub->getSpineItem(spineIndex).href;
+  const size_t lastSlash = localPath.find_last_of('/');
+  ctx->contentBase = (lastSlash != std::string::npos) ? localPath.substr(0, lastSlash + 1) : "";
+  ctx->imageBasePath = epub->getCachePath() + (preview_ ? "/preview_img_" : "/img_") + std::to_string(spineIndex) + "_";
+  // No page breaks at TOC anchors in a preview: reading the TOC costs more than the page.
+  ctx->tocAnchors = std::make_shared<const std::vector<uint32_t>>();
+  std::unique_ptr<Page> result;
+  ctx->previewSink = [&result](std::unique_ptr<Page> page, const uint32_t visible) {
+    if (result || !page) return;
+    page->visibleTextOffset = visible;
+    result = std::move(page);
+  };
+  if (!loadBuildCss(ctx.get())) return nullptr;
+  ctx->parser = makeBuildParser(ctx.get(), spec);
+  auto& parser = ctx->parser;
+  bool ok = parser && parser->beginParse();
+  if (ok && !replay.empty()) {
+    ok = parser->restoreResumePoint(replay, point, pageStart);
+  } else if (ok) {
+    parser->startPageAt(pageStart);
+  }
+  constexpr uint32_t PREVIEW_MAX_MS = 800;
+  while (ok && !result) {
+    if (!stepHeapAvailable() || millis() - started > PREVIEW_MAX_MS) {
+      ok = false;
+      break;
+    }
+    const auto status = parser->parseStep();
+    if (status == ChapterHtmlSlimParser::ParseStatus::Error) ok = false;
+    if (status == ChapterHtmlSlimParser::ParseStatus::Done) {
+      ok = parser->finishParse();
+      break;
+    }
+  }
+  if (parser) parser->abortParse();
+  if (ctx->cssParser) ctx->cssParser->clear();
+  LOG_INF("SCT", "PREVIEW_PAGE ok=%u from=%u to=%u ms=%lu free=%u largest=%u", ok && result ? 1u : 0u,
+          static_cast<unsigned>(point.visible), static_cast<unsigned>(pageStart),
+          static_cast<unsigned long>(millis() - started), static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  return ok ? std::move(result) : nullptr;
+}
+
 bool Section::hasHtmlCache() const {
   const std::string htmlPath = epub->getCachePath() + "/html/" + std::to_string(spineIndex) + ".html";
   return Storage.exists(htmlPath.c_str());
@@ -1175,6 +1439,7 @@ bool Section::finalizeBuild() {
   }
 
   const bool committed = commitBuildFile(SECTION_FILE_VERSION, 0, 0);
+  ddClose(*build_, committed, true);
   if (build_->cssParser) build_->cssParser->clear();
   build_->lut.close();
   Storage.remove(lutTmpPath().c_str());
@@ -1231,6 +1496,7 @@ void Section::suspendBuild() {
 
   if (build_->parser) build_->parser->abortParse();
   if (build_->cssParser) build_->cssParser->clear();
+  ddClose(*build_, committed, false);
   if (!committed && file) {
     // Explicit close() required before remove (member variable, O_RDWR handle).
     file.close();
@@ -1256,6 +1522,7 @@ void Section::abandonBuild() {
   if (!build_) return;
   if (build_->parser) build_->parser->abortParse();
   if (build_->cssParser) build_->cssParser->clear();
+  ddClose(*build_, true, false);  // the points found so far hold whatever happens to the layout
   if (file) {
     // Explicit close() required before remove (member variable, O_RDWR handle).
     file.close();

@@ -31,6 +31,25 @@ class Section {
     uint32_t visibleTextOffset;
   };
   static_assert(sizeof(PageLutEntry) == 12, "Temporary LUT record must stay bounded");
+  // One resume point in <spine>.dd. The file does not depend on the layout settings: it is kept
+  // across font, size and spacing changes and rewritten only by a build from the chapter start.
+  struct DdRecord {
+    uint32_t offset;
+    uint32_t visible;
+    uint16_t imageCounter;
+    uint8_t prefix;
+    uint8_t pad;
+  };
+  static_assert(sizeof(DdRecord) == 12, "resume point record");
+  struct BuildContext;
+  std::string ddPath() const;
+  bool ddComplete(uint32_t htmlSize) const;
+  // Opens <spine>.dd.part for a build (seed: carry the points already on the card on). False: no
+  // points from this build (complete file on the card, no HTML, card error).
+  bool ddOpen(BuildContext& ctx, bool seed);
+  void ddRecord(BuildContext& ctx);
+  bool ddFlush(BuildContext& ctx);
+  void ddClose(BuildContext& ctx, bool keep, bool complete);
   // Held only while an incremental build is in progress (see startBuild). Carries the
   // live parser plus the strings it references (the parser stores them by reference)
   // and the temporary on-disk page-offset table.
@@ -75,6 +94,21 @@ class Section {
     // the EMA is stepped once per build advance (not per redraw) to damp that wobble.
     float smoothedEstimate = 0;
     uint32_t smoothedAtConsumed = 0;
+    // Resume points (see ChapterHtmlSlimParser::ResumePoint), one per page at most: the last one
+    // reported before the page started. Written to <spine>.dd.part a block at a time.
+    HalFile dd;
+    bool ddOn = false;
+    static constexpr uint8_t DD_PENDING_MAX = 32;
+    DdRecord ddPending[DD_PENDING_MAX];
+    uint8_t ddPendingCount = 0;
+    uint32_t ddCount = 0;
+    uint16_t ddProlog = 0;
+    std::vector<std::string> ddPrefixes;
+    DdRecord ddLast{};
+    bool ddLastValid = false;
+    uint32_t ddLastWritten = 0;
+    // Set by previewPage(): pages go here instead of the section file.
+    std::function<void(std::unique_ptr<Page>, uint32_t)> previewSink;
   };
   bool loadBuildCss(BuildContext* context);
   std::unique_ptr<ChapterHtmlSlimParser> makeBuildParser(BuildContext* context, const ReaderRenderSpec& spec,
@@ -134,6 +168,13 @@ class Section {
   bool loadSectionFile(const ReaderRenderSpec& spec);
   bool clearCache() const;
   bool createSectionFile(const ReaderRenderSpec& spec, const std::function<void()>& popupFn = nullptr);
+
+  // The page that starts at the line holding text offset `pageStart`, laid out under `spec` from the
+  // nearest resume point before it (<spine>.dd), in memory: nothing is written to the card. Null with
+  // no resume point within 6,000 characters before the page, no cached HTML, a build running, short
+  // heap, or past 0.8 s.
+  // A preview: the chapter laid out from its start may break its pages elsewhere.
+  std::unique_ptr<Page> previewPage(const ReaderRenderSpec& spec, uint32_t pageStart);
 
   // Incremental build: lay out the section a few pages at a time so a large chapter
   // can show its first page immediately and keep the UI responsive while the rest

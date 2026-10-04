@@ -3,6 +3,7 @@
 #include <functional>
 #include <string>
 
+#include "Icon.h"
 #include "components/UiAppHost.h"
 #include "components/lists/list.h"
 
@@ -24,7 +25,9 @@ class MappedInputManager;
 // clears the screen: the page stays visible around the chrome.
 class ReaderToolbarUi : public UiAppHost {
  public:
-  enum class Event { None = 0, Dismiss = 1, Tool = 2, PrevChapter = 3, NextChapter = 4, Scrub = 5, Row = 6 };
+  enum class Event { None = 0, Dismiss = 1, Tool = 2, PrevChapter = 3, NextChapter = 4, Scrub = 5, Row = 6, Choice = 7 };
+  // Choice: value = row * kChoiceStride + the value's place along the row.
+  static constexpr int kChoiceStride = 8;
 
   struct Model {
     bool panel = false;  // false = toolbar, true = a Contents/Text/More panel
@@ -36,8 +39,18 @@ class ReaderToolbarUi : public UiAppHost {
     const char* panelTitle = nullptr;
     int itemCount = 0;
     int selectedIndex = -1;  // row the buttons' cursor sits on; -1 = none shown
+    // Rows the sheet is sized to; 0 = from the list. A deeper level of a panel (the Text panel's
+    // font list) sets the rows of the panel it came from so the frame does not change.
+    int sheetRows = 0;
     std::function<std::string(int)> rowText;
     std::function<std::string(int)> rowValue;
+    // Optional: the row in use (the font in the family list). Drawn in bold with a tick at the row end.
+    std::function<bool(int)> rowMarked;
+    // Optional: a row with a few values draws them as icons along its right side, the one in use
+    // outlined; on touch boards each icon is a tap target (Event::Choice). Count 0 = an ordinary row.
+    std::function<int(int)> choiceCount;
+    std::function<int(int)> choiceInUse;
+    std::function<const freeink::Icon*(int, int)> choiceIcon;
     // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..2.
     int activeTool = 0;
     // Button boards keep the theme's denser list row height (as every other
@@ -90,10 +103,13 @@ class ReaderToolbarUi : public UiAppHost {
   static constexpr int kMaxWindow = 16;
   std::string windowLabels_[kMaxWindow];
   std::string windowValues_[kMaxWindow];
+  bool markedLabels_[kMaxWindow] = {};
   freeink::ui::ListItem windowItems_[kMaxWindow];
   // fui::ButtonProps / ListProps / HeaderProps embed a 324-byte StyleSet: keep
   // them off the stack (locals stay under 256 bytes).
   freeink::ui::ButtonProps stepProps_;
   freeink::ui::ListProps listProps_;
   freeink::ui::Rect pageIndicatorRect_{};
+  void drawMarkedRows(UiScreen& screen, const freeink::ui::Rect& listRect, int16_t rowH, int16_t rowGap, int windowCount);
+  void drawChoices(UiScreen& screen, const freeink::ui::Rect& listRect, int16_t rowH, int16_t rowGap, int windowCount);
 };

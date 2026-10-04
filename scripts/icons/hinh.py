@@ -251,6 +251,89 @@ def _(g):
     g.rpoly((9, 4.5), (16.5, 12), (9, 19.5), r=BO_VUA)
 
 
+@reg('dau_tich', 'Dau tich')
+def _(g):
+    g.rpoly((4.5, 12.5), (9.5, 17.5), (19.5, 6.5), r=BO_VUA)
+
+
+# Text panel values, drawn as a row of icons (reader toolbar, Text): alignment, line spacing, drop cap.
+def _dong(g, *spans, y0=5, buoc=5):
+    for i, (a, b) in enumerate(spans):
+        g.line((a, y0 + i * buoc), (b, y0 + i * buoc))
+
+
+@reg('can_deu', 'Can deu hai ben')
+def _(g):
+    _dong(g, (3, 21), (3, 21), (3, 21), (3, 14))
+
+
+@reg('can_trai', 'Can trai')
+def _(g):
+    _dong(g, (3, 21), (3, 15), (3, 19), (3, 12))
+
+
+@reg('can_giua', 'Can giua')
+def _(g):
+    _dong(g, (3, 21), (6, 18), (4, 20), (8, 16))
+
+
+@reg('can_phai', 'Can phai')
+def _(g):
+    _dong(g, (3, 21), (9, 21), (5, 21), (12, 21))
+
+
+@reg('can_sach', 'Kieu sach: deu hai ben, thut dau dong')
+def _(g):
+    _dong(g, (8, 21), (3, 21), (3, 21), (3, 14))
+
+
+def _gian(g, buoc):
+    for k in (-1, 0, 1):
+        g.line((4, 12 + k * buoc), (20, 12 + k * buoc))
+
+
+@reg('gian_1', 'Gian dong sieu hep')
+def _(g):
+    _gian(g, 3)
+
+
+@reg('gian_2', 'Gian dong hep')
+def _(g):
+    _gian(g, 4.5)
+
+
+@reg('gian_3', 'Gian dong mac dinh')
+def _(g):
+    _gian(g, 6)
+
+
+@reg('gian_4', 'Gian dong rong')
+def _(g):
+    _gian(g, 7.5)
+
+
+@reg('gian_5', 'Gian dong sieu rong')
+def _(g):
+    _gian(g, 9)
+
+
+@reg('hoa_tat', 'Chu lon dau chuong: tat')
+def _(g):
+    _dong(g, (3, 21), (3, 21), (3, 21), (3, 21))
+
+
+@reg('hoa_vua', 'Chu lon dau chuong: hai dong')
+def _(g):
+    g.rrect(3, 3, 9.5, 11.5, r=BO_VUA, fill=True)
+    _dong(g, (13, 21), (13, 21), (3, 21), (3, 21))
+
+
+@reg('hoa_lon', 'Chu lon dau chuong: ba dong')
+def _(g):
+    g.rrect(3, 3, 11, 16.5, r=BO_VUA, fill=True)
+    _dong(g, (14.5, 21), (14.5, 21), (14.5, 21), (3, 21))
+
+
 @reg('trang_khuyet', 'Mat trang (man ngu), sung tron')
 def _(g):
     k = 2.4                                    # co vao k roi no ra k: hai sung thanh cung ban kinh k

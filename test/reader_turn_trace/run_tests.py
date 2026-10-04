@@ -81,7 +81,8 @@ guard = re.search(r"(?m)^  const bool turnGuardActive = RenderLock::peek\(\) \|\
 drain_start = re.search(r"(?m)^  if \(pendingManualTurn != 0 && !turnGuardActive.*\{$", epub).start()
 drain = "void EpubReaderActivity::drainManual() {\n" + guard + "\n" + block(epub, drain_start) + "\n}"
 manual_end = epub.index("  if (pageTurn(!prevPageTriggered)) requestUpdate();", drain_start)
-manual_start = epub.rfind("  if (!section) {", drain_start, manual_end)
+manual_matches = list(re.finditer(r"(?m)^  if \(!section(?: && !xemTruoc)?\) \{", epub[drain_start:manual_end]))
+manual_start = drain_start + manual_matches[-1].start()
 manual_slice = epub[manual_start:manual_end + len("  if (pageTurn(!prevPageTriggered)) requestUpdate();")]
 manual = ("void EpubReaderActivity::manualInput(bool prevTriggered, bool prevPageTriggered, "
           "bool touchTriggered, bool fromTilt) {\n"

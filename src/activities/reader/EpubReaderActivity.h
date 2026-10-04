@@ -17,7 +17,9 @@
 #include "ProgressMapper.h"
 #include "QuoteStore.h"
 #include "ReaderActivity.h"
+#include "ReaderFontChon.h"
 #include "ReaderToolbarUi.h"
+#include "ReaderTextRelayout.h"
 #include "components/OptionPopup.h"
 
 class EpubReaderActivity final : public ReaderActivity {
@@ -174,10 +176,28 @@ class EpubReaderActivity final : public ReaderActivity {
   // overlay, letting panel->toolbar steps restore the page without a full
   // re-render. Discarded on close / whenever the page under the overlay changes.
   bool overlayPageStored = false;
+  bool bwUnderSheet = false;
   // True while a deferred overlay chrome refresh (pushOverlayRefresh) may still
   // be running on the panel. settleOverlayRefresh() must run before the
   // framebuffer is touched or another differential refresh is pushed.
   bool overlayRefreshPending = false;
+  // Text panel changes are applied to the page at once but written to settings.json when the
+  // panel closes (flushTextSettings), not at every step: a card write is 200-400 ms on the X3.
+  bool textSettingsDirty = false;
+  std::atomic<uint8_t> textCloseFrame{0};
+  void markClosedTextFrameUpLocked();
+  void flushTextSettingsLocked();
+  void flushTextSettings();
+  // The Font row opens a second level inside the Text panel: the same sheet lists the families
+  // (the 2 built in, then the card's), the page above is the preview. Back returns to the rows.
+  bool fontLevel = false;
+  std::vector<fontdoc::Ho> fontFamilies;
+  void enterFontLevel();
+  void leaveFontLevel();
+  void chooseFontFamily(int index);
+  // The panel has closed (or the reader is leaving): save what it changed, drop its second level.
+  void panelClosed(bool leaving = false, bool frameUp = false);
+  void panelClosedLocked(bool leaving, bool frameUp);
   void pushOverlayRefresh();
   void settleOverlayRefresh();
   int autoTurnOption = 0;  // current auto page-turn rate index (More panel)
@@ -307,6 +327,21 @@ class EpubReaderActivity final : public ReaderActivity {
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action, const MenuResult& menu);
   // Vo hieu section de dan lai trang voi chu moi, giu dung doan dang doc. GOI DUOI RenderLock.
   void danLaiTrang();
+  // Text settings changed: the page on screen is laid out alone from the nearest resume point
+  // (Section::previewPage) and the chapter is laid out again behind it between key presses
+  // (catchUpTick). One request is kept, the latest: a change drops the layout of the one before.
+  bool xemTruoc = false;              // section is null and the page shown is a preview
+  uint32_t xemTruocDich = 0;          // the old page's first character: the same for every change
+  std::unique_ptr<Section> catchUp;   // the chapter laid out under the latest settings
+  int8_t xemTruocLat = 0;             // a turn asked from the preview, applied once the chapter lands
+  bool xemTruocTrenMan = false;       // the chapter landed while the preview stayed on screen
+  unsigned long xemTruocInputMs = 0;  // catch-up waits for a pause in the presses
+  static constexpr unsigned long CATCH_UP_QUIET_MS = TextRelayoutQuiet::kQuietMs;
+  static constexpr uint8_t CATCH_UP_MAX_FAILS = 3;
+  uint8_t catchUpFails = 0;
+  void dropCatchUp();
+  void catchUpTick(bool inputThisPass);
+  bool renderPreview(int marginTop, int marginRight, int marginBottom, int marginLeft);
   bool docCoChuMotNac(int huong) override;
   // Live section position, or the values cached before a child screen
   // released the section.
@@ -325,12 +360,16 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string textRowName(int row) const;
   std::string textRowValue(int row) const;
   void showTextRowPopup(int row);
-  // Persist + re-paginate + re-render under the open panel (live preview).
+  void cycleTextRow(int row);
+  void chooseTextValue(int row, int place);
+  // Mark for saving + re-paginate + re-render under the open panel (live preview).
   void applyTextSettingLive();
   void paintOverlayPopup();
-  // Persist the reader text settings, (re)load the selected SD font, and
+  // Mark the reader text settings for saving, (re)load the selected SD font, and
   // re-paginate the current chapter so changes apply without re-opening the book.
   void applyReaderTextSettings();
+  void applyReaderTextSettingsLocked();
+  void invalidateTextSettingsLocked();
   // More panel rows.
   void buildMoreActions();
   std::string moreRowName(int row) const;

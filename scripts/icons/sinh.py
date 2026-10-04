@@ -52,7 +52,12 @@ SETS = [
     ('search32.h', 32, 2, [('search', 'tim')]),
     ('readerToolbarIcons.h', 24, 2, [
         ('reader_contents', 'muc_luc'), ('reader_text', 'chu'), ('reader_more', 'them'),
-        ('reader_back', 'lui'), ('reader_next', 'toi')]),
+        ('reader_back', 'lui'), ('reader_next', 'toi'), ('reader_tick', 'dau_tich'),
+        ('reader_align_justify', 'can_deu'), ('reader_align_left', 'can_trai'), ('reader_align_center', 'can_giua'),
+        ('reader_align_right', 'can_phai'), ('reader_align_book', 'can_sach'),
+        ('reader_spacing_1', 'gian_1'), ('reader_spacing_2', 'gian_2'), ('reader_spacing_3', 'gian_3'),
+        ('reader_spacing_4', 'gian_4'), ('reader_spacing_5', 'gian_5'),
+        ('reader_dropcap_off', 'hoa_tat'), ('reader_dropcap_default', 'hoa_vua'), ('reader_dropcap_large', 'hoa_lon')]),
 ]
 
 

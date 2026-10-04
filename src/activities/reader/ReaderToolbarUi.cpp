@@ -21,6 +21,7 @@ constexpr fui::ActionId ACTION_PREV = 3;     // scrub row: previous chapter
 constexpr fui::ActionId ACTION_NEXT = 4;     // scrub row: next chapter
 constexpr fui::ActionId ACTION_SCRUB = 5;    // progress track: dragPermille along the book
 constexpr fui::ActionId ACTION_ROW = 6;      // panel list row, value = row index
+constexpr fui::ActionId ACTION_CHOICE = 7;   // a value icon on a row, value = row * kChoiceStride + place
 
 // Scrub row: two small round-cornered chapter buttons flanking a thin progress
 // track with a round knob -- the reading page's chrome is light, so the
@@ -48,9 +49,6 @@ void ReaderToolbarUi::begin() {
   resetUi();
   pending_ = Routed{};
   nav_.reset();
-  for (fui::ActionId id = ACTION_DISMISS; id <= ACTION_ROW; ++id) {
-    app.on(id, &ReaderToolbarUi::onAction, this);
-  }
   app.setScreen(&ReaderToolbarUi::screenFn, this);
 }
 
@@ -66,6 +64,7 @@ ReaderToolbarUi::Routed ReaderToolbarUi::route(const MappedInputManager& input) 
   pending_ = Routed{};
   // routeHeld: the scrub track is a drag target, so held frames must reach it.
   const auto touch = routeTouch(input, false, /*routeHeld=*/true);
+  if (touch.event) onAction(touch.event, this);
   pending_.routed = touch.routed;
   pending_.x = touch.snap.touchX;
   pending_.y = touch.snap.touchY;
@@ -81,7 +80,7 @@ void ReaderToolbarUi::onAction(const fui::ActionEvent& event, void* user) {
   Routed& out = self->pending_;
   out.value = event.value;
   out.permille = event.dragPermille;
-  if (event.action >= ACTION_DISMISS && event.action <= ACTION_ROW) out.event = static_cast<Event>(event.action);
+  if (event.action >= ACTION_DISMISS && event.action <= ACTION_CHOICE) out.event = static_cast<Event>(event.action);
   if (out.event == Event::Scrub && event.dragPermille < 0) out.event = Event::None;
   // A handled action repaints through the reader's own fast path, not through
   // app.invalidate(): the page underneath is the reader's to draw.
@@ -211,6 +210,72 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   buildToolRow(screen, fui::LayoutAnchor::Top, 0);  // content band already spaceLg-inset
 }
 
+// The row in use: its name in bold where the list left it blank, and a tick at the row end.
+void ReaderToolbarUi::drawMarkedRows(UiScreen& screen, const fui::Rect& listRect, const int16_t rowH,
+                                     const int16_t rowGap, const int windowCount) {
+  const auto& tokens = screen.theme();
+  fui::TextStyle bold = tokens.bodyText;
+  bold.bold = true;
+  const int16_t lineH = screen.target().lineHeight(bold.font);
+  const fui::BitmapRef tick = fui::bitmapFromIcon(icon_reader_tick_24);
+  for (int i = 0; i < windowCount; ++i) {
+    if (!markedLabels_[i]) continue;
+    const int16_t y = static_cast<int16_t>(listRect.y + i * (rowH + rowGap));
+    const int16_t left = static_cast<int16_t>(listRect.x + listProps_.rowInset + listProps_.sidePadding);
+    const int16_t right = static_cast<int16_t>(listRect.right() - listProps_.rowInset - listProps_.sidePadding);
+    screen.target().text(fui::Rect{left, static_cast<int16_t>(y + (rowH - lineH) / 2),
+                                   static_cast<int16_t>(right - left - 24 - tokens.spaceSm), lineH},
+                         windowLabels_[i].c_str(), bold);
+    screen.target().bitmap(fui::Rect{static_cast<int16_t>(right - 24), static_cast<int16_t>(y + (rowH - 24) / 2), 24, 24},
+                           tick, fui::BitmapMode::Center);
+  }
+}
+
+// A row's few values as icons along its right side, the one in use in an outline pill. Registered
+// after the list, so on touch boards a tap on an icon is the value and not the row.
+void ReaderToolbarUi::drawChoices(UiScreen& screen, const fui::Rect& listRect, const int16_t rowH,
+                                  const int16_t rowGap, const int windowCount) {
+  if (!model_.choiceCount || !model_.choiceIcon) return;
+  const auto& tokens = screen.theme();
+  for (int i = 0; i < windowCount; ++i) {
+    const int index = nav_.top + i;
+    const int count = std::min(model_.choiceCount(index), kChoiceStride);
+    if (count <= 0) continue;
+    const int inUse = model_.choiceInUse ? model_.choiceInUse(index) : -1;
+    const int16_t y = static_cast<int16_t>(listRect.y + i * (rowH + rowGap));
+    const int16_t right = static_cast<int16_t>(listRect.right() - listProps_.rowInset - listProps_.sidePadding);
+    int16_t kChoiceW = 48;
+    if (model_.denseRows) {
+      const int16_t labelLeft = static_cast<int16_t>(listRect.x + listProps_.rowInset + listProps_.sidePadding);
+      fui::TextStyle labelStyle = listProps_.labelText;
+      labelStyle.maxLines = 1;
+      const int16_t labelWidth = screen.target().measureText(labelStyle.font, windowLabels_[i].c_str(), labelStyle).width;
+      const int16_t labelH = screen.target().lineHeight(labelStyle.font);
+      kChoiceW = static_cast<int16_t>(std::clamp((right - labelLeft - labelWidth - tokens.spaceSm) / count, 32, 48));
+      // The renderer truncates long labels to this band, including larger UI text and other locales.
+      screen.target().text(fui::Rect{labelLeft, static_cast<int16_t>(y + (rowH - labelH) / 2),
+                                     static_cast<int16_t>(right - count * kChoiceW - tokens.spaceSm - labelLeft), labelH},
+                           windowLabels_[i].c_str(), labelStyle);
+    }
+    const int16_t left = static_cast<int16_t>(right - count * kChoiceW);
+    for (int k = 0; k < count; ++k) {
+      const fui::Rect cell{static_cast<int16_t>(left + k * kChoiceW), y, kChoiceW, rowH};
+      if (k == inUse) {
+        screen.target().stroke(cell.inset(fui::Insets{4, 3, 4, 3}), fui::Paint::solid(fui::Color::Black), 2,
+                               tokens.controlRadius);
+      }
+      if (const freeink::Icon* icon = model_.choiceIcon(index, k)) {
+        screen.target().bitmap(fui::Rect{static_cast<int16_t>(cell.x + (kChoiceW - 24) / 2),
+                                         static_cast<int16_t>(y + (rowH - 24) / 2), 24, 24},
+                               fui::bitmapFromIcon(*icon), fui::BitmapMode::Center);
+      }
+      if (!model_.denseRows) {
+        screen.frame().hit(cell, ACTION_CHOICE, static_cast<int16_t>(index * kChoiceStride + k), fui::InputTouch);
+      }
+    }
+  }
+}
+
 void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   const auto& tokens = screen.theme();
   const fui::Rect safe = screen.frame().safeRect();
@@ -245,6 +310,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   int sheetRows = (target - chrome + rowGap) / rowStride;
   if (static_cast<int16_t>(chrome + (sheetRows + 1) * rowStride - rowGap) <= cap) ++sheetRows;
   if (model_.itemCount > 0 && sheetRows > model_.itemCount) sheetRows = model_.itemCount;
+  if (model_.sheetRows > 0) sheetRows = model_.sheetRows;
   if (sheetRows < 1) sheetRows = 1;
   screen.sheet(sheetProps, static_cast<int16_t>(chrome + sheetRows * rowStride - rowGap));
   // No blanket side inset: Screen::list() draws in the content band, and the
@@ -272,11 +338,11 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   listProps_.inputMask = fui::InputTouch;  // physical buttons stay with the reader
   listProps_.rowHeight = rowH;
   listProps_.rowGap = rowGap;
-  // The label column starts flush with the panel title (no list-side padding
-  // on top of the sheet's own inset). Body-size text: small reads condensed
-  // and the taller row doubles as the tap target.
+  // Body-size text: small reads condensed and the taller row doubles as the
+  // tap target. A little air inside the row so the cursor's outline does not
+  // cut the first letter, the value or the chevron/tick at the row end.
   listProps_.labelText = tokens.bodyText;
-  listProps_.sidePadding = 0;
+  listProps_.sidePadding = tokens.spaceMd;
   // The list band spans the sheet's full width -- the scroll track hugs the
   // panel edge (theme bezel inset included) exactly like a full-screen list.
   // rowInset pulls the rows back to the title's spaceLg alignment.
@@ -296,9 +362,12 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   for (int i = 0; i < windowCount; ++i) {
     const int index = nav_.top + i;
     windowLabels_[i] = model_.rowText ? model_.rowText(index) : std::string();
+    markedLabels_[i] = model_.rowMarked && model_.rowMarked(index);
     windowValues_[i] = model_.rowValue ? model_.rowValue(index) : std::string();
+    const bool choices = model_.choiceCount && model_.choiceCount(index) > 0;
+    if (choices) windowValues_[i].clear();  // drawn by drawChoices
     fui::ListItem item;
-    item.label = windowLabels_[i].c_str();
+    item.label = markedLabels_[i] || (choices && model_.denseRows) ? "" : windowLabels_[i].c_str();
     item.value = windowValues_[i].empty() ? nullptr : windowValues_[i].c_str();
     item.actionValue = static_cast<int16_t>(index);
     windowItems_[i] = item;
@@ -310,6 +379,8 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   listProps_.valueText.bold = true;
   if (count > 0) {
     screen.list(listProps_);
+    drawMarkedRows(screen, listRect, rowH, rowGap, windowCount);
+    drawChoices(screen, listRect, rowH, rowGap, windowCount);
   }
 
   const int pageRows = nav_.pageRows();

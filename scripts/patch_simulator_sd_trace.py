@@ -29,6 +29,8 @@ EDITS = (
      "bool HalStorage::rename(const char *oldPath, const char *newPath) {\n  simSdTrace(\"rename\", oldPath, newPath);\n"),
     ("  file = open(path, O_RDWR | O_CREAT | O_TRUNC);\n",
      "  simSdTrace(\"write\", path);\n  file = open(path, O_RDWR | O_CREAT | O_TRUNC);\n"),
+    ("bool HalStorage::writeFile(const char *path, const String &content) {\n",
+     "bool HalStorage::writeFile(const char *path, const String &content) {\n  simSdTrace(\"write\", path);\n"),
 )
 
 if path.exists():

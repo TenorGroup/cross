@@ -100,6 +100,8 @@ struct EpubReaderActivity:ReaderActivity{
  std::atomic<bool>deferredClearPending{false};uint32_t lastPageTurnTime=0;int currentSpineIndex=0,nextPageNumber=0,pendingPageJump=0;
  int openedMenus=0,pendingManualTurn=0;void openOverlay(Overlay o){overlay=o;openedMenus++;}void openReaderMenu(){openedMenus++;}
  void loop()override;bool usesToolbarMenu()const{return true;}void handleOverlayInput(){}void discardOverlayPage(){}
+ bool xemTruoc=false,xemTruocTrenMan=false;int xemTruocLat=0;void panelClosedLocked(bool,bool) {}
+  void panelClosed(bool leaving=false,bool frameUp=false){}
  bool latTrangThat(bool)override;bool isAtEndOfBook()const override;void onReturnFromEndOfBook()override;
 #if NEW_PIPELINE
  bool externalPageTurnAllowed()const override;bool manualPageTurnReady()const override;

@@ -5,12 +5,6 @@ import hashlib
 import base64
 
 SRC_DIR = "src"
-# Shared web locale helper. Each page carries one TENOR_WEB_I18N marker inside
-# its script block; the helper and its vi/en-AU/zh-Hans catalogues live in a
-# single include so the firmware ships exactly one implementation.
-WEB_I18N_TOKEN = "/* TENOR_WEB_I18N */"
-WEB_I18N_INCLUDE = "src/network/html/WebI18n.inc"
-
 HTML_EXT = ".html"
 JS_EXT = ".js"
 CSS_EXT = ".css"
@@ -60,54 +54,6 @@ def sanitize_identifier(name: str) -> str:
         sanitized = f"_{sanitized}"
     return sanitized
 
-def fail(message):
-    """Abort the build with an actionable message.
-
-    A page that references the shared locale include must never be emitted with
-    its marker left in place: the browser would receive broken JavaScript and
-    the failure would only appear on the device.
-    """
-    raise SystemExit(f"build_html.py: {message}")
-
-
-def read_web_i18n():
-    if not os.path.isfile(WEB_I18N_INCLUDE):
-        fail(
-            f"{WEB_I18N_INCLUDE} is missing but a page references the shared locale "
-            f"include ({WEB_I18N_TOKEN}); restore that file before building."
-        )
-    with open(WEB_I18N_INCLUDE, encoding="utf-8") as include_file:
-        include = include_file.read()
-    if not include.strip():
-        fail(f"{WEB_I18N_INCLUDE} is empty; the page would receive broken locale JavaScript.")
-    if WEB_I18N_TOKEN in include:
-        fail(f"{WEB_I18N_INCLUDE} contains {WEB_I18N_TOKEN}; the include cannot reference itself.")
-    if "</script" in include.lower():
-        fail(
-            f"{WEB_I18N_INCLUDE} contains a </script> tag; it is injected inside a script "
-            "block and would break out of it."
-        )
-    return include
-
-
-def inject_web_i18n(content, file_path):
-    """Substitute the shared locale include at the page's TENOR_WEB_I18N marker."""
-    if WEB_I18N_TOKEN not in content:
-        return content
-    marker_index = content.index(WEB_I18N_TOKEN)
-    open_tag = content.rfind("<script", 0, marker_index)
-    close_tag = content.rfind("</script", 0, marker_index)
-    if open_tag == -1 or close_tag > open_tag:
-        fail(
-            f"{file_path} places {WEB_I18N_TOKEN} outside a <script> block; "
-            "the include is JavaScript."
-        )
-    content = content.replace(WEB_I18N_TOKEN, read_web_i18n())
-    if WEB_I18N_TOKEN in content:
-        fail(f"{file_path} still contains {WEB_I18N_TOKEN} after substitution.")
-    return content
-
-
 for root, _, files in os.walk(SRC_DIR):
     for file in files:
         if file.endswith((HTML_EXT, JS_EXT, CSS_EXT)):
@@ -125,7 +71,8 @@ for root, _, files in os.walk(SRC_DIR):
                 with open("src/network/html/assets/Geist.woff2", "rb") as font:
                     data = base64.b64encode(font.read()).decode("ascii")
                 content = content.replace("/* TENOR_WEB_FONT */", "@font-face{font-family:Geist;src:url(data:font/woff2;base64," + data + ") format('woff2');font-weight:400 700;font-display:swap}")
-            content = inject_web_i18n(content, file_path)
+            if "/* TENOR_WEB_I18N */" in content:
+                raise SystemExit(f"{file_path}: load /js/web-i18n.js before the page script")
             # Only minify HTML files; JS files are typically pre-minified (e.g., jszip.min.js)
             is_html = file.endswith(HTML_EXT)
             if is_html:
@@ -137,6 +84,8 @@ for root, _, files in os.walk(SRC_DIR):
             # mtime=0 keeps the output reproducible across builds
             # IMPORTANT: we don't use brotli because Firefox doesn't support brotli with insecured context (only supported on HTTPS)
             compressed = gzip.compress(processed.encode('utf-8'), compresslevel=9, mtime=0)
+            # Python 3.11/3.12 delegate mtime=0 to zlib, which writes a platform OS byte.
+            compressed = compressed[:9] + b'\xff' + compressed[10:]
 
             # Create valid C identifier from filename
             # Use appropriate suffix based on file type

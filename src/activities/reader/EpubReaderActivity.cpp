@@ -56,6 +56,7 @@
 #include "components/HomeExcerptStyle.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/icons/readerToolbarIcons.h"
 #include "fontIds.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
@@ -1074,6 +1075,10 @@ void EpubReaderActivity::loop() {
   // waits for a quiet pass.
   const bool inputThisPass =
       mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() || pendingManualTurn != 0 || pendingExternalTurn != 0;
+  if (!inputThisPass && textCloseFrame.load(std::memory_order_acquire) == 2) {
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired() && textCloseFrame.load(std::memory_order_acquire) == 2) flushTextSettingsLocked();
+  }
   // USB power came or went while reading: the battery follows it now instead of on the next turn.
   if (gpio.wasUsbStateChanged()) statusBarStale = true;
   if (statusBarStale && !inputThisPass && readingPageVisible() && !paintDropped) {
@@ -1245,6 +1250,8 @@ void EpubReaderActivity::loop() {
     }
   }
 
+  catchUpTick(inputThisPass);
+
   if (nextChapterDue(inputThisPass)) prepareNextChapter();
 
   if (!inputThisPass && indexStepDue()) runIndexStep();
@@ -1313,8 +1320,12 @@ void EpubReaderActivity::loop() {
     }
     // The style was switched off while an overlay was up (Settings reached via
     // the More panel); fall back to the clean page.
-    overlay = Overlay::None;
-    discardOverlayPage();
+    {
+      RenderLock lock;
+      overlay = Overlay::None;
+      discardOverlayPage();
+      panelClosedLocked(false, false);
+    }
     requestUpdate();
     return;
   }
@@ -1344,7 +1355,7 @@ void EpubReaderActivity::loop() {
       return;
     }
 
-    if (!section) {
+    if (!section && !xemTruoc) {  // a preview page turns like a laid-out one (latTrangThat)
       requestUpdate();
       return;
     }
@@ -1537,7 +1548,7 @@ void EpubReaderActivity::loop() {
     }
   }
   if (pendingManualTurn != 0 && !turnGuardActive && !pageAwaitsLayout()) {
-    if (!section) {
+    if (!section && !xemTruoc) {
       pendingManualTurn = 0;
 #ifdef TENOR_TURN_TRACE
       dropTurnTrace(pendingManualTurnTrace, "no_section");
@@ -1558,7 +1569,7 @@ void EpubReaderActivity::loop() {
     while (remaining != 0 && !isAtEndOfBook() && pageTurn(forward)) {
       changed = true;
       remaining -= forward ? 1 : -1;
-      if (pageAwaitsLayout()) break;
+      if (pageAwaitsLayout() || !section) break;
     }
     // A turn into the next chapter leaves no section until it is laid out, and a turn onto a
     // page not laid out yet waits for the paint that lays it out; the rest waits for either.
@@ -1651,7 +1662,7 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  if (!section) {
+  if (!section && !xemTruoc) {
     requestUpdate();
     return;
   }
@@ -2105,7 +2116,21 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
 }
 
 bool EpubReaderActivity::latTrangThat(bool isForwardTurn) {
-  if (!section) return false;
+  if (!section) {
+    if (!xemTruoc) return false;
+    xemTruocLat = isForwardTurn ? 1 : -1;  // the paint lays the chapter out to the preview, then turns
+    deferredClearPending.store(true, std::memory_order_release);
+    lastPageTurnTime = millis();
+    return true;
+  }
+  if (xemTruocTrenMan) {
+    xemTruocTrenMan = false;
+    if (!isForwardTurn) {  // the landed page holds the lines above the preview
+      deferredClearPending.store(true, std::memory_order_release);
+      lastPageTurnTime = millis();
+      return true;
+    }
+  }
 #ifdef TENOR_UI_ACCEPTANCE
   LOG_DBG("ERS_TRACE", "PAGE_TURN_ATTEMPT t=%lu spine=%d page=%d count=%u dir=%u building=%u heap=%u largest=%u",
           millis(), currentSpineIndex, section->currentPage, static_cast<unsigned>(section->pageCount),
@@ -2342,7 +2367,7 @@ bool EpubReaderActivity::backgroundBuildWanted() const {
 
 bool EpubReaderActivity::skipLoopDelay() {
   // The main loop holds the render lock while querying this hint.
-  return backgroundBuildCanTick() && backgroundBuildWanted();
+  return (backgroundBuildCanTick() && backgroundBuildWanted()) || (xemTruoc && catchUp && catchUp->isBuilding());
 }
 
 #ifdef TENOR_TURN_TRACE
@@ -2459,6 +2484,24 @@ void EpubReaderActivity::renderBook() {
   buildViewportHeight = viewportHeight;
 
   const ReaderRenderSpec renderSpec = SETTINGS.readerRenderSpec(viewportWidth, viewportHeight);
+
+  if (xemTruoc && !section) {
+    const bool samePlace = currentSpineIndex == cachedSpineIndex && pendingAnchor.empty() && !pendingPageJump &&
+                           !pendingPercentJump && !pendingOffsetJump;
+    if (samePlace && xemTruocLat == 0 &&
+        renderPreview(orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft))
+      return;
+    // A turn from the preview, a jump, or no preview to draw: the chapter is laid out here. What the
+    // catch-up laid out is kept as a partial (the destructor suspends it) and the build below resumes it.
+    if (samePlace) {
+      catchUp.reset();
+      pendingOffsetJump = xemTruocDich;  // honoured over a page number, also by a cache already laid out
+    } else {
+      dropCatchUp();
+      xemTruocLat = 0;
+    }
+    xemTruoc = false;
+  }
 
   if (!section) {
 #ifdef TENOR_PRESS_PROBE
@@ -2657,6 +2700,10 @@ void EpubReaderActivity::renderBook() {
         clearDeferredReposition();
       }
     }
+    // A turn from the preview: back is the page holding its first character (the lines above it),
+    // forward the page after.
+    if (xemTruocLat > 0) section->currentPage++;
+    xemTruocLat = 0;
     if (explicitOffsetJump) {
       clearDeferredReposition();
     }
@@ -2922,6 +2969,7 @@ void EpubReaderActivity::renderBook() {
     if (coverThumbs && static_cast<CoverThumbCapture&>(*coverThumbs).write()) pendingThumbCount = 0;
     // A laid-out page reached the panel: the open may now be committed (onTick, main task).
     markPageRendered();
+    xemTruocTrenMan = false;
   }
 
   if (pageBeingLeft()) {
@@ -3204,6 +3252,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool cleanImageBasePending = manualRefreshPending || pagesUntilFullRefresh <= 1;
   const bool needsTextGrayscale = SETTINGS.textAntiAliasing;
   const bool needsAnyGrayscale = needsTextGrayscale || pageHasImages;
+  bool grayscaleCompleted = !needsAnyGrayscale;
   const bool absoluteImageGrayscale = pageHasImages && !gpio.deviceIsX3() &&
                                       display.getController() == HalDisplay::Controller::UC8279 &&
                                       renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
@@ -3265,6 +3314,16 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       paintDropped.store(true, std::memory_order_release);
       return;
     }
+  }
+
+  // A text page under an open toolbar sheet stays black and white in the framebuffer: renderBook() draws
+  // the sheet over it and pushes both in one fast refresh, and the gray pass runs once, when the sheet
+  // closes. Pushing the page first made the page show without the sheet, then the sheet again.
+  if (!pageHasImages && overlay != Overlay::None && usesToolbarMenu()) {
+    forcedRefreshPending = manualRefreshPending;
+    bwUnderSheet = true;
+    LOG_DBG("ERS", "Page under the sheet: B/W only, the sheet pushes it");
+    return;
   }
 
   if (absoluteImageGrayscale) {
@@ -3379,6 +3438,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
       renderer.setRenderMode(GfxRenderer::BW);
       renderer.displayGrayBuffer();
+      grayscaleCompleted = true;
       const auto tGrayDisplay = millis();
 #ifdef TENOR_TURN_TRACE
       tracePaint("GRAY_DONE", "buffered");
@@ -3461,6 +3521,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
           return;
         }
         renderer.displayGrayBuffer();
+        grayscaleCompleted = true;
         const auto tGrayDisplay = millis();
 #ifdef TENOR_TURN_TRACE
         tracePaint("GRAY_DONE", "strip");
@@ -3506,6 +3567,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       const auto tGrayMsb = millis();
 
       renderer.displayGrayBuffer();
+      grayscaleCompleted = true;
       const auto tGrayDisplay = millis();
 #ifdef TENOR_TURN_TRACE
       tracePaint("GRAY_DONE", "full_planes");
@@ -3530,6 +3592,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
               tBwRender - tPrewarm, tDisplay - tBwRender, tEnd - t0);
     }
   }
+  if (grayscaleCompleted) markClosedTextFrameUpLocked();
 }
 
 // Caller owns RenderLock, on the main loop: the battery reads the fuel gauge, which only that task
@@ -3571,8 +3634,11 @@ void EpubReaderActivity::renderStatusBar() const {
     drawPreviewFooter();
     return;
   }
-  const int currentPage = section ? section->currentPage + 1 : 1;
-  const float pageCount = section ? section->estimatedTotalPages() : 1;
+  // A preview keeps the numbers of the layout it replaces until the chapter is laid out again.
+  const int currentPage = section ? section->currentPage + 1 : xemTruoc ? std::max(0, nextPageNumber) + 1 : 1;
+  const float pageCount = section    ? section->estimatedTotalPages()
+                          : xemTruoc ? std::max(currentPage, cachedChapterTotalPageCount)
+                                     : 1;
   const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
   // Unknown (-1, not drawn) while the book still builds its chapter sizes.
   const float bookProgress = !epub                   ? 0
@@ -3629,7 +3695,55 @@ constexpr int kTextRowCount = static_cast<int>(std::size(kTextRowNames));
 static_assert(std::size(kSpacingIds) == readerSpacing::LEVEL_COUNT, "line spacing labels");
 static_assert(std::size(kAlignIds) == CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, "alignment labels");
 static_assert(std::size(kDropCapIds) == readerSpacing::DROP_CAP_MODE_COUNT, "drop cap labels");
+// The Text rows drawn as a row of values: line spacing (tightest first, so its places are the levels
+// in that order), alignment and drop cap (places = the stored values).
+constexpr uint8_t kSpacingByPlace[] = {1, 2, 0, 3, 4};
+constexpr const freeink::Icon* kSpacingIcons[] = {&icon_reader_spacing_1_24, &icon_reader_spacing_2_24,
+                                                  &icon_reader_spacing_3_24, &icon_reader_spacing_4_24,
+                                                  &icon_reader_spacing_5_24};
+constexpr const freeink::Icon* kAlignIcons[] = {&icon_reader_align_justify_24, &icon_reader_align_left_24,
+                                                &icon_reader_align_center_24, &icon_reader_align_right_24,
+                                                &icon_reader_align_book_24};
+constexpr const freeink::Icon* kDropCapIcons[] = {&icon_reader_dropcap_off_24, &icon_reader_dropcap_default_24,
+                                                  &icon_reader_dropcap_large_24};
+static_assert(std::size(kSpacingByPlace) == readerSpacing::LEVEL_COUNT, "line spacing places");
+static_assert(std::size(kAlignIcons) == CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, "alignment icons");
+static_assert(std::size(kDropCapIcons) == readerSpacing::DROP_CAP_MODE_COUNT, "drop cap icons");
+int textChoiceCount(const int row) {
+  return row == 2 ? readerSpacing::LEVEL_COUNT
+         : row == 3 ? CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT
+         : row == 4 ? readerSpacing::DROP_CAP_MODE_COUNT
+                    : 0;
+}
+int textChoiceInUse(const int row) {
+  if (row == 2) {
+    const uint8_t level = readerSpacing::clampLevel(SETTINGS.lineSpacing);
+    for (int k = 0; k < static_cast<int>(std::size(kSpacingByPlace)); ++k)
+      if (kSpacingByPlace[k] == level) return k;
+    return -1;
+  }
+  if (row == 3) return SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT;
+  if (row == 4) return readerSpacing::clampDropCapMode(SETTINGS.dropCapMode);
+  return -1;
+}
+const freeink::Icon* textChoiceIcon(const int row, const int place) {
+  if (place < 0 || place >= textChoiceCount(row)) return nullptr;
+  return row == 2 ? kSpacingIcons[place] : row == 3 ? kAlignIcons[place] : kDropCapIcons[place];
+}
 }  // namespace
+
+// A value tapped on its row: straight to it, whatever was in use (the page is the preview).
+void EpubReaderActivity::chooseTextValue(const int row, const int place) {
+  {
+    RenderLock lock;
+    if (place < 0 || place >= textChoiceCount(row) || place == textChoiceInUse(row)) return;
+    if (row == 2) SETTINGS.lineSpacing = kSpacingByPlace[place];
+    if (row == 3) SETTINGS.paragraphAlignment = static_cast<uint8_t>(place);
+    if (row == 4) SETTINGS.dropCapMode = static_cast<uint8_t>(place);
+    invalidateTextSettingsLocked();
+  }
+  applyTextSettingLive();
+}
 
 bool EpubReaderActivity::readingPageVisible() const { return section && overlay == Overlay::None && !isAtEndOfBook(); }
 
@@ -3656,9 +3770,9 @@ std::string EpubReaderActivity::textRowName(int row) const {
 std::string EpubReaderActivity::textRowValue(int row) const {
   static constexpr StrId kFamily[] = {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS};
   switch (row) {
-    case 0:
-      if (SETTINGS.sdFontFamilyName[0] != '\0') return SETTINGS.sdFontFamilyName;
-      return I18N.get(kFamily[SETTINGS.fontFamily % CrossPointSettings::FONT_FAMILY_COUNT]);
+    case 0:  // opens the family list: the value, then the chevron
+      if (SETTINGS.sdFontFamilyName[0] != '\0') return std::string(SETTINGS.sdFontFamilyName) + "  >";
+      return std::string(I18N.get(kFamily[SETTINGS.fontFamily % CrossPointSettings::FONT_FAMILY_COUNT])) + "  >";
     case 1:
       return std::to_string(SETTINGS.fontPointSize) + " pt";
     case 2:
@@ -3672,16 +3786,44 @@ std::string EpubReaderActivity::textRowValue(int row) const {
   }
 }
 
-// Live apply: persist, re-paginate, and let renderBook() redraw the page with
+// Live apply: re-paginate, and let renderBook() redraw the page with
 // the open panel back on top -- the book itself is the preview.
 void EpubReaderActivity::applyTextSettingLive() {
-  applyReaderTextSettings();
-  discardOverlayPage();  // the stored page is laid out with the old settings
   requestUpdate();
 }
 
 // Settings-style option pickers for the Text panel's enum rows. Every
 // selection applies immediately to the page under the sheet.
+void EpubReaderActivity::cycleTextRow(const int row) {
+  {
+    RenderLock lock;  // the render task must not paint a page laid out with the old value in the new one
+    switch (row) {
+      case 1: {
+        // The point sizes the active family actually ships.
+        const auto sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
+        if (sizes.size() < 2) return;
+        SETTINGS.fontPointSize = sizes[(fontdoc::coDangDung(sizes) + 1) % sizes.size()];
+        break;
+      }
+      case 2:
+        SETTINGS.lineSpacing =
+            static_cast<uint8_t>((readerSpacing::clampLevel(SETTINGS.lineSpacing) + 1) % readerSpacing::LEVEL_COUNT);
+        break;
+      case 3:
+        SETTINGS.paragraphAlignment =
+            static_cast<uint8_t>((SETTINGS.paragraphAlignment + 1) % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT);
+        break;
+      case 4:
+        SETTINGS.dropCapMode = static_cast<uint8_t>((SETTINGS.dropCapMode + 1) % readerSpacing::DROP_CAP_MODE_COUNT);
+        break;
+      default:
+        return;
+    }
+    applyReaderTextSettingsLocked();
+  }
+  applyTextSettingLive();
+}
+
 void EpubReaderActivity::showTextRowPopup(const int row) {
   switch (row) {
     case 1: {
@@ -3698,7 +3840,11 @@ void EpubReaderActivity::showTextRowPopup(const int row) {
       }
       overlayPopup.show(StrId::STR_FONT_SIZE, labels, curIdx, [this, sizes](int idx) {
         if (idx < 0 || idx >= static_cast<int>(sizes.size())) return;
-        SETTINGS.fontPointSize = sizes[idx];
+        {
+          RenderLock lock;
+          SETTINGS.fontPointSize = sizes[idx];
+          applyReaderTextSettingsLocked();
+        }
         applyTextSettingLive();
       });
       break;
@@ -3706,14 +3852,22 @@ void EpubReaderActivity::showTextRowPopup(const int row) {
     case 2:
       overlayPopup.show(StrId::STR_LINE_SPACING, kSpacingIds, static_cast<int>(std::size(kSpacingIds)),
                         readerSpacing::clampLevel(SETTINGS.lineSpacing), [this](int idx) {
-                          SETTINGS.lineSpacing = static_cast<uint8_t>(idx);
+                          {
+                            RenderLock lock;
+                            SETTINGS.lineSpacing = static_cast<uint8_t>(idx);
+                            invalidateTextSettingsLocked();
+                          }
                           applyTextSettingLive();
                         });
       break;
     case 3:
       overlayPopup.show(StrId::STR_PARA_ALIGNMENT, kAlignIds, static_cast<int>(std::size(kAlignIds)),
                         SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, [this](int idx) {
-                          SETTINGS.paragraphAlignment = static_cast<uint8_t>(idx);
+                          {
+                            RenderLock lock;
+                            SETTINGS.paragraphAlignment = static_cast<uint8_t>(idx);
+                            invalidateTextSettingsLocked();
+                          }
                           applyTextSettingLive();
                         });
       break;
@@ -3757,7 +3911,13 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   if (target == Overlay::Contents && waitsForIndex()) return;
   mappedInput.resetHomeButtonInput();
   const Overlay previous = overlay;
+  if (previous == Overlay::None) {
+    bwUnderSheet = false;
+    textCloseFrame.store(0, std::memory_order_relaxed);
+  }
   overlay = target;
+  fontLevel = false;
+  fontFamilies.clear();
   if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
   if (previous == Overlay::None) toolbarUi->begin();
   // Buttons show a cursor from the start; touch boards only once a button moves it.
@@ -3828,25 +3988,28 @@ void EpubReaderActivity::openOverlay(Overlay target) {
 // re-render, no flash; Xteink boards re-render to restore the AA planes.
 void EpubReaderActivity::closeOverlayToPage() {
   mappedInput.resetHomeButtonInput();
-  overlay = Overlay::None;
-  overlayPopup.dismiss();  // an option picker cannot outlive its panel
-  toolbarUi.reset();       // ~1 KB of interaction table + props, only needed while open
-  if (!xteinkClassPanel() && overlayPageStored) {
-    RenderLock lock;  // the render task shares the framebuffer
+  bool frameUp = false;
+  {
+    RenderLock lock;
+    overlay = Overlay::None;
+    overlayPopup.dismiss();
+    toolbarUi.reset();
     settleOverlayRefresh();
-    // No baseline resync: the glass shows the chrome, and erasing it needs
-    // the differential to keep diffing against the last pushed frame.
-    renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
-    overlayPageStored = false;
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
-    return;
+    if (!bwUnderSheet && !xteinkClassPanel() && overlayPageStored) {
+      renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
+      overlayPageStored = false;
+      renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+      frameUp = true;
+    } else {
+      discardOverlayPage();
+    }
+    panelClosedLocked(/*leaving=*/false, frameUp);
   }
-  discardOverlayPage();
-  requestUpdate();  // redraw the clean page
+  if (!frameUp) requestUpdate();
 }
 
 void EpubReaderActivity::renderOverlay() {
-  if (!epub || !section || !toolbarUi) return;
+  if (!epub || (!section && !xemTruoc) || !toolbarUi) return;
 
   ReaderToolbarUi::Model model;
   // The toolbar's tool pill is the button-navigation cursor: tap-first (same
@@ -3858,11 +4021,12 @@ void EpubReaderActivity::renderOverlay() {
 
   if (overlay == Overlay::Toolbar) {
     chapterTitle = currentChapterTitle();
-    const int pageCount = section->estimatedTotalPages();
-    const float chapterProgress =
-        pageCount > 0 ? static_cast<float>(section->currentPage + 1) / static_cast<float>(pageCount) : 0.0f;
+    // A preview shows the numbers of the layout it replaces (see renderStatusBar).
+    const int page = section ? section->currentPage : std::max(0, nextPageNumber);
+    const int pageCount = section ? section->estimatedTotalPages() : std::max(page + 1, cachedChapterTotalPageCount);
+    const float chapterProgress = pageCount > 0 ? static_cast<float>(page + 1) / static_cast<float>(pageCount) : 0.0f;
     const float bookProgress = epub->calculateProgress(currentSpineIndex, chapterProgress);
-    pageInfo = std::to_string(section->currentPage + 1) + "/" + std::to_string(pageCount) + "   " +
+    pageInfo = std::to_string(page + 1) + "/" + std::to_string(pageCount) + "   " +
                std::to_string(clampPercent(static_cast<int>(bookProgress * 100.0f + 0.5f))) + "%";
     model.chapterTitle = chapterTitle.c_str();
     model.pageInfo = pageInfo.c_str();
@@ -3889,10 +4053,21 @@ void EpubReaderActivity::renderOverlay() {
       return std::string(depth, ' ') + item.title;
     };
   } else if (overlay == Overlay::Text) {
-    model.panelTitle = tr(STR_TOOL_TEXT);
-    model.itemCount = kTextRowCount;
-    model.rowText = [this](int i) { return textRowName(i); };
-    model.rowValue = [this](int i) { return textRowValue(i); };
+    if (fontLevel) {
+      model.panelTitle = tr(STR_FONT);
+      model.itemCount = static_cast<int>(fontFamilies.size());
+      model.sheetRows = kTextRowCount;  // the frame of the Text rows
+      model.rowText = [this](int i) { return i < static_cast<int>(fontFamilies.size()) ? fontFamilies[i].ten : ""; };
+      model.rowMarked = [this](int i) { return i == fontdoc::hoDangDung(&sdFontSystem.registry()); };
+    } else {
+      model.panelTitle = tr(STR_TOOL_TEXT);
+      model.itemCount = kTextRowCount;
+      model.rowText = [this](int i) { return textRowName(i); };
+      model.rowValue = [this](int i) { return textRowValue(i); };
+      model.choiceCount = textChoiceCount;
+      model.choiceInUse = textChoiceInUse;
+      model.choiceIcon = textChoiceIcon;
+    }
   } else {
     model.panelTitle = tr(STR_TOOL_MORE);
     model.itemCount = static_cast<int>(moreItems.size());
@@ -4013,7 +4188,7 @@ void EpubReaderActivity::handleOverlayInput() {
 
   // --- Panels (Contents / Text / More) ---
   const int count = overlay == Overlay::Contents ? epub->getTocItemsCount()
-                    : overlay == Overlay::Text   ? kTextRowCount
+                    : overlay == Overlay::Text   ? (fontLevel ? static_cast<int>(fontFamilies.size()) : kTextRowCount)
                                                  : static_cast<int>(moreItems.size());
   const int pageRows = std::max(1, toolbarUi->visibleRows());
 
@@ -4022,33 +4197,12 @@ void EpubReaderActivity::handleOverlayInput() {
   const auto activateRow = [this, count, &fastRedraw] {
     if (panelIndex < 0 || panelIndex >= count) return;
     if (overlay == Overlay::Text) {
-      if (panelIndex == 0) {
-        // Full font picker (built-in + SD fonts, live preview) -- the same
-        // screen Settings uses; a popup cannot scroll a long font list.
-        overlay = Overlay::None;
-        overlayPopup.dismiss();
-        discardOverlayPage();
-        pauseKeepsStatsInRam = true;
-        {
-          RenderLock lock;  // the picker paints the framebuffer next
-          settleOverlayRefresh();
-        }
-        startActivityForResult(std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(),
-                                                                      TextSettingsActivity::Tab::Family),
-                               [this](const ActivityResult&) {
-                                 applyReaderTextSettings();
-                                 overlay = Overlay::Text;  // back to the Text panel
-                                 panelIndex = 0;
-                                 if (toolbarUi) toolbarUi->begin();  // the picker drew its own FUI screen
-                                 requestUpdate();                    // re-render page + Text panel
-                               });
-      } else if (panelIndex == 4) {
-        // Drop cap cycles Off -> Default -> Large and applies live.
-        SETTINGS.dropCapMode = static_cast<uint8_t>((SETTINGS.dropCapMode + 1) % readerSpacing::DROP_CAP_MODE_COUNT);
-        applyTextSettingLive();
+      if (fontLevel) {
+        chooseFontFamily(panelIndex);
+      } else if (panelIndex == 0) {
+        enterFontLevel();
       } else {
-        // Enum rows open the Settings-style option picker.
-        showTextRowPopup(panelIndex);
+        cycleTextRow(panelIndex);
       }
     } else if (overlay == Overlay::Contents) {
       const auto item = epub->getTocItem(panelIndex);
@@ -4060,8 +4214,12 @@ void EpubReaderActivity::handleOverlayInput() {
         nextPageNumber = 0;
         section.reset();
       }
-      overlay = Overlay::None;
-      discardOverlayPage();
+      {
+        RenderLock lock;
+        overlay = Overlay::None;
+        discardOverlayPage();
+        panelClosedLocked(false, false);
+      }
       requestUpdate();
     } else if (overlay == Overlay::More) {
       activateMoreRow(panelIndex);
@@ -4071,6 +4229,10 @@ void EpubReaderActivity::handleOverlayInput() {
   // Steps up to the toolbar -- the Back button and a tap on the page above
   // the sheet.
   const auto dismissPanel = [this, &fastRedraw] {
+    if (overlay == Overlay::Text && fontLevel) {
+      leaveFontLevel();  // one level up: the Text rows
+      return;
+    }
     overlay = Overlay::Toolbar;
     // Restore the snapshotted page under the toolbar instead of re-rendering
     // it (2+ refreshes -> one FAST). Re-store right away so another panel
@@ -4117,6 +4279,11 @@ void EpubReaderActivity::handleOverlayInput() {
       }
       return;
     }
+    case ReaderToolbarUi::Event::Choice:
+      if (overlay == Overlay::Text && !fontLevel) {
+        chooseTextValue(routed.value / ReaderToolbarUi::kChoiceStride, routed.value % ReaderToolbarUi::kChoiceStride);
+      }
+      return;
     case ReaderToolbarUi::Event::Row:
       // A tap on the right-edge strip pages the sheet instead (upper half =
       // previous page, lower half = next): swipes are unreliable on etched
@@ -4201,11 +4368,112 @@ void EpubReaderActivity::paintOverlayPopup() {
 void EpubReaderActivity::danLaiTrang() {
   if (section) {
     rememberCurrentContentOffset();
+    // The preview stayed on screen after the chapter landed: its first character, not the start of
+    // the landed page, so the place does not creep back with every change.
+    if (xemTruocTrenMan) cachedVisibleTextOffset = xemTruocDich;
     cachedSpineIndex = currentSpineIndex;
     cachedChapterTotalPageCount = section->pageCount;
     nextPageNumber = section->currentPage;
+    section->abandonBuild();  // laid out under the settings just replaced: nothing to keep
   }
+  dropCatchUp();  // the layout of the previous request, if any, goes the same way
   section.reset();  // dan lai trang voi chu moi o lan ve tiep theo
+  xemTruocTrenMan = false;
+  xemTruocLat = 0;
+  catchUpFails = 0;
+  xemTruoc = cachedVisibleTextOffset.has_value() && cachedSpineIndex == currentSpineIndex;
+  if (xemTruoc) xemTruocDich = *cachedVisibleTextOffset;
+  xemTruocInputMs = millis();
+}
+
+void EpubReaderActivity::dropCatchUp() {
+  if (!catchUp) return;
+  catchUp->abandonBuild();  // removes its .part files; the committed cache is untouched
+  catchUp.reset();
+}
+
+// Loop task, between key presses: lays the chapter out under the current settings ~20 ms at a time
+// until it reaches the page being read, then puts it in place without drawing anything.
+void EpubReaderActivity::catchUpTick(const bool inputThisPass) {
+  if (inputThisPass) xemTruocInputMs = millis();
+  // With the radio holding the heap the background stays parked as every background build does
+  // (deferBackgroundBuildForBle): the first turn lays the chapter out instead.
+  if (!xemTruoc || section || !epub || buildViewportWidth == 0 || millis() - xemTruocInputMs < CATCH_UP_QUIET_MS ||
+      catchUpFails >= CATCH_UP_MAX_FAILS || deferBackgroundBuildForBle() || bleturner::status().starting)
+    return;
+  RenderLock lock(RenderLock::TryTake{});
+  if (!lock.acquired()) return;
+  HalPowerManager::Lock fullSpeed;  // the loop runs down-clocked after 3 s without a key
+  const ReaderRenderSpec spec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
+  const uint32_t target = xemTruocDich;
+  if (!catchUp) {
+    if (ESP.getFreeHeap() < BACKGROUND_BUILD_MIN_FREE_HEAP || ESP.getMaxAllocHeap() < BACKGROUND_BUILD_MIN_MAX_ALLOC) {
+      xemTruocInputMs = millis();
+      return;
+    }
+    catchUp.reset(new Section(epub, currentSpineIndex, renderer, preview));
+    const bool loaded = catchUp->loadSectionFile(spec);
+    if (!(loaded && (!catchUp->isPartial() || catchUp->coversVisibleTextOffset(target))) && !catchUp->startBuild(spec)) {
+      catchUp.reset();
+      ++catchUpFails;  // a few tries, then the next turn lays it out itself
+      xemTruocInputMs = millis();
+      return;
+    }
+  } else if (catchUp->isBuilding() && !catchUp->buildSomeMore(1)) {
+    if (!catchUp->buildStarved()) catchUp.reset();
+    ++catchUpFails;
+    xemTruocInputMs = millis();
+    return;
+  }
+  if (catchUp->isBuilding() && !catchUp->buildReachedVisibleTextOffset(target)) return;
+  const auto page = catchUp->getPageForVisibleTextOffset(target);
+  if (!page) {
+    dropCatchUp();
+    return;
+  }
+  catchUp->currentPage = *page;
+  if (catchUp->isBuilding()) catchUp->parkBuild();  // hands the parser's heap back; resumes on demand
+  section = std::move(catchUp);
+  nextPageNumber = section->currentPage;
+  xemTruoc = false;
+  xemTruocTrenMan = true;
+  LOG_INF("ERS", "CATCH_UP landed spine=%d page=%d pages=%u", currentSpineIndex, section->currentPage,
+          static_cast<unsigned>(section->pageCount));
+}
+
+// Draws the preview page (and the open panel over it) in place of a laid-out one. False when there is
+// no preview to draw: the caller lays the chapter out as before.
+bool EpubReaderActivity::renderPreview(const int marginTop, const int marginRight, const int marginBottom,
+                                      const int marginLeft) {
+  if (catchUp && catchUp->isBuilding() && !catchUp->isBuildParked() && !catchUp->parkBuild()) dropCatchUp();
+  const ReaderRenderSpec spec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
+  std::unique_ptr<Page> page;
+  {
+    Section chapter(epub, currentSpineIndex, renderer, preview);
+    page = chapter.previewPage(spec, xemTruocDich);
+  }
+  if (!page) return false;
+  settleBuildPopup();
+  renderer.clearScreen();
+  currentPageVisibleOffset = page->visibleTextOffset;
+  currentPageFootnotes = std::move(page->footnotes);
+  currentPageLinks = std::move(page->links);
+  currentPageLinkMarginLeft = marginLeft;
+  currentPageLinkMarginTop = marginTop;
+  discardOverlayPage();
+  paintDropped.store(false, std::memory_order_relaxed);
+  renderContents(std::move(page), marginTop, marginRight, marginBottom, marginLeft);
+  if (paintDropped) return true;
+  lastRenderCompleteMs = millis();
+  if (overlay != Overlay::None && usesToolbarMenu()) {
+    overlayPageStored = renderer.storeBwBuffer();
+    renderOverlay();
+    if (overlayPopup.isActive()) overlayPopup.render(renderer);
+    pushOverlayRefresh();
+  }
+  pageFrameUsb = gpio.isUsbConnected();
+  pageFrameShown = true;
+  return true;
 }
 
 bool EpubReaderActivity::docCoChuMotNac(const int huong) {
@@ -4225,20 +4493,113 @@ bool EpubReaderActivity::docCoChuMotNac(const int huong) {
   return true;
 }
 
-void EpubReaderActivity::applyReaderTextSettings() {
-  SETTINGS.saveToFile();
-  // (Re)load or unload the selected SD-card font for the current family/size.
-  // The reader otherwise only loads SD fonts on book open, so without this an
-  // in-reader font change wouldn't take effect until re-opening the book.
-  RenderLock lock;
-  sdFontSystem.ensureLoaded(renderer);
-  if (section) {
-    rememberCurrentContentOffset();
-    cachedSpineIndex = currentSpineIndex;
-    cachedChapterTotalPageCount = section->pageCount;
-    nextPageNumber = section->currentPage;
+// Font level of the Text panel. Both steps change one level inside the same sheet: the old chrome is
+// wiped back to the clean page (no refresh) and the new level is pushed in one fast refresh.
+void EpubReaderActivity::enterFontLevel() {
+  fontFamilies = fontdoc::danhSachHo(&sdFontSystem.registry());
+  fontLevel = true;
+  panelIndex = fontdoc::hoDangDung(&sdFontSystem.registry());
+  toolbarUi->nav().reset(panelIndex);
+  if (!panelCursorShown) toolbarUi->nav().top = panelIndex;
+  RenderLock lock;  // the render task shares the framebuffer
+  settleOverlayRefresh();
+  if (overlayPageStored) {
+    renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
+    overlayPageStored = renderer.storeBwBuffer();
   }
-  section.reset();  // force re-pagination with the new settings
+  renderOverlay();
+  pushOverlayRefresh();
+}
+
+void EpubReaderActivity::leaveFontLevel() {
+  RenderLock lock;  // the render task may be reading the family list
+  fontLevel = false;
+  fontFamilies.clear();
+  fontFamilies.shrink_to_fit();
+  panelIndex = 0;
+  toolbarUi->nav().reset();
+  settleOverlayRefresh();
+  if (overlayPageStored) {
+    renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
+    overlayPageStored = renderer.storeBwBuffer();
+  }
+  renderOverlay();
+  pushOverlayRefresh();
+}
+
+// A family picked in the list: the page above the sheet is laid out again in it (the preview) and
+// the sheet stays on the list.
+void EpubReaderActivity::chooseFontFamily(const int index) {
+  bool changed = false;
+  {
+    RenderLock lock;
+    if (index == fontdoc::hoDangDung(&sdFontSystem.registry())) return;
+    changed = fontdoc::apHo(renderer, &sdFontSystem.registry(), index);
+    if (changed) invalidateTextSettingsLocked();
+  }
+  if (changed) applyTextSettingLive();
+}
+
+void EpubReaderActivity::panelClosed(const bool leaving, const bool frameUp) {
+  RenderLock lock;
+  panelClosedLocked(leaving, frameUp);
+}
+
+void EpubReaderActivity::flushTextSettings() {
+  RenderLock lock;
+  flushTextSettingsLocked();
+}
+
+void EpubReaderActivity::invalidateTextSettingsLocked() {
+  textCloseFrame.store(0, std::memory_order_relaxed);
+  textSettingsDirty = true;
+  danLaiTrang();
+  discardOverlayPage();
+}
+
+void EpubReaderActivity::applyReaderTextSettingsLocked() {
+  sdFontSystem.ensureLoaded(renderer);
+  invalidateTextSettingsLocked();
+}
+
+void EpubReaderActivity::markClosedTextFrameUpLocked() {
+  if (overlay != Overlay::None || paintDropped) return;
+  uint8_t waiting = 1;
+  textCloseFrame.compare_exchange_strong(waiting, 2, std::memory_order_release, std::memory_order_relaxed);
+}
+
+void EpubReaderActivity::flushTextSettingsLocked() {
+  textCloseFrame.store(0, std::memory_order_relaxed);
+  if (!textSettingsDirty) return;
+  textSettingsDirty = false;
+  SETTINGS.saveToFile();
+}
+
+void EpubReaderActivity::panelClosedLocked(const bool leaving, const bool frameUp) {
+  fontLevel = false;
+  if (leaving) {
+    textCloseFrame.store(0, std::memory_order_relaxed);
+    if (textSettingsDirty) {
+      textSettingsDirty = false;
+      if (activityManager.isSleepTransition())
+        SETTINGS.saveToFile();
+      else
+        activityManager.deferWrite([] { SETTINGS.saveToFile(); });
+    }
+    return;
+  }
+  fontFamilies.clear();
+  fontFamilies.shrink_to_fit();
+  sdFontSystem.releaseCatalog();
+  if (frameUp)
+    flushTextSettingsLocked();
+  else if (textSettingsDirty)
+    textCloseFrame.store(1, std::memory_order_relaxed);
+}
+
+void EpubReaderActivity::applyReaderTextSettings() {
+  RenderLock lock;
+  applyReaderTextSettingsLocked();
 }
 
 // The More panel carries everything the classic list menu offers except the
@@ -4332,7 +4693,11 @@ void EpubReaderActivity::activateMoreRow(int row) {
       break;
   }
   // Leaf actions open their own screen / perform the action; close the overlay first.
-  overlay = Overlay::None;
+  {
+    RenderLock lock;
+    overlay = Overlay::None;
+    panelClosedLocked(true, false);
+  }
   if (action == MA::GO_TO_PERCENT && overlayPageStored) {
     // The percent dialog is a popup over the current frame: wipe the toolbar
     // chrome back to the clean page first so the dialog draws over the page,
@@ -4668,6 +5033,8 @@ void EpubReaderActivity::onPause() {
 }
 
 void EpubReaderActivity::onExit() {
+  panelClosedLocked(true, false);  // ActivityManager owns RenderLock during exit
+  dropCatchUp();  // the next open lays the chapter out from its saved place
 #ifdef TENOR_TURN_TRACE
   [[maybe_unused]] const unsigned long exitStarted = millis();
 #endif

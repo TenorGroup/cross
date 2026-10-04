@@ -195,6 +195,14 @@ class ChapterHtmlSlimParser {
   // Set by requestCheckpoint(): the next eligible block close stops the parse, page finished or not.
   bool checkpointWanted_ = false;
   bool replayingCheckpoint_ = false;
+  // One page from the middle of a chapter (restoreResumePoint): lines starting at or before the
+  // text offset below are held, not placed, and only the last of them (the line holding the offset)
+  // opens the page. Pages finished while holding are dropped.
+  bool holdingLines_ = false;
+  uint32_t holdUntil_ = 0;
+  std::unique_ptr<TextBlock> heldLine_;
+  uint32_t heldLineOffset_ = 0;
+  bool placeHeldLine();
   bool xmlSuspended_ = false;
   bool finalBuffer_ = false;
   uint32_t checkpointOffset_ = 0;
@@ -290,6 +298,22 @@ class ChapterHtmlSlimParser {
   ParseStatus parseStep();
   bool finishParse();  // flush the trailing page and tear down; fails if any build stage failed
   void abortParse();   // tear down without flushing (error / abandon)
+
+  // A safe place to start laying out from in the middle of the chapter: after a closed block, at a
+  // literal closing tag, with nothing pending. The same conditions as a checkpoint, minus "a page has
+  // just finished", and none of it depends on the font, size, spacing or alignment, so a point taken
+  // under one layout opens the chapter under any other. prefix: the open ancestors to replay.
+  struct ResumePoint {
+    uint32_t offset;
+    uint32_t visible;
+    int imageCounter;
+  };
+  std::function<void(const ResumePoint&, const std::string& prefix, uint16_t prologBytes)> resumePointFn;
+  // Call on a newly begun parser: replays prolog + prefix, seeks the file to the point and lays out
+  // from there; the first page starts at the line holding text offset `pageStart` (see holdingLines_).
+  bool restoreResumePoint(const std::string& prologAndPrefix, const ResumePoint& point, uint32_t pageStart);
+  // From the chapter start, with the first page at the line holding `pageStart` (0 = as laid out).
+  void startPageAt(uint32_t pageStart);
 
   bool hasCheckpoint() const;
   // Checkpoints normally come only after a step that finished a page. A caller that must park the

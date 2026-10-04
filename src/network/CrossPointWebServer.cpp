@@ -36,6 +36,7 @@
 #include "html/HomePageHtml.generated.h"
 #include "html/SettingsPageHtml.generated.h"
 #include "html/ThemeCss.generated.h"
+#include "html/js/WebI18nJs.generated.h"
 #include "html/js/jszip_minJs.generated.h"
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
@@ -243,6 +244,9 @@ void CrossPointWebServer::begin() {
   });
   server->on("/js/jszip.min.js", HTTP_GET, [this] {
     if (auth.authorize(*server, true, requestLanguage())) handleJszip();
+  });
+  server->on("/js/web-i18n.js", HTTP_GET, [this] {
+    if (auth.authorize(*server, true, requestLanguage())) handleWebI18n();
   });
 
   server->on("/api/status", HTTP_GET, [this] {
@@ -576,6 +580,10 @@ static void sendStaticContent(WebServer* server, const char* data, size_t len, c
 
 void CrossPointWebServer::handleTheme() const {
   sendStaticContent(server.get(), ThemeCss, ThemeCssCompressedSize, ThemeCssETag, "text/css; charset=utf-8");
+}
+
+void CrossPointWebServer::handleWebI18n() const {
+  sendStaticContent(server.get(), WebI18nJs, WebI18nJsCompressedSize, WebI18nJsETag, "application/javascript; charset=utf-8");
 }
 
 void CrossPointWebServer::handleRoot() const {

@@ -155,6 +155,7 @@ add_subdirectory(storage_recovery)
 add_subdirectory(hal_storage_trace)
 
 add_subdirectory(folder_rows)
+add_subdirectory(text_relayout_quiet)
 
 add_subdirectory(history_navigation)
 
