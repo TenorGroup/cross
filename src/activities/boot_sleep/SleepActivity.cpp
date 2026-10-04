@@ -642,7 +642,7 @@ std::string sleepCoverPath(const std::string& bookPath, const bool originalThres
 }  // namespace
 
 void SleepActivity::showEnteringSleep(GfxRenderer& renderer) {
-  const char* text = shell::isUgly() ? tr(STR_UGLY_YAWNING) : tr(STR_ENTERING_SLEEP);
+  const char* text = shell::isUgly() ? ugly::sleepNotice() : tr(STR_ENTERING_SLEEP);
   if (drawSleepPopupPreservingFrame(renderer, text)) {
     LOG_INF("SLP", "Sleep transition notice shown: %s", text);
   }
