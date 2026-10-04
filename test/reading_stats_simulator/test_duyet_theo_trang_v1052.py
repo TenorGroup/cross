@@ -18,21 +18,22 @@ from pathlib import Path
 
 from PIL import Image
 
+from pill_row import pill_band
+
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 PRESS = re.compile(r'\[IN\] press t=(\d+)')
 REFRESH = re.compile(r'^\[(\d+)\] .*from clearScreen to displayBuffer', re.M)
 FILES = 30
 PITCH = 56  # row pitch of the X3 list in px
-LIST_TOP, LIST_BOTTOM = 120, 730  # the tab bar ends at row 112 and its grey ring would pass the solid-black probe
+LIST_TOP, LIST_BOTTOM = 120, 730  # the tab bar ends at row 112 and its grey ring would pass the ring probe
 
 
 def highlight_top(img):
-    """Top y of the inverted (selected) row, found from the solid black block right of the names."""
-    px = img.load()
-    ys = [y for y in range(LIST_TOP, LIST_BOTTOM) if all(px[x, y] < 64 for x in range(330, 360, 6))]
-    assert ys, 'no selected row on screen'
-    return ys[0]
+    """Top y of the selected row: the top line of its black ring (the row is a white pill since 1.0.52)."""
+    band = pill_band(img, LIST_TOP, LIST_BOTTOM)
+    assert band, 'no selected row on screen'
+    return band[0]
 
 
 class DuyetTheoTrangTest(unittest.TestCase):
