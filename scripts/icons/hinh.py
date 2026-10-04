@@ -101,11 +101,17 @@ def _(g):
             r=[BO_VUA, BO_VUA, BO_LOM, BO_LOM, BO_LOM], closed=True)
 
 
-@reg('doc', 'Doc: sach mo')
+@reg('doc', 'Doc: sach mo, hai trang cong doi xung')
 def _(g):
-    g.rpoly((12, 6.5), (21, 4.5), (21, 18.5), (12, 20), (3, 18.5), (3, 4.5),
-            r=[BO_LON, BO_VUA, BO_VUA, BO_LON, BO_VUA, BO_VUA], closed=True)
-    g.line((12, 7.5), (12, 19.5))
+    """Open book: each page's top edge flat, then curving down into the spine, the base folding up at the
+    spine. Only the left page is drawn; the right one is its mirror, pixel for pixel, so the two pages are
+    equal at every size and stroke (a stroke centred on the spine cannot be both odd-wide and symmetric:
+    the spine takes the left stroke's half, mirrored, 4 px at 40 px)."""
+    page = []
+    g.rpoly((12, 8.5), (8.5, 5), (3, 5), (3, 17.5), (9, 17.5), (12, 20.5),
+            r=[BO_LON, BO_LON, BO_VUA, BO_VUA, BO_LON, BO_LON], closed=True, to=page)
+    half = g.n / 2
+    g.ink.append(lambda x, y: any(f(x if x < half else g.n - x, y) for f in page))
 
 
 @reg('cong_cu', 'Cong cu A: luoi 4 o bo')
