@@ -27,7 +27,7 @@ constexpr size_t OBF_KEY_BUF = 64;
 
 // Null-terminated copy into a fixed-size settings field.
 void copyToField(char* dest, const char* src, const size_t maxLen) {
-  strncpy(dest, src, maxLen - 1);
+  if (dest != src) strncpy(dest, src, maxLen - 1);
   dest[maxLen - 1] = '\0';
 }
 
@@ -424,7 +424,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
 
   // SD card font family name - not in SettingsList, load manually
   const char* sfn = doc["sdFontFamilyName"] | "";
-  strncpy(sdFontFamilyName, sfn, sizeof(sdFontFamilyName) - 1);
+  if (sfn != sdFontFamilyName) strncpy(sdFontFamilyName, sfn, sizeof(sdFontFamilyName) - 1);
   sdFontFamilyName[sizeof(sdFontFamilyName) - 1] = '\0';
   if (storedFontFamily == LEGACY_OPENDYSLEXIC && sdFontFamilyName[0] == '\0') {
     fontFamily = NOTOSERIF;

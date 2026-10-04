@@ -14,7 +14,7 @@
 namespace bleturner {
 namespace detail {
 inline void copyField(char* dest, const char* src, const size_t maxLen) {
-  strncpy(dest, src, maxLen - 1);
+  if (dest != src) strncpy(dest, src, maxLen - 1);
   dest[maxLen - 1] = '\0';
 }
 }  // namespace detail

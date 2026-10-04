@@ -1,5 +1,6 @@
 #include <HalDisplay.h>
 #include <HalGPIO.h>
+#include <BlePageTurnerJson.h>
 #include <gtest/gtest.h>
 
 #include <cstdlib>
@@ -880,6 +881,7 @@ TEST(SettingsSaveAllocation, SavingDoesNotAskForOneLargeContiguousBlock) {
   alloctest::recording = true;
   SETTINGS.toJson(doc);
   alloctest::recording = false;
+  RecordProperty("largestAllocationBytes", static_cast<int>(alloctest::largest));
 
   // 8 KB la nguong rong rai: bang cai dat that xin 16.560 byte.
   EXPECT_LT(alloctest::largest, 8u * 1024u)
@@ -896,7 +898,97 @@ TEST(SettingsSaveAllocation, LoadingDoesNotAskForOneLargeContiguousBlock) {
   alloctest::recording = true;
   SETTINGS.fromJson(doc);
   alloctest::recording = false;
+  RecordProperty("largestAllocationBytes", static_cast<int>(alloctest::largest));
 
   EXPECT_LT(alloctest::largest, 8u * 1024u)
       << "doc cai dat xin mot khoi " << alloctest::largest << " byte lien nhau";
+}
+
+namespace {
+void linkedSettingsFieldRoundTrip(const char* key, char (&field)[32]) {
+  const std::string original(field);
+  strcpy(field, "Linked settings value");
+  field[31] = '!';
+  JsonDocument doc;
+  SETTINGS.toJson(doc);
+  // Keep the unrelated font copy owned so each test reaches its selected field.
+  if (&field[0] != SETTINGS.sdFontFamilyName) doc["sdFontFamilyName"] = std::string(SETTINGS.sdFontFamilyName);
+  ASSERT_EQ(doc[key].as<const char*>(), field) << "exercise the real toJson linked string";
+  alloctest::reset();
+  alloctest::recording = true;
+  const bool loaded = SETTINGS.fromJson(doc);
+  alloctest::recording = false;
+  testing::Test::RecordProperty("largestAllocationBytes", static_cast<int>(alloctest::largest));
+  EXPECT_TRUE(loaded);
+  EXPECT_STREQ(field, "Linked settings value");
+  EXPECT_EQ(field[31], '\0');
+  EXPECT_LT(alloctest::largest, 8u * 1024u);
+  strcpy(field, original.c_str());
+}
+}  // namespace
+
+TEST(SettingsStringAlias, FontRoundTripKeepsLinkedName) {
+  linkedSettingsFieldRoundTrip("sdFontFamilyName", SETTINGS.sdFontFamilyName);
+}
+
+TEST(SettingsStringAlias, DictionaryRoundTripKeepsLinkedName) {
+  linkedSettingsFieldRoundTrip("dictionaryName", SETTINGS.dictionaryName);
+}
+
+TEST(SettingsStringAlias, OwnedFontNamesKeepTruncationAndTermination) {
+  const std::string original(SETTINGS.sdFontFamilyName);
+  JsonDocument warm;
+  SETTINGS.toJson(warm);  // Match the existing allocation gate: warm the settings catalog first.
+  size_t largest = 0;
+  for (const std::string name : {std::string(31, 'a'), std::string(40, 'b'), std::string("short"), std::string()}) {
+    JsonDocument doc;
+    doc["sdFontFamilyName"] = name;
+    memset(SETTINGS.sdFontFamilyName, '?', sizeof(SETTINGS.sdFontFamilyName));
+    alloctest::reset();
+    alloctest::recording = true;
+    const bool loaded = SETTINGS.fromJson(doc);
+    alloctest::recording = false;
+    largest = std::max(largest, alloctest::largest);
+    EXPECT_TRUE(loaded);
+    EXPECT_STREQ(SETTINGS.sdFontFamilyName, name.substr(0, 31).c_str());
+    EXPECT_EQ(SETTINGS.sdFontFamilyName[31], '\0');
+    EXPECT_LT(alloctest::largest, 8u * 1024u);
+  }
+  RecordProperty("largestAllocationBytes", static_cast<int>(largest));
+  strcpy(SETTINGS.sdFontFamilyName, original.c_str());
+}
+
+TEST(SettingsStringAlias, BleRoundTripKeepsLinkedPeerAndOwnedLimits) {
+  for (const bool paired : {false, true}) {
+    bleturner::Config config;
+    config.enabled = 1;
+    config.prevKeyUsage = bleturner::kUsageLeft;
+    config.nextKeyUsage = bleturner::kUsageRight;
+    if (paired) {
+      strcpy(config.peerAddr, "00:11:22:33:44:55");
+      strcpy(config.peerName, "Linked remote");
+    }
+    config.peerName[31] = '!';
+    JsonDocument doc;
+    bleturner::writeJson(config, doc);
+    ASSERT_EQ(doc["blePeerAddr"].as<const char*>(), config.peerAddr);
+    ASSERT_EQ(doc["blePeerName"].as<const char*>(), config.peerName);
+    alloctest::reset();
+    alloctest::recording = true;
+    const bool loaded = bleturner::readJson(config, doc);
+    alloctest::recording = false;
+    EXPECT_TRUE(loaded);
+    EXPECT_STREQ(config.peerAddr, paired ? "00:11:22:33:44:55" : "");
+    EXPECT_STREQ(config.peerName, paired ? "Linked remote" : "");
+    EXPECT_EQ(config.peerName[31], '\0');
+    EXPECT_EQ(alloctest::largest, 0u);
+    doc["blePeerAddr"] = std::string(40, 'a');
+    doc["blePeerName"] = std::string(40, 'b');
+    ASSERT_TRUE(bleturner::readJson(config, doc));
+    EXPECT_STREQ(config.peerAddr, std::string(17, 'a').c_str());
+    EXPECT_STREQ(config.peerName, std::string(31, 'b').c_str());
+    EXPECT_EQ(config.enabled, 1);
+    EXPECT_EQ(config.prevKeyUsage, bleturner::kUsageLeft);
+    EXPECT_EQ(config.nextKeyUsage, bleturner::kUsageRight);
+  }
 }
