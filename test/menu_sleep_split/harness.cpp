@@ -99,6 +99,9 @@ int main(int argc, char** argv) {
   CrossPointWebServer web;
   web.handleGetSettings();
   bool ok=true;
+  if (BoardConfig::isX4Pro())
+    ok &= check(SETTINGS.homeButtonDoubleTapAction == static_cast<uint8_t>(HomeButtonAction::Ignore),
+                "touch Home double tap defaults to Ignore so single tap has no double tap wait");
   ok &= check(settingstabs::TAB_COUNT==9,"nine settings tabs");
   ok &= check(static_cast<int>(settingstabs::Tab::OTHER)==6,"old tab IDs preserved");
   SettingsActivity activity;

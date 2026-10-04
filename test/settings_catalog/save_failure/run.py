@@ -81,6 +81,10 @@ for mode in modes:
                   if 'saveFailed' in line and ';' in line), '')
     (output / 'State.inc').write_text(state + '\n')
     source = sources[paths[1]]
+    chrome = (ROOT / 'src/components/TenorMenuChrome.h').read_text()
+    manifest[mode]['boundary:src/components/TenorMenuChrome.h'] = hashlib.sha256(chrome.encode()).hexdigest()
+    start = chrome.index('#if defined(FREEINK_DEVICE_X4PRO)')
+    (output / 'TouchShell.inc').write_text(chrome[start:chrome.index('#endif', start) + len('#endif')] + '\n')
     signatures = ['bool SettingsActivity::handleButtons()',
                   'void SettingsActivity::toggleCurrentSetting()',
                   'void SettingsActivity::noteValue(',

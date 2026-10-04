@@ -208,8 +208,18 @@ int main(int argc, char** argv) {
     const auto labels = std::find_if(activity.displaySettings.begin(), activity.displaySettings.end(), [](const auto& row) {
       return row.valuePtr == &CrossPointSettings::tenorButtonSymbols;
     });
-    ok &= check(labels != activity.displaySettings.end() && labels+1 != activity.displaySettings.end() &&
-                (labels+1)->nameId == StrId::STR_STATUS_CORNERS, "clock adapter immediately follows labels");
+    if (BoardConfig::isX4Pro()) {
+      ok &= check(labels == activity.displaySettings.end() &&
+                  activity.displaySettings.back().nameId == StrId::STR_STATUS_CORNERS,
+                  "touch shell omits button labels and ends with clock placement");
+      for (const auto* rows : {&activity.displaySettings, &activity.readerSettings})
+        for (const auto& row : *rows)
+          ok &= check(row.nameId != StrId::STR_SIDE_ARROW_HINTS && row.nameId != StrId::STR_READER_MENU_STYLE,
+                      "touch shell omits front button rows");
+    } else {
+      ok &= check(labels != activity.displaySettings.end() && labels+1 != activity.displaySettings.end() &&
+                  (labels+1)->nameId == StrId::STR_STATUS_CORNERS, "clock adapter immediately follows labels");
+    }
   }
   allocs = bytes = largest = 0;
   measuring = true;

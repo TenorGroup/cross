@@ -77,6 +77,7 @@ namespace BoardConfig {
 inline bool hasHomeKey() { return false; }
 }
 namespace tenorchrome {
+#include "TouchShell.inc"
 bool enabled() { return false; }
 void drawSiblingDestinations(GfxRenderer&, const char*, const char*) {}
 void drawTip(GfxRenderer&, const char*, int, int = 4) {}
@@ -145,6 +146,7 @@ struct SettingsActivity {
   GfxRenderer renderer;
   MappedInputManager mappedInput;
   PopupBoundary optionPopup;
+  PopupBoundary rowMenu;
 #include "State.inc"
   bool fromHomeGroup = false;
   bool releaseListsForFontDownload_ = false;
