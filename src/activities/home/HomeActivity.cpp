@@ -44,7 +44,9 @@
 #include "components/ReadingStatsFormat.h"
 #include "components/ReadingStatsView.h"
 #include "util/CoverRef.h"
+#include "util/NgayDocXong.h"
 #include "components/HomeStatsNavigation.h"
+#include "components/CompactStats.h"
 #include "components/HomeExcerptStyle.h"
 #include "components/SettledListRender.h"
 #include "components/TenorMenuChrome.h"
@@ -894,6 +896,34 @@ std::string HomeActivity::cardExcerpt(const int index, bool& quoted) {
   return book.excerpt;
 }
 
+// The expected finish as the card's column writes it: a day and month, or the few words that stand in
+// for one. False when the record is too thin to estimate.
+static bool cardFinishText(const BookReadingRecord& record, char* text, const size_t size) {
+  const uint32_t today = ReadingStatsStore::currentDay();
+  const auto u = ngaydocxong::uocTinh(record.progress, record.startProgress, record.days, record.firstDay,
+                                      record.lastDay, today);
+  switch (u.trangThai) {
+    case ngaydocxong::TrangThai::ChuaDu:
+      return false;
+    case ngaydocxong::TrangThai::DaXong:
+      snprintf(text, size, "%s", tr(STR_STATS_FINISHED));
+      return true;
+    case ngaydocxong::TrangThai::QuaXa: {
+      char days[24];
+      snprintf(days, sizeof(days), tr(STR_RECENT_STAT_DAYS_VALUE), static_cast<unsigned>(ngaydocxong::TRAN_NGAY));
+      snprintf(text, size, ">%s", days);
+      return true;
+    }
+    case ngaydocxong::TrangThai::SoNgay:
+      snprintf(text, size, tr(STR_RECENT_STAT_DAYS_VALUE), static_cast<unsigned>(u.soNgay));
+      return true;
+    case ngaydocxong::TrangThai::NgayCuThe:
+      compactstats::dayMonth(u.ngay, text, size);
+      return true;
+  }
+  return false;
+}
+
 void HomeActivity::loadCardStats(const int index) {
   const uint8_t bit = static_cast<uint8_t>(1u << index);
   if (!(cardRecordsRead & bit)) {
@@ -905,8 +935,8 @@ void HomeActivity::loadCardStats(const int index) {
   cardStats.recorded = cardRecordsFound & bit;
   const uint64_t elapsed = static_cast<uint64_t>(record.minutes) * 60000 + record.remainderMs;
   auto& values = cardStats.values;
-  char text[64], duration[48];
-  const bool finish = cardStats.recorded && BookStatsActivity::finishText(record, text, sizeof(text));
+  char text[64];
+  const bool finish = cardStats.recorded && cardFinishText(record, text, sizeof(text));
   if (finish) values[HOME_STAT_FINISH] = text;
   cardStats.rows = homeStatRows(cardStats.recorded, elapsed, record.days, record.firstDay, record.lastDay, finish);
   cardStats.percent = std::min<uint8_t>(record.progress, 100);
@@ -916,13 +946,12 @@ void HomeActivity::loadCardStats(const int index) {
   }
   snprintf(text, sizeof(text), "%u%%", static_cast<unsigned>(cardStats.percent));
   values[HOME_STAT_READ] = text;
-  readingstatsview::duration(elapsed, text, sizeof(text));
+  compactstats::duration(elapsed / 60000, text, sizeof(text));
   values[HOME_STAT_TOTAL] = text;
   if (record.days) {
-    readingstatsview::duration(elapsed / record.days, duration, sizeof(duration));
-    snprintf(text, sizeof(text), tr(STR_RECENT_STAT_PER_DAY), duration);
+    compactstats::duration(elapsed / record.days / 60000, text, sizeof(text));
     values[HOME_STAT_AVERAGE] = text;
-    snprintf(text, sizeof(text), tr(STR_RECENT_STAT_DAYS_VALUE), static_cast<unsigned>(record.days));
+    snprintf(text, sizeof(text), "%u", static_cast<unsigned>(record.days));
     values[HOME_STAT_DAYS] = text;
   }
   snprintf(text, sizeof(text), tr(STR_RECENT_STAT_SPAN_VALUE), static_cast<unsigned>(record.firstDay % 100),
@@ -952,18 +981,25 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card) {
     renderer.drawText(UI_10_FONT_ID, card.statsX, column.labelY[row],
                       renderer.truncatedText(UI_10_FONT_ID, I18N.get(LABELS[row]), width).c_str());
     const char* value = cardStats.values[row].c_str();
-    // Down a size at a time until the value fits, on one baseline; the last size cuts with an ellipsis.
-    int font = UI_12_FONT_ID;
-    for (const int smaller : {UI_10_FONT_ID, SMALL_FONT_ID}) {
-      if (renderer.getTextWidth(font, value, EpdFontFamily::BOLD) <= width) break;
-      font = smaller;
+    // One size for every value: the numbers in bold, their units and signs (h, m, %, /) in the regular
+    // face beside them. The column is sized for the longest value ("999h59m" is 118 px at this size).
+    int x = card.statsX;
+    const int y = column.valueY[row];
+    const char* run = value;
+    while (*run) {
+      const bool number = compactstats::isNumber(*run);
+      const char* end = run;
+      while (*end && compactstats::isNumber(*end) == number) ++end;
+      const std::string part(run, end);
+      const auto style = number ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+      if (x - card.statsX + renderer.getTextWidth(UI_12_FONT_ID, part.c_str(), style) > width) {
+        LOG_INF("HOME", "Card stat cut row=%d", row);
+        break;
+      }
+      renderer.drawText(UI_12_FONT_ID, x, y, part.c_str(), true, style);
+      x += renderer.getTextWidth(UI_12_FONT_ID, part.c_str(), style);
+      run = end;
     }
-    if (renderer.getTextWidth(font, value, EpdFontFamily::BOLD) > width) LOG_INF("HOME", "Card stat cut row=%d", row);
-    renderer.drawText(font, card.statsX,
-                      column.valueY[row] + renderer.getFontAscenderSize(UI_12_FONT_ID) -
-                          renderer.getFontAscenderSize(font),
-                      renderer.truncatedText(font, value, width, EpdFontFamily::BOLD).c_str(), true,
-                      EpdFontFamily::BOLD);
   }
   if (column.barY >= 0 && cardStats.recorded) {
     // A round track with a 2 px edge; the part read is black inside it, round at both ends.

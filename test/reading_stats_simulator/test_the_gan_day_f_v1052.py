@@ -203,6 +203,21 @@ class CardFTest(unittest.TestCase):
             self.assertFalse(BUILD.findall(shot.warm_log), 'the warm visit rebuilt the card')
             self.assertTrue((shot.dark[:740] == shot.warm[:740]).all(), 'cold card and cached card differ')
 
+    def test_values_are_compact_and_one_size(self):
+        # "38%", "27/12", "23h14m", "3h19m", "7": no spaces, no unit words, one size (04/10, founder).
+        # Widths of the value lines in the EN and VI screenshots; the old "23 h 14 min" ran 135 px.
+        want = {4: (50, 72), 6: (82, 104), 8: (68, 90), 10: (10, 22)}   # row index in stat_runs: (min, max) px
+        for name, shot in (('EN', self.en), ('VI', self.vi)):
+            r = self.stat_runs(shot)
+            for index, (low, high) in want.items():
+                top, bottom = r[index]
+                cols = np.where(shot.dark[top:bottom + 1, STATS_X:STATS_RIGHT].any(axis=0))[0]
+                width = int(cols.max() - cols.min()) + 1
+                self.assertTrue(low <= width <= high, (name, index, width))
+            # The same cap height on every value line: digits are one size.
+            heights = [r[i][1] - r[i][0] + 1 for i in (1, 4, 6, 8, 10)]
+            self.assertLessEqual(max(heights) - min(heights), 5, (name, heights))
+
     def test_no_card_snapshot_is_held_in_ram_once_the_card_is_on_the_card(self):
         # X3, 04/10: the 298 x 450 card kept 23.706 B in RAM against 19.215 B, and Home's free heap read
         # 72.280 B against 77.392 B. The snapshot is only a copy of the card file, so it goes after the frame.
