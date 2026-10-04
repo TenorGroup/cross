@@ -47,7 +47,8 @@ with tempfile.TemporaryDirectory() as t:
     # Strokes and pictures are pure arithmetic: the committed files are exactly what the scripts write.
     run(repo / 'scripts/ugly/gen_tables.py', t)
     run(repo / 'scripts/ugly/gen_art.py', t)
-    for name in ('UglyTables.h', 'UglyArt.h') if PYTHON else ():
+    run(repo / 'scripts/ugly/gen_sleep_set.py', t)
+    for name in ('UglyTables.h', 'UglyArt.h', 'UglySleepData.h') if PYTHON else ():
         check((t / name).read_bytes() == (repo / 'src/shells/ugly' / name).read_bytes(),
               name + ' is not what scripts/ugly writes: run the script and commit the result')
     # The font draws with FreeType, so the same script run twice must agree with itself.

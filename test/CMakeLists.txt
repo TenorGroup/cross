@@ -70,6 +70,7 @@ add_subdirectory(content_opf_parser)
 add_subdirectory(chapter_position)
 add_subdirectory(home_button)
 add_subdirectory(ugly_shell)
+add_subdirectory(ugly_sleep_set)
 
 add_subdirectory(inflate_stream)
 add_subdirectory(fs_helpers)
