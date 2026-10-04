@@ -3,10 +3,8 @@
 #include <I18n.h>
 #include <esp_system.h>
 
-#include <cstdio>
 #include <cstdlib>
-#include <memory>
-#include <new>
+#include <utility>
 
 #include "ReadingStatsStore.h"
 #include "UglyInk.h"
@@ -32,17 +30,15 @@ Context gather() {
     const auto& days = READING_STATS.kho.cacNgay();
     c.minutesToday = !days.empty() && days.back().ma == c.day ? static_cast<int>(days.back().phut) : 0;
   }
-  if (!READING_STATS.activeBookPath.empty()) c.percent = READING_STATS.activeBook.progress;
   const auto s = READING_STATS.habitLedger.summarize(ReadingStatsStore::habitStamp().day);
   c.nightReader = s.activeMs >= HABIT_MIN_MS && s.nightMs * 100ull >= s.activeMs * HABIT_PERCENT;
-  c.earlyReader = s.activeMs >= HABIT_MIN_MS && s.earlyMs * 100ull >= s.activeMs * HABIT_PERCENT;
 #ifdef SIMULATOR
-  // The simulator test names the day it wants: day,count,hour,minutes,percent,night,early (a blank keeps the real one).
+  // The simulator test names the day it wants: day,count,hour,minutes,night (a blank keeps the real one).
   if (const char* env = std::getenv("CROSSPOINT_SIM_UGLY_SLEEP")) {
-    long v[7];
-    bool has[7] = {};
+    long v[5];
+    bool has[5] = {};
     const char* p = env;
-    for (int i = 0; i < 7; ++i) {
+    for (int i = 0; i < 5; ++i) {
       char* end = nullptr;
       v[i] = std::strtol(p, &end, 10);
       has[i] = end != p;
@@ -52,22 +48,31 @@ Context gather() {
     if (has[1]) c.count = static_cast<uint32_t>(v[1]);
     if (has[2]) c.hour = static_cast<int>(v[2]);
     if (has[3]) c.minutesToday = static_cast<int>(v[3]);
-    if (has[4]) c.percent = static_cast<int>(v[4]);
-    if (has[5]) c.nightReader = v[5] != 0;
-    if (has[6]) c.earlyReader = v[6] != 0;
+    if (has[4]) c.nightReader = v[4] != 0;
   }
 #endif
   return c;
 }
 
-// The text of the language the screen speaks: Vietnamese, or English for everyone else.
-bool inflateText(std::unique_ptr<uint8_t[]>& out, size_t& size) {
+// A stream inflated into fresh heap, or null (free it). The heap holds it only while the screen is drawn.
+uint8_t* unpack(const uint8_t* packed, const size_t packedSize, const size_t raw) {
+  auto* out = static_cast<uint8_t*>(std::malloc(raw));
+  if (out && !decodeX3BrandPlane(packed, packedSize, out, raw)) std::free(std::exchange(out, nullptr));
+  return out;
+}
+
+// The sentence of a sleep or a wake in the language the screen speaks (Vietnamese, else English), into out.
+// False when the day has none (a wake with no hour) or the text cannot be unpacked.
+bool sentence(const bool wake, const Context& c, char* out) {
   const bool vi = I18N.getLanguage() == Language::VI;
-  const uint8_t* packed = vi ? sleepdata::TEXT_VI : sleepdata::TEXT_EN;
-  const size_t packedSize = vi ? sizeof(sleepdata::TEXT_VI) : sizeof(sleepdata::TEXT_EN);
-  size = vi ? sleepdata::TEXT_VI_RAW : sleepdata::TEXT_EN_RAW;
-  out.reset(new (std::nothrow) uint8_t[size]);
-  return out && decodeX3BrandPlane(packed, packedSize, out.get(), size);
+  const size_t raw = vi ? sleepdata::TEXT_VI_RAW : sleepdata::TEXT_EN_RAW;
+  const uint8_t* text = vi ? unpack(sleepdata::TEXT_VI, sizeof(sleepdata::TEXT_VI), raw) : unpack(sleepdata::TEXT_EN, sizeof(sleepdata::TEXT_EN), raw);
+  if (!text) return false;
+  const auto* block = reinterpret_cast<const char*>(text);
+  const Record r = wake ? wakeLine(block, raw, c) : sleepLine(block, raw, c);
+  if (r.text) copy(r, out, SENTENCE_CAP);
+  std::free(const_cast<uint8_t*>(text));
+  return r.text != nullptr;
 }
 }  // namespace
 
@@ -81,30 +86,21 @@ bool drawScreen(GfxRenderer& r) {
   const int ox = (w - CANVAS_W) / 2, oy = (h - (PICTURE_TOP + CANVAS_H) - 10) / 2 + 10;  // 10 px above, 10 px to spare
   ensureFonts(r);
   r.clearScreen();
-  {
-    std::unique_ptr<uint8_t[]> pictures(new (std::nothrow) uint8_t[sleepdata::PICTURES_RAW]);
-    if (!pictures || !decodeX3BrandPlane(sleepdata::PICTURES, sizeof(sleepdata::PICTURES), pictures.get(), sleepdata::PICTURES_RAW))
-      return false;
-    if (!drawPicture(pictures.get(), sleepdata::PICTURES_RAW, pictureFor(c), ox, oy + PICTURE_TOP,
-                     [&](int x0, int y0, int x1, int y1, int seed, int width) {
-                       line(r, x0, y0, x1, y1, static_cast<uint32_t>(seed), width);
-                     }))
-      return false;
-  }
-  std::unique_ptr<uint8_t[]> text;
-  size_t size = 0;
-  if (!inflateText(text, size)) return false;
-  const std::string sentence = fill(sleepLine(reinterpret_cast<const char*>(text.get()), size, c), c.percent);
-  paragraph(r, Size::S38, 40 + ox, oy + 120, w - 80 - 2 * ox, 58, sentence.c_str());
+  uint8_t* pictures = unpack(sleepdata::PICTURES, sizeof(sleepdata::PICTURES), sleepdata::PICTURES_RAW);
+  if (!pictures) return false;
+  const bool drawn = drawPicture(pictures, sleepdata::PICTURES_RAW, pictureFor(c), ox, oy + PICTURE_TOP,
+                                 [&](int x0, int y0, int x1, int y1, int seed, int width) { line(r, x0, y0, x1, y1, seed, width); });
+  std::free(pictures);
+  char text[SENTENCE_CAP];
+  if (!drawn || !sentence(false, c, text)) return false;
+  paragraph(r, Size::S38, 40 + ox, oy + 120, w - 80 - 2 * ox, 58, text);
   return true;
 }
 
 std::string wakeSentence() {
-  std::unique_ptr<uint8_t[]> text;
-  size_t size = 0;
+  char text[SENTENCE_CAP];
   const Context c = gather();
-  if (c.hour < 0 || !inflateText(text, size)) return {};
-  return fill(wakeLine(reinterpret_cast<const char*>(text.get()), size, c), c.percent);
+  return c.hour >= 0 && sentence(true, c, text) ? text : std::string();
 }
 
 }  // namespace ugly::sleepset

@@ -26,12 +26,10 @@ struct Context {
   uint32_t count = 0;   // sleeps since the board had power
   int hour = -1;        // 0-23
   int minutesToday = -1;  // minutes read today, -1 when unknown
-  int percent = -1;     // progress of the book being read
-  bool nightReader = false, earlyReader = false;
+  bool nightReader = false;
 };
 
-// Line codes in the text stream (see gen_sleep_set.py): a generic sleep line, b nothing read today, c book
-// percent, d night reader, e early reader, f..l the hour of going to sleep, m..u the hour of waking.
+// Line codes in the text stream (see gen_sleep_set.py): a generic sleep line, b nothing read today, d night reader, f..l the hour of going to sleep, m..u the hour of waking.
 inline int sleepBand(const int hour) {
   static constexpr int8_t TOP[7] = {5, 9, 12, 14, 18, 22, 24};
   for (int i = 0; i < 7; ++i)
@@ -88,17 +86,15 @@ inline Record pickFrom(const char* block, const size_t size, const char* codes, 
 }
 
 // The sentence of a sleep: two times in three one that knows something of the day (the hour, nothing read,
-// the book, a habit), otherwise one for anybody. The sentence walks on its own beat, apart from the doodle.
+// the night habit), otherwise one for anybody. The sentence walks on its own beat, apart from the doodle.
 inline Record sleepLine(const char* block, const size_t size, const Context& c) {
   const uint32_t rot = rotation(c);
   const uint32_t select = (rot / PICS) * 13u + rot * 5u;
-  char codes[5];
+  char codes[3];
   int n = 0;
   if (c.hour >= 0) codes[n++] = static_cast<char>('f' + sleepBand(c.hour));
   if (c.day != 0 && c.minutesToday == 0) codes[n++] = 'b';
-  if (c.percent >= 0) codes[n++] = 'c';
   if (c.nightReader) codes[n++] = 'd';
-  if (c.earlyReader) codes[n++] = 'e';
   if (select % 3 != 2) {
     const Record r = pickFrom(block, size, codes, n, select / 3);
     if (r.text) return r;
@@ -109,23 +105,19 @@ inline Record sleepLine(const char* block, const size_t size, const Context& c) 
 // The sentence of a wake: by the hour, the same one all day. Nothing when the clock does not know the hour.
 inline Record wakeLine(const char* block, const size_t size, const Context& c) {
   if (c.hour < 0) return {};
-  char codes[3];
+  char codes[2];
   int n = 0;
   codes[n++] = static_cast<char>('m' + wakeBand(c.hour));
   if (c.nightReader) codes[n++] = 'd';
-  if (c.earlyReader) codes[n++] = 'e';
   return pickFrom(block, size, codes, n, c.day == 0 ? 0u : static_cast<uint32_t>(logic::civilDays(c.day)));
 }
 
-// The record as a sentence: # becomes the percent.
-inline std::string fill(const Record& r, const int percent) {
-  std::string out;
-  for (int i = 0; i < r.len; ++i) {
-    if (r.text[i] == '#')
-      out += std::to_string(percent);
-    else
-      out += r.text[i];
-  }
+// The record as a sentence in `out` (cap bytes, cut to fit, always ended). Returns out.
+inline constexpr size_t SENTENCE_CAP = 128;
+inline char* copy(const Record& r, char* out, const size_t cap) {
+  const size_t n = static_cast<size_t>(r.len) < cap - 1 ? static_cast<size_t>(r.len) : cap - 1;
+  for (size_t i = 0; i < n; ++i) out[i] = r.text[i];
+  out[n] = 0;
   return out;
 }
 
@@ -140,10 +132,10 @@ bool drawPicture(const uint8_t* data, const size_t size, const int pic, const in
     if (at >= size) return false;
     const int strokes = data[at++];
     for (int s = 0; s < strokes; ++s) {
-      if (at + 6 > size) return false;
-      const int n = data[at], width = data[at + 1] >> 6, seed = data[at + 1] & 63;
-      int x = data[at + 2] | (data[at + 3] << 8), y = data[at + 4] | (data[at + 5] << 8);
-      at += 6;
+      if (at + 4 > size) return false;
+      const int n = data[at], width = data[at + 1], seed = (p * 7 + s * 3 + 1) % 64;
+      int x = 2 * data[at + 2], y = 2 * data[at + 3];
+      at += 4;
       if (n < 2 || at + 2 * (n - 1) > size) return false;
       if (p != pic) {
         at += 2 * (n - 1);
@@ -153,7 +145,7 @@ bool drawPicture(const uint8_t* data, const size_t size, const int pic, const in
       int m = 0, idx = 0;
       ex[m] = x, ey[m++] = y;
       for (int i = 1; i < n; ++i) {
-        const int nx = x + static_cast<int8_t>(data[at]), ny = y + static_cast<int8_t>(data[at + 1]);
+        const int nx = x + 2 * static_cast<int8_t>(data[at]), ny = y + 2 * static_cast<int8_t>(data[at + 1]);
         at += 2;
         const int dx = nx - x, dy = ny - y;
         const int k = std::max(1, std::max(std::abs(dx), std::abs(dy)) / STEP);
@@ -166,18 +158,19 @@ bool drawPicture(const uint8_t* data, const size_t size, const int pic, const in
         x = nx, y = ny;
       }
       // Catmull-Rom through the points, 3 steps per segment, in integers (q is 54 times the coordinate).
+      int16_t* const axis[2] = {ex, ey};
       int px = ex[0], py = ey[0];
       for (int i = 0; i + 1 < m; ++i) {
         const int i0 = i > 0 ? i - 1 : 0, i3 = i + 2 < m ? i + 2 : m - 1;
         for (int t = 0; t < 3; ++t) {
-          const auto at1 = [&](const int16_t* v) {
-            const int q = 54 * v[i] + (v[i + 1] - v[i0]) * t * 9 + (2 * v[i0] - 5 * v[i] + 4 * v[i + 1] - v[i3]) * t * t * 3 +
-                          (-v[i0] + 3 * v[i] - 3 * v[i + 1] + v[i3]) * t * t * t;
-            return (q + 27) / 54;
-          };
-          const int cx = at1(ex), cy = at1(ey);
-          if (i > 0 || t > 0) line(ox + px, oy + py, ox + cx, oy + cy, seed, width);
-          px = cx, py = cy;
+          int at1[2];
+          for (int a = 0; a < 2; ++a) {
+            const int16_t* v = axis[a];
+            at1[a] = (54 * v[i] + (v[i + 1] - v[i0]) * t * 9 + (2 * v[i0] - 5 * v[i] + 4 * v[i + 1] - v[i3]) * t * t * 3 +
+                      (-v[i0] + 3 * v[i] - 3 * v[i + 1] + v[i3]) * t * t * t + 27) / 54;
+          }
+          if (i > 0 || t > 0) line(ox + px, oy + py, ox + at1[0], oy + at1[1], seed, width);
+          px = at1[0], py = at1[1];
         }
       }
       line(ox + px, oy + py, ox + ex[m - 1], oy + ey[m - 1], seed, width);

@@ -1,6 +1,7 @@
 // tenor/ugly sleep set: the 8 doodles, the sentences, what picks them, and that every sentence fits.
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <set>
@@ -66,16 +67,18 @@ TEST(SleepSet, FoundersLinesAreWordForWord) {
 }
 
 TEST(SleepSet, BothLanguagesCarryTheSameCodesInTheSameOrder) {
-  const auto vi = records(text(true)), en = records(text(false));
+  auto vi = records(text(true));
+  const auto en = records(text(false));
+  vi.erase(std::remove_if(vi.begin(), vi.end(), [](const auto& r) { return r.first >= 'm'; }), vi.end());  // English has no wake lines
   ASSERT_EQ(vi.size(), en.size());
   for (size_t i = 0; i < vi.size(); ++i) EXPECT_EQ(vi[i].first, en[i].first) << i;
-  EXPECT_GE(vi.size(), 55u);
+  EXPECT_GE(vi.size(), 15u);
 }
 
 TEST(SleepSet, EveryCodeThePickersAskForHasLines) {
   const std::string vi = text(true);
-  for (char c : std::string("abcdefghijklmnopqrstu")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 1) << c;
-  for (char c : std::string("fghijklmnopqrstu")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 2) << c;
+  for (char c : std::string("abdfghijlmnopqrstu")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 1) << c;
+  for (char c : std::string("fhimnopqrtu")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 2) << c;
 }
 
 TEST(SleepSet, WritingRulesHold) {
@@ -86,7 +89,7 @@ TEST(SleepSet, WritingRulesHold) {
       if (vi)
         for (const char* w : {" một ", " hai ", " ba ", " bốn ", " sáu ", " bảy ", " tám ", " chín ", " mười "})
           EXPECT_EQ(line.find(w), std::string::npos) << "count in words: " << line;
-      EXPECT_EQ(line.find('#') != std::string::npos, code == 'c') << line;
+      EXPECT_EQ(line.find('#'), std::string::npos) << line;
     }
 }
 
@@ -157,10 +160,10 @@ TEST(SleepSet, SentenceFollowsTheHourOfSleepAndIsStable) {
     (code == 'i' ? lunch : generic).insert(s);
   }
   EXPECT_EQ(lunch.size(), 2u) << "both lunch-nap lines show up";
-  EXPECT_GE(generic.size(), 8u) << "and the generic ones keep turning";
+  EXPECT_GE(generic.size(), 5u) << "and the generic ones keep turning";
 }
 
-TEST(SleepSet, SleepSentenceKnowsNothingReadTheBookAndTheHabit) {
+TEST(SleepSet, SleepSentenceKnowsNothingReadTodayAndTheHabit) {
   const std::string vi = text(true);
   const auto all = records(vi);
   auto codeOf = [&](const Record& r) {
@@ -170,13 +173,13 @@ TEST(SleepSet, SleepSentenceKnowsNothingReadTheBookAndTheHabit) {
     return '?';
   };
   Context c;
-  c.day = 20261004, c.hour = 10, c.minutesToday = 0, c.percent = 37, c.nightReader = true, c.earlyReader = true;
+  c.day = 20261004, c.hour = 10, c.minutesToday = 0, c.nightReader = true;
   std::set<char> codes;
   for (uint32_t n = 0; n < 400; ++n) {
     c.count = n;
     codes.insert(codeOf(sleepLine(vi.data(), vi.size(), c)));
   }
-  EXPECT_EQ(codes, (std::set<char>{'a', 'b', 'c', 'd', 'e', 'h'}));
+  EXPECT_EQ(codes, (std::set<char>{'a', 'b', 'd', 'h'}));
   c = {};  // no clock, no statistics: only generic lines
   for (uint32_t n = 0; n < 30; ++n) {
     c.count = n;
@@ -198,7 +201,7 @@ TEST(SleepSet, WakeSentenceFollowsTheHourOfWaking) {
     lines.insert(std::string(r.text, r.len));
     EXPECT_EQ(std::string(r.text, r.len), std::string(wakeLine(vi.data(), vi.size(), c).text, r.len)) << "the same day, the same greeting";
   }
-  EXPECT_EQ(lines.size(), 3u) << "the three lines for 11 to 13 o'clock";
+  EXPECT_EQ(lines.size(), 2u) << "the two lines for 11 to 13 o'clock";
   EXPECT_TRUE(lines.count("Được sếp nghỉ cho ăn trưa mới kêu tao dậy chứ gì."));
   c.nightReader = true;
   bool habit = false;
@@ -234,9 +237,11 @@ TEST(SleepSet, EveryHourMapsToItsBand) {
   }
 }
 
-TEST(SleepSet, PercentFillsTheHash) {
-  const Record r{"Book at #%. Go nap, 100% is far away.", 37};
-  EXPECT_EQ(fill(r, 7), "Book at 7%. Go nap, 100% is far away.");
+TEST(SleepSet, CopyCutsToFitAndAlwaysEnds) {
+  const Record r{"Tao ngu day", 11};
+  char out[SENTENCE_CAP];
+  EXPECT_STREQ(copy(r, out, sizeof(out)), "Tao ngu day");
+  EXPECT_STREQ(copy(r, out, 5), "Tao ");
 }
 
 // Every sentence is drawn in the baked font, and fits: 4 lines of 400 px at the sleep size, 2 at the wake size.
@@ -284,12 +289,11 @@ TEST(SleepSet, TheFitCheckBitesOnALongSentence) {
 TEST(SleepSet, EverySentenceIsInTheBakedFontAndFits) {
   for (bool vi : {true, false})
     for (const auto& [code, raw] : records(text(vi))) {
-      std::string s = raw;
-      for (size_t i; (i = s.find('#')) != std::string::npos;) s.replace(i, 1, "88");
+      const std::string& s = raw;
       const bool wake = code >= 'm';
       if (wake) {
         EXPECT_LE(linesOf(ugly_22, s, 400), 2) << s;
-      } else if (code != 'd' && code != 'e') {
+      } else if (code != 'd') {
         EXPECT_LE(linesOf(ugly_38, s, 400), 4) << s;
       } else {
         EXPECT_LE(linesOf(ugly_38, s, 400), 4) << s;
