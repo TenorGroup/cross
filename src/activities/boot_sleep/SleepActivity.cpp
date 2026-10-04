@@ -37,6 +37,7 @@
 #include "components/UITheme.h"
 #include "components/X3BrandCodec.h"
 #include "components/X3BrandScreen.h"
+#include "shells/Shell.h"
 #include "shells/ugly/UglySleep.h"
 #include "components/themes/TenorRadius.h"
 #include "fontIds.h"
@@ -494,7 +495,7 @@ bool selectRandomSleepFile(const char* dirPath, const SleepRecentKind recentKind
   return true;
 }
 
-bool drawSleepPopupPreservingFrame(GfxRenderer& renderer) {
+bool drawSleepPopupPreservingFrame(GfxRenderer& renderer, const char* text) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int frameThickness = metrics.popupFrameThickness;
   const int popupY = static_cast<int>(renderer.getScreenHeight() * metrics.popupTopOffsetRatio);
@@ -514,7 +515,7 @@ bool drawSleepPopupPreservingFrame(GfxRenderer& renderer) {
     return false;
   }
 
-  GUI.drawPopup(renderer, tr(STR_ENTERING_SLEEP));
+  GUI.drawPopup(renderer, text);
   if (!renderer.copyBufferToRegion(0, bandTop, renderer.getScreenWidth(), bandHeight, savedBand.get(), bandBytes)) {
     LOG_ERR("SLP", "Failed to restore sleep popup background");
     return false;
@@ -640,8 +641,9 @@ std::string sleepCoverPath(const std::string& bookPath, const bool originalThres
 }  // namespace
 
 void SleepActivity::showEnteringSleep(GfxRenderer& renderer) {
-  if (drawSleepPopupPreservingFrame(renderer)) {
-    LOG_INF("SLP", "Sleep transition notice shown");
+  const char* text = shell::isUgly() ? tr(STR_UGLY_YAWNING) : tr(STR_ENTERING_SLEEP);
+  if (drawSleepPopupPreservingFrame(renderer, text)) {
+    LOG_INF("SLP", "Sleep transition notice shown: %s", text);
   }
 }
 

@@ -150,6 +150,14 @@ class UglyShellTest(unittest.TestCase):
         en = self.card(language='EN').run('3000:QUIT', [(2000, 'x')])[1]['x']
         self.assertNotEqual(digest(vi), digest(en))
 
+    def test_the_shell_yawns_before_sleep_and_tenor_cross_does_not(self):
+        # Founder 04/10/2026: only tenor/ugly says it yawns; tenor/cross keeps its plain notice.
+        notice = re.compile(r'Sleep transition notice shown: (.*)')
+        for shell, language, said in ((1, 'VI', 'Đang ngáp...'), (1, 'EN', 'Yawning...'),
+                                      (0, 'VI', 'Đang vào chế độ ngủ'), (0, 'EN', 'Going to sleep')):
+            log, _ = self.card(shell=shell, language=language).run('2500:SLEEP;6000:QUIT')
+            self.assertEqual(notice.findall(log), [said], (shell, language, log[-1500:]))
+
     def test_long_file_names_are_cut_where_they_always_were(self):
         # The one-pass cut must give the pixels the shave-and-measure cut gave (the digest is taken from that build).
         log, shots = self.card(books=[], files=LONG_NAMES).run('1000:DOWN;1800:DOWN;4000:QUIT', [(3200, 'folder')])
