@@ -212,10 +212,15 @@ class OptionPopup {
     const int16_t innerPadding = static_cast<int16_t>(metrics.optionPopupInnerPadding);
     props.padding = fui::Insets{innerPadding, innerPadding, innerPadding, innerPadding};
     props.gap = static_cast<int16_t>(metrics.optionPopupItemSpacing);
-    // Rounded invert-fill themes use a black pill, not the default gray focus cursor.
+    // Rounded invert-fill themes use a black pill, not the default gray focus cursor; button devices
+    // take the same ringed white pill as their lists.
     if (theme.listSelectionStyle == fui::SelectionStyle::InvertFill && theme.listRowRadius > 0) {
       props.buttonStyles = fui::defaultButtonStyles();
-      props.buttonStyles.focused = props.buttonStyles.selected;
+      if (BoardConfig::hasTouch()) {
+        props.buttonStyles.focused = props.buttonStyles.selected;
+      } else {
+        tenorPillSelection(props.buttonStyles);
+      }
       fui::setStyleRadius(props.buttonStyles, theme.listRowRadius);
     }
     // defaultPopupStyles() has no border, so opt in using the per-theme frame metrics.

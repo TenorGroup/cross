@@ -7,6 +7,26 @@
 // Menu text enlargement belongs to tenor/cross.
 inline const freeink::ui::TextStyle& uiMenuLabelText(const freeink::ui::ThemeTokens& theme) { return theme.bodyText; }
 
+// Button devices (X3, X4): the selected row is a white pill ringed in black, the shape of the selected
+// tab on the tab bar. The radius is far past half a row on purpose: GfxRenderer clamps a corner to half
+// the short side, so every row height ends in a half circle.
+inline constexpr uint8_t TENOR_PILL_RADIUS = 255;
+inline constexpr uint8_t TENOR_PILL_RING = 3;
+// Text inset that keeps a label and its icon clear of the pill's curved ends (a 52 px row: 26 px radius).
+inline constexpr int16_t TENOR_PILL_SIDE_PADDING = 14;
+// Rows taller than one line (a subtitle, a wrapped label) are sized by their text plus this padding; the
+// ring takes 3 px of it and a descender needs 2 more clear of the ring.
+inline constexpr int16_t TENOR_PILL_ROW_PADDING_Y = 7;
+inline void tenorPillSelection(freeink::ui::StyleSet& styles) {
+  namespace fui = freeink::ui;
+  styles.selected.background = fui::Paint::solid(fui::Color::White);
+  styles.selected.foreground = fui::Paint::solid(fui::Color::Black);
+  styles.selected.border = fui::Paint::solid(fui::Color::Black);
+  styles.selected.borderWidth = TENOR_PILL_RING;
+  styles.focused = styles.selected;
+  styles.active = styles.selected;
+}
+
 // Merges the active UITheme's shape (row gaps, radii, insets, selection
 // style) with the uiScale-derived sizes into FreeInkUI theme tokens: the
 // theme says what lists look like, the scale says how big they are.
@@ -25,6 +45,13 @@ inline freeink::ui::ThemeTokens uiThemeTokens(const freeink::ui::GfxRendererTarg
   tokens.listInset = static_cast<int16_t>(metrics.listInset);
   tokens.listSidePadding = static_cast<int16_t>(metrics.listSidePadding);
   tokens.listSelectionStyle = static_cast<fui::SelectionStyle>(metrics.listSelectionStyle);
+  if (!BoardConfig::hasTouch()) {
+    tokens.listRow = fui::defaultListRowStyles();
+    tenorPillSelection(tokens.listRow);
+    tokens.listRowRadius = TENOR_PILL_RADIUS;
+    tokens.listSidePadding = TENOR_PILL_SIDE_PADDING;
+    tokens.listRowPaddingY = TENOR_PILL_ROW_PADDING_Y;
+  }
   tokens.listScrollWidth = static_cast<int16_t>(metrics.listScrollWidth);
   tokens.listScrollSide = static_cast<uint8_t>(metrics.listScrollSide);
   // No extra scroll-track inset: the bezel is already compensated once at the
