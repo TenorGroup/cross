@@ -71,6 +71,7 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   // Copy the panel's live brightness/warmth/lightOn into SETTINGS and save if
   // anything actually changed. onExit() runs it on every way out.
   void persistLightSettings();
+  bool syncFrontlight();
   void close();
 
   // One-shot: a tile that rewrote the whole frame (night mode) re-drives it

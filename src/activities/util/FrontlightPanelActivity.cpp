@@ -103,8 +103,21 @@ void FrontlightPanelActivity::persistLightSettings() {
 }
 
 void FrontlightPanelActivity::onExit() {
+  // A global gesture may have changed the light on the same pass that Home
+  // bypassed loop(). Read the live HAL before persisting the closing panel.
+  syncFrontlight();
   persistLightSettings();
   Activity::onExit();
+}
+
+bool FrontlightPanelActivity::syncFrontlight() {
+  const bool changed = brightness != Frontlight.brightness() || warmth != Frontlight.warmth() ||
+                       lightOn != Frontlight.isOn();
+  if (lightOn != Frontlight.isOn()) lightOnChanged = true;
+  brightness = Frontlight.brightness();
+  warmth = Frontlight.warmth();
+  lightOn = Frontlight.isOn();
+  return changed;
 }
 
 void FrontlightPanelActivity::onBrightnessEvent(const fui::ActionEvent& event, void* user) {
@@ -226,6 +239,10 @@ bool FrontlightPanelActivity::handleHomeGesture() {
 }
 
 void FrontlightPanelActivity::loop() {
+  {
+    RenderLock lock;
+    if (syncFrontlight()) requestUpdate();
+  }
   const auto touch = routeTouch(mappedInput, false, /*routeHeld=*/true);
   if (touch.routed) {
     if (app.invalidated()) requestUpdate();

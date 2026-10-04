@@ -102,6 +102,10 @@ class MappedInputManager {
   RowTouch colTouch(int& col, int left, int colStep, int colCount, int yStart, int yEnd, int colWidth = 0) const;
 
   SwipeDir wasSwipe() const;
+  // Consumed once on the input task; deltas follow the rendered orientation.
+  bool popMultiTouchSwipe(uint8_t& contacts, int& dx, int& dy) const;
+  uint32_t touchContactGeneration() const { return touchContactGeneration_; }
+  bool wasBottomHomeGesture() const;
   // An up or down swipe in this pass: its vertical travel (negative: the finger went up) and how long
   // the finger was down.
   bool wasVerticalSwipe(int& dy, unsigned long& heldMs) const;
@@ -174,6 +178,7 @@ class MappedInputManager {
   void rememberTouchHeldTime() const;
 
   mutable HomeButtonInput homeButtonInput;
+  mutable uint32_t touchContactGeneration_ = 0;
   mutable HomeButtonAction homeAction = HomeButtonAction::Ignore;
   mutable HomeButtonAction deferredHomeAction = HomeButtonAction::Ignore;
   mutable bool touchHeldOverrideValid = false;

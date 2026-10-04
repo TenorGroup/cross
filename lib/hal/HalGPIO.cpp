@@ -440,6 +440,11 @@ bool HalGPIO::wasSwipe(float& nxStart, float& nyStart, float& nxEnd, float& nyEn
 
 bool HalGPIO::wasTouchActivity() const { return inputMgr.wasTouchActivity(); }
 
+bool HalGPIO::popMultiTouchSwipe(uint8_t& contacts, float& sx, float& sy, float& ex, float& ey,
+                                unsigned long& durationMs) {
+  return inputMgr.popMultiTouchSwipe(contacts, sx, sy, ex, ey, durationMs);
+}
+
 void HalGPIO::setSharedConfirmPowerShortPressEmitsPower(const bool enabled) {
   InputManager::setSharedConfirmPowerShortPressEmitsPower(enabled);
 }

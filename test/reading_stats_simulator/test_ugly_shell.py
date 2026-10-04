@@ -17,8 +17,9 @@ from ugly_common import Card, digest, entered, ink, notebook_pages
 # Provenance from the levels branch: these are full-frame digests, not row-crop goldens.
 FULL_FRAME_DIGEST_PROVENANCE = {0: '3fa2d2da5c50a849f2b24a4990c78312f9af4167a2e0c5a5ba8dfedc91caa4d5',
                               1: 'e92c78c75b96f6f709a5fb10211a05fc549ab991c36832fcb7a0eb860c6aa78d'}
-# Integrated row-crop goldens await fresh simulator images and visual acceptance.
-CUT_NAMES_DIGEST = {0: None, 1: None}
+# Integrated row-crop goldens preserve the visually accepted layout crop.
+CUT_NAMES_DIGEST = {0: '64d3af8f5885b61e760915a07254f604410358e57adeffdd96011ad7f6815b15',
+                    1: 'e92f6e1c25c754bb25c78e0b42d29d93abbaff70f550c7ef590b0491df9e8b00'}
 # Every width from a name that fits to one cut to a few letters, with marks, and one the baked font lacks.
 LONG_NAMES = ['a.txt', 'Hành trình dài của một người.txt', 'Hành trình dài của một người đọc sách.txt',
              'Hành trình dài của một người đọc sách không bao giờ chịu đọc hết một cuốn.txt',

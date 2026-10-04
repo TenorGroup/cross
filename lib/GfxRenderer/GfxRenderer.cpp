@@ -1772,6 +1772,7 @@ void GfxRenderer::beginStripTarget(uint8_t* scratch, int stripY0, int stripRows)
 }
 
 void GfxRenderer::endStripTarget() const {
+  if (_stripActive && renderMode != BW && preGrayUploadHook) preGrayUploadHook(*this);
   _stripActive = false;
   _stripBuf = nullptr;
   _stripY0 = 0;
@@ -2637,12 +2638,14 @@ size_t GfxRenderer::getBufferSize() const { return frameBufferSize; }
 
 void GfxRenderer::displayGrayscaleBase(HalDisplay::RefreshMode fallback) const {
   absoluteGrayPlanes = false;
+  if (preDisplayHook) preDisplayHook(*this);
   LOG_DBG("GFX", "displayGrayscaleBase, mode=%d", static_cast<int>(fallback));
   display.displayGrayscaleBase(fallback, fadingFix);
 }
 
 bool GfxRenderer::displayGrayscaleBase(HalDisplay::GrayscaleMode mode, HalDisplay::RefreshMode fallback) const {
   absoluteGrayPlanes = false;
+  if (preDisplayHook) preDisplayHook(*this);
   if (!display.displayGrayscaleBase(mode, fallback, fadingFix)) return false;
   absoluteGrayPlanes = mode != HalDisplay::GrayscaleMode::Overlay;
   return true;
@@ -2668,9 +2671,15 @@ void GfxRenderer::preconditionGrayscale(int x, int y, int w, int h) const {
                                 static_cast<uint16_t>(x1 - x0 + 1), static_cast<uint16_t>(y1 - y0 + 1));
 }
 
-void GfxRenderer::copyGrayscaleLsbBuffers() const { display.copyGrayscaleLsbBuffers(frameBuffer); }
+void GfxRenderer::copyGrayscaleLsbBuffers() const {
+  if (preGrayUploadHook) preGrayUploadHook(*this);
+  display.copyGrayscaleLsbBuffers(frameBuffer);
+}
 
-void GfxRenderer::copyGrayscaleMsbBuffers() const { display.copyGrayscaleMsbBuffers(frameBuffer); }
+void GfxRenderer::copyGrayscaleMsbBuffers() const {
+  if (preGrayUploadHook) preGrayUploadHook(*this);
+  display.copyGrayscaleMsbBuffers(frameBuffer);
+}
 
 void GfxRenderer::displayGrayBuffer() const {
   // Debug builds only: lets tests see which waveform a screen ended on.

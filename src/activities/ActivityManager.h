@@ -13,6 +13,7 @@
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
 #include "MenuNavigationMemory.h"
+#include "components/FrontlightGesture.h"
 #include "util/ScreenshotInfo.h"
 
 class Activity;    // forward declaration
@@ -88,9 +89,13 @@ class ActivityManager {
   std::atomic<bool> requestedUpdate{false};
   bool sleepTransition = false;
   bool homeAfterInput = false;
+  HomeMenuItem homeAfterInputTarget = HomeMenuItem::NONE;
   bool toReaderPage = false;
   uint32_t activityGeneration_ = 0;
   MenuNavigationMemory navigationMemory;
+  FrontlightGesture lightGesture;
+  bool handleLightGesture();
+  void deferLightGestureSave();
   void restoreNavigation();
   void saveNavigation(Activity& activity);
   void flushDeferredWrites();
@@ -107,6 +112,7 @@ class ActivityManager {
   // The name of the screen in front, for the one hook that draws the touch shell's dynamic bar.
   const char* currentName() const;
   HomeMenuItem homeKeyTarget() const;
+  void drawLightGesture(const GfxRenderer& renderer) const;
   // The zone the screen in front belongs to, and where the bar's zone icon leads.
   tenorchrome::Zone footZone() const;
   void goZoneRoot();

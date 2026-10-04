@@ -6,6 +6,7 @@
 #include <FsHelpers.h>
 #include <HalDisplay.h>
 #include <HalMemory.h>
+#include <HalFrontlight.h>
 #include <HalPowerManager.h>
 #include <Memory.h>
 #include <VectorFontSupport.h>
@@ -65,8 +66,46 @@ namespace {
 // Touch shell: the frame about to reach the panel gets the dynamic bar the screen in front declares.
 void drawFootBar(const GfxRenderer& r) {
   tenorchrome::drawFootBar(r, tenorchrome::footBarFor(activityManager.currentName()), activityManager.footZone());
+  activityManager.drawLightGesture(r);
 }
+void saveGestureLight() { SETTINGS.saveToFile(); }
+void drawGrayLightGesture(const GfxRenderer& r) { activityManager.drawLightGesture(r); }
 }  // namespace
+
+void ActivityManager::drawLightGesture(const GfxRenderer& r) const {
+  lightGesture.draw(r, tenorchrome::touchBarTop(r.getScreenHeight()));
+}
+
+void ActivityManager::deferLightGestureSave() {
+  if (!lightGesture.dirty) return;
+  lightGesture.dirty = false;
+  deferWrite(&saveGestureLight);
+}
+
+bool ActivityManager::handleLightGesture() {
+  if (!BoardConfig::isX4Pro()) return false;
+  uint8_t contacts = 0;
+  int dx = 0, dy = 0;
+  if (!mappedInput.popMultiTouchSwipe(contacts, dx, dy)) return false;
+  RenderLock lock;
+  if (Frontlight.present() && lightGesture.apply(contacts, dx, dy, Frontlight.brightness(), Frontlight.warmth(),
+                                                Frontlight.isOn(), millis())) {
+    if (lightGesture.vertical) {
+      Frontlight.setBrightness(lightGesture.value);
+      Frontlight.setOn(lightGesture.value != 0);
+    } else if (Frontlight.hasColorTemperature()) {
+      Frontlight.setWarmth(lightGesture.value);
+    }
+    lightGesture.dirty = lightGesture.dirty || SETTINGS.frontlightBrightness != Frontlight.brightness() ||
+                         SETTINGS.frontlightWarmth != Frontlight.warmth() ||
+                         SETTINGS.frontlightOn != (Frontlight.isOn() ? 1 : 0);
+    SETTINGS.frontlightBrightness = Frontlight.brightness();
+    SETTINGS.frontlightWarmth = Frontlight.warmth();
+    SETTINGS.frontlightOn = Frontlight.isOn() ? 1 : 0;
+    requestUpdate();
+  }
+  return true;
+}
 
 tenorchrome::Zone ActivityManager::footZone() const {
   if (isReaderActivity()) return tenorchrome::Zone::Book;
@@ -98,7 +137,10 @@ void ActivityManager::goZoneRoot() {
 }
 
 void ActivityManager::begin() {
-  if (tenorchrome::kTouchShell) GfxRenderer::preDisplayHook = &drawFootBar;
+  if (tenorchrome::kTouchShell) {
+    GfxRenderer::preDisplayHook = &drawFootBar;
+    GfxRenderer::preGrayUploadHook = &drawGrayLightGesture;
+  }
 #if defined(configNUM_CORES) && configNUM_CORES > 1
   constexpr BaseType_t renderTaskCore = 1;
 #else
@@ -163,6 +205,11 @@ void ActivityManager::loop() {
   if (mappedInput.consumeSuppressedRelease()) return;
 
   if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
+    // Drain a classified multi-contact release while USB owns storage. It must
+    // never become a single-contact action or a deferred settings write.
+    uint8_t contacts = 0;
+    int dx = 0, dy = 0;
+    mappedInput.popMultiTouchSwipe(contacts, dx, dy);
     currentActivity->loop();
     // An exclusive-storage activity must restart rather than navigate away:
     // processing a pending action here could re-enable filesystem users while
@@ -171,6 +218,14 @@ void ActivityManager::loop() {
       xTaskNotify(renderTaskHandle, 1, eIncrement);
     }
     return;
+  }
+
+  if (!sleepTransition && pendingAction == PendingAction::None && handleLightGesture()) return;
+  if (lightGesture.expired(millis())) {
+    RenderLock lock;
+    lightGesture.visible = false;
+    deferLightGestureSave();
+    requestUpdate();
   }
 
   // The next screen's first frame is up: now the writes the screen before it left (deferWrite),
@@ -182,16 +237,22 @@ void ActivityManager::loop() {
 
   if (currentActivity && !sleepTransition && pendingAction == PendingAction::None) {
     const bool heldBack = mappedInput.wasLongPressed(MappedInputManager::Button::Back, 1000);
+    const bool bottomHome = mappedInput.wasBottomHomeGesture();
     if (!currentActivity->isHomeActivity() && (heldBack || mappedInput.wasHomeGesture())) {
+      const HomeMenuItem homeTarget = bottomHome ? HomeMenuItem::RECENTS : homeKeyTarget();
       if (currentActivity->saveInputBeforeHome()) {
         homeAfterInput = true;
+        homeAfterInputTarget = homeTarget;
         return;
       }
-      if (currentActivity->handleHomeGesture()) {
-        if (heldBack) homeAfterInput = true;
+      if (!bottomHome && currentActivity->handleHomeGesture()) {
+        if (heldBack) {
+          homeAfterInput = true;
+          homeAfterInputTarget = homeTarget;
+        }
         return;
       }
-      goHome(homeKeyTarget());
+      goHome(homeTarget);
       return;
     }
     // Touch: the Home key from the Home screen itself brings it back to its default card, Recent.
@@ -275,8 +336,11 @@ void ActivityManager::loop() {
 
       if (stackActivities.empty()) {
         LOG_DBG("ACT", "No more activities on stack, going home");
+        const HomeMenuItem homeTarget = homeAfterInput ? homeAfterInputTarget : HomeMenuItem::NONE;
+        homeAfterInput = false;
+        homeAfterInputTarget = HomeMenuItem::NONE;
         lock.unlock();  // goHome may acquire its own lock
-        goHome();
+        goHome(homeTarget);
         continue;  // Will launch goHome immediately
 
       } else {
@@ -296,9 +360,11 @@ void ActivityManager::loop() {
         }
 
         if (homeAfterInput) {
+          const HomeMenuItem homeTarget = homeAfterInputTarget;
           homeAfterInput = false;
+          homeAfterInputTarget = HomeMenuItem::NONE;
           lock.unlock();
-          goHome(homeKeyTarget());
+          goHome(homeTarget);
           continue;
         }
         // On the way down to the book's page (the zone icon): the next screen closes too.
@@ -330,6 +396,8 @@ void ActivityManager::loop() {
       RenderLock lock;
 
       if (pendingAction == PendingAction::Replace) {
+        homeAfterInput = false;
+        homeAfterInputTarget = HomeMenuItem::NONE;
         // Destroy the current activity
         exitActivity(lock);
         // Clear the stack
@@ -449,6 +517,8 @@ void ActivityManager::flushDeferredWrites() {
 
 void ActivityManager::closeForRestart() {
   RenderLock lock;
+  homeAfterInput = false;
+  homeAfterInputTarget = HomeMenuItem::NONE;
   exitActivity(lock);
   flushDeferredWrites();
 }
@@ -456,6 +526,8 @@ void ActivityManager::closeForRestart() {
 void ActivityManager::exitActivity(const RenderLock& lock) {
   // Note: lock must be held by the caller
   if (currentActivity) {
+    lightGesture.visible = false;
+    deferLightGestureSave();
     // What the screen before this one left is written before this one leaves anything.
     flushDeferredWrites();
     saveNavigation(*currentActivity);

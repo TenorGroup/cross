@@ -21,6 +21,8 @@ extern bool pressed[8];
 extern bool released[8];
 extern bool held[8];
 extern bool touch;
+extern bool multiQueued;
+extern uint8_t multiContacts;
 void reset();
 }  // namespace faketest
 
@@ -153,6 +155,27 @@ TEST(MappedInputSafetyNet, AnhXaNutGiuNguyenNhuHomNay) {
   std::stringstream buf;
   buf << in.rdbuf();
   EXPECT_EQ(buf.str(), actual);
+}
+
+TEST(MappedInputSafetyNet, MultiContactGenerationChangesOnlyWhenConsumed) {
+  faketest::reset();
+  HalGPIO gpio;
+  GfxRenderer renderer(hostTestDisplay());
+  MappedInputManager input(gpio, renderer);
+  uint8_t contacts = 0;
+  int dx = 0, dy = 0;
+  ASSERT_EQ(input.touchContactGeneration(), 0u);
+  ASSERT_FALSE(input.popMultiTouchSwipe(contacts, dx, dy));
+  for (uint8_t count : {2, 3}) {
+    faketest::multiContacts = count;
+    faketest::multiQueued = true;
+    const auto before = input.touchContactGeneration();
+    ASSERT_TRUE(input.popMultiTouchSwipe(contacts, dx, dy));
+    EXPECT_EQ(contacts, count);
+    EXPECT_EQ(input.touchContactGeneration(), before + 1);
+    ASSERT_FALSE(input.popMultiTouchSwipe(contacts, dx, dy));
+    EXPECT_EQ(input.touchContactGeneration(), before + 1);
+  }
 }
 
 }  // namespace

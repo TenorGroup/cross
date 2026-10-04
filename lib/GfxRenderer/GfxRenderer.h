@@ -239,6 +239,8 @@ class GfxRenderer {
   // Called with the frame just before it goes to the panel (displayBuffer and displayBufferAsync): the
   // touch shell draws the foot back button there, so every screen gets it from one place.
   static inline void (*preDisplayHook)(const GfxRenderer&) = nullptr;
+  // Monochrome overlays also mask the gray planes before their upload.
+  static inline void (*preGrayUploadHook)(const GfxRenderer&) = nullptr;
   // One-shot: the next displayBuffer()/displayBufferAsync() call uses `mode`
   // instead of what its caller asked for, then the override clears itself.
   // Lets a closing overlay (the control center's refresh tile) hand a

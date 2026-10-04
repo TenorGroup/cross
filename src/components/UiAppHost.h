@@ -65,7 +65,7 @@ class UiAppHost {
 
   // Gated route of a caller-built snapshot, for flows that need the snapshot
   // before dispatch (e.g. a handler that reads "was this a release" state).
-  freeink::ui::ActionEvent route(const freeink::ui::InputSnapshot& snap);
+  freeink::ui::ActionEvent route(const freeink::ui::InputSnapshot& snap, const MappedInputManager& input);
 
   // Close the routing gate outside a render, e.g. when the data the
   // interaction table indexes is released mid-state. Reopens on renderUi().
@@ -76,6 +76,8 @@ class UiAppHost {
   UiApp app;
 
  private:
+  void cancelStaleTouch(const MappedInputManager& input);
+  uint32_t touchContactGeneration = 0;
   // Opened by the render task after publication and closed on lifecycle/state
   // resets; read by the loop task (route*).
   std::atomic<bool> uiReady{false};

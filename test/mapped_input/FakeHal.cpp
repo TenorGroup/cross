@@ -17,12 +17,15 @@ bool held[8] = {false, false, false, false, false, false, false, false};
 unsigned long heldMs = 0;
 bool touch = false;
 bool homeKey = false;
+bool multiQueued = false;
+uint8_t multiContacts = 2;
 
 void reset() {
   for (int i = 0; i < 8; ++i) {
     pressed[i] = released[i] = held[i] = false;
   }
   heldMs = 0;
+  multiQueued = false;
 }
 }  // namespace faketest
 
@@ -60,3 +63,10 @@ bool HalGPIO::isTouchHeldAt(float&, float&) const { return false; }
 unsigned long HalGPIO::lastTouchHeldMs() const { return 0; }
 void HalGPIO::suppressTouchContact() {}
 bool HalGPIO::wasSwipe(float&, float&, float&, float&) const { return false; }
+bool HalGPIO::popMultiTouchSwipe(uint8_t& contacts, float& sx, float& sy, float& ex, float& ey, unsigned long& ms) {
+  if (!faketest::multiQueued) return false;
+  faketest::multiQueued = false;
+  contacts = faketest::multiContacts;
+  sx = ex = .5f; sy = .6f; ey = .4f; ms = 250;
+  return true;
+}

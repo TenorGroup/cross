@@ -23,6 +23,7 @@ void UiAppHost::renderUi() {
 UiAppHost::TouchRoute UiAppHost::routeTouch(const MappedInputManager& input, const bool withLongPress,
                                             const bool routeHeld) {
   TouchRoute result;  // named apart from route() — cppcheck flags the shadow
+  cancelStaleTouch(input);
   if (!uiReady) return result;
   result.snap = touchSnapshotFrom(input, withLongPress);
   if (!result.snap.touchPressed && !result.snap.touchReleased && !(routeHeld && result.snap.touchHeld)) {
@@ -33,7 +34,14 @@ UiAppHost::TouchRoute UiAppHost::routeTouch(const MappedInputManager& input, con
   return result;
 }
 
-fui::ActionEvent UiAppHost::route(const fui::InputSnapshot& snap) {
+void UiAppHost::cancelStaleTouch(const MappedInputManager& input) {
+  if (touchContactGeneration == input.touchContactGeneration()) return;
+  touchContactGeneration = input.touchContactGeneration();
+  app.cancelTouchContact();
+}
+
+fui::ActionEvent UiAppHost::route(const fui::InputSnapshot& snap, const MappedInputManager& input) {
+  cancelStaleTouch(input);
   if (!uiReady) return {};
   return app.route(snap);
 }

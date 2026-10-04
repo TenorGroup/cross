@@ -183,3 +183,60 @@ patch(
         ),
     ],
 )
+
+# App-routing fixture for the SDK's already classified multi-contact queue.
+# MULTISWIPE:count,x0,y0,x1,y1,ms contains logical coordinates; it emits no
+# single-contact down/up. SDK classifier/GT911 acceptance is tested separately.
+patch(root / 'HalGPIO.h', [(
+    '  bool wasTouchActivity() const;\n',
+    '  bool popMultiTouchSwipe(uint8_t &contacts, float &sx, float &sy, float &ex, float &ey,\n'
+    '                          unsigned long &durationMs);\n'
+    '  bool wasTouchActivity() const;\n',
+)])
+patch(root / 'HalGPIO.cpp', [(
+    'std::vector<SyntheticEvent> syntheticEvents;\n',
+    'struct MultiSwipeEvent {\n'
+    '  unsigned long atMs, duration;\n'
+    '  uint8_t contacts;\n'
+    '  float sx, sy, ex, ey;\n'
+    '  bool handled = false;\n'
+    '};\n'
+    'std::vector<MultiSwipeEvent> multiSwipeEvents;\n'
+    'std::vector<SyntheticEvent> syntheticEvents;\n',
+), (
+    '      } else if ((key == "TAP" || key == "SWIPE") &&\n',
+    '      } else if (key == "MULTISWIPE" && secondColon != std::string::npos) {\n'
+    '        const std::string detail = item.substr(secondColon + 1);\n'
+    '        const auto comma = detail.find(\',\');\n'
+    '        const int contacts = std::atoi(detail.c_str());\n'
+    '        float sx = 0, sy = 0, ex = 0, ey = 0;\n'
+    '        unsigned long duration = 0;\n'
+    '        if (contacts >= 1 && contacts <= 4 && comma != std::string::npos &&\n'
+    '            parseTouchSpec(detail.substr(comma + 1), sx, sy, ex, ey, duration, true))\n'
+    '          multiSwipeEvents.push_back({atMs + duration, duration, static_cast<uint8_t>(contacts), sx, sy, ex, ey});\n'
+    '      } else if ((key == "TAP" || key == "SWIPE") &&\n',
+), (
+    'bool HalGPIO::wasSwipe(float &nxStart, float &nyStart, float &nxEnd,\n',
+    'bool HalGPIO::popMultiTouchSwipe(uint8_t &contacts, float &sx, float &sy, float &ex, float &ey,\n'
+    '                                unsigned long &durationMs) {\n'
+    '  for (auto &event : multiSwipeEvents) {\n'
+    '    if (event.handled || millis() < event.atMs) continue;\n'
+    '    event.handled = true;\n'
+    '    contacts = event.contacts;\n'
+    '    durationMs = event.duration;\n'
+    '    logicalToPanelNormalized(event.sx, event.sy, sx, sy);\n'
+    '    logicalToPanelNormalized(event.ex, event.ey, ex, ey);\n'
+    '    return true;\n'
+    '  }\n'
+    '  return false;\n'
+    '}\n\n'
+    'bool HalGPIO::wasSwipe(float &nxStart, float &nyStart, float &nxEnd,\n',
+)])
+
+# The simulator's trimmed BoardConfig predates the warm-channel capability.
+# Persist the same setting key as the X4 Pro SDK profile.
+patch(root / 'BoardConfig.h', [(
+    '#pragma once\n',
+    '#pragma once\n\n#if defined(SIMULATOR_DEVICE_X4_PRO) && !defined(FREEINK_CAP_WARMLIGHT)\n'
+    '#define FREEINK_CAP_WARMLIGHT 1\n#endif\n',
+)])

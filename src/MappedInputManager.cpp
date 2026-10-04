@@ -362,6 +362,20 @@ MappedInputManager::SwipeDir MappedInputManager::wasSwipe() const {
   }
 }
 
+bool MappedInputManager::popMultiTouchSwipe(uint8_t& contacts, int& dx, int& dy) const {
+  float nxs = 0, nys = 0, nxe = 0, nye = 0;
+  unsigned long durationMs = 0;
+  if (!gpio.popMultiTouchSwipe(contacts, nxs, nys, nxe, nye, durationMs)) return false;
+  ++touchContactGeneration_;
+  int sx = 0, sy = 0, ex = 0, ey = 0;
+  renderer.tapToLogical(nxs, nys, sx, sy);
+  renderer.tapToLogical(nxe, nye, ex, ey);
+  dx = ex - sx;
+  dy = ey - sy;
+  gpio.suppressTouchContact();
+  return true;
+}
+
 bool MappedInputManager::wasVerticalSwipe(int& dy, unsigned long& heldMs) const {
   int sx = 0;
   int sy = 0;
@@ -412,10 +426,14 @@ bool MappedInputManager::wasBottomEdgeUpSwipe() const { return wasEdgeSwipe(fui:
 
 bool MappedInputManager::wasMenuGesture() const { return wasTopEdgeDownSwipe(); }
 
-bool MappedInputManager::wasReaderMenuSwipeUp() const { return gpio.hasHomeKey() && wasBottomEdgeUpSwipe(); }
+bool MappedInputManager::wasReaderMenuSwipeUp() const {
+  return !BoardConfig::isX4Pro() && gpio.hasHomeKey() && wasBottomEdgeUpSwipe();
+}
+
+bool MappedInputManager::wasBottomHomeGesture() const { return BoardConfig::isX4Pro() && wasBottomEdgeUpSwipe(); }
 
 bool MappedInputManager::wasHomeGesture() const {
-  return gpio.hasHomeKey() ? homeAction == HomeButtonAction::Home : wasBottomEdgeUpSwipe();
+  return wasBottomHomeGesture() || (gpio.hasHomeKey() ? homeAction == HomeButtonAction::Home : wasBottomEdgeUpSwipe());
 }
 
 bool MappedInputManager::wasLightPanelGesture() const {
