@@ -203,6 +203,21 @@ class CardFTest(unittest.TestCase):
             self.assertFalse(BUILD.findall(shot.warm_log), 'the warm visit rebuilt the card')
             self.assertTrue((shot.dark[:740] == shot.warm[:740]).all(), 'cold card and cached card differ')
 
+    def test_no_card_snapshot_is_held_in_ram_once_the_card_is_on_the_card(self):
+        # X3, 04/10: the 298 x 450 card kept 23.706 B in RAM against 19.215 B, and Home's free heap read
+        # 72.280 B against 77.392 B. The snapshot is only a copy of the card file, so it goes after the frame.
+        held = re.compile(r'Frame row=\d+ top=\d+ total=\d+ms heap=\d+ held=(\d+)')
+        for shot in (self.en, self.vi):
+            for name, log in (('cold', shot.log), ('warm', shot.warm_log)):
+                seen = held.findall(log)
+                self.assertTrue(seen, (name, 'no held= on the Frame line'))
+                self.assertEqual(seen[-1], '0', (name, seen))
+
+    def test_a_visit_after_the_first_reads_the_card_file(self):
+        for shot in (self.en, self.vi):
+            self.assertIn('Recent card file=', shot.warm_log)
+            self.assertFalse(BUILD.findall(shot.warm_log))
+
     def test_an_old_format_card_file_is_not_read(self):
         shot = self.en
         card = sorted(shot.store.glob('epub_*/thumb2_450.bmp.card*'))[0]

@@ -718,9 +718,13 @@ void HomeActivity::render(RenderLock&&) {
           static_cast<unsigned long>(chromeUs), static_cast<unsigned long>(uiUs),
           static_cast<unsigned long>(footerUs), rebuildPasses);
 #endif
-  LOG_INF("HOME", "Frame row=%d top=%d total=%lums heap=%u", ringPos(), activeNav().top,
-          static_cast<unsigned long>(millis() - started), ESP.getFreeHeap());
+  const unsigned long frameMs = millis() - started;
   if (!cardFilePending.empty()) saveCardFile();
+  // The card file holds what the snapshot holds, so the RAM copy goes: 23.706 B on the X3 against
+  // 19.215 B of the 236 x 356 card, free heap 72.280 B against 77.392 B. A repaint reads the file.
+  if (cardOnCard && tenorchrome::enabled()) freeCoverBuffer();
+  LOG_INF("HOME", "Frame row=%d top=%d total=%lums heap=%u held=%u", ringPos(), activeNav().top, frameMs,
+          ESP.getFreeHeap(), static_cast<unsigned>(coverBufferSize));
   // The wake's first frame is up: the main task writes the splash setup() re-armed (onTick).
   if (cleanInitialRefresh) wakeStatePending = true;
   cleanInitialRefresh = false;
@@ -776,6 +780,7 @@ void HomeActivity::freeCoverBuffer() {
   coverBufferSize = 0;
   coverBufferStored = false;
   coverBufferBook = -1;
+  cardOnCard = false;
 }
 
 void HomeActivity::loadRecentBooks() { recentBooks = homerows::recent(RECENT_LIMIT); }
@@ -1109,14 +1114,18 @@ void HomeActivity::drawRecentCard() {
     if (image) coverHeight = height;
   }
   if (!image) {
-    for (int yy = 0; yy < card.coverH; ++yy)
-      for (int xx = 0; xx < card.coverW; ++xx) {
-        const int sx = xx * sleepcover::WIDTH / card.coverW;
-        const int sy = yy * sleepcover::HEIGHT / card.coverH;
-        const int bit = sy * sleepcover::WIDTH + sx;
-        const bool white = (sleepcover::PIXELS[bit / 8] >> (7 - bit % 8)) & 1;
-        renderer.drawPixel(card.coverX + xx, card.coverY + yy, !white);
-      }
+    // The brand placeholder, scaled up. The source column of each cover column is worked out once (the
+    // C3 has no divider worth a division per pixel: 134.100 of them took 174 ms), and the page is
+    // already white, so only the dark pixels are drawn.
+    uint8_t column[HOME_CARD_COVER_W];
+    const int columns = std::min(card.coverW, HOME_CARD_COVER_W);
+    for (int xx = 0; xx < columns; ++xx) column[xx] = static_cast<uint8_t>(xx * sleepcover::WIDTH / card.coverW);
+    for (int yy = 0; yy < card.coverH; ++yy) {
+      const uint8_t* row = sleepcover::PIXELS + (yy * sleepcover::HEIGHT / card.coverH) * (sleepcover::WIDTH / 8);
+      for (int xx = 0; xx < columns; ++xx)
+        if (!((row[column[xx] >> 3] >> (7 - (column[xx] & 7))) & 1))
+          renderer.drawPixel(card.coverX + xx, card.coverY + yy, true);
+    }
   }
   // Round the cover's corners by painting the page back over them, the pixels a rounded card
   // would not cover: a few hundred pixels, no second buffer, and the cached card keeps them.
@@ -1199,6 +1208,7 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
   textRectW = r[6];
   textRectH = whole ? r[7] : 0;
   coverBufferStored = true;
+  cardOnCard = whole;
   return whole ? CardFile::Whole : CardFile::Cover;
 }
 
@@ -1279,6 +1289,7 @@ void HomeActivity::saveCardFile() {
                   file.write(coverBuffer, coverBufferSize) == coverBufferSize;
   file.close();
   if (!ok) Storage.remove(path.c_str());
+  cardOnCard = ok;
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("HOME", "Card file saved ok=%u ms=%lu", ok ? 1u : 0u, static_cast<unsigned long>(millis() - started));
 #endif

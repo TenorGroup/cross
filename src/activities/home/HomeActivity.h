@@ -130,6 +130,8 @@ class HomeActivity final : public UiTabListActivity {
   // text again (about 250 to 430 ms on the X3). Written after the frame that built them.
   std::string cardFilePending;
   uint32_t cardFileCoverKey = 0, cardFileKey = 0;
+  // The snapshot is also on the card (written, or read whole), so it need not stay in RAM.
+  bool cardOnCard = false;
   uint8_t cardFileThumb = 0;
   int16_t cardFileCover = 0;
   // What a card file still shows: nothing, the cover alone (the text changed), or the whole card.
