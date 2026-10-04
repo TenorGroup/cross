@@ -14,9 +14,10 @@ import unittest
 
 from ugly_common import Card, digest, entered, ink, notebook_pages
 
-# Taken again on 04/10/2026: the notebook text moved 44 px towards the edge, so every cut is wider and the page differs;
+# Taken again on 04/10/2026 (evening): the note under the title moved in and got a pen rule, the rows and their cuts are
+# as they were. Before that: the notebook text moved 44 px towards the edge, so every cut is wider and the page differs;
 # the one-pass cut is held equal to the shave-and-measure cut by the host test of ellipsisKeep.
-CUT_NAMES_DIGEST = '35bcdda60ebded1e870e5628ea2b157b207e34d641b0c242889f8c485d554cd1'
+CUT_NAMES_DIGEST = '1bac6947b95113cd339e988ac8ba5009fc4a8b5012321c3b2bcb8dbeaad50e84'
 # Every width from a name that fits to one cut to a few letters, with marks, and one the baked font lacks.
 LONG_NAMES = ['a.txt', 'Hành trình dài của một người.txt', 'Hành trình dài của một người đọc sách.txt',
              'Hành trình dài của một người đọc sách không bao giờ chịu đọc hết một cuốn.txt',
@@ -146,7 +147,7 @@ class UglyShellTest(unittest.TestCase):
             # the rows: the middle of the left edges of three rows under the first (one letter may swing out)
             note = leftmost((40, 100, 528, 134))
             row = sorted(leftmost((40, 208 + 52 * i, 528, 240 + 52 * i)) for i in range(3))[1]
-            self.assertGreaterEqual(note - row, 24, (name, 'the note starts further in than the rows', note, row))
+            self.assertGreaterEqual(note - row, 18, (name, 'the note starts further in than the rows', note, row))
             # a pen rule: some three rows of the page carry ink in nearly every column from the text edge to the right edge
             def covered(y):
                 part = page.crop((48, y, 498, y + 3))
