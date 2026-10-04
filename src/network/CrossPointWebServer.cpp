@@ -30,6 +30,7 @@
 #include "WebDAVHandler.h"
 #include "WebPathPolicy.h"
 #include "WifiCredentialStore.h"
+#include "util/Timezones.h"
 #include "html/FilesPageHtml.generated.h"
 #include "html/FontsPageHtml.generated.h"
 #include "html/HomePageHtml.generated.h"
@@ -1504,6 +1505,12 @@ void CrossPointWebServer::handlePostSettings() {
   int applied = 0;
   bool uiTextSizeApplied = false;
   const uint8_t previousUiTextSize = SETTINGS.uiTextSize;
+  // What the clock zone is made of, to push the zone into the clock when the page changed any of it.
+  const auto zoneOf = [] {
+    return (static_cast<uint32_t>(SETTINGS.clockAutoTimezone) << 24) | (static_cast<uint32_t>(SETTINGS.clockTimezone) << 16) |
+           (static_cast<uint32_t>(SETTINGS.clockDst) << 8) | SETTINGS.clockUtcOffsetQ;
+  };
+  const uint32_t zoneBefore = zoneOf();
   if (!doc["uiTextSize"].isNull()) {
     const int requestedUiTextSize = doc["uiTextSize"].as<int>();
     if (requestedUiTextSize >= CrossPointSettings::UI_TEXT_SMALL &&
@@ -1589,6 +1596,9 @@ void CrossPointWebServer::handlePostSettings() {
     server->send(500, "text/plain", trWeb(lang, StrId::STR_HABIT_SAVE_FAILED));
     return;
   }
+
+  // The screens that change the zone push it into the clock at once (cc1e315b); so does the page.
+  if (zoneOf() != zoneBefore) timezones::applyToClock();
 
   LOG_DBG("WEB", "Applied %d setting(s)", applied);
   char appliedBody[64];
