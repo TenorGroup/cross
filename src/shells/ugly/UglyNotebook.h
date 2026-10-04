@@ -9,8 +9,9 @@
 namespace ugly {
 
 // Tier 3: a page of the notebook. One template for the five pages: a handwritten title with its
-// underline, a sentence of abuse, then the rows with a pen circle on the chosen one. Left and Right turn
-// to the page next door, Up and Down move the circle, a hold on Up or Down jumps a page of rows.
+// underline, a sentence of abuse, then the rows with a pen circle on the chosen one. As in tenor/cross, the
+// edge buttons (Key Left and Right) turn to the page next door, the front buttons (Key Up and Down) move the
+// circle, a hold on a front button jumps a page of rows.
 class Notebook final : public Screen {
  public:
   Notebook(GfxRenderer& renderer, MappedInputManager& mappedInput, homerows::Page page)
@@ -41,6 +42,8 @@ class Notebook final : public Screen {
   int rowCount() const { return static_cast<int>(page == homerows::Page::Folder ? rows.folder.size() : rows.labels.size()); }
   const std::string& labelAt(int row) const { return page == homerows::Page::Folder ? rows.folder[row] : rows.labels[row]; }
   int rowsPerPage() const;
+  int subtitleLines() const;  // the line under the title takes 1 or 2 lines, and the rows start lower after 2
+  int firstBaseline() const;
   int pagePosition(homerows::Page p) const;
 
   homerows::Page page;

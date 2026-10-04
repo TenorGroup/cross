@@ -31,7 +31,10 @@ namespace ugly {
 namespace {
 constexpr int FIRST_BASELINE = 180;
 constexpr int ROW_HEIGHT = 52;  // ten rows fit: the Settings page (file transfer and nine groups) is one page
-constexpr int TEXT_X = 92;
+constexpr int TEXT_X = 48;      // was 92: the margin line and the text hug the edge
+constexpr int MARGIN_X = 26;    // was 70
+constexpr int SUBTITLE_BASELINE = 126;
+constexpr int SUBTITLE_LINE = 34;
 constexpr StrId SUBTITLES[homerows::PAGE_COUNT] = {StrId::STR_UGLY_SUB_RECENT, StrId::STR_UGLY_SUB_FOLDER,
                                                    StrId::STR_UGLY_SUB_STATS, StrId::STR_UGLY_SUB_SETTINGS,
                                                    StrId::STR_UGLY_SUB_FAVORITES};
@@ -42,7 +45,14 @@ int id(const homerows::Page p) { return static_cast<int>(p); }
 
 int Notebook::pagePosition(const homerows::Page p) const { return menucustom::position(0, id(p), homerows::PAGE_COUNT); }
 
-int Notebook::rowsPerPage() const { return std::max(1, (renderer.getScreenHeight() - 140 - FIRST_BASELINE) / ROW_HEIGHT + 1); }
+int Notebook::subtitleLines() const {
+  const int room = renderer.getScreenWidth() - TEXT_X - 30;
+  return std::min(2, paragraph(renderer, Size::S30, 0, 0, room, SUBTITLE_LINE, I18N.get(SUBTITLES[id(page)]), false));
+}
+
+int Notebook::firstBaseline() const { return FIRST_BASELINE + (subtitleLines() - 1) * 30; }
+
+int Notebook::rowsPerPage() const { return std::max(1, (renderer.getScreenHeight() - 140 - firstBaseline()) / ROW_HEIGHT + 1); }
 
 Notebook::Rows Notebook::read(const homerows::Page p) const {
   Rows r;
@@ -113,14 +123,15 @@ void Notebook::render(RenderLock&&) {
   const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
   const int pos = pagePosition(page);
 
-  line(renderer, 70, 0, 71, h - 80, 501);
+  line(renderer, MARGIN_X, 0, MARGIN_X + 1, h - 80, 501);
   const char* title = I18N.get(homerows::PAGE_TITLES[id(page)]);
   const int tw = text(renderer, Size::S52, TEXT_X, 78, title);
   underline(renderer, TEXT_X, TEXT_X + tw, 92, 17, 3);
   char number[12];
   snprintf(number, sizeof(number), "%d/%d", pos + 1, homerows::PAGE_COUNT);
   text(renderer, Size::S22, w - 30 - width(renderer, Size::S22, number), 60, number);
-  text(renderer, Size::S22, TEXT_X, 124, fit(renderer, Size::S22, I18N.get(SUBTITLES[id(page)]), w - TEXT_X - 30).c_str());
+  paragraph(renderer, Size::S30, TEXT_X, SUBTITLE_BASELINE, w - TEXT_X - 30, SUBTITLE_LINE, I18N.get(SUBTITLES[id(page)]));
+  const int first = firstBaseline();
 
   const int count = rowCount();
   const int perPage = rowsPerPage();
@@ -128,15 +139,15 @@ void Notebook::render(RenderLock&&) {
   if (rows.tooMany) {
     char said[160];
     snprintf(said, sizeof(said), tr(STR_UGLY_FOLDER_TOO_MANY), static_cast<int>(rows.cap));
-    paragraph(renderer, Size::S30, TEXT_X, FIRST_BASELINE, w - TEXT_X - 30, 44, said);
+    paragraph(renderer, Size::S30, TEXT_X, first, w - TEXT_X - 30, 44, said);
   } else if (count == 0) {
     const StrId empty = EMPTY[id(page)];
-    if (empty != StrId::STR_NONE_OPT) paragraph(renderer, Size::S30, TEXT_X, FIRST_BASELINE, w - TEXT_X - 30, 44, I18N.get(empty));
+    if (empty != StrId::STR_NONE_OPT) paragraph(renderer, Size::S30, TEXT_X, first, w - TEXT_X - 30, 44, I18N.get(empty));
   }
   const int top = logic::pageTop(cur, perPage);
   for (int i = 0; i < perPage && top + i < count; ++i) {
     const int row = top + i;
-    const int base = FIRST_BASELINE + i * ROW_HEIGHT;
+    const int base = first + i * ROW_HEIGHT;
     int room = w - TEXT_X - 30;
     if (row < static_cast<int>(rows.values.size()) && !rows.values[row].empty()) {
       const int vw = width(renderer, Size::S22, rows.values[row].c_str());
@@ -154,10 +165,8 @@ void Notebook::render(RenderLock&&) {
   }
 
   // The pages next door.
-  const std::string before = std::string("< ") + I18N.get(homerows::PAGE_TITLES[menucustom::idAt(0, logic::cycle(pos, -1, homerows::PAGE_COUNT), homerows::PAGE_COUNT)]);
-  const std::string after = std::string(I18N.get(homerows::PAGE_TITLES[menucustom::idAt(0, logic::cycle(pos, 1, homerows::PAGE_COUNT), homerows::PAGE_COUNT)])) + " >";
-  text(renderer, Size::S22, 20, h - 52, before.c_str());
-  text(renderer, Size::S22, w - 20 - width(renderer, Size::S22, after.c_str()), h - 52, after.c_str());
+  pageHints(renderer, I18N.get(homerows::PAGE_TITLES[menucustom::idAt(0, logic::cycle(pos, -1, homerows::PAGE_COUNT), homerows::PAGE_COUNT)]),
+            I18N.get(homerows::PAGE_TITLES[menucustom::idAt(0, logic::cycle(pos, 1, homerows::PAGE_COUNT), homerows::PAGE_COUNT)]), h - 52);
   statusBar(renderer, mappedInput, {true, count > 0, true, true});
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
