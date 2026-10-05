@@ -53,14 +53,15 @@ def level_case(folder, shell, orientation, axis):
     config = persisted(folder)
     assert config['uiShell'] == shell and config['orientation'] == orientation, 'settings changed beyond light'
     if axis == 'brightness':
-        assert 19 <= config['frontlightBrightness'] <= 20 and config['frontlightOn'] == 1, config
+        # From off, the first 5% step brings the kept 60% back, three more add 15% (founder 05/10).
+        assert config['frontlightBrightness'] == 75 and config['frontlightOn'] == 1, config
     else:
         assert 69 <= config['frontlightWarmth'] <= 70 and config['frontlightOn'] == 0, config
         assert config['frontlightBrightness'] == 60, 'warmth changed brightness while off'
 
 
 def bounds_case(folder, shell):
-    # Off -> up -> brightness100 -> down0; horizontal clamps both ends.
+    # Off -> up -> brightness100 -> a fast flick down puts it out keeping 100; horizontal clamps both ends.
     script = ('3000:MULTISWIPE:2,.5,.9,.5,.05,250;'
               '5200:MULTISWIPE:2,.5,.05,.5,.95,250;'
               '7400:MULTISWIPE:2,.1,.5,.95,.5,250;'
@@ -70,7 +71,7 @@ def bounds_case(folder, shell):
         uiShell=shell, frontlightOn=0, frontlightBrightness=60, frontlightWarmth=50))
     save(folder, ('100-bright', '0-bright', '100-warm', '0-warm', 'expired'), images)
     config = persisted(folder)
-    assert (config['frontlightBrightness'],config['frontlightOn'],config['frontlightWarmth']) == (0,0,0), config
+    assert (config['frontlightBrightness'],config['frontlightOn'],config['frontlightWarmth']) == (100,0,0), config
 
 
 def unsupported_case(folder, shell):
@@ -110,7 +111,7 @@ def panel_case(folder, shell):
                       '6300:SWIPE:.5,.99,.5,.75,250',
                [2700,5400,8400],settings=dict(uiShell=shell,frontlightOn=0,frontlightBrightness=60))
     save(folder,('recent','panel','after-home'),images)
-    assert 19<=persisted(folder)['frontlightBrightness']<=20, 'closing panel restored stale brightness'
+    assert persisted(folder)['frontlightBrightness']==75, 'closing panel restored stale brightness'
     assert persisted(folder)['frontlightOn']==1, 'closing panel restored stale off state'
     box=(50,48,480,128) if shell else (0,24,480,180)
     assert list(images[0].crop(box).getdata())==list(images[2].crop(box).getdata()), 'panel bottom swipe stopped below Home'

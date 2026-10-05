@@ -62,7 +62,18 @@ int main() {
   assert(f.follow(240, 330, 20, 50, true, 310) && f.value == 15);
   f.lift();
   assert(f.flick(0, 300, 100, 15, 320) && f.keep == 20);
-  assert(f.flick(0, 300, 100, 15, 330) && f.keep == 15);
+  assert(f.flick(0, 300, 100, 15, 1000) && f.keep == 15);
+
+  // A release no live frame showed steps by its whole travel; one that was followed live does not again.
+  FrontlightGesture q;
+  assert(q.settle(0, -120, 250, 60, 50, false, 0) && q.vertical && q.value == 75);
+  assert(q.settle(120, 0, 250, 60, 50, true, 0) && !q.vertical && q.value == 70);
+  assert(!q.settle(0, -10, 250, 60, 50, true, 0));
+  assert(!q.follow(0, 500, 60, 50, true, 1000) && q.follow(0, 440, 60, 50, true, 1010));
+  q.lift();
+  assert(!q.settle(0, -60, 30, 70, 50, true, 1020));
+  // A live gesture the controller never classified leaves no claim on the next release.
+  assert(q.settle(0, -60, 250, 70, 50, true, 5000) && q.value == 80);
 
   FrontlightGesture e;
   e.visible = true;

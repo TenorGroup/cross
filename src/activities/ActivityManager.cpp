@@ -82,6 +82,20 @@ void ActivityManager::deferLightGestureSave() {
   deferWrite(&saveGestureLight);
 }
 
+// The level the two-finger gesture shows, onto the light: brightness (0 = off, the brightness kept for the
+// next step up) or warmth.
+bool ActivityManager::applyLightLevel() {
+  if (!lightGesture.vertical) {
+    if (Frontlight.hasColorTemperature()) Frontlight.setWarmth(lightGesture.value);
+  } else if (lightGesture.value) {
+    Frontlight.setBrightness(lightGesture.value);
+    Frontlight.setOn(true);
+  } else {
+    Frontlight.setOn(false);
+  }
+  return true;
+}
+
 // Two fingers set the light while they move (FrontlightGesture). The light changes on this pass; the level
 // shows on the next frame the render task draws. True while two fingers are down or their release is being
 // consumed, so no screen reads them as a tap or a swipe.
@@ -101,21 +115,16 @@ bool ActivityManager::handleLightGesture() {
   // number for one frame); taking the lock here would hold the light until the panel finished a refresh.
   const uint32_t now = millis();
   bool changed = false;
-  if (two && lightGesture.follow(x, y, Frontlight.brightness(), Frontlight.warmth(), Frontlight.isOn(), now)) {
-    changed = true;
-    if (!lightGesture.vertical) {
-      if (Frontlight.hasColorTemperature()) Frontlight.setWarmth(lightGesture.value);
-    } else if (lightGesture.value) {
-      Frontlight.setBrightness(lightGesture.value);
-      Frontlight.setOn(true);
-    } else {
-      Frontlight.setOn(false);  // the brightness stays for the next step up
+  if (two && lightGesture.follow(x, y, Frontlight.brightness(), Frontlight.warmth(), Frontlight.isOn(), now))
+    changed = applyLightLevel();
+  if (released && contacts == 2) {
+    if (lightGesture.flick(dx, dy, ms, Frontlight.brightness(), now)) {
+      changed = true;
+      Frontlight.setBrightness(lightGesture.keep);
+      Frontlight.setOn(false);
+    } else if (lightGesture.settle(dx, dy, ms, Frontlight.brightness(), Frontlight.warmth(), Frontlight.isOn(), now)) {
+      changed = applyLightLevel();
     }
-  }
-  if (released && contacts == 2 && lightGesture.flick(dx, dy, ms, Frontlight.brightness(), now)) {
-    changed = true;
-    Frontlight.setBrightness(lightGesture.keep);
-    Frontlight.setOn(false);
   }
 #ifdef TENOR_PRESS_PROBE
   if (released) LOG_INF("LGT", "release contacts=%u dx=%d dy=%d ms=%lu", contacts, dx, dy, ms);
