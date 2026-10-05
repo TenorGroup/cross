@@ -12,6 +12,11 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <optional>
+
+#include "ReadingStatsStore.h"
+#include "shells/ugly/UglyInk.h"
+#include "shells/ugly/UglyQuip.h"
 
 #include "AboutActivity.h"
 #include "BlePageTurnerActivity.h"
@@ -96,7 +101,11 @@ bool SettingsActivity::applyUiTextSize(GfxRenderer& renderer, const uint8_t size
   return true;
 }
 
-void SettingsActivity::rebuildSettingsLists() {
+void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
+  std::optional<RenderLock> lock;
+  if (!lockHeld) lock.emplace(*this);
+  form_.invalidate();
+  formPaintReady_.store(false);
   displaySettings.clear();
   readerSettings.clear();
   controlsSettings.clear();
@@ -214,9 +223,11 @@ void SettingsActivity::rebuildSettingsLists() {
   currentSettings = &danhSachCuaThe(static_cast<settingstabs::Tab>(selectedCategoryIndex));
   settingsCount = static_cast<int>(currentSettings->size());
   rebuildRowItems();
+  if (shell::isUgly()) bindForm();
 }
 
 void SettingsActivity::onEnter() {
+  RenderLock lock(*this);
   navigationPrefix = tr(STR_SETTINGS_TITLE);
   UiTabListActivity::onEnter();
 
@@ -227,7 +238,8 @@ void SettingsActivity::onEnter() {
   quickResumeTimeoutAutoEnabled = false;
   syncQuickResumeTimeoutForSleepScreen(/*sleepScreenChanged=*/true, /*quickResumeTimeoutChanged=*/false);
 
-  rebuildSettingsLists();
+  if (shell::isUgly()) ugly::ensureFonts(renderer);
+  rebuildSettingsLists(true);
   dapXuongNhom();
 }
 
@@ -235,9 +247,16 @@ void SettingsActivity::restoreNavigation(const MenuNavigationState& state) {
   MenuNavigationState restored = state;
   if (fromHomeGroup) restored.tab = theBanDau;
   UiTabListActivity::restoreNavigation(restored);
+  if (shell::isUgly()) {
+    RenderLock lock(*this);
+    focusForm(std::clamp(ringPos() - 1, 0, std::max(0, settingsCount - 1)));
+  }
 }
 
 void SettingsActivity::onPause() {
+  form_.invalidate();
+  formPaintReady_.store(false);
+  formCount_ = 0;
   if (!releaseListsForFontDownload_) return;
   // ActivityManager holds RenderLock and has already saved navigation. The
   // download child owns its data, so these descriptors and rows can be rebuilt
@@ -261,11 +280,19 @@ void SettingsActivity::onPause() {
 }
 
 void SettingsActivity::onResume() {
-  if (!releaseListsForFontDownload_) return;
-  // The manager still owns RenderLock here, before the result handler can
-  // request a repaint. Keep the remembered tab and each tab's cursor.
-  rebuildSettingsLists();
-  releaseListsForFontDownload_ = false;
+  // ActivityManager owns RenderLock here.
+  if (releaseListsForFontDownload_) {
+    rebuildSettingsLists(true);
+    releaseListsForFontDownload_ = false;
+  } else if (shell::isUgly()) {
+    bindForm();
+  }
+}
+
+bool SettingsActivity::handleHomeGesture() {
+  if (!shell::isUgly()) return false;
+  queueForm({FormEvent::Type::Key, ugly::QuestionSheet::Key::Home});
+  return true;
 }
 
 void SettingsActivity::selectCategory(const int categoryIndex) {
@@ -280,6 +307,7 @@ void SettingsActivity::selectCategory(const int categoryIndex) {
   // remember/forget rule for every tab screen; see rowTab there.
   dapXuongNhom();
   rebuildRowItems();
+  if (shell::isUgly()) bindForm();
 }
 
 // Rebuilds rowValues_/rowItems_ (label + actionValue) for *currentSettings.
@@ -311,6 +339,26 @@ void SettingsActivity::onTabAction(const int index) {
 }
 
 void SettingsActivity::activateIndex(const int index) {
+  if (shell::isUgly()) {
+    if (!currentSettings || index < 0 || index >= settingsCount) return;
+    ugly::QuestionSheet::Intent intent;
+    {
+      RenderLock lock(*this);
+      focusForm(index);
+      const bool paperWasOpen = form_.paperOpen();
+      const auto row = formRow(this, index);
+      if (row.count > 0 && (row.kind == ugly::QuestionSheet::Kind::Toggle ||
+                           (row.kind == ugly::QuestionSheet::Kind::Choice && row.count <= 6))) {
+        intent = {ugly::QuestionSheet::IntentKind::Commit, row.id, index, (row.selected + 1) % row.count, true};
+      } else {
+        intent = form_.input(ugly::QuestionSheet::Key::Confirm);
+      }
+      if (paperWasOpen != form_.paperOpen()) ++formSurface_;
+      formPaintReady_.store(false);
+    }
+    applyFormIntent(intent);
+    return;
+  }
   if (optionPopup.isActive()) return;
   // toggleCurrentSetting reads the ring position; a tap on the touch shell leaves the ring alone
   // (no cursor row), so it names the row it landed on here.
@@ -347,8 +395,204 @@ bool SettingsActivity::applyUiSettingChange(uint8_t CrossPointSettings::* valueP
   return true;
 }
 
+uint8_t SettingsActivity::formValue(const SettingInfo& setting, const int option) {
+  return static_cast<uint8_t>(setting.type == SettingType::VALUE
+                                  ? setting.valueRange.min + option * setting.valueRange.step
+                                  : option);
+}
+
+ugly::QuestionSheet::Row SettingsActivity::formRow(void* context, const int index) {
+  using Kind = ugly::QuestionSheet::Kind;
+  auto& self = *static_cast<SettingsActivity*>(context);
+  if (!self.currentSettings || index < 0 || index >= self.settingsCount) return {};
+  const auto& setting = (*self.currentSettings)[index];
+  ugly::QuestionSheet::Row row;
+  row.id = static_cast<uint32_t>(setting.nameId) + 1;
+  row.question = I18N.get(setting.nameId);
+  const int value = setting.valuePtr ? SETTINGS.*setting.valuePtr : setting.valueGetter ? setting.valueGetter() : 0;
+  if (setting.type == SettingType::TOGGLE && (setting.valuePtr || setting.valueSetter)) {
+    row.kind = Kind::Toggle;
+    row.count = 2;
+    row.selected = value;
+  } else if (setting.type == SettingType::ENUM && (setting.valuePtr || setting.valueSetter)) {
+    row.count = static_cast<int>(setting.enumStringValues.empty() ? setting.enumLabels().size()
+                                                                 : setting.enumStringValues.size());
+    row.kind = row.count >= 7 ? Kind::Paper : Kind::Choice;
+    row.selected = value;
+  } else if (setting.type == SettingType::VALUE && setting.valueRange.step) {
+    row.count = (setting.valueRange.max - setting.valueRange.min) / setting.valueRange.step + 1;
+    row.kind = row.count <= 6 ? Kind::Choice : row.count <= 11 ? Kind::Ruler : Kind::Paper;
+    row.selected = (value - setting.valueRange.min) / setting.valueRange.step;
+  } else {
+    row.kind = setting.type == SettingType::ACTION && setting.action != SettingAction::None ? Kind::Action : Kind::ReadOnly;
+  }
+  return row;
+}
+
+void SettingsActivity::formLabel(void* context, const int row, const int option, char* out, const size_t size) {
+  if (!size) return;
+  out[0] = 0;
+  auto& self = *static_cast<SettingsActivity*>(context);
+  if (!self.currentSettings || row < 0 || row >= self.settingsCount) return;
+  const auto& setting = (*self.currentSettings)[row];
+  const char* label = "";
+  if (setting.type == SettingType::TOGGLE) {
+    label = setting.valuePtr == &CrossPointSettings::keyboardAxisSwapped
+                ? (option ? tr(STR_KEYBOARD_MOVE_VERTICAL) : tr(STR_KEYBOARD_MOVE_HORIZONTAL))
+                : (option ? tr(STR_STATE_ON) : tr(STR_STATE_OFF));
+  } else if (setting.type == SettingType::ENUM) {
+    if (!setting.enumStringValues.empty() && option >= 0 && option < static_cast<int>(setting.enumStringValues.size()))
+      label = setting.enumStringValues[option].c_str();
+    else if (option >= 0 && option < static_cast<int>(setting.enumLabels().size())) label = I18N.get(setting.enumLabels()[option]);
+  } else if (setting.type == SettingType::VALUE) {
+    const unsigned value = formValue(setting, option);
+    if (setting.nameId == StrId::STR_TIME_TO_SLEEP) {
+      if (value >= CrossPointSettings::SLEEP_TIMEOUT_NEVER_MINUTES) label = tr(STR_SLEEP_NEVER);
+      else { snprintf(out, size, tr(STR_SLEEP_TIMER_VALUE_FORMAT), value); return; }
+    } else { snprintf(out, size, "%u", value); return; }
+  } else if (setting.stringGetter) {
+    // Read-only catalog services return their current label; no SD discovery.
+    const std::string value = setting.stringGetter();
+    snprintf(out, size, "%s", value.c_str());
+    return;
+  }
+  snprintf(out, size, "%s", label);
+}
+
+void SettingsActivity::focusForm(const int row) {
+  if (row < 0 || row >= settingsCount) return;
+  const int previousSheet = form_.sheet();
+  for (int n = 0; form_.question() != row && n < settingsCount; ++n)
+    form_.input(ugly::QuestionSheet::Key::NextQuestion);
+  if (previousSheet != form_.sheet()) ++formSurface_;
+  activeNav().selected = row + 1;
+}
+
+void SettingsActivity::bindForm() {
+  ++formSurface_;
+  ugly::QuestionSheet::View view;
+  view.context = this;
+  view.count = settingsCount;
+  view.subject = tabLabel(selectedCategoryIndex);
+  view.date = ReadingStatsStore::currentDay();
+  view.code = selectedCategoryIndex + 1;
+  view.row = formRow;
+  view.label = formLabel;
+  form_.bind(renderer, view, mappedInput.hasTouch());
+  focusForm(std::clamp(ringPos() - 1, 0, std::max(0, settingsCount - 1)));
+  formPaintReady_.store(false);
+}
+
+void SettingsActivity::prepareFormQuip(const int row, const int candidate) {
+  if (!currentSettings || row < 0 || row >= settingsCount) return;
+  const auto& setting = (*currentSettings)[row];
+  const int value = formValue(setting, std::max(0, candidate));
+  auto line = ugly::quip(ugly::Quip::SetValue, ugly::valueKey(setting, value), 0, value);
+  RenderLock lock(*this);
+  form_.setQuip(row, std::move(line));
+}
+
+void SettingsActivity::applyFormIntent(const ugly::QuestionSheet::Intent& intent) {
+  using Intent = ugly::QuestionSheet::IntentKind;
+  if (intent.kind == Intent::Back) {
+    formCount_ = 0;
+    if (!saveSettings(false)) { requestUpdate(); return; }
+    if (fromHomeGroup) finish();
+    else onGoHome();
+    return;
+  }
+  if (intent.row >= 0 && currentSettings && intent.row < settingsCount &&
+      intent.id == formRow(this, intent.row).id) {
+    if (intent.kind == Intent::Commit) {
+      const int previous = formRow(this, intent.row).selected;
+      if (applySettingValue(intent.row, formValue((*currentSettings)[intent.row], intent.candidate))) {
+        RenderLock lock(*this);
+        // RAM is authoritative for the pencil mark; saveFailed separately
+        // reports persistence failure and Back stays here until retry succeeds.
+        form_.didCommit(intent.row, previous);
+      }
+    } else if (intent.kind == Intent::Activate) {
+      formCount_ = 0;
+      toggleCurrentSetting();
+      // A failed service allocation leaves this same form available.
+      formPaintReady_.store(true);
+      return;
+    }
+    if (intent.repaint) prepareFormQuip(intent.row, intent.candidate);
+  }
+  if (intent.repaint) requestUpdate();
+}
+
+void SettingsActivity::queueForm(FormEvent event) {
+  if (event.type == FormEvent::Type::Tap || event.type == FormEvent::Type::Hold)
+    event.surface = formVisibleSurface_.load();
+  if (formCount_ < formQueue_.size()) formQueue_[(formHead_ + formCount_++) % formQueue_.size()] = event;
+  else LOG_ERR("UGLY", "Settings form queue full");
+}
+
+void SettingsActivity::pollTilt() {
+  if (!shell::isUgly()) UiTabListActivity::pollTilt();
+}
+
 bool SettingsActivity::handleCustomInput() {
-  return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
+  if (!shell::isUgly()) return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
+  using Button = MappedInputManager::Button;
+  using Key = ugly::QuestionSheet::Key;
+  const auto key = [this](Key value) { queueForm({FormEvent::Type::Key, value}); };
+  if (mappedInput.wasLongPressed(Button::Left, 700)) key(Key::PreviousSheet);
+  else if (mappedInput.wasReleased(Button::Left)) key(Key::PreviousQuestion);
+  if (mappedInput.wasLongPressed(Button::Right, 700)) key(Key::NextSheet);
+  else if (mappedInput.wasReleased(Button::Right)) key(Key::NextQuestion);
+  if (mappedInput.wasReleased(Button::Up)) key(Key::PreviousOption);
+  if (mappedInput.wasReleased(Button::Down)) key(Key::NextOption);
+  if (mappedInput.wasLongPressed(Button::Confirm, 700)) queueForm({FormEvent::Type::Pin});
+  else if (mappedInput.wasReleased(Button::Confirm)) key(Key::Confirm);
+  const bool back = mappedInput.wasReleased(Button::Back);
+  const bool home = mappedInput.wasHomeGesture();
+  if (back) key(Key::Back);
+  if (home) key(Key::Home);
+  int x = 0, y = 0;
+  if (mappedInput.wasScreenLongPress(x, y)) queueForm({FormEvent::Type::Hold, Key::Confirm, static_cast<int16_t>(x), static_cast<int16_t>(y)});
+  else if (mappedInput.wasScreenTapped(x, y)) queueForm({FormEvent::Type::Tap, Key::Confirm, static_cast<int16_t>(x), static_cast<int16_t>(y)});
+  const auto swipe = mappedInput.wasSwipe();
+  if (!back && !home) {
+    if (swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Up) key(Key::NextSheet);
+    else if (swipe == MappedInputManager::SwipeDir::Right || swipe == MappedInputManager::SwipeDir::Down) key(Key::PreviousSheet);
+  }
+  if (!formCount_ || !formPaintReady_.load()) return true;
+  ugly::QuestionSheet::Intent intent;
+  int pinRow = -1;
+  {
+    RenderLock lock(RenderLock::TryTake{});
+    if (!lock.acquired() || !formPaintReady_.load()) return true;
+    const auto event = formQueue_[formHead_];
+    formHead_ = static_cast<uint8_t>((formHead_ + 1) % formQueue_.size());
+    --formCount_;
+    // A finger event belongs to the surface that was visible when sampled.
+    // A tap queued before a paper opened cannot choose a row on that paper.
+    if ((event.type == FormEvent::Type::Tap || event.type == FormEvent::Type::Hold) && event.surface != formSurface_)
+      return true;
+    const bool paperWasOpen = form_.paperOpen();
+    const int previousSheet = form_.sheet();
+    if (event.type == FormEvent::Type::Key) intent = form_.input(event.key);
+    else if (event.type == FormEvent::Type::Tap) intent = form_.tap(event.x, event.y);
+    else if (!form_.paperOpen()) pinRow = event.type == FormEvent::Type::Hold ? form_.questionAt(event.x, event.y) : form_.question();
+    if (paperWasOpen != form_.paperOpen() || previousSheet != form_.sheet()) ++formSurface_;
+    activeNav().selected = form_.question() + 1;
+    if (intent.repaint || pinRow >= 0) formPaintReady_.store(false);
+  }
+  if (pinRow >= 0 && !favoriteKey(pinRow).empty()) {
+    const bool wasPinned = rowIsPinned(pinRow);
+    formPinFailed_.store(!toggleFavorite(pinRow));
+    auto line = ugly::quip(wasPinned ? ugly::Quip::Unpin : ugly::Quip::Pin);
+    { RenderLock lock(*this); form_.setQuip(pinRow, std::move(line)); }
+    requestUpdate();
+  } else {
+    // An inert hold must leave the input-to-paint handshake open.
+    if (pinRow >= 0) formPaintReady_.store(true);
+    applyFormIntent(intent);
+  }
+  return true;
 }
 
 void SettingsActivity::stepTab(const int direction) {
@@ -390,11 +634,11 @@ void SettingsActivity::navigateButtons() {
   tabNavigator.onRelease({MappedInputManager::Button::Up}, [this] { queueNavIntent(NavIntent::TabPrev); });
 }
 
-bool SettingsActivity::saveSettings() {
+bool SettingsActivity::saveSettings(const bool repaint) {
   const bool saved = SETTINGS.saveToFile();
   saveFailed.store(!saved);
   if (!saved) LOG_ERR("SETTINGS", "Saving settings failed");
-  requestUpdate();
+  if (repaint) requestUpdate();
   return saved;
 }
 
@@ -420,115 +664,74 @@ bool SettingsActivity::handleButtons() {
   return false;
 }
 
+bool SettingsActivity::applySettingValue(const int row, const uint8_t value, const bool shellConfirmed) {
+  if (!currentSettings || row < 0 || row >= settingsCount) return false;
+  const auto& setting = (*currentSettings)[row];
+  const auto valuePtr = setting.valuePtr;
+  if (!valuePtr && !(setting.valueGetter && setting.valueSetter)) return false;
+  if (setting.type == SettingType::TOGGLE && value > 1) return false;
+  if (setting.type == SettingType::ENUM) {
+    const size_t count = setting.enumStringValues.empty() ? setting.enumLabels().size() : setting.enumStringValues.size();
+    if (value >= count) return false;
+  } else if (setting.type == SettingType::VALUE) {
+    const auto range = setting.valueRange;
+    if (!range.step || value < range.min || value > range.max || (value - range.min) % range.step) return false;
+  } else if (setting.type != SettingType::TOGGLE) {
+    return false;
+  }
+  const uint8_t current = valuePtr ? SETTINGS.*valuePtr : setting.valueGetter();
+  if (current == value) return true;
+  if (valuePtr == &CrossPointSettings::uiShell && !shellConfirmed) {
+    const bool toCross = value == static_cast<uint8_t>(shell::Kind::Cross);
+    if (!toCross && !shell::uglyOffered()) return false;
+    startActivityForResult(ugly::makeSwitchConfirm(renderer, mappedInput, toCross), [this, row, value](const ActivityResult& result) {
+      if (!result.isCancelled) applySettingValue(row, value, true);
+      else {
+        if (shell::isUgly()) prepareFormQuip(row, formRow(this, row).selected);
+        requestUpdate();
+      }
+    });
+    return false;
+  }
+  if (valuePtr == &CrossPointSettings::uiTextSize) {
+    if (!applyUiSettingChange(valuePtr, value)) {
+      if (!shell::isUgly()) requestUpdate();
+      return false;
+    }
+  } else {
+    RenderLock lock(*this);
+    if (valuePtr) SETTINGS.*valuePtr = value;
+    else setting.valueSetter(value);
+    syncQuickResumeTimeoutForSleepScreen(valuePtr == &CrossPointSettings::sleepScreen,
+                                        valuePtr == &CrossPointSettings::quickResumeSleepScreen);
+  }
+  if (valuePtr != &CrossPointSettings::uiTextSize && !applyUiSettingChange(valuePtr, current)) {
+    if (!shell::isUgly()) requestUpdate();
+    return false;
+  }
+  saveSettings(!shell::isUgly());
+  noteValue(setting.nameId);
+  // Ordinary value commits keep the form's previous pencil marks. Only a
+  // structural shell change rebuilds the catalog; UI size changes geometry.
+  if (!shell::isUgly() || valuePtr == &CrossPointSettings::uiShell) rebuildSettingsLists();
+  else if (valuePtr == &CrossPointSettings::uiTextSize || valuePtr == &CrossPointSettings::uiUglyLevel) {
+    RenderLock lock(*this);
+    bindForm();
+  }
+  if (valuePtr == &CrossPointSettings::uiShell) shell::changed();
+  return true;
+}
+
 void SettingsActivity::toggleCurrentSetting() {
   mappedInput.resetHomeButtonInput();
-  int selectedSetting = ringPos() - 1;
-  if (selectedSetting < 0 || selectedSetting >= settingsCount) {
-    return;
-  }
-
-  const auto& setting = (*currentSettings)[selectedSetting];
-  const auto changedValuePtr = setting.valuePtr;
-  bool uiTextSizeApplied = false;
-  const bool sleepScreenChanged = setting.valuePtr == &CrossPointSettings::sleepScreen;
-  const bool quickResumeTimeoutChanged = setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;
-
+  const int row = ringPos() - 1;
+  if (!currentSettings || row < 0 || row >= settingsCount) return;
+  const auto& setting = (*currentSettings)[row];
   if (setting.nameId == StrId::STR_TIME_TO_SLEEP) {
     openSleepTimeoutPicker();
     return;
   }
-
-  if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
-    // Toggle the boolean value using the member pointer
-    const bool currentValue = SETTINGS.*(setting.valuePtr);
-    SETTINGS.*(setting.valuePtr) = !currentValue;
-  } else if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
-    const uint8_t currentValue = SETTINGS.*(setting.valuePtr);
-    const auto enumLabels = setting.enumLabels();
-    if (settingstabs::moTrinhChon(static_cast<int>(enumLabels.size()))) {
-      const auto valuePtr = setting.valuePtr;
-      const StrId name = setting.nameId;
-      optionPopup.show(setting.nameId, enumLabels.data(), static_cast<int>(enumLabels.size()), currentValue,
-                       [this, valuePtr, currentValue, sleepScreenChanged, quickResumeTimeoutChanged, name](int idx) {
-                         if (valuePtr == &CrossPointSettings::uiTextSize) {
-                           if (!applyUiSettingChange(valuePtr, static_cast<uint8_t>(idx))) {
-                             requestUpdate();
-                             return;
-                           }
-                         } else {
-                           SETTINGS.*valuePtr = idx;
-                         }
-                         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-                         if (valuePtr != &CrossPointSettings::uiTextSize &&
-                             !applyUiSettingChange(valuePtr, currentValue)) {
-                           requestUpdate();
-                           return;
-                         }
-                         saveSettings();
-                         noteValue(name);
-                         rebuildSettingsLists();
-                       });
-      requestUpdate();
-      return;
-    }
-    const uint8_t newValue = (currentValue + 1) % static_cast<uint8_t>(enumLabels.size());
-    // Going from tenor/cross to tenor/ugly asks first, in the pen of tenor/ugly; coming back asks nothing.
-    if (setting.valuePtr == &CrossPointSettings::uiShell && newValue == static_cast<uint8_t>(shell::Kind::Ugly)) {
-      if (!shell::uglyOffered()) return;  // the limited edition is over: the row stays on tenor/cross
-      startActivityForResult(ugly::makeSwitchConfirm(renderer, mappedInput), [this, newValue](const ActivityResult& result) {
-        if (result.isCancelled) {
-          requestUpdate();
-          return;
-        }
-        SETTINGS.uiShell = newValue;
-        rebuildSettingsLists();
-        shell::changed();
-      });
-      return;
-    }
-    if (setting.valuePtr == &CrossPointSettings::uiTextSize) {
-      if (!applyUiSettingChange(setting.valuePtr, newValue)) {
-        requestUpdate();
-        return;
-      }
-      uiTextSizeApplied = true;
-    } else {
-      SETTINGS.*(setting.valuePtr) = newValue;
-    }
-  } else if (setting.type == SettingType::ENUM && setting.valueGetter && setting.valueSetter) {
-    const uint8_t totalValues = setting.enumStringValues.empty()
-                                    ? static_cast<uint8_t>(setting.enumLabels().size())
-                                    : static_cast<uint8_t>(setting.enumStringValues.size());
-    const uint8_t cur = setting.valueGetter();
-    if (settingstabs::moTrinhChon(totalValues)) {
-      const auto valueSetter = setting.valueSetter;
-      const StrId name = setting.nameId;
-      auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged, name](int idx) {
-        valueSetter(idx);
-        syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-        saveSettings();
-        noteValue(name);
-        rebuildSettingsLists();
-      };
-      if (!setting.enumStringValues.empty()) {
-        optionPopup.show(setting.nameId, setting.enumStringValues, cur, std::move(onSelect));
-      } else {
-        const auto enumLabels = setting.enumLabels();
-        optionPopup.show(setting.nameId, enumLabels.data(), static_cast<int>(enumLabels.size()), cur,
-                         std::move(onSelect));
-      }
-      requestUpdate();
-      return;
-    }
-    setting.valueSetter((cur + 1) % totalValues);
-  } else if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
-    const int8_t currentValue = SETTINGS.*(setting.valuePtr);
-    if (currentValue + setting.valueRange.step > setting.valueRange.max) {
-      SETTINGS.*(setting.valuePtr) = setting.valueRange.min;
-    } else {
-      SETTINGS.*(setting.valuePtr) = currentValue + setting.valueRange.step;
-    }
-  } else if (setting.type == SettingType::ACTION) {
+  if (setting.type == SettingType::ACTION) {
     auto resultHandler = [this](const ActivityResult&) { saveSettings(); };
 
     switch (setting.action) {
@@ -659,21 +862,30 @@ void SettingsActivity::toggleCurrentSetting() {
         // Do nothing
         break;
     }
-    return;  // Results will be handled in the result handler, so we can return early here
-  } else {
     return;
   }
-
-  syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-  if (!uiTextSizeApplied && !applyUiSettingChange(changedValuePtr, 0)) {
-    requestUpdate();
-    return;
+  const uint8_t current = setting.valuePtr ? SETTINGS.*setting.valuePtr : setting.valueGetter ? setting.valueGetter() : 0;
+  if (setting.type == SettingType::TOGGLE) {
+    applySettingValue(row, !current);
+  } else if (setting.type == SettingType::ENUM) {
+    const int count = static_cast<int>(setting.enumStringValues.empty() ? setting.enumLabels().size() : setting.enumStringValues.size());
+    if (count <= 0) return;
+    if (settingstabs::moTrinhChon(count)) {
+      auto onSelect = [this, row](const int index) { applySettingValue(row, static_cast<uint8_t>(index)); };
+      if (!setting.enumStringValues.empty()) {
+        optionPopup.show(setting.nameId, setting.enumStringValues, current, std::move(onSelect));
+      } else {
+        const auto labels = setting.enumLabels();
+        optionPopup.show(setting.nameId, labels.data(), count, current, std::move(onSelect));
+      }
+      requestUpdate();
+    } else {
+      applySettingValue(row, static_cast<uint8_t>((current + 1) % count));
+    }
+  } else if (setting.type == SettingType::VALUE && setting.valuePtr) {
+    const auto range = setting.valueRange;
+    applySettingValue(row, current + range.step > range.max ? range.min : current + range.step);
   }
-  saveSettings();
-  shell::valueChanged(setting);
-  rebuildSettingsLists();
-  // Another shell draws Home: go and draw it.
-  if (changedValuePtr == &CrossPointSettings::uiShell) shell::changed();
 }
 
 void SettingsActivity::noteValue(const StrId name) {
@@ -712,8 +924,11 @@ void SettingsActivity::openSleepTimeoutPicker() {
           StrId::STR_SLEEP_TIMER_VALUE_FORMAT, false, StrId::STR_SLEEP_NEVER),
       [this](const ActivityResult& result) {
         if (!result.isCancelled) {
-          SETTINGS.sleepTimeoutMinutes = static_cast<uint8_t>(std::get<IntervalResult>(result.data).value);
-          saveSettings();
+          for (int row = 0; row < settingsCount; ++row)
+            if ((*currentSettings)[row].nameId == StrId::STR_TIME_TO_SLEEP) {
+              applySettingValue(row, static_cast<uint8_t>(std::get<IntervalResult>(result.data).value));
+              break;
+            }
         }
         requestUpdate();
       });
@@ -870,6 +1085,21 @@ bool SettingsActivity::openPendingSettingsSibling() {
 }
 
 void SettingsActivity::render(RenderLock&&) {
+  if (shell::isUgly()) {
+    [[maybe_unused]] const uint32_t started = millis();
+    form_.paint(renderer, mappedInput);
+    if (saveFailed.load()) GUI.drawPopup(renderer, tr(STR_HABIT_SAVE_FAILED));
+    else if (formPinFailed_.load()) GUI.drawPopup(renderer, tr(STR_MENU_SAVE_FAILED));
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    formVisibleSurface_.store(formSurface_);
+    formPaintReady_.store(true);
+#ifdef UGLY_FRAME_LOG
+    LOG_INF("UGLY", "Settings form total=%lums tab=%d rows=%d sheet=%d/%d question=%d candidate=%d paper=%d",
+            static_cast<unsigned long>(millis() - started), selectedCategoryIndex, settingsCount, form_.sheet() + 1,
+            form_.sheetCount(), form_.question(), form_.candidate(), form_.paperOpen());
+#endif
+    return;
+  }
   if (optionPopup.processRender(renderer, mappedInput)) return;
   if (rowMenu.processRender(renderer, mappedInput)) return;
 
@@ -929,6 +1159,7 @@ int SettingsActivity::focusFavorite(const std::string& key) {
         RenderLock lock(*this);
         activeNav().selected = row + 1;
         activeNav().followOnBuild = true;
+        if (shell::isUgly()) focusForm(static_cast<int>(row));
       }
       return static_cast<int>(row);
     }

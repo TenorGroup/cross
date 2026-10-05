@@ -19,8 +19,8 @@ std::unique_ptr<Activity> makeNotebook(GfxRenderer& renderer, MappedInputManager
   return std::make_unique<Notebook>(renderer, mappedInput, page);
 }
 
-std::unique_ptr<Activity> makeSwitchConfirm(GfxRenderer& renderer, MappedInputManager& mappedInput) {
-  return std::make_unique<SwitchConfirm>(renderer, mappedInput);
+std::unique_ptr<Activity> makeSwitchConfirm(GfxRenderer& renderer, MappedInputManager& mappedInput, const bool toCross) {
+  return std::make_unique<SwitchConfirm>(renderer, mappedInput, toCross);
 }
 
 std::unique_ptr<Activity> makeHome(GfxRenderer& renderer, MappedInputManager& mappedInput, const HomeMenuItem item,

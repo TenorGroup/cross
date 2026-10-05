@@ -2,6 +2,7 @@
 #include <I18n.h>
 
 #include <atomic>
+#include <array>
 #include <functional>
 #include <span>
 #include <string>
@@ -11,6 +12,7 @@
 #include "activities/UiTabListActivity.h"
 #include "activities/settings/SettingsTabs.h"
 #include "components/OptionPopup.h"
+#include "shells/ugly/UglyQuestionSheet.h"
 
 enum class SettingType { TOGGLE, ENUM, ACTION, VALUE, STRING };
 
@@ -196,7 +198,7 @@ class SettingsActivity final : public UiTabListActivity {
   std::vector<SettingInfo>& danhSachCuaThe(settingstabs::Tab tab);
 
   std::atomic<bool> saveFailed{false};
-  bool saveSettings();
+  bool saveSettings(bool repaint = true);
 
   bool preserveQuickResumeTimeoutOn = false;
   bool quickResumeTimeoutAutoEnabled = false;
@@ -230,6 +232,7 @@ class SettingsActivity final : public UiTabListActivity {
   void stepTab(int direction) override;
   bool handleButtons() override;
   bool handleCustomInput() override;
+  void pollTilt() override;
   bool allowsTiltTabNavigation() const override { return !optionPopup.isActive(); }
   bool supportsFavorites() const override { return true; }
   // A row that opens a screen; a switch or a value list is changed in place.
@@ -250,9 +253,33 @@ class SettingsActivity final : public UiTabListActivity {
   void enterCategory(int categoryIndex);
   static void veTenNhomCoMuiTen(const GfxRenderer& r, int x0, int yGiua, const char* ten);
   void toggleCurrentSetting();
+  // True means applied in RAM. A failed SD save stays visible via saveFailed;
+  // Back retries persistence before leaving. Font failure returns false.
+  bool applySettingValue(int row, uint8_t value, bool shellConfirmed = false);
+  ugly::QuestionSheet form_;
+  struct FormEvent {
+    enum class Type : uint8_t { Key, Tap, Hold, Pin } type = Type::Key;
+    ugly::QuestionSheet::Key key = ugly::QuestionSheet::Key::Confirm;
+    int16_t x = 0, y = 0;
+    uint32_t surface = 0;
+  };
+  std::array<FormEvent, 8> formQueue_{};
+  uint8_t formHead_ = 0, formCount_ = 0;
+  std::atomic<bool> formPaintReady_{false};
+  uint32_t formSurface_ = 0;  // Updated under RenderLock when paper/geometry changes.
+  std::atomic<uint32_t> formVisibleSurface_{0};
+  std::atomic<bool> formPinFailed_{false};
+  void queueForm(FormEvent event);
+  void bindForm();  // Caller owns RenderLock.
+  void focusForm(int row);  // Caller owns RenderLock.
+  void applyFormIntent(const ugly::QuestionSheet::Intent& intent);
+  void prepareFormQuip(int row, int candidate);
+  static ugly::QuestionSheet::Row formRow(void* context, int row);
+  static void formLabel(void* context, int row, int option, char* out, size_t size);
+  static uint8_t formValue(const SettingInfo& setting, int option);
   void noteValue(StrId name);  // tells the shell which row changed (shell::valueChanged)
   void openSleepTimeoutPicker();
-  void rebuildSettingsLists();
+  void rebuildSettingsLists(bool lockHeld = false);
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
 
   // Tenor's render() (Tenor tab chrome, sibling-tab arrows, save-failed popup)
@@ -287,6 +314,7 @@ class SettingsActivity final : public UiTabListActivity {
   void onEnter() override;
   void onPause() override;
   void onResume() override;
+  bool handleHomeGesture() override;
   std::string navigationLabel() const override { return tabLabel(activeTab()); }
   bool selectSettingsSibling(int direction) override;
   bool openPendingSettingsSibling() override;

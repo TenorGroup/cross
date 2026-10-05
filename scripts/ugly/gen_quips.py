@@ -8,8 +8,8 @@ inflates only as far as it needs; and the slots: which lines an event says, keye
 
 Keys: a page id for opening a notebook page; for the rest a 16-bit hash of the Vietnamese words the
 firmware also has (a settings group's name, "row label=value" for a value picked), see quipKey().
-A line whose condition the firmware cannot tell apart yet (a value set on a screen of tenor/cross, a range of
-numbers) is left out of the blocks, and so is a line of an event the firmware does not say yet (SAID); `-v`
+A line whose condition the firmware cannot tell apart yet is left out of the blocks,
+and so is a line of an event the firmware does not say yet (SAID); `-v`
 lists them.
 """
 import csv
@@ -71,6 +71,11 @@ def bare(text):
 def slot_of(row, labels):
     """(event, key, when) for a row, or None when the firmware cannot tell its condition apart."""
     c, k = row['condition'], row['key']
+    bucket = re.sub(r'_\d+$', '', k.removeprefix('STR_UGLY_QUIP_'))
+    if bucket.startswith(('TIMEOUT_', 'FSIZE_', 'MARGIN_')) or bucket == 'FONT_SD':
+        name = bare(c.split(' = ', 1)[0])
+        if name in labels:
+            return 'SetValue', key16(name, '@' + bucket), 0
     m = re.match(r'^Mở trang (.+)$', c)
     if m and m.group(1) in PAGES:
         return 'OpenPage', PAGES[m.group(1)], 0

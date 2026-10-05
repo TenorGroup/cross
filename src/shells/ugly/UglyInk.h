@@ -75,6 +75,9 @@ void statusBar(const GfxRenderer& renderer, const MappedInputManager& input, Hin
 // The touch layout (UglyTouch.h). The top band: `left` (a date, a title), the clock, and the battery with
 // its percent written inside it when it fits.
 void topBar(const GfxRenderer& renderer, const char* left);
+// Form chrome uses the live logical screen width, including landscape. The
+// notebook's portrait topBar remains its own layout.
+void formTopBar(const GfxRenderer& renderer);
 // The bottom band over the Home key: "< prev", the word for one step back with an arrow down to the
 // key that does the same, "next >". An empty or null string leaves its cell blank.
 void navRow(const GfxRenderer& renderer, const char* prev, const char* back, const char* next);

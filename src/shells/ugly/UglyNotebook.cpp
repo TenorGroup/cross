@@ -270,11 +270,6 @@ void Notebook::activate(const int row) {
         return;
       }
       const int group = rows.groups[row - 1];
-#if FREEINK_DEVICE_X4PRO
-      // The touch shell has its own page for a group: a touch changes a value where it stands.
-      then([this, group] { openGroup(group); });
-      return;
-#endif
       then([this, group] {
         startActivityForResult(makeUniqueNoThrow<SettingsActivity>(renderer, mappedInput, group, true),
                                [this](const ActivityResult&) { reload(); });
@@ -366,7 +361,7 @@ constexpr homerows::Page TEACH_PAGES[] = {homerows::Page::Folder, homerows::Page
 }  // namespace
 
 int Notebook::askLines(const bool shellAsk) const {
-  return paragraph(renderer, Size::S30, 0, 0, ASK_WIDTH, 0, shellAsk ? tr(STR_UGLY_X4_SHELL_ASK) : tr(STR_UGLY_X4_DELETE_ASK), false);
+  return paragraph(renderer, Size::S30, 0, 0, ASK_WIDTH, 0, shellAsk ? tr(STR_UGLY_SHELL_ASK) : tr(STR_UGLY_X4_DELETE_ASK), false);
 }
 
 unsigned Notebook::loadScribbles() {
@@ -823,7 +818,7 @@ void Notebook::renderTouch() {
       if (p.hiddenAbove) {
         text(renderer, Size::S22, 44, p.top + 28, head.c_str());
         arrow(renderer, 56, p.top + 46, false, 16);
-        snprintf(more, sizeof(more), tr(STR_UGLY_X4_MORE), p.hiddenAbove);
+        snprintf(more, sizeof(more), tr(STR_UGLY_MORE), p.hiddenAbove);
         text(renderer, Size::S22, 76, p.top + 54, more);
       } else {
         text(renderer, Size::S22, 44, p.top + 30, head.c_str());
@@ -847,7 +842,7 @@ void Notebook::renderTouch() {
       if (p.hiddenBelow) {
         const int yb = p.bottom - touch::PAPER_MORE;
         arrow(renderer, 56, yb + 30, true, 20);
-        snprintf(more, sizeof(more), tr(STR_UGLY_X4_MORE), p.hiddenBelow);
+        snprintf(more, sizeof(more), tr(STR_UGLY_MORE), p.hiddenBelow);
         text(renderer, Size::S22, 76, yb + 38, more);
       }
       break;
@@ -857,9 +852,9 @@ void Notebook::renderTouch() {
       const bool shellAsk = pop == Pop::Shell;
       ugly::paper(renderer, ask.top, ask.bottom, false, false, 770);
       paragraph(renderer, Size::S30, 48, ask.textBase, ASK_WIDTH, touch::ASK_LINE,
-                shellAsk ? tr(STR_UGLY_X4_SHELL_ASK) : tr(STR_UGLY_X4_DELETE_ASK));
-      text(renderer, Size::S30, 80, ask.noTop + 42, shellAsk ? tr(STR_UGLY_X4_SHELL_NO) : tr(STR_UGLY_X4_DELETE_NO));
-      const int yw = text(renderer, Size::S30, 80, ask.yesTop + 42, shellAsk ? tr(STR_UGLY_X4_SHELL_YES) : tr(STR_UGLY_X4_DELETE));
+                shellAsk ? tr(STR_UGLY_SHELL_ASK) : tr(STR_UGLY_X4_DELETE_ASK));
+      text(renderer, Size::S30, 80, ask.noTop + 42, shellAsk ? tr(STR_UGLY_SHELL_NO) : tr(STR_UGLY_X4_DELETE_NO));
+      const int yw = text(renderer, Size::S30, 80, ask.yesTop + 42, shellAsk ? tr(STR_UGLY_SHELL_YES) : tr(STR_UGLY_X4_DELETE));
       underline(renderer, 76, 80 + yw, ask.yesTop + 52, 775, 2);
       break;
     }

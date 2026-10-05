@@ -25,6 +25,9 @@ std::string quip(Quip event, uint16_t key = 0, uint8_t when = 0, int number = 0,
 
 // The key of a settings row and the value it holds now, in the Vietnamese words the table uses.
 uint16_t valueKey(const SettingInfo& setting);
+// Candidate uses the row's stored representation: enum index or numeric value.
+// Dynamic font-size labels supply their actual pt value. This reads no SETTINGS.
+uint16_t valueKey(const SettingInfo& setting, int candidate);
 
 // A value changed on a tenor/cross screen while this shell is on: kept for the notebook page to say once.
 void noteValue(const SettingInfo& setting);

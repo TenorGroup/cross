@@ -8,7 +8,8 @@ namespace ugly {
 // cancelled unless the first line was chosen.
 class SwitchConfirm final : public Screen {
  public:
-  SwitchConfirm(GfxRenderer& renderer, MappedInputManager& mappedInput) : Screen("UglySwitch", renderer, mappedInput) {}
+  SwitchConfirm(GfxRenderer& renderer, MappedInputManager& mappedInput, bool toCross = false)
+      : Screen("UglySwitch", renderer, mappedInput), toCross(toCross) {}
   void onEnter() override;
   void render(RenderLock&&) override;
   // A box over Settings, not a Home: holding Back goes out to Home as everywhere else.
@@ -21,6 +22,8 @@ class SwitchConfirm final : public Screen {
   enum Choice : int { YES, NO, COUNT };
   void answer(bool yes);
   int selected = NO;
+  const bool toCross;
+  std::string crossNote;
 #if FREEINK_DEVICE_X4PRO
   Box drawn[COUNT] = {};  // the two lines as last drawn, for the finger: a tap on one answers it
 #endif

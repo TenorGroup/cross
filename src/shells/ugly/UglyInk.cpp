@@ -425,6 +425,26 @@ void topBar(const GfxRenderer& r, const char* left) {
     text(r, Size::S22, 400 - width(r, Size::S22, clock), 34, clock);
 }
 
+void formTopBar(const GfxRenderer& r) {
+  if (SETTINGS.globalStatusBarHidden()) return;
+  const int x0 = r.getScreenWidth() - 68, x1 = r.getScreenWidth() - 24;
+  constexpr int y0 = 12, y1 = 37;
+  const int body[5][2] = {{x0, y0 + 1}, {x1, y0}, {x1 + 1, y1}, {x0 - 1, y1 + 1}, {x0, y0 + 1}};
+  polyline(r, body, 5, 2);
+  stroke(r, x1 + 2, y0 + 8, x1 + 6, y0 + 8, 2);
+  stroke(r, x1 + 6, y0 + 8, x1 + 6, y1 - 8, 2);
+  stroke(r, x1 + 6, y1 - 8, x1 + 2, y1 - 8, 2);
+  const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
+  char pct[6];
+  snprintf(pct, sizeof(pct), "%d", level);
+  const int pw = width(r, Size::S22, pct);
+  if (pw <= x1 - x0 - 6) text(r, Size::S22, (x0 + x1 - pw) / 2, y1 - 5, pct);
+  else for (int x = x0 + 3; x < x0 + 3 + (x1 - x0 - 6) * level / 100; x += 3) stroke(r, x, y0 + 4, x + 1, y1 - 4, 1);
+  char clock[10];
+  if (SETTINGS.clockShowInHeader && clockstatus::hasValidTime() && halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1))
+    text(r, Size::S22, 24, 34, clock);
+}
+
 void arrow(const GfxRenderer& r, const int x, const int y, const bool down, const int length) {
   const int s = down ? 1 : -1;
   stroke(r, x, y - s * length / 2, x + 1, y + s * length / 2, 2);

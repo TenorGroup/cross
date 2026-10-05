@@ -5,6 +5,7 @@
 #include <Memory.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "CrossPointSettings.h"
@@ -65,13 +66,40 @@ std::string quip(const Quip event, const uint16_t key, const uint8_t when, const
 }
 
 uint16_t valueKey(const SettingInfo& s) {
-  const char* label = I18N.get(s.nameId, Language::VI);
   const int value = s.valuePtr ? SETTINGS.*(s.valuePtr) : s.valueGetter ? s.valueGetter() : 0;
-  if (s.type == SettingType::TOGGLE) return logic::quipKey(label, I18N.get(value ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF, Language::VI));
-  if (!s.enumStringValues.empty())
-    return value < static_cast<int>(s.enumStringValues.size()) ? logic::quipKey(label, s.enumStringValues[value].c_str()) : 0;
+  return valueKey(s, value);
+}
+
+uint16_t valueKey(const SettingInfo& s, const int candidate) {
+  if (candidate < 0) return 0;
+  const char* label = I18N.get(s.nameId, Language::VI);
+  if (s.nameId == StrId::STR_TIME_TO_SLEEP) {
+    const char* bucket = candidate >= CrossPointSettings::MAX_SLEEP_TIMEOUT_MINUTES ? "@TIMEOUT_NEVER"
+                         : candidate <= 2 ? "@TIMEOUT_FAST" : candidate <= 10 ? "@TIMEOUT_MID" : "@TIMEOUT_LONG";
+    return logic::quipKey(label, bucket);
+  }
+  if (s.nameId == StrId::STR_SCREEN_MARGIN)
+    return logic::quipKey(label, candidate <= 10 ? "@MARGIN_THIN" : candidate <= 25 ? "@MARGIN_MID" : "@MARGIN_WIDE");
+  if (s.nameId == StrId::STR_FONT_SIZE) {
+    int points = candidate;
+    if (!s.enumStringValues.empty()) {
+      if (candidate >= static_cast<int>(s.enumStringValues.size())) return 0;
+      points = atoi(s.enumStringValues[candidate].c_str());
+    }
+    return logic::quipKey(label, points <= 10 ? "@FSIZE_TINY" : points <= 13 ? "@FSIZE_SMALL"
+                         : points <= 16 ? "@FSIZE_MID" : points <= 19 ? "@FSIZE_BIG" : "@FSIZE_HUGE");
+  }
+  if (s.type == SettingType::TOGGLE)
+    return logic::quipKey(label, I18N.get(candidate ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF, Language::VI));
+  if (!s.enumStringValues.empty()) {
+    if (candidate >= static_cast<int>(s.enumStringValues.size())) return 0;
+    const char* value = s.enumStringValues[candidate].c_str();
+    if (s.nameId == StrId::STR_FONT_FAMILY && strcmp(value, "Noto Serif") && strcmp(value, "Noto Sans"))
+      return logic::quipKey(label, "@FONT_SD");
+    return logic::quipKey(label, value);
+  }
   const auto labels = s.enumLabels();
-  return value < static_cast<int>(labels.size()) ? logic::quipKey(label, I18N.get(labels[value], Language::VI)) : 0;
+  return candidate < static_cast<int>(labels.size()) ? logic::quipKey(label, I18N.get(labels[candidate], Language::VI)) : 0;
 }
 
 void noteValue(const SettingInfo& s) {
