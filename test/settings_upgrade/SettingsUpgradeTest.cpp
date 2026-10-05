@@ -275,6 +275,7 @@ int runShell() {
 int runTouchMigration() {
   JsonDocument before = readFixture("settings-v1.0.19.json");
   before["touchReaderControls"] = 2;  // legacy: 0 off / 1 tap / 2 swipe / 3 inverted tap
+  before["tapZonesVersion"] = 1;      // isolate the fold from the later swipe-only move (runTapZones)
   settings_test_io::setNextRead(before);
   bool ok = expect(SETTINGS.loadFromFile(), "synthetic old-touch file loads");
   ok = expect(SETTINGS.touchReaderControls == CrossPointSettings::TOUCH_READER_ON,
@@ -284,6 +285,50 @@ int runTouchMigration() {
   ok = expect(SETTINGS.previousPageGesture == CrossPointSettings::SWIPE_ONLY,
              "previousPageGesture takes the same gesture on first fold") && ok;
   std::printf("settings_upgrade=touch-migration:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
+
+// v1.0.53: a file saved before the tap zones (no tapZonesVersion) that turns pages by swipe only takes
+// taps too, so a tap on the page edge turns it. A swipe-only choice made after the move stays.
+int runTapZones() {
+  bool ok = true;
+  // The host build is an X3: its loader leaves the touch-only rows alone, so each case sets what a touch
+  // board would have read from the file.
+  SETTINGS.pageTurnGesture = CrossPointSettings::SWIPE_ONLY;
+  SETTINGS.previousPageGesture = CrossPointSettings::SWIPE_ONLY;
+  JsonDocument old = readFixture("settings-v1.0.19.json");
+  old["pageTurnGesture"] = CrossPointSettings::SWIPE_ONLY;
+  old["previousPageGesture"] = CrossPointSettings::SWIPE_ONLY;
+  settings_test_io::setNextRead(old);
+  ok = expect(SETTINGS.loadFromFile(), "an old swipe-only file loads") && ok;
+  ok = expect(SETTINGS.pageTurnGesture == CrossPointSettings::TAP_AND_SWIPE, "forward swipe only takes taps") && ok;
+  ok = expect(SETTINGS.previousPageGesture == CrossPointSettings::TAP_AND_SWIPE, "back swipe only takes taps") && ok;
+  ok = expect(saved()["tapZonesVersion"] == 1, "the move is stamped once") && ok;
+
+  SETTINGS.pageTurnGesture = CrossPointSettings::SWIPE_ONLY;
+  SETTINGS.previousPageGesture = CrossPointSettings::TAP_ONLY;
+  JsonDocument chosen = readFixture("settings-v1.0.19.json");
+  chosen["tapZonesVersion"] = 1;
+  chosen["pageTurnGesture"] = CrossPointSettings::SWIPE_ONLY;
+  chosen["previousPageGesture"] = CrossPointSettings::TAP_ONLY;
+  settings_test_io::setNextRead(chosen);
+  ok = expect(SETTINGS.loadFromFile(), "a stamped file loads") && ok;
+  ok = expect(SETTINGS.pageTurnGesture == CrossPointSettings::SWIPE_ONLY, "a later swipe-only choice stays") && ok;
+  ok = expect(SETTINGS.previousPageGesture == CrossPointSettings::TAP_ONLY, "other choices stay") && ok;
+
+  SETTINGS.pageTurnGesture = CrossPointSettings::INVERTED_TAP;
+  SETTINGS.previousPageGesture = CrossPointSettings::PAGE_TURN_GESTURE_DISABLED;
+  JsonDocument tapOnly = readFixture("settings-v1.0.19.json");
+  tapOnly["pageTurnGesture"] = CrossPointSettings::INVERTED_TAP;
+  tapOnly["previousPageGesture"] = CrossPointSettings::PAGE_TURN_GESTURE_DISABLED;
+  settings_test_io::setNextRead(tapOnly);
+  ok = expect(SETTINGS.loadFromFile(), "an old tap file loads") && ok;
+  ok = expect(SETTINGS.pageTurnGesture == CrossPointSettings::INVERTED_TAP, "an old tap choice stays") && ok;
+  ok = expect(SETTINGS.previousPageGesture == CrossPointSettings::PAGE_TURN_GESTURE_DISABLED,
+              "an old off choice stays") && ok;
+
+  std::printf("settings_upgrade=tap-zones:%s\n", ok ? "GREEN" : "RED");
   return ok ? 0 : 1;
 }
 
@@ -299,5 +344,6 @@ int main(int argc, char** argv) {
   if (mode == "touch-migration") return runTouchMigration();
   if (mode == "legacy-theme") return runLegacyTheme();
   if (mode == "shell") return runShell();
+  if (mode == "tap-zones") return runTapZones();
   return 2;
 }

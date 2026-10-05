@@ -499,8 +499,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Master reader-touch toggle on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_ON;
   // Which gestures turn the page in each direction (PAGE_TURN_GESTURE).
-  uint8_t pageTurnGesture = SWIPE_ONLY;
-  uint8_t previousPageGesture = SWIPE_ONLY;
+  uint8_t pageTurnGesture = TAP_AND_SWIPE;
+  uint8_t previousPageGesture = TAP_AND_SWIPE;
   // Width of the back-tap column on a reader page, a step of readertap::BACK_PERCENT (15/20/25/33%).
   uint8_t backTapZone = 2;
   // Reader menu open gesture (SHOW_READER_MENU: off / center tap / bottom-edge
