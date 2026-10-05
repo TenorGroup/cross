@@ -574,10 +574,12 @@ bool SettingsActivity::handleCustomInput() {
       return true;
     const bool paperWasOpen = form_.paperOpen();
     const int previousSheet = form_.sheet();
+    const int previousPaperFirst = form_.paperFirst();
     if (event.type == FormEvent::Type::Key) intent = form_.input(event.key);
     else if (event.type == FormEvent::Type::Tap) intent = form_.tap(event.x, event.y);
     else if (!form_.paperOpen()) pinRow = event.type == FormEvent::Type::Hold ? form_.questionAt(event.x, event.y) : form_.question();
-    if (paperWasOpen != form_.paperOpen() || previousSheet != form_.sheet()) ++formSurface_;
+    if (paperWasOpen != form_.paperOpen() || previousSheet != form_.sheet() ||
+        (form_.paperOpen() && previousPaperFirst != form_.paperFirst())) ++formSurface_;
     activeNav().selected = form_.question() + 1;
     if (intent.repaint || pinRow >= 0) formPaintReady_.store(false);
   }
@@ -751,7 +753,7 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::CustomiseStatusBar:
-        startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), resultHandler);
+        startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), [this](const ActivityResult&) { requestUpdate(); });
         break;
       case SettingAction::ClockSettings:
         if (auto activity = makeUniqueNoThrow<ClockSettingsActivity>(renderer, mappedInput)) {

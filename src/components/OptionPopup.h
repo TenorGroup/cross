@@ -6,6 +6,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <utility>
 
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
@@ -14,6 +15,7 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
+#include "shells/ugly/UglyInk.h"
 
 // Modal option picker drawn over the current screen (no clear) via
 // fui::optionDialog. Touch hit-testing is the SDK's InteractionBuffer: each
@@ -29,6 +31,7 @@
 // publication so a release cannot be dropped during a highlight repaint.
 class OptionPopup {
  public:
+  void setUglyStyle(bool value) { uglyStyle = value; }
   void show(StrId titleId, const StrId* optionIds, int optionCount, int currentIndex,
             std::function<void(int)> onSelect) {
     title = I18N.get(titleId);
@@ -295,7 +298,8 @@ class OptionPopup {
     // Chrome guard first, options after: route() scans newest-first, so the
     // option buttons win inside the dialog and the guard absorbs the rest.
     frame.hit(dialogRect, ACTION_CHROME, 0, fui::InputTouch);
-    fui::optionDialog(frame, dialogRect, props);
+    if (uglyStyle) renderUgly(renderer, frame, dialogRect, props);
+    else fui::optionDialog(frame, dialogRect, props);
     // Atomically make this generation the one handleInput() reads, now that
     // every hit() call for this frame is done.
     interactions.publish();
@@ -352,6 +356,60 @@ class OptionPopup {
   static constexpr freeink::ui::ActionId ACTION_CHROME = 2;
   static constexpr freeink::ui::ActionId ACTION_PAGE = 3;
 
+  static void uglyText(const GfxRenderer& renderer, const freeink::ui::Rect& rect, const char* label) {
+    if (!label || rect.empty()) return;
+    const auto clip = renderer.getClipRect();
+    const int left = std::max<int>(rect.x, clip[0]), top = std::max<int>(rect.y, clip[1]);
+    renderer.setClipRect(left, top, std::max(0, std::min<int>(rect.right(), clip[0] + clip[2]) - left),
+                        std::max(0, std::min<int>(rect.bottom(), clip[1] + clip[3]) - top));
+    const auto fitted = ugly::fit(renderer, ugly::Size::S22, label, rect.width - 8);
+    ugly::text(renderer, ugly::Size::S22, rect.x + (rect.width - ugly::width(renderer, ugly::Size::S22, fitted.c_str())) / 2,
+               rect.y + (rect.height + ugly::ascent(ugly::Size::S22)) / 2, fitted.c_str());
+    renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+  }
+
+  static void uglyPaper(const GfxRenderer& renderer, const freeink::ui::Rect& rect) {
+    renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
+    ugly::line(renderer, rect.x + 2, rect.y + 2, rect.right() - 3, rect.y + 1, 920, 2);
+    ugly::line(renderer, rect.right() - 3, rect.y + 1, rect.right() - 2, rect.bottom() - 3, 921, 2);
+    ugly::line(renderer, rect.right() - 2, rect.bottom() - 3, rect.x + 2, rect.bottom() - 2, 922, 2);
+    ugly::line(renderer, rect.x + 2, rect.bottom() - 2, rect.x + 2, rect.y + 2, 923, 2);
+  }
+
+  template <typename Frame>
+  void renderUgly(const GfxRenderer& renderer, Frame& frame, const freeink::ui::Rect& rect,
+                  const freeink::ui::OptionDialogProps& props) const {
+    namespace fui = freeink::ui;
+    if (props.dimBackground) frame.target().fill(frame.screen(), fui::Paint::dither(fui::Color::LightGray));
+    uglyPaper(renderer, rect);
+    const auto content = rect.inset(props.padding);
+    int16_t cursor = content.y;
+    // Keep the SDK's wrapped header rows and reserved heights at each UI tier.
+    for (const auto& header : {std::make_pair(props.title, props.titleText),
+                              std::make_pair(props.headline, props.headlineText)}) {
+      if (!header.first) continue;
+      const int16_t lh = frame.target().lineHeight(header.second.font);
+      fui::layoutText(frame.target(), fui::Rect{content.x, cursor, content.width, 1}, header.first, header.second,
+                      [&](const char* line, fui::Rect) {
+                        uglyText(renderer, {content.x, cursor, content.width, lh}, line);
+                        cursor = static_cast<int16_t>(cursor + lh);
+                      });
+      cursor = static_cast<int16_t>(cursor + props.gap);
+    }
+    const int buttonsH = props.optionCount * props.buttonHeight + std::max(0, props.optionCount - 1) * props.gap;
+    for (int i = 0; i < props.optionCount; ++i) {
+      const auto& option = props.options[i];
+      const fui::Rect row{content.x, static_cast<int16_t>(content.bottom() - buttonsH + i * (props.buttonHeight + props.gap)),
+                          content.width, props.buttonHeight};
+      if (option.enabled && option.action != fui::NO_ACTION)
+        frame.hit(fui::ensureMinTouchRect(row, frame.device().minTouchSize, frame.screen()),
+                  option.action, option.value, props.inputMask, option.state);
+      uglyText(renderer, row, option.label);
+      if (fui::hasState(option.state, fui::StateFocused))
+        ugly::circle(renderer, ugly::Circle::Row, {row.x + 4, row.y + 4, row.right() - 4, row.bottom() - 4}, 0, 0, 2);
+    }
+  }
+
   template <typename Frame>
   void renderAnchored(const GfxRenderer& renderer, Frame& frame, const freeink::ui::Rect& screen) const {
     namespace fui = freeink::ui;
@@ -367,13 +425,19 @@ class OptionPopup {
     const bool upperHalf = anchor.y + anchor.height / 2 < screen.height / 2;
     int y = upperHalf && below + h <= bottom ? below : above >= top ? above : below + h <= bottom ? below : bottom - h;
     y = std::max(top, y);
-    renderer.fillRoundedRect(x, y, w, h, RADIUS, Color::White);
-    tenorchrome::drawRoundRing(renderer, x, y, w, h, RADIUS, 2, true);
+    if (uglyStyle) uglyPaper(renderer, {static_cast<int16_t>(x), static_cast<int16_t>(y),
+                                        static_cast<int16_t>(w), static_cast<int16_t>(h)});
+    else {
+      renderer.fillRoundedRect(x, y, w, h, RADIUS, Color::White);
+      tenorchrome::drawRoundRing(renderer, x, y, w, h, RADIUS, 2, true);
+    }
     frame.hit(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w), static_cast<int16_t>(h)},
               ACTION_CHROME, 0, fui::InputTouch);
     for (int i = 0; i < count; ++i) {
       const int ry = y + PAD + i * ROW;
-      renderer.drawText(font, x + TEXT_X, ry + (ROW - renderer.getLineHeight(font)) / 2, ownedStrings[i].c_str());
+      if (uglyStyle) uglyText(renderer, {static_cast<int16_t>(x + TEXT_X), static_cast<int16_t>(ry),
+                                         static_cast<int16_t>(w - 2 * TEXT_X), ROW}, ownedStrings[i].c_str());
+      else renderer.drawText(font, x + TEXT_X, ry + (ROW - renderer.getLineHeight(font)) / 2, ownedStrings[i].c_str());
       if (i + 1 < count)
         for (int px = x + TEXT_X; px < x + w - TEXT_X; ++px)
           if (((px + ry + ROW - 1) & 1) == 0) renderer.drawPixel(px, ry + ROW - 1, true);
@@ -392,6 +456,7 @@ class OptionPopup {
     anchored = false;
   }
 
+  bool uglyStyle = false;
   bool active = false;
   bool anchored = false;
   freeink::ui::Rect anchor{};

@@ -3924,6 +3924,7 @@ void EpubReaderActivity::settleOverlayRefresh() {
 }
 
 void EpubReaderActivity::openOverlay(Overlay target) {
+  overlayPopup.setUglyStyle(shell::isUgly());
   if (target == Overlay::Contents && waitsForIndex()) return;
   mappedInput.resetHomeButtonInput();
   const Overlay previous = overlay;

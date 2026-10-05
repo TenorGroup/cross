@@ -35,15 +35,19 @@ cpp = r'''
 #include <vector>
 #define FREEINK_DEVICE_X4PRO 1
 namespace fui = freeink::ui;
+namespace shell { bool enabled=false; bool isUgly() { return enabled; } }
 namespace freeink { struct Icon {}; }
 namespace freeink::ui { BitmapRef bitmapFromIcon(const freeink::Icon&) { return {}; }
 struct GfxRendererTarget { static constexpr int FONT_LABEL=3; }; }
 freeink::Icon icon_reader_back_24,icon_reader_next_24,icon_reader_tick_24;
-constexpr int STR_DONE=1;
-const char* tr(int) { return "Done"; }
+#include <I18n.h>
+I18n& I18n::getInstance(){static I18n i;return i;}
+const char* I18n::get(StrId)const{return "Done";}
 class GfxRenderer {};
 struct Target : fui::DrawTarget {
   int tier=0;
+  void setPaintingEnabled(bool value) { painting=value; }
+  bool painting=true;
   std::vector<fui::Rect> frames;
   struct Text { fui::Rect rect; std::string label; };
   std::vector<Text> texts;
@@ -87,6 +91,7 @@ for name in ['begin','render','route','onAction','screenFn','scrollRows','buildX
     match = re.search(r'^[^\n]*ReaderToolbarUi::'+name+r'\(', source, re.M)
     cpp += method(source, match.group(0)) + '\n'
 cpp += r'''
+void ReaderToolbarUi::paintUgly() {}
 void ReaderToolbarUi::buildToolbar(UiScreen& s) { buildX4Toolbar(s); }
 void ReaderToolbarUi::buildPanel(UiScreen& s) { buildX4Panel(s); }
 ReaderToolbarUi::Routed tap(ReaderToolbarUi& ui, fui::ActionId action, int value) {
@@ -170,5 +175,5 @@ int main() {
 (a.output / 'layout.cpp').write_text(cpp)
 sdk=a.repo / 'freeink-sdk/libs/ui/FreeInkUI'
 subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined',
-                '-I'+str(sdk/'include'),str(a.output/'layout.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(a.output/'layout')],check=True)
+                '-I'+str(sdk/'include'),'-I'+str(a.repo/'lib/I18n'),str(a.output/'layout.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(a.output/'layout')],check=True)
 subprocess.run([str(a.output/'layout')],check=True)

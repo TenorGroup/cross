@@ -533,6 +533,7 @@ void UiListActivity::renderUi() {
     }
     pageAnchorRow = -1;
   }
+  if (!uiTarget.paintingEnabled()) return;
   drawRowFrame();
   // Con dong ben duoi thi noi bang mot mui ten chu V o chan man, khong bang mot
   // con so o goc tren: it nguoi nhin thanh cuon, va cho goc tren thuoc ve ten

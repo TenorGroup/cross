@@ -61,6 +61,7 @@ class QuestionSheet {
   int sheet() const { return page_; }
   int sheetCount() const { return pages_; }
   bool paperOpen() const { return paper_; }
+  int paperFirst() const { return paperFirst_; }
 
  private:
   struct Block {

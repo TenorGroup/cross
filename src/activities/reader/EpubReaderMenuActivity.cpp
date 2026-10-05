@@ -7,9 +7,13 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "MenuCustomization.h"
 #include "ReaderFontChon.h"
 #include "ReaderFontSizes.h"
 #include "ReaderUtils.h"
+#include "ReaderToolbarUi.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 #include "SdCardFontSystem.h"
 #include "activities/settings/SettingsTabs.h"
 #include "components/TenorMenuChrome.h"
@@ -37,6 +41,7 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
       totalPages(totalPages),
       bookProgressPercent(bookProgressPercent) {
   readermenu::buildItems(menuItems, hasFootnotes, hasBookmarks, Frontlight.present(), halTiltSensor.isAvailable());
+  optionPopup.setUglyStyle(shell::isUgly());
   napGhim();
   rebuildRows();
 }
@@ -409,7 +414,19 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
       static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
 
+  skinTab_ = screen.body();
+  skinTab_.height = static_cast<int16_t>(preferredTabBarHeight());
   buildTabBar(screen);
+  if (!tenorchrome::kTouchShell) {
+    // buildTabBar uses the full logical screen band, with its measured height.
+    skinTab_.x = screen.frame().screen().x;
+    skinTab_.width = screen.frame().screen().width;
+    skinTab_.height = static_cast<int16_t>(screen.body().y - skinTab_.y - metrics.verticalSpacing);
+    if (tabWindowCount() < tabCount()) {
+      skinTab_.x = static_cast<int16_t>(skinTab_.x + MUI_TEN_LE);
+      skinTab_.width = static_cast<int16_t>(skinTab_.width - 2 * MUI_TEN_LE);
+    }
+  }
 
   // Progress summary under the tab band.
   std::string progressLine;
@@ -422,6 +439,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
                       ? std::string(tr(STR_BOOK_PREFIX)) + std::to_string(bookProgressPercent) + "%"
                       : std::string(tr(STR_INDEXING));
   const fui::Rect band = screen.takeTop(static_cast<int16_t>(metrics.tabBarHeight));
+  skinProgress_ = band;
   const int16_t pad = screen.theme().headerSidePadding;
   screen.target().text(band.inset(fui::Insets{0, pad, 0, pad}), progressLine.c_str(), screen.theme().smallText);
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
@@ -452,12 +470,13 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   // maxLines=2 also marks the style caller-owned (see textStyleUnset).
   props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
+  skinHint_ = {};
   if (activeTabId == MenuTab::FAVORITES)
-    screen.takeBottom(static_cast<int16_t>(tenorchrome::tipHeight(renderer, tr(STR_FAVORITES_HINT), 4)));
+    skinHint_ = screen.takeBottom(static_cast<int16_t>(tenorchrome::tipHeight(renderer, tr(STR_FAVORITES_HINT), 4)));
   syncTabListViewport(screen, props);
   screen.list(props);
 
-  if (activeTabId == MenuTab::FAVORITES) tenorchrome::drawTip(renderer, tr(STR_FAVORITES_HINT), 0, 4);
+  if (activeTabId == MenuTab::FAVORITES && !shell::isUgly()) tenorchrome::drawTip(renderer, tr(STR_FAVORITES_HINT), 0, 4);
 }
 
 void EpubReaderMenuActivity::drawChrome() {
@@ -477,12 +496,17 @@ void EpubReaderMenuActivity::drawChrome() {
 void EpubReaderMenuActivity::render(RenderLock&&) {
   if (optionPopup.processRender(renderer, mappedInput)) return;
 
+  const bool handwritten = shell::isUgly();
+  uiTarget.setPaintingEnabled(!handwritten);
   renderSettledList(activeNav(), [&] {
-    renderer.clearScreen();
-    drawChrome();
+    if (!handwritten) {
+      renderer.clearScreen();
+      drawChrome();
+    }
     renderUi();
   });
-
+  uiTarget.setPaintingEnabled(true);
+  if (handwritten) paintUglyMenu();
   drawFooter();
   renderer.displayBuffer();
 }
@@ -490,4 +514,55 @@ void EpubReaderMenuActivity::render(RenderLock&&) {
 bool EpubReaderMenuActivity::rowIsPinned(int row) const {
   return row >= 0 && row < rowCount &&
          std::find(favorites.begin(), favorites.end(), menuItems[rowToItem[row]].action) != favorites.end();
+}
+
+void EpubReaderMenuActivity::paintUglyMenu() {
+  const int width = renderer.getScreenWidth(), height = renderer.getScreenHeight();
+  renderer.clearScreen();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int bottom = height - (tenorchrome::kTouchShell ? tenorchrome::footBackReserve() : metrics.buttonHintsHeight);
+  const fui::Rect frame{16, static_cast<int16_t>(tenorchrome::kTouchShell ? tenorchrome::contentTop() : 8),
+                        static_cast<int16_t>(width - 32), static_cast<int16_t>(bottom - (tenorchrome::kTouchShell ? tenorchrome::contentTop() : 8))};
+  readerugly::paper(renderer, frame);
+  if (!tenorchrome::kTouchShell)
+    readerugly::text(renderer, {28, 10, static_cast<int16_t>(width - 56), 38}, tr(STR_READER_MENU));
+  const int shownTabs = tabWindowCount();
+  for (int slot = 0; slot < shownTabs; ++slot) {
+    const int tab = menucustom::idAt(menucustom::groupFor(name.c_str()), tabWindowStart() + slot, tabCount());
+    auto box = app.publishedRect(ACTION_TAB, tab);
+    if (box.empty()) {
+      // Same icon-pill centres as veThanhTheTenor on button boards, which publish no tab hits.
+      const int first = skinTab_.x + 56, last = skinTab_.right() - 57;
+      const int cx = shownTabs > 1 ? first + (2 * (last - first) * slot + (shownTabs - 1)) / (2 * (shownTabs - 1))
+                                  : skinTab_.x + skinTab_.width / 2;
+      box = {static_cast<int16_t>(cx - 42), skinTab_.y, 84, skinTab_.height};
+    }
+    readerugly::text(renderer, box.inset(fui::Insets{0, 8, 0, 8}), tabLabel(tab), fui::TextAlign::Center);
+    if (tab == activeTab()) readerugly::selected(renderer, box);
+  }
+  std::string summary;
+  if (totalPages > 0) summary = std::string(tr(STR_CHAPTER_PREFIX)) + std::to_string(currentPage) + "/" +
+                               std::to_string(totalPages) + tr(STR_PAGES_SEPARATOR);
+  summary += bookProgressPercent >= 0 ? std::string(tr(STR_BOOK_PREFIX)) + std::to_string(bookProgressPercent) + "%"
+                                     : std::string(tr(STR_INDEXING));
+  readerugly::text(renderer, skinProgress_.inset(fui::Insets{0, 16, 0, 16}), summary.c_str());
+  for (int row = activeNav().top; row < rowCount; ++row) {
+    const auto box = app.publishedRect(ACTION_ROW, row);
+    if (box.empty()) continue;
+    const auto& item = menuRowItems[row];
+    const bool pinned = rowIsPinned(row);
+    auto label = box.inset(fui::Insets{0, 16, 0, 16});
+    label.width = static_cast<int16_t>(std::max(0, label.width - (pinned ? 40 : 0) - (item.opensNext ? 28 : 0)));
+    if (item.value && *item.value) {
+      const int valueWidth = std::min<int>(label.width / 2, ugly::width(renderer, ugly::Size::S22, item.value));
+      readerugly::text(renderer, {static_cast<int16_t>(label.right() - valueWidth), label.y,
+                                 static_cast<int16_t>(valueWidth), label.height}, item.value, fui::TextAlign::Right);
+      label.width = static_cast<int16_t>(std::max(0, label.width - valueWidth - 12));
+    }
+    readerugly::text(renderer, label, item.label);
+    if (row == ringPos() - 1) readerugly::selected(renderer, box);
+    if (pinned) ugly::tick(renderer, box.right() - 26 - (item.opensNext ? 28 : 0), box.y + box.height / 2);
+    if (item.opensNext) ugly::mark(renderer, ugly::Mark::Right, box.right() - 14, box.y + box.height / 2);
+  }
+  if (!skinHint_.empty()) tenorchrome::drawTip(renderer, tr(STR_FAVORITES_HINT), 0, 4);
 }

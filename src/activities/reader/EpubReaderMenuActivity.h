@@ -36,6 +36,8 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   uint8_t rowToItem[MAX_MENU_ITEMS]{};
   int rowCount = 0;
   void rebuildRows();
+  void paintUglyMenu();
+  freeink::ui::Rect skinTab_{}, skinProgress_{}, skinHint_{};
 
   // --- UiTabListActivity contract ---
   int tabCount() const override { return readermenu::TAB_COUNT; }

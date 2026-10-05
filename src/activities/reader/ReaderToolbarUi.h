@@ -10,6 +10,13 @@
 class GfxRenderer;
 class MappedInputManager;
 
+namespace readerugly {
+void text(const GfxRenderer& renderer, const freeink::ui::Rect& rect, const char* label,
+          freeink::ui::TextAlign align = freeink::ui::TextAlign::Left);
+void paper(const GfxRenderer& renderer, const freeink::ui::Rect& rect);
+void selected(const GfxRenderer& renderer, const freeink::ui::Rect& rect);
+}
+
 // FreeInkUI chrome for the toolbar reader menu (Settings -> Reader -> Reader
 // Menu Style -> Toolbar), painted over the page that is already on screen:
 //
@@ -109,6 +116,9 @@ class ReaderToolbarUi : public UiAppHost {
   void buildPanel(UiScreen& screen);
   void buildSheet(UiScreen& screen, const freeink::ui::SheetProps& props, int16_t height);
   void buildToolRow(UiScreen& screen, freeink::ui::LayoutAnchor anchor, int16_t sideInset);
+  void paintUgly();
+  GfxRenderer* renderer_ = nullptr;
+  freeink::ui::Rect skinFrame_{}, skinList_{}, skinMeta_{};
 
   Model model_;
   Routed pending_;
@@ -120,6 +130,7 @@ class ReaderToolbarUi : public UiAppHost {
   std::string windowLabels_[kMaxWindow];
   std::string windowValues_[kMaxWindow];
   bool markedLabels_[kMaxWindow] = {};
+  freeink::ui::Rect skinChoices_[kMaxWindow]{};
   freeink::ui::ListItem windowItems_[kMaxWindow];
   // fui::ButtonProps / ListProps / HeaderProps embed a 324-byte StyleSet: keep
   // them off the stack (locals stay under 256 bytes).

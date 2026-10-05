@@ -39,7 +39,7 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
   constexpr int PILL_ICON_W = 84;
   constexpr int INDICATOR = 6;  // sort arrow beside a label
   const int x0 = thanh.x + LE, w = thanh.width - 2 * LE, h = thanh.height, y0 = thanh.y;
-  if (tenorchrome::kTouchShell) tenorchrome::drawPillRing(renderer, x0, y0, w, h, 2, true);
+  if (tenorchrome::kTouchShell && uiTarget.paintingEnabled()) tenorchrome::drawPillRing(renderer, x0, y0, w, h, 2, true);
   if (count <= 0) return;
   const bool icons = static_cast<bool>(tabs[0].icon);
   const int slotW = (w - 2 * KHE) / count;
@@ -93,6 +93,7 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
                                    static_cast<int16_t>(right - left), static_cast<int16_t>(h)},
                          ACTION_TAB, tab.value, fui::InputTouch);
     }
+    if (!uiTarget.paintingEnabled()) continue;
     if (tab.selected) tenorchrome::drawPillRing(renderer, cx - pillW / 2, y0 + KHE, pillW, h - 2 * KHE, 3, false);
     if (icons) {
       const int ix = cx - ICON / 2, iy = y0 + (h - ICON) / 2;
@@ -562,7 +563,7 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   else
     fui::tabBar(screen.frame(), theRect, tabProps);
 
-  if (thanhTheChay) {
+  if (thanhTheChay && uiTarget.paintingEnabled()) {
     veMuiTenThe(tabRect, leMuiTen);
   }
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));

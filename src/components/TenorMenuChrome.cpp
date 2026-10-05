@@ -6,6 +6,7 @@
 #include <BlePageTurner.h>
 #include <HalPowerManager.h>
 #include <WiFi.h>
+#include <I18n.h>
 
 #include <algorithm>
 #include <cstring>
@@ -24,6 +25,8 @@
 #include "UITheme.h"
 #include "fontIds.h"
 #include "themes/TenorRadius.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 
 namespace {
 // A round-ended bar (radius h / 2) in pixel-centre arithmetic doubled to stay integer.
@@ -216,10 +219,20 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
     const freeink::Icon* bold[] = {&icon_tenor_reader_position_bold_40, &icon_tenor_reader_reading_bold_40,
                                    &icon_tenor_reader_tools_bold_40};
     const int left = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), 0).x;
-    drawPillRing(r, left, y, r.getScreenWidth() - FOOT_BACK_X - left, SIZE, 2, true);
+    if (!shell::isUgly()) drawPillRing(r, left, y, r.getScreenWidth() - FOOT_BACK_X - left, SIZE, 2, true);
+    static constexpr StrId names[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE};
     for (int i = 0; i < 3; ++i) {
       const auto cell = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), i);
       const bool active = i == readerFootBar.activeTool;
+      if (shell::isUgly()) {
+        const auto name = ugly::fit(r, ugly::Size::S22, I18N.get(names[i]), cell.width - 16);
+        const int textWidth = ugly::width(r, ugly::Size::S22, name.c_str());
+        ugly::text(r, ugly::Size::S22, cell.x + (cell.width - textWidth) / 2,
+                   y + (SIZE + ugly::ascent(ugly::Size::S22)) / 2, name.c_str());
+        if (active) ugly::circle(r, ugly::Circle::Row,
+            {cell.x + 8, y + 8, cell.x + cell.width - 8, y + SIZE - 8}, 0, 0, 2);
+        continue;
+      }
       if (active) drawPillRing(r, cell.x + 12, y + 8, cell.width - 24, SIZE - 16, 3, false);
       drawIcon(r, *(active ? bold[i] : normal[i]), cell.x + (cell.width - ICON) / 2, y + (SIZE - ICON) / 2);
     }

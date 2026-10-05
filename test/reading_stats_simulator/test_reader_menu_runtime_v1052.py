@@ -82,6 +82,7 @@ struct ReaderToolbarUi {
   struct Nav { int top=0; } nav_;
   fui::ListProps listProps_;
   std::string windowLabels_[1]={"Paragraph Alignment"};
+  fui::Rect skinChoices_[1]{};
   ReaderToolbarUi() { listProps_.rowInset=20; listProps_.sidePadding=8; }
   void drawChoices(UiScreen&,const fui::Rect&,int16_t,int16_t,int);
 };

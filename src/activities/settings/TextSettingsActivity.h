@@ -3,12 +3,15 @@
 #include <SdCardFontRegistry.h>
 
 #include <cstdint>
+#include <array>
+#include <atomic>
 #include <string>
 #include <vector>
 
 #include "TextSettingsPreview.h"
 #include "activities/UiTabListActivity.h"
 #include "components/OptionPopup.h"
+#include "shells/ugly/UglyQuestionSheet.h"
 #include "components/themes/BaseTheme.h"
 
 // Reader text settings with a shared live preview pane: tab bar
@@ -16,6 +19,8 @@
 // idiom as SettingsActivity. Family/Size rows apply on Confirm; Layout/Style
 // rows toggle or open an OptionPopup picker. (Tab::Family/Style are the enum
 // names for the Font/Style tabs.)
+struct SettingInfo;
+
 class TextSettingsActivity final : public UiTabListActivity {
  public:
   static std::string layoutValueText(int row);
@@ -26,6 +31,10 @@ class TextSettingsActivity final : public UiTabListActivity {
                        Tab initialTab = Tab::Family);
 
   void onEnter() override;
+  void onPause() override;
+  void onResume() override;
+  bool handleHomeGesture() override;
+  void restoreNavigation(const MenuNavigationState& state) override;
   std::string navigationLabel() const override { return I18N.get(StrId::STR_TEXT_SETTINGS); }
   void render(RenderLock&&) override;
 
@@ -63,13 +72,36 @@ class TextSettingsActivity final : public UiTabListActivity {
   // here (see render() below and RESOLUTION.md).
   bool handleButtons() override;
   bool handleCustomInput() override;
+  void pollTilt() override;
+  int favoriteSelectedRow() override;
   bool allowsTiltTabNavigation() const override { return !optionPopup_.isActive(); }
+  ugly::QuestionSheet form_;
+  struct FormEvent {
+    enum class Type : uint8_t { Key, Tap, Hold, Pin } type = Type::Key;
+    ugly::QuestionSheet::Key key = ugly::QuestionSheet::Key::Confirm;
+    int16_t x = 0, y = 0;
+    uint32_t surface = 0;
+  };
+  std::array<FormEvent, 8> formQueue_{};
+  uint8_t formHead_ = 0, formCount_ = 0;
+  std::atomic<bool> formPaintReady_{false}, saveFailed_{false}, formPinFailed_{false};
+  uint32_t formSurface_ = 0;
+  std::atomic<uint32_t> formVisibleSurface_{0};
+  void queueForm(FormEvent event);
+  void bindForm();  // Caller owns RenderLock.
+  void focusForm(int row);  // Caller owns RenderLock.
+  void applyFormIntent(const ugly::QuestionSheet::Intent& intent, bool home = false);
+  void prepareFormQuip(int row, int candidate);
+  bool saveSettings(bool repaint = true);
+  static ugly::QuestionSheet::Row formRow(void* context, int row);
+  static void formLabel(void* context, int row, int option, char* out, size_t size);
+
   bool supportsFavorites() const override { return true; }
   std::string favoriteKey(int row) const override;
   int focusFavorite(const std::string& key) override;
 
-  void applyFamily(int listIndex);
-  void applySize(int listIndex);
+  bool applyFamily(int listIndex);
+  bool applySize(int listIndex);
   // Repopulates sizes_ (and currentSizeIndex_) from the active family's
   // installed point sizes. Call after any family change.
   void rebuildSizeList();
@@ -77,6 +109,11 @@ class TextSettingsActivity final : public UiTabListActivity {
   void confirmStyleRow(int row);
   // Applies the row at the given list index for the active tab (Confirm and tap share this).
   void activateRow(int row);
+  bool applyChosenValue(Tab tab, int row, int option, bool repaint = true);
+  static int formIndex(Tab tab, int row);
+  static Tab formTab(int row);
+  static int formLocalRow(int row);
+  static const SettingInfo* formSetting(int row);
 
   // Button-hint label for Confirm at the current ring position.
   const char* confirmLabelText() const;

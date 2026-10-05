@@ -9,9 +9,12 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/Activity.h"
 #include "components/UITheme.h"
 #include "components/TenorMenuChrome.h"
 #include "components/icons/readerToolbarIcons.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 
 namespace fui = freeink::ui;
 
@@ -50,7 +53,7 @@ constexpr int kPanelHeightMaxPercent = 72;
 constexpr int kLandscapePanelHeightPercent = 88;
 }  // namespace
 
-ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& renderer) : UiAppHost(renderer) {}
+ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& renderer) : UiAppHost(renderer), renderer_(&renderer) {}
 
 void ReaderToolbarUi::begin() {
   resetUi();
@@ -60,11 +63,15 @@ void ReaderToolbarUi::begin() {
 }
 
 void ReaderToolbarUi::render() {
+  const bool handwritten = shell::isUgly();
+  uiTarget.setPaintingEnabled(!handwritten);
   renderUi();
   // Wrapped rows can fit fewer than the fixed-height estimate; the nav then
   // advances the viewport after layout and asks for a rebuild. Converges (top
   // only moves forward toward the selection); the bound is a backstop.
   for (int pass = 0; pass < 3 && nav_.consumeRebuildNeeded(); ++pass) renderUi();
+  uiTarget.setPaintingEnabled(true);
+  if (handwritten) paintUgly();
 }
 
 ReaderToolbarUi::Routed ReaderToolbarUi::route(const MappedInputManager& input) {
@@ -117,6 +124,7 @@ void ReaderToolbarUi::buildSheet(UiScreen& screen, const fui::SheetProps& props,
   auto themed = props;
   if (themed.radius == fui::RADIUS_INHERIT) themed.radius = screen.theme().sheetRadius;
   fui::sheet(screen.frame(), rect, themed);
+  skinFrame_ = rect;
   const auto content = fui::sheetContentRect(rect, themed);
   screen.insetContent(fui::Insets{static_cast<int16_t>(content.y - bounds.y), 0,
                                 static_cast<int16_t>(bounds.bottom() - content.bottom()), 0});
@@ -226,6 +234,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   // Meta line: chapter title (left), chapter page / book percent (right).
   {
     const fui::Rect line = screen.takeTop(metaH, tokens.spaceSm);
+    skinMeta_ = line;
     fui::TextStyle titleStyle = tokens.smallText;
     titleStyle.bold = true;
     fui::TextStyle infoStyle = tokens.smallText;
@@ -288,6 +297,7 @@ void ReaderToolbarUi::drawChoices(UiScreen& screen, const fui::Rect& listRect, c
                            windowLabels_[i].c_str(), labelStyle);
     }
     const int16_t left = static_cast<int16_t>(right - count * kChoiceW);
+    skinChoices_[i] = {left, y, kChoiceW, rowH};
     for (int k = 0; k < count; ++k) {
       const fui::Rect cell{static_cast<int16_t>(left + k * kChoiceW), y, kChoiceW, rowH};
       if (k == inUse) {
@@ -384,6 +394,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   // rowInset pulls the rows back to the title's spaceLg alignment.
   listProps_.rowInset = tokens.spaceLg;
   const fui::Rect listRect = screen.body();
+  skinList_ = listRect;
   const int count = std::max(0, model_.itemCount);
   // The nav owns selection + viewport (same fui::ListNav idiom as the list
   // menu screens). A shown cursor re-follows into view on every build; a
@@ -457,6 +468,7 @@ void ReaderToolbarUi::buildX4Toolbar(UiScreen& screen) {
   const auto& tokens = screen.theme();
   const auto bounds = screen.frame().screen();
   const auto frame = readerFrame(bounds, 116);
+  skinFrame_ = frame;
   const auto ink = fui::Paint::solid(fui::Color::Black);
   screen.target().fill(frame, fui::Paint::solid(fui::Color::White), 20);
   screen.target().stroke(frame, fui::Paint::dither(fui::Color::LightGray), 2, 20);
@@ -482,6 +494,7 @@ void ReaderToolbarUi::buildX4Toolbar(UiScreen& screen) {
   const int16_t lineH = screen.target().lineHeight(style.font);
   const fui::Rect meta{static_cast<int16_t>(frame.x + 16), static_cast<int16_t>(frame.bottom() - lineH - 12),
                        static_cast<int16_t>(frame.width - 32), lineH};
+  skinMeta_ = meta;
   style.align = fui::TextAlign::Right;
   const int16_t infoW = model_.pageInfo ? screen.target().measureText(style.font, model_.pageInfo, style).width : 0;
   if (model_.pageInfo) screen.target().text(meta, model_.pageInfo, style);
@@ -494,6 +507,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
   const auto& tokens = screen.theme();
   const auto bounds = screen.frame().screen();
   const auto frame = readerFrame(bounds, 350);
+  skinFrame_ = frame;
   screen.target().fill(frame, fui::Paint::solid(fui::Color::White), 20);
   screen.frame().hit({0, 0, bounds.width, frame.y}, ACTION_DISMISS, 0, fui::InputTouch);
   fui::TextStyle header = tokens.smallText;
@@ -510,6 +524,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     const bool fonts = model_.textView == TextView::Fonts;
     const fui::Rect listRect{frame.x, static_cast<int16_t>(frame.y + 40), frame.width,
                             static_cast<int16_t>(fonts ? 286 : 310)};
+    skinList_ = listRect;
     const int count = std::max(0, model_.itemCount);
     listProps_ = fui::ListProps{};
     listProps_.count = static_cast<uint16_t>(count);
@@ -628,3 +643,174 @@ void ReaderToolbarUi::buildX4Keypad(UiScreen& screen, const fui::Rect& frame) {
                                static_cast<int16_t>(frame.width - 16), 252}, props);
 }
 #endif
+
+void readerugly::text(const GfxRenderer& r, const fui::Rect& rect, const char* label, const fui::TextAlign align) {
+  if (!label || !*label || rect.empty()) return;
+  const auto clip = r.getClipRect();
+  const int left = std::max<int>(rect.x, clip[0]), top = std::max<int>(rect.y, clip[1]);
+  r.setClipRect(left, top, std::max(0, std::min<int>(rect.right(), clip[0] + clip[2]) - left),
+                std::max(0, std::min<int>(rect.bottom(), clip[1] + clip[3]) - top));
+  const auto fitted = ugly::fit(r, ugly::Size::S22, label, rect.width);
+  const int width = ugly::width(r, ugly::Size::S22, fitted.c_str());
+  const int x = align == fui::TextAlign::Center ? rect.x + (rect.width - width) / 2
+                : align == fui::TextAlign::Right ? rect.right() - width : rect.x;
+  ugly::text(r, ugly::Size::S22, x, rect.y + (rect.height + ugly::ascent(ugly::Size::S22)) / 2, fitted.c_str());
+  r.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+}
+
+void readerugly::paper(const GfxRenderer& r, const fui::Rect& rect) {
+  r.fillRect(rect.x, rect.y, rect.width, rect.height, false);
+  ugly::line(r, rect.x + 2, rect.y + 3, rect.right() - 3, rect.y + 1, 810, 2);
+  ugly::line(r, rect.right() - 3, rect.y + 1, rect.right() - 1, rect.bottom() - 3, 811, 2);
+  ugly::line(r, rect.right() - 1, rect.bottom() - 3, rect.x + 3, rect.bottom() - 1, 812, 2);
+  ugly::line(r, rect.x + 3, rect.bottom() - 1, rect.x + 2, rect.y + 3, 813, 2);
+}
+
+void readerugly::selected(const GfxRenderer& r, const fui::Rect& rect) {
+  if (!rect.empty()) ugly::circle(r, ugly::Circle::Row,
+      {rect.x + 5, rect.y + 5, rect.right() - 5, rect.bottom() - 5}, 0, 0, 2);
+}
+
+void ReaderToolbarUi::paintUgly() {
+  auto& r = *renderer_;
+  readerugly::paper(r, skinFrame_);
+  if (!model_.panel) {
+    for (const auto action : {ACTION_PREV, ACTION_NEXT}) {
+      const auto box = app.publishedRect(action, 0);
+      ugly::mark(r, action == ACTION_PREV ? ugly::Mark::Left : ugly::Mark::Right,
+                 box.x + box.width / 2, box.y + box.height / 2);
+      readerugly::selected(r, box);
+    }
+    const auto track = app.publishedRect(ACTION_SCRUB, 0);
+    const int cy = track.y + track.height / 2;
+    ugly::line(r, track.x, cy, track.right(), cy, 814, 2);
+    const int kx = track.x + (track.width - 1) * std::clamp(model_.progressPermille, 0, 1000) / 1000;
+    ugly::circle(r, ugly::Circle::Object, {kx - 6, cy - 6, kx + 6, cy + 6}, 0, 0, 2);
+    const int infoWidth = model_.pageInfo ? ugly::width(r, ugly::Size::S22, model_.pageInfo) : 0;
+    auto title = skinMeta_;
+    title.width = static_cast<int16_t>(std::max(0, title.width - infoWidth - 12));
+    readerugly::text(r, title, model_.chapterTitle);
+    readerugly::text(r, skinMeta_, model_.pageInfo, fui::TextAlign::Right);
+  } else {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    const fui::Rect header{static_cast<int16_t>(skinFrame_.x + 16), static_cast<int16_t>(skinFrame_.y + 4),
+                           static_cast<int16_t>(skinFrame_.width - 32), 36};
+#else
+    auto header = pageIndicatorRect_;
+    const int pageRows = nav_.pageRows();
+    const int pages = pageRows > 0 ? (model_.itemCount + pageRows - 1) / pageRows : 0;
+    if (pages > 1) {
+      char page[16]; snprintf(page, sizeof(page), "%d/%d", nav_.top / pageRows + 1, pages);
+      const int width = ugly::width(r, ugly::Size::S22, page);
+      readerugly::text(r, header, page, fui::TextAlign::Right);
+      header.width = static_cast<int16_t>(std::max(0, header.width - width - 12));
+    }
+#endif
+    readerugly::text(r, header, model_.panelTitle);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    if (model_.textView == TextView::PointSize) {
+      readerugly::text(r, {static_cast<int16_t>(skinFrame_.x + 16), static_cast<int16_t>(skinFrame_.y + 40), 104, 52},
+                       model_.numericDraft, fui::TextAlign::Center);
+      readerugly::text(r, {static_cast<int16_t>(skinFrame_.x + 120), static_cast<int16_t>(skinFrame_.y + 40),
+                           static_cast<int16_t>(skinFrame_.width - 136), 52}, model_.numericHint, fui::TextAlign::Center);
+      for (int value = 0; value < 12; ++value) {
+        const auto box = app.publishedRect(ACTION_NUMERIC, value);
+        if (value == 10) ugly::mark(r, ugly::Mark::Back, box.x + box.width / 2, box.y + box.height / 2);
+        else {
+          char number[4]; snprintf(number, sizeof(number), "%d", value);
+          readerugly::text(r, box, value == 11 ? tr(STR_DONE) : number, fui::TextAlign::Center);
+        }
+      }
+    } else if (model_.textView == TextView::Spacing) {
+      const auto box = app.publishedRect(ACTION_SPACING, 0);
+      const int cy = box.y + box.height / 2;
+      ugly::line(r, box.x, cy, box.right(), cy, 815, 2);
+      for (int i = 0; i < 5; ++i) {
+        const int x = box.x + (box.width - 1) * i / 4;
+        ugly::line(r, x, cy - 10, x, cy + 10, 816 + i, 2);
+        const std::string label = model_.spacingLabel ? model_.spacingLabel(i) : "";
+        const auto space = label.find(' ');
+        if (space == std::string::npos) {
+          readerugly::text(r, {static_cast<int16_t>(x - 44), static_cast<int16_t>(cy + 24), 88, 100},
+                           label.c_str(), fui::TextAlign::Center);
+        } else {
+          readerugly::text(r, {static_cast<int16_t>(x - 44), static_cast<int16_t>(cy + 48), 88, 26},
+                           label.substr(0, space).c_str(), fui::TextAlign::Center);
+          readerugly::text(r, {static_cast<int16_t>(x - 44), static_cast<int16_t>(cy + 74), 88, 26},
+                           label.substr(space + 1).c_str(), fui::TextAlign::Center);
+        }
+      }
+      const int x = box.x + (box.width - 1) * std::clamp(model_.spacingDraftPermille, 0, 1000) / 1000;
+      ugly::circle(r, ugly::Circle::Object, {x - 8, cy - 8, x + 8, cy + 8}, 0, 0, 2);
+    } else
+#endif
+    {
+      const auto clip = r.getClipRect();
+      r.setClipRect(skinList_.x, skinList_.y, skinList_.width, skinList_.height);
+      for (int index = nav_.top; index < std::min(model_.itemCount, nav_.top + kMaxWindow); ++index) {
+        auto row = app.publishedRect(ACTION_ROW, index);
+        // A font page retains the SDK's clipped next-row preview, with no extra hit target.
+        if (row.empty() && listProps_.partialTrailingRow && index - nav_.top == nav_.visibleRows)
+          row = {skinList_.x, static_cast<int16_t>(skinList_.y + (index - nav_.top) * (listProps_.rowHeight + listProps_.rowGap)),
+                 skinList_.width, listProps_.rowHeight};
+        if (row.empty()) continue;
+        auto label = row.inset(fui::Insets{0, 16, 0, 16});
+        const int i = index - nav_.top;
+        const bool marked = model_.rowMarked && model_.rowMarked(index);
+        const bool opensNext = windowItems_[i].opensNext;
+        if (marked || opensNext) label.width = static_cast<int16_t>(std::max(0, label.width - 28));
+        const auto& value = windowValues_[i];
+        bool numericRow = false;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+        numericRow = model_.textView == TextView::Rows && index == 1;
+#endif
+        if (!value.empty() && !numericRow) {
+          const int width = std::min<int>(label.width / 2, ugly::width(r, ugly::Size::S22, value.c_str()));
+          readerugly::text(r, {static_cast<int16_t>(label.right() - width), label.y,
+                               static_cast<int16_t>(width), label.height}, value.c_str(), fui::TextAlign::Right);
+          label.width = static_cast<int16_t>(std::max(0, label.width - width - 12));
+        }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+        if (model_.textView == TextView::Rows && index == 1) {
+          label.width = static_cast<int16_t>(skinFrame_.width - 236);
+          for (const auto action : {ACTION_SIZE_STEP, ACTION_SIZE_ENTRY}) for (int v = -1; v <= 1; ++v) {
+            const auto key = app.publishedRect(action, v);
+            if (!key.empty()) readerugly::text(r, key, action == ACTION_SIZE_ENTRY ? value.c_str() : v < 0 ? "-" : "+", fui::TextAlign::Center);
+          }
+        }
+#endif
+        const int choices = model_.choiceCount ? std::min(model_.choiceCount(index), kChoiceStride) : 0;
+        if (choices > 0) label.width = static_cast<int16_t>(std::max(0, skinChoices_[i].x - label.x - 8));
+        readerugly::text(r, label, windowLabels_[i].c_str());
+        if (model_.selectedIndex == index) readerugly::selected(r, row);
+        if (marked) ugly::tick(r, row.right() - 30, row.y + row.height / 2);
+        if (opensNext) ugly::mark(r, ugly::Mark::Right, row.right() - 24, row.y + row.height / 2);
+        for (int k = 0; k < choices; ++k) {
+          auto choice = skinChoices_[i];
+          choice.x = static_cast<int16_t>(choice.x + k * choice.width);
+          const int x = choice.x;
+          if (model_.choiceIcon) if (const auto* icon = model_.choiceIcon(index, k))
+            uiTarget.bitmap({static_cast<int16_t>(x + (choice.width - 24) / 2), static_cast<int16_t>(row.y + (row.height - 24) / 2), 24, 24},
+                            fui::bitmapFromIcon(*icon), fui::BitmapMode::Center);
+          if (model_.choiceInUse && model_.choiceInUse(index) == k) readerugly::selected(r, choice);
+        }
+      }
+      if (model_.itemCount > nav_.visibleRows && skinList_.height > 0) {
+        const int x = skinList_.right() - 4;
+        ugly::line(r, x, skinList_.y + 4, x, skinList_.bottom() - 4, 825, 1);
+        const int y = skinList_.y + skinList_.height * nav_.top / model_.itemCount;
+        const int h = std::max(8, skinList_.height * nav_.visibleRows / model_.itemCount);
+        ugly::line(r, x - 2, y, x - 2, std::min<int>(skinList_.bottom(), y + h), 826, 2);
+      }
+      r.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+    }
+  }
+  static constexpr StrId tools[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE};
+  for (int tool = 0; tool < 3; ++tool) {
+    const auto box = app.publishedRect(ACTION_TOOL, tool);
+    if (!box.empty()) {
+      readerugly::text(r, box.inset(fui::Insets{0, 8, 0, 8}), I18N.get(tools[tool]), fui::TextAlign::Center);
+      if (model_.activeTool == tool) readerugly::selected(r, box);
+    }
+  }
+}
