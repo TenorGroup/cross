@@ -183,7 +183,6 @@ class ChapterHtmlSlimParser {
   // A checkpoint is taken only after a closed text block, at an exact XML
   // event boundary. The read cursor may already be a buffer ahead of it.
   static constexpr size_t MAX_CHECKPOINT_ANCESTORS = 32;
-  static constexpr size_t MAX_CHECKPOINT_PREFIX = 2048;
   uint16_t checkpointPrologBytes_ = 0;
   std::string checkpointPrefix_;
   std::array<uint16_t, MAX_CHECKPOINT_ANCESTORS> checkpointPrefixEnds_{};
@@ -247,6 +246,7 @@ class ChapterHtmlSlimParser {
   static void XMLCALL processEndElement(void* userData, const XML_Char* name);
 
  public:
+  static constexpr size_t MAX_CHECKPOINT_PREFIX = 2048;
   explicit ChapterHtmlSlimParser(
       std::shared_ptr<Epub> epub, const std::string& filepath, GfxRenderer& renderer, const int fontId,
       const float lineCompression, const uint8_t extraParagraphSpacing, const uint8_t paragraphAlignment,

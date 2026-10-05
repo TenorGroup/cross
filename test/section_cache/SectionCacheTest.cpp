@@ -2439,6 +2439,74 @@ TEST(PreviewPage, NoResumePointsNoPreview) {
   EXPECT_TRUE(again.previewPage(book.narrow, offset));
 }
 
+TEST(PreviewPage, CorruptDdLengthsFailBeforeAllocation) {
+  PreviewBook book;
+  // A valid long prolog lets the combined-bound case replay valid XML on the old reader.
+  std::string prolog = "<?xml version=\"1.0\"?>\n";
+  prolog.resize(1024, ' ');
+  book.epub->contents.insert(0, prolog);
+  Section old(book.epub, 0, book.renderer);
+  ASSERT_TRUE(old.createSectionFile(book.narrow));
+  const auto ddPath = book.root / "sections/0.dd";
+  const auto htmlPath = book.root / "html/0.html";
+  const auto valid = bytes(ddPath);
+  const auto html = bytes(htmlPath);
+  const auto cache = bytes(book.root / "sections/0.bin");
+  ASSERT_GE(valid.size(), 28u);
+  const uint32_t target = pod<uint32_t>(valid, 20) + 1;
+  struct Damage {
+    const char* name;
+    uint16_t prolog, length;
+    uint32_t records;
+    std::string prefix;
+    size_t allocationLimit;
+    bool shortHtml = false;
+    bool preview = false;
+  };
+  std::string longPrefix = "<html data-test=\"";
+  longPrefix.append(1025 - longPrefix.size() - std::string("\"><body><div>").size(), 'a');
+  longPrefix += "\"><body><div>";
+  std::string maxPrefix = longPrefix;
+  maxPrefix.erase(maxPrefix.find("aaa"), 1);
+  const Damage damage[] = {
+      {"prolog65535", UINT16_MAX, 17, 1, "<html><body><div>", 2049},
+      {"prefix65535", 1024, UINT16_MAX, 1, std::string(UINT16_MAX, 'a'), 2049},
+      {"truncatedPrefix", 0, 1900, 160, "x", 1900},
+      {"combined2049", 1024, 1025, 1, longPrefix, 2049},
+      {"recordCountOverflow", 1024, 17, UINT32_MAX, "<html><body><div>", 2049},
+      {"prologPastHtml", 1024, 17, 1, "<html><body><div>", 1024, true},
+      {"validCombined2048", 1024, 1024, 1, maxPrefix, SIZE_MAX, false, true},
+  };
+  for (const auto& item : damage) {
+    SCOPED_TRACE(item.name);
+    std::string damaged = valid.substr(0, 16);
+    const uint32_t htmlSize = item.shortHtml ? 64 : html.size();
+    memcpy(damaged.data() + 4, &htmlSize, sizeof(htmlSize));
+    memcpy(damaged.data() + 8, &item.records, sizeof(item.records));
+    memcpy(damaged.data() + 12, &item.prolog, sizeof(item.prolog));
+    damaged[14] = 1;
+    std::string record = valid.substr(16, 12);
+    record[10] = 0;
+    for (uint32_t i = 0; i < (item.records == UINT32_MAX ? 1 : item.records); ++i) damaged += record;
+    damaged.append(reinterpret_cast<const char*>(&item.length), sizeof(item.length));
+    damaged += item.prefix;
+    std::ofstream(ddPath, std::ios::binary | std::ios::trunc).write(damaged.data(), damaged.size());
+    std::ofstream(htmlPath, std::ios::binary | std::ios::trunc).write(html.data(), htmlSize);
+    Section section(book.epub, 0, book.renderer);
+    allocationProbe::largest = 0;
+    allocationProbe::enabled = true;
+    auto page = section.previewPage(book.wide, target);
+    allocationProbe::enabled = false;
+    const size_t largest = allocationProbe::largest;
+    std::cout << "DD_BOUNDS name=" << item.name << " largest=" << largest << " preview=" << bool(page) << '\n';
+    EXPECT_EQ(bool(page), item.preview);
+    EXPECT_LT(largest, item.allocationLimit);
+    EXPECT_EQ(bytes(ddPath), damaged);
+    EXPECT_EQ(bytes(htmlPath), html.substr(0, htmlSize));
+    EXPECT_EQ(bytes(book.root / "sections/0.bin"), cache);
+  }
+}
+
 TEST(PreviewPage, AbandonedBuildKeepsItsPointsAndTheCommittedCache) {
   PreviewBook book;
   {
