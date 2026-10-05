@@ -126,13 +126,20 @@ bool ActivityManager::handleLightGesture() {
   // number for one frame); taking the lock here would hold the light until the panel finished a refresh.
   const uint32_t now = millis();
   bool changed = false;
-  if (two && lightGesture.follow(x, y, Frontlight.brightness(), Frontlight.warmth(), Frontlight.isOn(), now))
+  if (two && lightGesture.follow(x, y, Frontlight.brightness(), Frontlight.warmth(), Frontlight.isOn(), now)) {
     changed = applyLightLevel();
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("LGT", "step %s=%u t=%lu", lightGesture.vertical ? "bright" : "warm", lightGesture.value, now);
+#endif
+  }
   if (released && contacts == 2) {
     if (lightGesture.flick(dx, dy, ms, Frontlight.brightness(), now)) {
       changed = true;
       Frontlight.setBrightness(lightGesture.keep);
       Frontlight.setOn(false);
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("LGT", "flick off keep=%u t=%lu", lightGesture.keep, now);
+#endif
     } else if (lightGesture.settle(dx, dy, ms, Frontlight.brightness(), Frontlight.warmth(), Frontlight.isOn(), now)) {
       changed = applyLightLevel();
     }
@@ -252,6 +259,21 @@ void ActivityManager::renderTaskLoop() {
 }
 
 void ActivityManager::loop() {
+#ifdef TENOR_PRESS_PROBE
+  // Real contacts, for latency from the controller's report to the panel ("Wait complete"): a finger down,
+  // a finger up with how long it was held, and the count of contacts when it changes.
+  {
+    float nx = 0, ny = 0;
+    if (gpio.wasTouchDown(nx, ny)) LOG_INF("TCH", "down x=%.3f y=%.3f t=%lu", nx, ny, millis());
+    if (gpio.wasTouchReleased()) LOG_INF("TCH", "up held=%lu t=%lu", gpio.lastTouchHeldMs(), millis());
+    static uint8_t lastContacts = 0;
+    uint8_t contacts = 0;
+    int cx = 0, cy = 0;
+    mappedInput.touchContactsAt(contacts, cx, cy);
+    if (contacts != lastContacts) LOG_INF("TCH", "contacts=%u t=%lu", contacts, millis());
+    lastContacts = contacts;
+  }
+#endif
   if (mappedInput.consumeSuppressedRelease()) return;
 
   if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
