@@ -328,23 +328,9 @@ void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& pr
   }
   const int rowGap = props.rowGap >= 0 ? props.rowGap : screen.theme().listRowGap;
   reserveMoreBelowChevron(screen, rowHeight, rowGap);
-  const uint16_t rows = fui::listVisibleRows(screen.body(), rowHeight, rowGap);
-  n.visibleRows = rows > 0 ? rows : 1;
-  if (n.followOnBuild) {
-    // Screen entry / tab switch: show the tab's remembered selection, or the
-    // top when the tab bar holds the focus.
-    n.followOnBuild = false;
-    n.followPending = n.selected > 0;
-    n.top = n.selected > 0 ? static_cast<int>(fui::listTopIndexFor(
-                                 static_cast<int16_t>(n.selected - 1), static_cast<uint16_t>(n.top < 0 ? 0 : n.top),
-                                 static_cast<uint16_t>(n.visibleRows), static_cast<uint16_t>(count)))
-                           : 0;
-  }
-  n.scrollBy(0, count);  // clamp to range
-  props.topIndex = static_cast<uint16_t>(n.top);
-  // -1 = tab band focused; the touch shell shows no cursor row at all.
-  props.selectedIndex = tenorchrome::kTouchShell ? int16_t{-1} : static_cast<int16_t>(n.selected - 1);
-  props.nav = &n;  // actual wrapped-row layout corrects the estimated viewport
+  n.syncToProps(screen.body(), rowHeight, rowGap, count, props, 1);
+  // The touch shell shows no cursor row; SDK navigation still owns the viewport.
+  if (tenorchrome::kTouchShell) props.selectedIndex = -1;
 }
 
 UiTabListActivity::CuaSoThe UiTabListActivity::tinhCuaSo(const int tong, const int dangChon, const int dauCu,
