@@ -501,6 +501,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Which gestures turn the page in each direction (PAGE_TURN_GESTURE).
   uint8_t pageTurnGesture = SWIPE_ONLY;
   uint8_t previousPageGesture = SWIPE_ONLY;
+  // Width of the back-tap column on a reader page, a step of readertap::BACK_PERCENT (15/20/25/33%).
+  uint8_t backTapZone = 2;
   // Reader menu open gesture (SHOW_READER_MENU: off / center tap / bottom-edge
   // up-swipe). Only surfaced on home-key boards, where Home is the capacitive
   // key and the bottom edge is free; elsewhere it stays at the Tap default.
