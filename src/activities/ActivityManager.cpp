@@ -131,6 +131,12 @@ bool ActivityManager::handleLightGesture() {
   return true;
 }
 
+// The top menu: the light panel, over whatever screen asked for it (not over itself).
+void ActivityManager::openTopMenu() {
+  if (currentActivity && currentActivity->name == "FrontlightPanel") return;
+  pushActivity(std::make_unique<FrontlightPanelActivity>(renderer, mappedInput));
+}
+
 tenorchrome::Zone ActivityManager::footZone() const {
   if (isReaderActivity()) return tenorchrome::Zone::Book;
   switch (homeMenuOrigin()) {
@@ -300,25 +306,26 @@ void ActivityManager::loop() {
       }
     }
 
-    // Tap-first control-center entry: a tap on the status-bar band of the
-    // top-level tab screens opens it, mirroring the top-edge swipe (which some
-    // panels' etched glass makes unreliable). The reader keeps its clean page
-    // (no status bar there to tap). Touch boards only, like the swipe itself.
+    // Tap-first control-center entry: a tap on the status band opens the top menu (the light panel),
+    // mirroring the top-edge swipe (which some panels' etched glass makes unreliable). Touch shell: on
+    // every screen that draws the strip, the strip alone, so a tap on the first row of a list is the
+    // row's; going back is the bar's "<". Other touch boards: the band of the top-level tab screens.
     bool statusBarTap = false;
     if (mappedInput.hasTouch() &&
-        (currentActivity->name == "Home" || currentActivity->name == "FileBrowser" ||
-         currentActivity->name == "Settings" || currentActivity->name == "NetworkModeSelection")) {
+        (tenorchrome::kTouchShell ? HeaderBackTapTarget::strip
+                                  : currentActivity->name == "Home" || currentActivity->name == "FileBrowser" ||
+                                        currentActivity->name == "Settings" ||
+                                        currentActivity->name == "NetworkModeSelection")) {
       int tx = 0;
       int ty = 0;
       // The header back button shares this band; its taps stay Back.
-      // Touch: the status strip alone, so a tap on the first row of a list is the row's.
       const int band = tenorchrome::kTouchShell ? tenorchrome::TOUCH_STRIP_HEIGHT : 44;
       statusBarTap = mappedInput.wasScreenTapped(tx, ty) && ty < band && !HeaderBackTapTarget::contains(tx, ty);
     }
     // Both ways in are touch gestures, so a build without a touch board leaves the panel out.
     if (BoardConfig::hasTouch() && currentActivity->name != "FrontlightPanel" &&
         (statusBarTap || mappedInput.wasLightPanelGesture())) {
-      pushActivity(std::make_unique<FrontlightPanelActivity>(renderer, mappedInput));
+      openTopMenu();
       return;
     }
 
@@ -440,6 +447,7 @@ void ActivityManager::loop() {
         // screen (which may draw no header of its own).
         HeaderBackTapTarget::clear();
         HeaderBackTapTarget::clearFoot();
+        HeaderBackTapTarget::strip = false;
         LOG_DBG("ACT", "Pushed to activity stack, new size = %zu", stackActivities.size());
       }
       pendingAction = PendingAction::None;
@@ -588,6 +596,7 @@ void ActivityManager::restoreNavigation() {
   // screen; the next header draw re-records it.
   HeaderBackTapTarget::clear();
   HeaderBackTapTarget::clearFoot();
+  HeaderBackTapTarget::strip = false;
 }
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
