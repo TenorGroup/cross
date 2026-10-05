@@ -160,6 +160,9 @@ class HalGPIO {
   bool wasSwipe(float& nxStart, float& nyStart, float& nxEnd, float& nyEnd) const;
   bool popMultiTouchSwipe(uint8_t& contacts, float& nxStart, float& nyStart, float& nxEnd, float& nyEnd,
                           unsigned long& durationMs);
+  // The contacts down now (the controller's count) and their centre, normalized like a tap in the panel's
+  // frame. False with no contact down.
+  bool touchContactsAt(uint8_t& count, float& nx, float& ny) const;
   bool wasTouchActivity() const;
   void setSharedConfirmPowerShortPressEmitsPower(bool enabled);
   // Plays `count` presses of one button through the real input path, each held

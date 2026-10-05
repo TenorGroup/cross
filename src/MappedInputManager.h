@@ -103,7 +103,9 @@ class MappedInputManager {
 
   SwipeDir wasSwipe() const;
   // Consumed once on the input task; deltas follow the rendered orientation.
-  bool popMultiTouchSwipe(uint8_t& contacts, int& dx, int& dy) const;
+  bool popMultiTouchSwipe(uint8_t& contacts, int& dx, int& dy, unsigned long* durationMs = nullptr) const;
+  // Live: the contacts down now and their centre in screen pixels (rendered orientation).
+  bool touchContactsAt(uint8_t& count, int& x, int& y) const;
   uint32_t touchContactGeneration() const { return touchContactGeneration_; }
   bool wasBottomHomeGesture() const;
   // An up or down swipe in this pass: its vertical travel (negative: the finger went up) and how long

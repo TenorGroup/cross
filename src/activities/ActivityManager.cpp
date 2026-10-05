@@ -82,28 +82,52 @@ void ActivityManager::deferLightGestureSave() {
   deferWrite(&saveGestureLight);
 }
 
+// Two fingers set the light while they move (FrontlightGesture). The light changes on this pass; the level
+// shows on the next frame the render task draws. True while two fingers are down or their release is being
+// consumed, so no screen reads them as a tap or a swipe.
 bool ActivityManager::handleLightGesture() {
   if (!BoardConfig::isX4Pro()) return false;
+  uint8_t down = 0;
+  int x = 0, y = 0;
+  const bool two = mappedInput.touchContactsAt(down, x, y) && down == 2;
   uint8_t contacts = 0;
   int dx = 0, dy = 0;
-  if (!mappedInput.popMultiTouchSwipe(contacts, dx, dy)) return false;
-  RenderLock lock;
-  if (Frontlight.present() && lightGesture.apply(contacts, dx, dy, Frontlight.brightness(), Frontlight.warmth(),
-                                                Frontlight.isOn(), millis())) {
-    if (lightGesture.vertical) {
+  unsigned long ms = 0;
+  const bool released = mappedInput.popMultiTouchSwipe(contacts, dx, dy, &ms);
+  if (!two && !released && !lightGesture.following()) return false;
+  if (!two) lightGesture.lift();
+  if (!Frontlight.present()) return true;
+  // ponytail: the render task reads these few bytes without the render lock (a torn read draws one stale
+  // number for one frame); taking the lock here would hold the light until the panel finished a refresh.
+  const uint32_t now = millis();
+  bool changed = false;
+  if (two && lightGesture.follow(x, y, Frontlight.brightness(), Frontlight.warmth(), Frontlight.isOn(), now)) {
+    changed = true;
+    if (!lightGesture.vertical) {
+      if (Frontlight.hasColorTemperature()) Frontlight.setWarmth(lightGesture.value);
+    } else if (lightGesture.value) {
       Frontlight.setBrightness(lightGesture.value);
-      Frontlight.setOn(lightGesture.value != 0);
-    } else if (Frontlight.hasColorTemperature()) {
-      Frontlight.setWarmth(lightGesture.value);
+      Frontlight.setOn(true);
+    } else {
+      Frontlight.setOn(false);  // the brightness stays for the next step up
     }
-    lightGesture.dirty = lightGesture.dirty || SETTINGS.frontlightBrightness != Frontlight.brightness() ||
-                         SETTINGS.frontlightWarmth != Frontlight.warmth() ||
-                         SETTINGS.frontlightOn != (Frontlight.isOn() ? 1 : 0);
-    SETTINGS.frontlightBrightness = Frontlight.brightness();
-    SETTINGS.frontlightWarmth = Frontlight.warmth();
-    SETTINGS.frontlightOn = Frontlight.isOn() ? 1 : 0;
-    requestUpdate();
   }
+  if (released && contacts == 2 && lightGesture.flick(dx, dy, ms, Frontlight.brightness(), now)) {
+    changed = true;
+    Frontlight.setBrightness(lightGesture.keep);
+    Frontlight.setOn(false);
+  }
+#ifdef TENOR_PRESS_PROBE
+  if (released) LOG_INF("LGT", "release contacts=%u dx=%d dy=%d ms=%lu", contacts, dx, dy, ms);
+#endif
+  if (!changed) return true;
+  lightGesture.dirty = lightGesture.dirty || SETTINGS.frontlightBrightness != Frontlight.brightness() ||
+                       SETTINGS.frontlightWarmth != Frontlight.warmth() ||
+                       SETTINGS.frontlightOn != (Frontlight.isOn() ? 1 : 0);
+  SETTINGS.frontlightBrightness = Frontlight.brightness();
+  SETTINGS.frontlightWarmth = Frontlight.warmth();
+  SETTINGS.frontlightOn = Frontlight.isOn() ? 1 : 0;
+  requestUpdate();
   return true;
 }
 
