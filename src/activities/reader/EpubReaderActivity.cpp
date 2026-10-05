@@ -435,8 +435,12 @@ bool EpubReaderActivity::loadBook() {
           quotesRead - bookmarksRead, millis() - quotesRead, uncached ? 1u : 0u);
 #endif
   // Touch shell: the tap-zone map over the first page, until "Don't show this tip again".
-  if (tenorchrome::kTouchShell && !preview && SETTINGS.readerTapTip)
+  if (tenorchrome::kTouchShell && !preview && SETTINGS.readerTapTip) {
     readertip::open(ReaderUtils::tapRules(ReaderUtils::isRtlBookLanguage(epub->getLanguage()), true));
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("TIP", "open t=%lu", millis());
+#endif
+  }
   return true;
 }
 
@@ -459,6 +463,9 @@ bool EpubReaderActivity::handleTapTip() {
     SETTINGS.readerTapTip = 0;
     activityManager.deferWrite(&saveTapTipHidden);
   }
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("TIP", "close tap=%d at=%d,%d off=%u t=%lu", tapped, x, y, SETTINGS.readerTapTip ? 0u : 1u, millis());
+#endif
   RenderLock lock;
   readertip::close();
   pagesUntilFullRefresh = 1;
