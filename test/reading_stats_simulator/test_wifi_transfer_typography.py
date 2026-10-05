@@ -21,7 +21,8 @@ FOOTER_TOP = (752, 712, 702)
 DEVICE_NAME = "W" * 31
 SSID = "W" * 31
 FAKE_NETWORKS = f"{SSID}:-40:0"
-TO_CHOOSER = "1500:RIGHT;1900:RIGHT;2300:RIGHT;2700:UP;3100:CONFIRM"
+# Home Settings: 5 reading groups, then File transfer at the start of the device group.
+TO_CHOOSER = "1500:UP;1800:RIGHT;2100:RIGHT;2400:RIGHT;2700:RIGHT;2900:RIGHT;3100:CONFIRM"
 
 
 def black_bbox(image, bounds):
@@ -91,7 +92,10 @@ class WifiTransferTypographyTest(unittest.TestCase):
         log_path.write_text(log)
         input_path.write_text(script + "\n")
         self.assertEqual(run.returncode, 0, log[-5000:])
+        chooser = "Entering activity: NetworkModeSelection"
+        self.assertIn(chooser, log, log[-5000:])
         self.assertIn(f"Network mode: {mode}", log, log[-5000:])
+        self.assertLess(log.index(chooser), log.index(f"Network mode: {mode}"), log[-5000:])
         self.assertTrue(bmp.exists(), f"Missing framebuffer capture: {bmp}")
         with Image.open(bmp) as raw:
             image = raw.convert("RGB")
