@@ -65,6 +65,8 @@ class Shot:
     """One launch of the simulator with a recent book that has a cover, stats and a quote-free page excerpt."""
 
     def __init__(self, lang, title, progress=20):
+        self.artifact_tag = lang + ('-long' if title else '')
+        self.artifact_runs = 0
         self.tmp = tempfile.TemporaryDirectory(prefix='cross-card-f-')
         self.sd = Path(self.tmp.name)
         self.store = self.sd / '.crosspoint'
@@ -94,11 +96,24 @@ class Shot:
                    CROSSPOINT_SIM_SCREENSHOTS=';'.join(f'{ms}:{self.sd / (name + ".bmp")}' for ms, name in shots))
         run = subprocess.run([str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         assert run.returncode == 0, (run.stdout + run.stderr)[-3000:]
-        return run.stdout + run.stderr
+        log = run.stdout + run.stderr
+        artifacts = os.environ.get('CROSSPOINT_TEST_ARTIFACTS')
+        if artifacts:
+            folder = Path(artifacts)
+            folder.mkdir(parents=True, exist_ok=True)
+            self.artifact_runs += 1
+            (folder / f'{self.artifact_tag}-run{self.artifact_runs}.log').write_text(log)
+        return log
 
     def image(self, name):
         with Image.open(self.sd / (name + '.bmp')) as image:
-            return np.array(image.convert('L'))
+            gray = image.convert('L')
+            artifacts = os.environ.get('CROSSPOINT_TEST_ARTIFACTS')
+            if artifacts:
+                folder = Path(artifacts)
+                folder.mkdir(parents=True, exist_ok=True)
+                gray.save(folder / f'{self.artifact_tag}-{name}.png')
+            return np.array(gray)
 
 
 class CardFTest(unittest.TestCase):
@@ -110,6 +125,24 @@ class CardFTest(unittest.TestCase):
 
     def stat_runs(self, shot):
         return runs(shot.dark, STATS_X, STATS_RIGHT, 124, 575)
+
+    def assert_stat_groups(self, shot):
+        r = self.stat_runs(shot)
+        names = ('read', 'finish', 'total', 'average', 'days', 'turns')
+        self.assertEqual(len(r), 2 * len(names) + 1, r)  # 6 label/value groups plus the bar
+        groups = {}
+        for i, name in enumerate(names):
+            label, value = (r[0], r[1]) if i == 0 else (r[2 * i + 1], r[2 * i + 2])
+            groups[name] = (label, value)
+            self.assertLess(label[1], value[0] - 1, name + ': label/value touch')
+            self.assertFalse(shot.dark[label[0]:value[1] + 1, STATS_RIGHT:512].any(),
+                             name + ': ink outside column')
+            if i:
+                self.assertLess(groups[names[i - 1]][1][1], label[0] - 1, name + ': groups touch')
+        # Same board/tier font inset and cover-bottom contract as the retained 0084 captures.
+        self.assertLessEqual(abs(groups['read'][0][0] - 134), 1, 'first label inset')
+        self.assertLessEqual(abs(groups['turns'][1][1] + 1 - 575), 1, 'last value/cover bottom')
+        return groups
 
     def test_stats_column_is_a_third_of_the_text_width(self):
         for shot in (self.en, self.vi):
@@ -166,10 +199,10 @@ class CardFTest(unittest.TestCase):
             self.assertTrue(d[top, STATS_X + 40] and d[bottom, STATS_X + 40])
 
     def test_gap_under_the_bar_equals_the_gap_between_groups(self):
-        r = self.stat_runs(self.en)
-        self.assertEqual(len(r), 11, r)
-        bar, finish_label = r[2], r[3]
-        total_value, average_label = r[6], r[7]                  # "23 h 14 min": no descender
+        groups = self.assert_stat_groups(self.en)
+        bar = self.stat_runs(self.en)[2]
+        finish_label = groups['finish'][0]
+        total_value, average_label = groups['total'][1], groups['average'][0]
         under_bar = finish_label[0] - bar[1] - 1
         between = average_label[0] - total_value[1] - 1
         # Cap top against ascender top differ by a row at most.
@@ -204,18 +237,28 @@ class CardFTest(unittest.TestCase):
             self.assertTrue((shot.dark[:740] == shot.warm[:740]).all(), 'cold card and cached card differ')
 
     def test_values_are_compact_and_one_size(self):
-        # "38%", "27/12", "23h14m", "3h19m", "7": no spaces, no unit words, one size (04/10, founder).
-        # Widths of the value lines in the EN and VI screenshots; the old "23 h 14 min" ran 135 px.
-        want = {4: (50, 72), 6: (82, 104), 8: (68, 90), 10: (10, 22)}   # row index in stat_runs: (min, max) px
+        # Existing bounds stay for the same values; average now includes /day or /ngày.
+        want = {'finish': (50, 72), 'total': (82, 104), 'days': (10, 22)}
         for name, shot in (('EN', self.en), ('VI', self.vi)):
-            r = self.stat_runs(shot)
-            for index, (low, high) in want.items():
-                top, bottom = r[index]
+            groups = self.assert_stat_groups(shot)
+            for group, (low, high) in want.items():
+                top, bottom = groups[group][1]
                 cols = np.where(shot.dark[top:bottom + 1, STATS_X:STATS_RIGHT].any(axis=0))[0]
                 width = int(cols.max() - cols.min()) + 1
-                self.assertTrue(low <= width <= high, (name, index, width))
-            # The same cap height on every value line: digits are one size.
-            heights = [r[i][1] - r[i][0] + 1 for i in (1, 4, 6, 8, 10)]
+                self.assertTrue(low <= width <= high, (name, group, width))
+            top, bottom = groups['average'][1]
+            average = shot.dark[top:bottom + 1, STATS_X:STATS_RIGHT]
+            cols = np.where(average.any(axis=0))[0]
+            right = int(cols.max()) + 1
+            # Retain the old minimum; the complete value must fit the actual column, with margin.
+            self.assertGreaterEqual(right - int(cols.min()), 68, name)
+            self.assertLess(right, STATS_RIGHT - STATS_X, name + ': average at column edge')
+            total = groups['total'][1]
+            self.assertGreater(bottom - top, total[1] - total[0], name + ': per-day descender missing')
+            # Both day/ngày end in y, whose Geist12 regular glyph is 14px wide and descends.
+            # Its bottom ink must remain inside the final glyph, including after clipping mutations.
+            self.assertTrue(average[-1, right - 14:right].any(), name + ': last per-day unit clipped')
+            heights = [value[1] - value[0] + 1 for _, value in groups.values()]
             self.assertLessEqual(max(heights) - min(heights), 5, (name, heights))
 
     def test_no_card_snapshot_is_held_in_ram_once_the_card_is_on_the_card(self):
