@@ -95,6 +95,7 @@ class ActivityManager {
   MenuNavigationMemory navigationMemory;
   FrontlightGesture lightGesture;
   bool handleLightGesture();
+  bool applyLightLevel();
   void deferLightGestureSave();
   void restoreNavigation();
   void saveNavigation(Activity& activity);

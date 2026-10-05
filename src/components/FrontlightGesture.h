@@ -39,6 +39,7 @@ struct FrontlightGesture {
     if (!tracking) {
       tracking = seen = true;
       locked = false;
+      startAt = now;
       startX = x;
       startY = y;
       startBrightness = brightness;
@@ -85,8 +86,7 @@ struct FrontlightGesture {
   bool flick(const int dx, const int dy, const uint32_t durationMs, const uint8_t brightness, const uint32_t now) {
     if (dy < FLICK_MIN_PX || 2 * dy < 3 * std::abs(dx) || dy * 1000L < FLICK_MIN_PX_PER_S * long(durationMs))
       return false;
-    keep = seen && startOn ? startBrightness : brightness;
-    seen = false;
+    keep = liveFor(durationMs, now) && startOn ? startBrightness : brightness;
     vertical = true;
     value = 0;
     visible = true;
@@ -94,11 +94,29 @@ struct FrontlightGesture {
     return true;
   }
 
+  // The same release when it was no flick: if no live frame of it was seen (a controller that reports
+  // only the classified swipe, the simulator), step the light by its whole travel now.
+  bool settle(const int dx, const int dy, const uint32_t durationMs, const uint8_t brightness, const uint8_t warmth,
+              const bool on, const uint32_t now) {
+    if (liveFor(durationMs, now)) return false;
+    follow(0, 0, brightness, warmth, on, now);
+    const bool changed = follow(dx, dy, brightness, warmth, on, now);
+    lift();
+    seen = false;
+    return changed;
+  }
+
   void draw(const GfxRenderer& r, int barTop) const;
 
  private:
   bool tracking = false;
-  bool seen = false;  // a follow() began since the last flick
+  bool seen = false;  // a follow() ever began
+  uint32_t startAt = 0;
+  // The release of `durationMs` ending now is the gesture the live frames followed: it began no earlier
+  // than they did (100 ms for the first frame to arrive).
+  bool liveFor(const uint32_t durationMs, const uint32_t now) const {
+    return seen && static_cast<int32_t>(startAt - (now - durationMs)) >= -100;
+  }
   bool locked = false;
   int shown = -1;
   int startX = 0;

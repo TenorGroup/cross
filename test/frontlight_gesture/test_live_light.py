@@ -9,8 +9,8 @@ import tempfile
 
 repo = Path(__file__).resolve().parents[2]
 source = (repo / 'src/activities/ActivityManager.cpp').read_text()
-start = source.index('bool ActivityManager::handleLightGesture() {')
-end = source.index('tenorchrome::Zone ActivityManager::footZone() const {', start)
+start = source.index('bool ActivityManager::applyLightLevel() {')
+end = source.index('// The top menu: the light panel', start)
 body = source[start:end]
 fixture = r'''
 #include <cassert>
@@ -45,6 +45,7 @@ struct ActivityManager {
   Input mappedInput; FrontlightGesture lightGesture; int repaints = 0;
   void requestUpdate() { ++repaints; }
   bool handleLightGesture();
+  bool applyLightLevel();
 };
 '''
 test = r'''
@@ -74,6 +75,11 @@ int main() {
   assert(at(500, 6000));
   assert(at(470, 6050) && Frontlight.lit && Frontlight.level == 60);
   assert(at(440, 6100) && Frontlight.level == 65);
+  // A controller that never showed the fingers live: the release steps the light by its whole travel.
+  m.mappedInput.down = 0; m.mappedInput.queued = false; m.handleLightGesture();
+  Frontlight.lit = false; Frontlight.level = 60; clockMs = 9000;
+  m.mappedInput.queued = true; m.mappedInput.dx = 0; m.mappedInput.dy = -120; m.mappedInput.ms = 250;
+  assert(m.handleLightGesture() && Frontlight.lit && Frontlight.level == 75);
   // Three fingers are not the light's.
   m.mappedInput.down = 0; m.mappedInput.queued = false; m.handleLightGesture();
   m.mappedInput.down = 3; assert(!m.handleLightGesture());
