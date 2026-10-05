@@ -220,8 +220,8 @@ class ReaderStatusItemsTest(unittest.TestCase):
                 self.assertEqual(saved['statusBarTitle'] != 2, title, saved)
 
     def test_switch_screen_from_reader_settings(self):
-        """Settings, Reader tab, last row (one step back from the first) opens the switches; the chapter name switch hides the name."""
-        keys = ['UP', 'RIGHT', 'RIGHT', 'RIGHT', 'CONFIRM', 'LEFT', 'CONFIRM']
+        """Home's Reader group, last row (one step back from the first) opens the switches; the chapter name switch hides the name."""
+        keys = ['UP', 'RIGHT', 'RIGHT', 'CONFIRM', 'LEFT', 'CONFIRM']
         events = [f'{1000 + 600 * i}:{k}' for i, k in enumerate(keys)]
         t = 1000 + 600 * len(keys)
         script = ';'.join(events + [f'{t + 800}:CONFIRM', f'{t + 2400}:BACK', f'{t + 3200}:BACK',
