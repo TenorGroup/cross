@@ -54,6 +54,7 @@
 #include "activities/settings/BlePageTurnerActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/HomeExcerptStyle.h"
+#include "components/ReaderTapTip.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/icons/readerToolbarIcons.h"
@@ -433,6 +434,35 @@ bool EpubReaderActivity::loadBook() {
           epubLoaded - loadStarted, progressRead - epubLoaded, bookmarksRead - progressRead,
           quotesRead - bookmarksRead, millis() - quotesRead, uncached ? 1u : 0u);
 #endif
+  // Touch shell: the tap-zone map over the first page, until "Don't show this tip again".
+  if (tenorchrome::kTouchShell && !preview && !SETTINGS.readerTapTipHidden)
+    readertip::open(ReaderUtils::tapRules(ReaderUtils::isRtlBookLanguage(epub->getLanguage()), true));
+  return true;
+}
+
+namespace {
+void saveTapTipHidden() { SETTINGS.saveToFile(); }
+}  // namespace
+
+// The tap-zone map is up: it takes this pass's input. Its button hides it for good (one settings write,
+// after the page is back on the panel); any other tap, swipe or Back closes it for this open only. The
+// tap that closes it turns no page. The page comes back with a full refresh, so no line of the map stays.
+bool EpubReaderActivity::handleTapTip() {
+  int x = 0, y = 0;
+  const bool tapped = mappedInput.wasScreenTapped(x, y);
+  const bool closing = tapped || mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None ||
+                       mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+                       mappedInput.wasReleased(MappedInputManager::Button::Confirm);
+  if (!closing) return true;
+  if (tapped && readertap::tipButton(renderer.getScreenWidth(), renderer.getScreenHeight(), readertip::rules())
+                    .contains(x, y)) {
+    SETTINGS.readerTapTipHidden = 1;
+    activityManager.deferWrite(&saveTapTipHidden);
+  }
+  RenderLock lock;
+  readertip::close();
+  pagesUntilFullRefresh = 1;
+  requestUpdate();
   return true;
 }
 
@@ -1284,6 +1314,8 @@ void EpubReaderActivity::loop() {
   } else {
     pendingReadFolderMove = false;
   }
+
+  if (tenorchrome::kTouchShell && readertip::isOpen() && handleTapTip()) return;
 
   const auto touch =
       ReaderUtils::detectTouchPageTurn(renderer, mappedInput, ReaderUtils::isRtlBookLanguage(epub->getLanguage()),
@@ -5294,6 +5326,7 @@ void EpubReaderActivity::onPause() {
 }
 
 void EpubReaderActivity::onExit() {
+  readertip::close();
   panelClosedLocked(true, false);  // ActivityManager owns RenderLock during exit
   dropCatchUp();  // the next open lays the chapter out from its saved place
 #ifdef TENOR_TURN_TRACE

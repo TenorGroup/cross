@@ -39,7 +39,7 @@ def reader_menu_case(tier,output):
     folder=output/f'tier-{tier}';folder.mkdir(parents=True,exist_ok=True)
     sd=folder/'sd';store=sd/'.crosspoint';store.mkdir(parents=True,exist_ok=True);(sd/'books').mkdir(exist_ok=True)
     book=sd/'books/journey.epub';write_book(book);original=hashlib.sha256(book.read_bytes()).hexdigest()
-    (store/'settings.json').write_text(json.dumps({'textSpacingVersion':3,'paragraphIndentVersion':1,'readerInkWeightVersion':1,'tenorPresetVersion':1,'uiShellSleepMemo':0,'language':'VI','uiTextSize':tier,'wakeIntoBook':1,'fontSize':18,'fontFamily':0,'lineSpacing':0,'dropCapMode':1,'readerMenuStyle':0,'uiShell':0,'sleepTimeout':10}))
+    (store/'settings.json').write_text(json.dumps({'textSpacingVersion':3,'paragraphIndentVersion':1,'readerInkWeightVersion':1,'tenorPresetVersion':1,'uiShellSleepMemo':0,'language':'VI','uiTextSize':tier,'wakeIntoBook':1,'fontSize':18,'fontFamily':0,'lineSpacing':0,'dropCapMode':1,'readerMenuStyle':0,'uiShell':0,'sleepTimeout':10,'readerTapTipHidden':1}))
     (store/'state.json').write_text(json.dumps({'showBootScreen':False,'openEpubPath':'/books/journey.epub','lastSleepFromReader':True}))
     (store/'recent.json').write_text(json.dumps({'books':[{'path':'/books/journey.epub','title':'Reader menu journey'}]}))
     env={k:v for k,v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}

@@ -78,6 +78,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["readerInkWeightVersion"] = readerInk::SCHEMA_VERSION;
   doc["tenorPresetVersion"] = TENOR_PRESET_VERSION;
   doc["tapZonesVersion"] = 1;
+  doc["readerTapTipHidden"] = readerTapTipHidden;
   const CrossPointSettings& s = *this;
 
   // Duyet THANG bang tinh, khong chep ra vector rieng: duong nay chay moi lan
@@ -298,6 +299,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
 
   // v1.0.53 tap zones: a tap on the page edge turns it. A file from before them that turned one way by
   // swipe only takes taps too, once; the stamp keeps a swipe-only choice made later.
+  readerTapTipHidden = (doc["readerTapTipHidden"] | uint8_t{0}) ? 1 : 0;
   if (doc["tapZonesVersion"].isNull()) {
     if ((doc["pageTurnGesture"] | uint8_t{0xFF}) == SWIPE_ONLY) pageTurnGesture = TAP_AND_SWIPE;
     if ((doc["previousPageGesture"] | uint8_t{0xFF}) == SWIPE_ONLY) previousPageGesture = TAP_AND_SWIPE;

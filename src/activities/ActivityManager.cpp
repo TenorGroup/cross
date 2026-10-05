@@ -12,6 +12,7 @@
 #include <VectorFontSupport.h>
 
 #include <algorithm>
+#include <cstring>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -20,6 +21,7 @@
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
 #include "components/HeaderBackTapTarget.h"
+#include "components/ReaderTapTip.h"
 #include "components/TenorMenuChrome.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
@@ -64,12 +66,21 @@ const char* ActivityManager::currentName() const { return currentActivity ? curr
 
 namespace {
 // Touch shell: the frame about to reach the panel gets the dynamic bar the screen in front declares.
+// The reader's tap-zone map, over the reader's own frames only (not a panel or the sleep screen above it).
+void drawTapTip(const GfxRenderer& r) {
+  const char* name = activityManager.currentName();
+  if (readertip::isOpen() && name && std::strcmp(name, "EpubReader") == 0) readertip::draw(r);
+}
 void drawFootBar(const GfxRenderer& r) {
   tenorchrome::drawFootBar(r, tenorchrome::footBarFor(activityManager.currentName()), activityManager.footZone());
+  drawTapTip(r);
   activityManager.drawLightGesture(r);
 }
 void saveGestureLight() { SETTINGS.saveToFile(); }
-void drawGrayLightGesture(const GfxRenderer& r) { activityManager.drawLightGesture(r); }
+void drawGrayLightGesture(const GfxRenderer& r) {
+  drawTapTip(r);
+  activityManager.drawLightGesture(r);
+}
 }  // namespace
 
 void ActivityManager::drawLightGesture(const GfxRenderer& r) const {
