@@ -258,13 +258,11 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
 
 void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char* prefix) {
   // Touch: no title row. The name goes to the bar at the foot (or the strip, on a screen without one);
-  // a tap on the strip of a screen that names where it came from still goes back there.
+  // the strip opens the top menu and going back is the bar's "<" (founder 05/10).
   if (kTouchShell) {
+    (void)prefix;
     noteScreenTitle(title);
-    if (prefix && *prefix)
-      HeaderBackTapTarget::set(0, 0, r.getScreenWidth(), tabTop());
-    else
-      HeaderBackTapTarget::clear();
+    HeaderBackTapTarget::clear();
     return;
   }
   constexpr int x = 18, rightReserve = 18, tracking = 1;
@@ -555,6 +553,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
     }
   }
   if (top) {
+    HeaderBackTapTarget::strip = true;
     drawStripMiddle(r, y, hienGio ? STRIP_LEFT + timeWidth : STRIP_LEFT, batteryBlockX, fontChu);
     return;
   }

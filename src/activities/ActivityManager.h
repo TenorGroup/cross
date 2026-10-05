@@ -153,6 +153,8 @@ class ActivityManager {
 
   // This will move current activity to stack instead of deleting it
   void pushActivity(std::unique_ptr<Activity>&& activity);
+  // The top menu (the light panel): the status strip, the top-edge swipe and the reader's top band.
+  void openTopMenu();
 
   // Remove the currentActivity, returning the last one on stack
   // Note: if popActivity() on last activity on the stack, we will goHome()
