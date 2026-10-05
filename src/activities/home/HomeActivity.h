@@ -12,6 +12,7 @@
 #include "activities/UiTabListActivity.h"
 #include "activities/settings/SettingsTabs.h"
 #include "components/HomeExcerptStyle.h"
+#include "components/HomeSettingsLayout.h"
 
 struct Rect;
 
@@ -87,6 +88,7 @@ class HomeActivity final : public UiTabListActivity {
   bool rowOpens(int row) const override;
   bool supportsFavorites() const override { return activeTabId != Tab::STATS; }
   std::string favoriteKey(int row) const override;
+  int focusFavorite(const std::string& key) override;
   void favoritesChanged() override;
   bool toggleFavorite(int row) override;
   bool mucQuaNhieu = false;  // the card root holds more names than the heap allows: nothing is listed
@@ -106,6 +108,8 @@ class HomeActivity final : public UiTabListActivity {
   int coverTileTop() const;
   void selectTab(Tab tab);
   void rebuildRows();
+  bool buildSettingsGroups(UiScreen& screen);
+  static void settingsRow(void* context, uint16_t index, freeink::ui::ListItem& item);
 
   // Rows of the active tab. Rebuilt when the tab changes, never per repaint.
   std::vector<freeink::ui::ListItem> rowItems;
@@ -113,6 +117,8 @@ class HomeActivity final : public UiTabListActivity {
   std::vector<std::string> favoriteKeys;
   std::vector<std::string> favoriteValues;
   std::vector<int> settingsGroups;
+  homesettings::Order settingsOrder;
+  std::string settingsTransferLabel;
   Tab activeTabId = Tab::RECENT;
 
   // Noi dung goc the nho, cho the Folder. Thu muc mang dau '/' o cuoi.

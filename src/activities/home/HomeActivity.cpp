@@ -214,8 +214,10 @@ void HomeActivity::restoreNavigation(const MenuNavigationState& state) {
     activeNav().selected =
         found == recentBooks.end() ? (recentBooks.empty() ? 0 : 1) : static_cast<int>(found - recentBooks.begin()) + 1;
   } else if (activeTabId == Tab::CAI_DAT) {
+    if (state.selection == "action/15") activeNav().selected = settingsOrder.display(0) + 1;
     for (size_t i = 0; i < settingsGroups.size(); ++i)
-      if (state.selection == "group/" + std::to_string(settingsGroups[i])) activeNav().selected = i + 2;
+      if (state.selection == "group/" + std::to_string(settingsGroups[i]))
+        activeNav().selected = settingsOrder.display(static_cast<int>(i) + 1) + 1;
   }
   activeNav().followOnBuild = true;
 }
@@ -228,8 +230,12 @@ void HomeActivity::captureNavigation(MenuNavigationState& state) const {
   if (activeTabId == Tab::FAVORITES) state.selection = favoriteKey(row);
   if (activeTabId == Tab::RECENT && row >= 0 && row < static_cast<int>(recentBooks.size()))
     state.selection = recentBooks[row].path;
-  if (activeTabId == Tab::CAI_DAT && row > 0 && row <= static_cast<int>(settingsGroups.size()))
-    state.selection = "group/" + std::to_string(settingsGroups[row - 1]);
+  if (activeTabId == Tab::CAI_DAT) {
+    const int original = settingsOrder.original(row);
+    if (original == 0) state.selection = "action/15";
+    if (original > 0 && original <= static_cast<int>(settingsGroups.size()))
+      state.selection = "group/" + std::to_string(settingsGroups[original - 1]);
+  }
 }
 
 void HomeActivity::onExit() {
@@ -296,6 +302,7 @@ void HomeActivity::rebuildRows() {
   favoriteKeys.clear();
   favoriteValues.clear();
   settingsGroups.clear();
+  settingsOrder = {};
 
   switch (activeTabId) {
     case Tab::RECENT:
@@ -331,6 +338,7 @@ void HomeActivity::rebuildRows() {
       rowLabels.emplace_back(tr(STR_FILE_TRANSFER));
       auto groups = homerows::settingsGroups();
       settingsGroups = std::move(groups.ids);
+      settingsOrder = homesettings::order(settingsGroups);
       for (auto& label : groups.labels) rowLabels.push_back(std::move(label));
       break;
     }
@@ -404,25 +412,30 @@ void HomeActivity::activateIndex(const int index) {
         confirmStatsReset(action == 4);
       return;
     }
-    case Tab::CAI_DAT:
-      if (index == 0) {
+    case Tab::CAI_DAT: {
+      const int original = settingsOrder.original(index);
+      if (original < 0) return;
+      if (original == 0) {
         activityManager.goToFileTransfer();
         return;
       }
       freeCoverBuffer();
       {
-        const int group = settingsGroups[index - 1];
+        const int group = settingsGroups[original - 1];
         startActivityForResult(makeUniqueNoThrow<SettingsActivity>(renderer, mappedInput, group, true),
                                [this, group](const ActivityResult&) {
                                  RenderLock lock(*this);
                                  rebuildRows();
                                  const auto found = std::find(settingsGroups.begin(), settingsGroups.end(), group);
-                                 activeNav().selected = static_cast<int>(found - settingsGroups.begin()) + 2;
+                                 if (found != settingsGroups.end())
+                                   activeNav().selected = settingsOrder.display(
+                                       static_cast<int>(found - settingsGroups.begin()) + 1) + 1;
                                  // Touch has no cursor to bring into view: the list stays where it was.
                                  activeNav().followOnBuild = !tenorchrome::kTouchShell;
                                });
       }
       return;
+    }
     case Tab::FAVORITES: {
       const std::string key = favoriteKeys[index];
       freeCoverBuffer();
@@ -648,12 +661,89 @@ int HomeActivity::coverTileTop() const {
   return tabBarTop() + (tenorchrome::kTouchShell ? 0 : preferredTabBarHeight()) + 16;
 }
 
+void HomeActivity::settingsRow(void* context, const uint16_t index, fui::ListItem& item) {
+  auto* self = static_cast<HomeActivity*>(context);
+  const int original = self->settingsOrder.original(index);
+  if (original < 0 || original >= static_cast<int>(self->rowItems.size())) return;
+  item = self->rowItems[original];
+  if (original == 0 && self->rowIsPinned(index)) {
+    self->settingsTransferLabel = "\xEE\x84\x8A";
+    self->settingsTransferLabel += item.label ? item.label : "";
+    item.label = self->settingsTransferLabel.c_str();
+  }
+  item.actionValue = static_cast<int16_t>(index);
+}
+
+bool HomeActivity::buildSettingsGroups(UiScreen& screen) {
+  if (renderer.getOrientation() != GfxRenderer::Orientation::Portrait) return false;
+  reserveFixedMenuContent(screen);
+  const auto body = screen.body();
+  const auto style = uiMenuLabelText(screen.theme());
+  const auto geometry = homesettings::layout({body.x, body.y, body.width, body.height}, settingsOrder,
+      tenorchrome::kTouchShell, normalizedUiTextSize(SETTINGS.uiTextSize), screen.target().lineHeight(style.font));
+  if (!geometry.fits) return false;
+
+  fui::ListProps props;
+  props.action = ACTION_ROW;
+  props.inputMask = fui::InputTouch | (tenorchrome::kTouchShell ? fui::InputLongPress : 0);
+  props.labelText = style;
+  props.labelText.maxLines = 2;
+  props.rowHeight = static_cast<int16_t>(geometry.rowHeight);
+  props.rowGap = static_cast<int16_t>(geometry.rowGap);
+  props.rowPaddingY = static_cast<int16_t>(geometry.rowPaddingY);
+  props.rowInset = 0;
+  props.sidePadding = 12;
+  props.scrollIndicator = false;
+  props = screen.resolveListProps(props);
+  if (tenorchrome::kTouchShell) props.rowStyles.selected = props.rowStyles.normal;
+  // A wider translated or custom-font label keeps the ordinary scrolling list.
+  for (int i = 0; i < settingsOrder.count; ++i) {
+    fui::ListItem item;
+    settingsRow(this, static_cast<uint16_t>(i), item);
+    if (fui::measureListRow(screen.target(), nullptr, static_cast<int16_t>(geometry.rows[0].width), props, item).height >
+        geometry.rowHeight) return false;
+  }
+
+  auto& n = activeNav();
+  clampAfterNav();
+  n.syncToProps(body, 1, 0, settingsOrder.count, props, 1);
+  n.top = 0;
+  n.visibleRows = settingsOrder.count;
+  const int selected = props.selectedIndex;
+  struct Rows { HomeActivity* home; int offset; };
+  int offset = 0;
+  for (int group = 0; group < 2; ++group) {
+    const auto& frame = geometry.frames[group];
+    const auto& rows = geometry.rows[group];
+    const int count = group == 0 ? settingsOrder.readingCount : settingsOrder.count - settingsOrder.readingCount;
+    if (count == 0) continue;
+    renderer.drawRoundedRect(frame.x, frame.y, frame.width, frame.height, 2, geometry.radius, true);
+    Rows context{this, offset};
+    props.rowProviderCtx = &context;
+    props.rowProvider = [](void* user, const uint16_t index, fui::ListItem& item) {
+      const auto* context = static_cast<const Rows*>(user);
+      settingsRow(context->home, static_cast<uint16_t>(context->offset + index), item);
+    };
+    props.count = static_cast<uint16_t>(count);
+    props.topIndex = 0;
+    props.selectedIndex = tenorchrome::kTouchShell ? int16_t{-1} : static_cast<int16_t>(selected - offset);
+    props.nav = nullptr;  // Both blocks share the Home tab's one cursor.
+    fui::list(screen.frame(), {static_cast<int16_t>(rows.x), static_cast<int16_t>(rows.y),
+                               static_cast<int16_t>(rows.width), static_cast<int16_t>(rows.height)}, props);
+    offset += count;
+  }
+  n.onListRendered(0, settingsOrder.count, selected < 0 || selected < settingsOrder.count, selected);
+  n.drawnCount = settingsOrder.count;
+  return true;
+}
+
 void HomeActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   screen.setContentMarginFromScreen(
       fui::Insets{static_cast<int16_t>(tabBarTop()), 0, static_cast<int16_t>(metrics.buttonHintsHeight), 0});
 
   buildTabBar(screen);
+  if (activeTabId == Tab::CAI_DAT && buildSettingsGroups(screen)) return;
   if (activeTabId == Tab::RECENT && tenorchrome::enabled()) {
     // drawChrome() paints the whole card; no list rows are drawn. The ring still counts one row
     // per book, so the front buttons walk the books with the usual wrap, and the viewport spans
@@ -713,6 +803,11 @@ void HomeActivity::buildScreen(UiScreen& screen) {
     screen.takeBottom(static_cast<int16_t>(28 + tenorchrome::tipHeight(renderer, I18N.get(*statsResetTip), 2)));
   fui::ListProps props;
   props.items = rowItems.data();
+  if (activeTabId == Tab::CAI_DAT) {
+    props.items = nullptr;
+    props.rowProvider = &HomeActivity::settingsRow;
+    props.rowProviderCtx = this;
+  }
   props.count = static_cast<uint16_t>(rowItems.size());
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
@@ -879,9 +974,18 @@ std::string HomeActivity::favoriteKey(int row) const {
     if (folder) path.pop_back();
     return filefavorites::keyFor(path, folder);
   }
-  if (activeTabId == Tab::CAI_DAT && row == 0) return "action/15";
+  if (activeTabId == Tab::CAI_DAT && settingsOrder.original(row) == 0) return "action/15";
   if (activeTabId != Tab::FAVORITES || row < 0 || row >= static_cast<int>(favoriteKeys.size())) return {};
   return favoriteKeys[row];
+}
+int HomeActivity::focusFavorite(const std::string& key) {
+  if (activeTabId != Tab::CAI_DAT || key != "action/15") return UiListActivity::focusFavorite(key);
+  const int row = settingsOrder.display(0);
+  if (row < 0) return -1;
+  RenderLock lock(*this);
+  activeNav().selected = row + 1;
+  activeNav().followOnBuild = true;
+  return row;
 }
 void HomeActivity::favoritesChanged() {
   const int selected = activeNav().selected;

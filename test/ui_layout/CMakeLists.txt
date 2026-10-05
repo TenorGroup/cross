@@ -51,6 +51,17 @@ target_compile_features(UiLayout_compact_stats PRIVATE cxx_std_20)
 target_compile_options(UiLayout_compact_stats PRIVATE -UNDEBUG)
 target_include_directories(UiLayout_compact_stats PRIVATE "${REPO_ROOT}/src")
 add_test(NAME UiLayout.compact_stats COMMAND UiLayout_compact_stats)
+add_executable(UiLayout_home_settings_layout home_settings_layout.cpp
+  "${UI_LAYOUT_SDK}/src/FreeInkUI.cpp"
+  "${REPO_ROOT}/lib/EpdFont/EpdFont.cpp"
+  "${REPO_ROOT}/lib/Utf8/Utf8.cpp")
+target_compile_features(UiLayout_home_settings_layout PRIVATE cxx_std_20)
+target_compile_options(UiLayout_home_settings_layout PRIVATE -UNDEBUG)
+target_include_directories(UiLayout_home_settings_layout PRIVATE
+  "${REPO_ROOT}/src" "${REPO_ROOT}/lib/I18n" "${REPO_ROOT}/lib/EpdFont"
+  "${REPO_ROOT}/lib/Utf8" "${UI_LAYOUT_SDK}/include")
+add_test(NAME UiLayout.home_settings_layout COMMAND UiLayout_home_settings_layout)
+add_test(NAME UiLayout.home_settings_binding COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_home_settings_binding.py")
 add_executable(UiLayout_tenor_radius tenor_radius.cpp)
 target_compile_features(UiLayout_tenor_radius PRIVATE cxx_std_20)
 target_compile_options(UiLayout_tenor_radius PRIVATE -UNDEBUG)
