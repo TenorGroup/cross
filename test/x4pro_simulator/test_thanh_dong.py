@@ -122,8 +122,9 @@ def check_row_chevron(tmp):
     assert ink(group, (436, 40, 452, 100)) > 0.02, 'Dong ho has no ">"'
     # The actual first-row chevron occupies x437..443. The old crop included x436,
     # where TAT ends: two pixels belonging to the last T, outside that corridor.
-    assert ink(group, (400,104,437,160)) > 0.02, 'toggle value is missing'
-    assert ink(group, (437,104,444,160)) == 0, 'a row changed in place has a ">" or its value under it'
+    # Row2 interior is y110..170; y109 is the dotted separator, not a chevron.
+    assert ink(group, (400,110,437,171)) > 0.02, 'toggle value is missing'
+    assert ink(group, (437,110,444,171)) == 0, 'a row changed in place has a ">" or its value under it'
 
 
 def check_status_strip(tmp):

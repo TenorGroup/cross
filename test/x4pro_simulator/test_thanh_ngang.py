@@ -34,9 +34,17 @@ def check_reader(folder, orientation):
     assert menu.size == (800, 480), 'the reader menu lost its landscape orientation'
     assert ink(menu, (16, 404, 76, 464)) > 0.04, 'no landscape back pill'
     assert 'Entering activity: EpubReader' in (folder/'simulator.log').read_text(), 'fixture never entered Reader'
-    # Approved round3 sheet preserves the page preview; clock/battery are not placed there.
-    page_pixels=list(page.crop((0,0,800,270)).getdata())
-    menu_pixels=list(menu.crop((0,0,800,270)).getdata())
+    # Menu status owns [0,38); the stored BW page preview below it stays intact.
+    # drawStatus: STRIP_LEFT=18, small battery=26x14, right inset=8.
+    # Both landscape directions are normalized to the same logical 800x480.
+    width = menu.width
+    assert ink(menu,(18,12,110,32)) > 0.02, 'no menu clock in the landscape status strip'
+    assert ink(menu,(width-34,17,width-8,31)) > 0.02, 'no menu battery in the landscape status strip'
+    assert ink(menu,(width-31,17,width-13,18)) == 1, 'menu battery top border is missing'
+    assert ink(menu,(width-31,30,width-13,31)) == 1, 'menu battery bottom border is missing'
+    assert ink(menu,(width-10,22,width-8,26)) == 1, 'menu battery terminal is missing'
+    page_pixels=list(page.crop((0,38,800,270)).getdata())
+    menu_pixels=list(menu.crop((0,38,800,270)).getdata())
     assert all(a == b for a,b in zip(page_pixels,menu_pixels) if a in (0,255)), 'toolbar changed solid page pixels'
     assert set(menu_pixels) <= {0,255}, 'stored BW preview contains gray upload pixels'
     assert ink(menu,(16,276,784,392)) > 0.015, 'toolbar panel is missing'

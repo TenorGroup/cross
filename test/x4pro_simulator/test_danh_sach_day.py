@@ -12,13 +12,13 @@ from test_thanh_day import run, ink, BAR_TOP, TABS_X
 
 BAR_Y = BAR_TOP + 30
 NAMES = ['n' * (i + 1) for i in range(22)]
-ROW_TOP, ROW_STEP = 40, 61   # first row of the file list (under the status strip), row pitch
+ROW_TOP, ROW_STEP = 50, 62   # first row of the file list (under the status strip), row pitch
 
 
 def text_width(image, row):
     """Right edge of the ink of a row's name (x 70 to 380), less its left edge."""
     top = ROW_TOP + row * ROW_STEP
-    xs = [x for x in range(70, 380) if ink(image, (x, top + 8, x + 1, top + 46)) > 0]
+    xs = [x for x in range(70, 380) if ink(image, (x, top + 18, x + 1, top + 42)) > 0]
     return (max(xs) - min(xs) + 1) if xs else 0
 
 
@@ -35,6 +35,7 @@ def main():
         shown = sum(1 for w in widths if w > 0)
         assert shown >= 9, f'only {shown} rows on the first page'
         step = widths[1] - widths[0]
+        assert step > 0, f'name widths do not increase: {widths}'
         folder = Path(tmp) / 'b'
         folder.mkdir()
         (turned,) = run(folder, f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;8000:SWIPE:240,600,240,200,150', [10000],

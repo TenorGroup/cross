@@ -22,9 +22,10 @@ def main():
     card = Card(shell=1, sleepScreen=UGLY, uiShellSleepMemo=QUOTE + 1)
     try:
         log, _ = card.run('2000:TAP:60,750;3500:TAP:200,240;5000:QUIT', timeout=120)
-        assert entered(log) == ['Boot', 'UglyDiary', 'UglyNotebook'], log[-2000:]
+        assert entered(log) == ['Boot', 'UglyDiary', 'UglyNotebook', 'Settings'], log[-2000:]
         assert notebook_pages(log)[0] == 3, 'the finger opens the Settings page'
-        assert 'group=0' in log, 'the Display group opens in the touch notebook'
+        assert any('[UGLY] Settings form' in line and 'tab=0 ' in line for line in log.splitlines()), \
+            'the Display group opens in the shared handwritten Settings form'
         kept = card.settings()
         assert kept['uiShell'] == 1, kept
         assert kept['sleepScreen'] == UGLY, kept
