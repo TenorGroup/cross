@@ -195,13 +195,10 @@ class ChapterHtmlSlimParser {
   bool checkpointWanted_ = false;
   bool replayingCheckpoint_ = false;
   // One page from the middle of a chapter (restoreResumePoint): lines starting at or before the
-  // text offset below are held, not placed, and only the last of them (the line holding the offset)
-  // opens the page. Pages finished while holding are dropped.
+  // text offset below replace the candidate page. Its last line opens the preview at Y=0, and
+  // following elements and spacing stay on that page once the target's block is complete.
   bool holdingLines_ = false;
   uint32_t holdUntil_ = 0;
-  std::unique_ptr<TextBlock> heldLine_;
-  uint32_t heldLineOffset_ = 0;
-  bool placeHeldLine();
   bool xmlSuspended_ = false;
   bool finalBuffer_ = false;
   uint32_t checkpointOffset_ = 0;

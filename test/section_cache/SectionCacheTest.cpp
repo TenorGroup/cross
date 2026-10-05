@@ -1,5 +1,6 @@
 #include <Epub/Section.h>
 #include <Epub/Page.h>
+#include <Epub/css/CssParser.h>
 #include <GfxRenderer.h>
 #include <gtest/gtest.h>
 #include <Arduino.h>
@@ -24,6 +25,10 @@
 #define usableSize malloc_usable_size
 #endif
 
+namespace parserImageFixture {
+extern bool enabled;
+}
+
 namespace allocationProbe {
 bool enabled = false;
 // Live bytes allocated since `enabled` went on, and their peak (frees of older blocks count too, so the
@@ -31,6 +36,7 @@ bool enabled = false;
 long live = 0;
 long peak = 0;
 size_t largest = 0;
+size_t calls = 0;
 size_t rejectSize = 0;
 bool rejectNextNothrow = false;
 unsigned matchingCalls = 0;
@@ -38,7 +44,10 @@ unsigned rejectCall = 0;
 unsigned rejected = 0;
 }
 void* operator new(std::size_t size) {
-  if (allocationProbe::enabled) allocationProbe::largest = std::max(allocationProbe::largest, size);
+  if (allocationProbe::enabled) {
+    allocationProbe::largest = std::max(allocationProbe::largest, size);
+    ++allocationProbe::calls;
+  }
   if (void* value = std::malloc(size ? size : 1)) {
     if (allocationProbe::enabled) {
       allocationProbe::live += static_cast<long>(usableSize(value));
@@ -2439,6 +2448,123 @@ TEST(PreviewPage, NoResumePointsNoPreview) {
   EXPECT_TRUE(again.previewPage(book.narrow, offset));
 }
 
+TEST(PreviewPage, KeepsParagraphGapAfterTheHeldFinalLine) {
+  PreviewBook book;
+  book.epub->contents = "<html><body><p>BEFORE</p><p>ANCHOR</p><p>AFTER</p></body></html>";
+  book.narrow.viewportWidth = 240;
+  book.narrow.viewportHeight = 18;
+  uint32_t target = 0;
+  {
+    Section old(book.epub, 0, book.renderer);
+    ASSERT_TRUE(old.createSectionFile(book.narrow));
+    for (uint16_t i = 0; i < old.pageCount; ++i) {
+      auto page = old.loadPage(i);
+      ASSERT_TRUE(page);
+      const auto lines = pageLines(*page);
+      if (!lines.empty() && lines.front() == "ANCHOR") target = *old.getVisibleTextOffsetForPage(i);
+    }
+  }
+  ASSERT_GT(target, 0u);
+  book.wide.viewportHeight = 400;
+  book.wide.lineCompression = 1.0f;
+  book.wide.extraParagraphSpacing = readerSpacing::VERY_WIDE;
+  Section full(book.epub, 0, book.renderer);
+  ASSERT_TRUE(full.createSectionFile(book.wide));
+  auto reference = full.loadPage(0);
+  ASSERT_TRUE(reference);
+  ASSERT_EQ(pageLines(*reference), (std::vector<std::string>{"BEFORE", "ANCHOR", "AFTER"}));
+  Section section(book.epub, 0, book.renderer);
+  auto preview = section.previewPage(book.wide, target);
+  ASSERT_TRUE(preview);
+  EXPECT_EQ(pageLines(*preview), (std::vector<std::string>{"ANCHOR", "AFTER"}));
+  ASSERT_EQ(preview->elements.size(), 2u);
+  const int referenceGap = reference->elements[2]->yPos - reference->elements[1]->yPos;
+  const int previewGap = preview->elements[1]->yPos - preview->elements[0]->yPos;
+  std::cout << "HELD_GAP reference=" << referenceGap << " preview=" << previewGap << '\n';
+  EXPECT_EQ(previewGap, referenceGap);
+}
+
+TEST(PreviewPage, KeepsImageAndCssMarginsAfterTheHeldFinalLine) {
+  struct EnableImages {
+    EnableImages() { parserImageFixture::enabled = true; }
+    ~EnableImages() { parserImageFixture::enabled = false; }
+  } enableImages;
+  PreviewBook book;
+  CssParser css(book.root.string());
+  book.epub->cssParser = &css;
+  const uint8_t png[] = {0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 0, 0, 13,
+                         'I', 'H', 'D', 'R', 0, 0, 0, 32, 0, 0, 0, 24};
+  for (const char* path : {"before.png", "after.png"}) {
+    book.epub->images[path] = std::string(reinterpret_cast<const char*>(png), sizeof(png));
+  }
+  book.epub->contents = "<html><body><p>BEFORE</p><img src=\"before.png\"/>"
+                        "<p style=\"margin-bottom:11px\">ANCHOR</p>"
+                        "<div style=\"margin-top:9px;margin-bottom:13px\"><img src=\"after.png\"/></div>"
+                        "<p style=\"margin-top:7px\">AFTER</p></body></html>";
+  book.narrow.embeddedStyle = true;
+  book.narrow.viewportWidth = 240;
+  book.narrow.viewportHeight = 18;
+  uint32_t target = 0;
+  {
+    Section old(book.epub, 0, book.renderer);
+    ASSERT_TRUE(old.createSectionFile(book.narrow));
+    for (uint16_t i = 0; i < old.pageCount; ++i) {
+      auto page = old.loadPage(i);
+      ASSERT_TRUE(page);
+      const auto lines = pageLines(*page);
+      if (!lines.empty() && lines.front() == "ANCHOR") target = *old.getVisibleTextOffsetForPage(i);
+    }
+  }
+  ASSERT_GT(target, 0u);
+  book.wide = book.narrow;
+  book.wide.viewportHeight = 400;
+  book.wide.extraParagraphSpacing = readerSpacing::VERY_WIDE;
+  Section full(book.epub, 0, book.renderer);
+  ASSERT_TRUE(full.createSectionFile(book.wide));
+  auto reference = full.loadPage(0);
+  ASSERT_TRUE(reference);
+  ASSERT_EQ(reference->elements.size(), 5u);
+  ASSERT_EQ(reference->elements[1]->getTag(), TAG_PageImage);
+  ASSERT_EQ(reference->elements[2]->getTag(), TAG_PageLine);
+  ASSERT_EQ(reference->elements[3]->getTag(), TAG_PageImage);
+  for (const uint32_t start : {target, target + 1, target + 5}) {
+    SCOPED_TRACE(start);
+    Section section(book.epub, 0, book.renderer);
+    auto preview = section.previewPage(book.wide, start);
+    ASSERT_TRUE(preview);
+    EXPECT_EQ(pageLines(*preview), (std::vector<std::string>{"ANCHOR", "AFTER"}));
+    ASSERT_EQ(preview->elements.size(), 3u);
+    for (size_t i = 0; i < preview->elements.size(); ++i) {
+      EXPECT_EQ(preview->elements[i]->getTag(), reference->elements[i + 2]->getTag());
+      EXPECT_EQ(preview->elements[i]->xPos, reference->elements[i + 2]->xPos);
+      EXPECT_EQ(preview->elements[i]->yPos,
+                reference->elements[i + 2]->yPos - reference->elements[2]->yPos);
+    }
+    const auto& image = static_cast<const PageImage&>(*preview->elements[1]).getImageBlock();
+    EXPECT_TRUE(image.getImagePath().ends_with("img_0_1.png"));
+    EXPECT_EQ(image.getWidth(), 32);
+    EXPECT_EQ(image.getHeight(), 24);
+    std::cout << "HELD_IMAGE target=" << start << " image_y=" << preview->elements[1]->yPos
+              << " after_y=" << preview->elements[2]->yPos << '\n';
+  }
+  for (const uint32_t start : {target + 6, target + 10}) {  // next-paragraph boundary and chapter's last line
+    Section section(book.epub, 0, book.renderer);
+    auto preview = section.previewPage(book.wide, start);
+    ASSERT_TRUE(preview);
+    EXPECT_EQ(pageLines(*preview), (std::vector<std::string>{"AFTER"}));
+    ASSERT_EQ(preview->elements.size(), 1u);
+    EXPECT_EQ(preview->elements.front()->yPos, 0);
+  }
+  book.wide.viewportHeight = 96;
+  Section shortPage(book.epub, 0, book.renderer);
+  auto preview = shortPage.previewPage(book.wide, target);
+  ASSERT_TRUE(preview);
+  EXPECT_EQ(pageLines(*preview), (std::vector<std::string>{"ANCHOR"}));
+  ASSERT_EQ(preview->elements.size(), 2u);
+  EXPECT_EQ(preview->elements[1]->getTag(), TAG_PageImage);
+  EXPECT_EQ(preview->elements[1]->yPos, 36);
+}
+
 TEST(PreviewPage, CorruptDdLengthsFailBeforeAllocation) {
   PreviewBook book;
   // A valid long prolog lets the combined-bound case replay valid XML on the old reader.
@@ -2552,6 +2678,7 @@ TEST(PreviewPage, HeapAndTimeAgainstLayingOutToThePage) {
   }
   const auto measure = [](auto&& work) {
     allocationProbe::live = allocationProbe::peak = 0;
+    allocationProbe::calls = allocationProbe::largest = 0;
     allocationProbe::enabled = true;
     const auto started = std::chrono::steady_clock::now();
     const bool ok = work();
@@ -2563,6 +2690,8 @@ TEST(PreviewPage, HeapAndTimeAgainstLayingOutToThePage) {
     Section section(book.epub, 0, book.renderer);
     return static_cast<bool>(section.previewPage(book.wide, offset));
   });
+  const size_t previewCalls = allocationProbe::calls;
+  const size_t previewLargest = allocationProbe::largest;
   const auto [buildOk, buildPeak, buildMs] = measure([&] {
     Section section(book.epub, 0, book.renderer);
     if (!section.startBuild(book.wide)) return false;
@@ -2574,6 +2703,7 @@ TEST(PreviewPage, HeapAndTimeAgainstLayingOutToThePage) {
   ASSERT_TRUE(previewOk);
   ASSERT_TRUE(buildOk);
   std::cout << "PREVIEW_COST pages=" << pages << " page=" << pages * 9 / 10 << " preview_peak=" << previewPeak
+            << " preview_calls=" << previewCalls << " preview_largest=" << previewLargest
             << " preview_ms=" << previewMs << " build_to_page_peak=" << buildPeak << " build_to_page_ms=" << buildMs
             << "\n";
   EXPECT_LT(previewMs, buildMs);
