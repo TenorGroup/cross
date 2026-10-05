@@ -1286,7 +1286,8 @@ void EpubReaderActivity::loop() {
   }
 
   const auto touch =
-      ReaderUtils::detectTouchPageTurn(renderer, mappedInput, ReaderUtils::isRtlBookLanguage(epub->getLanguage()));
+      ReaderUtils::detectTouchPageTurn(renderer, mappedInput, ReaderUtils::isRtlBookLanguage(epub->getLanguage()),
+                                       tenorchrome::kTouchShell);
 
   if (showBookmarkMessage && (millis() - bookmarkMessageTime) >= ReaderUtils::BOOKMARK_MESSAGE_DURATION_MS) {
     showBookmarkMessage = false;
@@ -1479,6 +1480,27 @@ void EpubReaderActivity::loop() {
         navigateToHref(link->href, true);
         return;
       }
+    }
+  }
+
+  // Touch shell: the top band opens the top menu, the foot band (title, clock, battery) the text menu.
+  // A stroke up from the foot band shorter than a swipe (60 px) is a tap there: it opens the text menu and
+  // never leaves the book; leaving takes a whole swipe up (ActivityManager, wasBottomHomeGesture).
+  if (tenorchrome::kTouchShell) {
+    switch (ReaderUtils::tapZone(renderer, mappedInput, false, true)) {
+      case readertap::Zone::TopMenu:
+        activityManager.openTopMenu();
+        return;
+      case readertap::Zone::TextMenu:
+        if (usesToolbarMenu() && section) {
+          focusedTool = 1;  // the toolbar's Text tool
+          openOverlay(Overlay::Text);
+        } else {
+          openReaderMenu();
+        }
+        return;
+      default:
+        break;
     }
   }
 
