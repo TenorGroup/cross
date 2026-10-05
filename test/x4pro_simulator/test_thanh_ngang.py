@@ -92,8 +92,13 @@ def check_keyboard(folder, size, orientation):
                 else:
                     runs.append([y])
         assert max((len(run) for run in runs), default=0) >= 14, f'clipped digit at x={x}, size={size}'
-    box = (0, 24, 800, 390)
-    assert list(before.crop(box).getdata()) == list(back.crop(box).getdata()), 'keyboard back did not return to bookmarks'
+    # The live clock at x18..110 can tick across the three text tiers (ink ends before y32).
+    # Keep every other pixel of the original content region and the returned foot bar exact.
+    for box in ((0,24,18,390), (110,24,800,390), (18,32,110,390), (0,390,800,480)):
+        assert list(before.crop(box).getdata()) == list(back.crop(box).getdata()), 'keyboard back did not return to bookmarks'
+    assert ink(back,(18,12,110,32)) > 0.02, 'keyboard back lost the clock'
+    saved = json.loads((folder / 'sd/.crosspoint/bookmarks/sach_test_kerning_ligature.json').read_text())
+    assert saved['bookmarks'][0]['name'] == 'Marker', 'keyboard back changed the stored bookmark name'
 
     # Adjacent 60 px rows share a boundary, with disjoint half-open hit rects.
     hits = folder / 'hits'

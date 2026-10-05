@@ -561,7 +561,7 @@ fui::Rect KeyboardEntryActivity::keyboardRect() const {
   int keyHeight = enlarged ? renderer.getLineHeight(UI_12_FONT_ID) + renderer.getLineHeight(SMALL_FONT_ID) + 8
                            : metrics.keyboardKeyHeight;
   if (tenorchrome::kTouchShell) {
-    const int inputBottom = inputTop() + renderer.getLineHeight(UI_12_FONT_ID) + metrics.verticalSpacing + 8;
+    const int inputBottom = inputTop() + renderer.getLineHeight(UI_12_FONT_ID) + metrics.verticalSpacing + (landscape ? 2 : 8);
     const int bottomGap = landscape ? 4 : metrics.verticalSpacing + 8;
     const int available = tenorchrome::footBackTop(pageHeight) - bottomGap - inputBottom;
     keyHeight = std::min(landscape ? 60 : std::max(60, keyHeight),
