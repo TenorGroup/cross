@@ -103,22 +103,25 @@ struct TouchPageTurn {
 
 // The zone this frame's tap landed in (readertap::zoneAt decides), None without a tap. `bands` only for a
 // reader that handles the touch shell's top and foot bands; the others keep the whole height for turning.
+// The zone rules the settings give (the tap tip draws the same ones).
+inline readertap::Rules tapRules(const bool rtlBook, const bool bands) {
+  const bool controls = SETTINGS.touchReaderControls != 0;
+  return {controls && gestureAllowsTap(SETTINGS.pageTurnGesture),
+          controls && gestureAllowsTap(SETTINGS.previousPageGesture),
+          (SETTINGS.pageTurnGesture == CrossPointSettings::INVERTED_TAP ||
+           SETTINGS.previousPageGesture == CrossPointSettings::INVERTED_TAP) != rtlBook,
+          SETTINGS.showReaderMenu == CrossPointSettings::READER_MENU_TAP,
+          bands,
+          SETTINGS.backTapZone};
+}
+
 inline readertap::Zone tapZone(const GfxRenderer& renderer, const MappedInputManager& input, const bool rtlBook = false,
                                const bool bands = false) {
   if (!input.hasTouch()) return readertap::Zone::None;
   int x = 0;
   int y = 0;
   if (!input.wasScreenTapped(x, y)) return readertap::Zone::None;
-  const bool controls = SETTINGS.touchReaderControls != 0;
-  const readertap::Rules rules{
-      controls && gestureAllowsTap(SETTINGS.pageTurnGesture),
-      controls && gestureAllowsTap(SETTINGS.previousPageGesture),
-      (SETTINGS.pageTurnGesture == CrossPointSettings::INVERTED_TAP ||
-       SETTINGS.previousPageGesture == CrossPointSettings::INVERTED_TAP) != rtlBook,
-      SETTINGS.showReaderMenu == CrossPointSettings::READER_MENU_TAP,
-      bands,
-      SETTINGS.backTapZone};
-  return readertap::zoneAt(x, y, renderer.getScreenWidth(), renderer.getScreenHeight(), rules);
+  return readertap::zoneAt(x, y, renderer.getScreenWidth(), renderer.getScreenHeight(), tapRules(rtlBook, bands));
 }
 
 inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const MappedInputManager& input,

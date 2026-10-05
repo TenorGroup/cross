@@ -503,6 +503,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t previousPageGesture = TAP_AND_SWIPE;
   // Width of the back-tap column on a reader page, a step of readertap::BACK_PERCENT (15/20/25/33%).
   uint8_t backTapZone = 2;
+  // X4 Pro: the reader's tap-zone tip was dismissed with "Don't show this tip again".
+  uint8_t readerTapTipHidden = 0;
   // Reader menu open gesture (SHOW_READER_MENU: off / center tap / bottom-edge
   // up-swipe). Only surfaced on home-key boards, where Home is the capacitive
   // key and the bottom edge is free; elsewhere it stays at the Tap default.
