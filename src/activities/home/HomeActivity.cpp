@@ -1008,7 +1008,7 @@ void HomeActivity::loadCardStats(const int index) {
   char text[64];
   const bool finish = cardStats.recorded && cardFinishText(record, text, sizeof(text));
   if (finish) values[HOME_STAT_FINISH] = text;
-  cardStats.rows = homeStatRows(cardStats.recorded, elapsed, record.days, record.firstDay, record.lastDay, finish);
+  cardStats.rows = homeStatRows(cardStats.recorded, elapsed, record.days, record.turns, finish);
   cardStats.percent = std::min<uint8_t>(record.progress, 100);
   if (!cardStats.recorded) {
     values[HOME_STAT_READ] = tr(STR_STATS_NOT_RECORDED);
@@ -1020,56 +1020,92 @@ void HomeActivity::loadCardStats(const int index) {
   values[HOME_STAT_TOTAL] = text;
   if (record.days) {
     compactstats::duration(elapsed / record.days / 60000, text, sizeof(text));
-    values[HOME_STAT_AVERAGE] = text;
+    char perDay[64];
+    snprintf(perDay, sizeof(perDay), tr(STR_RECENT_STAT_PER_DAY), text);
+    values[HOME_STAT_AVERAGE] = perDay;
     snprintf(text, sizeof(text), "%u", static_cast<unsigned>(record.days));
     values[HOME_STAT_DAYS] = text;
   }
-  snprintf(text, sizeof(text), tr(STR_RECENT_STAT_SPAN_VALUE), static_cast<unsigned>(record.firstDay % 100),
-           static_cast<unsigned>(record.firstDay / 100 % 100), static_cast<unsigned>(record.lastDay % 100),
-           static_cast<unsigned>(record.lastDay / 100 % 100));
-  values[HOME_STAT_SPAN] = text;
+  snprintf(text, sizeof(text), "%u", static_cast<unsigned>(record.turns));
+  values[HOME_STAT_TURNS] = text;
 }
+
+static int cardStatRunWidth(const GfxRenderer& renderer, const int font, const std::string& part,
+                            const EpdFontFamily::Style style) {
+  return std::max(renderer.getTextWidth(font, part.c_str(), style),
+                  renderer.getTextAdvanceX(font, part.c_str(), style));
+}
+
+static int cardStatValueWidth(const GfxRenderer& renderer, const int font, const char* value) {
+  int width = 0;
+  compactstats::runs(value, [&](const std::string& part, const bool number) {
+    width += cardStatRunWidth(renderer, font, part, number ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
+  });
+  return width;
+}
+
+static constexpr StrId CARD_STAT_LABELS[HOME_STAT_COUNT] = {
+    StrId::STR_RECENT_STAT_READ, StrId::STR_RECENT_STAT_FINISH, StrId::STR_RECENT_STAT_TOTAL,
+    StrId::STR_RECENT_STAT_AVERAGE, StrId::STR_RECENT_STAT_DAYS, StrId::STR_STATS_TURNS};
 
 // Label in the subtitle face, value in the body face (bold), stepping down one size when the value is
 // wider than the column, as in the approved drawing. Returns the top of the progress bar, -1 when
-// none is drawn. The reading span stays on the book's stats screen: the card shows five rows.
+// none is drawn. Six groups extend to the cover edge when their record has data.
 int HomeActivity::drawCardStats(const HomeCardLayout& card) {
-  static constexpr StrId LABELS[HOME_STAT_COUNT] = {StrId::STR_RECENT_STAT_READ,    StrId::STR_RECENT_STAT_FINISH,
-                                                    StrId::STR_RECENT_STAT_TOTAL,   StrId::STR_RECENT_STAT_AVERAGE,
-                                                    StrId::STR_RECENT_STAT_DAYS,    StrId::STR_RECENT_STAT_SPAN};
-  HomeStatsInput in;
-  in.top = card.coverY;
-  in.bottom = card.coverY + card.coverH;
-  in.labelLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
-  in.valueLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-  in.valueTail = in.valueLineHeight - renderer.getFontAscenderSize(UI_12_FONT_ID);
-  in.rows = cardStats.rows & ~(1u << HOME_STAT_SPAN);
-  const auto column = homeStatsLayout(in);
+  const bool secondary = !tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2;
+  const int labelFont = secondary ? SMALL_FONT_ID : UI_10_FONT_ID;
+  const int valueFont = secondary ? UI_10_FONT_ID : UI_12_FONT_ID;
+  const int fallbackFont = secondary ? SMALL_FONT_ID : UI_10_FONT_ID;
   const int width = card.statsRight - card.statsX;
+  HomeStatsInput in;
+  in.top = card.statsTop;
+  in.bottom = card.coverY + card.coverH;
+  in.labelLineHeight = renderer.getLineHeight(labelFont);
+  in.valueLineHeight = renderer.getLineHeight(valueFont);
+  in.valueTail = in.valueLineHeight - renderer.getFontAscenderSize(valueFont);
+  in.rows = cardStats.rows;
+  int fonts[HOME_STAT_COUNT];
+  std::string first[HOME_STAT_COUNT], second[HOME_STAT_COUNT];
+  for (int row = 0; row < HOME_STAT_COUNT; ++row) {
+    if (!(in.rows & (1u << row))) continue;
+    first[row] = cardStats.values[row];
+    fonts[row] = cardStatValueWidth(renderer, valueFont, first[row].c_str()) <= width ? valueFont : fallbackFont;
+    if (cardStatValueWidth(renderer, fonts[row], first[row].c_str()) > width) {
+      // Long durations keep every number and unit, splitting at the duration space or /day suffix.
+      const auto slash = first[row].find('/');
+      const auto space = first[row].find(' ');
+      const size_t split = slash != std::string::npos &&
+                                   cardStatValueWidth(renderer, fonts[row], first[row].substr(0, slash).c_str()) <= width
+                               ? slash : space;
+      if (split != std::string::npos) {
+        second[row] = first[row].substr(split + (first[row][split] == ' ' ? 1 : 0));
+        first[row].resize(split);
+      }
+    }
+    const int lineHeight = renderer.getLineHeight(fonts[row]);
+    in.valueHeights[row] = lineHeight * (second[row].empty() ? 1 : 2);
+    int inkBottom = 0;
+    const auto& lastLine = second[row].empty() ? first[row] : second[row];
+    compactstats::runs(lastLine.c_str(), [&](const std::string& part, const bool number) {
+      inkBottom = std::max(inkBottom, renderer.getTextInkBottom(
+          fonts[row], part.c_str(), number ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR));
+    });
+    in.valueTails[row] = lineHeight - inkBottom;
+  }
+  const auto column = homeStatsLayout(in);
   for (int row = 0; row < HOME_STAT_COUNT; ++row) {
     if (!(column.rows & (1u << row))) continue;
-    renderer.drawText(UI_10_FONT_ID, card.statsX, column.labelY[row],
-                      renderer.truncatedText(UI_10_FONT_ID, I18N.get(LABELS[row]), width).c_str());
-    const char* value = cardStats.values[row].c_str();
-    // One size for every value: the numbers in bold, their units and signs (h, m, %, /) in the regular
-    // face beside them. The column is sized for the longest value ("999h59m" is 118 px at this size).
-    int x = card.statsX;
-    const int y = column.valueY[row];
-    const char* run = value;
-    while (*run) {
-      const bool number = compactstats::isNumber(*run);
-      const char* end = run;
-      while (*end && compactstats::isNumber(*end) == number) ++end;
-      const std::string part(run, end);
-      const auto style = number ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
-      if (x - card.statsX + renderer.getTextWidth(UI_12_FONT_ID, part.c_str(), style) > width) {
-        LOG_PROBE("HOME", "Card stat cut row=%d", row);
-        break;
-      }
-      renderer.drawText(UI_12_FONT_ID, x, y, part.c_str(), true, style);
-      x += renderer.getTextWidth(UI_12_FONT_ID, part.c_str(), style);
-      run = end;
-    }
+    renderer.drawText(labelFont, card.statsX, column.labelY[row], I18N.get(CARD_STAT_LABELS[row]));
+    const auto drawValue = [&](const std::string& value, const int y) {
+      int x = card.statsX;
+      compactstats::runs(value.c_str(), [&](const std::string& part, const bool number) {
+        const auto style = number ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+        renderer.drawText(fonts[row], x, y, part.c_str(), true, style);
+        x += cardStatRunWidth(renderer, fonts[row], part, style);
+      });
+    };
+    drawValue(first[row], column.valueY[row]);
+    if (!second[row].empty()) drawValue(second[row], column.valueY[row] + renderer.getLineHeight(fonts[row]));
   }
   if (column.barY >= 0 && cardStats.recorded) {
     // A round track with a 2 px edge; the part read is black inside it, round at both ends.
@@ -1090,12 +1126,14 @@ void HomeActivity::drawRecentCard() {
     return;
   }
   const int shown = shownRecent();
+  loadCardStats(shown);  // uses the existing per-book record cache before geometry is measured
   const int serifFont = SETTINGS.uiTextSize == 1   ? NOTOSERIF_14_FONT_ID
                         : SETTINGS.uiTextSize == 2 ? NOTOSERIF_16_FONT_ID
                                                    : NOTOSERIF_12_FONT_ID;
   HomeCardInput in;
   in.screenWidth = renderer.getScreenWidth();
-  in.top = coverTileTop() - 4;
+  in.top = coverTileTop() - 4;  // Chrome owns the touch top inset.
+  in.metadataAboveCover = SETTINGS.uiTextSize > 0;
   // Above both the tip lane and the hint band, which grows with the larger text sizes.
   in.bottom = std::min(tenorchrome::tipY(renderer) + 6,
                        renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight);
@@ -1104,6 +1142,21 @@ void HomeActivity::drawRecentCard() {
   in.authorLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   in.excerptLineHeight = renderer.getLineHeight(serifFont);
   in.rowLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
+  const int statLabelFont = !tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2 ? SMALL_FONT_ID : UI_10_FONT_ID;
+  const int statValueFont = !tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2 ? UI_10_FONT_ID : UI_12_FONT_ID;
+  for (const auto label : CARD_STAT_LABELS)
+    in.statsMinWidth = std::max(in.statsMinWidth, renderer.getTextWidth(statLabelFont, I18N.get(label)));
+  // Stable per board/tier: a minute changing never changes cover geometry or a saved-card key.
+  in.statsMinWidth = std::max(in.statsMinWidth, cardStatValueWidth(renderer, statValueFont, "999h 59m"));
+  char averageSample[64];
+  snprintf(averageSample, sizeof(averageSample), tr(STR_RECENT_STAT_PER_DAY), SETTINGS.uiTextSize ? "999h 59m" : "1h 21m");
+  in.statsMinWidth = std::max(in.statsMinWidth, cardStatValueWidth(renderer, statValueFont, averageSample));
+  in.statsMinWidth += 8;
+  // A fixed budget for two wrapped duration values leaves geometry independent of book time.
+  in.minStatsHeight = 2 + HOME_STAT_COUNT * (renderer.getLineHeight(statLabelFont) +
+                                           renderer.getLineHeight(statValueFont)) + 12 +
+                      2 * std::max(0, 2 * renderer.getLineHeight(!tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2 ? SMALL_FONT_ID : UI_10_FONT_ID) -
+                                      renderer.getLineHeight(statValueFont));
   const auto frame = homeCardLayout(in);
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t restoreStartedUs = micros();
@@ -1159,7 +1212,6 @@ void HomeActivity::drawRecentCard() {
     coverBufferBook = shown;
     coverRendered = true;
     if (!cardFileThumb) wantThumb(shown);
-    loadCardStats(shown);
     drawCardStats(frame);
     drawOtherBookRow(shown, frame.ruleY, frame.rowY);
     LOG_INF("HOME", "Recent card file=%lums cache=%u", static_cast<unsigned long>(millis() - started),
@@ -1275,7 +1327,6 @@ void HomeActivity::drawRecentCard() {
   }
   if (!cardFileThumb && !thumbPath.empty()) wantThumb(shown);
   if (fcm) fcm->releaseBuiltinPageCaches();  // the card is now a cached bitmap
-  loadCardStats(shown);
   const int barY = drawCardStats(card);
   drawOtherBookRow(shown, card.ruleY, card.rowY);
 #ifdef TENOR_UI_ACCEPTANCE
