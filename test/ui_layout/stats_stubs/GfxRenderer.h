@@ -5,6 +5,7 @@
 #include "CrossPointSettings.h"
 #include "components/UIScale.h"
 struct EpdFontFamily { enum Style { REGULAR, BOLD }; };
+enum Color : uint8_t { Clear = 0x00, White = 0x01, LightGray = 0x05, DarkGray = 0x0A, Black = 0x10 };
 class GfxRenderer {
  public:
   int width = 528, height = 792;
@@ -33,6 +34,8 @@ class GfxRenderer {
   void drawText(int font, int x, int y, const char* value, bool = true, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const {
     if (*value && std::string(value) != ".") runs.push_back({x, y, getTextWidth(font, value, style), getLineHeight(font), value});
   }
+  void drawRoundedRect(int, int, int, int, int, int, bool) const {}
+  void fillRoundedRect(int, int, int, int, int, Color) const {}
   template<class... Args> void fillRect(Args...) const {}
   template<class... Args> void drawLine(Args...) const {}
 };
