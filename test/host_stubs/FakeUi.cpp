@@ -18,6 +18,7 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiAppHost.h"
+#include "shells/ugly/UglyInk.h"
 
 // Dieu huong: bai kiem chi quan tam man hien tai, nen moi loi goi la khong lam gi.
 void ActivityManager::goToReader(std::string, bool) {}
@@ -97,6 +98,23 @@ std::string GfxRenderer::truncatedText(int, const char* text, int, EpdFontFamily
 std::vector<std::string> GfxRenderer::wrappedText(int, const char* text, int, int, EpdFontFamily::Style) const {
   return {text ? std::string(text) : std::string()};
 }
+
+// Input/navigation suites keep the same fake text metrics and observable labels.
+// Production Ugly paint is covered by test/ugly_reader/popup.py (96 pairs),
+// native-font checks and simulator captures; these bindings provide no pixel acceptance.
+namespace ugly {
+int width(const GfxRenderer& r, Size, const char* text) { return r.getTextWidth(0, text); }
+int ascent(Size) { return 16; }  // Same ascender as the renderer stub above.
+int text(const GfxRenderer& r, Size size, int x, int baseline, const char* label, bool black) {
+  r.drawText(0, x, baseline - ascent(size), label, black);
+  return width(r, size, label);
+}
+std::string fit(const GfxRenderer& r, Size, const std::string& label, int maxWidth) {
+  return r.truncatedText(0, label.c_str(), maxWidth);
+}
+void line(const GfxRenderer&, int, int, int, int, uint32_t, int) {}
+void circle(const GfxRenderer&, Circle, const Box&, int, int, int) {}
+}  // namespace ugly
 
 RenderLock::RenderLock(Activity&) {}
 RenderLock::RenderLock() { isLocked = true; }
