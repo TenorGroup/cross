@@ -293,7 +293,7 @@ int FrontlightPanelActivity::computePanelBottom() const {
   // Slim battery band + the air around it (mirrors buildPanelScreen).
   const int y0 = std::max<int>(metrics.batteryHeight, lineHeight);
   // Touch shell: the header row, where every screen keeps the clock and the battery.
-  int y = tenorchrome::kTouchShell ? tenorchrome::HEADER_TOP + tenorchrome::headerHeight()
+  int y = tenorchrome::kTouchShell ? tenorchrome::tabTop()
                                    : tokens.spaceMd + y0 + tokens.spaceMd;
   if (Frontlight.present()) {
     // Screen::sliderRow reserves caption + spaceMd + control band, then a
@@ -378,7 +378,7 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
   // untitled Home header.
   if (tenorchrome::kTouchShell) {
     // The clock and the battery on the header row, as on every other screen.
-    screen.takeTop(static_cast<int16_t>(tenorchrome::HEADER_TOP + tenorchrome::headerHeight()));
+    screen.takeTop(static_cast<int16_t>(tenorchrome::tabTop()));
     tenorchrome::drawStatus(renderer);
   } else {
     const auto& metrics = UITheme::getInstance().getMetrics();

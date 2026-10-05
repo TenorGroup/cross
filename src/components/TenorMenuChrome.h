@@ -91,11 +91,13 @@ constexpr int READER_TEXT_TO_STATUS_GAP = 2;
 constexpr int READER_BOTTOM_RESERVE = STATUS_INK_TOP + READER_TEXT_TO_STATUS_GAP;
 // Touch: the header row is the status strip alone (clock, a note, radio icons, battery); the title went
 // to the bar at the foot and the tab band is there too.
-constexpr int TOUCH_STRIP_HEIGHT = 24;
+constexpr int TOUCH_STATUS_TOP_INSET = 8;
+constexpr int TOUCH_STRIP_HEIGHT = 24 + TOUCH_STATUS_TOP_INSET;
 inline int headerHeight() {
-  return kTouchShell ? TOUCH_STRIP_HEIGHT - HEADER_TOP : HEADER_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).bodyLineHeight - 33;
+  return kTouchShell ? TOUCH_STRIP_HEIGHT - TOUCH_STATUS_TOP_INSET - HEADER_TOP
+                     : HEADER_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).bodyLineHeight - 33;
 }
-inline int tabTop() { return HEADER_TOP + headerHeight(); }
+inline int tabTop() { return HEADER_TOP + headerHeight() + (kTouchShell ? TOUCH_STATUS_TOP_INSET : 0); }
 inline int tabHeight() { return TAB_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).subtitleLineHeight - 26; }
 inline int contentTop() { return kTouchShell ? TOUCH_STRIP_HEIGHT + 6 : tabTop() + tabHeight() + 16; }
 // Touch shell: the tab bar sits at the foot of the screen, 16 px above the Home key under the glass,

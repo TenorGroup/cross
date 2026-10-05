@@ -398,7 +398,8 @@ statusglyph::Bt bluetoothNow() {
 
 void drawStripMiddle(const GfxRenderer& r, const int y, const int clockEnd, const int batteryX, const int font) {
   int x = batteryX - STRIP_BATTERY_GAP;
-  const int iconY = (tenorchrome::TOUCH_STRIP_HEIGHT - STRIP_ICON) / 2;
+  const int iconY = tenorchrome::TOUCH_STATUS_TOP_INSET +
+                    (tenorchrome::TOUCH_STRIP_HEIGHT - tenorchrome::TOUCH_STATUS_TOP_INSET - STRIP_ICON) / 2;
   const auto icon = [&](const freeink::Icon& i) {
     x -= STRIP_ICON;
     drawIcon(r, i, x, iconY);
@@ -496,7 +497,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   // Touch shell: outside the reader the clock and the battery sit on the header row, battery rightmost;
   // the foot of the screen belongs to the tab bar.
   const bool top = kTouchShell && !trongTrinhDoc;
-  const int y = top ? HEADER_TOP + (headerHeight() - r.getLineHeight(fontChu)) / 2
+  const int y = top ? TOUCH_STATUS_TOP_INSET + HEADER_TOP + (headerHeight() - r.getLineHeight(fontChu)) / 2
                     : statusTextY(r.getScreenHeight(), lon, paddingBottom);
   const bool swap = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
   char clock[12] = "--:--";
