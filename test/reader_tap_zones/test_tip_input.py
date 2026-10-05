@@ -48,7 +48,7 @@ int main() {
   // A tap on the page (the forward zone): closed, not hidden, full refresh.
   a.mappedInput.tap = true; a.mappedInput.x = 300; a.mappedInput.y = 200;
   assert(a.handleTapTip() && !readertip::shown && SETTINGS.readerTapTip == 1 && deferred == 0);
-  assert(a.pagesUntilFullRefresh == 1 && a.updates == 1);
+  assert(a.pagesUntilFullRefresh == 9 && a.updates == 1);  // a page turn's refresh, no forced full one
   // A swipe, Back, Confirm: closed, not hidden.
   for (int i = 0; i < 3; ++i) {
     readertip::shown = true;

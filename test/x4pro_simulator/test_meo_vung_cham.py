@@ -3,6 +3,7 @@ again"; a tap on the page closes it without turning and it comes back on the nex
 hides it for good."""
 from pathlib import Path
 import json
+import struct
 import tempfile
 
 from test_thanh_day import run
@@ -16,6 +17,19 @@ PAGE = (0, 110, 480, 730)
 
 def same(a, b, box=PAGE):
     return list(a.crop(box).getdata()) == list(b.crop(box).getdata())
+
+
+def full_refreshes(trace):
+    """Panel pushes that run a full waveform (DISPLAY with mode FULL 0 or HALF 1, a gray base with a
+    FULL or HALF fallback): one 1,3 s refresh each on the X4 Pro."""
+    data = Path(trace).read_bytes() if Path(trace).exists() else b''
+    count, i = 0, 0
+    while i + 12 <= len(data):
+        op, a, b, c, d, n = struct.unpack_from('<BBBHHI', data, i + 1)
+        if (op == 2 and a in (0, 1)) or (op == 3 and a in (0, 1)) or (op == 4 and b in (0, 1)):
+            count += 1
+        i += 12 + n
+    return count
 
 
 def tip_on(folder):
@@ -44,6 +58,16 @@ def main():
         assert same(plain, after), 'the button left the tip or turned the page'
         assert same(plain, reopened), 'the tip came back after the button'
         assert tip_on(h) == 0, 'the button did not keep the tip hidden'
+        # Closing the tip costs a page turn's refresh: the same full waveforms as opening and turning one
+        # page without the tip (founder 06/10: no 2,6 s close).
+        counts = []
+        for name, tip in (('trace-tip', 1), ('trace-plain', 0)):
+            folder = root / name
+            trace = root / (name + '.bin')
+            run(folder, OPEN + ';7000:TAP:300,200', [9000], settings=dict(readerTapTip=tip),
+                sim_env=dict(CROSSPOINT_SIM_PANEL_TRACE=str(trace)))
+            counts.append(full_refreshes(trace))
+        assert counts[0] == counts[1], f'closing the tip ran {counts[0] - counts[1]} extra full refreshes'
     print('GREEN: X4 Pro tap tip: shown, a page tap closes it without a turn, back next open, the button hides it')
 
 
