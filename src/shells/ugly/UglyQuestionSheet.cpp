@@ -363,7 +363,11 @@ void QuestionSheet::paint(const GfxRenderer& r, const MappedInputManager& input)
   if (page_ == 0 && firstTop_ != laterTop_) {
     text(r, Size::S38, left_, 46 + dy, tr(STR_UGLY_PHIEU_TITLE));
     const int sub = text(r, Size::S22, left_, 90 + dy, tr(STR_UGLY_PHIEU_SUBJECT));
-    text(r, Size::S38, left_ + sub + 10, 90 + dy, view_.subject ? view_.subject : "");
+    const char* subject = view_.subject ? view_.subject : "";
+    const int subjectBudget = (margin_ - 8) - (left_ + sub + 10);
+    const auto subjectSize = width(r, Size::S38, subject) <= subjectBudget ? Size::S38 : Size::S30;
+    const auto caption = fit(r, subjectSize, subject, subjectBudget);
+    text(r, subjectSize, left_ + sub + 10, 90 + dy, caption.c_str());
     dotted(r, left_ + sub + 8, margin_ - 8, 96 + dy);
     if (view_.date) snprintf(buf, sizeof(buf), "%02u%02u%02u", static_cast<unsigned>(view_.date % 100),
                              static_cast<unsigned>(view_.date / 100 % 100), static_cast<unsigned>(view_.date / 10000 % 100));

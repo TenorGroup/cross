@@ -109,7 +109,7 @@ for mode in modes:
     methods = method_slice(sources[paths[2]],
                            'std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe')
     methods += method_slice(sources[paths[2]], 'bool SettingsActivity::listedAsRow(')
-    methods += method_slice(sources[paths[2]], 'void SettingsActivity::rebuildSettingsLists()')
+    methods += method_slice(sources[paths[2]], 'void SettingsActivity::rebuildSettingsLists(')
     (output / 'CategoryMethods.inc').write_text(methods)
     for name in ['HalTiltSensor', 'HalClock']:
         instance = name[0].lower() + name[1:]

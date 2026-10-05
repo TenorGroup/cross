@@ -284,7 +284,7 @@ void StatusBarSettingsActivity::bindForm() {
   ugly::QuestionSheet::View view;
   view.context = this;
   view.count = visibleItemCount;
-  view.subject = tr(STR_CUSTOMISE_STATUS_BAR);
+  view.subject = tr(STR_HIDE_GLOBAL_STATUS_BAR);
   view.date = ReadingStatsStore::currentDay();
   view.code = 11;
   view.row = formRow;

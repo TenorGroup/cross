@@ -17,22 +17,22 @@ variants={
  'toolbar-call':(activity,'\n    drawMenuChrome();',''),
  'panel-call':(activity,'\n  drawMenuChrome();',''),
 }
-for name in ['baseline',*variants]:
+control=subprocess.run(['python3',str(a.repo/'test/menu_status_v1053/host.py'),'--repo',str(a.repo),'--output',str(a.output/'control')],capture_output=True,text=True)
+(a.output/'control/result.txt').write_text(control.stdout+control.stderr)
+assert control.returncode==0,'current-source control must be GREEN: '+control.stdout+control.stderr
+for name in variants:
  r=a.output/name;r.mkdir(parents=True,exist_ok=True)
  for file in [ui,activity]:
   dest=r/file;dest.parent.mkdir(parents=True,exist_ok=True)
-  if name=='baseline':
-   text=subprocess.check_output(['git','show','HEAD:'+str(file)],cwd=a.repo,text=True)
-  else:
-   text=(a.repo/file).read_text()
-   target,old,new=variants[name]
-   if file==target:
-    assert old in text
-    text=text.replace(old,new)
+  text=(a.repo/file).read_text()
+  target,old,new=variants[name]
+  if file==target:
+   assert old in text
+   text=text.replace(old,new)
   dest.write_text(text)
  sdk=r/'freeink-sdk'
  if not sdk.exists():sdk.symlink_to(a.repo/'freeink-sdk',target_is_directory=True)
  result=subprocess.run(['python3',str(a.repo/'test/menu_status_v1053/host.py'),'--repo',str(r),'--output',str(r/'build')],capture_output=True,text=True)
  (r/'result.txt').write_text(result.stdout+result.stderr)
- assert result.returncode!=0,name+' survived'
+ assert result.returncode==1,name+' expected behavioral RED exit=1, got '+str(result.returncode)
  print('RED '+name+' exit='+str(result.returncode))

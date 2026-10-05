@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <new>
+#include <optional>
 #include <string>
 #include <vector>
 #include <BoardConfig.h>
@@ -66,6 +67,8 @@ void KOReaderCredentialStore::setMatchMethod(DocumentMatchMethod) {}
 void KOReaderCredentialStore::setSendMetadata(bool) {}
 void KOReaderCredentialStore::setSyncBehavior(KOReaderSyncBehavior) {}
 
+struct RenderLock { template<class T> explicit RenderLock(T&) {} };
+namespace shell { bool isUgly() { return false; } }
 struct SettingsActivity {
   // Same shape as freeink::ui::ListNav: the selection is atomic (read by the render task).
   struct Cursor { std::atomic<int> selected{0}; bool followOnBuild = false; };
@@ -79,7 +82,10 @@ struct SettingsActivity {
   void rebuildRowItems() { ++rebuilds; }
   std::vector<SettingInfo>& danhSachCuaThe(settingstabs::Tab tab);
   static bool listedAsRow(const SettingInfo& setting);
-  void rebuildSettingsLists();
+  struct FormBoundary { void invalidate() {} } form_;
+  std::atomic<bool> formPaintReady_{false};
+  void bindForm() {}
+  void rebuildSettingsLists(bool lockHeld = false);
 };
 #include "CategoryMethods.inc"
 

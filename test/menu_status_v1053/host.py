@@ -9,6 +9,10 @@ p.add_argument('--output', type=Path, required=True)
 a = p.parse_args()
 a.output.mkdir(parents=True, exist_ok=True)
 
+def run(command, failure_exit):
+    if subprocess.run(command).returncode:
+        raise SystemExit(failure_exit)
+
 def method(text, signature):
     start = text.index(signature)
     brace = text.index('{', start)
@@ -42,6 +46,7 @@ struct Target : fui::DrawTarget {
 struct ReaderToolbarUi {
  using UiScreen=fui::FreeInkApp<24,6>::ScreenType;
  struct Model {fui::Insets footerInsets{};} model_;
+ fui::Rect skinFrame_{};
  void buildSheet(UiScreen&,const fui::SheetProps&,int16_t);
 };
 ''' + sheet + r'''
@@ -65,8 +70,8 @@ int main() {
 }
 '''
 (a.output / 'sheet.cpp').write_text(cpp)
-subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I'+str(a.repo/'freeink-sdk/libs/ui/FreeInkUI/include'),str(a.output/'sheet.cpp'),'-o',str(a.output/'sheet')],check=True)
-subprocess.run([str(a.output/'sheet')],check=True)
+run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I'+str(a.repo/'freeink-sdk/libs/ui/FreeInkUI/include'),str(a.output/'sheet.cpp'),'-o',str(a.output/'sheet')],2)
+run([str(a.output/'sheet')],1)
 print('GREEN: real SDK sheet body clears physical footer in 4 rotations, 4 reserves, 5 sheet sizes including oversized')
 activity = (a.repo / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
 overlay = method(activity, 'void EpubReaderActivity::renderOverlay()')
@@ -95,7 +100,7 @@ struct GfxRenderer {
  void fillRect(int x,int y,int w,int h,bool) {fills.push_back({x,y,w,h});}
 };
 int status=0,hints=0,arrows=0;
-namespace tenorchrome {[[maybe_unused]] constexpr int TOUCH_STRIP_HEIGHT=24;void drawStatus(GfxRenderer&) {++status;}}
+namespace tenorchrome {[[maybe_unused]] constexpr int TOUCH_STRIP_HEIGHT=24;int contentTop() {return 38;}void drawStatus(GfxRenderer&) {++status;}}
 enum {STR_BACK,STR_SELECT,STR_DIR_LEFT,STR_DIR_RIGHT,STR_DIR_UP,STR_DIR_DOWN};
 const char* tr(int i) {static const char* text[]={"Back","Select","Left","Right","Up","Down"};return text[i];}
 struct Input {
@@ -129,7 +134,7 @@ int main() {
   assert(r.renderer.fills.size()==(hidden ? 0:1));
 #if FREEINK_DEVICE_X4PRO
   assert(status==(hidden ? 0:1) && hints==0 && arrows==0);
-  if(!hidden) {auto f=r.renderer.fills.front();assert(f.x==0 && f.y==0 && f.w==r.renderer.getScreenWidth() && f.h==24);}
+  if(!hidden) {auto f=r.renderer.fills.front();assert(f.x==0 && f.y==0 && f.w==r.renderer.getScreenWidth() && f.h==tenorchrome::contentTop());}
 #else
   assert(hints==(hidden ? 0:1) && arrows==0 && status==0);
   if(!hidden) {
@@ -145,6 +150,6 @@ int main() {
 (a.output/'chrome.cpp').write_text(cpp)
 for touch in [0,1]:
     binary=a.output/('chrome'+str(touch))
-    subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-DFREEINK_DEVICE_X4PRO='+str(touch),str(a.output/'chrome.cpp'),'-o',str(binary)],check=True)
-    subprocess.run([str(binary)],check=True)
+    run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-DFREEINK_DEVICE_X4PRO='+str(touch),str(a.output/'chrome.cpp'),'-o',str(binary)],2)
+    run([str(binary)],1)
 print('GREEN: production chrome executes in 4 rotations, 4 menus, visible/hidden, mapped button order, X4 top status')
