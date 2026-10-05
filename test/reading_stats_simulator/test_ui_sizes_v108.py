@@ -178,7 +178,7 @@ class UiSizesV108Test(unittest.TestCase):
             t.key("CONFIRM").shot("stats-return")
             t.key("RIGHT")
         t.key("CONFIRM").shot("habits").key("BACK")
-        t.key("DOWN").shot("home-settings").key("RIGHT").key("CONFIRM").shot("display")
+        t.key("DOWN").shot("home-settings").key("CONFIRM").shot("display")
         # Refresh frequency (row 5) is the Display row that opens a popup.
         t.key("RIGHT", 5).key("CONFIRM").shot("popup").key("RIGHT").shot("popup-next").key("LEFT").key("CONFIRM")
         t.key("RIGHT", 2).shot("display-last").key("RIGHT")

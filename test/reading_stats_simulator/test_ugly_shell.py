@@ -303,9 +303,9 @@ class UglyShellTest(unittest.TestCase):
 
     def test_the_interface_row_switches_the_shell_and_draws_home_again(self):
         card = self.card(shell=0, sleepScreen=10)
-        # Home (tenor/cross) -> Settings tab (UP) -> group Display (RIGHT) -> open (CONFIRM) -> the row before the
+        # Home (tenor/cross) -> Settings tab (UP), focused Display -> open (CONFIRM) -> the row before the
         # first wraps to night mode, one more is Interface
-        log, _ = card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;4600:LEFT;5200:CONFIRM;7500:QUIT')
+        log, _ = card.run('1000:UP;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;4600:LEFT;5200:CONFIRM;7500:QUIT')
         names = entered(log)
         self.assertEqual(names[-1], 'UglyDiary', names)
         saved = card.settings()
@@ -324,7 +324,7 @@ class UglyShellTest(unittest.TestCase):
         # Three screens a user can have on arrival: the tenor picture, the quotation, one picked by hand.
         for before in (8, 10, 3):
             card = self.card(shell=0, sleepScreen=before)
-            card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;4600:LEFT;5200:CONFIRM;7500:QUIT')
+            card.run('1000:UP;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;4600:LEFT;5200:CONFIRM;7500:QUIT')
             inside = card.settings()
             self.assertEqual(inside['uiShell'], 1)
             self.assertEqual(inside['sleepScreen'], 11 if before != 3 else 3)
@@ -335,12 +335,12 @@ class UglyShellTest(unittest.TestCase):
 
     def test_a_sleep_screen_chosen_by_hand_survives_a_change_of_shell(self):
         card = self.card(shell=0, sleepScreen=3)  # the cover
-        card.run('1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;4600:LEFT;5200:CONFIRM;7500:QUIT')
+        card.run('1000:UP;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;4600:LEFT;5200:CONFIRM;7500:QUIT')
         self.assertEqual(card.settings()['sleepScreen'], 3)
 
     # Founder 04/10/2026 evening: going from tenor/cross to tenor/ugly asks first, in the pen of tenor/ugly. The pen starts
     # on the line that says no; Back says no; coming back to tenor/cross asks nothing.
-    TO_THE_BOX = '1000:UP;1500:RIGHT;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;'
+    TO_THE_BOX = '1000:UP;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;'
     SWITCH_FRAME = re.compile(r'Switch frame total=(\d+)ms sel=(\d) lines=(\d+) frame=(-?\d+),(-?\d+),(-?\d+),(-?\d+) box=(-?\d+),(-?\d+),(-?\d+),(-?\d+)')
 
     def test_choosing_tenor_ugly_asks_first_and_the_pen_starts_on_no(self):

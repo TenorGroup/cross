@@ -19,7 +19,7 @@ REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 
 # Same Home-to-Controls walk test_quick_actions_v1012 uses; the Hold Select row is the fourth one.
-HOME_TO_CONTROLS = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '3000:RIGHT', '3500:CONFIRM']
+HOME_TO_CONTROLS = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '3500:CONFIRM']
 SAVE_QUOTATION = 7
 
 

@@ -437,7 +437,7 @@ class SleepEndsBwTest(unittest.TestCase):
         shot = sd / 'hang.bmp'
         after = sd / 'sau-khi-bam.bmp'
         rows = ';'.join(f'{3200 + 400 * i}:RIGHT' for i in range(6))
-        log = self.run_sim(sd, f'1000:UP;1500:RIGHT;2000:RIGHT;2500:CONFIRM;{rows};5600:CONFIRM;7600:QUIT',
+        log = self.run_sim(sd, f'1000:UP;1500:RIGHT;2500:CONFIRM;{rows};5600:CONFIRM;7600:QUIT',
                            f'5400:{shot};7000:{after}')
         for path, label in ((shot, 'cai-dat-hang-moi'), (after, 'cai-dat-hang-moi-da-tat')):
             image = Image.open(path).convert('L')

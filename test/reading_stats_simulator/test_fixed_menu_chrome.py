@@ -35,7 +35,7 @@ def reader():
  print('PASS reader font-menu removal, old pins, shared tab bottom',flush=True)
 def hints():
  name='hints';sd=t.o/('sd-'+name);(sd/'books').mkdir(parents=True,exist_ok=True);(sd/'books/a').mkdir(exist_ok=True)
- t.run(name,'1000:DOWN;2000:CONFIRM;3300:BACK:1200;5000:UP;5800:RIGHT;6600:CONFIRM;8000:QUIT',[(1500,'folder'),(2900,'nested'),(7500,'settings')])
+ t.run(name,'1000:DOWN;2000:CONFIRM;3300:BACK:1200;5000:UP;6600:CONFIRM;8000:QUIT',[(1500,'folder'),(2900,'nested'),(7500,'settings')])
  a=Image.open(t.o/(name+'-folder.png'));b=Image.open(t.o/(name+'-nested.png'));c=Image.open(t.o/(name+'-settings.png'))
  for v in [b,c]:assert ImageChops.difference(a.crop((100,726,425,748)),v.crop((100,726,425,748))).getbbox() is None
  measured=[]

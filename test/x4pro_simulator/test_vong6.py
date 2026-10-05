@@ -50,7 +50,7 @@ def check_files(tmp):
 
 def check_display_group(tmp):
     # Settings -> Display: 7 rows, followed by the rounded frame at y485-487.
-    (group,) = run(fresh(tmp, 'dg'), f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,128', [7500])
+    (group,) = run(fresh(tmp, 'dg'), f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,70', [7500])
     assert ink(group, (30, 440, 200, 475)) > 0.01, 'the final clock placement row is missing'
     assert ink(group, (30, 500, 200, 710)) == 0, 'the Display group has extra rows below clock placement'
 
@@ -64,14 +64,14 @@ def check_pin_popup(tmp):
 
 
 def check_foot_back(tmp):
-    # Settings -> Gui file (first row): a round "<" at the foot (x 16-76, y 724-784); a tap on it goes back to Settings.
-    before, mode, back = run(fresh(tmp, 'bk'), f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,66;8000:TAP:46,754',
+    # Settings -> Gui file (first machine row): a round "<" at the foot (x 16-76, y 724-784); a tap on it goes back to Settings.
+    before, mode, back = run(fresh(tmp, 'bk'), f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,336;8000:TAP:46,754',
                              [4800, 7000, 10000])
     assert ink(mode, (16, 724, 76, 784)) > 0.04, 'Gui file has no round back button at the foot'
     assert ink(before, (16, 724, 76, 784)) > 0.04 and list(back.crop((0, 60, 480, 700)).getdata()) == list(
         before.crop((0, 60, 480, 700)).getdata()), 'a tap on the foot back button did not go back to Settings'
     # A settings group and a file list have it too, and their rows stop above it.
-    (group,) = run(fresh(tmp, 'bg'), f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,128', [7500])
+    (group,) = run(fresh(tmp, 'bg'), f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,70', [7500])
     assert ink(group, (16, 724, 76, 784)) > 0.04, 'the Display group has no round back button'
     (files,) = run(fresh(tmp, 'bf'), f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68', [7000], extra_books=14)
     assert ink(files, (16, 724, 76, 784)) > 0.04, 'the file list has no round back button'
@@ -81,7 +81,7 @@ def check_foot_back(tmp):
 def check_home_key(tmp):
     # The Home key from a settings group, and from the Settings card of Home, lands on the Recent card.
     home, group_home, card_home = run(fresh(tmp, 'hk'),
-                                      f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,128;8000:HOME;11000:TAP:{TABS_X[4]},{BAR_Y};14000:HOME',
+                                      f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,70;8000:HOME;11000:TAP:{TABS_X[4]},{BAR_Y};14000:HOME',
                                       [2800, 10000, 16500])
     box = (0, 30, 480, 720)
     assert list(home.crop(box).getdata()) == list(group_home.crop(box).getdata()), \

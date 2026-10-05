@@ -13,7 +13,7 @@ from pathlib import Path
 from test_thanh_day import run, ink, BAR_TOP, TABS_X
 
 BAR_Y = BAR_TOP + 30
-ROW = [66 + 62 * i for i in range(10)]   # row centres of the Settings card under the status strip
+ROW = [70, 132, 194, 256, 336, 398, 460, 522, 584]  # 2 grouped Settings frames, default tier
 SYSTEM = 5                               # "He thong" on the Settings card
 SAME = (0, 30, 480, 720)                 # everything under the clock
 
@@ -95,7 +95,7 @@ def check_reader_menu_back(tmp):
 
 def check_keyboard_back(tmp):
     # Settings -> Gui file -> Ket noi mang -> Them mang an...: the keyboard; "<" closes it.
-    kb, after = run(fresh(tmp, 'kb'), f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,66;7500:TAP:240,70;'
+    kb, after = run(fresh(tmp, 'kb'), f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,{ROW[4]};7500:TAP:240,70;'
                                       '10500:TAP:240,160;13000:TAP:46,754', [12800, 15500])
     assert ink(kb, (16, 724, 76, 784)) > 0.04, 'the keyboard screen has no "<"'
     assert not same(kb, after, (0, 30, 480, 716)), '"<" on the keyboard did not go back'

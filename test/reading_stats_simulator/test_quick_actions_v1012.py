@@ -23,10 +23,10 @@ from cai_dat_truoc_tenor import truoc_tenor
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 
-# Home: Up opens the Settings tab; four Right from "File transfer" reach Controls; Select.
-HOME_TO_CONTROLS = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '3000:RIGHT', '3500:CONFIRM']
-# Motion sensor follows Controls: five Right.
-HOME_TO_MOTION = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '2800:RIGHT', '3100:RIGHT', '3500:CONFIRM']
+# Home: Up opens Settings on Display; 3 Right reach Controls; Select.
+HOME_TO_CONTROLS = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '3500:CONFIRM']
+# Motion sensor follows Controls: 4 Right from Display.
+HOME_TO_MOTION = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '2800:RIGHT', '3500:CONFIRM']
 # Home: Select opens the recent book; Select again opens the reader menu; three Down to Tools.
 BOOK_TO_TOOLS = ['1000:CONFIRM', '3200:CONFIRM', '4400:DOWN', '5000:DOWN', '5600:DOWN']
 

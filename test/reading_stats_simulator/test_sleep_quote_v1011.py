@@ -465,7 +465,7 @@ class SleepQuoteTest(unittest.TestCase):
             with self.subTest(language=language):
                 sd = self.make_sd([], settings={'language': language, 'uiTheme': 4, 'sleepScreen': 10})
                 shot = sd / 'popup.bmp'
-                self.run_sim(sd, '1000:UP;1500:RIGHT;2000:CONFIRM;3000:DOWN;4000:CONFIRM;6000:QUIT',
+                self.run_sim(sd, '1000:UP;2000:CONFIRM;3000:DOWN;4000:CONFIRM;6000:QUIT',
                              shots=f'5200:{shot}')
                 image = Image.open(shot).convert('L')
                 if SHOTS:

@@ -13,6 +13,8 @@ from cai_dat_truoc_tenor import truoc_tenor
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 SETTINGS_ORDER = [0, 7, 1, 2, 3, 4, 5, 6]
+# X3 has Motion (ID 8); File Transfer is the first machine row.
+HOME_SETTINGS_ORDER = [0, 7, 1, 2, 8, None, 3, 4, 5, 6]
 
 
 class MenuNavigationContractTest(unittest.TestCase):
@@ -60,9 +62,8 @@ class MenuNavigationContractTest(unittest.TestCase):
 
     @staticmethod
     def group(index):
-        # Home Settings begins on Transfer, followed by the persisted display
-        # order. Stable tab IDs remain 0..6, with Sleep appended as ID 7.
-        return ['UP'] + ['RIGHT'] * (SETTINGS_ORDER.index(index) + 1) + ['CONFIRM']
+        # Home Settings starts on Display; partitioned rows keep stable source IDs.
+        return ['UP'] + ['RIGHT'] * HOME_SETTINGS_ORDER.index(index) + ['CONFIRM']
 
     def test_clock_cursor_preserves_legacy_hidden_value(self):
         self.settings['statusBarClock'] = 0
@@ -181,7 +182,7 @@ class MenuNavigationContractTest(unittest.TestCase):
         log, saved = self.run_keys(
             # Display begins on UI text size. The global status bar is row 2.
             self.group(0) + ['RIGHT', 'CONFIRM', 'BACK', 'CONFIRM'],
-            [(2800, 'small'), (3350, 'off-live'), (4600, 'off-reopened')])
+            [(2300, 'small'), (2850, 'off-live'), (4100, 'off-reopened')])
         self.assertEqual(saved['globalStatusBarMode'], 1, log)
 
         def footer_ink(name):

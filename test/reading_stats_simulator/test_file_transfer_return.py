@@ -202,8 +202,8 @@ class FileTransferReturnTest(unittest.TestCase):
         self.assertIsNone(diff, f"page image differs in {diff}")
 
     def test_4_from_home_back_returns_home(self):
-        # Home: the Settings tab is three Right from Recent; its top row is File transfer.
-        log = self.run_sim("home", ["1500:RIGHT", "1900:RIGHT", "2300:RIGHT", "2700:UP", "3100:CONFIRM",
+        # Home: UP opens Settings on Display; RIGHT x5 reaches File transfer.
+        log = self.run_sim("home", ["1500:UP", "1800:RIGHT", "2100:RIGHT", "2400:RIGHT", "2700:RIGHT", "2900:RIGHT", "3100:CONFIRM",
                                     "4400:CONFIRM", "9000:BACK:80"],
                            shots=[(12000, "4-home")], end=13000)
         self.assertIn("Network mode: STA", log, log[-4000:])
@@ -241,7 +241,7 @@ class FileTransferReturnTest(unittest.TestCase):
                     self.assertEqual(LOADED.findall(log)[:1], [("1", "2")], log[-3000:])
 
     def test_7_sleep_inside_transfer_from_home_stays_home(self):
-        self.run_sim("sleep-home", ["1500:RIGHT", "1900:RIGHT", "2300:RIGHT", "2700:UP", "3100:CONFIRM",
+        self.run_sim("sleep-home", ["1500:UP", "1800:RIGHT", "2100:RIGHT", "2400:RIGHT", "2700:RIGHT", "2900:RIGHT", "3100:CONFIRM",
                                     "5000:SLEEP"], end=9000)
         state = json.loads((self.store / "state.json").read_text())
         self.assertFalse(state["lastSleepFromReader"], state)

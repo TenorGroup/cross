@@ -22,11 +22,10 @@ from cai_dat_truoc_tenor import truoc_tenor
 REPO = Path(__file__).resolve().parents[2]
 PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc8279/program'))
 
-# Home: Up opens the Settings tab. From "File transfer": Display, Sleep, Reader, Controls,
-# then Motion sensor.
+# Home: Up opens Settings on Display. Sleep, Reader, Controls and Motion follow.
 HOME_TO_SETTINGS = ['1000:UP']
-HOME_TO_CONTROLS = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '3000:RIGHT', '3500:CONFIRM']
-HOME_TO_MOTION = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '2800:RIGHT', '3100:RIGHT', '3500:CONFIRM']
+HOME_TO_CONTROLS = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '3500:CONFIRM']
+HOME_TO_MOTION = ['1000:UP', '1500:RIGHT', '2000:RIGHT', '2500:RIGHT', '2800:RIGHT', '3500:CONFIRM']
 
 # A file from v1.0.16, every sensor row away from its default.
 OLD_SENSOR_VALUES = {
