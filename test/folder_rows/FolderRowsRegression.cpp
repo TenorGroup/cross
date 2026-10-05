@@ -132,6 +132,7 @@ class FileBrowserActivity {
   int pinned = -1;
   int pageAnchorRow = -1;
   bool tooMany = false, rowsFramed = false, rowsHaveIcons = false;
+  int rowFrameFloor = 0;
   bool rowOpens(int row) const;
   bool listFramed() const;
   void frameRows(fui::ListProps& props);
