@@ -35,6 +35,7 @@ class ReaderToolbarUi : public UiAppHost {
 
   struct Model {
     bool panel = false;  // false = toolbar, true = a Contents/Text/More panel
+    freeink::ui::Insets footerInsets{};  // Physical button chrome, rotated into logical coordinates.
     // Toolbar
     const char* chapterTitle = nullptr;
     const char* pageInfo = nullptr;  // "12/40   51%"
@@ -106,6 +107,7 @@ class ReaderToolbarUi : public UiAppHost {
   static void onAction(const freeink::ui::ActionEvent& event, void* user);
   void buildToolbar(UiScreen& screen);
   void buildPanel(UiScreen& screen);
+  void buildSheet(UiScreen& screen, const freeink::ui::SheetProps& props, int16_t height);
   void buildToolRow(UiScreen& screen, freeink::ui::LayoutAnchor anchor, int16_t sideInset);
 
   Model model_;

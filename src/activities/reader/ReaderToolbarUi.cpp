@@ -109,6 +109,19 @@ void ReaderToolbarUi::screenFn(UiScreen& screen, void* user) {
   }
 }
 
+void ReaderToolbarUi::buildSheet(UiScreen& screen, const fui::SheetProps& props, const int16_t height) {
+  screen.setContentMarginFromScreen(model_.footerInsets);
+  const auto bounds = screen.body();
+  const auto sheetHeight = std::min(height, bounds.height);
+  const fui::Rect rect{bounds.x, static_cast<int16_t>(bounds.bottom() - sheetHeight), bounds.width, sheetHeight};
+  auto themed = props;
+  if (themed.radius == fui::RADIUS_INHERIT) themed.radius = screen.theme().sheetRadius;
+  fui::sheet(screen.frame(), rect, themed);
+  const auto content = fui::sheetContentRect(rect, themed);
+  screen.insetContent(fui::Insets{static_cast<int16_t>(content.y - bounds.y), 0,
+                                static_cast<int16_t>(bounds.bottom() - content.bottom()), 0});
+}
+
 // The Contents / Text / More row: three equal slots, an icon centred in each,
 // the active one inside an outline pill (the theme's control radius). Each
 // slot is registered as one tap target, so the row stays light (no filled
@@ -163,7 +176,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   sheetProps.grabberInset = static_cast<int16_t>(tokens.spaceLg + tokens.spaceMd);
   const int16_t grabberBand =
       static_cast<int16_t>(sheetProps.grabberMargin + sheetProps.grabberHeight + sheetProps.grabberInset);
-  screen.sheet(sheetProps, static_cast<int16_t>(contentH + grabberBand));
+  buildSheet(screen, sheetProps, static_cast<int16_t>(contentH + grabberBand));
   screen.insetContent(fui::Insets{0, tokens.spaceLg, 0, tokens.spaceLg});
   screen.spacer(tokens.spaceMd);
 
@@ -299,7 +312,8 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   return;
 #endif
   const auto& tokens = screen.theme();
-  const fui::Rect safe = screen.frame().safeRect();
+  screen.setContentMarginFromScreen(model_.footerInsets);
+  const fui::Rect safe = screen.body();
 
   fui::SheetProps sheetProps;
   sheetProps.anchor = fui::SheetEdge::Bottom;
@@ -332,8 +346,9 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   if (static_cast<int16_t>(chrome + (sheetRows + 1) * rowStride - rowGap) <= cap) ++sheetRows;
   if (model_.itemCount > 0 && sheetRows > model_.itemCount) sheetRows = model_.itemCount;
   if (model_.sheetRows > 0) sheetRows = model_.sheetRows;
+  sheetRows = std::min(sheetRows, std::max(1, (safe.height - chrome + rowGap) / rowStride));
   if (sheetRows < 1) sheetRows = 1;
-  screen.sheet(sheetProps, static_cast<int16_t>(chrome + sheetRows * rowStride - rowGap));
+  buildSheet(screen, sheetProps, static_cast<int16_t>(chrome + sheetRows * rowStride - rowGap));
   // No blanket side inset: Screen::list() draws in the content band, and the
   // scroll track must reach the sheet's edge like a full-screen list's does.
   // The title insets itself; the rows inset via rowInset below.

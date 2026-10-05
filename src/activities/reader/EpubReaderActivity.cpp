@@ -4035,6 +4035,37 @@ void EpubReaderActivity::renderOverlay() {
   if (!epub || (!section && !xemTruoc) || !toolbarUi) return;
 
   ReaderToolbarUi::Model model;
+  const auto drawMenuChrome = [this]() {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    if (!SETTINGS.globalStatusBarHidden()) {
+      renderer.fillRect(0, 0, renderer.getScreenWidth(), tenorchrome::TOUCH_STRIP_HEIGHT, false);
+      tenorchrome::drawStatus(renderer);
+    }
+#else
+    if (!SETTINGS.globalStatusBarHidden()) {
+      const auto orientation = renderer.getOrientation();
+      renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+      const int footer = UITheme::getInstance().getMetrics().buttonHintsHeight;
+      renderer.fillRect(0, renderer.getScreenHeight() - footer, renderer.getScreenWidth(), footer, false);
+      const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT),
+          tr(overlay == Overlay::Toolbar ? STR_DIR_LEFT : STR_DIR_UP),
+          tr(overlay == Overlay::Toolbar ? STR_DIR_RIGHT : STR_DIR_DOWN));
+      GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+      renderer.setOrientation(orientation);
+    }
+#endif
+  };
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  if (!SETTINGS.globalStatusBarHidden()) {
+    const auto footer = static_cast<int16_t>(UITheme::getInstance().getMetrics().buttonHintsHeight);
+    switch (renderer.getOrientation()) {
+      case GfxRenderer::Orientation::Portrait: model.footerInsets.bottom = footer; break;
+      case GfxRenderer::Orientation::LandscapeClockwise: model.footerInsets.left = footer; break;
+      case GfxRenderer::Orientation::PortraitInverted: model.footerInsets.top = footer; break;
+      case GfxRenderer::Orientation::LandscapeCounterClockwise: model.footerInsets.right = footer; break;
+    }
+  }
+#endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   const int chromeTool = overlay == Overlay::Contents ? 0 : overlay == Overlay::Text ? 1 : overlay == Overlay::More ? 2 : -1;
   tenorchrome::noteReaderFootBar(overlay != Overlay::None,
@@ -4064,6 +4095,7 @@ void EpubReaderActivity::renderOverlay() {
     model.progressPermille = static_cast<int>(bookProgress * 1000.0f + 0.5f);
     toolbarUi->setModel(model);
     toolbarUi->render();
+    drawMenuChrome();
     return;
   }
 
@@ -4127,6 +4159,7 @@ void EpubReaderActivity::renderOverlay() {
   }
   toolbarUi->setModel(model);
   toolbarUi->render();
+  drawMenuChrome();
 }
 
 void EpubReaderActivity::handleOverlayInput() {
