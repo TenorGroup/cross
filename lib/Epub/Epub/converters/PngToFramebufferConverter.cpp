@@ -88,10 +88,13 @@ int32_t pngSeekWithHandle(PNGFILE* pFile, int32_t pos) {
   return f->seek(pos);
 }
 
-// The PNG decoder (PNGdec) is ~42 KB due to internal zlib decompression buffers.
-// We heap-allocate it on demand rather than using a static instance, so this memory
-// is only consumed while actually decoding/querying PNG images. This is critical on
-// the ESP32-C3 where total RAM is ~320 KB.
+// The PNG decoder (PNGdec) holds its scanline and file buffers (~26 KB); decode() takes the 32 KiB
+// zlib window as a second block (scripts/pngdec_patches). We heap-allocate it on demand rather than
+// using a static instance, so this memory is only consumed while actually decoding/querying PNG
+// images. This is critical on the ESP32-C3 where total RAM is ~320 KB.
+// Two blocks instead of one of ~58 KB: after a reader session with the radio the C3 heap can hold
+// ~98 KB free with a largest block of 45 KB, and the single-block decoder failed there.
+static_assert(sizeof(PNG) <= 28 * 1024, "PNGdec without scripts/patch_pngdec.py: inflate window still inline");
 constexpr size_t PNG_DECODER_APPROX_SIZE = 44 * 1024;                          // ~42 KB + overhead
 constexpr size_t MIN_FREE_HEAP_FOR_PNG = PNG_DECODER_APPROX_SIZE + 16 * 1024;  // decoder + 16 KB headroom
 

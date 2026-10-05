@@ -1,0 +1,64 @@
+PNGdec 1.1.6: give the 32 KiB inflate window a heap block of its own.
+
+PNGIMAGE carries the window inline (ucZLIB = 32768 + inflate_state), so one
+decoder needs a single free block of ~58 KB. On the ESP32-C3 the largest free
+block after a reader session with the BLE radio can be 45 KB while ~98 KB is
+free, and the decoder allocation then fails. With the window split out, a
+decode needs a ~26 KB block (the PNG object) and a 32 KiB block. zlib reads
+the window only through state->window, and PNGdec's zcfree is a no-op, so
+inflateEnd() never frees it; DecodePNG owns it for the length of one decode.
+
+--- a/src/PNGdec.h
++++ b/src/PNGdec.h
+@@ -156,7 +156,8 @@
+     PNG_DRAW_CALLBACK *pfnDraw;
+     PNG_CLOSE_CALLBACK *pfnClose;
+     PNGFILE PNGFile;
+-    uint8_t ucZLIB[32768 + sizeof(struct inflate_state)]; // put this here to avoid needing malloc/free
++    uint8_t ucZLIB[sizeof(struct inflate_state)]; // inflate state only; DecodePNG allocates the 32k window
++    uint8_t *pWindow; // 32k inflate window, a block of its own for the length of one decode
+     uint8_t ucPalette[1024];
+     uint8_t ucPixels[PNG_MAX_BUFFERED_PIXELS];
+     uint8_t ucFileBuf[PNG_FILE_BUF_SIZE]; // holds temp file data
+--- a/src/png.inl
++++ b/src/png.inl
+@@ -757,7 +757,7 @@
+ // This function can be called repeatedly without having
+ // to close and re-open the file
+ //
+-PNG_STATIC int DecodePNG(PNGIMAGE *pPage, void *pUser, int iOptions)
++PNG_STATIC int DecodePNGBody(PNGIMAGE *pPage, void *pUser, int iOptions)
+ {
+     int err, y, iLen=0;
+     int bDone, iOffset, iFileOffset, iBytesRead;
+@@ -792,7 +792,7 @@
+     // Insert the memory pointer here to avoid having to use malloc() inside zlib
+     state = (struct inflate_state FAR *)pPage->ucZLIB;
+     d_stream.state = (struct internal_state FAR *)state;
+-    state->window = &pPage->ucZLIB[sizeof(struct inflate_state)]; // point to 32k dictionary buffer
++    state->window = pPage->pWindow; // point to 32k dictionary buffer
+     err = inflateInit(&d_stream);
+ #ifdef FUTURE
+ //    if (inpage->cCompression == PIL_COMP_IPHONE_FLATE)
+@@ -1002,4 +1002,21 @@
+     } // while y < height
+     err = inflateEnd(&d_stream);
+     return pPage->iError;
++} /* DecodePNGBody() */
++//
++// The 32k inflate window is a separate block, so a decode needs two free
++// blocks (the PNG object and 32k) rather than one block holding both.
++//
++PNG_STATIC int DecodePNG(PNGIMAGE *pPage, void *pUser, int iOptions)
++{
++    int rc;
++    pPage->pWindow = (uint8_t *)malloc(32768);
++    if (pPage->pWindow == NULL) {
++        pPage->iError = PNG_MEM_ERROR;
++        return PNG_MEM_ERROR;
++    }
++    rc = DecodePNGBody(pPage, pUser, iOptions);
++    free(pPage->pWindow);
++    pPage->pWindow = NULL;
++    return rc;
+ } /* DecodePNG() */

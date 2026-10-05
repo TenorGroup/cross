@@ -1,0 +1,47 @@
+# PNGdec as the firmware builds it: the libdep source with scripts/pngdec_patches/*.patch applied.
+# PNGDEC_WINDOW_UNPATCHED=ON takes the copy back to the library's own text, to see the tests fail.
+# Needs a PlatformIO build to have fetched PNGdec into .pio/libdeps; skipped otherwise.
+file(GLOB PNGDEC_INL "${REPO_ROOT}/.pio/libdeps/*/PNGdec/src/png.inl")
+option(PNGDEC_WINDOW_UNPATCHED "Build the PNGdec window test against the unpatched library" OFF)
+if(PNGDEC_INL)
+  list(GET PNGDEC_INL 0 PNGDEC_FIRST)
+  get_filename_component(PNGDEC_SRC "${PNGDEC_FIRST}" DIRECTORY)
+  get_filename_component(PNGDEC_LIB "${PNGDEC_SRC}" DIRECTORY)
+  set(PNGDEC_COPY "${CMAKE_CURRENT_BINARY_DIR}/pngdec-lib")
+  file(REMOVE_RECURSE "${PNGDEC_COPY}")
+  file(COPY "${PNGDEC_LIB}/" DESTINATION "${PNGDEC_COPY}")
+  find_package(Git REQUIRED)
+  # git must not find this repo above the build directory, or it would resolve paths against it.
+  set(PNGDEC_GIT ${CMAKE_COMMAND} -E env GIT_CEILING_DIRECTORIES=${CMAKE_CURRENT_BINARY_DIR} ${GIT_EXECUTABLE})
+  file(GLOB PNGDEC_PATCHES "${REPO_ROOT}/scripts/pngdec_patches/*.patch")
+  list(SORT PNGDEC_PATCHES)
+  foreach(PNGDEC_PATCH ${PNGDEC_PATCHES})
+    execute_process(COMMAND ${PNGDEC_GIT} apply --check --reverse "${PNGDEC_PATCH}"
+                    WORKING_DIRECTORY "${PNGDEC_COPY}" RESULT_VARIABLE PNGDEC_NOT_APPLIED OUTPUT_QUIET ERROR_QUIET)
+    if(PNGDEC_WINDOW_UNPATCHED AND PNGDEC_NOT_APPLIED EQUAL 0)
+      set(PNGDEC_GIT_ARGS apply --reverse "${PNGDEC_PATCH}")
+    elseif(NOT PNGDEC_WINDOW_UNPATCHED AND NOT PNGDEC_NOT_APPLIED EQUAL 0)
+      set(PNGDEC_GIT_ARGS apply "${PNGDEC_PATCH}")
+    else()
+      continue()
+    endif()
+    execute_process(COMMAND ${PNGDEC_GIT} ${PNGDEC_GIT_ARGS}
+                    WORKING_DIRECTORY "${PNGDEC_COPY}" RESULT_VARIABLE PNGDEC_APPLIED)
+    if(NOT PNGDEC_APPLIED EQUAL 0)
+      message(FATAL_ERROR "${PNGDEC_PATCH} does not apply to ${PNGDEC_COPY}")
+    endif()
+  endforeach()
+  set(PNGDEC_ZLIB adler32.c crc32.c infback.c inffast.c inflate.c inftrees.c zutil.c)
+  list(TRANSFORM PNGDEC_ZLIB PREPEND "${PNGDEC_COPY}/src/")
+  add_executable(PngdecWindowTest PngdecWindowTest.cpp "${PNGDEC_COPY}/src/PNGdec.cpp" ${PNGDEC_ZLIB})
+  target_include_directories(PngdecWindowTest PRIVATE "${PNGDEC_COPY}/src" "${PNGDEC_COPY}/test_images")
+  # The firmware's scanline buffer (platformio.ini), so the object is the size the X3 allocates.
+  target_compile_definitions(PngdecWindowTest PRIVATE PNG_MAX_BUFFERED_PIXELS=16416)
+  set_source_files_properties("${PNGDEC_COPY}/src/PNGdec.cpp" PROPERTIES
+                              COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/alloc_prelude.h")
+  set_source_files_properties("${PNGDEC_COPY}/src/PNGdec.cpp" ${PNGDEC_ZLIB} PROPERTIES COMPILE_FLAGS "-w")
+  target_link_libraries(PngdecWindowTest PRIVATE GTest::gtest_main)
+  gtest_discover_tests(PngdecWindowTest)
+else()
+  message(WARNING "pngdec_window: no PNGdec in .pio/libdeps (build a firmware environment first); PNGdec window tests skipped")
+endif()
