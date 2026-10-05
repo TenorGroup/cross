@@ -36,7 +36,7 @@ def run(folder, script, shots, settings=None, extra_books=0, sim_env=None, write
         write_books(sd / 'sach')
     (sd / '.crosspoint/state.json').write_text(json.dumps(dict(openEpubPath='', showBootScreen=False)))
     # The reader's tap-zone tip is dismissed unless a journey asks for it (test_meo_vung_cham).
-    base = dict(language='VI', sdFontFamilyName='', readerTapTipHidden=1)
+    base = dict(language='VI', sdFontFamilyName='', readerTapTip=0)
     (sd / '.crosspoint/settings.json').write_text(json.dumps({**base, **(settings or {})}))
     (sd / '.crosspoint/recent.json').write_text(json.dumps({'books': books}))
     env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}

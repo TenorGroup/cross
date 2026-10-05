@@ -457,6 +457,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     v.push_back(SettingInfo::Enum(StrId::STR_BACK_TAP_ZONE, &CrossPointSettings::backTapZone,
                           {StrId::STR_PERCENT_15, StrId::STR_PERCENT_20, StrId::STR_PERCENT_25, StrId::STR_PERCENT_33},
                           "backTapZone", StrId::STR_CAT_CONTROLS));
+    v.push_back(SettingInfo::Toggle(StrId::STR_READER_TAP_TIP, &CrossPointSettings::readerTapTip, "readerTapTip",
+                                    StrId::STR_CAT_CONTROLS));
     // Persisted under the legacy "tapForReaderMenu" key: old saves map
     // 0 = Off, 1 = Tap.
     v.push_back(SettingInfo::Enum(StrId::STR_SHOW_READER_MENU, &CrossPointSettings::showReaderMenu,
@@ -686,8 +688,10 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
       (s.nameId == StrId::STR_TOUCH_READER_CONTROLS || s.nameId == StrId::STR_NEXT_PAGE_GESTURE ||
        s.nameId == StrId::STR_PREV_PAGE_GESTURE || s.nameId == StrId::STR_BACK_TAP_ZONE))
     return true;
-  // X4 Pro only (#3089); the frontlight double-click shortcut needs its I2C frontlight.
-  if (!BoardConfig::isX4Pro() && s.nameId == StrId::STR_DBL_CLICK_PWR_LIGHT) return true;
+  // X4 Pro only (#3089); the frontlight double-click shortcut needs its I2C frontlight. The tap-zone tip is
+  // the touch shell's.
+  if (!BoardConfig::isX4Pro() && (s.nameId == StrId::STR_DBL_CLICK_PWR_LIGHT || s.nameId == StrId::STR_READER_TAP_TIP))
+    return true;
   // Home button shortcuts (#3516) need a physical Home key.
   if (!BoardConfig::hasHomeKey() && home_button::isSetting(s.valuePtr)) return true;
   // Khong co den nen thi hai dong do ngoi khong. X3 va X4 khai NO_FRONTLIGHT,
