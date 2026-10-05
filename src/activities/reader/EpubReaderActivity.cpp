@@ -4048,8 +4048,8 @@ void EpubReaderActivity::renderOverlay() {
       const int footer = UITheme::getInstance().getMetrics().buttonHintsHeight;
       renderer.fillRect(0, renderer.getScreenHeight() - footer, renderer.getScreenWidth(), footer, false);
       const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT),
-          tr(overlay == Overlay::Toolbar ? STR_DIR_LEFT : STR_DIR_UP),
-          tr(overlay == Overlay::Toolbar ? STR_DIR_RIGHT : STR_DIR_DOWN));
+          overlay == Overlay::Toolbar ? tr(STR_DIR_LEFT) : tr(STR_DIR_UP),
+          overlay == Overlay::Toolbar ? tr(STR_DIR_RIGHT) : tr(STR_DIR_DOWN));
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
       renderer.setOrientation(orientation);
     }
