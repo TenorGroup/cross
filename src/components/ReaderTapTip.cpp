@@ -3,6 +3,7 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 
+#include <algorithm>
 #include <string>
 
 #include "TenorMenuChrome.h"
@@ -16,7 +17,7 @@ constexpr int LINE = 3;
 
 // A label in a white pill over the page, centred on (cx, cy); split on its middle space when wider than
 // maxWidth. On a gray plane only its box is cleared, so the page's grays stay out of it.
-void label(const GfxRenderer& r, const bool plane, const char* text, const int cx, const int cy, const int maxWidth) {
+void label(const GfxRenderer& r, const bool plane, const char* text, int cx, const int cy, const int maxWidth) {
   constexpr int font = UI_12_FONT_ID, padX = 14, padY = 8;
   std::string a = text, b;
   if (r.getTextWidth(font, text) > maxWidth - 2 * padX) {
@@ -29,7 +30,9 @@ void label(const GfxRenderer& r, const bool plane, const char* text, const int c
   const int lh = r.getLineHeight(font);
   const int tw = std::max(r.getTextWidth(font, a.c_str()), b.empty() ? 0 : r.getTextWidth(font, b.c_str()));
   const int w = tw + 2 * padX, h = lh * (b.empty() ? 1 : 2) + 2 * padY;
-  const int x = cx - w / 2, y = cy - h / 2;
+  // A label wider than its zone (a narrow back column) stays on the screen.
+  const int x = std::max(4, std::min(cx - w / 2, r.getScreenWidth() - 4 - w)), y = cy - h / 2;
+  cx = x + w / 2;
   r.fillRect(x, y, w, h, plane);
   if (plane) return;
   tenorchrome::drawPillRing(r, x, y, w, h, 2, false);
@@ -81,8 +84,10 @@ void readertip::draw(const GfxRenderer& r) {
   r.fillRect(button.x, button.y, button.w, button.h, plane);
   if (plane) return;
   tenorchrome::drawPillRing(r, button.x, button.y, button.w, button.h, 3, false);
-  constexpr int font = UI_12_FONT_ID;
-  const std::string text = r.truncatedText(font, tr(STR_TIP_DONT_SHOW), button.w - 32);
+  // The button's words in the label font, or the small one when a wide back column narrows it.
+  const char* words = tr(STR_TIP_DONT_SHOW);
+  const int font = r.getTextWidth(UI_12_FONT_ID, words) <= button.w - 24 ? UI_12_FONT_ID : SMALL_FONT_ID;
+  const std::string text = r.truncatedText(font, words, button.w - 24);
   r.drawText(font, button.x + (button.w - r.getTextWidth(font, text.c_str())) / 2,
              button.y + (button.h - r.getLineHeight(font)) / 2, text.c_str());
 }
