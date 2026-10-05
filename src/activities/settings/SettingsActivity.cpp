@@ -711,7 +711,7 @@ bool SettingsActivity::applySettingValue(const int row, const uint8_t value, con
     if (!shell::isUgly()) requestUpdate();
     return false;
   }
-  saveSettings(!shell::isUgly());
+  if (valuePtr != &CrossPointSettings::uiShell) saveSettings(!shell::isUgly());
   noteValue(setting.nameId);
   // Ordinary value commits keep the form's previous pencil marks. Only a
   // structural shell change rebuilds the catalog; UI size changes geometry.

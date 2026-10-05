@@ -15,18 +15,29 @@
 
 static bool persistOk = true;
 static unsigned writes = 0, errors = 0;
-void CrossPointSettings::toJson(JsonDocument& doc) const { doc["test"] = deviceName; }
+struct SavedShellTuple { uint8_t shell = 255, sleep = 255, memo = 255; } savedShellTuple;
+void CrossPointSettings::toJson(JsonDocument& doc) const {
+  doc["test"] = deviceName;
+  doc["uiShell"] = uiShell;
+  doc["sleepScreen"] = sleepScreen;
+  doc["uiShellSleepMemo"] = uiShellSleepMemo;
+}
 // The settings constructor is defined in src/CrossPointSettings.cpp, outside this slice;
 // it only lays the tenor/cross setup over the member initializers, as this one does.
 CrossPointSettings::CrossPointSettings() { applyTenorPreset(); }
-bool PersistableStoreBase::writeDocToFile(const char*, const JsonDocument&) {
+bool PersistableStoreBase::writeDocToFile(const char*, const JsonDocument& doc) {
   ++writes;
+  if (persistOk) savedShellTuple = {doc["uiShell"].as<uint8_t>(), doc["sleepScreen"].as<uint8_t>(),
+                                   doc["uiShellSleepMemo"].as<uint8_t>()};
   return persistOk;
 }
 #undef LOG_ERR
 #define LOG_ERR(...) (++errors)
 
-struct RenderLock {};
+struct RenderLock {
+  RenderLock() = default;
+  template<class T> explicit RenderLock(T&) {}
+};
 // Run the production shell change below against the same persistence counter.
 namespace shell {
 enum class Kind : uint8_t { Cross = 0, Ugly = 1 };
@@ -39,11 +50,12 @@ void changed();
 namespace ugly {
 template <class R, class I> inline std::unique_ptr<int> makeSwitchConfirm(R&, I&) { return nullptr; }
 }  // namespace ugly
+struct HalDisplay { enum RefreshMode { FAST_REFRESH }; };
 struct GfxRenderer {
   unsigned clears = 0, displayed = 0, popups = 0, popupAtDisplay = 0;
   void clearScreen() { ++clears; popups = 0; }
   int getScreenWidth() const { return 528; }
-  void displayBuffer() { ++displayed; popupAtDisplay = popups; }
+  void displayBuffer(HalDisplay::RefreshMode = HalDisplay::FAST_REFRESH) { ++displayed; popupAtDisplay = popups; }
 };
 struct MappedInputManager {
   enum class Button { Confirm, Back };
@@ -62,6 +74,7 @@ struct WiFiBoundary {
   void disconnect(bool) {}
 } WiFi;
 void delay(unsigned long) {}
+unsigned long millis() { return 0; }
 void silentRestartToSettings() {}
 struct GuiBoundary {
   std::string lastPopup;
@@ -98,7 +111,7 @@ struct ActivityResult { bool isCancelled = false; std::variant<KeyboardResult, I
 enum class InputType { Text };
 struct ChildBoundary { template<class... Args> explicit ChildBoundary(Args&&...) {} };
 namespace ugly {
-std::unique_ptr<ChildBoundary> makeSwitchConfirm(GfxRenderer&, MappedInputManager&) {
+std::unique_ptr<ChildBoundary> makeSwitchConfirm(GfxRenderer&, MappedInputManager&, bool = false) {
   return std::make_unique<ChildBoundary>();
 }
 }
@@ -148,6 +161,15 @@ struct SettingsActivity {
   PopupBoundary optionPopup;
   PopupBoundary rowMenu;
 #include "State.inc"
+  // Paint and quip boundaries; persistence runs the actual shared production methods.
+  struct FormBoundary { void paint(GfxRenderer&, MappedInputManager&) {} } form_;
+  std::atomic<bool> formPinFailed_{false}, formPaintReady_{false};
+  std::atomic<uint32_t> formVisibleSurface_{0};
+  uint32_t formSurface_ = 0;
+  struct FormRowBoundary { int selected = 0; };
+  static FormRowBoundary formRow(void*, int) { return {}; }
+  void prepareFormQuip(int, int) {}
+  void bindForm() {}
   bool fromHomeGroup = false;
   bool releaseListsForFontDownload_ = false;
   unsigned finished = 0, home = 0, updates = 0, rebuilds = 0;
@@ -183,7 +205,8 @@ struct SettingsActivity {
   template<class T> void startActivityForResult(std::unique_ptr<T>, std::function<void(const ActivityResult&)> cb) {
     childCallback = std::move(cb);
   }
-  bool saveSettings();
+#include "SaveDeclaration.inc"
+  bool applySettingValue(int row, uint8_t value, bool shellConfirmed = false);
   bool handleButtons();
   void toggleCurrentSetting();
   void noteValue(StrId name);
@@ -219,6 +242,31 @@ static bool retryAndExit(SettingsActivity& activity, bool fromHome) {
               "successful retry follows original navigation route");
   activity.render(RenderLock{});
   ok &= check(activity.renderer.popupAtDisplay == 0, "successful retry clears error popup");
+  return ok;
+}
+static bool shellSaveOrderProbe(unsigned& scenarios) {
+  bool ok = true;
+  for (const bool toUgly : {true, false}) {
+    SettingsActivity activity;
+    SETTINGS.uiShell = static_cast<uint8_t>(toUgly ? shell::Kind::Cross : shell::Kind::Ugly);
+    SETTINGS.sleepScreen = toUgly ? CrossPointSettings::QUOTE : CrossPointSettings::UGLY;
+    SETTINGS.uiShellSleepMemo = toUgly ? 0 : CrossPointSettings::QUOTE + 1;
+    savedShellTuple = {};
+    row(activity, SettingInfo::Enum(StrId::STR_UI_SHELL, &CrossPointSettings::uiShell,
+         {StrId::STR_SHELL_CROSS, StrId::STR_SHELL_UGLY}));
+    persistOk = true;
+    const unsigned writesBefore = writes;
+    activity.toggleCurrentSetting();
+    ok &= check(static_cast<bool>(activity.childCallback), "both shell directions ask confirmation");
+    if (activity.childCallback) activity.childCallback(ActivityResult{});
+    ok &= check(writes == writesBefore + 1, "both confirmed shell directions persist once");
+    const auto expectedShell = static_cast<uint8_t>(toUgly ? shell::Kind::Ugly : shell::Kind::Cross);
+    const auto expectedSleep = toUgly ? CrossPointSettings::UGLY : CrossPointSettings::QUOTE;
+    const uint8_t expectedMemo = toUgly ? CrossPointSettings::QUOTE + 1 : 0;
+    ok &= check(savedShellTuple.shell == expectedShell && savedShellTuple.sleep == expectedSleep &&
+                savedShellTuple.memo == expectedMemo, "persisted shell/sleep/memo tuple is settled in both directions");
+    ++scenarios;
+  }
   return ok;
 }
 int main() {
@@ -340,6 +388,7 @@ int main() {
     ok &= failureShown(activity, "sleep timeout callback save failure visible");
     ++scenarios;
   }
+  ok &= shellSaveOrderProbe(scenarios);
   std::printf("%u scenarios; writes=%u; logged_errors=%u; %s\n", scenarios,writes,errors,ok ? "GREEN" : "RED");
   return ok ? 0 : 1;
 }

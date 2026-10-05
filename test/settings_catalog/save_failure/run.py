@@ -19,6 +19,8 @@ parser.add_argument('--output', type=pathlib.Path, required=True)
 parser.add_argument('--baseline-dir', type=pathlib.Path)
 parser.add_argument('--baseline-ref')
 parser.add_argument('--sanitize', action='store_true')
+parser.add_argument('--settings-source', type=pathlib.Path,
+                    help='Extract SettingsActivity.cpp from an isolated production candidate')
 args = parser.parse_args()
 ROOT = args.repo.resolve()
 OUT = args.output.resolve()
@@ -60,6 +62,8 @@ for mode in modes:
                 return (args.baseline_dir / ('before-' + pathlib.Path(path).name)).read_text()
             return subprocess.check_output(
                 ['git', 'show', f'{args.baseline_ref}:{path}'], cwd=ROOT, text=True)
+        if args.settings_source and path == 'src/activities/settings/SettingsActivity.cpp':
+            return args.settings_source.resolve().read_text()
         return (ROOT / path).read_text()
 
     paths = ['src/activities/settings/SettingsActivity.h',
@@ -92,10 +96,16 @@ for mode in modes:
                   'void SettingsActivity::render(RenderLock&&)']
     if 'bool SettingsActivity::showWakeHint() const' in source:
         signatures.insert(0, 'bool SettingsActivity::showWakeHint() const')
-    if 'bool SettingsActivity::saveSettings()' in source:
-        signatures.insert(0, 'bool SettingsActivity::saveSettings()')
-    (output / 'Methods.inc').write_text(''.join(method_slice(source, signature)
-                                               for signature in signatures))
+    if 'bool SettingsActivity::applySettingValue(' in source:
+        signatures.insert(0, 'bool SettingsActivity::applySettingValue(')
+    if 'bool SettingsActivity::saveSettings(' in source:
+        signatures.insert(0, 'bool SettingsActivity::saveSettings(')
+    methods = ''.join(method_slice(source, signature) for signature in signatures)
+    (output / 'Methods.inc').write_text(methods)
+    save_declaration = ('bool saveSettings(bool repaint = true);'
+                        if 'bool SettingsActivity::saveSettings(const bool repaint)' in source
+                        else 'bool saveSettings();')
+    (output / 'SaveDeclaration.inc').write_text(save_declaration + '\n')
     shell_source = sources['src/shells/Shell.cpp']
     settle = ('namespace {\n' + method_slice(shell_source, 'void settle()') + '}\n'
               if 'void settle()' in shell_source else '')

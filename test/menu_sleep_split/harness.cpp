@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include <BoardConfig.h>
@@ -22,7 +23,6 @@ namespace menucustom {
 State& state() { static State data; return data; }
 bool save() { return true; }
 }
-struct RenderLock { template<class T> explicit RenderLock(T&) {} };
 struct SettingsActivity {
   // Same shape as freeink::ui::ListNav: the selection is atomic (read by the render task).
   struct Cursor { std::atomic<int> selected{0}; bool followOnBuild=false; };
@@ -42,7 +42,11 @@ struct SettingsActivity {
   }
   std::vector<SettingInfo>& danhSachCuaThe(settingstabs::Tab);
   static bool listedAsRow(const SettingInfo& setting);
-  void rebuildSettingsLists();
+  struct FormBoundary { void invalidate() {} } form_;
+  std::atomic<bool> formPaintReady_{false};
+  void bindForm() {}
+  void focusForm(int) {}
+  void rebuildSettingsLists(bool lockHeld = false);
   std::string favoriteKey(int) const;
   int focusFavorite(const std::string&);
 };

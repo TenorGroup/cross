@@ -7,6 +7,7 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#include <optional>
 #include <string>
 #include <vector>
 #include <BoardConfig.h>
@@ -49,6 +50,7 @@ void operator delete[](void* p, size_t) noexcept { ::operator delete(p); }
 #include "Boundaries.inc"
 namespace fui = freeink::ui;
 namespace shell {
+bool isUgly() { return false; }
 bool uglyOffered() { return false; }
 const char* uglyLimitNote() { return ""; }
 }
@@ -68,12 +70,13 @@ struct FontDownloadActivity {
   void onWifiSelectionComplete(bool);
 };
 struct RenderLock {
-  FontDownloadActivity& owner;
-  explicit RenderLock(FontDownloadActivity& value) : owner(value) {
-    if(owner.locked) std::abort();
-    owner.locked = true; ++mem::renderLockDepth;
+  FontDownloadActivity* owner = nullptr;
+  explicit RenderLock(FontDownloadActivity& value) : owner(&value) {
+    if(owner->locked) std::abort();
+    owner->locked = true; ++mem::renderLockDepth;
   }
-  ~RenderLock() { owner.locked = false; --mem::renderLockDepth; }
+  template<class T> explicit RenderLock(T&) { ++mem::renderLockDepth; }
+  ~RenderLock() { if (owner) owner->locked = false; --mem::renderLockDepth; }
 };
 namespace obfuscation {
 String obfuscateToBase64(const std::string& s) { return String(s.c_str()); }
@@ -90,6 +93,10 @@ struct SettingsActivity {
   struct Input { bool hasTouch() const { return BoardConfig::hasTouch(); } } mappedInput;
   int renderer = 0;
   int selectedCategoryIndex = static_cast<int>(settingstabs::Tab::READER), settingsCount = 0;
+  struct FormBoundary { void invalidate() {} } form_;
+  std::atomic<bool> formPaintReady_{false};
+  uint8_t formCount_ = 0;
+  void bindForm() {}
   bool releaseListsForFontDownload_ = false;
   bool routingClosed = false;
   int saves = 0;
@@ -107,7 +114,7 @@ struct SettingsActivity {
   }
   std::vector<SettingInfo>& danhSachCuaThe(settingstabs::Tab);
   static bool listedAsRow(const SettingInfo& setting);
-  void rebuildSettingsLists();
+  void rebuildSettingsLists(bool lockHeld = false);
   void rebuildRowItems();
   void onPause();
   void onResume();
