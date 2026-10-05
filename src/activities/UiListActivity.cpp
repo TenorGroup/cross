@@ -517,6 +517,8 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
 void UiListActivity::renderUi() {
   tabBandDrawn = false;
   favoriteHintY = -1;
+  // Only a list built in this paint pass owns a row frame.
+  rowsFramed = false;
   UiAppHost::renderUi();
   restorePinnedRows();
   if (pageAnchorRow >= 0) {
