@@ -17,9 +17,12 @@ from ugly_common import Card, digest, entered, ink, notebook_pages
 # Provenance from the levels branch: these are full-frame digests, not row-crop goldens.
 FULL_FRAME_DIGEST_PROVENANCE = {0: '3fa2d2da5c50a849f2b24a4990c78312f9af4167a2e0c5a5ba8dfedc91caa4d5',
                               1: 'e92c78c75b96f6f709a5fb10211a05fc549ab991c36832fcb7a0eb860c6aa78d'}
-# Integrated row-crop goldens preserve the visually accepted layout crop.
-CUT_NAMES_DIGEST = {0: '64d3af8f5885b61e760915a07254f604410358e57adeffdd96011ad7f6815b15',
-                    1: 'e92f6e1c25c754bb25c78e0b42d29d93abbaff70f550c7ef590b0491df9e8b00'}
+# Exact filename and footer ROIs extracted from the approved 2657717e level images.
+# Filename rows follow the pen rule; the footer stays at absolute screen coordinates.
+CUT_NAMES_DIGEST = {0: '4ceb94c798848fdcd9728fd1c95b585188535453f5b83ccb870f7cbcdc0ce25f',
+                    1: 'c01a09e1713b7afe52e96e0441502d554ae504394625f97b0ec4b22df2c280f4'}
+FOLDER_FOOTER_DIGEST = {0: '5c91bb60c1dc45648eb51608963ede2860000559385a21a9674c2d2957a28344',
+                      1: '6432dab3089c2773ae5470be0ff660e34fba83fb8b8be7f705909631990a6c4e'}
 # Every width from a name that fits to one cut to a few letters, with marks, and one the baked font lacks.
 LONG_NAMES = ['a.txt', 'Hành trình dài của một người.txt', 'Hành trình dài của một người đọc sách.txt',
              'Hành trình dài của một người đọc sách không bao giờ chịu đọc hết một cuốn.txt',
@@ -34,8 +37,10 @@ PAGE_ORDER = [0, 1, 4, 2, 3]  # Recent, Folder, Favorites, Stats, Settings: the 
 
 
 # Inside tenor/ugly: diary -> Settings page (edge Up) -> Display (front Right, Confirm) -> three rows back from the first:
-# night mode, the row "Độ xấu" (listed only here, under Interface), Interface. Confirm turns the shell back to tenor/cross.
-BACK_TO_THE_ROW = '1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4000:LEFT;4800:CONFIRM;7000:QUIT'
+# night mode, the row "Độ xấu" (listed only here, under Interface), Interface. The edge key moves to Cross;
+# Confirm opens the approved exit question; front Left selects Yes, Confirm returns Home.
+BACK_TO_THE_BOX = '1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4000:LEFT;4400:UP;4800:CONFIRM;'
+BACK_TO_THE_ROW = BACK_TO_THE_BOX + '5600:LEFT;6200:CONFIRM;8000:QUIT'
 
 
 class UglyShellTest(unittest.TestCase):
@@ -69,7 +74,7 @@ class UglyShellTest(unittest.TestCase):
 
     def test_the_ugliness_row_cycles_in_tenor_ugly_and_the_file_keeps_it_in_tenor_cross(self):
         # Inside tenor/ugly the row sits under Interface: from the first row of the group, two rows back.
-        to_the_row = '1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4400:CONFIRM;6000:QUIT'
+        to_the_row = '1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4000:UP;4400:CONFIRM;6000:QUIT'
         card = self.card(shell=1)
         card.run(to_the_row)
         self.assertEqual((card.settings()['uiShell'], card.settings()['uiUglyLevel']), (1, 0), 'af (the default) turns to ugly')
@@ -272,9 +277,13 @@ class UglyShellTest(unittest.TestCase):
                 def covered(y):
                     return sum(1 for x in range(48, 498) if any(page.getpixel((x, y + r)) < 128 for r in range(3)))
                 rule = next(y for y in range(120, 260) if covered(y) > 400)
-                rows = shots['folder'].crop((0, rule + 8, w, h))
+                self.assertEqual((w, h), (528, 792))
+                self.assertIn(rule, (139, 169), 'one-line or two-line daily subtitle')
+                rows = shots['folder'].crop((32, rule + 8, 528, rule + 448))
                 self.assertIsNotNone(digest_taken, 'Integrated crop golden is unmeasured; accept fresh simulator images first')
                 self.assertEqual(digest(rows), digest_taken, 'level %d' % level)
+                self.assertEqual(digest(shots['folder'].crop((0, 715, 528, 792))),
+                                 FOLDER_FOOTER_DIGEST[level], 'fixed footer, level %d' % level)
 
     def folder_rows(self, log):
         return [int(n) for n in re.findall(r'Notebook frame page=1 row=\d+ rows=(\d+)', log)]
@@ -339,7 +348,7 @@ class UglyShellTest(unittest.TestCase):
         self.assertEqual(card.settings()['sleepScreen'], 3)
 
     # Founder 04/10/2026 evening: going from tenor/cross to tenor/ugly asks first, in the pen of tenor/ugly. The pen starts
-    # on the line that says no; Back says no; coming back to tenor/cross asks nothing.
+    # on the line that says no; Back says no. Approved PHIEU.md also asks before leaving ugly.
     TO_THE_BOX = '1000:UP;2000:CONFIRM;2600:LEFT;3000:LEFT;3800:CONFIRM;'
     SWITCH_FRAME = re.compile(r'Switch frame total=(\d+)ms sel=(\d) lines=(\d+) frame=(-?\d+),(-?\d+),(-?\d+),(-?\d+) box=(-?\d+),(-?\d+),(-?\d+),(-?\d+)')
 
@@ -370,11 +379,13 @@ class UglyShellTest(unittest.TestCase):
         self.assertEqual(entered(log)[-1], 'UglyDiary', entered(log))
         self.assertEqual(card.settings()['uiShell'], 1)
 
-    def test_coming_back_to_tenor_cross_asks_nothing(self):
-        card = self.card(shell=1, sleepScreen=11)
-        log, _ = card.run(BACK_TO_THE_ROW)
-        self.assertNotIn('UglySwitch', entered(log))
-        self.assertEqual(card.settings()['uiShell'], 0)
+    def test_coming_back_to_tenor_cross_asks_and_cancel_keeps_the_shell(self):
+        for answer in ('5600:CONFIRM;', '5600:BACK;'):
+            card = self.card(shell=1, sleepScreen=11)
+            log, _ = card.run(BACK_TO_THE_BOX + answer + '7500:QUIT')
+            self.assertIn('UglySwitch', entered(log))
+            self.assertEqual([f[1] for f in self.SWITCH_FRAME.findall(log)], ['1'], 'default No')
+            self.assertEqual((card.settings()['uiShell'], card.settings()['sleepScreen']), (1, 11))
 
     def test_the_sleep_screen_is_the_doodle_and_a_line_of_abuse(self):
         a = self.card(sleepScreen=11).run('1500:SLEEP;6000:QUIT', [(5000, 'z')])
