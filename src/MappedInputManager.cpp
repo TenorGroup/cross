@@ -362,10 +362,18 @@ MappedInputManager::SwipeDir MappedInputManager::wasSwipe() const {
   }
 }
 
-bool MappedInputManager::popMultiTouchSwipe(uint8_t& contacts, int& dx, int& dy) const {
+bool MappedInputManager::touchContactsAt(uint8_t& count, int& x, int& y) const {
+  float nx = 0, ny = 0;
+  if (!gpio.touchContactsAt(count, nx, ny)) return false;
+  renderer.tapToLogical(nx, ny, x, y);
+  return true;
+}
+
+bool MappedInputManager::popMultiTouchSwipe(uint8_t& contacts, int& dx, int& dy, unsigned long* durationMs) const {
   float nxs = 0, nys = 0, nxe = 0, nye = 0;
-  unsigned long durationMs = 0;
-  if (!gpio.popMultiTouchSwipe(contacts, nxs, nys, nxe, nye, durationMs)) return false;
+  unsigned long ms = 0;
+  if (!gpio.popMultiTouchSwipe(contacts, nxs, nys, nxe, nye, ms)) return false;
+  if (durationMs) *durationMs = ms;
   ++touchContactGeneration_;
   int sx = 0, sy = 0, ex = 0, ey = 0;
   renderer.tapToLogical(nxs, nys, sx, sy);

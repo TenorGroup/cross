@@ -10,6 +10,8 @@
 #include <Wire.h>
 #include <XteinkDetect.h>
 #include <esp_sleep.h>
+
+#include <algorithm>
 #include <esp_timer.h>
 
 #include <atomic>
@@ -443,6 +445,24 @@ bool HalGPIO::wasTouchActivity() const { return inputMgr.wasTouchActivity(); }
 bool HalGPIO::popMultiTouchSwipe(uint8_t& contacts, float& sx, float& sy, float& ex, float& ey,
                                 unsigned long& durationMs) {
   return inputMgr.popMultiTouchSwipe(contacts, sx, sy, ex, ey, durationMs);
+}
+
+bool HalGPIO::touchContactsAt(uint8_t& count, float& nx, float& ny) const {
+  const auto snap = inputMgr.getTouchSnapshot();
+  count = snap.reportedCount;
+  if (!snap.count) return false;
+  uint32_t x = 0, y = 0;
+  for (uint8_t i = 0; i < snap.count; ++i) {
+    x += snap.points[i].point.x;
+    y += snap.points[i].point.y;
+  }
+  // The SDK's normalization for taps (InputManager::normalizeTouchPoint), over the raw range.
+  const auto& t = BoardConfig::ACTIVE.touch;
+  const float w = t.rawMaxX > t.rawMinX ? t.rawMaxX - t.rawMinX : 1;
+  const float h = t.rawMaxY > t.rawMinY ? t.rawMaxY - t.rawMinY : 1;
+  nx = std::min(1.0f, x / (snap.count * w));
+  ny = std::min(1.0f, y / (snap.count * h));
+  return true;
 }
 
 void HalGPIO::setSharedConfirmPowerShortPressEmitsPower(const bool enabled) {

@@ -63,6 +63,10 @@ bool HalGPIO::isTouchHeldAt(float&, float&) const { return false; }
 unsigned long HalGPIO::lastTouchHeldMs() const { return 0; }
 void HalGPIO::suppressTouchContact() {}
 bool HalGPIO::wasSwipe(float&, float&, float&, float&) const { return false; }
+bool HalGPIO::touchContactsAt(uint8_t& count, float&, float&) const {
+  count = 0;
+  return false;
+}
 bool HalGPIO::popMultiTouchSwipe(uint8_t& contacts, float& sx, float& sy, float& ex, float& ey, unsigned long& ms) {
   if (!faketest::multiQueued) return false;
   faketest::multiQueued = false;

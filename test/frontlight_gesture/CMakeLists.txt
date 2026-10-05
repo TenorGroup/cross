@@ -40,3 +40,4 @@ target_include_directories(frontlight_cancel PRIVATE "${REPO_ROOT}/freeink-sdk/l
 add_test(NAME FrontlightGesture.cancel COMMAND frontlight_cancel)
 target_sources(frontlight_cancel PRIVATE "${REPO_ROOT}/freeink-sdk/libs/ui/FreeInkUI/src/FreeInkUI.cpp")
 add_test(NAME FrontlightGesture.deferred_home COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_deferred_home.py")
+add_test(NAME FrontlightGesture.live_light COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_live_light.py")
