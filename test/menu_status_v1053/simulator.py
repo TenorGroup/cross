@@ -123,7 +123,8 @@ def case(program,profile,output,shell,orientation,tier):
         font_box=(32,h-336,w-32,h-276)  # Second row is outside both first and last selection.
     else:
         # Page indicator differs only when the viewport moves, independently of the cursor.
-        rows=[y for y in range(38,h-150) if sum(p<128 for p in first.crop((0,y,w,y+1)).getdata())>w*0.95]
+        # Landscape sheets reserve the physical footer on one side, so the rule is narrower than the screen.
+        rows=[y for y in range(h-150) if sum(p<128 for p in first.crop((0,y,w,y+1)).getdata())>w*0.75]
         assert rows,'font panel edge missing'
         title_h=(33,38,43)[tier]
         font_box=(w-100,rows[0]+40,w-16,rows[0]+40+title_h)
