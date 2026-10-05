@@ -113,7 +113,8 @@ def panel_case(folder, shell):
     save(folder,('recent','panel','after-home'),images)
     assert persisted(folder)['frontlightBrightness']==75, 'closing panel restored stale brightness'
     assert persisted(folder)['frontlightOn']==1, 'closing panel restored stale off state'
-    box=(50,48,480,128) if shell else (0,24,480,180)
+    # Below the status strip (32 px): its clock changes when a run crosses a minute.
+    box=(50,48,480,128) if shell else (0,32,480,180)
     assert list(images[0].crop(box).getdata())==list(images[2].crop(box).getdata()), 'panel bottom swipe stopped below Home'
 
 
