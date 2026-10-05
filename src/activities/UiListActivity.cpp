@@ -473,7 +473,7 @@ void UiListActivity::drawRowFrame() {
   if (n.top > 0) fadeBand(renderer, first.y, TOP_BAND, true);
   if (count < listCount()) {
     const int y0 = last.y + last.height;
-    const int bottom = renderer.getScreenHeight() - tenorchrome::footBackReserve();
+    const int bottom = std::min(renderer.getScreenHeight() - tenorchrome::footBackReserve(), rowFrameFloor);
     fadeBand(renderer, y0, std::min(BOTTOM_BAND_MAX, bottom - y0), false);
   }
 }
@@ -507,6 +507,7 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
     pageAnchorRow = kepConTro(activeNav().selected, listCount());
     activeNav().followOnBuild = false;
   }
+  rowFrameFloor = screen.body().y + screen.body().height;
   activeNav().syncToProps(screen.body(), rowHeight, rowGap, listCount(), props);
 
   activeNav().selected = kepConTro(activeNav().selected, listCount());

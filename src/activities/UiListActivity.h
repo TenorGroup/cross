@@ -76,6 +76,9 @@ class UiListActivity : public Activity, protected UiAppHost {
   void frameRows(freeink::ui::ListProps& props);
   void drawRowFrame();
   bool rowsFramed = false;
+  // Foot of the list body the rows were laid out in: the fade under the last full row stops there, above any
+  // chrome under the list (the touch tab bar).
+  int rowFrameFloor = 0;
   // Rows a page turn keeps from the page before: the faded first row of a framed list.
   int fadeKeepRows() const { return rowsFramed ? 1 : 0; }
   bool rowsHaveIcons = false;
