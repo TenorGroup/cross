@@ -133,9 +133,9 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
 
     @staticmethod
     def buoc_mo_bo_cuc():
-        # Home Settings mo the He thong. Len hai nhip sang Doc, Chon dong dau
-        # mo Cai dat van ban o the Ho font, roi xuong hai nhip sang Bo cuc.
-        return ["DOWN"] * 4 + ["RIGHT"] * 6 + ["CONFIRM"] + ["UP"] * 2 + ["CONFIRM"] + ["DOWN"] * 2
+        # Home Settings: Hien thi, Ngu, Trinh doc. Mo thang nhom Trinh doc,
+        # Chon dong dau mo Cai dat van ban, roi xuong hai nhip sang Bo cuc.
+        return ["DOWN"] * 4 + ["RIGHT"] * 2 + ["CONFIRM", "CONFIRM"] + ["DOWN"] * 2
 
     def anh_status(self, ten):
         with Image.open(ART / (ten + ".bmp")) as source:

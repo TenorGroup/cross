@@ -26,7 +26,7 @@ HEART_LEFT_MARGIN_GAP = 1  # white columns between the pin mark and the ring (th
 
 
 class ConTroVienTest(unittest.TestCase):
-    def run_sim(self, script, shots, settings=None, files=8, epub=False, saved_quotes=False):
+    def run_sim(self, script, shots, settings=None, files=8, epub=False, saved_quotes=False, expected_activity=None):
         tmp = tempfile.mkdtemp(prefix='cross-con-tro-vien-')
         self.addCleanup(shutil.rmtree, tmp, True)
         sd = Path(tmp)
@@ -63,6 +63,11 @@ class ConTroVienTest(unittest.TestCase):
         result = subprocess.run([str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=90)
         log = result.stdout + result.stderr
         self.assertEqual(result.returncode, 0, log[-4000:])
+        if expected_activity is not None:
+            activities = [line.split("Entering activity: ", 1)[1].strip()
+                          for line in log.splitlines() if "Entering activity: " in line]
+            self.assertTrue(activities, log[-4000:])
+            self.assertEqual(activities[-1], expected_activity, log[-4000:])
         return {label: Image.open(sd / f'{label}.bmp').convert('L') for _, label in shots}
 
     def check_pill(self, image, name, label_free_x=None, mirrored=False, bounds=(14, None), top=120):
@@ -108,8 +113,9 @@ class ConTroVienTest(unittest.TestCase):
                 self.assertLessEqual(right, im['a'].width - 16)
 
     def test_option_popup_buttons(self):
-        im = self.run_sim('800:DOWN;1600:DOWN;2400:DOWN;3200:DOWN;3800:RIGHT;4400:RIGHT;5000:CONFIRM;'
-                          '6300:CONFIRM;7600:DOWN;8700:QUIT', [(7300, 'a'), (8300, 'b')])
+        im = self.run_sim('800:DOWN;1600:DOWN;2400:DOWN;3200:DOWN;3800:RIGHT;5000:CONFIRM;'
+                          '6300:CONFIRM;7600:DOWN;8700:QUIT', [(7300, 'a'), (8300, 'b')], expected_activity='Settings')
+        # Home Settings row 1 is Sleep; its first row opens the sleep-screen popup.
         # The popup is a narrower, centred column: its buttons are pills too.
         a, left, right = self.check_pill(im['a'], 'popup-a', bounds=POPUP_BOUNDS)
         b, _, _ = self.check_pill(im['b'], 'popup-b', bounds=POPUP_BOUNDS)
@@ -127,9 +133,11 @@ class ConTroVienTest(unittest.TestCase):
         self.assertLess(max(heart) + HEART_LEFT_MARGIN_GAP, left, 'pin mark touches the ring')
 
     def test_icon_row_with_subtitle_keeps_off_the_ring(self):
-        # Settings, Send file: rows with an icon and a second line of text.
-        im = self.run_sim('800:DOWN;1600:DOWN;2400:DOWN;3200:DOWN;3800:CONFIRM;5000:RIGHT;5800:QUIT',
-                          [(5500, 'a')])['a']
+        # Home Settings row 5 is Send file, after the 5 reading groups.
+        # Network mode rows have an icon and a second line of text.
+        im = self.run_sim('800:DOWN;1600:DOWN;2400:DOWN;3200:DOWN;3800:RIGHT;4400:RIGHT;5000:RIGHT;'
+                          '5600:RIGHT;6200:RIGHT;6800:CONFIRM;8000:RIGHT;8800:QUIT',
+                          [(8500, 'a')], expected_activity='NetworkModeSelection')['a']
         band, left, right = self.check_pill(im, 'icon-row', label_free_x=right_probe(im))
         px = im.load()
         mid = (band[0] + band[1]) // 2
