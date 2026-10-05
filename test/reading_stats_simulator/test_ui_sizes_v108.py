@@ -179,8 +179,8 @@ class UiSizesV108Test(unittest.TestCase):
             t.key("RIGHT")
         t.key("CONFIRM").shot("habits").key("BACK")
         t.key("DOWN").shot("home-settings").key("CONFIRM").shot("display")
-        # Refresh frequency (row 5) is the Display row that opens a popup.
-        t.key("RIGHT", 5).key("CONFIRM").shot("popup").key("RIGHT").shot("popup-next").key("LEFT").key("CONFIRM")
+        # Refresh frequency is Display row 7, after the clock placement and battery rows.
+        t.key("RIGHT", 6).key("CONFIRM").shot("popup").key("RIGHT").shot("popup-next").key("LEFT").key("CONFIRM")
         t.key("RIGHT", 2).shot("display-last").key("RIGHT")
         # Motion sensor sits between Controls and System: Device is six groups down, Reader four up.
         t.key("DOWN", 6).shot("device").key("RIGHT").key("CONFIRM").shot("keyboard")
@@ -263,7 +263,7 @@ class UiSizesV108Test(unittest.TestCase):
         glyph_heights = []
         for tier in (1, 2, 0):
             # Each process starts at Home. A single Confirm cycles the size row.
-            t = Timeline().key("UP").key("RIGHT").key("CONFIRM").shot("before")
+            t = Timeline().key("UP").key("CONFIRM").shot("before")
             t.key("CONFIRM").shot("after").key("BACK").key("DOWN").shot("home-after")
             images, log = self.run_sim(sd, output, f"set-{tier}", t)
             self.assertIn("Exiting activity: Settings", log)

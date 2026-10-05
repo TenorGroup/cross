@@ -774,7 +774,10 @@ void HomeActivity::buildScreen(UiScreen& screen) {
   // Leave the cover tile's band to drawChrome(); the list starts under it.
   if (activeTabId == Tab::RECENT) screen.takeTop(static_cast<int16_t>(metrics.homeCoverTileHeight));
 
-  if (activeTabId == Tab::STATS) screen.takeTop(static_cast<int16_t>(statsPanelHeight() + 12));
+  if (activeTabId == Tab::STATS) {
+    // Keep the panel's 12 px top inset and 8 px of white space before the list border.
+    screen.takeTop(static_cast<int16_t>(statsPanelHeight() + 12 + 8));
+  }
 
   if (activeTabId == Tab::FAVORITES && rowItems.empty()) {
     // The tip names front buttons, which the touch shell has none of.
