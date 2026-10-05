@@ -69,7 +69,8 @@ namespace {
 //      <ul>/<ol> containers contribute their own margins/padding to child insets;
 //      Hangul words wrap at spaces (with hyphenation on they may also split at a
 //      line end) and justification no longer stretches between syllables.
-constexpr uint8_t SECTION_FILE_VERSION = 55;
+// v56: Preserve paragraph continuity and top spacing across soft flushes.
+constexpr uint8_t SECTION_FILE_VERSION = 56;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects

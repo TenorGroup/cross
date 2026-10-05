@@ -732,7 +732,8 @@ void ParsedText::ensureRubyCapacity() {
 }
 
 int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer& renderer, const int fontId) const {
-  if (!isFirstLine || !isNaturalAlign) {
+  // A soft flush already laid out this paragraph's first line: its later chunks start mid-paragraph.
+  if (extractedLines > 0 || !isFirstLine || !isNaturalAlign) {
     return 0;
   }
   const int spaces = readerSpacing::indentSpaces(paragraphIndent);

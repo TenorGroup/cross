@@ -158,6 +158,8 @@ class ParsedText {
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   BlockStyle& getBlockStyle() { return blockStyle; }
   size_t size() const { return words.size(); }
+  // Lines this block already laid out; above 0 after a soft flush placed the start of the paragraph.
+  size_t linesExtracted() const { return extractedLines; }
   bool isEmpty() const { return words.empty(); }
   bool layoutAndExtractLines(const GfxRenderer& renderer, int fontId, uint16_t viewportWidth,
                              const std::function<void(std::unique_ptr<TextBlock>, uint32_t)>& processLine,

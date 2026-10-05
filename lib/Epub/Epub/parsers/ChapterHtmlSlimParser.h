@@ -222,7 +222,7 @@ class ChapterHtmlSlimParser {
   void finishTableRow();
   void addTableRowSeparator();
   void setCurrentPageVisibleOffset(uint32_t offset);
-  void makePages();
+  void makePages(bool includeLastLine = true);
   void flushTextIfOverBudget();
   bool createPage();
   bool emitCurrentPage();
