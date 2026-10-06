@@ -105,7 +105,7 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   const char* options[] = {tr(STR_CANCEL), tr(STR_UPDATE)};
   // Default the selection to Update so the hardware Confirm button installs,
   // matching the pre-popup layout (Back = cancel, Confirm = update).
-  confirmPopup.show(tr(STR_NEW_UPDATE), options, 2, tenorchrome::kTouchShell ? -1 : 1, [this](const int idx) {
+  confirmPopup.show(tr(STR_NEW_UPDATE), options, 2, 1, [this](const int idx) {
     // Update: this session's heap is short of Wi-Fi plus a 16 KB TLS record in one piece
     // (measured failing 10 of 10 from Home), so onExit restarts and the next boot installs.
     restartIntoInstall = idx == 1;
