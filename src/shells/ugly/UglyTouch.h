@@ -205,6 +205,29 @@ inline int scribbleRow(const int x, const int y, const int rowsShown) {
   return h.spot == Spot::Row && h.row < rowsShown ? h.row : -1;
 }
 
+// ---- what a scribble does to the row it lands on ----
+// The one place for the rule: the page asks it on a scribble, the hint asks it before teaching.
+enum class Sheet : unsigned char { Folder, Recent, Favorites, Other };
+enum class Mark : unsigned char { Erase, Keep };  // an X, a ring
+enum class Act : unsigned char { None, TogglePin, Unpin, AskDelete, NotHere };
+inline Act scribbleAct(const Sheet sheet, const Mark mark, const bool deletableFile) {
+  switch (sheet) {
+    case Sheet::Folder:
+      return mark == Mark::Keep ? Act::TogglePin : deletableFile ? Act::AskDelete : Act::NotHere;
+    case Sheet::Recent:
+      return mark == Mark::Keep ? Act::TogglePin : Act::NotHere;
+    case Sheet::Favorites:  // every row is pinned: either mark takes it off
+      return Act::Unpin;
+    case Sheet::Other:
+      break;
+  }
+  return Act::None;
+}
+// The hint "an X bins it, a ring pins it" (STR_UGLY_X4_HINT_GESTURE) shows only on a page where both hold.
+inline bool hintHolds(const Sheet sheet) {
+  return scribbleAct(sheet, Mark::Erase, true) == Act::AskDelete && scribbleAct(sheet, Mark::Keep, false) == Act::TogglePin;
+}
+
 // The hint under the title teaches the two scribbles until each has been used once: two bits.
 inline constexpr unsigned USED_CROSS = 1, USED_RING = 2;
 inline bool teachScribbles(const unsigned used) { return (used & (USED_CROSS | USED_RING)) != (USED_CROSS | USED_RING); }

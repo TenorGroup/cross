@@ -131,6 +131,24 @@ TEST(TouchScribble, TheHintStaysUntilBothHaveBeenUsed) {
   EXPECT_FALSE(teachScribbles(USED_CROSS | USED_RING));
 }
 
+TEST(TouchScribble, WhatAMarkDoesToTheRow) {
+  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Erase, true), Act::AskDelete);
+  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Erase, false), Act::NotHere) << "a folder row is not binned";
+  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Keep, false), Act::TogglePin);
+  EXPECT_EQ(scribbleAct(Sheet::Recent, Mark::Keep, false), Act::TogglePin);
+  EXPECT_EQ(scribbleAct(Sheet::Recent, Mark::Erase, false), Act::NotHere);
+  EXPECT_EQ(scribbleAct(Sheet::Favorites, Mark::Erase, false), Act::Unpin) << "an X takes a favourite off";
+  EXPECT_EQ(scribbleAct(Sheet::Favorites, Mark::Keep, false), Act::Unpin);
+  EXPECT_EQ(scribbleAct(Sheet::Other, Mark::Erase, true), Act::None);
+}
+
+TEST(TouchScribble, TheHintOnlyWhereItIsTrue) {
+  EXPECT_TRUE(hintHolds(Sheet::Folder));
+  EXPECT_FALSE(hintHolds(Sheet::Recent)) << "an X bins nothing on Recent";
+  EXPECT_FALSE(hintHolds(Sheet::Favorites)) << "a ring pins nothing on Favorites";
+  EXPECT_FALSE(hintHolds(Sheet::Other));
+}
+
 }  // namespace
 
 // ---- the lines of abuse ----

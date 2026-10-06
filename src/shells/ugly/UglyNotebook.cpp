@@ -357,7 +357,20 @@ constexpr const char* SCRIBBLES_FILE = "/.crosspoint/ugly-scribbles.txt";
 using touch::ROW;
 using touch::rowTop;
 constexpr int ASK_WIDTH = 400;
-constexpr homerows::Page TEACH_PAGES[] = {homerows::Page::Folder, homerows::Page::Recent, homerows::Page::Favorites};
+// The pages a scribble acts on; a group of settings is none of them.
+touch::Sheet sheetOf(const homerows::Page page, const int group) {
+  if (group >= 0) return touch::Sheet::Other;
+  switch (page) {
+    case homerows::Page::Folder:
+      return touch::Sheet::Folder;
+    case homerows::Page::Recent:
+      return touch::Sheet::Recent;
+    case homerows::Page::Favorites:
+      return touch::Sheet::Favorites;
+    default:
+      return touch::Sheet::Other;
+  }
+}
 }  // namespace
 
 int Notebook::askLines(const bool shellAsk) const {
@@ -568,7 +581,7 @@ void Notebook::doJob() {
 // ---- touches on the page ----
 bool Notebook::onTouch(const Key key) {
   if (want != page) return false;
-  const bool lists = std::find(std::begin(TEACH_PAGES), std::end(TEACH_PAGES), page) != std::end(TEACH_PAGES) && group < 0;
+  const bool lists = sheetOf(page, group) != touch::Sheet::Other;
   switch (key) {
     case Key::SwipeLeft:
       return group < 0 && onKey(Key::Right);
@@ -634,13 +647,15 @@ bool Notebook::onTouch(const Key key) {
         scribbles |= used;
         scribblesChanged = true;
       }
-      if (key == Key::Ring) {
+      bool folder = false;
+      const bool file = !pathOf(row, folder).empty() && !folder;
+      const touch::Act act = touch::scribbleAct(sheetOf(page, group), key == Key::Ring ? touch::Mark::Keep : touch::Mark::Erase, file);
+      if (act == touch::Act::TogglePin || act == touch::Act::Unpin) {  // on Favorites the pin job takes the row off
         job = Job::Pin;
         jobRow = row;
         return false;  // the frame follows the card work
       }
-      bool folder = false;
-      if (page != homerows::Page::Folder || pathOf(row, folder).empty() || folder) {
+      if (act != touch::Act::AskDelete) {
         said = tr(STR_UGLY_X4_NOT_HERE);
         return true;
       }
@@ -746,10 +761,10 @@ void Notebook::renderTouch() {
     snprintf(number, sizeof(number), "%d/%d", pos + 1, homerows::PAGE_COUNT);
     text(renderer, Size::S22, touch::TEXT_R - width(renderer, Size::S22, number), touch::TITLE_BASE - 16, number);
   }
-  const bool lists = std::find(std::begin(TEACH_PAGES), std::end(TEACH_PAGES), page) != std::end(TEACH_PAGES) && group < 0;
+  const bool lists = sheetOf(page, group) != touch::Sheet::Other;
   const char* sub = !said.empty() ? said.c_str()
                     : group >= 0 ? I18N.get(settingstabs::tenThe(static_cast<settingstabs::Tab>(group)))
-                    : lists && touch::teachScribbles(scribbles) ? tr(STR_UGLY_X4_HINT_GESTURE)
+                    : touch::hintHolds(sheetOf(page, group)) && touch::teachScribbles(scribbles) ? tr(STR_UGLY_X4_HINT_GESTURE)
                                                                 : nullptr;
   if (!sub && !jab.empty()) sub = jab.c_str();
   if (!sub) sub = I18N.get(SUBTITLES[id(page)]);
