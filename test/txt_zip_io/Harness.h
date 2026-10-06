@@ -209,6 +209,9 @@ struct GfxRenderer {
 struct Gui { void drawPopup(GfxRenderer&, const char*) {} } inline GUI;
 constexpr int STR_INDEXING = 0;
 inline const char* tr(int) { return "indexing"; }
+// The indexing notice comes through the voice of the shell (readerugly::notice); here it is the plain string.
+namespace StrId { constexpr int STR_INDEXING = ::STR_INDEXING; }
+namespace readerugly { inline const char* notice(int id) { return tr(id); } }
 
 inline size_t chunkAllocations = 0;
 inline size_t failChunkAllocationAt = 0;

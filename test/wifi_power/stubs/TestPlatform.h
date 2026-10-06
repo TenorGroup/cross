@@ -50,6 +50,18 @@ enum StrId {
   STR_SELECT,
   STR_SHOW_NETWORKS,
   STR_TO_PREFIX,
+  STR_UGLY_WIFI_CONNECTED,
+  STR_UGLY_WIFI_CONNECTING,
+  STR_UGLY_WIFI_FAILED,
+  STR_UGLY_WIFI_SCANNING,
+  STR_UGLY_WIFI_TIP,
+  STR_UGLY_WIFI_NONE,
+  STR_UGLY_WIFI_SAVE_ASK,
+  STR_UGLY_WIFI_SAVE_YES,
+  STR_UGLY_WIFI_SAVE_NO,
+  STR_UGLY_WIFI_FORGET_ASK,
+  STR_UGLY_WIFI_FORGET_YES,
+  STR_UGLY_WIFI_FORGET_NO,
   STR_WIFI_NETWORKS,
   STR_WIFI_NOT_IN_RANGE,
   STR_YES,
@@ -106,6 +118,7 @@ class GfxRenderer {
   int getScreenHeight() const { return 800; }
   int getLineHeight(int) const { return 20; }
   int getTextWidth(int, const char*) const { return 20; }
+  void drawText(int, int, int, const char*) const {}
   FontCacheManager* getFontCacheManager() { return &cache; }
 };
 
@@ -204,6 +217,7 @@ struct Rect {
   int16_t y = 0;
   int16_t width = 480;
   int16_t height = 800;
+  bool empty() const { return width <= 0 || height <= 0; }
 };
 struct Insets {
   int16_t top, right, bottom, left;
@@ -335,9 +349,14 @@ class FakeUiApp {
   void setScreen(Callback, void*) {}
   void clearTapFlash() {}
   bool invalidated() const { return false; }
+  freeink::ui::Rect publishedRect(int, int16_t) const { return {}; }
+};
+struct FakeUiTarget {
+  void setPaintingEnabled(bool) {}
 };
 class UiAppHost {
  protected:
+  FakeUiTarget uiTarget;
   FakeUiApp app;
   explicit UiAppHost(GfxRenderer&) {}
   // The production X3 chrome compiles out this touch-only branch.
@@ -526,6 +545,7 @@ inline esp_err_t esp_read_mac(uint8_t* mac, int) {
   std::fill(mac, mac + 6, 1);
   return ESP_OK;
 }
+inline const char* defaultNetworkName() { return "tenor-cross"; }
 inline void deviceNetworkName(char* out, size_t size, const char* fallback) { std::snprintf(out, size, "%s", fallback); }
 struct FakeEsp {
   unsigned getFreeHeap() const { return 100000; }

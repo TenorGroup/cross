@@ -3,6 +3,7 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -11,6 +12,8 @@
 #include "CrossPointSettings.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 #include "util/DictHtmlPages.h"
 #include "util/HtmlToPlainText.h"
 
@@ -272,12 +275,28 @@ void DictionaryDefinitionActivity::render(RenderLock&&) {
 
   // Header: matched headword left, page counter right.
   const int headerY = contentY + metrics.topPadding + 10;
-  renderer.drawText(UI_12_FONT_ID, contentX + SIDE_PADDING, headerY, headword.c_str(), true, EpdFontFamily::BOLD);
-  if (totalPages > 1) {
-    char counter[16];
-    snprintf(counter, sizeof(counter), "%d/%d", currentPage + 1, totalPages);
-    const int counterWidth = renderer.getTextWidth(UI_10_FONT_ID, counter);
-    renderer.drawText(UI_10_FONT_ID, contentX + contentWidth - SIDE_PADDING - counterWidth, headerY, counter);
+  if (shell::uglyParts()) {
+    // tenor/ugly on the button readers: the headword written by hand and underlined, the page count beside it. The
+    // definition below keeps the reading font, as the body of a book does.
+    char counter[16] = "";
+    if (totalPages > 1) snprintf(counter, sizeof(counter), "%d/%d", currentPage + 1, totalPages);
+    const int cw = counter[0] ? ugly::width(renderer, ugly::Size::S22, counter) : 0;
+    const int x = contentX + SIDE_PADDING, right = contentX + contentWidth - SIDE_PADDING, base = headerY + 34;
+    const std::string word = ugly::fit(renderer, ugly::Size::S38, headword, right - x - cw - 16);
+    const int ww = ugly::text(renderer, ugly::Size::S38, x, base, word.c_str());
+    ugly::underline(renderer, x, x + ww, base + 10, 860, 2);
+    if (cw) ugly::text(renderer, ugly::Size::S22, right - cw, base, counter);
+#ifdef UGLY_FRAME_LOG
+    LOG_INF("UGLY", "Definition frame page=%d/%d", currentPage + 1, totalPages);
+#endif
+  } else {
+    renderer.drawText(UI_12_FONT_ID, contentX + SIDE_PADDING, headerY, headword.c_str(), true, EpdFontFamily::BOLD);
+    if (totalPages > 1) {
+      char counter[16];
+      snprintf(counter, sizeof(counter), "%d/%d", currentPage + 1, totalPages);
+      const int counterWidth = renderer.getTextWidth(UI_10_FONT_ID, counter);
+      renderer.drawText(UI_10_FONT_ID, contentX + contentWidth - SIDE_PADDING - counterWidth, headerY, counter);
+    }
   }
 
   // Body: two-pass draw inside a prewarm scope (same pattern as the reader's

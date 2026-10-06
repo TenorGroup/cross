@@ -64,6 +64,7 @@ class OtaUpdateActivity : public Activity {
 
   void onWifiSelectionComplete(bool success);
   void runUpdateInstall();
+  bool renderUglyNote(int percent, bool firstProgressFrame) const;
   // One line in the card's OTA log, after the result screen is drawn (now: it already is).
   void recordAttempt(const char* op, bool now = false);
   bool idleExitDue(unsigned long now, bool interaction);

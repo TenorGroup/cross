@@ -15,6 +15,8 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 
 namespace quotetext {
 std::string clipped(const std::string& text, const size_t limit) {
@@ -429,9 +431,19 @@ void QuoteDetailActivity::drawQuote() {
   const auto m = metrics();
   char position[24];
   snprintf(position, sizeof(position), "%d/%d", index + 1, static_cast<int>(ids.size()));
-  renderer.drawText(POSITION_FONT_ID,
-                    quotedetail::headerPositionRight(m) - renderer.getTextWidth(POSITION_FONT_ID, position),
-                    headerTextY(renderer, POSITION_FONT_ID), position);
+  // tenor/ugly on the button readers: the count and the facts under the quote written by hand; the quoted words keep
+  // their book font.
+  const bool byHand = shell::uglyParts();
+  const auto hand = [this](const int fontId, const int x, const int y, const char* text, const ugly::Size size) {
+    return ugly::text(renderer, size, x, y + renderer.getFontAscenderSize(fontId), text);
+  };
+  if (byHand)
+    hand(POSITION_FONT_ID, quotedetail::headerPositionRight(m) - ugly::width(renderer, ugly::Size::S22, position),
+         headerTextY(renderer, POSITION_FONT_ID), position, ugly::Size::S22);
+  else
+    renderer.drawText(POSITION_FONT_ID,
+                      quotedetail::headerPositionRight(m) - renderer.getTextWidth(POSITION_FONT_ID, position),
+                      headerTextY(renderer, POSITION_FONT_ID), position);
 
   const int font = size18 ? NOTOSERIF_18_FONT_ID : NOTOSERIF_16_FONT_ID;
   const int lineHeight = size18 ? m.lineHeight18 : m.lineHeight16;
@@ -457,8 +469,18 @@ void QuoteDetailActivity::drawQuote() {
     if (!lastPage) tenorchrome::drawMoreBelowChevron(renderer);
     if (!lastPage || !loaded) continue;
     const auto meta = quotedetail::metaBlock(m, static_cast<int16_t>(y));
-    renderer.fillRect(meta.x, meta.ruleY, quotedetail::META_RULE_WIDTH, quotedetail::META_RULE_HEIGHT);
     const int titleStep = renderer.getLineHeight(TITLE_FONT_ID);
+    if (byHand) {
+      ugly::line(renderer, meta.x, meta.ruleY, meta.x + quotedetail::META_RULE_WIDTH, meta.ruleY - 1, 890, 2);
+      for (size_t i = 0; i < titleLines.size(); ++i)
+        hand(TITLE_FONT_ID, meta.x, meta.titleY + static_cast<int>(i) * titleStep, titleLines[i].c_str(), ugly::Size::S30);
+      const int extra = titleLines.size() > 1 ? static_cast<int>(titleLines.size() - 1) * titleStep : 0;
+      hand(META_FONT_ID, meta.x, meta.chapterY + extra, chapter.c_str(), ugly::Size::S22);
+      hand(META_FONT_ID, meta.x, meta.whenY + extra, when.c_str(), ugly::Size::S22);
+      hand(META_FONT_ID, meta.x, meta.pageY + extra, ugly::fit(renderer, ugly::Size::S22, pageLine, metaWidth).c_str(), ugly::Size::S22);
+      continue;
+    }
+    renderer.fillRect(meta.x, meta.ruleY, quotedetail::META_RULE_WIDTH, quotedetail::META_RULE_HEIGHT);
     for (size_t i = 0; i < titleLines.size(); ++i) {
       renderer.drawText(TITLE_FONT_ID, meta.x, meta.titleY + static_cast<int>(i) * titleStep, titleLines[i].c_str(),
                         true, EpdFontFamily::ITALIC);
@@ -500,6 +522,9 @@ void QuoteDetailActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_QUOTES_OPTIONS), hasPrevious ? tr(STR_DIR_LEFT) : "",
                                             hasNext ? tr(STR_DIR_RIGHT) : "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+#ifdef UGLY_FRAME_LOG
+  if (shell::uglyParts()) LOG_INF("UGLY", "QuoteDetail frame quote=%d page=%d", index, quotePage);
+#endif
   if (failure) {
     // drawPopup lays its box over the frame and refreshes the panel itself.
     GUI.drawPopup(renderer, failure);

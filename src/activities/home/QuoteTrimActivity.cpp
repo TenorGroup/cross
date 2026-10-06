@@ -11,6 +11,8 @@
 #include "QuoteDetailActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 
 namespace {
 
@@ -199,6 +201,7 @@ void QuoteTrimActivity::render(RenderLock&&) {
   const int firstLine = firstShownLine();
   const int shownLines = std::min(perArea, lineCount - firstLine);
   const int top = areaTop();
+  const bool byHand = shell::uglyParts();
 
   char keep[48];
   snprintf(keep, sizeof(keep), tr(STR_QUOTES_TRIM_KEEP), last - first + 1, static_cast<int>(words.size()));
@@ -220,25 +223,37 @@ void QuoteTrimActivity::render(RenderLock&&) {
         int width = word.width;
         const bool nextDropped = index + 1 < static_cast<int>(words.size()) && (index + 1 < first || index + 1 > last);
         if (nextDropped && words[i + 1].line == word.line) width = words[i + 1].x - word.x;
-        renderer.fillRect(word.x, y + ascender * 7 / 10, width, STRIKE_HEIGHT);
+        if (byHand) ugly::line(renderer, word.x, y + ascender * 7 / 10 + 1, word.x + width, y + ascender * 7 / 10 - 1, 900 + index, 2);
+        else renderer.fillRect(word.x, y + ascender * 7 / 10, width, STRIKE_HEIGHT);
       }
-      if (index == active)
-        renderer.fillRect(word.x, y + ascender + UNDERLINE_GAP, word.width, UNDERLINE_HEIGHT);
+      if (index == active) {
+        if (byHand) ugly::underline(renderer, word.x, word.x + word.width, y + ascender + UNDERLINE_GAP + 2, 905, 3);
+        else renderer.fillRect(word.x, y + ascender + UNDERLINE_GAP, word.width, UNDERLINE_HEIGHT);
+      }
     }
+    // tenor/ugly on the button readers: the count, the end being moved and the keys written by hand; the words of
+    // the quote keep their book font.
+    const auto line = [&](const int fontId, const int y, const char* text) {
+      if (byHand) ugly::text(renderer, ugly::Size::S22, TEXT_X0, y + renderer.getFontAscenderSize(fontId), text);
+      else renderer.drawText(fontId, TEXT_X0, y, text);
+    };
     int y = top + shownLines * lineHeight + STATUS_GAP;
-    renderer.drawText(STATUS_FONT_ID, TEXT_X0, y, keep);
+    line(STATUS_FONT_ID, y, keep);
     y += renderer.getLineHeight(STATUS_FONT_ID) + STATUS_STEP_PAD;
-    renderer.drawText(STATUS_FONT_ID, TEXT_X0, y, moving);
+    line(STATUS_FONT_ID, y, moving);
     y += renderer.getLineHeight(STATUS_FONT_ID) + STATUS_STEP_PAD + HELP_GAP;
     for (const char* help : {tr(STR_QUOTES_TRIM_HELP_MOVE), tr(STR_QUOTES_TRIM_HELP_SWITCH), tr(STR_QUOTES_TRIM_HELP_BACK)}) {
-      renderer.drawText(HELP_FONT_ID, TEXT_X0, y, help);
-      y += renderer.getLineHeight(HELP_FONT_ID);
+      line(HELP_FONT_ID, y, help);
+      y += byHand ? std::max(renderer.getLineHeight(HELP_FONT_ID), 30) : renderer.getLineHeight(HELP_FONT_ID);
     }
   }
 
   // Back discards the trim, so its hint says Cancel rather than showing the Back symbol.
   const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_QUOTES_SAVE), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+#ifdef UGLY_FRAME_LOG
+  if (byHand) LOG_INF("UGLY", "QuoteTrim frame first=%d last=%d end=%d", first, last, movingEnd);
+#endif
   if (failure) {
     // drawPopup lays its box over the frame and refreshes the panel itself.
     GUI.drawPopup(renderer, failure);

@@ -13,6 +13,8 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyNote.h"
 
 void KOReaderAuthActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {
@@ -92,6 +94,16 @@ void KOReaderAuthActivity::onExit() {
 }
 
 void KOReaderAuthActivity::render(RenderLock&&) {
+  if (shell::uglyParts()) {
+    const char* line = state == SUCCESS  ? tr(STR_UGLY_KOSYNC_OK)
+                       : state == FAILED ? tr(STR_UGLY_KOSYNC_FAILED)
+                                         : statusMessage.c_str();
+    ugly::Hints hints;
+    hints.back = true;
+    ugly::notePage(renderer, mappedInput, mode == Mode::SIGN_UP ? tr(STR_SIGN_UP) : tr(STR_KOREADER_AUTH), line,
+                   state == FAILED && !errorMessage.empty() ? errorMessage.c_str() : nullptr, -1, hints);
+    return;
+  }
   renderer.clearScreen();
 
   const auto& metrics = UITheme::getInstance().getMetrics();

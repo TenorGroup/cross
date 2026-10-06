@@ -4,10 +4,14 @@
 #include <HalStorage.h>
 #include <I18n.h>
 
+#include <string>
+
 #include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
 #include "components/UITheme.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyNote.h"
 
 namespace fui = freeink::ui;
 
@@ -118,6 +122,7 @@ void UsbDriveActivity::loop() {
 }
 
 void UsbDriveActivity::render(RenderLock&&) {
+  if (shell::uglyParts()) return renderUgly();
   renderer.clearScreen();
 
   const auto& metrics = UITheme::getInstance().getMetrics();
@@ -137,32 +142,57 @@ void UsbDriveActivity::driveScreen(UiScreen& screen, void* user) {
   static_cast<UsbDriveActivity*>(user)->buildDriveScreen(screen);
 }
 
-void UsbDriveActivity::buildDriveScreen(UiScreen& screen) const {
-  const char* message = nullptr;
-  const char* detail = nullptr;
-  const char* secondaryDetail = nullptr;
+bool UsbDriveActivity::texts(const char*& message, const char*& detail, const char*& secondaryDetail) const {
+  message = detail = secondaryDetail = nullptr;
   if (preparing) {
     message = tr(STR_USB_DRIVE_PREPARING);
     detail = tr(STR_USB_DRIVE_EJECT_HINT);
-  } else {
-    switch (state) {
-      case State::WaitingForHost:
-        message = tr(STR_USB_DRIVE_WAITING);
-        break;
-      case State::Connected:
-        message = tr(STR_USB_DRIVE_CONNECTED);
-        detail = tr(STR_USB_DRIVE_CONNECT_DELAY);
-        secondaryDetail = tr(STR_USB_DRIVE_EJECT_HINT);
-        break;
-      case State::IoError:
-        message = startFailed ? tr(STR_USB_DRIVE_START_ERROR) : tr(STR_USB_DRIVE_ERROR);
-        break;
-      case State::Ejected:
-      case State::Disconnected:
-      case State::Unsupported:
-        return;
+    return true;
+  }
+  switch (state) {
+    case State::WaitingForHost:
+      message = tr(STR_USB_DRIVE_WAITING);
+      return true;
+    case State::Connected:
+      message = tr(STR_USB_DRIVE_CONNECTED);
+      detail = tr(STR_USB_DRIVE_CONNECT_DELAY);
+      secondaryDetail = tr(STR_USB_DRIVE_EJECT_HINT);
+      return true;
+    case State::IoError:
+      message = startFailed ? tr(STR_USB_DRIVE_START_ERROR) : tr(STR_USB_DRIVE_ERROR);
+      return true;
+    case State::Ejected:
+    case State::Disconnected:
+    case State::Unsupported:
+      break;
+  }
+  return false;
+}
+
+// tenor/ugly: the same words on a note page, the whole instruction written by hand so nothing is cut short.
+void UsbDriveActivity::renderUgly() const {
+  const char* message;
+  const char* detail;
+  const char* secondaryDetail;
+  std::string said;
+  if (texts(message, detail, secondaryDetail)) {
+    said = message;
+    for (const char* more : {detail, secondaryDetail}) {
+      if (!more) continue;
+      said += said.back() == '.' || said.back() == '!' || said.back() == '?' ? " " : ". ";  // one sentence after another
+      said += more;
     }
   }
+  ugly::Hints hints;
+  hints.back = state == State::WaitingForHost || startFailed;
+  ugly::notePage(renderer, mappedInput, tr(STR_USB_DRIVE), said.empty() ? nullptr : said.c_str(), nullptr, -1, hints);
+}
+
+void UsbDriveActivity::buildDriveScreen(UiScreen& screen) const {
+  const char* message;
+  const char* detail;
+  const char* secondaryDetail;
+  if (!texts(message, detail, secondaryDetail)) return;
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   screen.setContentMarginFromScreen(fui::Insets{

@@ -26,6 +26,8 @@
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
 #include "network/WebDavReplace.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyNote.h"
 
 namespace fui = freeink::ui;
 
@@ -944,7 +946,8 @@ void FontDownloadActivity::buildScreen(UiScreen& screen) {
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   if (state_ == FAMILY_LIST && filteredIndices_.empty()) {
-    screen.centeredText(tr(STR_NO_FONTS_AVAILABLE), screen.theme().bodyText);
+    screen.centeredText(I18N.get(shell::uglyParts() ? StrId::STR_UGLY_FONT_EMPTY : StrId::STR_NO_FONTS_AVAILABLE),
+                        screen.theme().bodyText);
     return;
   }
 
@@ -1139,23 +1142,90 @@ std::string FontDownloadActivity::formatSize(size_t bytes) {
   return buf;
 }
 
+// The waits of this screen as notes. The two lists wait for the shared ugly list.
+bool FontDownloadActivity::renderUglyNote() const {
+  char line[160];
+  std::string detail;
+  int percent = -1;
+  ugly::Hints hints;
+  hints.back = true;
+  switch (state_) {
+    case LOADING_MANIFEST:
+      snprintf(line, sizeof(line), "%s", tr(STR_UGLY_FONT_LOADING));
+      hints.back = false;
+      break;
+    case DOWNLOADING:
+      snprintf(line, sizeof(line), tr(STR_UGLY_FONT_DOWNLOADING), str(families_[downloadingFamilyIndex_].name),
+               static_cast<int>(currentFileIndex_ + 1), static_cast<int>(currentFileTotal_));
+      if (fileTotal_ > 0) {
+        percent = static_cast<int>(static_cast<uint64_t>(fileProgress_) * 100 / fileTotal_);
+      } else {
+        detail = formatSize(fileProgress_);
+      }
+      break;
+    case COMPLETE:
+      snprintf(line, sizeof(line), "%s", tr(STR_UGLY_FONT_DONE));
+      break;
+    case ERROR:
+      snprintf(line, sizeof(line), "%s", tr(STR_UGLY_FONT_FAILED));
+      detail = errorMessage_;
+      hints.confirm = true;
+      break;
+    default:
+      return false;
+  }
+  ugly::notePage(renderer, mappedInput, tr(STR_FONT_BROWSER), line, detail.empty() ? nullptr : detail.c_str(), percent,
+                 hints);
+  return true;
+}
+
+const char* FontDownloadActivity::headerSubtitle() {
+  if (state_ != FAMILY_LIST || !hasGroupScreen()) return nullptr;
+  const int scriptGroupIndex = groupNav_.selected - 1;
+  return scriptGroupIndex >= 0 && scriptGroupIndex < static_cast<int>(scriptGroupLabels_.size())
+             ? str(scriptGroupLabels_[scriptGroupIndex])
+             : tr(STR_ALL_FONTS);
+}
+
+void FontDownloadActivity::drawChrome() {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
+                 tr(STR_FONT_BROWSER), headerSubtitle());
+}
+
+void FontDownloadActivity::drawListHints() {
+  if (state_ == GROUP_LIST) {
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    return;
+  }
+  const bool hasVisibleFamilies = !filteredIndices_.empty();
+  const char* confirmLabel = !hasVisibleFamilies            ? ""
+                             : isSelectedFamilyDeletable()  ? tr(STR_DELETE)
+                             : isUpdateAllRow(nav.selected) ? tr(STR_UPDATE)
+                                                            : tr(STR_DOWNLOAD);
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, hasVisibleFamilies ? tr(STR_DIR_UP) : "",
+                                            hasVisibleFamilies ? tr(STR_DIR_DOWN) : "");
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
 void FontDownloadActivity::render(RenderLock&&) {
   progressRenderGate_.renderStarted();
+  if (shell::uglyParts() && renderUglyNote()) return;
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
+  // The two lists by hand: the layout keeps its words and the shared skin writes them.
+  if ((state_ == GROUP_LIST || state_ == FAMILY_LIST) && renderUglyList()) {
+    renderer.displayBuffer();
+    return;
+  }
+
   renderer.clearScreen();
 
-  const char* headerSubtitle = nullptr;
-  if (state_ == FAMILY_LIST && hasGroupScreen()) {
-    const int scriptGroupIndex = groupNav_.selected - 1;
-    headerSubtitle = scriptGroupIndex >= 0 && scriptGroupIndex < static_cast<int>(scriptGroupLabels_.size())
-                         ? str(scriptGroupLabels_[scriptGroupIndex])
-                         : tr(STR_ALL_FONTS);
-  }
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_FONT_BROWSER),
-                 headerSubtitle);
+  const char* headerSubtitle = this->headerSubtitle();
+  drawChrome();
 
   const auto lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   const auto contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
@@ -1177,19 +1247,10 @@ void FontDownloadActivity::render(RenderLock&&) {
     renderer.drawCenteredText(UI_10_FONT_ID, centerY, tr(STR_LOADING_FONT_LIST));
   } else if (state_ == GROUP_LIST) {
     renderFontList();
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    drawListHints();
   } else if (state_ == FAMILY_LIST) {
     renderFontList();
-
-    const bool hasVisibleFamilies = !filteredIndices_.empty();
-    const char* confirmLabel = !hasVisibleFamilies            ? ""
-                               : isSelectedFamilyDeletable()  ? tr(STR_DELETE)
-                               : isUpdateAllRow(nav.selected) ? tr(STR_UPDATE)
-                                                              : tr(STR_DOWNLOAD);
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, hasVisibleFamilies ? tr(STR_DIR_UP) : "",
-                                              hasVisibleFamilies ? tr(STR_DIR_DOWN) : "");
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    drawListHints();
   } else if (state_ == DOWNLOADING) {
     const auto& family = families_[downloadingFamilyIndex_];
 

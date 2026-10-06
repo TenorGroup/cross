@@ -1071,11 +1071,36 @@ var TenorI18n = (function () {
     }
   }
 
+  // tenor/ugly: the masthead takes the shell's name, in the language of the device, written by hand. The device
+  // says so in /api/status (shellName); every other part of the page stays as it is. The hand is Mansalva
+  // (SIL OFL 1.1) cut to the letters of the shell names: fontTools.subset --text="tenor/xấu-như-chó
+  // tenor/ugly-as-hell" --flavor=woff2 --layout-features='' --no-hinting.
+  var HAND_FONT = 'data:font/woff2;base64,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';
+  function dressShell() {
+    if (typeof document === 'undefined' || typeof fetch !== 'function') return;
+    fetch(withLang('/api/status')).then(function (response) {
+      return response.ok ? response.json() : null;
+    }).then(function (status) {
+      var name = status && status.shellName;
+      var mark = name && document.querySelector('.tenor-masthead .tenor-identity');
+      if (!mark) return;
+      var style = document.createElement('style');
+      style.textContent = "@font-face{font-family:TenorHand;src:url(" + HAND_FONT + ") format('woff2')}" +
+        '.tenor-identity.tenor-hand{font-family:TenorHand,cursive;font-size:26px;letter-spacing:0}';
+      document.head.appendChild(style);
+      mark.textContent = name;
+      mark.setAttribute('aria-label', name);
+      mark.className += ' tenor-hand';
+      document.title = document.title.replace('tenor/cross', name);
+    })['catch'](function () {});
+  }
+
   function init() {
     if (initialized) return current;
     initialized = true;
     current = storedLocale() || paramLocale() || DEFAULT_LOCALE;
     if (typeof document !== 'undefined') apply(document);
+    dressShell();
     return current;
   }
 

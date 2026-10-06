@@ -94,6 +94,26 @@ bool drawScreen(GfxRenderer& r) {
   return true;
 }
 
+bool drawBoot(GfxRenderer& r) {
+  const int w = r.getScreenWidth(), h = r.getScreenHeight();
+  if (!r.hasFrameBuffer() || w < CANVAS_W || h < BOOT_PICTURE_TOP + CANVAS_H + 160) return false;
+  uint8_t* pictures = unpack(sleepdata::PICTURES, sizeof(sleepdata::PICTURES), sleepdata::PICTURES_RAW);
+  if (!pictures) return false;
+  r.clearScreen();
+  const int ox = (w - CANVAS_W) / 2;
+  const bool drawn = drawPicture(pictures, sleepdata::PICTURES_RAW, BOOT_PICTURE, ox, BOOT_PICTURE_TOP,
+                                 [&](int x0, int y0, int x1, int y1, int seed, int width) { line(r, x0, y0, x1, y1, seed, width); });
+  std::free(pictures);
+  if (!drawn) return false;
+  // The name of the shell over the doodle, underlined by a shaky hand, the line of the day under it.
+  const char* name = tr(STR_SHELL_UGLY);
+  const int nameWidth = width(r, Size::S38, name);
+  text(r, Size::S38, (w - nameWidth) / 2, 88, name);
+  underline(r, (w - nameWidth) / 2 - 6, (w + nameWidth) / 2 + 6, 100, 61, 3);
+  paragraph(r, Size::S30, 40, BOOT_PICTURE_TOP + CANVAS_H + 44, w - 80, 40, tr(STR_UGLY_BOOT_LINE));
+  return true;
+}
+
 std::string wakeSentence() {
   Context c = gather();
   if (c.count == 0) c.count = kept().sleepCount;

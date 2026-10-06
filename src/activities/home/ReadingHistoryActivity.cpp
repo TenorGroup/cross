@@ -13,6 +13,8 @@
 #include "components/UIThemeTokens.h"
 #include "components/themes/TenorRadius.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 const char* ReadingHistoryActivity::headerTitle() const { return tr(STR_STATS_MONTH); }
 void ReadingHistoryActivity::onEnter() {
   RenderLock lock(*this);
@@ -79,14 +81,21 @@ int ReadingHistoryActivity::chartHeight() const { return renderer.getLineHeight(
 void ReadingHistoryActivity::drawChart() const {
   const int line = renderer.getLineHeight(SMALL_FONT_ID), left = 24, width = renderer.getScreenWidth() - 2 * left,
             pitch = width / lich30::SO_TUAN, bar = pitch / 8, base = gridTop() + gridHeight() + 4 + CHART_BAR_MAX;
-  renderer.drawLine(left, base, left + width, base, true);
+  const bool handwritten = shell::uglyParts();
+  if (handwritten) ugly::line(renderer, left, base, left + width, base - 2, 61, 2);
+  else renderer.drawLine(left, base, left + width, base, true);
   uint32_t most = 1;
   for (const uint32_t m : weekMinutes) most = std::max(most, m);
   char text[40];
   for (int k = 0; k < lich30::SO_TUAN; ++k) {
     const uint32_t m = weekMinutes[k];
     const int x = left + k * pitch + 12, height = m ? std::max<int>(2, m * CHART_BAR_MAX / most) : 0;
-    if (height) renderer.fillRect(x, base - height, bar, height);
+    if (height && handwritten) {
+      // A bar scribbled with the pen, stroke by stroke; the hours beside it stay figures.
+      for (int dx = 0; dx < bar; dx += 2) ugly::line(renderer, x + dx, base, x + dx + 1, base - height, 70 + k * 16 + dx, 2);
+    } else if (height) {
+      renderer.fillRect(x, base - height, bar, height);
+    }
     if (m >= 60)
       snprintf(text, sizeof(text), "%lu %s", static_cast<unsigned long>((m + 30) / 60), tr(STR_STATS_HOURS));
     else
@@ -102,9 +111,24 @@ void ReadingHistoryActivity::drawGrid() const {
             top = gridTop();
   constexpr Color shade[] = {Color::White, Color::LightGray, Color::DarkGray, Color::Black};
   int x = 0, y = 0;
+  const bool handwritten = shell::uglyParts();
   for (int i = 0; i < lich30::SO_O; ++i) {
     x = 24 + i % 10 * pitch + 4;
     y = top + i / 10 * pitch;
+    if (handwritten) {
+      // tenor/ugly: each day a square in 4 shaky strokes, read time hatched in: one way, both ways, then filled.
+      const uint32_t seed = 100 + i * 8;
+      ugly::line(renderer, x, y, x + side, y + 1, seed, 2);
+      ugly::line(renderer, x + side, y, x + side - 1, y + side, seed + 1, 2);
+      ugly::line(renderer, x + side, y + side, x, y + side - 1, seed + 2, 2);
+      ugly::line(renderer, x, y + side, x + 1, y, seed + 3, 2);
+      const int step = side / 4;
+      for (int k = 1; cells[i] >= 1 && k < 4; ++k) ugly::line(renderer, x + 2, y + k * step, x + k * step, y + 2, seed + 4, 1);
+      for (int k = 1; cells[i] >= 2 && k < 4; ++k)
+        ugly::line(renderer, x + side - k * step, y + 2, x + side - 2, y + k * step, seed + 5, 1);
+      if (cells[i] >= 3) renderer.fillRect(x + 4, y + 4, side - 8, side - 8, true);
+      continue;
+    }
     // One rounded block of the day's shade. Only an empty day gets a rim: grey, 2 px deep (1 px of dither
     // reads as dots), round a white cell.
     if (cells[i]) {
@@ -114,8 +138,10 @@ void ReadingHistoryActivity::drawGrid() const {
       renderer.fillRoundedRect(x + 2, y + 2, side - 4, side - 4, tenorradius::nest(radius, 2), Color::White);
     }
   }
-  // Today (the last cell drawn) wears a black frame set off by a 2 px gap, concentric with its corner.
-  renderer.drawRoundedRect(x - 3, y - 3, side + 6, side + 6, 1, tenorradius::container(radius, 3), true);
+  // Today (the last cell drawn) wears a black frame set off by a 2 px gap, concentric with its corner; a pen circle in
+  // tenor/ugly.
+  if (handwritten) ugly::circle(renderer, ugly::Circle::Object, {x, y, x + side, y + side}, 4, 4, 2);
+  else renderer.drawRoundedRect(x - 3, y - 3, side + 6, side + 6, 1, tenorradius::container(radius, 3), true);
   char text[8];
   snprintf(text, sizeof(text), "%02lu/%02lu", static_cast<unsigned long>(firstKey % 100),
            static_cast<unsigned long>(firstKey / 100 % 100));

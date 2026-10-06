@@ -5,6 +5,10 @@
 #include <cstring>
 
 #include "CrossPointSettings.h"
+#include "shells/Shell.h"
+
+// The name a device answers to when the user gave it none: tenor/ugly calls it what it is.
+inline const char* defaultNetworkName() { return shell::isUgly() ? "xau-nhu-cho" : "tenor-cross"; }
 
 // One place that answers "what is this device called on the network".
 // The Wi-Fi hostname, the mDNS name and the access-point SSID all ask here, so
@@ -13,7 +17,7 @@
 // The user's name is sanitised to an RFC 1123 host label: letters, digits and
 // hyphens only, no leading or trailing hyphen, at most 63 characters. Anything
 // else collapses to a hyphen. An empty result falls back to the caller's
-// default, so a blank setting keeps the stock behaviour.
+// default (defaultNetworkName() or a name made from it), so a blank setting keeps the stock behaviour.
 inline void deviceNetworkName(char* out, const size_t size, const char* fallback) {
   if (out == nullptr || size == 0) {
     return;

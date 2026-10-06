@@ -15,6 +15,9 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
+#include "components/TenorMenuChrome.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 
 // One hold rule, one number: a remote hold and a front-button hold skip chapters alike.
 static_assert(bleturner::kHoldMs == ReaderUtils::SKIP_HOLD_MS, "remote hold threshold drifted from the button one");
@@ -109,7 +112,7 @@ void BlePageTurnerActivity::loop() {
   readPendingKeys();
   if (bindWaitActive_ && learnCode_ == 0 && millis() - bindWaitStartedMs_ >= bleturner::kWaitMs) {
     bindWaitActive_ = false;
-    bindNotice_ = tr(STR_BLE_BIND_NONE);
+    bindNotice_ = I18N.get(shell::uglyParts() ? StrId::STR_UGLY_BLE_NONE : StrId::STR_BLE_BIND_NONE);
     LOG_INF("BLE", "Bind wait ended with no key");
     rowsDirty = true;
     requestUpdate();
@@ -147,10 +150,13 @@ uint32_t BlePageTurnerActivity::trangThaiSig() const {
 void BlePageTurnerActivity::capNhatTrangThai() {
   char failure[48];
   const bool hasFailure = backend::takeFailure(failure, sizeof(failure));
+  const bool ugly = shell::uglyParts();
+  statusInTip_ = false;
   if (backend::stopping()) {
     statusText_ = tr(STR_BLE_STOPPING);
   } else if (!backend::compiledIn()) {
-    statusText_ = tr(STR_BLE_UNAVAILABLE);
+    statusText_ = I18N.get(ugly ? StrId::STR_UGLY_BLE_UNAVAILABLE : StrId::STR_BLE_UNAVAILABLE);
+    statusInTip_ = ugly;
   } else if (!SETTINGS.ble.enabled) {
     statusText_ = tr(STR_STATE_OFF);
   } else if (backend::idleStopped()) {
@@ -160,7 +166,8 @@ void BlePageTurnerActivity::capNhatTrangThai() {
   } else if (backend::readerDeferred()) {
     // Radio co the dang chay o man nay nhung lan thu bat trong trinh doc da bi
     // hoan vi RAM - noi that thay vi hien "BAT".
-    statusText_ = tr(STR_BLE_READER_LOW_RAM);
+    statusText_ = I18N.get(ugly ? StrId::STR_UGLY_BLE_LOW_RAM : StrId::STR_BLE_READER_LOW_RAM);
+    statusInTip_ = ugly;
   } else if (!backend::running()) {
     statusText_ = tr(STR_BLE_START_FAILED);
   } else if (backend::connected()) {
@@ -227,7 +234,7 @@ void BlePageTurnerActivity::rebuildRows() {
       if (i == 0) rowItems_.back().sectionHeading = tr(STR_BLE_PAIRED_DEVICES);
     }
     if (bonds == 0) {
-      them(tr(STR_BLE_NO_DEVICES), ROW_NO_DEVICE);
+      them(I18N.get(shell::uglyParts() ? StrId::STR_UGLY_BLE_NO_DEVICE : StrId::STR_BLE_NO_DEVICES), ROW_NO_DEVICE);
       // Touch: a disabled row registers no rect, and the frame left it outside; a tap on it does nothing.
       rowItems_.back().enabled = tenorchrome::kTouchShell;
       rowItems_.back().sectionHeading = tr(STR_BLE_PAIRED_DEVICES);
@@ -263,13 +270,17 @@ bool BlePageTurnerActivity::clampAfterNav() {
 void BlePageTurnerActivity::refreshValues() {
   // Hang Trang thai: thong bao cua luot gan nut neu dang co, roi den trang thai
   // radio, va duoi cung la ma vua nhan khi man con mo.
-  statusValue_ = bindNotice_.empty() ? statusText_ : bindNotice_;
+  if (shell::uglyParts()) {
+    statusValue_ = statusInTip_ ? "" : statusText_;  // the notices and a long status go to the tip
+  } else {
+    statusValue_ = bindNotice_.empty() ? statusText_ : bindNotice_;
+  }
   if (lastRawCode_ != 0) {
     char ma[16];
     char duoi[48];
     bleturner::formatCode(ma, sizeof(ma), lastRawCode_);
     snprintf(duoi, sizeof(duoi), tr(STR_BLE_LAST_KEY), ma);
-    statusValue_ += " - ";  // gop hai manh thanh mot dong
+    if (!statusInTip_) statusValue_ += " - ";  // gop hai manh thanh mot dong
     statusValue_ += duoi;
   }
   for (size_t i = 0; i < rowItems_.size(); ++i) {
@@ -362,10 +373,10 @@ void BlePageTurnerActivity::finishLearn(const bool sawRelease, const uint32_t he
   bleturner::formatCode(ma, sizeof(ma), code);
   if (!backend::connected()) {
     // The link dropped while waiting for the release: nothing to bind it to.
-    bindNotice_ = tr(STR_BLE_BIND_NONE);
+    bindNotice_ = I18N.get(shell::uglyParts() ? StrId::STR_UGLY_BLE_NONE : StrId::STR_BLE_BIND_NONE);
     LOG_INF("BLE", "Link lost while learning %s", ma);
   } else if (bang == nullptr || !bleturner::learn(*bang, bindAction_, code, giu)) {
-    bindNotice_ = tr(STR_BLE_BIND_FULL);
+    bindNotice_ = I18N.get(shell::uglyParts() ? StrId::STR_UGLY_BLE_FULL : StrId::STR_BLE_BIND_FULL);
     LOG_INF("BLE", "Binding table full; %s not bound to %s", ma, bleturner::actionName(bindAction_));
   } else {
     SETTINGS.saveToFile();
@@ -375,7 +386,7 @@ void BlePageTurnerActivity::finishLearn(const bool sawRelease, const uint32_t he
       nut += tr(STR_BLE_BIND_HOLD);
     }
     char thongBao[64];
-    snprintf(thongBao, sizeof(thongBao), tr(STR_BLE_BIND_DONE), nut.c_str());
+    snprintf(thongBao, sizeof(thongBao), I18N.get(shell::uglyParts() ? StrId::STR_UGLY_BLE_DONE : StrId::STR_BLE_BIND_DONE), nut.c_str());
     bindNotice_ = thongBao;
     LOG_INF("BLE", "Bound %s%s to %s (held %u ms, release %d)", ma, giu ? " hold" : "",
             bleturner::actionName(bindAction_), static_cast<unsigned>(heldMs), sawRelease ? 1 : 0);
@@ -389,7 +400,7 @@ void BlePageTurnerActivity::startBindWait(const bleturner::Action action) {
   bindWaitActive_ = true;
   bindWaitStartedMs_ = millis();
   learnCode_ = 0;
-  bindNotice_ = tr(STR_BLE_BIND_WAIT);
+  bindNotice_ = I18N.get(shell::uglyParts() ? StrId::STR_UGLY_BLE_WAIT : StrId::STR_BLE_BIND_WAIT);
   LOG_INF("BLE", "Waiting for a button to bind to %s", bleturner::actionName(action));
   rowsDirty = true;
   requestUpdate();
@@ -560,6 +571,10 @@ void BlePageTurnerActivity::buildScreen(UiScreen& screen) {
     rebuildRows();
   }
   refreshValues();
+  if (shell::uglyParts()) {
+    const int lines = ugly::paragraph(renderer, ugly::Size::S22, 0, 0, renderer.getScreenWidth() - 48, 26, uglyTip(), false);
+    screen.takeBottom(static_cast<int16_t>(lines * 26 + 20));
+  }
 
   fui::ListProps props;
   props.items = rowItems_.data();
@@ -569,6 +584,20 @@ void BlePageTurnerActivity::buildScreen(UiScreen& screen) {
   props.valueInset = 8;
   syncListViewport(screen, props);
   screen.list(props);
+}
+
+const char* BlePageTurnerActivity::uglyTip() const {
+  if (!bindNotice_.empty()) return bindNotice_.c_str();
+  return statusInTip_ ? statusText_.c_str() : tr(STR_UGLY_BLE_TIP);
+}
+
+void BlePageTurnerActivity::drawFooter() {
+  UiListActivity::drawFooter();
+  if (!shell::uglyParts()) return;
+  tenorchrome::drawTip(renderer, uglyTip());
+#ifdef UGLY_FRAME_LOG
+  LOG_INF("UGLY", "BLE tip=\"%s\" status=\"%s\"", uglyTip(), statusValue_.c_str());
+#endif
 }
 
 void BlePageTurnerActivity::render(RenderLock&& lock) {

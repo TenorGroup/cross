@@ -11,6 +11,10 @@
 #include <OpdsStream.h>
 #include <WiFi.h>
 
+#include "shells/Shell.h"
+#include "shells/ugly/UglyChrome.h"
+#include "shells/ugly/UglyLayout.h"
+#include "shells/ugly/UglyNote.h"
 #include "CrossPointSettings.h"
 #include "FileTransferState.h"
 #include "MappedInputManager.h"
@@ -398,7 +402,26 @@ void OpdsBookBrowserActivity::buildStatusScreen(UiScreen& screen) {
   screen.centeredText(statusMessage.c_str(), centered);
 }
 
+// Every state but the list is a note page: loading, the download with its bar, an error with its reason.
+void OpdsBookBrowserActivity::renderUglyNote() {
+  const char* title = server.name.empty() ? tr(STR_OPDS_BROWSER) : server.name.c_str();
+  ugly::Hints hints;
+  hints.back = true;
+  if (state == BrowserState::DOWNLOADING) {
+    const int percent =
+        downloadTotal > 0 ? static_cast<int>(static_cast<uint64_t>(downloadProgress) * 100 / downloadTotal) : -1;
+    ugly::notePage(renderer, mappedInput, title, tr(STR_UGLY_OPDS_DOWNLOADING), statusMessage.c_str(), percent, hints);
+  } else if (state == BrowserState::ERROR) {
+    hints.confirm = true;
+    ugly::notePage(renderer, mappedInput, title, tr(STR_UGLY_OPDS_FAILED), errorMessage.c_str(), -1, hints);
+  } else {
+    ugly::notePage(renderer, mappedInput, title, statusMessage.c_str(), nullptr, -1, hints);
+  }
+}
+
 void OpdsBookBrowserActivity::render(RenderLock&&) {
+  const bool ugly = shell::uglyParts();
+  if (ugly && state != BrowserState::BROWSING) return renderUglyNote();
   MappedInputManager::Labels labels;
   switch (state) {
     case BrowserState::BROWSING: {
@@ -421,9 +444,16 @@ void OpdsBookBrowserActivity::render(RenderLock&&) {
   renderSettledList(listNav, [&] {
     renderer.clearScreen();
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-    renderUi();
+    if (!ugly) return renderUi();
+    // The list by hand where the layout put it, the circle on the chosen entry.
+    ugly::layoutByHand(renderer, uiTarget, [this] { renderUi(); });
+    const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(selectorIndex));
+    if (!box.empty()) uglychrome::marks(renderer, box, {true});
   });
   renderer.displayBuffer();
+#ifdef UGLY_FRAME_LOG
+  if (ugly) LOG_INF("UGLY", "OPDS list frame entries=%u sel=%d", static_cast<unsigned>(entries.size()), selectorIndex);
+#endif
 }
 
 void OpdsBookBrowserActivity::fetchFeed(const std::string& path) {

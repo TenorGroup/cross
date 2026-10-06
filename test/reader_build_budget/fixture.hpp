@@ -17,13 +17,16 @@ inline void logSink(A&&...) {}
 #define LOG_DBG(...) logSink(__VA_ARGS__)
 #define LOG_ERR(...) logSink(__VA_ARGS__)
 #define LOG_INF(...) logSink(__VA_ARGS__)
-#define STR_INDEXING 1
+constexpr int STR_INDEXING = 1;
 #define STR_PAGE_LOAD_ERROR 2
 #define STR_MEMORY_ERROR 3
-#define STR_LOADING_POPUP 4
+constexpr int STR_LOADING_POPUP = 4;
 #define UI_12_FONT_ID 12
 struct EpdFontFamily { static constexpr int BOLD = 1; };
 int tr(int n) { return n; }
+// The indexing and loading notices come through the voice of the shell (readerugly::notice); here, the plain strings.
+namespace StrId { constexpr int STR_INDEXING = ::STR_INDEXING, STR_LOADING_POPUP = ::STR_LOADING_POPUP; }
+namespace readerugly { inline int notice(int id) { return tr(id); } }
 uint32_t clockMs = 1000;
 uint32_t millis() { return clockMs; }
 int popupCount = 0, buildErrors = 0;

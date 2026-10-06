@@ -15,6 +15,7 @@
 #include "components/icons/readerToolbarIcons.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyChrome.h"
+#include "shells/ugly/UglySleep.h"
 #include "shells/ugly/UglyInk.h"
 
 namespace fui = freeink::ui;
@@ -693,6 +694,19 @@ void readerugly::paper(const GfxRenderer& r, const fui::Rect& rect) {
   ugly::line(r, rect.right() - 3, rect.y + 1, rect.right() - 1, rect.bottom() - 3, 811, 2);
   ugly::line(r, rect.right() - 1, rect.bottom() - 3, rect.x + 3, rect.bottom() - 1, 812, 2);
   ugly::line(r, rect.x + 3, rect.bottom() - 1, rect.x + 2, rect.y + 3, 813, 2);
+}
+
+const char* readerugly::notice(const StrId id) {
+  if (shell::uglyParts()) {
+    switch (id) {
+      case StrId::STR_BOOKMARK_ADDED: return tr(STR_UGLY_BOOKMARK_ADDED);
+      case StrId::STR_BOOKMARK_REMOVED: return tr(STR_UGLY_BOOKMARK_REMOVED);
+      case StrId::STR_INDEXING: return tr(STR_UGLY_INDEXING);
+      case StrId::STR_LOADING_POPUP: return ugly::loadingNotice();
+      default: break;
+    }
+  }
+  return I18N.get(id);
 }
 
 void readerugly::selected(const GfxRenderer& r, const fui::Rect& rect) {

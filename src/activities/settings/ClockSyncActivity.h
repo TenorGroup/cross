@@ -46,6 +46,7 @@ class ClockSyncActivity final : public Activity {
   bool idleTimerStarted = false;
 
   void runSync();
+  void renderUgly();
   void launchWifiSelection();
   void onWifiSelectionComplete(bool connected);
   bool idleExitDue(unsigned long now, bool interaction);

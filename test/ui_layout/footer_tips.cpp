@@ -21,7 +21,11 @@ struct Settings {
   bool hidden = false, large = false, tenorButtonSymbols = true;
   bool globalStatusBarHidden() const { return hidden; }
   bool globalStatusBarLarge() const { return large; }
+  int clockFormat = 0;
 } SETTINGS;
+// The hand-drawn key bar of tenor/ugly asks the clock; this harness measures tenor/cross only.
+namespace clockstatus { inline bool hasValidTime() { return false; } }
+struct { bool formatTime(char*, int, bool) const { return false; } } halClock;
 int normalizedUiTextSize(int value) { return value; }
 struct GPIO { bool hasTouch() const { return false; } } gpio;
 struct Metrics { int buttonHintsHeight; };

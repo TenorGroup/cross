@@ -13,6 +13,8 @@
 #include "WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyNote.h"
 #include "util/TaskWatchdog.h"
 
 namespace {
@@ -197,7 +199,57 @@ void CalibreConnectActivity::loop() {
   }
 }
 
+// The same page by hand: the steps written in pen, the network and the address in the UI font, a received file
+// with a pen-hatched bar. Starting and failing are note pages.
+void CalibreConnectActivity::renderUgly() const {
+  [[maybe_unused]] const uint32_t started = millis();
+  ugly::Hints hints;
+  hints.back = true;
+  if (state != CalibreConnectState::SERVER_RUNNING) {
+    const bool failed = state == CalibreConnectState::ERROR;
+    ugly::notePage(renderer, mappedInput, tr(STR_CALIBRE_WIRELESS),
+                   failed ? tr(STR_UGLY_CALIBRE_FAILED) : tr(STR_UGLY_CALIBRE_STARTING), nullptr, -1, hints);
+    return;
+  }
+  using ugly::Size;
+  constexpr int X = ugly::NOTE_X;
+  const int room = renderer.getScreenWidth() - X - 30;
+  ugly::notePaper(renderer, tr(STR_CALIBRE_WIRELESS));
+  const std::string where = connectedSSID + "   " + tr(STR_IP_ADDRESS_PREFIX) + connectedIP;
+  renderer.drawText(UI_10_FONT_ID, X, 100, renderer.truncatedText(UI_10_FONT_ID, where.c_str(), room).c_str());
+  int y = 170;
+  for (const StrId step : {StrId::STR_CALIBRE_INSTRUCTION_1, StrId::STR_CALIBRE_INSTRUCTION_2,
+                           StrId::STR_CALIBRE_INSTRUCTION_3, StrId::STR_CALIBRE_INSTRUCTION_4})
+    y += ugly::paragraph(renderer, Size::S22, X, y, room, 30, I18N.get(step)) * 30 + 6;
+  y += 30;
+  if (lastProgressTotal > 0 && lastProgressReceived <= lastProgressTotal) {
+    ugly::text(renderer, Size::S30, X, y, tr(STR_UGLY_CALIBRE_RECEIVING));
+    renderer.drawText(UI_10_FONT_ID, X, y + 12,
+                      renderer.truncatedText(UI_10_FONT_ID, currentUploadName.c_str(), room).c_str());
+    ugly::noteBar(renderer, y + 48,
+                  static_cast<int>(static_cast<uint64_t>(lastProgressReceived) * 100 / lastProgressTotal));
+    y += 48 + ugly::NOTE_BAR_H + 40;
+  } else {
+    ugly::paragraph(renderer, Size::S30, X, y, room, 40, tr(STR_UGLY_CALIBRE_WAITING));
+    y += 90;
+  }
+  if (lastCompleteAt > 0 && (millis() - lastCompleteAt) < 6000) {
+    const std::string msg = std::string(tr(STR_CALIBRE_RECEIVED)) + lastCompleteName;
+    renderer.drawText(UI_10_FONT_ID, X, y, renderer.truncatedText(UI_10_FONT_ID, msg.c_str(), room).c_str());
+  }
+  ugly::statusBar(renderer, mappedInput, hints);
+  renderer.displayBuffer();
+#ifdef UGLY_FRAME_LOG
+  LOG_INF("UGLY", "Calibre frame receiving=%d total=%lums heap=%u", lastProgressTotal > 0 ? 1 : 0,
+          static_cast<unsigned long>(millis() - started), ESP.getFreeHeap());
+#endif
+}
+
 void CalibreConnectActivity::render(RenderLock&&) {
+  if (shell::uglyParts() && state != CalibreConnectState::WIFI_SELECTION) {
+    renderUgly();
+    return;
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();

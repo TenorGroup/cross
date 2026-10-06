@@ -15,6 +15,8 @@
 #include "components/UIThemeTokens.h"
 #include "components/themes/TenorRadius.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 
 namespace {
 
@@ -29,6 +31,12 @@ constexpr int NUMBER_FONT_ID = UI_12_FONT_ID;
 constexpr int TOP_ROW_FONT_ID = UI_10_FONT_ID;
 constexpr int SOURCE_TITLE_FONT_ID = UI_10_FONT_ID;
 constexpr int DATE_FONT_ID = SMALL_FONT_ID;
+// tenor/ugly on the button readers: a line of the list written by hand where the font would have stood. The quoted
+// words keep their book font.
+int hand(const GfxRenderer& r, const int fontId, const int x, const int y, const char* text,
+         const ugly::Size size = ugly::Size::S22) {
+  return ugly::text(r, size, x, y + r.getFontAscenderSize(fontId), text);
+}
 // Left inset and right reserve of the header row (components/TenorMenuChrome.cpp).
 constexpr int HEADER_SIDE = 18;
 
@@ -495,6 +503,12 @@ void QuotesActivity::ensureWrapped(Block& block, const int maxLines, const int p
 void QuotesActivity::drawTopRow(const char* label) const {
   const auto row = quotelist::sortRow(topRowMetrics());
   const bool marked = selected < 0 && !tenorchrome::kTouchShell;
+  if (shell::uglyParts()) {
+    const int w = hand(renderer, TOP_ROW_FONT_ID, row.x, row.y, label);
+    if (marked) ugly::circle(renderer, ugly::Circle::Row, {row.x, row.y, row.x + w, row.y + renderer.getLineHeight(TOP_ROW_FONT_ID)}, 10, 6);
+    ugly::line(renderer, row.x, row.dividerY, row.x + row.width, row.dividerY + 1, 880);
+    return;
+  }
   if (marked) {
     const int width = renderer.getTextWidth(TOP_ROW_FONT_ID, label);
     const int pad = topRowMarkPad();
@@ -511,6 +525,7 @@ void QuotesActivity::drawBlocks() const {
   const bool twoSourceLines = !bookLevel();
   const auto shape = pageShape();
   const int placeFontId = placeFont();
+  const bool byHand = shell::uglyParts();
   auto y = quotelist::contentTop(topRowMetrics());
   const int first = page * shape.blocks;
   for (int i = 0; i < blockCount; ++i) {
@@ -524,12 +539,18 @@ void QuotesActivity::drawBlocks() const {
     // The number sits level with the quote's first line rather than at its top edge.
     const int boxY = block.numberBoxY + (m.bodyLineHeight - block.numberBoxHeight) / 2;
     const bool marked = first + i == selected && !tenorchrome::kTouchShell;
-    if (marked) {
-      drawMark(renderer, block.numberBoxX, boxY, block.numberBoxWidth, block.numberBoxHeight,
-               markRadius(block.numberBoxWidth, block.numberBoxHeight, quotelist::NUMBER_BOX_PAD));
+    if (byHand) {
+      const int nw = ugly::width(renderer, ugly::Size::S22, number), nx = block.numberBoxX + (block.numberBoxWidth - nw) / 2;
+      hand(renderer, NUMBER_FONT_ID, nx, boxY, number);
+      if (marked) ugly::circle(renderer, ugly::Circle::Object, {nx, boxY, nx + nw, boxY + block.numberBoxHeight}, 6, 2);
+    } else {
+      if (marked) {
+        drawMark(renderer, block.numberBoxX, boxY, block.numberBoxWidth, block.numberBoxHeight,
+                 markRadius(block.numberBoxWidth, block.numberBoxHeight, quotelist::NUMBER_BOX_PAD));
+      }
+      renderer.drawText(NUMBER_FONT_ID, block.numberBoxX + (block.numberBoxWidth - numberWidth) / 2, boxY, number,
+                        !onBlack(marked), EpdFontFamily::BOLD);
     }
-    renderer.drawText(NUMBER_FONT_ID, block.numberBoxX + (block.numberBoxWidth - numberWidth) / 2, boxY, number,
-                      !onBlack(marked), EpdFontFamily::BOLD);
     if (entry.readable) renderer.drawText(BODY_FONT_ID, block.hangingQuoteX, block.textY, OPEN_QUOTE);
     for (size_t line = 0; line < entry.lines.size(); ++line) {
       renderer.drawText(BODY_FONT_ID, block.textX, block.textY + static_cast<int>(line) * block.lineStep,
@@ -538,13 +559,16 @@ void QuotesActivity::drawBlocks() const {
     if (entry.readable) {
       int sourceY = block.sourceY;
       if (twoSourceLines) {
-        renderer.drawText(SOURCE_TITLE_FONT_ID, block.textX, sourceY, entry.title.c_str(), true, EpdFontFamily::BOLD);
+        if (byHand) hand(renderer, SOURCE_TITLE_FONT_ID, block.textX, sourceY, entry.title.c_str());
+        else renderer.drawText(SOURCE_TITLE_FONT_ID, block.textX, sourceY, entry.title.c_str(), true, EpdFontFamily::BOLD);
         sourceY += block.sourceStep;
       }
-      renderer.drawText(placeFontId, block.textX, sourceY, entry.place.c_str());
+      if (byHand) hand(renderer, placeFontId, block.textX, sourceY, entry.place.c_str());
+      else renderer.drawText(placeFontId, block.textX, sourceY, entry.place.c_str());
     }
     if (i + 1 < blockCount) {
-      renderer.drawLine(block.textX, block.dividerY, m.bandWidth - quotelist::RIGHT_INSET, block.dividerY);
+      if (byHand) ugly::line(renderer, block.textX, block.dividerY, m.bandWidth - quotelist::RIGHT_INSET, block.dividerY + 1, 881 + i);
+      else renderer.drawLine(block.textX, block.dividerY, m.bandWidth - quotelist::RIGHT_INSET, block.dividerY);
     }
     y = static_cast<int16_t>(y + block.height);
   }
@@ -558,6 +582,20 @@ void QuotesActivity::drawBookRows() const {
     const auto& entry = rows[i];
     const auto row = quotelist::bookRow(m, y);
     const bool marked = first + i == selected && !tenorchrome::kTouchShell;
+    if (shell::uglyParts()) {
+      char count[12];
+      snprintf(count, sizeof(count), "%d", entry.count);
+      const int cw = ugly::width(renderer, ugly::Size::S22, count);
+      hand(renderer, NUMBER_FONT_ID, row.countRightX - cw, row.countY, count);
+      const std::string title = ugly::fit(renderer, ugly::Size::S22, entry.title, row.countRightX - cw - quotelist::BOOK_ROW_PAD - row.titleX);
+      const int tw = hand(renderer, NUMBER_FONT_ID, row.titleX, row.titleY, title.c_str());
+      const int dw = hand(renderer, DATE_FONT_ID, row.dateX, row.dateY, entry.latest.c_str());
+      if (marked)  // one ring round the name and its date, as the pill of tenor/cross holds both
+        ugly::circle(renderer, ugly::Circle::Row, {row.titleX, row.titleY, row.titleX + std::max(tw, dw),
+                                                   row.dateY + renderer.getLineHeight(DATE_FONT_ID)}, 12, 6);
+      y = static_cast<int16_t>(y + row.height);
+      continue;
+    }
     // The mark covers the title and date lines only; the row's trailing gap stays white
     // so the next row does not look joined to it.
     if (marked) {
@@ -615,8 +653,13 @@ void QuotesActivity::render(RenderLock&&) {
   if (itemCount() <= 0) {
     const auto m = metrics();
     const char* label = tr(STR_QUOTES_EMPTY);
-    const int width = renderer.getTextWidth(UI_12_FONT_ID, label);
-    renderer.drawText(UI_12_FONT_ID, (m.bandWidth - width) / 2, m.bandTop + (m.bandBottom - m.bandTop) / 3, label);
+    if (shell::uglyParts()) {
+      ugly::text(renderer, ugly::Size::S30, (m.bandWidth - ugly::width(renderer, ugly::Size::S30, label)) / 2,
+                 m.bandTop + (m.bandBottom - m.bandTop) / 3 + ugly::ascent(ugly::Size::S30), label);
+    } else {
+      const int width = renderer.getTextWidth(UI_12_FONT_ID, label);
+      renderer.drawText(UI_12_FONT_ID, (m.bandWidth - width) / 2, m.bandTop + (m.bandBottom - m.bandTop) / 3, label);
+    }
   } else {
     static constexpr StrId labels[] = {StrId::STR_QUOTES_VIEW_BOOKS,  StrId::STR_QUOTES_VIEW_NEWEST,
                                        StrId::STR_QUOTES_VIEW_OLDEST, StrId::STR_QUOTES_SORT_NEWEST,
@@ -643,5 +686,8 @@ void QuotesActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), any ? tr(STR_SELECT) : "", any ? tr(STR_DIR_UP) : "",
                                             any ? tr(STR_DIR_DOWN) : "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+#ifdef UGLY_FRAME_LOG
+  if (shell::uglyParts()) LOG_INF("UGLY", "Quotes frame books=%d items=%d sel=%d", showsBooks(), itemCount(), selected);
+#endif
   renderer.displayBuffer();
 }

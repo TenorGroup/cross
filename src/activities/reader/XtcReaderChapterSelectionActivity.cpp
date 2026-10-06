@@ -9,6 +9,7 @@
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
 
 namespace fui = freeink::ui;
 
@@ -121,6 +122,10 @@ void XtcReaderChapterSelectionActivity::buildScreen(UiScreen& screen) {
 }
 
 void XtcReaderChapterSelectionActivity::drawChrome() {
+  if (shell::uglyParts()) {  // the shared header, written by hand
+    drawNavigationHeader(tr(STR_SELECT_CHAPTER));
+    return;
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
 

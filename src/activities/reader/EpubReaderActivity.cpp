@@ -323,7 +323,7 @@ bool EpubReaderActivity::loadBook() {
 #ifdef TENOR_PRESS_PROBE
     LOG_INF("ERS", "BUILD_POPUP src=book");
 #endif
-    GUI.drawPopup(renderer, tr(STR_INDEXING));
+    GUI.drawPopup(renderer, readerugly::notice(StrId::STR_INDEXING));
   }
 
   bool loaded;
@@ -491,7 +491,7 @@ void EpubReaderActivity::writePendingThumbs() {
           static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
   // The decode holds the page still for 1 to 3 s on the X3; say so on the panel first.
-  GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  GUI.drawPopup(renderer, readerugly::notice(StrId::STR_LOADING_POPUP));
   // The cover's copy out of the book inflates through a 32 KB window in one block, which a
   // reading session can leave the heap without (X3 r19: 32.756 B largest, both thumbnails lost).
   // The framebuffer holds nothing Home keeps, so it is lent for the pass.
@@ -878,7 +878,7 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
 #endif
   // The layout goes on while the panel shows the popup: waiting it out held a contents jump 390 ms
   // (X3 r43). Nothing is drawn before settleBuildPopup().
-  GUI.drawPopup(renderer, tr(STR_INDEXING), false);
+  GUI.drawPopup(renderer, readerugly::notice(StrId::STR_INDEXING), false);
   renderer.displayBufferAsync(HalDisplay::FAST_REFRESH);
   buildPopupRefreshing = true;
   pagesUntilFullRefresh = 1;
@@ -2677,7 +2677,7 @@ void EpubReaderActivity::renderBook() {
             LOG_INF("ERS", "BUILD_POPUP src=open spine=%d target=%d pages=%u", currentSpineIndex, target,
                     static_cast<unsigned>(section->pageCount));
 #endif
-            GUI.drawPopup(renderer, tr(STR_INDEXING));
+            GUI.drawPopup(renderer, readerugly::notice(StrId::STR_INDEXING));
             pagesUntilFullRefresh = 1;
           }
           buildPopupPending = !showPopup;
@@ -3061,7 +3061,7 @@ void EpubReaderActivity::renderBook() {
                                (SETTINGS.tiltPageTurn ? tr(STR_STATE_ON) : tr(STR_STATE_OFF));
       GUI.drawPopup(renderer, text.c_str());
     } else {
-      GUI.drawPopup(renderer, bookmarkRemoved ? tr(STR_BOOKMARK_REMOVED) : tr(STR_BOOKMARK_ADDED));
+      GUI.drawPopup(renderer, readerugly::notice(bookmarkRemoved ? StrId::STR_BOOKMARK_REMOVED : StrId::STR_BOOKMARK_ADDED));
     }
   }
 
@@ -3070,7 +3070,7 @@ void EpubReaderActivity::renderBook() {
   }
 
   if (showIndexingMessage) {
-    GUI.drawPopup(renderer, tr(STR_INDEXING));
+    GUI.drawPopup(renderer, readerugly::notice(StrId::STR_INDEXING));
   }
 
   // Toolbar menu: overlay the toolbar / panel on top of the freshly rendered page.

@@ -155,6 +155,68 @@ class UglyPartsX3(unittest.TestCase):
         self.assertBlank(popup, (80, 358, 160, 412), 'the circle of the popup runs to the option start')
         self.assertBlank(popup, (370, 358, 450, 412), 'the circle of the popup runs to the option end')
 
+    def test_a_chinese_letter_leaves_the_rest_of_the_name_in_hand(self):
+        # The notebook's File page: "Tam thể tập hai" and the same name with 体 in it. The pen lacks 体 alone, so the
+        # 2 names start with the same handwritten "Tam thể"; the long one trails off in the scrawl, no dots.
+        card = Card(books=[], files=['A.txt', 'Tam thể tập hai.txt', 'Tam thể 体 tập hai.txt'])
+        try:
+            log, shots = card.run('1000:DOWN;1800:DOWN;4000:QUIT', [(3200, 'files')])
+        finally:
+            card.close()
+        page = shots['files']
+        bands, inside = [], False
+        for y in range(175, 520):
+            inked = ink(page, (48, y, 132, y + 1)) > 0
+            if inked and not inside:
+                bands.append(y)
+            inside = inked
+        self.assertGreaterEqual(len(bands), 3, bands)
+        hand, mixed = bands[1], bands[2]
+        self.assertEqual(digest(page.crop((48, hand, 132, hand + 30))), digest(page.crop((48, mixed, 132, mixed + 30))),
+                         'a name with a Chinese letter is written whole in the UI font')
+
+    def wifi(self):
+        if 'wifi' not in self.logs:
+            card = Card()
+            try:
+                t, parts = START, []
+                for k in settings_question(7, 3):
+                    parts.append('%d:%s' % (t, k))
+                    t += GAP
+                at = t + 3000
+                parts.append('%d:QUIT' % (at + 600))
+                log, shots = card.run(';'.join(parts), [(at, 'wifi')], timeout=120)
+            finally:
+                card.close()
+            self.assertIn('WifiSelection', entered(log), log[-1500:])
+            self.logs['wifi'] = (shots['wifi'], log)
+        return self.logs['wifi']
+
+    def test_the_header_writes_its_note(self):
+        # Wi-Fi names the networks found at the right end of its header, above the underline.
+        self.assertGreater(ink(self.wifi()[0], (300, 10, 504, 44)), 0, 'the header drops the count of networks')
+
+    def test_a_word_over_a_key_keeps_off_the_clock(self):
+        # "Thử lại" over the 4th key ends left of where the strip writes the clock, 10 px apart at least.
+        found = re.findall(r'part=keys words_end=(\d+) clock_at=(\d+)', self.wifi()[1])
+        self.assertTrue(found, 'the key bar does not say where its words end')
+        end, clock = map(int, found[-1])
+        self.assertLessEqual(end, clock - 10, 'the word over the key runs into the clock')
+
+    def test_the_loading_notice_of_the_reader_says_it_in_the_voice_of_the_shell(self):
+        # A book with a cover, opened from the diary and closed: its thumbnails are written under the loading notice.
+        from test_home_card_v1011 import epub_with_cover
+        card = Card(books=[('Cuốn có bìa', 'bia.epub')])
+        try:
+            epub_with_cover(card.sd / 'bia.epub')
+            log, _ = card.run('1500:CONFIRM;5000:BACK;9000:QUIT', timeout=120)
+        finally:
+            card.close()
+        notices = re.findall(r'part=notice text=(.*)', log)
+        self.assertTrue(notices, log[-2000:])
+        self.assertNotIn('Đang tải', notices, 'the reader says "Đang tải" in the words of tenor/cross')
+        self.assertIn('Đợi tí, đang lục đồ.', notices, 'the loading notice of the shell (STR_UGLY_LOADING)')
+
 
 if __name__ == '__main__':
     unittest.main()

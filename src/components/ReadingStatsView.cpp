@@ -14,6 +14,7 @@
 #include "ReadingStatsFormat.h"
 #include "ReadingStatsStore.h"
 #include "fontIds.h"
+#include "shells/ugly/UglyInk.h"
 #include "util/NgayGio.h"
 namespace readingstatsview {
 namespace {
@@ -199,7 +200,7 @@ void draw(const GfxRenderer& r, const int top, const bool sleep, const bool comp
     snprintf(text, sizeof(text), "%s", tr(STR_STATS_CHART_NOTE));
   r.drawText(SMALL_FONT_ID, left, noteY, r.truncatedText(SMALL_FONT_ID, text, width).c_str());
 }
-void drawSleep(const GfxRenderer& r) {
+void drawSleep(const GfxRenderer& r, const bool uglySignature) {
   const int width = r.getScreenWidth(), height = r.getScreenHeight();
   const bool enlarged = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
   const int titleY = enlarged ? 18 : 30;
@@ -244,6 +245,11 @@ void drawSleep(const GfxRenderer& r) {
     snprintf(text, sizeof(text), "%u%%", READING_STATS.activeBook.progress);
     r.drawText(UI_12_FONT_ID, width / 2, bookValue, text, true, EpdFontFamily::BOLD);
   }
-  r.drawText(UI_10_FONT_ID, 24, height - 40, "tenor/cross", true, EpdFontFamily::BOLD);
+  // The name of the shell the device is in: tenor/ugly signs its own card, in hand.
+  if (uglySignature) {
+    ugly::text(r, ugly::Size::S22, 24, height - 40 + ugly::ascent(ugly::Size::S22), tr(STR_SHELL_UGLY));
+  } else {
+    r.drawText(UI_10_FONT_ID, 24, height - 40, "tenor/cross", true, EpdFontFamily::BOLD);
+  }
 }
 }  // namespace readingstatsview

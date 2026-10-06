@@ -63,6 +63,7 @@ class BlePageTurnerActivity final : public UiListActivity {
   bool handleCustomInput() override;
   void stepSelection(int direction) override;
   bool clampAfterNav() override;
+  void drawFooter() override;
   void onBackButton() override;
   const char* headerTitle() const override;
 
@@ -119,4 +120,8 @@ class BlePageTurnerActivity final : public UiListActivity {
   // Thong bao cua luot gan nut (dang cho / da gan / khong nhan duoc) thay cho dong
   // trang thai radio cho toi khi nguoi dung lam viec khac.
   std::string bindNotice_;
+  // tenor/ugly: a status too long for its row (no Bluetooth in this build, no RAM in the book) goes to the tip with
+  // the notices, written by hand; the row keeps what fits.
+  bool statusInTip_ = false;
+  const char* uglyTip() const;
 };

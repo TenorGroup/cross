@@ -257,7 +257,10 @@ struct OtaUpdateActivity;
 struct RenderLock {
   explicit RenderLock(OtaUpdateActivity&) {}
 };
+// The update screen as tenor/cross draws it; the hand-drawn note of tenor/ugly is measured in the simulator.
+namespace shell { inline bool uglyParts() { return false; } }
 struct OtaUpdateActivity : Activity {
+  bool renderUglyNote(int, bool) const { return false; }
   enum State {
     WIFI_SELECTION,
     CHECKING_FOR_UPDATE,

@@ -369,15 +369,20 @@ int BaseTheme::getMenuRowHeight(const GfxRenderer&) const { return UITheme::getI
 Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message, const bool display) const {
   if (shell::uglyParts()) {
     // The notice in hand on a scrap of paper, room under the words for a bar of progress.
-    const int sw = renderer.getScreenWidth();
-    const std::string words = ugly::fit(renderer, ugly::Size::S30, message ? message : "", sw - 120);
-    const int tw = ugly::width(renderer, ugly::Size::S30, words.c_str());
-    const int w = std::min(sw - 40, std::max(200, tw + 60)), h = 96, x = (sw - w) / 2;
+    // A sentence too long for one line runs on under itself, the paper growing with it.
+    const int sw = renderer.getScreenWidth(), room = sw - 120;
+    const char* said = message ? message : "";
+    const int lines = ugly::width(renderer, ugly::Size::S30, said) <= room
+                          ? 1 : ugly::paragraph(renderer, ugly::Size::S30, 0, 0, room, 36, said, false);
+    const std::string words = ugly::fit(renderer, ugly::Size::S30, said, room);
+    const int tw = lines > 1 ? room : ugly::width(renderer, ugly::Size::S30, words.c_str());
+    const int w = std::min(sw - 40, std::max(200, tw + 60)), h = 60 + 36 * lines, x = (sw - w) / 2;
     const int y = static_cast<int>(renderer.getScreenHeight() * UITheme::getInstance().getMetrics().popupTopOffsetRatio);
     uglyNote(renderer, x, y, w, h);
-    ugly::text(renderer, ugly::Size::S30, x + (w - tw) / 2, y + 50, words.c_str());
+    if (lines > 1) ugly::paragraph(renderer, ugly::Size::S30, x + (w - tw) / 2, y + 50, room, 36, said);
+    else ugly::text(renderer, ugly::Size::S30, x + (w - tw) / 2, y + 50, words.c_str());
 #ifdef UGLY_FRAME_LOG
-    LOG_INF("UGLY", "part=notice");
+    LOG_INF("UGLY", "part=notice text=%s", message ? message : "");
 #endif
     if (display) renderer.displayBuffer();
     return Rect{x, y, w, h};

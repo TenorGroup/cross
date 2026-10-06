@@ -230,9 +230,11 @@ void QuestionSheet::openPaper() {
   if (row.count <= 0) return;
   paper_ = true;
   paperAnchor_ = row.selected;
-  paperAnchorTop_ = answerTop(current_);
   const int minTop = page_ ? laterTop_ : firstTop_;
   const int head = 64, tail = 44;
+  // Buttons: a question at the top of the sheet leaves the paper no room for its head and the
+  // "N more" note, so the answers move down instead of under the note. Touch keeps its layout.
+  paperAnchorTop_ = touch_ ? answerTop(current_) : std::max(answerTop(current_), minTop + head);
   const int above = std::max(0, (paperAnchorTop_ - minTop - head) / answerStep_);
   const int below = std::max(0, (bottom_ - paperAnchorTop_ - answerStep_ - tail) / answerStep_);
   paperFirst_ = std::max(0, paperAnchor_ - above);

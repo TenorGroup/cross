@@ -25,6 +25,10 @@
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"  // list icons for the compare rows
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyChrome.h"
+#include "shells/ugly/UglyLayout.h"
+#include "shells/ugly/UglyNote.h"
 
 namespace fui = freeink::ui;
 
@@ -609,7 +613,50 @@ void KOReaderSyncActivity::buildResultScreen(UiScreen& screen) {
   }
 }
 
+// The same screen by hand: the waits and the endings are note pages; the comparison and the prompt to upload keep
+// their layout, written in pen, with the circle on the chosen action.
+void KOReaderSyncActivity::renderUgly() {
+  const char* title = state == SHOWING_RESULT ? tr(STR_PROGRESS_FOUND) : tr(STR_KOREADER_SYNC);
+  ugly::Hints hints;
+  hints.back = true;
+  switch (state) {
+    case NO_CREDENTIALS:
+      return ugly::notePage(renderer, mappedInput, title, tr(STR_UGLY_KOSYNC_NO_LOGIN), nullptr, -1, hints);
+    case SYNCING:
+    case UPLOADING:
+      return ugly::notePage(renderer, mappedInput, title, statusMessage.c_str(), nullptr, -1, {});
+    case UPLOAD_COMPLETE:
+    case SYNC_COMPLETE:
+      hints.confirm = true;
+      return ugly::notePage(renderer, mappedInput, title,
+                            state == UPLOAD_COMPLETE ? tr(STR_UGLY_KOSYNC_UPLOADED) : tr(STR_UGLY_KOSYNC_SAME), nullptr,
+                            -1, hints);
+    case SYNC_FAILED:
+      return ugly::notePage(renderer, mappedInput, title, tr(STR_UGLY_KOSYNC_SYNC_FAILED),
+                            statusMessage.empty() ? nullptr : statusMessage.c_str(), -1, hints);
+    default:
+      break;
+  }
+  renderer.clearScreen();
+  const auto metrics = UITheme::getInstance().getMetrics();
+  const Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
+  GUI.drawHeader(renderer, Rect{screen.x, screen.y + metrics.topPadding, screen.width, metrics.headerHeight}, title);
+  ugly::layoutByHand(renderer, uiTarget, [this] { renderUi(); });
+  const int chosen = state == SHOWING_RESULT ? selectedOption : 0;
+  const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(chosen));
+  if (!box.empty()) uglychrome::marks(renderer, box, {true});
+  const auto labels = state == SHOWING_RESULT
+                          ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
+                          : mappedInput.mapLabels(tr(STR_BACK), tr(STR_UPLOAD), "", "");
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  renderer.displayBuffer();
+#ifdef UGLY_FRAME_LOG
+  LOG_INF("UGLY", "KOReader sync frame state=%d chosen=%d", static_cast<int>(state), chosen);
+#endif
+}
+
 void KOReaderSyncActivity::render(RenderLock&&) {
+  if (shell::uglyParts()) return renderUgly();
   renderer.clearScreen();
 
   auto metrics = UITheme::getInstance().getMetrics();

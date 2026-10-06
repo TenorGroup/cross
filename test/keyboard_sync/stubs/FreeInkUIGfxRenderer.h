@@ -8,6 +8,7 @@ class GfxRendererTarget : public DrawTarget {
   static constexpr FontId FONT_SMALL = 0, FONT_BODY = 1;
   explicit GfxRendererTarget(const GfxRenderer&) {}
   void setFont(FontId, int) {}
+  void setPaintingEnabled(bool) {}
   DeviceContext deviceContext() const {
     DeviceContext device;
     device.width = 528;

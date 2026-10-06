@@ -37,6 +37,7 @@ class CalibreConnectActivity final : public Activity {
   bool exitRequested = false;
 
   void renderServerRunning() const;
+  void renderUgly() const;
 
   void onWifiSelectionComplete(bool connected);
   void startWebServer();
