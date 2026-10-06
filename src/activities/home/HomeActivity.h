@@ -157,6 +157,9 @@ class HomeActivity final : public UiTabListActivity {
   bool recentsLoaded = false;
   const HomeMenuItem initialMenuItem;
   bool cleanInitialRefresh;
+  // Home took over from a book: its first frame drives the cover again (coverRedriveDue).
+  bool leftBook;
+  bool coverRedriveDue();
 
   // Cover tile snapshot, so a repaint does not decode the cover again. Only the
   // tile region is kept, not the whole framebuffer.

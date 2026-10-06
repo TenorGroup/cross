@@ -260,6 +260,12 @@ class GfxRenderer {
   // name); a cleanup that re-describes the glass (cleanupGrayscaleWithFrameBuffer, restoreBwBuffer
   // with a resync) disarms it.
   void redriveNextRefresh() const { redrivePending_ = true; }
+  // Drive every pixel of a screen rectangle again, after the framebuffer is on the panel: the
+  // rectangle's inverse becomes the controller's previous frame there, and one refresh drives it
+  // back. Full waveform on a diff-only panel (it drives only those pixels); fast elsewhere, where
+  // a full refresh would flash the whole glass. Nothing outside the rectangle (rounded out to
+  // bytes) changes. Not while the output is inverted: the controller planes are not rewritten then.
+  void redriveRegion(int x, int y, int w, int h) const;
   // False while a redrive is pending: the controller's previous frame, and the framebuffer that
   // went with it, are not what the glass shows.
   bool panelFrameKnown() const { return !redrivePending_; }

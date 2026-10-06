@@ -129,7 +129,18 @@ HomeActivity::HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInpu
                            const HomeMenuItem initialMenuItemValue, const bool cleanInitialRefresh)
     : UiTabListActivity("Home", renderer, mappedInput, tenorchrome::kTouchShell),
       initialMenuItem(initialMenuItemValue),
-      cleanInitialRefresh(cleanInitialRefresh) {}
+      cleanInitialRefresh(cleanInitialRefresh),
+      leftBook(activityManager.isReaderActivity()) {}
+
+// The one rule for driving the cover again: the first frame after a book, on the Recent card, when
+// that frame was not already a full refresh. The page's gray levels stay on the glass wherever its
+// black and white matches the cover's (the X3 UC8279 drives only pixels that change), and the
+// cover's halftone shows them as the old page. A later frame of the same Home is not due.
+bool HomeActivity::coverRedriveDue() {
+  const bool due = leftBook && !cleanInitialRefresh && activeTabId == Tab::RECENT && coverRectW > 0 && coverRectH > 0;
+  leftBook = false;
+  return due;
+}
 
 freeink::ui::BitmapRef HomeActivity::tabIcon(const int index, const bool bold) const {
   // freeink::Icon dung the Mask1: bit 1 la de trong, bit 0 la ve muc. Doi sang BitmapRef
@@ -892,6 +903,11 @@ void HomeActivity::render(RenderLock&&) {
   const uint32_t displayStartedUs = micros();
 #endif
   renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  if (coverRedriveDue()) {
+    [[maybe_unused]] const uint32_t redriveStarted = millis();
+    renderer.redriveRegion(coverRectX, coverRectY, coverRectW, coverRectH);
+    LOG_PROBE("HOME", "COVER_REDRIVE ms=%lu", static_cast<unsigned long>(millis() - redriveStarted));
+  }
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t displayUs = micros() - displayStartedUs;
   LOG_INF("HOME_PROBE", "frame_paint_us=%lu display_us=%lu total_us=%lu",
