@@ -20,6 +20,9 @@
 #include "components/HeaderBackTapTarget.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
+#include "activities/Activity.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/bookmark.h"
@@ -121,6 +124,23 @@ bool BaseTheme::drawCoverThumbFill(const GfxRenderer& renderer, const Bitmap& bi
   return drawn;
 }
 
+namespace {
+// A scrap of paper for a notice: rubbed out to white, edged by 4 shaky strokes.
+void uglyNote(const GfxRenderer& r, const int x, const int y, const int w, const int h) {
+  r.fillRect(x, y, w, h, false);
+  ugly::line(r, x + 2, y + 3, x + w - 3, y + 1, 820, 2);
+  ugly::line(r, x + w - 3, y + 1, x + w - 1, y + h - 3, 821, 2);
+  ugly::line(r, x + w - 1, y + h - 3, x + 3, y + h - 1, 822, 2);
+  ugly::line(r, x + 3, y + h - 1, x + 2, y + 3, 823, 2);
+}
+// A bar of progress in hand: a shaky line to fill along, inked over as far as it has come.
+void uglyBar(const GfxRenderer& r, const int x, const int y, const int w, const int percent) {
+  ugly::line(r, x, y, x + w, y, 824, 1);
+  const int done = w * std::clamp(percent, 0, 100) / 100;
+  if (done > 0) ugly::line(r, x, y, x + done, y, 825, 5);
+}
+}  // namespace
+
 void BaseTheme::drawProgressBar(const GfxRenderer& renderer, Rect rect, const size_t current, const size_t total) {
   if (total == 0) {
     return;
@@ -130,6 +150,10 @@ void BaseTheme::drawProgressBar(const GfxRenderer& renderer, Rect rect, const si
   const int percent = static_cast<int>((static_cast<uint64_t>(current) * 100) / total);
 
   LOG_DBG("UI", "Drawing progress bar: current=%u, total=%u, percent=%d", current, total, percent);
+  if (shell::uglyParts()) {
+    uglyBar(renderer, rect.x, rect.y + rect.height / 2, rect.width, percent);
+    return;
+  }
   // Draw outline
   renderer.drawRect(rect.x, rect.y, rect.width, rect.height);
 
@@ -343,6 +367,21 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
 int BaseTheme::getMenuRowHeight(const GfxRenderer&) const { return UITheme::getInstance().getMetrics().menuRowHeight; }
 
 Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message, const bool display) const {
+  if (shell::uglyParts()) {
+    // The notice in hand on a scrap of paper, room under the words for a bar of progress.
+    const int sw = renderer.getScreenWidth();
+    const std::string words = ugly::fit(renderer, ugly::Size::S30, message ? message : "", sw - 120);
+    const int tw = ugly::width(renderer, ugly::Size::S30, words.c_str());
+    const int w = std::min(sw - 40, std::max(200, tw + 60)), h = 96, x = (sw - w) / 2;
+    const int y = static_cast<int>(renderer.getScreenHeight() * UITheme::getInstance().getMetrics().popupTopOffsetRatio);
+    uglyNote(renderer, x, y, w, h);
+    ugly::text(renderer, ugly::Size::S30, x + (w - tw) / 2, y + 50, words.c_str());
+#ifdef UGLY_FRAME_LOG
+    LOG_INF("UGLY", "part=notice");
+#endif
+    if (display) renderer.displayBuffer();
+    return Rect{x, y, w, h};
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int marginX = metrics.popupMarginX;
   const int marginY = metrics.popupMarginY;
@@ -377,6 +416,11 @@ Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message, cons
 }
 
 void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const {
+  if (shell::uglyParts()) {
+    uglyBar(renderer, layout.x + 30, layout.y + layout.height - 22, layout.width - 60, progress);
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    return;
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int barHeight = metrics.popupProgressBarHeight;
   const int barWidth =
