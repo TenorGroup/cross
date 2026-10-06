@@ -128,7 +128,7 @@ def cursor_top(img, top=0):
 def sheet_top(img):
     px = img.load()
     for y in range(100, img.height - 100):
-        if sum(1 for x in range(img.width) if px[x, y] == 0) >= 0.9 * img.width:
+        if sum(1 for x in range(img.width) if px[x, y] == 0) >= 0.8 * img.width:
             return y
     raise AssertionError('no sheet on screen')
 
@@ -199,6 +199,127 @@ class LevelOneKeysTest(unittest.TestCase):
         page = lambda img: img.crop((0, 0, img.width, top))
         self.assertIsNotNone(ImageChops.difference(page(s[2]), page(s[3])).getbbox(), 'side Down: next chapter')
         self.assertIsNone(ImageChops.difference(page(s[2]), page(s[4])).getbbox(), 'side Up: back again')
+
+    def test_tab_icons_are_tab_size(self):
+        # The Text tab's "Aa", out of focus, between the Contents tab's ring and the More tab: 40 px art,
+        # its ink 24 to 44 px tall (the 24 px art inked 15 rows).
+        img = self.res['shots'][0]
+        band = img.crop((150, img.height - 140, 290, img.height - 40))
+        box = ImageChops.invert(band).getbbox()
+        self.assertIsNotNone(box)
+        w, h = box[2] - box[0], box[3] - box[1]
+        self.assertTrue(24 <= h <= 44 and w <= 48, f'Aa ink {w}x{h}')
+
+
+HOLD = 'CONFIRM:1100'  # past readermenu::GIU_GHIM_MS (1000), released before the next shot
+SYNC = 14  # readermenu::Action::SYNC, the pin a reader who never pinned starts with
+
+
+class FavoritesTabTest(unittest.TestCase):
+    """4 tabs as on the X4 Pro: Contents, Text, More, Favorites. A held Select on a Text or More row pins it."""
+
+    @classmethod
+    def setUpClass(cls):
+        to_favorites = ['RIGHT', 'CONFIRM', 'RIGHT', HOLD, 'BACK', 'RIGHT', 'RIGHT', 'CONFIRM']
+        cls.pin = run_keys(to_favorites + ['UP', 'DOWN', 'DOWN', 'BACK', 'LEFT', 'CONFIRM'])
+        cls.unpin = run_keys(to_favorites + ['RIGHT', HOLD])
+        for name, res in (('pin', cls.pin), ('unpin', cls.unpin)):
+            for i, img in enumerate(res['shots']):
+                keep(f'fav-{name}-{i}', img)
+
+    def test_a_held_select_pins_the_text_row(self):
+        self.assertEqual(self.pin['settings'].get('readerFavorites'), [SYNC, 'text/fontSize'])
+        self.assertEqual(self.pin['settings'].get('fontSize', 18), 18, 'the hold must not also open the row')
+
+    def test_favorites_is_the_fourth_tab(self):
+        s = self.pin['shots']
+        # shot 8: Favorites from the bar (Right x3 from Contents). 9: side Up = More. 10: side Down = Favorites.
+        # 11: side Down = Contents (4 tabs round). 14: Left from Contents on the bar, Select = Favorites.
+        self.assertFalse(same(s[8], s[9]), 'side Up from Favorites is More')
+        self.assertTrue(same(s[10], s[8]), 'side Down from More is Favorites')
+        self.assertFalse(same(s[11], s[8]), 'side Down from Favorites goes round to Contents')
+        self.assertTrue(same(s[14], s[8]), 'Left from Contents on the bar is Favorites')
+
+    def test_a_held_select_in_favorites_takes_the_pin_off(self):
+        self.assertEqual(self.unpin['settings'].get('readerFavorites'), [SYNC])
+        s = self.unpin['shots']
+        self.assertFalse(same(s[10], s[9]), 'the unpinned row leaves the list at once')
+
+
+# Line spacing as the Text tab shows it, tightest first: the stored readerSpacing level at each place.
+SPACING_BY_PLACE = [1, 2, 0, 3, 4]
+TO_TEXT_ROW = lambda row: ['RIGHT', 'CONFIRM'] + ['RIGHT'] * row  # bar on Contents -> Text sheet, cursor on `row`
+CLOSE = ['BACK', 'BACK']  # the sheet, then the bar: settings reach the card once the page is back
+
+
+def parallel(jobs):
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(4) as pool:
+        return list(pool.map(lambda keys: run_keys(keys), jobs))
+
+
+class ValueListTest(unittest.TestCase):
+    """A Text row with several values opens them over the sheet, as the Font row opens the fonts: the front
+    buttons move, Select keeps, Back drops. Line spacing runs in the order the values are shown."""
+
+    @classmethod
+    def setUpClass(cls):
+        steps = range(1, 5)
+        jobs = [TO_TEXT_ROW(2) + ['CONFIRM'] + ['RIGHT'] * k + ['CONFIRM'] + CLOSE for k in steps]
+        jobs += [TO_TEXT_ROW(2) + ['CONFIRM'] + ['LEFT'] * k + ['CONFIRM'] + CLOSE for k in steps]
+        jobs.append(TO_TEXT_ROW(2) + ['CONFIRM', 'RIGHT', 'RIGHT', 'RIGHT', 'RIGHT', 'BACK'] + CLOSE)
+        jobs.append(TO_TEXT_ROW(3) + ['CONFIRM', 'RIGHT', 'CONFIRM'] + CLOSE)
+        jobs.append(TO_TEXT_ROW(4) + ['CONFIRM', 'RIGHT', 'CONFIRM'] + CLOSE)
+        cls.runs = parallel(jobs)
+        for i, img in enumerate(cls.runs[8]['shots']):
+            keep(f'pick-{i}', img)
+
+    def test_spacing_runs_down_in_the_order_shown(self):
+        got = [r['settings'].get('lineSpacing') for r in self.runs[0:4]]
+        self.assertEqual(got, [SPACING_BY_PLACE[(2 + k) % 5] for k in range(1, 5)])
+
+    def test_spacing_runs_up_in_the_order_shown(self):
+        got = [r['settings'].get('lineSpacing') for r in self.runs[4:8]]
+        self.assertEqual(got, [SPACING_BY_PLACE[(2 - k) % 5] for k in range(1, 5)])
+
+    def test_the_cursor_walks_the_values_one_row_a_press(self):
+        s = self.runs[8]['shots']
+        # shot 5: the list opened on the value in use (place 2); 6..9 after each Right (3, 4, then round to 0, 1).
+        top = sheet_top(s[5]) + 60
+        ys = [cursor_top(s[i], top) for i in range(5, 10)]
+        self.assertTrue(all(y is not None for y in ys), ys)
+        self.assertTrue(ys[0] < ys[1] < ys[2], ys)
+        self.assertTrue(ys[3] < ys[4] < ys[0], ys)
+
+    def test_back_drops_the_value(self):
+        self.assertEqual(self.runs[8]['settings'].get('lineSpacing'), 0)
+        s = self.runs[8]['shots']
+        self.assertTrue(same(s[10], s[4]), 'Back returns to the Text rows, cursor on the row it opened')
+
+    def test_alignment_and_drop_cap_keep_the_value_chosen(self):
+        self.assertEqual(self.runs[9]['settings'].get('paragraphAlignment'), 1)
+        self.assertEqual(self.runs[10]['settings'].get('dropCapMode'), 2)
+
+
+class StatusBarRowTest(unittest.TestCase):
+    """More > Reader status bar opened nothing and the menu vanished (no case for it on the toolbar path)."""
+
+    @classmethod
+    def setUpClass(cls):
+        to_row = ['RIGHT', 'RIGHT', 'CONFIRM', 'RIGHT', 'RIGHT']  # More sheet, cursor on the 3rd row
+        cls.res = run_keys(to_row + ['CONFIRM', 'LEFT', 'LEFT', 'CONFIRM'] + CLOSE)
+        for i, img in enumerate(cls.res['shots']):
+            keep(f'status-{i}', img)
+
+    def test_the_menu_stays_and_lists_the_modes(self):
+        s = self.res['shots']
+        self.assertIsNotNone(cursor_top(s[6], sheet_top(s[6]) + 60), 'the sheet stays with the modes listed')
+        self.assertFalse(same(s[6], s[5]))
+
+    def test_the_mode_chosen_is_kept(self):
+        self.assertEqual(self.res['settings'].get('readerStatusBarMode'), 0)
+        s = self.res['shots']
+        self.assertIsNotNone(cursor_top(s[9], sheet_top(s[9]) + 60), 'back on the More sheet')
 
 
 if __name__ == '__main__':

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <iterator>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
@@ -13,6 +14,7 @@
 #include "components/UITheme.h"
 #include "components/TenorMenuChrome.h"
 #include "components/icons/readerToolbarIcons.h"
+#include "components/icons/readerToolbarTabIcons.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
 
@@ -42,7 +44,6 @@ constexpr int16_t kScrubGap = 12;     // air between the buttons and the track
 // Tool row: a 24px glyph centred in each slot, the active slot in an outline
 // pill. The whole slot is the tap target; the row height sets its size.
 constexpr int16_t kToolRowH = 80;
-constexpr int16_t kToolPillInset = 10;
 constexpr int kToolCount = 3;
 // Bottom sheet height for the panels. ListNav fits whole rows in the remaining
 // list area; any spare pixels stay between the list and the switcher.
@@ -137,28 +138,26 @@ void ReaderToolbarUi::buildSheet(UiScreen& screen, const fui::SheetProps& props,
 // slot is registered as one tap target, so the row stays light (no filled
 // tiles, no labels -- the glyphs carry the meaning).
 void ReaderToolbarUi::buildToolRow(UiScreen& screen, const fui::LayoutAnchor anchor, const int16_t sideInset) {
-  const auto& tokens = screen.theme();
-  const fui::BitmapRef icons[kToolCount] = {fui::bitmapFromIcon(icon_reader_contents_24),
-                                            fui::bitmapFromIcon(icon_reader_text_24),
-                                            fui::bitmapFromIcon(icon_reader_more_24)};
+  // The tab glyphs at the tab size of tenor/cross (40 px, founder 06/10), drawn as its icon bars draw a tab:
+  // the one in focus solid and bold in the round-ended ring, the others grey.
+  static const freeink::Icon* const icons[] = {&icon_reader_tab_contents_40, &icon_reader_tab_text_40,
+                                               &icon_reader_tab_more_40};
+  static const freeink::Icon* const bolds[] = {&icon_reader_tab_contents_bold_40, &icon_reader_tab_text_bold_40,
+                                               &icon_reader_tab_more_bold_40};
+  static_assert(std::size(icons) == kToolCount && std::size(bolds) == kToolCount, "an icon a tab");
   // sideInset absorbs the difference between the two hosts' content bands
   // (the toolbar's is spaceLg-inset, the panel's is full width): the slots
   // must land on the same x either way, or the icons jump when a tap swaps
   // the toolbar for a panel.
   const fui::Rect row = screen.take(anchor, kToolRowH).inset(fui::Insets{0, sideInset, 0, sideInset});
   const int16_t slotW = static_cast<int16_t>(row.width / kToolCount);
-  // Theme radius as-is (the frontlight panel pattern); the fill clamps to
-  // the shape's own height so round themes cannot overshoot.
-  const uint8_t pillRadius = tokens.controlRadius;
   for (int i = 0; i < kToolCount; ++i) {
     const fui::Rect slot{static_cast<int16_t>(row.x + slotW * i), row.y, slotW, row.height};
-    if (i == model_.activeTool) {
-      screen.target().stroke(slot.inset(fui::Insets{4, kToolPillInset, 4, kToolPillInset}),
-                             fui::Paint::solid(fui::Color::Black), 2, pillRadius);
-    }
-    const fui::Rect iconRect{static_cast<int16_t>(slot.x + (slot.width - 24) / 2),
-                             static_cast<int16_t>(slot.y + (slot.height - 24) / 2), 24, 24};
-    screen.target().bitmap(iconRect, icons[i], fui::BitmapMode::Center);
+    const bool active = i == model_.activeTool;
+    const freeink::Icon& icon = *(active ? bolds[i] : icons[i]);
+    if (uiTarget.paintingEnabled() && renderer_)
+      tenorchrome::drawBarTab(*renderer_, slot.x + slot.width / 2, slot.y, slot.height, icon.bits, icon.w, icon.h,
+                              active);
     screen.frame().hit(slot, ACTION_TOOL, static_cast<int16_t>(i), fui::InputTouch);
   }
 }
