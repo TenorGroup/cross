@@ -15,5 +15,7 @@ const char* cacheFail();
 const char* flashing();
 // The title over the keyboard tips.
 const char* keyboardTips();
+// A reading habit not earned yet.
+const char* habitNoData();
 
 }  // namespace ugly::words

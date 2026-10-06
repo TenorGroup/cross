@@ -159,6 +159,9 @@ class UglyRemainingScreensTest(unittest.TestCase):
         self.assert_hand_only_in_ugly(['DOWN', 'DOWN', 'CONFIRM'], PATH_BAND, 'FileBrowser', ['DOWN', 'CONFIRM'],
                                       prep=folder)
 
+    def test_reading_habits_explains_in_hand(self):
+        self.assert_hand_only_in_ugly(['DOWN'] * 4 + ['CONFIRM'], HABIT_NOTE, 'ReadingHabits', ['DOWN'] * 3 + ['CONFIRM'])
+
 
 if __name__ == '__main__':
     unittest.main()

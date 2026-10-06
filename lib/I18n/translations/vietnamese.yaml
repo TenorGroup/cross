@@ -980,6 +980,7 @@ STR_UGLY_CACHE_DONE: "Xoá sạch rồi, nhẹ cả người."
 STR_UGLY_CACHE_FAIL: "Xoá không nổi. Thẻ nhớ mày có vấn đề rồi."
 STR_UGLY_FLASHING: "Đang thay não. Rút điện bây giờ là tao chết luôn."
 STR_UGLY_KB_TIPS: "Mẹo cho đứa vụng tay:"
+STR_UGLY_HABIT_NO_DATA: "Đọc chưa đủ để tao chê. Đọc thêm đi."
 STR_FOLDER_ITEM_COUNT: "%u mục"
 
 STR_UGLY_PHIEU_TITLE: "PHIẾU TRẢ LỜI"
