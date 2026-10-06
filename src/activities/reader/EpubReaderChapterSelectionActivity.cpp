@@ -45,11 +45,9 @@ void EpubReaderChapterSelectionActivity::onEnter() {
   // Start with the current chapter at the top of the viewport; the first
   // screen build pulls the viewport to it (ListNav follow-on-build) and
   // materializes the row window there (refreshTocWindow in buildScreen).
-  int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
-  if (tocIndex == -1) {
-    tocIndex = 0;
-  }
-  nav.selected = tocIndex;
+  const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
+  // A page outside the table of contents (a cover, front matter) starts at the top and marks no row.
+  nav.selected = tocIndex < 0 ? 0 : tocIndex;
   currentTocIndex = tocIndex;
 }
 
