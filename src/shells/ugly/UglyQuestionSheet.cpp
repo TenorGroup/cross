@@ -8,9 +8,12 @@
 #include <cstring>
 
 #include "UglyInk.h"
+#include "UglySheets.h"
 
 namespace ugly {
 namespace {
+// The gap between 2 questions on a sheet that would otherwise leave 1 question to a sheet of its own.
+constexpr int TIGHT_GAP = 2;
 // Integer strokes keep the pencil marks deterministic on the C3.
 uint32_t noise(uint32_t seed, int x, int y) {
   uint32_t n = seed ^ static_cast<uint32_t>(x) * 73856093u ^ static_cast<uint32_t>(y) * 19349663u;
@@ -162,18 +165,25 @@ void QuestionSheet::bind(const GfxRenderer& r, View view, bool touch) {
       answerRows = 1;
     }
     const int blockHeight = std::max(touch ? 64 : 0, qHeight + answerRows * answerStep_) + gap_;
-    if (top + blockHeight - gap_ > bottom_ && i > 0) {
-      ++page;
-      top = laterTop_;
-    }
     int old = -1;
     for (const auto& b : previous) if (b.id == row.id) { old = b.previous; break; }
-    blocks_[i] = {row.id, static_cast<int16_t>(top), static_cast<int16_t>(blockHeight),
-                  static_cast<int16_t>(qHeight), static_cast<int16_t>(page), static_cast<int16_t>(columns),
-                  static_cast<int16_t>(old), kind};
-    top += blockHeight;
+    blocks_[i] = {row.id, 0, static_cast<int16_t>(blockHeight), static_cast<int16_t>(qHeight), 0,
+                  static_cast<int16_t>(columns), static_cast<int16_t>(old), kind};
   }
-  pages_ = view_.count ? page + 1 : 1;
+  // The sheets: the shared rule, with no sheet of 1 question while the questions can go otherwise.
+  std::vector<int> ink(view_.count), sheetOf(view_.count);
+  std::vector<uint8_t> tight(view_.count + 1, 0);
+  for (int i = 0; i < view_.count; ++i) ink[i] = blocks_[i].height - gap_;
+  pages_ = logic::layoutSheets(ink.data(), view_.count, bottom_ - firstTop_, bottom_ - laterTop_, gap_, TIGHT_GAP,
+                               sheetOf.data(), tight.data());
+  for (int i = 0; i < view_.count; ++i) {
+    if (i == 0 || sheetOf[i] != sheetOf[i - 1]) top = sheetOf[i] ? laterTop_ : firstTop_;
+    page = sheetOf[i];
+    blocks_[i].top = static_cast<int16_t>(top);
+    blocks_[i].page = static_cast<int16_t>(page);
+    top += ink[i] + (tight[page] ? TIGHT_GAP : gap_);
+  }
+  if (!view_.count) pages_ = 1;
   if (view_.count) {
     page_ = blocks_[current_].page;
     candidate_ = rowAt(current_).selected;

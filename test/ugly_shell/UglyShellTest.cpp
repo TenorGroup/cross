@@ -13,6 +13,7 @@
 
 #include "shells/ShellLimit.h"
 #include "shells/ugly/UglyLogic.h"
+#include "shells/ugly/UglySheets.h"
 #include "shells/ugly/UglyTables.h"
 #include "shells/ugly/fonts/ugly_22.h"
 #include "shells/ugly/fonts/ugly_30.h"
@@ -147,6 +148,35 @@ TEST(Pages, ALoneLastRowStandsInTheFootLineOfThePageBefore) {
         shown += n;
       }
       EXPECT_EQ(shown, count) << "every row on exactly one page";
+    }
+}
+
+// Founder 06/10/2026: no answer sheet of 1 question. The heights are the X3 sheets measured on the simulator: the
+// Reader group laid [5, 1] and Other [3, 3, 2, 2, 1, 1] with one gap and the greedy cut.
+std::vector<int> sheetCounts(const std::vector<int>& heights, const int firstRoom, const int laterRoom) {
+  std::vector<int> sheetOf(heights.size());
+  std::vector<uint8_t> tight(heights.size() + 1);
+  const int sheets = layoutSheets(heights.data(), static_cast<int>(heights.size()), firstRoom, laterRoom, 10, 2,
+                                  sheetOf.data(), tight.data());
+  std::vector<int> counts(sheets);
+  for (const int s : sheetOf) ++counts[s];
+  return counts;
+}
+
+TEST(Sheets, NoSheetOfOneQuestionWhileTheQuestionsCanGoOtherwise) {
+  // Sheet room on the X3: 716 - 112 = 604 on the first, 716 - 52 = 664 after; a 2-option choice is 38 + 44 = 82.
+  // 6 questions whose greedy cut was [5, 1]: the 6th goes up with tighter gaps, or the sheets split even.
+  EXPECT_EQ(sheetCounts({120, 120, 120, 120, 82, 126}, 604, 664), (std::vector<int>{3, 3}));
+  // They fit one sheet once the gaps tighten: 5 tight gaps of 2 instead of 10 (588 + 10 against 588 + 50).
+  EXPECT_EQ(sheetCounts({98, 98, 98, 98, 98, 98}, 604, 664), (std::vector<int>{6}));
+  // A question taller than a sheet keeps a sheet of its own.
+  EXPECT_EQ(sheetCounts({700, 82}, 604, 664), (std::vector<int>{1, 1}));
+  EXPECT_EQ(sheetCounts({82}, 604, 664), (std::vector<int>{1}));
+  // Every count of questions 3 of which fit a sheet: never a sheet of 1 while there are 2 or more questions.
+  for (int n = 2; n < 30; ++n)
+    for (const int h : {82, 126, 170}) {
+      const auto counts = sheetCounts(std::vector<int>(n, h), 604, 664);
+      for (const int c : counts) EXPECT_GE(c, 2) << n << " questions of " << h;
     }
 }
 
