@@ -2,6 +2,7 @@
 
 Runs the X4 Pro simulator (pio run -e simulator_x4pro). X4PRO_PROGRAM picks another build.
 """
+import sys
 import tempfile
 from pathlib import Path
 
@@ -103,6 +104,7 @@ def check_folder_cap(tmp):
 
 
 def main():
+    failed = 0
     with tempfile.TemporaryDirectory(prefix='x4pro-r6-') as tmp:
         for check in (check_other_books, check_files, check_display_group, check_pin_popup,
                       check_foot_back, check_folder_cap, check_home_key):
@@ -111,8 +113,10 @@ def main():
                 print('ok   ', check.__name__)
             except AssertionError as error:
                 print('RED  ', check.__name__, '-', error)
+                failed += 1
     print('done')
+    return 1 if failed else 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
