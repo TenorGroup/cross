@@ -193,6 +193,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // (the 2 built in, then the card's), the page above is the preview. Back returns to the rows.
   enum class TextDepth : uint8_t { Rows, Fonts, Spacing, PointSize, Pick };
   TextDepth textDepth = TextDepth::Rows;
+  // A second level (the fonts, a value list) keeps the frame of the sheet it opened from: its rows.
+  int levelSheetRows = 0;
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
   // Buttons (founder 06/10): a row with several values opens them in the same sheet, as the Font row opens
   // the fonts (TextDepth::Pick). The front buttons move, Select keeps the value, Back drops it.
@@ -202,7 +204,6 @@ class EpubReaderActivity final : public ReaderActivity {
     int source = -1;
     int origin = 0;     // the row that opened it, where Select and Back return the cursor
     int inUse = 0;      // the value in use: bold with the tick, the cursor's first place
-    int sheetRows = 0;  // the rows of the sheet it opened from, so the frame keeps its size
     std::string title;
     std::vector<std::string> labels;
   };
@@ -218,8 +219,6 @@ class EpubReaderActivity final : public ReaderActivity {
   bool spacingDragging = false;
   std::string pointSizeDraft;
   void enterTextDepth(TextDepth depth);
-  // A Text row by its place on the Text panel: Font, Size and Line spacing open their level, the others step.
-  void openTextRow(int row);
   void stepMenuPointSize(int direction);
   void applyMenuPointSize(uint8_t pointSize);
   uint8_t enteredPointSize() const;
@@ -407,6 +406,9 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string textRowName(int row) const;
   std::string textRowValue(int row) const;
   void showTextRowPopup(int row);
+  // A Text row by its place on the Text panel. X4 Pro: Font, Size and Line spacing open their level, the others
+  // step. Buttons: Font opens the fonts, an on/off row turns, the others open their values over the sheet.
+  void openTextRow(int row);
   void cycleTextRow(int row);
   void chooseTextValue(int row, int place);
   // Mark for saving + re-paginate + re-render under the open panel (live preview).

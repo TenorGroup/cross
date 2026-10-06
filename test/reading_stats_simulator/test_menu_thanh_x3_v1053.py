@@ -248,6 +248,11 @@ class FavoritesTabTest(unittest.TestCase):
 
 # Line spacing as the Text tab shows it, tightest first: the stored readerSpacing level at each place.
 SPACING_BY_PLACE = [1, 2, 0, 3, 4]
+# The Text tab's 14 rows, as Settings > Text has them on the X3, in the X4 Pro's order (founder 06/10).
+TEXT_ROWS = ['fontFamily', 'fontSize', 'lineSpacing', 'letterSpacing', 'wordSpacing', 'extraParagraphSpacing',
+             'paragraphAlignment', 'screenMargin', 'paragraphIndent', 'embeddedStyle', 'dropCapMode',
+             'hyphenationEnabled', 'readerInkWeight', 'textAntiAliasing']
+ROW = {key: i for i, key in enumerate(TEXT_ROWS)}
 TO_TEXT_ROW = lambda row: ['RIGHT', 'CONFIRM'] + ['RIGHT'] * row  # bar on Contents -> Text sheet, cursor on `row`
 CLOSE = ['BACK', 'BACK']  # the sheet, then the bar: settings reach the card once the page is back
 
@@ -268,8 +273,8 @@ class ValueListTest(unittest.TestCase):
         jobs = [TO_TEXT_ROW(2) + ['CONFIRM'] + ['RIGHT'] * k + ['CONFIRM'] + CLOSE for k in steps]
         jobs += [TO_TEXT_ROW(2) + ['CONFIRM'] + ['LEFT'] * k + ['CONFIRM'] + CLOSE for k in steps]
         jobs.append(TO_TEXT_ROW(2) + ['CONFIRM', 'RIGHT', 'RIGHT', 'RIGHT', 'RIGHT', 'BACK'] + CLOSE)
-        jobs.append(TO_TEXT_ROW(3) + ['CONFIRM', 'RIGHT', 'CONFIRM'] + CLOSE)
-        jobs.append(TO_TEXT_ROW(4) + ['CONFIRM', 'RIGHT', 'CONFIRM'] + CLOSE)
+        jobs.append(TO_TEXT_ROW(ROW["paragraphAlignment"]) + ['CONFIRM', 'RIGHT', 'CONFIRM'] + CLOSE)
+        jobs.append(TO_TEXT_ROW(ROW["dropCapMode"]) + ['CONFIRM', 'RIGHT', 'CONFIRM'] + CLOSE)
         cls.runs = parallel(jobs)
         for i, img in enumerate(cls.runs[8]['shots']):
             keep(f'pick-{i}', img)
@@ -299,6 +304,48 @@ class ValueListTest(unittest.TestCase):
     def test_alignment_and_drop_cap_keep_the_value_chosen(self):
         self.assertEqual(self.runs[9]['settings'].get('paragraphAlignment'), 1)
         self.assertEqual(self.runs[10]['settings'].get('dropCapMode'), 2)
+
+
+class AllTextRowsTest(unittest.TestCase):
+    """Every text setting the X3 has elsewhere (Settings > Text, 14 rows) is a row of the Text tab: a row of several
+    values opens its list over the sheet, an on/off row turns at Select and the sheet stays."""
+
+    @classmethod
+    def setUpClass(cls):
+        start = {'screenMargin': 10, 'letterSpacing': 0, 'hyphenationEnabled': 0, 'textAntiAliasing': 1,
+                 'paragraphIndent': 1, 'textSpacingVersion': 3}
+
+        def job(key, picks):
+            return TO_TEXT_ROW(ROW[key]) + ['CONFIRM'] + picks + CLOSE
+
+        jobs = [job('screenMargin', ['RIGHT', 'CONFIRM']),     # 10 -> 15
+                job('letterSpacing', ['LEFT', 'CONFIRM']),     # Default -> Tight (the place before, tightest first)
+                job('paragraphIndent', ['RIGHT', 'CONFIRM']),  # Default -> Wide
+                job('hyphenationEnabled', []),                 # on, in place
+                job('textAntiAliasing', [])]                   # the 14th row: off, in place
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(4) as pool:
+            cls.runs = list(pool.map(lambda keys: run_keys(keys, start), jobs))
+        cls.toggle_shots = run_keys(TO_TEXT_ROW(ROW['hyphenationEnabled']) + ['CONFIRM'], start)['shots']
+        for i, img in enumerate(cls.runs[0]['shots']):
+            keep(f'rows-margin-{i}', img)
+
+    def test_margin_from_its_list(self):
+        self.assertEqual(self.runs[0]['settings'].get('screenMargin'), 15)
+
+    def test_letter_spacing_in_the_order_shown(self):
+        self.assertEqual(self.runs[1]['settings'].get('letterSpacing'), 2)
+
+    def test_indent_from_its_list(self):
+        self.assertEqual(self.runs[2]['settings'].get('paragraphIndent'), 2)
+
+    def test_on_off_rows_turn_in_place(self):
+        self.assertEqual(self.runs[3]['settings'].get('hyphenationEnabled'), 1)
+        self.assertEqual(self.runs[4]['settings'].get('textAntiAliasing'), 0)
+        s = self.toggle_shots
+        top = sheet_top(s[-2])
+        self.assertEqual(sheet_top(s[-1]), top, 'the Text sheet stays')
+        self.assertEqual(cursor_top(s[-1], top + 60), cursor_top(s[-2], top + 60), 'on the same row')
 
 
 class StatusBarRowTest(unittest.TestCase):

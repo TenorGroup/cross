@@ -24,6 +24,7 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <string_view>
 
 #include "../../util/BookmarkFile.h"
 #include "../../util/CoverRef.h"
@@ -3774,15 +3775,11 @@ constexpr StrId kSpacingIds[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW,
 constexpr StrId kDropCapIds[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_SPACING_LARGE};
 constexpr StrId kAlignIds[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                StrId::STR_BOOK_S_STYLE};
-#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-// X4 Pro (founder 06/10): all 14 text settings, in the order of Settings > Reader > Text settings. A row's id
-// is its place in readermenu::TEXT_KEYS (the key a Favorites pin stores): ids 0-4 are the rows above, ids 5 and
-// on the other text settings of the catalog, read and stepped as Settings does.
+// Every board (founder 06/10): all 14 text settings, the rows of Settings > Reader > Text settings, in the X4
+// Pro's order. A row's id is its place in readermenu::TEXT_KEYS (the key a Favorites pin stores): ids 0-4 are the
+// rows above, ids 5 and on the other text settings of the catalog, read and set as Settings does.
 constexpr uint8_t kTextRowIds[] = {0, 1, 2, 5, 6, 7, 3, 8, 9, 10, 4, 11, 12, 13};
 static_assert(std::size(kTextRowIds) == readermenu::TEXT_KEY_COUNT, "every text row has a place");
-#else
-constexpr uint8_t kTextRowIds[] = {0, 1, 2, 3, 4};
-#endif
 constexpr int kTextRowCount = static_cast<int>(std::size(kTextRowIds));
 int textRowId(const int row) { return row >= 0 && row < kTextRowCount ? kTextRowIds[row] : -1; }
 // Contents, Text, More and Favorites on every board (founder 06/10).
@@ -3798,41 +3795,81 @@ int textRowPlace(const int id) {
 }
 // A row of the catalog (ids 5 and on), or nullptr.
 const SettingInfo* catalogTextRow(const int id) {
-#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (id < 5 || id >= readermenu::TEXT_KEY_COUNT) return nullptr;
   for (const auto& info : getBaseSettingsList())
     if (info.key && strcmp(info.key, readermenu::TEXT_KEYS[id]) == 0) return &info;
-#endif
-  (void)id;
   return nullptr;
+}
+// An on/off text row: Select turns it where it is (no list, no chevron).
+bool textRowToggles(const int row) {
+  const auto* info = catalogTextRow(textRowId(row));
+  return info && info->type == SettingType::TOGGLE;
 }
 static_assert(std::size(kSpacingIds) == readerSpacing::LEVEL_COUNT, "line spacing labels");
 static_assert(std::size(kAlignIds) == CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, "alignment labels");
 static_assert(std::size(kDropCapIds) == readerSpacing::DROP_CAP_MODE_COUNT, "drop cap labels");
-// The Text rows of several values, each value at its place in the order shown: line spacing tightest
-// first (so its places are the levels in that order), alignment and drop cap (places = the stored values).
+// The Text rows of several values (`row` = the row's id), each value at its place in the order shown. The
+// rows of readerSpacing levels (line, letter, word and paragraph spacing) run tightest first, so their places
+// are the levels in that order; every other row shows its values in the stored order.
 constexpr uint8_t kSpacingByPlace[] = {1, 2, 0, 3, 4};
 static_assert(std::size(kSpacingByPlace) == readerSpacing::LEVEL_COUNT, "line spacing places");
+bool spacingLevelRow(const int row) { return row == 2 || row == 5 || row == 6 || row == 7; }
+static_assert(std::string_view(readermenu::TEXT_KEYS[5]) == "letterSpacing" &&
+                  std::string_view(readermenu::TEXT_KEYS[6]) == "wordSpacing" &&
+                  std::string_view(readermenu::TEXT_KEYS[7]) == "extraParagraphSpacing",
+              "the spacing level rows");
+// The stored value of a row of values (ids 2 and on).
+uint8_t& textChoiceValue(const int row) {
+  if (row == 2) return SETTINGS.lineSpacing;
+  if (row == 3) return SETTINGS.paragraphAlignment;
+  if (row == 4) return SETTINGS.dropCapMode;
+  return SETTINGS.*(catalogTextRow(row)->valuePtr);
+}
 int textChoiceCount(const int row) {
-  return row == 2 ? readerSpacing::LEVEL_COUNT
-         : row == 3 ? CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT
-         : row == 4 ? readerSpacing::DROP_CAP_MODE_COUNT
-                    : 0;
+  if (spacingLevelRow(row)) return readerSpacing::LEVEL_COUNT;
+  if (row == 3) return CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT;
+  if (row == 4) return readerSpacing::DROP_CAP_MODE_COUNT;
+  const auto* info = catalogTextRow(row);
+  if (!info || !info->valuePtr) return 0;
+  if (info->type == SettingType::TOGGLE) return 2;
+  if (info->type == SettingType::VALUE)
+    return info->valueRange.step ? (info->valueRange.max - info->valueRange.min) / info->valueRange.step + 1 : 0;
+  return static_cast<int>(info->enumLabels().size());
 }
 int textChoiceInUse(const int row) {
-  if (row == 2) {
-    const uint8_t level = readerSpacing::clampLevel(SETTINGS.lineSpacing);
+  if (textChoiceCount(row) == 0) return -1;
+  const uint8_t value = textChoiceValue(row);
+  if (spacingLevelRow(row)) {
+    const uint8_t level = readerSpacing::clampLevel(value);
     for (int k = 0; k < static_cast<int>(std::size(kSpacingByPlace)); ++k)
       if (kSpacingByPlace[k] == level) return k;
     return -1;
   }
-  if (row == 3) return SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT;
-  if (row == 4) return readerSpacing::clampDropCapMode(SETTINGS.dropCapMode);
-  return -1;
+  if (row == 4) return readerSpacing::clampDropCapMode(value);
+  const auto* info = catalogTextRow(row);
+  const int place = info && info->type == SettingType::VALUE ? (value - info->valueRange.min) / info->valueRange.step
+                    : info && info->type == SettingType::TOGGLE ? value != 0
+                                                                : value;
+  return std::clamp(place, 0, textChoiceCount(row) - 1);
+}
+// The stored value of the value at `place`.
+uint8_t textChoiceStored(const int row, const int place) {
+  if (spacingLevelRow(row)) return kSpacingByPlace[place];
+  const auto* info = catalogTextRow(row);
+  if (info && info->type == SettingType::VALUE)
+    return static_cast<uint8_t>(info->valueRange.min + place * info->valueRange.step);
+  return static_cast<uint8_t>(place);
 }
 // The name of the value at `place` on a row of values, in the order they are shown.
-StrId textChoiceLabel(const int row, const int place) {
-  return row == 2 ? kSpacingIds[kSpacingByPlace[place]] : row == 3 ? kAlignIds[place] : kDropCapIds[place];
+std::string textChoiceLabel(const int row, const int place) {
+  if (spacingLevelRow(row)) return I18N.get(kSpacingIds[kSpacingByPlace[place]]);
+  if (row == 3) return I18N.get(kAlignIds[place]);
+  if (row == 4) return I18N.get(kDropCapIds[place]);
+  const auto* info = catalogTextRow(row);
+  if (!info) return "";
+  if (info->type == SettingType::TOGGLE) return place ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+  if (info->type == SettingType::VALUE) return std::to_string(textChoiceStored(row, place));
+  return I18N.get(info->enumLabels()[place]);
 }
 }  // namespace
 
@@ -3841,10 +3878,10 @@ void EpubReaderActivity::chooseTextValue(const int row, const int place) {
   {
     RenderLock lock;
     if (place < 0 || place >= textChoiceCount(row) || place == textChoiceInUse(row)) return;
-    if (row == 2) SETTINGS.lineSpacing = kSpacingByPlace[place];
-    if (row == 3) SETTINGS.paragraphAlignment = static_cast<uint8_t>(place);
-    if (row == 4) SETTINGS.dropCapMode = static_cast<uint8_t>(place);
-    invalidateTextSettingsLocked();
+    textChoiceValue(row) = textChoiceStored(row, place);
+    // A catalog row may be the ink weight or the anti-aliasing: the font is loaded again first, as Settings does.
+    if (catalogTextRow(row)) applyReaderTextSettingsLocked();
+    else invalidateTextSettingsLocked();
   }
   applyTextSettingLive();
 }
@@ -3863,9 +3900,8 @@ void EpubReaderActivity::openPick(const int source, std::string title) {
       next.labels.push_back(std::to_string(sizes[i]) + " pt");
       if (sizes[i] == cur) next.inUse = static_cast<int>(i);
     }
-  } else if (source >= 2 && source <= 4) {
-    for (int place = 0; place < textChoiceCount(source); ++place)
-      next.labels.emplace_back(I18N.get(textChoiceLabel(source, place)));
+  } else if (source >= 2 && source < readermenu::TEXT_KEY_COUNT) {
+    for (int place = 0; place < textChoiceCount(source); ++place) next.labels.push_back(textChoiceLabel(source, place));
     next.inUse = textChoiceInUse(source);
   } else if (source == PICK_MORE + static_cast<int>(readermenu::Action::STATUS_BAR)) {
     for (const auto id : readermenu::STATUS_BAR_MODE_LABELS) next.labels.emplace_back(I18N.get(id));
@@ -3879,7 +3915,7 @@ void EpubReaderActivity::openPick(const int source, std::string title) {
   }
   if (next.labels.empty()) return;
   RenderLock lock;  // the render task reads the list
-  next.sheetRows = toolbarUi->visibleRows();
+  levelSheetRows = toolbarUi->sheetRows();
   pick = std::move(next);
   textDepth = TextDepth::Pick;
   panelIndex = std::max(0, pick.inUse);
@@ -3920,7 +3956,7 @@ bool EpubReaderActivity::applyPick(const int source, const int place) {
     applyTextSettingLive();
     return true;
   }
-  if (source >= 2 && source <= 4) {
+  if (source >= 2 && source < readermenu::TEXT_KEY_COUNT) {
     chooseTextValue(source, place);
     return true;
   }
@@ -4350,7 +4386,7 @@ void EpubReaderActivity::renderOverlay() {
   if (textDepth == TextDepth::Pick) {
     model.panelTitle = pick.title.c_str();
     model.itemCount = static_cast<int>(pick.labels.size());
-    model.sheetRows = pick.sheetRows;
+    model.sheetRows = levelSheetRows;
     model.rowText = [this](int i) { return i < static_cast<int>(pick.labels.size()) ? pick.labels[i] : ""; };
     model.rowMarked = [this](int i) { return i == pick.inUse; };
   } else
@@ -4373,7 +4409,7 @@ void EpubReaderActivity::renderOverlay() {
                                                         : ReaderToolbarUi::TextView::Rows;
     model.spacingPlace = textChoiceInUse(2);
     model.spacingDraftPermille = spacingDraftPermille;
-    model.spacingLabel = [](int place) { return I18N.get(textChoiceLabel(2, place)); };
+    model.spacingLabel = [](int place) { return I18N.get(kSpacingIds[kSpacingByPlace[place]]); };
     model.numericDraft = pointSizeDraft.c_str();
     if (textDepth == TextDepth::PointSize) {
       const auto sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
@@ -4385,7 +4421,7 @@ void EpubReaderActivity::renderOverlay() {
     if (textDepth == TextDepth::Fonts) {
       model.panelTitle = tr(STR_FONT);
       model.itemCount = static_cast<int>(fontFamilies.size());
-      model.sheetRows = kTextRowCount;  // the frame of the Text rows
+      model.sheetRows = levelSheetRows;  // the frame of the Text rows
       model.rowText = [this](int i) { return i < static_cast<int>(fontFamilies.size()) ? fontFamilies[i].ten : ""; };
       model.rowMarked = [this](int i) { return i == fontdoc::hoDangDung(&sdFontSystem.registry()); };
     } else {
@@ -4395,7 +4431,7 @@ void EpubReaderActivity::renderOverlay() {
       model.rowValue = [this](int i) { return textRowValue(i); };
       model.rowPinned = [this](int i) { return readermenu::daGhim(pins, pinOfRow(i)); };
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
-      model.rowOpens = [](int) { return true; };  // every Text row opens its list (Font its fonts)
+      model.rowOpens = [](int i) { return !textRowToggles(i); };  // a list (Font its fonts); on/off turns
 #endif
     }
   }
@@ -4576,17 +4612,9 @@ void EpubReaderActivity::handleOverlayInput() {
       if (textDepth == TextDepth::Fonts) {
         chooseFontFamily(panelIndex);
       }
-#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
       else {
         openTextRow(panelIndex);
       }
-#else
-      else if (panelIndex == 0) {
-        enterFontLevel();
-      } else {
-        openPick(textRowId(panelIndex), textRowName(panelIndex));
-      }
-#endif
     } else if (overlay == Overlay::Contents) {
       const auto item = epub->getTocItem(panelIndex);
       if (item.spineIndex != -1) {
@@ -5014,6 +5042,7 @@ bool EpubReaderActivity::docCoChuMotNac(const int huong) {
 void EpubReaderActivity::enterFontLevel() {
   RenderLock lock;  // the render task shares the framebuffer and family list
   fontFamilies = fontdoc::danhSachHo(&sdFontSystem.registry());
+  levelSheetRows = toolbarUi->sheetRows();
   textDepth = TextDepth::Fonts;
   panelIndex = fontdoc::hoDangDung(&sdFontSystem.registry());
   toolbarUi->nav().reset(panelIndex);
@@ -5317,6 +5346,16 @@ void EpubReaderActivity::openTextRow(const int row) {
   else
     cycleTextRow(row);
 }
+#else
+// Font opens the fonts, an on/off row turns where it is, every other row opens its values over the sheet.
+void EpubReaderActivity::openTextRow(const int row) {
+  if (row == 0)
+    enterFontLevel();
+  else if (textRowToggles(row))
+    cycleTextRow(row);
+  else
+    openPick(textRowId(row), textRowName(row));
+}
 #endif
 
 void EpubReaderActivity::loadPins() {
@@ -5409,7 +5448,7 @@ void EpubReaderActivity::activateFavoriteRow(const int row) {
   openTextRow(place);
 #else
   if (place > 0) {
-    openPick(textRowId(place), textRowName(place));  // its list over Favorites; Back comes back here
+    openTextRow(place);  // its list over Favorites (Back comes back here), or turned in place
     return;
   }
   // Font opens its list in the Text panel.

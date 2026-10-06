@@ -335,6 +335,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   if (model_.sheetRows > 0) sheetRows = model_.sheetRows;
   sheetRows = std::min(sheetRows, std::max(1, (safe.height - chrome + rowGap) / rowStride));
   if (sheetRows < 1) sheetRows = 1;
+  sheetRows_ = sheetRows;
   buildSheet(screen, sheetProps, static_cast<int16_t>(chrome + sheetRows * rowStride - rowGap));
   // No blanket side inset: Screen::list() draws in the content band, and the
   // scroll track must reach the sheet's edge like a full-screen list's does.

@@ -107,6 +107,8 @@ class ReaderToolbarUi : public UiAppHost {
   freeink::ui::ListNav& nav() { return nav_; }
   // Rows one page holds, measured after the first render.
   int visibleRows() const { return nav_.pageRows(); }
+  // Buttons: the rows the last panel sheet was sized to (its frame), glimpse row included.
+  int sheetRows() const { return sheetRows_; }
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   int scrollRows(const MappedInputManager& input, int count) const;
 #endif
@@ -123,6 +125,7 @@ class ReaderToolbarUi : public UiAppHost {
   void fadeMoreBelow();
 #endif
   int16_t fadeRight_ = 0;  // buttons: the fade under the last full row stops short of the scroll bar
+  int sheetRows_ = 0;
   GfxRenderer* renderer_ = nullptr;
   freeink::ui::Rect skinFrame_{}, skinList_{}, skinMeta_{};
 

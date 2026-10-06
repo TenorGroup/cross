@@ -240,15 +240,15 @@ class SingleSaveTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         t = OPEN_TEXT[-1][0]
-        # Spacing row: down twice, its list, Very narrow (two up from Default), kept. Alignment row: its list,
-        # one down, kept. Then the Font row: Confirm opens the list, one step up to Noto Sans, Confirm. Back up
-        # the levels, out.
+        # Spacing row: down twice, its list, Very narrow (two up from Default), kept. Alignment (row 6 of the
+        # 14): its list, one down, kept. Then the Font row: Confirm opens the list, one step up to Noto Sans,
+        # Confirm. Back up the levels, out.
         n = iter(range(1, 100))
         at = lambda: t + next(n) * STEP
         presses = OPEN_TEXT + [
             (at(), 'RIGHT'), (at(), 'RIGHT'), (at(), 'CONFIRM'), (at(), 'LEFT'), (at(), 'LEFT'), (at(), 'CONFIRM'),
-            (at(), 'RIGHT'), (at(), 'CONFIRM'), (at(), 'RIGHT'), (at(), 'CONFIRM'),
-            (at(), 'LEFT'), (at(), 'LEFT'), (at(), 'LEFT'), (at(), 'CONFIRM'), (at(), 'LEFT'), (at(), 'CONFIRM'),
+            *[(at(), 'RIGHT') for _ in range(4)], (at(), 'CONFIRM'), (at(), 'RIGHT'), (at(), 'CONFIRM'),
+            *[(at(), 'LEFT') for _ in range(6)], (at(), 'CONFIRM'), (at(), 'LEFT'), (at(), 'CONFIRM'),
             (at(), 'BACK'), (at(), 'BACK'), (at(), 'BACK')]
         before = run_sim(presses[:-3], quit_after=STEP)
         cls.before_writes = before["writes"]
@@ -364,10 +364,10 @@ class QuietRelayoutTest(unittest.TestCase):
     def test_drop_cap_applies_at_once(self):
         # 3 values and seldom pressed in a run: no sheet-only redraw first, the page and sheet in one push.
         t = OPEN_TEXT[-1][0]
-        rows = OPEN_TEXT + [(t + (k + 1) * STEP, 'RIGHT') for k in range(4)]
-        rows += [(t + 5 * STEP, 'CONFIRM'), (t + 6 * STEP, 'RIGHT')]  # its list, one down
+        rows = OPEN_TEXT + [(t + (k + 1) * STEP, 'RIGHT') for k in range(10)]  # Drop cap, row 10 of the 14
+        rows += [(t + 11 * STEP, 'CONFIRM'), (t + 12 * STEP, 'RIGHT')]  # its list, one down
         base = run_sim(rows, quit_after=STEP)
-        one = run_sim(rows + [(t + 7 * STEP, 'CONFIRM')], quit_after=3 * STEP)
+        one = run_sim(rows + [(t + 13 * STEP, 'CONFIRM')], quit_after=3 * STEP)
         step = pushes(one['trace'])[len(pushes(base['trace'])):]
         for r in (base, one):
             shutil.rmtree(r['tmp'], True)
