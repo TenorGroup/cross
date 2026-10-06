@@ -59,7 +59,7 @@ namespace ugly {
   std::vector<Label> labels;
   std::vector<Box> circles;
   std::vector<int> budgets;
-  int width(const GfxRenderer&, Size size, const char* value) {
+  int width(const GfxRenderer&, Size size, const char* value, bool) {
     assert(size == Size::S22); return static_cast<int>(std::strlen(value)) * 8;
   }
   int ascent(Size size) { assert(size == Size::S22); return 18; }
@@ -67,7 +67,7 @@ namespace ugly {
     budgets.push_back(room);
     return value.substr(0, room / width(r, size, "x"));
   }
-  int text(const GfxRenderer& r, Size size, int x, int baseline, const char* value, bool black) {
+  int text(const GfxRenderer& r, Size size, int x, int baseline, const char* value, bool black, bool) {
     assert(black); int w = width(r, size, value); labels.push_back({x, baseline, w, value}); return w;
   }
   void circle(const GfxRenderer&, Circle role, const Box& box, int padX, int padY, int stroke) {

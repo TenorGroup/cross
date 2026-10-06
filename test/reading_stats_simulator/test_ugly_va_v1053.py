@@ -8,7 +8,7 @@ import unittest
 
 from PIL import ImageFilter
 
-from ugly_common import Card, ink
+from ugly_common import Card, digest, ink
 
 GAP, START, SETTLE = 700, 1500, 1800
 
@@ -95,6 +95,31 @@ class Rows(unittest.TestCase):
         below = frames(keys + ['RIGHT'])[1]
         label = (20, 128, 250, 147)  # over the words, where only the circle reaches
         self.assertGreater(ink(on, label), ink(below, label) + 150, 'the cursor on the locked row has no circle')
+
+
+def firmware_file(card):
+    (card.sd / 'fw.bin').write_bytes(b'x' * 64)
+
+
+class Straight(unittest.TestCase):
+    # The keys of the keyboard and the reason a firmware update failed are written in straight letters at both levels
+    # of ugliness, 1 turning every other letter. The digests are those of 12dabc70, where a scope that set the level to
+    # 0 while it drew did it; a letter turned at level 1 changes them.
+    KEYBOARD = {1: '3e483c0b76834935561b5ff4b262057eadc5cf632c73afd4479119dae3184c0a',
+                0: '98a2bc72a1dcfa1070a4d6973cd0d323be5ea472376a45af86a7724365e78c16'}
+    FIRMWARE = {1: 'be9e2806a00160630e5e5d4e69cec0560d97bf0a2e2ff6b9a9f9a13cbb065652',
+                0: 'c8275dd43a000e5826487dd20b6c22cba6b37ba2be8e51cfe2146e564aebf514'}
+
+    def test_the_keys_of_the_keyboard_are_straight_at_both_levels(self):
+        for level, golden in self.KEYBOARD.items():
+            frame = frames(settings_question(7, 2), uiUglyLevel=level)[1]
+            self.assertEqual(digest(frame.crop((0, 300, 528, 590))), golden, 'keys at level %d' % level)
+
+    def test_the_reason_a_firmware_update_failed_is_straight_at_both_levels(self):
+        keys = ['UP'] + ['RIGHT'] * 9 + ['CONFIRM'] + ['RIGHT'] * 5 + ['CONFIRM', 'CONFIRM']
+        for level, golden in self.FIRMWARE.items():
+            frame = frames(keys, firmware_file, uiUglyLevel=level)[1]
+            self.assertEqual(digest(frame.crop((0, 380, 528, 480))), golden, 'message at level %d' % level)
 
 
 class Header(unittest.TestCase):

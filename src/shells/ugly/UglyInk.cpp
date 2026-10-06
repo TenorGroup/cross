@@ -204,9 +204,9 @@ void penMark(const GfxRenderer& r, const Size s, const uint32_t cp, const int x,
 
 // One pass for drawing and measuring, so the two cannot disagree.
 int run(const GfxRenderer& r, const Size s, const int x, const int baseline, const std::string& text, const bool black,
-        const bool draw) {
+        const bool draw, const bool straight) {
   const int fid = idOf(s), fb = fallbackFont(s);
-  const bool af = wild();
+  const bool af = !straight && wild();
   const int px = pixelsOf(s);
   const int top = baseline - r.getFontAscenderSize(fid);
   int cursor = x, pos = 0;
@@ -292,11 +292,14 @@ void ensureFonts(GfxRenderer& r) {
   r.insertFont(FONT_IDS[3], EpdFontFamily(&FONT52));
 }
 
-int text(const GfxRenderer& r, const Size s, const int x, const int baseline, const char* utf8, const bool black) {
-  return run(r, s, x, baseline, utf8ComposeNfc(utf8), black, true);
+int text(const GfxRenderer& r, const Size s, const int x, const int baseline, const char* utf8, const bool black,
+         const bool straight) {
+  return run(r, s, x, baseline, utf8ComposeNfc(utf8), black, true, straight);
 }
 
-int width(const GfxRenderer& r, const Size s, const char* utf8) { return run(r, s, 0, 0, utf8ComposeNfc(utf8), true, false); }
+int width(const GfxRenderer& r, const Size s, const char* utf8, const bool straight) {
+  return run(r, s, 0, 0, utf8ComposeNfc(utf8), true, false, straight);
+}
 
 int ascent(const Size s) { return ASCENT[static_cast<int>(s)]; }
 
@@ -315,7 +318,7 @@ std::string fit(const GfxRenderer& r, const Size s, const std::string& utf8, con
 }
 
 int paragraph(const GfxRenderer& r, const Size s, const int x, const int baseline, const int maxWidth, const int lineHeight,
-              const char* utf8, const bool draw) {
+              const char* utf8, const bool draw, const bool straight) {
   const std::string composed = utf8ComposeNfc(utf8);
   std::vector<std::string> words;
   size_t from = 0;
@@ -340,11 +343,11 @@ int paragraph(const GfxRenderer& r, const Size s, const int x, const int baselin
     if (piece == "\n") tokens.push_back({nullptr, 0, false});
     else if (!piece.empty()) tokens.push_back({piece.c_str(), 0, false});
   std::vector<logic::Placed> placed(tokens.size());
-  const int lines = logic::layout(tokens.data(), static_cast<int>(tokens.size()), maxWidth, width(r, s, "a") / 2 + 4,
-                                  [&](const char* t) { return width(r, s, t); }, placed.data());
+  const int lines = logic::layout(tokens.data(), static_cast<int>(tokens.size()), maxWidth, width(r, s, "a", straight) / 2 + 4,
+                                  [&](const char* t) { return width(r, s, t, straight); }, placed.data());
   if (!draw) return lines;
   for (size_t i = 0; i < tokens.size(); ++i)
-    if (tokens[i].text) text(r, s, x + placed[i].x, baseline + placed[i].line * lineHeight, tokens[i].text);
+    if (tokens[i].text) text(r, s, x + placed[i].x, baseline + placed[i].line * lineHeight, tokens[i].text, true, straight);
   return lines;
 }
 

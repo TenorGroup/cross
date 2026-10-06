@@ -2,6 +2,7 @@
 // Never reached: the keyboard fixture is tenor/cross (shells/Shell.h).
 namespace ugly {
 enum class Size { S22, S30 };
+constexpr bool STRAIGHT = true;
 enum class Circle { Word };
 enum class Mark { Left, Right };
 struct Box {

@@ -15,7 +15,6 @@
 #include "fontIds.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
-#include "shells/ugly/UglySteady.h"
 #include "shells/ugly/UglyWords.h"
 #include "network/FirmwareFlasher.h"
 
@@ -230,9 +229,10 @@ void SdFirmwareUpdateActivity::loop() {
 
 namespace {
 // tenor/ugly on the button readers writes the lines of this screen by hand, centred; S22 when S30 is too wide.
-void sayCentred(const GfxRenderer& r, const int baseline, const char* text) {
-  const ugly::Size size = ugly::width(r, ugly::Size::S30, text) <= r.getScreenWidth() - 24 ? ugly::Size::S30 : ugly::Size::S22;
-  ugly::text(r, size, (r.getScreenWidth() - ugly::width(r, size, text)) / 2, baseline, text);
+void sayCentred(const GfxRenderer& r, const int baseline, const char* text, const bool straight = false) {
+  const ugly::Size size =
+      ugly::width(r, ugly::Size::S30, text, straight) <= r.getScreenWidth() - 24 ? ugly::Size::S30 : ugly::Size::S22;
+  ugly::text(r, size, (r.getScreenWidth() - ugly::width(r, size, text, straight)) / 2, baseline, text, true, straight);
 }
 }  // namespace
 
@@ -281,9 +281,9 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
     // so the do-not-power-off line below stays at the same Y as before.
     y += lineHeight + metrics.verticalSpacing;
     if (handwritten) {
-      const ugly::Steady steady;  // the line that says not to cut the power is read right
+      // The line that says not to cut the power is read right.
       ugly::paragraph(renderer, ugly::Size::S30, metrics.contentSidePadding, y + ugly::ascent(ugly::Size::S30),
-                      pageWidth - metrics.contentSidePadding * 2, 40, ugly::words::flashing());
+                      pageWidth - metrics.contentSidePadding * 2, 40, ugly::words::flashing(), true, ugly::STRAIGHT);
     } else {
       renderer.drawCenteredText(UI_10_FONT_ID, y, tr(STR_FIRMWARE_UPDATE_DO_NOT_POWER_OFF));
     }
@@ -302,8 +302,7 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
     if (handwritten) {
       sayCentred(renderer, baseline, tr(STR_UPDATE_FAILED));
       if (!errorMessage.empty()) {
-        const ugly::Steady steady;  // why it failed, read right
-        sayCentred(renderer, baseline + 44, errorMessage.c_str());
+        sayCentred(renderer, baseline + 44, errorMessage.c_str(), ugly::STRAIGHT);  // why it failed, read right
       }
     } else {
       renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_UPDATE_FAILED), true, EpdFontFamily::BOLD);
