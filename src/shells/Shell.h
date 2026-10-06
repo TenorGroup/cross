@@ -6,6 +6,7 @@
 
 #include "activities/ActivityManager.h"
 #include "ShellKind.h"
+#include "components/TenorMenuChrome.h"
 
 class Activity;
 class GfxRenderer;
@@ -16,6 +17,9 @@ namespace shell {
 
 Kind current();
 inline bool isUgly() { return current() == Kind::Ugly; }
+// The parts every screen shares (header, key bar, status strip, list rows, notices, tips) are drawn by hand in
+// tenor/ugly on the button readers. Each part asks this once; the X4 Pro keeps its touch parts.
+inline bool uglyParts() { return isUgly() && !tenorchrome::kTouchShell; }
 
 // tenor/ugly is a limited edition (ShellLimit.h): offered until its last day by the device clock. Past it,
 // Settings no longer turns to it, and the next boot puts a device still on it back on tenor/cross.

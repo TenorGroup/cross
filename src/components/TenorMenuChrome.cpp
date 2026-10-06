@@ -7,6 +7,7 @@
 #include <HalPowerManager.h>
 #include <WiFi.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include <algorithm>
 #include <cstring>
@@ -265,6 +266,22 @@ void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char
       HeaderBackTapTarget::set(0, 0, r.getScreenWidth(), tabTop());
     else
       HeaderBackTapTarget::clear();
+    return;
+  }
+  if (shell::uglyParts()) {
+    // The name written across the top and underlined; where it came from goes before it, smaller.
+    const int base = HEADER_TOP + headerHeight() - 10, right = r.getScreenWidth() - 24;
+    int x = 24;
+    if (prefix && *prefix) {
+      const std::string from = ugly::fit(r, ugly::Size::S22, std::string(prefix) + "/", (right - x) / 3);
+      x += ugly::text(r, ugly::Size::S22, x, base, from.c_str()) + 4;
+    }
+    const std::string name = ugly::fit(r, ugly::Size::S30, title ? title : "", right - x);
+    ugly::text(r, ugly::Size::S30, x, base, name.c_str());
+    ugly::underline(r, 20, right + 4, base + 8, 760, 2);
+#ifdef UGLY_FRAME_LOG
+    LOG_INF("UGLY", "part=header");
+#endif
     return;
   }
   constexpr int x = 18, rightReserve = 18, tracking = 1;
