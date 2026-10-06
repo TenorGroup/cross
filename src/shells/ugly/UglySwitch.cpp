@@ -11,6 +11,7 @@
 
 #include "MappedInputManager.h"
 #include "activities/Activity.h"
+#include "components/TenorMenuChrome.h"
 #include "shells/Shell.h"
 
 namespace ugly {
@@ -71,7 +72,13 @@ void SwitchConfirm::render(RenderLock&&) {
   for (int i = 0; i < COUNT; ++i) drawn[i] = box[i];
 #endif
 
+#if FREEINK_DEVICE_X4PRO
+  // Touch: the clock and battery at the top, "<" (the dynamic bar, in pen) at the foot; no button signs.
+  formTopBar(renderer);
+  tenorchrome::noteHandDrawn();
+#else
   statusBar(renderer, mappedInput, {true, true, true, true});
+#endif
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
   LOG_INF("UGLY", "Switch frame total=%lums sel=%d lines=%d frame=%d,%d,%d,%d box=%d,%d,%d,%d", static_cast<unsigned long>(millis() - started),
