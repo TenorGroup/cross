@@ -799,7 +799,7 @@ void ReaderToolbarUi::paintUgly() {
         if (row.empty() && listProps_.partialTrailingRow && index - nav_.top == nav_.visibleRows)
           row = {skinList_.x, static_cast<int16_t>(skinList_.y + (index - nav_.top) * (listProps_.rowHeight + listProps_.rowGap)),
                  skinList_.width, listProps_.rowHeight};
-        if (row.empty()) continue;
+        if (row.empty() || row.y >= skinList_.bottom()) continue;  // a glimpse below the list: nothing shows
         auto label = row.inset(fui::Insets{0, 16, 0, 16});
         const int i = index - nav_.top;
         const bool marked = model_.rowMarked && model_.rowMarked(index);
