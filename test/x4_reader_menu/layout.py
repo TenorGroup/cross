@@ -91,6 +91,7 @@ void drawFavoriteMark(const GfxRenderer&,int,int) { ++favoriteMarks; }
 std::vector<fui::Rect> panels;
 void drawPanel(const GfxRenderer&,int y,int h) { panels.push_back({16,static_cast<int16_t>(y),448,static_cast<int16_t>(h)}); }
 int footBackTop(int h) { return h-76; }
+void drawRowRule(const GfxRenderer&,int,int,int) {}
 ''' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
 cpp += header + '\n' + constants + '\n'
 cpp += 'ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& r): UiAppHost(r), renderer_(&r) {}\n'
