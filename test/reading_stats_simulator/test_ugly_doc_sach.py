@@ -23,6 +23,7 @@ CROSS = {
     'eob_plain': '490012e7fcd7e735',
     'eob_menu': 'cd447ae2b5b6c6ed',
     'percent': '6ab5c7354d1e3bd2',
+    'chapter_entry': '6c974a15195b58d5',
 }
 
 
@@ -88,6 +89,14 @@ class ReadingScreensTest(unittest.TestCase):
         self.assertTrue('Percent frame value=1' in log, 'a step is drawn')
         self.assertNotEqual(screen_digest(ugly['pct']), screen_digest(ugly['step']), 'the number and the circle move')
         self.check('percent', ugly['pct'], cross['pct'])
+
+    def test_chapter_number_entry(self):
+        script = self.MENU + ';4600:CONFIRM;6000:CONFIRM:1000;9500:DOWN;11600:QUIT'
+        log, ugly, cross = self.both(script, [(9000, 'entry'), (11000, 'next')], paragraphs=8)
+        self.assertIn('ChapterNumberEntry', log)
+        self.assertTrue('ChapterNumber frame cursor=5' in log, 'no ugly chapter number')
+        self.assertTrue('ChapterNumber frame cursor=0' in log, 'the underline moves')
+        self.check('chapter_entry', ugly['entry'], cross['entry'])
 
 
 if __name__ == '__main__':
