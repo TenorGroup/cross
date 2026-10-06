@@ -11,9 +11,11 @@ class GfxRenderer;
 class MappedInputManager;
 
 namespace readerugly {
-void text(const GfxRenderer& renderer, const freeink::ui::Rect& rect, const char* label,
-          freeink::ui::TextAlign align = freeink::ui::TextAlign::Left);
+// The words in hand where the layout put them (uglychrome::words); returns where the ink went, for the circle.
+freeink::ui::Rect text(const GfxRenderer& renderer, const freeink::ui::Rect& rect, const char* label,
+                       freeink::ui::TextAlign align = freeink::ui::TextAlign::Left);
 void paper(const GfxRenderer& renderer, const freeink::ui::Rect& rect);
+// The circle round a control that has no words (an arrow key, an icon). Words take uglychrome::ring.
 void selected(const GfxRenderer& renderer, const freeink::ui::Rect& rect);
 }
 

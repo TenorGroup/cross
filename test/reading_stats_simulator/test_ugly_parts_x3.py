@@ -10,7 +10,7 @@ import re
 import unittest
 import zipfile
 
-from ugly_common import Card, digest, entered
+from ugly_common import Card, digest, entered, ink
 
 GAP, START, SETTLE = 700, 1500, 1800
 
@@ -121,6 +121,40 @@ class UglyPartsX3(unittest.TestCase):
         self.assertNotEqual(digest(shots['on'].crop(label)), digest(shots['below'].crop(label)), 'the cursor left the first row')
         self.assertEqual(digest(shots['on'].crop(value)), digest(shots['below'].crop(value)),
                          'the circle of the cursor row crosses the value at its right end')
+    def shot(self, keys, books=READER):
+        """One frame SETTLE ms after the last key."""
+        card = Card(books=books)
+        try:
+            book(card.sd / 'sach.epub')
+            t, parts = START, []
+            for k in keys:
+                if k.startswith('WAIT:'):
+                    t += int(k[5:])
+                    continue
+                parts.append('%d:%s' % (t, k))
+                t += GAP
+            at = t - GAP + SETTLE
+            parts.append('%d:QUIT' % (at + 600))
+            log, shots = card.run(';'.join(parts), [(at, 'frame')], timeout=120)
+        finally:
+            card.close()
+        self.assertIn('frame', shots, log[-1500:])
+        return shots['frame']
+
+    def assertBlank(self, image, box, what):
+        self.assertEqual(ink(image, box), 0, what)
+
+    def test_the_reader_menu_circles_the_label_of_its_cursor_row(self):
+        # Reading tab, the cursor on "Cài đặt văn bản": the right end of its row, where a value would stand, stays clear.
+        menu = self.shot(['CONFIRM', 'WAIT:2200', 'CONFIRM', 'DOWN', 'DOWN'])
+        self.assertBlank(menu, (330, 172, 476, 228), 'the circle of the reader menu runs to the row end')
+
+    def test_a_popup_circles_the_label_of_its_focused_option(self):
+        # The status bar popup of the reader menu, focus on its current choice: the option's ends stay clear.
+        popup = self.shot(['CONFIRM', 'WAIT:2200', 'CONFIRM', 'DOWN', 'DOWN', 'RIGHT', 'RIGHT', 'CONFIRM'])
+        self.assertBlank(popup, (80, 358, 160, 412), 'the circle of the popup runs to the option start')
+        self.assertBlank(popup, (370, 358, 450, 412), 'the circle of the popup runs to the option end')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -16,6 +16,7 @@
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
 #include "shells/Shell.h"
+#include "shells/ugly/UglyChrome.h"
 #include "shells/ugly/UglyInk.h"
 
 // Modal option picker drawn over the current screen (no clear) via
@@ -356,16 +357,19 @@ class OptionPopup {
   static constexpr freeink::ui::ActionId ACTION_CHROME = 2;
   static constexpr freeink::ui::ActionId ACTION_PAGE = 3;
 
-  static void uglyText(const GfxRenderer& renderer, const freeink::ui::Rect& rect, const char* label) {
-    if (!label || rect.empty()) return;
+  // Returns where the ink went, for the circle on the focused option.
+  static freeink::ui::Rect uglyText(const GfxRenderer& renderer, const freeink::ui::Rect& rect, const char* label) {
+    if (!label || rect.empty()) return {};
     const auto clip = renderer.getClipRect();
     const int left = std::max<int>(rect.x, clip[0]), top = std::max<int>(rect.y, clip[1]);
     renderer.setClipRect(left, top, std::max(0, std::min<int>(rect.right(), clip[0] + clip[2]) - left),
                         std::max(0, std::min<int>(rect.bottom(), clip[1] + clip[3]) - top));
     const auto fitted = ugly::fit(renderer, ugly::Size::S22, label, rect.width - 8);
-    ugly::text(renderer, ugly::Size::S22, rect.x + (rect.width - ugly::width(renderer, ugly::Size::S22, fitted.c_str())) / 2,
-               rect.y + (rect.height + ugly::ascent(ugly::Size::S22)) / 2, fitted.c_str());
+    const int w = ugly::width(renderer, ugly::Size::S22, fitted.c_str()), asc = ugly::ascent(ugly::Size::S22);
+    const int x = rect.x + (rect.width - w) / 2, base = rect.y + (rect.height + asc) / 2;
+    ugly::text(renderer, ugly::Size::S22, x, base, fitted.c_str());
     renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+    return {static_cast<int16_t>(x), static_cast<int16_t>(base - asc), static_cast<int16_t>(w), static_cast<int16_t>(asc + 6)};
   }
 
   static void uglyPaper(const GfxRenderer& renderer, const freeink::ui::Rect& rect) {
@@ -404,9 +408,8 @@ class OptionPopup {
       if (option.enabled && option.action != fui::NO_ACTION)
         frame.hit(fui::ensureMinTouchRect(row, frame.device().minTouchSize, frame.screen()),
                   option.action, option.value, props.inputMask, option.state);
-      uglyText(renderer, row, option.label);
-      if (fui::hasState(option.state, fui::StateFocused))
-        ugly::circle(renderer, ugly::Circle::Row, {row.x + 4, row.y + 4, row.right() - 4, row.bottom() - 4}, 0, 0, 2);
+      const auto ink = uglyText(renderer, row, option.label);
+      if (fui::hasState(option.state, fui::StateFocused)) uglychrome::ring(renderer, ink);
     }
   }
 

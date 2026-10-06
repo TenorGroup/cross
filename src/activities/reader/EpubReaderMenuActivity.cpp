@@ -13,6 +13,7 @@
 #include "ReaderUtils.h"
 #include "ReaderToolbarUi.h"
 #include "shells/Shell.h"
+#include "shells/ugly/UglyChrome.h"
 #include "shells/ugly/UglyInk.h"
 #include "SdCardFontSystem.h"
 #include "activities/settings/SettingsTabs.h"
@@ -538,8 +539,8 @@ void EpubReaderMenuActivity::paintUglyMenu() {
       const int left = std::clamp(cx - share / 2, frame.x + 6, frame.right() - 6 - share);  // inside the paper
       box = {static_cast<int16_t>(left), skinTab_.y, static_cast<int16_t>(share), skinTab_.height};
     }
-    readerugly::text(renderer, box.inset(fui::Insets{0, 8, 0, 8}), tabLabel(tab), fui::TextAlign::Center);
-    if (tab == activeTab()) readerugly::selected(renderer, box);
+    const auto ink = readerugly::text(renderer, box.inset(fui::Insets{0, 8, 0, 8}), tabLabel(tab), fui::TextAlign::Center);
+    if (tab == activeTab()) uglychrome::ring(renderer, ink);
   }
   std::string summary;
   if (totalPages > 0) summary = std::string(tr(STR_CHAPTER_PREFIX)) + std::to_string(currentPage) + "/" +
@@ -560,8 +561,8 @@ void EpubReaderMenuActivity::paintUglyMenu() {
                                  static_cast<int16_t>(valueWidth), label.height}, item.value, fui::TextAlign::Right);
       label.width = static_cast<int16_t>(std::max(0, label.width - valueWidth - 12));
     }
-    readerugly::text(renderer, label, item.label);
-    if (row == ringPos() - 1) readerugly::selected(renderer, box);
+    const auto ink = readerugly::text(renderer, label, item.label);
+    if (row == ringPos() - 1) uglychrome::ring(renderer, ink);
     if (pinned) ugly::tick(renderer, box.right() - 26 - (item.opensNext ? 28 : 0), box.y + box.height / 2);
     if (item.opensNext) ugly::mark(renderer, ugly::Mark::Right, box.right() - 14, box.y + box.height / 2);
   }

@@ -50,6 +50,10 @@ fui::Rect words(const GfxRenderer& r, const fui::Rect& box, const char* text, co
   return ink;
 }
 
+void ring(const GfxRenderer& r, const fui::Rect& w) {
+  if (!w.empty()) ugly::circle(r, ugly::Circle::Row, {w.x, w.y, w.right(), w.bottom()}, 12, 8, 2);
+}
+
 int marksWidth(const GfxRenderer& r, const Marks& m) {
   int w = (m.chosen ? MARK + 2 : 0) + (m.opensNext ? MARK : 0);
   if (m.toggle) w += ugly::width(r, ugly::Size::S22, tr(STR_STATE_OFF)) + 8;
@@ -74,8 +78,8 @@ void marks(const GfxRenderer& r, const fui::Rect& box, const Marks& m) {
   if (!m.selected) return;
   if (m.around.empty())
     ugly::circle(r, ugly::Circle::Row, {box.x + 5, box.y + 5, box.right() - 5, box.bottom() - 5}, 0, 0, 2);
-  else  // round the words, padded like the circles of the notebook and the answer sheet
-    ugly::circle(r, ugly::Circle::Row, {m.around.x, m.around.y, m.around.right(), m.around.bottom()}, 12, 8, 2);
+  else
+    ring(r, m.around);
 }
 
 void row(const GfxRenderer& r, const fui::Rect& box, const Row& row) {

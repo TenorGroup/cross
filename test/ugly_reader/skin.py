@@ -28,13 +28,18 @@ namespace ugly {
  void mark(const GfxRenderer& r,Mark,int,int){++r.pen;}
  void tick(const GfxRenderer& r,int,int){++r.pen;}
 }
+namespace uglychrome {
+ freeink::ui::Rect words(const GfxRenderer& r,const freeink::ui::Rect& box,const char* s,freeink::ui::TextAlign,bool=false,int=1){
+  if(!s||!*s||box.empty()) return {}; ++r.pen; return box; }
+ void ring(const GfxRenderer& r,const freeink::ui::Rect& w){ if(!w.empty()) ++r.pen; }
+}
 ''')
 driver = driver.replace('UiAppHost(r) {}', 'UiAppHost(r),renderer_(&r) {}')
 chrome = (a.repo / 'src/components/TenorMenuChrome.cpp').read_text()
 chrome_names = re.search(r'static constexpr StrId names\[\].*?;', chrome).group(0)
 chrome_lookup = re.search(r'(?:tr|I18N\.get)\(names\[i\]\)', chrome).group(0)
 chrome_boundary = 'void chromeI18nBoundary(int i) {' + chrome_names + '(void)' + chrome_lookup + ';}\n'
-driver = driver.replace("void ReaderToolbarUi::paintUgly() {}", "\'\'\' + s[s.index(\'void readerugly::text\'):] + chrome_boundary + r\'\'\'")
+driver = driver.replace("void ReaderToolbarUi::paintUgly() {}", "\'\'\' + s[s.index(\'fui::Rect readerugly::text\'):] + chrome_boundary + r\'\'\'")
 driver = driver.replace('for(int tier=0;tier<3;++tier) {', 'for(bool ugly:{false,true}) { shell::enabled=ugly; for(int tier=0;tier<3;++tier) {')
 driver = driver.replace('  puts("GREEN X4', '  } assert(renderer.pen>0); assert((renderer.clip==std::array<int,4>{0,0,480,800}));\n  puts("GREEN Ugly + Cross X4')
 # The generator uses its own parsed arguments, including this script's output and repo.

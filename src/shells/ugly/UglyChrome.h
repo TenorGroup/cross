@@ -13,6 +13,10 @@ namespace uglychrome {
 freeink::ui::Rect words(const GfxRenderer& renderer, const freeink::ui::Rect& rect, const char* text,
            freeink::ui::TextAlign align = freeink::ui::TextAlign::Left, bool locked = false, int maxLines = 1);
 
+// The circle on the cursor: round the words written (as words() returned them), padded like the circles of the
+// notebook and the answer sheet. Empty words draw nothing.
+void ring(const GfxRenderer& renderer, const freeink::ui::Rect& words);
+
 // The pen marks of a row laid out at `box`: the circle on the cursor row, a tick on the value in use, an arrow on a
 // row that opens another screen, the word On or Off of a switch. The circle goes round the words in `around` (the
 // label, as words() returned it), as the notebook circles its rows; with `around` empty it goes round the row.
