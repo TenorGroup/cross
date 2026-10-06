@@ -69,6 +69,13 @@ void tenorchrome::drawRoundRing(const GfxRenderer& g, const int x, const int y, 
     if (!grey || ((px + py) & 1) == 0) g.drawPixel(px, py, true);
   };
   const int ri = std::max(0, r - thick);
+  // A corner row is tested only across its 2 corners; between them it is ink in the top and bottom `thick` rows
+  // and empty elsewhere (the same pixels as testing every one, which took 2/3 of a 448 px popup frame).
+  const bool corners = r >= thick && w >= 2 * r;
+  const auto ring = [&](const int px, const int py) {
+    if (inRound(px, py, x, y, w, h, r) && !inRound(px, py, x + thick, y + thick, w - 2 * thick, h - 2 * thick, ri))
+      plot(px, py);
+  };
   for (int py = y; py < y + h; ++py) {
     if (py >= y + r && py < y + h - r) {
       // Straight sides: only the two edges.
@@ -78,9 +85,14 @@ void tenorchrome::drawRoundRing(const GfxRenderer& g, const int x, const int y, 
       }
       continue;
     }
-    for (int px = x; px < x + w; ++px)
-      if (inRound(px, py, x, y, w, h, r) && !inRound(px, py, x + thick, y + thick, w - 2 * thick, h - 2 * thick, ri))
-        plot(px, py);
+    if (!corners) {
+      for (int px = x; px < x + w; ++px) ring(px, py);
+      continue;
+    }
+    for (int px = x; px < x + r; ++px) ring(px, py);
+    if (py < y + thick || py >= y + h - thick)
+      for (int px = x + r; px < x + w - r; ++px) plot(px, py);
+    for (int px = x + w - r; px < x + w; ++px) ring(px, py);
   }
 }
 
