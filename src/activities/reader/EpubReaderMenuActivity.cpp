@@ -523,8 +523,7 @@ void EpubReaderMenuActivity::paintUglyMenu() {
   const fui::Rect frame{16, static_cast<int16_t>(tenorchrome::kTouchShell ? tenorchrome::contentTop() : 8),
                         static_cast<int16_t>(width - 32), static_cast<int16_t>(bottom - (tenorchrome::kTouchShell ? tenorchrome::contentTop() : 8))};
   readerugly::paper(renderer, frame);
-  if (!tenorchrome::kTouchShell)
-    readerugly::text(renderer, {28, 10, static_cast<int16_t>(width - 56), 38}, tr(STR_READER_MENU));
+  if (!tenorchrome::kTouchShell) tenorchrome::drawHeader(renderer, tr(STR_READER_MENU));
   const int shownTabs = tabWindowCount();
   for (int slot = 0; slot < shownTabs; ++slot) {
     const int tab = menucustom::idAt(menucustom::groupFor(name.c_str()), tabWindowStart() + slot, tabCount());
@@ -534,7 +533,10 @@ void EpubReaderMenuActivity::paintUglyMenu() {
       const int first = skinTab_.x + 56, last = skinTab_.right() - 57;
       const int cx = shownTabs > 1 ? first + (2 * (last - first) * slot + (shownTabs - 1)) / (2 * (shownTabs - 1))
                                   : skinTab_.x + skinTab_.width / 2;
-      box = {static_cast<int16_t>(cx - 42), skinTab_.y, 84, skinTab_.height};
+      // The hand writes wider than the icons stood: each name takes its whole share of the band.
+      const int share = shownTabs > 1 ? std::max(84, (frame.width - 12) / shownTabs) : 84;
+      const int left = std::clamp(cx - share / 2, frame.x + 6, frame.right() - 6 - share);  // inside the paper
+      box = {static_cast<int16_t>(left), skinTab_.y, static_cast<int16_t>(share), skinTab_.height};
     }
     readerugly::text(renderer, box.inset(fui::Insets{0, 8, 0, 8}), tabLabel(tab), fui::TextAlign::Center);
     if (tab == activeTab()) readerugly::selected(renderer, box);
