@@ -155,6 +155,26 @@ class UglyPartsX3(unittest.TestCase):
         self.assertBlank(popup, (80, 358, 160, 412), 'the circle of the popup runs to the option start')
         self.assertBlank(popup, (370, 358, 450, 412), 'the circle of the popup runs to the option end')
 
+    def test_a_chinese_letter_leaves_the_rest_of_the_name_in_hand(self):
+        # The notebook's File page: "Tam thể tập hai" and the same name with 体 in it. The pen lacks 体 alone, so the
+        # 2 names start with the same handwritten "Tam thể"; the long one trails off in the scrawl, no dots.
+        card = Card(books=[], files=['A.txt', 'Tam thể tập hai.txt', 'Tam thể 体 tập hai.txt'])
+        try:
+            log, shots = card.run('1000:DOWN;1800:DOWN;4000:QUIT', [(3200, 'files')])
+        finally:
+            card.close()
+        page = shots['files']
+        bands, inside = [], False
+        for y in range(175, 520):
+            inked = ink(page, (48, y, 132, y + 1)) > 0
+            if inked and not inside:
+                bands.append(y)
+            inside = inked
+        self.assertGreaterEqual(len(bands), 3, bands)
+        hand, mixed = bands[1], bands[2]
+        self.assertEqual(digest(page.crop((48, hand, 132, hand + 30))), digest(page.crop((48, mixed, 132, mixed + 30))),
+                         'a name with a Chinese letter is written whole in the UI font')
+
 
 if __name__ == '__main__':
     unittest.main()

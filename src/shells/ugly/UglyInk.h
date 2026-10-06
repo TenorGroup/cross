@@ -24,12 +24,12 @@ enum class Size : uint8_t { S22, S30, S38, S52 };
 void ensureFonts(GfxRenderer& renderer);
 
 // Baseline-anchored text. Returns the advance. A string with a character the baked font lacks (a
-// Chinese title, say) is drawn whole in the UI font instead, without jumps.
+// Chinese title, say) writes that character alone in the UI font, straight, in its place in the line.
 int text(const GfxRenderer& renderer, Size size, int x, int baseline, const char* utf8, bool black = true);
 int width(const GfxRenderer& renderer, Size size, const char* utf8);
 // Height of the ink above the baseline for a line at this size, for placing boxes.
 int ascent(Size size);
-// The first character of `utf8` shortened with an ellipsis so the result fits `maxWidth`.
+// `utf8` cut where it no longer fits `maxWidth`, trailing off in a pen scrawl (whatever font its letters take).
 std::string fit(const GfxRenderer& renderer, Size size, const std::string& utf8, int maxWidth);
 
 // A plain sentence broken into lines of at most maxWidth, one under another. Returns the lines used (with draw false it only counts them).

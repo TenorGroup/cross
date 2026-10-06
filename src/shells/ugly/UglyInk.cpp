@@ -87,6 +87,9 @@ bool covered(const GfxRenderer& r, const int fid, const char* utf8) {
 
 int fallbackFont(const Size s) { return s == Size::S22 || s == Size::S30 ? UI_12_FONT_ID : UI_TITLE_FONT_ID; }
 
+// A letter the baked pen has (a Chinese one has not: it is written in the UI font, straight, in its place in the line).
+bool baked(const Size s, const uint32_t cp) { return cp == ' ' || FONTS[static_cast<int>(s)]->hasCodepoint(cp); }
+
 // "ugly af" turns, shrinks and lifts every letter as it is drawn and lets the line jump; "ugly" draws the straight baked
 // letters as they are. The setting is read here, at draw time, so a change shows on the next screen.
 bool wild() { return logic::levelOf(SETTINGS.uiUglyLevel) == logic::Level::Af; }
@@ -105,9 +108,10 @@ Letter letterOf(const Size s, const bool af, const uint32_t cp) {
 int stepOf(const GfxRenderer& r, const Size s, const bool af, const int pos, const uint32_t cp, const Letter& letter) {
   if (cp == SCRAWL) return 3 * stepOf(r, s, false, pos, '.', {nullptr, logic::NO_WARP});
   if (penDrawn(cp)) return 26;  // a mark is some 20 px across
-  if (letter.glyph) return logic::warpAdvance(letter.glyph->advanceX, letter.warp) + logic::jumpStep(pos, cp);
   char one[5];
   encode(cp, one);
+  if (!baked(s, cp)) return r.getTextAdvanceX(fallbackFont(s), one, EpdFontFamily::REGULAR);
+  if (letter.glyph) return logic::warpAdvance(letter.glyph->advanceX, letter.warp) + logic::jumpStep(pos, cp);
   return r.getTextAdvanceX(idOf(s), one, EpdFontFamily::REGULAR) + (af ? logic::jumpStep(pos, cp) : 0);
 }
 
@@ -159,12 +163,7 @@ void penMark(const GfxRenderer& r, const Size s, const uint32_t cp, const int x,
 // One pass for drawing and measuring, so the two cannot disagree.
 int run(const GfxRenderer& r, const Size s, const int x, const int baseline, const std::string& text, const bool black,
         const bool draw) {
-  const int fid = idOf(s);
-  if (!covered(r, fid, text.c_str())) {
-    const int fb = fallbackFont(s);
-    if (draw) r.drawText(fb, x, baseline - r.getFontAscenderSize(fb), text.c_str(), black);
-    return r.getTextAdvanceX(fb, text.c_str(), EpdFontFamily::REGULAR);
-  }
+  const int fid = idOf(s), fb = fallbackFont(s);
   const bool af = wild();
   const int px = pixelsOf(s);
   const int top = baseline - r.getFontAscenderSize(fid);
@@ -177,6 +176,13 @@ int run(const GfxRenderer& r, const Size s, const int x, const int baseline, con
       const int advance = stepOf(r, s, af, pos, cp, letter);
       if (draw && !r.isFontCacheScanning()) penMark(r, s, cp, cursor, baseline, advance);
       cursor += advance;
+      ++pos;
+      continue;
+    }
+    if (!baked(s, cp)) {  // the UI font for this letter alone, on the same baseline
+      encode(cp, one);
+      if (draw) r.drawText(fb, cursor, baseline - r.getFontAscenderSize(fb), one, black);
+      cursor += stepOf(r, s, af, pos, cp, letter);
       ++pos;
       continue;
     }
@@ -254,27 +260,16 @@ int ascent(const Size s) { return ASCENT[static_cast<int>(s)]; }
 
 std::string fit(const GfxRenderer& r, const Size s, const std::string& utf8, const int maxWidth) {
   std::string out = utf8ComposeNfc(utf8);
-  const int fid = idOf(s);
-  if (covered(r, fid, out.c_str()) && covered(r, fid, "...")) {
-    // The baked font draws every cut of this line, and its advances add up character by character:
-    // measure once, cut once.
-    const bool af = wild();
-    const int keep = logic::ellipsisKeep(out.c_str(), maxWidth, [&](const int pos, const uint32_t cp) {
-      return stepOf(r, s, af, pos, cp, letterOf(s, af, cp));
-    });
-    if (keep == -1) return out;
-    if (keep < 0) return std::string();
-    out.resize(static_cast<size_t>(keep));
-    return out + "\xEE\x80\x80";  // SCRAWL: the line trails off in the pen, no dots
-  }
-  // A character the baked font lacks puts the line in the UI font, which is measured whole: shave and measure.
-  if (width(r, s, out.c_str()) <= maxWidth) return out;
-  while (!out.empty()) {
-    utf8RemoveLastChar(out);
-    const std::string cut = out + "...";
-    if (width(r, s, cut.c_str()) <= maxWidth) return cut;
-  }
-  return out;
+  // Every letter has its own advance (a baked one, or the UI font's for a letter the pen lacks), and they add up
+  // character by character: measure once, cut once.
+  const bool af = wild();
+  const int keep = logic::ellipsisKeep(out.c_str(), maxWidth, [&](const int pos, const uint32_t cp) {
+    return stepOf(r, s, af, pos, cp, letterOf(s, af, cp));
+  });
+  if (keep == -1) return out;
+  if (keep < 0) return std::string();
+  out.resize(static_cast<size_t>(keep));
+  return out + "\xEE\x80\x80";  // SCRAWL: the line trails off in the pen, no dots
 }
 
 int paragraph(const GfxRenderer& r, const Size s, const int x, const int baseline, const int maxWidth, const int lineHeight,
