@@ -50,7 +50,7 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
   label.color = fui::Color::Black;
   label.inverted = false;
   // Text tabs: each pill is its label plus 14 px a side, and the pills are spread with equal air between
-  // them inside the bar, so a long label ("Phong chu") does not touch the bar's ring. Equal slots when
+  // them inside the bar, so a long label does not touch the bar's ring. Equal slots when
   // the labels do not fit that way.
   int textCentre[5] = {};
   bool spread = false;

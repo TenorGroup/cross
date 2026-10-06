@@ -34,7 +34,7 @@ constexpr int TOUCH_BAR_BOTTOM_GAP = 16;
 // Dynamic bar (touch shell): every screen has one bar at the foot, 60 px tall and 16 px over the bottom
 // edge, the same place and size on every screen; only what it holds changes. Each screen declares
 // what it needs (footBarFor), and one function draws it and records where a tap on it goes:
-//   Tabs: the zone's root, its cards drawn by the tab list itself (Home, the reader menu).
+//   Tabs: the zone's root, its cards drawn by the tab list itself (Home).
 //   Full: a screen below another: "<" (one level back), the zone's round icon (to the zone's root)
 //         and the screen's name, read only.
 //   BackOnly: "<" alone, the screen's own content takes the rest of the foot (a keyboard, the reader
