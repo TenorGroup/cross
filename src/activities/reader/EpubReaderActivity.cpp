@@ -4170,7 +4170,7 @@ void EpubReaderActivity::renderOverlay() {
   const auto drawMenuChrome = [this]() {
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
     if (!SETTINGS.globalStatusBarHidden()) {
-      renderer.fillRect(0, 0, renderer.getScreenWidth(), tenorchrome::contentTop(), false);
+      renderer.fillRect(0, 0, renderer.getScreenWidth(), tenorchrome::readerStripBottom(renderer), false);
       tenorchrome::drawStatus(renderer);
     }
 #else

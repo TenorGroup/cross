@@ -53,6 +53,10 @@ class BlePageTurnerActivity final : public UiListActivity {
   };
 
   int listCount() const override { return static_cast<int>(rowItems_.size()); }
+  // Touch: the paired devices in a frame of their own under their heading.
+  bool rowStartsGroup(int row) const override {
+    return row > 0 && row < listCount() && rowItems_[row].sectionHeading != nullptr;
+  }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   void onRowLongPress(int index) override;
@@ -94,6 +98,7 @@ class BlePageTurnerActivity final : public UiListActivity {
   // Values of the six bind rows, same reason: ListItem::value is a pointer.
   std::string bindValues_[6];
   std::vector<freeink::ui::ListItem> rowItems_;
+  std::vector<int16_t> rowCodes_;  // ROW_* of each row, beside rowItems_
   OptionPopup optionPopup;
   OptionPopup* tiltPopup() override { return &optionPopup; }
   bool rowsDirty = true;

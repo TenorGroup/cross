@@ -2,7 +2,9 @@
 
 #include <utility>
 
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 
 namespace fui = freeink::ui;
 
@@ -52,7 +54,8 @@ void HomeButtonSettingsActivity::buildScreen(UiScreen& screen) {
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;
   // Keep the gesture name and its current action at the same visual weight.
-  props.labelText = screen.theme().smallText;
+  // Touch: the rows in the text of every other list (L4); the button readers keep their small rows.
+  props.labelText = tenorchrome::kTouchShell ? uiMenuLabelText(screen.theme()) : screen.theme().smallText;
   // A default smallText style is treated as inherited by screen.list().
   props.labelText.maxLines = 2;
   syncListViewport(screen, props);

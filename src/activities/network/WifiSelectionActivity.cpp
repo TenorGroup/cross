@@ -43,6 +43,11 @@ WifiSelectionActivity::WifiSelectionActivity(GfxRenderer& renderer, MappedInputM
 void WifiSelectionActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<WifiSelectionActivity*>(user);
   if (self->state != WifiSelectionState::NETWORK_LIST) return;
+  // Touch: the row after the networks scans again.
+  if (tenorchrome::kTouchShell && event.value == static_cast<int16_t>(self->networks.size()) && !event.longPress) {
+    onScanEvent(event, user);
+    return;
+  }
   if (event.value < 0 || event.value >= static_cast<int16_t>(self->networks.size())) return;
   self->selectedNetworkIndex = static_cast<size_t>(event.value);
   // Long-press a saved network to forget it (mirrors the Left-button hold in loop()).
@@ -431,6 +436,13 @@ void WifiSelectionActivity::rebuildNetworkRowItems() {
     if (!networkStatuses[i].empty()) item.value = networkStatuses[i].c_str();
     item.actionValue = static_cast<int16_t>(i);
     networkRowItems.push_back(item);
+  }
+  // Touch: "Retry" is the last row of the frame, under the networks (no button left floating mid screen).
+  if (tenorchrome::kTouchShell && !networks.empty()) {
+    fui::ListItem retry;
+    retry.label = tr(STR_RETRY);
+    retry.actionValue = static_cast<int16_t>(networks.size());
+    networkRowItems.push_back(retry);
   }
 }
 
@@ -989,9 +1001,9 @@ void WifiSelectionActivity::loop() {
       // navigation pulls the view back to it.
       if (tenorchrome::kTouchShell) {
         // Touch: the one rule for every list (UiAppHost::swipeRows).
-        const int delta = swipeRows(mappedInput, listNav, static_cast<int>(networks.size()), ACTION_ROW);
+        const int delta = swipeRows(mappedInput, listNav, static_cast<int>(networkRowItems.size()), ACTION_ROW);
         if (delta != 0) {
-          if (listNav.scrollBy(delta, static_cast<int>(networks.size()))) requestUpdate();
+          if (listNav.scrollBy(delta, static_cast<int>(networkRowItems.size()))) requestUpdate();
           return;
         }
       } else {
@@ -1143,6 +1155,11 @@ void WifiSelectionActivity::buildListScreen(UiScreen& screen) {
   // Tap opens; long-press a saved network forgets it (physical buttons stay in loop()).
   props.inputMask = fui::InputTouch | fui::InputLongPress;
   props.valueInset = 8;  // air between the signal bars and the row edge
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  // Touch (C1): the rows in a round frame 16 px in from the screen edges, their text 16 px into it.
+  props.rowInset = tenorchrome::FOOT_BACK_X;
+  props.sidePadding = 16;
+#else
   if (mappedInput.hasTouch()) {
     // Touch has no Right key to scan again with, and a list that always ends in the hidden network
     // never shows the empty-list retry: keep a retry button under the rows.
@@ -1155,6 +1172,7 @@ void WifiSelectionActivity::buildListScreen(UiScreen& screen) {
     scan.text = theme.bodyText;
     fui::button(screen.frame(), fui::Rect{b.x, b.y, b.width, static_cast<int16_t>(theme.rowHeight)}, scan);
   }
+#endif
   // Long SSIDs grow their row to a second line; the trailing value is
   // just the short status glyphs, so skip the balanced 60%-band wrap cap.
   props.labelText = screen.theme().bodyText;
@@ -1162,7 +1180,10 @@ void WifiSelectionActivity::buildListScreen(UiScreen& screen) {
   props.balanceWrappedLabelWithValue = false;
   listNav.selected = static_cast<int>(selectedNetworkIndex);
   props.partialTrailingRow = true;
-  screen.syncListViewport(listNav, props, static_cast<int>(networks.size()));
+  screen.syncListViewport(listNav, props, static_cast<int>(networkRowItems.size()));
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  props.selectedIndex = -1;  // a finger picks the row: no black cursor
+#endif
   screen.list(props);
 }
 
@@ -1222,8 +1243,34 @@ void WifiSelectionActivity::buildPromptDialog(UiScreen& screen) {
   fui::optionDialog(screen.frame(), fui::centeredRect(body, fui::Size{width, height}), props);
 }
 
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+// Touch (C1): the round grey frame round the rows on screen, a grey dotted rule halfway between 2 rows.
+void WifiSelectionActivity::drawRowFrame() const {
+  const int count = static_cast<int>(networkRowItems.size());
+  const int x0 = tenorchrome::FOOT_BACK_X + 16, x1 = renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17;
+  int top = -1, bottom = 0, gap = 8;
+  for (int i = listNav.top; i < count; ++i) {
+    const fui::Rect r = app.publishedRect(ACTION_ROW, static_cast<int16_t>(i));
+    if (r.height <= 0) continue;
+    if (top < 0) {
+      top = r.y;
+    } else {
+      gap = r.y - bottom;
+      const int y = bottom + gap / 2;
+      for (int x = x0; x < x1; ++x)
+        if (((x + y) & 1) == 0) renderer.drawPixel(x, y, true);
+    }
+    bottom = r.y + r.height;
+  }
+  if (top >= 0) tenorchrome::drawPanel(renderer, top - gap / 2 - 2, bottom - top + gap + 4);
+}
+#endif
+
 void WifiSelectionActivity::renderNetworkList(const Rect* screen, const ThemeMetrics* metrics) {
   renderUi();
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  drawRowFrame();
+#endif
   if (networks.empty() && !mappedInput.hasTouch()) {
     // Below the centered "no networks" line the app drew. Touch boards get an
     // on-screen Retry button from the screen builder instead of this hint.

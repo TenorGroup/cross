@@ -83,6 +83,9 @@ class HomeActivity final : public UiTabListActivity {
     self->queueNavIntent(NavIntent::StepNext);
   }
   void showOtherBookMenu();
+  // Touch: a held cover's menu hangs from the cover (rule 7), not from the whole card.
+  void onRowLongPress(int index) override;
+  freeink::ui::Rect heldCover{};
   bool touchRowMovesRing() const override { return activeTabId == Tab::RECENT; }
   bool listFramed() const override { return activeTabId != Tab::RECENT; }  // the card is no list
   bool rowOpens(int row) const override;

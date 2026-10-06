@@ -14,6 +14,7 @@ const char* testTranslation(StrId id, const char* name) {
 }
 #define tr(id) testTranslation(StrId::id, #id)
 #define LOG_INF(...) (void)0
+namespace tenorchrome { constexpr bool kTouchShell = false; }
 #define LOG_ERR(...) (void)0
 namespace fui {
 struct ListItem {
@@ -125,6 +126,7 @@ struct BlePageTurnerActivity : UiListActivity {
   struct App { void clearTapFlash() {} } app;
   Popup optionPopup;
   std::vector<fui::ListItem> rowItems_;
+  std::vector<int16_t> rowCodes_;
   bool rowsDirty = false, bindWaitActive_ = false, bindMode_ = false, finished = false;
   int16_t selectCode_ = -1;
   void finish() { finished = true; }
@@ -211,9 +213,10 @@ int main() {
     int sectionHeadings = 0;
     for (int i = 0; i < screen.listCount(); ++i) {
       const auto& row = screen.rowItems_[i];
-      require(row.actionValue != BlePageTurnerActivity::ROW_PAIRED_HEADER, "paired heading is absent from physical row model");
+      require(row.actionValue == i, "a row reports its index");
+      require(screen.rowCodes_[i] != BlePageTurnerActivity::ROW_PAIRED_HEADER, "paired heading is absent from physical row model");
       if (row.sectionHeading) ++sectionHeadings;
-      if (row.actionValue == BlePageTurnerActivity::ROW_STATUS || row.actionValue == BlePageTurnerActivity::ROW_NO_DEVICE) {
+      if (screen.rowCodes_[i] == BlePageTurnerActivity::ROW_STATUS || screen.rowCodes_[i] == BlePageTurnerActivity::ROW_NO_DEVICE) {
         require(!row.enabled, "status/empty is noninteractive for touch");
         screen.activateIndex(i);
         require(screen.optionPopup.shows == 0 && backend::connections.empty(), "status/empty creates no fake popup/connect");
@@ -231,7 +234,7 @@ int main() {
     }
     for (int bond = 0; bond < bonds; ++bond) {
       for (int i = 0; i < screen.listCount(); ++i) {
-        if (screen.rowItems_[i].actionValue != BlePageTurnerActivity::ROW_PAIRED_BASE + bond) continue;
+        if (screen.rowCodes_[i] != BlePageTurnerActivity::ROW_PAIRED_BASE + bond) continue;
         const int shows = screen.optionPopup.shows;
         const size_t calls = backend::connections.size();
         screen.activateIndex(i);
@@ -259,7 +262,7 @@ int main() {
                              "STR_BLE_BIND_PREV_CHAPTER", "STR_BLE_BIND_READER_MENU", "STR_BLE_BIND_SAVE_QUOTE"};
     const auto rowOf = [&](int code) {
       for (int i = 0; i < screen.listCount(); ++i)
-        if (screen.rowItems_[i].actionValue == code) return i;
+        if (screen.rowCodes_[i] == code) return i;
       return -1;
     };
     const int mainScan = rowOf(BlePageTurnerActivity::ROW_SCAN);
@@ -308,7 +311,7 @@ int main() {
     bleturner::editableTable(SETTINGS.ble.remotes, SETTINGS.ble.remoteCount, "AA:BB:CC:DD:EE:F0", "Remote");
     require(SETTINGS.ble.remoteCount == 1, "table setup");
     for (int i = 0; i < screen.listCount(); ++i) {
-      if (screen.rowItems_[i].actionValue != BlePageTurnerActivity::ROW_PAIRED_BASE) continue;
+      if (screen.rowCodes_[i] != BlePageTurnerActivity::ROW_PAIRED_BASE) continue;
       screen.activateIndex(i);
       screen.optionPopup.callback(1);
     }

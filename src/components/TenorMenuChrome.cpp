@@ -29,6 +29,9 @@
 #include "themes/TenorRadius.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+#include "Epub/converters/DirectPixelWriter.h"
+#endif
 
 namespace {
 // A round-ended bar (radius h / 2) in pixel-centre arithmetic doubled to stay integer.
@@ -107,15 +110,22 @@ namespace {
 // library lists, Wi-Fi, the reader's contents. Dialogs, the reader page and the like are not here.
 constexpr const char* FULL_BAR[] = {
     "About", "BlePageTurner", "BookStats", "BookStatsLibrary", "ButtonRemap", "CalibreConnect", "ClearCache",
-    "ClockSettings", "ClockSync", "CrossPointWebServer", "EpubReaderBookmarks", "EpubReaderChapterSelection",
-    "FileBrowser", "FontDownload", "HomeButtonSettings", "InfoUpdate", "KOReaderAuth", "KOReaderSettings", "KOReaderSync",
-    "KeyboardLayouts", "LanguageSelect", "NetworkModeSelection", "OpdsBookBrowser", "OpdsServerList",
-    "OpdsSettings", "QrDisplay", "QuoteDetail", "Quotes", "ReadingHabits", "ReadingHistory", "Settings",
+    "ClockSettings", "ClockSync", "CrossPointWebServer", "DictionaryDefinition", "EpubReaderBookmarks",
+    "EpubReaderChapterSelection", "EpubReaderFootnoteSelect", "FileBrowser", "FontDownload", "HomeButtonSettings",
+    "InfoUpdate", "KOReaderAuth", "KOReaderSettings", "KOReaderSync", "KeyboardLayouts", "LanguageSelect",
+    "NetworkModeSelection", "OpdsBookBrowser", "OpdsServerList", "OpdsSettings", "QrDisplay",
+    "QuoteDetail", "QuoteTrim", "Quotes", "ReadingHabits", "ReadingHistory", "Settings",
     "StatusBarSettings", "TimezonePicker", "WifiSelection", "XtcReaderChapterSelection"};
 // "<" at the left, the screen's own content in the rest of the foot: the keyboard of an input screen,
 // the cards of a screen with cards (the reader menu: "<" goes back a level, from the top level it
-// closes the menu; the text settings; the library).
-constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "TextSettings", "Library"};
+// closes the menu; the text settings; the library), a screen laid over another one (a question, a slider,
+// a word picked on the page, the light panel, a picture), where "<" cancels, and a screen that must leave
+// through its own exit (a firmware update, the card lent to a computer): no zone icon to jump away by.
+constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "TextSettings", "Library",
+                                         "BmpViewer", "ChapterNumberEntry", "Confirmation", "Crash",
+                                         "DictionaryWordSelect", "EpubReaderPercentSelection", "FrontlightPanel",
+                                         "OtaUpdate", "QuoteSelect", "SdFirmwareUpdate", "SleepTimeoutInterval",
+                                         "UglySwitch", "UsbDrive"};
 // Zone roots that draw their own cards at the foot.
 constexpr const char* TABS_BAR[] = {"Home"};
 
@@ -130,6 +140,7 @@ bool named(const char* const (&names)[N], const char* activityName) {
 // name from the one before it.
 char noted[96] = {};
 uint32_t notedGeneration = UINT32_MAX;
+uint32_t handDrawnGeneration = UINT32_MAX;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 struct ReaderFootBarNote {
   bool open = false, keypad = false;
@@ -243,16 +254,42 @@ void tenorchrome::noteScreenTitle(const char* title) {
   notedGeneration = activityManager.activityGeneration();
 }
 
+void tenorchrome::noteHandDrawn() { handDrawnGeneration = activityManager.activityGeneration(); }
+
 const char* tenorchrome::screenTitle() {
   return notedGeneration == activityManager.activityGeneration() ? noted : "";
 }
 
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+int tenorchrome::readerStripBottom(const GfxRenderer& r) {
+  DirectPixelWriter pen;
+  pen.init(const_cast<GfxRenderer&>(r));  // read only
+  const int rowBits = pen.displayWidthBytes * 8, width = r.getScreenWidth();
+  const auto ink = [&](const int x, const int y) {
+    const int bit = (pen.phyYBase + x * pen.phyYStepX + y * pen.phyYStepY) * rowBits + pen.phyXBase + x * pen.phyXStepX +
+                    y * pen.phyXStepY;
+    return (pen.fb[bit >> 3] & (0x80 >> (bit & 7))) == 0;
+  };
+  // ponytail: at most 64 rows under the strip; a page with no blank row there keeps the strip's own band.
+  const int top = contentTop();
+  for (int y = top; y < top + 64; ++y) {
+    bool any = false;
+    for (int x = 0; x < width && !any; ++x) any = ink(x, y);
+    if (!any) return y;
+  }
+  return top;
+}
+
 void tenorchrome::noteReaderFootBar(const bool open, const bool keypad, const int activeTool) {
   readerFootBar = {open, keypad, activeTool, activityManager.activityGeneration()};
   if (!open) HeaderBackTapTarget::clearFoot();
 }
 #endif
+
+void tenorchrome::clearFootBand(const GfxRenderer& r) {
+  const int top = footBackTop(r.getScreenHeight()) - 12;
+  r.fillRect(0, top, r.getScreenWidth(), r.getScreenHeight() - top, false);
+}
 
 void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone) {
   HeaderBackTapTarget::clearFoot();
@@ -261,18 +298,29 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   if (reader) {
     bar = FootBar::BackOnly;
     // The reader owns this band while its menu is open, including the page's status footer.
-    r.fillRect(0, footBackTop(r.getScreenHeight()) - 12, r.getScreenWidth(),
-               r.getScreenHeight() - footBackTop(r.getScreenHeight()) + 12, false);
+    clearFootBand(r);
   }
 #endif
   if (bar != FootBar::Full && bar != FootBar::BackOnly) return;
   constexpr int SIZE = FOOT_BACK_SIZE, ICON = 40;
   const int y = footBackTop(r.getScreenHeight());
   int x = FOOT_BACK_X;
-  // "<": the open chevron of the list marks, 3 px stroke, centred in its ring.
-  drawPillRing(r, x, y, SIZE, SIZE, 2, true);
-  constexpr int SPAN = 9;
-  drawMoreChevron(r, x + (SIZE - moreChevronLength(SPAN)) / 2 - 1, y + SIZE / 2 - SPAN, ChevronDir::Left, SPAN);
+  // On tenor/ugly paper (and in its reader menu) the "<" is drawn in pen: a hand circle round a hand chevron.
+  bool pen = handDrawnGeneration == activityManager.activityGeneration();
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  pen = pen || (reader && shell::isUgly());
+#endif
+  if (pen) {
+    ugly::circle(r, ugly::Circle::Object, {x + 8, y + 8, x + SIZE - 8, y + SIZE - 8}, 0, 0, 2);
+    const int cx = x + SIZE / 2 - 2, cy = y + SIZE / 2;
+    ugly::line(r, cx + 6, cy - 11, cx - 5, cy, 811, 3);
+    ugly::line(r, cx - 5, cy, cx + 6, cy + 11, 812, 3);
+  } else {
+    // "<": the open chevron of the list marks, 3 px stroke, centred in its ring.
+    drawPillRing(r, x, y, SIZE, SIZE, 2, true);
+    constexpr int SPAN = 9;
+    drawMoreChevron(r, x + (SIZE - moreChevronLength(SPAN)) / 2 - 1, y + SIZE / 2 - SPAN, ChevronDir::Left, SPAN);
+  }
   HeaderBackTapTarget::setFoot(x, y, SIZE, SIZE);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (reader && !readerFootBar.keypad) {
@@ -302,7 +350,8 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
     }
   }
 #endif
-  if (bar == FootBar::BackOnly) return;
+  // Paper with a foot of its own keeps that foot: no zone icon, no name.
+  if (bar == FootBar::BackOnly || pen) return;
   // The zone's icon, alone in its ring: a tap leads to the zone's root.
   x += SIZE + FOOT_PILL_GAP;
   drawPillRing(r, x, y, SIZE, SIZE, 2, true);

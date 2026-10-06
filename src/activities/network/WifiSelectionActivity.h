@@ -143,6 +143,9 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   void buildPromptDialog(UiScreen& screen);
 
   void renderNetworkList(const Rect* screen, const ThemeMetrics* metrics);
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  void drawRowFrame() const;
+#endif
   void renderPasswordEntry(const Rect* screen, const ThemeMetrics* metrics) const;
   void renderConnecting(const Rect* screen, const ThemeMetrics* metrics) const;
   void renderConnected(const Rect* screen, const ThemeMetrics* metrics) const;

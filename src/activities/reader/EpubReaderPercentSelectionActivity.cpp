@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiSliderDialog.h"
 #include "fontIds.h"
@@ -180,6 +181,7 @@ void EpubReaderPercentSelectionActivity::render(RenderLock&&) {
   // and draws the card on top. Everything renders through the app so the
   // slider, -/+ zones, and Cancel/OK register touch hit rects.
   renderUi();
+  if (tenorchrome::kTouchShell) tenorchrome::clearFootBand(renderer);  // the bar's "<" cancels, over white
 
   // Button hints follow the current front button layout.
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "-", "+");

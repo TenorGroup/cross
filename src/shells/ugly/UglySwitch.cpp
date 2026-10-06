@@ -11,6 +11,7 @@
 
 #include "MappedInputManager.h"
 #include "activities/Activity.h"
+#include "components/TenorMenuChrome.h"
 #include "shells/Shell.h"
 
 namespace ugly {
@@ -63,7 +64,14 @@ Box askBox(const GfxRenderer& renderer, const MappedInputManager& input, const c
     drawn[i] = {x + 20, base - ascent(Size::S38), x + 20 + lw, base + 10};
   }
   circle(renderer, Circle::Row, drawn[selected], 14, 10);
+#if FREEINK_DEVICE_X4PRO
+  // Touch: the clock and battery at the top, "<" (the dynamic bar, in pen) at the foot; no button signs.
+  (void)input;
+  formTopBar(renderer);
+  tenorchrome::noteHandDrawn();
+#else
   statusBar(renderer, input, {true, true, true, true});
+#endif
   return {SIDE, top, w - SIDE, bottom};
 }
 

@@ -1161,7 +1161,8 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   props.modeLabel =
       (symbols || (inputType == InputType::Url && urlPanel)) ? tr(STR_KEY_MODE_ABC) : tr(STR_KEY_MODE_SYMBOLS);
   props.inputMask = static_cast<uint16_t>(fui::InputTouch | fui::InputLongPress);
-  props.selectedIndex = cursorMode ? -1 : static_cast<int16_t>(selectedLogicalIndex());
+  // Touch: a finger picks the key, no key cursor (no black key).
+  props.selectedIndex = cursorMode || tenorchrome::kTouchShell ? -1 : static_cast<int16_t>(selectedLogicalIndex());
   props.labelText.font = fui::GfxRendererTarget::FONT_BODY;
   props.altText.font = fui::GfxRendererTarget::FONT_SMALL;
   props.stackAlternates = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;

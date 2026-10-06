@@ -58,15 +58,24 @@ inline int footReserve(const int buttonHintsHeight) { return kTouchShell ? footB
 // The title a screen's header names, kept for the bar's name pill (the touch shell draws no title row).
 void noteScreenTitle(const char* title);
 const char* screenTitle();
+// A screen drawn on tenor/ugly paper with a foot of its own (a question sheet, the shell switch) says so as it
+// draws: its bar is the "<" alone, in pen.
+void noteHandDrawn();
 // A short note for the middle of the status strip (the items of a folder), for the screen that set it.
 void noteStatus(const char* text);
 // True when the "B" of a remote linking should blink now: the caller repaints the screen (one refresh).
 bool bluetoothBlinkDue();
 void drawFootBar(const GfxRenderer& renderer, FootBar bar, Zone zone);
+// A screen laid over a book's page clears the band of the bar first, so "<" stands on white, not on the
+// page's last line.
+void clearFootBand(const GfxRenderer& renderer);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 // Reader view data for the existing pre-display hook. The reader owns its depth and drafts.
 void noteReaderFootBar(bool open, bool keypad, int activeTool);
 struct ReaderToolRect { int x, y, width, height; };
+// The white band the status strip takes over a page with the reader menu open: down to the first blank row
+// under the strip, so a line of the page is covered whole or not at all.
+int readerStripBottom(const GfxRenderer& renderer);
 // Contents, Text, More and Favorites (founder 06/10).
 constexpr int READER_TOOLS = 4;
 inline ReaderToolRect readerToolRect(const int width, const int height, const int tool) {

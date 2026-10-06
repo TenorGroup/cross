@@ -22,6 +22,14 @@ class Notebook final : public Screen {
       : Screen("UglyNotebook", renderer, mappedInput), page(page), want(page) {}
   void onEnter() override;
   void render(RenderLock&&) override;
+#if FREEINK_DEVICE_X4PRO
+  HomeMenuItem zoneRoot() const override {
+    constexpr HomeMenuItem ROOTS[homerows::PAGE_COUNT] = {HomeMenuItem::RECENTS, HomeMenuItem::FILE_BROWSER,
+                                                          HomeMenuItem::STATS_TAB, HomeMenuItem::SETTINGS_MENU,
+                                                          HomeMenuItem::FAVORITES_TAB};
+    return ROOTS[static_cast<int>(page)];
+  }
+#endif
 
  protected:
   bool onKey(Key key) override;
