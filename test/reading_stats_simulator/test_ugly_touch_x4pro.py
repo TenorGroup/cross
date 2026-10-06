@@ -67,14 +67,16 @@ class UglyTouchX4ProTest(unittest.TestCase):
 
     def test_settings_tick_choices_and_long_list_paper_persist(self):
         card = self.card()
-        # Approved Display form: Night on sheet 4; Refresh is a six-option choice on sheet 3.
+        # Display form, 3 sheets with no sheet of 1 question: Night on sheet 3; Refresh, six options too tall to
+        # share a sheet, opens on paper from sheet 2 (a swipe back), its fifth answer 30 pages.
         log, _ = self.run_card(card, '2000:TAP:60,750;3500:TAP:200,240;5000:TAP:420,770;'
-                              '6500:TAP:420,770;8000:TAP:420,770;9500:TAP:200,460;'
-                              '11000:SWIPE:150,600,400,600,200;12500:TAP:200,470;14000:QUIT')
+                              '6500:TAP:420,770;8000:TAP:200,265;9500:SWIPE:150,600,400,600,200;'
+                              '11000:TAP:200,475;12500:TAP:150,530;14000:QUIT')
         f = form_frames(log)
         self.assertIn('Settings', entered(log))
-        self.assertEqual(f[0], ('0', '8', '1', '5', '0', '0', '0'))
-        self.assertEqual(f[-1], ('0', '8', '3', '5', '3', '4', '0'))
+        self.assertEqual(f[0], ('0', '8', '1', '3', '0', '0', '0'))
+        self.assertIn(('0', '8', '2', '3', '3', '3', '1'), f, 'Refresh opens on paper at the value in use')
+        self.assertEqual(f[-1], ('0', '8', '2', '3', '3', '4', '0'))
         after = card.settings()
         self.assertEqual(after['screenInverted'], 1, 'Night toggle persisted')
         self.assertEqual(after['refreshFrequency'], 4, 'Refresh selection persisted')
@@ -110,7 +112,7 @@ class UglyTouchX4ProTest(unittest.TestCase):
         f = form_frames(log)
         self.assertEqual(entered(log), ['Boot', 'UglyDiary', 'UglyNotebook', 'Settings'])
         self.assertGreaterEqual(len(f), 3, f)
-        self.assertTrue(all(x[:5] == ('0', '8', '1', '5', '0') for x in f), f)
+        self.assertTrue(all(x[:5] == ('0', '8', '1', '3', '0') for x in f), f)
         self.assertEqual([x[5] for x in f], ['0', '2', '0'], 'preview then tap on the same question')
         self.assertEqual(card.settings()['uiTextSize'], 0)
 
