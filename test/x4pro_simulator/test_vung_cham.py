@@ -25,6 +25,25 @@ def turn_case(folder, settings):
     assert same(first, back), 'a tap in the back column did not turn back'
 
 
+def centre_case(folder):
+    # The middle of the page turns forward (founder 06/10): no reader menu there any more.
+    first, centre, back = run(folder, '3000:TAP:240,300;7000:TAP:240,400;9500:TAP:60,400', [6600, 9000, 11500])
+    assert 'enter EpubReader ' in log(folder), 'fixture never entered Reader'
+    assert not same(first, centre), 'a tap in the middle did nothing'
+    # A turn: the back column brings the first page back (an open menu would have taken that tap).
+    assert same(first, back), 'a tap in the middle opened the reader menu instead of turning'
+
+
+def menu_case(folder):
+    # One menu from the foot band (founder 06/10): it opens on its Text tab, the bar beside "<" holds the
+    # reader menu's other tabs (contents first), and "<" closes it back to the page.
+    page, text, contents, back = run(folder, '3000:TAP:240,300;7000:TAP:240,775;9500:TAP:147,754;12000:TAP:46,754',
+                                     [6600, 9000, 11500, 14000])
+    assert not same(page, text), 'the foot band opened nothing'
+    assert not same(text, contents), 'the contents tab in the bar opened nothing'
+    assert same(page, back), '"<" did not close the menu'
+
+
 def bands_case(folder):
     page, text = run(folder, '3000:TAP:240,300;7000:TAP:240,775', [6600, 8600])
     assert 'enter EpubReader ' in log(folder), 'fixture never entered Reader'
@@ -46,6 +65,8 @@ def main():
         turn_case(root / 'fresh', None)
         # A file from before the tap zones that turned by swipe only: moved once, taps turn.
         turn_case(root / 'swipe-only', dict(pageTurnGesture=2, previousPageGesture=2))
+        centre_case(root / 'centre')
+        menu_case(root / 'menu')
         bands_case(root / 'bands')
         strip_case(root / 'strip')
     print('GREEN: X4 Pro tap zones: 25% back column, old swipe-only file moved, top/foot bands, strip top menu')

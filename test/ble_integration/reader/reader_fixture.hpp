@@ -46,7 +46,8 @@ namespace ReaderUtils {constexpr int SKIP_HOLD_MS=500;
 struct Turns{bool prev=false,next=false,prevLongPressed=false,nextLongPressed=false,fromTilt=false;};
 struct Touch{bool prev=false,next=false;unsigned long heldMs=0;};
 Turns detectPageTurn(FakeInput&i){Turns t;t.prev=i.prev;t.next=i.next;return t;}
-Touch detectTouchPageTurn(int&,FakeInput&){return {};}bool isTouchMenuGesture(int&,FakeInput&){return false;}}
+Touch detectTouchPageTurn(int&,FakeInput&){return {};}bool isTouchMenuGesture(int&,FakeInput&,bool=false){return false;}}
+namespace tenorchrome{constexpr bool kTouchShell=false;}
 struct EndOfBookOptions{bool menu=false;bool menuActive()const{return menu;}};
 struct FakeStats {uint32_t pages=0, records=0, habits=0;void record(uint32_t,uint32_t,uint16_t turns,int){pages+=turns;records++;}void observeHabits(uint32_t,uint16_t,uint32_t){habits++;}uint32_t currentDay(){return 1;}}READING_STATS;
 struct ReaderActivity:Activity{

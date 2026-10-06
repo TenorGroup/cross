@@ -151,15 +151,15 @@ inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const Mapp
 // Tap in the center third of the screen: the tap path into the reader menu on every touch board
 // (readertap::zoneAt keeps it out of the turn zones). The Off/Swipe Up alternatives are only surfaced on
 // home-key boards (SettingsList), where the menu stays reachable through the key's long-press function.
-inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager& input) {
-  return tapZone(renderer, input) == readertap::Zone::Menu;
+inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager& input, const bool bands = false) {
+  return tapZone(renderer, input, false, bands) == readertap::Zone::Menu;
 }
 
 // Reader menu opens on the menu edge-swipe or a center-third tap. Home-key
 // actions are configured separately from screen gestures.
 // Menu gestures honor showReaderMenu independently of touchReaderControls,
 // which only gates page-turn touch zones in detectTouchPageTurn().
-inline bool isTouchMenuGesture(const GfxRenderer& renderer, const MappedInputManager& input) {
+inline bool isTouchMenuGesture(const GfxRenderer& renderer, const MappedInputManager& input, const bool bands = false) {
   if (!input.hasTouch()) return false;
   if (input.wasMenuGesture()) return true;
   // Bottom-edge up-swipe variant: only selectable on home-key boards, where
@@ -167,7 +167,7 @@ inline bool isTouchMenuGesture(const GfxRenderer& renderer, const MappedInputMan
   if (SETTINGS.showReaderMenu == CrossPointSettings::READER_MENU_SWIPE_UP && input.wasReaderMenuSwipeUp()) {
     return true;
   }
-  return isTouchMenuTap(renderer, input);
+  return isTouchMenuTap(renderer, input, bands);
 }
 
 // One helper, blocking or deferred: the async form starts the refresh and

@@ -1385,7 +1385,10 @@ void EpubReaderActivity::loop() {
   if (automaticPageTurnActive) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
         mappedInput.wasReleased(MappedInputManager::Button::Back) ||
-        ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
+        ReaderUtils::isTouchMenuGesture(renderer, mappedInput, tenorchrome::kTouchShell) ||
+        // Touch shell: the menu's way in, the foot band, stops the automatic turn as the centre did.
+        (tenorchrome::kTouchShell &&
+         ReaderUtils::tapZone(renderer, mappedInput, false, true) == readertap::Zone::TextMenu)) {
       automaticPageTurnActive = false;
       pendingExternalTurn = 0;
 #ifdef TENOR_TURN_TRACE
@@ -1543,7 +1546,7 @@ void EpubReaderActivity::loop() {
     }
   }
 
-  if (confirmReleased || ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
+  if (confirmReleased || ReaderUtils::isTouchMenuGesture(renderer, mappedInput, tenorchrome::kTouchShell)) {
     // Toolbar style: the page is on screen and in the framebuffer, so paint the
     // toolbar over it (one refresh) instead of pushing a full-screen menu.
     if (usesToolbarMenu() && section) {
