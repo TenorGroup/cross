@@ -972,6 +972,7 @@ STR_UGLY_SWITCH_NO: "thôi, sợ lắm"
 STR_UGLY_YAWNING: "Đang ngáp..."
 STR_UGLY_WAKING: "Đang dụi mắt, từ từ."
 STR_UGLY_LOADING: "Đợi tí, đang lục đồ."
+STR_UGLY_BOOT_LINE: "Đang khởi động. Giục nữa là tao đình công."
 STR_FOLDER_ITEM_COUNT: "%u mục"
 
 STR_UGLY_PHIEU_TITLE: "PHIẾU TRẢ LỜI"

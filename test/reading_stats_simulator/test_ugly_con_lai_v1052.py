@@ -5,9 +5,13 @@ and its pixels. The answer paper, the notices of a wake and of a quiet restart, 
 screen after a crash, Clear cache, the update from the card.
 """
 import json
+import os
+from pathlib import Path
 import re
+import tempfile
 import unittest
 
+import glass_model
 from ugly_common import Card, entered
 
 WAKE_NOTICE = re.compile(r'Wake notice shown: (.*)')
@@ -44,6 +48,32 @@ class UglyRemainingScreensTest(unittest.TestCase):
             log, _ = card.run(routes[shell])
             self.assertIn('CrossPointWebServer', entered(log), (shell, log[-2500:]))
             self.assertEqual(RESTART_NOTICE.findall(log), [said], (shell, language, log[-2500:]))
+
+    def test_the_boot_screen_is_the_dog_on_the_books(self):
+        # A cold start: tenor/ugly boots on its own doodle in black and white, tenor/cross on its brand art.
+        temp = tempfile.TemporaryDirectory(prefix='cross-ugly-boot-')
+        self.addCleanup(temp.cleanup)
+        tool = glass_model.build(Path(temp.name) / 'tool')
+        frames = {}
+        for shell in (1, 0):
+            card = self.card(shell=shell)
+            trace = card.sd / 'panel.trace'
+            log, _ = card.run('2500:QUIT', CROSSPOINT_SIM_PANEL_TRACE=str(trace))
+            self.assertEqual(entered(log)[:1], ['Boot'], log[-1500:])
+            if shell:
+                self.assertEqual(len(UGLY_BOOT.findall(log)), 1, log[-1500:])
+                self.assertNotIn('[BRAND] boot', log)
+            else:
+                self.assertIn('[BRAND] boot', log)
+                self.assertEqual(UGLY_BOOT.findall(log), [])
+            first = next(r['i'] for r in glass_model.replay(tool, trace) if r['op'] == 'display')
+            pgm = Path(temp.name) / ('boot%d.pgm' % shell)
+            glass_model.replay(tool, trace, dumps=[(first, pgm)])
+            frames[shell] = pgm.read_bytes()
+        self.assertNotEqual(frames[1], frames[0])
+        keep = Path(os.environ.get('UGLY_SHOTS', '') or temp.name)
+        keep.mkdir(parents=True, exist_ok=True)
+        (keep / 'boot_ugly.pgm').write_bytes(frames[1])
 
 
 if __name__ == '__main__':

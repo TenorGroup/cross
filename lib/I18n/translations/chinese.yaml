@@ -943,6 +943,7 @@ STR_UGLY_SWITCH_NO: "No. Too scary"
 STR_UGLY_YAWNING: "yawning..."
 STR_UGLY_WAKING: "Rubbing my eyes. Hold on."
 STR_UGLY_LOADING: "Hang on, digging through my stuff."
+STR_UGLY_BOOT_LINE: "Booting. Rush me and I go on strike."
 STR_FOLDER_ITEM_COUNT: "%u 项"
 
 STR_UGLY_PHIEU_TITLE: "ANSWER SHEET"
