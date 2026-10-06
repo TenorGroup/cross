@@ -23,6 +23,7 @@
 #include "WifiSelectionActivity.h"
 #include "activities/network/CalibreConnectActivity.h"
 #include "activities/reader/ReaderActivity.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/QrUtils.h"
@@ -583,7 +584,9 @@ void CrossPointWebServerActivity::renderServerRunning() const {
   // Version-4 QR codes have 6 px modules here. Leave four modules clear on
   // either side, including between the code and the larger address text.
   constexpr int qrQuiet = 24;
-  const int left = std::max<int>(metrics.contentSidePadding, qrQuiet);
+  // Touch (C1): each code and its words in a round frame; the code keeps its quiet zone inside the frame.
+  const bool framed = tenorchrome::kTouchShell;
+  const int left = framed ? tenorchrome::FOOT_BACK_X + qrQuiet : std::max<int>(metrics.contentSidePadding, qrQuiet);
   const int bodyWidth = pageWidth - 2 * left;
   int startY = metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight + qrQuiet;
   const int height10 = renderer.getLineHeight(UI_10_FONT_ID);
@@ -600,13 +603,19 @@ void CrossPointWebServerActivity::renderServerRunning() const {
     renderer.drawText(UI_10_FONT_ID, textX, startY, tr(STR_CONNECT_WIFI_HINT), true, EpdFontFamily::BOLD);
     const int nameBottom =
         drawNetworkText(renderer, UI_12_FONT_ID, connectedSSID.c_str(), textX, startY + height10 + 8, textWidth);
-    startY = std::max(startY + QR_CODE_HEIGHT, nameBottom) + 2 * qrQuiet;
+    const int firstBottom = std::max(startY + QR_CODE_HEIGHT, nameBottom);
+    if (framed) tenorchrome::drawPanel(renderer, startY - qrQuiet, firstBottom - startY + 2 * qrQuiet);
+    startY = firstBottom + (framed ? 3 : 2) * qrQuiet;
 
     const Rect qrBoundsUrl(left, startY, QR_CODE_WIDTH, QR_CODE_HEIGHT);
     QrUtils::drawQrCode(renderer, qrBoundsUrl, hostnameUrl);
     renderer.drawText(UI_10_FONT_ID, textX, startY, tr(STR_OPEN_URL_HINT), true, EpdFontFamily::BOLD);
-    drawNetworkText(renderer, UI_12_FONT_ID, apDisplayIp.c_str(), textX, startY + height10 + 8, textWidth);
+    const int ipBottom =
+        drawNetworkText(renderer, UI_12_FONT_ID, apDisplayIp.c_str(), textX, startY + height10 + 8, textWidth);
+    if (framed)
+      tenorchrome::drawPanel(renderer, startY - qrQuiet, std::max(startY + QR_CODE_HEIGHT, ipBottom) - startY + 2 * qrQuiet);
   } else {
+    const int frameTop = startY - qrQuiet / 2;
     renderer.drawCenteredText(UI_10_FONT_ID, startY, tr(STR_OPEN_URL_HINT), true, EpdFontFamily::BOLD);
     startY += height10;
     renderer.drawCenteredText(UI_10_FONT_ID, startY, tr(STR_SCAN_QR_HINT), true, EpdFontFamily::BOLD);
@@ -616,7 +625,8 @@ void CrossPointWebServerActivity::renderServerRunning() const {
     QrUtils::drawQrCode(renderer, qrBounds, ipUrl);
     startY += QR_CODE_HEIGHT + qrQuiet;
     startY = drawNetworkText(renderer, UI_12_FONT_ID, ipUrl.c_str(), left, startY, bodyWidth, true);
-    drawNetworkText(renderer, UI_12_FONT_ID, hostnameUrl.c_str(), left, startY + 12, bodyWidth, true);
+    const int textBottom = drawNetworkText(renderer, UI_12_FONT_ID, hostnameUrl.c_str(), left, startY + 12, bodyWidth, true);
+    if (framed) tenorchrome::drawPanel(renderer, frameTop, textBottom + qrQuiet / 2 - frameTop);
   }
 
   const auto labels = mappedInput.mapLabels(tr(STR_EXIT), "", "", "");
