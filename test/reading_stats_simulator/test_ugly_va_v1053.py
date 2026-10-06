@@ -139,6 +139,25 @@ class TipBlock(unittest.TestCase):
         self.assertEqual(digest(habits.crop((0, 620, 528, 752))), 'cf07694cd610ec3237e787e3b7d739e145f6df08951584b7533c782a8a6abc30')
 
 
+class SleepNotice(unittest.TestCase):
+    def test_the_frame_kept_for_sleep_has_no_scrap_of_the_notice_left_in_it(self):
+        # "Đang ngáp..." goes up over the screen for the length of the lock, then the pixels under it are put back, so the
+        # sleep screen that keeps the frame (quick resume) keeps the screen as it was. The notice's paper is taller than
+        # the band that was put back, and its lower part stayed. Above the status strip the 2 frames must be the same.
+        _, before, _ = frames([], sleepScreen=6)
+        log, after, _ = frames(['SLEEP'], sleepScreen=6)
+        self.assertIn('Sleep transition notice shown', log)
+        self.assertEqual(ink(after, (0, 0, 528, 700)), ink(before, (0, 0, 528, 700)))
+        self.assertEqual(list(after.crop((0, 0, 528, 700)).getdata()), list(before.crop((0, 0, 528, 700)).getdata()))
+
+    def test_the_frame_kept_for_sleep_of_tenor_cross_is_still_whole(self):
+        # The same, in the shell whose notice is the leaf of one line: its band was right and stays right.
+        _, before, _ = frames([], shell=0, sleepScreen=6)
+        log, after, _ = frames(['SLEEP'], shell=0, sleepScreen=6)
+        self.assertIn('Sleep transition notice shown', log)
+        self.assertEqual(list(after.crop((0, 0, 528, 700)).getdata()), list(before.crop((0, 0, 528, 700)).getdata()))
+
+
 class About(unittest.TestCase):
     def test_the_screen_and_its_first_2_rows_are_named_in_the_device_language(self):
         # Giới thiệu (Settings, Language group, 5th question): "About", "Device" and "Firmware" were English in every

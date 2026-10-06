@@ -366,39 +366,63 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
 
 int BaseTheme::getMenuRowHeight(const GfxRenderer&) const { return UITheme::getInstance().getMetrics().menuRowHeight; }
 
+namespace {
+// tenor/ugly: a notice on its scrap of paper. The paper is the box; `words` is what fits on a line of it.
+struct UglyPopup {
+  int lines, textWidth;
+  std::string words;
+  Rect box;
+};
+
+UglyPopup uglyPopup(const GfxRenderer& renderer, const char* message) {
+  // The notice in hand on a scrap of paper, room under the words for a bar of progress.
+  // A sentence too long for one line runs on under itself, the paper growing with it.
+  const int sw = renderer.getScreenWidth(), room = sw - 120;
+  const char* said = message ? message : "";
+  const int lines = ugly::width(renderer, ugly::Size::S30, said) <= room
+                        ? 1 : ugly::paragraph(renderer, ugly::Size::S30, 0, 0, room, 36, said, false);
+  std::string words = ugly::fit(renderer, ugly::Size::S30, said, room);
+  const int tw = lines > 1 ? room : ugly::width(renderer, ugly::Size::S30, words.c_str());
+  const int w = std::min(sw - 40, std::max(200, tw + 60)), h = 60 + 36 * lines, x = (sw - w) / 2;
+  const int y = static_cast<int>(renderer.getScreenHeight() * UITheme::getInstance().getMetrics().popupTopOffsetRatio);
+  return {lines, tw, std::move(words), Rect{x, y, w, h}};
+}
+}  // namespace
+
+Rect BaseTheme::popupBox(const GfxRenderer& renderer, const char* message) const {
+  if (shell::uglyParts()) return uglyPopup(renderer, message).box;
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  // Scale y position proportionally to screen height
+  const int y = static_cast<int>(renderer.getScreenHeight() * metrics.popupTopOffsetRatio);
+  const int textWidth =
+      renderer.getTextWidth(UI_12_FONT_ID, message, metrics.popupTextBold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
+  const int w = textWidth + metrics.popupMarginX * 2;
+  const int h = renderer.getLineHeight(UI_12_FONT_ID) + metrics.popupMarginY * 2;
+  return Rect{(renderer.getScreenWidth() - w) / 2, y, w, h};
+}
+
 Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message, const bool display) const {
   if (shell::uglyParts()) {
-    // The notice in hand on a scrap of paper, room under the words for a bar of progress.
-    // A sentence too long for one line runs on under itself, the paper growing with it.
-    const int sw = renderer.getScreenWidth(), room = sw - 120;
-    const char* said = message ? message : "";
-    const int lines = ugly::width(renderer, ugly::Size::S30, said) <= room
-                          ? 1 : ugly::paragraph(renderer, ugly::Size::S30, 0, 0, room, 36, said, false);
-    const std::string words = ugly::fit(renderer, ugly::Size::S30, said, room);
-    const int tw = lines > 1 ? room : ugly::width(renderer, ugly::Size::S30, words.c_str());
-    const int w = std::min(sw - 40, std::max(200, tw + 60)), h = 60 + 36 * lines, x = (sw - w) / 2;
-    const int y = static_cast<int>(renderer.getScreenHeight() * UITheme::getInstance().getMetrics().popupTopOffsetRatio);
+    const auto popup = uglyPopup(renderer, message);
+    const auto& [x, y, w, h] = popup.box;
     uglyNote(renderer, x, y, w, h);
-    if (lines > 1) ugly::paragraph(renderer, ugly::Size::S30, x + (w - tw) / 2, y + 50, room, 36, said);
-    else ugly::text(renderer, ugly::Size::S30, x + (w - tw) / 2, y + 50, words.c_str());
+    const char* said = message ? message : "";
+    if (popup.lines > 1)
+      ugly::paragraph(renderer, ugly::Size::S30, x + (w - popup.textWidth) / 2, y + 50, renderer.getScreenWidth() - 120, 36, said);
+    else ugly::text(renderer, ugly::Size::S30, x + (w - popup.textWidth) / 2, y + 50, popup.words.c_str());
 #ifdef UGLY_FRAME_LOG
     LOG_INF("UGLY", "part=notice text=%s", message ? message : "");
 #endif
     if (display) renderer.displayBuffer();
-    return Rect{x, y, w, h};
+    return popup.box;
   }
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int marginX = metrics.popupMarginX;
   const int marginY = metrics.popupMarginY;
   const int frameThickness = metrics.popupFrameThickness;
   const EpdFontFamily::Style popupFontFamily = metrics.popupTextBold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
-  // Scale y position proportionally to screen height
-  const int y = static_cast<int>(renderer.getScreenHeight() * metrics.popupTopOffsetRatio);
-  const int textWidth = renderer.getTextWidth(UI_12_FONT_ID, message, popupFontFamily);
-  const int textHeight = renderer.getLineHeight(UI_12_FONT_ID);
-  const int w = textWidth + marginX * 2;
-  const int h = textHeight + marginY * 2;
-  const int x = (renderer.getScreenWidth() - w) / 2;
+  const auto [x, y, w, h] = popupBox(renderer, message);
+  const int textWidth = w - marginX * 2;
 
   const bool useRoundedPopup = metrics.popupCornerRadius > 0;
   if (useRoundedPopup) {
