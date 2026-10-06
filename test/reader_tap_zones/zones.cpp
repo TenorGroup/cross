@@ -14,10 +14,11 @@ readertap::Rules tapAndSwipe(const bool bands, const uint8_t backZone = readerta
 int main() {
   // Portrait 480 x 800, the touch shell's page: KOReader's 25% back column, the rest goes forward.
   const auto r = tapAndSwipe(true);
-  assert(readertap::topBand(800) == 100 && readertap::footBand(800) == 62);
+  assert(readertap::topBand(800) == 62 && readertap::footBand(800) == 62);  // founder 06/10: the foot band's size
   assert(zoneAt(0, 0, 480, 800, r) == Zone::TopMenu);
-  assert(zoneAt(479, 99, 480, 800, r) == Zone::TopMenu);
-  assert(zoneAt(0, 100, 480, 800, r) == Zone::Prev);
+  assert(zoneAt(479, 61, 480, 800, r) == Zone::TopMenu);
+  assert(zoneAt(0, 62, 480, 800, r) == Zone::Prev);
+  assert(zoneAt(300, 62, 480, 800, r) == Zone::Next);
   assert(zoneAt(119, 400, 480, 800, r) == Zone::Prev);
   assert(zoneAt(120, 400, 480, 800, r) == Zone::Next);
   assert(zoneAt(150, 400, 480, 800, r) == Zone::Next);  // the old 1/3 split sent this back
