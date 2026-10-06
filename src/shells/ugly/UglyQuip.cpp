@@ -12,11 +12,11 @@
 #include "ReadingStatsStore.h"
 #include "UglyLogic.h"
 #include "UglyQuips.h"
+#include "UglySleepSet.h"
 #include "activities/settings/SettingsActivity.h"
 
 namespace ugly {
 namespace {
-uint8_t turns[16];  // how many times each event has spoken since boot: the lines take turns
 uint16_t noted = 0;
 bool hasNoted = false;
 
@@ -49,7 +49,12 @@ std::string quip(const Quip event, const uint16_t key, const uint8_t when, const
   int first = 0;  // the slots follow the lines: this one's first line comes after the lines of those before it
   for (int i = 0; i < slot; ++i) first += quips::SLOTS[i].count;
   const uint32_t today = ReadingStatsStore::currentDay();
-  const std::string line = lineAt(first + logic::quipTurn(today ? logic::civilDays(today) : 0, turns[e]++, quips::SLOTS[slot].count));
+  auto& kept = sleepset::kept();  // the turns live through a wake (RTC), so the first line after one moves on
+  const uint32_t turn = static_cast<uint32_t>(today ? logic::civilDays(today) : 0) + kept.quipTurns[e]++;
+  const auto id = [&](const int i) { return static_cast<uint32_t>(first + i); };
+  const int at = first + logic::takeTurn(turn, quips::SLOTS[slot].count, kept.lastQuip[e], id);
+  kept.lastQuip[e] = static_cast<uint16_t>(at);
+  const std::string line = lineAt(at);
   if (line.find('%') == std::string::npos) return line;
   char out[192];
   if (line.find("%s") != std::string::npos)

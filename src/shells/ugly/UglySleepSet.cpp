@@ -13,10 +13,9 @@
 
 namespace ugly::sleepset {
 namespace {
-// Survives deep sleep while the board has power: how many times the doodle has been drawn.
-constexpr uint32_t COUNT_MAGIC = 0x75676c7a;
-RTC_NOINIT_ATTR uint32_t countMagic;
-RTC_NOINIT_ATTR uint32_t sleepCount;
+// Survives deep sleep while the board has power. A new magic for the new layout (it was 0x75676c7a).
+constexpr uint32_t KEPT_MAGIC = 0x75676c7b;
+RTC_NOINIT_ATTR Kept rtcKept;
 
 constexpr uint32_t HABIT_MIN_MS = 20 * 60 * 1000;  // under 20 minutes of reading there is no habit to name
 constexpr uint64_t HABIT_PERCENT = 40;
@@ -68,8 +67,8 @@ bool sleepSentence(const Context& c, char* out) {
   const uint8_t* text = vi ? unpack(sleepdata::TEXT_VI, sizeof(sleepdata::TEXT_VI), raw) : unpack(sleepdata::TEXT_EN, sizeof(sleepdata::TEXT_EN), raw);
   if (!text) return false;
   const auto* block = reinterpret_cast<const char*>(text);
-  const Record r = sleepLine(block, raw, c);
-  if (r.text) copy(r, out, SENTENCE_CAP);
+  const Record r = sleepLine(block, raw, c, kept().lastSleep);
+  if (r.text) copy(r, out, SENTENCE_CAP), kept().lastSleep = r.id;
   std::free(const_cast<uint8_t*>(text));
   return r.text != nullptr;
 }
@@ -78,10 +77,9 @@ bool sleepSentence(const Context& c, char* out) {
 bool drawScreen(GfxRenderer& r) {
   const int w = r.getScreenWidth(), h = r.getScreenHeight();
   if (!r.hasFrameBuffer() || w < CANVAS_W || h < PICTURE_TOP + CANVAS_H) return false;
-  if (countMagic != COUNT_MAGIC) countMagic = COUNT_MAGIC, sleepCount = 0;
   Context c = gather();
-  if (c.count == 0) c.count = sleepCount;
-  ++sleepCount;
+  if (c.count == 0) c.count = kept().sleepCount;
+  ++kept().sleepCount;
   const int ox = (w - CANVAS_W) / 2, oy = (h - (PICTURE_TOP + CANVAS_H) - 10) / 2 + 10;  // 10 px above, 10 px to spare
   ensureFonts(r);
   r.clearScreen();
@@ -97,9 +95,22 @@ bool drawScreen(GfxRenderer& r) {
 }
 
 std::string wakeSentence() {
-  const Context c = gather();
-  const int line = wakeLineIndex(c);
-  return line >= 0 ? I18N.get(WAKE_LINES[line]) : std::string();
+  Context c = gather();
+  if (c.count == 0) c.count = kept().sleepCount;
+  const int line = wakeLineIndex(c, kept().lastWake);
+  if (line < 0) return {};
+  kept().lastWake = static_cast<uint32_t>(line);
+  return I18N.get(WAKE_LINES[line]);
+}
+
+Kept& kept() {
+  if (rtcKept.magic != KEPT_MAGIC) {
+    rtcKept = Kept{};
+    rtcKept.magic = KEPT_MAGIC;
+    rtcKept.lastSleep = rtcKept.lastWake = NO_LINE;
+    for (uint16_t& q : rtcKept.lastQuip) q = 0xFFFF;
+  }
+  return rtcKept;
 }
 
 }  // namespace ugly::sleepset

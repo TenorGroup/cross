@@ -50,9 +50,12 @@ inline int wakeBand(const int hour) {
 inline uint32_t rotation(const Context& c) { return c.day == 0 ? c.count : static_cast<uint32_t>(logic::civilDays(c.day)) + c.count; }
 inline int pictureFor(const Context& c) { return static_cast<int>(rotation(c) % PICS); }
 
+inline constexpr uint32_t NO_LINE = 0xFFFFFFFF;  // "shown last" before anything was shown
+
 struct Record {
   const char* text = nullptr;  // not terminated: len bytes
   int len = 0;
+  uint32_t id = NO_LINE;  // which record of the stream (the same in both languages)
 };
 
 inline int countCode(const char* block, const size_t size, const char code) {
@@ -65,10 +68,10 @@ inline int countCode(const char* block, const size_t size, const char code) {
 // The index-th record of a code, without its code byte and its newline.
 inline Record recordAt(const char* block, const size_t size, const char code, int index) {
   size_t i = 0;
-  while (i < size) {
+  for (uint32_t id = 0; i < size; ++id) {
     size_t end = i;
     while (end < size && block[end] != '\n') ++end;
-    if (block[i] == code && index-- == 0) return {block + i + 1, static_cast<int>(end - i - 1)};
+    if (block[i] == code && index-- == 0) return {block + i + 1, static_cast<int>(end - i - 1), id};
     i = end + 1;
   }
   return {};
@@ -88,40 +91,53 @@ inline Record pickFrom(const char* block, const size_t size, const char* codes, 
   return {};
 }
 
-// The sentence of a sleep: two times in three one that knows something of the day (the hour, nothing read,
-// the night habit), otherwise one for anybody. The sentence walks on its own beat, apart from the doodle.
-inline Record sleepLine(const char* block, const size_t size, const Context& c) {
-  const uint32_t rot = rotation(c);
-  const uint32_t select = (rot / PICS) * 13u + rot * 5u;
-  char codes[3];
+// The sentence of a sleep: one pool of the lines that know something of the day (the hour, nothing read, the
+// night habit) and the lines for anybody, taking turns by the sleep count; never `last`, the id shown last.
+inline Record sleepLine(const char* block, const size_t size, const Context& c, const uint32_t last = NO_LINE) {
+  char codes[4];
   int n = 0;
   if (c.hour >= 0) codes[n++] = static_cast<char>('f' + sleepBand(c.hour));
   if (c.day != 0 && c.minutesToday == 0) codes[n++] = 'b';
   if (c.nightReader) codes[n++] = 'd';
-  if (select % 3 != 2) {
-    const Record r = pickFrom(block, size, codes, n, select / 3);
-    if (r.text) return r;
-  }
-  return pickFrom(block, size, "a", 1, select / 3);
+  codes[n++] = 'a';
+  int total = 0;
+  for (int i = 0; i < n; ++i) total += countCode(block, size, codes[i]);
+  const auto at = [&](const int i) { return pickFrom(block, size, codes, n, static_cast<uint32_t>(i)); };
+  const int i = logic::takeTurn(rotation(c), total, last, [&](const int k) { return at(k).id; });
+  return i < 0 ? Record{} : at(i);
 }
 
 inline constexpr StrId WAKE_LINES[] = {
     StrId::STR_UGLY_WAKE_M1, StrId::STR_UGLY_WAKE_M2, StrId::STR_UGLY_WAKE_N1, StrId::STR_UGLY_WAKE_N2,
     StrId::STR_UGLY_WAKE_O1, StrId::STR_UGLY_WAKE_O2, StrId::STR_UGLY_WAKE_P1, StrId::STR_UGLY_WAKE_P2,
     StrId::STR_UGLY_WAKE_Q1, StrId::STR_UGLY_WAKE_Q2, StrId::STR_UGLY_WAKE_R1, StrId::STR_UGLY_WAKE_R2,
-    StrId::STR_UGLY_WAKE_S1, StrId::STR_UGLY_WAKE_T1, StrId::STR_UGLY_WAKE_T2, StrId::STR_UGLY_WAKE_U1,
-    StrId::STR_UGLY_WAKE_U2,
+    StrId::STR_UGLY_WAKE_S1, StrId::STR_UGLY_WAKE_S2, StrId::STR_UGLY_WAKE_S3, StrId::STR_UGLY_WAKE_T1,
+    StrId::STR_UGLY_WAKE_T2, StrId::STR_UGLY_WAKE_U1, StrId::STR_UGLY_WAKE_U2,
 };
 
-// The i18n wake line: by the hour, the same one all day. -1 when the clock does not know the hour.
-inline int wakeLineIndex(const Context& c) {
+// The i18n wake line: the lines of the hour take turns by the sleep count, never `last` (the index shown last).
+// -1 when the clock does not know the hour.
+inline int wakeLineIndex(const Context& c, const uint32_t last = NO_LINE) {
   if (c.hour < 0) return -1;
-  static constexpr uint8_t FIRST[9] = {0, 2, 4, 6, 8, 10, 12, 13, 15};
-  static constexpr uint8_t COUNT[9] = {2, 2, 2, 2, 2, 2, 1, 2, 2};
+  static constexpr uint8_t FIRST[9] = {0, 2, 4, 6, 8, 10, 12, 15, 17};
+  static constexpr uint8_t COUNT[9] = {2, 2, 2, 2, 2, 2, 3, 2, 2};
   const int band = wakeBand(c.hour);
-  const uint32_t select = c.day == 0 ? 0u : static_cast<uint32_t>(logic::civilDays(c.day));
-  return FIRST[band] + static_cast<int>(select % COUNT[band]);
+  const auto id = [&](const int i) { return static_cast<uint32_t>(FIRST[band] + i); };
+  return FIRST[band] + logic::takeTurn(rotation(c), COUNT[band], last, id);
 }
+
+// What the shell keeps through deep sleep while the board has power (RTC_NOINIT under one magic, checked on every
+// use): the sleep count, and the line each picker showed last, so a wake neither starts the lines over nor
+// repeats the one before. Trivial on purpose: an initializer would wipe it on every boot.
+struct Kept {
+  uint32_t magic;
+  uint32_t sleepCount;
+  uint32_t lastSleep;  // Record::id
+  uint32_t lastWake;   // index into WAKE_LINES
+  uint8_t quipTurns[16];  // by Quip event: how many times it has spoken
+  uint16_t lastQuip[16];  // by Quip event: the line it said last
+};
+Kept& kept();
 
 // The record as a sentence in `out` (cap bytes, cut to fit, always ended). Returns out.
 inline constexpr size_t SENTENCE_CAP = 128;

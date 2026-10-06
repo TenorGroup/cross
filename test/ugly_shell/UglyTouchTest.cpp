@@ -171,12 +171,20 @@ TEST(Quips, AConditionWinsElseThePlainLines) {
   EXPECT_LT(quipSlot(slots, 3, SLEEP, 5, 0), 0) << "a key without lines";
 }
 
-TEST(Quips, TheLinesTakeTurnsAndMoveWithTheDay) {
-  EXPECT_EQ(quipTurn(100, 0, 3), 1);
-  EXPECT_EQ(quipTurn(100, 1, 3), 2);
-  EXPECT_EQ(quipTurn(100, 2, 3), 0);
-  EXPECT_EQ(quipTurn(101, 0, 3), 2) << "the next day starts on the next line";
-  EXPECT_EQ(quipTurn(5, 7, 1), 0);
-  EXPECT_EQ(quipTurn(5, 7, 0), 0);
+TEST(Quips, TheLinesTakeTurnsAndNeverTheLastOneTwice) {
+  const auto id = [](int i) { return static_cast<uint32_t>(40 + i); };  // the lines of this slot are 40, 41, 42
+  EXPECT_EQ(takeTurn(100, 3, 0xFFFF, id), 1);
+  EXPECT_EQ(takeTurn(101, 3, 41, id), 2);
+  EXPECT_EQ(takeTurn(102, 3, 42, id), 0);
+  EXPECT_EQ(takeTurn(102, 3, 40, id), 1) << "the turn lands on the line shown last: the next one";
+  EXPECT_EQ(takeTurn(102, 3, 40, id), 1);
+  EXPECT_EQ(takeTurn(5, 1, 40, id), 0) << "one line: it has to repeat";
+  EXPECT_EQ(takeTurn(5, 0, 40, id), -1);
+  uint32_t last = 0xFFFF;
+  for (uint32_t turn : {7u, 7u, 7u, 9u, 8u}) {  // a turn that stands still (a wake that lost it) or jumps back
+    const uint32_t now = id(takeTurn(turn, 3, last, id));
+    EXPECT_NE(now, last) << turn;
+    last = now;
+  }
 }
 }  // namespace

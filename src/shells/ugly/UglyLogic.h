@@ -356,9 +356,15 @@ int quipSlot(const Slot* slots, const int n, const int event, const uint16_t key
   }
   return plain;
 }
-// Which of `count` lines: the day moves them on, and so does each time the event speaks.
-inline int quipTurn(const int days, const int turn, const int count) {
-  return count <= 0 ? 0 : static_cast<int>((static_cast<uint32_t>(days) + static_cast<uint32_t>(turn)) % static_cast<uint32_t>(count));
+// Which of `count` lines the shell says now, for every line it has (sleep, wake, abuse): they take turns by `turn`
+// (a counter kept in RTC, so a wake does not start them over), and the line shown last never comes twice in a
+// row. id(i) names line i the way `last` does, so a pool that changed since (another hour) still knows it.
+// -1 when there is no line.
+template <class Id>
+int takeTurn(const uint32_t turn, const int count, const uint32_t last, Id id) {
+  if (count <= 0) return -1;
+  const int at = static_cast<int>(turn % static_cast<uint32_t>(count));
+  return count > 1 && id(at) == last ? (at + 1) % count : at;
 }
 
 // A step on a cycle of `count` stops.
