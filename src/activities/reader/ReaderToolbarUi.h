@@ -58,7 +58,7 @@ class ReaderToolbarUi : public UiAppHost {
     std::function<std::string(int)> rowValue;
     // Optional: the row in use (the font in the family list). Drawn in bold with a tick at the row end.
     std::function<bool(int)> rowMarked;
-    // A row pinned to Favorites: touch shows the small heart before its value, buttons the pin before its name.
+    // A row pinned to Favorites: the small heart, touch before its value, buttons after its name.
     std::function<bool(int)> rowPinned;
     // Drawn in the list's place when it has no rows (an empty Favorites).
     const char* emptyText = nullptr;

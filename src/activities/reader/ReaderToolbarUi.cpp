@@ -392,8 +392,6 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   for (int i = 0; i < windowCount; ++i) {
     const int index = nav_.top + i;
     windowLabels_[i] = model_.rowText ? model_.rowText(index) : std::string();
-    // A row pinned to Favorites: the pin before its name, as every list of the button boards marks one.
-    if (model_.rowPinned && model_.rowPinned(index) && !shell::isUgly()) windowLabels_[i].insert(0, "\xEE\x84\x8A");
     markedLabels_[i] = model_.rowMarked && model_.rowMarked(index);
     windowValues_[i] = model_.rowValue ? model_.rowValue(index) : std::string();
     fui::ListItem item;
@@ -411,6 +409,17 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   if (count > 0) {
     screen.list(listProps_);
     drawMarkedRows(screen, listRect, rowH, rowGap, windowCount);
+    if (model_.rowPinned && renderer_ && uiTarget.paintingEnabled()) {
+      // A row pinned to Favorites: the Favorites tab's heart after its name (the touch toolbar's mark).
+      const int16_t left = static_cast<int16_t>(listRect.x + listProps_.rowInset + listProps_.sidePadding);
+      for (int i = 0; i < std::min(windowCount, nav_.pageRows()); ++i) {
+        if (!model_.rowPinned(nav_.top + i)) continue;
+        const int16_t width =
+            screen.target().measureText(listProps_.labelText.font, windowLabels_[i].c_str(), listProps_.labelText).width;
+        tenorchrome::drawFavoriteMark(*renderer_, left + width + tokens.spaceSm,
+                                      listRect.y + i * (rowH + rowGap) + (rowH - tenorchrome::FAVORITE_MARK) / 2);
+      }
+    }
   } else if (model_.emptyText) {
     fui::TextStyle hint = tokens.bodyText;
     hint.align = fui::TextAlign::Center;
