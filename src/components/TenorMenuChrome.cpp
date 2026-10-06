@@ -141,12 +141,23 @@ bool readerFootBarActive() {
 }
 #endif
 
+}  // namespace
+
+// The one way an icon bar draws its icons (dynamic bar rule 2): the chosen one solid, the others grey, every
+// other ink pixel of their Mask1 art (bit 0 = ink).
+void tenorchrome::drawBarIcon(const GfxRenderer& r, const uint8_t* bits, const int w, const int h, const int x,
+                              const int y, const bool chosen) {
+  const int stride = (w + 7) / 8;
+  for (int j = 0; j < h; ++j)
+    for (int i = 0; i < w; ++i)
+      if (((bits[j * stride + i / 8] >> (7 - i % 8)) & 1) == 0 && (chosen || ((i + j) & 1) == 0))
+        r.drawPixel(x + i, y + j, true);
+}
+
+namespace {
 // Mask1 icon (bit 0 = ink), solid.
 void drawIcon(const GfxRenderer& r, const freeink::Icon& icon, const int x, const int y) {
-  const int stride = (icon.w + 7) / 8;
-  for (int j = 0; j < icon.h; ++j)
-    for (int i = 0; i < icon.w; ++i)
-      if (((icon.bits[j * stride + i / 8] >> (7 - i % 8)) & 1) == 0) r.drawPixel(x + i, y + j, true);
+  tenorchrome::drawBarIcon(r, icon.bits, icon.w, icon.h, x, y, true);
 }
 
 const freeink::Icon& zoneIcon(const tenorchrome::Zone zone) {
@@ -234,7 +245,8 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
         continue;
       }
       if (active) drawPillRing(r, cell.x + 12, y + 8, cell.width - 24, SIZE - 16, 3, false);
-      drawIcon(r, *(active ? bold[i] : normal[i]), cell.x + (cell.width - ICON) / 2, y + (SIZE - ICON) / 2);
+      const freeink::Icon& icon = *(active ? bold[i] : normal[i]);
+      drawBarIcon(r, icon.bits, icon.w, icon.h, cell.x + (cell.width - ICON) / 2, y + (SIZE - ICON) / 2, active);
     }
   }
 #endif

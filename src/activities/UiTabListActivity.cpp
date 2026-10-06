@@ -19,16 +19,6 @@ namespace fui = freeink::ui;
 namespace {
 constexpr int16_t TOUCH_TAB_BAR_HEIGHT = 50;
 
-// Mask1 icon (bit 0 = ink) drawn at 50%: ink kept where x + y is even in the icon's own coordinates, so
-// every tab shows the same dots whatever its place on the screen.
-void drawGreyIcon(const GfxRenderer& g, const fui::BitmapRef& icon, const int x, const int y) {
-  const int stride = (icon.width + 7) / 8;
-  for (int j = 0; j < icon.height; ++j)
-    for (int i = 0; i < icon.width; ++i) {
-      const bool ink = ((icon.data[j * stride + i / 8] >> (7 - i % 8)) & 1) == 0;
-      if (ink && ((i + j) & 1) == 0) g.drawPixel(x + i, y + j, true);
-    }
-}
 }  // namespace
 
 void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh, const fui::TabItem* tabs,
@@ -97,11 +87,7 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
     if (tab.selected) tenorchrome::drawPillRing(renderer, cx - pillW / 2, y0 + KHE, pillW, h - 2 * KHE, 3, false);
     if (icons) {
       const int ix = cx - ICON / 2, iy = y0 + (h - ICON) / 2;
-      if (tab.selected)
-        screen.target().bitmap(fui::Rect{static_cast<int16_t>(ix), static_cast<int16_t>(iy), ICON, ICON}, tab.icon,
-                               fui::BitmapMode::Center, fui::Paint::solid(fui::Color::Black));
-      else
-        drawGreyIcon(renderer, tab.icon, ix, iy);
+      tenorchrome::drawBarIcon(renderer, tab.icon.data, tab.icon.width, tab.icon.height, ix, iy, tab.selected);
       continue;
     }
     if (!tab.label) continue;

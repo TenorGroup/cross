@@ -72,6 +72,9 @@ inline ReaderToolRect readerToolRect(const int width, const int height, const in
   return {x, footBackTop(height), left + room * (tool + 1) / 3 - x, FOOT_BACK_SIZE};
 }
 #endif
+// An icon in an icon bar (Mask1, bit 0 = ink): the chosen one solid, the others grey. Every icon bar draws
+// its icons with this, so "not chosen" looks the same on every screen.
+void drawBarIcon(const GfxRenderer& renderer, const uint8_t* bits, int w, int h, int x, int y, bool chosen);
 // A ring of `thick` px just inside a round-ended bar; grey = every other pixel.
 void drawPillRing(const GfxRenderer& g, int x, int y, int w, int h, int thick, bool grey);
 // The same ring inside a box with corners of radius r (a row menu, a group of list rows).
