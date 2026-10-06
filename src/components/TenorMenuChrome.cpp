@@ -154,6 +154,12 @@ void tenorchrome::drawBarIcon(const GfxRenderer& r, const uint8_t* bits, const i
         r.drawPixel(x + i, y + j, true);
 }
 
+void tenorchrome::drawBarTab(const GfxRenderer& r, const int cx, const int y, const int h, const uint8_t* bits,
+                             const int w, const int iconH, const bool chosen) {
+  if (chosen) drawPillRing(r, cx - BAR_TAB_W / 2, y + BAR_TAB_INSET, BAR_TAB_W, h - 2 * BAR_TAB_INSET, 3, false);
+  drawBarIcon(r, bits, w, iconH, cx - w / 2, y + (h - iconH) / 2, chosen);
+}
+
 namespace {
 // Mask1 icon (bit 0 = ink), solid.
 void drawIcon(const GfxRenderer& r, const freeink::Icon& icon, const int x, const int y) {
@@ -244,9 +250,8 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
             {cell.x + 8, y + 8, cell.x + cell.width - 8, y + SIZE - 8}, 0, 0, 2);
         continue;
       }
-      if (active) drawPillRing(r, cell.x + 12, y + 8, cell.width - 24, SIZE - 16, 3, false);
       const freeink::Icon& icon = *(active ? bold[i] : normal[i]);
-      drawBarIcon(r, icon.bits, icon.w, icon.h, cell.x + (cell.width - ICON) / 2, y + (SIZE - ICON) / 2, active);
+      drawBarTab(r, cell.x + cell.width / 2, y, SIZE, icon.bits, icon.w, icon.h, active);
     }
   }
 #endif
