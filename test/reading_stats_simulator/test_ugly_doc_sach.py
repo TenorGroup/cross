@@ -34,6 +34,7 @@ CROSS = {
     'xtc_toc': '26d9891198b82a1a',
     'saved_quote': '77b3fe0a4546e437',
     'quotes_book': 'a897f7651c33b944',
+    'quote_detail': '9e085263e46c9154',
 }
 # The hand-written notices, the same strokes on every draw.
 UGLY = {
@@ -220,6 +221,11 @@ class ReadingScreensTest(unittest.TestCase):
         books = self.card(1, paragraphs=8, quote=True).run(
             '1000:DOWN;1500:DOWN;2000:DOWN;2500:DOWN;3000:RIGHT;3500:RIGHT;4000:RIGHT;4500:CONFIRM;7000:QUIT', [(6500, 'books')], timeout=90)
         self.assertTrue('Quotes frame books=1 items=1' in books[0], 'no ugly book list')
+
+    def test_quote_detail(self):
+        log, ugly, cross = self.both(self.QUOTES, self.QUOTE_SHOTS, paragraphs=8, quote=True)
+        self.assertTrue('QuoteDetail frame quote=0 page=0' in log, 'no ugly quote')
+        self.check('quote_detail', ugly['quote'], cross['quote'])
 
 
 if __name__ == '__main__':
