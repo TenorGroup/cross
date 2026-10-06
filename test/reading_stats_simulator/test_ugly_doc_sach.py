@@ -8,6 +8,7 @@ TEST_PROGRAM picks the simulator (simulator_x3 is the UC8253 panel, simulator_x3
 """
 import hashlib
 import json
+import re
 import unittest
 import zipfile
 
@@ -24,6 +25,7 @@ CROSS = {
     'eob_menu': 'cd447ae2b5b6c6ed',
     'percent': '6ab5c7354d1e3bd2',
     'chapter_entry': '6c974a15195b58d5',
+    'definition': '5db94663acffe057',
 }
 
 
@@ -37,6 +39,19 @@ def write_epub(path, title, paragraphs):
             z.writestr('c%d.xhtml' % i, '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>x</title></head><body><p>' + BODY * paragraphs + '</p></body></html>')
 
 
+def write_dictionary(sd):
+    """A StarDict dictionary at /dictionaries/vd with every word of BODY, each a definition of a few pages."""
+    folder = sd / 'dictionaries' / 'vd'
+    folder.mkdir(parents=True)
+    words = sorted({w.strip('.,').lower().encode() for w in BODY.split()})
+    meaning = ('Luồng không khí chuyển động, thổi từ nơi áp cao sang nơi áp thấp. ' * 40).encode()
+    idx = b''.join(w + b'\0' + (0).to_bytes(4, 'big') + len(meaning).to_bytes(4, 'big') for w in words)
+    (folder / 'vd.dict').write_bytes(meaning)
+    (folder / 'vd.idx').write_bytes(idx)
+    (folder / 'vd.ifo').write_text("StarDict's dict ifo file\nversion=2.4.2\nwordcount=%d\nidxfilesize=%d\nbookname=vd\n"
+                                   "sametypesequence=m\n" % (len(words), len(idx)))
+
+
 def screen_digest(image):
     image = image.copy()
     ImageDraw.Draw(image).rectangle(CLOCK, fill=255)
@@ -44,9 +59,11 @@ def screen_digest(image):
 
 
 class ReadingScreensTest(unittest.TestCase):
-    def card(self, shell, siblings=(), paragraphs=1):
-        card = Card(shell=shell, books=[], stats=False, textAntiAliasing=0)
+    def card(self, shell, siblings=(), paragraphs=1, dictionary=False):
+        card = Card(shell=shell, books=[], stats=False, textAntiAliasing=0, **({'dictionaryName': 'vd'} if dictionary else {}))
         self.addCleanup(card.close)
+        if dictionary:
+            write_dictionary(card.sd)
         write_epub(card.sd / 'k.epub', 'Kidnapped', paragraphs)
         for name in siblings:
             write_epub(card.sd / name, name, 1)
@@ -97,6 +114,14 @@ class ReadingScreensTest(unittest.TestCase):
         self.assertTrue('ChapterNumber frame cursor=5' in log, 'no ugly chapter number')
         self.assertTrue('ChapterNumber frame cursor=0' in log, 'the underline moves')
         self.check('chapter_entry', ugly['entry'], cross['entry'])
+
+    def test_definition(self):
+        script = self.MENU + ';4600:DOWN;5300:DOWN;6000:RIGHT;6700:CONFIRM;8500:CONFIRM;11500:RIGHT;13600:QUIT'
+        log, ugly, cross = self.both(script, [(11000, 'word'), (13000, 'page2')], paragraphs=8, dictionary=True)
+        self.assertIn('DictionaryDefinition', log)
+        self.assertTrue(re.search(r'Definition frame page=1/[2-9]', log), 'no ugly headword')
+        self.assertTrue(re.search(r'Definition frame page=2/[2-9]', log), 'the count follows the page')
+        self.check('definition', ugly['word'], cross['word'])
 
 
 if __name__ == '__main__':
