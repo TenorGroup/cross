@@ -115,4 +115,7 @@ TEST(PutFile, ACardThatStopsWritingStopsTheTransfer) {
   uint8_t buf[256];
   const putfile::Command cmd{"/a", 1000, crcOf(port.bytes)};
   EXPECT_EQ(putfile::receive(cmd, port, sink, clock, buf, sizeof(buf), 10000), putfile::Result::WriteFailed);
+  // The bytes still owed are read and dropped, so none of them reach the command line reader.
+  EXPECT_EQ(port.at, port.bytes.size());
+  EXPECT_LE(sink.got.size(), 300u);
 }

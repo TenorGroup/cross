@@ -61,6 +61,7 @@ template <typename Port, typename Sink, typename Clock>
 Result receive(const Command& cmd, Port& port, Sink& sink, Clock& clock, uint8_t* buf, const size_t bufSize,
                const uint32_t silenceMs, uint32_t* crcOut = nullptr) {
   uint32_t crc = 0xFFFFFFFFu, left = cmd.size, lastByteAt = clock.now();
+  bool writeFailed = false;  // the rest is still read and dropped, so it never reaches the command reader
   while (left > 0) {
     const size_t want = left < bufSize ? left : bufSize;
     const size_t n = port.read(buf, want);
@@ -70,9 +71,10 @@ Result receive(const Command& cmd, Port& port, Sink& sink, Clock& clock, uint8_t
     }
     lastByteAt = clock.now();
     crc = crcUpdate(crc, buf, n);
-    if (!sink.write(buf, n)) return Result::WriteFailed;
+    if (!writeFailed && !sink.write(buf, n)) writeFailed = true;
     left -= static_cast<uint32_t>(n);
   }
+  if (writeFailed) return Result::WriteFailed;
   crc = ~crc;
   if (crcOut) *crcOut = crc;
   return crc == cmd.crc ? Result::Ok : Result::CrcMismatch;
