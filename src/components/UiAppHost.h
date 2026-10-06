@@ -70,6 +70,8 @@ class UiAppHost {
   // Close the routing gate outside a render, e.g. when the data the
   // interaction table indexes is released mid-state. Reopens on renderUi().
   void closeRouting() { uiReady = false; }
+  // Touch: the hit rect of the tap routed just now (the row a value list opens from), else empty.
+  static freeink::ui::Rect dispatchingRect();
   bool routingReady() const { return uiReady.load(); }
 
   freeink::ui::GfxRendererTarget uiTarget;  // must precede `app`: the app holds a reference to it
@@ -77,6 +79,7 @@ class UiAppHost {
 
  private:
   void cancelStaleTouch(const MappedInputManager& input);
+  freeink::ui::ActionEvent routeApp(const freeink::ui::InputSnapshot& snap);
   uint32_t touchContactGeneration = 0;
   // Opened by the render task after publication and closed on lifecycle/state
   // resets; read by the loop task (route*).

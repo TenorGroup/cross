@@ -58,7 +58,7 @@ def check_reader(folder, orientation):
 
 def check_keyboard(folder, size, orientation):
     images = run(folder, '3000:TAP:240,300;7000:TAP:0.5,0.97;8500:TAP:0.83,0.906054;9500:TAP:0.5,0.236;'
-                        '12500:TAP:0.5,0.138,900;15500:TAP:0.5,0.55;18500:TAP:0.05757,0.906054',
+                        '12500:TAP:0.5,0.138,900;15500:TAP:0.5,0.48;18500:TAP:0.05757,0.906054',
                  [12000, 18000, 21000], settings={'orientation': orientation, 'uiTextSize': size, 'readerFavorites': [9]},
                  write_books=bookmark)
     log = (folder/'simulator.log').read_text()
@@ -106,7 +106,7 @@ def check_keyboard(folder, size, orientation):
     hits = folder / 'hits'
     hits.mkdir()
     run(hits, '3000:TAP:240,300;7000:TAP:0.5,0.97;8500:TAP:0.83,0.906054;9500:TAP:0.5,0.236;'
-              '12500:TAP:0.5,0.138,900;15500:TAP:0.5,0.55;'
+              '12500:TAP:0.5,0.138,900;15500:TAP:0.5,0.48;'
               '19000:TAP:0.075094,0.331942;21000:TAP:0.075094,0.33403;'
               '23500:TAP:0.05757,0.906054', [22000, 26500],
         settings={'orientation': orientation, 'uiTextSize': size, 'readerFavorites': [9]}, write_books=bookmark)
@@ -117,7 +117,7 @@ def check_keyboard(folder, size, orientation):
     long = folder / (folder.name + '-long')
     long.mkdir()
     (field, _) = run(long, '3000:TAP:240,300;7000:TAP:0.5,0.97;8500:TAP:0.83,0.906054;9500:TAP:0.5,0.236;'
-                          '12500:TAP:0.5,0.138,900;15500:TAP:0.5,0.55;19000:TAP:0.05757,0.906054',
+                          '12500:TAP:0.5,0.138,900;15500:TAP:0.5,0.48;19000:TAP:0.05757,0.906054',
                     [18000, 21500], settings={'orientation': orientation, 'uiTextSize': size, 'readerFavorites': [9]},
                     write_books=lambda sach: bookmark(sach, 'W' * 128))
     assert 'Entering activity: KeyboardEntry' in (long/'simulator.log').read_text(), 'long-name fixture never entered keyboard'

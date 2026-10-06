@@ -1,6 +1,8 @@
 #include "UiAppHost.h"
 
 #include "MappedInputManager.h"
+#include "activities/Activity.h"
+#include "activities/ActivityManager.h"
 #include "TouchScroll.h"
 #include "UiAppHelpers.h"
 
@@ -30,7 +32,7 @@ UiAppHost::TouchRoute UiAppHost::routeTouch(const MappedInputManager& input, con
     return result;
   }
   result.routed = true;
-  result.event = app.route(result.snap);
+  result.event = routeApp(result.snap);
   return result;
 }
 
@@ -43,7 +45,35 @@ void UiAppHost::cancelStaleTouch(const MappedInputManager& input) {
 fui::ActionEvent UiAppHost::route(const fui::InputSnapshot& snap, const MappedInputManager& input) {
   cancelStaleTouch(input);
   if (!uiReady) return {};
-  return app.route(snap);
+  return routeApp(snap);
+}
+
+// Touch: the tap being dispatched (a screen opens a value list from its handler), else the rect of the last
+// tap the routing dispatched, for the screen in front when it came (a screen acting on a tap a pass after
+// routing it: the reader menu reports it, the reader opens the list).
+namespace {
+const UiAppHost::UiApp* dispatching = nullptr;
+fui::Rect lastTapRect{};
+uint32_t lastTapScreen = UINT32_MAX;
+}  // namespace
+
+fui::ActionEvent UiAppHost::routeApp(const fui::InputSnapshot& snap) {
+  dispatching = &app;
+  const fui::ActionEvent event = app.route(snap);
+  dispatching = nullptr;
+  if (event) {
+    lastTapRect = app.publishedRect(event.action, event.value);
+    lastTapScreen = activityManager.activityGeneration();
+  }
+  return event;
+}
+
+fui::Rect UiAppHost::dispatchingRect() {
+  if (dispatching) {
+    const fui::ActionEvent event = dispatching->lastEvent();
+    return event ? dispatching->publishedRect(event.action, event.value) : fui::Rect{};
+  }
+  return lastTapScreen == activityManager.activityGeneration() ? lastTapRect : fui::Rect{};
 }
 
 int UiAppHost::swipeRows(const MappedInputManager& input, const fui::ListNav& nav, const int count,

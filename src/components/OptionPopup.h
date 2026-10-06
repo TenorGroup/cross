@@ -14,6 +14,9 @@
 #include "components/OptionPopupLayout.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UiAppHelpers.h"
+#include "components/UiAppHost.h"
+#include "components/TouchScroll.h"
+#include "components/icons/tenorRowMarks.h"
 #include "fontIds.h"
 #include "shells/ugly/UglyInk.h"
 
@@ -56,10 +59,12 @@ class OptionPopup {
 
   // As above, plus a subject line inside the dialog (a book or event title).
   // It wraps to several lines under the caption; the dialog grows to fit.
+  // Touch: a question, it stands over the bar at the foot (a row tapped on the screen before is not its own).
   void show(const char* titleStr, const char* headlineStr, const char* const* options, int optionCount,
             int currentIndex, std::function<void(int)> onSelect) {
     show(titleStr, options, optionCount, currentIndex, std::move(onSelect));
     headline = headlineStr ? headlineStr : "";
+    hasAnchor = false;
   }
 
   void show(StrId titleId, const std::vector<std::string>& options, int currentIndex,
@@ -78,7 +83,7 @@ class OptionPopup {
     show(StrId::STR_NONE_OPT, optionIds, optionCount, 0, std::move(onSelect));
     title.clear();
     anchor = row;
-    anchored = true;
+    hasAnchor = anchored = true;
   }
 
   // One option down (1) or up (-1), with wrap: what the up and down buttons do, for a row tilt.
@@ -95,6 +100,14 @@ class OptionPopup {
     const int count = static_cast<int>(ownedStrings.size());
     if (count == 0) { active = false; return true; }
     const freeink::ui::InputSnapshot snap = touchSnapshotFrom(input);
+    int swipeDy = 0;
+    unsigned long swipeMs = 0;
+    if (tenorchrome::kTouchShell && shownRows < count && input.wasVerticalSwipe(swipeDy, swipeMs)) {
+      scrollTop = std::max(0, std::min(count - shownRows, scrollTop + touchscroll::rows(swipeDy, swipeMs, shownPitch,
+                                                                                         std::max(1, shownRows - 1))));
+      requestUpdate();
+      return true;
+    }
     if (snap.touchPressed || snap.touchReleased || snap.touchHeld) {
       // Interactions are registered on the render task; only route once the
       // first render after show() has populated the table (uiReady handshake).
@@ -124,7 +137,7 @@ class OptionPopup {
           requestUpdate();
           return true;
         }
-        if (snap.touchPressed && !anchored) {
+        if (snap.touchPressed && !tenorchrome::kTouchShell) {
           // Touch-down on an option moves the highlight (route() latched the
           // hit as the active interaction; read it back, no re-hit-testing).
           const int16_t idx = interactions.activeIndex();
@@ -193,7 +206,7 @@ class OptionPopup {
     // InteractionBuffer::beginPublishCycle().
     interactions.beginPublishCycle();
     fui::Frame<INTERACTION_CAPACITY> frame(target, device, noInput, interactions);
-    if (anchored) {
+    if (tenorchrome::kTouchShell && (anchored || !uglyStyle)) {
       renderAnchored(renderer, frame, device.screen());
       interactions.publish();
       uiReady = true;
@@ -410,46 +423,119 @@ class OptionPopup {
     }
   }
 
+  // Touch shell (dynamic bar rule 7): every list of this popup in one shape. A held row's menu (showAnchored)
+  // hangs from that row, as narrow as its words. A value list hangs from the row tapped to open it, across the
+  // screen in the panel frame (drawPanel), the value in use bold with the tick at its end, as the lists mark it.
+  // A question (nothing tapped under it: a confirmation) stands over the bar at the foot, its caption and text
+  // inside the frame. Under the bar at most: more rows than fit scroll by a swipe, with the scroll bar.
   template <typename Frame>
   void renderAnchored(const GfxRenderer& renderer, Frame& frame, const freeink::ui::Rect& screen) const {
     namespace fui = freeink::ui;
-    constexpr int font = UI_12_FONT_ID, ROW = 56, PAD = 6, TEXT_X = 24, RADIUS = 20, GAP = 4;
-    const int count = std::min<int>(static_cast<int>(ownedStrings.size()), MAX_OPTIONS);
-    int textWidth = 0;
-    for (int i = 0; i < count; ++i) textWidth = std::max(textWidth, renderer.getTextWidth(font, ownedStrings[i].c_str()));
+    constexpr int font = UI_12_FONT_ID, PAD = 6, RADIUS = 20, GAP = 4, MARK = 24;
+    const bool narrow = anchored;
+    const int ROW = narrow ? 56 : std::max(56, renderer.getLineHeight(font) + 16);
+    const int TEXT_X = narrow ? 24 : 16;
+    const int count = static_cast<int>(ownedStrings.size());
     const int x = tenorchrome::FOOT_BACK_X;
-    const int w = std::min<int>(screen.width - 2 * x, std::max(180, textWidth + 2 * TEXT_X));
-    const int h = count * ROW + 2 * PAD;
-    const int top = tenorchrome::contentTop(), bottom = screen.height - tenorchrome::footBackReserve() + 8;
-    const int below = anchor.y + anchor.height + GAP, above = anchor.y - GAP - h;
-    const bool upperHalf = anchor.y + anchor.height / 2 < screen.height / 2;
-    int y = upperHalf && below + h <= bottom ? below : above >= top ? above : below + h <= bottom ? below : bottom - h;
+    int w = screen.width - 2 * x;
+    if (narrow) {
+      int textWidth = 0;
+      for (int i = 0; i < std::min(count, MAX_OPTIONS); ++i)
+        textWidth = std::max(textWidth, renderer.getTextWidth(font, ownedStrings[i].c_str()));
+      w = std::min(w, std::max(180, textWidth + 2 * TEXT_X));
+    }
+    // The caption and the subject of a question, wrapped inside the frame.
+    fui::TextStyle head;
+    head.font = fui::GfxRendererTarget::FONT_BODY;
+    head.maxLines = 6;
+    const int lh = frame.target().lineHeight(head.font);
+    int headH = 0;
+    const char* heads[2] = {title.empty() || hasAnchor ? nullptr : title.c_str(),
+                            headline.empty() ? nullptr : headline.c_str()};
+    const fui::Rect headRect{static_cast<int16_t>(x + TEXT_X), 0, static_cast<int16_t>(w - 2 * TEXT_X), 1};
+    for (const char* text : heads) {
+      if (!text) continue;
+      head.bold = text == heads[0];
+      fui::layoutText(frame.target(), headRect, text, head, [&](const char*, fui::Rect) { headH += lh; });
+    }
+    if (headH) headH += 2 * PAD + 8;
+    const int top = tenorchrome::contentTop(), bottom = tenorchrome::footBackTop(screen.height) - 8;
+    const int rows = std::max(1, std::min({count, MAX_OPTIONS, (bottom - top - 2 * PAD - headH) / ROW}));
+    if (scrollTop < 0) scrollTop = selectedIndex - rows / 2;
+    scrollTop = std::max(0, std::min(scrollTop, count - rows));
+    const int first = scrollTop;
+    shownRows = rows;
+    shownPitch = ROW;
+    const int h = headH + rows * ROW + 2 * PAD;
+    int y = bottom - h;
+    if (narrow || hasAnchor) {
+      const int below = anchor.y + anchor.height + GAP, above = anchor.y - GAP - h;
+      const bool upperHalf = anchor.y + anchor.height / 2 < screen.height / 2;
+      y = upperHalf && below + h <= bottom ? below : above >= top ? above : below + h <= bottom ? below : bottom - h;
+    }
     y = std::max(top, y);
-    if (uglyStyle) uglyPaper(renderer, {static_cast<int16_t>(x), static_cast<int16_t>(y),
-                                        static_cast<int16_t>(w), static_cast<int16_t>(h)});
+    const fui::Rect box{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w), static_cast<int16_t>(h)};
+    if (uglyStyle) uglyPaper(renderer, box);
     else {
       renderer.fillRoundedRect(x, y, w, h, RADIUS, Color::White);
       tenorchrome::drawRoundRing(renderer, x, y, w, h, RADIUS, 2, true);
     }
-    frame.hit(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w), static_cast<int16_t>(h)},
-              ACTION_CHROME, 0, fui::InputTouch);
-    for (int i = 0; i < count; ++i) {
-      const int ry = y + PAD + i * ROW;
+    frame.hit(box, ACTION_CHROME, 0, fui::InputTouch);
+    int cursor = y + PAD + (headH ? PAD + 4 : 0);
+    for (const char* text : heads) {
+      if (!text) continue;
+      head.bold = text == heads[0];
+      fui::layoutText(frame.target(), headRect, text, head, [&](const char* line, fui::Rect) {
+        frame.target().text(fui::Rect{headRect.x, static_cast<int16_t>(cursor), headRect.width, static_cast<int16_t>(lh)},
+                            line, head);
+        cursor += lh;
+      });
+    }
+    const int rowsTop = y + PAD + headH;
+    if (headH) drawRule(renderer, rowsTop - 1, x + TEXT_X, x + w - TEXT_X);
+    for (int r = 0; r < rows; ++r) {
+      const int i = first + r;
+      const int ry = rowsTop + r * ROW;
+      const bool chosen = marked && !narrow && i == selectedIndex;
       if (uglyStyle) uglyText(renderer, {static_cast<int16_t>(x + TEXT_X), static_cast<int16_t>(ry),
-                                         static_cast<int16_t>(w - 2 * TEXT_X), ROW}, ownedStrings[i].c_str());
-      else renderer.drawText(font, x + TEXT_X, ry + (ROW - renderer.getLineHeight(font)) / 2, ownedStrings[i].c_str());
-      if (i + 1 < count)
-        for (int px = x + TEXT_X; px < x + w - TEXT_X; ++px)
-          if (((px + ry + ROW - 1) & 1) == 0) renderer.drawPixel(px, ry + ROW - 1, true);
+                                         static_cast<int16_t>(w - 2 * TEXT_X), static_cast<int16_t>(ROW)}, ownedStrings[i].c_str());
+      else {
+        const int room = w - 2 * TEXT_X - (chosen ? MARK + 10 : 0);
+        const std::string label = renderer.truncatedText(font, ownedStrings[i].c_str(), room,
+                                                         chosen ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
+        renderer.drawText(font, x + TEXT_X, ry + (ROW - renderer.getLineHeight(font)) / 2, label.c_str(), true,
+                          chosen ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
+        if (chosen)
+          tenorchrome::drawBarIcon(renderer, icon_row_chosen_24.bits, MARK, MARK, x + w - TEXT_X - MARK,
+                                   ry + (ROW - MARK) / 2, true);
+      }
+      if (r + 1 < rows) drawRule(renderer, ry + ROW - 1, x + TEXT_X, x + w - TEXT_X);
       frame.hit(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(ry), static_cast<int16_t>(w), static_cast<int16_t>(ROW)},
                 ACTION_OPTION, static_cast<int16_t>(i), fui::InputTouch);
     }
+    if (rows < count)
+      fui::drawListScrollIndicator(frame.target(), fui::Rect{box.x, static_cast<int16_t>(rowsTop - PAD), box.width,
+                                                             static_cast<int16_t>(rows * ROW + 2 * PAD)},
+                                   static_cast<uint32_t>(count), static_cast<uint32_t>(rows), static_cast<uint32_t>(first),
+                                   6, 0, 6, RADIUS);
+  }
+
+  // The grey dotted rule between 2 rows, the list frames' (every other pixel).
+  static void drawRule(const GfxRenderer& renderer, const int y, const int x0, const int x1) {
+    for (int px = x0; px < x1; ++px)
+      if (((px + y) & 1) == 0) renderer.drawPixel(px, y, true);
   }
 
   // Every option stays selectable, not only the first MAX_OPTIONS: longer lists page (see render).
   // An empty list is dismissed by the first handleInput().
+  // currentIndex < 0: a question or a list of actions, no value in use to mark (the buttons start on the first).
   void activate(int currentIndex, std::function<void(int)> onSelect) {
+    marked = currentIndex >= 0;
     selectedIndex = std::max(0, std::min(currentIndex, static_cast<int>(ownedStrings.size()) - 1));
+    // Touch: the row whose tap opens this list, when a tap opens it.
+    anchor = tenorchrome::kTouchShell ? UiAppHost::dispatchingRect() : freeink::ui::Rect{};
+    hasAnchor = anchor.height > 0;
+    scrollTop = -1;
     onSelectCallback = std::move(onSelect);
     uiReady = false;
     active = true;
@@ -459,7 +545,13 @@ class OptionPopup {
   bool uglyStyle = false;
   bool active = false;
   bool anchored = false;
+  bool hasAnchor = false;
+  bool marked = true;
   freeink::ui::Rect anchor{};
+  // Touch: the first row shown (-1: around the value in use) and what the last frame showed, for a swipe.
+  mutable int scrollTop = -1;
+  mutable int shownRows = MAX_OPTIONS;
+  mutable int shownPitch = 56;
   std::string title;
   std::string headline;
   std::vector<std::string> ownedStrings;

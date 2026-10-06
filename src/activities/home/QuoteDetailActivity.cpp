@@ -251,13 +251,13 @@ void QuoteDetailActivity::openMenu(const Menu which) {
       static constexpr StrId options[] = {StrId::STR_QUOTES_MENU_EDIT, StrId::STR_QUOTES_MENU_DELETE,
                                           StrId::STR_CANCEL};
       if (loaded)
-        popup.show(StrId::STR_QUOTES, options, 3, 0, pick);
+        popup.show(StrId::STR_QUOTES, options, 3, -1, pick);
       else
-        popup.show(StrId::STR_QUOTES, options + 1, 2, 0, pick);
+        popup.show(StrId::STR_QUOTES, options + 1, 2, -1, pick);
     } else if (which == Menu::Edit) {
       static constexpr StrId options[] = {StrId::STR_QUOTES_EDIT_TRIM, StrId::STR_QUOTES_EDIT_RESELECT,
                                           StrId::STR_CANCEL};
-      popup.show(StrId::STR_QUOTES_MENU_EDIT, options, 3, 0, pick);
+      popup.show(StrId::STR_QUOTES_MENU_EDIT, options, 3, -1, pick);
     } else if (which == Menu::Delete) {
       // Mockup M2: the words being deleted, in quotation marks, above the system dialog,
       // which opens on Cancel. The dialog's title is one bold line, which cut the note
@@ -278,7 +278,7 @@ void QuoteDetailActivity::openMenu(const Menu which) {
       }
       note = renderer.wrappedText(NOTE_FONT_ID, tr(STR_QUOTES_DELETE_NOTE), width, NOTE_MAX_LINES);
       static constexpr StrId options[] = {StrId::STR_CANCEL, StrId::STR_CONFIRM};
-      popup.show(StrId::STR_QUOTES_DELETE_HEADING, options, 2, 0, pick);
+      popup.show(StrId::STR_QUOTES_DELETE_HEADING, options, 2, -1, pick);
 #ifdef SIMULATOR
       LOG_DBG("QTS", "Quote delete asks %016llx: %s", static_cast<unsigned long long>(ids[index]),
               excerpt.front().c_str());

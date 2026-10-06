@@ -436,7 +436,7 @@ void BlePageTurnerActivity::openPairedPopup(const int bondIndex) {
   const std::string name = backend::bondName(bondIndex);
   const bool dangNoi = backend::connected();
   const StrId options[2] = {dangNoi ? StrId::STR_BLE_DISCONNECT : StrId::STR_BLE_CONNECT, StrId::STR_BLE_FORGET};
-  optionPopup.show(StrId::STR_BLE_PAIRED_DEVICES, options, 2, 0, [this, addr, name, dangNoi](const int idx) {
+  optionPopup.show(StrId::STR_BLE_PAIRED_DEVICES, options, 2, -1, [this, addr, name, dangNoi](const int idx) {
     if (idx == 0) {
       if (dangNoi) {
         backend::disconnect();
