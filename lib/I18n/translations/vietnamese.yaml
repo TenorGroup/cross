@@ -978,6 +978,7 @@ STR_UGLY_CRASH_BODY: "Tao vừa ngã sấp mặt. Chi tiết nằm trong crash_r
 STR_UGLY_CRASH_REASON: "Ngã vì:"
 STR_UGLY_CACHE_DONE: "Xoá sạch rồi, nhẹ cả người."
 STR_UGLY_CACHE_FAIL: "Xoá không nổi. Thẻ nhớ mày có vấn đề rồi."
+STR_UGLY_FLASHING: "Đang thay não. Rút điện bây giờ là tao chết luôn."
 STR_FOLDER_ITEM_COUNT: "%u mục"
 
 STR_UGLY_PHIEU_TITLE: "PHIẾU TRẢ LỜI"

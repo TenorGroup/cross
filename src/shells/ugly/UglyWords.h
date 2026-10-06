@@ -11,5 +11,7 @@ const char* crashReason();
 // Clear cache, done or failed.
 const char* cacheDone();
 const char* cacheFail();
+// While the update from the card writes the firmware.
+const char* flashing();
 
 }  // namespace ugly::words

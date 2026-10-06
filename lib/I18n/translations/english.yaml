@@ -978,6 +978,7 @@ STR_UGLY_CRASH_BODY: "Just fell flat on my face. Details in crash_report.txt. At
 STR_UGLY_CRASH_REASON: "Why I fell:"
 STR_UGLY_CACHE_DONE: "All gone. Feels lighter."
 STR_UGLY_CACHE_FAIL: "Couldn't delete it. Your card has issues."
+STR_UGLY_FLASHING: "Swapping my brain. Pull the power now and I'm dead for good."
 STR_FOLDER_ITEM_COUNT: "%u items"
 
 STR_UGLY_PHIEU_TITLE: "ANSWER SHEET"

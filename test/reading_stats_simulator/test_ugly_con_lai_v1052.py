@@ -129,6 +129,13 @@ class UglyRemainingScreensTest(unittest.TestCase):
         self.assert_hand_only_in_ugly(settings_route(9, 4, ['RIGHT', 'CONFIRM', 'WAIT:1500']), (0, 300, 528, 520),
                                       'ClearCache')
 
+    def test_the_update_from_the_card_says_it_in_hand(self):
+        # Other, question 6 opens the picker; a file that is no firmware fails the check and the screen says so.
+        def junk(card):
+            (card.sd / 'fw.bin').write_bytes(b'not a firmware' * 64)
+        self.assert_hand_only_in_ugly(settings_route(9, 6, ['CONFIRM', 'WAIT:1500']), (0, 300, 528, 520),
+                                      'SdFirmwareUpdate', prep=junk)
+
 
 if __name__ == '__main__':
     unittest.main()
