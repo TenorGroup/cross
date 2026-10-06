@@ -83,6 +83,9 @@ class UglyPartsX3(unittest.TestCase):
     def test_key_bar(self):
         self.assertHand('language', 'keys')
 
+    def test_status_strip(self):
+        self.assertHand('language', 'status')
+
 
 if __name__ == '__main__':
     unittest.main()

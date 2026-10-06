@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "ButtonSymbols.h"
+#include "ClockStatus.h"
 #include "HeaderBackTapTarget.h"
 #include "activities/Activity.h"
 #include "StatusGlyphs.h"
@@ -520,6 +521,42 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   // A negative bookProgress is unknown (a book still building its index).
   const bool hienTienDo = trongTrinhDoc && spec.showBookProgressPercent && bookProgress >= 0;
   const int width = r.getScreenWidth();
+  if (shell::uglyParts()) {
+    // The same facts in hand: the battery drawn, the clock, and in a book the name and the counts between them.
+    const int base = trongTrinhDoc ? statusTextY(r.getScreenHeight(), false, paddingBottom) + 18 : r.getScreenHeight() - 12;
+    const bool clockLeft = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
+    int left = 14, right = width - 14;
+    if (hienPin) {
+      const int bx = clockLeft && hienGio ? right - 34 : left;
+      ugly::battery(r, bx, base - 8, powerManager.getDisplayedBatteryPercentage());
+      if (bx == left) left += 46;
+      else right -= 46;
+    }
+    char clock[12];
+    if (hienGio && clockstatus::hasValidTime() && halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1)) {
+      const int cw = ugly::width(r, ugly::Size::S22, clock);
+      ugly::text(r, ugly::Size::S22, clockLeft ? left : right - cw, base, clock);
+      if (clockLeft) left += cw + 12;
+      else right -= cw + 12;
+    }
+    std::string counts;
+    if (hienSoTrang) counts = (estimated ? "~" : "") + std::to_string(currentPage) + "/" + std::to_string(pageCount);
+    if (hienTienDo) counts += (counts.empty() ? "" : "  ") + std::to_string(static_cast<int>(std::max(0.0f, std::min(100.0f, bookProgress)) + 0.5f)) + "%";
+    if (!counts.empty()) {
+      right -= ugly::width(r, ugly::Size::S22, counts.c_str());
+      ugly::text(r, ugly::Size::S22, right, base, counts.c_str());
+      right -= 12;
+    }
+    if (bookmarked) left += ugly::text(r, ugly::Size::S22, left, base, "*") + 6;
+    if (hienTieuDe && right - left > 40) {
+      const std::string name = ugly::fit(r, ugly::Size::S22, title, right - left);
+      ugly::text(r, ugly::Size::S22, left, base, name.c_str());
+    }
+#ifdef UGLY_FRAME_LOG
+    LOG_INF("UGLY", "part=status");
+#endif
+    return;
+  }
   const bool lon = !trongTrinhDoc && SETTINGS.globalStatusBarLarge();
   const int batteryWidth = lon ? 32 : 26;
   const int batteryHeight = lon ? 18 : 14;
