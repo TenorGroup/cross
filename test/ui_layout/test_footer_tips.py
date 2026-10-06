@@ -52,7 +52,7 @@ for constant in re.findall(r'constexpr int MORE_BELOW_SPAN[^;]+;', chrome):
     definitions.append(constant)
 if 'void tenorchrome::drawMoreChevron(' in chrome:
     definitions.append(function(chrome, 'void tenorchrome::drawMoreChevron('))
-for name in ('tipTopY', 'tipLineCount', 'tipHeight', 'drawTip', 'moreBelowChevronTopY', 'drawMoreBelowChevron'):
+for name in ('tipTopY', 'tipLineCount', 'tipHeight', 'uglyTipTop', 'drawTip', 'moreBelowChevronTopY', 'drawMoreBelowChevron'):
     if f'tenorchrome::{name}(' in chrome:
         definitions.append(function(chrome, f'tenorchrome::{name}('))
 definitions.append(function(theme, 'TenorTheme::drawButtonHints('))
@@ -68,7 +68,7 @@ definitions.append(hint_label)
 definitions.append(function(renderer, 'GfxRenderer::wrappedText(').replace('GfxRenderer::wrappedText(', 'GfxRenderer::wrappedTextProduction('))
 for name in ('getTextInkTop', 'getTextInkBottom'):
     definitions.append(function(renderer, f'GfxRenderer::{name}('))
-declarations = '\n'.join(re.findall(r'^(?:bool|int|void) (?:smallFooterSymbolsTopY|compactFooterTips|tipY|tipTopY|tipLineCount|tipHeight|drawTip|moreBelowChevronTopY|drawMoreBelowChevron)\([^;]+;', header, re.M))
+declarations = '\n'.join(re.findall(r'^(?:bool|int|void) (?:smallFooterSymbolsTopY|compactFooterTips|tipY|tipTopY|tipLineCount|tipHeight|uglyTipTop|drawTip|moreBelowChevronTopY|drawMoreBelowChevron)\([^;]+;', header, re.M))
 declarations += '\n' + '\n'.join(re.findall(r'(?:enum class ChevronDir[^;]+;|constexpr int MORE_CHEVRON_[^;]+;|'
                                              r'constexpr int moreChevronLength[^}]+}|void drawMoreChevron\([^;]+;)', header))
 # The touch shell's gate: the button reader's value, and the tip filter as written.

@@ -122,6 +122,23 @@ class Straight(unittest.TestCase):
             self.assertEqual(digest(frame.crop((0, 380, 528, 480))), golden, 'message at level %d' % level)
 
 
+class TipBlock(unittest.TestCase):
+    # Where the block of tips stands over the key bar is one decision, and the keyboard and the reading habits ask for it.
+    # The digests are those of the build before the 2 screens asked: a block a pixel off changes them.
+    URL = ['UP'] + ['RIGHT'] * 9 + ['CONFIRM', 'RIGHT', 'CONFIRM', 'CONFIRM', 'RIGHT', 'CONFIRM']
+
+    def test_the_tips_of_the_keyboard_stand_where_they_stood(self):
+        # 5 tips under the keys of a name; 6 under the keys of a URL, one more than the room, so the title goes.
+        plain = frames(settings_question(7, 2))[1]
+        self.assertEqual(digest(plain.crop((0, 590, 528, 752))), '7e5af6dae643c857d26fefba2d09bd278b722a8e7f082dfb2d08e75d219d8558')
+        url = frames(self.URL)[1]
+        self.assertEqual(digest(url.crop((0, 590, 528, 752))), '629bca9040f44a32a89a3f3a358a86d6c1e0e1835dcae03830a69858db96f84e')
+
+    def test_the_tip_and_the_period_of_the_reading_habits_stand_where_they_stood(self):
+        habits = frames(['DOWN'] * 4 + ['CONFIRM'])[1]
+        self.assertEqual(digest(habits.crop((0, 620, 528, 752))), 'cf07694cd610ec3237e787e3b7d739e145f6df08951584b7533c782a8a6abc30')
+
+
 class Header(unittest.TestCase):
     def headers(self, keys):
         log, _, _ = frames(keys)

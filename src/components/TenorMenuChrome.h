@@ -157,6 +157,9 @@ int tipLineCount(const GfxRenderer& renderer, const char* text, int maxLines = 4
 int tipHeight(const GfxRenderer& renderer, const char* text, int maxLines = 4);
 void drawTip(const GfxRenderer& renderer, const char* text, int linesAbove = 0, int maxLines = 4,
              bool hasTextHints = false);
+// tenor/ugly: where the ink of a tip block of `lines` lines starts, the block standing `linesAbove` lines above the
+// place drawTip gives a tip. drawTip, and a screen that keeps something clear of the tips or over them, ask this.
+int uglyTipTop(const GfxRenderer& renderer, int lines, int linesAbove = 0);
 // `note` (a count such as "5 networks") is written at the right end in tenor/ugly; tenor/cross has no room for it.
 void drawHeader(const GfxRenderer& renderer, const char* title, const char* prefix = "", const char* note = nullptr);
 void drawSiblingDestinations(const GfxRenderer& renderer, const char* previous, const char* next);

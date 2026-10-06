@@ -1151,8 +1151,8 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     if (shell::uglyParts()) {
       // In hand, one tip a line over the key bar. The hand is taller than the small font: when the lines outgrow the
       // room under the keys, the title goes first, then the tips at the top; the one about Back stays.
-      const int bottom = renderer.getScreenHeight() - metrics.buttonHintsHeight - 14;
-      const int room = std::max(1, (bottom - (kbRect.y + kbRect.height) - 24) / 26 + 1);
+      int room = 1;
+      while (tenorchrome::uglyTipTop(renderer, 1, room) + ugly::ascent(ugly::Size::S22) >= kbRect.y + kbRect.height + 24) ++room;
       const int first = std::max(0, n - room);
       for (int i = first; i < n; ++i) tenorchrome::drawTip(renderer, tips[i], n - 1 - i);
     } else {
