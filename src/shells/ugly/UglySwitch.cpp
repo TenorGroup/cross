@@ -36,17 +36,18 @@ void SwitchConfirm::render(RenderLock&&) {
   const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
   const int x = SIDE + PAD, room = w - 2 * x;
   const char* body = toCross ? tr(STR_UGLY_SHELL_ASK) : tr(STR_UGLY_SWITCH_ASK);
-  const char* note = toCross ? crossNote.c_str() : shell::uglyLimitNote();
+  const char* note = toCross ? crossNote.c_str() : "";  // turning to tenor/ugly: the question alone
+  const bool hasNote = note[0] != '\0';
   const int lines = paragraph(renderer, Size::S30, x, 0, room, BODY_LINE, body, false);
-  const int noteLines = paragraph(renderer, Size::S22, x, 0, room, NOTE_LINE, note, false);
+  const int noteLines = hasNote ? paragraph(renderer, Size::S22, x, 0, room, NOTE_LINE, note, false) : 0;
   const int bodyHeight = (lines - 1) * BODY_LINE;
-  const int noteHeight = 46 + (noteLines - 1) * NOTE_LINE;
+  const int noteHeight = hasNote ? 46 + (noteLines - 1) * NOTE_LINE : 0;
   // Frame top to bottom: padding, the body, the note, a gap, the two options, padding. The whole is centred above the bar.
   const int total = PAD + 30 + bodyHeight + noteHeight + 70 + OPTION_STEP + 30;
   const int top = std::max(40, (h - 110 - total) / 2);
   const int bodyBase = top + PAD + 30;
   const int noteBase = bodyBase + bodyHeight + 46;
-  const int firstOption = noteBase + (noteLines - 1) * NOTE_LINE + 80;
+  const int firstOption = (hasNote ? noteBase + (noteLines - 1) * NOTE_LINE : bodyBase + bodyHeight) + 80;
   const int bottom = firstOption + OPTION_STEP + 30;
 
   // One shaky stroke per side, each with its own seed: a sheet of paper torn out and laid down crooked.
@@ -56,7 +57,7 @@ void SwitchConfirm::render(RenderLock&&) {
   line(renderer, SIDE + 2, bottom - 3, SIDE, top, 704, 2);
 
   paragraph(renderer, Size::S30, x, bodyBase, room, BODY_LINE, body);
-  paragraph(renderer, Size::S22, x, noteBase, room, NOTE_LINE, note);
+  if (hasNote) paragraph(renderer, Size::S22, x, noteBase, room, NOTE_LINE, note);
   const char* labels[COUNT] = {toCross ? tr(STR_UGLY_SHELL_YES) : tr(STR_UGLY_SWITCH_YES),
                              toCross ? tr(STR_UGLY_SHELL_NO) : tr(STR_UGLY_SWITCH_NO)};
   Box box[COUNT] = {};

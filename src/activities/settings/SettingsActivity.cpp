@@ -324,8 +324,6 @@ void SettingsActivity::rebuildRowItems() {
     item.label = I18N.get(settings[i].nameId);
     item.actionValue = static_cast<int16_t>(i);
     item.opensNext = settingOpensNext(settings[i]);
-    // tenor/ugly is a limited edition: the row that offers it says so.
-    if (settings[i].valuePtr == &CrossPointSettings::uiShell && shell::uglyOffered()) item.subtitle = shell::uglyLimitNote();
     rowItems_.push_back(item);
   }
 }
@@ -685,7 +683,6 @@ bool SettingsActivity::applySettingValue(const int row, const uint8_t value, con
   if (current == value) return true;
   if (valuePtr == &CrossPointSettings::uiShell && !shellConfirmed) {
     const bool toCross = value == static_cast<uint8_t>(shell::Kind::Cross);
-    if (!toCross && !shell::uglyOffered()) return false;
     startActivityForResult(ugly::makeSwitchConfirm(renderer, mappedInput, toCross), [this, row, value](const ActivityResult& result) {
       if (!result.isCancelled) applySettingValue(row, value, true);
       else {
@@ -1015,7 +1012,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   // common fits-on-one-line case takes the renderer's fast path anyway.
   props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
-  // A row's note (the limited edition under Interface) wraps too, so no settings row cuts its words.
+  // A row's note wraps too, so no settings row cuts its words.
   props.subtitleText = screen.theme().smallText;
   props.subtitleText.maxLines = 2;
   syncTabListViewport(screen, props);
