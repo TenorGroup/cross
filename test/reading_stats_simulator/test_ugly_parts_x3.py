@@ -175,6 +175,28 @@ class UglyPartsX3(unittest.TestCase):
         self.assertEqual(digest(page.crop((48, hand, 132, hand + 30))), digest(page.crop((48, mixed, 132, mixed + 30))),
                          'a name with a Chinese letter is written whole in the UI font')
 
+    def wifi(self):
+        if 'wifi' not in self.logs:
+            card = Card()
+            try:
+                t, parts = START, []
+                for k in settings_question(7, 3):
+                    parts.append('%d:%s' % (t, k))
+                    t += GAP
+                at = t + 3000
+                parts.append('%d:QUIT' % (at + 600))
+                log, shots = card.run(';'.join(parts), [(at, 'wifi')], timeout=120)
+            finally:
+                card.close()
+            self.assertIn('WifiSelection', entered(log), log[-1500:])
+            self.logs['wifi'] = (shots['wifi'], log)
+        return self.logs['wifi']
+
+    def test_the_header_writes_its_note(self):
+        # Wi-Fi names the networks found at the right end of its header, above the underline.
+        self.assertGreater(ink(self.wifi()[0], (300, 10, 504, 44)), 0, 'the header drops the count of networks')
+
+
 
 if __name__ == '__main__':
     unittest.main()

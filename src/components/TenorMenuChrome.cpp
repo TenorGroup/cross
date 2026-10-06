@@ -258,7 +258,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   r.drawText(font, x + PAD_LEFT, y + (SIZE - r.getLineHeight(font)) / 2, name.c_str(), true, EpdFontFamily::REGULAR);
 }
 
-void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char* prefix) {
+void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char* prefix, const char* note) {
   // Touch: no title row. The name goes to the bar at the foot (or the strip, on a screen without one);
   // a tap on the strip of a screen that names where it came from still goes back there.
   if (kTouchShell) {
@@ -271,15 +271,21 @@ void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char
   }
   if (shell::uglyParts()) {
     // The name written across the top and underlined; where it came from goes before it, smaller.
-    const int base = HEADER_TOP + headerHeight() - 10, right = r.getScreenWidth() - 24;
-    int x = 24;
+    const int base = HEADER_TOP + headerHeight() - 10;
+    int x = 24, right = r.getScreenWidth() - 24;
+    if (note && *note) {  // a count or a state, small, at the right end
+      const std::string said = ugly::fit(r, ugly::Size::S22, note, (right - x) / 2);
+      right -= ugly::width(r, ugly::Size::S22, said.c_str());
+      ugly::text(r, ugly::Size::S22, right, base, said.c_str());
+      right -= 12;
+    }
     if (prefix && *prefix) {
       const std::string from = ugly::fit(r, ugly::Size::S22, std::string(prefix) + "/", (right - x) / 3);
       x += ugly::text(r, ugly::Size::S22, x, base, from.c_str()) + 4;
     }
     const std::string name = ugly::fit(r, ugly::Size::S30, title ? title : "", right - x);
     ugly::text(r, ugly::Size::S30, x, base, name.c_str());
-    ugly::underline(r, 20, right + 4, base + 8, 760, 2);
+    ugly::underline(r, 20, r.getScreenWidth() - 20, base + 8, 760, 2);
 #ifdef UGLY_FRAME_LOG
     LOG_INF("UGLY", "part=header");
 #endif

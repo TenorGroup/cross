@@ -113,7 +113,7 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
 void TenorTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
                             bool backButton) const {
   if (tenorchrome::enabled()) {
-    tenorchrome::drawHeader(renderer, title);
+    tenorchrome::drawHeader(renderer, title, "", subtitle);
     return;
   }
   LyraTheme::drawHeader(renderer, rect, title, subtitle, backButton);
