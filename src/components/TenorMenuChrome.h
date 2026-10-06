@@ -56,6 +56,9 @@ inline int footBackReserve() { return TOUCH_BAR_BOTTOM_GAP + FOOT_BACK_SIZE + 8;
 // The title a screen's header names, kept for the bar's name pill (the touch shell draws no title row).
 void noteScreenTitle(const char* title);
 const char* screenTitle();
+// A screen drawn on tenor/ugly paper with a foot of its own (a question sheet, the shell switch) says so as it
+// draws: its bar is the "<" alone, in pen.
+void noteHandDrawn();
 // A short note for the middle of the status strip (the items of a folder), for the screen that set it.
 void noteStatus(const char* text);
 // True when the "B" of a remote linking should blink now: the caller repaints the screen (one refresh).

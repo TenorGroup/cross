@@ -164,9 +164,20 @@ void ActivityManager::openTopMenu() {
   pushActivity(std::make_unique<FrontlightPanelActivity>(renderer, mappedInput));
 }
 
+HomeMenuItem ActivityManager::zoneOrigin() const {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (shell::isUgly()) {
+    for (auto it = stackActivities.rbegin(); it != stackActivities.rend(); ++it)
+      if (*it && (*it)->zoneRoot() != HomeMenuItem::NONE) return (*it)->zoneRoot();
+    return HomeMenuItem::NONE;
+  }
+#endif
+  return homeMenuOrigin();
+}
+
 tenorchrome::Zone ActivityManager::footZone() const {
   if (isReaderActivity()) return tenorchrome::Zone::Book;
-  switch (homeMenuOrigin()) {
+  switch (zoneOrigin()) {
     case HomeMenuItem::FILE_BROWSER:
       return tenorchrome::Zone::File;
     case HomeMenuItem::STATS_TAB:
@@ -184,7 +195,7 @@ tenorchrome::Zone ActivityManager::footZone() const {
 // Each screen above the book closes as its Back would (a cancelled result), one per pass.
 void ActivityManager::goZoneRoot() {
   if (!isReaderActivity()) {
-    goHome(homeMenuOrigin());
+    goHome(zoneOrigin());
     return;
   }
   if (currentActivity->isReaderActivity()) return;

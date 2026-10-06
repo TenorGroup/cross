@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "UglyInk.h"
+#include "components/TenorMenuChrome.h"
 
 namespace ugly {
 namespace {
@@ -564,6 +565,7 @@ void QuestionSheet::paint(const GfxRenderer& r, const MappedInputManager& input)
   if (touch_) {
 #if FREEINK_DEVICE_X4PRO
     formTopBar(r);
+    tenorchrome::noteHandDrawn();
     char back[128];
     snprintf(back, sizeof(back), tr(STR_UGLY_X4_BACK_PARENT), tr(STR_SETTINGS_TITLE));
     const int backWidth = width_ / 3 - 12;

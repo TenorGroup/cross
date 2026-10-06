@@ -121,6 +121,9 @@ class ActivityManager {
   bool returningToReaderPage() const { return toReaderPage; }
 
   HomeMenuItem homeMenuOrigin() const;
+  // The Home card the zone icon of the dynamic bar leads to: homeMenuOrigin(), or on tenor/ugly the notebook
+  // page under the screen (NONE: the diary).
+  HomeMenuItem zoneOrigin() const;
   void begin();
   void loop();
 

@@ -70,12 +70,23 @@ int encode(const uint32_t cp, char* out) {
   return 4;
 }
 
+// The baked pen has no degree sign: on the X4 Pro the pen draws it, a small ring, so "180°" stays in one hand.
+constexpr uint32_t DEGREE = 0xB0;
+#if FREEINK_DEVICE_X4PRO
+constexpr bool PEN_DEGREE = true;
+#else
+constexpr bool PEN_DEGREE = false;
+#endif
+bool penDegree(const uint32_t cp) { return PEN_DEGREE && cp == DEGREE; }
+int degreeRadius(const int px) { return px / 10 > 3 ? px / 10 : 3; }
+void stroke(const GfxRenderer& r, int x0, int y0, int x1, int y1, int w);
+
 bool covered(const GfxRenderer& r, const int fid, const char* utf8) {
   const auto it = r.getFontMap().find(fid);
   if (it == r.getFontMap().end()) return false;
   const auto* p = reinterpret_cast<const unsigned char*>(utf8);
   while (const uint32_t cp = utf8NextCodepoint(&p))
-    if (!it->second.hasCodepoint(cp)) return false;
+    if (!it->second.hasCodepoint(cp) && !penDegree(cp)) return false;
   return true;
 }
 
@@ -97,6 +108,7 @@ Letter letterOf(const Size s, const bool af, const uint32_t cp) {
 
 // Advance in pixels of one letter. Drawing and measuring ask this and nothing else, so the two cannot disagree.
 int stepOf(const GfxRenderer& r, const Size s, const bool af, const int pos, const uint32_t cp, const Letter& letter) {
+  if (penDegree(cp)) return 2 * degreeRadius(pixelsOf(s)) + 4;
   if (letter.glyph) return logic::warpAdvance(letter.glyph->advanceX, letter.warp) + logic::jumpStep(pos, cp);
   char one[5];
   encode(cp, one);
@@ -145,7 +157,13 @@ int run(const GfxRenderer& r, const Size s, const int x, const int baseline, con
   char one[5];
   while (const uint32_t cp = utf8NextCodepoint(&p)) {
     const Letter letter = letterOf(s, af, cp);
-    if (draw && cp != ' ') {
+    if (draw && penDegree(cp)) {
+      // An octagon of pen strokes at the height of the capitals' top.
+      const int rr = degreeRadius(px), cx = cursor + rr + 1, cy = baseline - ascent(s) + rr;
+      const int d = rr * 7 / 10;
+      const int ring[9][2] = {{0, -rr}, {d, -d}, {rr, 0}, {d, d}, {0, rr}, {-d, d}, {-rr, 0}, {-d, -d}, {0, -rr}};
+      for (int i = 0; i < 8; ++i) stroke(r, cx + ring[i][0], cy + ring[i][1], cx + ring[i + 1][0], cy + ring[i + 1][1], 2);
+    } else if (draw && cp != ' ') {
       if (af) {
         drawWarped(r, s, letter, cursor, baseline + logic::jumpDy(pos, cp, px), black);
       } else {

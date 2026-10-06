@@ -67,6 +67,11 @@ class Activity {
   // Returns true when the activity schedules its own forced refresh.
   virtual bool handleForcedRefresh() { return false; }
   virtual bool isHomeActivity() const { return false; }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  // The Home card this screen is the root of, for the zone icon of the dynamic bar on the screens above it
+  // (a tenor/ugly notebook page). NONE: no zone root.
+  virtual HomeMenuItem zoneRoot() const { return HomeMenuItem::NONE; }
+#endif
   virtual bool handleHomeGesture() { return false; }
   virtual ScreenshotInfo getScreenshotInfo() const { return {}; }
 

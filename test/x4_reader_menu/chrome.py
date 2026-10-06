@@ -72,10 +72,15 @@ namespace ugly {
   int text(const GfxRenderer& r, Size size, int x, int baseline, const char* value, bool black) {
     assert(black); int w = width(r, size, value); labels.push_back({x, baseline, w, value}); return w;
   }
+  int penBacks = 0;  // the "<" drawn in pen: its hand circle
   void circle(const GfxRenderer&, Circle role, const Box& box, int padX, int padY, int stroke) {
-    assert(role == Circle::Row && padX == 0 && padY == 0 && stroke == 2); circles.push_back(box);
+    assert(padX == 0 && padY == 0 && stroke == 2);
+    if (role == Circle::Object) { ++penBacks; return; }
+    assert(role == Circle::Row); circles.push_back(box);
   }
+  void line(const GfxRenderer&, int, int, int, int, uint32_t, int) {}
 }
+uint32_t handDrawnGeneration = UINT32_MAX;
 int rings=0,icons=0;
 void drawIcon(const GfxRenderer&,const freeink::Icon&,int,int) { ++icons; }
 namespace tenorchrome {
@@ -101,7 +106,7 @@ cpp += method(source, 'void tenorchrome::drawFootBar') + r'''
 int main() {
   using namespace tenorchrome;
   GfxRenderer r;
-  auto draw=[&] { rings=icons=0; ugly::labels.clear(); ugly::circles.clear(); ugly::budgets.clear();
+  auto draw=[&] { rings=icons=ugly::penBacks=0; ugly::labels.clear(); ugly::circles.clear(); ugly::budgets.clear();
     drawFootBar(r,FootBar::None,Zone::Book); };
   noteReaderFootBar(false,false,-1); draw(); assert(rings==0 && HeaderBackTapTarget::foot==0);
   // "<" and the tools' pill are rings; every tool, the chosen one too, is one bar tab (its ring inside it).
@@ -120,7 +125,8 @@ int main() {
     r.width=w; r.height=w==480?800:480;
     for (int active : {-1,0,1,2,3}) {
       noteReaderFootBar(true,false,active); draw();
-      assert(rings==1 && icons==0 && HeaderBackTapTarget::foot==1 && HeaderBackTapTarget::zone==0);
+      // Ugly: "<" in pen, the tools as handwritten words, no tenor/cross ring.
+      assert(rings==0 && ugly::penBacks==1 && icons==0 && HeaderBackTapTarget::foot==1 && HeaderBackTapTarget::zone==0);
       assert(ugly::labels.size()==4 && ugly::budgets.size()==4 && ugly::circles.size()==(active<0?0u:1u));
       for (int i=0;i<READER_TOOLS;++i) {
         auto cell=readerToolRect(w,r.height,i); const auto& label=ugly::labels[i];
@@ -136,7 +142,8 @@ int main() {
       }
     }
     noteReaderFootBar(true,true,1); draw();
-    assert(rings==1 && icons==0 && ugly::labels.empty() && ugly::circles.empty() && HeaderBackTapTarget::foot==1);
+    assert(rings==0 && ugly::penBacks==1 && icons==0 && ugly::labels.empty() && ugly::circles.empty() &&
+           HeaderBackTapTarget::foot==1);
     noteReaderFootBar(false,false,-1); draw();
     assert(rings==0 && ugly::labels.empty() && HeaderBackTapTarget::foot==0);
     noteReaderFootBar(true,false,1); ++activityManager.generation; draw();

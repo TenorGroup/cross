@@ -135,6 +135,7 @@ bool named(const char* const (&names)[N], const char* activityName) {
 // name from the one before it.
 char noted[96] = {};
 uint32_t notedGeneration = UINT32_MAX;
+uint32_t handDrawnGeneration = UINT32_MAX;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 struct ReaderFootBarNote {
   bool open = false, keypad = false;
@@ -248,6 +249,8 @@ void tenorchrome::noteScreenTitle(const char* title) {
   notedGeneration = activityManager.activityGeneration();
 }
 
+void tenorchrome::noteHandDrawn() { handDrawnGeneration = activityManager.activityGeneration(); }
+
 const char* tenorchrome::screenTitle() {
   return notedGeneration == activityManager.activityGeneration() ? noted : "";
 }
@@ -278,10 +281,22 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   constexpr int SIZE = FOOT_BACK_SIZE, ICON = 40;
   const int y = footBackTop(r.getScreenHeight());
   int x = FOOT_BACK_X;
-  // "<": the open chevron of the list marks, 3 px stroke, centred in its ring.
-  drawPillRing(r, x, y, SIZE, SIZE, 2, true);
-  constexpr int SPAN = 9;
-  drawMoreChevron(r, x + (SIZE - moreChevronLength(SPAN)) / 2 - 1, y + SIZE / 2 - SPAN, ChevronDir::Left, SPAN);
+  // On tenor/ugly paper (and in its reader menu) the "<" is drawn in pen: a hand circle round a hand chevron.
+  bool pen = handDrawnGeneration == activityManager.activityGeneration();
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  pen = pen || (reader && shell::isUgly());
+#endif
+  if (pen) {
+    ugly::circle(r, ugly::Circle::Object, {x + 8, y + 8, x + SIZE - 8, y + SIZE - 8}, 0, 0, 2);
+    const int cx = x + SIZE / 2 - 2, cy = y + SIZE / 2;
+    ugly::line(r, cx + 6, cy - 11, cx - 5, cy, 811, 3);
+    ugly::line(r, cx - 5, cy, cx + 6, cy + 11, 812, 3);
+  } else {
+    // "<": the open chevron of the list marks, 3 px stroke, centred in its ring.
+    drawPillRing(r, x, y, SIZE, SIZE, 2, true);
+    constexpr int SPAN = 9;
+    drawMoreChevron(r, x + (SIZE - moreChevronLength(SPAN)) / 2 - 1, y + SIZE / 2 - SPAN, ChevronDir::Left, SPAN);
+  }
   HeaderBackTapTarget::setFoot(x, y, SIZE, SIZE);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (reader && !readerFootBar.keypad) {
@@ -311,7 +326,8 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
     }
   }
 #endif
-  if (bar == FootBar::BackOnly) return;
+  // Paper with a foot of its own keeps that foot: no zone icon, no name.
+  if (bar == FootBar::BackOnly || pen) return;
   // The zone's icon, alone in its ring: a tap leads to the zone's root.
   x += SIZE + FOOT_PILL_GAP;
   drawPillRing(r, x, y, SIZE, SIZE, 2, true);
