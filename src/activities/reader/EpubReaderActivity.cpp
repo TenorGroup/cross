@@ -2367,7 +2367,7 @@ bool EpubReaderActivity::backgroundBuildWanted() const {
 
 bool EpubReaderActivity::skipLoopDelay() {
   // The main loop holds the render lock while querying this hint.
-  return (backgroundBuildCanTick() && backgroundBuildWanted()) || (xemTruoc && catchUp && catchUp->isBuilding());
+  return (backgroundBuildCanTick() && backgroundBuildWanted()) || (catchUp && catchUp->isBuilding() && catchUpCanTick());
 }
 
 #ifdef TENOR_TURN_TRACE
@@ -4576,15 +4576,20 @@ void EpubReaderActivity::dropCatchUp() {
   catchUp.reset();
 }
 
+// When the preview's layout may take a step. The loop skips its delay only while this holds, so a
+// layout waiting out the quiet time, given up on, or parked for the radio does not spin the loop.
+// With the radio holding the heap it stays parked as every background build does
+// (deferBackgroundBuildForBle): the first turn lays the chapter out instead.
+bool EpubReaderActivity::catchUpCanTick() const {
+  return xemTruoc && !section && epub && buildViewportWidth != 0 && millis() - xemTruocInputMs >= CATCH_UP_QUIET_MS &&
+         catchUpFails < CATCH_UP_MAX_FAILS && !deferBackgroundBuildForBle() && !bleturner::status().starting;
+}
+
 // Loop task, between key presses: lays the chapter out under the current settings ~20 ms at a time
 // until it reaches the page being read, then puts it in place without drawing anything.
 void EpubReaderActivity::catchUpTick(const bool inputThisPass) {
   if (inputThisPass) xemTruocInputMs = millis();
-  // With the radio holding the heap the background stays parked as every background build does
-  // (deferBackgroundBuildForBle): the first turn lays the chapter out instead.
-  if (!xemTruoc || section || !epub || buildViewportWidth == 0 || millis() - xemTruocInputMs < CATCH_UP_QUIET_MS ||
-      catchUpFails >= CATCH_UP_MAX_FAILS || deferBackgroundBuildForBle() || bleturner::status().starting)
-    return;
+  if (!catchUpCanTick()) return;
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired()) return;
   HalPowerManager::Lock fullSpeed;  // the loop runs down-clocked after 3 s without a key

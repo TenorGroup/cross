@@ -95,11 +95,11 @@ struct EpubReaderActivity {
  std::atomic<bool> paintDropped{false};
  std::atomic<uint8_t> textCloseFrame{0};
  Renderer renderer;SdFonts sdFontSystem;
- bool deferBackgroundBuildForBle(){return bleDeferred;}
+ bool deferBackgroundBuildForBle() const {return bleDeferred;}
  void rememberCurrentContentOffset(){cachedVisibleTextOffset=4000;}
  void requestUpdate(){++updates;}
  void discardOverlayPage(){assert(lockDepth==1);}
- void danLaiTrang();void dropCatchUp();void catchUpTick(bool);
+ void danLaiTrang();void dropCatchUp();void catchUpTick(bool);bool catchUpCanTick() const;
  void chooseTextValue(int,int);void applyTextSettingLive();
  void invalidateTextSettingsLocked();void applyReaderTextSettingsLocked();void applyReaderTextSettings();
  void markClosedTextFrameUpLocked();void flushTextSettingsLocked();void flushTextSettings();
@@ -171,7 +171,7 @@ int main(){
 class ReaderTableLifecycleTest(unittest.TestCase):
     def run_production(self, main):
         text = (REPO/'src/activities/reader/EpubReaderActivity.cpp').read_text()
-        names = ('danLaiTrang','dropCatchUp','catchUpTick','chooseTextValue','applyTextSettingLive',
+        names = ('danLaiTrang','dropCatchUp','catchUpTick','catchUpCanTick','chooseTextValue','applyTextSettingLive',
                  'invalidateTextSettingsLocked','applyReaderTextSettingsLocked','applyReaderTextSettings',
                  'markClosedTextFrameUpLocked','flushTextSettingsLocked','flushTextSettings',
                  'panelClosedLocked','panelClosed')

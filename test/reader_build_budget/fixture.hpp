@@ -367,6 +367,7 @@ struct EpubReaderActivity : ReaderActivity {
   std::atomic<uint8_t> textCloseFrame{0};
   // Preview catch-up is covered by the simulator; reject active preview in this projection.
   void catchUpTick(bool) { require(!xemTruoc, "preview catch-up needs the simulator"); }
+  bool catchUpCanTick() const { return xemTruoc; }
   void flushTextSettingsLocked();
   std::unique_ptr<Epub> epub = std::make_unique<Epub>();
   std::unique_ptr<ImageBlock::ThumbHook> coverThumbs;
