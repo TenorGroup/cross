@@ -62,22 +62,14 @@ void readertip::draw(const GfxRenderer& r) {
   const auto foot = readertap::zoneBox(Zone::TextMenu, w, h, rules);
   const auto back = readertap::zoneBox(Zone::Prev, w, h, rules);
   const auto next = readertap::zoneBox(Zone::Next, w, h, rules);
-  const auto cell = readertap::zoneBox(Zone::Menu, w, h, rules);
   if (top.h) edge(r, 0, top.h - LINE / 2, w, LINE);
   if (foot.h) edge(r, 0, foot.y - LINE / 2, w, LINE);
   if (back.w && next.w) edge(r, rules.inverted ? back.x - LINE / 2 : back.w - LINE / 2, back.y, LINE, back.h);
-  if (cell.w) {
-    edge(r, cell.x, cell.y, cell.w, LINE);
-    edge(r, cell.x, cell.y + cell.h - LINE, cell.w, LINE);
-    edge(r, cell.x, cell.y, LINE, cell.h);
-    edge(r, cell.x + cell.w - LINE, cell.y, LINE, cell.h);
-  }
   if (top.h) label(r, plane, tr(STR_TIP_TOP_MENU), w / 2, top.h / 2, w);
   if (foot.h) label(r, plane, tr(STR_TIP_TEXT_MENU), w / 2, foot.y + foot.h / 2, w);
-  if (cell.w) label(r, plane, tr(STR_TIP_READER_MENU), cell.x + cell.w / 2, cell.y + cell.h / 2, cell.w);
   if (back.w) label(r, plane, tr(STR_PREV_PAGE_GESTURE), back.x + back.w / 2, back.y + back.h / 2, back.w);
-  // The forward label sits between the top band and the centre cell, the button between the cell and the foot.
-  const int nextCy = cell.w ? (next.y + cell.y) / 2 : next.y + next.h / 3;
+  // The forward label sits in the upper third of the forward zone, the button in its lower part.
+  const int nextCy = next.y + next.h / 3;
   if (next.w) label(r, plane, tr(STR_NEXT_PAGE_GESTURE), next.x + next.w / 2, nextCy, next.w);
   if (!next.w) return;
   const auto button = readertap::tipButton(w, h, rules);

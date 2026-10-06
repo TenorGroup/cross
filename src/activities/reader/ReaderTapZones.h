@@ -6,7 +6,8 @@
 // Where a tap on a reader's page goes. The one place that decides it: the page turn, the reader menu and
 // the touch shell's bands all ask zoneAt, so the zones can never overlap or leave a gap between callers.
 // The layout follows KOReader's defaults (defaults.lua: DTAP_ZONE_BACKWARD w 1/4, DTAP_ZONE_FORWARD the
-// rest, DTAP_ZONE_MENU the top 1/8), kept with Tenor's centre tap for the reader menu (dynamic bar rule 4).
+// rest, DTAP_ZONE_MENU the top 1/8). A page with bands has no centre cell: its middle turns forward and the
+// menus are the bands' (founder 06/10). A reader without bands keeps the centre tap into its menu.
 namespace readertap {
 
 enum class Zone : uint8_t { None, Prev, Next, Menu, TopMenu, TextMenu };
@@ -20,7 +21,7 @@ struct Rules {
   bool nextTaps;     // a tap may turn forward
   bool prevTaps;     // a tap may turn back
   bool inverted;     // the back column sits at the right edge (inverted tap, or a right-to-left book)
-  bool menuTap;      // the centre third opens the reader menu
+  bool menuTap;      // the centre third opens the reader menu (readers without bands only)
   bool bands;        // the caller handles the top band (top menu) and the foot band (text menu)
   uint8_t backZone;  // index into BACK_PERCENT
 };
@@ -42,7 +43,7 @@ inline Zone zoneAt(const int x, const int y, const int width, const int height, 
   if (x < 0 || y < 0 || x >= width || y >= height) return Zone::None;
   if (r.bands && y < topBand(height)) return Zone::TopMenu;
   if (r.bands && y >= height - footBand(height)) return Zone::TextMenu;
-  if (r.menuTap && x >= width / 3 && x < width - width / 3 && y >= height / 3 && y < height - height / 3)
+  if (r.menuTap && !r.bands && x >= width / 3 && x < width - width / 3 && y >= height / 3 && y < height - height / 3)
     return Zone::Menu;
   if (!r.nextTaps && !r.prevTaps) return Zone::None;
   // Only one direction on taps: it takes the whole page.
@@ -71,7 +72,8 @@ inline Box zoneBox(const Zone z, const int width, const int height, const Rules&
     case Zone::TextMenu:
       return r.bands ? Box{0, bottom, width, height - bottom} : Box{0, 0, 0, 0};
     case Zone::Menu:
-      return r.menuTap ? Box{width / 3, height / 3, width - 2 * (width / 3), height - 2 * (height / 3)} : Box{0, 0, 0, 0};
+      return r.menuTap && !r.bands ? Box{width / 3, height / 3, width - 2 * (width / 3), height - 2 * (height / 3)}
+                                   : Box{0, 0, 0, 0};
     case Zone::Prev:
       return {backX, top, back, back ? bottom - top : 0};
     case Zone::Next:
@@ -82,7 +84,8 @@ inline Box zoneBox(const Zone z, const int width, const int height, const Rules&
   }
 }
 
-// The tip's "do not show again" button: in the forward zone, between the centre cell and the foot band.
+// The tip's "do not show again" button: in the forward zone, in the band between 2/3 of the height and the
+// foot band.
 inline Box tipButton(const int width, const int height, const Rules& r) {
   const Box next = zoneBox(Zone::Next, width, height, r);
   const int cellBottom = height - height / 3;

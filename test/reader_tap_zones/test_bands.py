@@ -10,7 +10,7 @@ import tempfile
 repo = Path(__file__).resolve().parents[2]
 source = (repo / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
 start = source.index('  // Touch shell: the top band opens the top menu')
-end = source.index('  if (confirmReleased || ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {', start)
+end = source.index('  if (confirmReleased || ReaderUtils::isTouchMenuGesture(renderer, mappedInput, tenorchrome::kTouchShell)) {', start)
 block = source[start:end]
 fixture = r'''
 #include <cassert>

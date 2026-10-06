@@ -25,11 +25,10 @@ int main() {
   assert(zoneAt(0, 737, 480, 800, r) == Zone::Prev);
   assert(zoneAt(240, 738, 480, 800, r) == Zone::TextMenu);
   assert(zoneAt(479, 799, 480, 800, r) == Zone::TextMenu);
-  // The centre third stays the reader menu (dynamic bar rule 4).
-  assert(zoneAt(160, 266, 480, 800, r) == Zone::Menu);
-  assert(zoneAt(319, 533, 480, 800, r) == Zone::Menu);
-  assert(zoneAt(320, 400, 480, 800, r) == Zone::Next);
-  assert(zoneAt(159, 400, 480, 800, r) == Zone::Next);
+  // The middle of a page with bands turns forward (founder 06/10, KOReader's map): the menu is the foot band's.
+  assert(zoneAt(240, 400, 480, 800, r) == Zone::Next);
+  assert(zoneAt(160, 266, 480, 800, r) == Zone::Next);
+  assert(zoneAt(319, 533, 480, 800, r) == Zone::Next);
   // Outside the page: nothing.
   assert(zoneAt(-1, 400, 480, 800, r) == Zone::None && zoneAt(480, 400, 480, 800, r) == Zone::None);
 
@@ -39,8 +38,7 @@ int main() {
   assert(zoneAt(199, 100, 800, 480, r) == Zone::Prev);
   assert(zoneAt(200, 100, 800, 480, r) == Zone::Next);
   assert(zoneAt(400, 420, 800, 480, r) == Zone::TextMenu);
-  assert(zoneAt(400, 319, 800, 480, r) == Zone::Menu);  // the centre third ends at y 319, forward below it
-  assert(zoneAt(400, 320, 800, 480, r) == Zone::Next);
+  assert(zoneAt(400, 240, 800, 480, r) == Zone::Next);
   assert(zoneAt(700, 419, 800, 480, r) == Zone::Next);
 
   // The setting's four widths: 15, 20, 25, 33% of the width.
@@ -71,7 +69,11 @@ int main() {
   assert(zoneAt(479, 400, 480, 800, prevOnly) == Zone::Prev);
   readertap::Rules swipeOnly{false, false, false, true, true, readertap::BACK_ZONE_DEFAULT};
   assert(zoneAt(0, 400, 480, 800, swipeOnly) == Zone::None);
-  assert(zoneAt(240, 400, 480, 800, swipeOnly) == Zone::Menu);
+  assert(zoneAt(240, 400, 480, 800, swipeOnly) == Zone::None);
+  // A reader without bands (TXT, XTC) keeps the centre as its way into the menu.
+  readertap::Rules noBands{true, true, false, true, false, readertap::BACK_ZONE_DEFAULT};
+  assert(zoneAt(240, 400, 480, 800, noBands) == Zone::Menu);
+  assert(zoneAt(150, 400, 480, 800, noBands) == Zone::Next);
   assert(zoneAt(240, 10, 480, 800, swipeOnly) == Zone::TopMenu);
   // The menu tap switched off gives the centre to the turn zones.
   readertap::Rules noMenu{true, true, false, false, true, readertap::BACK_ZONE_DEFAULT};

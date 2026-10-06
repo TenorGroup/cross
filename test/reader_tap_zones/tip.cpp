@@ -29,7 +29,8 @@ int main() {
     for (uint8_t step = 0; step < readertap::BACK_ZONE_COUNT; ++step)
       for (const bool inverted : {false, true}) {
         const readertap::Rules r{true, true, inverted, true, true, step};
-        for (const Zone z : {Zone::Prev, Zone::Next, Zone::Menu, Zone::TopMenu, Zone::TextMenu}) agrees(z, w, h, r);
+        for (const Zone z : {Zone::Prev, Zone::Next, Zone::TopMenu, Zone::TextMenu}) agrees(z, w, h, r);
+        assert(readertap::zoneBox(Zone::Menu, w, h, r).w == 0);  // no centre cell on a page with bands
         // The button sits in the forward zone, clear of the centre cell and the bands, at least 48 px tall.
         const Box button = readertap::tipButton(w, h, r);
         assert(button.h >= 48 && button.w >= 200);

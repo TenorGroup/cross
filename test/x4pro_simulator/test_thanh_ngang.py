@@ -27,7 +27,7 @@ def bookmark(sach, name='Marker'):
 
 def check_reader(folder, orientation):
     # Normalized taps stay valid when the book rotates the display after boot.
-    images = run(folder, '3000:TAP:240,300;7000:TAP:0.5,0.5;9500:TAP:0.05757,0.906054',
+    images = run(folder, '3000:TAP:240,300;7000:TAP:0.5,0.97;9500:TAP:0.05757,0.906054',
                  [6800, 9300, 12000], settings={'orientation': orientation})
     capture(folder, ('page', 'menu', 'after-back'), images)
     page, menu, back = images
@@ -43,8 +43,10 @@ def check_reader(folder, orientation):
     assert ink(menu,(width-31,17,width-13,18)) == 1, 'menu battery top border is missing'
     assert ink(menu,(width-31,30,width-13,31)) == 1, 'menu battery bottom border is missing'
     assert ink(menu,(width-10,22,width-8,26)) == 1, 'menu battery terminal is missing'
-    page_pixels=list(page.crop((0,38,800,270)).getdata())
-    menu_pixels=list(menu.crop((0,38,800,270)).getdata())
+    # The menu opens on its Text sheet (foot band, founder 06/10), which covers the page from x 16: the
+    # margin left of it is still the stored page.
+    page_pixels=list(page.crop((0,38,14,380)).getdata())
+    menu_pixels=list(menu.crop((0,38,14,380)).getdata())
     assert all(a == b for a,b in zip(page_pixels,menu_pixels) if a in (0,255)), 'toolbar changed solid page pixels'
     assert set(menu_pixels) <= {0,255}, 'stored BW preview contains gray upload pixels'
     assert ink(menu,(16,276,784,392)) > 0.015, 'toolbar panel is missing'
@@ -55,7 +57,7 @@ def check_reader(folder, orientation):
 
 
 def check_keyboard(folder, size, orientation):
-    images = run(folder, '3000:TAP:240,300;7000:TAP:0.5,0.5;8500:TAP:0.83,0.906054;9500:TAP:0.5,0.236;'
+    images = run(folder, '3000:TAP:240,300;7000:TAP:0.5,0.97;8500:TAP:0.83,0.906054;9500:TAP:0.5,0.236;'
                         '12500:TAP:0.5,0.138,900;15500:TAP:0.5,0.55;18500:TAP:0.05757,0.906054',
                  [12000, 18000, 21000], settings={'orientation': orientation, 'uiTextSize': size, 'readerFavorites': [9]},
                  write_books=bookmark)
@@ -103,7 +105,7 @@ def check_keyboard(folder, size, orientation):
     # Adjacent 60 px rows share a boundary, with disjoint half-open hit rects.
     hits = folder / 'hits'
     hits.mkdir()
-    run(hits, '3000:TAP:240,300;7000:TAP:0.5,0.5;8500:TAP:0.83,0.906054;9500:TAP:0.5,0.236;'
+    run(hits, '3000:TAP:240,300;7000:TAP:0.5,0.97;8500:TAP:0.83,0.906054;9500:TAP:0.5,0.236;'
               '12500:TAP:0.5,0.138,900;15500:TAP:0.5,0.55;'
               '19000:TAP:0.075094,0.331942;21000:TAP:0.075094,0.33403;'
               '23500:TAP:0.05757,0.906054', [22000, 26500],
@@ -114,7 +116,7 @@ def check_keyboard(folder, size, orientation):
 
     long = folder / (folder.name + '-long')
     long.mkdir()
-    (field, _) = run(long, '3000:TAP:240,300;7000:TAP:0.5,0.5;8500:TAP:0.83,0.906054;9500:TAP:0.5,0.236;'
+    (field, _) = run(long, '3000:TAP:240,300;7000:TAP:0.5,0.97;8500:TAP:0.83,0.906054;9500:TAP:0.5,0.236;'
                           '12500:TAP:0.5,0.138,900;15500:TAP:0.5,0.55;19000:TAP:0.05757,0.906054',
                     [18000, 21500], settings={'orientation': orientation, 'uiTextSize': size, 'readerFavorites': [9]},
                     write_books=lambda sach: bookmark(sach, 'W' * 128))

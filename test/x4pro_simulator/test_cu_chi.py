@@ -89,9 +89,9 @@ def unsupported_case(folder, shell):
 
 def bottom_case(folder, shell):
     script = ('1000:TAP:400,754;3000:TAP:80,754;5500:SWIPE:240,790,240,620,250;'
-              '8000:TAP:240,180;12000:TAP:.5,.5;14500:SWIPE:.5,.99,.5,.75,250') if shell else (
+              '8000:TAP:240,180;12000:TAP:.5,.97;14500:SWIPE:.5,.99,.5,.75,250') if shell else (
               '3000:TAP:423,754;5500:SWIPE:240,790,240,620,250;'
-              '8000:TAP:240,300;12000:TAP:.5,.5;14500:SWIPE:.5,.99,.5,.75,250')
+              '8000:TAP:240,300;12000:TAP:.5,.97;14500:SWIPE:.5,.99,.5,.75,250')
     images = run(folder, script,
                  [2700,4800,7300,13800,16400],settings=dict(uiShell=shell,homeButtonTapAction=9))
     assert_reader(folder)
