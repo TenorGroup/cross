@@ -8,6 +8,9 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyChrome.h"
+#include "shells/ugly/UglyInk.h"
 
 namespace fui = freeink::ui;
 
@@ -117,11 +120,27 @@ void ButtonRemapActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
   drawNavigationHeader(tr(STR_REMAP_FRONT_BUTTONS));
-  GUI.drawSubHeader(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight},
-                    tr(STR_REMAP_PROMPT));
-
   int topOffset = metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing;
-  renderUi();
+  if (shell::uglyParts()) {
+    // tenor/ugly: the prompt and the 4 roles in hand, each role's key as its pen mark; the pen circles the role that
+    // waits for a key. The buttons take no touch, so no layout is laid out for hits.
+    const int y = metrics.topPadding + metrics.headerHeight;
+    ugly::text(renderer, ugly::Size::S22, metrics.contentSidePadding, y + metrics.tabBarHeight - 12, tr(STR_REMAP_PROMPT));
+    ugly::line(renderer, 0, y + metrics.tabBarHeight, pageWidth, y + metrics.tabBarHeight - 2, 83, 1);
+    constexpr int ROW = 52;
+    for (uint8_t i = 0; i < kRoleCount; ++i) {
+      const fui::Rect box{16, static_cast<int16_t>(topOffset + i * ROW), static_cast<int16_t>(pageWidth - 32), ROW - 6};
+      uglychrome::Row row;
+      row.label = getRoleName(i);
+      row.value = tempMapping[i] == kUnassigned ? tr(STR_UNASSIGNED) : getHardwareName(tempMapping[i]);
+      row.marks.selected = i == currentStep;
+      uglychrome::row(renderer, box, row);
+    }
+  } else {
+    GUI.drawSubHeader(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight},
+                      tr(STR_REMAP_PROMPT));
+    renderUi();
+  }
 
   // Temporary warning banner for duplicates.
   if (!errorMessage.empty()) {

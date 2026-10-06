@@ -167,6 +167,10 @@ class UglyRemainingScreensTest(unittest.TestCase):
         self.assert_hand_only_in_ugly(['DOWN'] * 4 + ['RIGHT', 'RIGHT', 'CONFIRM'], DAYS_GRID, 'ReadingHistory',
                                       ['DOWN'] * 3 + ['RIGHT', 'RIGHT', 'CONFIRM'])
 
+    def test_the_button_remap_is_written_by_hand(self):
+        self.assert_hand_only_in_ugly(settings_route(4, 1), REMAP_ROWS, 'ButtonRemap',
+                                      ['UP', 'RIGHT', 'RIGHT', 'RIGHT', 'CONFIRM', 'CONFIRM'])
+
 
 if __name__ == '__main__':
     unittest.main()
