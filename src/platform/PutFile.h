@@ -3,6 +3,8 @@
 // live here with no hardware in them so a host test can run them: the command line, the CRC (zlib's),
 // and the receive loop that fills a small buffer, writes it out in pieces and stops on a wrong sum or
 // a silence. The caller owns the port, the card and the clock.
+#include <RecoverableFile.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -42,7 +44,7 @@ inline uint32_t crcUpdate(uint32_t crc, const uint8_t* data, size_t len) {
   return crc;
 }
 
-enum class Result : uint8_t { Ok, Silence, CrcMismatch, WriteFailed };
+enum class Result : uint8_t { Ok, Silence, CrcMismatch, WriteFailed, CloseFailed, RenameFailed };
 
 inline const char* reason(const Result r) {
   switch (r) {
@@ -50,6 +52,8 @@ inline const char* reason(const Result r) {
     case Result::Silence: return "no bytes for too long";
     case Result::CrcMismatch: return "crc mismatch";
     case Result::WriteFailed: return "card write failed";
+    case Result::CloseFailed: return "card close failed";
+    case Result::RenameFailed: return "rename";
   }
   return "";
 }
@@ -78,6 +82,22 @@ Result receive(const Command& cmd, Port& port, Sink& sink, Clock& clock, uint8_t
   crc = ~crc;
   if (crcOut) *crcOut = crc;
   return crc == cmd.crc ? Result::Ok : Result::CrcMismatch;
+}
+
+// After the bytes: the .tmp replaces <path> only once it has synced and closed, and the old file is moved
+// aside (freeink::replaceFile) rather than removed first, so a failed rename leaves it in place. Every
+// failure removes the .tmp.
+template <typename Store, typename File>
+Result finish(const Result received, Store& storage, File& file, const std::string& tmp, const std::string& path) {
+  const bool synced = received == Result::Ok && file.sync();
+  const bool closed = file.close();
+  Result result = received;
+  if (result == Result::Ok && !(synced && closed)) result = Result::CloseFailed;
+  if (result == Result::Ok && !(freeink::recoverFile(storage, path.c_str()) &&
+                                freeink::replaceFile(storage, tmp.c_str(), path.c_str())))
+    result = Result::RenameFailed;
+  if (result != Result::Ok) storage.remove(tmp.c_str());
+  return result;
 }
 
 }  // namespace putfile

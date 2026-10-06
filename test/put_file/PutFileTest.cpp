@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -118,4 +119,66 @@ TEST(PutFile, ACardThatStopsWritingStopsTheTransfer) {
   // The bytes still owed are read and dropped, so none of them reach the command line reader.
   EXPECT_EQ(port.at, port.bytes.size());
   EXPECT_LE(sink.got.size(), 300u);
+}
+
+namespace {
+// A card of whole files; `failRename` refuses one rename by its source.
+struct FakeStore {
+  std::map<std::string, std::string> files;
+  std::string failRename;
+  bool exists(const char* p) { return files.count(p) != 0; }
+  bool remove(const char* p) { return files.erase(p) != 0; }
+  bool rename(const char* a, const char* b) {
+    if (failRename == a || !exists(a) || exists(b)) return false;
+    files[b] = files[a];
+    files.erase(a);
+    return true;
+  }
+};
+struct FakeFile {
+  bool syncOk = true, closeOk = true;
+  bool sync() { return syncOk; }
+  bool close() { return closeOk; }
+};
+FakeStore cardWithOldAndNew() {
+  FakeStore s;
+  s.files["/a"] = "old";
+  s.files["/a.tmp"] = "new";
+  return s;
+}
+}  // namespace
+
+TEST(PutFile, ACheckedFileReplacesTheOldOne) {
+  FakeStore s = cardWithOldAndNew();
+  FakeFile f;
+  EXPECT_EQ(putfile::finish(putfile::Result::Ok, s, f, "/a.tmp", "/a"), putfile::Result::Ok);
+  EXPECT_EQ(s.files, (std::map<std::string, std::string>{{"/a", "new"}}));
+}
+
+TEST(PutFile, ACloseThatFailsKeepsTheOldFile) {
+  FakeStore s = cardWithOldAndNew();
+  FakeFile f;
+  f.closeOk = false;
+  EXPECT_EQ(putfile::finish(putfile::Result::Ok, s, f, "/a.tmp", "/a"), putfile::Result::CloseFailed);
+  EXPECT_EQ(s.files, (std::map<std::string, std::string>{{"/a", "old"}}));
+  FakeStore t = cardWithOldAndNew();
+  FakeFile g;
+  g.syncOk = false;
+  EXPECT_EQ(putfile::finish(putfile::Result::Ok, t, g, "/a.tmp", "/a"), putfile::Result::CloseFailed);
+  EXPECT_EQ(t.files, (std::map<std::string, std::string>{{"/a", "old"}}));
+}
+
+TEST(PutFile, ARenameThatFailsKeepsTheOldFile) {
+  FakeStore s = cardWithOldAndNew();
+  s.failRename = "/a.tmp";
+  FakeFile f;
+  EXPECT_EQ(putfile::finish(putfile::Result::Ok, s, f, "/a.tmp", "/a"), putfile::Result::RenameFailed);
+  EXPECT_EQ(s.files, (std::map<std::string, std::string>{{"/a", "old"}}));
+}
+
+TEST(PutFile, AFailedTransferRemovesOnlyTheTmp) {
+  FakeStore s = cardWithOldAndNew();
+  FakeFile f;
+  EXPECT_EQ(putfile::finish(putfile::Result::CrcMismatch, s, f, "/a.tmp", "/a"), putfile::Result::CrcMismatch);
+  EXPECT_EQ(s.files, (std::map<std::string, std::string>{{"/a", "old"}}));
 }

@@ -1290,20 +1290,12 @@ static void putCommand(const String& args) {
 #endif
   logSerial.printf("PUT:READY %u\n", static_cast<unsigned>(cmd.size));
   uint32_t crc = 0;
-  const putfile::Result result = putfile::receive(cmd, port, sink, clock, buf, sizeof(buf), 10000, &crc);
-  file.close();
-  if (result == putfile::Result::Ok) {
-    Storage.remove(cmd.path.c_str());
-    if (Storage.rename(tmpPath.c_str(), cmd.path.c_str())) {
-      logSerial.printf("PUT:OK %u %08lx\n", static_cast<unsigned>(cmd.size), static_cast<unsigned long>(crc));
-    } else {
-      Storage.remove(tmpPath.c_str());
-      logSerial.printf("PUT:FAIL rename\n");
-    }
-  } else {
-    Storage.remove(tmpPath.c_str());
+  const putfile::Result received = putfile::receive(cmd, port, sink, clock, buf, sizeof(buf), 10000, &crc);
+  const putfile::Result result = putfile::finish(received, Storage, file, tmpPath, cmd.path);
+  if (result == putfile::Result::Ok)
+    logSerial.printf("PUT:OK %u %08lx\n", static_cast<unsigned>(cmd.size), static_cast<unsigned long>(crc));
+  else
     logSerial.printf("PUT:FAIL %s\n", putfile::reason(result));
-  }
 #if LOG_SERIAL_HAS_TX_TIMEOUT
   logSerial.setTxTimeoutMs(1);
 #endif
