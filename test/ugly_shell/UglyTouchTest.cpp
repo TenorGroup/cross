@@ -145,7 +145,7 @@ constexpr int OPEN_PAGE = 0, OPEN_GROUP = 1, SET_VALUE = 2, SLEEP = 8;  // ugly:
 TEST(Quips, TheKeyIsTheGeneratorsKey) {
   // Values from scripts/ugly/gen_quips.py key16().
   EXPECT_EQ(quipKey("Hiển thị"), 8386);
-  EXPECT_EQ(quipKey("Chế độ ban đêm", "BẬT"), 8986);
+  EXPECT_EQ(quipKey("Chế độ ban đêm", "Bật"), 45941);
   EXPECT_EQ(quipKey("a"), 52512);
 }
 
@@ -156,7 +156,7 @@ TEST(Quips, EveryPageAndTheSettingsGroupsHaveLines) {
     EXPECT_EQ(ugly::quips::SLOTS[s].count, 3) << page;
   }
   EXPECT_GE(quipSlot(ugly::quips::SLOTS, QUIP_SLOTS, OPEN_GROUP, quipKey("Hiển thị"), 0), 0);
-  EXPECT_GE(quipSlot(ugly::quips::SLOTS, QUIP_SLOTS, SET_VALUE, quipKey("Chế độ ban đêm", "BẬT"), 0), 0);
+  EXPECT_GE(quipSlot(ugly::quips::SLOTS, QUIP_SLOTS, SET_VALUE, quipKey("Chế độ ban đêm", "Bật"), 0), 0);
   EXPECT_LT(quipSlot(ugly::quips::SLOTS, QUIP_SLOTS, SET_VALUE, quipKey("Chế độ ban đêm", "xanh"), 0), 0);
 }
 
