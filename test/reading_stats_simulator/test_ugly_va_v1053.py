@@ -61,6 +61,14 @@ class KeyMarks(unittest.TestCase):
         drawn = set(re.findall(r'part=penmark cp=(\w+)', log))
         self.assertTrue({'E107', 'E108'} <= drawn, 'the side buttons of the tip are not drawn by the pen: %s' % sorted(drawn))
 
+    def test_the_last_tip_of_the_keyboard_writes_its_two_keys_by_hand(self):
+        # The keyboard of "Tên thiết bị": "Giữ [Back]: Về Home. Giữ [erase]: Xóa hết". The erase key was the UI font's
+        # box laid over the "xóa" after it; it is the pen's mark in its own cell now, the Back mark beside it.
+        log, _, _ = frames(settings_question(7, 2))
+        self.assertIn('KeyboardEntry', re.findall(r'Entering activity: (\w+)', log), log[-1500:])
+        drawn = set(re.findall(r'part=penmark cp=(\w+)', log))
+        self.assertTrue({'E101', 'E109'} <= drawn, 'the 2 keys of the last tip are not drawn by the pen: %s' % sorted(drawn))
+
 
 if __name__ == '__main__':
     unittest.main()

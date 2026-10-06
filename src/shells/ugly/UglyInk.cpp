@@ -76,7 +76,7 @@ int encode(const uint32_t cp, char* out) {
 // the dots would go), the tick of the Select key, which no font on the card has, and the inline key symbols of
 // the UI strings (U+E100 Select, Back, Up, Down, Left, Right, then the star, the 2 side buttons and the erase key),
 // drawn as the marks over the keys.
-constexpr uint32_t SCRAWL = 0xE000, TICK = 0x2713, KEY_FIRST = 0xE100, KEY_LAST = 0xE108;
+constexpr uint32_t SCRAWL = 0xE000, TICK = 0x2713, KEY_FIRST = 0xE100, KEY_LAST = 0xE109;
 bool penDrawn(const uint32_t cp) { return cp == SCRAWL || cp == TICK || (cp >= KEY_FIRST && cp <= KEY_LAST); }
 
 bool covered(const GfxRenderer& r, const int fid, const char* utf8) {
@@ -152,8 +152,17 @@ void penStar(const GfxRenderer& r, const int cx, const int cy) {
     stroke(r, cx + PTS[i][0], cy + PTS[i][1], cx + PTS[i + 1][0], cy + PTS[i + 1][1], 2);
 }
 
-// One key symbol of the UI strings, centred on (cx, cy). The star and the side buttons are the keys' own, as
-// buttonSymbols resolves them (the side buttons follow the reading side layout).
+// The erase key, a tag with a cross in it, of one stroke and one more for the cross, some 20 px across.
+void penErase(const GfxRenderer& r, const int cx, const int cy) {
+  static constexpr int PTS[7][2] = {{-10, 0}, {-4, -8}, {10, -8}, {10, 8}, {-4, 8}, {-10, 1}, {-9, 0}};
+  for (int i = 0; i + 1 < 7; ++i)
+    stroke(r, cx + PTS[i][0], cy + PTS[i][1], cx + PTS[i + 1][0], cy + PTS[i + 1][1], 2);
+  stroke(r, cx - 2, cy - 4, cx + 5, cy + 4, 2);
+  stroke(r, cx - 2, cy + 4, cx + 5, cy - 3, 2);
+}
+
+// One key symbol of the UI strings, centred on (cx, cy). The star, the side buttons and the erase key are the keys'
+// own, as buttonSymbols resolves them (the side buttons follow the reading side layout).
 void keyMark(const GfxRenderer& r, const uint32_t cp, const int cx, const int cy) {
   static constexpr Mark KEYS[6] = {Mark::Tick, Mark::Back, Mark::Up, Mark::Down, Mark::Left, Mark::Right};
   if (cp == TICK) return mark(r, Mark::Tick, cx, cy);
@@ -162,6 +171,8 @@ void keyMark(const GfxRenderer& r, const uint32_t cp, const int cx, const int cy
   switch (buttonSymbols::resolve(id).shape) {
     case inlineSymbols::Shape::Star:
       return penStar(r, cx, cy);
+    case inlineSymbols::Shape::Erase:
+      return penErase(r, cx, cy);
     case inlineSymbols::Shape::Left:
       return mark(r, Mark::Left, cx, cy);
     case inlineSymbols::Shape::Right:
