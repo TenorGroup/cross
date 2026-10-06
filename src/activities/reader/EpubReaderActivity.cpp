@@ -50,8 +50,10 @@
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "SettingsList.h"
 #include "activities/home/QuotesActivity.h"
 #include "activities/settings/BlePageTurnerActivity.h"
+#include "activities/settings/SettingsActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/HomeExcerptStyle.h"
 #include "components/ReaderTapTip.h"
@@ -3756,7 +3758,29 @@ constexpr StrId kSpacingIds[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW,
 constexpr StrId kDropCapIds[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_SPACING_LARGE};
 constexpr StrId kAlignIds[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                StrId::STR_BOOK_S_STYLE};
-constexpr int kTextRowCount = static_cast<int>(std::size(kTextRowNames));
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+// X4 Pro (founder 06/10): all 14 text settings, in the order of Settings > Reader > Text settings. Rows 0-4 keep
+// their ids above; ids 5 and on are the other text settings of the catalog, read and stepped as Settings does.
+constexpr const char* kCatalogTextKeys[] = {"letterSpacing",   "wordSpacing",       "extraParagraphSpacing",
+                                            "screenMargin",    "paragraphIndent",   "embeddedStyle",
+                                            "hyphenationEnabled", "readerInkWeight", "textAntiAliasing"};
+constexpr uint8_t kTextRowIds[] = {0, 1, 2, 5, 6, 7, 3, 8, 9, 10, 4, 11, 12, 13};
+static_assert(std::size(kTextRowIds) == 5 + std::size(kCatalogTextKeys), "every text row has a place");
+#else
+constexpr uint8_t kTextRowIds[] = {0, 1, 2, 3, 4};
+#endif
+constexpr int kTextRowCount = static_cast<int>(std::size(kTextRowIds));
+int textRowId(const int row) { return row >= 0 && row < kTextRowCount ? kTextRowIds[row] : -1; }
+// A row of the catalog (ids 5 and on), or nullptr.
+const SettingInfo* catalogTextRow(const int id) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (id < 5 || id >= 5 + static_cast<int>(std::size(kCatalogTextKeys))) return nullptr;
+  for (const auto& info : getBaseSettingsList())
+    if (info.key && strcmp(info.key, kCatalogTextKeys[id - 5]) == 0) return &info;
+#endif
+  (void)id;
+  return nullptr;
+}
 static_assert(std::size(kSpacingIds) == readerSpacing::LEVEL_COUNT, "line spacing labels");
 static_assert(std::size(kAlignIds) == CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, "alignment labels");
 static_assert(std::size(kDropCapIds) == readerSpacing::DROP_CAP_MODE_COUNT, "drop cap labels");
@@ -3833,11 +3857,15 @@ std::string EpubReaderActivity::currentChapterTitle() const {
 }
 
 std::string EpubReaderActivity::textRowName(int row) const {
-  return row >= 0 && row < kTextRowCount ? I18N.get(kTextRowNames[row]) : "";
+  row = textRowId(row);
+  if (const auto* info = catalogTextRow(row)) return I18N.get(info->nameId);
+  return row >= 0 && row < static_cast<int>(std::size(kTextRowNames)) ? I18N.get(kTextRowNames[row]) : "";
 }
 
 std::string EpubReaderActivity::textRowValue(int row) const {
   static constexpr StrId kFamily[] = {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS};
+  row = textRowId(row);
+  if (const auto* info = catalogTextRow(row)) return SettingsActivity::settingValueText(*info);
   switch (row) {
     case 0:  // opens the family list: the value, then the chevron
       if (SETTINGS.sdFontFamilyName[0] != '\0') return std::string(SETTINGS.sdFontFamilyName)
@@ -3875,10 +3903,28 @@ void EpubReaderActivity::applyTextSettingLive() {
 
 // Settings-style option pickers for the Text panel's enum rows. Every
 // selection applies immediately to the page under the sheet.
-void EpubReaderActivity::cycleTextRow(const int row) {
+void EpubReaderActivity::cycleTextRow(int row) {
+  row = textRowId(row);
   {
     RenderLock lock;  // the render task must not paint a page laid out with the old value in the new one
+    if (const auto* info = catalogTextRow(row)) {
+      // A tap steps it, as a tap steps alignment: the next value, the first after the last.
+      auto& value = SETTINGS.*(info->valuePtr);
+      if (info->type == SettingType::TOGGLE) {
+        value = !value;
+      } else if (info->type == SettingType::VALUE) {
+        const auto range = info->valueRange;
+        value = value + range.step > range.max ? range.min : value + range.step;
+      } else {
+        const int count = static_cast<int>(info->enumLabels().size());
+        if (count <= 0) return;
+        value = static_cast<uint8_t>((value + 1) % count);
+      }
+      row = -1;
+    }
     switch (row) {
+      case -1:  // a catalog row, stepped above
+        break;
       case 1: {
         // The point sizes the active family actually ships.
         const auto sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);

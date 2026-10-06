@@ -570,11 +570,14 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.itemsWindowFirst = static_cast<uint16_t>(nav_.top);
     listProps_.itemsWindowCount = static_cast<uint16_t>(std::max(0, windowCount));
     if (count > 0) fui::list(screen.frame(), listRect, listProps_);
-    if (rows) {
-      const int16_t y = static_cast<int16_t>(listRect.y + 62);
+    // The size row (index 1) with its stepper, where the scrolled rows put it: wholly in view only.
+    const int sizeSlot = 1 - nav_.top;
+    if (rows && sizeSlot >= 0 && sizeSlot < std::min(nav_.visibleRows, windowCount)) {
+      const int16_t y = static_cast<int16_t>(listRect.y + sizeSlot * 62);
       fui::TextStyle label = tokens.bodyText;
       label.maxLines = 1;
-      screen.target().text({static_cast<int16_t>(frame.x + 16), y, static_cast<int16_t>(frame.width - 236), 62}, windowLabels_[1].c_str(), label);
+      screen.target().text({static_cast<int16_t>(frame.x + 16), y, static_cast<int16_t>(frame.width - 236), 62},
+                           windowLabels_[sizeSlot].c_str(), label);
       stepProps_ = fui::ButtonProps{};
       stepProps_.inputMask = fui::InputTouch;
       stepProps_.minTouchSize = 60;
@@ -583,7 +586,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       stepProps_.label = "-";
       stepProps_.value = -1;
       screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 204), y, 60, 62});
-      stepProps_.label = windowValues_[1].c_str();
+      stepProps_.label = windowValues_[sizeSlot].c_str();
       stepProps_.action = ACTION_SIZE_ENTRY;
       stepProps_.value = 0;
       screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 140), y, 72, 62});
