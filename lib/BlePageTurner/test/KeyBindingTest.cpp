@@ -70,6 +70,45 @@ TEST(BleBindingTableTest, KeypageTurnsBothWaysOutOfTheBox) {
   EXPECT_EQ(tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "Other"), nullptr);
 }
 
+TEST(BleBindingTableTest, KeypageTakesBothCodeSetsOutOfTheBox) {
+  // The same "BOOX Keypage" logged on the X3 on 06/10/2026 sent "04 00 00" from the upper
+  // button and "08 00 00" from the lower one, report 3. The default takes both sets.
+  const RemoteTable* t = tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "BOOX Keypage");
+  ASSERT_TRUE(routes(t));
+  EXPECT_EQ(lookup(*t, 0x030004, false), Action::NextPage);
+  EXPECT_EQ(lookup(*t, 0x030008, false), Action::PrevPage);
+  EXPECT_EQ(lookup(*t, 0x030002, false), Action::NextPage);
+  EXPECT_EQ(lookup(*t, 0x030001, false), Action::PrevPage);
+  EXPECT_EQ(lookup(*t, 0x030004, true), Action::None) << "a hold is not a tap";
+  EXPECT_EQ(lookup(*t, 0x020004, false), Action::None) << "another report id is another button";
+
+  // A table the user bound by hand wins over the default, whatever the remote sends.
+  RemoteTable saved[1] = {};
+  strncpy(saved[0].addr, "AA:BB:CC:DD:EE:FF", sizeof saved[0].addr - 1);
+  saved[0].count = 2;
+  saved[0].bindings[0] = makeBinding(0x030002, false, Action::NextPage);
+  saved[0].bindings[1] = makeBinding(0x030001, false, Action::PrevPage);
+  const RemoteTable* own = tableFor(saved, 1, "AA:BB:CC:DD:EE:FF", "BOOX Keypage");
+  ASSERT_EQ(own, &saved[0]);
+  EXPECT_EQ(lookup(*own, 0x030004, false), Action::None);
+
+  // Learning a direction on a table seeded from the default replaces both of its codes.
+  RemoteTable tables[kMaxRemotes] = {};
+  uint8_t count = 0;
+  RemoteTable* edit = editableTable(tables, count, "AA:BB:CC:DD:EE:FF", "BOOX Keypage");
+  ASSERT_NE(edit, nullptr);
+  ASSERT_TRUE(learn(*edit, Action::NextPage, 0x030010, false));
+  EXPECT_EQ(lookup(*edit, 0x030010, false), Action::NextPage);
+  EXPECT_EQ(lookup(*edit, 0x030002, false), Action::None);
+  EXPECT_EQ(lookup(*edit, 0x030004, false), Action::None);
+  EXPECT_EQ(lookup(*edit, 0x030008, false), Action::PrevPage);
+
+  // The other built-in default and unknown remotes are untouched.
+  EXPECT_EQ(kThreeButtonDefault.count, 2);
+  EXPECT_EQ(lookup(kThreeButtonDefault, 0x030004, false), Action::None);
+  EXPECT_EQ(tableFor(nullptr, 0, "AA:BB:CC:DD:EE:FF", "Other"), nullptr);
+}
+
 TEST(BlePageActionTest, DefaultKeysTurnUntilADirectionIsLearned) {
   Config c;
   c.enabled = 1;
