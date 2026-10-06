@@ -76,7 +76,7 @@ class QuestionSheet {
   int width_ = 528, height_ = 792, left_ = 32, right_ = 400, margin_ = 406;
   int questionStep_ = 38, answerStep_ = 44, gap_ = 10;
   int firstTop_ = 112, laterTop_ = 52, bottom_ = 716;
-  bool touch_ = false, paper_ = false;
+  bool touch_ = false, paper_ = false, answering_ = false;
   mutable bool ready_ = false;  // touch geometry becomes visible after paint
   int paperTop_ = 0, paperBottom_ = 0, paperFirst_ = 0, paperLast_ = -1, paperAnchor_ = 0, paperAnchorTop_ = 0;
   Row rowAt(int index) const;
