@@ -46,6 +46,8 @@ def main():
     pin_state = base[base.index("struct PinDecoration {"):base.index("}  // namespace")]
     base_methods = "\n\n".join(function(base, sig) for sig in [
         "void UiListActivity::frameRows(",
+        "UiListActivity::RowFrameLines UiListActivity::rowFrameLines(",
+        "void UiListActivity::reserveRowFrame(",
         "void UiListActivity::syncListViewport(",
         "void UiListActivity::decoratePinnedRows(",
     ]).replace("UiListActivity::", "FileBrowserActivity::")
