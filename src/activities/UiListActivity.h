@@ -93,6 +93,10 @@ class UiListActivity : public Activity, protected UiAppHost {
   int rowFrameFloor = 0;
   // Rows a page turn keeps from the page before: the faded first row of a framed list.
   int fadeKeepRows() const { return rowsFramed ? 1 : 0; }
+  // The faded ends of a framed list as the last frame drew them (y from, y to; empty when to <= from): a row
+  // there takes no tap of its own, a tap there scrolls to it. Written by the render task, read by the loop.
+  int fadeTopFrom = 0, fadeTopTo = 0, fadeFootFrom = 0, fadeFootTo = 0;
+  bool routeFadedTap();
   bool rowsHaveIcons = false;
   // Base-owned row action; subclass-registered actions start at ACTION_USER.
   static constexpr freeink::ui::ActionId ACTION_ROW = 1;

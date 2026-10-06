@@ -29,7 +29,7 @@ def line_kind(image, y, x0=100, x1=420):
 def frames(image):
     """Each frame as the heights of its rows (between ring and rule lines) and its count of rules."""
     marks = []
-    for y in range(40, H - 90):
+    for y in range(40, H - 80):
         kind = line_kind(image, y)
         if not kind:
             continue
@@ -51,9 +51,17 @@ def frames(image):
     return found
 
 
+def full_rows(frame):
+    """A frame with more rows below goes on under its last full row, around the faded next one: only the rows
+    above that fade (none shorter than half the tallest) count."""
+    rows = frame['rows']
+    keep = next((i for i, row in enumerate(rows) if row < max(rows) / 2), len(rows))
+    return dict(rows=rows[:keep], rules=max(0, keep - 1)) if keep < len(rows) else frame
+
+
 def check_rows(folder, name, script, size):
     (shot,) = run(folder, script, [4800], settings=dict(uiTextSize=size), write_books=root_files)
-    lists = [f for f in frames(shot) if f['rules'] >= 2]
+    lists = [full_rows(f) for f in frames(shot) if f['rules'] >= 2]
     assert lists, f'{name}, text size {size}: no framed list with rules between its rows ({frames(shot)})'
     for f in lists:
         assert len(set(f['rows'])) == 1, f'{name}, text size {size}: rows of unequal height {f["rows"]}'
