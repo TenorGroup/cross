@@ -76,16 +76,14 @@ def check_keyboard(folder, size, orientation):
     assert rules, 'keyboard keys covered the input field underline'
     bottom = max(rules)
     assert ink(keyboard, (100, bottom + 3, 700, bottom + 8)) == 0, 'keys overlap the input field'
-    selected = [y for y in range(bottom + 1, 180)
-                if any(keyboard.getpixel((x, y)) < 128 for x in range(24, 97))]
-    # Compact alternates trim 2 px from each side of the highlight only.
-    # The row hit rect remains [100,160), checked at its boundary below.
-    trim = 2 if size == 0 else 0
-    assert selected and min(selected) == 100 + trim and max(selected) == 159 - trim, 'wrong first-row geometry'
+    # Touch: no key cursor (founder audit 06/10), so the 1 of the first key stands inside the row [100,160);
+    # the row hit rects are checked at their boundary below.
+    first = [y for y in range(bottom + 1, 180)
+             if any(keyboard.getpixel((x, y)) < 128 for x in range(24, 97))]
+    assert first and min(first) >= 100 and max(first) <= 159, 'wrong first-row geometry'
     assert bottom < 100 and 100 + 5 * 60 == 400 < 404, 'input/keys/bar overlap'
-    # Digits 2..0 are unselected: a complete compact glyph is at least 14 px tall.
-    # The selected 1 uses the same primary font and row geometry.
-    for x in range(132, 741, 76):
+    # Digits 1..0: a complete compact glyph is at least 14 px tall.
+    for x in range(56, 741, 76):
         runs = []
         for y in range(100, 165):
             if any(keyboard.getpixel((xx, y)) < 128 for xx in range(x - 12, x + 13)):
