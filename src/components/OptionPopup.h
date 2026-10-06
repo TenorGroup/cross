@@ -478,7 +478,7 @@ class OptionPopup {
     if (uglyStyle) uglyPaper(renderer, box);
     else {
       renderer.fillRoundedRect(x, y, w, h, RADIUS, Color::White);
-      tenorchrome::drawRoundRing(renderer, x, y, w, h, RADIUS, 2, true);
+      drawFrame(renderer, x, y, w, h);
     }
     frame.hit(box, ACTION_CHROME, 0, fui::InputTouch);
     int cursor = y + PAD + (headH ? PAD + 4 : 0);
@@ -520,11 +520,30 @@ class OptionPopup {
                                    6, 0, 6, RADIUS);
   }
 
+ public:
   // The grey dotted rule between 2 rows, the list frames' (every other pixel).
   static void drawRule(const GfxRenderer& renderer, const int y, const int x0, const int x1) {
     for (int px = x0; px < x1; ++px)
       if (((px + y) & 1) == 0) renderer.drawPixel(px, y, true);
   }
+
+  // The panel ring (drawRoundRing, grey, 2 px, PANEL_RADIUS) as its 2 rounded ends and its straight top and
+  // bottom rows: the same pixels, without testing every pixel of the corner rows across the width (a 448 px
+  // ring took 2/3 of the popup's render).
+  // ponytail: a split of the shared ring; drop it once drawRoundRing loops its corners only.
+  static void drawFrame(const GfxRenderer& renderer, const int x, const int y, const int w, const int h) {
+    constexpr int R = tenorchrome::PANEL_RADIUS;
+    const auto clip = renderer.getClipRect();
+    for (const int end : {x, x + w - R}) {
+      const int left = std::max(end, clip[0]), right = std::min(end + R, clip[0] + clip[2]);
+      renderer.setClipRect(left, clip[1], std::max(0, right - left), clip[3]);
+      tenorchrome::drawRoundRing(renderer, end == x ? x : x + w - 2 * R, y, 2 * R, h, R, 2, true);
+    }
+    renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+    for (const int row : {y, y + 1, y + h - 2, y + h - 1}) drawRule(renderer, row, x + R, x + w - R);
+  }
+
+ private:
 
   // Every option stays selectable, not only the first MAX_OPTIONS: longer lists page (see render).
   // An empty list is dismissed by the first handleInput().
