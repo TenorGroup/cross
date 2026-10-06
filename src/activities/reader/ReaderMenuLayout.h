@@ -70,6 +70,12 @@ int rowsOfTab(const std::vector<Item>& all, Tab tab, uint8_t* out, int max);
 // khong ton tai o cuon sach nay (vi du Den nen tren X3) bi bo qua.
 int rowsOfFavorites(const std::vector<Item>& all, const Action* favorites, int count, uint8_t* out, int max);
 
+// Ten sau muc thanh trang thai khi doc, theo dung thu tu CrossPointSettings::READER_STATUS_BAR_MODE (gia tri
+// luu). Mot danh sach cho popup cua menu danh sach va danh sach gia tri cua menu thanh cong cu.
+inline constexpr StrId STATUS_BAR_MODE_LABELS[] = {
+    StrId::STR_STATE_OFF,                   StrId::STR_STATUS_BAR_CLOCK_BATTERY, StrId::STR_STATUS_BAR_DEFAULT,
+    StrId::STR_STATUS_BAR_CHAPTER_PROGRESS, StrId::STR_STATUS_BAR_CHAPTER_CLOCK, StrId::STR_STATUS_BAR_CHAPTER_BATTERY};
+
 // Danh sach yeu thich mac dinh khi nguoi dung chua tu xep: dong bo tenor/kosync.
 inline constexpr Action DEFAULT_FAVORITES[] = {Action::SYNC};
 

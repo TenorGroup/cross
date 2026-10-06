@@ -245,6 +245,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void pushOverlayRefresh();
   void settleOverlayRefresh();
   void redrawSheetLocked();
+  void setReaderStatusBarMode(int mode);
   int autoTurnOption = 0;  // current auto page-turn rate index (More panel)
   std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
 

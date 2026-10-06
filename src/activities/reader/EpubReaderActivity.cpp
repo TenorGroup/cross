@@ -3855,6 +3855,9 @@ void EpubReaderActivity::openPick(const int source, std::string title) {
     for (int place = 0; place < textChoiceCount(source); ++place)
       next.labels.emplace_back(I18N.get(textChoiceLabel(source, place)));
     next.inUse = textChoiceInUse(source);
+  } else if (source == PICK_MORE + static_cast<int>(readermenu::Action::STATUS_BAR)) {
+    for (const auto id : readermenu::STATUS_BAR_MODE_LABELS) next.labels.emplace_back(I18N.get(id));
+    next.inUse = SETTINGS.readerStatusBarMode;
   }
   if (next.labels.empty()) return;
   RenderLock lock;  // the render task reads the list
@@ -3903,9 +3906,29 @@ bool EpubReaderActivity::applyPick(const int source, const int place) {
     chooseTextValue(source, place);
     return true;
   }
+  if (source == PICK_MORE + static_cast<int>(readermenu::Action::STATUS_BAR)) {
+    setReaderStatusBarMode(place);
+    return true;
+  }
   return false;
 }
 #endif
+
+static_assert(std::size(readermenu::STATUS_BAR_MODE_LABELS) == CrossPointSettings::READER_STATUS_BAR_MODE_COUNT,
+              "a name a status bar mode");
+
+// The reader status bar's mode chosen in the menu. Its height can change, so the page is laid out again;
+// the mode reaches the card with the text settings, once the page is back.
+void EpubReaderActivity::setReaderStatusBarMode(const int mode) {
+  {
+    RenderLock lock;
+    if (mode < 0 || mode >= CrossPointSettings::READER_STATUS_BAR_MODE_COUNT || mode == SETTINGS.readerStatusBarMode)
+      return;
+    SETTINGS.readerStatusBarMode = static_cast<uint8_t>(mode);
+    invalidateTextSettingsLocked();
+  }
+  applyTextSettingLive();
+}
 
 bool EpubReaderActivity::readingPageVisible() const { return section && overlay == Overlay::None && !isAtEndOfBook(); }
 
@@ -5151,6 +5174,13 @@ void EpubReaderActivity::activateMoreRow(int row) {
   const auto action = moreItems[row].action;
   // In-place toggles keep the panel open and re-render the page beneath it.
   switch (action) {
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+    case MA::STATUS_BAR:
+      // Its modes in place, as the list menu offers them; the toolbar path used to close the menu and do
+      // nothing (no case for it after the menu).
+      openPick(PICK_MORE + static_cast<int>(action), moreRowName(row));
+      return;
+#endif
     case MA::ROTATE_SCREEN: {
       static constexpr StrId kOrientIds[] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW,
                                              StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW};
