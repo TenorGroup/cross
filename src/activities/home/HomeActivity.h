@@ -86,6 +86,7 @@ class HomeActivity final : public UiTabListActivity {
   bool touchRowMovesRing() const override { return activeTabId == Tab::RECENT; }
   bool listFramed() const override { return activeTabId != Tab::RECENT; }  // the card is no list
   bool rowOpens(int row) const override;
+  bool rowStartsGroup(int row) const override;
   bool supportsFavorites() const override { return activeTabId != Tab::STATS; }
   std::string favoriteKey(int row) const override;
   int focusFavorite(const std::string& key) override;

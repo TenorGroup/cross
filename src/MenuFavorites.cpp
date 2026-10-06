@@ -3,11 +3,15 @@
 #include <BoardConfig.h>
 #include <Memory.h>
 
+#include <cstdlib>
+#include <cstring>
+
 #include "MenuCustomization.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
 #include "shells/ugly/UglyLevel.h"
 #include "activities/settings/ClockSettingsActivity.h"
+#include "activities/settings/InfoUpdateActivity.h"
 #include "activities/settings/KOReaderSettingsActivity.h"
 #include "activities/settings/OpdsServerListActivity.h"
 #include "activities/settings/StatusBarSettingsActivity.h"
@@ -159,7 +163,10 @@ std::unique_ptr<UiListActivity> open(const std::string& key, GfxRenderer& render
   const auto* item = find(key);
   std::unique_ptr<UiListActivity> result;
   bool activate = true;
-  if (key.rfind("settings/", 0) == 0 || key.rfind("action/", 0) == 0) {
+  if (key.rfind("action/", 0) == 0 &&
+      infoupdate::holds(static_cast<settingstabs::Action>(atoi(key.c_str() + strlen("action/"))))) {
+    result = makeUniqueNoThrow<InfoUpdateActivity>(renderer, input);
+  } else if (key.rfind("settings/", 0) == 0 || key.rfind("action/", 0) == 0) {
     result = makeUniqueNoThrow<SettingsActivity>(renderer, input);
   } else if (!item) {
     return nullptr;

@@ -26,6 +26,7 @@
 #include "CrossPointSettings.h"
 #include "FontDownloadActivity.h"
 #include "HomeButtonSettingsActivity.h"
+#include "InfoUpdateActivity.h"
 #include "KOReaderSettingsActivity.h"
 #include "KeyboardLayoutsActivity.h"
 #include "activities/util/KeyboardLayoutSet.h"
@@ -153,7 +154,8 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
     const int tab = deviceSettingsTab(setting);
     if (tab >= 0 && listedAsRow(setting)) ++rowCounts[tab];
   }
-  for (const auto& row : DONG_HANH_DONG) ++rowCounts[static_cast<int>(settingstabs::nhaCua(row.viec))];
+  for (const auto& row : DONG_HANH_DONG)
+    if (!infoupdate::holds(row.viec)) ++rowCounts[static_cast<int>(settingstabs::nhaCua(row.viec))];
   if (!BoardConfig::hasTouch()) ++rowCounts[static_cast<int>(settingstabs::Tab::CONTROLS)];
   if (keyboard_layouts::COUNT > 1) ++rowCounts[static_cast<int>(settingstabs::Tab::KEYBOARD)];
   if (BoardConfig::hasHomeKey()) ++rowCounts[static_cast<int>(settingstabs::Tab::CONTROLS)];
@@ -185,6 +187,7 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
                             SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons));
   }
   for (const auto& dong : DONG_HANH_DONG) {
+    if (infoupdate::holds(dong.viec)) continue;  // X4 Pro: on the About & updates screen
     danhSachCuaThe(settingstabs::nhaCua(dong.viec)).push_back(SettingInfo::Action(dong.nhan, dong.viec));
   }
   // One layout leaves nothing to pick, so the row would be a dead press.
@@ -209,9 +212,11 @@ void SettingsActivity::rebuildSettingsLists(const bool lockHeld) {
                         SettingInfo::Action(StrId::STR_MANAGE_FONTS, SettingAction::DownloadFonts));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
   // Read only, last on Device: the panel chip, for a photo sent with an ink report.
-  SettingInfo chip = SettingInfo::Action(StrId::STR_DISPLAY_CHIP, SettingAction::None);
-  chip.stringGetter = [] { return panelchip::current(); };
-  deviceSettings.push_back(std::move(chip));
+  if (!infoupdate::holds(SettingAction::None, /*chip=*/true)) {
+    SettingInfo chip = SettingInfo::Action(StrId::STR_DISPLAY_CHIP, SettingAction::None);
+    chip.stringGetter = [] { return panelchip::current(); };
+    deviceSettings.push_back(std::move(chip));
+  }
 
   // A theme or conditional row can shorten an inactive category as well.
   for (size_t tab = 0; tab < tabNavs.size(); ++tab) {

@@ -120,6 +120,8 @@ struct SettingsActivity {
   void onResume();
   void launchFontDownload();
 };
+// The X4 Pro About & updates screen (InfoUpdateActivity) holds no rows on these boards.
+namespace infoupdate { inline bool holds(settingstabs::Action, bool = false) { return false; } }
 #include "Methods.inc"
 #include "PostWifiMethods.inc"
 

@@ -39,6 +39,7 @@
 #include "SettingsList.h"
 #include "UIFontTiers.h"
 #include "activities/reader/ReaderActivity.h"
+#include "activities/settings/InfoUpdateActivity.h"
 #include "activities/settings/SettingsActivity.h"
 #include "FileBrowserActivity.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -338,8 +339,11 @@ void HomeActivity::rebuildRows() {
       rowLabels.emplace_back(tr(STR_FILE_TRANSFER));
       auto groups = homerows::settingsGroups();
       settingsGroups = std::move(groups.ids);
-      settingsOrder = homesettings::order(settingsGroups);
+      // X4 Pro: 3 titled groups and the About & updates row after the groups.
+      const bool titled = infoupdate::shown();
+      settingsOrder = titled ? homesettings::touchOrder(settingsGroups) : homesettings::order(settingsGroups);
       for (auto& label : groups.labels) rowLabels.push_back(std::move(label));
+      if (titled) rowLabels.emplace_back(tr(STR_INFO_UPDATES));
       break;
     }
   }
@@ -420,6 +424,11 @@ void HomeActivity::activateIndex(const int index) {
         return;
       }
       freeCoverBuffer();
+      if (original > static_cast<int>(settingsGroups.size())) {
+        if (auto info = makeUniqueNoThrow<InfoUpdateActivity>(renderer, mappedInput))
+          startActivityForResult(std::move(info), nullptr);
+        return;
+      }
       {
         const int group = settingsGroups[original - 1];
         startActivityForResult(makeUniqueNoThrow<SettingsActivity>(renderer, mappedInput, group, true),
@@ -672,10 +681,13 @@ void HomeActivity::settingsRow(void* context, const uint16_t index, fui::ListIte
     item.label = self->settingsTransferLabel.c_str();
   }
   item.actionValue = static_cast<int16_t>(index);
+  const int heading = self->settingsOrder.heading(index);
+  if (heading >= 0) item.sectionHeading = I18N.get(homesettings::TOUCH_HEADINGS[heading]);
 }
 
 bool HomeActivity::buildSettingsGroups(UiScreen& screen) {
-  if (renderer.getOrientation() != GfxRenderer::Orientation::Portrait) return false;
+  // Touch: the titled groups do not fit a page; they scroll as one framed list, a frame a group.
+  if (infoupdate::shown() || renderer.getOrientation() != GfxRenderer::Orientation::Portrait) return false;
   reserveFixedMenuContent(screen);
   const auto body = screen.body();
   const auto style = uiMenuLabelText(screen.theme());
@@ -820,6 +832,9 @@ void HomeActivity::buildScreen(UiScreen& screen) {
     props.items = nullptr;
     props.rowProvider = &HomeActivity::settingsRow;
     props.rowProviderCtx = this;
+    // The titles of the X4 Pro groups, over their frames.
+    props.headerText = screen.theme().smallText;
+    props.headerUnderline = false;
   }
   props.count = static_cast<uint16_t>(rowItems.size());
   props.action = ACTION_ROW;
@@ -961,6 +976,10 @@ void HomeActivity::docGocTheNho() {
     return;
   }
   docthumuc::doc("/", SETTINGS.showHiddenFiles, docthumuc::Loc::Sach, dem.get(), DEM_CO, mucTheNho, cap, &mucQuaNhieu);
+}
+
+bool HomeActivity::rowStartsGroup(const int row) const {
+  return activeTabId == Tab::CAI_DAT && settingsOrder.heading(row) >= 0;
 }
 
 bool HomeActivity::rowOpens(const int row) const {

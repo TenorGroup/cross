@@ -73,6 +73,9 @@ class UiListActivity : public Activity, protected UiAppHost {
   virtual bool listFramed() const { return true; }
   // A row that opens a deeper screen: drawRowFrame ends it with the grey ">" (its value stands before it).
   virtual bool rowOpens(int row) const { return false; }
+  // A row under a section heading (ListItem::sectionHeading): drawRowFrame closes the frame above it and opens
+  // one more, a frame a group.
+  virtual bool rowStartsGroup(int row) const { return false; }
   void frameRows(freeink::ui::ListProps& props);
   void drawRowFrame();
   bool rowsFramed = false;

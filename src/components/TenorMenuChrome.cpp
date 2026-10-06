@@ -106,7 +106,7 @@ namespace {
 constexpr const char* FULL_BAR[] = {
     "About", "BlePageTurner", "BookStats", "BookStatsLibrary", "ButtonRemap", "CalibreConnect", "ClearCache",
     "ClockSettings", "ClockSync", "CrossPointWebServer", "EpubReaderBookmarks", "EpubReaderChapterSelection",
-    "FileBrowser", "FontDownload", "HomeButtonSettings", "KOReaderAuth", "KOReaderSettings", "KOReaderSync",
+    "FileBrowser", "FontDownload", "HomeButtonSettings", "InfoUpdate", "KOReaderAuth", "KOReaderSettings", "KOReaderSync",
     "KeyboardLayouts", "LanguageSelect", "NetworkModeSelection", "OpdsBookBrowser", "OpdsServerList",
     "OpdsSettings", "QrDisplay", "QuoteDetail", "Quotes", "ReadingHabits", "ReadingHistory", "Settings",
     "StatusBarSettings", "TimezonePicker", "WifiSelection", "XtcReaderChapterSelection"};

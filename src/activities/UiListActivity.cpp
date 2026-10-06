@@ -490,14 +490,22 @@ void UiListActivity::drawRowFrame() {
   const int ringX = tenorchrome::FOOT_BACK_X, ringW = renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X;
   fui::Rect first{}, last{};
   int firstIndex = -1, lastIndex = -1;
+  int groupTop = 0;  // a page with groups: the ring top of the group still open
+  bool grouped = false;
   for (int i = n.top; i < count; ++i) {
     const fui::Rect r = app.publishedRect(ACTION_ROW, static_cast<int16_t>(i));
     if (r.height <= 0) continue;
     if (first.height <= 0) {
       first = r;
       firstIndex = i;
-    }
-    if (i > n.top) {
+      groupTop = r.y - lines.top;
+    } else if (rowStartsGroup(i)) {
+      // The group above ends at its last row; its heading stands between the 2 frames.
+      tenorchrome::drawRoundRing(renderer, ringX, groupTop, ringW, last.y + last.height + lines.bottom - groupTop,
+                                 tenorchrome::PANEL_RADIUS, 2, true);
+      groupTop = r.y - lines.top;
+      grouped = true;
+    } else if (i > n.top) {
       // Grey dotted rule from the text's edge, over every row but the first.
       drawRowRule(renderer, r.y - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
                   renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
@@ -506,18 +514,24 @@ void UiListActivity::drawRowFrame() {
     lastIndex = i;
   }
   if (first.height <= 0) return;
+  // A page with groups has headings between its rows, so no one pitch.
   const int pitch = lastIndex > firstIndex ? (last.y - first.y) / (lastIndex - firstIndex) : first.height;
-  first.y = static_cast<int16_t>(first.y - (firstIndex - n.top) * pitch);
-  last.height = static_cast<int16_t>(last.height + (count - 1 - lastIndex) * pitch);
+  if (!grouped) {
+    first.y = static_cast<int16_t>(first.y - (firstIndex - n.top) * pitch);
+    last.height = static_cast<int16_t>(last.height + (count - 1 - lastIndex) * pitch);
+  }
   const int ringTop = first.y - lines.top;
+  const int lastTop = grouped ? groupTop : ringTop;
   const int fullBottom = last.y + last.height + lines.bottom;
   const bool more = count < listCount();
   const int floor = std::min(renderer.getScreenHeight() - tenorchrome::footBackReserve(), rowFrameFloor);
   // Rows after the page: the frame goes on to the list's foot around the next row's top, and both fade there
   // (founder 06/10: no row outside its frame). A rule still parts it from the last full row.
-  const int ringBottom = more ? std::max(fullBottom, floor) : fullBottom;
-  tenorchrome::drawRoundRing(renderer, ringX, ringTop, ringW, ringBottom - ringTop, tenorchrome::PANEL_RADIUS, 2, true);
-  if (more && floor > fullBottom)
+  // A next row that opens a group closes this frame at the last full row; its heading shows in the fade.
+  const bool frameGoesOn = more && !rowStartsGroup(count);
+  const int ringBottom = frameGoesOn ? std::max(fullBottom, floor) : fullBottom;
+  tenorchrome::drawRoundRing(renderer, ringX, lastTop, ringW, ringBottom - lastTop, tenorchrome::PANEL_RADIUS, 2, true);
+  if (frameGoesOn && floor > fullBottom)
     drawRowRule(renderer, last.y + last.height + rowFrameGap - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
                 renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
   // The scroll bar inside the frame's full rows, the shared drawer's round-frame form.
