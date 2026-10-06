@@ -957,3 +957,7 @@ STR_UGLY_PHIEU_HINT_ANSWER: " to save,  on the saved one to exit"
 
 STR_UGLY_EOB_QUIP: "You actually finished? Thought you'd bail halfway like always."
 STR_UGLY_EOB_NEXT: "Which one next?"
+STR_UGLY_PCT_TITLE: "Where to?"
+STR_UGLY_PCT_START: "Back at the very start. Reading it over?"
+STR_UGLY_PCT_END: "Straight to the end. Lazy as hell."
+STR_UGLY_PCT_MID: "Flipping around like that, remember what you're reading?"

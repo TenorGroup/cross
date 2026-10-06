@@ -986,3 +986,7 @@ STR_UGLY_PHIEU_HINT_ANSWER: " để lưu,  ô đã lưu để thoát"
 
 STR_UGLY_EOB_QUIP: "Đọc hết thật hả? Tao tưởng mày bỏ ngang như mọi khi."
 STR_UGLY_EOB_NEXT: "Đọc tiếp cuốn nào?"
+STR_UGLY_PCT_TITLE: "Nhảy tới đâu?"
+STR_UGLY_PCT_START: "Về vạch xuất phát. Đọc lại từ đầu hả?"
+STR_UGLY_PCT_END: "Nhảy thẳng tới cuối. Lười đọc vl."
+STR_UGLY_PCT_MID: "Lật lung tung vậy, còn nhớ đang đọc gì không?"

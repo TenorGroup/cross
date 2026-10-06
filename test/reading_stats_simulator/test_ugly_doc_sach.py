@@ -22,6 +22,7 @@ CLOCK = (400, 748, 528, 792)  # the clock in the key bar of tenor/cross
 CROSS = {
     'eob_plain': '490012e7fcd7e735',
     'eob_menu': 'cd447ae2b5b6c6ed',
+    'percent': '6ab5c7354d1e3bd2',
 }
 
 
@@ -75,6 +76,18 @@ class ReadingScreensTest(unittest.TestCase):
         self.assertTrue('EndOfBook frame rows=3 sel=0' in log, 'no ugly end menu')
         self.assertNotEqual(screen_digest(ugly['eob']), screen_digest(ugly['down']), 'the circle moves')
         self.check('eob_menu', ugly['eob'], cross['eob'])
+
+    # The reader menu, its Place tab, then a row of it.
+    MENU = '1000:CONFIRM;3200:CONFIRM;3900:DOWN'
+
+    def test_go_to_percent(self):
+        script = self.MENU + ';4600:RIGHT;5300:CONFIRM;7500:RIGHT;9600:QUIT'
+        log, ugly, cross = self.both(script, [(7000, 'pct'), (9000, 'step')], paragraphs=8)
+        self.assertIn('EpubReaderPercentSelection', log)
+        self.assertTrue('Percent frame value=0' in log, 'no ugly percent')
+        self.assertTrue('Percent frame value=1' in log, 'a step is drawn')
+        self.assertNotEqual(screen_digest(ugly['pct']), screen_digest(ugly['step']), 'the number and the circle move')
+        self.check('percent', ugly['pct'], cross['pct'])
 
 
 if __name__ == '__main__':
