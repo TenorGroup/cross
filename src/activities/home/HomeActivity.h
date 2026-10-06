@@ -95,6 +95,8 @@ class HomeActivity final : public UiTabListActivity {
   bool favoriteFileMissing = false;
   std::optional<StrId> statsResetTip;
   uint8_t statsPage = 0;
+  // The enlarged stats tab starts with a row that turns statsPage in place.
+  bool statsTurnRow(const int row) const { return statsRowsEnlarged && row == 0; }
   bool statsRowsEnlarged = false;
   int statsPanelHeight() const;
   void confirmStatsReset(bool all);

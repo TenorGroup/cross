@@ -350,6 +350,7 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr uint8_t CATCH_UP_MAX_FAILS = 3;
   uint8_t catchUpFails = 0;
   void dropCatchUp();
+  bool catchUpCanTick() const;
   void catchUpTick(bool inputThisPass);
   bool renderPreview(int marginTop, int marginRight, int marginBottom, int marginLeft);
   bool docCoChuMotNac(int huong) override;

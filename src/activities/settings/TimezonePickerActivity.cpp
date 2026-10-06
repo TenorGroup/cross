@@ -23,11 +23,8 @@ void TimezonePickerActivity::onEnter() {
     char offset[12];
     timezones::formatOffset(static_cast<uint8_t>(i), offset, sizeof(offset));
     offsetLabels_[i] = offset;
-    // The touch shell has no cursor to show the zone in use.
-    if (tenorchrome::kTouchShell && i == timezones::activeIndex()) {
-      offsetLabels_[i] += "  ";
-      offsetLabels_[i] += tr(STR_SELECTED);
-    }
+    // Touch has no cursor: the zone in use is the chosen row (bold, a tick), no word.
+    rowItems_[i].chosen = tenorchrome::kTouchShell && i == timezones::activeIndex();
     rowItems_[i].label = timezones::table()[i].name;
     rowItems_[i].value = offsetLabels_[i].c_str();
     rowItems_[i].actionValue = static_cast<int16_t>(i);

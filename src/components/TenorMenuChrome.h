@@ -34,7 +34,7 @@ constexpr int TOUCH_BAR_BOTTOM_GAP = 16;
 // Dynamic bar (touch shell): every screen has one bar at the foot, 60 px tall and 16 px over the bottom
 // edge, the same place and size on every screen; only what it holds changes. Each screen declares
 // what it needs (footBarFor), and one function draws it and records where a tap on it goes:
-//   Tabs: the zone's root, its cards drawn by the tab list itself (Home, the reader menu).
+//   Tabs: the zone's root, its cards drawn by the tab list itself (Home).
 //   Full: a screen below another: "<" (one level back), the zone's round icon (to the zone's root)
 //         and the screen's name, read only.
 //   BackOnly: "<" alone, the screen's own content takes the rest of the foot (a keyboard, the reader
@@ -53,6 +53,8 @@ constexpr int FOOT_BACK_X = 16;
 constexpr int FOOT_PILL_GAP = 8;
 inline int footBackTop(const int screenHeight) { return screenHeight - TOUCH_BAR_BOTTOM_GAP - FOOT_BACK_SIZE; }
 inline int footBackReserve() { return TOUCH_BAR_BOTTOM_GAP + FOOT_BACK_SIZE + 8; }
+// The bottom margin of a screen that lays itself out: the dynamic bar's band on touch, the hints elsewhere.
+inline int footReserve(const int buttonHintsHeight) { return kTouchShell ? footBackReserve() : buttonHintsHeight; }
 // The title a screen's header names, kept for the bar's name pill (the touch shell draws no title row).
 void noteScreenTitle(const char* title);
 const char* screenTitle();

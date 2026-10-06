@@ -2155,6 +2155,7 @@ void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
   appliedOrientation = orientation;
   section.reset();
+  dropCatchUp();  // laid out for the old viewport; the next one starts under the new
 }
 
 void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption) {
@@ -2177,6 +2178,7 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
       nextPageNumber = section->currentPage;
     }
     section.reset();
+    dropCatchUp();  // laid out for the old page height
   }
 }
 
@@ -2432,7 +2434,7 @@ bool EpubReaderActivity::backgroundBuildWanted() const {
 
 bool EpubReaderActivity::skipLoopDelay() {
   // The main loop holds the render lock while querying this hint.
-  return (backgroundBuildCanTick() && backgroundBuildWanted()) || (xemTruoc && catchUp && catchUp->isBuilding());
+  return (backgroundBuildCanTick() && backgroundBuildWanted()) || (catchUp && catchUp->isBuilding() && catchUpCanTick());
 }
 
 #ifdef TENOR_TURN_TRACE
@@ -3276,7 +3278,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // and, on the black and white pass only (the gray passes would turn the strokes gray), the chapter
   // title is written in their place. A title that does not fit the band leaves the heading as laid out.
   HandHeading heading;
-  if (shell::isUgly() && !preview && section && section->currentPage == 0) {
+  // A preview has no section yet: it stands for the first page when the page it replaces was.
+  const bool firstPage = section ? section->currentPage == 0 : xemTruoc && nextPageNumber == 0;
+  if (shell::isUgly() && !preview && firstPage) {
     heading = handHeading(renderer, *epub, currentSpineIndex, *page, fontId, orientedMarginTop);
     if (heading.lines && !ugly::chapterTitle(renderer, heading.title.c_str(), orientedMarginLeft,
                                              renderer.getScreenWidth() - orientedMarginRight, heading.top,
@@ -4641,25 +4645,33 @@ void EpubReaderActivity::dropCatchUp() {
   catchUp.reset();
 }
 
+// When the preview's layout may take a step. The loop skips its delay only while this holds, so a
+// layout waiting out the quiet time, given up on, or parked for the radio does not spin the loop.
+// With the radio holding the heap it stays parked as every background build does
+// (deferBackgroundBuildForBle): the first turn lays the chapter out instead.
+bool EpubReaderActivity::catchUpCanTick() const {
+  // A turn asked from the preview waits for the paint, which lays the chapter out and turns.
+  return xemTruoc && !section && epub && buildViewportWidth != 0 && xemTruocLat == 0 &&
+         millis() - xemTruocInputMs >= CATCH_UP_QUIET_MS &&
+         catchUpFails < CATCH_UP_MAX_FAILS && !deferBackgroundBuildForBle() && !bleturner::status().starting;
+}
+
 // Loop task, between key presses: lays the chapter out under the current settings ~20 ms at a time
 // until it reaches the page being read, then puts it in place without drawing anything.
 void EpubReaderActivity::catchUpTick(const bool inputThisPass) {
   if (inputThisPass) xemTruocInputMs = millis();
-  // With the radio holding the heap the background stays parked as every background build does
-  // (deferBackgroundBuildForBle): the first turn lays the chapter out instead.
-  if (!xemTruoc || section || !epub || buildViewportWidth == 0 || millis() - xemTruocInputMs < CATCH_UP_QUIET_MS ||
-      catchUpFails >= CATCH_UP_MAX_FAILS || deferBackgroundBuildForBle() || bleturner::status().starting)
-    return;
+  if (!catchUpCanTick()) return;
   RenderLock lock(RenderLock::TryTake{});
   if (!lock.acquired()) return;
   HalPowerManager::Lock fullSpeed;  // the loop runs down-clocked after 3 s without a key
   const ReaderRenderSpec spec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
   const uint32_t target = xemTruocDich;
+  // Every step stays above the floor the background build keeps, not only the first.
+  if (ESP.getFreeHeap() < BACKGROUND_BUILD_MIN_FREE_HEAP || ESP.getMaxAllocHeap() < BACKGROUND_BUILD_MIN_MAX_ALLOC) {
+    xemTruocInputMs = millis();
+    return;
+  }
   if (!catchUp) {
-    if (ESP.getFreeHeap() < BACKGROUND_BUILD_MIN_FREE_HEAP || ESP.getMaxAllocHeap() < BACKGROUND_BUILD_MIN_MAX_ALLOC) {
-      xemTruocInputMs = millis();
-      return;
-    }
     catchUp.reset(new Section(epub, currentSpineIndex, renderer, preview));
     const bool loaded = catchUp->loadSectionFile(spec);
     if (!(loaded && (!catchUp->isPartial() || catchUp->coversVisibleTextOffset(target))) && !catchUp->startBuild(spec)) {

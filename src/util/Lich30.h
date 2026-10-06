@@ -20,7 +20,8 @@ constexpr uint32_t MOC_BAC_3_MS = 180u * 60000u;
 // Bac 0 = khong doc.
 inline uint8_t muc(const uint32_t ms) { return ms == 0 ? 0 : ms < MOC_BAC_2_MS ? 1 : ms < MOC_BAC_3_MS ? 2 : 3; }
 
-// Dong cua kho ung voi o i (0 = 29 ngay truoc, 29 = hom nay), hoac nullptr. Cua so 30 ngay chon o day va chi o day.
+// Dong cua kho ung voi o i (0 = 29 ngay truoc, 29 = hom nay), hoac nullptr. ReadingHistoryActivity
+// tinh lai moc ngay cua cot va cua tuan (firstKey, weekKey): doi cua so o day thi doi ca o do.
 inline const solieu::NgayDoc* dongCua(const std::vector<solieu::NgayDoc>& ngay, const uint32_t homNay, const int i) {
   const uint32_t ma = habits::dateKey(homNay - (SO_O - 1) + i);
   for (const auto& n : ngay)

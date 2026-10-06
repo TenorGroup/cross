@@ -2507,17 +2507,6 @@ bool ChapterHtmlSlimParser::restoreResumePoint(const std::string& prologAndPrefi
 void ChapterHtmlSlimParser::startPageAt(const uint32_t pageStart) {
   holdingLines_ = pageStart > 0;
   holdUntil_ = pageStart;
-  heldLine_.reset();
-}
-
-// Leaves holding: what was laid out before the held line goes, the held line opens the page.
-bool ChapterHtmlSlimParser::placeHeldLine() {
-  holdingLines_ = false;
-  if (!createPage()) return false;  // drops whatever was laid out before the page start
-  if (!heldLine_) return true;
-  auto line = std::move(heldLine_);
-  addLineToPage(std::move(line), heldLineOffset_);
-  return !buildFailed_;
 }
 
 ChapterHtmlSlimParser::~ChapterHtmlSlimParser() { abortParse(); }
@@ -2831,7 +2820,6 @@ bool ChapterHtmlSlimParser::createPage() {
 bool ChapterHtmlSlimParser::emitCurrentPage() {
   if (buildFailed_) return false;
   if (holdingLines_) {
-    if (heldLine_) return placeHeldLine() && emitCurrentPage();  // the page ends right after the held line
     currentPage.reset();  // laid out before the page asked for
     return true;
   }
@@ -2863,12 +2851,12 @@ void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
   if (buildFailed_) return;
   if (!line || !line->valid()) { failBuild(); return; }
   if (holdingLines_) {
-    if (visibleOffset <= holdUntil_) {  // this line starts at or before the page start: it may hold it
-      heldLine_ = std::move(line);
-      heldLineOffset_ = visibleOffset;
-      return;
+    if (visibleOffset <= holdUntil_) {
+      // Discard everything before this candidate, then use the normal page layout for its tail.
+      if (!createPage()) return;
+    } else {
+      holdingLines_ = false;
     }
-    if (!placeHeldLine()) return;
   }
   const int ascender = renderer.getFontAscenderSize(fontId);
   const int rubyShift = line->getRubyShift(ascender);
@@ -2964,6 +2952,8 @@ void ChapterHtmlSlimParser::makePages() {
     failBuild();
     return;
   }
+  // A final line has no later text callback before margins/images. Keep its page before those arrive.
+  if (holdingLines_ && visibleTextOffset > holdUntil_) holdingLines_ = false;
 
   currentPageNextY = std::max<int>(currentPageNextY, dropCapBottom);
   dropCapBottom = 0;

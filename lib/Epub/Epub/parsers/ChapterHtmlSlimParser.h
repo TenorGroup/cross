@@ -183,7 +183,6 @@ class ChapterHtmlSlimParser {
   // A checkpoint is taken only after a closed text block, at an exact XML
   // event boundary. The read cursor may already be a buffer ahead of it.
   static constexpr size_t MAX_CHECKPOINT_ANCESTORS = 32;
-  static constexpr size_t MAX_CHECKPOINT_PREFIX = 2048;
   uint16_t checkpointPrologBytes_ = 0;
   std::string checkpointPrefix_;
   std::array<uint16_t, MAX_CHECKPOINT_ANCESTORS> checkpointPrefixEnds_{};
@@ -196,13 +195,10 @@ class ChapterHtmlSlimParser {
   bool checkpointWanted_ = false;
   bool replayingCheckpoint_ = false;
   // One page from the middle of a chapter (restoreResumePoint): lines starting at or before the
-  // text offset below are held, not placed, and only the last of them (the line holding the offset)
-  // opens the page. Pages finished while holding are dropped.
+  // text offset below replace the candidate page. Its last line opens the preview at Y=0, and
+  // following elements and spacing stay on that page once the target's block is complete.
   bool holdingLines_ = false;
   uint32_t holdUntil_ = 0;
-  std::unique_ptr<TextBlock> heldLine_;
-  uint32_t heldLineOffset_ = 0;
-  bool placeHeldLine();
   bool xmlSuspended_ = false;
   bool finalBuffer_ = false;
   uint32_t checkpointOffset_ = 0;
@@ -247,6 +243,7 @@ class ChapterHtmlSlimParser {
   static void XMLCALL processEndElement(void* userData, const XML_Char* name);
 
  public:
+  static constexpr size_t MAX_CHECKPOINT_PREFIX = 2048;
   explicit ChapterHtmlSlimParser(
       std::shared_ptr<Epub> epub, const std::string& filepath, GfxRenderer& renderer, const int fontId,
       const float lineCompression, const uint8_t extraParagraphSpacing, const uint8_t paragraphAlignment,

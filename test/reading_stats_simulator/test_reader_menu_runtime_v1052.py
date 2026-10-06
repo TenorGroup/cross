@@ -160,6 +160,188 @@ int main() {
 ''')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_preview_layout_gate_holds_for_the_tick_and_the_loop(self):
+        text = (REPO / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+        names = ['catchUpTick', 'skipLoopDelay', 'dropCatchUp']
+        if re.search(r'\bEpubReaderActivity::catchUpCanTick\s*\(', text):
+            names.append('catchUpCanTick')
+        methods = '\n'.join(function(text, 'EpubReaderActivity', name) for name in names)
+        result = run(r'''
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#define LOG_INF(...) ((void)0)
+unsigned long now = 10000;
+unsigned long millis() { return now; }
+size_t freeHeap = 90000, maxBlock = 40000;
+struct { size_t getFreeHeap() { return freeHeap; } size_t getMaxAllocHeap() { return maxBlock; } } ESP;
+bool bleDefers = false, bleStarting = false;
+struct BleStatus { bool starting; };
+namespace bleturner { BleStatus status() { return {bleStarting}; } }
+struct RenderLock { struct TryTake {}; explicit RenderLock(TryTake) {} bool acquired() const { return true; } };
+struct HalPowerManager { struct Lock { Lock() {} ~Lock() {} }; };
+struct ReaderRenderSpec {};
+struct { ReaderRenderSpec readerRenderSpec(int, int) { return {}; } } SETTINGS;
+struct Epub {};
+struct GfxRenderer {} renderer;
+constexpr bool preview = true;
+int steps = 0;
+struct Section {
+  int currentPage = 0, pageCount = 0;
+  bool building = true, starved = false, reached = false;
+  Section(const std::shared_ptr<Epub>&, int, GfxRenderer&, bool) {}
+  bool loadSectionFile(const ReaderRenderSpec&) { return false; }
+  bool isPartial() const { return false; }
+  bool coversVisibleTextOffset(uint32_t) const { return false; }
+  bool startBuild(const ReaderRenderSpec&) { return true; }
+  bool isBuilding() const { return building; }
+  bool buildSomeMore(int) { ++steps; return !starved; }
+  bool buildStarved() const { return starved; }
+  bool buildReachedVisibleTextOffset(uint32_t) const { return reached; }
+  std::optional<int> getPageForVisibleTextOffset(uint32_t) const { return 3; }
+  bool parkBuild() { building = false; return true; }
+  void abandonBuild() {}
+};
+struct EpubReaderActivity {
+  std::unique_ptr<Section> section, catchUp;
+  std::shared_ptr<Epub> epub = std::make_shared<Epub>();
+  int currentSpineIndex = 0, nextPageNumber = 0;
+  uint16_t buildViewportWidth = 480, buildViewportHeight = 800;
+  bool xemTruoc = true, xemTruocTrenMan = false;
+  int8_t xemTruocLat = 0;
+  uint32_t xemTruocDich = 4386;
+  unsigned long xemTruocInputMs = 0;
+  static constexpr unsigned long CATCH_UP_QUIET_MS = 400;
+  static constexpr uint8_t CATCH_UP_MAX_FAILS = 3;
+  static constexpr size_t BACKGROUND_BUILD_MIN_FREE_HEAP = 50000, BACKGROUND_BUILD_MIN_MAX_ALLOC = 20000;
+  uint8_t catchUpFails = 0;
+  bool deferBackgroundBuildForBle() const { return bleDefers; }
+  bool backgroundBuildCanTick() { return false; }
+  bool backgroundBuildWanted() const { return false; }
+  bool catchUpCanTick() const;
+  void catchUpTick(bool inputThisPass);
+  bool skipLoopDelay();
+  void dropCatchUp();
+};
+''' + methods + r'''
+int main() {
+  EpubReaderActivity reader;
+  reader.catchUpTick(false);
+  assert(reader.catchUp && reader.catchUp->isBuilding());
+  assert(reader.skipLoopDelay() && "a running preview layout keeps the loop awake");
+  reader.catchUpFails = EpubReaderActivity::CATCH_UP_MAX_FAILS;
+  assert(!reader.skipLoopDelay() && "a layout given up on spins the loop at full speed");
+  reader.catchUpFails = 0;
+  reader.xemTruocInputMs = now;
+  assert(!reader.skipLoopDelay() && "the loop spins through the quiet time after a press");
+  reader.xemTruocInputMs = 0;
+  bleDefers = true;
+  assert(!reader.skipLoopDelay() && "the loop spins while the radio holds the heap");
+  bleDefers = false;
+  assert(reader.skipLoopDelay());
+  const int stepsBefore = steps;
+  maxBlock = 8000;
+  reader.catchUpTick(false);
+  assert(steps == stepsBefore && "a preview layout step ran below the background build heap floor");
+  assert(reader.catchUpFails == 0 && reader.catchUp);
+  maxBlock = 40000;
+  reader.xemTruocInputMs = 0;
+  reader.catchUpTick(false);
+  assert(steps == stepsBefore + 1);
+  reader.catchUp->reached = true;
+  reader.xemTruocLat = 1;
+  reader.catchUpTick(false);
+  assert(!reader.section && "the layout landed under a turn asked from the preview and dropped it");
+  reader.xemTruocLat = 0;
+  reader.catchUpTick(false);
+  assert(reader.section && !reader.xemTruoc && reader.xemTruocTrenMan);
+}
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_turning_the_screen_drops_the_preview_layout_of_the_old_viewport(self):
+        text = (REPO / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+        methods = '\n'.join(function(text, 'EpubReaderActivity', name)
+                            for name in ('applyOrientation', 'dropCatchUp'))
+        result = run(r'''
+#include <cassert>
+#include <cstdint>
+#include <memory>
+#include <optional>
+int abandoned = 0;
+struct { uint8_t orientation = 0; bool saveToFile() { return true; } } SETTINGS;
+struct GfxRenderer {} renderer;
+namespace ReaderUtils { void applyOrientation(GfxRenderer&, uint8_t) {} }
+struct Section {
+  int currentPage = 0, pageCount = 0;
+  void abandonBuild() { ++abandoned; }
+};
+struct EpubReaderActivity;
+struct RenderLock { explicit RenderLock(EpubReaderActivity&) {} ~RenderLock() {} };
+struct EpubReaderActivity {
+  std::unique_ptr<Section> section, catchUp;
+  int cachedSpineIndex = 0, currentSpineIndex = 0, cachedChapterTotalPageCount = 0, nextPageNumber = 0;
+  uint8_t appliedOrientation = 0;
+  void rememberCurrentContentOffset() {}
+  void applyOrientation(uint8_t orientation);
+  void dropCatchUp();
+};
+''' + methods + r'''
+int main() {
+  EpubReaderActivity reader;
+  reader.catchUp = std::make_unique<Section>();
+  reader.applyOrientation(1);
+  assert(!reader.catchUp && abandoned == 1 && "the preview layout of the old viewport would land");
+  assert(reader.appliedOrientation == 1 && SETTINGS.orientation == 1);
+}
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_auto_turn_relayout_drops_the_preview_layout(self):
+        text = (REPO / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+        methods = '\n'.join(function(text, 'EpubReaderActivity', name)
+                            for name in ('toggleAutoPageTurn', 'dropCatchUp'))
+        result = run(r'''
+#include <cassert>
+#include <cstdint>
+#include <iterator>
+#include <memory>
+int abandoned = 0;
+unsigned long millis() { return 1234; }
+constexpr int PAGE_TURN_RATES[] = {1, 1, 3, 6, 12};
+struct UITheme {
+  static UITheme& getInstance() { static UITheme t; return t; }
+  uint8_t getProgressBarHeight() const { return 4; }
+};
+struct RenderLock { RenderLock() {} ~RenderLock() {} };
+struct Section {
+  int currentPage = 0, pageCount = 0;
+  void abandonBuild() { ++abandoned; }
+};
+struct EpubReaderActivity {
+  std::unique_ptr<Section> section, catchUp;
+  int cachedSpineIndex = 0, currentSpineIndex = 0, cachedChapterTotalPageCount = 0, nextPageNumber = 0;
+  bool automaticPageTurnActive = false;
+  unsigned long lastPageTurnTime = 0, pageTurnDuration = 0;
+  uint8_t statusBar = 0;
+  uint8_t readerStatusBarHeight() const { return statusBar; }
+  void rememberCurrentContentOffset() {}
+  void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
+  void dropCatchUp();
+};
+''' + methods + r'''
+int main() {
+  EpubReaderActivity reader;
+  reader.catchUp = std::make_unique<Section>();
+  reader.toggleAutoPageTurn(2);
+  assert(reader.automaticPageTurnActive);
+  assert(!reader.catchUp && abandoned == 1 && "the preview layout of the old page height would land");
+}
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_all_toolbar_actions_route_once_with_24_targets(self):
         text = (REPO / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
         header = (REPO / 'src/activities/reader/ReaderToolbarUi.h').read_text()

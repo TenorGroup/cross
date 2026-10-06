@@ -1153,8 +1153,10 @@ std::unique_ptr<Page> Section::previewPage(const ReaderRenderSpec& spec, const u
     if (!serialization::readPod(dd, magic) || !serialization::readPod(dd, size) || !serialization::readPod(dd, count) ||
         !serialization::readPod(dd, prolog) || !serialization::readPod(dd, prefixCount) ||
         !serialization::readPod(dd, complete) || magic != DD_MAGIC || size != html.size() || count == 0 ||
-        DD_HEADER + static_cast<uint64_t>(count) * sizeof(DdRecord) > dd.size())
+        prolog > html.size() || prolog > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX)
       return nullptr;
+    const uint64_t prefixOffset = DD_HEADER + static_cast<uint64_t>(count) * sizeof(DdRecord);
+    if (prefixOffset > dd.size()) return nullptr;
     DdRecord block[16];
     DdRecord best{};
     bool found = false;
@@ -1173,16 +1175,19 @@ std::unique_ptr<Page> Section::previewPage(const ReaderRenderSpec& spec, const u
     constexpr uint32_t PREVIEW_MAX_CHARS = 6000;
     if (pageStart - (found ? best.visible : 0) > PREVIEW_MAX_CHARS) return nullptr;
     if (found) {
-      if (best.prefix >= prefixCount || !dd.seek(DD_HEADER + count * sizeof(DdRecord))) return nullptr;
+      if (best.prefix >= prefixCount || !dd.seek(static_cast<uint32_t>(prefixOffset))) return nullptr;
       std::string prefix;
       for (uint8_t i = 0; i <= best.prefix; ++i) {
         uint16_t length = 0;
-        if (!serialization::readPod(dd, length) || length > dd.size()) return nullptr;
+        if (!serialization::readPod(dd, length) || dd.position() > dd.size() ||
+            length > dd.size() - dd.position() ||
+            static_cast<size_t>(prolog) + length > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX)
+          return nullptr;
         prefix.resize(length);
         if (dd.read(prefix.data(), length) != static_cast<int>(length)) return nullptr;
       }
       replay.resize(prolog);
-      if (prolog > html.size() || html.read(replay.data(), prolog) != static_cast<int>(prolog)) return nullptr;
+      if (html.read(replay.data(), prolog) != static_cast<int>(prolog)) return nullptr;
       replay += prefix;
       point = ChapterHtmlSlimParser::ResumePoint{best.offset, best.visible, best.imageCounter};
     }

@@ -11,6 +11,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <RecoverableFile.h>
 #include <Utf8.h>
 #include <Xtc.h>
 
@@ -382,7 +383,7 @@ void HomeActivity::activateIndex(const int index) {
       return;
     }
     case Tab::STATS: {
-      if (statsRowsEnlarged && index == 0) {
+      if (statsTurnRow(index)) {
         RenderLock lock(*this);
         statsPage = 1 - statsPage;
         rebuildRows();
@@ -965,7 +966,9 @@ void HomeActivity::docGocTheNho() {
 
 bool HomeActivity::rowOpens(const int row) const {
   // Settings groups and the stats screens open a screen; a folder opens its rows; a book opens the book.
-  if (activeTabId == Tab::CAI_DAT || activeTabId == Tab::STATS) return true;
+  // The enlarged stats tab's page row turns the page in place.
+  if (activeTabId == Tab::STATS) return !statsTurnRow(row);
+  if (activeTabId == Tab::CAI_DAT) return true;
   return activeTabId == Tab::FOLDER && row >= 0 && row < static_cast<int>(mucTheNho.size()) &&
          !mucTheNho[row].empty() && mucTheNho[row].back() == '/';
 }
@@ -1461,42 +1464,56 @@ void HomeActivity::drawRecentCard() {
 
 HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const uint32_t coverKey,
                                                   const uint32_t key, const std::string& thumbPath) {
-  auto file = Storage.open(path.c_str());
-  if (!file) return CardFile::None;
-  CardFileHead head;
-  if (file.read(&head, sizeof(head)) != static_cast<int>(sizeof(head)) || head.magic != CARD_FILE_MAGIC ||
-      head.coverKey != coverKey || file.size() != sizeof(head) + head.bytes)
-    return CardFile::None;
-  if (Storage.exists(thumbPath.c_str()) != static_cast<bool>(head.thumb)) return CardFile::None;
-  const auto* r = head.rects;
-  const size_t first = renderer.getRegionByteSize(r[0], r[1], r[2], r[3]);
-  if (first == 0 || first + (r[7] > 0 ? renderer.getRegionByteSize(r[4], r[5], r[6], r[7]) : 0) != head.bytes)
-    return CardFile::None;
-  // The cover alone is read when the text is stale.
-  const bool whole = head.key == key;
-  const size_t bytes = whole ? head.bytes : first;
-  freeCoverBuffer();
-  coverBuffer = static_cast<uint8_t*>(malloc(bytes));
-  if (!coverBuffer) return CardFile::None;
-  if (file.read(coverBuffer, bytes) != static_cast<int>(bytes)) {
+  // A failed metadata restore can still leave a readable backup.
+  freeink::recoverFile(Storage, path.c_str());
+  const std::string backup = path + ".davbak";
+  const auto load = [&](const char* candidate) -> CardFile {
+    auto file = Storage.open(candidate);
+    if (!file) return CardFile::None;
+    CardFileHead head;
+    if (file.read(&head, sizeof(head)) != static_cast<int>(sizeof(head)) || head.magic != CARD_FILE_MAGIC ||
+        head.coverKey != coverKey || file.size() != sizeof(head) + head.bytes)
+      return CardFile::None;
+    if (Storage.exists(thumbPath.c_str()) != static_cast<bool>(head.thumb)) return CardFile::None;
+    const auto* r = head.rects;
+    const size_t first = renderer.getRegionByteSize(r[0], r[1], r[2], r[3]);
+    if (first == 0 || first + (r[7] > 0 ? renderer.getRegionByteSize(r[4], r[5], r[6], r[7]) : 0) != head.bytes)
+      return CardFile::None;
+    // The cover alone is read when the text is stale.
+    const bool whole = head.key == key;
+    const size_t bytes = whole ? head.bytes : first;
     freeCoverBuffer();
-    return CardFile::None;
-  }
-  cardFileThumb = head.thumb;
-  cardFileCover = head.cover;
-  coverBufferSize = bytes;
-  coverBufferUiSize = normalizedUiTextSize(SETTINGS.uiTextSize);
-  coverRectX = r[0];
-  coverRectY = r[1];
-  coverRectW = r[2];
-  coverRectH = r[3];
-  textRectX = r[4];
-  textRectY = r[5];
-  textRectW = r[6];
-  textRectH = whole ? r[7] : 0;
-  coverBufferStored = true;
-  cardOnCard = whole;
-  return whole ? CardFile::Whole : CardFile::Cover;
+    coverBuffer = static_cast<uint8_t*>(malloc(bytes));
+    if (!coverBuffer) return CardFile::None;
+    if (file.read(coverBuffer, bytes) != static_cast<int>(bytes)) {
+      freeCoverBuffer();
+      return CardFile::None;
+    }
+    if (!file.close()) {
+      freeCoverBuffer();
+      return CardFile::None;
+    }
+    cardFileThumb = head.thumb;
+    cardFileCover = head.cover;
+    coverBufferSize = bytes;
+    coverBufferUiSize = normalizedUiTextSize(SETTINGS.uiTextSize);
+    coverRectX = r[0];
+    coverRectY = r[1];
+    coverRectW = r[2];
+    coverRectH = r[3];
+    textRectX = r[4];
+    textRectY = r[5];
+    textRectW = r[6];
+    textRectH = whole ? r[7] : 0;
+    coverBufferStored = true;
+    cardOnCard = whole;
+    return whole ? CardFile::Whole : CardFile::Cover;
+  };
+  const CardFile main = load(path.c_str());
+  if (main != CardFile::None) return main;
+  // A failed read/allocation does not prove main corrupt. Serve a validated
+  // backup without destroying either copy; replacement remains blocked.
+  return load(backup.c_str());
 }
 
 void HomeActivity::wantThumb(const int index) {
@@ -1552,8 +1569,8 @@ void HomeActivity::writeMissingThumb(const int index) {
   requestUpdate();
 }
 
-// Runs after the frame is on the panel, so the write never delays the card it caches. The head
-// goes first with the length it promises, so a write cut short reads back as a missing file.
+// Runs after the frame is on the panel. Checked staging preserves the committed card
+// until the full header and payload have synced and closed.
 void HomeActivity::saveCardFile() {
   const std::string path = std::move(cardFilePending);
   cardFilePending.clear();
@@ -1571,11 +1588,56 @@ void HomeActivity::saveCardFile() {
                           static_cast<uint32_t>(coverBufferSize),
                           cardFileThumb,
                           cardFileCover};
-  auto file = Storage.open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
-  const bool ok = file && file.write(&head, sizeof(head)) == sizeof(head) &&
-                  file.write(coverBuffer, coverBufferSize) == coverBufferSize;
-  file.close();
-  if (!ok) Storage.remove(path.c_str());
+  cardOnCard = false;
+  if (!freeink::recoverFile(Storage, path.c_str())) return;
+  const std::string staging = path + ".davtmp";
+  const std::string backup = path + ".davbak";
+  if (Storage.exists(backup.c_str())) {
+    // Cache identity can be stale while the committed file remains complete.
+    // Distinguish corrupt metadata from unavailable I/O before retiring backup.
+    const auto validate = [&](const char* candidate) {
+      if (!Storage.exists(candidate)) return 0;
+      auto probe = Storage.open(candidate);
+      if (!probe) return -1;
+      CardFileHead saved{};
+      const size_t size = probe.size();
+      if (size < sizeof(saved)) return probe.close() ? 0 : -1;
+      const bool read = probe.read(&saved, sizeof(saved)) == static_cast<int>(sizeof(saved));
+      if (!probe.close() || !read) return -1;
+      const auto* r = saved.rects;
+      const size_t first = renderer.getRegionByteSize(r[0], r[1], r[2], r[3]);
+      return saved.magic == CARD_FILE_MAGIC && size == sizeof(saved) + saved.bytes && first > 0 &&
+                     first + (r[7] > 0 ? renderer.getRegionByteSize(r[4], r[5], r[6], r[7]) : 0) == saved.bytes
+                 ? 1 : 0;
+    };
+    const int main = validate(path.c_str());
+    if (main < 0) return;
+    if (main == 1) {
+      if (!Storage.remove(backup.c_str())) return;
+    } else {
+      if (validate(backup.c_str()) != 1) return;
+      if (Storage.exists(path.c_str()) && !Storage.remove(path.c_str())) return;
+      if (!freeink::recoverFile(Storage, path.c_str())) return;
+    }
+  }
+  auto file = Storage.open(staging.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
+  const bool written = file && file.write(&head, sizeof(head)) == sizeof(head) &&
+                       file.write(coverBuffer, coverBufferSize) == coverBufferSize;
+  const bool synced = written && file.sync();
+  const bool closed = file.close();
+  bool valid = false;
+  if (synced && closed) {
+    auto check = Storage.open(staging.c_str());
+    CardFileHead saved{};
+    valid = check && check.read(&saved, sizeof(saved)) == static_cast<int>(sizeof(saved)) &&
+            saved.magic == CARD_FILE_MAGIC && saved.coverKey == head.coverKey && saved.key == head.key &&
+            saved.bytes == head.bytes && saved.thumb == head.thumb && saved.cover == head.cover &&
+            std::memcmp(saved.rects, head.rects, sizeof(head.rects)) == 0 &&
+            check.size() == sizeof(saved) + saved.bytes;
+    valid = check.close() && valid;
+  }
+  const bool ok = valid && freeink::replaceFile(Storage, staging.c_str(), path.c_str());
+  if (!ok) Storage.remove(staging.c_str());
   cardOnCard = ok;
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("HOME", "Card file saved ok=%u ms=%lu", ok ? 1u : 0u, static_cast<unsigned long>(millis() - started));
