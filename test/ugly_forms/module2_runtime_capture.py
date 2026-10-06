@@ -51,8 +51,9 @@ if a.scenario!='smoke':
   count=7 if a.scenario=='margin' else 1 if a.screen=='text' else 3
   start=child+1800
   events += [f'{start+i*900}:RIGHT' for i in range(count)]
-  preview=start+count*900;commit_ms=preview+1600
-  events += [f'{preview}:DOWN',f'{commit_ms}:CONFIRM']
+  # Confirm enters the question, the edge key moves its circle, Confirm saves; Confirm on the saved answer leaves it.
+  enter=start+count*900;preview=enter+900;commit_ms=preview+1600
+  events += [f'{enter}:CONFIRM',f'{preview}:DOWN',f'{commit_ms}:CONFIRM',f'{commit_ms+900}:CONFIRM']
   shots += [(preview+700,name+'-candidate'),(commit_ms+900,name+'-committed')]
   checkpoints += [(preview+900,'candidate'),(commit_ms+1200,'committed')]
   field,expected=('screenMargin',10) if a.scenario=='margin' else ('fontSize',18) if a.screen=='text' else ('statusBarClock',2)
