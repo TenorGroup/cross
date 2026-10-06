@@ -534,7 +534,9 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.rowGap = 0;
     listProps_.sidePadding = 16;
     listProps_.rowInset = 0;
-    listProps_.centerSingleLine = true;
+    // Names start at the frame's text edge (16 px in, as on the Settings rows), values end 16 px from its
+    // right side: a name centred in the room its value left wandered from row to row.
+    listProps_.centerSingleLine = false;
     listProps_.labelText = tokens.bodyText;
     listProps_.labelText.maxLines = 1;
     listProps_.valueText = tokens.smallText;
