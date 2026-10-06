@@ -450,8 +450,8 @@ void saveTapTipHidden() { SETTINGS.saveToFile(); }
 
 // The tap-zone map is up: it takes this pass's input. Its button hides it for good (one settings write,
 // after the page is back on the panel); any other tap, swipe or Back closes it for this open only. The
-// tap that closes it turns no page. The page comes back the way a turned page does (its pre-clean
-// waveform and gray pass): a forced full refresh doubled the close to 2,6 s on the X4 Pro.
+// tap that closes it turns no page. The page comes back with 1 full refresh and its gray pass, nothing
+// before them: a page turn's lighter waveform left the map's lines on the glass (founder 06/10).
 bool EpubReaderActivity::handleTapTip() {
   int x = 0, y = 0;
   const bool tapped = mappedInput.wasScreenTapped(x, y);
@@ -469,6 +469,7 @@ bool EpubReaderActivity::handleTapTip() {
 #endif
   RenderLock lock;
   readertip::close();
+  pagesUntilFullRefresh = 1;
   requestUpdate();
   return true;
 }
