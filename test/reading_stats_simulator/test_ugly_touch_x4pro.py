@@ -87,6 +87,21 @@ class UglyTouchX4ProTest(unittest.TestCase):
         self.assertEqual(f[-1][4:6], ('0', '4'))
         self.assertEqual(paper.settings()['sleepScreen'], 4, 'paper selection persisted')
 
+    def test_no_sheet_of_one_question_on_the_display_form(self):
+        # Founder 06/10/2026: no sheet of 1 question, the X4 Pro too. The first question of each sheet, walked
+        # by the sheet key, gives how many questions every sheet holds.
+        log, _ = self.run_card(self.card(), '2000:TAP:60,750;3500:TAP:200,240;' +
+                               ''.join(f'{5000 + 1500 * k}:TAP:420,770;' for k in range(6)) + '15000:QUIT')
+        f = form_frames(log)
+        rows, pages = int(f[0][1]), int(f[0][3])
+        first = {}
+        for _, _, sheet, _, question, _, _ in f:
+            first.setdefault(int(sheet), int(question))
+        self.assertEqual(sorted(first), list(range(1, pages + 1)), f)
+        starts = [first[s] for s in range(1, pages + 1)] + [rows]
+        sizes = [b - a for a, b in zip(starts, starts[1:])]
+        self.assertTrue(all(n >= 2 for n in sizes), f'questions per sheet {sizes}')
+
     def test_an_edge_button_does_not_turn_the_page_under_an_open_group(self):
         # Edge Up previews an option in the active form; the following tap commits its first answer.
         card = self.card()
@@ -100,9 +115,9 @@ class UglyTouchX4ProTest(unittest.TestCase):
         self.assertEqual(card.settings()['uiTextSize'], 0)
 
     def test_the_interface_row_asks_before_it_leaves_the_shell(self):
-        # Display sheet 4, Cross option A, then the shared Switch activity's measured answer bands.
-        to_box = ('2000:TAP:60,750;3500:TAP:200,240;5000:TAP:420,770;'
-                  '6500:TAP:420,770;8000:TAP:420,770;9500:TAP:200,170;')
+        # Display sheet 2 (Interface under the Refresh paper), Cross option A, then the shared Switch activity's
+        # measured answer bands.
+        to_box = '2000:TAP:60,750;3500:TAP:200,240;5000:TAP:420,770;9500:TAP:200,585;'
         for answer_y, shell in ((490, 1), (420, 0)):
             card = self.card()
             log, _ = self.run_card(card, to_box + '11000:TAP:200,%d;13000:QUIT' % answer_y)

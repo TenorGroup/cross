@@ -90,10 +90,8 @@ def main():
     if a == b or b == c:
         wrong.append('a scribble did not earn a new line each time')
 
-    # A form's question struck out goes back to its default (the status bar question, first on sheet 2: the
-    # sheets leave no question alone where they can, so it no longer shares the first sheet's short room).
-    files, _, _ = run(['TAP:60,750', 'TAP:200,240', 'TAP:420,760', 'STROKE:400,30,125,330,129,40,135'],
-                      globalStatusBarMode=1)
+    # A form's question struck out goes back to its default (the status bar question, second on the sheet).
+    files, _, _ = run(['TAP:60,750', 'TAP:200,240', 'STROKE:400,30,380,330,384,40,390'], globalStatusBarMode=1)
     if files['settings'].get('globalStatusBarMode') == 1:
         wrong.append('a strike on a form question left its value')
 

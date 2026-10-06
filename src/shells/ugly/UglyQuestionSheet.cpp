@@ -175,6 +175,18 @@ void QuestionSheet::bind(const GfxRenderer& r, View view, bool touch) {
   std::vector<int> ink(view_.count), sheetOf(view_.count);
   std::vector<uint8_t> tight(view_.count + 1, 0);
   for (int i = 0; i < view_.count; ++i) ink[i] = blocks_[i].height - gap_;
+  // Touch: a choice too tall to share a sheet with the question before or after it would stand alone (the
+  // founder's rule: no sheet of 1 question, on the X4 Pro too); its answers go on paper, one row on the sheet.
+  for (int i = 0; touch_ && view_.count > 1 && i < view_.count; ++i) {
+    if (blocks_[i].kind != Kind::Choice) continue;
+    constexpr int NONE = 1 << 20;  // no neighbour on that side
+    const int prev = i > 0 ? ink[i - 1] : NONE, next = i + 1 < view_.count ? ink[i + 1] : NONE;
+    if (ink[i] + TIGHT_GAP + std::min(prev, next) <= bottom_ - laterTop_) continue;
+    blocks_[i].kind = Kind::Paper;
+    blocks_[i].columns = 0;
+    ink[i] = std::max(64, blocks_[i].questionHeight + answerStep_);
+    blocks_[i].height = static_cast<int16_t>(ink[i] + gap_);
+  }
   pages_ = logic::layoutSheets(ink.data(), view_.count, bottom_ - firstTop_, bottom_ - laterTop_, gap_, TIGHT_GAP,
                                sheetOf.data(), tight.data());
   for (int i = 0; i < view_.count; ++i) {
