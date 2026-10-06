@@ -9,6 +9,7 @@
 
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UiSliderDialog.h"
 #include "fontIds.h"
 
@@ -102,8 +103,12 @@ void EpubReaderPercentSelectionActivity::loop() {
     return;
   }
   if (routingReady() && draggingSlider) {
-    // Drag ended (possibly off the slider): swallow the tap/swipe events it produced.
-    if (!route.snap.touchHeld) draggingSlider = false;
+    // Drag ended (possibly off the slider): swallow the tap/swipe events it produced. Touch shell: the value
+    // the finger left is the answer.
+    if (!route.snap.touchHeld) {
+      draggingSlider = false;
+      if (tenorchrome::kTouchShell) confirm();
+    }
     return;
   }
   // Tap released outside the dialog (inside-taps are absorbed by the chrome
@@ -173,7 +178,7 @@ void EpubReaderPercentSelectionActivity::buildPercentScreen(UiScreen& screen) {
   spec.chromeAction = ACTION_CHROME;
   spec.hintLine1 = hint1;
   spec.hintLine2 = hint2;
-  buildSliderDialogScreen(screen, uiTarget, mappedInput, spec);
+  buildSliderDialogScreen(renderer, screen, uiTarget, mappedInput, spec);
 }
 
 void EpubReaderPercentSelectionActivity::render(RenderLock&&) {

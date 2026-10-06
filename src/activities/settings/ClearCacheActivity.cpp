@@ -6,6 +6,7 @@
 #include <Logging.h>
 
 #include "MappedInputManager.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
@@ -14,14 +15,23 @@ void ClearCacheActivity::onEnter() {
   Activity::onEnter();
 
   state = WARNING;
+  // Touch: the warning goes inside the question, which offers its one action; "<" on the bar cancels.
   const char* options[] = {tr(STR_CANCEL), tr(STR_CLEAR_BUTTON)};
-  confirmPopup.show(tr(STR_CLEAR_READING_CACHE), options, 2, 0, [this](int idx) {
-    if (idx == 1) {
+  constexpr int skip = tenorchrome::kTouchShell ? 1 : 0;
+  const auto onSelect = [this](int idx) {
+    if (idx + skip == 1) {
       beginClear();
     } else {
       goBack();
     }
-  });
+  };
+  if (tenorchrome::kTouchShell) {
+    const std::string warning = std::string(tr(STR_CLEAR_CACHE_WARNING_1)) + " " + tr(STR_CLEAR_CACHE_WARNING_2) + " " +
+                                tr(STR_CLEAR_CACHE_WARNING_3) + " " + tr(STR_CLEAR_CACHE_WARNING_4);
+    confirmPopup.show(tr(STR_CLEAR_READING_CACHE), warning.c_str(), options + skip, 2 - skip, -1, onSelect);
+  } else {
+    confirmPopup.show(tr(STR_CLEAR_READING_CACHE), options, 2, 0, onSelect);
+  }
   requestUpdate();
 }
 
@@ -37,6 +47,7 @@ void ClearCacheActivity::render(RenderLock&&) {
   drawNavigationHeader(tr(STR_CLEAR_READING_CACHE));
 
   if (state == WARNING) {
+    if (tenorchrome::kTouchShell && confirmPopup.processRender(renderer, mappedInput)) return;
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 60, tr(STR_CLEAR_CACHE_WARNING_1), true);
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 30, tr(STR_CLEAR_CACHE_WARNING_2), true,
                               EpdFontFamily::BOLD);
@@ -143,6 +154,11 @@ void ClearCacheActivity::clearCache() {
 void ClearCacheActivity::loop() {
   if (state == WARNING) {
     if (confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
+    // Touch: the question closed without its action ("<" on the bar, a tap outside): back.
+    if (tenorchrome::kTouchShell) {
+      goBack();
+      return;
+    }
 
     if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
       beginClear();

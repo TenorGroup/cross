@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "MappedInputManager.h"
+#include "components/OptionPopup.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -15,7 +16,8 @@
 // fui::optionDialog with the same chrome OptionPopup uses: title caption, a
 // large value readout as the headline, a full-width capsule slider with the
 // range endpoints above it, and a [-] [+] [Confirm] option-button row on
-// touch boards or two step-hint lines on button boards. Cancel is Back or a
+// touch boards or two step-hint lines on button boards. The touch shell has
+// no button row: the panel frame over the bar at the foot, a drag sets the value. Cancel is Back or a
 // tap outside the dialog. Used by the interval and percent selection
 // dialogs, which differ only in how they format the readout, endpoints, and
 // hints and what the actions do.
@@ -38,8 +40,9 @@ struct UiSliderDialogSpec {
   const char* hintLine2 = nullptr;
 };
 
-inline void buildSliderDialogScreen(UiAppHost::UiScreen& screen, freeink::ui::GfxRendererTarget& uiTarget,
-                                    const MappedInputManager& mappedInput, const UiSliderDialogSpec& spec) {
+inline void buildSliderDialogScreen(const GfxRenderer& renderer, UiAppHost::UiScreen& screen,
+                                    freeink::ui::GfxRendererTarget& uiTarget, const MappedInputManager& mappedInput,
+                                    const UiSliderDialogSpec& spec) {
   namespace fui = freeink::ui;
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto& theme = screen.theme();
@@ -73,11 +76,14 @@ inline void buildSliderDialogScreen(UiAppHost::UiScreen& screen, freeink::ui::Gf
   options[2].label = tr(STR_CONFIRM);
   options[2].action = spec.okAction;
 
+  // Touch shell (dynamic bar): no button row; a drag or a tap on the bar sets the value and closes the dialog,
+  // "<" on the bar at the foot cancels it (the activity's loop).
+  const bool buttons = touch && !tenorchrome::kTouchShell;
   static fui::OptionDialogProps props;
   props.title = spec.title;
   props.headline = spec.readout;
-  props.options = touch ? options : nullptr;
-  props.optionCount = touch ? 3 : 0;
+  props.options = buttons ? options : nullptr;
+  props.optionCount = buttons ? 3 : 0;
   props.inputMask = fui::InputTouch;
   props.titleText = theme.smallText;
   props.titleText.bold = true;
@@ -98,6 +104,12 @@ inline void buildSliderDialogScreen(UiAppHost::UiScreen& screen, freeink::ui::Gf
   props.styles.focused = props.styles.normal;
   props.styles.active = props.styles.normal;
   props.styles.disabled = props.styles.normal;
+  if (tenorchrome::kTouchShell) {
+    // The panel frame (drawPanel), drawn over the borderless card below.
+    props.styles.normal.borderWidth = 0;
+    props.styles.normal.radius = tenorchrome::PANEL_RADIUS;
+    props.styles.selected = props.styles.focused = props.styles.active = props.styles.disabled = props.styles.normal;
+  }
   props.buttonHeight =
       fui::clampI16(screen.target().lineHeight(theme.bodyText.font) + metrics.optionPopupSelectionVPadding * 2);
   // Square -/+ buttons; Confirm flexes into the remaining row width so its
@@ -115,19 +127,27 @@ inline void buildSliderDialogScreen(UiAppHost::UiScreen& screen, freeink::ui::Gf
   // optionDialog returns its rect. Same width rule as OptionPopup.
   props.contentHeight = static_cast<int16_t>(sliderH + hintsH);
   const fui::Rect screenRect = screen.frame().screen();
-  const int16_t width = fui::clampI16(
-      std::min<int>(screenRect.width * 3 / 4, screenRect.width - metrics.optionPopupDialogSideMargin * 2));
+  const int16_t width = tenorchrome::kTouchShell
+                            ? static_cast<int16_t>(screenRect.width - 2 * tenorchrome::FOOT_BACK_X)
+                            : fui::clampI16(std::min<int>(screenRect.width * 3 / 4,
+                                                          screenRect.width - metrics.optionPopupDialogSideMargin * 2));
   // Measured height minus one spaceMd: texts anchor to the top and the band/
   // buttons to the bottom, so the trim comes out of the air between the
   // readout and the slider band (which already carries its endpoints line).
   const int16_t height =
       fui::clampI16(fui::optionDialogHeight(screen.target(), props, width) - theme.spaceMd, 0, screenRect.height);
-  const fui::Rect dialog = fui::centeredRect(screenRect, fui::Size{width, height});
+  // Touch: over the bar at the foot, in the thumb's reach.
+  const fui::Rect dialog =
+      tenorchrome::kTouchShell
+          ? fui::Rect{static_cast<int16_t>(tenorchrome::FOOT_BACK_X),
+                      static_cast<int16_t>(tenorchrome::footBackTop(screenRect.height) - 8 - height), width, height}
+          : fui::centeredRect(screenRect, fui::Size{width, height});
   // Chrome guard first, controls after: routing scans newest-first, so the
   // buttons and slider win inside the dialog and the guard absorbs the rest -
   // same pattern as OptionPopup.
   screen.frame().hit(dialog, spec.chromeAction, 0, fui::InputTouch);
   const fui::Rect band = fui::optionDialog(screen.frame(), dialog, props);
+  if (tenorchrome::kTouchShell) OptionPopup::drawFrame(renderer, dialog.x, dialog.y, dialog.width, dialog.height);
 
   if (!touch) {
     // Two-line step hint (front buttons = fine step, side buttons = coarse
