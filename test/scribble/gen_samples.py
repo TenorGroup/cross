@@ -158,6 +158,8 @@ def main(out):
     strike("gach-ba-lan", [(100, 300), (380, 305), (110, 312), (370, 318)], speed=1.2)
     strike("gach-ca-dong", [(40, 240), (440, 244), (60, 250)], speed=1.5)
     strike("gach-cham-run", [(120, 520), (360, 524), (130, 530)], speed=0.3, noise=5)
+    # As loose as the founder drew on the X4 Pro (06/10/2026): 38 px between the two passes at most.
+    strike("gach-long-tay", [(100, 300), (380, 320), (110, 342)], speed=1.0)
     # Out and back over the same row: a strike, never a ring
     strike("di-roi-ve", [(100, 300), (380, 300), (100, 300)], noise=0.0)
     strike("di-roi-ve-run", [(100, 300), (380, 304), (104, 310)])
