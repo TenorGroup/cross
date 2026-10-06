@@ -9,6 +9,7 @@ TEST_PROGRAM picks the simulator (simulator_x3 is the UC8253 panel, simulator_x3
 import hashlib
 import json
 import re
+import struct
 import unittest
 import zipfile
 
@@ -30,6 +31,7 @@ CROSS = {
     'page': '6c235d5d47876125',
     'marked': '9feb91ec066ca9c1',
     'notice': '49ecd4c4e7dad049',
+    'xtc_toc': '26d9891198b82a1a',
 }
 # The hand-written notices, the same strokes on every draw.
 UGLY = {
@@ -61,6 +63,23 @@ def write_dictionary(sd):
                                    "sametypesequence=m\n" % (len(words), len(idx)))
 
 
+def write_xtc(path):
+    """A 3-page XTC whose table of contents has 2 chapters."""
+    names = [('Chương 1', 1, 2), ('Chương 2', 3, 3)]
+    chapters = b''.join(n.encode().ljust(80, b'\0') + struct.pack('<HH', a, b).ljust(16, b'\0') for n, a, b in names)
+    pages = []
+    for number in range(3):
+        bitmap = bytearray(b'\xff' * (528 * 792 // 8))
+        for y in range(80 + number * 90, 120 + number * 90):
+            bitmap[y * 66 + 8:y * 66 + 40] = b'\x00' * 32
+        pages.append(struct.pack('<IHHBBIQ', 0x00475458, 528, 792, 0, 0, len(bitmap), 0) + bitmap)
+    table_at = 56 + len(chapters)
+    start = table_at + 16 * len(pages)
+    header = struct.pack('<IBBHBBBBIQQQQII', 0x00435458, 1, 0, len(pages), 0, 0, 0, 1, 1, 0, table_at, start, 0, 56, 0)
+    table = b''.join(struct.pack('<QIHH', start + i * len(page), len(page), 528, 792) for i, page in enumerate(pages))
+    path.write_bytes(header + chapters + table + b''.join(pages))
+
+
 def screen_digest(image):
     image = image.copy()
     ImageDraw.Draw(image).rectangle(CLOCK, fill=255)
@@ -68,13 +87,17 @@ def screen_digest(image):
 
 
 class ReadingScreensTest(unittest.TestCase):
-    def card(self, shell, siblings=(), paragraphs=1, dictionary=False, **settings):
+    def card(self, shell, siblings=(), paragraphs=1, dictionary=False, xtc=False, **settings):
         if dictionary:
             settings['dictionaryName'] = 'vd'
         card = Card(shell=shell, books=[], stats=False, textAntiAliasing=0, **settings)
         self.addCleanup(card.close)
         if dictionary:
             write_dictionary(card.sd)
+        if xtc:
+            write_xtc(card.sd / 'k.xtc')
+            (card.store / 'recent.json').write_text(json.dumps({'books': [{'path': '/k.xtc', 'title': 'Kidnapped', 'author': 'RLS'}]}))
+            return card
         write_epub(card.sd / 'k.epub', 'Kidnapped', paragraphs)
         for name in siblings:
             write_epub(card.sd / name, name, 1)
@@ -157,6 +180,12 @@ class ReadingScreensTest(unittest.TestCase):
         self.assertTrue('part=notice' in log.split('[IN] press')[-1], 'no notice after the hold')
         self.assertEqual(digest(ugly['notice'].crop(NOTICE))[:16], UGLY['notice'], 'the notice says it in the voice of the shell')
         self.check('notice', ugly['notice'], cross['notice'])
+
+    def test_xtc_contents(self):
+        log, ugly, cross = self.both('1000:CONFIRM;3500:CONFIRM;6000:QUIT', [(5500, 'toc')], xtc=True)
+        self.assertIn('XtcReaderChapterSelection', log)
+        self.assertTrue('part=header' in log.split('Entering activity: XtcReaderChapterSelection')[1], 'no hand header')
+        self.check('xtc_toc', ugly['toc'], cross['toc'])
 
 
 if __name__ == '__main__':
