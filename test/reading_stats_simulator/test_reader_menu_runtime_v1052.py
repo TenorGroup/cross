@@ -261,6 +261,44 @@ int main() {
 ''')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_turning_the_screen_drops_the_preview_layout_of_the_old_viewport(self):
+        text = (REPO / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+        methods = '\n'.join(function(text, 'EpubReaderActivity', name)
+                            for name in ('applyOrientation', 'dropCatchUp'))
+        result = run(r'''
+#include <cassert>
+#include <cstdint>
+#include <memory>
+#include <optional>
+int abandoned = 0;
+struct { uint8_t orientation = 0; bool saveToFile() { return true; } } SETTINGS;
+struct GfxRenderer {} renderer;
+namespace ReaderUtils { void applyOrientation(GfxRenderer&, uint8_t) {} }
+struct Section {
+  int currentPage = 0, pageCount = 0;
+  void abandonBuild() { ++abandoned; }
+};
+struct EpubReaderActivity;
+struct RenderLock { explicit RenderLock(EpubReaderActivity&) {} ~RenderLock() {} };
+struct EpubReaderActivity {
+  std::unique_ptr<Section> section, catchUp;
+  int cachedSpineIndex = 0, currentSpineIndex = 0, cachedChapterTotalPageCount = 0, nextPageNumber = 0;
+  uint8_t appliedOrientation = 0;
+  void rememberCurrentContentOffset() {}
+  void applyOrientation(uint8_t orientation);
+  void dropCatchUp();
+};
+''' + methods + r'''
+int main() {
+  EpubReaderActivity reader;
+  reader.catchUp = std::make_unique<Section>();
+  reader.applyOrientation(1);
+  assert(!reader.catchUp && abandoned == 1 && "the preview layout of the old viewport would land");
+  assert(reader.appliedOrientation == 1 && SETTINGS.orientation == 1);
+}
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_all_toolbar_actions_route_once_with_24_targets(self):
         text = (REPO / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
         header = (REPO / 'src/activities/reader/ReaderToolbarUi.h').read_text()
