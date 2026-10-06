@@ -198,7 +198,6 @@ class UiListActivity : public Activity, protected UiAppHost {
   void decoratePinnedRows(freeink::ui::ListProps& props);
   void reserveFavoriteHint(UiScreen& screen);
   // Buttons: the faded band under the last full row when rows go on, and where it stops on the right.
-  void reserveFadeBand(UiScreen& screen, int16_t rowHeight, int rowGap);
   void fadeMoreBelow();
   int rowFadeRight = 0;
   const char* favoriteHintText();

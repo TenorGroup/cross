@@ -328,7 +328,6 @@ void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& pr
     props.rowPaddingY = TENOR_PILL_ROW_PADDING_Y;
   }
   const int rowGap = props.rowGap >= 0 ? props.rowGap : screen.theme().listRowGap;
-  reserveFadeBand(screen, rowHeight, rowGap);
   reserveRowFrame(screen, rowGap);
   n.syncToProps(screen.body(), rowHeight, rowGap, count, props, 1);
   // The touch shell shows no cursor row; SDK navigation still owns the viewport.

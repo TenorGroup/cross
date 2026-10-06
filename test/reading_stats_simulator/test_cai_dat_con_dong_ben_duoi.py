@@ -190,6 +190,18 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
               [60, 28, 52, 20, 62, 30, 54, 22], [3, 35, 11, 43, 1, 33, 9, 41], [51, 19, 59, 27, 49, 17, 57, 25],
               [15, 47, 7, 39, 13, 45, 5, 37], [63, 31, 55, 23, 61, 29, 53, 21]]
 
+    @staticmethod
+    def cot_thanh_cuon(image):
+        """Cac dong co muc cua thanh cuon 6 px o mep phai (x 519..524); cot 521..524 tranh mui ten canh."""
+        ys = [y for y in range(120, image.height) if any(image.getpixel((x, y)) < 128 for x in range(521, 525))]
+        # Doan lien dai nhat (ranh cham cach 2 dong): bo mui ten canh, chu xem truoc va dong ho o chan man.
+        runs = [[ys[0]]] if ys else []
+        for y in ys[1:]:
+            if y - runs[-1][-1] > 3:
+                runs.append([])
+            runs[-1].append(y)
+        return max(runs, key=len) if runs else []
+
     def kiem_dai_mo(self, ten):
         """v1.0.53: con dong ben duoi thi hang ke tiep hien mo dan duoi hang du cuoi, khong con chu V,
         va thanh cuon la vien thuoc (dau bo)."""
@@ -208,9 +220,9 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
         # Chu thuong: ~1/4 so diem muc co nguong >= 48. Hang mo: gan nhu khong con.
         self.assertLess(cao / len(ink), 0.12, f"{ten}: hang cuoi y {min(group)}..{max(group)} khong mo ({cao}/{len(ink)})")
         # Thanh cuon: dong dau cua con truot hep hon than no (dau bo), khong vuong.
-        bar = [y for y in range(330, image.height) if any(image.getpixel((x, y)) < 128 for x in range(510, image.width))]
+        bar = self.cot_thanh_cuon(image)
         self.assertTrue(bar, f"{ten}: khong co thanh cuon")
-        width = lambda y: sum(1 for x in range(510, image.width) if image.getpixel((x, y)) < 128)
+        width = lambda y: sum(1 for x in range(521, 525) if image.getpixel((x, y)) < 128)
         self.assertLess(width(bar[0]), width(bar[0] + 2), f"{ten}: dau thanh cuon vuong")
 
     def test_the_dai_thi_hang_ke_tiep_mo_dan(self):
@@ -222,6 +234,26 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
         log = self.chay(buoc, [(mo + 1500, "the-dai")], sd=sd)
         self.assertIn("Entering activity: TextSettings", log)
         self.kiem_dai_mo("the-dai")
+
+    def test_hang_hai_dong_van_de_lo_dau_hang_mo(self):
+        """Cai dat/Hien thi co Lon: mot hang xuong hai dong lam trang chua it hang hon uoc. Hang mo van phai
+        lo du phan dau de doc (do theo hang that), khong chi la mot vet cham."""
+        ten = "hien-thi-lon"
+        sd = self.tao_sd(ten, {"language": "VI", "uiTheme": 4, "uiTextSize": 2,
+                               "globalStatusBarMode": 2, "tenorButtonSymbols": 1, "statusBarClock": 1})
+        buoc = ["DOWN"] * 4 + ["CONFIRM"]
+        mo = 2000 + (len(buoc) - 1) * NHIP_MS
+        self.chay(buoc, [(mo + 1500, ten)], sd=sd)
+        self.kiem_dai_mo(ten)
+        image = self.anh_status(ten)
+        bar = self.cot_thanh_cuon(image)
+        rows = [y for y in range(150, bar[-1]) if any(image.getpixel((x, y)) < 128 for x in range(20, 230))]
+        group = [rows[-1]]
+        for y in reversed(rows[:-1]):
+            if group[-1] - y > 4:
+                break
+            group.append(y)
+        self.assertGreaterEqual(max(group) - min(group), 14, f"{ten}: hang mo chi cao {max(group) - min(group)} px")
 
     def test_bo_cuc_thanh_lon_mo_dan_o_ba_co_chu(self):
         def capture(tier):

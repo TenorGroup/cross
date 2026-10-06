@@ -144,7 +144,6 @@ class FileBrowserActivity {
   void reserveFixedMenuContent(UiScreen&) {}
   void reserveFavoriteHint(UiScreen&) {}
   void reserveRowFrame(UiScreen&, int) {}
-  void reserveFadeBand(UiScreen&, int16_t, int) {}
   fui::ListNav& activeNav() { return nav; }
   static int kepConTro(int selected, int count) { return std::clamp(selected, 0, std::max(0, count - 1)); }
   bool rowIsPinned(int index) const { return index == pinned; }

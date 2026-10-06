@@ -404,7 +404,12 @@ void UiListActivity::frameRows(fui::ListProps& props) {
   if (!rowsFramed) {
     // Buttons (X3/X4): the row past the last full one shows its top, faded (fadeMoreBelow), in place of a "more"
     // chevron.
-    if (tenorchrome::enabled()) props.partialTrailingRow = true;
+    if (tenorchrome::enabled()) {
+      props.partialTrailingRow = true;
+      // The fade leaves a row's words legible only in its first 3/4: less of the next row than that and the
+      // last row that fits is the glimpse instead (measured on the real rows).
+      props.partialTrailingMinPercent = 75;
+    }
     return;
   }
   // Touch (C1): the rows sit in a round frame 16 px in from the screen edges, their text 16 px into it.
@@ -516,7 +521,6 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
     props.rowPaddingY = TENOR_PILL_ROW_PADDING_Y;
   }
   const int rowGap = props.rowGap >= 0 ? props.rowGap : screen.theme().listRowGap;
-  reserveFadeBand(screen, rowHeight, rowGap);
 
   if (tenorchrome::kTouchShell && activeNav().followOnBuild) {
     // Touch: a row to show (the chapter being read) brings the page it is on, pages counted from the
@@ -641,20 +645,6 @@ void UiListActivity::reserveFavoriteHint(UiScreen& screen) {
   const int bottom = screen.body().y + screen.body().height;
   const int reservedTop = favoriteHintY - 2;
   if (bottom > reservedTop) screen.takeBottom(static_cast<int16_t>(bottom - reservedTop));
-}
-
-void UiListActivity::reserveFadeBand(UiScreen& screen, const int16_t rowHeight, const int rowGap) {
-  // Buttons: when rows go on, the room under the last full row must hold a readable glimpse of the next one.
-  // The fade leaves a row's words legible only in its first 3/4 (half a row showed none of them), so less room
-  // than that gives a full row back and the next row shows whole, fading. Estimated with the fixed row height;
-  // wrapped rows may still leave less.
-  if (!tenorchrome::enabled() || tenorchrome::kTouchShell) return;
-  const fui::Rect body = screen.body();
-  const int rows = fui::listVisibleRows(body, rowHeight, static_cast<int16_t>(rowGap));
-  if (rows < 2 || listCount() <= rows) return;
-  const int pitch = rowHeight + rowGap;
-  if (body.height - rows * pitch >= rowHeight * 3 / 4) return;
-  screen.takeBottom(static_cast<int16_t>(body.height - (rows - 1) * pitch - (rowHeight - 1)));
 }
 
 void UiListActivity::fadeMoreBelow() {
