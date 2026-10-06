@@ -64,8 +64,9 @@ def main():
         assert 0.35 < edge < 0.65, f'no dotted bar edge at y={BAR_TOP}: ink {edge:.2f}'
         # Nothing of the bar is left at the top, where the button readers keep it.
         assert ink(home, (60, 60, 280, 62)) < 0.05, 'a bar is still drawn at the top'
-        # A tap on the bar's last tab opens it: the title changes and the selected pill moves there.
-        assert list(home.crop((0, 0, 300, 56)).getdata()) != list(after_foot.crop((0, 0, 300, 56)).getdata()), \
+        # A tap on the bar's last tab opens it: the screen under the status strip changes and the selected pill
+        # moves there.
+        assert list(home.crop((0, 32, 480, 140)).getdata()) != list(after_foot.crop((0, 32, 480, 140)).getdata()), \
             'a tap on the foot bar did not change the tab'
         box = (TABS_X[4] - 44, BAR_TOP, TABS_X[4] + 44, BAR_TOP + BAR_H)
         assert ink(after_foot, box) > ink(home, box), 'the selected tab did not move to the tap'

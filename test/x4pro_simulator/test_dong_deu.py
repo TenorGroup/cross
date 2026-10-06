@@ -44,25 +44,38 @@ def frames(image):
             current = [(first, last)]
         elif ring:
             current.append((first, last))
-            found.append(dict(rows=[b[0] - a[1] - 1 for a, b in zip(current, current[1:])], rules=len(current) - 2))
+            found.append(dict(rows=[b[0] - a[1] - 1 for a, b in zip(current, current[1:])], rules=len(current) - 2,
+                              top=current[0][0], bottom=current[-1][1]))
             current = None
         elif current is not None:
             current.append((first, last))
+    if current is not None and len(current) >= 3:
+        # A frame whose foot fades out with the next row: its full rows end at its last rule.
+        rows = [b[0] - a[1] - 1 for a, b in zip(current, current[1:])]
+        found.append(dict(rows=rows, rules=len(rows) - 1, top=current[0][0], bottom=current[-1][1], open=True))
     return found
 
 
-def full_rows(frame):
-    """A frame with more rows below goes on under its last full row, around the faded next one: only the rows
-    above that fade (none shorter than half the tallest) count."""
-    rows = frame['rows']
-    keep = next((i for i, row in enumerate(rows) if row < max(rows) / 2), len(rows))
-    return dict(rows=rows[:keep], rules=max(0, keep - 1)) if keep < len(rows) else frame
+def full_rows(frame, image, lowest):
+    """The lowest frame of a list with more rows below (its scroll bar shows, 6 px, 4 px inside the ring) goes on
+    under its last full row, around the faded next one: only the rows above that fade count."""
+    bar = sum(1 for y in range(frame['top'], frame['bottom']) if image.getpixel((457, y)) < 128)
+    if bar == 0 or not lowest or frame.get('open'):
+        return frame
+    rows = list(frame['rows'])
+    tallest = max(rows)
+    if rows[-1] >= tallest / 2:
+        rows.pop()  # the faded part as tall as a row
+    while rows and rows[-1] < tallest / 2:
+        rows.pop()  # the faded part, split by the next row's own lines
+    return dict(rows=rows, rules=max(0, len(rows) - 1))
 
 
 def check_rows(folder, name, script, size):
     (shot,) = run(folder, script, [4800], settings=dict(uiTextSize=size), write_books=root_files)
-    lists = [full_rows(f) for f in frames(shot) if f['rules'] >= 2]
-    assert lists, f'{name}, text size {size}: no framed list with rules between its rows ({frames(shot)})'
+    found = frames(shot)
+    lists = [full_rows(f, shot, f is found[-1]) for f in found if f['rules'] >= 2]
+    assert lists, f'{name}, text size {size}: no framed list with rules between its rows ({found})'
     for f in lists:
         assert len(set(f['rows'])) == 1, f'{name}, text size {size}: rows of unequal height {f["rows"]}'
         assert f['rules'] == len(f['rows']) - 1, f'{name}, text size {size}: a rule is missing {f}'

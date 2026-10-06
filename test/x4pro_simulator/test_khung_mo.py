@@ -12,7 +12,7 @@ FONT = REPO / 'test/reading_stats_simulator/fixtures/BeVietnamPro_18.cpfont'
 SETTINGS = dict(sdFontFamilyName='BeVietnamPro', fontSize=18, fontFamily=1, letterSpacing=4, wordSpacing=0,
                 extraParagraphSpacing=1, paragraphAlignment=0, screenMargin=5, paragraphIndent=2, uiTextSize=2,
                 readerTapTip=0)
-OPEN = '2500:TAP:423,754;4500:TAP:240,204;6500:TAP:240,80;8500:TAP:326,754'
+OPEN = '2500:TAP:423,754;4500:TAP:240,241;6500:TAP:240,80;8500:TAP:326,754'
 
 
 def font(sach):

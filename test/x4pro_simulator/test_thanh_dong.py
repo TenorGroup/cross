@@ -13,7 +13,10 @@ from pathlib import Path
 from test_thanh_day import run, ink, BAR_TOP, TABS_X
 
 BAR_Y = BAR_TOP + 30
-ROW = [70, 132, 194, 256, 336, 398, 460, 522, 584]  # 2 grouped Settings frames, default tier
+# The Settings card's rows on its first page (3 titled groups, default tier), by the old card's order:
+# Hien thi, Ngu, Trinh doc, Dieu khien, Gui file, He thong, Thiet bi, Ban phim, and Ngu again for the
+# lowest full row (Khac is on the next page).
+ROW = [179, 657, 241, 303, 117, 418, 480, 542, 657]
 SYSTEM = 5                               # "He thong" on the Settings card
 SAME = (0, 30, 480, 720)                 # everything under the clock
 
@@ -65,7 +68,7 @@ def check_zone_tap(tmp):
 
 
 def check_back_keeps_list(tmp):
-    # Settings card -> Khac (the last row) -> "<": the card comes back as it was, not scrolled.
+    # Settings card -> Ngu (the lowest full row) -> "<": the card comes back as it was, not scrolled.
     card, back = run(fresh(tmp, 'bl'), f'3000:TAP:{TABS_X[4]},{BAR_Y};5000:TAP:240,{ROW[8]};8000:TAP:46,754',
                      [4800, 10500])
     assert same(card, back), 'the Settings card came back scrolled'
