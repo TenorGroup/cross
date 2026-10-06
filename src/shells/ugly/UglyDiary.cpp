@@ -253,7 +253,7 @@ bool Diary::onTouch(const Key key) {
       openPage(homerows::Page::Settings);
       break;
     case Key::SwipeUp:  // no list to scroll here: up the page is up a tier, to the desk
-      if (deskAvailable(renderer)) then([this] { activityManager.replaceActivity(makeDesk(renderer, mappedInput)); });
+      if (deskAvailable(renderer) && touch::tierSwipe(touchX, touchY, touchToX, touchToY) == touch::Tier::Up) then([this] { activityManager.replaceActivity(makeDesk(renderer, mappedInput)); });
       break;
     case Key::Tap: {
       const touch::Hit hit = touch::notebookAt(touchX, touchY);

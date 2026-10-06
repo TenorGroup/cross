@@ -151,6 +151,16 @@ TEST(TouchScribble, TheHintOnlyWhereItIsTrue) {
   EXPECT_FALSE(hintHolds(Sheet::Other));
 }
 
+TEST(TouchTier, ALongUprightSwipeStepsATier) {
+  EXPECT_EQ(tierSwipe(240, 520, 240, 250), Tier::Up);
+  EXPECT_EQ(tierSwipe(240, 300, 250, 600), Tier::Down);
+  EXPECT_EQ(tierSwipe(240, 400, 240, 330), Tier::None) << "70 px is a nudge";
+  EXPECT_EQ(tierSwipe(240, 400, 240, 280), Tier::Up) << "120 px is a step";
+  EXPECT_EQ(tierSwipe(100, 500, 300, 300), Tier::None) << "45 degrees off upright";
+  EXPECT_EQ(tierSwipe(240, 100, 240, 400), Tier::None) << "from the top band: the light panel's";
+  EXPECT_EQ(tierSwipe(240, 700, 240, 400), Tier::None) << "from the bottom band: Home's";
+}
+
 TEST(TouchBand, TheBatteryAndTheClockCorners) {
   EXPECT_EQ(bandAt(430, 25), BandSpot::Battery);
   EXPECT_EQ(bandAt(470, 60), BandSpot::Battery) << "a ring round the corner is centred a little low";

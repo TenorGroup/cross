@@ -781,8 +781,9 @@ void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::
 }
 
 void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefresh) {
-  // An Ugly form asked to save before Home, then goes Home on its own: it lands where the gesture was going.
-  if (initialMenuItem == HomeMenuItem::NONE && homeAfterInput && homeAfterInputTarget == HomeMenuItem::DESK)
+  // An Ugly form asked to save before Home, then goes Home on its own (to the notebook page it came from, or
+  // nowhere in particular): it lands where the gesture was going.
+  if (homeAfterInput && homeAfterInputTarget == HomeMenuItem::DESK)
     initialMenuItem = HomeMenuItem::DESK;
   // The saved cursor of the tenor/cross Home means nothing to another shell.
   if (initialMenuItem == HomeMenuItem::NONE && !shell::isUgly()) initialMenuItem = homeMenuOrigin();

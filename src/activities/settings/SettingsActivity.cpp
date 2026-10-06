@@ -555,9 +555,8 @@ bool SettingsActivity::handleCustomInput() {
   if (mappedInput.wasScreenLongPress(x, y)) queueForm({FormEvent::Type::Hold, Key::Confirm, static_cast<int16_t>(x), static_cast<int16_t>(y)});
   else if (mappedInput.wasScreenTapped(x, y)) queueForm({FormEvent::Type::Tap, Key::Confirm, static_cast<int16_t>(x), static_cast<int16_t>(y)});
 #if FREEINK_DEVICE_X4PRO
-  scribble::Result mark;
-  if (mappedInput.wasScribble(mark) && mark.kind == scribble::Kind::Strike)  // a question struck out: back to its default
-    queueForm({FormEvent::Type::Strike, Key::Confirm, mark.x, mark.y});
+  int16_t sx = 0, sy = 0;
+  if (mappedInput.wasStrike(sx, sy)) queueForm({FormEvent::Type::Strike, Key::Confirm, sx, sy});  // back to its default
 #endif
   const auto swipe = mappedInput.wasSwipe();
   if (!back && !home) {

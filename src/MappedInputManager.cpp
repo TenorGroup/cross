@@ -113,6 +113,13 @@ void MappedInputManager::stepScribble() const {
 #endif
 }
 
+bool MappedInputManager::wasStrike(int16_t& x, int16_t& y) const {
+  if (scribbleFrame.kind != scribble::Kind::Strike) return false;
+  x = scribbleFrame.x;
+  y = scribbleFrame.y;
+  return true;
+}
+
 bool MappedInputManager::wasScribble(scribble::Result& out) const {
   if (scribbleFrame.kind == scribble::Kind::None) return false;
   out = scribbleFrame;

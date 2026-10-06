@@ -180,7 +180,8 @@ void Desk::open() {
 // By place, not by turn: up and down go to the row above or below, sideways stays in the row.
 bool Desk::onKey(const Key key) {
 #if FREEINK_DEVICE_X4PRO
-  if (key == Key::SwipeDown) return onKey(Key::Back);  // no list to scroll here: down a tier, to the diary
+  // No list to scroll here: down the page is down a tier, to the diary.
+  if (key == Key::SwipeDown) return touch::tierSwipe(touchX, touchY, touchToX, touchToY) == touch::Tier::Down && onKey(Key::Back);
   if (key == Key::Tap) {
     if (touch::notebookAt(touchX, touchY).spot == touch::Spot::Back) return onKey(Key::Back);
     const int at = touch::deskAt(touchX, touchY);

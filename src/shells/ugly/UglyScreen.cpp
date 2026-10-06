@@ -12,11 +12,13 @@ void Screen::push(const Key key) {
 }
 
 #if FREEINK_DEVICE_X4PRO
-void Screen::push(const Key key, const int x, const int y) {
+void Screen::push(const Key key, const int x, const int y, const int toX, const int toY) {
   if (count >= QUEUE) return;
   const int at = (head + count) % QUEUE;
   queueX[at] = static_cast<int16_t>(x);
   queueY[at] = static_cast<int16_t>(y);
+  queueToX[at] = static_cast<int16_t>(toX);
+  queueToY[at] = static_cast<int16_t>(toY);
   push(key);
 }
 
@@ -69,7 +71,8 @@ void Screen::readTouch() {
     case Kind::Swipe: {
       const int dx = r.to.x - r.from.x, dy = r.to.y - r.from.y;
       const bool across = (dx < 0 ? -dx : dx) >= (dy < 0 ? -dy : dy);
-      push(across ? (dx < 0 ? Key::SwipeLeft : Key::SwipeRight) : (dy < 0 ? Key::SwipeUp : Key::SwipeDown), r.from.x, r.from.y);
+      push(across ? (dx < 0 ? Key::SwipeLeft : Key::SwipeRight) : (dy < 0 ? Key::SwipeUp : Key::SwipeDown), r.from.x, r.from.y,
+           r.to.x, r.to.y);
       break;
     }
     case Kind::Strike:
@@ -121,6 +124,8 @@ void Screen::loop() {
 #if FREEINK_DEVICE_X4PRO
       touchX = queueX[head];
       touchY = queueY[head];
+      touchToX = queueToX[head];
+      touchToY = queueToY[head];
 #endif
       head = static_cast<uint8_t>((head + 1) % QUEUE);
       --count;

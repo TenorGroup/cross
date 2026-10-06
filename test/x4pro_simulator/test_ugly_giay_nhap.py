@@ -2,8 +2,8 @@
 
 A strike forgets a Recent book, takes a favourite off and puts a form's question back to its default; a ring
 pins and leaves a pin as it is; on the top band a strike hides the battery or the clock and a ring shows it;
-a scribble nobody can read earns a new line of abuse each time; up from the diary is the desk, down from the
-desk the diary. Runs the X4 Pro simulator (pio run -e simulator_x4pro). X4PRO_PROGRAM picks another build.
+a scribble nobody can read earns a new line of abuse each time (Settings, Text and Status bar forms alike for
+the strike); up from the diary is the desk, down from the desk the diary, 120 px or more. Runs the X4 Pro simulator (pio run -e simulator_x4pro). X4PRO_PROGRAM picks another build.
 """
 import json
 import re
@@ -32,7 +32,7 @@ def ring(cx, cy, rx, ry, ms=500):
     return f'STROKE:{ms},' + ','.join(map(str, pts))
 
 
-def run(steps, shots=(), **settings):
+def run(steps, shots=(), pins=None, **settings):
     """Each step 2.5 s after the one before. Returns (card files, log, shots)."""
     t, items = 2500, []
     for s in steps:
@@ -40,6 +40,8 @@ def run(steps, shots=(), **settings):
         t += 2500
     items.append(f'{t + 500}:QUIT')
     card = Card(shell=1, **settings)
+    if pins:
+        (card.store / 'menu-customization.json').write_text(json.dumps({'version': 1, 'tabs': {}, 'pins': pins}))
     try:
         log, images = card.run(';'.join(items), shots=[(2500 * (i + 1) + 1500, n) for i, n in shots], timeout=120)
         recent = [b['path'] for b in json.loads((card.store / 'recent.json').read_text())['books']]
@@ -93,13 +95,25 @@ def main():
     if files['settings'].get('globalStatusBarMode') == 1:
         wrong.append('a strike on a form question left its value')
 
-    # N1: up from the diary is the desk, down from the desk the diary.
+    # The Text and Status bar forms, opened from a pinned setting: the question struck out goes back too.
+    to_pin = [RECENT, DESK, FAVORITES, 'TAP:240,176']
+    files, _, _ = run(to_pin + ['STROKE:400,30,550,330,554,40,560'], pins=['text/hyphenationEnabled'], hyphenationEnabled=1)
+    if files['settings'].get('hyphenationEnabled') == 1:  # off by default
+        wrong.append('a strike on a Text form question left its value')
+    files, _, _ = run(to_pin + ['STROKE:400,30,480,330,484,40,490'], pins=['status/statusBarClock'], statusBarClock=2)
+    if files['settings'].get('statusBarClock') == 2:
+        wrong.append('a strike on a Status bar form question left its value')
+
+    # N1: up from the diary is the desk, down from the desk the diary; a short swipe (70 px) is no step.
     _, log, _ = run(['SWIPE:240,520,240,250,250'])
     if entered(log)[-1] != 'UglyDesk':
         wrong.append(f'up from the diary went to {entered(log)[-1]}')
     _, log, _ = run([RECENT, DESK, 'SWIPE:240,300,240,600,250'])
     if entered(log)[-1] != 'UglyDiary':
         wrong.append(f'down from the desk went to {entered(log)[-1]}')
+    _, log, _ = run(['SWIPE:240,400,240,330,250'])
+    if entered(log)[-1] != 'UglyDiary':
+        wrong.append(f'a 70 px swipe up from the diary went to {entered(log)[-1]}')
 
     assert not wrong, '\n'.join(wrong)
     print('GREEN: ugly scratch paper: strike forgets, unpins, hides, resets; ring pins, keeps, shows; abuse rotates; N1')

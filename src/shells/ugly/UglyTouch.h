@@ -235,6 +235,18 @@ inline bool hintHolds(const Sheet sheet) {
 inline constexpr unsigned USED_STRIKE = 1, USED_RING = 2;
 inline bool teachScribbles(const unsigned used) { return (used & (USED_STRIKE | USED_RING)) != (USED_STRIKE | USED_RING); }
 
+// ---- a swipe up or down on a tier with no list to scroll (the diary, the desk) ----
+// Up the page is up a tier. It starts clear of the bands the edges own (the light panel from the top, Home from
+// the bottom), runs at least TIER_SWIPE_PX and leans at most 30 degrees off upright: anything else is no step.
+inline constexpr int TIER_SWIPE_PX = 120, TIER_TOP = 112, TIER_BOTTOM = 688;
+enum class Tier : unsigned char { None, Up, Down };
+inline Tier tierSwipe(const int x0, const int y0, const int x1, const int y1) {
+  if (y0 <= TIER_TOP || y0 >= TIER_BOTTOM) return Tier::None;
+  const int dy = y1 - y0, adx = x1 > x0 ? x1 - x0 : x0 - x1, ady = dy < 0 ? -dy : dy;
+  if (ady < TIER_SWIPE_PX || adx * 1000 > 577 * ady) return Tier::None;  // 577/1000 = tan 30 degrees
+  return dy < 0 ? Tier::Up : Tier::Down;
+}
+
 // ---- a mark on the top band: the clock and the battery ----
 // The band and a little below it, for a ring drawn round a corner. The battery is drawn from x 412, the clock
 // ends at x 400.

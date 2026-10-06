@@ -54,6 +54,8 @@ class MappedInputManager {
   // in logical px. Fed in update() from the same contact the SDK reads off the GT911 on this
   // task, so it adds no bus traffic. A stroke a second finger joined decides nothing.
   bool wasScribble(scribble::Result& out) const;
+  // A strike decided this frame (out along a line and back), aimed at (x, y): a form puts that question back.
+  bool wasStrike(int16_t& x, int16_t& y) const;
   // The stroke that ended this frame (its samples), or nullptr: for a screen that draws it back.
   const scribble::Stroke* endedStroke() const { return scribbler.endedStroke(); }
 #ifdef TENOR_PRESS_PROBE
