@@ -26,6 +26,8 @@
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
 #include "network/WebDavReplace.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyNote.h"
 
 namespace fui = freeink::ui;
 
@@ -1139,8 +1141,46 @@ std::string FontDownloadActivity::formatSize(size_t bytes) {
   return buf;
 }
 
+// The waits of this screen as notes. The two lists wait for the shared ugly list.
+bool FontDownloadActivity::renderUglyNote() const {
+  char line[160];
+  std::string detail;
+  int percent = -1;
+  ugly::Hints hints;
+  hints.back = true;
+  switch (state_) {
+    case LOADING_MANIFEST:
+      snprintf(line, sizeof(line), "%s", tr(STR_UGLY_FONT_LOADING));
+      hints.back = false;
+      break;
+    case DOWNLOADING:
+      snprintf(line, sizeof(line), tr(STR_UGLY_FONT_DOWNLOADING), str(families_[downloadingFamilyIndex_].name),
+               static_cast<int>(currentFileIndex_ + 1), static_cast<int>(currentFileTotal_));
+      if (fileTotal_ > 0) {
+        percent = static_cast<int>(static_cast<uint64_t>(fileProgress_) * 100 / fileTotal_);
+      } else {
+        detail = formatSize(fileProgress_);
+      }
+      break;
+    case COMPLETE:
+      snprintf(line, sizeof(line), "%s", tr(STR_UGLY_FONT_DONE));
+      break;
+    case ERROR:
+      snprintf(line, sizeof(line), "%s", tr(STR_UGLY_FONT_FAILED));
+      detail = errorMessage_;
+      hints.confirm = true;
+      break;
+    default:
+      return false;
+  }
+  ugly::notePage(renderer, mappedInput, tr(STR_FONT_BROWSER), line, detail.empty() ? nullptr : detail.c_str(), percent,
+                 hints);
+  return true;
+}
+
 void FontDownloadActivity::render(RenderLock&&) {
   progressRenderGate_.renderStarted();
+  if (shell::uglyParts() && renderUglyNote()) return;
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();

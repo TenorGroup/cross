@@ -4,6 +4,7 @@ Founder decisions under test (06/10/2026): a device on tenor/ugly with no name o
 network (hotspot, mDNS); a name the user typed still wins; tenor/cross keeps "tenor-cross".
 """
 import re
+import shutil
 import unittest
 
 from ugly_common import Card, entered, ink
@@ -142,6 +143,31 @@ class UglyWifiTest(unittest.TestCase):
     def test_a_failed_join_says_so(self):
         said, _, _ = self.wifi(CROSSPOINT_SIM_WIFI_CONNECT='fail')
         self.assertEqual(said[-1:], ['Nối không được. Gõ sai mật khẩu chứ gì.'])
+
+
+
+# Diary -> Settings page -> Reader (fourth row) -> Manage fonts (second question).
+TO_THE_FONTS = ['UP'] + ['RIGHT'] * 3 + ['CONFIRM', 'RIGHT', 'CONFIRM']
+
+
+class UglyFontTest(unittest.TestCase):
+    def test_the_font_list_load_and_its_failure_are_notes(self):
+        # The font server answers with a list nobody can read: the list is asked for and the ask fails, offline.
+        card = Card()
+        self.addCleanup(card.close)
+        mock = card.sd.parent / (card.sd.name + '-http')
+        mock.mkdir()
+        self.addCleanup(shutil.rmtree, mock)
+        (mock / 'fonts.json').write_text('not a list of fonts')
+        script, t = keys(*TO_THE_FONTS, 'WAIT:2500', 'CONFIRM', 'WAIT:4000')
+        log, shots = card.run(script + ';%d:QUIT' % (t + 800), [(t, 'fonts')], timeout=60,
+                              CROSSPOINT_SIM_HTTP_MOCK_ROOT=str(mock))
+        self.assertIn('FontDownload', entered(log), log[-2000:])
+        notes = [m.groupdict() for m in NOTE_FRAME.finditer(log) if m['title'] != 'Mạng Wi-Fi']
+        said = [n['line'] for i, n in enumerate(notes) if i == 0 or n['line'] != notes[i - 1]['line']]
+        self.assertEqual(said, ['Đang tải danh sách font. Gom cho lắm vào.', 'Cài font xịt.'], log[-3000:])
+        self.assertGreater(ink(shots['fonts'], (40, 300, 500, 500)), 500)
+        print('font note frames ms:', [n['ms'] for n in notes])
 
 
 if __name__ == '__main__':

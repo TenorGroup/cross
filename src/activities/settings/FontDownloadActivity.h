@@ -185,4 +185,5 @@ class FontDownloadActivity final : public UiListActivity {
   size_t totalDownloadSize() const;
   size_t totalUpdateSize() const;
   static std::string formatSize(size_t bytes);
+  bool renderUglyNote() const;
 };
