@@ -203,6 +203,20 @@ class UglyPartsX3(unittest.TestCase):
         end, clock = map(int, found[-1])
         self.assertLessEqual(end, clock - 10, 'the word over the key runs into the clock')
 
+    def test_the_loading_notice_of_the_reader_says_it_in_the_voice_of_the_shell(self):
+        # A book with a cover, opened from the diary and closed: its thumbnails are written under the loading notice.
+        from test_home_card_v1011 import epub_with_cover
+        card = Card(books=[('Cuốn có bìa', 'bia.epub')])
+        try:
+            epub_with_cover(card.sd / 'bia.epub')
+            log, _ = card.run('1500:CONFIRM;5000:BACK;9000:QUIT', timeout=120)
+        finally:
+            card.close()
+        notices = re.findall(r'part=notice text=(.*)', log)
+        self.assertTrue(notices, log[-2000:])
+        self.assertNotIn('Đang tải', notices, 'the reader says "Đang tải" in the words of tenor/cross')
+        self.assertIn('Đợi tí, đang lục đồ.', notices, 'the loading notice of the shell (STR_UGLY_LOADING)')
+
 
 if __name__ == '__main__':
     unittest.main()

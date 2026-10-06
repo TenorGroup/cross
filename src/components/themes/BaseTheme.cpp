@@ -382,7 +382,7 @@ Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message, cons
     if (lines > 1) ugly::paragraph(renderer, ugly::Size::S30, x + (w - tw) / 2, y + 50, room, 36, said);
     else ugly::text(renderer, ugly::Size::S30, x + (w - tw) / 2, y + 50, words.c_str());
 #ifdef UGLY_FRAME_LOG
-    LOG_INF("UGLY", "part=notice");
+    LOG_INF("UGLY", "part=notice text=%s", message ? message : "");
 #endif
     if (display) renderer.displayBuffer();
     return Rect{x, y, w, h};

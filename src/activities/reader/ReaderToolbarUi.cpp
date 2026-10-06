@@ -15,6 +15,7 @@
 #include "components/icons/readerToolbarIcons.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyChrome.h"
+#include "shells/ugly/UglySleep.h"
 #include "shells/ugly/UglyInk.h"
 
 namespace fui = freeink::ui;
@@ -663,6 +664,7 @@ const char* readerugly::notice(const StrId id) {
       case StrId::STR_BOOKMARK_ADDED: return tr(STR_UGLY_BOOKMARK_ADDED);
       case StrId::STR_BOOKMARK_REMOVED: return tr(STR_UGLY_BOOKMARK_REMOVED);
       case StrId::STR_INDEXING: return tr(STR_UGLY_INDEXING);
+      case StrId::STR_LOADING_POPUP: return ugly::loadingNotice();
       default: break;
     }
   }
