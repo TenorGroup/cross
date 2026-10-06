@@ -58,8 +58,8 @@ def main():
         assert same(plain, after), 'the button left the tip or turned the page'
         assert same(plain, reopened), 'the tip came back after the button'
         assert tip_on(h) == 0, 'the button did not keep the tip hidden'
-        # Closing the tip costs a page turn's refresh: the same full waveforms as opening and turning one
-        # page without the tip (founder 06/10: no 2,6 s close).
+        # Closing the tip costs exactly 1 full refresh more than turning the page without it: the founder
+        # saw the map's lines after a page turn's refresh (06/10), and a second one would be waste.
         counts = []
         for name, tip in (('trace-tip', 1), ('trace-plain', 0)):
             folder = root / name
@@ -67,7 +67,7 @@ def main():
             run(folder, OPEN + ';7000:TAP:300,200', [9000], settings=dict(readerTapTip=tip),
                 sim_env=dict(CROSSPOINT_SIM_PANEL_TRACE=str(trace)))
             counts.append(full_refreshes(trace))
-        assert counts[0] == counts[1], f'closing the tip ran {counts[0] - counts[1]} extra full refreshes'
+        assert counts[0] == counts[1] + 1, f'closing the tip ran {counts[0] - counts[1]} extra full refreshes, not 1'
     print('GREEN: X4 Pro tap tip: shown, a page tap closes it without a turn, back next open, the button hides it')
 
 
