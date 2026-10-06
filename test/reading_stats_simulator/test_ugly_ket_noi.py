@@ -170,5 +170,25 @@ class UglyFontTest(unittest.TestCase):
         print('font note frames ms:', [n['ms'] for n in notes])
 
 
+
+# Diary -> Settings page -> Other (tenth row) -> Check for updates (fifth question).
+TO_THE_UPDATE = ['UP'] + ['RIGHT'] * 9 + ['CONFIRM'] + ['RIGHT'] * 4 + ['CONFIRM']
+
+
+class UglyOtaTest(unittest.TestCase):
+    def test_checking_and_no_update_are_notes(self):
+        # The simulator's update check never installs: it reports no update.
+        card = Card()
+        self.addCleanup(card.close)
+        script, t = keys(*TO_THE_UPDATE, 'WAIT:2500', 'CONFIRM', 'WAIT:3000')
+        log, shots = card.run(script + ';%d:QUIT' % (t + 800), [(t, 'update')], timeout=90)
+        self.assertIn('OtaUpdate', entered(log), log[-2000:])
+        notes = [m.groupdict() for m in NOTE_FRAME.finditer(log) if m['title'] == 'Cập nhật']
+        said = [n['line'] for i, n in enumerate(notes) if i == 0 or n['line'] != notes[i - 1]['line']]
+        self.assertEqual(said, ['Đang dò bản mới. Ngồi im.', 'Bản mới nhất rồi. Lỗi là ở mày.'], log[-3000:])
+        self.assertGreater(ink(shots['update'], (40, 300, 500, 500)), 1000)
+        print('update note frames ms:', [n['ms'] for n in notes])
+
+
 if __name__ == '__main__':
     unittest.main()
