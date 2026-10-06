@@ -12,6 +12,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "activities/reader/ReaderUtils.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 
@@ -182,16 +183,20 @@ void BlePageTurnerActivity::rebuildRows() {
   // A found device or bond appearing moves the rows: the selection stays on its row.
   int16_t keep = selectCode_;
   if (keep < 0 && nav.selected >= 0 && nav.selected < static_cast<int>(rowItems_.size())) {
-    keep = rowItems_[nav.selected].actionValue;
+    keep = rowCodes_[nav.selected];
   }
   selectCode_ = -1;
   rowItems_.clear();
+  rowCodes_.clear();
 
   const auto them = [this](const char* label, const int16_t code) {
     fui::ListItem item;
     item.label = label;
-    item.actionValue = code;
+    // A tap reports the row's index, as on every list (the frame and the scroll read rows by index too);
+    // what the row does is its code beside it.
+    item.actionValue = static_cast<int16_t>(rowItems_.size());
     rowItems_.push_back(item);
+    rowCodes_.push_back(code);
   };
 
   if (bindMode_) {
@@ -223,12 +228,13 @@ void BlePageTurnerActivity::rebuildRows() {
     }
     if (bonds == 0) {
       them(tr(STR_BLE_NO_DEVICES), ROW_NO_DEVICE);
-      rowItems_.back().enabled = false;
+      // Touch: a disabled row registers no rect, and the frame left it outside; a tap on it does nothing.
+      rowItems_.back().enabled = tenorchrome::kTouchShell;
       rowItems_.back().sectionHeading = tr(STR_BLE_PAIRED_DEVICES);
     }
   }
   for (int i = 0; keep >= 0 && i < static_cast<int>(rowItems_.size()); ++i) {
-    if (rowItems_[i].actionValue == keep) {
+    if (rowCodes_[i] == keep) {
       nav.selected = i;
       break;
     }
@@ -266,12 +272,17 @@ void BlePageTurnerActivity::refreshValues() {
     statusValue_ += " - ";  // gop hai manh thanh mot dong
     statusValue_ += duoi;
   }
-  for (auto& item : rowItems_) {
-    const int16_t code = item.actionValue;
+  for (size_t i = 0; i < rowItems_.size(); ++i) {
+    auto& item = rowItems_[i];
+    const int16_t code = rowCodes_[i];
     if (code == ROW_ENABLE) {
       item.value = SETTINGS.ble.enabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     } else if (code == ROW_STATUS) {
-      item.value = statusValue_.c_str();
+      // Touch: the status line is the row itself; beside a label it was cut to "Tra...".
+      if (tenorchrome::kTouchShell)
+        item.label = statusValue_.c_str();
+      else
+        item.value = statusValue_.c_str();
     } else if (code == ROW_SCAN) {
       item.label = backend::scanning() ? tr(STR_BLE_STOP_SCAN) : tr(STR_BLE_SCAN);
     } else if (code >= ROW_BIND_NEXT && code <= ROW_BIND_SAVE_QUOTE) {
@@ -461,7 +472,7 @@ void BlePageTurnerActivity::activateIndex(const int index) {
   // Mo popup hoac doi trang thai radio deu ve mot be mat khac: vet sang con lai
   // se lam xam mot o khong lien quan.
   app.clearTapFlash();
-  const int16_t code = rowItems_[index].actionValue;
+  const int16_t code = rowCodes_[index];
   const bool hangGan = code >= ROW_BIND_NEXT && code <= ROW_BIND_SAVE_QUOTE;
   // Mot nhip vao hang khac la nguoi dung doi y: thong bao cu va luot cho cu het hieu luc.
   if (!hangGan) {
@@ -506,7 +517,7 @@ void BlePageTurnerActivity::onRowLongPress(const int index) { clearBindForRow(in
 // "giu tren hang gan nut la xoa gan" chi duoc phat bieu mot lan.
 void BlePageTurnerActivity::clearBindForRow(const int index) {
   if (index < 0 || index >= static_cast<int>(rowItems_.size())) return;
-  const int16_t code = rowItems_[index].actionValue;
+  const int16_t code = rowCodes_[index];
   if (code >= ROW_BIND_NEXT && code <= ROW_BIND_SAVE_QUOTE) {
     clearBind(static_cast<bleturner::Action>(code - ROW_BIND_NEXT + 1));
   }
