@@ -295,7 +295,11 @@ void EpubReaderBookmarksActivity::render(RenderLock&&) {
       contentX + (contentWidth - renderer.getTextWidth(UI_12_FONT_ID, tr(STR_BOOKMARKS), EpdFontFamily::BOLD)) / 2;
   renderSettledList(activeNav(), [&] {
     renderer.clearScreen();
-    renderer.drawText(UI_12_FONT_ID, titleX, 15 + contentY, tr(STR_BOOKMARKS), true, EpdFontFamily::BOLD);
+    // Touch: the name goes to the dynamic bar; the top of the screen is the status strip's.
+    if (tenorchrome::kTouchShell)
+      tenorchrome::noteScreenTitle(tr(STR_BOOKMARKS));
+    else
+      renderer.drawText(UI_12_FONT_ID, titleX, 15 + contentY, tr(STR_BOOKMARKS), true, EpdFontFamily::BOLD);
     renderUi();
   });
 
