@@ -16,9 +16,9 @@ constexpr int LINE = 26;  // a line of the S22 pen
 constexpr int MARK = 28;  // room of one mark at the row's end
 }  // namespace
 
-void words(const GfxRenderer& r, const fui::Rect& box, const char* text, const fui::TextAlign align, const bool locked,
-           const int maxLines) {
-  if (!text || !*text || box.empty()) return;
+fui::Rect words(const GfxRenderer& r, const fui::Rect& box, const char* text, const fui::TextAlign align,
+                const bool locked, const int maxLines) {
+  if (!text || !*text || box.empty()) return {};
   const int asc = ugly::ascent(ugly::Size::S22);
   fui::Rect rect = box;
   if (align == fui::TextAlign::Right) {
@@ -31,6 +31,7 @@ void words(const GfxRenderer& r, const fui::Rect& box, const char* text, const f
   const int left = std::max<int>(rect.x, clip[0]), top = std::max<int>(rect.y - 4, clip[1]);
   r.setClipRect(left, top, std::max(0, std::min<int>(rect.right(), clip[0] + clip[2]) - left),
                 std::max(0, std::min<int>(rect.bottom() + 6, clip[1] + clip[3]) - top));
+  fui::Rect ink = rect;
   if (maxLines > 1 && rect.height >= 2 * LINE && ugly::width(r, ugly::Size::S22, text) > rect.width) {
     // Words the layout let wrap, in a box of more lines: wrapped from its top, as many lines as it holds.
     ugly::paragraph(r, ugly::Size::S22, rect.x, rect.y + asc, rect.width, LINE, text);
@@ -43,8 +44,10 @@ void words(const GfxRenderer& r, const fui::Rect& box, const char* text, const f
     const int base = rect.y + (rect.height + asc) / 2;
     ugly::text(r, ugly::Size::S22, x, base, line.c_str());
     if (locked) ugly::line(r, x - 2, base - asc / 3, x + w + 2, base - asc / 3 - 2, 840, 2);
+    ink = {static_cast<int16_t>(x), static_cast<int16_t>(base - asc), static_cast<int16_t>(w), static_cast<int16_t>(asc + 6)};
   }
   r.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+  return ink;
 }
 
 int marksWidth(const GfxRenderer& r, const Marks& m) {
@@ -68,8 +71,11 @@ void marks(const GfxRenderer& r, const fui::Rect& box, const Marks& m) {
     const char* state = m.toggleOn ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     ugly::text(r, ugly::Size::S22, x + 10 - ugly::width(r, ugly::Size::S22, state), cy + ugly::ascent(ugly::Size::S22) / 2, state);
   }
-  if (m.selected)
+  if (!m.selected) return;
+  if (m.around.empty())
     ugly::circle(r, ugly::Circle::Row, {box.x + 5, box.y + 5, box.right() - 5, box.bottom() - 5}, 0, 0, 2);
+  else  // round the words, padded like the circles of the notebook and the answer sheet
+    ugly::circle(r, ugly::Circle::Row, {m.around.x, m.around.y, m.around.right(), m.around.bottom()}, 12, 8, 2);
 }
 
 void row(const GfxRenderer& r, const fui::Rect& box, const Row& row) {
@@ -86,15 +92,16 @@ void row(const GfxRenderer& r, const fui::Rect& box, const Row& row) {
           fui::TextAlign::Right, row.locked);
     label.width = static_cast<int16_t>(std::max(0, label.width - vw - 12));
   }
+  Marks m = row.marks;
   if (row.subtitle && *row.subtitle) {
     const int16_t half = static_cast<int16_t>(label.height / 2);
-    words(r, {label.x, label.y, label.width, half}, row.label, fui::TextAlign::Left, row.locked);
+    m.around = words(r, {label.x, label.y, label.width, half}, row.label, fui::TextAlign::Left, row.locked);
     words(r, {label.x, static_cast<int16_t>(label.y + half), label.width, static_cast<int16_t>(label.height - half)},
           row.subtitle, fui::TextAlign::Left, row.locked);
   } else {
-    words(r, label, row.label, fui::TextAlign::Left, row.locked);
+    m.around = words(r, label, row.label, fui::TextAlign::Left, row.locked);
   }
-  marks(r, box, row.marks);
+  marks(r, box, m);
 }
 
 }  // namespace uglychrome

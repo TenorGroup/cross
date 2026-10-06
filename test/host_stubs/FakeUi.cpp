@@ -124,7 +124,9 @@ namespace shell {
 Kind current() { return Kind::Cross; }
 }  // namespace shell
 namespace uglychrome {
-void words(const GfxRenderer&, const freeink::ui::Rect&, const char*, freeink::ui::TextAlign, bool, int) {}
+freeink::ui::Rect words(const GfxRenderer&, const freeink::ui::Rect&, const char*, freeink::ui::TextAlign, bool, int) {
+  return {};
+}
 void marks(const GfxRenderer&, const freeink::ui::Rect&, const Marks&) {}
 }  // namespace uglychrome
 

@@ -10,7 +10,7 @@ import re
 import unittest
 import zipfile
 
-from ugly_common import Card, entered
+from ugly_common import Card, digest, entered
 
 GAP, START, SETTLE = 700, 1500, 1800
 
@@ -98,6 +98,29 @@ class UglyPartsX3(unittest.TestCase):
     def test_question_box(self):
         self.assertHand('ask', 'ask')
 
+    def test_the_cursor_circle_keeps_off_the_value(self):
+        # The current chapter is written "Đang đọc" at the row's right end; the circle on the cursor row goes round the
+        # label, so the value has the same pixels with the cursor on its row and on the next one.
+        keys, books, _ = SCREENS['contents']
+        card = Card(books=books)
+        try:
+            book(card.sd / 'sach.epub')
+            t, parts = START, []
+            for k in keys:
+                if k.startswith('WAIT:'):
+                    t += int(k[5:])
+                    continue
+                parts.append('%d:%s' % (t, k))
+                t += GAP
+            on = t - GAP + SETTLE
+            parts += ['%d:RIGHT' % (on + 300), '%d:QUIT' % (on + 2600)]
+            log, shots = card.run(';'.join(parts), [(on, 'on'), (on + 2000, 'below')], timeout=120)
+        finally:
+            card.close()
+        value, label = (330, 128, 528, 188), (0, 128, 330, 188)
+        self.assertNotEqual(digest(shots['on'].crop(label)), digest(shots['below'].crop(label)), 'the cursor left the first row')
+        self.assertEqual(digest(shots['on'].crop(value)), digest(shots['below'].crop(value)),
+                         'the circle of the cursor row crosses the value at its right end')
 
 if __name__ == '__main__':
     unittest.main()
