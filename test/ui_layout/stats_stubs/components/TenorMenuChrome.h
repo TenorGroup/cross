@@ -3,6 +3,7 @@
 class GfxRenderer;
 namespace tenorchrome {
 constexpr bool kTouchShell = false;
+constexpr bool roundFrames() { return kTouchShell; }
 constexpr int FOOT_BACK_X = 16;
 inline void drawPanel(const GfxRenderer&, int, int) {}
 }  // namespace tenorchrome

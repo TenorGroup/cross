@@ -422,7 +422,7 @@ void UiListActivity::navigateButtons() {
 }
 
 void UiListActivity::frameRows(fui::ListProps& props) {
-  rowsFramed = tenorchrome::kTouchShell && listFramed();
+  rowsFramed = tenorchrome::roundFrames() && listFramed();
   if (!rowsFramed) {
     // Buttons (X3/X4): the row past the last full one shows its top, faded (fadeMoreBelow), in place of a "more"
     // chevron.
@@ -459,11 +459,6 @@ UiListActivity::RowFrameLines UiListActivity::rowFrameLines(const int rowGap) {
   // from the first and last rows as a rule is from the rows beside it.
   const int rule = (std::max(0, rowGap) + 1) / 2;
   return {rule, rule + 1, std::max(0, rowGap) - rule + 2};
-}
-
-void UiListActivity::drawRowRule(const GfxRenderer& renderer, const int y, const int x0, const int x1) {
-  for (int x = x0; x < x1; ++x)
-    if (((x + y) & 1) == 0) renderer.drawPixel(x, y, true);
 }
 
 void UiListActivity::reserveRowFrame(UiScreen& screen, const int rowGap) {
@@ -517,7 +512,7 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
       grouped = true;
     } else if (i > n.top) {
       // Grey dotted rule from the text's edge, over every row but the first.
-      drawRowRule(renderer, r.y - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
+      tenorchrome::drawRowRule(renderer, r.y - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
                   renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
     }
     last = r;
@@ -545,7 +540,7 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   const int ringBottom = frameGoesOn ? std::max(fullBottom, floor) : fullBottom;
   tenorchrome::drawPanel(renderer, lastTop, ringBottom - lastTop);
   if (frameGoesOn && floor > fullBottom)
-    drawRowRule(renderer, last.y + last.height + rowFrameGap - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
+    tenorchrome::drawRowRule(renderer, last.y + last.height + rowFrameGap - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
                 renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
   // The scroll bar inside the frame's full rows, the shared drawer's round-frame form. A page of several frames
   // keeps it inside the tallest of them, never across the gaps between frames (rule 13).

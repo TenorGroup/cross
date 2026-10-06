@@ -502,7 +502,7 @@ class OptionPopup {
       cursor += lh;
     }
     const int rowsTop = y + PAD + headH;
-    if (headH) drawRule(renderer, rowsTop - 1, x + TEXT_X, x + w - TEXT_X);
+    if (headH) tenorchrome::drawRowRule(renderer, rowsTop - 1, x + TEXT_X, x + w - TEXT_X);
     for (int r = 0; r < rows; ++r) {
       const int i = first + r;
       const int ry = rowsTop + r * ROW;
@@ -519,7 +519,7 @@ class OptionPopup {
           tenorchrome::drawBarIcon(renderer, icon_row_chosen_24.bits, MARK, MARK, x + w - TEXT_X - MARK,
                                    ry + (ROW - MARK) / 2, true);
       }
-      if (r + 1 < rows) drawRule(renderer, ry + ROW - 1, x + TEXT_X, x + w - TEXT_X);
+      if (r + 1 < rows) tenorchrome::drawRowRule(renderer, ry + ROW - 1, x + TEXT_X, x + w - TEXT_X);
       frame.hit(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(ry), static_cast<int16_t>(w), static_cast<int16_t>(ROW)},
                 ACTION_OPTION, static_cast<int16_t>(i), fui::InputTouch);
     }
@@ -530,14 +530,6 @@ class OptionPopup {
                                    6, 0, 6, RADIUS);
   }
 
- public:
-  // The grey dotted rule between 2 rows, the list frames' (every other pixel).
-  static void drawRule(const GfxRenderer& renderer, const int y, const int x0, const int x1) {
-    for (int px = x0; px < x1; ++px)
-      if (((px + y) & 1) == 0) renderer.drawPixel(px, y, true);
-  }
-
- private:
 
   // Every option stays selectable, not only the first MAX_OPTIONS: longer lists page (see render).
   // An empty list is dismissed by the first handleInput().

@@ -1256,9 +1256,7 @@ void WifiSelectionActivity::drawRowFrame() const {
       top = r.y;
     } else {
       gap = r.y - bottom;
-      const int y = bottom + gap / 2;
-      for (int x = x0; x < x1; ++x)
-        if (((x + y) & 1) == 0) renderer.drawPixel(x, y, true);
+      tenorchrome::drawRowRule(renderer, bottom + gap / 2, x0, x1);
     }
     bottom = r.y + r.height;
   }

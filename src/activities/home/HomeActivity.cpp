@@ -735,16 +735,15 @@ bool HomeActivity::buildSettingsGroups(UiScreen& screen) {
     const auto& rows = geometry.rows[group];
     const int count = group == 0 ? settingsOrder.readingCount : settingsOrder.count - settingsOrder.readingCount;
     if (count == 0) continue;
-    if (tenorchrome::kTouchShell) {
-      // Touch: the ring and the grey rules of every framed list, so each row has the same height between its lines.
+    // Touch: the ring and the grey rules of every framed list, so each row has the same height between its lines.
+    // The button readers keep their groups unframed (founder 06/10/2026).
+    if (tenorchrome::roundFrames()) {
       const auto lines = rowFrameLines(geometry.rowGap);
       renderer.drawRoundedRect(frame.x, rows.y - lines.top, frame.width, rows.height + lines.top + lines.bottom, 2,
                                geometry.radius, true);
       for (int k = 1; k < count; ++k)
-        drawRowRule(renderer, rows.y + k * (geometry.rowHeight + geometry.rowGap) - lines.rule, frame.x + 16,
-                    frame.x + frame.width - 17);
-    } else {
-      renderer.drawRoundedRect(frame.x, frame.y, frame.width, frame.height, 2, geometry.radius, true);
+        tenorchrome::drawRowRule(renderer, rows.y + k * (geometry.rowHeight + geometry.rowGap) - lines.rule,
+                                 frame.x + 16, frame.x + frame.width - 17);
     }
     Rows context{this, offset};
     props.rowProviderCtx = &context;
