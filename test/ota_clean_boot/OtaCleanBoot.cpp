@@ -234,6 +234,10 @@ struct OptionPopup {
     ++shown;
     chosen = std::move(onChoice);
   }
+  void show(const char* title, const char*, const char* const* options, int count, int current,
+            std::function<void(int)> onChoice) {
+    show(title, options, count, current, std::move(onChoice));
+  }
   bool processRender(FakeRenderer&, const MappedInputManager&) { return false; }
 };
 

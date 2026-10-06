@@ -204,13 +204,22 @@ void EpubReaderBookmarksActivity::showDeleteConfirmation() {
   }
   confirmingDelete = true;
   const char* options[] = {tr(STR_CANCEL), tr(STR_DELETE)};
-  confirmPopup.show(tr(STR_CONFIRM_DELETE_BOOKMARK), options, 2, -1, [this](int idx) {
+  // Touch: a question over the bar with its one action, the bookmark named in it; "<" or a tap outside cancels.
+  constexpr int skip = tenorchrome::kTouchShell ? 1 : 0;
+  const auto onSelect = [this](int idx) {
     confirmingDelete = false;
-    if (idx == 1) {
+    if (idx + skip == 1) {
       deleteSelectedBookmark();
     }
     requestUpdate();
-  });
+  };
+  if (tenorchrome::kTouchShell) {
+    const auto& b = bookmarks[nav.selected];
+    confirmPopup.show(tr(STR_CONFIRM_DELETE_BOOKMARK), (b.name.empty() ? b.summary : b.name).c_str(), options + skip,
+                      2 - skip, -1, onSelect);
+  } else {
+    confirmPopup.show(tr(STR_CONFIRM_DELETE_BOOKMARK), options, 2, -1, onSelect);
+  }
   requestUpdate();
 }
 

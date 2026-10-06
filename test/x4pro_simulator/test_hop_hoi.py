@@ -4,11 +4,13 @@ It offers its one action ("Delete", "Clear"); "<" on the bar or a tap outside ca
 block. Clear cache used to draw its warning across the screen edges and cut it with the dialog ("Thao ta...").
 Runs the X4 Pro simulator (pio run -e simulator_x4pro). X4PRO_PROGRAM picks another build.
 """
+import json
 import tempfile
 from pathlib import Path
 
 from test_thanh_day import run, ink, BAR_TOP, TABS_X
 from test_hop_chon import black_rows, PANEL_FOOT
+from test_thanh_ngang import bookmark
 
 BAR_Y = BAR_TOP + 30
 
@@ -41,6 +43,31 @@ def main():
         assert 'Entering activity: Confirmation' in (f2 / 'simulator.log').read_text(), 'fixture never asked'
         assert stands_over_bar(ask), 'the Confirmation question does not stand over the bar'
         assert not black_rows(ask, 40, PANEL_FOOT), 'a black Cancel block in the Confirmation question'
+
+        # Reader > the foot band > Favourites > Bookmarks > hold the bookmark > Delete: the delete question is a
+        # question too, over the bar with its one action (no "Cancel" row); its action deletes.
+        f3 = Path(tmp) / 'bookmark'
+        f3.mkdir()
+        to_ask = ('3000:TAP:240,300;7000:TAP:240,775;8500:TAP:416,754;10000:TAP:240,433;12500:TAP:240,110,900;'
+                  '15000:TAP:200,278')
+        (bm_ask,) = run(f3, to_ask, [17000], settings={'readerFavorites': [9], 'readerTapTip': 0}, write_books=bookmark)
+        assert 'Entering activity: EpubReaderBookmarks' in (f3 / 'simulator.log').read_text(), 'fixture never reached Bookmarks'
+        assert stands_over_bar(bm_ask), 'the delete bookmark question does not stand over the bar'
+        assert ink(bm_ask, (30, 140, 200, 260)) == 0, 'the delete bookmark question still hangs from the row'
+        f4 = Path(tmp) / 'bookmark-yes'
+        f4.mkdir()
+        run(f4, to_ask + f';18000:TAP:240,{PANEL_FOOT - 30}', [20000],
+            settings={'readerFavorites': [9], 'readerTapTip': 0}, write_books=bookmark)
+        saved = json.loads((f4 / 'sd/.crosspoint/bookmarks/sach_test_kerning_ligature.json').read_text())
+        assert saved['bookmarks'] == [], 'the question\'s one action did not delete the bookmark'
+
+    # The update question: the simulator never gets past Wi-Fi to it, so its call is read. On the X4 Pro it is a
+    # question (the headline form, which stands over the bar) offering Update alone, with nothing marked.
+    ota = (Path(__file__).resolve().parents[2] / 'src/activities/settings/OtaUpdateActivity.cpp').read_text()
+    assert '#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO\n  constexpr int skip = 1, preset = -1;' in ota, \
+        'the touch update question keeps Cancel or marks Update'
+    assert 'confirmPopup.show(tr(STR_NEW_UPDATE), "", options + skip, 2 - skip, preset,' in ota, \
+        'the update question is not the headline form'
     print('GREEN: X4 Pro questions stand over the bar, framed, one action')
 
 

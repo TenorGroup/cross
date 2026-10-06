@@ -105,10 +105,16 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   const char* options[] = {tr(STR_CANCEL), tr(STR_UPDATE)};
   // Default the selection to Update so the hardware Confirm button installs,
   // matching the pre-popup layout (Back = cancel, Confirm = update).
-  confirmPopup.show(tr(STR_NEW_UPDATE), options, 2, 1, [this](const int idx) {
+  // Touch: a question over the bar with its one action, nothing marked; "<" or a tap outside cancels.
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  constexpr int skip = 1, preset = -1;
+#else
+  constexpr int skip = 0, preset = 1;
+#endif
+  confirmPopup.show(tr(STR_NEW_UPDATE), "", options + skip, 2 - skip, preset, [this](const int idx) {
     // Update: this session's heap is short of Wi-Fi plus a 16 KB TLS record in one piece
     // (measured failing 10 of 10 from Home), so onExit restarts and the next boot installs.
-    restartIntoInstall = idx == 1;
+    restartIntoInstall = idx + skip == 1;
     finish();
   });
   requestUpdate();
