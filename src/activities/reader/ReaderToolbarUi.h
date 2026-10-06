@@ -39,6 +39,8 @@ class ReaderToolbarUi : public UiAppHost {
 #endif
   // Choice: value = row * kChoiceStride + the value's place along the row.
   static constexpr int kChoiceStride = 8;
+  // The tabs: 0 Contents, 1 Text, 2 More, 3 Favorites.
+  static constexpr int kToolCount = 4;
 
   struct Model {
     bool panel = false;  // false = toolbar, true = a Contents/Text/More panel
@@ -58,7 +60,7 @@ class ReaderToolbarUi : public UiAppHost {
     std::function<std::string(int)> rowValue;
     // Optional: the row in use (the font in the family list). Drawn in bold with a tick at the row end.
     std::function<bool(int)> rowMarked;
-    // X4 Pro: a row pinned to Favorites; it shows the small heart before its value.
+    // A row pinned to Favorites: touch shows the small heart before its value, buttons the pin before its name.
     std::function<bool(int)> rowPinned;
     // Drawn in the list's place when it has no rows (an empty Favorites).
     const char* emptyText = nullptr;
@@ -67,7 +69,7 @@ class ReaderToolbarUi : public UiAppHost {
     std::function<int(int)> choiceCount;
     std::function<int(int)> choiceInUse;
     std::function<const freeink::Icon*(int, int)> choiceIcon;
-    // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..2.
+    // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..3, -1 none.
     int activeTool = 0;
     // Button boards keep the theme's denser list row height (as every other
     // list does there); touch boards use FreeInkUI's finger-sized rows.

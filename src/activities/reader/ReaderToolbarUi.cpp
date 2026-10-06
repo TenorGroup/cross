@@ -15,6 +15,7 @@
 #include "components/TenorMenuChrome.h"
 #include "components/icons/readerToolbarIcons.h"
 #include "components/icons/readerToolbarTabIcons.h"
+#include "components/icons/tenorHomeTabIcons.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
 
@@ -41,10 +42,9 @@ constexpr fui::ActionId ACTION_NUMERIC = 12;
 constexpr int16_t kScrubButton = 36;  // chapter step buttons (square)
 constexpr int16_t kScrubKnob = 16;    // round knob on the 2px progress track
 constexpr int16_t kScrubGap = 12;     // air between the buttons and the track
-// Tool row: a 24px glyph centred in each slot, the active slot in an outline
-// pill. The whole slot is the tap target; the row height sets its size.
+// Tool row: a 40 px tab glyph centred in each slot (buildToolRow). The whole slot is the tap target; the
+// row height sets its size.
 constexpr int16_t kToolRowH = 80;
-constexpr int kToolCount = 3;
 // Bottom sheet height for the panels. ListNav fits whole rows in the remaining
 // list area; any spare pixels stay between the list and the switcher.
 constexpr int kPanelHeightPercent = 62;
@@ -141,9 +141,9 @@ void ReaderToolbarUi::buildToolRow(UiScreen& screen, const fui::LayoutAnchor anc
   // The tab glyphs at the tab size of tenor/cross (40 px, founder 06/10), drawn as its icon bars draw a tab:
   // the one in focus solid and bold in the round-ended ring, the others grey.
   static const freeink::Icon* const icons[] = {&icon_reader_tab_contents_40, &icon_reader_tab_text_40,
-                                               &icon_reader_tab_more_40};
+                                               &icon_reader_tab_more_40, &icon_tenor_home_favorites_40};
   static const freeink::Icon* const bolds[] = {&icon_reader_tab_contents_bold_40, &icon_reader_tab_text_bold_40,
-                                               &icon_reader_tab_more_bold_40};
+                                               &icon_reader_tab_more_bold_40, &icon_tenor_home_favorites_bold_40};
   static_assert(std::size(icons) == kToolCount && std::size(bolds) == kToolCount, "an icon a tab");
   // sideInset absorbs the difference between the two hosts' content bands
   // (the toolbar's is spaceLg-inset, the panel's is full width): the slots
@@ -410,6 +410,8 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   for (int i = 0; i < windowCount; ++i) {
     const int index = nav_.top + i;
     windowLabels_[i] = model_.rowText ? model_.rowText(index) : std::string();
+    // A row pinned to Favorites: the pin before its name, as every list of the button boards marks one.
+    if (model_.rowPinned && model_.rowPinned(index) && !shell::isUgly()) windowLabels_[i].insert(0, "\xEE\x84\x8A");
     markedLabels_[i] = model_.rowMarked && model_.rowMarked(index);
     windowValues_[i] = model_.rowValue ? model_.rowValue(index) : std::string();
     const bool choices = model_.choiceCount && model_.choiceCount(index) > 0;
@@ -429,6 +431,11 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     screen.list(listProps_);
     drawMarkedRows(screen, listRect, rowH, rowGap, windowCount);
     drawChoices(screen, listRect, rowH, rowGap, windowCount);
+  } else if (model_.emptyText) {
+    fui::TextStyle hint = tokens.bodyText;
+    hint.align = fui::TextAlign::Center;
+    hint.maxLines = 3;
+    screen.target().text(listRect.inset(fui::Insets{0, tokens.spaceLg, 0, tokens.spaceLg}), model_.emptyText, hint);
   }
 
   const int pageRows = nav_.pageRows();
@@ -842,8 +849,15 @@ void ReaderToolbarUi::paintUgly() {
       r.setClipRect(clip[0], clip[1], clip[2], clip[3]);
     }
   }
-  static constexpr StrId tools[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE};
-  for (int tool = 0; tool < 3; ++tool) {
+  static constexpr StrId tools[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE,
+                                    StrId::STR_READER_TAB_FAVORITES};
+  static_assert(std::size(tools) == kToolCount, "a name a tab");
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  constexpr int named = 3;  // as before Favorites came to the button boards (the foot bar names its own tabs)
+#else
+  constexpr int named = kToolCount;
+#endif
+  for (int tool = 0; tool < named; ++tool) {
     const auto box = app.publishedRect(ACTION_TOOL, tool);
     if (!box.empty()) {
       readerugly::text(r, box.inset(fui::Insets{0, 8, 0, 8}), I18N.get(tools[tool]), fui::TextAlign::Center);

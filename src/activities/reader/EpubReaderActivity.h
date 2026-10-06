@@ -200,8 +200,13 @@ class EpubReaderActivity final : public ReaderActivity {
   void enterTextDepth(TextDepth depth);
   // A Text row by its place on the Text panel: Font, Size and Line spacing open their level, the others step.
   void openTextRow(int row);
+  void stepMenuPointSize(int direction);
+  void applyMenuPointSize(uint8_t pointSize);
+  uint8_t enteredPointSize() const;
+#endif
   // Favorites: the pins (readermenu PIN_TEXT | text row id, or an Action) and the rows shown, the pins this
-  // book has. A hold on a Text, More or Favorites row pins it or takes it off.
+  // book has. A hold on a Text, More or Favorites row pins it or takes it off (touch: a long press; buttons:
+  // Select held readermenu::GIU_GHIM_MS).
   std::vector<uint8_t> pins;
   std::vector<uint8_t> favoriteRows;
   void loadPins();
@@ -210,10 +215,6 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string favoriteRowName(int row) const;
   std::string favoriteRowValue(int row) const;
   void activateFavoriteRow(int row);
-  void stepMenuPointSize(int direction);
-  void applyMenuPointSize(uint8_t pointSize);
-  uint8_t enteredPointSize() const;
-#endif
   std::vector<fontdoc::Ho> fontFamilies;
   void enterFontLevel();
   void leaveFontLevel();
@@ -223,6 +224,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void panelClosedLocked(bool leaving, bool frameUp);
   void pushOverlayRefresh();
   void settleOverlayRefresh();
+  void redrawSheetLocked();
   int autoTurnOption = 0;  // current auto page-turn rate index (More panel)
   std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
 

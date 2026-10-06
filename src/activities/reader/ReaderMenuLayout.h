@@ -77,6 +77,10 @@ inline constexpr Action DEFAULT_FAVORITES[] = {Action::SYNC};
 // mot tab dai qua thi mat chinh cai loi cua no.
 inline constexpr int TOI_DA_GHIM = 8;
 
+// Nhip giu nut Chon de ghim hay go mot dong, mili giay. Mot nguong cho ca hai menu doc tren may nut
+// (menu danh sach va menu thanh cong cu), bang nguong cua trinh duyet tep.
+inline constexpr unsigned long GIU_GHIM_MS = 1000;
+
 // --- ghim va xep --------------------------------------------------------------------
 //
 // Ba ham duoi la LUAT cua tab Yeu thich. Chung thuan, khong dung toi man hinh hay the
