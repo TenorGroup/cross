@@ -572,6 +572,26 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.itemsWindowFirst = static_cast<uint16_t>(nav_.top);
     listProps_.itemsWindowCount = static_cast<uint16_t>(std::max(0, windowCount));
     if (count > 0) fui::list(screen.frame(), listRect, listProps_);
+    if (model_.rowPinned && renderer_ && uiTarget.paintingEnabled()) {
+      // The heart stands before the value (and the chevron), inside the frame; on the size row, before its "-".
+      const int16_t lh = screen.target().lineHeight(listProps_.labelText.font);
+      const int chevron = fui::listChevronWidth(fui::listChevronSpan(lh)) + listProps_.textGap;
+      // The scroll bar's strip, which list() takes from the rows' right side (rowInset is 0 here).
+      const bool reserved = listProps_.scrollIndicator && (count > nav_.visibleRows || listProps_.nav);
+      const int strip = reserved ? listProps_.scrollIndicatorWidth + listProps_.scrollIndicatorInset + 2 : 0;
+      for (int i = 0; i < std::min(nav_.visibleRows, windowCount); ++i) {
+        const int index = nav_.top + i;
+        if (!model_.rowPinned(index)) continue;
+        const auto& item = windowItems_[i];
+        int right = frame.right() - strip - listProps_.sidePadding - (item.opensNext ? chevron : 0);
+        if (rows && index == 1)
+          right = frame.right() - 204;
+        else if (item.value)
+          right -= screen.target().measureText(listProps_.valueText.font, item.value, listProps_.valueText).width;
+        tenorchrome::drawFavoriteMark(*renderer_, right - 8 - tenorchrome::FAVORITE_MARK,
+                                      listRect.y + i * 62 + (62 - tenorchrome::FAVORITE_MARK) / 2);
+      }
+    }
     if (count == 0 && model_.emptyText) {
       fui::TextStyle hint = tokens.bodyText;
       hint.align = fui::TextAlign::Center;

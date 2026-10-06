@@ -4276,6 +4276,9 @@ void EpubReaderActivity::renderOverlay() {
       model.itemCount = kTextRowCount;
       model.rowText = [this](int i) { return textRowName(i); };
       model.rowValue = [this](int i) { return textRowValue(i); };
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+      model.rowPinned = [this](int i) { return readermenu::daGhim(pins, pinOfRow(i)); };
+#endif
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
       model.choiceCount = textChoiceCount;
       model.choiceInUse = textChoiceInUse;
@@ -4297,6 +4300,9 @@ void EpubReaderActivity::renderOverlay() {
     model.itemCount = static_cast<int>(moreItems.size());
     model.rowText = [this](int i) { return moreRowName(i); };
     model.rowValue = [this](int i) { return moreRowValue(i); };
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    model.rowPinned = [this](int i) { return readermenu::daGhim(pins, pinOfRow(i)); };
+#endif
   }
   toolbarUi->setModel(model);
   toolbarUi->render();

@@ -79,6 +79,9 @@ inline ReaderToolRect readerToolRect(const int width, const int height, const in
 void drawBarIcon(const GfxRenderer& renderer, const uint8_t* bits, int w, int h, int x, int y, bool chosen);
 // One tab of an icon bar whose band is h tall from y, centred on cx: the chosen one in a ring BAR_TAB_W wide,
 // BAR_TAB_INSET in from the band's top and bottom (the Home bar's), its icon centred in the band.
+// A pinned row's mark: the Favourites tab's heart, solid, FAVORITE_MARK px square, its top left at x, y.
+constexpr int FAVORITE_MARK = 14;
+void drawFavoriteMark(const GfxRenderer& renderer, int x, int y);
 constexpr int BAR_TAB_W = 84;
 constexpr int BAR_TAB_INSET = 6;
 void drawBarTab(const GfxRenderer& renderer, int cx, int y, int h, const uint8_t* bits, int w, int iconH, bool chosen);
