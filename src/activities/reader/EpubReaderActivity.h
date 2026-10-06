@@ -191,8 +191,28 @@ class EpubReaderActivity final : public ReaderActivity {
   void flushTextSettings();
   // The Font row opens a second level inside the Text panel: the same sheet lists the families
   // (the 2 built in, then the card's), the page above is the preview. Back returns to the rows.
-  enum class TextDepth : uint8_t { Rows, Fonts, Spacing, PointSize };
+  enum class TextDepth : uint8_t { Rows, Fonts, Spacing, PointSize, Pick };
   TextDepth textDepth = TextDepth::Rows;
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  // Buttons (founder 06/10): a row with several values opens them in the same sheet, as the Font row opens
+  // the fonts (TextDepth::Pick). The front buttons move, Select keeps the value, Back drops it.
+  // source: a Text row id (1 size, 2 line spacing, 3 alignment, 4 drop cap) or PICK_MORE + a More action.
+  static constexpr int PICK_MORE = 100;
+  struct Pick {
+    int source = -1;
+    int origin = 0;     // the row that opened it, where Select and Back return the cursor
+    int inUse = 0;      // the value in use: bold with the tick, the cursor's first place
+    int sheetRows = 0;  // the rows of the sheet it opened from, so the frame keeps its size
+    std::string title;
+    std::vector<std::string> labels;
+  };
+  Pick pick;
+  void openPick(int source, std::string title);
+  void leavePick(bool keep);
+  // The value at `place` of the list `source`. True when the page is laid out again: its repaint brings
+  // the sheet back.
+  bool applyPick(int source, int place);
+#endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   int spacingDraftPermille = 500;
   bool spacingDragging = false;

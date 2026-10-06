@@ -34,81 +34,6 @@ def run(source, sdk=False):
 
 
 class ReaderMenuRuntimeTest(unittest.TestCase):
-    def test_dense_choice_rows_reserve_label_space(self):
-        text = (REPO / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
-        method = function(text, 'ReaderToolbarUi', 'drawChoices')
-        result = run(r'''
-#include <FreeInkApp.h>
-#include <algorithm>
-#include <cassert>
-#include <functional>
-#include <string>
-#include <vector>
-namespace fui = freeink::ui;
-namespace freeink { struct Icon {}; }
-namespace freeink::ui { BitmapRef bitmapFromIcon(const freeink::Icon&) { return {}; } }
-struct Target : fui::DrawTarget {
-  int width = 250;
-  std::vector<fui::Rect> labels, pills;
-  fui::Size measureText(fui::FontId,const char*,fui::TextStyle) const override {
-    return {static_cast<int16_t>(width), 24};
-  }
-  int16_t lineHeight(fui::FontId) const override { return 24; }
-  void fill(fui::Rect,fui::Paint,uint8_t=0,uint8_t=fui::CornersAll) override {}
-  void stroke(fui::Rect r,fui::Paint,uint8_t,uint8_t=0,uint8_t=fui::CornersAll) override { pills.push_back(r); }
-  void line(fui::Point,fui::Point,uint8_t,fui::Paint) override {}
-  void triangle(fui::Point,fui::Point,fui::Point,fui::Paint) override {}
-  void text(fui::Rect r,const char*,fui::TextStyle) override { labels.push_back(r); }
-  void bitmap(fui::Rect,fui::BitmapRef,fui::BitmapMode,fui::Paint=fui::Paint::solid(fui::Color::Black),fui::Rotation=fui::Rotation::None) override {}
-};
-struct UiScreen {
-  Target target_;
-  fui::ThemeTokens tokens;
-  struct Frame { void hit(fui::Rect,fui::ActionId,int16_t,uint16_t) {} } frame_;
-  UiScreen() { tokens.spaceSm=8; }
-  Target& target() { return target_; }
-  const fui::ThemeTokens& theme() const { return tokens; }
-  Frame& frame() { return frame_; }
-};
-constexpr fui::ActionId ACTION_CHOICE=7;
-struct ReaderToolbarUi {
-  static constexpr int kChoiceStride=8;
-  struct Model {
-    bool denseRows=true;
-    std::function<int(int)> choiceCount=[](int){return 5;};
-    std::function<int(int)> choiceInUse=[](int){return 0;};
-    std::function<const freeink::Icon*(int,int)> choiceIcon=[](int,int){return nullptr;};
-  } model_;
-  struct Nav { int top=0; } nav_;
-  fui::ListProps listProps_;
-  std::string windowLabels_[1]={"Paragraph Alignment"};
-  fui::Rect skinChoices_[1]{};
-  ReaderToolbarUi() { listProps_.rowInset=20; listProps_.sidePadding=8; }
-  void drawChoices(UiScreen&,const fui::Rect&,int16_t,int16_t,int);
-};
-''' + method + r'''
-int main() {
-  ReaderToolbarUi ui;
-  for (int labelWidth : {250,170,310,400}) {
-    UiScreen screen;
-    screen.target_.width=labelWidth;
-    ui.drawChoices(screen,{0,0,528,56},56,0,1);
-    assert(screen.target_.pills.size()==1);
-    const int firstChoiceLeft=screen.target_.pills.front().x-3;
-    const int labelLeft=28;
-    const int labelRight=screen.target_.labels.empty()
-        ? labelLeft+labelWidth : screen.target_.labels.front().right();
-    assert(labelRight+screen.tokens.spaceSm<=firstChoiceLeft && "label touches the first choice");
-    assert(screen.target_.labels.size()==1);
-  }
-  UiScreen touch;
-  ui.model_.denseRows=false;
-  ui.drawChoices(touch,{0,0,528,60},60,0,1);
-  assert(touch.target_.pills.front().x==263); // unchanged 48px touch cells
-}
-''', sdk=True)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
     def test_replaces_a_running_layout_and_keeps_the_preview_checkpoint(self):
         text = (REPO / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
         methods = '\n'.join(function(text, 'EpubReaderActivity', name)
@@ -388,8 +313,8 @@ namespace tenorchrome { constexpr bool kTouchShell = false; }  // the button boa
   static void screenFn(UiScreen& screen, void*) {
     for (int i=0; i<24; ++i)
       screen.frame().hit({static_cast<int16_t>(i*10),0,10,40},
-                         static_cast<fui::ActionId>(i%7+1),static_cast<int16_t>(i),
-                         i%7+1 == ACTION_SCRUB ? fui::InputTouch | fui::InputDrag : fui::InputTouch);
+                         static_cast<fui::ActionId>(i%6+1),static_cast<int16_t>(i),
+                         i%6+1 == ACTION_SCRUB ? fui::InputTouch | fui::InputDrag : fui::InputTouch);
   }
   static void onAction(const fui::ActionEvent&,void*);
   void begin();
@@ -409,9 +334,9 @@ int main() {
     input.snap.touchPressed = false;
     input.snap.touchReleased = true;
     auto routed = ui.route(input);
-    if (static_cast<int>(routed.event) != i%7+1)
+    if (static_cast<int>(routed.event) != i%6+1)
       fprintf(stderr, "target=%d event=%d value=%d sdk=%d\n", i, static_cast<int>(routed.event), routed.value, ui.app.lastEvent().action);
-    assert(static_cast<int>(routed.event) == i%7+1 && "toolbar action was lost");
+    assert(static_cast<int>(routed.event) == i%6+1 && "toolbar action was lost");
     assert(routed.value == i && routed.routed);
   }
   assert(!ui.app.interactionOverflowed());

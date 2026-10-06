@@ -28,7 +28,6 @@ constexpr fui::ActionId ACTION_PREV = 3;     // scrub row: previous chapter
 constexpr fui::ActionId ACTION_NEXT = 4;     // scrub row: next chapter
 constexpr fui::ActionId ACTION_SCRUB = 5;    // progress track: dragPermille along the book
 constexpr fui::ActionId ACTION_ROW = 6;      // panel list row, value = row index
-constexpr fui::ActionId ACTION_CHOICE = 7;   // a value icon on a row, value = row * kChoiceStride + place
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 constexpr fui::ActionId ACTION_SIZE_STEP = 8;
 constexpr fui::ActionId ACTION_SIZE_ENTRY = 9;
@@ -100,7 +99,7 @@ void ReaderToolbarUi::onAction(const fui::ActionEvent& event, void* user) {
   out.value = event.value;
   out.permille = event.dragPermille;
   out.hold = event.longPress;
-  if (event.action >= ACTION_DISMISS && event.action <= ACTION_CHOICE) out.event = static_cast<Event>(event.action);
+  if (event.action >= ACTION_DISMISS && event.action <= ACTION_ROW) out.event = static_cast<Event>(event.action);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (event.action >= ACTION_SIZE_STEP && event.action <= ACTION_NUMERIC) out.event = static_cast<Event>(event.action);
 #endif
@@ -271,52 +270,6 @@ void ReaderToolbarUi::drawMarkedRows(UiScreen& screen, const fui::Rect& listRect
   }
 }
 
-// A row's few values as icons along its right side, the one in use in an outline pill. Registered
-// after the list, so on touch boards a tap on an icon is the value and not the row.
-void ReaderToolbarUi::drawChoices(UiScreen& screen, const fui::Rect& listRect, const int16_t rowH,
-                                  const int16_t rowGap, const int windowCount) {
-  if (!model_.choiceCount || !model_.choiceIcon) return;
-  const auto& tokens = screen.theme();
-  for (int i = 0; i < windowCount; ++i) {
-    const int index = nav_.top + i;
-    const int count = std::min(model_.choiceCount(index), kChoiceStride);
-    if (count <= 0) continue;
-    const int inUse = model_.choiceInUse ? model_.choiceInUse(index) : -1;
-    const int16_t y = static_cast<int16_t>(listRect.y + i * (rowH + rowGap));
-    const int16_t right = static_cast<int16_t>(listRect.right() - listProps_.rowInset - listProps_.sidePadding);
-    int16_t kChoiceW = 48;
-    if (model_.denseRows) {
-      const int16_t labelLeft = static_cast<int16_t>(listRect.x + listProps_.rowInset + listProps_.sidePadding);
-      fui::TextStyle labelStyle = listProps_.labelText;
-      labelStyle.maxLines = 1;
-      const int16_t labelWidth = screen.target().measureText(labelStyle.font, windowLabels_[i].c_str(), labelStyle).width;
-      const int16_t labelH = screen.target().lineHeight(labelStyle.font);
-      kChoiceW = static_cast<int16_t>(std::clamp((right - labelLeft - labelWidth - tokens.spaceSm) / count, 32, 48));
-      // The renderer truncates long labels to this band, including larger UI text and other locales.
-      screen.target().text(fui::Rect{labelLeft, static_cast<int16_t>(y + (rowH - labelH) / 2),
-                                     static_cast<int16_t>(right - count * kChoiceW - tokens.spaceSm - labelLeft), labelH},
-                           windowLabels_[i].c_str(), labelStyle);
-    }
-    const int16_t left = static_cast<int16_t>(right - count * kChoiceW);
-    skinChoices_[i] = {left, y, kChoiceW, rowH};
-    for (int k = 0; k < count; ++k) {
-      const fui::Rect cell{static_cast<int16_t>(left + k * kChoiceW), y, kChoiceW, rowH};
-      if (k == inUse) {
-        screen.target().stroke(cell.inset(fui::Insets{4, 3, 4, 3}), fui::Paint::solid(fui::Color::Black), 2,
-                               tokens.controlRadius);
-      }
-      if (const freeink::Icon* icon = model_.choiceIcon(index, k)) {
-        screen.target().bitmap(fui::Rect{static_cast<int16_t>(cell.x + (kChoiceW - 24) / 2),
-                                         static_cast<int16_t>(y + (rowH - 24) / 2), 24, 24},
-                               fui::bitmapFromIcon(*icon), fui::BitmapMode::Center);
-      }
-      if (!model_.denseRows) {
-        screen.frame().hit(cell, ACTION_CHOICE, static_cast<int16_t>(index * kChoiceStride + k), fui::InputTouch);
-      }
-    }
-  }
-}
-
 void ReaderToolbarUi::buildPanel(UiScreen& screen) {
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   buildX4Panel(screen);
@@ -414,10 +367,9 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     if (model_.rowPinned && model_.rowPinned(index) && !shell::isUgly()) windowLabels_[i].insert(0, "\xEE\x84\x8A");
     markedLabels_[i] = model_.rowMarked && model_.rowMarked(index);
     windowValues_[i] = model_.rowValue ? model_.rowValue(index) : std::string();
-    const bool choices = model_.choiceCount && model_.choiceCount(index) > 0;
-    if (choices) windowValues_[i].clear();  // drawn by drawChoices
     fui::ListItem item;
-    item.label = markedLabels_[i] || (choices && model_.denseRows) ? "" : windowLabels_[i].c_str();
+    item.label = markedLabels_[i] ? "" : windowLabels_[i].c_str();
+    item.opensNext = model_.rowOpens && model_.rowOpens(index);
     item.value = windowValues_[i].empty() ? nullptr : windowValues_[i].c_str();
     item.actionValue = static_cast<int16_t>(index);
     windowItems_[i] = item;
@@ -430,7 +382,6 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   if (count > 0) {
     screen.list(listProps_);
     drawMarkedRows(screen, listRect, rowH, rowGap, windowCount);
-    drawChoices(screen, listRect, rowH, rowGap, windowCount);
   } else if (model_.emptyText) {
     fui::TextStyle hint = tokens.bodyText;
     hint.align = fui::TextAlign::Center;
@@ -823,21 +774,10 @@ void ReaderToolbarUi::paintUgly() {
           }
         }
 #endif
-        const int choices = model_.choiceCount ? std::min(model_.choiceCount(index), kChoiceStride) : 0;
-        if (choices > 0) label.width = static_cast<int16_t>(std::max(0, skinChoices_[i].x - label.x - 8));
         readerugly::text(r, label, windowLabels_[i].c_str());
         if (model_.selectedIndex == index) readerugly::selected(r, row);
         if (marked) ugly::tick(r, row.right() - 30, row.y + row.height / 2);
         if (opensNext) ugly::mark(r, ugly::Mark::Right, row.right() - 24, row.y + row.height / 2);
-        for (int k = 0; k < choices; ++k) {
-          auto choice = skinChoices_[i];
-          choice.x = static_cast<int16_t>(choice.x + k * choice.width);
-          const int x = choice.x;
-          if (model_.choiceIcon) if (const auto* icon = model_.choiceIcon(index, k))
-            uiTarget.bitmap({static_cast<int16_t>(x + (choice.width - 24) / 2), static_cast<int16_t>(row.y + (row.height - 24) / 2), 24, 24},
-                            fui::bitmapFromIcon(*icon), fui::BitmapMode::Center);
-          if (model_.choiceInUse && model_.choiceInUse(index) == k) readerugly::selected(r, choice);
-        }
       }
       if (model_.itemCount > nav_.visibleRows && skinList_.height > 0) {
         const int x = skinList_.right() - 4;

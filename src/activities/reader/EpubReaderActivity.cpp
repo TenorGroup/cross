@@ -60,7 +60,6 @@
 #include "ReaderMenuLayout.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
-#include "components/icons/readerToolbarIcons.h"
 #include "fontIds.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
@@ -3798,20 +3797,10 @@ const SettingInfo* catalogTextRow(const int id) {
 static_assert(std::size(kSpacingIds) == readerSpacing::LEVEL_COUNT, "line spacing labels");
 static_assert(std::size(kAlignIds) == CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, "alignment labels");
 static_assert(std::size(kDropCapIds) == readerSpacing::DROP_CAP_MODE_COUNT, "drop cap labels");
-// The Text rows drawn as a row of values: line spacing (tightest first, so its places are the levels
-// in that order), alignment and drop cap (places = the stored values).
+// The Text rows of several values, each value at its place in the order shown: line spacing tightest
+// first (so its places are the levels in that order), alignment and drop cap (places = the stored values).
 constexpr uint8_t kSpacingByPlace[] = {1, 2, 0, 3, 4};
-constexpr const freeink::Icon* kSpacingIcons[] = {&icon_reader_spacing_1_24, &icon_reader_spacing_2_24,
-                                                  &icon_reader_spacing_3_24, &icon_reader_spacing_4_24,
-                                                  &icon_reader_spacing_5_24};
-constexpr const freeink::Icon* kAlignIcons[] = {&icon_reader_align_justify_24, &icon_reader_align_left_24,
-                                                &icon_reader_align_center_24, &icon_reader_align_right_24,
-                                                &icon_reader_align_book_24};
-constexpr const freeink::Icon* kDropCapIcons[] = {&icon_reader_dropcap_off_24, &icon_reader_dropcap_default_24,
-                                                  &icon_reader_dropcap_large_24};
 static_assert(std::size(kSpacingByPlace) == readerSpacing::LEVEL_COUNT, "line spacing places");
-static_assert(std::size(kAlignIcons) == CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, "alignment icons");
-static_assert(std::size(kDropCapIcons) == readerSpacing::DROP_CAP_MODE_COUNT, "drop cap icons");
 int textChoiceCount(const int row) {
   return row == 2 ? readerSpacing::LEVEL_COUNT
          : row == 3 ? CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT
@@ -3829,9 +3818,9 @@ int textChoiceInUse(const int row) {
   if (row == 4) return readerSpacing::clampDropCapMode(SETTINGS.dropCapMode);
   return -1;
 }
-const freeink::Icon* textChoiceIcon(const int row, const int place) {
-  if (place < 0 || place >= textChoiceCount(row)) return nullptr;
-  return row == 2 ? kSpacingIcons[place] : row == 3 ? kAlignIcons[place] : kDropCapIcons[place];
+// The name of the value at `place` on a row of values, in the order they are shown.
+StrId textChoiceLabel(const int row, const int place) {
+  return row == 2 ? kSpacingIds[kSpacingByPlace[place]] : row == 3 ? kAlignIds[place] : kDropCapIds[place];
 }
 }  // namespace
 
@@ -3847,6 +3836,76 @@ void EpubReaderActivity::chooseTextValue(const int row, const int place) {
   }
   applyTextSettingLive();
 }
+
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+void EpubReaderActivity::openPick(const int source, std::string title) {
+  Pick next;
+  next.source = source;
+  next.origin = panelIndex;
+  next.title = std::move(title);
+  if (source == 1) {
+    // The point sizes the active family actually ships.
+    const auto sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
+    const uint8_t cur = sizes.empty() ? 0 : snapToNearestPointSize(sizes, SETTINGS.fontPointSize);
+    for (size_t i = 0; i < sizes.size(); ++i) {
+      next.labels.push_back(std::to_string(sizes[i]) + " pt");
+      if (sizes[i] == cur) next.inUse = static_cast<int>(i);
+    }
+  } else if (source >= 2 && source <= 4) {
+    for (int place = 0; place < textChoiceCount(source); ++place)
+      next.labels.emplace_back(I18N.get(textChoiceLabel(source, place)));
+    next.inUse = textChoiceInUse(source);
+  }
+  if (next.labels.empty()) return;
+  RenderLock lock;  // the render task reads the list
+  next.sheetRows = toolbarUi->visibleRows();
+  pick = std::move(next);
+  textDepth = TextDepth::Pick;
+  panelIndex = std::max(0, pick.inUse);
+  toolbarUi->nav().reset(panelIndex);
+  redrawSheetLocked();
+}
+
+void EpubReaderActivity::leavePick(const bool keep) {
+  const int source = pick.source;
+  const int place = panelIndex;
+  const bool changed = keep && place != pick.inUse;
+  {
+    RenderLock lock;
+    textDepth = TextDepth::Rows;
+    panelIndex = pick.origin;
+    toolbarUi->nav().reset(panelIndex);
+    pick = Pick{};
+    if (!changed) {
+      redrawSheetLocked();
+      return;
+    }
+  }
+  if (!applyPick(source, place)) {
+    RenderLock lock;
+    redrawSheetLocked();
+  }
+}
+
+bool EpubReaderActivity::applyPick(const int source, const int place) {
+  if (source == 1) {
+    const auto sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
+    if (place < 0 || place >= static_cast<int>(sizes.size())) return false;
+    {
+      RenderLock lock;
+      SETTINGS.fontPointSize = sizes[place];
+      applyReaderTextSettingsLocked();
+    }
+    applyTextSettingLive();
+    return true;
+  }
+  if (source >= 2 && source <= 4) {
+    chooseTextValue(source, place);
+    return true;
+  }
+  return false;
+}
+#endif
 
 bool EpubReaderActivity::readingPageVisible() const { return section && overlay == Overlay::None && !isAtEndOfBook(); }
 
@@ -3881,17 +3940,9 @@ std::string EpubReaderActivity::textRowValue(int row) const {
   row = textRowId(row);
   if (const auto* info = catalogTextRow(row)) return SettingsActivity::settingValueText(*info);
   switch (row) {
-    case 0:  // opens the family list: the value, then the chevron
-      if (SETTINGS.sdFontFamilyName[0] != '\0') return std::string(SETTINGS.sdFontFamilyName)
-#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
-          + "  >"
-#endif
-          ;
-      return std::string(I18N.get(kFamily[SETTINGS.fontFamily % CrossPointSettings::FONT_FAMILY_COUNT]))
-#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
-          + "  >"
-#endif
-          ;
+    case 0:  // opens the family list (the chevron is the row's own)
+      if (SETTINGS.sdFontFamilyName[0] != '\0') return SETTINGS.sdFontFamilyName;
+      return I18N.get(kFamily[SETTINGS.fontFamily % CrossPointSettings::FONT_FAMILY_COUNT]);
     case 1:
       return std::to_string(SETTINGS.fontPointSize)
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
@@ -3938,17 +3989,6 @@ void EpubReaderActivity::cycleTextRow(int row) {
     }
     switch (row) {
       case -1:  // a catalog row, stepped above
-        break;
-      case 1: {
-        // The point sizes the active family actually ships.
-        const auto sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
-        if (sizes.size() < 2) return;
-        SETTINGS.fontPointSize = sizes[(fontdoc::coDangDung(sizes) + 1) % sizes.size()];
-        break;
-      }
-      case 2:
-        SETTINGS.lineSpacing =
-            static_cast<uint8_t>((readerSpacing::clampLevel(SETTINGS.lineSpacing) + 1) % readerSpacing::LEVEL_COUNT);
         break;
       case 3:
         SETTINGS.paragraphAlignment =
@@ -4070,6 +4110,9 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   }
   overlay = target;
   textDepth = TextDepth::Rows;
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  pick = Pick{};
+#endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   spacingDragging = false;
   pointSizeDraft.clear();
@@ -4251,6 +4294,15 @@ void EpubReaderActivity::renderOverlay() {
   // Tap-first: the cursor is only drawn once a button has moved it, so a
   // tapped row does not stay inverted after its action.
   model.selectedIndex = panelCursorShown ? panelIndex : -1;
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  if (textDepth == TextDepth::Pick) {
+    model.panelTitle = pick.title.c_str();
+    model.itemCount = static_cast<int>(pick.labels.size());
+    model.sheetRows = pick.sheetRows;
+    model.rowText = [this](int i) { return i < static_cast<int>(pick.labels.size()) ? pick.labels[i] : ""; };
+    model.rowMarked = [this](int i) { return i == pick.inUse; };
+  } else
+#endif
   if (overlay == Overlay::Contents) {
     model.panelTitle = tr(STR_TOOL_CONTENTS);
     model.itemCount = epub->getTocItemsCount();
@@ -4269,7 +4321,7 @@ void EpubReaderActivity::renderOverlay() {
                                                         : ReaderToolbarUi::TextView::Rows;
     model.spacingPlace = textChoiceInUse(2);
     model.spacingDraftPermille = spacingDraftPermille;
-    model.spacingLabel = [](int place) { return I18N.get(kSpacingIds[kSpacingByPlace[place]]); };
+    model.spacingLabel = [](int place) { return I18N.get(textChoiceLabel(2, place)); };
     model.numericDraft = pointSizeDraft.c_str();
     if (textDepth == TextDepth::PointSize) {
       const auto sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
@@ -4291,9 +4343,7 @@ void EpubReaderActivity::renderOverlay() {
       model.rowValue = [this](int i) { return textRowValue(i); };
       model.rowPinned = [this](int i) { return readermenu::daGhim(pins, pinOfRow(i)); };
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
-      model.choiceCount = textChoiceCount;
-      model.choiceInUse = textChoiceInUse;
-      model.choiceIcon = textChoiceIcon;
+      model.rowOpens = [](int) { return true; };  // every Text row opens its list (Font its fonts)
 #endif
     }
   }
@@ -4437,7 +4487,11 @@ void EpubReaderActivity::handleOverlayInput() {
   }
 
   // --- Panels (Contents / Text / More) ---
-  const int count = overlay == Overlay::Contents ? epub->getTocItemsCount()
+  const int count =
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+                    textDepth == TextDepth::Pick ? static_cast<int>(pick.labels.size()) :
+#endif
+                    overlay == Overlay::Contents ? epub->getTocItemsCount()
                     : overlay == Overlay::Text   ? (textDepth == TextDepth::Fonts ? static_cast<int>(fontFamilies.size()) : kTextRowCount)
                     : overlay == Overlay::Favorites ? static_cast<int>(favoriteRows.size())
                                                  : static_cast<int>(moreItems.size());
@@ -4449,6 +4503,12 @@ void EpubReaderActivity::handleOverlayInput() {
   // action. Shared by the Confirm button and a row tap.
   const auto activateRow = [this, count] {
     if (panelIndex < 0 || panelIndex >= count) return;
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+    if (textDepth == TextDepth::Pick) {
+      leavePick(/*keep=*/true);
+      return;
+    }
+#endif
     if (overlay == Overlay::Text) {
       if (textDepth == TextDepth::Fonts) {
         chooseFontFamily(panelIndex);
@@ -4461,7 +4521,7 @@ void EpubReaderActivity::handleOverlayInput() {
       else if (panelIndex == 0) {
         enterFontLevel();
       } else {
-        cycleTextRow(panelIndex);
+        openPick(textRowId(panelIndex), textRowName(panelIndex));
       }
 #endif
     } else if (overlay == Overlay::Contents) {
@@ -4496,6 +4556,12 @@ void EpubReaderActivity::handleOverlayInput() {
     if (overlay == Overlay::Text && textDepth != TextDepth::Rows) leaveFontLevel();
     else closeOverlayToPage();
     return;
+#endif
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+    if (textDepth == TextDepth::Pick) {
+      leavePick(/*keep=*/false);  // one level up, the value in use kept
+      return;
+    }
 #endif
     if (overlay == Overlay::Text && textDepth == TextDepth::Fonts) {
       leaveFontLevel();  // one level up: the Text rows
@@ -4607,11 +4673,6 @@ void EpubReaderActivity::handleOverlayInput() {
       }
       return;
     }
-    case ReaderToolbarUi::Event::Choice:
-      if (overlay == Overlay::Text && textDepth == TextDepth::Rows) {
-        chooseTextValue(routed.value / ReaderToolbarUi::kChoiceStride, routed.value % ReaderToolbarUi::kChoiceStride);
-      }
-      return;
     case ReaderToolbarUi::Event::Row:
       // A tap on the right-edge strip pages the sheet instead (upper half =
       // previous page, lower half = next): swipes are unreliable on etched
@@ -5020,6 +5081,9 @@ void EpubReaderActivity::panelClosedLocked(const bool leaving, const bool frameU
   pointSizeDraft.clear();
 #endif
   textDepth = TextDepth::Rows;
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  pick = Pick{};
+#endif
   if (leaving) {
     textCloseFrame.store(0, std::memory_order_relaxed);
     if (textSettingsDirty) {
@@ -5221,6 +5285,7 @@ void EpubReaderActivity::togglePin(const uint8_t pin) {
 }
 
 uint8_t EpubReaderActivity::pinOfRow(const int row) const {
+  if (textDepth != TextDepth::Rows) return 0xFF;
   if (overlay == Overlay::Text && textDepth == TextDepth::Rows && row >= 0 && row < kTextRowCount)
     return static_cast<uint8_t>(readermenu::PIN_TEXT | textRowId(row));
   if (overlay == Overlay::More && row >= 0 && row < static_cast<int>(moreItems.size()))
@@ -5272,7 +5337,7 @@ void EpubReaderActivity::activateFavoriteRow(const int row) {
   openTextRow(place);
 #else
   if (place > 0) {
-    cycleTextRow(place);  // stepped here, the page under the panel shows it
+    openPick(textRowId(place), textRowName(place));  // its list over Favorites; Back comes back here
     return;
   }
   // Font opens its list in the Text panel.

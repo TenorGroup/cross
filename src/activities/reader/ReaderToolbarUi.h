@@ -32,13 +32,11 @@ void selected(const GfxRenderer& renderer, const freeink::ui::Rect& rect);
 // clears the screen: the page stays visible around the chrome.
 class ReaderToolbarUi : public UiAppHost {
  public:
-  enum class Event { None = 0, Dismiss = 1, Tool = 2, PrevChapter = 3, NextChapter = 4, Scrub = 5, Row = 6, Choice = 7,
+  enum class Event { None = 0, Dismiss = 1, Tool = 2, PrevChapter = 3, NextChapter = 4, Scrub = 5, Row = 6,
                      SizeStep = 8, SizeEntry = 9, SpacingDraft = 10, SpacingCommit = 11, NumericKey = 12 };
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   enum class TextView : uint8_t { None, Rows, Fonts, Spacing, PointSize };
 #endif
-  // Choice: value = row * kChoiceStride + the value's place along the row.
-  static constexpr int kChoiceStride = 8;
   // The tabs: 0 Contents, 1 Text, 2 More, 3 Favorites.
   static constexpr int kToolCount = 4;
 
@@ -64,11 +62,8 @@ class ReaderToolbarUi : public UiAppHost {
     std::function<bool(int)> rowPinned;
     // Drawn in the list's place when it has no rows (an empty Favorites).
     const char* emptyText = nullptr;
-    // Optional: a row with a few values draws them as icons along its right side, the one in use
-    // outlined; on touch boards each icon is a tap target (Event::Choice). Count 0 = an ordinary row.
-    std::function<int(int)> choiceCount;
-    std::function<int(int)> choiceInUse;
-    std::function<const freeink::Icon*(int, int)> choiceIcon;
+    // Buttons: a row that opens a list or another screen ends in the grey chevron, as in Settings.
+    std::function<bool(int)> rowOpens;
     // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..3, -1 none.
     int activeTool = 0;
     // Button boards keep the theme's denser list row height (as every other
@@ -137,7 +132,6 @@ class ReaderToolbarUi : public UiAppHost {
   std::string windowLabels_[kMaxWindow];
   std::string windowValues_[kMaxWindow];
   bool markedLabels_[kMaxWindow] = {};
-  freeink::ui::Rect skinChoices_[kMaxWindow]{};
   freeink::ui::ListItem windowItems_[kMaxWindow];
   // fui::ButtonProps / ListProps / HeaderProps embed a 324-byte StyleSet: keep
   // them off the stack (locals stay under 256 bytes).
@@ -145,7 +139,6 @@ class ReaderToolbarUi : public UiAppHost {
   freeink::ui::ListProps listProps_;
   freeink::ui::Rect pageIndicatorRect_{};
   void drawMarkedRows(UiScreen& screen, const freeink::ui::Rect& listRect, int16_t rowH, int16_t rowGap, int windowCount);
-  void drawChoices(UiScreen& screen, const freeink::ui::Rect& listRect, int16_t rowH, int16_t rowGap, int windowCount);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   void buildX4Toolbar(UiScreen& screen);
   void buildX4Panel(UiScreen& screen);
