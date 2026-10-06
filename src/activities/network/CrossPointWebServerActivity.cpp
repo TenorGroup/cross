@@ -585,7 +585,7 @@ void CrossPointWebServerActivity::renderServerRunning() const {
   // either side, including between the code and the larger address text.
   constexpr int qrQuiet = 24;
   // Touch (C1): each code and its words in a round frame; the code keeps its quiet zone inside the frame.
-  const bool framed = tenorchrome::kTouchShell;
+  const bool framed = tenorchrome::roundFrames();
   const int left = framed ? tenorchrome::FOOT_BACK_X + qrQuiet : std::max<int>(metrics.contentSidePadding, qrQuiet);
   const int bodyWidth = pageWidth - 2 * left;
   int startY = metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight + qrQuiet;

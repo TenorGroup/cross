@@ -57,16 +57,10 @@ void draw(const GfxRenderer& r, const int top, const bool sleep, const bool comp
   const int habitsLabelY = sleep ? y(336) : habitsTop + home.habitsLabel;
   const int habitsValueY = sleep ? y(362) : habitsTop + home.habitsValue;
   const int noteY = sleep ? y(402) : habitsTop + home.note;
-  if (!sleep) {
-    // Touch: the one panel ring of every X4 Pro frame. The button boards keep their 1 px frame.
-    if (tenorchrome::kTouchShell) {
-      if (page != 1) tenorchrome::drawPanel(r, top, home.overviewHeight);
-      if (page != 0) tenorchrome::drawPanel(r, habitsTop, home.habitsHeight);
-    } else {
-      const int radius = tenorradius::container(tenorradius::leaf(30), 12);
-      if (page != 1) r.drawRoundedRect(24, top, r.getScreenWidth() - 48, home.overviewHeight, 1, radius, true);
-      if (page != 0) r.drawRoundedRect(24, habitsTop, r.getScreenWidth() - 48, home.habitsHeight, 1, radius, true);
-    }
+  // Touch: the one panel ring of every X4 Pro frame. The button boards keep their panels unframed.
+  if (!sleep && tenorchrome::roundFrames()) {
+    if (page != 1) tenorchrome::drawPanel(r, top, home.overviewHeight);
+    if (page != 0) tenorchrome::drawPanel(r, habitsTop, home.habitsHeight);
   }
   const auto cellText = [&](int font, const char* text, EpdFontFamily::Style style = EpdFontFamily::REGULAR) {
     return enlarged || !sleep ? r.truncatedText(font, text, width / 2 - 12, style) : std::string(text);

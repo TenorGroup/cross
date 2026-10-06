@@ -147,7 +147,7 @@ inline void buildSliderDialogScreen(const GfxRenderer& renderer, UiAppHost::UiSc
   // same pattern as OptionPopup.
   screen.frame().hit(dialog, spec.chromeAction, 0, fui::InputTouch);
   const fui::Rect band = fui::optionDialog(screen.frame(), dialog, props);
-  if (tenorchrome::kTouchShell)
+  if (tenorchrome::roundFrames())
     tenorchrome::drawRoundRing(renderer, dialog.x, dialog.y, dialog.width, dialog.height, tenorchrome::PANEL_RADIUS, 2, true);
 
   if (!touch) {

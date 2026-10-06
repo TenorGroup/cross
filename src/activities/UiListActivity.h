@@ -98,8 +98,6 @@ class UiListActivity : public Activity, protected UiAppHost {
     int rule, top, bottom;
   };
   static RowFrameLines rowFrameLines(int rowGap);
-  // The grey dotted rule between 2 rows of a frame.
-  static void drawRowRule(const GfxRenderer& renderer, int y, int x0, int x1);
   // Keeps the room of the ring above and below the rows of a framed list; records the list body's foot.
   void reserveRowFrame(UiScreen& screen, int rowGap);
   int rowFrameGap = 0;

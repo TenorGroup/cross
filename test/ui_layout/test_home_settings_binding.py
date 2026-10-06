@@ -15,8 +15,7 @@ for name in ('settingsRow', 'buildSettingsGroups', 'focusFavorite'):
     methods.append(method.group())
 # The row frame rule Home's touch groups share with every framed list (UiListActivity), as built.
 lists = (ROOT / 'src/activities/UiListActivity.cpp').read_text()
-for pattern in (r'UiListActivity::RowFrameLines UiListActivity::rowFrameLines\([^\n]*\) \{.*?\n\}',
-                r'void UiListActivity::drawRowRule\([^\n]*\) \{.*?\n\}'):
+for pattern in (r'UiListActivity::RowFrameLines UiListActivity::rowFrameLines\([^\n]*\) \{.*?\n\}',):
     method = re.search(pattern, lists, re.S)
     assert method, pattern
     methods.insert(0, method.group())
@@ -39,7 +38,11 @@ struct GfxRenderer {
   }
 };
 struct Settings { uint8_t uiTextSize=0; } SETTINGS;
-namespace tenorchrome { bool kTouchShell=false; }
+namespace tenorchrome {
+bool kTouchShell=false;
+bool roundFrames() { return kTouchShell; }
+void drawRowRule(const GfxRenderer& g,int y,int x0,int x1) { for (int x=x0;x<x1;++x) g.drawPixel(x,y,true); }
+}
 // The ugly shell's touch Home keeps these 2 frames; the Tenor touch shell lists 3 titled groups instead.
 namespace infoupdate { bool shown() { return false; } }
 I18n& I18n::getInstance() { static I18n i18n; return i18n; }
@@ -49,7 +52,6 @@ struct UiListActivity {
   int focusFavorite(const std::string&) { return -2; }
   struct RowFrameLines { int rule, top, bottom; };
   static RowFrameLines rowFrameLines(int rowGap);
-  static void drawRowRule(const GfxRenderer& renderer, int y, int x0, int x1);
 };
 struct RenderLock { template<class T> RenderLock(T&) {} };
 struct HomeActivity : UiListActivity {
@@ -95,7 +97,8 @@ int main() {
       hits.clear(); home.renderer.frames.clear(); home.nav.selected=selected;
       home.nav.followOnBuild=true; home.nav.requestScroll(3);
       assert(home.buildSettingsGroups(screen));
-      assert(home.renderer.frames.size()==2 && hits.count()==static_cast<size_t>(home.settingsOrder.count));
+      // The round frame is the touch reader's: 2 groups framed there, none on the buttons (founder 06/10/2026).
+      assert(home.renderer.frames.size()==(touch?2u:0u) && hits.count()==static_cast<size_t>(home.settingsOrder.count));
       // Touch: the grey rules between the rows of each group (founder 06/10/2026); buttons draw none.
       assert(touch ? home.renderer.rulePixels>0 : home.renderer.rulePixels==0);
       home.renderer.rulePixels=0;

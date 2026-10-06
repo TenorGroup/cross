@@ -222,6 +222,11 @@ void tenorchrome::drawPanel(const GfxRenderer& g, const int y, const int h) {
   drawRoundRing(g, FOOT_BACK_X, y, g.getScreenWidth() - 2 * FOOT_BACK_X, h, PANEL_RADIUS, 2, true);
 }
 
+void tenorchrome::drawRowRule(const GfxRenderer& g, const int y, const int x0, const int x1) {
+  for (int x = x0; x < x1; ++x)
+    if (((x + y) & 1) == 0) g.drawPixel(x, y, true);
+}
+
 void tenorchrome::drawBarTab(const GfxRenderer& r, const int cx, const int y, const int h, const uint8_t* bits,
                              const int w, const int iconH, const bool chosen) {
   if (chosen) drawPillRing(r, cx - BAR_TAB_W / 2, y + BAR_TAB_INSET, BAR_TAB_W, h - 2 * BAR_TAB_INSET, 3, false);

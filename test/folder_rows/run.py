@@ -56,6 +56,7 @@ def main():
     start = chrome.index("#if defined(FREEINK_DEVICE_X4PRO)")
     shell = chrome[start:chrome.index("#endif", start) + len("#endif")]
     foot_x = next(line for line in chrome.splitlines() if line.startswith("constexpr int FOOT_BACK_X"))
+    foot_x += "\n" + next(line for line in chrome.splitlines() if line.startswith("constexpr bool roundFrames"))
     browser_header = (REPO / "src/activities/home/FileBrowserActivity.h").read_text()
     row_opens = function(browser_header, "bool rowOpens(int row) const override").replace(
         "bool rowOpens(int row) const override", "bool FileBrowserActivity::rowOpens(int row) const")
