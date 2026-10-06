@@ -134,6 +134,7 @@ class FileBrowserActivity {
   bool tooMany = false, rowsFramed = false, rowsHaveIcons = false;
   int rowFrameFloor = 0;
   int rowFrameGap = 0;
+  int rowFadeRight = 0;
   struct RowFrameLines { int rule, top, bottom; };
   static RowFrameLines rowFrameLines(int rowGap);
   void reserveRowFrame(UiScreen& screen, int rowGap);
@@ -152,7 +153,6 @@ class FileBrowserActivity {
   void decoratePinnedRows(fui::ListProps&);
   void reserveFixedMenuContent(UiScreen&) {}
   void reserveFavoriteHint(UiScreen&) {}
-  void reserveRowFrame(UiScreen&, int) {}
   fui::ListNav& activeNav() { return nav; }
   static int kepConTro(int selected, int count) { return std::clamp(selected, 0, std::max(0, count - 1)); }
   bool rowIsPinned(int index) const { return index == pinned; }
