@@ -21,6 +21,8 @@
 #include "components/UITheme.h"
 #include "components/themes/TenorRadius.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 
 namespace {
 
@@ -456,6 +458,15 @@ void DictionaryWordSelectActivity::drawHints() const {
 }
 
 void DictionaryWordSelectActivity::drawSavedPopup() const {
+  if (shell::uglyParts()) {
+    // The shared scrap of paper with the jab, and where the quote went written small under it.
+    const std::string route = std::string(tr(STR_HOME_TAB_STATS)) + " > " + tr(STR_QUOTES);
+    const auto box = GUI.drawPopup(renderer, tr(STR_UGLY_QUOTE_SAVED), false);
+    const int rw = ugly::width(renderer, ugly::Size::S22, route.c_str());
+    ugly::text(renderer, ugly::Size::S22, box.x + (box.width - rw) / 2, box.y + box.height - 14, route.c_str());
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    return;
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   const char* title = tr(STR_QUOTES_SAVED);
   const std::string route = std::string(tr(STR_HOME_TAB_STATS)) + " > " + tr(STR_QUOTES);

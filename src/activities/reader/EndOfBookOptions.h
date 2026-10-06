@@ -47,6 +47,8 @@ class EndOfBookOptions : private UiAppHost {
   static void listScreen(UiScreen& screen, void* user);
   static void onRowEvent(const freeink::ui::ActionEvent& event, void* user);
   void buildListScreen(UiScreen& screen);
+  // tenor/ugly on the button readers: the same screen as a notebook page written by hand.
+  void renderUgly(GfxRenderer& renderer, const MappedInputManager& input);
 
   GfxRenderer& renderer;
   std::string folder;
