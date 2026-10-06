@@ -84,7 +84,7 @@ int main(){
    check(k.kind==Sheet::IntentKind::None&&k.repaint&&sheet.candidate()==0&&c.rows[0].selected==0,"select enters the question without a commit");
    underlines=rowCircles=0;r.textCount=0;sheet.paint(r,input);
    check(rowCircles==1&&underlines==0,"inside the question the circle sits on the chosen answer");
-   check(has("again to finish"),"inside hint names finishing");
+   check(has("select saved to exit"),"inside hint names leaving the question");
    k=sheet.input(Sheet::Key::NextQuestion);
    check(k.kind==Sheet::IntentKind::Preview&&sheet.question()==0&&sheet.candidate()==1,"front down moves the circle inside the question");
    sheet.input(Sheet::Key::NextOption);check(sheet.question()==0&&sheet.candidate()==2,"edge down moves the circle too");
