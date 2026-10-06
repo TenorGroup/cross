@@ -537,7 +537,7 @@ class OptionPopup {
   // The panel ring (drawRoundRing, grey, 2 px, PANEL_RADIUS) as its 2 rounded ends and its straight top and
   // bottom rows: the same pixels, without testing every pixel of the corner rows across the width (a 448 px
   // ring took 2/3 of the popup's render).
-  // ponytail: a split of the shared ring; drop it once drawRoundRing loops its corners only.
+  // A split of the shared ring: drop it once drawRoundRing loops its corners only.
   static void drawFrame(const GfxRenderer& renderer, const int x, const int y, const int w, const int h) {
     constexpr int R = tenorchrome::PANEL_RADIUS;
     const auto clip = renderer.getClipRect();
