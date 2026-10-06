@@ -13,6 +13,8 @@
 
 #include "CrossPointSettings.h"
 #include "DeviceName.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyNote.h"
 #include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "WifiCredentialStore.h"
@@ -1038,6 +1040,7 @@ void WifiSelectionActivity::render(RenderLock&&) {
   if (state == WifiSelectionState::PASSWORD_ENTRY || state == WifiSelectionState::HIDDEN_SSID_ENTRY) {
     return;
   }
+  if (shell::uglyParts() && renderUglyNote()) return;
 
   renderer.clearScreen();
 
@@ -1307,6 +1310,40 @@ void WifiSelectionActivity::renderConnectionFailed(const Rect* screen, const The
   // Use centralized button hints
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_DONE), "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+// The waits of this screen as notes. The list and its two questions wait for the shared ugly parts.
+bool WifiSelectionActivity::renderUglyNote() const {
+  const char* line = nullptr;
+  std::string detail;
+  ugly::Hints hints;
+  switch (state) {
+    case WifiSelectionState::SCANNING:
+      line = autoConnecting ? tr(STR_FINDING_SAVED_WIFI) : tr(STR_UGLY_WIFI_SCANNING);
+      hints.back = hints.confirm = autoConnecting;
+      break;
+    case WifiSelectionState::AUTO_CONNECTING:
+    case WifiSelectionState::CONNECTING:
+      line = tr(STR_UGLY_WIFI_CONNECTING);
+      detail = selectedSSID;
+      hints.back = hints.confirm = autoConnecting;
+      break;
+    case WifiSelectionState::CONNECTED:
+      line = tr(STR_UGLY_WIFI_CONNECTED);
+      detail = selectedSSID + "   " + connectedIP;
+      hints.confirm = true;
+      break;
+    case WifiSelectionState::CONNECTION_FAILED:
+      line = tr(STR_UGLY_WIFI_FAILED);
+      detail = connectionError;
+      hints.back = hints.confirm = true;
+      break;
+    default:
+      return false;
+  }
+  ugly::notePage(renderer, mappedInput, tr(STR_WIFI_NETWORKS), line, detail.empty() ? nullptr : detail.c_str(), -1,
+                 hints);
+  return true;
 }
 
 void WifiSelectionActivity::onComplete(const bool connected) {

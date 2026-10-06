@@ -67,11 +67,12 @@ class UglyNoteTest(unittest.TestCase):
         script, t = keys(*TO_THE_CLOCK_SYNC, 'WAIT:2500', 'CONFIRM', 'WAIT:3000')
         log, shots = card.run(script + ';%d:QUIT' % (t + 800), [(t, 'clock')], timeout=60)
         self.assertIn('ClockSync', entered(log), log[-2000:])
-        notes = [m.groupdict() for m in NOTE_FRAME.finditer(log)]
+        # The list of networks writes its own notes first; the clock's carry its title.
+        notes = [m.groupdict() for m in NOTE_FRAME.finditer(log) if m['title'] == 'Đồng bộ đồng hồ']
         said = [n['line'] for i, n in enumerate(notes) if i == 0 or n['line'] != notes[i - 1]['line']]
         self.assertEqual(said,
                          ['Đang hỏi giờ trên mạng. Đằng nào mày cũng trễ.', 'Giờ chuẩn rồi. Hết lý do trễ.'], log[-3000:])
-        self.assertTrue(all(n['title'] == 'Đồng bộ đồng hồ' and n['percent'] == '-1' for n in notes), notes)
+        self.assertTrue(all(n['percent'] == '-1' for n in notes), notes)
         page = shots['clock']
         # The margin of the notebook, the sentence in the middle, the hand-drawn status bar; the old bold header is gone.
         self.assertGreater(ink(page, (24, 200, 30, 600)), 300)
@@ -113,6 +114,34 @@ class UglyServerTest(unittest.TestCase):
         self.assertGreater(ink(page, (165, 220, 363, 560)), 12000)  # the code, in the middle
         self.assertGreater(ink(page, (24, 600, 30, 700)), 60)
         print('server frames ms:', [ms for _, ms in frames])
+
+
+
+# Diary -> Settings page -> Device (eighth row) -> Wi-Fi (third question).
+TO_THE_WIFI = ['UP'] + ['RIGHT'] * 7 + ['CONFIRM', 'RIGHT', 'RIGHT', 'CONFIRM']
+
+
+class UglyWifiTest(unittest.TestCase):
+    def wifi(self, **env):
+        card = Card()
+        self.addCleanup(card.close)
+        script, t = keys(*TO_THE_WIFI, 'WAIT:2500', 'CONFIRM', 'WAIT:2500')
+        log, shots = card.run(script + ';%d:QUIT' % (t + 800), [(t, 'wifi')], timeout=60, **env)
+        self.assertIn('WifiSelection', entered(log), log[-2000:])
+        notes = [m.groupdict() for m in NOTE_FRAME.finditer(log)]
+        self.assertTrue(all(n['title'] == 'Mạng Wi-Fi' for n in notes), notes)
+        return [n['line'] for i, n in enumerate(notes) if i == 0 or n['line'] != notes[i - 1]['line']], shots['wifi'], notes
+
+    def test_the_waits_of_wifi_are_notes(self):
+        said, _, notes = self.wifi()
+        self.assertEqual(said[:1], ['Đang dò sóng. Đứng yên đó.'])
+        # An open network completes at once and hands back, so the note says the join and the screen behind follows.
+        self.assertEqual(said[-1:], ['Đang nối mạng. Cầu trời mật khẩu đúng.'])
+        print('wifi note frames ms:', [n['ms'] for n in notes])
+
+    def test_a_failed_join_says_so(self):
+        said, _, _ = self.wifi(CROSSPOINT_SIM_WIFI_CONNECT='fail')
+        self.assertEqual(said[-1:], ['Nối không được. Gõ sai mật khẩu chứ gì.'])
 
 
 if __name__ == '__main__':
