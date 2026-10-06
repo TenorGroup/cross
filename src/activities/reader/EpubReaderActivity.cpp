@@ -5180,6 +5180,13 @@ void EpubReaderActivity::activateMoreRow(int row) {
       // nothing (no case for it after the menu).
       openPick(PICK_MORE + static_cast<int>(action), moreRowName(row));
       return;
+#else
+    case MA::STATUS_BAR:  // the touch toolbar had the same fall-through: its modes in the popup of Orientation
+      overlayPopup.show(StrId::STR_HIDE_READER_STATUS_BAR, readermenu::STATUS_BAR_MODE_LABELS,
+                        CrossPointSettings::READER_STATUS_BAR_MODE_COUNT, SETTINGS.readerStatusBarMode,
+                        [this](int idx) { setReaderStatusBarMode(idx); });
+      paintOverlayPopup();
+      return;
 #endif
     case MA::ROTATE_SCREEN: {
       static constexpr StrId kOrientIds[] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW,
