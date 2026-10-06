@@ -19,10 +19,11 @@ from ugly_common import Card, digest
 BODY = 'Gió lên từ phía bãi, mang theo mùi rong và mùi khói bếp của mấy nhà ven đê. Cậu đứng lâu ở đầu cầu, ' \
        'đếm từng chiếc thuyền về muộn, rồi mới chịu quay vào. '
 CLOCK = (400, 748, 528, 792)  # the clock in the key bar of tenor/cross
-# Screens of tenor/cross before the ugly branches (f71cd39d, 3376fa36), the clock box rubbed out.
+# Screens of tenor/cross before the ugly branches (f71cd39d, 3376fa36), the clock box rubbed out. The end menu
+# opens on its first row since the turn into it stopped moving the selection.
 CROSS = {
     'eob_plain': '490012e7fcd7e735',
-    'eob_menu': 'cd447ae2b5b6c6ed',
+    'eob_menu': 'a0c8328098129235',
     'percent': '6ab5c7354d1e3bd2',
     'chapter_entry': '6c974a15195b58d5',
     'definition': '5db94663acffe057',
@@ -101,7 +102,10 @@ class ReadingScreensTest(unittest.TestCase):
     def test_end_of_book_with_the_next_books(self):
         script = self.END + ';9000:DOWN;11500:QUIT'
         log, ugly, cross = self.both(script, [(8500, 'eob'), (11000, 'down')], siblings=('l.epub', 'm.epub'))
-        self.assertTrue('EndOfBook frame rows=3 sel=0' in log, 'no ugly end menu')
+        frames = [(int(t), int(s)) for t, s in re.findall(r'\[(\d+)\] \[INF\] \[UGLY\] EndOfBook frame rows=3 sel=(\d+)', log)]
+        self.assertTrue(frames, 'no ugly end menu')
+        self.assertEqual([s for t, s in frames if t < 9000], [0], 'the turn into the end does not move the selection')
+        self.assertEqual([s for t, s in frames if t >= 9000], [1], 'one press, one row')
         self.assertNotEqual(screen_digest(ugly['eob']), screen_digest(ugly['down']), 'the circle moves')
         self.check('eob_menu', ugly['eob'], cross['eob'])
 

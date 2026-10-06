@@ -6,7 +6,6 @@
 #include <I18n.h>
 #include <Logging.h>
 
-#include "CrossPointSettings.h"
 #include "ReaderUtils.h"
 // ReaderUtils.h pulls in ActivityManager.h, which only forward-declares Activity while holding
 // std::unique_ptr<Activity> members. Destroying that unique_ptr needs the complete type, so the
@@ -132,22 +131,15 @@ EndOfBookOptions::Action EndOfBookOptions::handleMenuInput(const MappedInputMana
     return Action::LastPage;
   }
 
-  // Selection movement on the standard list navigation buttons (side Up/Down plus front
-  // Left/Right, orientation swap included). It follows the reader's page-turn semantics
-  // (press-triggered by default, release-triggered when a long-press behavior is
-  // configured, same rule as ReaderUtils::detectPageTurn). This matters on entry: with
-  // press-triggered turns, the press that turned the final page already fired in the
-  // reader, and its release must not double-fire into this menu.
-  const bool usePress = SETTINGS.longPressButtonBehavior == CrossPointSettings::OFF;
-  const auto triggered = [&](const MappedInputManager::Button button) {
-    return usePress ? input.wasPressed(button) : input.wasReleased(button);
-  };
+  // Selection movement on the standard list navigation buttons (side Up/Down plus front Left/Right, orientation
+  // swap included), on the press, as the reader turns its pages (ReaderUtils::detectPageTurn): the press that
+  // turned the final page fired in the reader, and its release must not move the selection here.
   const int itemCount = static_cast<int>(names.size()) + 1;  // + "Home" entry
-  if (triggered(MappedInputManager::Button::NavPrevious)) {
+  if (input.wasPressed(MappedInputManager::Button::NavPrevious)) {
     selector.store(ButtonNavigator::previousIndex(selectedIndex, itemCount), std::memory_order_relaxed);
     return Action::Redraw;
   }
-  if (triggered(MappedInputManager::Button::NavNext)) {
+  if (input.wasPressed(MappedInputManager::Button::NavNext)) {
     selector.store(ButtonNavigator::nextIndex(selectedIndex, itemCount), std::memory_order_relaxed);
     return Action::Redraw;
   }
