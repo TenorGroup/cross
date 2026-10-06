@@ -8,6 +8,8 @@ Reader Menu Style = Toolbar over an EPUB page, step to the Text tool, open its p
 3. With the page under an open sheet the panel is told once per change: one fast refresh for the page
    and the sheet together. The page's own push and its gray pass ran first and the sheet came after.
 4. The Text rows change in place; the chapter is laid out once the presses stop.
+v1.0.53: the front buttons move the rows (the side buttons change the tab), and a Text row with several
+values opens them as a list over the sheet: Select keeps the value under the cursor.
 
 Panel pushes are read from the simulator's panel trace (CROSSPOINT_SIM_PANEL_TRACE) and the card
 writes from CROSSPOINT_SIM_SD_TRACE.
@@ -162,7 +164,7 @@ def sheet_top(img):
     """y of the sheet's top edge: the first row from 150 down that is a full-width rule."""
     px = img.load()
     for y in range(150, img.height - 100):
-        if sum(1 for x in range(img.width) if px[x, y] == 0) >= 0.9 * img.width:
+        if sum(1 for x in range(img.width) if px[x, y] == 0) >= 0.8 * img.width:  # the edge's top corners are round
             return y
     raise AssertionError('no sheet edge on screen')
 
@@ -179,12 +181,12 @@ class FontLevelTest(unittest.TestCase):
         n = iter(range(1, 100))
         at = lambda: t + next(n) * STEP
         # Run A: the rows, the list, the list one screen further (4 steps down).
-        a = [(at(), 'CONFIRM')] + [(at(), 'DOWN') for _ in range(4)]
+        a = [(at(), 'CONFIRM')] + [(at(), 'RIGHT') for _ in range(4)]
         cls.pages = run_sim(OPEN_TEXT + a, [(t + STEP - 300, 'rows'), (t + 2 * STEP - 300, 'list'),
                                              (t + 6 * STEP - 300, 'list2')], quit_after=2 * STEP, extra_families=EXTRA)
         # Run B: into the list, up to Noto Sans (the family is chosen with Confirm), back out, the panel closed.
         n = iter(range(1, 100))
-        b = [(at(), 'CONFIRM'), (at(), 'UP'), (at(), 'UP'), (at(), 'CONFIRM'), (at(), 'BACK'), (at(), 'BACK'),
+        b = [(at(), 'CONFIRM'), (at(), 'LEFT'), (at(), 'LEFT'), (at(), 'CONFIRM'), (at(), 'BACK'), (at(), 'BACK'),
              (at(), 'BACK')]
         cls.chosen = run_sim(OPEN_TEXT + b, [(t + STEP - 300, 'rows'), (t + 2 * STEP - 300, 'list'),
                                               (t + 5 * STEP - 300, 'chosen'), (t + 6 * STEP - 300, 'back'),
@@ -238,14 +240,15 @@ class SingleSaveTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         t = OPEN_TEXT[-1][0]
-        # Spacing row: down twice, Confirm moves it to its next value. Alignment row the same. Then the
-        # Font row: Confirm opens the list, one step up to Noto Sans, Confirm. Back up the levels, out.
+        # Spacing row: down twice, its list, Very narrow (two up from Default), kept. Alignment row: its list,
+        # one down, kept. Then the Font row: Confirm opens the list, one step up to Noto Sans, Confirm. Back up
+        # the levels, out.
         n = iter(range(1, 100))
         at = lambda: t + next(n) * STEP
         presses = OPEN_TEXT + [
-            (at(), 'DOWN'), (at(), 'DOWN'), (at(), 'CONFIRM'),
-            (at(), 'DOWN'), (at(), 'CONFIRM'),
-            (at(), 'UP'), (at(), 'UP'), (at(), 'UP'), (at(), 'CONFIRM'), (at(), 'UP'), (at(), 'CONFIRM'),
+            (at(), 'RIGHT'), (at(), 'RIGHT'), (at(), 'CONFIRM'), (at(), 'LEFT'), (at(), 'LEFT'), (at(), 'CONFIRM'),
+            (at(), 'RIGHT'), (at(), 'CONFIRM'), (at(), 'RIGHT'), (at(), 'CONFIRM'),
+            (at(), 'LEFT'), (at(), 'LEFT'), (at(), 'LEFT'), (at(), 'CONFIRM'), (at(), 'LEFT'), (at(), 'CONFIRM'),
             (at(), 'BACK'), (at(), 'BACK'), (at(), 'BACK')]
         before = run_sim(presses[:-3], quit_after=STEP)
         cls.before_writes = before["writes"]
@@ -273,11 +276,16 @@ class SingleSaveTest(unittest.TestCase):
         self.assertLess(gray, write.start(), 'settings.json is written after the page is painted')
 
 
+# The cursor to Line Spacing, its list, two up to Very narrow (stored 1), kept.
+TO_VERY_NARROW = ['RIGHT', 'RIGHT', 'CONFIRM', 'LEFT', 'LEFT', 'CONFIRM']
+
+
 class NoGrayCloseSaveTest(unittest.TestCase):
     def test_bw_frame_closes_the_save_gate(self):
         t = OPEN_TEXT[-1][0]
-        presses = OPEN_TEXT + [(t + STEP, 'DOWN'), (t + 2 * STEP, 'DOWN'), (t + 3 * STEP, 'CONFIRM'),
-                               (t + 5 * STEP, 'BACK'), (t + 6 * STEP, 'BACK')]
+        presses = OPEN_TEXT + [(t + (k + 1) * STEP, key) for k, key in enumerate(TO_VERY_NARROW)]
+        t += len(TO_VERY_NARROW) * STEP
+        presses += [(t + 2 * STEP, 'BACK'), (t + 3 * STEP, 'BACK')]
         res = run_sim(presses, antialias=0, quit_after=3 * STEP)
         shutil.rmtree(res['tmp'], True)
         self.assertEqual(res['settings'].get('lineSpacing'), 1)
@@ -295,8 +303,8 @@ class SleepWithPanelOpenTest(unittest.TestCase):
 
     def test_change_survives_sleep(self):
         t = OPEN_TEXT[-1][0]
-        presses = OPEN_TEXT + [(t + STEP, 'DOWN'), (t + 2 * STEP, 'DOWN'), (t + 3 * STEP, 'CONFIRM'),
-                               (t + 5 * STEP, 'SLEEP')]
+        presses = OPEN_TEXT + [(t + (k + 1) * STEP, key) for k, key in enumerate(TO_VERY_NARROW)]
+        presses.append((t + (len(TO_VERY_NARROW) + 2) * STEP, 'SLEEP'))
         res = run_sim(presses, quit_after=4 * STEP)
         shutil.rmtree(res['tmp'], True)
         self.assertEqual(res['settings'].get('lineSpacing'), 1, res['settings'])
@@ -306,31 +314,37 @@ LAYOUT = re.compile(r'Cache not found, building')
 
 
 class QuietRelayoutTest(unittest.TestCase):
-    """A Text row changes in place; the chapter is laid out once the presses stop, the page pushed once."""
+    """A Text row's value kept from its list draws the page and the sheet in one push; quick choices are laid out
+    once the presses stop."""
 
     @classmethod
     def setUpClass(cls):
         t = OPEN_TEXT[-1][0]
-        rows = OPEN_TEXT + [(t + STEP, 'DOWN'), (t + 2 * STEP, 'DOWN')]  # the cursor on Line Spacing
-        first = len(rows)  # index of the first Confirm
+        rows = OPEN_TEXT + [(t + STEP, 'RIGHT'), (t + 2 * STEP, 'RIGHT')]  # the cursor on Line Spacing
+        first = len(rows)  # index of the first press of the choices
         cls.runs = {}
         for label, antialias in (('aa', 1), ('bw', 0)):
             base = run_sim(rows, antialias=antialias, quit_after=STEP, refresh_ms=390)
-            fast = [(t + 3 * STEP + 450 * k, 'CONFIRM') for k in range(4)]  # closer than the 600 ms quiet time
+            # 4 choices (list, one down, kept), a press every 450 ms (the panel takes 390): every press comes
+            # inside the 600 ms quiet time of the one before, so the layout waits for the last.
+            fast = [(t + 3 * STEP + 1350 * k + d, key) for k in range(4)
+                    for d, key in ((0, 'CONFIRM'), (450, 'RIGHT'), (900, 'CONFIRM'))]
             quick = run_sim(rows + fast, antialias=antialias, quit_after=4 * STEP, refresh_ms=390)
             closed = run_sim(rows + fast + [(t + 8 * STEP, 'BACK'), (t + 9 * STEP, 'BACK')], antialias=antialias,
                              quit_after=3 * STEP, refresh_ms=390)
-            one = run_sim(rows + [(t + 3 * STEP, 'CONFIRM')], antialias=antialias, quit_after=4 * STEP, refresh_ms=390)
+            pick = rows + [(t + 3 * STEP, 'CONFIRM'), (t + 4 * STEP, 'RIGHT')]  # the list open, one down
+            pick_base = run_sim(pick, antialias=antialias, quit_after=STEP, refresh_ms=390)
+            one = run_sim(pick + [(t + 5 * STEP, 'CONFIRM')], antialias=antialias, quit_after=4 * STEP, refresh_ms=390)
             marks = [m.start() for m in PRESS_AT.finditer(quick['log'])]
             layouts = quick['log'][marks[first]:].count("CATCH_UP landed")
             previews = len(re.findall(r"PREVIEW_PAGE ok=1", quick['log'][marks[first]:]))
             base_pushes = len(pushes(base['trace']))
             quick_pushes = pushes(quick['trace'])[base_pushes:]
-            one_pushes = pushes(one['trace'])[base_pushes:]
+            one_pushes = pushes(one['trace'])[len(pushes(pick_base['trace'])):]
             print(f'{label}: 1 press -> panel pushes {one_pushes}; 4 quick presses -> {quick_pushes}, '
                   f'{layouts} layout(s), line spacing {closed["settings"].get("lineSpacing")}')
             cls.runs[label] = (one_pushes, quick_pushes, layouts, closed['settings'].get('lineSpacing'), previews)
-            for r in (base, quick, one, closed):
+            for r in (base, quick, one, closed, pick_base):
                 shutil.rmtree(r['tmp'], True)
 
     def test_four_quick_presses_are_one_layout(self):
@@ -338,20 +352,22 @@ class QuietRelayoutTest(unittest.TestCase):
             _, _, layouts, spacing, previews = self.runs[label]
             self.assertEqual(previews, 4, f"{label}: immediate preview for each choice")
             self.assertEqual(layouts, 1, label)
-            self.assertEqual(spacing, 4, f'{label}: the value moved 4 times')
+            # From Default (place 2) one down each time: Wide, Very wide, Very narrow, Narrow (stored 2).
+            self.assertEqual(spacing, 2, f'{label}: the value moved 4 times')
 
     def test_each_press_draws_the_page_and_sheet(self):
         for label in ('aa', 'bw'):
             one, quick, _, _, _ = self.runs[label]
             self.assertEqual(one, ['DISPLAY'], f'{label}: immediate page and sheet')
-            self.assertEqual(quick, ['DISPLAY'] * 4, f'{label}: page and sheet for each choice')
+            self.assertEqual(quick, ['DISPLAY'] * 12, f'{label}: the list, the step, page and sheet: each a push')
 
     def test_drop_cap_applies_at_once(self):
         # 3 values and seldom pressed in a run: no sheet-only redraw first, the page and sheet in one push.
         t = OPEN_TEXT[-1][0]
-        rows = OPEN_TEXT + [(t + (k + 1) * STEP, 'DOWN') for k in range(4)]
+        rows = OPEN_TEXT + [(t + (k + 1) * STEP, 'RIGHT') for k in range(4)]
+        rows += [(t + 5 * STEP, 'CONFIRM'), (t + 6 * STEP, 'RIGHT')]  # its list, one down
         base = run_sim(rows, quit_after=STEP)
-        one = run_sim(rows + [(t + 5 * STEP, 'CONFIRM')], quit_after=3 * STEP)
+        one = run_sim(rows + [(t + 7 * STEP, 'CONFIRM')], quit_after=3 * STEP)
         step = pushes(one['trace'])[len(pushes(base['trace'])):]
         for r in (base, one):
             shutil.rmtree(r['tmp'], True)
@@ -359,9 +375,10 @@ class QuietRelayoutTest(unittest.TestCase):
 
     def test_gray_pass_waits_for_the_sheet_to_close(self):
         t = OPEN_TEXT[-1][0]
-        rows = OPEN_TEXT + [(t + STEP, 'DOWN'), (t + 2 * STEP, 'DOWN'), (t + 3 * STEP, 'CONFIRM')]
+        rows = OPEN_TEXT + [(t + (k + 1) * STEP, key) for k, key in enumerate(TO_VERY_NARROW)]
+        t += len(TO_VERY_NARROW) * STEP
         base = run_sim(rows, quit_after=3 * STEP)
-        closed = run_sim(rows + [(t + 6 * STEP, 'BACK'), (t + 7 * STEP, 'BACK')], quit_after=3 * STEP)
+        closed = run_sim(rows + [(t + 3 * STEP, 'BACK'), (t + 4 * STEP, 'BACK')], quit_after=3 * STEP)
         closing = pushes(closed['trace'])[len(pushes(base['trace'])):]
         for r in (base, closed):
             shutil.rmtree(r['tmp'], True)

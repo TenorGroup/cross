@@ -201,14 +201,14 @@ class LevelOneKeysTest(unittest.TestCase):
         self.assertIsNone(ImageChops.difference(page(s[2]), page(s[4])).getbbox(), 'side Up: back again')
 
     def test_tab_icons_are_tab_size(self):
-        # The Text tab's "Aa", out of focus, between the Contents tab's ring and the More tab: 40 px art,
-        # its ink 24 to 44 px tall (the 24 px art inked 15 rows).
+        # The Text tab's "Aa", out of focus, between the Contents tab's ring and the More tab: the 40 px art
+        # inks about 34 x 20 px (the 24 px art inked under 24 x 15).
         img = self.res['shots'][0]
         band = img.crop((150, img.height - 140, 290, img.height - 40))
         box = ImageChops.invert(band).getbbox()
         self.assertIsNotNone(box)
         w, h = box[2] - box[0], box[3] - box[1]
-        self.assertTrue(24 <= h <= 44 and w <= 48, f'Aa ink {w}x{h}')
+        self.assertTrue(28 <= w <= 48 and 17 <= h <= 40, f'Aa ink {w}x{h}')
 
 
 HOLD = 'CONFIRM:1100'  # past readermenu::GIU_GHIM_MS (1000), released before the next shot
