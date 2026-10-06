@@ -13,5 +13,7 @@ const char* cacheDone();
 const char* cacheFail();
 // While the update from the card writes the firmware.
 const char* flashing();
+// The title over the keyboard tips.
+const char* keyboardTips();
 
 }  // namespace ugly::words

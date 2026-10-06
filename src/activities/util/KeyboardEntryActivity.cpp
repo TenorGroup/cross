@@ -17,6 +17,7 @@
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
 #include "shells/ugly/UglySteady.h"
+#include "shells/ugly/UglyWords.h"
 #if defined(FREEINK_DEVICE_X4PRO)
 #include "UIFontTiers.h"
 #endif
@@ -1120,46 +1121,43 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     fit(contextual, tipY);
     fit(tr(STR_KB_HINT_CLEAR_TEXT), tipY + tipsLh);
   } else if (tipCount > 0) {
-    int y = tenorchrome::enabled() ? tenorchrome::tipY(renderer) - tipCount * tipsLh
-                                   : (underlineBottom + kbRect.y) / 2 - (tipCount + 1) * tipsLh / 2;
-    drawTip(tr(STR_KB_TIPS), y);
-    y += tipsLh;
+    const char* tips[8];
+    int n = 0;
+    tips[n++] = shell::uglyParts() ? ugly::words::keyboardTips() : tr(STR_KB_TIPS);
     if (cursorMode) {
-      drawTip(tr(STR_KB_HINT_RETURN_KEYBOARD), y);
+      tips[n++] = tr(STR_KB_HINT_RETURN_KEYBOARD);
     } else if (urlPanel) {
-      drawTip(tr(STR_KB_HINT_EXIT_URL_MODE), y);
-      y += tipsLh;
-      if (!text.empty()) {
-        drawTip(tr(STR_KB_HINT_CLEAR_TEXT), y);
-      }
+      tips[n++] = tr(STR_KB_HINT_EXIT_URL_MODE);
+      if (!text.empty()) tips[n++] = tr(STR_KB_HINT_CLEAR_TEXT);
     } else if (symbols) {
-      if (!text.empty()) {
-        drawTip(tr(STR_KB_HINT_CLEAR_TEXT), y);
-      }
+      if (!text.empty()) tips[n++] = tr(STR_KB_HINT_CLEAR_TEXT);
     } else {
-      const char* altCharTip;
       if (inputType == InputType::Url) {
-        altCharTip = tr(STR_KB_HINT_SECONDARY_CHAR);
+        tips[n++] = tr(STR_KB_HINT_SECONDARY_CHAR);
       } else if (shifted) {
-        altCharTip = tr(STR_KB_HINT_LOWER_SECONDARY);
+        tips[n++] = tr(STR_KB_HINT_LOWER_SECONDARY);
       } else {
-        altCharTip = tr(STR_KB_HINT_UPPER_SECONDARY);
+        tips[n++] = tr(STR_KB_HINT_UPPER_SECONDARY);
       }
-      drawTip(altCharTip, y);
-      y += tipsLh;
-      drawTip(tr(STR_KB_HINT_QUICK_SPACE), y);
-      y += tipsLh;
-      drawTip(tr(STR_KB_HINT_QUICK_BACKSPACE), y);
-      y += tipsLh;
-      drawTip(tr(STR_KB_HINT_EDIT_ENTRY), y);
-      y += tipsLh;
-      if (inputType == InputType::Url) {
-        drawTip(tr(STR_KB_HINT_URL_SNIPPETS), y);
-        y += tipsLh;
-      }
+      tips[n++] = tr(STR_KB_HINT_QUICK_SPACE);
+      tips[n++] = tr(STR_KB_HINT_QUICK_BACKSPACE);
+      tips[n++] = tr(STR_KB_HINT_EDIT_ENTRY);
+      if (inputType == InputType::Url) tips[n++] = tr(STR_KB_HINT_URL_SNIPPETS);
       // Always shown: a tap on Back saves, and that is the one thing a reader
       // must know before typing, empty field or not.
-      drawTip(tr(STR_KB_HINT_CLEAR_TEXT), y);
+      tips[n++] = tr(STR_KB_HINT_CLEAR_TEXT);
+    }
+    if (shell::uglyParts()) {
+      // In hand, one tip a line over the key bar. The hand is taller than the small font: when the lines outgrow the
+      // room under the keys, the title goes first, then the tips at the top; the one about Back stays.
+      const int bottom = renderer.getScreenHeight() - metrics.buttonHintsHeight - 14;
+      const int room = std::max(1, (bottom - (kbRect.y + kbRect.height) - 24) / 26 + 1);
+      const int first = std::max(0, n - room);
+      for (int i = first; i < n; ++i) tenorchrome::drawTip(renderer, tips[i], n - 1 - i);
+    } else {
+      int y = tenorchrome::enabled() ? tenorchrome::tipY(renderer) - tipCount * tipsLh
+                                     : (underlineBottom + kbRect.y) / 2 - (tipCount + 1) * tipsLh / 2;
+      for (int i = 0; i < n; ++i, y += tipsLh) drawTip(tips[i], y);
     }
   }
 

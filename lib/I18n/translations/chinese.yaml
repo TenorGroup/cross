@@ -950,6 +950,7 @@ STR_UGLY_CRASH_REASON: "Why I fell:"
 STR_UGLY_CACHE_DONE: "All gone. Feels lighter."
 STR_UGLY_CACHE_FAIL: "Couldn't delete it. Your card has issues."
 STR_UGLY_FLASHING: "Swapping my brain. Pull the power now and I'm dead for good."
+STR_UGLY_KB_TIPS: "Tips for clumsy fingers:"
 STR_FOLDER_ITEM_COUNT: "%u 项"
 
 STR_UGLY_PHIEU_TITLE: "ANSWER SHEET"

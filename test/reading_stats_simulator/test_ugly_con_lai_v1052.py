@@ -2,7 +2,8 @@
 
 Each scenario runs the X3 simulator in both shells: tenor/ugly says it in its own voice, tenor/cross keeps its words
 and its pixels. The answer paper, the notices of a wake and of a quiet restart, the boot screen, the keyboard, the
-screen after a crash, Clear cache, the update from the card.
+screen after a crash, Clear cache, the update from the card; then the keyboard tips, the folder path, reading habits, the
+30 days, the button remap, the question of Clear cache and the signature of the stats sleep screen.
 """
 import json
 import os
@@ -17,6 +18,14 @@ from ugly_common import Card, digest, entered, ink
 WAKE_NOTICE = re.compile(r'Wake notice shown: (.*)')
 RESTART_NOTICE = re.compile(r'Restart notice: (.*)')
 SSID = 'Mang Mau'
+FOLDER = 'Truyện ngắn'
+# Boxes of the parts this lane writes by hand, X3 portrait: the path band of a folder, the explanation under the
+# reading habits, the 30-day grid and its bars, the rows of the button remap. Outside the shared parts, so before this
+# lane both shells drew them alike.
+PATH_BAND = (0, 662, 528, 691)
+HABIT_NOTE = (0, 460, 528, 712)
+DAYS_GRID = (0, 60, 528, 310)
+REMAP_ROWS = (0, 60, 528, 340)
 UGLY_BOOT = re.compile(r'\[UGLY\] boot visible=(\d+) ms')
 
 
@@ -55,10 +64,11 @@ class UglyRemainingScreensTest(unittest.TestCase):
         image = shots['shot']
         return (image.crop(box) if box else image), entered(log), log
 
-    def assert_hand_only_in_ugly(self, keys, box, activity, **kw):
-        """tenor/ugly writes the box by hand; tenor/cross draws what it always drew. Same steps, same card."""
+    def assert_hand_only_in_ugly(self, keys, box, activity, cross_keys=None, **kw):
+        """tenor/ugly writes the box by hand; tenor/cross draws what it always drew. Same card, same steps unless the
+        Home of tenor/cross needs its own way to the screen."""
         ugly, ugly_acts, ugly_log = self.shot(1, keys, box, **kw)
-        cross, cross_acts, cross_log = self.shot(0, keys, box, **kw)
+        cross, cross_acts, cross_log = self.shot(0, keys if cross_keys is None else cross_keys, box, **kw)
         self.assertIn(activity, ugly_acts, ugly_log[-2000:])
         self.assertIn(activity, cross_acts, cross_log[-2000:])
         self.assertGreater(ink(ugly), 200, 'the box has writing')
@@ -135,6 +145,11 @@ class UglyRemainingScreensTest(unittest.TestCase):
             (card.sd / 'fw.bin').write_bytes(b'not a firmware' * 64)
         self.assert_hand_only_in_ugly(settings_route(9, 6, ['CONFIRM', 'WAIT:1500']), (0, 300, 528, 520),
                                       'SdFirmwareUpdate', prep=junk)
+
+
+    def test_the_keyboard_tips_are_written_by_hand(self):
+        # The tips under the keys, their key symbols drawn as the pen marks; the hand is taller, so fewer fit.
+        self.assert_hand_only_in_ugly(settings_route(7, 2), (0, 590, 528, 745), 'KeyboardEntry')
 
 
 if __name__ == '__main__':
