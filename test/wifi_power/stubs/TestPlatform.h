@@ -526,6 +526,7 @@ inline esp_err_t esp_read_mac(uint8_t* mac, int) {
   std::fill(mac, mac + 6, 1);
   return ESP_OK;
 }
+inline const char* defaultNetworkName() { return "tenor-cross"; }
 inline void deviceNetworkName(char* out, size_t size, const char* fallback) { std::snprintf(out, size, "%s", fallback); }
 struct FakeEsp {
   unsigned getFreeHeap() const { return 100000; }

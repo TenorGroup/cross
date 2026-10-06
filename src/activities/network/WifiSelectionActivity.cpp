@@ -624,9 +624,9 @@ void WifiSelectionActivity::attemptConnection() {
   uint8_t mac[6] = {};
   const esp_err_t macResult = esp_read_mac(mac, ESP_MAC_WIFI_STA);
   if (macResult == ESP_OK) {
-    char fallback[sizeof("tenor-cross-") + 12];
-    snprintf(fallback, sizeof(fallback), "tenor-cross-%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3], mac[4],
-             mac[5]);
+    char fallback[64];
+    snprintf(fallback, sizeof(fallback), "%s-%02X%02X%02X%02X%02X%02X", defaultNetworkName(), mac[0], mac[1], mac[2],
+             mac[3], mac[4], mac[5]);
     char hostname[64];
     deviceNetworkName(hostname, sizeof(hostname), fallback);
     WiFi.setHostname(hostname);
