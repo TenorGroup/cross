@@ -57,9 +57,15 @@ std::atomic<bool> frameAfterDeferredWrite{false};
 std::atomic<bool> frameDrawn{false};
 }  // namespace
 
-// The Home key leads to the active shell's main screen: Diary for Ugly, Recent for touch Cross.
+// Where a book opened from tenor/ugly goes on Home: the desk until the founder says otherwise (NONE is the diary).
+constexpr HomeMenuItem UGLY_HOME_FROM_BOOK = HomeMenuItem::DESK;
+
+// The one answer to "where does Home go", for the Home key and the swipe up from the bottom edge alike: on touch,
+// the desk for Ugly and Recent for Cross; on buttons, the shell's first screen.
 HomeMenuItem ActivityManager::homeKeyTarget() const {
-  return tenorchrome::kTouchShell && !shell::isUgly() ? HomeMenuItem::RECENTS : HomeMenuItem::NONE;
+  if (!tenorchrome::kTouchShell) return HomeMenuItem::NONE;
+  if (!shell::isUgly()) return HomeMenuItem::RECENTS;
+  return isReaderActivity() ? UGLY_HOME_FROM_BOOK : HomeMenuItem::DESK;
 }
 
 const char* ActivityManager::currentName() const { return currentActivity ? currentActivity->name.c_str() : nullptr; }
@@ -311,20 +317,27 @@ void ActivityManager::loop() {
     const bool heldBack = mappedInput.wasLongPressed(MappedInputManager::Button::Back, 1000);
     const bool bottomHome = mappedInput.wasBottomHomeGesture();
     if (!currentActivity->isHomeActivity() && (heldBack || mappedInput.wasHomeGesture())) {
-      const HomeMenuItem homeTarget = bottomHome ? HomeMenuItem::RECENTS : homeKeyTarget();
+      const HomeMenuItem homeTarget = homeKeyTarget();
       if (currentActivity->saveInputBeforeHome()) {
         homeAfterInput = true;
         homeAfterInputTarget = homeTarget;
         return;
       }
-      if (!bottomHome && currentActivity->handleHomeGesture()) {
-        if (heldBack) {
+      // A touch Ugly form saves on the way out, so both gestures go through it there, and land on the desk after.
+      const bool uglyTouch = tenorchrome::kTouchShell && shell::isUgly();
+      if ((!bottomHome || uglyTouch) && currentActivity->handleHomeGesture()) {
+        if (heldBack || uglyTouch) {
           homeAfterInput = true;
           homeAfterInputTarget = homeTarget;
         }
         return;
       }
       goHome(homeTarget);
+      return;
+    }
+    // Touch, Ugly: Home from the diary or the notebook goes to the desk; on the desk it does nothing.
+    if (tenorchrome::kTouchShell && shell::isUgly() && currentActivity->isHomeActivity() && mappedInput.wasHomeGesture()) {
+      if (currentActivity->name != "UglyDesk") goHome(homeKeyTarget());
       return;
     }
     // Touch: the Home key from the Home screen itself brings it back to its default card, Recent.

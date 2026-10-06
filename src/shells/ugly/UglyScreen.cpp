@@ -20,9 +20,8 @@ void Screen::push(const Key key, const int x, const int y) {
 
 // The touch screen speaks through the scribble recognizer alone (it already reads the contact the SDK
 // reads), so a slanted first stroke of an X never turns a page as a swipe. The SDK gives the hold, which
-// ends the contact, and the Home key, which is Back.
+// ends the contact. The Home key and the swipe up from the bottom edge are ActivityManager's (to the desk).
 void Screen::readTouch() {
-  if (mappedInput.wasHomeGesture()) push(Key::Back);
   int x = 0, y = 0;
   if (mappedInput.wasScreenLongPress(x, y)) {
     push(Key::Hold, x, y);

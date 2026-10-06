@@ -35,7 +35,8 @@ enum class HomeMenuItem {
   STATS_TAB,
   FAVORITES_TAB,
   RECENT_CONTINUE,
-  LIBRARY
+  LIBRARY,
+  DESK  // tenor/ugly's desk; other shells read it as RECENTS
 };
 
 // A reader shortcut a quick action asks the foreground reader for (quickaction::Outcome).
