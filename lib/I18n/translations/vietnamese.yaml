@@ -994,6 +994,10 @@ STR_UGLY_OTA_UPDATING: "Đang nạp. Rút điện giữa chừng là thành cụ
 STR_UGLY_OTA_NONE: "Bản mới nhất rồi. Lỗi là ở mày."
 STR_UGLY_OTA_FAILED: "Cập nhật xịt. Thử lại đi, lần này tỉnh táo."
 STR_UGLY_OTA_DONE: "Xong. Giữ nút nguồn tới khi máy bật lại. Gấp gì?"
+STR_UGLY_CALIBRE_STARTING: "Đang mở cửa cho Calibre. Chờ tí."
+STR_UGLY_CALIBRE_FAILED: "Calibre nối không được. Mạng dỏm rồi."
+STR_UGLY_CALIBRE_WAITING: "Bấm gửi trong Calibre đi. Máy đang há mồm chờ."
+STR_UGLY_CALIBRE_RECEIVING: "Đang nhận, đừng rút gì hết."
 
 STR_UGLY_PHIEU_TITLE: "PHIẾU TRẢ LỜI"
 STR_UGLY_PHIEU_SUBJECT: "Môn:"

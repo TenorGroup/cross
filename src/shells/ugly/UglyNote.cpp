@@ -9,7 +9,7 @@
 namespace ugly {
 namespace {
 constexpr int TEXT_X = NOTE_X, MARGIN_X = 26;  // the notebook's margin
-constexpr int LINE_HEIGHT = 44, DETAIL_HEIGHT = 32, BAR_H = 26;
+constexpr int LINE_HEIGHT = 44, DETAIL_HEIGHT = 32, BAR_H = NOTE_BAR_H;
 }  // namespace
 
 void notePaper(const GfxRenderer& r, const char* title) {
@@ -18,6 +18,16 @@ void notePaper(const GfxRenderer& r, const char* title) {
   // S38: the S52 pen only knows the letters of the Home page titles.
   const int tw = text(r, Size::S38, TEXT_X, 74, fit(r, Size::S38, title, r.getScreenWidth() - TEXT_X - 30).c_str());
   underline(r, TEXT_X, TEXT_X + tw, 88, 17, 3);
+}
+
+void noteBar(const GfxRenderer& r, const int top, const int percent) {
+  const int x0 = TEXT_X, x1 = r.getScreenWidth() - 30, bottom = top + BAR_H;
+  ugly::line(r, x0, top, x1, top + 2, 71, 2);
+  ugly::line(r, x1, top + 2, x1 + 1, bottom, 72, 2);
+  ugly::line(r, x1 + 1, bottom, x0, bottom + 1, 73, 2);
+  ugly::line(r, x0, bottom + 1, x0, top, 74, 2);
+  const int fill = x0 + (x1 - x0) * std::clamp(percent, 0, 100) / 100;
+  for (int x = x0 + 4; x + 8 <= fill; x += 7) ugly::line(r, x, bottom - 3, x + 8, top + 4, 80 + x, 1);
 }
 
 void notePage(const GfxRenderer& r, const MappedInputManager& input, const char* title, const char* line,
@@ -37,16 +47,7 @@ void notePage(const GfxRenderer& r, const MappedInputManager& input, const char*
     r.drawText(UI_10_FONT_ID, TEXT_X, y - 20, r.truncatedText(UI_10_FONT_ID, detail, room).c_str());
     y += DETAIL_HEIGHT;
   }
-  if (percent >= 0) {
-    // A shaky box, hatched by pen as far as the work went.
-    const int x0 = TEXT_X, x1 = w - 30, top = y - 6, bottom = top + BAR_H;
-    ugly::line(r, x0, top, x1, top + 2, 71, 2);
-    ugly::line(r, x1, top + 2, x1 + 1, bottom, 72, 2);
-    ugly::line(r, x1 + 1, bottom, x0, bottom + 1, 73, 2);
-    ugly::line(r, x0, bottom + 1, x0, top, 74, 2);
-    const int fill = x0 + (x1 - x0) * std::min(percent, 100) / 100;
-    for (int x = x0 + 4; x + 8 <= fill; x += 7) ugly::line(r, x, bottom - 3, x + 8, top + 4, 80 + x, 1);
-  }
+  if (percent >= 0) noteBar(r, y - 6, percent);
   statusBar(r, input, hints);
   r.displayBuffer(mode);
 #ifdef UGLY_FRAME_LOG

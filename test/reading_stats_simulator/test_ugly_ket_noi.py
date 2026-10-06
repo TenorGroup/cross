@@ -190,5 +190,26 @@ class UglyOtaTest(unittest.TestCase):
         print('update note frames ms:', [n['ms'] for n in notes])
 
 
+
+CALIBRE_FRAME = re.compile(r'Calibre frame receiving=(?P<rx>\d) total=(?P<ms>\d+)ms heap=\d+')
+# Send file chooser -> second row (Calibre) -> the open network.
+TO_CALIBRE = ['UP', 'CONFIRM', 'WAIT:700', 'RIGHT', 'CONFIRM', 'WAIT:2500', 'CONFIRM']
+
+
+class UglyCalibreTest(unittest.TestCase):
+    def test_calibre_waits_on_a_page_written_by_hand(self):
+        card = Card()
+        self.addCleanup(card.close)
+        script, t = keys(*TO_CALIBRE, 'WAIT:3000')
+        log, shots = card.run(script + ';%d:QUIT' % (t + 800), [(t, 'calibre')], timeout=60)
+        self.assertIn('CalibreConnect', entered(log), log[-2000:])
+        frames = CALIBRE_FRAME.findall(log)
+        self.assertTrue(frames, log[-2500:])
+        page = shots['calibre']
+        self.assertGreater(ink(page, (40, 140, 500, 290)), 2500)  # the four steps in pen
+        self.assertGreater(ink(page, (24, 600, 30, 700)), 60)
+        print('calibre frames ms:', [ms for _, ms in frames])
+
+
 if __name__ == '__main__':
     unittest.main()

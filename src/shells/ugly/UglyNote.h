@@ -14,6 +14,10 @@ namespace ugly {
 inline constexpr int NOTE_X = 48;
 void notePaper(const GfxRenderer& renderer, const char* title);
 
+// A shaky box from NOTE_X to the right margin, its top at `top`, hatched by pen as far as `percent` went.
+void noteBar(const GfxRenderer& renderer, int top, int percent);
+inline constexpr int NOTE_BAR_H = 26;
+
 // Draws the whole frame and pushes it. `line` is written by hand; `detail` is data (a time, a network, an address,
 // a version) and stays one line in the UI font, where a letter cannot jump. Either may be null; `percent` below 0
 // draws no bar.
