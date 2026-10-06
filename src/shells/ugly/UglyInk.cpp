@@ -563,10 +563,7 @@ void paper(const GfxRenderer& r, const int top, const int bottom, const bool tor
 void tickBox(const GfxRenderer& r, const int x, const int y, const bool ticked) {
   const int box[5][2] = {{x - 22, y - 10}, {x, y - 11}, {x + 1, y + 10}, {x - 23, y + 11}, {x - 22, y - 10}};
   polyline(r, box, 5, 2);
-  if (ticked) {
-    stroke(r, x - 18, y - 1, x - 12, y + 7, 3);
-    stroke(r, x - 12, y + 7, x + 4, y - 16, 3);
-  }
+  if (ticked) penTick(r, x - 12, y + 7, 26, 3);  // the one tick of the shell
 }
 
 void heart(const GfxRenderer& r, const int x, const int y) {
