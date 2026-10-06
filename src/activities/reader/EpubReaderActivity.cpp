@@ -3213,7 +3213,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // and, on the black and white pass only (the gray passes would turn the strokes gray), the chapter
   // title is written in their place. A title that does not fit the band leaves the heading as laid out.
   HandHeading heading;
-  if (shell::isUgly() && !preview && section && section->currentPage == 0) {
+  // A preview has no section yet: it stands for the first page when the page it replaces was.
+  const bool firstPage = section ? section->currentPage == 0 : xemTruoc && nextPageNumber == 0;
+  if (shell::isUgly() && !preview && firstPage) {
     heading = handHeading(renderer, *epub, currentSpineIndex, *page, fontId, orientedMarginTop);
     if (heading.lines && !ugly::chapterTitle(renderer, heading.title.c_str(), orientedMarginLeft,
                                              renderer.getScreenWidth() - orientedMarginRight, heading.top,
