@@ -19,6 +19,7 @@
 #include "ReaderActivity.h"
 #include "ReaderFontChon.h"
 #include "ReaderFontSizes.h"
+#include "ReaderToolbarUi.h"
 #include "ReaderUtils.h"
 #include "SdCardFontSystem.h"
 #include "components/UITheme.h"
@@ -156,7 +157,7 @@ bool TxtReaderActivity::buildPageIndex(GfxRenderer& renderer) {
 
   size_t offset = 0;
   LOG_DBG("TRS", "Building page index for %zu bytes...", fileSize);
-  GUI.drawPopup(renderer, tr(STR_INDEXING));
+  GUI.drawPopup(renderer, readerugly::notice(StrId::STR_INDEXING));
 
   while (offset < fileSize) {
     std::vector<std::string> tempLines;

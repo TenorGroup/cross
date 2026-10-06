@@ -28,7 +28,13 @@ CROSS = {
     'definition': '5db94663acffe057',
     'page': '6c235d5d47876125',
     'marked': '9feb91ec066ca9c1',
+    'notice': '49ecd4c4e7dad049',
 }
+# The hand-written notices, the same strokes on every draw.
+UGLY = {
+    'notice': '6507229e90714cd4',
+}
+NOTICE = (0, 120, 528, 330)  # the band a notice of the reader is drawn in
 
 
 def write_epub(path, title, paragraphs):
@@ -141,6 +147,12 @@ class ReadingScreensTest(unittest.TestCase):
         self.assertNotEqual(digest(ugly['page'].crop(band)), digest(ugly['marked'].crop(band)), 'the star is drawn')
         self.check('page', ugly['page'], cross['page'])
         self.check('marked', ugly['marked'], cross['marked'])
+
+    def test_bookmark_notice(self):
+        log, ugly, cross = self.both(self.MARK, [(5000, 'notice')], paragraphs=8, longPressMenuFunction=2)
+        self.assertTrue('part=notice' in log.split('[IN] press')[-1], 'no notice after the hold')
+        self.assertEqual(digest(ugly['notice'].crop(NOTICE))[:16], UGLY['notice'], 'the notice says it in the voice of the shell')
+        self.check('notice', ugly['notice'], cross['notice'])
 
 
 if __name__ == '__main__':

@@ -666,6 +666,18 @@ void readerugly::paper(const GfxRenderer& r, const fui::Rect& rect) {
   ugly::line(r, rect.x + 3, rect.bottom() - 1, rect.x + 2, rect.y + 3, 813, 2);
 }
 
+const char* readerugly::notice(const StrId id) {
+  if (shell::uglyParts()) {
+    switch (id) {
+      case StrId::STR_BOOKMARK_ADDED: return tr(STR_UGLY_BOOKMARK_ADDED);
+      case StrId::STR_BOOKMARK_REMOVED: return tr(STR_UGLY_BOOKMARK_REMOVED);
+      case StrId::STR_INDEXING: return tr(STR_UGLY_INDEXING);
+      default: break;
+    }
+  }
+  return I18N.get(id);
+}
+
 void readerugly::selected(const GfxRenderer& r, const fui::Rect& rect) {
   if (!rect.empty()) ugly::circle(r, ugly::Circle::Row,
       {rect.x + 5, rect.y + 5, rect.right() - 5, rect.bottom() - 5}, 0, 0, 2);

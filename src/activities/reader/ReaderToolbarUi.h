@@ -1,5 +1,7 @@
 #pragma once
 
+#include <I18n.h>
+
 #include <functional>
 #include <string>
 
@@ -15,6 +17,8 @@ void text(const GfxRenderer& renderer, const freeink::ui::Rect& rect, const char
           freeink::ui::TextAlign align = freeink::ui::TextAlign::Left);
 void paper(const GfxRenderer& renderer, const freeink::ui::Rect& rect);
 void selected(const GfxRenderer& renderer, const freeink::ui::Rect& rect);
+// The words of a reader notice (bookmark, indexing): tenor/ugly on the button readers says it in its own voice.
+const char* notice(StrId id);
 }
 
 // FreeInkUI chrome for the toolbar reader menu (Settings -> Reader -> Reader
