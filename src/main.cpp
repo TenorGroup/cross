@@ -1842,7 +1842,7 @@ void loop() {
       } else if (cmd.startsWith("STROKE_LOG ")) {
         // CMD:STROKE_LOG 1 <label> / STROKE_LOG 0: every stroke drawn on the glass and what the
         // scribble recognizer made of it (STROKE, SCRIBBLE lines), the label naming what the person
-        // was asked to draw (cross, circle, swipe, tap). test/scribble/log_to_samples.py turns the
+        // was asked to draw (strike, circle, swipe, tap). test/scribble/log_to_samples.py turns the
         // lines into test samples.
         const String arg = cmd.substring(11);
         const int space = arg.indexOf(' ');

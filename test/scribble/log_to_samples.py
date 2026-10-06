@@ -11,7 +11,7 @@ import re
 import sys
 from pathlib import Path
 
-KINDS = {"tap", "swipe", "cross", "circle", "unknown"}
+KINDS = {"tap", "swipe", "strike", "circle", "unknown"}
 STROKE = re.compile(r"STROKE lbl=(\S+) n=(\d+) gap=(\d+) pts=(\S*)")
 SCRIBBLE = re.compile(r"SCRIBBLE lbl=(\S+) kind=(\w+)")
 
@@ -48,18 +48,17 @@ def convert(lines):
 
 def selftest():
     log = [
-        "[1200] STROKE lbl=cross n=3 gap=5000 pts=10,10,0;60,60,10;110,110,10;",
+        "[1200] STROKE lbl=strike n=3 gap=5000 pts=10,10,0;300,12,10;20,16,10;",
         "noise in between",
-        "[1500] STROKE lbl=cross n=3 gap=250 pts=110,10,0;60,60,10;10,110,10;",
-        "[1500] SCRIBBLE lbl=cross kind=cross strokes=2 at=60,60 box=10,10,110,110",
-        "[3000] STROKE lbl=cross n=3 gap=1500 pts=10,10,0;60,60,10;",  # cut short
-        "[3700] SCRIBBLE lbl=cross kind=swipe strokes=1 at=10,10 box=10,10,60,60",
+        "[1200] SCRIBBLE lbl=strike kind=strike strokes=1 at=155,13 box=10,10,300,16",
+        "[3000] STROKE lbl=strike n=3 gap=1500 pts=10,10,0;300,12,10;",  # cut short
+        "[3000] SCRIBBLE lbl=strike kind=swipe strokes=1 at=10,10 box=10,10,300,12",
         "[4000] STROKE lbl=tap n=1 gap=300 pts=5,5,0;",
         "[4000] SCRIBBLE lbl=tap kind=tap strokes=1 at=5,5 box=5,5,5,5",
     ]
     rows, notes = convert(log)
     assert rows == [
-        "real-cross-01 cross 250 10,10,0;60,60,10;110,110,10 110,10,0;60,60,10;10,110,10  # device: cross",
+        "real-strike-01 strike 0 10,10,0;300,12,10;20,16,10  # device: strike",
         "real-tap-01 tap 0 5,5,0  # device: tap",
     ], rows
     assert len(notes) == 2, notes

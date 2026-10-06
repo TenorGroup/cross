@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include "MappedInputManager.h"
+#include "ReaderTapZones.h"
 #include "activities/ActivityManager.h"
 
 namespace ReaderUtils {
@@ -100,8 +101,31 @@ struct TouchPageTurn {
   unsigned long heldMs;
 };
 
+// The zone this frame's tap landed in (readertap::zoneAt decides), None without a tap. `bands` only for a
+// reader that handles the touch shell's top and foot bands; the others keep the whole height for turning.
+// The zone rules the settings give (the tap tip draws the same ones).
+inline readertap::Rules tapRules(const bool rtlBook, const bool bands) {
+  const bool controls = SETTINGS.touchReaderControls != 0;
+  return {controls && gestureAllowsTap(SETTINGS.pageTurnGesture),
+          controls && gestureAllowsTap(SETTINGS.previousPageGesture),
+          (SETTINGS.pageTurnGesture == CrossPointSettings::INVERTED_TAP ||
+           SETTINGS.previousPageGesture == CrossPointSettings::INVERTED_TAP) != rtlBook,
+          SETTINGS.showReaderMenu == CrossPointSettings::READER_MENU_TAP,
+          bands,
+          SETTINGS.backTapZone};
+}
+
+inline readertap::Zone tapZone(const GfxRenderer& renderer, const MappedInputManager& input, const bool rtlBook = false,
+                               const bool bands = false) {
+  if (!input.hasTouch()) return readertap::Zone::None;
+  int x = 0;
+  int y = 0;
+  if (!input.wasScreenTapped(x, y)) return readertap::Zone::None;
+  return readertap::zoneAt(x, y, renderer.getScreenWidth(), renderer.getScreenHeight(), tapRules(rtlBook, bands));
+}
+
 inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const MappedInputManager& input,
-                                         const bool rtlBook = false) {
+                                         const bool rtlBook = false, const bool bands = false) {
   TouchPageTurn result{false, false, 0};
   if (!SETTINGS.touchReaderControls || !input.hasTouch()) {
     return result;
@@ -117,62 +141,25 @@ inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const Mapp
     return result;
   }
 
-  const bool nextTaps = gestureAllowsTap(SETTINGS.pageTurnGesture);
-  const bool prevTaps = gestureAllowsTap(SETTINGS.previousPageGesture);
-  if (!nextTaps && !prevTaps) {
-    return result;
-  }
-
-  int x = 0;
-  int y = 0;
-  if (!input.wasScreenTapped(x, y)) {
-    return result;
-  }
-
-  const int width = renderer.getScreenWidth();
-  const int height = renderer.getScreenHeight();
-  // The centered reader-menu tap target (isTouchMenuTap below) keeps priority
-  // over the page-turn zones.
-  if (SETTINGS.showReaderMenu == CrossPointSettings::READER_MENU_TAP && x >= width / 3 && x < width - width / 3 &&
-      y >= height / 3 && y < height - height / 3) {
-    return result;
-  }
-
-  // Give the whole page to the sole tap-enabled direction. When both accept
-  // taps, split at the left third. RTL books and Inverted Tap each reverse
-  // the shared zones.
-  const bool inverted = (SETTINGS.pageTurnGesture == CrossPointSettings::INVERTED_TAP ||
-                         SETTINGS.previousPageGesture == CrossPointSettings::INVERTED_TAP) != rtlBook;
-  const bool nextZone = inverted ? x < (width * 2) / 3 : x >= width / 3;
-  result.next = nextTaps && (!prevTaps || nextZone);
-  result.prev = prevTaps && (!nextTaps || !nextZone);
-  result.heldMs = gpio.lastTouchHeldMs();
+  const auto zone = tapZone(renderer, input, rtlBook, bands);
+  result.next = zone == readertap::Zone::Next;
+  result.prev = zone == readertap::Zone::Prev;
+  if (result.next || result.prev) result.heldMs = gpio.lastTouchHeldMs();
   return result;
 }
 
-// Tap in the center third of the screen: the tap path into the reader menu on
-// every touch board. detectTouchPageTurn() excludes this centered rectangle,
-// so it remains free in tap mode. The Off/Swipe Up
-// alternatives are only surfaced on home-key boards (SettingsList), where the
-// menu stays reachable through the key's long-press function.
-inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager& input) {
-  if (!input.hasTouch()) return false;
-  if (SETTINGS.showReaderMenu != CrossPointSettings::READER_MENU_TAP) return false;
-  int x = 0;
-  int y = 0;
-  if (!input.wasScreenTapped(x, y)) return false;
-  const int width = renderer.getScreenWidth();
-  const int height = renderer.getScreenHeight();
-  const int zoneWidth = width / 3;
-  const int zoneHeight = height / 3;
-  return x >= zoneWidth && x < width - zoneWidth && y >= zoneHeight && y < height - zoneHeight;
+// Tap in the center third of the screen: the tap path into the reader menu on every touch board
+// (readertap::zoneAt keeps it out of the turn zones). The Off/Swipe Up alternatives are only surfaced on
+// home-key boards (SettingsList), where the menu stays reachable through the key's long-press function.
+inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager& input, const bool bands = false) {
+  return tapZone(renderer, input, false, bands) == readertap::Zone::Menu;
 }
 
 // Reader menu opens on the menu edge-swipe or a center-third tap. Home-key
 // actions are configured separately from screen gestures.
 // Menu gestures honor showReaderMenu independently of touchReaderControls,
 // which only gates page-turn touch zones in detectTouchPageTurn().
-inline bool isTouchMenuGesture(const GfxRenderer& renderer, const MappedInputManager& input) {
+inline bool isTouchMenuGesture(const GfxRenderer& renderer, const MappedInputManager& input, const bool bands = false) {
   if (!input.hasTouch()) return false;
   if (input.wasMenuGesture()) return true;
   // Bottom-edge up-swipe variant: only selectable on home-key boards, where
@@ -180,7 +167,7 @@ inline bool isTouchMenuGesture(const GfxRenderer& renderer, const MappedInputMan
   if (SETTINGS.showReaderMenu == CrossPointSettings::READER_MENU_SWIPE_UP && input.wasReaderMenuSwipeUp()) {
     return true;
   }
-  return isTouchMenuTap(renderer, input);
+  return isTouchMenuTap(renderer, input, bands);
 }
 
 // One helper, blocking or deferred: the async form starts the refresh and

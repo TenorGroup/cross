@@ -192,6 +192,10 @@ patch(root / 'HalGPIO.h', [(
     '  bool popMultiTouchSwipe(uint8_t &contacts, float &sx, float &sy, float &ex, float &ey,\n'
     '                          unsigned long &durationMs);\n'
     '  bool wasTouchActivity() const;\n',
+), (
+    '  bool popMultiTouchSwipe(uint8_t &contacts, float &sx, float &sy, float &ex, float &ey,\n',
+    '  bool touchContactsAt(uint8_t &count, float &nx, float &ny) const;\n'
+    '  bool popMultiTouchSwipe(uint8_t &contacts, float &sx, float &sy, float &ex, float &ey,\n',
 )])
 patch(root / 'HalGPIO.cpp', [(
     'std::vector<SyntheticEvent> syntheticEvents;\n',
@@ -231,6 +235,14 @@ patch(root / 'HalGPIO.cpp', [(
     '  return false;\n'
     '}\n\n'
     'bool HalGPIO::wasSwipe(float &nxStart, float &nyStart, float &nxEnd,\n',
+), (
+    'bool HalGPIO::popMultiTouchSwipe(uint8_t &contacts, float &sx, float &sy, float &ex, float &ey,\n',
+    '// The simulator has one pointer: never two contacts live.\n'
+    'bool HalGPIO::touchContactsAt(uint8_t &count, float &, float &) const {\n'
+    '  count = 0;\n'
+    '  return false;\n'
+    '}\n\n'
+    'bool HalGPIO::popMultiTouchSwipe(uint8_t &contacts, float &sx, float &sy, float &ex, float &ey,\n',
 )])
 
 # The simulator's trimmed BoardConfig predates the warm-channel capability.

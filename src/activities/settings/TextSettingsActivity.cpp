@@ -216,7 +216,7 @@ void TextSettingsActivity::activateIndex(const int index) {
 }
 
 void TextSettingsActivity::queueForm(FormEvent event) {
-  if (event.type == FormEvent::Type::Tap || event.type == FormEvent::Type::Hold)
+  if (event.type == FormEvent::Type::Tap || event.type == FormEvent::Type::Hold || event.type == FormEvent::Type::Strike)
     event.surface = formVisibleSurface_.load();
   if (formCount_ < formQueue_.size()) formQueue_[(formHead_ + formCount_++) % formQueue_.size()] = event;
   else LOG_ERR("UGLY", "Settings form queue full");
@@ -246,6 +246,10 @@ bool TextSettingsActivity::handleCustomInput() {
   int x = 0, y = 0;
   if (mappedInput.wasScreenLongPress(x, y)) queueForm({FormEvent::Type::Hold, Key::Confirm, static_cast<int16_t>(x), static_cast<int16_t>(y)});
   else if (mappedInput.wasScreenTapped(x, y)) queueForm({FormEvent::Type::Tap, Key::Confirm, static_cast<int16_t>(x), static_cast<int16_t>(y)});
+#if FREEINK_DEVICE_X4PRO
+  int16_t sx = 0, sy = 0;
+  if (mappedInput.wasStrike(sx, sy)) queueForm({FormEvent::Type::Strike, Key::Confirm, sx, sy});  // back to its default
+#endif
   const auto swipe = mappedInput.wasSwipe();
   if (!back && !home) {
     if (swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Up) key(Key::NextSheet);
@@ -253,7 +257,7 @@ bool TextSettingsActivity::handleCustomInput() {
   }
   if (!formCount_ || !formPaintReady_.load()) return true;
   ugly::QuestionSheet::Intent intent;
-  int pinRow = -1;
+  int pinRow = -1, strikeRow = -1;
   bool homeEvent = false;
   {
     RenderLock lock(RenderLock::TryTake{});
@@ -263,7 +267,8 @@ bool TextSettingsActivity::handleCustomInput() {
     --formCount_;
     // A finger event belongs to the surface that was visible when sampled.
     // A tap queued before a paper opened cannot choose a row on that paper.
-    if ((event.type == FormEvent::Type::Tap || event.type == FormEvent::Type::Hold) && event.surface != formSurface_)
+    if ((event.type == FormEvent::Type::Tap || event.type == FormEvent::Type::Hold || event.type == FormEvent::Type::Strike) &&
+        event.surface != formSurface_)
       return true;
     homeEvent = event.type == FormEvent::Type::Key && event.key == Key::Home;
     const bool paperWasOpen = form_.paperOpen();
@@ -271,13 +276,21 @@ bool TextSettingsActivity::handleCustomInput() {
     const int previousPaperFirst = form_.paperFirst();
     if (event.type == FormEvent::Type::Key) intent = form_.input(event.key);
     else if (event.type == FormEvent::Type::Tap) intent = form_.tap(event.x, event.y);
+    else if (event.type == FormEvent::Type::Strike) strikeRow = form_.paperOpen() ? -1 : form_.questionAt(event.x, event.y);
     else if (!form_.paperOpen()) pinRow = event.type == FormEvent::Type::Hold ? form_.questionAt(event.x, event.y) : form_.question();
     if (paperWasOpen != form_.paperOpen() || previousSheet != form_.sheet() ||
         (form_.paperOpen() && previousPaperFirst != form_.paperFirst())) ++formSurface_;
     activeNav().selected = form_.question() + 1;
-    if (intent.repaint || pinRow >= 0) formPaintReady_.store(false);
+    if (intent.repaint || pinRow >= 0 || strikeRow >= 0) formPaintReady_.store(false);
   }
-  if (pinRow >= 0 && !favoriteKey(pinRow).empty()) {
+  if (strikeRow >= 0) {
+    const int option = defaultOption(strikeRow), previous = formRow(this, strikeRow).selected;
+    if (option >= 0 && applyChosenValue(formTab(strikeRow), formLocalRow(strikeRow), option, false)) {
+      RenderLock lock(*this);
+      form_.didCommit(strikeRow, previous);
+    }
+    requestUpdate();
+  } else if (pinRow >= 0 && !favoriteKey(pinRow).empty()) {
     const bool wasPinned = rowIsPinned(pinRow);
     formPinFailed_.store(!toggleFavorite(pinRow));
     auto line = ugly::quip(wasPinned ? ugly::Quip::Unpin : ugly::Quip::Pin, 0, 0, 0, formRow(this, pinRow).question);
@@ -378,6 +391,16 @@ bool TextSettingsActivity::saveSettings(const bool repaint) {
   if (!saved) LOG_ERR("TXT", "Saving text settings failed");
   if (repaint) requestUpdate();
   return saved;
+}
+
+int TextSettingsActivity::defaultOption(const int row) const {
+  // The font and its size come from the card: no default to go back to.
+  const auto* setting = formSetting(row);
+  if (!setting || !setting->valuePtr || formTab(row) == Tab::Family || formTab(row) == Tab::Size) return -1;
+  const int value = CrossPointSettings::defaultOf(setting->valuePtr);
+  if (setting->type == SettingType::VALUE && setting->valueRange.step)
+    return (value - setting->valueRange.min) / setting->valueRange.step;
+  return setting->type == SettingType::TOGGLE ? value != 0 : value;
 }
 
 bool TextSettingsActivity::applyChosenValue(const Tab tab, const int row, const int option, const bool repaint) {

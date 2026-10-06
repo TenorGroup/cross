@@ -28,7 +28,7 @@ class StatusBarSettingsActivity final : public UiListActivity {
  private:
   ugly::QuestionSheet form_;
   struct FormEvent {
-    enum class Type : uint8_t { Key, Tap, Hold, Pin } type = Type::Key;
+    enum class Type : uint8_t { Key, Tap, Hold, Pin, Strike } type = Type::Key;
     ugly::QuestionSheet::Key key = ugly::QuestionSheet::Key::Confirm;
     int16_t x = 0, y = 0;
     uint32_t surface = 0;
@@ -39,6 +39,8 @@ class StatusBarSettingsActivity final : public UiListActivity {
   uint32_t formSurface_ = 0;
   std::atomic<uint32_t> formVisibleSurface_{0};
   void queueForm(FormEvent event);
+  // The option a fresh device holds for question `row`, -1 when the question has no default to go back to.
+  int defaultOption(int row) const;
   void bindForm();  // Caller owns RenderLock.
   void focusForm(int row);  // Caller owns RenderLock.
   void applyFormIntent(const ugly::QuestionSheet::Intent& intent, bool home = false);

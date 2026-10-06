@@ -141,12 +141,29 @@ bool readerFootBarActive() {
 }
 #endif
 
+}  // namespace
+
+// The one way an icon bar draws its icons (dynamic bar rule 2): the chosen one solid, the others grey, every
+// other ink pixel of their Mask1 art (bit 0 = ink).
+void tenorchrome::drawBarIcon(const GfxRenderer& r, const uint8_t* bits, const int w, const int h, const int x,
+                              const int y, const bool chosen) {
+  const int stride = (w + 7) / 8;
+  for (int j = 0; j < h; ++j)
+    for (int i = 0; i < w; ++i)
+      if (((bits[j * stride + i / 8] >> (7 - i % 8)) & 1) == 0 && (chosen || ((i + j) & 1) == 0))
+        r.drawPixel(x + i, y + j, true);
+}
+
+void tenorchrome::drawBarTab(const GfxRenderer& r, const int cx, const int y, const int h, const uint8_t* bits,
+                             const int w, const int iconH, const bool chosen) {
+  if (chosen) drawPillRing(r, cx - BAR_TAB_W / 2, y + BAR_TAB_INSET, BAR_TAB_W, h - 2 * BAR_TAB_INSET, 3, false);
+  drawBarIcon(r, bits, w, iconH, cx - w / 2, y + (h - iconH) / 2, chosen);
+}
+
+namespace {
 // Mask1 icon (bit 0 = ink), solid.
 void drawIcon(const GfxRenderer& r, const freeink::Icon& icon, const int x, const int y) {
-  const int stride = (icon.w + 7) / 8;
-  for (int j = 0; j < icon.h; ++j)
-    for (int i = 0; i < icon.w; ++i)
-      if (((icon.bits[j * stride + i / 8] >> (7 - i % 8)) & 1) == 0) r.drawPixel(x + i, y + j, true);
+  tenorchrome::drawBarIcon(r, icon.bits, icon.w, icon.h, x, y, true);
 }
 
 const freeink::Icon& zoneIcon(const tenorchrome::Zone zone) {
@@ -233,8 +250,8 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
             {cell.x + 8, y + 8, cell.x + cell.width - 8, y + SIZE - 8}, 0, 0, 2);
         continue;
       }
-      if (active) drawPillRing(r, cell.x + 12, y + 8, cell.width - 24, SIZE - 16, 3, false);
-      drawIcon(r, *(active ? bold[i] : normal[i]), cell.x + (cell.width - ICON) / 2, y + (SIZE - ICON) / 2);
+      const freeink::Icon& icon = *(active ? bold[i] : normal[i]);
+      drawBarTab(r, cell.x + cell.width / 2, y, SIZE, icon.bits, icon.w, icon.h, active);
     }
   }
 #endif
@@ -258,13 +275,11 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
 
 void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char* prefix) {
   // Touch: no title row. The name goes to the bar at the foot (or the strip, on a screen without one);
-  // a tap on the strip of a screen that names where it came from still goes back there.
+  // the strip opens the top menu and going back is the bar's "<" (founder 05/10).
   if (kTouchShell) {
+    (void)prefix;
     noteScreenTitle(title);
-    if (prefix && *prefix)
-      HeaderBackTapTarget::set(0, 0, r.getScreenWidth(), tabTop());
-    else
-      HeaderBackTapTarget::clear();
+    HeaderBackTapTarget::clear();
     return;
   }
   constexpr int x = 18, rightReserve = 18, tracking = 1;
@@ -555,6 +570,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
     }
   }
   if (top) {
+    HeaderBackTapTarget::strip = true;
     drawStripMiddle(r, y, hienGio ? STRIP_LEFT + timeWidth : STRIP_LEFT, batteryBlockX, fontChu);
     return;
   }

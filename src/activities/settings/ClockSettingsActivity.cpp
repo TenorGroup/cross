@@ -74,7 +74,7 @@ void ClockSettingsActivity::activateIndex(const int index) {
       SETTINGS.clockFormat = (SETTINGS.clockFormat + 1) % 2;
       break;
     case ITEM_SHOW_ON_HOME:
-      SETTINGS.clockShowInHeader = (SETTINGS.clockShowInHeader + 1) % 2;
+      SETTINGS.clockShowInHeader = (SETTINGS.clockShowInHeader + 1) % CrossPointSettings::CLOCK_HEADER_MODE_COUNT;
       break;
     case ITEM_SYNC:
       if (auto activity = makeUniqueNoThrow<ClockSyncActivity>(renderer, mappedInput)) {
@@ -113,7 +113,9 @@ std::string ClockSettingsActivity::giaTriDong(const int index) {
     case ITEM_FORMAT:
       return SETTINGS.clockFormat == 1 ? tr(STR_CLOCK_FORMAT_12H) : tr(STR_CLOCK_FORMAT_24H);
     case ITEM_SHOW_ON_HOME:
-      return SETTINGS.clockShowInHeader ? tr(STR_SHOW) : tr(STR_HIDE);
+      return SETTINGS.clockShowInHeader == CrossPointSettings::CLOCK_HEADER_TIME_DATE ? tr(STR_CLOCK_HEADER_TIME_DATE)
+             : SETTINGS.clockShowInHeader == CrossPointSettings::CLOCK_HEADER_TIME  ? tr(STR_CLOCK_HEADER_TIME)
+                                                                                    : tr(STR_HIDE);
     case ITEM_SYNC: {
       // The sync row's value is the current time itself: it confirms the sync,
       // previews format/zone changes, and reads "Not Set" until the first sync.

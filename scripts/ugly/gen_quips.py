@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bake the lines of abuse of the tenor/ugly shell: python3 scripts/ugly/gen_quips.py [out-dir]
 
-Reads scripts/ugly/quips.csv (key, group, condition, vi, en, args) and writes src/shells/ugly/UglyQuips.h:
+Reads scripts/ugly/quips.csv (notes in # lines on top, then key, group, condition, vi, en, args) and writes src/shells/ugly/UglyQuips.h:
 the Vietnamese and the English lines, each language one zlib block of \\0-ended lines in table order (the
 Chinese interface uses the English block); where every 32nd line starts in each block, so a lookup
 inflates only as far as it needs; and the slots: which lines an event says, keyed as the firmware keys it.
@@ -24,7 +24,7 @@ from gen_i18n import parse_yaml_file  # noqa: E402
 
 # Must match enum class ugly::Quip (UglyQuip.h).
 EVENTS = ['OpenPage', 'OpenGroup', 'SetValue', 'Pin', 'Unpin', 'Delete', 'ShellCross', 'ShellUgly', 'Sleep', 'Wake',
-          'OpenBook', 'LeaveBook', 'OpenScreen']
+          'OpenBook', 'LeaveBook', 'OpenScreen', 'Scrawl']
 # Conditions carrying data, by event (0 is the plain rotation). Must match the QuipWhen values in UglyQuip.h.
 WHEN = {
     'OpenBook': {'GAP': 1, 'DONE': 2, 'END': 3, 'NEW': 4, 'LOW': 5, 'MID': 6, 'COUNT': 7},
@@ -46,12 +46,13 @@ DATA = [
     (r'^Lúc máy chuẩn bị ngủ', 'Sleep', ''), (r'^Chuẩn bị ngủ, hôm nay chưa đọc', 'Sleep', 'ZERO'),
     (r'^Chuẩn bị ngủ, hôm nay đọc 1 tới 14', 'Sleep', 'LOW'),
     (r'^Thức dậy \(', 'Wake', ''), (r'^Thức dậy sau từ 3 ngày', 'Wake', 'GAP'),
+    (r'^Vẽ bậy', 'Scrawl', ''),
 ]
 # The events the firmware says today: each has a quip() call in src (test/ugly_shell/check_assets.py holds the two
 # lists equal). The lines of the others stay in the table, out of the blocks, until a screen says them: X3 flash.
-SAID = {'OpenPage', 'OpenGroup', 'SetValue', 'Pin', 'Unpin', 'Delete', 'ShellCross'}
+SAID = {'OpenPage', 'OpenGroup', 'SetValue', 'Pin', 'Unpin', 'Delete', 'ShellCross', 'Scrawl'}
 FIRST = ['OpenPage', 'Sleep', 'Wake', 'OpenBook', 'LeaveBook', 'Pin', 'Unpin', 'Delete', 'ShellCross', 'ShellUgly',
-         'OpenGroup', 'OpenScreen', 'SetValue']
+         'OpenGroup', 'OpenScreen', 'SetValue', 'Scrawl']
 PAGES = {'Gần đây': 0, 'File': 1, 'Thống kê': 2, 'Cài đặt': 3, 'Yêu thích': 4}  # homerows::Page
 LINES_PER_MARK = 32
 
@@ -95,7 +96,9 @@ def slot_of(row, labels):
 
 
 def build():
-    rows = list(csv.DictReader(open(ROOT / 'scripts/ugly/quips.csv', encoding='utf-8')))
+    # Lines starting with # above the header are the table's notes (the voice rule).
+    lines = [l for l in open(ROOT / 'scripts/ugly/quips.csv', encoding='utf-8') if not l.startswith('#')]
+    rows = list(csv.DictReader(lines))
     vi_yaml = parse_yaml_file(ROOT / 'lib/I18n/translations/vietnamese.yaml')
     labels = {v.strip() for k, v in vi_yaml.items() if k.startswith('STR_')}
     # "như trên": the condition of the row above.

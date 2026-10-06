@@ -76,9 +76,9 @@ def main(out):
         b = rot([(cx + w / 2, cy - h / 2), (cx - w / 2, cy + h / 2)], cx, cy, tilt)
         if flip:
             a, b = b[::-1], a[::-1]
-        add(name, "cross", sample(a, speed, rng, noise, bow), sample(b, speed, rng, noise, -bow), gap=gap)
+        add(name, "swipe+swipe", sample(a, speed, rng, noise, bow), sample(b, speed, rng, noise, -bow), gap=gap)
 
-    # X in two strokes
+    # An X in two strokes: no longer a mark, two slanted swipes
     x2("x-chuan", 240, 300, 120, 120)
     x2("x-chuan-nho", 240, 500, 60, 60)
     x2("x-dong-det", 240, 420, 110, 56)
@@ -91,10 +91,10 @@ def main(out):
     x2("x-cham-tay", 240, 300, 120, 120, gap=600, speed=0.3)
     x2("x-nhanh", 240, 300, 120, 120, gap=120, speed=1.5)
 
-    # X in one stroke: down one arm, up the right edge, down the other arm
+    # An X in one stroke: down one arm, up the right edge, down the other arm. No mark.
     def x1(name, cx, cy, w, h, noise=0.0, tilt=0.0, bow=0.0, r=None):
         p = [(cx - w / 2, cy - h / 2), (cx + w / 2, cy + h / 2), (cx + w / 2, cy - h / 2), (cx - w / 2, cy + h / 2)]
-        add(name, "cross", sample(rot(p, cx, cy, tilt), 0.6, r or rng, noise, bow))
+        add(name, "unknown", sample(rot(p, cx, cy, tilt), 0.6, r or rng, noise, bow))
 
     x1("x-mot-net", 240, 300, 120, 120)
     x1("x-mot-net-run", 240, 300, 130, 100, noise=3)
@@ -142,30 +142,59 @@ def main(out):
     line("gach-ngang-ngan", "swipe", (200, 300), (290, 304), speed=0.4, noise=2)
     line("duong-cheo-don", "swipe", (150, 250), (330, 400), speed=0.8, noise=2)
 
-    # Shapes that must not be an X or a circle
+    # Struck out: out along a row and back without lifting (sometimes once more)
+    def strike(name, path, speed=1.0, noise=2.0, bow=0.0, tilt=0.0):
+        cx = sum(x for x, _ in path) / len(path)
+        cy = sum(y for _, y in path) / len(path)
+        add(name, "strike", sample(rot(path, cx, cy, tilt), speed, rng, noise, bow))
+
+    strike("gach-di-ve", [(100, 300), (380, 304), (110, 310)])
+    strike("gach-di-ve-nhanh", [(90, 420), (390, 424), (100, 430)], speed=1.8)
+    strike("gach-di-ve-cham", [(120, 200), (360, 203), (125, 209)], speed=0.4)
+    strike("gach-di-ve-ngan", [(200, 500), (310, 502), (205, 506)], speed=0.6)
+    strike("gach-di-ve-nghieng", [(100, 300), (380, 304), (110, 310)], tilt=5)
+    strike("gach-phai-sang-trai", [(390, 360), (100, 364), (380, 370)])
+    strike("gach-di-ve-run", [(100, 600), (380, 606), (104, 612)], noise=3, bow=4)
+    strike("gach-ba-lan", [(100, 300), (380, 305), (110, 312), (370, 318)], speed=1.2)
+    strike("gach-ca-dong", [(40, 240), (440, 244), (60, 250)], speed=1.5)
+    strike("gach-cham-run", [(120, 520), (360, 524), (130, 530)], speed=0.3, noise=5)
+    # As loose as the founder drew on the X4 Pro (06/10/2026): 38 px between the two passes at most.
+    strike("gach-long-tay", [(100, 300), (380, 320), (110, 342)], speed=1.0)
+    # Out and back over the same row: a strike, never a ring
+    strike("di-roi-ve", [(100, 300), (380, 300), (100, 300)], noise=0.0)
+    strike("di-roi-ve-run", [(100, 300), (380, 304), (104, 310)])
+
+    # Shapes that must not be a mark
     add("chu-v", "unknown", sample([(180, 250), (240, 380), (300, 250)], 0.6, rng, 2))
     add("dau-tick", "unknown", sample([(180, 320), (220, 370), (320, 230)], 0.7, rng, 2))
     add("chu-c", "unknown", sample(ellipse(240, 300, 60, 60, 60, 240), 0.5, rng, 2))
     add("so-8", "unknown", sample(ellipse(240, 260, 40, 40, 90, 360) + ellipse(240, 340, 40, 40, -90, -360), 0.6, rng, 2))
     add("rang-cua", "unknown", sample([(120, 300), (180, 340), (240, 300), (300, 340), (360, 300)], 0.7, rng, 2))
-    add("gach-di-gach-lai", "unknown", sample([(100, 300), (380, 305), (110, 312), (370, 318)], 1.2, rng, 2))
-    add("v-hai-net", "unknown", sample([(180, 250), (240, 380)], 0.6, rng, 2), sample([(300, 250), (242, 378)], 0.6, rng, 2))
-    add("hai-gach-song-song", "unknown", sample([(150, 250), (250, 350)], 0.6, rng, 2),
+    add("v-hai-net", "swipe+swipe", sample([(180, 250), (240, 380)], 0.6, rng, 2), sample([(300, 250), (242, 378)], 0.6, rng, 2))
+    add("hai-gach-song-song", "swipe+swipe", sample([(150, 250), (250, 350)], 0.6, rng, 2),
         sample([(220, 250), (320, 350)], 0.6, rng, 2))
-    add("cheo-roi-cham", "unknown", sample([(150, 250), (300, 400)], 0.6, rng, 2),
+    add("cheo-roi-cham", "swipe+tap", sample([(150, 250), (300, 400)], 0.6, rng, 2),
         [(240, 600, 0), (241, 600, STEP_MS), (241, 601, STEP_MS)], gap=200)
-    # Out along a row and back over it: closed, but a line, never a ring.
-    add("di-roi-ve", "unknown", sample([(100, 300), (380, 300), (100, 300)], 1.0, rng))
-    add("di-roi-ve-run", "unknown", sample([(100, 300), (380, 304), (104, 310)], 1.0, rng, 2))
+    # Struck out and back too short, too tall or up and down: no strike.
+    add("gach-qua-ngan", "unknown", sample([(220, 300), (290, 302), (224, 306)], 0.5, rng, 1))
+    add("gach-qua-cao", "unknown", sample([(100, 270), (380, 300), (200, 340)], 1.0, rng, 2))
+    add("gach-doc-di-ve", "unknown", sample([(240, 200), (244, 480), (248, 210)], 1.0, rng, 2))
+    # One long pass ending in a wiggle: four passes, but only one spans the row.
+    add("dai-roi-rung", "unknown", sample([(100, 300), (380, 303), (290, 306), (380, 309), (290, 312)], 1.0, rng, 1))
+    # Out and back seven times along one row: more passes than a strike.
+    add("xoa-bay-lan", "unknown", sample([(100, 300), (380, 302), (100, 304), (380, 306), (100, 308), (380, 310),
+                                          (100, 312), (380, 314)], 1.5, rng, 1))
+    # A page flick that jerks back at its end: the way back is far shorter than the flick.
+    add("vuot-giat-lai", "unknown", sample([(400, 400), (100, 405), (160, 402)], 1.5, rng, 1))
     # A bow tie closed back to its start: crossing arms, but closed, so no X.
     add("no-buom", "unknown", sample([(180, 240), (300, 360), (300, 240), (180, 360), (180, 242)], 0.6, rng, 2))
     # A short tick across a long slash: they cross mid-way, but one arm is far too short.
-    add("gach-cheo-ngan", "unknown", sample([(140, 200), (340, 400)], 0.6, rng, 2),
+    add("gach-cheo-ngan", "swipe+swipe", sample([(140, 200), (340, 400)], 0.6, rng, 2),
         sample([(258, 282), (222, 318)], 0.4, rng, 1))
     # Two strokes crossing at 16 degrees: a slash through a line, not an X.
-    add("hai-gach-cat-hep", "unknown", sample([(100, 250), (380, 330)], 0.8, rng, 2),
+    add("hai-gach-cat-hep", "swipe+swipe", sample([(100, 250), (380, 330)], 0.8, rng, 2),
         sample([(100, 300), (380, 300)], 0.8, rng, 2))
-    # Scribbled out in rows and brought back near the start: closed, but winding back and forth.
+    # Scribbled out in seven rows and brought back near the start: more passes than a strike.
     add("xoa-nguech-kin", "unknown", sample([(100, 280), (380, 288), (110, 296), (370, 304), (120, 312),
                                              (360, 320), (90, 300), (102, 284)], 1.2, rng, 2))
     # Too small to mean anything, yet more than a tap.
@@ -176,7 +205,7 @@ def main(out):
     add("hai-cheo-cach-xa", "swipe+swipe", sample([(180, 240), (300, 360)], 0.6, rng, 2),
         sample([(300, 240), (180, 360)], 0.6, rng, 2), gap=1200)
     # Arms that cross 6% from one end: an L, never an X.
-    add("chu-l-cat-dau", "unknown", sample([(150, 250), (300, 400)], 0.6, rng, 2),
+    add("chu-l-cat-dau", "swipe+swipe", sample([(150, 250), (300, 400)], 0.6, rng, 2),
         sample([(110, 320), (200, 210)], 0.6, rng, 2))
 
     Path(out).write_text("# Written by gen_samples.py; do not edit by hand.\n" + "\n".join(rows) + "\n")

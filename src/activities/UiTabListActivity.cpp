@@ -19,24 +19,13 @@ namespace fui = freeink::ui;
 namespace {
 constexpr int16_t TOUCH_TAB_BAR_HEIGHT = 50;
 
-// Mask1 icon (bit 0 = ink) drawn at 50%: ink kept where x + y is even in the icon's own coordinates, so
-// every tab shows the same dots whatever its place on the screen.
-void drawGreyIcon(const GfxRenderer& g, const fui::BitmapRef& icon, const int x, const int y) {
-  const int stride = (icon.width + 7) / 8;
-  for (int j = 0; j < icon.height; ++j)
-    for (int i = 0; i < icon.width; ++i) {
-      const bool ink = ((icon.data[j * stride + i / 8] >> (7 - i % 8)) & 1) == 0;
-      if (ink && ((i + j) & 1) == 0) g.drawPixel(x + i, y + j, true);
-    }
-}
 }  // namespace
 
 void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh, const fui::TabItem* tabs,
                                         const int count, const fui::TextStyle& chu) {
   constexpr int LE = 8;         // bar margin from the screen edge
-  constexpr int KHE = 6;        // band top to the selected pill
-  constexpr int ICON = 40;
-  constexpr int PILL_ICON_W = 84;
+  constexpr int KHE = tenorchrome::BAR_TAB_INSET;  // band top to the selected pill
+  constexpr int PILL_ICON_W = tenorchrome::BAR_TAB_W;
   constexpr int INDICATOR = 6;  // sort arrow beside a label
   const int x0 = thanh.x + LE, w = thanh.width - 2 * LE, h = thanh.height, y0 = thanh.y;
   if (tenorchrome::kTouchShell && uiTarget.paintingEnabled()) tenorchrome::drawPillRing(renderer, x0, y0, w, h, 2, true);
@@ -94,16 +83,11 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
                          ACTION_TAB, tab.value, fui::InputTouch);
     }
     if (!uiTarget.paintingEnabled()) continue;
-    if (tab.selected) tenorchrome::drawPillRing(renderer, cx - pillW / 2, y0 + KHE, pillW, h - 2 * KHE, 3, false);
     if (icons) {
-      const int ix = cx - ICON / 2, iy = y0 + (h - ICON) / 2;
-      if (tab.selected)
-        screen.target().bitmap(fui::Rect{static_cast<int16_t>(ix), static_cast<int16_t>(iy), ICON, ICON}, tab.icon,
-                               fui::BitmapMode::Center, fui::Paint::solid(fui::Color::Black));
-      else
-        drawGreyIcon(renderer, tab.icon, ix, iy);
+      tenorchrome::drawBarTab(renderer, cx, y0, h, tab.icon.data, tab.icon.width, tab.icon.height, tab.selected);
       continue;
     }
+    if (tab.selected) tenorchrome::drawPillRing(renderer, cx - pillW / 2, y0 + KHE, pillW, h - 2 * KHE, 3, false);
     if (!tab.label) continue;
     const int row = labelW + (tab.indicator != fui::TabIndicator::None ? 4 + INDICATOR : 0);
     const int lx = cx - row / 2;

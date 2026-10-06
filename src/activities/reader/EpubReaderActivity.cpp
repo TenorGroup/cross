@@ -54,6 +54,7 @@
 #include "activities/settings/BlePageTurnerActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/HomeExcerptStyle.h"
+#include "components/ReaderTapTip.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/icons/readerToolbarIcons.h"
@@ -433,6 +434,43 @@ bool EpubReaderActivity::loadBook() {
           epubLoaded - loadStarted, progressRead - epubLoaded, bookmarksRead - progressRead,
           quotesRead - bookmarksRead, millis() - quotesRead, uncached ? 1u : 0u);
 #endif
+  // Touch shell: the tap-zone map over the first page, until "Don't show this tip again".
+  if (tenorchrome::kTouchShell && !preview && SETTINGS.readerTapTip) {
+    readertip::open(ReaderUtils::tapRules(ReaderUtils::isRtlBookLanguage(epub->getLanguage()), true));
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("TIP", "open t=%lu", millis());
+#endif
+  }
+  return true;
+}
+
+namespace {
+void saveTapTipHidden() { SETTINGS.saveToFile(); }
+}  // namespace
+
+// The tap-zone map is up: it takes this pass's input. Its button hides it for good (one settings write,
+// after the page is back on the panel); any other tap, swipe or Back closes it for this open only. The
+// tap that closes it turns no page. The page comes back with 1 full refresh and its gray pass, nothing
+// before them: a page turn's lighter waveform left the map's lines on the glass (founder 06/10).
+bool EpubReaderActivity::handleTapTip() {
+  int x = 0, y = 0;
+  const bool tapped = mappedInput.wasScreenTapped(x, y);
+  const bool closing = tapped || mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None ||
+                       mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+                       mappedInput.wasReleased(MappedInputManager::Button::Confirm);
+  if (!closing) return true;
+  if (tapped && readertap::tipButton(renderer.getScreenWidth(), renderer.getScreenHeight(), readertip::rules())
+                    .contains(x, y)) {
+    SETTINGS.readerTapTip = 0;
+    activityManager.deferWrite(&saveTapTipHidden);
+  }
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("TIP", "close tap=%d at=%d,%d off=%u t=%lu", tapped, x, y, SETTINGS.readerTapTip ? 0u : 1u, millis());
+#endif
+  RenderLock lock;
+  readertip::close();
+  pagesUntilFullRefresh = 1;
+  requestUpdate();
   return true;
 }
 
@@ -1285,8 +1323,11 @@ void EpubReaderActivity::loop() {
     pendingReadFolderMove = false;
   }
 
+  if (tenorchrome::kTouchShell && readertip::isOpen() && handleTapTip()) return;
+
   const auto touch =
-      ReaderUtils::detectTouchPageTurn(renderer, mappedInput, ReaderUtils::isRtlBookLanguage(epub->getLanguage()));
+      ReaderUtils::detectTouchPageTurn(renderer, mappedInput, ReaderUtils::isRtlBookLanguage(epub->getLanguage()),
+                                       tenorchrome::kTouchShell);
 
   if (showBookmarkMessage && (millis() - bookmarkMessageTime) >= ReaderUtils::BOOKMARK_MESSAGE_DURATION_MS) {
     showBookmarkMessage = false;
@@ -1345,7 +1386,10 @@ void EpubReaderActivity::loop() {
   if (automaticPageTurnActive) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
         mappedInput.wasReleased(MappedInputManager::Button::Back) ||
-        ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
+        ReaderUtils::isTouchMenuGesture(renderer, mappedInput, tenorchrome::kTouchShell) ||
+        // Touch shell: the menu's way in, the foot band, stops the automatic turn as the centre did.
+        (tenorchrome::kTouchShell &&
+         ReaderUtils::tapZone(renderer, mappedInput, false, true) == readertap::Zone::TextMenu)) {
       automaticPageTurnActive = false;
       pendingExternalTurn = 0;
 #ifdef TENOR_TURN_TRACE
@@ -1482,7 +1526,28 @@ void EpubReaderActivity::loop() {
     }
   }
 
-  if (confirmReleased || ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
+  // Touch shell: the top band opens the top menu, the foot band (title, clock, battery) the text menu.
+  // A stroke up from the foot band shorter than a swipe (60 px) is a tap there: it opens the text menu and
+  // never leaves the book; leaving takes a whole swipe up (ActivityManager, wasBottomHomeGesture).
+  if (tenorchrome::kTouchShell) {
+    switch (ReaderUtils::tapZone(renderer, mappedInput, false, true)) {
+      case readertap::Zone::TopMenu:
+        activityManager.openTopMenu();
+        return;
+      case readertap::Zone::TextMenu:
+        if (usesToolbarMenu() && section) {
+          focusedTool = 1;  // the toolbar's Text tool
+          openOverlay(Overlay::Text);
+        } else {
+          openReaderMenu();
+        }
+        return;
+      default:
+        break;
+    }
+  }
+
+  if (confirmReleased || ReaderUtils::isTouchMenuGesture(renderer, mappedInput, tenorchrome::kTouchShell)) {
     // Toolbar style: the page is on screen and in the framebuffer, so paint the
     // toolbar over it (one refresh) instead of pushing a full-screen menu.
     if (usesToolbarMenu() && section) {
@@ -5272,6 +5337,7 @@ void EpubReaderActivity::onPause() {
 }
 
 void EpubReaderActivity::onExit() {
+  readertip::close();
   panelClosedLocked(true, false);  // ActivityManager owns RenderLock during exit
   dropCatchUp();  // the next open lays the chapter out from its saved place
 #ifdef TENOR_TURN_TRACE

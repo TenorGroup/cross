@@ -126,9 +126,59 @@ TEST(TouchScribble, TheRowAnXOrARingAimsAt) {
 
 TEST(TouchScribble, TheHintStaysUntilBothHaveBeenUsed) {
   EXPECT_TRUE(teachScribbles(0));
-  EXPECT_TRUE(teachScribbles(USED_CROSS));
+  EXPECT_TRUE(teachScribbles(USED_STRIKE));
   EXPECT_TRUE(teachScribbles(USED_RING));
-  EXPECT_FALSE(teachScribbles(USED_CROSS | USED_RING));
+  EXPECT_FALSE(teachScribbles(USED_STRIKE | USED_RING));
+}
+
+TEST(TouchScribble, WhatAMarkDoesToTheRow) {
+  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Erase, true, false), Act::AskDelete);
+  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Erase, false, false), Act::NotHere) << "a folder row is not binned";
+  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Keep, false, false), Act::Pin);
+  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Keep, false, true), Act::Kept) << "a ring keeps a pin, never takes it off";
+  EXPECT_EQ(scribbleAct(Sheet::Recent, Mark::Keep, false, false), Act::Pin);
+  EXPECT_EQ(scribbleAct(Sheet::Recent, Mark::Keep, false, true), Act::Kept);
+  EXPECT_EQ(scribbleAct(Sheet::Recent, Mark::Erase, true, true), Act::Forget) << "struck off Recent, the book stays";
+  EXPECT_EQ(scribbleAct(Sheet::Favorites, Mark::Erase, false, true), Act::Unpin);
+  EXPECT_EQ(scribbleAct(Sheet::Favorites, Mark::Keep, false, true), Act::Kept);
+  EXPECT_EQ(scribbleAct(Sheet::Other, Mark::Erase, true, false), Act::None);
+}
+
+TEST(TouchScribble, TheHintOnlyWhereItIsTrue) {
+  EXPECT_TRUE(hintHolds(Sheet::Folder));
+  EXPECT_TRUE(hintHolds(Sheet::Recent)) << "a strike forgets, a ring pins";
+  EXPECT_FALSE(hintHolds(Sheet::Favorites)) << "a ring pins nothing on Favorites";
+  EXPECT_FALSE(hintHolds(Sheet::Other));
+}
+
+TEST(TouchTier, ALongUprightSwipeStepsATier) {
+  EXPECT_EQ(tierSwipe(240, 520, 240, 250), Tier::Up);
+  EXPECT_EQ(tierSwipe(240, 300, 250, 600), Tier::Down);
+  EXPECT_EQ(tierSwipe(240, 400, 240, 330), Tier::None) << "70 px is a nudge";
+  EXPECT_EQ(tierSwipe(240, 400, 240, 280), Tier::Up) << "120 px is a step";
+  EXPECT_EQ(tierSwipe(100, 500, 300, 300), Tier::None) << "45 degrees off upright";
+  EXPECT_EQ(tierSwipe(240, 100, 240, 400), Tier::None) << "from the top band: the light panel's";
+  EXPECT_EQ(tierSwipe(240, 700, 240, 400), Tier::None) << "from the bottom band: Home's";
+}
+
+TEST(TouchBand, TheBatteryAndTheClockCorners) {
+  EXPECT_EQ(bandAt(430, 25), BandSpot::Battery);
+  EXPECT_EQ(bandAt(470, 60), BandSpot::Battery) << "a ring round the corner is centred a little low";
+  EXPECT_EQ(bandAt(330, 25), BandSpot::Clock);
+  EXPECT_EQ(bandAt(100, 25), BandSpot::None);
+  EXPECT_EQ(bandAt(430, 100), BandSpot::None) << "the title is no band";
+}
+
+TEST(TouchBand, StrikeHidesRingShows) {
+  const Band shown{false, CLOCK_TIME_DATE};
+  EXPECT_TRUE(markBand(shown, Mark::Erase, BandSpot::Battery).batteryHidden);
+  EXPECT_EQ(markBand(shown, Mark::Erase, BandSpot::Battery).clock, CLOCK_TIME_DATE);
+  EXPECT_EQ(markBand(shown, Mark::Erase, BandSpot::Clock).clock, CLOCK_HIDE);
+  EXPECT_EQ(markBand(shown, Mark::Keep, BandSpot::Clock).clock, CLOCK_TIME_DATE) << "a ring keeps the date shown";
+  const Band hidden{true, CLOCK_HIDE};
+  EXPECT_FALSE(markBand(hidden, Mark::Keep, BandSpot::Battery).batteryHidden);
+  EXPECT_EQ(markBand(hidden, Mark::Keep, BandSpot::Clock).clock, CLOCK_TIME);
+  EXPECT_TRUE(markBand(hidden, Mark::Keep, BandSpot::None).batteryHidden);
 }
 
 }  // namespace

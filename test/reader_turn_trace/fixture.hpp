@@ -79,6 +79,8 @@ PageTurns detectPageTurn(MappedInput&) {
   return turns;
 }
 }  // namespace ReaderUtils
+// The tap tip only draws over a page; the exit closes it.
+namespace readertip { inline void close() {} }
 struct Settings {
   enum { FONT_SIZE_STEP = 1, CHAPTER_SKIP = 2 };
   uint8_t longPressButtonBehavior = 0;

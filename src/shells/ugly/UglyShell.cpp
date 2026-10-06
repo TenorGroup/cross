@@ -40,6 +40,11 @@ std::unique_ptr<Activity> makeHome(GfxRenderer& renderer, MappedInputManager& ma
     case HomeMenuItem::FILE_TRANSFER:
     case HomeMenuItem::SETTINGS_MENU:
       return makeNotebook(renderer, mappedInput, Page::Settings);
+    case HomeMenuItem::DESK:  // the Home key of a touch screen
+#if FREEINK_DEVICE_X4PRO
+      if (deskAvailable(renderer)) return makeDesk(renderer, mappedInput);
+#endif
+      break;
     case HomeMenuItem::NONE:
     case HomeMenuItem::RECENT_CONTINUE:
       break;

@@ -12,6 +12,7 @@
 #include <VectorFontSupport.h>
 
 #include <algorithm>
+#include <cstring>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -20,6 +21,7 @@
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
 #include "components/HeaderBackTapTarget.h"
+#include "components/ReaderTapTip.h"
 #include "components/TenorMenuChrome.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
@@ -55,21 +57,36 @@ std::atomic<bool> frameAfterDeferredWrite{false};
 std::atomic<bool> frameDrawn{false};
 }  // namespace
 
-// The Home key leads to the active shell's main screen: Diary for Ugly, Recent for touch Cross.
+// Where a book opened from tenor/ugly goes on Home: the desk until the founder says otherwise (NONE is the diary).
+constexpr HomeMenuItem UGLY_HOME_FROM_BOOK = HomeMenuItem::DESK;
+
+// The one answer to "where does Home go", for the Home key and the swipe up from the bottom edge alike: on touch,
+// the desk for Ugly and Recent for Cross; on buttons, the shell's first screen.
 HomeMenuItem ActivityManager::homeKeyTarget() const {
-  return tenorchrome::kTouchShell && !shell::isUgly() ? HomeMenuItem::RECENTS : HomeMenuItem::NONE;
+  if (!tenorchrome::kTouchShell) return HomeMenuItem::NONE;
+  if (!shell::isUgly()) return HomeMenuItem::RECENTS;
+  return isReaderActivity() ? UGLY_HOME_FROM_BOOK : HomeMenuItem::DESK;
 }
 
 const char* ActivityManager::currentName() const { return currentActivity ? currentActivity->name.c_str() : nullptr; }
 
 namespace {
 // Touch shell: the frame about to reach the panel gets the dynamic bar the screen in front declares.
+// The reader's tap-zone map, over the reader's own frames only (not a panel or the sleep screen above it).
+void drawTapTip(const GfxRenderer& r) {
+  const char* name = activityManager.currentName();
+  if (readertip::isOpen() && name && std::strcmp(name, "EpubReader") == 0) readertip::draw(r);
+}
 void drawFootBar(const GfxRenderer& r) {
   tenorchrome::drawFootBar(r, tenorchrome::footBarFor(activityManager.currentName()), activityManager.footZone());
+  drawTapTip(r);
   activityManager.drawLightGesture(r);
 }
 void saveGestureLight() { SETTINGS.saveToFile(); }
-void drawGrayLightGesture(const GfxRenderer& r) { activityManager.drawLightGesture(r); }
+void drawGrayLightGesture(const GfxRenderer& r) {
+  drawTapTip(r);
+  activityManager.drawLightGesture(r);
+}
 }  // namespace
 
 void ActivityManager::drawLightGesture(const GfxRenderer& r) const {
@@ -82,29 +99,75 @@ void ActivityManager::deferLightGestureSave() {
   deferWrite(&saveGestureLight);
 }
 
-bool ActivityManager::handleLightGesture() {
-  if (!BoardConfig::isX4Pro()) return false;
-  uint8_t contacts = 0;
-  int dx = 0, dy = 0;
-  if (!mappedInput.popMultiTouchSwipe(contacts, dx, dy)) return false;
-  RenderLock lock;
-  if (Frontlight.present() && lightGesture.apply(contacts, dx, dy, Frontlight.brightness(), Frontlight.warmth(),
-                                                Frontlight.isOn(), millis())) {
-    if (lightGesture.vertical) {
-      Frontlight.setBrightness(lightGesture.value);
-      Frontlight.setOn(lightGesture.value != 0);
-    } else if (Frontlight.hasColorTemperature()) {
-      Frontlight.setWarmth(lightGesture.value);
-    }
-    lightGesture.dirty = lightGesture.dirty || SETTINGS.frontlightBrightness != Frontlight.brightness() ||
-                         SETTINGS.frontlightWarmth != Frontlight.warmth() ||
-                         SETTINGS.frontlightOn != (Frontlight.isOn() ? 1 : 0);
-    SETTINGS.frontlightBrightness = Frontlight.brightness();
-    SETTINGS.frontlightWarmth = Frontlight.warmth();
-    SETTINGS.frontlightOn = Frontlight.isOn() ? 1 : 0;
-    requestUpdate();
+// The level the two-finger gesture shows, onto the light: brightness (0 = off, the brightness kept for the
+// next step up) or warmth.
+bool ActivityManager::applyLightLevel() {
+  if (!lightGesture.vertical) {
+    if (Frontlight.hasColorTemperature()) Frontlight.setWarmth(lightGesture.value);
+  } else if (lightGesture.value) {
+    Frontlight.setBrightness(lightGesture.value);
+    Frontlight.setOn(true);
+  } else {
+    Frontlight.setOn(false);
   }
   return true;
+}
+
+// Two fingers set the light while they move (FrontlightGesture). The light changes on this pass; the level
+// shows on the next frame the render task draws. True while two fingers are down or their release is being
+// consumed, so no screen reads them as a tap or a swipe.
+bool ActivityManager::handleLightGesture() {
+  if (!BoardConfig::isX4Pro()) return false;
+  uint8_t down = 0;
+  int x = 0, y = 0;
+  const bool two = mappedInput.touchContactsAt(down, x, y) && down == 2;
+  uint8_t contacts = 0;
+  int dx = 0, dy = 0;
+  unsigned long ms = 0;
+  const bool released = mappedInput.popMultiTouchSwipe(contacts, dx, dy, &ms);
+  if (!two && !released && !lightGesture.following()) return false;
+  if (!two) lightGesture.lift();
+  if (!Frontlight.present()) return true;
+  // ponytail: the render task reads these few bytes without the render lock (a torn read draws one stale
+  // number for one frame); taking the lock here would hold the light until the panel finished a refresh.
+  const uint32_t now = millis();
+  bool changed = false;
+  if (two && lightGesture.follow(x, y, Frontlight.brightness(), Frontlight.warmth(), Frontlight.isOn(), now)) {
+    changed = applyLightLevel();
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("LGT", "step %s=%u t=%lu", lightGesture.vertical ? "bright" : "warm", lightGesture.value, now);
+#endif
+  }
+  if (released && contacts == 2) {
+    if (lightGesture.flick(dx, dy, ms, Frontlight.brightness(), now)) {
+      changed = true;
+      Frontlight.setBrightness(lightGesture.keep);
+      Frontlight.setOn(false);
+#ifdef TENOR_PRESS_PROBE
+      LOG_INF("LGT", "flick off keep=%u t=%lu", lightGesture.keep, now);
+#endif
+    } else if (lightGesture.settle(dx, dy, ms, Frontlight.brightness(), Frontlight.warmth(), Frontlight.isOn(), now)) {
+      changed = applyLightLevel();
+    }
+  }
+#ifdef TENOR_PRESS_PROBE
+  if (released) LOG_INF("LGT", "release contacts=%u dx=%d dy=%d ms=%lu", contacts, dx, dy, ms);
+#endif
+  if (!changed) return true;
+  lightGesture.dirty = lightGesture.dirty || SETTINGS.frontlightBrightness != Frontlight.brightness() ||
+                       SETTINGS.frontlightWarmth != Frontlight.warmth() ||
+                       SETTINGS.frontlightOn != (Frontlight.isOn() ? 1 : 0);
+  SETTINGS.frontlightBrightness = Frontlight.brightness();
+  SETTINGS.frontlightWarmth = Frontlight.warmth();
+  SETTINGS.frontlightOn = Frontlight.isOn() ? 1 : 0;
+  requestUpdate();
+  return true;
+}
+
+// The top menu: the light panel, over whatever screen asked for it (not over itself).
+void ActivityManager::openTopMenu() {
+  if (currentActivity && currentActivity->name == "FrontlightPanel") return;
+  pushActivity(std::make_unique<FrontlightPanelActivity>(renderer, mappedInput));
 }
 
 tenorchrome::Zone ActivityManager::footZone() const {
@@ -202,6 +265,21 @@ void ActivityManager::renderTaskLoop() {
 }
 
 void ActivityManager::loop() {
+#ifdef TENOR_PRESS_PROBE
+  // Real contacts, for latency from the controller's report to the panel ("Wait complete"): a finger down,
+  // a finger up with how long it was held, and the count of contacts when it changes.
+  {
+    float nx = 0, ny = 0;
+    if (gpio.wasTouchDown(nx, ny)) LOG_INF("TCH", "down x=%.3f y=%.3f t=%lu", nx, ny, millis());
+    if (gpio.wasTouchReleased()) LOG_INF("TCH", "up held=%lu t=%lu", gpio.lastTouchHeldMs(), millis());
+    static uint8_t lastContacts = 0;
+    uint8_t contacts = 0;
+    int cx = 0, cy = 0;
+    mappedInput.touchContactsAt(contacts, cx, cy);
+    if (contacts != lastContacts) LOG_INF("TCH", "contacts=%u t=%lu", contacts, millis());
+    lastContacts = contacts;
+  }
+#endif
   if (mappedInput.consumeSuppressedRelease()) return;
 
   if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
@@ -239,20 +317,27 @@ void ActivityManager::loop() {
     const bool heldBack = mappedInput.wasLongPressed(MappedInputManager::Button::Back, 1000);
     const bool bottomHome = mappedInput.wasBottomHomeGesture();
     if (!currentActivity->isHomeActivity() && (heldBack || mappedInput.wasHomeGesture())) {
-      const HomeMenuItem homeTarget = bottomHome ? HomeMenuItem::RECENTS : homeKeyTarget();
+      const HomeMenuItem homeTarget = homeKeyTarget();
       if (currentActivity->saveInputBeforeHome()) {
         homeAfterInput = true;
         homeAfterInputTarget = homeTarget;
         return;
       }
-      if (!bottomHome && currentActivity->handleHomeGesture()) {
-        if (heldBack) {
+      // A touch Ugly form saves on the way out, so both gestures go through it there, and land on the desk after.
+      const bool uglyTouch = tenorchrome::kTouchShell && shell::isUgly();
+      if ((!bottomHome || uglyTouch) && currentActivity->handleHomeGesture()) {
+        if (heldBack || uglyTouch) {
           homeAfterInput = true;
           homeAfterInputTarget = homeTarget;
         }
         return;
       }
       goHome(homeTarget);
+      return;
+    }
+    // Touch, Ugly: Home from the diary or the notebook goes to the desk; on the desk it does nothing.
+    if (tenorchrome::kTouchShell && shell::isUgly() && currentActivity->isHomeActivity() && mappedInput.wasHomeGesture()) {
+      if (currentActivity->name != "UglyDesk") goHome(homeKeyTarget());
       return;
     }
     // Touch: the Home key from the Home screen itself brings it back to its default card, Recent.
@@ -276,25 +361,26 @@ void ActivityManager::loop() {
       }
     }
 
-    // Tap-first control-center entry: a tap on the status-bar band of the
-    // top-level tab screens opens it, mirroring the top-edge swipe (which some
-    // panels' etched glass makes unreliable). The reader keeps its clean page
-    // (no status bar there to tap). Touch boards only, like the swipe itself.
+    // Tap-first control-center entry: a tap on the status band opens the top menu (the light panel),
+    // mirroring the top-edge swipe (which some panels' etched glass makes unreliable). Touch shell: on
+    // every screen that draws the strip, the strip alone, so a tap on the first row of a list is the
+    // row's; going back is the bar's "<". Other touch boards: the band of the top-level tab screens.
     bool statusBarTap = false;
     if (mappedInput.hasTouch() &&
-        (currentActivity->name == "Home" || currentActivity->name == "FileBrowser" ||
-         currentActivity->name == "Settings" || currentActivity->name == "NetworkModeSelection")) {
+        (tenorchrome::kTouchShell ? HeaderBackTapTarget::strip
+                                  : currentActivity->name == "Home" || currentActivity->name == "FileBrowser" ||
+                                        currentActivity->name == "Settings" ||
+                                        currentActivity->name == "NetworkModeSelection")) {
       int tx = 0;
       int ty = 0;
       // The header back button shares this band; its taps stay Back.
-      // Touch: the status strip alone, so a tap on the first row of a list is the row's.
       const int band = tenorchrome::kTouchShell ? tenorchrome::TOUCH_STRIP_HEIGHT : 44;
       statusBarTap = mappedInput.wasScreenTapped(tx, ty) && ty < band && !HeaderBackTapTarget::contains(tx, ty);
     }
     // Both ways in are touch gestures, so a build without a touch board leaves the panel out.
     if (BoardConfig::hasTouch() && currentActivity->name != "FrontlightPanel" &&
         (statusBarTap || mappedInput.wasLightPanelGesture())) {
-      pushActivity(std::make_unique<FrontlightPanelActivity>(renderer, mappedInput));
+      openTopMenu();
       return;
     }
 
@@ -416,6 +502,7 @@ void ActivityManager::loop() {
         // screen (which may draw no header of its own).
         HeaderBackTapTarget::clear();
         HeaderBackTapTarget::clearFoot();
+        HeaderBackTapTarget::strip = false;
         LOG_DBG("ACT", "Pushed to activity stack, new size = %zu", stackActivities.size());
       }
       pendingAction = PendingAction::None;
@@ -564,6 +651,7 @@ void ActivityManager::restoreNavigation() {
   // screen; the next header draw re-records it.
   HeaderBackTapTarget::clear();
   HeaderBackTapTarget::clearFoot();
+  HeaderBackTapTarget::strip = false;
 }
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
@@ -693,6 +781,10 @@ void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::
 }
 
 void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefresh) {
+  // An Ugly form asked to save before Home, then goes Home on its own (to the notebook page it came from, or
+  // nowhere in particular): it lands where the gesture was going.
+  if (homeAfterInput && homeAfterInputTarget == HomeMenuItem::DESK)
+    initialMenuItem = HomeMenuItem::DESK;
   // The saved cursor of the tenor/cross Home means nothing to another shell.
   if (initialMenuItem == HomeMenuItem::NONE && !shell::isUgly()) initialMenuItem = homeMenuOrigin();
   if (initialMenuItem == HomeMenuItem::NONE && currentActivity) {

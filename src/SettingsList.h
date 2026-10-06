@@ -454,6 +454,11 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           {StrId::STR_TAP_AND_SWIPE, StrId::STR_TAP_ONLY, StrId::STR_SWIPE_ONLY,
                            StrId::STR_INVERTED_TAP, StrId::STR_DISABLED},
                           "previousPageGesture", StrId::STR_CAT_CONTROLS));
+    v.push_back(SettingInfo::Enum(StrId::STR_BACK_TAP_ZONE, &CrossPointSettings::backTapZone,
+                          {StrId::STR_PERCENT_15, StrId::STR_PERCENT_20, StrId::STR_PERCENT_25, StrId::STR_PERCENT_33},
+                          "backTapZone", StrId::STR_CAT_CONTROLS));
+    v.push_back(SettingInfo::Toggle(StrId::STR_READER_TAP_TIP, &CrossPointSettings::readerTapTip, "readerTapTip",
+                                    StrId::STR_CAT_CONTROLS));
     // Persisted under the legacy "tapForReaderMenu" key: old saves map
     // 0 = Off, 1 = Tap.
     v.push_back(SettingInfo::Enum(StrId::STR_SHOW_READER_MENU, &CrossPointSettings::showReaderMenu,
@@ -558,6 +563,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     // off the web page by getSettingsList().
     v.push_back(SettingInfo::Value(StrId::STR_UI_SHELL, &CrossPointSettings::uiShellSleepMemo,
                            {0, CrossPointSettings::SLEEP_SCREEN_MODE_COUNT, 1}, "uiShellSleepMemo"));
+    v.push_back(SettingInfo::Toggle(StrId::STR_UI_SHELL, &CrossPointSettings::uiShellClockMemo, "uiShellClockMemo"));
+    v.push_back(SettingInfo::Toggle(StrId::STR_UI_SHELL, &CrossPointSettings::uglyBatteryHidden, "uglyBatteryHidden"));
 
     // Frontlight quick-panel state: persisted and web-exposed, but hidden
     // from the on-device Settings screen because the swipe panel owns it.
@@ -649,8 +656,9 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     v.push_back(SettingInfo::Enum(StrId::STR_CLOCK_DST, &CrossPointSettings::clockDst,
                           {StrId::STR_CLOCK_DST_AUTO, StrId::STR_STATE_ON, StrId::STR_STATE_OFF}, "clockDst",
                           StrId::STR_CUSTOMISE_STATUS_BAR));
-    v.push_back(SettingInfo::Toggle(StrId::STR_CLOCK_IN_HEADER, &CrossPointSettings::clockShowInHeader, "clockShowHeader",
-                            StrId::STR_CUSTOMISE_STATUS_BAR));
+    v.push_back(SettingInfo::Enum(StrId::STR_CLOCK_IN_HEADER, &CrossPointSettings::clockShowInHeader,
+                          {StrId::STR_HIDE, StrId::STR_CLOCK_HEADER_TIME, StrId::STR_CLOCK_HEADER_TIME_DATE}, "clockShowHeader",
+                          StrId::STR_CUSTOMISE_STATUS_BAR));
     v.push_back(SettingInfo::Enum(StrId::STR_CLOCK_FORMAT, &CrossPointSettings::clockFormat,
                           {StrId::STR_CLOCK_FORMAT_24H, StrId::STR_CLOCK_FORMAT_12H}, "clockFormat",
                           StrId::STR_CUSTOMISE_STATUS_BAR));
@@ -681,10 +689,12 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
   // on button-only boards: the toolbar chrome is button-navigable).
   if (!BoardConfig::hasTouch() &&
       (s.nameId == StrId::STR_TOUCH_READER_CONTROLS || s.nameId == StrId::STR_NEXT_PAGE_GESTURE ||
-       s.nameId == StrId::STR_PREV_PAGE_GESTURE))
+       s.nameId == StrId::STR_PREV_PAGE_GESTURE || s.nameId == StrId::STR_BACK_TAP_ZONE))
     return true;
-  // X4 Pro only (#3089); the frontlight double-click shortcut needs its I2C frontlight.
-  if (!BoardConfig::isX4Pro() && s.nameId == StrId::STR_DBL_CLICK_PWR_LIGHT) return true;
+  // X4 Pro only (#3089); the frontlight double-click shortcut needs its I2C frontlight. The tap-zone tip is
+  // the touch shell's.
+  if (!BoardConfig::isX4Pro() && (s.nameId == StrId::STR_DBL_CLICK_PWR_LIGHT || s.nameId == StrId::STR_READER_TAP_TIP))
+    return true;
   // Home button shortcuts (#3516) need a physical Home key.
   if (!BoardConfig::hasHomeKey() && home_button::isSetting(s.valuePtr)) return true;
   // Khong co den nen thi hai dong do ngoi khong. X3 va X4 khai NO_FRONTLIGHT,
@@ -766,7 +776,9 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
   v.erase(std::remove_if(v.begin(), v.end(),
                          [](const SettingInfo& s) {
                            return s.valuePtr == &CrossPointSettings::uiShell || s.valuePtr == &CrossPointSettings::uiUglyLevel ||
-                                  s.valuePtr == &CrossPointSettings::uiShellSleepMemo;
+                                  s.valuePtr == &CrossPointSettings::uiShellSleepMemo ||
+                                  s.valuePtr == &CrossPointSettings::uiShellClockMemo ||
+                                  s.valuePtr == &CrossPointSettings::uglyBatteryHidden;
                          }),
           v.end());
   if (registry && registry->getFamilyCount() > 0) {

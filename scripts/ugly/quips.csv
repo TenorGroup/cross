@@ -1,3 +1,5 @@
+# Giọng câu chửi (founder 06/10/2026): mất dạy, cà khịa thẳng mặt, đừng làm hiền. Câu cụt, lóng được,
+# xưng mày/tao. Cấm chửi thề viết đủ chữ, tình dục, ngoại hình, giới, vùng miền, bệnh. Gọn cho vừa 1 dòng.
 key,group,condition,vi,en,args
 STR_UGLY_QUIP_OPEN_RECENT_1,Mở trang vở (xoay vòng 3 câu),Mở trang Gần đây,Gần đây toàn sách đọc dở. Giỏi vl.,Recent: a graveyard of half-read books.,
 STR_UGLY_QUIP_OPEN_RECENT_2,Mở trang vở (xoay vòng 3 câu),Mở trang Gần đây,Mở ra là thấy nợ. Đọc đi.,"Open it, see your debts. Read.",
@@ -329,3 +331,15 @@ STR_UGLY_QUIP_KOMETA_ON,Khác,Gửi metadata sách = Bật,Gửi metadata. Khoe 
 STR_UGLY_QUIP_KOMETA_OFF,Khác,Gửi metadata sách = Tắt,Giấu metadata. Đọc gì mà giấu?,No metadata. What are you hiding?,
 STR_UGLY_QUIP_KOSYNC_ASK,Khác,Cách đồng bộ = Hỏi mỗi lần,Hỏi hoài. Phiền vãi.,Ask every time. Annoying as hell.,
 STR_UGLY_QUIP_KOSYNC_SMART,Khác,Cách đồng bộ = Đồng bộ thông minh,Đồng bộ thông minh. Máy khôn hơn chủ.,Smart sync. Smarter than you.,
+STR_UGLY_QUIP_SCRAWL_1,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),Vẽ bậy (xoay vòng),Vẽ ngu gì vậy?,What on earth was that?,
+STR_UGLY_QUIP_SCRAWL_2,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),như trên,"Vẽ cái gì vậy trời? Gạch hay khoanh, chọn đi.","What is that? Strike or ring, pick one.",
+STR_UGLY_QUIP_SCRAWL_3,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),như trên,"Nét này tao chịu, đọc chả ra.",Cannot read that scrawl. I give up.,
+STR_UGLY_QUIP_SCRAWL_4,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),như trên,Tay run hay não run?,Shaky hand or shaky brain?,
+STR_UGLY_QUIP_SCRAWL_5,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),như trên,Mẫu giáo vẽ còn rõ hơn.,Kindergarten doodles make more sense.,
+STR_UGLY_QUIP_SCRAWL_6,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),như trên,Gạch thì gạch cho ra gạch dùm.,"If you strike, strike like you mean it.",
+STR_UGLY_QUIP_SCRAWL_7,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),như trên,Khoanh tròn mà ra củ khoai.,That ring came out a potato.,
+STR_UGLY_QUIP_SCRAWL_8,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),như trên,Vẽ bậy lên mặt tao làm gì?,Why scribble all over my face?,
+STR_UGLY_QUIP_SCRAWL_9,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),như trên,Nguệch ngoạc vậy ai hiểu nổi.,Nobody can read that mess.,
+STR_UGLY_QUIP_SCRAWL_10,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),như trên,"Vẽ lại coi, lần này dùng não nhé.",Draw it again. Use your brain this time.,
+STR_UGLY_QUIP_SCRAWL_11,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),như trên,Vẽ vậy mà đòi tao hiểu à?,You draw that and expect me to get it?,
+STR_UGLY_QUIP_SCRAWL_12,Nét vẽ bậy trên X4 Pro (xoay vòng 12 câu),như trên,Ngón tay chuột rút à?,Finger cramp or what?,

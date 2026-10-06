@@ -22,6 +22,9 @@ inline void set(const int newX, const int newY, const int newW, const int newH) 
 }
 
 inline void clear() { w = 0; }
+// Touch shell: the screen in front draws the status strip (clock, battery), whose tap opens the top menu.
+// Set by the strip's draw, cleared when the screen changes.
+inline bool strip = false;
 
 // Touch shell: the round "<" at the foot of a screen below another one is the same kind of target.
 inline int footX = 0;

@@ -53,14 +53,15 @@ def level_case(folder, shell, orientation, axis):
     config = persisted(folder)
     assert config['uiShell'] == shell and config['orientation'] == orientation, 'settings changed beyond light'
     if axis == 'brightness':
-        assert 19 <= config['frontlightBrightness'] <= 20 and config['frontlightOn'] == 1, config
+        # From off, the first 5% step brings the kept 60% back, three more add 15% (founder 05/10).
+        assert config['frontlightBrightness'] == 75 and config['frontlightOn'] == 1, config
     else:
         assert 69 <= config['frontlightWarmth'] <= 70 and config['frontlightOn'] == 0, config
         assert config['frontlightBrightness'] == 60, 'warmth changed brightness while off'
 
 
 def bounds_case(folder, shell):
-    # Off -> up -> brightness100 -> down0; horizontal clamps both ends.
+    # Off -> up -> brightness100 -> a fast flick down puts it out keeping 100; horizontal clamps both ends.
     script = ('3000:MULTISWIPE:2,.5,.9,.5,.05,250;'
               '5200:MULTISWIPE:2,.5,.05,.5,.95,250;'
               '7400:MULTISWIPE:2,.1,.5,.95,.5,250;'
@@ -70,7 +71,7 @@ def bounds_case(folder, shell):
         uiShell=shell, frontlightOn=0, frontlightBrightness=60, frontlightWarmth=50))
     save(folder, ('100-bright', '0-bright', '100-warm', '0-warm', 'expired'), images)
     config = persisted(folder)
-    assert (config['frontlightBrightness'],config['frontlightOn'],config['frontlightWarmth']) == (0,0,0), config
+    assert (config['frontlightBrightness'],config['frontlightOn'],config['frontlightWarmth']) == (100,0,0), config
 
 
 def unsupported_case(folder, shell):
@@ -87,32 +88,36 @@ def unsupported_case(folder, shell):
 
 
 def bottom_case(folder, shell):
-    script = ('1000:TAP:400,754;3000:TAP:80,754;5500:SWIPE:240,790,240,620,250;'
-              '8000:TAP:240,180;12000:TAP:.5,.5;14500:SWIPE:.5,.99,.5,.75,250') if shell else (
+    # Ugly: the desk as a reference, its folder, bottom Home (the desk), its book, the reader menu, bottom Home.
+    script = ('1000:TAP:400,754;2000:TAP:240,754;3000:TAP:80,630;5500:SWIPE:240,790,240,620,250;'
+              '8000:TAP:240,420;12000:TAP:.5,.97;14500:SWIPE:.5,.99,.5,.75,250') if shell else (
               '3000:TAP:423,754;5500:SWIPE:240,790,240,620,250;'
-              '8000:TAP:240,300;12000:TAP:.5,.5;14500:SWIPE:.5,.99,.5,.75,250')
+              '8000:TAP:240,300;12000:TAP:.5,.97;14500:SWIPE:.5,.99,.5,.75,250')
     images = run(folder, script,
                  [2700,4800,7300,13800,16400],settings=dict(uiShell=shell,homeButtonTapAction=9))
     assert_reader(folder)
-    save(folder, ('recent','settings','home','reader-menu','home-again'), images)
-    # Reading updates the Recent card's metadata/progress; its selected foot tab is stable.
-    box=(50,48,480,128) if shell else (16,724,464,784)
+    save(folder, ('desk' if shell else 'recent','folder' if shell else 'settings','home','reader-menu','home-again'), images)
+    # Reading updates the Recent card's metadata/progress; its selected foot tab is stable. The desk's top row
+    # (statistics, Recent, Settings) is above the open book that shows the progress.
+    box=(0,48,480,288) if shell else (16,724,464,784)
     for im in (images[2],images[4]):
-        assert list(images[0].crop(box).getdata()) == list(im.crop(box).getdata()), 'bottom swipe did not return Recent'
+        assert list(images[0].crop(box).getdata()) == list(im.crop(box).getdata()), \
+            'bottom swipe did not return to the desk' if shell else 'bottom swipe did not return Recent'
     assert persisted(folder)['homeButtonTapAction']==9, 'gesture changed Home key preference'
 
 
 
 def panel_case(folder, shell):
     # Gesture then immediate edge Home: onExit must read HAL even if loop was skipped.
-    images=run(folder, ('1000:TAP:400,754;' if shell else '') + '3000:SWIPE:.5,.01,.5,.25,250;'
+    images=run(folder, ('1000:TAP:400,754;2000:TAP:240,754;' if shell else '') + '3000:SWIPE:.5,.01,.5,.25,250;'
                       '6000:MULTISWIPE:2,.5,.7,.5,.55,250;'
                       '6300:SWIPE:.5,.99,.5,.75,250',
                [2700,5400,8400],settings=dict(uiShell=shell,frontlightOn=0,frontlightBrightness=60))
-    save(folder,('recent','panel','after-home'),images)
-    assert 19<=persisted(folder)['frontlightBrightness']<=20, 'closing panel restored stale brightness'
+    save(folder,('desk' if shell else 'recent','panel','after-home'),images)
+    assert persisted(folder)['frontlightBrightness']==75, 'closing panel restored stale brightness'
     assert persisted(folder)['frontlightOn']==1, 'closing panel restored stale off state'
-    box=(50,48,480,128) if shell else (0,24,480,180)
+    # Below the status strip (32 px): its clock changes when a run crosses a minute.
+    box=(0,48,480,288) if shell else (0,32,480,180)
     assert list(images[0].crop(box).getdata())==list(images[2].crop(box).getdata()), 'panel bottom swipe stopped below Home'
 
 
@@ -163,13 +168,15 @@ def image_case(folder,shell):
 
 
 def home_surface_case(folder, shell):
-    # Reach Recent as a reference, then Diary through Desk, then bottom Home.
+    # Cross: bottom Home from Recent stays on Recent. Ugly: reach the desk as a reference, then the diary, then
+    # bottom Home lands back on the desk.
     script = ('1000:TAP:400,754;3000:TAP:240,754;5000:TAP:240,754;'
               '7000:SWIPE:.5,.99,.5,.75,250') if shell else '7000:SWIPE:.5,.99,.5,.75,250'
-    images = run(folder, script, [2400,6600,8200], settings=dict(uiShell=shell,homeButtonTapAction=9))
-    save(folder, ('recent-reference','diary-before' if shell else 'recent-before','recent-after'),images)
-    box=(50,48,480,128) if shell else (16,724,464,784)
-    assert list(images[0].crop(box).getdata()) == list(images[2].crop(box).getdata()), 'bottom Home from Diary/Recent did not reach Recent'
+    images = run(folder, script, [4400 if shell else 2400,6600,8200], settings=dict(uiShell=shell,homeButtonTapAction=9))
+    save(folder, ('desk-reference','diary-before','desk-after') if shell else ('recent-reference','recent-before','recent-after'),images)
+    box=(0,48,480,720) if shell else (16,724,464,784)
+    assert list(images[0].crop(box).getdata()) == list(images[2].crop(box).getdata()), \
+        'bottom Home from the diary did not reach the desk' if shell else 'bottom Home from Recent did not stay on Recent'
     assert persisted(folder)['homeButtonTapAction']==9, 'bottom Home changed physical key preference'
 
 

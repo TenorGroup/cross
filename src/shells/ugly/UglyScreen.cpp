@@ -1,6 +1,8 @@
 #include "UglyScreen.h"
 
+#include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "UglyTouch.h"
 #include "activities/RenderLock.h"
 
 namespace ugly {
@@ -10,19 +12,32 @@ void Screen::push(const Key key) {
 }
 
 #if FREEINK_DEVICE_X4PRO
-void Screen::push(const Key key, const int x, const int y) {
+void Screen::push(const Key key, const int x, const int y, const int toX, const int toY) {
   if (count >= QUEUE) return;
   const int at = (head + count) % QUEUE;
   queueX[at] = static_cast<int16_t>(x);
   queueY[at] = static_cast<int16_t>(y);
+  queueToX[at] = static_cast<int16_t>(toX);
+  queueToY[at] = static_cast<int16_t>(toY);
   push(key);
 }
 
 // The touch screen speaks through the scribble recognizer alone (it already reads the contact the SDK
 // reads), so a slanted first stroke of an X never turns a page as a swipe. The SDK gives the hold, which
-// ends the contact, and the Home key, which is Back.
+// ends the contact. The Home key and the swipe up from the bottom edge are ActivityManager's (to the desk).
+bool Screen::markBand(const Key key) {
+  if (key != Key::Strike && key != Key::Ring) return false;
+  const touch::BandSpot spot = touch::bandAt(touchX, touchY);
+  if (spot == touch::BandSpot::None) return false;
+  const touch::Band band = touch::markBand({SETTINGS.uglyBatteryHidden != 0, SETTINGS.clockShowInHeader},
+                                           key == Key::Strike ? touch::Mark::Erase : touch::Mark::Keep, spot);
+  SETTINGS.uglyBatteryHidden = band.batteryHidden ? 1 : 0;
+  SETTINGS.clockShowInHeader = band.clock;
+  bandChanged = true;
+  return true;
+}
+
 void Screen::readTouch() {
-  if (mappedInput.wasHomeGesture()) push(Key::Back);
   int x = 0, y = 0;
   if (mappedInput.wasScreenLongPress(x, y)) {
     push(Key::Hold, x, y);
@@ -56,11 +71,12 @@ void Screen::readTouch() {
     case Kind::Swipe: {
       const int dx = r.to.x - r.from.x, dy = r.to.y - r.from.y;
       const bool across = (dx < 0 ? -dx : dx) >= (dy < 0 ? -dy : dy);
-      push(across ? (dx < 0 ? Key::SwipeLeft : Key::SwipeRight) : (dy < 0 ? Key::SwipeUp : Key::SwipeDown), r.from.x, r.from.y);
+      push(across ? (dx < 0 ? Key::SwipeLeft : Key::SwipeRight) : (dy < 0 ? Key::SwipeUp : Key::SwipeDown), r.from.x, r.from.y,
+           r.to.x, r.to.y);
       break;
     }
-    case Kind::Cross:
-      push(Key::Cross, r.x, r.y);
+    case Kind::Strike:
+      push(Key::Strike, r.x, r.y);
       break;
     case Kind::Circle:
       push(Key::Ring, r.x, r.y);
@@ -108,9 +124,17 @@ void Screen::loop() {
 #if FREEINK_DEVICE_X4PRO
       touchX = queueX[head];
       touchY = queueY[head];
+      touchToX = queueToX[head];
+      touchToY = queueToY[head];
 #endif
       head = static_cast<uint8_t>((head + 1) % QUEUE);
       --count;
+#if FREEINK_DEVICE_X4PRO
+      if (markBand(key)) {
+        changed = true;
+        continue;
+      }
+#endif
       changed |= onKey(key);
     }
   }
@@ -123,6 +147,12 @@ void Screen::loop() {
   }
   afterKeys();
   if (changed) requestUpdate();
+#if FREEINK_DEVICE_X4PRO
+  if (bandChanged) {  // the frame first, the card after it
+    bandChanged = false;
+    SETTINGS.saveToFile();
+  }
+#endif
 }
 
 }  // namespace ugly

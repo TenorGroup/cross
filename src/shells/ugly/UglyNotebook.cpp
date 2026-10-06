@@ -357,8 +357,36 @@ constexpr const char* SCRIBBLES_FILE = "/.crosspoint/ugly-scribbles.txt";
 using touch::ROW;
 using touch::rowTop;
 constexpr int ASK_WIDTH = 400;
-constexpr homerows::Page TEACH_PAGES[] = {homerows::Page::Folder, homerows::Page::Recent, homerows::Page::Favorites};
+// The line under the title is one line: a two-line message reads with its break as a space.
+std::string flat(std::string text) {
+  for (char& c : text)
+    if (c == '\n') c = ' ';
+  return text;
+}
+
+// The pages a scribble acts on; a group of settings is none of them.
+touch::Sheet sheetOf(const homerows::Page page, const int group) {
+  if (group >= 0) return touch::Sheet::Other;
+  switch (page) {
+    case homerows::Page::Folder:
+      return touch::Sheet::Folder;
+    case homerows::Page::Recent:
+      return touch::Sheet::Recent;
+    case homerows::Page::Favorites:
+      return touch::Sheet::Favorites;
+    default:
+      return touch::Sheet::Other;
+  }
+}
 }  // namespace
+
+std::string Notebook::nameLine(const char* format, const std::string& name) const {
+  char line[200];
+  snprintf(line, sizeof(line), format, "");
+  const int room = touch::TEXT_R - touch::TEXT_X - width(renderer, Size::S22, flat(line).c_str());
+  snprintf(line, sizeof(line), format, fit(renderer, Size::S22, name, std::max(48, room)).c_str());
+  return line;
+}
 
 int Notebook::askLines(const bool shellAsk) const {
   return paragraph(renderer, Size::S30, 0, 0, ASK_WIDTH, 0, shellAsk ? tr(STR_UGLY_SHELL_ASK) : tr(STR_UGLY_X4_DELETE_ASK), false);
@@ -366,7 +394,7 @@ int Notebook::askLines(const bool shellAsk) const {
 
 unsigned Notebook::loadScribbles() {
   const String raw = Storage.readFile(SCRIBBLES_FILE);
-  return raw.length() ? static_cast<unsigned>(raw[0] - '0') & (touch::USED_CROSS | touch::USED_RING) : 0u;
+  return raw.length() ? static_cast<unsigned>(raw[0] - '0') & (touch::USED_STRIKE | touch::USED_RING) : 0u;
 }
 
 int Notebook::rowsShown() const { return logic::rowsOnPage(topShown(), touch::ROWS, rowCount()); }
@@ -528,18 +556,25 @@ void Notebook::doJob() {
     if (page == homerows::Page::Favorites) {
       const std::string& key = rows.keys[row];
       const bool off = filefavorites::isFileKey(key) ? filefavorites::unpin(key) : menucustom::togglePin(key.c_str());
-      if (off) snprintf(line, sizeof(line), tr(STR_UGLY_X4_UNPINNED), name.c_str());
+      if (off) snprintf(line, sizeof(line), "%s", nameLine(tr(STR_UGLY_X4_UNPINNED), name).c_str());
       reread = off;
     } else if (!path.empty()) {
       const bool was = pinned(row);
       if (filefavorites::toggle(path, folder)) {
-        snprintf(line, sizeof(line), was ? tr(STR_UGLY_X4_UNPINNED) : tr(STR_UGLY_X4_PINNED), name.c_str());
+        snprintf(line, sizeof(line), "%s", nameLine(was ? tr(STR_UGLY_X4_UNPINNED) : tr(STR_UGLY_X4_PINNED), name).c_str());
         // Once both scribbles are known, the line that taught how to undo it gives way to abuse.
         const std::string mock = touch::teachScribbles(scribbles) ? std::string() : quip(was ? Quip::Unpin : Quip::Pin, 0, 0, 0, name.c_str());
         if (!mock.empty()) snprintf(line, sizeof(line), "%s", mock.c_str());
       } else {
         snprintf(line, sizeof(line), "%s", tr(STR_UGLY_X4_PIN_FULL));
       }
+    }
+  } else if (now == Job::Forget && !path.empty()) {
+    // Off the list of books read, the book and its place in it stay on the card.
+    reread = RECENT_BOOKS.removeByPath(path);
+    if (reread) {
+      RECENT_BOOKS.saveToFile();
+      snprintf(line, sizeof(line), "%s", nameLine(tr(STR_UGLY_X4_FORGOTTEN), name).c_str());
     }
   } else if (now == Job::Info && !path.empty()) {
     HalFile f;
@@ -549,7 +584,7 @@ void Notebook::doJob() {
   } else if (now == Job::Delete && !path.empty() && !folder) {
     clearBookCache(path);
     const bool gone = Storage.remove(path.c_str());
-    snprintf(line, sizeof(line), gone ? tr(STR_UGLY_X4_DELETED) : tr(STR_UGLY_X4_DELETE_FAIL), name.c_str());
+    snprintf(line, sizeof(line), "%s", nameLine(gone ? tr(STR_UGLY_X4_DELETED) : tr(STR_UGLY_X4_DELETE_FAIL), name).c_str());
     const std::string mock = gone ? quip(Quip::Delete, 0, 0, 0, name.c_str()) : std::string();
     if (!mock.empty()) snprintf(line, sizeof(line), "%s", mock.c_str());
     reread = gone;
@@ -568,7 +603,7 @@ void Notebook::doJob() {
 // ---- touches on the page ----
 bool Notebook::onTouch(const Key key) {
   if (want != page) return false;
-  const bool lists = std::find(std::begin(TEACH_PAGES), std::end(TEACH_PAGES), page) != std::end(TEACH_PAGES) && group < 0;
+  const bool lists = sheetOf(page, group) != touch::Sheet::Other;
   switch (key) {
     case Key::SwipeLeft:
       return group < 0 && onKey(Key::Right);
@@ -625,29 +660,39 @@ bool Notebook::onTouch(const Key key) {
       paper = touch::placePaper(rowTop(pageRow), taskCount, 0);
       return true;
     }
-    case Key::Cross:
-    case Key::Ring:
-    case Key::Scrawl: {
+    case Key::Scrawl:  // nobody can read it: abuse, a new line each time
+      showInk = true;
+      said = quip(Quip::Scrawl);
+      return true;
+    case Key::Strike:
+    case Key::Ring: {
       if (!lists) return false;
       showInk = true;
       const int pageRow = touch::scribbleRow(touchX, touchY, rowsShown());
-      if (key == Key::Scrawl || pageRow < 0) {
-        said = tr(STR_UGLY_X4_GESTURE_MISS);
+      if (pageRow < 0) {
+        said = quip(Quip::Scrawl);
         return true;
       }
       const int row = topShown() + pageRow;
-      const unsigned used = key == Key::Cross ? touch::USED_CROSS : touch::USED_RING;
+      const unsigned used = key == Key::Strike ? touch::USED_STRIKE : touch::USED_RING;
       if (!(scribbles & used)) {
         scribbles |= used;
         scribblesChanged = true;
       }
-      if (key == Key::Ring) {
-        job = Job::Pin;
+      bool folder = false;
+      const bool file = !pathOf(row, folder).empty() && !folder;
+      const touch::Act act =
+          touch::scribbleAct(sheetOf(page, group), key == Key::Ring ? touch::Mark::Keep : touch::Mark::Erase, file, pinned(row));
+      if (act == touch::Act::Pin || act == touch::Act::Unpin || act == touch::Act::Forget) {
+        job = act == touch::Act::Forget ? Job::Forget : Job::Pin;  // on Favorites the pin job takes the row off
         jobRow = row;
         return false;  // the frame follows the card work
       }
-      bool folder = false;
-      if (page != homerows::Page::Folder || pathOf(row, folder).empty() || folder) {
+      if (act == touch::Act::Kept) {
+        said = nameLine(tr(STR_UGLY_X4_KEPT), labelAt(row));
+        return true;
+      }
+      if (act != touch::Act::AskDelete) {
         said = tr(STR_UGLY_X4_NOT_HERE);
         return true;
       }
@@ -753,14 +798,14 @@ void Notebook::renderTouch() {
     snprintf(number, sizeof(number), "%d/%d", pos + 1, homerows::PAGE_COUNT);
     text(renderer, Size::S22, touch::TEXT_R - width(renderer, Size::S22, number), touch::TITLE_BASE - 16, number);
   }
-  const bool lists = std::find(std::begin(TEACH_PAGES), std::end(TEACH_PAGES), page) != std::end(TEACH_PAGES) && group < 0;
+  const bool lists = sheetOf(page, group) != touch::Sheet::Other;
   const char* sub = !said.empty() ? said.c_str()
                     : group >= 0 ? I18N.get(settingstabs::tenThe(static_cast<settingstabs::Tab>(group)))
-                    : lists && touch::teachScribbles(scribbles) ? tr(STR_UGLY_X4_HINT_GESTURE)
+                    : touch::hintHolds(sheetOf(page, group)) && touch::teachScribbles(scribbles) ? tr(STR_UGLY_X4_HINT_GESTURE)
                                                                 : nullptr;
   if (!sub && !jab.empty()) sub = jab.c_str();
   if (!sub) sub = I18N.get(SUBTITLES[id(page)]);
-  text(renderer, Size::S22, touch::TEXT_X, touch::SUB_BASE, fit(renderer, Size::S22, sub, touch::TEXT_R - touch::TEXT_X).c_str());
+  text(renderer, Size::S22, touch::TEXT_X, touch::SUB_BASE, fit(renderer, Size::S22, flat(sub), touch::TEXT_R - touch::TEXT_X).c_str());
 
   const int count = rowCount();
   const int first = topShown();

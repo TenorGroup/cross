@@ -422,6 +422,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool manualPageTurnReady() const override;
   bool pageAwaitsLayout() const override;
   bool loadBook() override;
+  bool handleTapTip();
   bool readingPageVisible() const override;
   std::string getBookTitle() const override { return epub ? epub->getTitle() : ""; }
   std::string getBookAuthor() const override { return epub ? epub->getAuthor() : ""; }
