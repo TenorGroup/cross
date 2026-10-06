@@ -105,13 +105,15 @@ for lang in ('vietnamese', 'english', 'chinese'):
             check(not re.search(r'không phải .{0,40} mà', value, re.I), '%s: "không phải X mà là Y"' % key)
             check(not re.search(r'\b(%s)\b' % '|'.join(NUMBER_WORDS), value, re.I), '%s: a count in words' % key)
 
-# The voice of the shell stays in the shell: no other source file names a STR_UGLY_ string.
+# The voice of the shell stays behind the shell: since every screen is drawn in tenor/ugly (founder 06/10/2026), a
+# screen outside src/shells/ugly may name a STR_UGLY_ string, but only a file that asks the shell first.
 for path in list((repo / 'src').rglob('*.cpp')) + list((repo / 'src').rglob('*.h')) + list((repo / 'lib').rglob('*.cpp')):
     rel = path.relative_to(repo)
     if str(rel).startswith('src/shells/ugly/') or str(rel).startswith('lib/I18n/'):
         continue
-    if 'STR_UGLY_' in path.read_text(errors='ignore'):
-        check(False, '%s names a STR_UGLY_ string outside src/shells/ugly' % rel)
+    text = path.read_text(errors='ignore')
+    if 'STR_UGLY_' in text and not re.search(r'shell::(isUgly|uglyParts)\(\)', text):
+        check(False, '%s names a STR_UGLY_ string without asking the shell' % rel)
 
 
 
