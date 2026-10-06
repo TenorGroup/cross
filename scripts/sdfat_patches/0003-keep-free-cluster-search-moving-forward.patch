@@ -1,0 +1,68 @@
+Subject: [PATCH] FatPartition: keep the free cluster search moving forward
+
+freeChain() pulls m_allocSearchStart down to every cluster it frees.
+Once the freed clusters are taken again, the next allocation calls
+fatGet() across every used cluster above them, one FAT sector at a
+time: about 2,000 sector reads on a 16 GB card half full.
+
+Leave the search start where it is when a chain is freed. Before
+allocateCluster() or allocContiguous() reports a full card, search once
+more from the first cluster, so clusters freed below the start are
+still found.
+
+---
+--- a/src/FatLib/FatPartition.cpp
++++ b/src/FatLib/FatPartition.cpp
+@@ -44,7 +44,7 @@
+       if (setStart) {
+         // Can't find space, checked all clusters.
+         DBG_FAIL_MACRO;
+-        goto fail;
++        goto full;
+       }
+       find = m_allocSearchStart;
+       setStart = true;
+@@ -53,7 +53,7 @@
+     if (find == current) {
+       // Can't find space, already searched clusters after current.
+       DBG_FAIL_MACRO;
+-      goto fail;
++      goto full;
+     }
+     uint32_t f;
+     int8_t fg = fatGet(find, &f);
+@@ -84,6 +84,12 @@
+   *next = find;
+   return true;
+ 
++full:
++  // Clusters freed below the search start: search once more from the first.
++  if (m_allocSearchStart > 1) {
++    m_allocSearchStart = 1;
++    return allocateCluster(current, next);
++  }
+ fail:
+   return false;
+ }
+@@ -102,6 +108,11 @@
+   // search the FAT for free clusters
+   while (1) {
+     if (endCluster > m_lastCluster) {
++      if (m_allocSearchStart > 1) {
++        // Clusters freed below the search start: search once more from the first.
++        m_allocSearchStart = 1;
++        return allocContiguous(count, firstCluster);
++      }
+       // Can't find space.
+       DBG_FAIL_MACRO;
+       goto fail;
+@@ -314,9 +325,6 @@
+     }
+     // Add one to count of free clusters.
+     updateFreeClusterCount(1);
+-    if (cluster < m_allocSearchStart) {
+-      m_allocSearchStart = cluster - 1;
+-    }
+     cluster = next;
+   } while (fg);
+ 
