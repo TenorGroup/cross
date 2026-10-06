@@ -67,11 +67,13 @@ void drawFootBar(const GfxRenderer& renderer, FootBar bar, Zone zone);
 // Reader view data for the existing pre-display hook. The reader owns its depth and drafts.
 void noteReaderFootBar(bool open, bool keypad, int activeTool);
 struct ReaderToolRect { int x, y, width, height; };
+// Contents, Text, More and Favorites (founder 06/10).
+constexpr int READER_TOOLS = 4;
 inline ReaderToolRect readerToolRect(const int width, const int height, const int tool) {
   const int left = FOOT_BACK_X + FOOT_BACK_SIZE + FOOT_PILL_GAP;
   const int room = width - FOOT_BACK_X - left;
-  const int x = left + room * tool / 3;
-  return {x, footBackTop(height), left + room * (tool + 1) / 3 - x, FOOT_BACK_SIZE};
+  const int x = left + room * tool / READER_TOOLS;
+  return {x, footBackTop(height), left + room * (tool + 1) / READER_TOOLS - x, FOOT_BACK_SIZE};
 }
 #endif
 // An icon in an icon bar (Mask1, bit 0 = ink): the chosen one solid, the others grey. Every icon bar draws
@@ -79,6 +81,9 @@ inline ReaderToolRect readerToolRect(const int width, const int height, const in
 void drawBarIcon(const GfxRenderer& renderer, const uint8_t* bits, int w, int h, int x, int y, bool chosen);
 // One tab of an icon bar whose band is h tall from y, centred on cx: the chosen one in a ring BAR_TAB_W wide,
 // BAR_TAB_INSET in from the band's top and bottom (the Home bar's), its icon centred in the band.
+// A pinned row's mark: the Favourites tab's heart, solid, FAVORITE_MARK px square, its top left at x, y.
+constexpr int FAVORITE_MARK = 14;
+void drawFavoriteMark(const GfxRenderer& renderer, int x, int y);
 constexpr int BAR_TAB_W = 84;
 constexpr int BAR_TAB_INSET = 6;
 void drawBarTab(const GfxRenderer& renderer, int cx, int y, int h, const uint8_t* bits, int w, int iconH, bool chosen);
@@ -86,6 +91,10 @@ void drawBarTab(const GfxRenderer& renderer, int cx, int y, int h, const uint8_t
 void drawPillRing(const GfxRenderer& g, int x, int y, int w, int h, int thick, bool grey);
 // The same ring inside a box with corners of radius r (a row menu, a group of list rows).
 void drawRoundRing(const GfxRenderer& g, int x, int y, int w, int h, int r, int thick, bool grey);
+// Touch shell: the one frame around a group of content across the screen, FOOT_BACK_X in from both sides,
+// grey dots 2 px, radius PANEL_RADIUS. Text inside starts 16 px in from it.
+constexpr int PANEL_RADIUS = 20;
+void drawPanel(const GfxRenderer& g, int y, int h);
 constexpr int STATUS_HEIGHT = 32;
 constexpr int STATUS_TEXT_LANE = 24;
 constexpr int STATUS_ICON_TOP_OFFSET = 5;

@@ -120,6 +120,8 @@ struct SettingsActivity {
   void onResume();
   void launchFontDownload();
 };
+// The X4 Pro About & updates screen (InfoUpdateActivity) holds no rows on these boards.
+namespace infoupdate { inline bool holds(settingstabs::Action, bool = false) { return false; } }
 #include "Methods.inc"
 #include "PostWifiMethods.inc"
 
@@ -152,7 +154,7 @@ bool catalogReleaseProbe() {
   bool ok = check(mem::live == 0, "shared catalog allocations released");
   std::printf("catalog_rows=%zu sizeof_SettingInfo=%zu allocated=%zu after_release=%zu\n",
               copied.size(), sizeof(SettingInfo), bytes, mem::live);
-  ok &= check(copied.size() == 96 && !webCopy.empty(), "96 base rows and owned web copy survive release");
+  ok &= check(copied.size() == 98 && !webCopy.empty(), "98 base rows and owned web copy survive release");
   clockCopy.valueSetter(1);
   ok &= check(clockCopy.valueGetter() == 1, "copied dynamic callback survives catalog release");
   SETTINGS.statusBarClock = CrossPointSettings::STATUS_BAR_CLOCK_HIDE;

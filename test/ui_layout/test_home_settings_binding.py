@@ -40,6 +40,10 @@ struct GfxRenderer {
 };
 struct Settings { uint8_t uiTextSize=0; } SETTINGS;
 namespace tenorchrome { bool kTouchShell=false; }
+// The ugly shell's touch Home keeps these 2 frames; the Tenor touch shell lists 3 titled groups instead.
+namespace infoupdate { bool shown() { return false; } }
+I18n& I18n::getInstance() { static I18n i18n; return i18n; }
+const char* I18n::get(StrId) const { return "heading"; }
 const fui::TextStyle& uiMenuLabelText(const fui::ThemeTokens& theme) { return theme.bodyText; }
 struct UiListActivity {
   int focusFavorite(const std::string&) { return -2; }
@@ -59,6 +63,9 @@ struct HomeActivity : UiListActivity {
   static void settingsRow(void*,uint16_t,fui::ListItem&);
   bool buildSettingsGroups(UiScreen&);
   bool rowIsPinned(int row) { return pinned && settingsOrder.original(row)==0; }
+  struct RowFrameLines { int rule, top, bottom; };
+  static RowFrameLines rowFrameLines(int gap) { const int rule=(gap+1)/2; return {rule,rule+1,gap-rule+2}; }
+  static void drawRowRule(GfxRenderer&,int,int,int) {}
   int focusFavorite(const std::string&);
 };
 '''

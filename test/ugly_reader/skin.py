@@ -31,7 +31,7 @@ namespace ugly {
 ''')
 driver = driver.replace('UiAppHost(r) {}', 'UiAppHost(r),renderer_(&r) {}')
 chrome = (a.repo / 'src/components/TenorMenuChrome.cpp').read_text()
-chrome_names = re.search(r'static constexpr StrId names\[\].*?;', chrome).group(0)
+chrome_names = re.search(r'static constexpr StrId names\[\].*?;', chrome, re.S).group(0)
 chrome_lookup = re.search(r'(?:tr|I18N\.get)\(names\[i\]\)', chrome).group(0)
 chrome_boundary = 'void chromeI18nBoundary(int i) {' + chrome_names + '(void)' + chrome_lookup + ';}\n'
 driver = driver.replace("void ReaderToolbarUi::paintUgly() {}", "\'\'\' + s[s.index(\'void readerugly::text\'):] + chrome_boundary + r\'\'\'")

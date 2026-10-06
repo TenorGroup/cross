@@ -151,9 +151,10 @@ class EpubReaderActivity final : public ReaderActivity {
   // Toolbar reader menu (SETTINGS.readerMenuStyle == READER_MENU_TOOLBAR): drawn
   // over the page instead of pushing the full-screen list menu. Select opens the
   // Toolbar; its tools open the Contents/Text/More bottom-sheet panels.
-  enum class Overlay { None, Toolbar, Contents, Text, More };
+  // Favorites: the X4 Pro's 4th tool (founder 06/10).
+  enum class Overlay { None, Toolbar, Contents, Text, More, Favorites };
   Overlay overlay = Overlay::None;
-  int focusedTool = 0;  // toolbar tool focus: 0=Contents, 1=Text, 2=More
+  int focusedTool = 0;  // toolbar tool focus: 0=Contents, 1=Text, 2=More, 3=Favorites (X4 Pro)
   int panelIndex = 0;   // selected row within the active panel
   // Panel list navigation: a tap steps one row, a hold jumps PANEL_HOLD_STEP rows in one go
   // (a contents list runs to hundreds of chapters). One jump per hold, not a repeat -- every
@@ -197,6 +198,18 @@ class EpubReaderActivity final : public ReaderActivity {
   bool spacingDragging = false;
   std::string pointSizeDraft;
   void enterTextDepth(TextDepth depth);
+  // A Text row by its place on the Text panel: Font, Size and Line spacing open their level, the others step.
+  void openTextRow(int row);
+  // Favorites: the pins (readermenu PIN_TEXT | text row id, or an Action) and the rows shown, the pins this
+  // book has. A hold on a Text, More or Favorites row pins it or takes it off.
+  std::vector<uint8_t> pins;
+  std::vector<uint8_t> favoriteRows;
+  void loadPins();
+  void togglePin(uint8_t pin);
+  uint8_t pinOfRow(int row) const;
+  std::string favoriteRowName(int row) const;
+  std::string favoriteRowValue(int row) const;
+  void activateFavoriteRow(int row);
   void stepMenuPointSize(int direction);
   void applyMenuPointSize(uint8_t pointSize);
   uint8_t enteredPointSize() const;

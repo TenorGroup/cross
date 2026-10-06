@@ -184,6 +184,8 @@ void drawMoreChevron(const GfxRenderer&, int, int, ChevronDir, int) {}
 void drawRoundRing(const GfxRenderer&, int, int, int, int, int, int, bool) {}
 void drawRowChevron(const GfxRenderer&, int, int) {}
 void drawPillRing(const GfxRenderer&, int, int, int, int, int, bool) {}
+void drawPanel(const GfxRenderer&, int, int) {}
+void drawBarTab(const GfxRenderer&, int, int, int, const uint8_t*, int, int, bool) {}
 FootBar footBarFor(const char*) { return FootBar::None; }
 }  // namespace tenorchrome
 

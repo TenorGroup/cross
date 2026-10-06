@@ -9,7 +9,8 @@
 
 namespace homesettings {
 
-constexpr int MAX_ROWS = settingstabs::TAB_COUNT + 1;
+// File Transfer, the settings groups and, on X4 Pro, About & updates.
+constexpr int MAX_ROWS = settingstabs::TAB_COUNT + 2;
 constexpr int FRAME_X = 16;
 constexpr int FRAME_PADDING = 4;
 constexpr int GROUP_GAP = 16;
@@ -32,6 +33,15 @@ struct Order {
   std::array<int, MAX_ROWS> originalRows{};
   int count = 0;
   int readingCount = 0;
+  // Touch: the display row each titled group starts at (touchOrder).
+  std::array<int, 3> groupFirst{-1, -1, -1};
+
+  // The titled group `displayRow` opens, or -1.
+  int heading(const int displayRow) const {
+    for (int g = 0; g < 3; ++g)
+      if (groupFirst[g] == displayRow) return g;
+    return -1;
+  }
 
   int original(const int displayRow) const {
     return displayRow >= 0 && displayRow < count ? originalRows[displayRow] : -1;
@@ -52,6 +62,29 @@ inline Order order(const std::vector<int>& groups) {
   result.originalRows[result.count++] = 0;
   for (int i = 0; i < count; ++i)
     if (!readingGroup(groups[i])) result.originalRows[result.count++] = i + 1;
+  return result;
+}
+
+// X4 Pro (founder 06/10): 3 titled groups in one scrolling list. Reading: File Transfer, Display, Reader,
+// Controls. System: System, Device, Keyboard, Motion. Other: Sleep, Other, then About & updates, the row after
+// the supplied groups (original row groups.size() + 1).
+constexpr StrId TOUCH_HEADINGS[3] = {StrId::STR_READER_TAB_READING, StrId::STR_CAT_SYSTEM, StrId::STR_CAT_OTHER};
+
+inline Order touchOrder(const std::vector<int>& groups) {
+  using Tab = settingstabs::Tab;
+  constexpr Tab ORDER[] = {Tab::SCREEN, Tab::READER,   Tab::CONTROLS, Tab::SYSTEM, Tab::DEVICE,
+                           Tab::KEYBOARD, Tab::MOTION, Tab::SLEEP,    Tab::OTHER};
+  constexpr int FIRST[] = {0, 3, 7};  // where each group starts in ORDER
+  Order result;
+  const int count = std::min(static_cast<int>(groups.size()), settingstabs::TAB_COUNT);
+  for (int k = 0; k < static_cast<int>(sizeof(ORDER) / sizeof(ORDER[0])); ++k) {
+    for (int g = 0; g < 3; ++g)
+      if (FIRST[g] == k) result.groupFirst[g] = result.count;
+    if (k == 0) result.originalRows[result.count++] = 0;
+    for (int i = 0; i < count; ++i)
+      if (groups[i] == static_cast<int>(ORDER[k])) result.originalRows[result.count++] = i + 1;
+  }
+  result.originalRows[result.count++] = count + 1;
   return result;
 }
 

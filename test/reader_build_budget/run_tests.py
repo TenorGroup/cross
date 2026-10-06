@@ -44,7 +44,9 @@ idle = 'void EpubReaderActivity::idleStep() {\n' + loop[idle_start:start] + '\n}
 # Cover-thumbnail tail of loadBook(), up to its final return.
 load_book = function('loadBook')
 thumb_start = load_book.index('  // The GAN DAY card only ever READS a thumbnail bitmap')
-open_thumb = 'void EpubReaderActivity::openThumbStep() {\n' + load_book[thumb_start:load_book.rindex('  return true;')] + '\n}'
+# The touch shell's tap-zone tip opens after the thumbnail; the budget is the thumbnail's.
+open_thumb = ('void EpubReaderActivity::openThumbStep() {\n'
+              + load_book[thumb_start:load_book.index('  // Touch shell: the tap-zone map over the first page')] + '\n}')
 render = function('renderBook')
 start = render.index('  if (section->isPartial() && section->currentPage >=')
 end = render.index('  renderer.clearScreen();', start)

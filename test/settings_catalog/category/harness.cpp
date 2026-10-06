@@ -87,6 +87,8 @@ struct SettingsActivity {
   void bindForm() {}
   void rebuildSettingsLists(bool lockHeld = false);
 };
+// The X4 Pro About & updates screen (InfoUpdateActivity) holds no rows on these boards.
+namespace infoupdate { inline bool holds(settingstabs::Action, bool = false) { return false; } }
 #include "CategoryMethods.inc"
 
 static bool check(bool value, const char* message) {

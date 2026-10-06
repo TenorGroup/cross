@@ -77,7 +77,8 @@ void ReaderToolbarUi::render() {
 ReaderToolbarUi::Routed ReaderToolbarUi::route(const MappedInputManager& input) {
   pending_ = Routed{};
   // routeHeld: the scrub track is a drag target, so held frames must reach it.
-  const auto touch = routeTouch(input, false, /*routeHeld=*/true);
+  // X4 Pro: a panel row takes a long press (pin to Favorites).
+  const auto touch = routeTouch(input, /*withLongPress=*/tenorchrome::kTouchShell, /*routeHeld=*/true);
   if (touch.event) onAction(touch.event, this);
   pending_.routed = touch.routed;
   pending_.x = touch.snap.touchX;
@@ -97,6 +98,7 @@ void ReaderToolbarUi::onAction(const fui::ActionEvent& event, void* user) {
   Routed& out = self->pending_;
   out.value = event.value;
   out.permille = event.dragPermille;
+  out.hold = event.longPress;
   if (event.action >= ACTION_DISMISS && event.action <= ACTION_CHOICE) out.event = static_cast<Event>(event.action);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (event.action >= ACTION_SIZE_STEP && event.action <= ACTION_NUMERIC) out.event = static_cast<Event>(event.action);
@@ -456,7 +458,7 @@ int ReaderToolbarUi::scrollRows(const MappedInputManager& input, const int count
 void ReaderToolbarUi::buildX4Tools(UiScreen& screen) {
   if (model_.textView == TextView::PointSize) return;
   const auto bounds = screen.frame().screen();
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < tenorchrome::READER_TOOLS; ++i) {
     const auto r = tenorchrome::readerToolRect(bounds.width, bounds.height, i);
     screen.frame().hit({static_cast<int16_t>(r.x), static_cast<int16_t>(r.y),
                         static_cast<int16_t>(r.width), static_cast<int16_t>(r.height)},
@@ -471,7 +473,7 @@ void ReaderToolbarUi::buildX4Toolbar(UiScreen& screen) {
   skinFrame_ = frame;
   const auto ink = fui::Paint::solid(fui::Color::Black);
   screen.target().fill(frame, fui::Paint::solid(fui::Color::White), 20);
-  screen.target().stroke(frame, fui::Paint::dither(fui::Color::LightGray), 2, 20);
+  if (uiTarget.paintingEnabled() && renderer_) tenorchrome::drawPanel(*renderer_, frame.y, frame.height);
   screen.frame().hit({0, 0, bounds.width, frame.y}, ACTION_DISMISS, 0, fui::InputTouch);
   stepProps_ = fui::ButtonProps{};
   stepProps_.inputMask = fui::InputTouch;
@@ -529,7 +531,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_ = fui::ListProps{};
     listProps_.count = static_cast<uint16_t>(count);
     listProps_.action = ACTION_ROW;
-    listProps_.inputMask = fui::InputTouch;
+    listProps_.inputMask = fui::InputTouch | fui::InputLongPress;
     listProps_.rowHeight = 62;
     listProps_.rowGap = 0;
     listProps_.sidePadding = 16;
@@ -546,8 +548,8 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.partialTrailingRow = fonts;
     listProps_.scrollIndicatorInset = 4;
     // The list ends at the frame's bottom edge: the bar keeps out of its round corner and rounds its ends.
-    listProps_.scrollIndicatorWidth = 4;
-    listProps_.scrollIndicatorFrameRadius = 20;
+    listProps_.scrollIndicatorWidth = 6;
+    listProps_.scrollIndicatorFrameRadius = tenorchrome::PANEL_RADIUS;
     listProps_.rowStyles = fui::defaultListRowStyles();
     nav_.selected = std::clamp(model_.selectedIndex, -1, count - 1);
     nav_.followOnBuild = nav_.selected >= 0;
@@ -570,11 +572,42 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.itemsWindowFirst = static_cast<uint16_t>(nav_.top);
     listProps_.itemsWindowCount = static_cast<uint16_t>(std::max(0, windowCount));
     if (count > 0) fui::list(screen.frame(), listRect, listProps_);
-    if (rows) {
-      const int16_t y = static_cast<int16_t>(listRect.y + 62);
+    if (model_.rowPinned && renderer_ && uiTarget.paintingEnabled()) {
+      // The heart stands before the value (and the chevron), inside the frame; on the size row, before its "-".
+      const int16_t lh = screen.target().lineHeight(listProps_.labelText.font);
+      const int chevron = fui::listChevronWidth(fui::listChevronSpan(lh)) + listProps_.textGap;
+      // The scroll bar's strip, which list() takes from the rows' right side (rowInset is 0 here).
+      const bool reserved = listProps_.scrollIndicator && (count > nav_.visibleRows || listProps_.nav);
+      const int strip = reserved ? listProps_.scrollIndicatorWidth + listProps_.scrollIndicatorInset + 2 : 0;
+      for (int i = 0; i < std::min(nav_.visibleRows, windowCount); ++i) {
+        const int index = nav_.top + i;
+        if (!model_.rowPinned(index)) continue;
+        const auto& item = windowItems_[i];
+        int right = frame.right() - strip - listProps_.sidePadding - (item.opensNext ? chevron : 0);
+        if (rows && index == 1)
+          right = frame.right() - 204;
+        else if (item.value)
+          right -= screen.target().measureText(listProps_.valueText.font, item.value, listProps_.valueText).width;
+        tenorchrome::drawFavoriteMark(*renderer_, right - 8 - tenorchrome::FAVORITE_MARK,
+                                      listRect.y + i * 62 + (62 - tenorchrome::FAVORITE_MARK) / 2);
+      }
+    }
+    if (count == 0 && model_.emptyText) {
+      fui::TextStyle hint = tokens.bodyText;
+      hint.align = fui::TextAlign::Center;
+      hint.maxLines = 3;
+      screen.target().text({static_cast<int16_t>(listRect.x + 32), static_cast<int16_t>(listRect.y + 40),
+                            static_cast<int16_t>(listRect.width - 64), static_cast<int16_t>(listRect.height - 80)},
+                           model_.emptyText, hint);
+    }
+    // The size row (index 1) with its stepper, where the scrolled rows put it: wholly in view only.
+    const int sizeSlot = 1 - nav_.top;
+    if (rows && sizeSlot >= 0 && sizeSlot < std::min(nav_.visibleRows, windowCount)) {
+      const int16_t y = static_cast<int16_t>(listRect.y + sizeSlot * 62);
       fui::TextStyle label = tokens.bodyText;
       label.maxLines = 1;
-      screen.target().text({static_cast<int16_t>(frame.x + 16), y, static_cast<int16_t>(frame.width - 236), 62}, windowLabels_[1].c_str(), label);
+      screen.target().text({static_cast<int16_t>(frame.x + 16), y, static_cast<int16_t>(frame.width - 236), 62},
+                           windowLabels_[sizeSlot].c_str(), label);
       stepProps_ = fui::ButtonProps{};
       stepProps_.inputMask = fui::InputTouch;
       stepProps_.minTouchSize = 60;
@@ -583,7 +616,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       stepProps_.label = "-";
       stepProps_.value = -1;
       screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 204), y, 60, 62});
-      stepProps_.label = windowValues_[1].c_str();
+      stepProps_.label = windowValues_[sizeSlot].c_str();
       stepProps_.action = ACTION_SIZE_ENTRY;
       stepProps_.value = 0;
       screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 140), y, 72, 62});
@@ -593,7 +626,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 64), y, 60, 62});
     }
   }
-  screen.target().stroke(frame, fui::Paint::dither(fui::Color::LightGray), 2, 20);
+  if (uiTarget.paintingEnabled() && renderer_) tenorchrome::drawPanel(*renderer_, frame.y, frame.height);
   buildX4Tools(screen);
 }
 

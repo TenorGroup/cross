@@ -96,7 +96,7 @@ struct ReaderToolbarUi {
 };
 class EpubReaderActivity {
  public:
- enum class Overlay {None,Toolbar,Text,Contents,More};
+ enum class Overlay {None,Toolbar,Text,Contents,More,Favorites};
  enum class TextDepth:uint8_t {Rows,Fonts,Spacing,PointSize};
  Overlay overlay=Overlay::None;
  TextDepth textDepth=TextDepth::Rows;
@@ -131,14 +131,17 @@ class EpubReaderActivity {
  void applyTextSettingLive(){requestUpdate();}
  void cycleTextRow(int row){if(row==3)chooseTextValue(row,(SETTINGS.paragraphAlignment+1)%5);if(row==4)chooseTextValue(row,(SETTINGS.dropCapMode+1)%3);}
  void activateMoreRow(int){}
+ std::vector<uint8_t> favoriteRows;
+ void activateFavoriteRow(int){}void togglePin(uint8_t){}uint8_t pinOfRow(int)const{return 0xFF;}
  void openOverlay(Overlay target){overlay=target;textDepth=TextDepth::Rows;spacingDragging=false;pointSizeDraft.clear();if(!toolbarUi)toolbarUi=std::make_unique<ReaderToolbarUi>();toolbarUi->nav().reset();tenorchrome::note=1;}
  void handleOverlayInput();void closeOverlayToPage();void enterFontLevel();void leaveFontLevel();void chooseFontFamily(int);
- void enterTextDepth(TextDepth);void stepMenuPointSize(int);void applyMenuPointSize(uint8_t);uint8_t enteredPointSize()const;
+ void enterTextDepth(TextDepth);void openTextRow(int);void stepMenuPointSize(int);void applyMenuPointSize(uint8_t);uint8_t enteredPointSize()const;
  void chooseTextValue(int,int);void invalidateTextSettingsLocked();void panelClosedLocked(bool,bool);void flushTextSettingsLocked();void markClosedTextFrameUpLocked();
 };
 constexpr int kTextRowCount=5;
+constexpr int kReaderTools=4;
 '''
-for name in ['handleOverlayInput','closeOverlayToPage','enterFontLevel','leaveFontLevel','chooseFontFamily','enterTextDepth','stepMenuPointSize','applyMenuPointSize','enteredPointSize','chooseTextValue','invalidateTextSettingsLocked','panelClosedLocked','flushTextSettingsLocked','markClosedTextFrameUpLocked']:
+for name in ['handleOverlayInput','closeOverlayToPage','openTextRow','enterFontLevel','leaveFontLevel','chooseFontFamily','enterTextDepth','stepMenuPointSize','applyMenuPointSize','enteredPointSize','chooseTextValue','invalidateTextSettingsLocked','panelClosedLocked','flushTextSettingsLocked','markClosedTextFrameUpLocked']:
     cpp+=method(s,name)+'\n'
 cpp+=r'''
 void event(EpubReaderActivity& r,ReaderToolbarUi::Event e,int value=0,int permille=-1,bool release=true){

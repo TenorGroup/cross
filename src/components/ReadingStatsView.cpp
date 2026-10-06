@@ -1,6 +1,7 @@
 #include "ReadingStatsView.h"
 #include "ReadingStatsLayout.h"
 #include "CrossPointSettings.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UIScale.h"
 #include "components/themes/TenorRadius.h"
 
@@ -42,7 +43,8 @@ void draw(const GfxRenderer& r, const int top, const bool sleep, const bool comp
   };
   const HomeReadingStatsLayout home(r.getLineHeight(SMALL_FONT_ID), r.getLineHeight(UI_10_FONT_ID),
                                     r.getLineHeight(UI_12_FONT_ID), compact, enlarged);
-  const int left = sleep ? 24 : 36;
+  // Touch: the panels' text at the frame's text edge, 16 px into the ring, as every list row's.
+  const int left = sleep ? 24 : tenorchrome::kTouchShell ? tenorchrome::FOOT_BACK_X + 16 : 36;
   const int width = r.getScreenWidth() - 2 * left;
   const int habitsTop = top + (page == 1 ? 0 : home.habitsTop);
   const int valueY = sleep ? y(28) : top + home.value;
@@ -56,9 +58,15 @@ void draw(const GfxRenderer& r, const int top, const bool sleep, const bool comp
   const int habitsValueY = sleep ? y(362) : habitsTop + home.habitsValue;
   const int noteY = sleep ? y(402) : habitsTop + home.note;
   if (!sleep) {
-    const int radius = tenorradius::container(tenorradius::leaf(30), 12);
-    if (page != 1) r.drawRoundedRect(24, top, r.getScreenWidth() - 48, home.overviewHeight, 1, radius, true);
-    if (page != 0) r.drawRoundedRect(24, habitsTop, r.getScreenWidth() - 48, home.habitsHeight, 1, radius, true);
+    // Touch: the one panel ring of every X4 Pro frame. The button boards keep their 1 px frame.
+    if (tenorchrome::kTouchShell) {
+      if (page != 1) tenorchrome::drawPanel(r, top, home.overviewHeight);
+      if (page != 0) tenorchrome::drawPanel(r, habitsTop, home.habitsHeight);
+    } else {
+      const int radius = tenorradius::container(tenorradius::leaf(30), 12);
+      if (page != 1) r.drawRoundedRect(24, top, r.getScreenWidth() - 48, home.overviewHeight, 1, radius, true);
+      if (page != 0) r.drawRoundedRect(24, habitsTop, r.getScreenWidth() - 48, home.habitsHeight, 1, radius, true);
+    }
   }
   const auto cellText = [&](int font, const char* text, EpdFontFamily::Style style = EpdFontFamily::REGULAR) {
     return enlarged || !sleep ? r.truncatedText(font, text, width / 2 - 12, style) : std::string(text);

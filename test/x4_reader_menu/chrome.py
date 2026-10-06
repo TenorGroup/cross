@@ -42,9 +42,11 @@ namespace HeaderBackTapTarget {
   void setFoot(int,int,int,int) { ++foot; }
   void setZone(int,int,int,int) { ++zone; }
 }
-namespace freeink { struct Icon {}; }
+namespace freeink { struct Icon { const unsigned char* bits=nullptr; int w=0,h=0; }; }
 freeink::Icon icon_tenor_reader_position_40,icon_tenor_reader_reading_40,icon_tenor_reader_tools_40;
 freeink::Icon icon_tenor_reader_position_bold_40,icon_tenor_reader_reading_bold_40,icon_tenor_reader_tools_bold_40;
+freeink::Icon icon_tenor_home_favorites_40,icon_tenor_home_favorites_bold_40;
+#include <iterator>
 #include "I18n.h"
 #include "ShellKind.h"
 #include "GfxRenderer.h"
@@ -79,9 +81,10 @@ void drawIcon(const GfxRenderer&,const freeink::Icon&,int,int) { ++icons; }
 namespace tenorchrome {
 enum class FootBar { None,Tabs,Full,BackOnly };
 enum class Zone { Recent,Book };
-constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8;
+constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4;
 int footBackTop(int h) { return h-76; }
 void drawPillRing(const GfxRenderer&,int,int,int,int,int,bool) { ++rings; }
+void drawBarTab(const GfxRenderer&,int,int,int,const unsigned char*,int,int,bool) { ++icons; }
 enum class ChevronDir { Left };
 int moreChevronLength(int) { return 16; }
 void drawMoreChevron(const GfxRenderer&,int,int,ChevronDir,int) {}
@@ -99,24 +102,25 @@ int main() {
   auto draw=[&] { rings=icons=0; ugly::labels.clear(); ugly::circles.clear(); ugly::budgets.clear();
     drawFootBar(r,FootBar::None,Zone::Book); };
   noteReaderFootBar(false,false,-1); draw(); assert(rings==0 && HeaderBackTapTarget::foot==0);
-  noteReaderFootBar(true,false,1); draw(); assert(rings==3 && icons==3 && HeaderBackTapTarget::foot==1);
+  // "<" and the tools' pill are rings; every tool, the chosen one too, is one bar tab (its ring inside it).
+  noteReaderFootBar(true,false,1); draw(); assert(rings==2 && icons==READER_TOOLS && HeaderBackTapTarget::foot==1);
   assert(HeaderBackTapTarget::zone==0);
   noteReaderFootBar(true,true,1); draw(); assert(rings==1 && icons==0 && HeaderBackTapTarget::foot==1);
   noteReaderFootBar(false,false,-1); assert(HeaderBackTapTarget::foot==0); draw(); assert(rings==0);
   noteReaderFootBar(true,false,1); ++activityManager.generation; draw(); assert(rings==0 && HeaderBackTapTarget::foot==0);
   noteReaderFootBar(true,false,1); activityManager.name="Settings"; draw(); assert(rings==0 && HeaderBackTapTarget::foot==0);
-  activityManager.name="EpubReader"; noteReaderFootBar(true,false,-1); draw(); assert(rings==2 && icons==3);
+  activityManager.name="EpubReader"; noteReaderFootBar(true,false,-1); draw(); assert(rings==2 && icons==READER_TOOLS);
   assert(ugly::labels.empty() && ugly::circles.empty());
   shell::selected=shell::Kind::Ugly;
   I18N.setLanguage(Language::EN);
-  const StrId names[]={StrId::STR_TOOL_CONTENTS,StrId::STR_TOOL_TEXT,StrId::STR_TOOL_MORE};
+  const StrId names[]={StrId::STR_TOOL_CONTENTS,StrId::STR_TOOL_TEXT,StrId::STR_TOOL_MORE,StrId::STR_READER_TAB_FAVORITES};
   for (int w : {480,800}) {
     r.width=w; r.height=w==480?800:480;
-    for (int active : {-1,0,1,2}) {
+    for (int active : {-1,0,1,2,3}) {
       noteReaderFootBar(true,false,active); draw();
       assert(rings==1 && icons==0 && HeaderBackTapTarget::foot==1 && HeaderBackTapTarget::zone==0);
-      assert(ugly::labels.size()==3 && ugly::budgets.size()==3 && ugly::circles.size()==(active<0?0u:1u));
-      for (int i=0;i<3;++i) {
+      assert(ugly::labels.size()==4 && ugly::budgets.size()==4 && ugly::circles.size()==(active<0?0u:1u));
+      for (int i=0;i<READER_TOOLS;++i) {
         auto cell=readerToolRect(w,r.height,i); const auto& label=ugly::labels[i];
         assert(ugly::budgets[i]==cell.width-16);
         assert(label.value==std::string(I18N.get(names[i])).substr(0,(cell.width-16)/8));
@@ -139,7 +143,7 @@ int main() {
     assert(rings==0 && ugly::labels.empty() && HeaderBackTapTarget::foot==0);
     activityManager.name="EpubReader";
   }
-  for (int w : {480,800}) for (int i=0;i<3;++i) {
+  for (int w : {480,800}) for (int i=0;i<READER_TOOLS;++i) {
     auto cell=readerToolRect(w,w==480?800:480,i);
     assert(cell.width>=60 && cell.height==60 && cell.y==(w==480?724:404));
     assert(cell.x>=84 && cell.x+cell.width<=w-16);

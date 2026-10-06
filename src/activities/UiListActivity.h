@@ -2,8 +2,17 @@
 
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UiAppHost.h"
 #include "util/ButtonNavigator.h"
+
+// Touch (C1): every list's row frame is the one panel ring (tenorchrome::drawPanel). A list whose rows sit on a
+// page that scrolls under the chrome (Stats) cuts the frame to the band the rows show in.
+struct ListRowFrameStyle {
+  // Band the frame is cut to; 0, 0 = no cut.
+  int16_t clipTop = 0;
+  int16_t clipBottom = 0;
+};
 
 // Base for activities hosting a single FreeInkUI list screen. UiAppHost owns
 // the app-hosting protocol (render target, FreeInkApp, uiReady handshake);
@@ -73,8 +82,14 @@ class UiListActivity : public Activity, protected UiAppHost {
   virtual bool listFramed() const { return true; }
   // A row that opens a deeper screen: drawRowFrame ends it with the grey ">" (its value stands before it).
   virtual bool rowOpens(int row) const { return false; }
+  // A row under a section heading (ListItem::sectionHeading): drawRowFrame closes the frame above it and opens
+  // one more, a frame a group.
+  virtual bool rowStartsGroup(int row) const { return false; }
   void frameRows(freeink::ui::ListProps& props);
-  void drawRowFrame();
+  // The band a list's frame is cut to (ListRowFrameStyle).
+  using RowFrameStyle = ListRowFrameStyle;
+  virtual RowFrameStyle rowFrameStyle() const { return {}; }
+  void drawRowFrame(const RowFrameStyle& style = {});
   bool rowsFramed = false;
   // Where the lines of a row frame go for a row gap: the grey rule `rule` px above a row's top (in the gap), the
   // ring `top` px above the first row and `bottom` px below the last, so that every row, the first and the last
@@ -93,6 +108,10 @@ class UiListActivity : public Activity, protected UiAppHost {
   int rowFrameFloor = 0;
   // Rows a page turn keeps from the page before: the faded first row of a framed list.
   int fadeKeepRows() const { return rowsFramed ? 1 : 0; }
+  // The faded ends of a framed list as the last frame drew them (y from, y to; empty when to <= from): a row
+  // there takes no tap of its own, a tap there scrolls to it. Written by the render task, read by the loop.
+  int fadeTopFrom = 0, fadeTopTo = 0, fadeFootFrom = 0, fadeFootTo = 0;
+  bool routeFadedTap();
   bool rowsHaveIcons = false;
   // Base-owned row action; subclass-registered actions start at ACTION_USER.
   static constexpr freeink::ui::ActionId ACTION_ROW = 1;

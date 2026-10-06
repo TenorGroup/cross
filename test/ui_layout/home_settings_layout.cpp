@@ -37,6 +37,23 @@ int main() {
     ++permutations;
   } while (std::next_permutation(groups.begin(), groups.end()));
 
+  // X4 Pro: 3 titled groups whatever the stored order; File Transfer is -1, About & updates 99.
+  for (bool motion : {false,true}) {
+    std::vector<int> ids{6,8,5,4,3,2,1,7,0};
+    if (!motion) ids.erase(ids.begin()+1);
+    const auto order = homesettings::touchOrder(ids);
+    std::vector<int> shown;
+    for (int i = 0; i < order.count; ++i) {
+      const int original = order.original(i);
+      shown.push_back(original == 0 ? -1 : original > static_cast<int>(ids.size()) ? 99 : ids[original-1]);
+    }
+    const std::vector<int> want = motion ? std::vector<int>{-1,0,1,2, 3,4,5,8, 7,6,99}
+                                         : std::vector<int>{-1,0,1,2, 3,4,5, 7,6,99};
+    assert(shown == want);
+    assert(order.heading(0) == 0 && order.heading(4) == 1 && order.heading(motion ? 8 : 7) == 2);
+    assert(order.heading(1) == -1 && order.heading(order.count - 1) == -1);
+  }
+
   for (bool touch : {false,true}) for (int tier : {0,1,2}) for (bool motion : {false,true}) {
     groups = {0,7,1,2,3,4,5,6};
     if (motion) groups.insert(groups.begin()+4,8);

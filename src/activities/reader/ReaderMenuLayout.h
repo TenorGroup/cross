@@ -1,7 +1,9 @@
 #pragma once
 #include <I18n.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 namespace readermenu {
@@ -81,11 +83,47 @@ inline constexpr int TOI_DA_GHIM = 8;
 // nho, nen bai kiem giu duoc chung (test/reader_menu_tabs).
 
 // Muc nay dang duoc ghim chua.
-bool daGhim(const std::vector<Action>& ghim, Action action);
+template <class T>
+bool daGhim(const std::vector<T>& ghim, const T muc) {
+  for (const auto m : ghim)
+    if (m == muc) return true;
+  return false;
+}
 
 // Giu nut Chon tren mot dong la goi ham nay: dang ghim thi go ra, chua ghim thi them
 // vao CUOI. Tra ve true neu danh sach doi; false nghia la ghim day roi.
-bool doiGhim(std::vector<Action>& ghim, Action action);
+// Mot luat cho ca hai menu: X3 ghim lenh (Action), X4 Pro ghim ma ghim (PIN_TEXT).
+template <class T>
+bool doiGhim(std::vector<T>& ghim, const T muc) {
+  for (size_t i = 0; i < ghim.size(); i++) {
+    if (ghim[i] != muc) continue;
+    ghim.erase(ghim.begin() + static_cast<long>(i));
+    return true;
+  }
+  // Go ra thi luc nao cung duoc, ke ca khi day; chi viec THEM moi vuong tran.
+  if (static_cast<int>(ghim.size()) >= TOI_DA_GHIM) return false;
+  ghim.push_back(muc);
+  return true;
+}
+
+// X4 Pro (founder 06/10): the reader menu's Favorites pins actions and text settings. A pin is one byte in
+// readerFavorites: an Action (below ACTION_COUNT), or PIN_TEXT | the text setting's place in TEXT_KEYS.
+// settings.json keeps an Action as its number, as every earlier file does, and a text setting as
+// "text/<key>", so an old file loads unchanged.
+inline constexpr uint8_t PIN_TEXT = 0x80;
+inline constexpr const char* TEXT_KEYS[] = {
+    "fontFamily",    "fontSize",        "lineSpacing",       "paragraphAlignment", "dropCapMode",
+    "letterSpacing", "wordSpacing",     "extraParagraphSpacing", "screenMargin",   "paragraphIndent",
+    "embeddedStyle", "hyphenationEnabled", "readerInkWeight", "textAntiAliasing"};
+inline constexpr int TEXT_KEY_COUNT = static_cast<int>(sizeof(TEXT_KEYS) / sizeof(TEXT_KEYS[0]));
+static_assert(TEXT_KEY_COUNT < PIN_TEXT, "a text pin fits under the flag");
+// The pin of "text/<key>", or 0 when the key is no text setting.
+inline uint8_t textPin(const char* storedKey) {
+  if (!storedKey || std::strncmp(storedKey, "text/", 5) != 0) return 0;
+  for (int i = 0; i < TEXT_KEY_COUNT; i++)
+    if (std::strcmp(storedKey + 5, TEXT_KEYS[i]) == 0) return static_cast<uint8_t>(PIN_TEXT | i);
+  return 0;
+}
 
 // Giu nut Len hoac Xuong trong tab Yeu thich la goi ham nay: day muc o `viTri` di mot
 // bac theo `huong` (-1 len, 1 xuong). QUAY VONG, vi ca may quay vong, va vi nho vay dua

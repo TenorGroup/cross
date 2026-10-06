@@ -50,6 +50,8 @@ struct SettingsActivity {
   std::string favoriteKey(int) const;
   int focusFavorite(const std::string&);
 };
+// The X4 Pro About & updates screen (InfoUpdateActivity) holds no rows on these boards.
+namespace infoupdate { inline bool holds(settingstabs::Action, bool = false) { return false; } }
 #include "Methods.inc"
 #include "HomeSettings.inc"
 struct HomeSettings {

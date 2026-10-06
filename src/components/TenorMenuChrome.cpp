@@ -106,7 +106,7 @@ namespace {
 constexpr const char* FULL_BAR[] = {
     "About", "BlePageTurner", "BookStats", "BookStatsLibrary", "ButtonRemap", "CalibreConnect", "ClearCache",
     "ClockSettings", "ClockSync", "CrossPointWebServer", "EpubReaderBookmarks", "EpubReaderChapterSelection",
-    "FileBrowser", "FontDownload", "HomeButtonSettings", "KOReaderAuth", "KOReaderSettings", "KOReaderSync",
+    "FileBrowser", "FontDownload", "HomeButtonSettings", "InfoUpdate", "KOReaderAuth", "KOReaderSettings", "KOReaderSync",
     "KeyboardLayouts", "LanguageSelect", "NetworkModeSelection", "OpdsBookBrowser", "OpdsServerList",
     "OpdsSettings", "QrDisplay", "QuoteDetail", "Quotes", "ReadingHabits", "ReadingHistory", "Settings",
     "StatusBarSettings", "TimezonePicker", "WifiSelection", "XtcReaderChapterSelection"};
@@ -152,6 +152,49 @@ void tenorchrome::drawBarIcon(const GfxRenderer& r, const uint8_t* bits, const i
     for (int i = 0; i < w; ++i)
       if (((bits[j * stride + i / 8] >> (7 - i % 8)) & 1) == 0 && (chosen || ((i + j) & 1) == 0))
         r.drawPixel(x + i, y + j, true);
+}
+
+void tenorchrome::drawFavoriteMark(const GfxRenderer& r, const int x, const int y) {
+  // The Favourites tab's heart, filled and shrunk, worked out once: inside the outline is everything the
+  // outside, flooded from the icon's border, does not reach; a mark pixel is ink when most of its block is.
+  static uint16_t rows[FAVORITE_MARK];
+  static bool ready = false;
+  if (!ready) {
+    const auto& icon = icon_tenor_home_favorites_bold_40;
+    constexpr int S = 40;
+    static_assert(FAVORITE_MARK <= 16, "a mark row fits 16 bits");
+    const int stride = (icon.w + 7) / 8;
+    bool outside[S][S] = {};
+    const auto ink = [&](const int u, const int v) {
+      return u < icon.w && v < icon.h && ((icon.bits[v * stride + u / 8] >> (7 - u % 8)) & 1) == 0;
+    };
+    for (bool grew = true; grew;) {
+      grew = false;
+      for (int v = 0; v < S; ++v)
+        for (int u = 0; u < S; ++u) {
+          if (outside[v][u] || ink(u, v)) continue;
+          if (u == 0 || v == 0 || u == S - 1 || v == S - 1 || outside[v][u - 1] || outside[v - 1][u] ||
+              outside[v][u + 1] || outside[v + 1][u])
+            outside[v][u] = grew = true;
+        }
+    }
+    constexpr int n = FAVORITE_MARK;
+    for (int j = 0; j < n; ++j)
+      for (int i = 0; i < n; ++i) {
+        int filled = 0, all = 0;
+        for (int v = j * S / n; v < (j + 1) * S / n; ++v)
+          for (int u = i * S / n; u < (i + 1) * S / n; ++u, ++all) filled += !outside[v][u];
+        if (2 * filled > all) rows[j] |= static_cast<uint16_t>(1u << i);
+      }
+    ready = true;
+  }
+  for (int j = 0; j < FAVORITE_MARK; ++j)
+    for (int i = 0; i < FAVORITE_MARK; ++i)
+      if (rows[j] >> i & 1) r.drawPixel(x + i, y + j, true);
+}
+
+void tenorchrome::drawPanel(const GfxRenderer& g, const int y, const int h) {
+  drawRoundRing(g, FOOT_BACK_X, y, g.getScreenWidth() - 2 * FOOT_BACK_X, h, PANEL_RADIUS, 2, true);
 }
 
 void tenorchrome::drawBarTab(const GfxRenderer& r, const int cx, const int y, const int h, const uint8_t* bits,
@@ -232,13 +275,15 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (reader && !readerFootBar.keypad) {
     const freeink::Icon* normal[] = {&icon_tenor_reader_position_40, &icon_tenor_reader_reading_40,
-                                     &icon_tenor_reader_tools_40};
+                                     &icon_tenor_reader_tools_40, &icon_tenor_home_favorites_40};
     const freeink::Icon* bold[] = {&icon_tenor_reader_position_bold_40, &icon_tenor_reader_reading_bold_40,
-                                   &icon_tenor_reader_tools_bold_40};
+                                   &icon_tenor_reader_tools_bold_40, &icon_tenor_home_favorites_bold_40};
+    static_assert(std::size(normal) == READER_TOOLS, "an icon a tool");
     const int left = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), 0).x;
     if (!shell::isUgly()) drawPillRing(r, left, y, r.getScreenWidth() - FOOT_BACK_X - left, SIZE, 2, true);
-    static constexpr StrId names[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE};
-    for (int i = 0; i < 3; ++i) {
+    static constexpr StrId names[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE,
+                                      StrId::STR_READER_TAB_FAVORITES};
+    for (int i = 0; i < READER_TOOLS; ++i) {
       const auto cell = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), i);
       const bool active = i == readerFootBar.activeTool;
       if (shell::isUgly()) {

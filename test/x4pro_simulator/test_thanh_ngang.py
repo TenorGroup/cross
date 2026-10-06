@@ -50,7 +50,7 @@ def check_reader(folder, orientation):
     assert all(a == b for a,b in zip(page_pixels,menu_pixels) if a in (0,255)), 'toolbar changed solid page pixels'
     assert set(menu_pixels) <= {0,255}, 'stored BW preview contains gray upload pixels'
     assert ink(menu,(16,276,784,392)) > 0.015, 'toolbar panel is missing'
-    for x in (200,433,666):
+    for x in (171,346,521,696):  # the 4 tools: Contents, Text, More, Favorites
         assert ink(menu,(x-20,414,x+20,454)) > 0.03, 'reader tool is outside the logical bottom bar'
     box = (0, 24, 800, 390)
     assert list(page.crop(box).getdata()) == list(back.crop(box).getdata()), 'landscape back did not close to the page'
