@@ -80,5 +80,40 @@ class UglyNoteTest(unittest.TestCase):
         print('clock note frames ms:', [n['ms'] for n in notes])
 
 
+
+SERVER_FRAME = re.compile(r'Server frame ap=(?P<ap>\d) total=(?P<ms>\d+)ms heap=\d+')
+# The chooser of Send file: Confirm on the first row joins a network; the open network of the simulator is the first.
+TO_THE_SERVER = '1000:UP;1800:CONFIRM;3200:CONFIRM;5600:CONFIRM;10000:QUIT'
+
+
+class UglyServerTest(unittest.TestCase):
+    def run_card(self, script, shot_ms):
+        card = Card()
+        self.addCleanup(card.close)
+        log, shots = card.run(script, [(shot_ms, 'page')], timeout=60)
+        self.assertIn('CrossPointWebServer', entered(log), log[-2000:])
+        return log, shots['page']
+
+    def test_the_hotspot_page_is_written_by_hand_beside_two_exact_codes(self):
+        log, page = self.run_card(TO_THE_HOTSPOT, 7000)
+        frames = SERVER_FRAME.findall(log)
+        self.assertTrue(frames and all(ap == '1' for ap, _ in frames), log[-2500:])
+        # Two codes in the left column, the steps beside them, the margin of the notebook, the status bar.
+        self.assertGreater(ink(page, (52, 116, 250, 314)), 12000)
+        self.assertGreater(ink(page, (52, 354, 250, 552)), 12000)
+        self.assertGreater(ink(page, (274, 120, 520, 170)), 400)
+        self.assertGreater(ink(page, (24, 600, 30, 700)), 60)
+        self.assertGreater(ink(page, (0, 750, 528, 792)), 150)
+        print('hotspot frames ms:', [ms for _, ms in frames])
+
+    def test_the_server_page_on_a_network(self):
+        log, page = self.run_card(TO_THE_SERVER, 9000)
+        frames = SERVER_FRAME.findall(log)
+        self.assertTrue(frames and all(ap == '0' for ap, _ in frames), log[-2500:])
+        self.assertGreater(ink(page, (165, 220, 363, 560)), 12000)  # the code, in the middle
+        self.assertGreater(ink(page, (24, 600, 30, 700)), 60)
+        print('server frames ms:', [ms for _, ms in frames])
+
+
 if __name__ == '__main__':
     unittest.main()

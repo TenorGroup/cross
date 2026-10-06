@@ -27,6 +27,8 @@
 #include "fontIds.h"
 #include "util/QrUtils.h"
 #include "util/TaskWatchdog.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyNote.h"
 
 namespace {
 // The access-point SSID and the mDNS label both follow the user's device name,
@@ -542,6 +544,10 @@ void CrossPointWebServerActivity::render(RenderLock&&) {
   // Only render our own UI when server is running
   // Subactivities handle their own rendering
   if (state == WebServerActivityState::SERVER_RUNNING || state == WebServerActivityState::AP_STARTING) {
+    if (shell::uglyParts()) {
+      renderUgly();
+      return;
+    }
     renderer.clearScreen();
     const auto& metrics = UITheme::getInstance().getMetrics();
     const auto pageWidth = renderer.getScreenWidth();
@@ -617,6 +623,72 @@ void CrossPointWebServerActivity::renderServerRunning() const {
 
   const auto labels = mappedInput.mapLabels(tr(STR_EXIT), "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+// The same two pages by hand: the codes stay exact so a phone reads them, and every address and network name
+// stays in the UI font, because a jumping letter in an address is a typo.
+void CrossPointWebServerActivity::renderUgly() const {
+  [[maybe_unused]] const uint32_t started = millis();
+  const char* title = isApMode ? tr(STR_HOTSPOT_MODE) : tr(STR_FILE_TRANSFER);
+  ugly::Hints hints;
+  if (state == WebServerActivityState::AP_STARTING) {
+    ugly::notePage(renderer, mappedInput, title, tr(STR_UGLY_HOTSPOT_STARTING), nullptr, -1, hints);
+    return;
+  }
+  using ugly::Size;
+  constexpr int X = ugly::NOTE_X;
+  const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
+  const int room = w - X - 30;
+  ugly::notePaper(renderer, title);
+  const std::string hostnameUrl = std::string("http://") + apHostname() + ".local/";
+  if (isApMode) {
+    // Step 1 beside the code of the network, step 2 beside the code of the address. Four modules (24 px) stay
+    // clear around each code, the margin line included.
+    constexpr int QR_X = 52;
+    const int textX = QR_X + QR_CODE_WIDTH + 24;
+    const int textWidth = w - 20 - textX;
+    int top = 116;
+    QrUtils::drawQrCode(renderer, Rect(QR_X, top, QR_CODE_WIDTH, QR_CODE_HEIGHT),
+                        std::string("WIFI:T:nopass;S:") + connectedSSID + ";;");
+    int lines = ugly::paragraph(renderer, Size::S30, textX, top + 30, textWidth, 38, tr(STR_UGLY_HOTSPOT_STEP1));
+    const int nameBottom =
+        drawNetworkText(renderer, UI_12_FONT_ID, connectedSSID.c_str(), textX, top + 30 + lines * 38 - 16, textWidth);
+    top = std::max(top + QR_CODE_HEIGHT, nameBottom) + 40;
+    QrUtils::drawQrCode(renderer, Rect(QR_X, top, QR_CODE_WIDTH, QR_CODE_HEIGHT), hostnameUrl);
+    lines = ugly::paragraph(renderer, Size::S30, textX, top + 30, textWidth, 38, tr(STR_UGLY_HOTSPOT_STEP2));
+    drawNetworkText(renderer, UI_12_FONT_ID, ("http://" + connectedIP).c_str(), textX, top + 30 + lines * 38 - 16,
+                    textWidth);
+  } else {
+    // The network and its signal in pen strokes on the line under the name.
+    constexpr int BARS = 4;
+    const int barsX = w - 30 - BARS * 8;
+    drawNetworkText(renderer, UI_10_FONT_ID, connectedSSID.c_str(), X, 100, barsX - 12 - X);
+    if (WiFi.status() == WL_CONNECTED && consecutiveDisconnects == 0) {
+      for (int i = 0; i < BARS; ++i) {
+        const int x = barsX + i * 8, bottom = 122, height = 6 + i * 4;
+        ugly::line(renderer, x, bottom, x + 1, bottom - height, 300 + i, i < lastWifiBars ? 3 : 1);
+      }
+    } else {
+      ugly::line(renderer, barsX, 106, barsX + 18, 122, 310, 2);
+      ugly::line(renderer, barsX, 122, barsX + 18, 106, 311, 2);
+    }
+    const int lines = ugly::paragraph(renderer, Size::S30, X, 176, room, 40, tr(STR_UGLY_SERVER_HINT));
+    int y = 176 + (lines - 1) * 40 + 24;
+    const std::string ipUrl = "http://" + connectedIP + "/";
+    QrUtils::drawQrCode(renderer, Rect((w - QR_CODE_WIDTH) / 2, y, QR_CODE_WIDTH, QR_CODE_HEIGHT), ipUrl);
+    y = drawNetworkText(renderer, UI_12_FONT_ID, ipUrl.c_str(), X, y + QR_CODE_HEIGHT + 20, room, true);
+    drawNetworkText(renderer, UI_12_FONT_ID, hostnameUrl.c_str(), X, y + 12, room, true);
+  }
+  // Leaving is the only key here, with a word about the radio left on.
+  const int exitLines = ugly::paragraph(renderer, Size::S22, X, 0, room, 28, tr(STR_UGLY_SERVER_EXIT), false);
+  ugly::paragraph(renderer, Size::S22, X, h - 60 - (exitLines - 1) * 28, room, 28, tr(STR_UGLY_SERVER_EXIT));
+  hints.back = true;
+  ugly::statusBar(renderer, mappedInput, hints);
+  renderer.displayBuffer();
+#ifdef UGLY_FRAME_LOG
+  LOG_INF("UGLY", "Server frame ap=%d total=%lums heap=%u", isApMode ? 1 : 0,
+          static_cast<unsigned long>(millis() - started), ESP.getFreeHeap());
+#endif
 }
 
 void CrossPointWebServerActivity::renderWifiIndicator(int subHeaderTop) const {
