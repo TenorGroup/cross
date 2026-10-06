@@ -20,6 +20,8 @@ namespace tenorchrome {
  void drawMoreBelowChevron(const GfxRenderer&r,int){++r.draws;}
  void drawTip(const GfxRenderer&r,const char*,int){++r.draws;}
  void drawPillRing(const GfxRenderer&r,int,int,int,int,int,bool){++r.draws;}
+ constexpr int BAR_TAB_W=84,BAR_TAB_INSET=6;
+ void drawBarTab(const GfxRenderer&r,int,int,int,const uint8_t*,int,int,bool){++r.draws;}
 }
 struct UiAppHost {int layouts=0;void renderUi(){++layouts;}};
 struct UiListActivity:UiAppHost {
@@ -27,7 +29,8 @@ struct UiListActivity:UiAppHost {
  bool tabBandDrawn=true,rowsFramed=true;int favoriteHintY=1,pageAnchorRow=7;
  struct Nav {int top=0;bool rebuildNeeded=false;int pageRowsFor(int)const{return 4;}int pageRows()const{return 4;}} nav;
  Nav&activeNav(){return nav;}int listCount(){return 10;}int fadeKeepRows(){return 1;}
- void drawRowFrame(){++renderer.draws;}void drawPageHints(){++renderer.draws;}
+ struct RowFrameStyle{};RowFrameStyle rowFrameStyle()const{return {};}
+ void drawRowFrame(const RowFrameStyle& ={}){++renderer.draws;}void drawPageHints(){++renderer.draws;}
  const char*favoriteHintText(){return "Help";}int favoriteHintLinesAbove(){return 1;}
  void renderUi();
 };

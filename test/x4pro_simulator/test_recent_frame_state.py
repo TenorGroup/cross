@@ -123,7 +123,10 @@ def check_rapid_recent_tabs():
         assert final and final[-1]['row'] == 1, 'last Recent tap must be consumed and paint its card'
         assert not late, 'queued input must stop producing frames before the quiet window'
         assert all(summary['final_card_matches']), 'settled screen must be the original Book0 Recent card'
-        assert all(any(frame['top'] > 0 for frame in group) for group in swipe_frames), 'Stats swipe must scroll to its lower Quotes rows'
+        assert any(frame['top'] > 0 for frame in swipe_frames[0]), 'Stats swipe must scroll to its lower Quotes rows'
+        # Stats keeps its place across tab taps (founder 06/10): the second swipe starts at the page's end, where
+        # it has nothing to move.
+        assert all(frame['top'] > 0 for frame in swipe_frames[1]), 'Stats lost its place across the tab taps'
 
 
 if __name__ == '__main__':

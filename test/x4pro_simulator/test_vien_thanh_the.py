@@ -23,8 +23,12 @@ def bar_top(image):
     # The bar ring's bottom edge is the lowest long dotted row; its top edge sits 30 to 75 rows above it.
     def long(y):
         return sum(1 for x in range(image.width) if image.getpixel((x, y)) < 128) > 150
+    # A list frame may close a few rows above the bar (Stats, 8 px): take the run of long rows nearest the bottom edge.
     bottom = max(y for y in range(H // 2, H) if long(y))
-    return min(y for y in range(bottom - 75, bottom - 30) if long(y))
+    edge = max(y for y in range(bottom - 75, bottom - 30) if long(y))
+    while long(edge - 1):
+        edge -= 1
+    return edge
 
 
 def check_bar_ring(folder, tab, size):

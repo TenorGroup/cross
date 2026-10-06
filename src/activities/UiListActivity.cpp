@@ -441,8 +441,9 @@ constexpr uint8_t BAYER8[8][8] = {{0, 32, 8, 40, 2, 34, 10, 42},  {48, 16, 56, 2
                                   {12, 44, 4, 36, 14, 46, 6, 38},  {60, 28, 52, 20, 62, 30, 54, 22},
                                   {3, 35, 11, 43, 1, 33, 9, 41},   {51, 19, 59, 27, 49, 17, 57, 25},
                                   {15, 47, 7, 39, 13, 45, 5, 37},  {63, 31, 55, 23, 61, 29, 53, 21}};
-// Ink of the band [y0, y0 + h) thins from all of it at its inner edge to none at its outer edge.
-void fadeBand(const GfxRenderer& r, const int y0, const int h, const bool outerTop) {
+}  // namespace
+
+void UiListActivity::fadeBand(const GfxRenderer& r, const int y0, const int h, const bool outerTop) {
   if (h <= 0) return;
   const int width = r.getScreenWidth();
   for (int y = y0; y < y0 + h; ++y) {
@@ -452,7 +453,6 @@ void fadeBand(const GfxRenderer& r, const int y0, const int h, const bool outerT
       if (BAYER8[x & 7][y & 7] >= keep) r.drawPixel(x, y, false);
   }
 }
-}  // namespace
 
 UiListActivity::RowFrameLines UiListActivity::rowFrameLines(const int rowGap) {
   // A 1 px rule in the gap and a 2 px ring: the rule sits `rule` px above the next row, the ring's inner edge as far
@@ -479,10 +479,14 @@ void UiListActivity::reserveRowFrame(UiScreen& screen, const int rowGap) {
   rowFrameFloor = screen.body().y + screen.body().height;
 }
 
-void UiListActivity::drawRowFrame() {
+void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   fadeTopFrom = fadeTopTo = fadeFootFrom = fadeFootTo = 0;
   if (!rowsFramed) return;
   const auto lines = rowFrameLines(rowFrameGap);
+  // Rows on a page that scrolls under the chrome (Stats): the frame is cut to their band.
+  const auto clip = renderer.getClipRect();
+  if (style.clipBottom > style.clipTop)
+    renderer.setClipRect(0, style.clipTop, renderer.getScreenWidth(), style.clipBottom - style.clipTop);
   // The rows this layout drew and registered (a partial row at the foot registers none; a disabled
   // row registers none either, the frame takes it in by the pitch of the others).
   const auto& n = activeNav();
@@ -511,7 +515,10 @@ void UiListActivity::drawRowFrame() {
     last = r;
     lastIndex = i;
   }
-  if (first.height <= 0) return;
+  if (first.height <= 0) {
+    renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+    return;
+  }
   // A page with groups has headings between its rows, so no one pitch.
   const int pitch = lastIndex > firstIndex ? (last.y - first.y) / (lastIndex - firstIndex) : first.height;
   if (!grouped) {
@@ -555,6 +562,7 @@ void UiListActivity::drawRowFrame() {
     fadeFootFrom = fullBottom;
     fadeFootTo = floor;
   }
+  renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
 }
 
 void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, const bool hasSubtitle) {
@@ -618,7 +626,7 @@ void UiListActivity::renderUi() {
     pageAnchorRow = -1;
   }
   if (!uiTarget.paintingEnabled()) return;
-  drawRowFrame();
+  drawRowFrame(rowFrameStyle());
   // Con dong ben duoi thi noi bang mot mui ten chu V o chan man, khong bang mot
   // con so o goc tren: it nguoi nhin thanh cuon, va cho goc tren thuoc ve ten
   // the ben canh, thu duy nhat o do dang doc.

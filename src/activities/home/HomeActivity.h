@@ -97,7 +97,29 @@ class HomeActivity final : public UiTabListActivity {
   std::optional<StrId> statsResetTip;
   uint8_t statsPage = 0;
   bool statsRowsEnlarged = false;
+  // The larger text tiers split the panel into 2 pages behind a "Next page" row; the touch shell
+  // scrolls the whole page instead.
+  bool statsPaged() const;
   int statsPanelHeight() const;
+  void drawStatsPanel(int top);
+  // Touch: the panel and the rows scroll as one page between the status strip and the dynamic bar
+  // (founder 06/10). The page's place, in row steps, is the Stats tab's own viewport memory
+  // (tabNavs[STATS].top): a tab change keeps it, the navigation memory carries it over a screen opened
+  // from Stats, a row opened from another tab drops it (forgetOtherTabs). The rows lay out from their
+  // first in view in statsRows, the nav the list protocol sees on this tab (activeNav).
+  bool statsScrolls() const { return tenorchrome::kTouchShell && activeTabId == Tab::STATS; }
+  freeink::ui::ListNav statsRows;
+  struct StatsView {
+    int16_t top = 0, bottom = 0;  // the page's view on screen
+    int16_t offset = 0;           // px of the page above the view
+    int16_t length = 0;           // px of the whole page, the view's height when it all fits
+    int16_t maxStep = 0;          // last step that still moves the page
+  };
+  StatsView statsView;  // render-owned; input reads maxStep under RenderLock
+  freeink::ui::ListNav& activeNav() override;
+  RowFrameStyle rowFrameStyle() const override;
+  void buildStatsPage(UiScreen& screen);
+  void drawStatsEdges();
   void confirmStatsReset(bool all);
   bool giuNutDiDong(int direction) override;
   // Header band, plus the cover tile on the Recent tab.

@@ -323,7 +323,7 @@ void HomeActivity::rebuildRows() {
       }
       break;
     case Tab::STATS: {
-      const bool enlarged = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
+      const bool enlarged = statsPaged();
       if (enlarged != statsRowsEnlarged && activeNav().selected > 0) {
         activeNav().selected = statsSelectionForTier(activeNav().selected, statsRowsEnlarged, enlarged);
         activeNav().followOnBuild = true;
@@ -481,6 +481,21 @@ void HomeActivity::activateIndex(const int index) {
 }
 
 bool HomeActivity::handleButtons() {
+  // Touch: a swipe on Stats moves the page (dynamic bar rule 11: a drag by the rows the finger travelled,
+  // a flick by a page), a row pitch a step.
+  if (statsScrolls()) {
+    const int rows = swipeRows(mappedInput, statsRows, listCount(), ACTION_ROW);
+    if (rows != 0) {
+      RenderLock lock(*this);
+      auto& place = tabNavs[static_cast<size_t>(Tab::STATS)];
+      const int step = std::clamp(place.top + rows, 0, static_cast<int>(statsView.maxStep));
+      if (step != place.top) {
+        place.top = step;
+        requestUpdate();
+      }
+      return true;
+    }
+  }
   // Touch: a sideways swipe on the Recent card steps between books, as the front buttons do.
   if (tenorchrome::kTouchShell && activeTabId == Tab::RECENT) {
     const auto swipe = mappedInput.wasSwipe();
@@ -617,18 +632,8 @@ void HomeActivity::drawChrome() {
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding - metrics.topPadding},
                    tabLabel(activeTab()), nullptr, false);
 
-  if (activeTabId == Tab::STATS) {
-    const auto* suggestion = habitSuggestion();
-    const int top = coverTileTop() + 12;
-    if (suggestion) {
-      renderer.drawText(UI_12_FONT_ID, 24, top,
-                        renderer.truncatedText(UI_12_FONT_ID, suggestion, pageWidth - 48, EpdFontFamily::BOLD).c_str(),
-                        true, EpdFontFamily::BOLD);
-    }
-    const bool enlarged = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
-    const int badge = enlarged ? renderer.getLineHeight(UI_12_FONT_ID) + 8 : readingstatsview::BADGE_HEIGHT;
-    readingstatsview::draw(renderer, top + (suggestion ? badge : 0), false, suggestion, enlarged ? statsPage : -1);
-  }
+  // Touch: the panel is part of the page buildStatsPage scrolls.
+  if (activeTabId == Tab::STATS && !statsScrolls()) drawStatsPanel(coverTileTop() + 12);
   if (activeTabId != Tab::RECENT) return;
   if (tenorchrome::enabled()) {
     drawRecentCard();
@@ -766,6 +771,10 @@ void HomeActivity::buildScreen(UiScreen& screen) {
 
   buildTabBar(screen);
   if (activeTabId == Tab::CAI_DAT && buildSettingsGroups(screen)) return;
+  if (statsScrolls()) {
+    buildStatsPage(screen);
+    return;
+  }
   if (activeTabId == Tab::RECENT && tenorchrome::enabled()) {
     // drawChrome() paints the whole card; no list rows are drawn. The ring still counts one row
     // per book, so the front buttons walk the books with the usual wrap, and the viewport spans
@@ -848,8 +857,7 @@ void HomeActivity::buildScreen(UiScreen& screen) {
 
 void HomeActivity::render(RenderLock&&) {
   if (rowMenu.processRender(renderer, mappedInput)) return;
-  if (activeTabId == Tab::STATS && statsRowsEnlarged != (normalizedUiTextSize(SETTINGS.uiTextSize) != 0))
-    rebuildRows();
+  if (activeTabId == Tab::STATS && statsRowsEnlarged != statsPaged()) rebuildRows();
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t totalStartedUs = micros();
   const uint32_t paintStartedUs = totalStartedUs;
@@ -868,6 +876,7 @@ void HomeActivity::render(RenderLock&&) {
       drawChrome();
     }
     renderUi();
+    if (statsScrolls()) drawStatsEdges();
   });
 #ifdef TENOR_UI_ACCEPTANCE
   const unsigned rebuildPasses = paintPass - 1;
@@ -897,7 +906,9 @@ void HomeActivity::render(RenderLock&&) {
   // The card file holds what the snapshot holds, so the RAM copy goes: 23.706 B on the X3 against
   // 19.215 B of the 236 x 356 card, free heap 72.280 B against 77.392 B. A repaint reads the file.
   if (cardOnCard && tenorchrome::enabled()) freeCoverBuffer();
-  LOG_INF("HOME", "Frame row=%d top=%d total=%lums heap=%u held=%u largest=%u", ringPos(), activeNav().top, frameMs,
+  // top: the tab's viewport, on touch Stats the page's step.
+  const int top = statsScrolls() ? tabNavs[static_cast<size_t>(Tab::STATS)].top : activeNav().top;
+  LOG_INF("HOME", "Frame row=%d top=%d total=%lums heap=%u held=%u largest=%u", ringPos(), top, frameMs,
           ESP.getFreeHeap(), static_cast<unsigned>(coverBufferSize), static_cast<unsigned>(ESP.getMaxAllocHeap()));
   // The wake's first frame is up: the main task writes the splash setup() re-armed (onTick).
   if (cleanInitialRefresh) wakeStatePending = true;
@@ -1058,10 +1069,124 @@ bool HomeActivity::toggleFavorite(int row) {
   return UiListActivity::toggleFavorite(row);
 }
 
+bool HomeActivity::statsPaged() const {
+  return !tenorchrome::kTouchShell && normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
+}
+
 int HomeActivity::statsPanelHeight() const {
   if (normalizedUiTextSize(SETTINGS.uiTextSize) == 0) return readingstatsview::HEIGHT;
-  return readingstatsview::panelHeight(renderer, statsPage) +
+  return readingstatsview::panelHeight(renderer, statsPaged() ? statsPage : -1) +
          (habitSuggestion() ? renderer.getLineHeight(UI_12_FONT_ID) + 8 : 0);
+}
+
+void HomeActivity::drawStatsPanel(const int top) {
+  const auto* suggestion = habitSuggestion();
+  if (suggestion) {
+    const int pageWidth = renderer.getScreenWidth();
+    renderer.drawText(UI_12_FONT_ID, 24, top,
+                      renderer.truncatedText(UI_12_FONT_ID, suggestion, pageWidth - 48, EpdFontFamily::BOLD).c_str(),
+                      true, EpdFontFamily::BOLD);
+  }
+  const bool enlarged = normalizedUiTextSize(SETTINGS.uiTextSize) != 0;
+  const int badge = enlarged ? renderer.getLineHeight(UI_12_FONT_ID) + 8 : readingstatsview::BADGE_HEIGHT;
+  readingstatsview::draw(renderer, top + (suggestion ? badge : 0), false, suggestion, statsPaged() ? statsPage : -1);
+}
+
+fui::ListNav& HomeActivity::activeNav() {
+  if (statsScrolls()) return statsRows;
+  return UiTabListActivity::activeNav();
+}
+
+UiListActivity::RowFrameStyle HomeActivity::rowFrameStyle() const {
+  if (!statsScrolls()) return {};
+  // The rows' frame is every list's frame, like the panels above it; the page's view cuts it.
+  RowFrameStyle style;
+  style.clipTop = statsView.top;
+  style.clipBottom = statsView.bottom;
+  return style;
+}
+
+void HomeActivity::buildStatsPage(UiScreen& screen) {
+  if (statsResetTip)
+    screen.takeBottom(static_cast<int16_t>(28 + tenorchrome::tipHeight(renderer, I18N.get(*statsResetTip), 2)));
+  const fui::Rect body = screen.body();
+  StatsView& view = statsView;
+  // Under the status strip; over the bar by the gap every touch list keeps (8 px).
+  view.top = static_cast<int16_t>(tabBarTop());
+  view.bottom = static_cast<int16_t>(
+      std::min<int>(body.y + body.height, tenorchrome::touchBarTop(renderer.getScreenHeight()) - 8));
+  const int count = std::min(listCount(), homerows::STATS_ROW_COUNT);
+
+  fui::ListProps props;
+  props.items = rowItems.data();
+  props.count = static_cast<uint16_t>(count);
+  props.action = ACTION_ROW;
+  props.inputMask = fui::InputTouch | fui::InputLongPress;
+  props.labelText = uiMenuLabelText(screen.theme());
+  props.labelText.maxLines = 2;
+  frameRows(props);
+  props = screen.resolveListProps(props);
+  // Every row measured before any is drawn, so the page knows where it ends.
+  const int16_t rowWidth = static_cast<int16_t>(renderer.getScreenWidth() - 2 * props.rowInset);
+  int rowTops[homerows::STATS_ROW_COUNT] = {};
+  int rowsHeight = 0;
+  for (int i = 0; i < count; ++i) {
+    rowTops[i] = rowsHeight;
+    rowsHeight += fui::measureListRow(screen.target(), screen.frame().assets(), rowWidth, props, rowItems[i]).height +
+                  (i + 1 < count ? props.rowGap : 0);
+  }
+  const int pitch = count > 1 ? rowTops[1] : std::max(1, rowsHeight);
+  // The rows' ring stands round them as on every framed list: its top 8 px under the panels, its foot on the
+  // view's foot at the end of the page.
+  rowFrameGap = props.rowGap;
+  const auto lines = rowFrameLines(rowFrameGap);
+  const int panelTop = coverTileTop() + 12;
+  const int listTop = panelTop + statsPanelHeight() + 8 + lines.top;
+  const int viewHeight = view.bottom - view.top;
+  const int maxOffset = std::max(0, listTop + rowsHeight + lines.bottom - view.bottom);
+  view.maxStep = static_cast<int16_t>((maxOffset + pitch - 1) / pitch);
+  auto& place = tabNavs[static_cast<size_t>(Tab::STATS)];
+  place.top = std::clamp(place.top, 0, static_cast<int>(view.maxStep));
+  view.offset = static_cast<int16_t>(std::min(place.top * pitch, maxOffset));
+  view.length = static_cast<int16_t>(viewHeight + maxOffset);
+
+  const auto clip = renderer.getClipRect();
+  renderer.setClipRect(0, view.top, renderer.getScreenWidth(), viewHeight);
+  drawStatsPanel(panelTop - view.offset);
+  renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+
+  // The rows from the first wholly under the view's top; the SDK cuts the one the view's foot cuts and
+  // gives it no hit, so a tap only takes a row wholly in view.
+  int first = 0;
+  while (first < count - 1 && listTop - view.offset + rowTops[first] < view.top) ++first;
+  const int y = listTop - view.offset + rowTops[first];
+  props.topIndex = static_cast<uint16_t>(first);
+  props.nav = nullptr;  // the page owns the scroll; statsRows is told what was laid out below
+  rowFrameFloor = view.bottom;
+  fui::list(screen.frame(),
+            {0, static_cast<int16_t>(y), static_cast<int16_t>(renderer.getScreenWidth()),
+             static_cast<int16_t>(view.bottom - y)},
+            props);
+  // Every row counts as on the page, so drawRowFrame closes the frame round all of them.
+  statsRows.onListRendered(static_cast<uint16_t>(first), count - first, true);
+  statsRows.drawnCount = count;
+}
+
+void HomeActivity::drawStatsEdges() {
+  const StatsView& view = statsView;
+  const int viewHeight = view.bottom - view.top;
+  if (view.length <= viewHeight) return;
+  // Rule 7: the edges fade where the page goes on.
+  constexpr int BAND = 64;
+  if (view.offset > 0) fadeBand(renderer, view.top, BAND, true);
+  if (view.offset < view.length - viewHeight) fadeBand(renderer, view.bottom - BAND, BAND, false);
+  // Rule 13: a pill in the screen's right margin, outside every frame (founder 06/10). The SDK bar gives
+  // round ends to a bar in a round frame; this one's "frame" is 1 px rounder than its inset, so its ends
+  // only keep 5 px of air.
+  constexpr int16_t WIDTH = 5, INSET = 5;
+  fui::drawListScrollIndicator(uiTarget, fui::Rect{0, view.top, static_cast<int16_t>(renderer.getScreenWidth()),
+                                                   static_cast<int16_t>(viewHeight)},
+                               view.length, viewHeight, view.offset, WIDTH, 0, INSET, INSET + 1);
 }
 
 int HomeActivity::shownRecent() const {

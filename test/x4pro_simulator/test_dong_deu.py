@@ -42,6 +42,10 @@ def frames(image):
         ring = last > first or kind == 'solid'
         if ring and current is None:
             current = [(first, last)]
+        elif ring and len(current) == 1 and first - current[0][1] < 20:
+            # Two rings 20 px apart with nothing between: the first was the foot of a frame scrolled in from
+            # above (a page that scrolls, Stats), the second opens the next frame.
+            current = [(first, last)]
         elif ring:
             current.append((first, last))
             found.append(dict(rows=[b[0] - a[1] - 1 for a, b in zip(current, current[1:])], rules=len(current) - 2,
@@ -71,8 +75,8 @@ def full_rows(frame, image, lowest):
     return dict(rows=rows, rules=max(0, len(rows) - 1))
 
 
-def check_rows(folder, name, script, size):
-    (shot,) = run(folder, script, [4800], settings=dict(uiTextSize=size), write_books=root_files)
+def check_rows(folder, name, script, size, at=4800):
+    (shot,) = run(folder, script, [at], settings=dict(uiTextSize=size), write_books=root_files)
     found = frames(shot)
     lists = [full_rows(f, shot, f is found[-1]) for f in found if f['rules'] >= 2]
     assert lists, f'{name}, text size {size}: no framed list with rules between its rows ({found})'
@@ -83,15 +87,17 @@ def check_rows(folder, name, script, size):
 
 def main():
     failures = []
-    screens = [('Folder', f'3000:TAP:{TABS_X[1]},754'), ('Stats', f'3000:TAP:{TABS_X[3]},754'),
-               ('Settings', f'3000:TAP:{TABS_X[4]},754')]
+    # Stats scrolls as one page under its panels: its rows are measured at the page's end.
+    flicks = ';'.join(f'{4500 + i * 1200}:SWIPE:240,640,240,300,150' for i in range(3))
+    screens = [('Folder', f'3000:TAP:{TABS_X[1]},754', 4800), ('Stats', f'3000:TAP:{TABS_X[3]},754;{flicks}', 9000),
+               ('Settings', f'3000:TAP:{TABS_X[4]},754', 4800)]
     with tempfile.TemporaryDirectory(prefix='x4pro-rows-') as tmp:
-        for name, script in screens:
+        for name, script, at in screens:
             for size in (0, 1, 2):
                 folder = Path(tmp) / f'{name}-{size}'
                 folder.mkdir()
                 try:
-                    check_rows(folder, name, script, size)
+                    check_rows(folder, name, script, size, at)
                 except AssertionError as error:
                     failures.append(str(error))
     assert not failures, '\n'.join(failures)

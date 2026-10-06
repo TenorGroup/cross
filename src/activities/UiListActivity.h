@@ -2,8 +2,17 @@
 
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UiAppHost.h"
 #include "util/ButtonNavigator.h"
+
+// Touch (C1): every list's row frame is the one panel ring (tenorchrome::drawPanel). A list whose rows sit on a
+// page that scrolls under the chrome (Stats) cuts the frame to the band the rows show in.
+struct ListRowFrameStyle {
+  // Band the frame is cut to; 0, 0 = no cut.
+  int16_t clipTop = 0;
+  int16_t clipBottom = 0;
+};
 
 // Base for activities hosting a single FreeInkUI list screen. UiAppHost owns
 // the app-hosting protocol (render target, FreeInkApp, uiReady handshake);
@@ -77,7 +86,13 @@ class UiListActivity : public Activity, protected UiAppHost {
   // one more, a frame a group.
   virtual bool rowStartsGroup(int row) const { return false; }
   void frameRows(freeink::ui::ListProps& props);
-  void drawRowFrame();
+  // The band a list's frame is cut to (ListRowFrameStyle).
+  using RowFrameStyle = ListRowFrameStyle;
+  virtual RowFrameStyle rowFrameStyle() const { return {}; }
+  void drawRowFrame(const RowFrameStyle& style = {});
+  // Ink of the band [y0, y0 + h) thins from all of it at its inner edge to none at its outer edge
+  // (dynamic bar rule 7).
+  static void fadeBand(const GfxRenderer& r, int y0, int h, bool outerTop);
   bool rowsFramed = false;
   // Where the lines of a row frame go for a row gap: the grey rule `rule` px above a row's top (in the gap), the
   // ring `top` px above the first row and `bottom` px below the last, so that every row, the first and the last
