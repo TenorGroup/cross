@@ -1215,7 +1215,7 @@ void SleepActivity::renderStatsSleepScreen() const {
   releaseSdFontCachesForDecode(renderer);
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   renderer.clearScreen();
-  readingstatsview::drawSleep(renderer);
+  readingstatsview::drawSleep(renderer, shell::uglyParts());
   showSleepFrame(renderer);
 }
 

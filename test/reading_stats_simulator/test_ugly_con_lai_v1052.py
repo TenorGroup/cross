@@ -177,6 +177,15 @@ class UglyRemainingScreensTest(unittest.TestCase):
         log = self.shot(0, settings_route(9, 4))[2]
         self.assertNotIn('part=ask', log)
 
+    def test_the_stats_sleep_screen_is_signed_by_the_shell(self):
+        shots = {}
+        for shell in (1, 0):
+            card = self.card(shell=shell, sleepScreen=9)
+            _, images = card.run('2500:SLEEP;7000:QUIT', [(6000, 'sleep')])
+            shots[shell] = images['sleep'].crop((0, 720, 300, 792))
+        self.assertGreater(ink(shots[1]), 100)
+        self.assertNotEqual(digest(shots[1]), digest(shots[0]), 'tenor/ugly signs the card in its own name')
+
 
 if __name__ == '__main__':
     unittest.main()
