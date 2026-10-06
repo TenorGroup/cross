@@ -61,6 +61,9 @@ void noteStatus(const char* text);
 // True when the "B" of a remote linking should blink now: the caller repaints the screen (one refresh).
 bool bluetoothBlinkDue();
 void drawFootBar(const GfxRenderer& renderer, FootBar bar, Zone zone);
+// A screen laid over a book's page clears the band of the bar first, so "<" stands on white, not on the
+// page's last line.
+void clearFootBand(const GfxRenderer& renderer);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 // Reader view data for the existing pre-display hook. The reader owns its depth and drafts.
 void noteReaderFootBar(bool open, bool keypad, int activeTool);

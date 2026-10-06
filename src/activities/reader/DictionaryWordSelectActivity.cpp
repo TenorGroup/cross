@@ -18,6 +18,7 @@
 #include "QuoteHighlight.h"
 #include "QuoteReselect.h"
 #include "ReadingStatsStore.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/themes/TenorRadius.h"
 #include "fontIds.h"
@@ -436,6 +437,10 @@ bool DictionaryWordSelectActivity::drawHighlightWithSnapshot() {
 // hint's screen area. No side-button hints: the full-bleed reader page has no
 // spare gutter for them, so a hint box there would hide text.
 void DictionaryWordSelectActivity::drawHints() const {
+  if (tenorchrome::kTouchShell) {
+    tenorchrome::clearFootBand(renderer);  // the bar's "<" over the page, no button hints
+    return;
+  }
   if (popup == Popup::Saved) {
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_DONE), "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

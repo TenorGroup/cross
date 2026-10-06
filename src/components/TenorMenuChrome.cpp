@@ -105,15 +105,22 @@ namespace {
 // library lists, Wi-Fi, the reader's contents. Dialogs, the reader page and the like are not here.
 constexpr const char* FULL_BAR[] = {
     "About", "BlePageTurner", "BookStats", "BookStatsLibrary", "ButtonRemap", "CalibreConnect", "ClearCache",
-    "ClockSettings", "ClockSync", "CrossPointWebServer", "EpubReaderBookmarks", "EpubReaderChapterSelection",
-    "FileBrowser", "FontDownload", "HomeButtonSettings", "InfoUpdate", "KOReaderAuth", "KOReaderSettings", "KOReaderSync",
-    "KeyboardLayouts", "LanguageSelect", "NetworkModeSelection", "OpdsBookBrowser", "OpdsServerList",
-    "OpdsSettings", "QrDisplay", "QuoteDetail", "Quotes", "ReadingHabits", "ReadingHistory", "Settings",
+    "ClockSettings", "ClockSync", "CrossPointWebServer", "DictionaryDefinition", "EpubReaderBookmarks",
+    "EpubReaderChapterSelection", "EpubReaderFootnoteSelect", "FileBrowser", "FontDownload", "HomeButtonSettings",
+    "InfoUpdate", "KOReaderAuth", "KOReaderSettings", "KOReaderSync", "KeyboardLayouts", "LanguageSelect",
+    "NetworkModeSelection", "OpdsBookBrowser", "OpdsServerList", "OpdsSettings", "QrDisplay",
+    "QuoteDetail", "QuoteTrim", "Quotes", "ReadingHabits", "ReadingHistory", "Settings",
     "StatusBarSettings", "TimezonePicker", "WifiSelection", "XtcReaderChapterSelection"};
 // "<" at the left, the screen's own content in the rest of the foot: the keyboard of an input screen,
 // the cards of a screen with cards (the reader menu: "<" goes back a level, from the top level it
-// closes the menu; the text settings; the library).
-constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "TextSettings", "Library"};
+// closes the menu; the text settings; the library), a screen laid over another one (a question, a slider,
+// a word picked on the page, the light panel, a picture), where "<" cancels, and a screen that must leave
+// through its own exit (a firmware update, the card lent to a computer): no zone icon to jump away by.
+constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "TextSettings", "Library",
+                                         "BmpViewer", "ChapterNumberEntry", "Confirmation", "Crash",
+                                         "DictionaryWordSelect", "EpubReaderPercentSelection", "FrontlightPanel",
+                                         "OtaUpdate", "QuoteSelect", "SdFirmwareUpdate", "SleepTimeoutInterval",
+                                         "UglySwitch", "UsbDrive"};
 // Zone roots that draw their own cards at the foot.
 constexpr const char* TABS_BAR[] = {"Home"};
 
@@ -252,6 +259,11 @@ void tenorchrome::noteReaderFootBar(const bool open, const bool keypad, const in
 }
 #endif
 
+void tenorchrome::clearFootBand(const GfxRenderer& r) {
+  const int top = footBackTop(r.getScreenHeight()) - 12;
+  r.fillRect(0, top, r.getScreenWidth(), r.getScreenHeight() - top, false);
+}
+
 void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone) {
   HeaderBackTapTarget::clearFoot();
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
@@ -259,8 +271,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   if (reader) {
     bar = FootBar::BackOnly;
     // The reader owns this band while its menu is open, including the page's status footer.
-    r.fillRect(0, footBackTop(r.getScreenHeight()) - 12, r.getScreenWidth(),
-               r.getScreenHeight() - footBackTop(r.getScreenHeight()) + 12, false);
+    clearFootBand(r);
   }
 #endif
   if (bar != FootBar::Full && bar != FootBar::BackOnly) return;

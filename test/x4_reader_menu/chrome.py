@@ -92,9 +92,11 @@ const freeink::Icon& zoneIcon(Zone) { return icon_tenor_reader_reading_40; }
 const char* screenTitle() { return ""; }
 void noteReaderFootBar(bool,bool,int);
 void drawFootBar(const GfxRenderer&,FootBar,Zone);
+void clearFootBand(const GfxRenderer&);
 ''' + method(header, 'struct ReaderToolRect') + ';\n' + method(header, 'inline ReaderToolRect readerToolRect') + '\n}\n'
 cpp += note[0] + '\n' + method(source, 'bool readerFootBarActive()') + '\n'
 cpp += method(source, 'void tenorchrome::noteReaderFootBar') + '\n'
+cpp += method(source, 'void tenorchrome::clearFootBand') + '\n'
 cpp += method(source, 'void tenorchrome::drawFootBar') + r'''
 int main() {
   using namespace tenorchrome;
