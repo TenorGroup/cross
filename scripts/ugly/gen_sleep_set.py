@@ -44,16 +44,16 @@ LINES = [
     ('i', 'Cơm xong ngủ liền. Chuẩn bài dân nhàn.', 'Eat, then sleep. Textbook loafer.'),
     ('j', 'Chiều chiều ngủ, tối nay thao thức cho coi.', "A late-afternoon nap, tonight you'll toss and turn. Watch."),
     ('k', 'Mới tối đã ngủ? Gà còn thức khuya hơn mày.', 'Bedtime already? Even the chickens stay up later.'),
-    ('k', 'Tối nay đọc được mấy trang mà đòi đi ngủ sớm?', 'How many pages tonight, and already off to bed?'),
+    ('k', 'Mới tối đã ngủ. Mua tao làm thuốc ngủ, sang vl.', "Off to bed already? I'm a bloody expensive sleeping pill."),
     ('k', 'Ngủ sớm vậy, mai dậy sớm đọc hả? Tao thèm tin lắm.', 'Early night, early reading tomorrow? Yeah, sure.'),
-    ('k', 'Chưa hết thời sự đã gục. Sức đọc của mày tới đó thôi.', "Out before the evening news ends. That's your reading stamina."),
+    ('k', 'Mới tối đã gục. Lật trang hay khuân gạch mà mệt?', 'In bed this early? Turning pages must be bloody hard labour.'),
     ('k', 'Đi ngủ giờ này là né đọc sách chứ gì.', 'Sleeping this early to dodge the book, right?'),
-    ('k', 'Tối mới chút xíu đã tắt máy. Già rồi hả?', 'Barely evening and lights out. Getting old?'),
+    ('k', 'Ngủ sớm để mai khoe sống lành mạnh hả mày?', 'Early to bed so you can bang on about healthy living?'),
     ('l', 'Đi ngủ đúng giờ. Hiếm lắm, ghi nhận.', 'In bed on schedule. Rare. Noted.'),
-    ('l', 'Gần nửa đêm mới chịu buông sách. Mai đừng than buồn ngủ.', 'Putting the book down near midnight. No whining tomorrow.'),
+    ('l', 'Gần nửa đêm rồi. Lại ôm sách ngủ cho đỡ ế hả mày?', 'Nearly midnight. Taking a book to bed again, you lonely bastard?'),
     ('l', 'Đọc tới giờ này mới ngủ, sáng mai mắt như gấu trúc.', "Reading till now. Tomorrow you'll wake with panda eyes."),
     ('l', 'Ngủ đi, chương sau nó có chạy đâu mà sợ.', "Go to sleep. The next chapter won't run off."),
-    ('l', 'Khuya rồi còn ráng thêm trang nữa. Cố gì mà cố.', 'Late, and still pushing one more page. For what?'),
+    ('l', 'Gần nửa đêm rồi. Cất tao đi, mày ngủ chảy dãi tởm vl.', "It's late. Put me away before you drool on me, you grub."),
 ]
 
 # ---------------------------------------------------------------- strokes
