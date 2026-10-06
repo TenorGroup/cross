@@ -89,6 +89,9 @@ class UglyPartsX3(unittest.TestCase):
     def test_list_rows(self):
         self.assertHand('language', 'rows')
 
+    def test_tip_under_a_list(self):
+        self.assertHand('contents', 'tip')
+
     def test_notice(self):
         self.assertHand('notice', 'notice')
 

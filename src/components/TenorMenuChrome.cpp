@@ -781,6 +781,17 @@ void tenorchrome::drawTip(const GfxRenderer& renderer, const char* text, int lin
                           const bool hasTextHints) {
   // Global status-bar Off also hides contextual footer tips.
   if (SETTINGS.globalStatusBarHidden() || !tipShown(text)) return;
+  if (shell::uglyParts()) {
+    // Written in hand above the key bar, its key symbols drawn as the marks over the keys.
+    const int w = renderer.getScreenWidth();
+    const int lines = ugly::paragraph(renderer, ugly::Size::S22, 24, 0, w - 48, 26, text, false);
+    const int bottom = renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight - 14;
+    ugly::paragraph(renderer, ugly::Size::S22, 24, bottom - (lines - 1 + linesAbove) * 26, w - 48, 26, text);
+#ifdef UGLY_FRAME_LOG
+    LOG_INF("UGLY", "part=tip");
+#endif
+    return;
+  }
   constexpr int font = SMALL_FONT_ID;
   const auto lines = tipLines(renderer, text, maxLines);
   if (lines.empty()) return;

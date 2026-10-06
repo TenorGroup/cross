@@ -604,6 +604,12 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
 }
 
 void BaseTheme::drawHelpText(const GfxRenderer& renderer, Rect rect, const char* label) {
+  if (shell::uglyParts()) {
+    const std::string words = ugly::fit(renderer, ugly::Size::S22, label ? label : "", rect.width - 48);
+    ugly::text(renderer, ugly::Size::S22, rect.x + (rect.width - ugly::width(renderer, ugly::Size::S22, words.c_str())) / 2,
+               rect.y + ugly::ascent(ugly::Size::S22), words.c_str());
+    return;
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   auto truncatedLabel =
       renderer.truncatedText(SMALL_FONT_ID, label, rect.width - metrics.contentSidePadding * 2, EpdFontFamily::REGULAR);
@@ -616,6 +622,12 @@ void BaseTheme::drawTextField(const GfxRenderer& renderer, Rect rect, const int 
   const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
   const int lineY = rect.y + rect.height + lineHeight + metrics.verticalSpacing;
   const int thickness = cursorMode ? metrics.textFieldCursorThickness : metrics.textFieldNormalThickness;
+  if (shell::uglyParts()) {  // the line to write on, drawn by hand
+    const int lineW = contentWidth > 0 ? contentWidth : textWidth + metrics.textFieldHorizontalPadding * 2;
+    const int start = rect.x + (contentWidth > 0 ? contentStartX : (rect.width - lineW) / 2);
+    ugly::line(renderer, start, lineY, start + lineW, lineY - 2, 830, thickness + 1);
+    return;
+  }
   if (contentWidth > 0) {
     renderer.drawLine(rect.x + contentStartX, lineY,
                       rect.x + contentStartX + contentWidth + metrics.textFieldLineEndOffset, lineY, thickness, true);
