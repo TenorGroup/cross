@@ -299,6 +299,49 @@ int main() {
 ''')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_auto_turn_relayout_drops_the_preview_layout(self):
+        text = (REPO / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+        methods = '\n'.join(function(text, 'EpubReaderActivity', name)
+                            for name in ('toggleAutoPageTurn', 'dropCatchUp'))
+        result = run(r'''
+#include <cassert>
+#include <cstdint>
+#include <iterator>
+#include <memory>
+int abandoned = 0;
+unsigned long millis() { return 1234; }
+constexpr int PAGE_TURN_RATES[] = {1, 1, 3, 6, 12};
+struct UITheme {
+  static UITheme& getInstance() { static UITheme t; return t; }
+  uint8_t getProgressBarHeight() const { return 4; }
+};
+struct RenderLock { RenderLock() {} ~RenderLock() {} };
+struct Section {
+  int currentPage = 0, pageCount = 0;
+  void abandonBuild() { ++abandoned; }
+};
+struct EpubReaderActivity {
+  std::unique_ptr<Section> section, catchUp;
+  int cachedSpineIndex = 0, currentSpineIndex = 0, cachedChapterTotalPageCount = 0, nextPageNumber = 0;
+  bool automaticPageTurnActive = false;
+  unsigned long lastPageTurnTime = 0, pageTurnDuration = 0;
+  uint8_t statusBar = 0;
+  uint8_t readerStatusBarHeight() const { return statusBar; }
+  void rememberCurrentContentOffset() {}
+  void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
+  void dropCatchUp();
+};
+''' + methods + r'''
+int main() {
+  EpubReaderActivity reader;
+  reader.catchUp = std::make_unique<Section>();
+  reader.toggleAutoPageTurn(2);
+  assert(reader.automaticPageTurnActive);
+  assert(!reader.catchUp && abandoned == 1 && "the preview layout of the old page height would land");
+}
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_all_toolbar_actions_route_once_with_24_targets(self):
         text = (REPO / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
         header = (REPO / 'src/activities/reader/ReaderToolbarUi.h').read_text()

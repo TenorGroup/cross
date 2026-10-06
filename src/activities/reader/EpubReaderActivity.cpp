@@ -2113,6 +2113,7 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
       nextPageNumber = section->currentPage;
     }
     section.reset();
+    dropCatchUp();  // laid out for the old page height
   }
 }
 
