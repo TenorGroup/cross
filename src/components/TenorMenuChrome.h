@@ -53,6 +53,8 @@ constexpr int FOOT_BACK_X = 16;
 constexpr int FOOT_PILL_GAP = 8;
 inline int footBackTop(const int screenHeight) { return screenHeight - TOUCH_BAR_BOTTOM_GAP - FOOT_BACK_SIZE; }
 inline int footBackReserve() { return TOUCH_BAR_BOTTOM_GAP + FOOT_BACK_SIZE + 8; }
+// The bottom margin of a screen that lays itself out: the dynamic bar's band on touch, the hints elsewhere.
+inline int footReserve(const int buttonHintsHeight) { return kTouchShell ? footBackReserve() : buttonHintsHeight; }
 // The title a screen's header names, kept for the bar's name pill (the touch shell draws no title row).
 void noteScreenTitle(const char* title);
 const char* screenTitle();

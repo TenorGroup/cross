@@ -266,7 +266,8 @@ void OpdsBookBrowserActivity::screenHeader(UiScreen& screen, const bool withSear
   if (tenorchrome::enabled()) {
     drawNavigationHeader(server.name.empty() ? tr(STR_OPDS_BROWSER) : server.name.c_str());
     screen.setContentMarginFromScreen(fui::Insets{
-        tenorchrome::contentTop(), 0, static_cast<int16_t>(UITheme::getInstance().getMetrics().buttonHintsHeight), 0});
+        tenorchrome::contentTop(), 0,
+        static_cast<int16_t>(tenorchrome::footReserve(UITheme::getInstance().getMetrics().buttonHintsHeight)), 0});
     return;
   }
 
