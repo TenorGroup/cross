@@ -86,6 +86,9 @@ class UglyPartsX3(unittest.TestCase):
     def test_status_strip(self):
         self.assertHand('language', 'status')
 
+    def test_list_rows(self):
+        self.assertHand('language', 'rows')
+
     def test_notice(self):
         self.assertHand('notice', 'notice')
 

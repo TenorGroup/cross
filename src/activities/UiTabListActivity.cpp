@@ -331,6 +331,7 @@ void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& pr
   reserveMoreBelowChevron(screen, rowHeight, rowGap);
   reserveRowFrame(screen, rowGap);
   n.syncToProps(screen.body(), rowHeight, rowGap, count, props, 1);
+  keepUglyRows(props);
   // The touch shell shows no cursor row; SDK navigation still owns the viewport.
   if (tenorchrome::kTouchShell) props.selectedIndex = -1;
 }

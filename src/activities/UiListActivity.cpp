@@ -17,6 +17,9 @@
 #include "components/UIThemeTokens.h"
 #include "components/icons/tenorRowMarks.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyChrome.h"
+#include "shells/ugly/UglyInk.h"
 
 namespace fui = freeink::ui;
 namespace {
@@ -534,6 +537,7 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
   }
   reserveRowFrame(screen, rowGap);
   activeNav().syncToProps(screen.body(), rowHeight, rowGap, listCount(), props);
+  keepUglyRows(props);
 
   activeNav().selected = kepConTro(activeNav().selected, listCount());
   // The touch shell has no cursor row: a tap opens or changes the row, nothing waits "selected".
@@ -603,8 +607,68 @@ void UiListActivity::drawFooter() {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
+void UiListActivity::keepUglyRows(const fui::ListProps& props) {
+  uglyItems_ = props.items;
+  uglyItemsFirst_ = props.itemsWindowFirst;
+  uglyRowProvider_ = props.rowProvider;
+  uglyRowCtx_ = props.rowProviderCtx;
+}
+
+namespace {
+// A run of words the list laid out, kept to be written by hand where it stands.
+struct UglyRun {
+  fui::Rect rect;
+  std::string text;
+  fui::TextAlign align;
+  bool locked;
+  uint8_t lines;
+};
+}  // namespace
+
+bool UiListActivity::renderUglyList() {
+  if (!uglySkin() || !shell::uglyParts()) return false;
+  // The list lays out as usual with its own ink off and its words kept; what a screen draws past the list stays.
+  std::vector<UglyRun> runs;
+  renderer.clearScreen();
+  uiTarget.setPaintingEnabled(false);
+  uiTarget.setTextSink(
+      [](void* ctx, const fui::Rect rect, const char* text, const fui::TextStyle& style) {
+        // A disabled row's words come in light gray: the row is locked.
+        static_cast<std::vector<UglyRun>*>(ctx)->push_back(
+            {rect, text, style.align, !style.inverted && style.color == fui::Color::LightGray, style.maxLines});
+      },
+      &runs);
+  renderSettledList(activeNav(), [&] {
+    runs.clear();
+    renderUi();
+  });
+  uiTarget.setTextSink(nullptr, nullptr);
+  uiTarget.setPaintingEnabled(true);
+  drawChrome();
+  for (const auto& run : runs) uglychrome::words(renderer, run.rect, run.text.c_str(), run.align, run.locked, run.lines);
+  // The marks go on the rows that took a place on screen; a locked row has no place to choose and gets none.
+  const int count = listCount(), first = std::max(0, activeNav().top);
+  for (int row = first; row < count && row < first + 64; ++row) {
+    const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
+    if (box.empty()) continue;
+    fui::ListItem item;
+    if (uglyRowProvider_) uglyRowProvider_(uglyRowCtx_, static_cast<uint16_t>(row), item);
+    else if (uglyItems_ && row >= uglyItemsFirst_) item = uglyItems_[row - uglyItemsFirst_];
+    uglychrome::marks(renderer, box, {row == activeNav().selected, item.chosen, item.opensNext, item.toggle, item.toggleChecked});
+  }
+  drawFooter();
+#ifdef UGLY_FRAME_LOG
+  LOG_INF("UGLY", "part=rows runs=%d", static_cast<int>(runs.size()));
+#endif
+  return true;
+}
+
 void UiListActivity::render(RenderLock&&) {
   if (rowMenu.processRender(renderer, mappedInput)) return;
+  if (renderUglyList()) {
+    renderer.displayBuffer();
+    return;
+  }
   renderSettledList(activeNav(), [&] {
     renderer.clearScreen();
     drawChrome();

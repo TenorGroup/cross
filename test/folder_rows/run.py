@@ -49,6 +49,7 @@ def main():
         "UiListActivity::RowFrameLines UiListActivity::rowFrameLines(",
         "void UiListActivity::reserveRowFrame(",
         "void UiListActivity::syncListViewport(",
+        "void UiListActivity::keepUglyRows(",
         "void UiListActivity::decoratePinnedRows(",
     ]).replace("UiListActivity::", "FileBrowserActivity::")
     chrome = (REPO / "src/components/TenorMenuChrome.h").read_text()

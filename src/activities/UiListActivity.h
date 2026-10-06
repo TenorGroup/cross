@@ -88,6 +88,12 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Keeps the room of the ring above and below the rows of a framed list; records the list body's foot.
   void reserveRowFrame(UiScreen& screen, int rowGap);
   int rowFrameGap = 0;
+  // The rows the last layout drew from, for the hand-drawn skin (syncListViewport/syncTabListViewport keep it).
+  const freeink::ui::ListItem* uglyItems_ = nullptr;
+  uint16_t uglyItemsFirst_ = 0;
+  void (*uglyRowProvider_)(void*, uint16_t, freeink::ui::ListItem&) = nullptr;
+  void* uglyRowCtx_ = nullptr;
+  void keepUglyRows(const freeink::ui::ListProps& props);
   // Foot of the list body the rows were laid out in: the fade under the last full row stops there, above any
   // chrome under the list (the touch tab bar).
   int rowFrameFloor = 0;
@@ -208,6 +214,12 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Header band, drawn before the app renders. Default paints GUI.drawHeader
   // with headerTitle(); override either for custom chrome.
   virtual const char* headerTitle() const { return nullptr; }
+  // tenor/ugly on the button boards: the list is laid out as usual and its words written by hand where they
+  // stand, with the pen marks of the rows; the header, the tips and the key bar draw by hand on their own. A
+  // screen that paints what the hand cannot follow yet says false.
+  virtual bool uglySkin() const { return true; }
+  // Lays out and paints the list by hand when the skin applies; the caller then displays the buffer.
+  bool renderUglyList();
   virtual void drawChrome();
   // Button hints, drawn after the app renders. Default: Back/Select/Up/Down.
   virtual void drawFooter();
