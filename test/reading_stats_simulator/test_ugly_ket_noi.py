@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import unittest
+import zipfile
 
 from ugly_common import Card, entered, ink
 
@@ -247,7 +248,42 @@ class UglyCalibreTest(unittest.TestCase):
         print('calibre frames ms:', [ms for _, ms in frames])
 
 
+def small_epub(path, paragraphs=40):
+    """An original three-line EPUB, enough for the reader and its menu."""
+    with zipfile.ZipFile(path, 'w') as out:
+        out.writestr('mimetype', 'application/epub+zip')
+        out.writestr('META-INF/container.xml', '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:'
+                     'container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/>'
+                     '</rootfiles></container>')
+        out.writestr('book.opf', '<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="id">'
+                     '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Sach thu</dc:title>'
+                     '<dc:identifier id="id">ugly-ket-noi</dc:identifier><dc:language>vi</dc:language></metadata>'
+                     '<manifest><item id="b" href="b.xhtml" media-type="application/xhtml+xml"/></manifest>'
+                     '<spine><itemref idref="b"/></spine></package>')
+        out.writestr('b.xhtml', '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head><body>' +
+                     '<p>Mot dong chu de lat trang.</p>' * paragraphs + '</body></html>')
+
+
+# The diary opens the book (Read on), Confirm opens the reader menu, the fourth tab (Tools), its first row: sync.
+TO_THE_SYNC = ['CONFIRM', 'WAIT:2200', 'CONFIRM', 'DOWN', 'DOWN', 'DOWN', 'CONFIRM']
+
+
 class UglyKoreaderTest(unittest.TestCase):
+    def test_a_progress_sync_that_fails_is_a_note(self):
+        card = Card(books=[('Sach thu', 'sach.epub')])
+        self.addCleanup(card.close)
+        small_epub(card.sd / 'sach.epub')
+        (card.store / 'koreader.json').write_text(json.dumps(
+            {'cfgVersion': 3, 'username': 'lan', 'password': 'x', 'serverUrl': 'http://127.0.0.1:9'}))
+        (card.store / 'wifi.json').write_text(json.dumps({'credentials': [{'ssid': 'Simulator WiFi (fake)'}],
+                                                         'lastConnectedSsid': 'Simulator WiFi (fake)'}))
+        script, t = keys(*TO_THE_SYNC, 'WAIT:5000')
+        log, shots = card.run(script + ';%d:QUIT' % (t + 800), [(t, 'kosync')], timeout=60)
+        self.assertIn('KOReaderSync', entered(log), log[-2500:])
+        notes = [m.groupdict() for m in NOTE_FRAME.finditer(log) if m['title'] == 'Đồng bộ KOReader']
+        self.assertTrue(notes, log[-2500:])
+        self.assertEqual(notes[-1]['line'], 'Đồng bộ xịt. Lý do ghi dưới kia.', notes)
+
     def test_a_koreader_login_that_fails_is_a_note(self):
         card = Card()
         self.addCleanup(card.close)
