@@ -4581,7 +4581,9 @@ void EpubReaderActivity::dropCatchUp() {
 // With the radio holding the heap it stays parked as every background build does
 // (deferBackgroundBuildForBle): the first turn lays the chapter out instead.
 bool EpubReaderActivity::catchUpCanTick() const {
-  return xemTruoc && !section && epub && buildViewportWidth != 0 && millis() - xemTruocInputMs >= CATCH_UP_QUIET_MS &&
+  // A turn asked from the preview waits for the paint, which lays the chapter out and turns.
+  return xemTruoc && !section && epub && buildViewportWidth != 0 && xemTruocLat == 0 &&
+         millis() - xemTruocInputMs >= CATCH_UP_QUIET_MS &&
          catchUpFails < CATCH_UP_MAX_FAILS && !deferBackgroundBuildForBle() && !bleturner::status().starting;
 }
 

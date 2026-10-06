@@ -241,6 +241,13 @@ int main() {
   assert(!reader.skipLoopDelay() && "the loop spins while the radio holds the heap");
   bleDefers = false;
   assert(reader.skipLoopDelay());
+  reader.catchUp->reached = true;
+  reader.xemTruocLat = 1;
+  reader.catchUpTick(false);
+  assert(!reader.section && "the layout landed under a turn asked from the preview and dropped it");
+  reader.xemTruocLat = 0;
+  reader.catchUpTick(false);
+  assert(reader.section && !reader.xemTruoc && reader.xemTruocTrenMan);
 }
 ''')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
