@@ -119,6 +119,18 @@ struct AnhChupChu {
 bool xteinkClassPanel() { return gpio.isXteinkDevice() || BoardConfig::isX4Pro() || BoardConfig::isX4Classic(); }
 
 constexpr int PAGE_TURN_RATES[] = {1, 1, 3, 6, 12};
+// The auto page turn choices by name: Off, then the pages a minute (index = autoTurnOption).
+std::vector<std::string> autoTurnLabels() {
+  std::vector<std::string> labels;
+  labels.reserve(std::size(PAGE_TURN_RATES));
+  labels.emplace_back(tr(STR_STATE_OFF));
+  for (size_t i = 1; i < std::size(PAGE_TURN_RATES); ++i) labels.push_back(std::to_string(PAGE_TURN_RATES[i]));
+  return labels;
+}
+// The screen orientations by name, in the order CrossPointSettings stores them.
+constexpr StrId kOrientationIds[] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_ORIENTATION_INVERTED,
+                                     StrId::STR_LANDSCAPE_CCW};
+static_assert(std::size(kOrientationIds) == CrossPointSettings::ORIENTATION_COUNT, "orientation labels");
 constexpr size_t initialBookmarkCacheCapacity = 16;
 constexpr float bookmarkProgressEpsilon = 0.0001f;
 
@@ -3858,6 +3870,12 @@ void EpubReaderActivity::openPick(const int source, std::string title) {
   } else if (source == PICK_MORE + static_cast<int>(readermenu::Action::STATUS_BAR)) {
     for (const auto id : readermenu::STATUS_BAR_MODE_LABELS) next.labels.emplace_back(I18N.get(id));
     next.inUse = SETTINGS.readerStatusBarMode;
+  } else if (source == PICK_MORE + static_cast<int>(readermenu::Action::ROTATE_SCREEN)) {
+    for (const auto id : kOrientationIds) next.labels.emplace_back(I18N.get(id));
+    next.inUse = SETTINGS.orientation % CrossPointSettings::ORIENTATION_COUNT;
+  } else if (source == PICK_MORE + static_cast<int>(readermenu::Action::AUTO_PAGE_TURN)) {
+    next.labels = autoTurnLabels();
+    next.inUse = autoTurnOption;
   }
   if (next.labels.empty()) return;
   RenderLock lock;  // the render task reads the list
@@ -3909,6 +3927,17 @@ bool EpubReaderActivity::applyPick(const int source, const int place) {
   if (source == PICK_MORE + static_cast<int>(readermenu::Action::STATUS_BAR)) {
     setReaderStatusBarMode(place);
     return true;
+  }
+  if (source == PICK_MORE + static_cast<int>(readermenu::Action::ROTATE_SCREEN)) {
+    applyOrientation(static_cast<uint8_t>(place));
+    discardOverlayPage();  // the stored page is laid out for the old orientation
+    requestUpdate();
+    return true;
+  }
+  if (source == PICK_MORE + static_cast<int>(readermenu::Action::AUTO_PAGE_TURN)) {
+    autoTurnOption = place;
+    toggleAutoPageTurn(static_cast<uint8_t>(place));
+    return false;
   }
   return false;
 }
@@ -4376,6 +4405,12 @@ void EpubReaderActivity::renderOverlay() {
     model.rowText = [this](int i) { return favoriteRowName(i); };
     model.rowValue = [this](int i) { return favoriteRowValue(i); };
     model.emptyText = tr(STR_READER_FAVORITES_EMPTY);
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+    model.rowOpens = [this](int i) {
+      const uint8_t pin = i < static_cast<int>(favoriteRows.size()) ? favoriteRows[i] : 0;
+      return (pin & readermenu::PIN_TEXT) || readermenu::rowOpens(static_cast<readermenu::Action>(pin));
+    };
+#endif
   }
   else {
     model.panelTitle = tr(STR_TOOL_MORE);
@@ -4383,6 +4418,11 @@ void EpubReaderActivity::renderOverlay() {
     model.rowText = [this](int i) { return moreRowName(i); };
     model.rowValue = [this](int i) { return moreRowValue(i); };
     model.rowPinned = [this](int i) { return readermenu::daGhim(pins, pinOfRow(i)); };
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+    model.rowOpens = [this](int i) {
+      return i < static_cast<int>(moreItems.size()) && readermenu::rowOpens(moreItems[i].action);
+    };
+#endif
   }
   toolbarUi->setModel(model);
   toolbarUi->render();
@@ -5144,13 +5184,10 @@ std::string EpubReaderActivity::moreRowName(int row) const {
 
 std::string EpubReaderActivity::moreRowValue(int row) const {
   using MA = EpubReaderMenuActivity::MenuAction;
-  static constexpr StrId kOrient[] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_ORIENTATION_INVERTED,
-                                      StrId::STR_LANDSCAPE_CCW};
-  static_assert(std::size(kOrient) == CrossPointSettings::ORIENTATION_COUNT, "orientation labels");
   if (row < 0 || row >= static_cast<int>(moreItems.size())) return "";
   switch (moreItems[row].action) {
     case MA::ROTATE_SCREEN:
-      return I18N.get(kOrient[SETTINGS.orientation % CrossPointSettings::ORIENTATION_COUNT]);
+      return I18N.get(kOrientationIds[SETTINGS.orientation % CrossPointSettings::ORIENTATION_COUNT]);
     case MA::AUTO_PAGE_TURN:
       return (autoTurnOption == 0 || autoTurnOption >= static_cast<int>(std::size(PAGE_TURN_RATES)))
                  ? std::string(tr(STR_STATE_OFF))
@@ -5189,10 +5226,11 @@ void EpubReaderActivity::activateMoreRow(int row) {
       return;
 #endif
     case MA::ROTATE_SCREEN: {
-      static constexpr StrId kOrientIds[] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW,
-                                             StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW};
-      static_assert(std::size(kOrientIds) == CrossPointSettings::ORIENTATION_COUNT, "orientation options");
-      overlayPopup.show(StrId::STR_ORIENTATION, kOrientIds, static_cast<int>(std::size(kOrientIds)),
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+      openPick(PICK_MORE + static_cast<int>(action), moreRowName(row));  // buttons: a value list in the sheet
+      return;
+#endif
+      overlayPopup.show(StrId::STR_ORIENTATION, kOrientationIds, static_cast<int>(std::size(kOrientationIds)),
                         SETTINGS.orientation % CrossPointSettings::ORIENTATION_COUNT, [this](int idx) {
                           if (idx == SETTINGS.orientation) return;
                           applyOrientation(static_cast<uint8_t>(idx));
@@ -5204,11 +5242,11 @@ void EpubReaderActivity::activateMoreRow(int row) {
       return;
     }
     case MA::AUTO_PAGE_TURN: {
-      std::vector<std::string> labels;
-      labels.reserve(std::size(PAGE_TURN_RATES));
-      labels.emplace_back(tr(STR_STATE_OFF));
-      for (size_t i = 1; i < std::size(PAGE_TURN_RATES); ++i) labels.push_back(std::to_string(PAGE_TURN_RATES[i]));
-      overlayPopup.show(StrId::STR_AUTO_TURN_PAGES_PER_MIN, labels, autoTurnOption, [this](int idx) {
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+      openPick(PICK_MORE + static_cast<int>(action), moreRowName(row));
+      return;
+#endif
+      overlayPopup.show(StrId::STR_AUTO_TURN_PAGES_PER_MIN, autoTurnLabels(), autoTurnOption, [this](int idx) {
         autoTurnOption = idx;
         toggleAutoPageTurn(static_cast<uint8_t>(idx));
       });

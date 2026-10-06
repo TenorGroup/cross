@@ -76,6 +76,13 @@ inline constexpr StrId STATUS_BAR_MODE_LABELS[] = {
     StrId::STR_STATE_OFF,                   StrId::STR_STATUS_BAR_CLOCK_BATTERY, StrId::STR_STATUS_BAR_DEFAULT,
     StrId::STR_STATUS_BAR_CHAPTER_PROGRESS, StrId::STR_STATUS_BAR_CHAPTER_CLOCK, StrId::STR_STATUS_BAR_CHAPTER_BATTERY};
 
+// Dong cua lenh nay mo mot danh sach hay mot man khac (co mui ten ">" mo o cuoi dong, nhu Cai dat), hay lam
+// ngay tai cho (bat tat, chup, dat dau trang: khong mui ten).
+constexpr bool rowOpens(const Action action) {
+  return action != Action::TOGGLE_BOOKMARK && action != Action::NIGHT_MODE && action != Action::FRONTLIGHT &&
+         action != Action::SCREENSHOT && action != Action::TILT_PAGE_TURN;
+}
+
 // Danh sach yeu thich mac dinh khi nguoi dung chua tu xep: dong bo tenor/kosync.
 inline constexpr Action DEFAULT_FAVORITES[] = {Action::SYNC};
 
