@@ -1898,6 +1898,18 @@ std::string GfxRenderer::truncatedText(const int fontId, const char* text, const
     // Text fits, return as is
     return item;
   }
+#ifdef SIMULATOR
+  // The simulator names every line it cuts, so a check can ask a screen to show its words whole.
+  {
+    // Bytes past ASCII as \xNN: a caller's slice may end inside a character, and the log must stay valid text.
+    char shown[200];
+    size_t n = 0;
+    for (const unsigned char* c = reinterpret_cast<const unsigned char*>(text); *c && n + 5 < sizeof(shown); ++c)
+      n += *c < 0x80 ? (shown[n] = static_cast<char>(*c), 1) : snprintf(shown + n, sizeof(shown) - n, "\\x%02X", *c);
+    shown[n] = 0;
+    LOG_INF("GFX", "Ellipsis width=%d max=%d: %s", textWidth, maxWidth, shown);
+  }
+#endif
 
   bool hasEllipsis = false;
 

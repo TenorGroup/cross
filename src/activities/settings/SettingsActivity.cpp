@@ -1015,6 +1015,9 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   // common fits-on-one-line case takes the renderer's fast path anyway.
   props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;
+  // A row's note (the limited edition under Interface) wraps too, so no settings row cuts its words.
+  props.subtitleText = screen.theme().smallText;
+  props.subtitleText.maxLines = 2;
   syncTabListViewport(screen, props);
   screen.list(props);
 }
