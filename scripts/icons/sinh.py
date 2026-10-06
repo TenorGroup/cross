@@ -39,6 +39,11 @@ SETS = [
         ('tenor_reader_tools', 'cong_cu'),
         ('tenor_reader_position_bold', 'vi_tri', 4), ('tenor_reader_reading_bold', 'doc', 4),
         ('tenor_reader_tools_bold', 'cong_cu', 4)]),
+    # The tabs of the button boards' toolbar reader menu: its own glyphs (list, Aa, dots) at the tab size.
+    ('readerToolbarTabIcons.h', 40, 3, [
+        ('reader_tab_contents', 'muc_luc'), ('reader_tab_text', 'chu'), ('reader_tab_more', 'them'),
+        ('reader_tab_contents_bold', 'muc_luc', 4), ('reader_tab_text_bold', 'chu', 4),
+        ('reader_tab_more_bold', 'them', 4)]),
     ('tenorRowIcons.h', 32, 2, [
         ('folder', 'thu_muc_hop'), ('file_text', 'tep_chu'), ('image', 'tep_anh'), ('book', 'tep_sach'),
         ('file', 'tep'), ('wifi', 'wifi'), ('library', 'thu_vien'), ('radio_tower', 'diem_phat'),

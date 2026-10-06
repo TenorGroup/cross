@@ -70,12 +70,29 @@ int rowsOfTab(const std::vector<Item>& all, Tab tab, uint8_t* out, int max);
 // khong ton tai o cuon sach nay (vi du Den nen tren X3) bi bo qua.
 int rowsOfFavorites(const std::vector<Item>& all, const Action* favorites, int count, uint8_t* out, int max);
 
+// Ten sau muc thanh trang thai khi doc, theo dung thu tu CrossPointSettings::READER_STATUS_BAR_MODE (gia tri
+// luu). Mot danh sach cho popup cua menu danh sach va danh sach gia tri cua menu thanh cong cu.
+inline constexpr StrId STATUS_BAR_MODE_LABELS[] = {
+    StrId::STR_STATE_OFF,                   StrId::STR_STATUS_BAR_CLOCK_BATTERY, StrId::STR_STATUS_BAR_DEFAULT,
+    StrId::STR_STATUS_BAR_CHAPTER_PROGRESS, StrId::STR_STATUS_BAR_CHAPTER_CLOCK, StrId::STR_STATUS_BAR_CHAPTER_BATTERY};
+
+// Dong cua lenh nay mo mot danh sach hay mot man khac (co mui ten ">" mo o cuoi dong, nhu Cai dat), hay lam
+// ngay tai cho (bat tat, chup, dat dau trang: khong mui ten).
+constexpr bool rowOpens(const Action action) {
+  return action != Action::TOGGLE_BOOKMARK && action != Action::NIGHT_MODE && action != Action::FRONTLIGHT &&
+         action != Action::SCREENSHOT && action != Action::TILT_PAGE_TURN;
+}
+
 // Danh sach yeu thich mac dinh khi nguoi dung chua tu xep: dong bo tenor/kosync.
 inline constexpr Action DEFAULT_FAVORITES[] = {Action::SYNC};
 
 // So muc ghim toi da. Tran ton tai vi danh sach ghim nam trong settings.json va vi
 // mot tab dai qua thi mat chinh cai loi cua no.
 inline constexpr int TOI_DA_GHIM = 8;
+
+// Nhip giu nut Chon de ghim hay go mot dong, mili giay. Mot nguong cho ca hai menu doc tren may nut
+// (menu danh sach va menu thanh cong cu), bang nguong cua trinh duyet tep.
+inline constexpr unsigned long GIU_GHIM_MS = 1000;
 
 // --- ghim va xep --------------------------------------------------------------------
 //

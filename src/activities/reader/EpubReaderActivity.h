@@ -191,17 +191,41 @@ class EpubReaderActivity final : public ReaderActivity {
   void flushTextSettings();
   // The Font row opens a second level inside the Text panel: the same sheet lists the families
   // (the 2 built in, then the card's), the page above is the preview. Back returns to the rows.
-  enum class TextDepth : uint8_t { Rows, Fonts, Spacing, PointSize };
+  enum class TextDepth : uint8_t { Rows, Fonts, Spacing, PointSize, Pick };
   TextDepth textDepth = TextDepth::Rows;
+  // A second level (the fonts, a value list) keeps the frame of the sheet it opened from: its rows.
+  int levelSheetRows = 0;
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  // Buttons (founder 06/10): a row with several values opens them in the same sheet, as the Font row opens
+  // the fonts (TextDepth::Pick). The front buttons move, Select keeps the value, Back drops it.
+  // source: a Text row id (1 size, 2 line spacing, 3 alignment, 4 drop cap) or PICK_MORE + a More action.
+  static constexpr int PICK_MORE = 100;
+  struct Pick {
+    int source = -1;
+    int origin = 0;     // the row that opened it, where Select and Back return the cursor
+    int inUse = 0;      // the value in use: bold with the tick, the cursor's first place
+    std::string title;
+    std::vector<std::string> labels;
+  };
+  Pick pick;
+  void openPick(int source, std::string title);
+  void leavePick(bool keep);
+  // The value at `place` of the list `source`. True when the page is laid out again: its repaint brings
+  // the sheet back.
+  bool applyPick(int source, int place);
+#endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   int spacingDraftPermille = 500;
   bool spacingDragging = false;
   std::string pointSizeDraft;
   void enterTextDepth(TextDepth depth);
-  // A Text row by its place on the Text panel: Font, Size and Line spacing open their level, the others step.
-  void openTextRow(int row);
+  void stepMenuPointSize(int direction);
+  void applyMenuPointSize(uint8_t pointSize);
+  uint8_t enteredPointSize() const;
+#endif
   // Favorites: the pins (readermenu PIN_TEXT | text row id, or an Action) and the rows shown, the pins this
-  // book has. A hold on a Text, More or Favorites row pins it or takes it off.
+  // book has. A hold on a Text, More or Favorites row pins it or takes it off (touch: a long press; buttons:
+  // Select held readermenu::GIU_GHIM_MS).
   std::vector<uint8_t> pins;
   std::vector<uint8_t> favoriteRows;
   void loadPins();
@@ -210,10 +234,6 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string favoriteRowName(int row) const;
   std::string favoriteRowValue(int row) const;
   void activateFavoriteRow(int row);
-  void stepMenuPointSize(int direction);
-  void applyMenuPointSize(uint8_t pointSize);
-  uint8_t enteredPointSize() const;
-#endif
   std::vector<fontdoc::Ho> fontFamilies;
   void enterFontLevel();
   void leaveFontLevel();
@@ -223,6 +243,8 @@ class EpubReaderActivity final : public ReaderActivity {
   void panelClosedLocked(bool leaving, bool frameUp);
   void pushOverlayRefresh();
   void settleOverlayRefresh();
+  void redrawSheetLocked();
+  void setReaderStatusBarMode(int mode);
   int autoTurnOption = 0;  // current auto page-turn rate index (More panel)
   std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
 
@@ -384,6 +406,9 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string textRowName(int row) const;
   std::string textRowValue(int row) const;
   void showTextRowPopup(int row);
+  // A Text row by its place on the Text panel. X4 Pro: Font, Size and Line spacing open their level, the others
+  // step. Buttons: Font opens the fonts, an on/off row turns, the others open their values over the sheet.
+  void openTextRow(int row);
   void cycleTextRow(int row);
   void chooseTextValue(int row, int place);
   // Mark for saving + re-paginate + re-render under the open panel (live preview).

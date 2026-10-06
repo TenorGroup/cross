@@ -268,12 +268,9 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     // Sau muc thanh trang thai cua trinh doc: popup de doc ten tung muc, chon xong
     // ghi lai. Doi giua nam muc cung chieu cao thi chi ve lai thanh; doi sang/tu
     // muc Tat thi chieu cao doi, trinh doc se dan lai trang va giu anchor.
-    static const StrId nhan[] = {StrId::STR_STATE_OFF, StrId::STR_STATUS_BAR_CLOCK_BATTERY, StrId::STR_STATUS_BAR_DEFAULT,
-                                 StrId::STR_STATUS_BAR_CHAPTER_PROGRESS, StrId::STR_STATUS_BAR_CHAPTER_CLOCK,
-                                 StrId::STR_STATUS_BAR_CHAPTER_BATTERY};
     std::vector<std::string> chu;
     chu.reserve(CrossPointSettings::READER_STATUS_BAR_MODE_COUNT);
-    for (const auto id : nhan) chu.push_back(I18N.get(id));
+    for (const auto id : readermenu::STATUS_BAR_MODE_LABELS) chu.push_back(I18N.get(id));
     const int dangDung = SETTINGS.readerStatusBarMode;
     optionPopup.show(StrId::STR_HIDE_READER_STATUS_BAR, chu, dangDung, [this](const int idx) {
       if (idx < 0 || idx >= CrossPointSettings::READER_STATUS_BAR_MODE_COUNT) return;

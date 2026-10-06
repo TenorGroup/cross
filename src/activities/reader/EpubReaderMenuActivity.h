@@ -82,7 +82,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   void napGhim();
 
   // Nhip giu, tinh bang mili giay. Bang nguong cua trinh duyet tep, de ca may mot tay.
-  static constexpr unsigned long GIU_MS = 1000;
+  static constexpr unsigned long GIU_MS = readermenu::GIU_GHIM_MS;
 
   // Every row of every tab, built once in the constructor.
   std::vector<MenuItem> menuItems;

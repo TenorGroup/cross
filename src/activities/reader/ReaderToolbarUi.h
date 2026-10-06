@@ -38,13 +38,13 @@ const char* notice(StrId id);
 // clears the screen: the page stays visible around the chrome.
 class ReaderToolbarUi : public UiAppHost {
  public:
-  enum class Event { None = 0, Dismiss = 1, Tool = 2, PrevChapter = 3, NextChapter = 4, Scrub = 5, Row = 6, Choice = 7,
+  enum class Event { None = 0, Dismiss = 1, Tool = 2, PrevChapter = 3, NextChapter = 4, Scrub = 5, Row = 6,
                      SizeStep = 8, SizeEntry = 9, SpacingDraft = 10, SpacingCommit = 11, NumericKey = 12 };
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   enum class TextView : uint8_t { None, Rows, Fonts, Spacing, PointSize };
 #endif
-  // Choice: value = row * kChoiceStride + the value's place along the row.
-  static constexpr int kChoiceStride = 8;
+  // The tabs: 0 Contents, 1 Text, 2 More, 3 Favorites.
+  static constexpr int kToolCount = 4;
 
   struct Model {
     bool panel = false;  // false = toolbar, true = a Contents/Text/More panel
@@ -64,16 +64,13 @@ class ReaderToolbarUi : public UiAppHost {
     std::function<std::string(int)> rowValue;
     // Optional: the row in use (the font in the family list). Drawn in bold with a tick at the row end.
     std::function<bool(int)> rowMarked;
-    // X4 Pro: a row pinned to Favorites; it shows the small heart before its value.
+    // A row pinned to Favorites: the small heart, touch before its value, buttons after its name.
     std::function<bool(int)> rowPinned;
     // Drawn in the list's place when it has no rows (an empty Favorites).
     const char* emptyText = nullptr;
-    // Optional: a row with a few values draws them as icons along its right side, the one in use
-    // outlined; on touch boards each icon is a tap target (Event::Choice). Count 0 = an ordinary row.
-    std::function<int(int)> choiceCount;
-    std::function<int(int)> choiceInUse;
-    std::function<const freeink::Icon*(int, int)> choiceIcon;
-    // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..2.
+    // Buttons: a row that opens a list or another screen ends in the grey chevron, as in Settings.
+    std::function<bool(int)> rowOpens;
+    // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..3, -1 none.
     int activeTool = 0;
     // Button boards keep the theme's denser list row height (as every other
     // list does there); touch boards use FreeInkUI's finger-sized rows.
@@ -116,6 +113,8 @@ class ReaderToolbarUi : public UiAppHost {
   freeink::ui::ListNav& nav() { return nav_; }
   // Rows one page holds, measured after the first render.
   int visibleRows() const { return nav_.pageRows(); }
+  // Buttons: the rows the last panel sheet was sized to (its frame), glimpse row included.
+  int sheetRows() const { return sheetRows_; }
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   int scrollRows(const MappedInputManager& input, int count) const;
 #endif
@@ -128,6 +127,11 @@ class ReaderToolbarUi : public UiAppHost {
   void buildSheet(UiScreen& screen, const freeink::ui::SheetProps& props, int16_t height);
   void buildToolRow(UiScreen& screen, freeink::ui::LayoutAnchor anchor, int16_t sideInset);
   void paintUgly();
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  void fadeMoreBelow();
+#endif
+  int16_t fadeRight_ = 0;  // buttons: the fade under the last full row stops short of the scroll bar
+  int sheetRows_ = 0;
   GfxRenderer* renderer_ = nullptr;
   freeink::ui::Rect skinFrame_{}, skinList_{}, skinMeta_{};
 
@@ -141,7 +145,6 @@ class ReaderToolbarUi : public UiAppHost {
   std::string windowLabels_[kMaxWindow];
   std::string windowValues_[kMaxWindow];
   bool markedLabels_[kMaxWindow] = {};
-  freeink::ui::Rect skinChoices_[kMaxWindow]{};
   freeink::ui::ListItem windowItems_[kMaxWindow];
   // fui::ButtonProps / ListProps / HeaderProps embed a 324-byte StyleSet: keep
   // them off the stack (locals stay under 256 bytes).
@@ -149,7 +152,6 @@ class ReaderToolbarUi : public UiAppHost {
   freeink::ui::ListProps listProps_;
   freeink::ui::Rect pageIndicatorRect_{};
   void drawMarkedRows(UiScreen& screen, const freeink::ui::Rect& listRect, int16_t rowH, int16_t rowGap, int windowCount);
-  void drawChoices(UiScreen& screen, const freeink::ui::Rect& listRect, int16_t rowH, int16_t rowGap, int windowCount);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   void buildX4Toolbar(UiScreen& screen);
   void buildX4Panel(UiScreen& screen);

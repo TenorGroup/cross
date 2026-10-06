@@ -74,11 +74,14 @@ def plan():
 
 
 def three_quick_changes(t):
-    """Confirm cycles spacing in place, with an immediate preview per choice."""
-    presses = [(t + STEP, 'DOWN'), (t + 2 * STEP, 'DOWN')]
+    """Line spacing changed 3 times, an immediate preview per choice. v1.0.53: the front buttons move the
+    rows, and a choice is the row's list (Select), one step down, Select: the keeps QUICK ms apart."""
+    presses = [(t + STEP, 'RIGHT'), (t + 2 * STEP, 'RIGHT')]
     t += 3 * STEP
-    presses += [(t + k * QUICK, 'CONFIRM') for k in range(3)]
-    return presses, t + 2 * QUICK
+    third = QUICK // 3
+    presses += [(t + k * QUICK + d * third, key) for k in range(3)
+                for d, key in enumerate(('CONFIRM', 'RIGHT', 'CONFIRM'))]
+    return presses, t + 2 * QUICK + 2 * third
 
 
 class QuickChangesTest(unittest.TestCase):

@@ -46,6 +46,9 @@ int textChoiceInUse(int row){
  if(row==2){for(int i=0;i<5;++i)if(kSpacingByPlace[i]==SETTINGS.lineSpacing)return i;}
  return row==3?int(SETTINGS.paragraphAlignment):int(SETTINGS.dropCapMode);
 }
+Guarded& textChoiceValue(int row){return row==2?SETTINGS.lineSpacing:row==3?SETTINGS.paragraphAlignment:SETTINGS.dropCapMode;}
+int textChoiceStored(int row,int place){return row==2?kSpacingByPlace[place]:place;}
+const void* catalogTextRow(int){return nullptr;}  // the rows here are the 3 built in
 struct Section {
  int currentPage=12,pageCount=40,builtVersion=-1;
  bool building=true,reached=false;
