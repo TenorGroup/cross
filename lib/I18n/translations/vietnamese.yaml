@@ -1016,6 +1016,7 @@ STR_UGLY_WIFI_SAVE_NO: "thôi"
 STR_UGLY_WIFI_FORGET_ASK: "Quên mạng này luôn hả? Mật khẩu bay theo đó."
 STR_UGLY_WIFI_FORGET_YES: "quên luôn"
 STR_UGLY_WIFI_FORGET_NO: "thôi, giữ"
+STR_UGLY_FONT_EMPTY: "Không có font nào. Mạng dỏm hay kho dỏm."
 
 STR_UGLY_PHIEU_TITLE: "PHIẾU TRẢ LỜI"
 STR_UGLY_PHIEU_SUBJECT: "Môn:"

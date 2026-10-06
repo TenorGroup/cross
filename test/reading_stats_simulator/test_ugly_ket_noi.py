@@ -167,6 +167,24 @@ TO_THE_FONTS = ['UP'] + ['RIGHT'] * 3 + ['CONFIRM', 'RIGHT', 'CONFIRM']
 
 
 class UglyFontTest(unittest.TestCase):
+    def test_the_family_list_is_written_by_hand(self):
+        card = Card()
+        self.addCleanup(card.close)
+        mock = card.sd.parent / (card.sd.name + '-http')
+        mock.mkdir()
+        self.addCleanup(shutil.rmtree, mock)
+        family = lambda name: {'name': name, 'description': name, 'styles': ['regular'], 'scripts': [],
+                               'files': [{'name': name + '_12.cpfont', 'size': 1000, 'crc32': 1}]}
+        (mock / 'fonts.json').write_text(json.dumps({'version': 1, 'baseUrl': 'http://127.0.0.1:9/', 'scriptGroups': [],
+                                                     'families': [family('Alpha'), family('Beta')]}))
+        script, t = keys(*TO_THE_FONTS, 'WAIT:2500', 'CONFIRM', 'WAIT:3000')
+        log, shots = card.run(script + ';%d:QUIT' % (t + 800), [(t, 'font-list')], timeout=60,
+                              CROSSPOINT_SIM_HTTP_MOCK_ROOT=str(mock))
+        after = log[log.index('Entering activity: FontDownload'):]
+        self.assertIn('Manifest loaded: 2 families', after, after[-2000:])
+        self.assertRegex(after, r'part=rows runs=\d+')
+        self.assertGreater(ink(shots['font-list'], (20, 100, 508, 400)), 1500)
+
     def test_the_font_list_load_and_its_failure_are_notes(self):
         # The font server answers with a list nobody can read: the list is asked for and the ask fails, offline.
         card = Card()

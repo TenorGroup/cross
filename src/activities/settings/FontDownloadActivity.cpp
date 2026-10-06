@@ -946,7 +946,8 @@ void FontDownloadActivity::buildScreen(UiScreen& screen) {
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   if (state_ == FAMILY_LIST && filteredIndices_.empty()) {
-    screen.centeredText(tr(STR_NO_FONTS_AVAILABLE), screen.theme().bodyText);
+    screen.centeredText(I18N.get(shell::uglyParts() ? StrId::STR_UGLY_FONT_EMPTY : StrId::STR_NO_FONTS_AVAILABLE),
+                        screen.theme().bodyText);
     return;
   }
 
@@ -1178,6 +1179,36 @@ bool FontDownloadActivity::renderUglyNote() const {
   return true;
 }
 
+const char* FontDownloadActivity::headerSubtitle() {
+  if (state_ != FAMILY_LIST || !hasGroupScreen()) return nullptr;
+  const int scriptGroupIndex = groupNav_.selected - 1;
+  return scriptGroupIndex >= 0 && scriptGroupIndex < static_cast<int>(scriptGroupLabels_.size())
+             ? str(scriptGroupLabels_[scriptGroupIndex])
+             : tr(STR_ALL_FONTS);
+}
+
+void FontDownloadActivity::drawChrome() {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
+                 tr(STR_FONT_BROWSER), headerSubtitle());
+}
+
+void FontDownloadActivity::drawListHints() {
+  if (state_ == GROUP_LIST) {
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    return;
+  }
+  const bool hasVisibleFamilies = !filteredIndices_.empty();
+  const char* confirmLabel = !hasVisibleFamilies            ? ""
+                             : isSelectedFamilyDeletable()  ? tr(STR_DELETE)
+                             : isUpdateAllRow(nav.selected) ? tr(STR_UPDATE)
+                                                            : tr(STR_DOWNLOAD);
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, hasVisibleFamilies ? tr(STR_DIR_UP) : "",
+                                            hasVisibleFamilies ? tr(STR_DIR_DOWN) : "");
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
 void FontDownloadActivity::render(RenderLock&&) {
   progressRenderGate_.renderStarted();
   if (shell::uglyParts() && renderUglyNote()) return;
@@ -1185,17 +1216,16 @@ void FontDownloadActivity::render(RenderLock&&) {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
+  // The two lists by hand: the layout keeps its words and the shared skin writes them.
+  if ((state_ == GROUP_LIST || state_ == FAMILY_LIST) && renderUglyList()) {
+    renderer.displayBuffer();
+    return;
+  }
+
   renderer.clearScreen();
 
-  const char* headerSubtitle = nullptr;
-  if (state_ == FAMILY_LIST && hasGroupScreen()) {
-    const int scriptGroupIndex = groupNav_.selected - 1;
-    headerSubtitle = scriptGroupIndex >= 0 && scriptGroupIndex < static_cast<int>(scriptGroupLabels_.size())
-                         ? str(scriptGroupLabels_[scriptGroupIndex])
-                         : tr(STR_ALL_FONTS);
-  }
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_FONT_BROWSER),
-                 headerSubtitle);
+  const char* headerSubtitle = this->headerSubtitle();
+  drawChrome();
 
   const auto lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   const auto contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
@@ -1217,19 +1247,10 @@ void FontDownloadActivity::render(RenderLock&&) {
     renderer.drawCenteredText(UI_10_FONT_ID, centerY, tr(STR_LOADING_FONT_LIST));
   } else if (state_ == GROUP_LIST) {
     renderFontList();
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    drawListHints();
   } else if (state_ == FAMILY_LIST) {
     renderFontList();
-
-    const bool hasVisibleFamilies = !filteredIndices_.empty();
-    const char* confirmLabel = !hasVisibleFamilies            ? ""
-                               : isSelectedFamilyDeletable()  ? tr(STR_DELETE)
-                               : isUpdateAllRow(nav.selected) ? tr(STR_UPDATE)
-                                                              : tr(STR_DOWNLOAD);
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, hasVisibleFamilies ? tr(STR_DIR_UP) : "",
-                                              hasVisibleFamilies ? tr(STR_DIR_DOWN) : "");
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    drawListHints();
   } else if (state_ == DOWNLOADING) {
     const auto& family = families_[downloadingFamilyIndex_];
 

@@ -1016,6 +1016,7 @@ STR_UGLY_WIFI_SAVE_NO: "nah"
 STR_UGLY_WIFI_FORGET_ASK: "Forget this network? The password goes too."
 STR_UGLY_WIFI_FORGET_YES: "forget it"
 STR_UGLY_WIFI_FORGET_NO: "keep it"
+STR_UGLY_FONT_EMPTY: "No fonts. Bad network or bad server."
 
 STR_UGLY_PHIEU_TITLE: "ANSWER SHEET"
 STR_UGLY_PHIEU_SUBJECT: "Subject:"

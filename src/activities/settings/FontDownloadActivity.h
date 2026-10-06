@@ -186,4 +186,10 @@ class FontDownloadActivity final : public UiListActivity {
   size_t totalUpdateSize() const;
   static std::string formatSize(size_t bytes);
   bool renderUglyNote() const;
+  // The group shown in the header of the family list, or null.
+  const char* headerSubtitle();
+  // The key bar of the two lists: Confirm opens, downloads, updates or deletes the row.
+  void drawListHints();
+  void drawChrome() override;
+  void drawFooter() override { drawListHints(); }
 };
