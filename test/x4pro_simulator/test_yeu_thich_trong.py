@@ -31,9 +31,10 @@ def main():
         assert ink(pinned, (20, 40, 460, 100)) > 0.01, 'holding a row did not pin it'
         assert ink(pinned, (20, 380, 460, 420)) == 0, 'the empty line stays over a pinned row'
         # Holding the Recent card opens the menu of the book it shows; holding the "other books" line, the
-        # menu of the book it names. Pin pins that book (y of the menu's one line in each case).
+        # menu of the book it names. Pin pins that book (y of the menu's one line in each case: the cover's hangs
+        # from the cover).
         names = {}
-        for tag, point, pin in (('cover', '240,573', 690), ('other books', '300,686', 622)):
+        for tag, point, pin in (('cover', '240,573', 498), ('other books', '300,686', 622)):
             folder = Path(tmp) / tag.replace(' ', '-')
             folder.mkdir()
             (held,) = run(folder, f'3000:TAP:{point},900;5500:TAP:100,{pin};7500:TAP:{TABS_X[2]},{BAR_Y}', [9500])
