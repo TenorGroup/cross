@@ -124,6 +124,11 @@ class UglyRemainingScreensTest(unittest.TestCase):
         reason = {'CROSSPOINT_SIM_PANIC': 'Guru Meditation Error: Core 0 panic (LoadProhibited) PC 0x42001234'}
         self.assert_hand_only_in_ugly([], (0, 60, 528, 460), 'Crash', env=reason)
 
+    def test_clear_cache_says_it_in_hand(self):
+        # Other, question 4: the question box, the pen on Clear, Select; the result stays on the screen.
+        self.assert_hand_only_in_ugly(settings_route(9, 4, ['RIGHT', 'CONFIRM', 'WAIT:1500']), (0, 300, 528, 520),
+                                      'ClearCache')
+
 
 if __name__ == '__main__':
     unittest.main()

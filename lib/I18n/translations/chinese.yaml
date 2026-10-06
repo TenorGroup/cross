@@ -947,6 +947,8 @@ STR_UGLY_BOOT_LINE: "Booting. Rush me and I go on strike."
 STR_UGLY_CRASH_TITLE: "I crashed"
 STR_UGLY_CRASH_BODY: "I fell flat on my face. Details in crash_report.txt. Attach it when you report the bug."
 STR_UGLY_CRASH_REASON: "Why I fell:"
+STR_UGLY_CACHE_DONE: "All gone. Feels lighter."
+STR_UGLY_CACHE_FAIL: "Couldn't delete it. Your card has issues."
 STR_FOLDER_ITEM_COUNT: "%u 项"
 
 STR_UGLY_PHIEU_TITLE: "ANSWER SHEET"

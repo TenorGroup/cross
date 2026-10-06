@@ -8,5 +8,8 @@ namespace ugly::words {
 const char* crashTitle();
 const char* crashBody();
 const char* crashReason();
+// Clear cache, done or failed.
+const char* cacheDone();
+const char* cacheFail();
 
 }  // namespace ugly::words
