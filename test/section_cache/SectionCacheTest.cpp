@@ -62,7 +62,7 @@ void operator delete(void* value) noexcept {
   if (allocationProbe::enabled && value) allocationProbe::live -= static_cast<long>(usableSize(value));
   std::free(value);
 }
-void operator delete[](void* value) noexcept { std::free(value); }
+void operator delete[](void* value) noexcept { ::operator delete(value); }
 void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
   if (allocationProbe::rejectNextNothrow) {
     allocationProbe::rejectNextNothrow = false;
@@ -2736,4 +2736,14 @@ TEST(PreviewPage, PointsGrowAcrossAResumedPartial) {
   memcpy(&count, raw.data() + 8, 4);
   std::cout << "DD_RESUMED pages=" << pages << " points=" << count << "\n";
   EXPECT_GE(count, pages / 2u) << "points stop where the partial stopped";
+}
+
+TEST(AllocationProbe, ArrayDeleteGivesBackWhatArrayNewCounted) {
+  allocationProbe::enabled = true;
+  const long before = allocationProbe::live;
+  char* volatile block = new char[64];
+  delete[] block;
+  const long after = allocationProbe::live;
+  allocationProbe::enabled = false;
+  EXPECT_EQ(after, before);
 }
