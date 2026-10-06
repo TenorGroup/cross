@@ -17,6 +17,8 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/TimezoneLookup.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyNote.h"
 
 void ClockSyncActivity::onEnter() {
   runtimeStarted = false;
@@ -135,7 +137,22 @@ void ClockSyncActivity::loop() {
   }
 }
 
+void ClockSyncActivity::renderUgly() {
+  static constexpr StrId LINES[] = {StrId::STR_UGLY_CLOCK_SYNCING, StrId::STR_UGLY_CLOCK_OK, StrId::STR_UGLY_CLOCK_NO_WIFI,
+                                    StrId::STR_UGLY_CLOCK_FAILED, StrId::STR_UGLY_CLOCK_TZ_FAILED};
+  char now[64] = "";
+  if ((state == SUCCESS || state == TIMEZONE_FAILED) && syncedTime[0] != '\0')
+    snprintf(now, sizeof(now), "%s %s", tr(STR_CURRENT_TIME), syncedTime);
+  ugly::Hints hints;
+  hints.back = state != SYNCING;
+  ugly::notePage(renderer, mappedInput, tr(STR_CLOCK_SYNC), I18N.get(LINES[state]), now[0] ? now : nullptr, -1, hints);
+}
+
 void ClockSyncActivity::render(RenderLock&&) {
+  if (shell::uglyParts()) {
+    renderUgly();
+    return;
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
