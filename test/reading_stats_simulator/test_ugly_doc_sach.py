@@ -32,10 +32,12 @@ CROSS = {
     'marked': '9feb91ec066ca9c1',
     'notice': '49ecd4c4e7dad049',
     'xtc_toc': '26d9891198b82a1a',
+    'saved_quote': '77b3fe0a4546e437',
 }
 # The hand-written notices, the same strokes on every draw.
 UGLY = {
     'notice': '6507229e90714cd4',
+    'saved_quote': '9a6b15eb9f9dfa11',
 }
 NOTICE = (0, 120, 528, 330)  # the band a notice of the reader is drawn in
 
@@ -186,6 +188,13 @@ class ReadingScreensTest(unittest.TestCase):
         self.assertIn('XtcReaderChapterSelection', log)
         self.assertTrue('part=header' in log.split('Entering activity: XtcReaderChapterSelection')[1], 'no hand header')
         self.check('xtc_toc', ugly['toc'], cross['toc'])
+
+    def test_saved_quote_notice(self):
+        script = self.MENU + ';4600:DOWN;5300:DOWN;6000:RIGHT;6700:RIGHT;7400:CONFIRM;9000:CONFIRM;9700:RIGHT;10400:CONFIRM;12500:QUIT'
+        log, ugly, cross = self.both(script, [(11500, 'saved')], paragraphs=8)
+        self.assertIn('QuoteSelect', log)
+        self.assertEqual(digest(ugly['saved'].crop(NOTICE))[:16], UGLY['saved_quote'], 'the jab and where the quote went')
+        self.check('saved_quote', ugly['saved'], cross['saved'])
 
 
 if __name__ == '__main__':
