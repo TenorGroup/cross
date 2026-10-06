@@ -230,5 +230,25 @@ class UglyKoreaderTest(unittest.TestCase):
         print('koreader note frames ms:', [n['ms'] for n in notes])
 
 
+
+BLE_TIP = re.compile(r'BLE tip="(?P<tip>[^"]*)" status="(?P<status>[^"]*)"')
+# Diary -> Settings page -> Device (eighth row) -> Bluetooth page turner (fourth question).
+TO_THE_BLE = ['UP'] + ['RIGHT'] * 7 + ['CONFIRM'] + ['RIGHT'] * 3 + ['CONFIRM']
+
+
+class UglyBleTest(unittest.TestCase):
+    def test_a_status_too_long_for_its_row_goes_to_the_tip(self):
+        # The simulator has no Bluetooth: the long status leaves the row for the tip, in the voice of the shell.
+        card = Card()
+        self.addCleanup(card.close)
+        script, t = keys(*TO_THE_BLE, 'WAIT:1000')
+        log, shots = card.run(script + ';%d:QUIT' % (t + 800), [(t, 'ble')], timeout=60)
+        self.assertIn('BlePageTurner', entered(log), log[-2000:])
+        tips = BLE_TIP.findall(log)
+        self.assertTrue(tips, log[-2500:])
+        self.assertEqual(tips[-1], ('Bản này đâu có Bluetooth. Lật bằng tay đi.', ''))
+        self.assertGreater(ink(shots['ble'], (20, 680, 508, 745)), 500)  # the tip, written above the key bar
+
+
 if __name__ == '__main__':
     unittest.main()
