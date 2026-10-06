@@ -491,6 +491,7 @@ void UiListActivity::drawRowFrame() {
   int firstIndex = -1, lastIndex = -1;
   int groupTop = 0;  // a page with groups: the ring top of the group still open
   bool grouped = false;
+  int barTop = 0, barBottom = 0;  // a page with groups: the tallest closed frame, home of the scroll bar
   for (int i = n.top; i < count; ++i) {
     const fui::Rect r = app.publishedRect(ACTION_ROW, static_cast<int16_t>(i));
     if (r.height <= 0) continue;
@@ -500,7 +501,12 @@ void UiListActivity::drawRowFrame() {
       groupTop = r.y - lines.top;
     } else if (rowStartsGroup(i)) {
       // The group above ends at its last row; its heading stands between the 2 frames.
-      tenorchrome::drawPanel(renderer, groupTop, last.y + last.height + lines.bottom - groupTop);
+      const int groupBottom = last.y + last.height + lines.bottom;
+      tenorchrome::drawPanel(renderer, groupTop, groupBottom - groupTop);
+      if (groupBottom - groupTop > barBottom - barTop) {
+        barTop = groupTop;
+        barBottom = groupBottom;
+      }
       groupTop = r.y - lines.top;
       grouped = true;
     } else if (i > n.top) {
@@ -532,13 +538,18 @@ void UiListActivity::drawRowFrame() {
   if (frameGoesOn && floor > fullBottom)
     drawRowRule(renderer, last.y + last.height + rowFrameGap - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
                 renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
-  // The scroll bar inside the frame's full rows, the shared drawer's round-frame form.
+  // The scroll bar inside the frame's full rows, the shared drawer's round-frame form. A page of several frames
+  // keeps it inside the tallest of them, never across the gaps between frames (rule 13).
   if (n.top > 0 || more) {
     const int full = count - n.top;
+    if (!grouped || fullBottom - lastTop > barBottom - barTop) {
+      barTop = grouped ? lastTop : ringTop;
+      barBottom = fullBottom;
+    }
     fui::drawListScrollIndicator(uiTarget,
-                                 fui::Rect{static_cast<int16_t>(tenorchrome::FOOT_BACK_X), static_cast<int16_t>(ringTop),
+                                 fui::Rect{static_cast<int16_t>(tenorchrome::FOOT_BACK_X), static_cast<int16_t>(barTop),
                                            static_cast<int16_t>(renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X),
-                                           static_cast<int16_t>(fullBottom - ringTop)},
+                                           static_cast<int16_t>(barBottom - barTop)},
                                  static_cast<uint32_t>(listCount()), static_cast<uint32_t>(std::max(1, full)),
                                  static_cast<uint32_t>(n.top), 6, 0, 6, tenorchrome::PANEL_RADIUS);
   }
