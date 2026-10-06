@@ -440,6 +440,12 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
 
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 namespace {
+// MERGE: dev/v1053-khung adds tenorchrome::drawRowRule (TenorMenuChrome.h), this very rule; on merge call
+// that one and drop this stand-in.
+void drawRowRule(const GfxRenderer& g, const int y, const int x0, const int x1) {
+  for (int x = x0; x < x1; ++x)
+    if (((x + y) & 1) == 0) g.drawPixel(x, y, true);
+}
 fui::Rect readerFrame(const fui::Rect& screen, const int height) {
   return {16, static_cast<int16_t>(tenorchrome::footBackTop(screen.height) - 12 - height),
           static_cast<int16_t>(screen.width - 32), static_cast<int16_t>(height)};
@@ -619,6 +625,13 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       stepProps_.action = ACTION_SIZE_STEP;
       stepProps_.value = 1;
       screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 64), y, 60, 62});
+    }
+    if (count > 0 && renderer_ && uiTarget.paintingEnabled()) {
+      // The grey rules of every framed list (founder 06/10/2026): under the panel's title, then between 2 rows,
+      // over the size row's buttons.
+      const int shown = std::min(nav_.visibleRows + (fonts ? 1 : 0), windowCount);
+      for (int k = 0; k < shown; ++k)
+        drawRowRule(*renderer_, listRect.y + k * 62 - 1, frame.x + 16, frame.right() - 17);
     }
   }
   if (uiTarget.paintingEnabled() && renderer_) tenorchrome::drawPanel(*renderer_, frame.y, frame.height);
