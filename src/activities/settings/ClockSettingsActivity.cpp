@@ -14,7 +14,9 @@
 #include "MappedInputManager.h"
 #include "MenuFavorites.h"
 #include "TimezonePickerActivity.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
+#include "components/UIThemeTokens.h"
 #include "network/TimezoneLookup.h"
 #include "util/Timezones.h"
 
@@ -150,7 +152,8 @@ void ClockSettingsActivity::buildScreen(UiScreen& screen) {
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;
-  props.labelText = screen.theme().smallText;
+  // Touch: the rows in the text of every other list (L4); the button readers keep their small rows.
+  props.labelText = tenorchrome::kTouchShell ? uiMenuLabelText(screen.theme()) : screen.theme().smallText;
   props.labelText.maxLines = 2;
   syncListViewport(screen, props);
   screen.list(props);
