@@ -202,6 +202,7 @@ inline AskSpot askAt(const Ask& a, const int x, const int y) {
 // The row of the page an X's crossing or a ring's middle falls on, or -1 when it falls off the list.
 inline int scribbleRow(const int x, const int y, const int rowsShown) {
   const Hit h = notebookAt(x, y);
+  if (h.spot == Spot::Foot && rowsShown > ROWS) return ROWS;  // a lone last row stands in the foot line
   return h.spot == Spot::Row && h.row < rowsShown ? h.row : -1;
 }
 

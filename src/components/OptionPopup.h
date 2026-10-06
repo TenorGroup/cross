@@ -285,7 +285,7 @@ class OptionPopup {
         options[slot].state = index == selectedIndex ? fui::StateFocused : fui::StateNormal;
         ++slot;
       }
-      if (window.paged) {
+      if (window.next) {
         options[slot++] = {tr(STR_NEXT_PAGE), ACTION_PAGE,
                            static_cast<int16_t>(std::min(totalOptions - 1, window.first + window.count)), fui::StateNormal,
                            window.first + window.count < totalOptions};

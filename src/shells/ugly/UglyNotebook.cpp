@@ -173,8 +173,8 @@ void Notebook::render(RenderLock&&) {
     const StrId empty = EMPTY[id(page)];
     if (empty != StrId::STR_NONE_OPT) paragraph(renderer, Size::S30, TEXT_X, first, w - TEXT_X - 30, 44, I18N.get(empty));
   }
-  const int top = logic::pageTop(cur, perPage);
-  for (int i = 0; i < perPage && top + i < count; ++i) {
+  const int top = logic::pageTop(cur, perPage, count);
+  for (int i = 0; i < logic::rowsOnPage(top, perPage, count); ++i) {
     const int row = top + i;
     const int base = first + i * ROW_HEIGHT;
     int room = w - TEXT_X - 30;
@@ -187,9 +187,9 @@ void Notebook::render(RenderLock&&) {
     const int lw = text(renderer, Size::S30, TEXT_X, base, label.c_str());
     if (row == cur) circle(renderer, Circle::Row, {TEXT_X, base - 26, TEXT_X + lw, base + 8}, 12, 9);
   }
-  if (count > perPage) {
+  if (logic::pageNamed(top, perPage, count)) {
     char of[24];
-    snprintf(of, sizeof(of), tr(STR_UGLY_PAGE_OF), logic::pageOf(cur, perPage) + 1, logic::pageCount(count, perPage));
+    snprintf(of, sizeof(of), tr(STR_UGLY_PAGE_OF), logic::pageOf(cur, perPage, count) + 1, logic::pageCount(count, perPage));
     text(renderer, Size::S22, w / 2 - width(renderer, Size::S22, of) / 2, h - 84, of);
   }
 
@@ -369,12 +369,12 @@ unsigned Notebook::loadScribbles() {
   return raw.length() ? static_cast<unsigned>(raw[0] - '0') & (touch::USED_CROSS | touch::USED_RING) : 0u;
 }
 
-int Notebook::rowsShown() const { return std::clamp(rowCount() - topShown(), 0, touch::ROWS); }
+int Notebook::rowsShown() const { return logic::rowsOnPage(topShown(), touch::ROWS, rowCount()); }
 
 void Notebook::turnRows(const int direction) {
   const int count = rowCount();
-  if (count <= touch::ROWS) return;
   const int pages = logic::pageCount(count, touch::ROWS);
+  if (pages <= 1) return;
   top() = logic::cycle(topShown() / touch::ROWS, direction, pages) * touch::ROWS;
 }
 
@@ -559,7 +559,7 @@ void Notebook::doJob() {
   {
     RenderLock lock;
     if (reread) adopt(std::move(fresh));
-    top() = std::min(topShown(), std::max(0, rowCount() - 1) / touch::ROWS * touch::ROWS);
+    top() = std::min(topShown(), logic::pageTop(rowCount() - 1, touch::ROWS, rowCount()));
     said = line;
   }
   requestUpdate();
@@ -591,8 +591,15 @@ bool Notebook::onTouch(const Key key) {
             activate(topShown() + hit.row);
           return pop != Pop::None;  // a value changed is drawn by its job, after the lock
         case touch::Spot::Foot:
+          if (rowsShown() > touch::ROWS) {  // the last page's lone row stands in the foot line
+            if (group >= 0)
+              tapSetting(topShown() + touch::ROWS, touch::ROWS);
+            else
+              activate(topShown() + touch::ROWS);
+            return pop != Pop::None;
+          }
           turnRows(1);
-          return rowCount() > touch::ROWS;
+          return logic::pageCount(rowCount(), touch::ROWS) > 1;
         case touch::Spot::Prev:
           return group < 0 && onKey(Key::Left);
         case touch::Spot::Next:
@@ -605,9 +612,9 @@ bool Notebook::onTouch(const Key key) {
       return false;
     }
     case Key::Hold: {
-      const touch::Hit hit = touch::notebookAt(touchX, touchY);
-      if (!lists || hit.spot != touch::Spot::Row || hit.row >= rowsShown()) return false;
-      const int row = topShown() + hit.row;
+      const int pageRow = touch::scribbleRow(touchX, touchY, rowsShown());  // a row, or the lone row in the foot
+      if (!lists || pageRow < 0) return false;
+      const int row = topShown() + pageRow;
       bool folder = false;
       taskCount = 0;
       tasks[taskCount++] = Task::Pin;
@@ -615,7 +622,7 @@ bool Notebook::onTouch(const Key key) {
       if (page == homerows::Page::Folder && !folder) tasks[taskCount++] = Task::Delete;
       pop = Pop::Tasks;
       popRow = row;
-      paper = touch::placePaper(rowTop(hit.row), taskCount, 0);
+      paper = touch::placePaper(rowTop(pageRow), taskCount, 0);
       return true;
     }
     case Key::Cross:
@@ -766,7 +773,7 @@ void Notebook::renderTouch() {
     if (empty != StrId::STR_NONE_OPT)
       paragraph(renderer, Size::S30, touch::TEXT_X, rowTop(0) + 42, touch::TEXT_R - touch::TEXT_X, 44, I18N.get(empty));
   }
-  for (int i = 0; i < touch::ROWS && first + i < count; ++i) {
+  for (int i = 0; i < logic::rowsOnPage(first, touch::ROWS, count); ++i) {
     const int row = first + i, base = rowTop(i) + 42;
     int room = touch::TEXT_R - touch::TEXT_X;
     if (group >= 0 && row < static_cast<int>(settings.size()) && settings[row].type == SettingType::TOGGLE) {
@@ -782,7 +789,7 @@ void Notebook::renderTouch() {
     }
     text(renderer, Size::S30, touch::TEXT_X, base, fit(renderer, Size::S30, labelAt(row), room).c_str());
   }
-  if (count > touch::ROWS) {
+  if (logic::pageNamed(first, touch::ROWS, count)) {
     char of[24];
     snprintf(of, sizeof(of), tr(STR_UGLY_PAGE_OF), first / touch::ROWS + 1, logic::pageCount(count, touch::ROWS));
     const int ow = width(renderer, Size::S22, of);

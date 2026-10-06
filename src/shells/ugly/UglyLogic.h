@@ -1,6 +1,8 @@
 #pragma once
 // Pure decisions of the tenor/ugly shell: integer only, no hardware, so a host test runs them as they are.
 #include <algorithm>
+
+#include "components/PageRows.h"
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -196,10 +198,12 @@ int layout(const Token* tokens, const int count, const int maxWidth, const int s
   return line + 1;
 }
 
-// Rows of a notebook page: the page a selection falls on, and the first row of that page.
-inline int pageOf(const int selected, const int rows) { return rows > 0 ? selected / rows : 0; }
-inline int pageTop(const int selected, const int rows) { return pageOf(selected, rows) * rows; }
-inline int pageCount(const int count, const int rows) { return rows > 0 && count > 0 ? (count + rows - 1) / rows : 1; }
+// Rows of a notebook page: the shared rule of paged rows (a lone last row stands in the foot line).
+using pagerows::pageCount;
+using pagerows::pageNamed;
+using pagerows::pageOf;
+using pagerows::pageTop;
+using pagerows::rowsOnPage;
 
 // Where to cut a line so that it ends in "..." and fits `maxWidth`, in one pass over the characters.
 // adv(pos, cp) is the advance of the character at index pos, jump step included. Returns -1 when the
