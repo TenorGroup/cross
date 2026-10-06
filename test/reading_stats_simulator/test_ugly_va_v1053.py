@@ -139,6 +139,18 @@ class TipBlock(unittest.TestCase):
         self.assertEqual(digest(habits.crop((0, 620, 528, 752))), 'cf07694cd610ec3237e787e3b7d739e145f6df08951584b7533c782a8a6abc30')
 
 
+class About(unittest.TestCase):
+    def test_the_screen_and_its_first_2_rows_are_named_in_the_device_language(self):
+        # Giới thiệu (Settings, Language group, 5th question): "About", "Device" and "Firmware" were English in every
+        # language. The hardware rows keep the names support reads.
+        log, _, _ = frames(settings_question(7, 5))
+        self.assertIn('About', re.findall(r'Entering activity: (\w+)', log), log[-1500:])
+        words = [w.strip() for w in re.findall(r'part=word text=(.*)', log)]
+        self.assertIn('Giới thiệu', [t.strip() for _, t in re.findall(r'part=header prefix=(.*) title=(.*)', log)])
+        self.assertTrue({'Thiết bị', 'Phiên bản', 'Chip', 'Flash'} <= set(words), words)
+        self.assertFalse({'Device', 'Firmware'} & set(words), words)
+
+
 class Header(unittest.TestCase):
     def headers(self, keys):
         log, _, _ = frames(keys)

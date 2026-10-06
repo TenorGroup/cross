@@ -654,6 +654,9 @@ bool UiListActivity::renderUglyList() {
           label.rect.x < value.rect.x)
         uglychrome::apart(renderer, label.rect, label.text.c_str(), value.rect, value.text.c_str());
   }
+#ifdef UGLY_FRAME_LOG
+  for (const auto& run : runs) LOG_INF("UGLY", "part=word text=%s", run.text.c_str());
+#endif
   std::vector<fui::Rect> ink;
   ink.reserve(runs.size());
   for (const auto& run : runs)

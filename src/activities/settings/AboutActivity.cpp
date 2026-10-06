@@ -43,7 +43,7 @@ enum MenuItem {
 
 // Deliberately hardcoded English, exempt from the tr() rule: support reads
 // these screenshots across every device language, so the labels must be
-// identical on every unit.
+// identical on every unit. The screen's name and its first 2 rows are in the device language (onEnter).
 const char* const menuNames[AboutActivity::ITEM_COUNT] = {
     "Device", "Firmware",          "Chip",        "Flash", "Display Controller", "Resolution", "Touch", "Frontlight",
     "RTC",    "Tilt Sensor (IMU)", "MAC Address",
@@ -108,7 +108,7 @@ const char* touchControllerName(const BoardConfig::TouchController c) {
 AboutActivity::AboutActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiListActivity("About", renderer, mappedInput) {}
 
-const char* AboutActivity::headerTitle() const { return "About"; }
+const char* AboutActivity::headerTitle() const { return tr(STR_ABOUT); }
 
 void AboutActivity::onEnter() {
   UiListActivity::onEnter();
@@ -116,6 +116,8 @@ void AboutActivity::onEnter() {
     rowItems_[i].label = menuNames[i];
     rowItems_[i].actionValue = static_cast<int16_t>(i);
   }
+  rowItems_[ITEM_DEVICE].label = tr(STR_CAT_DEVICE);
+  rowItems_[ITEM_FIRMWARE].label = tr(STR_ABOUT_FIRMWARE);
 
   hasGauge_ = HalPowerManager::hasBq27220Gauge();
   if (hasGauge_) {
