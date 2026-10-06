@@ -37,7 +37,7 @@ constexpr int TOUCH_STRIP_HEIGHT = 32;
 int tabTop() { return 32; }
 std::string noted;
 void noteScreenTitle(const char* t) { noted = t; }
-void drawHeader(const GfxRenderer& r, const char* title, const char* prefix);
+void drawHeader(const GfxRenderer& r, const char* title, const char* prefix, const char* note = nullptr);
 }
 struct Input {
   bool tapped = false, swipe = false; int x = 0, y = 0;
