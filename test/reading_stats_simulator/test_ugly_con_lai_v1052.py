@@ -171,6 +171,12 @@ class UglyRemainingScreensTest(unittest.TestCase):
         self.assert_hand_only_in_ugly(settings_route(4, 1), REMAP_ROWS, 'ButtonRemap',
                                       ['UP', 'RIGHT', 'RIGHT', 'RIGHT', 'CONFIRM', 'CONFIRM'])
 
+    def test_clear_cache_asks_in_the_question_box(self):
+        log = self.shot(1, settings_route(9, 4))[2]
+        self.assertIn('[UGLY] part=ask sel=0', log, log[-2000:])
+        log = self.shot(0, settings_route(9, 4))[2]
+        self.assertNotIn('part=ask', log)
+
 
 if __name__ == '__main__':
     unittest.main()

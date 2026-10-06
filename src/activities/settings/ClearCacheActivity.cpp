@@ -10,6 +10,7 @@
 #include "fontIds.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
+#include "shells/ugly/UglySwitch.h"
 #include "shells/ugly/UglyWords.h"
 #include "util/BookCacheUtils.h"
 
@@ -49,18 +50,25 @@ void ClearCacheActivity::render(RenderLock&&) {
 
   const bool handwritten = shell::uglyParts();
   if (state == WARNING && handwritten) {
-    sayCentred(renderer, pageHeight / 2 - 40, tr(STR_CLEAR_CACHE_WARNING_1));
-    sayCentred(renderer, pageHeight / 2, tr(STR_CLEAR_CACHE_WARNING_2));
-    sayCentred(renderer, pageHeight / 2 + 40, tr(STR_CLEAR_CACHE_WARNING_3));
-    sayCentred(renderer, pageHeight / 2 + 80, tr(STR_CLEAR_CACHE_WARNING_4));
-  } else if (state == WARNING) {
+    // The question box of the shell: the warning is its note, the circle follows the popup that takes the keys.
+    const std::string note = std::string(tr(STR_CLEAR_CACHE_WARNING_1)) + " " + tr(STR_CLEAR_CACHE_WARNING_2) + " " +
+                             tr(STR_CLEAR_CACHE_WARNING_3) + " " + tr(STR_CLEAR_CACHE_WARNING_4);
+    const char* answers[2] = {tr(STR_CANCEL), tr(STR_CLEAR_BUTTON)};
+    ugly::Box drawn[2];
+    ugly::askBox(renderer, mappedInput, tr(STR_CLEAR_READING_CACHE), note.c_str(), answers, confirmPopup.selected(), drawn);
+    renderer.displayBuffer();
+#ifdef UGLY_FRAME_LOG
+    LOG_INF("UGLY", "part=ask sel=%d", confirmPopup.selected());
+#endif
+    return;
+  }
+  if (state == WARNING) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 60, tr(STR_CLEAR_CACHE_WARNING_1), true);
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 30, tr(STR_CLEAR_CACHE_WARNING_2), true,
                               EpdFontFamily::BOLD);
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 10, tr(STR_CLEAR_CACHE_WARNING_3), true);
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 30, tr(STR_CLEAR_CACHE_WARNING_4), true);
-  }
-  if (state == WARNING) {
+
     if (confirmPopup.processRender(renderer, mappedInput)) return;
 
     const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_CLEAR_BUTTON), "", "");
