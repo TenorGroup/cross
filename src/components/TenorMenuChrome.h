@@ -84,6 +84,10 @@ void drawBarTab(const GfxRenderer& renderer, int cx, int y, int h, const uint8_t
 void drawPillRing(const GfxRenderer& g, int x, int y, int w, int h, int thick, bool grey);
 // The same ring inside a box with corners of radius r (a row menu, a group of list rows).
 void drawRoundRing(const GfxRenderer& g, int x, int y, int w, int h, int r, int thick, bool grey);
+// Touch shell: the one frame around a group of content across the screen, FOOT_BACK_X in from both sides,
+// grey dots 2 px, radius PANEL_RADIUS. Text inside starts 16 px in from it.
+constexpr int PANEL_RADIUS = 20;
+void drawPanel(const GfxRenderer& g, int y, int h);
 constexpr int STATUS_HEIGHT = 32;
 constexpr int STATUS_TEXT_LANE = 24;
 constexpr int STATUS_ICON_TOP_OFFSET = 5;

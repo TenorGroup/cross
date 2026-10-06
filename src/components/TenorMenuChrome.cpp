@@ -154,6 +154,10 @@ void tenorchrome::drawBarIcon(const GfxRenderer& r, const uint8_t* bits, const i
         r.drawPixel(x + i, y + j, true);
 }
 
+void tenorchrome::drawPanel(const GfxRenderer& g, const int y, const int h) {
+  drawRoundRing(g, FOOT_BACK_X, y, g.getScreenWidth() - 2 * FOOT_BACK_X, h, PANEL_RADIUS, 2, true);
+}
+
 void tenorchrome::drawBarTab(const GfxRenderer& r, const int cx, const int y, const int h, const uint8_t* bits,
                              const int w, const int iconH, const bool chosen) {
   if (chosen) drawPillRing(r, cx - BAR_TAB_W / 2, y + BAR_TAB_INSET, BAR_TAB_W, h - 2 * BAR_TAB_INSET, 3, false);

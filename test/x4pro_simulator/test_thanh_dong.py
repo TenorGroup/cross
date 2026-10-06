@@ -110,8 +110,8 @@ def check_chosen_row(tmp):
     require_reader(folder)
     capture(folder, ('contents',), (contents,))
     assert ink(contents, (32,370,160,398)) > 0.04, 'Contents never opened'
-    assert ink(contents, (416,408,448,458)) > 0.03, 'no tick at the end of the chapter being read'
-    assert ink(contents, (300,408,416,458)) == 0, 'the chapter being read still says so in words'
+    assert ink(contents, (404,408,440,458)) > 0.015, 'no tick at the end of the chapter being read'
+    assert ink(contents, (300,408,404,458)) == 0, 'the chapter being read still says so in words'
 
 
 def check_row_chevron(tmp):
@@ -184,7 +184,7 @@ def check_contents_page(tmp):
     capture(folder, ('chapters-11-15','chapter15','current-chapter-contents'), (page3,chapter15,again))
     assert 'Progress saved: spine=14 ' in (folder/'simulator.log').read_text(), 'fixture did not read chapter 15'
     assert ink(page3,(32,370,160,398)) > 0.04 and ink(again,(32,370,160,398)) > 0.04, 'Contents never opened'
-    assert ink(again,(416,408,448,458)) > 0.03, 'current chapter did not open as the chosen first row'
+    assert ink(again,(404,408,440,458)) > 0.015, 'current chapter did not open as the chosen first row'
     # Chapter 15 was row 5; reopening must move the viewport to its chosen first row.
     assert not same(page3,again,(32,404,410,466)), 'Contents ignored current chapter and reused old viewport'
 

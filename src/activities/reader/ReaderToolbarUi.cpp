@@ -471,7 +471,7 @@ void ReaderToolbarUi::buildX4Toolbar(UiScreen& screen) {
   skinFrame_ = frame;
   const auto ink = fui::Paint::solid(fui::Color::Black);
   screen.target().fill(frame, fui::Paint::solid(fui::Color::White), 20);
-  screen.target().stroke(frame, fui::Paint::dither(fui::Color::LightGray), 2, 20);
+  if (uiTarget.paintingEnabled() && renderer_) tenorchrome::drawPanel(*renderer_, frame.y, frame.height);
   screen.frame().hit({0, 0, bounds.width, frame.y}, ACTION_DISMISS, 0, fui::InputTouch);
   stepProps_ = fui::ButtonProps{};
   stepProps_.inputMask = fui::InputTouch;
@@ -546,8 +546,8 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.partialTrailingRow = fonts;
     listProps_.scrollIndicatorInset = 4;
     // The list ends at the frame's bottom edge: the bar keeps out of its round corner and rounds its ends.
-    listProps_.scrollIndicatorWidth = 4;
-    listProps_.scrollIndicatorFrameRadius = 20;
+    listProps_.scrollIndicatorWidth = 6;
+    listProps_.scrollIndicatorFrameRadius = tenorchrome::PANEL_RADIUS;
     listProps_.rowStyles = fui::defaultListRowStyles();
     nav_.selected = std::clamp(model_.selectedIndex, -1, count - 1);
     nav_.followOnBuild = nav_.selected >= 0;
@@ -593,7 +593,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 64), y, 60, 62});
     }
   }
-  screen.target().stroke(frame, fui::Paint::dither(fui::Color::LightGray), 2, 20);
+  if (uiTarget.paintingEnabled() && renderer_) tenorchrome::drawPanel(*renderer_, frame.y, frame.height);
   buildX4Tools(screen);
 }
 
