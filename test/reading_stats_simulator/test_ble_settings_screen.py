@@ -20,7 +20,7 @@ Ban do dieu huong do duoc (do lai bang anh, xem docstring cua class):
 Ky vong dung khi co BLE DANG TAT (FREEINK_CAP_BLE_HID_HOST=0, mac dinh):
   - man BLE VAN mo duoc (khong treo, khong chan);
   - trang thai hien `Bản dựng này không có Bluetooth` (STR_BLE_UNAVAILABLE) va
-    KHONG BAO GIO thanh `BẬT` (STR_STATE_ON): radio khong chay duoc;
+    KHONG BAO GIO thanh `Bật` (STR_STATE_ON): radio khong chay duoc;
   - nhip Chon vao dong `BLE page turner` van ghi y dinh (enabled=1) nhung
     begin() that bai -> ghi log ERR; tat lai thi `settings.json` tro ve 0.
   - hai dong `Gán nút lật tới` / `Gán nút lật lui` nam sau dong quet, gia tri
@@ -49,7 +49,7 @@ ART = Path(os.environ.get("CROSSPOINT_TEST_ARTIFACTS", REPO / "t3"))
 
 # Man BLE dang tat: chuoi trang thai cua STR_BLE_UNAVAILABLE trong lib/I18n/translations/vietnamese.yaml.
 UNAVAILABLE = "Bản dựng này không có Bluetooth"
-ON = "BẬT"
+ON = "Bật"
 
 NHIP_MS = 1200  # >= 800 ms: nhip nhanh hon tung lam hut nhip phim
 # `[BLE] BlePageTurner status=Bản dựng này không có Bluetooth enabled=0 bonds=0 devices=0`
