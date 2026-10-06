@@ -14,7 +14,7 @@ def extract(s,sig):
  return s[start:i]
 def strip_includes(s):return re.sub(r'^#include[^\n]*\n','',s,flags=re.M)
 files=['src/activities/settings/'+n for n in ['TextSettingsActivity.cpp','TextSettingsActivity.h','StatusBarSettingsActivity.cpp','StatusBarSettingsActivity.h','SettingsActivity.h','SettingsActivity.cpp']]
-files+=['src/SettingsList.h','src/CrossPointSettings.h','src/CrossPointSettings.cpp','src/ReaderFontChon.cpp','src/ReaderFontChon.h','src/ReaderFontSizes.cpp','src/ReaderFontSizes.h','src/ReaderInkWeight.h','lib/Epub/Epub/ReaderSpacing.h','src/MenuFavorites.cpp','src/MenuFavorites.h','src/shells/ugly/UglyQuestionSheet.cpp','src/shells/ugly/UglyQuestionSheet.h','src/shells/ugly/UglyInk.h','src/shells/ugly/UglyInk.cpp']
+files+=['src/SettingsList.h','src/CrossPointSettings.h','src/CrossPointSettings.cpp','src/ReaderFontChon.cpp','src/ReaderFontChon.h','src/ReaderFontSizes.cpp','src/ReaderFontSizes.h','src/ReaderInkWeight.h','lib/Epub/Epub/ReaderSpacing.h','src/MenuFavorites.cpp','src/MenuFavorites.h','src/shells/ugly/UglyQuestionSheet.cpp','src/shells/ugly/UglyQuestionSheet.h','src/shells/ugly/UglySheets.h','src/shells/ugly/UglyInk.h','src/shells/ugly/UglyInk.cpp']
 files+=['lib/I18n/'+n for n in ['I18n.h','I18nKeys.h','I18n.cpp','I18nStrings.h','I18nStrings.cpp']]
 snapshot=a.output/'snapshot'
 for f in files:
