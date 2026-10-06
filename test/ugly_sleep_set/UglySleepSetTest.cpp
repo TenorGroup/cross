@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -78,7 +79,7 @@ TEST(SleepSet, BothLanguagesCarryTheSameCodesInTheSameOrder) {
 
 TEST(SleepSet, EveryCodeThePickersAskForHasLines) {
   const std::string vi = text(true);
-  for (char c : std::string("abdfghijl")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 1) << c;
+  for (char c : std::string("abdfghijkl")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 1) << c;
   // f held 2 lines until the review of 04/10 cut the one about the face: it keeps the one about the dawn.
   for (char c : std::string("hi")) EXPECT_GE(countCode(vi.data(), vi.size(), c), 2) << c;
 }
@@ -208,6 +209,61 @@ TEST(SleepSet, WakeSentenceFollowsTheHourOfWaking) {
   EXPECT_EQ(wakeLineIndex(c), beforeHabit) << "the reading habit must not select a line that tells the reader to sleep";
 }
 
+// The complaint of 06/10: 30 sleeps in one evening, the sentence the user meets each time. The X3 keeps the
+// sleep count and the line shown last through a wake (RTC); the 22-24 band held 1 line and won 20 of 30.
+struct Evening {
+  int different = 0, most = 0, repeats = 0;
+};
+Evening evening(const std::string& vi, const int firstHour, const int hours, const bool lastKept) {
+  std::map<std::string, int> often;
+  std::string before;
+  uint32_t last = NO_LINE;
+  Evening e;
+  for (int i = 0; i < 30; ++i) {
+    Context c;
+    c.day = 20261006, c.hour = firstHour + i % hours, c.minutesToday = 20;
+    c.count = 100 + static_cast<uint32_t>(i);  // sleeps since the board had power
+    const Record r = sleepLine(vi.data(), vi.size(), c, last);
+    if (lastKept) last = r.id;
+    const std::string s(r.text, r.len);
+    if (s == before) ++e.repeats;
+    before = s;
+    e.most = std::max(e.most, ++often[s]);
+  }
+  e.different = static_cast<int>(often.size());
+  return e;
+}
+
+TEST(SleepSet, AnEveningOfSleepsNeverRepeatsALineAndNoLineWins) {
+  const std::string vi = text(true);
+  for (const auto& [firstHour, hours] : {std::pair{21, 3}, std::pair{22, 2}, std::pair{18, 4}, std::pair{20, 1}}) {
+    const Evening e = evening(vi, firstHour, hours, true);
+    EXPECT_EQ(e.repeats, 0) << firstHour << "h for " << hours;
+    EXPECT_LE(e.most * 100, 30 * 20) << "one sentence in over a fifth of the sleeps, " << firstHour << "h";
+    EXPECT_GE(e.different, 8) << firstHour << "h";
+  }
+  // The simulator and a board that lost its RTC forget the line shown last: the count alone still never
+  // shows the same line twice in a row at one hour.
+  for (const int hour : {19, 22, 23}) EXPECT_EQ(evening(vi, hour, 1, false).repeats, 0) << hour;
+}
+
+TEST(SleepSet, WakesTakeTurnsAndNeverGreetTwiceTheSame) {
+  for (const int hour : {6, 11, 17, 18, 23}) {
+    Context c;
+    c.day = 20261006, c.hour = hour;
+    uint32_t last = NO_LINE;
+    std::set<int> seen;
+    for (uint32_t n = 0; n < 12; ++n) {
+      c.count = n;
+      const int line = wakeLineIndex(c, last);
+      EXPECT_NE(static_cast<uint32_t>(line), last) << hour << "h wake " << n;
+      last = static_cast<uint32_t>(line);
+      seen.insert(line);
+    }
+    EXPECT_EQ(seen.size(), hour == 17 || hour == 18 ? 3u : 2u) << "every line of the hour shows up, " << hour << "h";
+  }
+}
+
 // The hour of the day to its code, written out here on its own, hour by hour.
 TEST(SleepSet, EveryHourMapsToItsBand) {
   const std::string vi = text(true);
@@ -218,8 +274,8 @@ TEST(SleepSet, EveryHourMapsToItsBand) {
       if (line == s) return k;
     return '?';
   };
-  const int wakeFirst[] = {0,0,0,0,0,2,2,4,4,6,6,8,8,10,10,10,10,12,12,13,13,13,15,15};
-  const int wakeCount[] = {2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2};
+  const int wakeFirst[] = {0,0,0,0,0,2,2,4,4,6,6,8,8,10,10,10,10,12,12,15,15,15,17,17};
+  const int wakeCount[] = {2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,2,2,2,2,2};
   const char sleepHours[] = {'f','f','f','f','f','g','g','g','g','h','h','h','i','i','j','j','j','j','k','k','k','k','l','l'};
   for (int h = 0; h < 24; ++h) {
     Context c;

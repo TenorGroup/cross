@@ -41,6 +41,24 @@ class UglySleepSetTest(unittest.TestCase):
         self.assertEqual(len({digest(i) for i in images}), 8)
         self.assertEqual(len({digest(i.crop(DOODLE)) for i in images}), 8, 'the doodles differ, not only the sentences')
 
+    def test_thirty_sleeps_at_22_never_repeat_a_sentence(self):
+        # The complaint of 06/10: the 22-24 band held 1 line and showed it in 20 of 30 sleeps. The count is
+        # pumped here, since the simulator loses it on every wake (the X3 keeps it in RTC).
+        from multiprocessing.pool import ThreadPool
+
+        def sentence(n):
+            card = Card(sleepScreen=11)
+            try:
+                _, shots = card.run('1500:SLEEP;4500:QUIT', [(3500, 's')], CROSSPOINT_SIM_UGLY_SLEEP='20261006,%d,22,20,0' % n)
+            finally:
+                card.close()
+            return digest(shots['s'].crop((0, 80, 528, 320)))
+
+        with ThreadPool(4) as pool:
+            seen = pool.map(sentence, range(100, 130))
+        self.assertEqual(sum(a == b for a, b in zip(seen, seen[1:])), 0, 'the same sentence twice in a row')
+        self.assertLessEqual(max(seen.count(s) for s in seen), 6, 'one sentence in over a fifth of 30 sleeps')
+
     def test_going_to_sleep_stays_quick(self):
         log, _ = sleep(20261004)
         visible = int(re.search(r'sleep ready=1 visible=(\d+) ms', log).group(1))

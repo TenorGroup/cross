@@ -14,6 +14,7 @@
 #include "components/TenorMenuChrome.h"
 #include "components/icons/readerToolbarIcons.h"
 #include "shells/Shell.h"
+#include "shells/ugly/UglyChrome.h"
 #include "shells/ugly/UglyInk.h"
 
 namespace fui = freeink::ui;
@@ -682,18 +683,8 @@ void ReaderToolbarUi::buildX4Keypad(UiScreen& screen, const fui::Rect& frame) {
 }
 #endif
 
-void readerugly::text(const GfxRenderer& r, const fui::Rect& rect, const char* label, const fui::TextAlign align) {
-  if (!label || !*label || rect.empty()) return;
-  const auto clip = r.getClipRect();
-  const int left = std::max<int>(rect.x, clip[0]), top = std::max<int>(rect.y, clip[1]);
-  r.setClipRect(left, top, std::max(0, std::min<int>(rect.right(), clip[0] + clip[2]) - left),
-                std::max(0, std::min<int>(rect.bottom(), clip[1] + clip[3]) - top));
-  const auto fitted = ugly::fit(r, ugly::Size::S22, label, rect.width);
-  const int width = ugly::width(r, ugly::Size::S22, fitted.c_str());
-  const int x = align == fui::TextAlign::Center ? rect.x + (rect.width - width) / 2
-                : align == fui::TextAlign::Right ? rect.right() - width : rect.x;
-  ugly::text(r, ugly::Size::S22, x, rect.y + (rect.height + ugly::ascent(ugly::Size::S22)) / 2, fitted.c_str());
-  r.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+fui::Rect readerugly::text(const GfxRenderer& r, const fui::Rect& rect, const char* label, const fui::TextAlign align) {
+  return uglychrome::words(r, rect, label, align);
 }
 
 void readerugly::paper(const GfxRenderer& r, const fui::Rect& rect) {
@@ -819,8 +810,8 @@ void ReaderToolbarUi::paintUgly() {
 #endif
         const int choices = model_.choiceCount ? std::min(model_.choiceCount(index), kChoiceStride) : 0;
         if (choices > 0) label.width = static_cast<int16_t>(std::max(0, skinChoices_[i].x - label.x - 8));
-        readerugly::text(r, label, windowLabels_[i].c_str());
-        if (model_.selectedIndex == index) readerugly::selected(r, row);
+        const auto ink = readerugly::text(r, label, windowLabels_[i].c_str());
+        if (model_.selectedIndex == index) uglychrome::ring(r, ink);
         if (marked) ugly::tick(r, row.right() - 30, row.y + row.height / 2);
         if (opensNext) ugly::mark(r, ugly::Mark::Right, row.right() - 24, row.y + row.height / 2);
         for (int k = 0; k < choices; ++k) {
@@ -847,8 +838,8 @@ void ReaderToolbarUi::paintUgly() {
   for (int tool = 0; tool < 3; ++tool) {
     const auto box = app.publishedRect(ACTION_TOOL, tool);
     if (!box.empty()) {
-      readerugly::text(r, box.inset(fui::Insets{0, 8, 0, 8}), I18N.get(tools[tool]), fui::TextAlign::Center);
-      if (model_.activeTool == tool) readerugly::selected(r, box);
+      const auto ink = readerugly::text(r, box.inset(fui::Insets{0, 8, 0, 8}), I18N.get(tools[tool]), fui::TextAlign::Center);
+      if (model_.activeTool == tool) uglychrome::ring(r, ink);
     }
   }
 }

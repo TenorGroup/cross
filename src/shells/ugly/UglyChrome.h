@@ -8,14 +8,21 @@ class GfxRenderer;
 namespace uglychrome {
 
 // Words where the layout put them: one line cut short by the scrawl, or wrapped when the layout lets them run to
-// more lines and the box holds them. `locked` (a row that cannot be chosen now) strikes them through.
-void words(const GfxRenderer& renderer, const freeink::ui::Rect& rect, const char* text,
+// more lines and the box holds them. `locked` (a row that cannot be chosen now) strikes them through. Returns where
+// the ink went (empty when nothing was written).
+freeink::ui::Rect words(const GfxRenderer& renderer, const freeink::ui::Rect& rect, const char* text,
            freeink::ui::TextAlign align = freeink::ui::TextAlign::Left, bool locked = false, int maxLines = 1);
 
+// The circle on the cursor: round the words written (as words() returned them), padded like the circles of the
+// notebook and the answer sheet. Empty words draw nothing.
+void ring(const GfxRenderer& renderer, const freeink::ui::Rect& words);
+
 // The pen marks of a row laid out at `box`: the circle on the cursor row, a tick on the value in use, an arrow on a
-// row that opens another screen, the word On or Off of a switch.
+// row that opens another screen, the word On or Off of a switch. The circle goes round the words in `around` (the
+// label, as words() returned it), as the notebook circles its rows; with `around` empty it goes round the row.
 struct Marks {
   bool selected = false, chosen = false, opensNext = false, toggle = false, toggleOn = false;
+  freeink::ui::Rect around{};
 };
 void marks(const GfxRenderer& renderer, const freeink::ui::Rect& box, const Marks& marks);
 // Room the marks take at the row's right end.

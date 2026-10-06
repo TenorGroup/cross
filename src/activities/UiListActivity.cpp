@@ -714,7 +714,10 @@ bool UiListActivity::renderUglyList() {
   uiTarget.setTextSink(nullptr, nullptr);
   uiTarget.setPaintingEnabled(true);
   drawChrome();
-  for (const auto& run : runs) uglychrome::words(renderer, run.rect, run.text.c_str(), run.align, run.locked, run.lines);
+  std::vector<fui::Rect> ink;
+  ink.reserve(runs.size());
+  for (const auto& run : runs)
+    ink.push_back(uglychrome::words(renderer, run.rect, run.text.c_str(), run.align, run.locked, run.lines));
   // The marks go on the rows that took a place on screen; a locked row has no place to choose and gets none.
   const int count = listCount(), first = std::max(0, activeNav().top);
   for (int row = first; row < count && row < first + 64; ++row) {
@@ -723,7 +726,17 @@ bool UiListActivity::renderUglyList() {
     fui::ListItem item;
     if (uglyRowProvider_) uglyRowProvider_(uglyRowCtx_, static_cast<uint16_t>(row), item);
     else if (uglyItems_ && row >= uglyItemsFirst_) item = uglyItems_[row - uglyItemsFirst_];
-    uglychrome::marks(renderer, box, {row == activeNav().selected, item.chosen, item.opensNext, item.toggle, item.toggleChecked});
+    uglychrome::Marks marks{row == activeNav().selected, item.chosen, item.opensNext, item.toggle, item.toggleChecked};
+    // The circle goes round the row's label: the first words written from the row's left half.
+    for (size_t i = 0; marks.selected && i < runs.size(); ++i) {
+      const auto& at = runs[i].rect;
+      const int mid = at.y + at.height / 2;
+      if (runs[i].align == fui::TextAlign::Left && mid >= box.y && mid < box.bottom() && at.x < box.x + box.width / 2) {
+        marks.around = ink[i];
+        break;
+      }
+    }
+    uglychrome::marks(renderer, box, marks);
   }
   drawFooter();
 #ifdef UGLY_FRAME_LOG

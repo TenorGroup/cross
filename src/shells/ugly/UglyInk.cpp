@@ -307,13 +307,26 @@ int paragraph(const GfxRenderer& r, const Size s, const int x, const int baselin
     if (blank == std::string::npos) break;
     from = blank + 1;
   }
+  // A line break of the sentence ends the line there (a null token), the words on either side kept apart.
+  std::vector<std::string> pieces;
+  for (const auto& word : words)
+    for (size_t at = 0;;) {
+      const size_t nl = word.find('\n', at);
+      pieces.push_back(word.substr(at, nl == std::string::npos ? std::string::npos : nl - at));
+      if (nl == std::string::npos) break;
+      pieces.push_back("\n");
+      at = nl + 1;
+    }
   std::vector<logic::Token> tokens;
-  for (const auto& word : words) tokens.push_back({word.c_str(), 0, false});
+  for (const auto& piece : pieces)
+    if (piece == "\n") tokens.push_back({nullptr, 0, false});
+    else if (!piece.empty()) tokens.push_back({piece.c_str(), 0, false});
   std::vector<logic::Placed> placed(tokens.size());
   const int lines = logic::layout(tokens.data(), static_cast<int>(tokens.size()), maxWidth, width(r, s, "a") / 2 + 4,
                                   [&](const char* t) { return width(r, s, t); }, placed.data());
   if (!draw) return lines;
-  for (size_t i = 0; i < tokens.size(); ++i) text(r, s, x + placed[i].x, baseline + placed[i].line * lineHeight, tokens[i].text);
+  for (size_t i = 0; i < tokens.size(); ++i)
+    if (tokens[i].text) text(r, s, x + placed[i].x, baseline + placed[i].line * lineHeight, tokens[i].text);
   return lines;
 }
 
@@ -597,10 +610,7 @@ void paper(const GfxRenderer& r, const int top, const int bottom, const bool tor
 void tickBox(const GfxRenderer& r, const int x, const int y, const bool ticked) {
   const int box[5][2] = {{x - 22, y - 10}, {x, y - 11}, {x + 1, y + 10}, {x - 23, y + 11}, {x - 22, y - 10}};
   polyline(r, box, 5, 2);
-  if (ticked) {
-    stroke(r, x - 18, y - 1, x - 12, y + 7, 3);
-    stroke(r, x - 12, y + 7, x + 4, y - 16, 3);
-  }
+  if (ticked) penTick(r, x - 12, y + 7, 26, 3);  // the one tick of the shell
 }
 
 void heart(const GfxRenderer& r, const int x, const int y) {

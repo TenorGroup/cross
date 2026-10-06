@@ -6,7 +6,7 @@ p=argparse.ArgumentParser(); p.add_argument('--repo',type=Path,default=Path(__fi
 s=(a.repo/'src/components/OptionPopup.h').read_text()
 assert 'setUglyStyle' not in s, 'RED: a popup asks the shell, no caller opts it in'
 assert 'if (shell::isUgly()) renderUgly' in s and 'else fui::optionDialog' in s, 'RED: popup styles must select exact existing SDK branch'
-start=s.index('  static void uglyText'); end=s.index('  template <typename Frame>\n  void renderAnchored',start)
+start=s.index('  // Returns where the ink went, for the circle on the focused option.\n  static freeink::ui::Rect uglyText'); end=s.index('  template <typename Frame>\n  void renderAnchored',start)
 helpers=s[start:end]
 cpp=r'''
 #include <FreeInkUI.h>
@@ -33,6 +33,7 @@ namespace ugly {
  void line(const GfxRenderer&r,int,int,int,int,int,int){++r.pen;}
  void circle(const GfxRenderer&r,Circle,Box,int,int,int){++r.pen;}
 }
+namespace uglychrome { void ring(const GfxRenderer&r,const fui::Rect&){++r.pen;} }
 struct Target:fui::DrawTarget {
  int tier=0;
  fui::Size measureText(fui::FontId,const char*s,fui::TextStyle)const override{return{static_cast<int16_t>(strlen(s)*(8+tier*2)),static_cast<int16_t>(24+tier*8)};}
