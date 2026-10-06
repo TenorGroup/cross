@@ -191,7 +191,7 @@ int tipY(const GfxRenderer&, bool) { return 726; }
 int tipTopY(const GfxRenderer&, const char*, int, int, bool) { return 700; }
 int tipHeight(const GfxRenderer&, const char*, int) { return 28; }
 void drawTip(const GfxRenderer&, const char*, int, int, bool) {}
-void drawHeader(const GfxRenderer&, const char*, const char*) {}
+void drawHeader(const GfxRenderer&, const char*, const char*, const char*) {}
 int moreBelowChevronTopY(const GfxRenderer&, int) { return 696; }
 void drawMoreBelowChevron(const GfxRenderer&, int) {}
 void drawMoreChevron(const GfxRenderer&, int, int, ChevronDir, int) {}
