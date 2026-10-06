@@ -50,6 +50,17 @@ fui::Rect words(const GfxRenderer& r, const fui::Rect& box, const char* text, co
   return ink;
 }
 
+void apart(const GfxRenderer& r, fui::Rect& label, const char* labelText, fui::Rect& value, const char* valueText) {
+  constexpr int GAP = 14;  // the least air between the label and the value on one line
+  const int span = value.right() - label.x;
+  if (label.height < 2 * LINE || ugly::width(r, ugly::Size::S22, labelText) + ugly::width(r, ugly::Size::S22, valueText) + GAP <= span)
+    return;
+  const int16_t half = static_cast<int16_t>(label.height / 2);
+  value = {label.x, static_cast<int16_t>(label.y + half), static_cast<int16_t>(span), static_cast<int16_t>(label.height - half)};
+  label.width = static_cast<int16_t>(span);
+  label.height = half;
+}
+
 void ring(const GfxRenderer& r, const fui::Rect& w) {
   if (!w.empty()) ugly::circle(r, ugly::Circle::Row, {w.x, w.y, w.right(), w.bottom()}, 12, 8, 2);
 }

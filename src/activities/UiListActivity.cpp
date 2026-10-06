@@ -645,6 +645,15 @@ bool UiListActivity::renderUglyList() {
   uiTarget.setTextSink(nullptr, nullptr);
   uiTarget.setPaintingEnabled(true);
   drawChrome();
+  // A value at the right end of the line a label stands on: the hand writes wider than the layout's font, so the pair
+  // may no longer fit side by side.
+  for (auto& value : runs) {
+    if (value.align != fui::TextAlign::Right) continue;
+    for (auto& label : runs)
+      if (label.align == fui::TextAlign::Left && label.rect.y == value.rect.y && label.rect.height == value.rect.height &&
+          label.rect.x < value.rect.x)
+        uglychrome::apart(renderer, label.rect, label.text.c_str(), value.rect, value.text.c_str());
+  }
   std::vector<fui::Rect> ink;
   ink.reserve(runs.size());
   for (const auto& run : runs)

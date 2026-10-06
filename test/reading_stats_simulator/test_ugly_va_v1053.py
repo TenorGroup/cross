@@ -8,7 +8,7 @@ import unittest
 
 from PIL import ImageFilter
 
-from ugly_common import Card
+from ugly_common import Card, ink
 
 GAP, START, SETTLE = 700, 1500, 1800
 
@@ -68,6 +68,23 @@ class KeyMarks(unittest.TestCase):
         self.assertIn('KeyboardEntry', re.findall(r'Entering activity: (\w+)', log), log[-1500:])
         drawn = set(re.findall(r'part=penmark cp=(\w+)', log))
         self.assertTrue({'E101', 'E109'} <= drawn, 'the 2 keys of the last tip are not drawn by the pen: %s' % sorted(drawn))
+
+
+def ink_rows(image, box):
+    """The first and the last row of `box` that hold black."""
+    part = image.crop(box)
+    rows = [y for y in range(part.height) if ink(part, (0, y, part.width, y + 1))]
+    return (rows[0], rows[-1]) if rows else (0, 0)
+
+
+class Rows(unittest.TestCase):
+    def test_a_label_and_a_value_that_do_not_fit_side_by_side_take_2_lines(self):
+        # KOReader Sync: "URL server đồng bộ" with the value "Mặc định: kosync.tenor.vn". The layout fits them on one
+        # line in the UI font; in hand they touched, no air between. The value goes under the label.
+        log, frame, _ = frames(settings_question(9, 1))
+        self.assertIn('KOReaderSettings', re.findall(r'Entering activity: (\w+)', log), log[-1500:])
+        first, last = ink_rows(frame, (0, 244, 528, 318))
+        self.assertGreater(last - first, 40, 'the label and the value of the URL row share one line')
 
 
 if __name__ == '__main__':
