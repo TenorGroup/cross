@@ -11,7 +11,8 @@ namespace ugly {
 
 // Must match EVENTS in scripts/ugly/gen_quips.py.
 enum class Quip : uint8_t {
-  OpenPage, OpenGroup, SetValue, Pin, Unpin, Delete, ShellCross, ShellUgly, Sleep, Wake, OpenBook, LeaveBook, OpenScreen
+  OpenPage, OpenGroup, SetValue, Pin, Unpin, Delete, ShellCross, ShellUgly, Sleep, Wake, OpenBook, LeaveBook, OpenScreen,
+  Scrawl
 };
 // Conditions with data, by event (0: none, the lines take turns). Must match WHEN in gen_quips.py.
 namespace when {

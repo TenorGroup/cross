@@ -563,6 +563,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     // off the web page by getSettingsList().
     v.push_back(SettingInfo::Value(StrId::STR_UI_SHELL, &CrossPointSettings::uiShellSleepMemo,
                            {0, CrossPointSettings::SLEEP_SCREEN_MODE_COUNT, 1}, "uiShellSleepMemo"));
+    v.push_back(SettingInfo::Toggle(StrId::STR_UI_SHELL, &CrossPointSettings::uiShellClockMemo, "uiShellClockMemo"));
+    v.push_back(SettingInfo::Toggle(StrId::STR_UI_SHELL, &CrossPointSettings::uglyBatteryHidden, "uglyBatteryHidden"));
 
     // Frontlight quick-panel state: persisted and web-exposed, but hidden
     // from the on-device Settings screen because the swipe panel owns it.
@@ -654,8 +656,9 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     v.push_back(SettingInfo::Enum(StrId::STR_CLOCK_DST, &CrossPointSettings::clockDst,
                           {StrId::STR_CLOCK_DST_AUTO, StrId::STR_STATE_ON, StrId::STR_STATE_OFF}, "clockDst",
                           StrId::STR_CUSTOMISE_STATUS_BAR));
-    v.push_back(SettingInfo::Toggle(StrId::STR_CLOCK_IN_HEADER, &CrossPointSettings::clockShowInHeader, "clockShowHeader",
-                            StrId::STR_CUSTOMISE_STATUS_BAR));
+    v.push_back(SettingInfo::Enum(StrId::STR_CLOCK_IN_HEADER, &CrossPointSettings::clockShowInHeader,
+                          {StrId::STR_HIDE, StrId::STR_CLOCK_HEADER_TIME, StrId::STR_CLOCK_HEADER_TIME_DATE}, "clockShowHeader",
+                          StrId::STR_CUSTOMISE_STATUS_BAR));
     v.push_back(SettingInfo::Enum(StrId::STR_CLOCK_FORMAT, &CrossPointSettings::clockFormat,
                           {StrId::STR_CLOCK_FORMAT_24H, StrId::STR_CLOCK_FORMAT_12H}, "clockFormat",
                           StrId::STR_CUSTOMISE_STATUS_BAR));
@@ -773,7 +776,9 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
   v.erase(std::remove_if(v.begin(), v.end(),
                          [](const SettingInfo& s) {
                            return s.valuePtr == &CrossPointSettings::uiShell || s.valuePtr == &CrossPointSettings::uiUglyLevel ||
-                                  s.valuePtr == &CrossPointSettings::uiShellSleepMemo;
+                                  s.valuePtr == &CrossPointSettings::uiShellSleepMemo ||
+                                  s.valuePtr == &CrossPointSettings::uiShellClockMemo ||
+                                  s.valuePtr == &CrossPointSettings::uglyBatteryHidden;
                          }),
           v.end());
   if (registry && registry->getFamilyCount() > 0) {

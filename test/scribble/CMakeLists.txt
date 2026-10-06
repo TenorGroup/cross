@@ -1,4 +1,4 @@
-# Scribbled gestures (X, ring, tap, swipe) on the generated strokes in samples.txt and on any
+# Scribbled gestures (strike, ring, tap, swipe) on the generated strokes in samples.txt and on any
 # strokes drawn on a device (samples-*.txt, from log_to_samples.py).
 add_executable(ScribbleTest ScribbleTest.cpp)
 target_link_libraries(ScribbleTest PRIVATE crosspoint_test_common GTest::gtest_main)

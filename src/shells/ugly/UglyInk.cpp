@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -367,6 +368,24 @@ void battery(const GfxRenderer& r, const int x, const int y, const int percent) 
 namespace {
 // 1/16 px to px, rounded away from zero.
 int sixteenths(const int v) { return (v + (v < 0 ? -8 : 8)) / 16; }
+
+// The header clock as clockShowInHeader asks: the time, or the time and the day/month (after it, or into
+// `date` when one is given). False when it is hidden or the clock was never set.
+bool clockText(char* out, const size_t size, char* date = nullptr, const size_t dateSize = 0) {
+  if (date) *date = 0;
+  const uint8_t mode = SETTINGS.clockShowInHeader;
+  if (mode == CrossPointSettings::CLOCK_HEADER_HIDE || !clockstatus::hasValidTime() ||
+      !halClock.formatTime(out, size, SETTINGS.clockFormat == 1))
+    return false;
+  uint16_t year = 0;
+  uint8_t month = 0, day = 0, hour = 0, minute = 0;
+  if (mode == CrossPointSettings::CLOCK_HEADER_TIME_DATE && halClock.getDateTime(year, month, day, hour, minute)) {
+    const size_t used = date ? 0 : strlen(out);
+    snprintf(date ? date : out + used, date ? dateSize : size - used, date ? "%u/%u" : " %u/%u", static_cast<unsigned>(day),
+             static_cast<unsigned>(month));
+  }
+  return true;
+}
 }  // namespace
 
 void mark(const GfxRenderer& r, const Mark m, const int cx, const int cy) {
@@ -390,9 +409,12 @@ void statusBar(const GfxRenderer& r, const MappedInputManager& input, const Hint
   const int w = r.getScreenWidth(), h = r.getScreenHeight();
   const int y = h - 20;
   battery(r, 14, y, powerManager.getDisplayedBatteryPercentage());
-  char clock[10];
-  if (SETTINGS.clockShowInHeader && clockstatus::hasValidTime() && halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1))
+  // The date has no room beside the clock (the Down mark): it sits in the gap between the Confirm and Up marks.
+  char clock[12], date[8];
+  if (clockText(clock, sizeof(clock), date, sizeof(date))) {
     text(r, Size::S22, w - 14 - width(r, Size::S22, clock), y + 8, clock);
+    if (*date) text(r, Size::S22, (w >= 528 ? 264 : 240) - width(r, Size::S22, date) / 2, y + 8, date);
+  }
   // Front Left and Right walk up and down the screen, so their marks point up and down.
   const auto labels = input.mapLabels(hints.back ? "b" : "", hints.confirm ? "c" : "", hints.left ? "u" : "", hints.right ? "d" : "");
   static constexpr int WIDE[4] = {105, 197, 331, 423}, NARROW[4] = {98, 186, 294, 382};
@@ -403,8 +425,18 @@ void statusBar(const GfxRenderer& r, const MappedInputManager& input, const Hint
 }
 
 #if FREEINK_DEVICE_X4PRO
+static_assert(touch::CLOCK_HIDE == CrossPointSettings::CLOCK_HEADER_HIDE && touch::CLOCK_TIME == CrossPointSettings::CLOCK_HEADER_TIME &&
+                  touch::CLOCK_TIME_DATE == CrossPointSettings::CLOCK_HEADER_TIME_DATE,
+              "the band's clock values are clockShowInHeader's");
+
 void topBar(const GfxRenderer& r, const char* left) {
-  if (left && *left) text(r, Size::S22, 24, 34, fit(r, Size::S22, left, 300).c_str());
+  // The clock ends at x 400 and the battery starts at 412, shown or struck off: a ring finds them where they were.
+  char clock[20];
+  const bool hasClock = clockText(clock, sizeof(clock));
+  const int clockX = hasClock ? 400 - width(r, Size::S22, clock) : 400;
+  if (hasClock) text(r, Size::S22, clockX, 34, clock);
+  if (left && *left) text(r, Size::S22, 24, 34, fit(r, Size::S22, left, std::min(300, clockX - 40)).c_str());
+  if (SETTINGS.uglyBatteryHidden) return;
   constexpr int X0 = 412, X1 = 456, Y0 = 12, Y1 = 37;
   const int body[5][2] = {{X0, Y0 + 1}, {X1, Y0}, {X1 + 1, Y1}, {X0 - 1, Y1 + 1}, {X0, Y0 + 1}};
   polyline(r, body, 5, 2);
@@ -420,13 +452,13 @@ void topBar(const GfxRenderer& r, const char* left) {
   } else {  // no room for the number: the level in pen strokes, as on the X3
     for (int px = X0 + 3; px < X0 + 3 + (X1 - X0 - 6) * level / 100; px += 3) stroke(r, px, Y0 + 4, px + 1, Y1 - 4, 1);
   }
-  char clock[10];
-  if (SETTINGS.clockShowInHeader && clockstatus::hasValidTime() && halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1))
-    text(r, Size::S22, 400 - width(r, Size::S22, clock), 34, clock);
 }
 
 void formTopBar(const GfxRenderer& r) {
   if (SETTINGS.globalStatusBarHidden()) return;
+  char clock[20];
+  if (clockText(clock, sizeof(clock))) text(r, Size::S22, 24, 34, clock);
+  if (SETTINGS.uglyBatteryHidden) return;
   const int x0 = r.getScreenWidth() - 68, x1 = r.getScreenWidth() - 24;
   constexpr int y0 = 12, y1 = 37;
   const int body[5][2] = {{x0, y0 + 1}, {x1, y0}, {x1 + 1, y1}, {x0 - 1, y1 + 1}, {x0, y0 + 1}};
@@ -440,9 +472,6 @@ void formTopBar(const GfxRenderer& r) {
   const int pw = width(r, Size::S22, pct);
   if (pw <= x1 - x0 - 6) text(r, Size::S22, (x0 + x1 - pw) / 2, y1 - 5, pct);
   else for (int x = x0 + 3; x < x0 + 3 + (x1 - x0 - 6) * level / 100; x += 3) stroke(r, x, y0 + 4, x + 1, y1 - 4, 1);
-  char clock[10];
-  if (SETTINGS.clockShowInHeader && clockstatus::hasValidTime() && halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1))
-    text(r, Size::S22, 24, 34, clock);
 }
 
 void arrow(const GfxRenderer& r, const int x, const int y, const bool down, const int length) {

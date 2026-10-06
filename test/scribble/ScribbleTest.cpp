@@ -115,15 +115,6 @@ TEST(Scribble, IsqrtExact) {
   }
 }
 
-TEST(Scribble, CrossAtFindsTheMiddle) {
-  int x = 0, y = 0;
-  EXPECT_TRUE(crossAt({0, 0, 100, 100}, {100, 0, 0, 100}, x, y));
-  EXPECT_EQ(x, 50);
-  EXPECT_EQ(y, 50);
-  EXPECT_FALSE(crossAt({0, 0, 100, 100}, {10, 0, 110, 100}, x, y));  // parallel
-  EXPECT_FALSE(crossAt({0, 0, 100, 100}, {0, 100, 40, 60}, x, y));    // stops short
-}
-
 TEST(Scribble, LongStrokeKeepsItsEnds) {
   Stroke s;
   s.begin(0, 0, 0);
@@ -135,31 +126,36 @@ TEST(Scribble, LongStrokeKeepsItsEnds) {
   EXPECT_EQ(s.p[s.n - 1].t, 1000);
 }
 
-TEST(Scribble, CrossAimsAtTheCrossingAndBoxesBothStrokes) {
-  Gesture g;
-  g.gap = 250;
-  std::vector<Sample> a, b;
-  for (int i = 0; i <= 12; ++i) a.push_back({180 + i * 10, 240 + i * 10, i ? 10 : 0});
-  for (int i = 0; i <= 12; ++i) b.push_back({300 - i * 10, 240 + i * 10, i ? 10 : 0});
-  g.strokes = {a, b};
-  std::vector<Result> r;
-  ASSERT_EQ(replay(g, &r), "cross");
-  EXPECT_EQ(r[0].strokes, 2);
-  EXPECT_NEAR(r[0].x, 240, 2);
-  EXPECT_NEAR(r[0].y, 300, 2);
-  EXPECT_EQ(r[0].box.x0, 180);
-  EXPECT_EQ(r[0].box.x1, 300);
-  EXPECT_EQ(r[0].box.y0, 240);
-  EXPECT_EQ(r[0].box.y1, 360);
-}
-
-TEST(Scribble, HorizontalSwipeIsNotHeldForAPair) {
+TEST(Scribble, ASwipeIsDecidedOnLift) {
   Scribbler s;
   uint32_t t = 0;
   for (int i = 0; i <= 20; ++i) s.step(true, 100 + i * 15, 400, t += 10);
   const Result r = s.step(false, 0, 0, t += 10);
-  EXPECT_EQ(r.kind, Kind::Swipe);  // decided on lift, no PAIR_MS wait
+  EXPECT_EQ(r.kind, Kind::Swipe);  // decided on lift
   EXPECT_LT(r.from.x, r.to.x);
+}
+
+TEST(Scribble, AStrikeAimsAtItsMiddle) {
+  Scribbler s;
+  uint32_t t = 0;
+  for (int i = 0; i <= 28; ++i) s.step(true, 100 + i * 10, 300, t += 10);
+  for (int i = 1; i <= 28; ++i) s.step(true, 380 - i * 10, 310, t += 10);
+  const Result r = s.step(false, 0, 0, t += 10);
+  EXPECT_EQ(r.kind, Kind::Strike);
+  EXPECT_EQ(r.x, 240);
+  EXPECT_EQ(r.y, 305);
+}
+
+TEST(Scribble, ASecondFingerSpoilsTheStroke) {
+  Scribbler s;
+  uint32_t t = 0;
+  for (int i = 0; i <= 28; ++i) s.step(true, 100 + i * 10, 300, t += 10);
+  s.spoil();
+  for (int i = 1; i <= 28; ++i) s.step(true, 380 - i * 10, 310, t += 10);
+  EXPECT_EQ(s.step(false, 0, 0, t += 10).kind, Kind::None);
+  EXPECT_EQ(s.endedStroke(), nullptr) << "no ink drawn back for the light's stroke";
+  for (int i = 0; i <= 20; ++i) s.step(true, 100 + i * 15, 400, t += 10);
+  EXPECT_EQ(s.step(false, 0, 0, t += 10).kind, Kind::Swipe) << "the next stroke counts again";
 }
 
 TEST(Scribble, Samples) {

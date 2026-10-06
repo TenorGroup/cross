@@ -84,6 +84,9 @@ void MappedInputManager::stepScribble() const {
   int x = 0;
   int y = 0;
   const bool down = isScreenTouchHeld(x, y);
+  uint8_t contacts = 0;
+  int cx = 0, cy = 0;
+  if (down && touchContactsAt(contacts, cx, cy) && contacts >= 2) scribbler.spoil();
   scribbleFrame = scribbler.step(down, x, y, millis());
 #ifdef TENOR_PRESS_PROBE
   if (!strokeLogOn || strokesLogged >= STROKE_LOG_MAX) return;

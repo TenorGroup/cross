@@ -78,6 +78,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // escape hatch for a zone whose law changed before the firmware caught up.
   enum CLOCK_DST_MODE { CLOCK_DST_AUTO = 0, CLOCK_DST_ON = 1, CLOCK_DST_OFF = 2, CLOCK_DST_MODE_COUNT };
 
+  // clockShowInHeader. Was a toggle: a saved 0 (off) reads as hidden, a saved 1 (on) as the time.
+  // The value a fresh device holds in `field` (the struct initializers and the tenor preset).
+  static uint8_t defaultOf(uint8_t CrossPointSettings::* field);
+
+  enum CLOCK_HEADER_MODE { CLOCK_HEADER_HIDE = 0, CLOCK_HEADER_TIME = 1, CLOCK_HEADER_TIME_DATE = 2, CLOCK_HEADER_MODE_COUNT };
+
   enum ORIENTATION {
     PORTRAIT = 0,       // 480x800 logical coordinates (current default)
     LANDSCAPE_CW = 1,   // 800x480 logical coordinates, rotated 180° (swap top/bottom)
@@ -326,8 +332,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t clockTimezone = 255;
   // CLOCK_DST_MODE: follow the zone's DST rule, or force it on/off.
   uint8_t clockDst = CLOCK_DST_AUTO;
-  // Show the clock opposite the battery in every header band that draws one.
-  uint8_t clockShowInHeader = 0;
+  // CLOCK_HEADER_MODE: the clock (and the date) opposite the battery in every header band that draws one.
+  // tenor/cross draws the time for both shown modes; tenor/ugly adds the date.
+  uint8_t clockShowInHeader = CLOCK_HEADER_HIDE;
   // Set once an NTP sync succeeds. Used to skip re-syncing on every WiFi connect.
   // Resetting to 0 (e.g. via the web UI) forces a re-sync on next WiFi connect.
   uint8_t clockHasBeenSynced = 0;
@@ -437,6 +444,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // The sleep screen tenor/ugly took over when the user went in, as that screen + 1 (0 = none taken). Leaving
   // gives it back. Persisted in settings.json, never shown on the device or the web page.
   uint8_t uiShellSleepMemo = 0;
+  // 1 when going into tenor/ugly turned a hidden header clock on (its default there is the time); leaving
+  // hides it again if it still shows just the time. Persisted only.
+  uint8_t uiShellClockMemo = 0;
+  // tenor/ugly on a touch screen: the battery struck off the top band (a ring round its corner brings it
+  // back). Persisted only; tenor/cross never reads it.
+  uint8_t uglyBatteryHidden = 0;
   // Tenor-only appearance preferences; existing themes retain their own hints.
   uint8_t tenorButtonSymbols = 1;
   uint8_t tenorSideArrows = 1;

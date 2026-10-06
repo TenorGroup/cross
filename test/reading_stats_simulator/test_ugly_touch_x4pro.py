@@ -1,13 +1,13 @@
 """tenor/ugly on the X4 Pro touch screen, in the simulator: whole journeys by finger and Home key.
 
 Founder rules under test (04/10/2026): the three tiers of the X3 (diary, desk, notebook) touched straight;
-the Home key and "to the desk" go up one tier; a swipe across turns the notebook page, from the edge too;
+the Home key goes to the desk (founder 06/10/2026), "to the desk" goes up one tier; a swipe across turns the notebook page, from the edge too;
 the approved answer sheet commits an option on tap, long lists open an anchored paper; the
-Interface row asks once before leaving the shell; an X over a file asks before it bins it; a held row
+Interface row asks once before leaving the shell; a file struck out asks before it is binned; a held row
 opens tasks and Pin persists its target.
 
 Needs an X4 Pro simulator build (env simulator_x4pro, TEST_PROGRAM pointing at it) whose script input
-can move a finger (SWIPE); required when this suite runs.
+can move a finger (SWIPE, STROKE); required when this suite runs.
 """
 import json
 import os
@@ -49,9 +49,9 @@ class UglyTouchX4ProTest(unittest.TestCase):
         ugly_common.PROGRAM = PROGRAM
         return card.run(script, shots, timeout=120)
 
-    def test_read_on_and_the_home_key_comes_back_to_the_diary(self):
+    def test_read_on_and_the_home_key_lands_on_the_desk(self):
         log, _ = self.run_card(self.card(), '2000:TAP:120,450;4500:HOME;6500:QUIT')
-        self.assertEqual(entered(log), ['Boot', 'UglyDiary', 'TxtReader', 'UglyDiary'], log[-1500:])
+        self.assertEqual(entered(log), ['Boot', 'UglyDiary', 'TxtReader', 'UglyDesk'], log[-1500:])
 
     def test_desk_objects_and_one_tier_back_at_a_time(self):
         # the diary's "look at the whole desk" (its last line, under the title the diary has had since rc.2), the clock
@@ -114,11 +114,11 @@ class UglyTouchX4ProTest(unittest.TestCase):
             else:
                 self.assertIn('Entering activity: Home', log)
 
-    def test_an_x_over_a_file_asks_then_bins_it(self):
+    def test_a_file_struck_out_asks_then_bins_it(self):
         card = self.card()
-        # desk, the stack of books (the card's root), an X over row 1 (b1.txt), then "bin it"
-        script = ('2000:TAP:240,670;3500:TAP:120,620;5000:SWIPE:60,214,170,266,200;'
-                  '5400:SWIPE:170,214,60,268,200;7000:TAP:120,500;9000:QUIT')
+        # desk, the stack of books (the card's root), row 1 (b1.txt) struck out and back, then "bin it"
+        script = ('2000:TAP:240,670;3500:TAP:120,620;5000:STROKE:400,60,236,300,240,70,244;'
+                  '7000:TAP:120,500;9000:QUIT')
         log, _ = self.run_card(card, script)
         self.assertEqual(frames(log)[1][4], '2', 'the question')
         self.assertFalse((card.sd / 'b1.txt').exists(), 'binned')
@@ -126,8 +126,8 @@ class UglyTouchX4ProTest(unittest.TestCase):
 
     def test_a_tap_beside_the_question_keeps_the_file(self):
         card = self.card()
-        script = ('2000:TAP:240,670;3500:TAP:120,620;5000:SWIPE:60,214,170,266,200;'
-                  '5400:SWIPE:170,214,60,268,200;7000:TAP:120,240;9000:QUIT')
+        script = ('2000:TAP:240,670;3500:TAP:120,620;5000:STROKE:400,60,236,300,240,70,244;'
+                  '7000:TAP:120,240;9000:QUIT')
         log, _ = self.run_card(card, script)
         self.assertIn('2', [f[4] for f in frames(log)], 'the question opened')
         self.assertEqual(frames(log)[-1][4], '0', 'outside tap dismisses it')

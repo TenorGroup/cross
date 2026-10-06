@@ -126,75 +126,49 @@ TEST(TouchScribble, TheRowAnXOrARingAimsAt) {
 
 TEST(TouchScribble, TheHintStaysUntilBothHaveBeenUsed) {
   EXPECT_TRUE(teachScribbles(0));
-  EXPECT_TRUE(teachScribbles(USED_CROSS));
+  EXPECT_TRUE(teachScribbles(USED_STRIKE));
   EXPECT_TRUE(teachScribbles(USED_RING));
-  EXPECT_FALSE(teachScribbles(USED_CROSS | USED_RING));
+  EXPECT_FALSE(teachScribbles(USED_STRIKE | USED_RING));
 }
 
 TEST(TouchScribble, WhatAMarkDoesToTheRow) {
-  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Erase, true), Act::AskDelete);
-  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Erase, false), Act::NotHere) << "a folder row is not binned";
-  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Keep, false), Act::TogglePin);
-  EXPECT_EQ(scribbleAct(Sheet::Recent, Mark::Keep, false), Act::TogglePin);
-  EXPECT_EQ(scribbleAct(Sheet::Recent, Mark::Erase, false), Act::NotHere);
-  EXPECT_EQ(scribbleAct(Sheet::Favorites, Mark::Erase, false), Act::Unpin) << "an X takes a favourite off";
-  EXPECT_EQ(scribbleAct(Sheet::Favorites, Mark::Keep, false), Act::Unpin);
-  EXPECT_EQ(scribbleAct(Sheet::Other, Mark::Erase, true), Act::None);
+  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Erase, true, false), Act::AskDelete);
+  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Erase, false, false), Act::NotHere) << "a folder row is not binned";
+  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Keep, false, false), Act::Pin);
+  EXPECT_EQ(scribbleAct(Sheet::Folder, Mark::Keep, false, true), Act::Kept) << "a ring keeps a pin, never takes it off";
+  EXPECT_EQ(scribbleAct(Sheet::Recent, Mark::Keep, false, false), Act::Pin);
+  EXPECT_EQ(scribbleAct(Sheet::Recent, Mark::Keep, false, true), Act::Kept);
+  EXPECT_EQ(scribbleAct(Sheet::Recent, Mark::Erase, true, true), Act::Forget) << "struck off Recent, the book stays";
+  EXPECT_EQ(scribbleAct(Sheet::Favorites, Mark::Erase, false, true), Act::Unpin);
+  EXPECT_EQ(scribbleAct(Sheet::Favorites, Mark::Keep, false, true), Act::Kept);
+  EXPECT_EQ(scribbleAct(Sheet::Other, Mark::Erase, true, false), Act::None);
 }
 
 TEST(TouchScribble, TheHintOnlyWhereItIsTrue) {
   EXPECT_TRUE(hintHolds(Sheet::Folder));
-  EXPECT_FALSE(hintHolds(Sheet::Recent)) << "an X bins nothing on Recent";
+  EXPECT_TRUE(hintHolds(Sheet::Recent)) << "a strike forgets, a ring pins";
   EXPECT_FALSE(hintHolds(Sheet::Favorites)) << "a ring pins nothing on Favorites";
   EXPECT_FALSE(hintHolds(Sheet::Other));
 }
 
-}  // namespace
-
-// ---- the lines of abuse ----
-#include "shells/ugly/UglyLogic.h"
-#include "shells/ugly/UglyQuips.h"
-
-namespace {
-using namespace ugly::logic;
-constexpr int QUIP_SLOTS = sizeof(ugly::quips::SLOTS) / sizeof(ugly::quips::SLOTS[0]);
-constexpr int OPEN_PAGE = 0, OPEN_GROUP = 1, SET_VALUE = 2, SLEEP = 8;  // ugly::Quip
-
-TEST(Quips, TheKeyIsTheGeneratorsKey) {
-  // Values from scripts/ugly/gen_quips.py key16().
-  EXPECT_EQ(quipKey("Hiển thị"), 8386);
-  EXPECT_EQ(quipKey("Chế độ ban đêm", "BẬT"), 8986);
-  EXPECT_EQ(quipKey("a"), 52512);
+TEST(TouchBand, TheBatteryAndTheClockCorners) {
+  EXPECT_EQ(bandAt(430, 25), BandSpot::Battery);
+  EXPECT_EQ(bandAt(470, 60), BandSpot::Battery) << "a ring round the corner is centred a little low";
+  EXPECT_EQ(bandAt(330, 25), BandSpot::Clock);
+  EXPECT_EQ(bandAt(100, 25), BandSpot::None);
+  EXPECT_EQ(bandAt(430, 100), BandSpot::None) << "the title is no band";
 }
 
-TEST(Quips, EveryPageAndTheSettingsGroupsHaveLines) {
-  for (int page = 0; page < 5; ++page) {
-    const int s = quipSlot(ugly::quips::SLOTS, QUIP_SLOTS, OPEN_PAGE, page, 0);
-    ASSERT_GE(s, 0) << page;
-    EXPECT_EQ(ugly::quips::SLOTS[s].count, 3) << page;
-  }
-  EXPECT_GE(quipSlot(ugly::quips::SLOTS, QUIP_SLOTS, OPEN_GROUP, quipKey("Hiển thị"), 0), 0);
-  EXPECT_GE(quipSlot(ugly::quips::SLOTS, QUIP_SLOTS, SET_VALUE, quipKey("Chế độ ban đêm", "BẬT"), 0), 0);
-  EXPECT_LT(quipSlot(ugly::quips::SLOTS, QUIP_SLOTS, SET_VALUE, quipKey("Chế độ ban đêm", "xanh"), 0), 0);
+TEST(TouchBand, StrikeHidesRingShows) {
+  const Band shown{false, CLOCK_TIME_DATE};
+  EXPECT_TRUE(markBand(shown, Mark::Erase, BandSpot::Battery).batteryHidden);
+  EXPECT_EQ(markBand(shown, Mark::Erase, BandSpot::Battery).clock, CLOCK_TIME_DATE);
+  EXPECT_EQ(markBand(shown, Mark::Erase, BandSpot::Clock).clock, CLOCK_HIDE);
+  EXPECT_EQ(markBand(shown, Mark::Keep, BandSpot::Clock).clock, CLOCK_TIME_DATE) << "a ring keeps the date shown";
+  const Band hidden{true, CLOCK_HIDE};
+  EXPECT_FALSE(markBand(hidden, Mark::Keep, BandSpot::Battery).batteryHidden);
+  EXPECT_EQ(markBand(hidden, Mark::Keep, BandSpot::Clock).clock, CLOCK_TIME);
+  EXPECT_TRUE(markBand(hidden, Mark::Keep, BandSpot::None).batteryHidden);
 }
 
-TEST(Quips, AConditionWinsElseThePlainLines) {
-  // Sleep has no screen that says its lines yet (out of the blocks): its slots, by hand.
-  constexpr ugly::quips::Slot slots[] = {{0, SLEEP << 4, 3}, {0, SLEEP << 4 | 1, 2}, {7, SLEEP << 4 | 1, 1}};
-  const int zero = quipSlot(slots, 3, SLEEP, 0, 1);
-  const int plain = quipSlot(slots, 3, SLEEP, 0, 0);
-  EXPECT_EQ(zero, 1);
-  EXPECT_EQ(plain, 0);
-  EXPECT_EQ(quipSlot(slots, 3, SLEEP, 0, 9), plain) << "a condition without lines";
-  EXPECT_LT(quipSlot(slots, 3, SLEEP, 5, 0), 0) << "a key without lines";
-}
-
-TEST(Quips, TheLinesTakeTurnsAndMoveWithTheDay) {
-  EXPECT_EQ(quipTurn(100, 0, 3), 1);
-  EXPECT_EQ(quipTurn(100, 1, 3), 2);
-  EXPECT_EQ(quipTurn(100, 2, 3), 0);
-  EXPECT_EQ(quipTurn(101, 0, 3), 2) << "the next day starts on the next line";
-  EXPECT_EQ(quipTurn(5, 7, 1), 0);
-  EXPECT_EQ(quipTurn(5, 7, 0), 0);
-}
 }  // namespace

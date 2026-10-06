@@ -258,7 +258,7 @@ class SettingsActivity final : public UiTabListActivity {
   bool applySettingValue(int row, uint8_t value, bool shellConfirmed = false);
   ugly::QuestionSheet form_;
   struct FormEvent {
-    enum class Type : uint8_t { Key, Tap, Hold, Pin } type = Type::Key;
+    enum class Type : uint8_t { Key, Tap, Hold, Pin, Strike } type = Type::Key;
     ugly::QuestionSheet::Key key = ugly::QuestionSheet::Key::Confirm;
     int16_t x = 0, y = 0;
     uint32_t surface = 0;

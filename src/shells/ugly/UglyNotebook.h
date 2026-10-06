@@ -64,7 +64,7 @@ class Notebook final : public Screen {
   enum class Pop : uint8_t { None, Values, Ask, Shell, Tasks };
   enum class Task : uint8_t { Pin, Info, Delete };
   // Card work a touch asked for, done after the lock is released and before the frame that shows it.
-  enum class Job : uint8_t { None, Pin, Info, Delete, Save, Leave };
+  enum class Job : uint8_t { None, Pin, Info, Delete, Save, Leave, Forget };
   Pop pop = Pop::None;
   int popRow = -1;  // the row (of all rows) the paper belongs to
   touch::Paper paper;

@@ -1,6 +1,6 @@
-"""X4 Pro, tenor/ugly: an X drawn over a Favorites row takes it off Favorites.
+"""X4 Pro, tenor/ugly: a Favorites row struck out comes off Favorites.
 
-A Recent book is pinned with the hold menu, then crossed out on the Favorites page: no pin is left.
+A Recent book is pinned with the hold menu, then struck out on the Favorites page: no pin is left.
 Runs the X4 Pro simulator (pio run -e simulator_x4pro). X4PRO_PROGRAM picks another build.
 """
 import json
@@ -15,13 +15,13 @@ from ugly_common import Card
 
 PIN = ['TAP:400,750', 'TAP:240,176,1200', 'TAP:240,176']  # diary -> Recent, hold row 1, "pin"
 TO_FAVORITES = ['TAP:240,750', 'TAP:360,630']               # the desk, then its Favorites object
-X_ROW_1 = 'SWIPE:170,150,320,200,250;{t2}:SWIPE:170,200,320,150,250'  # two slanted arms crossing on row 1
+STRIKE_ROW_1 = 'STROKE:400,100,172,380,176,110,182'  # out along row 1 and back
 
 
 def pins(steps):
     t, items = 2500, []
     for s in steps:
-        items.append(f'{t}:{s.format(t2=t + 450)}')
+        items.append(f'{t}:{s}')
         t += 2500
     items.append(f'{t + 500}:QUIT')
     card = Card(shell=1)
@@ -36,9 +36,9 @@ def main():
     assert PROGRAM.exists(), f'X4 Pro simulator is required: {PROGRAM}'
     ugly_common.PROGRAM = PROGRAM
     assert len(pins(PIN + TO_FAVORITES)) == 1, 'the hold menu did not pin the book'
-    left = pins(PIN + TO_FAVORITES + [X_ROW_1])
-    assert left == [], f'an X over the Favorites row left it pinned: {left}'
-    print('GREEN: an X takes a row off Favorites')
+    left = pins(PIN + TO_FAVORITES + [STRIKE_ROW_1])
+    assert left == [], f'a strike over the Favorites row left it pinned: {left}'
+    print('GREEN: a strike takes a row off Favorites')
 
 
 if __name__ == '__main__':

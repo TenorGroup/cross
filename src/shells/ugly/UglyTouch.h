@@ -206,30 +206,55 @@ inline int scribbleRow(const int x, const int y, const int rowsShown) {
 }
 
 // ---- what a scribble does to the row it lands on ----
-// The one place for the rule: the page asks it on a scribble, the hint asks it before teaching.
+// The one place for the rule: the page asks it on a scribble, the hint asks it before teaching. A strike
+// takes away (deletes a file after asking, forgets a book from Recent, unpins a favourite), a ring keeps
+// (pins, and leaves a pin as it is).
 enum class Sheet : unsigned char { Folder, Recent, Favorites, Other };
-enum class Mark : unsigned char { Erase, Keep };  // an X, a ring
-enum class Act : unsigned char { None, TogglePin, Unpin, AskDelete, NotHere };
-inline Act scribbleAct(const Sheet sheet, const Mark mark, const bool deletableFile) {
+enum class Mark : unsigned char { Erase, Keep };  // struck out, ringed
+enum class Act : unsigned char { None, Pin, Unpin, Kept, Forget, AskDelete, NotHere };
+inline Act scribbleAct(const Sheet sheet, const Mark mark, const bool deletableFile, const bool pinned) {
+  if (sheet == Sheet::Other) return Act::None;
+  if (mark == Mark::Keep) return pinned || sheet == Sheet::Favorites ? Act::Kept : Act::Pin;
   switch (sheet) {
     case Sheet::Folder:
-      return mark == Mark::Keep ? Act::TogglePin : deletableFile ? Act::AskDelete : Act::NotHere;
+      return deletableFile ? Act::AskDelete : Act::NotHere;
     case Sheet::Recent:
-      return mark == Mark::Keep ? Act::TogglePin : Act::NotHere;
-    case Sheet::Favorites:  // every row is pinned: either mark takes it off
+      return Act::Forget;
+    default:
       return Act::Unpin;
-    case Sheet::Other:
-      break;
   }
-  return Act::None;
 }
-// The hint "an X bins it, a ring pins it" (STR_UGLY_X4_HINT_GESTURE) shows only on a page where both hold.
+// The hint "strike it out to bin it, ring it to pin it" (STR_UGLY_X4_HINT_GESTURE) shows only on a page
+// where a strike takes the row away and a ring pins it.
 inline bool hintHolds(const Sheet sheet) {
-  return scribbleAct(sheet, Mark::Erase, true) == Act::AskDelete && scribbleAct(sheet, Mark::Keep, false) == Act::TogglePin;
+  const Act erase = scribbleAct(sheet, Mark::Erase, true, false);
+  return (erase == Act::AskDelete || erase == Act::Forget) && scribbleAct(sheet, Mark::Keep, false, false) == Act::Pin;
 }
 
 // The hint under the title teaches the two scribbles until each has been used once: two bits.
-inline constexpr unsigned USED_CROSS = 1, USED_RING = 2;
-inline bool teachScribbles(const unsigned used) { return (used & (USED_CROSS | USED_RING)) != (USED_CROSS | USED_RING); }
+inline constexpr unsigned USED_STRIKE = 1, USED_RING = 2;
+inline bool teachScribbles(const unsigned used) { return (used & (USED_STRIKE | USED_RING)) != (USED_STRIKE | USED_RING); }
+
+// ---- a mark on the top band: the clock and the battery ----
+// The band and a little below it, for a ring drawn round a corner. The battery is drawn from x 412, the clock
+// ends at x 400.
+inline constexpr int BAND_BOTTOM = 72, CLOCK_X = 240, BATTERY_X = 404;
+enum class BandSpot : unsigned char { None, Clock, Battery };
+inline BandSpot bandAt(const int x, const int y) {
+  if (y >= BAND_BOTTOM) return BandSpot::None;
+  return x >= BATTERY_X ? BandSpot::Battery : x >= CLOCK_X ? BandSpot::Clock : BandSpot::None;
+}
+// The values of CrossPointSettings::clockShowInHeader (CLOCK_HEADER_*).
+inline constexpr unsigned char CLOCK_HIDE = 0, CLOCK_TIME = 1, CLOCK_TIME_DATE = 2;
+struct Band {
+  bool batteryHidden;
+  unsigned char clock;
+};
+// A strike hides what it lands on, a ring shows it (a clock ringed back shows the time; one shown keeps its date).
+inline Band markBand(Band band, const Mark mark, const BandSpot spot) {
+  if (spot == BandSpot::Battery) band.batteryHidden = mark == Mark::Erase;
+  if (spot == BandSpot::Clock) band.clock = mark == Mark::Erase ? CLOCK_HIDE : band.clock == CLOCK_HIDE ? CLOCK_TIME : band.clock;
+  return band;
+}
 
 }  // namespace ugly::touch

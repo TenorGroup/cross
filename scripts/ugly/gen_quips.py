@@ -24,7 +24,7 @@ from gen_i18n import parse_yaml_file  # noqa: E402
 
 # Must match enum class ugly::Quip (UglyQuip.h).
 EVENTS = ['OpenPage', 'OpenGroup', 'SetValue', 'Pin', 'Unpin', 'Delete', 'ShellCross', 'ShellUgly', 'Sleep', 'Wake',
-          'OpenBook', 'LeaveBook', 'OpenScreen']
+          'OpenBook', 'LeaveBook', 'OpenScreen', 'Scrawl']
 # Conditions carrying data, by event (0 is the plain rotation). Must match the QuipWhen values in UglyQuip.h.
 WHEN = {
     'OpenBook': {'GAP': 1, 'DONE': 2, 'END': 3, 'NEW': 4, 'LOW': 5, 'MID': 6, 'COUNT': 7},
@@ -46,12 +46,13 @@ DATA = [
     (r'^Lúc máy chuẩn bị ngủ', 'Sleep', ''), (r'^Chuẩn bị ngủ, hôm nay chưa đọc', 'Sleep', 'ZERO'),
     (r'^Chuẩn bị ngủ, hôm nay đọc 1 tới 14', 'Sleep', 'LOW'),
     (r'^Thức dậy \(', 'Wake', ''), (r'^Thức dậy sau từ 3 ngày', 'Wake', 'GAP'),
+    (r'^Vẽ bậy', 'Scrawl', ''),
 ]
 # The events the firmware says today: each has a quip() call in src (test/ugly_shell/check_assets.py holds the two
 # lists equal). The lines of the others stay in the table, out of the blocks, until a screen says them: X3 flash.
-SAID = {'OpenPage', 'OpenGroup', 'SetValue', 'Pin', 'Unpin', 'Delete', 'ShellCross'}
+SAID = {'OpenPage', 'OpenGroup', 'SetValue', 'Pin', 'Unpin', 'Delete', 'ShellCross', 'Scrawl'}
 FIRST = ['OpenPage', 'Sleep', 'Wake', 'OpenBook', 'LeaveBook', 'Pin', 'Unpin', 'Delete', 'ShellCross', 'ShellUgly',
-         'OpenGroup', 'OpenScreen', 'SetValue']
+         'OpenGroup', 'OpenScreen', 'SetValue', 'Scrawl']
 PAGES = {'Gần đây': 0, 'File': 1, 'Thống kê': 2, 'Cài đặt': 3, 'Yêu thích': 4}  # homerows::Page
 LINES_PER_MARK = 32
 

@@ -50,9 +50,9 @@ class MappedInputManager {
   // current action remains available for immediate Home cancellation.
   void update(bool deferHomeButtonAction = false) const;
 #if FREEINK_DEVICE_X4PRO
-  // A scribbled gesture decided this frame (an X over a row, a ring round one, a tap, a swipe),
+  // A scribbled gesture decided this frame (a row struck out, a ring round one, a tap, a swipe),
   // in logical px. Fed in update() from the same contact the SDK reads off the GT911 on this
-  // task, so it adds no bus traffic. An X's first stroke is held up to scribble::PAIR_MS.
+  // task, so it adds no bus traffic. A stroke a second finger joined decides nothing.
   bool wasScribble(scribble::Result& out) const;
   // The stroke that ended this frame (its samples), or nullptr: for a screen that draws it back.
   const scribble::Stroke* endedStroke() const { return scribbler.endedStroke(); }

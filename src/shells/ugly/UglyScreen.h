@@ -13,10 +13,10 @@ class Screen : public Activity {
  public:
   // Up and Down are the front buttons (up and down the screen), Left and Right the edge buttons (sideways).
   // The last nine come from a touch screen only, with the point they aim at (touchX, touchY): a tap, a hold,
-  // a swipe the way the finger went, an X and a ring drawn over a row, and a scribble nobody can read.
+  // a swipe the way the finger went, a row struck out and one ringed, and a scribble nobody can read.
   enum class Key : uint8_t {
     Up, Down, Left, Right, Confirm, Back, UpHold, DownHold,
-    Tap, Hold, SwipeLeft, SwipeRight, SwipeUp, SwipeDown, Cross, Ring, Scrawl
+    Tap, Hold, SwipeLeft, SwipeRight, SwipeUp, SwipeDown, Strike, Ring, Scrawl
   };
   void loop() final;
   // The three tiers are Home: holding Back does not throw them out to Home again.
@@ -57,7 +57,10 @@ class Screen : public Activity {
 #if FREEINK_DEVICE_X4PRO
   int16_t queueX[QUEUE], queueY[QUEUE];
   bool swallowStroke = false;  // a hold ended the contact: the lift that follows is no tap
+  bool bandChanged = false;    // a mark on the top band changed the clock or the battery: saved after the frame
   void push(Key key, int x, int y);
+  // A strike or a ring on the top band, the same on every tier: hides or shows the clock or the battery.
+  bool markBand(Key key);
   void readTouch();
 #endif
 };

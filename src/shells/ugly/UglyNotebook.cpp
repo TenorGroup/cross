@@ -379,7 +379,7 @@ int Notebook::askLines(const bool shellAsk) const {
 
 unsigned Notebook::loadScribbles() {
   const String raw = Storage.readFile(SCRIBBLES_FILE);
-  return raw.length() ? static_cast<unsigned>(raw[0] - '0') & (touch::USED_CROSS | touch::USED_RING) : 0u;
+  return raw.length() ? static_cast<unsigned>(raw[0] - '0') & (touch::USED_STRIKE | touch::USED_RING) : 0u;
 }
 
 int Notebook::rowsShown() const { return std::clamp(rowCount() - topShown(), 0, touch::ROWS); }
@@ -554,6 +554,13 @@ void Notebook::doJob() {
         snprintf(line, sizeof(line), "%s", tr(STR_UGLY_X4_PIN_FULL));
       }
     }
+  } else if (now == Job::Forget && !path.empty()) {
+    // Off the list of books read, the book and its place in it stay on the card.
+    reread = RECENT_BOOKS.removeByPath(path);
+    if (reread) {
+      RECENT_BOOKS.saveToFile();
+      snprintf(line, sizeof(line), tr(STR_UGLY_X4_FORGOTTEN), name.c_str());
+    }
   } else if (now == Job::Info && !path.empty()) {
     HalFile f;
     const bool open = !folder && Storage.openFileForRead("UGLY", path.c_str(), f);
@@ -631,29 +638,39 @@ bool Notebook::onTouch(const Key key) {
       paper = touch::placePaper(rowTop(hit.row), taskCount, 0);
       return true;
     }
-    case Key::Cross:
-    case Key::Ring:
-    case Key::Scrawl: {
+    case Key::Scrawl:  // nobody can read it: abuse, a new line each time
+      showInk = true;
+      said = quip(Quip::Scrawl);
+      return true;
+    case Key::Strike:
+    case Key::Ring: {
       if (!lists) return false;
       showInk = true;
       const int pageRow = touch::scribbleRow(touchX, touchY, rowsShown());
-      if (key == Key::Scrawl || pageRow < 0) {
-        said = tr(STR_UGLY_X4_GESTURE_MISS);
+      if (pageRow < 0) {
+        said = quip(Quip::Scrawl);
         return true;
       }
       const int row = topShown() + pageRow;
-      const unsigned used = key == Key::Cross ? touch::USED_CROSS : touch::USED_RING;
+      const unsigned used = key == Key::Strike ? touch::USED_STRIKE : touch::USED_RING;
       if (!(scribbles & used)) {
         scribbles |= used;
         scribblesChanged = true;
       }
       bool folder = false;
       const bool file = !pathOf(row, folder).empty() && !folder;
-      const touch::Act act = touch::scribbleAct(sheetOf(page, group), key == Key::Ring ? touch::Mark::Keep : touch::Mark::Erase, file);
-      if (act == touch::Act::TogglePin || act == touch::Act::Unpin) {  // on Favorites the pin job takes the row off
-        job = Job::Pin;
+      const touch::Act act =
+          touch::scribbleAct(sheetOf(page, group), key == Key::Ring ? touch::Mark::Keep : touch::Mark::Erase, file, pinned(row));
+      if (act == touch::Act::Pin || act == touch::Act::Unpin || act == touch::Act::Forget) {
+        job = act == touch::Act::Forget ? Job::Forget : Job::Pin;  // on Favorites the pin job takes the row off
         jobRow = row;
         return false;  // the frame follows the card work
+      }
+      if (act == touch::Act::Kept) {
+        char line[200];
+        snprintf(line, sizeof(line), tr(STR_UGLY_X4_KEPT), labelAt(row).c_str());
+        said = line;
+        return true;
       }
       if (act != touch::Act::AskDelete) {
         said = tr(STR_UGLY_X4_NOT_HERE);

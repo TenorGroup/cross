@@ -2,16 +2,14 @@
 
 #include <cstdint>
 
-// Scribbled gestures on a touch screen: an X drawn over a row (two strokes, or one stroke going
-// down one arm, up the side and down the other), a ring drawn round a row, a tap, a swipe, or
-// none of these. Pure: logical screen pixels and milliseconds in, a result out, no hardware.
+// Scribbled gestures on a touch screen: a row struck out (one stroke out along it and back, maybe
+// once more, without lifting), a ring drawn round a row, a tap, a swipe, or none of these. Pure: logical screen pixels and milliseconds in, a result out, no hardware.
 // Whole numbers only, so the host tests and the device agree to the bit and no maths library
 // is pulled in.
 //
 // The caller feeds one sample a pass (Scribbler::step): whether a contact is down and where.
-// A stroke is the samples from touch-down to lift, at most MAX_POINTS of them in a fixed array.
-// A straight slanted stroke may be the first half of an X, so it is held up to PAIR_MS for a
-// second one; every other stroke is decided on lift.
+// A stroke is the samples from touch-down to lift, at most MAX_POINTS of them in a fixed array,
+// and it is decided on lift.
 //
 // The knobs below are first guesses on generated strokes (test/scribble). Tune them on strokes
 // drawn on the device (CMD:STROKE_LOG, test/scribble/log_to_samples.py).
@@ -24,13 +22,11 @@ constexpr int MIN_SIZE_PX = 40;       // anything smaller that is not a tap is U
 constexpr int TURN_STEP_PX = 14;      // path length is taken over steps this long
 constexpr int LINE_DEV_PCT = 15;      // straight: no point further off the chord than this % of it ...
 constexpr int LINE_PATH_PCT = 125;    // ... and a path at most this % of the chord
-constexpr int AXIS_DEG = 12;          // a line this near an axis is a swipe, never half an X
-constexpr uint32_t PAIR_MS = 700;     // wait for an X's second stroke this long after the first
-constexpr int CROSS_MIN_DEG = 25;     // X arms cross at between this and 180 - this degrees
-constexpr int CROSS_MID_PCT = 15;     // the crossing lies within [this, 100 - this] % of each arm
-constexpr int ARM_RATIO_PCT = 40;     // shorter X arm at least this % of the longer
-constexpr int ARM_PCT = 45;           // one-stroke X: both arms at least this % of the box diagonal
-constexpr int OPEN_PCT = 30;          // one-stroke X: ends at least this % of the box diagonal apart
+constexpr int STRIKE_MIN_W_PX = 96;   // strike: box at least this wide (11 mm) ...
+constexpr int STRIKE_MAX_H_PX = 40;   // ... and at most this tall
+constexpr int STRIKE_TURN_PCT = 20;   // strike: x coming back this % of the width is a turn ...
+constexpr int STRIKE_MAX_PASSES = 5;  // ... 2 to this many passes ...
+constexpr int STRIKE_PASS_PCT = 60;   // ... the two longest at least this % of the box width
 constexpr int CORNER_EPS_PX = 10;     // corner finder tolerance, at least this many px ...
 constexpr int CORNER_EPS_PCT = 10;    // ... or this % of the box diagonal
 constexpr int CORNER_MIN_DEG = 30;    // a bend under this between two pieces is no corner
@@ -39,7 +35,7 @@ constexpr int RING_MIN_PX = 30;       // ring: box at least this wide and tall (
 constexpr int RING_TURN_DEG = 250;    // ring: winds at least this far round the middle of its box ...
 constexpr int RING_ONE_WAY_PCT = 75;  // ... and at least this % of its winding goes the one way
 
-enum class Kind : uint8_t { None, Tap, Swipe, Cross, Circle, Unknown };
+enum class Kind : uint8_t { None, Tap, Swipe, Strike, Circle, Unknown };
 
 inline const char* kindName(Kind k) {
   switch (k) {
@@ -47,8 +43,8 @@ inline const char* kindName(Kind k) {
       return "tap";
     case Kind::Swipe:
       return "swipe";
-    case Kind::Cross:
-      return "cross";
+    case Kind::Strike:
+      return "strike";
     case Kind::Circle:
       return "circle";
     case Kind::Unknown:
@@ -71,10 +67,10 @@ struct Box {
 struct Result {
   Kind kind = Kind::None;
   Box box{};        // every stroke of the gesture
-  int16_t x = 0;    // where it aims: the crossing of an X, the middle of a ring or of an
-  int16_t y = 0;    // unknown shape, the tap point, a swipe's start
+  int16_t x = 0;    // where it aims: the middle of a strike, a ring or an unknown shape,
+  int16_t y = 0;    // the tap point, a swipe's start
   Pt from{}, to{};  // first and last sample of the gesture (a swipe's direction)
-  uint8_t strokes = 0;
+  uint8_t strokes = 0;  // 1 once decided
 };
 
 // One stroke's samples. Full, it drops every other sample and doubles its step, so a long stroke
@@ -121,10 +117,6 @@ struct Stroke {
   }
 };
 
-struct Seg {
-  int x0, y0, x1, y1;
-};
-
 namespace detail {
 
 inline int iabs(int v) { return v < 0 ? -v : v; }
@@ -168,13 +160,6 @@ inline int wrap10(int d) {
   return d;
 }
 
-// sin of a whole-degree knob in thousandths, worked out at compile time.
-constexpr int sinPermille(int deg) {
-  const double r = deg * 3.14159265358979 / 180.0;
-  return static_cast<int>(1000.0 * (r - r * r * r / 6 + r * r * r * r * r / 120 - r * r * r * r * r * r * r / 5040) +
-                          0.5);
-}
-
 inline Box boxOf(const Pt* p, int n) {
   Box b{p[0].x, p[0].y, p[0].x, p[0].y};
   for (int i = 1; i < n; ++i) {
@@ -187,14 +172,6 @@ inline Box boxOf(const Pt* p, int n) {
 }
 
 inline int diagOf(const Box& b) { return dist(b.x1 - b.x0, b.y1 - b.y0); }
-
-inline Box unite(Box a, const Box& b) {
-  if (b.x0 < a.x0) a.x0 = b.x0;
-  if (b.y0 < a.y0) a.y0 = b.y0;
-  if (b.x1 > a.x1) a.x1 = b.x1;
-  if (b.y1 > a.y1) a.y1 = b.y1;
-  return a;
-}
 
 // Samples at least TURN_STEP_PX apart along the stroke, first and last always in. Path length
 // and winding come from these, so a shaking finger does not lengthen the path.
@@ -269,47 +246,44 @@ inline int corners(const Pt* p, int n, int eps, uint8_t* out) {
   return m;
 }
 
-inline Seg segOf(const Pt& a, const Pt& b) { return Seg{a.x, a.y, b.x, b.y}; }
-inline int lenOf(const Seg& s) { return dist(s.x1 - s.x0, s.y1 - s.y0); }
-
-inline bool armsMatch(const Seg& a, const Seg& b) {
-  const int la = lenOf(a), lb = lenOf(b);
-  const int lo = la < lb ? la : lb, hi = la < lb ? lb : la;
-  return lo * 100 >= ARM_RATIO_PCT * hi;
-}
-
-inline bool slanted(const Seg& s) {
-  const int a = angle10(s.x1 - s.x0, s.y1 - s.y0) % 900;
-  return a > AXIS_DEG * 10 && a < 900 - AXIS_DEG * 10;
+// Struck out: flat and wide, out along the row and back at least once without lifting. The passes are
+// the runs of x one way, a turn counted once x has come back STRIKE_TURN_PCT of the width; the two
+// longest must span nearly the whole width, so a flick that jerks back at its end is no strike.
+inline bool isStrike(const Pt* p, const int n, const Box& box) {
+  const int w = box.x1 - box.x0, h = box.y1 - box.y0;
+  if (w < STRIKE_MIN_W_PX || h > STRIKE_MAX_H_PX) return false;
+  const int turn = w * STRIKE_TURN_PCT / 100;
+  int start = p[0].x, far = p[0].x, dir = 0, passes = 0, longest = 0, second = 0;
+  const auto pass = [&](const int len) {
+    ++passes;
+    if (len > longest) {
+      second = longest;
+      longest = len;
+    } else if (len > second) {
+      second = len;
+    }
+  };
+  for (int i = 1; i < n; ++i) {
+    const int x = p[i].x;
+    if (dir == 0) {
+      if (iabs(x - start) >= turn) dir = x > start ? 1 : -1;
+      far = x;
+    } else if ((x - far) * dir > 0) {
+      far = x;
+    } else if ((far - x) * dir >= turn) {
+      pass(iabs(far - start));
+      start = far;
+      far = x;
+      dir = -dir;
+    }
+  }
+  pass(iabs(far - start));
+  return passes <= STRIKE_MAX_PASSES && second * 100 >= STRIKE_PASS_PCT * w;
 }
 
 }  // namespace detail
 
-// Two arms make an X: they cross at CROSS_MIN_DEG or more, inside the middle of both.
-// (x, y) gets the crossing.
-inline bool crossAt(const Seg& a, const Seg& b, int& x, int& y) {
-  const int64_t ux = a.x1 - a.x0, uy = a.y1 - a.y0, vx = b.x1 - b.x0, vy = b.y1 - b.y0;
-  const int64_t wx = b.x0 - a.x0, wy = b.y0 - a.y0;
-  int64_t d = ux * vy - uy * vx;
-  int64_t tn = wx * vy - wy * vx;
-  int64_t sn = wx * uy - wy * ux;
-  if (d == 0) return false;
-  constexpr int64_t s = detail::sinPermille(CROSS_MIN_DEG);
-  if (d * d * 1000 * 1000 < s * s * (ux * ux + uy * uy) * (vx * vx + vy * vy)) return false;
-  if (d < 0) {
-    d = -d;
-    tn = -tn;
-    sn = -sn;
-  }
-  const auto mid = [d](int64_t t) { return t * 100 >= CROSS_MID_PCT * d && t * 100 <= (100 - CROSS_MID_PCT) * d; };
-  if (!mid(tn) || !mid(sn)) return false;
-  x = static_cast<int>(a.x0 + (ux * tn + d / 2) / d);
-  y = static_cast<int>(a.y0 + (uy * tn + d / 2) / d);
-  return true;
-}
-
-// One stroke on its own. A slanted line comes back as a Swipe; the Scribbler is the one that
-// holds it for a second stroke.
+// One stroke on its own.
 inline Result classifyStroke(const Pt* p, int n) {
   using namespace detail;
   Result r;
@@ -340,6 +314,10 @@ inline Result classifyStroke(const Pt* p, int n) {
     r.y = p[0].y;
     return r;
   }
+  if (isStrike(p, n, r.box)) {
+    r.kind = Kind::Strike;
+    return r;
+  }
 
   const int gap = dist(p[0], p[n - 1]);
   const int thin = r.box.x1 - r.box.x0 < r.box.y1 - r.box.y0 ? r.box.x1 - r.box.x0 : r.box.y1 - r.box.y0;
@@ -367,24 +345,6 @@ inline Result classifyStroke(const Pt* p, int n) {
     }
   }
 
-  if (gap * 100 >= OPEN_PCT * diag) {
-    const int eps = diag * CORNER_EPS_PCT / 100 > CORNER_EPS_PX ? diag * CORNER_EPS_PCT / 100 : CORNER_EPS_PX;
-    const int c = corners(p, n, eps, idx);
-    for (int i = 0; i + 1 < c; ++i) {
-      const Seg a = segOf(p[idx[i]], p[idx[i + 1]]);
-      if (lenOf(a) * 100 < ARM_PCT * diag) continue;
-      for (int j = i + 2; j + 1 < c; ++j) {
-        const Seg b = segOf(p[idx[j]], p[idx[j + 1]]);
-        int x = 0, y = 0;
-        if (lenOf(b) * 100 >= ARM_PCT * diag && armsMatch(a, b) && crossAt(a, b, x, y)) {
-          r.kind = Kind::Cross;
-          r.x = static_cast<int16_t>(x);
-          r.y = static_cast<int16_t>(y);
-          return r;
-        }
-      }
-    }
-  }
   return r;
 }
 
@@ -396,70 +356,30 @@ class Scribbler {
     if (down) {
       if (touching) {
         stroke.add(x, y, now);
-        return {};
+      } else {
+        touching = true;
+        spoiled = false;
+        stroke.begin(x, y, now);
       }
-      touching = true;
-      stroke.begin(x, y, now);
-      return expired(now);  // a second stroke too late for the first: the first stands alone
+      return {};
     }
-    if (touching) {
-      touching = false;
-      stroke.finish();
-      ended = true;
-      return lifted(now);
-    }
-    return expired(now);
+    if (!touching) return {};
+    touching = false;
+    stroke.finish();
+    ended = true;
+    return spoiled ? Result{} : classifyStroke(stroke.p, stroke.n);
   }
+  // A second finger joined the stroke: it is the light's, never a mark.
+  void spoil() { spoiled = touching; }
 
   // The stroke that ended on the last step, or nullptr. Valid until the next touch-down.
-  const Stroke* endedStroke() const { return ended ? &stroke : nullptr; }
-  // A slanted line waiting for the second half of an X.
-  bool pending() const { return waiting; }
+  const Stroke* endedStroke() const { return ended && !spoiled ? &stroke : nullptr; }
 
  private:
   Stroke stroke;
   bool touching = false;
   bool ended = false;
-  bool waiting = false;
-  uint32_t liftedAt = 0;
-  Result first;
-
-  Result expired(uint32_t now) {
-    if (!waiting || now - liftedAt < PAIR_MS) return {};
-    waiting = false;
-    return first;
-  }
-
-  Result lifted(uint32_t now) {
-    Result r = classifyStroke(stroke.p, stroke.n);
-    const Seg s = detail::segOf(r.from, r.to);
-    if (waiting) {
-      waiting = false;
-      const Seg a = detail::segOf(first.from, first.to);
-      Result pair = r;
-      pair.box = detail::unite(first.box, r.box);
-      pair.from = first.from;
-      pair.strokes = 2;
-      int x = 0, y = 0;
-      if (r.kind == Kind::Swipe && detail::armsMatch(a, s) && crossAt(a, s, x, y)) {
-        pair.kind = Kind::Cross;
-        pair.x = static_cast<int16_t>(x);
-        pair.y = static_cast<int16_t>(y);
-      } else {
-        pair.kind = Kind::Unknown;
-        pair.x = static_cast<int16_t>((pair.box.x0 + pair.box.x1) / 2);
-        pair.y = static_cast<int16_t>((pair.box.y0 + pair.box.y1) / 2);
-      }
-      return pair;
-    }
-    if (r.kind == Kind::Swipe && detail::slanted(s)) {
-      waiting = true;
-      liftedAt = now;
-      first = r;
-      return {};
-    }
-    return r;
-  }
+  bool spoiled = false;
 };
 
 }  // namespace scribble
