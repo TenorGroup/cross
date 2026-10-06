@@ -998,6 +998,8 @@ STR_UGLY_CALIBRE_STARTING: "Đang mở cửa cho Calibre. Chờ tí."
 STR_UGLY_CALIBRE_FAILED: "Calibre nối không được. Mạng dỏm rồi."
 STR_UGLY_CALIBRE_WAITING: "Bấm gửi trong Calibre đi. Máy đang há mồm chờ."
 STR_UGLY_CALIBRE_RECEIVING: "Đang nhận, đừng rút gì hết."
+STR_UGLY_KOSYNC_OK: "Vô được rồi. Giờ đọc máy nào cũng tới đúng trang."
+STR_UGLY_KOSYNC_FAILED: "Đăng nhập xịt. Lý do ghi dưới kia, đọc đi."
 
 STR_UGLY_PHIEU_TITLE: "PHIẾU TRẢ LỜI"
 STR_UGLY_PHIEU_SUBJECT: "Môn:"

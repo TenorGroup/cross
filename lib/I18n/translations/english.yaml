@@ -998,6 +998,8 @@ STR_UGLY_CALIBRE_STARTING: "Opening the door for Calibre. Hang on."
 STR_UGLY_CALIBRE_FAILED: "Calibre couldn't connect. Bad network."
 STR_UGLY_CALIBRE_WAITING: "Hit send in Calibre. I'm waiting with my mouth open."
 STR_UGLY_CALIBRE_RECEIVING: "Receiving. Touch nothing."
+STR_UGLY_KOSYNC_OK: "You're in. Every reader lands on the same page now."
+STR_UGLY_KOSYNC_FAILED: "Login flopped. The reason's below. Read it."
 
 STR_UGLY_PHIEU_TITLE: "ANSWER SHEET"
 STR_UGLY_PHIEU_SUBJECT: "Subject:"

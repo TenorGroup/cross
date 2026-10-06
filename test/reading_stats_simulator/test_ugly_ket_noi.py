@@ -3,6 +3,7 @@
 Founder decisions under test (06/10/2026): a device on tenor/ugly with no name of its own is "xau-nhu-cho" on the
 network (hotspot, mDNS); a name the user typed still wins; tenor/cross keeps "tenor-cross".
 """
+import json
 import re
 import shutil
 import unittest
@@ -194,6 +195,8 @@ class UglyOtaTest(unittest.TestCase):
 CALIBRE_FRAME = re.compile(r'Calibre frame receiving=(?P<rx>\d) total=(?P<ms>\d+)ms heap=\d+')
 # Send file chooser -> second row (Calibre) -> the open network.
 TO_CALIBRE = ['UP', 'CONFIRM', 'WAIT:700', 'RIGHT', 'CONFIRM', 'WAIT:2500', 'CONFIRM']
+# Diary -> Settings page -> Other -> KOReader sync (first question) -> seventh row, Log in.
+TO_KOREADER_LOGIN = ['UP'] + ['RIGHT'] * 9 + ['CONFIRM', 'CONFIRM'] + ['RIGHT'] * 6 + ['CONFIRM']
 
 
 class UglyCalibreTest(unittest.TestCase):
@@ -209,6 +212,22 @@ class UglyCalibreTest(unittest.TestCase):
         self.assertGreater(ink(page, (40, 140, 500, 290)), 2500)  # the four steps in pen
         self.assertGreater(ink(page, (24, 600, 30, 700)), 60)
         print('calibre frames ms:', [ms for _, ms in frames])
+
+
+class UglyKoreaderTest(unittest.TestCase):
+    def test_a_koreader_login_that_fails_is_a_note(self):
+        card = Card()
+        self.addCleanup(card.close)
+        # A name and a password, and a server that never answers: the log in fails offline.
+        (card.store / 'koreader.json').write_text(json.dumps(
+            {'cfgVersion': 3, 'username': 'lan', 'password': 'x', 'serverUrl': 'http://127.0.0.1:9'}))
+        script, t = keys(*TO_KOREADER_LOGIN, 'WAIT:2500', 'CONFIRM', 'WAIT:4000')
+        log, shots = card.run(script + ';%d:QUIT' % (t + 800), [(t, 'koreader')], timeout=60)
+        self.assertIn('KOReaderAuth', entered(log), log[-2000:])
+        notes = [m.groupdict() for m in NOTE_FRAME.finditer(log) if m['title'] != 'Mạng Wi-Fi']
+        self.assertTrue(notes, log[-2500:])
+        self.assertEqual(notes[-1]['line'], 'Đăng nhập xịt. Lý do ghi dưới kia, đọc đi.', notes)
+        print('koreader note frames ms:', [n['ms'] for n in notes])
 
 
 if __name__ == '__main__':
