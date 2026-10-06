@@ -87,6 +87,16 @@ class Rows(unittest.TestCase):
         self.assertGreater(last - first, 40, 'the label and the value of the URL row share one line')
 
 
+    def test_the_cursor_on_a_locked_row_keeps_its_circle(self):
+        # Clock with the automatic time zone: "Múi giờ" is locked, and it is where the cursor starts. The circle goes
+        # round its label as round any other; with the cursor on the row under it the label stands alone.
+        keys = settings_question(6, 1)
+        on = frames(keys)[1]
+        below = frames(keys + ['RIGHT'])[1]
+        label = (20, 128, 250, 147)  # over the words, where only the circle reaches
+        self.assertGreater(ink(on, label), ink(below, label) + 150, 'the cursor on the locked row has no circle')
+
+
 class Header(unittest.TestCase):
     def headers(self, keys):
         log, _, _ = frames(keys)
