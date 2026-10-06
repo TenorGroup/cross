@@ -13,8 +13,22 @@ const char* testTranslation(StrId id, const char* name) {
   return id == StrId::STR_BLE_LAST_KEY || id == StrId::STR_BLE_BIND_DONE ? "key %s" : name;
 }
 #define tr(id) testTranslation(StrId::id, #id)
+// The screen picks its tenor/cross or tenor/ugly string with I18N.get; the cross ones read as their key names here.
+struct TestI18n {
+  const char* get(StrId id) const {
+#define NAMED(k) if (id == StrId::k) return testTranslation(id, #k);
+    NAMED(STR_BLE_BIND_NONE) NAMED(STR_BLE_BIND_FULL) NAMED(STR_BLE_BIND_DONE) NAMED(STR_BLE_BIND_WAIT)
+    NAMED(STR_BLE_UNAVAILABLE) NAMED(STR_BLE_READER_LOW_RAM) NAMED(STR_BLE_NO_DEVICES)
+#undef NAMED
+    return "ugly";
+  }
+};
+#undef I18N
+#define I18N TestI18n{}
 #define LOG_INF(...) (void)0
 #define LOG_ERR(...) (void)0
+// The menu as tenor/cross shows it; the hand-drawn shell is measured in the simulator.
+namespace shell { inline bool uglyParts() { return false; } inline bool isUgly() { return false; } }
 namespace fui {
 struct ListItem {
   const char* label = nullptr;
@@ -125,7 +139,7 @@ struct BlePageTurnerActivity : UiListActivity {
   struct App { void clearTapFlash() {} } app;
   Popup optionPopup;
   std::vector<fui::ListItem> rowItems_;
-  bool rowsDirty = false, bindWaitActive_ = false, bindMode_ = false, finished = false;
+  bool rowsDirty = false, bindWaitActive_ = false, bindMode_ = false, finished = false, statusInTip_ = false;
   int16_t selectCode_ = -1;
   void finish() { finished = true; }
   void onBackButton();
