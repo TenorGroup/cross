@@ -13,6 +13,13 @@ for name in ('settingsRow', 'buildSettingsGroups', 'focusFavorite'):
     method = re.search(r'(?:void|bool|int) HomeActivity::' + name + r'\([^\n]*\) \{.*?\n\}', home, re.S)
     assert method, name
     methods.append(method.group())
+# The row frame rule Home's touch groups share with every framed list (UiListActivity), as built.
+lists = (ROOT / 'src/activities/UiListActivity.cpp').read_text()
+for pattern in (r'UiListActivity::RowFrameLines UiListActivity::rowFrameLines\([^\n]*\) \{.*?\n\}',
+                r'void UiListActivity::drawRowRule\([^\n]*\) \{.*?\n\}'):
+    method = re.search(pattern, lists, re.S)
+    assert method, pattern
+    methods.insert(0, method.group())
 
 HARNESS = r'''
 #include "RecordingTarget.h"
@@ -25,6 +32,8 @@ struct GfxRenderer {
   Orientation orientation=Orientation::Portrait;
   std::vector<fui::Rect> frames;
   Orientation getOrientation() { return orientation; }
+  mutable int rulePixels=0;
+  void drawPixel(int,int,bool) const { ++rulePixels; }
   void drawRoundedRect(int x,int y,int w,int h,int,int,bool) {
     frames.push_back({static_cast<int16_t>(x),static_cast<int16_t>(y),static_cast<int16_t>(w),static_cast<int16_t>(h)});
   }
@@ -32,7 +41,12 @@ struct GfxRenderer {
 struct Settings { uint8_t uiTextSize=0; } SETTINGS;
 namespace tenorchrome { bool kTouchShell=false; }
 const fui::TextStyle& uiMenuLabelText(const fui::ThemeTokens& theme) { return theme.bodyText; }
-struct UiListActivity { int focusFavorite(const std::string&) { return -2; } };
+struct UiListActivity {
+  int focusFavorite(const std::string&) { return -2; }
+  struct RowFrameLines { int rule, top, bottom; };
+  static RowFrameLines rowFrameLines(int rowGap);
+  static void drawRowRule(const GfxRenderer& renderer, int y, int x0, int x1);
+};
 struct RenderLock { template<class T> RenderLock(T&) {} };
 struct HomeActivity : UiListActivity {
   enum class Tab { CAI_DAT, OTHER }; Tab activeTabId=Tab::CAI_DAT;
@@ -78,6 +92,9 @@ int main() {
       home.nav.followOnBuild=true; home.nav.requestScroll(3);
       assert(home.buildSettingsGroups(screen));
       assert(home.renderer.frames.size()==2 && hits.count()==static_cast<size_t>(home.settingsOrder.count));
+      // Touch: the grey rules between the rows of each group (founder 06/10/2026); buttons draw none.
+      assert(touch ? home.renderer.rulePixels>0 : home.renderer.rulePixels==0);
+      home.renderer.rulePixels=0;
       assert(home.nav.selected==selected && home.nav.top==0 && home.nav.pageRowsFor(home.settingsOrder.count)==home.settingsOrder.count);
       for (int i=0;i<home.settingsOrder.count;++i) {
         const auto& hit=hits.data()[i];
