@@ -120,6 +120,10 @@ class UglyRemainingScreensTest(unittest.TestCase):
         # Device name (Device, question 2) opens the keyboard: the keys in hand, the circle on the key under the cursor.
         self.assert_hand_only_in_ugly(settings_route(7, 2), (0, 300, 528, 580), 'KeyboardEntry')
 
+    def test_the_screen_after_a_crash_speaks_in_the_voice_of_the_shell(self):
+        reason = {'CROSSPOINT_SIM_PANIC': 'Guru Meditation Error: Core 0 panic (LoadProhibited) PC 0x42001234'}
+        self.assert_hand_only_in_ugly([], (0, 60, 528, 460), 'Crash', env=reason)
+
 
 if __name__ == '__main__':
     unittest.main()
