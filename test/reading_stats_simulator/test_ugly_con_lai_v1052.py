@@ -151,6 +151,14 @@ class UglyRemainingScreensTest(unittest.TestCase):
         # The tips under the keys, their key symbols drawn as the pen marks; the hand is taller, so fewer fit.
         self.assert_hand_only_in_ugly(settings_route(7, 2), (0, 590, 528, 745), 'KeyboardEntry')
 
+    def test_the_folder_path_is_written_by_hand(self):
+        # A folder from the notebook's File page: the path at the foot of the list, in hand under a shaky rule.
+        def folder(card):
+            (card.sd / FOLDER).mkdir()
+            (card.sd / FOLDER / 'a.txt').write_text('x' * 100)
+        self.assert_hand_only_in_ugly(['DOWN', 'DOWN', 'CONFIRM'], PATH_BAND, 'FileBrowser', ['DOWN', 'CONFIRM'],
+                                      prep=folder)
+
 
 if __name__ == '__main__':
     unittest.main()
