@@ -258,6 +258,20 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   r.drawText(font, x + PAD_LEFT, y + (SIZE - r.getLineHeight(font)) / 2, name.c_str(), true, EpdFontFamily::REGULAR);
 }
 
+namespace {
+// tenor/ugly: the names a screen came from, written before its title, cut by whole names and never in a name:
+// all of them when they fit `room`, else the first and an ellipsis for the rest, else the ellipsis alone.
+std::string uglyAncestors(const GfxRenderer& r, const char* prefix, const int room) {
+  const std::string all = std::string(prefix) + "/";
+  const auto fits = [&](const std::string& s) { return ugly::width(r, ugly::Size::S22, s.c_str()) <= room; };
+  if (fits(all)) return all;
+  const size_t slash = all.find('/');
+  const std::string first = all.substr(0, slash) + "/\xE2\x80\xA6/";
+  if (slash + 1 < all.size() && fits(first)) return first;
+  return fits("\xE2\x80\xA6/") ? "\xE2\x80\xA6/" : "";
+}
+}  // namespace
+
 void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char* prefix, const char* note) {
   // Touch: no title row. The name goes to the bar at the foot (or the strip, on a screen without one);
   // a tap on the strip of a screen that names where it came from still goes back there.
@@ -279,15 +293,16 @@ void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char
       ugly::text(r, ugly::Size::S22, right, base, said.c_str());
       right -= 12;
     }
+    std::string from;
     if (prefix && *prefix) {
-      const std::string from = ugly::fit(r, ugly::Size::S22, std::string(prefix) + "/", (right - x) / 3);
-      x += ugly::text(r, ugly::Size::S22, x, base, from.c_str()) + 4;
+      from = uglyAncestors(r, prefix, (right - x) / 3);
+      if (!from.empty()) x += ugly::text(r, ugly::Size::S22, x, base, from.c_str()) + 4;
     }
     const std::string name = ugly::fit(r, ugly::Size::S30, title ? title : "", right - x);
     ugly::text(r, ugly::Size::S30, x, base, name.c_str());
     ugly::underline(r, 20, r.getScreenWidth() - 20, base + 8, 760, 2);
 #ifdef UGLY_FRAME_LOG
-    LOG_INF("UGLY", "part=header");
+    LOG_INF("UGLY", "part=header prefix=%s title=%s", from.c_str(), name.c_str());
 #endif
     return;
   }

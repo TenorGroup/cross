@@ -87,5 +87,19 @@ class Rows(unittest.TestCase):
         self.assertGreater(last - first, 40, 'the label and the value of the URL row share one line')
 
 
+class Header(unittest.TestCase):
+    def headers(self, keys):
+        log, _, _ = frames(keys)
+        return [(p.strip(), t.strip()) for p, t in re.findall(r'part=header prefix=(.*) title=(.*)', log)]
+
+    def test_the_names_a_screen_came_from_are_cut_by_whole_names(self):
+        # Clock, 2 names deep ("Cài đặt/Hệ thống"): the room before its title holds the first name and an ellipsis, not
+        # "Cài đặt/Hệ th" cut inside a name by the scrawl. The KOReader page ("Cài đặt/Khác") fits and keeps both names.
+        deep = self.headers(settings_question(6, 1))
+        self.assertIn(('Cài đặt/…/', 'Đồng hồ'), deep)
+        self.assertFalse([p for p, _ in deep if '' in p], 'the names before the title end in the scrawl: %s' % deep)
+        self.assertIn(('Cài đặt/Khác/', 'Đồng bộ KOReader'), self.headers(settings_question(9, 1)))
+
+
 if __name__ == '__main__':
     unittest.main()
