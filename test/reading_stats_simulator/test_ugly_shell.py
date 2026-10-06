@@ -37,10 +37,11 @@ PAGE_ORDER = [0, 1, 4, 2, 3]  # Recent, Folder, Favorites, Stats, Settings: the 
 
 
 # Inside tenor/ugly: diary -> Settings page (edge Up) -> Display (front Right, Confirm) -> three rows back from the first:
-# night mode, the row "Độ xấu" (listed only here, under Interface), Interface. The edge key moves to Cross;
-# Confirm opens the approved exit question; front Left selects Yes, Confirm returns Home.
-BACK_TO_THE_BOX = '1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4000:LEFT;4400:UP;4800:CONFIRM;'
-BACK_TO_THE_ROW = BACK_TO_THE_BOX + '5600:LEFT;6200:CONFIRM;8000:QUIT'
+# night mode, the row "Độ xấu" (listed only here, under Interface), Interface. Confirm enters the question, the
+# edge key moves the circle to Cross, Confirm opens the approved exit question; front Left selects Yes, Confirm
+# returns Home.
+BACK_TO_THE_BOX = '1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4000:LEFT;4400:CONFIRM;4800:UP;5200:CONFIRM;'
+BACK_TO_THE_ROW = BACK_TO_THE_BOX + '6000:LEFT;6600:CONFIRM;8400:QUIT'
 
 
 class UglyShellTest(unittest.TestCase):
@@ -73,8 +74,9 @@ class UglyShellTest(unittest.TestCase):
         self.assertLess(abs(plain - af) * 100, 25 * plain, (plain, af))
 
     def test_the_ugliness_row_cycles_in_tenor_ugly_and_the_file_keeps_it_in_tenor_cross(self):
-        # Inside tenor/ugly the row sits under Interface: from the first row of the group, two rows back.
-        to_the_row = '1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4000:UP;4400:CONFIRM;6000:QUIT'
+        # Inside tenor/ugly the row sits under Interface: from the first row of the group, two rows back. Confirm enters
+        # the question, the edge key moves the circle, Confirm chooses.
+        to_the_row = '1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4000:CONFIRM;4400:UP;4800:CONFIRM;6400:QUIT'
         card = self.card(shell=1)
         card.run(to_the_row)
         self.assertEqual((card.settings()['uiShell'], card.settings()['uiUglyLevel']), (1, 0), 'af (the default) turns to ugly')
@@ -85,6 +87,21 @@ class UglyShellTest(unittest.TestCase):
         away = self.card(shell=1, uiUglyLevel=0)
         away.run(BACK_TO_THE_ROW)
         self.assertEqual((away.settings()['uiShell'], away.settings()['uiUglyLevel']), (0, 0))
+
+    def test_select_enters_a_question_before_the_circle_moves(self):
+        # Founder 06/10/2026: front up/down walk the questions, the edge keys turn the sheet, Select enters a question and
+        # only then do the keys move the circle. The edge key straight on the "Độ xấu" row turns the sheet, chooses nothing.
+        frame = re.compile(r'Settings form total=\d+ms tab=\d+ rows=\d+ sheet=(\d+)/\d+ question=(\d+) candidate=(\d+)')
+        card = self.card(shell=1, uiUglyLevel=1)
+        log, _ = card.run('1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4000:UP;4400:CONFIRM;6000:QUIT')
+        frames = [tuple(map(int, f)) for f in frame.findall(log)]  # open, 2 front Left, the edge key, Select
+        self.assertEqual(card.settings()['uiUglyLevel'], 1, 'an edge key before Select chose an answer')
+        self.assertNotEqual(frames[3][0], frames[2][0], ('the edge key turned no sheet', frames))
+        # Inside the question the circle moves, and Back drops it: the answer in use stays.
+        log, _ = card.run('1000:UP;1800:RIGHT;2400:CONFIRM;3200:LEFT;3600:LEFT;4000:CONFIRM;4400:UP;4800:BACK;6400:QUIT')
+        candidates = [int(f[2]) for f in frame.findall(log)]
+        self.assertEqual(card.settings()['uiUglyLevel'], 1, 'Back kept the moved circle')
+        self.assertEqual(candidates[-2:], [0, 1], ('the circle moved, then Back put it back on the answer in use', candidates))
 
     def test_cross_shell_keeps_home_and_none_of_the_voice(self):
         log, _ = self.card(shell=0).run('1000:RIGHT;2000:LEFT;3000:QUIT')
@@ -380,9 +397,9 @@ class UglyShellTest(unittest.TestCase):
         self.assertEqual(card.settings()['uiShell'], 1)
 
     def test_coming_back_to_tenor_cross_asks_and_cancel_keeps_the_shell(self):
-        for answer in ('5600:CONFIRM;', '5600:BACK;'):
+        for answer in ('6000:CONFIRM;', '6000:BACK;'):
             card = self.card(shell=1, sleepScreen=11)
-            log, _ = card.run(BACK_TO_THE_BOX + answer + '7500:QUIT')
+            log, _ = card.run(BACK_TO_THE_BOX + answer + '7900:QUIT')
             self.assertIn('UglySwitch', entered(log))
             self.assertEqual([f[1] for f in self.SWITCH_FRAME.findall(log)], ['1'], 'default No')
             self.assertEqual((card.settings()['uiShell'], card.settings()['sleepScreen']), (1, 11))
