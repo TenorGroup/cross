@@ -128,6 +128,7 @@ freeink::ui::Rect words(const GfxRenderer&, const freeink::ui::Rect&, const char
   return {};
 }
 void marks(const GfxRenderer&, const freeink::ui::Rect&, const Marks&) {}
+void ring(const GfxRenderer&, const freeink::ui::Rect&) {}
 }  // namespace uglychrome
 
 RenderLock::RenderLock(Activity&) {}

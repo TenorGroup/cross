@@ -13,6 +13,8 @@
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/themes/TenorRadius.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyChrome.h"
 
 namespace fui = freeink::ui;
 
@@ -93,7 +95,18 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
                                    static_cast<int16_t>(right - left), static_cast<int16_t>(h)},
                          ACTION_TAB, tab.value, fui::InputTouch);
     }
-    if (!uiTarget.paintingEnabled()) continue;
+    if (!uiTarget.paintingEnabled()) {
+      // tenor/ugly on the button readers lays the list out with its ink off: the tab names are written by hand
+      // here, a slot each, and the circle of the cursor goes round the tab in use.
+      if (shell::uglyParts() && tab.label) {
+        const int slot = icons ? PILL_ICON_W + 16 : std::max<int>(pillW, slotW - 4);
+        const auto ink = uglychrome::words(renderer, fui::Rect{static_cast<int16_t>(cx - slot / 2), static_cast<int16_t>(y0),
+                                                               static_cast<int16_t>(slot), static_cast<int16_t>(h)},
+                                           tab.label, fui::TextAlign::Center);
+        if (tab.selected) uglychrome::ring(renderer, ink);
+      }
+      continue;
+    }
     if (tab.selected) tenorchrome::drawPillRing(renderer, cx - pillW / 2, y0 + KHE, pillW, h - 2 * KHE, 3, false);
     if (icons) {
       const int ix = cx - ICON / 2, iy = y0 + (h - ICON) / 2;
