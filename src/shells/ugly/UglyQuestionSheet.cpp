@@ -97,16 +97,19 @@ void QuestionSheet::invalidate() {
   view_ = {};
   ready_ = false;
   paper_ = false;
+  answering_ = false;
 }
 
 void QuestionSheet::bind(const GfxRenderer& r, View view, bool touch) {
   const uint32_t focusId = current_ >= 0 && current_ < static_cast<int>(blocks_.size()) ? blocks_[current_].id : 0;
   const auto previous = blocks_;
+  const bool wasAnswering = answering_ || paper_;
   view_ = view;
   view_.count = std::max(0, view_.count);
   touch_ = touch;
   ready_ = false;
   paper_ = false;
+  answering_ = false;
   width_ = r.getScreenWidth();
   height_ = r.getScreenHeight();
   left_ = touch ? 24 : 32;
@@ -126,17 +129,19 @@ void QuestionSheet::bind(const GfxRenderer& r, View view, bool touch) {
   for (int i = 0; i < view_.count; ++i) {
     const Row row = rowAt(i);
     if (focusId && row.id == focusId) current_ = i;
+    // Buttons answer a switch like any question: its 2 answers are circles the circle walks.
+    Kind kind = row.kind == Kind::Toggle && !touch_ ? Kind::Choice : row.kind;
     char prefix[32];
     snprintf(prefix, sizeof(prefix), tr(STR_UGLY_PHIEU_Q), i + 1);
     snprintf(question, sizeof(question), "%s %s%s", prefix, row.question,
              row.kind == Kind::Action || row.kind == Kind::ReadOnly ? "" : "?");
     int reserve = 0;
-    if (row.kind == Kind::Toggle) reserve = 40;
+    if (kind == Kind::Toggle) reserve = 40;
     if (row.kind == Kind::Action) reserve = width(r, Size::S22, tr(STR_UGLY_PHIEU_ATTACHED)) + 12;
     const int qWidth = std::max(80, right_ - left_ - reserve);
     const int qLines = std::max(1, paragraph(r, Size::S30, left_, 0, qWidth, questionStep_, question, false));
     int columns = 0, answerRows = 0;
-    if (row.kind == Kind::Choice && row.count) {
+    if (kind == Kind::Choice && row.count) {
       for (const int cols : {4, 2, 1}) {
         const int available = choiceLabelWidth((right_ - left_) / cols, touch_);
         bool fits = true;
@@ -147,11 +152,10 @@ void QuestionSheet::bind(const GfxRenderer& r, View view, bool touch) {
         if (fits || cols == 1) { columns = cols; break; }
       }
       answerRows = (row.count + columns - 1) / columns;
-    } else if (row.kind == Kind::Ruler || row.kind == Kind::Paper || row.kind == Kind::ReadOnly) {
+    } else if (kind == Kind::Ruler || kind == Kind::Paper || kind == Kind::ReadOnly) {
       answerRows = 1;
     }
     const int qHeight = qLines * questionStep_;
-    Kind kind = row.kind;
     if (qHeight + answerRows * answerStep_ > bottom_ - laterTop_ && kind == Kind::Choice) {
       kind = Kind::Paper;
       columns = 0;
@@ -173,6 +177,11 @@ void QuestionSheet::bind(const GfxRenderer& r, View view, bool touch) {
   if (view_.count) {
     page_ = blocks_[current_].page;
     candidate_ = rowAt(current_).selected;
+    // A commit that rebinds (a new text size) keeps the question it was answered in open.
+    if (wasAnswering && !touch_ && focusId && blocks_[current_].id == focusId) {
+      answering_ = true;
+      if (blocks_[current_].kind == Kind::Paper) openPaper();
+    }
   } else {
     page_ = current_ = candidate_ = 0;
   }
@@ -217,19 +226,34 @@ QuestionSheet::Intent QuestionSheet::turnSheet(int direction) {
 }
 
 QuestionSheet::Intent QuestionSheet::input(Key key) {
-  if (key == Key::Home) { paper_ = false; return intent(IntentKind::Back, true); }
+  if (key == Key::Home) { paper_ = answering_ = false; return intent(IntentKind::Back, true); }
   if (key == Key::Back) {
-    if (paper_) { paper_ = false; candidate_ = rowAt(current_).selected; return intent(IntentKind::None, true); }
+    if (paper_ || answering_) {
+      paper_ = answering_ = false;
+      candidate_ = rowAt(current_).selected;
+      return intent(IntentKind::None, true);
+    }
     return intent(IntentKind::Back, true);
   }
   if (!view_.row || !view_.count) return {};
   const Row row = rowAt(current_);
   const Kind kind = kindAt(current_);
-  if (key == Key::PreviousSheet || key == Key::NextSheet)
-    return turnSheet(key == Key::PreviousSheet ? -1 : 1);
-  if (key == Key::PreviousQuestion || key == Key::NextQuestion) {
-    const int step = key == Key::PreviousQuestion ? -1 : 1;
-    if (!paper_) return focus(current_ + step);
+  // Buttons: front up/down walk the questions and the edge keys turn the sheet until Select enters a
+  // question; inside it every up/down key walks the circle over its answers. Touch keeps its keys.
+  const bool inside = paper_ || answering_;
+  const bool option = key == Key::PreviousOption || key == Key::NextOption;
+  if (key == Key::PreviousSheet || key == Key::NextSheet || (!touch_ && !inside && option)) {
+    if (inside) return {};
+    return turnSheet(key == Key::PreviousSheet || key == Key::PreviousOption ? -1 : 1);
+  }
+  if (key == Key::PreviousQuestion || key == Key::NextQuestion || (!touch_ && inside && option)) {
+    const int step = key == Key::PreviousQuestion || key == Key::PreviousOption ? -1 : 1;
+    if (!inside) return focus(current_ + step);
+    if (!paper_) {
+      if ((kind != Kind::Choice && kind != Kind::Ruler) || row.count <= 1) return {};
+      candidate_ = (candidate_ + step + row.count) % row.count;
+      return intent(IntentKind::Preview, true);
+    }
     candidate_ = (candidate_ + step + row.count) % row.count;
     if (candidate_ < paperFirst_ || candidate_ > paperLast_) {
       // Re-anchor a page of the paper without moving the selected-value anchor
@@ -242,7 +266,7 @@ QuestionSheet::Intent QuestionSheet::input(Key key) {
     }
     return intent(IntentKind::Preview, true);
   }
-  if (key == Key::PreviousOption || key == Key::NextOption) {
+  if (option) {
     if (paper_ || (kind != Kind::Choice && kind != Kind::Ruler) || row.count <= 1) return {};
     candidate_ = (candidate_ + (key == Key::PreviousOption ? -1 : 1) + row.count) % row.count;
     return intent(IntentKind::Preview, true);
@@ -250,6 +274,22 @@ QuestionSheet::Intent QuestionSheet::input(Key key) {
   if (key != Key::Confirm) return {};
   if (kind == Kind::Action) return intent(IntentKind::Activate, true);
   if (kind == Kind::ReadOnly || row.count <= 0) return {};
+  if (!touch_) {
+    if (!inside) {
+      // Select enters the question: the circle starts on the answer in use.
+      candidate_ = row.selected;
+      if (kind == Kind::Paper) {
+        openPaper();
+        return intent(IntentKind::Preview, true);
+      }
+      answering_ = true;
+      return intent(IntentKind::None, true);
+    }
+    // Another answer is chosen and the question stays open; the answer in use closes it.
+    if (candidate_ != row.selected) return intent(IntentKind::Commit, true);
+    paper_ = answering_ = false;
+    return intent(IntentKind::None, true);
+  }
   if (kind == Kind::Paper && !paper_) {
     openPaper();
     return intent(IntentKind::Preview, true);
@@ -390,8 +430,9 @@ void QuestionSheet::paint(const GfxRenderer& r, const MappedInputManager& input)
     snprintf(prefix, sizeof(prefix), tr(STR_UGLY_PHIEU_Q), i + 1);
     snprintf(buf, sizeof(buf), "%s %s%s", prefix, row.question,
              row.kind == Kind::Action || row.kind == Kind::ReadOnly ? "" : "?");
-    const int reserve = row.kind == Kind::Toggle ? 40 : row.kind == Kind::Action ? width(r, Size::S22, tr(STR_UGLY_PHIEU_ATTACHED)) + 12 : 0;
-    paragraph(r, Size::S30, left_, b.top + questionStep_ - 10, std::max(80, right_ - left_ - reserve), questionStep_, buf);
+    const int reserve = b.kind == Kind::Toggle ? 40 : b.kind == Kind::Action ? width(r, Size::S22, tr(STR_UGLY_PHIEU_ATTACHED)) + 12 : 0;
+    const int qWidth = std::max(80, right_ - left_ - reserve);
+    paragraph(r, Size::S30, left_, b.top + questionStep_ - 10, qWidth, questionStep_, buf);
     const int ay = answerTop(i), qBase = ay - 10;
     Box focusBox{left_, qBase - 28, right_, qBase + 6};
     if (b.kind == Kind::Toggle) {
@@ -463,7 +504,16 @@ void QuestionSheet::paint(const GfxRenderer& r, const MappedInputManager& input)
       focusBox = {x, baseline - 28, x + w, baseline + 5};
     }
     if (!touch_ && i == current_ && !paper_) {
-      circle(r, Circle::Row, focusBox, 10, 7, 2);
+      if (answering_) {
+        circle(r, Circle::Row, focusBox, 10, 7, 2);
+      } else {
+        // Not yet entered: the whole question is underlined, line by line; the last line is cut to the text left.
+        const int lines = std::max(1, b.questionHeight / questionStep_);
+        int rest = width(r, Size::S30, buf);
+        for (int l = 0; l < lines; ++l, rest -= qWidth)
+          underline(r, left_ - 2, left_ + std::clamp(l + 1 < lines ? qWidth : rest, 40, qWidth),
+                    b.top + questionStep_ - 3 + l * questionStep_, 940 + i * 8 + l, 2);
+      }
       const int y = b.top + questionStep_ - 22;
       line(r, 6, y, 23, y - 1, 970, 2);
       line(r, 15, y - 6, 23, y - 1, 971, 2);
@@ -528,7 +578,11 @@ void QuestionSheet::paint(const GfxRenderer& r, const MappedInputManager& input)
     text(r, Size::S22, width_ - 24 - width(r, Size::S22, pageLabel.c_str()), height_ - 48, pageLabel.c_str());
 #endif
   } else {
-    text(r, Size::S22, (width_ - width(r, Size::S22, buf)) / 2, height_ - 52, buf);
+    // The sheet number and what Select does now: enter the question, or choose and finish.
+    snprintf(label, sizeof(label), "%s, %s", buf,
+             paper_ || answering_ ? tr(STR_UGLY_PHIEU_HINT_ANSWER) : tr(STR_UGLY_PHIEU_HINT_QUESTION));
+    const std::string footer = fit(r, Size::S22, label, width_ - 24);
+    text(r, Size::S22, (width_ - width(r, Size::S22, footer.c_str())) / 2, height_ - 52, footer.c_str());
     statusBar(r, input, {true, view_.count > 0, true, true});
   }
   ready_ = true;
