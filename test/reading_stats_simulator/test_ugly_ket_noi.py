@@ -141,6 +141,21 @@ class UglyWifiTest(unittest.TestCase):
         self.assertEqual(said[-1:], ['Đang nối mạng. Cầu trời mật khẩu đúng.'])
         print('wifi note frames ms:', [n['ms'] for n in notes])
 
+    def test_the_list_and_the_forget_question_are_written_by_hand(self):
+        # A saved network with a password is first in the list; the Left key asks to forget it.
+        card = Card()
+        self.addCleanup(card.close)
+        (card.store / 'wifi.json').write_text(json.dumps(
+            {'credentials': [{'ssid': 'Local Test Network (fake)', 'password': 'matkhau1'}]}))
+        script, t = keys(*TO_THE_WIFI, 'WAIT:2500')
+        log, shots = card.run(script + ';%d:LEFT;%d:QUIT' % (t + 600, t + 2000), [(t, 'list'), (t + 1500, 'ask')],
+                              timeout=60)
+        self.assertRegex(log, r'Wifi list frame rows=3 ')
+        self.assertIn('Wifi ask frame forget=1 sel=0', log)
+        self.assertGreater(ink(shots['list'], (30, 150, 500, 300)), 1500)  # three rows in pen
+        self.assertGreater(ink(shots['list'], (20, 690, 508, 745)), 500)  # the legend as the tip
+        self.assertGreater(ink(shots['ask'], (40, 200, 500, 500)), 2000)
+
     def test_a_failed_join_says_so(self):
         said, _, _ = self.wifi(CROSSPOINT_SIM_WIFI_CONNECT='fail')
         self.assertEqual(said[-1:], ['Nối không được. Gõ sai mật khẩu chứ gì.'])

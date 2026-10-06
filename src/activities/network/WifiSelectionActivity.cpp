@@ -14,7 +14,10 @@
 #include "CrossPointSettings.h"
 #include "DeviceName.h"
 #include "shells/Shell.h"
+#include "shells/ugly/UglyChrome.h"
 #include "shells/ugly/UglyNote.h"
+#include "shells/ugly/UglySwitch.h"
+#include "components/TenorMenuChrome.h"
 #include "FileTransferState.h"
 #include "MappedInputManager.h"
 #include "WifiCredentialStore.h"
@@ -1040,7 +1043,11 @@ void WifiSelectionActivity::render(RenderLock&&) {
   if (state == WifiSelectionState::PASSWORD_ENTRY || state == WifiSelectionState::HIDDEN_SSID_ENTRY) {
     return;
   }
-  if (shell::uglyParts() && renderUglyNote()) return;
+  if (shell::uglyParts()) {
+    if (renderUglyNote()) return;
+    if (state == WifiSelectionState::NETWORK_LIST) return renderUglyList();
+    if (state == WifiSelectionState::SAVE_PROMPT || state == WifiSelectionState::FORGET_PROMPT) return renderUglyPrompt();
+  }
 
   renderer.clearScreen();
 
@@ -1344,6 +1351,63 @@ bool WifiSelectionActivity::renderUglyNote() const {
   ugly::notePage(renderer, mappedInput, tr(STR_WIFI_NETWORKS), line, detail.empty() ? nullptr : detail.c_str(), -1,
                  hints);
   return true;
+}
+
+// The list by hand: laid out as usual with its ink off, each row it placed written with the shared row; the MAC stays
+// data in the UI font under the header, the legend becomes the tip.
+void WifiSelectionActivity::renderUglyList() {
+  [[maybe_unused]] const uint32_t started = millis();
+  renderer.clearScreen();
+  uiTarget.setPaintingEnabled(false);
+  renderUi();
+  uiTarget.setPaintingEnabled(true);
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  char countStr[64];
+  snprintf(countStr, sizeof(countStr), tr(STR_NETWORKS_FOUND), realNetworkCount);
+  GUI.drawHeader(renderer, Rect{safe.x, safe.y + metrics.topPadding, safe.width, metrics.headerHeight},
+                 tr(STR_WIFI_NETWORKS), countStr);
+  renderer.drawText(SMALL_FONT_ID, safe.x + metrics.contentSidePadding,
+                    safe.y + metrics.topPadding + metrics.headerHeight + 4, cachedMacAddress.c_str());
+  if (networks.empty()) {
+    const int w = renderer.getScreenWidth();
+    ugly::paragraph(renderer, ugly::Size::S30, ugly::NOTE_X, renderer.getScreenHeight() / 2, w - ugly::NOTE_X - 30, 44,
+                    tr(STR_UGLY_WIFI_NONE));
+  }
+  for (size_t i = 0; i < networkRowItems.size(); ++i) {
+    const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(i));
+    if (box.empty()) continue;
+    uglychrome::Row row;
+    row.label = networkRowItems[i].label;
+    row.value = networkRowItems[i].value;
+    row.marks.selected = i == selectedNetworkIndex;
+    uglychrome::row(renderer, box, row);
+  }
+  tenorchrome::drawTip(renderer, tr(STR_UGLY_WIFI_TIP));
+  const bool hasSavedPassword = !networks.empty() && networks[selectedNetworkIndex].hasSavedPassword;
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_CONNECT), hasSavedPassword ? tr(STR_FORGET_BUTTON) : "",
+                                            tr(STR_RETRY));
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  renderer.displayBuffer();
+#ifdef UGLY_FRAME_LOG
+  LOG_INF("UGLY", "Wifi list frame rows=%u total=%lums heap=%u", static_cast<unsigned>(networkRowItems.size()),
+          static_cast<unsigned long>(millis() - started), ESP.getFreeHeap());
+#endif
+}
+
+// The two questions in the shared question box. The answers keep the order of the plain dialog, so the
+// selection means the same thing to loop().
+void WifiSelectionActivity::renderUglyPrompt() {
+  const bool forget = state == WifiSelectionState::FORGET_PROMPT;
+  const char* answers[2] = {forget ? tr(STR_UGLY_WIFI_FORGET_NO) : tr(STR_UGLY_WIFI_SAVE_YES),
+                            forget ? tr(STR_UGLY_WIFI_FORGET_YES) : tr(STR_UGLY_WIFI_SAVE_NO)};
+  ugly::Box drawn[2];
+  ugly::askBox(renderer, mappedInput, forget ? tr(STR_UGLY_WIFI_FORGET_ASK) : tr(STR_UGLY_WIFI_SAVE_ASK), "", answers,
+               forget ? forgetPromptSelection : savePromptSelection, drawn);
+  renderer.displayBuffer();
+#ifdef UGLY_FRAME_LOG
+  LOG_INF("UGLY", "Wifi ask frame forget=%d sel=%d", forget ? 1 : 0, forget ? forgetPromptSelection : savePromptSelection);
+#endif
 }
 
 void WifiSelectionActivity::onComplete(const bool connected) {
