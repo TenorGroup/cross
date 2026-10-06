@@ -89,6 +89,9 @@ class UglyPartsX3(unittest.TestCase):
     def test_notice(self):
         self.assertHand('notice', 'notice')
 
+    def test_question_box(self):
+        self.assertHand('ask', 'ask')
+
 
 if __name__ == '__main__':
     unittest.main()

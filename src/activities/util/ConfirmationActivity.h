@@ -12,6 +12,7 @@ class ConfirmationActivity : public Activity {
   std::string body;
 
   OptionPopup confirmPopup;
+  int uglyChoice = 1;  // tenor/ugly: the circle starts on Cancel, the second answer
 
  public:
   ConfirmationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& heading,
