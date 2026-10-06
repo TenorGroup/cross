@@ -80,6 +80,9 @@ class UglyPartsX3(unittest.TestCase):
     def test_header(self):
         self.assertHand('language', 'header')
 
+    def test_key_bar(self):
+        self.assertHand('language', 'keys')
+
 
 if __name__ == '__main__':
     unittest.main()
