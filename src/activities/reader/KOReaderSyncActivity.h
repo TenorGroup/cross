@@ -84,6 +84,7 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
 
   // Selection in result screen (0=Apply, 1=Upload)
   int selectedOption = 0;
+  void renderUgly();
 
   // Timed return for successful smart-sync terminal states.
   unsigned long autoReturnAt = 0;

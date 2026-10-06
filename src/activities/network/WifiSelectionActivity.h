@@ -147,6 +147,9 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   void renderConnecting(const Rect* screen, const ThemeMetrics* metrics) const;
   void renderConnected(const Rect* screen, const ThemeMetrics* metrics) const;
   void renderConnectionFailed(const Rect* screen, const ThemeMetrics* metrics) const;
+  bool renderUglyNote() const;
+  void renderUglyList();
+  void renderUglyPrompt();
 
   void stopWifiRadio();
   void startWifiScan(bool autoScan = false);

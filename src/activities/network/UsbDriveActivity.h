@@ -27,6 +27,9 @@ class UsbDriveActivity final : public Activity, private UiAppHost {
 
   static void driveScreen(UiScreen& screen, void* user);
   void buildDriveScreen(UiScreen& screen) const;
+  // What the screen says now: false once the drive has ended (nothing to say).
+  bool texts(const char*& message, const char*& detail, const char*& secondaryDetail) const;
+  void renderUgly() const;
   void restartToHome();
 
   State state = State::Unsupported;

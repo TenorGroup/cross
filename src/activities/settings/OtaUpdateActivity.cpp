@@ -17,6 +17,8 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/OtaUpdater.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyNote.h"
 
 void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {
@@ -198,6 +200,15 @@ void OtaUpdateActivity::render(RenderLock&&) {
   const uint32_t frameLargest = ESP.getMaxAllocHeap();
 #endif
 
+  if (shell::uglyParts() && renderUglyNote(static_cast<int>(updaterProgress * 100), firstProgressFrame)) {
+#ifdef TENOR_PRESS_PROBE
+    if (state == UPDATE_IN_PROGRESS)
+      LOG_INF("OTA", "Frame %u%% heap=%u -> %u largest=%u -> %u", lastUpdaterPercentage, frameHeap, ESP.getFreeHeap(),
+              frameLargest, ESP.getMaxAllocHeap());
+#endif
+    return;
+  }
+
   renderer.clearScreen();
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_UPDATE));
@@ -265,6 +276,46 @@ void OtaUpdateActivity::render(RenderLock&&) {
     LOG_INF("OTA", "Frame %u%% heap=%u -> %u largest=%u -> %u", lastUpdaterPercentage, frameHeap, ESP.getFreeHeap(),
             frameLargest, ESP.getMaxAllocHeap());
 #endif
+}
+
+// The waits of an update as notes. The question before installing keeps its drawing until the shared ugly
+// question box lands. The handwriting is baked and uncompressed, so a progress frame beside TLS asks the heap for
+// nothing more than the UI font's digits, decoded on the first frame as before.
+bool OtaUpdateActivity::renderUglyNote(const int percent, const bool firstProgressFrame) const {
+  ugly::Hints hints;
+  const char* line = nullptr;
+  const char* detail = nullptr;
+  char bytes[32];
+  int bar = -1;
+  switch (state) {
+    case CHECKING_FOR_UPDATE:
+      line = tr(STR_UGLY_OTA_CHECKING);
+      break;
+    case UPDATE_IN_PROGRESS:
+      if (firstProgressFrame) renderer.drawCenteredText(UI_10_FONT_ID, 0, "0123456789 /%", false);
+      line = tr(STR_UGLY_OTA_UPDATING);
+      snprintf(bytes, sizeof(bytes), "%u / %u", static_cast<unsigned>(updater.getProcessedSize()),
+               static_cast<unsigned>(updater.getTotalSize()));
+      detail = bytes;
+      bar = percent;
+      break;
+    case NO_UPDATE:
+      line = tr(STR_UGLY_OTA_NONE);
+      hints.back = true;
+      break;
+    case FAILED:
+      line = tr(STR_UGLY_OTA_FAILED);
+      detail = failedDetail;
+      hints.back = true;
+      break;
+    case FINISHED:
+      line = tr(STR_UGLY_OTA_DONE);
+      break;
+    default:
+      return false;
+  }
+  ugly::notePage(renderer, mappedInput, tr(STR_UPDATE), line, detail, bar, hints);
+  return true;
 }
 
 void OtaUpdateActivity::recordAttempt(const char* op, const bool now) {

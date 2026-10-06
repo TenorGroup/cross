@@ -30,6 +30,7 @@
 #include "WebDAVHandler.h"
 #include "WebPathPolicy.h"
 #include "WifiCredentialStore.h"
+#include "shells/Shell.h"
 #include "util/Timezones.h"
 #include "html/FilesPageHtml.generated.h"
 #include "html/FontsPageHtml.generated.h"
@@ -189,7 +190,7 @@ void CrossPointWebServer::begin() {
   // Store AP mode flag for later use (e.g., in handleStatus)
   apMode = isInApMode;
   char hostname[64];
-  deviceNetworkName(hostname, sizeof(hostname), "tenor-cross");
+  deviceNetworkName(hostname, sizeof(hostname), defaultNetworkName());
 #ifdef SIMULATOR
   auth.configure("127.0.0.1", hostname);
 #else
@@ -632,6 +633,8 @@ void CrossPointWebServer::handleStatus() const {
   doc["rssi"] = apMode ? 0 : WiFi.RSSI();
   doc["freeHeap"] = ESP.getFreeHeap();
   doc["uptime"] = millis() / 1000;
+  // On tenor/ugly the pages put the shell's name, in the device language, on their masthead.
+  if (shell::isUgly()) doc["shellName"] = tr(STR_SHELL_UGLY);
 #if FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3
   doc["device"] = gpio.deviceIsX3() ? "X3" : "X4";
 #else
