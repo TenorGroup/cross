@@ -383,7 +383,7 @@ void HomeActivity::activateIndex(const int index) {
       return;
     }
     case Tab::STATS: {
-      if (statsRowsEnlarged && index == 0) {
+      if (statsTurnRow(index)) {
         RenderLock lock(*this);
         statsPage = 1 - statsPage;
         rebuildRows();
@@ -966,7 +966,9 @@ void HomeActivity::docGocTheNho() {
 
 bool HomeActivity::rowOpens(const int row) const {
   // Settings groups and the stats screens open a screen; a folder opens its rows; a book opens the book.
-  if (activeTabId == Tab::CAI_DAT || activeTabId == Tab::STATS) return true;
+  // The enlarged stats tab's page row turns the page in place.
+  if (activeTabId == Tab::STATS) return !statsTurnRow(row);
+  if (activeTabId == Tab::CAI_DAT) return true;
   return activeTabId == Tab::FOLDER && row >= 0 && row < static_cast<int>(mucTheNho.size()) &&
          !mucTheNho[row].empty() && mucTheNho[row].back() == '/';
 }
