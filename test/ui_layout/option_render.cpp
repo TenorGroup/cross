@@ -23,7 +23,7 @@ int main() {
   int slot = 0;
   if (window.paged) options[slot++] = {"<", 2, 0};
   for (int i = 0; i < window.count; ++i) options[slot++] = {label, 1, static_cast<int16_t>(window.first + i)};
-  if (window.paged) options[slot++] = {">", 2, 0};
+  if (window.next) options[slot++] = {">", 2, 0};
   props.optionCount = slot;
   const int height = fui::optionDialogHeight(target, props, popupWidth);
   assert(height <= available);

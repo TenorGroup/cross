@@ -108,15 +108,46 @@ TEST(Layout, BlankLineBetweenParagraphs) {
 }
 
 TEST(Pages, RowsOfANotebookPage) {
-  EXPECT_EQ(pageTop(0, 9), 0);
-  EXPECT_EQ(pageTop(8, 9), 0);
-  EXPECT_EQ(pageTop(9, 9), 9);
+  EXPECT_EQ(pageTop(0, 9, 30), 0);
+  EXPECT_EQ(pageTop(8, 9, 30), 0);
+  EXPECT_EQ(pageTop(9, 9, 30), 9);
   EXPECT_EQ(pageCount(0, 9), 1);
   EXPECT_EQ(pageCount(9, 9), 1);
-  EXPECT_EQ(pageCount(10, 9), 2);
+  EXPECT_EQ(pageCount(11, 9), 2);
   EXPECT_EQ(cycle(0, -1, 5), 4);
   EXPECT_EQ(cycle(4, 1, 5), 0);
   EXPECT_EQ(cycle(0, 1, 0), 0);
+}
+
+// Founder 06/10/2026: no page holds a lone row. It stands in the foot line of the page before, which then names
+// no page; every other page keeps its rows and its "page n/m".
+TEST(Pages, ALoneLastRowStandsInTheFootLineOfThePageBefore) {
+  EXPECT_EQ(pageCount(9, 8), 1);  // 9 Settings rows on the X4 Pro's 8: one page, the 9th in the foot
+  EXPECT_EQ(rowsOnPage(0, 8, 9), 9);
+  EXPECT_FALSE(pageNamed(0, 8, 9));
+  EXPECT_EQ(pageCount(17, 8), 2);  // 8 + 9
+  EXPECT_EQ(rowsOnPage(0, 8, 17), 8);
+  EXPECT_TRUE(pageNamed(0, 8, 17));
+  EXPECT_EQ(rowsOnPage(8, 8, 17), 9);
+  EXPECT_FALSE(pageNamed(8, 8, 17));
+  EXPECT_EQ(pageOf(16, 8, 17), 1);  // the lone row is on the page before, not on a page of its own
+  EXPECT_EQ(pageTop(16, 8, 17), 8);
+  EXPECT_EQ(pageCount(18, 8), 3);  // a last page of 2 rows is a page
+  EXPECT_EQ(rowsOnPage(16, 8, 18), 2);
+  EXPECT_TRUE(pageNamed(16, 8, 18));
+  EXPECT_EQ(pageCount(1, 8), 1);
+  EXPECT_EQ(rowsOnPage(0, 8, 1), 1);
+  EXPECT_FALSE(pageNamed(0, 8, 1));
+  for (int rows : {8, 10})
+    for (int count = 1; count < 60; ++count) {
+      int shown = 0;
+      for (int page = 0; page < pageCount(count, rows); ++page) {
+        const int n = rowsOnPage(page * rows, rows, count);
+        EXPECT_GE(n, count > 1 ? 2 : 1) << count << " rows of " << rows;
+        shown += n;
+      }
+      EXPECT_EQ(shown, count) << "every row on exactly one page";
+    }
 }
 
 // The cut of a long line: the one-pass walk gives what shaving one character at a time and measuring the
