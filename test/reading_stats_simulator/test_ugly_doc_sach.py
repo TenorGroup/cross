@@ -33,6 +33,7 @@ CROSS = {
     'notice': '49ecd4c4e7dad049',
     'xtc_toc': '26d9891198b82a1a',
     'saved_quote': '77b3fe0a4546e437',
+    'quotes_book': 'a897f7651c33b944',
 }
 # The hand-written notices, the same strokes on every draw.
 UGLY = {
@@ -82,6 +83,14 @@ def write_xtc(path):
     path.write_bytes(header + chapters + table + b''.join(pages))
 
 
+def write_quote(sd):
+    """One saved quote of the book, kept at a fixed moment so its date reads the same on every run."""
+    from test_quotes_v1011 import write_quote as write
+    (sd / '.crosspoint' / 'quotes').mkdir(parents=True, exist_ok=True)
+    (sd / '.crosspoint' / 'quotes' / '.ten-v2').write_text('2')
+    write(sd / '.crosspoint' / 'quotes', '/k.epub', 'Kidnapped', 'lâu ở đầu cầu', 0, 1, 20260919, minute=600)
+
+
 def screen_digest(image):
     image = image.copy()
     ImageDraw.Draw(image).rectangle(CLOCK, fill=255)
@@ -89,13 +98,15 @@ def screen_digest(image):
 
 
 class ReadingScreensTest(unittest.TestCase):
-    def card(self, shell, siblings=(), paragraphs=1, dictionary=False, xtc=False, **settings):
+    def card(self, shell, siblings=(), paragraphs=1, dictionary=False, xtc=False, quote=False, **settings):
         if dictionary:
             settings['dictionaryName'] = 'vd'
         card = Card(shell=shell, books=[], stats=False, textAntiAliasing=0, **settings)
         self.addCleanup(card.close)
         if dictionary:
             write_dictionary(card.sd)
+        if quote:
+            write_quote(card.sd)
         if xtc:
             write_xtc(card.sd / 'k.xtc')
             (card.store / 'recent.json').write_text(json.dumps({'books': [{'path': '/k.xtc', 'title': 'Kidnapped', 'author': 'RLS'}]}))
@@ -195,6 +206,20 @@ class ReadingScreensTest(unittest.TestCase):
         self.assertIn('QuoteSelect', log)
         self.assertEqual(digest(ugly['saved'].crop(NOTICE))[:16], UGLY['saved_quote'], 'the jab and where the quote went')
         self.check('saved_quote', ugly['saved'], cross['saved'])
+
+    # A quote kept at a fixed moment, opened from the reader menu: the quotes of the book, the quote, its trim.
+    QUOTES = MENU + ';4600:DOWN;5300:DOWN;6000:RIGHT;6400:RIGHT;6800:RIGHT;7200:CONFIRM;9500:CONFIRM;11500:CONFIRM' \
+        ';13500:CONFIRM;15500:CONFIRM;17500:QUIT'
+    QUOTE_SHOTS = [(9000, 'book'), (11000, 'quote'), (17000, 'trim')]
+
+    def test_quotes_list(self):
+        log, ugly, cross = self.both(self.QUOTES, self.QUOTE_SHOTS, paragraphs=8, quote=True)
+        self.assertTrue('Quotes frame books=0 items=1' in log, 'no ugly quote list')
+        self.check('quotes_book', ugly['book'], cross['book'])
+        # The list of books is reached from the notebook of tenor/ugly only.
+        books = self.card(1, paragraphs=8, quote=True).run(
+            '1000:DOWN;1500:DOWN;2000:DOWN;2500:DOWN;3000:RIGHT;3500:RIGHT;4000:RIGHT;4500:CONFIRM;7000:QUIT', [(6500, 'books')], timeout=90)
+        self.assertTrue('Quotes frame books=1 items=1' in books[0], 'no ugly book list')
 
 
 if __name__ == '__main__':
