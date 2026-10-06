@@ -97,8 +97,10 @@ def main():
 
     # The Text and Status bar forms, opened from a pinned setting: the question struck out goes back too.
     to_pin = [RECENT, DESK, FAVORITES, 'TAP:240,176']
-    files, _, _ = run(to_pin + ['STROKE:400,30,550,330,554,40,560'], pins=['text/hyphenationEnabled'], hyphenationEnabled=1)
-    if files['settings'].get('hyphenationEnabled') == 1:  # off by default
+    # A pinned toggle opens ticked over (off by default, so 0 opens as 1); the strike puts it back to 0.
+    opened, _, _ = run(to_pin, pins=['text/hyphenationEnabled'], hyphenationEnabled=0)
+    files, _, _ = run(to_pin + ['STROKE:400,30,550,330,554,40,560'], pins=['text/hyphenationEnabled'], hyphenationEnabled=0)
+    if opened['settings'].get('hyphenationEnabled') != 1 or files['settings'].get('hyphenationEnabled') != 0:
         wrong.append('a strike on a Text form question left its value')
     files, _, _ = run(to_pin + ['STROKE:400,30,480,330,484,40,490'], pins=['status/statusBarClock'], statusBarClock=2)
     if files['settings'].get('statusBarClock') == 2:
