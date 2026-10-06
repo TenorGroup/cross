@@ -189,7 +189,7 @@ void CrossPointWebServer::begin() {
   // Store AP mode flag for later use (e.g., in handleStatus)
   apMode = isInApMode;
   char hostname[64];
-  deviceNetworkName(hostname, sizeof(hostname), "tenor-cross");
+  deviceNetworkName(hostname, sizeof(hostname), defaultNetworkName());
 #ifdef SIMULATOR
   auth.configure("127.0.0.1", hostname);
 #else

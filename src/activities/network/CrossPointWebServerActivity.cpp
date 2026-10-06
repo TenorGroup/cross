@@ -29,21 +29,17 @@
 #include "util/TaskWatchdog.h"
 
 namespace {
-// AP Mode configuration
-constexpr const char* AP_SSID_DEFAULT = "tenor-cross";
-constexpr const char* AP_HOSTNAME_DEFAULT = "tenor-cross";
-
 // The access-point SSID and the mDNS label both follow the user's device name,
 // so a reader renamed in settings is recognisable from a phone's Wi-Fi list.
 const char* apSsid() {
   static char buf[64];
-  deviceNetworkName(buf, sizeof(buf), AP_SSID_DEFAULT);
+  deviceNetworkName(buf, sizeof(buf), defaultNetworkName());
   return buf;
 }
 
 const char* apHostname() {
   static char buf[64];
-  deviceNetworkName(buf, sizeof(buf), AP_HOSTNAME_DEFAULT);
+  deviceNetworkName(buf, sizeof(buf), defaultNetworkName());
   return buf;
 }
 constexpr uint8_t AP_CHANNEL = 1;
