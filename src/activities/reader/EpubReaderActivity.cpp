@@ -5144,9 +5144,6 @@ void EpubReaderActivity::panelClosedLocked(const bool leaving, const bool frameU
   pointSizeDraft.clear();
 #endif
   textDepth = TextDepth::Rows;
-#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
-  pick = Pick{};
-#endif
   if (leaving) {
     textCloseFrame.store(0, std::memory_order_relaxed);
     if (textSettingsDirty) {
