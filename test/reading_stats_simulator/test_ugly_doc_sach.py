@@ -35,6 +35,7 @@ CROSS = {
     'saved_quote': '77b3fe0a4546e437',
     'quotes_book': 'a897f7651c33b944',
     'quote_detail': '9e085263e46c9154',
+    'quote_trim': '4810bdc2178228eb',
 }
 # The hand-written notices, the same strokes on every draw.
 UGLY = {
@@ -226,6 +227,11 @@ class ReadingScreensTest(unittest.TestCase):
         log, ugly, cross = self.both(self.QUOTES, self.QUOTE_SHOTS, paragraphs=8, quote=True)
         self.assertTrue('QuoteDetail frame quote=0 page=0' in log, 'no ugly quote')
         self.check('quote_detail', ugly['quote'], cross['quote'])
+
+    def test_quote_trim(self):
+        log, ugly, cross = self.both(self.QUOTES, self.QUOTE_SHOTS, paragraphs=8, quote=True)
+        self.assertTrue('QuoteTrim frame' in log, 'no ugly trim')
+        self.check('quote_trim', ugly['trim'], cross['trim'])
 
 
 if __name__ == '__main__':
