@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bake the lines of abuse of the tenor/ugly shell: python3 scripts/ugly/gen_quips.py [out-dir]
 
-Reads scripts/ugly/quips.csv (key, group, condition, vi, en, args) and writes src/shells/ugly/UglyQuips.h:
+Reads scripts/ugly/quips.csv (notes in # lines on top, then key, group, condition, vi, en, args) and writes src/shells/ugly/UglyQuips.h:
 the Vietnamese and the English lines, each language one zlib block of \\0-ended lines in table order (the
 Chinese interface uses the English block); where every 32nd line starts in each block, so a lookup
 inflates only as far as it needs; and the slots: which lines an event says, keyed as the firmware keys it.
@@ -96,7 +96,9 @@ def slot_of(row, labels):
 
 
 def build():
-    rows = list(csv.DictReader(open(ROOT / 'scripts/ugly/quips.csv', encoding='utf-8')))
+    # Lines starting with # above the header are the table's notes (the voice rule).
+    lines = [l for l in open(ROOT / 'scripts/ugly/quips.csv', encoding='utf-8') if not l.startswith('#')]
+    rows = list(csv.DictReader(lines))
     vi_yaml = parse_yaml_file(ROOT / 'lib/I18n/translations/vietnamese.yaml')
     labels = {v.strip() for k, v in vi_yaml.items() if k.startswith('STR_')}
     # "như trên": the condition of the row above.

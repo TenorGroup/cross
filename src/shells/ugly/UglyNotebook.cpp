@@ -357,6 +357,13 @@ constexpr const char* SCRIBBLES_FILE = "/.crosspoint/ugly-scribbles.txt";
 using touch::ROW;
 using touch::rowTop;
 constexpr int ASK_WIDTH = 400;
+// The line under the title is one line: a two-line message reads with its break as a space.
+std::string flat(std::string text) {
+  for (char& c : text)
+    if (c == '\n') c = ' ';
+  return text;
+}
+
 // The pages a scribble acts on; a group of settings is none of them.
 touch::Sheet sheetOf(const homerows::Page page, const int group) {
   if (group >= 0) return touch::Sheet::Other;
@@ -372,6 +379,14 @@ touch::Sheet sheetOf(const homerows::Page page, const int group) {
   }
 }
 }  // namespace
+
+std::string Notebook::nameLine(const char* format, const std::string& name) const {
+  char line[200];
+  snprintf(line, sizeof(line), format, "");
+  const int room = touch::TEXT_R - touch::TEXT_X - width(renderer, Size::S22, flat(line).c_str());
+  snprintf(line, sizeof(line), format, fit(renderer, Size::S22, name, std::max(48, room)).c_str());
+  return line;
+}
 
 int Notebook::askLines(const bool shellAsk) const {
   return paragraph(renderer, Size::S30, 0, 0, ASK_WIDTH, 0, shellAsk ? tr(STR_UGLY_SHELL_ASK) : tr(STR_UGLY_X4_DELETE_ASK), false);
@@ -541,12 +556,12 @@ void Notebook::doJob() {
     if (page == homerows::Page::Favorites) {
       const std::string& key = rows.keys[row];
       const bool off = filefavorites::isFileKey(key) ? filefavorites::unpin(key) : menucustom::togglePin(key.c_str());
-      if (off) snprintf(line, sizeof(line), tr(STR_UGLY_X4_UNPINNED), name.c_str());
+      if (off) snprintf(line, sizeof(line), "%s", nameLine(tr(STR_UGLY_X4_UNPINNED), name).c_str());
       reread = off;
     } else if (!path.empty()) {
       const bool was = pinned(row);
       if (filefavorites::toggle(path, folder)) {
-        snprintf(line, sizeof(line), was ? tr(STR_UGLY_X4_UNPINNED) : tr(STR_UGLY_X4_PINNED), name.c_str());
+        snprintf(line, sizeof(line), "%s", nameLine(was ? tr(STR_UGLY_X4_UNPINNED) : tr(STR_UGLY_X4_PINNED), name).c_str());
         // Once both scribbles are known, the line that taught how to undo it gives way to abuse.
         const std::string mock = touch::teachScribbles(scribbles) ? std::string() : quip(was ? Quip::Unpin : Quip::Pin, 0, 0, 0, name.c_str());
         if (!mock.empty()) snprintf(line, sizeof(line), "%s", mock.c_str());
@@ -559,7 +574,7 @@ void Notebook::doJob() {
     reread = RECENT_BOOKS.removeByPath(path);
     if (reread) {
       RECENT_BOOKS.saveToFile();
-      snprintf(line, sizeof(line), tr(STR_UGLY_X4_FORGOTTEN), name.c_str());
+      snprintf(line, sizeof(line), "%s", nameLine(tr(STR_UGLY_X4_FORGOTTEN), name).c_str());
     }
   } else if (now == Job::Info && !path.empty()) {
     HalFile f;
@@ -569,7 +584,7 @@ void Notebook::doJob() {
   } else if (now == Job::Delete && !path.empty() && !folder) {
     clearBookCache(path);
     const bool gone = Storage.remove(path.c_str());
-    snprintf(line, sizeof(line), gone ? tr(STR_UGLY_X4_DELETED) : tr(STR_UGLY_X4_DELETE_FAIL), name.c_str());
+    snprintf(line, sizeof(line), "%s", nameLine(gone ? tr(STR_UGLY_X4_DELETED) : tr(STR_UGLY_X4_DELETE_FAIL), name).c_str());
     const std::string mock = gone ? quip(Quip::Delete, 0, 0, 0, name.c_str()) : std::string();
     if (!mock.empty()) snprintf(line, sizeof(line), "%s", mock.c_str());
     reread = gone;
@@ -667,9 +682,7 @@ bool Notebook::onTouch(const Key key) {
         return false;  // the frame follows the card work
       }
       if (act == touch::Act::Kept) {
-        char line[200];
-        snprintf(line, sizeof(line), tr(STR_UGLY_X4_KEPT), labelAt(row).c_str());
-        said = line;
+        said = nameLine(tr(STR_UGLY_X4_KEPT), labelAt(row));
         return true;
       }
       if (act != touch::Act::AskDelete) {
@@ -785,7 +798,7 @@ void Notebook::renderTouch() {
                                                                 : nullptr;
   if (!sub && !jab.empty()) sub = jab.c_str();
   if (!sub) sub = I18N.get(SUBTITLES[id(page)]);
-  text(renderer, Size::S22, touch::TEXT_X, touch::SUB_BASE, fit(renderer, Size::S22, sub, touch::TEXT_R - touch::TEXT_X).c_str());
+  text(renderer, Size::S22, touch::TEXT_X, touch::SUB_BASE, fit(renderer, Size::S22, flat(sub), touch::TEXT_R - touch::TEXT_X).c_str());
 
   const int count = rowCount();
   const int first = topShown();

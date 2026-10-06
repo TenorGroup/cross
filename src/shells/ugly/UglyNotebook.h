@@ -101,6 +101,8 @@ class Notebook final : public Screen {
   void doJob();
   static unsigned loadScribbles();
   int askLines(bool shellAsk) const;
+  // `format` with a book's name, for the one line under the title: the name is cut, never the words around it.
+  std::string nameLine(const char* format, const std::string& name) const;
 #endif
 };
 
