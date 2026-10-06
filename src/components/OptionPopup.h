@@ -65,6 +65,7 @@ class OptionPopup {
     show(titleStr, options, optionCount, currentIndex, std::move(onSelect));
     headline = headlineStr ? headlineStr : "";
     hasAnchor = false;
+    headLaid = false;
   }
 
   void show(StrId titleId, const std::vector<std::string>& options, int currentIndex,
@@ -449,15 +450,24 @@ class OptionPopup {
     head.font = fui::GfxRendererTarget::FONT_BODY;
     head.maxLines = 6;
     const int lh = frame.target().lineHeight(head.font);
-    int headH = 0;
-    const char* heads[2] = {title.empty() || hasAnchor ? nullptr : title.c_str(),
-                            headline.empty() ? nullptr : headline.c_str()};
     const fui::Rect headRect{static_cast<int16_t>(x + TEXT_X), 0, static_cast<int16_t>(w - 2 * TEXT_X), 1};
-    for (const char* text : heads) {
-      if (!text) continue;
-      head.bold = text == heads[0];
-      fui::layoutText(frame.target(), headRect, text, head, [&](const char*, fui::Rect) { headH += lh; });
+    // Wrapped once a show (a long warning costs more than the rest of the popup), kept for its repaints.
+    if (!headLaid) {
+      headLaid = true;
+      headLines.clear();
+      boldLines = 0;
+      const char* heads[2] = {title.empty() || hasAnchor ? nullptr : title.c_str(),
+                              headline.empty() ? nullptr : headline.c_str()};
+      for (const char* text : heads) {
+        if (!text) continue;
+        head.bold = text == heads[0];
+        fui::layoutText(frame.target(), headRect, text, head, [&](const char* line, fui::Rect) {
+          headLines.emplace_back(line);
+        });
+        if (head.bold) boldLines = static_cast<int>(headLines.size());
+      }
     }
+    int headH = static_cast<int>(headLines.size()) * lh;
     if (headH) headH += 2 * PAD + 8;
     const int top = tenorchrome::contentTop(), bottom = tenorchrome::footBackTop(screen.height) - 8;
     const int rows = std::max(1, std::min({count, MAX_OPTIONS, (bottom - top - 2 * PAD - headH) / ROW}));
@@ -482,14 +492,11 @@ class OptionPopup {
     }
     frame.hit(box, ACTION_CHROME, 0, fui::InputTouch);
     int cursor = y + PAD + (headH ? PAD + 4 : 0);
-    for (const char* text : heads) {
-      if (!text) continue;
-      head.bold = text == heads[0];
-      fui::layoutText(frame.target(), headRect, text, head, [&](const char* line, fui::Rect) {
-        frame.target().text(fui::Rect{headRect.x, static_cast<int16_t>(cursor), headRect.width, static_cast<int16_t>(lh)},
-                            line, head);
-        cursor += lh;
-      });
+    for (size_t i = 0; i < headLines.size(); ++i) {
+      head.bold = static_cast<int>(i) < boldLines;
+      frame.target().text(fui::Rect{headRect.x, static_cast<int16_t>(cursor), headRect.width, static_cast<int16_t>(lh)},
+                          headLines[i].c_str(), head);
+      cursor += lh;
     }
     const int rowsTop = y + PAD + headH;
     if (headH) drawRule(renderer, rowsTop - 1, x + TEXT_X, x + w - TEXT_X);
@@ -559,6 +566,7 @@ class OptionPopup {
     uiReady = false;
     active = true;
     anchored = false;
+    headLaid = false;
   }
 
   bool uglyStyle = false;
@@ -571,6 +579,10 @@ class OptionPopup {
   mutable int scrollTop = -1;
   mutable int shownRows = MAX_OPTIONS;
   mutable int shownPitch = 56;
+  // Touch: the caption and subject lines as the first frame wrapped them (boldLines: the caption's).
+  mutable bool headLaid = false;
+  mutable std::vector<std::string> headLines;
+  mutable int boldLines = 0;
   std::string title;
   std::string headline;
   std::vector<std::string> ownedStrings;
