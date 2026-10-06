@@ -4,6 +4,7 @@
 #include <EpdFontFamily.h>
 #include <HalClock.h>
 #include <HalPowerManager.h>
+#include <Logging.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -22,6 +23,7 @@
 #if FREEINK_DEVICE_X4PRO
 #include "UglyTouch.h"
 #endif
+#include "components/ButtonSymbols.h"
 #include "fontIds.h"
 #include "fonts/ugly_22.h"
 #include "fonts/ugly_30.h"
@@ -72,8 +74,9 @@ int encode(const uint32_t cp, char* out) {
 
 // Drawn by the pen, not taken from a font: the scrawl a line runs into when it is too long (fit() puts it where
 // the dots would go), the tick of the Select key, which no font on the card has, and the inline key symbols of
-// the UI strings (U+E100 Select, Back, Up, Down, Left, Right), drawn as the marks over the keys.
-constexpr uint32_t SCRAWL = 0xE000, TICK = 0x2713, KEY_FIRST = 0xE100, KEY_LAST = 0xE105;
+// the UI strings (U+E100 Select, Back, Up, Down, Left, Right, then the star, the 2 side buttons and the erase key),
+// drawn as the marks over the keys.
+constexpr uint32_t SCRAWL = 0xE000, TICK = 0x2713, KEY_FIRST = 0xE100, KEY_LAST = 0xE108;
 bool penDrawn(const uint32_t cp) { return cp == SCRAWL || cp == TICK || (cp >= KEY_FIRST && cp <= KEY_LAST); }
 
 bool covered(const GfxRenderer& r, const int fid, const char* utf8) {
@@ -142,12 +145,40 @@ void drawWarped(const GfxRenderer& r, const Size s, const Letter& letter, const 
 
 void stroke(const GfxRenderer& r, int x0, int y0, int x1, int y1, int w);
 
+// A star of one hasty stroke, some 20 px across, centred on (cx, cy).
+void penStar(const GfxRenderer& r, const int cx, const int cy) {
+  static constexpr int PTS[6][2] = {{0, -10}, {6, 8}, {-10, -3}, {10, -4}, {-6, 8}, {1, -10}};
+  for (int i = 0; i + 1 < 6; ++i)
+    stroke(r, cx + PTS[i][0], cy + PTS[i][1], cx + PTS[i + 1][0], cy + PTS[i + 1][1], 2);
+}
+
+// One key symbol of the UI strings, centred on (cx, cy). The star and the side buttons are the keys' own, as
+// buttonSymbols resolves them (the side buttons follow the reading side layout).
+void keyMark(const GfxRenderer& r, const uint32_t cp, const int cx, const int cy) {
+  static constexpr Mark KEYS[6] = {Mark::Tick, Mark::Back, Mark::Up, Mark::Down, Mark::Left, Mark::Right};
+  if (cp == TICK) return mark(r, Mark::Tick, cx, cy);
+  const int id = static_cast<int>(cp - KEY_FIRST);
+  if (id < 6) return mark(r, KEYS[id], cx, cy);
+  switch (buttonSymbols::resolve(id).shape) {
+    case inlineSymbols::Shape::Star:
+      return penStar(r, cx, cy);
+    case inlineSymbols::Shape::Left:
+      return mark(r, Mark::Left, cx, cy);
+    case inlineSymbols::Shape::Right:
+      return mark(r, Mark::Right, cx, cy);
+    default:
+      return;
+  }
+}
+
 // The pen marks that stand in a line of text: a hasty scrawl over [x, x + advance), or a key mark centred in it.
 void penMark(const GfxRenderer& r, const Size s, const uint32_t cp, const int x, const int baseline, const int advance) {
   const int h = ASCENT[static_cast<int>(s)];
   if (cp != SCRAWL) {
-    static constexpr Mark KEYS[6] = {Mark::Tick, Mark::Back, Mark::Up, Mark::Down, Mark::Left, Mark::Right};
-    mark(r, cp == TICK ? Mark::Tick : KEYS[cp - KEY_FIRST], x + advance / 2, baseline - h / 2);
+#ifdef UGLY_FRAME_LOG
+    LOG_INF("UGLY", "part=penmark cp=%X", static_cast<unsigned>(cp));
+#endif
+    keyMark(r, cp, x + advance / 2, baseline - h / 2);
     return;
   }
   // Loops of a pen that gave up writing: up and down a little under the x-height, each step a little off.
