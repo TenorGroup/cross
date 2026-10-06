@@ -543,6 +543,9 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.chosenMark = fui::bitmapFromIcon(icon_reader_tick_24);
     listProps_.partialTrailingRow = fonts;
     listProps_.scrollIndicatorInset = 4;
+    // The list ends at the frame's bottom edge: the bar keeps out of its round corner and rounds its ends.
+    listProps_.scrollIndicatorWidth = 4;
+    listProps_.scrollIndicatorFrameRadius = 20;
     listProps_.rowStyles = fui::defaultListRowStyles();
     nav_.selected = std::clamp(model_.selectedIndex, -1, count - 1);
     nav_.followOnBuild = nav_.selected >= 0;
