@@ -162,6 +162,11 @@ class UglyRemainingScreensTest(unittest.TestCase):
     def test_reading_habits_explains_in_hand(self):
         self.assert_hand_only_in_ugly(['DOWN'] * 4 + ['CONFIRM'], HABIT_NOTE, 'ReadingHabits', ['DOWN'] * 3 + ['CONFIRM'])
 
+    def test_the_30_days_are_drawn_by_hand(self):
+        # The grid of 30 days and the weekly bars under it.
+        self.assert_hand_only_in_ugly(['DOWN'] * 4 + ['RIGHT', 'RIGHT', 'CONFIRM'], DAYS_GRID, 'ReadingHistory',
+                                      ['DOWN'] * 3 + ['RIGHT', 'RIGHT', 'CONFIRM'])
+
 
 if __name__ == '__main__':
     unittest.main()
