@@ -527,10 +527,16 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
     const bool clockLeft = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
     int left = 14, right = width - 14;
     if (hienPin) {
-      const int bx = clockLeft && hienGio ? right - 34 : left;
+      // In a book the number goes beside the battery when the reader asked for it.
+      char pct[8] = "";
+      if (trongTrinhDoc && hienPhanTram)
+        snprintf(pct, sizeof(pct), "%d", std::max(0, std::min(100, static_cast<int>(powerManager.getDisplayedBatteryPercentage()))));
+      const int room = 46 + (pct[0] ? ugly::width(r, ugly::Size::S22, pct) + 8 : 0);
+      const int bx = clockLeft && hienGio ? right - room + 12 : left;
       ugly::battery(r, bx, base - 8, powerManager.getDisplayedBatteryPercentage());
-      if (bx == left) left += 46;
-      else right -= 46;
+      if (pct[0]) ugly::text(r, ugly::Size::S22, bx + 44, base, pct);
+      if (bx == left) left += room;
+      else right -= room;
     }
     char clock[12];
     if (hienGio && clockstatus::hasValidTime() && halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1)) {
@@ -547,13 +553,19 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
       ugly::text(r, ugly::Size::S22, right, base, counts.c_str());
       right -= 12;
     }
-    if (bookmarked) left += ugly::text(r, ugly::Size::S22, left, base, "*") + 6;
+    if (bookmarked) {  // a star in 5 pen strokes
+      static constexpr int8_t STAR[6][2] = {{0, -9}, {5, 7}, {-8, -3}, {8, -3}, {-5, 7}, {0, -9}};
+      const int cx = left + 9, cy = base - 8;
+      for (int i = 0; i < 5; ++i)
+        ugly::line(r, cx + STAR[i][0], cy + STAR[i][1], cx + STAR[i + 1][0], cy + STAR[i + 1][1], 870 + i, 1);
+      left += 24;
+    }
     if (hienTieuDe && right - left > 40) {
       const std::string name = ugly::fit(r, ugly::Size::S22, title, right - left);
       ugly::text(r, ugly::Size::S22, left, base, name.c_str());
     }
 #ifdef UGLY_FRAME_LOG
-    LOG_INF("UGLY", "part=status");
+    LOG_INF("UGLY", "part=status reader=%d pct=%d mark=%d", trongTrinhDoc, trongTrinhDoc && hienPin && hienPhanTram, bookmarked);
 #endif
     return;
   }

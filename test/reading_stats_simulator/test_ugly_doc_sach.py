@@ -14,18 +14,20 @@ import zipfile
 
 from PIL import ImageDraw
 
-from ugly_common import Card
+from ugly_common import Card, digest
 
 BODY = 'Gió lên từ phía bãi, mang theo mùi rong và mùi khói bếp của mấy nhà ven đê. Cậu đứng lâu ở đầu cầu, ' \
        'đếm từng chiếc thuyền về muộn, rồi mới chịu quay vào. '
 CLOCK = (400, 748, 528, 792)  # the clock in the key bar of tenor/cross
-# Screens of tenor/cross before the ugly branches (f71cd39d), the clock box rubbed out.
+# Screens of tenor/cross before the ugly branches (f71cd39d, 3376fa36), the clock box rubbed out.
 CROSS = {
     'eob_plain': '490012e7fcd7e735',
     'eob_menu': 'cd447ae2b5b6c6ed',
     'percent': '6ab5c7354d1e3bd2',
     'chapter_entry': '6c974a15195b58d5',
     'definition': '5db94663acffe057',
+    'page': '6c235d5d47876125',
+    'marked': '9feb91ec066ca9c1',
 }
 
 
@@ -59,8 +61,10 @@ def screen_digest(image):
 
 
 class ReadingScreensTest(unittest.TestCase):
-    def card(self, shell, siblings=(), paragraphs=1, dictionary=False):
-        card = Card(shell=shell, books=[], stats=False, textAntiAliasing=0, **({'dictionaryName': 'vd'} if dictionary else {}))
+    def card(self, shell, siblings=(), paragraphs=1, dictionary=False, **settings):
+        if dictionary:
+            settings['dictionaryName'] = 'vd'
+        card = Card(shell=shell, books=[], stats=False, textAntiAliasing=0, **settings)
         self.addCleanup(card.close)
         if dictionary:
             write_dictionary(card.sd)
@@ -122,6 +126,21 @@ class ReadingScreensTest(unittest.TestCase):
         self.assertTrue(re.search(r'Definition frame page=1/[2-9]', log), 'no ugly headword')
         self.assertTrue(re.search(r'Definition frame page=2/[2-9]', log), 'the count follows the page')
         self.check('definition', ugly['word'], cross['word'])
+
+    # A page, a bookmark by holding Confirm, the notice, then the marked page.
+    MARK = '1000:CONFIRM;3200:CONFIRM:1200;7500:QUIT'
+
+    def test_status_strip_in_a_book(self):
+        log, ugly, cross = self.both(self.MARK, [(3000, 'page'), (7000, 'marked')], paragraphs=8, longPressMenuFunction=2)
+        self.assertTrue('part=status reader=1 pct=1 mark=0' in log, 'no number beside the battery')
+        self.assertTrue('part=status reader=1 pct=1 mark=1' in log, 'no star on a marked page')
+        bare_log, bare = self.card(1, paragraphs=8, hideBatteryPercentage=1).run('1000:CONFIRM;3500:QUIT', [(3000, 'page')], timeout=90)
+        self.assertTrue('part=status reader=1 pct=0' in bare_log, 'the number follows the setting')
+        band = (0, 740, 400, 792)  # the strip, the clock left out
+        self.assertNotEqual(digest(ugly['page'].crop(band)), digest(bare['page'].crop(band)), 'the number is written')
+        self.assertNotEqual(digest(ugly['page'].crop(band)), digest(ugly['marked'].crop(band)), 'the star is drawn')
+        self.check('page', ugly['page'], cross['page'])
+        self.check('marked', ugly['marked'], cross['marked'])
 
 
 if __name__ == '__main__':
