@@ -72,7 +72,23 @@ void ReaderToolbarUi::render() {
   for (int pass = 0; pass < 3 && nav_.consumeRebuildNeeded(); ++pass) renderUi();
   uiTarget.setPaintingEnabled(true);
   if (handwritten) paintUgly();
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  else if (model_.panel) fadeMoreBelow();
+#endif
 }
+
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+// Rows go on below the last full one: the band under it fades over the next row's top down to the list's foot
+// (UiListActivity::fadeMoreBelow, the buttons' lists). The scroll bar beside it stays whole.
+void ReaderToolbarUi::fadeMoreBelow() {
+  const int last = nav_.top + nav_.pageRows() - 1;
+  if (last < 0 || last + 1 >= model_.itemCount) return;
+  const fui::Rect r = app.publishedRect(ACTION_ROW, static_cast<int16_t>(last));
+  if (r.height <= 0) return;
+  const int y0 = r.y + r.height;
+  tenorchrome::fadeBand(*renderer_, y0, skinList_.bottom() - y0, false, skinList_.x, fadeRight_);
+}
+#endif
 
 ReaderToolbarUi::Routed ReaderToolbarUi::route(const MappedInputManager& input) {
   pending_ = Routed{};
@@ -125,7 +141,13 @@ void ReaderToolbarUi::buildSheet(UiScreen& screen, const fui::SheetProps& props,
   const fui::Rect rect{bounds.x, static_cast<int16_t>(bounds.bottom() - sheetHeight), bounds.width, sheetHeight};
   auto themed = props;
   if (themed.radius == fui::RADIUS_INHERIT) themed.radius = screen.theme().sheetRadius;
+  themed.ruleWidth = 0;
   fui::sheet(screen.frame(), rect, themed);
+  // The edge bent round the sheet's top corners (founder 06/10), at the radius of the popups this menu opens
+  // (the theme's sheet radius is its popup corner). The frame runs on past the sheet's foot, where the button
+  // hints (or the screen's edge) take its bottom line.
+  screen.target().stroke(fui::Rect{rect.x, rect.y, rect.width, static_cast<int16_t>(rect.height + themed.radius)},
+                         props.rule, static_cast<uint8_t>(props.ruleWidth), themed.radius, fui::CornersTop);
   skinFrame_ = rect;
   const auto content = fui::sheetContentRect(rect, themed);
   screen.insetContent(fui::Insets{static_cast<int16_t>(content.y - bounds.y), 0,
@@ -260,6 +282,7 @@ void ReaderToolbarUi::drawMarkedRows(UiScreen& screen, const fui::Rect& listRect
   for (int i = 0; i < windowCount; ++i) {
     if (!markedLabels_[i]) continue;
     const int16_t y = static_cast<int16_t>(listRect.y + i * (rowH + rowGap));
+    if (y + rowH > listRect.bottom()) break;  // a glimpse cut by the list's foot: the list drew its part
     const int16_t left = static_cast<int16_t>(listRect.x + listProps_.rowInset + listProps_.sidePadding);
     const int16_t right = static_cast<int16_t>(listRect.right() - listProps_.rowInset - listProps_.sidePadding);
     screen.target().text(fui::Rect{left, static_cast<int16_t>(y + (rowH - lineH) / 2),
@@ -359,7 +382,13 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   nav_.syncToProps(listRect, listProps_.rowHeight, rowGap, count, listProps_);
 
   // Materialise only the visible window of rows.
-  const int windowCount = std::min({nav_.visibleRows, count - nav_.top, kMaxWindow});
+  // Rows go on below: the row past the last full one shows its top, faded (fadeMoreBelow), as every list of
+  // the button boards shows there is more (founder 06/10). A glimpse under 3/4 of a row reads as noise, so
+  // the last row that fits is the glimpse instead.
+  listProps_.partialTrailingRow = true;
+  listProps_.partialTrailingMinPercent = 75;
+  fadeRight_ = static_cast<int16_t>(listRect.right() - tokens.listScrollWidth - 2);
+  const int windowCount = std::min({nav_.visibleRows + 1, count - nav_.top, kMaxWindow});
   for (int i = 0; i < windowCount; ++i) {
     const int index = nav_.top + i;
     windowLabels_[i] = model_.rowText ? model_.rowText(index) : std::string();
