@@ -3,6 +3,7 @@
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include <algorithm>
 #include <cstring>
@@ -12,6 +13,9 @@
 #include "components/TenorMenuChrome.h"
 #include "fontIds.h"
 #include "components/UITheme.h"
+#include "activities/Activity.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 
 void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                                  const char* btn4) const {
@@ -28,6 +32,33 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
 
   const GfxRenderer::Orientation orig_orientation = renderer.getOrientation();
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+  if (shell::uglyParts()) {
+    // Over each key the pen mark of what it does, or the word in hand when it is not a direction; then the strip.
+    static constexpr ugly::Mark MARKS[6] = {ugly::Mark::Tick, ugly::Mark::Back, ugly::Mark::Up,
+                                            ugly::Mark::Down, ugly::Mark::Left, ugly::Mark::Right};
+    static constexpr int WIDE[4] = {105, 197, 331, 423}, NARROW[4] = {98, 186, 294, 382};
+    const int* centres = renderer.getScreenWidth() >= 528 ? WIDE : NARROW;
+    const int y = renderer.getScreenHeight() - 20;
+    const char* words[4] = {btn1, btn2, btn3, btn4};
+    renderer.fillRect(centres[0] - 46, y - 24, centres[3] - centres[0] + 92, 44, false);
+    for (int i = 0; i < 4; ++i) {
+      if (!words[i] || !*words[i]) continue;
+      const int id = buttonSymbols::labelId(words[i]);
+      if (id >= 0) {
+        ugly::mark(renderer, MARKS[id], centres[i], y);
+        continue;
+      }
+      const std::string word = ugly::fit(renderer, ugly::Size::S22, words[i], 84);
+      ugly::text(renderer, ugly::Size::S22, centres[i] - ugly::width(renderer, ugly::Size::S22, word.c_str()) / 2,
+                 y + 8, word.c_str());
+    }
+    tenorchrome::drawStatus(renderer);
+    renderer.setOrientation(orig_orientation);
+#ifdef UGLY_FRAME_LOG
+    LOG_INF("UGLY", "part=keys");
+#endif
+    return;
+  }
 
   const int pageHeight = renderer.getScreenHeight();
   constexpr int buttonWidth = 80;
@@ -101,6 +132,14 @@ void TenorTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* to
     const int x =
         gpio.hasEdgeSideButtons() ? (i ? renderer.getScreenWidth() - 1 - 7 : 7) : renderer.getScreenWidth() - 7;
     const int y = gpio.hasEdgeSideButtons() ? 195 : 195 + i * 83;
+    if (shell::uglyParts()) {  // the pen mark, kept whole inside the edge
+      const auto m = shape == inlineSymbols::Shape::Left    ? ugly::Mark::Left
+                     : shape == inlineSymbols::Shape::Right ? ugly::Mark::Right
+                     : shape == inlineSymbols::Shape::Up    ? ugly::Mark::Up
+                                                            : ugly::Mark::Down;
+      ugly::mark(renderer, m, x < renderer.getScreenWidth() / 2 ? 12 : renderer.getScreenWidth() - 12, y);
+      continue;
+    }
     inlineSymbols::drawShape(renderer, shape, x, y, 8, true);
   }
 }

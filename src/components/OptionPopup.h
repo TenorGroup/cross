@@ -15,6 +15,7 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
 
 // Modal option picker drawn over the current screen (no clear) via
@@ -31,7 +32,6 @@
 // publication so a release cannot be dropped during a highlight repaint.
 class OptionPopup {
  public:
-  void setUglyStyle(bool value) { uglyStyle = value; }
   void show(StrId titleId, const StrId* optionIds, int optionCount, int currentIndex,
             std::function<void(int)> onSelect) {
     title = I18N.get(titleId);
@@ -298,7 +298,7 @@ class OptionPopup {
     // Chrome guard first, options after: route() scans newest-first, so the
     // option buttons win inside the dialog and the guard absorbs the rest.
     frame.hit(dialogRect, ACTION_CHROME, 0, fui::InputTouch);
-    if (uglyStyle) renderUgly(renderer, frame, dialogRect, props);
+    if (shell::isUgly()) renderUgly(renderer, frame, dialogRect, props);
     else fui::optionDialog(frame, dialogRect, props);
     // Atomically make this generation the one handleInput() reads, now that
     // every hit() call for this frame is done.
@@ -425,7 +425,7 @@ class OptionPopup {
     const bool upperHalf = anchor.y + anchor.height / 2 < screen.height / 2;
     int y = upperHalf && below + h <= bottom ? below : above >= top ? above : below + h <= bottom ? below : bottom - h;
     y = std::max(top, y);
-    if (uglyStyle) uglyPaper(renderer, {static_cast<int16_t>(x), static_cast<int16_t>(y),
+    if (shell::isUgly()) uglyPaper(renderer, {static_cast<int16_t>(x), static_cast<int16_t>(y),
                                         static_cast<int16_t>(w), static_cast<int16_t>(h)});
     else {
       renderer.fillRoundedRect(x, y, w, h, RADIUS, Color::White);
@@ -435,7 +435,7 @@ class OptionPopup {
               ACTION_CHROME, 0, fui::InputTouch);
     for (int i = 0; i < count; ++i) {
       const int ry = y + PAD + i * ROW;
-      if (uglyStyle) uglyText(renderer, {static_cast<int16_t>(x + TEXT_X), static_cast<int16_t>(ry),
+      if (shell::isUgly()) uglyText(renderer, {static_cast<int16_t>(x + TEXT_X), static_cast<int16_t>(ry),
                                          static_cast<int16_t>(w - 2 * TEXT_X), ROW}, ownedStrings[i].c_str());
       else renderer.drawText(font, x + TEXT_X, ry + (ROW - renderer.getLineHeight(font)) / 2, ownedStrings[i].c_str());
       if (i + 1 < count)
@@ -456,7 +456,6 @@ class OptionPopup {
     anchored = false;
   }
 
-  bool uglyStyle = false;
   bool active = false;
   bool anchored = false;
   freeink::ui::Rect anchor{};

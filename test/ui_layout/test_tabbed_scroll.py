@@ -31,7 +31,7 @@ struct UiTabListActivity {
   fui::ListNav& activeNav() { return nav; }
   void frameRows(fui::ListProps&) {} void reserveFixedMenuContent(UiScreen&) {}
   void reserveFavoriteHint(UiScreen&) {} void decoratePinnedRows(fui::ListProps&) {}
-  void reserveRowFrame(UiScreen&,int) {} void clampAfterNav() {}
+  void reserveRowFrame(UiScreen&,int) {} void clampAfterNav() {} void keepUglyRows(const fui::ListProps&) {}
   void syncTabListViewport(UiScreen&,fui::ListProps&,bool);
 };
 '''

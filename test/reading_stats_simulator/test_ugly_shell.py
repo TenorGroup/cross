@@ -19,10 +19,12 @@ FULL_FRAME_DIGEST_PROVENANCE = {0: '3fa2d2da5c50a849f2b24a4990c78312f9af4167a2e0
                               1: 'e92c78c75b96f6f709a5fb10211a05fc549ab991c36832fcb7a0eb860c6aa78d'}
 # Exact filename and footer ROIs extracted from the approved 2657717e level images.
 # Filename rows follow the pen rule; the footer stays at absolute screen coordinates.
-CUT_NAMES_DIGEST = {0: '4ceb94c798848fdcd9728fd1c95b585188535453f5b83ccb870f7cbcdc0ce25f',
-                    1: 'c01a09e1713b7afe52e96e0441502d554ae504394625f97b0ec4b22df2c280f4'}
-FOLDER_FOOTER_DIGEST = {0: '5c91bb60c1dc45648eb51608963ede2860000559385a21a9674c2d2957a28344',
-                      1: '6432dab3089c2773ae5470be0ff660e34fba83fb8b8be7f705909631990a6c4e'}
+# A cut name trails off in a pen scrawl where the 3 dots stood, and the tick over Select is the hand-drawn
+# one (founder 06/10/2026): both goldens taken again then.
+CUT_NAMES_DIGEST = {0: '36c5b96ccd7aa1cc0a25891ee363b426bda1d002634a86abb212ac1765c18a30',
+                    1: '9ee086b99be65d63ccf7c2f27f1e76d912a6d8832bde3e1bf9c54b6a99efbd25'}
+FOLDER_FOOTER_DIGEST = {0: '360d64d721bf59c7b4a1e0bef676f85406cc4d89439540aec0c2dfed670c7e01',
+                      1: '6baf6c0046c5699ea764d59596d1bc89e9608573ae1560912307a402c4eabb2f'}
 # Every width from a name that fits to one cut to a few letters, with marks, and one the baked font lacks.
 LONG_NAMES = ['a.txt', 'Hành trình dài của một người.txt', 'Hành trình dài của một người đọc sách.txt',
              'Hành trình dài của một người đọc sách không bao giờ chịu đọc hết một cuốn.txt',

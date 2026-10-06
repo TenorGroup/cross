@@ -30,14 +30,13 @@ void SwitchConfirm::onEnter() {
   requestUpdate();
 }
 
-void SwitchConfirm::render(RenderLock&&) {
-  [[maybe_unused]] const uint32_t started = millis();
+Box askBox(const GfxRenderer& renderer, const MappedInputManager& input, const char* question, const char* note,
+           const char* const answers[2], const int selected, Box drawn[2]) {
   renderer.clearScreen();
   const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
   const int x = SIDE + PAD, room = w - 2 * x;
-  const char* body = toCross ? tr(STR_UGLY_SHELL_ASK) : tr(STR_UGLY_SWITCH_ASK);
-  const char* note = toCross ? crossNote.c_str() : shell::uglyLimitNote();
-  const int lines = paragraph(renderer, Size::S30, x, 0, room, BODY_LINE, body, false);
+  if (!note) note = "";
+  const int lines = paragraph(renderer, Size::S30, x, 0, room, BODY_LINE, question, false);
   const int noteLines = paragraph(renderer, Size::S22, x, 0, room, NOTE_LINE, note, false);
   const int bodyHeight = (lines - 1) * BODY_LINE;
   const int noteHeight = 46 + (noteLines - 1) * NOTE_LINE;
@@ -55,27 +54,36 @@ void SwitchConfirm::render(RenderLock&&) {
   line(renderer, w - SIDE - 4, bottom, SIDE + 2, bottom - 3, 703, 2);
   line(renderer, SIDE + 2, bottom - 3, SIDE, top, 704, 2);
 
-  paragraph(renderer, Size::S30, x, bodyBase, room, BODY_LINE, body);
+  paragraph(renderer, Size::S30, x, bodyBase, room, BODY_LINE, question);
   paragraph(renderer, Size::S22, x, noteBase, room, NOTE_LINE, note);
-  const char* labels[COUNT] = {toCross ? tr(STR_UGLY_SHELL_YES) : tr(STR_UGLY_SWITCH_YES),
-                             toCross ? tr(STR_UGLY_SHELL_NO) : tr(STR_UGLY_SWITCH_NO)};
-  Box box[COUNT] = {};
-  for (int i = 0; i < COUNT; ++i) {
+  for (int i = 0; i < 2; ++i) {
     const int base = firstOption + i * OPTION_STEP;
-    const std::string label = fit(renderer, Size::S38, labels[i], room - 40);
+    const std::string label = fit(renderer, Size::S38, answers[i], room - 40);
     const int lw = text(renderer, Size::S38, x + 20, base, label.c_str());
-    box[i] = {x + 20, base - ascent(Size::S38), x + 20 + lw, base + 10};
+    drawn[i] = {x + 20, base - ascent(Size::S38), x + 20 + lw, base + 10};
   }
-  circle(renderer, Circle::Row, box[selected], 14, 10);
+  circle(renderer, Circle::Row, drawn[selected], 14, 10);
+  statusBar(renderer, input, {true, true, true, true});
+  return {SIDE, top, w - SIDE, bottom};
+}
+
+void SwitchConfirm::render(RenderLock&&) {
+  [[maybe_unused]] const uint32_t started = millis();
+  const char* labels[COUNT] = {toCross ? tr(STR_UGLY_SHELL_YES) : tr(STR_UGLY_SWITCH_YES),
+                               toCross ? tr(STR_UGLY_SHELL_NO) : tr(STR_UGLY_SWITCH_NO)};
+  Box box[COUNT] = {};
+  [[maybe_unused]] const Box paper =
+      askBox(renderer, mappedInput, toCross ? tr(STR_UGLY_SHELL_ASK) : tr(STR_UGLY_SWITCH_ASK),
+             toCross ? crossNote.c_str() : "", labels, selected, box);
 #if FREEINK_DEVICE_X4PRO
   for (int i = 0; i < COUNT; ++i) drawn[i] = box[i];
 #endif
-
-  statusBar(renderer, mappedInput, {true, true, true, true});
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
+  const int lines = paragraph(renderer, Size::S30, 0, 0, renderer.getScreenWidth() - 2 * (SIDE + PAD), BODY_LINE,
+                              toCross ? tr(STR_UGLY_SHELL_ASK) : tr(STR_UGLY_SWITCH_ASK), false);
   LOG_INF("UGLY", "Switch frame total=%lums sel=%d lines=%d frame=%d,%d,%d,%d box=%d,%d,%d,%d", static_cast<unsigned long>(millis() - started),
-          selected, lines, SIDE, top, w - SIDE, bottom, box[selected].x0, box[selected].y0, box[selected].x1, box[selected].y1);
+          selected, lines, paper.x0, paper.y0, paper.x1, paper.y1, box[selected].x0, box[selected].y0, box[selected].x1, box[selected].y1);
 #endif
 }
 

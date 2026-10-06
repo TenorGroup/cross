@@ -759,7 +759,6 @@ void setup() {
   // Push the saved timezone's POSIX rule into the clock (migrating the legacy
   // UTC-offset setting on first boot after the update).
   timezones::applyToClock();
-  shell::expireIfOver();  // tenor/ugly is a limited edition: past its last day the device is tenor/cross again
   RECENT_BOOKS.loadFromFile();
   logHeapMark("store-recent");
   // Quote files written before v1.0.11 are renamed to the per-book scheme here, before the

@@ -32,6 +32,8 @@ class EpubReaderBookmarksActivity final : public UiListActivity {
                                        const std::shared_ptr<Epub>& epub, const std::string& epubPath);
   void onEnter() override;
   void render(RenderLock&&) override;
+  // The title the hand-drawn list writes (render() paints its own otherwise).
+  const char* headerTitle() const override;
 
  private:
   int listCount() const override { return static_cast<int>(bookmarks.size()); }

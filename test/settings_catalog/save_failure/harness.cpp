@@ -42,7 +42,6 @@ struct RenderLock {
 namespace shell {
 enum class Kind : uint8_t { Cross = 0, Ugly = 1 };
 inline bool isUgly() { return SETTINGS.uiShell == static_cast<uint8_t>(Kind::Ugly); }
-inline bool uglyOffered() { return true; }
 inline void valueChanged(const SettingInfo&) {}
 void changed();
 }  // namespace shell

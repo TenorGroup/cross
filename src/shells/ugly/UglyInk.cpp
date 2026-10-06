@@ -71,12 +71,18 @@ int encode(const uint32_t cp, char* out) {
   return 4;
 }
 
+// Drawn by the pen, not taken from a font: the scrawl a line runs into when it is too long (fit() puts it where
+// the dots would go), the tick of the Select key, which no font on the card has, and the inline key symbols of
+// the UI strings (U+E100 Select, Back, Up, Down, Left, Right), drawn as the marks over the keys.
+constexpr uint32_t SCRAWL = 0xE000, TICK = 0x2713, KEY_FIRST = 0xE100, KEY_LAST = 0xE105;
+bool penDrawn(const uint32_t cp) { return cp == SCRAWL || cp == TICK || (cp >= KEY_FIRST && cp <= KEY_LAST); }
+
 bool covered(const GfxRenderer& r, const int fid, const char* utf8) {
   const auto it = r.getFontMap().find(fid);
   if (it == r.getFontMap().end()) return false;
   const auto* p = reinterpret_cast<const unsigned char*>(utf8);
   while (const uint32_t cp = utf8NextCodepoint(&p))
-    if (!it->second.hasCodepoint(cp)) return false;
+    if (!penDrawn(cp) && !it->second.hasCodepoint(cp)) return false;
   return true;
 }
 
@@ -98,6 +104,8 @@ Letter letterOf(const Size s, const bool af, const uint32_t cp) {
 
 // Advance in pixels of one letter. Drawing and measuring ask this and nothing else, so the two cannot disagree.
 int stepOf(const GfxRenderer& r, const Size s, const bool af, const int pos, const uint32_t cp, const Letter& letter) {
+  if (cp == SCRAWL) return 3 * stepOf(r, s, false, pos, '.', {nullptr, logic::NO_WARP});
+  if (penDrawn(cp)) return 26;  // a mark is some 20 px across
   if (letter.glyph) return logic::warpAdvance(letter.glyph->advanceX, letter.warp) + logic::jumpStep(pos, cp);
   char one[5];
   encode(cp, one);
@@ -129,6 +137,26 @@ void drawWarped(const GfxRenderer& r, const Size s, const Letter& letter, const 
                    });
 }
 
+void stroke(const GfxRenderer& r, int x0, int y0, int x1, int y1, int w);
+
+// The pen marks that stand in a line of text: a hasty scrawl over [x, x + advance), or a key mark centred in it.
+void penMark(const GfxRenderer& r, const Size s, const uint32_t cp, const int x, const int baseline, const int advance) {
+  const int h = ASCENT[static_cast<int>(s)];
+  if (cp != SCRAWL) {
+    static constexpr Mark KEYS[6] = {Mark::Tick, Mark::Back, Mark::Up, Mark::Down, Mark::Left, Mark::Right};
+    mark(r, cp == TICK ? Mark::Tick : KEYS[cp - KEY_FIRST], x + advance / 2, baseline - h / 2);
+    return;
+  }
+  // Loops of a pen that gave up writing: up and down a little under the x-height, each step a little off.
+  int px = x, py = baseline - h / 4;
+  for (int i = 1, cx = x + 4; cx <= x + advance; ++i, cx += 4) {
+    const int cy = baseline - (i % 2 ? h * 3 / 5 : h / 5) + logic::wobble(977, i, 1);
+    stroke(r, px, py, cx, cy, 2);
+    px = cx;
+    py = cy;
+  }
+}
+
 // One pass for drawing and measuring, so the two cannot disagree.
 int run(const GfxRenderer& r, const Size s, const int x, const int baseline, const std::string& text, const bool black,
         const bool draw) {
@@ -146,6 +174,13 @@ int run(const GfxRenderer& r, const Size s, const int x, const int baseline, con
   char one[5];
   while (const uint32_t cp = utf8NextCodepoint(&p)) {
     const Letter letter = letterOf(s, af, cp);
+    if (penDrawn(cp)) {
+      const int advance = stepOf(r, s, af, pos, cp, letter);
+      if (draw && !r.isFontCacheScanning()) penMark(r, s, cp, cursor, baseline, advance);
+      cursor += advance;
+      ++pos;
+      continue;
+    }
     if (draw && cp != ' ') {
       if (af) {
         drawWarped(r, s, letter, cursor, baseline + logic::jumpDy(pos, cp, px), black);
@@ -231,7 +266,7 @@ std::string fit(const GfxRenderer& r, const Size s, const std::string& utf8, con
     if (keep == -1) return out;
     if (keep < 0) return std::string();
     out.resize(static_cast<size_t>(keep));
-    return out + "...";
+    return out + "\xEE\x80\x80";  // SCRAWL: the line trails off in the pen, no dots
   }
   // A character the baked font lacks puts the line in the UI font, which is measured whole: shave and measure.
   if (width(r, s, out.c_str()) <= maxWidth) return out;
@@ -350,10 +385,20 @@ void line(const GfxRenderer& r, const int x0, const int y0, const int x1, const 
   }
 }
 
-void tick(const GfxRenderer& r, const int x, const int y) {
-  stroke(r, x - 12, y - 10, x, y, 3);
-  stroke(r, x, y, x + 20, y - 24, 3);
+namespace {
+// The one tick of the shell (founder 06/10/2026): 2 hasty strokes, the short one down to the elbow, the long one up
+// from it, each end and the elbow a little off. The wobble is seeded by where the tick stands, so a tick drawn
+// again at its place is the same pixels (no e-ink flicker) and a tick elsewhere is a little different.
+void penTick(const GfxRenderer& r, const int x, const int y, const int span, const int width) {
+  const uint32_t seed = static_cast<uint32_t>(x) * 73856093u ^ static_cast<uint32_t>(y) * 19349663u;
+  const int jiggle = std::max(1, span / 10);
+  const int ex = x + logic::wobble(seed, 0, jiggle), ey = y + logic::wobble(seed, 1, jiggle);
+  stroke(r, ex - span * 3 / 8 + logic::wobble(seed, 2, jiggle), ey - span * 5 / 16 + logic::wobble(seed, 3, jiggle), ex, ey, width);
+  stroke(r, ex, ey, ex + span * 5 / 8 + logic::wobble(seed, 4, jiggle), ey - span * 3 / 4 + logic::wobble(seed, 5, jiggle), width);
 }
+}  // namespace
+
+void tick(const GfxRenderer& r, const int x, const int y) { penTick(r, x, y, 32, 3); }
 
 void battery(const GfxRenderer& r, const int x, const int y, const int percent) {
   const int body[5][2] = {{x + 1, y - 9}, {x + 33, y - 10}, {x + 34, y + 8}, {x, y + 9}, {x + 1, y - 9}};
@@ -389,6 +434,10 @@ bool clockText(char* out, const size_t size, char* date = nullptr, const size_t 
 }  // namespace
 
 void mark(const GfxRenderer& r, const Mark m, const int cx, const int cy) {
+  if (m == Mark::Tick) {  // every tick of the shell is the one hand-drawn tick, some 20 px across
+    penTick(r, cx - 2, cy + 6, 20, 2);
+    return;
+  }
   static constexpr const CirclePoint* TABLES[6] = {MARK_LEFT, MARK_RIGHT, MARK_UP, MARK_DOWN, MARK_TICK, MARK_BACK};
   static constexpr int COUNTS[6] = {MARK_LEFT_COUNT, MARK_RIGHT_COUNT, MARK_UP_COUNT, MARK_DOWN_COUNT, MARK_TICK_COUNT, MARK_BACK_COUNT};
   const auto* pts = TABLES[static_cast<int>(m)];

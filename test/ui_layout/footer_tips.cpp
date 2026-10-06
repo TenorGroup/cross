@@ -150,6 +150,20 @@ namespace buttonSymbols {
 struct SymbolBounds { int left, right; };
 SymbolBounds horizontalBounds(const char* label, int) { return std::strcmp(label, "symbol") == 0 ? SymbolBounds{8, 8} : SymbolBounds{0, 0}; }
 bool drawLabel(const GfxRenderer&, const char* label, int, int, int) { return std::strcmp(label, "symbol") == 0; }
+int labelId(const char*) { return -1; }
+}
+// tenor/cross geometry only: the hand-drawn branch of tenor/ugly is never taken here.
+namespace shell {
+inline bool uglyParts() { return false; }
+}
+namespace ugly {
+enum class Size { S22 };
+enum class Mark { Left, Right, Up, Down, Tick, Back };
+inline int paragraph(const GfxRenderer&, Size, int, int, int, int, const char*, bool = true) { return 1; }
+inline void mark(const GfxRenderer&, Mark, int, int) {}
+inline std::string fit(const GfxRenderer&, Size, const std::string& s, int) { return s; }
+inline int width(const GfxRenderer&, Size, const char*) { return 0; }
+inline int text(const GfxRenderer&, Size, int, int, const char*, bool = true) { return 0; }
 }
 int fallbackCalls = 0;
 struct BaseTheme {

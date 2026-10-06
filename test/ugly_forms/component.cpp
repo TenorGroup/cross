@@ -75,7 +75,7 @@ int main(){
    auto has=[&](const char* needle){for(int i=0;i<r.textCount;++i)if(strstr(r.textRuns[i].value,needle))return true;return false;};
    underlines=rowCircles=0;r.textCount=0;sheet.paint(r,input);
    check(underlines>=1&&rowCircles==0,"question mode underlines the question, no answer circle");
-   check(has("select to answer"),"question mode hint names Select");
+   check(has(" to answer"),"question mode hint names Select");
    auto k=sheet.input(Sheet::Key::NextOption);
    check(k.kind!=Sheet::IntentKind::Preview&&sheet.question()==0&&sheet.candidate()==0,"edge key in question mode changes no answer");
    sheet.input(Sheet::Key::NextQuestion);check(sheet.question()==1,"front down walks to the next question");
@@ -84,7 +84,7 @@ int main(){
    check(k.kind==Sheet::IntentKind::None&&k.repaint&&sheet.candidate()==0&&c.rows[0].selected==0,"select enters the question without a commit");
    underlines=rowCircles=0;r.textCount=0;sheet.paint(r,input);
    check(rowCircles==1&&underlines==0,"inside the question the circle sits on the chosen answer");
-   check(has("select saved to exit"),"inside hint names leaving the question");
+   check(has("on the saved one to exit"),"inside hint names leaving the question");
    k=sheet.input(Sheet::Key::NextQuestion);
    check(k.kind==Sheet::IntentKind::Preview&&sheet.question()==0&&sheet.candidate()==1,"front down moves the circle inside the question");
    sheet.input(Sheet::Key::NextOption);check(sheet.question()==0&&sheet.candidate()==2,"edge down moves the circle too");

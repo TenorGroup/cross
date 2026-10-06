@@ -4,8 +4,8 @@ import argparse
 import subprocess
 p=argparse.ArgumentParser(); p.add_argument('--repo',type=Path,default=Path(__file__).resolve().parents[2]); p.add_argument('--output',type=Path,required=True); a=p.parse_args(); a.output.mkdir(parents=True,exist_ok=True)
 s=(a.repo/'src/components/OptionPopup.h').read_text()
-assert 'setUglyStyle' in s, 'RED: reader popup lacks opt-in handwriting'
-assert 'if (uglyStyle) renderUgly' in s and 'else fui::optionDialog' in s, 'RED: popup styles must select exact existing SDK branch'
+assert 'setUglyStyle' not in s, 'RED: a popup asks the shell, no caller opts it in'
+assert 'if (shell::isUgly()) renderUgly' in s and 'else fui::optionDialog' in s, 'RED: popup styles must select exact existing SDK branch'
 start=s.index('  static void uglyText'); end=s.index('  template <typename Frame>\n  void renderAnchored',start)
 helpers=s[start:end]
 cpp=r'''

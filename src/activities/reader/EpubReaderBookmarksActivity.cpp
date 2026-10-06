@@ -276,7 +276,14 @@ void EpubReaderBookmarksActivity::buildScreen(UiScreen& screen) {
   screen.list(props);
 }
 
+const char* EpubReaderBookmarksActivity::headerTitle() const { return tr(STR_BOOKMARKS); }
+
 void EpubReaderBookmarksActivity::render(RenderLock&&) {
+  if (renderUglyList()) {
+    if (confirmPopup.processRender(renderer, mappedInput)) return;
+    renderer.displayBuffer();
+    return;
+  }
   const auto pageWidth = renderer.getScreenWidth();
   const auto orientation = renderer.getOrientation();
   // Landscape orientation: reserve a horizontal gutter for button hints.

@@ -29,9 +29,6 @@ inlineSymbols::Spec resolve(int id) {
   return {shapes[id], I18N.get(labels[id])};
 }
 void install() { inlineSymbols::configure(resolve, font); }
-namespace {
-constexpr int kNutNet = 14;
-
 int labelId(const char* label) {
   if (!label) return -1;
   const StrId labels[] = {StrId::STR_SELECT,   StrId::STR_BACK,     StrId::STR_DIR_UP,
@@ -46,6 +43,9 @@ int labelId(const char* label) {
     id = 0;
   return id;
 }
+
+namespace {
+constexpr int kNutNet = 14;
 
 void veTamGiac(const GfxRenderer& r, const int x, const int y, const int net, const int dir, const bool doc,
                const bool black) {

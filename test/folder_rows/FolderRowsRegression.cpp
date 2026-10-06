@@ -137,6 +137,11 @@ class FileBrowserActivity {
   struct RowFrameLines { int rule, top, bottom; };
   static RowFrameLines rowFrameLines(int rowGap);
   void reserveRowFrame(UiScreen& screen, int rowGap);
+  const fui::ListItem* uglyItems_ = nullptr;
+  uint16_t uglyItemsFirst_ = 0;
+  void (*uglyRowProvider_)(void*, uint16_t, fui::ListItem&) = nullptr;
+  void* uglyRowCtx_ = nullptr;
+  void keepUglyRows(const fui::ListProps& props);
   bool rowOpens(int row) const;
   bool listFramed() const;
   void frameRows(fui::ListProps& props);

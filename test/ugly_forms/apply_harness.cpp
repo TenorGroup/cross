@@ -12,7 +12,7 @@ struct CrossPointSettings {
  bool saveOk=true;int saves=0;
  bool saveToFile(){saveUnderLock|=lockDepth!=0;++saves;return saveOk;}
 } SETTINGS;
-namespace shell {enum class Kind:uint8_t {Cross=0,Ugly=1};bool isUgly(){return SETTINGS.uiShell==1;}bool offered=true;int changes=0;bool uglyOffered(){return offered;}void changed(){++changes;}}
+namespace shell {enum class Kind:uint8_t {Cross=0,Ugly=1};bool isUgly(){return SETTINGS.uiShell==1;}int changes=0;void changed(){++changes;}}
 namespace ugly {template<class I>int makeSwitchConfirm(int,I&,bool=false){return 0;}}
 struct ActivityResult {bool isCancelled=false;};
 enum class SettingType {TOGGLE,ENUM,ACTION,VALUE,STRING};
@@ -51,7 +51,7 @@ struct SettingsActivity {
 #include "ApplyMethods.inc"
 int checks=0,failures=0;
 void check(bool ok,const char* name){++checks;if(!ok){++failures;std::cout<<"FAIL "<<name<<'\n';}}
-void reset(){SETTINGS={};saveUnderLock=false;shell::offered=true;shell::changes=0;syncCalls=0;syncSleep=false;syncQuick=false;}
+void reset(){SETTINGS={};saveUnderLock=false;shell::changes=0;syncCalls=0;syncSleep=false;syncQuick=false;}
 int main(){
  {reset();SettingsActivity a;check(a.applySettingValue(0,1),"valid choice applied");check(SETTINGS.value==1&&SETTINGS.saves==1,"1commit1save");check(a.notes==1&&a.rebuilds==1&&a.refreshes==1,"1commit1rebuild1refresh");check(a.applySettingValue(0,1)&&SETTINGS.saves==1,"committed choice harmless");check(!a.applySettingValue(0,9)&&SETTINGS.saves==1,"invalid choice rejected");check(!a.applySettingValue(-1,1)&&!a.applySettingValue(1,1),"row bounds");}
  {reset();SettingsActivity a;a.rows[0].type=SettingType::TOGGLE;check(!a.applySettingValue(0,2),"toggle range");check(a.applySettingValue(0,1)&&SETTINGS.value==1&&SETTINGS.saves==1,"toggle commits once");}

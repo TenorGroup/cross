@@ -18,6 +18,8 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UiAppHost.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyChrome.h"
 #include "shells/ugly/UglyInk.h"
 
 // Dieu huong: bai kiem chi quan tam man hien tai, nen moi loi goi la khong lam gi.
@@ -115,6 +117,16 @@ std::string fit(const GfxRenderer& r, Size, const std::string& label, int maxWid
 void line(const GfxRenderer&, int, int, int, int, uint32_t, int) {}
 void circle(const GfxRenderer&, Circle, const Box&, int, int, int) {}
 }  // namespace ugly
+
+// The host suites run tenor/cross; the hand-drawn list of tenor/ugly is measured in the simulator
+// (test/reading_stats_simulator/test_ugly_parts_x3.py).
+namespace shell {
+Kind current() { return Kind::Cross; }
+}  // namespace shell
+namespace uglychrome {
+void words(const GfxRenderer&, const freeink::ui::Rect&, const char*, freeink::ui::TextAlign, bool, int) {}
+void marks(const GfxRenderer&, const freeink::ui::Rect&, const Marks&) {}
+}  // namespace uglychrome
 
 RenderLock::RenderLock(Activity&) {}
 RenderLock::RenderLock() { isLocked = true; }
