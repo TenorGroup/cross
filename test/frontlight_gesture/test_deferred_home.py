@@ -41,8 +41,10 @@ fixture=r'''
 #define LOG_DBG(...) ((void)0)
 enum class HomeMenuItem {NONE,FILE_BROWSER,RECENTS,FAVORITES_TAB};
 struct RenderLock {template<class T> explicit RenderLock(T&){} RenderLock(){} void unlock(){}};
+namespace tenorchrome {constexpr bool kTouchShell=true;}
+namespace shell {inline bool isUgly(){return false;}}
 struct KeyboardResult {std::string text;};
-struct Activity {virtual ~Activity()=default; bool isHomeActivity()const{return false;}
+struct Activity {virtual ~Activity()=default; std::string name; bool isHomeActivity()const{return false;}
   virtual bool saveInputBeforeHome(){return false;} bool handleHomeGesture(){return false;}
 };
 struct KeyboardEntryActivity:Activity {
@@ -78,7 +80,8 @@ int main(){
     manager.preference=HomeMenuItem::FAVORITES_TAB;
     manager.completePop();
     assert(manager.homeCalls==1);
-    assert(manager.reached==(bottom?HomeMenuItem::RECENTS:HomeMenuItem::FILE_BROWSER));
+    // Both gestures ask homeKeyTarget() (Recent on the touch tenor/cross, the desk on tenor/ugly).
+    assert(manager.reached==HomeMenuItem::FILE_BROWSER);
     assert(!manager.homeAfterInput);
     manager.completePop();assert(manager.homeCalls==1);
     assert(manager.homeAfterInputTarget==HomeMenuItem::NONE);
@@ -102,4 +105,4 @@ with tempfile.TemporaryDirectory(prefix='deferred-home-production-') as tmp:
     source.write_text(cpp)
     subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror',str(source),'-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True)
-print('GREEN: production keyboard save -> deferred Pop keeps bottom Recent / physical chosen target, one Home')
+print('GREEN: production keyboard save -> deferred Pop lands on homeKeyTarget() for both gestures, one Home')
