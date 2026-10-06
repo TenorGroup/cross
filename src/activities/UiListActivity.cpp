@@ -409,6 +409,8 @@ void UiListActivity::frameRows(fui::ListProps& props) {
       // The fade leaves a row's words legible only in its first 3/4: less of the next row than that and the
       // last row that fits is the glimpse instead (measured on the real rows).
       props.partialTrailingMinPercent = 75;
+      // The last page reaches the foot: its last row ends less than a row above it.
+      props.fillLastPage = true;
     }
     return;
   }
