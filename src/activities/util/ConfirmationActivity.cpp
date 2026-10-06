@@ -3,6 +3,7 @@
 #include <I18n.h>
 
 #include "HalDisplay.h"
+#include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 
 ConfirmationActivity::ConfirmationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -15,10 +16,12 @@ void ConfirmationActivity::onEnter() {
   // Both texts live inside the dialog: the heading as its caption and the
   // subject (a book title) as the wrapping headline beneath it. No
   // pre-truncation — the dialog wraps both to its own width.
+  // Touch: the question offers its one action; "<" on the bar (or a tap outside) cancels.
   const char* options[] = {I18N.get(StrId::STR_CANCEL), I18N.get(StrId::STR_CONFIRM)};
-  confirmPopup.show(heading.c_str(), body.c_str(), options, 2, 0, [this](int idx) {
+  constexpr int skip = tenorchrome::kTouchShell ? 1 : 0;
+  confirmPopup.show(heading.c_str(), body.c_str(), options + skip, 2 - skip, -1, [this](int idx) {
     ActivityResult res;
-    res.isCancelled = (idx != 1);
+    res.isCancelled = (idx + skip != 1);
     setResult(std::move(res));
     finish();
   });
