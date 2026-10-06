@@ -4667,16 +4667,35 @@ void EpubReaderActivity::handleOverlayInput() {
     return;
   }
 
-  // Up/Down (side) and Left/Right (front) move the cursor: a tap steps one
-  // row, holding past PANEL_HOLD_MS jumps PANEL_HOLD_STEP rows in one go, which
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  // Buttons (founder 06/10): the side buttons go to the tab before or after; the front buttons move the
+  // cursor. A second level (the font list) keeps the side buttons still: Back leaves it.
+  const bool tabBefore = mappedInput.wasReleased(MappedInputManager::Button::Up);
+  if (tabBefore || mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+    if (textDepth != TextDepth::Rows) return;
+    focusedTool = (focusedTool + (tabBefore ? kReaderTools - 1 : 1)) % kReaderTools;
+    openOverlay(toolOverlay(focusedTool));
+    return;
+  }
+  constexpr auto kRowBefore = MappedInputManager::Button::Left;
+  constexpr auto kRowAfter = MappedInputManager::Button::Right;
+#endif
+
+  // The cursor buttons (X4 Pro: Up/Down and Left/Right; buttons: the front pair) step one row, holding
+  // past PANEL_HOLD_MS jumps PANEL_HOLD_STEP rows in one go, which
   // is how you cross a hundreds-of-chapters contents list without a press per
   // row. The jump fires once on the hold and swallows the release that ends it,
   // so it never doubles up with the tap step.
   if (count > 0) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
     const bool up = mappedInput.isPressed(MappedInputManager::Button::Up) ||
                     mappedInput.isPressed(MappedInputManager::Button::Left);
     const bool down = mappedInput.isPressed(MappedInputManager::Button::Down) ||
                       mappedInput.isPressed(MappedInputManager::Button::Right);
+#else
+    const bool up = mappedInput.isPressed(kRowBefore);
+    const bool down = mappedInput.isPressed(kRowAfter);
+#endif
     if (!panelHoldJumped && (up || down) && mappedInput.getHeldTime() >= PANEL_HOLD_MS) {
       const int step = down ? PANEL_HOLD_STEP : -PANEL_HOLD_STEP;
       panelIndex = std::clamp(panelIndex + step, 0, count - 1);
@@ -4686,10 +4705,15 @@ void EpubReaderActivity::handleOverlayInput() {
       return;
     }
 
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
     const bool releasedUp = mappedInput.wasReleased(MappedInputManager::Button::Up) ||
                             mappedInput.wasReleased(MappedInputManager::Button::Left);
     const bool releasedDown = mappedInput.wasReleased(MappedInputManager::Button::Down) ||
                               mappedInput.wasReleased(MappedInputManager::Button::Right);
+#else
+    const bool releasedUp = mappedInput.wasReleased(kRowBefore);
+    const bool releasedDown = mappedInput.wasReleased(kRowAfter);
+#endif
     if (releasedUp || releasedDown) {
       if (!panelHoldJumped) {
         panelIndex = releasedUp ? ButtonNavigator::previousIndex(panelIndex, count)
