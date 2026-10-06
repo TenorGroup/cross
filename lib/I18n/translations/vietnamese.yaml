@@ -1021,6 +1021,8 @@ STR_UGLY_KOSYNC_NO_LOGIN: "Chưa đăng nhập thì đồng bộ với ai? Vào 
 STR_UGLY_KOSYNC_UPLOADED: "Gửi vị trí lên rồi. Máy kia mở ra là tới đúng trang."
 STR_UGLY_KOSYNC_SAME: "Hai máy cùng một trang rồi. Khỏi làm gì."
 STR_UGLY_KOSYNC_SYNC_FAILED: "Đồng bộ xịt. Lý do ghi dưới kia."
+STR_UGLY_OPDS_DOWNLOADING: "Đang kéo sách về. Rồi có đọc không đó?"
+STR_UGLY_OPDS_FAILED: "Kho sách không trả lời. Mạng dỏm hay địa chỉ sai."
 
 STR_UGLY_PHIEU_TITLE: "PHIẾU TRẢ LỜI"
 STR_UGLY_PHIEU_SUBJECT: "Môn:"

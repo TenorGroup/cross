@@ -992,6 +992,8 @@ STR_UGLY_KOSYNC_NO_LOGIN: "Not logged in. Sync with whom? Set it up in KOReader 
 STR_UGLY_KOSYNC_UPLOADED: "Position sent. The other reader opens right there."
 STR_UGLY_KOSYNC_SAME: "Both readers are on the same page. Nothing to do."
 STR_UGLY_KOSYNC_SYNC_FAILED: "Sync flopped. The reason's below."
+STR_UGLY_OPDS_DOWNLOADING: "Pulling the book down. Will you even read it?"
+STR_UGLY_OPDS_FAILED: "The library won't answer. Bad network or bad address."
 
 STR_UGLY_PHIEU_TITLE: "ANSWER SHEET"
 STR_UGLY_PHIEU_SUBJECT: "Course:"

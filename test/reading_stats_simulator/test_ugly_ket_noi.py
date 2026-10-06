@@ -248,6 +248,42 @@ class UglyCalibreTest(unittest.TestCase):
         print('calibre frames ms:', [ms for _, ms in frames])
 
 
+FEED = ('<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Kho</title><id>k</id>'
+        '<entry><title>Sach mot</title><id>s1</id><link rel="http://opds-spec.org/acquisition" href="/s1.epub" '
+        'type="application/epub+zip"/></entry><entry><title>Sach hai</title><id>s2</id>'
+        '<link rel="http://opds-spec.org/acquisition" href="/s2.epub" type="application/epub+zip"/></entry></feed>')
+# Diary -> Settings page -> Other -> OPDS browser (third question); the saved network joins on its own.
+TO_THE_OPDS = ['UP'] + ['RIGHT'] * 9 + ['CONFIRM', 'RIGHT', 'RIGHT', 'CONFIRM']
+
+
+class UglyOpdsTest(unittest.TestCase):
+    def browse(self, feed):
+        card = Card()
+        self.addCleanup(card.close)
+        mock = card.sd.parent / (card.sd.name + '-http')
+        mock.mkdir()
+        self.addCleanup(shutil.rmtree, mock)
+        (mock / 'catalog.xml').write_text(feed)
+        (card.store / 'opds.json').write_text(json.dumps(
+            {'servers': [{'name': 'Kho thu', 'url': 'http://127.0.0.1:9/catalog.xml', 'username': ''}]}))
+        script, t = keys(*TO_THE_OPDS, 'WAIT:2500', 'CONFIRM', 'WAIT:3000')
+        log, shots = card.run(script + ';%d:QUIT' % (t + 800), [(t, 'opds')], timeout=60,
+                              CROSSPOINT_SIM_HTTP_MOCK_ROOT=str(mock))
+        self.assertIn('OpdsBookBrowser', entered(log), log[-2500:])
+        return log, shots['opds']
+
+    def test_the_catalog_is_written_by_hand(self):
+        log, page = self.browse(FEED)
+        self.assertIn('OPDS list frame entries=2 sel=0', log, log[-2500:])
+        self.assertGreater(ink(page, (20, 100, 508, 300)), 1000)
+
+    def test_a_feed_nobody_can_read_is_a_note(self):
+        log, _ = self.browse('not a feed')
+        notes = [m.groupdict() for m in NOTE_FRAME.finditer(log) if m['title'] == 'Kho thu']
+        self.assertTrue(notes, log[-2500:])
+        self.assertEqual(notes[-1]['line'], 'Kho sách không trả lời. Mạng dỏm hay địa chỉ sai.', notes)
+
+
 def small_epub(path, paragraphs=40):
     """An original three-line EPUB, enough for the reader and its menu."""
     with zipfile.ZipFile(path, 'w') as out:

@@ -57,6 +57,7 @@ class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
   std::string currentPath;
   std::string searchTemplate;
   int selectorIndex = 0;
+  void renderUglyNote();
   std::string errorMessage;
   std::string statusMessage;
   size_t downloadProgress = 0;
