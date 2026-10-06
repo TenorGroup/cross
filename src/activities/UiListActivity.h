@@ -76,6 +76,18 @@ class UiListActivity : public Activity, protected UiAppHost {
   void frameRows(freeink::ui::ListProps& props);
   void drawRowFrame();
   bool rowsFramed = false;
+  // Where the lines of a row frame go for a row gap: the grey rule `rule` px above a row's top (in the gap), the
+  // ring `top` px above the first row and `bottom` px below the last, so that every row, the first and the last
+  // too, has the same height between its lines. One rule for the framed lists and Home's Settings groups.
+  struct RowFrameLines {
+    int rule, top, bottom;
+  };
+  static RowFrameLines rowFrameLines(int rowGap);
+  // The grey dotted rule between 2 rows of a frame.
+  static void drawRowRule(const GfxRenderer& renderer, int y, int x0, int x1);
+  // Keeps the room of the ring above and below the rows of a framed list; records the list body's foot.
+  void reserveRowFrame(UiScreen& screen, int rowGap);
+  int rowFrameGap = 0;
   // Foot of the list body the rows were laid out in: the fade under the last full row stops there, above any
   // chrome under the list (the touch tab bar).
   int rowFrameFloor = 0;

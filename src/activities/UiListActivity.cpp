@@ -435,8 +435,34 @@ void fadeBand(const GfxRenderer& r, const int y0, const int h, const bool outerT
 }
 }  // namespace
 
+UiListActivity::RowFrameLines UiListActivity::rowFrameLines(const int rowGap) {
+  // A 1 px rule in the gap and a 2 px ring: the rule sits `rule` px above the next row, the ring's inner edge as far
+  // from the first and last rows as a rule is from the rows beside it.
+  const int rule = (std::max(0, rowGap) + 1) / 2;
+  return {rule, rule + 1, std::max(0, rowGap) - rule + 2};
+}
+
+void UiListActivity::drawRowRule(const GfxRenderer& renderer, const int y, const int x0, const int x1) {
+  for (int x = x0; x < x1; ++x)
+    if (((x + y) & 1) == 0) renderer.drawPixel(x, y, true);
+}
+
+void UiListActivity::reserveRowFrame(UiScreen& screen, const int rowGap) {
+  if (rowsFramed) {
+    // The gap list() lays the rows out with: on touch boards the theme's touch gap is the least (resolveListProps).
+    rowFrameGap = std::max<int>(rowGap, screen.theme().listTouchRowGap);
+    const auto lines = rowFrameLines(rowFrameGap);
+    screen.takeTop(static_cast<int16_t>(lines.top));
+    rowFrameFloor = screen.body().y + screen.body().height;
+    screen.takeBottom(static_cast<int16_t>(lines.bottom));
+    return;
+  }
+  rowFrameFloor = screen.body().y + screen.body().height;
+}
+
 void UiListActivity::drawRowFrame() {
   if (!rowsFramed) return;
+  const auto lines = rowFrameLines(rowFrameGap);
   // The rows this layout drew and registered (a partial row at the foot registers none; a disabled
   // row registers none either, the frame takes it in by the pitch of the others).
   const auto& n = activeNav();
@@ -452,9 +478,8 @@ void UiListActivity::drawRowFrame() {
     }
     if (i > n.top) {
       // Grey dotted rule from the text's edge, over every row but the first.
-      const int y = r.y - 1, x0 = tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0);
-      for (int x = x0; x < renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17; ++x)
-        if (((x + y) & 1) == 0) renderer.drawPixel(x, y, true);
+      drawRowRule(renderer, r.y - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
+                  renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
     }
     last = r;
     lastIndex = i;
@@ -464,15 +489,15 @@ void UiListActivity::drawRowFrame() {
   first.y = static_cast<int16_t>(first.y - (firstIndex - n.top) * pitch);
   last.height = static_cast<int16_t>(last.height + (count - 1 - lastIndex) * pitch);
   constexpr int RADIUS = 20;
-  tenorchrome::drawRoundRing(renderer, tenorchrome::FOOT_BACK_X, first.y,
-                             renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X, last.y + last.height - first.y,
-                             RADIUS, 2, true);
+  const int ringTop = first.y - lines.top, ringBottom = last.y + last.height + lines.bottom;
+  tenorchrome::drawRoundRing(renderer, tenorchrome::FOOT_BACK_X, ringTop,
+                             renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X, ringBottom - ringTop, RADIUS, 2, true);
   // Rows before: the top band fades (the last full row of the page before, a flick keeps it). Rows after:
   // the band under the last full row fades, the next row showing its top there.
   constexpr int TOP_BAND = 64, BOTTOM_BAND_MAX = 144;
-  if (n.top > 0) fadeBand(renderer, first.y, TOP_BAND, true);
+  if (n.top > 0) fadeBand(renderer, ringTop, TOP_BAND, true);
   if (count < listCount()) {
-    const int y0 = last.y + last.height;
+    const int y0 = ringBottom;
     const int bottom = std::min(renderer.getScreenHeight() - tenorchrome::footBackReserve(), rowFrameFloor);
     fadeBand(renderer, y0, std::min(BOTTOM_BAND_MAX, bottom - y0), false);
   }
@@ -507,7 +532,7 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
     pageAnchorRow = kepConTro(activeNav().selected, listCount());
     activeNav().followOnBuild = false;
   }
-  rowFrameFloor = screen.body().y + screen.body().height;
+  reserveRowFrame(screen, rowGap);
   activeNav().syncToProps(screen.body(), rowHeight, rowGap, listCount(), props);
 
   activeNav().selected = kepConTro(activeNav().selected, listCount());
