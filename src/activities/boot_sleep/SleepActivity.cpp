@@ -662,10 +662,11 @@ bool SleepActivity::takeWakeNoticeRunning() {
 void SleepActivity::showStartingUp(GfxRenderer& renderer) {
   // Drawn into the kept sleep frame in the framebuffer, started and left running: the first screen
   // waits for it (ActivityManager) before it draws over that frame, which the refresh still reads.
-  GUI.drawPopup(renderer, tr(STR_STARTING_UP), false);
+  const char* text = shell::uglyParts() ? ugly::wakeNotice() : tr(STR_STARTING_UP);
+  GUI.drawPopup(renderer, text, false);
   renderer.displayBufferAsync();
   wakeNoticeRunning = true;
-  LOG_INF("SLP", "Wake notice shown");
+  LOG_INF("SLP", "Wake notice shown: %s", text);
 }
 
 #ifdef TENOR_WAKE_LABEL_GRAY
@@ -677,7 +678,7 @@ void SleepActivity::showStartingUpOverGray(GfxRenderer& renderer) {
   // The first screen after it drives every pixel again (the redrive the wake already armed).
   const int ring = UITheme::getInstance().getMetrics().popupFrameThickness;
   renderer.clearScreen();
-  const Rect box = GUI.drawPopup(renderer, tr(STR_STARTING_UP), false);
+  const Rect box = GUI.drawPopup(renderer, shell::uglyParts() ? ugly::wakeNotice() : tr(STR_STARTING_UP), false);
   const int x = std::max(0, box.x - ring);
   const int y = std::max(0, box.y - ring);
   const int w = std::min(renderer.getScreenWidth() - x, box.width + ring * 2);
@@ -1214,7 +1215,7 @@ void SleepActivity::renderStatsSleepScreen() const {
   releaseSdFontCachesForDecode(renderer);
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   renderer.clearScreen();
-  readingstatsview::drawSleep(renderer);
+  readingstatsview::drawSleep(renderer, shell::uglyParts());
   showSleepFrame(renderer);
 }
 

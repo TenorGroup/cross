@@ -6,6 +6,9 @@
 
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
+#include "shells/ugly/UglyWords.h"
 
 void CrashActivity::onEnter() {
   Activity::onEnter();
@@ -35,21 +38,31 @@ void CrashActivity::render(RenderLock&&) {
   const auto x = metrics.contentSidePadding;
   const auto lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
 
+  // tenor/ugly on the button readers: the words in hand, the reason as the device wrote it.
+  const bool handwritten = shell::uglyParts();
   // Crash report is a dead end, not a pushed screen: no back button.
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_CRASH_TITLE), nullptr,
-                 false);
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
+                 handwritten ? ugly::words::crashTitle() : tr(STR_CRASH_TITLE), nullptr, false);
 
   int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+  if (handwritten) {
+    static constexpr int STEP = 40;
+    y += ugly::ascent(ugly::Size::S30);
+    y += STEP * ugly::paragraph(renderer, ugly::Size::S30, x, y, contentWidth, STEP, ugly::words::crashBody());
+    y += metrics.verticalSpacing * 2;
+    ugly::text(renderer, ugly::Size::S30, x, y, ugly::words::crashReason());
+    y += metrics.verticalSpacing * 2;
+  } else {
+    auto descLines = renderer.wrappedText(UI_10_FONT_ID, tr(STR_CRASH_DESCRIPTION), contentWidth, 10);
+    for (const auto& line : descLines) {
+      renderer.drawText(UI_10_FONT_ID, x, y, line.c_str());
+      y += lineHeight;
+    }
 
-  auto descLines = renderer.wrappedText(UI_10_FONT_ID, tr(STR_CRASH_DESCRIPTION), contentWidth, 10);
-  for (const auto& line : descLines) {
-    renderer.drawText(UI_10_FONT_ID, x, y, line.c_str());
-    y += lineHeight;
+    y += metrics.verticalSpacing * 2;
+    renderer.drawText(UI_10_FONT_ID, x, y, tr(STR_CRASH_REASON));
+    y += lineHeight + metrics.verticalSpacing;
   }
-
-  y += metrics.verticalSpacing * 2;
-  renderer.drawText(UI_10_FONT_ID, x, y, tr(STR_CRASH_REASON));
-  y += lineHeight + metrics.verticalSpacing;
 
   auto panicLines = renderer.wrappedText(UI_10_FONT_ID, panicMessage.c_str(), contentWidth, 5);
   for (const auto& line : panicLines) {

@@ -24,6 +24,8 @@
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 #include "util/BookCacheUtils.h"
 #include "util/BookmarkUtil.h"
 
@@ -684,6 +686,24 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
                              : screen.takeBottom(static_cast<int16_t>(pathLineHeight + metrics.verticalSpacing));
   const auto drawPath = [&]() {
     if (tenorchrome::kTouchShell) return;
+    if (shell::uglyParts()) {
+      // tenor/ugly: a shaky rule and the path in hand, cut on the left so the deepest folder stays.
+      const int maxWidth = band.width - metrics.contentSidePadding * 2;
+      const char* p = basepath.c_str();
+      std::string shown = p;
+      if (ugly::width(renderer, ugly::Size::S22, p) > maxWidth) {
+        const int available = maxWidth - ugly::width(renderer, ugly::Size::S22, "\xEE\x80\x80");
+        while (*p && ugly::width(renderer, ugly::Size::S22, p) > available) {
+          ++p;
+          while (*p && (static_cast<unsigned char>(*p) & 0xC0) == 0x80) ++p;
+        }
+        shown = std::string("\xEE\x80\x80") + p;  // the pen scrawl where a cut line trails off
+      }
+      ugly::line(renderer, band.x + 8, band.y + 2, band.x + band.width - 8, band.y + 1, 57, 2);
+      ugly::text(renderer, ugly::Size::S22, band.x + metrics.contentSidePadding,
+                 band.y + band.height - metrics.verticalSpacing / 2 - 4, shown.c_str());
+      return;
+    }
     screen.target().fill(fui::Rect{band.x, band.y, band.width, 3}, fui::Paint::solid(fui::Color::Black));
     const int pathY =
         band.y + metrics.verticalSpacing / 2 + (band.height - metrics.verticalSpacing / 2 - pathLineHeight) / 2;

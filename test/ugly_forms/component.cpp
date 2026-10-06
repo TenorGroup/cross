@@ -121,6 +121,16 @@ int main(){
    Catalog sw;sw.rows={{21,"Switch",Sheet::Kind::Toggle,1,2}};
    sheet.bind(r,sw.view(),false);r.circleCount=0;sheet.paint(r,input);
    check(r.circleCount==2,"a switch shows its 2 answers as circles");
+   // A long list asked at the top of the sheet, answered near its end: the "N more" note stays above the first answer.
+   Catalog top;top.rows={{31,"Sleep screen",Sheet::Kind::Paper,10,12}};
+   sheet.bind(r,top.view(),false);sheet.input(Sheet::Key::Confirm);r.textCount=0;sheet.paint(r,input);
+   int moreY=1<<30,firstY=-1;char first[32];snprintf(first,sizeof(first),"Option %d",sheet.paperFirst());
+   for(int i=0;i<r.textCount;++i){
+    if(strstr(r.textRuns[i].value," more"))moreY=std::min(moreY,r.textRuns[i].y);
+    if(std::string(r.textRuns[i].value)==first)firstY=r.textRuns[i].y;
+   }
+   check(sheet.paperFirst()>0&&moreY<(1<<30)&&firstY>=0,"top paper shows the note and its first answer");
+   check(firstY-26>=moreY,"the more note never covers the first answer");
   }
   if(touch) {
    Catalog one;one.rows={{100,"Choice",Sheet::Kind::Choice,0,3}};

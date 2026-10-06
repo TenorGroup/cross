@@ -71,6 +71,7 @@
 #include "activities/ActivityManager.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
+#include "shells/ugly/UglySleep.h"
 #include "activities/boot_sleep/SleepActivity.h"
 #include "activities/home/BookStatsActivity.h"
 #include "QuoteStore.h"
@@ -330,6 +331,13 @@ static void armSilentReboot(const uint32_t target) {
   silentRebootMagic = SILENT_REBOOT_MAGIC;
 }
 
+// The notice left on the glass while the device restarts quietly.
+static void showRestartNotice() {
+  const char* text = shell::uglyParts() ? ugly::loadingNotice() : tr(STR_LOADING_POPUP);
+  LOG_DBG("MAIN", "Restart notice: %s", text);
+  GUI.drawPopup(renderer, text);
+}
+
 // Returns instead of rebooting when sleep supersedes the reboot; callers keep
 // running in that case.
 static void silentRestartTo(const uint32_t target, const char* targetName) {
@@ -341,7 +349,7 @@ static void silentRestartTo(const uint32_t target, const char* targetName) {
   // through to the new activity. On Home, Select on the default
   // selectorIndex=0 opens the most-recent book, looking like a trampoline back
   // to the reader they just exited.
-  GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  showRestartNotice();
   delay(50);
   ESP.restart();
 }
@@ -391,7 +399,7 @@ void restartToHomeAfterStorageHandoff() {
   if (deepSleepInProgress) return;  // sleeping supersedes the storage handoff reboot
   armSilentReboot(SILENT_REBOOT_TARGET_HOME);
   LOG_DBG("MAIN", "Restart after storage handoff (target=home)");
-  GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  showRestartNotice();
   delay(50);
   handoffUsbOtgToSerialJtag();
   ESP.restart();

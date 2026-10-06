@@ -195,5 +195,9 @@ bool drawPicture(const uint8_t* data, const size_t size, const int pic, const in
 // a wake shows at the top of the diary, empty when the day has none.
 bool drawScreen(GfxRenderer& renderer);
 std::string wakeSentence();
+// The boot screen of the shell, on the frame (cleared first; false when the frame is too small or the stream cannot be
+// unpacked): its name in hand, the dog asleep on the books, a line of abuse. The caller adds the version and shows it.
+inline constexpr int BOOT_PICTURE = 2, BOOT_PICTURE_TOP = 116;
+bool drawBoot(GfxRenderer& renderer);
 
 }  // namespace ugly::sleepset

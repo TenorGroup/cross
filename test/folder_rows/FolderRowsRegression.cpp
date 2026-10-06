@@ -62,6 +62,14 @@ static constexpr int SMALL_FONT_ID = 0;
 enum { STR_FILE_SIDE_ACTIONS, STR_NO_BIN_FILES, STR_NO_FILES_FOUND, STR_FOLDER_TOO_MANY };
 static const char* tr(int) { return "empty"; }
 namespace tenorchrome { int tipHeight(...) { return 0; } }
+// The fixture is tenor/cross: the hand of tenor/ugly is never asked for.
+namespace shell { static bool uglyParts() { return false; } }
+namespace ugly {
+enum class Size { S22 };
+template <class... A> int width(A&&...) { return 0; }
+template <class... A> void text(A&&...) {}
+template <class... A> void line(A&&...) {}
+}  // namespace ugly
 
 struct Renderer {
   size_t prewarmCalls = 0, prewarmNames = 0, prewarmBytes = 0;
