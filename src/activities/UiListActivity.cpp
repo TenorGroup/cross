@@ -401,7 +401,12 @@ void UiListActivity::navigateButtons() {
 
 void UiListActivity::frameRows(fui::ListProps& props) {
   rowsFramed = tenorchrome::kTouchShell && listFramed();
-  if (!rowsFramed) return;
+  if (!rowsFramed) {
+    // Buttons (X3/X4): the row past the last full one shows its top, faded (fadeMoreBelow), in place of a "more"
+    // chevron.
+    if (tenorchrome::enabled()) props.partialTrailingRow = true;
+    return;
+  }
   // Touch (C1): the rows sit in a round frame 16 px in from the screen edges, their text 16 px into it.
   props.rowInset = tenorchrome::FOOT_BACK_X;
   props.sidePadding = 16;
@@ -417,22 +422,7 @@ void UiListActivity::frameRows(fui::ListProps& props) {
 }
 
 namespace {
-// Bayer 8x8: a pixel of a band is cleared when its threshold reaches what the band keeps at its depth.
-constexpr uint8_t BAYER8[8][8] = {{0, 32, 8, 40, 2, 34, 10, 42},  {48, 16, 56, 24, 50, 18, 58, 26},
-                                  {12, 44, 4, 36, 14, 46, 6, 38},  {60, 28, 52, 20, 62, 30, 54, 22},
-                                  {3, 35, 11, 43, 1, 33, 9, 41},   {51, 19, 59, 27, 49, 17, 57, 25},
-                                  {15, 47, 7, 39, 13, 45, 5, 37},  {63, 31, 55, 23, 61, 29, 53, 21}};
-// Ink of the band [y0, y0 + h) thins from all of it at its inner edge to none at its outer edge.
-void fadeBand(const GfxRenderer& r, const int y0, const int h, const bool outerTop) {
-  if (h <= 0) return;
-  const int width = r.getScreenWidth();
-  for (int y = y0; y < y0 + h; ++y) {
-    const int depth = outerTop ? y0 + h - 1 - y : y - y0;  // from the inner edge
-    const int keep = 64 * (h - depth) / h;
-    for (int x = 0; x < width; ++x)
-      if (BAYER8[x & 7][y & 7] >= keep) r.drawPixel(x, y, false);
-  }
-}
+using tenorchrome::fadeBand;
 }  // namespace
 
 UiListActivity::RowFrameLines UiListActivity::rowFrameLines(const int rowGap) {
@@ -458,6 +448,8 @@ void UiListActivity::reserveRowFrame(UiScreen& screen, const int rowGap) {
     return;
   }
   rowFrameFloor = screen.body().y + screen.body().height;
+  // The fade under the last full row stops short of the scroll bar at the body's right edge, with 2 px of air.
+  rowFadeRight = screen.body().x + screen.body().width - screen.theme().listScrollWidth - 2;
 }
 
 void UiListActivity::drawRowFrame() {
@@ -524,7 +516,7 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
     props.rowPaddingY = TENOR_PILL_ROW_PADDING_Y;
   }
   const int rowGap = props.rowGap >= 0 ? props.rowGap : screen.theme().listRowGap;
-  reserveMoreBelowChevron(screen, rowHeight, rowGap);
+  reserveFadeBand(screen, rowHeight, rowGap);
 
   if (tenorchrome::kTouchShell && activeNav().followOnBuild) {
     // Touch: a row to show (the chapter being read) brings the page it is on, pages counted from the
@@ -561,13 +553,7 @@ void UiListActivity::renderUi() {
   }
   if (!uiTarget.paintingEnabled()) return;
   drawRowFrame();
-  // Con dong ben duoi thi noi bang mot mui ten chu V o chan man, khong bang mot
-  // con so o goc tren: it nguoi nhin thanh cuon, va cho goc tren thuoc ve ten
-  // the ben canh, thu duy nhat o do dang doc.
-  // Touch: the scroll bar on the right says there is more; no arrow, no room kept for it.
-  if (tenorchrome::enabled() && !tenorchrome::kTouchShell && activeNav().top + activeNav().pageRows() < listCount()) {
-    tenorchrome::drawMoreBelowChevron(renderer, favoriteHintY);
-  }
+  if (tenorchrome::enabled() && !tenorchrome::kTouchShell) fadeMoreBelow();
   drawPageHints();
   if (favoriteHintY >= 0) {
     if (const char* hint = favoriteHintText()) tenorchrome::drawTip(renderer, hint, favoriteHintLinesAbove());
@@ -657,13 +643,31 @@ void UiListActivity::reserveFavoriteHint(UiScreen& screen) {
   if (bottom > reservedTop) screen.takeBottom(static_cast<int16_t>(bottom - reservedTop));
 }
 
-void UiListActivity::reserveMoreBelowChevron(UiScreen& screen, const int16_t rowHeight, const int rowGap) {
-  if (!tenorchrome::enabled() || tenorchrome::kTouchShell ||
-      listCount() <= fui::listVisibleRows(screen.body(), rowHeight, rowGap))
-    return;
-  const int bottom = screen.body().y + screen.body().height;
-  const int reservedTop = tenorchrome::moreBelowChevronTopY(renderer, favoriteHintY) - 2;
-  if (bottom > reservedTop) screen.takeBottom(static_cast<int16_t>(bottom - reservedTop));
+void UiListActivity::reserveFadeBand(UiScreen& screen, const int16_t rowHeight, const int rowGap) {
+  // Buttons: when rows go on, the room under the last full row must hold a readable glimpse of the next one.
+  // The fade leaves a row's words legible only in its first 3/4 (half a row showed none of them), so less room
+  // than that gives a full row back and the next row shows whole, fading. Estimated with the fixed row height;
+  // wrapped rows may still leave less.
+  if (!tenorchrome::enabled() || tenorchrome::kTouchShell) return;
+  const fui::Rect body = screen.body();
+  const int rows = fui::listVisibleRows(body, rowHeight, static_cast<int16_t>(rowGap));
+  if (rows < 2 || listCount() <= rows) return;
+  const int pitch = rowHeight + rowGap;
+  if (body.height - rows * pitch >= rowHeight * 3 / 4) return;
+  screen.takeBottom(static_cast<int16_t>(body.height - (rows - 1) * pitch - (rowHeight - 1)));
+}
+
+void UiListActivity::fadeMoreBelow() {
+  // Buttons: rows go on below, so the band under the last full row fades over the next row's top, down to the
+  // list's foot (as X4 Pro's framed lists do). The scroll bar beside it stays whole.
+  const auto& n = activeNav();
+  const int count = listCount();
+  const int last = n.top + n.pageRowsFor(count) - 1;
+  if (last < 0 || last + 1 >= count) return;
+  const fui::Rect r = app.publishedRect(ACTION_ROW, static_cast<int16_t>(last));
+  if (r.height <= 0) return;  // a disabled last row registers no rect: the scroll bar alone says there is more
+  const int y0 = r.y + r.height;
+  fadeBand(renderer, y0, rowFrameFloor - y0, false, 0, rowFadeRight);
 }
 
 const char* UiListActivity::favoriteHintText() {

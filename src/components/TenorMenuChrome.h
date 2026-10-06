@@ -153,6 +153,9 @@ void drawRowChevron(const GfxRenderer& renderer, int x, int y);
 // cuon va con so do lay mat cho cua ten the ben canh.
 int moreBelowChevronTopY(const GfxRenderer& renderer, int hintTopY = -1);
 void drawMoreBelowChevron(const GfxRenderer& renderer, int hintTopY = -1);
+// A list goes on past an edge: the ink of the band [y0, y0 + h) x [x0, x1) thins from all of it at its inner edge
+// to none at its outer edge (Bayer 8x8, black and white only, so no grey pass). x1 < 0 = the screen's width.
+void fadeBand(const GfxRenderer& renderer, int y0, int h, bool outerTop, int x0 = 0, int x1 = -1);
 int tipLineCount(const GfxRenderer& renderer, const char* text, int maxLines = 4);
 int tipHeight(const GfxRenderer& renderer, const char* text, int maxLines = 4);
 void drawTip(const GfxRenderer& renderer, const char* text, int linesAbove = 0, int maxLines = 4,

@@ -60,7 +60,8 @@ def main():
     framed = function(base_header, "virtual bool listFramed() const").replace(
         "virtual bool listFramed() const", "bool FileBrowserActivity::listFramed() const")
     generated = args.output / "production_rows.inc"
-    generated.write_text("namespace tenorchrome {\n" + shell + "\n" + foot_x + "\n}\n" +
+    generated.write_text("namespace tenorchrome {\n" + shell + "\n" + foot_x +
+                         "\ninline bool enabled() { return true; }  // a board with buttons\n}\n" +
                          framed + "\n" + row_opens + "\n" + pin_state + "\n" + base_methods + "\n" + functions)
     binary = args.output / "folder_rows"
     cmd = [args.compiler, "-std=c++20", "-O1", "-g", "-Wall", "-Wextra",

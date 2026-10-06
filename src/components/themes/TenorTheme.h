@@ -29,6 +29,8 @@ inline constexpr ThemeMetrics values = [] {
   m.batteryBarHeight = 40;
   m.tabBarHeight = 40;
   m.headerBatteryDetached = true;
+  // A pill scroll bar (round ends) needs the width to round: 6 px, as on the X4 Pro's framed lists.
+  m.listScrollWidth = 6;
   return m;
 }();
 // Locked here so a reordering above cannot quietly shrink every corner again.
