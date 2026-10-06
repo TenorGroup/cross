@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 import glass_model
-from ugly_common import Card, entered
+from ugly_common import Card, digest, entered, ink
 
 WAKE_NOTICE = re.compile(r'Wake notice shown: (.*)')
 RESTART_NOTICE = re.compile(r'Restart notice: (.*)')
@@ -20,11 +20,52 @@ SSID = 'Mang Mau'
 UGLY_BOOT = re.compile(r'\[UGLY\] boot visible=(\d+) ms')
 
 
+def settings_route(group, question, extra=()):
+    """From the diary to a question of the answer sheets: Settings page, group, Select, question, Select."""
+    return ['UP'] + ['RIGHT'] * group + ['CONFIRM'] + ['RIGHT'] * (question - 1) + ['CONFIRM'] + list(extra)
+
+
+def script(keys, start=1000, gap=700, settle=1800):
+    """`keys` as an input script; returns (script, ms of the shot after the last key)."""
+    parts, t = [], start
+    for key in keys:
+        if key.startswith('WAIT:'):
+            t += int(key[5:])
+            continue
+        parts.append('%d:%s' % (t, key))
+        t += gap
+    shot = t - gap + settle
+    parts.append('%d:QUIT' % (shot + 600))
+    return ';'.join(parts), shot
+
+
 class UglyRemainingScreensTest(unittest.TestCase):
     def card(self, **kw):
         card = Card(**kw)
         self.addCleanup(card.close)
         return card
+
+    def shot(self, shell, keys, box=None, prep=None, env=None, **kw):
+        """The screen after `keys`, in a shell; the activities entered; the log."""
+        card = self.card(shell=shell, **kw)
+        if prep:
+            prep(card)
+        run, at = script(keys)
+        log, shots = card.run(run, [(at, 'shot')], **(env or {}))
+        image = shots['shot']
+        return (image.crop(box) if box else image), entered(log), log
+
+    def assert_hand_only_in_ugly(self, keys, box, activity, **kw):
+        """tenor/ugly writes the box by hand; tenor/cross draws what it always drew. Same steps, same card."""
+        ugly, ugly_acts, ugly_log = self.shot(1, keys, box, **kw)
+        cross, cross_acts, cross_log = self.shot(0, keys, box, **kw)
+        self.assertIn(activity, ugly_acts, ugly_log[-2000:])
+        self.assertIn(activity, cross_acts, cross_log[-2000:])
+        self.assertGreater(ink(ugly), 200, 'the box has writing')
+        self.assertNotEqual(digest(ugly), digest(cross), 'tenor/ugly draws the box in its own hand')
+        again, _, _ = self.shot(1, keys, box, **kw)
+        self.assertEqual(digest(ugly), digest(again), 'the hand is deterministic')
+        return ugly, cross
 
     def test_the_wake_notice_speaks_in_the_voice_of_the_shell(self):
         # "Wake-up notice" on, a sleep folded to black and white: the notice goes over the kept sleep frame.
@@ -74,6 +115,10 @@ class UglyRemainingScreensTest(unittest.TestCase):
         keep = Path(os.environ.get('UGLY_SHOTS', '') or temp.name)
         keep.mkdir(parents=True, exist_ok=True)
         (keep / 'boot_ugly.pgm').write_bytes(frames[1])
+
+    def test_the_keys_are_written_by_hand(self):
+        # Device name (Device, question 2) opens the keyboard: the keys in hand, the circle on the key under the cursor.
+        self.assert_hand_only_in_ugly(settings_route(7, 2), (0, 300, 528, 580), 'KeyboardEntry')
 
 
 if __name__ == '__main__':

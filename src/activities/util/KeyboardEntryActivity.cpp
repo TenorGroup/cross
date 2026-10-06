@@ -14,6 +14,9 @@
 #include "components/UITheme.h"
 #include "components/themes/TenorRadius.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
+#include "shells/ugly/UglySteady.h"
 #if defined(FREEINK_DEVICE_X4PRO)
 #include "UIFontTiers.h"
 #endif
@@ -121,6 +124,48 @@ const fui::KeyboardRow URL_SNIP_ROWS[] = {
 const fui::KeyboardLayout URL_LAYOUT{URL_ROWS, 5};
 const fui::KeyboardLayout URL_SHIFT_LAYOUT{URL_SHIFT_ROWS, 5};
 const fui::KeyboardLayout URL_SNIPPET_LAYOUT{URL_SNIP_ROWS, 4};
+
+
+// tenor/ugly on the button readers: every key written by hand in the box the FreeInkUI keyboard laid out for it (the
+// keyboard registered its hits with its own painting off). The pen circles the key under the cursor.
+void paintUglyKeys(const GfxRenderer& r, const fui::KeyboardProps& props, const fui::Interaction* hits, const size_t count,
+                   const int rowHeight) {
+  const fui::KeyboardLayout& layout = *props.layout;
+  const ugly::Steady steady;  // straight letters: each key read right, and a frame per cursor move as quick as before
+  for (size_t i = 0; i < count; ++i) {
+    const fui::KeyboardKey* key = nullptr;
+    int index = 0, logical = -1;
+    for (int row = 0; row < layout.rowCount && !key; ++row)
+      for (int col = 0; col < layout.rows[row].count; ++col, ++index)
+        if (layout.rows[row].keys[col].value == hits[i].value) {
+          key = &layout.rows[row].keys[col];
+          logical = index;
+          break;
+        }
+    if (!key) continue;
+    const fui::Rect& box = hits[i].rect;
+    const int cx = box.x + box.width / 2, cy = box.y + rowHeight / 2;
+    const char* label = key->label;
+    if (key->kind == fui::KeyKind::Ok && props.okLabel) label = props.okLabel;
+    if (key->kind == fui::KeyKind::Shift && props.shiftLabel) label = props.shiftLabel;
+    if (key->kind == fui::KeyKind::Mode && props.modeLabel) label = props.modeLabel;
+    ugly::Box ink{cx - 10, cy - 10, cx + 10, cy + 10};
+    if (key->kind == fui::KeyKind::Space) {
+      ugly::underline(r, cx - box.width * 9 / 20, cx + box.width * 9 / 20, cy + 6, 700 + static_cast<uint32_t>(i), 2);
+      ink = {cx - box.width * 9 / 20, cy - 4, cx + box.width * 9 / 20, cy + 10};
+    } else if (key->kind == fui::KeyKind::Delete || key->kind == fui::KeyKind::Lang) {
+      ugly::mark(r, key->kind == fui::KeyKind::Delete ? ugly::Mark::Left : ugly::Mark::Right, cx, cy);
+    } else if (label) {
+      const ugly::Size size = ugly::width(r, ugly::Size::S30, label) <= box.width - 6 ? ugly::Size::S30 : ugly::Size::S22;
+      const int w = ugly::width(r, size, label), up = ugly::ascent(size);
+      ugly::text(r, size, cx - w / 2, cy + up / 2, label);
+      ink = {cx - w / 2, cy - up / 2, cx + w / 2, cy + up / 2};
+    }
+    if (key->kind == fui::KeyKind::Normal && key->alt)
+      ugly::text(r, ugly::Size::S22, box.x + box.width - 2 - ugly::width(r, ugly::Size::S22, key->alt), box.y + 20, key->alt);
+    if (logical == props.selectedIndex) ugly::circle(r, ugly::Circle::Word, ink, 6, 4, 2);
+  }
+}
 
 }  // namespace
 
@@ -1184,9 +1229,17 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   const int hintsTop = renderer.getScreenHeight() -
                        (tenorchrome::kTouchShell ? tenorchrome::footBackReserve() : metrics.buttonHintsHeight);
   props.bottomHitOverflow = static_cast<int16_t>(std::max(0, hintsTop - (kbRect.y + kbRect.height)));
+  const bool handwritten = shell::uglyParts();
+  target.setPaintingEnabled(!handwritten);
   fui::keyboard(frame, kbRect, props);
+  target.setPaintingEnabled(true);
   interactions.publish();
   interactionsReady = true;
+  if (handwritten) {
+    const int rows = std::max<int>(1, layout.rowCount);
+    paintUglyKeys(renderer, props, interactions.publishedData(), interactions.publishedCount(),
+                  (kbRect.height - props.rowGap * (rows - 1)) / rows);
+  }
 
   // Hints follow the live axis, not the button names: with keyboardAxisSwapped
   // the front pair walks rows and the edge buttons walk columns. On the X3 the
