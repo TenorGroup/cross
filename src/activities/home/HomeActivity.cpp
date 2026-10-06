@@ -989,6 +989,13 @@ bool HomeActivity::rowOpens(const int row) const {
          !mucTheNho[row].empty() && mucTheNho[row].back() == '/';
 }
 
+void HomeActivity::onRowLongPress(const int index) {
+  UiListActivity::onRowLongPress(index);
+  if (activeTabId != Tab::RECENT || !rowMenu.isActive() || heldCover.height <= 0) return;
+  const StrId label = rowIsPinned(index) ? StrId::STR_UNPIN_FAVORITE : StrId::STR_PIN_FAVORITE;
+  rowMenu.showAnchored(heldCover, &label, 1, [this, index](int) { queuePinToggle(index); });
+}
+
 void HomeActivity::showOtherBookMenu() {
   const int count = static_cast<int>(recentBooks.size());
   if (count < 2) return;
@@ -1294,6 +1301,8 @@ void HomeActivity::drawRecentCard() {
                       2 * std::max(0, 2 * renderer.getLineHeight(!tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2 ? SMALL_FONT_ID : UI_10_FONT_ID) -
                                       renderer.getLineHeight(statValueFont));
   const auto frame = homeCardLayout(in);
+  heldCover = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY), static_cast<int16_t>(frame.coverW),
+               static_cast<int16_t>(frame.coverH)};
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t restoreStartedUs = micros();
 #endif
