@@ -27,6 +27,9 @@
 #include "themes/TenorRadius.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+#include "Epub/converters/DirectPixelWriter.h"
+#endif
 
 namespace {
 // A round-ended bar (radius h / 2) in pixel-centre arithmetic doubled to stay integer.
@@ -256,6 +259,25 @@ const char* tenorchrome::screenTitle() {
 }
 
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+int tenorchrome::readerStripBottom(const GfxRenderer& r) {
+  DirectPixelWriter pen;
+  pen.init(const_cast<GfxRenderer&>(r));  // read only
+  const int rowBits = pen.displayWidthBytes * 8, width = r.getScreenWidth();
+  const auto ink = [&](const int x, const int y) {
+    const int bit = (pen.phyYBase + x * pen.phyYStepX + y * pen.phyYStepY) * rowBits + pen.phyXBase + x * pen.phyXStepX +
+                    y * pen.phyXStepY;
+    return (pen.fb[bit >> 3] & (0x80 >> (bit & 7))) == 0;
+  };
+  // ponytail: at most 64 rows under the strip; a page with no blank row there keeps the strip's own band.
+  const int top = contentTop();
+  for (int y = top; y < top + 64; ++y) {
+    bool any = false;
+    for (int x = 0; x < width && !any; ++x) any = ink(x, y);
+    if (!any) return y;
+  }
+  return top;
+}
+
 void tenorchrome::noteReaderFootBar(const bool open, const bool keypad, const int activeTool) {
   readerFootBar = {open, keypad, activeTool, activityManager.activityGeneration()};
   if (!open) HeaderBackTapTarget::clearFoot();
