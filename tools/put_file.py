@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Send a file to the card over the cable with the probe build's CMD:PUT.
 
-  /Users/.../penv/bin/python tools/put_file.py /dev/cu.usbmodemXXXX local.bin /v1052/firmware.bin
+  <penv>/bin/python tools/put_file.py /dev/cu.usbmodemXXXX local.bin /v1052/firmware.bin
 
 The unit prints PUT:READY, takes the bytes in windows of 4096 (each answered by PUT:ACK), checks the
 CRC32 and renames <path>.tmp over <path>. Exit 0 on PUT:OK, 1 on PUT:FAIL or a silence. Needs pyserial
