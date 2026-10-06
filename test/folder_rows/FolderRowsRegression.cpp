@@ -133,6 +133,10 @@ class FileBrowserActivity {
   int pageAnchorRow = -1;
   bool tooMany = false, rowsFramed = false, rowsHaveIcons = false;
   int rowFrameFloor = 0;
+  int rowFrameGap = 0;
+  struct RowFrameLines { int rule, top, bottom; };
+  static RowFrameLines rowFrameLines(int rowGap);
+  void reserveRowFrame(UiScreen& screen, int rowGap);
   bool rowOpens(int row) const;
   bool listFramed() const;
   void frameRows(fui::ListProps& props);
