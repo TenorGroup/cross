@@ -15,6 +15,10 @@ route = manager[start:end]
 chrome = (repo / 'src/components/TenorMenuChrome.cpp').read_text()
 h0 = chrome.index('void tenorchrome::drawHeader(')
 h1 = chrome.index('  constexpr int x = 18, rightReserve', h0)
+# The touch branch only: the button boards' hand drawn header (tenor/ugly) follows it.
+ugly = chrome.find('  if (shell::uglyParts())', h0, h1)
+if ugly >= 0:
+    h1 = ugly
 header = chrome[h0:h1] + '  return;\n}\n'
 fixture = r'''
 #include <cassert>

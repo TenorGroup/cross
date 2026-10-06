@@ -63,9 +63,6 @@ struct HomeActivity : UiListActivity {
   static void settingsRow(void*,uint16_t,fui::ListItem&);
   bool buildSettingsGroups(UiScreen&);
   bool rowIsPinned(int row) { return pinned && settingsOrder.original(row)==0; }
-  struct RowFrameLines { int rule, top, bottom; };
-  static RowFrameLines rowFrameLines(int gap) { const int rule=(gap+1)/2; return {rule,rule+1,gap-rule+2}; }
-  static void drawRowRule(GfxRenderer&,int,int,int) {}
   int focusFavorite(const std::string&);
 };
 '''
