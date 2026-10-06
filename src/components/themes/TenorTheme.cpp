@@ -1,6 +1,7 @@
 #include "TenorTheme.h"
 
 #include <GfxRenderer.h>
+#include <HalClock.h>
 #include <HalGPIO.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -8,6 +9,7 @@
 #include <algorithm>
 #include <cstring>
 
+#include "ClockStatus.h"
 #include "CrossPointSettings.h"
 #include "components/ButtonSymbols.h"
 #include "components/TenorMenuChrome.h"
@@ -41,6 +43,12 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
     const int y = renderer.getScreenHeight() - 20;
     const char* words[4] = {btn1, btn2, btn3, btn4};
     renderer.fillRect(centres[0] - 46, y - 24, centres[3] - centres[0] + 92, 44, false);
+    // The strip writes the battery at the left end and the clock at the right: a word over a key keeps off both.
+    char clock[12] = "";
+    if (!(clockstatus::hasValidTime() && halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1)))
+      clock[0] = '\0';
+    [[maybe_unused]] int wordsEnd = 0;
+    const int leftEnd = 62, rightEnd = renderer.getScreenWidth() - 14 - (clock[0] ? ugly::width(renderer, ugly::Size::S22, clock) + 10 : 0);
     for (int i = 0; i < 4; ++i) {
       if (!words[i] || !*words[i]) continue;
       const int id = buttonSymbols::labelId(words[i]);
@@ -48,14 +56,16 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
         ugly::mark(renderer, MARKS[id], centres[i], y);
         continue;
       }
-      const std::string word = ugly::fit(renderer, ugly::Size::S22, words[i], 84);
-      ugly::text(renderer, ugly::Size::S22, centres[i] - ugly::width(renderer, ugly::Size::S22, word.c_str()) / 2,
-                 y + 8, word.c_str());
+      const std::string word = ugly::fit(renderer, ugly::Size::S22, words[i], std::min(84, rightEnd - leftEnd));
+      const int w = ugly::width(renderer, ugly::Size::S22, word.c_str());
+      const int x = std::clamp(centres[i] - w / 2, leftEnd, rightEnd - w);
+      ugly::text(renderer, ugly::Size::S22, x, y + 8, word.c_str());
+      wordsEnd = std::max(wordsEnd, x + w);
     }
     tenorchrome::drawStatus(renderer);
     renderer.setOrientation(orig_orientation);
 #ifdef UGLY_FRAME_LOG
-    LOG_INF("UGLY", "part=keys");
+    LOG_INF("UGLY", "part=keys words_end=%d clock_at=%d", wordsEnd, clock[0] ? rightEnd + 10 : renderer.getScreenWidth());
 #endif
     return;
   }

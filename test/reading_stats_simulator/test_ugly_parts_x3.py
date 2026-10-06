@@ -196,6 +196,12 @@ class UglyPartsX3(unittest.TestCase):
         # Wi-Fi names the networks found at the right end of its header, above the underline.
         self.assertGreater(ink(self.wifi()[0], (300, 10, 504, 44)), 0, 'the header drops the count of networks')
 
+    def test_a_word_over_a_key_keeps_off_the_clock(self):
+        # "Thử lại" over the 4th key ends left of where the strip writes the clock, 10 px apart at least.
+        found = re.findall(r'part=keys words_end=(\d+) clock_at=(\d+)', self.wifi()[1])
+        self.assertTrue(found, 'the key bar does not say where its words end')
+        end, clock = map(int, found[-1])
+        self.assertLessEqual(end, clock - 10, 'the word over the key runs into the clock')
 
 
 if __name__ == '__main__':
