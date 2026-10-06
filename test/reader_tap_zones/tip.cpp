@@ -42,7 +42,7 @@ int main() {
   // Portrait, 25%: the column the setting names.
   const readertap::Rules r{true, true, false, true, true, readertap::BACK_ZONE_DEFAULT};
   const Box back = readertap::zoneBox(Zone::Prev, 480, 800, r);
-  assert(back.x == 0 && back.y == 100 && back.w == 120 && back.h == 638);
+  assert(back.x == 0 && back.y == 62 && back.w == 120 && back.h == 676);
   // One direction on taps: it takes the body, the other draws nothing.
   const readertap::Rules nextOnly{true, false, false, true, true, readertap::BACK_ZONE_DEFAULT};
   assert(readertap::zoneBox(Zone::Prev, 480, 800, nextOnly).w == 0);

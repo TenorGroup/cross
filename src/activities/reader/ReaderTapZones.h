@@ -26,14 +26,14 @@ struct Rules {
   uint8_t backZone;  // index into BACK_PERCENT
 };
 
-// The top band: 1/8 of the height (100 px upright, 60 px on its side).
-inline int topBand(const int height) { return height / 8; }
 // The foot band holds the title, clock and battery: 1/13 of the height (KOReader's minibar), at least the
 // 60 px (7 mm) a thumb hits.
 inline int footBand(const int height) {
   const int band = (height + 12) / 13;
   return band < 60 ? 60 : band;
 }
+// The top band is as tall as the foot band (founder 06/10): 62 px upright, 60 px on its side.
+inline int topBand(const int height) { return footBand(height); }
 
 inline int backWidth(const int width, const Rules& r) {
   return width * BACK_PERCENT[r.backZone < BACK_ZONE_COUNT ? r.backZone : BACK_ZONE_DEFAULT] / 100;

@@ -51,6 +51,10 @@ def bands_case(folder):
     assert 'enter FrontlightPanel' not in log(folder), 'the foot band opened the top menu'
     run(folder.parent / (folder.name + '-top'), '3000:TAP:240,300;7000:TAP:240,40', [6600, 8600])
     assert 'enter FrontlightPanel' in log(folder.parent / (folder.name + '-top')), 'the top band opened no top menu'
+    # The top band is the foot band's 62 px (founder 06/10): y 80 is the page, it turns forward.
+    below = folder.parent / (folder.name + '-below')
+    run(below, '3000:TAP:240,300;7000:TAP:300,80', [6600, 8600])
+    assert 'enter FrontlightPanel' not in log(below), 'y 80 still opened the top menu'
 
 
 def strip_case(folder):
