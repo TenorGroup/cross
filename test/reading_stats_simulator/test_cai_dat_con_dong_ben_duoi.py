@@ -1,4 +1,4 @@
-"""KIEM: con dong ben duoi thi bao bang mui ten chu V o chan man.
+"""KIEM: con dong ben duoi thi bao bang dai mo (v1.0.53), truoc day la mui ten chu V o chan man.
 
 Truoc day cho nay ve mot con so kieu "1-10 / 13" o goc tren phai, ngay ben
 duoi ten the ben canh. Con so do gan nhu vo dung khi ca danh sach da hien het,
@@ -120,17 +120,6 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
                 candidates.append((top, expected))
         return candidates
 
-    def v_sach(self, ten):
-        candidates = self.v_candidates(ten)
-        self.assertEqual(len(candidates), 1, f"{ten}: khong tim thay dung mot mask V: {[top for top, _ in candidates]}")
-        top, expected = candidates[0]
-        with Image.open(ART / (ten + ".bmp")) as source:
-            image = source.convert("L")
-        cx = image.width // 2
-        extras = {(x, y) for x in range(cx - 12, cx + 13) for y in range(top - 2, top + 11)
-                  if image.getpixel((x, y)) < 128 and (x, y) not in expected}
-        return top, extras
-
     @staticmethod
     def buoc_mo_bo_cuc():
         # Home Settings: Hien thi, Ngu, Trinh doc. Mo thang nhom Trinh doc,
@@ -196,7 +185,47 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
         den = self.muc_den_trong_o("the-ngan", O_MUI_TEN)
         self.assertEqual(den, 0, f"con {den} diem muc: ve mui ten trong khi khong con dong nao ben duoi")
 
-    def test_the_dai_thi_ve_mui_ten_o_chan_man(self):
+    # Bayer 8x8 cua tenorchrome::fadeBand: dai mo chi giu diem co nguong thap, cang xuong cang it.
+    BAYER8 = [[0, 32, 8, 40, 2, 34, 10, 42], [48, 16, 56, 24, 50, 18, 58, 26], [12, 44, 4, 36, 14, 46, 6, 38],
+              [60, 28, 52, 20, 62, 30, 54, 22], [3, 35, 11, 43, 1, 33, 9, 41], [51, 19, 59, 27, 49, 17, 57, 25],
+              [15, 47, 7, 39, 13, 45, 5, 37], [63, 31, 55, 23, 61, 29, 53, 21]]
+
+    @staticmethod
+    def cot_thanh_cuon(image):
+        """Cac dong co muc cua thanh cuon 6 px o mep phai (x 519..524); cot 521..524 tranh mui ten canh."""
+        ys = [y for y in range(120, image.height) if any(image.getpixel((x, y)) < 128 for x in range(521, 525))]
+        # Doan lien dai nhat (ranh cham cach 2 dong): bo mui ten canh, chu xem truoc va dong ho o chan man.
+        runs = [[ys[0]]] if ys else []
+        for y in ys[1:]:
+            if y - runs[-1][-1] > 3:
+                runs.append([])
+            runs[-1].append(y)
+        return max(runs, key=len) if runs else []
+
+    def kiem_dai_mo(self, ten):
+        """v1.0.53: con dong ben duoi thi hang ke tiep hien mo dan duoi hang du cuoi, khong con chu V,
+        va thanh cuon la vien thuoc (dau bo)."""
+        self.assertEqual([top for top, _ in self.v_candidates(ten)], [], f"{ten}: con mui ten chu V")
+        image = self.anh_status(ten)
+        # Cum dong muc thap nhat o nua trai danh sach (chu V cu nam giua man nen khong lot vao), tren dai meo.
+        rows = [y for y in range(330, O_MUI_TEN[3] - 52) if any(image.getpixel((x, y)) < 128 for x in range(20, 230))]
+        self.assertTrue(rows, f"{ten}: danh sach rong")
+        group = [rows[-1]]
+        for y in reversed(rows[:-1]):
+            if group[-1] - y > 4:
+                break
+            group.append(y)
+        ink = [(x, y) for y in group for x in range(20, 230) if image.getpixel((x, y)) < 128]
+        cao = sum(1 for x, y in ink if self.BAYER8[x & 7][y & 7] >= 48)
+        # Chu thuong: ~1/4 so diem muc co nguong >= 48. Hang mo: gan nhu khong con.
+        self.assertLess(cao / len(ink), 0.12, f"{ten}: hang cuoi y {min(group)}..{max(group)} khong mo ({cao}/{len(ink)})")
+        # Thanh cuon: dong dau cua con truot hep hon than no (dau bo), khong vuong.
+        bar = self.cot_thanh_cuon(image)
+        self.assertTrue(bar, f"{ten}: khong co thanh cuon")
+        width = lambda y: sum(1 for x in range(521, 525) if image.getpixel((x, y)) < 128)
+        self.assertLess(width(bar[0]), width(bar[0] + 2), f"{ten}: dau thanh cuon vuong")
+
+    def test_the_dai_thi_hang_ke_tiep_mo_dan(self):
         """The Bo cuc co bay dong, o co chu Lon van con dong duoi."""
         buoc = self.buoc_mo_bo_cuc()
         mo = 2000 + (len(buoc) - 1) * NHIP_MS
@@ -204,11 +233,29 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
                                       "globalStatusBarMode": 2, "tenorButtonSymbols": 1, "statusBarClock": 1})
         log = self.chay(buoc, [(mo + 1500, "the-dai")], sd=sd)
         self.assertIn("Entering activity: TextSettings", log)
+        self.kiem_dai_mo("the-dai")
 
-        top, extras = self.v_sach("the-dai")
-        self.assertFalse(extras, f"the dai: co {len(extras)} pixel hang danh sach trong mask V o y={top}")
+    def test_hang_hai_dong_van_de_lo_dau_hang_mo(self):
+        """Cai dat/Hien thi co Lon: mot hang xuong hai dong lam trang chua it hang hon uoc. Hang mo van phai
+        lo du phan dau de doc (do theo hang that), khong chi la mot vet cham."""
+        ten = "hien-thi-lon"
+        sd = self.tao_sd(ten, {"language": "VI", "uiTheme": 4, "uiTextSize": 2,
+                               "globalStatusBarMode": 2, "tenorButtonSymbols": 1, "statusBarClock": 1})
+        buoc = ["DOWN"] * 4 + ["CONFIRM"]
+        mo = 2000 + (len(buoc) - 1) * NHIP_MS
+        self.chay(buoc, [(mo + 1500, ten)], sd=sd)
+        self.kiem_dai_mo(ten)
+        image = self.anh_status(ten)
+        bar = self.cot_thanh_cuon(image)
+        rows = [y for y in range(150, bar[-1]) if any(image.getpixel((x, y)) < 128 for x in range(20, 230))]
+        group = [rows[-1]]
+        for y in reversed(rows[:-1]):
+            if group[-1] - y > 4:
+                break
+            group.append(y)
+        self.assertGreaterEqual(max(group) - min(group), 14, f"{ten}: hang mo chi cao {max(group) - min(group)} px")
 
-    def test_bo_cuc_thanh_lon_giu_mask_v_sach_o_ba_co_chu(self):
+    def test_bo_cuc_thanh_lon_mo_dan_o_ba_co_chu(self):
         def capture(tier):
             ten = f"large-layout-{tier}"
             sd = self.tao_sd(ten, {"language": "VI", "uiTheme": 4, "uiTextSize": tier,
@@ -222,8 +269,8 @@ class CaiDatConDongBenDuoiTest(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=3) as pool:
             captures = list(pool.map(capture, range(3)))
         for tier, ten in enumerate(captures):
-            top, extras = self.v_sach(ten)
-            self.assertFalse(extras, f"tier {tier}: co {len(extras)} pixel hang danh sach trong mask V o y={top}")
+            with self.subTest(tier=tier):
+                self.kiem_dai_mo(ten)
 
     def test_status_thuong_va_lon_bam_hai_goc_o_ba_co_chu_va_hai_chieu_dong_ho(self):
         cases = [(mode, tier, clock) for mode in (0, 2) for tier in range(3) for clock in (1, 2)]

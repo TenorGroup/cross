@@ -652,6 +652,26 @@ void tenorchrome::drawMoreBelowChevron(const GfxRenderer& renderer, const int hi
                   ChevronDir::Down, MORE_BELOW_SPAN);
 }
 
+namespace {
+// Bayer 8x8: a pixel of a band is cleared when its threshold reaches what the band keeps at its depth.
+constexpr uint8_t BAYER8[8][8] = {{0, 32, 8, 40, 2, 34, 10, 42},  {48, 16, 56, 24, 50, 18, 58, 26},
+                                  {12, 44, 4, 36, 14, 46, 6, 38},  {60, 28, 52, 20, 62, 30, 54, 22},
+                                  {3, 35, 11, 43, 1, 33, 9, 41},   {51, 19, 59, 27, 49, 17, 57, 25},
+                                  {15, 47, 7, 39, 13, 45, 5, 37},  {63, 31, 55, 23, 61, 29, 53, 21}};
+}  // namespace
+
+void tenorchrome::fadeBand(const GfxRenderer& r, const int y0, const int h, const bool outerTop, const int x0,
+                           const int x1) {
+  if (h <= 0) return;
+  const int right = x1 < 0 ? r.getScreenWidth() : x1;
+  for (int y = y0; y < y0 + h; ++y) {
+    const int depth = outerTop ? y0 + h - 1 - y : y - y0;  // from the inner edge
+    const int keep = 64 * (h - depth) / h;
+    for (int x = x0; x < right; ++x)
+      if (BAYER8[x & 7][y & 7] >= keep) r.drawPixel(x, y, false);
+  }
+}
+
 int tenorchrome::smallFooterSymbolsTopY(const GfxRenderer& renderer) {
   return statusIconTopY(renderer.getScreenHeight(), false) - 1;
 }

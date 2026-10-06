@@ -197,7 +197,9 @@ class UiListActivity : public Activity, protected UiAppHost {
   virtual bool rowIsPinned(int row) const;
   void decoratePinnedRows(freeink::ui::ListProps& props);
   void reserveFavoriteHint(UiScreen& screen);
-  void reserveMoreBelowChevron(UiScreen& screen, int16_t rowHeight, int rowGap);
+  // Buttons: the faded band under the last full row when rows go on, and where it stops on the right.
+  void fadeMoreBelow();
+  int rowFadeRight = 0;
   const char* favoriteHintText();
   virtual int favoriteHintLinesAbove() const { return 0; }
   virtual bool handleCustomInput() { return false; }

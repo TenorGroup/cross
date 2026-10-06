@@ -179,6 +179,7 @@ void drawTip(const GfxRenderer&, const char*, int, int, bool) {}
 void drawHeader(const GfxRenderer&, const char*, const char*) {}
 int moreBelowChevronTopY(const GfxRenderer&, int) { return 696; }
 void drawMoreBelowChevron(const GfxRenderer&, int) {}
+void fadeBand(const GfxRenderer&, int, int, bool, int, int) {}
 void drawMoreChevron(const GfxRenderer&, int, int, ChevronDir, int) {}
 void drawRoundRing(const GfxRenderer&, int, int, int, int, int, int, bool) {}
 void drawRowChevron(const GfxRenderer&, int, int) {}
