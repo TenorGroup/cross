@@ -4,11 +4,17 @@ Founder decisions under test (06/10/2026): a device on tenor/ugly with no name o
 network (hotspot, mDNS); a name the user typed still wins; tenor/cross keeps "tenor-cross".
 """
 import json
+import os
 import re
 import shutil
+import socket
+import subprocess
+import time
 import unittest
+import urllib.request
 import zipfile
 
+import ugly_common
 from ugly_common import Card, entered, ink
 
 # Diary: the edge Up opens the Settings page, its first row is Send file. In the chooser the front Right moves
@@ -42,6 +48,48 @@ class UglyNetworkNameTest(unittest.TestCase):
         log = self.hotspot(TO_THE_HOTSPOT_CROSS, shell=0)
         self.assertIn('SSID: tenor-cross\n', log)
         self.assertIn('mDNS started: http://tenor-cross.local/', log)
+
+
+def status_on_the_hotspot(**card_settings):
+    """Starts the hotspot on a card and reads /api/status from the phone side. Returns the JSON."""
+    card = Card(**card_settings)
+    try:
+        with socket.socket() as reservation:
+            reservation.bind(('127.0.0.1', 0))
+            port = reservation.getsockname()[1]
+        script = TO_THE_HOTSPOT if card_settings.get('shell', 1) else TO_THE_HOTSPOT_CROSS
+        script = script.rsplit(';', 1)[0] + ';14000:QUIT'
+        env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
+        env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(card.sd), CROSSPOINT_SIM_INPUT_SCRIPT=script,
+                   CROSSPOINT_SIM_HTTP_PORT=str(port))
+        program = subprocess.Popen([str(ugly_common.PROGRAM)], cwd=ugly_common.REPO, env=env,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            for _ in range(60):
+                time.sleep(0.25)
+                try:
+                    with urllib.request.urlopen('http://127.0.0.1:%d/api/status' % port, timeout=2) as response:
+                        return json.loads(response.read())
+                except OSError:
+                    continue
+            raise AssertionError('the hotspot server never answered')
+        finally:
+            program.kill()
+            program.wait()
+    finally:
+        card.close()
+
+
+class UglyWebTest(unittest.TestCase):
+    def test_the_pages_learn_the_shell_name_in_the_device_language(self):
+        self.assertEqual(status_on_the_hotspot().get('shellName'), 'tenor/xấu-như-chó')
+        self.assertEqual(status_on_the_hotspot(language='EN').get('shellName'), 'tenor/ugly-as-hell')
+        self.assertNotIn('shellName', status_on_the_hotspot(shell=0))
+
+    def test_the_shared_helper_writes_the_masthead_by_hand(self):
+        helper = (ugly_common.REPO / 'src/network/html/js/WebI18n.js').read_text()
+        self.assertIn("status && status.shellName", helper)
+        self.assertIn("data:font/woff2;base64,d09GMg", helper)  # the hand, inlined
 
 
 def keys(*names, start=1500, gap=700):
