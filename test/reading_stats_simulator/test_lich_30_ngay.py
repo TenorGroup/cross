@@ -137,13 +137,12 @@ class Lich30Test(unittest.TestCase):
         # O ngay hom qua (cot ben trai) khong co khung ngoai.
         x2, y2 = self.o(28)
         self.assertTrue(all(px[x2 + SIDE + 1, yy] > 128 for yy in range(y2 + 10, y2 + SIDE - 10)))
-        # Hang chon dau tien cua danh sach (nen den, rong) bat dau duoi dong ngay. Do tu ngay duoi khung hom nay,
-        # truoc dong ngay, de mot danh sach de len dong ngay hay len luoi bi bat.
-        day = GRID_TOP + 3 * PITCH + LABEL_H
-        tu = GRID_TOP + 2 * PITCH + SIDE + 4
-        hang = next((yy for yy in range(tu, 792) if sum(px[xx, yy] < 128 for xx in range(40, 488, 4)) > 90), None)
+        # Hang chon dau tien cua danh sach (nen den, rong) bat dau duoi dong ngay cua bieu do. Do tu duoi vach day
+        # bieu do: vach day cung dam nhu hang chon, do tu tren no thi bat nham vach day.
+        base = self.vach_day(image)
+        hang = next((yy for yy in range(base + 2, 792) if sum(px[xx, yy] < 128 for xx in range(40, 488, 4)) > 90), None)
         self.assertIsNotNone(hang, "khong thay hang chon cua danh sach")
-        self.assertGreaterEqual(hang, day - 4)
+        self.assertGreater(hang, base + LABEL_H, "danh sach de len dong ngay cua bieu do")
 
     def test_khong_ve_mui_ten_canh_ngang_luoi(self):
         # Mui ten phim canh (x 4..10 va doi xung ben phai, y 195 +- 4) nam ngang hang 3 cua luoi, doc nhu nut
@@ -189,7 +188,8 @@ class Lich30Test(unittest.TestCase):
         image = self.chay({0: 120, 8: 600})
         px = image.load()
         base = self.vach_day(image)
-        self.assertGreater(base, GRID_TOP + 3 * PITCH + LABEL_H, "bieu do de len luoi")
+        # Dinh cot cao nhat, khong phai vach day, phai nam duoi dong ngay cua luoi.
+        self.assertGreater(base - max(self.cot(image)), GRID_TOP + 3 * PITCH + LABEL_H, "bieu do de len luoi")
         hang = next((yy for yy in range(base + 2, 792) if sum(px[xx, yy] < 128 for xx in range(40, 488, 4)) > 90), None)
         self.assertIsNotNone(hang, "khong thay hang chon cua danh sach")
         self.assertGreater(hang, base + LABEL_H, "danh sach de len dong ngay cua bieu do")
