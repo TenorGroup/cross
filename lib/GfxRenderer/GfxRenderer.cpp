@@ -2161,6 +2161,22 @@ static bool logicalRectToPhysicalBounds(GfxRenderer::Orientation orientation, in
   return true;
 }
 
+void GfxRenderer::redriveRegion(const int x, const int y, const int w, const int h) const {
+  int x0, y0, x1, y1;
+  if (!frameBuffer || display.isInverted() ||
+      !logicalRectToPhysicalBounds(orientation, x, y, w, h, panelWidth, panelHeight, &x0, &y0, &x1, &y1))
+    return;
+  const auto flip = [&] {
+    for (int row = y0; row <= y1; ++row)
+      for (int byte = x0 / 8; byte <= x1 / 8; ++byte) frameBuffer[row * panelWidthBytes + byte] ^= 0xFF;
+  };
+  flip();
+  display.cleanupGrayscaleBuffers(frameBuffer);
+  flip();
+  LOG_INF("GFX", "Redrive region x=%d y=%d w=%d h=%d", x, y, w, h);
+  display.displayBuffer(diffOnlyPanel_ ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH, fadingFix);
+}
+
 size_t GfxRenderer::getRegionByteSize(int lx, int ly, int lw, int lh) const {
   int x0, y0, x1, y1;
   if (!logicalRectToPhysicalBounds(orientation, lx, ly, lw, lh, panelWidth, panelHeight, &x0, &y0, &x1, &y1)) {
