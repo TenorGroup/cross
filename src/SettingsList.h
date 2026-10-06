@@ -290,11 +290,12 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     const bool hasTilt = halTiltSensor.isAvailable();
     // 83 unconditional descriptors (71 plus the double-click power light, back-short-to-
     // browser, three home button shortcuts, clockTimezone/clockDst/clockShowInHeader,
-    // libraryUseMetadata and the touch page-turn gesture pair - see RESOLUTION.md, and the starting up notice); the
+    // libraryUseMetadata and the touch page-turn gesture pair - see RESOLUTION.md, the starting up notice, and the
+    // touch back tap zone and tap zone tip); the
     // IMU branch adds the Gestures tab: reader, tab and row tilt, the two flick strengths,
     // the two hard shake rows, face down, face up and the three double taps.
     // Cold-catalog tests cover each capability branch and the IMU variant.
-    constexpr size_t fixedCount = 84
+    constexpr size_t fixedCount = 86
 #if defined(FREEINK_CAP_FRONTLIGHT) && FREEINK_CAP_FRONTLIGHT
                                   + 1
 #endif
