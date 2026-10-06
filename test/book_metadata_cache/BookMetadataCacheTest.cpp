@@ -119,6 +119,12 @@ TEST(BookMetadataCacheSizes, TruncatedWindowFallsBackToTheTotalBeforeIt) {
   std::filesystem::resize_file(path, href + chapterHref(64).size());  // just before item 64's size
   EXPECT_EQ(cache.getCumulativeSize(63), cumulative[63]);
   EXPECT_EQ(cache.getCumulativeSize(64), cumulative[63]);
+  // A lookup into that window tries the refill once and keeps the fallback; the next lookup retries.
+  for (int attempt = 0; attempt < 2; attempt++) {
+    const int opens = Storage.readOpens;
+    EXPECT_EQ(cache.getSpineIndexForSize(cumulative[70]), 95);
+    EXPECT_EQ(Storage.readOpens - opens, 1) << "attempt " << attempt;
+  }
 }
 
 // The lookup answers what a scan of every item answers, for every boundary, and reads at most one window.

@@ -504,24 +504,27 @@ uint32_t BookMetadataCache::getCumulativeSize(const int index) const {
   const int first = index / SIZE_WINDOW * SIZE_WINDOW;
   if (index - first == SIZE_WINDOW - 1) return windowStarts[index / SIZE_WINDOW + 1];
   std::lock_guard<std::mutex> lock(sizeWindowLock);
-  if (windowFirst != first) {
-    windowFirst = -1;
-    // Own handle: getSpineEntry() moves bookFile. A failed read answers the total before the window.
-    HalFile file;
-    uint32_t pos = 0;
-    const auto u32 = [&file](uint32_t& v) { return file.read(&v, sizeof(v)) == static_cast<int>(sizeof(v)); };
-    bool ok = Storage.openFileForRead("BMC", cachePath + bookBinFile, file) &&
-              file.seek(lutOffset + sizeof(uint32_t) * first) && u32(pos) && file.seek(pos);
-    // Spine entry: href length, href, cumulative size, TOC index.
-    for (int i = 0; ok && i < SIZE_WINDOW && first + i < spineCount; i++) {
-      uint32_t hrefLen = 0;
-      ok = u32(hrefLen) && file.seek(file.position() + hrefLen) && u32(window[i]) &&
-           file.seek(file.position() + sizeof(int16_t));
-    }
-    if (!ok) return windowStarts[index / SIZE_WINDOW];
-    windowFirst = first;
-  }
+  // A failed read answers the total before the window.
+  if (windowFirst != first && !fillWindow(first)) return windowStarts[index / SIZE_WINDOW];
   return window[index - first];
+}
+
+bool BookMetadataCache::fillWindow(const int first) const {
+  windowFirst = -1;
+  // Own handle: getSpineEntry() moves bookFile.
+  HalFile file;
+  uint32_t pos = 0;
+  const auto u32 = [&file](uint32_t& v) { return file.read(&v, sizeof(v)) == static_cast<int>(sizeof(v)); };
+  bool ok = Storage.openFileForRead("BMC", cachePath + bookBinFile, file) &&
+            file.seek(lutOffset + sizeof(uint32_t) * first) && u32(pos) && file.seek(pos);
+  // Spine entry: href length, href, cumulative size, TOC index.
+  for (int i = 0; ok && i < SIZE_WINDOW && first + i < spineCount; i++) {
+    uint32_t hrefLen = 0;
+    ok = u32(hrefLen) && file.seek(file.position() + hrefLen) && u32(window[i]) &&
+         file.seek(file.position() + sizeof(int16_t));
+  }
+  if (ok) windowFirst = first;
+  return ok;
 }
 
 int BookMetadataCache::getSpineIndexForSize(const uint32_t size) const {
@@ -531,8 +534,11 @@ int BookMetadataCache::getSpineIndexForSize(const uint32_t size) const {
   const auto next = std::lower_bound(windowStarts.begin() + 1, windowStarts.end(), size);
   const int first = static_cast<int>(next - windowStarts.begin() - 1) * SIZE_WINDOW;
   const int last = std::min<int>(spineCount, first + SIZE_WINDOW) - 1;
+  std::lock_guard<std::mutex> lock(sizeWindowLock);
+  // One refill attempt; on failure every total in the window falls back below `size`, as before.
+  if (windowFirst != first && !fillWindow(first)) return last;
   for (int i = first; i < last; i++) {
-    if (getCumulativeSize(i) >= size) return i;
+    if (window[i - first] >= size) return i;
   }
   return last;
 }
