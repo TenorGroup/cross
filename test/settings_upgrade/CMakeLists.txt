@@ -68,3 +68,4 @@ add_test(NAME SettingsUpgradeTouchMigration COMMAND SettingsUpgradeTest touch-mi
 add_test(NAME SettingsUpgradeLegacyTheme COMMAND SettingsUpgradeTest legacy-theme)
 add_test(NAME SettingsUpgradeShell COMMAND SettingsUpgradeTest shell)
 add_test(NAME SettingsUpgradeTapZones COMMAND SettingsUpgradeTest tap-zones)
+add_test(NAME SettingsUpgradeReaderPins COMMAND SettingsUpgradeTest reader-pins)

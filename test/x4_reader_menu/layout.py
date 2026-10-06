@@ -47,6 +47,7 @@ class GfxRenderer {};
 struct Target : fui::DrawTarget {
   int tier=0;
   void setPaintingEnabled(bool value) { painting=value; }
+  bool paintingEnabled() const { return painting; }
   bool painting=true;
   std::vector<fui::Rect> frames;
   struct Text { fui::Rect rect; std::string label; };
@@ -80,11 +81,16 @@ class UiAppHost {
   int swipeRows(const MappedInputManager&,const fui::ListNav&,int,fui::ActionId) const { return 0; }
 };
 namespace tenorchrome {
-constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8;
+constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4;
+constexpr bool kTouchShell=true;
+[[maybe_unused]] constexpr int PANEL_RADIUS=20;
+// The panels' one grey ring (TenorMenuChrome): x 16, the screen's width less 32.
+std::vector<fui::Rect> panels;
+void drawPanel(const GfxRenderer&,int y,int h) { panels.push_back({16,static_cast<int16_t>(y),448,static_cast<int16_t>(h)}); }
 int footBackTop(int h) { return h-76; }
 ''' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
 cpp += header + '\n' + constants + '\n'
-cpp += 'ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& r): UiAppHost(r) {}\n'
+cpp += 'ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& r): UiAppHost(r), renderer_(&r) {}\n'
 cpp += method(source, 'fui::Rect readerFrame') + '\n'
 for name in ['begin','render','route','onAction','screenFn','scrollRows','buildX4Tools','buildX4Toolbar','buildX4Panel','buildX4Spacing','buildX4Keypad']:
     # Static onAction has a void signature like the other production members.
@@ -122,9 +128,9 @@ int main() {
     model.rowText=[](int i){return std::string(i==4?"Chapter initial":"Setting");};
     model.rowValue=[](int i){return std::string(i==1?"18":"Default");};
     ui.setModel(model); ui.render();
-    auto frame=ui.uiTarget.frames.back(); assert(frame.x==16 && frame.y==362 && frame.width==448 && frame.height==350);
+    auto frame=tenorchrome::panels.back(); assert(frame.x==16 && frame.y==362 && frame.width==448 && frame.height==350);
     for(int row=0;row<5;++row) minimum(ui,ACTION_ROW,row);
-    for(int tool=0;tool<3;++tool) minimum(ui,ACTION_TOOL,tool);
+    for(int tool=0;tool<tenorchrome::READER_TOOLS;++tool) minimum(ui,ACTION_TOOL,tool);
     minimum(ui,ACTION_SIZE_STEP,-1); minimum(ui,ACTION_SIZE_STEP,1); minimum(ui,ACTION_SIZE_ENTRY,0);
     auto minus=tap(ui,ACTION_SIZE_STEP,-1); assert(minus.event==ReaderToolbarUi::Event::SizeStep && minus.value==-1);
     auto plus=tap(ui,ACTION_SIZE_STEP,1); assert(plus.event==ReaderToolbarUi::Event::SizeStep && plus.value==1);

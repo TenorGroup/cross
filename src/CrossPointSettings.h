@@ -374,6 +374,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Tab Yeu thich cua menu doc: cac muc nguoi doc tu ghim, THEO DUNG THU TU ho xep.
   // Giu o day de no song qua lan tat may. Moi o la mot readermenu::Action, luu bang so
   // chu khong bang ten, nen them muc moi phai THEM VAO CUOI enum do (xem ReaderMenuLayout.h).
+  // X4 Pro con ghim duoc cai dat chu: o mang readermenu::PIN_TEXT, luu bang "text/<key>".
   // Tran 8 phai khop readermenu::TOI_DA_GHIM; CrossPointSettings.cpp co static_assert giu.
   static constexpr uint8_t READER_FAVORITE_MAX = 8;
   uint8_t readerFavorites[READER_FAVORITE_MAX] = {};

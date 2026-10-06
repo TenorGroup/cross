@@ -186,6 +186,7 @@ struct Target : fui::DrawTarget {
   void bitmap(fui::Rect,fui::BitmapRef,fui::BitmapMode,fui::Paint=fui::Paint::solid(fui::Color::Black),fui::Rotation=fui::Rotation::None) override {}
 };
 struct MappedInputManager { fui::InputSnapshot snap; };
+namespace tenorchrome { constexpr bool kTouchShell = false; }  // the button boards' toolbar
 ''' + constants + '\nstruct ReaderToolbarUi {\n' + alias + '\n' + events + '\n' + routed + r'''
   Target target;
   static fui::DeviceContext device() {

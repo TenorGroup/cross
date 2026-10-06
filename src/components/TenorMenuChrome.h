@@ -65,11 +65,13 @@ void drawFootBar(const GfxRenderer& renderer, FootBar bar, Zone zone);
 // Reader view data for the existing pre-display hook. The reader owns its depth and drafts.
 void noteReaderFootBar(bool open, bool keypad, int activeTool);
 struct ReaderToolRect { int x, y, width, height; };
+// Contents, Text, More and Favorites (founder 06/10).
+constexpr int READER_TOOLS = 4;
 inline ReaderToolRect readerToolRect(const int width, const int height, const int tool) {
   const int left = FOOT_BACK_X + FOOT_BACK_SIZE + FOOT_PILL_GAP;
   const int room = width - FOOT_BACK_X - left;
-  const int x = left + room * tool / 3;
-  return {x, footBackTop(height), left + room * (tool + 1) / 3 - x, FOOT_BACK_SIZE};
+  const int x = left + room * tool / READER_TOOLS;
+  return {x, footBackTop(height), left + room * (tool + 1) / READER_TOOLS - x, FOOT_BACK_SIZE};
 }
 #endif
 // An icon in an icon bar (Mask1, bit 0 = ink): the chosen one solid, the others grey. Every icon bar draws

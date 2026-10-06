@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "SettingsList.h"
+#include "activities/reader/ReaderMenuLayout.h"
 
 namespace settings_test_io {
 extern int writes;
@@ -332,6 +333,42 @@ int runTapZones() {
   return ok ? 0 : 1;
 }
 
+// X4 Pro Favorites (founder 06/10): text settings pin beside actions. A v1.0.19 file's action pins load as
+// they were and save as numbers; a pinned text setting is "text/<key>" both ways; an unknown key is dropped.
+int runReaderPins() {
+  bool ok = true;
+  JsonDocument old = readFixture("settings-v1.0.19.json");
+  const JsonArrayConst stored = old["readerFavorites"].as<JsonArrayConst>();
+  std::vector<int> actions;
+  for (const JsonVariantConst v : stored) actions.push_back(v.as<int>());
+  settings_test_io::setNextRead(old);
+  ok = expect(SETTINGS.loadFromFile(), "a v1.0.19 file loads") && ok;
+  ok = expect(SETTINGS.readerFavoriteCount == actions.size(), "every old pin loads") && ok;
+  for (size_t i = 0; i < actions.size() && i < SETTINGS.readerFavoriteCount; ++i)
+    ok = expect(SETTINGS.readerFavorites[i] == actions[i], "an old pin keeps its action") && ok;
+
+  JsonDocument mixed = readFixture("settings-v1.0.19.json");
+  JsonArray pins = mixed["readerFavorites"].to<JsonArray>();
+  pins.add(10);
+  pins.add("text/letterSpacing");
+  pins.add("text/nothing");
+  pins.add("text/fontFamily");
+  settings_test_io::setNextRead(mixed);
+  ok = expect(SETTINGS.loadFromFile(), "a file with text pins loads") && ok;
+  ok = expect(SETTINGS.readerFavoriteCount == 3, "an unknown text key is dropped") && ok;
+  ok = expect(SETTINGS.readerFavorites[0] == 10, "the action pin stays first") && ok;
+  ok = expect(SETTINGS.readerFavorites[1] == (readermenu::PIN_TEXT | 5), "letter spacing pins as text 5") && ok;
+  ok = expect(SETTINGS.readerFavorites[2] == readermenu::PIN_TEXT, "the font pins as text 0") && ok;
+  const JsonDocument after = saved();
+  const JsonArrayConst written = after["readerFavorites"].as<JsonArrayConst>();
+  ok = expect(written.size() == 3 && written[0].as<int>() == 10 &&
+                  std::string(written[1].as<const char*>() ? written[1].as<const char*>() : "") == "text/letterSpacing" &&
+                  std::string(written[2].as<const char*>() ? written[2].as<const char*>() : "") == "text/fontFamily",
+              "pins save as a number and 2 text keys") && ok;
+  std::printf("settings_upgrade=reader-pins:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -345,5 +382,6 @@ int main(int argc, char** argv) {
   if (mode == "legacy-theme") return runLegacyTheme();
   if (mode == "shell") return runShell();
   if (mode == "tap-zones") return runTapZones();
+  if (mode == "reader-pins") return runReaderPins();
   return 2;
 }

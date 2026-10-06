@@ -77,7 +77,8 @@ void ReaderToolbarUi::render() {
 ReaderToolbarUi::Routed ReaderToolbarUi::route(const MappedInputManager& input) {
   pending_ = Routed{};
   // routeHeld: the scrub track is a drag target, so held frames must reach it.
-  const auto touch = routeTouch(input, false, /*routeHeld=*/true);
+  // X4 Pro: a panel row takes a long press (pin to Favorites).
+  const auto touch = routeTouch(input, /*withLongPress=*/tenorchrome::kTouchShell, /*routeHeld=*/true);
   if (touch.event) onAction(touch.event, this);
   pending_.routed = touch.routed;
   pending_.x = touch.snap.touchX;
@@ -97,6 +98,7 @@ void ReaderToolbarUi::onAction(const fui::ActionEvent& event, void* user) {
   Routed& out = self->pending_;
   out.value = event.value;
   out.permille = event.dragPermille;
+  out.hold = event.longPress;
   if (event.action >= ACTION_DISMISS && event.action <= ACTION_CHOICE) out.event = static_cast<Event>(event.action);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (event.action >= ACTION_SIZE_STEP && event.action <= ACTION_NUMERIC) out.event = static_cast<Event>(event.action);
@@ -456,7 +458,7 @@ int ReaderToolbarUi::scrollRows(const MappedInputManager& input, const int count
 void ReaderToolbarUi::buildX4Tools(UiScreen& screen) {
   if (model_.textView == TextView::PointSize) return;
   const auto bounds = screen.frame().screen();
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < tenorchrome::READER_TOOLS; ++i) {
     const auto r = tenorchrome::readerToolRect(bounds.width, bounds.height, i);
     screen.frame().hit({static_cast<int16_t>(r.x), static_cast<int16_t>(r.y),
                         static_cast<int16_t>(r.width), static_cast<int16_t>(r.height)},
@@ -529,7 +531,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_ = fui::ListProps{};
     listProps_.count = static_cast<uint16_t>(count);
     listProps_.action = ACTION_ROW;
-    listProps_.inputMask = fui::InputTouch;
+    listProps_.inputMask = fui::InputTouch | fui::InputLongPress;
     listProps_.rowHeight = 62;
     listProps_.rowGap = 0;
     listProps_.sidePadding = 16;
@@ -570,6 +572,14 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.itemsWindowFirst = static_cast<uint16_t>(nav_.top);
     listProps_.itemsWindowCount = static_cast<uint16_t>(std::max(0, windowCount));
     if (count > 0) fui::list(screen.frame(), listRect, listProps_);
+    if (count == 0 && model_.emptyText) {
+      fui::TextStyle hint = tokens.bodyText;
+      hint.align = fui::TextAlign::Center;
+      hint.maxLines = 3;
+      screen.target().text({static_cast<int16_t>(listRect.x + 32), static_cast<int16_t>(listRect.y + 40),
+                            static_cast<int16_t>(listRect.width - 64), static_cast<int16_t>(listRect.height - 80)},
+                           model_.emptyText, hint);
+    }
     // The size row (index 1) with its stepper, where the scrolled rows put it: wholly in view only.
     const int sizeSlot = 1 - nav_.top;
     if (rows && sizeSlot >= 0 && sizeSlot < std::min(nav_.visibleRows, windowCount)) {

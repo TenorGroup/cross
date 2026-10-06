@@ -57,6 +57,7 @@
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/HomeExcerptStyle.h"
 #include "components/ReaderTapTip.h"
+#include "ReaderMenuLayout.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/icons/readerToolbarIcons.h"
@@ -3759,24 +3760,33 @@ constexpr StrId kDropCapIds[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, S
 constexpr StrId kAlignIds[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                StrId::STR_BOOK_S_STYLE};
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-// X4 Pro (founder 06/10): all 14 text settings, in the order of Settings > Reader > Text settings. Rows 0-4 keep
-// their ids above; ids 5 and on are the other text settings of the catalog, read and stepped as Settings does.
-constexpr const char* kCatalogTextKeys[] = {"letterSpacing",   "wordSpacing",       "extraParagraphSpacing",
-                                            "screenMargin",    "paragraphIndent",   "embeddedStyle",
-                                            "hyphenationEnabled", "readerInkWeight", "textAntiAliasing"};
+// X4 Pro (founder 06/10): all 14 text settings, in the order of Settings > Reader > Text settings. A row's id
+// is its place in readermenu::TEXT_KEYS (the key a Favorites pin stores): ids 0-4 are the rows above, ids 5 and
+// on the other text settings of the catalog, read and stepped as Settings does.
 constexpr uint8_t kTextRowIds[] = {0, 1, 2, 5, 6, 7, 3, 8, 9, 10, 4, 11, 12, 13};
-static_assert(std::size(kTextRowIds) == 5 + std::size(kCatalogTextKeys), "every text row has a place");
+static_assert(std::size(kTextRowIds) == readermenu::TEXT_KEY_COUNT, "every text row has a place");
 #else
 constexpr uint8_t kTextRowIds[] = {0, 1, 2, 3, 4};
 #endif
 constexpr int kTextRowCount = static_cast<int>(std::size(kTextRowIds));
 int textRowId(const int row) { return row >= 0 && row < kTextRowCount ? kTextRowIds[row] : -1; }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+constexpr int kReaderTools = tenorchrome::READER_TOOLS;
+#else
+constexpr int kReaderTools = 3;
+#endif
+// The place on the Text panel of the row with this id, or -1.
+int textRowPlace(const int id) {
+  for (int row = 0; row < kTextRowCount; ++row)
+    if (kTextRowIds[row] == id) return row;
+  return -1;
+}
 // A row of the catalog (ids 5 and on), or nullptr.
 const SettingInfo* catalogTextRow(const int id) {
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-  if (id < 5 || id >= 5 + static_cast<int>(std::size(kCatalogTextKeys))) return nullptr;
+  if (id < 5 || id >= readermenu::TEXT_KEY_COUNT) return nullptr;
   for (const auto& info : getBaseSettingsList())
-    if (info.key && strcmp(info.key, kCatalogTextKeys[id - 5]) == 0) return &info;
+    if (info.key && strcmp(info.key, readermenu::TEXT_KEYS[id]) == 0) return &info;
 #endif
   (void)id;
   return nullptr;
@@ -4073,9 +4083,16 @@ void EpubReaderActivity::openOverlay(Overlay target) {
       buildMoreActions();
       toolbarUi->nav().reset();
       break;
+    case Overlay::Favorites:
+      panelIndex = 0;
+      toolbarUi->nav().reset();
+      break;
     default:
       break;
   }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  if (target != Overlay::Toolbar) loadPins();  // a hold on a Text or More row toggles these; Favorites lists them
+#endif
   panelHoldJumped = false;
 
   // The page is already on screen and still in the framebuffer, so paint the
@@ -4179,7 +4196,9 @@ void EpubReaderActivity::renderOverlay() {
   }
 #endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-  const int chromeTool = overlay == Overlay::Contents ? 0 : overlay == Overlay::Text ? 1 : overlay == Overlay::More ? 2 : -1;
+  const int chromeTool = overlay == Overlay::Contents ? 0 : overlay == Overlay::Text ? 1 : overlay == Overlay::More ? 2
+                         : overlay == Overlay::Favorites                                         ? 3
+                                                                                                 : -1;
   tenorchrome::noteReaderFootBar(overlay != Overlay::None,
                                overlay == Overlay::Text && textDepth == TextDepth::PointSize, chromeTool);
 #endif
@@ -4263,7 +4282,17 @@ void EpubReaderActivity::renderOverlay() {
       model.choiceIcon = textChoiceIcon;
 #endif
     }
-  } else {
+  }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  else if (overlay == Overlay::Favorites) {
+    model.panelTitle = tr(STR_READER_TAB_FAVORITES);
+    model.itemCount = static_cast<int>(favoriteRows.size());
+    model.rowText = [this](int i) { return favoriteRowName(i); };
+    model.rowValue = [this](int i) { return favoriteRowValue(i); };
+    model.emptyText = tr(STR_READER_FAVORITES_EMPTY);
+  }
+#endif
+  else {
     model.panelTitle = tr(STR_TOOL_MORE);
     model.itemCount = static_cast<int>(moreItems.size());
     model.rowText = [this](int i) { return moreRowName(i); };
@@ -4321,7 +4350,7 @@ void EpubReaderActivity::handleOverlayInput() {
     requestUpdate();
   };
   const auto toolOverlay = [](int tool) {
-    return tool == 0 ? Overlay::Contents : (tool == 1 ? Overlay::Text : Overlay::More);
+    return tool == 0 ? Overlay::Contents : tool == 1 ? Overlay::Text : tool == 2 ? Overlay::More : Overlay::Favorites;
   };
 
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
@@ -4371,13 +4400,13 @@ void EpubReaderActivity::handleOverlayInput() {
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-      focusedTool = (focusedTool + 2) % 3;
+      focusedTool = (focusedTool + kReaderTools - 1) % kReaderTools;
       panelCursorShown = true;
       fastRedraw();
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-      focusedTool = (focusedTool + 1) % 3;
+      focusedTool = (focusedTool + 1) % kReaderTools;
       panelCursorShown = true;
       fastRedraw();
       return;
@@ -4397,6 +4426,9 @@ void EpubReaderActivity::handleOverlayInput() {
   // --- Panels (Contents / Text / More) ---
   const int count = overlay == Overlay::Contents ? epub->getTocItemsCount()
                     : overlay == Overlay::Text   ? (textDepth == TextDepth::Fonts ? static_cast<int>(fontFamilies.size()) : kTextRowCount)
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+                    : overlay == Overlay::Favorites ? static_cast<int>(favoriteRows.size())
+#endif
                                                  : static_cast<int>(moreItems.size());
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
   const int pageRows = std::max(1, toolbarUi->visibleRows());
@@ -4409,19 +4441,18 @@ void EpubReaderActivity::handleOverlayInput() {
     if (overlay == Overlay::Text) {
       if (textDepth == TextDepth::Fonts) {
         chooseFontFamily(panelIndex);
-      } else if (panelIndex == 0) {
-        enterFontLevel();
       }
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-      else if (panelIndex == 1) {
-        enterTextDepth(TextDepth::PointSize);
-      } else if (panelIndex == 2) {
-        enterTextDepth(TextDepth::Spacing);
-      }
-#endif
       else {
+        openTextRow(panelIndex);
+      }
+#else
+      else if (panelIndex == 0) {
+        enterFontLevel();
+      } else {
         cycleTextRow(panelIndex);
       }
+#endif
     } else if (overlay == Overlay::Contents) {
       const auto item = epub->getTocItem(panelIndex);
       if (item.spineIndex != -1) {
@@ -4442,6 +4473,11 @@ void EpubReaderActivity::handleOverlayInput() {
     } else if (overlay == Overlay::More) {
       activateMoreRow(panelIndex);
     }
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+    else if (overlay == Overlay::Favorites) {
+      activateFavoriteRow(panelIndex);
+    }
+#endif
   };
 
   // Steps up to the toolbar -- the Back button and a tap on the page above
@@ -4574,6 +4610,13 @@ void EpubReaderActivity::handleOverlayInput() {
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
       if (routed.x >= renderer.getScreenWidth() - 44) {
         pageList(routed.y >= renderer.getScreenHeight() - (renderer.getScreenHeight() * 62) / 200 ? 1 : -1);
+        return;
+      }
+#endif
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+      if (routed.hold) {  // a hold pins the row to Favorites, or takes it off
+        togglePin(pinOfRow(routed.value));
+        fastRedraw();
         return;
       }
 #endif
@@ -5072,6 +5115,102 @@ void EpubReaderActivity::activateMoreRow(int row) {
   // credentials, say) would otherwise leave the closed panel on screen.
   if (action != MA::GO_HOME && action != MA::DELETE_CACHE && action != MA::FILE_TRANSFER) requestUpdate();
 }
+
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+void EpubReaderActivity::openTextRow(const int row) {
+  if (row == 0)
+    enterFontLevel();
+  else if (row == 1)
+    enterTextDepth(TextDepth::PointSize);
+  else if (row == 2)
+    enterTextDepth(TextDepth::Spacing);
+  else
+    cycleTextRow(row);
+}
+
+void EpubReaderActivity::loadPins() {
+  const int count = std::min<int>(SETTINGS.readerFavoriteCount, CrossPointSettings::READER_FAVORITE_MAX);
+  pins.assign(SETTINGS.readerFavorites, SETTINGS.readerFavorites + count);
+  // Never pinned: the size and the sync, as the touch list menu starts.
+  if (pins.empty() && !SETTINGS.readerFavoritesDaDat)
+    pins = {static_cast<uint8_t>(readermenu::PIN_TEXT | 1), static_cast<uint8_t>(readermenu::Action::SYNC)};
+  buildMoreActions();
+  favoriteRows.clear();
+  for (const uint8_t pin : pins) {
+    const bool text = pin & readermenu::PIN_TEXT;
+    const bool here = text ? textRowPlace(pin & ~readermenu::PIN_TEXT) >= 0
+                           : std::any_of(moreItems.begin(), moreItems.end(), [pin](const auto& item) {
+                               return static_cast<uint8_t>(item.action) == pin;
+                             });
+    if (here) favoriteRows.push_back(pin);  // an action this book lacks (footnotes) waits unshown
+  }
+}
+
+void EpubReaderActivity::togglePin(const uint8_t pin) {
+  if (pin == 0xFF) return;
+  {
+    RenderLock lock;
+    if (!readermenu::doiGhim(pins, pin)) return;  // full: 8 pins
+    std::copy(pins.begin(), pins.end(), SETTINGS.readerFavorites);
+    SETTINGS.readerFavoriteCount = static_cast<uint8_t>(pins.size());
+    SETTINGS.readerFavoritesDaDat = 1;
+    loadPins();
+    if (overlay == Overlay::Favorites) panelIndex = std::min(panelIndex, std::max(0, static_cast<int>(favoriteRows.size()) - 1));
+  }
+  SETTINGS.saveToFile();
+}
+
+uint8_t EpubReaderActivity::pinOfRow(const int row) const {
+  if (overlay == Overlay::Text && textDepth == TextDepth::Rows && row >= 0 && row < kTextRowCount)
+    return static_cast<uint8_t>(readermenu::PIN_TEXT | textRowId(row));
+  if (overlay == Overlay::More && row >= 0 && row < static_cast<int>(moreItems.size()))
+    return static_cast<uint8_t>(moreItems[row].action);
+  if (overlay == Overlay::Favorites && row >= 0 && row < static_cast<int>(favoriteRows.size())) return favoriteRows[row];
+  return 0xFF;
+}
+
+namespace {
+// The More row of an action pin, or -1.
+int moreRowOf(const std::vector<EpubReaderMenuActivity::MenuItem>& items, const uint8_t pin) {
+  for (size_t i = 0; i < items.size(); ++i)
+    if (static_cast<uint8_t>(items[i].action) == pin) return static_cast<int>(i);
+  return -1;
+}
+}  // namespace
+
+std::string EpubReaderActivity::favoriteRowName(const int row) const {
+  if (row < 0 || row >= static_cast<int>(favoriteRows.size())) return "";
+  const uint8_t pin = favoriteRows[row];
+  if (pin & readermenu::PIN_TEXT) return textRowName(textRowPlace(pin & ~readermenu::PIN_TEXT));
+  return moreRowName(moreRowOf(moreItems, pin));
+}
+
+std::string EpubReaderActivity::favoriteRowValue(const int row) const {
+  if (row < 0 || row >= static_cast<int>(favoriteRows.size())) return "";
+  const uint8_t pin = favoriteRows[row];
+  if (pin & readermenu::PIN_TEXT) return textRowValue(textRowPlace(pin & ~readermenu::PIN_TEXT));
+  return moreRowValue(moreRowOf(moreItems, pin));
+}
+
+void EpubReaderActivity::activateFavoriteRow(const int row) {
+  if (row < 0 || row >= static_cast<int>(favoriteRows.size())) return;
+  const uint8_t pin = favoriteRows[row];
+  if (!(pin & readermenu::PIN_TEXT)) {
+    activateMoreRow(moreRowOf(moreItems, pin));
+    return;
+  }
+  const int place = textRowPlace(pin & ~readermenu::PIN_TEXT);
+  if (place > 2) {
+    cycleTextRow(place);  // stepped here, the page under the panel shows it
+    return;
+  }
+  // Font, size and line spacing open their level of the Text panel.
+  focusedTool = 1;
+  openOverlay(Overlay::Text);
+  panelIndex = place;
+  openTextRow(place);
+}
+#endif
 
 void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool savePosition) {
   if (!epub) return;

@@ -114,6 +114,7 @@ void EpubReaderMenuActivity::onTabAction(const int index) {
 void EpubReaderMenuActivity::napGhim() {
   favorites.clear();
   for (uint8_t i = 0; i < SETTINGS.readerFavoriteCount && i < CrossPointSettings::READER_FAVORITE_MAX; i++) {
+    if (SETTINGS.readerFavorites[i] & readermenu::PIN_TEXT) continue;  // an X4 Pro text pin
     const auto action = static_cast<MenuAction>(SETTINGS.readerFavorites[i]);
     // Touch: the font size row opens its popup in the menu, so it may be pinned.
     if ((action != MenuAction::FONT_SIZE || tenorchrome::kTouchShell) && action != MenuAction::FONT_FAMILY)

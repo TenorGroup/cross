@@ -151,7 +151,11 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   if (readerFavoritesDaDat) {
     JsonArray yeuThich = doc["readerFavorites"].to<JsonArray>();
     for (uint8_t i = 0; i < readerFavoriteCount && i < READER_FAVORITE_MAX; i++) {
-      yeuThich.add(readerFavorites[i]);
+      const uint8_t pin = readerFavorites[i];
+      if (pin & readermenu::PIN_TEXT)
+        yeuThich.add(std::string("text/") + readermenu::TEXT_KEYS[(pin & ~readermenu::PIN_TEXT) % readermenu::TEXT_KEY_COUNT]);
+      else
+        yeuThich.add(pin);
     }
   }
 
@@ -467,6 +471,11 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     readerFavoriteCount = 0;
     for (const JsonVariantConst o : doc["readerFavorites"].as<JsonArrayConst>()) {
       if (readerFavoriteCount >= READER_FAVORITE_MAX) break;
+      // X4 Pro: a pinned text setting, "text/<key>".
+      if (const uint8_t text = o.is<const char*>() ? readermenu::textPin(o.as<const char*>()) : 0) {
+        readerFavorites[readerFavoriteCount++] = text;
+        continue;
+      }
       if (!o.is<uint8_t>()) continue;
       const uint8_t v = o.as<uint8_t>();
       if (v >= static_cast<uint8_t>(readermenu::ACTION_COUNT)) {

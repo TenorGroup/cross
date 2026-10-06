@@ -236,13 +236,15 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (reader && !readerFootBar.keypad) {
     const freeink::Icon* normal[] = {&icon_tenor_reader_position_40, &icon_tenor_reader_reading_40,
-                                     &icon_tenor_reader_tools_40};
+                                     &icon_tenor_reader_tools_40, &icon_tenor_home_favorites_40};
     const freeink::Icon* bold[] = {&icon_tenor_reader_position_bold_40, &icon_tenor_reader_reading_bold_40,
-                                   &icon_tenor_reader_tools_bold_40};
+                                   &icon_tenor_reader_tools_bold_40, &icon_tenor_home_favorites_bold_40};
+    static_assert(std::size(normal) == READER_TOOLS, "an icon a tool");
     const int left = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), 0).x;
     if (!shell::isUgly()) drawPillRing(r, left, y, r.getScreenWidth() - FOOT_BACK_X - left, SIZE, 2, true);
-    static constexpr StrId names[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE};
-    for (int i = 0; i < 3; ++i) {
+    static constexpr StrId names[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE,
+                                      StrId::STR_READER_TAB_FAVORITES};
+    for (int i = 0; i < READER_TOOLS; ++i) {
       const auto cell = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), i);
       const bool active = i == readerFootBar.activeTool;
       if (shell::isUgly()) {
