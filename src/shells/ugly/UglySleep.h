@@ -7,4 +7,7 @@ namespace ugly {
 bool drawSleep(GfxRenderer& renderer);
 // The notice shown while the device gets ready to sleep ("Yawning...").
 const char* sleepNotice();
+// The notice over the sleep screen while the device wakes, and the one before a quiet restart.
+const char* wakeNotice();
+const char* loadingNotice();
 }  // namespace ugly
