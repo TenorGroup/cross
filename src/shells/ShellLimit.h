@@ -8,7 +8,7 @@ namespace shell::limit {
 
 // The last day tenor/ugly is offered, YYYYMMDD in local time: set when v1.0.52 is called stable, two
 // weeks on. 0 while there is no such day (the release candidates): limited, with no end date shown.
-inline constexpr uint32_t UGLY_LAST_DAY = 0;
+inline constexpr uint32_t UGLY_LAST_DAY = 20261020;
 
 // Over once a last day is set and a clock that has been set (2026 or later; 0 is no clock) reads a
 // later day.
