@@ -84,6 +84,9 @@ namespace tenorchrome {
 constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4;
 constexpr bool kTouchShell=true;
 [[maybe_unused]] constexpr int PANEL_RADIUS=20;
+constexpr int FAVORITE_MARK=14;
+int favoriteMarks=0;
+void drawFavoriteMark(const GfxRenderer&,int,int) { ++favoriteMarks; }
 // The panels' one grey ring (TenorMenuChrome): x 16, the screen's width less 32.
 std::vector<fui::Rect> panels;
 void drawPanel(const GfxRenderer&,int y,int h) { panels.push_back({16,static_cast<int16_t>(y),448,static_cast<int16_t>(h)}); }
