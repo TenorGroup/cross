@@ -241,6 +241,15 @@ int main() {
   assert(!reader.skipLoopDelay() && "the loop spins while the radio holds the heap");
   bleDefers = false;
   assert(reader.skipLoopDelay());
+  const int stepsBefore = steps;
+  maxBlock = 8000;
+  reader.catchUpTick(false);
+  assert(steps == stepsBefore && "a preview layout step ran below the background build heap floor");
+  assert(reader.catchUpFails == 0 && reader.catchUp);
+  maxBlock = 40000;
+  reader.xemTruocInputMs = 0;
+  reader.catchUpTick(false);
+  assert(steps == stepsBefore + 1);
   reader.catchUp->reached = true;
   reader.xemTruocLat = 1;
   reader.catchUpTick(false);

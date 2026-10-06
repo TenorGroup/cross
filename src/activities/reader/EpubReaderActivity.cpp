@@ -4597,11 +4597,12 @@ void EpubReaderActivity::catchUpTick(const bool inputThisPass) {
   HalPowerManager::Lock fullSpeed;  // the loop runs down-clocked after 3 s without a key
   const ReaderRenderSpec spec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
   const uint32_t target = xemTruocDich;
+  // Every step stays above the floor the background build keeps, not only the first.
+  if (ESP.getFreeHeap() < BACKGROUND_BUILD_MIN_FREE_HEAP || ESP.getMaxAllocHeap() < BACKGROUND_BUILD_MIN_MAX_ALLOC) {
+    xemTruocInputMs = millis();
+    return;
+  }
   if (!catchUp) {
-    if (ESP.getFreeHeap() < BACKGROUND_BUILD_MIN_FREE_HEAP || ESP.getMaxAllocHeap() < BACKGROUND_BUILD_MIN_MAX_ALLOC) {
-      xemTruocInputMs = millis();
-      return;
-    }
     catchUp.reset(new Section(epub, currentSpineIndex, renderer, preview));
     const bool loaded = catchUp->loadSectionFile(spec);
     if (!(loaded && (!catchUp->isPartial() || catchUp->coversVisibleTextOffset(target))) && !catchUp->startBuild(spec)) {
