@@ -4,6 +4,7 @@
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include "CrossPointSettings.h"
 #include "ReaderUtils.h"
@@ -13,6 +14,8 @@
 #include "activities/Activity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyInk.h"
 #include "util/ButtonNavigator.h"
 #include "util/NextBookFinder.h"
 
@@ -179,7 +182,49 @@ void EndOfBookOptions::buildListScreen(UiScreen& screen) {
   screen.list(props);
 }
 
+void EndOfBookOptions::renderUgly(GfxRenderer& renderer, const MappedInputManager& input) {
+  [[maybe_unused]] const uint32_t started = millis();
+  const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
+  const char* title = tr(STR_END_OF_BOOK);
+  if (!menuActive()) {
+    // The plain end: the word written large, underlined, a jab under it, and the keys that still do something.
+    const int base = h * 3 / 8, tw = ugly::width(renderer, ugly::Size::S52, title), x = (w - tw) / 2;
+    ugly::text(renderer, ugly::Size::S52, x, base, title);
+    ugly::underline(renderer, x, x + tw, base + 14, 17, 3);
+    ugly::paragraph(renderer, ugly::Size::S30, 48, base + 80, w - 96, 40, tr(STR_UGLY_EOB_QUIP));
+    const auto labels = input.mapLabels(tr(STR_BACK), "", "<", ">");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  } else {
+    // A notebook page: the margin, the title, the jab, the question, then the books and the way back.
+    ugly::line(renderer, 26, 0, 27, h - 80, 501);
+    const int tw = ugly::text(renderer, ugly::Size::S52, 48, 78, title);
+    ugly::underline(renderer, 48, 48 + tw, 92, 17, 3);
+    const int lines = ugly::paragraph(renderer, ugly::Size::S30, 72, 126, w - 78, 34, tr(STR_UGLY_EOB_QUIP));
+    const int ask = 126 + lines * 34 + 24;
+    ugly::text(renderer, ugly::Size::S30, 48, ask, tr(STR_UGLY_EOB_NEXT));
+    ugly::line(renderer, 48, ask + 20, w - 30, ask + 22, 611);
+    const int sel = selector.load(std::memory_order_relaxed);
+    for (size_t i = 0; i < rowCount; ++i) {
+      const int base = ask + 76 + static_cast<int>(i) * 52;
+      const bool home = i >= names.size();
+      const std::string label = ugly::fit(renderer, ugly::Size::S30, home ? tr(STR_UGLY_DIARY_TITLE) : rowLabels[i], w - 48 - 30);
+      const int lw = ugly::text(renderer, ugly::Size::S30, 48, base, label.c_str());
+      if (static_cast<int>(i) == sel) ugly::circle(renderer, ugly::Circle::Row, {48, base - 26, 48 + lw, base + 8}, 12, 9);
+    }
+    const auto labels = input.mapLabels(tr(STR_BACK), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  }
+#ifdef UGLY_FRAME_LOG
+  LOG_INF("UGLY", "EndOfBook frame rows=%d sel=%d total=%lums", menuActive() ? static_cast<int>(rowCount) : 0,
+          selector.load(std::memory_order_relaxed), static_cast<unsigned long>(millis() - started));
+#endif
+}
+
 void EndOfBookOptions::render(GfxRenderer& renderer, const MappedInputManager& input) {
+  if (shell::uglyParts()) {
+    renderUgly(renderer, input);
+    return;
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
 
   if (!menuActive()) {
