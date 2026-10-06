@@ -21,15 +21,6 @@ inline bool isUgly() { return current() == Kind::Ugly; }
 // tenor/ugly on the button readers. Each part asks this once; the X4 Pro keeps its touch parts.
 inline bool uglyParts() { return isUgly() && !tenorchrome::kTouchShell; }
 
-// tenor/ugly is a limited edition (ShellLimit.h): offered until its last day by the device clock. Past it,
-// Settings no longer turns to it, and the next boot puts a device still on it back on tenor/cross.
-bool uglyOffered();
-// At boot, after the settings and the clock: a device left on tenor/ugly past the last day is put back on
-// tenor/cross for good (its sleep screen too) and saved.
-void expireIfOver();
-// "tenor/xấu-như-chó is a limited edition[, here until d/m/yyyy]", for the Interface row and the question
-// before turning to it. Valid until the next call.
-const char* uglyLimitNote();
 
 // The Home screen of the current shell. `item` says where a screen that closed wants to land.
 std::unique_ptr<Activity> makeHome(GfxRenderer& renderer, MappedInputManager& mappedInput, HomeMenuItem item,

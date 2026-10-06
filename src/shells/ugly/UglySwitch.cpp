@@ -74,7 +74,7 @@ void SwitchConfirm::render(RenderLock&&) {
   Box box[COUNT] = {};
   [[maybe_unused]] const Box paper =
       askBox(renderer, mappedInput, toCross ? tr(STR_UGLY_SHELL_ASK) : tr(STR_UGLY_SWITCH_ASK),
-             toCross ? crossNote.c_str() : shell::uglyLimitNote(), labels, selected, box);
+             toCross ? crossNote.c_str() : "", labels, selected, box);
 #if FREEINK_DEVICE_X4PRO
   for (int i = 0; i < COUNT; ++i) drawn[i] = box[i];
 #endif

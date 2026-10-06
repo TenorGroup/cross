@@ -51,8 +51,6 @@ void operator delete[](void* p, size_t) noexcept { ::operator delete(p); }
 namespace fui = freeink::ui;
 namespace shell {
 bool isUgly() { return false; }
-bool uglyOffered() { return false; }
-const char* uglyLimitNote() { return ""; }
 }
 struct ActivityResult { bool isCancelled = false; };
 struct FontDownloadActivity {
