@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 import glass_model
-from ugly_common import Card, digest, entered, ink
+from ugly_common import PROGRAM, Card, digest, entered, ink
 
 WAKE_NOTICE = re.compile(r'Wake notice shown: (.*)')
 RESTART_NOTICE = re.compile(r'Restart notice: (.*)')
@@ -85,7 +85,13 @@ class UglyRemainingScreensTest(unittest.TestCase):
             (card.store / 'state.json').write_text(json.dumps({'showBootScreen': False}))
             log, _ = card.run('3000:SLEEP;6000:POWER;12000:QUIT', CROSSPOINT_SIM_WAKE_REASON='power',
                               CROSSPOINT_SIM_INPUT_SCRIPT_AFTER_WAKE='2500:QUIT')
-            self.assertEqual(WAKE_NOTICE.findall(log), [said], (shell, language, log[-1500:]))
+            # The notice goes over the sleep frame the wake gives back to the controller, and only a panel that drives
+            # just the pixels that change (the UC8279, main.cpp: renderer.diffOnlyPanel()) keeps one. The UC8253 panel
+            # flashes whole on every full refresh and keeps none, so its wake shows no notice, in either shell.
+            kept = 'Restored sleep frame baseline' in log
+            if 'uc8279' in str(PROGRAM).lower() or os.environ.get('TEST_DISPLAY_CONTROLLER') == 'UC8279':
+                self.assertTrue(kept, (shell, language, 'the UC8279 panel gave no sleep frame back', log[-1500:]))
+            self.assertEqual(WAKE_NOTICE.findall(log), [said] if kept else [], (shell, language, log[-1500:]))
 
     def test_the_quiet_restart_after_file_transfer_speaks_in_the_voice_of_the_shell(self):
         # File transfer on a saved network, then Back: the device restarts quietly behind a notice.

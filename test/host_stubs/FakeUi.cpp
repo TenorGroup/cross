@@ -105,9 +105,9 @@ std::vector<std::string> GfxRenderer::wrappedText(int, const char* text, int, in
 // Production Ugly paint is covered by test/ugly_reader/popup.py (96 pairs),
 // native-font checks and simulator captures; these bindings provide no pixel acceptance.
 namespace ugly {
-int width(const GfxRenderer& r, Size, const char* text) { return r.getTextWidth(0, text); }
+int width(const GfxRenderer& r, Size, const char* text, bool) { return r.getTextWidth(0, text); }
 int ascent(Size) { return 16; }  // Same ascender as the renderer stub above.
-int text(const GfxRenderer& r, Size size, int x, int baseline, const char* label, bool black) {
+int text(const GfxRenderer& r, Size size, int x, int baseline, const char* label, bool black, bool) {
   r.drawText(0, x, baseline - ascent(size), label, black);
   return width(r, size, label);
 }
@@ -129,6 +129,7 @@ freeink::ui::Rect words(const GfxRenderer&, const freeink::ui::Rect&, const char
 }
 void marks(const GfxRenderer&, const freeink::ui::Rect&, const Marks&) {}
 void ring(const GfxRenderer&, const freeink::ui::Rect&) {}
+void apart(const GfxRenderer&, freeink::ui::Rect&, const char*, freeink::ui::Rect&, const char*) {}
 }  // namespace uglychrome
 
 RenderLock::RenderLock(Activity&) {}

@@ -16,7 +16,6 @@
 #include "fontIds.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
-#include "shells/ugly/UglySteady.h"
 #include "shells/ugly/UglyWords.h"
 #if defined(FREEINK_DEVICE_X4PRO)
 #include "UIFontTiers.h"
@@ -128,11 +127,11 @@ const fui::KeyboardLayout URL_SNIPPET_LAYOUT{URL_SNIP_ROWS, 4};
 
 
 // tenor/ugly on the button readers: every key written by hand in the box the FreeInkUI keyboard laid out for it (the
-// keyboard registered its hits with its own painting off). The pen circles the key under the cursor.
+// keyboard registered its hits with its own painting off). The pen circles the key under the cursor. The letters are
+// straight at every level: each key read right, and a frame per cursor move as quick as before.
 void paintUglyKeys(const GfxRenderer& r, const fui::KeyboardProps& props, const fui::Interaction* hits, const size_t count,
                    const int rowHeight) {
   const fui::KeyboardLayout& layout = *props.layout;
-  const ugly::Steady steady;  // straight letters: each key read right, and a frame per cursor move as quick as before
   for (size_t i = 0; i < count; ++i) {
     const fui::KeyboardKey* key = nullptr;
     int index = 0, logical = -1;
@@ -157,13 +156,15 @@ void paintUglyKeys(const GfxRenderer& r, const fui::KeyboardProps& props, const 
     } else if (key->kind == fui::KeyKind::Delete || key->kind == fui::KeyKind::Lang) {
       ugly::mark(r, key->kind == fui::KeyKind::Delete ? ugly::Mark::Left : ugly::Mark::Right, cx, cy);
     } else if (label) {
-      const ugly::Size size = ugly::width(r, ugly::Size::S30, label) <= box.width - 6 ? ugly::Size::S30 : ugly::Size::S22;
-      const int w = ugly::width(r, size, label), up = ugly::ascent(size);
-      ugly::text(r, size, cx - w / 2, cy + up / 2, label);
+      const ugly::Size size =
+          ugly::width(r, ugly::Size::S30, label, ugly::STRAIGHT) <= box.width - 6 ? ugly::Size::S30 : ugly::Size::S22;
+      const int w = ugly::width(r, size, label, ugly::STRAIGHT), up = ugly::ascent(size);
+      ugly::text(r, size, cx - w / 2, cy + up / 2, label, true, ugly::STRAIGHT);
       ink = {cx - w / 2, cy - up / 2, cx + w / 2, cy + up / 2};
     }
     if (key->kind == fui::KeyKind::Normal && key->alt)
-      ugly::text(r, ugly::Size::S22, box.x + box.width - 2 - ugly::width(r, ugly::Size::S22, key->alt), box.y + 20, key->alt);
+      ugly::text(r, ugly::Size::S22, box.x + box.width - 2 - ugly::width(r, ugly::Size::S22, key->alt, ugly::STRAIGHT), box.y + 20,
+                 key->alt, true, ugly::STRAIGHT);
     if (logical == props.selectedIndex) ugly::circle(r, ugly::Circle::Word, ink, 6, 4, 2);
   }
 }
@@ -1150,8 +1151,8 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     if (shell::uglyParts()) {
       // In hand, one tip a line over the key bar. The hand is taller than the small font: when the lines outgrow the
       // room under the keys, the title goes first, then the tips at the top; the one about Back stays.
-      const int bottom = renderer.getScreenHeight() - metrics.buttonHintsHeight - 14;
-      const int room = std::max(1, (bottom - (kbRect.y + kbRect.height) - 24) / 26 + 1);
+      int room = 1;
+      while (tenorchrome::uglyTipTop(renderer, 1, room) + ugly::ascent(ugly::Size::S22) >= kbRect.y + kbRect.height + 24) ++room;
       const int first = std::max(0, n - room);
       for (int i = first; i < n; ++i) tenorchrome::drawTip(renderer, tips[i], n - 1 - i);
     } else {

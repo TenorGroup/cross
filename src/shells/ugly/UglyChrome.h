@@ -13,6 +13,12 @@ namespace uglychrome {
 freeink::ui::Rect words(const GfxRenderer& renderer, const freeink::ui::Rect& rect, const char* text,
            freeink::ui::TextAlign align = freeink::ui::TextAlign::Left, bool locked = false, int maxLines = 1);
 
+// A label and a value the layout put side by side in a row, laid out in the UI font; the hand writes wider. When the 2
+// do not fit side by side with a gap, the label keeps the top line and the value goes under it, at the row's right end
+// (both boxes are changed). A row too low for 2 lines stays as the layout made it.
+void apart(const GfxRenderer& renderer, freeink::ui::Rect& label, const char* labelText, freeink::ui::Rect& value,
+           const char* valueText);
+
 // The circle on the cursor: round the words written (as words() returned them), padded like the circles of the
 // notebook and the answer sheet. Empty words draw nothing.
 void ring(const GfxRenderer& renderer, const freeink::ui::Rect& words);

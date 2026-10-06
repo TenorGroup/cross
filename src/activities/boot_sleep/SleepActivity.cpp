@@ -500,10 +500,10 @@ bool selectRandomSleepFile(const char* dirPath, const SleepRecentKind recentKind
 bool drawSleepPopupPreservingFrame(GfxRenderer& renderer, const char* text) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int frameThickness = metrics.popupFrameThickness;
-  const int popupY = static_cast<int>(renderer.getScreenHeight() * metrics.popupTopOffsetRatio);
-  const int popupHeight = renderer.getLineHeight(UI_12_FONT_ID) + metrics.popupMarginY * 2;
-  const int bandTop = std::max(0, popupY - frameThickness);
-  const int bandBottom = std::min(renderer.getScreenHeight(), popupY + popupHeight + frameThickness);
+  // The band is the box the popup will take (the paper of tenor/ugly is taller than the box of tenor/cross), framed.
+  const Rect box = GUI.popupBox(renderer, text);
+  const int bandTop = std::max(0, box.y - frameThickness);
+  const int bandBottom = std::min(renderer.getScreenHeight(), box.y + box.height + frameThickness);
   const int bandHeight = bandBottom - bandTop;
   const size_t bandBytes = renderer.getRegionByteSize(0, bandTop, renderer.getScreenWidth(), bandHeight);
 

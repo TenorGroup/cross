@@ -4,6 +4,7 @@
 #include <EpdFontFamily.h>
 #include <HalClock.h>
 #include <HalPowerManager.h>
+#include <Logging.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -23,6 +24,7 @@
 #if FREEINK_DEVICE_X4PRO
 #include "UglyTouch.h"
 #endif
+#include "components/ButtonSymbols.h"
 #include "fontIds.h"
 #include "fonts/ugly_22.h"
 #include "fonts/ugly_30.h"
@@ -73,8 +75,9 @@ int encode(const uint32_t cp, char* out) {
 
 // Drawn by the pen, not taken from a font: the scrawl a line runs into when it is too long (fit() puts it where
 // the dots would go), the tick of the Select key, which no font on the card has, and the inline key symbols of
-// the UI strings (U+E100 Select, Back, Up, Down, Left, Right), drawn as the marks over the keys.
-constexpr uint32_t SCRAWL = 0xE000, TICK = 0x2713, KEY_FIRST = 0xE100, KEY_LAST = 0xE105;
+// the UI strings (U+E100 Select, Back, Up, Down, Left, Right, then the star, the 2 side buttons and the erase key),
+// drawn as the marks over the keys.
+constexpr uint32_t SCRAWL = 0xE000, TICK = 0x2713, KEY_FIRST = 0xE100, KEY_LAST = 0xE109;
 bool penDrawn(const uint32_t cp) { return cp == SCRAWL || cp == TICK || (cp >= KEY_FIRST && cp <= KEY_LAST); }
 
 // The baked pen has no degree sign: on the X4 Pro the pen draws it, a small ring, so "180°" stays in one hand.
@@ -155,12 +158,51 @@ void drawWarped(const GfxRenderer& r, const Size s, const Letter& letter, const 
 
 void stroke(const GfxRenderer& r, int x0, int y0, int x1, int y1, int w);
 
+// A star of one hasty stroke, some 20 px across, centred on (cx, cy).
+void penStar(const GfxRenderer& r, const int cx, const int cy) {
+  static constexpr int PTS[6][2] = {{0, -10}, {6, 8}, {-10, -3}, {10, -4}, {-6, 8}, {1, -10}};
+  for (int i = 0; i + 1 < 6; ++i)
+    stroke(r, cx + PTS[i][0], cy + PTS[i][1], cx + PTS[i + 1][0], cy + PTS[i + 1][1], 2);
+}
+
+// The erase key, a tag with a cross in it, of one stroke and one more for the cross, some 20 px across.
+void penErase(const GfxRenderer& r, const int cx, const int cy) {
+  static constexpr int PTS[7][2] = {{-10, 0}, {-4, -8}, {10, -8}, {10, 8}, {-4, 8}, {-10, 1}, {-9, 0}};
+  for (int i = 0; i + 1 < 7; ++i)
+    stroke(r, cx + PTS[i][0], cy + PTS[i][1], cx + PTS[i + 1][0], cy + PTS[i + 1][1], 2);
+  stroke(r, cx - 2, cy - 4, cx + 5, cy + 4, 2);
+  stroke(r, cx - 2, cy + 4, cx + 5, cy - 3, 2);
+}
+
+// One key symbol of the UI strings, centred on (cx, cy). The star, the side buttons and the erase key are the keys'
+// own, as buttonSymbols resolves them (the side buttons follow the reading side layout).
+void keyMark(const GfxRenderer& r, const uint32_t cp, const int cx, const int cy) {
+  static constexpr Mark KEYS[6] = {Mark::Tick, Mark::Back, Mark::Up, Mark::Down, Mark::Left, Mark::Right};
+  if (cp == TICK) return mark(r, Mark::Tick, cx, cy);
+  const int id = static_cast<int>(cp - KEY_FIRST);
+  if (id < 6) return mark(r, KEYS[id], cx, cy);
+  switch (buttonSymbols::resolve(id).shape) {
+    case inlineSymbols::Shape::Star:
+      return penStar(r, cx, cy);
+    case inlineSymbols::Shape::Erase:
+      return penErase(r, cx, cy);
+    case inlineSymbols::Shape::Left:
+      return mark(r, Mark::Left, cx, cy);
+    case inlineSymbols::Shape::Right:
+      return mark(r, Mark::Right, cx, cy);
+    default:
+      return;
+  }
+}
+
 // The pen marks that stand in a line of text: a hasty scrawl over [x, x + advance), or a key mark centred in it.
 void penMark(const GfxRenderer& r, const Size s, const uint32_t cp, const int x, const int baseline, const int advance) {
   const int h = ASCENT[static_cast<int>(s)];
   if (cp != SCRAWL) {
-    static constexpr Mark KEYS[6] = {Mark::Tick, Mark::Back, Mark::Up, Mark::Down, Mark::Left, Mark::Right};
-    mark(r, cp == TICK ? Mark::Tick : KEYS[cp - KEY_FIRST], x + advance / 2, baseline - h / 2);
+#ifdef UGLY_FRAME_LOG
+    LOG_INF("UGLY", "part=penmark cp=%X", static_cast<unsigned>(cp));
+#endif
+    keyMark(r, cp, x + advance / 2, baseline - h / 2);
     return;
   }
   // Loops of a pen that gave up writing: up and down a little under the x-height, each step a little off.
@@ -175,9 +217,9 @@ void penMark(const GfxRenderer& r, const Size s, const uint32_t cp, const int x,
 
 // One pass for drawing and measuring, so the two cannot disagree.
 int run(const GfxRenderer& r, const Size s, const int x, const int baseline, const std::string& text, const bool black,
-        const bool draw) {
+        const bool draw, const bool straight) {
   const int fid = idOf(s), fb = fallbackFont(s);
-  const bool af = wild();
+  const bool af = !straight && wild();
   const int px = pixelsOf(s);
   const int top = baseline - r.getFontAscenderSize(fid);
   int cursor = x, pos = 0;
@@ -275,11 +317,14 @@ void ensureFonts(GfxRenderer& r) {
   r.insertFont(FONT_IDS[3], EpdFontFamily(&FONT52));
 }
 
-int text(const GfxRenderer& r, const Size s, const int x, const int baseline, const char* utf8, const bool black) {
-  return run(r, s, x, baseline, utf8ComposeNfc(utf8), black, true);
+int text(const GfxRenderer& r, const Size s, const int x, const int baseline, const char* utf8, const bool black,
+         const bool straight) {
+  return run(r, s, x, baseline, utf8ComposeNfc(utf8), black, true, straight);
 }
 
-int width(const GfxRenderer& r, const Size s, const char* utf8) { return run(r, s, 0, 0, utf8ComposeNfc(utf8), true, false); }
+int width(const GfxRenderer& r, const Size s, const char* utf8, const bool straight) {
+  return run(r, s, 0, 0, utf8ComposeNfc(utf8), true, false, straight);
+}
 
 int ascent(const Size s) { return ASCENT[static_cast<int>(s)]; }
 
@@ -298,7 +343,7 @@ std::string fit(const GfxRenderer& r, const Size s, const std::string& utf8, con
 }
 
 int paragraph(const GfxRenderer& r, const Size s, const int x, const int baseline, const int maxWidth, const int lineHeight,
-              const char* utf8, const bool draw) {
+              const char* utf8, const bool draw, const bool straight) {
   const std::string composed = utf8ComposeNfc(utf8);
   std::vector<std::string> words;
   size_t from = 0;
@@ -323,11 +368,11 @@ int paragraph(const GfxRenderer& r, const Size s, const int x, const int baselin
     if (piece == "\n") tokens.push_back({nullptr, 0, false});
     else if (!piece.empty()) tokens.push_back({piece.c_str(), 0, false});
   std::vector<logic::Placed> placed(tokens.size());
-  const int lines = logic::layout(tokens.data(), static_cast<int>(tokens.size()), maxWidth, width(r, s, "a") / 2 + 4,
-                                  [&](const char* t) { return width(r, s, t); }, placed.data());
+  const int lines = logic::layout(tokens.data(), static_cast<int>(tokens.size()), maxWidth, width(r, s, "a", straight) / 2 + 4,
+                                  [&](const char* t) { return width(r, s, t, straight); }, placed.data());
   if (!draw) return lines;
   for (size_t i = 0; i < tokens.size(); ++i)
-    if (tokens[i].text) text(r, s, x + placed[i].x, baseline + placed[i].line * lineHeight, tokens[i].text);
+    if (tokens[i].text) text(r, s, x + placed[i].x, baseline + placed[i].line * lineHeight, tokens[i].text, true, straight);
   return lines;
 }
 

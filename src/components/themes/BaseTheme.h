@@ -281,6 +281,9 @@ class BaseTheme {
                                    bool& bufferRestored, std::function<bool()> storeCoverBuffer) const {}
   // `display` false leaves the panel refresh to the caller (a popup refreshing beside other work).
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message, bool display = true) const;
+  // The box drawPopup gives `message`, without its frame: laid out, nothing drawn. A caller that puts back the pixels
+  // under a popup asks this before it draws one.
+  Rect popupBox(const GfxRenderer& renderer, const char* message) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
   // bookProgress in percent; negative when the book's progress is not known yet.
   static void drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage, const int pageCount,

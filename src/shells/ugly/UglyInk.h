@@ -25,8 +25,12 @@ void ensureFonts(GfxRenderer& renderer);
 
 // Baseline-anchored text. Returns the advance. A string with a character the baked font lacks (a
 // Chinese title, say) writes that character alone in the UI font, straight, in its place in the line.
-int text(const GfxRenderer& renderer, Size size, int x, int baseline, const char* utf8, bool black = true);
-int width(const GfxRenderer& renderer, Size size, const char* utf8);
+// `straight` (STRAIGHT) writes the baked letters as they are at every level, for words that must be read right (the
+// keys of the keyboard, "do not cut the power"); width() and paragraph() take it too, so that they measure what text() draws.
+constexpr bool STRAIGHT = true;
+int text(const GfxRenderer& renderer, Size size, int x, int baseline, const char* utf8, bool black = true,
+         bool straight = false);
+int width(const GfxRenderer& renderer, Size size, const char* utf8, bool straight = false);
 // Height of the ink above the baseline for a line at this size, for placing boxes.
 int ascent(Size size);
 // `utf8` cut where it no longer fits `maxWidth`, trailing off in a pen scrawl (whatever font its letters take).
@@ -34,7 +38,7 @@ std::string fit(const GfxRenderer& renderer, Size size, const std::string& utf8,
 
 // A plain sentence broken into lines of at most maxWidth, one under another. Returns the lines used (with draw false it only counts them).
 int paragraph(const GfxRenderer& renderer, Size size, int x, int baseline, int maxWidth, int lineHeight, const char* utf8,
-              bool draw = true);
+              bool draw = true, bool straight = false);
 
 // A chapter title written by hand: one to three lines centred between x0 and x1, in the largest pen
 // size that fits the band from top to bottom, with a shaky underline under the last line. Returns

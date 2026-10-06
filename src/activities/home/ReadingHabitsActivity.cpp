@@ -135,9 +135,7 @@ void ReadingHabitsActivity::drawFooter() {
     if (readable && summary.coverage) ugly::paragraph(renderer, ugly::Size::S22, 24, lineY, width, STEP, evidence);
     // The period sits right over the tip, however many lines the tip takes.
     const int tipLines = ugly::paragraph(renderer, ugly::Size::S22, 24, 0, width, 26, tip, false);
-    const int tipTop = renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight - 14 -
-                       (tipLines - 1) * 26 - ugly::ascent(ugly::Size::S22);
-    ugly::text(renderer, ugly::Size::S22, 24, tipTop - 10, tr(STR_HABIT_PERIOD));
+    ugly::text(renderer, ugly::Size::S22, 24, tenorchrome::uglyTipTop(renderer, tipLines) - 10, tr(STR_HABIT_PERIOD));
   } else {
     lineY += 8;
     renderer.drawText(UI_10_FONT_ID, 24, lineY, status, true, EpdFontFamily::BOLD);

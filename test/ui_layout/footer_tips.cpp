@@ -167,6 +167,7 @@ inline int paragraph(const GfxRenderer&, Size, int, int, int, int, const char*, 
 inline void mark(const GfxRenderer&, Mark, int, int) {}
 inline std::string fit(const GfxRenderer&, Size, const std::string& s, int) { return s; }
 inline int width(const GfxRenderer&, Size, const char*) { return 0; }
+inline int ascent(Size) { return 20; }
 inline int text(const GfxRenderer&, Size, int, int, const char*, bool = true) { return 0; }
 }
 int fallbackCalls = 0;

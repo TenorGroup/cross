@@ -709,18 +709,39 @@ bool UiListActivity::renderUglyList() {
   uiTarget.setTextSink(nullptr, nullptr);
   uiTarget.setPaintingEnabled(true);
   drawChrome();
+  // A value at the right end of the line a label stands on: the hand writes wider than the layout's font, so the pair
+  // may no longer fit side by side.
+  for (auto& value : runs) {
+    if (value.align != fui::TextAlign::Right) continue;
+    for (auto& label : runs)
+      if (label.align == fui::TextAlign::Left && label.rect.y == value.rect.y && label.rect.height == value.rect.height &&
+          label.rect.x < value.rect.x)
+        uglychrome::apart(renderer, label.rect, label.text.c_str(), value.rect, value.text.c_str());
+  }
+#ifdef UGLY_FRAME_LOG
+  for (const auto& run : runs) LOG_INF("UGLY", "part=word text=%s", run.text.c_str());
+#endif
   std::vector<fui::Rect> ink;
   ink.reserve(runs.size());
   for (const auto& run : runs)
     ink.push_back(uglychrome::words(renderer, run.rect, run.text.c_str(), run.align, run.locked, run.lines));
-  // The marks go on the rows that took a place on screen; a locked row has no place to choose and gets none.
+  // The marks go on the rows that took a place on screen. A locked row has no place to choose and gets none, but
+  // the cursor can stand on it: there it keeps the circle, round the label.
   const int count = listCount(), first = std::max(0, activeNav().top);
   for (int row = first; row < count && row < first + 64; ++row) {
     const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
-    if (box.empty()) continue;
+    if (box.empty() && row != activeNav().selected) continue;
     fui::ListItem item;
     if (uglyRowProvider_) uglyRowProvider_(uglyRowCtx_, static_cast<uint16_t>(row), item);
     else if (uglyItems_ && row >= uglyItemsFirst_) item = uglyItems_[row - uglyItemsFirst_];
+    if (box.empty()) {
+      for (size_t i = 0; item.label && i < runs.size(); ++i)
+        if (runs[i].align == fui::TextAlign::Left && runs[i].text == item.label) {
+          uglychrome::ring(renderer, ink[i]);
+          break;
+        }
+      continue;
+    }
     uglychrome::Marks marks{row == activeNav().selected, item.chosen, item.opensNext, item.toggle, item.toggleChecked};
     // The circle goes round the row's label: the first words written from the row's left half.
     for (size_t i = 0; marks.selected && i < runs.size(); ++i) {
