@@ -123,8 +123,9 @@ class QuickActionsV1012Test(unittest.TestCase):
         self.assertEqual(saved['tiltPageTurn'], 2, log[-4000:])
         end = self.shot('tools-tab-end')
         # The selection is a white pill ringed in black (v1.0.52), not a filled block: its two ring lines
-        # are the full-width rows, 3 each.
-        self.assertEqual(len(filled_rows(end, 80, end.width - 100, 600, 700)), 6,
+        # are the full-width rows, 3 each. v1.0.53: the last page fills to the list's foot, so the last row
+        # sits lower (to y 740).
+        self.assertEqual(len(filled_rows(end, 80, end.width - 100, 600, 750)), 6,
                          'the last Tools row is not selected')
 
     def test_tools_tab_tilt_toggle_remembers_inverted_across_restart(self):
