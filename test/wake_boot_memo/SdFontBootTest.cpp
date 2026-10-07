@@ -63,6 +63,27 @@ TEST_F(SdFontBoot, ColdBootWalksTheCardOnceAndLoadsTheSavedFamily) {
   EXPECT_EQ(hostDiscoveries, 1);
 }
 
+TEST_F(SdFontBoot, LongVariantNamesStaySelectedAfterWake) {
+  for (const char* name : {"SP3 - Traveling Typewriter-BOLD1", "SP3 - Traveling Typewriter-BOLD2"}) {
+    SdCardFontFamilyInfo info;
+    info.name = name;
+    info.stems = {"R"};
+    info.files = {{14, 0, 0}};
+    putOnCard(info);
+    std::strcpy(hostSettings.sdFontFamilyName, name);
+    SdCardFontSystem cold;
+    GfxRenderer r1;
+    boot(ESP_RST_POWERON, cold, r1);
+    ASSERT_STREQ(hostSettings.sdFontFamilyName, name);
+    SdCardFontSystem wake;
+    GfxRenderer r2;
+    boot(ESP_RST_DEEPSLEEP, wake, r2);
+    EXPECT_EQ(hostDiscoveries, 0);
+    EXPECT_EQ(hostLoads, std::vector<std::string>{std::string("/.fonts/") + name + "/R_14.cpfont"});
+    EXPECT_STREQ(hostSettings.sdFontFamilyName, name);
+  }
+}
+
 TEST_F(SdFontBoot, WithoutAnSdFamilyTheCatalogWaitsForItsFirstUse) {
   hostSettings.sdFontFamilyName[0] = '\0';
   SdCardFontSystem system;
@@ -274,6 +295,28 @@ TEST(SdFontMemo, KeepsOneFamilyExactly) {
   EXPECT_FALSE(sdfontmemo::restore(memo, true, "Bokerlamm", back));
 }
 
+TEST(SdFontMemo, KeepsLongNamesAndRejectsThePreviousLayout) {
+  for (const auto& name : {std::string("SP3 - Traveling Typewriter-BOLD1"),
+                           std::string("SP3 - Traveling Typewriter-BOLD2"), std::string(63, 'n')}) {
+    SdCardFontFamilyInfo info;
+    info.name = name;
+    info.stems = {"R"};
+    info.files = {{14, 0, 0}};
+    sdfontmemo::Memo memo{};
+    ASSERT_TRUE(sdfontmemo::save(info, memo));
+    SdCardFontFamilyInfo back;
+    ASSERT_TRUE(sdfontmemo::restore(memo, true, name.c_str(), back));
+    EXPECT_EQ(back.name, name);
+    EXPECT_EQ(back.stems, info.stems);
+    // Layout 1 had a 32-byte name. Layout 2 has a 64-byte name.
+    memo.magic = 0x53464D31u;
+    SdCardFontFamilyInfo old;
+    EXPECT_FALSE(sdfontmemo::restore(memo, true, name.c_str(), old));
+    EXPECT_TRUE(old.name.empty());
+    EXPECT_TRUE(old.files.empty());
+  }
+}
+
 // The memo is only read on a wake from deep sleep, after the boot before it rewrote it, so it is
 // not checksummed. Whatever it says is checked where it matters: the tag, the family name and the
 // bounds here, the file names by the load itself (MemoOfAFileGoneFromTheCardFallsBackToTheWalk).
@@ -316,7 +359,7 @@ TEST(SdFontMemo, FamiliesItCannotDescribeAreNotKept) {
   many.stems = {"M"};
   for (uint8_t size = 1; size <= sdfontmemo::MAX_SIZES + 1; ++size) many.files.push_back({size, 0, 0});
   SdCardFontFamilyInfo longName;
-  longName.name = std::string(40, 'n');
+  longName.name = std::string(64, 'n');
   longName.stems = {"L"};
   longName.files = {{14, 0, 0}};
   SdCardFontFamilyInfo none;

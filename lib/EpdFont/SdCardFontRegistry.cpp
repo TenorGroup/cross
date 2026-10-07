@@ -364,6 +364,7 @@ void SdCardFontRegistry::scanRoot(const char* rootPath, std::vector<SdCardFontFa
 
       // Skip hidden/system directories inside the root (macOS ._*, .Trashes, etc.)
       if (nameBuffer[0] == '.' || nameBuffer[0] == '_') continue;
+      if (strlen(nameBuffer) > MAX_FAMILY_NAME_BYTES) continue;
 
       // De-dup by family name across roots.
       bool exists = false;
@@ -395,6 +396,7 @@ void SdCardFontRegistry::scanRoot(const char* rootPath, std::vector<SdCardFontFa
       if (nameBuffer[0] == '.' || nameBuffer[0] == '_') continue;
       size_t baseLen = 0;
       if (!parseVectorFontName(nameBuffer, baseLen)) continue;
+      if (baseLen > MAX_FAMILY_NAME_BYTES) continue;
 
       std::string famName(nameBuffer, baseLen);  // filename without extension
       bool exists = false;

@@ -20,7 +20,8 @@ class FontInstaller {
   explicit FontInstaller(SdCardFontRegistry& registry);
 
   /// Maximum family-name length in bytes, excluding the NUL terminator.
-  /// Guarantees the name still fits CrossPointSettings::sdFontFamilyName[32].
+  /// Installer limit keeps a 128-byte full path with the maximum filename.
+  /// SD card discovery can read longer family names from manually copied fonts.
   static constexpr size_t MAX_FAMILY_NAME_LEN = 31;
 
   /// Maximum .cpfont filename or relative-path length in bytes, INCLUDING

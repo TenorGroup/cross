@@ -143,6 +143,24 @@ static bool dynamicLifetime() {
   return ok;
 }
 
+static bool longFontNames() {
+  SdCardFontRegistry registry;
+  auto& families = const_cast<std::vector<SdCardFontFamilyInfo>&>(registry.getFamilies());
+  families.push_back({"SP3 - Traveling Typewriter-BOLD1"});
+  families.push_back({"SP3 - Traveling Typewriter-BOLD2"});
+  families.push_back({std::string(63, 'n')});
+  auto setting = buildFontFamilySetting(&registry);
+  bool ok = true;
+  for (int i = 0; i < 3; ++i) {
+    setting.valueSetter(static_cast<uint8_t>(CrossPointSettings::BUILTIN_FONT_COUNT + i));
+    ok &= check(std::string(SETTINGS.sdFontFamilyName) == families[i].name,
+                "selected long font family name changed");
+    ok &= check(setting.valueGetter() == CrossPointSettings::BUILTIN_FONT_COUNT + i,
+                "selected long font family has no selection mark");
+  }
+  return ok;
+}
+
 int main(int argc, char** argv) {
   const bool enforce = argc > 1 && std::string(argv[1]) == "--enforce";
   const std::string board = argc > 2 ? argv[2] : "x3";
@@ -257,6 +275,7 @@ int main(int argc, char** argv) {
     ok &= check(listed() == activity.displaySettings.end(), "and leaving tenor/ugly takes the row away again");
   }
   ok &= dynamicLifetime();
+  ok &= longFontNames();
   std::printf("\n");
   return ok ? 0 : 1;
 }

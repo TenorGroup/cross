@@ -15,12 +15,12 @@
 // more than one file stem or more than MAX_SIZES sizes is not kept (it keeps the full scan).
 namespace sdfontmemo {
 
-constexpr uint32_t MAGIC = 0x53464D31u;
+constexpr uint32_t MAGIC = 0x53464D32u;
 constexpr size_t MAX_SIZES = 24;
 
 struct Memo {
   uint32_t magic;
-  char name[32];
+  char name[64];
   char stem[40];
   uint8_t hiddenRoot;
   uint8_t count;

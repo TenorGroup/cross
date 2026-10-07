@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <cstring>
 struct CrossPointSettings {
-  char sdFontFamilyName[32] = "";
+  char sdFontFamilyName[64] = "";
   uint8_t fontPointSize = 14;
   uint8_t readerInkWeight = 0;
   int (*sdFontIdResolver)(void*, const char*, uint8_t) = nullptr;

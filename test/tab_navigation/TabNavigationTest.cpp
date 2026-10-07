@@ -905,10 +905,11 @@ TEST(SettingsSaveAllocation, LoadingDoesNotAskForOneLargeContiguousBlock) {
 }
 
 namespace {
-void linkedSettingsFieldRoundTrip(const char* key, char (&field)[32]) {
+template <size_t N>
+void linkedSettingsFieldRoundTrip(const char* key, char (&field)[N]) {
   const std::string original(field);
   strcpy(field, "Linked settings value");
-  field[31] = '!';
+  field[N - 1] = '!';
   JsonDocument doc;
   SETTINGS.toJson(doc);
   // Keep the unrelated font copy owned so each test reaches its selected field.
@@ -921,7 +922,7 @@ void linkedSettingsFieldRoundTrip(const char* key, char (&field)[32]) {
   testing::Test::RecordProperty("largestAllocationBytes", static_cast<int>(alloctest::largest));
   EXPECT_TRUE(loaded);
   EXPECT_STREQ(field, "Linked settings value");
-  EXPECT_EQ(field[31], '\0');
+  EXPECT_EQ(field[N - 1], '\0');
   EXPECT_LT(alloctest::largest, 8u * 1024u);
   strcpy(field, original.c_str());
 }
@@ -940,7 +941,9 @@ TEST(SettingsStringAlias, OwnedFontNamesKeepTruncationAndTermination) {
   JsonDocument warm;
   SETTINGS.toJson(warm);  // Match the existing allocation gate: warm the settings catalog first.
   size_t largest = 0;
-  for (const std::string name : {std::string(31, 'a'), std::string(40, 'b'), std::string("short"), std::string()}) {
+  for (const std::string name : {std::string(63, 'a'), std::string(64, 'b'),
+                                 std::string("SP3 - Traveling Typewriter-BOLD1"),
+                                 std::string("SP3 - Traveling Typewriter-BOLD2"), std::string("short"), std::string()}) {
     JsonDocument doc;
     doc["sdFontFamilyName"] = name;
     memset(SETTINGS.sdFontFamilyName, '?', sizeof(SETTINGS.sdFontFamilyName));
@@ -950,8 +953,8 @@ TEST(SettingsStringAlias, OwnedFontNamesKeepTruncationAndTermination) {
     alloctest::recording = false;
     largest = std::max(largest, alloctest::largest);
     EXPECT_TRUE(loaded);
-    EXPECT_STREQ(SETTINGS.sdFontFamilyName, name.substr(0, 31).c_str());
-    EXPECT_EQ(SETTINGS.sdFontFamilyName[31], '\0');
+    EXPECT_STREQ(SETTINGS.sdFontFamilyName, name.substr(0, sizeof(SETTINGS.sdFontFamilyName) - 1).c_str());
+    EXPECT_EQ(SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1], '\0');
     EXPECT_LT(alloctest::largest, 8u * 1024u);
   }
   RecordProperty("largestAllocationBytes", static_cast<int>(largest));

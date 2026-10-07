@@ -474,7 +474,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // SdCardFontSystem::begin() clears the name and the built-in fontFamily takes over.
   // A settings file that already exists wins over this - loadFromFile() reads the stored
   // name (blank included), so nobody's saved font choice gets overwritten by an upgrade.
-  char sdFontFamilyName[32] = "Bokerlam";
+  char sdFontFamilyName[64] = "Bokerlam";
   // Dictionary folder name under /dictionaries (empty = no dictionary)
   char dictionaryName[32] = "";
   // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)
