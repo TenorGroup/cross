@@ -361,6 +361,7 @@ class UiAppHost {
   explicit UiAppHost(GfxRenderer&) {}
   // The production X3 chrome compiles out this touch-only branch.
   int swipeRows(MappedInputManager&, freeink::ui::ListNav&, int, int);
+  static void followStep(freeink::ui::ListNav& nav, int count) { nav.follow(count); }
   void resetUi() {}
   void renderUi() {}
   RouteResult routeTouch(MappedInputManager&, bool = false) { return {}; }
