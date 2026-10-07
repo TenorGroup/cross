@@ -131,9 +131,8 @@ void vlogPrintf(const char* level, const char* origin, const char* format, va_li
 #elif TENOR_COLD_LOG
   logSerial.print(buf);  // the tee keeps the copy, with or without a host on the port
 #else
-  if (logSerial) {
-    logSerial.print(buf);
-  }
+  // HWCDC queues the bytes and re-arms TX even while its low-clock connection flag is false.
+  logSerial.print(buf);
 #endif
   addToLogRingBuffer(buf);
 #if defined(TENOR_PRESS_PROBE) && !TENOR_COLD_LOG
