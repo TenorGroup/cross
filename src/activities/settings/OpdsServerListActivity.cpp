@@ -84,22 +84,26 @@ void OpdsServerListActivity::rebuildRowItems() {
     item.label = servers[i].name.empty() ? servers[i].url.c_str() : servers[i].name.c_str();
     if (!servers[i].name.empty()) item.subtitle = servers[i].url.c_str();
     item.actionValue = static_cast<int16_t>(i);
+    item.opensNext = true;
     rowItems_.push_back(item);
   }
   fui::ListItem addServer;
   addServer.label = tr(STR_ADD_SERVER);
   addServer.actionValue = static_cast<int16_t>(serverCount);
+  addServer.opensNext = true;
   rowItems_.push_back(addServer);
 
   if (!pickerMode) {
     fui::ListItem folder;
     folder.label = tr(STR_OPDS_DOWNLOAD_FOLDER);
     folder.actionValue = static_cast<int16_t>(serverCount + 1);
+    folder.opensNext = true;
     rowItems_.push_back(folder);  // subtitle refreshed per render below
 
     fui::ListItem format;
     format.label = tr(STR_OPDS_FILENAME_FORMAT);
     format.actionValue = static_cast<int16_t>(serverCount + 2);
+    format.opensNext = true;
     rowItems_.push_back(format);  // subtitle refreshed per render below
   }
 }
@@ -174,11 +178,17 @@ void OpdsServerListActivity::handleSelection() {
   if (nav.selected == serverCount + 2) {
     static constexpr StrId formatLabels[] = {StrId::STR_FMT_AUTHOR_TITLE, StrId::STR_FMT_TITLE_AUTHOR,
                                              StrId::STR_FMT_TITLE};
-    optionPopup.show(StrId::STR_OPDS_FILENAME_FORMAT, formatLabels, static_cast<int>(OpdsFilenameFormat::Count),
-                     SETTINGS.opdsFilenameFormat, [this](int idx) {
-                       SETTINGS.opdsFilenameFormat = static_cast<uint8_t>(idx);
-                       SETTINGS.saveToFile();
-                     });
+    const auto onSelect = [this](int idx) {
+      SETTINGS.opdsFilenameFormat = static_cast<uint8_t>(idx);
+      SETTINGS.saveToFile();
+    };
+    freeink::ui::Rect parentFrame{};
+    if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, nav.selected, parentFrame))
+      optionPopup.showInFrame(parentFrame, StrId::STR_OPDS_FILENAME_FORMAT, formatLabels,
+                              static_cast<int>(OpdsFilenameFormat::Count), SETTINGS.opdsFilenameFormat, onSelect);
+    else
+      optionPopup.show(StrId::STR_OPDS_FILENAME_FORMAT, formatLabels, static_cast<int>(OpdsFilenameFormat::Count),
+                       SETTINGS.opdsFilenameFormat, onSelect);
     requestUpdate();
     return;
   }

@@ -890,11 +890,15 @@ void SettingsActivity::toggleCurrentSetting() {
     if (count <= 0) return;
     if (settingstabs::moTrinhChon(count)) {
       auto onSelect = [this, row](const int index) { applySettingValue(row, static_cast<uint8_t>(index)); };
+      freeink::ui::Rect parentFrame{};
+      const bool inFrame = tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, parentFrame);
       if (!setting.enumStringValues.empty()) {
-        optionPopup.show(setting.nameId, setting.enumStringValues, current, std::move(onSelect));
+        if (inFrame) optionPopup.showInFrame(parentFrame, setting.nameId, setting.enumStringValues, current, std::move(onSelect));
+        else optionPopup.show(setting.nameId, setting.enumStringValues, current, std::move(onSelect));
       } else {
         const auto labels = setting.enumLabels();
-        optionPopup.show(setting.nameId, labels.data(), count, current, std::move(onSelect));
+        if (inFrame) optionPopup.showInFrame(parentFrame, setting.nameId, labels.data(), count, current, std::move(onSelect));
+        else optionPopup.show(setting.nameId, labels.data(), count, current, std::move(onSelect));
       }
       requestUpdate();
     } else {

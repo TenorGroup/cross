@@ -133,6 +133,8 @@ void TextSettingsActivity::rebuildRowItems() {
         break;
     }
     item.actionValue = static_cast<int16_t>(i);
+    item.opensNext = tab_ == Tab::Layout &&
+                     (i == static_cast<int>(LayoutRow::Alignment) || i == static_cast<int>(LayoutRow::ScreenMargin));
     rowItems_.push_back(item);
   }
 }
@@ -749,15 +751,25 @@ void TextSettingsActivity::confirmLayoutRow(const int row) {
   if (row < 0 || row >= static_cast<int>(LayoutRow::Count)) return;
   const auto current = formRow(this, formIndex(Tab::Layout, row));
   if (row == static_cast<int>(LayoutRow::Alignment)) {
-    optionPopup_.show(StrId::STR_ALIGNMENT, ALIGNMENT_IDS, static_cast<int>(std::size(ALIGNMENT_IDS)),
-                      current.selected, [this, row](int option) { applyChosenValue(Tab::Layout, row, option); });
+    const auto onSelect = [this, row](int option) { applyChosenValue(Tab::Layout, row, option); };
+    freeink::ui::Rect parentFrame{};
+    if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, parentFrame))
+      optionPopup_.showInFrame(parentFrame, StrId::STR_ALIGNMENT, ALIGNMENT_IDS,
+                               static_cast<int>(std::size(ALIGNMENT_IDS)), current.selected, onSelect);
+    else
+      optionPopup_.show(StrId::STR_ALIGNMENT, ALIGNMENT_IDS, static_cast<int>(std::size(ALIGNMENT_IDS)),
+                        current.selected, onSelect);
     requestUpdate();
   } else if (row == static_cast<int>(LayoutRow::ScreenMargin)) {
     std::vector<std::string> options;
     options.reserve(current.count);
     for (int m = MARGIN_MIN; m <= MARGIN_MAX; m += MARGIN_STEP) options.push_back(std::to_string(m));
-    optionPopup_.show(StrId::STR_SCREEN_MARGIN, options, current.selected,
-                      [this, row](int option) { applyChosenValue(Tab::Layout, row, option); });
+    const auto onSelect = [this, row](int option) { applyChosenValue(Tab::Layout, row, option); };
+    freeink::ui::Rect parentFrame{};
+    if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, parentFrame))
+      optionPopup_.showInFrame(parentFrame, StrId::STR_SCREEN_MARGIN, options, current.selected, onSelect);
+    else
+      optionPopup_.show(StrId::STR_SCREEN_MARGIN, options, current.selected, onSelect);
     requestUpdate();
   } else if (current.count) {
     applyChosenValue(Tab::Layout, row, (current.selected + 1) % current.count);

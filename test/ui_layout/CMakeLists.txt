@@ -22,6 +22,7 @@ add_test(NAME UiLayout.more_chevron COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CUR
 add_test(NAME UiLayout.icon_symmetry COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_icon_symmetry.py")
 add_test(NAME UiLayout.clock_guard COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_clock_guard.py")
 add_test(NAME UiLayout.list_render_wiring COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_list_render_wiring.py")
+add_test(NAME UiLayout.nested_callers COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_nested_callers.py")
 add_executable(UiLayout_stats_render stats_render.cpp
   "${REPO_ROOT}/src/components/ReadingStatsView.cpp"
   "${REPO_ROOT}/src/components/ReadingStatsFormat.cpp"

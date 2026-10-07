@@ -202,6 +202,7 @@ void BlePageTurnerActivity::rebuildRows() {
     // A tap reports the row's index, as on every list (the frame and the scroll read rows by index too);
     // what the row does is its code beside it.
     item.actionValue = static_cast<int16_t>(rowItems_.size());
+    item.opensNext = code == ROW_BIND_MENU || (code >= ROW_PAIRED_BASE && code < ROW_NO_DEVICE);
     rowItems_.push_back(item);
     rowCodes_.push_back(code);
   };
@@ -458,7 +459,7 @@ void BlePageTurnerActivity::openPairedPopup(const int bondIndex) {
   const std::string name = backend::bondName(bondIndex);
   const bool dangNoi = backend::connected();
   const StrId options[2] = {dangNoi ? StrId::STR_BLE_DISCONNECT : StrId::STR_BLE_CONNECT, StrId::STR_BLE_FORGET};
-  optionPopup.show(StrId::STR_BLE_PAIRED_DEVICES, options, 2, -1, [this, addr, name, dangNoi](const int idx) {
+  const auto onSelect = [this, addr, name, dangNoi](const int idx) {
     if (idx == 0) {
       if (dangNoi) {
         backend::disconnect();
@@ -473,7 +474,12 @@ void BlePageTurnerActivity::openPairedPopup(const int bondIndex) {
     capNhatTrangThai();
     rowsDirty = true;
     requestUpdate();
-  });
+  };
+  freeink::ui::Rect parentFrame{};
+  if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, nav.selected, parentFrame))
+    optionPopup.showInFrame(parentFrame, StrId::STR_BLE_PAIRED_DEVICES, options, 2, -1, onSelect);
+  else
+    optionPopup.show(StrId::STR_BLE_PAIRED_DEVICES, options, 2, -1, onSelect);
   requestUpdate();
 }
 
