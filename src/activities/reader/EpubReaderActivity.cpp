@@ -3153,6 +3153,7 @@ void EpubReaderActivity::renderBook() {
   if (overlay != Overlay::None && usesToolbarMenu()) {
     // The page just re-rendered under the overlay: refresh the snapshot that
     // backs panel->toolbar restores (any previous copy is stale).
+    releaseTextCachesBeforeOverlaySnapshot();
 #ifdef TENOR_PRESS_PROBE
     traceSheetHeap("STORE_BEGIN", renderer);
 #endif
@@ -5121,6 +5122,7 @@ bool EpubReaderActivity::renderPreview(const int marginTop, const int marginRigh
   if (paintDropped) return true;
   lastRenderCompleteMs = millis();
   if (overlay != Overlay::None && usesToolbarMenu()) {
+    releaseTextCachesBeforeOverlaySnapshot();
 #ifdef TENOR_PRESS_PROBE
     traceSheetHeap("STORE_BEGIN", renderer);
 #endif
@@ -5283,6 +5285,16 @@ void EpubReaderActivity::applyReaderTextSettingsLocked() {
   traceSheetHeap("FONT_LOAD_END", renderer);
 #endif
   invalidateTextSettingsLocked();
+}
+
+void EpubReaderActivity::releaseTextCachesBeforeOverlaySnapshot() {
+  if (!textSettingsDirty) return;
+  if (auto* fcm = renderer.getFontCacheManager()) {
+    fcm->releaseSdFontCaches();
+#ifdef TENOR_PRESS_PROBE
+    traceSheetHeap("FONT_CACHE_RELEASED", renderer);
+#endif
+  }
 }
 
 void EpubReaderActivity::markClosedTextFrameUpLocked() {

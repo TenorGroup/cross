@@ -422,6 +422,9 @@ class EpubReaderActivity final : public ReaderActivity {
   void applyReaderTextSettings();
   void applyReaderTextSettingsLocked();
   void invalidateTextSettingsLocked();
+  // Text reflow leaves resident glyph caches beside the page snapshot. Release
+  // them only for a dirty text-settings paint before storing the overlay page.
+  void releaseTextCachesBeforeOverlaySnapshot();
   // More panel rows.
   void buildMoreActions();
   std::string moreRowName(int row) const;
