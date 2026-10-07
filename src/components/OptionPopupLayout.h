@@ -4,6 +4,13 @@
 #include "components/PageRows.h"
 
 struct OptionPopupWindow { int first; int count; bool paged; bool next; };
+// Number of value rows that fit when a child replaces an existing frame. The
+// frame bounds stay fixed, so a long list scrolls inside the same ring.
+inline int optionPopupFrameRows(int frameHeight, int headerHeight, int rowHeight, int optionCount) {
+  if (optionCount <= 0) return 0;
+  const int available = (frameHeight - 12 - headerHeight) / std::max(1, rowHeight);
+  return std::max(1, std::min({optionCount, 16, std::max(1, available)}));
+}
 // The options of one page, between a "previous page" and a "next page" button when they do not all fit. A lone
 // last option takes the place of the "next page" button of the page before (PageRows.h).
 inline OptionPopupWindow optionPopupWindow(int total, int selected, int availableHeight, int headerHeight, int rowStride) {

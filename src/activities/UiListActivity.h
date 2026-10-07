@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
 #include "components/TenorMenuChrome.h"
@@ -93,6 +95,10 @@ class UiListActivity : public Activity, protected UiAppHost {
   using RowFrameStyle = ListRowFrameStyle;
   virtual RowFrameStyle rowFrameStyle() const { return {}; }
   void drawRowFrame(const RowFrameStyle& style = {});
+  // Bounds of the panel ring actually painted around a visible row.  This is
+  // the single source of truth for nested choices: callers pass these bounds
+  // to OptionPopup::showInFrame instead of reconstructing a second geometry.
+  bool rowFrameFor(freeink::ui::ActionId action, int value, freeink::ui::Rect& out) const;
   bool rowsFramed = false;
   // Where the lines of a row frame go for a row gap: the grey rule `rule` px above a row's top (in the gap), the
   // ring `top` px above the first row and `bottom` px below the last, so that every row, the first and the last
@@ -113,6 +119,15 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Foot of the list body the rows were laid out in: the fade under the last full row stops there, above any
   // chrome under the list (the touch tab bar).
   int rowFrameFloor = 0;
+  struct DrawnRowFrame {
+    freeink::ui::ActionId action = 0;
+    int first = -1;
+    int last = -1;
+    freeink::ui::Rect rect{};
+  };
+  static constexpr int MAX_DRAWN_ROW_FRAMES = 16;
+  std::array<DrawnRowFrame, MAX_DRAWN_ROW_FRAMES> drawnRowFrames{};
+  int drawnRowFrameCount = 0;
   // Rows a page turn keeps from the page before: the faded first row of a framed list.
   int fadeKeepRows() const { return rowsFramed ? 1 : 0; }
   // The faded ends of a framed list as the last frame drew them (y from, y to; empty when to <= from): a row

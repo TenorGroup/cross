@@ -478,6 +478,7 @@ void UiListActivity::reserveRowFrame(UiScreen& screen, const int rowGap) {
 
 void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   fadeTopFrom = fadeTopTo = fadeFootFrom = fadeFootTo = 0;
+  drawnRowFrameCount = 0;
   if (!rowsFramed) return;
   const auto lines = rowFrameLines(rowFrameGap);
   const bool ring = tenorchrome::roundFrames(fileList());
@@ -492,6 +493,7 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   fui::Rect first{}, last{};
   int firstIndex = -1, lastIndex = -1;
   int groupTop = 0;  // a page with groups: the ring top of the group still open
+  int groupFirst = -1;
   bool grouped = false;
   int barTop = 0, barBottom = 0;  // a page with groups: the tallest closed frame, home of the scroll bar
   for (int i = n.top; i < count; ++i) {
@@ -500,16 +502,24 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
     if (first.height <= 0) {
       first = r;
       firstIndex = i;
+      groupFirst = i;
       groupTop = r.y - lines.top;
     } else if (rowStartsGroup(i)) {
       // The group above ends at its last row; its heading stands between the 2 frames.
       const int groupBottom = last.y + last.height + lines.bottom;
       if (ring) tenorchrome::drawPanel(renderer, groupTop, groupBottom - groupTop);
+      if (drawnRowFrameCount < MAX_DRAWN_ROW_FRAMES)
+        drawnRowFrames[drawnRowFrameCount++] = {ACTION_ROW, groupFirst, lastIndex,
+                                                 {static_cast<int16_t>(tenorchrome::FOOT_BACK_X),
+                                                  static_cast<int16_t>(groupTop),
+                                                  static_cast<int16_t>(renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X),
+                                                  static_cast<int16_t>(groupBottom - groupTop)}};
       if (groupBottom - groupTop > barBottom - barTop) {
         barTop = groupTop;
         barBottom = groupBottom;
       }
       groupTop = r.y - lines.top;
+      groupFirst = i;
       grouped = true;
     } else if (i > n.top) {
       // Grey dotted rule from the text's edge, over every row but the first.
@@ -540,6 +550,12 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   const bool frameGoesOn = more && !rowStartsGroup(count);
   const int ringBottom = frameGoesOn ? std::max(fullBottom, floor) : fullBottom;
   if (ring) tenorchrome::drawPanel(renderer, lastTop, ringBottom - lastTop);
+  if (drawnRowFrameCount < MAX_DRAWN_ROW_FRAMES)
+    drawnRowFrames[drawnRowFrameCount++] = {ACTION_ROW, grouped ? groupFirst : firstIndex, lastIndex,
+                                             {static_cast<int16_t>(tenorchrome::FOOT_BACK_X),
+                                              static_cast<int16_t>(lastTop),
+                                              static_cast<int16_t>(renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X),
+                                              static_cast<int16_t>(ringBottom - lastTop)}};
   if (frameGoesOn && floor > fullBottom)
     tenorchrome::drawRowRule(renderer, last.y + last.height + rowFrameGap - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
                 renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
@@ -576,6 +592,18 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
     fadeFootTo = floor;
   }
   renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+}
+
+bool UiListActivity::rowFrameFor(const freeink::ui::ActionId action, const int value,
+                                 freeink::ui::Rect& out) const {
+  for (int i = 0; i < drawnRowFrameCount; ++i) {
+    const auto& frame = drawnRowFrames[i];
+    if (frame.action == action && value >= frame.first && value <= frame.last) {
+      out = frame.rect;
+      return true;
+    }
+  }
+  return false;
 }
 
 void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, const bool hasSubtitle) {

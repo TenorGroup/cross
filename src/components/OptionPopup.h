@@ -77,6 +77,30 @@ class OptionPopup {
     activate(currentIndex, std::move(onSelect));
   }
 
+  // Replace the contents of an already drawn touch frame.  The caller owns
+  // the frame decision and passes the exact ring bounds, so a nested choice
+  // never grows a second popup above or below its parent.
+  void showInFrame(const freeink::ui::Rect& parentFrame, StrId titleId, const StrId* optionIds,
+                   int optionCount, int currentIndex, std::function<void(int)> onSelect) {
+    show(titleId, optionIds, optionCount, currentIndex, std::move(onSelect));
+    activateInFrame(parentFrame);
+  }
+
+  void showInFrame(const freeink::ui::Rect& parentFrame, StrId titleId,
+                   const std::vector<std::string>& options, int currentIndex,
+                   std::function<void(int)> onSelect) {
+    show(titleId, options, currentIndex, std::move(onSelect));
+    activateInFrame(parentFrame);
+  }
+
+  static int rowsInFrame(const int frameHeight, const int headerHeight, const int rowHeight,
+                         const int optionCount) {
+    return optionPopupFrameRows(frameHeight, headerHeight, rowHeight, optionCount);
+  }
+
+  bool usesFrame() const { return inFrame; }
+  freeink::ui::Rect activeFrame() const { return frameRect; }
+
   // Touch shell: the actions of a held row in a menu anchored to the row, no title: under it when the
   // row is in the upper half and the menu fits over the bar at the foot, else over it; left on the list's
   // margin. A tap outside closes it.
@@ -208,7 +232,7 @@ class OptionPopup {
     // InteractionBuffer::beginPublishCycle().
     interactions.beginPublishCycle();
     fui::Frame<INTERACTION_CAPACITY> frame(target, device, noInput, interactions);
-    if (tenorchrome::kTouchShell && (anchored || !shell::isUgly())) {
+    if (tenorchrome::kTouchShell && (inFrame || anchored || !shell::isUgly())) {
       renderAnchored(renderer, frame, device.screen());
       interactions.publish();
       uiReady = true;
@@ -440,8 +464,8 @@ class OptionPopup {
     const int ROW = narrow ? 56 : std::max(56, renderer.getLineHeight(font) + 16);
     const int TEXT_X = narrow ? 24 : 16;
     const int count = static_cast<int>(ownedStrings.size());
-    const int x = tenorchrome::FOOT_BACK_X;
-    int w = screen.width - 2 * x;
+    const int x = inFrame ? frameRect.x : tenorchrome::FOOT_BACK_X;
+    int w = inFrame ? frameRect.width : screen.width - 2 * x;
     if (narrow) {
       int textWidth = 0;
       for (int i = 0; i < std::min(count, MAX_OPTIONS); ++i)
@@ -472,22 +496,26 @@ class OptionPopup {
     }
     int headH = static_cast<int>(headLines.size()) * lh;
     if (headH) headH += 2 * PAD + 8;
-    const int top = tenorchrome::contentTop(), bottom = tenorchrome::footBackTop(screen.height) - 8;
-    const int rows = std::max(1, std::min({count, MAX_OPTIONS, (bottom - top - 2 * PAD - headH) / ROW}));
+    const int top = inFrame ? frameRect.y : tenorchrome::contentTop();
+    const int bottom = inFrame ? frameRect.bottom() : tenorchrome::footBackTop(screen.height) - 8;
+    const int rows = inFrame ? rowsInFrame(frameRect.height, headH, ROW, count)
+                             : std::max(1, std::min({count, MAX_OPTIONS, std::max(1, (bottom - top - 2 * PAD - headH) / ROW)}));
     if (scrollTop < 0) scrollTop = selectedIndex - rows / 2;
     scrollTop = std::max(0, std::min(scrollTop, count - rows));
     const int first = scrollTop;
     shownRows = rows;
     shownPitch = ROW;
     const int h = headH + rows * ROW + 2 * PAD;
-    int y = bottom - h;
-    if (narrow || hasAnchor) {
+    int y = inFrame ? frameRect.y : bottom - h;
+    if (!inFrame && (narrow || hasAnchor)) {
       const int below = anchor.y + anchor.height + GAP, above = anchor.y - GAP - h;
       const bool upperHalf = anchor.y + anchor.height / 2 < screen.height / 2;
       y = upperHalf && below + h <= bottom ? below : above >= top ? above : below + h <= bottom ? below : bottom - h;
     }
-    y = std::max(top, y);
-    const fui::Rect box{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w), static_cast<int16_t>(h)};
+    y = inFrame ? frameRect.y : std::max(top, y);
+    const fui::Rect box = inFrame
+        ? frameRect
+        : fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w), static_cast<int16_t>(h)};
     if (shell::isUgly()) uglyPaper(renderer, box);
     else {
       renderer.fillRoundedRect(x, y, w, h, RADIUS, Color::White);
@@ -548,14 +576,26 @@ class OptionPopup {
     uiReady = false;
     active = true;
     anchored = false;
+    inFrame = false;
     headLaid = false;
+  }
+
+  void activateInFrame(const freeink::ui::Rect& parentFrame) {
+    frameRect = parentFrame;
+    inFrame = !parentFrame.empty();
+    anchored = false;
+    hasAnchor = false;
+    headLaid = false;
+    scrollTop = -1;
   }
 
   bool active = false;
   bool anchored = false;
+  bool inFrame = false;
   bool hasAnchor = false;
   bool marked = true;
   freeink::ui::Rect anchor{};
+  freeink::ui::Rect frameRect{};
   // Touch: the first row shown (-1: around the value in use) and what the last frame showed, for a swipe.
   mutable int scrollTop = -1;
   mutable int shownRows = MAX_OPTIONS;
