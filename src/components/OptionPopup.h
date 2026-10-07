@@ -518,8 +518,8 @@ class OptionPopup {
         : fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w), static_cast<int16_t>(h)};
     if (shell::isUgly()) uglyPaper(renderer, box);
     else {
-      renderer.fillRoundedRect(x, y, w, h, RADIUS, Color::White);
-      tenorchrome::drawRoundRing(renderer, x, y, w, h, tenorchrome::PANEL_RADIUS, 2, true);
+      renderer.fillRoundedRect(box.x, box.y, box.width, box.height, RADIUS, Color::White);
+      tenorchrome::drawRoundRing(renderer, box.x, box.y, box.width, box.height, tenorchrome::PANEL_RADIUS, 2, true);
     }
     frame.hit(box, ACTION_CHROME, 0, fui::InputTouch);
     int cursor = y + PAD + (headH ? PAD + 4 : 0);
@@ -552,7 +552,7 @@ class OptionPopup {
                 ACTION_OPTION, static_cast<int16_t>(i), fui::InputTouch);
     }
     if (rows < count) {
-      const auto bar = tenorchrome::frameScrollBar(x, y, w, h, rowsTop, rowsTop + rows * ROW);
+      const auto bar = tenorchrome::frameScrollBar(box.x, box.y, box.width, box.height, rowsTop, rowsTop + rows * ROW);
       fui::drawListScrollIndicator(frame.target(),
                                    fui::Rect{static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
                                              static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)},
