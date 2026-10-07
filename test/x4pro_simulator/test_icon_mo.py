@@ -7,7 +7,7 @@ import tempfile
 from test_thanh_day import run
 
 HOME_ICONS = [(44, 734), (134, 734), (220, 734), (306, 734), (396, 734)]  # 40 x 40, Recent chosen
-READER_ICONS = [(111, 734), (206, 734), (301, 734), (396, 734)]  # Contents, Text (chosen), More, Favorites
+READER_ICONS = [(111, 734), (206, 734), (301, 734), (396, 734)]  # Favorites, Contents, Text (chosen), More
 
 
 def pixels(image, x, y):
@@ -50,11 +50,11 @@ def main():
         (home,) = run(root / 'home', '', [2800])
         check(home, HOME_ICONS, 0, 'Home bar')
         (menu,) = run(root / 'menu', '3000:TAP:240,300;7000:TAP:240,775', [9500], settings=dict(readerTapTip=0))
-        check(menu, READER_ICONS, 1, 'reader menu bar')
+        check(menu, READER_ICONS, 2, 'reader menu bar')
         # The chosen tab's ring has the Home bar's size and place around its icon (founder 06/10: the reader
         # bar's icons crowded their ring).
         home_pill = pill(home, 18, 120)
-        reader_pill = pill(menu, 170, 284)
+        reader_pill = pill(menu, 265, 379)
         hw, hh = home_pill[2] - home_pill[0], home_pill[3] - home_pill[1]
         rw, rh = reader_pill[2] - reader_pill[0], reader_pill[3] - reader_pill[1]
         assert (rw, rh) == (hw, hh), f'reader chosen ring {rw}x{rh}, Home {hw}x{hh}'

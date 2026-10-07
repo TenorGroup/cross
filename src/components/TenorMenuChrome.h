@@ -76,7 +76,7 @@ struct ReaderToolRect { int x, y, width, height; };
 // The white band the status strip takes over a page with the reader menu open: down to the first blank row
 // under the strip, so a line of the page is covered whole or not at all.
 int readerStripBottom(const GfxRenderer& renderer);
-// Contents, Text, More and Favorites (founder 06/10).
+// The reader menu's tools, in readermenu::Tool's order (founder 07/10: Favorites, Contents, Text, More).
 constexpr int READER_TOOLS = 4;
 inline ReaderToolRect readerToolRect(const int width, const int height, const int tool) {
   const int left = FOOT_BACK_X + FOOT_BACK_SIZE + FOOT_PILL_GAP;

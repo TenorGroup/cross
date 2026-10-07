@@ -44,6 +44,21 @@ inline constexpr int ACTION_COUNT = static_cast<int>(Action::TILT_PAGE_TURN) + 1
 enum class Tab : uint8_t { FAVORITES, POSITION, READING, TOOLS };
 inline constexpr int TAB_COUNT = 4;
 
+// The tools of the toolbar reader menu (its tabs on the button boards, the X4 Pro's reader bar), in the order they
+// stand from left to right (founder 07/10: Favorites first). The one place that says it: a tool's value is its
+// place on the bar, and every icon, name and panel is looked up from the tool, never from a place.
+enum class Tool : uint8_t { FAVORITES, CONTENTS, TEXT, MORE };
+inline constexpr int TOOL_COUNT = 4;
+constexpr StrId toolName(const Tool tool) {
+  switch (tool) {
+    case Tool::FAVORITES: return StrId::STR_READER_TAB_FAVORITES;
+    case Tool::CONTENTS: return StrId::STR_TOOL_CONTENTS;
+    case Tool::TEXT: return StrId::STR_TOOL_TEXT;
+    case Tool::MORE: break;
+  }
+  return StrId::STR_TOOL_MORE;
+}
+
 struct Item {
   Action action;
   StrId labelId;

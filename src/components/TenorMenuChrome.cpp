@@ -20,6 +20,7 @@
 #include "ClockStatus.h"
 #include "HeaderBackTapTarget.h"
 #include "activities/Activity.h"
+#include "activities/reader/ReaderMenuLayout.h"
 #include "StatusGlyphs.h"
 #include "icons/tenorHomeTabIcons.h"
 #include "icons/tenorStatusIcons.h"
@@ -341,20 +342,24 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   HeaderBackTapTarget::setFoot(x, y, SIZE, SIZE);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (reader && !readerFootBar.keypad) {
-    const freeink::Icon* normal[] = {&icon_tenor_reader_position_40, &icon_tenor_reader_reading_40,
-                                     &icon_tenor_reader_tools_40, &icon_tenor_home_favorites_40};
-    const freeink::Icon* bold[] = {&icon_tenor_reader_position_bold_40, &icon_tenor_reader_reading_bold_40,
-                                   &icon_tenor_reader_tools_bold_40, &icon_tenor_home_favorites_bold_40};
-    static_assert(std::size(normal) == READER_TOOLS, "an icon a tool");
+    using readermenu::Tool;
+    const auto iconOf = [](const Tool tool, const bool bold) -> const freeink::Icon& {
+      switch (tool) {
+        case Tool::FAVORITES: return bold ? icon_tenor_home_favorites_bold_40 : icon_tenor_home_favorites_40;
+        case Tool::CONTENTS: return bold ? icon_tenor_reader_position_bold_40 : icon_tenor_reader_position_40;
+        case Tool::TEXT: return bold ? icon_tenor_reader_reading_bold_40 : icon_tenor_reader_reading_40;
+        case Tool::MORE: break;
+      }
+      return bold ? icon_tenor_reader_tools_bold_40 : icon_tenor_reader_tools_40;
+    };
     const int left = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), 0).x;
     if (!shell::isUgly()) drawPillRing(r, left, y, r.getScreenWidth() - FOOT_BACK_X - left, SIZE, 2, true);
-    static constexpr StrId names[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE,
-                                      StrId::STR_READER_TAB_FAVORITES};
     for (int i = 0; i < READER_TOOLS; ++i) {
       const auto cell = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), i);
       const bool active = i == readerFootBar.activeTool;
+      const auto tool = static_cast<Tool>(i);
       if (shell::isUgly()) {
-        const auto name = ugly::fit(r, ugly::Size::S22, I18N.get(names[i]), cell.width - 16);
+        const auto name = ugly::fit(r, ugly::Size::S22, I18N.get(readermenu::toolName(tool)), cell.width - 16);
         const int textWidth = ugly::width(r, ugly::Size::S22, name.c_str());
         ugly::text(r, ugly::Size::S22, cell.x + (cell.width - textWidth) / 2,
                    y + (SIZE + ugly::ascent(ugly::Size::S22)) / 2, name.c_str());
@@ -362,7 +367,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
             {cell.x + 8, y + 8, cell.x + cell.width - 8, y + SIZE - 8}, 0, 0, 2);
         continue;
       }
-      const freeink::Icon& icon = *(active ? bold[i] : normal[i]);
+      const freeink::Icon& icon = iconOf(tool, active);
       drawBarTab(r, cell.x + cell.width / 2, y, SIZE, icon.bits, icon.w, icon.h, active);
     }
   }

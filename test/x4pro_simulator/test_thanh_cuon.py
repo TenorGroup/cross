@@ -8,7 +8,7 @@ import test_thanh_dong as td
 
 # readerFrame(screen, 350): x 16..463, y 362..711, corner radius 20.
 RIGHT, BOTTOM, R = 464, 712, 20
-OPEN = f'3000:TAP:{TABS_X[1]},{td.BAR_Y};5000:TAP:240,68;7000:TAP:240,68;9500:TAP:240,775;12000:TAP:147,754'
+OPEN = f'3000:TAP:{TABS_X[1]},{td.BAR_Y};5000:TAP:240,68;7000:TAP:240,68;9500:TAP:240,775;12000:TAP:226,754'
 
 
 def outside_corner(image):

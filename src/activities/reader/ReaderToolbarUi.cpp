@@ -163,11 +163,15 @@ void ReaderToolbarUi::buildSheet(UiScreen& screen, const fui::SheetProps& props,
 void ReaderToolbarUi::buildToolRow(UiScreen& screen, const fui::LayoutAnchor anchor, const int16_t sideInset) {
   // The tab glyphs at the tab size of tenor/cross (40 px, founder 06/10), drawn as its icon bars draw a tab:
   // the one in focus solid and bold in the round-ended ring, the others grey.
-  static const freeink::Icon* const icons[] = {&icon_reader_tab_contents_40, &icon_reader_tab_text_40,
-                                               &icon_reader_tab_more_40, &icon_tenor_home_favorites_40};
-  static const freeink::Icon* const bolds[] = {&icon_reader_tab_contents_bold_40, &icon_reader_tab_text_bold_40,
-                                               &icon_reader_tab_more_bold_40, &icon_tenor_home_favorites_bold_40};
-  static_assert(std::size(icons) == kToolCount && std::size(bolds) == kToolCount, "an icon a tab");
+  const auto iconOf = [](const readermenu::Tool tool, const bool bold) -> const freeink::Icon& {
+    switch (tool) {
+      case readermenu::Tool::FAVORITES: return bold ? icon_tenor_home_favorites_bold_40 : icon_tenor_home_favorites_40;
+      case readermenu::Tool::CONTENTS: return bold ? icon_reader_tab_contents_bold_40 : icon_reader_tab_contents_40;
+      case readermenu::Tool::TEXT: return bold ? icon_reader_tab_text_bold_40 : icon_reader_tab_text_40;
+      case readermenu::Tool::MORE: break;
+    }
+    return bold ? icon_reader_tab_more_bold_40 : icon_reader_tab_more_40;
+  };
   // sideInset absorbs the difference between the two hosts' content bands
   // (the toolbar's is spaceLg-inset, the panel's is full width): the slots
   // must land on the same x either way, or the icons jump when a tap swaps
@@ -177,7 +181,7 @@ void ReaderToolbarUi::buildToolRow(UiScreen& screen, const fui::LayoutAnchor anc
   for (int i = 0; i < kToolCount; ++i) {
     const fui::Rect slot{static_cast<int16_t>(row.x + slotW * i), row.y, slotW, row.height};
     const bool active = i == model_.activeTool;
-    const freeink::Icon& icon = *(active ? bolds[i] : icons[i]);
+    const freeink::Icon& icon = iconOf(static_cast<readermenu::Tool>(i), active);
     if (uiTarget.paintingEnabled() && renderer_)
       tenorchrome::drawBarTab(*renderer_, slot.x + slot.width / 2, slot.y, slot.height, icon.bits, icon.w, icon.h,
                               active);
@@ -840,18 +844,15 @@ void ReaderToolbarUi::paintUgly() {
       r.setClipRect(clip[0], clip[1], clip[2], clip[3]);
     }
   }
-  static constexpr StrId tools[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE,
-                                    StrId::STR_READER_TAB_FAVORITES};
-  static_assert(std::size(tools) == kToolCount, "a name a tab");
-#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-  constexpr int named = 3;  // as before Favorites came to the button boards (the foot bar names its own tabs)
-#else
-  constexpr int named = kToolCount;
-#endif
-  for (int tool = 0; tool < named; ++tool) {
+  for (int tool = 0; tool < kToolCount; ++tool) {
+    // The X4 Pro leaves Favorites unnamed here, as before Favorites came to the button boards (the foot bar
+    // names its own tabs).
+    if (tenorchrome::kTouchShell && static_cast<readermenu::Tool>(tool) == readermenu::Tool::FAVORITES) continue;
     const auto box = app.publishedRect(ACTION_TOOL, tool);
     if (!box.empty()) {
-      const auto ink = readerugly::text(r, box.inset(fui::Insets{0, 8, 0, 8}), I18N.get(tools[tool]), fui::TextAlign::Center);
+      const auto ink = readerugly::text(r, box.inset(fui::Insets{0, 8, 0, 8}),
+                                        I18N.get(readermenu::toolName(static_cast<readermenu::Tool>(tool))),
+                                        fui::TextAlign::Center);
       if (model_.activeTool == tool) uglychrome::ring(r, ink);
     }
   }

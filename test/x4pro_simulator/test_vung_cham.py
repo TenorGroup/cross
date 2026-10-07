@@ -37,7 +37,7 @@ def centre_case(folder):
 def menu_case(folder):
     # One menu from the foot band (founder 06/10): it opens on its Text tab, the bar beside "<" holds the
     # reader menu's other tabs (contents first), and "<" closes it back to the page.
-    page, text, contents, back = run(folder, '3000:TAP:240,300;7000:TAP:240,775;9500:TAP:147,754;12000:TAP:46,754',
+    page, text, contents, back = run(folder, '3000:TAP:240,300;7000:TAP:240,775;9500:TAP:226,754;12000:TAP:46,754',
                                      [6600, 9000, 11500, 14000])
     assert not same(page, text), 'the foot band opened nothing'
     assert not same(text, contents), 'the contents tab in the bar opened nothing'

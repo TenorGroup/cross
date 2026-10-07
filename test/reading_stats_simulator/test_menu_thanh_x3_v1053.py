@@ -204,7 +204,7 @@ class LevelOneKeysTest(unittest.TestCase):
         # The Text tab's "Aa", out of focus, between the Contents tab's ring and the More tab: the 40 px art
         # inks about 34 x 20 px (the 24 px art inked under 24 x 15).
         img = self.res['shots'][0]
-        band = img.crop((150, img.height - 140, 290, img.height - 40))
+        band = img.crop((255, img.height - 140, 395, img.height - 40))
         box = ImageChops.invert(band).getbbox()
         self.assertIsNotNone(box)
         w, h = box[2] - box[0], box[3] - box[1]
@@ -216,7 +216,7 @@ SYNC = 14  # readermenu::Action::SYNC, the pin a reader who never pinned starts 
 
 
 class FavoritesTabTest(unittest.TestCase):
-    """4 tabs as on the X4 Pro: Contents, Text, More, Favorites. A held Select on a Text or More row pins it."""
+    """4 tabs as on the X4 Pro: Favorites, Contents, Text, More (the bar opens on Contents). A held Select on a Text or More row pins it."""
 
     @classmethod
     def setUpClass(cls):
