@@ -24,14 +24,20 @@ struct Hit {
   Spot spot = Spot::None;
   int row = -1;  // the row of the page (0..ROWS-1) for Spot::Row
 };
-// Rows take the whole width, margin included; the bottom band splits in three.
-inline Hit notebookAt(const int x, const int y) {
-  if (y >= LIST_TOP && y < LIST_TOP + ROWS * ROW) return {Spot::Row, (y - LIST_TOP) / ROW};
+// A subtitle of two lines pushes the rows down by SUB_LINE2. It is given only where the rows the page shows, pushed,
+// still end above the foot (7 rows at most); a page that cannot hold it keeps one line.
+inline constexpr int SUB_LINE2 = 26;
+inline int subShift(const int rowsShown, const bool twoLines) {
+  return twoLines && LIST_TOP + SUB_LINE2 + rowsShown * ROW <= FOOT_TOP ? SUB_LINE2 : 0;
+}
+// Rows take the whole width, margin included; the bottom band splits in three. `shift` is the subtitle's push.
+inline Hit notebookAt(const int x, const int y, const int shift = 0) {
+  if (y >= LIST_TOP + shift && y < FOOT_TOP) return {Spot::Row, (y - LIST_TOP - shift) / ROW};
   if (y >= FOOT_TOP && y < FOOT_BOTTOM) return {Spot::Foot, -1};
   if (y >= NAV_TOP && y < NAV_BOTTOM) return {x < NAV_CELL ? Spot::Prev : x < 2 * NAV_CELL ? Spot::Back : Spot::Next, -1};
   return {};
 }
-inline int rowTop(const int row) { return LIST_TOP + row * ROW; }
+inline int rowTop(const int row, const int shift = 0) { return LIST_TOP + shift + row * ROW; }
 
 // ---- the diary: underlined words ----
 // One underlined word as drawn: its baseline and its ink from x0 to x1.
@@ -138,9 +144,9 @@ inline Paper scrollPaper(const Paper& p, const int count, const bool down) {
 
 // A paper's rubbed-out area, widened so that no row below it is left with half its letters: an edge
 // that falls inside a row's ink moves to that row's edge.
-inline int rubEdge(const int y, const bool upper) {
+inline int rubEdge(const int y, const bool upper, const int shift = 0) {
   for (int k = 0; k <= ROWS + 1; ++k) {  // the list rows, the foot, the bottom band
-    const int a = k < ROWS ? rowTop(k) : k == ROWS ? FOOT_TOP : NAV_TOP;
+    const int a = k < ROWS ? rowTop(k, shift) : k == ROWS ? FOOT_TOP : NAV_TOP;
     const int b = a + ROW;
     if (a + 10 < y && y < b - 8) return upper ? a : b;
   }
@@ -200,8 +206,8 @@ inline AskSpot askAt(const Ask& a, const int x, const int y) {
 
 // ---- a scribble aimed at a row ----
 // The row of the page an X's crossing or a ring's middle falls on, or -1 when it falls off the list.
-inline int scribbleRow(const int x, const int y, const int rowsShown) {
-  const Hit h = notebookAt(x, y);
+inline int scribbleRow(const int x, const int y, const int rowsShown, const int shift = 0) {
+  const Hit h = notebookAt(x, y, shift);
   if (h.spot == Spot::Foot && rowsShown > ROWS) return ROWS;  // a lone last row stands in the foot line
   return h.spot == Spot::Row && h.row < rowsShown ? h.row : -1;
 }

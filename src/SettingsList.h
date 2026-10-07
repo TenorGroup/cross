@@ -540,6 +540,7 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
     emit(SettingInfo::Value(StrId::STR_UI_SHELL, &CrossPointSettings::uiShellSleepMemo,
                            {0, CrossPointSettings::SLEEP_SCREEN_MODE_COUNT, 1}, "uiShellSleepMemo"));
     emit(SettingInfo::Toggle(StrId::STR_UI_SHELL, &CrossPointSettings::uiShellClockMemo, "uiShellClockMemo"));
+    emit(SettingInfo::Toggle(StrId::STR_UI_SHELL, &CrossPointSettings::uiShellClockOnce, "uiShellClockOnce"));
     emit(SettingInfo::Toggle(StrId::STR_UI_SHELL, &CrossPointSettings::uglyBatteryHidden, "uglyBatteryHidden"));
 
     // Frontlight quick-panel state: persisted and web-exposed, but hidden
@@ -771,6 +772,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                            return s.valuePtr == &CrossPointSettings::uiShell || s.valuePtr == &CrossPointSettings::uiUglyLevel ||
                                   s.valuePtr == &CrossPointSettings::uiShellSleepMemo ||
                                   s.valuePtr == &CrossPointSettings::uiShellClockMemo ||
+                                  s.valuePtr == &CrossPointSettings::uiShellClockOnce ||
                                   s.valuePtr == &CrossPointSettings::uglyBatteryHidden;
                          }),
           v.end());

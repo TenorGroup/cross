@@ -355,7 +355,6 @@ namespace {
 // Which scribbles the user has drawn once: two bits, one byte on the card.
 constexpr const char* SCRIBBLES_FILE = "/.crosspoint/ugly-scribbles.txt";
 using touch::ROW;
-using touch::rowTop;
 constexpr int ASK_WIDTH = 400;
 // The line under the title is one line: a two-line message reads with its break as a space.
 std::string flat(std::string text) {
@@ -396,6 +395,9 @@ unsigned Notebook::loadScribbles() {
   const String raw = Storage.readFile(SCRIBBLES_FILE);
   return raw.length() ? static_cast<unsigned>(raw[0] - '0') & (touch::USED_STRIKE | touch::USED_RING) : 0u;
 }
+
+// Where a row of the page is, with the push of the subtitle the last frame had (the frame the finger is on).
+int Notebook::rowTopOf(const int row) const { return touch::rowTop(row, listShift); }
 
 int Notebook::rowsShown() const { return logic::rowsOnPage(topShown(), touch::ROWS, rowCount()); }
 
@@ -486,7 +488,7 @@ void Notebook::tapSetting(const int row, const int pageRow) {
   if (s.valuePtr == &CrossPointSettings::uiShell) {  // the whole device changes face: ask once
     pop = Pop::Shell;
     popRow = row;
-    ask = touch::placeAsk(rowTop(pageRow), askLines(true), rowTop(pageRow) + ROW / 2);
+    ask = touch::placeAsk(rowTopOf(pageRow), askLines(true), rowTopOf(pageRow) + ROW / 2);
     return;
   }
   const int count = valueCount(s), now = valueNow(s);
@@ -498,7 +500,7 @@ void Notebook::tapSetting(const int row, const int pageRow) {
     case touch::Change::Paper:
       pop = Pop::Values;
       popRow = row;
-      paper = touch::placePaper(rowTop(pageRow), count, now);
+      paper = touch::placePaper(rowTopOf(pageRow), count, now);
       break;
   }
 }
@@ -616,7 +618,7 @@ bool Notebook::onTouch(const Key key) {
       turnRows(-1);
       return true;
     case Key::Tap: {
-      const touch::Hit hit = touch::notebookAt(touchX, touchY);
+      const touch::Hit hit = touch::notebookAt(touchX, touchY, listShift);
       switch (hit.spot) {
         case touch::Spot::Row:
           if (hit.row >= rowsShown()) return false;
@@ -647,7 +649,7 @@ bool Notebook::onTouch(const Key key) {
       return false;
     }
     case Key::Hold: {
-      const int pageRow = touch::scribbleRow(touchX, touchY, rowsShown());  // a row, or the lone row in the foot
+      const int pageRow = touch::scribbleRow(touchX, touchY, rowsShown(), listShift);  // a row, or the lone row in the foot
       if (!lists || pageRow < 0) return false;
       const int row = topShown() + pageRow;
       bool folder = false;
@@ -657,7 +659,7 @@ bool Notebook::onTouch(const Key key) {
       if (page == homerows::Page::Folder && !folder) tasks[taskCount++] = Task::Delete;
       pop = Pop::Tasks;
       popRow = row;
-      paper = touch::placePaper(rowTop(pageRow), taskCount, 0);
+      paper = touch::placePaper(rowTopOf(pageRow), taskCount, 0);
       return true;
     }
     case Key::Scrawl:  // nobody can read it: abuse, a new line each time
@@ -668,7 +670,7 @@ bool Notebook::onTouch(const Key key) {
     case Key::Ring: {
       if (!lists) return false;
       showInk = true;
-      const int pageRow = touch::scribbleRow(touchX, touchY, rowsShown());
+      const int pageRow = touch::scribbleRow(touchX, touchY, rowsShown(), listShift);
       if (pageRow < 0) {
         said = quip(Quip::Scrawl);
         return true;
@@ -701,7 +703,7 @@ bool Notebook::onTouch(const Key key) {
       const int liftY = last.n ? last.y[last.n - 1] : touchY;
       pop = Pop::Ask;
       popRow = row;
-      ask = touch::placeAsk(rowTop(pageRow), askLines(false), liftY);
+      ask = touch::placeAsk(rowTopOf(pageRow), askLines(false), liftY);
       return true;
     }
     default:
@@ -757,7 +759,7 @@ bool Notebook::onPopTouch(const Key key) {
         case Task::Delete:
           pop = Pop::Ask;
           popRow = row;
-          ask = touch::placeAsk(rowTop(row - topShown()), askLines(false), touchY);
+          ask = touch::placeAsk(rowTopOf(row - topShown()), askLines(false), touchY);
           return true;
       }
       return true;
@@ -805,31 +807,41 @@ void Notebook::renderTouch() {
                                                                 : nullptr;
   if (!sub && !jab.empty()) sub = jab.c_str();
   if (!sub) sub = I18N.get(SUBTITLES[id(page)]);
-  text(renderer, Size::S22, touch::TEXT_X, touch::SUB_BASE, fit(renderer, Size::S22, flat(sub), touch::TEXT_R - touch::TEXT_X).c_str());
 
   const int count = rowCount();
   const int first = topShown();
+  // A two-line subtitle takes a second line where the page's rows leave room for it; a paper open keeps the layout it
+  // was opened on, and the rows stay where the finger saw them.
+  const char* cut = std::strchr(sub, '\n');
+  if (pop == Pop::None) listShift = touch::subShift(logic::rowsOnPage(first, touch::ROWS, count), cut && cut[1]);
+  const int room = touch::TEXT_R - touch::TEXT_X;
+  if (listShift && cut && cut[1]) {
+    text(renderer, Size::S22, touch::TEXT_X, touch::SUB_BASE, fit(renderer, Size::S22, std::string(sub, cut - sub), room).c_str());
+    text(renderer, Size::S22, touch::TEXT_X, touch::SUB_BASE + touch::SUB_LINE2, fit(renderer, Size::S22, flat(cut + 1), room).c_str());
+  } else {
+    text(renderer, Size::S22, touch::TEXT_X, touch::SUB_BASE, fit(renderer, Size::S22, flat(sub), room).c_str());
+  }
   if (rows.tooMany) {
     char tooMany[160];
     snprintf(tooMany, sizeof(tooMany), tr(STR_UGLY_FOLDER_TOO_MANY), static_cast<int>(rows.cap));
-    paragraph(renderer, Size::S30, touch::TEXT_X, rowTop(0) + 42, touch::TEXT_R - touch::TEXT_X, 44, tooMany);
+    paragraph(renderer, Size::S30, touch::TEXT_X, rowTopOf(0) + 42, touch::TEXT_R - touch::TEXT_X, 44, tooMany);
   } else if (count == 0) {
     const StrId empty = EMPTY[id(page)];
     if (empty != StrId::STR_NONE_OPT)
-      paragraph(renderer, Size::S30, touch::TEXT_X, rowTop(0) + 42, touch::TEXT_R - touch::TEXT_X, 44, I18N.get(empty));
+      paragraph(renderer, Size::S30, touch::TEXT_X, rowTopOf(0) + 42, touch::TEXT_R - touch::TEXT_X, 44, I18N.get(empty));
   }
   for (int i = 0; i < logic::rowsOnPage(first, touch::ROWS, count); ++i) {
-    const int row = first + i, base = rowTop(i) + 42;
+    const int row = first + i, base = rowTopOf(i) + 42;
     int room = touch::TEXT_R - touch::TEXT_X;
     if (group >= 0 && row < static_cast<int>(settings.size()) && settings[row].type == SettingType::TOGGLE) {
-      tickBox(renderer, touch::TEXT_R - 4, rowTop(i) + 30, valueNow(settings[row]) != 0);
+      tickBox(renderer, touch::TEXT_R - 4, rowTopOf(i) + 30, valueNow(settings[row]) != 0);
       room -= 40;
     } else if (row < static_cast<int>(rows.values.size()) && !rows.values[row].empty()) {
       const int vw = width(renderer, Size::S22, rows.values[row].c_str());
       text(renderer, Size::S22, touch::TEXT_R - vw, base, rows.values[row].c_str());
       room -= vw + 16;
     } else if (lists && pinned(row)) {
-      heart(renderer, touch::TEXT_R - 14, rowTop(i) + 32);
+      heart(renderer, touch::TEXT_R - 14, rowTopOf(i) + 32);
       room -= 40;
     }
     text(renderer, Size::S30, touch::TEXT_X, base, fit(renderer, Size::S30, labelAt(row), room).c_str());
@@ -862,7 +874,7 @@ void Notebook::renderTouch() {
     case Pop::Values:
     case Pop::Tasks: {
       const bool values = pop == Pop::Values;
-      ugly::paper(renderer, paper.top, paper.bottom, paper.hiddenAbove > 0, paper.hiddenBelow > 0, 750);
+      ugly::paper(renderer, paper.top, paper.bottom, paper.hiddenAbove > 0, paper.hiddenBelow > 0, 750, listShift);
       const std::string label = (values ? std::string(I18N.get(settings[popRow].nameId)) : labelAt(popRow)) + ":";
       char more[32];
       const touch::Paper& p = paper;
@@ -902,7 +914,7 @@ void Notebook::renderTouch() {
     case Pop::Ask:
     case Pop::Shell: {
       const bool shellAsk = pop == Pop::Shell;
-      ugly::paper(renderer, ask.top, ask.bottom, false, false, 770);
+      ugly::paper(renderer, ask.top, ask.bottom, false, false, 770, listShift);
       paragraph(renderer, Size::S30, 48, ask.textBase, ASK_WIDTH, touch::ASK_LINE,
                 shellAsk ? tr(STR_UGLY_SHELL_ASK) : tr(STR_UGLY_X4_DELETE_ASK));
       text(renderer, Size::S30, 80, ask.noTop + 42, shellAsk ? tr(STR_UGLY_SHELL_NO) : tr(STR_UGLY_X4_DELETE_NO));

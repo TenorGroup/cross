@@ -57,8 +57,8 @@ std::atomic<bool> frameAfterDeferredWrite{false};
 std::atomic<bool> frameDrawn{false};
 }  // namespace
 
-// Where a book opened from tenor/ugly goes on Home: the desk until the founder says otherwise (NONE is the diary).
-constexpr HomeMenuItem UGLY_HOME_FROM_BOOK = HomeMenuItem::DESK;
+// Where a book opened from tenor/ugly goes on Home: the diary (NONE).
+constexpr HomeMenuItem UGLY_HOME_FROM_BOOK = HomeMenuItem::NONE;
 
 // The one answer to "where does Home go", for the Home key and the swipe up from the bottom edge alike: on touch,
 // the desk for Ugly and Recent for Cross; on buttons, the shell's first screen.

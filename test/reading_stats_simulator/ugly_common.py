@@ -15,8 +15,9 @@ PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc
 ARTIFACTS = os.environ.get('UGLY_SHOTS')  # a directory: keep the screenshots as PNG
 BOOKS = [('Kidnapped', 'b0.txt'), ('Sách thử 5000 chương có bìa', 'b1.txt'), ('Truyện Kiều', 'b2.txt'),
          ('Dế Mèn phiêu lưu ký', 'b3.txt'), ('Số đỏ', 'b4.txt')]
-# The sleep sentence depends on the day, and the clock must not draw in the corner.
-SETTINGS = {'tenorPresetVersion': 1, 'language': 'VI', 'sleepTimeout': 10, 'clockShowInHeader': 0}
+# The sleep sentence depends on the day, and the clock must not draw in the corner (uiShellClockOnce says the
+# one-time turn on of a legacy file is done, so the hidden clock stays hidden).
+SETTINGS = {'tenorPresetVersion': 1, 'language': 'VI', 'sleepTimeout': 10, 'clockShowInHeader': 0, 'uiShellClockOnce': 1}
 
 
 def yesterday():

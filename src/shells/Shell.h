@@ -30,6 +30,9 @@ std::unique_ptr<Activity> makeHome(GfxRenderer& renderer, MappedInputManager& ma
 // the one they entered (a screen chosen by hand stays), and Home is drawn again.
 void changed();
 
+// The settings file was read: a device already in tenor/ugly shows its hidden header clock, once.
+void settingsLoaded();
+
 // A value was changed on a settings screen: the shell may have a word to say about it.
 void valueChanged(const SettingInfo& setting);
 

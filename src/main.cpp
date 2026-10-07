@@ -771,6 +771,7 @@ void setup() {
 #ifdef TENOR_PRESS_PROBE
   logHeapMark("settings-json");
 #endif
+  shell::settingsLoaded();
 #if CROSSPOINT_BLE_HID_HOST
   beginPageTurner(renderer, SETTINGS.ble, runRemoteShortcut, restartIntoOpenBook);
 #endif

@@ -633,8 +633,9 @@ void torn(const GfxRenderer& r, const int y, const uint32_t seed) {
 }
 }  // namespace
 
-void paper(const GfxRenderer& r, const int top, const int bottom, const bool tornTop, const bool tornBottom, const uint32_t seed) {
-  const int e0 = touch::rubEdge(top - 12, true), e1 = touch::rubEdge(bottom + 12, false);
+void paper(const GfxRenderer& r, const int top, const int bottom, const bool tornTop, const bool tornBottom, const uint32_t seed,
+           const int listShift) {
+  const int e0 = touch::rubEdge(top - 12, true, listShift), e1 = touch::rubEdge(bottom + 12, false, listShift);
   r.fillRect(8, std::max(0, e0), 466, std::min(800, e1) - std::max(0, e0), false);
   if (tornTop) torn(r, top, seed);
   else line(r, 24, top + 2, 466, top - 3, seed, 2);

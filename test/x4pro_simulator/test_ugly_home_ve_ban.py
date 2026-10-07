@@ -1,6 +1,6 @@
 """X4 Pro, tenor/ugly: the Home key and the swipe up from the bottom edge land on the desk from every ugly screen.
 
-From the diary, the notebook, a Settings form (from a Home group or from Favorites) and a book they go to the desk; on the desk they do nothing.
+From the diary, the notebook and a Settings form (from a Home group or from Favorites) they go to the desk; from a book to the diary; on the desk they do nothing.
 Runs the X4 Pro simulator (pio run -e simulator_x4pro). X4PRO_PROGRAM picks another build.
 """
 import json
@@ -48,10 +48,12 @@ def lands(steps, verb, pins=None):
 def main():
     assert PROGRAM.exists(), f'X4 Pro simulator is required: {PROGRAM}'
     ugly_common.PROGRAM = PROGRAM
+    # A book goes back to the diary; every other screen to the desk.
+    want = lambda name: 'UglyDiary' if name == 'reader' else 'UglyDesk'
     wrong = [f'{name}/{act} -> {got}' for name, steps in REACH.items() for act, verb in ACT.items()
-             if (got := lands(steps, verb, PINS.get(name))) != 'UglyDesk']
-    assert not wrong, f'{len(wrong)}/{2 * len(REACH)} land off the desk: ' + '; '.join(wrong)
-    print('GREEN: ugly Home key and bottom swipe land on the desk')
+             if (got := lands(steps, verb, PINS.get(name))) != want(name)]
+    assert not wrong, f'{len(wrong)}/{2 * len(REACH)} land off target: ' + '; '.join(wrong)
+    print('GREEN: ugly Home key and bottom swipe land on the desk, and on the diary from a book')
 
 
 if __name__ == '__main__':

@@ -100,9 +100,12 @@ def bottom_case(folder, shell):
     # Reading updates the Recent card's metadata/progress; its selected foot tab is stable. The desk's top row
     # (statistics, Recent, Settings) is above the open book that shows the progress.
     box=(0,48,480,288) if shell else (16,724,464,784)
-    for im in (images[2],images[4]):
+    # Ugly: from the book (the last swipe) Home goes to the diary, so only the first Home is the desk.
+    for im in (images[2],) if shell else (images[2],images[4]):
         assert list(images[0].crop(box).getdata()) == list(im.crop(box).getdata()), \
             'bottom swipe did not return to the desk' if shell else 'bottom swipe did not return Recent'
+    if shell:
+        assert list(images[0].crop(box).getdata()) != list(images[4].crop(box).getdata()), 'bottom swipe from the book stayed on the desk'
     assert persisted(folder)['homeButtonTapAction']==9, 'gesture changed Home key preference'
 
 
