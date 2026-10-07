@@ -180,6 +180,7 @@ class ActivityManager {
   bool isForegroundActivityManagingTiltSensor() const;
   bool isForegroundReaderReady() const;
   bool foregroundReaderHoldsRadio() const;
+  bool foregroundReaderCoversPage() const;
   // The foreground reader frees what it can before the radio starts (ReaderActivity::yieldForRadio).
   bool yieldForegroundReaderForRadio();
   // Closes the foreground activity the way leaving it does and writes everything it deferred, so

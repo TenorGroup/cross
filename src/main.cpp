@@ -1423,8 +1423,11 @@ void loop() {
   bool bleInputActivity = false;
   {
     bleturner::Scene scene{};
-    scene.where =
-        activityManager.isForegroundReaderActivity() ? bleturner::Where::Reader : bleturner::Where::Elsewhere;
+    // A sheet over the page (the reader menu) puts the book out of front: the radio stopped before
+    // the sheet was drawn (EpubReaderActivity::stopRadioForSheet) and starts again on the page.
+    scene.where = activityManager.isForegroundReaderActivity() && !activityManager.foregroundReaderCoversPage()
+                      ? bleturner::Where::Reader
+                      : bleturner::Where::Elsewhere;
     scene.visit = activityManager.activityGeneration();
     scene.pageShown = activityManager.isForegroundReaderReady();
     // A book still building its index in the background keeps the radio off until the index

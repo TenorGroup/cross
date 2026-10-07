@@ -542,6 +542,7 @@ void EpubReaderActivity::openReaderMenu() {
     // go-to-percent... cancelled back to the menu), so the framebuffer holds
     // that screen, not the page: re-render the page and let renderBook() put
     // the toolbar on top. The in-reader fast path is openOverlay().
+    if (overlay == Overlay::None) stopRadioForSheet();
     overlay = Overlay::Toolbar;
     focusedTool = 0;
     panelHoldJumped = false;
@@ -771,6 +772,14 @@ void EpubReaderActivity::dropSectionsLaidOutWithoutToc() {
     }
     Section(epub, spine, renderer).clearCache();
   }
+}
+
+// A partial's checkpoint restore short of heap refuses the start as starved (Section::startBuild): the
+// heap is freed the way a starved step frees it, and the build starts again from the checkpoint.
+bool EpubReaderActivity::startBuildFreeingHeap(const ReaderRenderSpec& spec, const std::function<void()>& popupFn) {
+  bool started = section->startBuild(spec, popupFn);
+  while (!started && section->buildStarved() && releaseHeapForBuild()) started = section->startBuild(spec, popupFn);
+  return started;
 }
 
 bool EpubReaderActivity::releaseHeapForBuild() {
@@ -2513,6 +2522,10 @@ void EpubReaderActivity::renderBook() {
   settleOverlayRefresh();
   takePendingDeferredClear();  // page turns queue this instead of waiting for the lock
   if (!epub) return;
+  // A radio start in flight takes ~50 KB while the stack comes up: the page (its load, a build resumed
+  // from a checkpoint) waits for it rather than take the heap beside it (X3, 07/10/2026: abort() in a
+  // page restore at free 22,676). Once per book visit, about 20 ms.
+  bleturner::settleStart();
   // Read before the layout below settles it: a turn stepped past the pages laid out so far.
   const bool turnPastLaidOut = pageAwaitsLayout();
 
@@ -2626,9 +2639,15 @@ void EpubReaderActivity::renderBook() {
           bool started;
           {
             GfxRenderer::FrameBufferLoan loan(renderer);
-            started = section->startBuild(renderSpec, [this] { showBuildPopup(renderer, pagesUntilFullRefresh); });
+            started = startBuildFreeingHeap(renderSpec, [this] { showBuildPopup(renderer, pagesUntilFullRefresh); });
           }
           if (!started) {
+            if (section->buildStarved()) {
+              buildPopupPending = false;
+              showMemoryError();
+              stayAfterStarvedJump();
+              return;
+            }
             LOG_ERR("ERS", "Failed to start section build");
             section.reset();
             buildPopupPending = false;
@@ -2711,7 +2730,7 @@ void EpubReaderActivity::renderBook() {
                     static_cast<unsigned>(ESP.getMaxAllocHeap()), static_cast<unsigned>(ESP.getMinFreeHeap()));
 #endif
             GfxRenderer::FrameBufferLoan loan(renderer);
-            started = section->startBuild(renderSpec, [this] { showBuildPopup(renderer, pagesUntilFullRefresh); });
+            started = startBuildFreeingHeap(renderSpec, [this] { showBuildPopup(renderer, pagesUntilFullRefresh); });
           }
 #ifdef TENOR_UI_ACCEPTANCE
           LOG_DBG("ERS_TRACE", "BUILD_START_END t=%lu source=foreground ok=%u count=%u building=%u spine_bytes=%u heap=%u largest=%u min=%u",
@@ -2721,6 +2740,12 @@ void EpubReaderActivity::renderBook() {
                   static_cast<unsigned>(ESP.getMinFreeHeap()));
 #endif
           if (!started) {
+            if (section->buildStarved()) {
+              buildPopupPending = false;
+              showMemoryError();
+              stayAfterStarvedJump();
+              return;
+            }
             LOG_ERR("ERS", "Failed to start section build");
             section.reset();
             buildPopupPending = false;
@@ -2841,7 +2866,12 @@ void EpubReaderActivity::renderBook() {
     bool completedBuildTick = false;
     buildPopupPending = true;
     while (section->isPartial() && section->currentPage >= static_cast<int>(section->pageCount)) {
-      if (!section->isBuilding() && !section->startBuild(renderSpec)) {
+      if (!section->isBuilding() && !startBuildFreeingHeap(renderSpec)) {
+        if (section->buildStarved()) {
+          buildPopupPending = false;
+          showMemoryError();
+          return;
+        }
         LOG_ERR("ERS", "Failed to start partial extension build");
         section.reset();
         buildPopupPending = false;
@@ -4188,11 +4218,19 @@ void EpubReaderActivity::settleOverlayRefresh() {
   renderer.cleanupGrayscaleWithFrameBuffer();  // waits, then reseeds the baseline
 }
 
+// A sheet over the page needs heap a connecting radio holds: the page snapshot alone is 52 KB on the
+// X3, and the panels load lists and fonts. The radio stops before the sheet is drawn and starts again
+// once the page is back in front (coversPage). Stopping took 0 to 37 ms in the X3 transition logs.
+void EpubReaderActivity::stopRadioForSheet() {
+  if (!bleturner::stopNow(1000)) LOG_ERR("ERS", "Radio still stopping under the sheet");
+}
+
 void EpubReaderActivity::openOverlay(Overlay target) {
   if (target == Overlay::Contents && waitsForIndex()) return;
   mappedInput.resetHomeButtonInput();
   const Overlay previous = overlay;
   if (previous == Overlay::None) {
+    stopRadioForSheet();
     bwUnderSheet = false;
     textCloseFrame.store(0, std::memory_order_relaxed);
   }

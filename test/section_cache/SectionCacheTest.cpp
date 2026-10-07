@@ -2343,6 +2343,100 @@ TEST_F(SectionCacheTest, StarvedAfterARestoreParksBackAtThePartialCheckpoint) {
   EXPECT_EQ(bytes(cache()), cold);
 }
 
+// v1.0.53, X3 07/10/2026: back in the book the radio restarts and takes ~50 KB, and the parked build's
+// resume runs out of heap in its checkpoint restore. It was abandoned ("Unable to resume") and the
+// chapter laid out again from its first page behind the indexing notice. A resume short of heap is a
+// starved build: it stays parked, the reader frees the heap, and it resumes from the same checkpoint.
+TEST_F(SectionCacheTest, ResumeShortOfHeapStaysParked) {
+  epub->contents = streakChapter(spec);
+  std::filesystem::remove(root / "html/0.html");
+  std::filesystem::remove(cache());
+  std::string cold;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.createSectionFile(spec));
+    cold = bytes(cache());
+  }
+  std::filesystem::remove(cache());
+  Section section(epub, 0, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  while (section.pageCount < 4) ASSERT_TRUE(section.buildSomeMore(1));
+  ASSERT_TRUE(section.parkBuild());
+  const uint16_t parked = section.pageCount;
+  ESP.freeHeap = 16820;
+  ESP.maxAlloc = 8180;
+  allocationProbe::rejectNextNothrow = true;
+  EXPECT_FALSE(section.buildSomeMore(1));
+  EXPECT_TRUE(section.buildStarved());
+  EXPECT_TRUE(section.isBuilding()) << "a resume short of heap abandoned the build";
+  EXPECT_TRUE(section.isBuildParked());
+  EXPECT_EQ(section.pageCount, parked);
+  ESP = {};
+  while (!section.isBuildComplete()) ASSERT_TRUE(section.buildSomeMore(8));
+  EXPECT_EQ(bytes(cache()), cold);
+}
+
+// The same for a chapter reopened from its partial file: the restore at the start runs out of heap.
+// It used to lay the chapter out again from its first byte; the start is refused as starved, the
+// partial stays readable, and the next start restores from its checkpoint.
+TEST_F(SectionCacheTest, PartialRestoreShortOfHeapIsRefusedAsStarved) {
+  epub->contents = streakChapter(spec);
+  std::filesystem::remove(root / "html/0.html");
+  std::filesystem::remove(cache());
+  std::string cold;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.createSectionFile(spec));
+    cold = bytes(cache());
+  }
+  std::filesystem::remove(cache());
+  uint16_t watermark = 0;
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.startBuild(spec));
+    while (section.pageCount < 4) ASSERT_TRUE(section.buildSomeMore(1));
+    section.suspendBuild();
+    ASSERT_TRUE(section.isPartial());
+    watermark = section.pageCount;
+  }
+  Section reopened(epub, 0, renderer);
+  ASSERT_TRUE(reopened.loadSectionFile(spec));
+  // The first TextBlock the restore asks for is refused, on a heap under the step floor.
+  bool refused = false;
+  for (unsigned call = 1; call < 20 && !refused; ++call) {
+    ESP.freeHeap = 16820;
+    ESP.maxAlloc = 8180;
+    allocationProbe::rejectSize = sizeof(TextBlock);
+    allocationProbe::matchingCalls = 0;
+    allocationProbe::rejectCall = call;
+    allocationProbe::rejected = 0;
+    storageMetrics::begin();
+    storageMetrics::watchPrefix(root.string() + "/html/0.html", 0, 64);
+    const bool started = reopened.startBuild(spec);
+    storageMetrics::enabled = false;
+    allocationProbe::rejectSize = 0;
+    ESP = {};
+    ASSERT_EQ(allocationProbe::rejected, 1u) << "no TextBlock was asked for at call " << call;
+    if (started) {
+      EXPECT_EQ(storageMetrics::prefixReadBytes, 0u) << "laid out again from the first byte at call " << call;
+      reopened.abandonBuild();
+      continue;
+    }
+    refused = true;
+    EXPECT_TRUE(reopened.buildStarved());
+    EXPECT_FALSE(reopened.isBuilding());
+    EXPECT_EQ(reopened.pageCount, watermark) << "the partial's pages are gone";
+  }
+  ASSERT_TRUE(refused);
+  storageMetrics::begin();
+  storageMetrics::watchPrefix(root.string() + "/html/0.html", 0, 64);
+  ASSERT_TRUE(reopened.startBuild(spec));
+  storageMetrics::enabled = false;
+  EXPECT_EQ(storageMetrics::prefixReadBytes, 0u) << "the chapter was laid out again from its first byte";
+  while (!reopened.isBuildComplete()) ASSERT_TRUE(reopened.buildSomeMore(8));
+  EXPECT_EQ(bytes(cache()), cold);
+}
+
 }
 
 // The page shown while the chapter is laid out again under new text settings: it opens at the line
