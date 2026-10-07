@@ -38,6 +38,7 @@ void settle() {
       settings.uiShellSleepMemo = static_cast<uint8_t>(settings.sleepScreen + 1);
       settings.sleepScreen = S::UGLY;
     }
+    settings.uiShellClockOnce = 1;  // the one-time turn on of settingsLoaded() has nothing left to do
     if (settings.clockShowInHeader == S::CLOCK_HEADER_HIDE) {
       settings.clockShowInHeader = S::CLOCK_HEADER_TIME;
       settings.uiShellClockMemo = 1;
@@ -55,6 +56,20 @@ void settle() {
   settings.saveToFile();
 }
 }  // namespace
+
+// A device already in tenor/ugly when this arrived: its hidden clock was set before the shell had a clock of its own,
+// so it shows the time once, as going in would have. In memory only (no card write before the first frame): the next
+// settings save keeps it with the flag, and until then every start does the same again.
+void settingsLoaded() {
+  auto& settings = SETTINGS;
+  using S = CrossPointSettings;
+  if (!isUgly() || settings.uiShellClockOnce) return;
+  settings.uiShellClockOnce = 1;
+  if (settings.clockShowInHeader == S::CLOCK_HEADER_HIDE) {
+    settings.clockShowInHeader = S::CLOCK_HEADER_TIME;
+    settings.uiShellClockMemo = 1;
+  }
+}
 
 void changed() {
   settle();

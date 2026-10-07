@@ -760,6 +760,7 @@ void setup() {
     SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_TOOLBAR;
   }
   SETTINGS.loadFromFile();
+  shell::settingsLoaded();
 #if CROSSPOINT_BLE_HID_HOST
   beginPageTurner(renderer, SETTINGS.ble, runRemoteShortcut, restartIntoOpenBook);
 #endif
