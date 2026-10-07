@@ -221,6 +221,15 @@ void tenorchrome::drawFavoriteMark(const GfxRenderer& r, const int x, const int 
       if (rows[j] >> i & 1) r.drawPixel(x + i, y + j, true);
 }
 
+tenorchrome::FrameBar tenorchrome::frameScrollBar(const int frameX, const int frameY, const int frameW,
+                                                  const int frameH, const int rowsTop, const int rowsBottom,
+                                                  const bool ring) {
+  const int corner = ring ? PANEL_RADIUS : 0;
+  const int top = std::max(rowsTop, frameY + corner);
+  const int bottom = std::min(rowsBottom, frameY + frameH - corner);
+  return {frameX + frameW - 2 - FRAME_BAR_AIR - FRAME_BAR_WIDTH, top, FRAME_BAR_WIDTH, std::max(0, bottom - top)};
+}
+
 void tenorchrome::drawPanel(const GfxRenderer& g, const int y, const int h) {
   drawRoundRing(g, FOOT_BACK_X, y, g.getScreenWidth() - 2 * FOOT_BACK_X, h, PANEL_RADIUS, 2, true);
 }

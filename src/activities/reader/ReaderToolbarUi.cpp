@@ -549,10 +549,10 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.valueText.maxLines = 1;
     listProps_.chosenMark = fui::bitmapFromIcon(icon_reader_tick_24);
     listProps_.partialTrailingRow = fonts;
-    listProps_.scrollIndicatorInset = 4;
-    // The list ends at the frame's bottom edge: the bar keeps out of its round corner and rounds its ends.
-    listProps_.scrollIndicatorWidth = 6;
-    listProps_.scrollIndicatorFrameRadius = tenorchrome::PANEL_RADIUS;
+    // The rows keep clear of the scroll bar's column (kBarStrip, the strip list() used to take for it); the bar
+    // goes where every framed list's goes (tenorchrome::frameScrollBar), drawn below.
+    constexpr int16_t kBarStrip = 12;
+    listProps_.scrollIndicator = false;
     listProps_.rowStyles = fui::defaultListRowStyles();
     nav_.selected = std::clamp(model_.selectedIndex, -1, count - 1);
     nav_.followOnBuild = nav_.selected >= 0;
@@ -574,14 +574,23 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.items = windowItems_;
     listProps_.itemsWindowFirst = static_cast<uint16_t>(nav_.top);
     listProps_.itemsWindowCount = static_cast<uint16_t>(std::max(0, windowCount));
-    if (count > 0) fui::list(screen.frame(), listRect, listProps_);
+    if (count > 0) {
+      const fui::Rect rowsRect{listRect.x, listRect.y, static_cast<int16_t>(listRect.width - kBarStrip),
+                               listRect.height};
+      fui::list(screen.frame(), rowsRect, listProps_);
+      const auto bar =
+          tenorchrome::frameScrollBar(frame.x, frame.y, frame.width, frame.height, listRect.y, listRect.bottom());
+      fui::drawListScrollIndicator(screen.target(),
+                                   {static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
+                                    static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)},
+                                   static_cast<uint32_t>(count), static_cast<uint32_t>(std::max(1, nav_.visibleRows)),
+                                   static_cast<uint32_t>(nav_.top), static_cast<int16_t>(bar.width));
+    }
     if (model_.rowPinned && renderer_ && uiTarget.paintingEnabled()) {
       // The heart stands before the value (and the chevron), inside the frame; on the size row, before its "-".
       const int16_t lh = screen.target().lineHeight(listProps_.labelText.font);
       const int chevron = fui::listChevronWidth(fui::listChevronSpan(lh)) + listProps_.textGap;
-      // The scroll bar's strip, which list() takes from the rows' right side (rowInset is 0 here).
-      const bool reserved = listProps_.scrollIndicator && (count > nav_.visibleRows || listProps_.nav);
-      const int strip = reserved ? listProps_.scrollIndicatorWidth + listProps_.scrollIndicatorInset + 2 : 0;
+      const int strip = kBarStrip;
       for (int i = 0; i < std::min(nav_.visibleRows, windowCount); ++i) {
         const int index = nav_.top + i;
         if (!model_.rowPinned(index)) continue;
