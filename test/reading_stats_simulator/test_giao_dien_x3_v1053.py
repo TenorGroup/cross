@@ -117,5 +117,45 @@ class ValueColumnTest(unittest.TestCase):
         self.assertLessEqual(max(rights) - min(rights), 1, f'values end on {rights}')
 
 
+def pill_air(img, top, bottom=760):
+    """(left, right) air between the cursor pill's ring and the words inside it. The ring is the dark run joined to
+    the pill's straight top line; every other dark pixel between its ends and its 2 lines is inside it."""
+    from collections import deque
+    from pill_row import pill_band
+    y0, y1 = pill_band(img, top, bottom, 60, 420)
+    px = img.load()
+    ring = {(img.width // 2, y0)}
+    todo = deque(ring)
+    while todo:
+        x, y = todo.popleft()
+        for p in ((x + dx, y + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)):
+            if p not in ring and 0 <= p[0] < img.width and y0 <= p[1] < y1 and px[p] < 128:
+                ring.add(p)
+                todo.append(p)
+    left, right = min(p[0] for p in ring), max(p[0] for p in ring)
+    words = [x for y in range(y0, y1) for x in range(left, right + 1) if px[x, y] < 128 and (x, y) not in ring]
+    return min(words) - left, right - max(words)
+
+
+class PillAirTest(unittest.TestCase):
+    """The words inside the cursor pill keep the air they keep in Settings, the toolbar reader menu too."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.settings = settings_shot(['DOWN'] * 4 + ['CONFIRM'])
+        text, margin = parallel([TO_TEXT_ROW(0), TO_TEXT_ROW(ROW['screenMargin']) + ['CONFIRM']])
+        cls.text, cls.margin = text['shots'][-1], margin['shots'][-1]
+        for name in ('settings', 'text', 'margin'):
+            keep(f'vien-{name}', getattr(cls, name))
+
+    def test_toolbar_rows_keep_the_settings_air(self):
+        ref = pill_air(self.settings, 100)
+        for name in ('text', 'margin'):
+            img = getattr(self, name)
+            air = pill_air(img, sheet_top(img) + 60)
+            self.assertGreaterEqual(air[0], ref[0], f'{name}: air left {air} under Settings {ref}')
+            self.assertGreaterEqual(air[1], ref[0], f'{name}: air right {air} under Settings {ref}')
+
+
 if __name__ == '__main__':
     unittest.main()

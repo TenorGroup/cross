@@ -371,10 +371,10 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   listProps_.rowHeight = rowH;
   listProps_.rowGap = rowGap;
   // Body-size text: small reads condensed and the taller row doubles as the
-  // tap target. A little air inside the row so the cursor's outline does not
-  // cut the first letter, the value or the chevron/tick at the row end.
+  // tap target. The words keep the air inside the cursor pill that every list of
+  // the theme keeps (the buttons: TENOR_PILL_SIDE_PADDING, as in Settings).
   listProps_.labelText = tokens.bodyText;
-  listProps_.sidePadding = tokens.spaceMd;
+  listProps_.sidePadding = tokens.listSidePadding;
   // The list band spans the sheet's full width -- the scroll track hugs the
   // panel edge (theme bezel inset included) exactly like a full-screen list.
   // rowInset pulls the rows back to the title's spaceLg alignment.
