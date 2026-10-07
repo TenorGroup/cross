@@ -1,7 +1,7 @@
 """tenor/ugly on the X4 Pro touch screen, in the simulator: whole journeys by finger and Home key.
 
 Founder rules under test (04/10/2026): the three tiers of the X3 (diary, desk, notebook) touched straight;
-the Home key goes to the desk (founder 06/10/2026), "to the desk" goes up one tier; a swipe across turns the notebook page, from the edge too;
+the Home key goes to the desk, from a book to the diary (founder 06 and 07/10/2026), "to the desk" goes up one tier; a swipe across turns the notebook page, from the edge too;
 the approved answer sheet commits an option on tap, long lists open an anchored paper; the
 Interface row asks once before leaving the shell; a file struck out asks before it is binned; a held row
 opens tasks and Pin persists its target.
@@ -49,9 +49,9 @@ class UglyTouchX4ProTest(unittest.TestCase):
         ugly_common.PROGRAM = PROGRAM
         return card.run(script, shots, timeout=120)
 
-    def test_read_on_and_the_home_key_lands_on_the_desk(self):
+    def test_read_on_and_the_home_key_lands_on_the_diary(self):
         log, _ = self.run_card(self.card(), '2000:TAP:120,450;4500:HOME;6500:QUIT')
-        self.assertEqual(entered(log), ['Boot', 'UglyDiary', 'TxtReader', 'UglyDesk'], log[-1500:])
+        self.assertEqual(entered(log), ['Boot', 'UglyDiary', 'TxtReader', 'UglyDiary'], log[-1500:])
 
     def test_desk_objects_and_one_tier_back_at_a_time(self):
         # the diary's "look at the whole desk" (its last line, under the title the diary has had since rc.2), the clock
