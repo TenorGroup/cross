@@ -17,6 +17,7 @@ fixture = r'''
 #include <memory>
 #include "''' + str(repo / 'src/activities/reader/ReaderTapZones.h') + r'''"
 namespace tenorchrome { constexpr bool kTouchShell = true; }
+constexpr int kTextTool = 2;  // readermenu::Tool::TEXT
 struct R {}; struct I {};
 readertap::Zone next = readertap::Zone::None;
 namespace ReaderUtils {
@@ -39,7 +40,7 @@ int main() {
   next = readertap::Zone::TopMenu; r.loop();
   assert(activityManager.topMenus == 1 && r.overlay == Overlay::None && r.fellThrough == 0);
   next = readertap::Zone::TextMenu; r.loop();
-  assert(r.overlay == Overlay::Text && r.focusedTool == 1 && r.fellThrough == 0);
+  assert(r.overlay == Overlay::Text && r.focusedTool == kTextTool && r.fellThrough == 0);
   r.overlay = Overlay::None; r.toolbar = false; r.loop();
   assert(r.listMenus == 1 && r.overlay == Overlay::None);
   r.toolbar = true; r.section.reset(); r.loop();

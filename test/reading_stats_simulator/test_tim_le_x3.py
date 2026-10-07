@@ -6,6 +6,7 @@ Run with TEST_PROGRAM (the X3 simulator) and MENU_TEST_OUTPUT as in test_menu_cu
 """
 import shutil
 import time
+import unittest
 
 from PIL import Image
 
@@ -28,7 +29,12 @@ def heart_and_capital(path):
     return (heart[0] + heart[-1]) / 2, (capital[0] + capital[-1]) / 2
 
 
-def main():
+class MarginHeartTest(unittest.TestCase):
+    def test_the_margin_heart_is_on_the_middle_of_the_capital(self):
+        self.assertEqual(check(), [])
+
+
+def check():
     failures = []
     for size in (0, 2):
         label = f'tim-{size}'
@@ -39,9 +45,8 @@ def main():
         heart, capital = heart_and_capital(t.o / f'{label}-pin.png')
         if abs(heart - capital) > 1:
             failures.append(f'size {size}: the heart is {heart - capital:+.1f} px off the middle of the capital')
-    assert not failures, '\n'.join(failures)
-    print('GREEN: X3 margin hearts on the middle of the capitals')
+    return failures
 
 
 if __name__ == '__main__':
-    main()
+    unittest.main()

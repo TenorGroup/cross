@@ -2,6 +2,8 @@
 #include <BoardConfig.h>
 #include <HalGPIO.h>
 
+#include <algorithm>
+
 #include "CrossPointSettings.h"
 #include "UIScale.h"
 class GfxRenderer;
@@ -122,7 +124,13 @@ void drawPanel(const GfxRenderer& g, int y, int h);
 constexpr int FRAME_BAR_WIDTH = 6;
 constexpr int FRAME_BAR_AIR = 4;
 struct FrameBar { int x, y, width, height; };
-FrameBar frameScrollBar(int frameX, int frameY, int frameW, int frameH, int rowsTop, int rowsBottom, bool ring = true);
+inline FrameBar frameScrollBar(const int frameX, const int frameY, const int frameW, const int frameH, const int rowsTop,
+                               const int rowsBottom, const bool ring = true) {
+  const int corner = ring ? PANEL_RADIUS : 0;
+  const int top = std::max(rowsTop, frameY + corner);
+  const int bottom = std::min(rowsBottom, frameY + frameH - corner);
+  return {frameX + frameW - 2 - FRAME_BAR_AIR - FRAME_BAR_WIDTH, top, FRAME_BAR_WIDTH, std::max(0, bottom - top)};
+}
 // The grey dotted rule between 2 rows of a frame (every other pixel), from x0 up to x1.
 void drawRowRule(const GfxRenderer& g, int y, int x0, int x1);
 constexpr int STATUS_HEIGHT = 32;
