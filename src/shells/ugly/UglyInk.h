@@ -89,7 +89,7 @@ void navRow(const GfxRenderer& renderer, const char* prev, const char* back, con
 void arrow(const GfxRenderer& renderer, int x, int y, bool down, int length);
 // A scrap of paper clipped on: rubbed out to white (no row left half erased), edged by pen. A torn edge
 // is a zigzag; an edge left whole gets a folded corner (bottom) or the clip (top).
-void paper(const GfxRenderer& renderer, int top, int bottom, bool tornTop, bool tornBottom, uint32_t seed);
+void paper(const GfxRenderer& renderer, int top, int bottom, bool tornTop, bool tornBottom, uint32_t seed, int listShift = 0);
 // A box ticked or empty, its right edge at x.
 void tickBox(const GfxRenderer& renderer, int x, int y, bool ticked);
 // A small heart centred at (x, y).

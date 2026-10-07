@@ -85,6 +85,7 @@ class Notebook final : public Screen {
   int groupTop = 0;
   std::vector<SettingInfo> settings;  // its rows, the last row of the page opening the old screen
   std::string said;                   // a line that takes the subtitle's place until the next touch
+  int listShift = 0;                  // how far the last frame pushed the rows down for a second subtitle line
   unsigned scribbles = 0;             // touch::USED_* bits, kept on the card
   bool scribblesChanged = false;
   bool showInk = false;  // draw the strokes of the last scribble back, once
@@ -94,6 +95,7 @@ class Notebook final : public Screen {
   int& top() { return group >= 0 ? groupTop : cursor[static_cast<int>(page)]; }
   int topShown() const { return group >= 0 ? groupTop : cursor[static_cast<int>(page)]; }
   int rowsShown() const;
+  int rowTopOf(int row) const;
   void turnRows(int direction);
   void openGroup(int id);
   void closeGroup();

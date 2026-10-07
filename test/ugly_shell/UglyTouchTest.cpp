@@ -18,6 +18,19 @@ TEST(TouchPage, RowsFootAndTheBottomBand) {
   EXPECT_EQ(notebookAt(240, 784).spot, Spot::None) << "the strip over the Home key is nobody's";
 }
 
+TEST(TouchPage, ASecondSubtitleLinePushesTheRowsWhereTheyStillFit) {
+  EXPECT_EQ(subShift(0, true), SUB_LINE2);
+  EXPECT_EQ(subShift(7, true), SUB_LINE2) << "seven pushed rows still end above the foot";
+  EXPECT_EQ(subShift(8, true), 0) << "eight would run into the foot: one line";
+  EXPECT_EQ(subShift(9, true), 0) << "the lone row in the foot line stays put";
+  EXPECT_EQ(subShift(3, false), 0) << "one line pushes nothing";
+  EXPECT_LE(rowTop(6, SUB_LINE2) + ROW, FOOT_TOP);
+  EXPECT_EQ(notebookAt(2, LIST_TOP + SUB_LINE2 - 1, SUB_LINE2).spot, Spot::None) << "the second line is no row";
+  EXPECT_EQ(notebookAt(2, LIST_TOP + SUB_LINE2, SUB_LINE2).row, 0);
+  EXPECT_EQ(notebookAt(2, rowTop(6, SUB_LINE2) + ROW - 1, SUB_LINE2).row, 6);
+  EXPECT_EQ(notebookAt(2, 655, 0).row, 7) << "no push: the page as it was";
+}
+
 TEST(TouchDiary, AWordAloneOwnsItsLineTwoWordsSplitTheGap) {
   // "Đọc tiếp hay đổi sách?" on one line, "xem cả bàn" two lines down.
   const Word words[] = {{392, 32, 180}, {392, 260, 400}, {520, 120, 330}};
