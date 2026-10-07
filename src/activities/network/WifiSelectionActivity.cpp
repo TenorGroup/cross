@@ -628,7 +628,11 @@ void WifiSelectionActivity::attemptConnection() {
   powerManager.setPowerSaving(false);
   WiFi.mode(WIFI_STA);
   LOG_INF("WIFI", "STA ready");
-  WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
+  // Keep STA initialized for the explicit begin below. Power-cycling it here
+  // can break the next WPA handshake on routers that accepted the scan.
+  if (!WiFi.disconnect(false, false, 1000)) {
+    LOG_DBG("WIFI", "Disconnect before join timed out; trying explicit begin");
+  }
   delay(100);
   LOG_INF("WIFI", "Previous connection cleared");
 
