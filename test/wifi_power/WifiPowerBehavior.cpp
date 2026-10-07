@@ -94,6 +94,23 @@ void joinDeadlineStopsRadio() {
   expect(WiFi.currentMode == WIFI_MODE_NULL && powerManager.saving, "join deadline stops radio");
 }
 
+void joiningKeepsStationReadyForBegin() {
+  resetPlatform();
+  Fixture f;
+  f.activity.selectedSSID = "test-network";
+  f.activity.selectedRequiresPassword = true;
+  f.activity.enteredPassword = "test-password";
+  f.activity.usedSavedPassword = true;
+  WiFi.connectWhenStationReady = true;
+  f.activity.attemptConnection();
+  expect(WiFi.beginCalls == 1, "join starts an explicit WiFi connection");
+  expect(WiFi.currentMode == WIFI_STA && !WiFi.lastErase,
+         "join keeps station running and preserves AP config through begin");
+  f.activity.loop();
+  expect(f.activity.wifiConnectionHandedOff && !f.activity.finalResult.isCancelled,
+         "station join reaches successful parent handoff");
+}
+
 void manualBackReturnsToFocusedList() {
   resetPlatform();
   Fixture f;
@@ -303,6 +320,7 @@ void touchBackStillCompletesImmediately() {
 int main() {
   scanDeadlineStopsRadio();
   joinDeadlineStopsRadio();
+  joiningKeepsStationReadyForBegin();
   manualBackReturnsToFocusedList();
   completedScanLeavesListRadioOff();
   savePromptTimeoutCancelsWithoutHandoff();

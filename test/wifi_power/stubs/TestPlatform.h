@@ -445,6 +445,7 @@ class WiFiClass {
   int disconnectCalls = 0;
   int beginCalls = 0;
   bool lastErase = false;
+  bool connectWhenStationReady = false;
   void reset() { *this = WiFiClass{}; }
   void persistent(bool) {}
   bool mode(wifi_mode_t mode) {
@@ -471,7 +472,7 @@ class WiFiClass {
   int encryptionType(int index) const { return found.at(static_cast<size_t>(index)).encryption; }
   void begin(const char*, const char* = nullptr) {
     beginCalls++;
-    connectionStatus = WL_IDLE_STATUS;
+    connectionStatus = connectWhenStationReady && currentMode == WIFI_STA ? WL_CONNECTED : WL_IDLE_STATUS;
   }
   wl_status_t status() const { return connectionStatus; }
   IPAddress localIP() const { return {}; }
