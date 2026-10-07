@@ -14,7 +14,7 @@ using bleturner::Config;
 using fake::host;
 using fake::radio;
 
-constexpr size_t kEnoughFree = 65536;
+constexpr size_t kEnoughFree = 81920;
 constexpr size_t kEnoughLargest = 32768;
 
 class RuntimeTest : public ::testing::Test {
@@ -45,8 +45,8 @@ TEST_F(RuntimeTest, LowMemorySkipsHostWithoutInitialization) {
   EXPECT_EQ(host().releaseCalls, 1u);
   ASSERT_EQ(host().logs.size(), 1u);
   EXPECT_NE(host().logs.front().find("ERR HID begin skipped (insufficient-internal-heap)"), std::string::npos);
-  EXPECT_NE(host().logs.front().find("free=65535"), std::string::npos);
-  EXPECT_NE(host().logs.front().find("required_free=65536"), std::string::npos);
+  EXPECT_NE(host().logs.front().find("free=81919"), std::string::npos);
+  EXPECT_NE(host().logs.front().find("required_free=81920"), std::string::npos);
   EXPECT_EQ(host().maps.size(), 1u) << "a refusal prints the heap map (twice per boot at most)";
 }
 
@@ -312,7 +312,7 @@ TEST_F(RuntimeTest, ThirdFragmentedRefusalAsksForOneRestartUntilTheRadioComesUp)
 TEST_F(RuntimeTest, ShortHeapNeverAsksForARestart) {
   ASSERT_TRUE(bleturner::switchOn());
   radio().running = false;
-  host().heap = {kEnoughFree - 1, 23540};
+  host().heap = {bleturner::kMinimumFreeBytes - 1, 23540};
   for (int i = 0; i < 5; ++i) EXPECT_FALSE(bleturner::switchOn());
   EXPECT_FALSE(bleturner::detail::heapRestartWanted());
 }
@@ -321,7 +321,7 @@ TEST_F(RuntimeTest, ShortHeapNeverAsksForARestart) {
 // largest 61,428), the stack came up and left largest 26,612, so every start rolled back, 7 of
 // 7, and the restart that rescued the same book on 27/09 never came.
 TEST_F(RuntimeTest, PostInitRollbackInPiecesAsksForOneRestartUntilTheRadioComesUp) {
-  host().heap = {80000, 61428};
+  host().heap = {83228, 61428};
   radio().changeHeapOnBegin = true;
   radio().heapAfterBegin = {28812, 26612};
   EXPECT_FALSE(bleturner::switchOn());
@@ -339,11 +339,22 @@ TEST_F(RuntimeTest, PostInitRollbackInPiecesAsksForOneRestartUntilTheRadioComesU
   EXPECT_EQ(host().restarts, 1u);
   fake::reset(/*keepMemo=*/true);
   bleturner::begin(fake::hostFns(), config);
-  host().heap = {80000, 61428};
+  host().heap = {83228, 61428};
   radio().changeHeapOnBegin = true;
   radio().heapAfterBegin = {28812, 26612};
   for (int i = 0; i < 6; ++i) EXPECT_FALSE(bleturner::switchOn());
   EXPECT_FALSE(bleturner::detail::heapRestartWanted());
+}
+
+// X3, 07/10/2026: the heap check passed at free 73,656 largest 47,092, the stack left 22,676 free,
+// and the render task restoring a page beside it ran the heap dry: abort(). The start never comes up
+// now, and still counts toward the restart as the rollback did.
+TEST_F(RuntimeTest, HeapTheStackCannotLeaveABlockInIsRefusedBeforeTheStack) {
+  host().heap = {73656, 47092};
+  for (int i = 0; i < 3; ++i) EXPECT_FALSE(bleturner::switchOn());
+  EXPECT_EQ(radio().beginCalls, 0u);
+  EXPECT_TRUE(bleturner::detail::heapRestartWanted());
+  EXPECT_NE(host().logs.back().find("free=73656 largest=47092 required_free=81920"), std::string::npos);
 }
 
 // Refusals before the start and rollbacks after it are one streak; a start the stack itself
@@ -352,7 +363,7 @@ TEST_F(RuntimeTest, RefusalsAndRollbacksInPiecesCountTogetherAndAStackFailureBre
   host().heap = {87308, 23540};
   EXPECT_FALSE(bleturner::switchOn());
   EXPECT_FALSE(bleturner::switchOn());
-  host().heap = {80000, 61428};
+  host().heap = {83228, 61428};
   radio().changeHeapOnBegin = true;
   radio().heapAfterBegin = {28812, 26612};
   EXPECT_FALSE(bleturner::switchOn());
@@ -360,7 +371,7 @@ TEST_F(RuntimeTest, RefusalsAndRollbacksInPiecesCountTogetherAndAStackFailureBre
 
   fake::reset();
   bleturner::begin(fake::hostFns(), config);
-  host().heap = {80000, 61428};
+  host().heap = {83228, 61428};
   radio().changeHeapOnBegin = true;
   radio().heapAfterBegin = {28812, 26612};
   EXPECT_FALSE(bleturner::switchOn());
