@@ -13,6 +13,10 @@ p.add_argument('--cmake',default='cmake')
 p.add_argument('--jobs',default='4')
 a=p.parse_args(); repo=a.repo.resolve(); out=a.work.resolve(); here=Path(__file__).resolve().parent
 out.mkdir(parents=True,exist_ok=True)
+reader=(repo/'src/activities/reader/EpubReaderActivity.cpp').read_text()
+row_start=reader.rfind('\n',0,reader.index('catalogTextRow(const int id)'))+1
+row_end=reader.index('\n}',row_start)+2
+(out/'ReaderTextRowSlice.h').write_text(reader[row_start:row_end]+'\n')
 activity=(repo/'src/activities/settings/SettingsActivity.cpp').read_text()
 start=activity.index('std::string SettingsActivity::settingValueText(')
 end=activity.index('\nvoid SettingsActivity::buildScreen',start)
@@ -55,7 +59,7 @@ void runHomeFavorites(const SdCardFontRegistry& registry,std::vector<std::string
  return block
 
 home_block=home_slice(repo/'src/activities/home/HomeRows.cpp',out/'HomeFavoritesSlice.cpp')
-incs=[here/'stubs',repo/'test/host_stubs',repo/'src',repo/'freeink-sdk/libs/hardware/BoardConfig/include']
+incs=[out,here/'stubs',repo/'test/host_stubs',repo/'src',repo/'freeink-sdk/libs/hardware/BoardConfig/include']
 incs += sorted((repo/'.pio/libdeps/gh_release').glob('*/src'))
 # SDK test stubs are independent hardware doubles, never production headers.
 # In particular BleKeyboardHost/tests/stubs/BoardConfig.h lacks real board APIs.
@@ -69,7 +73,8 @@ incs=list(dict.fromkeys(incs))
 legacy_header=out/'LegacyCapabilities.h'
 legacy_header.write_text('#include <BoardConfig.h>\n#undef FREEINK_CAP_FRONTLIGHT\n#undef FREEINK_CAP_WARMLIGHT\n')
 sources=[here/'SettingsRamProbe.cpp',here/'LinkStubs.cpp',out/'SettingsValueSlice.cpp',out/'HomeFavoritesSlice.cpp',repo/'src/MenuFavorites.cpp',repo/'src/CrossPointSettings.cpp',repo/'src/ReaderFontSizes.cpp',repo/'lib/I18n/I18n.cpp',repo/'lib/I18n/I18nStrings.cpp']
-manifest={'source_sha256':{str(p.relative_to(repo)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [repo/'src/SettingsList.h',repo/'src/MenuFavorites.cpp',repo/'src/CrossPointSettings.cpp',repo/'src/activities/settings/SettingsActivity.cpp',repo/'src/activities/home/HomeRows.cpp']}}
+manifest={'source_sha256':{str(p.relative_to(repo)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [repo/'src/SettingsList.h',repo/'src/MenuFavorites.cpp',repo/'src/CrossPointSettings.cpp',repo/'src/activities/settings/SettingsActivity.cpp',repo/'src/activities/home/HomeRows.cpp',repo/'src/activities/reader/EpubReaderActivity.cpp']}}
+manifest['probe_sha256']=hashlib.sha256((here/'SettingsRamProbe.cpp').read_bytes()).hexdigest()
 manifest['excerpts_sha256']={'HomeRows_favorites':hashlib.sha256(home_block.encode()).hexdigest(),'settingValueText':hashlib.sha256(activity[start:end].encode()).hexdigest()}
 cm='cmake_minimum_required(VERSION 3.16)\nproject(settings_ram_regression CXX)\nset(CMAKE_CXX_STANDARD 20)\nenable_testing()\n'
 variants=[(*caps,False) for caps in itertools.product([0,1],repeat=3)]+[(0,0,0,True)]
@@ -83,7 +88,7 @@ for front,warm,touch,legacy in variants:
  for imu in [0,1]:
   cm+=f'add_test(NAME cold_{target}_imu{imu} COMMAND {target} cold {imu})\n'
   if not legacy and (front,warm,touch) in [(0,0,0),(1,1,1)]:
-   for mode in ['favorites','dynamic','json','v108','home','home-file','wake-card']:
+   for mode in ['favorites','dynamic','json','v108','home','home-file','wake-card','reader-text','reader-text-empty-heap']:
     cm+=f'add_test(NAME {mode}_{target}_imu{imu} COMMAND {target} {mode} {imu})\n'
 (out/'CMakeLists.txt').write_text(cm)
 for name,cmd in [('configure',[a.cmake,'-S',str(out),'-B',str(out/'build')]),('build',[a.cmake,'--build',str(out/'build'),'-j',a.jobs]),('ctest',[str(Path(a.cmake).with_name('ctest')),'--test-dir',str(out/'build'),'--output-on-failure','-V'])]:

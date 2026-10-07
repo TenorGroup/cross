@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cstring>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -254,6 +255,50 @@ inline void releaseBaseSettingsList() {
   std::vector<SettingInfo>().swap(settings_catalog::storage());
 }
 
+// These rows also appear over the saved reader page. Build only the requested
+// descriptor, with static labels, so the lookup works even with an exhausted heap.
+inline std::optional<SettingInfo> getBaseTextSetting(const char* key) {
+  if (!key) return std::nullopt;
+  static constexpr StrId spacing[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW, StrId::STR_TIGHT,
+                                      StrId::STR_WIDE, StrId::STR_VERY_WIDE};
+  static constexpr StrId indent[] = {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_WIDE};
+  static constexpr StrId ink[] = {StrId::STR_READER_INK_0, StrId::STR_READER_INK_1,
+                                  StrId::STR_READER_INK_2, StrId::STR_READER_INK_3};
+  SettingInfo row;
+  if (strcmp(key, "letterSpacing") == 0)
+    row = SettingInfo::StaticEnum(StrId::STR_LETTER_SPACING, &CrossPointSettings::letterSpacing, spacing,
+                                  "letterSpacing", StrId::STR_CAT_READER);
+  else if (strcmp(key, "wordSpacing") == 0)
+    row = SettingInfo::StaticEnum(StrId::STR_WORD_SPACING, &CrossPointSettings::wordSpacing, spacing,
+                                  "wordSpacing", StrId::STR_CAT_READER);
+  else if (strcmp(key, "extraParagraphSpacing") == 0)
+    row = SettingInfo::StaticEnum(StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing, spacing,
+                                  "extraParagraphSpacing", StrId::STR_CAT_READER);
+  else if (strcmp(key, "screenMargin") == 0)
+    row = SettingInfo::Value(StrId::STR_SCREEN_MARGIN, &CrossPointSettings::screenMargin,
+                             {CrossPointSettings::SCREEN_MARGIN_MIN, CrossPointSettings::SCREEN_MARGIN_MAX,
+                              CrossPointSettings::SCREEN_MARGIN_STEP}, "screenMargin", StrId::STR_CAT_READER);
+  else if (strcmp(key, "paragraphIndent") == 0)
+    row = SettingInfo::StaticEnum(StrId::STR_PARAGRAPH_INDENT, &CrossPointSettings::paragraphIndent, indent,
+                                  "paragraphIndent", StrId::STR_CAT_READER);
+  else if (strcmp(key, "embeddedStyle") == 0)
+    row = SettingInfo::Toggle(StrId::STR_EMBEDDED_STYLE, &CrossPointSettings::embeddedStyle,
+                              "embeddedStyle", StrId::STR_CAT_READER);
+  else if (strcmp(key, "hyphenationEnabled") == 0)
+    row = SettingInfo::Toggle(StrId::STR_HYPHENATION, &CrossPointSettings::hyphenationEnabled,
+                              "hyphenationEnabled", StrId::STR_CAT_READER);
+  else if (strcmp(key, "readerInkWeight") == 0)
+    row = SettingInfo::StaticEnum(StrId::STR_READER_INK_WEIGHT, &CrossPointSettings::readerInkWeight, ink,
+                                  "readerInkWeight", StrId::STR_CAT_READER);
+  else if (strcmp(key, "textAntiAliasing") == 0)
+    row = SettingInfo::Toggle(StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing,
+                              "textAntiAliasing", StrId::STR_CAT_READER);
+  else
+    return std::nullopt;
+  row.inTextSettings = true;
+  return row;
+}
+
 // Every base descriptor, built one at a time and handed to emit (SettingInfo&&). Settings save and load
 // walk it here instead of keeping the whole catalog (~15 KB on the X3) for the life of the program.
 // One body for every caller: a template copied the 100 rows' code into each (28 KB of flash on x3-ble).
@@ -348,58 +393,29 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
                            StrId::STR_VERY_WIDE},
                           "lineSpacing", StrId::STR_CAT_READER)
             .withTextSettings()));
-    emit(std::move(SettingInfo::Enum(StrId::STR_LETTER_SPACING, &CrossPointSettings::letterSpacing,
-                          {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW, StrId::STR_TIGHT, StrId::STR_WIDE,
-                           StrId::STR_VERY_WIDE},
-                          "letterSpacing", StrId::STR_CAT_READER)
-            .withTextSettings()));
-    emit(std::move(SettingInfo::Enum(StrId::STR_WORD_SPACING, &CrossPointSettings::wordSpacing,
-                          {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW, StrId::STR_TIGHT, StrId::STR_WIDE,
-                           StrId::STR_VERY_WIDE},
-                          "wordSpacing", StrId::STR_CAT_READER)
-            .withTextSettings()));
-    emit(std::move(SettingInfo::Enum(StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing,
-                          {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW, StrId::STR_TIGHT, StrId::STR_WIDE,
-                           StrId::STR_VERY_WIDE},
-                          "extraParagraphSpacing", StrId::STR_CAT_READER)
-            .withTextSettings()));
+    emit(std::move(*getBaseTextSetting("letterSpacing")));
+    emit(std::move(*getBaseTextSetting("wordSpacing")));
+    emit(std::move(*getBaseTextSetting("extraParagraphSpacing")));
     emit(std::move(SettingInfo::Enum(StrId::STR_PARA_ALIGNMENT, &CrossPointSettings::paragraphAlignment,
                           {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                            StrId::STR_BOOK_S_STYLE},
                           "paragraphAlignment", StrId::STR_CAT_READER)
             .withTextSettings()));
-    emit(std::move(SettingInfo::Value(StrId::STR_SCREEN_MARGIN, &CrossPointSettings::screenMargin,
-                           {CrossPointSettings::SCREEN_MARGIN_MIN, CrossPointSettings::SCREEN_MARGIN_MAX,
-                            CrossPointSettings::SCREEN_MARGIN_STEP},
-                           "screenMargin", StrId::STR_CAT_READER)
-            .withTextSettings()));
-    emit(std::move(SettingInfo::Enum(StrId::STR_PARAGRAPH_INDENT, &CrossPointSettings::paragraphIndent,
-                          {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_WIDE}, "paragraphIndent",
-                          StrId::STR_CAT_READER)
-            .withTextSettings()));
-    emit(std::move(SettingInfo::Toggle(StrId::STR_EMBEDDED_STYLE, &CrossPointSettings::embeddedStyle, "embeddedStyle",
-                            StrId::STR_CAT_READER)
-            .withTextSettings()));
+    emit(std::move(*getBaseTextSetting("screenMargin")));
+    emit(std::move(*getBaseTextSetting("paragraphIndent")));
+    emit(std::move(*getBaseTextSetting("embeddedStyle")));
     emit(std::move(SettingInfo::Enum(StrId::STR_FOCUS_READING, &CrossPointSettings::dropCapMode,
                           {StrId::STR_STATE_OFF, StrId::STR_INK_DEFAULT, StrId::STR_SPACING_LARGE}, "dropCapMode",
                           StrId::STR_CAT_READER)
             .withTextSettings()));
-    emit(std::move(SettingInfo::Toggle(StrId::STR_HYPHENATION, &CrossPointSettings::hyphenationEnabled, "hyphenationEnabled",
-                            StrId::STR_CAT_READER)
-            .withTextSettings()));
+    emit(std::move(*getBaseTextSetting("hyphenationEnabled")));
     emit(SettingInfo::Enum(
             StrId::STR_ORIENTATION, &CrossPointSettings::orientation,
             {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW},
             "orientation", StrId::STR_CAT_READER));
 
-    emit(std::move(SettingInfo::Enum(StrId::STR_READER_INK_WEIGHT, &CrossPointSettings::readerInkWeight,
-                          {StrId::STR_READER_INK_0, StrId::STR_READER_INK_1, StrId::STR_READER_INK_2,
-                           StrId::STR_READER_INK_3}, "readerInkWeight",
-                          StrId::STR_CAT_READER)
-            .withTextSettings()));
-    emit(std::move(SettingInfo::Toggle(StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing, "textAntiAliasing",
-                            StrId::STR_CAT_READER)
-            .withTextSettings()));
+    emit(std::move(*getBaseTextSetting("readerInkWeight")));
+    emit(std::move(*getBaseTextSetting("textAntiAliasing")));
     emit(SettingInfo::Enum(StrId::STR_IMAGES, &CrossPointSettings::imageRendering,
                           {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS},
                           "imageRendering", StrId::STR_CAT_READER));

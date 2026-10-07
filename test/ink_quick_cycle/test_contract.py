@@ -55,8 +55,14 @@ class InkQuickCycleContractTest(unittest.TestCase):
         arrays = "\n".join(re.search(r"constexpr StrId " + name + r"\[\] = \{[^}]+\};", self.source).group()
                            for name in ("LAYOUT_ROW_NAME_IDS", "STYLE_ROW_NAME_IDS"))
         catalog = (REPO / "src/SettingsList.h").read_text()
-        ink = re.search(r"SettingInfo::Enum\(StrId::STR_READER_INK_WEIGHT,[\s\S]+?\.withTextSettings\(\)", catalog).group()
-        ids = sorted(set(re.findall(r"StrId::(STR_[A-Z0-9_]+)", arrays + methods + ink)))
+        ink_labels = ""
+        if "getBaseTextSetting(" in catalog:
+            descriptor = function_body(catalog, "inline std::optional<SettingInfo> getBaseTextSetting")
+            ink_labels = re.search(r"static constexpr StrId ink\[\] = \{[^}]+\};", descriptor).group()
+            ink = re.search(r"SettingInfo::StaticEnum\(StrId::STR_READER_INK_WEIGHT,[\s\S]+?\);", descriptor).group()[:-1]
+        else:
+            ink = re.search(r"SettingInfo::Enum\(StrId::STR_READER_INK_WEIGHT,[\s\S]+?\.withTextSettings\(\)", catalog).group()
+        ids = sorted(set(re.findall(r"StrId::(STR_[A-Z0-9_]+)", arrays + methods + ink + ink_labels)))
         harness = r"""
 #include <algorithm>
 #include <atomic>
@@ -83,8 +89,11 @@ struct SettingInfo {
   const std::vector<StrId>& enumLabels() const { return labels; }
   static SettingInfo Enum(StrId id, uint8_t CrossPointSettings::*ptr,
                           std::vector<StrId> labels, const char*, StrId) { return {id, ptr, labels}; }
+  template<size_t N> static SettingInfo StaticEnum(StrId id, uint8_t CrossPointSettings::*ptr,
+                          const StrId (&labels)[N], const char*, StrId) { return {id, ptr, {labels, labels+N}}; }
   SettingInfo withTextSettings() { return *this; }
 };
+@INK_LABELS@
 const std::vector<SettingInfo>& getBaseSettingsList() {
   static const std::vector<SettingInfo> rows = { @INK@ };
   return rows;
@@ -144,7 +153,7 @@ int main() {
   }
 }
 """
-        for key, value in {"IDS": ",".join(ids), "INK": ink, "ARRAYS": arrays,
+        for key, value in {"IDS": ",".join(ids), "INK": ink, "INK_LABELS": ink_labels, "ARRAYS": arrays,
                            "ENUMS": enums, "METHODS": methods}.items():
             harness = harness.replace("@" + key + "@", value)
         with tempfile.TemporaryDirectory() as tmp:

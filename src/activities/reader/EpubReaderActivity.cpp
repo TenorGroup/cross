@@ -3826,16 +3826,14 @@ int textRowPlace(const int id) {
     if (kTextRowIds[row] == id) return row;
   return -1;
 }
-// A row of the catalog (ids 5 and on), or nullptr.
-const SettingInfo* catalogTextRow(const int id) {
-  if (id < 5 || id >= readermenu::TEXT_KEY_COUNT) return nullptr;
-  for (const auto& info : getBaseSettingsList())
-    if (info.key && strcmp(info.key, readermenu::TEXT_KEYS[id]) == 0) return &info;
-  return nullptr;
+// Read the shared static row without rebuilding the full catalog under the saved page.
+std::optional<SettingInfo> catalogTextRow(const int id) {
+  if (id < 5 || id >= readermenu::TEXT_KEY_COUNT) return std::nullopt;
+  return getBaseTextSetting(readermenu::TEXT_KEYS[id]);
 }
 // An on/off text row: Select turns it where it is (no list, no chevron).
 bool textRowToggles(const int row) {
-  const auto* info = catalogTextRow(textRowId(row));
+  const auto info = catalogTextRow(textRowId(row));
   return info && info->type == SettingType::TOGGLE;
 }
 static_assert(std::size(kSpacingIds) == readerSpacing::LEVEL_COUNT, "line spacing labels");
@@ -3862,7 +3860,7 @@ int textChoiceCount(const int row) {
   if (spacingLevelRow(row)) return readerSpacing::LEVEL_COUNT;
   if (row == 3) return CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT;
   if (row == 4) return readerSpacing::DROP_CAP_MODE_COUNT;
-  const auto* info = catalogTextRow(row);
+  const auto info = catalogTextRow(row);
   if (!info || !info->valuePtr) return 0;
   if (info->type == SettingType::TOGGLE) return 2;
   if (info->type == SettingType::VALUE)
@@ -3879,7 +3877,7 @@ int textChoiceInUse(const int row) {
     return -1;
   }
   if (row == 4) return readerSpacing::clampDropCapMode(value);
-  const auto* info = catalogTextRow(row);
+  const auto info = catalogTextRow(row);
   const int place = info && info->type == SettingType::VALUE ? (value - info->valueRange.min) / info->valueRange.step
                     : info && info->type == SettingType::TOGGLE ? value != 0
                                                                 : value;
@@ -3888,7 +3886,7 @@ int textChoiceInUse(const int row) {
 // The stored value of the value at `place`.
 uint8_t textChoiceStored(const int row, const int place) {
   if (spacingLevelRow(row)) return kSpacingByPlace[place];
-  const auto* info = catalogTextRow(row);
+  const auto info = catalogTextRow(row);
   if (info && info->type == SettingType::VALUE)
     return static_cast<uint8_t>(info->valueRange.min + place * info->valueRange.step);
   return static_cast<uint8_t>(place);
@@ -3898,7 +3896,7 @@ std::string textChoiceLabel(const int row, const int place) {
   if (spacingLevelRow(row)) return I18N.get(kSpacingIds[kSpacingByPlace[place]]);
   if (row == 3) return I18N.get(kAlignIds[place]);
   if (row == 4) return I18N.get(kDropCapIds[place]);
-  const auto* info = catalogTextRow(row);
+  const auto info = catalogTextRow(row);
   if (!info) return "";
   if (info->type == SettingType::TOGGLE) return place ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
   if (info->type == SettingType::VALUE) return std::to_string(textChoiceStored(row, place));
@@ -4052,14 +4050,14 @@ std::string EpubReaderActivity::currentChapterTitle() const {
 
 std::string EpubReaderActivity::textRowName(int row) const {
   row = textRowId(row);
-  if (const auto* info = catalogTextRow(row)) return I18N.get(info->nameId);
+  if (const auto info = catalogTextRow(row)) return I18N.get(info->nameId);
   return row >= 0 && row < static_cast<int>(std::size(kTextRowNames)) ? I18N.get(kTextRowNames[row]) : "";
 }
 
 std::string EpubReaderActivity::textRowValue(int row) const {
   static constexpr StrId kFamily[] = {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS};
   row = textRowId(row);
-  if (const auto* info = catalogTextRow(row)) return SettingsActivity::settingValueText(*info);
+  if (const auto info = catalogTextRow(row)) return SettingsActivity::settingValueText(*info);
   switch (row) {
     case 0:  // opens the family list (the chevron is the row's own)
       if (SETTINGS.sdFontFamilyName[0] != '\0') return SETTINGS.sdFontFamilyName;
@@ -4093,7 +4091,7 @@ void EpubReaderActivity::cycleTextRow(int row) {
   row = textRowId(row);
   {
     RenderLock lock;  // the render task must not paint a page laid out with the old value in the new one
-    if (const auto* info = catalogTextRow(row)) {
+    if (const auto info = catalogTextRow(row)) {
       // A tap steps it, as a tap steps alignment: the next value, the first after the last.
       auto& value = SETTINGS.*(info->valuePtr);
       if (info->type == SettingType::TOGGLE) {
