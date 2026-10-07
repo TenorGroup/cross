@@ -443,7 +443,7 @@ int main(int argc, char** argv) {
   // browser, three Home button actions, two page gestures, double-click light); every
   // existing row kept its place. v1.0.52 then dropped the UI theme row and added the starting up notice row,
   // v1.0.53 the touch back tap zone and tap zone tip rows.
-  bool ok = expect(catalog.size() == (hasImu ? 98U : 86U), "X3 descriptor count");
+  bool ok = expect(catalog.size() == (hasImu ? 100U : 88U), "X3 descriptor count");
   ok = expect(longPressValuesMatch(catalog, hasImu), "Confirm-hold list shows Reader menu and appends the new actions") &&
        ok;
   ok = longPressStoreKept(catalog, hasImu) && ok;

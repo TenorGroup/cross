@@ -152,7 +152,7 @@ bool catalogReleaseProbe() {
   bool ok = check(mem::live == 0, "shared catalog allocations released");
   std::printf("catalog_rows=%zu sizeof_SettingInfo=%zu allocated=%zu after_release=%zu\n",
               copied.size(), sizeof(SettingInfo), bytes, mem::live);
-  ok &= check(copied.size() == 98 && !webCopy.empty(), "98 base rows and owned web copy survive release");
+  ok &= check(copied.size() == 100 && !webCopy.empty(), "100 base rows and owned web copy survive release");
   clockCopy.valueSetter(1);
   ok &= check(clockCopy.valueGetter() == 1, "copied dynamic callback survives catalog release");
   SETTINGS.statusBarClock = CrossPointSettings::STATUS_BAR_CLOCK_HIDE;
@@ -174,14 +174,14 @@ bool catalogReleaseProbe() {
   deserializeJson(prior, beforeJson);
   ok &= check(SETTINGS.fromJson(prior.as<JsonVariantConst>()), "real settings JSON reload succeeds");
   ok &= check(jsonSettings() == beforeJson, "real settings JSON byte-equivalent roundtrip");
-  // A Wi-Fi time save can recreate the catalog. Release must happen after that
+  // A Wi-Fi time save builds no catalog (forEachBaseSetting, v1.0.53). Release must still happen after that
   // child returns and before manifest TLS, using the actual production callback.
   releaseBaseSettingsList();
   JsonDocument wifiSave;
   mem::active = true;
   SETTINGS.toJson(wifiSave);
   mem::active = false;
-  ok &= check(mem::live > 0, "Wi-Fi save has a full rebuilt catalog");
+  ok &= check(mem::live == 0, "Wi-Fi save builds no catalog");
   FontDownloadActivity font;
   mem::requireReleaseLock = true;
   font.onWifiSelectionComplete(true);
@@ -207,6 +207,7 @@ int main() {
   for (const bool dictionaries : {false, true}) {
     discovered.clear();
     if (dictionaries) discovered.push_back({"Long dictionary owned label for lifetime verification", "book"});
+    (void)getBaseSettingsList();  // resident before the screen, as a boot that read settings left it until v1.0.53
     SettingsActivity activity;
     ++mem::epoch; mem::live = mem::peak = 0; mem::active = true;
     activity.rebuildSettingsLists();

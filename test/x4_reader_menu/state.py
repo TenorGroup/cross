@@ -61,6 +61,7 @@ void apCo(int,uint8_t value){SETTINGS.fontPointSize=value;}
 bool apHo(int,SdCardFontRegistry*,int index){family=index;if(index>1) snprintf(SETTINGS.sdFontFamilyName,32,"Pack");else SETTINGS.sdFontFamilyName[0]=0;return true;}
 }
 struct FontSystem {SdCardFontRegistry data;SdCardFontRegistry& registry(){return data;}void releaseCatalog(){};} ;
+void releaseBaseSettingsList(){}
 struct Manager {bool sleep=false;bool isSleepTransition(){return sleep;}void deferWrite(std::function<void()> f){f();}}activityManager;
 namespace tenorchrome {int note=0;void noteReaderFootBar(bool open,bool,int){note=open;}}
 class MappedInputManager {

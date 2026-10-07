@@ -5225,6 +5225,7 @@ void EpubReaderActivity::panelClosedLocked(const bool leaving, const bool frameU
   fontFamilies.clear();
   fontFamilies.shrink_to_fit();
   sdFontSystem.releaseCatalog();
+  releaseBaseSettingsList();  // the Text sheet's rows: the page has no use for them, the radio does
   if (frameUp)
     flushTextSettingsLocked();
   else if (textSettingsDirty)

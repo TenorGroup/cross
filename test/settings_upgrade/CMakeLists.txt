@@ -69,3 +69,4 @@ add_test(NAME SettingsUpgradeLegacyTheme COMMAND SettingsUpgradeTest legacy-them
 add_test(NAME SettingsUpgradeShell COMMAND SettingsUpgradeTest shell)
 add_test(NAME SettingsUpgradeTapZones COMMAND SettingsUpgradeTest tap-zones)
 add_test(NAME SettingsUpgradeReaderPins COMMAND SettingsUpgradeTest reader-pins)
+add_test(NAME SettingsUpgradeNoResidentCatalog COMMAND SettingsUpgradeTest no-resident-catalog)
