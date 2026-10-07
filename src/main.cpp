@@ -763,8 +763,9 @@ void setup() {
     SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_TOOLBAR;
   }
 #ifdef TENOR_PRESS_PROBE
-  (void)getBaseSettingsList();  // the catalog the load builds, measured on its own
+  (void)getBaseSettingsList();  // the catalog a settings screen builds, measured on its own
   logHeapMark("settings-catalog");
+  releaseBaseSettingsList();  // the load does not keep it; no render task yet
 #endif
   SETTINGS.loadFromFile();
 #ifdef TENOR_PRESS_PROBE
