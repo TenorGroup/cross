@@ -744,6 +744,9 @@ void setup() {
   logHeapMark("storage");
 
   APP_STATE.loadFromFile();
+#ifdef TENOR_PRESS_PROBE
+  logHeapMark("store-state");
+#endif
   const bool isSleepWake = wakeupReason == HalGPIO::WakeupReason::PowerButton;
   const bool isPersistedSleepWake = isSleepWake && !APP_STATE.showBootScreen;
 
@@ -759,7 +762,14 @@ void setup() {
   if (gpio.hasTouch() && !FREEINK_DEVICE_X4PRO) {
     SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_TOOLBAR;
   }
+#ifdef TENOR_PRESS_PROBE
+  (void)getBaseSettingsList();  // the catalog the load builds, measured on its own
+  logHeapMark("settings-catalog");
+#endif
   SETTINGS.loadFromFile();
+#ifdef TENOR_PRESS_PROBE
+  logHeapMark("settings-json");
+#endif
 #if CROSSPOINT_BLE_HID_HOST
   beginPageTurner(renderer, SETTINGS.ble, runRemoteShortcut, restartIntoOpenBook);
 #endif

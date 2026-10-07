@@ -126,6 +126,9 @@ class PersistableStore : public PersistableStoreBase {
       doResave = resaveRequested;
       resaveRequested = false;
     }
+#ifdef TENOR_PRESS_PROBE
+    if (ok && doResave) LOG_INF("PERSIST", "resave %s", T::getFilePath());
+#endif
     // Deliberately outside the lock: saveToFile() takes storeMutex itself.
     if (ok && doResave && !saveToFile()) {
       LOG_ERR("PERSIST", "Failed to resave %s after format update", T::getFilePath());
