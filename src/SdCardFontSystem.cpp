@@ -125,6 +125,12 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
     bootFamily_.name.clear();  // familyNamed() no longer answers from the memo
     readCatalogIfPending();
     const auto* family = registry_.findFamily(saved);
+#if CROSSPOINT_VECTOR_FONTS
+    if (family && family->vector) {
+      loadTtfFamily(*family, renderer, false);
+      return;
+    }
+#endif
     bool loaded = family && loadSelected(renderer, *family);
     if (!loaded && walkIfCatalogKept()) {
       family = registry_.findFamily(saved);
