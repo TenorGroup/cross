@@ -480,6 +480,7 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   fadeTopFrom = fadeTopTo = fadeFootFrom = fadeFootTo = 0;
   if (!rowsFramed) return;
   const auto lines = rowFrameLines(rowFrameGap);
+  const bool ring = tenorchrome::roundFrames(fileList());
   // Rows on a page that scrolls under the chrome (Stats): the frame is cut to their band.
   const auto clip = renderer.getClipRect();
   if (style.clipBottom > style.clipTop)
@@ -503,7 +504,7 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
     } else if (rowStartsGroup(i)) {
       // The group above ends at its last row; its heading stands between the 2 frames.
       const int groupBottom = last.y + last.height + lines.bottom;
-      tenorchrome::drawPanel(renderer, groupTop, groupBottom - groupTop);
+      if (ring) tenorchrome::drawPanel(renderer, groupTop, groupBottom - groupTop);
       if (groupBottom - groupTop > barBottom - barTop) {
         barTop = groupTop;
         barBottom = groupBottom;
@@ -538,7 +539,7 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   // A next row that opens a group closes this frame at the last full row; its heading shows in the fade.
   const bool frameGoesOn = more && !rowStartsGroup(count);
   const int ringBottom = frameGoesOn ? std::max(fullBottom, floor) : fullBottom;
-  tenorchrome::drawPanel(renderer, lastTop, ringBottom - lastTop);
+  if (ring) tenorchrome::drawPanel(renderer, lastTop, ringBottom - lastTop);
   if (frameGoesOn && floor > fullBottom)
     tenorchrome::drawRowRule(renderer, last.y + last.height + rowFrameGap - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
                 renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
@@ -554,7 +555,7 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
     }
     const auto bar = tenorchrome::frameScrollBar(tenorchrome::FOOT_BACK_X, barTop,
                                                  renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X,
-                                                 frameBottom - barTop, barTop, barBottom);
+                                                 frameBottom - barTop, barTop, barBottom, ring);
     fui::drawListScrollIndicator(uiTarget,
                                  fui::Rect{static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
                                            static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)},

@@ -109,7 +109,8 @@ void drawPillRing(const GfxRenderer& g, int x, int y, int w, int h, int thick, b
 void drawRoundRing(const GfxRenderer& g, int x, int y, int w, int h, int r, int thick, bool grey);
 // Whether a group of rows or a panel of content sits in a round frame. The round frame belongs to the touch
 // reader (founder 06/10/2026): the button readers keep their lists and panels unframed. Every frame asks this.
-constexpr bool roundFrames() { return kTouchShell; }
+// The File screens' rows keep their rules but no ring, on touch too (founder 07/10): `fileList` says so.
+constexpr bool roundFrames(const bool fileList = false) { return kTouchShell && !fileList; }
 // Touch shell: the one frame around a group of content across the screen, FOOT_BACK_X in from both sides,
 // grey dots 2 px, radius PANEL_RADIUS. Text inside starts 16 px in from it.
 constexpr int PANEL_RADIUS = 20;

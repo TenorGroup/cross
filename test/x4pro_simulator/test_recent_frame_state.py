@@ -59,7 +59,7 @@ def check_recent_frame_state():
         assert len(summary['home_frames']) == 5, 'boot, Settings, Recent, Folder, Recent must all render'
         assert len(errors) == 0, json.dumps(summary, indent=2)
         assert edge_ink['4200'] > 100, 'Settings keeps its visible list frame'
-        assert edge_ink['8200'] > 100, 'Folder keeps its visible list frame'
+        assert edge_ink['8200'] == 0, 'Folder lists its rows without a frame (founder 07/10)'
         assert edge_ink['6200'] == edge_ink['2200'], 'Recent after Settings matches the clean card edge'
         assert edge_ink['10200'] == edge_ink['2200'], 'Recent after Folder matches the clean card edge'
 
