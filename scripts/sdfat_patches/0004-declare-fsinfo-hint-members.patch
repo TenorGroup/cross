@@ -1,0 +1,22 @@
+Subject: [PATCH] FatPartition: declare the FSInfo hint members used by 0003
+
+---
+--- a/src/FatLib/FatPartition.h
++++ b/src/FatLib/FatPartition.h
+@@ -159,6 +159,8 @@
+   uint8_t m_fatCount;                // FAT count (1 or 2).
+   uint16_t m_rootDirEntryCount;      // Number of entries in FAT16 root dir.
+   Cluster_t m_allocSearchStart;      // Start cluster for alloc search.
++  Sector_t m_fsInfoSector;           // FAT32 FSInfo sector, zero if none.
++  Cluster_t m_fsInfoHint;            // Next free hint held in FSInfo.
+   uint32_t m_sectorsPerFat;          // FAT size in sectors
+   Sector_t m_dataStartSector;        // First data sector number.
+   Sector_t m_fatStartSector;         // Start sector for first FAT.
+@@ -224,6 +226,7 @@
+   //----------------------------------------------------------------------------
+   bool allocateCluster(Cluster_t current, Cluster_t* next);
+   bool allocContiguous(uint32_t count, Cluster_t* firstCluster);
++  void noteNextFree();
+   uint8_t sectorOfCluster(uint32_t position) const {
+     return (position >> 9) & m_clusterSectorMask;
+   }

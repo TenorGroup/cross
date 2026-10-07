@@ -1,0 +1,125 @@
+Subject: [PATCH] FatPartition: start the free cluster search at FSInfo's hint
+
+init() starts m_allocSearchStart at cluster 1 on every mount, so the
+first allocation after a mount calls fatGet() across every used cluster
+below the free space, one FAT sector at a time: about 300 sector reads
+on a 16 GB card, paid again after every wake of a device that remounts
+the card.
+
+On FAT32, start the search at FSInfo's next free hint when it is in
+range, and write the search start back into the hint, through the data
+cache, once it has moved 512 clusters on or moved back. Only the hint
+field is written, and only while the FSInfo signatures check out. A hint
+may be stale or wrong, so allocateCluster() and allocContiguous() search
+once more from the first cluster before reporting a full card.
+The members are declared by 0004.
+
+---
+--- a/src/FatLib/FatPartition.cpp
++++ b/src/FatLib/FatPartition.cpp
+@@ -44,7 +44,7 @@
+       if (setStart) {
+         // Can't find space, checked all clusters.
+         DBG_FAIL_MACRO;
+-        goto fail;
++        goto full;
+       }
+       find = m_allocSearchStart;
+       setStart = true;
+@@ -53,7 +53,7 @@
+     if (find == current) {
+       // Can't find space, already searched clusters after current.
+       DBG_FAIL_MACRO;
+-      goto fail;
++      goto full;
+     }
+     uint32_t f;
+     int8_t fg = fatGet(find, &f);
+@@ -67,6 +67,7 @@
+   }
+   if (setStart) {
+     m_allocSearchStart = find;
++    noteNextFree();
+   }
+   // Mark end of chain.
+   if (!fatPutEOC(find)) {
+@@ -84,10 +85,32 @@
+   *next = find;
+   return true;
+ 
++full:
++  // Clusters freed below the search start: search once more from the first.
++  if (m_allocSearchStart > 1) {
++    m_allocSearchStart = 1;
++    return allocateCluster(current, next);
++  }
+ fail:
+   return false;
+ }
+ //------------------------------------------------------------------------------
++// Keep FSInfo's next free hint within 512 clusters of the search start.
++void FatPartition::noteNextFree() {
++  if (!m_fsInfoSector || (m_allocSearchStart >= m_fsInfoHint &&
++                          m_allocSearchStart - m_fsInfoHint < 512)) {
++    return;
++  }
++  FsInfo_t* fsi = reinterpret_cast<FsInfo_t*>(
++      dataCachePrepare(m_fsInfoSector, FsCache::CACHE_FOR_READ));
++  if (fsi && getLe32(fsi->leadSignature) == FSINFO_LEAD_SIGNATURE &&
++      getLe32(fsi->structSignature) == FSINFO_STRUCT_SIGNATURE) {
++    setLe32(fsi->nextFree, m_allocSearchStart);
++    cacheDirty();
++    m_fsInfoHint = m_allocSearchStart;
++  }
++}
++//------------------------------------------------------------------------------
+ // find a contiguous group of clusters
+ bool FatPartition::allocContiguous(uint32_t count, Cluster_t* firstCluster) {
+   // flag to save place to start next search
+@@ -102,6 +125,11 @@
+   // search the FAT for free clusters
+   while (1) {
+     if (endCluster > m_lastCluster) {
++      if (m_allocSearchStart > 1) {
++        // Clusters freed below the search start: search once more from the first.
++        m_allocSearchStart = 1;
++        return allocContiguous(count, firstCluster);
++      }
+       // Can't find space.
+       DBG_FAIL_MACRO;
+       goto fail;
+@@ -128,6 +156,7 @@
+   // Remember possible next free cluster.
+   if (setStart) {
+     m_allocSearchStart = endCluster;
++    noteNextFree();
+   }
+   // mark end of chain
+   if (!fatPutEOC(endCluster)) {
+@@ -401,6 +430,7 @@
+   uint8_t tmp;
+   m_fatType = 0;
+   m_allocSearchStart = 1;
++  m_fsInfoSector = 0;
+   m_cache.init(dev);
+ #if USE_SEPARATE_FAT_CACHE
+   m_fatCache.init(dev);
+@@ -495,6 +525,18 @@
+   } else {
+     m_rootDirStart = getLe32(bpb->fat32RootCluster);
+     m_fatType = 32;
++    // Start the search at FSInfo's next free hint, not at the first cluster.
++    Sector_t sector = startSector + getLe16(bpb->fat32FSInfoSector);
++    const FsInfo_t* fsi = reinterpret_cast<FsInfo_t*>(
++        dataCachePrepare(sector, FsCache::CACHE_FOR_READ));
++    if (fsi && getLe32(fsi->leadSignature) == FSINFO_LEAD_SIGNATURE &&
++        getLe32(fsi->structSignature) == FSINFO_STRUCT_SIGNATURE) {
++      m_fsInfoSector = sector;
++      m_fsInfoHint = getLe32(fsi->nextFree);
++      if (m_fsInfoHint >= 2 && m_fsInfoHint <= m_lastCluster) {
++        m_allocSearchStart = m_fsInfoHint;
++      }
++    }
+   }
+   m_cache.setMirrorOffset(m_sectorsPerFat);
+ #if USE_SEPARATE_FAT_CACHE
