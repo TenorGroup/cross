@@ -102,7 +102,7 @@ class ToolbarTextPanelFontTest(unittest.TestCase):
             ('Reader Font Size', (26, 487, 239, 522)),
             ('Line Spacing', (26, 543, 220, 579)),
             ('Paragraph Alignment', (26, 599, 260, 633)),
-            ('Chapter drop cap', (26, 655, 245, 689)),
+            ('Paragraph Spacing, the faded 6th row', (26, 625, 245, 650)),
         ):
             actual = sd.crop(box)
             self.assertLess(min(actual.getdata()), 128, f'{label}: label is drawn')

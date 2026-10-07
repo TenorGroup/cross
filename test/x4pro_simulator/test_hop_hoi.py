@@ -48,7 +48,7 @@ def main():
         # question too, over the bar with its one action (no "Cancel" row); its action deletes.
         f3 = Path(tmp) / 'bookmark'
         f3.mkdir()
-        to_ask = ('3000:TAP:240,300;7000:TAP:240,775;8500:TAP:416,754;10000:TAP:240,433;12500:TAP:240,110,900;'
+        to_ask = ('3000:TAP:240,300;7000:TAP:240,775;8500:TAP:131,754;10000:TAP:240,433;12500:TAP:240,110,900;'
                   '15000:TAP:200,278')
         (bm_ask,) = run(f3, to_ask, [17000], settings={'readerFavorites': [9], 'readerTapTip': 0}, write_books=bookmark)
         assert 'Entering activity: EpubReaderBookmarks' in (f3 / 'simulator.log').read_text(), 'fixture never reached Bookmarks'

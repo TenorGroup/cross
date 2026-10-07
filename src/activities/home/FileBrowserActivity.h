@@ -68,6 +68,7 @@ class FileBrowserActivity final : public UiListActivity {
   bool handleButtons() override;
   bool tooMany = false;  // the folder holds more names than the heap allows: nothing is listed
   bool supportsFavorites() const override { return mode == Mode::Books; }
+  bool fileList() const override { return true; }
   bool rowOpens(int row) const override {
     return row >= 0 && row < static_cast<int>(files.size()) && files[row].back() == '/';
   }

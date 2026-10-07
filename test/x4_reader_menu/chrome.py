@@ -12,6 +12,8 @@ args.output.mkdir(parents=True, exist_ok=True)
 source = (args.repo / 'src/components/TenorMenuChrome.cpp').read_text()
 header = (args.repo / 'src/components/TenorMenuChrome.h').read_text()
 shell = (args.repo / 'src/shells/Shell.h').read_text()
+tools = re.search(r'enum class Tool : uint8_t \{.*?return StrId::STR_TOOL_MORE;\n\}',
+                  (args.repo / 'src/activities/reader/ReaderMenuLayout.h').read_text(), re.S).group(0)
 
 def method(text, signature):
     start = text.index(signature)
@@ -48,6 +50,9 @@ freeink::Icon icon_tenor_reader_position_bold_40,icon_tenor_reader_reading_bold_
 freeink::Icon icon_tenor_home_favorites_40,icon_tenor_home_favorites_bold_40;
 #include <iterator>
 #include "I18n.h"
+namespace readermenu {
+''' + tools + r'''
+}
 #include "ShellKind.h"
 #include "GfxRenderer.h"
 #include "UglyInk.h"
@@ -87,6 +92,7 @@ namespace tenorchrome {
 enum class FootBar { None,Tabs,Full,BackOnly };
 enum class Zone { Recent,Book };
 constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4;
+''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR) = .*?;', header, re.M)) + r'''
 int footBackTop(int h) { return h-76; }
 void drawPillRing(const GfxRenderer&,int,int,int,int,int,bool) { ++rings; }
 void drawBarTab(const GfxRenderer&,int,int,int,const unsigned char*,int,int,bool) { ++icons; }
@@ -120,7 +126,6 @@ int main() {
   assert(ugly::labels.empty() && ugly::circles.empty());
   shell::selected=shell::Kind::Ugly;
   I18N.setLanguage(Language::EN);
-  const StrId names[]={StrId::STR_TOOL_CONTENTS,StrId::STR_TOOL_TEXT,StrId::STR_TOOL_MORE,StrId::STR_READER_TAB_FAVORITES};
   for (int w : {480,800}) {
     r.width=w; r.height=w==480?800:480;
     for (int active : {-1,0,1,2,3}) {
@@ -131,7 +136,7 @@ int main() {
       for (int i=0;i<READER_TOOLS;++i) {
         auto cell=readerToolRect(w,r.height,i); const auto& label=ugly::labels[i];
         assert(ugly::budgets[i]==cell.width-16);
-        assert(label.value==std::string(I18N.get(names[i])).substr(0,(cell.width-16)/8));
+        assert(label.value==std::string(I18N.get(readermenu::toolName(static_cast<readermenu::Tool>(i)))).substr(0,(cell.width-16)/8));
         assert(label.x==cell.x+(cell.width-label.width)/2 && label.baseline==cell.y+39);
         assert(label.x>=cell.x+8 && label.x+label.width<=cell.x+cell.width-8);
       }

@@ -204,7 +204,7 @@ class LevelOneKeysTest(unittest.TestCase):
         # The Text tab's "Aa", out of focus, between the Contents tab's ring and the More tab: the 40 px art
         # inks about 34 x 20 px (the 24 px art inked under 24 x 15).
         img = self.res['shots'][0]
-        band = img.crop((150, img.height - 140, 290, img.height - 40))
+        band = img.crop((255, img.height - 140, 395, img.height - 40))
         box = ImageChops.invert(band).getbbox()
         self.assertIsNotNone(box)
         w, h = box[2] - box[0], box[3] - box[1]
@@ -216,7 +216,7 @@ SYNC = 14  # readermenu::Action::SYNC, the pin a reader who never pinned starts 
 
 
 class FavoritesTabTest(unittest.TestCase):
-    """4 tabs as on the X4 Pro: Contents, Text, More, Favorites. A held Select on a Text or More row pins it."""
+    """4 tabs as on the X4 Pro: Favorites, Contents, Text, More (the bar opens on Contents). A held Select on a Text or More row pins it."""
 
     @classmethod
     def setUpClass(cls):
@@ -244,6 +244,38 @@ class FavoritesTabTest(unittest.TestCase):
         self.assertEqual(self.unpin['settings'].get('readerFavorites'), [SYNC])
         s = self.unpin['shots']
         self.assertFalse(same(s[10], s[9]), 'the unpinned row leaves the list at once')
+
+
+class HeartOnCapitalsTest(unittest.TestCase):
+    """Founder 07/10: a pinned row's heart stands on the middle of the row's capitals, at every interface text size
+    and in Vietnamese, whose taller line box sank it below them."""
+
+    @classmethod
+    def setUpClass(cls):
+        pins = {'language': 'VI', 'readerFavorites': [SYNC, 'text/fontSize'], 'readerFavoriteCount': 2,
+                'readerFavoritesDaDat': 1}
+        cls.shots = [run_keys(['RIGHT', 'CONFIRM', 'RIGHT'], dict(pins, uiTextSize=size))['shots'][3] for size in (0, 2)]
+        for size, img in zip((0, 2), cls.shots):
+            keep(f'heart-{size}', img)
+
+    def test_the_heart_is_on_the_middle_of_the_capitals(self):
+        for img in self.shots:
+            px = img.load()
+            top = cursor_top(img, sheet_top(img) + 60)
+            bottom = next(y for y in range(top + 6, img.height) if sum(px[x, y] == 0 for x in range(40, 480)) > 400)
+            band = range(top + 4, bottom - 3)
+            cols = [x for x in range(26, 390) if any(px[x, y] < 128 for y in band)]
+            ink_rows = lambda x0, x1: [y for y in band if any(px[x, y] < 128 for x in range(x0, x1))]
+            # The capital "C" that starts "Co chu trinh doc", and the last run of ink before the value: the heart.
+            capital = ink_rows(cols[0], cols[0] + 8)
+            start = cols[-1]
+            for a, b in zip(reversed(cols[:-1]), reversed(cols[1:])):
+                if b - a > 3:
+                    break
+                start = a
+            heart = ink_rows(start, cols[-1] + 1)
+            off = (heart[0] + heart[-1]) / 2 - (capital[0] + capital[-1]) / 2
+            self.assertLessEqual(abs(off), 1, f'the heart is {off:+.1f} px off the middle of the capital')
 
 
 # Line spacing as the Text tab shows it, tightest first: the stored readerSpacing level at each place.

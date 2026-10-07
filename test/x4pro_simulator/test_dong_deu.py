@@ -89,8 +89,8 @@ def main():
     failures = []
     # Stats scrolls as one page under its panels: its rows are measured at the page's end.
     flicks = ';'.join(f'{4500 + i * 1200}:SWIPE:240,640,240,300,150' for i in range(3))
-    screens = [('Folder', f'3000:TAP:{TABS_X[1]},754', 4800), ('Stats', f'3000:TAP:{TABS_X[3]},754;{flicks}', 9000),
-               ('Settings', f'3000:TAP:{TABS_X[4]},754', 4800)]
+    # File lists its rows without a frame (founder 07/10): test_file_khong_khung measures its rules.
+    screens = [('Stats', f'3000:TAP:{TABS_X[3]},754;{flicks}', 9000), ('Settings', f'3000:TAP:{TABS_X[4]},754', 4800)]
     with tempfile.TemporaryDirectory(prefix='x4pro-rows-') as tmp:
         for name, script, at in screens:
             for size in (0, 1, 2):

@@ -88,6 +88,7 @@ class HomeActivity final : public UiTabListActivity {
   freeink::ui::Rect heldCover{};
   bool touchRowMovesRing() const override { return activeTabId == Tab::RECENT; }
   bool listFramed() const override { return activeTabId != Tab::RECENT; }  // the card is no list
+  bool fileList() const override { return activeTabId == Tab::FOLDER; }
   bool rowOpens(int row) const override;
   bool rowStartsGroup(int row) const override;
   bool supportsFavorites() const override { return activeTabId != Tab::STATS; }

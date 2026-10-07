@@ -480,6 +480,7 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   fadeTopFrom = fadeTopTo = fadeFootFrom = fadeFootTo = 0;
   if (!rowsFramed) return;
   const auto lines = rowFrameLines(rowFrameGap);
+  const bool ring = tenorchrome::roundFrames(fileList());
   // Rows on a page that scrolls under the chrome (Stats): the frame is cut to their band.
   const auto clip = renderer.getClipRect();
   if (style.clipBottom > style.clipTop)
@@ -503,7 +504,7 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
     } else if (rowStartsGroup(i)) {
       // The group above ends at its last row; its heading stands between the 2 frames.
       const int groupBottom = last.y + last.height + lines.bottom;
-      tenorchrome::drawPanel(renderer, groupTop, groupBottom - groupTop);
+      if (ring) tenorchrome::drawPanel(renderer, groupTop, groupBottom - groupTop);
       if (groupBottom - groupTop > barBottom - barTop) {
         barTop = groupTop;
         barBottom = groupBottom;
@@ -538,24 +539,28 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   // A next row that opens a group closes this frame at the last full row; its heading shows in the fade.
   const bool frameGoesOn = more && !rowStartsGroup(count);
   const int ringBottom = frameGoesOn ? std::max(fullBottom, floor) : fullBottom;
-  tenorchrome::drawPanel(renderer, lastTop, ringBottom - lastTop);
+  if (ring) tenorchrome::drawPanel(renderer, lastTop, ringBottom - lastTop);
   if (frameGoesOn && floor > fullBottom)
     tenorchrome::drawRowRule(renderer, last.y + last.height + rowFrameGap - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
                 renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
-  // The scroll bar inside the frame's full rows, the shared drawer's round-frame form. A page of several frames
-  // keeps it inside the tallest of them, never across the gaps between frames (rule 13).
+  // The scroll bar along the frame's full rows (rule 13, tenorchrome::frameScrollBar). A page of several frames
+  // keeps it inside the tallest of them, never across the gaps between frames.
   if (n.top > 0 || more) {
     const int full = count - n.top;
+    int frameBottom = barBottom;
     if (!grouped || fullBottom - lastTop > barBottom - barTop) {
       barTop = grouped ? lastTop : ringTop;
       barBottom = fullBottom;
+      frameBottom = ringBottom;
     }
+    const auto bar = tenorchrome::frameScrollBar(tenorchrome::FOOT_BACK_X, barTop,
+                                                 renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X,
+                                                 frameBottom - barTop, barTop, barBottom, ring);
     fui::drawListScrollIndicator(uiTarget,
-                                 fui::Rect{static_cast<int16_t>(tenorchrome::FOOT_BACK_X), static_cast<int16_t>(barTop),
-                                           static_cast<int16_t>(renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X),
-                                           static_cast<int16_t>(barBottom - barTop)},
+                                 fui::Rect{static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
+                                           static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)},
                                  static_cast<uint32_t>(listCount()), static_cast<uint32_t>(std::max(1, full)),
-                                 static_cast<uint32_t>(n.top), 6, 0, 6, tenorchrome::PANEL_RADIUS);
+                                 static_cast<uint32_t>(n.top), static_cast<int16_t>(bar.width));
   }
   // Rows before: the first row (the last full row of the page before, a flick keeps it) and its part of the
   // frame fade. Rows after: the frame's part under the last full row fades with the next row's top.

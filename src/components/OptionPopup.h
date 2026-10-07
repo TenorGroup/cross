@@ -523,11 +523,14 @@ class OptionPopup {
       frame.hit(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(ry), static_cast<int16_t>(w), static_cast<int16_t>(ROW)},
                 ACTION_OPTION, static_cast<int16_t>(i), fui::InputTouch);
     }
-    if (rows < count)
-      fui::drawListScrollIndicator(frame.target(), fui::Rect{box.x, static_cast<int16_t>(rowsTop - PAD), box.width,
-                                                             static_cast<int16_t>(rows * ROW + 2 * PAD)},
+    if (rows < count) {
+      const auto bar = tenorchrome::frameScrollBar(x, y, w, h, rowsTop, rowsTop + rows * ROW);
+      fui::drawListScrollIndicator(frame.target(),
+                                   fui::Rect{static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
+                                             static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)},
                                    static_cast<uint32_t>(count), static_cast<uint32_t>(rows), static_cast<uint32_t>(first),
-                                   6, 0, 6, RADIUS);
+                                   static_cast<int16_t>(bar.width));
+    }
   }
 
 

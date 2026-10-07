@@ -1,6 +1,7 @@
 #include "TenorMenuChrome.h"
 
 #include <GfxRenderer.h>
+#include <InlineSymbols.h>
 #include <HalClock.h>
 #include <HalGPIO.h>
 #include <BlePageTurner.h>
@@ -20,6 +21,7 @@
 #include "ClockStatus.h"
 #include "HeaderBackTapTarget.h"
 #include "activities/Activity.h"
+#include "activities/reader/ReaderMenuLayout.h"
 #include "StatusGlyphs.h"
 #include "icons/tenorHomeTabIcons.h"
 #include "icons/tenorStatusIcons.h"
@@ -179,15 +181,15 @@ void tenorchrome::drawBarIcon(const GfxRenderer& r, const uint8_t* bits, const i
         r.drawPixel(x + i, y + j, true);
 }
 
-void tenorchrome::drawFavoriteMark(const GfxRenderer& r, const int x, const int y) {
+void tenorchrome::drawFavoriteMark(const GfxRenderer& r, const int x, const int fontId, const int lineTop) {
   // The Favourites tab's heart, filled and shrunk, worked out once: inside the outline is everything the
   // outside, flooded from the icon's border, does not reach; a mark pixel is ink when most of its block is.
-  static uint16_t rows[FAVORITE_MARK];
+  static uint32_t rows[FAVORITE_MARK];
   static bool ready = false;
   if (!ready) {
     const auto& icon = icon_tenor_home_favorites_bold_40;
     constexpr int S = 40;
-    static_assert(FAVORITE_MARK <= 16, "a mark row fits 16 bits");
+    static_assert(FAVORITE_MARK <= 32, "a mark row fits 32 bits");
     const int stride = (icon.w + 7) / 8;
     bool outside[S][S] = {};
     const auto ink = [&](const int u, const int v) {
@@ -209,10 +211,11 @@ void tenorchrome::drawFavoriteMark(const GfxRenderer& r, const int x, const int 
         int filled = 0, all = 0;
         for (int v = j * S / n; v < (j + 1) * S / n; ++v)
           for (int u = i * S / n; u < (i + 1) * S / n; ++u, ++all) filled += !outside[v][u];
-        if (2 * filled > all) rows[j] |= static_cast<uint16_t>(1u << i);
+        if (2 * filled > all) rows[j] |= 1u << i;
       }
     ready = true;
   }
+  const int y = inlineSymbols::markTopOnCapitals(r, fontId, lineTop, FAVORITE_MARK);
   for (int j = 0; j < FAVORITE_MARK; ++j)
     for (int i = 0; i < FAVORITE_MARK; ++i)
       if (rows[j] >> i & 1) r.drawPixel(x + i, y + j, true);
@@ -341,20 +344,24 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   HeaderBackTapTarget::setFoot(x, y, SIZE, SIZE);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   if (reader && !readerFootBar.keypad) {
-    const freeink::Icon* normal[] = {&icon_tenor_reader_position_40, &icon_tenor_reader_reading_40,
-                                     &icon_tenor_reader_tools_40, &icon_tenor_home_favorites_40};
-    const freeink::Icon* bold[] = {&icon_tenor_reader_position_bold_40, &icon_tenor_reader_reading_bold_40,
-                                   &icon_tenor_reader_tools_bold_40, &icon_tenor_home_favorites_bold_40};
-    static_assert(std::size(normal) == READER_TOOLS, "an icon a tool");
-    const int left = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), 0).x;
-    if (!shell::isUgly()) drawPillRing(r, left, y, r.getScreenWidth() - FOOT_BACK_X - left, SIZE, 2, true);
-    static constexpr StrId names[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE,
-                                      StrId::STR_READER_TAB_FAVORITES};
+    using readermenu::Tool;
+    const auto iconOf = [](const Tool tool, const bool bold) -> const freeink::Icon& {
+      switch (tool) {
+        case Tool::FAVORITES: return bold ? icon_tenor_home_favorites_bold_40 : icon_tenor_home_favorites_40;
+        case Tool::CONTENTS: return bold ? icon_tenor_reader_position_bold_40 : icon_tenor_reader_position_40;
+        case Tool::TEXT: return bold ? icon_tenor_reader_reading_bold_40 : icon_tenor_reader_reading_40;
+        case Tool::MORE: break;
+      }
+      return bold ? icon_tenor_reader_tools_bold_40 : icon_tenor_reader_tools_40;
+    };
+    if (!shell::isUgly())
+      drawPillRing(r, READER_BAR_LEFT, y, r.getScreenWidth() - FOOT_BACK_X - READER_BAR_LEFT, SIZE, 2, true);
     for (int i = 0; i < READER_TOOLS; ++i) {
       const auto cell = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), i);
       const bool active = i == readerFootBar.activeTool;
+      const auto tool = static_cast<Tool>(i);
       if (shell::isUgly()) {
-        const auto name = ugly::fit(r, ugly::Size::S22, I18N.get(names[i]), cell.width - 16);
+        const auto name = ugly::fit(r, ugly::Size::S22, I18N.get(readermenu::toolName(tool)), cell.width - 16);
         const int textWidth = ugly::width(r, ugly::Size::S22, name.c_str());
         ugly::text(r, ugly::Size::S22, cell.x + (cell.width - textWidth) / 2,
                    y + (SIZE + ugly::ascent(ugly::Size::S22)) / 2, name.c_str());
@@ -362,7 +369,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
             {cell.x + 8, y + 8, cell.x + cell.width - 8, y + SIZE - 8}, 0, 0, 2);
         continue;
       }
-      const freeink::Icon& icon = *(active ? bold[i] : normal[i]);
+      const freeink::Icon& icon = iconOf(tool, active);
       drawBarTab(r, cell.x + cell.width / 2, y, SIZE, icon.bits, icon.w, icon.h, active);
     }
   }

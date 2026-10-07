@@ -154,7 +154,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // Favorites: the X4 Pro's 4th tool (founder 06/10).
   enum class Overlay { None, Toolbar, Contents, Text, More, Favorites };
   Overlay overlay = Overlay::None;
-  int focusedTool = 0;  // toolbar tool focus: 0=Contents, 1=Text, 2=More, 3=Favorites (X4 Pro)
+  // The tool in focus, by its place on the bar (readermenu::Tool). The menu opens on Contents, as it always has.
+  int focusedTool = static_cast<int>(readermenu::Tool::CONTENTS);
   int panelIndex = 0;   // selected row within the active panel
   // Panel list navigation: a tap steps one row, a hold jumps PANEL_HOLD_STEP rows in one go
   // (a contents list runs to hundreds of chapters). One jump per hold, not a repeat -- every

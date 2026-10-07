@@ -25,7 +25,7 @@ def main():
         root = Path(tmp)
         (text,) = run(root / 't', '3000:TAP:240,300;7000:TAP:240,775', [9500], settings=dict(readerTapTip=0))
         check(text, 'Text')
-        ob = f'3000:TAP:{TABS_X[1]},{td.BAR_Y};5000:TAP:240,68;7000:TAP:240,68;9500:TAP:240,775;12000:TAP:147,754'
+        ob = f'3000:TAP:{TABS_X[1]},{td.BAR_Y};5000:TAP:240,68;7000:TAP:240,68;9500:TAP:240,775;12000:TAP:226,754'
         (toc,) = run(root / 'c', ob, [14000], write_books=td.toc_book, settings=dict(readerTapTip=0))
         check(toc, 'Contents')
     print('GREEN: X4 Pro reader menu panels wear the grey 2 px frame 16 px in')

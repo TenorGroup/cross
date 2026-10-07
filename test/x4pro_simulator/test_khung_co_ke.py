@@ -15,8 +15,6 @@ TALLEST_ROW = 100  # a 2-line Settings row is 76 px
 SCREENS = [
     ('Settings', f'3000:TAP:{TABS_X[4]},754', 4800),
     ('Display', f'3000:TAP:{TABS_X[4]},754;4500:TAP:240,180', 6500),
-    ('Folder', f'3000:TAP:{TABS_X[1]},754', 4800),
-    ('Held row menu', f'3000:TAP:{TABS_X[1]},754;5000:TAP:240,98;8000:TAP:240,157,900', 10000),
 ]
 
 

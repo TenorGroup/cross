@@ -18,6 +18,7 @@ s=(a.repo/'src/activities/reader/EpubReaderActivity.cpp').read_text()
 h=(a.repo/'src/activities/reader/ReaderToolbarUi.h').read_text()
 events=re.search(r'enum class Event \{.*?;',h,re.S).group(0)
 routed=re.search(r'  struct Routed \{.*?\n  };',h,re.S).group(0)
+tools=re.search(r'enum class Tool : uint8_t \{.*?return StrId::STR_TOOL_MORE;\n\}',(a.repo/'src/activities/reader/ReaderMenuLayout.h').read_text(),re.S).group(0)
 spacing=re.search(r'constexpr uint8_t kSpacingByPlace\[\].*?;',s,re.S).group(0)
 cpp=r'''
 #include <FreeInkApp.h>
@@ -30,6 +31,10 @@ cpp=r'''
 #include <string>
 #include <vector>
 #define FREEINK_DEVICE_X4PRO 1
+enum class StrId { STR_READER_TAB_FAVORITES, STR_TOOL_CONTENTS, STR_TOOL_TEXT, STR_TOOL_MORE };
+namespace readermenu {
+''' + tools + r'''
+}
 struct RenderLock {};
 struct Settings {
   int fontPointSize=18,lineSpacing=0,paragraphAlignment=0,dropCapMode=1,writes=0;
@@ -160,7 +165,7 @@ int main(){
  using D=EpubReaderActivity::TextDepth;using O=EpubReaderActivity::Overlay;using E=ReaderToolbarUi::Event;
  EpubReaderActivity r;
  assert(r.overlay==O::None&&SETTINGS.writes==0);
- r.openOverlay(O::Toolbar);event(r,E::Tool,1);assert(r.overlay==O::Text&&r.textDepth==D::Rows);
+ r.openOverlay(O::Toolbar);event(r,E::Tool,static_cast<int>(readermenu::Tool::TEXT));assert(r.overlay==O::Text&&r.textDepth==D::Rows);
  event(r,E::Row,0);assert(r.textDepth==D::Fonts&&r.fontFamilies.size()==7);
  event(r,E::Row,3);assert(fontdoc::family==3&&r.previews==1&&SETTINGS.writes==0);
  event(r,E::Row,3);assert(r.previews==1);

@@ -79,13 +79,13 @@ def check_book_zone(tmp):
     open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
     folder = fresh(tmp, 'bz')
     page, contents, back = run(folder, f'{open_book};9500:TAP:240,775;'
-                              '12000:TAP:148,754;15500:TAP:46,754',
+                              '12000:TAP:226,754;15500:TAP:46,754',
                               [9000,14500,18000], write_books=toc_book)
     require_reader(folder)
     capture(folder, ('page','contents','back'), (page,contents,back))
     assert not same(page, contents, (16,364,464,710)), 'Contents never opened'
     assert ink(contents, (32,370,160,398)) > 0.04, 'Contents sheet has no heading'
-    assert ink(contents, (128,730,168,774)) > 0.08, 'Contents tool is missing from the reader bar'
+    assert ink(contents, (223,730,263,774)) > 0.08, 'Contents tool is missing from the reader bar'
     assert same(page, back, (0,0,480,700)), 'foot Back from Contents did not lead to the book page'
 
 
@@ -108,7 +108,7 @@ def check_chosen_row(tmp):
     # The chapter being read is the chosen row of the contents: a tick at its end, no "Dang doc".
     open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
     folder = fresh(tmp, 'ch')
-    (contents,) = run(folder, f'{open_book};9500:TAP:240,775;12000:TAP:148,754',
+    (contents,) = run(folder, f'{open_book};9500:TAP:240,775;12000:TAP:226,754',
                       [17000], write_books=toc_book)
     require_reader(folder)
     capture(folder, ('contents',), (contents,))
@@ -179,9 +179,9 @@ def check_contents_page(tmp):
     # then open again: current chapter is the first row and carries the chosen tick.
     folder = fresh(tmp, 'cp')
     open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
-    page3, chapter15, again = run(folder, f'{open_book};9500:TAP:240,775;12000:TAP:148,754;'
+    page3, chapter15, again = run(folder, f'{open_book};9500:TAP:240,775;12000:TAP:226,754;'
         '14500:SWIPE:240,650,240,420,150;17000:SWIPE:240,650,240,420,150;'
-        '19500:TAP:240,681;22500:TAP:240,775;25000:TAP:148,754',
+        '19500:TAP:240,681;22500:TAP:240,775;25000:TAP:226,754',
         [19000,21500,27500], write_books=toc_book)
     require_reader(folder)
     capture(folder, ('chapters-11-15','chapter15','current-chapter-contents'), (page3,chapter15,again))
@@ -207,7 +207,7 @@ def check_contents_unmatched(tmp):
     for empty in (False,True):
         folder=fresh(tmp,'toc-empty' if empty else 'toc-unmatched')
         (contents,)=run(folder,f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68;'
-            '9500:TAP:240,775;12000:TAP:148,754',[14500],write_books=lambda sach: toc_without_current(sach,empty))
+            '9500:TAP:240,775;12000:TAP:226,754',[14500],write_books=lambda sach: toc_without_current(sach,empty))
         require_reader(folder)
         capture(folder,('contents',),(contents,))
         assert ink(contents,(32,370,160,398)) > 0.04, 'empty/unmatched fixture never opened Contents'

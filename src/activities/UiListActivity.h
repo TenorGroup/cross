@@ -80,6 +80,9 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Touch (dynamic bar rule 7, C1): list rows in a round grey frame, grey dotted rules between them.
   // syncListViewport and syncTabListViewport set the rows in (frameRows); renderUi draws the frame.
   virtual bool listFramed() const { return true; }
+  // A File screen (founder 07/10): its rows keep the framed list's rules, fades and scroll bar, without the ring
+  // (tenorchrome::roundFrames).
+  virtual bool fileList() const { return false; }
   // A row that opens a deeper screen: drawRowFrame ends it with the grey ">" (its value stands before it).
   virtual bool rowOpens(int row) const { return false; }
   // A row under a section heading (ListItem::sectionHeading): drawRowFrame closes the frame above it and opens

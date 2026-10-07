@@ -84,6 +84,9 @@
 #endif
 
 namespace {
+// The places on the toolbar menu's bar of the tools the reader opens by name.
+constexpr int kContentsTool = static_cast<int>(readermenu::Tool::CONTENTS);
+constexpr int kTextTool = static_cast<int>(readermenu::Tool::TEXT);
 // Anh chup cac cai dat lam thay doi cach dan trang. So truoc va sau khi mo man Cai dat van ban
 // de biet co phai dan lai hay khong.
 struct AnhChupChu {
@@ -544,7 +547,7 @@ void EpubReaderActivity::openReaderMenu() {
     // the toolbar on top. The in-reader fast path is openOverlay().
     if (overlay == Overlay::None) stopRadioForSheet();
     overlay = Overlay::Toolbar;
-    focusedTool = 0;
+    focusedTool = kContentsTool;
     panelHoldJumped = false;
     panelCursorShown = !mappedInput.hasTouch();
     if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
@@ -1560,7 +1563,7 @@ void EpubReaderActivity::loop() {
         return;
       case readertap::Zone::TextMenu:
         if (usesToolbarMenu() && section) {
-          focusedTool = 1;  // the toolbar's Text tool
+          focusedTool = kTextTool;
           openOverlay(Overlay::Text);
         } else {
           openReaderMenu();
@@ -4250,7 +4253,7 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   panelCursorShown = !mappedInput.hasTouch();
   switch (target) {
     case Overlay::Toolbar:
-      focusedTool = 0;
+      focusedTool = kContentsTool;
       break;
     case Overlay::Contents:
       panelIndex = std::max(0, epub->getTocIndexForSpineIndex(currentSpineIndex));
@@ -4378,9 +4381,12 @@ void EpubReaderActivity::renderOverlay() {
   }
 #endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-  const int chromeTool = overlay == Overlay::Contents ? 0 : overlay == Overlay::Text ? 1 : overlay == Overlay::More ? 2
-                         : overlay == Overlay::Favorites                                         ? 3
-                                                                                                 : -1;
+  using readermenu::Tool;
+  const int chromeTool = overlay == Overlay::Contents    ? static_cast<int>(Tool::CONTENTS)
+                         : overlay == Overlay::Text      ? static_cast<int>(Tool::TEXT)
+                         : overlay == Overlay::More      ? static_cast<int>(Tool::MORE)
+                         : overlay == Overlay::Favorites ? static_cast<int>(Tool::FAVORITES)
+                                                         : -1;
   tenorchrome::noteReaderFootBar(overlay != Overlay::None,
                                overlay == Overlay::Text && textDepth == TextDepth::PointSize, chromeTool);
 #endif
@@ -4550,7 +4556,13 @@ void EpubReaderActivity::handleOverlayInput() {
     requestUpdate();
   };
   const auto toolOverlay = [](int tool) {
-    return tool == 0 ? Overlay::Contents : tool == 1 ? Overlay::Text : tool == 2 ? Overlay::More : Overlay::Favorites;
+    switch (static_cast<readermenu::Tool>(tool)) {
+      case readermenu::Tool::FAVORITES: return Overlay::Favorites;
+      case readermenu::Tool::CONTENTS: return Overlay::Contents;
+      case readermenu::Tool::TEXT: return Overlay::Text;
+      case readermenu::Tool::MORE: break;
+    }
+    return Overlay::More;
   };
 
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
@@ -5481,7 +5493,7 @@ void EpubReaderActivity::activateFavoriteRow(const int row) {
     return;
   }
   // Font, size and line spacing open their level of the Text panel.
-  focusedTool = 1;
+  focusedTool = kTextTool;
   openOverlay(Overlay::Text);
   panelIndex = place;
   openTextRow(place);
@@ -5491,7 +5503,7 @@ void EpubReaderActivity::activateFavoriteRow(const int row) {
     return;
   }
   // Font opens its list in the Text panel.
-  focusedTool = 1;
+  focusedTool = kTextTool;
   openOverlay(Overlay::Text);
   enterFontLevel();
 #endif

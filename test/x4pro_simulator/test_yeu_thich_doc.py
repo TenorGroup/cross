@@ -1,4 +1,4 @@
-"""X4 Pro reader menu Favorites (founder 06/10): a 4th tool on the reader's bar lists what the reader pinned,
+"""X4 Pro reader menu Favorites (founder 06/10): a tool on the reader's bar (the 1st since 07/10) lists what the reader pinned,
 actions and text settings alike. A hold on a Text or More row pins it and marks it with a small heart; a tap on a pinned text setting steps it
 there. Pins of actions save as numbers as before, a text setting as "text/<key>".
 
@@ -13,7 +13,7 @@ from PIL import ImageChops
 from test_thanh_day import run, ink
 from test_menu_chu_14 import TEXT_MENU, ROW_Y
 
-FAVORITES = (416, 754)  # the 4th tool of the reader's bar
+FAVORITES = (131, 754)  # the 1st tool of the reader's bar
 
 
 def main():

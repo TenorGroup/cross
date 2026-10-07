@@ -169,11 +169,15 @@ void ReaderToolbarUi::buildSheet(UiScreen& screen, const fui::SheetProps& props,
 void ReaderToolbarUi::buildToolRow(UiScreen& screen, const fui::LayoutAnchor anchor, const int16_t sideInset) {
   // The tab glyphs at the tab size of tenor/cross (40 px, founder 06/10), drawn as its icon bars draw a tab:
   // the one in focus solid and bold in the round-ended ring, the others grey.
-  static const freeink::Icon* const icons[] = {&icon_reader_tab_contents_40, &icon_reader_tab_text_40,
-                                               &icon_reader_tab_more_40, &icon_tenor_home_favorites_40};
-  static const freeink::Icon* const bolds[] = {&icon_reader_tab_contents_bold_40, &icon_reader_tab_text_bold_40,
-                                               &icon_reader_tab_more_bold_40, &icon_tenor_home_favorites_bold_40};
-  static_assert(std::size(icons) == kToolCount && std::size(bolds) == kToolCount, "an icon a tab");
+  const auto iconOf = [](const readermenu::Tool tool, const bool bold) -> const freeink::Icon& {
+    switch (tool) {
+      case readermenu::Tool::FAVORITES: return bold ? icon_tenor_home_favorites_bold_40 : icon_tenor_home_favorites_40;
+      case readermenu::Tool::CONTENTS: return bold ? icon_reader_tab_contents_bold_40 : icon_reader_tab_contents_40;
+      case readermenu::Tool::TEXT: return bold ? icon_reader_tab_text_bold_40 : icon_reader_tab_text_40;
+      case readermenu::Tool::MORE: break;
+    }
+    return bold ? icon_reader_tab_more_bold_40 : icon_reader_tab_more_40;
+  };
   // sideInset absorbs the difference between the two hosts' content bands
   // (the toolbar's is spaceLg-inset, the panel's is full width): the slots
   // must land on the same x either way, or the icons jump when a tap swaps
@@ -183,7 +187,7 @@ void ReaderToolbarUi::buildToolRow(UiScreen& screen, const fui::LayoutAnchor anc
   for (int i = 0; i < kToolCount; ++i) {
     const fui::Rect slot{static_cast<int16_t>(row.x + slotW * i), row.y, slotW, row.height};
     const bool active = i == model_.activeTool;
-    const freeink::Icon& icon = *(active ? bolds[i] : icons[i]);
+    const freeink::Icon& icon = iconOf(static_cast<readermenu::Tool>(i), active);
     if (uiTarget.paintingEnabled() && renderer_)
       tenorchrome::drawBarTab(*renderer_, slot.x + slot.width / 2, slot.y, slot.height, icon.bits, icon.w, icon.h,
                               active);
@@ -427,12 +431,13 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     if (model_.rowPinned && renderer_ && uiTarget.paintingEnabled()) {
       // A row pinned to Favorites: the Favorites tab's heart after its name (the touch toolbar's mark).
       const int16_t left = static_cast<int16_t>(listRect.x + listProps_.rowInset + listProps_.sidePadding);
+      const int16_t lh = screen.target().lineHeight(listProps_.labelText.font);
       for (int i = 0; i < std::min(windowCount, nav_.pageRows()); ++i) {
         if (!model_.rowPinned(nav_.top + i)) continue;
         const int16_t width =
             screen.target().measureText(listProps_.labelText.font, windowLabels_[i].c_str(), listProps_.labelText).width;
-        tenorchrome::drawFavoriteMark(*renderer_, left + width + tokens.spaceSm,
-                                      listRect.y + i * (rowH + rowGap) + (rowH - tenorchrome::FAVORITE_MARK) / 2);
+        const int lineTop = listRect.y + i * (rowH + rowGap) + (rowH - lh) / 2;
+        tenorchrome::drawFavoriteMark(*renderer_, left + width + tokens.spaceSm, uiScaleSpec().bodyFontId, lineTop);
       }
     }
   } else if (model_.emptyText) {
@@ -556,10 +561,10 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.valueText.maxLines = 1;
     listProps_.chosenMark = fui::bitmapFromIcon(icon_reader_tick_24);
     listProps_.partialTrailingRow = fonts;
-    listProps_.scrollIndicatorInset = 4;
-    // The list ends at the frame's bottom edge: the bar keeps out of its round corner and rounds its ends.
-    listProps_.scrollIndicatorWidth = 6;
-    listProps_.scrollIndicatorFrameRadius = tenorchrome::PANEL_RADIUS;
+    // The rows keep clear of the scroll bar's column (kBarStrip, the strip list() used to take for it); the bar
+    // goes where every framed list's goes (tenorchrome::frameScrollBar), drawn below.
+    constexpr int16_t kBarStrip = 12;
+    listProps_.scrollIndicator = false;
     listProps_.rowStyles = fui::defaultListRowStyles();
     nav_.selected = std::clamp(model_.selectedIndex, -1, count - 1);
     nav_.followOnBuild = nav_.selected >= 0;
@@ -581,14 +586,23 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.items = windowItems_;
     listProps_.itemsWindowFirst = static_cast<uint16_t>(nav_.top);
     listProps_.itemsWindowCount = static_cast<uint16_t>(std::max(0, windowCount));
-    if (count > 0) fui::list(screen.frame(), listRect, listProps_);
+    if (count > 0) {
+      const fui::Rect rowsRect{listRect.x, listRect.y, static_cast<int16_t>(listRect.width - kBarStrip),
+                               listRect.height};
+      fui::list(screen.frame(), rowsRect, listProps_);
+      const auto bar =
+          tenorchrome::frameScrollBar(frame.x, frame.y, frame.width, frame.height, listRect.y, listRect.bottom());
+      fui::drawListScrollIndicator(screen.target(),
+                                   {static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
+                                    static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)},
+                                   static_cast<uint32_t>(count), static_cast<uint32_t>(std::max(1, nav_.visibleRows)),
+                                   static_cast<uint32_t>(nav_.top), static_cast<int16_t>(bar.width));
+    }
     if (model_.rowPinned && renderer_ && uiTarget.paintingEnabled()) {
       // The heart stands before the value (and the chevron), inside the frame; on the size row, before its "-".
       const int16_t lh = screen.target().lineHeight(listProps_.labelText.font);
       const int chevron = fui::listChevronWidth(fui::listChevronSpan(lh)) + listProps_.textGap;
-      // The scroll bar's strip, which list() takes from the rows' right side (rowInset is 0 here).
-      const bool reserved = listProps_.scrollIndicator && (count > nav_.visibleRows || listProps_.nav);
-      const int strip = reserved ? listProps_.scrollIndicatorWidth + listProps_.scrollIndicatorInset + 2 : 0;
+      const int strip = kBarStrip;
       for (int i = 0; i < std::min(nav_.visibleRows, windowCount); ++i) {
         const int index = nav_.top + i;
         if (!model_.rowPinned(index)) continue;
@@ -598,8 +612,8 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
           right = frame.right() - 204;
         else if (item.value)
           right -= screen.target().measureText(listProps_.valueText.font, item.value, listProps_.valueText).width;
-        tenorchrome::drawFavoriteMark(*renderer_, right - 8 - tenorchrome::FAVORITE_MARK,
-                                      listRect.y + i * 62 + (62 - tenorchrome::FAVORITE_MARK) / 2);
+        tenorchrome::drawFavoriteMark(*renderer_, right - 8 - tenorchrome::FAVORITE_MARK, uiScaleSpec().bodyFontId,
+                                      listRect.y + i * 62 + (62 - lh) / 2);
       }
     }
     if (count == 0 && model_.emptyText) {
@@ -616,8 +630,10 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       const int16_t y = static_cast<int16_t>(listRect.y + sizeSlot * 62);
       fui::TextStyle label = tokens.bodyText;
       label.maxLines = 1;
-      screen.target().text({static_cast<int16_t>(frame.x + 16), y, static_cast<int16_t>(frame.width - 236), 62},
-                           windowLabels_[sizeSlot].c_str(), label);
+      // A pinned size row leaves its heart the room before the "-": a long name stops short of it.
+      const bool pinned = model_.rowPinned && model_.rowPinned(1);
+      const int16_t room = static_cast<int16_t>(frame.width - 236 - (pinned ? tenorchrome::FAVORITE_MARK + 8 : 0));
+      screen.target().text({static_cast<int16_t>(frame.x + 16), y, room, 62}, windowLabels_[sizeSlot].c_str(), label);
       stepProps_ = fui::ButtonProps{};
       stepProps_.inputMask = fui::InputTouch;
       stepProps_.minTouchSize = 60;
@@ -852,18 +868,15 @@ void ReaderToolbarUi::paintUgly() {
       r.setClipRect(clip[0], clip[1], clip[2], clip[3]);
     }
   }
-  static constexpr StrId tools[] = {StrId::STR_TOOL_CONTENTS, StrId::STR_TOOL_TEXT, StrId::STR_TOOL_MORE,
-                                    StrId::STR_READER_TAB_FAVORITES};
-  static_assert(std::size(tools) == kToolCount, "a name a tab");
-#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
-  constexpr int named = 3;  // as before Favorites came to the button boards (the foot bar names its own tabs)
-#else
-  constexpr int named = kToolCount;
-#endif
-  for (int tool = 0; tool < named; ++tool) {
+  for (int tool = 0; tool < kToolCount; ++tool) {
+    // The X4 Pro leaves Favorites unnamed here, as before Favorites came to the button boards (the foot bar
+    // names its own tabs).
+    if (tenorchrome::kTouchShell && static_cast<readermenu::Tool>(tool) == readermenu::Tool::FAVORITES) continue;
     const auto box = app.publishedRect(ACTION_TOOL, tool);
     if (!box.empty()) {
-      const auto ink = readerugly::text(r, box.inset(fui::Insets{0, 8, 0, 8}), I18N.get(tools[tool]), fui::TextAlign::Center);
+      const auto ink = readerugly::text(r, box.inset(fui::Insets{0, 8, 0, 8}),
+                                        I18N.get(readermenu::toolName(static_cast<readermenu::Tool>(tool))),
+                                        fui::TextAlign::Center);
       if (model_.activeTool == tool) uglychrome::ring(r, ink);
     }
   }

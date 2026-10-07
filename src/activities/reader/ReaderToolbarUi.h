@@ -6,6 +6,7 @@
 #include <string>
 
 #include "Icon.h"
+#include "ReaderMenuLayout.h"
 #include "components/UiAppHost.h"
 #include "components/lists/list.h"
 
@@ -43,8 +44,8 @@ class ReaderToolbarUi : public UiAppHost {
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   enum class TextView : uint8_t { None, Rows, Fonts, Spacing, PointSize };
 #endif
-  // The tabs: 0 Contents, 1 Text, 2 More, 3 Favorites.
-  static constexpr int kToolCount = 4;
+  // The tabs, in the order readermenu::Tool gives them.
+  static constexpr int kToolCount = readermenu::TOOL_COUNT;
 
   struct Model {
     bool panel = false;  // false = toolbar, true = a Contents/Text/More panel

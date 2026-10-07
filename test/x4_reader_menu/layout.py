@@ -41,9 +41,12 @@ namespace freeink::ui { BitmapRef bitmapFromIcon(const freeink::Icon&) { return 
 struct GfxRendererTarget { static constexpr int FONT_LABEL=3; }; }
 freeink::Icon icon_reader_back_24,icon_reader_next_24,icon_reader_tick_24;
 #include <I18n.h>
+#include "activities/reader/ReaderMenuLayout.h"
 I18n& I18n::getInstance(){static I18n i;return i;}
 const char* I18n::get(StrId)const{return "Done";}
 class GfxRenderer {};
+struct UiSpec { int bodyFontId=0; };
+UiSpec uiScaleSpec() { return {}; }
 struct Target : fui::DrawTarget {
   int tier=0;
   void setPaintingEnabled(bool value) { painting=value; }
@@ -86,13 +89,13 @@ constexpr bool kTouchShell=true;
 [[maybe_unused]] constexpr int PANEL_RADIUS=20;
 constexpr int FAVORITE_MARK=14;
 int favoriteMarks=0;
-void drawFavoriteMark(const GfxRenderer&,int,int) { ++favoriteMarks; }
+void drawFavoriteMark(const GfxRenderer&,int,int,int) { ++favoriteMarks; }
 // The panels' one grey ring (TenorMenuChrome): x 16, the screen's width less 32.
 std::vector<fui::Rect> panels;
 void drawPanel(const GfxRenderer&,int y,int h) { panels.push_back({16,static_cast<int16_t>(y),448,static_cast<int16_t>(h)}); }
 int footBackTop(int h) { return h-76; }
 void drawRowRule(const GfxRenderer&,int,int,int) {}
-''' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
+''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|FRAME_BAR_WIDTH|FRAME_BAR_AIR) = .*?;', chrome, re.M)) + '\n' + method(chrome, 'struct FrameBar') + ';\n' + method(chrome, 'inline FrameBar frameScrollBar') + '\n' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
 cpp += header + '\n' + constants + '\n'
 cpp += 'ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& r): UiAppHost(r), renderer_(&r) {}\n'
 cpp += method(source, 'fui::Rect readerFrame') + '\n'
@@ -185,5 +188,5 @@ int main() {
 (a.output / 'layout.cpp').write_text(cpp)
 sdk=a.repo / 'freeink-sdk/libs/ui/FreeInkUI'
 subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined',
-                '-I'+str(sdk/'include'),'-I'+str(a.repo/'lib/I18n'),str(a.output/'layout.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(a.output/'layout')],check=True)
+                '-I'+str(sdk/'include'),'-I'+str(a.repo/'lib/I18n'),'-I'+str(a.repo/'src'),str(a.output/'layout.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(a.output/'layout')],check=True)
 subprocess.run([str(a.output/'layout')],check=True)

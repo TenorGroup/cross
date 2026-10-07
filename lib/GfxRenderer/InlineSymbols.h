@@ -15,6 +15,10 @@ int text(const GfxRenderer& renderer, int font, int x, int y, const char* text, 
 void drawShape(const GfxRenderer& renderer, Shape shape, int x, int y, int size, bool black);
 // Dau ghim cua dong Yeu thich, ve o le trai (x 13), dinh o `top`.
 void drawMarginPin(const GfxRenderer& renderer, int top);
+// The top of a mark `height` px tall beside a line of `font` drawn at `y` (the y drawText takes): centred on the
+// line's capitals, from their top to the baseline. Every pinned row's heart stands here (founder 07/10: the hearts
+// sat low, on the middle of the line box).
+int markTopOnCapitals(const GfxRenderer& renderer, int font, int y, int height);
 // Pixel width of the bitmap glyph drawShape() picks for `shape` at target size `size`.
 // Only meaningful for the bitmap-backed shapes (Back, Select); 0 otherwise.
 int glyphWidth(Shape shape, int size);
