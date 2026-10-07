@@ -223,7 +223,7 @@ void UiListActivity::stepSelection(const int direction) {
   // Whole-page flips, not a row-by-row crawl: one press is still one repaint, and the rows a page
   // really drew (pageRowsFor) decide where the selection leaves it. followPending stays armed so
   // onListRendered() can correct a page whose wrapped rows fit fewer than estimated.
-  n.top = ButtonNavigator::pageTopAfterStep(n.selected, n.top, n.pageRowsFor(count), count, direction);
+  n.top = ButtonNavigator::pageTopAfterStep(n.selected, n.top, n.pageRowsFor(count), count);
   n.followPending = true;
 }
 

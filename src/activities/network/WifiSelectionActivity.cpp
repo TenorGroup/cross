@@ -1024,7 +1024,7 @@ void WifiSelectionActivity::loop() {
     const auto moveSelection = [this](const int index) {
       selectedNetworkIndex = static_cast<size_t>(index);
       listNav.selected = index;
-      listNav.follow(static_cast<int>(networks.size()));
+      followStep(listNav, static_cast<int>(networks.size()));
       requestUpdate();
     };
     buttonNavigator.onNext(

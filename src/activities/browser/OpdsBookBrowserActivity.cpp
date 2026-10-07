@@ -232,7 +232,7 @@ void OpdsBookBrowserActivity::loop() {
       const auto moveSelection = [this](const int index) {
         selectorIndex = index;
         listNav.selected = index;
-        listNav.follow(static_cast<int>(entries.size()));
+        followStep(listNav, static_cast<int>(entries.size()));
         requestUpdate();
       };
       buttonNavigator.onNextRelease(

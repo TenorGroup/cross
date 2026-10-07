@@ -20,6 +20,7 @@
 #include "shells/ugly/UglyChrome.h"
 #include "shells/ugly/UglySleep.h"
 #include "shells/ugly/UglyInk.h"
+#include "util/ButtonNavigator.h"
 
 namespace fui = freeink::ui;
 
@@ -53,6 +54,11 @@ constexpr int kPanelHeightPercent = 62;
 constexpr int kPanelHeightMaxPercent = 72;
 // Landscape has less vertical room; leave a narrow page strip for tap-to-dismiss.
 constexpr int kLandscapePanelHeightPercent = 88;
+// The page a list shows in its "n/m": the last one once its last row is on screen (the last page reaches the foot,
+// so it starts where a page count would not).
+[[maybe_unused]] int shownPage(const int top, const int rows, const int count) {
+  return top + rows >= count ? (count + rows - 1) / rows : top / rows + 1;
+}
 }  // namespace
 
 ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& renderer) : UiAppHost(renderer), renderer_(&renderer) {}
@@ -380,7 +386,11 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   // menu screens). A shown cursor re-follows into view on every build; a
   // hidden one (-1, touch) leaves the viewport where scrolling put it.
   nav_.selected = std::clamp(model_.selectedIndex, -1, count - 1);
-  nav_.followOnBuild = nav_.selected >= 0;
+  // A cursor that leaves the page on screen turns the whole page, as every list of the buttons does
+  // (ButtonNavigator::pageTopAfterStep); a list not laid out yet opens with the cursor pulled into view.
+  const bool paged = nav_.selected >= 0 && nav_.trusts(count);
+  if (paged) nav_.top = ButtonNavigator::pageTopAfterStep(nav_.selected, nav_.top, nav_.pageRowsFor(count), count);
+  nav_.followOnBuild = nav_.selected >= 0 && !paged;
   nav_.followPending = false;
   nav_.syncToProps(listRect, listProps_.rowHeight, rowGap, count, listProps_);
 
@@ -390,6 +400,8 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   // the last row that fits is the glimpse instead.
   listProps_.partialTrailingRow = true;
   listProps_.partialTrailingMinPercent = 75;
+  // The last page reaches the foot, as on the buttons' lists (UiListActivity::frameRows).
+  listProps_.fillLastPage = true;
   fadeRight_ = static_cast<int16_t>(listRect.right() - tokens.listScrollWidth - 2);
   const int windowCount = std::min({nav_.visibleRows + 1, count - nav_.top, kMaxWindow});
   for (int i = 0; i < windowCount; ++i) {
@@ -434,7 +446,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   const int totalPages = pageRows > 0 ? (count + pageRows - 1) / pageRows : 0;
   if (totalPages > 1) {
     char buf[16];
-    snprintf(buf, sizeof(buf), "%d/%d", nav_.top / pageRows + 1, totalPages);
+    snprintf(buf, sizeof(buf), "%d/%d", shownPage(nav_.top, pageRows, count), totalPages);
     fui::TextStyle pageStyle = tokens.smallText;
     pageStyle.align = fui::TextAlign::Right;
     screen.target().text(pageIndicatorRect_, buf, pageStyle);
@@ -746,7 +758,7 @@ void ReaderToolbarUi::paintUgly() {
     const int pageRows = nav_.pageRows();
     const int pages = pageRows > 0 ? (model_.itemCount + pageRows - 1) / pageRows : 0;
     if (pages > 1) {
-      char page[16]; snprintf(page, sizeof(page), "%d/%d", nav_.top / pageRows + 1, pages);
+      char page[16]; snprintf(page, sizeof(page), "%d/%d", shownPage(nav_.top, pageRows, model_.itemCount), pages);
       const int width = ugly::width(r, ugly::Size::S22, page);
       readerugly::text(r, header, page, fui::TextAlign::Right);
       header.width = static_cast<int16_t>(std::max(0, header.width - width - 12));

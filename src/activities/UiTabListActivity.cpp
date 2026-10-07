@@ -220,7 +220,7 @@ void UiTabListActivity::moveRingTo(const int ringIndex, const int direction) {
   if (ringIndex == 0) {
     n.top = 0;
   } else if (direction != 0) {
-    n.top = ButtonNavigator::pageTopAfterStep(ringIndex - 1, n.top, n.pageRowsFor(listCount()), listCount(), direction);
+    n.top = ButtonNavigator::pageTopAfterStep(ringIndex - 1, n.top, n.pageRowsFor(listCount()), listCount());
   } else {
     // Pull the viewport to the row (ring - 1); ListNav::follow reads
     // n.selected as a row index, so compute directly here.

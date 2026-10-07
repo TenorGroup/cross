@@ -5,6 +5,8 @@
 #include "activities/ActivityManager.h"
 #include "TouchScroll.h"
 #include "UiAppHelpers.h"
+#include "components/TenorMenuChrome.h"
+#include "util/ButtonNavigator.h"
 
 namespace fui = freeink::ui;
 
@@ -74,6 +76,15 @@ fui::Rect UiAppHost::dispatchingRect() {
     return event ? dispatching->publishedRect(event.action, event.value) : fui::Rect{};
   }
   return lastTapScreen == activityManager.activityGeneration() ? lastTapRect : fui::Rect{};
+}
+
+void UiAppHost::followStep(fui::ListNav& nav, const int count) {
+  if (tenorchrome::kTouchShell) {
+    nav.follow(count);
+    return;
+  }
+  nav.top = ButtonNavigator::pageTopAfterStep(nav.selected, nav.top, nav.pageRowsFor(count), count);
+  nav.followPending = true;
 }
 
 int UiAppHost::swipeRows(const MappedInputManager& input, const fui::ListNav& nav, const int count,
