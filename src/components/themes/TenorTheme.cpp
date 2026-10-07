@@ -53,7 +53,11 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
       if (!words[i] || !*words[i]) continue;
       const int id = buttonSymbols::labelId(words[i]);
       if (id >= 0) {
-        ugly::mark(renderer, MARKS[id], centres[i], y);
+        // A pen mark spans some 20 px (its table's 132/16 px each side and the 2 px stroke): it keeps off them too.
+        constexpr int MARK_HALF = 10;
+        const int cx = std::clamp(centres[i], leftEnd + MARK_HALF, rightEnd - MARK_HALF);
+        ugly::mark(renderer, MARKS[id], cx, y);
+        wordsEnd = std::max(wordsEnd, cx + MARK_HALF);
         continue;
       }
       const std::string word = ugly::fit(renderer, ugly::Size::S22, words[i], std::min(84, rightEnd - leftEnd));

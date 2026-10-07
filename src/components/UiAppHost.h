@@ -62,6 +62,9 @@ class UiAppHost {
   // rule (TouchScroll.h) and the row pitch the last layout drew; 0 when the pass holds no vertical swipe.
   int swipeRows(const MappedInputManager& input, const freeink::ui::ListNav& nav, int count,
                 freeink::ui::ActionId rowAction, int keepRows = 0) const;
+  // A button step moved nav.selected: the page the list shows by the one rule of the buttons
+  // (ButtonNavigator::pageTopAfterStep); touch keeps the minimal pull (ListNav::follow).
+  static void followStep(freeink::ui::ListNav& nav, int count);
 
   // Gated route of a caller-built snapshot, for flows that need the snapshot
   // before dispatch (e.g. a handler that reads "was this a release" state).

@@ -1,5 +1,7 @@
 #include "ButtonNavigator.h"
 
+#include <algorithm>
+
 const MappedInputManager* ButtonNavigator::mappedInput = nullptr;
 
 void ButtonNavigator::onNext(const Callback& callback) {
@@ -87,12 +89,11 @@ int ButtonNavigator::previousIndex(const int currentIndex, const int totalItems)
   return (currentIndex + totalItems - 1) % totalItems;
 }
 
-int ButtonNavigator::pageTopAfterStep(const int selected, const int top, const int rowsPerPage, const int totalItems,
-                                     const int direction) {
+int ButtonNavigator::pageTopAfterStep(const int selected, const int top, const int rowsPerPage, const int totalItems) {
   if (totalItems <= 0 || rowsPerPage <= 0 || totalItems <= rowsPerPage) return 0;
   if (selected >= top && selected < top + rowsPerPage) return top;
-  if (direction > 0) return selected;
-  return selected - rowsPerPage + 1 > 0 ? selected - rowsPerPage + 1 : 0;
+  if (selected >= top + rowsPerPage) return selected < totalItems - 1 ? selected : totalItems - rowsPerPage;
+  return std::max(0, selected - rowsPerPage + 1);
 }
 
 int ButtonNavigator::nextPageIndex(const int currentIndex, const int totalItems, const int itemsPerPage) {

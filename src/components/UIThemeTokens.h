@@ -60,6 +60,9 @@ inline freeink::ui::ThemeTokens uiThemeTokens(const freeink::ui::GfxRendererTarg
     tokens.listRowRadius = TENOR_PILL_RADIUS;
     tokens.listSidePadding = TENOR_PILL_SIDE_PADDING;
     tokens.listRowPaddingY = TENOR_PILL_ROW_PADDING_Y;
+    // Every value ends on one column, a row that opens nothing keeping the room of the grey ">" too (founder
+    // 07/10/2026): "5" and "Rộng" stand right under the values before a ">".
+    tokens.listChevronColumn = true;
   }
   tokens.listScrollWidth = static_cast<int16_t>(metrics.listScrollWidth);
   tokens.listScrollSide = static_cast<uint8_t>(metrics.listScrollSide);

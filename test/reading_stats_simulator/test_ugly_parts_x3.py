@@ -203,6 +203,28 @@ class UglyPartsX3(unittest.TestCase):
         end, clock = map(int, found[-1])
         self.assertLessEqual(end, clock - 10, 'the word over the key runs into the clock')
 
+    def test_a_mark_over_a_key_keeps_off_the_clock(self):
+        # The 12-hour clock ("1:17 AM") is wider: the Down mark over the 4th key ran into it (Clock settings, Language).
+        card = Card(clockFormat=1)
+        try:
+            t, parts = START, []
+            for k in settings_question(7, 1):
+                parts.append('%d:%s' % (t, k))
+                t += GAP
+            at = t + SETTLE
+            parts.append('%d:QUIT' % (at + 600))
+            log, shots = card.run(';'.join(parts), [(at, 'keys12')], timeout=120)
+        finally:
+            card.close()
+        found = re.findall(r'part=keys words_end=(\d+) clock_at=(\d+)', log)
+        self.assertTrue(found, log[-1500:])
+        clock = int(found[-1][1])
+        self.assertLess(clock, 528, 'no clock on the strip')
+        image = shots['keys12']
+        # The 10 px left of the clock stay clear over the key bar, as for a word.
+        self.assertEqual(ink(image, (clock - 10, image.height - 40, clock - 1, image.height)), 0,
+                         'the mark over the 4th key runs into the clock')
+
     def test_the_loading_notice_of_the_reader_says_it_in_the_voice_of_the_shell(self):
         # A book with a cover, opened from the diary and closed: its thumbnails are written under the loading notice.
         from test_home_card_v1011 import epub_with_cover
