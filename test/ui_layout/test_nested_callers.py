@@ -2,6 +2,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
 
+option_popup = (ROOT / "src/components/OptionPopup.h").read_text()
+assert "renderer.fillRoundedRect(box.x, box.y, box.width, box.height" in option_popup
+assert "tenorchrome::drawRoundRing(renderer, box.x, box.y, box.width, box.height" in option_popup
+
 CASES = {
     "settings": (ROOT / "src/activities/settings/SettingsActivity.cpp", "optionPopup.showInFrame"),
     "home_buttons": (ROOT / "src/activities/settings/HomeButtonSettingsActivity.cpp", "optionPopup.showInFrame"),
