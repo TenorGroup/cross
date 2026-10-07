@@ -58,5 +58,64 @@ class PagingTest(unittest.TestCase):
         self.assertLess(ys[-1], ys[-2], ys)
 
 
+PITCH = 56  # the row pitch of the X3 lists and of the toolbar sheet
+
+
+def value_right(img, y, x0=280, x1=512):
+    """Right end of the words at the right of a row from `y` (the value): the grey ">" is left out, its half-ink
+    checker has no 2 dark pixels side by side. The side arrows past x1 are left out."""
+    px = img.load()
+    rows = range(y + 8, y + PITCH - 8)
+    cols = [x for x in range(x0, x1) if any(px[x, yy] < 128 for yy in rows)]
+    clusters = []
+    for x in cols:
+        if clusters and x - clusters[-1][-1] < 6:
+            clusters[-1].append(x)
+        else:
+            clusters.append([x])
+    solid = [c for c in clusters
+             if any(px[x, yy] < 128 and px[x + 1, yy] < 128 for x in c[:-1] for yy in rows)]
+    return solid[-1][-1] if solid else None
+
+
+def settings_shot(keys):
+    """Home on the tenor shell, keys a press every 900 ms, one frame after the last."""
+    from ugly_common import Card
+    card = Card(shell=0, books=[])
+    try:
+        t = 1500
+        script = []
+        for k in keys:
+            script.append(f'{t}:{k}')
+            t += 900
+        script.append(f'{t + 1500}:QUIT')
+        _, shots = card.run(';'.join(script), [(t + 900, 'frame')], timeout=90)
+    finally:
+        card.close()
+    return shots['frame'].convert('L')
+
+
+class ValueColumnTest(unittest.TestCase):
+    """A value on a row with no ">" ends on the column of the values before a ">" (founder 07/10/2026)."""
+
+    def test_display_settings(self):
+        # Settings > Display, cursor on its first row (y 129): rows 1..9, "15 trang >" among "Mặc định", "Bật"...
+        img = settings_shot(['DOWN'] * 4 + ['CONFIRM'])
+        keep('cot-hien-thi', img)
+        rights = [value_right(img, 129 + PITCH * k) for k in range(1, 10)]
+        self.assertTrue(all(rights), rights)
+        self.assertLessEqual(max(rights) - min(rights), 1, f'values end on {rights}')
+
+    def test_toolbar_text_sheet(self):
+        # Page 2 of the Text sheet, cursor on its first row: 3 rows with ">" and "Định dạng gốc của sách: Bật".
+        res = parallel([TO_TEXT_ROW(5)])[0]
+        img = res['shots'][-1]
+        keep('cot-van-ban', img)
+        top = cursor_top(img, sheet_top(img) + 60)
+        rights = [value_right(img, top + PITCH * k, x1=505) for k in range(1, 5)]
+        self.assertTrue(all(rights), rights)
+        self.assertLessEqual(max(rights) - min(rights), 1, f'values end on {rights}')
+
+
 if __name__ == '__main__':
     unittest.main()
