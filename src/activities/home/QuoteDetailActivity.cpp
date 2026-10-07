@@ -259,7 +259,11 @@ void QuoteDetailActivity::openMenu(const Menu which) {
     } else if (which == Menu::Edit) {
       static constexpr StrId options[] = {StrId::STR_QUOTES_EDIT_TRIM, StrId::STR_QUOTES_EDIT_RESELECT,
                                           StrId::STR_CANCEL};
-      popup.show(StrId::STR_QUOTES_MENU_EDIT, options, 3, -1, pick);
+      const auto parentFrame = popup.lastFrame();
+      if (tenorchrome::kTouchShell && !parentFrame.empty())
+        popup.showInFrame(parentFrame, StrId::STR_QUOTES_MENU_EDIT, options, 3, -1, pick);
+      else
+        popup.show(StrId::STR_QUOTES_MENU_EDIT, options, 3, -1, pick);
     } else if (which == Menu::Delete) {
       // Mockup M2: the words being deleted, in quotation marks, above the system dialog,
       // which opens on Cancel. The dialog's title is one bold line, which cut the note

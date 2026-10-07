@@ -100,6 +100,7 @@ class OptionPopup {
 
   bool usesFrame() const { return inFrame; }
   freeink::ui::Rect activeFrame() const { return frameRect; }
+  freeink::ui::Rect lastFrame() const { return lastRenderedFrame; }
 
   // Touch shell: the actions of a held row in a menu anchored to the row, no title: under it when the
   // row is in the upper half and the menu fits over the bar at the foot, else over it; left on the list's
@@ -333,6 +334,7 @@ class OptionPopup {
     }
     const int16_t height = fui::optionDialogHeight(target, props, width);
     const fui::Rect dialogRect = fui::centeredRect(available, fui::Size{width, height});
+    lastRenderedFrame = dialogRect;
 
     // Chrome guard first, options after: route() scans newest-first, so the
     // option buttons win inside the dialog and the guard absorbs the rest.
@@ -516,6 +518,7 @@ class OptionPopup {
     const fui::Rect box = inFrame
         ? frameRect
         : fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w), static_cast<int16_t>(h)};
+    lastRenderedFrame = box;
     if (shell::isUgly()) uglyPaper(renderer, box);
     else {
       renderer.fillRoundedRect(box.x, box.y, box.width, box.height, RADIUS, Color::White);
@@ -596,6 +599,7 @@ class OptionPopup {
   bool marked = true;
   freeink::ui::Rect anchor{};
   freeink::ui::Rect frameRect{};
+  mutable freeink::ui::Rect lastRenderedFrame{};
   // Touch: the first row shown (-1: around the value in use) and what the last frame showed, for a swipe.
   mutable int scrollTop = -1;
   mutable int shownRows = MAX_OPTIONS;
