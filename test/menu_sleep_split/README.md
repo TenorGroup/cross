@@ -12,6 +12,10 @@ Coverage: 12 board/IMU/optional-row cases plus 1 persistence case, unique row ow
 
 `web-schema-sha256.json` records pre-split serializer output for those 12 cases. Change it only for a deliberate web schema/value change, with independent review. `--web-baseline` additionally compares a directory of complete recorded `*-web.json` outputs.
 
+All 12 hashes include the header clock's 3 values in 82183a56 (Hide, Time, Time and date): `clockShowHeader` is an
+enum of STR_HIDE, STR_CLOCK_HEADER_TIME and STR_CLOCK_HEADER_TIME_DATE instead of a toggle. Putting only that row
+back to the toggle reproduces each earlier hash.
+
 The 4 Pro hashes include the dynamic bar default change in 3afef460: `homeButtonDoubleTapAction` is Ignore (1). Replacing only that value with the earlier ToggleFrontlight (10) reproduces each earlier hash; all other fields retain the same oracle. The harness also asserts Ignore directly.
 
 Recommended CTest registration: `MenuSleepSplitRegression`, `RUN_SERIAL TRUE`, `TIMEOUT 180`. Root owns CMake registration.
