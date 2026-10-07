@@ -65,7 +65,8 @@ class TtfEpdFont {
 
   // Build the family at the given reader point size from the configured sources.
   // Returns false if the regular source is missing or unparseable.
-  bool load(uint16_t pointSize, bool twoBit = true, size_t glyphCacheBytes = 32 * 1024, uint16_t maxGlyphs = 768);
+  bool load(uint16_t pointSize, bool twoBit = true, size_t glyphCacheBytes = 32 * 1024, uint16_t maxGlyphs = 768,
+            int32_t embolden26_6 = 0);
 
   EpdFontFamily family() const;
 
@@ -151,6 +152,7 @@ class TtfEpdFont {
   Source sources_[4];      // indexed by Style role
   Face faces_[4];          // 0=regular 1=bold 2=italic 3=bold-italic
   uint32_t size26_6_ = 0;  // exact 26.6 ppem (pt @150DPI), no whole-pixel rounding
+  int32_t embolden26_6_ = 0;
   bool loaded_ = false;
   // Set while a glyph fault runs MemoryManager::ensureFree(): the eviction
   // sink calls releaseResidentCaches() on every TTF font, and tearing down

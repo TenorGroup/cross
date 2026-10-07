@@ -103,8 +103,9 @@ void TtfEpdFont::resolveFaces() {
 }
 
 bool TtfEpdFont::load(const uint16_t pointSize, const bool twoBit, const size_t glyphCacheBytes,
-                      const uint16_t maxGlyphs) {
+                      const uint16_t maxGlyphs, const int32_t embolden26_6) {
   loaded_ = false;
+  embolden26_6_ = embolden26_6;
   if (!sources_[Regular].present) return false;
   // CrossPoint speaks point-size-at-150-DPI (matching the .cpfont converter's
   // FT_Set_Char_Size(size, size, 150, 150)); FreeInkFont speaks pixels. Convert
@@ -163,6 +164,7 @@ void TtfEpdFont::initFace(Face& f) {
     freeink::font::FtFont::RenderOptions ro;
     ro.hinting = freeink::font::FtFont::HintingMode::Auto;
     ro.stemDarkening = true;
+    ro.embolden26_6 = embolden26_6_;
     if (!f.ft.setRenderOptions(ro)) {
       LOG_ERR("TTF", "Auto hinting unavailable (FREEINK_FONT_ENABLE_AUTOHINT not compiled)");
     }

@@ -19,6 +19,11 @@ constexpr uint8_t physical(const int publicLevel) {
   return level ? static_cast<uint8_t>(level + 1) : 0;
 }
 
+constexpr int32_t outlineStrength(const int publicLevel) {
+  constexpr int32_t strengths[] = {0, 22, 28, 32};
+  return strengths[clamp(publicLevel)];
+}
+
 constexpr uint8_t publicFromPhysical(const int physicalLevel) {
   return physicalLevel >= 2 && physicalLevel <= 4 ? static_cast<uint8_t>(physicalLevel - 1) : 0;
 }

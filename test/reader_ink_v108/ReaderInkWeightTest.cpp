@@ -35,15 +35,23 @@ int main() {
   assert(readerInk::SCHEMA_VERSION == 1);
   assert(readerInk::LEVEL_COUNT == 4);
   constexpr uint8_t physical[] = {0, 2, 3, 4};
+  constexpr int32_t strength[] = {0, 22, 28, 32};
   for (int publicLevel = 0; publicLevel < 4; ++publicLevel) {
     assert(readerInk::physical(publicLevel) == physical[publicLevel]);
     assert(readerInk::publicFromPhysical(physical[publicLevel]) == publicLevel);
     assert(readerInk::clamp(publicLevel) == publicLevel);
+#ifndef READER_INK_V107_BASELINE
+    assert(readerInk::outlineStrength(publicLevel) == strength[publicLevel]);
+#endif
   }
   assert(readerInk::publicFromPhysical(1) == 0);
   assert(readerInk::physical(4) == 0);
   assert(readerInk::publicFromPhysical(5) == 0);
   assert(readerInk::clamp(255) == 0);
+#ifndef READER_INK_V107_BASELINE
+  assert(readerInk::outlineStrength(-1) == 0);
+  assert(readerInk::outlineStrength(4) == 0);
+#endif
   assert(readerInk::publicMask(0x1f) == 0x0f);
   assert(readerInk::publicMask(0x03) == 0x01); // old Light is not new +1
   assert(readerInk::publicMask(0x05) == 0x03); // old Strong is new +1

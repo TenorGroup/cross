@@ -43,7 +43,12 @@ class SdCardFontSystem {
   // Missing auxiliary packs leave that UI alias on its built-in glyphs.
   void refreshUiFallbacks(GfxRenderer& renderer, uint8_t uiTextSize);
   uint8_t availableWeightMask() const;
-  uint8_t effectiveWeight() const { return readerInk::publicFromPhysical(manager_.currentWeight()); }
+  uint8_t effectiveWeight() const {
+#if CROSSPOINT_VECTOR_FONTS
+    if (ttfFontId_ != 0) return ttfInkWeight_;
+#endif
+    return readerInk::publicFromPhysical(manager_.currentWeight());
+  }
 
   // OTA uses built-in UI fonts and reboots on exit. Release SD font metadata
   // and the discovery catalog before TLS; settings and card files stay intact.
@@ -159,6 +164,7 @@ class SdCardFontSystem {
   std::string ttfFamily_;     // loaded vector family name ("" = none)
   int ttfFontId_ = 0;         // renderer font id for ttf_ (0 = none)
   uint8_t ttfPointSize_ = 0;  // size ttf_ was built at
+  uint8_t ttfInkWeight_ = 0;
   // UI-size TTF fallbacks (share ttfSources_); parallel to their renderer font ids.
   std::vector<std::unique_ptr<TtfEpdFont>> ttfUi_;
   std::vector<int> ttfUiIds_;
