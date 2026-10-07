@@ -887,6 +887,10 @@ bool ActivityManager::foregroundReaderHoldsRadio() const {
   return isForegroundReaderActivity() && static_cast<ReaderActivity*>(currentActivity.get())->holdsRadio();
 }
 
+bool ActivityManager::foregroundReaderCoversPage() const {
+  return isForegroundReaderActivity() && static_cast<ReaderActivity*>(currentActivity.get())->coversPage();
+}
+
 bool ActivityManager::yieldForegroundReaderForRadio() {
   return !isForegroundReaderActivity() || static_cast<ReaderActivity*>(currentActivity.get())->yieldForRadio();
 }

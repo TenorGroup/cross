@@ -16,6 +16,7 @@
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "SettingsList.h"
 #include "TxtReaderActivity.h"
 #include "XtcReaderActivity.h"
 #include "components/TenorMenuChrome.h"
@@ -61,6 +62,15 @@ void ReaderActivity::disableFastInitialRefresh() { pagesUntilFullRefresh = 0; }
 
 void ReaderActivity::onEnter() {
   Activity::onEnter();
+
+  // The settings catalog (~15 KB, built at boot) has no use on a page: returned here, at a transition
+  // under the render lock as its release requires. Settings save and load no longer build it
+  // (forEachBaseSetting); a settings sheet or screen builds it again while it is open. X3, 02/10/2026:
+  // +13,760 B free on reader entry, and the radio kept its start above 32,768.
+  {
+    RenderLock lock(*this);
+    releaseBaseSettingsList();
+  }
 
   // Heap ledger for field crash reports: free vs largest block distinguishes a
   // leak (free falls) from fragmentation (free stable, largest collapses).
@@ -269,6 +279,9 @@ void ReaderActivity::onPause() {
 }
 
 void ReaderActivity::onResume() {
+  // Back from a settings screen that built the catalog: returned again. ActivityManager holds the
+  // render lock around onResume, and the screen that borrowed its rows is gone.
+  releaseBaseSettingsList();
   statsLastMs = statsDayPollMs = millis();
   statsDay = READING_STATS.currentDay();
   statsActive = false;

@@ -149,8 +149,16 @@ bool tick(const Scene& scene);
 // False: the radio is still stopping (or a start is in flight); call again next pass before
 // changing screens. endTimeoutMs: how long the SDK may wait for the stack to stop this call.
 bool beforeScreenChange(uint32_t endTimeoutMs = 0);
+// Stops the radio now, waiting up to timeoutMs: a start in flight is cancelled or let finish, then
+// the stack stops. False: it did not stop in time. Main loop. The reader calls it before a sheet
+// covers the page, and reports the book as Elsewhere while the sheet is up.
+bool stopNow(uint32_t timeoutMs);
 // Stops the radio before sleep, waiting up to timeoutMs. False: it did not stop in time.
 bool beforeSleep(uint32_t timeoutMs);
+// The render task is about to paint the book (its render lock held): a start in flight is let finish
+// first, at most 3 s, so the stack and the page never take the heap at once. A start still waiting
+// for the render lock gives up its turn instead. Any task but the start's.
+void settleStart();
 // A chapter build ran out of heap. Released: the radio stopped until afterPaint(), build
 // again. StillUp: it was asked to stop and did not within 3 s. NotHeld: the radio is not
 // the module's to give (off, idle, or a start still settling).

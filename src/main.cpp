@@ -744,6 +744,9 @@ void setup() {
   logHeapMark("storage");
 
   APP_STATE.loadFromFile();
+#ifdef TENOR_PRESS_PROBE
+  logHeapMark("store-state");
+#endif
   const bool isSleepWake = wakeupReason == HalGPIO::WakeupReason::PowerButton;
   const bool isPersistedSleepWake = isSleepWake && !APP_STATE.showBootScreen;
 
@@ -759,7 +762,15 @@ void setup() {
   if (gpio.hasTouch() && !FREEINK_DEVICE_X4PRO) {
     SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_TOOLBAR;
   }
+#ifdef TENOR_PRESS_PROBE
+  (void)getBaseSettingsList();  // the catalog a settings screen builds, measured on its own
+  logHeapMark("settings-catalog");
+  releaseBaseSettingsList();  // the load does not keep it; no render task yet
+#endif
   SETTINGS.loadFromFile();
+#ifdef TENOR_PRESS_PROBE
+  logHeapMark("settings-json");
+#endif
 #if CROSSPOINT_BLE_HID_HOST
   beginPageTurner(renderer, SETTINGS.ble, runRemoteShortcut, restartIntoOpenBook);
 #endif
@@ -1423,8 +1434,11 @@ void loop() {
   bool bleInputActivity = false;
   {
     bleturner::Scene scene{};
-    scene.where =
-        activityManager.isForegroundReaderActivity() ? bleturner::Where::Reader : bleturner::Where::Elsewhere;
+    // A sheet over the page (the reader menu) puts the book out of front: the radio stopped before
+    // the sheet was drawn (EpubReaderActivity::stopRadioForSheet) and starts again on the page.
+    scene.where = activityManager.isForegroundReaderActivity() && !activityManager.foregroundReaderCoversPage()
+                      ? bleturner::Where::Reader
+                      : bleturner::Where::Elsewhere;
     scene.visit = activityManager.activityGeneration();
     scene.pageShown = activityManager.isForegroundReaderReady();
     // A book still building its index in the background keeps the radio off until the index

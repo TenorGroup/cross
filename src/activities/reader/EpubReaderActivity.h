@@ -305,6 +305,7 @@ class EpubReaderActivity final : public ReaderActivity {
   // paint stops the radio instead.
   bool fontsShedForBuild = false;
   bool releaseHeapForBuild();
+  bool startBuildFreeingHeap(const ReaderRenderSpec& spec, const std::function<void()>& popupFn = nullptr);
   // A book opened on its chapter list builds its TOC and chapter sizes here (Epub::indexSome), one
   // step per quiet pass once the page is up and no parser is alive. A key contact stops a step
   // within milliseconds; its work is redone on a later quiet pass. A failed step waits
@@ -397,6 +398,7 @@ class EpubReaderActivity final : public ReaderActivity {
   // Toolbar reader menu (see Overlay above).
   bool usesToolbarMenu() const;
   void openOverlay(Overlay target);
+  void stopRadioForSheet();
   void closeOverlayToPage();
   void discardOverlayPage();
   void handleOverlayInput();
@@ -488,6 +490,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool skipLoopDelay() override;
   bool holdsRadio() const override;
   bool yieldForRadio() override;
+  bool coversPage() const override { return overlay != Overlay::None; }
 
   ScreenshotInfo getScreenshotInfo() const override;
   CrossPointPosition getCurrentPosition() const;

@@ -606,6 +606,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     LOG_ERR("SCT", "startBuild called while a build is already active");
     return false;
   }
+  buildStarved_ = false;
   // Reclaim rebuildable font caches before CSS and layout allocations when the heap is short of
   // what a build needs to start: SD font glyph and advance caches grown by paging can leave the
   // layout's first allocations no contiguous block. Only below the bar the reader's background
@@ -807,6 +808,15 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
 #endif
       LOG_INF("SCT", "Resumed checkpoint: %u pages, HTML byte %u", builtPageCount_,
               static_cast<unsigned>(build_->parser->parseBytesConsumed()));
+    } else if (!stepHeapAvailable()) {
+      // Short of heap, not damaged (X3 with the radio up): laid out again from the top, the chapter
+      // sat behind the indexing notice for every page up to the watermark. The start is refused as
+      // starved; the reader frees heap and starts again from the checkpoint.
+      LOG_ERR("SCT", "Checkpoint restore starved of heap free=%u largest=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+              static_cast<unsigned>(ESP.getMaxAllocHeap()));
+      abandonBuild();
+      buildStarved_ = true;
+      return false;
     } else {
       // A legacy or damaged checkpoint keeps the readable partial and starts a
       // fresh parser. Recreate both staging files after any failed prefix copy.
@@ -1060,6 +1070,10 @@ bool Section::resumeParkedBuild() {
   }
   const bool closed = checkpoint.close();
   if (!restored || !closed) {
+    // Read while the parser still holds its heap: a restore that failed short of heap (the radio up
+    // beside the book) is a starved build, parked as it was. Dropped, the chapter was laid out again
+    // from its first page behind the indexing notice.
+    buildStarved_ = !restored && !stepHeapAvailable();
     build_->parser.reset();
     if (build_->cssParser) build_->cssParser->clear();
     return false;
@@ -1074,7 +1088,14 @@ bool Section::resumeParkedBuild() {
 
 bool Section::buildSomeMore(const int maxPages) {
   BUILD_PROBE_SCOPE(Tick);
+  buildStarved_ = false;
   if (!build_ || !resumeParkedBuild()) {
+    if (buildStarved_) {
+      LOG_ERR("SCT", "Resume starved of heap free=%u largest=%u; staying parked at %u pages",
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()),
+              static_cast<unsigned>(builtPageCount_));
+      return false;
+    }
     LOG_ERR("SCT", "Unable to resume section build");
     if (build_) abandonBuild();
     return false;

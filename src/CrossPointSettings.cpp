@@ -92,11 +92,11 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // nguoi dung bat mot tuy chon hay xep lai mot dong ghim, va cu chep cu doi mot
   // khoi lien ~16 KB. Loc theo phan cung bang cung mot vi ngu ma getSettingsList
   // dung, nen nhung dong duoc ghi xuong khong doi.
-  for (const auto& info : getBaseSettingsList()) {
-    if (settingHiddenOnThisBoard(info)) continue;
-    if (!info.key) continue;
+  forEachBaseSetting([&](const SettingInfo& info) {
+    if (settingHiddenOnThisBoard(info)) return;
+    if (!info.key) return;
     // Dynamic entries (KOReader etc.) are stored in their own files - skip.
-    if (!info.valuePtr && !info.stringOffset) continue;
+    if (!info.valuePtr && !info.stringOffset) return;
 
     if (info.stringOffset) {
       const char* strPtr = (const char*)&s + info.stringOffset;
@@ -110,7 +110,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     } else {
       doc[info.key] = s.*(info.valuePtr);
     }
-  }
+  });
 
   // The file always carries the switches in effect, marked as this mode's, so the
   // next boot and the web page read what the reader draws.
@@ -181,11 +181,11 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // nguoi dung bat mot tuy chon hay xep lai mot dong ghim, va cu chep cu doi mot
   // khoi lien ~16 KB. Loc theo phan cung bang cung mot vi ngu ma getSettingsList
   // dung, nen nhung dong duoc ghi xuong khong doi.
-  for (const auto& info : getBaseSettingsList()) {
-    if (settingHiddenOnThisBoard(info)) continue;
-    if (!info.key) continue;
+  forEachBaseSetting([&](const SettingInfo& info) {
+    if (settingHiddenOnThisBoard(info)) return;
+    if (!info.key) return;
     // Dynamic entries (KOReader etc.) are stored in their own files - skip.
-    if (!info.valuePtr && !info.stringOffset) continue;
+    if (!info.valuePtr && !info.stringOffset) return;
 
     if (info.stringOffset) {
       // destPtr starts out holding the struct-initializer default; it stays that
@@ -195,7 +195,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
         LOG_ERR("CPS", "Misconfigured SettingInfo: stringMaxLen is 0 for key '%s'", info.key);
         destPtr[0] = '\0';
         needsResave = true;
-        continue;
+        return;
       }
 
       bool loaded = false;
@@ -241,7 +241,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
       }
       s.*(info.valuePtr) = v;
     }
-  }
+  });
 
   if (doc["uiTextSize"].isNull()) {
     uiTextSize = UI_TEXT_SMALL;

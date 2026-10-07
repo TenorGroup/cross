@@ -155,6 +155,10 @@ class ReaderActivity : public Activity {
   // (its page is painting); the radio waits for a later pass.
   virtual bool yieldForRadio() { return true; }
 
+  // True while a sheet (the reader menu) covers the page: the page-turner radio stopped before it was
+  // drawn and stays off until the page is back in front.
+  virtual bool coversPage() const { return false; }
+
   static std::unique_ptr<ReaderActivity> create(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                 std::string path, bool allowFastInitialRefresh, bool preview = false);
 

@@ -369,6 +369,27 @@ int runReaderPins() {
   return ok ? 0 : 1;
 }
 
+// v1.0.53, X3 07/10/2026: the catalog (~15 KB) built to read settings.json stayed resident for the whole
+// uptime, and the reader then had ~71 KB free where the page-turner radio needs ~82 KB. Load and save walk
+// the descriptors one at a time and keep none; a save in the book allocates nothing of the catalog's size.
+int runNoResidentCatalog() {
+  bool ok = true;
+  settings_test_io::setNextRead(readFixture("settings-v1.0.19.json"));
+  ok = expect(SETTINGS.loadFromFile(), "a v1.0.19 file loads") && ok;
+  ok = expect(settings_catalog::storage().empty(), "the load leaves no catalog behind") && ok;
+  const JsonDocument after = saved();
+  ok = expect(settings_catalog::storage().empty(), "the save builds no catalog") && ok;
+  ok = expect(after["sleepScreen"].as<int>() == readFixture("settings-v1.0.19.json")["sleepScreen"].as<int>(),
+              "a catalog row still round-trips") && ok;
+  // X3 heap map, 07/10/2026: the catalog block was 25,600 B. Its reserve counted 98 rows, more were pushed,
+  // and the vector doubled to 196. A catalog a screen builds holds exactly its rows.
+  const auto& catalog = getBaseSettingsList();
+  ok = expect(catalog.capacity() == catalog.size(), "the catalog holds exactly its rows") && ok;
+  std::printf("catalog rows=%zu capacity=%zu\n", catalog.size(), catalog.capacity());
+  std::printf("settings_upgrade=no-resident-catalog:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -383,5 +404,6 @@ int main(int argc, char** argv) {
   if (mode == "shell") return runShell();
   if (mode == "tap-zones") return runTapZones();
   if (mode == "reader-pins") return runReaderPins();
+  if (mode == "no-resident-catalog") return runNoResidentCatalog();
   return 2;
 }

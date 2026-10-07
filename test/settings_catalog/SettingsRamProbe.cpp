@@ -59,7 +59,7 @@ int main(int argc,char**argv){
   for(auto&row:rows)if(row.nameId==StrId::STR_DICTIONARY){row.valueSetter(1);if(row.enumStringValues.at(1)!=dictionaries[0].name||row.valueGetter()!=1)return 5;}
   std::puts("dynamic_labels_after_source_destroyed=GREEN");return 0;
  }
- if(mode=="json") {JsonDocument doc;SETTINGS.toJson(doc);mem::start();SETTINGS.toJson(doc);mem::report("save_warm",0,0);if(mem::total!=0)return 8;mem::start();bool ok=SETTINGS.fromJson(doc.as<JsonVariantConst>());mem::report("load_warm",0,0);return ok && mem::total==0?0:5;}
+ if(mode=="json") {JsonDocument doc;SETTINGS.toJson(doc);mem::start();SETTINGS.toJson(doc);mem::report("save_warm",0,0);if(mem::live!=0||mem::peak>=1024)return 8;mem::start();bool ok=SETTINGS.fromJson(doc.as<JsonVariantConst>());mem::report("load_warm",0,0);return ok && mem::live==0 && mem::peak<1024?0:5;}  // v1.0.53: one descriptor at a time, nothing kept
  if(mode=="v108") {
   auto expect=[](bool value,const char* label){if(!value)std::printf("FAIL %s\n",label);return value;};
   const auto uiSize=std::find_if(base.begin(),base.end(),[](const SettingInfo& row){return row.key && std::strcmp(row.key,"uiTextSize")==0;});

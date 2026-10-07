@@ -31,6 +31,8 @@ struct Heap {
   unsigned getMaxAllocHeap() const { return 60000; }
   unsigned getMinFreeHeap() const { return 48000; }
 } ESP;
+// The settings catalog (SettingsList.h): nothing to return in this projection.
+inline void releaseBaseSettingsList() {}
 struct RenderLock {
   struct TryTake {};
   static inline bool busy = false;

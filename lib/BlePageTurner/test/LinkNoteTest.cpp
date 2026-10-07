@@ -126,7 +126,7 @@ TEST_F(LinkNoteTest, Journeys) {
        LinkNote::Failed},
       {"rolled back after the stack came up -> Failed",
        [](LinkNoteTest& t) {
-         host().heap = {80000, 61428};
+         host().heap = {83228, 61428};
          radio().changeHeapOnBegin = true;
          radio().heapAfterBegin = {28812, 26612};
          t.pass(fake::reading());
@@ -162,7 +162,7 @@ TEST_F(LinkNoteTest, Journeys) {
        [](LinkNoteTest& t) {
          host().heap = {65535, 32768};
          t.pass(fake::reading());
-         host().heap = {65536, 32768};
+         host().heap = {81920, 32768};
          for (int i = 0; i < 8; ++i) {
            radio().now += 1000;
            t.pass(fake::reading());
@@ -198,7 +198,7 @@ TEST_F(LinkNoteTest, Journeys) {
          t.pass(fake::reading());
          bleturner::acknowledgeLinkNote();
          t.pass(home());
-         host().heap = {65536, 32768};
+         host().heap = {81920, 32768};
          t.pass(fake::reading(2));
        },
        LinkNote::Connecting},

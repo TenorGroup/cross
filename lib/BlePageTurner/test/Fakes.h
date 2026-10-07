@@ -62,7 +62,7 @@ struct Radio {
 Radio& radio();
 
 struct HostState {
-  bleturner::Heap heap{65536, 32768};
+  bleturner::Heap heap{81920, 32768};
   unsigned heapReads = 0;
   unsigned releaseCalls = 0;
   // The render lock is held by someone else: releaseCaches fails while true.

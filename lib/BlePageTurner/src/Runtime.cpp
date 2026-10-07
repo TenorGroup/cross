@@ -107,7 +107,7 @@ RadioInputs heapInputs(const Phase phase, const Heap heap, const bool storageBus
 
 void logSkipped(const char* reason, const Heap& heap) {
   say(true, "HID begin skipped (%s): free=%zu largest=%zu required_free=%zu required_largest=%zu\n", reason,
-      heap.freeBytes, heap.largestBlock, kMinimumFreeBytes, kMinimumLargestBlockBytes);
+      heap.freeBytes, heap.largestBlock, kStartFreeBytes, kMinimumLargestBlockBytes);
   static uint8_t mapsLeft = 2;
   if (mapsLeft > 0 && host->heapMap != nullptr) {
     mapsLeft--;
@@ -503,7 +503,7 @@ bool tick(const Scene& s) {
 
 bool beforeScreenChange(const uint32_t endTimeoutMs) { return detail::suspend(endTimeoutMs); }
 
-bool beforeSleep(const uint32_t timeoutMs) {
+bool stopNow(const uint32_t timeoutMs) {
   const uint32_t started = port::nowMs();
   while (!detail::suspend(0)) {
     if (port::nowMs() - started >= timeoutMs) return false;
@@ -512,17 +512,24 @@ bool beforeSleep(const uint32_t timeoutMs) {
   return true;
 }
 
-BuildRelease beforeChapterBuild() {
-  if (!config->enabled || radioIdleStopped.load(std::memory_order_relaxed)) return BuildRelease::NotHeld;
+bool beforeSleep(const uint32_t timeoutMs) { return stopNow(timeoutMs); }
+
+void settleStart() {
   // Never stop a start that is still in flight: its task owns the NimBLE discovery, and a
   // cancel here leaves its callbacks pointing at a task that no longer exists. Wait for it to
-  // settle; a start still waiting for the render lock (held by this very build) gives up.
+  // settle; a start still waiting for the render lock (held by the caller) gives up.
+  if (!attemptInFlight.load(std::memory_order_acquire)) return;
   const uint32_t started = port::nowMs();
   buildWaiting.store(true, std::memory_order_release);
   while (attemptInFlight.load(std::memory_order_acquire) && port::nowMs() - started < kBuildReleaseTimeoutMs) {
-    port::sleepMs(20);
+    port::sleepMs(5);
   }
   buildWaiting.store(false, std::memory_order_release);
+}
+
+BuildRelease beforeChapterBuild() {
+  if (!config->enabled || radioIdleStopped.load(std::memory_order_relaxed)) return BuildRelease::NotHeld;
+  settleStart();
   if (attemptInFlight.load(std::memory_order_acquire)) return BuildRelease::NotHeld;
   heldForBuild.store(true, std::memory_order_relaxed);
   const Heap heap = host->heap();

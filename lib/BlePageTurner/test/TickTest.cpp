@@ -237,6 +237,70 @@ TEST_F(TickTest, BuildDoesNotWaitOnAStartThatNeedsTheRenderLock) {
   EXPECT_EQ(host().releaseCalls, 0u);
 }
 
+// X3, 07/10/2026: the render task restored a page beside a stack coming up (free 22,676 after the
+// stack) and ran the heap dry: abort(), since a nothrow new cannot even throw with no heap left. A
+// paint lets a start in flight finish first, and leaves the radio it started up.
+TEST_F(TickTest, PaintWaitsForAStartPastTheLock) {
+  bleturner::tick(fake::reading());
+  ASSERT_TRUE(radio().startQueued);
+  radio().onSleep = [] {
+    if (radio().startQueued) radio().runStart();
+  };
+  bleturner::settleStart();
+  EXPECT_FALSE(bleturner::status().starting);
+  EXPECT_EQ(radio().beginCalls, 1u);
+  EXPECT_TRUE(radio().running);
+}
+
+TEST_F(TickTest, PaintDoesNotWaitOnAStartThatNeedsTheRenderLock) {
+  bleturner::tick(fake::reading());
+  ASSERT_TRUE(radio().startQueued);
+  host().renderBusy = true;
+  radio().onSleep = [] {
+    if (radio().startQueued) radio().runStart();
+  };
+  bleturner::settleStart();
+  EXPECT_FALSE(bleturner::status().starting);
+  EXPECT_LT(radio().now - 10000, 100u);
+  EXPECT_EQ(radio().beginCalls, 0u);
+}
+
+TEST_F(TickTest, PaintWithNoStartInFlightDoesNotWait) {
+  running();
+  bleturner::settleStart();
+  EXPECT_EQ(radio().now, 10000u);
+  EXPECT_TRUE(radio().running);
+}
+
+// A sheet over the page (the reader menu) stops the radio before it is drawn: a connecting stack
+// and the sheet's page snapshot (52 KB on the X3) do not fit the heap together. While the sheet is
+// up the book is not in front; back on the page the radio starts again.
+TEST_F(TickTest, SheetStopsTheRadioFirstAndThePageStartsItAgain) {
+  running();
+  EXPECT_TRUE(bleturner::stopNow(1000));
+  EXPECT_FALSE(radio().running);
+  Scene sheet = fake::reading();
+  sheet.where = bleturner::Where::Elsewhere;
+  pass(sheet);
+  EXPECT_EQ(radio().creates, 1u);
+  EXPECT_FALSE(radio().running);
+  pass(fake::reading());
+  EXPECT_EQ(radio().creates, 2u);
+  EXPECT_TRUE(radio().running);
+}
+
+TEST_F(TickTest, SheetCancelsAStartInFlight) {
+  bleturner::tick(fake::reading());
+  ASSERT_TRUE(radio().startQueued);
+  radio().onSleep = [] {
+    if (radio().startQueued) radio().runStart();
+  };
+  EXPECT_TRUE(bleturner::stopNow(1000));
+  EXPECT_FALSE(bleturner::status().starting);
+  EXPECT_FALSE(radio().running);
+  EXPECT_EQ(radio().beginCalls, 0u);
+}
+
 TEST_F(TickTest, SelectedRemoteIsArmedOnceBeforeTheFirstPoll) {
   strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
   running();
@@ -441,7 +505,7 @@ TEST_F(TickTest, HeapRestartOnlyFromAQuietShownPage) {
 // The book start rolls back on its heap three times (the first try and two 5 s retries), then
 // the book restarts into itself from its shown page.
 TEST_F(TickTest, BookWhoseStartsRollBackInPiecesRestartsIntoItself) {
-  host().heap = {80000, 61428};
+  host().heap = {83228, 61428};
   radio().changeHeapOnBegin = true;
   radio().heapAfterBegin = {28812, 26612};
   for (int i = 0; i < 40 && host().restarts == 0; ++i) {
@@ -450,7 +514,7 @@ TEST_F(TickTest, BookWhoseStartsRollBackInPiecesRestartsIntoItself) {
   }
   EXPECT_EQ(radio().beginCalls, 3u);
   EXPECT_EQ(host().restarts, 1u);
-  EXPECT_TRUE(logged("Heap fragmented for radio: free=80000 largest=61428; silent restart to reader"));
+  EXPECT_TRUE(logged("Heap fragmented for radio: free=83228 largest=61428; silent restart to reader"));
 }
 
 TEST_F(TickTest, HoldsHeapWhileTheRadioOwnsOrAsksForIt) {

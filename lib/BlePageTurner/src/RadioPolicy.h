@@ -11,9 +11,16 @@
 namespace bleturner {
 
 // The stack needs both to start; after it started the reader still needs one 32 KiB block
-// (InflateReader::RING_BYTES and the streaming miniz window).
+// (InflateReader::RING_BYTES and the streaming miniz window). Under kMinimumFreeBytes the heap is
+// short in total; above it a refusal counts as a heap in pieces (shouldRestart).
 inline constexpr size_t kMinimumFreeBytes = 65536;
 inline constexpr size_t kMinimumLargestBlockBytes = 32768;
+// The stack took 50,644 to 51,188 B in every X3 log (free before and after the start). A start with
+// less than that plus the reader's block free can only roll back, and while it is up the render task
+// runs out of heap beside it: X3, 07/10/2026, free 73,656 before the start, 22,676 after, then
+// abort() in a page restore. It is refused before the stack comes up.
+inline constexpr size_t kStackBytes = 49152;
+inline constexpr size_t kStartFreeBytes = kStackBytes + kMinimumLargestBlockBytes;
 // A radio nobody connected to for this long stops: left on, it keeps the CPU at full speed
 // and a device lying still eats its battery.
 inline constexpr uint32_t kIdleOffMs = 5u * 60u * 1000u;
@@ -43,7 +50,7 @@ struct RadioInputs {
 // The ONE answer to "may the radio be on now". Everything that starts, keeps or stops the
 // radio asks here.
 constexpr Why radioVerdict(const RadioInputs& in) {
-  const bool stackFits = in.heap.freeBytes >= kMinimumFreeBytes && in.heap.largestBlock >= kMinimumLargestBlockBytes;
+  const bool stackFits = in.heap.freeBytes >= kStartFreeBytes && in.heap.largestBlock >= kMinimumLargestBlockBytes;
   switch (in.phase) {
     case Phase::Idle:
       if (!in.enabled) return Why::Off;
@@ -63,8 +70,10 @@ constexpr Why radioVerdict(const RadioInputs& in) {
     case Phase::BeforeStart:
       if (in.storageBusy) return Why::StorageBusy;
       if (stackFits) return Why::Ok;
-      // Enough bytes in total, but no block the stack can take. A heap short in total is not
-      // this: a restart cannot give back bytes the book really uses.
+      // Enough bytes in total, but no block the stack can take, or too few to leave the reader's
+      // block beside the stack: the same verdict the rollback right after the start gave before
+      // 07/10/2026, so the restart comes as it did. A heap short in total is not this: a restart
+      // cannot give back bytes the book really uses.
       return in.heap.freeBytes >= kMinimumFreeBytes ? Why::HeapInPieces : Why::HeapLow;
     case Phase::JustStarted:
       if (in.storageBusy) return Why::StorageBusy;

@@ -30,7 +30,7 @@ struct RenderLock { struct TryTake{}; static inline bool busy=false; bool owns=f
 struct Activity {virtual ~Activity()=default;virtual bool isReaderActivity() const {return true;}};
 struct ActivityManager {enum class PendingAction{None,Push};PendingAction pendingAction=PendingAction::None;
  std::shared_ptr<Activity>currentActivity;uint32_t generation=1;
- bool sleepTransition=false;bool exclusive=false,preventSleep=false;bool requiresExclusiveStorageLoop()const{return exclusive;}bool preventAutoSleep()const{return preventSleep;}bool isSleepTransition()const{return sleepTransition;}bool isForegroundReaderReady()const;bool foregroundReaderHoldsRadio()const{return false;}bool radioReady=true;int radioReadyAsks=0;bool yieldForegroundReaderForRadio(){radioReadyAsks++;radioSteps.emplace_back("ready");return radioReady;}void goToReader(const std::string&){}bool pageTurn(bool);bool chapterSkip(bool);uint32_t activityGeneration()const{return generation;}
+ bool sleepTransition=false;bool exclusive=false,preventSleep=false;bool requiresExclusiveStorageLoop()const{return exclusive;}bool preventAutoSleep()const{return preventSleep;}bool isSleepTransition()const{return sleepTransition;}bool isForegroundReaderReady()const;bool foregroundReaderHoldsRadio()const{return false;}bool foregroundReaderCoversPage()const;bool radioReady=true;int radioReadyAsks=0;bool yieldForegroundReaderForRadio(){radioReadyAsks++;radioSteps.emplace_back("ready");return radioReady;}void goToReader(const std::string&){}bool pageTurn(bool);bool chapterSkip(bool);uint32_t activityGeneration()const{return generation;}
  bool isForegroundReaderActivity()const{return pendingAction==PendingAction::None&&currentActivity&&currentActivity->isReaderActivity();}
 };
 ActivityManager activityManager;
@@ -51,7 +51,7 @@ namespace tenorchrome{constexpr bool kTouchShell=false;}
 struct EndOfBookOptions{bool menu=false;bool menuActive()const{return menu;}};
 struct FakeStats {uint32_t pages=0, records=0, habits=0;void record(uint32_t,uint32_t,uint16_t turns,int){pages+=turns;records++;}void observeHabits(uint32_t,uint16_t,uint32_t){habits++;}uint32_t currentDay(){return 1;}}READING_STATS;
 struct ReaderActivity:Activity{
- bool preview=false;int renderer=0;FakeInput mappedInput;uint16_t trangDaLat=0;int requests=0,goHome=0;
+ virtual bool coversPage()const{return false;}bool preview=false;int renderer=0;FakeInput mappedInput;uint16_t trangDaLat=0;int requests=0,goHome=0;
  std::atomic<bool>pageReady{true};std::unique_ptr<EndOfBookOptions>endOfBookOptions=std::make_unique<EndOfBookOptions>();std::atomic<bool>endOfBookOptionsReady{false};
  int8_t pendingExternalTurn=0;uint32_t pendingExternalGeneration=0;bool pendingTurnIsLocal=false,pendingExternalChapter=false;int backCalls=0,formatCalls=0,chapterSkips=0;std::string bookPath="fixture.txt";void finish(){}
  bool statsEnabled=true,statsActive=false,statsDirty=false;uint32_t statsLastMs=0,statsSavedMs=0,statsDay=1,statsDayPollMs=0;
@@ -80,6 +80,7 @@ struct ReaderActivity:Activity{
  virtual void loop();
 };
 bool ActivityManager::isForegroundReaderReady()const{return isForegroundReaderActivity()&&static_cast<ReaderActivity*>(currentActivity.get())->isPageReady();}
+bool ActivityManager::foregroundReaderCoversPage()const{return isForegroundReaderActivity()&&static_cast<ReaderActivity*>(currentActivity.get())->coversPage();}
 #if !NEW_PIPELINE
 bool ReaderActivity::externalPageTurnAllowed()const{return true;}
 bool ReaderActivity::manualPageTurnReady()const{return true;}
@@ -95,7 +96,7 @@ struct XtcReaderActivity:ReaderActivity{std::unique_ptr<FakeXtc>xtc=std::make_un
 struct Section{int currentPage=1,pageCount=4;bool building=false,partial=false;bool isBuilding()const{return building;}bool isPartial()const{return partial;}};
 struct FakeEpub{int getSpineItemsCount()const{return 3;}};
 struct EpubReaderActivity:ReaderActivity{
- enum class Overlay{None,Toolbar,WordPicker};Overlay overlay=Overlay::None;
+ enum class Overlay{None,Toolbar,WordPicker};Overlay overlay=Overlay::None;bool coversPage()const override{return overlay!=Overlay::None;}
  std::unique_ptr<Section>section=std::make_unique<Section>();std::unique_ptr<FakeEpub>epub=std::make_unique<FakeEpub>();
  bool nhayChuongThat(int huong)override{if(currentSpineIndex+huong<0)return false;chapterSkips++;currentSpineIndex+=huong;nextPageNumber=0;section.reset();return true;}
  std::atomic<bool>deferredClearPending{false};uint32_t lastPageTurnTime=0;int currentSpineIndex=0,nextPageNumber=0,pendingPageJump=0;

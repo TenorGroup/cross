@@ -395,7 +395,7 @@ struct EpubReaderActivity : ReaderActivity {
   bool indexStepDue() const { return false; } void runIndexStep() {}
   // The next chapter's early layout (EpubReaderActivity::prepareNextChapter) is covered by the simulator.
   bool nextChapterDue(bool) { return false; } void prepareNextChapter() {}
-  bool releaseHeapForBuild(); bool yieldForRadio(); void showMemoryError(); void settleBuildPopup(); void generatePendingThumb(); void writePendingThumbs();
+  bool releaseHeapForBuild(); bool startBuildFreeingHeap(const ReaderRenderSpec& spec, const std::function<void()>& popupFn = nullptr); bool yieldForRadio(); void showMemoryError(); void settleBuildPopup(); void generatePendingThumb(); void writePendingThumbs();
   void backgroundTick(); void foreground(); bool skipLoopDelay(); bool latTrangThat(bool);
   // loadBook()'s cover-thumbnail tail and loop()'s idle region, projected verbatim.
   void openThumbStep(); void idleStep();
