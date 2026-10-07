@@ -1,6 +1,7 @@
 #include "TenorMenuChrome.h"
 
 #include <GfxRenderer.h>
+#include <InlineSymbols.h>
 #include <HalClock.h>
 #include <HalGPIO.h>
 #include <BlePageTurner.h>
@@ -180,15 +181,15 @@ void tenorchrome::drawBarIcon(const GfxRenderer& r, const uint8_t* bits, const i
         r.drawPixel(x + i, y + j, true);
 }
 
-void tenorchrome::drawFavoriteMark(const GfxRenderer& r, const int x, const int y) {
+void tenorchrome::drawFavoriteMark(const GfxRenderer& r, const int x, const int fontId, const int lineTop) {
   // The Favourites tab's heart, filled and shrunk, worked out once: inside the outline is everything the
   // outside, flooded from the icon's border, does not reach; a mark pixel is ink when most of its block is.
-  static uint16_t rows[FAVORITE_MARK];
+  static uint32_t rows[FAVORITE_MARK];
   static bool ready = false;
   if (!ready) {
     const auto& icon = icon_tenor_home_favorites_bold_40;
     constexpr int S = 40;
-    static_assert(FAVORITE_MARK <= 16, "a mark row fits 16 bits");
+    static_assert(FAVORITE_MARK <= 32, "a mark row fits 32 bits");
     const int stride = (icon.w + 7) / 8;
     bool outside[S][S] = {};
     const auto ink = [&](const int u, const int v) {
@@ -210,10 +211,11 @@ void tenorchrome::drawFavoriteMark(const GfxRenderer& r, const int x, const int 
         int filled = 0, all = 0;
         for (int v = j * S / n; v < (j + 1) * S / n; ++v)
           for (int u = i * S / n; u < (i + 1) * S / n; ++u, ++all) filled += !outside[v][u];
-        if (2 * filled > all) rows[j] |= static_cast<uint16_t>(1u << i);
+        if (2 * filled > all) rows[j] |= 1u << i;
       }
     ready = true;
   }
+  const int y = inlineSymbols::markTopOnCapitals(r, fontId, lineTop, FAVORITE_MARK);
   for (int j = 0; j < FAVORITE_MARK; ++j)
     for (int i = 0; i < FAVORITE_MARK; ++i)
       if (rows[j] >> i & 1) r.drawPixel(x + i, y + j, true);
@@ -352,8 +354,8 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
       }
       return bold ? icon_tenor_reader_tools_bold_40 : icon_tenor_reader_tools_40;
     };
-    const int left = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), 0).x;
-    if (!shell::isUgly()) drawPillRing(r, left, y, r.getScreenWidth() - FOOT_BACK_X - left, SIZE, 2, true);
+    if (!shell::isUgly())
+      drawPillRing(r, READER_BAR_LEFT, y, r.getScreenWidth() - FOOT_BACK_X - READER_BAR_LEFT, SIZE, 2, true);
     for (int i = 0; i < READER_TOOLS; ++i) {
       const auto cell = readerToolRect(r.getScreenWidth(), r.getScreenHeight(), i);
       const bool active = i == readerFootBar.activeTool;

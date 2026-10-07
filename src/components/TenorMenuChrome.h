@@ -78,9 +78,14 @@ struct ReaderToolRect { int x, y, width, height; };
 int readerStripBottom(const GfxRenderer& renderer);
 // The reader menu's tools, in readermenu::Tool's order (founder 07/10: Favorites, Contents, Text, More).
 constexpr int READER_TOOLS = 4;
+// The tools' ring, right of "<" to the bar's end.
+constexpr int READER_BAR_LEFT = FOOT_BACK_X + FOOT_BACK_SIZE + FOOT_PILL_GAP;
+// The tools stand this far in from the ring's round ends, so the chosen ring of the first or last tool keeps as
+// much air from it at the end as at the top (founder 07/10: the ring crowded the chosen heart).
+constexpr int READER_TOOL_END_AIR = 6;
 inline ReaderToolRect readerToolRect(const int width, const int height, const int tool) {
-  const int left = FOOT_BACK_X + FOOT_BACK_SIZE + FOOT_PILL_GAP;
-  const int room = width - FOOT_BACK_X - left;
+  const int left = READER_BAR_LEFT + READER_TOOL_END_AIR;
+  const int room = width - FOOT_BACK_X - READER_TOOL_END_AIR - left;
   const int x = left + room * tool / READER_TOOLS;
   return {x, footBackTop(height), left + room * (tool + 1) / READER_TOOLS - x, FOOT_BACK_SIZE};
 }
@@ -90,9 +95,11 @@ inline ReaderToolRect readerToolRect(const int width, const int height, const in
 void drawBarIcon(const GfxRenderer& renderer, const uint8_t* bits, int w, int h, int x, int y, bool chosen);
 // One tab of an icon bar whose band is h tall from y, centred on cx: the chosen one in a ring BAR_TAB_W wide,
 // BAR_TAB_INSET in from the band's top and bottom (the Home bar's), its icon centred in the band.
-// A pinned row's mark: the Favourites tab's heart, solid, FAVORITE_MARK px square, its top left at x, y.
-constexpr int FAVORITE_MARK = 14;
-void drawFavoriteMark(const GfxRenderer& renderer, int x, int y);
+// A pinned row's mark: the Favourites tab's heart, solid, FAVORITE_MARK px square, from x, beside the row's line
+// of `fontId` text drawn at `lineTop`: centred on its capitals (inlineSymbols::markTopOnCapitals).
+// The touch rows' heart is a size up, its ink about as tall as the rows' small letters (founder 07/10).
+constexpr int FAVORITE_MARK = kTouchShell ? 18 : 14;
+void drawFavoriteMark(const GfxRenderer& renderer, int x, int fontId, int lineTop);
 constexpr int BAR_TAB_W = 84;
 constexpr int BAR_TAB_INSET = 6;
 void drawBarTab(const GfxRenderer& renderer, int cx, int y, int h, const uint8_t* bits, int w, int iconH, bool chosen);

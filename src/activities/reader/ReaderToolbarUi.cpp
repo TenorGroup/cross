@@ -419,12 +419,13 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     if (model_.rowPinned && renderer_ && uiTarget.paintingEnabled()) {
       // A row pinned to Favorites: the Favorites tab's heart after its name (the touch toolbar's mark).
       const int16_t left = static_cast<int16_t>(listRect.x + listProps_.rowInset + listProps_.sidePadding);
+      const int16_t lh = screen.target().lineHeight(listProps_.labelText.font);
       for (int i = 0; i < std::min(windowCount, nav_.pageRows()); ++i) {
         if (!model_.rowPinned(nav_.top + i)) continue;
         const int16_t width =
             screen.target().measureText(listProps_.labelText.font, windowLabels_[i].c_str(), listProps_.labelText).width;
-        tenorchrome::drawFavoriteMark(*renderer_, left + width + tokens.spaceSm,
-                                      listRect.y + i * (rowH + rowGap) + (rowH - tenorchrome::FAVORITE_MARK) / 2);
+        const int lineTop = listRect.y + i * (rowH + rowGap) + (rowH - lh) / 2;
+        tenorchrome::drawFavoriteMark(*renderer_, left + width + tokens.spaceSm, uiScaleSpec().bodyFontId, lineTop);
       }
     }
   } else if (model_.emptyText) {
@@ -590,8 +591,8 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
           right = frame.right() - 204;
         else if (item.value)
           right -= screen.target().measureText(listProps_.valueText.font, item.value, listProps_.valueText).width;
-        tenorchrome::drawFavoriteMark(*renderer_, right - 8 - tenorchrome::FAVORITE_MARK,
-                                      listRect.y + i * 62 + (62 - tenorchrome::FAVORITE_MARK) / 2);
+        tenorchrome::drawFavoriteMark(*renderer_, right - 8 - tenorchrome::FAVORITE_MARK, uiScaleSpec().bodyFontId,
+                                      listRect.y + i * 62 + (62 - lh) / 2);
       }
     }
     if (count == 0 && model_.emptyText) {
@@ -608,8 +609,10 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       const int16_t y = static_cast<int16_t>(listRect.y + sizeSlot * 62);
       fui::TextStyle label = tokens.bodyText;
       label.maxLines = 1;
-      screen.target().text({static_cast<int16_t>(frame.x + 16), y, static_cast<int16_t>(frame.width - 236), 62},
-                           windowLabels_[sizeSlot].c_str(), label);
+      // A pinned size row leaves its heart the room before the "-": a long name stops short of it.
+      const bool pinned = model_.rowPinned && model_.rowPinned(1);
+      const int16_t room = static_cast<int16_t>(frame.width - 236 - (pinned ? tenorchrome::FAVORITE_MARK + 8 : 0));
+      screen.target().text({static_cast<int16_t>(frame.x + 16), y, room, 62}, windowLabels_[sizeSlot].c_str(), label);
       stepProps_ = fui::ButtonProps{};
       stepProps_.inputMask = fui::InputTouch;
       stepProps_.minTouchSize = 60;

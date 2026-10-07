@@ -246,6 +246,38 @@ class FavoritesTabTest(unittest.TestCase):
         self.assertFalse(same(s[10], s[9]), 'the unpinned row leaves the list at once')
 
 
+class HeartOnCapitalsTest(unittest.TestCase):
+    """Founder 07/10: a pinned row's heart stands on the middle of the row's capitals, at every interface text size
+    and in Vietnamese, whose taller line box sank it below them."""
+
+    @classmethod
+    def setUpClass(cls):
+        pins = {'language': 'VI', 'readerFavorites': [SYNC, 'text/fontSize'], 'readerFavoriteCount': 2,
+                'readerFavoritesDaDat': 1}
+        cls.shots = [run_keys(['RIGHT', 'CONFIRM', 'RIGHT'], dict(pins, uiTextSize=size))['shots'][3] for size in (0, 2)]
+        for size, img in zip((0, 2), cls.shots):
+            keep(f'heart-{size}', img)
+
+    def test_the_heart_is_on_the_middle_of_the_capitals(self):
+        for img in self.shots:
+            px = img.load()
+            top = cursor_top(img, sheet_top(img) + 60)
+            bottom = next(y for y in range(top + 6, img.height) if sum(px[x, y] == 0 for x in range(40, 480)) > 400)
+            band = range(top + 4, bottom - 3)
+            cols = [x for x in range(26, 390) if any(px[x, y] < 128 for y in band)]
+            ink_rows = lambda x0, x1: [y for y in band if any(px[x, y] < 128 for x in range(x0, x1))]
+            # The capital "C" that starts "Co chu trinh doc", and the last run of ink before the value: the heart.
+            capital = ink_rows(cols[0], cols[0] + 8)
+            start = cols[-1]
+            for a, b in zip(reversed(cols[:-1]), reversed(cols[1:])):
+                if b - a > 3:
+                    break
+                start = a
+            heart = ink_rows(start, cols[-1] + 1)
+            off = (heart[0] + heart[-1]) / 2 - (capital[0] + capital[-1]) / 2
+            self.assertLessEqual(abs(off), 1, f'the heart is {off:+.1f} px off the middle of the capital')
+
+
 # Line spacing as the Text tab shows it, tightest first: the stored readerSpacing level at each place.
 SPACING_BY_PLACE = [1, 2, 0, 3, 4]
 # The Text tab's 14 rows, as Settings > Text has them on the X3, in the X4 Pro's order (founder 06/10).

@@ -46,6 +46,10 @@ void drawMarginPin(const GfxRenderer& r, int top) {
     for (int dx = 0; dx < 9; ++dx)
       if (rows[dy] & (1u << (8 - dx))) r.drawPixel(13 + dx, top + 1 + dy, true);
 }
+int markTopOnCapitals(const GfxRenderer& r, const int font, const int y, const int height) {
+  const int capTop = r.getTextInkTop(font, "H", EpdFontFamily::REGULAR);
+  return y + (capTop + r.getFontAscenderSize(font) - height + 1) / 2;
+}
 void drawShape(const GfxRenderer& r, Shape shape, int x, int y, int size, bool black) {
   const int h = std::max(3, size / 2);
   if (shape == Shape::Up || shape == Shape::Down) {
@@ -91,7 +95,8 @@ int text(const GfxRenderer& r, int font, int x, int y, const char* str, bool dra
     if (id >= 0) {
       const auto spec = resolve(id);
       if (spec.shape == Shape::MarginPin) {
-        if (draw) drawMarginPin(r, y + r.getFontAscenderSize(font) - 10);
+        // The heart's 8 rows start a row under the top drawMarginPin takes.
+        if (draw) drawMarginPin(r, markTopOnCapitals(r, font, y, 8) - 1);
       } else if (spec.label) {
         if (draw) r.drawText(font, x + advance, y, spec.label, black, style);
         advance += r.getTextAdvanceX(font, spec.label, style);
