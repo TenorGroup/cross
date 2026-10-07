@@ -26,6 +26,12 @@
 #include <limits>
 #include <string_view>
 
+#ifdef TENOR_PRESS_PROBE
+#include <FontDecompressor.h>
+#include <SdCardFont.h>
+#include <esp_heap_caps.h>
+#endif
+
 #include "../../util/BookmarkFile.h"
 #include "../../util/CoverRef.h"
 #include "BookmarkEntry.h"
@@ -84,6 +90,31 @@
 #endif
 
 namespace {
+#ifdef TENOR_PRESS_PROBE
+// Probe-only phase samples. Font stats describe the last prewarm's bitmap use,
+// not resident capacities; the heap delta around cache teardown measures retention.
+void traceSheetHeap(const char* stage, const GfxRenderer& renderer, const int row = -1) {
+  multi_heap_info_t heap{};
+  heap_caps_get_info(&heap, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  uint32_t sdBitmapLast = 0;
+  for (const auto& [id, font] : renderer.getSdCardFonts())
+    if (font) sdBitmapLast += font->getStats().bitmapBytes;
+  uint32_t builtinPageLast = 0;
+  if (const auto* fcm = renderer.getFontCacheManager())
+    if (const auto* decompressor = fcm->getDecompressor()) {
+      const auto& stats = decompressor->getStats();
+      builtinPageLast = stats.pageBufferBytes + stats.pageGlyphsBytes;
+    }
+  LOG_INF("SHEET_HEAP", "stage=%s t=%lu row=%d free=%u largest=%u min=%u alloc=%u used_blocks=%u free_blocks=%u sd_bitmap_last=%u builtin_page_last=%u bw_bytes=%u embedded=%u aa=%u ink=%u",
+          stage, static_cast<unsigned long>(millis()), row, static_cast<unsigned>(heap.total_free_bytes),
+          static_cast<unsigned>(heap.largest_free_block), static_cast<unsigned>(heap.minimum_free_bytes),
+          static_cast<unsigned>(heap.total_allocated_bytes), static_cast<unsigned>(heap.allocated_blocks),
+          static_cast<unsigned>(heap.free_blocks), static_cast<unsigned>(sdBitmapLast),
+          static_cast<unsigned>(builtinPageLast), static_cast<unsigned>(renderer.getBufferSize()),
+          static_cast<unsigned>(SETTINGS.embeddedStyle), static_cast<unsigned>(SETTINGS.textAntiAliasing),
+          static_cast<unsigned>(SETTINGS.readerInkWeight));
+}
+#endif
 // The places on the toolbar menu's bar of the tools the reader opens by name.
 constexpr int kContentsTool = static_cast<int>(readermenu::Tool::CONTENTS);
 constexpr int kTextTool = static_cast<int>(readermenu::Tool::TEXT);
@@ -3122,7 +3153,13 @@ void EpubReaderActivity::renderBook() {
   if (overlay != Overlay::None && usesToolbarMenu()) {
     // The page just re-rendered under the overlay: refresh the snapshot that
     // backs panel->toolbar restores (any previous copy is stale).
+#ifdef TENOR_PRESS_PROBE
+    traceSheetHeap("STORE_BEGIN", renderer);
+#endif
     overlayPageStored = renderer.storeBwBuffer();
+#ifdef TENOR_PRESS_PROBE
+    traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
+#endif
     renderOverlay();
     // An open option picker rides on top of the freshly drawn panel.
     if (overlayPopup.isActive()) overlayPopup.render(renderer);
@@ -3132,6 +3169,9 @@ void EpubReaderActivity::renderBook() {
     // practice; restore a HALF cleanup here if text ever visibly ghosts
     // through the sheet (see #2190 for the mechanism).
     pushOverlayRefresh();
+#ifdef TENOR_PRESS_PROBE
+    traceSheetHeap("OVERLAY_END", renderer);
+#endif
   }
   pageFrameUsb = gpio.isUsbConnected();
   pageFrameShown = true;
@@ -3350,7 +3390,18 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   };
 
   auto* fcm = renderer.getFontCacheManager();
+#ifdef TENOR_PRESS_PROBE
+  struct CacheExitTrace {
+    const GfxRenderer& renderer;
+    const char* stage;
+    bool active;
+    ~CacheExitTrace() { if (active) traceSheetHeap(stage, renderer); }
+  } afterCacheExit{renderer, "CACHE_EXIT_END", overlay != Overlay::None && usesToolbarMenu()};
+#endif
   auto scope = fcm->createPrewarmScope();
+#ifdef TENOR_PRESS_PROBE
+  CacheExitTrace beforeCacheExit{renderer, "CACHE_EXIT_BEGIN", afterCacheExit.active};
+#endif
   renderPageBody(false);
   // Scan the status bar too: a CJK book/chapter title redirected to the SD
   // fallback font joins the page's single batch prewarm instead of triggering
@@ -4091,6 +4142,9 @@ void EpubReaderActivity::cycleTextRow(int row) {
   row = textRowId(row);
   {
     RenderLock lock;  // the render task must not paint a page laid out with the old value in the new one
+#ifdef TENOR_PRESS_PROBE
+    traceSheetHeap("SETTING_BEGIN", renderer, row);
+#endif
     if (const auto info = catalogTextRow(row)) {
       // A tap steps it, as a tap steps alignment: the next value, the first after the last.
       auto& value = SETTINGS.*(info->valuePtr);
@@ -5040,10 +5094,16 @@ bool EpubReaderActivity::renderPreview(const int marginTop, const int marginRigh
   if (catchUp && catchUp->isBuilding() && !catchUp->isBuildParked() && !catchUp->parkBuild()) dropCatchUp();
   const ReaderRenderSpec spec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
   std::unique_ptr<Page> page;
+#ifdef TENOR_PRESS_PROBE
+  traceSheetHeap("PREVIEW_BEGIN", renderer);
+#endif
   {
     Section chapter(epub, currentSpineIndex, renderer, preview);
     page = chapter.previewPage(spec, xemTruocDich);
   }
+#ifdef TENOR_PRESS_PROBE
+  traceSheetHeap(page ? "PREVIEW_RETURN_OK" : "PREVIEW_RETURN_FAILED", renderer);
+#endif
   if (!page) return false;
   settleBuildPopup();
   renderer.clearScreen();
@@ -5055,13 +5115,25 @@ bool EpubReaderActivity::renderPreview(const int marginTop, const int marginRigh
   discardOverlayPage();
   paintDropped.store(false, std::memory_order_relaxed);
   renderContents(std::move(page), marginTop, marginRight, marginBottom, marginLeft);
+#ifdef TENOR_PRESS_PROBE
+  traceSheetHeap("CONTENTS_RETURN", renderer);
+#endif
   if (paintDropped) return true;
   lastRenderCompleteMs = millis();
   if (overlay != Overlay::None && usesToolbarMenu()) {
+#ifdef TENOR_PRESS_PROBE
+    traceSheetHeap("STORE_BEGIN", renderer);
+#endif
     overlayPageStored = renderer.storeBwBuffer();
+#ifdef TENOR_PRESS_PROBE
+    traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
+#endif
     renderOverlay();
     if (overlayPopup.isActive()) overlayPopup.render(renderer);
     pushOverlayRefresh();
+#ifdef TENOR_PRESS_PROBE
+    traceSheetHeap("OVERLAY_END", renderer);
+#endif
   }
   pageFrameUsb = gpio.isUsbConnected();
   pageFrameShown = true;
@@ -5193,11 +5265,23 @@ void EpubReaderActivity::invalidateTextSettingsLocked() {
   textCloseFrame.store(0, std::memory_order_relaxed);
   textSettingsDirty = true;
   danLaiTrang();
+#ifdef TENOR_PRESS_PROBE
+  traceSheetHeap("LAYOUT_DISCARDED", renderer);
+#endif
   discardOverlayPage();
+#ifdef TENOR_PRESS_PROBE
+  traceSheetHeap("SNAPSHOT_DISCARDED", renderer);
+#endif
 }
 
 void EpubReaderActivity::applyReaderTextSettingsLocked() {
+#ifdef TENOR_PRESS_PROBE
+  traceSheetHeap("FONT_LOAD_BEGIN", renderer);
+#endif
   sdFontSystem.ensureLoaded(renderer);
+#ifdef TENOR_PRESS_PROBE
+  traceSheetHeap("FONT_LOAD_END", renderer);
+#endif
   invalidateTextSettingsLocked();
 }
 
