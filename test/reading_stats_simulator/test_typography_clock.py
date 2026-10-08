@@ -139,17 +139,10 @@ class TypographyClockTest(unittest.TestCase):
     def test_indent_menu_updates_preview_and_survives_restart(self):
         self.settings['readerFavorites'] = [2]  # Pin the existing Text Settings action.
         captured, log = self.run_sim(
-            # Nhip 17/09/2026: setUp them recent.json nen the GAN DAY co dung mot hang; MOT nhip CONFIRM mo
-            # sach, nhip ke tiep mo menu doc (the Yeu thich co ghim [2] = Cai dat van ban, hang 1),
-            # nhip thu hai mo MENU DOC o the Yeu thich (ghim [2] = Cai dat van ban, hang 1), nen
-            # CONFIRM ke tiep mo THANG the Bo cuc cua Cua Cai dat van ban, con tro o hang 1.
-            # Bay dong cua the Bo cuc: gian dong, gian chu, gian tu, gian doan, can le, le man
-            # hinh, thut dau dong. Nhip 18/09/2026: vong con tro 1..N khong ghe dai the (v1.0.3),
-            # nen MOT nhip LEFT tu hang 1 ve thang hang 7 THUT DAU DONG. Mac dinh cua no la 1
-            # (Muc dinh) nen mot nhip CONFIRM day sang 2 (Rong).
+            # U11 opens the indent choices; select Wide and return to the preview.
             '1000:CONFIRM;3200:CONFIRM;4400:CONFIRM;5600:LEFT;7200:CONFIRM;'
-            '9500:BACK;10500:BACK;11500:QUIT',
-            [(6800, 'menu-auto'), (8000, 'menu-on')])
+            '7900:RIGHT;8600:CONFIRM;10200:BACK;11200:BACK;12200:QUIT',
+            [(6800, 'menu-auto'), (9400, 'menu-on')])
         self.assertIn('Entering activity: TextSettings', log)
         self.assertIn('Exiting activity: TextSettings', log)
         self.settings = json.loads((self.store / 'settings.json').read_text())

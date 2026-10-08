@@ -125,11 +125,14 @@ class MotionSensorTabTest(unittest.TestCase):
         self.assertEqual(len(set(pictures.values())), 3, 'each language draws its own row')
 
     def test_first_motion_row_is_page_tilt(self):
-        # A three-choice row steps in place: Reversed (2) goes round to Off.
+        # U11: open the three-choice picker on Reversed, wrap to Off, then save.
         self.write_settings()
-        self.run_sim([*HOME_TO_MOTION, '4500:CONFIRM'])
+        self.run_sim([*HOME_TO_MOTION, '4500:CONFIRM', '5500:RIGHT', '6500:CONFIRM'],
+                     shots=[(5000, 'page-tilt-choices'), (7000, 'page-tilt-off')])
         saved = self.saved()
         self.assertEqual((saved['tiltPageTurn'], saved['tiltTabNavigation']), (0, 1))
+        self.run_sim([*HOME_TO_MOTION], shots=[(4500, 'page-tilt-restart')])
+        self.assertEqual(self.saved()['tiltPageTurn'], 0)
 
     def test_controls_keeps_its_own_rows(self):
         # Controls begins on remap; the next row is now "front buttons follow orientation",

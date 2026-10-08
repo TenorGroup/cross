@@ -71,11 +71,15 @@ def other_book_row(image):
     if rule is None:
         return None
     below = [y for y in inked if y > rule]
-    top = below[0]
-    bottom = top
-    # The row is one line of text; accents may leave a one or two pixel gap above the letters.
-    while any(bottom < y <= bottom + 3 for y in below):
-        bottom = max(y for y in below if bottom < y <= bottom + 3)
+    runs = []
+    for y in below:
+        if runs and y - runs[-1][1] <= 10:
+            runs[-1] = (runs[-1][0], y)
+        else:
+            runs.append((y, y))
+    if not runs:
+        return None
+    top, bottom = runs[0][0], runs[-1][1]
     following = next((y for y in below if y > bottom), image.height)
     return rule, top, bottom, following
 
@@ -262,9 +266,9 @@ class UiSizesV108Test(unittest.TestCase):
         bands = []
         glyph_heights = []
         for tier in (1, 2, 0):
-            # Each process starts at Home. A single Confirm cycles the size row.
+            # U11: choose the next size in the picker, then check the repainted parent.
             t = Timeline().key("UP").key("CONFIRM").shot("before")
-            t.key("CONFIRM").shot("after").key("BACK").key("DOWN").shot("home-after")
+            t.key("CONFIRM").key("RIGHT").key("CONFIRM").shot("after").key("BACK").key("DOWN").shot("home-after")
             images, log = self.run_sim(sd, output, f"set-{tier}", t)
             self.assertIn("Exiting activity: Settings", log)
             bands.append(self.assert_row(images["after"], tier))

@@ -232,9 +232,9 @@ class HomeRecentCardTest(unittest.TestCase):
         card = images['second']
         last = card.width - 1
         # The rule is the full-width line above the row; the row's arrows are measured under it.
-        rule = next(y for y in range(700, 760)
+        rule = next(y for y in range(600, 760)
                     if sum(card.getpixel((x, y)) < 128 for x in range(card.width)) > 400)
-        (l0, l1), (r0, r1), label, title = self.edge_runs(card, rule + 2, 756)
+        (l0, l1), (r0, r1), label, title = self.edge_runs(card, rule + 2, rule + 36)
         self.assertEqual((l0, last - r1), (l0, l0), f'row arrows: left x {l0}..{l1}, right x {r0}..{r1}')
         self.assertEqual(l1 - l0, r1 - r0, 'row arrows differ in width')
         # The title keeps the label's distance from its arrow, within a glyph's side bearing.
@@ -277,7 +277,9 @@ class HomeRecentCardTest(unittest.TestCase):
                 lines[-1] = (lines[-1][0], last)
             else:
                 lines.append((first, last))
-        self.assertEqual(len(lines), title_lines + (1 if title_lines == 2 else 2), f'{name}: {runs}')
+        # The approved .54 two-line next-book title uses the excerpt slot below a one-line title.
+        expected_lines = title_lines + (2 if size == 1 and title_lines == 1 else 1)
+        self.assertEqual(len(lines), expected_lines, f'{name}: {runs}')
         heights = [last - first + 1 for first, last in lines]
         if name.startswith('short') and size < 2:
             self.assertGreater(heights[0], base[size], f'{name}: title {heights[0]} rows, {runs}')
