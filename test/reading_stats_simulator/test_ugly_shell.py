@@ -21,8 +21,8 @@ FULL_FRAME_DIGEST_PROVENANCE = {0: '3fa2d2da5c50a849f2b24a4990c78312f9af4167a2e0
 # Filename rows follow the pen rule; the footer stays at absolute screen coordinates.
 # A cut name trails off in a pen scrawl where the 3 dots stood, and the tick over Select is the hand-drawn
 # one (founder 06/10/2026); a Chinese letter is written alone in the UI font, the rest of the name in hand: goldens taken again.
-CUT_NAMES_DIGEST = {0: 'e0e3b749ac73bfcd73184903519818603d8f0a749f40612d75e55f1f736351cb',
-                    1: '4b09f50b0bb5ac621ea3f02bf2e4ea289dd38e7ad16232ebae56dadbd2eeb7ab'}
+CUT_NAMES_DIGEST = {0: '1ba1d03a93709e559b0e10d562edf9118e0ea6add0c4bdde2921ca9714143313',
+                    1: 'b692140c18c1e6379bc0ec92479a251d4322da6ee4794d8089ff9399bbd16cbd'}
 FOLDER_FOOTER_DIGEST = {0: '360d64d721bf59c7b4a1e0bef676f85406cc4d89439540aec0c2dfed670c7e01',
                       1: '6baf6c0046c5699ea764d59596d1bc89e9608573ae1560912307a402c4eabb2f'}
 # Every width from a name that fits to one cut to a few letters, with marks, and one the baked font lacks.

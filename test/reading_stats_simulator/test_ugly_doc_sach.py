@@ -25,7 +25,7 @@ CLOCK = (400, 748, 528, 792)  # the clock in the key bar of tenor/cross
 CROSS = {
     'eob_plain': '490012e7fcd7e735',
     'eob_menu': 'a0c8328098129235',
-    'percent': '6ab5c7354d1e3bd2',
+    'percent': 'ce61eb3cb75ca19b',
     'chapter_entry': '6c974a15195b58d5',
     'definition': '5db94663acffe057',
     'page': '6c235d5d47876125',

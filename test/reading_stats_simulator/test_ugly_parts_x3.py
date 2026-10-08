@@ -150,10 +150,12 @@ class UglyPartsX3(unittest.TestCase):
         self.assertBlank(menu, (330, 172, 476, 228), 'the circle of the reader menu runs to the row end')
 
     def test_a_popup_circles_the_label_of_its_focused_option(self):
-        # The status bar popup of the reader menu, focus on its current choice: the option's ends stay clear.
+        # U11 keeps the nested popup inside the parent frame and draws both rings.
         popup = self.shot(['CONFIRM', 'WAIT:2200', 'CONFIRM', 'DOWN', 'DOWN', 'RIGHT', 'RIGHT', 'CONFIRM'])
-        self.assertBlank(popup, (80, 358, 160, 412), 'the circle of the popup runs to the option start')
-        self.assertBlank(popup, (370, 358, 450, 412), 'the circle of the popup runs to the option end')
+        self.assertGreater(ink(popup, (64, 358, 75, 412)), 0, 'the parent frame reaches the left edge')
+        self.assertGreater(ink(popup, (453, 358, 464, 412)), 0, 'the parent frame reaches the right edge')
+        self.assertGreater(ink(popup, (180, 374, 350, 385)), 0, 'the option ring has a top arc')
+        self.assertGreater(ink(popup, (180, 400, 350, 412)), 0, 'the option ring has a bottom arc')
 
     def test_a_chinese_letter_leaves_the_rest_of_the_name_in_hand(self):
         # The notebook's File page: "Tam thể tập hai" and the same name with 体 in it. The pen lacks 体 alone, so the
