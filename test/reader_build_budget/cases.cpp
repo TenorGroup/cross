@@ -15,6 +15,35 @@ template<class F> void test(const char* name, F fn) {
   catch (const std::exception& e) { ++failures; std::cout << "FAIL " << name << ": " << e.what() << '\n'; }
 }
 int main() {
+  test("sheet fallback releases parser before page paint with healthy tick heap", [] {
+    for (bool canPark : {false, true}) {
+      EpubReaderActivity r;
+      r.overlay = EpubReaderActivity::Overlay::Text;
+      r.section->canPark = canPark;
+      r.section->parkRestoresFree = 94528;
+      r.section->parkRestoresLargest = 40948;
+      ESP.free = 70040; ESP.largest = 40948;
+      const int page = r.section->currentPage;
+      { RenderLock held; r.foreground(); }
+      require(!r.section->isBuilding() || r.section->isBuildParked(), "sheet retained live parser");
+      require(r.section->parks == int(canPark) && r.section->suspends == int(!canPark), "wrong release path");
+      require(r.section->currentPage == page && r.section->pageCount > page, "park lost displayed page");
+      require(ESP.free >= 80000 && ESP.largest > 4000 + 4096, "insufficient snapshot headroom");
+      r.backgroundTick();
+      require(r.section->resumes == 0 && r.section->starts == 0, "parser restarted under sheet");
+    }
+  });
+  test("sheet parser policy leaves ordinary reader and list menu builds running", [] {
+    for (bool toolbar : {false, true}) {
+      EpubReaderActivity r;
+      r.toolbarMenu = toolbar;
+      r.overlay = toolbar ? EpubReaderActivity::Overlay::None : EpubReaderActivity::Overlay::Text;
+      r.section->canPark = true;
+      ESP.free = 70040; ESP.largest = 40948;
+      { RenderLock held; r.foreground(); }
+      require(r.section->isBuilding() && !r.section->isBuildParked(), "unrelated build parked");
+    }
+  });
   test("text close write waits for its frame, quiet input and render lock", [] {
     EpubReaderActivity r; r.textSettingsDirty = true; r.textCloseFrame = 1;
     r.idleStep(); require(SETTINGS.saves == 0, "write before close frame");

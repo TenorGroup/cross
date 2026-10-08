@@ -35,12 +35,15 @@ class OverlaySnapshotCacheTest(unittest.TestCase):
         snapshots.append(body(opening, "if (previous == Overlay::None)"))
         harness = r"""
 #include <cstdio>
+#include <cstdint>
 struct FontCacheManager {
   bool released = false;
   void releaseSdFontCaches() { released = true; }
 };
 struct Renderer {
   FontCacheManager* cache;
+  unsigned loans = 0;
+  unsigned frameBufferLoanCount() { return loans; }
   FontCacheManager* getFontCacheManager() { return cache; }
   bool storeBwBuffer() { return !cache || cache->released; }
 };
@@ -48,6 +51,10 @@ struct EpubReaderActivity {
   Renderer renderer;
   bool textSettingsDirty;
   bool overlayPageStored = false;
+  bool parkBorrowsFrame = false;
+  int requests = 0;
+  void suspendBackgroundBuild() { if (parkBorrowsFrame) ++renderer.loans; }
+  void requestUpdate() { ++requests; }
   void releaseTextCachesBeforeOverlaySnapshot();
   @SNAPSHOTS@
 };
@@ -70,6 +77,14 @@ int main() {
     EpubReaderActivity reader{{nullptr}, false};
     (reader.*snapshots[route])();
     if (!reader.overlayPageStored) ++failed;
+  }
+  FontCacheManager cache;
+  EpubReaderActivity reader{{&cache}, false};
+  reader.parkBorrowsFrame = true;
+  reader.snapshot2();
+  if (reader.overlayPageStored || reader.requests != 1) {
+    std::fprintf(stderr, "opening sheet stored a framebuffer borrowed by the parser\n");
+    ++failed;
   }
   return failed;
 }

@@ -372,6 +372,10 @@ struct ReaderActivity {
   void queuePageTurn(bool, bool, const char*);
 };
 struct EpubReaderActivity : ReaderActivity {
+  enum class Overlay { None, Text };
+  Overlay overlay = Overlay::None;
+  bool toolbarMenu = true;
+  bool usesToolbarMenu() const { return toolbarMenu; }
   std::unique_ptr<Section> section = std::make_unique<Section>();
   bool xemTruoc = false, xemTruocTrenMan = false, textSettingsDirty = false;
   int8_t xemTruocLat = 0;

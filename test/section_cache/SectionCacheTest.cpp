@@ -37,6 +37,8 @@ long live = 0;
 long peak = 0;
 size_t largest = 0;
 size_t calls = 0;
+size_t liveLimit = 0;
+size_t requestLimit = 0;
 size_t rejectSize = 0;
 bool rejectNextNothrow = false;
 unsigned matchingCalls = 0;
@@ -47,6 +49,12 @@ void* operator new(std::size_t size) {
   if (allocationProbe::enabled) {
     allocationProbe::largest = std::max(allocationProbe::largest, size);
     ++allocationProbe::calls;
+    if ((allocationProbe::liveLimit && allocationProbe::live + static_cast<long>(size) >
+                                          static_cast<long>(allocationProbe::liveLimit)) ||
+        (allocationProbe::requestLimit && size > allocationProbe::requestLimit)) {
+      ++allocationProbe::rejected;
+      throw std::bad_alloc();
+    }
   }
   if (void* value = std::malloc(size ? size : 1)) {
     if (allocationProbe::enabled) {
@@ -2605,6 +2613,84 @@ TEST(PreviewPage, NoResumePointsNoPreview) {
   EXPECT_TRUE(std::filesystem::exists(book.root / "sections/0.dd"));
   Section again(book.epub, 0, book.renderer);
   EXPECT_TRUE(again.previewPage(book.narrow, offset));
+}
+
+TEST(PreviewPage, FirstPageWithoutResumeIndexFitsSheetHeapBudget) {
+  PreviewBook book;
+  book.epub->contents = "<html><body><div>";
+  for (int p = 0; p < 1000; ++p)
+    book.epub->contents += "<p>alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu</p>";
+  book.epub->contents += "</div></body></html>";
+  std::vector<std::string> expected;
+  {
+    Section old(book.epub, 0, book.renderer);
+    ASSERT_TRUE(old.createSectionFile(book.wide));
+    auto first = old.loadPage(0);
+    ASSERT_TRUE(first);
+    expected = pageLines(*first);
+  }
+  std::filesystem::remove(book.root / "sections/0.dd");
+  Section section(book.epub, 0, book.renderer);
+  allocationProbe::live = allocationProbe::peak = 0;
+  allocationProbe::calls = allocationProbe::largest = allocationProbe::rejected = 0;
+  allocationProbe::liveLimit = 70 * 1024;
+  allocationProbe::requestLimit = 40948;
+  allocationProbe::enabled = true;
+  std::unique_ptr<Page> page;
+  try {
+    page = section.previewPage(book.wide, 0);
+  } catch (...) {
+    allocationProbe::enabled = false;
+    allocationProbe::liveLimit = allocationProbe::requestLimit = 0;
+    throw;
+  }
+  allocationProbe::enabled = false;
+  allocationProbe::liveLimit = allocationProbe::requestLimit = 0;
+  std::cout << "PREVIEW_NO_DD peak=" << allocationProbe::peak << " largest=" << allocationProbe::largest
+            << " rejected=" << allocationProbe::rejected << '\n';
+  ASSERT_TRUE(page);
+  EXPECT_EQ(pageLines(*page), expected);
+  EXPECT_EQ(page->visibleTextOffset, 0u);
+  EXPECT_EQ(allocationProbe::rejected, 0u);
+  EXPECT_FALSE(std::filesystem::exists(book.root / "sections/0.dd"));
+  EXPECT_FALSE(section.isBuilding());
+}
+
+TEST(PreviewPage, FallbackParserReleasesHeapAndKeepsPageWhenParked) {
+  PreviewBook book;
+  Section section(book.epub, 0, book.renderer);
+#ifdef __APPLE__
+  const auto heapUsed = [] {
+    malloc_statistics_t stats{};
+    malloc_zone_statistics(nullptr, &stats);
+    return stats.size_in_use;
+  };
+  const size_t heapBefore = heapUsed();
+#endif
+  allocationProbe::live = allocationProbe::peak = 0;
+  allocationProbe::enabled = true;
+  const bool started = section.startBuild(book.wide);
+  const bool built = started && section.buildSomeMore(8);
+  const long active = allocationProbe::live;
+#ifdef __APPLE__
+  const size_t heapActive = heapUsed();
+#endif
+  const bool parked = built && section.parkBuild();
+  const long after = allocationProbe::live;
+  allocationProbe::enabled = false;
+#ifdef __APPLE__
+  const size_t heapAfter = heapUsed();
+  std::cout << "FALLBACK_ALL_HEAP active=" << heapActive - heapBefore << " parked=" << heapAfter - heapBefore
+            << " released=" << heapActive - heapAfter << '\n';
+#endif
+  std::cout << "FALLBACK_PARSER active=" << active << " parked=" << after << " released=" << active - after << '\n';
+  ASSERT_TRUE(parked);
+  ASSERT_TRUE(section.isBuildParked());
+  EXPECT_GT(active, after);
+  const auto page = section.loadPage(0);
+  ASSERT_TRUE(page);
+  EXPECT_FALSE(pageLines(*page).empty());
+  EXPECT_EQ(page->visibleTextOffset, 0u);
 }
 
 TEST(PreviewPage, KeepsParagraphGapAfterTheHeldFinalLine) {

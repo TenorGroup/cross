@@ -645,6 +645,7 @@ bool EpubReaderActivity::deferBackgroundBuildForBle() const {
 }
 
 bool EpubReaderActivity::backgroundBuildStartHeapGate() {
+  if (overlay != Overlay::None && usesToolbarMenu()) return false;
   // Admitting a parked build loads the parser again, which drops the free heap by whatever the
   // last park handed back. Require room for that on top of the tick budget the resumed build
   // has to stay above, or the resume buys one page and pays for the next park straight after.
@@ -925,8 +926,13 @@ void EpubReaderActivity::showMemoryError() {
 void EpubReaderActivity::suspendBackgroundBuild() {
   if (!section || !section->isBuilding() || section->isBuildParked()) return;
   const bool heapPressure = !buildTickHeapGate();
-  if (!heapPressure && !backgroundBuildSuspended && !deferBackgroundBuildForBle() && !backgroundBuildFailed) return;
+  const bool sheetOpen = overlay != Overlay::None && usesToolbarMenu();
+  if (!sheetOpen && !heapPressure && !backgroundBuildSuspended && !deferBackgroundBuildForBle() && !backgroundBuildFailed)
+    return;
   BackgroundBuildFrameGuard frameGuard(*this);
+#ifdef TENOR_PRESS_PROBE
+  if (sheetOpen) traceSheetHeap("PARSER_RELEASE_BEGIN", renderer);
+#endif
 #ifdef TENOR_UI_ACCEPTANCE
   LOG_DBG("ERS_TRACE", "BUILD_SUSPEND t=%lu spine=%d page=%d count=%u partial=%u heap=%u largest=%u ble=%u pressure=%u",
           millis(), currentSpineIndex, section->currentPage, static_cast<unsigned>(section->pageCount),
@@ -952,6 +958,9 @@ void EpubReaderActivity::suspendBackgroundBuild() {
   LOG_INF("ERS", "Build parser released for render headroom: parked=%u page=%d pages=%u free=%u largest=%u",
           parked ? 1u : 0u, section->currentPage, static_cast<unsigned>(section->pageCount),
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#ifdef TENOR_PRESS_PROBE
+  if (sheetOpen) traceSheetHeap("PARSER_RELEASE_END", renderer);
+#endif
 }
 
 void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFullRefresh) {
@@ -4458,6 +4467,13 @@ void EpubReaderActivity::openOverlay(Overlay target) {
     RenderLock lock;
     settleOverlayRefresh();
     if (previous == Overlay::None) {
+      const uint32_t loanCount = renderer.frameBufferLoanCount();
+      suspendBackgroundBuild();
+      // Reaching a checkpoint can probe an image using the framebuffer. Repaint it before storing.
+      if (renderer.frameBufferLoanCount() != loanCount) {
+        requestUpdate();
+        return;
+      }
       // Snapshot the clean page so stepping back from a panel to the toolbar
       // (and closing, where supported) can restore it without a re-render.
       releaseTextCachesBeforeOverlaySnapshot();

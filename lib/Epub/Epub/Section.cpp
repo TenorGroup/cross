@@ -1210,15 +1210,28 @@ bool Section::buildSomeMore(const int maxPages) {
 }
 
 std::unique_ptr<Page> Section::previewPage(const ReaderRenderSpec& spec, const uint32_t pageStart) {
-  if (build_ || !stepHeapAvailable()) return nullptr;
+  const auto reject = [&](const char* reason) -> std::unique_ptr<Page> {
+#ifdef TENOR_PRESS_PROBE
+    LOG_INF("SCT", "PREVIEW_SKIP reason=%s spine=%d target=%u free=%u largest=%u", reason, spineIndex,
+            static_cast<unsigned>(pageStart), static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#else
+    (void)reason;
+#endif
+    return nullptr;
+  };
+  if (build_) return reject("build_active");
+  if (!stepHeapAvailable()) return reject("heap_gate");
   const uint32_t started = millis();
   const std::string htmlPath = epub->getCachePath() + "/html/" + std::to_string(spineIndex) + ".html";
   // The nearest resume point at or before the page start, and the ancestors to replay there.
   std::string replay;
   ChapterHtmlSlimParser::ResumePoint point{0, 0, 0};
-  {
+  // The first page starts at byte zero even when this chapter has no resume index yet.
+  if (pageStart != 0) {
     HalFile html, dd;
-    if (!Storage.openFileForRead("SCT", htmlPath, html) || !Storage.openFileForRead("SCT", ddPath(), dd)) return nullptr;
+    if (!Storage.openFileForRead("SCT", htmlPath, html)) return reject("html_open");
+    if (!Storage.openFileForRead("SCT", ddPath(), dd)) return reject("dd_open");
     uint32_t magic = 0, size = 0, count = 0;
     uint16_t prolog = 0;
     uint8_t prefixCount = 0, complete = 0;
@@ -1226,15 +1239,15 @@ std::unique_ptr<Page> Section::previewPage(const ReaderRenderSpec& spec, const u
         !serialization::readPod(dd, prolog) || !serialization::readPod(dd, prefixCount) ||
         !serialization::readPod(dd, complete) || magic != DD_MAGIC || size != html.size() || count == 0 ||
         prolog > html.size() || prolog > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX)
-      return nullptr;
+      return reject("dd_header");
     const uint64_t prefixOffset = DD_HEADER + static_cast<uint64_t>(count) * sizeof(DdRecord);
-    if (prefixOffset > dd.size()) return nullptr;
+    if (prefixOffset > dd.size()) return reject("dd_bounds");
     DdRecord block[16];
     DdRecord best{};
     bool found = false;
     for (uint32_t i = 0; i < count;) {
       const uint32_t n = std::min<uint32_t>(16, count - i);
-      if (dd.read(block, n * sizeof(DdRecord)) != static_cast<int>(n * sizeof(DdRecord))) return nullptr;
+      if (dd.read(block, n * sizeof(DdRecord)) != static_cast<int>(n * sizeof(DdRecord))) return reject("dd_read");
       uint32_t j = 0;
       for (; j < n && block[j].visible <= pageStart; ++j) {
         best = block[j];
@@ -1245,28 +1258,28 @@ std::unique_ptr<Page> Section::previewPage(const ReaderRenderSpec& spec, const u
     }
     // Too far from the nearest point, the preview would cost what laying the chapter out costs.
     constexpr uint32_t PREVIEW_MAX_CHARS = 6000;
-    if (pageStart - (found ? best.visible : 0) > PREVIEW_MAX_CHARS) return nullptr;
+    if (pageStart - (found ? best.visible : 0) > PREVIEW_MAX_CHARS) return reject("distance");
     if (found) {
-      if (best.prefix >= prefixCount || !dd.seek(static_cast<uint32_t>(prefixOffset))) return nullptr;
+      if (best.prefix >= prefixCount || !dd.seek(static_cast<uint32_t>(prefixOffset))) return reject("dd_prefix");
       std::string prefix;
       for (uint8_t i = 0; i <= best.prefix; ++i) {
         uint16_t length = 0;
         if (!serialization::readPod(dd, length) || dd.position() > dd.size() ||
             length > dd.size() - dd.position() ||
             static_cast<size_t>(prolog) + length > ChapterHtmlSlimParser::MAX_CHECKPOINT_PREFIX)
-          return nullptr;
+          return reject("dd_prefix_length");
         prefix.resize(length);
-        if (dd.read(prefix.data(), length) != static_cast<int>(length)) return nullptr;
+        if (dd.read(prefix.data(), length) != static_cast<int>(length)) return reject("dd_prefix_read");
       }
       replay.resize(prolog);
-      if (html.read(replay.data(), prolog) != static_cast<int>(prolog)) return nullptr;
+      if (html.read(replay.data(), prolog) != static_cast<int>(prolog)) return reject("html_prolog");
       replay += prefix;
       point = ChapterHtmlSlimParser::ResumePoint{best.offset, best.visible, best.imageCounter};
     }
   }
 
   auto ctx = makeUniqueNoThrow<BuildContext>();
-  if (!ctx) return nullptr;
+  if (!ctx) return reject("context_alloc");
   ctx->spec = spec;
   ctx->parsePath = htmlPath;
   const auto localPath = epub->getSpineItem(spineIndex).href;
@@ -1281,7 +1294,7 @@ std::unique_ptr<Page> Section::previewPage(const ReaderRenderSpec& spec, const u
     page->visibleTextOffset = visible;
     result = std::move(page);
   };
-  if (!loadBuildCss(ctx.get())) return nullptr;
+  if (!loadBuildCss(ctx.get())) return reject("css_load");
   ctx->parser = makeBuildParser(ctx.get(), spec);
   auto& parser = ctx->parser;
   bool ok = parser && parser->beginParse();
