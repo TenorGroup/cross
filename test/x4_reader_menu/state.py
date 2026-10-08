@@ -60,6 +60,8 @@ namespace fontdoc {
 struct Ho { const char* ten="Family"; };
 int family=0;
 std::vector<Ho> danhSachHo(SdCardFontRegistry*) {return std::vector<Ho>(7);}
+int soHo(SdCardFontRegistry*) {return 7;}
+std::string tenHo(SdCardFontRegistry*,int index) {return index<7 ? "Family" : "";}
 int hoDangDung(SdCardFontRegistry*) {return family;}
 int coDangDung(const std::vector<uint8_t>& sizes){return static_cast<int>(std::find(sizes.begin(),sizes.end(),snapToNearestPointSize(sizes,SETTINGS.fontPointSize))-sizes.begin());}
 void apCo(int,uint8_t value){SETTINGS.fontPointSize=value;}
@@ -120,7 +122,6 @@ class EpubReaderActivity {
  std::unique_ptr<ReaderToolbarUi> toolbarUi=std::make_unique<ReaderToolbarUi>();
  Epub epubValue;Epub* epub=&epubValue;
  Popup overlayPopup;
- std::vector<fontdoc::Ho> fontFamilies;
  std::vector<int> moreItems;
  int focusedTool=0,panelIndex=0,currentSpineIndex=0,nextPageNumber=0;
  bool panelCursorShown=false,panelHoldJumped=false,overlayPageStored=true,bwUnderSheet=false;
@@ -166,7 +167,7 @@ int main(){
  EpubReaderActivity r;
  assert(r.overlay==O::None&&SETTINGS.writes==0);
  r.openOverlay(O::Toolbar);event(r,E::Tool,static_cast<int>(readermenu::Tool::TEXT));assert(r.overlay==O::Text&&r.textDepth==D::Rows);
- event(r,E::Row,0);assert(r.textDepth==D::Fonts&&r.fontFamilies.size()==7);
+ event(r,E::Row,0);assert(r.textDepth==D::Fonts&&fontdoc::soHo(&r.sdFontSystem.registry())==7);
  event(r,E::Row,3);assert(fontdoc::family==3&&r.previews==1&&SETTINGS.writes==0);
  event(r,E::Row,3);assert(r.previews==1);
  back(r);assert(r.textDepth==D::Rows&&r.overlay==O::Text&&SETTINGS.writes==0);

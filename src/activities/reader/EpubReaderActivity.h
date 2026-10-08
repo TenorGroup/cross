@@ -235,7 +235,6 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string favoriteRowName(int row) const;
   std::string favoriteRowValue(int row) const;
   void activateFavoriteRow(int row);
-  std::vector<fontdoc::Ho> fontFamilies;
   void enterFontLevel();
   void leaveFontLevel();
   void chooseFontFamily(int index);

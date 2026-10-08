@@ -4324,7 +4324,6 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   spacingDragging = false;
   pointSizeDraft.clear();
 #endif
-  fontFamilies.clear();
   if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
   if (previous == Overlay::None) toolbarUi->begin();
   // Buttons show a cursor from the start; touch boards only once a button moves it.
@@ -4556,9 +4555,9 @@ void EpubReaderActivity::renderOverlay() {
 #endif
     if (textDepth == TextDepth::Fonts) {
       model.panelTitle = tr(STR_FONT);
-      model.itemCount = static_cast<int>(fontFamilies.size());
+      model.itemCount = fontdoc::soHo(&sdFontSystem.registry());
       model.sheetRows = levelSheetRows;  // the frame of the Text rows
-      model.rowText = [this](int i) { return i < static_cast<int>(fontFamilies.size()) ? fontFamilies[i].ten : ""; };
+      model.rowText = [this](int i) { return fontdoc::tenHo(&sdFontSystem.registry(), i); };
       model.rowMarked = [this](int i) { return i == fontdoc::hoDangDung(&sdFontSystem.registry()); };
     } else {
       model.panelTitle = tr(STR_TOOL_TEXT);
@@ -4736,7 +4735,7 @@ void EpubReaderActivity::handleOverlayInput() {
                     textDepth == TextDepth::Pick ? static_cast<int>(pick.labels.size()) :
 #endif
                     overlay == Overlay::Contents ? epub->getTocItemsCount()
-                    : overlay == Overlay::Text   ? (textDepth == TextDepth::Fonts ? static_cast<int>(fontFamilies.size()) : kTextRowCount)
+                    : overlay == Overlay::Text   ? (textDepth == TextDepth::Fonts ? fontdoc::soHo(&sdFontSystem.registry()) : kTextRowCount)
                     : overlay == Overlay::Favorites ? static_cast<int>(favoriteRows.size())
                                                  : static_cast<int>(moreItems.size());
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
@@ -5207,14 +5206,9 @@ bool EpubReaderActivity::docCoChuMotNac(const int huong) {
 // Font level of the Text panel. Both steps change one level inside the same sheet: the old chrome is
 // wiped back to the clean page (no refresh) and the new level is pushed in one fast refresh.
 void EpubReaderActivity::enterFontLevel() {
-  RenderLock lock;  // the render task shares the framebuffer and family list
-  fontFamilies = fontdoc::danhSachHo(&sdFontSystem.registry());
+  RenderLock lock;  // the render task shares the framebuffer
 #ifdef TENOR_PRESS_PROBE
-  LOG_INF("READER", "FONT_FAMILIES data=%08x size=%u capacity=%u bytes=%u ho_size=%u",
-          static_cast<unsigned>(reinterpret_cast<uintptr_t>(fontFamilies.data())),
-          static_cast<unsigned>(fontFamilies.size()), static_cast<unsigned>(fontFamilies.capacity()),
-          static_cast<unsigned>(fontFamilies.capacity() * sizeof(fontdoc::Ho)),
-          static_cast<unsigned>(sizeof(fontdoc::Ho)));
+  LOG_INF("READER", "FONT_FAMILIES count=%d", fontdoc::soHo(&sdFontSystem.registry()));
 #endif
   levelSheetRows = toolbarUi->sheetRows();
   textDepth = TextDepth::Fonts;
@@ -5231,14 +5225,12 @@ void EpubReaderActivity::enterFontLevel() {
 }
 
 void EpubReaderActivity::leaveFontLevel() {
-  RenderLock lock;  // the render task may be reading the family list
+  RenderLock lock;  // the render task shares the framebuffer
   textDepth = TextDepth::Rows;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   spacingDragging = false;
   pointSizeDraft.clear();
 #endif
-  fontFamilies.clear();
-  fontFamilies.shrink_to_fit();
   panelIndex = 0;
   toolbarUi->nav().reset();
   settleOverlayRefresh();
@@ -5379,8 +5371,6 @@ void EpubReaderActivity::panelClosedLocked(const bool leaving, const bool frameU
     }
     return;
   }
-  fontFamilies.clear();
-  fontFamilies.shrink_to_fit();
   sdFontSystem.releaseCatalog();
   releaseBaseSettingsList();  // the Text sheet's rows: the page has no use for them, the radio does
   if (frameUp)
