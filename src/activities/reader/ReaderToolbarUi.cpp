@@ -574,13 +574,28 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       windowLabels_[i] = model_.rowText ? model_.rowText(index) : std::string();
       windowValues_[i] = model_.rowValue ? model_.rowValue(index) : std::string();
       const bool marked = model_.rowMarked && model_.rowMarked(index);
+      const bool opensNext = model_.rowOpens && model_.rowOpens(index);
+      fui::TextStyle labelStyle = listProps_.labelText;
+      labelStyle.bold = labelStyle.bold || marked;
       if (fonts && !windowLabels_[i].empty()) {
-        fui::TextStyle labelStyle = listProps_.labelText;
-        labelStyle.bold = labelStyle.bold || marked;
         const int16_t room = static_cast<int16_t>(labelRoom -
                                                   (marked ? listProps_.chosenMark.width + listProps_.textGap : 0));
         windowLabels_[i] = utf8MiddleEllipsis(windowLabels_[i], room, [&](const char* text) {
           return screen.target().measureText(labelStyle.font, text, labelStyle).width;
+        });
+      }
+      if (!windowValues_[i].empty() && !(rows && index == 1)) {
+        fui::TextStyle valueStyle = listProps_.valueText;
+        const int16_t labelWidth = screen.target().measureText(labelStyle.font, windowLabels_[i].c_str(), labelStyle).width;
+        const int16_t chevron = opensNext
+                                    ? static_cast<int16_t>(fui::listChevronWidth(fui::listChevronSpan(
+                                                                  screen.target().lineHeight(labelStyle.font))) +
+                                                           listProps_.textGap)
+                                    : 0;
+        const int16_t mark = marked ? static_cast<int16_t>(listProps_.chosenMark.width + listProps_.textGap) : 0;
+        const int16_t valueRoom = static_cast<int16_t>(labelRoom - labelWidth - chevron - mark - listProps_.textGap - listProps_.valueInset);
+        windowValues_[i] = utf8MiddleEllipsis(windowValues_[i], valueRoom, [&](const char* text) {
+          return screen.target().measureText(valueStyle.font, text, valueStyle).width;
         });
       }
       fui::ListItem item;
@@ -670,10 +685,20 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       const fui::Rect plusRect{static_cast<int16_t>(frame.right() - 64), y, 60, 62};
       screen.button(stepProps_, plusRect);
       if (renderer_ && uiTarget.paintingEnabled()) {
-        tenorchrome::drawPillRing(*renderer_, minusRect.x, static_cast<int16_t>(minusRect.y + 1), minusRect.width, 60, 2,
-                                  true);
-        tenorchrome::drawPillRing(*renderer_, plusRect.x, static_cast<int16_t>(plusRect.y + 1), plusRect.width, 60, 2,
-                                  true);
+        constexpr int16_t kStepperRingWidth = 52;
+        constexpr int16_t kStepperRingHeight = 44;
+        constexpr int16_t kStepperRingAir = 8;
+        const int16_t ringRight = static_cast<int16_t>(listRect.right() - kBarStrip - kStepperRingAir);
+        const auto ringRect = [&](const fui::Rect& touchRect) {
+          const int16_t centeredX = static_cast<int16_t>(touchRect.x + (touchRect.width - kStepperRingWidth) / 2);
+          const int16_t x = std::min(centeredX, static_cast<int16_t>(ringRight - kStepperRingWidth));
+          const int16_t y = static_cast<int16_t>(touchRect.y + (touchRect.height - kStepperRingHeight) / 2);
+          return fui::Rect{x, y, kStepperRingWidth, kStepperRingHeight};
+        };
+        const auto minusRing = ringRect(minusRect);
+        const auto plusRing = ringRect(plusRect);
+        tenorchrome::drawPillRing(*renderer_, minusRing.x, minusRing.y, minusRing.width, minusRing.height, 2, true);
+        tenorchrome::drawPillRing(*renderer_, plusRing.x, plusRing.y, plusRing.width, plusRing.height, 2, true);
       }
     }
     if (count > 0 && renderer_ && uiTarget.paintingEnabled()) {

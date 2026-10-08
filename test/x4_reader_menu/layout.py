@@ -197,8 +197,8 @@ int main() {
     ReaderToolbarUi::Model model;
     model.panel=true; model.textView=ReaderToolbarUi::TextView::Rows;
     model.panelTitle="Text"; model.itemCount=5;
-    model.rowText=[](int i){return std::string(i==4?"Chapter initial":"Setting");};
-    model.rowValue=[](int i){return std::string(i==1?"18":"Default");};
+    model.rowText=[](int i){return std::string(i==0?"Font":(i==4?"Chapter initial":"Setting"));};
+    model.rowValue=[](int i){return std::string(i==0?"SP3 - Traveling Typewriter-BOLD2":(i==1?"18":"Default"));};
     tenorchrome::stepperRings.clear();
     ui.setModel(model); ui.render();
     auto frame=tenorchrome::panels.back(); assert(frame.x==16 && frame.y==362 && frame.width==448 && frame.height==350);
@@ -214,8 +214,15 @@ int main() {
     assert(plusRect.x == 400 && plusRect.y == 464 && plusRect.width == 60 && plusRect.height == 62);
     if (kExpectStepperRing) {
       assert(tenorchrome::stepperRings.size() == 2 && "size stepper must draw 2 grey pill rings");
-      assert(tenorchrome::stepperRings[0] == "260,465,60,60,2,1" &&
-             tenorchrome::stepperRings[1] == "400,465,60,60,2,1");
+      assert(tenorchrome::stepperRings[0] == "264,473,52,44,2,1" &&
+             tenorchrome::stepperRings[1] == "392,473,52,44,2,1");
+      bool sawFont = false;
+      for (const auto& text : ui.uiTarget.texts) {
+        if (text.label == "Font") sawFont = true;
+        if (text.label.find("SP3 - Traveling") != std::string::npos)
+          assert(text.label.find("\xE2\x80\xA6") != std::string::npos && "long font value must use middle ellipsis");
+      }
+      assert(sawFont && "Font label must stay intact");
     }
     assert(!ui.app.interactionOverflowed());
     ui.uiTarget.texts.clear();
