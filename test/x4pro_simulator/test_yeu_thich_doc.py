@@ -1,6 +1,6 @@
 """X4 Pro reader menu Favorites (founder 06/10): a tool on the reader's bar (the 1st since 07/10) lists what the reader pinned,
-actions and text settings alike. A hold on a Text or More row pins it and marks it with a small heart; a tap on a pinned text setting steps it
-there. Pins of actions save as numbers as before, a text setting as "text/<key>".
+actions and text settings alike. A hold on a Text or More row pins it and marks it with a small heart; a tap on a pinned text setting opens
+its child list. Pins of actions save as numbers as before, a text setting as "text/<key>".
 
 Runs the X4 Pro simulator (pio run -e simulator_x4pro). X4PRO_PROGRAM picks another build.
 """
@@ -19,16 +19,17 @@ FAVORITES = (131, 754)  # the 1st tool of the reader's bar
 def main():
     with tempfile.TemporaryDirectory(prefix='x4pro-fav-') as tmp:
         root = Path(tmp)
-        # Hold letter spacing (the Text menu's 4th row), open Favorites, tap its 3rd row (after the never-pinned
-        # size and sync): letter spacing steps from Default.
+        # Hold letter spacing (the Text menu's 4th row), open Favorites, tap its 3rd row, choose a value
+        # in the child list, and return to the reader.
         script = (TEXT_MENU + f';12000:TAP:240,{ROW_Y[3]},900;15000:TAP:{FAVORITES[0]},{FAVORITES[1]}'
-                  f';18000:TAP:240,{ROW_Y[2]};21000:TAP:46,754')
-        favorites, _ = run(root / 'a', script, [17500, 23500])  # the run ends after its last shot
+                  f';18000:TAP:240,{ROW_Y[2]};19500:TAP:240,620;22000:TAP:46,754')
+        favorites, child, _ = run(root / 'a', script, [17500, 19000, 23500])  # the run ends after its last shot
         saved = json.loads((root / 'a/sd/.crosspoint/settings.json').read_text())
         assert saved.get('readerFavorites') == ['text/fontSize', 14, 'text/letterSpacing'], \
             f'pins saved: {saved.get("readerFavorites")}'
-        assert saved.get('letterSpacing') == 1, f'a tap in Favorites did not step letter spacing: {saved.get("letterSpacing")}'
+        assert saved.get('letterSpacing') == 3, f'the chosen Favorites letter spacing was not saved: {saved.get("letterSpacing")}'
         assert ink(favorites, (40, 540, 300, 580)) > 0.01, 'no 3rd row in Favorites'
+        assert ink(child, (30, 375, 445, 700)) > 0.01, 'the Favorites child list did not open'
         # The held row shows a small heart before its value, inside the frame, and loses it on a 2nd hold;
         # nothing else on the panel changes.
         before, pinned_row, unpinned = run(root / 'c', TEXT_MENU + f';12000:TAP:240,{ROW_Y[3]},900'

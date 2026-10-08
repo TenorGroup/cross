@@ -1,4 +1,4 @@
-"""X4 Pro: a value list (OptionPopup) hangs from the row tapped to open it, in the panel frame, no black block.
+"""X4 Pro: a value list opens inside the parent panel frame, with no black block.
 
 Dynamic bar rule 7: the frame of the lists (grey dots 2 px, radius 20, 16 px in from both sides), the value in use
 bold with the tick at its end, never a black cursor row; it stops over the bar at the foot and a list longer than
@@ -6,8 +6,11 @@ that scrolls with its scroll bar (the Home key's Tap list used to run 11 rows ov
 paged with "Previous / Next page" rows).
 Runs the X4 Pro simulator (pio run -e simulator_x4pro). X4PRO_PROGRAM picks another build.
 """
+import json
 import tempfile
 from pathlib import Path
+
+from PIL import ImageChops
 
 from test_thanh_day import run, ink, BAR_TOP, TABS_X
 
@@ -27,12 +30,18 @@ def main():
     with tempfile.TemporaryDirectory(prefix='x4pro-pick-') as tmp:
         folder = Path(tmp)
         # Settings > Reader > Orientation.
-        _, picked = run(folder, f'{SETTINGS};4500:TAP:240,242;6500:TAP:400,203', [6300, 8500])
-        edge = ink(picked, (60, ORIENTATION_BOTTOM + 4, 420, ORIENTATION_BOTTOM + 6))
-        assert 0.35 < edge < 0.65, f'the list does not hang from the Orientation row (edge ink {edge:.2f})'
-        assert not black_rows(picked, ORIENTATION_BOTTOM, PANEL_FOOT), 'a black cursor row in the value list'
-        # The value in use (Portrait, the first row) carries the tick at the row's end.
-        assert ink(picked, (424, 258, 448, 282)) > 0.05, 'no tick at the value in use'
+        parent, child, picked, closed = run(folder,
+                                            f'{SETTINGS};4500:TAP:240,242;9000:TAP:240,191;10500:TAP:240,191;13000:TAP:46,754',
+                                            [4300, 8500, 11500, 14500])
+        assert ImageChops.difference(parent, child).crop((30, 40, 450, PANEL_FOOT)).getbbox(), \
+            'the Orientation child list did not open inside the parent frame'
+        for box in ((16, 40, 464, 46), (16, PANEL_FOOT, 464, BAR_TOP),
+                    (0, 40, 16, BAR_TOP), (464, 40, 480, BAR_TOP)):
+            assert ImageChops.difference(parent, child).crop(box).getbbox() is None, \
+                f'the Orientation child changed the parent frame at {box}'
+        assert not black_rows(child, 40, PANEL_FOOT), 'a black cursor row in the Orientation child list'
+        saved = json.loads((folder / 'sd/.crosspoint/settings.json').read_text())
+        assert saved.get('orientation') == 1, f'the chosen Orientation was not saved: {saved.get("orientation")}'
 
         # Settings > Controls > Home key gestures > Tap: 11 actions, all over the bar.
         f2 = Path(tmp) / 'home'

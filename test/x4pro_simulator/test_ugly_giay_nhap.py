@@ -99,11 +99,13 @@ def main():
     to_pin = [RECENT, DESK, FAVORITES, 'TAP:240,176']
     # A pinned toggle opens ticked over (off by default, so 0 opens as 1); the strike puts it back to 0.
     opened, _, _ = run(to_pin, pins=['text/hyphenationEnabled'], hyphenationEnabled=0)
-    files, _, _ = run(to_pin + ['STROKE:400,30,550,330,554,40,560'], pins=['text/hyphenationEnabled'], hyphenationEnabled=0)
+    # The form now opens on sheet 5. Strike through the visible first question, not the old sheet footer.
+    files, _, _ = run(to_pin + ['STROKE:400,30,130,330,134,40,140'], pins=['text/hyphenationEnabled'], hyphenationEnabled=0)
     if opened['settings'].get('hyphenationEnabled') != 1 or files['settings'].get('hyphenationEnabled') != 0:
         wrong.append('a strike on a Text form question left its value')
     files, _, _ = run(to_pin + ['STROKE:400,30,480,330,484,40,490'], pins=['status/statusBarClock'], statusBarClock=2)
-    if files['settings'].get('statusBarClock') == 2:
+    # Status bar forms now edit reader status slots. The legacy clock field stays at 2.
+    if files['settings'].get('readerStatusSlotsEnabled') != 1 or files['settings'].get('readerStatusLeft') != 1:
         wrong.append('a strike on a Status bar form question left its value')
 
     # N1: up from the diary is the desk, down from the desk the diary; a short swipe (70 px) is no step.

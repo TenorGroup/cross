@@ -1,4 +1,4 @@
-"""Run the round3 X4 reader menu journey through the real renderer at all 3 UI tiers."""
+"""Run the round3 X4 reader menu journey, including all 7 X4 Pro line spacing levels."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
@@ -58,7 +58,8 @@ def reader_menu_case(tier,output):
     assert all(im.size==(480,800) for im in shots.values())
     settings=json.loads((store/'settings.json').read_text())
     assert settings['fontFamily']==1,settings
-    assert settings['lineSpacing']==4,settings
+    assert settings['lineSpacing']==6,settings
+    assert 0 <= settings['lineSpacing'] < 7, settings
     assert settings['fontSize']==18,settings
     assert hashlib.sha256(book.read_bytes()).hexdigest()==original
     def ink(name,box):
