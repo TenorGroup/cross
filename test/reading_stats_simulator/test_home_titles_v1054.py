@@ -5,12 +5,13 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import unittest
 
 from PIL import Image, ImageChops
 
 REPO = Path(__file__).resolve().parents[2]
-PROGRAM = Path(os.environ.get("HOME_PROGRAM", REPO / ".pio/build/simulator_x3_uc8279/program"))
-ARTIFACTS = Path(os.environ.get("HOME_ARTIFACTS", tempfile.gettempdir()))
+PROGRAM = Path(os.environ.get("HOME_PROGRAM", os.environ.get("TEST_PROGRAM", REPO / ".pio/build/simulator_x3_uc8279/program")))
+ARTIFACTS = Path(os.environ.get("HOME_ARTIFACTS", os.environ.get("CROSSPOINT_TEST_ARTIFACTS", tempfile.gettempdir())))
 
 
 def capture(tail, tier=0, title="Chuyện kể dưới tán cây trong mùa "):
@@ -53,5 +54,10 @@ def main():
         assert pixels > 0, "next-book title loses its second-line suffix"
 
 
+class HomeTitlesV1054Test(unittest.TestCase):
+    def test_next_book_title_suffix(self):
+        main()
+
+
 if __name__ == "__main__":
-    main()
+    unittest.main()

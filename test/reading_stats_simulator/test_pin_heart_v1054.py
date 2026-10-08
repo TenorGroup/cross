@@ -2,12 +2,13 @@
 import json
 import os
 from pathlib import Path
+import unittest
 from PIL import ImageChops
 
 from test_ugly_va_v1053 import frames
 from test_menu_customization import state
 
-OUT = Path(os.environ.get("HOME_ARTIFACTS", "/tmp/home-pin-heart"))
+OUT = Path(os.environ.get("HOME_ARTIFACTS", os.environ.get("CROSSPOINT_TEST_ARTIFACTS", "/tmp/home-pin-heart")))
 
 
 def prepare(card, pin=True):
@@ -56,5 +57,10 @@ def main():
     assert not failures, "pin heart still uses UI fallback: " + ", ".join(failures)
 
 
+class PinHeartV1054Test(unittest.TestCase):
+    def test_pinned_ugly_row_heart(self):
+        main()
+
+
 if __name__ == "__main__":
-    main()
+    unittest.main()

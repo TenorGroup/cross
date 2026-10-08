@@ -2,11 +2,12 @@
 import os
 from pathlib import Path
 import re
+import unittest
 
 from test_ugly_va_v1053 import frames
 
 REPO = Path(__file__).resolve().parents[2]
-OUT = Path(os.environ.get("HOME_ARTIFACTS", "/tmp/home-file-icons"))
+OUT = Path(os.environ.get("HOME_ARTIFACTS", os.environ.get("CROSSPOINT_TEST_ARTIFACTS", "/tmp/home-file-icons")))
 
 
 def files(card):
@@ -46,5 +47,10 @@ def main():
     assert not failures, "missing file-kind icons: " + ", ".join(failures)
 
 
+class HomeFileIconsV1054Test(unittest.TestCase):
+    def test_file_kind_icons(self):
+        main()
+
+
 if __name__ == "__main__":
-    main()
+    unittest.main()
