@@ -93,6 +93,14 @@ namespace {
 #ifdef TENOR_PRESS_PROBE
 // Probe-only phase samples. Font stats describe the last prewarm's bitmap use,
 // not resident capacities; the heap delta around cache teardown measures retention.
+void traceA5Timing(const char* phase, const char* detail, uint32_t started = 0) {
+  const uint32_t now = micros();
+  const uint32_t elapsed = started == 0 ? 0 : now - started;
+  LOG_INF("A5_TIMING", "phase=%s t_us=%lu elapsed_us=%lu cpu_mhz=%u detail=%s", phase,
+          static_cast<unsigned long>(now), static_cast<unsigned long>(elapsed),
+          static_cast<unsigned>(getCpuFrequencyMhz()), detail ? detail : "");
+}
+
 void traceSheetHeap(const char* stage, const GfxRenderer& renderer, const int row = -1) {
   multi_heap_info_t heap{};
   heap_caps_get_info(&heap, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -4326,12 +4334,22 @@ void EpubReaderActivity::discardOverlayPage() {
 // the chrome answers taps and buttons the moment it is visible instead of only
 // after a blocking displayBuffer() returns. Caller must hold the RenderLock.
 void EpubReaderActivity::pushOverlayRefresh() {
-  if (renderer.supportsAsyncRefresh()) {
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t a5PushStarted = micros();
+#endif
+  const bool asyncRefresh = renderer.supportsAsyncRefresh();
+#ifdef TENOR_PRESS_PROBE
+  traceA5Timing("push_begin", asyncRefresh ? "FAST_async" : "FAST_blocking");
+#endif
+  if (asyncRefresh) {
     renderer.displayBufferAsync(HalDisplay::FAST_REFRESH);
     overlayRefreshPending = true;
   } else {
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
   }
+#ifdef TENOR_PRESS_PROBE
+  traceA5Timing("push_return", asyncRefresh ? "FAST_async_return" : "FAST_complete", a5PushStarted);
+#endif
 }
 
 // The sheet drawn again from the clean page up: what the old sheet covered and the new one does not (a
@@ -4353,8 +4371,15 @@ void EpubReaderActivity::redrawSheetLocked() {
 // glass. Caller must hold the RenderLock.
 void EpubReaderActivity::settleOverlayRefresh() {
   if (!overlayRefreshPending) return;
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t a5SettleStarted = micros();
+  traceA5Timing("settle_begin", "async_pending");
+#endif
   overlayRefreshPending = false;
   renderer.cleanupGrayscaleWithFrameBuffer();  // waits, then reseeds the baseline
+#ifdef TENOR_PRESS_PROBE
+  traceA5Timing("settle_end", "async_baseline", a5SettleStarted);
+#endif
 }
 
 // A sheet over the page needs heap a connecting radio holds: the page snapshot alone is 52 KB on the
@@ -4382,7 +4407,6 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   spacingDragging = false;
   pointSizeDraft.clear();
 #endif
-  fontFamilies.clear();
   if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
   if (previous == Overlay::None) toolbarUi->begin();
   // Buttons show a cursor from the start; touch boards only once a button moves it.
@@ -4490,6 +4514,10 @@ void EpubReaderActivity::closeOverlayToPage() {
 
 void EpubReaderActivity::renderOverlay() {
   if (!epub || (!section && !xemTruoc) || !toolbarUi) return;
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t a5RenderStarted = micros();
+  traceA5Timing("render_begin", overlay == Overlay::Toolbar ? "toolbar" : "panel");
+#endif
 
   ReaderToolbarUi::Model model;
   const auto drawMenuChrome = [this]() {
@@ -4558,6 +4586,9 @@ void EpubReaderActivity::renderOverlay() {
     toolbarUi->setModel(model);
     toolbarUi->render();
     drawMenuChrome();
+#ifdef TENOR_PRESS_PROBE
+    traceA5Timing("render_end", "toolbar", a5RenderStarted);
+#endif
     return;
   }
 
@@ -4608,9 +4639,9 @@ void EpubReaderActivity::renderOverlay() {
 #endif
     if (textDepth == TextDepth::Fonts) {
       model.panelTitle = tr(STR_FONT);
-      model.itemCount = static_cast<int>(fontFamilies.size());
+      model.itemCount = fontdoc::soHo(&sdFontSystem.registry());
       model.sheetRows = levelSheetRows;  // the frame of the Text rows
-      model.rowText = [this](int i) { return i < static_cast<int>(fontFamilies.size()) ? fontFamilies[i].ten : ""; };
+      model.rowText = [this](int i) { return fontdoc::tenHo(&sdFontSystem.registry(), i); };
       model.rowMarked = [this](int i) { return i == fontdoc::hoDangDung(&sdFontSystem.registry()); };
     } else {
       model.panelTitle = tr(STR_TOOL_TEXT);
@@ -4646,6 +4677,9 @@ void EpubReaderActivity::renderOverlay() {
   toolbarUi->setModel(model);
   toolbarUi->render();
   drawMenuChrome();
+#ifdef TENOR_PRESS_PROBE
+  traceA5Timing("render_end", "panel", a5RenderStarted);
+#endif
 }
 
 void EpubReaderActivity::handleOverlayInput() {
@@ -4780,7 +4814,7 @@ void EpubReaderActivity::handleOverlayInput() {
                     textDepth == TextDepth::Pick ? static_cast<int>(pick.labels.size()) :
 #endif
                     overlay == Overlay::Contents ? epub->getTocItemsCount()
-                    : overlay == Overlay::Text   ? (textDepth == TextDepth::Fonts ? static_cast<int>(fontFamilies.size()) : kTextRowCount)
+                    : overlay == Overlay::Text   ? (textDepth == TextDepth::Fonts ? fontdoc::soHo(&sdFontSystem.registry()) : kTextRowCount)
                     : overlay == Overlay::Favorites ? static_cast<int>(favoriteRows.size())
                                                  : static_cast<int>(moreItems.size());
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
@@ -5254,8 +5288,10 @@ bool EpubReaderActivity::docCoChuMotNac(const int huong) {
 // Font level of the Text panel. Both steps change one level inside the same sheet: the old chrome is
 // wiped back to the clean page (no refresh) and the new level is pushed in one fast refresh.
 void EpubReaderActivity::enterFontLevel() {
-  RenderLock lock;  // the render task shares the framebuffer and family list
-  fontFamilies = fontdoc::danhSachHo(&sdFontSystem.registry());
+  RenderLock lock;  // the render task shares the framebuffer
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("READER", "FONT_FAMILIES count=%d", fontdoc::soHo(&sdFontSystem.registry()));
+#endif
   levelSheetRows = toolbarUi->sheetRows();
   textDepth = TextDepth::Fonts;
   panelIndex = fontdoc::hoDangDung(&sdFontSystem.registry());
@@ -5271,14 +5307,12 @@ void EpubReaderActivity::enterFontLevel() {
 }
 
 void EpubReaderActivity::leaveFontLevel() {
-  RenderLock lock;  // the render task may be reading the family list
+  RenderLock lock;  // the render task shares the framebuffer
   textDepth = TextDepth::Rows;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   spacingDragging = false;
   pointSizeDraft.clear();
 #endif
-  fontFamilies.clear();
-  fontFamilies.shrink_to_fit();
   panelIndex = 0;
   toolbarUi->nav().reset();
   settleOverlayRefresh();
@@ -5420,8 +5454,6 @@ void EpubReaderActivity::panelClosedLocked(const bool leaving, const bool frameU
     }
     return;
   }
-  fontFamilies.clear();
-  fontFamilies.shrink_to_fit();
   sdFontSystem.releaseCatalog();
   releaseBaseSettingsList();  // the Text sheet's rows: the page has no use for them, the radio does
   if (frameUp)

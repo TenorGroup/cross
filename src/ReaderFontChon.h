@@ -17,6 +17,10 @@ struct Ho {
 };
 
 // Hai ho nap san truoc, roi cac ho tren the theo thu tu registry.
+// Count and row labels without copying the catalog. Invalid indices have no label.
+int soHo(const SdCardFontRegistry* registry);
+std::string tenHo(const SdCardFontRegistry* registry, int index);
+
 std::vector<Ho> danhSachHo(const SdCardFontRegistry* registry);
 
 // Chi so trong danhSachHo() cua ho dang dung. Ho tren the da mat thi lui ve ho nap san.

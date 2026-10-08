@@ -1848,6 +1848,38 @@ TEST_F(SectionCacheTest, ParserParkingKeepsBuildActiveAndPreservesExactOutputAcr
   EXPECT_EQ(section.findAnchor("chapter-end"), coldAnchors[2]);
 }
 
+TEST_F(SectionCacheTest, ParkedAnchorStorageSurvivesResumeAndSecondPark) {
+  epub->contents = "<html><body><section id=\"chapter-start\">";
+  for (unsigned index = 0; index < 220; ++index) {
+    const std::string id = index == 110 ? " id=\"chapter-middle\"" :
+                           index == 219 ? " id=\"chapter-end\"" : "";
+    epub->contents += "<p" + id + ">anchor lifetime paragraph " + std::to_string(index) +
+                      " carries enough text for a parser checkpoint and resume.</p>";
+  }
+  epub->contents += "</section></body></html>";
+  std::filesystem::remove(cache());
+  std::filesystem::remove(root / "html/0.html");
+
+  Section section(epub, 0, renderer);
+  ASSERT_TRUE(section.startBuild(spec));
+  while (section.pageCount < 8u) {
+    ASSERT_TRUE(section.buildSomeMore(2));
+    ASSERT_TRUE(section.isBuilding());
+  }
+  ASSERT_TRUE(section.parkBuild());
+  ASSERT_TRUE(section.isBuildParked());
+  const void* parkedData = section.parkedAnchorsDataForTest();
+  ASSERT_NE(parkedData, nullptr);
+
+  ASSERT_TRUE(section.buildSomeMore(2));
+  ASSERT_TRUE(section.isBuilding());
+  EXPECT_EQ(section.parkedAnchorsDataForTest(), parkedData);
+
+  ASSERT_TRUE(section.parkBuild());
+  ASSERT_TRUE(section.isBuildParked());
+  EXPECT_EQ(section.parkedAnchorsDataForTest(), parkedData);
+}
+
 TEST_F(SectionCacheTest, ParkedBuildCloseReopensAsReadablePartialAndContinues) {
   uint16_t watermark = 0;
   {

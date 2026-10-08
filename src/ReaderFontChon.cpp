@@ -11,16 +11,23 @@
 
 namespace fontdoc {
 
+int soHo(const SdCardFontRegistry* registry) {
+  return CrossPointSettings::BUILTIN_FONT_COUNT + (registry ? registry->getFamilyCount() : 0);
+}
+
+std::string tenHo(const SdCardFontRegistry* registry, const int index) {
+  if (index < 0 || index >= soHo(registry)) return "";
+  if (index == CrossPointSettings::NOTOSERIF) return I18N.get(StrId::STR_NOTO_SERIF);
+  if (index == CrossPointSettings::NOTOSANS) return I18N.get(StrId::STR_NOTO_SANS);
+  return registry->getFamilies()[index - CrossPointSettings::BUILTIN_FONT_COUNT].name;
+}
+
 std::vector<Ho> danhSachHo(const SdCardFontRegistry* registry) {
   std::vector<Ho> ho;
-  ho.reserve(CrossPointSettings::BUILTIN_FONT_COUNT + (registry ? registry->getFamilyCount() : 0));
-  ho.push_back({I18N.get(StrId::STR_NOTO_SERIF), true, static_cast<uint8_t>(CrossPointSettings::NOTOSERIF)});
-  ho.push_back({I18N.get(StrId::STR_NOTO_SANS), true, static_cast<uint8_t>(CrossPointSettings::NOTOSANS)});
-  if (registry) {
-    const auto& families = registry->getFamilies();
-    for (size_t i = 0; i < families.size(); i++) {
-      ho.push_back({families[i].name, false, static_cast<uint8_t>(CrossPointSettings::BUILTIN_FONT_COUNT + i)});
-    }
+  const int count = soHo(registry);
+  ho.reserve(count);
+  for (int i = 0; i < count; ++i) {
+    ho.push_back({tenHo(registry, i), i < CrossPointSettings::BUILTIN_FONT_COUNT, static_cast<uint8_t>(i)});
   }
   return ho;
 }

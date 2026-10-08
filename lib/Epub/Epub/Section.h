@@ -190,6 +190,9 @@ class Section {
   // Failure leaves the parser resident so the caller can use suspendBuild().
   bool parkBuild();
   bool isBuildParked() const { return build_ && !build_->parser; }
+#ifdef TENOR_SECTION_HOST_TEST
+  const void* parkedAnchorsDataForTest() const;
+#endif
   // True after buildSomeMore() returned false because the render heap fell below the
   // per-step floor. The build stays parked or resident instead of being abandoned, so
   // the caller can free memory and call buildSomeMore() again.
