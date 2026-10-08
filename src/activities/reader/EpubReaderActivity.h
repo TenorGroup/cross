@@ -422,8 +422,8 @@ class EpubReaderActivity final : public ReaderActivity {
   void applyReaderTextSettings();
   void applyReaderTextSettingsLocked();
   void invalidateTextSettingsLocked();
-  // Text reflow leaves resident glyph caches beside the page snapshot. Release
-  // them only for a dirty text-settings paint before storing the overlay page.
+  // The rendered page's glyph caches can yield their heap to the overlay
+  // snapshot, including the first sheet opened with unchanged settings.
   void releaseTextCachesBeforeOverlaySnapshot();
   // More panel rows.
   void buildMoreActions();

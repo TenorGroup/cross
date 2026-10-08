@@ -93,6 +93,14 @@ namespace {
 #ifdef TENOR_PRESS_PROBE
 // Probe-only phase samples. Font stats describe the last prewarm's bitmap use,
 // not resident capacities; the heap delta around cache teardown measures retention.
+void traceA5Timing(const char* phase, const char* detail, uint32_t started = 0) {
+  const uint32_t now = micros();
+  const uint32_t elapsed = started == 0 ? 0 : now - started;
+  LOG_INF("A5_TIMING", "phase=%s t_us=%lu elapsed_us=%lu cpu_mhz=%u detail=%s", phase,
+          static_cast<unsigned long>(now), static_cast<unsigned long>(elapsed),
+          static_cast<unsigned>(getCpuFrequencyMhz()), detail ? detail : "");
+}
+
 void traceSheetHeap(const char* stage, const GfxRenderer& renderer, const int row = -1) {
   multi_heap_info_t heap{};
   heap_caps_get_info(&heap, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -4243,12 +4251,22 @@ void EpubReaderActivity::discardOverlayPage() {
 // the chrome answers taps and buttons the moment it is visible instead of only
 // after a blocking displayBuffer() returns. Caller must hold the RenderLock.
 void EpubReaderActivity::pushOverlayRefresh() {
-  if (renderer.supportsAsyncRefresh()) {
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t a5PushStarted = micros();
+#endif
+  const bool asyncRefresh = renderer.supportsAsyncRefresh();
+#ifdef TENOR_PRESS_PROBE
+  traceA5Timing("push_begin", asyncRefresh ? "FAST_async" : "FAST_blocking");
+#endif
+  if (asyncRefresh) {
     renderer.displayBufferAsync(HalDisplay::FAST_REFRESH);
     overlayRefreshPending = true;
   } else {
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
   }
+#ifdef TENOR_PRESS_PROBE
+  traceA5Timing("push_return", asyncRefresh ? "FAST_async_return" : "FAST_complete", a5PushStarted);
+#endif
 }
 
 // The sheet drawn again from the clean page up: what the old sheet covered and the new one does not (a
@@ -4270,8 +4288,15 @@ void EpubReaderActivity::redrawSheetLocked() {
 // glass. Caller must hold the RenderLock.
 void EpubReaderActivity::settleOverlayRefresh() {
   if (!overlayRefreshPending) return;
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t a5SettleStarted = micros();
+  traceA5Timing("settle_begin", "async_pending");
+#endif
   overlayRefreshPending = false;
   renderer.cleanupGrayscaleWithFrameBuffer();  // waits, then reseeds the baseline
+#ifdef TENOR_PRESS_PROBE
+  traceA5Timing("settle_end", "async_baseline", a5SettleStarted);
+#endif
 }
 
 // A sheet over the page needs heap a connecting radio holds: the page snapshot alone is 52 KB on the
@@ -4353,7 +4378,14 @@ void EpubReaderActivity::openOverlay(Overlay target) {
     if (previous == Overlay::None) {
       // Snapshot the clean page so stepping back from a panel to the toolbar
       // (and closing, where supported) can restore it without a re-render.
+      releaseTextCachesBeforeOverlaySnapshot();
+#ifdef TENOR_PRESS_PROBE
+      traceSheetHeap("STORE_BEGIN", renderer);
+#endif
       overlayPageStored = renderer.storeBwBuffer();
+#ifdef TENOR_PRESS_PROBE
+      traceSheetHeap(overlayPageStored ? "STORE_OK" : "STORE_FAILED", renderer);
+#endif
     } else if (overlayPageStored) {
       // Overlay -> overlay: wipe the previous chrome (toolbar header, sheet,
       // progress row) back to the clean page so none of it shows around or
@@ -4400,6 +4432,10 @@ void EpubReaderActivity::closeOverlayToPage() {
 
 void EpubReaderActivity::renderOverlay() {
   if (!epub || (!section && !xemTruoc) || !toolbarUi) return;
+#ifdef TENOR_PRESS_PROBE
+  const uint32_t a5RenderStarted = micros();
+  traceA5Timing("render_begin", overlay == Overlay::Toolbar ? "toolbar" : "panel");
+#endif
 
   ReaderToolbarUi::Model model;
   const auto drawMenuChrome = [this]() {
@@ -4468,6 +4504,9 @@ void EpubReaderActivity::renderOverlay() {
     toolbarUi->setModel(model);
     toolbarUi->render();
     drawMenuChrome();
+#ifdef TENOR_PRESS_PROBE
+    traceA5Timing("render_end", "toolbar", a5RenderStarted);
+#endif
     return;
   }
 
@@ -4560,6 +4599,9 @@ void EpubReaderActivity::renderOverlay() {
   toolbarUi->setModel(model);
   toolbarUi->render();
   drawMenuChrome();
+#ifdef TENOR_PRESS_PROBE
+  traceA5Timing("render_end", "panel", a5RenderStarted);
+#endif
 }
 
 void EpubReaderActivity::handleOverlayInput() {
@@ -5094,6 +5136,10 @@ bool EpubReaderActivity::renderPreview(const int marginTop, const int marginRigh
                                       const int marginLeft) {
   if (catchUp && catchUp->isBuilding() && !catchUp->isBuildParked() && !catchUp->parkBuild()) dropCatchUp();
   const ReaderRenderSpec spec = SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight);
+  // The preview parser can allocate a full page while the previous overlay snapshot
+  // still occupies 52 KB. Release that stale copy before previewPage() asks the
+  // fragmented heap for layout buffers.
+  discardOverlayPage();
   std::unique_ptr<Page> page;
 #ifdef TENOR_PRESS_PROBE
   traceSheetHeap("PREVIEW_BEGIN", renderer);
@@ -5113,7 +5159,6 @@ bool EpubReaderActivity::renderPreview(const int marginTop, const int marginRigh
   currentPageLinks = std::move(page->links);
   currentPageLinkMarginLeft = marginLeft;
   currentPageLinkMarginTop = marginTop;
-  discardOverlayPage();
   paintDropped.store(false, std::memory_order_relaxed);
   renderContents(std::move(page), marginTop, marginRight, marginBottom, marginLeft);
 #ifdef TENOR_PRESS_PROBE
@@ -5164,6 +5209,13 @@ bool EpubReaderActivity::docCoChuMotNac(const int huong) {
 void EpubReaderActivity::enterFontLevel() {
   RenderLock lock;  // the render task shares the framebuffer and family list
   fontFamilies = fontdoc::danhSachHo(&sdFontSystem.registry());
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("READER", "FONT_FAMILIES data=%08x size=%u capacity=%u bytes=%u ho_size=%u",
+          static_cast<unsigned>(reinterpret_cast<uintptr_t>(fontFamilies.data())),
+          static_cast<unsigned>(fontFamilies.size()), static_cast<unsigned>(fontFamilies.capacity()),
+          static_cast<unsigned>(fontFamilies.capacity() * sizeof(fontdoc::Ho)),
+          static_cast<unsigned>(sizeof(fontdoc::Ho)));
+#endif
   levelSheetRows = toolbarUi->sheetRows();
   textDepth = TextDepth::Fonts;
   panelIndex = fontdoc::hoDangDung(&sdFontSystem.registry());
@@ -5288,7 +5340,6 @@ void EpubReaderActivity::applyReaderTextSettingsLocked() {
 }
 
 void EpubReaderActivity::releaseTextCachesBeforeOverlaySnapshot() {
-  if (!textSettingsDirty) return;
   if (auto* fcm = renderer.getFontCacheManager()) {
     fcm->releaseSdFontCaches();
 #ifdef TENOR_PRESS_PROBE

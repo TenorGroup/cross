@@ -44,7 +44,7 @@ class GfxRenderer {
   };
 
  private:
-  static constexpr size_t BW_BUFFER_CHUNK_SIZE = 8000;  // 8KB chunks to allow for non-contiguous memory
+  static constexpr size_t BW_BUFFER_CHUNK_SIZE = 4000;  // 4KB chunks to allow for non-contiguous memory
   // `count` pixels of a packed 1-bit row from bit `from` (a set bit white) to screen row y from x:
   // black clears the pixel, white sets it only when `opaque`.
   void drawBitRow(const uint8_t* bits, int from, int count, int x, int y, bool opaque) const;
