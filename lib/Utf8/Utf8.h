@@ -1,7 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
+#include <vector>
 #define REPLACEMENT_GLYPH 0xFFFD
 
 uint32_t utf8NextCodepoint(const unsigned char** string);
@@ -11,6 +13,41 @@ void utf8AppendCodepoint(uint32_t cp, std::string& out);
 size_t utf8RemoveLastChar(std::string& str);
 // Truncate string by removing N UTF-8 codepoints from the end.
 void utf8TruncateChars(std::string& str, size_t numChars);
+
+// Keep both ends of a UTF-8 label when it exceeds a measured width. The
+// callback receives a complete candidate string and returns its pixel width.
+template <typename Measure>
+std::string utf8MiddleEllipsis(const std::string& input, const int maxWidth, Measure&& measure) {
+  if (input.empty() || maxWidth <= 0) return {};
+  if (measure(input.c_str()) <= maxWidth) return input;
+
+  constexpr const char* ellipsis = "\xE2\x80\xA6";
+  if (measure(ellipsis) > maxWidth) return {};
+
+  const auto* begin = reinterpret_cast<const unsigned char*>(input.c_str());
+  const auto* cursor = begin;
+  std::vector<size_t> offsets;
+  offsets.reserve(input.size() + 1);
+  while (*cursor) {
+    offsets.push_back(static_cast<size_t>(cursor - begin));
+    utf8NextCodepoint(&cursor);
+  }
+  offsets.push_back(input.size());
+  const int chars = static_cast<int>(offsets.size()) - 1;
+  if (chars < 3) return ellipsis;
+
+  const int minHead = chars >= 6 ? 2 : 1;
+  const int minTail = chars >= 6 ? 2 : 1;
+  for (int kept = chars - 1; kept >= minHead + minTail; --kept) {
+    const int headChars = std::clamp((kept * 2 + 4) / 5, minHead, kept - minTail);
+    const int tailChars = kept - headChars;
+    std::string candidate = input.substr(0, offsets[headChars]);
+    candidate += ellipsis;
+    candidate += input.substr(offsets[chars - tailChars]);
+    if (measure(candidate.c_str()) <= maxWidth) return candidate;
+  }
+  return ellipsis;
+}
 
 // Canonical composition (NFC) for the Latin / Vietnamese range and Hangul:
 // precomposes a base letter followed by combining diacritical mark(s), and

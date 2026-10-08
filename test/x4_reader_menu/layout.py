@@ -11,6 +11,10 @@ parser.add_argument('--expect-preview-hit', action='store_true')
 parser.add_argument('--mutate-preview-hit', action='store_true')
 parser.add_argument('--signature', action='store_true')
 parser.add_argument('--expect-fade', action='store_true')
+parser.add_argument('--expect-stepper-ring', action='store_true')
+parser.add_argument('--expect-middle-font', action='store_true')
+parser.add_argument('--mutate-stepper-ring', action='store_true')
+parser.add_argument('--mutate-middle-font', action='store_true')
 a = parser.parse_args()
 a.output.mkdir(parents=True, exist_ok=True)
 
@@ -24,6 +28,18 @@ def method(text, signature):
     return text[start:end]
 
 source = (a.repo / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
+if a.mutate_stepper_ring:
+    source, removed = re.subn(
+        r'\s*tenorchrome::drawPillRing\(\*renderer_, minusRect\.x.*?true\);\n'
+        r'\s*tenorchrome::drawPillRing\(\*renderer_, plusRect\.x.*?true\);',
+        '', source, flags=re.S)
+    if removed != 1:
+        raise SystemExit(f'stepper ring mutation expected 1 match, got {removed}')
+if a.mutate_middle_font:
+    source, removed = re.subn(r'if \(fonts && !windowLabels_\[i\]\.empty\(\)\)',
+                              'if (false && fonts && !windowLabels_[i].empty())', source, count=1)
+    if removed != 1:
+        raise SystemExit('middle font mutation expected one guard')
 if a.mutate_preview_hit:
     source, removed = re.subn(
         r'^\s*screen\.frame\(\)\.hit\(\{rowsRect\.x, previewY, rowsRect\.width, previewHeight\}, ACTION_ROW,\n'
@@ -37,6 +53,7 @@ chrome = (a.repo / 'src/components/TenorMenuChrome.h').read_text()
 constants = '\n'.join(re.findall(r'^constexpr fui::ActionId .*?;', source, re.M)).replace('constexpr', '[[maybe_unused]] constexpr')
 cpp = r'''
 #include <FreeInkApp.h>
+#include "Utf8.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
@@ -56,6 +73,8 @@ freeink::Icon icon_reader_back_24,icon_reader_next_24,icon_reader_tick_24;
 constexpr bool kExpectPreviewHit = EXPECT_PREVIEW_HIT;
 constexpr bool kDumpSignature = DUMP_SIGNATURE;
 constexpr bool kExpectFade = EXPECT_FADE;
+constexpr bool kExpectStepperRing = EXPECT_STEPPER_RING;
+constexpr bool kExpectMiddleFont = EXPECT_MIDDLE_FONT;
 std::string rectSignature(fui::Rect r) {
   return std::to_string(r.x) + "," + std::to_string(r.y) + "," + std::to_string(r.width) + "," +
          std::to_string(r.height);
@@ -72,10 +91,10 @@ struct Target : fui::DrawTarget {
   bool painting=true;
   std::vector<fui::Rect> frames;
   std::vector<std::string> commands;
-  struct Text { fui::Rect rect; std::string label; };
+  struct Text { fui::Rect rect; std::string label; bool bold; };
   std::vector<Text> texts;
   fui::Size measureText(fui::FontId,const char* text,fui::TextStyle) const override {
-    return {static_cast<int16_t>(strlen(text)*(8+tier*2)), static_cast<int16_t>(24+tier*8)};
+    return {static_cast<int16_t>(strlen(text)*(14+tier*2)), static_cast<int16_t>(24+tier*8)};
   }
   int16_t lineHeight(fui::FontId) const override { return static_cast<int16_t>(33+tier*5); }
   void fill(fui::Rect r,fui::Paint,uint8_t=0,uint8_t=fui::CornersAll) override { commands.push_back("fill:" + rectSignature(r)); }
@@ -92,8 +111,8 @@ struct Target : fui::DrawTarget {
                        std::to_string(b.x) + "," + std::to_string(b.y) + "," + std::to_string(c.x) + "," +
                        std::to_string(c.y));
   }
-  void text(fui::Rect rect,const char* label,fui::TextStyle) override {
-    if(label) { texts.push_back({rect,label}); commands.push_back("text:" + rectSignature(rect) + ":" + label); }
+  void text(fui::Rect rect,const char* label,fui::TextStyle style) override {
+    if(label) { texts.push_back({rect,label,style.bold}); commands.push_back("text:" + rectSignature(rect) + ":" + label); }
   }
   void bitmap(fui::Rect r,fui::BitmapRef,fui::BitmapMode,fui::Paint=fui::Paint::solid(fui::Color::Black),fui::Rotation=fui::Rotation::None) override {
     commands.push_back("bitmap:" + rectSignature(r));
@@ -135,8 +154,13 @@ std::vector<std::string> fades;
 void fadeBand(const GfxRenderer&, int y0, int h, bool outerTop, int x0 = 0, int x1 = -1) {
   if (!outerTop) fades.push_back(std::to_string(y0) + "," + std::to_string(h) + "," + std::to_string(x0) + "," + std::to_string(x1));
 }
+std::vector<std::string> stepperRings;
+void drawPillRing(const GfxRenderer&, int x, int y, int w, int h, int thick, bool grey) {
+  stepperRings.push_back(std::to_string(x) + "," + std::to_string(y) + "," + std::to_string(w) + "," +
+                         std::to_string(h) + "," + std::to_string(thick) + "," + std::to_string(grey));
+}
 ''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|FRAME_BAR_WIDTH|FRAME_BAR_AIR) = .*?;', chrome, re.M)) + '\n' + method(chrome, 'struct FrameBar') + ';\n' + method(chrome, 'inline FrameBar frameScrollBar') + '\n' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
-cpp = cpp.replace('EXPECT_PREVIEW_HIT', str(a.expect_preview_hit).lower()).replace('DUMP_SIGNATURE', str(a.signature).lower()).replace('EXPECT_FADE', str(a.expect_fade).lower())
+cpp = cpp.replace('EXPECT_PREVIEW_HIT', str(a.expect_preview_hit).lower()).replace('DUMP_SIGNATURE', str(a.signature).lower()).replace('EXPECT_FADE', str(a.expect_fade).lower()).replace('EXPECT_STEPPER_RING', str(a.expect_stepper_ring).lower()).replace('EXPECT_MIDDLE_FONT', str(a.expect_middle_font).lower())
 cpp += header + '\n' + constants + '\n'
 cpp += 'ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& r): UiAppHost(r), renderer_(&r) {}\n'
 cpp += method(source, 'fui::Rect readerFrame') + '\n'
@@ -175,6 +199,7 @@ int main() {
     model.panelTitle="Text"; model.itemCount=5;
     model.rowText=[](int i){return std::string(i==4?"Chapter initial":"Setting");};
     model.rowValue=[](int i){return std::string(i==1?"18":"Default");};
+    tenorchrome::stepperRings.clear();
     ui.setModel(model); ui.render();
     auto frame=tenorchrome::panels.back(); assert(frame.x==16 && frame.y==362 && frame.width==448 && frame.height==350);
     for(int row=0;row<5;++row) minimum(ui,ACTION_ROW,row);
@@ -183,6 +208,15 @@ int main() {
     auto minus=tap(ui,ACTION_SIZE_STEP,-1); assert(minus.event==ReaderToolbarUi::Event::SizeStep && minus.value==-1);
     auto plus=tap(ui,ACTION_SIZE_STEP,1); assert(plus.event==ReaderToolbarUi::Event::SizeStep && plus.value==1);
     auto size=tap(ui,ACTION_SIZE_ENTRY,0); assert(size.event==ReaderToolbarUi::Event::SizeEntry);
+    const auto minusRect = ui.app.publishedRect(ACTION_SIZE_STEP, -1);
+    const auto plusRect = ui.app.publishedRect(ACTION_SIZE_STEP, 1);
+    assert(minusRect.x == 260 && minusRect.y == 464 && minusRect.width == 60 && minusRect.height == 62);
+    assert(plusRect.x == 400 && plusRect.y == 464 && plusRect.width == 60 && plusRect.height == 62);
+    if (kExpectStepperRing) {
+      assert(tenorchrome::stepperRings.size() == 2 && "size stepper must draw 2 grey pill rings");
+      assert(tenorchrome::stepperRings[0] == "260,465,60,60,2,1" &&
+             tenorchrome::stepperRings[1] == "400,465,60,60,2,1");
+    }
     assert(!ui.app.interactionOverflowed());
     ui.uiTarget.texts.clear();
     model.textView=ReaderToolbarUi::TextView::PointSize;
@@ -216,7 +250,13 @@ int main() {
     drag.snap.touchHeld=false; drag.snap.touchReleased=true;
     event=ui.route(drag); assert(event.event==ReaderToolbarUi::Event::SpacingCommit && event.permille==1000);
     model.textView=ReaderToolbarUi::TextView::Fonts; model.itemCount=31;
-    model.rowMarked=[](int i){return i==0;};
+    model.rowText=[](int i) {
+      if (i == 0) return std::string("SP3 - Traveling Typewriter-BOLD1");
+      if (i == 1) return std::string("SP3 - Traveling Typewriter-BOLD2");
+      return std::string("Short family");
+    };
+    int fontMarked = 0;
+    model.rowMarked=[&fontMarked](int i){return i==fontMarked;};
     ui.setModel(model); ui.nav().reset();
     ui.uiTarget.commands.clear(); ui.uiTarget.frames.clear(); ui.uiTarget.texts.clear();
     tenorchrome::panels.clear(); tenorchrome::favoriteMarks.clear(); tenorchrome::rowRules.clear();
@@ -238,6 +278,34 @@ int main() {
       assert(tenorchrome::fades[0] == "650,38,16,452" &&
              "font preview fade must stop before the scroll bar");
     }
+    if (kExpectMiddleFont) {
+      int measureCalls = 0;
+      const std::string longName = "0123456789012345678901234567890123456789";
+      const auto measured = [&](const char* text) {
+        ++measureCalls;
+        return static_cast<int>(strlen(text) * 14);
+      };
+      const auto compactName = utf8MiddleEllipsis(longName, 200, measured);
+      assert(compactName.find("\xE2\x80\xA6") != std::string::npos);
+      assert(measureCalls <= 45 && "40-character ellipsis must measure at most 45 candidates");
+      for (int selected : {0, 1}) {
+        fontMarked = selected;
+        ui.uiTarget.texts.clear();
+        ui.setModel(model); ui.nav().reset(); ui.render();
+        bool sawOne = false, sawTwo = false;
+        for (const auto& text : ui.uiTarget.texts) {
+          if (text.label.find("BOLD1") != std::string::npos) {
+            sawOne = true;
+            assert(text.label.find("\xE2\x80\xA6") != std::string::npos && text.bold == (selected == 0));
+          }
+          if (text.label.find("BOLD2") != std::string::npos) {
+            sawTwo = true;
+            assert(text.label.find("\xE2\x80\xA6") != std::string::npos && text.bold == (selected == 1));
+          }
+        }
+        assert(sawOne && sawTwo && "both long font variants must retain their suffix");
+      }
+    }
     if (kDumpSignature) {
       std::printf("SIG tier=%d\n", tier);
       for (const auto& command : ui.uiTarget.commands) std::printf("C %s\n", command.c_str());
@@ -253,5 +321,5 @@ int main() {
 (a.output / 'layout.cpp').write_text(cpp)
 sdk=a.repo / 'freeink-sdk/libs/ui/FreeInkUI'
 subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined',
-                '-I'+str(sdk/'include'),'-I'+str(a.repo/'lib/I18n'),'-I'+str(a.repo/'src'),str(a.output/'layout.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(a.output/'layout')],check=True)
+                '-I'+str(sdk/'include'),'-I'+str(a.repo/'lib/I18n'),'-I'+str(a.repo/'lib/Utf8'),'-I'+str(a.repo/'src'),str(a.output/'layout.cpp'),str(sdk/'src/FreeInkUI.cpp'),str(a.repo/'lib/Utf8/Utf8.cpp'),'-o',str(a.output/'layout')],check=True)
 subprocess.run([str(a.output/'layout')],check=True)

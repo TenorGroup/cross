@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <iterator>
+#include <Utf8.h>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
@@ -566,16 +567,27 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     nav_.followOnBuild = nav_.selected >= 0;
     nav_.followPending = false;
     nav_.syncToProps(listRect, 62, 0, count, listProps_);
+    const int16_t labelRoom = static_cast<int16_t>(listRect.width - kBarStrip - 2 * listProps_.sidePadding);
     const int windowCount = std::min({nav_.visibleRows + (fonts ? 1 : 0), count - nav_.top, kMaxWindow});
     for (int i = 0; i < windowCount; ++i) {
       const int index = nav_.top + i;
       windowLabels_[i] = model_.rowText ? model_.rowText(index) : std::string();
       windowValues_[i] = model_.rowValue ? model_.rowValue(index) : std::string();
+      const bool marked = model_.rowMarked && model_.rowMarked(index);
+      if (fonts && !windowLabels_[i].empty()) {
+        fui::TextStyle labelStyle = listProps_.labelText;
+        labelStyle.bold = labelStyle.bold || marked;
+        const int16_t room = static_cast<int16_t>(labelRoom -
+                                                  (marked ? listProps_.chosenMark.width + listProps_.textGap : 0));
+        windowLabels_[i] = utf8MiddleEllipsis(windowLabels_[i], room, [&](const char* text) {
+          return screen.target().measureText(labelStyle.font, text, labelStyle).width;
+        });
+      }
       fui::ListItem item;
       item.label = rows && index == 1 ? "" : windowLabels_[i].c_str();
       item.value = windowValues_[i].empty() || (rows && index == 1) ? nullptr : windowValues_[i].c_str();
       item.actionValue = static_cast<int16_t>(index);
-      item.chosen = model_.rowMarked && model_.rowMarked(index);
+      item.chosen = marked;
       item.opensNext = model_.rowOpens && model_.rowOpens(index);
       windowItems_[i] = item;
     }
@@ -646,7 +658,8 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       stepProps_.action = ACTION_SIZE_STEP;
       stepProps_.label = "-";
       stepProps_.value = -1;
-      screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 204), y, 60, 62});
+      const fui::Rect minusRect{static_cast<int16_t>(frame.right() - 204), y, 60, 62};
+      screen.button(stepProps_, minusRect);
       stepProps_.label = windowValues_[sizeSlot].c_str();
       stepProps_.action = ACTION_SIZE_ENTRY;
       stepProps_.value = 0;
@@ -654,7 +667,14 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       stepProps_.label = "+";
       stepProps_.action = ACTION_SIZE_STEP;
       stepProps_.value = 1;
-      screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 64), y, 60, 62});
+      const fui::Rect plusRect{static_cast<int16_t>(frame.right() - 64), y, 60, 62};
+      screen.button(stepProps_, plusRect);
+      if (renderer_ && uiTarget.paintingEnabled()) {
+        tenorchrome::drawPillRing(*renderer_, minusRect.x, static_cast<int16_t>(minusRect.y + 1), minusRect.width, 60, 2,
+                                  true);
+        tenorchrome::drawPillRing(*renderer_, plusRect.x, static_cast<int16_t>(plusRect.y + 1), plusRect.width, 60, 2,
+                                  true);
+      }
     }
     if (count > 0 && renderer_ && uiTarget.paintingEnabled()) {
       // The grey rules of every framed list (founder 06/10/2026): under the panel's title, then between 2 rows,
