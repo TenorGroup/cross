@@ -61,43 +61,79 @@ struct GfxRenderer {
 #include <ReaderInkWeight.h>
 #include "Files.h"
 #include <cassert>
-int main() {
+static SdCardFontFamilyInfo family() {
  SdCardFontFamilyInfo family;
  family.name="Example"; family.stems={"Example"}; family.files={{14,0,0}};
+ return family;
+}
+static void install(const SdCardFontFamilyInfo& family, std::initializer_list<int> weights) {
+ files.clear(); opens.clear();
  const auto& file=family.files.front();
- for (int weight=0;weight<=4;++weight) {
-   const std::string path="/.fonts/Example/"+(weight?"weight-"+std::to_string(weight)+"/":"")+"Example_14.cpfont";
+ for (const int weight : weights) {
+   const std::string path=family.filePath(file,static_cast<uint8_t>(weight));
    files[path]='G';
-   assert(family.filePath(file,weight)==path);
  }
- assert(readerInk::publicMask(family.weights(file))==15);
- GfxRenderer renderer; SdCardFontManager manager; int ids[4];
+}
+int main() {
+ const auto full=family();
+ const auto& fullFile=full.files.front();
+ for (int weight=0;weight<=4;++weight) {
+   const std::string path=full.filePath(fullFile,static_cast<uint8_t>(weight));
+   assert(full.filePath(fullFile,static_cast<uint8_t>(weight))==path);
+ }
+ GfxRenderer renderer; SdCardFontManager manager;
+ install(full,{0,1,2,3,4});
+ assert(readerInk::publicMask(full.weights(fullFile))==15);
+ int fullIds[4];
  for (int level=0;level<4;++level) {
    const int physical=readerInk::physical(level);
-   assert(manager.loadFamily(family,renderer,15,physical));
+   assert(manager.loadFamily(full,renderer,15,physical));
    assert(manager.currentPointSize()==14 && manager.currentWeight()==physical);
    assert(readerInk::publicFromPhysical(manager.currentWeight())==level);
-   ids[level]=manager.getFontId("Example");
-   assert(opens.back()==family.filePath(file,physical));
+   fullIds[level]=manager.getFontId("Example");
+   assert(opens.back()==full.filePath(fullFile,static_cast<uint8_t>(physical)));
    assert(renderer.fonts.size()==1);
  }
- for(int i=0;i<4;++i)for(int j=0;j<i;++j)assert(ids[i]!=ids[j]);
- // Legacy physical weight1 remains loadable and separately identified.
- assert(manager.loadFamily(family,renderer,14,1));
- const int legacyId=manager.getFontId("Example");
- for (int id:ids) assert(legacyId!=id);
- assert(manager.loadFamily(family,renderer,14,4));
- const int ui=manager.loadFamilyExtraSize(family,renderer,14);
- assert(ui==ids[0] && renderer.fonts.size()==2);
- assert(manager.loadFamilyExtraSize(family,renderer,14)==ui);
- manager.unloadExtraSizes(renderer); assert(renderer.fonts.size()==1);
- files[family.filePath(file,4)]='B';
- assert(manager.loadFamily(family,renderer,14,4));
- assert(manager.currentWeight()==0 && manager.getFontId("Example")==ids[0]);
- files.erase(family.filePath(file,3));
- assert(manager.loadFamily(family,renderer,14,3));
- assert(manager.currentWeight()==0 && manager.currentFamilyName()=="Example");
- assert(readerInk::publicMask(family.weights(file))==11);
+ for(int i=0;i<4;++i)for(int j=0;j<i;++j)assert(fullIds[i]!=fullIds[j]);
+
+ const auto partial=family();
+ install(partial,{0,1,2});
+ assert(readerInk::publicMask(partial.weights(partial.files.front()))==3);
+ opens.clear();
+ assert(manager.loadFamily(partial,renderer,14,readerInk::physical(0)));
+ const int baseId=manager.getFontId("Example");
+ assert(manager.currentWeight()==0 && opens.size()==1);
+ assert(manager.loadFamily(partial,renderer,14,readerInk::physical(1)));
+ const int weight2Id=manager.getFontId("Example");
+ assert(manager.currentWeight()==2 && opens.size()==2);
+ assert(manager.loadFamily(partial,renderer,14,readerInk::physical(2)));
+ assert(manager.currentWeight()==2 && manager.getFontId("Example")==weight2Id && opens.size()==2);
+ assert(manager.loadFamily(partial,renderer,14,readerInk::physical(3)));
+ assert(manager.currentWeight()==2 && manager.getFontId("Example")==weight2Id && opens.size()==2);
+ assert(baseId!=weight2Id);
+
+ const auto legacy=family();
+ install(legacy,{0,1});
+ assert(manager.loadFamily(legacy,renderer,14,readerInk::physical(1)));
+ assert(manager.currentWeight()==1);
+ assert(opens.back()==legacy.filePath(legacy.files.front(),1));
+
+ const auto corrupt=family();
+ install(corrupt,{0,2,3});
+ files[corrupt.filePath(corrupt.files.front(),3)]='B';
+ opens.clear();
+ assert(manager.loadFamily(corrupt,renderer,14,3));
+ assert(manager.currentWeight()==2 && opens.size()==2);
+ assert(opens[0]==corrupt.filePath(corrupt.files.front(),3));
+ assert(opens[1]==corrupt.filePath(corrupt.files.front(),2));
+
+ const auto baseOnly=family();
+ install(baseOnly,{0});
+ opens.clear();
+ for (int level=0;level<4;++level) {
+   assert(manager.loadFamily(baseOnly,renderer,14,readerInk::physical(level)));
+   assert(manager.currentWeight()==0 && manager.getFontId("Example")==baseId && opens.size()==1);
+ }
  manager.unloadAll(renderer); assert(renderer.fonts.empty());
 }
 ''')

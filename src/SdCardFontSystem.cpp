@@ -310,7 +310,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
             registryWasDirty ? " [registry dirty]" : "");
   }
 
-  if (!currentFamily.empty()) {
+  if (!currentFamily.empty() && (registryWasDirty || currentFamily != wantedFamily)) {
     manager_.unloadAll(renderer);
   }
 
