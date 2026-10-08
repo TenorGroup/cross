@@ -44,11 +44,12 @@ struct SdCardFont {
 class SdCardFont;
 struct GfxRenderer {
  std::map<int,EpdFontFamily> fonts;
+ int clearSdCardFontsCalls=0;
  const auto& getFontMap() const { return fonts; }
  void registerSdCardFont(int,SdCardFont*){}
  void insertFont(int id,EpdFontFamily font) { fonts.emplace(id,font); }
  void clearFallbackFonts(){}
- void clearSdCardFonts(){}
+ void clearSdCardFonts(){ ++clearSdCardFontsCalls; }
  void removeFont(int id){fonts.erase(id);}
 };
 ''')
@@ -99,17 +100,30 @@ int main() {
  const auto partial=family();
  install(partial,{0,1,2});
  assert(readerInk::publicMask(partial.weights(partial.files.front()))==3);
- opens.clear();
- assert(manager.loadFamily(partial,renderer,14,readerInk::physical(0)));
- const int baseId=manager.getFontId("Example");
- assert(manager.currentWeight()==0 && opens.size()==1);
- assert(manager.loadFamily(partial,renderer,14,readerInk::physical(1)));
- const int weight2Id=manager.getFontId("Example");
- assert(manager.currentWeight()==2 && opens.size()==2);
- assert(manager.loadFamily(partial,renderer,14,readerInk::physical(2)));
- assert(manager.currentWeight()==2 && manager.getFontId("Example")==weight2Id && opens.size()==2);
- assert(manager.loadFamily(partial,renderer,14,readerInk::physical(3)));
- assert(manager.currentWeight()==2 && manager.getFontId("Example")==weight2Id && opens.size()==2);
+ opens.clear(); renderer.clearSdCardFontsCalls=0;
+ const int sequence[] = {1, 0, 1, 2, 3};
+ const uint8_t expectedWeights[] = {2, 0, 2, 2, 2};
+ const char* expectedPaths[] = {
+   "/.fonts/Example/weight-2/Example_14.cpfont",
+   "/.fonts/Example/Example_14.cpfont",
+   "/.fonts/Example/weight-2/Example_14.cpfont",
+   "/.fonts/Example/weight-2/Example_14.cpfont",
+   "/.fonts/Example/weight-2/Example_14.cpfont",
+ };
+ int baseId=0; int weight2Id=0;
+ for (int step=0; step<5; ++step) {
+   assert(manager.loadFamily(partial,renderer,14,readerInk::physical(sequence[step])));
+   assert(manager.currentWeight()==expectedWeights[step]);
+   assert(opens.size()==static_cast<size_t>(step + 1));
+   assert(opens.back()==expectedPaths[step]);
+   assert(renderer.clearSdCardFontsCalls==step + 1);
+   const int id=manager.getFontId("Example");
+   if (sequence[step]==0) baseId=id;
+   if (sequence[step]==1) {
+     if (weight2Id==0) weight2Id=id;
+     else assert(id==weight2Id);
+   }
+ }
  assert(baseId!=weight2Id);
 
  const auto legacy=family();
@@ -132,7 +146,8 @@ int main() {
  opens.clear();
  for (int level=0;level<4;++level) {
    assert(manager.loadFamily(baseOnly,renderer,14,readerInk::physical(level)));
-   assert(manager.currentWeight()==0 && manager.getFontId("Example")==baseId && opens.size()==1);
+   assert(manager.currentWeight()==0 && manager.getFontId("Example")==baseId &&
+          opens.size()==static_cast<size_t>(level + 1));
  }
  manager.unloadAll(renderer); assert(renderer.fonts.empty());
 }

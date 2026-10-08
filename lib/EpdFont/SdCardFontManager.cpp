@@ -92,11 +92,6 @@ bool SdCardFontManager::loadFamily(const SdCardFontFamilyInfo& family, GfxRender
 
   const uint8_t available = family.weights(*selected);
   uint8_t effectiveWeight = selectWeight(available, weight);
-  if (loadedFamilyName_ == family.name && loadedPointSize_ == selected->pointSize &&
-      loadedWeight_ == effectiveWeight && !loaded_.empty()) {
-    return true;
-  }
-
   if (!loadedFamilyName_.empty()) {
     unloadAll(renderer);
   }
