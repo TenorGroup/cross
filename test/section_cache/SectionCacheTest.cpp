@@ -1860,24 +1860,57 @@ TEST_F(SectionCacheTest, ParkedAnchorStorageSurvivesResumeAndSecondPark) {
   std::filesystem::remove(cache());
   std::filesystem::remove(root / "html/0.html");
 
-  Section section(epub, 0, renderer);
-  ASSERT_TRUE(section.startBuild(spec));
-  while (section.pageCount < 8u) {
+  {
+    Section section(epub, 0, renderer);
+    ASSERT_TRUE(section.startBuild(spec));
+    while (section.pageCount < 8u) {
+      ASSERT_TRUE(section.buildSomeMore(2));
+      ASSERT_TRUE(section.isBuilding());
+    }
+    ASSERT_TRUE(section.parkBuild());
+    ASSERT_TRUE(section.isBuildParked());
+    const void* parkedData = section.parkedAnchorsDataForTest();
+    ASSERT_NE(parkedData, nullptr);
+
     ASSERT_TRUE(section.buildSomeMore(2));
     ASSERT_TRUE(section.isBuilding());
+    EXPECT_EQ(section.parkedAnchorsDataForTest(), parkedData);
+
+    ASSERT_TRUE(section.parkBuild());
+    ASSERT_TRUE(section.isBuildParked());
+    EXPECT_EQ(section.parkedAnchorsDataForTest(), parkedData);
   }
-  ASSERT_TRUE(section.parkBuild());
-  ASSERT_TRUE(section.isBuildParked());
-  const void* parkedData = section.parkedAnchorsDataForTest();
-  ASSERT_NE(parkedData, nullptr);
 
-  ASSERT_TRUE(section.buildSomeMore(2));
-  ASSERT_TRUE(section.isBuilding());
-  EXPECT_EQ(section.parkedAnchorsDataForTest(), parkedData);
+  epub->tocCount = 220;
+  epub->contents = "<html><body>";
+  for (unsigned index = 0; index < 220; ++index) {
+    epub->contents += "<p id=\"anchor-" + std::to_string(index) +
+                      "\">anchor ownership paragraph " + std::to_string(index) +
+                      " carries enough text for a parser checkpoint and resume.</p>";
+  }
+  epub->contents += "</body></html>";
+  std::filesystem::remove(cache());
+  std::filesystem::remove(root / "html/0.html");
 
-  ASSERT_TRUE(section.parkBuild());
-  ASSERT_TRUE(section.isBuildParked());
-  EXPECT_EQ(section.parkedAnchorsDataForTest(), parkedData);
+  Section largeSection(epub, 0, renderer);
+  ASSERT_TRUE(largeSection.startBuild(spec));
+  while (largeSection.pageCount < 40u) {
+    ASSERT_TRUE(largeSection.buildSomeMore(2));
+    ASSERT_TRUE(largeSection.isBuilding());
+  }
+  ASSERT_TRUE(largeSection.parkBuild());
+  ASSERT_TRUE(largeSection.isBuildParked());
+  ASSERT_NE(largeSection.parkedAnchorsDataForTest(), nullptr);
+  ASSERT_GT(largeSection.parkedAnchorsCapacityForTest(), 4u);
+
+  ASSERT_TRUE(largeSection.buildSomeMore(2));
+  ASSERT_TRUE(largeSection.isBuilding());
+  EXPECT_EQ(largeSection.parkedAnchorsCapacityForTest(), 0u);
+  EXPECT_EQ(largeSection.parkedAnchorsDataForTest(), nullptr);
+
+  ASSERT_TRUE(largeSection.parkBuild());
+  ASSERT_TRUE(largeSection.isBuildParked());
+  EXPECT_NE(largeSection.parkedAnchorsDataForTest(), nullptr);
 }
 
 TEST_F(SectionCacheTest, ParkedBuildCloseReopensAsReadablePartialAndContinues) {

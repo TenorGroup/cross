@@ -93,6 +93,12 @@ constexpr uint32_t HEADER_SIZE =
 constexpr size_t BUILD_START_KEEP_FONT_CACHE_FREE = 64 * 1024;
 constexpr size_t BUILD_START_KEEP_FONT_CACHE_LARGEST = 32 * 1024;
 constexpr size_t PARKED_ANCHOR_RESERVE = 4;
+
+using ParkedAnchor = std::pair<std::string, uint16_t>;
+
+void releaseParkedAnchorStorage(std::vector<ParkedAnchor>& anchors) {
+  std::vector<ParkedAnchor>().swap(anchors);
+}
 }  // namespace
 
 // Out-of-line so the unique_ptr<ChapterHtmlSlimParser> in BuildContext can be
@@ -995,8 +1001,11 @@ bool Section::parkAtLastCheckpoint() {
   if (anchors.size() < build.checkpointAnchors) return false;
   anchors.resize(build.checkpointAnchors);
   build.parkedAnchors.clear();
-  if (build.parkedAnchors.capacity() < anchors.size()) build.parkedAnchors.reserve(anchors.size());
-  for (auto& anchor : anchors) build.parkedAnchors.emplace_back(std::move(anchor));
+  if (build.parkedAnchors.capacity() < anchors.size()) {
+    build.parkedAnchors.swap(anchors);
+  } else {
+    for (auto& anchor : anchors) build.parkedAnchors.emplace_back(std::move(anchor));
+  }
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("SCT", "PARKED_ANCHORS parked data=%08x bytes=%u size=%u capacity=%u",
           static_cast<unsigned>(reinterpret_cast<uintptr_t>(build.parkedAnchors.data())),
@@ -1046,8 +1055,11 @@ bool Section::parkBuild() {
   build_->bytesConsumed = build_->parser->parseBytesConsumed();
   auto anchors = build_->parser->takeAnchors();
   build_->parkedAnchors.clear();
-  if (build_->parkedAnchors.capacity() < anchors.size()) build_->parkedAnchors.reserve(anchors.size());
-  for (auto& anchor : anchors) build_->parkedAnchors.emplace_back(std::move(anchor));
+  if (build_->parkedAnchors.capacity() < anchors.size()) {
+    build_->parkedAnchors.swap(anchors);
+  } else {
+    for (auto& anchor : anchors) build_->parkedAnchors.emplace_back(std::move(anchor));
+  }
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("SCT", "PARKED_ANCHORS parked data=%08x bytes=%u size=%u capacity=%u",
           static_cast<unsigned>(reinterpret_cast<uintptr_t>(build_->parkedAnchors.data())),
@@ -1086,7 +1098,11 @@ bool Section::resumeParkedBuild() {
   }
   // The checkpoint restores anchors too. Clear the parked elements before allocating
   // the parser, while keeping the reserved storage for the next park cycle.
+  // Large parked tables release their buffer so the parser owns one copy.
   build_->parkedAnchors.clear();
+  if (build_->parkedAnchors.capacity() > PARKED_ANCHOR_RESERVE) {
+    releaseParkedAnchorStorage(build_->parkedAnchors);
+  }
   bool restored = loadBuildCss(build_.get());
   if (restored) {
     build_->parser = makeBuildParser(build_.get(), build_->spec);
@@ -1114,6 +1130,10 @@ bool Section::resumeParkedBuild() {
 #ifdef TENOR_SECTION_HOST_TEST
 const void* Section::parkedAnchorsDataForTest() const {
   return build_ ? static_cast<const void*>(build_->parkedAnchors.data()) : nullptr;
+}
+
+size_t Section::parkedAnchorsCapacityForTest() const {
+  return build_ ? build_->parkedAnchors.capacity() : 0;
 }
 #endif
 
