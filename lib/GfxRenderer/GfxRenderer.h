@@ -44,7 +44,7 @@ class GfxRenderer {
   };
 
  private:
-  static constexpr size_t BW_BUFFER_CHUNK_SIZE = 8000;  // 8KB chunks to allow for non-contiguous memory
+  static constexpr size_t BW_BUFFER_CHUNK_SIZE = 4000;  // 4KB chunks to allow for non-contiguous memory
   // `count` pixels of a packed 1-bit row from bit `from` (a set bit white) to screen row y from x:
   // black clears the pixel, white sets it only when `opaque`.
   void drawBitRow(const uint8_t* bits, int from, int count, int x, int y, bool opaque) const;
@@ -58,6 +58,7 @@ class GfxRenderer {
   Orientation orientation;
   bool fadingFix;
   uint8_t* frameBuffer = nullptr;
+  uint32_t frameBufferLoans = 0;
   uint16_t panelWidth = HalDisplay::DISPLAY_WIDTH;
   uint16_t panelHeight = HalDisplay::DISPLAY_HEIGHT;
   uint16_t panelWidthBytes = HalDisplay::DISPLAY_WIDTH_BYTES;
@@ -88,9 +89,10 @@ class GfxRenderer {
   // Set while the controller's previous frame does not say what the glass shows (see
   // redriveNextRefresh). Mutable for the same reason as the promotion above.
   mutable bool redrivePending_ = false;
+  mutable HalDisplay::RefreshMode redriveRefresh_ = HalDisplay::FULL_REFRESH;
   bool diffOnlyPanel_ = false;
   // On a diff-only panel, with a redrive pending: make the frame's inverse the controller's
-  // previous frame, so the refresh drives every pixel, and ask for a full refresh. Clears the flag.
+  // previous frame, so the refresh drives every pixel. Clears the flag.
   HalDisplay::RefreshMode applyRedrive(HalDisplay::RefreshMode refreshMode) const;
 
   // Tiled grayscale strip target. When active, drawPixel()/clearScreen()
@@ -259,13 +261,11 @@ class GfxRenderer {
   // panel. Armed by a start that restored no frame and by a gray pass (its levels have no B/W
   // name); a cleanup that re-describes the glass (cleanupGrayscaleWithFrameBuffer, restoreBwBuffer
   // with a resync) disarms it.
-  void redriveNextRefresh() const { redrivePending_ = true; }
-  // Drive every pixel of a screen rectangle again, after the framebuffer is on the panel: the
-  // rectangle's inverse becomes the controller's previous frame there, and one refresh drives it
-  // back. Full waveform on a diff-only panel (it drives only those pixels); fast elsewhere, where
-  // a full refresh would flash the whole glass. Nothing outside the rectangle (rounded out to
-  // bytes) changes. Not while the output is inverted: the controller planes are not rewritten then.
-  void redriveRegion(int x, int y, int w, int h) const;
+  // A fast request keeps any stronger refresh chosen by the caller or an overlay.
+  void redriveNextRefresh(const HalDisplay::RefreshMode mode = HalDisplay::FULL_REFRESH) const {
+    redrivePending_ = true;
+    redriveRefresh_ = mode;
+  }
   // False while a redrive is pending: the controller's previous frame, and the framebuffer that
   // went with it, are not what the glass shows.
   bool panelFrameKnown() const { return !redrivePending_; }
@@ -508,6 +508,7 @@ class GfxRenderer {
   void releaseFrameBufferForBuild();
   bool restoreFrameBufferAfterBuild();
   bool hasFrameBuffer() const { return frameBuffer != nullptr; }
+  uint32_t frameBufferLoanCount() const { return frameBufferLoans; }
 
   // RAII form of the loan above, for blocking build regions with early-return
   // error paths: restores on scope exit (or explicitly via end()). Display the

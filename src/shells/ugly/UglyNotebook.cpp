@@ -13,6 +13,7 @@
 #include "activities/home/BookStatsLibraryActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "CrossPointSettings.h"
+#include "components/UiAppHelpers.h"
 #include "activities/home/DocThuMuc.h"
 #include "FileFavorites.h"
 #include "MenuCustomization.h"
@@ -174,18 +175,25 @@ void Notebook::render(RenderLock&&) {
     if (empty != StrId::STR_NONE_OPT) paragraph(renderer, Size::S30, TEXT_X, first, w - TEXT_X - 30, 44, I18N.get(empty));
   }
   const int top = logic::pageTop(cur, perPage, count);
+  freeink::ui::GfxRendererTarget iconTarget(renderer);
   for (int i = 0; i < logic::rowsOnPage(top, perPage, count); ++i) {
     const int row = top + i;
     const int base = first + i * ROW_HEIGHT;
-    int room = w - TEXT_X - 30;
+    const int labelX = TEXT_X + (page == homerows::Page::Folder ? 42 : 0);
+    int room = w - labelX - 30;
+    if (page == homerows::Page::Folder) {
+      const auto icon = listIconFor(UITheme::getFileIcon(rows.folder[row]), 32);
+      iconTarget.bitmap({TEXT_X, static_cast<int16_t>(base - 27), 32, 32}, icon,
+                        freeink::ui::BitmapMode::Contain);
+    }
     if (row < static_cast<int>(rows.values.size()) && !rows.values[row].empty()) {
       const int vw = width(renderer, Size::S22, rows.values[row].c_str());
       text(renderer, Size::S22, w - 30 - vw, base, rows.values[row].c_str());
       room -= vw + 16;
     }
     const std::string label = fit(renderer, Size::S30, labelAt(row), room);
-    const int lw = text(renderer, Size::S30, TEXT_X, base, label.c_str());
-    if (row == cur) circle(renderer, Circle::Row, {TEXT_X, base - 26, TEXT_X + lw, base + 8}, 12, 9);
+    const int lw = text(renderer, Size::S30, labelX, base, label.c_str());
+    if (row == cur) circle(renderer, Circle::Row, {labelX, base - 26, labelX + lw, base + 8}, 12, 9);
   }
   if (logic::pageNamed(top, perPage, count)) {
     char of[24];

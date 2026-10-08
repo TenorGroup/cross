@@ -902,12 +902,10 @@ void HomeActivity::render(RenderLock&&) {
   const uint32_t paintUs = micros() - paintStartedUs;
   const uint32_t displayStartedUs = micros();
 #endif
-  renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
   if (coverRedriveDue()) {
-    [[maybe_unused]] const uint32_t redriveStarted = millis();
-    renderer.redriveRegion(coverRectX, coverRectY, coverRectW, coverRectH);
-    LOG_PROBE("HOME", "COVER_REDRIVE ms=%lu", static_cast<unsigned long>(millis() - redriveStarted));
+    renderer.redriveNextRefresh(HalDisplay::FAST_REFRESH);
   }
+  renderer.displayBuffer(cleanInitialRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
 #ifdef TENOR_UI_ACCEPTANCE
   const uint32_t displayUs = micros() - displayStartedUs;
   LOG_INF("HOME_PROBE", "frame_paint_us=%lu display_us=%lu total_us=%lu",
@@ -1352,8 +1350,13 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card) {
   in.rows = cardStats.rows;
   int fonts[HOME_STAT_COUNT];
   std::string first[HOME_STAT_COUNT], second[HOME_STAT_COUNT];
+  std::vector<std::string> labels[HOME_STAT_COUNT];
   for (int row = 0; row < HOME_STAT_COUNT; ++row) {
     if (!(in.rows & (1u << row))) continue;
+    if (tenorchrome::kTouchShell && SETTINGS.uiTextSize == 1) {
+      labels[row] = renderer.wrappedText(labelFont, I18N.get(CARD_STAT_LABELS[row]), width, 2);
+      in.labelHeights[row] = static_cast<int>(labels[row].size()) * in.labelLineHeight;
+    }
     first[row] = cardStats.values[row];
     fonts[row] = cardStatValueWidth(renderer, valueFont, first[row].c_str()) <= width ? valueFont : fallbackFont;
     if (cardStatValueWidth(renderer, fonts[row], first[row].c_str()) > width) {
@@ -1381,7 +1384,15 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card) {
   const auto column = homeStatsLayout(in);
   for (int row = 0; row < HOME_STAT_COUNT; ++row) {
     if (!(column.rows & (1u << row))) continue;
-    renderer.drawText(labelFont, card.statsX, column.labelY[row], I18N.get(CARD_STAT_LABELS[row]));
+    if (labels[row].empty()) {
+      renderer.drawText(labelFont, card.statsX, column.labelY[row], I18N.get(CARD_STAT_LABELS[row]));
+    } else {
+      int y = column.labelY[row];
+      for (const auto& line : labels[row]) {
+        renderer.drawText(labelFont, card.statsX, y, line.c_str());
+        y += in.labelLineHeight;
+      }
+    }
     const auto drawValue = [&](const std::string& value, const int y) {
       int x = card.statsX;
       compactstats::runs(value.c_str(), [&](const std::string& part, const bool number) {
@@ -1428,6 +1439,15 @@ void HomeActivity::drawRecentCard() {
   in.authorLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   in.excerptLineHeight = renderer.getLineHeight(serifFont);
   in.rowLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
+  std::vector<std::string> otherTitleLines;
+  if (recentBooks.size() > 1) {
+    const auto& next = recentBooks[(shown + 1) % recentBooks.size()];
+    const auto title = next.title.empty() ? next.path.substr(next.path.find_last_of('/') + 1) : next.title;
+    const int room = renderer.getScreenWidth() - 80 -
+                     renderer.getTextWidth(UI_10_FONT_ID, tr(STR_RECENT_OTHER_BOOK)) - 16;
+    otherTitleLines = renderer.wrappedText(UI_10_FONT_ID, title.c_str(), room, 2, EpdFontFamily::BOLD);
+    in.rowLines = std::max(1, static_cast<int>(otherTitleLines.size()));
+  }
   const int statLabelFont = !tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2 ? SMALL_FONT_ID : UI_10_FONT_ID;
   const int statValueFont = !tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2 ? UI_10_FONT_ID : UI_12_FONT_ID;
   for (const auto label : CARD_STAT_LABELS)
@@ -1438,6 +1458,9 @@ void HomeActivity::drawRecentCard() {
   snprintf(averageSample, sizeof(averageSample), tr(STR_RECENT_STAT_PER_DAY), SETTINGS.uiTextSize ? "999h 59m" : "1h 21m");
   in.statsMinWidth = std::max(in.statsMinWidth, cardStatValueWidth(renderer, statValueFont, averageSample));
   in.statsMinWidth += 8;
+  // Medium touch text wraps in the default column instead of shrinking the cover for long samples.
+  if (tenorchrome::kTouchShell && SETTINGS.uiTextSize == 1)
+    in.statsMinWidth = std::min(in.statsMinWidth, renderer.getScreenWidth() / 3 - 4);
   // A fixed budget for two wrapped duration values leaves geometry independent of book time.
   in.minStatsHeight = 2 + HOME_STAT_COUNT * (renderer.getLineHeight(statLabelFont) +
                                            renderer.getLineHeight(statValueFont)) + 12 +
@@ -1455,7 +1478,7 @@ void HomeActivity::drawRecentCard() {
             static_cast<unsigned>(coverBufferSize));
 #endif
     drawCardStats(frame);
-    drawOtherBookRow(shown, frame.ruleY, frame.rowY);
+    drawOtherBookRow(shown, frame.ruleY, frame.rowY, otherTitleLines);
     return;
   }
   const uint32_t started = millis();
@@ -1501,7 +1524,7 @@ void HomeActivity::drawRecentCard() {
     coverRendered = true;
     if (!cardFileThumb) wantThumb(shown);
     drawCardStats(frame);
-    drawOtherBookRow(shown, frame.ruleY, frame.rowY);
+    drawOtherBookRow(shown, frame.ruleY, frame.rowY, otherTitleLines);
     LOG_INF("HOME", "Recent card file=%lums cache=%u", static_cast<unsigned long>(millis() - started),
             static_cast<unsigned>(coverBufferSize));
     return;
@@ -1616,7 +1639,7 @@ void HomeActivity::drawRecentCard() {
   if (!cardFileThumb && !thumbPath.empty()) wantThumb(shown);
   if (fcm) fcm->releaseBuiltinPageCaches();  // the card is now a cached bitmap
   const int barY = drawCardStats(card);
-  drawOtherBookRow(shown, card.ruleY, card.rowY);
+  drawOtherBookRow(shown, card.ruleY, card.rowY, otherTitleLines);
 #ifdef TENOR_UI_ACCEPTANCE
   LOG_INF("HOME_PROBE", "card_build_us=%lu cache_bytes=%u", static_cast<unsigned long>(micros() - cardStartedUs),
           static_cast<unsigned>(coverBufferSize));
@@ -1813,10 +1836,11 @@ void HomeActivity::saveCardFile() {
 }
 
 // "Another book" and the next book's title under a rule, with an open V on each side that has a
-// book to step to. Drawn on every paint: it is one line of an uncompressed flash font. The arrows
-// sit outside the text margins as mirror images, so the title ends on the right margin as the
+// book to step to. Drawn on every paint in up to two lines of an uncompressed flash font. The arrows
+// sit outside the text margins as mirror images, so each title line ends on the right margin as the
 // label starts on the left one.
-void HomeActivity::drawOtherBookRow(const int shown, const int ruleY, const int rowY) {
+void HomeActivity::drawOtherBookRow(const int shown, const int ruleY, const int rowY,
+                                  const std::vector<std::string>& titleLines) {
   const int count = static_cast<int>(recentBooks.size());
   if (count < 2) return;
   // The arrows' tips stay where the solid triangles had them, 24 px outside the text margins.
@@ -1825,12 +1849,12 @@ void HomeActivity::drawOtherBookRow(const int shown, const int ruleY, const int 
   renderer.drawLine(left, ruleY, right - 1, ruleY);
   const char* label = tr(STR_RECENT_OTHER_BOOK);
   renderer.drawText(UI_10_FONT_ID, left, rowY, label);
-  const auto& next = recentBooks[(shown + 1) % count];
-  const auto title = next.title.empty() ? next.path.substr(next.path.find_last_of('/') + 1) : next.title;
-  const int room = right - left - renderer.getTextWidth(UI_10_FONT_ID, label) - 16;
-  const auto shownTitle = renderer.truncatedText(UI_10_FONT_ID, title.c_str(), room, EpdFontFamily::BOLD);
-  const int titleWidth = renderer.getTextWidth(UI_10_FONT_ID, shownTitle.c_str(), EpdFontFamily::BOLD);
-  renderer.drawText(UI_10_FONT_ID, right - titleWidth, rowY, shownTitle.c_str(), true, EpdFontFamily::BOLD);
+  int y = rowY;
+  for (const auto& line : titleLines) {
+    const int titleWidth = renderer.getTextWidth(UI_10_FONT_ID, line.c_str(), EpdFontFamily::BOLD);
+    renderer.drawText(UI_10_FONT_ID, right - titleWidth, y, line.c_str(), true, EpdFontFamily::BOLD);
+    y += renderer.getLineHeight(UI_10_FONT_ID);
+  }
   const int top = rowY + renderer.getFontAscenderSize(UI_10_FONT_ID) * 2 / 3 - ARROW_SPAN;
   const int length = tenorchrome::moreChevronLength(ARROW_SPAN);
   tenorchrome::drawMoreChevron(renderer, right + ARROW_OUT - length, top, tenorchrome::ChevronDir::Right, ARROW_SPAN);

@@ -121,6 +121,12 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     doc["statusBarBookProgressPercentage"] = static_cast<uint8_t>(spec.showBookProgressPercent);
   }
   doc["statusBarItemsMode"] = readerStatusBarMode;
+  const auto status = statusBarSpec();
+  doc["readerStatusSlotsEnabled"] = static_cast<uint8_t>(status.slotsEnabled);
+  doc["readerStatusTop"] = status.topTitleMode;
+  doc["readerStatusLeft"] = status.slots[0];
+  doc["readerStatusCenter"] = status.slots[1];
+  doc["readerStatusRight"] = status.slots[2];
 
   // Front button remap - managed by RemapFrontButtons sub-activity, not in SettingsList.
   doc["frontButtonBack"] = frontButtonBack;
@@ -281,6 +287,15 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // A file from before the switches carries switch values nothing ever read (the
   // web page could still set them), so the switches start from what the stored
   // mode showed.
+  const auto statusValue = [&](const char* key, int count, uint8_t fallback) {
+    const int value = doc[key] | static_cast<int>(fallback);
+    return value >= 0 && value < count ? static_cast<uint8_t>(value) : fallback;
+  };
+  readerStatusSlotsEnabled = statusValue("readerStatusSlotsEnabled", 2, 0);
+  readerStatusTop = statusValue("readerStatusTop", STATUS_BAR_TITLE_COUNT, HIDE_TITLE);
+  readerStatusLeft = statusValue("readerStatusLeft", STATUS_SLOT_COUNT, STATUS_SLOT_NONE);
+  readerStatusCenter = statusValue("readerStatusCenter", STATUS_SLOT_COUNT, STATUS_SLOT_NONE);
+  readerStatusRight = statusValue("readerStatusRight", STATUS_SLOT_COUNT, STATUS_SLOT_NONE);
   statusBarItemsMode = doc["statusBarItemsMode"] | uint8_t{0xFF};
   if (statusBarItemsMode != readerStatusBarMode) {
     adoptReaderStatusItems();
@@ -366,7 +381,9 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
       const auto repairLevel = [&doc, &needsResave](const char* key, uint8_t& field) {
         if (doc[key].isNull()) return;  // absent keeps the default level
         const uint8_t raw = doc[key].as<uint8_t>();
-        if (raw < readerSpacing::LEVEL_COUNT) {
+        const uint8_t count = strcmp(key, "lineSpacing") == 0 ? readerSpacing::lineLevelCount()
+                                                                  : static_cast<uint8_t>(readerSpacing::LEVEL_COUNT);
+        if (raw < count) {
           field = raw;
         } else {
           field = readerSpacing::LEVEL_DEFAULT;
@@ -532,6 +549,8 @@ constexpr uint8_t READER_MODE_ITEMS[CrossPointSettings::READER_STATUS_BAR_MODE_C
     SB_TITLE | SB_PAGES,                                      // Chapter name & chapter progress
     SB_TITLE | SB_CLOCK,                                      // Chapter name & clock
     SB_TITLE | SB_BATTERY,                                    // Chapter name & battery
+    SB_PAGES | SB_CLOCK,
+    SB_TITLE | SB_PAGES | SB_CLOCK,
 };
 }  // namespace
 
@@ -563,6 +582,33 @@ CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {
   spec.progressBarHeightPx =
       statusBarProgressBar != HIDE_PROGRESS ? static_cast<uint8_t>((statusBarProgressBarThickness + 1) * 2) : 0;
   spec.xtcMode = xtcStatusBarMode;
+  spec.topTitleMode = spec.titleMode;
+  spec.slots = {spec.showsClock() ? STATUS_SLOT_CLOCK : spec.showBattery ? STATUS_SLOT_BATTERY : STATUS_SLOT_NONE,
+                spec.showChapterPageCount ? STATUS_SLOT_CHAPTER_PAGES
+                                         : spec.showBookProgressPercent ? STATUS_SLOT_BOOK_PERCENT : STATUS_SLOT_NONE,
+                spec.showBattery && spec.showsClock() ? STATUS_SLOT_BATTERY : STATUS_SLOT_NONE};
+  if (statusBarItemsMode == readerStatusBarMode && readerStatusSlotsEnabled) {
+    spec.slotsEnabled = true;
+    spec.topTitleMode = readerStatusTop;
+    spec.slots = {readerStatusLeft, readerStatusCenter, readerStatusRight};
+  } else if (readerStatusBarMode == READER_STATUS_BAR_CLOCK_CHAPTER_PROGRESS) {
+    spec.slotsEnabled = true;
+    spec.topTitleMode = HIDE_TITLE;
+    spec.slots = {STATUS_SLOT_CLOCK, STATUS_SLOT_CHAPTER_PAGES, STATUS_SLOT_NONE};
+  } else if (readerStatusBarMode == READER_STATUS_BAR_BOOK_DETAILS) {
+    spec.slotsEnabled = true;
+    spec.topTitleMode = BOOK_TITLE;
+    spec.slots = {STATUS_SLOT_CLOCK, STATUS_SLOT_CHAPTER_PAGES, STATUS_SLOT_BOOK_ETA};
+  }
+  if (spec.slotsEnabled) {
+    spec.titleMode = spec.topTitleMode;
+    spec.showChapterPageCount = spec.hasSlot(STATUS_SLOT_CHAPTER_PAGES);
+    spec.showBookProgressPercent = spec.hasSlot(STATUS_SLOT_BOOK_PERCENT);
+    spec.showBattery = spec.showBatteryPercent = spec.hasSlot(STATUS_SLOT_BATTERY);
+    spec.clockMode = spec.hasSlot(STATUS_SLOT_CLOCK) ? STATUS_BAR_CLOCK_LEFT : STATUS_BAR_CLOCK_HIDE;
+    spec.progressBarMode = HIDE_PROGRESS;
+    spec.progressBarHeightPx = 0;
+  }
   return spec;
 }
 
@@ -574,8 +620,38 @@ void CrossPointSettings::adoptReaderStatusItems() {
     statusBarTitle = spec.titleMode;
     statusBarChapterPageCount = spec.showChapterPageCount;
     statusBarBookProgressPercentage = spec.showBookProgressPercent;
+    readerStatusSlotsEnabled = spec.slotsEnabled;
+    readerStatusTop = spec.topTitleMode;
+    readerStatusLeft = spec.slots[0];
+    readerStatusCenter = spec.slots[1];
+    readerStatusRight = spec.slots[2];
   }
   statusBarItemsMode = readerStatusBarMode;
+}
+
+uint8_t CrossPointSettings::readerStatusItem(const int row) const {
+  const auto spec = statusBarSpec();
+  return row == 0 ? spec.topTitleMode : row >= 1 && row <= 3 ? spec.slots[row - 1] : STATUS_SLOT_NONE;
+}
+
+bool CrossPointSettings::setReaderStatusItem(const int row, const uint8_t value) {
+  const int count = row == 0 ? static_cast<int>(STATUS_BAR_TITLE_COUNT) : static_cast<int>(STATUS_SLOT_COUNT);
+  if (row < 0 || row > 3 || value >= count) return false;
+  if (readerStatusBarHidden()) readerStatusBarMode = READER_STATUS_BAR_BOOK_DETAILS;
+  adoptReaderStatusItems();
+  if (!readerStatusSlotsEnabled) {
+    const auto spec = statusBarSpec();
+    readerStatusTop = spec.topTitleMode;
+    readerStatusLeft = spec.slots[0];
+    readerStatusCenter = spec.slots[1];
+    readerStatusRight = spec.slots[2];
+  }
+  readerStatusSlotsEnabled = 1;
+  if (row == 0) readerStatusTop = value;
+  else if (row == 1) readerStatusLeft = value;
+  else if (row == 2) readerStatusCenter = value;
+  else readerStatusRight = value;
+  return true;
 }
 
 ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWidth,
@@ -615,6 +691,8 @@ float CrossPointSettings::getReaderLineCompression() const {
   // switch-based tuning was not ported into this unified formula - lineFactorOffset()
   // in ReaderSpacing.h does not distinguish SD/vector fonts from built-ins. Worth
   // revisiting there.
+  if (lineSpacing >= readerSpacing::LEVEL_COUNT)
+    return readerSpacing::lineFactor(readerSpacing::clampLineLevel(lineSpacing));
   const float base = (sdFontFamilyName[0] == '\0' && fontFamily == NOTOSANS) ? 0.95f : 1.00f;
   return base + readerSpacing::lineFactorOffset(lineSpacing);
 }

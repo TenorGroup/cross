@@ -37,7 +37,7 @@ constexpr int HOME_CARD_COVER_H = 450;
 
 // The Recent card, top to bottom: the cover at the left margin with the book's reading stats in a
 // column to its right, then title (up to two lines), author and one line of excerpt from the
-// cover's left edge across the width, then a rule and the other-book row just above the footer.
+// cover's left edge across the width, then a rule and the other-book row (up to two lines) above the footer.
 // The cover is sized for a one-line title and its one line of excerpt, and a two-line title takes
 // that line's room: the excerpt goes first, the cover keeps its size. Line heights come from the
 // flash fonts in use, so a larger text size shrinks the cover instead of pushing text off screen.
@@ -54,6 +54,7 @@ struct HomeCardInput {
   int authorLineHeight = 0;
   int excerptLineHeight = 0;
   int rowLineHeight = 0;
+  int rowLines = 1;
 };
 struct HomeCardLayout {
   int coverX = 0, coverY = 0, coverW = 0, coverH = 0;
@@ -69,14 +70,16 @@ inline HomeCardLayout homeCardLayout(const HomeCardInput& in) {
   HomeCardLayout card;
   card.textX = MARGIN;
   card.textW = in.screenWidth - 2 * MARGIN;
-  card.rowY = in.bottom - in.rowLineHeight;
+  card.rowY = in.bottom - in.rowLineHeight * in.rowLines;
   card.ruleY = card.rowY - ROW_GAP;
+  // A second other-book line takes excerpt room, keeping the cover's size independent of its title.
+  const int oneLineRuleY = in.bottom - in.rowLineHeight - ROW_GAP;
   // The cover is sized for a one-line title and one line of excerpt whatever this book's title is,
   // so it keeps one size while the reader steps between books. A second title line takes the
   // excerpt's room, so a two-line title shows no excerpt.
   const int text = COVER_GAP + in.titleLineHeight + AUTHOR_GAP + in.authorLineHeight + EXCERPT_GAP +
                    EXCERPT_LINES * in.excerptLineHeight + RULE_GAP;
-  const int room = card.ruleY - in.top - text;
+  const int room = oneLineRuleY - in.top - text;
   card.coverH = room > COVER_H ? COVER_H : room < COVER_MIN_H ? COVER_MIN_H : room;
   card.coverW = card.coverH * COVER_W / COVER_H;
   const int widthLimit = card.textW - STATS_GAP - in.statsMinWidth;
@@ -86,7 +89,7 @@ inline HomeCardLayout homeCardLayout(const HomeCardInput& in) {
   }
   if (in.metadataAboveCover) {
     const int metadata = 2 * in.titleLineHeight + AUTHOR_GAP + in.authorLineHeight + COVER_GAP;
-    const int available = card.ruleY - RULE_GAP - in.top - metadata;
+    const int available = oneLineRuleY - RULE_GAP - in.top - metadata;
     if (card.coverH > available) {
       card.coverH = available;
       card.coverW = card.coverH * COVER_W / COVER_H;
@@ -146,6 +149,7 @@ struct HomeStatsInput {
   int labelLineHeight = 0, valueLineHeight = 0;
   int valueTail = 0;  // value line height less its ascender: the empty rows under a value's baseline
   uint8_t rows = 0;
+  int labelHeights[HOME_STAT_COUNT] = {};  // 0 uses labelLineHeight
   int valueHeights[HOME_STAT_COUNT] = {};  // 0 uses valueLineHeight, wrapped values reserve both lines
   int valueTails[HOME_STAT_COUNT] = {};
 };
@@ -164,7 +168,8 @@ inline HomeStatsLayout homeStatsLayout(const HomeStatsInput& in) {
   for (int row = 0; row < HOME_STAT_COUNT; ++row)
     if (in.rows & (1u << row)) {
       ++count;
-      linesHeight += in.labelLineHeight + (in.valueHeights[row] ? in.valueHeights[row] : in.valueLineHeight);
+      linesHeight += (in.labelHeights[row] ? in.labelHeights[row] : in.labelLineHeight) +
+                     (in.valueHeights[row] ? in.valueHeights[row] : in.valueLineHeight);
       lastTail = in.valueHeights[row] ? in.valueTails[row] : in.valueTail;
     }
   if (!count) return column;
@@ -177,7 +182,7 @@ inline HomeStatsLayout homeStatsLayout(const HomeStatsInput& in) {
   for (int row = 0; row < HOME_STAT_COUNT; ++row) {
     if (!(in.rows & (1u << row))) continue;
     column.labelY[row] = y;
-    column.valueY[row] = y + in.labelLineHeight;
+    column.valueY[row] = y + (in.labelHeights[row] ? in.labelHeights[row] : in.labelLineHeight);
     int end = column.valueY[row] + (in.valueHeights[row] ? in.valueHeights[row] : in.valueLineHeight);
     if (row == HOME_STAT_READ) {
       column.barY = end + BAR_GAP;

@@ -166,7 +166,7 @@ inline bool settingOpensNext(const SettingInfo& setting) {
   if (setting.nameId == StrId::STR_TIME_TO_SLEEP) return true;
   if (setting.type == SettingType::ACTION) return setting.action != SettingAction::None;
   if (setting.type != SettingType::ENUM) return false;
-  const size_t count = setting.valuePtr == nullptr && !setting.enumStringValues.empty()
+  const size_t count = !setting.enumStringValues.empty()
                            ? setting.enumStringValues.size()
                            : setting.enumLabels().size();
   return settingstabs::moTrinhChon(static_cast<int>(count));
@@ -235,9 +235,9 @@ class SettingsActivity final : public UiTabListActivity {
   void pollTilt() override;
   bool allowsTiltTabNavigation() const override { return !optionPopup.isActive(); }
   bool supportsFavorites() const override { return true; }
-  // A row that opens a screen; a switch or a value list is changed in place.
+  // The cue follows the same picker decision as activation.
   bool rowOpens(int row) const override {
-    return currentSettings && row >= 0 && row < settingsCount && (*currentSettings)[row].type == SettingType::ACTION;
+    return currentSettings && row >= 0 && row < settingsCount && settingOpensNext((*currentSettings)[row]);
   }
   std::string favoriteKey(int row) const override;
   int focusFavorite(const std::string& key) override;

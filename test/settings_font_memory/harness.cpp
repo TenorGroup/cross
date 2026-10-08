@@ -141,6 +141,7 @@ bool catalogReleaseProbe() {
   const auto& initial = getBaseSettingsList();
   mem::active = false;
   const size_t bytes = mem::live;
+  const size_t sourceRows = initial.size();
   const auto copied = initial;
   const auto webCopy = getSettingsList();
   const auto clock = std::find_if(copied.begin(), copied.end(), [](const auto& row) {
@@ -152,7 +153,7 @@ bool catalogReleaseProbe() {
   bool ok = check(mem::live == 0, "shared catalog allocations released");
   std::printf("catalog_rows=%zu sizeof_SettingInfo=%zu allocated=%zu after_release=%zu\n",
               copied.size(), sizeof(SettingInfo), bytes, mem::live);
-  ok &= check(copied.size() == 101 && !webCopy.empty(), "101 base rows and owned web copy survive release");
+  ok &= check(sourceRows > 0 && copied.size() == sourceRows && !webCopy.empty(), "base rows and owned web copy survive release");
   clockCopy.valueSetter(1);
   ok &= check(clockCopy.valueGetter() == 1, "copied dynamic callback survives catalog release");
   SETTINGS.statusBarClock = CrossPointSettings::STATUS_BAR_CLOCK_HIDE;

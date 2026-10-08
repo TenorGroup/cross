@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 #include <I18n.h>
+#include <FreeInkUICore.h>
 #include "CrossPointSettings.h"
 #include "activities/settings/SettingsActivity.h"
 #include "components/SettledListRender.h"
@@ -149,12 +150,17 @@ struct PopupBoundary {
   void show(StrId, const std::vector<std::string>&, int, std::function<void(int)> callback) {
     active = true; this->callback = std::move(callback);
   }
+  template<class... Args> void showInFrame(const freeink::ui::Rect&, Args&&... args) {
+    show(std::forward<Args>(args)...);
+  }
   void choose(int i) { active = false; auto cb = std::move(callback); cb(i); }
 };
 struct ListNav {
   bool consumeRebuildNeeded() { return false; }
 };
 struct SettingsActivity {
+  static constexpr uint16_t ACTION_ROW = 1;
+  bool rowFrameFor(uint16_t, int, freeink::ui::Rect&) const { return false; }
   GfxRenderer renderer;
   MappedInputManager mappedInput;
   PopupBoundary optionPopup;
@@ -304,8 +310,10 @@ int main() {
          {StrId::STR_UI_SIZE_SMALL,StrId::STR_UI_SIZE_MEDIUM,StrId::STR_UI_SIZE_LARGE}));
     persistOk = true;
     activity.toggleCurrentSetting();
-    ok &= check(activity.uiSizeSeenDuringApply == 0, "direct UI apply sees the previous setting");
-    ok &= check(SETTINGS.uiTextSize == 1, "direct UI apply publishes candidate before save");
+    ok &= check(activity.optionPopup.active, "three-value UI enum opens picker");
+    activity.optionPopup.choose(1);
+    ok &= check(activity.uiSizeSeenDuringApply == 0, "UI picker apply sees the previous setting");
+    ok &= check(SETTINGS.uiTextSize == 1, "UI picker apply publishes candidate before save");
     ++scenarios;
   }
   {
@@ -316,6 +324,8 @@ int main() {
     row(activity, SettingInfo::Enum(StrId::STR_UI_TEXT_SIZE, &CrossPointSettings::uiTextSize,
          {StrId::STR_UI_SIZE_SMALL,StrId::STR_UI_SIZE_MEDIUM,StrId::STR_UI_SIZE_LARGE}));
     activity.toggleCurrentSetting();
+    ok &= check(activity.optionPopup.active, "failed UI apply starts in picker");
+    activity.optionPopup.choose(1);
     ok &= check(activity.uiSizeSeenDuringApply == 0, "failed UI apply sees the previous setting");
     ok &= check(SETTINGS.uiTextSize == 0, "failed UI apply keeps the previous setting");
     ok &= check(writes == writesBefore, "failed UI apply is not persisted");

@@ -14,8 +14,10 @@ p.add_argument('--repo', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
 p.add_argument('--sanitize', action='store_true')
 p.add_argument('--web-baseline', type=Path)
+p.add_argument('--i18n-dir', type=Path)
 a = p.parse_args()
 r, out = a.repo.resolve(), a.output.resolve()
+i18n = a.i18n_dir.resolve() if a.i18n_dir else r / 'lib/I18n'
 out.mkdir(parents=True, exist_ok=True)
 here = Path(__file__).resolve().parent
 
@@ -62,24 +64,24 @@ web = (r / 'src/network/CrossPointWebServer.cpp').read_text()
 # The serializer first adopts the status bar switches for the stored mode, so the
 # production adopt step and the mode table it reads are compiled in as well.
 settings = (r / 'src/CrossPointSettings.cpp').read_text()
-adopt = 'void CrossPointSettings::adoptReaderStatusItems()'
-(out / 'StatusItems.inc').write_text(
-    settings[settings.index('namespace {\n// What each reader status bar mode shows'):settings.index(adopt)] +
-    method(settings, adopt))
-keys = (r / 'lib/I18n/I18nKeys.h').read_text()
+status_start = settings.index('namespace {\n// What each reader status bar mode shows')
+status_end = settings.index('ReaderRenderSpec CrossPointSettings::readerRenderSpec')
+(out / 'StatusItems.inc').write_text(settings[status_start:status_end])
+keys = (i18n / 'I18nKeys.h').read_text()
 keys = re.findall(r'^\s*(STR_[A-Z0-9_]+)\s*,', keys[keys.index('enum class StrId'):], re.M)
 (out / 'KeyNames.inc').write_text(',\n'.join(json.dumps(x) for x in keys))
 for name in ['HalTiltSensor', 'HalClock']:
     instance = name[0].lower() + name[1:]
     (out / (name+'.h')).write_text('#pragma once\nclass '+name+' { public: bool available=false; bool isAvailable() const { return available; } };\nextern '+name+' '+instance+';\n')
 incs = ['test/host_stubs', 'src', '.pio/libdeps/gh_release/ArduinoJson/src', 'lib/Epub', 'lib/Logging',
-        'lib/EpdFont', 'lib/Serialization', 'lib/KOReaderSync', 'lib/I18n',
+        'lib/EpdFont', 'lib/Serialization', 'lib/KOReaderSync',
         'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include', 'freeink-sdk/libs/ui/FreeInkUI/include']
 common = [os.environ.get('CXX', 'c++'), '-std=c++20', '-O1', '-g', '-ffunction-sections', '-fdata-sections',
           '-Wl,-dead_strip' if platform.system() == 'Darwin' else '-Wl,--gc-sections',
           '-DENABLE_ARDUINO_FEATURES=0', '-DCROSSPOINT_VERSION="sleep-split"', '-I'+str(out)]
 if a.sanitize:
     common += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
+common += ['-I' + str(i18n)]
 common += ['-I'+str(r/x) for x in incs]
 expected_web = json.loads((here/'web-schema-sha256.json').read_text())
 results = []
@@ -89,7 +91,7 @@ for profile in ['c3', 'pro', 'persistence']:
         cmd = [common[0], '-I'+str(here/'stubs'), *common[1:], str(here/'persistence.cpp')]
     else:
         cmd = common + defines + [str(here/'harness.cpp'), str(r/'src/ReaderFontSizes.cpp'),
-               str(r/'src/activities/settings/SettingsTabs.cpp'), str(r/'lib/I18n/I18n.cpp'), str(r/'lib/I18n/I18nStrings.cpp')]
+               str(r/'src/activities/settings/SettingsTabs.cpp'), str(i18n/'I18n.cpp'), str(i18n/'I18nStrings.cpp')]
     cmd += ['-o', str(out/profile)]
     (out/(profile+'-command.json')).write_text(json.dumps(cmd, indent=2)+'\n')
     build = subprocess.run(cmd, capture_output=True, text=True)

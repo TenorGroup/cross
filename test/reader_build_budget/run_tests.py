@@ -136,7 +136,7 @@ hash_sources = {
     'src/activities/reader/ReaderActivity.cpp': reader_source,
 }
 (a.output / 'source-hashes.json').write_text(json.dumps({str(path): hashlib.sha256((root / path).read_bytes()).hexdigest() for path, root in hash_sources.items()}, indent=2))
-cmd = [a.compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-fsanitize=address,undefined', '-g', str(a.output / 'projection.cpp'), '-o', str(a.output / 'projection')]
+cmd = [a.compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-fsanitize=address,undefined', '-g', '-I' + str(a.source / 'src'), str(a.output / 'projection.cpp'), '-o', str(a.output / 'projection')]
 if a.ble_capability != 'absent':
     cmd.insert(1, '-DFREEINK_CAP_BLE_HID_HOST=' + a.ble_capability)
 (a.output / 'compile-command.json').write_text(json.dumps(cmd, indent=2))

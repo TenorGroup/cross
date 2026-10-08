@@ -16,6 +16,7 @@ foreach(name geometry option_window stats_layout stats_navigation list_render ke
   add_test(NAME UiLayout.${name} COMMAND UiLayout_${name})
 endforeach()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME UiLayout.in_frame_popup COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_in_frame_popup.py" --output "${CMAKE_CURRENT_BINARY_DIR}/in_frame_popup")
 add_test(NAME UiLayout.footer_tips COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_footer_tips.py")
 add_test(NAME UiLayout.sibling_arrows COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_sibling_arrows.py")
 add_test(NAME UiLayout.more_chevron COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_more_chevron.py")

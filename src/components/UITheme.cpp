@@ -123,6 +123,8 @@ int UITheme::getStatusBarHeight(StatusBarScope scope) {
     // Trong trinh doc: muc 0 la Tat, nam muc con lai cung mot chieu cao nen doi
     // muc chi ve lai thanh, khong dan lai trang.
     if (SETTINGS.readerStatusBarHidden()) return 0;
+    const auto spec = SETTINGS.statusBarSpec();
+    if (spec.slotsEnabled && !spec.textLaneVisible(true)) return 0;
     if (tenorchrome::enabled()) return tenorchrome::statusHeight();
   } else if (SETTINGS.globalStatusBarHidden()) {
     return 0;

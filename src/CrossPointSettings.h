@@ -6,6 +6,7 @@
 #include <Epub/ReaderSpacing.h>
 #include <PersistableStore.h>
 
+#include <array>
 #include <cstdint>
 
 #include "util/HomeButtonInput.h"
@@ -286,8 +287,21 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     READER_STATUS_BAR_CHAPTER_PROGRESS = 3,  // Ten chuong & tien trinh chuong
     READER_STATUS_BAR_CHAPTER_CLOCK = 4,     // Ten chuong & dong ho
     READER_STATUS_BAR_CHAPTER_BATTERY = 5,   // Ten chuong & pin
+    READER_STATUS_BAR_CLOCK_CHAPTER_PROGRESS = 6,
+    READER_STATUS_BAR_BOOK_DETAILS = 7,
     READER_STATUS_BAR_MODE_COUNT
   };
+  enum READER_STATUS_SLOT : uint8_t {
+    STATUS_SLOT_NONE = 0, STATUS_SLOT_CLOCK, STATUS_SLOT_BATTERY, STATUS_SLOT_CHAPTER_PAGES,
+    STATUS_SLOT_BOOK_PERCENT, STATUS_SLOT_CHAPTER_ETA, STATUS_SLOT_BOOK_ETA, STATUS_SLOT_COUNT
+  };
+  uint8_t readerStatusSlotsEnabled = 0;
+  uint8_t readerStatusTop = HIDE_TITLE;
+  uint8_t readerStatusLeft = STATUS_SLOT_CLOCK;
+  uint8_t readerStatusCenter = STATUS_SLOT_CHAPTER_PAGES;
+  uint8_t readerStatusRight = STATUS_SLOT_BATTERY;
+  uint8_t readerStatusItem(int row) const;
+  bool setReaderStatusItem(int row, uint8_t value);
   // Trang thai thanh trang thai
   uint8_t globalStatusBarMode = GLOBAL_STATUS_BAR_SMALL;
   uint8_t readerStatusBarMode = READER_STATUS_BAR_DEFAULT;
@@ -648,6 +662,13 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // refresh. Locking here would instead put a mutex on the render path and
   // stall it behind the SD write inside saveToFile(). Don't add one back.
   struct StatusBarSpec {
+    bool slotsEnabled = false;
+    uint8_t topTitleMode = HIDE_TITLE;
+    std::array<uint8_t, 3> slots{STATUS_SLOT_NONE, STATUS_SLOT_NONE, STATUS_SLOT_NONE};
+    bool hasSlot(uint8_t item) const {
+      for (const auto slot : slots) if (slot == item) return true;
+      return false;
+    }
     bool showChapterPageCount = false;
     bool showBookProgressPercent = false;
     uint8_t titleMode = HIDE_TITLE;  // STATUS_BAR_TITLE
@@ -665,6 +686,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     // Visibility of the text lane. Clock hardware presence is the caller's
     // concern: pass halClock.isAvailable(), or true for layout reservation.
     bool textLaneVisible(bool clockAvailable) const {
+      if (slotsEnabled) {
+        for (const auto slot : slots)
+          if (slot != STATUS_SLOT_NONE && (slot != STATUS_SLOT_CLOCK || clockAvailable)) return true;
+        return false;
+      }
       return showChapterPageCount || showBookProgressPercent || showsTitle() || showBattery ||
              (showsClock() && clockAvailable);
     }

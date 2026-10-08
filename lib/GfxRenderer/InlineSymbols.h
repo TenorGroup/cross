@@ -5,6 +5,7 @@ enum class Shape { Select, Back, Up, Down, Left, Right, Star, MarginPin, Erase, 
 struct Spec {
   Shape shape;
   const char* label;
+  int marginPinHeight = 8;
 };
 using Resolver = Spec (*)(int);
 using FontFilter = bool (*)(int);
@@ -15,6 +16,7 @@ int text(const GfxRenderer& renderer, int font, int x, int y, const char* text, 
 void drawShape(const GfxRenderer& renderer, Shape shape, int x, int y, int size, bool black);
 // Dau ghim cua dong Yeu thich, ve o le trai (x 13), dinh o `top`.
 void drawMarginPin(const GfxRenderer& renderer, int top);
+int marginPinHeight();
 // The top of a mark `height` px tall beside a line of `font` drawn at `y` (the y drawText takes): centred on the
 // line's capitals, from their top to the baseline. Every pinned row's heart stands here (founder 07/10: the hearts
 // sat low, on the middle of the line box).

@@ -63,7 +63,7 @@ Tab nhaCua(const Action action) {
   return Tab::SYSTEM;
 }
 
-bool moTrinhChon(const int soLuaChon) { return soLuaChon >= 4; }
+bool moTrinhChon(const int soLuaChon) { return soLuaChon > 2; }
 
 int dongCuaTheCaiDat(StrId* const out, const int max) {
   int n = 0;

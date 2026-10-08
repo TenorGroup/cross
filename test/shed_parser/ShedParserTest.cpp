@@ -306,6 +306,11 @@ void report(const Run& run, const Result& result, const Result& reference) {
 HalDisplay::HalDisplay() = default;
 HalDisplay::~HalDisplay() = default;
 uint8_t* HalDisplay::getFrameBuffer() const { return pixels.data(); }
+uint8_t* HalDisplay::lendFrameBufferStorage(uint32_t* sizeOut) {
+  if (sizeOut) *sizeOut = BUFFER_SIZE;
+  return pixels.data();
+}
+void HalDisplay::returnFrameBufferStorage() {}
 uint16_t HalDisplay::getDisplayWidth() const { return DISPLAY_WIDTH; }
 uint16_t HalDisplay::getDisplayHeight() const { return DISPLAY_HEIGHT; }
 uint16_t HalDisplay::getDisplayWidthBytes() const { return DISPLAY_WIDTH_BYTES; }

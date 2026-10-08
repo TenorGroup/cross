@@ -7,6 +7,7 @@ class CrossPointSettings {
   enum { PREV_NEXT = 0, NEXT_PREV = 1 };
   uint8_t uiTextSize = 0;  // TenorMenuChrome.h sizes its header and tab band from it
   uint8_t tenorButtonSymbols = 1;
+  uint8_t tenorSideArrows = 1;
   uint8_t sideButtonLayout = PREV_NEXT;
   static CrossPointSettings& getInstance() {
     static CrossPointSettings instance;

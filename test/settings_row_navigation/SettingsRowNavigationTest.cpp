@@ -52,18 +52,20 @@ void checkStoredEnums() {
   for (size_t count = 0; count <= labels.size(); count++) {
     auto dynamicLabels = SettingInfo::Enum(StrId::STR_NONE_OPT, &CrossPointSettings::value,
                                           std::vector<StrId>(count, StrId::STR_NONE_OPT));
-    expect(settingOpensNext(dynamicLabels) == (count >= 4), "stored enum vector uses the picker threshold");
+    expect(settingOpensNext(dynamicLabels) == (count > 2), "stored enum vector uses the picker threshold");
 
     auto staticLabels = baseSetting(SettingType::ENUM);
     staticLabels.valuePtr = &CrossPointSettings::value;
     staticLabels.staticEnumValues = std::span<const StrId>(labels.data(), count);
-    expect(settingOpensNext(staticLabels) == (count >= 4), "stored static enum uses the picker threshold");
+    expect(settingOpensNext(staticLabels) == (count > 2), "stored static enum uses the picker threshold");
   }
 
   auto labelsWin = SettingInfo::Enum(StrId::STR_NONE_OPT, &CrossPointSettings::value,
                                     std::vector<StrId>(3, StrId::STR_NONE_OPT));
   labelsWin.enumStringValues.assign(5, "value");
-  expect(!settingOpensNext(labelsWin), "stored enum ignores runtime strings");
+  expect(settingOpensNext(labelsWin), "stored enum uses runtime strings as activation does");
+  labelsWin.enumStringValues.assign(2, "value");
+  expect(!settingOpensNext(labelsWin), "2 runtime strings stay inline despite 3 translated labels");
 }
 
 SettingInfo accessorEnum(const size_t labelCount, const size_t stringCount) {
@@ -76,13 +78,13 @@ SettingInfo accessorEnum(const size_t labelCount, const size_t stringCount) {
 
 void checkAccessorEnums() {
   for (size_t count = 0; count <= 5; count++) {
-    expect(settingOpensNext(accessorEnum(count, 0)) == (count >= 4),
+    expect(settingOpensNext(accessorEnum(count, 0)) == (count > 2),
            "accessor enum falls back to translated labels");
-    expect(settingOpensNext(accessorEnum(0, count)) == (count >= 4),
+    expect(settingOpensNext(accessorEnum(0, count)) == (count > 2),
            "accessor enum uses runtime strings");
   }
   expect(settingOpensNext(accessorEnum(3, 5)), "runtime strings take precedence for accessor enums");
-  expect(!settingOpensNext(accessorEnum(5, 3)), "short runtime strings take precedence for accessor enums");
+  expect(settingOpensNext(accessorEnum(5, 3)), "3 runtime strings open the picker");
 }
 
 }  // namespace

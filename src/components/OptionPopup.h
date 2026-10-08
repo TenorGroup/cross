@@ -93,6 +93,13 @@ class OptionPopup {
     activateInFrame(parentFrame);
   }
 
+  void showInFrame(const freeink::ui::Rect& parentFrame, const char* titleStr,
+                   const char* const* options, int optionCount, int currentIndex,
+                   std::function<void(int)> onSelect) {
+    show(titleStr, options, optionCount, currentIndex, std::move(onSelect));
+    activateInFrame(parentFrame);
+  }
+
   static int rowsInFrame(const int frameHeight, const int headerHeight, const int rowHeight,
                          const int optionCount) {
     return optionPopupFrameRows(frameHeight, headerHeight, rowHeight, optionCount);
@@ -464,6 +471,7 @@ class OptionPopup {
     constexpr int font = UI_12_FONT_ID, PAD = 6, RADIUS = 20, GAP = 4, MARK = 24;
     const bool narrow = anchored;
     const int ROW = narrow ? 56 : std::max(56, renderer.getLineHeight(font) + 16);
+    const int pad = inFrame ? std::min(PAD, std::max(0, (frameRect.height - ROW) / 2)) : PAD;
     const int TEXT_X = narrow ? 24 : 16;
     const int count = static_cast<int>(ownedStrings.size());
     const int x = inFrame ? frameRect.x : tenorchrome::FOOT_BACK_X;
@@ -498,6 +506,8 @@ class OptionPopup {
     }
     int headH = static_cast<int>(headLines.size()) * lh;
     if (headH) headH += 2 * PAD + 8;
+    // A single-row group keeps its own frame; the choices take the room before the caption.
+    if (inFrame && headH + ROW + 2 * pad > frameRect.height) headH = 0;
     const int top = inFrame ? frameRect.y : tenorchrome::contentTop();
     const int bottom = inFrame ? frameRect.bottom() : tenorchrome::footBackTop(screen.height) - 8;
     const int rows = inFrame ? rowsInFrame(frameRect.height, headH, ROW, count)
@@ -507,7 +517,7 @@ class OptionPopup {
     const int first = scrollTop;
     shownRows = rows;
     shownPitch = ROW;
-    const int h = headH + rows * ROW + 2 * PAD;
+    const int h = headH + rows * ROW + 2 * pad;
     int y = inFrame ? frameRect.y : bottom - h;
     if (!inFrame && (narrow || hasAnchor)) {
       const int below = anchor.y + anchor.height + GAP, above = anchor.y - GAP - h;
@@ -525,14 +535,14 @@ class OptionPopup {
       tenorchrome::drawRoundRing(renderer, box.x, box.y, box.width, box.height, tenorchrome::PANEL_RADIUS, 2, true);
     }
     frame.hit(box, ACTION_CHROME, 0, fui::InputTouch);
-    int cursor = y + PAD + (headH ? PAD + 4 : 0);
-    for (size_t i = 0; i < headLines.size(); ++i) {
+    int cursor = y + pad + (headH ? PAD + 4 : 0);
+    for (size_t i = 0; headH && i < headLines.size(); ++i) {
       head.bold = static_cast<int>(i) < boldLines;
       frame.target().text(fui::Rect{headRect.x, static_cast<int16_t>(cursor), headRect.width, static_cast<int16_t>(lh)},
                           headLines[i].c_str(), head);
       cursor += lh;
     }
-    const int rowsTop = y + PAD + headH;
+    const int rowsTop = y + pad + headH;
     if (headH) tenorchrome::drawRowRule(renderer, rowsTop - 1, x + TEXT_X, x + w - TEXT_X);
     for (int r = 0; r < rows; ++r) {
       const int i = first + r;

@@ -71,6 +71,19 @@ class EpubReaderActivity final : public ReaderActivity {
   // The framebuffer holds exactly the page frame on the panel: set when renderBook ends on a
   // page, cleared when a paint begins and when another screen covers the reader. Under RenderLock.
   std::atomic<bool> pageFrameShown{false};
+  class BackgroundBuildFrameGuard {
+   public:
+    explicit BackgroundBuildFrameGuard(EpubReaderActivity& activity);
+    ~BackgroundBuildFrameGuard();
+
+    BackgroundBuildFrameGuard(const BackgroundBuildFrameGuard&) = delete;
+    BackgroundBuildFrameGuard& operator=(const BackgroundBuildFrameGuard&) = delete;
+
+   private:
+    EpubReaderActivity& activity;
+    uint32_t loanCount;
+  };
+  void invalidatePageFrameAfterLoan(uint32_t loanCount);
   // That page leaves the panel as it is under a fast differential refresh that only changes the
   // status bar (see renderContents), and the charging state its status bar shows.
   bool pageFrameKeepsUnderFast = false;
@@ -422,6 +435,9 @@ class EpubReaderActivity final : public ReaderActivity {
   void applyReaderTextSettings();
   void applyReaderTextSettingsLocked();
   void invalidateTextSettingsLocked();
+  // The rendered page's glyph caches can yield their heap to the overlay
+  // snapshot, including the first sheet opened with unchanged settings.
+  void releaseTextCachesBeforeOverlaySnapshot();
   // More panel rows.
   void buildMoreActions();
   std::string moreRowName(int row) const;
@@ -448,6 +464,8 @@ class EpubReaderActivity final : public ReaderActivity {
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
   void renderStatusBar() const;
+  readerstatus::Pace::Position pacePosition() const override;
+  uint32_t paceLayoutKey() const override;
   // Invert the words of every saved quote that reaches this page, exactly the way the
   // quote selector inverts a live selection. Called on the black and white pass only.
   void drawQuoteHighlights(const Page& page, int fontId, int marginLeft, int marginTop) const;

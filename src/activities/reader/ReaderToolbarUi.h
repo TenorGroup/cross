@@ -69,7 +69,7 @@ class ReaderToolbarUi : public UiAppHost {
     std::function<bool(int)> rowPinned;
     // Drawn in the list's place when it has no rows (an empty Favorites).
     const char* emptyText = nullptr;
-    // Buttons: a row that opens a list or another screen ends in the grey chevron, as in Settings.
+    // A row that opens a list or another screen ends in the grey chevron, as in Settings.
     std::function<bool(int)> rowOpens;
     // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..3, -1 none.
     int activeTool = 0;
@@ -78,7 +78,7 @@ class ReaderToolbarUi : public UiAppHost {
     bool denseRows = false;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
     TextView textView = TextView::None;
-    int spacingPlace = 2, spacingDraftPermille = 500;
+    int spacingPlace = 2, spacingCount = 5, spacingDraftPermille = 500;
     std::function<const char*(int)> spacingLabel;
     const char* numericDraft = nullptr;
     const char* numericHint = nullptr;
@@ -116,6 +116,8 @@ class ReaderToolbarUi : public UiAppHost {
   int visibleRows() const { return nav_.pageRows(); }
   // Buttons: the rows the last panel sheet was sized to (its frame), glimpse row included.
   int sheetRows() const { return sheetRows_; }
+  // Bounds of the last painted panel sheet, used by nested value pickers.
+  freeink::ui::Rect panelRect() const { return skinFrame_; }
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   int scrollRows(const MappedInputManager& input, int count) const;
 #endif

@@ -109,6 +109,7 @@ class TextSettingsActivity final : public UiTabListActivity {
   void rebuildSizeList();
   void confirmLayoutRow(int row);
   void confirmStyleRow(int row);
+  void confirmValueRow(Tab tab, int row);
   // Applies the row at the given list index for the active tab (Confirm and tap share this).
   void activateRow(int row);
   bool applyChosenValue(Tab tab, int row, int option, bool repaint = true);

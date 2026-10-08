@@ -77,8 +77,10 @@ int encode(const uint32_t cp, char* out) {
 // the dots would go), the tick of the Select key, which no font on the card has, and the inline key symbols of
 // the UI strings (U+E100 Select, Back, Up, Down, Left, Right, then the star, the 2 side buttons and the erase key),
 // drawn as the marks over the keys.
-constexpr uint32_t SCRAWL = 0xE000, TICK = 0x2713, KEY_FIRST = 0xE100, KEY_LAST = 0xE109;
-bool penDrawn(const uint32_t cp) { return cp == SCRAWL || cp == TICK || (cp >= KEY_FIRST && cp <= KEY_LAST); }
+constexpr uint32_t SCRAWL = 0xE000, TICK = 0x2713, MARGIN_PIN = 0xE10A, KEY_FIRST = 0xE100, KEY_LAST = 0xE109;
+bool penDrawn(const uint32_t cp) {
+  return cp == MARGIN_PIN || cp == SCRAWL || cp == TICK || (cp >= KEY_FIRST && cp <= KEY_LAST);
+}
 
 // The baked pen has no degree sign: on the X4 Pro the pen draws it, a small ring, so "180°" stays in one hand.
 constexpr uint32_t DEGREE = 0xB0;
@@ -121,6 +123,7 @@ Letter letterOf(const Size s, const bool af, const uint32_t cp) {
 
 // Advance in pixels of one letter. Drawing and measuring ask this and nothing else, so the two cannot disagree.
 int stepOf(const GfxRenderer& r, const Size s, const bool af, const int pos, const uint32_t cp, const Letter& letter) {
+  if (cp == MARGIN_PIN) return 0;
   if (cp == SCRAWL) return 3 * stepOf(r, s, false, pos, '.', {nullptr, logic::NO_WARP});
   if (penDrawn(cp)) return 26;  // a mark is some 20 px across
   if (penDegree(cp)) return 2 * degreeRadius(pixelsOf(s)) + 4;
@@ -202,7 +205,15 @@ void penMark(const GfxRenderer& r, const Size s, const uint32_t cp, const int x,
 #ifdef UGLY_FRAME_LOG
     LOG_INF("UGLY", "part=penmark cp=%X", static_cast<unsigned>(cp));
 #endif
-    keyMark(r, cp, x + advance / 2, baseline - h / 2);
+    if (cp == MARGIN_PIN) {
+      const int size = inlineSymbols::marginPinHeight() == 8 ? 14 : 20;
+      const auto clip = r.getClipRect();
+      r.setClipRect(0, clip[1], clip[0] + clip[2], clip[3]);
+      heart(r, 20 - size / 2, baseline - h / 2, size);
+      r.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+    } else {
+      keyMark(r, cp, x + advance / 2, baseline - h / 2);
+    }
     return;
   }
   // Loops of a pen that gave up writing: up and down a little under the x-height, each step a little off.
@@ -231,7 +242,7 @@ int run(const GfxRenderer& r, const Size s, const int x, const int baseline, con
       const int advance = stepOf(r, s, af, pos, cp, letter);
       if (draw && !r.isFontCacheScanning()) penMark(r, s, cp, cursor, baseline, advance);
       cursor += advance;
-      ++pos;
+      if (cp != MARGIN_PIN) ++pos;
       continue;
     }
     if (penDegree(cp)) {
@@ -660,12 +671,6 @@ void tickBox(const GfxRenderer& r, const int x, const int y, const bool ticked) 
   if (ticked) penTick(r, x - 12, y + 7, 26, 3);  // the one tick of the shell
 }
 
-void heart(const GfxRenderer& r, const int x, const int y) {
-  const int h[11][2] = {{x, y + 11}, {x - 9, y + 2}, {x - 11, y - 4}, {x - 8, y - 9}, {x - 3, y - 9}, {x, y - 4},
-                        {x + 3, y - 9}, {x + 8, y - 10}, {x + 12, y - 4}, {x + 9, y + 3}, {x + 1, y + 11}};
-  polyline(r, h, 11, 2);
-}
-
 void liftArt(const GfxRenderer& r, const uint8_t* plane, const Box& box, const int dx, const int dy) {
   // Row 527 - x, column y, a set bit is white (scripts/ugly/gen_art.py).
   const int x0 = std::max(0, box.x0), x1 = std::min(logic::FRAME_W - 1, box.x1);
@@ -681,5 +686,13 @@ void penPath(const GfxRenderer& r, const int16_t* xs, const int16_t* ys, const i
   for (int i = 0; i + 1 < n; ++i) stroke(r, xs[i], ys[i], xs[i + 1], ys[i + 1], 3);
 }
 #endif
+
+void heart(const GfxRenderer& r, const int x, const int y, const int size) {
+  constexpr int path[11][2] = {{0, 11}, {-9, 2}, {-11, -4}, {-8, -9}, {-3, -9}, {0, -4},
+                               {3, -9}, {8, -10}, {12, -4}, {9, 3}, {1, 11}};
+  for (int i = 0; i < 10; ++i)
+    stroke(r, x + path[i][0] * size / 24, y + path[i][1] * size / 24,
+           x + path[i + 1][0] * size / 24, y + path[i + 1][1] * size / 24, 2);
+}
 
 }  // namespace ugly

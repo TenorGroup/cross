@@ -228,7 +228,7 @@ class HomeActivity final : public UiTabListActivity {
   void loadCardStats(int index);
   int drawCardStats(const HomeCardLayout& card);
   void drawRecentCard();
-  void drawOtherBookRow(int shown, int ruleY, int rowY);
+  void drawOtherBookRow(int shown, int ruleY, int rowY, const std::vector<std::string>& titleLines);
   const char* habitSuggestion() const;
   void loadRecentBooks();
 };

@@ -24,6 +24,23 @@ enum Level : uint8_t {
   LEVEL_COUNT = 5
 };
 
+// Line spacing appends two values without widening the shared letter/word/paragraph wire enum.
+enum LineLevel : uint8_t {
+  LINE_EXTRA_WIDE = 5, // 1.30
+  LINE_ULTRA_WIDE = 6, // 1.60
+  LINE_LEVEL_COUNT = 7
+};
+constexpr uint8_t lineLevelCount() {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  return LINE_LEVEL_COUNT;
+#else
+  return LEVEL_COUNT;
+#endif
+}
+constexpr uint8_t clampLineLevel(const int level) {
+  return (level >= 0 && level < lineLevelCount()) ? static_cast<uint8_t>(level) : static_cast<uint8_t>(LEVEL_DEFAULT);
+}
+
 // An untrusted ordinal - a hand-edited file, an older save, a caller's index -
 // folds to the default level instead of indexing past the tables below.
 constexpr uint8_t clampLevel(const int level) {
@@ -70,6 +87,10 @@ constexpr float lineFactor(const uint8_t level) {
       return 1.10f;
     case VERY_WIDE:
       return 1.20f;
+    case LINE_EXTRA_WIDE:
+      return 1.30f;
+    case LINE_ULTRA_WIDE:
+      return 1.60f;
     default:
       return 1.00f;
   }

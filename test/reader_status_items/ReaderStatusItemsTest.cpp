@@ -17,13 +17,15 @@ struct Seen {
 };
 
 // What each combined mode showed before the switches, one row per stored value.
-constexpr Seen OLD_MODES[S::READER_STATUS_BAR_MODE_COUNT] = {
+constexpr Seen OLD_MODES[] = {
     {false, false, false, false, false},  // Off
     {false, false, false, true, true},    // Clock & battery
     {true, true, true, true, true},       // Full default
     {true, true, false, false, false},    // Chapter name & chapter progress
     {true, false, false, false, true},    // Chapter name & clock
     {true, false, false, true, false},    // Chapter name & battery
+    {false, true, false, false, true},    // Clock & chapter progress, appended stored value 6
+    {true, true, false, false, true},     // Book title, clock, chapter pages and book ETA
 };
 
 int failures = 0;
@@ -57,7 +59,7 @@ void loadLegacy(const int mode) {
 }
 
 void legacyFilesKeepWhatTheyShowed() {
-  for (int mode = 0; mode < S::READER_STATUS_BAR_MODE_COUNT; ++mode) {
+  for (int mode = 0; mode < static_cast<int>(std::size(OLD_MODES)); ++mode) {
     loadLegacy(mode);
     expect(same(seen(), OLD_MODES[mode]), "legacy file shows what its mode showed", mode);
     if (mode == S::READER_STATUS_BAR_OFF) continue;
@@ -127,6 +129,7 @@ void currentFilesKeepTheirSwitches() {
 }  // namespace
 
 int main() {
+  expect(S::READER_STATUS_BAR_MODE_COUNT == 8, "two appended modes preserve the six stored values", 6);
   // Defaults on a fresh card are the full bar, as before.
   expect(same(seen(), OLD_MODES[S::READER_STATUS_BAR_DEFAULT]), "fresh defaults", S::READER_STATUS_BAR_DEFAULT);
   legacyFilesKeepWhatTheyShowed();

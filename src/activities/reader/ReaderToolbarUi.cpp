@@ -580,7 +580,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       item.value = windowValues_[i].empty() || (rows && index == 1) ? nullptr : windowValues_[i].c_str();
       item.actionValue = static_cast<int16_t>(index);
       item.chosen = model_.rowMarked && model_.rowMarked(index);
-      item.opensNext = rows && (index == 0 || index == 2);
+      item.opensNext = model_.rowOpens && model_.rowOpens(index);
       windowItems_[i] = item;
     }
     listProps_.items = windowItems_;
@@ -670,8 +670,10 @@ void ReaderToolbarUi::buildX4Spacing(UiScreen& screen, const fui::Rect& frame) {
   const int16_t width = static_cast<int16_t>(frame.width - 96);
   const int16_t y = static_cast<int16_t>(frame.y + 150);
   screen.target().fill({left, y, width, 2}, ink);
-  for (int i = 0; i < 5; ++i) {
-    const int16_t x = static_cast<int16_t>(left + (width - 1) * i / 4);
+  const int count = std::max(2, model_.spacingCount);
+  const int last = count - 1;
+  for (int i = 0; i < count; ++i) {
+    const int16_t x = static_cast<int16_t>(left + (width - 1) * i / last);
     screen.target().fill({x, static_cast<int16_t>(y - 10), 2, 22}, ink);
     fui::TextStyle style = tokens.smallText;
     style.bold = i == model_.spacingPlace;
@@ -799,8 +801,10 @@ void ReaderToolbarUi::paintUgly() {
       const auto box = app.publishedRect(ACTION_SPACING, 0);
       const int cy = box.y + box.height / 2;
       ugly::line(r, box.x, cy, box.right(), cy, 815, 2);
-      for (int i = 0; i < 5; ++i) {
-        const int x = box.x + (box.width - 1) * i / 4;
+      const int count = std::max(2, model_.spacingCount);
+      const int last = count - 1;
+      for (int i = 0; i < count; ++i) {
+        const int x = box.x + (box.width - 1) * i / last;
         ugly::line(r, x, cy - 10, x, cy + 10, 816 + i, 2);
         const std::string label = model_.spacingLabel ? model_.spacingLabel(i) : "";
         const auto space = label.find(' ');

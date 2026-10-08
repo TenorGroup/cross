@@ -15,6 +15,10 @@ enum class BidiBaseDir : signed char { AUTO = -1, LTR = 0, RTL = 1 };
 
 class GfxRenderer {
  public:
+  class FrameBufferLoan {
+   public:
+    explicit FrameBufferLoan(GfxRenderer&) {}
+  };
   int getDropCapAdvance(int, const char* text, EpdFontFamily::Style, int height, int = 0) const {
     return dropcap::initial(text).codepoint ? height / 2 + 4 : 0;
   }

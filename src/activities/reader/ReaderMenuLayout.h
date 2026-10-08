@@ -89,7 +89,8 @@ int rowsOfFavorites(const std::vector<Item>& all, const Action* favorites, int c
 // luu). Mot danh sach cho popup cua menu danh sach va danh sach gia tri cua menu thanh cong cu.
 inline constexpr StrId STATUS_BAR_MODE_LABELS[] = {
     StrId::STR_STATE_OFF,                   StrId::STR_STATUS_BAR_CLOCK_BATTERY, StrId::STR_STATUS_BAR_DEFAULT,
-    StrId::STR_STATUS_BAR_CHAPTER_PROGRESS, StrId::STR_STATUS_BAR_CHAPTER_CLOCK, StrId::STR_STATUS_BAR_CHAPTER_BATTERY};
+    StrId::STR_STATUS_BAR_CHAPTER_PROGRESS, StrId::STR_STATUS_BAR_CHAPTER_CLOCK, StrId::STR_STATUS_BAR_CHAPTER_BATTERY,
+    StrId::STR_STATUS_BAR_CLOCK_CHAPTER_PROGRESS, StrId::STR_STATUS_BAR_BOOK_DETAILS};
 
 // Dong cua lenh nay mo mot danh sach hay mot man khac (co mui ten ">" mo o cuoi dong, nhu Cai dat), hay lam
 // ngay tai cho (bat tat, chup, dat dau trang: khong mui ten).

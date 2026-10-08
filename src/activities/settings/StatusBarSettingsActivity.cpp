@@ -26,36 +26,18 @@
 namespace fui = freeink::ui;
 
 namespace {
-// Menu items in their natural order. The clock position entry is appended only
-// when the RTC probe found hardware; time, zone, and format live in Settings >
-// System > Clock.
-enum MenuItem {
-  ITEM_CHAPTER_PAGE_COUNT = 0,
-  ITEM_BOOK_PROGRESS_PERCENTAGE,
-  ITEM_PROGRESS_BAR,
-  ITEM_PROGRESS_BAR_THICKNESS,
-  ITEM_TITLE,
-  ITEM_BATTERY,
-  ITEM_XTC_STATUS_BAR,
-  ITEM_CLOCK,  // RTC boards only
-};
-
-constexpr int PROGRESS_BAR_ITEMS = 3;
-constexpr int PROGRESS_BAR_THICKNESS_ITEMS = 3;
-constexpr int TITLE_ITEMS = 3;
-constexpr int XTC_STATUS_BAR_ITEMS = 3;
-constexpr int STATUS_BAR_CLOCK_ITEMS = CrossPointSettings::STATUS_BAR_CLOCK_MODE_COUNT;
-
-// The Tenor bar draws the chapter name, the two counts, battery and clock, so its
-// screen lists only the items that bar reads, as the classic item each one edits.
-constexpr MenuItem TENOR_ROWS[] = {ITEM_TITLE, ITEM_CHAPTER_PAGE_COUNT, ITEM_BOOK_PROGRESS_PERCENTAGE, ITEM_CLOCK};
-constexpr StrId TENOR_NAMES[] = {StrId::STR_CHAPTER_NAME, StrId::STR_CHAPTER_PAGE_COUNT,
-                                 StrId::STR_BOOK_PROGRESS_PERCENTAGE, StrId::STR_STATUS_CORNERS};
-constexpr int TENOR_ROW_COUNT = sizeof(TENOR_ROWS) / sizeof(TENOR_ROWS[0]);
+constexpr StrId TENOR_NAMES[] = {StrId::STR_READER_STATUS_TOP, StrId::STR_READER_STATUS_LEFT,
+                                 StrId::STR_READER_STATUS_CENTER, StrId::STR_READER_STATUS_RIGHT};
+constexpr StrId TOP_VALUES[] = {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_STATE_OFF};
+constexpr StrId SLOT_VALUES[] = {StrId::STR_STATE_OFF, StrId::STR_CLOCK, StrId::STR_BATTERY,
+                                  StrId::STR_CHAPTER_PAGE_COUNT, StrId::STR_BOOK_PROGRESS_PERCENTAGE,
+                                  StrId::STR_READER_STATUS_CHAPTER_ETA, StrId::STR_READER_STATUS_BOOK_ETA};
+constexpr int TENOR_ROW_COUNT = sizeof(TENOR_NAMES) / sizeof(TENOR_NAMES[0]);
 static_assert(TENOR_ROW_COUNT == StatusBarSettingsActivity::MAX_STATUS_BAR_ITEMS,
               "keep StatusBarSettingsActivity::MAX_STATUS_BAR_ITEMS in sync with TENOR_ROWS");
 
-int itemAt(const int row) { return TENOR_ROWS[row]; }
+const StrId* valuesAt(const int row) { return row == 0 ? TOP_VALUES : SLOT_VALUES; }
+int valueCount(const int row) { return row == 0 ? std::size(TOP_VALUES) : std::size(SLOT_VALUES); }
 }  // namespace
 
 StatusBarSettingsActivity::StatusBarSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -63,6 +45,7 @@ StatusBarSettingsActivity::StatusBarSettingsActivity(GfxRenderer& renderer, Mapp
 
 void StatusBarSettingsActivity::onEnter() {
   RenderLock lock(*this);
+  choiceRow_ = -1;
   UiListActivity::onEnter();
 
   visibleItemCount = TENOR_ROW_COUNT;
@@ -70,32 +53,12 @@ void StatusBarSettingsActivity::onEnter() {
   // switches take that as their starting point before any of them is flipped.
   SETTINGS.adoptReaderStatusItems();
 
-  // Clamp statusBarProgressBar and statusBarTitle in case of corrupt/migrated data
-  if (SETTINGS.statusBarProgressBar >= PROGRESS_BAR_ITEMS) {
-    SETTINGS.statusBarProgressBar = CrossPointSettings::STATUS_BAR_PROGRESS_BAR::HIDE_PROGRESS;
-  }
-
-  if (SETTINGS.statusBarProgressBarThickness >= PROGRESS_BAR_THICKNESS_ITEMS) {
-    SETTINGS.statusBarProgressBarThickness = CrossPointSettings::STATUS_BAR_PROGRESS_BAR_THICKNESS::PROGRESS_BAR_NORMAL;
-  }
-
-  if (SETTINGS.statusBarTitle >= TITLE_ITEMS) {
-    SETTINGS.statusBarTitle = CrossPointSettings::STATUS_BAR_TITLE::HIDE_TITLE;
-  }
-
-  if (SETTINGS.xtcStatusBarMode >= XTC_STATUS_BAR_ITEMS) {
-    SETTINGS.xtcStatusBarMode = CrossPointSettings::XTC_STATUS_BAR_MODE::XTC_STATUS_BAR_HIDE;
-  }
-
-  if (SETTINGS.statusBarClock >= STATUS_BAR_CLOCK_ITEMS) {
-    SETTINGS.statusBarClock = CrossPointSettings::STATUS_BAR_CLOCK_MODE::STATUS_BAR_CLOCK_HIDE;
-  }
-
   // Labels never change (unlike the values, which track live SETTINGS
   // state), so they're set once here rather than every buildScreen() call.
   for (int i = 0; i < visibleItemCount; i++) {
     rowItems_[i].label = I18N.get(TENOR_NAMES[i]);
     rowItems_[i].actionValue = static_cast<int16_t>(i);
+    rowItems_[i].opensNext = true;
   }
   if (shell::isUgly()) {
     ugly::ensureFonts(renderer);
@@ -115,7 +78,7 @@ void StatusBarSettingsActivity::pollTilt() {
 }
 
 bool StatusBarSettingsActivity::handleCustomInput() {
-  if (!shell::isUgly()) return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
+  if (!shell::isUgly()) return false;
   using Button = MappedInputManager::Button;
   using Key = ugly::QuestionSheet::Key;
   const auto key = [this](Key value) { queueForm({FormEvent::Type::Key, value}); };
@@ -194,6 +157,10 @@ bool StatusBarSettingsActivity::handleCustomInput() {
 
 
 void StatusBarSettingsActivity::activateIndex(const int index) {
+  if (choiceRow_ >= 0) {
+    if (index >= 0 && index < valueCount(choiceRow_) && applyChosenValue(choiceRow_, index)) closeChoices();
+    return;
+  }
   if (index < 0 || index >= visibleItemCount) return;
   if (shell::isUgly()) {
     ugly::QuestionSheet::Intent intent;
@@ -207,7 +174,6 @@ void StatusBarSettingsActivity::activateIndex(const int index) {
     applyFormIntent(intent);
     return;
   }
-  if (optionPopup.isActive()) return;
   nav.selected = index;
   // Activation opens a popup/sub-activity or repaints a new value; a lingering
   // flash would gray an unrelated row.
@@ -217,8 +183,37 @@ void StatusBarSettingsActivity::activateIndex(const int index) {
 }
 
 void StatusBarSettingsActivity::handleSelection() {
-  const auto row = formRow(this, nav.selected);
-  if (row.count) applyChosenValue(nav.selected, (row.selected + 1) % row.count, false);
+  RenderLock lock(*this);
+  const auto lines = rowFrameLines(rowFrameGap);
+  const auto first = app.publishedRect(ACTION_ROW, 0);
+  const auto last = app.publishedRect(ACTION_ROW, visibleItemCount - 1);
+  choiceTop_ = first.y - lines.top;
+  choiceBottom_ = last.y + last.height + lines.bottom;
+  choiceRowHeight_ = first.height;
+  choiceRow_ = nav.selected;
+  choiceNav_.reset();
+  choiceNav_.selected = SETTINGS.readerStatusItem(choiceRow_);
+  resetUi();
+}
+
+int StatusBarSettingsActivity::listCount() const {
+  return choiceRow_ < 0 ? visibleItemCount : valueCount(choiceRow_);
+}
+
+std::string StatusBarSettingsActivity::navigationLabel() const {
+  return I18N.get(choiceRow_ < 0 ? StrId::STR_CUSTOMISE_STATUS_BAR : TENOR_NAMES[choiceRow_]);
+}
+
+void StatusBarSettingsActivity::closeChoices() {
+  RenderLock lock(*this);
+  choiceRow_ = -1;
+  resetUi();
+  requestUpdate();
+}
+
+void StatusBarSettingsActivity::onBackButton() {
+  if (choiceRow_ >= 0) closeChoices();
+  else if (!saveFailed_.load() || saveSettings()) finish();
 }
 
 bool StatusBarSettingsActivity::saveSettings(const bool repaint) {
@@ -232,34 +227,17 @@ bool StatusBarSettingsActivity::saveSettings(const bool repaint) {
 int StatusBarSettingsActivity::defaultOption(const int row) const {
   if (row < 0 || row >= visibleItemCount) return -1;
   using S = CrossPointSettings;
-  switch (itemAt(row)) {
-    case ITEM_TITLE: return S::defaultOf(&S::statusBarTitle) != S::HIDE_TITLE;
-    case ITEM_CHAPTER_PAGE_COUNT: return S::defaultOf(&S::statusBarChapterPageCount) != 0;
-    case ITEM_BOOK_PROGRESS_PERCENTAGE: return S::defaultOf(&S::statusBarBookProgressPercentage) != 0;
-    case ITEM_CLOCK: return S::defaultOf(&S::statusBarClock) == S::STATUS_BAR_CLOCK_LEFT;
-    default: return -1;
-  }
+  uint8_t S::* const fields[] = {&S::readerStatusTop, &S::readerStatusLeft,
+                                  &S::readerStatusCenter, &S::readerStatusRight};
+  return S::defaultOf(fields[row]);
 }
 
 bool StatusBarSettingsActivity::applyChosenValue(const int row, const int option, const bool repaint) {
-  if (row < 0 || row >= visibleItemCount || option < 0 || option >= 2) return false;
-  // Clock mode 0 is legacy. An explicit selection writes the visible layout.
-  if (formRow(this, row).selected == option &&
-      !(itemAt(row) == ITEM_CLOCK && SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_HIDE)) return true;
+  if (row < 0 || row >= visibleItemCount || option < 0 || option >= valueCount(row)) return false;
+  if (formRow(this, row).selected == option && SETTINGS.statusBarSpec().slotsEnabled) return true;
   {
     RenderLock lock(*this);
-    switch (itemAt(row)) {
-      case ITEM_TITLE:
-        SETTINGS.statusBarTitle = option ? CrossPointSettings::CHAPTER_TITLE : CrossPointSettings::HIDE_TITLE;
-        break;
-      case ITEM_CHAPTER_PAGE_COUNT: SETTINGS.statusBarChapterPageCount = option; break;
-      case ITEM_BOOK_PROGRESS_PERCENTAGE: SETTINGS.statusBarBookProgressPercentage = option; break;
-      case ITEM_CLOCK:
-        SETTINGS.statusBarClock = option ? CrossPointSettings::STATUS_BAR_CLOCK_LEFT
-                                        : CrossPointSettings::STATUS_BAR_CLOCK_RIGHT;
-        break;
-      default: return false;
-    }
+    if (!SETTINGS.setReaderStatusItem(row, option)) return false;
   }
   saveSettings(repaint);
   return true;
@@ -271,17 +249,9 @@ ugly::QuestionSheet::Row StatusBarSettingsActivity::formRow(void* context, const
   ugly::QuestionSheet::Row out;
   out.id = static_cast<uint32_t>(TENOR_NAMES[row]) + 1;
   out.question = I18N.get(TENOR_NAMES[row]);
-  out.kind = ugly::QuestionSheet::Kind::Toggle;
-  out.count = 2;
-  switch (itemAt(row)) {
-    case ITEM_TITLE: out.selected = SETTINGS.statusBarTitle != CrossPointSettings::HIDE_TITLE; break;
-    case ITEM_CHAPTER_PAGE_COUNT: out.selected = SETTINGS.statusBarChapterPageCount != 0; break;
-    case ITEM_BOOK_PROGRESS_PERCENTAGE: out.selected = SETTINGS.statusBarBookProgressPercentage != 0; break;
-    case ITEM_CLOCK:
-      out.kind = ugly::QuestionSheet::Kind::Choice;
-      out.selected = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
-      break;
-  }
+  out.kind = ugly::QuestionSheet::Kind::Choice;
+  out.count = valueCount(row);
+  out.selected = SETTINGS.readerStatusItem(row);
   return out;
 }
 
@@ -289,10 +259,7 @@ void StatusBarSettingsActivity::formLabel(void* context, const int row, const in
   if (!size) return;
   out[0] = 0;
   if (option < 0 || option >= formRow(context, row).count) return;
-  const char* label = itemAt(row) == ITEM_CLOCK
-      ? (option ? tr(STR_CLOCK_LEFT_BATTERY_RIGHT) : tr(STR_BATTERY_LEFT_CLOCK_RIGHT))
-      : (option ? tr(STR_SHOW) : tr(STR_HIDE));
-  snprintf(out, size, "%s", label);
+  snprintf(out, size, "%s", I18N.get(valuesAt(row)[option]));
 }
 
 void StatusBarSettingsActivity::focusForm(const int row) {
@@ -320,10 +287,8 @@ void StatusBarSettingsActivity::bindForm() {
 }
 
 void StatusBarSettingsActivity::prepareFormQuip(const int row, const int candidate) {
-  if (row < 0 || row >= visibleItemCount || candidate < 0 || candidate >= 2) return;
-  const StrId label = itemAt(row) == ITEM_CLOCK
-      ? (candidate ? StrId::STR_CLOCK_LEFT_BATTERY_RIGHT : StrId::STR_BATTERY_LEFT_CLOCK_RIGHT)
-      : (candidate ? StrId::STR_SHOW : StrId::STR_HIDE);
+  if (row < 0 || row >= visibleItemCount || candidate < 0 || candidate >= valueCount(row)) return;
+  const StrId label = valuesAt(row)[candidate];
   auto line = ugly::quip(ugly::Quip::SetValue,
       ugly::logic::quipKey(I18N.get(TENOR_NAMES[row], Language::VI), I18N.get(label, Language::VI)), 0, candidate);
   RenderLock lock(*this);
@@ -391,7 +356,7 @@ int StatusBarSettingsActivity::favoriteSelectedRow() {
 
 bool StatusBarSettingsActivity::handleButtons() {
   if (backReleased()) {
-    if (!saveFailed_.load() || saveSettings()) finish();
+    onBackButton();
     return true;
   }
   if (confirmReleased()) {
@@ -403,46 +368,77 @@ bool StatusBarSettingsActivity::handleButtons() {
 
 std::string StatusBarSettingsActivity::rowValueText(const int index) {
   if (index < 0 || index >= visibleItemCount) return {};
-  switch (itemAt(index)) {
-    case ITEM_CHAPTER_PAGE_COUNT:
-      return SETTINGS.statusBarChapterPageCount ? tr(STR_SHOW) : tr(STR_HIDE);
-    case ITEM_BOOK_PROGRESS_PERCENTAGE:
-      return SETTINGS.statusBarBookProgressPercentage ? tr(STR_SHOW) : tr(STR_HIDE);
-    case ITEM_TITLE:
-      return SETTINGS.statusBarTitle != CrossPointSettings::HIDE_TITLE ? tr(STR_SHOW) : tr(STR_HIDE);
-    case ITEM_CLOCK:
-      return SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT ? tr(STR_CLOCK_LEFT_BATTERY_RIGHT)
-                                                                                  : tr(STR_BATTERY_LEFT_CLOCK_RIGHT);
-    default:
-      return tr(STR_HIDE);
-  }
+  return I18N.get(valuesAt(index)[SETTINGS.readerStatusItem(index)]);
 }
 
 void StatusBarSettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
+  const bool choices = choiceRow_ >= 0;
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-                                                static_cast<int16_t>(metrics.buttonHintsHeight), 0});
+                                                static_cast<int16_t>(choices && tenorchrome::kTouchShell
+                                                  ? renderer.getScreenHeight() - choiceBottom_ + rowFrameLines(rowFrameGap).bottom
+                                                  : metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   // rowItems_'s labels/actionValue were set once in onEnter(); only the live
   // value text needs refreshing here, by assigning into the existing
   // rowValues_ strings (no array growth) rather than building a new
   // items/values vector on every render.
-  for (int i = 0; i < visibleItemCount; i++) {
-    rowValues_[i] = rowValueText(i);
-    rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
+  if (choices) {
+    for (int i = 0; i < valueCount(choiceRow_); ++i) {
+      choiceItems_[i].label = I18N.get(valuesAt(choiceRow_)[i]);
+      choiceItems_[i].actionValue = i;
+      choiceItems_[i].chosen = i == SETTINGS.readerStatusItem(choiceRow_);
+    }
+  } else {
+    for (int i = 0; i < visibleItemCount; i++) {
+      rowValues_[i] = rowValueText(i);
+      rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
+    }
   }
 
   fui::ListProps props;
-  props.items = rowItems_;
-  props.count = static_cast<uint16_t>(visibleItemCount);
+  props.items = choices ? choiceItems_ : rowItems_;
+  props.count = static_cast<uint16_t>(listCount());
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;               // air between the value and the row edge
   props.labelText = uiMenuLabelText(screen.theme());
   props.labelText.maxLines = 2;  // also the explicitly-set marker, see SettingsActivity
+  if (choices && tenorchrome::kTouchShell) {
+    props.rowInset = tenorchrome::FOOT_BACK_X;
+    props.sidePadding = 16;
+    props.rowHeight = choiceRowHeight_;
+    props.rowGap = rowFrameGap;
+    props.chosenMark = fui::bitmapFromIcon(icon_row_chosen_24);
+    props.scrollIndicator = false;
+    screen.takeTop(static_cast<int16_t>(rowFrameLines(rowFrameGap).top));
+  }
   syncListViewport(screen, props);
+  if (choices) props.partialTrailingRow = false;
   screen.list(props);
+}
+
+void StatusBarSettingsActivity::drawChoiceFrame() {
+  if (choiceRow_ < 0 || !tenorchrome::kTouchShell) return;
+  tenorchrome::drawPanel(renderer, choiceTop_, choiceBottom_ - choiceTop_);
+  const auto lines = rowFrameLines(rowFrameGap);
+  const int first = choiceNav_.top, end = std::min(listCount(), first + choiceNav_.pageRowsFor(listCount()));
+  for (int i = first + 1; i < end; ++i) {
+    const auto row = app.publishedRect(ACTION_ROW, i);
+    if (row.height > 0)
+      tenorchrome::drawRowRule(renderer, row.y - lines.rule, tenorchrome::FOOT_BACK_X + 16,
+                              renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
+  }
+  if (first > 0 || end < listCount()) {
+    const auto bar = tenorchrome::frameScrollBar(tenorchrome::FOOT_BACK_X, choiceTop_,
+         renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X, choiceBottom_ - choiceTop_,
+         choiceTop_, choiceBottom_);
+    fui::drawListScrollIndicator(uiTarget,
+        fui::Rect{static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
+                  static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)},
+        listCount(), std::max(1, end - first), first, bar.width);
+  }
 }
 
 void StatusBarSettingsActivity::render(RenderLock&&) {
@@ -461,17 +457,17 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
 #endif
     return;
   }
-  if (optionPopup.processRender(renderer, mappedInput)) return;
 
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the list renders through the app.
   renderSettledList(activeNav(), [&] {
     renderer.clearScreen();
-    drawNavigationHeader(tr(STR_CUSTOMISE_STATUS_BAR));
+    drawNavigationHeader(navigationLabel().c_str());
     renderUi();
+    drawChoiceFrame();
   });
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TOGGLE), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   if (saveFailed_.load()) GUI.drawPopup(renderer, tr(STR_HABIT_SAVE_FAILED));
   renderer.displayBuffer();
@@ -480,6 +476,6 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
 std::string StatusBarSettingsActivity::favoriteKey(int row) const {
   // Tenor pins only the corner row: the favorites catalog labels every other
   // status pin as empty there, so a pinned switch would show no name.
-  if (row < 0 || row >= visibleItemCount || itemAt(row) != ITEM_CLOCK) return {};
-  return menufavorites::keyFor("status", 0, itemAt(row));
+  if (choiceRow_ >= 0 || row < 0 || row >= visibleItemCount) return {};
+  return menufavorites::keyFor("status", 0, row == 1 ? 7 : 100 + row);
 }

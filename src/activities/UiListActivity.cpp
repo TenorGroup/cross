@@ -767,6 +767,19 @@ bool UiListActivity::renderUglyList() {
     fui::ListItem item;
     if (uglyRowProvider_) uglyRowProvider_(uglyRowCtx_, static_cast<uint16_t>(row), item);
     else if (uglyItems_ && row >= uglyItemsFirst_) item = uglyItems_[row - uglyItemsFirst_];
+    // File names retain the same leading icon slot the normal list laid out.
+    if (name == "FileBrowser" && item.icon && !box.empty()) {
+      for (const auto& run : runs) {
+        const auto& at = run.rect;
+        const int mid = at.y + at.height / 2;
+        if (run.align != fui::TextAlign::Left || mid < box.y || mid >= box.bottom()) continue;
+        const int16_t size = item.icon.width;
+        uiTarget.bitmap({static_cast<int16_t>(at.x - size - 10),
+                         static_cast<int16_t>(box.y + (box.height - size) / 2), size, size},
+                        item.icon, fui::BitmapMode::Contain);
+        break;
+      }
+    }
     if (box.empty()) {
       for (size_t i = 0; item.label && i < runs.size(); ++i)
         if (runs[i].align == fui::TextAlign::Left && runs[i].text == item.label) {

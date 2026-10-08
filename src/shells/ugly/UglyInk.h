@@ -74,6 +74,8 @@ struct Hints {
 // The bottom bar: battery, the clock when the clock shows, and a hand-drawn symbol over each front
 // button that does something on this screen.
 void statusBar(const GfxRenderer& renderer, const MappedInputManager& input, Hints hints);
+// A small heart centred at (x, y). The touch notebook keeps its 24 px pen path.
+void heart(const GfxRenderer& renderer, int x, int y, int size = 24);
 
 #if FREEINK_DEVICE_X4PRO
 // The touch layout (UglyTouch.h). The top band: `left` (a date, a title), the clock, and the battery with
@@ -92,8 +94,6 @@ void arrow(const GfxRenderer& renderer, int x, int y, bool down, int length);
 void paper(const GfxRenderer& renderer, int top, int bottom, bool tornTop, bool tornBottom, uint32_t seed, int listShift = 0);
 // A box ticked or empty, its right edge at x.
 void tickBox(const GfxRenderer& renderer, int x, int y, bool ticked);
-// A small heart centred at (x, y).
-void heart(const GfxRenderer& renderer, int x, int y);
 // The black pixels of `box` in a 528x792 X3 portrait plane (UglyArt.h), drawn moved by (dx, dy).
 void liftArt(const GfxRenderer& renderer, const uint8_t* plane, const Box& box, int dx, int dy);
 // A stroke of the user's finger, drawn back with a 3 px pen.

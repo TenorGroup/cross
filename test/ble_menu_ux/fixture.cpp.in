@@ -30,6 +30,7 @@ namespace tenorchrome { constexpr bool kTouchShell = false; }
 #define LOG_ERR(...) (void)0
 // The menu as tenor/cross shows it; the hand-drawn shell is measured in the simulator.
 namespace shell { inline bool uglyParts() { return false; } inline bool isUgly() { return false; } }
+namespace freeink { namespace ui { struct Rect {}; } }
 namespace fui {
 struct ListItem {
   const char* label = nullptr;
@@ -37,6 +38,7 @@ struct ListItem {
   int16_t actionValue = 0;
   bool enabled = true;
   bool isHeader = false;
+  bool opensNext = false;
   const char* sectionHeading = nullptr;
 };
 }
@@ -131,8 +133,12 @@ struct Popup {
   void show(StrId, const StrId* choices, int count, int, std::function<void(int)> f) {
     ++shows; options.assign(choices, choices + count); callback = std::move(f);
   }
+  template <class... Args> void showInFrame(const freeink::ui::Rect&, Args&&... args) {
+    show(std::forward<Args>(args)...);
+  }
 };
 struct BlePageTurnerActivity : UiListActivity {
+  static constexpr int ACTION_ROW = 1;
   @@ROW_ENUM@@
   BlePageTurnerActivity() = default;
   BlePageTurnerActivity(int&, int&) {}
@@ -151,6 +157,7 @@ struct BlePageTurnerActivity : UiListActivity {
   std::vector<bleturner::Action> waited, cleared;
   int updates = 0;
   int listCount() const override { return rowItems_.size(); }
+  bool rowFrameFor(int, int, freeink::ui::Rect&) const { return false; }
   void requestUpdate() { ++updates; }
   void capNhatTrangThai() {}
   std::string bindValue(bleturner::Action) const { return "default"; }

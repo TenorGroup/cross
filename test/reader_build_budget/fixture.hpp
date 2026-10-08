@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <vector>
+#include "activities/reader/ReaderPace.h"
 // Swallow the arguments instead of the whole call: values a log line is the only
 // consumer of (the idle prewarm timer) must still count as used under -Werror.
 template <class... A>
@@ -159,6 +160,8 @@ struct Gui {
 } GUI;
 struct PageReadState { int failures = 0, reads = 0, clears = 0, abandons = 0, errors = 0; } pageReads;
 struct ReaderRenderer {
+  uint32_t frameBufferLoans = 0;
+  uint32_t frameBufferLoanCount() const { return frameBufferLoans; }
   operator int() const { return 0; }
   bool hasFrameBuffer() const { return true; }
   void clearScreen() { require(!panelRefreshing, "drew over a refresh still running"); }
@@ -171,10 +174,14 @@ struct ReaderRenderer {
   // WHITE, so only a caller that redraws the whole screen may take one.
   class FrameBufferLoan {
    public:
-    explicit FrameBufferLoan(ReaderRenderer&) { ++thumbs.loans; }
+    explicit FrameBufferLoan(ReaderRenderer& renderer) { ++thumbs.loans; ++renderer.frameBufferLoans; }
   };
 };
 using GfxRenderer = ReaderRenderer;
+struct ReaderPaceStub {
+  void suspend() {}
+  template <class... Args> void turned(Args&&...) {}
+};
 struct Section {
   int currentPage = 4, pageCount = 19, oldPages = 19, builtPages = 4;
   bool building = true, partial = true, complete = false, parked = false, canPark = false;
@@ -322,6 +329,8 @@ struct ReadingStats {
   bool saveToFile() { ++openWrites.statsSaves; return true; }
 } READING_STATS;
 struct ReaderActivity {
+  readerstatus::Pace readingPace;
+  virtual readerstatus::Pace::Position pacePosition() const { return {}; }
   int pendingExternalTurn = 0, requests = 0, trangDaLat = 0;
   uint32_t pendingExternalGeneration = 0;
   bool pendingTurnIsLocal = false, pendingExternalChapter = false, preview = false;
@@ -368,6 +377,21 @@ struct EpubReaderActivity : ReaderActivity {
   int8_t xemTruocLat = 0;
   std::unique_ptr<Section> catchUp;
   std::atomic<uint8_t> textCloseFrame{0};
+  std::atomic<bool> pageFrameShown{false};
+  class BackgroundBuildFrameGuard {
+   public:
+    explicit BackgroundBuildFrameGuard(EpubReaderActivity& activity) : activity(activity), loanCount(activity.renderer.frameBufferLoanCount()) {}
+    ~BackgroundBuildFrameGuard() {
+      if (activity.renderer.frameBufferLoanCount() != loanCount &&
+          activity.pageFrameShown.exchange(false, std::memory_order_acq_rel))
+        activity.requestUpdate();
+    }
+    BackgroundBuildFrameGuard(const BackgroundBuildFrameGuard&) = delete;
+    BackgroundBuildFrameGuard& operator=(const BackgroundBuildFrameGuard&) = delete;
+   private:
+    EpubReaderActivity& activity;
+    uint32_t loanCount;
+  };
   // Preview catch-up is covered by the simulator; reject active preview in this projection.
   void catchUpTick(bool) { require(!xemTruoc, "preview catch-up needs the simulator"); }
   bool catchUpCanTick() const { return xemTruoc; }

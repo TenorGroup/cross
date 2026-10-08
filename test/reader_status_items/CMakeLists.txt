@@ -58,6 +58,26 @@ endif()
 
 add_test(NAME ReaderStatusItems COMMAND ReaderStatusItemsTest)
 
+get_target_property(_status_sources ReaderStatusItemsTest SOURCES)
+list(REMOVE_AT _status_sources 0)
+add_executable(ReaderStatusSlotsTest ReaderStatusSlotsTest.cpp ${_status_sources})
+target_compile_features(ReaderStatusSlotsTest PRIVATE cxx_std_20)
+foreach(_prop INCLUDE_DIRECTORIES COMPILE_DEFINITIONS COMPILE_OPTIONS LINK_OPTIONS)
+  get_target_property(_status_prop ReaderStatusItemsTest ${_prop})
+  set_property(TARGET ReaderStatusSlotsTest PROPERTY ${_prop} "${_status_prop}")
+endforeach()
+add_test(NAME ReaderStatusSlots COMMAND ReaderStatusSlotsTest)
+
+add_executable(ReaderPaceTest ReaderPaceTest.cpp)
+target_compile_features(ReaderPaceTest PRIVATE cxx_std_20)
+target_include_directories(ReaderPaceTest PRIVATE ${REPO_ROOT}/src)
+add_test(NAME ReaderPace COMMAND ReaderPaceTest)
+
+add_executable(ReaderStatusLayoutTest ReaderStatusLayoutTest.cpp)
+target_compile_features(ReaderStatusLayoutTest PRIVATE cxx_std_20)
+target_include_directories(ReaderStatusLayoutTest PRIVATE ${REPO_ROOT}/src)
+add_test(NAME ReaderStatusLayout COMMAND ReaderStatusLayoutTest)
+
 # The web settings handler, copied verbatim from the server source at configure time
 # (re-run when that file changes) and compiled against a fake request.
 set(_web_server ${REPO_ROOT}/src/network/CrossPointWebServer.cpp)

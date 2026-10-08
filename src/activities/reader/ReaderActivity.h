@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "EndOfBookOptions.h"
+#include "ReaderPace.h"
 #include "activities/Activity.h"
 
 // Page-turn and paint trace lines (RDR_TRACE, ERS_TRACE). Acceptance builds carry them,
@@ -26,7 +27,11 @@ class ReaderActivity : public Activity {
   bool handlePreviewInput();
   void drawPreviewFooter() const;
   uint8_t readerStatusBarHeight() const;
+  int readerStatusTopReserve() const;
   void readingMargins(int& top, int& right, int& bottom, int& left) const;
+  readerstatus::Pace readingPace;
+  virtual readerstatus::Pace::Position pacePosition() const { return {}; }
+  virtual uint32_t paceLayoutKey() const { return 0; }
 
   std::unique_ptr<EndOfBookOptions> endOfBookOptions;
   std::atomic<bool> endOfBookOptionsReady{false};

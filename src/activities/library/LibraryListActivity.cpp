@@ -276,36 +276,45 @@ void LibraryListActivity::showRecentBookOptions(const int entry) {
     }
   }
 
+  constexpr StrId STORE_OPTION_IDS[] = {StrId::STR_OPEN, StrId::STR_REMOVE_FROM_RECENTS, StrId::STR_DELETE,
+                                        StrId::STR_LIBRARY_REBUILD};
+  constexpr StrId INDEX_OPTION_IDS[] = {StrId::STR_OPEN, StrId::STR_DELETE, StrId::STR_LIBRARY_REBUILD};
   const char* STORE_OPTIONS[] = {tr(STR_OPEN), tr(STR_REMOVE_FROM_RECENTS), tr(STR_DELETE), tr(STR_LIBRARY_REBUILD)};
   const char* INDEX_OPTIONS[] = {tr(STR_OPEN), tr(STR_DELETE), tr(STR_LIBRARY_REBUILD)};
   app.clearTapFlash();
-  optionPopup.show(tr(STR_LIBRARY), title.c_str(), isStoreRow ? STORE_OPTIONS : INDEX_OPTIONS, isStoreRow ? 4 : 3, 0,
-                   [this, path, title, isStoreRow](const int choice) {
-                     swallowHeldReleases();
-                     switch (choice) {
-                       case 0:
-                         openBookByPath(path);
-                         break;
-                       case 1:
-                         if (isStoreRow) {
-                           promptRemoveRecentBook(path, title);
-                         } else {
-                           promptDeleteBookByPath(path, title);
-                         }
-                         break;
-                       case 2:
-                         if (isStoreRow)
-                           promptDeleteBookByPath(path, title);
-                         else
-                           promptRebuildIndex();
-                         break;
-                       case 3:
-                         if (isStoreRow) promptRebuildIndex();
-                         break;
-                       default:
-                         break;
-                     }
-                   });
+  const auto onSelect = [this, path, title, isStoreRow](const int choice) {
+    swallowHeldReleases();
+    switch (choice) {
+      case 0:
+        openBookByPath(path);
+        break;
+      case 1:
+        if (isStoreRow) {
+          promptRemoveRecentBook(path, title);
+        } else {
+          promptDeleteBookByPath(path, title);
+        }
+        break;
+      case 2:
+        if (isStoreRow)
+          promptDeleteBookByPath(path, title);
+        else
+          promptRebuildIndex();
+        break;
+      case 3:
+        if (isStoreRow) promptRebuildIndex();
+        break;
+      default:
+        break;
+    }
+  };
+  if (tenorchrome::kTouchShell) {
+    optionPopup.showAnchored(app.publishedRect(ACTION_ROW, static_cast<int16_t>(entry)),
+                             isStoreRow ? STORE_OPTION_IDS : INDEX_OPTION_IDS, isStoreRow ? 4 : 3, onSelect);
+  } else {
+    optionPopup.show(tr(STR_LIBRARY), title.c_str(), isStoreRow ? STORE_OPTIONS : INDEX_OPTIONS, isStoreRow ? 4 : 3,
+                     0, onSelect);
+  }
   requestUpdate();
 }
 

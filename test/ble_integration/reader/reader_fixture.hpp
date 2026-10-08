@@ -1,3 +1,4 @@
+#include "activities/reader/ReaderPace.h"
 #include <atomic>
 #include <cstdint>
 #include <iostream>
@@ -51,6 +52,8 @@ namespace tenorchrome{constexpr bool kTouchShell=false;}
 struct EndOfBookOptions{bool menu=false;bool menuActive()const{return menu;}};
 struct FakeStats {uint32_t pages=0, records=0, habits=0;void record(uint32_t,uint32_t,uint16_t turns,int){pages+=turns;records++;}void observeHabits(uint32_t,uint16_t,uint32_t){habits++;}uint32_t currentDay(){return 1;}}READING_STATS;
 struct ReaderActivity:Activity{
+  readerstatus::Pace readingPace;
+  virtual readerstatus::Pace::Position pacePosition() const { return {}; }
  virtual bool coversPage()const{return false;}bool preview=false;int renderer=0;FakeInput mappedInput;uint16_t trangDaLat=0;int requests=0,goHome=0;
  std::atomic<bool>pageReady{true};std::unique_ptr<EndOfBookOptions>endOfBookOptions=std::make_unique<EndOfBookOptions>();std::atomic<bool>endOfBookOptionsReady{false};
  int8_t pendingExternalTurn=0;uint32_t pendingExternalGeneration=0;bool pendingTurnIsLocal=false,pendingExternalChapter=false;int backCalls=0,formatCalls=0,chapterSkips=0;std::string bookPath="fixture.txt";void finish(){}

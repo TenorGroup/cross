@@ -2,25 +2,62 @@
 #include <cstdio>
 #include <cstdlib>
 #include <new>
+#include <optional>
 #include <string>
 #include <vector>
 #include "SettingsList.h"
 #include "MenuFavorites.h"
 #include "MenuCustomization.h"
+#include "activities/reader/ReaderMenuLayout.h"
+#include "ReaderTextRowSlice.h"
 void runHomeFavorites(const SdCardFontRegistry&,std::vector<std::string>&,std::vector<std::string>&,std::vector<std::string>&);
 namespace settings_test_io { extern int writes; void setNextRead(const JsonDocument&); }
 namespace mem {
 struct alignas(std::max_align_t) Header { size_t n; size_t epoch; };
-size_t epoch=0,total=0,largest=0,live=0,peak=0,count=0; bool active=false;
+size_t epoch=0,total=0,largest=0,live=0,peak=0,count=0; bool active=false,rejectAlloc=false;
 void start(){++epoch;total=largest=live=peak=count=0;active=true;}
 void report(const char* name,size_t size,size_t capacity){active=false;std::printf("%s size=%zu capacity=%zu sizeof_SettingInfo=%zu total=%zu largest=%zu live=%zu peak=%zu calls=%zu\n",name,size,capacity,sizeof(SettingInfo),total,largest,live,peak,count);}
 }
-void* operator new(size_t n){auto* h=static_cast<mem::Header*>(std::malloc(sizeof(mem::Header)+(n?n:1)));if(!h)throw std::bad_alloc();h->n=n;h->epoch=mem::active?mem::epoch:0;if(mem::active){mem::total+=n;mem::largest=std::max(mem::largest,n);mem::live+=n;mem::peak=std::max(mem::peak,mem::live);++mem::count;}return h+1;}
+void* operator new(size_t n){if(mem::active&&mem::rejectAlloc)throw std::bad_alloc();auto* h=static_cast<mem::Header*>(std::malloc(sizeof(mem::Header)+(n?n:1)));if(!h)throw std::bad_alloc();h->n=n;h->epoch=mem::active?mem::epoch:0;if(mem::active){mem::total+=n;mem::largest=std::max(mem::largest,n);mem::live+=n;mem::peak=std::max(mem::peak,mem::live);++mem::count;}return h+1;}
 void operator delete(void* p) noexcept{if(!p)return;auto*h=static_cast<mem::Header*>(p)-1;if(h->epoch&&h->epoch==mem::epoch)mem::live-=h->n;std::free(h);}
 void operator delete(void*p,size_t)noexcept{operator delete(p);}
 void*operator new[](size_t n){return operator new(n);}void operator delete[](void*p)noexcept{operator delete(p);}void operator delete[](void*p,size_t)noexcept{operator delete(p);}
 int main(int argc,char**argv){
  if(argc!=3)return 2;const std::string mode=argv[1];halTiltSensor.available=std::atoi(argv[2])!=0;
+ if(mode=="reader-text" || mode=="reader-text-empty-heap") {
+  // The actual toolbar lookup must fit after BLE and the saved page have fragmented RAM.
+  const auto expected=getBaseSettingsList();
+  releaseBaseSettingsList();
+  for(const char* key:readermenu::TEXT_KEYS) {
+   const auto ref=std::find_if(expected.begin(),expected.end(),[&](const SettingInfo& r){return r.key&&std::strcmp(r.key,key)==0;});
+   if(ref==expected.end())return 15;
+   const ptrdiff_t field=ref->valuePtr?reinterpret_cast<const char*>(&(SETTINGS.*(ref->valuePtr)))-reinterpret_cast<const char*>(&SETTINGS):-1;
+   std::printf("text_schema key=%s name=%d type=%d field=%td category=%d text=%d obfuscated=%d range=%u/%u/%u labels=",key,static_cast<int>(ref->nameId),static_cast<int>(ref->type),field,static_cast<int>(ref->category),ref->inTextSettings,ref->obfuscated,ref->valueRange.min,ref->valueRange.max,ref->valueRange.step);
+   for(const auto label:ref->enumLabels())std::printf("%d,",static_cast<int>(label));
+   std::puts("");
+  }
+  mem::rejectAlloc=mode=="reader-text-empty-heap";
+  mem::start();
+  bool ok=true;
+  try { for(int repeat=0;repeat<3;++repeat) for(int id=-1;id<=readermenu::TEXT_KEY_COUNT;++id) {
+   const auto row=catalogTextRow(id);
+   if(id<5 || id>=readermenu::TEXT_KEY_COUNT) {ok=ok&&!row;continue;}
+   const auto ref=std::find_if(expected.begin(),expected.end(),[&](const SettingInfo& r){return r.key&&std::strcmp(r.key,readermenu::TEXT_KEYS[id])==0;});
+   if(!row || ref==expected.end()) {ok=false;continue;}
+   ok=ok&&row->nameId==ref->nameId&&row->type==ref->type&&row->valuePtr==ref->valuePtr;
+   ok=ok&&std::strcmp(row->key,ref->key)==0&&row->category==ref->category&&row->inTextSettings==ref->inTextSettings;
+   ok=ok&&row->obfuscated==ref->obfuscated&&row->action==ref->action&&row->stringOffset==ref->stringOffset&&row->stringMaxLen==ref->stringMaxLen;
+   ok=ok&&row->enumStringValues==ref->enumStringValues&&!row->valueGetter&&!row->valueSetter&&!row->stringGetter&&!row->stringSetter;
+   const auto labels=row->enumLabels(), want=ref->enumLabels();
+   ok=ok&&labels.size()==want.size()&&std::equal(labels.begin(),labels.end(),want.begin());
+   ok=ok&&row->valueRange.min==ref->valueRange.min&&row->valueRange.max==ref->valueRange.max&&row->valueRange.step==ref->valueRange.step;
+   ok=ok&&settings_catalog::storage().empty();
+  }} catch(const std::bad_alloc&) {ok=false;std::puts("reader_text_heap_exhausted=RED");}
+  mem::report("reader_text_cold_and_reopen",0,0);
+  ok=ok&&mem::count==0&&mem::peak==0&&mem::live==0;
+  std::printf("reader_text_no_resident_catalog=%s\n",ok?"GREEN":"RED");
+  return ok?0:14;
+ }
  if(mode=="cold") {mem::start();const auto&base=getBaseSettingsList();mem::report("cold",base.size(),base.capacity());bool ok=base.size()==base.capacity(); size_t tiltRows=0; for(const auto&row:base) if(row.nameId==StrId::STR_TILT_PAGE_TURN)++tiltRows; ok=ok && tiltRows==static_cast<size_t>(halTiltSensor.available);std::printf("capacity_exact=%s\n",ok?"GREEN":"RED");return ok?0:1;}
  const auto&base=getBaseSettingsList();(void)I18N.get(StrId::STR_FONT_FAMILY);
  SdCardFontRegistry registry;auto&families=const_cast<std::vector<SdCardFontFamilyInfo>&>(registry.getFamilies());
@@ -65,7 +102,7 @@ int main(int argc,char**argv){
   const auto uiSize=std::find_if(base.begin(),base.end(),[](const SettingInfo& row){return row.key && std::strcmp(row.key,"uiTextSize")==0;});
   const auto inkWeight=std::find_if(base.begin(),base.end(),[](const SettingInfo& row){return row.key && std::strcmp(row.key,"readerInkWeight")==0;});
   bool ok=expect(uiSize!=base.end() && uiSize->type==SettingType::ENUM && uiSize->enumValues.size()==3,"ui size catalog");
-  ok=expect(inkWeight!=base.end() && inkWeight->type==SettingType::ENUM && inkWeight->enumValues.size()==4,"ink catalog")&&ok;
+  ok=expect(inkWeight!=base.end() && inkWeight->type==SettingType::ENUM && inkWeight->enumLabels().size()==4,"ink catalog")&&ok;
   JsonDocument saved;SETTINGS.toJson(saved);ok=expect(saved["uiTextSize"].as<uint8_t>()==0 && saved["readerInkWeightVersion"].as<uint8_t>()==1,"default stamps")&&ok;
   JsonDocument medium;medium["uiTextSize"]=1;ok=expect(SETTINGS.fromJson(medium.as<JsonVariantConst>()),"medium load")&&ok;
   saved.clear();SETTINGS.toJson(saved);ok=expect(saved["uiTextSize"].as<uint8_t>()==1,"medium round trip")&&ok;

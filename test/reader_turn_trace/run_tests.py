@@ -128,10 +128,10 @@ projection.write_text(fixture + "\n" + "\n\n".join(function(name) for name in na
                       "\n" + exit_method + "\n" +
                       ("" if stay_after_exit else "void ReaderActivity::stayAfterDroppedExit() {}\n") + cases)
 (args.output / "source-hashes.json").write_text(json.dumps({
-    str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in (reader_cpp, reader_h, epub_cpp, epub_h)
+    str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in (reader_cpp, reader_h, epub_cpp, epub_h, args.source / "src/activities/reader/ReaderPace.h")
 }, indent=2))
 command = [args.compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
-           "-fsanitize=address,undefined", "-g", "-DTENOR_UI_ACCEPTANCE", "-DTENOR_TURN_TRACE", str(projection),
+           "-fsanitize=address,undefined", "-g", "-I" + str(args.source / "src"), "-DTENOR_UI_ACCEPTANCE", "-DTENOR_TURN_TRACE", str(projection),
            "-o", str(args.output / "projection")]
 (args.output / "compile-command.json").write_text(json.dumps(command, indent=2))
 compiled = subprocess.run(command, capture_output=True, text=True)

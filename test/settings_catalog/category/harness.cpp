@@ -90,6 +90,7 @@ struct SettingsActivity {
 // The X4 Pro About & updates screen (InfoUpdateActivity) holds no rows on these boards.
 namespace infoupdate { inline bool holds(settingstabs::Action, bool = false) { return false; } }
 #include "CategoryMethods.inc"
+#include "StatusItems.inc"
 
 static bool check(bool value, const char* message) {
   if (!value) std::fprintf(stderr, "FAIL %s\n", message);

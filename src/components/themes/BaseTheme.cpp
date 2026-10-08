@@ -479,6 +479,11 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
                               const bool fillMargin, const bool isPageBookmarked, const bool pageCountEstimated,
                               const bool titleIsName) {
   if (SETTINGS.readerStatusBarHidden()) return;
+  if (SETTINGS.statusBarSpec().slotsEnabled) {
+    tenorchrome::drawReaderSlots(renderer, title.c_str(), currentPage, pageCount, bookProgress,
+                                 pageCountEstimated, isPageBookmarked);
+    return;
+  }
   if (tenorchrome::enabled()) {
     tenorchrome::drawStatus(renderer, title.c_str(), currentPage, pageCount, bookProgress, paddingBottom,
                             pageCountEstimated, isPageBookmarked, titleIsName);

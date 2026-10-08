@@ -1,3 +1,4 @@
+#include "activities/reader/ReaderPace.h"
 #include <algorithm>
 #include <atomic>
 #include <cstdarg>
@@ -92,6 +93,8 @@ namespace bleturner {
 inline void acknowledgeLinkNote() {}
 }  // namespace bleturner
 struct ReaderActivity {
+  readerstatus::Pace readingPace;
+  virtual readerstatus::Pace::Position pacePosition() const { return {}; }
   static constexpr int8_t MAX_QUEUED_TURNS = 8;
   int8_t pendingExternalTurn = 0;
   bool pendingTurnIsLocal = false;

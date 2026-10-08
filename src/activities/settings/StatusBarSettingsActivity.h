@@ -6,7 +6,6 @@
 #include <string>
 
 #include "activities/UiListActivity.h"
-#include "components/OptionPopup.h"
 #include "shells/ugly/UglyQuestionSheet.h"
 
 // Reader status bar configuration activity
@@ -14,7 +13,7 @@ class StatusBarSettingsActivity final : public UiListActivity {
  public:
   explicit StatusBarSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
-  // Must equal the number of TENOR_ROWS in the .cpp (static_assert'd there).
+  // Must equal the number of named rows in the .cpp (static_assert'd there).
   static constexpr int MAX_STATUS_BAR_ITEMS = 4;
 
   void onEnter() override;
@@ -22,7 +21,7 @@ class StatusBarSettingsActivity final : public UiListActivity {
   void onResume() override;
   bool handleHomeGesture() override;
   void restoreNavigation(const MenuNavigationState& state) override;
-  std::string navigationLabel() const override { return I18N.get(StrId::STR_CUSTOMISE_STATUS_BAR); }
+  std::string navigationLabel() const override;
   void render(RenderLock&&) override;
 
  private:
@@ -49,16 +48,24 @@ class StatusBarSettingsActivity final : public UiListActivity {
   static ugly::QuestionSheet::Row formRow(void* context, int row);
   static void formLabel(void* context, int row, int option, char* out, size_t size);
 
-  bool supportsFavorites() const override { return true; }
+  bool supportsFavorites() const override { return choiceRow_ < 0; }
   std::string favoriteKey(int row) const override;
   int focusFavorite(const std::string& key) override;
   bool handleButtons() override;
-  OptionPopup optionPopup;
-  OptionPopup* tiltPopup() override { return &optionPopup; }
+  bool rowOpens(int) const override { return choiceRow_ < 0; }
+  bool listFramed() const override { return choiceRow_ < 0; }
+  freeink::ui::ListNav& activeNav() override { return choiceRow_ < 0 ? nav : choiceNav_; }
+  void onBackButton() override;
+  void closeChoices();
+  void drawChoiceFrame();
+  int choiceRow_ = -1;
+  int choiceTop_ = 0, choiceBottom_ = 0, choiceRowHeight_ = 0;
+  freeink::ui::ListNav choiceNav_;
+  freeink::ui::ListItem choiceItems_[7]{};
 
   int visibleItemCount = 0;
 
-  int listCount() const override { return visibleItemCount; }
+  int listCount() const override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   bool handleCustomInput() override;

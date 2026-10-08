@@ -1,4 +1,5 @@
 #include "TenorMenuChrome.h"
+#include "activities/reader/ReaderStatusLayout.h"
 
 #include <GfxRenderer.h>
 #include <InlineSymbols.h>
@@ -661,10 +662,94 @@ tenorchrome::StatusCornerBounds tenorchrome::statusCornerBounds(const GfxRendere
 // Mot lan chu dung chung cho moi menu va trinh doc. Mot lan ve chi doc dong ho khi
 // duoc phep. Trong trinh doc, thanh nay theo dung sau muc nguoi dung chon
 // (StatusBarSpec); ngoai trinh doc no theo ba muc cua thanh chung.
+void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const int currentPage,
+                                 const int pageCount, const float bookProgress, const bool estimated,
+                                 const bool bookmarked, const int64_t chapterSeconds, const int64_t bookSeconds) {
+  using S = CrossPointSettings;
+  const auto spec = SETTINGS.statusBarSpec();
+  if (SETTINGS.readerStatusBarHidden() || !spec.slotsEnabled) return;
+  const bool rough = shell::uglyParts();
+  const int font = SMALL_FONT_ID;
+  const auto text = [&](int x, int y, const char* value) {
+    if (rough) ugly::text(r, ugly::Size::S22, x, y + 18, value);
+    else r.drawText(font, x, y, value);
+  };
+  const auto width = [&](const char* value) {
+    return rough ? ugly::width(r, ugly::Size::S22, value) : r.getTextWidth(font, value);
+  };
+  const auto fit = [&](const char* value, int room) {
+    return rough ? ugly::fit(r, ugly::Size::S22, value, room) : r.truncatedText(font, value, room);
+  };
+  if (spec.topTitleMode != S::HIDE_TITLE) {
+    const int mark = bookmarked ? 18 : 0;
+    const int room = std::max(0, r.getScreenWidth() - 24 - mark);
+    const auto name = fit(title ? title : "", room);
+    if (width(name.c_str()) <= room) text(12 + mark, 8, name.c_str());
+    if (bookmarked)
+      inlineSymbols::drawShape(r, inlineSymbols::Shape::Star,
+                               18, inlineSymbols::markTopOnCapitals(r, font, 8, 10) + 5, 10, true);
+  }
+  const int y = statusTextY(r.getScreenHeight(), false);
+  const int iconTop = inlineSymbols::markTopOnCapitals(r, font, y, 14);
+  const int markTop = inlineSymbols::markTopOnCapitals(r, font, y, 10);
+  if (spec.topTitleMode == S::HIDE_TITLE && bookmarked && spec.textLaneVisible(true))
+    inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, 6, markTop + 5, 10, true);
+  for (int slot = 0; slot < 3; ++slot) {
+    const auto lane = readerstatus::cell(r.getScreenWidth(), slot);
+    char value[64] = "";
+    switch (spec.slots[slot]) {
+      case S::STATUS_SLOT_NONE: continue;
+      case S::STATUS_SLOT_CLOCK:
+        if (!clockstatus::hasValidTime() || !halClock.formatTime(value, sizeof(value), SETTINGS.clockFormat == 1))
+          snprintf(value, sizeof(value), "-");
+        break;
+      case S::STATUS_SLOT_BATTERY: {
+        const int percent = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
+        if (SETTINGS.batteryPercentShown(true)) snprintf(value, sizeof(value), "%d%%", percent);
+        const int iconWidth = rough ? 44 : 26;
+        const int block = iconWidth + (value[0] ? width(value) + 6 : 0);
+        if (block > lane.width) continue;
+        const int x = readerstatus::textX(lane, slot, block);
+        if (rough) ugly::battery(r, x, y + 10, percent);
+        else {
+          r.drawRect(x, iconTop, 24, 14, 1, true);
+          r.fillRect(x + 24, iconTop + 5, 2, 4);
+          if (gpio.isUsbConnected()) drawChargingBolt(r, x, iconTop, 24, 14, false);
+          else if (percent > 0) r.fillRect(x + 2, iconTop + 2, (20 * percent + 50) / 100, 10);
+        }
+        if (value[0]) text(x + iconWidth + 6, y, value);
+        continue;
+      }
+      case S::STATUS_SLOT_CHAPTER_PAGES:
+        if (pageCount > 0) snprintf(value, sizeof(value), "%s%d/%d", estimated ? "~" : "", currentPage, pageCount);
+        else snprintf(value, sizeof(value), "-");
+        break;
+      case S::STATUS_SLOT_BOOK_PERCENT:
+        if (bookProgress >= 0) snprintf(value, sizeof(value), "%.0f%%", std::clamp(bookProgress, 0.0f, 100.0f));
+        else snprintf(value, sizeof(value), "-");
+        break;
+      case S::STATUS_SLOT_CHAPTER_ETA:
+        readerstatus::duration(value, sizeof(value), chapterSeconds >= 0, static_cast<uint32_t>(chapterSeconds));
+        break;
+      case S::STATUS_SLOT_BOOK_ETA:
+        readerstatus::duration(value, sizeof(value), bookSeconds >= 0, static_cast<uint32_t>(bookSeconds));
+        break;
+      default: continue;
+    }
+    const auto label = fit(value, lane.width);
+    const int measured = width(label.c_str());
+    if (measured <= lane.width) text(readerstatus::textX(lane, slot, measured), y, label.c_str());
+  }
+}
+
 void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int currentPage, int pageCount,
                              float bookProgress, int paddingBottom, bool estimated, bool bookmarked,
                              bool titleIsName) {
   const bool trongTrinhDoc = title != nullptr;
+  if (trongTrinhDoc && SETTINGS.statusBarSpec().slotsEnabled) {
+    drawReaderSlots(r, title, currentPage, pageCount, bookProgress, estimated, bookmarked);
+    return;
+  }
   if (trongTrinhDoc ? SETTINGS.readerStatusBarHidden() : SETTINGS.globalStatusBarHidden()) return;
   const auto spec = SETTINGS.statusBarSpec();
   const bool hienPin = trongTrinhDoc ? spec.showBattery : true;

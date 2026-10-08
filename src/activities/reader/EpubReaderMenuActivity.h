@@ -66,8 +66,8 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   void selectTab(MenuTab tab);
   // Dong menu voi viec da chon; coChu va hoFont mang lua chon tai cho (0 va -1 nghia la mo man).
   void dongVoi(MenuAction viec, uint8_t coChu, int8_t hoFont);
-  void chonCoChu();
-  void chonHoFont();
+  void chonCoChu(int row);
+  void chonHoFont(int row);
 
   // --- tab Yeu thich ---------------------------------------------------------------
   // Giu nut Chon tren mot dong bat ky la ghim dong do vao Yeu thich, giu lan nua la go

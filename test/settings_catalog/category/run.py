@@ -111,6 +111,15 @@ for mode in modes:
     methods += method_slice(sources[paths[2]], 'bool SettingsActivity::listedAsRow(')
     methods += method_slice(sources[paths[2]], 'void SettingsActivity::rebuildSettingsLists(')
     (output / 'CategoryMethods.inc').write_text(methods)
+    settings = read('src/CrossPointSettings.cpp')
+    status_marker = 'namespace {\n// What each reader status bar mode shows'
+    if status_marker in settings:
+        status_start = settings.index(status_marker)
+        status_end = settings.index('ReaderRenderSpec CrossPointSettings::readerRenderSpec')
+        status_items = settings[status_start:status_end]
+    else:
+        status_items = ''
+    (output / 'StatusItems.inc').write_text(status_items)
     for name in ['HalTiltSensor', 'HalClock']:
         instance = name[0].lower() + name[1:]
         (output / f'{name}.h').write_text(

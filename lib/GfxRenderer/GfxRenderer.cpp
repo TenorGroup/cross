@@ -270,6 +270,7 @@ void GfxRenderer::releaseFrameBufferForBuild() {
   uint32_t size = 0;
   uint8_t* scratch = display.lendFrameBufferStorage(&size);
   frameBuffer = nullptr;
+  frameBufferLoans++;
   if (scratch) {
     buildscratch::lend(scratch, size);
   }
@@ -1810,24 +1811,25 @@ HalDisplay::RefreshMode GfxRenderer::applyRedrive(const HalDisplay::RefreshMode 
   if (!redrivePending_) return refreshMode;
   redrivePending_ = false;
   if (!diffOnlyPanel_ || !frameBuffer) return refreshMode;
+  const auto mode = redriveRefresh_ == HalDisplay::FAST_REFRESH ? refreshMode : redriveRefresh_;
   invertScreen();
   display.cleanupGrayscaleBuffers(frameBuffer);
   invertScreen();
   LOG_INF("GFX", "Redrive every pixel");
-  return HalDisplay::FULL_REFRESH;
+  return mode;
 }
 
 void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
   auto elapsed = millis() - start_ms;
+  if (preDisplayHook) preDisplayHook(*this);
   refreshMode = applyRedrive(applyPromotedRefresh(refreshMode));
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer, mode=%d", elapsed, static_cast<int>(refreshMode));
-  if (preDisplayHook) preDisplayHook(*this);
   display.displayBuffer(refreshMode, fadingFix);
 }
 
 void GfxRenderer::displayBufferAsync(HalDisplay::RefreshMode refreshMode) const {
-  refreshMode = applyRedrive(applyPromotedRefresh(refreshMode));
   if (preDisplayHook) preDisplayHook(*this);
+  refreshMode = applyRedrive(applyPromotedRefresh(refreshMode));
   // The async path has no turn-off-screen hook, which the sunlight fading fix
   // relies on; keep those users on the blocking path.
   if (fadingFix) {
@@ -2159,22 +2161,6 @@ static bool logicalRectToPhysicalBounds(GfxRenderer::Orientation orientation, in
   *outX1 = maxX;
   *outY1 = maxY;
   return true;
-}
-
-void GfxRenderer::redriveRegion(const int x, const int y, const int w, const int h) const {
-  int x0, y0, x1, y1;
-  if (!frameBuffer || display.isInverted() ||
-      !logicalRectToPhysicalBounds(orientation, x, y, w, h, panelWidth, panelHeight, &x0, &y0, &x1, &y1))
-    return;
-  const auto flip = [&] {
-    for (int row = y0; row <= y1; ++row)
-      for (int byte = x0 / 8; byte <= x1 / 8; ++byte) frameBuffer[row * panelWidthBytes + byte] ^= 0xFF;
-  };
-  flip();
-  display.cleanupGrayscaleBuffers(frameBuffer);
-  flip();
-  LOG_INF("GFX", "Redrive region x=%d y=%d w=%d h=%d", x, y, w, h);
-  display.displayBuffer(diffOnlyPanel_ ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH, fadingFix);
 }
 
 size_t GfxRenderer::getRegionByteSize(int lx, int ly, int lw, int lh) const {

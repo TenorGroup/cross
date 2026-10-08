@@ -40,11 +40,16 @@ void configure(Resolver resolver, FontFilter filter) {
   accepts = filter;
 }
 void drawMarginPin(const GfxRenderer& r, int top) {
-  // Tim dac 9x8, cung o 9x9 cua ngoi sao cu, mui tim cham day o.
+  // Keep the right edge at column 21, clear of the row's ring.
   constexpr unsigned rows[] = {0x0C6, 0x1EF, 0x1FF, 0x1FF, 0x0FE, 0x07C, 0x038, 0x010};
-  for (int dy = 0; dy < 8; ++dy)
-    for (int dx = 0; dx < 9; ++dx)
-      if (rows[dy] & (1u << (8 - dx))) r.drawPixel(13 + dx, top + 1 + dy, true);
+  const int height = marginPinHeight(), width = height == 8 ? 9 : 17;
+  for (int dy = 0; dy < height; ++dy)
+    for (int dx = 0; dx < width; ++dx)
+      if (rows[dy * 8 / height] & (1u << (8 - dx * 9 / width)))
+        r.drawPixel(22 - width + dx, top + 1 + dy, true);
+}
+int marginPinHeight() {
+  return resolve ? resolve(10).marginPinHeight : 8;
 }
 int markTopOnCapitals(const GfxRenderer& r, const int font, const int y, const int height) {
   const int capTop = r.getTextInkTop(font, "H", EpdFontFamily::REGULAR);
@@ -95,8 +100,7 @@ int text(const GfxRenderer& r, int font, int x, int y, const char* str, bool dra
     if (id >= 0) {
       const auto spec = resolve(id);
       if (spec.shape == Shape::MarginPin) {
-        // The heart's 8 rows start a row under the top drawMarginPin takes.
-        if (draw) drawMarginPin(r, markTopOnCapitals(r, font, y, 8) - 1);
+        if (draw) drawMarginPin(r, markTopOnCapitals(r, font, y, marginPinHeight()) - 1);
       } else if (spec.label) {
         if (draw) r.drawText(font, x + advance, y, spec.label, black, style);
         advance += r.getTextAdvanceX(font, spec.label, style);

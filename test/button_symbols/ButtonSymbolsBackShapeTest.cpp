@@ -7,10 +7,12 @@
 // Follows the sd_font_lifetime recipe: HalDisplay's frame buffer is a plain
 // RAM vector, so the real GfxRenderer paints into memory this test can read.
 #include <ButtonSymbols.h>
+#include <CrossPointSettings.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
 #include <HalGPIO.h>
 #include <InlineSymbols.h>
+#include <TenorMenuChrome.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -117,6 +119,7 @@ uint16_t HalDisplay::getDisplayWidthBytes() const { return DISPLAY_WIDTH_BYTES; 
 uint32_t HalDisplay::getBufferSize() const { return BUFFER_SIZE; }
 
 int main() {
+  buttonSymbols::install();
   HalDisplay display;
   GfxRenderer renderer{display};
   renderer.begin();
@@ -223,6 +226,15 @@ int main() {
       for (int dx = 0; dx < 9; ++dx)
         if (isInk(ink.minX + dx, ink.minY + dy) != (kTim[dy][dx] == '#')) khop = false;
     check(khop, "dau ghim: hinh khong phai trai tim");
+    SETTINGS.tenorSideArrows = 0;
+    clear();
+    inlineSymbols::drawMarginPin(renderer, kRowY - 4);
+    const auto large = scanAround(17, kRowY, 30);
+    const int expectedW = tenorchrome::kTouchShell ? 9 : 17, expectedH = tenorchrome::kTouchShell ? 8 : 15;
+    check(large.any && large.maxX - large.minX == expectedW - 1 && large.maxY - large.minY == expectedH - 1,
+          "arrows off: pin heart must grow to 17x15");
+    check(large.any && large.maxX == 21 && large.minX >= 0, "large pin must stay in the left margin");
+    SETTINGS.tenorSideArrows = 1;
   }
 
   std::printf(

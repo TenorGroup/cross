@@ -34,8 +34,9 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
   if (count <= 0) return;
   const bool icons = static_cast<bool>(tabs[0].icon);
   const int slotW = (w - 2 * KHE) / count;
-  // Icon tabs: the pill's ends sit concentric with the bar's, the centres spread evenly between them.
-  const int first = x0 + KHE + PILL_ICON_W / 2, last = x0 + w - 1 - KHE - PILL_ICON_W / 2;
+  // Touch icon pills leave 8 px inside the bar's ends; the centres spread evenly between them.
+  const int endInset = tenorchrome::kTouchShell ? 8 : KHE;
+  const int first = x0 + endInset + PILL_ICON_W / 2, last = x0 + w - 1 - endInset - PILL_ICON_W / 2;
   fui::TextStyle label = chu;
   label.align = fui::TextAlign::Center;
   label.color = fui::Color::Black;

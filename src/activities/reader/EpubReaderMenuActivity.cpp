@@ -5,6 +5,8 @@
 #include <HalTiltSensor.h>
 #include <I18n.h>
 
+#include <utility>
+
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "MenuCustomization.h"
@@ -60,6 +62,7 @@ void EpubReaderMenuActivity::rebuildRows() {
     fui::ListItem item;
     item.label = I18N.get(menuItems[rowToItem[r]].labelId);
     item.actionValue = static_cast<int16_t>(r);
+    item.opensNext = readermenu::rowOpens(menuItems[rowToItem[r]].action);
     menuRowItems[r] = item;
   }
 }
@@ -225,9 +228,19 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
   app.clearTapFlash();
 
   const auto selectedAction = menuItems[rowToItem[index]].action;
+  freeink::ui::Rect parentFrame{};
+  const bool inFrame = rowFrameFor(ACTION_ROW, index, parentFrame);
   if (selectedAction == MenuAction::ROTATE_SCREEN) {
-    optionPopup.show(StrId::STR_ORIENTATION, orientationLabels.data(), static_cast<int>(orientationLabels.size()),
-                     pendingOrientation, [this](int idx) {
+    const auto show = [this, &parentFrame, inFrame](auto&& callback) {
+      if (inFrame)
+        optionPopup.showInFrame(parentFrame, StrId::STR_ORIENTATION, orientationLabels.data(),
+                                static_cast<int>(orientationLabels.size()), pendingOrientation,
+                                std::forward<decltype(callback)>(callback));
+      else
+        optionPopup.show(StrId::STR_ORIENTATION, orientationLabels.data(), static_cast<int>(orientationLabels.size()),
+                         pendingOrientation, std::forward<decltype(callback)>(callback));
+    };
+    show([this](int idx) {
                        pendingOrientation = idx;
                        // Rotate the menu immediately. Only the renderer turns;
                        // SETTINGS.orientation stays unchanged so the reader's
@@ -241,11 +254,16 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
   }
 
   if (selectedAction == MenuAction::AUTO_PAGE_TURN) {
-    optionPopup.show(I18N.get(StrId::STR_AUTO_TURN_PAGES_PER_MIN), pageTurnLabels.data(),
-                     static_cast<int>(pageTurnLabels.size()), selectedPageTurnOption, [this](int idx) {
+    const auto callback = [this](int idx) {
                        selectedPageTurnOption = idx;
                        requestUpdate();
-                     });
+                     };
+    if (inFrame)
+      optionPopup.showInFrame(parentFrame, I18N.get(StrId::STR_AUTO_TURN_PAGES_PER_MIN), pageTurnLabels.data(),
+                              static_cast<int>(pageTurnLabels.size()), selectedPageTurnOption, callback);
+    else
+      optionPopup.show(I18N.get(StrId::STR_AUTO_TURN_PAGES_PER_MIN), pageTurnLabels.data(),
+                       static_cast<int>(pageTurnLabels.size()), selectedPageTurnOption, callback);
     requestUpdate();
     return;
   }
@@ -272,11 +290,13 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     chu.reserve(CrossPointSettings::READER_STATUS_BAR_MODE_COUNT);
     for (const auto id : readermenu::STATUS_BAR_MODE_LABELS) chu.push_back(I18N.get(id));
     const int dangDung = SETTINGS.readerStatusBarMode;
-    optionPopup.show(StrId::STR_HIDE_READER_STATUS_BAR, chu, dangDung, [this](const int idx) {
+    const auto callback = [this](const int idx) {
       if (idx < 0 || idx >= CrossPointSettings::READER_STATUS_BAR_MODE_COUNT) return;
       SETTINGS.readerStatusBarMode = static_cast<uint8_t>(idx);
       SETTINGS.saveToFile();
-    });
+    };
+    if (inFrame) optionPopup.showInFrame(parentFrame, StrId::STR_HIDE_READER_STATUS_BAR, chu, dangDung, callback);
+    else optionPopup.show(StrId::STR_HIDE_READER_STATUS_BAR, chu, dangDung, callback);
     requestUpdate();
     return;
   }
@@ -291,11 +311,11 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
   }
 
   if (selectedAction == MenuAction::FONT_SIZE) {
-    chonCoChu();
+    chonCoChu(index);
     return;
   }
   if (selectedAction == MenuAction::FONT_FAMILY) {
-    chonHoFont();
+    chonHoFont(index);
     return;
   }
 
@@ -314,7 +334,7 @@ void EpubReaderMenuActivity::dongVoi(const MenuAction viec, const uint8_t coChu,
   finish();
 }
 
-void EpubReaderMenuActivity::chonCoChu() {
+void EpubReaderMenuActivity::chonCoChu(const int row) {
   const std::vector<uint8_t> sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
   const int n = static_cast<int>(sizes.size());
   if (n <= 0) {
@@ -329,18 +349,24 @@ void EpubReaderMenuActivity::chonCoChu() {
   std::vector<std::string> nhan;
   nhan.reserve(n);
   for (const uint8_t pt : sizes) nhan.push_back(std::to_string(pt) + " pt");
-  if (!optionPopup.vuaMan(renderer, nhan)) {
+  freeink::ui::Rect parentFrame{};
+  const bool inFrame = tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, parentFrame);
+  if (!inFrame && !optionPopup.vuaMan(renderer, nhan)) {
     dongVoi(MenuAction::FONT_SIZE, 0, -1);  // qua nhieu co cho mot popup: mo man day du
     return;
   }
-  optionPopup.show(StrId::STR_FONT_SIZE, nhan, cur, [this, sizes, cur](const int idx) {
+  const auto onSelect = [this, sizes, cur](const int idx) {
     if (idx < 0 || idx >= static_cast<int>(sizes.size()) || idx == cur) return;  // chon lai co cu: 0 dan lai
     dongVoi(MenuAction::FONT_SIZE, sizes[idx], -1);
-  });
+  };
+  if (inFrame)
+    optionPopup.showInFrame(parentFrame, StrId::STR_FONT_SIZE, nhan, cur, onSelect);
+  else
+    optionPopup.show(StrId::STR_FONT_SIZE, nhan, cur, onSelect);
   requestUpdate();
 }
 
-void EpubReaderMenuActivity::chonHoFont() {
+void EpubReaderMenuActivity::chonHoFont(const int row) {
   const std::vector<fontdoc::Ho> ho = fontdoc::danhSachHo(&sdFontSystem.registry());
   const int n = static_cast<int>(ho.size());
   if (n <= 0) {
@@ -355,14 +381,20 @@ void EpubReaderMenuActivity::chonHoFont() {
   std::vector<std::string> nhan;
   nhan.reserve(n);
   for (const auto& h : ho) nhan.push_back(h.ten);
-  if (!optionPopup.vuaMan(renderer, nhan)) {
+  freeink::ui::Rect parentFrame{};
+  const bool inFrame = tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, parentFrame);
+  if (!inFrame && !optionPopup.vuaMan(renderer, nhan)) {
     dongVoi(MenuAction::FONT_FAMILY, 0, -1);  // 130 ho khong vua mot popup: man Cai dat van ban co cuon
     return;
   }
-  optionPopup.show(StrId::STR_FONT_FAMILY, nhan, cur, [this, n, cur](const int idx) {
+  const auto onSelect = [this, n, cur](const int idx) {
     if (idx < 0 || idx >= n || idx == cur) return;
     dongVoi(MenuAction::FONT_FAMILY, 0, static_cast<int8_t>(idx));
-  });
+  };
+  if (inFrame)
+    optionPopup.showInFrame(parentFrame, StrId::STR_FONT_FAMILY, nhan, cur, onSelect);
+  else
+    optionPopup.show(StrId::STR_FONT_FAMILY, nhan, cur, onSelect);
   requestUpdate();
 }
 

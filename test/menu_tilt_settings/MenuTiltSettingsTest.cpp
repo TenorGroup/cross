@@ -444,7 +444,7 @@ int main(int argc, char** argv) {
   // existing row kept its place. v1.0.52 then dropped the UI theme row and added the starting up notice row,
   // v1.0.53 the touch back tap zone and tap zone tip rows, the persisted-only rows of tenor/ugly
   // (uiShellClockMemo, uglyBatteryHidden) and the clock shown once (uiShellClockOnce).
-  bool ok = expect(catalog.size() == (hasImu ? 101U : 89U), "X3 descriptor count");
+  bool ok = expect(catalog.size() == (hasImu ? 105U : 93U), "X3 descriptor count");
   ok = expect(longPressValuesMatch(catalog, hasImu), "Confirm-hold list shows Reader menu and appends the new actions") &&
        ok;
   ok = longPressStoreKept(catalog, hasImu) && ok;

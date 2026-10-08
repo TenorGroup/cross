@@ -256,6 +256,7 @@ bool ReaderActivity::linkNoteTitle(std::string& title) const {
 }
 
 void ReaderActivity::onPause() {
+  readingPace.suspend();
   pendingExternalTurn = 0;
 #ifdef TENOR_TURN_TRACE
   dropTurnTrace(pendingExternalTurnTrace, "pause");
@@ -362,22 +363,30 @@ void ReaderActivity::readingMargins(int& top, int& right, int& bottom, int& left
     constexpr int TOP_BREATHING_ROOM = 3;
     const int inkSafeTop =
         maxInkTop > 0 ? std::max(margin, maxInkTop - renderer.getFontAscenderSize(fontId)) : margin + 1;
-    top = inkSafeTop + TOP_BREATHING_ROOM;
+    top = std::max(inkSafeTop + TOP_BREATHING_ROOM, readerStatusTopReserve());
     right = margin;  // Keep the reader text inset equal on both sides.
     bottom = std::max(margin, preview                            ? static_cast<int>(PREVIEW_FOOTER_HEIGHT)
-                              : SETTINGS.readerStatusBarHidden() ? 0
+                              : readerStatusBarHeight() == 0 ? 0
                                                                  : tenorchrome::readerBottomReserve());
     return;
   }
-  top += margin;
+  top = std::max(top + margin, readerStatusTopReserve());
   right += margin;
   left += margin;
   bottom += std::max(margin, static_cast<int>(readerStatusBarHeight()));
 }
 
 uint8_t ReaderActivity::readerStatusBarHeight() const {
+  const auto spec = SETTINGS.statusBarSpec();
+  if (!preview && spec.slotsEnabled && !spec.textLaneVisible(true)) return 0;
   return preview ? PREVIEW_FOOTER_HEIGHT
                  : UITheme::getInstance().getStatusBarHeight(UITheme::StatusBarScope::Reader);
+}
+
+int ReaderActivity::readerStatusTopReserve() const {
+  const auto spec = SETTINGS.statusBarSpec();
+  return !preview && spec.slotsEnabled && spec.topTitleMode != CrossPointSettings::HIDE_TITLE
+             ? 12 + renderer.getLineHeight(SMALL_FONT_ID) + 4 : 0;
 }
 
 void ReaderActivity::drawPreviewFooter() const {
@@ -455,6 +464,7 @@ bool ReaderActivity::pageTurnLocked(const bool isForward) {
   if (currentTurnTrace.id == 0) currentTurnTrace = detectTurnTrace("local", isForward);
 #endif
   if (!latTrangThat(isForward)) {
+    readingPace.suspend();
 #ifdef TENOR_TURN_TRACE
     logTurnTrace("REJECTED", currentTurnTrace, "unchanged");
     currentTurnTrace = {};
@@ -468,6 +478,7 @@ bool ReaderActivity::pageTurnLocked(const bool isForward) {
   logTurnTrace("APPLIED", appliedTurnTrace, "page");
 #endif
   ++trangDaLat;
+  if (!preview) readingPace.turned(millis(), isForward, pacePosition());
   // A Failed link note has been read: the page this turn paints shows the title again.
   bleturner::acknowledgeLinkNote();
   return true;
@@ -640,6 +651,7 @@ void ReaderActivity::loop() {
 
 void ReaderActivity::render(RenderLock&&) {
   if (isAtEndOfBook()) {
+    readingPace.suspend();
     if (preview) {
       renderer.clearScreen();
       drawPreviewFooter();
@@ -673,6 +685,9 @@ void ReaderActivity::render(RenderLock&&) {
   }
 
   renderBook();
+  if (!preview && pageRendered.load(std::memory_order_acquire) && readingPageVisible())
+    readingPace.shown(millis(), pacePosition(), paceLayoutKey());
+  else readingPace.suspend();
   pageReady.store(true, std::memory_order_release);
 }
 

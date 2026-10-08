@@ -51,6 +51,10 @@ constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING, StrId::STR_HYP
 // redesign is not taken (see RESOLUTION.md).
 constexpr StrId SPACING_LEVEL_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW, StrId::STR_TIGHT,
                                        StrId::STR_WIDE, StrId::STR_VERY_WIDE};
+constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_INK_DEFAULT, StrId::STR_VERY_NARROW, StrId::STR_TIGHT,
+                                     StrId::STR_WIDE, StrId::STR_VERY_WIDE, StrId::STR_LINE_SPACING_130,
+                                     StrId::STR_LINE_SPACING_160};
+static_assert(std::size(LINE_SPACING_IDS) == readerSpacing::LINE_LEVEL_COUNT, "line spacing labels");
 constexpr StrId INK_WEIGHT_IDS[] = {StrId::STR_READER_INK_0, StrId::STR_READER_INK_1,
                                     StrId::STR_READER_INK_2, StrId::STR_READER_INK_3};
 static_assert(std::size(INK_WEIGHT_IDS) == readerInk::LEVEL_COUNT, "reader ink labels");
@@ -133,8 +137,8 @@ void TextSettingsActivity::rebuildRowItems() {
         break;
     }
     item.actionValue = static_cast<int16_t>(i);
-    item.opensNext = tab_ == Tab::Layout &&
-                     (i == static_cast<int>(LayoutRow::Alignment) || i == static_cast<int>(LayoutRow::ScreenMargin));
+    item.opensNext = (tab_ == Tab::Layout || tab_ == Tab::Style) &&
+                     settingstabs::moTrinhChon(formRow(this, formIndex(tab_, i)).count);
     rowItems_.push_back(item);
   }
 }
@@ -599,21 +603,12 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
 
 const char* TextSettingsActivity::confirmLabelText() const {
   if (ringPos() == 0) return tr(STR_SELECT);
-  switch (tab_) {
-    case Tab::Layout:
-      // Inline choices cycle directly; the other rows open a picker.
-      return ringPos() - 1 == static_cast<int>(LayoutRow::LineSpacing) ||
-                     ringPos() - 1 == static_cast<int>(LayoutRow::LetterSpacing) ||
-                     ringPos() - 1 == static_cast<int>(LayoutRow::WordSpacing) ||
-                     ringPos() - 1 == static_cast<int>(LayoutRow::ParaSpacing) ||
-                     ringPos() - 1 == static_cast<int>(LayoutRow::ParaIndent)
-                 ? tr(STR_TOGGLE)
-                 : tr(STR_SELECT);
-    case Tab::Style:
-      return tr(STR_TOGGLE);
-    default:
-      return tr(STR_SELECT);
+  if (tab_ == Tab::Layout || tab_ == Tab::Style) {
+    const int row = ringPos() - 1;
+    return row >= 0 && row < static_cast<int>(rowItems_.size()) && rowItems_[row].opensNext
+               ? tr(STR_SELECT) : tr(STR_TOGGLE);
   }
+  return tr(STR_SELECT);
 }
 
 void TextSettingsActivity::render(RenderLock&&) {
@@ -748,31 +743,32 @@ bool TextSettingsActivity::applySize(const int listIndex) {
 }
 
 void TextSettingsActivity::confirmLayoutRow(const int row) {
-  if (row < 0 || row >= static_cast<int>(LayoutRow::Count)) return;
-  const auto current = formRow(this, formIndex(Tab::Layout, row));
-  if (row == static_cast<int>(LayoutRow::Alignment)) {
-    const auto onSelect = [this, row](int option) { applyChosenValue(Tab::Layout, row, option); };
-    freeink::ui::Rect parentFrame{};
-    if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, parentFrame))
-      optionPopup_.showInFrame(parentFrame, StrId::STR_ALIGNMENT, ALIGNMENT_IDS,
-                               static_cast<int>(std::size(ALIGNMENT_IDS)), current.selected, onSelect);
-    else
-      optionPopup_.show(StrId::STR_ALIGNMENT, ALIGNMENT_IDS, static_cast<int>(std::size(ALIGNMENT_IDS)),
-                        current.selected, onSelect);
-    requestUpdate();
-  } else if (row == static_cast<int>(LayoutRow::ScreenMargin)) {
+  confirmValueRow(Tab::Layout, row);
+}
+
+void TextSettingsActivity::confirmValueRow(const Tab tab, const int row) {
+  const int question = formIndex(tab, row);
+  if (question < 0) return;
+  const auto current = formRow(this, question);
+  const auto* setting = formSetting(question);
+  if (!setting || current.count <= 0) return;
+  if (settingstabs::moTrinhChon(current.count)) {
     std::vector<std::string> options;
     options.reserve(current.count);
-    for (int m = MARGIN_MIN; m <= MARGIN_MAX; m += MARGIN_STEP) options.push_back(std::to_string(m));
-    const auto onSelect = [this, row](int option) { applyChosenValue(Tab::Layout, row, option); };
+    for (int option = 0; option < current.count; ++option) {
+      char label[128];
+      formLabel(this, question, option, label, sizeof(label));
+      options.emplace_back(label);
+    }
+    const auto onSelect = [this, tab, row](int option) { applyChosenValue(tab, row, option); };
     freeink::ui::Rect parentFrame{};
     if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, parentFrame))
-      optionPopup_.showInFrame(parentFrame, StrId::STR_SCREEN_MARGIN, options, current.selected, onSelect);
+      optionPopup_.showInFrame(parentFrame, setting->nameId, options, current.selected, onSelect);
     else
-      optionPopup_.show(StrId::STR_SCREEN_MARGIN, options, current.selected, onSelect);
+      optionPopup_.show(setting->nameId, options, current.selected, onSelect);
     requestUpdate();
-  } else if (current.count) {
-    applyChosenValue(Tab::Layout, row, (current.selected + 1) % current.count);
+  } else {
+    applyChosenValue(tab, row, (current.selected + 1) % current.count);
   }
 }
 
@@ -785,7 +781,7 @@ std::string TextSettingsActivity::layoutValueText(int row) {
     case LayoutRow::ParaIndent:
       return I18N.get(INDENT_IDS[SETTINGS.paragraphIndent < std::size(INDENT_IDS) ? SETTINGS.paragraphIndent : 0]);
     case LayoutRow::LineSpacing:
-      return I18N.get(SPACING_LEVEL_IDS[readerSpacing::clampLevel(SETTINGS.lineSpacing)]);
+      return I18N.get(LINE_SPACING_IDS[readerSpacing::clampLineLevel(SETTINGS.lineSpacing)]);
     case LayoutRow::ParaSpacing:
       return I18N.get(SPACING_LEVEL_IDS[readerSpacing::clampLevel(SETTINGS.extraParagraphSpacing)]);
     case LayoutRow::Alignment: {
@@ -801,9 +797,7 @@ std::string TextSettingsActivity::layoutValueText(int row) {
 }
 
 void TextSettingsActivity::confirmStyleRow(const int row) {
-  const auto current = formRow(this, formIndex(Tab::Style, row));
-  if (row >= 0 && row < static_cast<int>(StyleRow::Count) && current.count)
-    applyChosenValue(Tab::Style, row, (current.selected + 1) % current.count);
+  confirmValueRow(Tab::Style, row);
 }
 
 std::string TextSettingsActivity::styleValueText(int row) {

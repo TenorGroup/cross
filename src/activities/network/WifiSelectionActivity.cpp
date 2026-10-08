@@ -630,9 +630,13 @@ void WifiSelectionActivity::attemptConnection() {
   LOG_INF("WIFI", "STA ready");
   // Keep STA initialized for the explicit begin below. Power-cycling it here
   // can break the next WPA handshake on routers that accepted the scan.
+#ifdef SIMULATOR
+  WiFi.disconnect(false, false);
+#else
   if (!WiFi.disconnect(false, false, 1000)) {
     LOG_DBG("WIFI", "Disconnect before join timed out; trying explicit begin");
   }
+#endif
   delay(100);
   LOG_INF("WIFI", "Previous connection cleared");
 
