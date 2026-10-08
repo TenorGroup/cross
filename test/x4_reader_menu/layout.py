@@ -7,6 +7,9 @@ import subprocess
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[2])
 parser.add_argument('--output', type=Path, required=True)
+parser.add_argument('--expect-preview-hit', action='store_true')
+parser.add_argument('--mutate-preview-hit', action='store_true')
+parser.add_argument('--signature', action='store_true')
 a = parser.parse_args()
 a.output.mkdir(parents=True, exist_ok=True)
 
@@ -20,6 +23,13 @@ def method(text, signature):
     return text[start:end]
 
 source = (a.repo / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
+if a.mutate_preview_hit:
+    source, removed = re.subn(
+        r'^\s*screen\.frame\(\)\.hit\(\{rowsRect\.x, previewY, rowsRect\.width, previewHeight\}, ACTION_ROW,\n'
+        r'\s*static_cast<int16_t>\(previewIndex\), listProps_\.inputMask\);\n',
+        '          static_cast<void>(previewIndex);\n', source, flags=re.M)
+    if removed != 1:
+        raise SystemExit(f'preview hit mutation expected 1 match, got {removed}')
 header = (a.repo / 'src/activities/reader/ReaderToolbarUi.h').read_text()
 header = re.sub(r'^#(?:include|pragma).*\n', '', header, flags=re.M)
 chrome = (a.repo / 'src/components/TenorMenuChrome.h').read_text()
@@ -42,6 +52,12 @@ struct GfxRendererTarget { static constexpr int FONT_LABEL=3; }; }
 freeink::Icon icon_reader_back_24,icon_reader_next_24,icon_reader_tick_24;
 #include <I18n.h>
 #include "activities/reader/ReaderMenuLayout.h"
+constexpr bool kExpectPreviewHit = EXPECT_PREVIEW_HIT;
+constexpr bool kDumpSignature = DUMP_SIGNATURE;
+std::string rectSignature(fui::Rect r) {
+  return std::to_string(r.x) + "," + std::to_string(r.y) + "," + std::to_string(r.width) + "," +
+         std::to_string(r.height);
+}
 I18n& I18n::getInstance(){static I18n i;return i;}
 const char* I18n::get(StrId)const{return "Done";}
 class GfxRenderer {};
@@ -53,18 +69,33 @@ struct Target : fui::DrawTarget {
   bool paintingEnabled() const { return painting; }
   bool painting=true;
   std::vector<fui::Rect> frames;
+  std::vector<std::string> commands;
   struct Text { fui::Rect rect; std::string label; };
   std::vector<Text> texts;
   fui::Size measureText(fui::FontId,const char* text,fui::TextStyle) const override {
     return {static_cast<int16_t>(strlen(text)*(8+tier*2)), static_cast<int16_t>(24+tier*8)};
   }
   int16_t lineHeight(fui::FontId) const override { return static_cast<int16_t>(33+tier*5); }
-  void fill(fui::Rect,fui::Paint,uint8_t=0,uint8_t=fui::CornersAll) override {}
-  void stroke(fui::Rect r,fui::Paint,uint8_t,uint8_t radius=0,uint8_t=fui::CornersAll) override { if(radius==20) frames.push_back(r); }
-  void line(fui::Point,fui::Point,uint8_t,fui::Paint) override {}
-  void triangle(fui::Point,fui::Point,fui::Point,fui::Paint) override {}
-  void text(fui::Rect rect,const char* label,fui::TextStyle) override { if(label) texts.push_back({rect,label}); }
-  void bitmap(fui::Rect,fui::BitmapRef,fui::BitmapMode,fui::Paint=fui::Paint::solid(fui::Color::Black),fui::Rotation=fui::Rotation::None) override {}
+  void fill(fui::Rect r,fui::Paint,uint8_t=0,uint8_t=fui::CornersAll) override { commands.push_back("fill:" + rectSignature(r)); }
+  void stroke(fui::Rect r,fui::Paint,uint8_t,uint8_t radius=0,uint8_t=fui::CornersAll) override {
+    commands.push_back("stroke:" + rectSignature(r) + ":" + std::to_string(radius));
+    if(radius==20) frames.push_back(r);
+  }
+  void line(fui::Point a,fui::Point b,uint8_t width,fui::Paint) override {
+    commands.push_back("line:" + std::to_string(a.x) + "," + std::to_string(a.y) + "," +
+                       std::to_string(b.x) + "," + std::to_string(b.y) + ":" + std::to_string(width));
+  }
+  void triangle(fui::Point a,fui::Point b,fui::Point c,fui::Paint) override {
+    commands.push_back("triangle:" + std::to_string(a.x) + "," + std::to_string(a.y) + "," +
+                       std::to_string(b.x) + "," + std::to_string(b.y) + "," + std::to_string(c.x) + "," +
+                       std::to_string(c.y));
+  }
+  void text(fui::Rect rect,const char* label,fui::TextStyle) override {
+    if(label) { texts.push_back({rect,label}); commands.push_back("text:" + rectSignature(rect) + ":" + label); }
+  }
+  void bitmap(fui::Rect r,fui::BitmapRef,fui::BitmapMode,fui::Paint=fui::Paint::solid(fui::Color::Black),fui::Rotation=fui::Rotation::None) override {
+    commands.push_back("bitmap:" + rectSignature(r));
+  }
 };
 class MappedInputManager { public: fui::InputSnapshot snap; };
 class UiAppHost {
@@ -88,14 +119,18 @@ constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4;
 constexpr bool kTouchShell=true;
 [[maybe_unused]] constexpr int PANEL_RADIUS=20;
 constexpr int FAVORITE_MARK=14;
-int favoriteMarks=0;
-void drawFavoriteMark(const GfxRenderer&,int,int,int) { ++favoriteMarks; }
+std::vector<std::string> favoriteMarks;
+void drawFavoriteMark(const GfxRenderer&,int x,int y,int) { favoriteMarks.push_back(std::to_string(x) + "," + std::to_string(y)); }
 // The panels' one grey ring (TenorMenuChrome): x 16, the screen's width less 32.
 std::vector<fui::Rect> panels;
 void drawPanel(const GfxRenderer&,int y,int h) { panels.push_back({16,static_cast<int16_t>(y),448,static_cast<int16_t>(h)}); }
 int footBackTop(int h) { return h-76; }
-void drawRowRule(const GfxRenderer&,int,int,int) {}
+std::vector<std::string> rowRules;
+void drawRowRule(const GfxRenderer&,int y,int left,int right) {
+  rowRules.push_back(std::to_string(y) + "," + std::to_string(left) + "," + std::to_string(right));
+}
 ''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|FRAME_BAR_WIDTH|FRAME_BAR_AIR) = .*?;', chrome, re.M)) + '\n' + method(chrome, 'struct FrameBar') + ';\n' + method(chrome, 'inline FrameBar frameScrollBar') + '\n' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
+cpp = cpp.replace('EXPECT_PREVIEW_HIT', str(a.expect_preview_hit).lower()).replace('DUMP_SIGNATURE', str(a.signature).lower())
 cpp += header + '\n' + constants + '\n'
 cpp += 'ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& r): UiAppHost(r), renderer_(&r) {}\n'
 cpp += method(source, 'fui::Rect readerFrame') + '\n'
@@ -176,10 +211,28 @@ int main() {
     event=ui.route(drag); assert(event.event==ReaderToolbarUi::Event::SpacingCommit && event.permille==1000);
     model.textView=ReaderToolbarUi::TextView::Fonts; model.itemCount=31;
     model.rowMarked=[](int i){return i==0;};
-    ui.setModel(model); ui.nav().reset(); ui.render();
+    ui.setModel(model); ui.nav().reset();
+    ui.uiTarget.commands.clear(); ui.uiTarget.frames.clear(); ui.uiTarget.texts.clear();
+    tenorchrome::panels.clear(); tenorchrome::favoriteMarks.clear(); tenorchrome::rowRules.clear();
+    ui.render();
     assert(ui.visibleRows()==4);
     for(int row=0;row<4;++row) minimum(ui,ACTION_ROW,row);
-    assert(ui.app.publishedRect(ACTION_ROW,4).empty());
+    const auto preview=ui.app.publishedRect(ACTION_ROW,4);
+    if (kExpectPreviewHit) {
+      assert(!preview.empty() && "font preview row must be selectable");
+      assert(preview.x==16 && preview.y==650 && preview.width==436 && preview.height==38);
+      auto previewEvent=tap(ui,ACTION_ROW,4);
+      assert(previewEvent.event==ReaderToolbarUi::Event::Row && previewEvent.value==4);
+    } else {
+      assert(preview.empty() && "baseline must leave clipped preview without a hit");
+    }
+    if (kDumpSignature) {
+      std::printf("SIG tier=%d\n", tier);
+      for (const auto& command : ui.uiTarget.commands) std::printf("C %s\n", command.c_str());
+      for (const auto& frame : tenorchrome::panels) std::printf("P %s\n", rectSignature(frame).c_str());
+      for (const auto& mark : tenorchrome::favoriteMarks) std::printf("M %s\n", mark.c_str());
+      for (const auto& rule : tenorchrome::rowRules) std::printf("R %s\n", rule.c_str());
+    }
     assert(!ui.app.interactionOverflowed());
   }
   puts("GREEN X4 production layout: 3 tiers, 5 rows, 12 release-only keys, spacing draft/commit, 4 font rows + peek, shared tools");

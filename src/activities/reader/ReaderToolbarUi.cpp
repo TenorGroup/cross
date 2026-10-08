@@ -590,6 +590,14 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       const fui::Rect rowsRect{listRect.x, listRect.y, static_cast<int16_t>(listRect.width - kBarStrip),
                                listRect.height};
       fui::list(screen.frame(), rowsRect, listProps_);
+      if (fonts && windowCount > nav_.visibleRows) {
+        const int previewIndex = nav_.top + nav_.visibleRows;
+        const int16_t previewY = static_cast<int16_t>(listRect.y + nav_.visibleRows * 62);
+        const int16_t previewHeight = static_cast<int16_t>(listRect.bottom() - previewY);
+        if (previewIndex < count && previewHeight > 0)
+          screen.frame().hit({rowsRect.x, previewY, rowsRect.width, previewHeight}, ACTION_ROW,
+                             static_cast<int16_t>(previewIndex), listProps_.inputMask);
+      }
       const auto bar =
           tenorchrome::frameScrollBar(frame.x, frame.y, frame.width, frame.height, listRect.y, listRect.bottom());
       fui::drawListScrollIndicator(screen.target(),
