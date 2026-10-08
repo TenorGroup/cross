@@ -52,12 +52,9 @@ class FontWeightTest(unittest.TestCase):
 
     def test_weight_change_returns_to_book(self):
         self.settings.update(fontSize=16,readerInkWeight=0)
-        # Nhip 17/09/2026: doi muc Dong muc (ink weight) nay nam trong the KIEU cua Cua Cai
-        # dat van ban, mo tu menu doc (the Doc, hang 1 = Cai dat van ban) chu khong con la
-        # mot popup rieng trong menu doc. READING dua man toi the BO CUC, dong 1; DOWN mot
-        # nhip sang the KIEU; RIGHT bon nhip xuong hang 5 = Dong muc; CONFIRM xoay muc do
-        # sang trong so ke tiep co san (1 = Light) roi quay lai sach.
-        script=self.READING+';5000:DOWN;6000:RIGHT;6700:RIGHT;7400:RIGHT;8100:RIGHT;9000:CONFIRM;11000:BACK;13000:QUIT'
+        # The ink row now opens a value sheet before applying the selection.
+        script = (self.READING + ';5000:DOWN;6000:RIGHT;6700:RIGHT;7400:RIGHT;8100:RIGHT;'
+                  '9000:CONFIRM;9700:DOWN;10400:CONFIRM;12000:BACK;14000:QUIT')
         saved,log=self.run_sim(script)
         self.assertEqual(saved['readerInkWeight'],1)
         self.assertIn('/weight-2/Trial_16.cpfont',log)

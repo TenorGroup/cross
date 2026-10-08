@@ -220,38 +220,75 @@ class ReaderInkV108Test(unittest.TestCase):
         (self.output / 'measurements.json').write_text(json.dumps(evidence, indent=2))
 
     def test_ui_cycle_preview_return_and_restart(self):
+        self.check_ui_cycle((0, 2, 3, 4))
+
+    def test_partial_pack_ui_cycle_reloads_once_per_change(self):
+        for weight in (3, 4):
+            (self.sd / f'.fonts/Literata/weight-{weight}/Literata_16.cpfont').unlink()
+        self.check_ui_cycle((0, 2, 2, 2))
+
+    def check_ui_cycle(self, weights):
         events = '1000:CONFIRM;2200:CONFIRM;2900:DOWN;3600:DOWN;4300:CONFIRM;5400:DOWN;'
         events += '6100:RIGHT;6800:RIGHT;7500:RIGHT;8200:RIGHT;'
-        events += '9400:CONFIRM;10800:CONFIRM;12200:CONFIRM;13600:CONFIRM;15000:BACK;16600:BACK;17600:QUIT'
-        captures = ((8900, 'preview0'), (10100, 'preview1'), (11500, 'preview2'),
-                    (12900, 'preview3'), (14300, 'preview-return0'), (15900, 'reader-return0'))
+        events += '9400:CONFIRM;9600:DOWN;10000:CONFIRM;'
+        events += '10800:CONFIRM;11000:DOWN;11200:CONFIRM;'
+        events += '12000:CONFIRM;12200:DOWN;12400:CONFIRM;'
+        events += '13200:CONFIRM;13400:UP;13600:UP;13800:UP;14000:CONFIRM;'
+        events += '15500:BACK;17000:BACK;18500:QUIT'
+        captures = ((8900, 'preview0'), (10600, 'preview1'), (11800, 'preview2'),
+                    (13000, 'preview3'), (14600, 'preview-return0'), (16200, 'reader-return0'))
         images, log = self.run_sim('cycle', events, captures)
         self.assertIn('Entering activity: TextSettings', log)
         self.assertIn('Exiting activity: TextSettings', log)
         self.assertEqual(self.settings['readerInkWeight'], 0)
+        loads = re.findall(r'Loaded /.fonts/Literata/(?:weight-(\d)/)?Literata_16.cpfont size=16 id=(-?\d+)', log)
+        self.assertEqual([int(weight or 0) for weight, _ in loads], list(weights) + [0])
+        self.assertEqual(log.count('Reloading Literata: size 16 -> 16'), 4)
+        self.assertEqual(len({font_id for _, font_id in loads}), len(set(weights)))
+        for i, (weight, font_id) in enumerate(loads):
+            for previous_weight, previous_id in loads[:i]:
+                if weight == previous_weight:
+                    self.assertEqual(font_id, previous_id)
         # Preview text lives above the settings tabs/list; omit captions and controls.
         panes = [images[f'preview{level}'].crop((16, 128, 512, 305)) for level in range(4)]
-        self.assertEqual(len({hashlib.sha256(pane.tobytes()).hexdigest() for pane in panes}), 4,
-                         'Changing ink must update the actual preview text')
+        hashes = [hashlib.sha256(pane.tobytes()).hexdigest() for pane in panes]
+        self.assertEqual(len(set(hashes)), len(set(weights)),
+                         'Preview pixels must follow the installed weight')
+        for level in range(4):
+            for previous in range(level):
+                self.assertEqual(hashes[level] == hashes[previous], weights[level] == weights[previous])
         self.assertIsNone(ImageChops.difference(panes[0], images['preview-return0'].crop((16, 128, 512, 305))).getbbox())
         self.assert_page(images['reader-return0'])
         restarted, restart_log = self.run_sim('restart')
         self.assert_loaded(restart_log, 0)
         self.assertEqual(bounds(restarted['page'])['body_sha256'], bounds(images['reader-return0'])['body_sha256'])
+        (self.output / 'cycle-measurements.json').write_text(json.dumps(
+            dict(loaded_weights=[int(weight or 0) for weight, _ in loads],
+                 font_ids=[font_id for _, font_id in loads], preview_sha256=hashes,
+                 reloads=4, saved_level=self.settings['readerInkWeight']), indent=2))
 
     def test_ui_cycle_keeps_requested_missing_level(self):
         missing = self.sd / '.fonts/Literata/weight-3/Literata_16.cpfont'
         missing.unlink()
         self.settings['readerInkWeight'] = 1
         events = '1000:CONFIRM;2200:CONFIRM;2900:DOWN;3600:DOWN;4300:CONFIRM;5400:DOWN;'
-        events += '6100:RIGHT;6800:RIGHT;7500:RIGHT;8200:RIGHT;9400:CONFIRM;10800:BACK;12200:BACK;13600:QUIT'
+        events += '6100:RIGHT;6800:RIGHT;7500:RIGHT;8200:RIGHT;9400:CONFIRM;'
+        events += '9600:DOWN;10000:CONFIRM;12000:BACK;13000:BACK;14500:QUIT'
         images, log = self.run_sim('missing-cycle', events, ((8900, 'before'), (10100, 'requested')))
         self.assertIn('Entering activity: TextSettings', log)
         self.assertEqual(self.settings['readerInkWeight'], 2, log[-5000:])
         before = images['before'].crop((16, 128, 512, 305))
         requested = images['requested'].crop((16, 128, 512, 305))
-        self.assertIsNotNone(ImageChops.difference(before, requested).getbbox(),
-                             'Missing requested level must repaint the inline status')
+        self.assertIsNone(ImageChops.difference(before, requested).getbbox(),
+                           'Missing level 2 must reuse installed weight-2 pixels')
+        value_box = (420, 575, 480, 615)
+        self.assertIsNotNone(ImageChops.difference(images['before'].crop(value_box),
+                                                  images['requested'].crop(value_box)).getbbox(),
+                             'The requested level label must repaint even when the preview stays the same')
+        self.assertEqual(log.count('Reloading Literata: size 16 -> 16'), 1)
+        loads = re.findall(r'Loaded /.fonts/Literata/weight-2/Literata_16.cpfont size=16 id=(-?\d+)', log)
+        self.assertEqual(len(loads), 2, 'Load at startup and once when the requested level changes')
+        self.assertEqual(loads[0], loads[1], 'The same fallback file must retain its cache ID')
 
     def test_missing_and_corrupt_new_variants_preserve_requested_level(self):
         for level in (2, 3):
@@ -266,7 +303,8 @@ class ReaderInkV108Test(unittest.TestCase):
                 _, log = self.run_sim(f'{condition}-{level}', '1800:QUIT', ())
                 self.assertEqual(self.settings['readerInkWeight'], level)
                 self.assertEqual(self.settings['sdFontFamilyName'], 'Literata')
-                self.assertEqual(log.count('Loaded /.fonts/Literata/Literata_16.cpfont'), 1)
+                fallback = PHYSICAL[level] - 1
+                self.assertEqual(log.count(f'Loaded /.fonts/Literata/weight-{fallback}/Literata_16.cpfont'), 1)
                 path.write_bytes(original)
             _, log = self.run_sim(f'restored-{level}', '1800:QUIT', ())
             self.assert_loaded(log, level)
