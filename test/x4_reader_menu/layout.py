@@ -10,6 +10,7 @@ parser.add_argument('--output', type=Path, required=True)
 parser.add_argument('--expect-preview-hit', action='store_true')
 parser.add_argument('--mutate-preview-hit', action='store_true')
 parser.add_argument('--signature', action='store_true')
+parser.add_argument('--expect-fade', action='store_true')
 a = parser.parse_args()
 a.output.mkdir(parents=True, exist_ok=True)
 
@@ -54,6 +55,7 @@ freeink::Icon icon_reader_back_24,icon_reader_next_24,icon_reader_tick_24;
 #include "activities/reader/ReaderMenuLayout.h"
 constexpr bool kExpectPreviewHit = EXPECT_PREVIEW_HIT;
 constexpr bool kDumpSignature = DUMP_SIGNATURE;
+constexpr bool kExpectFade = EXPECT_FADE;
 std::string rectSignature(fui::Rect r) {
   return std::to_string(r.x) + "," + std::to_string(r.y) + "," + std::to_string(r.width) + "," +
          std::to_string(r.height);
@@ -129,12 +131,16 @@ std::vector<std::string> rowRules;
 void drawRowRule(const GfxRenderer&,int y,int left,int right) {
   rowRules.push_back(std::to_string(y) + "," + std::to_string(left) + "," + std::to_string(right));
 }
+std::vector<std::string> fades;
+void fadeBand(const GfxRenderer&, int y0, int h, bool outerTop, int x0 = 0, int x1 = -1) {
+  if (!outerTop) fades.push_back(std::to_string(y0) + "," + std::to_string(h) + "," + std::to_string(x0) + "," + std::to_string(x1));
+}
 ''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|FRAME_BAR_WIDTH|FRAME_BAR_AIR) = .*?;', chrome, re.M)) + '\n' + method(chrome, 'struct FrameBar') + ';\n' + method(chrome, 'inline FrameBar frameScrollBar') + '\n' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
-cpp = cpp.replace('EXPECT_PREVIEW_HIT', str(a.expect_preview_hit).lower()).replace('DUMP_SIGNATURE', str(a.signature).lower())
+cpp = cpp.replace('EXPECT_PREVIEW_HIT', str(a.expect_preview_hit).lower()).replace('DUMP_SIGNATURE', str(a.signature).lower()).replace('EXPECT_FADE', str(a.expect_fade).lower())
 cpp += header + '\n' + constants + '\n'
 cpp += 'ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& r): UiAppHost(r), renderer_(&r) {}\n'
 cpp += method(source, 'fui::Rect readerFrame') + '\n'
-for name in ['begin','render','route','onAction','screenFn','scrollRows','buildX4Tools','buildX4Toolbar','buildX4Panel','buildX4Spacing','buildX4Keypad']:
+for name in ['begin','render','route','onAction','screenFn','scrollRows','buildX4Tools','buildX4Toolbar','buildX4Panel','buildX4Spacing','buildX4Keypad','fadeMoreBelow']:
     # Static onAction has a void signature like the other production members.
     match = re.search(r'^[^\n]*ReaderToolbarUi::'+name+r'\(', source, re.M)
     cpp += method(source, match.group(0)) + '\n'
@@ -214,6 +220,7 @@ int main() {
     ui.setModel(model); ui.nav().reset();
     ui.uiTarget.commands.clear(); ui.uiTarget.frames.clear(); ui.uiTarget.texts.clear();
     tenorchrome::panels.clear(); tenorchrome::favoriteMarks.clear(); tenorchrome::rowRules.clear();
+    tenorchrome::fades.clear();
     ui.render();
     assert(ui.visibleRows()==4);
     for(int row=0;row<4;++row) minimum(ui,ACTION_ROW,row);
@@ -225,6 +232,11 @@ int main() {
       assert(previewEvent.event==ReaderToolbarUi::Event::Row && previewEvent.value==4);
     } else {
       assert(preview.empty() && "baseline must leave clipped preview without a hit");
+    }
+    if (kExpectFade) {
+      assert(tenorchrome::fades.size() == 1 && "font preview must fade below the full rows");
+      assert(tenorchrome::fades[0] == "650,38,16,452" &&
+             "font preview fade must stop before the scroll bar");
     }
     if (kDumpSignature) {
       std::printf("SIG tier=%d\n", tier);

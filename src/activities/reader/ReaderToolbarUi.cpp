@@ -80,12 +80,9 @@ void ReaderToolbarUi::render() {
   for (int pass = 0; pass < 3 && nav_.consumeRebuildNeeded(); ++pass) renderUi();
   uiTarget.setPaintingEnabled(true);
   if (handwritten) paintUgly();
-#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
   else if (model_.panel) fadeMoreBelow();
-#endif
 }
 
-#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
 // Rows go on below the last full one: the band under it fades over the next row's top down to the list's foot
 // (UiListActivity::fadeMoreBelow, the buttons' lists). The scroll bar beside it stays whole.
 void ReaderToolbarUi::fadeMoreBelow() {
@@ -96,7 +93,6 @@ void ReaderToolbarUi::fadeMoreBelow() {
   const int y0 = r.y + r.height;
   tenorchrome::fadeBand(*renderer_, y0, skinList_.bottom() - y0, false, skinList_.x, fadeRight_);
 }
-#endif
 
 ReaderToolbarUi::Routed ReaderToolbarUi::route(const MappedInputManager& input) {
   pending_ = Routed{};
@@ -589,6 +585,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     if (count > 0) {
       const fui::Rect rowsRect{listRect.x, listRect.y, static_cast<int16_t>(listRect.width - kBarStrip),
                                listRect.height};
+      fadeRight_ = rowsRect.right();
       fui::list(screen.frame(), rowsRect, listProps_);
       if (fonts && windowCount > nav_.visibleRows) {
         const int previewIndex = nav_.top + nav_.visibleRows;

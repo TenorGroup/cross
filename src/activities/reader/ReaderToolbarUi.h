@@ -130,9 +130,7 @@ class ReaderToolbarUi : public UiAppHost {
   void buildSheet(UiScreen& screen, const freeink::ui::SheetProps& props, int16_t height);
   void buildToolRow(UiScreen& screen, freeink::ui::LayoutAnchor anchor, int16_t sideInset);
   void paintUgly();
-#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
   void fadeMoreBelow();
-#endif
   int16_t fadeRight_ = 0;  // buttons: the fade under the last full row stops short of the scroll bar
   int sheetRows_ = 0;
   GfxRenderer* renderer_ = nullptr;

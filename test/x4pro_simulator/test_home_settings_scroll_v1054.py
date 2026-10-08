@@ -1,6 +1,7 @@
 """Home Settings' scrollbar stays inside a rounded group frame."""
 
 import os
+import argparse
 from pathlib import Path
 import tempfile
 
@@ -8,6 +9,13 @@ from test_thanh_day import run
 
 
 ARTIFACTS = Path(os.environ.get("HOME_ARTIFACTS", tempfile.gettempdir()))
+
+
+def check_frame_scrollbar_contract(repo, mutate):
+    source = (repo / "src/activities/UiListActivity.cpp").read_text()
+    if mutate:
+        source = source.replace("tenorchrome::frameScrollBar", "settingsScrollBar")
+    assert "const auto bar = tenorchrome::frameScrollBar(" in source, "Settings must use frameScrollBar"
 
 
 def dark(image, x, y):
@@ -39,4 +47,9 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[2])
+    parser.add_argument("--mutate-frame-scrollbar", action="store_true")
+    args = parser.parse_args()
+    check_frame_scrollbar_contract(args.repo, args.mutate_frame_scrollbar)
     main()
