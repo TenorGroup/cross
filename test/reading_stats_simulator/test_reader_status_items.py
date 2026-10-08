@@ -224,8 +224,8 @@ class ReaderStatusItemsTest(unittest.TestCase):
         keys = ['UP', 'RIGHT', 'RIGHT', 'CONFIRM', 'LEFT', 'CONFIRM']
         events = [f'{1000 + 600 * i}:{k}' for i, k in enumerate(keys)]
         t = 1000 + 600 * len(keys)
-        script = ';'.join(events + [f'{t + 800}:CONFIRM', f'{t + 2400}:BACK', f'{t + 3200}:BACK',
-                                    f'{t + 4000}:QUIT'])
+        script = ';'.join(events + [f'{t + 800}:CONFIRM', f'{t + 1400}:RIGHT', f'{t + 2000}:CONFIRM',
+                                    f'{t + 3000}:BACK', f'{t + 3800}:BACK', f'{t + 4600}:QUIT'])
         st = {'language': 'VI', 'statusBarClock': 1, 'readerStatusBarMode': DEFAULT}
         (self.store / 'settings.json').write_text(json.dumps(truoc_tenor(st)))
         (self.store / 'state.json').write_text(json.dumps({'openEpubPath': '', 'lastSleepFromReader': False,
@@ -233,7 +233,7 @@ class ReaderStatusItemsTest(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if not k.startswith('CROSSPOINT_SIM_')}
         env.update(SDL_VIDEODRIVER='dummy', CROSSPOINT_SIM_SD=str(self.sd), CROSSPOINT_SIM_INPUT_SCRIPT=script,
                    CROSSPOINT_SIM_SCREENSHOTS=f'{t + 400}:{self.shots}/screen-before.bmp;'
-                                              f'{t + 2000}:{self.shots}/screen-after.bmp')
+                                              f'{t + 2400}:{self.shots}/screen-after.bmp')
         run = subprocess.run([str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         log = run.stdout + run.stderr
         if ARTIFACTS:
@@ -244,10 +244,15 @@ class ReaderStatusItemsTest(unittest.TestCase):
         self.assertEqual(run.returncode, 0, log)
         self.assertIn('Entering activity: StatusBarSettings', log)
         saved = json.loads((self.store / 'settings.json').read_text())
+        # U6/U10 commits the top slot and mirrors the effective slots to legacy fields.
+        self.assertEqual(saved['readerStatusTop'], 2, saved)
+        self.assertEqual(saved['readerStatusSlotsEnabled'], 1, saved)
+        self.assertEqual((saved['readerStatusLeft'], saved['readerStatusCenter'],
+                          saved['readerStatusRight']), (1, 3, 2), saved)
         self.assertEqual(saved['statusBarTitle'], 2, saved)
         self.assertEqual(saved['statusBarItemsMode'], DEFAULT, saved)
         self.assertEqual(saved['statusBarChapterPageCount'], 1, saved)
-        self.assertEqual(saved['statusBarBookProgressPercentage'], 1, saved)
+        self.assertEqual(saved['statusBarBookProgressPercentage'], 0, saved)
         self.assertEqual(saved['readerStatusBarMode'], DEFAULT, saved)
 
 

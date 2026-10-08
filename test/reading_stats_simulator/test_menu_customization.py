@@ -76,8 +76,9 @@ def route(name,key,expected,settings=None,press='',shots=()):
  assert expected in (t.o/(name+'.log')).read_text(), name
  return sd
 def status():
- sd=route('status','status/statusBarClock','Entering activity: StatusBarSettings',{'statusBarClock':1})
- assert saved(sd,'settings.json')['statusBarClock']==2
+ sd=route('status','status/statusBarClock','Entering activity: StatusBarSettings',{'statusBarClock':1},
+          press='3000:RIGHT;3600:CONFIRM;')
+ assert saved(sd,'settings.json')['readerStatusLeft']==2
 
 def clock():
  # The clock screen is ClockSettings since 1.6.5 (#3562); the pinned format row still opens it and toggles.
@@ -91,7 +92,8 @@ def font():
  assert saved(sd,'settings.json')['fontSize']==18
 
 def text():
- sd=route('text','text/readerInkWeight','Entering activity: TextSettings',{'readerInkWeight':0})
+ sd=route('text','text/readerInkWeight','Entering activity: TextSettings',{'readerInkWeight':0},
+          press='3000:RIGHT;3600:CONFIRM;')
  assert saved(sd,'settings.json')['readerInkWeight']==1  # requested level persists even when its pack is unavailable
 
 def opds():

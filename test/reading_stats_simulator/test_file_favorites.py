@@ -40,8 +40,8 @@ def record(sd,path,folder=False):
  k=key(path,folder);d=sd/'.crosspoint/favorite-files';d.mkdir(parents=True,exist_ok=True);(d/(k[7:]+'.txt')).write_text(path);return k
 
 def status():
- sd=t.run('status','1000:DOWN;1500:DOWN;2100:CONFIRM;3300:BACK:1200;5100:QUIT',[(2900,'swap'),(4800,'home')],t.state(['status/statusBarClock']),{'statusBarClock':1})
- assert json.loads((sd/'.crosspoint/settings.json').read_text())['statusBarClock']==2
+ sd=t.run('status','1000:DOWN;1500:DOWN;2100:CONFIRM;3000:RIGHT;3600:CONFIRM;4500:BACK:1200;6300:QUIT',[(2900,'swap'),(4800,'home')],t.state(['status/statusBarClock']),{'statusBarClock':1})
+ assert json.loads((sd/'.crosspoint/settings.json').read_text())['readerStatusLeft']==2
  assert 'Entering activity: StatusBarSettings' in (t.o/'status.log').read_text()
  t.run('status-restart','1000:DOWN;1500:DOWN;2400:QUIT',[(2100,'home')],reuse='status')
 

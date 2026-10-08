@@ -18,6 +18,12 @@ STUB = r'''
 #include <memory>
 #include <optional>
 #include <vector>
+struct Pace {};
+struct BackgroundBuildFrameGuard {
+ template <typename T>
+ explicit BackgroundBuildFrameGuard(T&) {}
+};
+inline void releaseBaseSettingsList() {}
 int lockDepth=0,starts=0,abandoned=0,destroyed=0,writes=0,updates=0,version=0;
 uint32_t now=0;
 uint32_t millis(){return now;}
@@ -88,6 +94,7 @@ struct EpubReaderActivity {
  int buildViewportWidth=400,buildViewportHeight=600,xemTruocLat=0,catchUpFails=0;
  bool xemTruocTrenMan=false,xemTruoc=false,preview=false,bleDeferred=false;
  uint32_t xemTruocDich=0,xemTruocInputMs=0;
+ Pace readingPace;
  static constexpr uint32_t CATCH_UP_QUIET_MS=QUIET;
  static constexpr int CATCH_UP_MAX_FAILS=3;
  bool textSettingsDirty=false;

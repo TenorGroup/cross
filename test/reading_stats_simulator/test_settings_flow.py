@@ -5,8 +5,8 @@ Hợp đồng Home Settings rc.3 và màn Settings hiện tại:
 - Từ Home, UP mở Cài đặt. Thẻ này bắt đầu ở Hiển thị trong nhóm đọc, kế tiếp là Ngủ,
   Trình đọc, Điều khiển, Cử chỉ. Nhóm máy có Gửi file, Hệ thống, Thiết bị,
   Bàn phím, Khác. Ngủ cần 1 nhịp RIGHT.
-- Trong màn Cài đặt: hai nút cạnh đổi nhóm, hai nút trước đi hàng; hàng enum mở
-  popup (không đổi tại chỗ).
+- Trong màn Cài đặt: 2 nút cạnh đổi nhóm, 2 nút trước đi hàng; hàng có hơn
+  2 lựa chọn mở popup, hàng 2 lựa chọn đổi tại chỗ.
 - Hàng thứ hai của nhóm Ngủ là "Cách vừa ảnh bìa", enum hai lựa chọn: 0 Vừa, 1 Cắt.
 
 Máy chỉ còn đánh thức bằng nút nguồn. Thẻ của máy thật còn lưu "wakeButtons": 3.
@@ -25,8 +25,8 @@ PROGRAM = Path(os.environ.get('TEST_PROGRAM', REPO / '.pio/build/simulator_x3_uc
 
 # Home -> the Cai dat (UP) -> nhom Ngu (RIGHT x1) -> Chon: mo man Cai dat.
 MO_NHOM_NGU = '1000:UP;1500:RIGHT;2500:CONFIRM;'
-# Tu hang dau cua Ngu, RIGHT mot nhip toi "Cach vua anh bia", Chon mo popup, RIGHT toi "Cat", Chon ap dung.
-CHON_CAT = '3500:RIGHT;4000:CONFIRM;5000:RIGHT;5600:CONFIRM;'
+# Hang "Cach vua anh bia" co 2 lua chon, Chon doi truc tiep tu Vua sang Cat.
+CHON_CAT = '3500:RIGHT;4000:CONFIRM;'
 KICH_BAN = MO_NHOM_NGU + CHON_CAT + '7500:BACK;9500:QUIT'
 
 

@@ -43,6 +43,11 @@ class ReaderMenuRuntimeTest(unittest.TestCase):
 #include <cstdint>
 #include <memory>
 #include <optional>
+struct Pace {};
+struct BackgroundBuildFrameGuard {
+  template <typename T>
+  explicit BackgroundBuildFrameGuard(T&) {}
+};
 int abandoned = 0, destroyed = 0;
 uint32_t millis() { return 1234; }
 struct Section {
@@ -57,6 +62,7 @@ struct EpubReaderActivity {
   bool xemTruocTrenMan = false, xemTruoc = false;
   int xemTruocLat = 0, catchUpFails = 0;
   uint32_t xemTruocDich = 0, xemTruocInputMs = 0;
+  Pace readingPace;
   void rememberCurrentContentOffset() { cachedVisibleTextOffset = 4000; }
   void danLaiTrang();
   void dropCatchUp();
@@ -97,6 +103,11 @@ int main() {
 #include <cstdint>
 #include <memory>
 #include <optional>
+struct Pace {};
+struct BackgroundBuildFrameGuard {
+  template <typename T>
+  explicit BackgroundBuildFrameGuard(T&) {}
+};
 #define LOG_INF(...) ((void)0)
 unsigned long now = 10000;
 unsigned long millis() { return now; }
@@ -137,6 +148,7 @@ struct EpubReaderActivity {
   bool xemTruoc = true, xemTruocTrenMan = false;
   int8_t xemTruocLat = 0;
   uint32_t xemTruocDich = 4386;
+  Pace readingPace;
   unsigned long xemTruocInputMs = 0;
   static constexpr unsigned long CATCH_UP_QUIET_MS = 400;
   static constexpr uint8_t CATCH_UP_MAX_FAILS = 3;

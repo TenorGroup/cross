@@ -89,9 +89,10 @@ class QuickActionsV1012Test(unittest.TestCase):
     # ---- Settings > Motion sensor, Controls ----
 
     def test_side_flick_strength_row_saves_strong(self):
-        # Rows: page tilt, tab tilt, row tilt, side strength. Three Right reach it. A three-choice
-        # row steps in place, so one Select moves Medium to Strong and leaves up/down alone.
-        log = self.run_sim([*HOME_TO_MOTION, '4500:RIGHT', '5000:RIGHT', '5500:RIGHT', '6500:CONFIRM'],
+        # Three Right reach side strength. U11 opens its three-choice picker;
+        # choose Strong and keep the independent vertical strength unchanged.
+        log = self.run_sim([*HOME_TO_MOTION, '4500:RIGHT', '5000:RIGHT', '5500:RIGHT',
+                            '6500:CONFIRM', '7000:RIGHT', '7500:CONFIRM'],
                            shots=[(4300, 'motion-rows'), (7700, 'motion-side-strong')])
         self.assertIn('Entering activity: Settings', log)
         saved = self.saved()
