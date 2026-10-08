@@ -211,7 +211,16 @@ int main() {
     const auto minusRect = ui.app.publishedRect(ACTION_SIZE_STEP, -1);
     const auto plusRect = ui.app.publishedRect(ACTION_SIZE_STEP, 1);
     assert(minusRect.x == 260 && minusRect.y == 464 && minusRect.width == 60 && minusRect.height == 62);
-    assert(plusRect.x == 400 && plusRect.y == 464 && plusRect.width == 60 && plusRect.height == 62);
+    assert(plusRect.x == 388 && plusRect.y == 464 && plusRect.width == 60 && plusRect.height == 62);
+    bool sawPlus = false;
+    for (const auto& text : ui.uiTarget.texts) {
+      if (text.label == "+") {
+        sawPlus = true;
+        assert(std::abs((text.rect.x + text.rect.width / 2) - (418)) <= 1 &&
+               "plus label must stay centered on the pill");
+      }
+    }
+    assert(sawPlus && "plus label must be drawn");
     if (kExpectStepperRing) {
       assert(tenorchrome::stepperRings.size() == 2 && "size stepper must draw 2 grey pill rings");
       assert(tenorchrome::stepperRings[0] == "264,473,52,44,2,1" &&

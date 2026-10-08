@@ -682,7 +682,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       stepProps_.label = "+";
       stepProps_.action = ACTION_SIZE_STEP;
       stepProps_.value = 1;
-      const fui::Rect plusRect{static_cast<int16_t>(frame.right() - 64), y, 60, 62};
+      const fui::Rect plusRect{static_cast<int16_t>(frame.right() - 76), y, 60, 62};
       screen.button(stepProps_, plusRect);
       if (renderer_ && uiTarget.paintingEnabled()) {
         constexpr int16_t kStepperRingWidth = 52;
