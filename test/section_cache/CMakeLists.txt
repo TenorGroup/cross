@@ -48,5 +48,6 @@ target_include_directories(SectionCacheTest PRIVATE
   ${SECTION_SOURCE_ROOT}/lib/XmlParserUtils
   ${REPO_ROOT}/freeink-sdk/libs/hardware/SDCardManager/include)
 target_link_libraries(SectionCacheTest PRIVATE GTest::gtest_main expat)
+target_compile_definitions(SectionCacheTest PRIVATE TENOR_SECTION_HOST_TEST=1)
 # Keep host scheduling contention out of the paired partial/cold timing gate.
 gtest_discover_tests(SectionCacheTest PROPERTIES RUN_SERIAL TRUE)

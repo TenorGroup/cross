@@ -92,6 +92,7 @@ constexpr uint32_t HEADER_SIZE =
 // startBuild() keeps the SD font caches at or above this heap (see there).
 constexpr size_t BUILD_START_KEEP_FONT_CACHE_FREE = 64 * 1024;
 constexpr size_t BUILD_START_KEEP_FONT_CACHE_LARGEST = 32 * 1024;
+constexpr size_t PARKED_ANCHOR_RESERVE = 4;
 }  // namespace
 
 // Out-of-line so the unique_ptr<ChapterHtmlSlimParser> in BuildContext can be
@@ -740,6 +741,13 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     if (!reusedHtml) Storage.remove(tmpHtmlPath.c_str());
     return false;
   }
+  ctx->parkedAnchors.reserve(PARKED_ANCHOR_RESERVE);
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("SCT", "PARKED_ANCHORS reserve data=%08x bytes=%u capacity=%u",
+          static_cast<unsigned>(reinterpret_cast<uintptr_t>(ctx->parkedAnchors.data())),
+          static_cast<unsigned>(ctx->parkedAnchors.capacity() * sizeof(ctx->parkedAnchors[0])),
+          static_cast<unsigned>(ctx->parkedAnchors.capacity()));
+#endif
   if (!Storage.openFileForWrite("SCT", lutTmpPath(), ctx->lut)) {
     file.close();
     Storage.remove(binTmpPath().c_str());
@@ -986,7 +994,15 @@ bool Section::parkAtLastCheckpoint() {
   auto anchors = build.parser->takeAnchors();
   if (anchors.size() < build.checkpointAnchors) return false;
   anchors.resize(build.checkpointAnchors);
-  build.parkedAnchors = std::move(anchors);
+  build.parkedAnchors.clear();
+  if (build.parkedAnchors.capacity() < anchors.size()) build.parkedAnchors.reserve(anchors.size());
+  for (auto& anchor : anchors) build.parkedAnchors.emplace_back(std::move(anchor));
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("SCT", "PARKED_ANCHORS parked data=%08x bytes=%u size=%u capacity=%u",
+          static_cast<unsigned>(reinterpret_cast<uintptr_t>(build.parkedAnchors.data())),
+          static_cast<unsigned>(build.parkedAnchors.capacity() * sizeof(build.parkedAnchors[0])),
+          static_cast<unsigned>(build.parkedAnchors.size()), static_cast<unsigned>(build.parkedAnchors.capacity()));
+#endif
   build.bytesConsumed = build.checkpointBytes;
   build.parser.reset();
   if (build.cssParser) build.cssParser->clear();
@@ -1028,7 +1044,16 @@ bool Section::parkBuild() {
     return false;
   }
   build_->bytesConsumed = build_->parser->parseBytesConsumed();
-  build_->parkedAnchors = build_->parser->takeAnchors();
+  auto anchors = build_->parser->takeAnchors();
+  build_->parkedAnchors.clear();
+  if (build_->parkedAnchors.capacity() < anchors.size()) build_->parkedAnchors.reserve(anchors.size());
+  for (auto& anchor : anchors) build_->parkedAnchors.emplace_back(std::move(anchor));
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("SCT", "PARKED_ANCHORS parked data=%08x bytes=%u size=%u capacity=%u",
+          static_cast<unsigned>(reinterpret_cast<uintptr_t>(build_->parkedAnchors.data())),
+          static_cast<unsigned>(build_->parkedAnchors.capacity() * sizeof(build_->parkedAnchors[0])),
+          static_cast<unsigned>(build_->parkedAnchors.size()), static_cast<unsigned>(build_->parkedAnchors.capacity()));
+#endif
   build_->checkpointOnDisk = true;
   build_->checkpointInPartialAt = 0;
   build_->checkpointPages = builtPageCount_;
@@ -1059,9 +1084,9 @@ bool Section::resumeParkedBuild() {
     checkpoint.close();
     return false;
   }
-  // The checkpoint restores anchors too. Release the parked map before allocating
-  // the parser so the two copies never overlap in the render heap.
-  std::vector<std::pair<std::string, uint16_t>>().swap(build_->parkedAnchors);
+  // The checkpoint restores anchors too. Clear the parked elements before allocating
+  // the parser, while keeping the reserved storage for the next park cycle.
+  build_->parkedAnchors.clear();
   bool restored = loadBuildCss(build_.get());
   if (restored) {
     build_->parser = makeBuildParser(build_.get(), build_->spec);
@@ -1085,6 +1110,12 @@ bool Section::resumeParkedBuild() {
 #endif
   return true;
 }
+
+#ifdef TENOR_SECTION_HOST_TEST
+const void* Section::parkedAnchorsDataForTest() const {
+  return build_ ? static_cast<const void*>(build_->parkedAnchors.data()) : nullptr;
+}
+#endif
 
 bool Section::buildSomeMore(const int maxPages) {
   BUILD_PROBE_SCOPE(Tick);
