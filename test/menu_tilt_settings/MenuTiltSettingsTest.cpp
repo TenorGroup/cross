@@ -433,6 +433,8 @@ int main(int argc, char** argv) {
 
   halTiltSensor.available = hasImu;
   const auto& catalog = getBaseSettingsList();
+  std::printf("X3 descriptors imu=%d count=%zu\n", hasImu, catalog.size());
+  for (const auto& setting : catalog) std::printf("descriptor=%s\n", setting.key ? setting.key : "<null>");
   const SettingInfo* readerTilt = findSetting(catalog, "tiltPageTurn");
   const SettingInfo* menuTilt = findSetting(catalog, "tiltTabNavigation");
   const SettingInfo* rowTilt = findSetting(catalog, "tiltMenuNavigation");
@@ -444,7 +446,11 @@ int main(int argc, char** argv) {
   // existing row kept its place. v1.0.52 then dropped the UI theme row and added the starting up notice row,
   // v1.0.53 the touch back tap zone and tap zone tip rows, the persisted-only rows of tenor/ugly
   // (uiShellClockMemo, uglyBatteryHidden) and the clock shown once (uiShellClockOnce).
-  bool ok = expect(catalog.size() == (hasImu ? 105U : 93U), "X3 descriptor count");
+  // v1.0.55 adds uglyStartScreen to the base catalog; shell filtering hides
+  // wakeIntoBook only in visible settings, so each base count grows by 1.
+  bool ok = expect(catalog.size() == (hasImu ? 106U : 94U), "X3 descriptor count");
+  ok = expect(findSetting(catalog, "uglyStartScreen") && findSetting(catalog, "wakeIntoBook"),
+              "base catalog keeps both startup descriptors before shell filtering") && ok;
   ok = expect(longPressValuesMatch(catalog, hasImu), "Confirm-hold list shows Reader menu and appends the new actions") &&
        ok;
   ok = longPressStoreKept(catalog, hasImu) && ok;

@@ -35,7 +35,7 @@ struct ActivityManager {enum class PendingAction{None,Push};PendingAction pendin
  bool isForegroundReaderActivity()const{return pendingAction==PendingAction::None&&currentActivity&&currentActivity->isReaderActivity();}
 };
 ActivityManager activityManager;
-struct FakeInput{enum class Button{PageBack,PageForward,Left,Right,Back,Confirm};bool prev=false,next=false,back=false,confirm=false;bool released=false;int releasedButton=-1;bool wasReleased(Button button)const{if(button==Button::Back)return back;if(button==Button::Confirm)return confirm;return released&&(releasedButton<0||releasedButton==static_cast<int>(button));} unsigned long getHeldTime()const{return 0;}};
+struct FakeInput{enum class Button{PageBack,PageForward,Left,Right,Back,Confirm};bool prev=false,next=false,back=false,confirm=false;bool released=false;int releasedButton=-1;bool wasAnyPressed()const{return prev||next||back||confirm;}bool wasReleased(Button button)const{if(button==Button::Back)return back;if(button==Button::Confirm)return confirm;return released&&(releasedButton<0||releasedButton==static_cast<int>(button));} unsigned long getHeldTime()const{return 0;}};
 using MappedInputManager=FakeInput;FakeInput mappedInputManager;
 #include "BlePageTurner.h"
 #include "Runtime.h"
@@ -47,14 +47,14 @@ namespace ReaderUtils {constexpr int SKIP_HOLD_MS=500;
 struct Turns{bool prev=false,next=false,prevLongPressed=false,nextLongPressed=false,fromTilt=false;};
 struct Touch{bool prev=false,next=false;unsigned long heldMs=0;};
 Turns detectPageTurn(FakeInput&i){Turns t;t.prev=i.prev;t.next=i.next;return t;}
-Touch detectTouchPageTurn(int&,FakeInput&){return {};}bool isTouchMenuGesture(int&,FakeInput&,bool=false){return false;}}
+template<class Renderer>Touch detectTouchPageTurn(Renderer&,FakeInput&){return {};}template<class Renderer>bool isTouchMenuGesture(Renderer&,FakeInput&,bool=false){return false;}}
 namespace tenorchrome{constexpr bool kTouchShell=false;}
 struct EndOfBookOptions{bool menu=false;bool menuActive()const{return menu;}};
 struct FakeStats {uint32_t pages=0, records=0, habits=0;void record(uint32_t,uint32_t,uint16_t turns,int){pages+=turns;records++;}void observeHabits(uint32_t,uint16_t,uint32_t){habits++;}uint32_t currentDay(){return 1;}}READING_STATS;
 struct ReaderActivity:Activity{
   readerstatus::Pace readingPace;
   virtual readerstatus::Pace::Position pacePosition() const { return {}; }
- virtual bool coversPage()const{return false;}bool preview=false;int renderer=0;FakeInput mappedInput;uint16_t trangDaLat=0;int requests=0,goHome=0;
+ virtual bool coversPage()const{return false;}bool preview=false;struct {bool refreshBusy()const{return false;}}renderer;FakeInput mappedInput;uint16_t trangDaLat=0;int requests=0,goHome=0;
  std::atomic<bool>pageReady{true};std::unique_ptr<EndOfBookOptions>endOfBookOptions=std::make_unique<EndOfBookOptions>();std::atomic<bool>endOfBookOptionsReady{false};
  int8_t pendingExternalTurn=0;uint32_t pendingExternalGeneration=0;bool pendingTurnIsLocal=false,pendingExternalChapter=false;int backCalls=0,formatCalls=0,chapterSkips=0;std::string bookPath="fixture.txt";void finish(){}
  bool statsEnabled=true,statsActive=false,statsDirty=false;uint32_t statsLastMs=0,statsSavedMs=0,statsDay=1,statsDayPollMs=0;
@@ -99,6 +99,7 @@ struct XtcReaderActivity:ReaderActivity{std::unique_ptr<FakeXtc>xtc=std::make_un
 struct Section{int currentPage=1,pageCount=4;bool building=false,partial=false;bool isBuilding()const{return building;}bool isPartial()const{return partial;}};
 struct FakeEpub{int getSpineItemsCount()const{return 3;}};
 struct EpubReaderActivity:ReaderActivity{
+ bool overlayRefreshPending=false;void settleOverlayRefresh(){overlayRefreshPending=false;}
  enum class Overlay{None,Toolbar,WordPicker};Overlay overlay=Overlay::None;bool coversPage()const override{return overlay!=Overlay::None;}
  std::unique_ptr<Section>section=std::make_unique<Section>();std::unique_ptr<FakeEpub>epub=std::make_unique<FakeEpub>();
  bool nhayChuongThat(int huong)override{if(currentSpineIndex+huong<0)return false;chapterSkips++;currentSpineIndex+=huong;nextPageNumber=0;section.reset();return true;}

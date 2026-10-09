@@ -8,6 +8,7 @@
 #include "esp_system.h"
 #include "Logging.h"
 #include "BootTrial.h"
+#include "StartupRoute.h"
 
 struct FakeTimer {
   esp_timer_create_args_t args;
@@ -59,7 +60,6 @@ void advance(uint64_t us) {
 }
 
 enum class BootResume { Splash, Silent, SplashlessWake };
-enum class HomeMenuItem { NONE, RECENT_CONTINUE, SETTINGS_MENU };
 constexpr unsigned SILENT_REBOOT_TARGET_READER = 1, SILENT_REBOOT_TARGET_SETTINGS = 2;
 bool recoveryFirmwareMode = false, rebootedFromPanic = false, updateBoot = false, wakeToBook = false;
 bool needsWakeRefresh = false;
