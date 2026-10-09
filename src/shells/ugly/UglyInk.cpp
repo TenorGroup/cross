@@ -647,11 +647,12 @@ void statusBar(const GfxRenderer& r, const char* btn1, const char* btn2, const c
   const int w = r.getScreenWidth(), h = r.getScreenHeight();
   const int y = h - 20;
   const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
-  battery(r, 14, y, level, SETTINGS.batteryPercentShown(false));
+  const bool clockLeft = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
+  battery(r, clockLeft ? w - 56 : 14, y, level, SETTINGS.batteryPercentShown(false));
   // The date has no room beside the clock (the Down mark): it sits in the gap between the Confirm and Up marks.
   char clock[12] = "", date[8];
   if (clockText(clock, sizeof(clock), date, sizeof(date), true)) {
-    text(r, Size::S22, w - 14 - width(r, Size::S22, clock), y + 8, clock);
+    text(r, Size::S22, clockLeft ? 14 : w - 14 - width(r, Size::S22, clock), y + 8, clock);
     if (*date) text(r, Size::S22, (w >= 528 ? 264 : 240) - width(r, Size::S22, date) / 2, y + 8, date);
   }
   // Front Left and Right walk up and down the screen, so their marks point up and down.

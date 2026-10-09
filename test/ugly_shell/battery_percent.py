@@ -35,7 +35,9 @@ cpp = r'''
 struct CrossPointSettings {
   enum { HIDE_NEVER=0, HIDE_READER=1, HIDE_ALWAYS=2 };
   enum { CLOCK_HEADER_HIDE=0, CLOCK_HEADER_TIME=1, CLOCK_HEADER_TIME_DATE=2 };
+  enum { STATUS_BAR_CLOCK_RIGHT=1, STATUS_BAR_CLOCK_LEFT=2 };
   int hideBatteryPercentage=0, clockShowInHeader=2, clockFormat=0, uglyBatteryHidden=0;
+  int statusBarClock=STATUS_BAR_CLOCK_RIGHT;
   bool globalStatusBarHidden() const { return false; }
 ''' + method(settings, 'bool batteryPercentShown(') + r'''
 } SETTINGS;
