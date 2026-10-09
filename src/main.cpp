@@ -648,7 +648,9 @@ void setup() {
 #endif
 #endif
 #if FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
-  boot_trial::begin();
+  const bool trialBoot = boot_trial::begin();
+#else
+  const bool trialBoot = false;
 #endif
 #if defined(TENOR_PRESS_PROBE) && FREEINK_DEVICE_X4PRO && !defined(SIMULATOR)
   fwprobe::onBoot();  // CMD:ROLLBACK_TEST crashes the boots it was armed for, here
@@ -985,6 +987,9 @@ void setup() {
   } else if (rebootedFromPanic) {
     // If we rebooted from a panic, go to crash report screen to show the panic info
     activityManager.goToCrashReport();
+  } else if (trialBoot) {
+    // Check a simple screen before a saved book can rebuild its index.
+    activityManager.goHome(HomeMenuItem::SETTINGS_MENU, true);
   } else if (updateBoot) {
     // Straight to the update, on the heap of a fresh boot; the screen restarts on its way out.
     auto update = makeUniqueNoThrow<OtaUpdateActivity>(renderer, mappedInputManager, otaBoot);
@@ -1039,19 +1044,11 @@ void setup() {
     // SD, settings and activity startup succeeded. Wait for the first physical paint.
     activityManager.requestUpdateAndWait();
 #if FREEINK_DEVICE_X4PRO
-    // Back and Confirm live on the touch controller: an image that cannot bring it up leaves the
-    // unit without a way to reach the SD installer. Stay on trial; the watchdog falls back.
-    if (!gpio.hasTouch()) {
-      LOG_ERR("OTA", "Boot self-check: no touch controller, left on trial");
-    } else
+    boot_trial::passed(gpio.hasTouch());
+#else
+    const esp_err_t verified = esp_ota_mark_app_valid_cancel_rollback();
+    LOG_INF("OTA", "Boot self-check complete: %s", esp_err_to_name(verified));
 #endif
-    {
-      const esp_err_t verified = esp_ota_mark_app_valid_cancel_rollback();
-#if FREEINK_DEVICE_X4PRO
-      boot_trial::passed();
-#endif
-      LOG_INF("OTA", "Boot self-check complete: %s", esp_err_to_name(verified));
-    }
   }
 #endif
   allowSleepAt = millis() + 2000;

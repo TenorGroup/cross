@@ -240,4 +240,6 @@ add_test(NAME PowerTimeoutProductionBehavior COMMAND "${Python3_EXECUTABLE}" "${
 add_subdirectory(sd_card_font)
 add_subdirectory(glyph_bitmap)
 
+add_subdirectory(boot_trial_v1055)
+
 add_test(NAME CoverRedriveProductionBehavior COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cover_redrive/run.py" --repo "${REPO_ROOT}" --out "${CMAKE_CURRENT_BINARY_DIR}/cover-redrive")
