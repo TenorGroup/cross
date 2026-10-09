@@ -18,6 +18,11 @@ inline Cell cell(int width, int index, int inset = 12, int gap = 8) {
   const int end = inset + usable * (index + 1) / 3;
   return {start + (index ? gap / 2 : 0), std::max(0, end - start - (index ? gap / 2 : 0) - (index < 2 ? gap / 2 : 0))};
 }
+inline Cell chapterCell(int width, int leftWidth, int rightWidth, int inset = 12, int gap = 8) {
+  const int side = std::max(0, std::max(leftWidth, rightWidth));
+  const int room = std::max(0, width - inset * 2 - side * 2 - gap * 2);
+  return {(width - room) / 2, room};
+}
 inline int textX(Cell lane, int index, int measuredWidth) {
   return lane.x + (index == 0 ? 0 : index == 1 ? (lane.width - measuredWidth) / 2 : lane.width - measuredWidth);
 }

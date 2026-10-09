@@ -77,6 +77,11 @@ add_executable(ReaderStatusLayoutTest ReaderStatusLayoutTest.cpp)
 target_compile_features(ReaderStatusLayoutTest PRIVATE cxx_std_20)
 target_include_directories(ReaderStatusLayoutTest PRIVATE ${REPO_ROOT}/src)
 add_test(NAME ReaderStatusLayout COMMAND ReaderStatusLayoutTest)
+target_compile_options(ReaderStatusLayoutTest PRIVATE -UNDEBUG)
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME ReaderStatusSlotsRender COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/test_slots_render.py" --repo "${REPO_ROOT}")
 
 # The web settings handler, copied verbatim from the server source at configure time
 # (re-run when that file changes) and compiled against a fake request.

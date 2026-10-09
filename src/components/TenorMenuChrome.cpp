@@ -10,7 +10,6 @@
 #include <WiFi.h>
 #include <I18n.h>
 #include <Logging.h>
-#include <Utf8.h>
 
 #include <algorithm>
 #include <cstring>
@@ -709,8 +708,12 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
   const int markTop = inlineSymbols::markTopOnCapitals(r, font, y, 10);
   if (spec.topTitleMode == S::HIDE_TITLE && bookmarked && spec.textLaneVisible(true))
     inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, 6, markTop + 5, 10, true);
-  for (int slot = 0; slot < 3; ++slot) {
-    const auto lane = readerstatus::cell(r.getScreenWidth(), slot);
+  const bool chapterMiddle = spec.slots[1] == S::STATUS_SLOT_CHAPTER_NAME;
+  const int chapterOrder[] = {0, 2, 1};
+  int paintedWidths[3] = {};
+  for (int index = 0; index < 3; ++index) {
+    const int slot = chapterMiddle ? chapterOrder[index] : index;
+    auto lane = readerstatus::cell(r.getScreenWidth(), slot);
     char value[64] = "";
     switch (spec.slots[slot]) {
       case S::STATUS_SLOT_NONE: continue;
@@ -724,6 +727,7 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
         const int iconWidth = rough ? 44 : 26;
         const int block = iconWidth + (value[0] ? width(value) + 6 : 0);
         if (block > lane.width) continue;
+        paintedWidths[slot] = block;
         const int x = readerstatus::textX(lane, slot, block);
         if (rough) ugly::battery(r, x, y + 10, percent);
         else {
@@ -753,7 +757,8 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
         if (slot != 1) continue;
         std::string name = chapterName && *chapterName ? chapterName : "-";
         for (char separator : {'\n', '\r', '\t'}) std::replace(name.begin(), name.end(), separator, ' ');
-        const auto label = utf8MiddleEllipsis(name, lane.width, width);
+        lane = readerstatus::chapterCell(r.getScreenWidth(), paintedWidths[0], paintedWidths[2]);
+        const auto label = fit(name.c_str(), lane.width);
         const int measured = width(label.c_str());
         if (measured <= lane.width) text(readerstatus::textX(lane, slot, measured), y, label.c_str());
         continue;
@@ -762,7 +767,10 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
     }
     const auto label = fit(value, lane.width);
     const int measured = width(label.c_str());
-    if (measured <= lane.width) text(readerstatus::textX(lane, slot, measured), y, label.c_str());
+    if (measured <= lane.width) {
+      paintedWidths[slot] = measured;
+      text(readerstatus::textX(lane, slot, measured), y, label.c_str());
+    }
   }
 }
 
