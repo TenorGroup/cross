@@ -7,6 +7,7 @@ namespace readerInk {
 void apply(GfxRenderer& renderer);
 inline constexpr uint8_t SCHEMA_VERSION = 2;
 inline constexpr uint8_t LEVEL_COUNT = 6;
+inline constexpr int32_t OUTLINE_STRENGTHS[LEVEL_COUNT] = {0, 16, 32, 48, 64, 96};
 
 constexpr uint8_t clamp(const int value) {
   return value >= 0 && value < LEVEL_COUNT ? static_cast<uint8_t>(value) : 0;
@@ -20,7 +21,7 @@ constexpr uint8_t physical(const int publicLevel) {
 }
 
 constexpr int32_t outlineStrength(const int publicLevel) {
-  return clamp(publicLevel) * 32;
+  return OUTLINE_STRENGTHS[clamp(publicLevel)];
 }
 
 constexpr uint8_t publicFromPhysical(const int physicalLevel) {

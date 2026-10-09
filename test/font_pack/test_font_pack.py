@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import struct
 import sys
 import tempfile
@@ -18,6 +19,17 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 import build_font_pack as pack
 
 FONT_ROOT = ROOT / 'lib/EpdFont/builtinFonts/source/NotoSerif'
+
+
+class InkStrengthContractTests(unittest.TestCase):
+    def test_firmware_and_builder_use_the_approved_ramp(self):
+        header = (ROOT / 'src/ReaderInkWeight.h').read_text()
+        table = re.search(r'OUTLINE_STRENGTHS\s*\[\s*LEVEL_COUNT\s*\]\s*=\s*\{([^}]+)\}', header)
+        self.assertIsNotNone(table)
+        strengths = tuple(int(value.strip()) for value in table.group(1).split(','))
+        self.assertEqual(strengths, (0, 16, 32, 48, 64, 96))
+        self.assertEqual(pack.STRENGTHS, strengths)
+        self.assertEqual(pack.RECIPE, 'reader-outline-v3-ramp')
 
 
 class FontPackTests(unittest.TestCase):

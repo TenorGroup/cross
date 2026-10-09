@@ -174,7 +174,9 @@ struct Scene {
     renderer.setFontCacheManager(&cache);
   }
   ~Scene() { std::filesystem::remove(path()); }
-  static std::string path() { return "/tmp/shed-parser-" + std::to_string(getpid()) + ".cpfont"; }
+  static std::string path() {
+    return (std::filesystem::temp_directory_path() / ("shed-parser-" + std::to_string(getpid()) + ".cpfont")).string();
+  }
   // What a reader that has shown a page leaves behind: the glyph arenas, the mini kern tables
   // and the advance table of the previous chapter.
   void warm() {

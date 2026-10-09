@@ -14,6 +14,7 @@
 #include <new>
 
 #include "FontInstaller.h"
+#include "ReaderInkWeight.h"
 #include "util/TaskWatchdog.h"
 
 namespace {
@@ -119,7 +120,7 @@ struct Metadata {
     if (state.depth == state.levelDepth) {
       char expected[16] = {};
       if (state.level) std::snprintf(expected, sizeof(expected), "weight-%u", static_cast<unsigned>(state.level + 1));
-      if (state.levelFields != 7 || state.level > 5 || state.strength != state.level * 32 || std::strcmp(expected, state.directory) || (state.levels & (1u << std::min<uint32_t>(state.level, 7)))) state.error = true;
+      if (state.levelFields != 7 || state.level > 5 || state.strength != static_cast<uint32_t>(readerInk::outlineStrength(state.level)) || std::strcmp(expected, state.directory) || (state.levels & (1u << std::min<uint32_t>(state.level, 7)))) state.error = true;
       if (state.level <= 5) state.levels |= static_cast<uint8_t>(1u << state.level);
       state.levelDepth = 0;
     }
@@ -146,7 +147,7 @@ struct Metadata {
     if (state.closed) state.error = true;
     if (state.depth == 1 && (!std::strcmp(state.key, "family") || !std::strcmp(state.key, "recipe"))) {
       const uint8_t bit = !std::strcmp(state.key, "family") ? 1 : 2;
-      const char* expected = bit == 1 ? state.family : "reader-outline-v2-step32";
+      const char* expected = bit == 1 ? state.family : "reader-outline-v3-ramp";
       if ((state.rootFields & bit) || std::strlen(expected) != count || std::memcmp(value, expected, count)) state.error = true;
       state.rootFields |= bit;
     } else if (state.depth == state.itemDepth) {

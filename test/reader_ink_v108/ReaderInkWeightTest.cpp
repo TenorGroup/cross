@@ -35,7 +35,7 @@ int main() {
   assert(readerInk::SCHEMA_VERSION == 2);
   assert(readerInk::LEVEL_COUNT == 6);
   constexpr uint8_t physical[] = {0, 2, 3, 4, 5, 6};
-  constexpr int32_t strength[] = {0, 32, 64, 96, 128, 160};
+  constexpr int32_t strength[] = {0, 16, 32, 48, 64, 96};
   for (int publicLevel = 0; publicLevel < 6; ++publicLevel) {
     assert(readerInk::physical(publicLevel) == physical[publicLevel]);
     assert(readerInk::publicFromPhysical(physical[publicLevel]) == publicLevel);

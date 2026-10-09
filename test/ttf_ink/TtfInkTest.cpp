@@ -31,7 +31,10 @@ std::vector<uint8_t> bitmap(TtfEpdFont& font, uint32_t cp, EpdFontFamily::Style 
 }
 
 TEST(TtfInk, SixStrengths) {
-  for (int level = 0; level < 6; ++level) EXPECT_EQ(readerInk::outlineStrength(level), level * 32);
+  constexpr int32_t expected[] = {0, 16, 32, 48, 64, 96};
+  for (int level = 0; level < 6; ++level) EXPECT_EQ(readerInk::outlineStrength(level), expected[level]);
+  EXPECT_EQ(readerInk::outlineStrength(-1), 0);
+  EXPECT_EQ(readerInk::outlineStrength(6), 0);
 }
 
 TEST(TtfInk, ProductionFtAdvanceAtZeroAndFiveIsIdentical) {
@@ -48,7 +51,7 @@ TEST(TtfInk, ProductionFtAdvanceAtZeroAndFiveIsIdentical) {
       ASSERT_TRUE(font.setRenderOptions(options));
       freeink::font::FtFont::GlyphMetrics raw;
       ASSERT_TRUE(font.metrics26_6(cp, 33 * 64, raw));
-      options.embolden26_6 = 5 * 32;
+      options.embolden26_6 = readerInk::outlineStrength(5);
       ASSERT_TRUE(font.setRenderOptions(options));
       freeink::font::FtFont::GlyphMetrics bold;
       ASSERT_TRUE(font.metrics26_6(cp, 33 * 64, bold));

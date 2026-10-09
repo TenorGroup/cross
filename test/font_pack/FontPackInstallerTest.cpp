@@ -1,4 +1,5 @@
 #include <FontPackInstaller.h>
+#include <ReaderInkWeight.h>
 #include <HalStorage.h>
 #include <gtest/gtest.h>
 #include <openssl/sha.h>
@@ -86,14 +87,18 @@ Bytes archive(std::vector<Entry> entries) {
   output.insert(output.end(), end.begin(), end.end());
   return output;
 }
-std::vector<Entry> entries(uint8_t raster = 1, bool badSha = false, bool badLayout = false) {
+std::vector<Entry> entries(uint8_t raster = 1, bool badSha = false, bool badLayout = false,
+                           bool oldRecipe = false, bool oldStrengths = false) {
   std::vector<Entry> result;
   const auto signature = layout(font(raster));
   std::string metadata = "{\"format\":1,\"cpfont_version\":4,\"family\":\"Example\","
-                         "\"recipe\":\"reader-outline-v2-step32\",\"levels\":[";
+                         "\"recipe\":\"";
+  metadata += oldRecipe ? "reader-outline-v2-step32" : "reader-outline-v3-ramp";
+  metadata += "\",\"levels\":[";
   for (int level = 0; level < 6; ++level) {
     if (level) metadata += ',';
-    metadata += "{\"level\":" + std::to_string(level) + ",\"strength_26_6\":" + std::to_string(level * 32) +
+    metadata += "{\"level\":" + std::to_string(level) + ",\"strength_26_6\":" +
+                std::to_string(oldStrengths ? level * 32 : readerInk::outlineStrength(level)) +
                 ",\"directory\":\"" + (level ? "weight-" + std::to_string(level + 1) : "") + "\"}";
     result.push_back({(level ? "weight-" + std::to_string(level + 1) + "/" : "") + "Example_14.cpfont",
                       font(raster + level, badLayout && level == 5 ? 161 : 160)});
@@ -147,6 +152,25 @@ TEST_F(FontPack, ValidStoreInstallsEveryEntryAndDeletesOnlyCommittedPackage) {
 TEST_F(FontPack, CorruptCrcKeepsOldFamilyAndPackage) {
   auto payload = entries(); payload[0].badCrc = true; package(payload);
   EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::INVALID_PACK); unchanged();
+}
+TEST_F(FontPack, OldRecipeKeepsOldFamilyAndPackage) {
+  const auto installed = font(42);
+  std::filesystem::create_directories(cardRoot / "fonts/Example/weight-1");
+  std::ofstream stream(cardRoot / "fonts/Example/weight-1/Example_14.cpfont", std::ios::binary);
+  stream.write(reinterpret_cast<const char*>(installed.data()), installed.size());
+  stream.close();
+  package(entries(1, false, false, true, true));
+  EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::INVALID_PACK);
+  unchanged();
+  EXPECT_FALSE(Storage.exists("/fonts/Example/.staging"));
+  EXPECT_EQ(read("/fonts/Example/weight-1/Example_14.cpfont"),
+            std::string(installed.begin(), installed.end()));
+}
+TEST_F(FontPack, OldStrengthsWithNewRecipeKeepOldFamilyAndPackage) {
+  package(entries(1, false, false, false, true));
+  EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::INVALID_PACK);
+  unchanged();
+  EXPECT_FALSE(Storage.exists("/fonts/Example/.staging"));
 }
 TEST_F(FontPack, CompressedEntryKeepsOldFamilyAndPackage) {
   auto payload = entries(); payload[0].method = 8; package(payload);

@@ -21,8 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'lib/EpdFont/scripts'))
 import fontconvert_sdcard as converter
 
-RECIPE = 'reader-outline-v2-step32'
-STRENGTHS = (0, 32, 64, 96, 128, 160)
+RECIPE = 'reader-outline-v3-ramp'
+STRENGTHS = (0, 16, 32, 48, 64, 96)
 STYLE_NAMES = ('regular', 'bold', 'italic', 'bolditalic')
 ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
