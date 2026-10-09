@@ -97,11 +97,16 @@ int GfxRenderer::getTextWidth(int, const char* text, EpdFontFamily::Style, BidiU
   return text ? static_cast<int>(strlen(text)) * 8 : 0;
 }
 int GfxRenderer::getLineHeight(int) const { return 20; }
+int GfxRenderer::getTextAdvanceX(int font, const char* text, EpdFontFamily::Style style, int, uint8_t) const {
+  return getTextWidth(font, text, style);
+}
 int GfxRenderer::getTextInkTop(int, const char*, EpdFontFamily::Style) const { return 0; }
 int GfxRenderer::getTextInkBottom(int, const char*, EpdFontFamily::Style) const { return 20; }
 int GfxRenderer::getFontAscenderSize(int) const { return 16; }
 // No font is loaded on the host, so a single-glyph label never takes the centred-glyph path.
 const EpdGlyph* EpdFontFamily::getGlyph(uint32_t, Style) const { return nullptr; }
+const EpdFontData* EpdFontFamily::getData(Style) const { return nullptr; }
+const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData*, const EpdGlyph*) const { return nullptr; }
 std::string GfxRenderer::truncatedText(int, const char* text, int, EpdFontFamily::Style, int) const {
   return text ? std::string(text) : std::string();
 }
@@ -120,6 +125,9 @@ void pageHints(const GfxRenderer&, const char*, const char*, int) {}
 void pathHints(const GfxRenderer&, const char*, const char*) {}
 int width(const GfxRenderer& r, Size, const char* text, bool) { return r.getTextWidth(0, text); }
 int ascent(Size) { return 16; }  // Same ascender as the renderer stub above.
+Box textBounds(const GfxRenderer& r, Size size, const char* label) {
+  return {0, -ascent(size), width(r, size, label), 4};
+}
 int text(const GfxRenderer& r, Size size, int x, int baseline, const char* label, bool black, bool) {
   r.drawText(0, x, baseline - ascent(size), label, black);
   return width(r, size, label);

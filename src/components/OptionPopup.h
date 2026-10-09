@@ -1,5 +1,6 @@
 #pragma once
 #include <I18n.h>
+#include <Utf8.h>
 
 #include <algorithm>
 #include <atomic>
@@ -305,7 +306,7 @@ class OptionPopup {
     props.styles = fui::defaultPopupStyles();
     props.styles.normal.border = fui::Paint::solid(fui::Color::Black);
     props.styles.normal.borderWidth = static_cast<uint8_t>(metrics.popupFrameThickness);
-    props.styles.normal.radius = static_cast<uint8_t>(metrics.popupCornerRadius);
+    props.styles.normal.radius = BoardConfig::hasTouch() ? static_cast<uint8_t>(metrics.popupCornerRadius) : 0;
     props.styles.selected = props.styles.normal;
     props.styles.focused = props.styles.normal;
     props.styles.active = props.styles.normal;
@@ -365,7 +366,12 @@ class OptionPopup {
     // option buttons win inside the dialog and the guard absorbs the rest.
     frame.hit(dialogRect, ACTION_CHROME, 0, fui::InputTouch);
     if (shell::isUgly()) renderUgly(renderer, frame, dialogRect, props);
-    else fui::optionDialog(frame, dialogRect, props);
+    else {
+      CenteredText context{renderer, target};
+      target.setTextSink(centerOptionText, &context);
+      fui::optionDialog(frame, dialogRect, props);
+      target.setTextSink(nullptr, nullptr);
+    }
     PageScrollbar::instance().draw(renderer, target, dialogRect.y, dialogRect.bottom(),
                                    totalOptions * dialogRect.height / std::max(1, visibleOptions),
                                    firstOption * dialogRect.height / std::max(1, visibleOptions), this, dialogRect.right());
@@ -418,6 +424,65 @@ class OptionPopup {
   }
 
  private:
+  struct CenteredText {
+    const GfxRenderer& renderer;
+    freeink::ui::GfxRendererTarget& target;
+  };
+
+  static void centerOptionText(void* context, freeink::ui::Rect rect, const char* label,
+                               const freeink::ui::TextStyle& style) {
+    namespace fui = freeink::ui;
+    auto& ctx = *static_cast<CenteredText*>(context);
+    const int font = uiScaleSpec().bodyFontId;
+    if (style.align != fui::TextAlign::Center || rect.height < ctx.renderer.getLineHeight(font) ||
+        ctx.renderer.getTextWidth(font, label) > rect.width) {
+      ctx.target.setTextSink(nullptr, nullptr);
+      ctx.target.text(rect, label, style);
+      ctx.target.setTextSink(centerOptionText, context);
+      return;
+    }
+    const auto family = ctx.renderer.getFontMap().find(font);
+    int left = 4096, right = -4096;
+    const auto* p = reinterpret_cast<const unsigned char*>(label);
+    const auto* start = p;
+    while (*p) {
+      const auto* before = p;
+      const uint32_t cp = utf8NextCodepoint(&p);
+      const auto* glyph = family == ctx.renderer.getFontMap().end() ? nullptr : family->second.getGlyph(cp);
+      if (!glyph || !glyph->width || !glyph->height) continue;
+      const std::string prefix(reinterpret_cast<const char*>(start), before - start);
+      const int pen = ctx.renderer.getTextAdvanceX(font, prefix.c_str(), EpdFontFamily::REGULAR);
+      const auto* data = family->second.getData(EpdFontFamily::REGULAR);
+      const auto* bitmap = data ? ctx.renderer.getGlyphBitmap(data, glyph) : nullptr;
+      int inkLeft = glyph->width, inkRight = -1;
+      for (int row = 0; bitmap && row < glyph->height; ++row)
+        for (int col = 0; col < glyph->width; ++col) {
+          const int pixel = row * glyph->width + col;
+          const bool ink = data->is2Bit ? ((bitmap[pixel / 4] >> (6 - 2 * (pixel % 4))) & 3) != 0
+                                        : ((bitmap[pixel / 8] >> (7 - pixel % 8)) & 1) != 0;
+          if (ink) { inkLeft = std::min(inkLeft, col); inkRight = std::max(inkRight, col); }
+        }
+      if (!bitmap) { inkLeft = 0; inkRight = glyph->width - 1; }
+      if (inkRight >= inkLeft) {
+        left = std::min(left, pen + glyph->left + inkLeft);
+        right = std::max(right, pen + glyph->left + inkRight + 1);
+      }
+    }
+    if (right <= left) {
+      ctx.target.setTextSink(nullptr, nullptr);
+      ctx.target.text(rect, label, style);
+      ctx.target.setTextSink(centerOptionText, context);
+      return;
+    }
+    const int top = ctx.renderer.getTextInkTop(font, label, EpdFontFamily::REGULAR);
+    const int bottom = ctx.renderer.getTextInkBottom(font, label, EpdFontFamily::REGULAR);
+    // The production font rounds long glyph runs one pixel left of the
+    // continuous ink center. Nudge those runs after measuring their bitmap.
+    const int x = rect.x + (rect.width - (right - left)) / 2 - left + ((right - left) > 150 ? 1 : 0);
+    const int y = rect.y + (rect.height - (bottom - top)) / 2 - top;
+    ctx.renderer.drawText(font, x, y, label, !style.inverted);
+  }
+
   mutable ugly::MarkState mark_;
   // A bounded page keeps the stack and published hit table small. All source
   // options remain reachable through physical selection and touch page rows.
@@ -435,11 +500,13 @@ class OptionPopup {
     renderer.setClipRect(left, top, std::max(0, std::min<int>(rect.right(), clip[0] + clip[2]) - left),
                         std::max(0, std::min<int>(rect.bottom(), clip[1] + clip[3]) - top));
     const auto fitted = ugly::fit(renderer, ugly::Size::S22, label, rect.width - 8);
-    const int w = ugly::width(renderer, ugly::Size::S22, fitted.c_str()), asc = ugly::ascent(ugly::Size::S22);
-    const int x = rect.x + (rect.width - w) / 2, base = rect.y + (rect.height + asc) / 2;
+    const auto ink = ugly::textBounds(renderer, ugly::Size::S22, fitted.c_str());
+    const int x = rect.x + (rect.width - (ink.x1 - ink.x0)) / 2 - ink.x0;
+    const int base = rect.y + (rect.height - (ink.y1 - ink.y0)) / 2 - ink.y0;
     ugly::text(renderer, ugly::Size::S22, x, base, fitted.c_str());
     renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
-    return {static_cast<int16_t>(x), static_cast<int16_t>(base - asc), static_cast<int16_t>(w), static_cast<int16_t>(asc + 6)};
+    return {static_cast<int16_t>(x + ink.x0), static_cast<int16_t>(base + ink.y0),
+            static_cast<int16_t>(ink.x1 - ink.x0), static_cast<int16_t>(ink.y1 - ink.y0)};
   }
 
   static void uglyPaper(const GfxRenderer& renderer, const freeink::ui::Rect& rect) {

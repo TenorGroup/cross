@@ -477,8 +477,10 @@ void UiListActivity::loopInput() {
   }
   if (rowMenu.handleInput(mappedInput, [this] { requestUpdate(); })) return;
   if (handleCustomInput()) return;
-  if (pendingPin || (supportsFavorites() && !favoriteKey(favoriteSelectedRow()).empty() &&
-                     mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700))) {
+  const int favoriteRow = favoriteSelectedRow();
+  const bool buttonHeld = supportsFavorites() && !favoriteKey(favoriteRow).empty() &&
+                          mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700);
+  if (pendingPin || buttonHeld) {
     // A hold fires once, so it is never dropped: it is applied as soon as the
     // panel frees the lock.
     RenderLock lock(RenderLock::TryTake{});
@@ -487,14 +489,19 @@ void UiListActivity::loopInput() {
       return;
     }
     pendingPin = false;
-    const int row = pendingPinRow >= 0 ? pendingPinRow : favoriteSelectedRow();
+    const int row = pendingPinRow >= 0 ? pendingPinRow : favoriteRow;
     pendingPinRow = -1;
+    const bool pinFromTouch = pendingPinFromTouch;
+    pendingPinFromTouch = false;
+    if (!pinFromTouch && buttonHoldOpensRowMenu(row)) {
+      onRowLongPress(row);
+      return;
+    }
     const std::string key = favoriteKey(row);
     if (!key.empty()) {
       favoriteSaveFailed = !toggleFavorite(row);
-      LOG_INF("FAV", "pin %s row=%d ok=%d pins=%u key=%s", pendingPinFromTouch ? "touch" : "select", row,
+      LOG_INF("FAV", "pin %s row=%d ok=%d pins=%u key=%s", pinFromTouch ? "touch" : "select", row,
               favoriteSaveFailed ? 0 : 1, static_cast<unsigned>(menucustom::state().pinCount), key.c_str());
-      pendingPinFromTouch = false;
       favoritesChanged();
       requestUpdate();
     }

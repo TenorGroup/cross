@@ -498,6 +498,12 @@ void HomeActivity::activateIndex(const int index) {
 }
 
 bool HomeActivity::handleButtons() {
+  if (pendingRecentRemoval) {
+    RecentBook book = std::move(*pendingRecentRemoval);
+    pendingRecentRemoval.reset();
+    showRecentRemovalConfirmation(std::move(book));
+    return true;
+  }
   // Touch: a swipe on Stats moves the page (dynamic bar rule 11: a drag by the rows the finger travelled,
   // a flick by a page), a row pitch a step.
   if (statsScrolls()) {
@@ -537,8 +543,6 @@ bool HomeActivity::handleButtons() {
       return true;
     }
     std::string path;
-    if (activeTabId == Tab::RECENT && index >= 0 && index < static_cast<int>(recentBooks.size()))
-      path = recentBooks[index].path;
     if (activeTabId == Tab::FOLDER && index >= 0 && index < listCount() && folderEntry(index).back() != '/')
       path = "/" + folderEntry(index);
     if (!path.empty()) {
@@ -705,6 +709,7 @@ const char* HomeActivity::homeTipText() {
 const char* HomeActivity::homeInfoText() {
   if (favoriteFileMissing) return tr(STR_FILE_NOT_FOUND);
   if (activeTabId == Tab::STATS && statsResetTip) return I18N.get(*statsResetTip);
+  if (recentRemovalFailed) return tr(STR_REMOVE_FROM_RECENTS_FAILED);
   if (favoriteSaveFailed) return tr(STR_MENU_SAVE_FAILED);
   return nullptr;
 }
@@ -1079,19 +1084,78 @@ bool HomeActivity::rowOpens(const int row) const {
          !folderEntry(row).empty() && folderEntry(row).back() == '/';
 }
 
+bool HomeActivity::buttonHoldOpensRowMenu(const int row) const {
+  return activeTabId == Tab::RECENT && row >= 0 && row < static_cast<int>(recentBooks.size());
+}
+
 void HomeActivity::onRowLongPress(const int index) {
+  if (activeTabId == Tab::RECENT) {
+    showRecentActions(index, tenorchrome::kTouchShell ? heldCover : fui::Rect{});
+    return;
+  }
   UiListActivity::onRowLongPress(index);
-  if (activeTabId != Tab::RECENT || !rowMenu.isActive() || heldCover.height <= 0) return;
-  const StrId label = rowIsPinned(index) ? StrId::STR_UNPIN_FAVORITE : StrId::STR_PIN_FAVORITE;
-  rowMenu.showAnchored(heldCover, &label, 1, [this, index](int) { queuePinToggle(index); });
 }
 
 void HomeActivity::showOtherBookMenu() {
   const int count = static_cast<int>(recentBooks.size());
   if (count < 2) return;
   const int next = (shownRecent() + 1) % count;
-  const StrId label = rowIsPinned(next) ? StrId::STR_UNPIN_FAVORITE : StrId::STR_PIN_FAVORITE;
-  showRowMenu(&label, 1, [this, next](int) { queuePinToggle(next); }, ACTION_OTHER_BOOK, 0);
+  showRecentActions(next, app.publishedRect(ACTION_OTHER_BOOK, 0));
+}
+
+void HomeActivity::showRecentActions(const int index, const fui::Rect anchor) {
+  if (index < 0 || index >= static_cast<int>(recentBooks.size())) return;
+  const StrId labels[] = {rowIsPinned(index) ? StrId::STR_UNPIN_FAVORITE : StrId::STR_PIN_FAVORITE,
+                          StrId::STR_REMOVE_RECENT_ACTION};
+  const auto selected = [this, index](const int action) {
+    if (action == 0) {
+      queuePinToggle(index);
+    } else if (action == 1 && index >= 0 && index < static_cast<int>(recentBooks.size())) {
+      pendingRecentRemoval = recentBooks[index];
+    }
+  };
+  if (anchor.height > 0) {
+    rowMenu.showAnchored(anchor, labels, 2, selected);
+  } else {
+    rowMenu.show(StrId::STR_HOME_TAB_RECENT, labels, 2, 0, selected);
+  }
+  requestUpdate();
+}
+
+void HomeActivity::showRecentRemovalConfirmation(RecentBook book) {
+  recentRemovalFailed = false;
+  const std::string body = book.title.empty() ? book.path : book.title;
+  auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_REMOVE_FROM_RECENTS), body);
+  if (!confirmation) {
+    LOG_ERR("HOME", "OOM: remove recent confirmation");
+    recentRemovalFailed = true;
+    requestUpdate();
+    return;
+  }
+  const std::string path = std::move(book.path);
+  startActivityForResult(std::move(confirmation), [this, path](const ActivityResult& result) {
+    if (result.isCancelled) return;
+    const bool removed = RECENT_BOOKS.removeByPath(path);
+    {
+      RenderLock lock(*this);
+      recentRemovalFailed = !removed;
+      if (removed) {
+        const int oldRing = ringPos();
+        loadRecentBooks();
+        rebuildRows(false);
+        activeNav().selected = recentBooks.empty() ? 0 : std::min(oldRing, static_cast<int>(recentBooks.size()));
+        activeNav().top = 0;
+        activeNav().followOnBuild = true;
+        cardRecordsRead = cardRecordsFound = 0;
+        cardQuotesPicked = 0;
+        thumbWanted = -1;
+        freeCoverBuffer();
+        coverRendered = false;
+        heldCover = {};
+      }
+    }
+    requestUpdate(true);
+  });
 }
 
 std::string HomeActivity::favoriteKey(int row) const {

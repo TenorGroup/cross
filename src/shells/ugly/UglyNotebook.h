@@ -5,6 +5,7 @@
 
 #include "RecentBooksStore.h"
 #include "UglyScreen.h"
+#include "components/OptionPopup.h"
 #include "activities/home/HomeRows.h"
 #if FREEINK_DEVICE_X4PRO
 #include "UglyTouch.h"
@@ -44,6 +45,8 @@ class Notebook final : public Screen {
 
  protected:
   bool onKey(Key key) override;
+  bool acceptsConfirmHold() const override { return page == homerows::Page::Recent; }
+  bool handleModalInput() override;
   bool acceptsTiltTabNavigation() const override {
 #if FREEINK_DEVICE_X4PRO
     return group < 0 && pop == Pop::None;
@@ -55,6 +58,9 @@ class Notebook final : public Screen {
 
  private:
   mutable ugly::MarkState mark_;
+  OptionPopup recentActions;
+  void showRecentActions(int row);
+  void confirmRecentRemoval(int row);
   // The Folder page keeps its names once, in `folder`; every other page keeps its row texts in `labels`.
   struct Rows {
     std::vector<std::string> labels, values, keys, folder;
@@ -90,14 +96,14 @@ class Notebook final : public Screen {
   // A paper open over the page: values of a setting, the question before a delete or before leaving the
   // shell, or the tasks of a row held down.
   enum class Pop : uint8_t { None, Values, Ask, Shell, Tasks };
-  enum class Task : uint8_t { Pin, Info, Delete };
+  enum class Task : uint8_t { Pin, Info, Delete, Forget };
   // Card work a touch asked for, done after the lock is released and before the frame that shows it.
   enum class Job : uint8_t { None, Pin, Info, Delete, Save, Leave, Forget };
   Pop pop = Pop::None;
   int popRow = -1;  // the row (of all rows) the paper belongs to
   touch::Paper paper;
   touch::Ask ask;
-  Task tasks[3];
+  Task tasks[4];
   int taskCount = 0;
   Job job = Job::None;
   int jobRow = -1;

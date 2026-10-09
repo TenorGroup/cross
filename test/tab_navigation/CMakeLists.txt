@@ -21,6 +21,7 @@ add_executable(TabNavigationTest
   ${REPO_ROOT}/src/components/UiAppHost.cpp
   ${REPO_ROOT}/lib/I18n/I18n.cpp
   ${REPO_ROOT}/lib/I18n/I18nStrings.cpp
+  ${REPO_ROOT}/lib/Utf8/Utf8.cpp
   ${REPO_ROOT}/freeink-sdk/libs/ui/FreeInkUI/src/FreeInkUI.cpp
 )
 

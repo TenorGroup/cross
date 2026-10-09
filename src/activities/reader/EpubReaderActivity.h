@@ -161,6 +161,7 @@ class EpubReaderActivity final : public ReaderActivity {
   // then opens the selector over that page.
   std::atomic<bool> quoteEditPageShown{false};
   bool recentsEntryRemoved = false;
+  bool recentsRemovalAttempted = false;
   unsigned long bookmarkMessageTime = 0UL;
   bool pendingReadFolderMove = false;
 

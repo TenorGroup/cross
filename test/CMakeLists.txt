@@ -242,6 +242,7 @@ add_test(NAME SdFontVariantLayoutCache COMMAND "${CMAKE_COMMAND}" -E env
   "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/reader_ink_v108/test_manager.py")
 add_test(NAME ReaderFontDownloadNames COMMAND "${Python3_EXECUTABLE}"
   "${CMAKE_CURRENT_SOURCE_DIR}/reader_ink_v108/test_download_manifest.py")
+add_subdirectory(recent_actions)
 add_subdirectory(image_probe_loan)
 add_test(NAME FormatterCliSafety COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/clang_format_cli/test_cli.py")
 add_test(NAME FirmwareImageSize COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/firmware_size/test_image_size.py")

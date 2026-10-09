@@ -15,16 +15,15 @@ ConfirmationActivity::ConfirmationActivity(GfxRenderer& renderer, MappedInputMan
 
 void ConfirmationActivity::onEnter() {
   Activity::onEnter();
+  if (shell::isUgly()) ugly::ensureFonts(renderer);
 
   // Both texts live inside the dialog: the heading as its caption and the
   // subject (a book title) as the wrapping headline beneath it. No
-  // pre-truncation — the dialog wraps both to its own width.
-  // Touch: the question offers its one action; "<" on the bar (or a tap outside) cancels.
+  // pre-truncation, the dialog wraps both to its own width.
   const char* options[] = {I18N.get(StrId::STR_CANCEL), I18N.get(StrId::STR_CONFIRM)};
-  constexpr int skip = tenorchrome::kTouchShell ? 1 : 0;
-  confirmPopup.show(heading.c_str(), body.c_str(), options + skip, 2 - skip, -1, [this](int idx) {
+  confirmPopup.show(heading.c_str(), body.c_str(), options, 2, 0, [this](int idx) {
     ActivityResult res;
-    res.isCancelled = (idx + skip != 1);
+    res.isCancelled = (idx != 1);
     setResult(std::move(res));
     finish();
   });
@@ -33,11 +32,10 @@ void ConfirmationActivity::onEnter() {
 }
 
 void ConfirmationActivity::render(RenderLock&& lock) {
-  if (shell::uglyParts()) {
+  if (shell::isUgly()) {
     // The question box of the shell: the heading asked in a large hand, the subject under it, No first in the circle.
     const char* answers[2] = {I18N.get(StrId::STR_CONFIRM), I18N.get(StrId::STR_CANCEL)};
-    ugly::Box drawn[2];
-    ugly::askBox(renderer, mappedInput, heading.c_str(), body.c_str(), answers, uglyChoice, drawn, mark_.get(uglyChoice));
+    ugly::askBox(renderer, mappedInput, heading.c_str(), body.c_str(), answers, uglyChoice, uglyAnswers, mark_.get(uglyChoice));
     renderer.displayBuffer(HalDisplay::RefreshMode::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
     LOG_INF("UGLY", "part=ask sel=%d", uglyChoice);
@@ -52,8 +50,29 @@ void ConfirmationActivity::render(RenderLock&& lock) {
 }
 
 void ConfirmationActivity::loop() {
-  if (shell::uglyParts()) {
+  if (shell::isUgly()) {
     using B = MappedInputManager::Button;
+    if (tenorchrome::kTouchShell) {
+      const auto input = touchSnapshotFrom(mappedInput);
+      int answer = -1;
+      if (input.touchReleased && input.touchX >= 0) {
+        RenderLock lock(RenderLock::TryTake{});
+        if (!lock.acquired()) return;
+        for (int index = 0; index < 2; ++index) {
+          const auto& box = uglyAnswers[index];
+          const int top = (box.y0 + box.y1 - 66) / 2;
+          if (box.x1 > box.x0 && input.touchY >= top && input.touchY < top + 66)
+            answer = index;
+        }
+      }
+      if (answer >= 0) {
+        ActivityResult result;
+        result.isCancelled = answer != 0;
+        setResult(std::move(result));
+        finish();
+        return;
+      }
+    }
     if (mappedInput.wasReleased(B::Up) || mappedInput.wasReleased(B::Down) || mappedInput.wasReleased(B::Left) ||
         mappedInput.wasReleased(B::Right)) {
       uglyChoice = 1 - uglyChoice;

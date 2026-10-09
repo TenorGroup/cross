@@ -230,7 +230,7 @@ void penMark(const GfxRenderer& r, const Size s, const uint32_t cp, const int x,
 
 // One pass for drawing and measuring, so the two cannot disagree.
 int run(const GfxRenderer& r, const Size s, const int x, const int baseline, const std::string& text, const bool black,
-        const bool draw, const bool straight) {
+        const bool draw, const bool straight, Box* ink = nullptr) {
   const int fid = idOf(s), fb = fallbackFont(s);
   const bool af = !straight && wild();
   const int px = pixelsOf(s);
@@ -240,6 +240,25 @@ int run(const GfxRenderer& r, const Size s, const int x, const int baseline, con
   char one[5];
   while (const uint32_t cp = utf8NextCodepoint(&p)) {
     const Letter letter = letterOf(s, af, cp);
+    if (ink && cp != ' ' && !penDrawn(cp) && !penDegree(cp)) {
+      const auto include = [&](const int gx, const int gy, const int gw, const int gh) {
+        if (gw <= 0 || gh <= 0) return;
+        ink->x0 = std::min(ink->x0, cursor + gx);
+        ink->y0 = std::min(ink->y0, baseline + gy);
+        ink->x1 = std::max(ink->x1, cursor + gx + gw);
+        ink->y1 = std::max(ink->y1, baseline + gy + gh);
+      };
+      if (letter.glyph) {
+        const auto* g = letter.glyph;
+        logic::warpGlyph(FONTS[static_cast<int>(s)]->data->bitmap + g->dataOffset, g->width, g->height,
+                         g->left, g->top, g->advanceX, letter.warp, logic::NO_CLIP,
+                         [&](int px, int py) { include(px, py + logic::jumpDy(pos, cp, pixelsOf(s)), 1, 1); });
+      } else {
+        const auto family = r.getFontMap().find(baked(s, cp) ? fid : fb);
+        const auto* g = family == r.getFontMap().end() ? nullptr : family->second.getGlyph(cp, EpdFontFamily::REGULAR);
+        if (g) include(g->left, -g->top, g->width, g->height);
+      }
+    }
     if (penDrawn(cp)) {
       const int advance = stepOf(r, s, af, pos, cp, letter);
       if (draw && !r.isFontCacheScanning()) penMark(r, s, cp, cursor, baseline, advance);
@@ -364,6 +383,11 @@ int width(const GfxRenderer& r, const Size s, const char* utf8, const bool strai
 
 int ascent(const Size s) { return ASCENT[static_cast<int>(s)]; }
 
+Box textBounds(const GfxRenderer& r, const Size s, const char* utf8) {
+  Box ink{4096, 4096, -4096, -4096};
+  run(r, s, 0, 0, utf8ComposeNfc(utf8), true, false, false, &ink);
+  return ink.x1 > ink.x0 ? ink : Box{};
+}
 
 std::string fit(const GfxRenderer& r, const Size s, const std::string& utf8, const int maxWidth) {
   std::string out = utf8ComposeNfc(utf8);

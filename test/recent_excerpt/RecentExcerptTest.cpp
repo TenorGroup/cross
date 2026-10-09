@@ -3,6 +3,8 @@
 // book writes it again, and only a successful write settles it.
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include "RecentBooksStore.h"
 
 namespace {
@@ -66,4 +68,38 @@ TEST(RecentExcerpt, ReopenedBookKeepsItsStringsAndExcerpt) {
   store.addBook("/books/b.epub", "A new title", "An author name past the inline buffer", "/covers/b-cover-thumbnail.bmp");
   EXPECT_EQ(store.getBooks()[0].title, "A new title");
   EXPECT_EQ(store.getBooks().size(), 3u);
+}
+
+TEST(RecentExcerpt, RefusedRemovalKeepsTheEntryInMemory) {
+  auto& store = fresh();
+  store.addBook("/books/remove-me.epub", "Keep this title", "Keep this author", "/covers/keep.bmp");
+  ASSERT_EQ(store.getBooks().front().path, "/books/remove-me.epub");
+
+  recentStoreFake::saveWorks = false;
+  EXPECT_FALSE(store.removeByPath("/books/remove-me.epub"));
+
+  const auto& books = store.getBooks();
+  const auto kept = std::find_if(books.begin(), books.end(), [](const RecentBook& book) {
+    return book.path == "/books/remove-me.epub";
+  });
+  ASSERT_NE(kept, books.end()) << "a refused write changed the in-memory recent list";
+  EXPECT_EQ(kept->title, "Keep this title");
+  EXPECT_EQ(kept->author, "Keep this author");
+  EXPECT_EQ(kept->coverBmpPath, "/covers/keep.bmp");
+}
+
+TEST(RecentExcerpt, SuccessfulRemovalAllowsReopenToAddTheBookAgain) {
+  auto& store = fresh();
+  recentStoreFake::saveWorks = true;
+  store.addBook("/books/reopen.epub", "Reopen", "", "");
+
+  ASSERT_TRUE(store.removeByPath("/books/reopen.epub"));
+  EXPECT_EQ(std::count_if(store.getBooks().begin(), store.getBooks().end(), [](const RecentBook& book) {
+              return book.path == "/books/reopen.epub";
+            }),
+            0);
+
+  store.addBook("/books/reopen.epub", "Reopen", "", "");
+  ASSERT_FALSE(store.getBooks().empty());
+  EXPECT_EQ(store.getBooks().front().path, "/books/reopen.epub");
 }

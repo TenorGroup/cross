@@ -49,8 +49,7 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
                   const std::string& coverBmpPath);
 
   // Remove the entry whose path matches (used when a book is removed from recents or finished/read).
-  // Returns true if an entry was found and removed (no-op + false otherwise).
-  // Persistence is best-effort: a failed save is logged, not reflected in the return.
+  // Returns true only when the removal was persisted. A refused write restores the in-memory entry.
   bool removeByPath(const std::string& path);
 
   // Repoint an entry's path (and coverBmpPath, if it lived under the old cache dir) after the

@@ -92,11 +92,14 @@ bool RecentBooksStore::removeByPath(const std::string& path) {
   if (it == recentBooks.end()) {
     return false;
   }
+  const auto index = std::distance(recentBooks.begin(), it);
+  RecentBook removed = std::move(*it);
   recentBooks.erase(it);
-  if (!saveToFile()) {
-    LOG_ERR("RBS", "Failed to persist removal of recent book: %s", path.c_str());
-  }
-  return true;
+  if (saveToFile()) return true;
+
+  recentBooks.insert(recentBooks.begin() + index, std::move(removed));
+  LOG_ERR("RBS", "Failed to persist removal of recent book: %s", path.c_str());
+  return false;
 }
 
 void RecentBooksStore::updatePath(const std::string& oldPath, const std::string& newPath,

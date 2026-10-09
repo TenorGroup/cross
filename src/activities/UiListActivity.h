@@ -259,6 +259,7 @@ class UiListActivity : public Activity, protected UiAppHost {
   virtual bool supportsFavorites() const { return false; }
   virtual std::string favoriteKey(int row) const { return {}; }
   virtual int favoriteSelectedRow() { return activeNav().selected; }
+  virtual bool buttonHoldOpensRowMenu(int row) const { return false; }
   virtual int focusFavorite(const std::string& key);
   virtual void favoritesChanged() {}
   virtual bool toggleFavorite(int row);

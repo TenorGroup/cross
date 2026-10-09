@@ -1408,13 +1408,16 @@ void EpubReaderActivity::loop() {
   // Only once the open itself is on the list (commitOpen), or the pending add would bring back
   // an entry this removes.
   if (SETTINGS.removeReadBooksFromRecents && !openCommitPending) {
-    if (atEndOfBook && !recentsEntryRemoved) {
+    if (atEndOfBook && !recentsEntryRemoved && !recentsRemovalAttempted) {
+      recentsRemovalAttempted = true;
       recentsEntryRemoved = RECENT_BOOKS.removeByPath(epub->getPath());
     } else if (!atEndOfBook && recentsEntryRemoved) {
       RECENT_BOOKS.addBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), epub->getThumbBmpPath());
       recentsEntryRemoved = false;
     }
   }
+
+  if (!atEndOfBook) recentsRemovalAttempted = false;
 
   if (atEndOfBook) {
     pendingReadFolderMove = SETTINGS.moveFinishedToReadFolder && !isInReadFolder(epub->getPath());

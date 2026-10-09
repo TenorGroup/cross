@@ -59,10 +59,16 @@ Box askBox(const GfxRenderer& renderer, const MappedInputManager& input, const c
   paragraph(renderer, Size::S30, x, bodyBase, room, BODY_LINE, question);
   paragraph(renderer, Size::S22, x, noteBase, room, NOTE_LINE, note);
   for (int i = 0; i < 2; ++i) {
-    const int base = firstOption + i * OPTION_STEP;
+    const int rowTop = firstOption + i * OPTION_STEP - ascent(Size::S38) - 20;
     const std::string label = fit(renderer, Size::S38, answers[i], room - 40);
+    const auto ink = textBounds(renderer, Size::S38, label.c_str());
+    const int base = rowTop + (OPTION_STEP - (ink.y1 - ink.y0)) / 2 - ink.y0;
     const int lw = text(renderer, Size::S38, x + 20, base, label.c_str());
-    drawn[i] = {x + 20, base - ascent(Size::S38), x + 20 + lw, base + 10};
+    drawn[i] = {x + 20 + ink.x0, base + ink.y0, x + 20 + lw, base + ink.y1};
+#ifdef UGLY_FRAME_LOG
+    LOG_INF("UGLY", "ask row=%d top=%d height=%d ink=%d,%d,%d,%d", i, rowTop, OPTION_STEP,
+            drawn[i].x0, drawn[i].y0, drawn[i].x1, drawn[i].y1);
+#endif
   }
   circle(renderer, Circle::Row, drawn[selected], 14, 10, seed, 3);
 #if FREEINK_DEVICE_X4PRO
@@ -109,7 +115,8 @@ bool SwitchConfirm::onKey(const Key key) {
 #if FREEINK_DEVICE_X4PRO
   if (key == Key::Tap) {  // a line answers across the whole paper, a band of OPTION_STEP round its words
     for (int i = 0; i < COUNT; ++i)
-      if (touchY >= drawn[i].y0 - 20 && touchY < drawn[i].y0 - 20 + OPTION_STEP) {
+      if (touchY >= (drawn[i].y0 + drawn[i].y1 - OPTION_STEP) / 2 &&
+          touchY < (drawn[i].y0 + drawn[i].y1 - OPTION_STEP) / 2 + OPTION_STEP) {
         answer(i == YES);
         return false;
       }

@@ -83,9 +83,13 @@ class HomeActivity final : public UiTabListActivity {
     self->queueNavIntent(NavIntent::StepNext);
   }
   void showOtherBookMenu();
+  void showRecentActions(int index, freeink::ui::Rect anchor = {});
+  void showRecentRemovalConfirmation(RecentBook book);
   // Touch: a held cover's menu hangs from the cover (rule 7), not from the whole card.
   void onRowLongPress(int index) override;
   freeink::ui::Rect heldCover{};
+  std::optional<RecentBook> pendingRecentRemoval;
+  bool recentRemovalFailed = false;
   bool touchRowMovesRing() const override { return activeTabId == Tab::RECENT; }
   bool listFramed() const override { return activeTabId != Tab::RECENT; }  // the card is no list
   bool fileList() const override { return activeTabId == Tab::FOLDER; }
@@ -96,6 +100,7 @@ class HomeActivity final : public UiTabListActivity {
   bool rowStartsGroup(int row) const override;
   bool supportsFavorites() const override { return activeTabId != Tab::STATS; }
   std::string favoriteKey(int row) const override;
+  bool buttonHoldOpensRowMenu(int row) const override;
   int focusFavorite(const std::string& key) override;
   void favoritesChanged() override;
   bool toggleFavorite(int row) override;

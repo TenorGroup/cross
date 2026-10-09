@@ -53,6 +53,7 @@ struct Box {
   int x0, y0, x1, y1;
 };
 Box inkBounds(const GfxRenderer& renderer, Box area);
+Box textBounds(const GfxRenderer& renderer, Size size, const char* utf8);
 enum class Circle : uint8_t { Word, Object, Row };
 // A pen circle around a box, padded by padX and padY on each side.
 void circle(const GfxRenderer& renderer, Circle role, const Box& box, int padX, int padY, uint32_t seed, int stroke);

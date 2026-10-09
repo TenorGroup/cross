@@ -28,10 +28,11 @@ args = parser.parse_args()
 repo = Path(__file__).resolve().parents[2]
 out = args.output.resolve()
 out.mkdir(parents=True, exist_ok=True)
-font = ImageFont.truetype(str(repo / 'lib/EpdFont/builtinFonts/source/Mansalva/Mansalva-Regular.ttf'), 24)
+font = ImageFont.truetype(str(repo / 'lib/EpdFont/builtinFonts/source/Mansalva/Mansalva-Regular.ttf'), 30)
 fixtures = []
 glyph_parts = ['struct TextFixture { const unsigned char* ink; int width, height; };']
-for index, text in enumerate(['Chon dong nay', 'Gửi gió', 'Ỷ lại', 'Chọn dòng này']):
+for index, text in enumerate(['Chon dong nay', 'Gửi gió', 'Ỷ lại', 'Chọn dòng này', 'File', 'Nhật ký',
+                              'Những ngày đọc sách', 'đang đọc dở']):
     bounds = font.getbbox(text)
     mask = Image.new('1', (bounds[2] - bounds[0], bounds[3] - bounds[1]))
     ImageDraw.Draw(mask).text((-bounds[0], -bounds[1]), text, font=font, fill=1)

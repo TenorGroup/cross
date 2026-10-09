@@ -15,7 +15,7 @@ class Screen : public Activity {
   // The last nine come from a touch screen only, with the point they aim at (touchX, touchY): a tap, a hold,
   // a swipe the way the finger went, a row struck out and one ringed, and a scribble nobody can read.
   enum class Key : uint8_t {
-    Up, Down, Left, Right, Confirm, Back, UpHold, DownHold,
+    Up, Down, Left, Right, Confirm, Back, UpHold, DownHold, ConfirmHold,
     Tap, Hold, SwipeLeft, SwipeRight, SwipeUp, SwipeDown, Strike, Ring, Scrawl
   };
   void loop() final;
@@ -28,6 +28,8 @@ class Screen : public Activity {
   // Runs with the render lock held: change the state, return true when the screen must be drawn again.
   virtual bool onKey(Key key) = 0;
   virtual bool acceptsTiltTabNavigation() const { return false; }
+  virtual bool acceptsConfirmHold() const { return false; }
+  virtual bool handleModalInput() { return false; }
   // Runs after a pass of keys, with the lock released and the screen staying: the place for work that reads the
   // card, which must never happen under the lock. Ask for the frame yourself when it changes something.
   virtual void afterKeys() {}

@@ -213,6 +213,7 @@ void Notebook::render(RenderLock&&) {
             I18N.get(homerows::PAGE_TITLES[menucustom::idAt(0, logic::cycle(pos, 1, homerows::PAGE_COUNT), homerows::PAGE_COUNT)]), h - 52);
   tenorchrome::drawTipInRect(renderer, tip(), layout.tipRect);
   statusBar(renderer, mappedInput, {true, count > 0, true, true});
+  recentActions.render(renderer);
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
@@ -319,6 +320,43 @@ void Notebook::activate(const int row) {
   }
 }
 
+bool Notebook::handleModalInput() {
+  if (!recentActions.isActive()) return false;
+  recentActions.handleInput(mappedInput, [this] { requestUpdate(); });
+  return true;
+}
+
+void Notebook::showRecentActions(const int row) {
+  if (page != homerows::Page::Recent || row < 0 || row >= static_cast<int>(rows.books.size())) return;
+  const std::string path = rows.books[row].path;
+  const bool pinned = menucustom::state().find(filefavorites::keyFor(path, false).c_str()) >= 0;
+  const char* options[] = {I18N.get(pinned ? StrId::STR_UNPIN_FAVORITE : StrId::STR_PIN_FAVORITE), tr(STR_REMOVE_RECENT_ACTION)};
+  recentActions.show(labelAt(row).c_str(), options, 2, -1, [this, row, path](const int choice) {
+    if (choice == 1) {
+      confirmRecentRemoval(row);
+    } else {
+      const bool saved = filefavorites::toggle(path, false);
+      if (!saved) jab = tr(STR_MENU_SAVE_FAILED);
+      reload();
+      requestUpdate();
+    }
+  });
+  requestUpdate();
+}
+
+void Notebook::confirmRecentRemoval(const int row) {
+  if (page != homerows::Page::Recent || row < 0 || row >= static_cast<int>(rows.books.size())) return;
+  const std::string path = rows.books[row].path;
+  startActivityForResult(std::make_unique<ConfirmationActivity>(
+      renderer, mappedInput, tr(STR_REMOVE_FROM_RECENTS), labelAt(row)), [this, path](const ActivityResult& result) {
+    if (!result.isCancelled) {
+      if (RECENT_BOOKS.removeByPath(path)) reload();
+      else jab = tr(STR_REMOVE_FROM_RECENTS_FAILED);
+    }
+    requestUpdate();
+  });
+}
+
 bool Notebook::onKey(const Key key) {
 #if FREEINK_DEVICE_X4PRO
   said.clear();
@@ -358,6 +396,9 @@ bool Notebook::onKey(const Key key) {
       return false;
     case Key::Confirm:
       activate(cur);
+      return false;
+    case Key::ConfirmHold:
+      if (page == homerows::Page::Recent) then([this, cur] { showRecentActions(cur); });
       return false;
     case Key::Back:
       then([this] {
@@ -677,6 +718,7 @@ bool Notebook::onTouch(const Key key) {
       bool folder = false;
       taskCount = 0;
       tasks[taskCount++] = Task::Pin;
+      if (page == homerows::Page::Recent) tasks[taskCount++] = Task::Forget;
       if (!pathOf(row, folder).empty() && !folder) tasks[taskCount++] = Task::Info;
       if (page == homerows::Page::Folder && !folder) tasks[taskCount++] = Task::Delete;
       pop = Pop::Tasks;
@@ -783,6 +825,9 @@ bool Notebook::onPopTouch(const Key key) {
           popRow = row;
           ask = touch::placeAsk(rowTopOf(row - topShown()), askLines(false), touchY);
           return true;
+        case Task::Forget:
+          then([this, row] { confirmRecentRemoval(row); });
+          return false;
       }
       return true;
     }
@@ -919,6 +964,7 @@ void Notebook::renderTouch() {
           const bool on = pinned(popRow);
           option = tasks[k] == Task::Pin ? (on ? tr(STR_UGLY_X4_UNPIN) : tr(STR_UGLY_X4_PIN))
                    : tasks[k] == Task::Info ? tr(STR_UGLY_X4_INFO)
+                   : tasks[k] == Task::Forget ? tr(STR_REMOVE_RECENT_ACTION)
                                             : tr(STR_UGLY_X4_DELETE);
         }
         const std::string shown = fit(renderer, Size::S30, option, 360);

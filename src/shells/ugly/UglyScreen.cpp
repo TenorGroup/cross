@@ -95,6 +95,7 @@ void Screen::readTouch() {
 #endif
 
 void Screen::loop() {
+  if (handleModalInput()) return;
   const auto tabs = menutilt::pollTabs(static_cast<uint8_t>(renderer.getOrientation()), acceptsTiltTabNavigation());
   if (tabs.next) push(Key::Right);
   else if (tabs.previous) push(Key::Left);
@@ -111,7 +112,8 @@ void Screen::loop() {
   else if (mappedInput.wasReleased(Button::Right)) push(Key::Down);
   if (mappedInput.wasReleased(Button::Up)) push(Key::Left);
   if (mappedInput.wasReleased(Button::Down)) push(Key::Right);
-  if (mappedInput.wasReleased(Button::Confirm)) push(Key::Confirm);
+  if (acceptsConfirmHold() && mappedInput.wasLongPressed(Button::Confirm, HOLD_MS)) push(Key::ConfirmHold);
+  else if (mappedInput.wasReleased(Button::Confirm)) push(Key::Confirm);
 #if FREEINK_DEVICE_X4PRO
   // A swipe from the left edge is the SDK's Back; here every swipe across turns the page, and Back is the Home key.
   if (mappedInput.wasReleased(Button::Back) && !mappedInput.wasBackGesture()) push(Key::Back);
