@@ -1455,6 +1455,12 @@ void EpubReaderActivity::loop() {
     if (usesToolbarMenu()) {
       // Hold the interval at zero elapsed so closing the panel starts a fresh one.
       lastPageTurnTime = millis();
+      // Reseed the panel baseline as soon as the deferred refresh is done, while nobody waits on it,
+      // instead of on the next key (162 ms on the X3 at every step of the menu).
+      if (overlayRefreshPending && !mappedInput.wasAnyPressed() && !renderer.refreshBusy()) {
+        RenderLock lock(RenderLock::TryTake{});
+        if (lock.acquired()) settleOverlayRefresh();
+      }
       handleOverlayInput();
       return;
     }

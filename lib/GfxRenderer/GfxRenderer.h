@@ -276,6 +276,7 @@ class GfxRenderer {
   // support. See HalDisplay::displayBufferAsync for the baseline contract.
   void displayBufferAsync(HalDisplay::RefreshMode refreshMode = HalDisplay::FAST_REFRESH) const;
   void waitRefreshComplete() const;
+  bool refreshBusy() const { return display.refreshBusy(); }
   // True when displayBufferAsync() genuinely overlaps: panel defers and
   // fadingFix isn't forcing the blocking path. Callers can skip overlap
   // scaffolding (e.g. whole-plane grayscale buffers) when false.
