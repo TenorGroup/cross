@@ -55,7 +55,7 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
   const int net = lon ? 18 : 14;
   const int iconAnchor = tenorchrome::statusIconTopY(pageHeight, lon) + net / 2;
   const auto corners = tenorchrome::statusCornerBounds(renderer, lon);
-  constexpr int cornerGap = 6;
+  constexpr int cornerGap = 9;
   bool singleCaptions[4] = {};
   int iconPositions[4];
   int leftEdge = corners.leftEnd + cornerGap;
