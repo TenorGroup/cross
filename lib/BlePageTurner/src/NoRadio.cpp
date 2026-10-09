@@ -15,6 +15,7 @@ bool running() { return false; }
 bool stopping() { return false; }
 bool connected() { return false; }
 bool connecting() { return false; }
+ConnectionActivity connectionActivity() { return {false, 0}; }
 bool scanning() { return false; }
 void poll() {}
 bool popRaw(RawEdge&) { return false; }

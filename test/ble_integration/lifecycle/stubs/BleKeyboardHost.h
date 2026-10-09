@@ -58,6 +58,11 @@ class BleKeyboardHost {
   // The rest of the surface the page turner's SDK wrapper uses; this harness does not drive it.
   bool isConnected() const { return false; }
   bool isConnecting() const { return false; }
+  struct ReconnectActivity {
+    bool busy;
+    uint32_t advertisements;
+  };
+  ReconnectActivity reconnectActivity() const { return {false, 0}; }
   bool isScanning() const { return false; }
   void poll() {}
   bool popRawButton(RawButtonEvent&) { return false; }

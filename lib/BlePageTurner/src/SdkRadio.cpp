@@ -45,6 +45,10 @@ bool running() { return hid().isRunning(); }
 bool stopping() { return hid().isStopping(); }
 bool connected() { return hid().isConnected(); }
 bool connecting() { return hid().isConnecting(); }
+ConnectionActivity connectionActivity() {
+  const auto activity = hid().reconnectActivity();
+  return {activity.busy, activity.advertisements};
+}
 bool scanning() { return hid().isScanning(); }
 void poll() { hid().poll(); }
 

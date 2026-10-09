@@ -16,6 +16,8 @@ struct Radio {
   bool stopping = false;
   bool connected = false;
   bool connecting = false;
+  bool candidatePending = false;
+  uint32_t advertisements = 0;
   bool scanning = false;
   bool beginResult = true;
   bool endResult = true;

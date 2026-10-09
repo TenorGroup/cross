@@ -25,6 +25,10 @@ inline constexpr size_t kStartFreeBytes = kStackBytes + kMinimumLargestBlockByte
 // and a device lying still eats its battery.
 inline constexpr uint32_t kIdleOffMs = 30u * 1000u;
 
+constexpr bool radioRearmWanted(bool idleStopped, bool entered, bool requested, bool buildPainted) {
+  return entered || requested || (buildPainted && !idleStopped);
+}
+
 // Where the question is asked.
 enum class Phase : uint8_t {
   Idle,         // may this book visit ask for the radio (asked once per visit, running or not)
@@ -45,6 +49,7 @@ struct RadioInputs {
   bool linked;        // a remote is connected
   uint32_t idleMs;    // since a remote was last connected (or the radio came up)
   Heap heap;
+  bool connectionBusy = false;
 };
 
 // The ONE answer to "may the radio be on now". Everything that starts, keeps or stops the
@@ -84,7 +89,7 @@ constexpr Why radioVerdict(const RadioInputs& in) {
       if (!in.enabled) return Why::Off;
       if (in.storageBusy) return Why::StorageBusy;
       // A linked remote is never idle: it sits quiet between two presses for a long time.
-      if (!in.linked && in.idleMs >= kIdleOffMs) return Why::IdleNoLink;
+      if (!in.linked && !in.connectionBusy && in.idleMs >= kIdleOffMs) return Why::IdleNoLink;
       return Why::Ok;
   }
   return Why::Off;

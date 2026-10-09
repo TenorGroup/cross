@@ -237,12 +237,12 @@ TEST_F(LinkNoteTest, Journeys) {
          t.pass(fake::reading());
        },
        LinkNote::None},
-      {"radio off for idleness at entry -> None",
+      {"new book entry after idle stop -> Connecting",
        [](LinkNoteTest& t) {
          ASSERT_TRUE(bleturner::detail::stopForIdle());
          t.pass(fake::reading());
        },
-       LinkNote::None},
+       LinkNote::Connecting},
   };
   for (const auto& row : rows) {
     SetUp();

@@ -42,6 +42,11 @@ bool running();
 bool stopping();
 bool connected();
 bool connecting();
+struct ConnectionActivity {
+  bool busy;
+  uint32_t advertisements;
+};
+ConnectionActivity connectionActivity();
 bool scanning();
 void poll();
 bool popRaw(RawEdge& out);

@@ -28,6 +28,7 @@ bool running(){return BleKeyboardHost::getInstance().running;}
 bool stopping(){return BleKeyboardHost::getInstance().stopping;}
 bool connected(){return BleKeyboardHost::getInstance().connected;}
 bool connecting(){return false;}
+ConnectionActivity connectionActivity(){return {false,0};}
 bool scanning(){return false;}
 void poll(){auto&h=BleKeyboardHost::getInstance();h.polls++;h.events.emplace_back("poll");}
 bool popRaw(RawEdge&out){auto&h=BleKeyboardHost::getInstance();if(h.raw.empty())return false;const auto e=h.raw.front();h.raw.erase(h.raw.begin());out.reportId=e.reportId;out.byteIndex=e.byteIndex;out.value=e.value;out.pressed=e.pressed;out.keycode=e.keycode;out.mods=e.mods;out.atMs=e.atMs;return true;}

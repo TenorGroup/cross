@@ -103,6 +103,9 @@ bool running() { return theRadio.running; }
 bool stopping() { return theRadio.stopping; }
 bool connected() { return theRadio.connected; }
 bool connecting() { return theRadio.connecting; }
+ConnectionActivity connectionActivity() {
+  return {theRadio.connecting || theRadio.candidatePending, theRadio.advertisements};
+}
 bool scanning() { return theRadio.scanning; }
 void poll() {
   ++theRadio.polls;

@@ -122,7 +122,7 @@ TEST_F(TickTest, MemoryRefusalRetriesEveryFiveSecondsAtMostSixTimes) {
   EXPECT_TRUE(logged("Retrying reader BLE start after memory refusal (6)"));
 }
 
-TEST_F(TickTest, IdleThirtySecondsWithoutARemoteStopsAndAPageKeyRearms) {
+TEST_F(TickTest, IdleThirtySecondsWithoutARemoteStopsAndAPageKeyLeavesItOff) {
   running();
   pass(fake::reading());  // the idle clock starts on the first pass that sees the radio up
   radio().now += 29999;
@@ -139,9 +139,9 @@ TEST_F(TickTest, IdleThirtySecondsWithoutARemoteStopsAndAPageKeyRearms) {
   Scene s = fake::reading();
   s.localKey = true;
   pass(s);
-  EXPECT_EQ(radio().creates, 2u);
-  EXPECT_TRUE(radio().running);
-  EXPECT_TRUE(logged("Reader input rearmed idle radio"));
+  EXPECT_EQ(radio().creates, 1u);
+  EXPECT_FALSE(radio().running);
+  EXPECT_TRUE(bleturner::status().idleStopped);
 }
 
 TEST_F(TickTest, ALinkedRemoteNeverIdles) {
@@ -235,6 +235,8 @@ TEST_F(TickTest, BuildDoesNotWaitOnAStartThatNeedsTheRenderLock) {
   EXPECT_LT(radio().now - 10000, 100u);
   EXPECT_EQ(radio().beginCalls, 0u);
   EXPECT_EQ(host().releaseCalls, 0u);
+  EXPECT_FALSE(bleturner::status().readerDeferred);
+  EXPECT_FALSE(bleturner::holdsHeap());
 }
 
 // X3, 07/10/2026: the render task restored a page beside a stack coming up (free 22,676 after the

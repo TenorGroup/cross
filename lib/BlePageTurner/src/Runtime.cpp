@@ -63,6 +63,8 @@ struct Visit {
 Visit visit;
 uint32_t lastCleanupMs = 0;
 uint32_t idleSinceMs = 0;
+bool idleClockRunning = false;
+uint32_t idleAdvertisements = 0;
 // The linked remote's button table (learned, or the built-in default for its kind) and the
 // tap/hold decision still waiting.
 Router router;
@@ -357,6 +359,8 @@ void resetForTests() {
   visit = Visit{};
   lastCleanupMs = 0;
   idleSinceMs = 0;
+  idleClockRunning = false;
+  idleAdvertisements = 0;
   router = Router();
   lastScene = Scene{};
   pairing = Pairing{};
@@ -388,6 +392,7 @@ bool tick(const Scene& s) {
   // The card is taken (USB drive, file transfer): before anything else, radio off.
   if (s.storageBusy) {
     idleSinceMs = 0;
+    idleClockRunning = false;
     detail::suspend(0);
   }
 
@@ -404,6 +409,18 @@ bool tick(const Scene& s) {
   }
   visit.id = s.visit;
   const bool requested = connectRequested;
+  const bool buildPainted = rearmRequested.exchange(false, std::memory_order_relaxed);
+  if (reader && config->enabled &&
+      radioRearmWanted(radioIdleStopped.load(std::memory_order_relaxed), entered, requested, buildPainted)) {
+    radioIdleStopped.store(false, std::memory_order_relaxed);
+    if (!attemptInFlight.load(std::memory_order_acquire) && !port::running()) {
+      visit.attempted = false;
+      visit.reconnectArmed = false;
+      visit.retryAtMs = 0;
+      visit.retries = 0;
+      readerStartDeferred.store(false, std::memory_order_relaxed);
+    }
+  }
   if (requested) {
     connectRequested = false;
     if (reader && config->enabled) {
@@ -411,34 +428,16 @@ bool tick(const Scene& s) {
         linkNoteNow.store(LinkNote::Connected, std::memory_order_relaxed);
       } else {
         visit.manualConnect = true;
-        radioIdleStopped.store(false, std::memory_order_relaxed);
-        if (!attemptInFlight.load(std::memory_order_acquire) && !port::running()) {
-          visit.attempted = false;
-          visit.reconnectArmed = false;
-          visit.retryAtMs = 0;
-          visit.retries = 0;
-          readerStartDeferred.store(false, std::memory_order_relaxed);
-        }
         noteRadioUpSinceMs = port::nowMs();
         linkNoteNow.store(LinkNote::Connecting, std::memory_order_relaxed);
       }
     }
   }
-  // A page key or touch in the book grants one fresh start after the idle stop. A radio the
-  // book stopped for a starved build waits for the book's own request (afterPaint).
-  if (reader && config->enabled && radioIdleStopped.load(std::memory_order_relaxed) &&
-      ((s.localKey && !heldForBuild.load(std::memory_order_relaxed)) ||
-       rearmRequested.exchange(false, std::memory_order_relaxed))) {
-    radioIdleStopped.store(false, std::memory_order_relaxed);
-    visit.attempted = false;
-    visit.reconnectArmed = false;
-    say(false, "Reader input rearmed idle radio\n");
-  }
-
   RadioInputs in = inputsFor(Phase::Running, s);
   const Why must = radioVerdict(in);
   if (must == Why::Off || must == Why::StorageBusy) {
     idleSinceMs = 0;
+    idleClockRunning = false;
     detail::suspend(0);
   } else {
     if (reader && visit.attempted && readerStartDeferred.load(std::memory_order_relaxed) && !port::running() &&
@@ -476,16 +475,25 @@ bool tick(const Scene& s) {
     // device lying still eats its battery.
     if (!attemptInFlight.load(std::memory_order_acquire) && port::running()) {
       in.linked = port::connected();
-      if (in.linked || idleSinceMs == 0) idleSinceMs = port::nowMs();
+      const auto activity = port::connectionActivity();
+      const uint32_t now = port::nowMs();
+      in.connectionBusy = activity.busy;
+      if (in.linked || activity.busy || !idleClockRunning || activity.advertisements != idleAdvertisements) {
+        idleSinceMs = now;
+      }
+      idleClockRunning = !in.linked && !activity.busy;
+      idleAdvertisements = activity.advertisements;
       in.phase = Phase::Running;
-      in.idleMs = port::nowMs() - idleSinceMs;
+      in.idleMs = now - idleSinceMs;
       if (radioVerdict(in) == Why::IdleNoLink) {
         say(false, "Radio idle for %u ms with nothing connected; stopping\n", kIdleOffMs);
         detail::stopForIdle();
         idleSinceMs = 0;
+        idleClockRunning = false;
       }
     } else {
       idleSinceMs = 0;
+      idleClockRunning = false;
     }
     if (reader && !attemptInFlight.load(std::memory_order_acquire) && port::running()) acted = serveReader();
   }
@@ -539,19 +547,21 @@ void settleStart() {
 }
 
 BuildRelease beforeChapterBuild() {
-  if (!config->enabled || radioIdleStopped.load(std::memory_order_relaxed)) return BuildRelease::NotHeld;
+  if (!config->enabled || radioIdleStopped.load(std::memory_order_relaxed) ||
+      heldForBuild.load(std::memory_order_relaxed)) return BuildRelease::NotHeld;
   settleStart();
   if (attemptInFlight.load(std::memory_order_acquire)) return BuildRelease::NotHeld;
   heldForBuild.store(true, std::memory_order_relaxed);
+  readerStartDeferred.store(false, std::memory_order_relaxed);
   const Heap heap = host->heap();
   say(false, "Section build starved of heap; stopping the radio until the page is shown free=%u largest=%u\n",
       static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.largestBlock));
   // The stop has its own timeout: a start that settled late must not leave it none.
   const uint32_t stopStarted = port::nowMs();
-  bool stopped = detail::stopForIdle();
+  bool stopped = detail::suspend(0);
   while (!stopped && port::nowMs() - stopStarted < kBuildReleaseTimeoutMs) {
     port::sleepMs(20);
-    stopped = detail::stopForIdle();
+    stopped = detail::suspend(0);
   }
   // A radio still up keeps its heap: another try at the build would starve again.
   if (!stopped) say(true, "Radio did not stop for the section build\n");
@@ -559,8 +569,9 @@ BuildRelease beforeChapterBuild() {
 }
 
 void afterPaint() {
-  heldForBuild.store(false, std::memory_order_relaxed);
-  rearmRequested.store(true, std::memory_order_relaxed);
+  if (heldForBuild.exchange(false, std::memory_order_relaxed)) {
+    rearmRequested.store(true, std::memory_order_relaxed);
+  }
 }
 
 bool holdsHeap() {

@@ -129,6 +129,12 @@ TEST(RadioVerdictTest, Table) {
        Why::Ok},
       {"running: idle at the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = 30000; }),
        Why::IdleNoLink},
+      {"running: connection activity passes the idle limit",
+       with(Phase::Running, [](RadioInputs& i) {
+         i.connectionBusy = true;
+         i.idleMs = kIdleOffMs * 3;
+       }),
+       Why::Ok},
       {"running: idle long past", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs * 3; }),
        Why::IdleNoLink},
       {"running: a linked remote is never idle",
@@ -153,6 +159,15 @@ TEST(RadioVerdictTest, Thresholds) {
   // could not have kept the reader's block.
   EXPECT_LT(kStartFreeBytes - 50644u, kMinimumLargestBlockBytes);
   EXPECT_EQ(kIdleOffMs, 30u * 1000u);
+}
+
+TEST(RadioVerdictTest, IdleRearmNeedsBookEntryOrConnectRequest) {
+  EXPECT_FALSE(radioRearmWanted(true, false, false, false));
+  EXPECT_FALSE(radioRearmWanted(true, false, false, true));
+  EXPECT_TRUE(radioRearmWanted(true, true, false, false));
+  EXPECT_TRUE(radioRearmWanted(true, false, true, false));
+  EXPECT_TRUE(radioRearmWanted(false, false, false, true));
+  EXPECT_FALSE(radioRearmWanted(false, false, false, false));
 }
 
 }  // namespace
