@@ -119,6 +119,7 @@ constexpr int BAR_TAB_INSET = 6;
 void drawBarTab(const GfxRenderer& renderer, int cx, int y, int h, const uint8_t* bits, int w, int iconH, bool chosen);
 // A ring of `thick` px just inside a round-ended bar; grey = every other pixel.
 void drawPillRing(const GfxRenderer& g, int x, int y, int w, int h, int thick, bool grey);
+void drawPillLabel(const GfxRenderer& renderer, int font, const char* text, int x, int y, int width, int height);
 struct PathPillLayout {
   std::string text;
   int width;

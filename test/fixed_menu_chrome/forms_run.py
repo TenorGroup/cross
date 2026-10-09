@@ -3,7 +3,7 @@ import argparse
 import re
 import subprocess
 from phase_two import extend, verify_keyboard
-from shared_path_fixture import extend_path
+from shared_path_fixture import bitmap_build_args, extend_path
 
 ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser()
@@ -118,11 +118,17 @@ for name in ('tipTopY', 'tipLineCount', 'tipHeight', 'uglyTipTop', 'drawTip', 'x
         definition = definition.replace('  drawInfoInRect(renderer, text, rect, maxLines);',
             '  phaseTipDrawing = true;\n  drawInfoInRect(renderer, text, rect, maxLines);\n  phaseTipDrawing = false;')
     definitions.append(definition)
+fixture = fixture.replace('int getTextInkTop(int, const char*, EpdFontFamily::Style) const;', '''std::array<int, 4> getTextInkBounds(int, const char*, EpdFontFamily::Style) const;
+  void ensureSdGlyphsResident(int, const char*, EpdFontFamily::Style, bool) const {}
+  const uint8_t* getGlyphBitmap(const EpdFontData* data, const EpdGlyph* glyph) const {
+    return fixtureGlyphBitmap(data, glyph);
+  }
+  int getTextInkTop(int, const char*, EpdFontFamily::Style) const;''')
 renderer = (ROOT / 'lib/GfxRenderer/GfxRenderer.cpp').read_text()
 definitions.append(function(renderer, 'GfxRenderer::wrappedText(').replace(
     'GfxRenderer::wrappedText(', 'GfxRenderer::wrappedTextProduction('))
-for name in ('getTextInkTop', 'getTextInkBottom'):
-    definitions.append(function(renderer, f'GfxRenderer::{name}('))
+for name in ('getTextInkTop', 'getTextInkBottom', 'getTextInkBounds'):
+    definitions.append(function(renderer, f'GfxRenderer::{name}(').replace(' || BidiUtils::isTransparentMark(cp)', ''))
 if not args.tip_only:
     theme = read_source('src/components/themes/TenorTheme.cpp')
     base = read_source('src/components/themes/BaseTheme.cpp')
@@ -138,7 +144,7 @@ fixture = fixture.replace('struct GfxRenderer {', '''struct GfxRenderer {
   auto getClipRect() const { return clip; }
   void setClipRect(int left, int top, int width, int height) const { clip = {left, top, width, height}; }
 ''')
-fixture = '#include <array>\n#include "components/UIScale.h"\n' + fixture
+fixture = '#include <array>\n#include <climits>\n#include "components/UIScale.h"\n' + fixture
 fixture = fixture.replace('// CHROME_DECLARATIONS', '\n'.join(declarations))
 fixture = fixture.replace('// PRODUCTION_FUNCTIONS', '\n'.join(definitions))
 fixture = extend_path(fixture, chrome, function, False, ROOT)
@@ -188,9 +194,10 @@ else:
     fixture += tests
 args.work.mkdir(parents=True, exist_ok=True)
 unit = args.work / 'layout.cpp'
-unit.write_text(fixture)
+unit.write_text('#include <cstdlib>\n#include "BitmapFixture.h"\n' + fixture)
 program = args.work / 'layout'
-subprocess.run(['c++', '-std=c++17', '-O0', '-UNDEBUG', '-I', str(ROOT / 'src'),
+subprocess.run(['c++', '-std=c++17', '-O0', '-UNDEBUG',
+                *bitmap_build_args(ROOT, args.work), '-I', str(ROOT / 'src'),
                 '-I', str(ROOT / 'lib/EpdFont'), '-I', str(ROOT / 'lib/Utf8'),
                 '-I', str(ROOT / 'lib/GfxRenderer'), str(unit),
                 '-I', str(ROOT / 'freeink-sdk/libs/assets/Icons/include'),

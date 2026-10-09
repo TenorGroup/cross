@@ -3,6 +3,7 @@ import argparse
 import re
 import subprocess
 import sys
+from shared_path_fixture import bitmap_build_args
 
 root = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser()
@@ -139,7 +140,7 @@ int main() {
 '''
 unit = args.work / 'toolbar.cpp'
 unit.write_text(fixture)
-subprocess.run(['c++', '-std=c++17', '-O0', '-UNDEBUG', '-I', str(root / 'src'),
+subprocess.run(['c++', '-std=c++17', '-O0', '-UNDEBUG', *bitmap_build_args(root, args.work), '-I', str(root / 'src'),
                 '-I', str(root / 'lib/EpdFont'), '-I', str(root / 'lib/Utf8'),
                 '-I', str(root / 'lib/GfxRenderer'), '-I', str(root / 'freeink-sdk/libs/assets/Icons/include'),
                 str(unit), str(root / 'lib/Utf8/Utf8.cpp'), str(root / 'lib/EpdFont/EpdFont.cpp'),

@@ -168,15 +168,21 @@ tenorchrome::PathPillLayout tenorchrome::layoutPathPill(const GfxRenderer& rende
   return layout;
 }
 
+void tenorchrome::drawPillLabel(const GfxRenderer& renderer, const int font, const char* text,
+                               const int x, const int y, const int width, const int height) {
+  if (!text || !*text) return;
+  const auto ink = renderer.getTextInkBounds(font, text, EpdFontFamily::REGULAR);
+  renderer.drawText(font, x + (width - (ink[2] - ink[0])) / 2 - ink[0],
+                    y + (height - (ink[3] - ink[1])) / 2 - ink[1], text);
+}
+
 void tenorchrome::drawPathPill(const GfxRenderer& renderer, const int font, const char* title, const int x, const int y,
                                const int maxWidth, const int height, const int paddingLeft, const int paddingRight,
                                const bool grey) {
   const auto layout = layoutPathPill(renderer, font, title, maxWidth, paddingLeft, paddingRight);
   if (layout.width <= 0 || height <= 0) return;
   drawPillRing(renderer, x, y, layout.width, height, 2, grey);
-  if (!layout.text.empty())
-    renderer.drawText(font, x + std::max(0, paddingLeft), y + (height - renderer.getLineHeight(font)) / 2,
-                      layout.text.c_str());
+  drawPillLabel(renderer, font, layout.text.c_str(), x, y, layout.width, height);
 }
 
 
@@ -242,12 +248,7 @@ void tenorchrome::drawX3NavigationPath(const GfxRenderer& renderer, const std::v
 #endif
     drawPillRing(renderer, leftEdge, top, pill.width, height, pill.current ? 3 : 2, !pill.current);
     if (!pill.text.empty()) {
-      const int inkTop = renderer.getTextInkTop(UI_12_FONT_ID, pill.text.c_str(), EpdFontFamily::REGULAR);
-      const int inkBottom = renderer.getTextInkBottom(UI_12_FONT_ID, pill.text.c_str(), EpdFontFamily::REGULAR);
-      const int textY = top + (height - inkTop - inkBottom) / 2;
-      const int textX = file && pill.current ? leftEdge + X3_PATH_PADDING
-          : leftEdge + (pill.width - renderer.getTextWidth(UI_12_FONT_ID, pill.text.c_str())) / 2;
-      renderer.drawText(UI_12_FONT_ID, textX, textY, pill.text.c_str());
+      drawPillLabel(renderer, UI_12_FONT_ID, pill.text.c_str(), leftEdge, top, pill.width, height);
     } else if (!pill.current) {
       const auto& icon = x3PathIcon(pill.icon);
       drawBarIcon(renderer, icon.bits, icon.w, icon.h, leftEdge + (pill.width - icon.w) / 2,

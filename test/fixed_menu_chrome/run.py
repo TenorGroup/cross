@@ -4,7 +4,7 @@ import json
 import re
 import subprocess
 import sys
-from shared_path_fixture import extend_path
+from shared_path_fixture import bitmap_build_args, extend_path
 
 ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser()
@@ -110,7 +110,7 @@ fixture = fixture.replace('{{SMALL_FONT_ID, EpdFontFamily(&fontObject())}}',
                           '{{SMALL_FONT_ID, EpdFontFamily(&fontObject())}, '
                           '{UI_12_FONT_ID, EpdFontFamily(&bodyFontObject())}}')
 fixture = fixture.replace('mutable std::vector<int> ys;',
-                          'mutable std::vector<int> ys, textFontIds;')
+                          'mutable std::vector<int> ys, textFontIds, textXs;')
 fixture = fixture.replace('void drawText(int, int x, int y, const char* text) const {',
     'void drawText(int fontId, int x, int y, const char* text) const { textFontIds.push_back(fontId);')
 fixture = fixture.replace('int getTextWidth(int, const char* text,', 'int getTextWidth(int fontId, const char* text,')
@@ -121,6 +121,40 @@ fixture = fixture.replace('const auto* g = glyph(next(text));',
                           '      const auto* g = fontId == UI_12_FONT_ID ? bodyFontObject().getGlyph(next(text)) : glyph(next(text));')
 fixture = fixture.replace('if (font().bitmap[g->dataOffset', 'if (bitmapFont.bitmap[g->dataOffset')
 fixture = fixture.replace('y + font().ascender - g->top + row', 'y + bitmapFont.ascender - g->top + row')
+fixture = fixture.replace(function(fixture, 'void drawText('), r'''  void drawText(int fontId, int x, int y, const char* text) const {
+    textFontIds.push_back(fontId); ys.push_back(y); textXs.push_back(x); paintedText.emplace_back(text);
+    const auto& family = fontMap.at(fontMap.count(fontId) ? fontId : SMALL_FONT_ID);
+    const auto* data = family.getData();
+    int baseX = x, baseLeft = 0, baseWidth = 0, baseTop = 0;
+    int32_t advance = 0;
+    uint32_t previous = 0;
+    while (uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
+      const bool combining = utf8IsCombiningMark(cp);
+      if (!combining) {
+        cp = family.applyLigatures(cp, text);
+        if (previous) baseX += fp4::toPixel(advance + family.getKerning(previous, cp));
+      }
+      const auto* glyph = family.getGlyph(cp);
+      if (!glyph) continue;
+      const auto anchor = combiningMark::anchorFor(cp);
+      const int glyphX = combining ? combiningMark::anchorOver(anchor, baseX, baseLeft, baseWidth,
+                                                                glyph->left, glyph->width) : baseX;
+      const int raise = combining ? combiningMark::raiseAboveBase(anchor, glyph->top, glyph->height, baseTop) : 0;
+      const auto* bitmap = fixtureGlyphBitmap(data, glyph);
+      for (int row = 0; row < glyph->height; ++row)
+        for (int col = 0; col < glyph->width; ++col) {
+          const int bit = row * glyph->width + col;
+          const int ink = data->is2Bit ? (bitmap[bit / 4] >> (6 - (bit % 4) * 2)) & 3
+                                       : (bitmap[bit / 8] >> (7 - bit % 8)) & 1;
+          if (ink)
+            drawPixel(glyphX + glyph->left + col, y + data->ascender - glyph->top - raise + row, true);
+        }
+      if (!combining) {
+        baseLeft = glyph->left; baseWidth = glyph->width; baseTop = glyph->top;
+        advance = glyph->advanceX; previous = cp;
+      }
+    }
+  }''')
 if args.phase2:
     fixture = '#include <builtinFonts/notoserif_16_regular.h>\n#include <builtinFonts/notoserif_18_regular.h>\n' + fixture
     fixture = fixture.replace("if (!std::strchr(text, '|')) return wrappedTextProduction",
@@ -167,11 +201,17 @@ for name in ('std::vector<std::string> tipLines(', 'int tipLineY('):
 for name in ('tipTopY', 'tipLineCount', 'tipHeight', 'uglyTipTop', 'drawTip', 'x3ScreenLayout',
              'drawTipInRect', 'drawInfoInRect'):
     definitions.append(function(chrome, f'tenorchrome::{name}('))
+fixture = fixture.replace('int getTextInkTop(int, const char*, EpdFontFamily::Style) const;', '''std::array<int, 4> getTextInkBounds(int, const char*, EpdFontFamily::Style) const;
+  void ensureSdGlyphsResident(int, const char*, EpdFontFamily::Style, bool) const {}
+  const uint8_t* getGlyphBitmap(const EpdFontData* data, const EpdGlyph* glyph) const {
+    return fixtureGlyphBitmap(data, glyph);
+  }
+  int getTextInkTop(int, const char*, EpdFontFamily::Style) const;''')
 renderer = (ROOT / 'lib/GfxRenderer/GfxRenderer.cpp').read_text()
 definitions.append(function(renderer, 'GfxRenderer::wrappedText(').replace(
     'GfxRenderer::wrappedText(', 'GfxRenderer::wrappedTextProduction('))
-for name in ('getTextInkTop', 'getTextInkBottom'):
-    definitions.append(function(renderer, f'GfxRenderer::{name}('))
+for name in ('getTextInkTop', 'getTextInkBottom', 'getTextInkBounds'):
+    definitions.append(function(renderer, f'GfxRenderer::{name}(').replace(' || BidiUtils::isTransparentMark(cp)', ''))
 if not args.tip_only:
     theme = read_source('src/components/themes/TenorTheme.cpp')
     base = read_source('src/components/themes/BaseTheme.cpp')
@@ -187,7 +227,9 @@ if not args.tip_only:
         declarations.append(re.search(r'void ' + name + r'\([^;]+;', header).group())
         definitions.append(function(chrome, f'tenorchrome::{name}('))
     declarations.append(function(header, 'struct PathPillLayout') + ';')
-    for name in ('layoutPathPill', 'drawPathPill'):
+    for name in ('layoutPathPill', 'drawPillLabel', 'drawPathPill'):
+        if name == 'drawPillLabel' and 'void drawPillLabel(' not in header:
+            continue
         declarations.append(re.search(r'(?:PathPillLayout|void) ' + name + r'\([^;]+;', header).group())
         definitions.append(function(chrome, f'tenorchrome::{name}('))
     declarations.append('constexpr int BAR_TAB_INSET = 6;')
@@ -225,7 +267,7 @@ if args.tip_only:
       std::array<int, 4> getClipRect() const { return clip; }
       void setClipRect(int left, int top, int width, int height) const { clip = {left, top, width, height}; }
     ''')
-fixture = '#include <array>\n' + fixture
+fixture = '#include <array>\n#include <climits>\n' + fixture
 fixture = fixture.replace('void drawPixel(int x, int y, bool black)', 'void drawPixel(int x, int y, bool black = true)')
 fixture = fixture.replace('if (black) { attemptedInkTop',
                               'if (x < clip[0] || y < clip[1] || x >= clip[0] + clip[2] || y >= clip[1] + clip[3]) return;\n'
@@ -562,10 +604,11 @@ else:
     fixture += Path(__file__).with_name('X3ScreenLayoutTest.cpp').read_text()
 args.work.mkdir(parents=True, exist_ok=True)
 unit = args.work / 'layout.cpp'
-unit.write_text(fixture)
+unit.write_text('#include <cstdlib>\n#include "BitmapFixture.h"\n' + fixture)
 program = args.work / 'layout'
 units = [str(ROOT / 'src/components/QuoteDetailLayout.cpp'), str(ROOT / 'src/components/QuoteListLayout.cpp')] if args.phase2 else []
-subprocess.run(['c++', '-std=c++17', '-O0', '-UNDEBUG', '-I', str(ROOT / 'src'),
+subprocess.run(['c++', '-std=c++17', '-O0', '-UNDEBUG',
+                *bitmap_build_args(ROOT, args.work), '-I', str(ROOT / 'src'),
                 '-I', str(ROOT / 'lib/EpdFont'), '-I', str(ROOT / 'lib/Utf8'),
                 '-I', str(ROOT / 'lib/GfxRenderer'), str(unit),
                 '-I', str(ROOT / 'freeink-sdk/libs/assets/Icons/include'),

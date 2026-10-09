@@ -14,7 +14,7 @@ manager = (root / 'src/activities/ActivityManager.cpp').read_text()
 assert 'ActivityManager::x3NavigationPath(' in manager, 'RED: no stack path builder'
 chrome = (root / 'src/components/TenorMenuChrome.cpp').read_text()
 assert 'case X3PathIcon::More: return icon_reader_tab_more_40;' in chrome, 'RED: settings Other parent uses the Tools icon'
-assert 'file && pill.current ? leftEdge + X3_PATH_PADDING' in chrome, 'RED: overflowing File path lost left padding'
+assert 'drawPillLabel(renderer, UI_12_FONT_ID, pill.text.c_str(), leftEdge, top, pill.width, height)' in chrome, 'RED: navigation path bypasses shared ink centering'
 tabs = (root / 'src/activities/UiTabListActivity.cpp').read_text()
 assert 'else if (readerTextPath)' in tabs, 'RED: reader text settings still show root tabs'
 assert '&& !readerTextPath' in tabs, 'RED: reader text path still draws tab arrows'

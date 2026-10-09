@@ -1,3 +1,21 @@
+import subprocess
+
+
+def bitmap_build_args(root, work):
+    font_include = root / 'freeink-sdk/libs/font/FreeInkFont/include'
+    objects = []
+    for source in (root / 'lib/uzlib/src/tinflate.c',
+                   root / 'freeink-sdk/libs/font/FreeInkFont/src/FontAlloc.c'):
+        target = work / (source.stem + '.o')
+        subprocess.run(['cc', '-I', str(root / 'lib/uzlib/src'), '-I', str(font_include),
+                        '-c', str(source), '-o', str(target)], check=True)
+        objects.append(str(target))
+    return ['-I', str(root / 'test/fixed_menu_chrome'), '-I', str(root / 'test/ui_tiers/stubs'),
+            '-I', str(font_include), '-I', str(root / 'lib/InflateReader'),
+            '-I', str(root / 'lib/uzlib/src'), str(root / 'lib/EpdFont/FontDecompressor.cpp'),
+            str(root / 'lib/InflateReader/InflateReader.cpp'), *objects, '-lz']
+
+
 def extend_path(fixture, chrome, function, full_painter, root):
     includes = '''
 #include "components/X3NavigationPath.h"
@@ -10,6 +28,7 @@ def extend_path(fixture, chrome, function, full_painter, root):
     declarations = '''
 namespace tenorchrome {
 void drawPillRing(const GfxRenderer&, int, int, int, int, int, bool);
+void drawPillLabel(const GfxRenderer&, int, const char*, int, int, int, int);
 void drawBarIcon(const GfxRenderer&, const uint8_t*, int, int, int, int, bool);
 void drawX3NavigationPath(const GfxRenderer&, const std::vector<X3PathNode>&, bool);
 void drawX3ActivityPath(const GfxRenderer&, const char*);
@@ -24,6 +43,8 @@ struct PathActivityBoundary {
 } activityManager;
 '''
     if not full_painter:
+        if 'tenorchrome::drawPillLabel(' in chrome:
+            declarations += function(chrome, 'tenorchrome::drawPillLabel(') + '\n'
         declarations += '''
 namespace tenorchrome {
 constexpr int BAR_TAB_INSET = 6;

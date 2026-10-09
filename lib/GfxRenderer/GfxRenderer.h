@@ -465,6 +465,8 @@ class GfxRenderer {
   int getTextHeight(int fontId) const;
   int getTextInkTop(int fontId, const char* text, EpdFontFamily::Style style) const;
   int getTextInkBottom(int fontId, const char* text, EpdFontFamily::Style style) const;
+  // Half-open bitmap ink rectangle relative to drawText's origin, with the same glyph steps.
+  std::array<int, 4> getTextInkBounds(int fontId, const char* text, EpdFontFamily::Style style) const;
   bool drawBitmapCover(const Bitmap& bitmap, int x, int y, int width, int height) const;
 
   // Grayscale functions

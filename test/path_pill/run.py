@@ -60,6 +60,7 @@ note_function = function(chrome, "tenorchrome::noteScreenTitle(")
 
 harness = r'''
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -118,6 +119,11 @@ class GfxRenderer {
     return prefix + ellipsis;
   }
 
+  std::array<int, 4> getTextInkBounds(int id, const char* text, EpdFontFamily::Style style) const {
+    return {1, 3, getTextWidth(id, text, style), 18 + tier * 3};
+  }
+  int getTextInkTop(int, const char*, EpdFontFamily::Style) const { return 3; }
+  int getTextInkBottom(int, const char*, EpdFontFamily::Style) const { return 18 + tier * 3; }
   int getLineHeight(int) const { return 22 + tier * 5; }
   void drawText(int font, int x, int y, const char* text, bool black = true,
                 EpdFontFamily::Style style = EpdFontFamily::REGULAR) const {
@@ -133,11 +139,13 @@ void drawPillRing(const GfxRenderer&, int x, int y, int width, int height, int t
 }
 LAYOUT_STRUCT
 PathPillLayout layoutPathPill(const GfxRenderer&, int, const char*, int, int, int);
+void drawPillLabel(const GfxRenderer&, int, const char*, int, int, int, int);
 void drawPathPill(const GfxRenderer&, int, const char*, int, int, int, int, int, int, bool);
 void noteScreenTitle(const char*);
 }
 
 LAYOUT_FUNCTION
+LABEL_FUNCTION
 DRAW_FUNCTION
 NOTE_FUNCTION
 
@@ -204,8 +212,9 @@ int main() {
                               X4_PAD_LEFT, X4_PAD_RIGHT, true);
     check(tenorchrome::lastRing.width == x4Short.width && tenorchrome::lastRing.grey,
           "shared draw uses measured X4 Pro pill width");
-    check(renderer.runs.size() == 1 && renderer.runs[0].x == 256 + X4_PAD_LEFT,
-          "shared draw keeps the existing X4 Pro left padding");
+    check(renderer.runs.size() == 1 && renderer.runs[0].x ==
+              256 + (x4Short.width - (renderer.getTextWidth(12, "Clock") - 1)) / 2 - 1,
+          "shared draw centres X4 Pro label ink with a consistent left bias");
     check(renderer.runs.size() == 1 && renderer.runs[0].black &&
               renderer.runs[0].style == EpdFontFamily::REGULAR,
           "shared draw preserves the original black regular footbar title");
@@ -231,6 +240,8 @@ int main() {
 
 harness = harness.replace("LAYOUT_STRUCT", layout_struct)
 harness = harness.replace("LAYOUT_FUNCTION", layout_function)
+harness = harness.replace("LABEL_FUNCTION", function(chrome, "tenorchrome::drawPillLabel(")
+                          if "void drawPillLabel(" in header else "")
 harness = harness.replace("DRAW_FUNCTION", draw_function)
 harness = harness.replace("NOTE_FUNCTION", note_function)
 

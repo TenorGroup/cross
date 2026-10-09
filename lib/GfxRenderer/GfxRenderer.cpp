@@ -2430,6 +2430,64 @@ int GfxRenderer::getLineHeight(const int fontId, const float compression) const 
   return static_cast<int>(getLineHeight(fontId) * compression + 0.5f);
 }
 
+std::array<int, 4> GfxRenderer::getTextInkBounds(int fontId, const char* text, EpdFontFamily::Style style) const {
+  if (!text || !*text) return {0, 0, 0, 0};
+  const int resolved = resolveTextFontId(fontId, text, style);
+  ensureSdGlyphsResident(resolved, text, style, false);
+  const auto it = fontMap.find(resolved);
+  if (it == fontMap.end()) return {0, 0, 0, 0};
+  std::string visual;
+  text = resolveVisualText(text, visual, BidiUtils::BidiBaseDir::AUTO);
+  const auto& font = it->second;
+  int left = INT_MAX, right = INT_MIN, top = INT_MAX, bottom = INT_MIN;
+  int baseX = 0, baseLeft = 0, baseWidth = 0, baseTop = 0;
+  const int baseline = getFontAscenderSize(resolved) +
+      (resolved == fontId ? 0 : (getLineHeight(fontId) - getLineHeight(resolved)) / 2);
+  uint32_t previous = 0;
+  int32_t advance = 0;
+  while (uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
+    const bool combining = utf8IsCombiningMark(cp) || BidiUtils::isTransparentMark(cp);
+    if (!combining) {
+      cp = font.applyLigatures(cp, text, style);
+      if (previous) baseX += fp4::toPixel(advance + font.getKerning(previous, cp, style));
+    }
+    const auto* glyph = font.getGlyph(cp, style);
+    if (glyph && glyph->width && glyph->height) {
+      const int x = combining ? combiningMark::anchorOver(combiningMark::anchorFor(cp), baseX, baseLeft,
+                                                          baseWidth, glyph->left, glyph->width) : baseX;
+      const int raise = combining ? combiningMark::raiseAboveBase(combiningMark::anchorFor(cp),
+          glyph->top, glyph->height, baseTop) : 0;
+      const int y = baseline - glyph->top - raise;
+      const auto* data = font.getData(style);
+      const auto* bitmap = getGlyphBitmap(data, glyph);
+      if (bitmap) {
+        // Glyph rectangles can contain empty edges, even in the built-in fonts.
+        for (int col = 0; col < glyph->width; ++col) {
+          for (int row = 0; row < glyph->height; ++row) {
+            const int pixel = row * glyph->width + col;
+            const int ink = data->is2Bit ? (bitmap[pixel / 4] >> (6 - (pixel % 4) * 2)) & 3
+                                         : (bitmap[pixel / 8] >> (7 - pixel % 8)) & 1;
+            if (ink) {
+              left = std::min(left, x + glyph->left + col);
+              right = std::max(right, x + glyph->left + col + 1);
+              top = std::min(top, y + row);
+              bottom = std::max(bottom, y + row + 1);
+            }
+          }
+        }
+      }
+    }
+    if (!combining) {
+      baseLeft = glyph ? glyph->left : 0;
+      baseWidth = glyph ? glyph->width : 0;
+      baseTop = glyph ? glyph->top : 0;
+      advance = glyph ? glyph->advanceX : 0;
+      previous = cp;
+    }
+  }
+  return left == INT_MAX ? std::array<int, 4>{0, 0, 0, 0} : std::array<int, 4>{left, top, right, bottom};
+}
+
 int GfxRenderer::getTextInkTop(int fontId, const char* text, EpdFontFamily::Style style) const {
   const int resolved = resolveTextFontId(fontId, text, style);
   const auto it = fontMap.find(resolved);
