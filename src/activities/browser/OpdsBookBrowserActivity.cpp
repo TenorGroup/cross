@@ -1,4 +1,5 @@
 #include "OpdsBookBrowserActivity.h"
+#include "components/PageScrollbar.h"
 
 #include <Arduino.h>
 #include <FontCacheManager.h>
@@ -337,8 +338,13 @@ void OpdsBookBrowserActivity::buildBrowsingScreen(UiScreen& screen) {
   props.valueInset = 8;               // air between the nav chevron and the row edge
   listNav.selected = selectorIndex;
   props.partialTrailingRow = true;
+  if (tenorchrome::kTouchShell) props.rowInset = tenorchrome::FOOT_BACK_X;
   screen.syncListViewport(listNav, props, static_cast<int>(entries.size()));
+  if (tenorchrome::kTouchShell) props.scrollIndicator = false;
+  const auto viewport = screen.body();
   screen.list(props);
+  if (tenorchrome::kTouchShell)
+    PageScrollbar::instance().drawList(renderer, screen.target(), viewport, listNav, static_cast<int>(entries.size()));
 }
 
 void OpdsBookBrowserActivity::buildDownloadScreen(UiScreen& screen) {
@@ -450,6 +456,7 @@ void OpdsBookBrowserActivity::render(RenderLock&&) {
     const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(selectorIndex));
     if (!box.empty()) uglychrome::marks(renderer, box, {true});
   });
+  if (ugly) PageScrollbar::instance().repaint(renderer, uiTarget);
   renderer.displayBuffer();
 #ifdef UGLY_FRAME_LOG
   if (ugly) LOG_INF("UGLY", "OPDS list frame entries=%u sel=%d", static_cast<unsigned>(entries.size()), selectorIndex);

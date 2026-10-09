@@ -63,6 +63,7 @@ cpp = r'''
 #include <FreeInkApp.h>
 #include "Utf8.h"
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -90,7 +91,13 @@ std::string rectSignature(fui::Rect r) {
 }
 I18n& I18n::getInstance(){static I18n i;return i;}
 const char* I18n::get(StrId)const{return "Done";}
-class GfxRenderer {};
+class GfxRenderer {
+ public:
+  int getScreenWidth() const { return 480; }
+  void fillRect(int, int, int, int, bool) const {}
+  void displayWindow(int, int, int, int) const {}
+  void waitRefreshComplete() const {}
+};
 struct UiSpec { int bodyFontId=0; };
 UiSpec uiScaleSpec() { return {}; }
 struct Target : fui::DrawTarget {
@@ -127,7 +134,14 @@ struct Target : fui::DrawTarget {
     commands.push_back("bitmap:" + rectSignature(r));
   }
 };
-class MappedInputManager { public: fui::InputSnapshot snap; };
+class MappedInputManager {
+ public:
+  fui::InputSnapshot snap;
+  bool wasVerticalSwipe(int&, unsigned long&) const { return false; }
+  bool isScreenTouchHeld(int&, int&) const { return false; }
+};
+uint32_t millis() { return 100; }
+Target makeUiTarget(const GfxRenderer&) { return {}; }
 class UiAppHost {
  public:
   using UiApp=freeink::ui::FreeInkApp<24,6>;
@@ -168,8 +182,11 @@ void drawPillRing(const GfxRenderer&, int x, int y, int w, int h, int thick, boo
   stepperRings.push_back(std::to_string(x) + "," + std::to_string(y) + "," + std::to_string(w) + "," +
                          std::to_string(h) + "," + std::to_string(thick) + "," + std::to_string(grey));
 }
-''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|FRAME_BAR_WIDTH|FRAME_BAR_AIR) = .*?;', chrome, re.M)) + '\n' + method(chrome, 'struct FrameBar') + ';\n' + method(chrome, 'inline FrameBar frameScrollBar') + '\n' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
+''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|FRAME_BAR_WIDTH) = .*?;', chrome, re.M)) + '\n' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
 cpp = cpp.replace('EXPECT_PREVIEW_HIT', str(a.expect_preview_hit).lower()).replace('DUMP_SIGNATURE', str(a.signature).lower()).replace('EXPECT_FADE', str(a.expect_fade).lower()).replace('EXPECT_STEPPER_RING', str(a.expect_stepper_ring).lower()).replace('EXPECT_STEPPER_CENTER', str(a.expect_stepper_center).lower()).replace('EXPECT_MIDDLE_FONT', str(a.expect_middle_font).lower())
+for component in ('PageScrollbarIdle.h', 'PageScrollbar.h'):
+    component_source = (a.repo / 'src/components' / component).read_text()
+    cpp += re.sub(r'^#(?:pragma|include)[^\n]*\n', '', component_source, flags=re.M) + '\n'
 cpp += header + '\n' + constants + '\n'
 cpp += 'ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& r): UiAppHost(r), renderer_(&r) {}\n'
 cpp += method(source, 'fui::Rect readerFrame') + '\n'

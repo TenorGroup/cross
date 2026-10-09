@@ -457,13 +457,10 @@ void StatusBarSettingsActivity::drawChoiceFrame() {
                               renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
   }
   if (first > 0 || end < listCount()) {
-    const auto bar = tenorchrome::frameScrollBar(tenorchrome::FOOT_BACK_X, choiceTop_,
-         renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X, choiceBottom_ - choiceTop_,
-         choiceTop_, choiceBottom_);
-    fui::drawListScrollIndicator(uiTarget,
-        fui::Rect{static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
-                  static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)},
-        listCount(), std::max(1, end - first), first, bar.width);
+    const int height = choiceBottom_ - choiceTop_;
+    const int rows = std::max(1, end - first);
+    setPageScrollRegion(choiceTop_, choiceBottom_, listCount() * height / rows, first * height / rows);
+    drawPageScrollbar();
   }
 }
 

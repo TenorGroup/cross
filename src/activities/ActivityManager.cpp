@@ -21,6 +21,7 @@
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
 #include "components/HeaderBackTapTarget.h"
+#include "components/PageScrollbar.h"
 #include "components/ReaderTapTip.h"
 #include "components/TenorMenuChrome.h"
 #include "home/CrashActivity.h"
@@ -259,7 +260,13 @@ void ActivityManager::renderTaskLoop() {
       // Night mode is a global output polarity applied to every activity.
       // The sleep screen forces normal polarity itself (SleepActivity).
       display.setInverted(SETTINGS.screenInverted != 0);
-      if (!currentActivity->renderIdleUpdate()) currentActivity->render(std::move(lock));
+      auto& scrollbar = PageScrollbar::instance();
+      scrollbar.activate(currentActivity.get());
+      if (!scrollbar.renderIdleUpdate(renderer, mappedInput)) {
+        scrollbar.beginPaint();
+        if (!currentActivity->renderIdleUpdate()) currentActivity->render(std::move(lock));
+        scrollbar.endPaint();
+      }
       frameAfterDeferredWrite.store(true, std::memory_order_release);
       frameDrawn.store(true, std::memory_order_release);
     }
@@ -397,6 +404,7 @@ void ActivityManager::loop() {
 
     // Note: do not hold a lock here, the loop() method must be responsible for acquire one if needed
     currentActivity->onTick();
+    PageScrollbar::instance().noteInput(mappedInput);
     currentActivity->loop();
   }
 
@@ -533,6 +541,7 @@ void ActivityManager::loop() {
     }
   }
 
+  if (!requestedUpdate.load() && PageScrollbar::instance().needsIdleUpdate(mappedInput)) requestedUpdate = true;
   if (requestedUpdate.exchange(false)) {
     // Using direct notification to signal the render task to update
     // Increment counter so multiple rapid calls won't be lost
@@ -922,6 +931,7 @@ ScreenshotInfo ActivityManager::getScreenshotInfo() const {
 }
 
 void ActivityManager::requestUpdate(bool immediate) {
+  PageScrollbar::instance().cancelIdleRequest();
   if (immediate) {
     if (renderTaskHandle) {
       xTaskNotify(renderTaskHandle, 1, eIncrement);
@@ -933,6 +943,7 @@ void ActivityManager::requestUpdate(bool immediate) {
   }
 }
 void ActivityManager::requestUpdateAndWait() {
+  PageScrollbar::instance().cancelIdleRequest();
   if (!renderTaskHandle) {
     return;
   }

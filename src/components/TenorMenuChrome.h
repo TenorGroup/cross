@@ -117,20 +117,8 @@ constexpr bool roundFrames(const bool fileList = false) { return kTouchShell && 
 // grey dots 2 px, radius PANEL_RADIUS. Text inside starts 16 px in from it.
 constexpr int PANEL_RADIUS = 20;
 void drawPanel(const GfxRenderer& g, int y, int h);
-// Rule 13: where the scroll bar of rows in a round frame goes. A pill FRAME_BAR_WIDTH px wide on the frame's right
-// side, FRAME_BAR_AIR px in from its ring, and only along the side's straight part (PANEL_RADIUS clear of the frame's
-// top and bottom), so it never meets the ring in a corner; [rowsTop, rowsBottom) narrows it to the rows. Without a
-// ring (File, founder 07/10) it keeps the same column, along the rows. Every framed list asks this.
+// Touch page scrollbars use PageScrollbar: outside the frame, x 469-474 on the X4 Pro, 5 px clear of the ring.
 constexpr int FRAME_BAR_WIDTH = 6;
-constexpr int FRAME_BAR_AIR = 4;
-struct FrameBar { int x, y, width, height; };
-inline FrameBar frameScrollBar(const int frameX, const int frameY, const int frameW, const int frameH, const int rowsTop,
-                               const int rowsBottom, const bool ring = true) {
-  const int corner = ring ? PANEL_RADIUS : 0;
-  const int top = std::max(rowsTop, frameY + corner);
-  const int bottom = std::min(rowsBottom, frameY + frameH - corner);
-  return {frameX + frameW - 2 - FRAME_BAR_AIR - FRAME_BAR_WIDTH, top, FRAME_BAR_WIDTH, std::max(0, bottom - top)};
-}
 // The grey dotted rule between 2 rows of a frame (every other pixel), from x0 up to x1.
 void drawRowRule(const GfxRenderer& g, int y, int x0, int x1);
 constexpr int STATUS_HEIGHT = 32;

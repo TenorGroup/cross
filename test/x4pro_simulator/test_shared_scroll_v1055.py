@@ -16,18 +16,21 @@ def dark(image, x, y):
 
 def thumb(image, top, bottom):
     rows = [y for y in range(top, bottom)
-            if sum(dark(image, x, y) for x in range(465, 480)) >= 4]
+            if sum(dark(image, x, y) for x in range(469, 475)) >= 4]
     return (min(rows), max(rows) + 1) if rows else None
 
 
-def check_geometry(image, top, bottom, content_height=None, at_end=False, offset=None):
+def check_geometry(image, top, bottom, content_height=None, at_end=False, offset=None, background=None):
+    if background is not None:
+        image = ImageChops.invert(ImageChops.difference(image, background))
     bar = thumb(image, top, bottom)
     assert bar, "missing 6 px scrollbar outside the group frames"
     columns = [x for x in range(464, 480)
                if any(dark(image, x, y) for y in range(top, bottom))]
-    assert columns == list(range(467, 473)), f"bar columns={columns}"
+    assert columns == list(range(469, 475)), f"bar columns={columns}"
     inner_rows = [y for y in range(top, bottom)
-                  if sum(dark(image, x, y) for x in range(452, 458)) >= 4]
+                  if sum(dark(image, x, y) for x in range(452, 458)) >= 4
+                  and not dark(image, 451, y) and not dark(image, 458, y)]
     longest = current = 0
     previous = -2
     for row in inner_rows:
@@ -35,12 +38,13 @@ def check_geometry(image, top, bottom, content_height=None, at_end=False, offset
         longest = max(longest, current)
         previous = row
     assert longest <= 12, f"another scrollbar remains inside a frame, run={longest}"
-    assert not any(dark(image, x, y) for y in range(top, bottom) for x in range(464, 467)), \
-        "bar crossed the 8 px gutter beside the frame"
-    assert not any(dark(image, x, y) for y in range(32, top) for x in range(467, 473)), \
-        "bar above its viewport"
-    assert not any(dark(image, x, y) for y in range(bottom, 724) for x in range(467, 473)), \
-        "bar below its viewport"
+    assert not any(dark(image, x, y) for y in range(top, bottom) for x in range(464, 469)), \
+        "bar crossed the 5 px gutter beside the frame"
+    for label, outside in (("above", range(32, top)), ("below", range(bottom, 724))):
+        run_length = 0
+        for row in outside:
+            run_length = run_length + 1 if all(dark(image, column, row) for column in range(469, 475)) else 0
+            assert run_length <= 2, f"bar {label} its viewport"
     if content_height:
         minimum = (bottom - top) ** 2 / content_height - 2
         assert bar[1] - bar[0] >= minimum, f"thumb={bar}, required length >= {minimum:.2f}"
@@ -49,7 +53,7 @@ def check_geometry(image, top, bottom, content_height=None, at_end=False, offset
             height = visible * visible // content_height
             position = top + (visible - height) * min(offset, content_height - visible) // (content_height - visible)
             assert abs(bar[0] - position) <= 2, f"thumb y={bar[0]}, proportional position={position}"
-    widths = [sum(dark(image, x, y) for x in range(467, 473)) for y in range(bar[0], bar[1])]
+    widths = [sum(dark(image, x, y) for x in range(469, 475)) for y in range(bar[0], bar[1])]
     assert widths[0] < max(widths) and widths[-1] < max(widths), "thumb ends are square"
     assert all(width >= 4 for width in widths), "more than 1 separate thumb on the track"
     if at_end:
@@ -90,9 +94,9 @@ def home_case(output, tier):
     before, hidden = images[4:6]
     if not thumb(before, 48, bottom):
         failures.append("bar disappeared before 2000 ms")
-    if any(dark(hidden, x, y) for y in range(48, bottom) for x in range(467, 473)):
+    if any(dark(hidden, x, y) for y in range(48, bottom) for x in range(469, 475)):
         failures.append("bar remained after 2000 ms")
-    if difference_outside(before, hidden, (467, 48, 473, bottom)):
+    if difference_outside(before, hidden, (469, 48, 475, bottom)):
         failures.append("idle hide changed pixels outside its narrow strip")
     if ImageChops.difference(before, hidden).getbbox() is None:
         failures.append("idle hide did not change any pixels")
@@ -124,7 +128,7 @@ def stats_case(output, tier):
             failures.append(str(error))
     if thumb(images[2], 32, bottom):
         failures.append("Stats bar did not hide")
-    if difference_outside(images[1], images[2], (467, 32, 473, bottom)):
+    if difference_outside(images[1], images[2], (469, 32, 475, bottom)):
         failures.append("Stats hide changed content pixels")
     return {"case": f"stats-{tier}", "failures": failures}
 

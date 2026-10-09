@@ -12,6 +12,7 @@
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "components/OptionPopupLayout.h"
+#include "components/PageScrollbar.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UiAppHelpers.h"
 #include "components/UiAppHost.h"
@@ -225,6 +226,7 @@ class OptionPopup {
 
   void render(const GfxRenderer& renderer) const {
     if (!active) return;
+    PageScrollbar::instance().beginPaint();
     namespace fui = freeink::ui;
 
     // Per-render target: a GfxRendererTarget is a renderer reference plus
@@ -246,8 +248,9 @@ class OptionPopup {
     // InteractionBuffer::beginPublishCycle().
     interactions.beginPublishCycle();
     fui::Frame<INTERACTION_CAPACITY> frame(target, device, noInput, interactions);
-    if (tenorchrome::kTouchShell && (inFrame || anchored || !shell::isUgly())) {
+    if (tenorchrome::kTouchShell) {
       renderAnchored(renderer, frame, device.screen());
+      PageScrollbar::instance().endPaint(&renderer);
       interactions.publish();
       uiReady = true;
       return;
@@ -573,14 +576,8 @@ class OptionPopup {
       frame.hit(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(ry), static_cast<int16_t>(w), static_cast<int16_t>(ROW)},
                 ACTION_OPTION, static_cast<int16_t>(i), fui::InputTouch);
     }
-    if (rows < count) {
-      const auto bar = tenorchrome::frameScrollBar(box.x, box.y, box.width, box.height, rowsTop, rowsTop + rows * ROW);
-      fui::drawListScrollIndicator(frame.target(),
-                                   fui::Rect{static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
-                                             static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)},
-                                   static_cast<uint32_t>(count), static_cast<uint32_t>(rows), static_cast<uint32_t>(first),
-                                   static_cast<int16_t>(bar.width));
-    }
+    PageScrollbar::instance().draw(renderer, frame.target(), rowsTop, rowsTop + rows * ROW,
+                                   count * ROW, first * ROW, this);
   }
 
 

@@ -1,4 +1,5 @@
 #include "ReaderToolbarUi.h"
+#include "components/PageScrollbar.h"
 
 #include <FreeInkUIIcon.h>
 #include <GfxRenderer.h>
@@ -72,6 +73,7 @@ void ReaderToolbarUi::begin() {
 }
 
 void ReaderToolbarUi::render() {
+  PageScrollbar::instance().beginPaint();
   const bool handwritten = shell::isUgly();
   uiTarget.setPaintingEnabled(!handwritten);
   renderUi();
@@ -80,8 +82,12 @@ void ReaderToolbarUi::render() {
   // only moves forward toward the selection); the bound is a backstop.
   for (int pass = 0; pass < 3 && nav_.consumeRebuildNeeded(); ++pass) renderUi();
   uiTarget.setPaintingEnabled(true);
-  if (handwritten) paintUgly();
+  if (handwritten) {
+    paintUgly();
+    PageScrollbar::instance().repaint(*renderer_, uiTarget);
+  }
   else if (model_.panel) fadeMoreBelow();
+  PageScrollbar::instance().endPaint(renderer_);
 }
 
 // Rows go on below the last full one: the band under it fades over the next row's top down to the list's foot
@@ -558,8 +564,7 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
     listProps_.valueText.maxLines = 1;
     listProps_.chosenMark = fui::bitmapFromIcon(icon_reader_tick_24);
     listProps_.partialTrailingRow = fonts;
-    // The rows keep clear of the scroll bar's column (kBarStrip, the strip list() used to take for it); the bar
-    // goes where every framed list's goes (tenorchrome::frameScrollBar), drawn below.
+    // Keep the existing text width; the shared page scrollbar is outside the frame.
     constexpr int16_t kBarStrip = 12;
     listProps_.scrollIndicator = false;
     listProps_.rowStyles = fui::defaultListRowStyles();
@@ -622,14 +627,9 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
           screen.frame().hit({rowsRect.x, previewY, rowsRect.width, previewHeight}, ACTION_ROW,
                              static_cast<int16_t>(previewIndex), listProps_.inputMask);
       }
-      const auto bar =
-          tenorchrome::frameScrollBar(frame.x, frame.y, frame.width, frame.height, listRect.y, listRect.bottom());
-      fui::drawListScrollIndicator(screen.target(),
-                                   {static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
-                                    static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)},
-                                   static_cast<uint32_t>(count), static_cast<uint32_t>(std::max(1, nav_.visibleRows)),
-                                   static_cast<uint32_t>(nav_.top), static_cast<int16_t>(bar.width));
     }
+    PageScrollbar::instance().draw(*renderer_, screen.target(), listRect.y, listRect.bottom(),
+                                   count * 62, nav_.top * 62, &nav_);
     if (model_.rowPinned && renderer_ && uiTarget.paintingEnabled()) {
       // The heart stands before the value (and the chevron), inside the frame; on the size row, before its "-".
       const int16_t lh = screen.target().lineHeight(listProps_.labelText.font);

@@ -77,8 +77,11 @@ def run(name, spec, output, program):
     if equal(parent, child, (30, 375, 445, 700)): failures.append('child list did not open')
     if 'scroll' in images and equal(child, images['scroll'], (30, 430, 445, 695)):
         failures.append('child swipe did not scroll')
-    if 'back' in images and not equal(parent, images['back'], (0, 35, 480, 800)):
-        failures.append('Back did not restore parent')
+    if 'back' in images:
+        restored = ImageChops.difference(parent, images['back'])
+        restored.paste(0, (469, 35, 475, 720))
+        if restored.crop((0, 35, 480, 800)).getbbox():
+            failures.append('Back did not restore parent')
     saved = json.loads((store / 'settings.json').read_text())
     if name == 'favorite-letter' and saved.get('letterSpacing') != 3:
         failures.append(f'chosen wide spacing saved {saved.get("letterSpacing")}')

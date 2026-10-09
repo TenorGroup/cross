@@ -1,4 +1,5 @@
 #include "WifiSelectionActivity.h"
+#include "components/PageScrollbar.h"
 
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
@@ -1198,11 +1199,17 @@ void WifiSelectionActivity::buildListScreen(UiScreen& screen) {
   props.balanceWrappedLabelWithValue = false;
   listNav.selected = static_cast<int>(selectedNetworkIndex);
   props.partialTrailingRow = true;
+  if (tenorchrome::kTouchShell) props.rowInset = tenorchrome::FOOT_BACK_X;
   screen.syncListViewport(listNav, props, static_cast<int>(networkRowItems.size()));
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   props.selectedIndex = -1;  // a finger picks the row: no black cursor
+  props.scrollIndicator = false;
 #endif
+  const auto viewport = screen.body();
   screen.list(props);
+  if (tenorchrome::kTouchShell)
+    PageScrollbar::instance().drawList(renderer, screen.target(), viewport, listNav,
+                                       static_cast<int>(networkRowItems.size()));
 }
 
 void WifiSelectionActivity::buildPromptDialog(UiScreen& screen) {
@@ -1441,6 +1448,7 @@ void WifiSelectionActivity::renderUglyList() {
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_CONNECT), hasSavedPassword ? tr(STR_FORGET_BUTTON) : "",
                                             tr(STR_RETRY));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  PageScrollbar::instance().repaint(renderer, uiTarget);
   renderer.displayBuffer();
 #ifdef UGLY_FRAME_LOG
   LOG_INF("UGLY", "Wifi list frame rows=%u total=%lums heap=%u", static_cast<unsigned>(networkRowItems.size()),

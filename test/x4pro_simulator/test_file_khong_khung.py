@@ -41,7 +41,7 @@ def main():
                 failures.append(f'{name}: {len(rules)} grey rules between the rows')
             elif len({b - a for a, b in zip(rules, rules[1:])}) > 1:
                 failures.append(f'{name}: rows of unequal height between the rules {rules}')
-            if name != 'Folder' and not side_ink(shot, 452, 458, 40, 700):
+            if name != 'Folder' and not side_ink(shot, 469, 475, 40, 700):
                 failures.append(f'{name}: no scroll bar')
         held, settings = (run(Path(tmp) / 'held', FILE + ';5000:TAP:240,98;8000:TAP:240,157,900', [10000],
                               write_books=root_files)[0],
