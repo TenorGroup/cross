@@ -2,7 +2,7 @@
 
 tenor/cross is e-reader firmware for the Xteink X3 and X4. It is a fork of [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) by Dave Allie and contributors, and it runs on the [FreeInk SDK](https://github.com/Free-Ink/freeink-sdk). The CrossPoint history is kept in this repository, so every upstream commit keeps its original author.
 
-The latest release is v1.0.54. The X4 Pro has firmware from v1.0.53.
+The latest release is v1.0.55. The X4 Pro has firmware from v1.0.53.
 
 ## What it adds to CrossPoint
 
