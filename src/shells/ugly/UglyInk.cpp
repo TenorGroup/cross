@@ -488,13 +488,41 @@ void penTick(const GfxRenderer& r, const int x, const int y, const int span, con
 
 void tick(const GfxRenderer& r, const int x, const int y) { penTick(r, x, y, 32, 3); }
 
-void battery(const GfxRenderer& r, const int x, const int y, const int percent) {
+namespace {
+void batteryDigits(const GfxRenderer& renderer, const int batteryX, const int batteryY, const int level) {
+  char digits[4];
+  snprintf(digits, sizeof(digits), "%d", level);
+  constexpr logic::Warp small = {0, 4096, 65, 0, 100};
+  int minX = 100, minY = 100, maxX = -100, maxY = -100, cursor = 0;
+  for (const char* digit = digits; *digit; ++digit) {
+    const auto* glyph = FONT22.getGlyph(*digit);
+    logic::warpGlyph(FONT22.data->bitmap + glyph->dataOffset, glyph->width, glyph->height, glyph->left, glyph->top,
+                     glyph->advanceX, small, logic::NO_CLIP, [&](const int px, const int py) {
+                       minX = std::min(minX, cursor + px);
+                       maxX = std::max(maxX, cursor + px);
+                       minY = std::min(minY, py);
+                       maxY = std::max(maxY, py);
+                     });
+    cursor += logic::warpAdvance(glyph->advanceX, small) + 1;
+  }
+  cursor = batteryX + 17 - (minX + maxX) / 2;
+  const int baseline = batteryY - (minY + maxY) / 2;
+  for (const char* digit = digits; *digit; ++digit) {
+    const auto* glyph = FONT22.getGlyph(*digit);
+    drawWarped(renderer, Size::S22, {glyph, small}, cursor, baseline, true);
+    cursor += logic::warpAdvance(glyph->advanceX, small) + 1;
+  }
+}
+}
+
+void battery(const GfxRenderer& r, const int x, const int y, const int percent, const bool showNumber) {
   const int body[5][2] = {{x + 1, y - 9}, {x + 33, y - 10}, {x + 34, y + 8}, {x, y + 9}, {x + 1, y - 9}};
   polyline(r, body, 5, 2);
   stroke(r, x + 35, y - 3, x + 39, y - 2, 2);
   stroke(r, x + 39, y - 2, x + 39, y + 3, 2);
   stroke(r, x + 39, y + 3, x + 35, y + 3, 2);
   const int level = std::clamp(percent, 0, 100);
+  if (showNumber) return batteryDigits(r, x, y, level);
   for (int px = x + 4; px < x + 4 + 26 * level / 100; px += 3) stroke(r, px, y - 6, px + 1, y + 6, 1);
 }
 
@@ -545,7 +573,8 @@ void pageHints(const GfxRenderer& r, const char* before, const char* after, cons
 void statusBar(const GfxRenderer& r, const MappedInputManager& input, const Hints hints) {
   const int w = r.getScreenWidth(), h = r.getScreenHeight();
   const int y = h - 20;
-  battery(r, 14, y, powerManager.getDisplayedBatteryPercentage());
+  const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
+  battery(r, 14, y, level, SETTINGS.batteryPercentShown(false));
   // The date has no room beside the clock (the Down mark): it sits in the gap between the Confirm and Up marks.
   char clock[12], date[8];
   if (clockText(clock, sizeof(clock), date, sizeof(date))) {
@@ -558,7 +587,9 @@ void statusBar(const GfxRenderer& r, const MappedInputManager& input, const Hint
   const int* centres = w >= 528 ? WIDE : NARROW;
   const char* marks[4] = {labels.btn1, labels.btn2, labels.btn3, labels.btn4};
   for (int i = 0; i < 4; ++i)
-    if (marks[i] && marks[i][0]) mark(r, marks[i][0] == 'b' ? Mark::Back : marks[i][0] == 'c' ? Mark::Tick : marks[i][0] == 'u' ? Mark::Up : Mark::Down, centres[i], y);
+    if (marks[i] && marks[i][0]) {
+      mark(r, marks[i][0] == 'b' ? Mark::Back : marks[i][0] == 'c' ? Mark::Tick : marks[i][0] == 'u' ? Mark::Up : Mark::Down, centres[i], y);
+    }
 }
 
 #if FREEINK_DEVICE_X4PRO
@@ -567,10 +598,14 @@ static_assert(touch::CLOCK_HIDE == CrossPointSettings::CLOCK_HEADER_HIDE && touc
               "the band's clock values are clockShowInHeader's");
 
 void topBar(const GfxRenderer& r, const char* left) {
-  // The clock ends at x 400 and the battery starts at 412, shown or struck off: a ring finds them where they were.
+  // The battery stays at x 412, shown or struck off: a ring finds it where it was.
+  const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
+  char pct[6] = "";
+  if (!SETTINGS.uglyBatteryHidden && SETTINGS.batteryPercentShown(false)) snprintf(pct, sizeof(pct), "%d%%", level);
+  const int clockRight = 400 - (*pct ? width(r, Size::S22, pct) + 12 : 0);
   char clock[20];
   const bool hasClock = clockText(clock, sizeof(clock));
-  const int clockX = hasClock ? 400 - width(r, Size::S22, clock) : 400;
+  const int clockX = hasClock ? clockRight - width(r, Size::S22, clock) : clockRight;
   if (hasClock) text(r, Size::S22, clockX, 34, clock);
   if (left && *left) text(r, Size::S22, 24, 34, fit(r, Size::S22, left, std::min(300, clockX - 40)).c_str());
   if (SETTINGS.uglyBatteryHidden) return;
@@ -580,15 +615,8 @@ void topBar(const GfxRenderer& r, const char* left) {
   stroke(r, X1 + 2, Y0 + 8, X1 + 6, Y0 + 8, 2);
   stroke(r, X1 + 6, Y0 + 8, X1 + 6, Y1 - 8, 2);
   stroke(r, X1 + 6, Y1 - 8, X1 + 2, Y1 - 8, 2);
-  const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
-  char pct[6];
-  snprintf(pct, sizeof(pct), "%d", level);
-  const int pw = width(r, Size::S22, pct);
-  if (pw <= X1 - X0 - 6) {
-    text(r, Size::S22, (X0 + X1) / 2 - pw / 2, Y1 - 5, pct);
-  } else {  // no room for the number: the level in pen strokes, as on the X3
-    for (int px = X0 + 3; px < X0 + 3 + (X1 - X0 - 6) * level / 100; px += 3) stroke(r, px, Y0 + 4, px + 1, Y1 - 4, 1);
-  }
+  for (int px = X0 + 3; px < X0 + 3 + (X1 - X0 - 6) * level / 100; px += 3) stroke(r, px, Y0 + 4, px + 1, Y1 - 4, 1);
+  if (*pct) text(r, Size::S22, 400 - width(r, Size::S22, pct), 34, pct);
 }
 
 void formTopBar(const GfxRenderer& r) {
@@ -604,11 +632,12 @@ void formTopBar(const GfxRenderer& r) {
   stroke(r, x1 + 6, y0 + 8, x1 + 6, y1 - 8, 2);
   stroke(r, x1 + 6, y1 - 8, x1 + 2, y1 - 8, 2);
   const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
-  char pct[6];
-  snprintf(pct, sizeof(pct), "%d", level);
-  const int pw = width(r, Size::S22, pct);
-  if (pw <= x1 - x0 - 6) text(r, Size::S22, (x0 + x1 - pw) / 2, y1 - 5, pct);
-  else for (int x = x0 + 3; x < x0 + 3 + (x1 - x0 - 6) * level / 100; x += 3) stroke(r, x, y0 + 4, x + 1, y1 - 4, 1);
+  for (int x = x0 + 3; x < x0 + 3 + (x1 - x0 - 6) * level / 100; x += 3) stroke(r, x, y0 + 4, x + 1, y1 - 4, 1);
+  if (SETTINGS.batteryPercentShown(false)) {
+    char pct[6];
+    snprintf(pct, sizeof(pct), "%d%%", level);
+    text(r, Size::S22, x0 - 12 - width(r, Size::S22, pct), 34, pct);
+  }
 }
 
 void arrow(const GfxRenderer& r, const int x, const int y, const bool down, const int length) {

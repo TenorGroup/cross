@@ -5,3 +5,5 @@ target_link_libraries(UglyShellTest PRIVATE GTest::gtest_main)
 gtest_discover_tests(UglyShellTest)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME UglyShellAssets COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_assets.py --repo ${REPO_ROOT})
+add_test(NAME UglyBatteryPercent COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/battery_percent.py
+  --repo ${REPO_ROOT} --output ${CMAKE_CURRENT_BINARY_DIR}/battery-percent)

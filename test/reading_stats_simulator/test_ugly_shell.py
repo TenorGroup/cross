@@ -289,7 +289,7 @@ class UglyShellTest(unittest.TestCase):
         # The daily quip changes above the pen rule; compare the file rows below it at both levels.
         for level, digest_taken in CUT_NAMES_DIGEST.items():
             with self.subTest(level=level):
-                log, shots = self.card(books=[], files=LONG_NAMES, uiUglyLevel=level).run('1000:DOWN;1800:DOWN;4000:QUIT', [(3200, 'folder')])
+                log, shots = self.card(books=[], files=LONG_NAMES, uiUglyLevel=level, hideBatteryPercentage=2).run('1000:DOWN;1800:DOWN;4000:QUIT', [(3200, 'folder')])
                 self.assertEqual(notebook_pages(log)[-1], 1, log[-800:])
                 page = shots['folder'].convert('L')
                 w, h = page.size

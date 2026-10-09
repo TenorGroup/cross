@@ -58,8 +58,8 @@ void underline(const GfxRenderer& renderer, int x0, int x1, int y, uint32_t seed
 void line(const GfxRenderer& renderer, int x0, int y0, int x1, int y1, uint32_t seed, int stroke = 1);
 // A hand-drawn tick, its elbow at (x, y).
 void tick(const GfxRenderer& renderer, int x, int y);
-// A battery drawn by hand with its level as pen strokes, no percent.
-void battery(const GfxRenderer& renderer, int x, int y, int percent);
+// A battery drawn by hand with its level as pen strokes or small digits inside its body.
+void battery(const GfxRenderer& renderer, int x, int y, int percent, bool showNumber = false);
 
 // A hand-drawn mark, one pen stroke from a baked table, about 20 px across, centred on (cx, cy).
 enum class Mark : uint8_t { Left, Right, Up, Down, Tick, Back };
@@ -79,7 +79,7 @@ void heart(const GfxRenderer& renderer, int x, int y, int size = 24);
 
 #if FREEINK_DEVICE_X4PRO
 // The touch layout (UglyTouch.h). The top band: `left` (a date, a title), the clock, and the battery with
-// its percent written inside it when it fits.
+// its percentage beside it when the battery percentage setting shows it.
 void topBar(const GfxRenderer& renderer, const char* left);
 // Form chrome uses the live logical screen width, including landscape. The
 // notebook's portrait topBar remains its own layout.
