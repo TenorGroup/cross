@@ -59,7 +59,8 @@ void StatusBarSettingsActivity::onEnter() {
   for (int i = 0; i < visibleItemCount; i++) {
     rowItems_[i].label = I18N.get(TENOR_NAMES[i]);
     rowItems_[i].actionValue = static_cast<int16_t>(i);
-    rowItems_[i].opensNext = true;
+    rowItems_[i].opensNext = !tenorchrome::kTouchShell ||
+        settingsChoiceStyle(valueCount(i), true) == SettingsChoiceStyle::Page;
   }
   if (shell::isUgly()) {
     ugly::ensureFonts(renderer);
@@ -87,6 +88,7 @@ void StatusBarSettingsActivity::pollTilt() {
 }
 
 bool StatusBarSettingsActivity::handleCustomInput() {
+  if (optionPopup_.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
   if (!shell::isUgly()) return false;
   using Button = MappedInputManager::Button;
   using Key = ugly::QuestionSheet::Key;
@@ -192,6 +194,12 @@ void StatusBarSettingsActivity::activateIndex(const int index) {
 }
 
 void StatusBarSettingsActivity::handleSelection() {
+  if (tenorchrome::kTouchShell) {
+    const int row = nav.selected;
+    showSettingsChoices(optionPopup_, TENOR_NAMES[row], valuesAt(row), valueCount(row), SETTINGS.readerStatusItem(row),
+                        row, [this, row](const int selected) { applyChosenValue(row, selected); });
+    return;
+  }
   RenderLock lock(*this);
   const auto lines = rowFrameLines(rowFrameGap);
   const auto first = app.publishedRect(ACTION_ROW, 0);
@@ -207,6 +215,10 @@ void StatusBarSettingsActivity::handleSelection() {
 
 int StatusBarSettingsActivity::listCount() const {
   return choiceRow_ < 0 ? visibleItemCount : valueCount(choiceRow_);
+}
+
+int StatusBarSettingsActivity::settingsChoiceCount(const int row) const {
+  return choiceRow_ < 0 && row >= 0 && row < visibleItemCount ? valueCount(row) : 0;
 }
 
 std::string StatusBarSettingsActivity::navigationLabel() const {
@@ -451,6 +463,7 @@ void StatusBarSettingsActivity::drawChoiceFrame() {
 }
 
 void StatusBarSettingsActivity::render(RenderLock&&) {
+  if (optionPopup_.processRender(renderer, mappedInput)) return;
   if (shell::isUgly()) {
     [[maybe_unused]] const uint32_t started = millis();
     form_.paint(renderer, mappedInput);

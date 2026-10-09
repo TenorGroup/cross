@@ -24,14 +24,8 @@ void HomeButtonSettingsActivity::activateIndex(int index) {
     SETTINGS.*field = static_cast<uint8_t>(selected);
     SETTINGS.saveToFile();
   };
-  freeink::ui::Rect parentFrame{};
-  if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, index, parentFrame))
-    optionPopup.showInFrame(parentFrame, home_button::GESTURE_LABELS[index], home_button::ACTION_LABELS,
-                            static_cast<int>(HomeButtonAction::Count), current, onSelect);
-  else
-    optionPopup.show(home_button::GESTURE_LABELS[index], home_button::ACTION_LABELS,
-                     static_cast<int>(HomeButtonAction::Count), current, onSelect);
-  requestUpdate();
+  showSettingsChoices(optionPopup, home_button::GESTURE_LABELS[index], home_button::ACTION_LABELS,
+                      static_cast<int>(HomeButtonAction::Count), current, index, onSelect);
 }
 
 void HomeButtonSettingsActivity::render(RenderLock&& lock) {

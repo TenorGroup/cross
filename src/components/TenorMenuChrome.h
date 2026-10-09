@@ -212,6 +212,7 @@ void drawMoreChevron(const GfxRenderer& renderer, int x, int y, ChevronDir dir, 
 // Touch: the grey ">" at the end of a list row that opens a deeper screen, its box (x, y) as above.
 constexpr int ROW_CHEVRON_SPAN = 7;
 void drawRowChevron(const GfxRenderer& renderer, int x, int y);
+void drawSettingsPopupMark(const GfxRenderer& renderer, int x, int centerY);
 
 // Mui ten chu V o giua, ngay tren dong mach nuoc chan man: bao rang danh sach
 // con dong ben duoi. Thay cho cau "1-10 / 13" o goc tren, vi it ai nhin thanh

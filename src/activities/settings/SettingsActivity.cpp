@@ -863,6 +863,25 @@ void SettingsActivity::toggleCurrentSetting() {
                                });
         break;
       case SettingAction::Language:
+        if (tenorchrome::kTouchShell) {
+          std::vector<std::string> labels;
+          int selected = 0;
+          for (int index = 0; index < getLanguageCount(); ++index) {
+            const auto language = static_cast<Language>(SORTED_LANGUAGE_INDICES[index]);
+            labels.emplace_back(I18N.getLanguageName(language));
+            if (language == I18N.getLanguage()) selected = index;
+          }
+          showSettingsChoices(optionPopup, StrId::STR_LANGUAGE, labels, selected, row, [this](const int selected) {
+            {
+              RenderLock lock(*this);
+              I18N.setLanguage(static_cast<Language>(SORTED_LANGUAGE_INDICES[selected]));
+              SETTINGS.language = SORTED_LANGUAGE_INDICES[selected];
+            }
+            saveSettings();
+            rebuildSettingsLists();
+          });
+          break;
+        }
         // Row labels are translated once in rebuildRowItems() and don't
         // re-run on Pop (see ActivityManager::loop()), so a language switch
         // needs an explicit rebuild here rather than the generic resultHandler.
@@ -900,15 +919,11 @@ void SettingsActivity::toggleCurrentSetting() {
     if (count <= 0) return;
     if (settingstabs::moTrinhChon(count)) {
       auto onSelect = [this, row](const int index) { applySettingValue(row, static_cast<uint8_t>(index)); };
-      freeink::ui::Rect parentFrame{};
-      const bool inFrame = tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, parentFrame);
       if (!setting.enumStringValues.empty()) {
-        if (inFrame) optionPopup.showInFrame(parentFrame, setting.nameId, setting.enumStringValues, current, std::move(onSelect));
-        else optionPopup.show(setting.nameId, setting.enumStringValues, current, std::move(onSelect));
+        showSettingsChoices(optionPopup, setting.nameId, setting.enumStringValues, current, row, std::move(onSelect));
       } else {
         const auto labels = setting.enumLabels();
-        if (inFrame) optionPopup.showInFrame(parentFrame, setting.nameId, labels.data(), count, current, std::move(onSelect));
-        else optionPopup.show(setting.nameId, labels.data(), count, current, std::move(onSelect));
+        showSettingsChoices(optionPopup, setting.nameId, labels.data(), count, current, row, std::move(onSelect));
       }
       requestUpdate();
     } else {
@@ -923,6 +938,15 @@ void SettingsActivity::toggleCurrentSetting() {
 void SettingsActivity::noteValue(const StrId name) {
   for (const auto& row : *currentSettings)
     if (row.nameId == name) return shell::valueChanged(row);
+}
+
+int SettingsActivity::settingsChoiceCount(const int row) const {
+  if (!currentSettings || row < 0 || row >= settingsCount) return 0;
+  const auto& setting = (*currentSettings)[row];
+  if (setting.action == SettingAction::Language) return getLanguageCount();
+  if (setting.type == SettingType::TOGGLE) return 2;
+  if (setting.type != SettingType::ENUM) return 0;
+  return static_cast<int>(setting.enumStringValues.empty() ? setting.enumLabels().size() : setting.enumStringValues.size());
 }
 
 void SettingsActivity::syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged) {
@@ -967,6 +991,8 @@ void SettingsActivity::openSleepTimeoutPicker() {
 }
 
 std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
+  if (setting.action == SettingAction::Language && tenorchrome::kTouchShell)
+    return I18N.getLanguageName(I18N.getLanguage());
   if (setting.action == SettingAction::HomeButton) return tr(STR_CONFIGURE);
   if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
     if (setting.valuePtr == &CrossPointSettings::keyboardAxisSwapped) {
@@ -1029,6 +1055,9 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   for (size_t i = 0; i < settings.size(); i++) {
     rowValues_[i] = settingValueText(settings[i]);
     rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
+    rowItems_[i].toggle = tenorchrome::kTouchShell && settingsChoiceCount(i) == 2;
+    rowItems_[i].toggleChecked = rowItems_[i].toggle &&
+        (settings[i].valuePtr ? SETTINGS.*settings[i].valuePtr : settings[i].valueGetter ? settings[i].valueGetter() : 0);
   }
 
   fui::ListProps props;

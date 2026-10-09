@@ -39,6 +39,7 @@ cpp = r'''
 #include <string>
 #include <vector>
 #include "components/OptionPopupLayout.h"
+#include "components/SettingsChoiceStyle.h"
 #include "components/TouchScroll.h"
 namespace fui=freeink::ui;
 constexpr int UI_12_FONT_ID=1;
@@ -87,7 +88,7 @@ struct Lines {int rule,top,bottom;};
 ''' + lines + r'''
 struct Popup {
  static constexpr int MAX_OPTIONS=16,ACTION_OPTION=1,ACTION_CHROME=2,ACTION_PAGE=3;
- bool anchored=false,inFrame=true,hasAnchor=false,marked=false,active=true,uiReady=true;
+ bool anchored=false,inFrame=true,hasAnchor=false,alignSelected=false,marked=false,active=true,uiReady=true;
  fui::Rect frameRect,anchor;mutable fui::Rect lastRenderedFrame;
  mutable bool headLaid=false;mutable int boldLines=0,scrollTop=-1,shownRows=16,shownPitch=56;
  mutable std::vector<std::string> headLines;std::string title="Paired devices",headline;
@@ -104,6 +105,11 @@ struct Popup {
 };
 bool inside(fui::Rect r,fui::Rect box){return r.x>=box.x&&r.y>=box.y&&r.right()<=box.right()&&r.bottom()<=box.bottom();}
 int main(){
+ for (int count = 0; count <= 20; ++count) {
+   assert(settingsChoiceStyle(count, true) == (count <= 2 ? SettingsChoiceStyle::Inline :
+       count < SETTINGS_CHOICE_PAGE_THRESHOLD ? SettingsChoiceStyle::Popup : SettingsChoiceStyle::Page));
+   assert(settingsChoiceStyle(count, false) == (count <= 2 ? SettingsChoiceStyle::Inline : SettingsChoiceStyle::Popup));
+ }
  const auto parentLines=rowFrameLines(6);
  const int bondFrameHeight=56+parentLines.top+parentLines.bottom;
  assert(bondFrameHeight==65);
@@ -135,7 +141,26 @@ int main(){
    popup.active=true;input.snap={};input.back=true;chosen=-1;popup.handleInput(input,[]{});assert(!popup.active&&chosen==-1);
    ++scenarios;
  }
- printf("GREEN %d fixed-frame renders: BLE single bond height=%d, all ink/hits bounded, swipe/select/Back\n",scenarios,bondFrameHeight);
+ for(int count:{3,4,5,6})for(int selected=0;selected<count;++selected)for(int tapY:{80,360,660}) {
+   Popup popup;popup.inFrame=false;popup.hasAnchor=popup.alignSelected=popup.marked=true;
+   popup.anchor={16,(int16_t)(tapY-28),448,56};popup.selectedIndex=selected;
+   popup.ownedStrings.assign(count,"Value");
+   GfxRenderer renderer;Target target;fui::DeviceContext device;device.width=480;device.height=800;
+   popup.paint(renderer,target,device);
+   assert(popup.shownRows==count&&popup.scrollTop==0);
+   assert(popup.lastRenderedFrame.height==count*56+12);
+   assert(popup.lastRenderedFrame.y>=48&&popup.lastRenderedFrame.bottom()<=716);
+   int selectedY=popup.lastRenderedFrame.y+6+selected*56+28;
+   const int expectedY=std::max(48+6+selected*56+28,std::min(716-(count-selected-1)*56-6-28,tapY));
+   assert(selectedY==expectedY);
+   for(size_t index=0;index<popup.interactions.publishedCount();++index)
+     assert(inside(popup.interactions.publishedData()[index].rect,popup.lastRenderedFrame));
+   int chosen=-1;popup.onSelectCallback=[&](int value){chosen=value;};
+   MappedInputManager input;input.snap.touchX=479;input.snap.touchY=48;input.snap.touchReleased=true;
+   popup.handleInput(input,[]{});assert(!popup.active&&chosen==-1);
+   ++scenarios;
+ }
+ printf("GREEN %d renders: fixed-frame U11, settings thresholds, selected-row anchoring, clamping, outside close\n",scenarios);
 }
 '''
 path = a.output / 'production-popup.cpp'

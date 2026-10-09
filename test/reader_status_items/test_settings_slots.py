@@ -35,6 +35,7 @@ cpp = r'''
 #include <array>
 #include <cassert>
 #include <cstdio>
+#include <functional>
 #include <string>
 #include "CrossPointSettings.h"
 #include "I18n.h"
@@ -46,10 +47,14 @@ struct Nav {int selected=0,top=0;void reset(){selected=top=0;}};
 struct Rect {int y,height;};
 struct App {Rect publishedRect(int,int index){return {80+index*70,62};}};
 struct RenderLock {template<class T> RenderLock(T&) {}};
+namespace tenorchrome {constexpr bool kTouchShell=false;}
+struct OptionPopup {};
 class StatusBarSettingsActivity {
  public:
  int visibleItemCount=4,choiceRow_=-1,choiceTop_=0,choiceBottom_=0,choiceRowHeight_=0,rowFrameGap=8;
  int resets=0,updates=0,saves=0;Nav nav,choiceNav_;App app;static constexpr int ACTION_ROW=1;
+ OptionPopup optionPopup_;
+ void showSettingsChoices(OptionPopup&,StrId,const StrId*,int,int,int,std::function<void(int)>){assert(false);}
  struct Lines {int top,bottom;};
  Lines rowFrameLines(int){return {4,4};}
  void resetUi(){++resets;}void requestUpdate(){++updates;}

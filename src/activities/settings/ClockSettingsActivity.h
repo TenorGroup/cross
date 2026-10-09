@@ -24,6 +24,12 @@ class ClockSettingsActivity final : public UiListActivity {
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   const char* headerTitle() const override;
+  int settingsChoiceCount(int row) const override;
+  OptionPopup optionPopup_;
+  bool handleCustomInput() override {
+    return optionPopup_.handleInput(mappedInput, [this] { requestUpdate(); });
+  }
+  void render(RenderLock&& lock) override;
   bool supportsFavorites() const override { return true; }
   std::string favoriteKey(int row) const override;
 

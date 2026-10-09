@@ -109,6 +109,12 @@ class OptionPopup {
   freeink::ui::Rect activeFrame() const { return frameRect; }
   freeink::ui::Rect lastFrame() const { return lastRenderedFrame; }
 
+  void alignValueTo(const freeink::ui::Rect& row) {
+    anchor = row;
+    hasAnchor = row.height > 0;
+    alignSelected = hasAnchor;
+  }
+
   // Touch shell: the actions of a held row in a menu anchored to the row, no title: under it when the
   // row is in the upper half and the menu fits over the bar at the foot, else over it; left on the list's
   // margin. A tap outside closes it.
@@ -524,6 +530,9 @@ class OptionPopup {
       const bool upperHalf = anchor.y + anchor.height / 2 < screen.height / 2;
       y = upperHalf && below + h <= bottom ? below : above >= top ? above : below + h <= bottom ? below : bottom - h;
     }
+    if (!inFrame && alignSelected)
+      y = std::max(top, std::min(bottom - h, anchor.y + anchor.height / 2 - pad - headH -
+                                            (selectedIndex - first) * ROW - ROW / 2));
     y = inFrame ? frameRect.y : std::max(top, y);
     const fui::Rect box = inFrame
         ? frameRect
@@ -590,6 +599,7 @@ class OptionPopup {
     active = true;
     anchored = false;
     inFrame = false;
+    alignSelected = false;
     headLaid = false;
   }
 
@@ -606,6 +616,7 @@ class OptionPopup {
   bool anchored = false;
   bool inFrame = false;
   bool hasAnchor = false;
+  bool alignSelected = false;
   bool marked = true;
   freeink::ui::Rect anchor{};
   freeink::ui::Rect frameRect{};

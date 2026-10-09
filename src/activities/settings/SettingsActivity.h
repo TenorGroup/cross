@@ -163,13 +163,16 @@ struct SettingInfo {
 };
 
 inline bool settingOpensNext(const SettingInfo& setting) {
+  if (setting.action == SettingAction::Language && tenorchrome::kTouchShell)
+    return settingsChoiceStyle(getLanguageCount(), true) == SettingsChoiceStyle::Page;
   if (setting.nameId == StrId::STR_TIME_TO_SLEEP) return true;
   if (setting.type == SettingType::ACTION) return setting.action != SettingAction::None;
   if (setting.type != SettingType::ENUM) return false;
   const size_t count = !setting.enumStringValues.empty()
                            ? setting.enumStringValues.size()
                            : setting.enumLabels().size();
-  return settingstabs::moTrinhChon(static_cast<int>(count));
+  return settingsChoiceStyle(static_cast<int>(count), tenorchrome::kTouchShell) == SettingsChoiceStyle::Page ||
+         (!tenorchrome::kTouchShell && settingstabs::moTrinhChon(static_cast<int>(count)));
 }
 
 class SettingsActivity final : public UiTabListActivity {
@@ -235,6 +238,7 @@ class SettingsActivity final : public UiTabListActivity {
   void pollTilt() override;
   bool allowsTiltTabNavigation() const override { return !optionPopup.isActive(); }
   bool supportsFavorites() const override { return true; }
+  int settingsChoiceCount(int row) const override;
   // The cue follows the same picker decision as activation.
   bool rowOpens(int row) const override {
     return currentSettings && row >= 0 && row < settingsCount && settingOpensNext((*currentSettings)[row]);

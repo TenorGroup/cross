@@ -103,9 +103,15 @@ void OpdsServerListActivity::rebuildRowItems() {
     fui::ListItem format;
     format.label = tr(STR_OPDS_FILENAME_FORMAT);
     format.actionValue = static_cast<int16_t>(serverCount + 2);
-    format.opensNext = true;
+    format.opensNext = !tenorchrome::kTouchShell ||
+        settingsChoiceStyle(static_cast<int>(OpdsFilenameFormat::Count), true) == SettingsChoiceStyle::Page;
     rowItems_.push_back(format);  // subtitle refreshed per render below
   }
+}
+
+int OpdsServerListActivity::settingsChoiceCount(const int row) const {
+  return !pickerMode && row == static_cast<int>(OPDS_STORE.getServers().size()) + 2
+             ? static_cast<int>(OpdsFilenameFormat::Count) : 0;
 }
 
 bool OpdsServerListActivity::handleCustomInput() {
@@ -182,14 +188,8 @@ void OpdsServerListActivity::handleSelection() {
       SETTINGS.opdsFilenameFormat = static_cast<uint8_t>(idx);
       SETTINGS.saveToFile();
     };
-    freeink::ui::Rect parentFrame{};
-    if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, nav.selected, parentFrame))
-      optionPopup.showInFrame(parentFrame, StrId::STR_OPDS_FILENAME_FORMAT, formatLabels,
-                              static_cast<int>(OpdsFilenameFormat::Count), SETTINGS.opdsFilenameFormat, onSelect);
-    else
-      optionPopup.show(StrId::STR_OPDS_FILENAME_FORMAT, formatLabels, static_cast<int>(OpdsFilenameFormat::Count),
-                       SETTINGS.opdsFilenameFormat, onSelect);
-    requestUpdate();
+    showSettingsChoices(optionPopup, StrId::STR_OPDS_FILENAME_FORMAT, formatLabels,
+                        static_cast<int>(OpdsFilenameFormat::Count), SETTINGS.opdsFilenameFormat, nav.selected, onSelect);
     return;
   }
 
@@ -235,6 +235,10 @@ void OpdsServerListActivity::buildScreen(UiScreen& screen) {
     rowItems_[serverCount + 1].subtitle =
         SETTINGS.opdsDownloadFolder[0] ? SETTINGS.opdsDownloadFolder : tr(STR_OPDS_SD_ROOT);
     rowItems_[serverCount + 2].subtitle = I18N.get(opdsFormatLabel(SETTINGS.opdsFilenameFormat));
+    if (tenorchrome::kTouchShell) {
+      rowItems_[serverCount + 2].value = rowItems_[serverCount + 2].subtitle;
+      rowItems_[serverCount + 2].subtitle = nullptr;
+    }
   }
 
   fui::ListProps props;

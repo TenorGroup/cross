@@ -138,8 +138,9 @@ void TextSettingsActivity::rebuildRowItems() {
         break;
     }
     item.actionValue = static_cast<int16_t>(i);
-    item.opensNext = (tab_ == Tab::Layout || tab_ == Tab::Style) &&
-                     settingstabs::moTrinhChon(formRow(this, formIndex(tab_, i)).count);
+    const int count = settingsChoiceCount(i);
+    item.opensNext = settingsChoiceStyle(count, tenorchrome::kTouchShell) == SettingsChoiceStyle::Page ||
+                     (!tenorchrome::kTouchShell && settingstabs::moTrinhChon(count));
     rowItems_.push_back(item);
   }
 }
@@ -590,6 +591,8 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
         break;
     }
     rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
+    rowItems_[i].toggle = tenorchrome::kTouchShell && settingsChoiceCount(i) == 2;
+    rowItems_[i].toggleChecked = rowItems_[i].toggle && formRow(this, formIndex(tab_, i)).selected;
     // Touch: the font or size in use is the chosen row (bold, a tick), no word.
     rowItems_[i].chosen = tenorchrome::kTouchShell && ((tab_ == Tab::Family && i == currentFamilyIndex_) ||
                                                        (tab_ == Tab::Size && i == currentSizeIndex_));
@@ -770,15 +773,15 @@ void TextSettingsActivity::confirmValueRow(const Tab tab, const int row) {
       options.emplace_back(label);
     }
     const auto onSelect = [this, tab, row](int option) { applyChosenValue(tab, row, option); };
-    freeink::ui::Rect parentFrame{};
-    if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, parentFrame))
-      optionPopup_.showInFrame(parentFrame, setting->nameId, options, current.selected, onSelect);
-    else
-      optionPopup_.show(setting->nameId, options, current.selected, onSelect);
-    requestUpdate();
+    showSettingsChoices(optionPopup_, setting->nameId, options, current.selected, row, onSelect);
   } else {
     applyChosenValue(tab, row, (current.selected + 1) % current.count);
   }
+}
+
+int TextSettingsActivity::settingsChoiceCount(const int row) const {
+  if (tab_ != Tab::Layout && tab_ != Tab::Style) return 0;
+  return formRow(const_cast<TextSettingsActivity*>(this), formIndex(tab_, row)).count;
 }
 
 std::string TextSettingsActivity::layoutValueText(int row) {

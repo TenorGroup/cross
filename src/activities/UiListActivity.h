@@ -4,6 +4,7 @@
 
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
+#include "components/SettingsChoiceStyle.h"
 #include "components/PageScrollbarIdle.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UiAppHost.h"
@@ -81,6 +82,11 @@ class UiListActivity : public Activity, protected UiAppHost {
   void showRowMenu(const StrId* labels, int count, std::function<void(int)> onSelect, freeink::ui::ActionId anchorAction,
                    int anchorValue);
   void renderUi();
+  virtual int settingsChoiceCount(int row) const { return 0; }
+  void showSettingsChoices(OptionPopup& popup, StrId title, const std::vector<std::string>& labels,
+                           int selected, int row, std::function<void(int)> onSelect);
+  void showSettingsChoices(OptionPopup& popup, StrId title, const StrId* labels, int count,
+                           int selected, int row, std::function<void(int)> onSelect);
   bool tabBandDrawn = false;
   void reserveFixedMenuContent(UiScreen& screen);
   // Touch (dynamic bar rule 7, C1): list rows in a round grey frame, grey dotted rules between them.

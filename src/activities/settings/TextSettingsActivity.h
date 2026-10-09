@@ -99,6 +99,7 @@ class TextSettingsActivity final : public UiTabListActivity {
   static void formLabel(void* context, int row, int option, char* out, size_t size);
 
   bool supportsFavorites() const override { return true; }
+  int settingsChoiceCount(int row) const override;
   std::string favoriteKey(int row) const override;
   int focusFavorite(const std::string& key) override;
 

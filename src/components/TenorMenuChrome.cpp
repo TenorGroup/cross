@@ -130,7 +130,7 @@ constexpr const char* FULL_BAR[] = {
     "InfoUpdate", "KOReaderAuth", "KOReaderSettings", "KOReaderSync", "KeyboardLayouts", "LanguageSelect",
     "NetworkModeSelection", "OpdsBookBrowser", "OpdsServerList", "OpdsSettings", "QrDisplay",
     "QuoteDetail", "QuoteTrim", "Quotes", "ReadingHabits", "ReadingHistory", "Settings",
-    "StatusBarSettings", "TimezonePicker", "WifiSelection", "XtcReaderChapterSelection"};
+    "SettingsChoices", "StatusBarSettings", "TimezonePicker", "WifiSelection", "XtcReaderChapterSelection"};
 // "<" at the left, the screen's own content in the rest of the foot: the keyboard of an input screen,
 // the cards of a screen with cards (the reader menu: "<" goes back a level, from the top level it
 // closes the menu; the text settings; the library), a screen laid over another one (a question, a slider,
@@ -935,6 +935,18 @@ void tenorchrome::drawRowChevron(const GfxRenderer& r, const int x, const int y)
     const int a = depth - ((t < 0 ? -t : t) * depth * 2 + span) / (2 * span);
     for (int i = 0; i < MORE_CHEVRON_STROKE; ++i)
       if (((x + a + i + y + span + t) & 1) == 0) r.drawPixel(x + a + i, y + span + t, true);
+  }
+}
+
+void tenorchrome::drawSettingsPopupMark(const GfxRenderer& renderer, const int x, const int centerY) {
+  for (int direction : {-1, 1}) {
+    for (int offset = -6; offset <= 6; ++offset) {
+      const int tip = direction * (5 + (6 - std::abs(offset)) * 4 / 6);
+      for (int deltaY = -1; deltaY <= 1; ++deltaY)
+        for (int deltaX = -1; deltaX <= 1; ++deltaX)
+          if (deltaX * deltaX + deltaY * deltaY <= 1 && ((x + offset + deltaX + centerY + tip + deltaY) & 1) == 0)
+            renderer.drawPixel(x + 7 + offset + deltaX, centerY + tip + deltaY, true);
+    }
   }
 }
 

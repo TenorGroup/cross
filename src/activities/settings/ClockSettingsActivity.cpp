@@ -49,14 +49,40 @@ void ClockSettingsActivity::onEnter() {
   for (int i = 0; i < ITEM_COUNT; i++) {
     rowItems_[i].label = I18N.get(menuNames[i]);
     rowItems_[i].actionValue = static_cast<int16_t>(i);
+    rowItems_[i].opensNext = tenorchrome::kTouchShell && i == ITEM_TIMEZONE &&
+        settingsChoiceStyle(static_cast<int>(timezones::count()), true) == SettingsChoiceStyle::Page;
   }
 }
 
 const char* ClockSettingsActivity::headerTitle() const { return tr(STR_CLOCK); }
 
+int ClockSettingsActivity::settingsChoiceCount(const int row) const {
+  if (row == ITEM_DST) return CrossPointSettings::CLOCK_DST_MODE_COUNT;
+  if (row == ITEM_SHOW_ON_HOME) return CrossPointSettings::CLOCK_HEADER_MODE_COUNT;
+  return row == ITEM_FORMAT || row == ITEM_AUTO_TIMEZONE ? 2 : 0;
+}
+
+void ClockSettingsActivity::render(RenderLock&& lock) {
+  if (optionPopup_.processRender(renderer, mappedInput)) return;
+  UiListActivity::render(std::move(lock));
+}
+
 void ClockSettingsActivity::activateIndex(const int index) {
   nav.selected = index;
   app.clearTapFlash();
+  if (tenorchrome::kTouchShell && settingsChoiceStyle(settingsChoiceCount(index), true) == SettingsChoiceStyle::Popup) {
+    static constexpr StrId headerNames[] = {StrId::STR_HIDE, StrId::STR_CLOCK_HEADER_TIME, StrId::STR_CLOCK_HEADER_TIME_DATE};
+    const bool dst = index == ITEM_DST;
+    showSettingsChoices(optionPopup_, menuNames[index], dst ? dstNames : headerNames, settingsChoiceCount(index),
+                        dst ? SETTINGS.clockDst : SETTINGS.clockShowInHeader, index, [this, dst](const int selected) {
+      if (dst) SETTINGS.clockDst = static_cast<uint8_t>(selected);
+      else SETTINGS.clockShowInHeader = static_cast<uint8_t>(selected);
+      SETTINGS.saveToFile();
+      timezones::applyToClock();
+      requestUpdate();
+    });
+    return;
+  }
   switch (index) {
     case ITEM_TIMEZONE:
       // Auto timezone owns the zone while it is on; turn it off first (the
@@ -144,6 +170,8 @@ void ClockSettingsActivity::buildScreen(UiScreen& screen) {
   for (int i = 0; i < ITEM_COUNT; i++) {
     values[i] = giaTriDong(i);
     rowItems_[i].value = values[i].empty() ? nullptr : values[i].c_str();
+    rowItems_[i].toggle = tenorchrome::kTouchShell && settingsChoiceCount(i) == 2;
+    rowItems_[i].toggleChecked = i == ITEM_FORMAT ? SETTINGS.clockFormat : SETTINGS.clockAutoTimezone;
   }
   // Manual timezone picking is unreachable while auto timezone drives the zone.
   rowItems_[ITEM_TIMEZONE].enabled = !SETTINGS.clockAutoTimezone;

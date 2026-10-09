@@ -42,7 +42,12 @@ void TimezonePickerActivity::activateIndex(const int index) {
   SETTINGS.clockTimezone = static_cast<uint8_t>(index);
   SETTINGS.saveToFile();
   timezones::applyToClock();
-  finish();
+  if (tenorchrome::kTouchShell) {
+    for (int row = 0; row < listCount(); ++row) rowItems_[row].chosen = row == index;
+    app.clearTapFlash();
+    nav.selected = index;
+    requestUpdate();
+  } else finish();
 }
 
 void TimezonePickerActivity::buildScreen(UiScreen& screen) {

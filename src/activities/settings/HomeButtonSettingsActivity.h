@@ -14,6 +14,7 @@ class HomeButtonSettingsActivity final : public UiListActivity {
 
   freeink::ui::ListItem rows[GESTURE_COUNT]{};
   OptionPopup optionPopup;
+  int settingsChoiceCount(int) const override { return static_cast<int>(HomeButtonAction::Count); }
 
   int listCount() const override { return GESTURE_COUNT; }
   const char* headerTitle() const override { return tr(STR_HOME_BUTTON); }

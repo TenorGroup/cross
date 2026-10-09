@@ -51,6 +51,8 @@ class StatusBarSettingsActivity final : public UiListActivity {
   bool supportsFavorites() const override { return choiceRow_ < 0; }
   std::string favoriteKey(int row) const override;
   int focusFavorite(const std::string& key) override;
+  OptionPopup optionPopup_;
+  int settingsChoiceCount(int row) const override;
   bool handleButtons() override;
   bool rowOpens(int) const override { return choiceRow_ < 0; }
   bool listFramed() const override { return choiceRow_ < 0; }

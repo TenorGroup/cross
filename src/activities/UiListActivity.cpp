@@ -11,6 +11,7 @@
 #include "MappedInputManager.h"
 #include "MenuCustomization.h"
 #include "MenuTiltInput.h"
+#include "activities/settings/SettingsChoiceActivity.h"
 #include "components/OptionPopup.h"
 #include "components/TenorMenuChrome.h"
 #include "components/SettledListRender.h"
@@ -23,6 +24,28 @@
 #include "shells/ugly/UglyInk.h"
 
 namespace fui = freeink::ui;
+
+void UiListActivity::showSettingsChoices(OptionPopup& popup, const StrId title,
+                                        const std::vector<std::string>& labels, const int selected, const int row,
+                                        std::function<void(int)> onSelect) {
+  if (settingsChoiceStyle(static_cast<int>(labels.size()), tenorchrome::kTouchShell) == SettingsChoiceStyle::Page) {
+    startActivityForResult(std::make_unique<SettingsChoiceActivity>(renderer, mappedInput, I18N.get(title), labels,
+                                                                  selected, std::move(onSelect)), nullptr);
+  } else {
+    popup.show(title, labels, selected, std::move(onSelect));
+    if (tenorchrome::kTouchShell) popup.alignValueTo(app.publishedRect(ACTION_ROW, static_cast<int16_t>(row)));
+  }
+  requestUpdate();
+}
+
+void UiListActivity::showSettingsChoices(OptionPopup& popup, const StrId title, const StrId* labels, const int count,
+                                        const int selected, const int row, std::function<void(int)> onSelect) {
+  std::vector<std::string> text;
+  text.reserve(count);
+  for (int index = 0; index < count; ++index) text.emplace_back(I18N.get(labels[index]));
+  showSettingsChoices(popup, title, text, selected, row, std::move(onSelect));
+}
+
 namespace {
 struct PinDecoration {
   fui::ListItem* row = nullptr;
@@ -546,6 +569,8 @@ void UiListActivity::frameRows(fui::ListProps& props) {
   // Touch (C1): the rows sit in a round frame 16 px in from the screen edges, their text 16 px into it.
   props.rowInset = tenorchrome::FOOT_BACK_X;
   props.sidePadding = 16;
+  for (int row = 0; row < props.count; ++row)
+    if (settingsChoiceCount(row) > 0) { props.chevronColumn = true; break; }
   // The value in use in a list of choices (ListItem::chosen): bold, with the tick at the row's end.
   props.chosenMark = fui::bitmapFromIcon(icon_row_chosen_24);
   fui::ListItem first;
@@ -767,6 +792,13 @@ void UiListActivity::renderUi() {
   }
   if (!uiTarget.paintingEnabled()) return;
   drawRowFrame(rowFrameStyle());
+  if (tenorchrome::kTouchShell && rowsFramed) {
+    for (int row = activeNav().top; row < listCount(); ++row) {
+      const auto rect = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
+      if (rect.height > 0 && settingsChoiceStyle(settingsChoiceCount(row), true) == SettingsChoiceStyle::Popup)
+        tenorchrome::drawSettingsPopupMark(renderer, rect.right() - 31, rect.y + rect.height / 2);
+    }
+  }
   if (tenorchrome::enabled() && !tenorchrome::kTouchShell) fadeMoreBelow();
   drawPageHints();
   if (favoriteHintY >= 0) {
