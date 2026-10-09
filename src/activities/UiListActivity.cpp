@@ -312,6 +312,7 @@ void UiListActivity::pollRowTilt() {
 }
 
 void UiListActivity::loop() {
+  pollTilt();
   if (pageScrollbarAvailable.load()) {
     int dy = 0;
     unsigned long heldMs = 0;
@@ -320,7 +321,6 @@ void UiListActivity::loop() {
       requestUpdate();
     }
   }
-  pollTilt();
   loopInput();
   // Apply what this pass queued right away when the panel is idle, so a press
   // is reflected before the next pass instead of ten milliseconds later.
