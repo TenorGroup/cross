@@ -125,9 +125,9 @@ TEST(RadioVerdictTest, Table) {
       {"running: heap never stops it", with(Phase::Running, [](RadioInputs& i) { i.heap = {0, 0}; }), Why::Ok},
       {"running: outside the book it stays", with(Phase::Running, [](RadioInputs& i) { i.where = Where::Elsewhere; }),
        Why::Ok},
-      {"running: idle just under the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs - 1; }),
+      {"running: idle just under the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = 29999; }),
        Why::Ok},
-      {"running: idle at the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs; }),
+      {"running: idle at the limit", with(Phase::Running, [](RadioInputs& i) { i.idleMs = 30000; }),
        Why::IdleNoLink},
       {"running: idle long past", with(Phase::Running, [](RadioInputs& i) { i.idleMs = kIdleOffMs * 3; }),
        Why::IdleNoLink},
@@ -152,7 +152,7 @@ TEST(RadioVerdictTest, Thresholds) {
   // The smallest stack in the X3 logs (106,140 free before, 55,496 after): a start the check refuses
   // could not have kept the reader's block.
   EXPECT_LT(kStartFreeBytes - 50644u, kMinimumLargestBlockBytes);
-  EXPECT_EQ(kIdleOffMs, 5u * 60u * 1000u);
+  EXPECT_EQ(kIdleOffMs, 30u * 1000u);
 }
 
 }  // namespace

@@ -23,7 +23,7 @@ inline constexpr size_t kStackBytes = 49152;
 inline constexpr size_t kStartFreeBytes = kStackBytes + kMinimumLargestBlockBytes;
 // A radio nobody connected to for this long stops: left on, it keeps the CPU at full speed
 // and a device lying still eats its battery.
-inline constexpr uint32_t kIdleOffMs = 5u * 60u * 1000u;
+inline constexpr uint32_t kIdleOffMs = 30u * 1000u;
 
 // Where the question is asked.
 enum class Phase : uint8_t {

@@ -6,6 +6,7 @@
 #include "HalMemory.h"
 #include "HalPowerManager.h"
 namespace freeink {
+enum class PickPolicy : uint8_t { Priority = 0, First = 1 };
 struct KeyEvent {
   uint8_t keycode = 0;
   uint8_t mods = 0;
@@ -61,7 +62,7 @@ class BleKeyboardHost {
   void poll() {}
   bool popRawButton(RawButtonEvent&) { return false; }
   bool popKey(KeyEvent&) { return false; }
-  bool armSelectedPeerReconnect(const char*) { return false; }
+  bool armBondedReconnect(PickPolicy, const char*) { return false; }
   const char* connectedAddr() const { return ""; }
   const char* connectedName() const { return ""; }
   void startScan(uint32_t) {}

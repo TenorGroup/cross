@@ -122,10 +122,10 @@ TEST_F(TickTest, MemoryRefusalRetriesEveryFiveSecondsAtMostSixTimes) {
   EXPECT_TRUE(logged("Retrying reader BLE start after memory refusal (6)"));
 }
 
-TEST_F(TickTest, IdleFiveMinutesWithoutARemoteStopsAndAPageKeyRearms) {
+TEST_F(TickTest, IdleThirtySecondsWithoutARemoteStopsAndAPageKeyRearms) {
   running();
   pass(fake::reading());  // the idle clock starts on the first pass that sees the radio up
-  radio().now += bleturner::kIdleOffMs - 1;
+  radio().now += 29999;
   pass(fake::reading());
   EXPECT_TRUE(radio().running);
   radio().now += 1;
@@ -133,7 +133,7 @@ TEST_F(TickTest, IdleFiveMinutesWithoutARemoteStopsAndAPageKeyRearms) {
   EXPECT_FALSE(radio().running);
   EXPECT_TRUE(bleturner::status().idleStopped);
   EXPECT_EQ(bleturner::why(), bleturner::Why::IdleNoLink);
-  EXPECT_TRUE(logged("Radio idle for 300000 ms with nothing connected; stopping"));
+  EXPECT_TRUE(logged("Radio idle for 30000 ms with nothing connected; stopping"));
   for (int i = 0; i < 20; ++i) pass(fake::reading());
   EXPECT_EQ(radio().creates, 1u) << "idle ticks never restart it";
   Scene s = fake::reading();
@@ -301,7 +301,7 @@ TEST_F(TickTest, SheetCancelsAStartInFlight) {
   EXPECT_EQ(radio().beginCalls, 0u);
 }
 
-TEST_F(TickTest, SelectedRemoteIsArmedOnceBeforeTheFirstPoll) {
+TEST_F(TickTest, BondedPriorityPolicyIsArmedOnceBeforeTheFirstPoll) {
   strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
   running();
   pass(fake::reading());
@@ -309,33 +309,61 @@ TEST_F(TickTest, SelectedRemoteIsArmedOnceBeforeTheFirstPoll) {
   EXPECT_EQ(radio().events[0], "arm");
   EXPECT_EQ(radio().events[1], "poll");
   EXPECT_EQ(radio().armedAddr, "7d:de:5c:bd:ae:ca");
+  EXPECT_EQ(radio().armedPick, 0);
   pass(fake::reading());
   EXPECT_EQ(radio().armCalls, 1u);
   pass(fake::reading(2));
   EXPECT_EQ(radio().armCalls, 2u) << "a new visit arms it again";
 }
 
-// The chosen remote's reconnect could not be armed and the stack linked another bonded
-// remote: its presses are dropped, and the book still waits for the chosen one.
-TEST_F(TickTest, OnlyTheChosenRemoteTurnsPages) {
+TEST_F(TickTest, FirstPolicyAndEmptyPriorityArePropagatedToRadio) {
+  config.pick = 1;
+  running();
+  pass(fake::reading());
+  EXPECT_EQ(radio().armedPick, 1);
+  EXPECT_EQ(radio().armedAddr, "");
+  EXPECT_EQ(radio().armCalls, 1u);
+}
+
+TEST_F(TickTest, ConnectedRemoteTurnsPagesWithItsOwnTable) {
   strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  config.remoteCount = 2;
+  strcpy(config.remotes[0].addr, config.peerAddr);
+  config.remotes[0].count = 1;
+  config.remotes[0].bindings[0] = bleturner::makeBinding(0x030102, false, Action::NextPage);
+  strcpy(config.remotes[1].addr, "11:22:33:44:55:66");
+  config.remotes[1].count = 1;
+  config.remotes[1].bindings[0] = bleturner::makeBinding(0x030102, false, Action::PrevChapter);
   running();
   radio().connected = true;
   radio().addr = "11:22:33:44:55:66";
   radio().name = "Other Remote";
   pass(fake::reading());
-  radio().keys = {{bleturner::kUsageRight, 0, true}};
   edge(0x030102, true);
-  EXPECT_FALSE(pass(fake::reading()));
-  EXPECT_TRUE(host().delivered.empty());
-  EXPECT_TRUE(radio().keys.empty() && radio().raw.empty()) << "dropped, not kept for a later link";
-  EXPECT_EQ(bleturner::linkNote(), bleturner::LinkNote::Connecting) << "the chosen remote has not linked";
-  link("Some Remote");
+  EXPECT_TRUE(pass(fake::reading()));
+  EXPECT_EQ(host().delivered, (std::vector<Action>{Action::PrevChapter}));
+  EXPECT_EQ(bleturner::linkNote(), bleturner::LinkNote::None);
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  radio().connected = false;
+  pass(fake::reading());
+  link("Priority Remote");
+  pass(fake::reading());
+  edge(0x030102, true);
+  EXPECT_TRUE(pass(fake::reading()));
+  EXPECT_EQ(host().delivered, (std::vector<Action>{Action::PrevChapter, Action::NextPage}));
+  EXPECT_EQ(bleturner::linkNote(), bleturner::LinkNote::None);
+}
+
+TEST_F(TickTest, ConnectedNonPriorityRemoteWithoutATableUsesDecodedKeys) {
+  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  running();
+  radio().connected = true;
+  radio().addr = "11:22:33:44:55:66";
   pass(fake::reading());
   radio().keys = {{bleturner::kUsageRight, 0, true}};
   EXPECT_TRUE(pass(fake::reading()));
   EXPECT_EQ(host().delivered, (std::vector<Action>{Action::NextPage}));
-  EXPECT_EQ(bleturner::linkNote(), bleturner::LinkNote::None);
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
 }
 
 // Remote A is chosen and bonded. Pairing remote B fails: A stays the chosen one, and when A links

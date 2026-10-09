@@ -32,7 +32,7 @@ bool scanning(){return false;}
 void poll(){auto&h=BleKeyboardHost::getInstance();h.polls++;h.events.emplace_back("poll");}
 bool popRaw(RawEdge&out){auto&h=BleKeyboardHost::getInstance();if(h.raw.empty())return false;const auto e=h.raw.front();h.raw.erase(h.raw.begin());out.reportId=e.reportId;out.byteIndex=e.byteIndex;out.value=e.value;out.pressed=e.pressed;out.keycode=e.keycode;out.mods=e.mods;out.atMs=e.atMs;return true;}
 bool popKey(KeyPress&out){auto&h=BleKeyboardHost::getInstance();if(h.queue.empty())return false;const auto e=h.queue.front();h.queue.erase(h.queue.begin());out.keycode=static_cast<uint8_t>(e.keycode);out.mods=static_cast<uint8_t>(e.mods);out.pressed=e.pressed;return true;}
-bool armReconnect(const char*addr){auto&h=BleKeyboardHost::getInstance();h.armCalls++;h.armedAddr=addr?addr:"";h.events.emplace_back("arm");return h.armResult;}
+bool armBondedReconnect(uint8_t,const char*addr){auto&h=BleKeyboardHost::getInstance();h.armCalls++;h.armedAddr=addr?addr:"";h.events.emplace_back("arm");return h.armResult;}
 Peer linked(){auto&h=BleKeyboardHost::getInstance();return h.connected?Peer{h.addr.c_str(),h.name.c_str()}:Peer{"",""};}
 void scan(uint32_t){}bool connect(const char*){return false;}void disconnect(){}void forget(const char*){}
 bool takeConnectFailure(char*,size_t){return false;}uint8_t bondCount(){return 0;}Peer bond(uint8_t){return {"",""};}uint8_t foundCount(){return 0;}Peer found(uint8_t){return {"",""};}

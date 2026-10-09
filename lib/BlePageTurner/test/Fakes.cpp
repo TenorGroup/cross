@@ -120,8 +120,9 @@ bool popKey(KeyPress& out) {
   theRadio.keys.erase(theRadio.keys.begin());
   return true;
 }
-bool armReconnect(const char* addr) {
+bool armBondedReconnect(uint8_t policy, const char* addr) {
   ++theRadio.armCalls;
+  theRadio.armedPick = policy;
   theRadio.armedAddr = addr;
   theRadio.events.emplace_back("arm");
   return theRadio.armResult;

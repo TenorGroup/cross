@@ -33,10 +33,10 @@ struct Heap {
 };
 
 // The saved settings. ConfigJson reads and writes them under the keys blePageTurnerEnabled,
-// blePeerAddr, blePeerName, blePrevKeyUsage, bleNextKeyUsage and bleRemotes.
+// blePick, blePeerAddr, blePeerName, blePrevKeyUsage, bleNextKeyUsage and bleRemotes.
 struct Config {
   uint8_t enabled = 0;
-  // The remote the user chose: reconnected to without a new scan.
+  uint8_t pick = 0;
   char peerAddr[18] = "";
   char peerName[32] = "";
   // HID usage learned for each direction from the decoded key path; 0 = not learned.

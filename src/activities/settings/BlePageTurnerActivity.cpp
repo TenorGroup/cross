@@ -218,6 +218,7 @@ void BlePageTurnerActivity::rebuildRows() {
     them(tr(STR_BLE_BIND_SAVE_QUOTE), ROW_BIND_SAVE_QUOTE);
   } else {
     them(tr(STR_BLE_PAGE_TURNER), ROW_ENABLE);
+    them(tr(STR_BLE_PICK), ROW_PICK);
     them(tr(STR_BLE_STATUS), ROW_STATUS);
     rowItems_.back().enabled = false;
     them(tr(STR_BLE_SCAN), ROW_SCAN);
@@ -289,6 +290,8 @@ void BlePageTurnerActivity::refreshValues() {
     const int16_t code = rowCodes_[i];
     if (code == ROW_ENABLE) {
       item.value = SETTINGS.ble.enabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+    } else if (code == ROW_PICK) {
+      item.value = I18N.get(SETTINGS.ble.pick == 1 ? StrId::STR_BLE_PICK_FIRST : StrId::STR_BLE_PICK_PRIORITY);
     } else if (code == ROW_STATUS) {
       // Touch: the status line is the row itself; beside a label it was cut to "Tra...".
       if (tenorchrome::kTouchShell)
@@ -496,6 +499,9 @@ void BlePageTurnerActivity::activateIndex(const int index) {
   }
   if (code == ROW_ENABLE) {
     toggleEnabled();
+  } else if (code == ROW_PICK) {
+    SETTINGS.ble.pick = SETTINGS.ble.pick == 1 ? 0 : 1;
+    SETTINGS.saveToFile();
   } else if (code == ROW_BIND_MENU) {
     bindMode_ = true;
     selectCode_ = ROW_BIND_NEXT;

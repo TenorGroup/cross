@@ -46,7 +46,7 @@ bool scanning();
 void poll();
 bool popRaw(RawEdge& out);
 bool popKey(KeyPress& out);
-bool armReconnect(const char* addr);
+bool armBondedReconnect(uint8_t policy, const char* priorityAddr);
 Peer linked();
 // durationMs 0 stops a scan.
 void scan(uint32_t durationMs);

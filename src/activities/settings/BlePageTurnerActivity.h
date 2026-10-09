@@ -46,6 +46,7 @@ class BlePageTurnerActivity final : public UiListActivity {
     ROW_BIND_READER_MENU = 8,
     ROW_BIND_SAVE_QUOTE = 9,
     ROW_BIND_MENU = 10,
+    ROW_PICK = 11,
     ROW_PAIRED_BASE = 100,
     ROW_DEVICE_HEADER = 200,
     ROW_DEVICE_BASE = 300,

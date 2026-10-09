@@ -207,32 +207,14 @@ bool act(const Action a) {
   return taken || a == Action::ReaderMenu || a == Action::SaveQuote;
 }
 
-// The chosen remote is one the stack can link again. v1.0.50 saved the choice before a pairing
-// completed, so a choice can name a remote that never bonded.
-bool chosenBonded() {
-  for (uint8_t i = 0; i < port::bondCount(); ++i) {
-    if (strncmp(port::bond(i).addr, config->peerAddr, sizeof(config->peerAddr)) == 0) return true;
-  }
-  return false;
-}
-
-// A linked remote whose presses the book takes: the chosen one, or any when none is chosen (or
-// the choice is not bonded). When the chosen remote could not be armed, the stack may link
-// another bonded remote.
-bool chosenLinked() {
-  if (!port::connected()) return false;
-  return config->peerAddr[0] == '\0' || strncmp(port::linked().addr, config->peerAddr, sizeof(config->peerAddr)) == 0 ||
-         !chosenBonded();
-}
-
-// The book in front with the radio up: arm the chosen remote, drain both queues.
+// The book in front with the radio up: arm bonded reconnect, drain both queues.
 bool serveReader() {
   bool acted = false;
   readerStartDeferred.store(false, std::memory_order_relaxed);
   if (!visit.reconnectArmed && !port::stopping()) {
     visit.reconnectArmed = true;
-    if (config->peerAddr[0] != '\0' && !port::armReconnect(config->peerAddr)) {
-      say(false, "Selected reader peer was not armed\n");
+    if (!port::armBondedReconnect(config->pick, config->peerAddr)) {
+      say(false, "Bonded reader reconnect was not armed\n");
     }
   }
   port::poll();
@@ -241,15 +223,8 @@ bool serveReader() {
   // Without a table the raw ring is only drained and the key path below decides.
   port::RawEdge raw;
   port::KeyPress key;
-  const bool linked = chosenLinked();
+  const bool linked = port::connected();
   router.follow(linked);
-  if (port::connected() && !linked) {
-    unsigned dropped = 0;
-    while (port::popRaw(raw)) ++dropped;
-    while (port::popKey(key)) ++dropped;
-    if (dropped > 0) say(false, "%u presses from %s dropped: not the chosen remote\n", dropped, port::linked().addr);
-    return false;
-  }
   if (router.linked && !router.chosen) {
     // Edges queued while the book was not in front (the remote stays linked on Home) do not
     // belong to this page: an old press must not skip a chapter when the book opens.
@@ -296,7 +271,7 @@ void stepLinkNote(const bool entered, const bool acknowledged) {
   in.reading = lastScene.where == Where::Reader;
   in.enabled = config->enabled != 0;
   in.idleStopped = radioIdleStopped.load(std::memory_order_relaxed);
-  in.linked = chosenLinked();
+  in.linked = port::connected();
   in.refused = visit.attempted && readerStartDeferred.load(std::memory_order_relaxed) &&
                !attemptInFlight.load(std::memory_order_acquire);
   in.runningMs = noteRadioUp ? port::nowMs() - noteRadioUpSinceMs : 0;
@@ -464,7 +439,7 @@ bool tick(const Scene& s) {
     // Nothing connected for long: radio down. Otherwise it keeps the CPU at full speed and a
     // device lying still eats its battery.
     if (!attemptInFlight.load(std::memory_order_acquire) && port::running()) {
-      in.linked = chosenLinked();
+      in.linked = port::connected();
       if (in.linked || idleSinceMs == 0) idleSinceMs = port::nowMs();
       in.phase = Phase::Running;
       in.idleMs = port::nowMs() - idleSinceMs;

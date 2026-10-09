@@ -19,7 +19,7 @@ bool scanning() { return false; }
 void poll() {}
 bool popRaw(RawEdge&) { return false; }
 bool popKey(KeyPress&) { return false; }
-bool armReconnect(const char*) { return false; }
+bool armBondedReconnect(uint8_t, const char*) { return false; }
 Peer linked() { return {"", ""}; }
 void scan(uint32_t) {}
 bool connect(const char*) { return false; }

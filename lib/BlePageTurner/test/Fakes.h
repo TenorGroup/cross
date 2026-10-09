@@ -40,6 +40,7 @@ struct Radio {
   std::vector<std::string> events;
   bool armResult = true;
   std::string armedAddr;
+  uint8_t armedPick = 255;
   unsigned armCalls = 0;
   unsigned polls = 0;
   uint32_t scanMs = 0;

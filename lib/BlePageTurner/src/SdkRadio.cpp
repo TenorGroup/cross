@@ -71,7 +71,9 @@ bool popKey(KeyPress& out) {
   return true;
 }
 
-bool armReconnect(const char* addr) { return hid().armSelectedPeerReconnect(addr); }
+bool armBondedReconnect(uint8_t policy, const char* priorityAddr) {
+  return hid().armBondedReconnect(policy == 1 ? freeink::PickPolicy::First : freeink::PickPolicy::Priority, priorityAddr);
+}
 Peer linked() { return peerOf(hid().connectedAddr(), hid().connectedName()); }
 
 void scan(const uint32_t durationMs) {
