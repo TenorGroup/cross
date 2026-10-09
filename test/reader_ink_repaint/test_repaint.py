@@ -67,13 +67,16 @@ class Repaint(unittest.TestCase):
 class GfxRenderer {};
 namespace readerInk { void apply(GfxRenderer&) {} }
 struct ActivityResult {};
+struct ReaderToolbarUi { static int textTool() { return 4; } };
 struct EpubReaderActivity {
  GfxRenderer renderer;
  int page=31,offset=917,section=1,reflows=0,updates=0,discards=0;
+ int menuOpens=0,focusedTool=-1;
+ void openReaderMenu() { ++menuOpens; }
  void danLaiTrang() { ++reflows; page=0; offset=0; section=0; }
  void discardOverlayPage() { ++discards; }
  void requestUpdate() { ++updates; }
- void pop(const AnhChupChu& truoc,uint8_t inkTruoc,uint8_t aaTruoc) {
+ void pop(const AnhChupChu& truoc,uint8_t inkTruoc,uint8_t aaTruoc,bool returnToToolbar=false) {
  @CALLBACK@
  }
 };
@@ -87,7 +90,10 @@ int main() {
   assert(reader.reflows==0 && reader.section==1 && reader.page==31 && reader.offset==917);
   assert(snapshot==AnhChupChu::chup());
  }
- assert(reader.discards>0 && reader.updates>0);
+ assert(reader.discards>0 && reader.updates>0 && reader.menuOpens==0);
+ reader.pop(AnhChupChu::chup(),SETTINGS.readerInkWeight,SETTINGS.textAntiAliasing,true);
+ assert(reader.menuOpens==1 && reader.focusedTool==ReaderToolbarUi::textTool());
+ assert(reader.reflows==0 && reader.section==1 && reader.page==31 && reader.offset==917);
 }
 '''
         run(SETTINGS + "struct AnhChupChu {" + snapshot + "};\n" + prefix.replace("@CALLBACK@", callback))

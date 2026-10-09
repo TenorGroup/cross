@@ -15,7 +15,10 @@
 
 using namespace std::chrono;
 static const auto started = steady_clock::now();
-unsigned long millis() { return duration_cast<milliseconds>(steady_clock::now() - started).count(); }
+static thread_local unsigned long mainInputMillis = 0;
+unsigned long millis() {
+  return mainInputMillis ? mainInputMillis : duration_cast<milliseconds>(steady_clock::now() - started).count();
+}
 static std::atomic<int> rawKey{-1};
 static std::atomic<int> samples{0};
 static std::atomic<bool> slowSample{false}, insideSample{false};
@@ -345,10 +348,13 @@ void run(const std::string& name) {
     activity.webServer->handlerMs = 0;
     require(activity.backLatch.start(gpio, 3), "sampler start failed");
     settle();
+    unsigned long inputAt = millis() + 1;
     auto frames = [&](unsigned duration) {
-      const auto end = millis() + duration;
-      while (millis() < end && activity.exits == 0) {
+      for (unsigned frame = 0; frame < duration && activity.exits == 0; ++frame) {
+        // Keep the main debounce clock deterministic when the host scheduler stalls.
+        mainInputMillis = inputAt++;
         activity.mappedInput.update();
+        mainInputMillis = 0;
         activity.loop();
         vTaskDelay(1);
       }
