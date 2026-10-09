@@ -277,7 +277,9 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     keyboardLayouts = doc["keyboardLayouts"].as<uint16_t>();
   }
 
-  bleturner::readJson(ble, doc);
+  if (!bleturner::readJson(ble, doc)) {
+    needsResave = true;
+  }
 
   if (needsResave) {
     LOG_DBG("CPS", "Resaving settings to update format");
