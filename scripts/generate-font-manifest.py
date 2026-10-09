@@ -16,11 +16,16 @@ The input directory may be flat (all .cpfont files in one dir) or nested
 convention <FamilyName>_<size>.cpfont. Weight variants retain one weight-1..4
 subdirectory in manifest names. Use --assets-output to copy nested inputs into
 the corresponding download tree; baseUrl must point to that tree.
+
+Use --packs for one ZIP STORE .cpfontpack per family. File entries retain
+name, size and crc32, and add url and sha256. The manifest version stays 1;
+the firmware downloader must accept and install .cpfontpack entries.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -28,6 +33,7 @@ import shutil
 import struct
 import sys
 import zlib
+import zipfile
 from pathlib import Path
 
 # Import canonical version constants from the shared file in lib/EpdFont/scripts/.
@@ -199,7 +205,7 @@ def download_name(filepath: Path) -> str:
 
 
 def build_manifest(
-    families: dict[str, list[Path]], base_url: str
+    families: dict[str, list[Path]], base_url: str, packs: bool = False
 ) -> dict:
     """Build the manifest dict from discovered font families."""
     manifest_families = []
@@ -213,7 +219,25 @@ def build_manifest(
 
         # Read styles from the first file (all files in a family have the
         # same styles since they're generated from the same source fonts).
-        styles = read_cpfont_styles(files[0]) if files else []
+        if packs:
+            if len(files) != 1:
+                raise ValueError(f'Expected one pack per family: {family_name}')
+            with zipfile.ZipFile(files[0]) as archive:
+                if archive.testzip() is not None:
+                    raise ValueError(f'Invalid ZIP CRC: {files[0]}')
+                if any(entry.compress_type != zipfile.ZIP_STORED for entry in archive.infolist()):
+                    raise ValueError('Font packs must use ZIP STORE')
+                metadata = json.loads(archive.read('pack.json'))
+                if metadata['family'] != family_name or metadata['format'] != 1 or metadata['cpfont_version'] != 4:
+                    raise ValueError(f'Invalid pack metadata: {files[0]}')
+                payload = archive.read(f"{family_name}_{metadata['sizes'][0]}.cpfont")
+                magic, version, _, count = struct.unpack(GLOBAL_HEADER_FORMAT, payload[:GLOBAL_HEADER_SIZE])
+                if magic != CPFONT_MAGIC or version != CPFONT_VERSION or not 1 <= count <= 4:
+                    raise ValueError('Invalid packed cpfont header')
+                styles = [STYLE_NAMES[payload[GLOBAL_HEADER_SIZE + index * STYLE_TOC_ENTRY_SIZE]]
+                          for index in range(count)]
+        else:
+            styles = read_cpfont_styles(files[0]) if files else []
 
         # Get description
         description = FAMILY_DESCRIPTIONS.get(family_name)
@@ -229,8 +253,10 @@ def build_manifest(
         used_script_tags.update(scripts)
 
         file_entries = []
-        for filepath in sorted(files, key=download_name):
-            name = download_name(filepath)
+        for filepath in sorted(files, key=lambda path: path.name if packs else download_name(path)):
+            name = filepath.name if packs else download_name(filepath)
+            if packs and name != f'{family_name}.cpfontpack':
+                raise ValueError(f'Invalid pack filename: {name}')
             if name.lower() in download_targets:
                 raise ValueError(f'Duplicate download target: {name}')
             download_targets.add(name.lower())
@@ -241,6 +267,9 @@ def build_manifest(
                     "crc32": compute_crc32(filepath),
                 }
             )
+            if packs:
+                file_entries[-1].update(url=base_url + name,
+                                       sha256=hashlib.sha256(filepath.read_bytes()).hexdigest())
 
         manifest_families.append(
             {
@@ -254,7 +283,7 @@ def build_manifest(
 
     # Top-level script-group display metadata (tag + English label), emitted in
     # catalog order and limited to groups actually used by ≥1 family. The device
-    # is fully data-driven from this — it holds no hardcoded script list.
+    # is fully data-driven from this - it holds no hardcoded script list.
     script_groups = [
         {"tag": tag, "label": label}
         for tag, label in SCRIPT_GROUPS
@@ -272,6 +301,10 @@ def build_manifest(
 def main():
     parser = argparse.ArgumentParser(
         description="Sinh manifest fonts.json từ các file .cpfont"
+    )
+    parser.add_argument(
+        '--packs', action='store_true',
+        help='Sinh 1 mục .cpfontpack mỗi họ, giữ schema baseUrl/families/files',
     )
     parser.add_argument(
         "--input",
@@ -322,8 +355,14 @@ def main():
         else:
             print(f"CẢNH BÁO: không thấy {desc_path}, dùng tên họ font làm mô tả", file=sys.stderr)
 
-    print(f"Đang quét {input_dir} tìm file .cpfont...")
-    families = scan_cpfont_files(input_dir)
+    print(f"Đang quét {input_dir} tìm file font...")
+    families = {}
+    if args.packs:
+        for filepath in sorted(input_dir.rglob('*.cpfontpack')):
+            if filepath.is_file():
+                families.setdefault(filepath.stem, []).append(filepath)
+    else:
+        families = scan_cpfont_files(input_dir)
 
     if not families:
         print("LỖI: không tìm thấy file .cpfont nào", file=sys.stderr)
@@ -333,12 +372,12 @@ def main():
     for name, files in sorted(families.items()):
         print(f"  {name}: {len(files)} file")
 
-    manifest = build_manifest(families, base_url)
+    manifest = build_manifest(families, base_url, args.packs)
 
     if args.assets_output:
         for files in families.values():
             for filepath in files:
-                target = args.assets_output / download_name(filepath)
+                target = args.assets_output / (filepath.name if args.packs else download_name(filepath))
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if target.resolve() != filepath.resolve():
                     shutil.copyfile(filepath, target)

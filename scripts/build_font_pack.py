@@ -119,7 +119,8 @@ def entry_name(family, size, level):
 
 
 def build_pack(family, style_fonts, sizes, strengths, intervals, license_path, output,
-               pnum=False, force_autohint=False, builtin_family=None):
+               pnum=False, force_autohint=False, builtin_family=None, base_dir=None,
+               fallback_style_fonts=None):
     if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', family):
         raise ValueError('Family must be a safe ASCII filename')
     sizes = sorted(sizes)
@@ -138,6 +139,9 @@ def build_pack(family, style_fonts, sizes, strengths, intervals, license_path, o
                        'sha256': weights.sha(Path(filename).read_bytes()),
                        'pnum': pnum, 'force_autohint': force_autohint}
                for style, filename in sorted(style_fonts.items())}
+    for style, filename in (fallback_style_fonts or {}).items():
+        sources[style].update(fallback_path=str(Path(filename).resolve()),
+                              fallback_sha256=weights.sha(Path(filename).read_bytes()))
     metadata = {'format': 1, 'cpfont_version': 4, 'family': family, 'sizes': sizes,
                 'recipe': RECIPE, 'dpi': 150, 'freetype': list(freetype.version()),
                 'pnum': pnum, 'force_autohint': force_autohint,
@@ -151,14 +155,24 @@ def build_pack(family, style_fonts, sizes, strengths, intervals, license_path, o
                                         'size': Path(source['path']).stat().st_size}
                             for style, source in sources.items()}, 'entries': []}
     payloads = {'OFL.txt': license_data}
+    if fallback_style_fonts:
+        fallback_license = Path(next(iter(fallback_style_fonts.values()))).parent / 'OFL.txt'
+        payloads['OFL.txt'] += b'\n\nFallback font license:\n\n' + fallback_license.read_bytes()
+        metadata['fallback_sources'] = {
+            str(style): {'name': Path(filename).name, 'sha256': weights.sha(Path(filename).read_bytes())}
+            for style, filename in sorted(fallback_style_fonts.items())}
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.font-pack-', dir=output.parent) as temporary:
         for size in sizes:
             base_path = Path(temporary) / f'{family}_{size}.cpfont'
-            converter.generate_cpfont_multistyle(style_fonts, size, intervals, str(base_path),
-                                                pnum=pnum, force_autohint=force_autohint)
-            base_data = base_path.read_bytes()
+            if base_dir:
+                base_data = (Path(base_dir) / base_path.name).read_bytes()
+            else:
+                converter.generate_cpfont_multistyle(style_fonts, size, intervals, str(base_path),
+                                                    pnum=pnum, force_autohint=force_autohint,
+                                                    fallback_style_fonts=fallback_style_fonts)
+                base_data = base_path.read_bytes()
             header, styles = read_font(base_data)
             signature = layout_signature(base_data)
             metadata['layout_signatures'][str(size)] = signature
@@ -169,6 +183,12 @@ def build_pack(family, style_fonts, sizes, strengths, intervals, license_path, o
                     raise ValueError('Builtin parity failed: ' + json.dumps(parity, sort_keys=True))
             rasters = {style: weights.RasterSource(source, Path('/'), size, converter)
                        for style, source in sources.items()}
+            if base_dir:
+                for style in styles:
+                    for codepoint, glyph, bitmap in style['records']:
+                        raster, pixels = rasters[style['toc'][0]].glyph(codepoint, 0)
+                        if raster[:5] != glyph[:5] or pixels != bitmap:
+                            raise ValueError(f'Source raster differs from published base: {size}/{style["toc"][0]}/U+{codepoint:04X}')
             for level, strength in enumerate(strengths):
                 data = base_data
                 if level:
@@ -203,6 +223,8 @@ def main():
     parser.add_argument('--family', required=True)
     for style in STYLE_NAMES:
         parser.add_argument('--' + style, type=Path)
+        parser.add_argument('--fallback-' + style, type=Path)
+    parser.add_argument('--base-dir', type=Path)
     parser.add_argument('--sizes', default='12,14,16,18')
     parser.add_argument('--strengths', default=','.join(map(str, STRENGTHS)))
     parser.add_argument('--intervals', default='builtin')
@@ -213,10 +235,13 @@ def main():
     parser.add_argument('--builtin-family', choices=('notoserif', 'notosans'))
     args = parser.parse_args()
     fonts = {style: str(getattr(args, name)) for style, name in enumerate(STYLE_NAMES) if getattr(args, name)}
+    fallbacks = {style: str(getattr(args, 'fallback_' + name)) for style, name in enumerate(STYLE_NAMES)
+                 if getattr(args, 'fallback_' + name)}
     intervals = builtin_intervals() if args.intervals == 'builtin' else converter.resolve_intervals(args.intervals)
     metadata = build_pack(args.family, fonts, [int(size) for size in args.sizes.split(',')],
                           [int(strength) for strength in args.strengths.split(',')], intervals,
-                          args.license, args.output, args.pnum, args.force_autohint, args.builtin_family)
+                          args.license, args.output, args.pnum, args.force_autohint, args.builtin_family,
+                          args.base_dir, fallbacks)
     print(json.dumps({'output': str(args.output), 'bytes': args.output.stat().st_size,
                       'sha256': weights.sha(args.output.read_bytes()),
                       'entries': len(metadata['entries']) + 1,

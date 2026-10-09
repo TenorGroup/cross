@@ -76,6 +76,45 @@ class FontPackTests(unittest.TestCase):
             self.assertTrue(any(old[1][:2] != new[1][:2] or old[2] != new[2]
                                 for old, new in zip(base_styles[0]['records'], strongest[0]['records'])))
 
+    def test_published_base_preserved(self):
+        with zipfile.ZipFile(self.output) as archive:
+            base = archive.read('Small_12.cpfont')
+        baseline = self.directory / 'base'
+        baseline.mkdir(exist_ok=True)
+        (baseline / 'Small_12.cpfont').write_bytes(base)
+        output = self.directory / 'Preserved.cpfontpack'
+        pack.build_pack('Small', self.fonts, [12], pack.STRENGTHS, self.intervals,
+                        FONT_ROOT / 'OFL.txt', output, pnum=True, base_dir=baseline)
+        with zipfile.ZipFile(output) as archive:
+            self.assertEqual(archive.read('Small_12.cpfont'), base)
+
+    def test_wrong_published_source_rejected(self):
+        with zipfile.ZipFile(self.output) as archive:
+            base = bytearray(archive.read('Small_12.cpfont'))
+        _, styles = pack.read_font(base)
+        offset = styles[0]['toc'][11] + styles[0]['toc'][1] * 12 + 2
+        struct.pack_into('<H', base, offset, struct.unpack_from('<H', base, offset)[0] + 1)
+        baseline = self.directory / 'wrong-base'
+        baseline.mkdir(exist_ok=True)
+        (baseline / 'Small_12.cpfont').write_bytes(base)
+        with self.assertRaisesRegex(ValueError, 'Source raster differs'):
+            pack.build_pack('Small', self.fonts, [12], pack.STRENGTHS, self.intervals,
+                            FONT_ROOT / 'OFL.txt', self.directory / 'Rejected.cpfontpack',
+                            pnum=True, base_dir=baseline)
+
+    def test_fallback_license_in_supported_entry(self):
+        fallback = FONT_ROOT.parent / 'NotoSans'
+        output = self.directory / 'Fallback.cpfontpack'
+        pack.build_pack('Small', self.fonts, [12], pack.STRENGTHS, self.intervals,
+                        FONT_ROOT / 'OFL.txt', output,
+                        fallback_style_fonts={0: str(fallback / 'NotoSans-Regular.ttf')})
+        with zipfile.ZipFile(output) as archive:
+            license_data = archive.read('OFL.txt')
+            self.assertIn((FONT_ROOT / 'OFL.txt').read_bytes(), license_data)
+            self.assertIn((fallback / 'OFL.txt').read_bytes(), license_data)
+            self.assertEqual(len(archive.namelist()), 8)
+            self.assertIn('0', json.loads(archive.read('pack.json'))['fallback_sources'])
+
     def test_encode_rejects_advance_bug(self):
         with zipfile.ZipFile(self.output) as archive:
             header, styles = pack.read_font(archive.read('Small_12.cpfont'))

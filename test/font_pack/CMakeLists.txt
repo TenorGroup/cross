@@ -30,3 +30,5 @@ endif()
 
 add_test(NAME FontPack COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/test_font_pack.py")
 set_tests_properties(FontPack PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1" TIMEOUT 120)
+add_test(NAME FontPackManifest COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/test_manifest.py")
+set_tests_properties(FontPackManifest PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1" TIMEOUT 120)
