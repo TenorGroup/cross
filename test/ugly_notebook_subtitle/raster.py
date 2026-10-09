@@ -204,7 +204,7 @@ def compile_variant(repo: Path, source: str, width: int, height: int, build: Pat
     cpp.write_text(harness(source), encoding="utf-8")
     stubs = repo / "test/ugly_notebook_subtitle/raster_stubs"
     common_stubs = repo / "test/button_symbols/stubs"
-    freeink_display = Path("/Users/tuan/Tenor/outputs/261008-v1054/home/source/freeink-sdk/libs/display/FreeInkDisplay/include")
+    freeink_display = repo / "freeink-sdk/libs/display/FreeInkDisplay/include"
     sources = (
         cpp,
         repo / "src/shells/ugly/UglyInk.cpp",
