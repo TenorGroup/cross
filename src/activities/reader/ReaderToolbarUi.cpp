@@ -115,7 +115,13 @@ void ReaderToolbarUi::begin() {
 }
 
 void ReaderToolbarUi::render() {
-  PageScrollbar::instance().beginPaint();
+  auto& scrollbar = PageScrollbar::instance();
+  scrollbar.beginPaint();
+  if (usesX3Bar()) {
+    // The reader restored the page behind the sheet; discard the old region without erasing its ink.
+    scrollbar.endPaint();
+    scrollbar.beginPaint();
+  }
   const bool handwritten = shell::isUgly();
   uiTarget.setPaintingEnabled(!handwritten);
   renderUi();
@@ -126,10 +132,10 @@ void ReaderToolbarUi::render() {
   uiTarget.setPaintingEnabled(true);
   if (handwritten) {
     paintUgly();
-    PageScrollbar::instance().repaint(*renderer_, uiTarget);
+    scrollbar.repaint(*renderer_, uiTarget);
   }
   else if (model_.panel) fadeMoreBelow();
-  PageScrollbar::instance().endPaint(renderer_);
+  scrollbar.endPaint(renderer_);
 }
 
 // Rows go on below the last full one: the band under it fades over the next row's top down to the list's foot

@@ -93,4 +93,8 @@ panel = toolbar[toolbar.index('void ReaderToolbarUi::buildPanel'):toolbar.index(
 assert 'listProps_.scrollIndicator = false;' in panel
 assert 'PageScrollbar::instance().drawList(' in panel
 assert 'PageScrollbar::instance().draw(renderer, target,' in popup
+render = toolbar[toolbar.index('void ReaderToolbarUi::render()'):toolbar.index('void ReaderToolbarUi::fadeMoreBelow()')]
+assert 'if (usesX3Bar()) {' in render
+assert render.index('scrollbar.endPaint();') < render.index('renderUi();')
+assert render.index('scrollbar.endPaint();') < render.rindex('scrollbar.beginPaint();')
 print('GREEN: 2 boards, 45 geometry cases each, X3 idle, short lists and shared caller wiring')
