@@ -12,16 +12,22 @@
 #include <Utf8.h>
 
 #include <climits>
+#include <algorithm>
 #include <limits>
 
 #include "CrossPointSettings.h"
 #include "ProgressFile.h"
 #include "ReaderActivity.h"
+#include "ReaderMenuLayout.h"
 #include "ReaderFontChon.h"
 #include "ReaderFontSizes.h"
 #include "ReaderToolbarUi.h"
 #include "ReaderUtils.h"
 #include "SdCardFontSystem.h"
+#include "activities/UiTabListActivity.h"
+#include "activities/settings/TextSettingsActivity.h"
+#include "components/UIThemeTokens.h"
+#include "shells/Shell.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/ReadingExcerpt.h"
@@ -31,6 +37,95 @@ constexpr size_t CHUNK_SIZE = 8 * 1024;  // 8KB chunk for reading
 // Cache file magic and version
 constexpr uint32_t CACHE_MAGIC = 0x54585449;  // "TXTI"
 constexpr uint8_t CACHE_VERSION = 8;          // v7 could persist an incomplete index after an I/O failure
+}  // namespace
+
+namespace {
+namespace fui = freeink::ui;
+
+// TXT and Markdown share one small reader menu. The full reader menu keeps its
+// tabs for EPUB; this screen starts directly on the only valid text action.
+class TxtReaderMenuActivity final : public UiTabListActivity {
+  fui::ListItem rows_[2]{};
+
+  void closeCancelled() {
+    ActivityResult result;
+    result.isCancelled = true;
+    result.data = MenuResult{};
+    setResult(std::move(result));
+    finish();
+  }
+
+ public:
+  explicit TxtReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
+      : UiTabListActivity("TxtReaderMenu", renderer, mappedInput) {
+    rows_[0].label = I18N.get(StrId::STR_TEXT_SETTINGS);
+    rows_[0].actionValue = 0;
+    rows_[1].label = I18N.get(StrId::STR_BACK);
+    rows_[1].actionValue = 1;
+  }
+
+ protected:
+  int tabCount() const override { return 1; }
+  int activeTab() const override { return 0; }
+  const char* tabLabel(int) const override { return I18N.get(StrId::STR_TOOL_TEXT); }
+  void onTabAction(int) override {}
+  void stepTab(int) override {}
+  int listCount() const override { return 2; }
+
+  void buildScreen(UiScreen& screen) override {
+    const auto& metrics = UITheme::getInstance().getMetrics();
+    const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
+    screen.setContentMarginFromScreen(fui::Insets{
+        static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
+        static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
+        static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+    fui::ListProps props;
+    props.items = rows_;
+    props.count = 2;
+    props.action = ACTION_ROW;
+    props.inputMask = fui::InputTouch;
+    props.labelText = uiMenuLabelText(screen.theme());
+    props.labelText.maxLines = 1;
+    syncTabListViewport(screen, props);
+    screen.list(props);
+  }
+
+  void activateIndex(const int index) override {
+    if (index < 0 || index > 1) return;
+    app.clearTapFlash();
+    if (index == 1) {
+      closeCancelled();
+      return;
+    }
+    setResult(MenuResult{static_cast<int>(readermenu::Action::TEXT_SETTINGS)});
+    finish();
+  }
+
+  bool handleButtons() override {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      closeCancelled();
+      return true;
+    }
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      if (ringPos() == 0) {
+        moveRingTo(1);
+      } else {
+        activateIndex(ringPos() - 1);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  bool handleHomeGesture() override {
+    closeCancelled();
+    return true;
+  }
+
+  const char* headerTitle() const override { return I18N.get(StrId::STR_READER_MENU); }
+  bool showsSideArrows() const override { return false; }
+};
 }  // namespace
 
 // Doi co chu roi dung lai chi muc trang, giu dung doan dang doc: trang moi la trang chua
@@ -61,6 +156,92 @@ bool TxtReaderActivity::docCoChuMotNac(const int huong) {
   }
   SETTINGS.saveToFile();
   return true;
+}
+
+TxtReaderActivity::LayoutState TxtReaderActivity::layoutState() const {
+  LayoutState state;
+  state.fontId = SETTINGS.getReaderFontId();
+  state.screenMargin = SETTINGS.screenMargin;
+  state.paragraphAlignment = SETTINGS.paragraphAlignment;
+  state.lineCompression = SETTINGS.getReaderLineCompression();
+  state.extraParagraphSpacing = SETTINGS.extraParagraphSpacing;
+  state.letterSpacing = SETTINGS.letterSpacing;
+  state.wordSpacing = SETTINGS.wordSpacing;
+  state.paragraphIndent = SETTINGS.paragraphIndent;
+  return state;
+}
+
+size_t TxtReaderActivity::currentOffset() const {
+  if (pageOffsetCount == 0 || !pageOffsets) return 0;
+  if (currentPage >= 0 && currentPage < static_cast<int>(pageOffsetCount)) return pageOffsets[currentPage];
+  return pageOffsets[pageOffsetCount - 1];
+}
+
+void TxtReaderActivity::rebuildAtOffset(const size_t offset) {
+  initialized = false;
+  pageOffsetCount = 0;
+  totalPages = 0;
+  currentPageLines.clear();
+  initializeReader(renderer);
+  if (!initialized || pageOffsetCount == 0) {
+    currentPage = 0;
+    return;
+  }
+  int page = 0;
+  for (size_t i = 0; i < pageOffsetCount; ++i) {
+    if (pageOffsets[i] <= offset) page = static_cast<int>(i);
+  }
+  currentPage = std::clamp(page, 0, std::max(0, totalPages - 1));
+}
+
+void TxtReaderActivity::openTextSettings(const size_t offsetBeforeSettings, const LayoutState before) {
+  pauseKeepsStatsInRam = true;
+  const auto* registry = &sdFontSystem.registry();
+  startActivityForResult(
+      std::make_unique<TextSettingsActivity>(renderer, mappedInput, registry, TextSettingsActivity::Tab::Layout),
+      [this, offsetBeforeSettings, before](const ActivityResult&) {
+        if (before == layoutState()) {
+          requestUpdate();
+          return;
+        }
+        RenderLock lock;
+        rebuildAtOffset(offsetBeforeSettings);
+        requestUpdate();
+      });
+}
+
+void TxtReaderActivity::openReaderMenu() {
+  if (preview) return;
+  const size_t offsetBeforeSettings = currentOffset();
+  const LayoutState before = layoutState();
+  pauseKeepsStatsInRam = true;
+  startActivityForResult(std::make_unique<TxtReaderMenuActivity>(renderer, mappedInput),
+                         [this, offsetBeforeSettings, before](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             requestUpdate();
+                             return;
+                           }
+                           const auto& menu = std::get<MenuResult>(result.data);
+                           if (menu.action == static_cast<int>(readermenu::Action::TEXT_SETTINGS))
+                             openTextSettings(offsetBeforeSettings, before);
+                           else
+                             requestUpdate();
+                         });
+}
+
+bool TxtReaderActivity::requestShortcut(const ReaderShortcut shortcut) {
+  if (preview || shortcut != ReaderShortcut::Menu) return false;
+  openReaderMenu();
+  return true;
+}
+
+bool TxtReaderActivity::handleFormatInput() {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
+      ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
+    openReaderMenu();
+    return true;
+  }
+  return false;
 }
 
 bool TxtReaderActivity::loadBook() {

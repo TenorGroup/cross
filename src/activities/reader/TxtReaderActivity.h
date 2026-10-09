@@ -10,6 +10,24 @@
 #include "ReaderActivity.h"
 
 class TxtReaderActivity final : public ReaderActivity {
+  struct LayoutState {
+    int fontId = 0;
+    uint8_t screenMargin = 0;
+    uint8_t paragraphAlignment = CrossPointSettings::LEFT_ALIGN;
+    float lineCompression = 0;
+    uint8_t extraParagraphSpacing = 0;
+    int8_t letterSpacing = 0;
+    uint8_t wordSpacing = 0;
+    uint8_t paragraphIndent = 0;
+
+    bool operator==(const LayoutState& other) const {
+      return fontId == other.fontId && screenMargin == other.screenMargin &&
+             paragraphAlignment == other.paragraphAlignment && lineCompression == other.lineCompression &&
+             extraParagraphSpacing == other.extraParagraphSpacing && letterSpacing == other.letterSpacing &&
+             wordSpacing == other.wordSpacing && paragraphIndent == other.paragraphIndent;
+    }
+  };
+
   std::unique_ptr<Txt> txt;
 
   int currentPage = 0;
@@ -57,6 +75,11 @@ class TxtReaderActivity final : public ReaderActivity {
   void saveProgress() const;
   void loadProgress();
   void renderStatusBar() const;
+  LayoutState layoutState() const;
+  size_t currentOffset() const;
+  void rebuildAtOffset(size_t offset);
+  void openTextSettings(size_t offset, LayoutState before);
+  void openReaderMenu();
 
   bool loadBook() override;
   std::string getBookTitle() const override { return txt ? txt->getTitle() : ""; }
@@ -68,6 +91,7 @@ class TxtReaderActivity final : public ReaderActivity {
       : ReaderActivity("TxtReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
   ~TxtReaderActivity() override = default;
   void onExit() override;
+  bool requestShortcut(ReaderShortcut shortcut) override;
 
   bool latTrangThat(bool isForward) override;
   bool skipPages(int amount) override;
@@ -76,4 +100,7 @@ class TxtReaderActivity final : public ReaderActivity {
   void onReturnFromEndOfBook() override;
 
   ScreenshotInfo getScreenshotInfo() const override;
+
+ protected:
+  bool handleFormatInput() override;
 };

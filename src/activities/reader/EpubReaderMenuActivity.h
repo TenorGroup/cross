@@ -20,7 +20,8 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
 
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   const int currentPage, const int totalPages, const int bookProgressPercent,
-                                  const uint8_t currentOrientation, const bool hasFootnotes, bool hasBookmarks);
+                                  const uint8_t currentOrientation, const bool hasFootnotes, bool hasBookmarks,
+                                  bool textOnly = false);
 
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
@@ -40,8 +41,8 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   freeink::ui::Rect skinTab_{}, skinProgress_{}, skinHint_{};
 
   // --- UiTabListActivity contract ---
-  int tabCount() const override { return readermenu::TAB_COUNT; }
-  int activeTab() const override { return static_cast<int>(activeTabId); }
+  int tabCount() const override { return textOnly ? 1 : readermenu::TAB_COUNT; }
+  int activeTab() const override { return textOnly ? 0 : static_cast<int>(activeTabId); }
   const char* tabLabel(int index) const override;
   freeink::ui::BitmapRef tabIcon(int index, bool bold) const override;
   void onTabAction(int index) override;
@@ -86,6 +87,7 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
 
   // Every row of every tab, built once in the constructor.
   std::vector<MenuItem> menuItems;
+  bool textOnly = false;
   // The menu opens on Favorites: it is the one tab whose contents the reader
   // chose, so it is the cheapest place to land.
   MenuTab activeTabId = MenuTab::FAVORITES;

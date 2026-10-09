@@ -36,15 +36,17 @@ constexpr StrId TAB_NAMES[readermenu::TAB_COUNT] = {StrId::STR_READER_TAB_FAVORI
 EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                const std::string& title, const int currentPage, const int totalPages,
                                                const int bookProgressPercent, const uint8_t currentOrientation,
-                                               const bool hasFootnotes, const bool hasBookmarks)
+                                               const bool hasFootnotes, const bool hasBookmarks, const bool textOnly)
     : UiTabListActivity("EpubReaderMenu", renderer, mappedInput),
       title(title),
+      textOnly(textOnly),
       pendingOrientation(currentOrientation),
       currentPage(currentPage),
       totalPages(totalPages),
       bookProgressPercent(bookProgressPercent) {
   readermenu::buildItems(menuItems, hasFootnotes, hasBookmarks, Frontlight.present(), halTiltSensor.isAvailable());
   napGhim();
+  if (textOnly || favorites.empty()) activeTabId = MenuTab::READING;
   rebuildRows();
 }
 
@@ -52,6 +54,20 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
 // active tab changes, never from buildScreen(), which only refreshes the value
 // text of rows that carry live state.
 void EpubReaderMenuActivity::rebuildRows() {
+  if (textOnly) {
+    rowCount = 0;
+    for (size_t i = 0; i < menuItems.size() && rowCount < 1; ++i) {
+      if (menuItems[i].action != MenuAction::TEXT_SETTINGS) continue;
+      rowToItem[rowCount] = static_cast<uint8_t>(i);
+      menuRowItems[rowCount].label = I18N.get(menuItems[i].labelId);
+      menuRowItems[rowCount].actionValue = static_cast<int16_t>(rowCount);
+      ++rowCount;
+    }
+    menuRowItems[rowCount].label = I18N.get(StrId::STR_BACK);
+    menuRowItems[rowCount].actionValue = static_cast<int16_t>(rowCount);
+    ++rowCount;
+    return;
+  }
   // ReaderMenuLayout owns which rows a tab shows and in what order; this only
   // turns the indexes it hands back into list rows.
   rowCount = activeTabId == MenuTab::FAVORITES
@@ -67,7 +83,9 @@ void EpubReaderMenuActivity::rebuildRows() {
   }
 }
 
-const char* EpubReaderMenuActivity::tabLabel(const int index) const { return I18N.get(TAB_NAMES[index]); }
+const char* EpubReaderMenuActivity::tabLabel(const int index) const {
+  return I18N.get(textOnly ? StrId::STR_TOOL_TEXT : TAB_NAMES[index]);
+}
 
 freeink::ui::BitmapRef EpubReaderMenuActivity::tabIcon(const int index, const bool bold) const {
   if (index < 0 || index >= readermenu::TAB_COUNT) return {};
@@ -92,7 +110,7 @@ void EpubReaderMenuActivity::selectTab(const MenuTab tab) {
   // labels against another's values, and Confirm would look the activated row
   // up in whichever mapping won. Same race moveSelectionTo() guards for nav.
   RenderLock lock(*this);
-  activeTabId = tab;
+  activeTabId = tab == MenuTab::FAVORITES && favorites.empty() ? MenuTab::READING : tab;
   rebuildRows();
   // Pull the viewport to this tab's remembered row. UiTabListActivity owns the
   // remember/forget rule for every tab screen; see rowTab there.
@@ -101,6 +119,7 @@ void EpubReaderMenuActivity::selectTab(const MenuTab tab) {
 }
 
 void EpubReaderMenuActivity::stepTab(const int direction) {
+  if (textOnly) return;
   const int next = adjacentTab(direction);
   selectTab(static_cast<MenuTab>(next));
   requestUpdate();
@@ -226,6 +245,16 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
   // The activated row leaves this screen (popup or finish); a lingering flash
   // would gray an unrelated element on the next render.
   app.clearTapFlash();
+
+  if (textOnly) {
+    if (index == rowCount - 1) {
+      closeCancelled();
+    } else {
+      setResult(MenuResult{static_cast<int>(MenuAction::TEXT_SETTINGS), pendingOrientation, selectedPageTurnOption});
+      finish();
+    }
+    return;
+  }
 
   const auto selectedAction = menuItems[rowToItem[index]].action;
   freeink::ui::Rect parentFrame{};
@@ -542,6 +571,7 @@ void EpubReaderMenuActivity::render(RenderLock&&) {
 }
 
 bool EpubReaderMenuActivity::rowIsPinned(int row) const {
+  if (textOnly) return false;
   return row >= 0 && row < rowCount &&
          std::find(favorites.begin(), favorites.end(), menuItems[rowToItem[row]].action) != favorites.end();
 }
