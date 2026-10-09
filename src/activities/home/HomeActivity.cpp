@@ -4,6 +4,7 @@
 
 #include <Bitmap.h>
 #include <Epub.h>
+#include <Epub/converters/ImageToFramebufferDecoder.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
@@ -1030,7 +1031,10 @@ void HomeActivity::freeCoverBuffer() {
   cardOnCard = false;
 }
 
-void HomeActivity::loadRecentBooks() { recentBooks = homerows::recent(RECENT_LIMIT); }
+void HomeActivity::loadRecentBooks() {
+  recentBooks = homerows::recent(RECENT_LIMIT);
+  cardCoverSizesRead = 0;
+}
 
 void HomeActivity::docGocTheNho() {
   // Vung nho hung ten file muon roi tra ngay trong ham nay. Giu no song suot doi man
@@ -1402,6 +1406,33 @@ static bool cardFinishText(const BookReadingRecord& record, char* text, const si
   return false;
 }
 
+HomeActivity::CoverSize HomeActivity::cardCoverSize(const int index) {
+  const uint8_t bit = static_cast<uint8_t>(1u << index);
+  if (cardCoverSizesRead & bit) return cardCoverSizes[index];
+  cardCoverSizesRead |= bit;
+  cardCoverSizes[index] = {};
+  const auto& book = recentBooks[index];
+  if (book.coverBmpPath.empty()) return {};
+  ImageDimensions dims{};
+  if (FsHelpers::hasEpubExtension(book.path)) {
+    Epub epub(book.path, "/.crosspoint");
+    std::string href;
+    coverref::load(epub.getCachePath(), href);
+    if (epub.readCoverDimensions(href, dims)) {
+      cardCoverSizes[index] = {dims.width, dims.height};
+      return cardCoverSizes[index];
+    }
+  }
+  HalFile file;
+  if (Storage.openFileForRead("HOME", UITheme::getCoverThumbPath(book.coverBmpPath, HOME_CARD_COVER_H), file)) {
+    Bitmap bitmap(file);
+    if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0)
+      cardCoverSizes[index] = {bitmap.getWidth(), bitmap.getHeight()};
+    file.close();
+  }
+  return cardCoverSizes[index];
+}
+
 void HomeActivity::loadCardStats(const int index) {
   const uint8_t bit = static_cast<uint8_t>(1u << index);
   if (!(cardRecordsRead & bit)) {
@@ -1452,6 +1483,37 @@ static int cardStatValueWidth(const GfxRenderer& renderer, const int font, const
   return width;
 }
 
+// Glyph boxes can include blank edge rows; use the BW ink already decoded by the renderer.
+static HomeStatsBounds cardStatInkBounds(const GfxRenderer& renderer, const int font, const char* text,
+                                         const EpdFontFamily::Style style) {
+  const HomeStatsBounds fallback{renderer.getTextInkTop(font, text, style),
+                                 renderer.getTextInkBottom(font, text, style)};
+  const auto& families = renderer.getFontMap();
+  const auto found = families.find(font);
+  if (found == families.end()) return fallback;
+  const auto* data = found->second.getData(style);
+  HomeStatsBounds ink{INT32_MAX, 0};
+  const auto* cursor = reinterpret_cast<const unsigned char*>(text);
+  while (const auto cp = utf8NextCodepoint(&cursor)) {
+    const auto* glyph = found->second.getGlyph(cp, style);
+    if (!glyph) return fallback;
+    if (!glyph->width || !glyph->height) continue;
+    const auto* bitmap = renderer.getGlyphBitmap(data, glyph);
+    if (!bitmap) return fallback;
+    for (int y = 0; y < glyph->height; ++y) {
+      for (int x = 0; x < glyph->width; ++x) {
+        const int bit = y * glyph->width + x;
+        const int value = data->is2Bit ? (bitmap[bit / 4] >> (6 - 2 * (bit % 4))) & 3
+                                      : (bitmap[bit / 8] >> (7 - bit % 8)) & 1;
+        if (!value) continue;
+        ink.top = std::min(ink.top, data->ascender - glyph->top + y);
+        ink.bottom = std::max(ink.bottom, data->ascender - glyph->top + y + 1);
+      }
+    }
+  }
+  return ink.top == INT32_MAX ? fallback : ink;
+}
+
 static constexpr StrId CARD_STAT_LABELS[HOME_STAT_COUNT] = {
     StrId::STR_RECENT_STAT_READ, StrId::STR_RECENT_STAT_FINISH, StrId::STR_RECENT_STAT_TOTAL,
     StrId::STR_RECENT_STAT_AVERAGE, StrId::STR_RECENT_STAT_DAYS, StrId::STR_STATS_TURNS};
@@ -1459,7 +1521,7 @@ static constexpr StrId CARD_STAT_LABELS[HOME_STAT_COUNT] = {
 // Label in the subtitle face, value in the body face (bold), stepping down one size when the value is
 // wider than the column, as in the approved drawing. Returns the top of the progress bar, -1 when
 // none is drawn. Six groups extend to the cover edge when their record has data.
-int HomeActivity::drawCardStats(const HomeCardLayout& card) {
+int HomeActivity::drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bounds) {
   const bool secondary = !tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2;
   const int labelFont = secondary ? SMALL_FONT_ID : UI_10_FONT_ID;
   const int valueFont = secondary ? UI_10_FONT_ID : UI_12_FONT_ID;
@@ -1467,7 +1529,7 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card) {
   const int width = card.statsRight - card.statsX;
   HomeStatsInput in;
   in.top = card.statsTop;
-  in.bottom = card.coverY + card.coverH;
+  in.bottom = card.statsBottom ? card.statsBottom : card.coverY + card.coverH;
   in.labelLineHeight = renderer.getLineHeight(labelFont);
   in.valueLineHeight = renderer.getLineHeight(valueFont);
   in.valueTail = in.valueLineHeight - renderer.getFontAscenderSize(valueFont);
@@ -1506,6 +1568,26 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card) {
     in.valueTails[row] = lineHeight - inkBottom;
   }
   const auto column = homeStatsLayout(in);
+  if (bounds) {
+    bounds->top = INT32_MAX;
+    bounds->bottom = 0;
+    for (int row = 0; row < HOME_STAT_COUNT; ++row) {
+      if (!(column.rows & (1u << row))) continue;
+      if (bounds->top == INT32_MAX) {
+        const char* label = labels[row].empty() ? I18N.get(CARD_STAT_LABELS[row]) : labels[row].front().c_str();
+        bounds->top = column.labelY[row] + cardStatInkBounds(renderer, labelFont, label, EpdFontFamily::REGULAR).top;
+      }
+      if (column.rows >> (row + 1)) continue;
+      int lastBottom = 0;
+      const auto& lastLine = second[row].empty() ? first[row] : second[row];
+      compactstats::runs(lastLine.c_str(), [&](const std::string& part, const bool number) {
+        lastBottom = std::max(lastBottom, cardStatInkBounds(renderer, fonts[row], part.c_str(),
+            number ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR).bottom);
+      });
+      bounds->bottom = column.valueY[row] + (second[row].empty() ? 0 : renderer.getLineHeight(fonts[row])) + lastBottom;
+    }
+    return column.barY;
+  }
   for (int row = 0; row < HOME_STAT_COUNT; ++row) {
     if (!(column.rows & (1u << row))) continue;
     if (labels[row].empty()) {
@@ -1596,7 +1678,47 @@ void HomeActivity::drawRecentCard() {
                                            renderer.getLineHeight(statValueFont)) + 12 +
                       2 * std::max(0, 2 * renderer.getLineHeight(!tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2 ? SMALL_FONT_ID : UI_10_FONT_ID) -
                                       renderer.getLineHeight(statValueFont));
-  const auto frame = homeCardLayout(in);
+  const auto size = tenorchrome::kTouchShell ? cardCoverSize(shown) : CoverSize{};
+  const bool alignCover = tenorchrome::kTouchShell && size.width > 0 && size.height > 0;
+  if (alignCover) {
+    if (cardStats.rows == (1u << HOME_STAT_READ)) in.metadataAboveCover = false;
+    in.statsMinWidth = 0;
+    for (int row = 0; row < HOME_STAT_COUNT; ++row) {
+      if (!(cardStats.rows & (1u << row))) continue;
+      in.statsMinWidth = std::max(in.statsMinWidth, renderer.getTextWidth(statLabelFont, I18N.get(CARD_STAT_LABELS[row])));
+      in.statsMinWidth = std::max(in.statsMinWidth, cardStatValueWidth(renderer, statValueFont, cardStats.values[row].c_str()));
+    }
+    // Extremely long values retain the painter's smaller face and split-line path.
+    in.statsMinWidth = std::min(in.statsMinWidth, renderer.getScreenWidth() / 2);
+  }
+  auto frame = homeCardLayout(in);
+  if (alignCover) {
+    frame.statsRight = renderer.getScreenWidth() - 16;
+    frame.statsBottom = frame.coverY + frame.coverH;
+    frame.statsX = frame.statsRight - in.statsMinWidth;
+    if (in.metadataAboveCover) {
+      frame.statsTop = in.top + 2 * in.titleLineHeight + 2 + in.authorLineHeight + 18;
+      frame.statsBottom = frame.ruleY - 1;
+    }
+    HomeStatsBounds ink;
+    drawCardStats(frame, &ink);
+    if (in.metadataAboveCover && ink.bottom > frame.statsBottom) {
+      frame.statsTop = std::max(in.top, frame.statsTop - (ink.bottom - frame.statsBottom));
+      drawCardStats(frame, &ink);
+    }
+    frame = homeCoverAlignedToStats(frame, ink, size.width, size.height, in.statsMinWidth);
+    if (in.metadataAboveCover) frame.textW = frame.coverW;
+    else {
+      const int shift = frame.coverY + frame.coverH + 18 - frame.titleY;
+      frame.titleY += shift;
+      frame.authorY += shift;
+      frame.excerptY += shift;
+    }
+    LOG_INF("HOME", "Card geometry cover=%d,%d,%d,%d ink=%d,%d stats=%d,%d source=%d,%d",
+            frame.coverX, frame.coverY, frame.coverW, frame.coverH, ink.top, ink.bottom,
+            frame.statsX, frame.statsRight - 1, size.width, size.height);
+  }
+  cardThumbHeight = alignCover ? frame.coverH : HOME_CARD_COVER_H;
   heldCover = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY), static_cast<int16_t>(frame.coverW),
                static_cast<int16_t>(frame.coverH)};
 #ifdef TENOR_UI_ACCEPTANCE
@@ -1632,7 +1754,7 @@ void HomeActivity::drawRecentCard() {
   // line count do not move the cover), so the keys say whether a card file still shows this card,
   // or at least its cover.
   const std::string thumbPath =
-      book.coverBmpPath.empty() ? std::string() : UITheme::getCoverThumbPath(book.coverBmpPath, HOME_CARD_COVER_H);
+      book.coverBmpPath.empty() ? std::string() : UITheme::getCoverThumbPath(book.coverBmpPath, cardThumbHeight);
   const int16_t geometry[] = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY),
                               static_cast<int16_t>(frame.coverW), static_cast<int16_t>(frame.coverH),
                               static_cast<int16_t>(frame.textX),  static_cast<int16_t>(frame.titleY),
@@ -1672,7 +1794,13 @@ void HomeActivity::drawRecentCard() {
   const auto titleLines = renderer.wrappedText(titleFont, title.c_str(), frame.textW, 2, EpdFontFamily::BOLD);
   in.titleLines = std::max(1, static_cast<int>(titleLines.size()));
   in.titleDrawLineHeight = renderer.getLineHeight(titleFont);
-  const auto card = homeCardLayout(in);
+  auto card = alignCover ? frame : homeCardLayout(in);
+  if (alignCover) {
+    card.authorY = card.titleY + in.titleLines * in.titleDrawLineHeight + 2;
+    card.excerptY = card.authorY + in.authorLineHeight + 7;
+    const int bottom = in.metadataAboveCover ? card.coverY - 7 : card.ruleY - 15;
+    card.excerptLines = std::clamp((bottom - card.excerptY) / in.excerptLineHeight, 0, 1);
+  }
   int y = card.titleY;
   for (const auto& line : titleLines) {
     renderer.drawText(titleFont, card.textX, y, line.c_str(), true, EpdFontFamily::BOLD);
@@ -1702,11 +1830,11 @@ void HomeActivity::drawRecentCard() {
   // drawn at its own size, the theme's is the fallback for a book not opened since that began.
   bool image = coverKept;
   if (!coverKept) cardFileThumb = 0;
-  for (const int height : {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight}) {
+  for (const int height : {cardThumbHeight, HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight}) {
     if (image || book.coverBmpPath.empty()) break;
     HalFile file;
     if (!Storage.openFileForRead("HOME", UITheme::getCoverThumbPath(book.coverBmpPath, height), file)) continue;
-    if (height == HOME_CARD_COVER_H) cardFileThumb = 1;
+    if (height == cardThumbHeight) cardFileThumb = 1;
     Bitmap bitmap(file);
 #ifdef TENOR_PRESS_PROBE
     LOG_INF("HOME", "CARD_COVER_START height=%d free=%u largest=%u", height, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
@@ -1839,7 +1967,7 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
 
 void HomeActivity::wantThumb(const int index) {
   if (!FsHelpers::hasEpubExtension(recentBooks[index].path)) return;
-  const uint32_t id = fnv(2166136261u, recentBooks[index].path);
+  const uint32_t id = fnv(fnv(2166136261u, recentBooks[index].path), &cardThumbHeight, sizeof(cardThumbHeight));
   for (const uint32_t tried : thumbTried)
     if (tried == id) return;
   thumbWantedAtMs = millis();
@@ -1864,7 +1992,7 @@ void HomeActivity::writeMissingThumb(const int index) {
   RenderLock lock(*this);
   if (activeTabId != Tab::RECENT || index != shownRecent()) return;
   const std::string path = recentBooks[index].path;
-  thumbTried[thumbTriedNext++ % 5] = fnv(2166136261u, path);
+  thumbTried[thumbTriedNext++ % 5] = fnv(fnv(2166136261u, path), &cardThumbHeight, sizeof(cardThumbHeight));
   // The card is drawn again with its cover, and the decode gets the card's snapshot memory.
   freeCoverBuffer();
   coverRendered = false;
@@ -1880,7 +2008,7 @@ void HomeActivity::writeMissingThumb(const int index) {
       ESP.getMaxAllocHeap() >= CARD_THUMB_MIN_LARGEST_BLOCK) {
     LOG_INF("HOME", "Card thumbnail write %d", index);
     GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-    const int heights[] = {HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight};
+    const int heights[] = {cardThumbHeight, UITheme::getInstance().getMetrics().homeCoverHeight};
     if (ref) {
       epub.generateThumbBmps(href, heights, 2);
     } else if (epub.load(false, true)) {

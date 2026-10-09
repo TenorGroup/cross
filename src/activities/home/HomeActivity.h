@@ -208,9 +208,10 @@ class HomeActivity final : public UiTabListActivity {
   void saveCardFile();
   // A book whose card thumbnail is still missing: the reader writes it from the cover page or as
   // it closes, and a book read to the power key each time never took either route. The card asks
-  // for it here (render task) and an idle pass writes it (main task), once per book and boot.
+  // for it here (render task) and an idle pass writes it (main task), once per book, height and boot.
   std::atomic<int8_t> thumbWanted{-1};
   std::atomic<uint32_t> thumbWantedAtMs{0};
+  int cardThumbHeight = HOME_CARD_COVER_H;
   void wantThumb(int index);
   void writeMissingThumb(int index);
   // The wake's first frame is up; the main task writes state.json (V5: never the render task,
@@ -240,8 +241,12 @@ class HomeActivity final : public UiTabListActivity {
   // changes while Home is up, and that one is served from RAM by the store.
   BookReadingRecord cardRecords[RECENT_LIMIT];
   uint8_t cardRecordsRead = 0, cardRecordsFound = 0;
+  struct CoverSize { int width = 0, height = 0; };
+  CoverSize cardCoverSizes[RECENT_LIMIT];
+  uint8_t cardCoverSizesRead = 0;
+  CoverSize cardCoverSize(int index);
   void loadCardStats(int index);
-  int drawCardStats(const HomeCardLayout& card);
+  int drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bounds = nullptr);
   void drawRecentCard();
   void drawOtherBookRow(int shown, int ruleY, int rowY, const std::vector<std::string>& titleLines);
   const char* habitSuggestion() const;

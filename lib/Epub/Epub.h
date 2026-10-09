@@ -11,6 +11,7 @@
 #include "Epub/css/CssParser.h"
 
 class ZipFile;
+struct ImageDimensions;
 
 class Epub {
   // the ncx file (EPUB 2)
@@ -90,6 +91,7 @@ class Epub {
   bool generateThumbBmp(int height) const;
   // Locate the cover without building spine, TOC, or reading caches.
   bool generateThumbBmpFromSource(int height);
+  bool readCoverDimensions(const std::string& href, ImageDimensions& dims);
   uint8_t* readItemContentsToBytes(const std::string& itemHref, size_t* size = nullptr,
                                    bool trailingNullByte = false) const;
   bool readItemContentsToStream(const std::string& itemHref, Print& out, size_t chunkSize,

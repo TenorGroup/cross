@@ -1,6 +1,7 @@
 #pragma once
 #include <Utf8.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 
@@ -61,7 +62,7 @@ struct HomeCardLayout {
   int textX = 0, textW = 0;
   int titleY = 0, authorY = 0, excerptY = 0, excerptLines = 0;
   int ruleY = 0, rowY = 0;
-  int statsX = 0, statsRight = 0, statsTop = 0;
+  int statsX = 0, statsRight = 0, statsTop = 0, statsBottom = 0;
 };
 inline HomeCardLayout homeCardLayout(const HomeCardInput& in) {
   constexpr int COVER_W = HOME_CARD_COVER_W, COVER_H = HOME_CARD_COVER_H, COVER_MIN_H = 120;
@@ -110,6 +111,27 @@ inline HomeCardLayout homeCardLayout(const HomeCardInput& in) {
   const int lines = in.excerptLineHeight > 0 ? (excerptBottom - card.excerptY) / in.excerptLineHeight : 0;
   card.excerptLines = in.metadataAboveCover && in.titleLines > 1 ? 0 :
                       lines > EXCERPT_LINES ? EXCERPT_LINES : lines < 0 ? 0 : lines;
+  return card;
+}
+
+struct HomeStatsBounds {
+  int top = 0, bottom = 0;
+};
+
+// Touch covers follow the column's ink; wide covers keep their source ratio and fit the column.
+inline HomeCardLayout homeCoverAlignedToStats(HomeCardLayout card, const HomeStatsBounds& ink,
+                                             const int sourceW, const int sourceH, const int minStatsWidth) {
+  if (sourceW <= 0 || sourceH <= 0 || ink.bottom <= ink.top) return card;
+  const int height = ink.bottom - ink.top;
+  const int widthLimit = card.statsRight - card.coverX - 22 - minStatsWidth;
+  card.coverH = height;
+  card.coverW = std::max(1, static_cast<int>((static_cast<int64_t>(height) * sourceW + sourceH - 1) / sourceH));
+  if (card.coverW > widthLimit) {
+    card.coverW = std::max(1, widthLimit);
+    card.coverH = std::max(1, static_cast<int>(static_cast<int64_t>(card.coverW) * sourceH / sourceW));
+  }
+  card.coverY = ink.top + (height - card.coverH) / 2;
+  card.statsX = card.coverX + card.coverW + 22;
   return card;
 }
 

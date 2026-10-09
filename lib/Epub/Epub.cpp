@@ -11,6 +11,7 @@
 #include <Utf8.h>
 #include <ZipFile.h>
 
+#include "Epub/converters/ImageDimsProbe.h"
 #include "Epub/parsers/ContainerParser.h"
 #include "Epub/parsers/ContentOpfParser.h"
 #include "Epub/parsers/TocNavParser.h"
@@ -1183,6 +1184,20 @@ bool Epub::generateThumbBmp(const int height) const {
   const bool ok = Storage.openFileForRead("EBP", getThumbBmpPath(height), thumb) && thumb.size() > 0;
   thumb.close();
   return ok;
+}
+
+// Probe the original cover header so Home keeps its ratio even before a thumbnail exists.
+bool Epub::readCoverDimensions(const std::string& href, ImageDimensions& dims) {
+  std::string cover = href;
+  if (cover.empty()) {
+    auto metadata = makeUniqueNoThrow<BookMetadataCache::BookMetadata>();
+    auto zip = makeUniqueNoThrow<ZipFile>(filepath);
+    if (!metadata || !zip || !zip->open() ||
+        !parseContentOpf(*metadata, false, false, zip.get())) return false;
+    cover = metadata->coverItemHref;
+  }
+  ImageDimsProbe probe;
+  return readItemContentsToStream(cover, probe, 1024, true) && probe.getDimensions(dims);
 }
 
 // Locates the cover from content.opf alone, without building the spine or the TOC or reading the

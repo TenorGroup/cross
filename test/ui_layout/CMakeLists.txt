@@ -112,3 +112,5 @@ endforeach()
 
 add_test(NAME UiLayout.x3_page_scrollbar COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_x3_page_scrollbar.py" --output "${CMAKE_CURRENT_BINARY_DIR}/x3_page_scrollbar")
 add_test(NAME UiLayout.x4pro_page_scrollbar COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_x4pro_page_scrollbar.py" --output "${CMAKE_CURRENT_BINARY_DIR}/x4pro_page_scrollbar")
+add_test(NAME UiLayout.home_cover_alignment COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_home_cover_alignment.py" --output "${CMAKE_CURRENT_BINARY_DIR}/home_cover_alignment")
+add_test(NAME UiLayout.home_cover_fixed_y_mutation COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_home_cover_alignment.py" --output "${CMAKE_CURRENT_BINARY_DIR}/home_cover_fixed_y_mutation" --mutation)
