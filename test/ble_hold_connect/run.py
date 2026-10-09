@@ -18,7 +18,7 @@ if case == 'T5':
     assert threshold.index('LP_MENU_CONNECT_REMOTE') < threshold.index('return ReaderUtils::BOOKMARK_HOLD_MS')
     utils = (root / 'src/activities/reader/ReaderUtils.h').read_text()
     assert re.search(r'BOOKMARK_HOLD_MS\s*=\s*400\b', utils)
-    source = subprocess.check_output(['git', '-C', str(root), 'show', '71171f3:src/activities/reader/EpubReaderActivity.cpp'], text=True)
+    source = subprocess.check_output(['git', '-C', str(root), 'show', 'v1.0.55:src/activities/reader/EpubReaderActivity.cpp'], text=True)
     def old_cases(text):
         switch = text.split('switch (SETTINGS.longPressMenuFunction) {')[1].split('\n  // Home-key boards')[0]
         switch = re.sub(r'      case CrossPointSettings::LP_MENU_CONNECT_REMOTE:.*?(?=      case |      default:)', '', switch, flags=re.S)
