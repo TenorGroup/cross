@@ -31,6 +31,7 @@ constexpr int CORNER_EPS_PX = 10;     // corner finder tolerance, at least this 
 constexpr int CORNER_EPS_PCT = 10;    // ... or this % of the box diagonal
 constexpr int CORNER_MIN_DEG = 30;    // a bend under this between two pieces is no corner
 constexpr int CLOSE_PCT = 22;         // ring: start-to-end gap at most this % of the path length
+constexpr int RING_OVERLAP_CLOSE_PCT = 27;  // a full turn can end farther from its start
 constexpr int RING_MIN_PX = 30;       // ring: box at least this wide and tall (a row is 64 px)
 constexpr int RING_TURN_DEG = 250;    // ring: winds at least this far round the middle of its box ...
 constexpr int RING_ONE_WAY_PCT = 75;  // ... and at least this % of its winding goes the one way
@@ -321,7 +322,7 @@ inline Result classifyStroke(const Pt* p, int n) {
 
   const int gap = dist(p[0], p[n - 1]);
   const int thin = r.box.x1 - r.box.x0 < r.box.y1 - r.box.y0 ? r.box.x1 - r.box.x0 : r.box.y1 - r.box.y0;
-  if (gap * 100 <= CLOSE_PCT * path && thin >= RING_MIN_PX) {
+  if (gap * 100 <= RING_OVERLAP_CLOSE_PCT * path && thin >= RING_MIN_PX) {
     // How far the stroke winds round the middle of its box. Seen from the middle a ring sweeps
     // one way all round, a figure 8 sweeps back over itself; a shaking finger hardly moves it.
     // A ring is hollow: a stroke through the middle (a flat X, an 8) is none, and seen from the
@@ -339,7 +340,8 @@ inline Result classifyStroke(const Pt* p, int n) {
       }
       prev = a;
     }
-    if (hollow && iabs(net) >= RING_TURN_DEG * 10 && iabs(net) * 100 >= RING_ONE_WAY_PCT * all) {
+    const bool closed = gap * 100 <= CLOSE_PCT * path || iabs(net) >= 3600;
+    if (closed && hollow && iabs(net) >= RING_TURN_DEG * 10 && iabs(net) * 100 >= RING_ONE_WAY_PCT * all) {
       r.kind = Kind::Circle;
       return r;
     }
