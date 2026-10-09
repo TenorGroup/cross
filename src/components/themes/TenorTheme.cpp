@@ -57,6 +57,24 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
   const auto corners = tenorchrome::statusCornerBounds(renderer, lon);
   constexpr int cornerGap = 6;
   bool singleCaptions[4] = {};
+  int iconPositions[4];
+  int leftEdge = corners.leftEnd + cornerGap;
+  for (int index = 0; index < 4; ++index) {
+    iconPositions[index] = buttonPositions[index] + buttonWidth / 2;
+    if (!labels[index] || !*labels[index]) continue;
+    const auto bounds = buttonSymbols::horizontalBounds(labels[index], net);
+    if (bounds.left == 0 && bounds.right == 0) continue;
+    iconPositions[index] = std::max(iconPositions[index], leftEdge + bounds.left);
+    leftEdge = iconPositions[index] + bounds.right + cornerGap + 1;
+  }
+  int rightEdge = corners.rightStart - cornerGap - 1;
+  for (int index = 3; index >= 0; --index) {
+    if (!labels[index] || !*labels[index]) continue;
+    const auto bounds = buttonSymbols::horizontalBounds(labels[index], net);
+    if (bounds.left == 0 && bounds.right == 0) continue;
+    iconPositions[index] = std::min(iconPositions[index], rightEdge - bounds.right);
+    rightEdge = iconPositions[index] - bounds.left - cornerGap - 1;
+  }
 
   // Clear all cells before painting symbols that may extend beyond their original cell.
   for (int i = 0; i < 4; i++) {
@@ -79,12 +97,7 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
     const int x = buttonPositions[i];
     const int top = pageHeight - buttonY;
     if (grayscale) continue;
-    const auto bounds = buttonSymbols::horizontalBounds(labels[i], net);
-    int iconX = x + buttonWidth / 2;
-    if (bounds.left != 0 || bounds.right != 0) {
-      if (i == 0) iconX = std::max(iconX, corners.leftEnd + cornerGap + bounds.left);
-      if (i == 3) iconX = std::min(iconX, corners.rightStart - cornerGap - 1 - bounds.right);
-    }
+    const int iconX = iconPositions[i];
     if (!SETTINGS.tenorButtonSymbols ||
         !buttonSymbols::drawLabel(renderer, labels[i], iconX, iconAnchor, net)) {
       if (singleCaptions[i]) {
@@ -100,7 +113,7 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
         drawHintLabel(renderer, SMALL_FONT_ID, labels[i], x, buttonWidth, top, buttonHeight - vachCao - 2, textYOffset);
       }
     }
-    renderer.fillRectDither(x, pageHeight - vachCao - 1, buttonWidth, vachCao, Color::LightGray);
+    renderer.fillRectDither(x, pageHeight - vachCao, buttonWidth, vachCao, Color::LightGray);
   }
 
   if (!grayscale) tenorchrome::drawStatus(renderer);

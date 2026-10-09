@@ -127,7 +127,7 @@ Letter letterOf(const Size s, const bool af, const uint32_t cp) {
 int stepOf(const GfxRenderer& r, const Size s, const bool af, const int pos, const uint32_t cp, const Letter& letter) {
   if (cp == MARGIN_PIN) return 0;
   if (cp == SCRAWL) return 3 * stepOf(r, s, false, pos, '.', {nullptr, logic::NO_WARP});
-  if (penDrawn(cp)) return 26;  // a mark is some 20 px across
+  if (penDrawn(cp)) return 28 + 2 * stepOf(r, s, false, pos, ' ', {nullptr, logic::NO_WARP});
   if (penDegree(cp)) return 2 * degreeRadius(pixelsOf(s)) + 4;
   char one[5];
   encode(cp, one);
@@ -363,6 +363,7 @@ int width(const GfxRenderer& r, const Size s, const char* utf8, const bool strai
 }
 
 int ascent(const Size s) { return ASCENT[static_cast<int>(s)]; }
+
 
 std::string fit(const GfxRenderer& r, const Size s, const std::string& utf8, const int maxWidth) {
   std::string out = utf8ComposeNfc(utf8);
@@ -649,28 +650,46 @@ void statusBar(const GfxRenderer& r, const char* btn1, const char* btn2, const c
   const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
   const bool clockLeft = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
   battery(r, clockLeft ? w - 56 : 14, y, level, SETTINGS.batteryPercentShown(false));
-  // The date has no room beside the clock (the Down mark): it sits in the gap between the Confirm and Up marks.
   char clock[12] = "", date[8];
-  if (clockText(clock, sizeof(clock), date, sizeof(date), true)) {
-    text(r, Size::S22, clockLeft ? 14 : w - 14 - width(r, Size::S22, clock), y + 8, clock);
-    if (*date) text(r, Size::S22, (w >= 528 ? 264 : 240) - width(r, Size::S22, date) / 2, y + 8, date);
-  }
+  const bool hasClock = clockText(clock, sizeof(clock), date, sizeof(date), true);
+  const int clockWidth = hasClock ? width(r, Size::S22, clock) : 0;
+  if (hasClock) text(r, Size::S22, clockLeft ? 14 : w - 14 - clockWidth, y + 8, clock);
   // Front Left and Right walk up and down the screen, so their marks point up and down.
   static constexpr Mark MARKS[6] = {Mark::Tick, Mark::Back, Mark::Up, Mark::Down, Mark::Left, Mark::Right};
-  static constexpr int WIDE[4] = {105, 197, 331, 423}, NARROW[4] = {98, 186, 294, 382};
+  static constexpr int WIDE[5] = {105, 197, 264, 331, 423}, NARROW[5] = {98, 186, 240, 294, 382};
   const int* centres = w >= 528 ? WIDE : NARROW;
-  const char* words[4] = {btn1, btn2, btn3, btn4};
-  const int leftEnd = 62;
-  const int rightEnd = w - 14 - (*clock ? width(r, Size::S22, clock) + 10 : 0);
-  for (int index = 0; index < 4; ++index) {
+  const char* words[5] = {btn1, btn2, hasClock ? date : "", btn3, btn4};
+  const int leftEnd = clockLeft ? 18 + clockWidth : 60;
+  const int rightEnd = clockLeft ? w - 60 : w - 18 - clockWidth;
+  int positions[5], spans[5] = {};
+  std::string fitted[5];
+  int leftEdge = leftEnd + 6;
+  for (int index = 0; index < 5; ++index) {
     if (!words[index] || !*words[index]) continue;
     const int id = buttonSymbols::labelId(words[index]);
     if (id >= 0) {
-      mark(r, MARKS[id], std::clamp(centres[index], leftEnd + 10, rightEnd - 10), y);
+      spans[index] = 28;
     } else {
-      const std::string word = fit(r, Size::S22, words[index], std::min(84, rightEnd - leftEnd));
-      const int span = width(r, Size::S22, word.c_str());
-      text(r, Size::S22, std::clamp(centres[index] - span / 2, leftEnd, rightEnd - span), y + 8, word.c_str());
+      fitted[index] = index == 2 ? words[index]
+                                : fit(r, Size::S22, words[index], std::min(84, (rightEnd - leftEnd - 24) / 5));
+      spans[index] = width(r, Size::S22, fitted[index].c_str()) + 8;
+    }
+    positions[index] = std::max(centres[index] - spans[index] / 2, leftEdge);
+    leftEdge = positions[index] + spans[index] + 6;
+  }
+  int rightEdge = rightEnd - 6;
+  for (int index = 4; index >= 0; --index) {
+    if (!spans[index]) continue;
+    positions[index] = std::min(positions[index], rightEdge - spans[index]);
+    rightEdge = positions[index] - 6;
+  }
+  for (int index = 0; index < 5; ++index) {
+    if (!words[index] || !*words[index]) continue;
+    const int id = buttonSymbols::labelId(words[index]);
+    if (id >= 0) {
+      mark(r, MARKS[id], positions[index] + spans[index] / 2, y);
+    } else {
+      text(r, Size::S22, positions[index] + 4, y + 8, fitted[index].c_str());
     }
   }
 }

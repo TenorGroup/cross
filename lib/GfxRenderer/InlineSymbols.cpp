@@ -97,10 +97,10 @@ void drawShape(const GfxRenderer& r, Shape shape, int x, int y, int size, bool b
   }
   if (shape == Shape::Back) {
     const auto& glyph = backGlyph(size);
-    drawGlyph(r, glyph, x, y, (glyph.height + 1) / 2, black);
+    drawGlyph(r, glyph, x, y, glyph.height / 2, black);
   } else if (shape == Shape::Select) {
     const auto& glyph = selectGlyph(size);
-    drawGlyph(r, glyph, x, y, (glyph.height + 1) / 2, black);
+    drawGlyph(r, glyph, x, y, glyph.height / 2, black);
   } else if (shape == Shape::Erase) {
     r.drawLine(x - h, y, x - h / 2, y - h, black);
     r.drawLine(x - h, y, x - h / 2, y + h, black);
@@ -141,10 +141,12 @@ int text(const GfxRenderer& r, int font, int x, int y, const char* str, bool dra
         advance += r.getTextAdvanceX(font, spec.label, style);
       } else {
         const int size = spec.shape == Shape::Star ? 12 : std::max(12, r.getTextHeight(font) * 3 / 4);
+        const int inkWidth = handwritten ? size + 6 : std::max(size + 1, glyphWidth(spec.shape, size));
+        const int gap = std::max(5, r.getTextAdvanceX(font, " ", style));
         if (draw)
-          drawShape(r, spec.shape, x + advance + size / 2 + 5, y + r.getFontAscenderSize(font) - size / 2 - 2, size,
+          drawShape(r, spec.shape, x + advance + inkWidth / 2 + gap, y + r.getFontAscenderSize(font) - size / 2 - 2, size,
                     black);
-        advance += size + 10;
+        advance += inkWidth + 2 * gap;
       }
       p += 3;
     } else {

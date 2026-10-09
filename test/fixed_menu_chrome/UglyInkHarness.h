@@ -5,6 +5,10 @@ namespace ugly {
 enum class Size { S22 };
 enum class Mark { Left, Right, Up, Down, Tick, Back };
 enum class Circle { Word, Object, Row };
+inline bool traceStatus = false;
+struct TextRun { int left, baseline; std::string value; };
+inline std::vector<TextRun> statusText;
+inline std::vector<std::array<int, 3>> statusMarks;
 struct Box { int x0, y0, x1, y1; };
 inline int ascent(Size) { return 20; }
 inline int width(const GfxRenderer&, Size, const char* value) {
@@ -12,11 +16,12 @@ inline int width(const GfxRenderer&, Size, const char* value) {
   const EpdFont font(&ugly_22);
   while (*value) {
     const auto* glyph = font.getGlyph(GfxRenderer::next(value));
-    if (glyph) span += glyph->advanceX / 16;
+    if (glyph) span += fp4::toPixel(glyph->advanceX);
   }
   return span;
 }
 inline int text(const GfxRenderer& renderer, Size size, int left, int baseline, const char* value) {
+  if (traceStatus) statusText.push_back({left, baseline, value});
   renderer.paintedText.emplace_back(value);
   renderer.ys.push_back(baseline);
   const int span = width(renderer, size, value);
@@ -30,7 +35,7 @@ inline int text(const GfxRenderer& renderer, Size size, int left, int baseline, 
         if (font.data->bitmap[glyph->dataOffset + bit / 8] & (128 >> (bit % 8)))
           renderer.drawPixel(left + glyph->left + column, baseline - glyph->top + row, true);
       }
-    left += glyph->advanceX / 16;
+    left += fp4::toPixel(glyph->advanceX);
   }
   return span;
 }

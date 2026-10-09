@@ -18,6 +18,7 @@ parser.add_argument('--mutate-bar', action='store_true')
 parser.add_argument('--shell', choices=('buttons', 'touch', 'ugly'), default='buttons')
 parser.add_argument('--ugly-contract', action='store_true')
 parser.add_argument('--ugly-status-contract', action='store_true')
+parser.add_argument('--footer-spacing', action='store_true')
 parser.add_argument('--settings-language', choices=('vietnamese', 'english', 'chinese'))
 args = parser.parse_args()
 if args.ugly_status_contract:
@@ -165,6 +166,40 @@ if args.phase2:
         'id == UI_12_FONT_ID ? bodyFontData().advanceY : font().advanceY;')
 fixture = fixture.replace('tenorButtonSymbols = true;',
                           'tenorButtonSymbols = true; bool tipsEnabled = true;')
+if args.footer_spacing:
+    fixture = '#include <InlineSymbolBitmaps.h>\n' + fixture
+    fixture = fixture.replace('int getScreenWidth() const { return 528; }',
+                              'int screenWidth = 528; int getScreenWidth() const { return screenWidth; }')
+    fixture = fixture.replace('StatusCornerBounds statusCornerBounds(const GfxRenderer&, bool) { return {65, 435}; }',
+                              'StatusCornerBounds measuredCorners{65, 435};\n'
+                              'StatusCornerBounds statusCornerBounds(const GfxRenderer&, bool) { return measuredCorners; }')
+    fixture = fixture.replace(function(fixture, 'SymbolBounds horizontalBounds('), '''
+      const inlineSymbolBitmaps::Glyph& footerGlyph(const char* label, int net) {
+        using namespace inlineSymbolBitmaps;
+        const bool large = net == 18;
+        if (*label == 'b') return large ? kBackNet18 : kBackNet14;
+        if (*label == 'c') return large ? kSelectNet18 : kSelectNet14;
+        if (*label == 'u') return large ? kUpNet18 : kUpNet14;
+        return large ? kDownNet18 : kDownNet14;
+      }
+      SymbolBounds horizontalBounds(const char* label, int net) {
+        const int width = footerGlyph(label, net).width;
+        return {width / 2, width - 1 - width / 2};
+      }
+    ''')
+    fixture = fixture.replace(function(fixture, 'bool drawLabel('), '''
+      std::vector<std::array<int, 2>> paintedBounds;
+      bool drawLabel(const GfxRenderer& renderer, const char* label, int center, int top, int net) {
+        const auto& glyph = footerGlyph(label, net);
+        const int left = center - glyph.width / 2;
+        paintedBounds.push_back({left, left + glyph.width - 1});
+        for (int row = 0; row < glyph.height; ++row)
+          for (int column = 0; column < glyph.width; ++column)
+            if (glyph.rows[row] & (1u << (glyph.width - column - 1)))
+              renderer.drawPixel(left + column, top - glyph.height / 2 + row, true);
+        return true;
+      }
+    ''')
 if args.shell == 'ugly' or args.ugly_contract:
     fixture = fixture.replace('bool uglyParts() { return false; }', 'bool uglyParts() { return true; }')
 fixture = fixture.replace('inline bool enabled() { return true; }',
@@ -285,7 +320,10 @@ if args.ugly_contract:
     for signature in ('void dot(', 'void stroke(const GfxRenderer& r, int x0, int y0, const int x1',
                       'void penStroke(', 'void penTick(', 'int sixteenths(', 'void mark(', 'void circle('):
         if signature in ink:
-            fixture += function(ink, signature) + '\n'
+            extracted = function(ink, signature)
+            if signature == 'void mark(':
+                extracted = extracted.replace('{', '{\nif (traceStatus) statusMarks.push_back({static_cast<int>(m), cx, cy});', 1)
+            fixture += extracted + '\n'
     fixture += function(read_source('src/shells/ugly/UglyIconInk.cpp'), 'void icon(') + '\n'
     fixture += '}\n'
     fixture += '\nnamespace ugly {\n' + function(ink, 'void pageHints(') + '\n}\n'
@@ -336,7 +374,7 @@ if args.ugly_contract:
     for signature in ('const char* BlePageTurnerActivity::uglyTip()', 'void BlePageTurnerActivity::drawFooter()'):
         fixture += function(ble, signature) + '\n'
     if args.ugly_status_contract:
-        fixture = fixture.replace('int clockFormat = 0;', '''int clockFormat = 0, clockShowInHeader = 0;
+        fixture = fixture.replace('int clockFormat = 0;', '''int clockFormat = 0, clockShowInHeader = 0, statusBarClock = 1;
           bool percent = true;
           bool batteryPercentShown(bool) const { return percent; }
         ''')
@@ -344,13 +382,17 @@ if args.ugly_contract:
                                   'inline bool valid = true; inline bool hasValidTime() { return valid; }')
         fixture = fixture.replace('struct { bool formatTime(char*, int, bool) const { return false; } } halClock;', '''
           struct {
-            bool formatTime(char* out, size_t count, bool) const { std::snprintf(out, count, "09:28"); return true; }
+            std::string twelve = "12:59 PM";
+            bool formatTime(char* out, size_t count, bool twelve) const {
+              std::snprintf(out, count, "%s", twelve ? this->twelve.c_str() : "09:28"); return true;
+            }
             bool getDateTime(uint16_t& year, uint8_t& month, uint8_t& day, uint8_t&, uint8_t&) const {
               year = 2026; month = 10; day = 9; return true;
             }
           } halClock;
           struct { int level = 100; int getDisplayedBatteryPercentage() const { return level; } } powerManager;
-          struct CrossPointSettings { enum { CLOCK_HEADER_HIDE, CLOCK_HEADER_TIME, CLOCK_HEADER_TIME_DATE }; };
+          struct CrossPointSettings { enum { CLOCK_HEADER_HIDE, CLOCK_HEADER_TIME, CLOCK_HEADER_TIME_DATE };
+            enum { STATUS_BAR_CLOCK_RIGHT = 1, STATUS_BAR_CLOCK_LEFT = 2 }; };
           struct MappedInputManager {
             bool reverse = false;
             struct Labels { const char *btn1, *btn2, *btn3, *btn4; };
@@ -601,7 +643,7 @@ else:
                     fixture += '\n' + declaration.replace('int tabCount()', 'int EpubReaderMenuActivity::tabCount()').replace(' override', '')
         fixture += Path(__file__).with_name('Phase2ChromeTest.cpp').read_text()
     fixture += Path(__file__).with_name('PathGeometryTest.h').read_text()
-    fixture += Path(__file__).with_name('X3ScreenLayoutTest.cpp').read_text()
+    fixture += Path(__file__).with_name('FooterSpacingTest.cpp' if args.footer_spacing else 'X3ScreenLayoutTest.cpp').read_text()
 args.work.mkdir(parents=True, exist_ok=True)
 unit = args.work / 'layout.cpp'
 unit.write_text('#include <cstdlib>\n#include "BitmapFixture.h"\n' + fixture)

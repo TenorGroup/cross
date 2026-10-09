@@ -19,6 +19,9 @@ add_test(NAME FixedMenuChrome.BleLayout
 add_test(NAME FixedMenuChrome.FavoriteRoot
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/favorite_root.py"
           --work "${CMAKE_CURRENT_BINARY_DIR}/favorite-root")
+add_test(NAME FixedMenuChrome.FooterSpacing
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run.py"
+          --footer-spacing --work "${CMAKE_CURRENT_BINARY_DIR}/footer-spacing")
 add_test(NAME FixedMenuChrome.AllScreenBars
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/all_bars.py"
           --work "${CMAKE_CURRENT_BINARY_DIR}/all-bars")

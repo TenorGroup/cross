@@ -127,6 +127,29 @@ TEST(UglyIcons, RasterIsDeterministicVariedBoundedAndHeapFree) {
   }
 }
 
+TEST(UglyIcons, NavigationInkIsCenteredForEverySeed) {
+  using ugly::icons::Id;
+  for (const auto id : {Id::Tick, Id::Back, Id::Left, Id::Right, Id::Up, Id::Down}) {
+    for (uint32_t seed = 0; seed < 100; ++seed) {
+      GfxRenderer renderer;
+      ugly::icon(renderer, id, {8, 8, 24, 24}, seed);
+      int minX = 64, minY = 64, maxX = -1, maxY = -1;
+      for (int row = 0; row < 64; ++row) {
+        for (int column = 0; column < 64; ++column) {
+          if (!renderer.pixels[row * 64 + column]) continue;
+          minX = std::min(minX, column);
+          minY = std::min(minY, row);
+          maxX = std::max(maxX, column);
+          maxY = std::max(maxY, row);
+        }
+      }
+      ASSERT_GE(maxX, minX);
+      EXPECT_LE(std::abs(minX + maxX - 40), 1) << static_cast<int>(id) << ':' << seed;
+      EXPECT_LE(std::abs(minY + maxY - 40), 1) << static_cast<int>(id) << ':' << seed;
+    }
+  }
+}
+
 TEST(UglyIcons, EntryAndPageSeedsSurviveIdleRepaint) {
   ugly::icons::FrameState frame;
   frame.enter(42);

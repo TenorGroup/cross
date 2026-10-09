@@ -11,6 +11,7 @@ add_executable(ButtonSymbolsBackShapeTest
   ${REPO_ROOT}/src/components/ButtonSymbols.cpp
   ${REPO_ROOT}/lib/EpdFont/EpdFont.cpp
   ${REPO_ROOT}/lib/EpdFont/EpdFontFamily.cpp
+  ${REPO_ROOT}/lib/EpdFont/SdCardFont.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
   ${REPO_ROOT}/lib/Epub/Epub/blocks/TextBlock.cpp
   ${REPO_ROOT}/lib/MiniBidi/BidiUtils.cpp
@@ -21,6 +22,7 @@ target_include_directories(ButtonSymbolsBackShapeTest BEFORE PRIVATE
   stubs
 )
 target_include_directories(ButtonSymbolsBackShapeTest PRIVATE
+  ${REPO_ROOT}/test/sd_card_font/stubs
   ${REPO_ROOT}/src
   ${REPO_ROOT}/src/components
   ${REPO_ROOT}/lib/EpdFont
@@ -47,3 +49,4 @@ add_test(NAME ButtonSymbols.BackShape COMMAND ButtonSymbolsBackShapeTest)
 add_test(NAME ButtonSymbols.Chevrons COMMAND ButtonSymbolsBackShapeTest --chevrons)
 add_test(NAME ButtonSymbols.EdgeChevrons COMMAND ButtonSymbolsBackShapeTest --edge-chevrons)
 add_test(NAME ButtonSymbols.Family COMMAND ButtonSymbolsBackShapeTest --family)
+add_test(NAME ButtonSymbols.InlineSpacing COMMAND ButtonSymbolsBackShapeTest --inline-spacing)

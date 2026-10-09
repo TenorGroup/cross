@@ -1,5 +1,6 @@
 #include "UglyIconInk.h"
 
+#include <algorithm>
 #include <atomic>
 
 #include "UglyInk.h"
@@ -15,9 +16,23 @@ uint32_t iconFrameSeed() { return frameSeed.load(std::memory_order_relaxed); }
 void icon(const GfxRenderer& renderer, icons::Id id, icons::Rect box, uint32_t seed, bool black) {
   seed ^= static_cast<uint32_t>(box.x) * 73856093u ^ static_cast<uint32_t>(box.y) * 19349663u;
   const int width = std::min(box.width, box.height) >= 22 ? 2 : 1;
+  int offsetX = 0, offsetY = 0;
+  if (id == icons::Id::Tick || id == icons::Id::Back || id == icons::Id::Left || id == icons::Id::Right ||
+      id == icons::Id::Up || id == icons::Id::Down) {
+    int minX = box.x + box.width, minY = box.y + box.height, maxX = box.x, maxY = box.y;
+    icons::walk(id, box, seed, [&](icons::Point first, icons::Point second) {
+      minX = std::min({minX, (first.x + 128) / 256, (second.x + 128) / 256});
+      minY = std::min({minY, (first.y + 128) / 256, (second.y + 128) / 256});
+      maxX = std::max({maxX, (first.x + 128) / 256, (second.x + 128) / 256});
+      maxY = std::max({maxY, (first.y + 128) / 256, (second.y + 128) / 256});
+    });
+    const int tail = black ? width - 1 : 0;
+    offsetX = (2 * (box.x + box.width / 2) - minX - maxX - tail) / 2;
+    offsetY = (2 * (box.y + box.height / 2) - minY - maxY - tail) / 2;
+  }
   icons::walk(id, box, seed, [&](icons::Point first, icons::Point second) {
-    const int x0 = (first.x + 128) / 256, y0 = (first.y + 128) / 256;
-    const int x1 = (second.x + 128) / 256, y1 = (second.y + 128) / 256;
+    const int x0 = (first.x + 128) / 256 + offsetX, y0 = (first.y + 128) / 256 + offsetY;
+    const int x1 = (second.x + 128) / 256 + offsetX, y1 = (second.y + 128) / 256 + offsetY;
     if (black) penStroke(renderer, x0, y0, x1, y1, width);
     else renderer.drawLine(x0, y0, x1, y1, false);
   });

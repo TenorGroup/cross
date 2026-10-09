@@ -13,6 +13,7 @@ enum class StrId {
   STR_FOLDER_HOLD,
   STR_HOME_FAVORITES_HINT,
   STR_FILE_NOT_FOUND,
+  STR_REMOVE_FROM_RECENTS_FAILED,
   STR_MENU_SAVE_FAILED,
   STR_STATS_RESET_FAILED,
   STR_STATS_RESET_PENDING,
@@ -85,6 +86,7 @@ constexpr auto STR_DIR_DOWN = StrId::STR_DIR_DOWN;
 constexpr auto STR_FOLDER_HOLD = StrId::STR_FOLDER_HOLD;
 constexpr auto STR_HOME_FAVORITES_HINT = StrId::STR_HOME_FAVORITES_HINT;
 constexpr auto STR_FILE_NOT_FOUND = StrId::STR_FILE_NOT_FOUND;
+constexpr auto STR_REMOVE_FROM_RECENTS_FAILED = StrId::STR_REMOVE_FROM_RECENTS_FAILED;
 constexpr auto STR_MENU_SAVE_FAILED = StrId::STR_MENU_SAVE_FAILED;
 constexpr auto STR_HABIT_SAVE_FAILED = StrId::STR_HABIT_SAVE_FAILED;
 constexpr auto STR_CALIBRE_URL_HINT = StrId::STR_CALIBRE_URL_HINT;
@@ -123,6 +125,7 @@ const char* tr(StrId id) {
   // PHASE2_LOOKUP
   switch (id) {
     case StrId::STR_FILE_NOT_FOUND: return "File not found";
+    case StrId::STR_REMOVE_FROM_RECENTS_FAILED: return "Could not remove book";
     case StrId::STR_STATS_RESET_FAILED: return "Stats reset failed";
     case StrId::STR_STATS_RESET_PENDING: return "Stats reset pending";
     case StrId::STR_MENU_SAVE_FAILED: return "Menu save failed";
@@ -180,6 +183,7 @@ struct HomeActivity : UiListActivity {
   bool favoriteFileMissing = false, favoriteSaveFailed = false;
   bool favoritesAvailable = true;
   std::optional<StrId> statsResetTip;
+  bool recentRemovalFailed = false;
   int ring = 1;
   int ringPos() const { return ring; }
   bool supportsFavorites() const { return favoritesAvailable && activeTabId != Tab::STATS; }

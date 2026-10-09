@@ -14,6 +14,12 @@
 #include <InlineSymbols.h>
 #include <InlineSymbolBitmaps.h>
 #include <TenorMenuChrome.h>
+#include <fontIds.h>
+#include <builtinFonts/geist_8_regular.h>
+#include <builtinFonts/geist_10_regular.h>
+#include <builtinFonts/geist_12_regular.h>
+#include <builtinFonts/geist_14_regular.h>
+#include <builtinFonts/geist_16_regular.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -131,6 +137,35 @@ int main(int argc, char** argv) {
   constexpr int kCx = 200, kCy = 200;
   constexpr int kRadius = 40;
 
+  if (argc == 2 && std::strcmp(argv[1], "--inline-spacing") == 0) {
+    const EpdFontData* fonts[] = {&geist_8_regular, &geist_10_regular, &geist_12_regular,
+                                &geist_14_regular, &geist_16_regular};
+    const char* markers[] = {"\xEE\x84\x81", "\xEE\x84\x80", "\xEE\x84\x82",
+                            "\xEE\x84\x83", "\xEE\x84\x84", "\xEE\x84\x85"};
+    for (const auto* data : fonts) {
+      const EpdFont font(data);
+      renderer.insertFont(SMALL_FONT_ID, EpdFontFamily(&font));
+      const int space = renderer.getTextAdvanceX(SMALL_FONT_ID, " ", EpdFontFamily::REGULAR);
+      for (const char* marker : markers) {
+        clear();
+        const int advance = inlineSymbols::text(renderer, SMALL_FONT_ID, kCx, kCy, marker, true, true,
+                                                EpdFontFamily::REGULAR);
+        const auto bounds = scanAround(kCx, kCy, 80);
+        const int leftGap = bounds.minX - kCx;
+        const int rightGap = kCx + advance - bounds.maxX - 1;
+        check(bounds.any && leftGap >= space && rightGap >= space,
+              "inline symbol leaves at least one font space on both sides");
+        check(advance == inlineSymbols::text(renderer, SMALL_FONT_ID, kCx, kCy, marker, false, true,
+                                              EpdFontFamily::REGULAR),
+              "inline measurement and painting agree");
+        std::printf("font=%d marker=%d space=%d left=%d right=%d\n", data->ascender,
+                    static_cast<unsigned char>(marker[2]) - 128, space, leftGap, rightGap);
+      }
+    }
+    std::printf("%s: 30 inline spacing cases\n", failures ? "RED" : "GREEN");
+    return failures ? 1 : 0;
+  }
+
   if (argc == 2 && std::strcmp(argv[1], "--family") == 0) {
     const char* markers[] = {"\xEE\x84\x81", "\xEE\x84\x80", "\xEE\x84\x82",
                             "\xEE\x84\x83", "\xEE\x84\x84", "\xEE\x84\x85"};
@@ -149,7 +184,7 @@ int main(int argc, char** argv) {
         const int opticalHeight = symbol == 2 || symbol == 3 ? width : height;
         check(std::abs(opticalHeight - span) <= 1, "family optical span differs by more than 1 pixel");
         check(bounds.minX + bounds.maxX == 2 * kCx - (width % 2 == 0), "family horizontal center moved");
-        check(std::abs(bounds.minY + bounds.maxY - (2 * kCy - 1)) <= 1, "family vertical center moved");
+        check(std::abs(bounds.minY + bounds.maxY - 2 * kCy) <= 1, "family vertical center moved");
         const auto cell = buttonSymbols::horizontalBounds(markers[symbol], net);
         const auto painted = snapshot(kCx, kCy, kRadius);
         for (int row = kCy - kRadius; row <= kCy + kRadius; ++row)
@@ -213,7 +248,7 @@ int main(int argc, char** argv) {
                     (bounds.minY + bounds.maxY) / 2.0 - kCy,
                     static_cast<size_t>(std::count(painted.begin(), painted.end(), 1)), stroke);
         if (net == 14 && symbol < 2) {
-          renderer.fillRectDither(kCx - 40, kCy + 8, 80, 3, Color::LightGray);
+          renderer.fillRectDither(kCx - 40, kCy + 9, 80, 3, Color::LightGray);
           for (int row = bounds.minY; row <= bounds.maxY; ++row)
             for (int column = bounds.minX; column <= bounds.maxX; ++column)
               check(isInk(column, row) ==
@@ -364,7 +399,7 @@ int main(int argc, char** argv) {
       buttonSymbols::drawLabel(renderer, back ? "\xEE\x84\x81" : "\xEE\x84\x80", kCx, kCy, net);
       for (int offsetY = -kRadius; offsetY <= kRadius; ++offsetY) {
         for (int offsetX = -kRadius; offsetX <= kRadius; ++offsetX) {
-          const int row = offsetY + (glyph.height + 1) / 2;
+          const int row = offsetY + glyph.height / 2;
           const int column = offsetX + glyph.width / 2;
           const bool expected = row >= 0 && row < glyph.height && column >= 0 && column < glyph.width &&
                                 (glyph.rows[row] & (1u << (glyph.width - 1 - column)));
