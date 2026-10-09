@@ -5,8 +5,10 @@
 #include <Icon.h>
 #include "components/icons/tenorHomeTabIcons.h"
 #include "components/icons/tenorReaderTabIcons.h"
+#include "components/icons/tenorTextTabIcons.h"
 namespace readermenu {
 constexpr int X3_TAB_COUNT = 5, TAB_COUNT = 4;
+// PHASE2_READER_ICONS
 }
 namespace fui = freeink::ui;
 namespace tenorchrome {
@@ -61,7 +63,7 @@ struct XtcReaderChapterSelectionActivity {
   void drawX3Content() const;
 };
 struct EpubReaderMenuActivity {
-  enum class MenuTab { FAVORITES, POSITION, READING, TOOLS, TEXT };
+  using MenuTab = readermenu::Tab;
   GfxRenderer& renderer;
   MenuTab activeTabId = MenuTab::FAVORITES;
   int currentPage = 123, totalPages = 999, bookProgressPercent = 100;

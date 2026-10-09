@@ -13,6 +13,7 @@
 
 class GfxRenderer;
 class MappedInputManager;
+namespace tenorchrome { struct X3ScreenLayout; }
 
 namespace readerugly {
 // The words in hand where the layout put them (uglychrome::words); returns where the ink went, for the circle.
@@ -47,6 +48,9 @@ class ReaderToolbarUi : public UiAppHost {
 #endif
   // The tabs, in the order readermenu::Tool gives them.
   static constexpr int kToolCount = readermenu::TOOL_COUNT;
+  static bool usesX3Bar();
+  static int toolCount();
+  static int textTool();
 
   struct Model {
     bool panel = false;  // false = toolbar, true = a Contents/Text/More panel
@@ -70,6 +74,7 @@ class ReaderToolbarUi : public UiAppHost {
     std::function<bool(int)> rowPinned;
     // Drawn in the list's place when it has no rows (an empty Favorites).
     const char* emptyText = nullptr;
+    const char* tipText = nullptr;
     // A row that opens a list or another screen ends in the grey chevron, as in Settings.
     std::function<bool(int)> rowOpens;
     // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..3, -1 none.
@@ -119,6 +124,8 @@ class ReaderToolbarUi : public UiAppHost {
   int sheetRows() const { return sheetRows_; }
   // Bounds of the last painted panel sheet, used by nested value pickers.
   freeink::ui::Rect panelRect() const { return skinFrame_; }
+  tenorchrome::X3ScreenLayout screenLayout() const;
+  freeink::ui::Rect toolRect(int index) const;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   int scrollRows(const MappedInputManager& input, int count) const;
 #endif
@@ -132,6 +139,7 @@ class ReaderToolbarUi : public UiAppHost {
   void buildPanel(UiScreen& screen);
   void buildSheet(UiScreen& screen, const freeink::ui::SheetProps& props, int16_t height);
   void buildToolRow(UiScreen& screen, freeink::ui::LayoutAnchor anchor, int16_t sideInset);
+  void buildX3Bar(UiScreen& screen);
   void paintUgly();
   void fadeMoreBelow();
   int16_t fadeRight_ = 0;  // buttons: the fade under the last full row stops short of the scroll bar

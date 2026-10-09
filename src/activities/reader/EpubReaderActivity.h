@@ -168,7 +168,7 @@ class EpubReaderActivity final : public ReaderActivity {
   // over the page instead of pushing the full-screen list menu. Select opens the
   // Toolbar; its tools open the Contents/Text/More bottom-sheet panels.
   // Favorites: the X4 Pro's 4th tool (founder 06/10).
-  enum class Overlay { None, Toolbar, Contents, Text, More, Favorites };
+  enum class Overlay { None, Toolbar, Contents, Text, More, Favorites, Reading };
   Overlay overlay = Overlay::None;
   // The tool in focus, by its place on the bar (readermenu::Tool). The menu opens on Contents, as it always has.
   int focusedTool = static_cast<int>(readermenu::Tool::CONTENTS);
@@ -442,6 +442,8 @@ class EpubReaderActivity final : public ReaderActivity {
   void releaseTextCachesBeforeOverlaySnapshot();
   // More panel rows.
   void buildMoreActions();
+  int panelActionRow(int row) const;
+  bool actionPanel() const;
   std::string moreRowName(int row) const;
   std::string moreRowValue(int row) const;
   void activateMoreRow(int row);

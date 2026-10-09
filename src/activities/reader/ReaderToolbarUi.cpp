@@ -18,6 +18,7 @@
 #include "components/icons/readerToolbarIcons.h"
 #include "components/icons/readerToolbarTabIcons.h"
 #include "components/icons/tenorHomeTabIcons.h"
+#include "components/icons/X3ReaderTabIcons.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyChrome.h"
 #include "shells/ugly/UglySleep.h"
@@ -64,6 +65,43 @@ constexpr int kLandscapePanelHeightPercent = 88;
 }  // namespace
 
 ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& renderer) : UiAppHost(renderer), renderer_(&renderer) {}
+
+bool ReaderToolbarUi::usesX3Bar() { return tenorchrome::x3ScreenLayoutEnabled() && !shell::isUgly(); }
+
+int ReaderToolbarUi::toolCount() { return usesX3Bar() ? readermenu::X3_TAB_COUNT : kToolCount; }
+
+int ReaderToolbarUi::textTool() {
+  return usesX3Bar() ? static_cast<int>(readermenu::Tab::TEXT) : static_cast<int>(readermenu::Tool::TEXT);
+}
+
+tenorchrome::X3ScreenLayout ReaderToolbarUi::screenLayout() const {
+  return tenorchrome::x3ScreenLayout(*renderer_, tenorchrome::tipHeight(*renderer_, model_.tipText, 4));
+}
+
+fui::Rect ReaderToolbarUi::toolRect(const int index) const {
+  const auto bar = screenLayout().barRect;
+  const int first = bar.x + 8 + tenorchrome::BAR_TAB_INSET + tenorchrome::BAR_TAB_W / 2;
+  const int last = bar.x + bar.width - 9 - tenorchrome::BAR_TAB_INSET - tenorchrome::BAR_TAB_W / 2;
+  const int center = first + (2 * (last - first) * index + readermenu::X3_TAB_COUNT - 1) /
+                                (2 * (readermenu::X3_TAB_COUNT - 1));
+  return {static_cast<int16_t>(center - tenorchrome::BAR_TAB_W / 2), static_cast<int16_t>(bar.y),
+          tenorchrome::BAR_TAB_W, static_cast<int16_t>(bar.height)};
+}
+
+void ReaderToolbarUi::buildX3Bar(UiScreen& screen) {
+  const auto layout = screenLayout();
+  renderer_->fillRect(0, layout.bodyRect.bottom(), renderer_->getScreenWidth(),
+                      layout.barRect.bottom() - layout.bodyRect.bottom(), false);
+  for (int index = 0; index < readermenu::X3_TAB_COUNT; ++index) {
+    const bool active = model_.activeTool == index;
+    const auto& icon = readermenu::x3TabIcon(static_cast<readermenu::Tab>(index), active);
+    const auto slot = toolRect(index);
+    tenorchrome::drawBarTab(*renderer_, slot.x + slot.width / 2, slot.y, slot.height, icon.bits, icon.w, icon.h,
+                            active);
+    screen.frame().hit(slot, ACTION_TOOL, static_cast<int16_t>(index), fui::InputTouch);
+  }
+  tenorchrome::drawTipInRect(*renderer_, model_.tipText, layout.tipRect, 4);
+}
 
 void ReaderToolbarUi::begin() {
   mark_.reset();
@@ -147,10 +185,16 @@ void ReaderToolbarUi::screenFn(UiScreen& screen, void* user) {
   } else {
     self->buildToolbar(screen);
   }
+  if (usesX3Bar()) self->buildX3Bar(screen);
 }
 
 void ReaderToolbarUi::buildSheet(UiScreen& screen, const fui::SheetProps& props, const int16_t height) {
   screen.setContentMarginFromScreen(model_.footerInsets);
+  if (usesX3Bar()) {
+    const auto body = screenLayout().bodyRect;
+    screen.setContentMarginFromScreen({static_cast<int16_t>(body.y), 0,
+                                      static_cast<int16_t>(renderer_->getScreenHeight() - body.bottom()), 0});
+  }
   const auto bounds = screen.body();
   const auto sheetHeight = std::min(height, bounds.height);
   const fui::Rect rect{bounds.x, static_cast<int16_t>(bounds.bottom() - sheetHeight), bounds.width, sheetHeight};
@@ -214,7 +258,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   // track and its chapter buttons don't crowd the meta line).
   const int16_t metaH = screen.target().lineHeight(tokens.smallText.font);
   const int16_t contentH = static_cast<int16_t>(tokens.spaceMd + kScrubButton + tokens.spaceLg + metaH +
-                                                tokens.spaceSm + kToolRowH + tokens.spaceSm);
+                                                tokens.spaceSm + (usesX3Bar() ? 0 : kToolRowH) + tokens.spaceSm);
   fui::SheetProps sheetProps;
   sheetProps.anchor = fui::SheetEdge::Bottom;
   sheetProps.dismissAction = ACTION_DISMISS;
@@ -287,7 +331,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
     if (model_.pageInfo) screen.target().text(line, model_.pageInfo, infoStyle);
   }
 
-  buildToolRow(screen, fui::LayoutAnchor::Top, 0);  // content band already spaceLg-inset
+  if (!usesX3Bar()) buildToolRow(screen, fui::LayoutAnchor::Top, 0);
 }
 
 // The row in use: its name in bold where the list left it blank, and a tick at the row end.
@@ -319,6 +363,11 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
 #endif
   const auto& tokens = screen.theme();
   screen.setContentMarginFromScreen(model_.footerInsets);
+  if (usesX3Bar()) {
+    const auto body = screenLayout().bodyRect;
+    screen.setContentMarginFromScreen({static_cast<int16_t>(body.y), 0,
+                                      static_cast<int16_t>(renderer_->getScreenHeight() - body.bottom()), 0});
+  }
   const fui::Rect safe = screen.body();
 
   fui::SheetProps sheetProps;
@@ -342,7 +391,8 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   const int16_t grabberBand =
       static_cast<int16_t>(sheetProps.grabberMargin + sheetProps.grabberHeight + sheetProps.grabberInset);
   const int16_t chrome =
-      static_cast<int16_t>(grabberBand + titleH + tokens.spaceMd + tokens.spaceSm + kToolRowH + tokens.spaceSm);
+      static_cast<int16_t>(grabberBand + titleH + tokens.spaceMd + tokens.spaceSm +
+                           (usesX3Bar() ? 0 : kToolRowH) + tokens.spaceSm);
   const bool landscape = safe.width > safe.height;
   const int16_t target =
       static_cast<int16_t>((safe.height * (landscape ? kLandscapePanelHeightPercent : kPanelHeightPercent)) / 100);
@@ -373,7 +423,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
 
   // Switcher row along the sheet's bottom edge; the list takes what is left.
   screen.spacer(tokens.spaceSm, fui::LayoutAnchor::Bottom);
-  buildToolRow(screen, fui::LayoutAnchor::Bottom, tokens.spaceLg);  // full-width band
+  if (!usesX3Bar()) buildToolRow(screen, fui::LayoutAnchor::Bottom, tokens.spaceLg);
   screen.spacer(tokens.spaceSm, fui::LayoutAnchor::Bottom);
 
   listProps_.count = static_cast<uint16_t>(std::max(0, model_.itemCount));

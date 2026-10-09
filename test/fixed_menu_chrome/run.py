@@ -525,7 +525,12 @@ else:
     if args.phase2:
         adapters = read_source('src/activities/home/X3FileReaderChrome.h')
         adapters = adapters[adapters.index('template <class Visitor>'):adapters.rfind('}')]
-        fixture += '\n' + Path(__file__).with_name('Phase2ChromeHarness.h').read_text().replace('// PHASE2_PATH_FUNCTIONS', adapters)
+        reader_icons = function(read_source('src/activities/reader/ReaderMenuLayout.h'), 'enum class Tab') + ';\n'
+        if 'x3TabIcon(' in read_source('src/activities/reader/EpubReaderMenuActivity.cpp'):
+            reader_icons += function(read_source('src/components/icons/X3ReaderTabIcons.h'),
+                                     'inline const freeink::Icon& x3TabIcon(')
+        fixture += '\n' + Path(__file__).with_name('Phase2ChromeHarness.h').read_text().replace(
+            '// PHASE2_PATH_FUNCTIONS', adapters).replace('// PHASE2_READER_ICONS', reader_icons)
         extra_methods = {
             'FileBrowserActivity': ('screenTip',),
             'QuoteTrimActivity': ('screenTip', 'screenInfo', 'areaTop', 'linesPerArea'),

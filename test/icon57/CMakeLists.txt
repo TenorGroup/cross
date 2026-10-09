@@ -13,7 +13,7 @@ execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ext
 foreach(_board X3 Touch)
   add_executable(Icon57${_board}Pixels harness.cpp)
   target_include_directories(Icon57${_board}Pixels PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}" "${REPO_ROOT}/src"
+    "${CMAKE_CURRENT_BINARY_DIR}" "${REPO_ROOT}/src" "${REPO_ROOT}/lib/I18n"
     "${REPO_ROOT}/freeink-sdk/libs/assets/Icons/include"
     "${REPO_ROOT}/freeink-sdk/libs/ui/FreeInkUI/include")
   if(_board STREQUAL "Touch")
@@ -24,5 +24,7 @@ foreach(_board X3 Touch)
   add_test(NAME Icon57${_board}Alignment COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/alignment.py" "$<TARGET_FILE:Icon57${_board}Pixels>" "${_board}")
 endforeach()
+add_test(NAME Icon57UglyPixels COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/check.py" "$<TARGET_FILE:Icon57X3Pixels>" "Ugly")
 add_test(NAME Icon57HeaderBytes COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/headers.py")
 add_test(NAME Icon57SourceAlignment COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/alignment.py")

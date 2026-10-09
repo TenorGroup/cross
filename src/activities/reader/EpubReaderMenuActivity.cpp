@@ -25,6 +25,7 @@
 #include "components/UIThemeTokens.h"
 #include "components/icons/tenorHomeTabIcons.h"
 #include "components/icons/tenorReaderTabIcons.h"
+#include "components/icons/X3ReaderTabIcons.h"
 
 namespace fui = freeink::ui;
 
@@ -103,7 +104,9 @@ freeink::ui::BitmapRef EpubReaderMenuActivity::tabIcon(const int index, const bo
   freeink::ui::BitmapRef result;
   const int slot = textOnly && tenorchrome::x3ScreenLayoutEnabled() ? static_cast<int>(MenuTab::TEXT) : index;
   const freeink::Icon* icon = set[slot];
-  if (tenorchrome::x3ScreenLayoutEnabled() && !textOnly && slot == static_cast<int>(MenuTab::READING))
+  if (tenorchrome::x3ScreenLayoutEnabled() && !shell::uglyParts())
+    icon = &readermenu::x3TabIcon(static_cast<MenuTab>(slot), bold);
+  else if (tenorchrome::x3ScreenLayoutEnabled() && !textOnly && slot == static_cast<int>(MenuTab::READING))
     icon = bold ? &icon_tenor_home_recent_bold_40 : &icon_tenor_home_recent_40;
   result.data = icon->bits;
   result.width = icon->w;

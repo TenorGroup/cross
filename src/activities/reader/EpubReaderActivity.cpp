@@ -13,6 +13,7 @@
 #include <HalGPIO.h>
 #include <HalPowerManager.h>
 #include <HalStorage.h>
+#include <HalTiltSensor.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -2061,15 +2062,22 @@ void EpubReaderActivity::onReaderMenuConfirm(const EpubReaderMenuActivity::MenuA
       pauseKeepsStatsInRam = true;
       const uint8_t inkTruoc = SETTINGS.readerInkWeight;
       const uint8_t aaTruoc = SETTINGS.textAntiAliasing;
+      const bool returnToToolbar = usesToolbarMenu() && ReaderToolbarUi::usesX3Bar();
       startActivityForResult(
           std::make_unique<TextSettingsActivity>(renderer, mappedInput, registry, tab),
-          [this, truoc, inkTruoc, aaTruoc](const ActivityResult&) {
-            RenderLock lock;
-            if (truoc != AnhChupChu::chup()) danLaiTrang();
-            if (inkTruoc != SETTINGS.readerInkWeight || aaTruoc != SETTINGS.textAntiAliasing) {
-              readerInk::apply(renderer);
-              discardOverlayPage();
-              requestUpdate();
+          [this, truoc, inkTruoc, aaTruoc, returnToToolbar](const ActivityResult&) {
+            {
+              RenderLock lock;
+              if (truoc != AnhChupChu::chup()) danLaiTrang();
+              if (inkTruoc != SETTINGS.readerInkWeight || aaTruoc != SETTINGS.textAntiAliasing) {
+                readerInk::apply(renderer);
+                discardOverlayPage();
+                requestUpdate();
+              }
+            }
+            if (returnToToolbar) {
+              openReaderMenu();
+              focusedTool = ReaderToolbarUi::textTool();
             }
           });
       break;
@@ -4529,7 +4537,7 @@ void EpubReaderActivity::openOverlay(Overlay target) {
     onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS, MenuResult{});
     return;
   }
-  if (target == Overlay::Contents && waitsForIndex()) return;
+  if (target == Overlay::Contents && !ReaderToolbarUi::usesX3Bar() && waitsForIndex()) return;
   mappedInput.resetHomeButtonInput();
   const Overlay previous = overlay;
   if (previous == Overlay::None) {
@@ -4555,7 +4563,7 @@ void EpubReaderActivity::openOverlay(Overlay target) {
       focusedTool = kContentsTool;
       break;
     case Overlay::Contents:
-      panelIndex = std::max(0, epub->getTocIndexForSpineIndex(currentSpineIndex));
+      panelIndex = ReaderToolbarUi::usesX3Bar() ? 0 : std::max(0, epub->getTocIndexForSpineIndex(currentSpineIndex));
       // Fresh viewport opening on the current chapter, cursor shown or not.
       toolbarUi->nav().reset(panelIndex);
       toolbarUi->nav().top = panelIndex;
@@ -4565,6 +4573,7 @@ void EpubReaderActivity::openOverlay(Overlay target) {
       toolbarUi->nav().reset();
       break;
     case Overlay::More:
+    case Overlay::Reading:
       panelIndex = 0;
       buildMoreActions();
       toolbarUi->nav().reset();
@@ -4677,7 +4686,12 @@ void EpubReaderActivity::renderOverlay() {
       const auto orientation = renderer.getOrientation();
       renderer.setOrientation(GfxRenderer::Orientation::Portrait);
       const int footer = UITheme::getInstance().getMetrics().buttonHintsHeight;
-      renderer.fillRect(0, renderer.getScreenHeight() - footer, renderer.getScreenWidth(), footer, false);
+      if (ReaderToolbarUi::usesX3Bar()) {
+        const auto band = tenorchrome::x3ScreenLayout(renderer).buttonBandRect;
+        renderer.fillRect(band.x, band.y, band.width, band.height, false);
+      } else {
+        renderer.fillRect(0, renderer.getScreenHeight() - footer, renderer.getScreenWidth(), footer, false);
+      }
       const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT),
           overlay == Overlay::Toolbar ? tr(STR_DIR_LEFT) : tr(STR_DIR_UP),
           overlay == Overlay::Toolbar ? tr(STR_DIR_RIGHT) : tr(STR_DIR_DOWN));
@@ -4711,6 +4725,7 @@ void EpubReaderActivity::renderOverlay() {
   // convention as the panel lists), it only shows once a button has moved it.
   // Panels override below: there the pill marks the open panel on every board.
   model.activeTool = (overlay == Overlay::Toolbar && !panelCursorShown) ? -1 : focusedTool;
+  if (ReaderToolbarUi::usesX3Bar() && overlay == Overlay::Favorites) model.tipText = tr(STR_FAVORITES_HINT);
   // Strings the model points at live here until render() returns.
   std::string chapterTitle, pageInfo;
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
@@ -4755,7 +4770,7 @@ void EpubReaderActivity::renderOverlay() {
     model.rowMarked = [this](int i) { return i == pick.inUse; };
   } else
 #endif
-  if (overlay == Overlay::Contents) {
+  if (overlay == Overlay::Contents && !ReaderToolbarUi::usesX3Bar()) {
     model.panelTitle = tr(STR_TOOL_CONTENTS);
     model.itemCount = epub->getTocItemsCount();
     const int currentTocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
@@ -4811,13 +4826,18 @@ void EpubReaderActivity::renderOverlay() {
     };
   }
   else {
-    model.panelTitle = tr(STR_TOOL_MORE);
-    model.itemCount = static_cast<int>(moreItems.size());
-    model.rowText = [this](int i) { return moreRowName(i); };
-    model.rowValue = [this](int i) { return moreRowValue(i); };
+    model.panelTitle = ReaderToolbarUi::usesX3Bar()
+                           ? I18N.get(overlay == Overlay::Contents ? StrId::STR_READER_TAB_POSITION
+                                      : overlay == Overlay::Reading ? StrId::STR_READER_TAB_READING
+                                                                     : StrId::STR_READER_TAB_TOOLS)
+                           : tr(STR_TOOL_MORE);
+    model.itemCount = panelActionRow(-1);
+    model.rowText = [this](int i) { return moreRowName(panelActionRow(i)); };
+    model.rowValue = [this](int i) { return moreRowValue(panelActionRow(i)); };
     model.rowPinned = [this](int i) { return readermenu::daGhim(pins, pinOfRow(i)); };
     model.rowOpens = [this](int i) {
-      return i < static_cast<int>(moreItems.size()) && readermenu::rowOpens(moreItems[i].action);
+      const int row = panelActionRow(i);
+      return row >= 0 && row < static_cast<int>(moreItems.size()) && readermenu::rowOpens(moreItems[row].action);
     };
   }
   toolbarUi->setModel(model);
@@ -4875,6 +4895,17 @@ void EpubReaderActivity::handleOverlayInput() {
     requestUpdate();
   };
   const auto toolOverlay = [](int tool) {
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+    if (ReaderToolbarUi::usesX3Bar()) {
+      switch (static_cast<readermenu::Tab>(tool)) {
+        case readermenu::Tab::FAVORITES: return Overlay::Favorites;
+        case readermenu::Tab::POSITION: return Overlay::Contents;
+        case readermenu::Tab::READING: return Overlay::Reading;
+        case readermenu::Tab::TOOLS: return Overlay::More;
+        case readermenu::Tab::TEXT: return Overlay::Text;
+      }
+    }
+#endif
     switch (static_cast<readermenu::Tool>(tool)) {
       case readermenu::Tool::FAVORITES: return Overlay::Favorites;
       case readermenu::Tool::CONTENTS: return Overlay::Contents;
@@ -4883,6 +4914,11 @@ void EpubReaderActivity::handleOverlayInput() {
     }
     return Overlay::More;
   };
+#if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
+  const int toolCount = ReaderToolbarUi::toolCount();
+#else
+  constexpr int toolCount = kReaderTools;
+#endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   const auto openTextSettings = [this] {
     mappedInput.resetHomeButtonInput();
@@ -4953,13 +4989,13 @@ void EpubReaderActivity::handleOverlayInput() {
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-      focusedTool = (focusedTool + kReaderTools - 1) % kReaderTools;
+      focusedTool = (focusedTool + toolCount - 1) % toolCount;
       panelCursorShown = true;
       fastRedraw();
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-      focusedTool = (focusedTool + 1) % kReaderTools;
+      focusedTool = (focusedTool + 1) % toolCount;
       panelCursorShown = true;
       fastRedraw();
       return;
@@ -4987,10 +5023,10 @@ void EpubReaderActivity::handleOverlayInput() {
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
                     textDepth == TextDepth::Pick ? static_cast<int>(pick.labels.size()) :
 #endif
-                    overlay == Overlay::Contents ? epub->getTocItemsCount()
+                    overlay == Overlay::Contents ? (ReaderToolbarUi::usesX3Bar() ? panelActionRow(-1) : epub->getTocItemsCount())
                     : overlay == Overlay::Text   ? (textDepth == TextDepth::Fonts ? fontdoc::soHo(&sdFontSystem.registry()) : kTextRowCount)
                     : overlay == Overlay::Favorites ? static_cast<int>(favoriteRows.size())
-                                                 : static_cast<int>(moreItems.size());
+                                                 : panelActionRow(-1);
 #if !defined(FREEINK_DEVICE_X4PRO) || !FREEINK_DEVICE_X4PRO
   const int pageRows = std::max(1, toolbarUi->visibleRows());
 #endif
@@ -5012,7 +5048,7 @@ void EpubReaderActivity::handleOverlayInput() {
       else {
         openTextRow(panelIndex);
       }
-    } else if (overlay == Overlay::Contents) {
+    } else if (overlay == Overlay::Contents && !ReaderToolbarUi::usesX3Bar()) {
       const auto item = epub->getTocItem(panelIndex);
       if (item.spineIndex != -1) {
         RenderLock lock;
@@ -5029,8 +5065,8 @@ void EpubReaderActivity::handleOverlayInput() {
         panelClosedLocked(false, false);
       }
       requestUpdate();
-    } else if (overlay == Overlay::More) {
-      activateMoreRow(panelIndex);
+    } else if (actionPanel()) {
+      activateMoreRow(panelActionRow(panelIndex));
     }
     else if (overlay == Overlay::Favorites) {
       activateFavoriteRow(panelIndex);
@@ -5242,7 +5278,7 @@ void EpubReaderActivity::handleOverlayInput() {
   const bool tabBefore = mappedInput.wasReleased(MappedInputManager::Button::Up);
   if (tabBefore || mappedInput.wasReleased(MappedInputManager::Button::Down)) {
     if (textDepth != TextDepth::Rows) return;
-    focusedTool = (focusedTool + (tabBefore ? kReaderTools - 1 : 1)) % kReaderTools;
+    focusedTool = (focusedTool + (tabBefore ? toolCount - 1 : 1)) % toolCount;
     openOverlay(toolOverlay(focusedTool));
     return;
   }
@@ -5658,7 +5694,30 @@ void EpubReaderActivity::applyReaderTextSettings() {
 // The More panel carries everything the classic list menu offers except the
 // two entries that have their own tool (chapters -> Contents, text -> Text).
 void EpubReaderActivity::buildMoreActions() {
+  if (ReaderToolbarUi::usesX3Bar()) {
+    readermenu::buildItems(moreItems, !currentPageFootnotes.empty(), !cachedBookmarks.empty(), Frontlight.present(),
+                           halTiltSensor.isAvailable());
+    readermenu::separateTextTab(moreItems);
+    return;
+  }
   readermenu::buildMoreItems(moreItems, !currentPageFootnotes.empty(), !cachedBookmarks.empty(), Frontlight.present());
+}
+
+int EpubReaderActivity::panelActionRow(const int row) const {
+  if (!ReaderToolbarUi::usesX3Bar()) return row < 0 ? static_cast<int>(moreItems.size()) : row;
+  const auto tab = overlay == Overlay::Contents ? readermenu::Tab::POSITION
+                   : overlay == Overlay::Reading ? readermenu::Tab::READING : readermenu::Tab::TOOLS;
+  int count = 0;
+  for (size_t index = 0; index < moreItems.size(); ++index) {
+    if (moreItems[index].tab != tab) continue;
+    if (count++ == row) return static_cast<int>(index);
+  }
+  return row < 0 ? count : -1;
+}
+
+bool EpubReaderActivity::actionPanel() const {
+  return overlay == Overlay::More ||
+         (ReaderToolbarUi::usesX3Bar() && (overlay == Overlay::Reading || overlay == Overlay::Contents));
 }
 
 std::string EpubReaderActivity::moreRowName(int row) const {
@@ -5860,8 +5919,11 @@ uint8_t EpubReaderActivity::pinOfRow(const int row) const {
   if (textDepth != TextDepth::Rows) return 0xFF;
   if (overlay == Overlay::Text && textDepth == TextDepth::Rows && row >= 0 && row < kTextRowCount)
     return static_cast<uint8_t>(readermenu::PIN_TEXT | textRowId(row));
-  if (overlay == Overlay::More && row >= 0 && row < static_cast<int>(moreItems.size()))
-    return static_cast<uint8_t>(moreItems[row].action);
+  if (actionPanel()) {
+    const int index = panelActionRow(row);
+    if (row >= 0 && index >= 0 && index < static_cast<int>(moreItems.size()))
+      return static_cast<uint8_t>(moreItems[index].action);
+  }
   if (overlay == Overlay::Favorites && row >= 0 && row < static_cast<int>(favoriteRows.size())) return favoriteRows[row];
   return 0xFF;
 }

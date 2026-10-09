@@ -110,7 +110,7 @@ int phase2ChromeTests() {
           phase2Check(menu.tabIcon(2, false).data != menu.tabIcon(4, false).data,
                       "Reading and Text have distinct icons");
           menu.textOnly = true;
-          phase2Check(menu.tabCount() == 1 && menu.tabIcon(0, false).data == icon_tenor_reader_reading_40.bits,
+          phase2Check(menu.tabCount() == 1 && menu.tabIcon(0, false).data == icon_tenor_text_font_40.bits,
                       "Text-only menu keeps its text root icon");
 
           QuotesActivity quotes(renderer);

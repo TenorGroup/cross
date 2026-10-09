@@ -25,7 +25,7 @@ forms = {
     'KOReaderAuth', 'KOReaderSync', 'NetworkModeSelection', 'OpdsBookBrowser', 'OtaUpdate',
     'SdFirmwareUpdate', 'WifiSelection',
 }
-covered = settings | lists | forms | {'Home'}
+covered = settings | lists | forms | {'Home', 'EpubReader', 'ReaderToolbarUi'}
 bound = set()
 for path in (root / 'src/activities').rglob('*Activity.cpp'):
     header = path.with_suffix('.h')
@@ -33,7 +33,11 @@ for path in (root / 'src/activities').rglob('*Activity.cpp'):
     if re.search(r'x3ScreenLayout\(|x3settings::beginScreen\(', source):
         bound.add(path.stem.removesuffix('Activity'))
 assert bound <= covered | {'UiList', 'UiTabList'}, sorted(bound - covered)
-assert len(covered) == 43
+assert len(covered) == 45
+toolbar = (root / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
+assert 'ReaderToolbarUi::screenLayout(' in toolbar, 'RED: toolbar lacks the Home body/tip/bar binding'
+subprocess.run([sys.executable, str(Path(__file__).with_name('toolbar_bars.py')),
+                '--work', str(args.work / 'toolbar'), *(['--mutate'] if args.mutate else [])], check=True)
 ugly_sources = {name: root / f'src/shells/ugly/Ugly{name}.cpp'
                 for name in ('Diary', 'Desk', 'Notebook', 'QuestionSheet')}
 assert all(re.search(r'x3ScreenLayout\(|(?:pathHints|pageHints)\(', source.read_text())
@@ -46,5 +50,5 @@ subprocess.run(command, check=True)
 subprocess.run([sys.executable, str(runner), '--forms', '--work', str(args.work / 'forms')], check=True)
 subprocess.run([sys.executable, str(runner), '--ugly-contract', '--work', str(args.work / 'ugly')], check=True)
 subprocess.run([sys.executable, str(runner), '--ugly-status-contract', '--work', str(args.work / 'ugly-status')], check=True)
-print('GREEN: 43 X3 activity classes and 4 handwritten screens, 3 sizes x 3 status modes x 2 tips modes, exact Home barRect')
+print('GREEN: 45 X3 screen classes and 4 handwritten screens, 3 sizes x 3 status modes x 2 tips modes, exact Home barRect')
 print('COVERED:', ', '.join(sorted(covered)))

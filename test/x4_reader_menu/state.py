@@ -99,6 +99,7 @@ struct Epub {int getTocItemsCount(){return 10;}int getTocIndexForSpineIndex(int)
 struct Popup {bool isActive()const{return false;}template<class F>void handleInput(MappedInputManager&,F){}void dismiss(){}};
 struct ButtonNavigator {static int previousIndex(int i,int n){return (i+n-1)%n;}static int nextIndex(int i,int n){return (i+1)%n;}};
 struct ReaderToolbarUi {
+ static bool usesX3Bar(){return false;}
 ''' + events + '\n' + routed+r'''
  static constexpr int kChoiceStride=8;
  Routed next;
@@ -154,6 +155,8 @@ class EpubReaderActivity {
  bool textRowToggles(int row){return row > 4;}
  void cycleTextRow(int row){if(row==3)chooseTextValue(row,(SETTINGS.paragraphAlignment+1)%5);if(row==4)chooseTextValue(row,(SETTINGS.dropCapMode+1)%3);}
  void activateMoreRow(int){}
+ int panelActionRow(int row)const{return row<0?static_cast<int>(moreItems.size()):row;}
+ bool actionPanel()const{return overlay==Overlay::More;}
  std::vector<uint8_t> favoriteRows;
  void activateFavoriteRow(int){}void togglePin(uint8_t){}uint8_t pinOfRow(int)const{return 0xFF;}
  void openOverlay(Overlay target){overlay=target;textDepth=TextDepth::Rows;spacingDragging=false;pointSizeDraft.clear();if(!toolbarUi)toolbarUi=std::make_unique<ReaderToolbarUi>();toolbarUi->nav().reset();tenorchrome::note=1;}

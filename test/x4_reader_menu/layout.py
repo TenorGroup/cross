@@ -74,6 +74,7 @@ cpp = r'''
 #define FREEINK_DEVICE_X4PRO 1
 namespace fui = freeink::ui;
 namespace shell { bool enabled=false; bool isUgly() { return enabled; } }
+namespace tenorchrome { struct X3ScreenLayout; }
 namespace freeink { struct Icon {}; }
 namespace freeink::ui { BitmapRef bitmapFromIcon(const freeink::Icon&) { return {}; }
 struct GfxRendererTarget { static constexpr int FONT_LABEL=3; }; }
@@ -190,6 +191,7 @@ for component in ('PageScrollbarIdle.h', 'PageScrollbar.h'):
     cpp += re.sub(r'^#(?:pragma|include)[^\n]*\n', '', component_source, flags=re.M) + '\n'
 cpp += header + '\n' + constants + '\n'
 cpp += 'ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& r): UiAppHost(r), renderer_(&r) {}\n'
+cpp += 'bool ReaderToolbarUi::usesX3Bar() { return false; }\nvoid ReaderToolbarUi::buildX3Bar(UiScreen&) {}\n'
 cpp += method(source, 'fui::Rect readerFrame') + '\n'
 for name in ['begin','render','route','onAction','screenFn','scrollRows','buildX4Tools','buildX4Toolbar','buildX4Panel','buildX4Spacing','buildX4Keypad','fadeMoreBelow']:
     # Static onAction has a void signature like the other production members.

@@ -12,6 +12,10 @@
 #include "components/icons/readerToolbarTabIcons.h"
 #include "shells/ugly/UglyMarkSeed.h"
 #include "shells/ugly/UglyIcons.h"
+#include "activities/reader/ReaderMenuLayout.h"
+#if __has_include("components/icons/X3ReaderTabIcons.h")
+#include "components/icons/X3ReaderTabIcons.h"
+#endif
 #if __has_include("components/icons/tenorTextTabIcons.h")
 #include "components/icons/tenorTextTabIcons.h"
 #endif
@@ -57,7 +61,7 @@ class UiScreen {
   fui::Rect take(fui::LayoutAnchor, int16_t height) { return {0, 0, 528, height}; }
 };
 
-namespace shell { bool uglyParts() { return false; } bool isUgly() { return false; } }
+namespace shell { bool handwritten = false; bool uglyParts() { return handwritten; } bool isUgly() { return handwritten; } }
 namespace ugly {
 uint32_t iconFrameSeed() { return 0; }
 bool iconAsset(const GfxRenderer&, const uint8_t*, icons::Rect, uint32_t) { return false; }
@@ -91,14 +95,9 @@ class TextSettingsActivity {
   fui::BitmapRef tabIcon(int, bool) const;
 };
 
-namespace readermenu {
-constexpr int TAB_COUNT = 4;
-enum class Tool : uint8_t { FAVORITES, CONTENTS, TEXT, MORE };
-}
-
 class EpubReaderMenuActivity {
  public:
-  enum class MenuTab : uint8_t { FAVORITES, POSITION, READING, TOOLS, TEXT };
+  using MenuTab = readermenu::Tab;
   bool textOnly = false;
   int tabCount() const { return textOnly ? 1 : tenorchrome::x3ScreenLayoutEnabled() ? 5 : 4; }
   fui::BitmapRef tabIcon(int, bool) const;
@@ -120,10 +119,31 @@ class ReaderToolbarUi {
 
 int main(int argc, char** argv) {
   if (argc != 3) return 2;
-  const std::string kind = argv[1];
+  std::string kind = argv[1];
+  if (kind.rfind("ugly-", 0) == 0) {
+    shell::handwritten = true;
+    kind.erase(0, 5);
+  }
   const int chosen = std::stoi(argv[2]);
   UiTabListActivity bar;
-  if (kind == "raw" || kind == "tab") {
+  if (kind == "reader-legacy") {
+    EpubReaderMenuActivity reader;
+    for (const bool selected : {false, true}) {
+      const freeink::Icon* icons[] = {
+          selected ? &icon_tenor_home_favorites_bold_40 : &icon_tenor_home_favorites_40,
+          selected ? &icon_tenor_reader_position_bold_40 : &icon_tenor_reader_position_40,
+          selected ? &icon_tenor_reader_reading_bold_40 : &icon_tenor_reader_reading_40,
+          selected ? &icon_tenor_reader_tools_bold_40 : &icon_tenor_reader_tools_40,
+          selected ? &icon_tenor_reader_reading_bold_40 : &icon_tenor_reader_reading_40};
+      if (!tenorchrome::kTouchShell)
+        icons[2] = selected ? &icon_tenor_home_recent_bold_40 : &icon_tenor_home_recent_40;
+      for (int index = 0; index < reader.tabCount(); ++index)
+        if (reader.tabIcon(index, selected).data != icons[index]->bits) return 5;
+      reader.textOnly = true;
+      if (reader.tabIcon(0, selected).data != icons[tenorchrome::kTouchShell ? 0 : 4]->bits) return 6;
+      reader.textOnly = false;
+    }
+  } else if (kind == "raw" || kind == "tab") {
     std::array<uint8_t, 200> bits;
     std::cin.read(reinterpret_cast<char*>(bits.data()), bits.size());
     if (std::cin.gcount() != bits.size()) return 3;
