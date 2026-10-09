@@ -22,7 +22,7 @@ def main():
     # current function, including the epoch gate, CA setup, and body delivery.
     http = (repo / 'src/network/HttpDownloader.cpp').read_text()
     start = http.index('struct Sink {')
-    end = http.index('\n#endif', http.index('HttpDownloader::DownloadError runGetWolf'))
+    end = http.index('\n}\n#endif', http.index('HttpDownloader::DownloadError runGetWolf')) + 2
     flow = http[start:end].replace('#if defined(FREEINK_NET_WOLFSSL)\n', '')
     limit_start = http.find('constexpr size_t MAX_REDIRECT_URL =')
     if limit_start >= 0:

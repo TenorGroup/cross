@@ -39,6 +39,7 @@ class SdCardFontManager {
 
   // Unload everything, unregister from renderer.
   void unloadAll(GfxRenderer& renderer);
+  void releaseReaderForDownload(GfxRenderer& renderer);
 
   // Look up the font ID for the loaded family. Returns 0 if nothing loaded
   // or familyName doesn't match.
@@ -75,6 +76,7 @@ class SdCardFontManager {
   std::string loadedFamilyName_;
   uint8_t loadedPointSize_ = 0;
   uint8_t loadedWeight_ = 0;
+  bool readerReleased_ = false;
   std::optional<EpdFontFamily> builtinFamily_;
   int builtinId_ = 0;
   std::vector<LoadedFont> loaded_;

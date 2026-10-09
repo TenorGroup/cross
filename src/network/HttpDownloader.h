@@ -2,7 +2,10 @@
 #include <HalStorage.h>
 
 #include <functional>
+#include <memory>
 #include <string>
+
+namespace freeink { class SecureHttpClient; }
 
 /**
  * HTTP client utility for fetching content and downloading files. Built on
@@ -11,6 +14,19 @@
  */
 class HttpDownloader {
  public:
+  class RangeSession {
+   public:
+    RangeSession();
+    ~RangeSession();
+    bool hasTlsContext() const;
+    RangeSession(const RangeSession&) = delete;
+    RangeSession& operator=(const RangeSession&) = delete;
+   private:
+    friend class HttpDownloader;
+#if defined(FREEINK_NET_WOLFSSL)
+    std::unique_ptr<freeink::SecureHttpClient> client_;
+#endif
+  };
   // Also called periodically during transport waits to pump activity input.
   // total == 0 means unknown size; callers must throttle repaint separately.
   using ProgressCallback = std::function<void(size_t downloaded, size_t total)>;
@@ -75,7 +91,7 @@ class HttpDownloader {
    */
   static bool fetchRange(const std::string& url, size_t first, size_t last, const DataCallback& onData,
                          const char* rootCA, ProgressCallback progress, bool* cancelFlag, TransferStats* stats,
-                         bool* whole);
+                         bool* whole, RangeSession* session = nullptr);
 
   /**
    * Download a file to the SD card with optional credentials.

@@ -296,40 +296,28 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   // update boot did not have it at the first such record in 10 dry runs of 10 (all stopped at
   // 219-254 KB). So the image comes in parts of PART_BYTES, each over a connection of its own, and
   // every record stays small. A part that breaks is asked again from the byte it reached.
-  bool fetchOk = true;
-  parts = retries = 0;
   uint32_t elapsedMs = 0;
   uint32_t largestMin = 0;
-  while (processedSize < otaSize && !cancelled) {
-    const size_t first = processedSize;
-    const size_t last = std::min(otaSize, first + PART_BYTES) - 1;
+  HttpDownloader::RangeSession rangeSession;
+  const bool fetchOk = http_range::transfer(otaSize, processedSize, cancelled,
+      [&](size_t first, size_t last, bool& whole, bool& stop) {
     HttpDownloader::TransferStats part;
-    bool whole = false;
     const bool ok = HttpDownloader::fetchRange(
         otaUrl, first, last, write, ota_trust::ROOT_CA,
         [&](size_t, size_t) {
           if (cancelCheck && cancelCheck(cancelCtx)) cancelled = true;
         },
-        &cancelled, &part, &whole);
-    ++parts;
+        &cancelled, &part, &whole, &rangeSession);
     elapsedMs += part.elapsedMs;
     if (part.largestMin && (!largestMin || part.largestMin < largestMin)) largestMin = part.largestMin;
     transfer = part;
-    if (ok && processedSize > first) continue;
-    // A whole part with nothing new: the server has no more bytes; the size check below says so.
-    if (ok && !whole) break;
-    // What the stream held was wrong, or the user left: asking again cannot help.
-    if (cancelled || wrongChip || tagScanner.mismatch() || versionScanner.rejected() || !flashOk || !sizeOk || whole) {
-      fetchOk = false;
-      break;
+    stop = wrongChip || tagScanner.mismatch() || versionScanner.rejected() || !flashOk || !sizeOk;
+    if (!ok && !cancelled && !stop && !whole && retries < MAX_PART_RETRIES) {
+      LOG_INF("OTA", "Part from %u broke at %u, asking again (%u)", static_cast<unsigned>(first),
+              static_cast<unsigned>(processedSize), static_cast<unsigned>(retries + 1));
     }
-    if (++retries > MAX_PART_RETRIES) {
-      fetchOk = false;
-      break;
-    }
-    LOG_INF("OTA", "Part from %u broke at %u, asking again (%u)", static_cast<unsigned>(first),
-            static_cast<unsigned>(processedSize), static_cast<unsigned>(retries));
-  }
+    return ok;
+  }, parts, retries);
   transfer.bytes = processedSize;
   transfer.total = otaSize;
   transfer.elapsedMs = elapsedMs;

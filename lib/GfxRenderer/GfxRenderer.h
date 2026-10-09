@@ -15,6 +15,7 @@ class FontCacheManager;
 class SdCardFont;
 class TtfEpdFont;
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <map>
@@ -223,6 +224,10 @@ class GfxRenderer {
   // setFallbackFont maps a primary UI font id to an SD font id of the same size.
   void setFallbackFont(int primaryFontId, int fallbackFontId) { fallbackFontMap_[primaryFontId] = fallbackFontId; }
   void clearFallbackFonts() { fallbackFontMap_.clear(); }
+  bool hasFallbackFont(int fontId) const {
+    return std::any_of(fallbackFontMap_.begin(), fallbackFontMap_.end(),
+                       [fontId](const auto& entry) { return entry.second == fontId; });
+  }
   // Ensure SD card font glyph data is loaded for the given text. Called from layout code
   // (which holds a const GfxRenderer&) before measuring word widths. Safe to call on non-SD fonts (no-op).
   // styleMask: bitmask of styles to prepare (bit 0=regular, 1=bold, 2=italic, 3=bold-italic).

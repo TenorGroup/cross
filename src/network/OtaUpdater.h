@@ -4,6 +4,7 @@
 #include <string>
 
 #include "OtaLog.h"
+#include "HttpRangeTransfer.h"
 
 class OtaUpdater {
   bool updateAvailable = false;
@@ -54,8 +55,8 @@ class OtaUpdater {
   const ota_log::Attempt& lastAttempt() const { return attempt; }
 
   // Bytes a connection carries; below the ~220 KB after which the server's TLS records grow to 16 KB.
-  static constexpr size_t PART_BYTES = 192 * 1024;
-  static constexpr uint32_t MAX_PART_RETRIES = 5;
+  static constexpr size_t PART_BYTES = http_range::PART_BYTES;
+  static constexpr uint32_t MAX_PART_RETRIES = http_range::MAX_PART_RETRIES;
   uint32_t lastParts() const { return parts; }
   uint32_t lastRetries() const { return retries; }
 

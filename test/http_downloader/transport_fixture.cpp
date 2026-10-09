@@ -21,6 +21,7 @@ namespace freeink {
 SecureClient::~SecureClient() { stop(); }
 void SecureClient::setCACert(const char* ca) { _rootCA = ca; }
 void SecureClient::setInsecure() { _insecure = true; }
+void SecureClient::setReuseTlsContext(bool reuse) { _reuseTlsContext = reuse; }
 int SecureClient::connect(IPAddress ip, uint16_t p) { return _transport.connect(ip, p); }
 int SecureClient::connect(const char* h, uint16_t p) { return _transport.connect(h, p); }
 size_t SecureClient::write(uint8_t b) { return _transport.write(b); }
@@ -172,6 +173,7 @@ TEST_F(WolfRange, AsksForThePartAndTakesAMatching206) {
   EXPECT_EQ(get("HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 4-6/10\r\nContent-Length: 3\r\n\r\nefg", 4, 6),
             HttpDownloader::OK);
   EXPECT_NE(wire::requests[0].bytes.find("\r\nRange: bytes=4-6\r\n"), std::string::npos);
+  EXPECT_NE(wire::requests[0].bytes.find("\r\nConnection: close\r\n"), std::string::npos);
   EXPECT_EQ(payload, "efg");
   EXPECT_FALSE(range.whole);
 }

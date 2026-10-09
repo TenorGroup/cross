@@ -50,6 +50,7 @@ class SdCardFontSystem {
   // and the discovery catalog before TLS; settings and card files stay intact.
   // Caller holds RenderLock. ensureLoaded() discovers and loads them again.
   void releaseForOta(GfxRenderer& renderer);
+  void releaseReaderForDownload(GfxRenderer& renderer);
 
   /// Resolve an SD card font ID from family name + reader point size.
   /// Returns 0 if not found. Used by CrossPointSettings::getReaderFontId().

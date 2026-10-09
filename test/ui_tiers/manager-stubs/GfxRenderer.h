@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <map>
 #include "EpdFontFamily.h"
 class SdCardFont;
@@ -19,5 +20,9 @@ class GfxRenderer {
   void insertFont(int id,EpdFontFamily family) { fonts.emplace(id,family); }
   void removeFont(int id) { fonts.erase(id); sdFonts.erase(id); }
   void clearFallbackFonts() { fallbacks.clear(); }
+  bool hasFallbackFont(int id) const {
+    return std::any_of(fallbacks.begin(), fallbacks.end(),
+                       [id](const auto& entry) { return entry.second == id; });
+  }
   void clearSdCardFonts() { sdFonts.clear(); }
 };

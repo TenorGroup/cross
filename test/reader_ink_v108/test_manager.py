@@ -59,6 +59,7 @@ struct GfxRenderer {
  }
  void insertFont(int id,EpdFontFamily font) { fonts.emplace(id,font); }
  void clearFallbackFonts(){}
+ bool hasFallbackFont(int) const {return false;}
  void clearSdCardFonts(){ ++clearSdCardFontsCalls; builtinRasterId=0; }
  void removeFont(int id){fonts.erase(id);}
 };

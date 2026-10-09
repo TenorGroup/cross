@@ -24,15 +24,26 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/settings/FontDownloadTransfer.h"
+#include "activities/settings/FontDownloadHeap.h"
 #include "components/UITheme.h"
 #include "components/SettledListRender.h"
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
+#include "network/HttpRangeTransfer.h"
 #include "network/WebDavReplace.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyNote.h"
 
 namespace fui = freeink::ui;
+
+#ifdef TENOR_PRESS_PROBE
+namespace {
+void logFontDownloadHeap(const char* stage) {
+  LOG_INF("FONT_HEAP", "stage=%s free=%u largest=%u min=%u", stage, ESP.getFreeHeap(),
+          ESP.getMaxAllocHeap(), ESP.getMinFreeHeap());
+}
+}
+#endif
 
 FontDownloadActivity::FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiListActivity("FontDownload", renderer, mappedInput), fontInstaller_(sdFontSystem.registry()) {}
@@ -151,12 +162,26 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
 
   {
     RenderLock lock(*this);
+#ifdef TENOR_PRESS_PROBE
+    logFontDownloadHeap("after-wifi");
+#endif
     // Wi-Fi time/timezone persistence may have rebuilt the settings catalog.
     // Release it after that child exits and before manifest/file TLS starts.
 #ifdef ESP_PLATFORM
     const uint32_t before = ESP.getFreeHeap();
 #endif
     releaseBaseSettingsList();
+#ifdef TENOR_PRESS_PROBE
+    logFontDownloadHeap("settings-released");
+#endif
+    if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
+#ifdef TENOR_PRESS_PROBE
+    logFontDownloadHeap("wifi-caches-released");
+#endif
+    sdFontSystem.releaseReaderForDownload(renderer);
+#ifdef TENOR_PRESS_PROBE
+    logFontDownloadHeap("wifi-reader-released");
+#endif
 #ifdef ESP_PLATFORM
     const uint32_t after = ESP.getFreeHeap();
     LOG_INF("FONT", "Settings catalog released=%u heap=%u largest=%u", after >= before ? after - before : 0u,
@@ -177,6 +202,16 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
     }
     return;
   }
+#ifdef TENOR_PRESS_PROBE
+  logFontDownloadHeap("after-manifest");
+  LOG_INF("FONT_HEAP", "catalog arena=%u files=%u families=%u groups=%u indices=%u rows=%u/%u", arenaCapacity_,
+          fileEntryCount_ * static_cast<unsigned>(sizeof(ManifestFile)),
+          static_cast<unsigned>(families_.capacity() * sizeof(ManifestFamily)),
+          static_cast<unsigned>(scriptGroupLabels_.capacity() * sizeof(StrRef)),
+          static_cast<unsigned>(filteredIndices_.capacity() * sizeof(int)),
+          static_cast<unsigned>(rowLabels_.capacity() * sizeof(std::string)),
+          static_cast<unsigned>(rowItems_.capacity() * sizeof(fui::ListItem)));
+#endif
 
 #ifdef FREEINK_TLS_AUDIT
   if (auditDownload_) {
@@ -267,6 +302,9 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   // response carries the crc32 values that are the only integrity anchor for
   // those plain-HTTP downloads.
   auto result = HttpDownloader::downloadToFile(FONT_MANIFEST_URL, MANIFEST_TMP, nullptr);
+#ifdef TENOR_PRESS_PROBE
+  logFontDownloadHeap("manifest-http-closed");
+#endif
   if (result != HttpDownloader::OK) {
     LOG_ERR("FONT", "Failed to fetch manifest from %s", FONT_MANIFEST_URL);
     errorMessage_ = "Failed to fetch font list";
@@ -382,6 +420,13 @@ bool FontDownloadActivity::fetchAndParseManifest() {
       }
       manifestFileCount++;
     }
+  }
+  const uint64_t catalogBytes = uint64_t{arenaBytes} + uint64_t{manifestFileCount} * sizeof(ManifestFile) +
+                                uint64_t{groupCount} * sizeof(StrRef) +
+                                uint64_t{familiesArr.size()} * (sizeof(ManifestFamily) + sizeof(int)) + 128;
+  if (!fontdownload::canAllocateCatalog(catalogBytes, ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
+    errorMessage_ = tr(STR_MEMORY_ERROR);
+    return false;
   }
   stringArena_ = makeUniqueNoThrow<char[]>(arenaBytes);
   if (!stringArena_) {
@@ -520,10 +565,6 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
     families_.push_back(family);
   }
-
-  const size_t rowCapacity = std::max(families_.size() + 2, scriptGroupLabels_.size() + 1);
-  rowLabels_.reserve(rowCapacity);
-  rowItems_.reserve(rowCapacity);
 
   LOG_DBG("FONT", "Manifest loaded: %zu families, %zu script groups", families_.size(), scriptGroupLabels_.size());
   return true;
@@ -731,6 +772,34 @@ void FontDownloadActivity::waitForDownloadPaint() {
   if (paintDelay) delay(paintDelay);
 }
 
+bool FontDownloadActivity::prepareDownloadHeap() {
+  RenderLock lock(*this);
+#ifdef TENOR_PRESS_PROBE
+  logFontDownloadHeap("before-release");
+#endif
+  std::vector<fui::ListItem>().swap(rowItems_);
+  std::vector<std::string>().swap(rowLabels_);
+  rowsDirty_ = true;
+#ifdef TENOR_PRESS_PROBE
+  logFontDownloadHeap("rows-released");
+#endif
+  releaseBaseSettingsList();
+#ifdef TENOR_PRESS_PROBE
+  logFontDownloadHeap("download-settings-released");
+#endif
+  if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
+#ifdef TENOR_PRESS_PROBE
+  logFontDownloadHeap("download-caches-released");
+#endif
+  sdFontSystem.releaseReaderForDownload(renderer);
+#ifdef TENOR_PRESS_PROBE
+  logFontDownloadHeap("download-reader-released");
+  logFontDownloadHeap("before-tls-check");
+#endif
+  return fontdownload::hasTlsHeadroom(ESP.getFreeHeap(), ESP.getMaxAllocHeap(),
+                                    HttpDownloader::MIN_TLS_FREE_HEAP, HttpDownloader::MIN_TLS_MAX_ALLOC);
+}
+
 void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
   HalPowerManager::Lock fullSpeed;
   const bool wasInstalled = family.installed;
@@ -755,19 +824,9 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     currentFileIndex_ = 0;
     currentFileTotal_ = family.fileCount;
   }
-  // Rebuildable SD-font caches (glyph/kern arenas, CJK fallback tables) can
-  // hold tens of KB the TLS session needs; release them up front rather than
-  // starving the transfer. They repopulate on demand after the download.
-  if (auto* fcm = renderer.getFontCacheManager()) {
-    RenderLock lock(*this);
-    fcm->releaseSdFontCaches();
-    LOG_DBG("FONT", "Free heap after SD font cache release: %d bytes", ESP.getFreeHeap());
-  }
-
   // Check before touching the family directory so a failed update leaves the
   // installed family unchanged.
-  if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
-      ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
+  if (!prepareDownloadHeap()) {
     LOG_ERR("FONT", "Low heap for download (%u free, %u max block)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     RenderLock lock(*this);
     state_ = ERROR;
@@ -834,15 +893,41 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     downloadUrl_.assign(baseUrl_).append(str(file.name));
 
     const auto fetch = [&](const auto& onData) {
-      const auto countedData = [&](const uint8_t* bytes, const size_t count) {
-        if (!onData(bytes, count)) return false;
-        streamedBytes_ += static_cast<uint32_t>(count);
-        return true;
-      };
-      return HttpDownloader::fetchUrl(downloadUrl_, countedData, "", "", nullptr, true,
-                                      [this](size_t downloaded, size_t total) {
-                                        updateDownloadProgress(downloaded, total);
-                                      }, &cancelRequested_);
+      size_t received = 0;
+      uint32_t parts = 0, retries = 0;
+      HttpDownloader::RangeSession session;
+      return http_range::transfer(file.size, received, cancelRequested_,
+          [&](size_t first, size_t last, bool& whole, bool& stop) {
+#ifdef TENOR_PRESS_PROBE
+        if (session.hasTlsContext()) logFontDownloadHeap("before-tls-reuse");
+#endif
+        if (!session.hasTlsContext() && !prepareDownloadHeap()) {
+          RenderLock lock(*this);
+          failureReason_ = tr(STR_MEMORY_ERROR);
+          stop = true;
+          return false;
+        }
+        const auto countedData = [&](const uint8_t* bytes, const size_t count) {
+          const auto written = onData(bytes, count);
+          received += written.bytes;
+          streamedBytes_ += static_cast<uint32_t>(written.bytes);
+          stop = written.fatal;
+          return written.complete;
+        };
+        HttpDownloader::TransferStats part;
+        const bool ok = HttpDownloader::fetchRange(downloadUrl_, first, last, countedData, nullptr,
+            [&](size_t, size_t) { updateDownloadProgress(received, file.size); },
+            &cancelRequested_, &part, &whole, &session);
+        updateDownloadProgress(received, file.size);
+#ifdef TENOR_PRESS_PROBE
+        LOG_INF("FONT_RANGE", "part=%u first=%u bytes=%u written=%u status=%d ok=%d free=%u largest=%u min=%u retries=%u stop=%d",
+                parts + 1, static_cast<unsigned>(first), part.bytes, static_cast<unsigned>(received),
+                part.status, ok, ESP.getFreeHeap(), ESP.getMaxAllocHeap(), ESP.getMinFreeHeap(), retries, stop);
+        if (!ok && !cancelRequested_ && !stop && !whole && retries < http_range::MAX_PART_RETRIES)
+          LOG_INF("FONT_RANGE", "retry=%u first=%u", retries + 1, static_cast<unsigned>(received));
+#endif
+        return ok;
+      }, parts, retries);
     };
     auto transfer = fontdownload::TransferResult::OK;
     if (pack) {
@@ -914,7 +999,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
           failureReason_ = tr(STR_FONT_PACK_CHECKSUM_ERROR);
           break;
         case fontdownload::TransferResult::NetworkError:
-          failureReason_ = tr(STR_FONT_PACK_TRANSFER_ERROR);
+          if (!failureReason_) failureReason_ = tr(STR_FONT_PACK_TRANSFER_ERROR);
           break;
         case fontdownload::TransferResult::InstallError:
           if (!failureReason_) failureReason_ = tr(STR_FONT_PACK_INSTALL_ERROR);

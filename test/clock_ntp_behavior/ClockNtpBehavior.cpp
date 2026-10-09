@@ -88,6 +88,7 @@ namespace freeink {
 class SecureHttpClient {
  public:
   void setTimeout(int) {}
+  void setReuse(bool) {}
   void setCACert(const char* ca) { fake::caConfigured = ca && *ca; }
   bool begin(const std::string&) { ++fake::tlsBegins; return fake::caConfigured; }
   void setUserAgent(const char*) {}

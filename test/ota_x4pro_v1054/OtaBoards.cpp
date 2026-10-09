@@ -56,8 +56,10 @@ bool HttpDownloader::fetchUrl(const std::string&, const DataCallback& onData, co
   }
   return true;
 }
+HttpDownloader::RangeSession::RangeSession() = default;
+HttpDownloader::RangeSession::~RangeSession() = default;
 bool HttpDownloader::fetchRange(const std::string& url, size_t first, size_t last, const DataCallback& onData,
-                                const char*, ProgressCallback, bool*, TransferStats* stats, bool* whole) {
+                                const char*, ProgressCallback, bool*, TransferStats* stats, bool* whole, RangeSession*) {
   require(url == expectedUrl, "the updater selected the wrong asset URL");
   ++downloads;
   *whole = false;

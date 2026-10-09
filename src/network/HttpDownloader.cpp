@@ -16,6 +16,7 @@
 
 #include <ctime>
 #include <functional>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -187,7 +188,8 @@ struct WifiPowerSaveGuard {
 #if defined(FREEINK_NET_WOLFSSL)
 HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std::string& username,
                                          const std::string& password, Sink& sink, bool downgradeRedirectsToHttp,
-                                         const char* rootCA, bool allowRedirects, ByteRange* range = nullptr) {
+                                         const char* rootCA, bool allowRedirects, ByteRange* range = nullptr,
+                                         freeink::SecureHttpClient* rangeClient = nullptr) {
   if (downgradeRedirectsToHttp) return HttpDownloader::HTTP_ERROR;
   WifiPowerSaveGuard psGuard;
   std::string url = startUrl;
@@ -198,7 +200,9 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
     if (!freeink::http_url::parse(url, parsed)) return HttpDownloader::HTTP_ERROR;
     if (parsed.tls && time(nullptr) < 1735689600 && !halClock.syncFromNTP()) return HttpDownloader::HTTP_ERROR;
     if (sink.poll()) return HttpDownloader::ABORTED;
-    freeink::SecureHttpClient http;
+    freeink::SecureHttpClient localHttp;
+    auto& http = rangeClient ? *rangeClient : localHttp;
+    if (range) http.setReuse(false);
     http.setTimeout(rootCA ? HttpDownloader::PINNED_CA_TIMEOUT_MS : HTTP_TIMEOUT_MS);
     if (rootCA) {
       if (url.rfind("https://", 0) != 0) return HttpDownloader::HTTP_ERROR;
@@ -246,6 +250,11 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
 
     sink.status = http.getStatus();
     sink.headers = status >= 0;
+#ifdef TENOR_PRESS_PROBE
+    if (range)
+      LOG_INF("HTTP_CLOSE", "first=%u peer=%d free=%u largest=%u min=%u", static_cast<unsigned>(range->first),
+              http.peerCloseComplete(), ESP.getFreeHeap(), ESP.getMaxAllocHeap(), ESP.getMinFreeHeap());
+#endif
     if (http.aborted() || sink.poll(true)) return HttpDownloader::ABORTED;
     if (status < 0) {
       LOG_ERR("HTTP", "wolfSSL request failed");
@@ -481,7 +490,8 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
 HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::string& username,
                                            const std::string& password, Sink& sink,
                                            bool downgradeRedirectsToHttp = false, const char* rootCA = nullptr,
-                                           bool allowRedirects = true, ByteRange* range = nullptr) {
+                                           bool allowRedirects = true, ByteRange* range = nullptr,
+                                           freeink::SecureHttpClient* rangeClient = nullptr) {
   if (downgradeRedirectsToHttp) return HttpDownloader::HTTP_ERROR;
 #ifndef SIMULATOR
   // Native simulator sockets use the host network independently of fake Wi-Fi.
@@ -492,12 +502,22 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
   }
 #endif
 #if defined(FREEINK_NET_WOLFSSL)
-  return runGetWolf(url, username, password, sink, downgradeRedirectsToHttp, rootCA, allowRedirects, range);
+  return runGetWolf(url, username, password, sink, downgradeRedirectsToHttp, rootCA, allowRedirects, range, rangeClient);
 #else
   return runGet(url, username, password, sink, rootCA, allowRedirects, range);
 #endif
 }
 }  // namespace
+
+HttpDownloader::RangeSession::RangeSession() = default;
+HttpDownloader::RangeSession::~RangeSession() = default;
+bool HttpDownloader::RangeSession::hasTlsContext() const {
+#if defined(FREEINK_NET_WOLFSSL)
+  return client_ && client_->hasTlsContext();
+#else
+  return false;
+#endif
+}
 
 bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const std::string& username,
                               const std::string& password) {
@@ -552,7 +572,7 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
 
 bool HttpDownloader::fetchRange(const std::string& url, const size_t first, const size_t last,
                                 const DataCallback& onData, const char* rootCA, ProgressCallback progress,
-                                bool* cancelFlag, TransferStats* stats, bool* whole) {
+                                bool* cancelFlag, TransferStats* stats, bool* whole, RangeSession* session) {
   LOG_DBG("HTTP", "Fetching range");
   Sink sink;
   sink.write = onData;
@@ -562,7 +582,18 @@ bool HttpDownloader::fetchRange(const std::string& url, const size_t first, cons
   ByteRange range;
   range.first = first;
   range.last = last;
-  const bool ok = runGetSecure(url, "", "", sink, false, rootCA, false, &range) == OK;
+  freeink::SecureHttpClient* client = nullptr;
+#if defined(FREEINK_NET_WOLFSSL)
+  if (session) {
+    if (!session->client_) {
+      session->client_.reset(new (std::nothrow) freeink::SecureHttpClient());
+      if (!session->client_) return false;
+      session->client_->setReuseTlsContext(true);
+    }
+    client = session->client_.get();
+  }
+#endif
+  const bool ok = runGetSecure(url, "", "", sink, false, rootCA, false, &range, client) == OK;
   if (whole) *whole = range.whole;
   if (stats) {
     const unsigned long now = millis();

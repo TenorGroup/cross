@@ -16,6 +16,7 @@ inline bool hostCjk = false;
 class SdCardFontManager {
  public:
   bool isBuiltinRaster() const { return false; }
+  void releaseReaderForDownload(GfxRenderer&) {}
   bool loadBuiltinFamily(const SdCardFontFamilyInfo&, GfxRenderer&, uint8_t, uint8_t, int) { return false; }
   bool loadFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, uint8_t pointSize, uint8_t weight = 0) {
     unloadAll(renderer);

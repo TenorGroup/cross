@@ -32,5 +32,47 @@ int main() {
     UI_CHECK(renderer.fonts.empty() && renderer.sdFonts.empty() && renderer.fallbacks.empty());
   }
   UI_CHECK(SdCardFont::alive == 0);
+  {
+    SdCardFontManager manager;
+    renderer.fonts.emplace(99, EpdFontFamily{});
+    SdCardFont::builtinLayoutMatches = true;
+    UI_CHECK(manager.loadBuiltinFamily(family, renderer, 18, 2, 99));
+    UI_CHECK(manager.isBuiltinRaster() && renderer.sdFonts.count(99) == 1);
+    manager.releaseReaderForDownload(renderer);
+    UI_CHECK(!manager.isBuiltinRaster() && renderer.sdFonts.count(99) == 0);
+    UI_CHECK(renderer.fonts.count(99) == 1 && SdCardFont::alive == 0);
+    manager.unloadAll(renderer);
+    renderer.fonts.clear();
+    SdCardFont::builtinLayoutMatches = false;
+  }
+  {
+    SdCardFontManager manager;
+    UI_CHECK(manager.loadFamily(family, renderer, 18, 2));
+    const int readerId = manager.getFontId(family.name);
+    const int uiId = manager.loadFamilyExtraSize(family, renderer, 12);
+    renderer.fallbacks[12] = uiId;
+    manager.releaseReaderForDownload(renderer);
+    UI_CHECK(SdCardFont::alive == 1 && renderer.sdFonts.count(readerId) == 0);
+    UI_CHECK(manager.getFontId(family.name) == 0 && manager.currentPointSize() == 0);
+    UI_CHECK(renderer.fallbacks.at(12) == uiId && renderer.sdFonts.count(uiId) == 1);
+    manager.releaseReaderForDownload(renderer);
+    UI_CHECK(SdCardFont::alive == 1);
+    manager.unloadExtraSizes(renderer);
+    UI_CHECK(SdCardFont::alive == 0 && renderer.fallbacks.empty());
+    UI_CHECK(manager.loadFamily(family, renderer, 18, 2));
+    UI_CHECK(manager.getFontId(family.name) != 0 && manager.currentPointSize() == 18);
+    manager.unloadAll(renderer);
+  }
+  {
+    SdCardFontManager manager;
+    UI_CHECK(manager.loadFamily(family, renderer, 14));
+    const int sharedId = manager.getFontId(family.name);
+    renderer.fallbacks[14] = sharedId;
+    manager.releaseReaderForDownload(renderer);
+    UI_CHECK(SdCardFont::alive == 1 && manager.getFontId(family.name) == sharedId);
+    UI_CHECK(renderer.fallbacks.at(14) == sharedId && renderer.sdFonts.count(sharedId) == 1);
+    manager.unloadAll(renderer);
+  }
+  UI_CHECK(SdCardFont::alive == 0);
   std::puts("PASS: 450 tier changes preserve reader object/ID/weight, at most four live fonts");
 }

@@ -14,6 +14,10 @@ inline bool cutAfterBackup = false;
 inline bool failPromotion = false;
 inline bool failBackupCleanup = false;
 inline bool failPackCleanup = false;
+inline size_t failWriteOffset = static_cast<size_t>(-1);
+inline size_t failWritePrefix = 0;
+inline size_t failWriteReported = 0;
+inline bool failWritePersistent = false;
 inline std::filesystem::path cardRoot;
 
 class HalFile {
@@ -23,9 +27,11 @@ class HalFile {
   std::filesystem::directory_iterator directory;
   bool opened = false;
   bool folder = false;
+  bool writing = false;
   bool open(const std::filesystem::path& path, bool write = false) {
     close();
     name = path.filename().string();
+    writing = write;
     folder = std::filesystem::is_directory(path);
     if (folder) { directory = std::filesystem::directory_iterator(path); opened = true; return true; }
     stream.open(path, std::ios::binary | (write ? std::ios::out | std::ios::trunc : std::ios::in));
@@ -37,12 +43,18 @@ class HalFile {
     return static_cast<int>(stream.gcount());
   }
   size_t write(const void* buffer, size_t count) {
+    if (writing && (name.ends_with(".tmp") || name.ends_with(".davtmp")) && position() == failWriteOffset) {
+      const size_t prefix = std::min(count, failWritePrefix);
+      stream.write(static_cast<const char*>(buffer), prefix);
+      if (!failWritePersistent) failWriteOffset = static_cast<size_t>(-1);
+      return failWriteReported;
+    }
     stream.write(static_cast<const char*>(buffer), count);
     if (cutDuringStage && name.ends_with(".cpfont")) { stream.flush(); throw PowerCut(); }
     return stream ? count : 0;
   }
   bool seekSet(size_t position) { stream.clear(); stream.seekg(position); return bool(stream); }
-  size_t position() { return static_cast<size_t>(stream.tellg()); }
+  size_t position() { return static_cast<size_t>(writing ? stream.tellp() : stream.tellg()); }
   uint64_t fileSize64() {
     const auto position = stream.tellg();
     stream.seekg(0, std::ios::end);

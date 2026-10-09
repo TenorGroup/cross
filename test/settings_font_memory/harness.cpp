@@ -58,6 +58,10 @@ struct FontDownloadActivity {
   FontDownloadActivity() = default;
   enum State { LOADING_MANIFEST, ERROR, GROUP_LIST, FAMILY_LIST } state_ = FAMILY_LIST;
   struct Nav { void reset() {} } groupNav_, nav;
+  struct Renderer {
+    Renderer* getFontCacheManager() { return this; }
+    void releaseSdFontCaches() {}
+  } renderer;
   bool rowsDirty_ = false, finished = false, locked = false, sawReleased = false, fetchOk = true;
   void finish() { finished = true; }
   void requestUpdateAndWait() {}

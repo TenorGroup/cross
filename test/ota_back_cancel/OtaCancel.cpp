@@ -142,9 +142,11 @@ static bool fakeTransfer(const std::string& url, const HttpDownloader::DataCallb
   return ok;
 }
 // The image in parts: bytes first..last of the same stream.
+HttpDownloader::RangeSession::RangeSession() = default;
+HttpDownloader::RangeSession::~RangeSession() = default;
 bool HttpDownloader::fetchRange(const std::string& url, size_t first, size_t last, const DataCallback& onData,
                                 const char*, ProgressCallback progress, bool* cancelFlag, TransferStats* stats,
-                                bool* whole) {
+                                bool* whole, RangeSession*) {
   if (whole) *whole = false;
   return fakeTransfer(url, onData, progress, cancelFlag, stats, first, last);
 }

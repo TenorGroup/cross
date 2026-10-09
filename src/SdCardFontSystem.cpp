@@ -242,6 +242,10 @@ void SdCardFontSystem::releaseForOta(GfxRenderer& renderer) {
   registryDirty_.store(true, std::memory_order_release);
 }
 
+void SdCardFontSystem::releaseReaderForDownload(GfxRenderer& renderer) {
+  manager_.releaseReaderForDownload(renderer);
+}
+
 void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   ensureLoadedImpl(renderer);
   readerInk::apply(renderer);

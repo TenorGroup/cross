@@ -89,8 +89,10 @@ static struct {
   bool ignoresRangeAfterFirst = false;
   std::vector<size_t> firsts;
 } server;
+HttpDownloader::RangeSession::RangeSession() = default;
+HttpDownloader::RangeSession::~RangeSession() = default;
 bool HttpDownloader::fetchRange(const std::string&, size_t first, size_t last, const DataCallback& onData,
-                                const char*, ProgressCallback, bool*, TransferStats* stats, bool* whole) {
+                                const char*, ProgressCallback, bool*, TransferStats* stats, bool* whole, RangeSession*) {
   if (stats) *stats = {206, true, 0, 0, 0, 0, 90000, 50000, 50000};
   server.firsts.push_back(first);
   const bool ignores = server.ignoresRange || (server.ignoresRangeAfterFirst && first > 0);

@@ -13,7 +13,9 @@
 #include <vector>
 #include "activities/settings/FontDownloadProgress.h"
 #include "activities/settings/FontDownloadReleaseGuard.h"
+#include "activities/settings/FontDownloadHeap.h"
 #include "network/WebDavReplace.h"
+#include "network/HttpRangeTransfer.h"
 #if __has_include("activities/settings/FontDownloadTransfer.h")
 #include "activities/settings/FontDownloadTransfer.h"
 #endif
@@ -23,6 +25,7 @@
 #define LOG_INF(...) ((void)0)
 I18n& I18n::getInstance() { static I18n instance; return instance; }
 const char* I18n::get(StrId id) const {
+  if (id == StrId::STR_MEMORY_ERROR) return "memory";
 #ifdef FONT_DOWNLOAD_PACK_IDS_PRESENT
   return id == StrId::STR_FONT_PACK_NO_SPACE ? "Need %u MB" : "error";
 #else
@@ -53,11 +56,18 @@ struct Renderer {
   void releaseSdFontCaches() {}
 };
 struct Esp {
-  uint32_t getFreeHeap() const { return 100000; }
+  mutable unsigned freeReads = 0;
+  unsigned refuseAt = 0;
+  uint32_t getFreeHeap() const { return ++freeReads == refuseAt ? 39999 : 100000; }
   uint32_t getMaxAllocHeap() const { return 80000; }
   uint32_t getMinFreeHeap() const { return 60000; }
 } ESP;
-struct FontSystem { void markRegistryDirty() {} } sdFontSystem;
+struct FontSystem {
+  void markRegistryDirty() {}
+  void releaseReaderForDownload(Renderer&) {}
+} sdFontSystem;
+void releaseBaseSettingsList() {}
+namespace fui { struct ListItem {}; }
 struct HalPowerManager {
   static inline int locks = 0;
   struct Lock {
@@ -69,6 +79,10 @@ std::vector<std::string> events;
 
 class HttpDownloader {
  public:
+  struct RangeSession {
+    bool ready = false;
+    bool hasTlsContext() const { return ready; }
+  };
   enum DownloadError { OK, HTTP_ERROR, FILE_ERROR, ABORTED };
   using ProgressCallback = std::function<void(size_t, size_t)>;
   using DataCallback = std::function<bool(const uint8_t*, size_t)>;
@@ -82,6 +96,50 @@ class HttpDownloader {
   static inline bool cancelMidway = false;
   static inline int failAt = -1, cancelAt = -1;
   static inline std::function<void(size_t)> observe;
+  struct TransferStats { uint32_t bytes = 0; int status = 0; };
+  static inline int rangeCalls = 0, rangeFailureAt = -1;
+  static inline size_t rangeFailureBytes = 37 * 1024;
+  static inline bool fullResponse = false, laterFullResponse = false, rangePersistentFailure = false;
+  static inline std::string failedUrl;
+  static inline std::vector<std::pair<size_t, size_t>> ranges;
+  static bool fetchRange(const std::string& url, size_t first, size_t last, const DataCallback& data,
+                        const char*, ProgressCallback progress, bool* cancel, TransferStats* stats, bool* whole,
+                        RangeSession* session = nullptr) {
+    assert(!tlsOpen);
+    ++rangeCalls;
+    ++calls;
+    ranges.emplace_back(first, last);
+    events.push_back("download:" + url.substr(url.rfind('/') + 1));
+    if (observe) observe(0);
+    tlsOpen = true;
+    if (session) session->ready = true;
+    *whole = fullResponse || (laterFullResponse && first > 0);
+    stats->status = *whole ? 200 : 206;
+    if (calls == failAt) failedUrl = url;
+    bool success = !failNetwork && url != failedUrl && !(*whole && first > 0);
+    const size_t end = *whole ? payload.size() : std::min(last + 1, payload.size());
+    for (size_t offset = first; success && offset < end;) {
+      if ((cancelMidway || calls == cancelAt) && offset > first) input->back = true;
+      if (progress) progress(offset - first, end - first);
+      if (cancel && *cancel) { success = false; break; }
+      size_t count = std::min<size_t>(payload.size() <= 1024 ? 17 : 1024, end - offset);
+      if (first == 2 * 192 * 1024 && offset < 567863)
+        count = std::min(count, size_t{567863} - offset);
+      if (rangeCalls == rangeFailureAt)
+        count = std::min(count, rangeFailureBytes - stats->bytes);
+      success = data(payload.data() + offset, count);
+      if (!success) break;
+      offset += count;
+      stats->bytes += count;
+      if (progress) progress(offset - first, end - first);
+      if (observe) observe(offset - first);
+      if (rangeCalls == rangeFailureAt && stats->bytes >= rangeFailureBytes) success = false;
+      if (rangePersistentFailure && first >= 192 * 1024) success = false;
+    }
+    if (rangePersistentFailure && first >= 192 * 1024) success = false;
+    tlsOpen = false;
+    return success;
+  }
   static bool fetchUrl(const std::string& url, const DataCallback& data, const std::string& = "",
                        const std::string& = "", const char* = nullptr, bool = true,
                        ProgressCallback progress = nullptr, bool* cancel = nullptr) {
@@ -132,6 +190,8 @@ class FontDownloadActivity {
   std::vector<ManifestFamily> families_{ManifestFamily{}};
   std::vector<ManifestFile> files_;
   std::vector<int> filteredIndices_{0};
+  std::vector<std::string> rowLabels_;
+  std::vector<fui::ListItem> rowItems_;
   FontInstaller fontInstaller_;
   Renderer renderer;
   Input mappedInput;
@@ -152,12 +212,14 @@ class FontDownloadActivity {
   bool failInstall = false;
   int failInstallAt = -1;
   bool installPowerCorrect = true;
+  std::vector<uint8_t> installedBytes;
   const char* str(const std::string& text) const { return text.c_str(); }
   void requestUpdate(bool = false) {}
   void requestUpdateAndWait() {}
   void onGoHome() { state_ = FAMILY_LIST; }
   void returnToFamilyList(fontdownload::ReleaseButton) { state_ = FAMILY_LIST; }
   void downloadFamily(ManifestFamily& family);
+  bool prepareDownloadHeap();
   void downloadAll();
   void updateAll();
   void downloadSelected(bool updates);
@@ -172,6 +234,8 @@ class FontDownloadActivity {
     assert(state_ != COMPLETE);
     assert(!Storage.exists((std::string(path) + ".tmp").c_str()));
     if (failInstall || installs == failInstallAt) return FontPackInstaller::Result::IO_ERROR;
+    std::ifstream stream(Storage.path(path), std::ios::binary);
+    installedBytes.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
     const auto name = std::filesystem::path(path).stem().string();
     std::ofstream(Storage.path(("/fonts/" + name + "/old.txt").c_str())) << "committed";
     Storage.remove(path);
@@ -199,10 +263,91 @@ int main(int argc, char** argv) {
   FontPackInstaller::installCallback = [&](const char* path) { return activity.installFixturePack(path); };
   HttpDownloader::input = &activity.mappedInput;
   HttpDownloader::payload.assign(100, 7);
-  const bool legacy = scenario.starts_with("legacy");
+  const bool legacy = scenario.starts_with("legacy") || scenario == "rangelegacy" || scenario == "rangelegacywrite";
+  if (scenario.starts_with("range")) {
+    HttpDownloader::payload.resize(scenario == "range70" ? 13740612 : 3 * 192 * 1024 + 123);
+    for (size_t offset = 0; offset < HttpDownloader::payload.size(); ++offset)
+      HttpDownloader::payload[offset] = static_cast<uint8_t>(offset * 31 + offset / 251);
+  }
   if (legacy) std::memcpy(HttpDownloader::payload.data(), "CPFONT\0\0", 8);
   if (legacy) std::ofstream(cardRoot / "fonts/Example/Example_14.cpfont") << "old cpfont";
   auto checksum = esp_rom_crc32_le(0, HttpDownloader::payload.data(), HttpDownloader::payload.size());
+  if (scenario.starts_with("range")) {
+    activity.files_.push_back({legacy ? "Example_14.cpfont" : "Example.cpfontpack", "",
+                              static_cast<uint32_t>(HttpDownloader::payload.size()), checksum});
+    const bool aborted = scenario == "rangecancel" || scenario == "rangewritecancel";
+    const bool failed = scenario == "rangelater200" || scenario == "rangebudget" || scenario == "rangecrc" ||
+                        scenario == "rangeshort" || scenario == "rangewritebudget" || scenario == "rangewriteinvalid";
+    if (scenario == "rangeretry") HttpDownloader::rangeFailureAt = 2;
+    if (scenario == "rangesilent") {
+      HttpDownloader::rangeFailureAt = 3;
+      HttpDownloader::rangeFailureBytes = 174647;
+    }
+    if (scenario == "rangewrite" || scenario == "rangepartialwrite" || scenario == "rangewritebudget" ||
+        scenario == "rangelegacywrite" || scenario == "rangewritecancel" || scenario == "rangewriteinvalid") {
+      failWriteOffset = 567863;
+      failWritePrefix = scenario == "rangepartialwrite" || scenario == "rangewriteinvalid" ? 512 : 0;
+      failWriteReported = scenario == "rangewriteinvalid" ? 1 : 0;
+      failWritePersistent = scenario == "rangewritebudget";
+    }
+    if (scenario == "range200") HttpDownloader::fullResponse = true;
+    if (scenario == "rangelater200") HttpDownloader::laterFullResponse = true;
+    if (scenario == "rangebudget") HttpDownloader::rangePersistentFailure = true;
+    if (scenario == "rangecrc") activity.files_[0].crc32 ^= 1;
+    if (scenario == "rangeshort") ++activity.files_[0].size;
+    if (aborted) HttpDownloader::cancelAt = scenario == "rangewritecancel" ? 4 : 2;
+    bool progressCorrect = true;
+    size_t previousProgress = 0;
+    activity.batchRunning_ = true;
+    activity.batchTotalBytes_ = activity.files_[0].size;
+    HttpDownloader::observe = [&](size_t) {
+      progressCorrect &= activity.fileProgress_ == activity.streamedBytes_ &&
+                         activity.fileProgress_ >= previousProgress &&
+                         activity.batchDownloadedBytes_ + activity.fileProgress_ == activity.streamedBytes_;
+      previousProgress = activity.fileProgress_;
+    };
+    activity.downloadFamily(activity.families_[0]);
+    bool passed = HttpDownloader::rangeCalls > 0 && progressCorrect && !HttpDownloader::tlsOpen;
+    for (const auto& range : HttpDownloader::ranges)
+      passed &= range.second >= range.first && range.second - range.first + 1 <= 192 * 1024;
+    if (aborted || failed) {
+      passed &= activity.commits == 0 && activity.installs == 0 && activity.families_[0].installed &&
+                activity.state_ == (aborted ? FontDownloadActivity::FAMILY_LIST : FontDownloadActivity::ERROR);
+      if (aborted) passed &= HttpDownloader::rangeCalls == (scenario == "rangewritecancel" ? 4 : 2);
+      if (scenario == "rangelater200") passed &= HttpDownloader::rangeCalls == 2;
+      if (scenario == "rangebudget") passed &= HttpDownloader::rangeCalls == 7;
+      if (scenario == "rangewritebudget") passed &= HttpDownloader::rangeCalls == 8;
+      if (scenario == "rangewriteinvalid") passed &= HttpDownloader::rangeCalls == 3;
+      std::ifstream old(cardRoot / "fonts/Example/old.txt");
+      const std::string preserved{std::istreambuf_iterator<char>(old), std::istreambuf_iterator<char>()};
+      passed &= preserved == "old";
+    } else {
+      std::ifstream stream(Storage.path(legacy ? "/fonts/Example/Example_14.cpfont" : "/fonts/Example.cpfontpack"),
+                           std::ios::binary);
+      const std::vector<uint8_t> stored = legacy
+          ? std::vector<uint8_t>{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()}
+          : activity.installedBytes;
+      passed &= stored == HttpDownloader::payload && activity.streamedBytes_ == stored.size() &&
+                activity.batchDownloadedBytes_ == stored.size() &&
+                esp_rom_crc32_le(0, stored.data(), stored.size()) == checksum &&
+                activity.installs == (legacy ? 0 : 1) && activity.families_[0].installed;
+      if (scenario == "range200") passed &= HttpDownloader::rangeCalls == 1;
+      else if (scenario == "range70") passed &= HttpDownloader::rangeCalls == 70;
+      else passed &= HttpDownloader::rangeCalls == 4;
+      if (scenario == "rangeretry")
+        passed &= HttpDownloader::ranges.size() > 2 && HttpDownloader::ranges[2].first == 192 * 1024 + 37 * 1024;
+      if (scenario == "rangesilent" || scenario == "rangewrite" || scenario == "rangepartialwrite" ||
+          scenario == "rangelegacywrite")
+        passed &= HttpDownloader::ranges.size() > 3 &&
+                  HttpDownloader::ranges[3].first == 567863 + (scenario == "rangepartialwrite" ? 512 : 0);
+    }
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(cardRoot))
+      if (entry.path().extension() == ".tmp" || entry.path().extension() == ".davtmp") passed = false;
+    std::filesystem::remove_all(cardRoot);
+    std::cout << scenario << " " << (passed ? "PASS" : "FAIL") << " ranges=" << HttpDownloader::rangeCalls
+              << " bytes=" << activity.streamedBytes_ << '\n';
+    return passed ? 0 : 1;
+  }
   if (scenario.starts_with("batch")) {
     activity.families_.clear();
     activity.filteredIndices_.clear();
@@ -280,6 +425,8 @@ int main(int argc, char** argv) {
   if (scenario == "cancel" || scenario == "legacycancel") HttpDownloader::cancelMidway = true;
   if (scenario == "network") HttpDownloader::failNetwork = true;
   if (scenario == "installer") activity.failInstall = true;
+  if (scenario == "heap") ESP.refuseAt = 1;
+  if (scenario == "heap-late") ESP.refuseAt = 2;
   activity.downloadFamily(activity.families_[0]);
   bool passed = false;
   if (scenario == "success") {
@@ -302,6 +449,9 @@ int main(int argc, char** argv) {
       passed = passed && previous == "old cpfont";
     }
     if (scenario == "space") passed = passed && HttpDownloader::calls == 0;
+    if (scenario == "heap" || scenario == "heap-late") {
+      passed &= HttpDownloader::calls == 0 && activity.errorMessage_ == "memory";
+    }
   }
   for (const auto& entry : std::filesystem::recursive_directory_iterator(cardRoot))
     if (entry.path().extension() == ".tmp" || entry.path().extension() == ".davtmp") passed = false;

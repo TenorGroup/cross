@@ -6,6 +6,7 @@ namespace freeink {
 SecureClient::~SecureClient() { stop(); }
 void SecureClient::setCACert(const char* ca) { _rootCA = ca; }
 void SecureClient::setInsecure() { _insecure = true; }
+void SecureClient::setReuseTlsContext(bool reuse) { _reuseTlsContext = reuse; }
 int SecureClient::connect(IPAddress ip, uint16_t p) { return _transport.connect(ip, p); }
 int SecureClient::connect(const char* h, uint16_t p) { return _transport.connect(h, p); }
 size_t SecureClient::write(uint8_t b) { return _transport.write(b); }

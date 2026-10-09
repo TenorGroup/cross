@@ -16,6 +16,13 @@ namespace fontdownload {
 enum class ManifestFileKind { Invalid, SingleFont, Pack };
 enum class TransferResult { OK, Invalid, NoSpace, IoError, NetworkError, ChecksumError, Aborted, InstallError };
 
+struct StreamWriteResult {
+  size_t bytes;
+  bool complete;
+  bool fatal;
+  operator bool() const { return complete; }
+};
+
 inline ManifestFileKind classifyManifestFile(const char* name) {
   if (FontPackInstaller::isPackFilename(name)) return ManifestFileKind::Pack;
   if (FontInstaller::isValidCpfontRelativePath(name)) return ManifestFileKind::SingleFont;
@@ -46,19 +53,30 @@ TransferResult streamVerifiedFile(const char* temporary, const uint32_t size, co
   uint32_t crc = 0;
   bool ioError = false;
   bool oversized = false;
-  const bool fetched = fetch([&](const uint8_t* bytes, size_t count) {
-    if (cancelled) return false;
+  const bool fetched = fetch([&](const uint8_t* bytes, size_t count) -> StreamWriteResult {
+    if (cancelled) return {0, false, true};
     if (count > size - received) {
       oversized = true;
-      return false;
+      return {0, false, true};
     }
-    if (file.write(bytes, count) != count) {
+    const size_t reported = file.write(bytes, count);
+    size_t accepted = count;
+    if (reported != count) {
       ioError = true;
-      return false;
+      const size_t position = file.position();
+      const bool valid = position >= received && position - received <= count &&
+                         (reported == 0 || position - received == reported);
+      accepted = valid ? position - received : 0;
+#ifdef TENOR_PRESS_PROBE
+      LOG_ERR("FONT_WRITE", "offset=%u requested=%u reported=%u accepted=%u retryable=%d",
+              received, static_cast<unsigned>(count), static_cast<unsigned>(reported),
+              static_cast<unsigned>(accepted), valid);
+#endif
+      if (!valid) return {0, false, true};
     }
-    crc = esp_rom_crc32_le(crc, bytes, static_cast<uint32_t>(count));
-    received += static_cast<uint32_t>(count);
-    return true;
+    crc = esp_rom_crc32_le(crc, bytes, static_cast<uint32_t>(accepted));
+    received += static_cast<uint32_t>(accepted);
+    return {accepted, reported == count, false};
   });
   const bool verified = fetched && !cancelled && received == size && crc == expectedCrc;
   const bool synced = verified && file.sync();

@@ -126,6 +126,7 @@ add_subdirectory(reader_ink_repaint)
 add_subdirectory(font_installer)
 
 add_subdirectory(font_manifest)
+add_subdirectory(font_download_heap)
 add_subdirectory(font_download_progress)
 add_subdirectory(font_download_pack)
 

@@ -156,12 +156,28 @@ void SdCardFontManager::unloadExtraSizes(GfxRenderer& renderer) {
   // Clear mappings before deleting their objects. The first entry is always
   // the reader font; a UI alias may have reused it and it stays registered.
   renderer.clearFallbackFonts();
-  while (loaded_.size() > 1) {
+  while (loaded_.size() > (readerReleased_ ? 0u : 1u)) {
     auto& extra = loaded_.back();
     renderer.removeFont(extra.fontId);
     delete extra.font;
     loaded_.pop_back();
   }
+}
+
+void SdCardFontManager::releaseReaderForDownload(GfxRenderer& renderer) {
+  if (readerReleased_ || loaded_.empty() || renderer.hasFallbackFont(loaded_.front().fontId)) return;
+  auto& reader = loaded_.front();
+  renderer.removeFont(reader.fontId);
+  delete reader.font;
+  loaded_.erase(loaded_.begin());
+  if (builtinFamily_) {
+    renderer.insertFont(builtinId_, *builtinFamily_);
+    builtinFamily_.reset();
+    builtinId_ = 0;
+  }
+  loadedPointSize_ = 0;
+  loadedWeight_ = 0;
+  readerReleased_ = true;
 }
 
 void SdCardFontManager::unloadAll(GfxRenderer& renderer) {
@@ -181,9 +197,10 @@ void SdCardFontManager::unloadAll(GfxRenderer& renderer) {
   loadedFamilyName_.clear();
   loadedPointSize_ = 0;
   loadedWeight_ = 0;
+  readerReleased_ = false;
 }
 
 int SdCardFontManager::getFontId(const std::string& familyName) const {
-  if (familyName != loadedFamilyName_ || loaded_.empty()) return 0;
+  if (readerReleased_ || familyName != loadedFamilyName_ || loaded_.empty()) return 0;
   return loaded_.front().fontId;
 }

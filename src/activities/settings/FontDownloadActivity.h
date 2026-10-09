@@ -174,6 +174,7 @@ class FontDownloadActivity final : public UiListActivity {
 
   void onWifiSelectionComplete(bool success);
   bool fetchAndParseManifest();
+  bool prepareDownloadHeap();
   // cppcheck-suppress arithOperationsOnVoidPointer // unique_ptr<char[]>::get() is char*, not void*
   const char* str(StrRef ref) const { return stringArena_ ? stringArena_.get() + ref : ""; }
   // Returns false if the string does not fit the arena reserved for the manifest.

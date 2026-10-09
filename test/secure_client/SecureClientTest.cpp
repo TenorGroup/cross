@@ -1,7 +1,8 @@
 #include <gtest/gtest.h>
 #include <wolfssl/ssl.h>
+#include <SecureHttpClient.h>
 
-#include "../../freeink-sdk/libs/network/SecureNet/include/SecureClient.h"
+#include <SecureClient.h>
 
 namespace {
 void resetFixture() {
@@ -37,6 +38,168 @@ void expectOneAttempt(int error, int alertCode = -1) {
   EXPECT_EQ(tls_fixture::outstandingMethods, before);
 }
 }  // namespace
+
+template <typename Http>
+void enableContextReuse(Http& http) {
+  if constexpr (requires { http.setReuseTlsContext(true); }) http.setReuseTlsContext(true);
+}
+
+template <typename Http>
+bool peerCloseComplete(const Http& http) {
+  if constexpr (requires { http.peerCloseComplete(); }) return http.peerCloseComplete();
+  return false;
+}
+
+template <typename Client>
+bool hasTlsContext(const Client& client) {
+  if constexpr (requires { client.hasTlsContext(); }) return client.hasTlsContext();
+  return false;
+}
+
+TEST(SecureClientLifecycle, SeventyRangeConnectionsKeepOnlyOneTrustContextAndNoTcpTail) {
+  resetFixture();
+  wire::modelTimeWait = true;
+  const int before = tls_fixture::outstandingMethods + tls_fixture::outstandingContexts +
+                     tls_fixture::outstandingSessions + tls_fixture::outstandingCas + wire::livePcbs;
+  int afterFirst = -1;
+  {
+    freeink::SecureHttpClient http;
+    http.setCACert("fixture");
+    http.setReuse(false);
+    enableContextReuse(http);
+    for (int part = 0; part < 70; ++part) {
+      wire::replies.push_back("HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\n\r\nabc");
+      ASSERT_TRUE(http.begin("https://example.test/font.cpfontpack"));
+      http.addHeader("Range", "bytes=0-2");
+      ASSERT_EQ(http.GET([](const uint8_t*, size_t) { return true; }), 206);
+      ASSERT_TRUE(http.responseComplete());
+      EXPECT_TRUE(peerCloseComplete(http));
+      const int live = tls_fixture::outstandingMethods + tls_fixture::outstandingContexts +
+                       tls_fixture::outstandingSessions + tls_fixture::outstandingCas + wire::livePcbs;
+      if (part == 0) afterFirst = live;
+      EXPECT_EQ(live, afterFirst) << "part=" << part + 1;
+    }
+    EXPECT_EQ(tls_fixture::caLoadCalls, 1);
+    EXPECT_EQ(tls_fixture::domainCheckCalls, 70);
+    EXPECT_EQ(tls_fixture::verifyMode, WOLFSSL_VERIFY_PEER);
+    EXPECT_EQ(tls_fixture::cacheMode, WOLFSSL_SESS_CACHE_OFF);
+    EXPECT_EQ(wire::connectAttempts, 70);
+    EXPECT_EQ(wire::livePcbs, 0);
+    EXPECT_EQ(tls_fixture::outstandingSessions, 0);
+  }
+  const int after = tls_fixture::outstandingMethods + tls_fixture::outstandingContexts +
+                    tls_fixture::outstandingSessions + tls_fixture::outstandingCas + wire::livePcbs;
+  EXPECT_EQ(after, before);
+  std::cout << "RANGE_LIFETIME loops=70 ca_loads=" << tls_fixture::caLoadCalls
+            << " live_growth=" << after - before << " tcp_tail=" << wire::livePcbs << '\n';
+  wire::reset();
+}
+
+TEST(SecureClientLifecycle, CachedTrustSurvivesFailedHandshakeAndIsReleasedAtScopeExit) {
+  resetFixture();
+  {
+    freeink::SecureClient client;
+    enableContextReuse(client);
+    client.setCACert("fixture");
+    wire::replies.push_back("fixture");
+    scriptFailure(MEMORY_ERROR);
+    EXPECT_EQ(client.connect("example.test", 443), 0);
+    EXPECT_EQ(tls_fixture::outstandingSessions, 0);
+    EXPECT_TRUE(hasTlsContext(client));
+    wire::replies.push_back("fixture");
+    EXPECT_EQ(client.connect("example.test", 443), 1);
+    client.stop();
+    EXPECT_EQ(tls_fixture::caLoadCalls, 1);
+    EXPECT_EQ(tls_fixture::outstandingSessions, 0);
+    EXPECT_EQ(tls_fixture::outstandingCas, 1);
+  }
+  EXPECT_EQ(tls_fixture::outstandingCas, 0);
+  EXPECT_EQ(tls_fixture::outstandingContexts, 0);
+  EXPECT_EQ(tls_fixture::outstandingMethods, 0);
+}
+
+TEST(SecureClientTrust, CachedContextRejectsBadCaAndReloadsOnTrustChange) {
+  resetFixture();
+  {
+    freeink::SecureClient client;
+    enableContextReuse(client);
+    client.setCACert("fixture");
+    tls_fixture::caLoadResult = WOLFSSL_FAILURE;
+    wire::replies.push_back("fixture");
+    EXPECT_EQ(client.connect("example.test", 443), 0);
+    EXPECT_EQ(tls_fixture::outstandingContexts, 0);
+    EXPECT_FALSE(hasTlsContext(client));
+    tls_fixture::caLoadResult = WOLFSSL_SUCCESS;
+    wire::replies.push_back("fixture");
+    EXPECT_EQ(client.connect("example.test", 443), 1);
+    client.setCACert("other-ca");
+    EXPECT_EQ(tls_fixture::outstandingCas, 0);
+    wire::replies.push_back("fixture");
+    EXPECT_EQ(client.connect("example.test", 443), 1);
+    EXPECT_EQ(tls_fixture::caLoadCalls, 3);
+  }
+  EXPECT_EQ(tls_fixture::outstandingCas, 0);
+}
+
+TEST(SecureClientLifecycle, CachedTls12FallbackDoesNotRecreateCaOnNextPart) {
+  resetFixture();
+  {
+    freeink::SecureClient client;
+    enableContextReuse(client);
+    client.setCACert("fixture");
+    wire::replies.push_back("fixture");
+    wire::replies.push_back("fixture");
+    scriptFailure(VERSION_ERROR);
+    EXPECT_EQ(client.connect("example.test", 443), 1);
+    EXPECT_EQ(tls_fixture::caLoadCalls, 2);
+    client.stop();
+    wire::replies.push_back("fixture");
+    EXPECT_EQ(client.connect("example.test", 443), 1);
+    EXPECT_EQ(tls_fixture::caLoadCalls, 2);
+    EXPECT_EQ(tls_fixture::autoMethodCalls, 1);
+    EXPECT_EQ(tls_fixture::tls12MethodCalls, 1);
+  }
+  EXPECT_EQ(tls_fixture::outstandingContexts, 0);
+}
+
+TEST(SecureClientCancellation, CancelWhileWaitingForPeerCloseReleasesCachedTrust) {
+  resetFixture();
+  {
+    freeink::SecureHttpClient http;
+    http.setCACert("fixture");
+    http.setReuse(false);
+    enableContextReuse(http);
+    wire::replies.push_back("HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\n\r\nabc");
+    ASSERT_TRUE(http.begin("https://example.test/font.cpfontpack"));
+    bool bodyDone = false;
+    EXPECT_EQ(http.GET([&](const uint8_t*, size_t) { bodyDone = true; return true; },
+                       [&] { return bodyDone; }), 206);
+    EXPECT_TRUE(http.aborted());
+    EXPECT_FALSE(peerCloseComplete(http));
+    EXPECT_EQ(tls_fixture::outstandingSessions, 0);
+  }
+  EXPECT_EQ(tls_fixture::outstandingContexts, 0);
+  EXPECT_EQ(tls_fixture::outstandingCas, 0);
+}
+
+TEST(SecureClientLifecycle, PeerIgnoringConnectionCloseHasBoundedWait) {
+  resetFixture();
+  {
+    freeink::SecureHttpClient http;
+    http.setCACert("fixture");
+    http.setReuse(false);
+    enableContextReuse(http);
+    wire::replies.push_back("HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\n\r\nabc");
+    ASSERT_TRUE(http.begin("https://example.test/font.cpfontpack"));
+    const auto before = millis();
+    EXPECT_EQ(http.GET([](const uint8_t*, size_t) { return true; }), 206);
+    EXPECT_TRUE(http.responseComplete());
+    EXPECT_FALSE(http.aborted());
+    EXPECT_FALSE(peerCloseComplete(http));
+    EXPECT_LT(millis() - before, 1100UL);
+  }
+  EXPECT_EQ(tls_fixture::outstandingContexts, 0);
+}
 
 TEST(SecureClientLifecycle, MissingCaFailsBeforeTransportOrAllocation) {
   resetFixture();

@@ -20,6 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--repo', type=Path, required=True)
 parser.add_argument('--out', type=Path, required=True)
 parser.add_argument('--activity-source', type=Path)
+parser.add_argument('--range-only', action='store_true')
 args = parser.parse_args()
 args.out.mkdir(parents=True, exist_ok=True)
 source = (args.activity_source or args.repo / 'src/activities/settings/FontDownloadActivity.cpp').read_text()
@@ -36,6 +37,8 @@ if 'void FontDownloadActivity::updateDownloadProgress(' in source:
     extracted += '\n' + body(source, 'void FontDownloadActivity::updateDownloadProgress(')
 if 'void FontDownloadActivity::waitForDownloadPaint(' in source:
     extracted += '\n' + body(source, 'void FontDownloadActivity::waitForDownloadPaint(')
+if 'bool FontDownloadActivity::prepareDownloadHeap(' in source:
+    extracted += '\n' + body(source, 'bool FontDownloadActivity::prepareDownloadHeap(')
 (args.out / 'production_activity.inc').write_text(extracted)
 test_dir = Path(__file__).resolve().parent
 command = [os.environ.get('CXX', 'c++'), '-std=c++20', '-UNDEBUG', str(test_dir / 'activity_fixture.cpp'),
@@ -61,6 +64,8 @@ class FontDownloadPack(unittest.TestCase):
     def test_short(self): self.scenario('short')
     def test_network(self): self.scenario('network')
     def test_installer(self): self.scenario('installer')
+    def test_heap_refusal(self): self.scenario('heap')
+    def test_heap_refusal_after_staging_open(self): self.scenario('heap-late')
     def test_legacy_crc(self): self.scenario('legacycrc')
     def test_legacy_cancel(self): self.scenario('legacycancel')
     def test_batch_order(self): self.scenario('batchorder')
@@ -72,6 +77,23 @@ class FontDownloadPack(unittest.TestCase):
     def test_batch_cancel(self): self.scenario('batchcancel')
     def test_batch_update(self): self.scenario('batchupdate')
     def test_batch_power(self): self.scenario('batchpower')
+    def test_range_206(self): self.scenario('range206')
+    def test_range_70_parts(self): self.scenario('range70')
+    def test_range_retry(self): self.scenario('rangeretry')
+    def test_range_silent_stop(self): self.scenario('rangesilent')
+    def test_range_write_retry(self): self.scenario('rangewrite')
+    def test_range_partial_write_retry(self): self.scenario('rangepartialwrite')
+    def test_range_write_budget(self): self.scenario('rangewritebudget')
+    def test_range_legacy_write_retry(self): self.scenario('rangelegacywrite')
+    def test_range_write_invalid_cursor(self): self.scenario('rangewriteinvalid')
+    def test_range_write_retry_cancel(self): self.scenario('rangewritecancel')
+    def test_range_200(self): self.scenario('range200')
+    def test_range_cancel(self): self.scenario('rangecancel')
+    def test_range_later_200(self): self.scenario('rangelater200')
+    def test_range_budget(self): self.scenario('rangebudget')
+    def test_range_crc(self): self.scenario('rangecrc')
+    def test_range_short(self): self.scenario('rangeshort')
+    def test_range_legacy(self): self.scenario('rangelegacy')
 
     def test_two_bars_share_one_paint(self):
         render = body(source, 'void FontDownloadActivity::render(')
@@ -95,4 +117,8 @@ class FontDownloadPack(unittest.TestCase):
         self.assertIn('https://cross.tenor.vn/firmware/v1.0.56/fonts/fonts.json', header)
 
 
+if args.range_only:
+    suite = unittest.TestSuite(FontDownloadPack(name) for name in unittest.defaultTestLoader.getTestCaseNames(
+        FontDownloadPack) if name.startswith('test_range_'))
+    raise SystemExit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())
 unittest.main(argv=['font-download-pack'])

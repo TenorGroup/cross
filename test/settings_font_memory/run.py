@@ -72,6 +72,8 @@ boundary = (r / 'test/settings_catalog/category/harness.cpp').read_text()
 # Keep shared hardware/storage boundaries; this harness owns its lock and form boundaries.
 end = boundary.index('struct RenderLock {') if 'struct RenderLock {' in boundary else boundary.index('struct SettingsActivity {')
 boundary = boundary[boundary.index('HalTiltSensor halTiltSensor;'):end]
+boundary = boundary.replace('struct FontBoundary {',
+    'struct FontBoundary { template<class Renderer> void releaseReaderForDownload(Renderer&) {}')
 (out / 'Boundaries.inc').write_text(boundary)
 for name in ['HalTiltSensor', 'HalClock']:
     instance = name[0].lower() + name[1:]
