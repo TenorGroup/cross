@@ -3,6 +3,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+import tempfile
+import unittest
 
 from PIL import Image
 
@@ -90,14 +93,8 @@ def measure(image, board, screen, hidden, large):
             "crop": (0, lane_top, width, lane_bottom)}
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--program", type=Path, required=True)
-    parser.add_argument("--board", choices=("x3", "x4pro"), required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--measure-only", action="store_true")
-    args = parser.parse_args()
-    assert args.measure_only or not args.output.exists(), f"output already exists: {args.output}"
+def run(program, board, output, measure_only=False):
+    assert measure_only or not output.exists(), f"output already exists: {output}"
     results = []
     failed = 0
     for screen in ("home", "settings", "reader", "slots"):
@@ -105,20 +102,40 @@ def main():
             for charging in (False, True):
                 for hidden in (False, True):
                     name = f"{screen}-{'large' if large else 'small'}-usb{int(charging)}-hide{int(hidden)}"
-                    folder = args.output / name
-                    image = (Image.open(folder / "frame.png").convert("L") if args.measure_only else
-                             capture(args.program.resolve(), folder, args.board, screen, charging, hidden, large))
-                    result = measure(image, args.board, screen, hidden, large)
+                    folder = output / name
+                    image = (Image.open(folder / "frame.png").convert("L") if measure_only else
+                             capture(program.resolve(), folder, board, screen, charging, hidden, large))
+                    result = measure(image, board, screen, hidden, large)
                     image.crop(result.pop("crop")).resize((image.width * 3, 126), Image.Resampling.NEAREST).save(folder / "strip-3x.png")
-                    result.update(board=args.board, screen=screen, large=large, charging=charging, hidden=hidden)
+                    result.update(board=board, screen=screen, large=large, charging=charging, hidden=hidden)
                     results.append(result)
                     passed = result["delta_clock"] == [0, 0] and result["delta_number"] in (None, [0, 0])
                     failed += not passed
-                    print(f"{'GREEN' if passed else 'RED'} {args.board} {name}: {result}", flush=True)
-    (args.output / "bounds.json").write_text(json.dumps(results, indent=2))
+                    print(f"{'GREEN' if passed else 'RED'} {board} {name}: {result}", flush=True)
+    (output / "bounds.json").write_text(json.dumps(results, indent=2))
     print(f"{'RED' if failed else 'GREEN'}: {len(results)} cases, {failed} failed")
-    raise SystemExit(int(bool(failed)))
+    return failed
+
+
+class BatteryInkAlignment(unittest.TestCase):
+    # The suite runs this file without arguments: X3 with the suite's frozen binary.
+    def test_x3_battery_ink_matches_digits(self):
+        output = Path(tempfile.mkdtemp(prefix="battery-ink-")) / "run"
+        self.assertEqual(run(REPO / ".pio/build/simulator_x3_uc8279/program", "x3", output), 0)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--program", type=Path, required=True)
+    parser.add_argument("--board", choices=("x3", "x4pro"), required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--measure-only", action="store_true")
+    args = parser.parse_args()
+    raise SystemExit(int(bool(run(args.program, args.board, args.output, args.measure_only))))
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1:
+        main()
+    else:
+        unittest.main()
