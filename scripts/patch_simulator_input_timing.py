@@ -265,3 +265,10 @@ patch(root / 'BoardConfig.h', [(
     '#pragma once\n\n#if defined(SIMULATOR_DEVICE_X4_PRO) && !defined(FREEINK_CAP_WARMLIGHT)\n'
     '#define FREEINK_CAP_WARMLIGHT 1\n#endif\n',
 )])
+
+# The simulator refreshes synchronously, so the panel is never busy after a refresh returns.
+patch(root / 'HalDisplay.h', [(
+    '  bool supportsAsyncRefresh() const;\n',
+    '  bool supportsAsyncRefresh() const;\n'
+    '  bool refreshBusy() { return false; }\n',
+)])
