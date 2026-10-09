@@ -8,6 +8,8 @@
 
 // The name a folder entry shows: no trailing slash, no extension (the File card of Home uses it too).
 void formatFileName(const std::string& filename, char* buffer, size_t bufferSize);
+std::string fileSearchStem(const std::string& entry);
+bool fileSearchMatches(const std::string& entry, const std::string& query);
 
 class FileBrowserActivity final : public UiListActivity {
  public:
@@ -31,6 +33,10 @@ class FileBrowserActivity final : public UiListActivity {
   void rememberDirectory();
   void restoreDirectory();
   std::vector<std::string> files;
+  // The raw current-directory names are retained only while a search is active,
+  // so clearing the query restores the same directory without another SD walk.
+  std::vector<std::string> searchSourceFiles;
+  std::string searchQuery;
   std::unique_ptr<char[]> fileNameBuffer;
 
   // Pull-based rows: the SDK list resolves each drawn row on demand through
@@ -58,7 +64,7 @@ class FileBrowserActivity final : public UiListActivity {
   int prewarmedStart = -1;
   void prewarmRowGlyphs(int start);
 
-  int listCount() const override { return static_cast<int>(files.size()); }
+  int listCount() const override { return static_cast<int>(files.size()) + 1; }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   void onRowLongPress(int index) override;
@@ -70,7 +76,7 @@ class FileBrowserActivity final : public UiListActivity {
   bool supportsFavorites() const override { return mode == Mode::Books; }
   bool fileList() const override { return true; }
   bool rowOpens(int row) const override {
-    return row >= 0 && row < static_cast<int>(files.size()) && files[row].back() == '/';
+    return row == 0 || (row > 0 && row - 1 < static_cast<int>(files.size()) && files[row - 1].back() == '/');
   }
   std::string favoriteKey(int row) const override;
   bool toggleFavorite(int row) override;
@@ -82,6 +88,8 @@ class FileBrowserActivity final : public UiListActivity {
 
   // Data loading
   void loadFiles();
+  void openSearch();
+  void applySearch(const std::string& query);
   size_t findEntry(const std::string& name) const;
 
  public:

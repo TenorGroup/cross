@@ -59,8 +59,8 @@ struct Scale { int bodyFontId = 1, smallFontId = 0; };
 static Scale uiScaleSpec() { return {}; }
 static fui::TextStyle uiMenuLabelText(const fui::ThemeTokens& theme) { return theme.bodyText; }
 static constexpr int SMALL_FONT_ID = 0;
-enum { STR_FILE_SIDE_ACTIONS, STR_NO_BIN_FILES, STR_NO_FILES_FOUND, STR_FOLDER_TOO_MANY };
-static const char* tr(int) { return "empty"; }
+enum { STR_FILE_SIDE_ACTIONS, STR_NO_BIN_FILES, STR_NO_FILES_FOUND, STR_FOLDER_TOO_MANY, STR_SEARCH = 99 };
+static const char* tr(int id) { return id == STR_SEARCH ? "Search" : "empty"; }
 namespace tenorchrome { int tipHeight(...) { return 0; } }
 // The fixture is tenor/cross: the hand of tenor/ugly is never asked for.
 namespace shell { static bool uglyParts() { return false; } }
@@ -126,6 +126,7 @@ class FileBrowserActivity {
   enum class Mode { Books, PickFirmware };
   Mode mode = Mode::Books;
   std::string basepath = "/測試";
+  std::string searchQuery;
   std::vector<std::string> files;
   static constexpr size_t ROW_NAME_BUF_SIZE = 512;
   char rowNameBuf[ROW_NAME_BUF_SIZE]{};
@@ -155,7 +156,7 @@ class FileBrowserActivity {
   bool listFramed() const;
   void frameRows(fui::ListProps& props);
   static constexpr int ACTION_ROW = 1;
-  int listCount() const { return static_cast<int>(files.size()); }
+  int listCount() const { return static_cast<int>(files.size()) + 1; }
   void buildScreen(UiScreen& screen);
   void syncListViewport(UiScreen& screen, fui::ListProps& props, bool hasSubtitle = false);
   void decoratePinnedRows(fui::ListProps&);
@@ -163,7 +164,7 @@ class FileBrowserActivity {
   void reserveFavoriteHint(UiScreen&) {}
   fui::ListNav& activeNav() { return nav; }
   static int kepConTro(int selected, int count) { return std::clamp(selected, 0, std::max(0, count - 1)); }
-  bool rowIsPinned(int index) const { return index == pinned; }
+  bool rowIsPinned(int index) const { return index > 0 && index == pinned; }
   // A new folder listing, as loadFiles() does: re-prewarm the visible window.
   void invalidate() { prewarmedStart = -1; }
 };
@@ -176,8 +177,9 @@ static constexpr int16_t TENOR_PILL_ROW_PADDING_Y = 7;
 static const char PIN_GLYPH[] = "\xEE\x84\x8A";
 // The label a row must show, from the production formatter.
 static std::string expectedLabel(const FileBrowserActivity& browser, int index) {
+  if (index == 0) return "Search";
   char name[FileBrowserActivity::ROW_NAME_BUF_SIZE];
-  formatFileName(browser.files[index], name, sizeof(name));
+  formatFileName(browser.files[index - 1], name, sizeof(name));
   return browser.rowIsPinned(index) ? std::string(PIN_GLYPH) + name : std::string(name);
 }
 static bool wasDrawn(const Draw& draw, const std::string& label) {
@@ -194,12 +196,13 @@ static void render(FileBrowserActivity& browser, int top, bool assertBound = tru
   fui::InputSnapshot input;
   fui::InteractionBuffer<24> interactions;
   fui::Frame<24> frame(draw, device, input, interactions);
-  browser.nav.top = top;
-  browser.nav.selected = top;
+    const int target = top == 0 ? 0 : top + 1;
+    browser.nav.top = target;
+    browser.nav.selected = target;
   browser.nav.followOnBuild = false;
-  browser.pinned = top;
+  browser.pinned = target == 0 ? 1 : target;
   if (follow) {
-    browser.nav.top = std::max(0, top - browser.nav.visibleRows + 1);
+    browser.nav.top = std::max(0, target - browser.nav.visibleRows + 1);
     browser.nav.follow(browser.listCount());
   }
   // Wrapped labels can refine the viewport. Exercise the actual SDK list
@@ -237,10 +240,10 @@ static void render(FileBrowserActivity& browser, int top, bool assertBound = tru
     const auto& interaction = interactions.data()[i];
     CHECK(interaction.value >= browser.nav.top);
     CHECK(interaction.value < browser.listCount());
-    selectionDrawn |= interaction.value == top;
+    selectionDrawn |= interaction.value == target;
     // Every full row shows its own file's name and extension.
     CHECK(wasDrawn(draw, expectedLabel(browser, interaction.value)));
-    const std::string extension = getFileExtension(browser.files[interaction.value]);
+    const std::string extension = interaction.value == 0 ? "" : getFileExtension(browser.files[interaction.value - 1]);
     CHECK(extension.empty() || wasDrawn(draw, extension));
     // Hit testing must emit the global file index, including the last page.
     fui::InputSnapshot tap;
@@ -289,19 +292,19 @@ int main() {
     CHECK(browser.renderer.prewarmCalls == prewarmed);
     render(browser, total / 2);
     render(browser, total - 1, true, true);
-    CHECK(browser.nav.selected == total - 1);
+    CHECK(browser.nav.selected == total);
     render(browser, 0);
     UITheme::getInstance().icons = false;
     browser.files = {"a\xcc\x81/", "測試1.epub", "測試2.epub"};
     browser.invalidate();
     render(browser, 1);
     fui::ListItem folder;
-    FileBrowserActivity::provideRow(&browser, 0, folder);
+    FileBrowserActivity::provideRow(&browser, 1, folder);
     CHECK(std::string(folder.label) == "[á]");
     CHECK(folder.value == nullptr);
     UITheme::getInstance().icons = true;
     render(browser, 1);
-    FileBrowserActivity::provideRow(&browser, 0, folder);
+    FileBrowserActivity::provideRow(&browser, 1, folder);
     CHECK(std::string(folder.label) == "á");
   }
   // Names long enough to actually wrap at the viewport width. Follow a
