@@ -466,6 +466,15 @@ int main() {
     check(file.bytesRead < 4096, "read the cover with the heap gone");
     ESP.freeHeap = 200000;
   }
+  for (const auto size : {std::pair{232,350}, std::pair{253,381}, std::pair{281,187}}) {
+    const auto jpeg = fixture("cover-900x1350.jpg");
+    HalFile file(jpeg);
+    Output out;
+    check(JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(file, out, size.first, size.second, true),
+          "exact Home cover conversion");
+    const auto image = fromBmp(out.bytes);
+    check(image.w == size.first && image.h == size.second, "exact Home BMP dimensions");
+  }
   std::printf(failures ? "%d FAILED\n" : "ALL PASS\n", failures);
   return failures ? 1 : 0;
 }

@@ -180,5 +180,13 @@ int main() {
     std::printf("PASS: new[] call %zu (%zu bytes) failed, decode returned false, freed every buffer, retry BMP unchanged\n",
                 call, size);
   }
+  Output exact;
+  HalFile exactInput(PNG, sizeof(PNG));
+  if (!PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(exactInput, exact, 4, 3, true) ||
+      exact.bytes[18] != 4 || exact.bytes[22] != 0xfd || exact.size != 74 || !noLeaks()) {
+    std::puts("FAIL: exact Home PNG dimensions or allocation cleanup");
+    return 1;
+  }
+  std::puts("PASS: exact 4x3 Home PNG dimensions");
   return 0;
 }

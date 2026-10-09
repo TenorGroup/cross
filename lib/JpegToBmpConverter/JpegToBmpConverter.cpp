@@ -188,6 +188,7 @@ struct BmpConvertCtx {
   int srcHeight;
   int outWidth;
   int outHeight;
+  int bitmapWidth, bitmapHeight, cropX, cropY;
   bool oneBit;
   int bytesPerRow;
   bool needsScaling;
@@ -239,6 +240,8 @@ static void yieldDuringDecodeBlock(BmpConvertCtx* ctx) {
 
 // Write a fully-assembled output row (grayscale bytes, length outWidth) to BMP
 static void writeOutputRow(BmpConvertCtx* ctx, const uint8_t* srcRow, int outY) {
+  if (outY < ctx->cropY || outY >= ctx->cropY + ctx->bitmapHeight) return;
+  srcRow += ctx->cropX;
   memset(ctx->bmpRow.get(), 0, ctx->bytesPerRow);
 
   if (USE_8BIT_OUTPUT && !ctx->oneBit) {
@@ -246,7 +249,7 @@ static void writeOutputRow(BmpConvertCtx* ctx, const uint8_t* srcRow, int outY) 
       ctx->bmpRow[x] = adjustPixel(srcRow[x]);
     }
   } else if (ctx->oneBit) {
-    for (int i = 0; i < ctx->outWidth; i++) {
+    for (int i = 0; i < ctx->bitmapWidth; i++) {
       const int x = ctx->oneBitDitherer->at(i);
       ctx->bmpRow[x >> 3] |= ctx->oneBitDitherer->processPixel(srcRow[x], x) << (7 - (x & 7));
     }
@@ -358,17 +361,24 @@ static void finishSmoothUpscale(BmpConvertCtx* ctx) {
 
 // Flush one scaled output row from Y-axis accumulators and advance currentOutY
 static void flushScaledRow(BmpConvertCtx* ctx) {
+  if (ctx->currentOutY < ctx->cropY || ctx->currentOutY >= ctx->cropY + ctx->bitmapHeight) {
+    ctx->currentOutY++;
+    yieldDuringDecode(ctx);
+    return;
+  }
   memset(ctx->bmpRow.get(), 0, ctx->bytesPerRow);
 
   if (USE_8BIT_OUTPUT && !ctx->oneBit) {
     for (int x = 0; x < ctx->outWidth; x++) {
-      const uint8_t gray = (ctx->rowCount[x] > 0) ? (ctx->rowAccum[x] / ctx->rowCount[x]) : 0;
+      const int sampleX = x + ctx->cropX;
+      const uint8_t gray = (ctx->rowCount[sampleX] > 0) ? (ctx->rowAccum[sampleX] / ctx->rowCount[sampleX]) : 0;
       ctx->bmpRow[x] = adjustPixel(gray);
     }
   } else if (ctx->oneBit) {
-    for (int i = 0; i < ctx->outWidth; i++) {
+    for (int i = 0; i < ctx->bitmapWidth; i++) {
       const int x = ctx->oneBitDitherer->at(i);
-      const uint8_t gray = (ctx->rowCount[x] > 0) ? (ctx->rowAccum[x] / ctx->rowCount[x]) : 0;
+      const int sampleX = x + ctx->cropX;
+      const uint8_t gray = (ctx->rowCount[sampleX] > 0) ? (ctx->rowAccum[sampleX] / ctx->rowCount[sampleX]) : 0;
       ctx->bmpRow[x >> 3] |= ctx->oneBitDitherer->processPixel(gray, x) << (7 - (x & 7));
     }
     ctx->oneBitDitherer->nextRow();
@@ -480,7 +490,7 @@ int bmpDrawCallback(JPEGDRAW* pDraw) {
 // Internal implementation with configurable target size and bit depth
 bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& bmpOut, int targetWidth,
                                                      int targetHeight, bool oneBit, bool crop,
-                                                     bool originalThresholds) {
+                                                     bool originalThresholds, bool exactSize) {
   LOG_DBG("JPG", "Converting JPEG to %s BMP (target: %dx%d)", oneBit ? "1-bit" : "2-bit", targetWidth, targetHeight);
 
   if (ESP.getFreeHeap() < MIN_FREE_HEAP) {
@@ -526,6 +536,12 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
 
   if (targetWidth > 0 && targetHeight > 0 && (srcWidth != targetWidth || srcHeight != targetHeight)) {
     coverScaleSize(srcWidth, srcHeight, targetWidth, targetHeight, crop, &outWidth, &outHeight);
+    if (exactSize) {
+      // Round the fitted gray image to the nearest pixel before the centered crop.
+      const bool byWidth = targetWidth * srcHeight >= targetHeight * srcWidth;
+      outWidth = byWidth ? targetWidth : (srcWidth * targetHeight + srcHeight / 2) / srcHeight;
+      outHeight = byWidth ? (srcHeight * targetWidth + srcWidth / 2) / srcWidth : targetHeight;
+    }
   }
 
   // Callback coordinates and MCU buffering use the reduced decode grid (JpegScale.h): the smallest
@@ -555,14 +571,18 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   // averaging has nothing to average there and only repeats source pixels.
   const bool smoothUpscale = needsScaling && scaleSrcWidth <= outWidth && scaleSrcHeight <= outHeight;
 
+  const int bitmapWidth = exactSize ? targetWidth : outWidth;
+  const int bitmapHeight = exactSize ? targetHeight : outHeight;
+  // Crop gray pixels before dithering so the packed bitmap is the Home frame's own size.
+  const int cropX = (outWidth - bitmapWidth) / 2, cropY = (outHeight - bitmapHeight) / 2;
   // Write BMP header with output dimensions
   int bytesPerRow;
   if (USE_8BIT_OUTPUT && !oneBit) {
     writeBmpHeader8bit(bmpOut, outWidth, outHeight);
     bytesPerRow = (outWidth + 3) / 4 * 4;
   } else if (oneBit) {
-    writeBmpHeader1bit(bmpOut, outWidth, outHeight);
-    bytesPerRow = (outWidth + 31) / 32 * 4;
+    writeBmpHeader1bit(bmpOut, bitmapWidth, bitmapHeight);
+    bytesPerRow = (bitmapWidth + 31) / 32 * 4;
   } else {
     writeBmpHeader2bit(bmpOut, outWidth, outHeight);
     bytesPerRow = (outWidth * 2 + 31) / 32 * 4;
@@ -574,6 +594,10 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   ctx.srcHeight = scaleSrcHeight;
   ctx.outWidth = outWidth;
   ctx.outHeight = outHeight;
+  ctx.bitmapWidth = bitmapWidth;
+  ctx.bitmapHeight = bitmapHeight;
+  ctx.cropX = cropX;
+  ctx.cropY = cropY;
   ctx.oneBit = oneBit;
   ctx.bytesPerRow = bytesPerRow;
   ctx.needsScaling = needsScaling;
@@ -626,7 +650,7 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   }
 
   if (oneBit) {
-    ctx.oneBitDitherer = makeUniqueNoThrow<FloydSteinberg1BitDitherer>(outWidth);
+    ctx.oneBitDitherer = makeUniqueNoThrow<FloydSteinberg1BitDitherer>(bitmapWidth);
     if (!ctx.oneBitDitherer || !ctx.oneBitDitherer->isValid()) {
       LOG_ERR("JPG", "OOM: 1-bit ditherer");
       return false;
@@ -682,8 +706,8 @@ bool JpegToBmpConverter::jpegFileToBmpStreamWithSize(HalFile& jpegFile, Print& b
 
 // Convert to 1-bit BMP (black and white only, no grays) for fast home screen rendering
 bool JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(HalFile& jpegFile, Print& bmpOut, int targetMaxWidth,
-                                                         int targetMaxHeight) {
-  return jpegFileToBmpStreamInternal(jpegFile, bmpOut, targetMaxWidth, targetMaxHeight, true, true);
+                                                         int targetMaxHeight, bool exactSize) {
+  return jpegFileToBmpStreamInternal(jpegFile, bmpOut, targetMaxWidth, targetMaxHeight, true, true, false, exactSize);
 }
 
 namespace {

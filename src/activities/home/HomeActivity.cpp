@@ -1522,7 +1522,7 @@ static constexpr StrId CARD_STAT_LABELS[HOME_STAT_COUNT] = {
 // wider than the column, as in the approved drawing. Returns the top of the progress bar, -1 when
 // none is drawn. Six groups extend to the cover edge when their record has data.
 int HomeActivity::drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bounds) {
-  const bool secondary = !tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2;
+  const bool secondary = tenorchrome::kTouchShell ? SETTINGS.uiTextSize > 0 : SETTINGS.uiTextSize == 2;
   const int labelFont = secondary ? SMALL_FONT_ID : UI_10_FONT_ID;
   const int valueFont = secondary ? UI_10_FONT_ID : UI_12_FONT_ID;
   const int fallbackFont = secondary ? SMALL_FONT_ID : UI_10_FONT_ID;
@@ -1534,17 +1534,22 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bou
   in.valueLineHeight = renderer.getLineHeight(valueFont);
   in.valueTail = in.valueLineHeight - renderer.getFontAscenderSize(valueFont);
   in.rows = cardStats.rows;
+  in.compact = tenorchrome::kTouchShell;
+  in.groupGap = card.statsGap;
+  if (in.compact && bounds) in.rows = (1u << HOME_STAT_COUNT) - 1;
   int fonts[HOME_STAT_COUNT];
   std::string first[HOME_STAT_COUNT], second[HOME_STAT_COUNT];
   std::vector<std::string> labels[HOME_STAT_COUNT];
   for (int row = 0; row < HOME_STAT_COUNT; ++row) {
     if (!(in.rows & (1u << row))) continue;
-    if (tenorchrome::kTouchShell && SETTINGS.uiTextSize == 1) {
+    if (in.compact) {
       labels[row] = renderer.wrappedText(labelFont, I18N.get(CARD_STAT_LABELS[row]), width, 2);
       in.labelHeights[row] = static_cast<int>(labels[row].size()) * in.labelLineHeight;
     }
-    first[row] = cardStats.values[row];
-    fonts[row] = cardStatValueWidth(renderer, valueFont, first[row].c_str()) <= width ? valueFont : fallbackFont;
+    static constexpr const char* samples[] = {"15%", ">365 ngày", "10h 8m", "2h 1m/ngày", "5", "24"};
+    first[row] = in.compact && bounds ? samples[row] : cardStats.values[row];
+    const char* sizingValue = in.compact ? samples[row] : first[row].c_str();
+    fonts[row] = cardStatValueWidth(renderer, valueFont, sizingValue) <= width ? valueFont : fallbackFont;
     if (cardStatValueWidth(renderer, fonts[row], first[row].c_str()) > width) {
       // Long durations keep every number and unit, splitting at the duration space or /day suffix.
       const auto slash = first[row].find('/');
@@ -1566,6 +1571,24 @@ int HomeActivity::drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bou
           fonts[row], part.c_str(), number ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR));
     });
     in.valueTails[row] = lineHeight - inkBottom;
+    if (in.compact) {
+      const char* label = labels[row].empty() ? I18N.get(CARD_STAT_LABELS[row]) : labels[row].front().c_str();
+      const char* lastLabel = labels[row].empty() ? label : labels[row].back().c_str();
+      const auto labelInk = cardStatInkBounds(renderer, labelFont, label, EpdFontFamily::REGULAR);
+      const auto lastLabelInk = cardStatInkBounds(renderer, labelFont, lastLabel, EpdFontFamily::REGULAR);
+      in.labelTops[row] = labelInk.top;
+      in.labelHeights[row] = (labels[row].empty() ? 0 : static_cast<int>(labels[row].size() - 1) * in.labelLineHeight) +
+                            lastLabelInk.bottom - labelInk.top;
+      int firstTop = INT32_MAX;
+      compactstats::runs(first[row].c_str(), [&](const std::string& part, const bool number) {
+        firstTop = std::min(firstTop, cardStatInkBounds(renderer, fonts[row], part.c_str(),
+            number ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR).top);
+      });
+      if (firstTop == INT32_MAX) firstTop = 0;
+      in.valueTops[row] = firstTop;
+      const auto cellInk = cardStatInkBounds(renderer, fonts[row], samples[row], EpdFontFamily::BOLD);
+      in.valueHeights[row] = (second[row].empty() ? 0 : lineHeight) + cellInk.bottom - cellInk.top;
+    }
   }
   const auto column = homeStatsLayout(in);
   if (bounds) {
@@ -1660,8 +1683,8 @@ void HomeActivity::drawRecentCard() {
     otherTitleLines = renderer.wrappedText(UI_10_FONT_ID, title.c_str(), room, 2, EpdFontFamily::BOLD);
     in.rowLines = std::max(1, static_cast<int>(otherTitleLines.size()));
   }
-  const int statLabelFont = !tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2 ? SMALL_FONT_ID : UI_10_FONT_ID;
-  const int statValueFont = !tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2 ? UI_10_FONT_ID : UI_12_FONT_ID;
+  const int statLabelFont = (tenorchrome::kTouchShell ? SETTINGS.uiTextSize > 0 : SETTINGS.uiTextSize == 2) ? SMALL_FONT_ID : UI_10_FONT_ID;
+  const int statValueFont = (tenorchrome::kTouchShell ? SETTINGS.uiTextSize > 0 : SETTINGS.uiTextSize == 2) ? UI_10_FONT_ID : UI_12_FONT_ID;
   for (const auto label : CARD_STAT_LABELS)
     in.statsMinWidth = std::max(in.statsMinWidth, renderer.getTextWidth(statLabelFont, I18N.get(label)));
   // Stable per board/tier: a minute changing never changes cover geometry or a saved-card key.
@@ -1676,39 +1699,45 @@ void HomeActivity::drawRecentCard() {
   // A fixed budget for two wrapped duration values leaves geometry independent of book time.
   in.minStatsHeight = 2 + HOME_STAT_COUNT * (renderer.getLineHeight(statLabelFont) +
                                            renderer.getLineHeight(statValueFont)) + 12 +
-                      2 * std::max(0, 2 * renderer.getLineHeight(!tenorchrome::kTouchShell && SETTINGS.uiTextSize == 2 ? SMALL_FONT_ID : UI_10_FONT_ID) -
+                      2 * std::max(0, 2 * renderer.getLineHeight((tenorchrome::kTouchShell ? SETTINGS.uiTextSize > 0 : SETTINGS.uiTextSize == 2) ? SMALL_FONT_ID : UI_10_FONT_ID) -
                                       renderer.getLineHeight(statValueFont));
   const auto size = tenorchrome::kTouchShell ? cardCoverSize(shown) : CoverSize{};
   const bool alignCover = tenorchrome::kTouchShell && size.width > 0 && size.height > 0;
   if (alignCover) {
-    if (cardStats.rows == (1u << HOME_STAT_READ)) in.metadataAboveCover = false;
     in.statsMinWidth = 0;
     for (int row = 0; row < HOME_STAT_COUNT; ++row) {
-      if (!(cardStats.rows & (1u << row))) continue;
       in.statsMinWidth = std::max(in.statsMinWidth, renderer.getTextWidth(statLabelFont, I18N.get(CARD_STAT_LABELS[row])));
-      in.statsMinWidth = std::max(in.statsMinWidth, cardStatValueWidth(renderer, statValueFont, cardStats.values[row].c_str()));
+      in.statsMinWidth = std::max(in.statsMinWidth, cardStatValueWidth(renderer, statValueFont, row == HOME_STAT_AVERAGE ? "2h 1m/ngày" : row == HOME_STAT_FINISH ? ">365 ngày" : "10h 8m"));
     }
-    // Extremely long values retain the painter's smaller face and split-line path.
     in.statsMinWidth = std::min(in.statsMinWidth, renderer.getScreenWidth() / 2);
   }
   auto frame = homeCardLayout(in);
   if (alignCover) {
     frame.statsRight = renderer.getScreenWidth() - 16;
-    frame.statsBottom = frame.coverY + frame.coverH;
+    frame.statsBottom = frame.ruleY - 15;
     frame.statsX = frame.statsRight - in.statsMinWidth;
     if (in.metadataAboveCover) {
       frame.statsTop = in.top + 2 * in.titleLineHeight + 2 + in.authorLineHeight + 18;
-      frame.statsBottom = frame.ruleY - 1;
+    } else {
+      frame.statsBottom -= 18 + 2 * in.titleLineHeight + 2 + in.authorLineHeight + 7 + in.excerptLineHeight;
     }
     HomeStatsBounds ink;
     drawCardStats(frame, &ink);
-    if (in.metadataAboveCover && ink.bottom > frame.statsBottom) {
-      frame.statsTop = std::max(in.top, frame.statsTop - (ink.bottom - frame.statsBottom));
-      drawCardStats(frame, &ink);
+    {
+      const int widthLimit = frame.statsRight - frame.coverX - 22 - in.statsMinWidth;
+      const int heightLimit = size.height > size.width
+                                  ? std::min(widthLimit * size.height / size.width, frame.statsBottom - ink.top)
+                                  : frame.statsBottom - ink.top;
+      const int excess = ink.bottom - ink.top - heightLimit;
+      if (excess > 0) {
+        frame.statsGap = std::max(2, frame.statsGap - (excess + HOME_STAT_COUNT - 2) / (HOME_STAT_COUNT - 1));
+        drawCardStats(frame, &ink);
+      }
     }
     frame = homeCoverAlignedToStats(frame, ink, size.width, size.height, in.statsMinWidth);
-    if (in.metadataAboveCover) frame.textW = frame.coverW;
-    else {
+    // Keep the title and its metadata in the cover column while the stats continue below it.
+    frame.textW = frame.coverW;
+    if (!in.metadataAboveCover) {
       const int shift = frame.coverY + frame.coverH + 18 - frame.titleY;
       frame.titleY += shift;
       frame.authorY += shift;
@@ -1718,6 +1747,7 @@ void HomeActivity::drawRecentCard() {
             frame.coverX, frame.coverY, frame.coverW, frame.coverH, ink.top, ink.bottom,
             frame.statsX, frame.statsRight - 1, size.width, size.height);
   }
+  cardThumbWidth = alignCover ? frame.coverW : HOME_CARD_COVER_W;
   cardThumbHeight = alignCover ? frame.coverH : HOME_CARD_COVER_H;
   heldCover = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY), static_cast<int16_t>(frame.coverW),
                static_cast<int16_t>(frame.coverH)};
@@ -1753,8 +1783,9 @@ void HomeActivity::drawRecentCard() {
   // The cover and the lines under it depend on these alone (the cover's height and the title's
   // line count do not move the cover), so the keys say whether a card file still shows this card,
   // or at least its cover.
-  const std::string thumbPath =
-      book.coverBmpPath.empty() ? std::string() : UITheme::getCoverThumbPath(book.coverBmpPath, cardThumbHeight);
+  const std::string thumbPath = book.coverBmpPath.empty() ? std::string()
+      : (tenorchrome::kTouchShell ? UITheme::getCoverThumbPath(book.coverBmpPath, cardThumbWidth, cardThumbHeight)
+                                  : UITheme::getCoverThumbPath(book.coverBmpPath, cardThumbHeight));
   const int16_t geometry[] = {static_cast<int16_t>(frame.coverX), static_cast<int16_t>(frame.coverY),
                               static_cast<int16_t>(frame.coverW), static_cast<int16_t>(frame.coverH),
                               static_cast<int16_t>(frame.textX),  static_cast<int16_t>(frame.titleY),
@@ -1830,18 +1861,30 @@ void HomeActivity::drawRecentCard() {
   // drawn at its own size, the theme's is the fallback for a book not opened since that began.
   bool image = coverKept;
   if (!coverKept) cardFileThumb = 0;
-  for (const int height : {cardThumbHeight, HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight}) {
+  const int fallbackHeights[] = {cardThumbHeight, HOME_CARD_COVER_H, UITheme::getInstance().getMetrics().homeCoverHeight};
+  for (int attempt = 0; attempt < (tenorchrome::kTouchShell ? 1 : 3); ++attempt) {
+    const int height = fallbackHeights[attempt];
     if (image || book.coverBmpPath.empty()) break;
     HalFile file;
-    if (!Storage.openFileForRead("HOME", UITheme::getCoverThumbPath(book.coverBmpPath, height), file)) continue;
-    if (height == cardThumbHeight) cardFileThumb = 1;
+    const auto path = (tenorchrome::kTouchShell && attempt == 0)
+                          ? UITheme::getCoverThumbPath(book.coverBmpPath, cardThumbWidth, height)
+                          : UITheme::getCoverThumbPath(book.coverBmpPath, height);
+    if (!Storage.openFileForRead("HOME", path, file)) continue;
+    if (attempt == 0) cardFileThumb = 1;
     Bitmap bitmap(file);
 #ifdef TENOR_PRESS_PROBE
     LOG_INF("HOME", "CARD_COVER_START height=%d free=%u largest=%u", height, ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     const uint32_t coverStarted = millis();
 #endif
-    if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0)
-      image = renderer.drawBitmapCover(bitmap, card.coverX, card.coverY, card.coverW, card.coverH);
+    if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
+      if (tenorchrome::kTouchShell && attempt == 0) {
+        image = bitmap.getWidth() == card.coverW && bitmap.getHeight() == card.coverH &&
+                renderer.drawBitmap1Bit(bitmap, card.coverX, card.coverY, card.coverW, card.coverH);
+        if (!image) cardFileThumb = 0;
+      } else if (!tenorchrome::kTouchShell) {
+        image = renderer.drawBitmapCover(bitmap, card.coverX, card.coverY, card.coverW, card.coverH);
+      }
+    }
 #ifdef TENOR_PRESS_PROBE
     LOG_INF("HOME", "CARD_COVER_END height=%d ms=%lu ok=%u free=%u largest=%u", height,
             static_cast<unsigned long>(millis() - coverStarted), image ? 1u : 0u,
@@ -1967,7 +2010,10 @@ HomeActivity::CardFile HomeActivity::loadCardFile(const std::string& path, const
 
 void HomeActivity::wantThumb(const int index) {
   if (!FsHelpers::hasEpubExtension(recentBooks[index].path)) return;
-  const uint32_t id = fnv(fnv(2166136261u, recentBooks[index].path), &cardThumbHeight, sizeof(cardThumbHeight));
+  const uint32_t id = tenorchrome::kTouchShell
+                          ? fnv(fnv(fnv(2166136261u, recentBooks[index].path), &cardThumbWidth, sizeof(cardThumbWidth)),
+                                &cardThumbHeight, sizeof(cardThumbHeight))
+                          : fnv(fnv(2166136261u, recentBooks[index].path), &cardThumbHeight, sizeof(cardThumbHeight));
   for (const uint32_t tried : thumbTried)
     if (tried == id) return;
   thumbWantedAtMs = millis();
@@ -1992,7 +2038,10 @@ void HomeActivity::writeMissingThumb(const int index) {
   RenderLock lock(*this);
   if (activeTabId != Tab::RECENT || index != shownRecent()) return;
   const std::string path = recentBooks[index].path;
-  thumbTried[thumbTriedNext++ % 5] = fnv(fnv(2166136261u, path), &cardThumbHeight, sizeof(cardThumbHeight));
+  thumbTried[thumbTriedNext++ % 5] = tenorchrome::kTouchShell
+                                         ? fnv(fnv(fnv(2166136261u, path), &cardThumbWidth, sizeof(cardThumbWidth)),
+                                               &cardThumbHeight, sizeof(cardThumbHeight))
+                                         : fnv(fnv(2166136261u, path), &cardThumbHeight, sizeof(cardThumbHeight));
   // The card is drawn again with its cover, and the decode gets the card's snapshot memory.
   freeCoverBuffer();
   coverRendered = false;
@@ -2008,11 +2057,20 @@ void HomeActivity::writeMissingThumb(const int index) {
       ESP.getMaxAllocHeap() >= CARD_THUMB_MIN_LARGEST_BLOCK) {
     LOG_INF("HOME", "Card thumbnail write %d", index);
     GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-    const int heights[] = {cardThumbHeight, UITheme::getInstance().getMetrics().homeCoverHeight};
     if (ref) {
-      epub.generateThumbBmps(href, heights, 2);
+      if (tenorchrome::kTouchShell) {
+        epub.generateThumbBmps(href, &cardThumbWidth, &cardThumbHeight, 1);
+      } else {
+        const int heights[] = {cardThumbHeight, UITheme::getInstance().getMetrics().homeCoverHeight};
+        epub.generateThumbBmps(href, heights, 2);
+      }
     } else if (epub.load(false, true)) {
-      epub.generateThumbBmps(heights, 2);
+      if (tenorchrome::kTouchShell) {
+        epub.generateThumbBmps(epub.getCoverHref(), &cardThumbWidth, &cardThumbHeight, 1);
+      } else {
+        const int heights[] = {cardThumbHeight, UITheme::getInstance().getMetrics().homeCoverHeight};
+        epub.generateThumbBmps(heights, 2);
+      }
     }
   }
   requestUpdate();

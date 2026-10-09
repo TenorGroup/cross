@@ -90,19 +90,22 @@ struct HomeActivity {
   struct CoverSize { int width=0,height=0; } size;
   CoverSize cardCoverSize(int) { return size; }
   int cardThumbHeight=HOME_CARD_COVER_H;
+  int cardThumbWidth=HOME_CARD_COVER_W;
   HomeCardLayout cardLayout(HomeCardInput in);
   int drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bounds=nullptr);
 };
 @@METHODS@@
 HomeCardLayout HomeActivity::cardLayout(HomeCardInput in) {
     int shown=0;
-    int statLabelFont=UI_10_FONT_ID, statValueFont=UI_12_FONT_ID;
+    int statLabelFont=SETTINGS.uiTextSize > 0 ? SMALL_FONT_ID : UI_10_FONT_ID;
+    int statValueFont=SETTINGS.uiTextSize > 0 ? UI_10_FONT_ID : UI_12_FONT_ID;
     @@PLACE@@
     return frame;
   }
 
 int main() {
   int fails=0, count=0;
+  int fullW[3][2] = {}, fullH[3][2] = {};
   for(int tier=0;tier<3;++tier) for(int record=0;record<3;++record) for(bool landscape:{false,true}) {
     SETTINGS.uiTextSize=tier; tenorchrome::kTouchShell=true;
     HomeActivity h;
@@ -113,10 +116,9 @@ int main() {
     HomeCardInput in; in.screenWidth=480; in.top=44; in.bottom=tier==0?700:tier==1?688:677;
     in.titleLineHeight=tier?43:38; in.titleLines=2; in.authorLineHeight=h.renderer.getLineHeight(UI_10_FONT_ID);
     in.excerptLineHeight=tier==0?34:tier==1?39:45; in.rowLineHeight=in.authorLineHeight; in.rowLines=2; in.metadataAboveCover=tier>0;
-    in.statsMinWidth=tier==0?156:tier==1?156:260;
+    in.statsMinWidth=tier==0?147:tier==1?160:184;
     in.minStatsHeight=2+6*(h.renderer.getLineHeight(UI_10_FONT_ID)+h.renderer.getLineHeight(UI_12_FONT_ID))+12+2*std::max(0,2*h.renderer.getLineHeight(UI_10_FONT_ID)-h.renderer.getLineHeight(UI_12_FONT_ID));
     h.size={landscape?1200:298,landscape?800:450};
-    if(record==2) in.metadataAboveCover=false;
     auto card=h.cardLayout(in);
     const int sourceW=landscape?1200:298, sourceH=landscape?800:450;
     HomeStatsBounds bounds;
@@ -125,24 +127,34 @@ int main() {
     h.renderer.reset(); h.drawCardStats(card);
     const auto firstInk=cardStatInkBounds(h.renderer,UI_10_FONT_ID,LABELS[0],EpdFontFamily::REGULAR);
     const int actualTop=card.statsTop+2+firstInk.top;
-    const bool forced=card.coverH<h.renderer.inkBottom-actualTop;
-    const bool aligned=forced ? std::abs((2*card.coverY+card.coverH)-(actualTop+h.renderer.inkBottom))<=1 :
-                               card.coverY==actualTop && card.coverY+card.coverH==h.renderer.inkBottom;
+    const bool forced=card.coverH<bounds.bottom-bounds.top;
+    const bool aligned=forced ? std::abs((2*card.coverY+card.coverH)-(bounds.top+bounds.bottom))<=1 :
+                               card.coverY==bounds.top && card.coverY+card.coverH==bounds.bottom;
     int measuredMinWidth=0;
-    for(int row=0;row<HOME_STAT_COUNT;++row) if(h.cardStats.rows&(1u<<row)) {
-      measuredMinWidth=std::max(measuredMinWidth,h.renderer.getTextWidth(UI_10_FONT_ID,LABELS[row]));
-      measuredMinWidth=std::max(measuredMinWidth,cardStatValueWidth(h.renderer,UI_12_FONT_ID,h.cardStats.values[row].c_str()));
+    int labelFont=tier>0?SMALL_FONT_ID:UI_10_FONT_ID, valueFont=tier>0?UI_10_FONT_ID:UI_12_FONT_ID;
+    for(int row=0;row<HOME_STAT_COUNT;++row) {
+      measuredMinWidth=std::max(measuredMinWidth,h.renderer.getTextWidth(labelFont,LABELS[row]));
+      measuredMinWidth=std::max(measuredMinWidth,cardStatValueWidth(h.renderer,valueFont,row==HOME_STAT_AVERAGE?"2h 1m/ngày":row==HOME_STAT_FINISH?">365 ngày":"10h 8m"));
     }
     measuredMinWidth=std::min(measuredMinWidth,240);
-    const int height=h.renderer.inkBottom-actualTop;
+    const int height=bounds.bottom-bounds.top;
     const int limit=464-24-22-measuredMinWidth;
     const int fullWidth=(height*sourceW+sourceH-1)/sourceH;
     const int expectedWidth=std::min(fullWidth,limit);
     const int expectedHeight=fullWidth>limit?limit*sourceH/sourceW:height;
-    bool ok=aligned && h.renderer.inkBottom<card.ruleY && card.coverW==expectedWidth && card.coverH==expectedHeight &&
+    const bool titleFitsLeftColumn = card.textW <= card.coverW;
+    bool ok=aligned && (landscape || !forced) && titleFitsLeftColumn && h.renderer.inkBottom<card.ruleY && card.coverW==expectedWidth && card.coverH==expectedHeight &&
             card.coverX==24 && card.statsX-card.coverX-card.coverW==22 &&
             h.renderer.inkRight<=464 && h.renderer.inkLeft>=card.statsX &&
             (!h.cardStats.recorded || h.renderer.barRight==463);
+    if (record == 0) {
+      if (!landscape) ok = ok && std::abs(h.renderer.inkBottom - (card.coverY + card.coverH)) <= 1;
+      fullW[tier][landscape] = card.coverW;
+      fullH[tier][landscape] = card.coverH;
+    } else if (record == 1) {
+      ok = ok && card.coverW == fullW[tier][landscape] && card.coverH == fullH[tier][landscape];
+      ok = ok && h.renderer.inkBottom - actualTop < card.coverH;
+    }
     if(!ok) ++fails;
     ++count;
     std::printf("%s tier=%d record=%d landscape=%d cover=%d,%d,%d,%d ink=%d..%d column=%d..%d bar=%d forced=%d\n",

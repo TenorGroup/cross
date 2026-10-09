@@ -1042,6 +1042,9 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds, const bool on
 // retain their pixel dimensions when the shape ratio changes from 236/356 to 298/450.
 std::string Epub::getThumbBmpPath() const { return cachePath + "/thumb2_[HEIGHT].bmp"; }
 std::string Epub::getThumbBmpPath(int height) const { return cachePath + "/thumb2_" + std::to_string(height) + ".bmp"; }
+std::string Epub::getThumbBmpPath(int width, int height) const {
+  return cachePath + "/thumb2_" + std::to_string(width) + "x" + std::to_string(height) + ".bmp";
+}
 
 bool Epub::isCoverImage(const std::string& href) const {
   return bookMetadataCache && bookMetadataCache->isLoaded() && !href.empty() &&
@@ -1172,6 +1175,59 @@ void Epub::generateThumbBmps(const std::string& coverImageHref, const int* heigh
       Storage.remove(partPath.c_str());
     }
     LOG_INF("EBP", "Cover thumbnail %d px: %lu ms, ok=%u, page=0", height, millis() - started, success ? 1u : 0u);
+  }
+  if (copied) Storage.remove(coverTempPath.c_str());
+}
+
+void Epub::generateThumbBmps(const std::string& coverImageHref, const int* widths, const int* heights,
+                             const int count) const {
+  const bool jpg = FsHelpers::hasJpgExtension(coverImageHref);
+  const bool png = !jpg && FsHelpers::hasPngExtension(coverImageHref);
+  if (!jpg && !png) return;
+  const auto coverTempPath = getCachePath() + (jpg ? "/.cover.jpg" : "/.cover.png");
+  bool copied = false;
+  const auto copyCover = [&]() {
+    if (copied) return true;
+    HalFile cover;
+    if (!Storage.openFileForWrite("EBP", coverTempPath, cover)) return false;
+    const bool whole = readItemContentsToStream(coverImageHref, cover, 8192);
+    cover.close();
+    if (!whole) {
+      Storage.remove(coverTempPath.c_str());
+      return false;
+    }
+    copied = true;
+    return true;
+  };
+  for (int i = 0; i < count; ++i) {
+    if (widths[i] <= 0 || heights[i] <= 0) continue;
+    const auto thumbPath = getThumbBmpPath(widths[i], heights[i]);
+    if (Storage.exists(thumbPath.c_str())) continue;
+    const std::string partPath = thumbPath + ".tmp";
+    Storage.remove(partPath.c_str());
+    HalFile cover;
+    HalFile thumbBmp;
+    const unsigned long started = millis();
+    LOG_PROBE("EBP", "Cover thumbnail shape start %dx%d free=%u largest=%u", widths[i], heights[i],
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+    if (!copyCover() || !Storage.openFileForRead("EBP", coverTempPath, cover) ||
+        !Storage.openFileForWrite("EBP", partPath, thumbBmp)) {
+      cover.close();
+      thumbBmp.close();
+      break;
+    }
+    const bool success = jpg ? JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(cover, thumbBmp, widths[i], heights[i], true)
+                             : PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(cover, thumbBmp, widths[i], heights[i], true);
+    cover.close();
+    thumbBmp.close();
+    if (success && Storage.rename(partPath.c_str(), thumbPath.c_str())) {
+      LOG_INF("EBP", "Cover thumbnail %dx%d ms=%lu ok=1", widths[i], heights[i], millis() - started);
+      LOG_PROBE("EBP", "Cover thumbnail shape end %dx%d free=%u largest=%u", widths[i], heights[i],
+                static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+      continue;
+    }
+    LOG_INF("EBP", "Cover thumbnail %dx%d ms=%lu ok=0", widths[i], heights[i], millis() - started);
+    Storage.remove(partPath.c_str());
   }
   if (copied) Storage.remove(coverTempPath.c_str());
 }

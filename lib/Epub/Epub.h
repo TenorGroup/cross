@@ -82,10 +82,13 @@ class Epub {
   bool generateCoverBmp(bool cropped = false, bool originalThresholds = false, bool oneBit = false) const;
   std::string getThumbBmpPath() const;
   std::string getThumbBmpPath(int height) const;
+  std::string getThumbBmpPath(int width, int height) const;
   // Writes the 1-bit cover thumbnail for each height not on the card yet.
   void generateThumbBmps(const int* heights, int count) const;
   // The same from the cover's path in the book, for a book whose index is not loaded (Home).
   void generateThumbBmps(const std::string& coverImageHref, const int* heights, int count) const;
+  // Writes Home's X4 Pro cover using the exact frame size, with a width and height cache key.
+  void generateThumbBmps(const std::string& coverImageHref, const int* widths, const int* heights, int count) const;
   bool isCoverImage(const std::string& href) const;
   // One height (see generateThumbBmps); true when a drawable thumbnail is on the card.
   bool generateThumbBmp(int height) const;

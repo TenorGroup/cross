@@ -63,6 +63,7 @@ struct HomeCardLayout {
   int titleY = 0, authorY = 0, excerptY = 0, excerptLines = 0;
   int ruleY = 0, rowY = 0;
   int statsX = 0, statsRight = 0, statsTop = 0, statsBottom = 0;
+  int statsGap = 28;
 };
 inline HomeCardLayout homeCardLayout(const HomeCardInput& in) {
   constexpr int COVER_W = HOME_CARD_COVER_W, COVER_H = HOME_CARD_COVER_H, COVER_MIN_H = 120;
@@ -174,6 +175,9 @@ struct HomeStatsInput {
   int labelHeights[HOME_STAT_COUNT] = {};  // 0 uses labelLineHeight
   int valueHeights[HOME_STAT_COUNT] = {};  // 0 uses valueLineHeight, wrapped values reserve both lines
   int valueTails[HOME_STAT_COUNT] = {};
+  bool compact = false;
+  int groupGap = 28;
+  int labelTops[HOME_STAT_COUNT] = {}, valueTops[HOME_STAT_COUNT] = {};
 };
 struct HomeStatsLayout {
   int labelY[HOME_STAT_COUNT] = {}, valueY[HOME_STAT_COUNT] = {};
@@ -186,6 +190,22 @@ constexpr int HOME_STATS_BAR_H = 10;
 inline HomeStatsLayout homeStatsLayout(const HomeStatsInput& in) {
   constexpr int TOP_PAD = 2, BAR_GAP = 2;
   HomeStatsLayout column;
+  if (in.compact) {
+    int y = in.top + TOP_PAD + in.labelTops[0];
+    for (int row = 0; row < HOME_STAT_COUNT; ++row) {
+      if (!(in.rows & (1u << row))) continue;
+      column.labelY[row] = y - in.labelTops[row];
+      column.valueY[row] = y + in.labelHeights[row] + 4 - in.valueTops[row];
+      y += in.labelHeights[row] + 4 + in.valueHeights[row];
+      if (row == HOME_STAT_READ) {
+        column.barY = y + 4;
+        y = column.barY + HOME_STATS_BAR_H;
+      }
+      y += in.groupGap;
+      column.rows |= 1u << row;
+    }
+    return column;
+  }
   int count = 0, linesHeight = 0, lastTail = in.valueTail;
   for (int row = 0; row < HOME_STAT_COUNT; ++row)
     if (in.rows & (1u << row)) {

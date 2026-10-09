@@ -212,6 +212,7 @@ class HomeActivity final : public UiTabListActivity {
   std::atomic<int8_t> thumbWanted{-1};
   std::atomic<uint32_t> thumbWantedAtMs{0};
   int cardThumbHeight = HOME_CARD_COVER_H;
+  int cardThumbWidth = HOME_CARD_COVER_W;
   void wantThumb(int index);
   void writeMissingThumb(int index);
   // The wake's first frame is up; the main task writes state.json (V5: never the render task,

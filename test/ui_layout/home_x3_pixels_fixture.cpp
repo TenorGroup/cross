@@ -58,6 +58,7 @@ struct HomeActivity {
   struct CoverSize { int width=0,height=0; };
   CoverSize cardCoverSize(int) { return {}; }
   int cardThumbHeight=HOME_CARD_COVER_H;
+  int cardThumbWidth=HOME_CARD_COVER_W;
   HomeCardLayout cardLayout(HomeCardInput in);
   int drawCardStats(const HomeCardLayout& card, HomeStatsBounds* bounds=nullptr);
 };

@@ -38,6 +38,7 @@ class UITheme {
   void reload();
   void setTheme();
   static std::string getCoverThumbPath(std::string coverBmpPath, int coverHeight);
+  static std::string getCoverThumbPath(std::string coverBmpPath, int coverWidth, int coverHeight);
   static UIIcon getFileIcon(const std::string& filename);
   // Thanh trang thai co hai pham vi doc lap: ngoai trinh doc (menu) va trong
   // trinh doc. Cung mot ham tra chieu cao that cho tung pham vi.

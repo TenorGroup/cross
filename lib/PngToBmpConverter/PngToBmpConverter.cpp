@@ -401,7 +401,7 @@ static void convertScanlineToGray(const PngDecodeContext& ctx, uint8_t* grayRow)
 }
 
 bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpOut, int targetWidth, int targetHeight,
-                                                   bool oneBit, bool crop, bool originalThresholds) {
+                                                   bool oneBit, bool crop, bool originalThresholds, bool exactSize) {
   LOG_DBG("PNG", "Converting PNG to %s BMP (target: %dx%d)", oneBit ? "1-bit" : "2-bit", targetWidth, targetHeight);
 
   // Verify PNG signature
@@ -579,6 +579,11 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
       (static_cast<int>(width) != targetWidth || static_cast<int>(height) != targetHeight)) {
     coverScaleSize(static_cast<int>(width), static_cast<int>(height), targetWidth, targetHeight, crop, &outWidth,
                    &outHeight);
+    if (exactSize) {
+      const bool byWidth = targetWidth * height >= targetHeight * width;
+      outWidth = byWidth ? targetWidth : (width * targetHeight + height / 2) / height;
+      outHeight = byWidth ? (height * targetWidth + width / 2) / width : targetHeight;
+    }
 
     scaleX_fp = (width << 16) / outWidth;
     scaleY_fp = (height << 16) / outHeight;
@@ -588,14 +593,17 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
             targetHeight);
   }
 
+  const int bitmapWidth = exactSize ? targetWidth : outWidth;
+  const int bitmapHeight = exactSize ? targetHeight : outHeight;
+  const int cropX = (outWidth - bitmapWidth) / 2, cropY = (outHeight - bitmapHeight) / 2;
   // Write BMP header
   int bytesPerRow;
   if (USE_8BIT_OUTPUT && !oneBit) {
     writeBmpHeader8bit(bmpOut, outWidth, outHeight);
     bytesPerRow = (outWidth + 3) / 4 * 4;
   } else if (oneBit) {
-    writeBmpHeader1bit(bmpOut, outWidth, outHeight);
-    bytesPerRow = (outWidth + 31) / 32 * 4;
+    writeBmpHeader1bit(bmpOut, bitmapWidth, bitmapHeight);
+    bytesPerRow = (bitmapWidth + 31) / 32 * 4;
   } else {
     writeBmpHeader2bit(bmpOut, outWidth, outHeight);
     bytesPerRow = (outWidth * 2 + 31) / 32 * 4;
@@ -616,7 +624,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   std::unique_ptr<FloydSteinberg1BitDitherer> oneBitDitherer;
 
   if (oneBit) {
-    oneBitDitherer = makeUniqueNoThrow<FloydSteinberg1BitDitherer>(outWidth);
+    oneBitDitherer = makeUniqueNoThrow<FloydSteinberg1BitDitherer>(bitmapWidth);
     if (!oneBitDitherer || !oneBitDitherer->isValid()) {
       LOG_ERR("PNG", "OOM: 1-bit ditherer");
       return false;
@@ -679,9 +687,9 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
           rowBuffer[x] = adjustPixel(grayRow[x]);
         }
       } else if (oneBit) {
-        for (int i = 0; i < outWidth; i++) {
+        for (int i = 0; i < bitmapWidth; i++) {
           const int x = oneBitDitherer->at(i);
-          rowBuffer[x / 8] |= oneBitDitherer->processPixel(grayRow[x], x) << (7 - (x % 8));
+          rowBuffer[x / 8] |= oneBitDitherer->processPixel(grayRow[x + cropX], x) << (7 - (x % 8));
         }
         oneBitDitherer->nextRow();
       } else {
@@ -734,42 +742,45 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
       // Output all rows whose boundaries we've crossed (handles both up and downscaling)
       // For upscaling, one source row may produce multiple output rows
       while (srcY_fp >= nextOutY_srcStart && currentOutY < outHeight) {
-        memset(rowBuffer, 0, bytesPerRow);
+        if (currentOutY >= cropY && currentOutY < cropY + bitmapHeight) {
+          memset(rowBuffer, 0, bytesPerRow);
 
-        if (USE_8BIT_OUTPUT && !oneBit) {
-          for (int x = 0; x < outWidth; x++) {
-            const uint8_t gray = (rowCount[x] > 0) ? (rowAccum[x] / rowCount[x]) : 0;
-            rowBuffer[x] = adjustPixel(gray);
-          }
-        } else if (oneBit) {
-          for (int i = 0; i < outWidth; i++) {
-            const int x = oneBitDitherer->at(i);
-            const uint8_t gray = (rowCount[x] > 0) ? (rowAccum[x] / rowCount[x]) : 0;
-            rowBuffer[x / 8] |= oneBitDitherer->processPixel(gray, x) << (7 - (x % 8));
-          }
-          oneBitDitherer->nextRow();
-        } else {
-          for (int x = 0; x < outWidth; x++) {
-            const uint8_t gray = adjustPixel((rowCount[x] > 0) ? (rowAccum[x] / rowCount[x]) : 0);
-            uint8_t twoBit;
-            if (atkinsonDitherer) {
-              twoBit = atkinsonDitherer->processPixel(gray, x);
-            } else if (fsDitherer) {
-              twoBit = fsDitherer->processPixel(gray, x);
-            } else {
-              twoBit = quantize(gray, x, currentOutY);
+          if (USE_8BIT_OUTPUT && !oneBit) {
+            for (int x = 0; x < outWidth; x++) {
+              const uint8_t gray = (rowCount[x] > 0) ? (rowAccum[x] / rowCount[x]) : 0;
+              rowBuffer[x] = adjustPixel(gray);
             }
-            const int byteIndex = (x * 2) / 8;
-            const int bitOffset = 6 - ((x * 2) % 8);
-            rowBuffer[byteIndex] |= (twoBit << bitOffset);
+          } else if (oneBit) {
+            for (int i = 0; i < bitmapWidth; i++) {
+              const int x = oneBitDitherer->at(i);
+              const int sampleX = x + cropX;
+              const uint8_t gray = (rowCount[sampleX] > 0) ? (rowAccum[sampleX] / rowCount[sampleX]) : 0;
+              rowBuffer[x / 8] |= oneBitDitherer->processPixel(gray, x) << (7 - (x % 8));
+            }
+            oneBitDitherer->nextRow();
+          } else {
+            for (int x = 0; x < outWidth; x++) {
+              const uint8_t gray = adjustPixel((rowCount[x] > 0) ? (rowAccum[x] / rowCount[x]) : 0);
+              uint8_t twoBit;
+              if (atkinsonDitherer) {
+                twoBit = atkinsonDitherer->processPixel(gray, x);
+              } else if (fsDitherer) {
+                twoBit = fsDitherer->processPixel(gray, x);
+              } else {
+                twoBit = quantize(gray, x, currentOutY);
+              }
+              const int byteIndex = (x * 2) / 8;
+              const int bitOffset = 6 - ((x * 2) % 8);
+              rowBuffer[byteIndex] |= (twoBit << bitOffset);
+            }
+            if (atkinsonDitherer)
+              atkinsonDitherer->nextRow();
+            else if (fsDitherer)
+              fsDitherer->nextRow();
           }
-          if (atkinsonDitherer)
-            atkinsonDitherer->nextRow();
-          else if (fsDitherer)
-            fsDitherer->nextRow();
-        }
 
-        bmpOut.write(rowBuffer, bytesPerRow);
+          bmpOut.write(rowBuffer, bytesPerRow);
+        }
         currentOutY++;
         yieldDuringDecode(rowsSinceYield);
 
@@ -813,6 +824,6 @@ bool PngToBmpConverter::pngFileToBmpStreamWithSize(HalFile& pngFile, Print& bmpO
 }
 
 bool PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(HalFile& pngFile, Print& bmpOut, int targetMaxWidth,
-                                                       int targetMaxHeight) {
-  return pngFileToBmpStreamInternal(pngFile, bmpOut, targetMaxWidth, targetMaxHeight, true, true);
+                                                       int targetMaxHeight, bool exactSize) {
+  return pngFileToBmpStreamInternal(pngFile, bmpOut, targetMaxWidth, targetMaxHeight, true, true, false, exactSize);
 }

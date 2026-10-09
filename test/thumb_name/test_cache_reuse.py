@@ -35,9 +35,10 @@ struct FsHelpers { static bool hasJpgExtension(const std::string& s) { return s.
   static bool hasPngExtension(const std::string& s) { return s.ends_with(".png"); } };
 struct JpegToBmpConverter {
   static bool jpegFileToGrayThumb(HalFile&,GrayThumb&,int*) { ++decodes; return true; }
-  static bool jpegFileTo1BitBmpStreamWithSize(HalFile&,HalFile& f,int,int) { ++decodes; *f.data={1}; return true; }
+  static bool jpegFileTo1BitBmpStreamWithSize(HalFile&,HalFile& f,int,int,bool=false) { ++decodes; *f.data={1}; return true; }
 };
-struct PngToBmpConverter { static bool pngFileTo1BitBmpStreamWithSize(HalFile&,HalFile& f,int,int) { ++decodes; *f.data={1}; return true; } };
+struct PngToBmpConverter { static bool pngFileTo1BitBmpStreamWithSize(HalFile&,HalFile& f,int,int,bool=false) { ++decodes; *f.data={1}; return true; } };
+struct EspStub { unsigned getFreeHeap() const { return 1000000; } unsigned getMaxAllocHeap() const { return 1000000; } } ESP;
 unsigned long millis() { return 0; }
 int thumbWidthFor(int h) { return h*298/450; }
 #define LOG_ERR(...) ((void)0)
@@ -48,8 +49,10 @@ struct Epub {
   std::string getCachePath() const { return cachePath; }
   std::string getThumbBmpPath() const;
   std::string getThumbBmpPath(int) const;
+  std::string getThumbBmpPath(int,int) const;
   bool readItemContentsToStream(const std::string&,HalFile& f,int) const { ++copies; *f.data={9}; return true; }
   void generateThumbBmps(const std::string&,const int*,int) const;
+  void generateThumbBmps(const std::string&,const int*,const int*,int) const;
 };
 '''
 main = r'''
@@ -80,7 +83,18 @@ int main() {
   epub.generateThumbBmps("images/cover.jpg",&missing,1);
   assert(copies==1 && decodes==1 && writes==2);
   assert(Storage.exists(epub.getThumbBmpPath(450).c_str()));
-  puts("PASS cache hit preserved bytes; missing cache copied and decoded once");
+  const int widths[]={232,253}, shapeHeights[]={350,381};
+  const auto oldThumb=Storage.files[epub.getThumbBmpPath(226)];
+  epub.generateThumbBmps("images/cover.jpg",widths,shapeHeights,2);
+  assert(copies==2 && decodes==3);
+  assert(Storage.exists(epub.getThumbBmpPath(232,350).c_str()));
+  assert(Storage.exists(epub.getThumbBmpPath(253,381).c_str()));
+  const auto shapeCache=Storage.files;
+  const int oldWrites=writes;
+  epub.generateThumbBmps("images/cover.jpg",widths,shapeHeights,2);
+  assert(copies==2 && decodes==3 && writes==oldWrites && Storage.files==shapeCache);
+  assert(Storage.files[epub.getThumbBmpPath(226)]==oldThumb);
+  puts("PASS legacy bytes and exact W,H cache reuse; each shape decoded once");
 }
 '''
 with tempfile.TemporaryDirectory(prefix='cover-cache-') as tmp:
