@@ -261,11 +261,39 @@ int main() {
         screen.activateIndex(i);
         require(screen.optionPopup.shows == shows + 1 && screen.optionPopup.options.size() == 2, "actual paired row opens two choices");
         screen.optionPopup.callback(0);
-        require(SETTINGS.ble.peerAddr == backend::bonds[bond], "selected exact address saved");
+        require(SETTINGS.ble.peerAddr[0] == '\0', "unlinked candidate leaves the chosen address unchanged");
         require(backend::connections.size() == calls + (enabled ? 1 : 0), "connect dispatch respects enabled setting");
         if (enabled) require(backend::connections.back() == backend::bonds[bond], "connect dispatch uses selected exact address");
       }
     }
+  }
+  {
+    SETTINGS = {};
+    const char* chosenAddr = "AA:BB:CC:DD:EE:F0";
+    const char* candidateAddr = "AA:BB:CC:DD:EE:F1";
+    std::strcpy(SETTINGS.ble.peerAddr, chosenAddr);
+    std::strcpy(SETTINGS.ble.peerName, "Remote A");
+    backend::bonds.assign({chosenAddr, candidateAddr});
+    backend::connections.clear();
+    backend::live = true;
+    BlePageTurnerActivity screen;
+    screen.openPairedPopup(1);
+    require(screen.optionPopup.options[0] == StrId::STR_BLE_CONNECT, "A linked, popup B offers Connect");
+    screen.optionPopup.callback(0);
+    require(backend::live, "Connect B leaves the existing A link alone");
+    require(backend::connections == std::vector<std::string>{candidateAddr}, "Connect B dispatches B's address");
+    require(std::strcmp(SETTINGS.ble.peerAddr, chosenAddr) == 0, "B never links, A remains chosen");
+    require(std::strcmp(SETTINGS.ble.peerName, "Remote A") == 0, "B never links, A's name remains chosen");
+    require(SETTINGS.saves == 0, "unlinked candidate causes no settings save");
+    screen.openPairedPopup(0);
+    require(screen.optionPopup.options[0] == StrId::STR_BLE_DISCONNECT, "popup linked A offers Disconnect");
+    screen.optionPopup.callback(0);
+    require(!backend::live, "Disconnect A closes A's link");
+    screen.openPairedPopup(1);
+    require(screen.optionPopup.options[0] == StrId::STR_BLE_CONNECT, "no link, popup B offers Connect");
+    screen.optionPopup.callback(0);
+    require(std::strcmp(SETTINGS.ble.peerAddr, chosenAddr) == 0, "failed Connect B with no link keeps A chosen");
+    require(SETTINGS.saves == 0, "failed Connect B with no link causes no settings save");
   }
   {
     // Found devices right under the scan row, then one "Button bindings" row; its six rows

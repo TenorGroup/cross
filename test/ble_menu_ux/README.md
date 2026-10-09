@@ -12,4 +12,6 @@ address dispatch, disabled status/empty rows, physical focus and menu action com
 
 This projection does not run ActivityManager, render a framebuffer, connect NimBLE or
 measure reader memory. Full simulator navigation and device reconnect remain separate
-acceptance gates. Two-bond popup disconnect identity remains deferred to v1.0.9.
+acceptance gates. Paired popup checks cover A linked while B is selected, disconnecting
+the linked row, and preserving A's chosen address/name and save count when B never links.
+The module runtime suite separately verifies candidate promotion through service().

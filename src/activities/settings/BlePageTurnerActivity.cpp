@@ -457,16 +457,14 @@ void BlePageTurnerActivity::openPairedPopup(const int bondIndex) {
   if (bondIndex < 0 || bondIndex >= backend::bondCount()) return;
   const std::string addr = backend::bondAddr(bondIndex);
   const std::string name = backend::bondName(bondIndex);
-  const bool dangNoi = backend::connected();
+  const bool dangNoi = backend::connected() && addr == backend::connectedAddr();
   const StrId options[2] = {dangNoi ? StrId::STR_BLE_DISCONNECT : StrId::STR_BLE_CONNECT, StrId::STR_BLE_FORGET};
   const auto onSelect = [this, addr, name, dangNoi](const int idx) {
     if (idx == 0) {
       if (dangNoi) {
         backend::disconnect();
       } else {
-        chupChuoi(SETTINGS.ble.peerAddr, addr.c_str(), sizeof(SETTINGS.ble.peerAddr));
-        SETTINGS.saveToFile();
-        backend::pair(SETTINGS.ble.peerAddr, name.c_str());
+        backend::pair(addr.c_str(), name.c_str());
       }
     } else if (backend::forget(addr.c_str())) {
       SETTINGS.saveToFile();
