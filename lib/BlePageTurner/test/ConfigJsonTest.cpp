@@ -59,8 +59,12 @@ TEST(BleConfigJsonTest, FourRemotesRoundTripThroughTheSettingsFile) {
   for (int i = 0; i < 4; ++i) {
     RemoteTable* t = editableTable(c.remotes, c.remoteCount, addrs[i], "");
     ASSERT_NE(t, nullptr);
-    if (i < 3) ASSERT_TRUE(learn(*t, Action::NextChapter, 0x030102 + i, false));
-    if (i < 2) ASSERT_TRUE(learn(*t, Action::PrevChapter, 0x030008, true));
+    if (i < 3) {
+      ASSERT_TRUE(learn(*t, Action::NextChapter, 0x030102 + i, false));
+    }
+    if (i < 2) {
+      ASSERT_TRUE(learn(*t, Action::PrevChapter, 0x030008, true));
+    }
   }
   EXPECT_EQ(editableTable(c.remotes, c.remoteCount, "11:22:33:44:55:05", ""), nullptr) << "a fifth remote has no slot";
 
