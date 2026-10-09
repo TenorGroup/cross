@@ -121,10 +121,12 @@ struct Draw : fui::DrawTarget {
 std::string getFileExtension(const std::string& filename);
 void formatFileName(const std::string& filename, char* buffer, size_t bufferSize);
 void formatFileExtension(const std::string& filename, char* buffer, size_t bufferSize);
+#include "production_shell.inc"
 class FileBrowserActivity {
  public:
   enum class Mode { Books, PickFirmware };
   Mode mode = Mode::Books;
+  static constexpr int kSearchRows = ::kSearchRows;
   std::string basepath = "/測試";
   std::string searchQuery;
   std::vector<std::string> files;
@@ -157,7 +159,7 @@ class FileBrowserActivity {
   bool listFramed() const;
   void frameRows(fui::ListProps& props);
   static constexpr int ACTION_ROW = 1;
-  int listCount() const { return static_cast<int>(files.size()) + 1; }
+#include "production_row_count.inc"
   void buildScreen(UiScreen& screen);
   void syncListViewport(UiScreen& screen, fui::ListProps& props, bool hasSubtitle = false);
   void decoratePinnedRows(fui::ListProps&);
@@ -166,7 +168,7 @@ class FileBrowserActivity {
   void measurePageScrollbar(UiScreen&, const fui::ListProps&) {}  // X4 Pro page scrollbar, not under test here
   fui::ListNav& activeNav() { return nav; }
   static int kepConTro(int selected, int count) { return std::clamp(selected, 0, std::max(0, count - 1)); }
-  bool rowIsPinned(int index) const { return index > 0 && index == pinned; }
+  bool rowIsPinned(int index) const { return index >= kSearchRows && index == pinned; }
   // A new folder listing, as loadFiles() does: re-prewarm the visible window.
   void invalidate() { prewarmedStart = -1; }
 };
@@ -179,9 +181,8 @@ static constexpr int16_t TENOR_PILL_ROW_PADDING_Y = 7;
 static const char PIN_GLYPH[] = "\xEE\x84\x8A";
 // The label a row must show, from the production formatter.
 static std::string expectedLabel(const FileBrowserActivity& browser, int index) {
-  if (index == 0) return "Search";
   char name[FileBrowserActivity::ROW_NAME_BUF_SIZE];
-  formatFileName(browser.files[index - 1], name, sizeof(name));
+  formatFileName(browser.files[index], name, sizeof(name));
   return browser.rowIsPinned(index) ? std::string(PIN_GLYPH) + name : std::string(name);
 }
 static bool wasDrawn(const Draw& draw, const std::string& label) {
@@ -198,11 +199,11 @@ static void render(FileBrowserActivity& browser, int top, bool assertBound = tru
   fui::InputSnapshot input;
   fui::InteractionBuffer<24> interactions;
   fui::Frame<24> frame(draw, device, input, interactions);
-    const int target = top == 0 ? 0 : top + 1;
+    const int target = top;
     browser.nav.top = target;
     browser.nav.selected = target;
   browser.nav.followOnBuild = false;
-  browser.pinned = target == 0 ? 1 : target;
+  browser.pinned = target;
   if (follow) {
     browser.nav.top = std::max(0, target - browser.nav.visibleRows + 1);
     browser.nav.follow(browser.listCount());
@@ -245,7 +246,7 @@ static void render(FileBrowserActivity& browser, int top, bool assertBound = tru
     selectionDrawn |= interaction.value == target;
     // Every full row shows its own file's name and extension.
     CHECK(wasDrawn(draw, expectedLabel(browser, interaction.value)));
-    const std::string extension = interaction.value == 0 ? "" : getFileExtension(browser.files[interaction.value - 1]);
+    const std::string extension = getFileExtension(browser.files[interaction.value]);
     CHECK(extension.empty() || wasDrawn(draw, extension));
     // Hit testing must emit the global file index, including the last page.
     fui::InputSnapshot tap;
@@ -261,6 +262,7 @@ static void render(FileBrowserActivity& browser, int top, bool assertBound = tru
 }
 
 int main() {
+  CHECK(FileBrowserActivity::kSearchRows == 0);
   theme.rowHeight = 36;
   theme.listRowGap = 0;
   for (const int total : {100, 1000, 5000}) {
@@ -294,20 +296,23 @@ int main() {
     CHECK(browser.renderer.prewarmCalls == prewarmed);
     render(browser, total / 2);
     render(browser, total - 1, true, true);
-    CHECK(browser.nav.selected == total);
+    CHECK(browser.nav.selected == total - 1);
     render(browser, 0);
     UITheme::getInstance().icons = false;
     browser.files = {"a\xcc\x81/", "測試1.epub", "測試2.epub"};
     browser.invalidate();
-    render(browser, 1);
+    render(browser, 0);
     fui::ListItem folder;
-    FileBrowserActivity::provideRow(&browser, 1, folder);
-    CHECK(std::string(folder.label) == "[á]");
+    FileBrowserActivity::provideRow(&browser, 0, folder);
+    CHECK(browser.rowOpens(0));
+    CHECK(!browser.rowOpens(1));
+    CHECK(!browser.rowOpens(-1));
+    CHECK(std::string(folder.label) == std::string(PIN_GLYPH) + "[á]");
     CHECK(folder.value == nullptr);
     UITheme::getInstance().icons = true;
-    render(browser, 1);
-    FileBrowserActivity::provideRow(&browser, 1, folder);
-    CHECK(std::string(folder.label) == "á");
+    render(browser, 0);
+    FileBrowserActivity::provideRow(&browser, 0, folder);
+    CHECK(std::string(folder.label) == std::string(PIN_GLYPH) + "á");
   }
   // Names long enough to actually wrap at the viewport width. Follow a
   // selection near the bottom, forcing ListNav to refine its fixed-height

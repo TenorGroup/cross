@@ -26,6 +26,7 @@ class FileBrowserActivity final : public UiListActivity {
   void deleteSelected();
 
   Mode mode = Mode::Books;
+  static constexpr int kSearchRows = tenorchrome::kTouchShell ? 1 : 0;
 
   // Files state
   std::string basepath = "/";
@@ -64,7 +65,7 @@ class FileBrowserActivity final : public UiListActivity {
   int prewarmedStart = -1;
   void prewarmRowGlyphs(int start);
 
-  int listCount() const override { return static_cast<int>(files.size()) + 1; }
+  int listCount() const override { return static_cast<int>(files.size()) + kSearchRows; }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   void onRowLongPress(int index) override;
@@ -76,7 +77,9 @@ class FileBrowserActivity final : public UiListActivity {
   bool supportsFavorites() const override { return mode == Mode::Books; }
   bool fileList() const override { return true; }
   bool rowOpens(int row) const override {
-    return row == 0 || (row > 0 && row - 1 < static_cast<int>(files.size()) && files[row - 1].back() == '/');
+    return (row >= 0 && row < kSearchRows) ||
+           (row >= kSearchRows && row - kSearchRows < static_cast<int>(files.size()) &&
+            files[row - kSearchRows].back() == '/');
   }
   std::string favoriteKey(int row) const override;
   bool toggleFavorite(int row) override;

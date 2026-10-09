@@ -58,13 +58,18 @@ def main():
     foot_x = next(line for line in chrome.splitlines() if line.startswith("constexpr int FOOT_BACK_X"))
     foot_x += "\n" + next(line for line in chrome.splitlines() if line.startswith("constexpr bool roundFrames"))
     browser_header = (REPO / "src/activities/home/FileBrowserActivity.h").read_text()
+    search_rows = next(line.strip().replace('static constexpr', 'constexpr')
+                       for line in browser_header.splitlines() if 'kSearchRows =' in line)
+    (args.output / 'production_shell.inc').write_text('namespace tenorchrome {\n' + shell + '\n}\n' + search_rows)
+    list_count = function(browser_header, 'int listCount() const override').replace(' override', '')
+    (args.output / 'production_row_count.inc').write_text(list_count)
     row_opens = function(browser_header, "bool rowOpens(int row) const override").replace(
         "bool rowOpens(int row) const override", "bool FileBrowserActivity::rowOpens(int row) const")
     base_header = (REPO / "src/activities/UiListActivity.h").read_text()
     framed = function(base_header, "virtual bool listFramed() const").replace(
         "virtual bool listFramed() const", "bool FileBrowserActivity::listFramed() const")
     generated = args.output / "production_rows.inc"
-    generated.write_text("namespace tenorchrome {\n" + shell + "\n" + foot_x +
+    generated.write_text("namespace tenorchrome {\n" + foot_x +
                          "\ninline bool enabled() { return true; }  // a board with buttons\n}\n" +
                          framed + "\n" + row_opens + "\n" + pin_state + "\n" + base_methods + "\n" + functions)
     binary = args.output / "folder_rows"

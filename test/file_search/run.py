@@ -24,6 +24,11 @@ def main() -> None:
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     source = args.source.read_text()
+    header = args.source.with_suffix('.h').read_text()
+    search_rows = next((line.strip().replace('static constexpr', 'constexpr')
+                        for line in header.splitlines() if 'kSearchRows =' in line), None)
+    if search_rows is None:
+        raise AssertionError('File search rows need one device-specific decision')
     if "if (!searchSourceFiles.empty()) files = searchSourceFiles;" not in source:
         raise AssertionError("empty search must preserve the current directory")
     if "if (files.empty() && searchQuery.empty())" not in source:
@@ -74,6 +79,12 @@ int main() {{
         check=True,
     )
     subprocess.run([str(binary)], check=True)
+    for touch in (False, True):
+        policy = args.output / f'search_rows_{int(touch)}.cpp'
+        policy.write_text(f'namespace tenorchrome {{ constexpr bool kTouchShell = {str(touch).lower()}; }}\n'
+                          + search_rows + f'\nstatic_assert(kSearchRows == {int(touch)});\n')
+        subprocess.run(['clang++', '-std=c++20', '-fsyntax-only', str(policy)], check=True)
+    print('search rows: X3/X4=0, X4 Pro=1 PASS')
 
 
 if __name__ == "__main__":

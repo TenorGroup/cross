@@ -21,7 +21,8 @@ class ReadingStatsSimulatorTest(unittest.TestCase):
         self.sd = Path(self.temp.name)
         self.store = self.sd / ".crosspoint"
         self.store.mkdir()
-        (self.sd / "audit.txt").write_text(
+        (self.sd / "books").mkdir()
+        (self.sd / "books/audit.txt").write_text(
             "Reading statistics fixture with enough text for several pages.\n" * 200,
             encoding="utf-8",
         )
@@ -63,8 +64,10 @@ class ReadingStatsSimulatorTest(unittest.TestCase):
         )
         log = run.stdout + run.stderr
         self.assertEqual(run.returncode, 0, log)
-        self.assertIn("Entering activity: TxtReader", log)
-        self.assertIn("Exiting activity: TxtReader", log)
+        self.assertIn("Entering activity: FileBrowser\n", log)
+        self.assertIn("Entering activity: TxtReader\n", log)
+        self.assertIn("Exiting activity: TxtReader\n", log)
+        self.assertNotIn("Entering activity: TxtReaderMenu\n", log)
         path = self.store / "reading-stats.json"
         return json.loads(path.read_text()) if path.exists() else {}
 
@@ -124,11 +127,11 @@ class ReadingStatsSimulatorTest(unittest.TestCase):
 
     def test_epub_menu_time_is_paused_and_active_book_matches_daily_checkpoint(self):
         import shutil
-        shutil.copy(REPO / "test/epubs/test_dictionary_synonyms.epub", self.sd / "audit.epub")
-        (self.sd / "audit.txt").unlink()
+        shutil.copy(REPO / "test/epubs/test_dictionary_synonyms.epub", self.sd / "books/audit.epub")
+        (self.sd / "books/audit.txt").unlink()
         env = {k: v for k, v in os.environ.items() if not k.startswith("CROSSPOINT_SIM_")}
         env.update(SDL_VIDEODRIVER="dummy", CROSSPOINT_SIM_SD=str(self.sd),
-            CROSSPOINT_SIM_INPUT_SCRIPT="1000:DOWN;1800:CONFIRM;5000:CONFIRM;14000:BACK;16000:BACK;17000:QUIT")
+            CROSSPOINT_SIM_INPUT_SCRIPT="1000:DOWN;1800:CONFIRM;2600:CONFIRM;5000:CONFIRM;14000:BACK;16000:BACK;17000:QUIT")
         before = self.utc_day()
         run = subprocess.run([str(PROGRAM)], cwd=REPO, env=env, capture_output=True, text=True, timeout=25)
         after = self.utc_day()
@@ -142,7 +145,7 @@ class ReadingStatsSimulatorTest(unittest.TestCase):
         self.assertLess(measured, 6500, log)
         book = data["activeBook"]
         self.assertEqual(book["minutes"] * 60000 + book["ms"], measured)
-        self.assertEqual(book["path"], "/audit.epub")
+        self.assertEqual(book["path"], "/books/audit.epub")
 
 
 if __name__ == "__main__":

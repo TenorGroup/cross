@@ -160,13 +160,13 @@ void FileBrowserActivity::loadFiles() {
 // decoratePinnedRows() to patch after the fact.
 void FileBrowserActivity::provideRow(void* ctx, const uint16_t index, fui::ListItem& item) {
   auto* self = static_cast<FileBrowserActivity*>(ctx);
-  if (index == 0) {
+  if (index < kSearchRows) {
     item.label = tr(STR_SEARCH);
     item.actionValue = 0;
     item.opensNext = true;
     return;
   }
-  const size_t fileIndex = static_cast<size_t>(index - 1);
+  const size_t fileIndex = static_cast<size_t>(index - kSearchRows);
   if (fileIndex >= self->files.size()) return;
   const std::string& entry = self->files[fileIndex];
   formatFileName(entry, self->rowNameBuf, sizeof(self->rowNameBuf));
@@ -218,9 +218,9 @@ void FileBrowserActivity::prewarmRowGlyphs(const int start) {
       [](const void* ctx, uint32_t i) -> const char* {
         auto* c = const_cast<PrewarmCtx*>(static_cast<const PrewarmCtx*>(ctx));
         const int row = c->first + static_cast<int>(i);
-        if (row == 0) return tr(STR_SEARCH);
-        if (row > 0 && row - 1 < static_cast<int>(c->self->files.size())) {
-          formatFileName(c->self->files[row - 1], c->self->rowNameBuf, sizeof(c->self->rowNameBuf));
+        if (row < kSearchRows) return tr(STR_SEARCH);
+        if (row >= kSearchRows && row - kSearchRows < static_cast<int>(c->self->files.size())) {
+          formatFileName(c->self->files[row - kSearchRows], c->self->rowNameBuf, sizeof(c->self->rowNameBuf));
           return c->self->rowNameBuf;
         }
         return c->self->basepath.c_str();
@@ -240,6 +240,7 @@ void FileBrowserActivity::applySearch(const std::string& query) {
 }
 
 void FileBrowserActivity::openSearch() {
+  if (kSearchRows == 0) return;
   app.clearTapFlash();
   auto keyboard = makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_SEARCH), searchQuery, 48,
                                                            InputType::Text);
@@ -286,7 +287,7 @@ void FileBrowserActivity::onEnter() {
     const auto pos = oldPath.find_last_of('/');
     const std::string fileName = oldPath.substr(pos + 1);
     // The first screen build pulls the viewport to it (ListNav follow-on-build).
-    nav.selected = static_cast<int>(findEntry(fileName)) + 1;
+    nav.selected = static_cast<int>(findEntry(fileName)) + kSearchRows;
   } else {
     loadFiles();
   }
@@ -404,12 +405,12 @@ void FileBrowserActivity::activateSelected() {
   // shrank the list; the next render re-registers the rows.
   if (nav.selected < 0 || nav.selected >= listCount()) return;
 
-  if (nav.selected == 0) {
+  if (nav.selected < kSearchRows) {
     openSearch();
     return;
   }
 
-  const std::string& entry = files[nav.selected - 1];
+  const std::string& entry = files[nav.selected - kSearchRows];
   bool isDirectory = (entry.back() == '/');
 
   // Firmware picker: select file -> return path; navigate into directories normally.
@@ -450,12 +451,12 @@ void FileBrowserActivity::activateSelected() {
 }
 
 void FileBrowserActivity::showEntryActions() {
-  if (mode != Mode::Books || files.empty() || rowMenu.isActive() || nav.selected <= 0 ||
+  if (mode != Mode::Books || files.empty() || rowMenu.isActive() || nav.selected < kSearchRows ||
       nav.selected >= listCount()) {
     return;
   }
 
-  const bool isDirectory = files[nav.selected - 1].back() == '/';
+  const bool isDirectory = files[nav.selected - kSearchRows].back() == '/';
   // Touch has no Select to hold, so the menu carries the pin, and a tap already opens: Pin or Unpin,
   // Rename, Delete, anchored to the row.
   enum class Do : uint8_t { Open, Pin, Delete, Rename };
@@ -501,11 +502,11 @@ void FileBrowserActivity::showEntryActions() {
 }
 
 void FileBrowserActivity::deleteSelected() {
-  if (files.empty() || nav.selected <= 0 || nav.selected >= listCount()) return;
+  if (files.empty() || nav.selected < kSearchRows || nav.selected >= listCount()) return;
 
   std::string cleanBasePath = basepath;
   if (cleanBasePath.back() != '/') cleanBasePath += "/";
-  const std::string entry = files[nav.selected - 1];
+  const std::string entry = files[nav.selected - kSearchRows];
   const std::string fullPath = cleanBasePath + entry;
 
   auto handler = [this, fullPath](const ActivityResult& res) {
@@ -544,9 +545,9 @@ void FileBrowserActivity::deleteSelected() {
 }
 
 void FileBrowserActivity::startRename() {
-  if (files.empty() || nav.selected <= 0 || nav.selected >= listCount()) return;
+  if (files.empty() || nav.selected < kSearchRows || nav.selected >= listCount()) return;
 
-  const std::string oldEntry = files[nav.selected - 1];
+  const std::string oldEntry = files[nav.selected - kSearchRows];
   if (oldEntry.back() == '/') return;
 
   std::string cleanBasePath = basepath;
@@ -611,7 +612,7 @@ void FileBrowserActivity::renameSelectedFile(const std::string& oldPath, const s
   {
     RenderLock lock(*this);
     loadFiles();
-    nav.selected = static_cast<int>(findEntry(newEntry)) + 1;
+    nav.selected = static_cast<int>(findEntry(newEntry)) + kSearchRows;
     nav.follow(listCount());
   }
   requestUpdate(true);
@@ -628,8 +629,8 @@ bool FileBrowserActivity::handleCustomInput() {
     return true;
   }
   if (mode == Mode::Books && mappedInput.wasLongPressed(MappedInputManager::Button::PageForward, 400)) {
-    if (nav.selected > 0 && nav.selected < listCount() && files[nav.selected - 1].back() != '/') {
-      const auto path = basepath + (basepath.back() == '/' ? "" : "/") + files[nav.selected - 1];
+    if (nav.selected >= kSearchRows && nav.selected < listCount() && files[nav.selected - kSearchRows].back() != '/') {
+      const auto path = basepath + (basepath.back() == '/' ? "" : "/") + files[nav.selected - kSearchRows];
       if (FsHelpers::hasEpubExtension(path) || FsHelpers::hasTxtExtension(path) ||
           FsHelpers::hasMarkdownExtension(path) || FsHelpers::hasXtcExtension(path))
         startActivityForResult(ReaderActivity::create(renderer, mappedInput, path, false, true), nullptr);
@@ -720,7 +721,7 @@ bool FileBrowserActivity::handleButtons() {
 
           const auto pos = oldPath.find_last_of('/');
           const std::string dirName = oldPath.substr(pos + 1) + "/";
-          nav.selected = static_cast<int>(findEntry(dirName)) + 1;
+          nav.selected = static_cast<int>(findEntry(dirName)) + kSearchRows;
           nav.top = 0;
           nav.follow(listCount());
         }
@@ -885,9 +886,9 @@ void FileBrowserActivity::drawFooter() {
   const char* backLabel = tr(STR_BACK);
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
-  const bool selectingSearch = nav.selected == 0;
-  const bool selectingFirmwareFile = mode == Mode::PickFirmware && nav.selected > 0 && nav.selected < listCount() &&
-                                     files[nav.selected - 1].back() != '/';
+  const bool selectingSearch = nav.selected >= 0 && nav.selected < kSearchRows;
+  const bool selectingFirmwareFile = mode == Mode::PickFirmware && nav.selected >= kSearchRows &&
+                                     nav.selected < listCount() && files[nav.selected - kSearchRows].back() != '/';
   const char* confirmLabel = selectingSearch ? tr(STR_SEARCH)
                                              : (listCount() <= 1 ? "" : (selectingFirmwareFile ? tr(STR_SELECT) : tr(STR_OPEN)));
   const auto labels = mappedInput.mapLabels(backLabel, confirmLabel, listCount() <= 1 ? "" : tr(STR_DIR_UP),
@@ -903,7 +904,7 @@ size_t FileBrowserActivity::findEntry(const std::string& name) const {
 void FileBrowserActivity::captureNavigation(MenuNavigationState& state) const {
   UiListActivity::captureNavigation(state);
   state.location = basepath;
-  if (nav.selected > 0 && nav.selected < listCount()) state.selection = files[nav.selected - 1];
+  if (nav.selected >= kSearchRows && nav.selected < listCount()) state.selection = files[nav.selected - kSearchRows];
 }
 void FileBrowserActivity::restoreNavigation(const MenuNavigationState& state) {
   if (mode != Mode::Books || state.location.empty()) return;
@@ -916,7 +917,7 @@ void FileBrowserActivity::restoreNavigation(const MenuNavigationState& state) {
   nav.selected = kepConTro(state.cursors[0].selected, listCount());
   if (!state.selection.empty()) {
     const auto it = std::find(files.begin(), files.end(), state.selection);
-    if (it != files.end()) nav.selected = static_cast<int>(it - files.begin()) + 1;
+    if (it != files.end()) nav.selected = static_cast<int>(it - files.begin()) + kSearchRows;
   }
   nav.top = state.cursors[0].top;
   nav.followOnBuild = true;
@@ -932,22 +933,22 @@ void FileBrowserActivity::restoreDirectory() {
   MenuNavigationState state;
   if (!activityManager.menuNavigationMemory().load("BrowserDir:" + basepath, state)) return;
   const auto it = std::find(files.begin(), files.end(), state.selection);
-  nav.selected = it != files.end() ? static_cast<int>(it - files.begin()) + 1
+  nav.selected = it != files.end() ? static_cast<int>(it - files.begin()) + kSearchRows
                                    : kepConTro(state.cursors[0].selected, listCount());
   nav.top = state.cursors[0].top;
   nav.followOnBuild = true;
 }
 
 std::string FileBrowserActivity::favoriteKey(int row) const {
-  if (mode != Mode::Books || row <= 0 || row >= listCount()) return {};
-  auto name = files[row - 1];
+  if (mode != Mode::Books || row < kSearchRows || row >= listCount()) return {};
+  auto name = files[row - kSearchRows];
   const bool folder = !name.empty() && name.back() == '/';
   if (folder) name.pop_back();
   return filefavorites::keyFor(basepath + (basepath.back() == '/' ? "" : "/") + name, folder);
 }
 bool FileBrowserActivity::toggleFavorite(int row) {
-  if (row <= 0 || row >= listCount()) return false;
-  auto name = files[row - 1];
+  if (row < kSearchRows || row >= listCount()) return false;
+  auto name = files[row - kSearchRows];
   const bool folder = name.back() == '/';
   if (folder) name.pop_back();
   return filefavorites::toggle(basepath + (basepath.back() == '/' ? "" : "/") + name, folder);
