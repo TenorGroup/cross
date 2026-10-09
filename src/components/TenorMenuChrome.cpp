@@ -137,7 +137,7 @@ constexpr const char* FULL_BAR[] = {
 // closes the menu; the text settings; the library), a screen laid over another one (a question, a slider,
 // a word picked on the page, the light panel, a picture), where "<" cancels, and a screen that must leave
 // through its own exit (a firmware update, the card lent to a computer): no zone icon to jump away by.
-constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "TextSettings", "Library",
+constexpr const char* BACK_ONLY_BAR[] = {"KeyboardEntry", "EpubReaderMenu", "TxtReaderMenu", "TextSettings", "Library",
                                          "BmpViewer", "ChapterNumberEntry", "Confirmation", "Crash",
                                          "DictionaryWordSelect", "EpubReaderPercentSelection", "FrontlightPanel",
                                          "OtaUpdate", "QuoteSelect", "SdFirmwareUpdate", "SleepTimeoutInterval",
