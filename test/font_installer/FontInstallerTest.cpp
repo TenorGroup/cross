@@ -230,7 +230,7 @@ TEST_F(FontInstallerTest, BuildFontPathNeverReturnsATruncatedPath) {
 
 TEST_F(FontInstallerTest, BuildFontPathAcceptsAllPhysicalWeightDirectories) {
   char path[FontInstaller::MAX_FONT_PATH_SIZE];
-  for (int weight = 1; weight <= 4; ++weight) {
+  for (int weight = 1; weight <= 6; ++weight) {
     const std::string relative = "weight-" + std::to_string(weight) + "/Book_16.cpfont";
     ASSERT_TRUE(FontInstaller::buildFontPath("Bookerly", relative.c_str(), path, sizeof(path)));
     EXPECT_EQ(std::string(path), "/.fonts/Bookerly/" + relative);
@@ -277,7 +277,7 @@ TEST_F(FontInstallerTest, EnsureFamilyDirCreatesTheCompleteLongestPath) {
 TEST_F(FontInstallerTest, RelativePathKeepsFlatUploadGrammarSeparate) {
   EXPECT_TRUE(FontInstaller::isValidCpfontRelativePath("Book_16.cpfont"));
   EXPECT_TRUE(FontInstaller::isValidCpfontRelativePath(longestFilename().c_str()));
-  for (int weight = 1; weight <= 4; ++weight) {
+  for (int weight = 1; weight <= 6; ++weight) {
     const std::string relative = "weight-" + std::to_string(weight) + "/Book_16.cpfont";
     EXPECT_TRUE(FontInstaller::isValidCpfontRelativePath(relative.c_str()));
     EXPECT_FALSE(FontInstaller::isValidCpfontFilename(relative.c_str()));
@@ -299,7 +299,7 @@ TEST_F(FontInstallerTest, RelativePathBoundsIncludeTheWeightDirectory) {
 
 TEST_F(FontInstallerTest, RelativePathRejectsTraversalAndUnrecognizedDirectoriesBeforeIo) {
   const char* const invalid[] = {
-    nullptr, "", "weight-1/", "weight-0/a.cpfont", "weight-5/a.cpfont", "weight-10/a.cpfont",
+    nullptr, "", "weight-1/", "weight-0/a.cpfont", "weight-7/a.cpfont", "weight-10/a.cpfont",
     "Weight-1/a.cpfont", "weight-1\\a.cpfont", "weight-1//a.cpfont", "weight-1/../a.cpfont",
     "weight-1/./a.cpfont", "weight-1/weight-2/a.cpfont", "../a.cpfont", "/weight-1/a.cpfont",
     "weight-1/.cpfont", "weight-1/a.cpfont.tmp", "weight-1/a.CPFONT", "weight-1/%2e%2e.cpfont",

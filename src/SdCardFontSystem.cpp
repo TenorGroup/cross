@@ -224,9 +224,10 @@ const SdCardFontFamilyInfo* SdCardFontSystem::familyNamed(const std::string& nam
 }
 
 bool SdCardFontSystem::loadSelected(GfxRenderer& renderer, const SdCardFontFamilyInfo& family) {
-  if (!manager_.loadFamily(family, renderer, SETTINGS.fontPointSize, 0)) {
+  if (!manager_.loadFamily(family, renderer, SETTINGS.fontPointSize, readerInk::physical(SETTINGS.readerInkWeight))) {
     return false;
   }
+  loadedInkLevel_ = readerInk::clamp(SETTINGS.readerInkWeight);
   snapFontPointSizeTo(manager_.currentPointSize());
   sdfontmemo::save(family, bootMemo);
   setupUiFallbacks(renderer);
@@ -258,6 +259,7 @@ void SdCardFontSystem::ensureLoadedImpl(GfxRenderer& renderer) {
   }
 
   const char* wantedFamily = SETTINGS.sdFontFamilyName;
+  notoPackMissing_ = false;
 
 #if CROSSPOINT_VECTOR_FONTS
   // Vector (.ttf/.otf) family selected: route through the FreeInkFont path and
@@ -278,20 +280,35 @@ void SdCardFontSystem::ensureLoadedImpl(GfxRenderer& renderer) {
   const std::string& currentFamily = manager_.currentFamilyName();
 
   if (wantedFamily[0] == '\0') {
-    if (!currentFamily.empty()) {
-      manager_.unloadAll(renderer);
-    }
     // Back on a built-in family, which exists only at BUILTIN_READER_POINT_SIZES:
     // a size inherited from an SD family has to come back into that set.
     snapFontPointSizeTo(snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES),
                                                SETTINGS.fontPointSize));
+    const auto level = readerInk::clamp(SETTINGS.readerInkWeight);
+    const char* notoFamily = SETTINGS.fontFamily == CrossPointSettings::NOTOSERIF ? "NotoSerif" : "NotoSans";
+    if (level == 0 || SETTINGS.fontFamily > CrossPointSettings::NOTOSANS) {
+      if (!currentFamily.empty()) manager_.unloadAll(renderer);
+      return;
+    }
+    if (!registryWasDirty && manager_.isBuiltinRaster() && currentFamily == notoFamily &&
+        manager_.currentPointSize() == SETTINGS.fontPointSize &&
+        loadedInkLevel_ == level) return;
+    const auto* family = familyNamed(notoFamily);
+    if (!family && walkIfCatalogKept()) family = familyNamed(notoFamily);
+    loadedInkLevel_ = level;
+    const bool loaded = family && manager_.loadBuiltinFamily(*family, renderer, SETTINGS.fontPointSize,
+                                                            readerInk::physical(level), SETTINGS.getReaderFontId());
+    if (!loaded) {
+      manager_.unloadAll(renderer);
+      notoPackMissing_ = true;
+    }
     return;
   }
 
   // Reload if family changed OR if the user-selected size maps to a
   // different file than what's currently loaded OR if the registry was
   // just rediscovered (file may have been replaced on disk).
-  bool familyMatches = (currentFamily == wantedFamily);
+  bool familyMatches = (currentFamily == wantedFamily) && !manager_.isBuiltinRaster();
   if (familyMatches) {
     const auto* family = familyNamed(wantedFamily);
     if (!family && walkIfCatalogKept()) family = familyNamed(wantedFamily);
@@ -306,7 +323,8 @@ void SdCardFontSystem::ensureLoadedImpl(GfxRenderer& renderer) {
     // Snap before the early return: the wanted size can already be loaded while
     // the setting still names a size this family does not ship.
     snapFontPointSizeTo(wantedPt);
-    if (!registryWasDirty && wantedPt == manager_.currentPointSize())
+    if (!registryWasDirty && wantedPt == manager_.currentPointSize() &&
+        loadedInkLevel_ == readerInk::clamp(SETTINGS.readerInkWeight))
       return;
     LOG_DBG("SDFS", "Reloading %s: size %u -> %u%s", wantedFamily, manager_.currentPointSize(), wantedPt,
             registryWasDirty ? " [registry dirty]" : "");
@@ -394,7 +412,12 @@ uint8_t SdCardFontSystem::availableWeightMask() const {
   return 0x3f;
 }
 
-uint8_t SdCardFontSystem::effectiveWeight() const { return readerInk::clamp(SETTINGS.readerInkWeight); }
+uint8_t SdCardFontSystem::effectiveWeight() const {
+#if CROSSPOINT_VECTOR_FONTS
+  if (!ttfFamily_.empty()) return readerInk::clamp(SETTINGS.readerInkWeight);
+#endif
+  return readerInk::publicFromPhysical(manager_.currentWeight());
+}
 
 #if CROSSPOINT_VECTOR_FONTS
 

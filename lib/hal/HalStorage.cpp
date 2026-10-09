@@ -136,6 +136,10 @@ std::vector<String> HalStorage::listFiles(const char* path, int maxFiles) {
   HAL_STORAGE_WRAPPED_CALL(listFiles, path, maxFiles);
 }
 
+bool HalStorage::freeSpace(uint64_t& bytes, uint32_t& clusterBytes) {
+  HAL_STORAGE_WRAPPED_CALL(freeSpace, bytes, clusterBytes);
+}
+
 String HalStorage::readFile(const char* path) { HAL_STORAGE_WRAPPED_CALL(readFile, path); }
 
 bool HalStorage::readFileToStream(const char* path, Print& out, size_t chunkSize) {

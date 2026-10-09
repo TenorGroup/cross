@@ -50,7 +50,7 @@ class FontInstaller {
   /// that bound.
   static bool isValidCpfontFilename(const char* name);
 
-  /// Accept a flat filename or exactly weight-1..4/<filename>. The complete
+  /// Accept a flat filename or exactly weight-1..6/<filename>. The complete
   /// relative path shares the 87-byte filename limit and 128-byte full path.
   /// Upload callers continue to use isValidCpfontFilename for flat names.
   static bool isValidCpfontRelativePath(const char* name);

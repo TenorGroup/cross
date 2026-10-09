@@ -17,6 +17,7 @@
 #include "MappedInputManager.h"
 #include "FileTransferState.h"
 #include "SdCardFontSystem.h"
+#include "FontPackInstaller.h"
 #include "SettingsList.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -33,6 +34,12 @@ namespace fui = freeink::ui;
 
 FontDownloadActivity::FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiListActivity("FontDownload", renderer, mappedInput), fontInstaller_(sdFontSystem.registry()) {}
+
+bool FontDownloadActivity::installDownloadedPack(const char* path) {
+  if (FontPackInstaller::install(path) != FontPackInstaller::Result::OK) return false;
+  sdFontSystem.markRegistryDirty();
+  return true;
+}
 
 void FontDownloadActivity::activateIndex(const int index) {
   switch (state_) {

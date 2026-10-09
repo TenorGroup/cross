@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <optional>
+#include <EpdFontFamily.h>
 
 class GfxRenderer;
 class SdCardFont;
@@ -21,6 +23,8 @@ class SdCardFontManager {
   // sizes remain on disk. This keeps resident interval + kern/ligature tables to
   // one size's worth of memory. Returns true on success.
   bool loadFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, uint8_t pointSize, uint8_t weight = 0);
+  bool loadBuiltinFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, uint8_t pointSize,
+                         uint8_t weight, int builtinId);
 
   // Additively load the .cpfont of `family` at the exact physical `pointSize`
   // (used for size-matched CJK UI fallback alongside the reader-size font).
@@ -48,6 +52,7 @@ class SdCardFontManager {
   uint8_t currentPointSize() const { return loadedPointSize_; };
 
   uint8_t currentWeight() const { return loadedWeight_; }
+  bool isBuiltinRaster() const { return builtinFamily_.has_value(); }
 
  private:
   struct LoadedFont {
@@ -70,5 +75,7 @@ class SdCardFontManager {
   std::string loadedFamilyName_;
   uint8_t loadedPointSize_ = 0;
   uint8_t loadedWeight_ = 0;
+  std::optional<EpdFontFamily> builtinFamily_;
+  int builtinId_ = 0;
   std::vector<LoadedFont> loaded_;
 };

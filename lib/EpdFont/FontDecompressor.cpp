@@ -4,7 +4,6 @@
 #include <FontAlloc.h>  // PSRAM-preferring font allocator (fiFontMalloc/Free)
 #include <Logging.h>
 #include <Utf8.h>
-#include "InkBolden.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -29,27 +28,6 @@ void FontDecompressor::deinit() {
 void FontDecompressor::clearCache() {
   freePageBuffer();
   freeHotGroup();
-}
-
-void FontDecompressor::setReaderInk(const EpdFontData* const faces[4], uint8_t level, bool antiAliased) {
-  if (level > 5) level = 0;
-  if (level == inkLevel_ && antiAliased == inkAntiAliased_ &&
-      std::memcmp(faces, readerFaces_, sizeof(readerFaces_)) == 0) return;
-  clearCache();
-  std::memcpy(readerFaces_, faces, sizeof(readerFaces_));
-  inkLevel_ = level;
-  inkAntiAliased_ = antiAliased;
-}
-
-bool FontDecompressor::isReaderFace(const EpdFontData* fontData) const {
-  for (const auto* face : readerFaces_) if (face == fontData) return true;
-  return false;
-}
-
-void FontDecompressor::applyInk(const EpdFontData* fontData, const EpdGlyph& glyph, uint8_t* bitmap) {
-  if (inkLevel_ && isReaderFace(fontData) &&
-      inkBolden::apply(bitmap, glyph.width, glyph.height, fontData->is2Bit, inkLevel_, inkAntiAliased_))
-    ++stats.inkApplications;
 }
 
 void FontDecompressor::freePageBuffer() {
@@ -176,13 +154,6 @@ const uint8_t* FontDecompressor::getBitmap(const EpdFontData* fontData, const Ep
   stats.getBitmapCalls++;
 
   if (!fontData->groups || fontData->groupCount == 0) {
-    if (inkLevel_ && isReaderFace(fontData) && glyph->dataLength) {
-      if (!ensureCapacity(hotGlyphBuf, hotGlyphBufCapacity, glyph->dataLength)) return nullptr;
-      std::memcpy(hotGlyphBuf, &fontData->bitmap[glyph->dataOffset], glyph->dataLength);
-      applyInk(fontData, *glyph, hotGlyphBuf);
-      stats.getBitmapTimeUs += micros() - tStart;
-      return hotGlyphBuf;
-    }
     stats.getBitmapTimeUs += micros() - tStart;
     return &fontData->bitmap[glyph->dataOffset];
   }
@@ -254,7 +225,6 @@ const uint8_t* FontDecompressor::getBitmap(const EpdFontData* fontData, const Ep
 
   uint32_t alignedOff = getAlignedOffset(fontData, groupIndex, glyphIndex);
   compactSingleGlyph(&hotGroup[alignedOff], hotGlyphBuf, glyph->width, glyph->height);
-  applyInk(fontData, *glyph, hotGlyphBuf);
   stats.getBitmapTimeUs += micros() - tStart;
   return hotGlyphBuf;
 }
@@ -531,7 +501,6 @@ int FontDecompressor::prewarmCache(const EpdFontData* fontData, const char* utf8
 
       const EpdGlyph& glyph = fontData->glyph[slot.glyphs[i].glyphIndex];
       compactSingleGlyph(&tempBuf[slot.glyphs[i].alignedOffset], &slot.buffer[writeOffset], glyph.width, glyph.height);
-      applyInk(fontData, glyph, &slot.buffer[writeOffset]);
       slot.glyphs[i].bufferOffset = writeOffset;
       writeOffset += glyph.dataLength;
     }
@@ -554,7 +523,6 @@ void FontDecompressor::logStats(const char* label) {
   LOG_DBG("FDC", "[%s] hits=%lu misses=%lu (%.1f%% hit rate)", label, stats.cacheHits, stats.cacheMisses,
           total > 0 ? 100.0f * stats.cacheHits / total : 0.0f);
   LOG_DBG("FDC", "[%s] decompress=%lums groups_accessed=%u", label, stats.decompressTimeMs, stats.uniqueGroupsAccessed);
-  LOG_DBG("FDC", "[%s] ink_applications=%lu", label, static_cast<unsigned long>(stats.inkApplications));
   LOG_DBG("FDC", "[%s] mem: pageBuf=%lu pageGlyphs=%lu hotGroup=%lu peakTemp=%lu", label, stats.pageBufferBytes,
           stats.pageGlyphsBytes, stats.hotGroupBytes, stats.peakTempBytes);
   if (stats.getBitmapCalls > 0) {

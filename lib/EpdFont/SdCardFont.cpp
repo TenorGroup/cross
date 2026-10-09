@@ -12,7 +12,79 @@
 #include <memory>
 
 #include "EpdFontFamily.h"
-#include "InkBolden.h"
+
+bool SdCardFont::matchesBuiltinLayout(const EpdFontFamily& builtin) const {
+  if (styleCount_ != MAX_STYLES) return false;
+  HalFile file;
+  if (!Storage.openFileForRead("SDCF", filePath_, file)) return false;
+  const auto unsigned16 = [](const uint8_t* bytes) {
+    return static_cast<uint16_t>(bytes[0] | static_cast<uint16_t>(bytes[1]) << 8);
+  };
+  const auto unsigned32 = [](const uint8_t* bytes) {
+    return static_cast<uint32_t>(bytes[0]) | static_cast<uint32_t>(bytes[1]) << 8 |
+           static_cast<uint32_t>(bytes[2]) << 16 | static_cast<uint32_t>(bytes[3]) << 24;
+  };
+  uint8_t bytes[16];
+  for (uint8_t style = 0; style < MAX_STYLES; ++style) {
+    const auto& source = styles_[style];
+    const auto* expected = builtin.getData(static_cast<EpdFontFamily::Style>(style));
+    const auto& header = source.header;
+    if (!source.present || !expected || !expected->glyph || !expected->intervals ||
+        header.intervalCount != expected->intervalCount || header.advanceY != expected->advanceY ||
+        header.ascender != expected->ascender || header.descender != expected->descender ||
+        header.kernLeftEntryCount != expected->kernLeftEntryCount ||
+        header.kernRightEntryCount != expected->kernRightEntryCount ||
+        header.kernLeftClassCount != expected->kernLeftClassCount ||
+        header.kernRightClassCount != expected->kernRightClassCount ||
+        header.ligaturePairCount != expected->ligaturePairCount || !file.seekSet(source.intervalsFileOffset))
+      return false;
+    uint32_t glyphCount = 0;
+    for (uint32_t index = 0; index < header.intervalCount; ++index) {
+      const auto& interval = expected->intervals[index];
+      if (file.read(bytes, 12) != 12 || unsigned32(bytes) != interval.first ||
+          unsigned32(bytes + 4) != interval.last || unsigned32(bytes + 8) != interval.offset)
+        return false;
+      glyphCount += interval.last - interval.first + 1;
+    }
+    if (glyphCount != header.glyphCount) return false;
+    for (uint32_t index = 0; index < glyphCount; ++index) {
+      if (file.read(bytes, sizeof(bytes)) != sizeof(bytes) || unsigned16(bytes + 2) != expected->glyph[index].advanceX)
+        return false;
+    }
+    for (uint8_t side = 0; side < 2; ++side) {
+      const auto count = side ? header.kernRightEntryCount : header.kernLeftEntryCount;
+      const auto* codepoints = side ? expected->kernRightCodepoints : expected->kernLeftCodepoints;
+      const auto* classes = side ? expected->kernRightClassIds : expected->kernLeftClassIds;
+      const auto* packed = side ? expected->kernRightClasses : expected->kernLeftClasses;
+      if (count && !packed && (!codepoints || !classes)) return false;
+      for (uint16_t index = 0; index < count; ++index) {
+        const auto codepoint = packed ? packed[index].codepoint : codepoints[index];
+        const auto classId = packed ? packed[index].classId : classes[index];
+        if (file.read(bytes, 3) != 3 || unsigned16(bytes) != codepoint || bytes[2] != classId) return false;
+      }
+    }
+    for (uint16_t row = 0; row < header.kernLeftClassCount; ++row) {
+      if (!expected->kernMatrix && (!expected->kernRowOffsets || !expected->kernSparseCols ||
+                                   !expected->kernSparseValues)) return false;
+      uint16_t sparse = expected->kernRowOffsets ? expected->kernRowOffsets[row] : 0;
+      for (uint16_t column = 0; column < header.kernRightClassCount; ++column) {
+        int8_t value = 0;
+        if (expected->kernMatrix) {
+          value = expected->kernMatrix[row * header.kernRightClassCount + column];
+        } else if (sparse < expected->kernRowOffsets[row + 1] && expected->kernSparseCols[sparse] == column) {
+          value = expected->kernSparseValues[sparse++];
+        }
+        if (file.read(bytes, 1) != 1 || static_cast<int8_t>(bytes[0]) != value) return false;
+      }
+    }
+    if (header.ligaturePairCount && !expected->ligaturePairs) return false;
+    for (uint8_t index = 0; index < header.ligaturePairCount; ++index) {
+      if (file.read(bytes, 8) != 8 || unsigned32(bytes) != expected->ligaturePairs[index].pair ||
+          unsigned32(bytes + 4) != expected->ligaturePairs[index].ligatureCp) return false;
+    }
+  }
+  return true;
+}
 
 // Resident SD-font buffers (glyph/kern arenas, interval + advance tables, the
 // overflow ring) are placed in PSRAM when the board has it — freeing scarce
@@ -580,7 +652,7 @@ bool SdCardFont::load(const char* path) {
   }
 
   // Begin content hash: accumulate global header
-  uint32_t hash = fnv1a(headerBuf, HEADER_SIZE);
+  uint32_t hash = fnv1a(headerBuf + 12, 1);
 
   bool is2Bit = (readU16(headerBuf + 10) & 1) != 0;
 
@@ -600,7 +672,8 @@ bool SdCardFont::load(const char* path) {
     }
 
     // Accumulate TOC entry into content hash
-    hash = fnv1a(tocBuf, STYLE_TOC_ENTRY_SIZE, hash);
+    hash = fnv1a(tocBuf, 24, hash);
+    hash = fnv1a(tocBuf + 28, 4, hash);
 
     uint8_t styleId = tocBuf[0];
     if (styleId >= MAX_STYLES) {
@@ -650,6 +723,46 @@ bool SdCardFont::load(const char* path) {
   }
 
   styleCount_ = styleCount;
+  uint8_t layoutBuffer[512];
+  for (uint8_t style = 0; style < MAX_STYLES; ++style) {
+    const auto& data = styles_[style];
+    if (!data.present) continue;
+    if (!file.seekSet(data.intervalsFileOffset)) {
+      freeAll();
+      return false;
+    }
+    uint32_t remaining = data.header.intervalCount * sizeof(EpdUnicodeInterval);
+    while (remaining) {
+      const size_t count = std::min<size_t>(remaining, sizeof(layoutBuffer));
+      if (file.read(layoutBuffer, count) != static_cast<int>(count)) {
+        freeAll();
+        return false;
+      }
+      hash = fnv1a(layoutBuffer, count, hash);
+      remaining -= count;
+    }
+    remaining = data.header.glyphCount * sizeof(EpdGlyph);
+    while (remaining) {
+      const size_t count = std::min<size_t>(remaining, sizeof(layoutBuffer));
+      if (file.read(layoutBuffer, count) != static_cast<int>(count)) {
+        freeAll();
+        return false;
+      }
+      for (size_t offset = 0; offset < count; offset += sizeof(EpdGlyph))
+        hash = fnv1a(layoutBuffer + offset + 2, 2, hash);
+      remaining -= count;
+    }
+    remaining = data.bitmapFileOffset - data.kernLeftFileOffset;
+    while (remaining) {
+      const size_t count = std::min<size_t>(remaining, sizeof(layoutBuffer));
+      if (file.read(layoutBuffer, count) != static_cast<int>(count)) {
+        freeAll();
+        return false;
+      }
+      hash = fnv1a(layoutBuffer, count, hash);
+      remaining -= count;
+    }
+  }
   contentHash_ = hash;
 
   // Load full intervals into RAM for each present style. BMP-only fonts with
@@ -1362,9 +1475,6 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
       }
       lastBitmapEnd = fileOff + glyph.dataLength;
 
-      inkBolden::apply(s.miniBitmap + miniBitmapOffset, glyph.width, glyph.height,
-                       s.header.is2Bit, inkLevel_, inkAntiAliased_);
-
       glyph.dataOffset = miniBitmapOffset;
       miniBitmapOffset += glyph.dataLength;
     }
@@ -1428,25 +1538,6 @@ void SdCardFont::clearCache() {
     if (!styles_[i].present) continue;
     resetStyleMiniData(styles_[i]);
     applyGlyphMissCallback(i);
-  }
-}
-
-void SdCardFont::setReaderInk(uint8_t level, bool antiAliased) {
-  if (level > 5) level = 0;
-  if (level == inkLevel_ && antiAliased == inkAntiAliased_) return;
-  inkLevel_ = level;
-  inkAntiAliased_ = antiAliased;
-  clearOverflow();
-  for (uint8_t style = 0; style < MAX_STYLES; ++style) {
-    auto& data = styles_[style];
-    if (!data.present) continue;
-    data.miniGlyphCount = 0;
-    data.miniIntervalCount = 0;
-    data.miniBitmapUsed = 0;
-    data.miniHysteresisPending = false;
-    data.miniData = {};
-    data.epdFont.data = &data.stubData;
-    applyGlyphMissCallback(style);
   }
 }
 
@@ -1827,9 +1918,6 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
       return nullptr;
     }
   }
-
-  inkBolden::apply(tempBitmap, tempGlyph.width, tempGlyph.height, s.header.is2Bit,
-                   self->inkLevel_, self->inkAntiAliased_);
 
   // All reads succeeded, commit to slot and advance ring buffer
   if (wasAtCapacity) {

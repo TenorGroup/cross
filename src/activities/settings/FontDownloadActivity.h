@@ -53,6 +53,7 @@ class FontDownloadActivity final : public UiListActivity {
   bool skipLoopDelay() override { return true; }
 
  private:
+  bool installDownloadedPack(const char* path);
 #ifdef FREEINK_TLS_AUDIT
   bool auditDownload_ = false;
 #endif

@@ -24,11 +24,11 @@ constexpr int32_t outlineStrength(const int publicLevel) {
 }
 
 constexpr uint8_t publicFromPhysical(const int physicalLevel) {
-  return physicalLevel >= 2 && physicalLevel <= 4 ? static_cast<uint8_t>(physicalLevel - 1) : 0;
+  return physicalLevel >= 2 && physicalLevel <= 6 ? static_cast<uint8_t>(physicalLevel - 1) : 0;
 }
 
 constexpr uint8_t publicMask(const uint8_t physicalMask) {
-  return static_cast<uint8_t>((physicalMask & 1u) | ((physicalMask & 0x1cu) >> 1));
+  return static_cast<uint8_t>((physicalMask & 1u) | ((physicalMask & 0x7cu) >> 1));
 }
 
 constexpr uint8_t next(const int current) {

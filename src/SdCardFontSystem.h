@@ -44,6 +44,7 @@ class SdCardFontSystem {
   void refreshUiFallbacks(GfxRenderer& renderer, uint8_t uiTextSize);
   uint8_t availableWeightMask() const;
   uint8_t effectiveWeight() const;
+  bool needsNotoPack() const { return notoPackMissing_; }
 
   // OTA uses built-in UI fonts and reboots on exit. Release SD font metadata
   // and the discovery catalog before TLS; settings and card files stay intact.
@@ -79,6 +80,9 @@ class SdCardFontSystem {
   }
 
  private:
+  friend void readerInk::apply(GfxRenderer& renderer);
+  uint8_t loadedInkLevel_ = 0;
+  bool notoPackMissing_ = false;
   void beginImpl(GfxRenderer& renderer);
   void ensureLoadedImpl(GfxRenderer& renderer);
   // Catalog states. Pending: the boot left it unread, the first registry use reads it.

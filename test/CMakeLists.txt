@@ -57,6 +57,7 @@ add_subdirectory(token_boundary)
 add_subdirectory(koreader_xpath_resolver)
 add_subdirectory(progress_comparison)
 add_subdirectory(font_cache_manager)
+add_subdirectory(font_pack)
 add_subdirectory(css_parser)
 add_subdirectory(chapter_html_slim_parser)
 add_subdirectory(korean_line_breaking)
@@ -118,7 +119,6 @@ add_subdirectory(webdav_replace)
 add_subdirectory(secure_http)
 
 add_subdirectory(secure_client)
-add_subdirectory(ink_bolden)
 add_subdirectory(builtin_ink)
 add_subdirectory(ttf_ink)
 add_subdirectory(reader_ink_repaint)
@@ -227,6 +227,11 @@ add_subdirectory(wake_boot_memo)
 add_subdirectory(recent_excerpt)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME SdFontVariantLayoutCache COMMAND "${CMAKE_COMMAND}" -E env
+  "CROSSPOINT_SECTION_CACHE_TEST=$<TARGET_FILE:SectionCacheTest>"
+  "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/reader_ink_v108/test_manager.py")
+add_test(NAME ReaderFontDownloadNames COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/reader_ink_v108/test_download_manifest.py")
 add_subdirectory(image_probe_loan)
 add_test(NAME FormatterCliSafety COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/clang_format_cli/test_cli.py")
 add_test(NAME FirmwareImageSize COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/firmware_size/test_image_size.py")

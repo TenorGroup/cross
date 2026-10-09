@@ -1,6 +1,5 @@
 #include <HalStorage.h>
 #include <SdCardFont.h>
-#include <InkBolden.h>
 #include <gtest/gtest.h>
 
 #include <cstdio>
@@ -230,7 +229,6 @@ TEST(SdCardFontTest, InkMiniAndOverflowMatchOriginalWithoutAccumulation) {
     const auto raw = inkBitmap(font, codepoint);
     for (int level = 0; level < 6; ++level) for (bool aa : {false, true}) {
       auto expected = raw;
-      inkBolden::apply(expected.data(), original.width, original.height, twoBit, level, aa);
       configureInk(font, level, aa);
       ASSERT_EQ(0, font.prewarm(text.c_str(), 15, false, false, false));
       EXPECT_EQ(inkBitmap(font, codepoint), expected) << level << ' ' << aa << ' ' << twoBit;
@@ -251,7 +249,7 @@ TEST(SdCardFontTest, InkMiniAndOverflowMatchOriginalWithoutAccumulation) {
   }
 }
 
-TEST(SdCardFontTest, InkChangeInvalidatesRetainedMiniButKeepsAdvances) {
+TEST(SdCardFontTest, InkSettingLeavesRetainedMiniAndAdvancesUnchanged) {
   makeInkFont(true);
   SdCardFont font;
   ASSERT_TRUE(font.load("fixture"));
@@ -270,8 +268,8 @@ TEST(SdCardFontTest, InkChangeInvalidatesRetainedMiniButKeepsAdvances) {
   configureInk(font, 5, true);
   EXPECT_EQ(font.getAdvance(FIRST + 17, 0), advance);
   ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
-  EXPECT_GT(sdFontTestReads, before);
-  EXPECT_NE(inkBitmap(font, FIRST + 17), light);
+  EXPECT_EQ(sdFontTestReads, before);
+  EXPECT_EQ(inkBitmap(font, FIRST + 17), light);
   configureInk(font, 1, true);
   ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
   EXPECT_EQ(inkBitmap(font, FIRST + 17), light);
@@ -279,7 +277,7 @@ TEST(SdCardFontTest, InkChangeInvalidatesRetainedMiniButKeepsAdvances) {
   const auto beforeAa = sdFontTestReads;
   configureInk(font, 1, false);
   ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
-  EXPECT_GT(sdFontTestReads, beforeAa);
+  EXPECT_EQ(sdFontTestReads, beforeAa);
 }
 
 TEST(SdCardFontTest, InkMetadataOnlyThenFullPrewarmUsesOriginalBitmap) {
@@ -290,7 +288,6 @@ TEST(SdCardFontTest, InkMetadataOnlyThenFullPrewarmUsesOriginalBitmap) {
   ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
   auto expected = inkBitmap(font, FIRST + 17);
   const auto glyph = *font.getEpdFont()->getGlyph(FIRST + 17);
-  inkBolden::apply(expected.data(), glyph.width, glyph.height, true, 5, true);
   font.releaseResidentCaches();
   configureInk(font, 5, true);
   ASSERT_EQ(font.prewarm(text.c_str(), 1, true, false, false), 0);
@@ -298,6 +295,47 @@ TEST(SdCardFontTest, InkMetadataOnlyThenFullPrewarmUsesOriginalBitmap) {
   ASSERT_EQ(font.prewarm(text.c_str(), 1, false, false, false), 0);
   EXPECT_GT(sdFontTestReads, reads);
   EXPECT_EQ(inkBitmap(font, FIRST + 17), expected);
+}
+
+TEST(SdCardFontTest, LayoutIdentityIgnoresRasterOffsetsAndTracksAdvances) {
+  makeFont();
+  SdCardFont original;
+  ASSERT_TRUE(original.load("fixture"));
+  const auto identity = original.contentHash();
+  auto payload = sdFontTestFile;
+  sdFontTestFile.insert(sdFontTestFile.begin() + 64, 32, 0);
+  put32(56, 96);
+  SdCardFont relocated;
+  ASSERT_TRUE(relocated.load("fixture"));
+  EXPECT_EQ(relocated.contentHash(), identity);
+  sdFontTestFile = payload;
+  put16(88 + 2, 513);
+  SdCardFont differentAdvance;
+  ASSERT_TRUE(differentAdvance.load("fixture"));
+  EXPECT_NE(differentAdvance.contentHash(), identity);
+  sdFontTestFile = payload;
+  put16(45, 31);
+  SdCardFont differentMetrics;
+  ASSERT_TRUE(differentMetrics.load("fixture"));
+  EXPECT_NE(differentMetrics.contentHash(), identity);
+}
+
+TEST(SdCardFontTest, LayoutIdentityTracksKerningAndLigatureTables) {
+  makeKerningFont(0, 2, 2, true);
+  SdCardFont original;
+  ASSERT_TRUE(original.load("fixture"));
+  const auto identity = original.contentHash();
+  const auto payload = sdFontTestFile;
+  const size_t kernStart = 88 + 7 * sizeof(EpdGlyph);
+  sdFontTestFile[kernStart + 12] ^= 1;
+  SdCardFont differentKerning;
+  ASSERT_TRUE(differentKerning.load("fixture"));
+  EXPECT_NE(differentKerning.contentHash(), identity);
+  sdFontTestFile = payload;
+  sdFontTestFile[kernStart + 16 + 6] ^= 1;
+  SdCardFont differentLigature;
+  ASSERT_TRUE(differentLigature.load("fixture"));
+  EXPECT_NE(differentLigature.contentHash(), identity);
 }
 
 TEST(SdCardFontTest, CompletePagesReplaceEarlierGlyphs) {

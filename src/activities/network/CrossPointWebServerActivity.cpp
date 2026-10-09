@@ -18,6 +18,7 @@
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
 #include "SdCardFontSystem.h"
+#include "FontPackInstaller.h"
 #include "SilentRestart.h"
 #include "UIFontTiers.h"
 #include "WifiSelectionActivity.h"
@@ -391,6 +392,16 @@ void CrossPointWebServerActivity::startWebServer() {
   });
   // A slow or stalled upload keeps handleClient() busy for as long as bytes trickle in;
   // a Back tap latched meanwhile ends it instead of waiting behind it.
+  webServer->setFontPackApplier([this](const char* path) {
+    RenderLock lock(*this);
+    if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
+    if (FontPackInstaller::scan()) {
+      sdFontSystem.markRegistryDirty();
+      sdFontSystem.ensureLoaded(renderer);
+      requestUpdate();
+    }
+    return !Storage.exists(path);
+  });
   webServer->setUploadCancel([this] { return backLatch.latched(); });
   // A stalled upload asks no cancel: the tap itself cuts its socket.
   backLatch.setTapHook([](void* server) { static_cast<CrossPointWebServer*>(server)->interruptUpload(); },

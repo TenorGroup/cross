@@ -41,23 +41,11 @@ void FontCacheManager::setFontDecompressor(FontDecompressor* d) { fontDecompress
 
 void FontCacheManager::setReaderInk(int fontId, uint8_t level, bool antiAliased) {
   if (level > 5) level = 0;
-  const EpdFontData* faces[4] = {};
-  const auto selected = sdCardFonts_.find(fontId);
-  bool builtin = selected == sdCardFonts_.end();
+  static_cast<void>(fontId);
+  static_cast<void>(antiAliased);
 #if CROSSPOINT_VECTOR_FONTS
   const auto vectorSelected = ttfFonts_.find(fontId);
-  builtin = builtin && vectorSelected == ttfFonts_.end();
 #endif
-  const auto family = fontMap_.find(fontId);
-  if (builtin && family != fontMap_.end()) {
-    for (uint8_t style = 0; style < 4; ++style)
-      faces[style] = family->second.getData(static_cast<EpdFontFamily::Style>(style));
-  }
-  if (fontDecompressor_) fontDecompressor_->setReaderInk(faces, level, antiAliased);
-  for (const auto& entry : sdCardFonts_) {
-    if (entry.second) entry.second->setReaderInk(
-        selected != sdCardFonts_.end() && entry.second == selected->second ? level : 0, antiAliased);
-  }
 #if CROSSPOINT_VECTOR_FONTS
   for (const auto& entry : ttfFonts_) {
     if (entry.second) entry.second->setInkStrength(

@@ -15,6 +15,8 @@ inline bool hostCjk = false;
 
 class SdCardFontManager {
  public:
+  bool isBuiltinRaster() const { return false; }
+  bool loadBuiltinFamily(const SdCardFontFamilyInfo&, GfxRenderer&, uint8_t, uint8_t, int) { return false; }
   bool loadFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, uint8_t pointSize, uint8_t weight = 0) {
     unloadAll(renderer);
     const auto* file = family.findNearestSize(pointSize);
@@ -24,7 +26,8 @@ class SdCardFontManager {
     if (!hostCardFiles.count(path)) return false;
     name_ = family.name;
     size_ = file->pointSize;
-    weight_ = weight;
+    weight_ = 0;
+    static_cast<void>(weight);
     renderer.fonts[id_] = HostFontFace{hostCjk};
     return true;
   }

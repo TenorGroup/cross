@@ -66,19 +66,19 @@ TEST_F(SdFontBoot, ColdBootWalksTheCardOnceAndLoadsTheSavedFamily) {
   EXPECT_EQ(hostDiscoveries, 1);
 }
 
-TEST_F(SdFontBoot, ReaderInkUsesRootFileAndKeepsLoadedFontIdentity) {
+TEST_F(SdFontBoot, ReaderInkLoadsVariantsAndKeepsLayoutIdentity) {
   SdCardFontSystem system;
   GfxRenderer renderer;
   boot(ESP_RST_POWERON, system, renderer);
   const auto fontId = system.resolveFontId("Bokerlam", 14);
-  const auto loads = hostLoads;
+  const size_t loads = hostLoads.size();
   EXPECT_EQ(system.availableWeightMask(), 0x3f);
   for (int level = 0; level < 6; ++level) {
     SETTINGS.readerInkWeight = level;
     system.ensureLoaded(renderer);
     EXPECT_EQ(system.resolveFontId("Bokerlam", 14), fontId);
-    EXPECT_EQ(hostLoads, loads);
-    EXPECT_EQ(system.effectiveWeight(), level);
+    EXPECT_EQ(hostLoads.size(), loads + level);
+    EXPECT_EQ(system.effectiveWeight(), 0);
   }
 }
 

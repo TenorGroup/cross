@@ -1,7 +1,6 @@
 #include <EpdFont.h>
 #include <FontCacheManager.h>
 #include <FontDecompressor.h>
-#include <InkBolden.h>
 #include <gtest/gtest.h>
 #include <builtinFonts/notoserif_16_regular.h>
 #include <builtinFonts/geist_10_regular.h>
@@ -48,13 +47,21 @@ struct BuiltinInk : testing::Test {
 };
 }
 
-TEST_F(BuiltinInk, PrewarmMatchesCoreAndMetricsRemainOriginal) {
+TEST_F(BuiltinInk, BuiltinLevelThreeMatchesLevelZeroWithoutVariants) {
+  configure(manager, 7, 0, true);
+  const auto original = bitmap(font, 'm');
+  configure(manager, 7, 3, true);
+  EXPECT_EQ(bitmap(font, 'm'), original);
+  manager.prewarmCache(7, "mmm", 1, false);
+  EXPECT_EQ(bitmap(font, 'm'), original);
+}
+
+TEST_F(BuiltinInk, PrewarmPreservesBuiltinPixelsAndMetrics) {
   for (int level = 0; level < 6; ++level) for (bool aa : {false, true}) {
     configure(manager, 7, 0, aa);
     auto expected = bitmap(font, 'm');
     const auto original = *font.getGlyph('m');
     ASSERT_FALSE(expected.empty());
-    inkBolden::apply(expected.data(), original.width, original.height, true, level, aa);
     configure(manager, 7, level, aa);
     manager.prewarmCache(7, "mmm", 1, false);
     EXPECT_EQ(bitmap(font, 'm'), expected) << level << ' ' << aa;
@@ -66,7 +73,6 @@ TEST_F(BuiltinInk, HotGlyphMatchesPrewarmAndNeverAccumulates) {
   configure(manager, 7, 0, true);
   auto expected = bitmap(font, 'm');
   const auto* glyph = font.getGlyph('m');
-  inkBolden::apply(expected.data(), glyph->width, glyph->height, true, 5, true);
   configure(manager, 7, 5, true);
   EXPECT_EQ(bitmap(font, 'm'), expected);
   EXPECT_EQ(bitmap(font, 'm'), expected);
@@ -80,7 +86,7 @@ TEST_F(BuiltinInk, GrayPassesAndIdempotentApplyReuseTheSameSlot) {
   configure(manager, 7, 5, true);
   manager.prewarmCache(7, "mml", 1, false);
   const auto before = applications(decompressor.getStats());
-  EXPECT_EQ(before, 2);
+  EXPECT_EQ(before, 0);
   const auto* glyph = font.getGlyph('m');
   auto* pointer = decompressor.getBitmap(font.data, glyph, glyph - font.data->glyph);
   for (int pass = 0; pass < 3; ++pass) {
@@ -89,33 +95,32 @@ TEST_F(BuiltinInk, GrayPassesAndIdempotentApplyReuseTheSameSlot) {
   }
   EXPECT_EQ(applications(decompressor.getStats()), before);
   configure(manager, 7, 4, true);
-  EXPECT_EQ(decompressor.getStats().pageBufferBytes, 0);
+  EXPECT_GT(decompressor.getStats().pageBufferBytes, 0);
   manager.prewarmCache(7, "m", 1, false);
   configure(manager, 7, 4, false);
-  EXPECT_EQ(decompressor.getStats().pageBufferBytes, 0);
+  EXPECT_GT(decompressor.getStats().pageBufferBytes, 0);
 }
 
-TEST_F(BuiltinInk, ExplicitPrewarmBoldsEachSharedFaceOnlyOnce) {
+TEST_F(BuiltinInk, ExplicitPrewarmKeepsSharedFacePixels) {
   configure(manager, 7, 5, true);
   manager.prewarmCache(7, "mmm", 15, false);
-  EXPECT_EQ(applications(decompressor.getStats()), 1);
+  EXPECT_EQ(applications(decompressor.getStats()), 0);
   decompressor.clearCache();
   decompressor.resetStats();
   manager.prewarmCache(7, "mmm", 4, false);
-  EXPECT_EQ(applications(decompressor.getStats()), 1);
+  EXPECT_EQ(applications(decompressor.getStats()), 0);
 }
 
-TEST_F(BuiltinInk, UncompressedSelectedFaceAndSharedAliasesUseTheSameInk) {
+TEST_F(BuiltinInk, UncompressedSelectedFaceAndSharedAliasesKeepOriginalPixels) {
   auto raw = bitmap(plain, 'm');
   auto expected = raw;
   const auto* glyph = plain.getGlyph('m');
-  inkBolden::apply(expected.data(), glyph->width, glyph->height, false, 5, false);
-  ASSERT_NE(raw, expected);
+  ASSERT_EQ(raw, expected);
   configure(manager, 8, 5, false);
   EXPECT_EQ(bitmap(plain, 'm'), expected);
   EXPECT_EQ(bitmap(plain, 'm'), expected);
   configure(manager, 7, 5, false);
   EXPECT_EQ(bitmap(plain, 'm'), raw);
   manager.prewarmCache(9, "m", 1, false);
-  EXPECT_EQ(applications(decompressor.getStats()), 3);
+  EXPECT_EQ(applications(decompressor.getStats()), 0);
 }

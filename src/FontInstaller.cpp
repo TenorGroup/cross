@@ -70,7 +70,7 @@ bool FontInstaller::isValidCpfontRelativePath(const char* name) {
 
   // The complete relative path is bounded before inspecting the prefix or
   // basename. A single exact weight directory is the only separator allowed.
-  return length > 9 && memcmp(name, "weight-", 7) == 0 && name[7] >= '1' && name[7] <= '4' &&
+  return length > 9 && memcmp(name, "weight-", 7) == 0 && name[7] >= '1' && name[7] <= '6' &&
          name[8] == '/' && isValidCpfontFilename(name + 9);
 }
 

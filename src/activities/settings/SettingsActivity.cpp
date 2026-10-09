@@ -1006,6 +1006,9 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
     const uint8_t value = SETTINGS.*(setting.valuePtr);
     const auto enumLabels = setting.enumLabels();
     if (value >= enumLabels.size()) return "";
+    if (setting.valuePtr == &CrossPointSettings::readerInkWeight && sdFontSystem.needsNotoPack()) {
+      return std::string(I18N.get(enumLabels[value])) + " (" + tr(STR_DOWNLOAD) + " Noto)";
+    }
     return I18N.get(enumLabels[value]);
   }
   if (setting.type == SettingType::ENUM && setting.valueGetter) {

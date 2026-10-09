@@ -7,6 +7,8 @@
 #include "EpdFont.h"
 #include "EpdFontData.h"
 
+class EpdFontFamily;
+
 // On-disk binary format version for .cpfont files. Defined as a preprocessor
 // macro (rather than a constexpr) so it can be stringified into the SD-fonts
 // release URL — see FONT_MANIFEST_URL in FontDownloadActivity.h. No integer
@@ -39,6 +41,7 @@ class SdCardFont {
   // Supports v4 (multi-style) format.
   // Returns true on success.
   bool load(const char* path);
+  bool matchesBuiltinLayout(const EpdFontFamily& builtin) const;
 
   // Pre-read glyphs needed for the given UTF-8 text from SD card.
   // styleMask: bitmask of styles to prewarm (bit 0=regular, 1=bold, 2=italic, 3=bolditalic).
@@ -89,7 +92,6 @@ class SdCardFont {
   // Preserves the persistent advance cache so repeated layout passes can reuse
   // previously fetched metrics.
   void clearCache();
-  void setReaderInk(uint8_t level, bool antiAliased);
 
   // Drop the persistent advance cache. Call when unloading the SD font or
   // when font/size/family/glyph-table state changes, or to recover a failed bitmap allocation.
@@ -331,8 +333,6 @@ class SdCardFont {
   Stats stats_;
   uint32_t contentHash_ = 0;
   bool loaded_ = false;
-  uint8_t inkLevel_ = 0;
-  bool inkAntiAliased_ = true;
 
   // Per-style helpers
   void freeStyleMiniData(PerStyle& s);

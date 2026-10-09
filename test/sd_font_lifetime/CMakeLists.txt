@@ -48,3 +48,22 @@ foreach(scenario ruby-base ruby-annotation repeat-release failed-read failed-see
                  advance-low-heap advance-cjk advance-cap advance-growth-failure advance-growth-peak)
   add_test(NAME SdFontLifetime.${scenario} COMMAND SdFontLifetimeTest ${scenario})
 endforeach()
+
+get_target_property(NOTO_SOURCES SdFontLifetimeTest SOURCES)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+list(REMOVE_ITEM NOTO_SOURCES SdFontLifetimeTest.cpp)
+add_executable(NotoBuiltinRasterTest NotoBuiltinRasterTest.cpp ${NOTO_SOURCES})
+get_target_property(NOTO_INCLUDES SdFontLifetimeTest INCLUDE_DIRECTORIES)
+target_include_directories(NotoBuiltinRasterTest PRIVATE ${NOTO_INCLUDES})
+target_compile_features(NotoBuiltinRasterTest PRIVATE cxx_std_20)
+target_compile_options(NotoBuiltinRasterTest PRIVATE -ffunction-sections -fdata-sections)
+if(APPLE)
+  target_link_options(NotoBuiltinRasterTest PRIVATE -Wl,-dead_strip)
+else()
+  target_link_options(NotoBuiltinRasterTest PRIVATE -Wl,--gc-sections)
+endif()
+add_test(NAME NotoBuiltinRaster COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/test_noto.py" "$<TARGET_FILE:NotoBuiltinRasterTest>")
+set_tests_properties(NotoBuiltinRaster PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME NotoBuiltinSelection COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/test_noto_selection.py")

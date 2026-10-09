@@ -70,6 +70,7 @@ class GfxRenderer {
   // allocation inside the SdCardFont objects. Same pragmatic compromise as
   // fontCacheManager_ below.
   mutable std::map<int, SdCardFont*> sdCardFonts_;
+  int builtinRasterId_ = 0;
   mutable std::map<int, uint16_t> sdCardFontScales_;  // fontId -> 8.8 fixed point scale (256=1.0x)
   // TTF (vector) fonts: rebuilt per page by ensureSdCardFontReady(). Mutable for
   // the same reason as sdCardFonts_ (const layout path triggers a rebuild).
@@ -168,6 +169,7 @@ class GfxRenderer {
   // Coupled to avoid dangling SdCardFont* in sdCardFonts_ when callers free
   // the underlying SdCardFont and forget the SD-side unregister.
   void removeFont(int fontId) {
+    if (fontId == builtinRasterId_) builtinRasterId_ = 0;
     fontMap.erase(fontId);
     sdCardFonts_.erase(fontId);
     sdCardFontScales_.erase(fontId);
@@ -192,8 +194,13 @@ class GfxRenderer {
   bool isFontCacheScanning() const;
   const std::map<int, EpdFontFamily>& getFontMap() const { return fontMap; }
   void registerSdCardFont(int fontId, SdCardFont* font) { sdCardFonts_[fontId] = font; }
+  void registerBuiltinRaster(int fontId, SdCardFont* font) {
+    registerSdCardFont(fontId, font);
+    builtinRasterId_ = fontId;
+  }
   void unregisterSdCardFont(int fontId) { removeFont(fontId); }
   void clearSdCardFonts() {
+    builtinRasterId_ = 0;
     sdCardFonts_.clear();
     sdCardFontScales_.clear();
   }

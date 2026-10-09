@@ -1,5 +1,0 @@
-add_executable(InkBoldenTest InkBoldenTest.cpp)
-find_package(ZLIB REQUIRED)
-target_include_directories(InkBoldenTest PRIVATE ${REPO_ROOT}/lib/EpdFont)
-target_link_libraries(InkBoldenTest PRIVATE crosspoint_test_common GTest::gtest_main ZLIB::ZLIB)
-gtest_discover_tests(InkBoldenTest)

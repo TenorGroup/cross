@@ -139,9 +139,7 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
   if (fontData->vectorBitmapHandler != nullptr) {
     return fontData->vectorBitmapHandler(fontData->glyphMissCtx, glyph);
   }
-  if (fontData->groups != nullptr || (fontCacheManager_ && fontCacheManager_->getDecompressor() &&
-                                     fontCacheManager_->getDecompressor()->hasReaderInkFor(fontData) &&
-                                     !fontData->glyphMissHandler && !fontData->vectorBitmapHandler)) {
+  if (fontData->groups != nullptr) {
     auto* fd = fontCacheManager_ ? fontCacheManager_->getDecompressor() : nullptr;
     if (!fd) {
       LOG_ERR("GFX", "Compressed font but no FontDecompressor set");
@@ -2410,6 +2408,7 @@ int GfxRenderer::getFontDescenderSize(const int fontId) const {
 }
 
 int GfxRenderer::getFontMaxInkTop(const int fontId, const EpdFontFamily::Style style) const {
+  if (fontId == builtinRasterId_) return 0;
   // Only SD-card packs carry the ink-top field; a built-in font reports
   // "unknown" so its placement is unchanged.
   const auto sdFont = sdCardFonts_.find(fontId);

@@ -189,7 +189,7 @@ def download_name(filepath: Path) -> str:
     parent = filepath.parent.name
     prefix = ''
     if parent.startswith('weight-'):
-        if parent not in {f'weight-{level}' for level in range(1, 5)}:
+        if parent not in {f'weight-{level}' for level in range(1, 7)}:
             raise ValueError(f'Unsupported weight directory: {filepath}')
         prefix = parent + '/'
     name = prefix + filepath.name

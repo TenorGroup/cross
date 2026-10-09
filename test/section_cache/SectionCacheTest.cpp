@@ -509,6 +509,28 @@ TEST_F(SectionCacheTest, RasterOnlyChangesReuseSectionCacheAndPageOffsets) {
       EXPECT_EQ(pod<uint32_t>(bytes(cache()), lutOffset + index * 4), pageOffsets[index]);
   }
 }
+TEST_F(SectionCacheTest, SdVariantSwitchKeepsCachedSectionAndPagePosition) {
+  const char* identities = std::getenv("CROSSPOINT_SD_FONT_CACHE_IDS");
+  if (!identities) GTEST_SKIP();
+  int baseId = 0;
+  int heavyId = 0;
+  int restoredId = 0;
+  ASSERT_EQ(std::sscanf(identities, "%d,%d,%d", &baseId, &heavyId, &restoredId), 3);
+  spec.fontId = baseId;
+  Section original(epub, 0, renderer);
+  ASSERT_TRUE(original.createSectionFile(spec));
+  const auto originalBytes = bytes(cache());
+  const auto position = pageOffsets[3];
+  for (const int fontId : {baseId, heavyId, restoredId}) {
+    spec.fontId = fontId;
+    Section reopened(epub, 0, renderer);
+    ASSERT_TRUE(reopened.loadSectionFile(spec)) << fontId;
+    EXPECT_EQ(reopened.pageCount, fullPages);
+    ASSERT_NE(reopened.loadPage(3), nullptr);
+    EXPECT_EQ(bytes(cache()), originalBytes);
+    EXPECT_EQ(pod<uint32_t>(bytes(cache()), lutOffset + 3 * 4), position);
+  }
+}
 TEST_F(SectionCacheTest, StarvedHeapParksBuildInsteadOfAbandoning) {
   std::filesystem::remove(cache());
   Section section(epub, 0, renderer);

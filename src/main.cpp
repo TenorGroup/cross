@@ -67,6 +67,7 @@
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "FontPackInstaller.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "shells/Shell.h"
@@ -742,6 +743,7 @@ void setup() {
     return;
   }
 
+  FontPackInstaller::scan();
   HalSystem::checkPanic();
   logHeapMark("storage");
 

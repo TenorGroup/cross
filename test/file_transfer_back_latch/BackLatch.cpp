@@ -115,9 +115,11 @@ struct FakeServer {
   bool stalled = false;
   std::atomic<bool> interrupted{false};
   std::function<bool(uint8_t)> uiTextSizeApplier;
+  std::function<bool(const char*)> fontPackApplier;
   std::function<bool()> uploadCancel;
   bool isRunning() const { return running; }
   void setUiTextSizeApplier(std::function<bool(uint8_t)> applier) { uiTextSizeApplier = std::move(applier); }
+  void setFontPackApplier(std::function<bool(const char*)> applier) { fontPackApplier = std::move(applier); }
   void setUploadCancel(std::function<bool()> cancel) { uploadCancel = std::move(cancel); }
   void interruptUpload() { interrupted = true; }
   void begin() {
@@ -163,6 +165,11 @@ using CrossPointWebServer = FakeServer;
 template<class T> std::unique_ptr<T> makeUniqueNoThrow() { return std::make_unique<T>(); }
 struct FakeFontCache { void releaseSdFontCaches() {} };
 struct FakeRenderer { FakeFontCache* getFontCacheManager() { return nullptr; } };
+struct FontPackInstaller { static unsigned scan() { return 0; } };
+struct {
+  void markRegistryDirty() {}
+  void ensureLoaded(FakeRenderer&) {}
+} sdFontSystem;
 static int renderLockAcquisitions = 0;
 struct RenderLock {
   template<class T> explicit RenderLock(T&) { ++renderLockAcquisitions; }

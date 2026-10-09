@@ -24,6 +24,7 @@
 #include "CrossPointSettings.h"
 #include "DeviceName.h"
 #include "FontInstaller.h"
+#include "FontPackInstaller.h"
 #include "OpdsServerStore.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
@@ -126,6 +127,25 @@ CrossPointWebServer::CrossPointWebServer() {}
 
 void CrossPointWebServer::setUiTextSizeApplier(std::function<bool(uint8_t)> applier) {
   uiTextSizeApplier = std::move(applier);
+}
+
+void CrossPointWebServer::setFontPackApplier(std::function<bool(const char*)> applier) {
+  fontPackApplier = std::move(applier);
+}
+
+bool CrossPointWebServer::prepareFontPackUpload(String& path, const String& filename) {
+  if (!filename.endsWith(".cpfontpack")) return true;
+  if (!FontPackInstaller::isPackFilename(filename.c_str())) return false;
+  path = "/fonts";
+  return Storage.exists("/fonts") || Storage.mkdir("/fonts");
+}
+
+bool CrossPointWebServer::applyFontPackUpload(const String& path, const String& filename) {
+  if (!FontPackInstaller::isPackFilename(filename.c_str())) return true;
+  String fullPath = path;
+  if (!fullPath.endsWith("/")) fullPath += "/";
+  fullPath += filename;
+  return fontPackApplier && fontPackApplier(fullPath.c_str());
 }
 
 void CrossPointWebServer::setUploadCancel(std::function<bool()> cancel) { uploadCancel = std::move(cancel); }
@@ -921,6 +941,11 @@ void CrossPointWebServer::handleUpload(UploadState& state) {
       return;
     }
 
+    if (!prepareFontPackUpload(state.path, state.fileName)) {
+      state.error = trWeb(lang, StrId::STR_WEB_INVALID_FILE_NAME);
+      return;
+    }
+
     LOG_INF("WEB", "Upload begin name=%s heap=%u largest=%u stack=%u", state.fileName.c_str(), ESP.getFreeHeap(),
             ESP.getMaxAllocHeap(), static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     LOG_DBG("WEB", "[UPLOAD] Free heap: %d bytes", ESP.getFreeHeap());
@@ -1003,6 +1028,8 @@ void CrossPointWebServer::handleUpload(UploadState& state) {
       if (!flushUploadBuffer(state)) {
         state.error = trWeb(lang, StrId::STR_WEB_WRITE_FINAL_FAILED);
       }
+      if (FontPackInstaller::isPackFilename(state.fileName.c_str()) && !state.file.sync())
+        state.error = trWeb(lang, StrId::STR_WEB_WRITE_FINAL_FAILED);
       state.file.close();
 
       if (state.error.isEmpty()) {
@@ -1021,6 +1048,8 @@ void CrossPointWebServer::handleUpload(UploadState& state) {
         filePath += state.fileName;
         clearBookCache(filePath.c_str());
         if (isLibraryBookFile(state.fileName)) library::markLibraryIndexDirty();
+        state.success = applyFontPackUpload(state.path, state.fileName);
+        if (!state.success) state.error = trWeb(lang, StrId::STR_WEB_INVALID_CPFONT);
       }
     }
   } else if (upload.status == UPLOAD_FILE_ABORTED) {
@@ -1959,6 +1988,10 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
             wsServer->sendTXT(num, "ERROR:Protected path");
             return;
           }
+          if (!prepareFontPackUpload(wsUploadPath, wsUploadFileName)) {
+            wsServer->sendTXT(num, "ERROR:Invalid font pack");
+            return;
+          }
           wsUploadReceived = 0;
           wsLastProgressSent = 0;
           wsUploadStartTime = wsLastActivityTime = millis();
@@ -1992,6 +2025,10 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
           if (wsUploadSize == 0) {
             // Explicit close() required: file-scope global persists beyond function scope
             wsUploadFile.close();
+            if (!applyFontPackUpload(wsUploadPath, wsUploadFileName)) {
+              wsServer->sendTXT(num, "ERROR:Invalid font pack");
+              return;
+            }
             wsLastCompleteName = wsUploadFileName;
             wsLastCompleteSize = 0;
             wsLastCompleteAt = millis();
@@ -2050,9 +2087,18 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
       // Check if upload complete
       if (wsUploadReceived >= wsUploadSize) {
         // Explicit close() required: file-scope global persists beyond function scope
+        if (FontPackInstaller::isPackFilename(wsUploadFileName.c_str()) && !wsUploadFile.sync()) {
+          abortWsUpload("WS");
+          wsServer->sendTXT(num, "ERROR:Write failed");
+          return;
+        }
         wsUploadFile.close();
         wsUploadInProgress = false;
         wsUploadClientNum = 255;
+        if (!applyFontPackUpload(wsUploadPath, wsUploadFileName)) {
+          wsServer->sendTXT(num, "ERROR:Invalid font pack");
+          return;
+        }
 
         wsLastCompleteName = wsUploadFileName;
         wsLastCompleteSize = wsUploadSize;
@@ -2201,6 +2247,7 @@ void CrossPointWebServer::handleFontUploadData() {
       fontUpload.filePath.clear();
       fontUpload.valid = false;
       fontUpload.magicChecked = false;
+      fontUpload.pack = false;
       fontUpload.bytesWritten = 0;
       fontUpload.bufferPos = 0;
 
@@ -2215,11 +2262,13 @@ void CrossPointWebServer::handleFontUploadData() {
       // a .cpfont basename of alphanumeric + hyphen + underscore. Without
       // this an attacker could supply "../../.crosspoint/settings.json" as
       // a "filename" and have it written outside the fonts directory.
-      if (!FontInstaller::isValidCpfontFilename(filename.c_str())) {
+      fontUpload.pack = FontPackInstaller::isPackFilename(filename.c_str());
+      if (!fontUpload.pack && !FontInstaller::isValidCpfontFilename(filename.c_str())) {
         LOG_ERR("WEB", "Invalid font filename: %s", filename.c_str());
         break;
       }
 
+      if (fontUpload.pack && family != filename.substring(0, filename.length() - 11)) break;
       fontUpload.familyName = family.c_str();
 
       // Build and validate the complete destination path before touching the
@@ -2227,14 +2276,17 @@ void CrossPointWebServer::handleFontUploadData() {
       // open a truncated target for writing. A failure leaves fontUpload
       // invalid, so the upload reports the existing 400 without cleanup work.
       char path[FontInstaller::MAX_FONT_PATH_SIZE];
-      if (!FontInstaller::buildFontPath(family.c_str(), filename.c_str(), path, sizeof(path))) {
+      const bool validPath = fontUpload.pack
+          ? std::snprintf(path, sizeof(path), "/fonts/%s", filename.c_str()) < static_cast<int>(sizeof(path))
+          : FontInstaller::buildFontPath(family.c_str(), filename.c_str(), path, sizeof(path));
+      if (!validPath) {
         LOG_ERR("WEB", "Invalid font path: %s/%s", family.c_str(), filename.c_str());
         break;
       }
 
       // Create a temporary FontInstaller for directory creation
       FontInstaller installer(sdFontSystem.registry());
-      if (!installer.ensureFamilyDir(family.c_str())) {
+      if (!(fontUpload.pack ? (Storage.exists("/fonts") || Storage.mkdir("/fonts")) : installer.ensureFamilyDir(family.c_str()))) {
         LOG_ERR("WEB", "Failed to create font family dir");
         break;
       }
@@ -2268,15 +2320,16 @@ void CrossPointWebServer::handleFontUploadData() {
       resetTaskWatchdogIfSubscribed();
 
       const size_t received = fontUpload.bytesWritten + fontUpload.bufferPos;
-      constexpr char magic[] = "CPFONT\0\0";
-      for (size_t i = 0; i < upload.currentSize && received + i < 8; ++i) {
+      const char* magic = fontUpload.pack ? "PK\x03\x04" : "CPFONT\0\0";
+      const size_t magicSize = fontUpload.pack ? 4 : 8;
+      for (size_t i = 0; i < upload.currentSize && received + i < magicSize; ++i) {
         if (upload.buf[i] != static_cast<uint8_t>(magic[received + i])) {
           fontUpload.valid = false;
           break;
         }
       }
       if (!fontUpload.valid) break;
-      if (received + upload.currentSize >= 8) fontUpload.magicChecked = true;
+      if (received + upload.currentSize >= magicSize) fontUpload.magicChecked = true;
 
       // Font and general uploads share the serial HTTP handler's arena.
       size_t remaining = upload.currentSize;
@@ -2344,6 +2397,8 @@ void CrossPointWebServer::handleFontUploadData() {
 
 void CrossPointWebServer::handleFontUpload() {
   const Language lang = requestLanguage();
+  if (fontUpload.valid && fontUpload.pack)
+    fontUpload.valid = fontPackApplier && fontPackApplier(fontUpload.filePath.c_str());
   if (fontUpload.valid) {
     sdFontSystem.markRegistryDirty();
     server->send(200, "application/json", "{\"ok\":true}");

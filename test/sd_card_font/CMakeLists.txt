@@ -1,6 +1,7 @@
 add_executable(SdCardFontTest
   SdCardFontTest.cpp
   ${REPO_ROOT}/lib/EpdFont/EpdFont.cpp
+  ${REPO_ROOT}/lib/EpdFont/EpdFontFamily.cpp
   ${REPO_ROOT}/lib/EpdFont/SdCardFont.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )

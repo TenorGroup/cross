@@ -9,6 +9,11 @@ class SDCardManager {
   static SDCardManager& getInstance() { static SDCardManager manager; return manager; }
   bool begin() { return true; }
   bool ready() const { return true; }
+  bool freeSpace(uint64_t& bytes, uint32_t& clusterBytes) {
+    bytes = 1ULL << 30;
+    clusterBytes = 4096;
+    return true;
+  }
   void shutdown() {}
   std::vector<String> listFiles(const char*, int) { return {}; }
   String readFile(const char*) { return {}; }

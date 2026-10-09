@@ -142,7 +142,8 @@
     <div class="card">
       <h2 data-i18n="fonts.addTitle">Thêm font chữ</h2>
       <form class="upload-form" id="uploadForm">
-        <input type="file" id="fontFiles" webkitdirectory directory multiple required aria-label="Thêm font chữ" data-i18n-aria-label="fonts.addTitle" />
+        <input type="file" id="fontPacks" accept=".cpfontpack" multiple aria-label="Thêm font chữ" data-i18n-aria-label="fonts.addTitle" />
+        <input type="file" id="fontFiles" webkitdirectory directory multiple aria-label="Thêm font chữ" data-i18n-aria-label="fonts.addTitle" />
         <button type="submit" class="btn btn-primary" data-i18n="fonts.submit">Gửi font</button>
       </form>
       <p id="pickedInfo" class="family-meta" style="margin: 8px 0 0;"></p>
@@ -281,6 +282,7 @@
     // Derive family name from a .cpfont filename: take everything before the
     // last '-' or '_' (that separator precedes the size suffix, e.g. Bookerly_12.cpfont).
     function familyFromFilename(name) {
+      if (/\.cpfontpack$/i.test(name)) return name.replace(/\.cpfontpack$/i, '');
       const stem = name.replace(/\.cpfont$/i, '');
       const cut = Math.max(stem.lastIndexOf('-'), stem.lastIndexOf('_'));
       return cut > 0 ? stem.slice(0, cut) : stem;
@@ -292,11 +294,15 @@
     }
 
     function cpfontFilesOnly(fileList) {
-      return Array.from(fileList).filter(f => /\.cpfont$/i.test(f.name));
+      return Array.from(fileList).filter(f => /\.(?:cpfont|cpfontpack)$/i.test(f.name));
     }
 
-    document.getElementById('fontFiles').addEventListener('change', function() {
-      const files = cpfontFilesOnly(this.files);
+    function selectedFontFiles() {
+      return cpfontFilesOnly([...document.getElementById('fontFiles').files, ...document.getElementById('fontPacks').files]);
+    }
+
+    ['fontFiles', 'fontPacks'].forEach(id => document.getElementById(id).addEventListener('change', function() {
+      const files = selectedFontFiles();
       if (files.length === 0) {
         pickedState = () => TenorI18n.t('fonts.noCpfontInFolder');
         renderPicked();
@@ -305,11 +311,11 @@
       const family = sanitizeFamily(familyFromFilename(files[0].name));
       pickedState = () => TenorI18n.tPlural('fonts.pickedSummary', files.length, { family: family });
       renderPicked();
-    });
+    }));
 
     document.getElementById('uploadForm').addEventListener('submit', async function(e) {
       e.preventDefault();
-      const files = cpfontFilesOnly(document.getElementById('fontFiles').files);
+      const files = selectedFontFiles();
       if (files.length === 0) {
         setStatus('status-err', () => TenorI18n.t('fonts.noSelection'));
         return;
