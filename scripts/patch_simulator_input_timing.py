@@ -63,6 +63,19 @@ patch(
             "    std::this_thread::sleep_for(std::chrono::milliseconds(refreshMs));\n"
             "}\n",
         ),
+        (
+            "void HalDisplay::displayWindow(int, int, int, int) {\n"
+            "  refreshDisplay(RefreshMode::FAST_REFRESH, false);\n"
+            "}\n",
+            "void HalDisplay::displayWindow(int x, int y, int width, int height) {\n"
+            "  std::printf(\"WINDOW begin ms=%lu panel=%d,%d %dx%d\\n\", millis(), x, y, width, height);\n"
+            "  refreshDisplay(RefreshMode::FAST_REFRESH, false);\n"
+            "  const char *windowMsValue = std::getenv(\"CROSSPOINT_SIM_WINDOW_MS\");\n"
+            "  const long windowMs = windowMsValue ? std::strtol(windowMsValue, nullptr, 10) : 0;\n"
+            "  if (windowMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(windowMs));\n"
+            "  std::printf(\"WINDOW end ms=%lu\\n\", millis());\n"
+            "}\n",
+        ),
     ],
 )
 

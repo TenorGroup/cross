@@ -259,7 +259,7 @@ void ActivityManager::renderTaskLoop() {
       // Night mode is a global output polarity applied to every activity.
       // The sleep screen forces normal polarity itself (SleepActivity).
       display.setInverted(SETTINGS.screenInverted != 0);
-      currentActivity->render(std::move(lock));
+      if (!currentActivity->renderIdleUpdate()) currentActivity->render(std::move(lock));
       frameAfterDeferredWrite.store(true, std::memory_order_release);
       frameDrawn.store(true, std::memory_order_release);
     }

@@ -1819,6 +1819,17 @@ HalDisplay::RefreshMode GfxRenderer::applyRedrive(const HalDisplay::RefreshMode 
   return mode;
 }
 
+void GfxRenderer::displayWindow(const int x, const int y, const int width, const int height) const {
+  const auto rect = screenRectToAlignedMemRect(orientation, x, y, width, height,
+                                               HalDisplay::DISPLAY_WIDTH, HalDisplay::DISPLAY_HEIGHT);
+  if (!rect.valid) return;
+#ifdef SIMULATOR
+  LOG_INF("GFX", "Window logical=%d,%d %dx%d panel=%u,%u %ux%u", x, y, width, height,
+          rect.x, rect.y, rect.w, rect.h);
+#endif
+  display.displayWindow(rect.x, rect.y, rect.w, rect.h);
+}
+
 void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
   auto elapsed = millis() - start_ms;
   if (preDisplayHook) preDisplayHook(*this);

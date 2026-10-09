@@ -48,6 +48,7 @@ class Activity {
   virtual void restoreNavigation(const MenuNavigationState&) {}
 
   virtual void render(RenderLock&&) {}
+  virtual bool renderIdleUpdate() { return false; }
 
   // If immediate is true, the update will be triggered immediately.
   // Otherwise, it will be deferred until the end of the current loop iteration.

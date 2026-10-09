@@ -43,11 +43,21 @@ UiListActivity::UiListActivity(const char* name, GfxRenderer& renderer, MappedIn
 
 void UiListActivity::onEnter() {
   Activity::onEnter();
+  pageScrollbarIdle.hide();
+  pageScrollbarAvailable = false;
+  pageScrollbarHidePending = false;
+  pageScrollbarOwner = nullptr;
   activeNav().reset();
   resetUi();
   app.on(ACTION_ROW, &UiListActivity::rowActionTrampoline, this);
   app.setScreen(&UiListActivity::screenTrampoline, this);
   requestUpdate();
+}
+
+void UiListActivity::onResume() {
+  pageScrollbarIdle.hide();
+  pageScrollbarHidePending = false;
+  pageScrollbarOwner = nullptr;
 }
 
 void UiListActivity::screenTrampoline(UiScreen& screen, void* user) {
@@ -304,11 +314,110 @@ void UiListActivity::pollRowTilt() {
 }
 
 void UiListActivity::loop() {
+  if (pageScrollbarAvailable.load()) {
+    int dy = 0;
+    unsigned long heldMs = 0;
+    if (mappedInput.wasVerticalSwipe(dy, heldMs)) {
+      pageScrollbarIdle.show(millis());
+      requestUpdate();
+    }
+  }
   pollTilt();
   loopInput();
   // Apply what this pass queued right away when the panel is idle, so a press
   // is reflected before the next pass instead of ten milliseconds later.
   if (navQueueCount > 0) applyPendingNav();
+  int touchX = 0, touchY = 0;
+  if (tenorchrome::kTouchShell && pageScrollbarIdle.expired(millis()) &&
+      !mappedInput.isScreenTouchHeld(touchX, touchY) && !pageScrollbarHidePending.exchange(true)) {
+    Activity::requestUpdate();
+  }
+}
+
+void UiListActivity::requestUpdate(const bool immediate) {
+  pageScrollbarHidePending = false;
+  Activity::requestUpdate(immediate);
+}
+
+bool UiListActivity::renderIdleUpdate() {
+  if (!pageScrollbarHidePending.load()) return false;
+  if (!pageScrollbarAvailable.load() || !pageScrollbarIdle.expired(millis())) {
+    pageScrollbarHidePending = false;
+    return false;
+  }
+  [[maybe_unused]] const uint32_t started = millis();
+  const uint32_t generation = pageScrollbarIdle.generation();
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("UI", "SCROLLBAR_HIDE begin ms=%lu", static_cast<unsigned long>(started));
+#endif
+  const int x = renderer.getScreenWidth() - PAGE_SCROLLBAR_EDGE_INSET - tenorchrome::FRAME_BAR_WIDTH;
+  const int height = paintedScrollRegion.bottom - paintedScrollRegion.top;
+  renderer.fillRect(x, paintedScrollRegion.top, tenorchrome::FRAME_BAR_WIDTH, height, false);
+  renderer.displayWindow(x, paintedScrollRegion.top, tenorchrome::FRAME_BAR_WIDTH, height);
+  pageScrollbarIdle.hideIfUnchanged(generation);
+  pageScrollbarHidePending = false;
+#ifdef TENOR_PRESS_PROBE
+  LOG_INF("UI", "SCROLLBAR_HIDE end ms=%lu elapsed=%lu", static_cast<unsigned long>(millis()),
+          static_cast<unsigned long>(millis() - started));
+#endif
+  return true;
+}
+
+void UiListActivity::setPageScrollRegion(const int top, const int bottom, const int length, const int offset) {
+  if (!tenorchrome::kTouchShell || shell::isUgly() || bottom <= top || length <= bottom - top) return;
+  pageScrollRegion = {top, bottom, length, std::clamp(offset, 0, length - (bottom - top))};
+}
+
+void UiListActivity::measurePageScrollbar(UiScreen& screen, const fui::ListProps& props) {
+  if (!rowsFramed || shell::isUgly()) return;
+  bool multipleGroups = false;
+  for (int row = 1; row < listCount(); ++row) multipleGroups |= rowStartsGroup(row);
+  if (!multipleGroups) return;
+  const auto lines = rowFrameLines(rowFrameGap);
+  const int headerHeight = props.headerRowHeight > 0 ? props.headerRowHeight :
+                           screen.target().lineHeight(props.headerText.font) + 4;
+  const int rowWidth = screen.body().width - 2 * props.rowInset;
+  int length = lines.top + lines.bottom;
+  int offset = 0;
+  for (int row = 0; row < props.count; ++row) {
+    fui::ListItem item;
+    if (props.rowProvider) props.rowProvider(props.rowProviderCtx, static_cast<uint16_t>(row), item);
+    else if (props.items && row >= props.itemsWindowFirst &&
+             (props.itemsWindowCount == 0 || row - props.itemsWindowFirst < props.itemsWindowCount))
+      item = props.items[row - props.itemsWindowFirst];
+    else return;
+    const bool heading = item.sectionHeading && item.sectionHeading[0];
+    const int section = heading ? headerHeight + props.rowGap + (row > 0 ? props.sectionGap : 0) : 0;
+    const int height = fui::measureListRow(screen.target(), screen.frame().assets(),
+                                          static_cast<int16_t>(rowWidth), props, item).height;
+    const int span = height + section + (row + 1 < props.count ? props.rowGap : 0);
+    length += span;
+    if (row < activeNav().top) offset += span;
+    if (row == activeNav().top && row > 0 && heading) offset += props.sectionGap;
+  }
+  setPageScrollRegion(screen.body().y - lines.top, rowFrameFloor, length, offset);
+}
+
+void UiListActivity::drawPageScrollbar() {
+  const auto& region = pageScrollRegion;
+  const int visible = region.bottom - region.top;
+  const bool available = tenorchrome::kTouchShell && visible > 0 && region.length > visible;
+  pageScrollbarAvailable = available;
+  if (!available) {
+    pageScrollbarOwner = nullptr;
+    pageScrollbarIdle.hide();
+    return;
+  }
+  if (pageScrollbarOwner != &activeNav() || region.offset != paintedScrollRegion.offset ||
+      region.length != paintedScrollRegion.length || region.top != paintedScrollRegion.top ||
+      region.bottom != paintedScrollRegion.bottom) pageScrollbarIdle.show(millis());
+  pageScrollbarOwner = &activeNav();
+  paintedScrollRegion = region;
+  if (!pageScrollbarIdle.isVisible()) return;
+  const int x = renderer.getScreenWidth() - PAGE_SCROLLBAR_EDGE_INSET - tenorchrome::FRAME_BAR_WIDTH;
+  fui::drawListScrollIndicator(uiTarget,
+      fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(region.top), tenorchrome::FRAME_BAR_WIDTH,
+                static_cast<int16_t>(visible)}, region.length, visible, region.offset, tenorchrome::FRAME_BAR_WIDTH);
 }
 
 void UiListActivity::loopInput() {
@@ -495,7 +604,6 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   int groupTop = 0;  // a page with groups: the ring top of the group still open
   int groupFirst = -1;
   bool grouped = false;
-  int barTop = 0, barBottom = 0;  // a page with groups: the tallest closed frame, home of the scroll bar
   for (int i = n.top; i < count; ++i) {
     const fui::Rect r = app.publishedRect(ACTION_ROW, static_cast<int16_t>(i));
     if (r.height <= 0) continue;
@@ -514,10 +622,6 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
                                                   static_cast<int16_t>(groupTop),
                                                   static_cast<int16_t>(renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X),
                                                   static_cast<int16_t>(groupBottom - groupTop)}};
-      if (groupBottom - groupTop > barBottom - barTop) {
-        barTop = groupTop;
-        barBottom = groupBottom;
-      }
       groupTop = r.y - lines.top;
       groupFirst = i;
       grouped = true;
@@ -559,19 +663,14 @@ void UiListActivity::drawRowFrame(const RowFrameStyle& style) {
   if (frameGoesOn && floor > fullBottom)
     tenorchrome::drawRowRule(renderer, last.y + last.height + rowFrameGap - lines.rule, tenorchrome::FOOT_BACK_X + 16 + (rowsHaveIcons ? 41 : 0),
                 renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X - 17);
-  // The scroll bar along the frame's full rows (rule 13, tenorchrome::frameScrollBar). A page of several frames
-  // keeps it inside the tallest of them, never across the gaps between frames.
-  if (n.top > 0 || more) {
+  if (pageScrollRegion.length > 0) {
+    if (!more && style.clipBottom <= style.clipTop)
+      pageScrollRegion.offset = pageScrollRegion.length - (pageScrollRegion.bottom - pageScrollRegion.top);
+  } else if (n.top > 0 || more) {
     const int full = count - n.top;
-    int frameBottom = barBottom;
-    if (!grouped || fullBottom - lastTop > barBottom - barTop) {
-      barTop = grouped ? lastTop : ringTop;
-      barBottom = fullBottom;
-      frameBottom = ringBottom;
-    }
-    const auto bar = tenorchrome::frameScrollBar(tenorchrome::FOOT_BACK_X, barTop,
+    const auto bar = tenorchrome::frameScrollBar(tenorchrome::FOOT_BACK_X, ringTop,
                                                  renderer.getScreenWidth() - 2 * tenorchrome::FOOT_BACK_X,
-                                                 frameBottom - barTop, barTop, barBottom, ring);
+                                                 ringBottom - ringTop, ringTop, fullBottom, ring);
     fui::drawListScrollIndicator(uiTarget,
                                  fui::Rect{static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
                                            static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)},
@@ -641,6 +740,7 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
   activeNav().syncToProps(screen.body(), rowsFramed ? laid.rowHeight : rowHeight, rowsFramed ? laid.rowGap : rowGap,
                           listCount(), props);
   keepUglyRows(props);
+  measurePageScrollbar(screen, laid);
 
   activeNav().selected = kepConTro(activeNav().selected, listCount());
   // The touch shell has no cursor row: a tap opens or changes the row, nothing waits "selected".
@@ -652,6 +752,7 @@ void UiListActivity::renderUi() {
   favoriteHintY = -1;
   // Only a list built in this paint pass owns a row frame.
   rowsFramed = false;
+  pageScrollRegion = {};
   UiAppHost::renderUi();
   restorePinnedRows();
   if (pageAnchorRow >= 0) {
@@ -673,6 +774,7 @@ void UiListActivity::renderUi() {
   if (favoriteHintY >= 0) {
     if (const char* hint = favoriteHintText()) tenorchrome::drawTip(renderer, hint, favoriteHintLinesAbove());
   }
+  drawPageScrollbar();
 }
 
 void UiListActivity::drawPageHints() {

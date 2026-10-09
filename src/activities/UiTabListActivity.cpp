@@ -332,6 +332,7 @@ void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& pr
   n.syncToProps(screen.body(), rowsFramed ? laid.rowHeight : rowHeight, rowsFramed ? laid.rowGap : rowGap, count,
                 props, 1);
   keepUglyRows(props);
+  measurePageScrollbar(screen, laid);
   // The touch shell shows no cursor row; SDK navigation still owns the viewport.
   if (tenorchrome::kTouchShell) props.selectedIndex = -1;
 }

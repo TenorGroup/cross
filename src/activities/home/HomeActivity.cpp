@@ -1172,6 +1172,7 @@ void HomeActivity::buildStatsPage(UiScreen& screen) {
   place.top = std::clamp(place.top, 0, static_cast<int>(view.maxStep));
   view.offset = static_cast<int16_t>(std::min(place.top * pitch, maxOffset));
   view.length = static_cast<int16_t>(viewHeight + maxOffset);
+  setPageScrollRegion(view.top, view.bottom, view.length, view.offset);
 
   const auto clip = renderer.getClipRect();
   renderer.setClipRect(0, view.top, renderer.getScreenWidth(), viewHeight);
@@ -1201,15 +1202,11 @@ void HomeActivity::drawStatsEdges() {
   if (view.length <= viewHeight) return;
   // Rule 7: the edges fade where the page goes on.
   constexpr int BAND = 64;
-  if (view.offset > 0) tenorchrome::fadeBand(renderer, view.top, BAND, true);
-  if (view.offset < view.length - viewHeight) tenorchrome::fadeBand(renderer, view.bottom - BAND, BAND, false);
-  // Rule 13: a pill in the screen's right margin, outside every frame (founder 06/10). The SDK bar gives
-  // round ends to a bar in a round frame; this one's "frame" is 1 px rounder than its inset, so its ends
-  // only keep 5 px of air.
-  constexpr int16_t WIDTH = 5, INSET = 5;
-  fui::drawListScrollIndicator(uiTarget, fui::Rect{0, view.top, static_cast<int16_t>(renderer.getScreenWidth()),
-                                                   static_cast<int16_t>(viewHeight)},
-                               view.length, viewHeight, view.offset, WIDTH, 0, INSET, INSET + 1);
+  if (view.offset > 0)
+    tenorchrome::fadeBand(renderer, view.top, BAND, true, 0, renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X);
+  if (view.offset < view.length - viewHeight)
+    tenorchrome::fadeBand(renderer, view.bottom - BAND, BAND, false, 0,
+                         renderer.getScreenWidth() - tenorchrome::FOOT_BACK_X);
 }
 
 int HomeActivity::shownRecent() const {

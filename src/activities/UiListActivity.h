@@ -4,6 +4,7 @@
 
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
+#include "components/PageScrollbarIdle.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UiAppHost.h"
 #include "util/ButtonNavigator.h"
@@ -29,6 +30,7 @@ struct ListRowFrameStyle {
 class UiListActivity : public Activity, protected UiAppHost {
  public:
   void onEnter() override;
+  void onResume() override;
   std::string navigationLabel() const override {
     const auto* title = headerTitle();
     return title ? title : "";
@@ -38,6 +40,8 @@ class UiListActivity : public Activity, protected UiAppHost {
   void restoreNavigation(const MenuNavigationState& state) override;
   void loop() override;
   void render(RenderLock&&) override;
+  void requestUpdate(bool immediate = false) override;
+  bool renderIdleUpdate() override;
   // Every list screen polls the motion sensor itself: the row tilt walks its rows.
   bool managesTiltSensor() const override { return true; }
 
@@ -95,6 +99,19 @@ class UiListActivity : public Activity, protected UiAppHost {
   using RowFrameStyle = ListRowFrameStyle;
   virtual RowFrameStyle rowFrameStyle() const { return {}; }
   void drawRowFrame(const RowFrameStyle& style = {});
+  void measurePageScrollbar(UiScreen& screen, const freeink::ui::ListProps& props);
+  void setPageScrollRegion(int top, int bottom, int length, int offset);
+  void drawPageScrollbar();
+  struct PageScrollRegion {
+    int top = 0, bottom = 0, length = 0, offset = 0;
+  } pageScrollRegion;
+  PageScrollRegion paintedScrollRegion;
+  PageScrollbarIdle pageScrollbarIdle;
+  std::atomic<bool> pageScrollbarAvailable{false};
+  std::atomic<bool> pageScrollbarHidePending{false};
+  const freeink::ui::ListNav* pageScrollbarOwner = nullptr;
+  // Close to the frames, away from the bezel: x 467-472 on the X4 Pro, 3 px clear of the frame line.
+  static constexpr int PAGE_SCROLLBAR_EDGE_INSET = 7;
   // Bounds of the panel ring actually painted around a visible row.  This is
   // the single source of truth for nested choices: callers pass these bounds
   // to OptionPopup::showInFrame instead of reconstructing a second geometry.
