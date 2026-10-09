@@ -161,7 +161,7 @@ class UiAppHost {
   int swipeRows(const MappedInputManager&,const fui::ListNav&,int,fui::ActionId) const { return 0; }
 };
 namespace tenorchrome {
-constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4;
+constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4,TOUCH_BAR_BOTTOM_GAP=16;
 constexpr bool kTouchShell=true;
 [[maybe_unused]] constexpr int PANEL_RADIUS=20;
 constexpr int FAVORITE_MARK=14;
@@ -184,7 +184,7 @@ void drawPillRing(const GfxRenderer&, int x, int y, int w, int h, int thick, boo
   stepperRings.push_back(std::to_string(x) + "," + std::to_string(y) + "," + std::to_string(w) + "," +
                          std::to_string(h) + "," + std::to_string(thick) + "," + std::to_string(grey));
 }
-''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|FRAME_BAR_WIDTH) = .*?;', chrome, re.M)) + '\n' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
+''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|FRAME_BAR_WIDTH) = .*?;', chrome, re.M)) + '\n' + method(chrome, 'struct TouchBarRect') + ';\n' + method(chrome, 'inline TouchBarRect touchTabBarRect') + '\n' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
 cpp = cpp.replace('EXPECT_PREVIEW_HIT', str(a.expect_preview_hit).lower()).replace('DUMP_SIGNATURE', str(a.signature).lower()).replace('EXPECT_FADE', str(a.expect_fade).lower()).replace('EXPECT_STEPPER_RING', str(a.expect_stepper_ring).lower()).replace('EXPECT_STEPPER_CENTER', str(a.expect_stepper_center).lower()).replace('EXPECT_MIDDLE_FONT', str(a.expect_middle_font).lower())
 for component in ('PageScrollbarIdle.h', 'PageScrollbar.h'):
     component_source = (a.repo / 'src/components' / component).read_text()

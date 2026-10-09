@@ -91,7 +91,7 @@ void drawIcon(const GfxRenderer&,const freeink::Icon&,int,int) { ++icons; }
 namespace tenorchrome {
 enum class FootBar { None,Tabs,Full,BackOnly };
 enum class Zone { Recent,Book };
-constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4;
+constexpr int FOOT_BACK_SIZE=60,FOOT_BACK_X=16,FOOT_PILL_GAP=8,READER_TOOLS=4,TOUCH_BAR_BOTTOM_GAP=16;
 ''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR) = .*?;', header, re.M)) + r'''
 int footBackTop(int h) { return h-76; }
 void drawPillRing(const GfxRenderer&,int,int,int,int,int,bool) { ++rings; }
@@ -105,7 +105,7 @@ void noteReaderFootBar(bool,bool,int);
 void drawFootBar(const GfxRenderer&,FootBar,Zone);
 void drawPathPill(const GfxRenderer&,int,const char*,int,int,int,int,int,int,bool) { assert(false); }
 void clearFootBand(const GfxRenderer&);
-''' + method(header, 'struct ReaderToolRect') + ';\n' + method(header, 'inline ReaderToolRect readerToolRect') + '\n}\n'
+''' + method(header, 'struct TouchBarRect') + ';\n' + method(header, 'inline TouchBarRect touchTabBarRect') + '\n' + method(header, 'struct ReaderToolRect') + ';\n' + method(header, 'inline ReaderToolRect readerToolRect') + '\n}\n'
 cpp += '\n'.join(re.findall(r'^ugly::MarkState (?:backMark|readerToolMark);', source, re.M)) + '\n'
 cpp += note[0] + '\n' + method(source, 'bool readerFootBarActive()') + '\n'
 cpp += method(source, 'void tenorchrome::noteReaderFootBar') + '\n'

@@ -56,7 +56,12 @@ inline bool wantsFootBack(const char* activityName) {
 constexpr int FOOT_BACK_SIZE = 60;
 constexpr int FOOT_BACK_X = 16;
 constexpr int FOOT_PILL_GAP = 8;
-inline int footBackTop(const int screenHeight) { return screenHeight - TOUCH_BAR_BOTTOM_GAP - FOOT_BACK_SIZE; }
+struct TouchBarRect { int x, y, width, height; };
+inline TouchBarRect touchTabBarRect(const int screenWidth, const int screenHeight) {
+  return {FOOT_BACK_X, screenHeight - TOUCH_BAR_BOTTOM_GAP - FOOT_BACK_SIZE,
+          screenWidth - 2 * FOOT_BACK_X, FOOT_BACK_SIZE};
+}
+inline int footBackTop(const int screenHeight) { return touchTabBarRect(2 * FOOT_BACK_X, screenHeight).y; }
 inline int footBackReserve() { return TOUCH_BAR_BOTTOM_GAP + FOOT_BACK_SIZE + 8; }
 // The bottom margin of a screen that lays itself out: the dynamic bar's band on touch, the hints elsewhere.
 inline int footReserve(const int buttonHintsHeight) { return kTouchShell ? footBackReserve() : buttonHintsHeight; }
@@ -89,10 +94,11 @@ constexpr int READER_BAR_LEFT = FOOT_BACK_X + FOOT_BACK_SIZE + FOOT_PILL_GAP;
 // much air from it at the end as at the top (founder 07/10: the ring crowded the chosen heart).
 constexpr int READER_TOOL_END_AIR = 6;
 inline ReaderToolRect readerToolRect(const int width, const int height, const int tool) {
+  const auto bar = touchTabBarRect(width, height);
   const int left = READER_BAR_LEFT + READER_TOOL_END_AIR;
   const int room = width - FOOT_BACK_X - READER_TOOL_END_AIR - left;
   const int x = left + room * tool / READER_TOOLS;
-  return {x, footBackTop(height), left + room * (tool + 1) / READER_TOOLS - x, FOOT_BACK_SIZE};
+  return {x, bar.y, left + room * (tool + 1) / READER_TOOLS - x, bar.height};
 }
 #endif
 // An icon in an icon bar (Mask1, bit 0 = ink), with grey already baked into the regular bitmap.
@@ -154,11 +160,11 @@ inline int headerHeight() {
                      : HEADER_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).bodyLineHeight - 33;
 }
 inline int tabTop() { return HEADER_TOP + headerHeight() + (kTouchShell ? TOUCH_STATUS_TOP_INSET : 0); }
-inline int tabHeight() { return TAB_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).subtitleLineHeight - 26; }
+inline int tabHeight() { return kTouchShell ? TAB_HEIGHT : TAB_HEIGHT + uiTextSizeSpec(SETTINGS.uiTextSize).subtitleLineHeight - 26; }
 inline int contentTop() { return kTouchShell ? TOUCH_STRIP_HEIGHT + 6 : tabTop() + tabHeight() + 16; }
 // Touch shell: the tab bar sits at the foot of the screen, 16 px above the Home key under the glass,
 // and what the button readers put under their tab band moves up by the band.
-inline int touchBarTop(const int screenHeight) { return screenHeight - TOUCH_BAR_BOTTOM_GAP - tabHeight(); }
+inline int touchBarTop(const int screenHeight) { return touchTabBarRect(2 * FOOT_BACK_X, screenHeight).y; }
 inline int contentTopUnderTabs() { return contentTop(); }
 inline int statusTextGrowth(bool large = false) {
   const auto text = uiTextSizeSpec(SETTINGS.uiTextSize);

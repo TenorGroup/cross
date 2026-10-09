@@ -26,15 +26,6 @@ int touchTabBarHeight(const bool touchShell, const int regularHeight) {
   return touchShell ? tenorchrome::FOOT_BACK_SIZE : regularHeight;
 }
 
-fui::Rect touchTabBarRect(const fui::Rect& frameRect, const bool wantsFootBack, const int16_t tabBand) {
-  const int16_t barTop = static_cast<int16_t>(frameRect.bottom() - tenorchrome::TOUCH_BAR_BOTTOM_GAP - tabBand);
-  const int16_t left = wantsFootBack
-                           ? static_cast<int16_t>(tenorchrome::FOOT_BACK_X + tenorchrome::FOOT_BACK_SIZE +
-                                                  tenorchrome::FOOT_PILL_GAP - 8)
-                           : int16_t{8};
-  return fui::Rect{static_cast<int16_t>(frameRect.x + left), barTop,
-                   static_cast<int16_t>(frameRect.width - left - 8), tabBand};
-}
 
 }  // namespace
 
@@ -504,7 +495,8 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
 
   const int16_t tabLineHeight = screen.target().lineHeight(tabProps.text.font);
   const int16_t preferredTabHeight = static_cast<int16_t>(preferredTabBarHeight());
-  const int16_t tabBand = preferredTabHeight > tabLineHeight + 10 ? preferredTabHeight : tabLineHeight + 10;
+  const int16_t tabBand = tenorchrome::kTouchShell ? tenorchrome::FOOT_BACK_SIZE
+      : (preferredTabHeight > tabLineHeight + 10 ? preferredTabHeight : tabLineHeight + 10);
 
   if (tabPillMaxPad > 0) {
     // Cap each pill at its label plus this padding: the equal-width slots (and
@@ -558,7 +550,11 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
                         static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)};
   } else if (tenorchrome::kTouchShell) {
     // Touch: the bar shares the Back cell's 60 px band at every text size.
-    tabRect = touchTabBarRect(frameRect, tenorchrome::wantsFootBack(name.c_str()), tabBand);
+    const auto bar = tenorchrome::touchTabBarRect(frameRect.width, frameRect.height);
+    const int left = tenorchrome::wantsFootBack(name.c_str())
+                         ? bar.x + bar.height + tenorchrome::FOOT_PILL_GAP - 8 : bar.x - 8;
+    tabRect = fui::Rect{static_cast<int16_t>(frameRect.x + left), static_cast<int16_t>(frameRect.y + bar.y),
+                        static_cast<int16_t>(bar.x + bar.width + 8 - left), static_cast<int16_t>(bar.height)};
     const int bodyBottom = screen.body().y + screen.body().height;
     if (bodyBottom > tabRect.y - 8) screen.takeBottom(static_cast<int16_t>(bodyBottom - (tabRect.y - 8)));
   } else {

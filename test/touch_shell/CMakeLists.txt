@@ -16,3 +16,8 @@ foreach(_board X4Pro Buttons)
   gtest_discover_tests(TouchShell${_board}Test)
 endforeach()
 target_compile_definitions(TouchShellX4ProTest PRIVATE FREEINK_DEVICE_X4PRO=1)
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME TouchShell.FixedDynamicBar
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/dynamic_bar.py"
+          --work "${CMAKE_CURRENT_BINARY_DIR}/dynamic-bar")

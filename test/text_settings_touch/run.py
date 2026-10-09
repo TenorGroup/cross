@@ -36,33 +36,25 @@ def main() -> None:
     reader_source = (args.repo / "src/activities/reader/EpubReaderActivity.cpp").read_text()
 
     height = function(ui_source, "int touchTabBarHeight(")
-    rect = function(ui_source, "fui::Rect touchTabBarRect(")
+    chrome = (args.repo / "src/components/TenorMenuChrome.h").read_text()
+    rect_type = function(chrome, "struct TouchBarRect") + ";"
+    rect = function(chrome, "inline TouchBarRect touchTabBarRect(")
     harness = f"""
-#include <cstdint>
 #include <initializer_list>
-namespace fui {{
-struct Rect {{
-  int16_t x, y, width, height;
-  constexpr int bottom() const {{ return y + height; }}
-}};
-}}
 namespace tenorchrome {{
 constexpr int TOUCH_BAR_BOTTOM_GAP = 16;
 constexpr int FOOT_BACK_X = 16;
 constexpr int FOOT_BACK_SIZE = 60;
-constexpr int FOOT_PILL_GAP = 8;
+{rect_type}
+{rect}
 }}
 {height}
-{rect}
 int main() {{
   for (const int regular : {{50, 60, 70}})
     if (touchTabBarHeight(true, regular) != 60) return 1;
   if (touchTabBarHeight(false, 47) != 47) return 2;
-  const fui::Rect frame{{0, 0, 480, 800}};
-  const auto withBack = touchTabBarRect(frame, true, 60);
-  if (withBack.x != 76 || withBack.y != 724 || withBack.width != 396 || withBack.height != 60) return 3;
-  const auto root = touchTabBarRect(frame, false, 60);
-  if (root.x != 8 || root.y != 724 || root.width != 464 || root.height != 60) return 4;
+  const auto bar = tenorchrome::touchTabBarRect(480, 800);
+  if (bar.x != 16 || bar.y != 724 || bar.width != 448 || bar.height != 60) return 3;
   return 0;
 }}
 """
@@ -86,7 +78,7 @@ int main() {{
             "Text tabs must use the existing icon identifiers until icon assets land")
 
     build_bar = function(ui_source, "void UiTabListActivity::buildTabBar(")
-    require("touchTabBarRect(frameRect" in build_bar,
+    require("tenorchrome::touchTabBarRect(frameRect" in build_bar,
             "The shared tab activity must own the touch bar rectangle")
     require("tenorchrome::drawBarTab" in ui_source,
             "The shared tab activity must draw touch icons through drawBarTab")

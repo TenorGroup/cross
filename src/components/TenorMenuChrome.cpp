@@ -411,9 +411,10 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   }
 #endif
   if (bar != FootBar::Full && bar != FootBar::BackOnly) return;
-  constexpr int SIZE = FOOT_BACK_SIZE, ICON = 40;
-  const int y = footBackTop(r.getScreenHeight());
-  int x = FOOT_BACK_X;
+  const auto rect = touchTabBarRect(r.getScreenWidth(), r.getScreenHeight());
+  const int SIZE = rect.height;
+  const int y = rect.y;
+  int x = rect.x;
   // On tenor/ugly paper (and in its reader menu) the "<" is drawn in pen: a hand circle round a hand chevron.
   bool pen = handDrawnGeneration == activityManager.activityGeneration();
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
@@ -429,7 +430,7 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
     // "<": the open chevron of the list marks, 3 px stroke, centred in its ring.
     drawPillRing(r, x, y, SIZE, SIZE, 2, true);
     constexpr int SPAN = 9;
-    drawMoreChevron(r, x + (SIZE - moreChevronLength(SPAN)) / 2 - 1, y + SIZE / 2 - SPAN, ChevronDir::Left, SPAN);
+    drawMoreChevron(r, x + (SIZE - moreChevronLength(SPAN)) / 2, y + SIZE / 2 - SPAN, ChevronDir::Left, SPAN);
   }
   HeaderBackTapTarget::setFoot(x, y, SIZE, SIZE);
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
@@ -471,14 +472,18 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   // The zone's icon, alone in its ring: a tap leads to the zone's root.
   x += SIZE + FOOT_PILL_GAP;
   drawPillRing(r, x, y, SIZE, SIZE, 2, true);
-  drawIcon(r, zoneIcon(zone), x + (SIZE - ICON) / 2, y + (SIZE - ICON) / 2);
+  const auto& icon = zoneIcon(zone);
+  drawBarTab(r, x + SIZE / 2, y, SIZE, icon.bits, icon.w, icon.h, false);
   HeaderBackTapTarget::setZone(x, y, SIZE, SIZE);
   // The screen's name in a pill that hugs it. A filesystem path keeps its deepest folders when cut.
   const char* title = screenTitle();
   if (!*title) return;
   constexpr int PAD_LEFT = 18, PAD_RIGHT = 22, font = UI_12_FONT_ID;
   x += SIZE + FOOT_PILL_GAP;
-  drawPathPill(r, font, title, x, y, r.getScreenWidth() - FOOT_BACK_X - x, SIZE, PAD_LEFT, PAD_RIGHT, true);
+  const int room = rect.x + rect.width - x;
+  const std::string name = std::strchr(title, '/') ? title
+      : r.truncatedText(font, title, std::max(0, room - PAD_LEFT - PAD_RIGHT), EpdFontFamily::REGULAR);
+  drawPathPill(r, font, name.c_str(), x, y, room, SIZE, PAD_LEFT, PAD_RIGHT, true);
 }
 
 namespace {
