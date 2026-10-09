@@ -8,6 +8,7 @@
 #include <cstdio>
 
 #include "CrossPointState.h"
+#include "components/TenorMenuChrome.h"
 #include "ReadingStatsStore.h"
 #include "UglyShell.h"
 #include "UglySleepSet.h"
@@ -90,6 +91,7 @@ void Diary::buildSentence() {
 }
 
 void Diary::onEnter() {
+  mark_.reset();
   Screen::onEnter();
   [[maybe_unused]] const uint32_t started = millis();
   ensureFonts(renderer);
@@ -166,7 +168,10 @@ void Diary::render(RenderLock&&) {
                                   [&](const char* t) { return width(renderer, Size::S38, t); }, placed.data());
   // A long sentence tightens the lines so the last one stays above the page hints.
   const int first = FIRST_BASELINE + shift;
-  const int step = lines > 1 ? std::clamp((renderer.getScreenHeight() - HINTS_ROOM - first) / (lines - 1), MIN_LINE, LINE) : LINE;
+  const int bodyBottom = tenorchrome::x3ScreenLayoutEnabled()
+                             ? tenorchrome::x3ScreenLayout(renderer).bodyRect.bottom() - 28
+                             : renderer.getScreenHeight() - HINTS_ROOM;
+  const int step = lines > 1 ? std::clamp((bodyBottom - first) / (lines - 1), MIN_LINE, LINE) : LINE;
 
   Box box[4] = {};
 #ifdef UGLY_FRAME_LOG
@@ -213,7 +218,7 @@ void Diary::render(RenderLock&&) {
   topBar(renderer, date);
   navRow(renderer, tr(STR_SETTINGS_TITLE), nullptr, tr(STR_HOME_TAB_RECENT));
 #else
-  circle(renderer, Circle::Word, box[now], 8, 16);
+  circle(renderer, Circle::Word, box[now], 8, 16, mark_.get(now), 3);
 
   pageHints(renderer, tr(STR_SETTINGS_TITLE), tr(STR_HOME_TAB_RECENT), renderer.getScreenHeight() - 52);
   statusBar(renderer, mappedInput, {hasBook, true, true, true});
@@ -286,10 +291,12 @@ bool Diary::onKey(const Key key) {
     case Key::Up:
     case Key::UpHold:
       selected = logic::cycle(selected, -1, wordCount);
+      mark_.get(words[selected]);
       return true;
     case Key::Down:
     case Key::DownHold:
       selected = logic::cycle(selected, 1, wordCount);
+      mark_.get(words[selected]);
       return true;
     case Key::Right:
       openPage(homerows::Page::Recent);

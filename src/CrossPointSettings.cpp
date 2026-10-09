@@ -180,6 +180,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
 bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   CrossPointSettings& s = *this;
   bool needsResave = false;
+  if (doc["tipsEnabled"].isNull()) tipsEnabled = 1;
 
   auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
 

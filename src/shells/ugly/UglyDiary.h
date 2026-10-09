@@ -1,4 +1,5 @@
 #pragma once
+#include "shells/ugly/UglyMarkSeed.h"
 #include <atomic>
 #include <string>
 #include <vector>
@@ -26,6 +27,7 @@ class Diary final : public Screen {
   bool onKey(Key key) override;
 
  private:
+  mutable ugly::MarkState mark_;
   enum Word : int8_t { READ = 1, SWAP = 2, DESK = 3 };
   struct Paragraph {
     std::vector<std::string> words;  // plain words of the sentence

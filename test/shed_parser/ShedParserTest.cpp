@@ -161,7 +161,7 @@ struct Scene {
   GfxRenderer renderer{display};
   FontCacheManager cache{renderer.getFontMap(), renderer.getSdCardFonts(), renderer.getTtfFonts()};
   Scene() {
-    Storage.mkdir("/tmp");
+    Storage.mkdir(std::filesystem::temp_directory_path().string().c_str());
     std::ofstream out(path(), std::ios::binary | std::ios::trunc);
     const auto bytes = makeFont();
     out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));

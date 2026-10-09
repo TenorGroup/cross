@@ -16,6 +16,10 @@
 #include "UIThemeSizing.h"
 #include "components/themes/BaseTheme.h"
 #include "components/themes/TenorTheme.h"
+#include <FreeInkUIGfxRenderer.h>
+#include "activities/Activity.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyIconInk.h"
 
 UITheme UITheme::instance;
 
@@ -25,6 +29,12 @@ void UITheme::reload() { setTheme(); }
 
 void UITheme::setTheme() {
   buttonSymbols::install();
+  inlineSymbols::configurePainter(ugly::iconSymbol, [] { return shell::isUgly(); });
+  freeink::ui::GfxRendererTarget::setBitmapPainter(
+      [](const GfxRenderer& renderer, freeink::ui::Rect rect, freeink::ui::BitmapRef bitmap) {
+        return shell::isUgly() && ugly::iconAsset(renderer, bitmap.data,
+                    {rect.x, rect.y, rect.width, rect.height}, ugly::iconFrameSeed(), bitmap.width, bitmap.height);
+      });
   LOG_DBG("UI", "Using tenor/cross theme");
   auto next = makeUniqueNoThrow<TenorTheme>();
   if (!next) {

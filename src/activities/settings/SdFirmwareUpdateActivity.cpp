@@ -1,5 +1,7 @@
 #include "SdFirmwareUpdateActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <Arduino.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -211,6 +213,13 @@ void SdFirmwareUpdateActivity::performUpdate() {
 }
 
 void SdFirmwareUpdateActivity::loop() {
+  if (tenorchrome::x3ScreenLayoutEnabled() &&
+      x3Info.turn(mappedInput.wasReleased(MappedInputManager::Button::Up) ? -1 :
+                  mappedInput.wasReleased(MappedInputManager::Button::Down) ? 1 : 0)) {
+    requestUpdate();
+    return;
+  }
+
   if (state == State::FAILED) {
     int x = 0;
     int y = 0;
@@ -237,6 +246,33 @@ void sayCentred(const GfxRenderer& r, const int baseline, const char* text, cons
 }  // namespace
 
 void SdFirmwareUpdateActivity::render(RenderLock&&) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const char* status = state == State::VALIDATING ? tr(STR_VALIDATING_FIRMWARE) :
+        state == State::UPDATING ? tr(STR_UPDATING) : state == State::SUCCESS ? tr(STR_UPDATE_COMPLETE) :
+        state == State::FAILED ? tr(STR_UPDATE_FAILED) : recoveryMode ? tr(STR_RECOVERY_MODE_HINT) : nullptr;
+    const char* detail = state == State::UPDATING ? tr(STR_FIRMWARE_UPDATE_DO_NOT_POWER_OFF) :
+        state == State::SUCCESS ? tr(STR_RESTARTING_HINT) : nullptr;
+    char progress[48] = {};
+    if (state == State::UPDATING) {
+      const unsigned int percent = firmwareSize ? static_cast<unsigned int>(writtenBytes * 100 / firmwareSize) : 0;
+      if (percent == lastRenderedPercent) return;
+      lastRenderedPercent = percent;
+      snprintf(progress, sizeof(progress), "%u%%, %lu / %lu B", percent,
+          static_cast<unsigned long>(writtenBytes), static_cast<unsigned long>(firmwareSize));
+    }
+    const char* tip = nullptr;
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip, 8));
+    renderer.clearScreen();
+    x3Info.draw(renderer, layout.bodyRect, {status, detail, errorMessage.c_str(), progress});
+    tenorchrome::drawTipInRect(renderer, tip, layout.tipRect, 8);
+    x3activity::drawBar(renderer, layout.barRect, recoveryMode ? tr(STR_RECOVERY_MODE) : tr(STR_SD_FIRMWARE_UPDATE), navigationPrefix.c_str());
+    const auto labels = mappedInput.mapLabels(state == State::FAILED ? tr(STR_BACK) : "", "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+
+    renderer.displayBuffer();
+    return;
+  }
+
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();

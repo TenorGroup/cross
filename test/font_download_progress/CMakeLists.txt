@@ -25,3 +25,7 @@ target_link_libraries(FontDownloadReleaseGuardTest PRIVATE
 )
 
 add_test(NAME FontDownloadReleaseGuardTest COMMAND FontDownloadReleaseGuardTest)
+
+add_test(NAME FontDownloadX3Merge
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/x3_merge.py"
+          --work "${CMAKE_CURRENT_BINARY_DIR}/x3-merge")

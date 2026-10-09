@@ -8,7 +8,7 @@ s = (a.repo / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
 assert 'void ReaderToolbarUi::paintUgly' in s, 'RED: reader toolbar and leaf layers have no Ugly skin'
 assert 'paintUglyMenu' in (a.repo / 'src/activities/reader/EpubReaderMenuActivity.cpp').read_text(), 'RED: classic reader menu has no Ugly skin'
 driver = (a.repo / 'test/x4_reader_menu/layout.py').read_text()
-driver = driver.replace('#include <vector>', '#include <vector>\n#include <array>')
+driver = driver.replace('#include <vector>', '#include <vector>\n#include <array>\n#include "shells/ugly/UglyMarkSeed.h"')
 driver = driver.replace('class GfxRenderer {};', r'''
 class GfxRenderer { public:
  mutable std::array<int,4> clip{0,0,480,800}; mutable int pen=0;
@@ -24,14 +24,14 @@ namespace ugly {
  std::string fit(const GfxRenderer&,Size,const std::string& s,int w){return s.substr(0,std::max(0,w)/10);}
  void text(const GfxRenderer& r,Size,int,int,const char*){++r.pen;}
  void line(const GfxRenderer& r,int,int,int,int,int,int){++r.pen;}
- void circle(const GfxRenderer& r,Circle,Box,int,int,int){++r.pen;}
+ void circle(const GfxRenderer& r,Circle,Box,int,int,uint32_t,int){++r.pen;}
  void mark(const GfxRenderer& r,Mark,int,int){++r.pen;}
  void tick(const GfxRenderer& r,int,int){++r.pen;}
 }
 namespace uglychrome {
  freeink::ui::Rect words(const GfxRenderer& r,const freeink::ui::Rect& box,const char* s,freeink::ui::TextAlign,bool=false,int=1){
   if(!s||!*s||box.empty()) return {}; ++r.pen; return box; }
- void ring(const GfxRenderer& r,const freeink::ui::Rect& w){ if(!w.empty()) ++r.pen; }
+ void ring(const GfxRenderer& r,const freeink::ui::Rect& w,uint32_t){ if(!w.empty()) ++r.pen; }
 }
 ''')
 driver = driver.replace('UiAppHost(r) {}', 'UiAppHost(r),renderer_(&r) {}')

@@ -1,4 +1,6 @@
 #pragma once
+#include "activities/X3ActivityLayout.h"
+#include "shells/ugly/UglyMarkSeed.h"
 #include <OpdsParser.h>
 
 #include <cstdint>
@@ -34,6 +36,8 @@ inline bool idleExitDue(const uint32_t now, const bool waiting, const bool radio
  * Supports navigation through catalog hierarchy and downloading EPUBs.
  */
 class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
+  x3activity::InfoPages x3Info;
+
  public:
   enum class BrowserState { CHECK_WIFI, WIFI_SELECTION, LOADING, BROWSING, DOWNLOADING, ERROR, SEARCH_INPUT };
 
@@ -45,6 +49,7 @@ class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
   void render(RenderLock&&) override;
 
  private:
+  mutable ugly::MarkState mark_;
   ButtonNavigator buttonNavigator;
   BrowserState state = BrowserState::LOADING;
   std::vector<OpdsEntry> entries;

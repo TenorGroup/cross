@@ -1,4 +1,5 @@
 #include "ClockSettingsActivity.h"
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <GfxRenderer.h>
 #include <HalClock.h>
@@ -162,9 +163,13 @@ std::string ClockSettingsActivity::favoriteKey(const int row) const { return men
 
 void ClockSettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-                                                static_cast<int16_t>(metrics.buttonHintsHeight), 0});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  if (x3settings::beginScreen(screen, renderer)) {
+    tabBandDrawn = true;
+  } else {
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
+                                                  static_cast<int16_t>(metrics.buttonHintsHeight), 0});
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
 
   static std::string values[ITEM_COUNT];
   for (int i = 0; i < ITEM_COUNT; i++) {

@@ -20,6 +20,7 @@
 #include "ReaderFontChon.h"
 #include "ReaderToolbarUi.h"
 #include "ReaderTextRelayout.h"
+#include "TextGrayPolicy.h"
 #include "components/OptionPopup.h"
 
 class EpubReaderActivity final : public ReaderActivity {
@@ -118,6 +119,7 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr uint8_t MAX_PAGE_LOAD_RETRIES = 3;
   bool skipNextButtonCheck = false;
   bool automaticPageTurnActive = false;
+  TextGrayContext textGrayContext() const;
   bool showBookmarkMessage = false;
   bool showDictionaryMessage = false;
   // "Indexing": a screen that needs the TOC or the chapter sizes was asked for before the book's

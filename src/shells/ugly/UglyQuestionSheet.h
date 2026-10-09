@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "UglyMarkSeed.h"
+
 class GfxRenderer;
 class MappedInputManager;
 
@@ -68,8 +70,12 @@ class QuestionSheet {
     uint32_t id;
     int16_t top, height, questionHeight, page, columns, previous;
     Kind kind;
+    uint32_t seed;
+    int selected;
   };
   View view_{};
+  MarkState cursorMark_;
+  uint32_t cursorSeed() const;
   std::vector<Block> blocks_;  // resized only by bind, never by paint/input
   std::string quip_;
   int current_ = 0, candidate_ = 0, page_ = 0, pages_ = 0, quipRow_ = -1;

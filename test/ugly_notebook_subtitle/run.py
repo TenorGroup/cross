@@ -94,6 +94,12 @@ struct Renderer {{
 }};
 
 struct I18n {{ const char* get(int) const {{ return "title"; }} }} I18N;
+namespace tenorchrome {{
+struct Rect {{ int edge; int bottom() const {{ return edge; }} }};
+struct Layout {{ Rect bodyRect; }};
+Layout x3ScreenLayout(const Renderer& r, int) {{ return {{{{r.height - 122}}}}; }}
+int tipHeight(const Renderer&, const char*) {{ return 0; }}
+}}
 static int rawLines = 1;
 static int paragraphCalls = 0;
 static int drawCalls = 0;
@@ -132,7 +138,8 @@ struct Harness {{
   explicit Harness(int width, int height) {{ renderer.width = width; renderer.height = height; }}
   int subtitleLines() const;
   int firstBaseline() const;
-  int rowsPerPage() const;
+  int rowsPerPage(int first = -1, int bottom = -1) const;
+  const char* tip() const {{ return ""; }}
   int pagePosition(homerows::Page) const {{ return 0; }}
   const char* subtitle() const {{ return "subtitle"; }}
   int rowCount() const {{ return 12; }}
@@ -147,6 +154,7 @@ struct Harness {{
 
 void Harness::render() {{
 {render_prefix}
+  (void)h;
   observedFirst = first;
   observedPerPage = perPage;
   (void)count;
@@ -173,7 +181,7 @@ def compile_and_run(repo: Path, repeat_measurement: bool = False) -> list[dict[s
     source_path = repo / "src/shells/ugly/UglyNotebook.cpp"
     source = source_path.read_text(encoding="utf-8")
     if repeat_measurement:
-        old = "const int perPage = std::max(1, (h - 140 - first) / ROW_HEIGHT + 1);"
+        old = "const int perPage = rowsPerPage(first, layout.bodyRect.bottom());"
         if source.count(old) != 1:
             raise AssertionError("mutation target must match the production render exactly once")
         source = source.replace(old, "const int perPage = rowsPerPage();")

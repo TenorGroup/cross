@@ -1,4 +1,6 @@
 #pragma once
+#include "activities/X3ActivityLayout.h"
+#include "shells/ugly/UglyMarkSeed.h"
 #include <Epub.h>
 
 #include <cstdint>
@@ -40,6 +42,8 @@ inline bool idleExitDue(const uint32_t now, const bool waiting, const bool radio
  * 5. Apply or upload progress
  */
 class KOReaderSyncActivity final : public Activity, private UiAppHost {
+  x3activity::InfoPages x3Info;
+
  public:
   explicit KOReaderSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& epubPath,
                                 CrossPointPosition localPosition, SavedProgressPosition localKoPos,
@@ -52,6 +56,7 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   bool preventAutoSleep() override { return state == CONNECTING || state == SYNCING || state == UPLOADING; }
 
  private:
+  mutable ugly::MarkState mark_;
   enum State {
     WIFI_SELECTION,
     CONNECTING,

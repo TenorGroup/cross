@@ -12,6 +12,7 @@
 #include <HalDisplay.h>
 #include <HalGPIO.h>
 #include <InlineSymbols.h>
+#include <InlineSymbolBitmaps.h>
 #include <TenorMenuChrome.h>
 
 #include <algorithm>
@@ -118,7 +119,7 @@ uint16_t HalDisplay::getDisplayHeight() const { return DISPLAY_HEIGHT; }
 uint16_t HalDisplay::getDisplayWidthBytes() const { return DISPLAY_WIDTH_BYTES; }
 uint32_t HalDisplay::getBufferSize() const { return BUFFER_SIZE; }
 
-int main() {
+int main(int argc, char** argv) {
   buttonSymbols::install();
   HalDisplay display;
   GfxRenderer renderer{display};
@@ -130,16 +131,252 @@ int main() {
   constexpr int kCx = 200, kCy = 200;
   constexpr int kRadius = 40;
 
+  if (argc == 2 && std::strcmp(argv[1], "--family") == 0) {
+    const char* markers[] = {"\xEE\x84\x81", "\xEE\x84\x80", "\xEE\x84\x82",
+                            "\xEE\x84\x83", "\xEE\x84\x84", "\xEE\x84\x85"};
+    for (const int net : {14, 18}) {
+      const int span = net == 14 ? 18 : 24;
+      const int diagonalRun = net == 14 ? 4 : 6;
+      const int stroke = net == 14 ? 3 : 4;
+      for (int symbol = 0; symbol < 6; ++symbol) {
+        clear();
+        check(buttonSymbols::drawLabel(renderer, markers[symbol], kCx, kCy, net), "family marker refused");
+        const auto bounds = scanAround(kCx, kCy, kRadius);
+        check(bounds.any, "family symbol painted no ink");
+        if (!bounds.any) continue;
+        const int width = bounds.maxX - bounds.minX + 1;
+        const int height = bounds.maxY - bounds.minY + 1;
+        const int opticalHeight = symbol == 2 || symbol == 3 ? width : height;
+        check(std::abs(opticalHeight - span) <= 1, "family optical span differs by more than 1 pixel");
+        check(bounds.minX + bounds.maxX == 2 * kCx - (width % 2 == 0), "family horizontal center moved");
+        check(std::abs(bounds.minY + bounds.maxY - (2 * kCy - 1)) <= 1, "family vertical center moved");
+        const auto cell = buttonSymbols::horizontalBounds(markers[symbol], net);
+        const auto painted = snapshot(kCx, kCy, kRadius);
+        for (int row = kCy - kRadius; row <= kCy + kRadius; ++row)
+          for (int column = kCx - kRadius; column <= kCx + kRadius; ++column)
+            if (isInk(column, row))
+              check(column >= kCx - cell.left && column <= kCx + cell.right && row >= kCy - span / 2 &&
+                        row < kCy + span / 2,
+                    "family ink escapes footer cell");
+        const auto rowRun = [&](int row, bool fromRight) {
+          int column = fromRight ? bounds.maxX : bounds.minX;
+          const int step = fromRight ? -1 : 1;
+          while (column >= bounds.minX && column <= bounds.maxX && !isInk(column, row)) column += step;
+          int count = 0;
+          while (column >= bounds.minX && column <= bounds.maxX && isInk(column, row)) {
+            ++count;
+            column += step;
+          }
+          return count;
+        };
+        for (int sample = 0; sample < 3; ++sample) {
+          int row = bounds.minY + (net == 14 ? (symbol == 0 ? 4 : 5) : 7) + sample;
+          if (symbol == 5) row = bounds.maxY - (net == 14 ? 5 : 7) - sample;
+          int run = rowRun(row, symbol == 1 || symbol == 5);
+          if (symbol == 2 || symbol == 3) {
+            const int column =
+                symbol == 2 ? bounds.maxX - (row - bounds.minY) : bounds.minX + (row - bounds.minY);
+            int sliceRow = bounds.minY;
+            while (sliceRow <= bounds.maxY && !isInk(column, sliceRow)) ++sliceRow;
+            run = 0;
+            while (sliceRow <= bounds.maxY && isInk(column, sliceRow++)) ++run;
+          }
+          check(run == diagonalRun, "family straight diagonal slice differs from chevron");
+        }
+        if (symbol == 0) {
+          for (int sample = 0; sample < 3; ++sample) {
+            const int column = bounds.maxX - (net == 14 ? 7 : 9) - sample;
+            int count = 0;
+            for (int row = bounds.minY; row < bounds.minY + span / 2 + stroke; ++row) count += isInk(column, row);
+            check(count == stroke, "return shaft thickness differs from chevron stroke");
+          }
+          check(rowRun(bounds.minY, false) < diagonalRun, "return head endpoint must taper to a round cap");
+          const int capColumn = bounds.minX + (net == 14 ? 13 : 19);
+          int capInk = 0;
+          for (int row = bounds.minY + span / 2 + stroke; row <= bounds.maxY; ++row) capInk += isInk(capColumn, row);
+          check(capInk > 0 && capInk < stroke, "return tail endpoint must taper to a round cap");
+        }
+        if (symbol == 1) {
+          int shortCapRow = bounds.minY;
+          for (; shortCapRow <= bounds.maxY; ++shortCapRow) {
+            bool found = false;
+            for (int column = bounds.minX; column <= bounds.minX + width / 4; ++column)
+              found = found || isInk(column, shortCapRow);
+            if (found) break;
+          }
+          check(rowRun(bounds.minY, true) < diagonalRun && rowRun(bounds.maxY, false) < diagonalRun &&
+                    rowRun(shortCapRow, false) < diagonalRun,
+                "tick endpoints must taper to round caps");
+        }
+        std::printf("family symbol=%d net=%d width=%d height=%d optical=%d center=(%.1f,%.1f) ink=%zu stroke=%d\n",
+                    symbol, net, width, height, opticalHeight, (bounds.minX + bounds.maxX) / 2.0 - kCx,
+                    (bounds.minY + bounds.maxY) / 2.0 - kCy,
+                    static_cast<size_t>(std::count(painted.begin(), painted.end(), 1)), stroke);
+        if (net == 14 && symbol < 2) {
+          renderer.fillRectDither(kCx - 40, kCy + 8, 80, 3, Color::LightGray);
+          for (int row = bounds.minY; row <= bounds.maxY; ++row)
+            for (int column = bounds.minX; column <= bounds.maxX; ++column)
+              check(isInk(column, row) ==
+                        (painted[(row - kCy + kRadius) * (2 * kRadius + 1) + column - kCx + kRadius] != 0),
+                    "footer underline clips family glyph");
+        }
+      }
+    }
+    std::printf("%s: button family\n", failures ? "RED" : "GREEN");
+    return failures ? 1 : 0;
+  }
+
+  if (argc == 2 && std::strcmp(argv[1], "--edge-chevrons") == 0) {
+    const inlineSymbols::Shape shapes[] = {inlineSymbols::Shape::Left, inlineSymbols::Shape::Right,
+                                          inlineSymbols::Shape::Up, inlineSymbols::Shape::Down};
+    const char* left[] = {"....##", "...##.", "..##..", ".##...", "##....",
+                          ".##...", "..##..", "...##.", "....##"};
+    for (int direction = 0; direction < 4; ++direction) {
+      clear();
+      for (int step = 0; step <= 8; ++step) {
+        const int half = step / 2;
+        const int sign = direction == 0 || direction == 2 ? -1 : 1;
+        if (direction < 2)
+          renderer.drawLine(kCx + sign * (4 - step), kCy - half, kCx + sign * (4 - step), kCy + half, true);
+        else
+          renderer.drawLine(kCx - half, kCy + sign * (4 - step), kCx + half, kCy + sign * (4 - step), true);
+      }
+      const auto oldBounds = scanAround(kCx, kCy, kRadius);
+      const auto oldPixels = snapshot(kCx, kCy, kRadius);
+      const int oldInk = std::count(oldPixels.begin(), oldPixels.end(), 1);
+      check(oldInk == 41 && oldBounds.maxX - oldBounds.minX == 8 && oldBounds.maxY - oldBounds.minY == 8,
+            "old renderer triangle must measure 9x9, 41 pixels");
+      for (const int size : {0, 8, 11}) {
+        clear();
+        inlineSymbols::drawShape(renderer, shapes[direction], kCx, kCy, size, true);
+        const auto bounds = scanAround(kCx, kCy, kRadius);
+        const int width = direction < 2 ? 6 : 9;
+        const int height = direction < 2 ? 9 : 6;
+        const int originX = kCx - width / 2, originY = kCy - height / 2;
+        for (int offsetY = -12; offsetY <= 12; ++offsetY) {
+          for (int offsetX = -12; offsetX <= 12; ++offsetX) {
+            const int column = kCx + offsetX - originX, row = kCy + offsetY - originY;
+            bool expected = false;
+            if (column >= 0 && column < width && row >= 0 && row < height) {
+              if (direction == 0) expected = left[row][column] == '#';
+              if (direction == 1) expected = left[row][5 - column] == '#';
+              if (direction == 2) expected = left[column][row] == '#';
+              if (direction == 3) expected = left[column][5 - row] == '#';
+            }
+            check(isInk(kCx + offsetX, kCy + offsetY) == expected, "edge chevron differs from hand-drawn pixel");
+          }
+        }
+        check(inlineSymbols::glyphWidth(shapes[direction], size) == width, "edge glyphWidth differs from bitmap");
+        check(bounds.any && bounds.maxX - bounds.minX + 1 == width && bounds.maxY - bounds.minY + 1 == height,
+              "edge bounding box differs from hand-drawn dimensions");
+        check(bounds.minX >= oldBounds.minX && bounds.maxX <= oldBounds.maxX &&
+                  bounds.minY >= oldBounds.minY && bounds.maxY <= oldBounds.maxY,
+              "edge chevron escapes old triangle bounds");
+        check(direction < 2 ? bounds.minY + bounds.maxY == 2 * kCy : bounds.minX + bounds.maxX == 2 * kCx,
+              "edge chevron transverse center moved");
+        for (int slice = 0; slice < 9; ++slice) {
+          int ink = 0;
+          for (int along = 0; along < 6; ++along) {
+            const int pixelX = originX + (direction < 2 ? along : slice);
+            const int pixelY = originY + (direction < 2 ? slice : along);
+            ink += isInk(pixelX, pixelY);
+            check(isInk(pixelX, pixelY) ==
+                      isInk(direction < 2 ? pixelX : originX + 8 - slice,
+                            direction < 2 ? originY + 8 - slice : pixelY),
+                  "edge chevron lost axial symmetry");
+          }
+          check(ink == 2, "edge chevron slice must contain exactly 2 pixels");
+        }
+        std::printf("direction=%d size=%d old=9x9 ink=%d new=%dx%d transverse_shift=0\n",
+                    direction, size, oldInk, width, height);
+        inlineSymbols::drawShape(renderer, shapes[direction], kCx, kCy, size, false);
+        check(!scanAround(kCx, kCy, kRadius).any, "white edge chevron left ink behind");
+      }
+      if (direction < 2) {
+        clear();
+        for (int step = 0; step <= 6; ++step) {
+          const int halfHeight = step * 4 / 6;
+          const int column = direction == 0 ? kCx - 3 + step : kCx + 3 - step;
+          renderer.drawLine(column, kCy - halfHeight, column, kCy + halfHeight, true);
+        }
+        const auto narrowBounds = scanAround(kCx, kCy, kRadius);
+        const auto narrowPixels = snapshot(kCx, kCy, kRadius);
+        check(narrowBounds.maxX - narrowBounds.minX == 6 && narrowBounds.maxY - narrowBounds.minY == 8 &&
+                  std::count(narrowPixels.begin(), narrowPixels.end(), 1) == 31,
+              "old UiList triangle must measure 7x9, 31 pixels");
+        clear();
+        inlineSymbols::drawShape(renderer, shapes[direction], kCx, kCy, 8, true);
+        const auto newBounds = scanAround(kCx, kCy, kRadius);
+        check(newBounds.minX >= narrowBounds.minX && newBounds.maxX <= narrowBounds.maxX &&
+                  newBounds.minY == narrowBounds.minY && newBounds.maxY == narrowBounds.maxY,
+              "edge chevron escapes UiList triangle or moves its transverse center");
+        std::printf("UiList direction=%d old=7x9 ink=31 new=6x9 transverse_shift=0\n", direction);
+      }
+    }
+    std::printf("%s: hand-drawn edge chevrons\n", failures ? "RED" : "GREEN");
+    return failures ? 1 : 0;
+  }
+
+  if (argc == 2 && std::strcmp(argv[1], "--chevrons") == 0) {
+    const inlineSymbols::Shape shapes[] = {inlineSymbols::Shape::Up, inlineSymbols::Shape::Down,
+                                          inlineSymbols::Shape::Left, inlineSymbols::Shape::Right};
+    const char* markers[] = {"\xEE\x84\x82", "\xEE\x84\x83", "\xEE\x84\x84", "\xEE\x84\x85"};
+    for (const int net : {14, 18}) {
+      for (int direction = 0; direction < 4; ++direction) {
+        clear();
+        check(buttonSymbols::drawLabel(renderer, markers[direction], kCx, kCy, net), "chevron marker refused");
+        const auto bounds = scanAround(kCx, kCy, kRadius);
+        check(bounds.any, "chevron painted no ink");
+        if (!bounds.any) continue;
+        const auto painted = snapshot(kCx, kCy, kRadius);
+        const int ink = std::count(painted.begin(), painted.end(), 1);
+        const int area = (bounds.maxX - bounds.minX + 1) * (bounds.maxY - bounds.minY + 1);
+        std::printf("direction=%d net=%d ink=%d area=%d density=%.2f%%\n", direction, net, ink, area,
+                    100.0 * ink / area);
+        check(ink * 100 < area * 50, "chevron ink density must be below 50 percent");
+        const auto expected = buttonSymbols::horizontalBounds(markers[direction], net);
+        check(kCx - bounds.minX == expected.left && bounds.maxX - kCx == expected.right,
+              "chevron horizontalBounds must exactly match painted ink");
+        check(bounds.minY + (bounds.maxY - bounds.minY + 1) / 2 == kCy, "chevron vertical center changed");
+        clear();
+        inlineSymbols::drawShape(renderer, shapes[direction], kCx, kCy, net, true);
+        check(snapshot(kCx, kCy, kRadius) == painted, "footer and inline chevron pixels differ");
+        inlineSymbols::drawShape(renderer, shapes[direction], kCx, kCy, net, false);
+        const auto erased = snapshot(kCx, kCy, kRadius);
+        check(std::count(erased.begin(), erased.end(), 1) == 0, "white chevron did not erase its ink");
+      }
+    }
+    using inlineSymbolBitmaps::Glyph;
+    const Glyph* selected[] = {&inlineSymbolBitmaps::kBackNet14, &inlineSymbolBitmaps::kBackNet18,
+                               &inlineSymbolBitmaps::kSelectNet14, &inlineSymbolBitmaps::kSelectNet18};
+    const uint32_t hashes[] = {0x4b1372b4, 0xd424f6ff, 0xbfb21b5a, 0x48c0e14b};
+    const int widths[] = {24, 31, 22, 29};
+    const int heights[] = {17, 24, 17, 24};
+    for (int index = 0; index < 4; ++index) {
+      const auto& glyph = *selected[index];
+      uint32_t hash = 2166136261u;
+      for (int row = 0; row < glyph.height; ++row) hash = (hash ^ glyph.rows[row]) * 16777619u;
+      check(hash == hashes[index] && glyph.width == widths[index] && glyph.height == heights[index],
+            "Back/Select reference bitmap changed");
+      clear();
+      const int net = index % 2 == 0 ? 14 : 18;
+      const bool back = index < 2;
+      buttonSymbols::drawLabel(renderer, back ? "\xEE\x84\x81" : "\xEE\x84\x80", kCx, kCy, net);
+      for (int offsetY = -kRadius; offsetY <= kRadius; ++offsetY) {
+        for (int offsetX = -kRadius; offsetX <= kRadius; ++offsetX) {
+          const int row = offsetY + (glyph.height + 1) / 2;
+          const int column = offsetX + glyph.width / 2;
+          const bool expected = row >= 0 && row < glyph.height && column >= 0 && column < glyph.width &&
+                                (glyph.rows[row] & (1u << (glyph.width - 1 - column)));
+          check(isInk(kCx + offsetX, kCy + offsetY) == expected, "Back/Select footer pixels changed");
+        }
+      }
+    }
+    std::printf("%s: chevron density, bounds, centering and selected Back/Select\n", failures ? "RED" : "GREEN");
+    return failures ? 1 : 0;
+  }
+
   using Oracle = void (*)(const GfxRenderer&, int, int, int, bool);
-  // Runs the full oracle/bitmap/footer comparison for one bitmap-backed
-  // shape. `oracle` reproduces the glyph this shape replaced, so the test
-  // can prove the new render differs from it. `enforceOldBounds` additionally
-  // requires staying inside the old glyph's own ink box: true for Back, whose
-  // bitmap fits it exactly. Select's tick bitmap is a full
-  // symmetric box, taller below center than the old tapered checkmark, so it
-  // legitimately exceeds that box; the real constraint (the footer layout's
-  // reserved caption gap) is instead re-measured and asserted directly in
-  // test_fixed_menu_chrome.py in the simulator suite.
   const auto checkShape = [&](const char* name, inlineSymbols::Shape shape, const char* marker, Oracle oracle,
                                bool enforceOldBounds) {
     for (const int net : {14, 18}) {
@@ -207,7 +444,7 @@ int main() {
 
   // Back is inlineSymbols::Shape id 1, Select is id 0; marker() decodes
   // 0xEE 0x84 0x80+id as that.
-  checkShape("Back", inlineSymbols::Shape::Back, "\xEE\x84\x81", drawOldBackShape, /*enforceOldBounds=*/true);
+  checkShape("Back", inlineSymbols::Shape::Back, "\xEE\x84\x81", drawOldBackShape, false);
   checkShape("Select", inlineSymbols::Shape::Select, "\xEE\x84\x80", drawOldSelectShape,
              /*enforceOldBounds=*/false);
 

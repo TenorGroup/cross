@@ -2,6 +2,7 @@
 #include <I18n.h>
 
 #include <functional>
+#include <atomic>
 
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
@@ -27,6 +28,10 @@ class ClearCacheActivity final : public Activity {
 
   int clearedCount = 0;
   int failedCount = 0;
+  int infoPage_ = 0;
+  std::atomic<int> infoPages_{1};
+  std::string x3InfoText() const;
+  void renderX3();
   OptionPopup confirmPopup;
   void beginClear();
   void clearCache();

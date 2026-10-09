@@ -1,4 +1,5 @@
 #pragma once
+#include "shells/ugly/UglyMarkSeed.h"
 #include <string>
 
 #include "RecentBooksStore.h"
@@ -19,6 +20,7 @@ class Desk final : public Screen {
   bool onKey(Key key) override;
 
  private:
+  mutable ugly::MarkState mark_;
   // Objects by place on the desk: the buttons walk the picture (see logic::gridStep).
   enum Object : int { STATS, RECENT, READING, FOLDER, FAVORITES, SETTINGS, COUNT };
   void open();

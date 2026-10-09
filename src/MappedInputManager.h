@@ -113,6 +113,7 @@ class MappedInputManager {
   // An up or down swipe in this pass: its vertical travel (negative: the finger went up) and how long
   // the finger was down.
   bool wasVerticalSwipe(int& dy, unsigned long& heldMs) const;
+  bool wasVerticalSwipe(int& dy, unsigned long& heldMs, int& startX, int& startY) const;
   // Back = left-to-right swipe anchored at the left edge. Public so swipe-mode
   // page turns (reader) can exclude it from a plain SwipeDir::Right.
   bool wasBackGesture() const;

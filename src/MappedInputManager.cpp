@@ -395,6 +395,12 @@ bool MappedInputManager::popMultiTouchSwipe(uint8_t& contacts, int& dx, int& dy,
 }
 
 bool MappedInputManager::wasVerticalSwipe(int& dy, unsigned long& heldMs) const {
+  int startX = 0;
+  int startY = 0;
+  return wasVerticalSwipe(dy, heldMs, startX, startY);
+}
+
+bool MappedInputManager::wasVerticalSwipe(int& dy, unsigned long& heldMs, int& startX, int& startY) const {
   int sx = 0;
   int sy = 0;
   int ex = 0;
@@ -403,6 +409,8 @@ bool MappedInputManager::wasVerticalSwipe(int& dy, unsigned long& heldMs) const 
   const auto dir = fui::swipeDirection(sx, sy, ex, ey);
   if (dir != fui::SwipeDir::Up && dir != fui::SwipeDir::Down) return false;
   dy = ey - sy;
+  startX = sx;
+  startY = sy;
   heldMs = gpio.lastTouchHeldMs();
   return true;
 }

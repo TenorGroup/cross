@@ -1,12 +1,16 @@
 #pragma once
+#include "activities/X3ActivityLayout.h"
 #include <array>
 
 #include "activities/UiListActivity.h"
 #include "util/ReadingHabits.h"
 class ReadingHabitsActivity final : public UiListActivity {
+  x3activity::InfoPages x3Info;
+
  public:
   ReadingHabitsActivity(GfxRenderer& r, MappedInputManager& input);
   void onEnter() override;
+  void loop() override;
 
  protected:
   int listCount() const override { return habits::NAMES; }

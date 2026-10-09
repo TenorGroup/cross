@@ -1,4 +1,6 @@
 #pragma once
+#include "activities/X3ActivityLayout.h"
+#include "activities/X3OptionPopup.h"
 
 #include <cstdint>
 
@@ -27,6 +29,9 @@ inline bool idleExitDue(const uint32_t now, const bool waiting, const bool radio
 }  // namespace ota_power
 
 class OtaUpdateActivity : public Activity {
+  x3activity::InfoPages x3Info;
+  freeink::ui::Rect x3PopupFrame() const;
+
   enum State {
     WIFI_SELECTION,
     CHECKING_FOR_UPDATE,
@@ -54,6 +59,7 @@ class OtaUpdateActivity : public Activity {
   // Cancel/Update confirmation over the version info (replaces the old
   // hand-rolled bottom tap rects).
   OptionPopup confirmPopup;
+  x3activity::TwoChoicePopup x3Popup;
   // The download holds the loop; a Back tap is sampled on its own task meanwhile.
   FileTransferBackLatch backLatch;
   // Set when this screen was restarted into (the user already chose Update, or a dry run): it

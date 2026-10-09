@@ -22,6 +22,20 @@ namespace fui = freeink::ui;
 namespace {
 constexpr int16_t TOUCH_TAB_BAR_HEIGHT = 50;
 
+int touchTabBarHeight(const bool touchShell, const int regularHeight) {
+  return touchShell ? tenorchrome::FOOT_BACK_SIZE : regularHeight;
+}
+
+fui::Rect touchTabBarRect(const fui::Rect& frameRect, const bool wantsFootBack, const int16_t tabBand) {
+  const int16_t barTop = static_cast<int16_t>(frameRect.bottom() - tenorchrome::TOUCH_BAR_BOTTOM_GAP - tabBand);
+  const int16_t left = wantsFootBack
+                           ? static_cast<int16_t>(tenorchrome::FOOT_BACK_X + tenorchrome::FOOT_BACK_SIZE +
+                                                  tenorchrome::FOOT_PILL_GAP - 8)
+                           : int16_t{8};
+  return fui::Rect{static_cast<int16_t>(frameRect.x + left), barTop,
+                   static_cast<int16_t>(frameRect.width - left - 8), tabBand};
+}
+
 }  // namespace
 
 void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh, const fui::TabItem* tabs,
@@ -94,7 +108,7 @@ void UiTabListActivity::veThanhTheTenor(UiScreen& screen, const fui::Rect& thanh
         const auto ink = uglychrome::words(renderer, fui::Rect{static_cast<int16_t>(cx - slot / 2), static_cast<int16_t>(y0),
                                                                static_cast<int16_t>(slot), static_cast<int16_t>(h)},
                                            tab.label, fui::TextAlign::Center);
-        if (tab.selected) uglychrome::ring(renderer, ink);
+        if (tab.selected) uglychrome::ring(renderer, ink, tabMark_.get(activeTab()));
       }
       continue;
     }
@@ -213,6 +227,7 @@ void UiTabListActivity::forgetOtherTabs() {
 void UiTabListActivity::moveRingTo(const int ringIndex, const int direction) {
   auto& n = activeNav();
   n.selected = ringIndex;
+  mark_.get(selectionMarkKey());
   n.followPending = ringIndex > 0;
   if (ringIndex == 0) {
     n.top = 0;
@@ -398,8 +413,11 @@ void UiTabListActivity::veMuiTenThe(const fui::Rect& thanh, const int16_t le) {
 }
 
 int UiTabListActivity::preferredTabBarHeight() const {
-  if (tenorchrome::enabled()) return tenorchrome::tabHeight();
-  return mappedInput.hasTouch() ? TOUCH_TAB_BAR_HEIGHT : UITheme::getInstance().getMetrics().tabBarHeight;
+  const int regularHeight = tenorchrome::enabled()
+                                ? tenorchrome::tabHeight()
+                                : (mappedInput.hasTouch() ? TOUCH_TAB_BAR_HEIGHT
+                                                          : UITheme::getInstance().getMetrics().tabBarHeight);
+  return touchTabBarHeight(tenorchrome::kTouchShell, regularHeight);
 }
 
 void UiTabListActivity::buildTabBar(UiScreen& screen) {
@@ -530,19 +548,19 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   tabProps.tabStyles = tabStyles;
   const fui::Rect frameRect = screen.frame().screen();
   fui::Rect tabRect;
-  if (tenorchrome::kTouchShell) {
-    // Touch: the bar sits at the foot, 16 px in from both sides (veThanhTheTenor insets 8 more) and
-    // 16 px above the Home key; the list stops 8 px above it.
-    const int16_t barTop = static_cast<int16_t>(frameRect.bottom() - tenorchrome::TOUCH_BAR_BOTTOM_GAP - tabBand);
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer);
+    const int bottom = std::min<int>(screen.body().bottom(), layout.bodyRect.bottom());
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(layout.bodyRect.y), 0,
+                                                  static_cast<int16_t>(renderer.getScreenHeight() - bottom), 0});
+    const auto& bar = layout.barRect;
+    tabRect = fui::Rect{static_cast<int16_t>(bar.x), static_cast<int16_t>(bar.y),
+                        static_cast<int16_t>(bar.width), static_cast<int16_t>(bar.height)};
+  } else if (tenorchrome::kTouchShell) {
+    // Touch: the bar shares the Back cell's 60 px band at every text size.
+    tabRect = touchTabBarRect(frameRect, tenorchrome::wantsFootBack(name.c_str()), tabBand);
     const int bodyBottom = screen.body().y + screen.body().height;
-    if (bodyBottom > barTop - 8) screen.takeBottom(static_cast<int16_t>(bodyBottom - (barTop - 8)));
-    // A screen with "<" in its bar (the reader menu) keeps the cards right of it.
-    const int16_t left = tenorchrome::wantsFootBack(name.c_str())
-                             ? static_cast<int16_t>(tenorchrome::FOOT_BACK_X + tenorchrome::FOOT_BACK_SIZE +
-                                                    tenorchrome::FOOT_PILL_GAP - 8)
-                             : int16_t{8};
-    tabRect = fui::Rect{static_cast<int16_t>(frameRect.x + left), barTop,
-                        static_cast<int16_t>(frameRect.width - left - 8), tabBand};
+    if (bodyBottom > tabRect.y - 8) screen.takeBottom(static_cast<int16_t>(bodyBottom - (tabRect.y - 8)));
   } else {
     const fui::Rect contentTabRect = screen.takeTop(tabBand);
     // Tab chrome is a full-width screen band like the legacy GUI tab bar. The
@@ -557,7 +575,17 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   if (tabsFocused && !metrics.tabPillFullSlot && !tenorHome) {
     screen.target().fill(tabRect, fui::Paint::dither(fui::Color::LightGray));
   }
-  if (tenorHome)
+  if (shell::uglyParts() && tenorchrome::x3ScreenLayoutEnabled()) {
+    if (!uiTarget.paintingEnabled()) {
+      if (tabCount() > 1) {
+        const int group = menucustom::groupFor(name.c_str());
+        ugly::pageHints(renderer, tabLabel(menucustom::adjacent(group, activeTab(), tabCount(), -1)),
+                        tabLabel(menucustom::adjacent(group, activeTab(), tabCount(), 1)), renderer.getScreenHeight() - 52);
+      } else {
+        ugly::pathHints(renderer, headerTitle());
+      }
+    }
+  } else if (tenorHome)
     veThanhTheTenor(screen, theRect, tabs, count, tabProps.text);
   else
     fui::tabBar(screen.frame(), theRect, tabProps);
@@ -565,7 +593,12 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   if (thanhTheChay && uiTarget.paintingEnabled()) {
     veMuiTenThe(tabRect, leMuiTen);
   }
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  if (!tenorchrome::x3ScreenLayoutEnabled()) screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+}
+
+void UiTabListActivity::drawChrome() {
+  if (tenorchrome::x3ScreenLayoutEnabled()) return;
+  UiListActivity::drawChrome();
 }
 
 void UiTabListActivity::commitTabNavigation() {

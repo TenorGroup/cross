@@ -1,5 +1,7 @@
 #include "CrashActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <GfxRenderer.h>
 #include <HalSystem.h>
 #include <I18n.h>
@@ -22,6 +24,13 @@ void CrashActivity::onEnter() {
 }
 
 void CrashActivity::loop() {
+  if (tenorchrome::x3ScreenLayoutEnabled() &&
+      x3Info.turn(mappedInput.wasReleased(MappedInputManager::Button::Up) ? -1 :
+                  mappedInput.wasReleased(MappedInputManager::Button::Down) ? 1 : 0)) {
+    requestUpdate();
+    return;
+  }
+
   int x = 0;
   int y = 0;
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasScreenTapped(x, y)) {
@@ -30,6 +39,21 @@ void CrashActivity::loop() {
 }
 
 void CrashActivity::render(RenderLock&&) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+
+    const char* tip = nullptr;
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip, 8));
+    renderer.clearScreen();
+    x3Info.draw(renderer, layout.bodyRect, {tr(STR_CRASH_DESCRIPTION), tr(STR_CRASH_REASON), panicMessage.c_str()});
+    tenorchrome::drawTipInRect(renderer, tip, layout.tipRect, 8);
+    x3activity::drawBar(renderer, layout.barRect, tr(STR_CRASH_TITLE), navigationPrefix.c_str());
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+
+    renderer.displayBuffer();
+    return;
+  }
+
   renderer.clearScreen();
 
   const auto& metrics = UITheme::getInstance().getMetrics();

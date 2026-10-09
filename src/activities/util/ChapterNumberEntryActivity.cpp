@@ -1,5 +1,7 @@
 #include "ChapterNumberEntryActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <I18n.h>
 #include <Logging.h>
 
@@ -48,6 +50,31 @@ void ChapterNumberEntryActivity::loop() {
   }
 }
 void ChapterNumberEntryActivity::render(RenderLock&&) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+
+    const char* tip = tr(STR_CHAPTER_NUMBER_KEYS);
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip, 8));
+    renderer.clearScreen();
+    x3Info.draw(renderer, layout.bodyRect, {tr(STR_CHAPTER_NUMBER_LABEL)});
+    tenorchrome::drawTipInRect(renderer, tip, layout.tipRect, 8);
+    x3activity::drawBar(renderer, layout.barRect, tr(STR_GO_TO_CHAPTER_NUMBER), navigationPrefix.c_str());
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    const int cell = (renderer.getScreenWidth() - 48) / 6;
+    const int top = layout.bodyRect.y + 2 * renderer.getLineHeight(SMALL_FONT_ID) + 16;
+    const int height = renderer.getLineHeight(NOTOSANS_18_FONT_ID) + 20;
+    for (int index = 0; index < 6; ++index) {
+      const int left = 24 + index * cell;
+      renderer.fillRectDither(left, top, cell - 5, height, index == cursor ? Color::Black : Color::White);
+      const char digit[2] = {digits[index], 0};
+      renderer.drawText(NOTOSANS_18_FONT_ID,
+          left + (cell - 5 - renderer.getTextWidth(NOTOSANS_18_FONT_ID, digit, EpdFontFamily::BOLD)) / 2,
+          top + 10, digit, index != cursor, EpdFontFamily::BOLD);
+    }
+    renderer.displayBuffer();
+    return;
+  }
+
   renderer.clearScreen();
   drawNavigationHeader(tr(STR_GO_TO_CHAPTER_NUMBER));
   const int w = renderer.getScreenWidth();

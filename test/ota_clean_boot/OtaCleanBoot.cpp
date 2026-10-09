@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include "../host_stubs/X3LayoutBoundary.h"
 
 #include "HttpDownloader.h"
 #include "UpdateBoot.h"
@@ -142,6 +143,9 @@ enum StrId {
   STR_UPDATING,
   STR_NO_UPDATE,
   STR_BACK,
+  STR_SELECT,
+  STR_DIR_UP,
+  STR_DIR_DOWN,
   STR_UPDATE_FAILED,
   STR_UPDATE_COMPLETE,
   STR_POWER_ON_HINT
@@ -181,6 +185,7 @@ struct EpdFontFamily {
   enum Style { REGULAR, BOLD };
 };
 constexpr int UI_10_FONT_ID = 10;
+constexpr int SMALL_FONT_ID = 1;
 struct Metrics {
   int topPadding = 0, headerHeight = 40, contentSidePadding = 10, verticalSpacing = 5, progressBarHeight = 12;
 };
@@ -241,6 +246,7 @@ struct OptionPopup {
     show(title, options, count, current, std::move(onChoice));
   }
   bool processRender(FakeRenderer&, const MappedInputManager&) { return false; }
+  void draw(FakeRenderer&, tenorchrome::X3ScreenRect) {}
 };
 
 // The restarts, and the RTC slot they arm (main.cpp).
@@ -262,6 +268,10 @@ struct RenderLock {
 // The update screen as tenor/cross draws it; the hand-drawn note of tenor/ugly is measured in the simulator.
 namespace shell { inline bool uglyParts() { return false; } }
 struct OtaUpdateActivity : Activity {
+  x3activity::InfoPages x3Info;
+  OptionPopup x3Popup;
+  std::string navigationPrefix;
+  tenorchrome::X3ScreenRect x3PopupFrame() const { return {}; }
   bool renderUglyNote(int, bool) const { return false; }
   enum State {
     WIFI_SELECTION,

@@ -23,14 +23,24 @@ uint32_t noise(uint32_t seed, int x, int y) {
 }
 
 void pencil(const GfxRenderer& r, int x, int y, int radius, uint32_t seed) {
+  const int slant = static_cast<int>(noise(seed, 0, 5) % 5) - 2;
+  const int hatch = static_cast<int>(noise(seed, 0, 6) % 3) - 1;
+  const int left = std::max(2, x - radius - 10), right = std::min(r.getScreenWidth() - 3, x + radius + 10);
+  const int top = std::max(2, y - radius - 10), bottom = std::min(r.getScreenHeight() - 3, y + radius + 10);
+  if (left > right || top > bottom) return;
+  const auto pencilLine = [&](int ax, int ay, int bx, int by, uint32_t lineSeed, int width) {
+    line(r, std::clamp(ax, left, right), std::clamp(ay, top, bottom),
+         std::clamp(bx, left, right), std::clamp(by, top, bottom), lineSeed, width);
+  };
   for (int dy = -radius - 2, n = 0; dy <= radius + 2; dy += 3, ++n) {
     int half = radius + 2;
     while (half > 0 && half * half + dy * dy > (radius + 3) * (radius + 3)) --half;
-    const int a = x - half - dy / 2 - static_cast<int>(noise(seed, n, 0) % 3);
-    const int b = x + half - dy / 2 + static_cast<int>(noise(seed, n, 1) % 4);
-    line(r, a, y + dy + half / 3, b, y + dy - half / 3, seed + n, 3);
+    const int a = x - half - dy * slant / 4 - static_cast<int>(noise(seed, n, 0) % 3);
+    const int b = x + half - dy * slant / 4 + static_cast<int>(noise(seed, n, 1) % 4);
+    pencilLine(a, y + dy + half * hatch / 3, b, y + dy - half * hatch / 3, seed + n, 3);
   }
-  line(r, x - radius / 2, y + 3, x + radius + 7, y - radius / 2, seed + 23, 2);
+  const int tail = seed & 1 ? 1 : -1;
+  pencilLine(x - tail * radius / 2, y + 3, x + tail * (radius + 7), y - radius / 2, seed + 23, 2);
 }
 
 void erasure(const GfxRenderer& r, int x, int y, int rx, int ry, uint32_t seed) {
@@ -54,8 +64,8 @@ void box(const GfxRenderer& r, int x0, int y0, int x1, int y1, uint32_t seed) {
   line(r, x0 - 1, y1 + 1, x0, y0, seed + 3);
 }
 
-void answerCircle(const GfxRenderer& r, int x, int y, int radius, int index) {
-  circle(r, Circle::Word, {x - radius, y - radius, x + radius, y + radius}, 0, 0, 2);
+void answerCircle(const GfxRenderer& r, int x, int y, int radius, int index, uint32_t seed) {
+  circle(r, Circle::Word, {x - radius, y - radius, x + radius, y + radius}, 0, 0, seed, 2);
   if (index >= 0 && index < 6) {
     char letter[2] = {static_cast<char>('A' + index), 0};
     text(r, Size::S22, x - width(r, Size::S22, letter) / 2, y + 7, letter);
@@ -98,6 +108,7 @@ void QuestionSheet::labelAt(int row, int option, char* out, size_t size) const {
 }
 
 void QuestionSheet::invalidate() {
+  cursorMark_.reset();
   view_ = {};
   ready_ = false;
   paper_ = false;
@@ -126,6 +137,11 @@ void QuestionSheet::bind(const GfxRenderer& r, View view, bool touch) {
   laterTop_ = touch ? 96 : 52;
   if (height_ < width_) firstTop_ = laterTop_;
   bottom_ = height_ - (touch ? 88 : 76);
+  if (!touch && tenorchrome::x3ScreenLayoutEnabled()) {
+    const int tips = std::max(tenorchrome::tipHeight(r, tr(STR_UGLY_PHIEU_HINT_ANSWER)),
+                              tenorchrome::tipHeight(r, tr(STR_UGLY_PHIEU_HINT_QUESTION)));
+    bottom_ = tenorchrome::x3ScreenLayout(r, tips).bodyRect.bottom() - 26 - 8;
+  }
   blocks_.resize(view_.count);
   int page = 0, top = firstTop_;
   current_ = 0;
@@ -167,9 +183,16 @@ void QuestionSheet::bind(const GfxRenderer& r, View view, bool touch) {
     }
     const int blockHeight = std::max(touch ? 64 : 0, qHeight + answerRows * answerStep_) + gap_;
     int old = -1;
-    for (const auto& b : previous) if (b.id == row.id) { old = b.previous; break; }
+    uint32_t seed = 0;
+    bool retained = false;
+    for (const auto& b : previous) if (b.id == row.id) {
+      old = b.previous;
+      if (b.selected == row.selected) { seed = b.seed; retained = true; }
+      break;
+    }
+    if (!retained) seed = markSeed();
     blocks_[i] = {row.id, 0, static_cast<int16_t>(blockHeight), static_cast<int16_t>(qHeight), 0,
-                  static_cast<int16_t>(columns), static_cast<int16_t>(old), kind};
+                  static_cast<int16_t>(columns), static_cast<int16_t>(old), kind, seed, row.selected};
   }
   // The sheets: the shared rule, with no sheet of 1 question while the questions can go otherwise.
   std::vector<int> ink(view_.count), sheetOf(view_.count);
@@ -210,7 +233,13 @@ void QuestionSheet::bind(const GfxRenderer& r, View view, bool touch) {
   }
 }
 
+uint32_t QuestionSheet::cursorSeed() const {
+  return cursorMark_.get((static_cast<uint64_t>(static_cast<uint32_t>(current_)) << 32) |
+                        (static_cast<uint32_t>(candidate_) << 2) | (paper_ ? 2u : answering_ ? 1u : 0u));
+}
+
 QuestionSheet::Intent QuestionSheet::intent(IntentKind kind, bool repaint) const {
+  cursorSeed();
   const Row row = rowAt(current_);
   return {kind, row.id, view_.count ? current_ : -1, candidate_, repaint};
 }
@@ -312,6 +341,7 @@ QuestionSheet::Intent QuestionSheet::input(Key key) {
     }
     // Another answer is chosen and the question stays open; the answer in use closes it.
     if (candidate_ != row.selected) return intent(IntentKind::Commit, true);
+    blocks_[current_].seed = markSeed();
     paper_ = answering_ = false;
     return intent(IntentKind::None, true);
   }
@@ -320,6 +350,7 @@ QuestionSheet::Intent QuestionSheet::input(Key key) {
     return intent(IntentKind::Preview, true);
   }
   if (kind == Kind::Toggle) candidate_ = row.selected ? 0 : 1;
+  if (candidate_ == row.selected) blocks_[current_].seed = markSeed();
   paper_ = false;
   return intent(candidate_ == row.selected ? IntentKind::None : IntentKind::Commit, true);
 }
@@ -354,6 +385,7 @@ QuestionSheet::Intent QuestionSheet::tap(int x, int y) {
       const int top = paperAnchorTop_ + (k - paperAnchor_) * answerStep_;
       if (y >= top && y < top + answerStep_) {
         candidate_ = k;
+        if (k == row.selected) blocks_[current_].seed = markSeed();
         paper_ = false;
         return intent(k == row.selected ? IntentKind::None : IntentKind::Commit, true);
       }
@@ -394,6 +426,7 @@ QuestionSheet::Intent QuestionSheet::tap(int x, int y) {
     const int option = optionAt(i, x, y);
     if (option < 0) return {};
     candidate_ = option;
+    if (option == row.selected) blocks_[i].seed = markSeed();
     return intent(option == row.selected ? IntentKind::None : IntentKind::Commit, true);
   }
   return {};
@@ -411,6 +444,11 @@ int QuestionSheet::questionAt(int x, int y) const {
 void QuestionSheet::didCommit(int row, int previousIndex) {
   if (row < 0 || row >= view_.count) return;
   blocks_[row].previous = static_cast<int16_t>(previousIndex);
+  const int selected = rowAt(row).selected;
+  if (blocks_[row].selected != selected) {
+    blocks_[row].seed = markSeed();
+    blocks_[row].selected = selected;
+  }
   if (row == current_) candidate_ = rowAt(row).selected;
 }
 
@@ -478,11 +516,11 @@ void QuestionSheet::paint(const GfxRenderer& r, const MappedInputManager& input)
       for (int k = 0; k < row.count; ++k) {
         const int col = left_ + (k % b.columns) * cell + (touch_ ? 0 : 16);
         const int cx = col + radius + 2, cy = ay + (k / b.columns) * answerStep_ + answerStep_ / 2;
-        answerCircle(r, cx, cy, radius, k);
+        answerCircle(r, cx, cy, radius, k, b.seed + k);
         labelAt(i, k, label, sizeof(label));
         const std::string shown = fit(r, Size::S22, label, choiceLabelWidth(cell, touch_));
         text(r, Size::S22, cx + radius + 10, cy + 8, shown.c_str());
-        if (k == row.selected) pencil(r, cx, cy, radius, 800 + i * 10 + k);
+        if (k == row.selected) pencil(r, cx, cy, radius, b.seed);
         else if (k == b.previous) erasure(r, cx, cy, radius + 3, radius + 3, 850 + i * 10 + k);
         if (i == current_ && k == candidate_)
           focusBox = {cx - radius - 2, cy - radius - 4, cx + radius + 10 + width(r, Size::S22, shown.c_str()), cy + radius + 2};
@@ -530,7 +568,7 @@ void QuestionSheet::paint(const GfxRenderer& r, const MappedInputManager& input)
     }
     if (!touch_ && i == current_ && !paper_) {
       if (answering_) {
-        circle(r, Circle::Row, focusBox, 10, 7, 2);
+        circle(r, Circle::Row, focusBox, 10, 7, cursorSeed(), 2);
       } else {
         // Not yet entered: the whole question is underlined, line by line; the last line is cut to the text left.
         const int lines = std::max(1, b.questionHeight / questionStep_);
@@ -560,12 +598,12 @@ void QuestionSheet::paint(const GfxRenderer& r, const MappedInputManager& input)
     text(r, Size::S22, 44, paperTop_ + 28, head.c_str());
     for (int k = paperFirst_; k <= paperLast_; ++k) {
       const int cy = paperAnchorTop_ + (k - paperAnchor_) * answerStep_ + answerStep_ / 2;
-      answerCircle(r, 70, cy, 11, -1);
-      if (k == row.selected) pencil(r, 70, cy, 11, 790 + k);
+      answerCircle(r, 70, cy, 11, -1, blocks_[current_].seed + k);
+      if (k == row.selected) pencil(r, 70, cy, 11, blocks_[current_].seed);
       labelAt(current_, k, label, sizeof(label));
       const std::string shown = fit(r, Size::S30, label, margin_ - 112);
       const int w = text(r, Size::S30, 94, cy + 10, shown.c_str());
-      if (!touch_ && k == candidate_) circle(r, Circle::Row, {94, cy - 16, 94 + w, cy + 14}, 12, 8, 2);
+      if (!touch_ && k == candidate_) circle(r, Circle::Row, {94, cy - 16, 94 + w, cy + 14}, 12, 8, cursorSeed(), 2);
     }
     if (paperFirst_) {
       snprintf(buf, sizeof(buf), tr(STR_UGLY_MORE), paperFirst_);
@@ -604,6 +642,21 @@ void QuestionSheet::paint(const GfxRenderer& r, const MappedInputManager& input)
     text(r, Size::S22, width_ - 24 - width(r, Size::S22, pageLabel.c_str()), height_ - 48, pageLabel.c_str());
 #endif
   } else {
+    if (tenorchrome::x3ScreenLayoutEnabled()) {
+      const int tips = std::max(tenorchrome::tipHeight(r, tr(STR_UGLY_PHIEU_HINT_ANSWER)),
+                                tenorchrome::tipHeight(r, tr(STR_UGLY_PHIEU_HINT_QUESTION)));
+      const auto layout = tenorchrome::x3ScreenLayout(r, tips);
+      tenorchrome::drawInfoInRect(r, buf, {24, layout.bodyRect.bottom() - 26, width_ - 48, 26});
+      tenorchrome::drawTipInRect(r, paper_ || answering_ ? tr(STR_UGLY_PHIEU_HINT_ANSWER)
+                                                       : tr(STR_UGLY_PHIEU_HINT_QUESTION), layout.tipRect);
+      if (pages_ > 1)
+        pageHints(r, tr(STR_PREV_PAGE_GESTURE), tr(STR_NEXT_PAGE_GESTURE), height_ - 52);
+      else
+        pathHints(r, view_.subject, buf);
+      statusBar(r, input, {true, view_.count > 0, true, true});
+      ready_ = true;
+      return;
+    }
     // The sheet number and what Select does now: enter the question, or choose and finish.
     snprintf(label, sizeof(label), "%s, %s", buf,
              paper_ || answering_ ? tr(STR_UGLY_PHIEU_HINT_ANSWER) : tr(STR_UGLY_PHIEU_HINT_QUESTION));

@@ -1,4 +1,5 @@
 #pragma once
+#include "activities/X3ActivityLayout.h"
 
 #include <string>
 
@@ -18,6 +19,8 @@
  * activity launched in boot recovery mode (left side button + power on X3).
  */
 class SdFirmwareUpdateActivity : public Activity {
+  x3activity::InfoPages x3Info;
+
  public:
   enum class State {
     PICKING,

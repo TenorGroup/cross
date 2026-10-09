@@ -14,6 +14,7 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "CrossPointSettings.h"
 #include "components/UiAppHelpers.h"
+#include "components/TenorMenuChrome.h"
 #include "activities/home/DocThuMuc.h"
 #include "FileFavorites.h"
 #include "MenuCustomization.h"
@@ -64,11 +65,16 @@ int Notebook::subtitleLines() const {
 
 int Notebook::firstBaseline() const { return FIRST_BASELINE + (subtitleLines() - 1) * 30; }
 
-int Notebook::rowsPerPage() const {
+const char* Notebook::tip() const {
+  return page == homerows::Page::Folder ? tr(STR_FOLDER_HOLD) : tr(STR_HOME_FAVORITES_HINT);
+}
+
+int Notebook::rowsPerPage(int first, int bottom) const {
 #if FREEINK_DEVICE_X4PRO
   return touch::ROWS;
 #else
-  return std::max(1, (renderer.getScreenHeight() - 140 - firstBaseline()) / ROW_HEIGHT + 1);
+  if (bottom < 0) bottom = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip())).bodyRect.bottom();
+  return std::max(1, (bottom - 24 - (first >= 0 ? first : firstBaseline())) / ROW_HEIGHT + 1);
 #endif
 }
 
@@ -150,8 +156,9 @@ void Notebook::render(RenderLock&&) {
   renderer.clearScreen();
   const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
   const int pos = pagePosition(page);
+  const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip()));
 
-  line(renderer, MARGIN_X, 0, MARGIN_X + 1, h - 80, 501);
+  line(renderer, MARGIN_X, 0, MARGIN_X + 1, layout.bodyRect.bottom(), 501);
   const char* title = I18N.get(homerows::PAGE_TITLES[id(page)]);
   const int tw = text(renderer, Size::S52, TEXT_X, 78, title);
   underline(renderer, TEXT_X, TEXT_X + tw, 92, 17, 3);
@@ -165,7 +172,7 @@ void Notebook::render(RenderLock&&) {
   line(renderer, TEXT_X, first - 40, w - 30, first - 38, 611);  // a pen rule closes the note off before the first row
 
   const int count = rowCount();
-  const int perPage = std::max(1, (h - 140 - first) / ROW_HEIGHT + 1);
+  const int perPage = rowsPerPage(first, layout.bodyRect.bottom());
   const int cur = cursor[id(page)];
   if (rows.tooMany) {
     char said[160];
@@ -176,7 +183,6 @@ void Notebook::render(RenderLock&&) {
     if (empty != StrId::STR_NONE_OPT) paragraph(renderer, Size::S30, TEXT_X, first, w - TEXT_X - 30, 44, I18N.get(empty));
   }
   const int top = logic::pageTop(cur, perPage, count);
-  freeink::ui::GfxRendererTarget iconTarget(renderer);
   for (int i = 0; i < logic::rowsOnPage(top, perPage, count); ++i) {
     const int row = top + i;
     const int base = first + i * ROW_HEIGHT;
@@ -184,8 +190,7 @@ void Notebook::render(RenderLock&&) {
     int room = w - labelX - 30;
     if (page == homerows::Page::Folder) {
       const auto icon = listIconFor(UITheme::getFileIcon(rows.folder[row]), 32);
-      iconTarget.bitmap({TEXT_X, static_cast<int16_t>(base - 27), 32, 32}, icon,
-                        freeink::ui::BitmapMode::Contain);
+      iconAsset(renderer, icon.data, {TEXT_X, base - 27, 32, 32}, iconFrameSeed() ^ static_cast<uint32_t>(row));
     }
     if (row < static_cast<int>(rows.values.size()) && !rows.values[row].empty()) {
       const int vw = width(renderer, Size::S22, rows.values[row].c_str());
@@ -194,17 +199,13 @@ void Notebook::render(RenderLock&&) {
     }
     const std::string label = fit(renderer, Size::S30, labelAt(row), room);
     const int lw = text(renderer, Size::S30, labelX, base, label.c_str());
-    if (row == cur) circle(renderer, Circle::Row, {labelX, base - 26, labelX + lw, base + 8}, 12, 9);
+    if (row == cur) circle(renderer, Circle::Row, {labelX, base - 26, labelX + lw, base + 8}, 12, 9,
+                           mark_.get((static_cast<uint64_t>(id(page)) << 32) | static_cast<uint32_t>(cur)), 3);
   }
-  if (logic::pageNamed(top, perPage, count)) {
-    char of[24];
-    snprintf(of, sizeof(of), tr(STR_UGLY_PAGE_OF), logic::pageOf(cur, perPage, count) + 1, logic::pageCount(count, perPage));
-    text(renderer, Size::S22, w / 2 - width(renderer, Size::S22, of) / 2, h - 84, of);
-  }
-
   // The pages next door.
   pageHints(renderer, I18N.get(homerows::PAGE_TITLES[menucustom::idAt(0, logic::cycle(pos, -1, homerows::PAGE_COUNT), homerows::PAGE_COUNT)]),
             I18N.get(homerows::PAGE_TITLES[menucustom::idAt(0, logic::cycle(pos, 1, homerows::PAGE_COUNT), homerows::PAGE_COUNT)]), h - 52);
+  tenorchrome::drawTipInRect(renderer, tip(), layout.tipRect);
   statusBar(renderer, mappedInput, {true, count > 0, true, true});
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
@@ -328,15 +329,19 @@ bool Notebook::onKey(const Key key) {
   switch (key) {
     case Key::Up:
       cur = logic::cycle(cur, -1, count);
+      mark_.get((static_cast<uint64_t>(id(page)) << 32) | static_cast<uint32_t>(cur));
       return true;
     case Key::Down:
       cur = logic::cycle(cur, 1, count);
+      mark_.get((static_cast<uint64_t>(id(page)) << 32) | static_cast<uint32_t>(cur));
       return true;
     case Key::UpHold:
       cur = std::max(0, cur - rowsPerPage());
+      mark_.get((static_cast<uint64_t>(id(page)) << 32) | static_cast<uint32_t>(cur));
       return true;
     case Key::DownHold:
       cur = std::min(std::max(0, count - 1), cur + rowsPerPage());
+      mark_.get((static_cast<uint64_t>(id(page)) << 32) | static_cast<uint32_t>(cur));
       return true;
     case Key::Left:
     case Key::Right:
@@ -910,7 +915,8 @@ void Notebook::renderTouch() {
         }
         const std::string shown = fit(renderer, Size::S30, option, 360);
         const int ow = text(renderer, Size::S30, 80, rt + 42, shown.c_str());
-        if (k == now) circle(renderer, Circle::Row, {80, rt + 16, 80 + ow, rt + 50}, 14, 9);
+        if (k == now) circle(renderer, Circle::Row, {80, rt + 16, 80 + ow, rt + 50}, 14, 9,
+                             mark_.get((static_cast<uint64_t>(popRow + 1) << 32) | static_cast<uint32_t>(now)), 3);
       }
       if (p.hiddenBelow) {
         const int yb = p.bottom - touch::PAPER_MORE;

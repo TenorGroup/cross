@@ -32,6 +32,7 @@ class UiListActivity {
   struct RenderLock { explicit RenderLock(UiListActivity&){} };
   struct Nav { void reset(){} } nav;
   GfxRenderer& renderer;MappedInputManager& mappedInput;
+  bool tabBandDrawn = false;
   static constexpr int ACTION_ROW=1;
   void requestUpdate(){}
   void syncListViewport(UiScreen&,freeink::ui::ListProps&){}

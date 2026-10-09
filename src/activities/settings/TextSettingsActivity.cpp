@@ -1,4 +1,5 @@
 #include "TextSettingsActivity.h"
+#include "X3SettingsLayout.h"
 
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
@@ -21,12 +22,14 @@
 #include "shells/ugly/UglyQuip.h"
 #include "MappedInputManager.h"
 #include "MenuFavorites.h"
+#include "MenuCustomization.h"
 #include "ReaderFontChon.h"
 #include "ReaderFontSizes.h"
 #include "ReaderInkWeight.h"
 #include "SdCardFontSystem.h"
 #include "TextSettingsPreview.h"
 #include "components/TenorMenuChrome.h"
+#include "components/icons/tenorTextTabIcons.h"
 #include "components/SettledListRender.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -35,8 +38,8 @@
 namespace fui = freeink::ui;
 
 namespace {
-// Tab labels for Font | Size | Layout | Style.
-constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_LAYOUT, StrId::STR_STYLE};
+constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_LAYOUT, StrId::STR_STYLE,
+                                 StrId::STR_READER_TAB_FAVORITES};
 
 // Same order as TextSettingsActivity::LayoutRow, one label per row.
 constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING,     StrId::STR_LETTER_SPACING,
@@ -75,7 +78,36 @@ TextSettingsActivity::TextSettingsActivity(GfxRenderer& renderer, MappedInputMan
                                            const SdCardFontRegistry* registry, Tab initialTab)
     : UiTabListActivity("TextSettings", renderer, mappedInput), registry_(registry), tab_(initialTab) {}
 
-const char* TextSettingsActivity::tabLabel(const int index) const { return I18N.get(TAB_NAME_IDS[index]); }
+int TextSettingsActivity::displayIndex(const Tab tab) const {
+  return static_cast<int>(tab);
+}
+
+TextSettingsActivity::Tab TextSettingsActivity::tabForIndex(const int index) const {
+  return static_cast<Tab>(index);
+}
+
+const char* TextSettingsActivity::tabLabel(const int index) const {
+  return I18N.get(TAB_NAME_IDS[static_cast<int>(tabForIndex(index))]);
+}
+
+freeink::ui::BitmapRef TextSettingsActivity::tabIcon(const int index, const bool bold) const {
+  if (index < 0 || index >= tabCount()) return {};
+  switch (tabForIndex(index)) {
+    case Tab::Family:
+      return fui::bitmapFromIcon(bold ? icon_tenor_text_font_bold_40 : icon_tenor_text_font_40);
+    case Tab::Size:
+      return fui::bitmapFromIcon(bold ? icon_tenor_text_co_chu_bold_40 : icon_tenor_text_co_chu_40);
+    case Tab::Layout:
+      return fui::bitmapFromIcon(bold ? icon_tenor_text_bo_cuc_bold_40 : icon_tenor_text_bo_cuc_40);
+    case Tab::Style:
+      return fui::bitmapFromIcon(bold ? icon_tenor_text_kieu_bold_40 : icon_tenor_text_kieu_40);
+    case Tab::Favorites:
+      return fui::bitmapFromIcon(bold ? icon_tenor_home_favorites_bold_40 : icon_tenor_home_favorites_40);
+    case Tab::Count:
+      return {};
+  }
+  return {};
+}
 
 void TextSettingsActivity::onEnter() {
   RenderLock lock(*this);
@@ -98,8 +130,8 @@ void TextSettingsActivity::onEnter() {
 
   currentFamilyIndex_ = fontdoc::hoDangDung(registry_);
   for (auto& n : tabNavs) n.selected = 1;  // default to the first list row
-  tabNavs[static_cast<int>(Tab::Family)].selected = currentFamilyIndex_ + 1;
-  tabNavs[static_cast<int>(Tab::Size)].selected = currentSizeIndex_ + 1;
+  tabNavs[displayIndex(Tab::Family)].selected = currentFamilyIndex_ + 1;
+  tabNavs[displayIndex(Tab::Size)].selected = currentSizeIndex_ + 1;
 
   if (shell::isUgly()) {
     ugly::ensureFonts(renderer);
@@ -116,6 +148,14 @@ void TextSettingsActivity::onEnter() {
 // buildScreen(), which just refreshes rowValues_/rowItems_[].value in place.
 void TextSettingsActivity::rebuildRowItems() {
   if (shell::isUgly()) return;
+  if (tab_ == Tab::Favorites) {
+    favoriteCount_ = 0;
+    const auto& pins = menucustom::state();
+    for (int index = 0; index < pins.pinCount; ++index) {
+      const auto* item = menufavorites::find(pins.pins[index].data());
+      if (item && std::strcmp(item->screen, "text") == 0) favoritePins_[favoriteCount_++] = index;
+    }
+  }
   const int count = listCount();
   rowValues_.assign(count, std::string());
   rowItems_.clear();
@@ -123,6 +163,9 @@ void TextSettingsActivity::rebuildRowItems() {
   for (int i = 0; i < count; i++) {
     fui::ListItem item;
     switch (tab_) {
+      case Tab::Favorites:
+        item.label = I18N.get(menufavorites::label(favoriteKey(i)));
+        break;
       case Tab::Family:
         item.label = fonts_[i].name.c_str();
         break;
@@ -144,6 +187,21 @@ void TextSettingsActivity::rebuildRowItems() {
                      (!tenorchrome::kTouchShell && settingstabs::moTrinhChon(count));
     rowItems_.push_back(item);
   }
+}
+
+void TextSettingsActivity::refreshFavoriteRows() {
+  if (tab_ != Tab::Favorites) return;
+  int count = 0;
+  bool changed = false;
+  const auto& pins = menucustom::state();
+  for (int index = 0; index < pins.pinCount; ++index) {
+    const auto* item = menufavorites::find(pins.pins[index].data());
+    if (!item || std::strcmp(item->screen, "text") != 0) continue;
+    changed = changed || count >= favoriteCount_ || favoritePins_[count] != index ||
+              rowItems_[count].label != I18N.get(item->label);
+    ++count;
+  }
+  if (changed || count != favoriteCount_) rebuildRowItems();
 }
 
 // The selectable sizes belong to the active family, so this runs on entry and
@@ -179,9 +237,9 @@ void TextSettingsActivity::onTabAction(const int index) {
     return;
   }
   if (optionPopup_.isActive()) return;
-  if (tab_ != static_cast<Tab>(index)) {
+  if (tab_ != tabForIndex(index)) {
     RenderLock lock(*this);
-    tab_ = static_cast<Tab>(index);
+    tab_ = tabForIndex(index);
     rebuildRowItems();
     auto& n = activeNav();
     if (!mappedInput.hasTouch() && listCount() > 0 && n.selected <= 0) n.selected = 1;
@@ -558,10 +616,17 @@ bool TextSettingsActivity::handleButtons() {
 void TextSettingsActivity::buildScreen(UiScreen& screen) {
   // Content sits below the preview pane (render() draws header + preview
   // directly) and above the caption band + button hints.
-  const int tabTop = tenorchrome::enabled() ? tenorchrome::tabTop() : afterHeader + previewHeight;
-  const int captionHeight = renderer.getTextHeight(UI_10_FONT_ID) + metrics_.verticalSpacing;
-  screen.setContentMarginFromScreen(
-      fui::Insets{static_cast<int16_t>(tabTop), 0, static_cast<int16_t>(bottomReserved + captionHeight), 0});
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const char* tip = x3TipText();
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tip ? tenorchrome::tipHeight(renderer, tip, 6) : 0);
+    screen.setContentMarginFromScreen(
+        fui::Insets{static_cast<int16_t>(layout.bodyRect.y), 0, static_cast<int16_t>(bottomReserved), 0});
+  } else {
+    const int tabTop = tenorchrome::enabled() ? tenorchrome::tabTop() : afterHeader + previewHeight;
+    const int captionHeight = renderer.getTextHeight(UI_10_FONT_ID) + metrics_.verticalSpacing;
+    screen.setContentMarginFromScreen(
+        fui::Insets{static_cast<int16_t>(tabTop), 0, static_cast<int16_t>(bottomReserved + captionHeight), 0});
+  }
 
   buildTabBar(screen);
   if (tenorchrome::enabled()) screen.takeTop(static_cast<int16_t>(previewHeight));
@@ -573,6 +638,9 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
   const int count = listCount();
   for (int i = 0; i < count; i++) {
     switch (tab_) {
+      case Tab::Favorites:
+        rowValues_[i] = menufavorites::value(favoriteKey(i), registry_);
+        break;
       case Tab::Family:
         rowValues_[i] = (i == currentFamilyIndex_ && !tenorchrome::kTouchShell) ? tr(STR_SELECTED) : "";
         break;
@@ -639,6 +707,7 @@ void TextSettingsActivity::render(RenderLock&&) {
   }
   if (optionPopup_.processRender(renderer, mappedInput)) return;  // picker draws over everything
 
+  refreshFavoriteRows();
   updatePreviewGeometry();
 
   const char* familyName = (currentFamilyIndex_ >= 0 && currentFamilyIndex_ < static_cast<int>(fonts_.size()))
@@ -654,7 +723,7 @@ void TextSettingsActivity::render(RenderLock&&) {
 #endif
   renderSettledList(activeNav(), [&] {
     renderer.clearScreen();
-    drawNavigationHeader(tr(STR_TEXT_SETTINGS));
+    if (!tenorchrome::x3ScreenLayoutEnabled()) drawNavigationHeader(tr(STR_TEXT_SETTINGS));
 #ifdef TENOR_PRESS_PROBE
     const unsigned long previewStarted = millis();
     ++passes;
@@ -667,10 +736,23 @@ void TextSettingsActivity::render(RenderLock&&) {
     renderUi();
   });
 
-  if (focusedRowHasNoPreview()) {
+  if (!tenorchrome::x3ScreenLayoutEnabled() && focusedRowHasNoPreview()) {
     const int captionHeight = renderer.getTextHeight(UI_10_FONT_ID) + metrics_.verticalSpacing;
     const int capY = afterHeader + usableHeight - captionHeight + metrics_.verticalSpacing;
     renderer.drawText(UI_10_FONT_ID, metrics_.previewPadding, capY, tr(STR_NOT_IN_PREVIEW));
+  }
+
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const char* tip = x3TipText();
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tip ? tenorchrome::tipHeight(renderer, tip, 6) : 0);
+    tenorchrome::drawTipInRect(renderer, tip, layout.tipRect, 6);
+    if (!screenInfo_.empty()) {
+      auto info = layout.bodyRect;
+      const int height = tenorchrome::tipHeight(renderer, screenInfo_.c_str(), 8);
+      info.y = info.bottom() - height;
+      info.height = height;
+      tenorchrome::drawInfoInRect(renderer, screenInfo_.c_str(), info, 8);
+    }
   }
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabelText(), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
@@ -678,7 +760,7 @@ void TextSettingsActivity::render(RenderLock&&) {
 #ifdef TENOR_PRESS_PROBE
   const unsigned long painted = millis();
 #endif
-  if (saveFailed_.load()) GUI.drawPopup(renderer, tr(STR_HABIT_SAVE_FAILED));
+  if (!tenorchrome::x3ScreenLayoutEnabled() && saveFailed_.load()) GUI.drawPopup(renderer, tr(STR_HABIT_SAVE_FAILED));
   renderer.displayBuffer();
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("TXT", "Frame paint=%lu preview=%lu passes=%u display=%lu", painted - started, previewMs, passes,
@@ -687,6 +769,15 @@ void TextSettingsActivity::render(RenderLock&&) {
 }
 
 void TextSettingsActivity::updatePreviewGeometry() {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const char* tip = x3TipText();
+    const auto layout = tenorchrome::x3ScreenLayout(renderer,
+        tip ? tenorchrome::tipHeight(renderer, tip, 6) : 0);
+    afterHeader = layout.bodyRect.y;
+    bottomReserved = renderer.getScreenHeight() - layout.bodyRect.bottom();
+    screenInfo_ = x3InfoText();
+    if (!screenInfo_.empty()) bottomReserved += tenorchrome::tipHeight(renderer, screenInfo_.c_str(), 8) + 8;
+  }
   usableHeight = std::max(0, renderer.getScreenHeight() - afterHeader - bottomReserved);
   previewHeight = usableHeight * metrics_.previewHeightPercent / 100;
 
@@ -725,13 +816,19 @@ bool TextSettingsActivity::applyFamily(const int listIndex) {
   currentFamilyIndex_ = listIndex;
   if (shell::isUgly()) form_.invalidate();
   rebuildSizeList();
-  tabNavs[static_cast<int>(Tab::Size)].selected = currentSizeIndex_ + 1;
+  tabNavs[displayIndex(Tab::Size)].selected = currentSizeIndex_ + 1;
   if (shell::isUgly()) bindForm();
   return true;
 }
 
 void TextSettingsActivity::activateRow(const int row) {
   if (row < 0 || row >= listCount()) return;
+  if (tab_ == Tab::Favorites) {
+    const std::string key = favoriteKey(row);
+    const int focused = focusFavorite(key);
+    if (focused >= 0 && (tab_ == Tab::Layout || tab_ == Tab::Style)) activateRow(focused);
+    return;
+  }
   commitTabNavigation();
   if (tab_ == Tab::Family || tab_ == Tab::Size) applyChosenValue(tab_, 0, row);
   else if (tab_ == Tab::Layout) confirmLayoutRow(row);
@@ -833,7 +930,7 @@ bool TextSettingsActivity::focusedRowHasNoPreview() const {
 
 void TextSettingsActivity::switchTab(const int direction) {
   RenderLock lock(*this);
-  tab_ = static_cast<Tab>(adjacentTab(direction));
+  tab_ = tabForIndex(adjacentTab(direction));
   rebuildRowItems();
   auto& n = activeNav();
   if (!mappedInput.hasTouch() && listCount() > 0 && n.selected <= 0) n.selected = 1;
@@ -844,6 +941,8 @@ void TextSettingsActivity::switchTab(const int direction) {
 int TextSettingsActivity::listCount() const {
   if (shell::isUgly()) return 14;
   switch (tab_) {
+    case Tab::Favorites:
+      return favoriteCount_;
     case Tab::Family:
       return static_cast<int>(fonts_.size());
     case Tab::Size:
@@ -864,7 +963,8 @@ std::string TextSettingsActivity::favoriteKey(int row) const {
     return menufavorites::keyFor("text", static_cast<int>(formTab(row)), formLocalRow(row));
   }
   if (row < 0 || row >= listCount()) return {};
-  return menufavorites::keyFor("text", activeTab(), tab_ == Tab::Family || tab_ == Tab::Size ? 0 : row);
+  if (tab_ == Tab::Favorites) return menucustom::state().pins[favoritePins_[row]].data();
+  return menufavorites::keyFor("text", static_cast<int>(tab_), tab_ == Tab::Family || tab_ == Tab::Size ? 0 : row);
 }
 int TextSettingsActivity::focusFavorite(const std::string& key) {
   const auto* route = menufavorites::find(key);
@@ -875,7 +975,7 @@ int TextSettingsActivity::focusFavorite(const std::string& key) {
     focusForm(question);
     return question;
   }
-  onTabAction(route->tab);
+  onTabAction(displayIndex(static_cast<Tab>(route->tab)));
   if (tab_ == Tab::Family || tab_ == Tab::Size) {
     RenderLock lock(*this);
     activeNav().selected = (tab_ == Tab::Family ? currentFamilyIndex_ : currentSizeIndex_) + 1;
@@ -890,4 +990,27 @@ int TextSettingsActivity::focusFavorite(const std::string& key) {
       return row;
     }
   return -1;
+}
+
+const char* TextSettingsActivity::favoriteHintText() {
+  return tenorchrome::x3ScreenLayoutEnabled() ? nullptr : UiListActivity::favoriteHintText();
+}
+
+const char* TextSettingsActivity::x3TipText() {
+  if (tab_ == Tab::Favorites && favoriteCount_ == 0) return tr(STR_READER_FAVORITES_EMPTY);
+  const char* hint = UiListActivity::favoriteHintText();
+  return hint == tr(STR_MENU_SAVE_FAILED) ? nullptr : hint;
+}
+
+std::string TextSettingsActivity::x3InfoText() {
+  std::string info;
+  if (tab_ == Tab::Favorites && favoriteCount_ == 0) info = tr(STR_FAVORITES_EMPTY);
+  const auto append = [&](const char* text) {
+    if (!info.empty()) info += "\n";
+    info += text;
+  };
+  if (UiListActivity::favoriteHintText() == tr(STR_MENU_SAVE_FAILED)) append(tr(STR_MENU_SAVE_FAILED));
+  if (saveFailed_.load()) append(tr(STR_HABIT_SAVE_FAILED));
+  if (focusedRowHasNoPreview()) append(tr(STR_NOT_IN_PREVIEW));
+  return info;
 }

@@ -1,4 +1,5 @@
 #include "ClearCacheActivity.h"
+#include "X3SettingsLayout.h"
 
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -50,6 +51,10 @@ void ClearCacheActivity::onEnter() {
 void ClearCacheActivity::onExit() { Activity::onExit(); }
 
 void ClearCacheActivity::render(RenderLock&&) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    renderX3();
+    return;
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
@@ -65,7 +70,8 @@ void ClearCacheActivity::render(RenderLock&&) {
                              tr(STR_CLEAR_CACHE_WARNING_3) + " " + tr(STR_CLEAR_CACHE_WARNING_4);
     const char* answers[2] = {tr(STR_CANCEL), tr(STR_CLEAR_BUTTON)};
     ugly::Box drawn[2];
-    ugly::askBox(renderer, mappedInput, tr(STR_CLEAR_READING_CACHE), note.c_str(), answers, confirmPopup.selected(), drawn);
+    ugly::askBox(renderer, mappedInput, tr(STR_CLEAR_READING_CACHE), note.c_str(), answers, confirmPopup.selected(), drawn,
+                 confirmPopup.selectionSeed());
     renderer.displayBuffer();
 #ifdef UGLY_FRAME_LOG
     LOG_INF("UGLY", "part=ask sel=%d", confirmPopup.selected());
@@ -134,6 +140,51 @@ void ClearCacheActivity::render(RenderLock&&) {
   }
 }
 
+std::string ClearCacheActivity::x3InfoText() const {
+  if (state == WARNING)
+    return std::string(tr(STR_CLEAR_CACHE_WARNING_1)) + "\n" + tr(STR_CLEAR_CACHE_WARNING_2) + "\n" +
+           tr(STR_CLEAR_CACHE_WARNING_3) + "\n" + tr(STR_CLEAR_CACHE_WARNING_4);
+  if (state == CLEARING) return tr(STR_CLEARING_CACHE);
+  if (state == FAILED) return std::string(tr(STR_CLEAR_CACHE_FAILED)) + "\n" + tr(STR_CHECK_SERIAL_OUTPUT);
+  std::string result = std::string(tr(STR_CACHE_CLEARED)) + "\n" + std::to_string(clearedCount) + " " + tr(STR_ITEMS_REMOVED);
+  if (failedCount > 0) result += ", " + std::to_string(failedCount) + " " + tr(STR_FAILED_LOWER);
+  return result;
+}
+
+void ClearCacheActivity::renderX3() {
+  renderer.clearScreen();
+  const auto layout = tenorchrome::x3ScreenLayout(renderer);
+  auto info = layout.bodyRect;
+  const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  info.height -= state == WARNING ? 3 * lineHeight + 8 : lineHeight + 8;
+  const std::string text = x3InfoText();
+  infoPages_ = x3settings::infoPageCount(renderer, text.c_str(), info);
+  infoPage_ = std::clamp(infoPage_, 0, infoPages_ - 1);
+  x3settings::drawInfoPage(renderer, text.c_str(), info, infoPage_);
+  auto row = layout.bodyRect;
+  row.y = info.bottom() + 8;
+  row.height = lineHeight;
+  if (state == WARNING) {
+    const std::string cancel = std::string(confirmPopup.selected() == 0 ? "> " : "  ") + tr(STR_CANCEL);
+    const std::string clear = std::string(confirmPopup.selected() == 1 ? "> " : "  ") + tr(STR_CLEAR_BUTTON);
+    tenorchrome::drawInfoInRect(renderer, cancel.c_str(), row, 1);
+    row.y += lineHeight;
+    tenorchrome::drawInfoInRect(renderer, clear.c_str(), row, 1);
+    row.y += lineHeight;
+  }
+  if (infoPages_ > 1) {
+    const std::string position = std::to_string(infoPage_ + 1) + "/" + std::to_string(infoPages_);
+    tenorchrome::drawInfoInRect(renderer, position.c_str(), row, 1);
+  }
+  x3settings::drawPath(renderer, tr(STR_CLEAR_READING_CACHE));
+  const auto labels = mappedInput.mapLabels(state == WARNING ? tr(STR_CANCEL) : state == CLEARING ? "" : tr(STR_BACK),
+                                             state == WARNING ? tr(STR_SELECT) : "",
+                                             state == WARNING || infoPages_ > 1 ? tr(STR_DIR_UP) : "",
+                                             state == WARNING || infoPages_ > 1 ? tr(STR_DIR_DOWN) : "");
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  renderer.displayBuffer();
+}
+
 void ClearCacheActivity::beginClear() {
   LOG_DBG("CLEAR_CACHE", "User confirmed, starting cache clear");
   {
@@ -192,6 +243,18 @@ void ClearCacheActivity::clearCache() {
 }
 
 void ClearCacheActivity::loop() {
+  if (tenorchrome::x3ScreenLayoutEnabled() && infoPages_ > 1) {
+    const bool previous = mappedInput.wasPressed(state == WARNING ? MappedInputManager::Button::Left
+                                                                  : MappedInputManager::Button::Up);
+    const bool next = mappedInput.wasPressed(state == WARNING ? MappedInputManager::Button::Right
+                                                              : MappedInputManager::Button::Down);
+    if (previous || next) {
+      RenderLock lock(*this);
+      infoPage_ = std::clamp(infoPage_ + (next ? 1 : -1), 0, infoPages_ - 1);
+      requestUpdate();
+      return;
+    }
+  }
   if (state == WARNING) {
     if (confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
     // Touch: the question closed without its action ("<" on the bar, a tap outside): back.

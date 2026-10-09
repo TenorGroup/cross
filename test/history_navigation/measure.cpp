@@ -1,6 +1,7 @@
 #include "ReadingStatsStore.h"
 #include <chrono>
 #include <fstream>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <vector>
@@ -10,7 +11,7 @@ std::string fileFor(const std::string& path) {
   char name[80]; snprintf(name,sizeof(name),"/.crosspoint/reading-stats/tenor_%016llx.json",(unsigned long long)h); return name;
 }
 void fixture(unsigned n) {
-  fixtureRoot="/tmp/tenor-history-perf-"+std::to_string(getpid())+"-"+std::to_string(n);
+  fixtureRoot=(std::filesystem::temp_directory_path()/std::filesystem::path("tenor-history-perf-"+std::to_string(getpid())+"-"+std::to_string(n))).string();
   std::filesystem::remove_all(fixtureRoot);
   std::filesystem::create_directories(fixtureRoot+"/.crosspoint/reading-stats");
   for(unsigned i=0;i<n;++i) {

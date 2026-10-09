@@ -1,4 +1,5 @@
 #include "StatusBarSettingsActivity.h"
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
@@ -400,11 +401,18 @@ std::string StatusBarSettingsActivity::rowValueText(const int index) {
 void StatusBarSettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const bool choices = choiceRow_ >= 0;
-  screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-                                                static_cast<int16_t>(choices && tenorchrome::kTouchShell
-                                                  ? renderer.getScreenHeight() - choiceBottom_ + rowFrameLines(rowFrameGap).bottom
-                                                  : metrics.buttonHintsHeight), 0});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  if (x3settings::beginScreen(screen, renderer,
+                             UiListActivity::favoriteHintText() == tr(STR_MENU_SAVE_FAILED) ? nullptr : favoriteHintText(),
+                             saveFailed_.load() ? tr(STR_HABIT_SAVE_FAILED) : nullptr,
+                             favoriteSaveFailed ? tr(STR_MENU_SAVE_FAILED) : nullptr)) {
+    tabBandDrawn = true;
+  } else {
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
+                                                  static_cast<int16_t>(choices && tenorchrome::kTouchShell
+                                                    ? renderer.getScreenHeight() - choiceBottom_ + rowFrameLines(rowFrameGap).bottom
+                                                    : metrics.buttonHintsHeight), 0});
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
 
   // rowItems_'s labels/actionValue were set once in onEnter(); only the live
   // value text needs refreshing here, by assigning into the existing
@@ -486,14 +494,24 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
   // indicator; the list renders through the app.
   renderSettledList(activeNav(), [&] {
     renderer.clearScreen();
-    drawNavigationHeader(navigationLabel().c_str());
+    if (tenorchrome::x3ScreenLayoutEnabled())
+      x3settings::drawPath(renderer, navigationLabel().c_str(), icon_tenor_settings_thanh_trang_thai_40);
+    else drawNavigationHeader(navigationLabel().c_str());
     renderUi();
     drawChoiceFrame();
   });
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  if (saveFailed_.load()) GUI.drawPopup(renderer, tr(STR_HABIT_SAVE_FAILED));
+  if (saveFailed_.load()) {
+    if (tenorchrome::x3ScreenLayoutEnabled())
+      tenorchrome::drawInfoInRect(renderer, tr(STR_HABIT_SAVE_FAILED),
+                                  x3settings::infoRect(renderer, tr(STR_HABIT_SAVE_FAILED),
+                                                       UiListActivity::favoriteHintText() == tr(STR_MENU_SAVE_FAILED)
+                                                           ? nullptr : favoriteHintText(),
+                                                       favoriteSaveFailed ? tr(STR_MENU_SAVE_FAILED) : nullptr));
+    else GUI.drawPopup(renderer, tr(STR_HABIT_SAVE_FAILED));
+  }
   renderer.displayBuffer();
 }
 

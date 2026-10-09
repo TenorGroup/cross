@@ -1,4 +1,5 @@
 #include "QuotesActivity.h"
+#include "X3FileReaderChrome.h"
 
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
@@ -153,6 +154,13 @@ quotelist::Metrics QuotesActivity::metrics() const {
   m.bandWidth = static_cast<int16_t>(renderer.getScreenWidth());
   m.bandTop = static_cast<int16_t>(quotesHeaderBottom());
   m.bandBottom = static_cast<int16_t>(tenorchrome::tipY(renderer) - FOOTER_GAP);
+  if (shell::uglyParts() && tenorchrome::x3ScreenLayoutEnabled())
+    m.bandBottom = static_cast<int16_t>(tenorchrome::x3ScreenLayout(renderer).bodyRect.bottom() - 52 - 8);
+  else if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto body = screenLayout().bodyRect;
+    m.bandTop = static_cast<int16_t>(body.y);
+    m.bandBottom = static_cast<int16_t>(body.bottom() - 3 * renderer.getLineHeight(SMALL_FONT_ID) - 8);
+  }
   m.bodyLineHeight = static_cast<int16_t>(renderer.getLineHeight(BODY_FONT_ID));
   m.numberLineHeight = static_cast<int16_t>(renderer.getLineHeight(NUMBER_FONT_ID));
   // The lines under a quote (the top level's book title and the place line) share one face,
@@ -505,7 +513,8 @@ void QuotesActivity::drawTopRow(const char* label) const {
   const bool marked = selected < 0 && !tenorchrome::kTouchShell;
   if (shell::uglyParts()) {
     const int w = hand(renderer, TOP_ROW_FONT_ID, row.x, row.y, label);
-    if (marked) ugly::circle(renderer, ugly::Circle::Row, {row.x, row.y, row.x + w, row.y + renderer.getLineHeight(TOP_ROW_FONT_ID)}, 10, 6);
+    if (marked) ugly::circle(renderer, ugly::Circle::Row, {row.x, row.y, row.x + w, row.y + renderer.getLineHeight(TOP_ROW_FONT_ID)}, 10, 6,
+                             mark_.get((static_cast<uint64_t>(order) << 32) | static_cast<uint32_t>(selected)), 3);
     ugly::line(renderer, row.x, row.dividerY, row.x + row.width, row.dividerY + 1, 880);
     return;
   }
@@ -542,7 +551,8 @@ void QuotesActivity::drawBlocks() const {
     if (byHand) {
       const int nw = ugly::width(renderer, ugly::Size::S22, number), nx = block.numberBoxX + (block.numberBoxWidth - nw) / 2;
       hand(renderer, NUMBER_FONT_ID, nx, boxY, number);
-      if (marked) ugly::circle(renderer, ugly::Circle::Object, {nx, boxY, nx + nw, boxY + block.numberBoxHeight}, 6, 2);
+      if (marked) ugly::circle(renderer, ugly::Circle::Object, {nx, boxY, nx + nw, boxY + block.numberBoxHeight}, 6, 2,
+                               mark_.get((static_cast<uint64_t>(order) << 32) | static_cast<uint32_t>(selected)), 3);
     } else {
       if (marked) {
         drawMark(renderer, block.numberBoxX, boxY, block.numberBoxWidth, block.numberBoxHeight,
@@ -592,7 +602,8 @@ void QuotesActivity::drawBookRows() const {
       const int dw = hand(renderer, DATE_FONT_ID, row.dateX, row.dateY, entry.latest.c_str());
       if (marked)  // one ring round the name and its date, as the pill of tenor/cross holds both
         ugly::circle(renderer, ugly::Circle::Row, {row.titleX, row.titleY, row.titleX + std::max(tw, dw),
-                                                   row.dateY + renderer.getLineHeight(DATE_FONT_ID)}, 12, 6);
+                                                   row.dateY + renderer.getLineHeight(DATE_FONT_ID)}, 12, 6,
+                     mark_.get((static_cast<uint64_t>(order) << 32) | static_cast<uint32_t>(selected)), 3);
       y = static_cast<int16_t>(y + row.height);
       continue;
     }
@@ -632,8 +643,12 @@ std::string QuotesActivity::footer() const {
 
 void QuotesActivity::render(RenderLock&&) {
   renderer.clearScreen();
+  const bool x3 = tenorchrome::x3ScreenLayoutEnabled() && !shell::uglyParts();
   // Inside one book the header names it, bold, after the screen's own name (mockup B2).
-  if (bookLevel() && !bookTitle.empty()) {
+  if (x3) {
+    x3readerchrome::drawPath(renderer, screenLayout().barRect, icon_tenor_reader_tools_40,
+                             bookLevel() && !bookTitle.empty() ? bookTitle.c_str() : tr(STR_QUOTES));
+  } else if (bookLevel() && !bookTitle.empty()) {
     // The header drops "Trích dẫn/" when the title alone fills the row, so a long title is
     // cut here first, to the room left after the screen's own name.
     const std::string prefix = std::string(tr(STR_QUOTES)) + "/";
@@ -653,7 +668,9 @@ void QuotesActivity::render(RenderLock&&) {
   if (itemCount() <= 0) {
     const auto m = metrics();
     const char* label = tr(STR_QUOTES_EMPTY);
-    if (shell::uglyParts()) {
+    if (x3) {
+      drawX3Content();
+    } else if (shell::uglyParts()) {
       ugly::text(renderer, ugly::Size::S30, (m.bandWidth - ugly::width(renderer, ugly::Size::S30, label)) / 2,
                  m.bandTop + (m.bandBottom - m.bandTop) / 3 + ugly::ascent(ugly::Size::S30), label);
     } else {
@@ -677,7 +694,16 @@ void QuotesActivity::render(RenderLock&&) {
         drawBookRows();
       else
         drawBlocks();
-      tenorchrome::drawTip(renderer, footerText.c_str());
+      if (shell::uglyParts() && tenorchrome::x3ScreenLayoutEnabled()) {
+        const auto body = tenorchrome::x3ScreenLayout(renderer).bodyRect;
+        tenorchrome::drawInfoInRect(renderer, footerText.c_str(), {24, body.bottom() - 52, body.width - 48, 52}, 2);
+        if (pageCount() > 1)
+          ugly::pageHints(renderer, tr(STR_QUOTES_PREVIOUS), tr(STR_QUOTES_NEXT), renderer.getScreenHeight() - 52);
+      } else if (x3) {
+        drawX3Content();
+      } else {
+        tenorchrome::drawTip(renderer, footerText.c_str());
+      }
     }
   }
 
@@ -690,4 +716,17 @@ void QuotesActivity::render(RenderLock&&) {
   if (shell::uglyParts()) LOG_INF("UGLY", "Quotes frame books=%d items=%d sel=%d", showsBooks(), itemCount(), selected);
 #endif
   renderer.displayBuffer();
+}
+
+tenorchrome::X3ScreenLayout QuotesActivity::screenLayout() const { return tenorchrome::x3ScreenLayout(renderer); }
+
+void QuotesActivity::drawX3Content() const {
+  const auto body = screenLayout().bodyRect;
+  if (itemCount() <= 0) {
+    tenorchrome::drawInfoInRect(renderer, tr(STR_QUOTES_EMPTY), body);
+    return;
+  }
+  const int top = metrics().bandBottom + 8;
+  const auto text = footer();
+  tenorchrome::drawInfoInRect(renderer, text.c_str(), {body.x, top, body.width, body.bottom() - top});
 }

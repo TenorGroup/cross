@@ -1,15 +1,18 @@
 #pragma once
+#include "activities/X3ActivityLayout.h"
 
 #include <functional>
 
 #include "activities/Activity.h"
 
 /**
- * Activity for testing KOReader credentials, or — in sign-up mode — creating a
+ * Activity for testing KOReader credentials, or creating a
  * new account on the sync server with the entered username/password.
  * Connects to WiFi, then authenticates or registers.
  */
 class KOReaderAuthActivity final : public Activity {
+  x3activity::InfoPages x3Info;
+
  public:
   enum class Mode { AUTHENTICATE, SIGN_UP };
 

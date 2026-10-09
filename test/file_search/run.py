@@ -31,8 +31,8 @@ def main() -> None:
         raise AssertionError('File search rows need one device-specific decision')
     if "if (!searchSourceFiles.empty()) files = searchSourceFiles;" not in source:
         raise AssertionError("empty search must preserve the current directory")
-    if "if (files.empty() && searchQuery.empty())" not in source:
-        raise AssertionError("an active no-match search must keep the Search row")
+    if "buildFileSearch(screen);" not in source:
+        raise AssertionError("an active no-match search must keep the Search field")
     helpers = "\n\n".join(
         extract_function(source, signature)
         for signature in (
@@ -82,9 +82,9 @@ int main() {{
     for touch in (False, True):
         policy = args.output / f'search_rows_{int(touch)}.cpp'
         policy.write_text(f'namespace tenorchrome {{ constexpr bool kTouchShell = {str(touch).lower()}; }}\n'
-                          + search_rows + f'\nstatic_assert(kSearchRows == {int(touch)});\n')
+                          + search_rows + '\nstatic_assert(kSearchRows == 0);\n')
         subprocess.run(['clang++', '-std=c++20', '-fsyntax-only', str(policy)], check=True)
-    print('search rows: X3/X4=0, X4 Pro=1 PASS')
+    print('search rows: X3/X4=0, X4 Pro=0; separate Search field PASS')
 
 
 if __name__ == "__main__":

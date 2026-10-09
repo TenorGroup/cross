@@ -38,6 +38,9 @@ class EpubReaderBookmarksActivity final : public UiListActivity {
  private:
   int listCount() const override { return static_cast<int>(bookmarks.size()); }
   void buildScreen(UiScreen& screen) override;
+  bool ownsX3Chrome() const override { return true; }
+  tenorchrome::X3ScreenLayout screenLayout() const;
+  void drawX3Content() const;
   void activateIndex(int index) override;
   void onRowLongPress(int index) override;
   // Popup handling runs before everything else each pass.

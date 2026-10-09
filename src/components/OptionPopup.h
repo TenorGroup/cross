@@ -134,6 +134,7 @@ class OptionPopup {
     selectedIndex = (selectedIndex + (direction > 0 ? 1 : -1) + count) % count;
   }
   int selected() const { return selectedIndex; }
+  uint32_t selectionSeed() const { return mark_.get(selectedIndex); }
 
   bool handleInput(MappedInputManager& input, const std::function<void()>& requestUpdate) {
     if (!active) return false;
@@ -405,6 +406,7 @@ class OptionPopup {
   }
 
  private:
+  mutable ugly::MarkState mark_;
   // A bounded page keeps the stack and published hit table small. All source
   // options remain reachable through physical selection and touch page rows.
   static constexpr int MAX_OPTIONS = 16;
@@ -465,7 +467,7 @@ class OptionPopup {
         frame.hit(fui::ensureMinTouchRect(row, frame.device().minTouchSize, frame.screen()),
                   option.action, option.value, props.inputMask, option.state);
       const auto ink = uglyText(renderer, row, option.label);
-      if (fui::hasState(option.state, fui::StateFocused)) uglychrome::ring(renderer, ink);
+      if (fui::hasState(option.state, fui::StateFocused)) uglychrome::ring(renderer, ink, selectionSeed());
     }
   }
 
@@ -585,6 +587,7 @@ class OptionPopup {
   // An empty list is dismissed by the first handleInput().
   // currentIndex < 0: a question or a list of actions, no value in use to mark (the buttons start on the first).
   void activate(int currentIndex, std::function<void(int)> onSelect) {
+    mark_.reset();
     marked = currentIndex >= 0;
     selectedIndex = std::max(0, std::min(currentIndex, static_cast<int>(ownedStrings.size()) - 1));
     // Touch: the row whose tap opens this list, when a tap opens it.

@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <HalClock.h>
 #include <HalMemory.h>
+#include <I18n.h>
 #include <Logging.h>
 #include <NetworkTrust.h>
 #include <SecureHttpClient.h>
@@ -286,22 +287,24 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
 const char* KOReaderSyncClient::errorString(Error error) {
   switch (error) {
     case OK:
-      return "Success";
+      return tr(STR_SYNC_SUCCESS);
     case NO_CREDENTIALS:
-      return "No credentials configured";
+      return tr(STR_NO_CREDENTIALS_MSG);
     case NETWORK_ERROR:
-      return "Network error";
+      return tr(STR_SYNC_NETWORK_ERROR);
     case AUTH_FAILED:
-      return "Authentication failed";
+      return tr(STR_AUTH_FAILED);
     case SERVER_ERROR:
-      return "Server error (try again later)";
+      return tr(STR_SYNC_SERVER_ERROR);
     case JSON_ERROR:
-      return "JSON parse error";
+      return tr(STR_SYNC_DATA_ERROR);
     case NOT_FOUND:
-      return "No progress found";
+      return tr(STR_SYNC_NO_PROGRESS);
     case LOW_MEMORY:
-      return "Not enough memory for sync — please retry";
+      return tr(STR_SYNC_LOW_MEMORY);
+    case USER_EXISTS:
+      return tr(STR_USERNAME_TAKEN);
     default:
-      return "Unknown error";
+      return tr(STR_SYNC_UNKNOWN_ERROR);
   }
 }

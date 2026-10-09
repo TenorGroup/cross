@@ -1,4 +1,5 @@
 #include "XtcReaderChapterSelectionActivity.h"
+#include "activities/home/X3FileReaderChrome.h"
 
 #include <GfxRenderer.h>
 #include <I18n.h>
@@ -94,18 +95,26 @@ bool XtcReaderChapterSelectionActivity::handleButtons() {
 
 void XtcReaderChapterSelectionActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
-  // Content: the safe area minus the header band drawChrome paints the title in.
-  screen.setContentMarginFromScreen(fui::Insets{
-      static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
-      static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
-      static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  const bool x3 = tenorchrome::x3ScreenLayoutEnabled();
+  if (x3) {
+    const auto body = screenLayout().bodyRect;
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(body.y), 0,
+                                                  static_cast<int16_t>(renderer.getScreenHeight() - body.bottom()), 0});
+  } else {
+    const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
+    // Content: the safe area minus the header band drawChrome paints the title in.
+    screen.setContentMarginFromScreen(fui::Insets{
+        static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
+        static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
+        static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
 
   if (!xtc) {
     return;
   }
   if (rowItems.empty()) {
+    if (x3) return;
     screen.centeredText(tr(STR_NO_CHAPTERS), screen.theme().bodyText);
     return;
   }
@@ -122,6 +131,10 @@ void XtcReaderChapterSelectionActivity::buildScreen(UiScreen& screen) {
 }
 
 void XtcReaderChapterSelectionActivity::drawChrome() {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    x3readerchrome::drawPath(renderer, screenLayout().barRect, icon_tenor_reader_position_40, tr(STR_SELECT_CHAPTER));
+    return;
+  }
   if (shell::uglyParts()) {  // the shared header, written by hand
     drawNavigationHeader(tr(STR_SELECT_CHAPTER));
     return;
@@ -134,4 +147,17 @@ void XtcReaderChapterSelectionActivity::drawChrome() {
   const int titleX = safe.x + (safe.width - titleWidth) / 2;
   const int titleY = safe.y + metrics.topPadding + (metrics.headerHeight - renderer.getLineHeight(UI_12_FONT_ID)) / 2;
   renderer.drawText(UI_12_FONT_ID, titleX, titleY, tr(STR_SELECT_CHAPTER), true, EpdFontFamily::BOLD);
+}
+
+tenorchrome::X3ScreenLayout XtcReaderChapterSelectionActivity::screenLayout() const {
+  return tenorchrome::x3ScreenLayout(renderer);
+}
+
+void XtcReaderChapterSelectionActivity::drawFooter() {
+  if (tenorchrome::x3ScreenLayoutEnabled()) drawX3Content();
+  UiListActivity::drawFooter();
+}
+
+void XtcReaderChapterSelectionActivity::drawX3Content() const {
+  if (rowItems.empty()) tenorchrome::drawInfoInRect(renderer, tr(STR_NO_CHAPTERS), screenLayout().bodyRect);
 }

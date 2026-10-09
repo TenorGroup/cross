@@ -24,6 +24,7 @@ constexpr int OPTION_STEP = 66;
 }  // namespace
 
 void SwitchConfirm::onEnter() {
+  mark_.reset();
   Screen::onEnter();
   ensureFonts(renderer);
   if (toCross) crossNote = quip(Quip::ShellCross);
@@ -32,7 +33,7 @@ void SwitchConfirm::onEnter() {
 }
 
 Box askBox(const GfxRenderer& renderer, const MappedInputManager& input, const char* question, const char* note,
-           const char* const answers[2], const int selected, Box drawn[2]) {
+           const char* const answers[2], const int selected, Box drawn[2], uint32_t seed) {
   renderer.clearScreen();
   const int w = renderer.getScreenWidth(), h = renderer.getScreenHeight();
   const int x = SIDE + PAD, room = w - 2 * x;
@@ -63,7 +64,7 @@ Box askBox(const GfxRenderer& renderer, const MappedInputManager& input, const c
     const int lw = text(renderer, Size::S38, x + 20, base, label.c_str());
     drawn[i] = {x + 20, base - ascent(Size::S38), x + 20 + lw, base + 10};
   }
-  circle(renderer, Circle::Row, drawn[selected], 14, 10);
+  circle(renderer, Circle::Row, drawn[selected], 14, 10, seed, 3);
 #if FREEINK_DEVICE_X4PRO
   // Touch: the clock and battery at the top, "<" (the dynamic bar, in pen) at the foot; no button signs.
   (void)input;
@@ -82,7 +83,7 @@ void SwitchConfirm::render(RenderLock&&) {
   Box box[COUNT] = {};
   [[maybe_unused]] const Box paper =
       askBox(renderer, mappedInput, toCross ? tr(STR_UGLY_SHELL_ASK) : tr(STR_UGLY_SWITCH_ASK),
-             toCross ? crossNote.c_str() : "", labels, selected, box);
+             toCross ? crossNote.c_str() : "", labels, selected, box, mark_.get(selected));
 #if FREEINK_DEVICE_X4PRO
   for (int i = 0; i < COUNT; ++i) drawn[i] = box[i];
 #endif
@@ -119,10 +120,12 @@ bool SwitchConfirm::onKey(const Key key) {
     case Key::Up:
     case Key::UpHold:
       selected = logic::cycle(selected, -1, COUNT);
+      mark_.get(selected);
       return true;
     case Key::Down:
     case Key::DownHold:
       selected = logic::cycle(selected, 1, COUNT);
+      mark_.get(selected);
       return true;
     case Key::Confirm:
       answer(selected == YES);

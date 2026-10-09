@@ -1,4 +1,5 @@
 #pragma once
+#include "activities/settings/X3SettingsLayout.h"
 
 #include "SettingsTabs.h"
 #include "activities/UiListActivity.h"
@@ -24,6 +25,10 @@ class InfoUpdateActivity final : public UiListActivity {
   freeink::ui::ListItem rows[ROWS]{};
 
   int listCount() const override { return ROWS; }
+  void drawChrome() override {
+    if (tenorchrome::x3ScreenLayoutEnabled()) x3settings::drawPath(renderer, headerTitle());
+    else UiListActivity::drawChrome();
+  }
   const char* headerTitle() const override { return tr(STR_INFO_UPDATES); }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;

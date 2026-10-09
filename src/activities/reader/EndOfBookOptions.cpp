@@ -87,6 +87,7 @@ void EndOfBookOptions::onRowEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<EndOfBookOptions*>(user);
   if (event.value < 0 || event.value > static_cast<int16_t>(self->names.size())) return;
   self->selector.store(event.value, std::memory_order_relaxed);
+  self->markSeed_.store(ugly::markSeed(), std::memory_order_relaxed);
   // The tapped row leaves this screen (open book or home); a lingering flash
   // would gray an unrelated element on the next render.
   self->app.clearTapFlash();
@@ -137,10 +138,12 @@ EndOfBookOptions::Action EndOfBookOptions::handleMenuInput(const MappedInputMana
   const int itemCount = static_cast<int>(names.size()) + 1;  // + "Home" entry
   if (input.wasPressed(MappedInputManager::Button::NavPrevious)) {
     selector.store(ButtonNavigator::previousIndex(selectedIndex, itemCount), std::memory_order_relaxed);
+    markSeed_.store(ugly::markSeed(), std::memory_order_relaxed);
     return Action::Redraw;
   }
   if (input.wasPressed(MappedInputManager::Button::NavNext)) {
     selector.store(ButtonNavigator::nextIndex(selectedIndex, itemCount), std::memory_order_relaxed);
+    markSeed_.store(ugly::markSeed(), std::memory_order_relaxed);
     return Action::Redraw;
   }
   return Action::None;
@@ -201,7 +204,8 @@ void EndOfBookOptions::renderUgly(GfxRenderer& renderer, const MappedInputManage
       const bool home = i >= names.size();
       const std::string label = ugly::fit(renderer, ugly::Size::S30, home ? tr(STR_UGLY_DIARY_TITLE) : rowLabels[i], w - 48 - 30);
       const int lw = ugly::text(renderer, ugly::Size::S30, 48, base, label.c_str());
-      if (static_cast<int>(i) == sel) ugly::circle(renderer, ugly::Circle::Row, {48, base - 26, 48 + lw, base + 8}, 12, 9);
+      if (static_cast<int>(i) == sel) ugly::circle(renderer, ugly::Circle::Row, {48, base - 26, 48 + lw, base + 8}, 12, 9,
+                                                 markSeed_.load(std::memory_order_relaxed), 3);
     }
     const auto labels = input.mapLabels(tr(STR_BACK), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

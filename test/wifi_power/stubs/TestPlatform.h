@@ -182,6 +182,7 @@ class Activity {
  protected:
   GfxRenderer& renderer;
   MappedInputManager& mappedInput;
+  std::string navigationPrefix;
 
  public:
   inline static bool didFinish = false;
@@ -436,6 +437,7 @@ constexpr int WIFI_ALL_CHANNEL_SCAN = 0;
 constexpr int WIFI_CONNECT_AP_BY_SIGNAL = 0;
 class IPAddress {
  public:
+  std::string toString() const { return "192.0.2.1"; }
   uint8_t bytes[4] = {192, 168, 1, 2};
   uint8_t operator[](size_t index) const { return bytes[index]; }
 };

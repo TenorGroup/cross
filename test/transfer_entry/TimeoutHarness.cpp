@@ -3,6 +3,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include "../host_stubs/X3LayoutBoundary.h"
 
 #define LOG_DBG(...) ((void)0)
 #define LOG_INF(...) ((void)0)
@@ -38,10 +39,10 @@ void stopDnsServer() {
 }
 
 struct MappedInputManager {
-  enum class Button { Back };
+  enum class Button { Back, Left, Right, Up, Down };
   bool released = false;
   bool home = false;
-  bool wasReleased(Button) const { return released; }
+  bool wasReleased(Button button) const { return button == Button::Back && released; }
   bool wasHomeGesture() const { return home; }
 };
 
@@ -116,6 +117,8 @@ struct FakeActivityManager {
 
 enum class WebServerActivityState { SERVER_RUNNING, SHUTTING_DOWN, AP_STARTING };
 struct CrossPointWebServerActivity {
+  x3activity::InfoPages x3Info;
+  int x3Step = 0;
   WebServerActivityState state = WebServerActivityState::SERVER_RUNNING;
   bool isApMode = true;
   std::unique_ptr<FakeServer> webServer = std::make_unique<FakeServer>();

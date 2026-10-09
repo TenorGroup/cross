@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include "../host_stubs/X3LayoutBoundary.h"
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -75,12 +76,12 @@ struct PhysicalInput {
 };
 #include "production-input.inc"
 struct MappedInputManager {
-  enum class Button { Back };
+  enum class Button { Back, Left, Right, Up, Down };
   PhysicalInput physical;
   uint8_t backKey = 0;
   void update() { physical.update(); }
   uint8_t physicalBack() const { return backKey; }
-  bool wasReleased(Button) const { return (physical.releasedEvents & (1u << backKey)) != 0; }
+  bool wasReleased(Button button) const { return button == Button::Back && (physical.releasedEvents & (1u << backKey)) != 0; }
   bool wasHomeGesture() const { return false; }
 };
 #define LOG_DBG(...) ((void)0)
@@ -202,6 +203,8 @@ struct ReaderActivity {
 struct { void replaceActivity(std::unique_ptr<ReaderActivity>&&) { require(false, "session outside a book reopened one"); } } activityManager;
 enum class WebServerActivityState { SERVER_RUNNING, SHUTTING_DOWN, AP_STARTING };
 struct CrossPointWebServerActivity {
+  x3activity::InfoPages x3Info;
+  int x3Step = 0;
   WebServerActivityState state = WebServerActivityState::SERVER_RUNNING;
   bool isApMode = true;
   std::unique_ptr<FakeServer> webServer = std::make_unique<FakeServer>();

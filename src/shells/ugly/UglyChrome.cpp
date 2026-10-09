@@ -61,8 +61,8 @@ void apart(const GfxRenderer& r, fui::Rect& label, const char* labelText, fui::R
   label.height = half;
 }
 
-void ring(const GfxRenderer& r, const fui::Rect& w) {
-  if (!w.empty()) ugly::circle(r, ugly::Circle::Row, {w.x, w.y, w.right(), w.bottom()}, 12, 8, 2);
+void ring(const GfxRenderer& r, const fui::Rect& w, uint32_t seed) {
+  if (!w.empty()) ugly::circle(r, ugly::Circle::Row, {w.x, w.y, w.right(), w.bottom()}, 12, 8, seed, 2);
 }
 
 int marksWidth(const GfxRenderer& r, const Marks& m) {
@@ -71,7 +71,7 @@ int marksWidth(const GfxRenderer& r, const Marks& m) {
   return w;
 }
 
-void marks(const GfxRenderer& r, const fui::Rect& box, const Marks& m) {
+void marks(const GfxRenderer& r, const fui::Rect& box, const Marks& m, uint32_t seed) {
   const int cy = box.y + box.height / 2;
   int x = box.right() - 14;
   if (m.opensNext) {
@@ -88,12 +88,12 @@ void marks(const GfxRenderer& r, const fui::Rect& box, const Marks& m) {
   }
   if (!m.selected) return;
   if (m.around.empty())
-    ugly::circle(r, ugly::Circle::Row, {box.x + 5, box.y + 5, box.right() - 5, box.bottom() - 5}, 0, 0, 2);
+    ugly::circle(r, ugly::Circle::Row, {box.x + 5, box.y + 5, box.right() - 5, box.bottom() - 5}, 0, 0, seed, 2);
   else
-    ring(r, m.around);
+    ring(r, m.around, seed);
 }
 
-void row(const GfxRenderer& r, const fui::Rect& box, const Row& row) {
+void row(const GfxRenderer& r, const fui::Rect& box, const Row& row, uint32_t seed) {
   if (row.heading && *row.heading) {
     const int base = box.y - 8;
     const auto name = ugly::fit(r, ugly::Size::S22, row.heading, box.width - 32);
@@ -116,7 +116,7 @@ void row(const GfxRenderer& r, const fui::Rect& box, const Row& row) {
   } else {
     m.around = words(r, label, row.label, fui::TextAlign::Left, row.locked);
   }
-  marks(r, box, m);
+  marks(r, box, m, seed);
 }
 
 }  // namespace uglychrome

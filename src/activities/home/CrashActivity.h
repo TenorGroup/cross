@@ -1,7 +1,10 @@
 #pragma once
+#include "activities/X3ActivityLayout.h"
 #include "activities/Activity.h"
 
 class CrashActivity final : public Activity {
+  x3activity::InfoPages x3Info;
+
   std::string panicMessage;
 
  public:

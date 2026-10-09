@@ -1,6 +1,8 @@
 #include "BaseTheme.h"
 #include "ClockStatus.h"
 #include "components/UIScale.h"
+#include "shells/Shell.h"
+#include "shells/ugly/UglyIconInk.h"
 
 #include <FreeInkUIGfxRenderer.h>
 #include <GfxRenderer.h>
@@ -55,6 +57,10 @@ void drawBookmarkStatusIcon(const GfxRenderer& renderer, const int x, const int 
 }  // namespace
 
 void BaseTheme::drawBatteryOutline(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight) {
+  if (shell::isUgly()) {
+    ugly::icon(renderer, ugly::icons::Id::Battery, {x, y, battWidth, rectHeight}, ugly::iconFrameSeed());
+    return;
+  }
   // Top line
   renderer.drawLine(x + 1, y, x + battWidth - 3, y);
   // Bottom line
@@ -69,6 +75,10 @@ void BaseTheme::drawBatteryOutline(const GfxRenderer& renderer, int x, int y, in
 }
 
 void BaseTheme::drawBatteryLightningBolt(const GfxRenderer& renderer, int boltX, int boltY) {
+  if (shell::isUgly()) {
+    ugly::icon(renderer, ugly::icons::Id::Bolt, {boltX, boltY, 8, 8}, ugly::iconFrameSeed(), false);
+    return;
+  }
   // Draw lightning bolt (white/inverted on black fill for visibility)
   renderer.drawLine(boltX + 4, boltY + 0, boltX + 5, boltY + 0, false);
   renderer.drawLine(boltX + 3, boltY + 1, boltX + 4, boltY + 1, false);
@@ -105,7 +115,10 @@ void BaseTheme::drawCoverPlaceholder(const GfxRenderer& renderer, Rect rect) {
   if (rect.width >= ICON_SIZE + 4 && topHeight >= ICON_SIZE + 4) {
     const int insetX = std::min(24, (rect.width - ICON_SIZE) / 2);
     const int insetY = std::min(24, (topHeight - ICON_SIZE) / 2);
-    renderer.drawIcon(CoverIcon, rect.x + insetX, rect.y + insetY, ICON_SIZE);
+    if (shell::isUgly())
+      ugly::icon(renderer, ugly::icons::Id::Book, {rect.x + insetX, rect.y + insetY, ICON_SIZE, ICON_SIZE}, ugly::iconFrameSeed());
+    else
+      renderer.drawIcon(CoverIcon, rect.x + insetX, rect.y + insetY, ICON_SIZE);
   }
 }
 

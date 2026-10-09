@@ -13,6 +13,7 @@
 #include "MenuNavigationMemory.h"
 #include "RenderLock.h"
 #include "util/ScreenshotInfo.h"
+#include "shells/ugly/UglyIcons.h"
 
 class Activity {
   friend class ActivityManager;
@@ -25,6 +26,7 @@ class Activity {
   ActivityResultHandler resultHandler;
   ActivityResult result;
   std::string navigationPrefix;
+  ugly::icons::FrameState uglyIconFrame;
   void drawNavigationHeader(const char* title);
 
  public:
@@ -49,6 +51,7 @@ class Activity {
 
   virtual void render(RenderLock&&) {}
   virtual bool renderIdleUpdate() { return false; }
+  virtual uint64_t uglyIconPageKey() { return 0; }
 
   // If immediate is true, the update will be triggered immediately.
   // Otherwise, it will be deferred until the end of the current loop iteration.

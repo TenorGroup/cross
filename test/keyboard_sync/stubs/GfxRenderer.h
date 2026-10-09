@@ -2,6 +2,7 @@
 #include <cstring>
 #include "components/UIScale.h"
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,9 @@ class GfxRenderer {
   int advancePerByte = 8;
   uint8_t uiTier = 0;
   int screenWidth = 528, screenHeight = 792;
+  std::map<int, EpdFontFamily> fonts;
+  const std::map<int, EpdFontFamily>& getFontMap() const { return fonts; }
+  void insertFont(int font, const EpdFontFamily& family) { fonts[font] = family; }
   struct TextRun { int font, x, y; std::string text; };
   mutable std::vector<TextRun> runs;
   void inspectUtf8(const char* text) const {

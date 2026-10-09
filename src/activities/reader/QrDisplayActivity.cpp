@@ -1,5 +1,7 @@
 #include "QrDisplayActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <GfxRenderer.h>
 #include <I18n.h>
 
@@ -26,6 +28,18 @@ void QrDisplayActivity::loop() {
 }
 
 void QrDisplayActivity::render(RenderLock&&) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer);
+    renderer.clearScreen();
+    const Rect bounds{24, layout.bodyRect.y + 24, layout.bodyRect.width - 48, layout.bodyRect.height - 48};
+    QrUtils::drawQrCode(renderer, bounds, textPayload);
+    x3activity::drawBar(renderer, layout.barRect, tr(STR_DISPLAY_QR), navigationPrefix.c_str());
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer();
+    return;
+  }
+
   renderer.clearScreen();
   auto metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();

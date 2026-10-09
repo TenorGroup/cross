@@ -1,4 +1,5 @@
 #pragma once
+#include "shells/ugly/UglyMarkSeed.h"
 #include <array>
 
 #include "activities/UiListActivity.h"
@@ -19,6 +20,7 @@ class ReadingHistoryActivity final : public UiListActivity {
   bool showsSideArrows() const override { return !grid; }
 
  private:
+  mutable ugly::MarkState mark_;
   int gridTop() const;
   int gridHeight() const;
   int chartHeight() const;

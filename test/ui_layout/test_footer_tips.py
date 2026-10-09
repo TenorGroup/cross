@@ -41,7 +41,7 @@ base = read_source('src/components/themes/BaseTheme.cpp')
 renderer = read_source('lib/GfxRenderer/GfxRenderer.cpp')
 header = read_source('src/components/TenorMenuChrome.h')
 definitions = []
-for name in ('smallFooterSymbolsTopY', 'compactFooterTips', 'tipY'):
+for name in ('smallFooterSymbolsTopY', 'compactFooterTips', 'tipY', 'x3ScreenLayoutEnabled', 'x3ScreenLayout'):
     if f'tenorchrome::{name}(' in chrome:
         definitions.append(function(chrome, f'tenorchrome::{name}('))
 for signature in ('std::vector<std::string> tipLines(', 'int tipLineY('):
@@ -52,7 +52,7 @@ for constant in re.findall(r'constexpr int MORE_BELOW_SPAN[^;]+;', chrome):
     definitions.append(constant)
 if 'void tenorchrome::drawMoreChevron(' in chrome:
     definitions.append(function(chrome, 'void tenorchrome::drawMoreChevron('))
-for name in ('tipTopY', 'tipLineCount', 'tipHeight', 'uglyTipTop', 'drawTip', 'moreBelowChevronTopY', 'drawMoreBelowChevron'):
+for name in ('tipTopY', 'tipLineCount', 'tipHeight', 'uglyTipTop', 'drawTip', 'drawInfoInRect', 'drawTipInRect', 'moreBelowChevronTopY', 'drawMoreBelowChevron'):
     if f'tenorchrome::{name}(' in chrome:
         definitions.append(function(chrome, f'tenorchrome::{name}('))
 definitions.append(function(theme, 'TenorTheme::drawButtonHints('))
@@ -73,10 +73,27 @@ declarations += '\n' + '\n'.join(re.findall(r'(?:enum class ChevronDir[^;]+;|con
                                              r'constexpr int moreChevronLength[^}]+}|void drawMoreChevron\([^;]+;)', header))
 # The touch shell's gate: the button reader's value, and the tip filter as written.
 if 'kTouchShell' in header:
+    declarations += '\nbool x3ScreenLayoutEnabled();\n'
+    for name in ('struct X3ScreenRect', 'struct X3ScreenLayout'):
+        if name in header:
+            declarations += '\n' + function(header, name) + ';'
+    if 'X3ScreenLayout x3ScreenLayout(' in header:
+        declarations += '\n' + re.search(r'X3ScreenLayout x3ScreenLayout\([^;]+;', header).group()
+    declarations += '\n' + '\n'.join(re.findall(r'^void (?:drawInfoInRect|drawTipInRect)\([^;]+;', header, re.M))
+    declarations += '\nconstexpr int UI_12_FONT_ID = 1;\n'
+    declarations += '\nint statusTextY(int height, bool large, int paddingBottom = 0) '
+    declarations += '{ return height - 24 - (large ? 10 : 0) - paddingBottom - statusTextGrowth(large); }\n'
+    declarations += '\nint tabHeight() { return SETTINGS.uiTextSize == 0 ? 60 : SETTINGS.uiTextSize == 1 ? 67 : 72; }\n'
     declarations += '\nconstexpr bool kTouchShell = false;\n' + function(header, 'inline bool tipShown(')
     if 'touchBarTop' in header:
         declarations += '\ninline int touchBarTop(int screenHeight) { return screenHeight; }'
 fixture = Path(__file__).with_name('footer_tips.cpp').read_text()
+fixture = '#include <array>\n' + fixture.replace('struct GfxRenderer {', '''struct GfxRenderer {
+  mutable std::array<int, 4> clip = {0, 0, 480, 800};
+  std::array<int, 4> getClipRect() const { return clip; }
+  void setClipRect(int left, int top, int width, int height) const { clip = {left, top, width, height}; }
+''')
+fixture = fixture.replace('tenorButtonSymbols = true;', 'tenorButtonSymbols = true; bool tipsEnabled = true;')
 fixture = fixture.replace('// CHROME_DECLARATIONS', declarations)
 fixture = fixture.replace('// PRODUCTION_FUNCTIONS', '\n'.join(definitions))
 if args.legacy_clear:

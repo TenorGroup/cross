@@ -1,5 +1,7 @@
 #include "ReadingHistoryActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <GfxRenderer.h>
 #include <I18n.h>
 
@@ -66,6 +68,16 @@ void ReadingHistoryActivity::onEnter() {
   UiListActivity::onEnter();
 }
 void ReadingHistoryActivity::drawChrome() {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, nullptr, 8));
+    x3activity::drawBar(renderer, layout.barRect, headerTitle(), navigationPrefix.c_str());
+    if (grid) {
+      drawGrid();
+      drawChart();
+    }
+    return;
+  }
+
   if (tenorchrome::enabled())
     tenorchrome::drawHeader(renderer, headerTitle(), tr(STR_HOME_TAB_STATS));
   else
@@ -78,6 +90,7 @@ void ReadingHistoryActivity::drawChrome() {
 // 10 columns, 3 rows, oldest day top left and today bottom right. The cell size follows the screen width.
 int ReadingHistoryActivity::gridTop() const {
   const auto& m = UITheme::getInstance().getMetrics();
+  if (tenorchrome::x3ScreenLayoutEnabled()) return tenorchrome::x3ScreenLayout(renderer).bodyRect.y + 4;
   return (tenorchrome::enabled() ? tenorchrome::tabTop() : m.topPadding + m.headerHeight) + 12;
 }
 int ReadingHistoryActivity::gridHeight() const {
@@ -88,10 +101,37 @@ int ReadingHistoryActivity::gridHeight() const {
 // the first day below. Bar height is relative to the busiest week; the hours label gives the real level, where the
 // grid above uses fixed minutes. The unit is the stats card's own string, so there is no new translation.
 constexpr int CHART_BAR_MAX = 36;
-int ReadingHistoryActivity::chartHeight() const { return renderer.getLineHeight(SMALL_FONT_ID) + CHART_BAR_MAX + 10; }
+int ReadingHistoryActivity::chartHeight() const {
+  const int lines = tenorchrome::x3ScreenLayoutEnabled() ? lich30::SO_TUAN : 1;
+  return lines * renderer.getLineHeight(SMALL_FONT_ID) + CHART_BAR_MAX + 10;
+}
 void ReadingHistoryActivity::drawChart() const {
   const int line = renderer.getLineHeight(SMALL_FONT_ID), left = 24, width = renderer.getScreenWidth() - 2 * left,
             pitch = width / lich30::SO_TUAN, bar = pitch / 8, base = gridTop() + gridHeight() + 4 + CHART_BAR_MAX;
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer);
+    renderer.drawLine(left, base, left + width, base, true);
+    uint32_t most = 1;
+    for (const uint32_t minutes : weekMinutes) most = std::max(most, minutes);
+    for (int index = 0; index < lich30::SO_TUAN; ++index) {
+      const uint32_t minutes = weekMinutes[index];
+      const int height = minutes ? std::max<int>(2, minutes * CHART_BAR_MAX / most) : 0;
+      if (height) renderer.fillRect(left + index * pitch + 12, base - height, bar, height);
+      char amount[40], information[64];
+      if (minutes >= 60)
+        snprintf(amount, sizeof(amount), "%lu %s", static_cast<unsigned long>((minutes + 30) / 60), tr(STR_STATS_HOURS));
+      else if (minutes)
+        snprintf(amount, sizeof(amount), "<1 %s", tr(STR_STATS_HOURS));
+      else if (weekHasSubMinute[index])
+        snprintf(amount, sizeof(amount), "<1 %s", tr(STR_STATS_MINUTES));
+      else
+        snprintf(amount, sizeof(amount), "0 %s", tr(STR_STATS_HOURS));
+      snprintf(information, sizeof(information), "%02lu/%02lu: %s",
+          static_cast<unsigned long>(weekKey[index] % 100), static_cast<unsigned long>(weekKey[index] / 100 % 100), amount);
+      tenorchrome::drawInfoInRect(renderer, information, {0, base + 3 + index * line, layout.bodyRect.width, line}, 1);
+    }
+    return;
+  }
   const bool handwritten = shell::uglyParts();
   if (handwritten) ugly::line(renderer, left, base, left + width, base - 2, 61, 2);
   else renderer.drawLine(left, base, left + width, base, true);
@@ -155,12 +195,21 @@ void ReadingHistoryActivity::drawGrid() const {
   }
   // Today (the last cell drawn) wears a black frame set off by a 2 px gap, concentric with its corner; a pen circle in
   // tenor/ugly.
-  if (handwritten) ugly::circle(renderer, ugly::Circle::Object, {x, y, x + side, y + side}, 4, 4, 2);
+  if (handwritten) ugly::circle(renderer, ugly::Circle::Object, {x, y, x + side, y + side}, 4, 4, mark_.get(firstKey), 2);
   else renderer.drawRoundedRect(x - 3, y - 3, side + 6, side + 6, 1, tenorradius::container(radius, 3), true);
   char text[8];
   snprintf(text, sizeof(text), "%02lu/%02lu", static_cast<unsigned long>(firstKey % 100),
            static_cast<unsigned long>(firstKey / 100 % 100));
   const int labelY = top + 3 * pitch + 2;
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer);
+    char range[32];
+    snprintf(range, sizeof(range), "%02lu/%02lu - %02lu/%02lu",
+        static_cast<unsigned long>(firstKey % 100), static_cast<unsigned long>(firstKey / 100 % 100),
+        static_cast<unsigned long>(lastKey % 100), static_cast<unsigned long>(lastKey / 100 % 100));
+    tenorchrome::drawInfoInRect(renderer, range, {0, labelY, layout.bodyRect.width, renderer.getLineHeight(SMALL_FONT_ID)}, 1);
+    return;
+  }
   renderer.drawText(SMALL_FONT_ID, 24, labelY, text);
   snprintf(text, sizeof(text), "%02lu/%02lu", static_cast<unsigned long>(lastKey % 100),
            static_cast<unsigned long>(lastKey / 100 % 100));
@@ -169,9 +218,15 @@ void ReadingHistoryActivity::drawGrid() const {
 }
 void ReadingHistoryActivity::buildScreen(UiScreen& screen) {
   const auto& m = UITheme::getInstance().getMetrics();
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, nullptr, 8));
+    screen.setContentMarginFromScreen({static_cast<int16_t>(grid ? gridTop() + gridHeight() + chartHeight() : layout.bodyRect.y), 0,
+        static_cast<int16_t>(renderer.getScreenHeight() - layout.bodyRect.bottom() + 0), 0});
+  } else {
   screen.setContentMarginFromScreen(
       {static_cast<int16_t>(grid ? gridTop() + gridHeight() + chartHeight() : m.topPadding + m.headerHeight), 0,
        static_cast<int16_t>(m.buttonHintsHeight), 0});
+  }
   freeink::ui::ListProps props;
   props.items = rows.data();
   props.count = count;

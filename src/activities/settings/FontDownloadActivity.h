@@ -53,6 +53,10 @@ class FontDownloadActivity final : public UiListActivity {
 
  private:
   bool installDownloadedPack(const char* path);
+  int infoPage_ = 0;
+  std::atomic<int> infoPages_{1};
+  std::string x3InfoText() const;
+  void renderX3State();
 #ifdef FREEINK_TLS_AUDIT
   bool auditDownload_ = false;
 #endif

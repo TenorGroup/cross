@@ -337,6 +337,8 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
     emit(SettingInfo::Enum(StrId::STR_HIDE_GLOBAL_STATUS_BAR, &CrossPointSettings::globalStatusBarMode,
                           {StrId::STR_STATUS_BAR_SMALL, StrId::STR_STATE_OFF, StrId::STR_STATUS_BAR_LARGE},
                           "globalStatusBarMode", StrId::STR_CAT_DISPLAY));
+    emit(SettingInfo::Toggle(StrId::STR_TIPS, &CrossPointSettings::tipsEnabled, "tipsEnabled",
+                            StrId::STR_CAT_DISPLAY));
     emit(SettingInfo::Toggle(StrId::STR_SIDE_ARROW_HINTS, &CrossPointSettings::tenorSideArrows, "tenorSideArrows",
                             StrId::STR_CAT_DISPLAY));
     emit(SettingInfo::Enum(StrId::STR_BUTTON_LABELS, &CrossPointSettings::tenorButtonSymbols,
@@ -723,6 +725,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 // Dong nao khong thuoc ve ban may nay. Tach rieng de duong luu va duong doc soi
 // duoc tung dong ma khong phai chep ca bang ra mot vector moi.
 inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
+  if (BoardConfig::hasTouch() && s.nameId == StrId::STR_TIPS) return true;
   // Touch controls and the per-direction gestures they drive need a touch
   // controller. The toolbar reader menu style does not (#3603 re-enabled it
   // on button-only boards: the toolbar chrome is button-navigable).
@@ -764,6 +767,7 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
 inline bool settingHiddenInShell(const SettingInfo& setting) {
   const bool ugly = SETTINGS.uiShell == 1;
   return (ugly && setting.valuePtr == &CrossPointSettings::wakeIntoBook) ||
+         (ugly && setting.valuePtr == &CrossPointSettings::tipsEnabled) ||
          (!ugly && setting.valuePtr == &CrossPointSettings::uglyStartScreen);
 }
 

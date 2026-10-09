@@ -1,4 +1,5 @@
 #pragma once
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <vector>
 
@@ -28,6 +29,10 @@ class OpdsServerListActivity final : public UiListActivity {
   bool handleCustomInput() override;
   // Picker mode backs out to the home menu rather than finishing.
   void onBackButton() override;
+  void drawChrome() override {
+    if (tenorchrome::x3ScreenLayoutEnabled()) x3settings::drawPath(renderer, headerTitle());
+    else UiListActivity::drawChrome();
+  }
   const char* headerTitle() const override;
   int settingsChoiceCount(int row) const override;
 

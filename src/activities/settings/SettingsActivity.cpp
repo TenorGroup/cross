@@ -1,4 +1,7 @@
 #include "SettingsActivity.h"
+#include "activities/settings/X3SettingsLayout.h"
+#include "components/icons/readerToolbarTabIcons.h"
+#include "components/icons/tenorReaderTabIcons.h"
 
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
@@ -1041,13 +1044,20 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
 void SettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Content below the GUI.drawHeader band, above the button hints.
-  screen.setContentMarginFromScreen(fui::Insets{
-      static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-      static_cast<int16_t>(metrics.buttonHintsHeight), 0});
+  if (x3settings::beginScreen(screen, renderer,
+                             UiListActivity::favoriteHintText() == tr(STR_MENU_SAVE_FAILED) ? nullptr : favoriteHintText(),
+                             saveFailed.load() ? tr(STR_HABIT_SAVE_FAILED) : nullptr,
+                             favoriteSaveFailed ? tr(STR_MENU_SAVE_FAILED) : nullptr)) {
+    tabBandDrawn = true;
+  } else {
+    screen.setContentMarginFromScreen(fui::Insets{
+        static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
+        static_cast<int16_t>(metrics.buttonHintsHeight), 0});
 
-  // Cac nhom da hien mot lan o man chinh, hien lai lan nua
-  // la trung (T1). Ten nhom di len dau man, hai mui tien dac hai mep bao nut canh nhay nhom.
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+    // Cac nhom da hien mot lan o man chinh, hien lai lan nua
+    // la trung (T1). Ten nhom di len dau man, hai mui tien dac hai mep bao nut canh nhay nhom.
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
 
   // rowItems_ (label/actionValue) was built by rebuildRowItems() when the
   // category was last selected/rebuilt; only the live value text needs
@@ -1070,13 +1080,9 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   if (tenorchrome::kTouchShell) props.inputMask |= fui::InputLongPress;  // hold a row: its menu (Pin)
   props.valueInset = 8;               // air between the value and the row edge
-  // Titles match the value's font size (smallText) so both sides of a row
-  // read as one unit; labels that still don't fit wrap onto a second line.
-  // maxLines=2 also marks the style explicitly set (an all-default smallText
-  // fails textStyleUnset and the list would substitute bodyText back); the
-  // common fits-on-one-line case takes the renderer's fast path anyway.
   props.labelText = uiMenuLabelText(screen.theme());
-  props.labelText.maxLines = 2;
+  props.labelText.maxLines = tenorchrome::x3ScreenLayoutEnabled() ? 1 : 2;
+  props.balanceWrappedLabelWithValue = !tenorchrome::x3ScreenLayoutEnabled();
   // A row's note (the limited edition under Interface) wraps too, so no settings row cuts its words.
   props.subtitleText = screen.theme().smallText;
   props.subtitleText.maxLines = 2;
@@ -1173,12 +1179,19 @@ void SettingsActivity::render(RenderLock&&) {
   // Tenor tab chrome: settled-list debounce, nav header, sibling-tab arrows.
   renderSettledList(activeNav(), [&] {
     renderer.clearScreen();
-    drawNavigationHeader(tabLabel(activeTab()));
+    if (tenorchrome::x3ScreenLayoutEnabled()) {
+      static const freeink::Icon* const icons[] = {
+          &icon_tenor_settings_hien_thi_b_40, &icon_tenor_reader_reading_40, &icon_tenor_settings_dieu_khien_40,
+          &icon_tenor_settings_he_thong_b_40, &icon_tenor_settings_thiet_bi_40, &icon_tenor_settings_ban_phim_40,
+          &icon_reader_tab_more_40, &icon_tenor_settings_trang_khuyet_40, &icon_tenor_settings_cu_chi_40};
+      static_assert(std::size(icons) == settingstabs::TAB_COUNT);
+      x3settings::drawPath(renderer, tabLabel(activeTab()), *icons[activeTab()]);
+    } else drawNavigationHeader(tabLabel(activeTab()));
     renderUi();
   });
 
   // Touch: no sibling line, the only way back is "<" in the bar at the foot.
-  if (tenorchrome::enabled() && !tenorchrome::kTouchShell && tabCount() > 1) {
+  if (tenorchrome::enabled() && !tenorchrome::kTouchShell && !tenorchrome::x3ScreenLayoutEnabled() && tabCount() > 1) {
     tenorchrome::drawSiblingDestinations(renderer, tabLabel(adjacentTab(-1)), tabLabel(adjacentTab(1)));
   }
 
@@ -1194,7 +1207,15 @@ void SettingsActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
-  if (saveFailed.load()) GUI.drawPopup(renderer, tr(STR_HABIT_SAVE_FAILED));
+  if (saveFailed.load()) {
+    if (tenorchrome::x3ScreenLayoutEnabled())
+      tenorchrome::drawInfoInRect(renderer, tr(STR_HABIT_SAVE_FAILED),
+                                  x3settings::infoRect(renderer, tr(STR_HABIT_SAVE_FAILED),
+                                                       UiListActivity::favoriteHintText() == tr(STR_MENU_SAVE_FAILED)
+                                                           ? nullptr : favoriteHintText(),
+                                                       favoriteSaveFailed ? tr(STR_MENU_SAVE_FAILED) : nullptr));
+    else GUI.drawPopup(renderer, tr(STR_HABIT_SAVE_FAILED));
+  }
 
   // Always use standard refresh for settings screen
   renderer.displayBuffer();

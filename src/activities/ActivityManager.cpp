@@ -15,6 +15,8 @@
 #include <cstring>
 
 #include "CrossPointSettings.h"
+#include "shells/ugly/UglyIconInk.h"
+#include "shells/ugly/UglyMarkSeed.h"
 #include "CrossPointState.h"
 #include "OpdsServerStore.h"
 #include "boot_sleep/BootActivity.h"
@@ -28,7 +30,6 @@
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "shells/Shell.h"
-#include "library/LibraryListActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/UsbDriveActivity.h"
 #include "reader/ReaderActivity.h"
@@ -262,6 +263,14 @@ void ActivityManager::renderTaskLoop() {
       display.setInverted(SETTINGS.screenInverted != 0);
       auto& scrollbar = PageScrollbar::instance();
       scrollbar.activate(currentActivity.get());
+      if (shell::isUgly()) {
+        const uint64_t pageKey = currentActivity->uglyIconPageKey();
+        uint32_t candidate = 0;
+        if (currentActivity->uglyIconFrame.needsSeed(pageKey)) {
+          candidate = ugly::markSeed();
+        }
+        ugly::setIconFrameSeed(currentActivity->uglyIconFrame.bind(pageKey, candidate));
+      }
       if (!scrollbar.renderIdleUpdate(renderer, mappedInput)) {
         scrollbar.beginPaint();
         if (!currentActivity->renderIdleUpdate()) currentActivity->render(std::move(lock));
@@ -722,15 +731,6 @@ void ActivityManager::goToFileBrowser(std::string path) {
   replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)));
 }
 
-void ActivityManager::goToLibrary() {
-  auto activity = makeUniqueNoThrow<LibraryListActivity>(renderer, mappedInput);
-  if (!activity) {
-    LOG_ERR("ACT", "OOM: library activity");
-    return;
-  }
-  replaceActivity(std::move(activity));
-}
-
 void ActivityManager::goToBrowser() {
   const auto& servers = OPDS_STORE.getServers();
   // Skip the server picker when there's only one server configured
@@ -811,8 +811,6 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
     const auto& activityName = currentActivity->name;
     if (activityName == "FileBrowser") {
       initialMenuItem = HomeMenuItem::FILE_BROWSER;
-    } else if (activityName == "Library") {
-      initialMenuItem = HomeMenuItem::LIBRARY;
     } else if (activityName == "OpdsBookBrowser") {
       initialMenuItem = HomeMenuItem::OPDS_BROWSER;
     } else if (activityName == "CrossPointWebServer") {

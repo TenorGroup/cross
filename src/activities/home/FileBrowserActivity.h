@@ -26,7 +26,7 @@ class FileBrowserActivity final : public UiListActivity {
   void deleteSelected();
 
   Mode mode = Mode::Books;
-  static constexpr int kSearchRows = tenorchrome::kTouchShell ? 1 : 0;
+  static constexpr int kSearchRows = 0;
 
   // Files state
   std::string basepath = "/";
@@ -67,6 +67,10 @@ class FileBrowserActivity final : public UiListActivity {
 
   int listCount() const override { return static_cast<int>(files.size()) + kSearchRows; }
   void buildScreen(UiScreen& screen) override;
+  bool ownsX3Chrome() const override { return true; }
+  tenorchrome::X3ScreenLayout screenLayout();
+  std::string screenTip();
+  void drawX3Content();
   void activateIndex(int index) override;
   void onRowLongPress(int index) override;
   // Long-press BACK goes to root; short Back goes up a directory (home/cancel at
@@ -76,6 +80,9 @@ class FileBrowserActivity final : public UiListActivity {
   bool tooMany = false;  // the folder holds more names than the heap allows: nothing is listed
   bool supportsFavorites() const override { return mode == Mode::Books; }
   bool fileList() const override { return true; }
+  bool canSearchFiles() const override { return tenorchrome::kTouchShell; }
+  const char* fileSearchText() const override { return searchQuery.c_str(); }
+  void openFileSearch() override { openSearch(); }
   bool rowOpens(int row) const override {
     return (row >= 0 && row < kSearchRows) ||
            (row >= kSearchRows && row - kSearchRows < static_cast<int>(files.size()) &&

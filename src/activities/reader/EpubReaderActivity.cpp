@@ -1653,8 +1653,12 @@ void EpubReaderActivity::loop() {
         return;
       case readertap::Zone::TextMenu:
         if (usesToolbarMenu() && section) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+          onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS, MenuResult{});
+#else
           focusedTool = kTextTool;
           openOverlay(Overlay::Text);
+#endif
         } else {
           openReaderMenu();
         }
@@ -3322,6 +3326,21 @@ const char* EpubReaderActivity::nextScreenWaiting() const {
   return nullptr;
 }
 
+TextGrayContext EpubReaderActivity::textGrayContext() const {
+  TextGrayContext context;
+  context.textAntiAliasing = SETTINGS.textAntiAliasing;
+  context.covered = overlay != Overlay::None || overlayPopup.isActive();
+  context.preparingPopup = showBookmarkMessage || showDictionaryMessage || showIndexingMessage ||
+                           buildPopupPending || buildPopupRefreshing || pendingSyncSaveError;
+  context.pendingManualTurn = pendingManualTurn.load(std::memory_order_acquire) != 0;
+  context.pendingExternalTurn = pendingExternalTurn.load(std::memory_order_acquire) != 0;
+  context.pageBeingLeft = pageBeingLeft() != nullptr;
+  context.nextScreenWaiting = nextScreenWaiting() != nullptr;
+  context.pendingScreenshot = pendingScreenshot;
+  context.preview = preview;
+  return context;
+}
+
 // Caller owns RenderLock.
 // The owed flag (progressSaveDeferred) clears only once the position is on the card. With no
 // section (a chapter jump waiting for its paint) the paint that loads it writes; a card error leaves
@@ -3498,8 +3517,13 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool manualRefreshPending = forcedRefreshPending;
   forcedRefreshPending = false;
   const bool cleanImageBasePending = manualRefreshPending || pagesUntilFullRefresh <= 1;
-  const bool needsTextGrayscale = SETTINGS.textAntiAliasing;
+  const auto textGrayAllowed = [this] { return shouldRunTextGrayscale(textGrayContext()); };
+  const bool needsTextGrayscale = textGrayAllowed();
   const bool needsAnyGrayscale = needsTextGrayscale || pageHasImages;
+  const auto grayStopReason = [&]() -> const char* {
+    if (const char* reason = nextScreenWaiting()) return reason;
+    return !pageHasImages && !textGrayAllowed() ? "text_policy" : nullptr;
+  };
   bool grayscaleCompleted = !needsAnyGrayscale;
   const bool absoluteImageGrayscale = pageHasImages && !gpio.deviceIsX3() &&
                                       display.getController() == HalDisplay::Controller::UC8279 &&
@@ -3522,7 +3546,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   pageFrameKeepsUnderFast = gpio.deviceIsX3() && !pageHasImages &&
                             (!needsTextGrayscale || display.getController() == HalDisplay::Controller::UC8279);
   auto renderGrayscalePass = [&]() {
-    if (absoluteImageGrayscale || needsTextGrayscale) {
+    if (absoluteImageGrayscale || textGrayAllowed()) {
       renderPageBody(false);
     } else {
       page->renderImages(renderer, fontId, orientedMarginLeft, orientedMarginTop);
@@ -3640,10 +3664,12 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     const int gh = renderer.getDisplayHeight();
     const int gwBytes = renderer.getDisplayWidthBytes();
     const size_t planeBytes = static_cast<size_t>(gwBytes) * gh;
+    const char* stoppedBy = nullptr;
 
     auto renderPlaneToBuffer = [&](const bool lsbPlane, uint8_t* buf) {
       renderer.setRenderMode(lsbPlane ? GfxRenderer::GRAYSCALE_LSB : GfxRenderer::GRAYSCALE_MSB);
       for (int y = 0; y < gh; y += STRIP_ROWS) {
+        if ((stoppedBy = grayStopReason())) return;
         const int rows = (gh - y < STRIP_ROWS) ? (gh - y) : STRIP_ROWS;
         renderer.beginStripTarget(buf + static_cast<size_t>(y) * gwBytes, y, rows);
         renderer.clearScreen(0x00);
@@ -3655,21 +3681,31 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     constexpr size_t PLANE_BUF_HEADROOM = 60000;
     constexpr size_t PLANE_BUF_MAX_ALLOC_RESERVE = 16 * 1024;
     const auto planeBufFits = [planeBytes] {
-      return ESP.getFreeHeap() >= planeBytes + PLANE_BUF_HEADROOM &&
-             ESP.getMaxAllocHeap() >= planeBytes + PLANE_BUF_MAX_ALLOC_RESERVE;
+      const auto freeHeap = ESP.getFreeHeap();
+      const auto largestBlock = ESP.getMaxAllocHeap();
+      return hasGrayscaleHeapFloor(freeHeap, largestBlock) && freeHeap >= planeBytes + PLANE_BUF_HEADROOM &&
+             largestBlock >= planeBytes + PLANE_BUF_MAX_ALLOC_RESERVE;
     };
-    auto lsbPlaneBuf = (overlapRefresh && planeBufFits()) ? makeUniqueNoThrow<uint8_t[]>(planeBytes) : nullptr;
-    auto msbPlaneBuf = (lsbPlaneBuf && planeBufFits()) ? makeUniqueNoThrow<uint8_t[]>(planeBytes) : nullptr;
+    auto lsbPlaneBuf = (overlapRefresh && !grayStopReason() && planeBufFits())
+                           ? makeUniqueNoThrow<uint8_t[]>(planeBytes) : nullptr;
+    auto msbPlaneBuf = (lsbPlaneBuf && !grayStopReason() && planeBufFits())
+                           ? makeUniqueNoThrow<uint8_t[]>(planeBytes) : nullptr;
 
     if (lsbPlaneBuf) {
       renderPlaneToBuffer(true, lsbPlaneBuf.get());
-      if (msbPlaneBuf) renderPlaneToBuffer(false, msbPlaneBuf.get());
+      if (!stoppedBy && msbPlaneBuf) renderPlaneToBuffer(false, msbPlaneBuf.get());
       const auto tGrayRender = millis();
 #ifdef TENOR_TURN_TRACE
       tracePaint("GRAY_RENDER_END", msbPlaneBuf ? "two_planes" : "one_plane");
 #endif
 
       renderer.waitRefreshComplete();
+      if (stoppedBy || (stoppedBy = grayStopReason())) {
+        LOG_INF("ERS", "GRAY_SKIPPED %s", stoppedBy);
+        renderer.setRenderMode(GfxRenderer::BW);
+        renderer.cleanupGrayscaleWithFrameBuffer();
+        return;
+      }
       const auto tWait = millis();
 #ifdef TENOR_TURN_TRACE
       traceReadablePaint("async_wait");
@@ -3685,6 +3721,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       const auto tGrayWrite = millis();
 
       renderer.setRenderMode(GfxRenderer::BW);
+      if (stoppedBy || (stoppedBy = grayStopReason())) {
+        LOG_INF("ERS", "GRAY_SKIPPED %s", stoppedBy);
+        renderer.cleanupGrayscaleWithFrameBuffer();
+        return;
+      }
       renderer.displayGrayBuffer();
       grayscaleCompleted = true;
       const auto tGrayDisplay = millis();
@@ -3705,16 +3746,28 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
               tPrewarm - t0, tBwRender - tPrewarm, tDisplay - tBwRender, tGrayRender - tDisplay, tWait - tGrayRender,
               tGrayWrite - tWait, tGrayDisplay - tGrayWrite, tEnd - tGrayDisplay, tEnd - t0, msbPlaneBuf ? 2 : 1);
     } else {
-      auto scratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(gwBytes) * STRIP_ROWS);
       renderer.waitRefreshComplete();
 #ifdef TENOR_TURN_TRACE
       if (!combinedGrayscaleBase && !absoluteImageGrayscale) traceReadablePaint("strip_wait");
 #endif
       // The page is readable now. When the reader is leaving it (Back, a held chapter jump), the
       // ~500 ms of strips, gray waveform and cleanup below would only hold the next screen back.
-      const char* grayNotRun = !scratch ? "scratch_oom" : pageBeingLeft();
+      const char* grayNotRun = grayStopReason();
+      std::unique_ptr<uint8_t[]> scratch;
+      if (!grayNotRun) {
+        const auto freeHeap = ESP.getFreeHeap();
+        const auto largestBlock = ESP.getMaxAllocHeap();
+        if (!hasGrayscaleHeapFloor(freeHeap, largestBlock)) {
+          grayNotRun = "heap_floor";
+          LOG_INF("ERS", "GRAY_SKIPPED heap_floor free=%u largest=%u bytes=%d",
+                  static_cast<unsigned>(freeHeap), static_cast<unsigned>(largestBlock), gwBytes * STRIP_ROWS);
+        } else {
+          scratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(gwBytes) * STRIP_ROWS);
+          if (!scratch) grayNotRun = "scratch_oom";
+        }
+      }
       if (grayNotRun) {
-        if (!scratch) {
+        if (grayNotRun == std::string_view("scratch_oom")) {
           LOG_ERR("ERS", "OOM: grayscale strip scratch (%d bytes); skipping AA this page", gwBytes * STRIP_ROWS);
         } else {
           LOG_DBG("ERS", "Gray pass skipped: %s", grayNotRun);
@@ -3722,13 +3775,14 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 #ifdef TENOR_TURN_TRACE
         tracePaint("GRAY_SKIPPED", grayNotRun);
 #endif
-        if (overlapRefresh || combinedGrayscaleBase) {
+        if (overlapRefresh || combinedGrayscaleBase || absoluteImageGrayscale) {
           // The BW refresh ran the shadow-free async path, so controller RAM's
           // differential baseline was never rebuilt. Even with AA skipped it must
           // be re-synced from the intact BW framebuffer, or the next differential
           // update diffs against stale contents. On the combined-base path the
           // base activation is still deferred; this cleanup commits it so the
           // page reaches the panel even without its grays.
+          renderer.setRenderMode(GfxRenderer::BW);
           renderer.cleanupGrayscaleWithFrameBuffer();
 #ifdef TENOR_TURN_TRACE
           tracePaint("CLEANUP_END", grayNotRun);
@@ -3738,11 +3792,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       } else {
         // A turn or an exit that arrives while the strips are drawn stops them too. The planes then
         // hold part of a gray pass, so instead of showing it the cleanup rewrites both from the page.
-        const char* stoppedBy = nullptr;
         const auto drawPlane = [&](const bool lsbPlane) {
           renderer.setRenderMode(lsbPlane ? GfxRenderer::GRAYSCALE_LSB : GfxRenderer::GRAYSCALE_MSB);
           for (int y = 0; y < gh; y += STRIP_ROWS) {
-            if ((stoppedBy = pageBeingLeft())) return;
+            if ((stoppedBy = grayStopReason())) return;
             const int rows = (gh - y < STRIP_ROWS) ? (gh - y) : STRIP_ROWS;
             renderer.beginStripTarget(scratch.get(), y, rows);
             renderer.clearScreen(0x00);
@@ -3755,6 +3808,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         const auto tGrayLsb = millis();
         if (!stoppedBy) drawPlane(false);
         const auto tGrayMsb = millis();
+        if (!stoppedBy) stoppedBy = grayStopReason();
 
         renderer.setRenderMode(GfxRenderer::BW);
         if (stoppedBy) {
@@ -3792,6 +3846,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     }
   } else {
     if (needsAnyGrayscale) {
+      if (grayStopReason() || !hasGrayscaleHeapFloor(ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
+        LOG_INF("ERS", "GRAY_SKIPPED policy_or_heap_floor");
+        if (absoluteImageGrayscale) renderer.setRenderMode(GfxRenderer::BW);
+        return;
+      }
       if (!renderer.storeBwBuffer()) {
         LOG_ERR("ERS", "Failed to store BW buffer for grayscale render; skipping grayscale this page");
 #ifdef TENOR_TURN_TRACE
@@ -3805,15 +3864,30 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       renderer.clearScreen(absoluteImageGrayscale ? 0xFF : 0x00);
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
       renderGrayscalePass();
+      if (grayStopReason()) {
+        renderer.setRenderMode(GfxRenderer::BW);
+        renderer.restoreBwBuffer();
+        return;
+      }
       renderer.copyGrayscaleLsbBuffers();
       const auto tGrayLsb = millis();
 
       renderer.clearScreen(absoluteImageGrayscale ? 0xFF : 0x00);
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
       renderGrayscalePass();
+      if (grayStopReason()) {
+        renderer.setRenderMode(GfxRenderer::BW);
+        renderer.restoreBwBuffer();
+        return;
+      }
       renderer.copyGrayscaleMsbBuffers();
       const auto tGrayMsb = millis();
 
+      if (grayStopReason()) {
+        renderer.setRenderMode(GfxRenderer::BW);
+        renderer.restoreBwBuffer();
+        return;
+      }
       renderer.displayGrayBuffer();
       grayscaleCompleted = true;
       const auto tGrayDisplay = millis();
@@ -4443,6 +4517,18 @@ void EpubReaderActivity::stopRadioForSheet() {
 }
 
 void EpubReaderActivity::openOverlay(Overlay target) {
+  if (target == Overlay::Text && tenorchrome::x3ScreenLayoutEnabled()) {
+    mappedInput.resetHomeButtonInput();
+    {
+      RenderLock lock;
+      settleOverlayRefresh();
+      overlay = Overlay::None;
+      discardOverlayPage();
+      panelClosedLocked(true, false);
+    }
+    onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS, MenuResult{});
+    return;
+  }
   if (target == Overlay::Contents && waitsForIndex()) return;
   mappedInput.resetHomeButtonInput();
   const Overlay previous = overlay;
@@ -4797,6 +4883,22 @@ void EpubReaderActivity::handleOverlayInput() {
     }
     return Overlay::More;
   };
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+  const auto openTextSettings = [this] {
+    mappedInput.resetHomeButtonInput();
+    {
+      RenderLock lock;
+      tenorchrome::noteReaderFootBar(false, false, -1);
+      overlay = Overlay::None;
+      overlayPopup.dismiss();
+      toolbarUi.reset();
+      settleOverlayRefresh();
+      discardOverlayPage();
+      panelClosedLocked(false, false);
+    }
+    onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS, MenuResult{});
+  };
+#endif
 
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   // Mapped Back includes the native button, edge gesture and chrome target.
@@ -4822,6 +4924,12 @@ void EpubReaderActivity::handleOverlayInput() {
         return;
       case ReaderToolbarUi::Event::Tool:
         focusedTool = routed.value;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+        if (focusedTool == kTextTool) {
+          openTextSettings();
+          return;
+        }
+#endif
         openOverlay(toolOverlay(focusedTool));
         return;
       case ReaderToolbarUi::Event::PrevChapter:
@@ -4857,6 +4965,12 @@ void EpubReaderActivity::handleOverlayInput() {
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+      if (focusedTool == kTextTool) {
+        openTextSettings();
+        return;
+      }
+#endif
       openOverlay(toolOverlay(focusedTool));
       return;
     }
@@ -5041,6 +5155,12 @@ void EpubReaderActivity::handleOverlayInput() {
       return;
     case ReaderToolbarUi::Event::Tool: {
       // Sheet-bottom tool switcher: hop straight to another panel.
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+      if (routed.value == kTextTool) {
+        openTextSettings();
+        return;
+      }
+#endif
       const Overlay target = toolOverlay(routed.value);
       if (target != overlay) {
         focusedTool = routed.value;

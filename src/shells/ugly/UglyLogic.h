@@ -11,6 +11,7 @@
 #include <Utf8.h>
 
 #include "UglyLevel.h"
+#include "UglyWobble.h"
 #include "activities/home/DocThuMuc.h"
 
 namespace ugly::logic {
@@ -116,14 +117,6 @@ inline WarpBox warpGlyph(const uint8_t* bits, const int gw, const int gh, const 
 }
 
 // Hash offset in [-range, range] for the i-th point of a stroke drawn with `seed`.
-inline int wobble(const uint32_t seed, const int i, const int range) {
-  uint32_t h = seed * 2654435761u + static_cast<uint32_t>(i) * 40503u + 12345u;
-  h ^= h >> 15;
-  h *= 2246822519u;
-  h ^= h >> 13;
-  return static_cast<int>(h % static_cast<uint32_t>(2 * range + 1)) - range;
-}
-
 // Days since 1970-01-01 of a date coded as yyyymmdd (the code the reading statistics use).
 inline int civilDays(const uint32_t code) {
   int y = static_cast<int>(code / 10000);

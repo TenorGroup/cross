@@ -37,7 +37,7 @@ void ConfirmationActivity::render(RenderLock&& lock) {
     // The question box of the shell: the heading asked in a large hand, the subject under it, No first in the circle.
     const char* answers[2] = {I18N.get(StrId::STR_CONFIRM), I18N.get(StrId::STR_CANCEL)};
     ugly::Box drawn[2];
-    ugly::askBox(renderer, mappedInput, heading.c_str(), body.c_str(), answers, uglyChoice, drawn);
+    ugly::askBox(renderer, mappedInput, heading.c_str(), body.c_str(), answers, uglyChoice, drawn, mark_.get(uglyChoice));
     renderer.displayBuffer(HalDisplay::RefreshMode::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
     LOG_INF("UGLY", "part=ask sel=%d", uglyChoice);

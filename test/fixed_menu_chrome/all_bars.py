@@ -1,0 +1,50 @@
+from pathlib import Path
+import argparse
+import re
+import subprocess
+import sys
+
+root = Path(__file__).resolve().parents[2]
+parser = argparse.ArgumentParser()
+parser.add_argument('--work', required=True, type=Path)
+parser.add_argument('--mutate', action='store_true')
+args = parser.parse_args()
+runner = Path(__file__).with_name('run.py')
+settings = {
+    'About', 'BookStats', 'BookStatsLibrary', 'ClearCache', 'ClockSettings', 'FontDownload',
+    'InfoUpdate', 'KeyboardLayouts', 'LanguageSelect', 'KOReaderSettings', 'OpdsServerList',
+    'OpdsSettings', 'Settings', 'StatusBarSettings', 'TextSettings', 'TimezonePicker',
+}
+lists = {
+    'FileBrowser', 'QuoteDetail', 'QuoteTrim', 'Quotes', 'EpubReaderBookmarks',
+    'EpubReaderChapterSelection', 'EpubReaderMenu', 'XtcReaderChapterSelection',
+}
+forms = {
+    'ButtonRemap', 'ChapterNumberEntry', 'Crash', 'KeyboardEntry', 'QrDisplay', 'ReadingHabits',
+    'ReadingHistory', 'BlePageTurner', 'CalibreConnect', 'ClockSync', 'CrossPointWebServer',
+    'KOReaderAuth', 'KOReaderSync', 'NetworkModeSelection', 'OpdsBookBrowser', 'OtaUpdate',
+    'SdFirmwareUpdate', 'WifiSelection',
+}
+covered = settings | lists | forms | {'Home'}
+bound = set()
+for path in (root / 'src/activities').rglob('*Activity.cpp'):
+    header = path.with_suffix('.h')
+    source = path.read_text() + (header.read_text() if header.exists() else '')
+    if re.search(r'x3ScreenLayout\(|x3settings::beginScreen\(', source):
+        bound.add(path.stem.removesuffix('Activity'))
+assert bound <= covered | {'UiList', 'UiTabList'}, sorted(bound - covered)
+assert len(covered) == 43
+ugly_sources = {name: root / f'src/shells/ugly/Ugly{name}.cpp'
+                for name in ('Diary', 'Desk', 'Notebook', 'QuestionSheet')}
+assert all(re.search(r'x3ScreenLayout\(|(?:pathHints|pageHints)\(', source.read_text())
+           for source in ugly_sources.values())
+assert 'x3ScreenLayout(r' in (root / 'src/shells/ugly/UglyInk.cpp').read_text()
+command = [sys.executable, str(runner), '--phase2', '--work', str(args.work / 'lists-settings')]
+if args.mutate:
+    command.append('--mutate-bar')
+subprocess.run(command, check=True)
+subprocess.run([sys.executable, str(runner), '--forms', '--work', str(args.work / 'forms')], check=True)
+subprocess.run([sys.executable, str(runner), '--ugly-contract', '--work', str(args.work / 'ugly')], check=True)
+subprocess.run([sys.executable, str(runner), '--ugly-status-contract', '--work', str(args.work / 'ugly-status')], check=True)
+print('GREEN: 43 X3 activity classes and 4 handwritten screens, 3 sizes x 3 status modes x 2 tips modes, exact Home barRect')
+print('COVERED:', ', '.join(sorted(covered)))

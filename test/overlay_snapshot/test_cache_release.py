@@ -31,7 +31,7 @@ class OverlaySnapshotCacheTest(unittest.TestCase):
                           "bool EpubReaderActivity::renderPreview("):
             overlay = body(body(source, signature), "if (overlay != Overlay::None && usesToolbarMenu())")
             snapshots.append(overlay[:overlay.index("renderer.storeBwBuffer();") + len("renderer.storeBwBuffer();")])
-        opening = body(source, "void EpubReaderActivity::openOverlay(").split("RenderLock lock;", 1)[1]
+        opening = body(source, "void EpubReaderActivity::openOverlay(").rsplit("RenderLock lock;", 1)[1]
         snapshots.append(body(opening, "if (previous == Overlay::None)"))
         harness = r"""
 #include <cstdio>

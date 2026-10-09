@@ -1,5 +1,7 @@
 #include "CalibreConnectActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <ESPmDNS.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
@@ -127,6 +129,13 @@ void CalibreConnectActivity::stopWebServer() {
 }
 
 void CalibreConnectActivity::loop() {
+  if (tenorchrome::x3ScreenLayoutEnabled() &&
+      x3Info.turn(mappedInput.wasReleased(MappedInputManager::Button::Up) ? -1 :
+                  mappedInput.wasReleased(MappedInputManager::Button::Down) ? 1 : 0)) {
+    requestUpdate();
+    return;
+  }
+
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
     exitRequested = true;
   }
@@ -246,6 +255,33 @@ void CalibreConnectActivity::renderUgly() const {
 }
 
 void CalibreConnectActivity::render(RenderLock&&) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const char* status = state == CalibreConnectState::SERVER_STARTING ? tr(STR_CALIBRE_STARTING) :
+        state == CalibreConnectState::ERROR ? tr(STR_CONNECTION_FAILED) : tr(STR_CALIBRE_STATUS);
+    const std::string address = std::string(tr(STR_IP_ADDRESS_PREFIX)) + connectedIP;
+    char progress[48] = {};
+    if (lastProgressTotal > 0) snprintf(progress, sizeof(progress), "%lu / %lu B",
+        static_cast<unsigned long>(lastProgressReceived), static_cast<unsigned long>(lastProgressTotal));
+    const bool completed = lastCompleteAt > 0 && millis() - lastCompleteAt < 6000;
+    const std::string instructions = std::string(tr(STR_CALIBRE_SETUP)) + "\n" + tr(STR_CALIBRE_INSTRUCTION_1) + "\n" +
+        tr(STR_CALIBRE_INSTRUCTION_2) + "\n" + tr(STR_CALIBRE_INSTRUCTION_3) + "\n" + tr(STR_CALIBRE_INSTRUCTION_4);
+    const char* tip = nullptr;
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip, 8));
+    renderer.clearScreen();
+    x3Info.draw(renderer, layout.bodyRect, {status, connectedSSID.c_str(), address.c_str(),
+        state == CalibreConnectState::SERVER_RUNNING ? instructions.c_str() : nullptr,
+        lastProgressTotal > 0 ? tr(STR_CALIBRE_RECEIVING) : nullptr,
+        lastProgressTotal > 0 ? currentUploadName.c_str() : nullptr, progress,
+        completed ? tr(STR_CALIBRE_RECEIVED) : nullptr, completed ? lastCompleteName.c_str() : nullptr});
+    tenorchrome::drawTipInRect(renderer, tip, layout.tipRect, 8);
+    x3activity::drawBar(renderer, layout.barRect, tr(STR_CALIBRE_WIRELESS), navigationPrefix.c_str());
+    const auto labels = mappedInput.mapLabels(tr(STR_EXIT), "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+
+    renderer.displayBuffer();
+    return;
+  }
+
   if (shell::uglyParts() && state != CalibreConnectState::WIFI_SELECTION) {
     renderUgly();
     return;

@@ -8,6 +8,7 @@ class CrossPointSettings {
   uint8_t clockFormat = 0;
   uint8_t uglyBatteryHidden = 1;
   bool globalStatusBarHidden() const { return true; }
+  bool batteryPercentShown(bool) const { return false; }
   static CrossPointSettings& getInstance() {
     static CrossPointSettings settings;
     return settings;

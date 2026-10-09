@@ -1,4 +1,5 @@
 #pragma once
+#include "shells/ugly/UglyMarkSeed.h"
 
 #include <I18n.h>
 
@@ -19,7 +20,7 @@ freeink::ui::Rect text(const GfxRenderer& renderer, const freeink::ui::Rect& rec
                        freeink::ui::TextAlign align = freeink::ui::TextAlign::Left);
 void paper(const GfxRenderer& renderer, const freeink::ui::Rect& rect);
 // The circle round a control that has no words (an arrow key, an icon). Words take uglychrome::ring.
-void selected(const GfxRenderer& renderer, const freeink::ui::Rect& rect);
+void selected(const GfxRenderer& renderer, const freeink::ui::Rect& rect, uint32_t seed);
 // The words of a reader notice (bookmark, indexing): tenor/ugly on the button readers says it in its own voice.
 const char* notice(StrId id);
 }
@@ -123,6 +124,8 @@ class ReaderToolbarUi : public UiAppHost {
 #endif
 
  private:
+  mutable ugly::MarkState mark_;
+  mutable ugly::MarkState toolMark_, progressMark_, arrowsMark_;
   static void screenFn(UiScreen& screen, void* user);
   static void onAction(const freeink::ui::ActionEvent& event, void* user);
   void buildToolbar(UiScreen& screen);

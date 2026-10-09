@@ -1,4 +1,5 @@
 #pragma once
+#include "shells/ugly/UglyMarkSeed.h"
 #include <array>
 #include <memory>
 #include <string>
@@ -7,6 +8,7 @@
 #include "QuoteStore.h"
 #include "activities/Activity.h"
 #include "components/QuoteListLayout.h"
+#include "components/TenorMenuChrome.h"
 #include "util/ButtonNavigator.h"
 
 // Saved quotes, two levels deep. Opened from Home it lists the books that have quotes
@@ -36,8 +38,11 @@ class QuotesActivity final : public Activity {
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;
+  tenorchrome::X3ScreenLayout screenLayout() const;
+  void drawX3Content() const;
 
  private:
+  mutable ugly::MarkState mark_;
   // What the list shows. The first three belong to the top level and are cycled from its
   // top row; the last three belong to one book.
   enum class Order : uint8_t { Books, AllNewest, AllOldest, BookNewest, BookOldest, BookPage };

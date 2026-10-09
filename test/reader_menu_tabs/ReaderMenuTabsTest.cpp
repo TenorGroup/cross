@@ -6,6 +6,29 @@
 
 #include "activities/reader/ReaderMenuLayout.h"
 
+TEST(ReaderMenuTabs, X3TextTabPreservesEveryActionAndOldTabValues) {
+  std::vector<readermenu::Item> items;
+  readermenu::buildItems(items, true, true, true, true);
+  const auto before = items;
+  readermenu::separateTextTab(items);
+  ASSERT_EQ(items.size(), before.size());
+  EXPECT_EQ(readermenu::X3_TAB_COUNT, 5);
+  EXPECT_EQ(readermenu::TAB_COUNT, 4);
+  EXPECT_EQ(static_cast<int>(readermenu::Tab::TOOLS), 3);
+  EXPECT_EQ(static_cast<int>(readermenu::Tab::TEXT), 4);
+  int textRows = 0;
+  for (size_t index = 0; index < items.size(); ++index) {
+    EXPECT_EQ(items[index].action, before[index].action);
+    EXPECT_EQ(items[index].labelId, before[index].labelId);
+    if (items[index].action == readermenu::Action::TEXT_SETTINGS) {
+      EXPECT_EQ(items[index].tab, readermenu::Tab::TEXT);
+      ++textRows;
+    } else
+      EXPECT_EQ(items[index].tab, before[index].tab);
+  }
+  EXPECT_EQ(textRows, 1);
+}
+
 namespace {
 
 using MenuAction = readermenu::Action;

@@ -8,12 +8,12 @@
 #include "shells/ugly/UglyInk.h"
 int underlines=0,rowCircles=0;
 namespace ugly {
-int width(const GfxRenderer&,Size size,const char* s){int n=0;for(const unsigned char* p=(const unsigned char*)s;*p;++p)if((*p&0xc0)!=0x80)++n;return n*(size==Size::S22?9:13);}
-int text(const GfxRenderer& r,Size size,int x,int y,const char* s,bool){++r.texts;const int w=width(r,size,s);if(r.textCount<512){auto& t=r.textRuns[r.textCount++];t.x=x;t.y=y;t.w=w;snprintf(t.value,sizeof(t.value),"%s",s);}return w;}
-int paragraph(const GfxRenderer& r,Size size,int,int,int w,int,const char* s,bool draw){int lines=std::max(1,(width(r,size,s)+w-1)/w);if(draw)r.texts+=lines;return lines;}
+int width(const GfxRenderer&,Size size,const char* s,bool){int n=0;for(const unsigned char* p=(const unsigned char*)s;*p;++p)if((*p&0xc0)!=0x80)++n;return n*(size==Size::S22?9:13);}
+int text(const GfxRenderer& r,Size size,int x,int y,const char* s,bool,bool){++r.texts;const int w=width(r,size,s);if(r.textCount<512){auto& t=r.textRuns[r.textCount++];t.x=x;t.y=y;t.w=w;snprintf(t.value,sizeof(t.value),"%s",s);}return w;}
+int paragraph(const GfxRenderer& r,Size size,int,int,int w,int,const char* s,bool draw,bool){int lines=std::max(1,(width(r,size,s)+w-1)/w);if(draw)r.texts+=lines;return lines;}
 std::string fit(const GfxRenderer& r,Size size,const std::string& s,int w){std::string out=s;while(!out.empty()&&width(r,size,out.c_str())>w)out.pop_back();return out;}
 void line(const GfxRenderer& r,int,int,int,int,uint32_t,int){++r.strokes;}
-void circle(const GfxRenderer& r,Circle kind,const Box& b,int,int,int){++r.strokes;if(kind==Circle::Row)++rowCircles;if(kind==Circle::Word&&r.circleCount<256)r.circles[r.circleCount++]={(b.x0+b.x1)/2,(b.y0+b.y1)/2};}
+void circle(const GfxRenderer& r,Circle kind,const Box& b,int,int,uint32_t,int){++r.strokes;if(kind==Circle::Row)++rowCircles;if(kind==Circle::Word&&r.circleCount<256)r.circles[r.circleCount++]={(b.x0+b.x1)/2,(b.y0+b.y1)/2};}
 void underline(const GfxRenderer& r,int,int,int,uint32_t,int){++r.strokes;++underlines;}
 void statusBar(const GfxRenderer& r,const MappedInputManager&,Hints){++r.navBars;}
 void topBar(const GfxRenderer& r,const char*){++r.topBars;}
@@ -45,6 +45,9 @@ int main(){
   Sheet sheet;sheet.bind(r,c.view(),touch);sheet.paint(r,input);
   check(r.clears==1&&r.texts>0&&r.strokes>0,"production paint invoked");
   check((touch || r.navBars==1)&&r.topBars==(touch?1:0),"status and input hints preserved");
+  const auto paintCounter=ugly::markCounter.load();
+  sheet.paint(r,input);
+  check(ugly::markCounter.load()==paintCounter,"same form repaint consumes no mark seed");
   if(touch) {
    bool found=false;
    for(int i=0;i<r.textCount;++i)if(std::string(r.textRuns[i].value)=="back to Settings") {
@@ -150,6 +153,30 @@ int main(){
    selected=sheet.tap(r.circles[1].x,r.circles[1].y);
    check(selected.kind==Sheet::IntentKind::Commit&&selected.candidate==1&&!sheet.paperOpen(),"paper painted option direct commit");
   }
+  Catalog marks;marks.rows={{91,"Marks",Sheet::Kind::Choice,0,3}};
+  sheet.bind(r,marks.view(),touch);sheet.paint(r,input);
+  const auto firstPencil=ugly::markCounter.load();
+  marks.rows[0].selected=1;sheet.didCommit(0,0);
+  check(ugly::markCounter.load()==firstPencil+1,"commit issues exactly 1 pencil seed");
+  sheet.paint(r,input);const auto afterCommit=ugly::markCounter.load();
+  sheet.paint(r,input);
+  check(ugly::markCounter.load()==afterCommit,"committed pencil survives repaint");
+  sheet.bind(r,marks.view(),touch);sheet.paint(r,input);
+  check(ugly::markCounter.load()==afterCommit,"geometry rebind preserves marks");
+  marks.rows[0].selected=0;sheet.didCommit(0,1);
+  check(ugly::markCounter.load()==afterCommit+1,"returning to same answer gets new pencil seed");
+  sheet.bind(r,marks.view(),false);sheet.input(Sheet::Key::Confirm);
+  const auto cursorCounter=ugly::markCounter.load();
+  sheet.input(Sheet::Key::NextOption);sheet.input(Sheet::Key::PreviousOption);
+  check(ugly::markCounter.load()==cursorCounter+2,"2 cursor moves before paint issue 2 seeds");
+  sheet.paint(r,input);const auto cursorPaintCounter=ugly::markCounter.load();
+  sheet.paint(r,input);
+  check(ugly::markCounter.load()==cursorPaintCounter,"cursor repaint consumes no seed");
+  sheet.input(Sheet::Key::Back);sheet.bind(r,marks.view(),true);
+  r.circleCount=0;sheet.paint(r,input);const auto sameAnswerCounter=ugly::markCounter.load();
+  const auto sameAnswer=sheet.tap(r.circles[0].x,r.circles[0].y);
+  check(sameAnswer.kind==Sheet::IntentKind::None&&ugly::markCounter.load()==sameAnswerCounter+1,
+        "selecting current answer redraws pencil with 1 new seed and no commit");
   sheet.invalidate();check(sheet.input(Sheet::Key::Confirm).kind==Sheet::IntentKind::None,"invalidated catalog inert");
  }
  printf("%d checks, %d failures\n",checks,failures);return failures?1:0;

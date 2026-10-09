@@ -1,5 +1,7 @@
 #include "ReadingHabitsActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <GfxRenderer.h>
 #include <I18n.h>
 
@@ -39,6 +41,12 @@ void ReadingHabitsActivity::onEnter() {
   UiListActivity::onEnter();
 }
 void ReadingHabitsActivity::drawChrome() {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tr(STR_HABIT_TIP), 8));
+    x3activity::drawBar(renderer, layout.barRect, headerTitle(), navigationPrefix.c_str());
+    return;
+  }
+
   if (tenorchrome::enabled())
     tenorchrome::drawHeader(renderer, headerTitle(), tr(STR_HOME_TAB_STATS));
   else
@@ -64,12 +72,18 @@ void ReadingHabitsActivity::activateIndex(int index) {
 }
 void ReadingHabitsActivity::buildScreen(UiScreen& screen) {
   const auto& m = UITheme::getInstance().getMetrics();
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tr(STR_HABIT_TIP), 8));
+    screen.setContentMarginFromScreen({static_cast<int16_t>(layout.bodyRect.y), 0,
+        static_cast<int16_t>(renderer.getScreenHeight() - layout.bodyRect.bottom() + 7 * renderer.getLineHeight(SMALL_FONT_ID)), 0});
+  } else {
   screen.setContentMarginFromScreen(
       {static_cast<int16_t>(m.topPadding + m.headerHeight), 0, static_cast<int16_t>(m.buttonHintsHeight), 0});
-  reserveFixedMenuContent(screen);
+  }
+  if (!tenorchrome::x3ScreenLayoutEnabled()) reserveFixedMenuContent(screen);
   const int top = explanationTop(renderer);
   const int bottom = screen.body().y + screen.body().height;
-  if (bottom > top - 12) screen.takeBottom(static_cast<int16_t>(bottom - top + 12));
+  if (!tenorchrome::x3ScreenLayoutEnabled() && bottom > top - 12) screen.takeBottom(static_cast<int16_t>(bottom - top + 12));
   freeink::ui::ListProps props;
   props.items = rows.data();
   props.count = rows.size();
@@ -91,7 +105,7 @@ void ReadingHabitsActivity::drawFooter() {
     ugly::line(renderer, 24, y - 10, renderer.getScreenWidth() - 24, y - 12, 41, 2);
     lineY += ugly::ascent(ugly::Size::S22);
     lineY += STEP * ugly::paragraph(renderer, ugly::Size::S22, 24, lineY, width, STEP, I18N.get(descriptions[selected]));
-  } else {
+  } else if (!tenorchrome::x3ScreenLayoutEnabled()) {
     renderer.drawLine(24, y - 10, renderer.getScreenWidth() - 24, y - 10, true);
     // Menu-only, at most two wrapped lines; allocations never run in page turning.
     for (const auto& line : renderer.wrappedText(UI_10_FONT_ID, I18N.get(descriptions[selected]), width, 2)) {
@@ -128,14 +142,29 @@ void ReadingHabitsActivity::drawFooter() {
   const bool matched = (awarded & (1 << selected)) != 0;
   const char* status = !readable ? tr(STR_STATS_READ_ERROR) : matched ? tr(STR_HABIT_MATCHED) : tr(STR_HABIT_COLLECTING);
   const char* tip = failed ? tr(STR_HABIT_SAVE_FAILED) : tr(STR_HABIT_TIP);
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tr(STR_HABIT_TIP), 8));
+    auto body = layout.bodyRect;
+    body.y = body.bottom() - 7 * renderer.getLineHeight(SMALL_FONT_ID);
+    body.height = 7 * renderer.getLineHeight(SMALL_FONT_ID);
+    x3Info.draw(renderer, body, {I18N.get(descriptions[selected]), status,
+        readable && summary.coverage ? evidence : nullptr, tr(STR_HABIT_PERIOD),
+        failed ? tr(STR_HABIT_SAVE_FAILED) : nullptr});
+    tenorchrome::drawTipInRect(renderer, tr(STR_HABIT_TIP), layout.tipRect, 8);
+    UiListActivity::drawFooter();
+    return;
+  }
   if (handwritten) {
     lineY += 4;
     ugly::text(renderer, ugly::Size::S22, 24, lineY, readable && !matched ? ugly::words::habitNoData() : status);
     lineY += STEP;
     if (readable && summary.coverage) ugly::paragraph(renderer, ugly::Size::S22, 24, lineY, width, STEP, evidence);
     // The period sits right over the tip, however many lines the tip takes.
-    const int tipLines = ugly::paragraph(renderer, ugly::Size::S22, 24, 0, width, 26, tip, false);
-    ugly::text(renderer, ugly::Size::S22, 24, tenorchrome::uglyTipTop(renderer, tipLines) - 10, tr(STR_HABIT_PERIOD));
+    const int height = tenorchrome::tipHeight(renderer, tip);
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, failed ? 0 : height);
+    ugly::text(renderer, ugly::Size::S22, 24, layout.bodyRect.bottom() - (failed ? height : 0) - 10, tr(STR_HABIT_PERIOD));
+    if (failed)
+      tenorchrome::drawInfoInRect(renderer, tip, {24, layout.bodyRect.bottom() - height, width, height});
   } else {
     lineY += 8;
     renderer.drawText(UI_10_FONT_ID, 24, lineY, status, true, EpdFontFamily::BOLD);
@@ -148,6 +177,19 @@ void ReadingHabitsActivity::drawFooter() {
     }
     renderer.drawText(SMALL_FONT_ID, 24, tenorchrome::tipY(renderer) - 30, tr(STR_HABIT_PERIOD));
   }
-  tenorchrome::drawTip(renderer, tip);
+  if (!handwritten || !failed) tenorchrome::drawTip(renderer, tip);
   UiListActivity::drawFooter();
+}
+
+void ReadingHabitsActivity::loop() {
+  if (tenorchrome::x3ScreenLayoutEnabled() && x3Info.turn(
+      mappedInput.wasReleased(MappedInputManager::Button::Left) ? -1 :
+      mappedInput.wasReleased(MappedInputManager::Button::Right) ? 1 : 0)) {
+    requestUpdate();
+    return;
+  }
+  if (tenorchrome::x3ScreenLayoutEnabled() &&
+      (mappedInput.wasReleased(MappedInputManager::Button::Up) || mappedInput.wasReleased(MappedInputManager::Button::Down)))
+    x3Info.page = 0;
+  UiListActivity::loop();
 }

@@ -78,7 +78,7 @@ namespace ugly {
     assert(black); int w = width(r, size, value); labels.push_back({x, baseline, w, value}); return w;
   }
   int penBacks = 0;  // the "<" drawn in pen: its hand circle
-  void circle(const GfxRenderer&, Circle role, const Box& box, int padX, int padY, int stroke) {
+  void circle(const GfxRenderer&, Circle role, const Box& box, int padX, int padY, uint32_t, int stroke) {
     assert(padX == 0 && padY == 0 && stroke == 2);
     if (role == Circle::Object) { ++penBacks; return; }
     assert(role == Circle::Row); circles.push_back(box);
@@ -103,8 +103,10 @@ const freeink::Icon& zoneIcon(Zone) { return icon_tenor_reader_reading_40; }
 const char* screenTitle() { return ""; }
 void noteReaderFootBar(bool,bool,int);
 void drawFootBar(const GfxRenderer&,FootBar,Zone);
+void drawPathPill(const GfxRenderer&,int,const char*,int,int,int,int,int,int,bool) { assert(false); }
 void clearFootBand(const GfxRenderer&);
 ''' + method(header, 'struct ReaderToolRect') + ';\n' + method(header, 'inline ReaderToolRect readerToolRect') + '\n}\n'
+cpp += '\n'.join(re.findall(r'^ugly::MarkState (?:backMark|readerToolMark);', source, re.M)) + '\n'
 cpp += note[0] + '\n' + method(source, 'bool readerFootBarActive()') + '\n'
 cpp += method(source, 'void tenorchrome::noteReaderFootBar') + '\n'
 cpp += method(source, 'void tenorchrome::clearFootBand') + '\n'

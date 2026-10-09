@@ -61,6 +61,7 @@ chrome = (a.repo / 'src/components/TenorMenuChrome.h').read_text()
 constants = '\n'.join(re.findall(r'^constexpr fui::ActionId .*?;', source, re.M)).replace('constexpr', '[[maybe_unused]] constexpr')
 cpp = r'''
 #include <FreeInkApp.h>
+#include "shells/ugly/UglyMarkSeed.h"
 #include "Utf8.h"
 #include <algorithm>
 #include <atomic>

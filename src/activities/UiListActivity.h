@@ -1,9 +1,11 @@
 #pragma once
+#include "shells/ugly/UglyMarkSeed.h"
 
 #include <array>
 
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
+#include "components/FileSearchReveal.h"
 #include "components/PageScrollbar.h"
 #include "components/SettingsChoiceStyle.h"
 #include "components/TenorMenuChrome.h"
@@ -41,6 +43,7 @@ class UiListActivity : public Activity, protected UiAppHost {
   void restoreNavigation(const MenuNavigationState& state) override;
   void loop() override;
   void render(RenderLock&&) override;
+  uint64_t uglyIconPageKey() override { return static_cast<uint32_t>(activeNav().top); }
   // Every list screen polls the motion sensor itself: the row tilt walks its rows.
   bool managesTiltSensor() const override { return true; }
 
@@ -68,6 +71,7 @@ class UiListActivity : public Activity, protected UiAppHost {
   }
 
  protected:
+  mutable ugly::MarkState mark_;
   // A pin toggle for the selected row (or `row`), applied by the next loop pass that can take the render lock.
   void queuePinToggle(const int row = -1) {
     pendingPin = true;
@@ -93,6 +97,11 @@ class UiListActivity : public Activity, protected UiAppHost {
   // A File screen (founder 07/10): its rows keep the framed list's rules, fades and scroll bar, without the ring
   // (tenorchrome::roundFrames).
   virtual bool fileList() const { return false; }
+  virtual bool canSearchFiles() const { return false; }
+  virtual const char* fileSearchText() const { return ""; }
+  virtual void openFileSearch() {}
+  filesearch::Reveal fileSearchReveal;
+  void buildFileSearch(UiScreen& screen);
   // A row that opens a deeper screen: drawRowFrame ends it with the grey ">" (its value stands before it).
   virtual bool rowOpens(int row) const { return false; }
   // A row under a section heading (ListItem::sectionHeading): drawRowFrame closes the frame above it and opens
@@ -174,6 +183,7 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Default is the single `nav` member; UiTabListActivity redirects it to the
   // active tab's per-tab state.
   virtual freeink::ui::ListNav& activeNav() { return nav; }
+  virtual uint64_t selectionMarkKey() { return static_cast<uint32_t>(activeNav().selected); }
   // Bounds-checked ACTION_ROW dispatch. Default: selection follows the tapped
   // row, then long-press/activate. UiTabListActivity remaps row -> ring.
   virtual void onRowAction(const freeink::ui::ActionEvent& event);
@@ -255,7 +265,7 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Buttons: the faded band under the last full row when rows go on, and where it stops on the right.
   void fadeMoreBelow();
   int rowFadeRight = 0;
-  const char* favoriteHintText();
+  virtual const char* favoriteHintText();
   virtual int favoriteHintLinesAbove() const { return 0; }
   virtual bool handleCustomInput() { return false; }
   // Back/Confirm handling; override wholesale for press/release or hold
@@ -272,6 +282,7 @@ class UiListActivity : public Activity, protected UiAppHost {
   // Lays out and paints the list by hand when the skin applies; the caller then displays the buffer.
   bool renderUglyList();
   virtual void drawChrome();
+  virtual bool ownsX3Chrome() const { return false; }
   // Button hints, drawn after the app renders. Default: Back/Select/Up/Down.
   virtual void drawFooter();
   // The side-button arrows (Tenor chrome, setting tenorSideArrows). A screen with a drawing level with them,
@@ -309,10 +320,20 @@ class UiListActivity : public Activity, protected UiAppHost {
   // activeNav() in shared code; `nav` is the single-list default storage.
   freeink::ui::ListNav nav;
   ButtonNavigator buttonNavigator;
+  bool favoriteSaveFailed = false;
 
  private:
   static void screenTrampoline(UiScreen& screen, void* user);
   static void rowActionTrampoline(const freeink::ui::ActionEvent& event, void* user);
+  static void fileSearchTrampoline(const freeink::ui::ActionEvent& event, void* user);
+  static constexpr freeink::ui::ActionId ACTION_FILE_SEARCH = 0x7FFE;
+  bool routeFileSearchDrag();
+  freeink::ui::Rect fileSearchBody{};
+  filesearch::Reveal pendingFileSearchReveal;
+  bool fileSearchRevealPending = false;
+  bool fileSearchDragTracked = false;
+  bool fileSearchDragAtTop = false;
+  bool fileSearchDragBlocked = false;
   // Named apart from UiAppHost::routeTouch so the host overload stays visible
   // (not name-hidden) to subclasses with extra touch surfaces.
   bool routeListTouch();
@@ -329,7 +350,6 @@ class UiListActivity : public Activity, protected UiAppHost {
   std::string pendingFavorite;
   std::string favoriteOrigin;
   bool activateFavorite = true;
-  bool favoriteSaveFailed = false;
   int favoriteHintY = -1;
   int pageAnchorRow = -1;  // touch: the row whose page the next layout shows (syncListViewport)
   NavIntent navQueue[NAV_QUEUE_SIZE];

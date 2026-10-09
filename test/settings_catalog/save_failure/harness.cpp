@@ -13,6 +13,10 @@
 #include "CrossPointSettings.h"
 #include "activities/settings/SettingsActivity.h"
 #include "components/SettledListRender.h"
+#include "components/icons/readerToolbarTabIcons.h"
+#include "components/icons/tenorHomeTabIcons.h"
+#include "components/icons/tenorReaderTabIcons.h"
+#include "components/icons/tenorSettingsIcons.h"
 
 static bool persistOk = true;
 static unsigned writes = 0, errors = 0;
@@ -91,9 +95,19 @@ inline bool hasHomeKey() { return false; }
 }
 namespace tenorchrome {
 bool enabled() { return false; }
+bool x3ScreenLayoutEnabled() { return false; }
 void drawSiblingDestinations(GfxRenderer&, const char*, const char*) {}
 void drawTip(GfxRenderer&, const char*, int, int = 4) {}
+void drawInfoInRect(GfxRenderer&, const char*, freeink::ui::Rect) {}
 }
+namespace x3settings {
+void drawPath(GfxRenderer&, const char*, const freeink::Icon& = icon_tenor_home_settings_40) {}
+freeink::ui::Rect infoRect(GfxRenderer&, const char*, const char*, const char* = nullptr) { return {}; }
+}
+struct UiListActivity {
+  bool favoriteSaveFailed = false;
+  const char* favoriteHintText() const { return nullptr; }
+};
 struct GpioBoundary { bool deviceIsX3() const { return true; } } gpio;
 struct FontBoundary { const int& registry() { static int registry; return registry; } } sdFontSystem;
 enum class HomeMenuItem { RECENT_CONTINUE };
@@ -157,7 +171,7 @@ struct PopupBoundary {
 struct ListNav {
   bool consumeRebuildNeeded() { return false; }
 };
-struct SettingsActivity {
+struct SettingsActivity : UiListActivity {
   static constexpr uint16_t ACTION_ROW = 1;
   bool rowFrameFor(uint16_t, int, freeink::ui::Rect&) const { return false; }
   void showSettingsChoices(PopupBoundary& popup, StrId title, const std::vector<std::string>& labels,

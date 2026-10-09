@@ -3,6 +3,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -86,6 +87,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -170,6 +172,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -254,6 +257,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -339,6 +343,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -422,6 +427,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -506,6 +512,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -590,6 +597,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -675,6 +683,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -743,6 +752,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -812,6 +822,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -881,6 +892,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -951,6 +963,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -1019,6 +1032,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -1088,6 +1102,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",
@@ -1157,6 +1172,7 @@
     [
       "STR_UI_TEXT_SIZE:0:uiTextSize",
       "STR_HIDE_GLOBAL_STATUS_BAR:0:globalStatusBarMode",
+      "STR_TIPS:0:tipsEnabled",
       "STR_SIDE_ARROW_HINTS:0:tenorSideArrows",
       "STR_BUTTON_LABELS:0:tenorButtonSymbols",
       "STR_STATUS_CORNERS:0:statusBarClock",

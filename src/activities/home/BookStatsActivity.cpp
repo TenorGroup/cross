@@ -1,4 +1,5 @@
 #include "BookStatsActivity.h"
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <I18n.h>
 
@@ -81,8 +82,12 @@ bool BookStatsActivity::finishText(const BookReadingRecord& b, char* text, const
 
 void BookStatsActivity::buildScreen(UiScreen& screen) {
   const auto& m = UITheme::getInstance().getMetrics();
-  screen.setContentMarginFromScreen(
-      {static_cast<int16_t>(m.topPadding + m.headerHeight), 0, static_cast<int16_t>(m.buttonHintsHeight), 0});
+  if (x3settings::beginScreen(screen, renderer)) {
+    tabBandDrawn = true;
+  } else {
+    screen.setContentMarginFromScreen(
+        {static_cast<int16_t>(m.topPadding + m.headerHeight), 0, static_cast<int16_t>(m.buttonHintsHeight), 0});
+  }
   freeink::ui::ListProps props;
   props.items = rows.data();
   props.count = rows.size();
@@ -94,7 +99,9 @@ void BookStatsActivity::buildScreen(UiScreen& screen) {
 }
 
 void BookStatsActivity::drawChrome() {
-  if (tenorchrome::enabled())
+  if (tenorchrome::x3ScreenLayoutEnabled())
+    x3settings::drawPath(renderer, headerTitle(), icon_tenor_home_stats_40);
+  else if (tenorchrome::enabled())
     tenorchrome::drawHeader(renderer, headerTitle(), tr(STR_HOME_TAB_STATS));
   else
     UiListActivity::drawChrome();

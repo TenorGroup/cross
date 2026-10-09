@@ -1,4 +1,5 @@
 #include "FontDownloadActivity.h"
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <ArduinoJson.h>
 #include <FontCacheManager.h>
@@ -307,7 +308,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 #endif
   if (result != HttpDownloader::OK) {
     LOG_ERR("FONT", "Failed to fetch manifest from %s", FONT_MANIFEST_URL);
-    errorMessage_ = "Failed to fetch font list";
+    errorMessage_ = tr(STR_FONT_LIST_FETCH_FAILED);
     Storage.remove(MANIFEST_TMP);
     return false;
   }
@@ -317,7 +318,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   if (!Storage.openFileForRead("FONT", MANIFEST_TMP, manifestFile)) {
     LOG_ERR("FONT", "Failed to open temp manifest");
     Storage.remove(MANIFEST_TMP);
-    errorMessage_ = "Failed to read font list";
+    errorMessage_ = tr(STR_FONT_LIST_READ_FAILED);
     return false;
   }
 
@@ -351,7 +352,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   int version = doc["version"] | 0;
   if (version != FONTS_MANIFEST_VERSION) {
     LOG_ERR("FONT", "Unsupported manifest version: %d", version);
-    errorMessage_ = "Unsupported manifest version";
+    errorMessage_ = tr(STR_FONT_MANIFEST_VERSION_UNSUPPORTED);
     return false;
   }
 
@@ -1056,7 +1057,7 @@ void FontDownloadActivity::onDeleteConfirmationResult(const ActivityResult& resu
   if (fontInstaller_.deleteFamily(str(family.name)) != FontInstaller::Error::OK) {
     RenderLock lock(*this);
     state_ = ERROR;
-    errorMessage_ = "Failed to delete font";
+    errorMessage_ = tr(STR_FONT_DELETE_FAILED);
   } else {
     sdFontSystem.markRegistryDirty();
     family.installed = false;
@@ -1114,13 +1115,19 @@ void FontDownloadActivity::activateSelected() {
 void FontDownloadActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Content below the GUI.drawHeader band, above the button hints.
-  screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-                                                static_cast<int16_t>(metrics.buttonHintsHeight), 0});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  if (x3settings::beginScreen(screen, renderer)) {
+    tabBandDrawn = true;
+  } else {
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
+                                                  static_cast<int16_t>(metrics.buttonHintsHeight), 0});
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
 
   if (state_ == FAMILY_LIST && filteredIndices_.empty()) {
-    screen.centeredText(I18N.get(shell::uglyParts() ? StrId::STR_UGLY_FONT_EMPTY : StrId::STR_NO_FONTS_AVAILABLE),
-                        screen.theme().bodyText);
+    if (tenorchrome::x3ScreenLayoutEnabled())
+      tenorchrome::drawInfoInRect(renderer, tr(STR_NO_FONTS_AVAILABLE), tenorchrome::x3ScreenLayout(renderer).bodyRect);
+    else screen.centeredText(I18N.get(shell::uglyParts() ? StrId::STR_UGLY_FONT_EMPTY : StrId::STR_NO_FONTS_AVAILABLE),
+                              screen.theme().bodyText);
     return;
   }
 
@@ -1214,6 +1221,17 @@ bool FontDownloadActivity::handleCustomInput() {
     return false;
   }
 
+  if (tenorchrome::x3ScreenLayoutEnabled() && !(state_ == COMPLETE && batchResult_) && infoPages_ > 1 &&
+      (mappedInput.wasPressed(MappedInputManager::Button::Up) ||
+       mappedInput.wasPressed(MappedInputManager::Button::Down))) {
+    RenderLock lock(*this);
+    infoPage_ = std::clamp(infoPage_ + (mappedInput.wasPressed(MappedInputManager::Button::Down) ? 1 : -1),
+                            0, infoPages_ - 1);
+    terminalStateSince_ = millis();
+    requestUpdate();
+    return true;
+  }
+
   if (state_ == COMPLETE || state_ == ERROR) {
     if (!terminalIdleTimerStarted_) {
       terminalStateSince_ = millis();
@@ -1240,7 +1258,10 @@ bool FontDownloadActivity::handleCustomInput() {
         int index = resultFailureIndex_ + direction;
         while (index >= 0 && index < static_cast<int>(families_.size()) && !families_[index].failureReason)
           index += direction;
-        if (index >= 0 && index < static_cast<int>(families_.size())) resultFailureIndex_ = index;
+        if (index >= 0 && index < static_cast<int>(families_.size())) {
+          resultFailureIndex_ = index;
+          infoPage_ = 0;
+        }
         terminalStateSince_ = millis();
         requestUpdate();
         return true;
@@ -1387,6 +1408,12 @@ const char* FontDownloadActivity::headerSubtitle() {
 }
 
 void FontDownloadActivity::drawChrome() {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    std::string title = tr(STR_FONT_BROWSER);
+    if (headerSubtitle() && *headerSubtitle()) title += std::string(" / ") + headerSubtitle();
+    x3settings::drawPath(renderer, title.c_str());
+    return;
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
                  tr(STR_FONT_BROWSER), headerSubtitle());
@@ -1417,6 +1444,10 @@ void FontDownloadActivity::render(RenderLock&&) {
     progressRenderGate_.renderStarted();
   }
   if (shell::uglyParts() && renderUglyNote()) return;
+  if (tenorchrome::x3ScreenLayoutEnabled() && state_ != GROUP_LIST && state_ != FAMILY_LIST) {
+    renderX3State();
+    return;
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
@@ -1440,8 +1471,9 @@ void FontDownloadActivity::render(RenderLock&&) {
     renderSettledList(activeNav(), [&] {
       if (!firstPass) {
         renderer.clearScreen();
-        GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_FONT_BROWSER),
-                       headerSubtitle);
+        if (tenorchrome::x3ScreenLayoutEnabled()) drawChrome();
+        else GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_FONT_BROWSER),
+                              headerSubtitle);
       }
       firstPass = false;
       renderUi();
@@ -1526,5 +1558,84 @@ void FontDownloadActivity::render(RenderLock&&) {
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
 
+  renderer.displayBuffer();
+}
+
+std::string FontDownloadActivity::x3InfoText() const {
+  if (state_ == LOADING_MANIFEST) return tr(STR_LOADING_FONT_LIST);
+  if (state_ == ERROR) return std::string(tr(STR_FONT_INSTALL_FAILED)) + "\n" + errorMessage_;
+  char summary[96];
+  if (state_ == COMPLETE) {
+    if (!batchResult_) return tr(STR_FONT_INSTALLED);
+    std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_DONE), batchSuccessCount_, batchFamilyCount_);
+    std::string text = summary;
+    if (batchFailureCount_ && resultFailureIndex_ < static_cast<int>(families_.size())) {
+      const auto& failed = families_[resultFailureIndex_];
+      unsigned ordinal = 0;
+      for (int index = 0; index <= resultFailureIndex_; ++index)
+        if (families_[index].failureReason) ++ordinal;
+      std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_FAILED), ordinal, batchFailureCount_);
+      text += std::string("\n") + summary + "\n" + str(failed.name);
+      if (failed.requiredMb) std::snprintf(summary, sizeof(summary), failed.failureReason, failed.requiredMb);
+      else std::snprintf(summary, sizeof(summary), "%s", failed.failureReason);
+      text += std::string("\n") + summary;
+    }
+    return text;
+  }
+  const auto& family = families_[downloadingFamilyIndex_];
+  const auto familyBytes = uint64_t{familyDownloadedBytes_} + fileProgress_;
+  const auto totalBytes = batchRunning_ ? batchTotalBytes_ : family.totalSize;
+  const auto downloadedBytes = batchRunning_ ? batchDownloadedBytes_ + fileProgress_ : familyBytes;
+  const unsigned totalPercent = totalBytes ? static_cast<unsigned>(downloadedBytes * 100 / totalBytes) : 0;
+  std::string text = str(family.name);
+  if (installingPack_) text += std::string("\n") + tr(STR_FONT_PACK_INSTALLING);
+  std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_DOWNLOADING),
+                formatSize(familyBytes).c_str(), formatSize(family.totalSize).c_str());
+  text += std::string("\n") + summary;
+  std::snprintf(summary, sizeof(summary), tr(STR_FONT_BATCH_TOTAL), batchRunning_ ? batchFamilyIndex_ : 1u,
+                batchRunning_ ? batchFamilyCount_ : 1u, totalPercent);
+  text += std::string("\n") + summary + "\n" + formatSize(downloadedBytes) + " / " + formatSize(totalBytes);
+  return text;
+}
+
+void FontDownloadActivity::renderX3State() {
+  renderer.clearScreen();
+  const auto layout = tenorchrome::x3ScreenLayout(renderer);
+  auto body = layout.bodyRect;
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  body.height -= lineHeight + 8;
+  if (state_ == ERROR) body.height -= lineHeight + 8;
+  if (state_ == DOWNLOADING && fileTotal_ > 0) body.height -= metrics.progressBarHeight + 8;
+  const std::string text = x3InfoText();
+  infoPages_ = x3settings::infoPageCount(renderer, text.c_str(), body);
+  infoPage_ = std::clamp(infoPage_, 0, infoPages_ - 1);
+  x3settings::drawInfoPage(renderer, text.c_str(), body, infoPage_);
+  if (state_ == DOWNLOADING && fileTotal_ > 0) {
+    const auto& family = families_[downloadingFamilyIndex_];
+    const auto bytes = uint64_t{familyDownloadedBytes_} + fileProgress_;
+    const unsigned percent = family.totalSize ? static_cast<unsigned>(bytes * 100 / family.totalSize) : 0;
+    GUI.drawProgressBar(renderer, Rect{metrics.contentSidePadding, body.bottom() + 8,
+                                       renderer.getScreenWidth() - 2 * metrics.contentSidePadding, metrics.progressBarHeight},
+                         std::min(percent, 100u), 100);
+  }
+  auto row = layout.bodyRect;
+  row.y = row.bottom() - lineHeight;
+  row.height = lineHeight;
+  if (state_ == ERROR) {
+    tenorchrome::drawInfoInRect(renderer, tr(STR_RETRY), row, 1);
+    row.y -= lineHeight + 8;
+  }
+  if (infoPages_ > 1) {
+    const std::string position = std::to_string(infoPage_ + 1) + "/" + std::to_string(infoPages_);
+    tenorchrome::drawInfoInRect(renderer, position.c_str(), row, 1);
+  }
+  drawChrome();
+  const bool pages = infoPages_ > 1 || (state_ == COMPLETE && batchResult_ && batchFailureCount_ > 1);
+  const auto labels = mappedInput.mapLabels(state_ == LOADING_MANIFEST ? ""
+                                             : state_ == DOWNLOADING ? (installingPack_ ? "" : tr(STR_CANCEL)) : tr(STR_BACK),
+                                             state_ == ERROR ? tr(STR_SELECT) : "",
+                                             pages ? tr(STR_DIR_UP) : "", pages ? tr(STR_DIR_DOWN) : "");
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
 }

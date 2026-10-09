@@ -1,10 +1,13 @@
 #pragma once
 // The pen of the tenor/ugly shell: baked straight Mansalva letters, which the level "ugly af" turns, shrinks and
-// lets jump as they are drawn, circles and underlines drawn from fixed tables, hand-drawn battery and button
+// lets jump as they are drawn, seeded circles over fixed tables, underlines, hand-drawn battery and button
 // hints. Everything is deterministic, so a screen drawn twice has the same pixels.
 #include <GfxRenderer.h>
 
 #include <cstdint>
+
+#include "UglyMarkSeed.h"
+#include "UglyIconInk.h"
 
 class MappedInputManager;
 
@@ -51,11 +54,12 @@ struct Box {
 };
 enum class Circle : uint8_t { Word, Object, Row };
 // A pen circle around a box, padded by padX and padY on each side.
-void circle(const GfxRenderer& renderer, Circle role, const Box& box, int padX, int padY, int stroke = 3);
+void circle(const GfxRenderer& renderer, Circle role, const Box& box, int padX, int padY, uint32_t seed, int stroke);
 // A shaky underline from x0 to x1, a little uphill.
 void underline(const GfxRenderer& renderer, int x0, int x1, int y, uint32_t seed, int stroke = 2);
 // A shaky straight line (the margin of a notebook page).
 void line(const GfxRenderer& renderer, int x0, int y0, int x1, int y1, uint32_t seed, int stroke = 1);
+void penStroke(const GfxRenderer& renderer, int x0, int y0, int x1, int y1, int stroke = 1);
 // A hand-drawn tick, its elbow at (x, y).
 void tick(const GfxRenderer& renderer, int x, int y);
 // A battery drawn by hand with its level as pen strokes or small digits inside its body.
@@ -66,6 +70,7 @@ enum class Mark : uint8_t { Left, Right, Up, Down, Tick, Back };
 void mark(const GfxRenderer& renderer, Mark m, int cx, int cy);
 // The page next door on each side, over the lower corners: a drawn arrow beside a short name.
 void pageHints(const GfxRenderer& renderer, const char* before, const char* after, int baseline);
+void pathHints(const GfxRenderer& renderer, const char* path, const char* note = nullptr);
 
 // left and right are the front Left and Right buttons, which walk up and down the screen.
 struct Hints {
@@ -74,6 +79,7 @@ struct Hints {
 // The bottom bar: battery, the clock when the clock shows, and a hand-drawn symbol over each front
 // button that does something on this screen.
 void statusBar(const GfxRenderer& renderer, const MappedInputManager& input, Hints hints);
+void statusBar(const GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3, const char* btn4);
 // A small heart centred at (x, y). The touch notebook keeps its 24 px pen path.
 void heart(const GfxRenderer& renderer, int x, int y, int size = 24);
 

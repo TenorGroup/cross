@@ -15,6 +15,7 @@ int digitalRead(uint8_t);
 struct EspClass {
   void restart() {}
   uint32_t getFreeHeap() { return 200000; }
+  uint32_t getMaxAllocHeap() { return 200000; }
   uint32_t getMinFreeHeap() { return 150000; }
 };
 extern EspClass ESP;

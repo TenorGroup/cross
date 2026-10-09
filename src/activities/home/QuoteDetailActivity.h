@@ -8,6 +8,7 @@
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
 #include "components/QuoteDetailLayout.h"
+#include "components/TenorMenuChrome.h"
 
 // Bottom of the header the three Quotes screens share: where their content starts.
 int quotesHeaderBottom();
@@ -47,6 +48,10 @@ class QuoteDetailActivity final : public Activity {
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;
+  tenorchrome::X3ScreenLayout screenLayout() const;
+  void drawX3Content() const;
+  int visitX3Meta(bool paint, int firstLine = 0, int y = 0) const;
+  void layoutX3Pages();
 
  private:
   enum class Menu : uint8_t { None, Options, Edit, Delete };
@@ -86,6 +91,9 @@ class QuoteDetailActivity final : public Activity {
   int pages = 1;
   int quotePage = 0;
   int linesPerPage = 1;
+  int bodyPages = 1;
+  int metaOnLast = 0;
+  int metaPerPage = 1;
 
   OptionPopup popup;
   Menu menu = Menu::None;

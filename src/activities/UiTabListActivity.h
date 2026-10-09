@@ -1,4 +1,5 @@
 #pragma once
+#include "shells/ugly/UglyMarkSeed.h"
 
 #include <vector>
 
@@ -21,6 +22,9 @@
 class UiTabListActivity : public UiListActivity {
  public:
   void onEnter() override;
+  uint64_t uglyIconPageKey() override {
+    return static_cast<uint64_t>(static_cast<uint32_t>(activeTab())) << 32 | UiListActivity::uglyIconPageKey();
+  }
   void captureNavigation(MenuNavigationState& state) const override;
   void restoreNavigation(const MenuNavigationState& state) override;
 
@@ -50,6 +54,7 @@ class UiTabListActivity : public UiListActivity {
   static int theVuaMan(int beRong, int nhanRongNhat, int vien, int khoang, int tong);
 
  protected:
+  mutable ugly::MarkState tabMark_;
   virtual int preferredTabBarHeight() const;
   // Tab-bar action; subclass actions start at ACTION_TAB_USER.
   static constexpr freeink::ui::ActionId ACTION_TAB = ACTION_USER;
@@ -101,6 +106,9 @@ class UiTabListActivity : public UiListActivity {
   freeink::ui::ListNav& activeNav() override;
   // Ring position of the active tab (0 = tab bar) for const contexts.
   int ringPos() const;
+  uint64_t selectionMarkKey() override {
+    return (static_cast<uint64_t>(activeTab()) << 32) | static_cast<uint32_t>(ringPos());
+  }
   // Touch: a tap opens the row and moves neither the cursor nor the viewport, so the row last tapped is
   // the one a hold pins. A screen whose ring means something on touch (Home's Recent card steps
   // between books by it) says so here.
@@ -145,6 +153,7 @@ class UiTabListActivity : public UiListActivity {
   // The shared tab band: theme-driven pill treatment (label-hugging Lyra vs
   // full-slot RoundedRaff), Lyra focused band wash, always-on divider.
   void buildTabBar(UiScreen& screen);
+  void drawChrome() override;
   // Ring-aware counterpart of syncListViewport: measures rows, applies the
   // one-shot follow to the remembered row, clamps, and writes
   // props.selectedIndex = ring - 1. hasSubtitle: see syncListViewport().

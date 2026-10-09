@@ -12,6 +12,7 @@ class ConfirmationActivity : public Activity {
   std::string body;
 
   OptionPopup confirmPopup;
+  ugly::MarkState mark_;
   int uglyChoice = 1;  // tenor/ugly: the circle starts on Cancel, the second answer
 
  public:

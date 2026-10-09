@@ -18,6 +18,10 @@ class XtcReaderChapterSelectionActivity final : public UiListActivity {
 
   int listCount() const override { return xtc ? static_cast<int>(xtc->getChapters().size()) : 0; }
   void buildScreen(UiScreen& screen) override;
+  bool ownsX3Chrome() const override { return true; }
+  tenorchrome::X3ScreenLayout screenLayout() const;
+  void drawX3Content() const;
+  void drawFooter() override;
   void activateIndex(int index) override;
   // Back cancels with a result and Confirm activates on RELEASE here; a `!xtc`
   // guard consumes the pass after Back so nothing else runs without a book.

@@ -5,6 +5,7 @@
 #include <HalDisplay.h>
 #include <HalFrontlight.h>
 #include <HalGPIO.h>
+#include <InlineSymbols.h>
 
 #include <cstring>
 #include <string>
@@ -50,6 +51,7 @@ void GfxRenderer::getOrientedViewableTRBL(int* t, int* r, int* b, int* l) const 
   if (l) *l = 0;
 }
 void GfxRenderer::drawPixel(int, int, bool) const {}
+void inlineSymbols::drawShape(const GfxRenderer&, inlineSymbols::Shape, int, int, int, bool) {}
 void GfxRenderer::drawLine(int, int, int, int, int, bool) const {}
 void GfxRenderer::drawLine(int, int, int, int, bool) const {}
 void GfxRenderer::drawRect(int, int, int, int, int, bool) const {}
@@ -106,6 +108,8 @@ std::vector<std::string> GfxRenderer::wrappedText(int, const char* text, int, in
 // Production Ugly paint is covered by test/ugly_reader/popup.py (96 pairs),
 // native-font checks and simulator captures; these bindings provide no pixel acceptance.
 namespace ugly {
+void pageHints(const GfxRenderer&, const char*, const char*, int) {}
+void pathHints(const GfxRenderer&, const char*, const char*) {}
 int width(const GfxRenderer& r, Size, const char* text, bool) { return r.getTextWidth(0, text); }
 int ascent(Size) { return 16; }  // Same ascender as the renderer stub above.
 int text(const GfxRenderer& r, Size size, int x, int baseline, const char* label, bool black, bool) {
@@ -128,8 +132,8 @@ namespace uglychrome {
 freeink::ui::Rect words(const GfxRenderer&, const freeink::ui::Rect&, const char*, freeink::ui::TextAlign, bool, int) {
   return {};
 }
-void marks(const GfxRenderer&, const freeink::ui::Rect&, const Marks&) {}
-void ring(const GfxRenderer&, const freeink::ui::Rect&) {}
+void marks(const GfxRenderer&, const freeink::ui::Rect&, const Marks&, uint32_t) {}
+void ring(const GfxRenderer&, const freeink::ui::Rect&, uint32_t) {}
 void apart(const GfxRenderer&, freeink::ui::Rect&, const char*, freeink::ui::Rect&, const char*) {}
 }  // namespace uglychrome
 
@@ -189,6 +193,10 @@ HalDisplay& hostTestDisplay() { return fakeDisplay; }
 // The input harness stubs pixel rendering; simulator journeys cover the header.
 HalGPIO gpio;
 namespace tenorchrome {
+bool x3ScreenLayoutEnabled() { return false; }
+X3ScreenLayout x3ScreenLayout(const GfxRenderer&, int) { return {}; }
+void drawTipInRect(const GfxRenderer&, const char*, X3ScreenRect, int) {}
+void drawInfoInRect(const GfxRenderer&, const char*, X3ScreenRect, int) {}
 int tipY(const GfxRenderer&, bool) { return 726; }
 int tipTopY(const GfxRenderer&, const char*, int, int, bool) { return 700; }
 int tipHeight(const GfxRenderer&, const char*, int) { return 28; }

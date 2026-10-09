@@ -1,4 +1,6 @@
 #include "OpdsBookBrowserActivity.h"
+#include "activities/X3ActivityLayout.h"
+
 #include "components/PageScrollbar.h"
 
 #include <Arduino.h>
@@ -151,6 +153,13 @@ bool OpdsBookBrowserActivity::idleExitDue(const unsigned long now, const bool in
 }
 
 void OpdsBookBrowserActivity::loop() {
+  if (tenorchrome::x3ScreenLayoutEnabled() && state != BrowserState::BROWSING &&
+      x3Info.turn(mappedInput.wasReleased(MappedInputManager::Button::Up) ? -1 :
+                  mappedInput.wasReleased(MappedInputManager::Button::Down) ? 1 : 0)) {
+    requestUpdate();
+    return;
+  }
+
   const bool interaction = mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() ||
                            mappedInput.wasScreenTouchReleased();
   if (idleExitDue(millis(), interaction)) {
@@ -268,6 +277,13 @@ void OpdsBookBrowserActivity::rootScreen(UiScreen& screen, void* user) {
 // Shared chrome for every state: reserve the firmware's button-hint band and
 // draw the themed header (padding, centering, and rule come from the theme).
 void OpdsBookBrowserActivity::screenHeader(UiScreen& screen, const bool withSearch) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer);
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(layout.bodyRect.y), 0,
+        static_cast<int16_t>(renderer.getScreenHeight() - layout.bodyRect.bottom()), 0});
+    return;
+  }
+
   if (tenorchrome::enabled()) {
     drawNavigationHeader(server.name.empty() ? tr(STR_OPDS_BROWSER) : server.name.c_str());
     screen.setContentMarginFromScreen(fui::Insets{
@@ -426,6 +442,38 @@ void OpdsBookBrowserActivity::renderUglyNote() {
 }
 
 void OpdsBookBrowserActivity::render(RenderLock&&) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    if (state == BrowserState::BROWSING) {
+      x3Info.page = 0;
+      x3Info.pages = 1;
+      const auto layout = tenorchrome::x3ScreenLayout(renderer);
+      renderer.clearScreen();
+      renderSettledList(listNav, [this] { renderUi(); });
+      x3activity::drawBar(renderer, layout.barRect, server.name.empty() ? tr(STR_OPDS_BROWSER) : server.name.c_str(),
+                          navigationPrefix.c_str());
+      const char* confirm = !entries.empty() && entries[selectorIndex].type == OpdsEntryType::BOOK ? tr(STR_DOWNLOAD) : tr(STR_OPEN);
+      const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirm,
+          !searchTemplate.empty() && selectorIndex == 0 ? tr(STR_SEARCH) : tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+      GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+      renderer.displayBuffer();
+      return;
+    }
+    char progress[64] = {};
+    if (state == BrowserState::DOWNLOADING) snprintf(progress, sizeof(progress), "%lu / %lu B",
+        static_cast<unsigned long>(downloadProgress), static_cast<unsigned long>(downloadTotal));
+    const char* tip = nullptr;
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip, 8));
+    renderer.clearScreen();
+    x3Info.draw(renderer, layout.bodyRect, {state == BrowserState::ERROR ? errorMessage.c_str() : statusMessage.c_str(), progress});
+    tenorchrome::drawTipInRect(renderer, tip, layout.tipRect, 8);
+    x3activity::drawBar(renderer, layout.barRect, server.name.empty() ? tr(STR_OPDS_BROWSER) : server.name.c_str(), navigationPrefix.c_str());
+    const auto labels = mappedInput.mapLabels(state == BrowserState::DOWNLOADING ? tr(STR_CANCEL) : tr(STR_BACK), state == BrowserState::ERROR ? tr(STR_RETRY) : "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+
+    renderer.displayBuffer();
+    return;
+  }
+
   const bool ugly = shell::uglyParts();
   if (ugly && state != BrowserState::BROWSING) return renderUglyNote();
   MappedInputManager::Labels labels;
@@ -454,7 +502,7 @@ void OpdsBookBrowserActivity::render(RenderLock&&) {
     // The list by hand where the layout put it, the circle on the chosen entry.
     ugly::layoutByHand(renderer, uiTarget, [this] { renderUi(); });
     const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(selectorIndex));
-    if (!box.empty()) uglychrome::marks(renderer, box, {true});
+    if (!box.empty()) uglychrome::marks(renderer, box, {true}, mark_.get(selectorIndex));
   });
   if (ugly) PageScrollbar::instance().repaint(renderer, uiTarget);
   renderer.displayBuffer();

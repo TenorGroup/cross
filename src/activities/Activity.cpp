@@ -10,8 +10,12 @@
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "shells/ugly/UglyMarkSeed.h"
 
-void Activity::onEnter() { LOG_DBG("ACT", "Entering activity: %s", name.c_str()); }
+void Activity::onEnter() {
+  uglyIconFrame.enter(ugly::markSeed());
+  LOG_DBG("ACT", "Entering activity: %s", name.c_str());
+}
 
 void Activity::onExit() { LOG_DBG("ACT", "Exiting activity: %s", name.c_str()); }
 

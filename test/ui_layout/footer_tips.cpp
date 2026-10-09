@@ -169,6 +169,7 @@ inline std::string fit(const GfxRenderer&, Size, const std::string& s, int) { re
 inline int width(const GfxRenderer&, Size, const char*) { return 0; }
 inline int ascent(Size) { return 20; }
 inline int text(const GfxRenderer&, Size, int, int, const char*, bool = true) { return 0; }
+inline void statusBar(const GfxRenderer&, const char*, const char*, const char*, const char*) {}
 }
 int fallbackCalls = 0;
 struct BaseTheme {
@@ -242,7 +243,7 @@ int main() {
     GfxRenderer off;
     tenorchrome::drawTip(off, "g");
     TenorTheme{}.drawButtonHints(off, "symbol", "symbol", "symbol", "symbol");
-    check(off.ys.empty() && std::none_of(off.pixels.begin(), off.pixels.end(), [](auto p) { return p != 0; }), "status off drew footer ink");
+    check(off.ys.size() == 1, "status off must keep tips and omit button-label text");
     SETTINGS.hidden = false;
     std::printf("tier=%d caption=%d fallback reserve=%d\n", tier, text.getLineHeight(1), UITheme::getInstance().getMetrics().buttonHintsHeight);
 

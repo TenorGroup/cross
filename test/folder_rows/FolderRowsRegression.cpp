@@ -59,9 +59,17 @@ struct Scale { int bodyFontId = 1, smallFontId = 0; };
 static Scale uiScaleSpec() { return {}; }
 static fui::TextStyle uiMenuLabelText(const fui::ThemeTokens& theme) { return theme.bodyText; }
 static constexpr int SMALL_FONT_ID = 0;
-enum { STR_FILE_SIDE_ACTIONS, STR_NO_BIN_FILES, STR_NO_FILES_FOUND, STR_FOLDER_TOO_MANY, STR_SEARCH = 99 };
+enum {
+  STR_FILE_SIDE_ACTIONS, STR_NO_BIN_FILES, STR_NO_FILES_FOUND, STR_FOLDER_TOO_MANY, STR_MENU_SAVE_FAILED, STR_SEARCH = 99
+};
 static const char* tr(int id) { return id == STR_SEARCH ? "Search" : "empty"; }
-namespace tenorchrome { int tipHeight(...) { return 0; } }
+namespace tenorchrome {
+int tipHeight(...) { return 0; }
+bool x3ScreenLayoutEnabled() { return false; }
+struct ScreenRect { int y = 0; int bottom() const { return 700; } };
+struct ScreenLayout { ScreenRect bodyRect; };
+ScreenLayout x3ScreenLayout(...) { return {}; }
+}
 // The fixture is tenor/cross: the hand of tenor/ugly is never asked for.
 namespace shell { static bool uglyParts() { return false; } }
 namespace ugly {
@@ -73,6 +81,7 @@ template <class... A> void line(A&&...) {}
 
 struct Renderer {
   size_t prewarmCalls = 0, prewarmNames = 0, prewarmBytes = 0;
+  int getScreenHeight() const { return 792; }
   int getLineHeight(int) const { return 16; }
   int getTextWidth(int, const char* text) const { return std::strlen(text) * 4; }
   void drawText(int, int, int, const char*) const {}
@@ -82,6 +91,14 @@ struct Renderer {
     for (uint32_t i = 0; i < count; ++i) prewarmBytes += std::strlen(get(context, i));
   }
 };
+
+namespace tenorchrome {
+struct X3ScreenRect {
+  int x, y, width, height;
+  int bottom() const { return y + height; }
+};
+void drawInfoInRect(const Renderer&, const char*, X3ScreenRect) {}
+}
 
 static int16_t drawLineHeight = 16;
 struct Draw : fui::DrawTarget {
@@ -142,7 +159,9 @@ class FileBrowserActivity {
   struct { bool hasTouch() const { return false; } } mappedInput;
   int pinned = -1;
   int pageAnchorRow = -1;
-  bool tooMany = false, rowsFramed = false, rowsHaveIcons = false;
+  bool tooMany = false, rowsFramed = false, rowsHaveIcons = false, favoriteSaveFailed = false;
+  struct Layout { tenorchrome::X3ScreenRect bodyRect; };
+  Layout screenLayout() const { return {{0, 16, 528, 680}}; }
   int rowFrameFloor = 0;
   int rowFrameGap = 0;
   int rowFadeRight = 0;
@@ -161,6 +180,7 @@ class FileBrowserActivity {
   static constexpr int ACTION_ROW = 1;
 #include "production_row_count.inc"
   void buildScreen(UiScreen& screen);
+  void buildFileSearch(UiScreen&) {}
   void syncListViewport(UiScreen& screen, fui::ListProps& props, bool hasSubtitle = false);
   void decoratePinnedRows(fui::ListProps&);
   void reserveFixedMenuContent(UiScreen&) {}

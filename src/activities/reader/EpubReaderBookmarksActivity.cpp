@@ -1,4 +1,5 @@
 #include "EpubReaderBookmarksActivity.h"
+#include "activities/home/X3FileReaderChrome.h"
 
 #include <GfxRenderer.h>
 #include <I18n.h>
@@ -252,22 +253,30 @@ void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
 
 void EpubReaderBookmarksActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
-  // Content: the safe area minus the title band render() paints.
-  screen.setContentMarginFromScreen(fui::Insets{
-      static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
-      static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
-      static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  const bool x3 = tenorchrome::x3ScreenLayoutEnabled();
+  if (x3) {
+    const auto body = screenLayout().bodyRect;
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(body.y), 0,
+                                                  static_cast<int16_t>(renderer.getScreenHeight() - body.bottom()), 0});
+  } else {
+    const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false, UITheme::StatusBarScope::Reader);
+    // Content: the safe area minus the title band render() paints.
+    screen.setContentMarginFromScreen(fui::Insets{
+        static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
+        static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
+        static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
 
   if (bookmarks.empty()) {
+    if (x3) return;
     screen.centeredText(tr(STR_NO_BOOKMARKS), screen.theme().bodyText);
     return;
   }
 
   // "Hold Open for Actions" names a physical button; on touch boards the row
   // long-press opens the same actions, so the hint would be wrong there.
-  if (!mappedInput.hasTouch() && !SETTINGS.globalStatusBarHidden()) {
+  if (!x3 && !mappedInput.hasTouch() && !SETTINGS.globalStatusBarHidden()) {
     const int reserved = screen.body().y + screen.body().height - tenorchrome::tipY(renderer) + 2;
     if (reserved > 0) screen.takeBottom(static_cast<int16_t>(reserved));
     tenorchrome::drawTip(renderer, tr(STR_HOLD_OPEN_FOR_ACTIONS));
@@ -312,7 +321,9 @@ void EpubReaderBookmarksActivity::render(RenderLock&&) {
   renderSettledList(activeNav(), [&] {
     renderer.clearScreen();
     // Touch: the name goes to the dynamic bar; the top of the screen is the status strip's.
-    if (tenorchrome::kTouchShell)
+    if (tenorchrome::x3ScreenLayoutEnabled())
+      x3readerchrome::drawPath(renderer, screenLayout().barRect, icon_tenor_reader_position_40, tr(STR_BOOKMARKS));
+    else if (tenorchrome::kTouchShell)
       tenorchrome::noteScreenTitle(tr(STR_BOOKMARKS));
     else
       renderer.drawText(UI_12_FONT_ID, titleX, 15 + contentY, tr(STR_BOOKMARKS), true, EpdFontFamily::BOLD);
@@ -321,9 +332,26 @@ void EpubReaderBookmarksActivity::render(RenderLock&&) {
 
   if (confirmPopup.processRender(renderer, mappedInput)) return;
 
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    drawX3Content();
+  }
+
   const auto confirmLabel = bookmarks.size() > 0 ? tr(STR_SELECT) : "";
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();
+}
+
+tenorchrome::X3ScreenLayout EpubReaderBookmarksActivity::screenLayout() const {
+  return tenorchrome::x3ScreenLayout(
+      renderer, bookmarks.empty() ? 0 : tenorchrome::tipHeight(renderer, tr(STR_HOLD_OPEN_FOR_ACTIONS)));
+}
+
+void EpubReaderBookmarksActivity::drawX3Content() const {
+  const auto layout = screenLayout();
+  if (bookmarks.empty())
+    tenorchrome::drawInfoInRect(renderer, tr(STR_NO_BOOKMARKS), layout.bodyRect);
+  else
+    tenorchrome::drawTipInRect(renderer, tr(STR_HOLD_OPEN_FOR_ACTIONS), layout.tipRect);
 }

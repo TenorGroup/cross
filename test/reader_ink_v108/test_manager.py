@@ -204,6 +204,7 @@ int main() {
             if cache_program:
                 identities = next(line.split('=', 1)[1] for line in result.stdout.splitlines()
                                   if line.startswith('SD_LAYOUT_IDS='))
+                print('SD_LAYOUT_IDS=' + identities)
                 cache = subprocess.run([cache_program,
                                         '--gtest_filter=SectionCacheTest.SdVariantSwitchKeepsCachedSectionAndPagePosition'],
                                        env=dict(os.environ, CROSSPOINT_SD_FONT_CACHE_IDS=identities),

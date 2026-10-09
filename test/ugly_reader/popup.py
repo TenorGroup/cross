@@ -10,6 +10,7 @@ start=s.index('  // Returns where the ink went, for the circle on the focused op
 helpers=s[start:end]
 cpp=r'''
 #include <FreeInkUI.h>
+#include "UglyMarkSeed.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -33,7 +34,7 @@ namespace ugly {
  void line(const GfxRenderer&r,int,int,int,int,int,int){++r.pen;}
  void circle(const GfxRenderer&r,Circle,Box,int,int,int){++r.pen;}
 }
-namespace uglychrome { void ring(const GfxRenderer&r,const fui::Rect&){++r.pen;} }
+namespace uglychrome { void ring(const GfxRenderer&r,const fui::Rect&,uint32_t){++r.pen;} }
 struct Target:fui::DrawTarget {
  int tier=0;
  fui::Size measureText(fui::FontId,const char*s,fui::TextStyle)const override{return{static_cast<int16_t>(strlen(s)*(8+tier*2)),static_cast<int16_t>(24+tier*8)};}
@@ -46,6 +47,8 @@ struct Target:fui::DrawTarget {
  void bitmap(fui::Rect,fui::BitmapRef,fui::BitmapMode,fui::Paint,fui::Rotation)override{}
 };
 struct Popup {
+ ugly::MarkState mark_;
+ uint32_t selectionSeed()const{return mark_.get(0);}
 '''+helpers+r'''
 };
 int main(){
@@ -84,5 +87,5 @@ int main(){
 '''
 (a.output/'popup.cpp').write_text(cpp)
 sdk=a.repo/'freeink-sdk/libs/ui/FreeInkUI'
-subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined','-I'+str(sdk/'include'),str(a.output/'popup.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(a.output/'popup')],check=True)
+subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined','-I'+str(a.repo/'src/shells/ugly'),'-I'+str(sdk/'include'),str(a.output/'popup.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(a.output/'popup')],check=True)
 subprocess.run([str(a.output/'popup')],check=True)

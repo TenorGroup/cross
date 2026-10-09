@@ -3,6 +3,7 @@
 #include <HalGPIO.h>
 
 #include <algorithm>
+#include <string>
 
 #include "CrossPointSettings.h"
 #include "UIScale.h"
@@ -22,9 +23,11 @@ constexpr bool kTouchShell = true;
 constexpr bool kTouchShell = false;
 #endif
 inline bool enabled() { return kTouchShell || !gpio.hasTouch(); }
+bool x3ScreenLayoutEnabled();
 // A tip that names a front button (one of the button symbols U+E100..U+E109) has nothing to point at
 // on the touch shell.
 inline bool tipShown(const char* text) {
+  if (x3ScreenLayoutEnabled() && !SETTINGS.tipsEnabled) return false;
   if (!kTouchShell || !text) return true;
   for (const char* c = text; c[0] && c[1] && c[2]; ++c)
     if (static_cast<unsigned char>(c[0]) == 0xEE && static_cast<unsigned char>(c[1]) == 0x84 &&
@@ -92,8 +95,8 @@ inline ReaderToolRect readerToolRect(const int width, const int height, const in
   return {x, footBackTop(height), left + room * (tool + 1) / READER_TOOLS - x, FOOT_BACK_SIZE};
 }
 #endif
-// An icon in an icon bar (Mask1, bit 0 = ink): the chosen one solid, the others grey. Every icon bar draws
-// its icons with this, so "not chosen" looks the same on every screen.
+// An icon in an icon bar (Mask1, bit 0 = ink), with grey already baked into the regular bitmap.
+// Every icon bar draws its icons with this, preserving every ink pixel on every screen.
 void drawBarIcon(const GfxRenderer& renderer, const uint8_t* bits, int w, int h, int x, int y, bool chosen);
 // One tab of an icon bar whose band is h tall from y, centred on cx: the chosen one in a ring BAR_TAB_W wide,
 // BAR_TAB_INSET in from the band's top and bottom (the Home bar's), its icon centred in the band.
@@ -107,6 +110,14 @@ constexpr int BAR_TAB_INSET = 6;
 void drawBarTab(const GfxRenderer& renderer, int cx, int y, int h, const uint8_t* bits, int w, int iconH, bool chosen);
 // A ring of `thick` px just inside a round-ended bar; grey = every other pixel.
 void drawPillRing(const GfxRenderer& g, int x, int y, int w, int h, int thick, bool grey);
+struct PathPillLayout {
+  std::string text;
+  int width;
+};
+PathPillLayout layoutPathPill(const GfxRenderer& renderer, int font, const char* title, int maxWidth,
+                              int paddingLeft, int paddingRight);
+void drawPathPill(const GfxRenderer& renderer, int font, const char* title, int x, int y, int maxWidth, int height,
+                  int paddingLeft, int paddingRight, bool grey);
 // The same ring inside a box with corners of radius r (a row menu, a group of list rows).
 void drawRoundRing(const GfxRenderer& g, int x, int y, int w, int h, int r, int thick, bool grey);
 // Whether a group of rows or a panel of content sits in a round frame. The round frame belongs to the touch
@@ -212,6 +223,16 @@ void drawMoreBelowChevron(const GfxRenderer& renderer, int hintTopY = -1);
 void fadeBand(const GfxRenderer& renderer, int y0, int h, bool outerTop, int x0 = 0, int x1 = -1);
 int tipLineCount(const GfxRenderer& renderer, const char* text, int maxLines = 4);
 int tipHeight(const GfxRenderer& renderer, const char* text, int maxLines = 4);
+struct X3ScreenRect {
+  int x, y, width, height;
+  int bottom() const { return y + height; }
+};
+struct X3ScreenLayout {
+  X3ScreenRect bodyRect, tipRect, barRect, buttonBandRect;
+};
+X3ScreenLayout x3ScreenLayout(const GfxRenderer& renderer, int requestedTipHeight = 0);
+void drawTipInRect(const GfxRenderer& renderer, const char* text, X3ScreenRect rect, int maxLines = 4);
+void drawInfoInRect(const GfxRenderer& renderer, const char* text, X3ScreenRect rect, int maxLines = 4);
 void drawTip(const GfxRenderer& renderer, const char* text, int linesAbove = 0, int maxLines = 4,
              bool hasTextHints = false);
 // tenor/ugly: where the ink of a tip block of `lines` lines starts, the block standing `linesAbove` lines above the

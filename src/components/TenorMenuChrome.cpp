@@ -119,6 +119,64 @@ void tenorchrome::drawPillRing(const GfxRenderer& g, const int x, const int y, c
   }
 }
 
+tenorchrome::PathPillLayout tenorchrome::layoutPathPill(const GfxRenderer& renderer, const int font, const char* title,
+                                                        const int maxWidth, const int paddingLeft,
+                                                        const int paddingRight) {
+  const int widthLimit = std::max(0, maxWidth);
+  const int left = std::max(0, paddingLeft);
+  const int right = std::max(0, paddingRight);
+  const int textRoom = std::max(0, widthLimit - left - right);
+  const char* value = title ? title : "";
+  PathPillLayout layout;
+  const bool clippedPath = std::strncmp(value, "\xE2\x80\xA6", 3) == 0;
+  const bool overflow = clippedPath || renderer.getTextWidth(font, value, EpdFontFamily::REGULAR) > textRoom;
+
+  if (clippedPath && renderer.getTextWidth(font, value, EpdFontFamily::REGULAR) <= textRoom) {
+    layout.text = value;
+  } else if (overflow) {
+    const std::string ellipsis = "\xE2\x80\xA6";
+    if (renderer.getTextWidth(font, ellipsis.c_str(), EpdFontFamily::REGULAR) <= textRoom) {
+      std::string candidate;
+      candidate.reserve(std::strlen(value) + ellipsis.size());
+      const auto fits = [&](const char* suffix) {
+        candidate.assign(ellipsis);
+        candidate += suffix;
+        if (renderer.getTextWidth(font, candidate.c_str(), EpdFontFamily::REGULAR) > textRoom) return false;
+        layout.text = candidate;
+        return true;
+      };
+      for (const char* cursor = value + 1; *cursor && layout.text.empty();) {
+        if (*cursor == '/' && fits(cursor)) break;
+        ++cursor;
+        while (*cursor && (static_cast<unsigned char>(*cursor) & 0xC0) == 0x80) ++cursor;
+      }
+      for (const char* cursor = value; *cursor && layout.text.empty();) {
+        if (fits(cursor)) break;
+        ++cursor;
+        while (*cursor && (static_cast<unsigned char>(*cursor) & 0xC0) == 0x80) ++cursor;
+      }
+      if (layout.text.empty()) layout.text = ellipsis;
+    }
+  } else {
+    layout.text = value;
+  }
+
+  const int textWidth = renderer.getTextWidth(font, layout.text.c_str(), EpdFontFamily::REGULAR);
+  layout.width = overflow ? widthLimit : std::min(widthLimit, left + textWidth + right);
+  return layout;
+}
+
+void tenorchrome::drawPathPill(const GfxRenderer& renderer, const int font, const char* title, const int x, const int y,
+                               const int maxWidth, const int height, const int paddingLeft, const int paddingRight,
+                               const bool grey) {
+  const auto layout = layoutPathPill(renderer, font, title, maxWidth, paddingLeft, paddingRight);
+  if (layout.width <= 0 || height <= 0) return;
+  drawPillRing(renderer, x, y, layout.width, height, 2, grey);
+  if (!layout.text.empty())
+    renderer.drawText(font, x + std::max(0, paddingLeft), y + (height - renderer.getLineHeight(font)) / 2,
+                      layout.text.c_str());
+}
+
 
 namespace {
 // Screens below another one, with a back to it: the settings groups and what they open, the file and
@@ -156,6 +214,10 @@ bool named(const char* const (&names)[N], const char* activityName) {
 char noted[96] = {};
 uint32_t notedGeneration = UINT32_MAX;
 uint32_t handDrawnGeneration = UINT32_MAX;
+ugly::MarkState backMark;
+#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
+ugly::MarkState readerToolMark;
+#endif
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
 struct ReaderFootBarNote {
   bool open = false, keypad = false;
@@ -171,18 +233,22 @@ bool readerFootBarActive() {
 
 }  // namespace
 
-// The one way an icon bar draws its icons (dynamic bar rule 2): the chosen one solid, the others grey, every
-// other ink pixel of their Mask1 art (bit 0 = ink).
 void tenorchrome::drawBarIcon(const GfxRenderer& r, const uint8_t* bits, const int w, const int h, const int x,
-                              const int y, const bool chosen) {
+                              const int y, const bool) {
+  if (shell::isUgly() && ugly::iconAsset(r, bits, {x, y, w, h}, ugly::iconFrameSeed())) return;
   const int stride = (w + 7) / 8;
   for (int j = 0; j < h; ++j)
     for (int i = 0; i < w; ++i)
-      if (((bits[j * stride + i / 8] >> (7 - i % 8)) & 1) == 0 && (chosen || ((i + j) & 1) == 0))
+      if (((bits[j * stride + i / 8] >> (7 - i % 8)) & 1) == 0)
         r.drawPixel(x + i, y + j, true);
 }
 
 void tenorchrome::drawFavoriteMark(const GfxRenderer& r, const int x, const int fontId, const int lineTop) {
+  if (shell::isUgly()) {
+    const int top = inlineSymbols::markTopOnCapitals(r, fontId, lineTop, FAVORITE_MARK);
+    ugly::icon(r, ugly::icons::Id::Heart, {x, top, FAVORITE_MARK, FAVORITE_MARK}, ugly::iconFrameSeed());
+    return;
+  }
   // The Favourites tab's heart, filled and shrunk, worked out once: inside the outline is everything the
   // outside, flooded from the icon's border, does not reach; a mark pixel is ink when most of its block is.
   static uint32_t rows[FAVORITE_MARK];
@@ -234,7 +300,20 @@ void tenorchrome::drawRowRule(const GfxRenderer& g, const int y, const int x0, c
 void tenorchrome::drawBarTab(const GfxRenderer& r, const int cx, const int y, const int h, const uint8_t* bits,
                              const int w, const int iconH, const bool chosen) {
   if (chosen) drawPillRing(r, cx - BAR_TAB_W / 2, y + BAR_TAB_INSET, BAR_TAB_W, h - 2 * BAR_TAB_INSET, 3, false);
-  drawBarIcon(r, bits, w, iconH, cx - w / 2, y + (h - iconH) / 2, chosen);
+  const int stride = (w + 7) / 8;
+  int left = w, right = -1, top = iconH, bottom = -1;
+  for (int row = 0; row < iconH; ++row)
+    for (int column = 0; column < w; ++column)
+      if (((bits[row * stride + column / 8] >> (7 - column % 8)) & 1) == 0) {
+        left = std::min(left, column);
+        right = std::max(right, column);
+        top = std::min(top, row);
+        bottom = std::max(bottom, row);
+      }
+  if (right < left) return;
+  const int iconX = cx - BAR_TAB_W / 2 + (BAR_TAB_W - (right - left + 1)) / 2 - left;
+  const int iconY = y + BAR_TAB_INSET + (h - 2 * BAR_TAB_INSET - (bottom - top + 1)) / 2 - top;
+  drawBarIcon(r, bits, w, iconH, iconX, iconY, chosen);
 }
 
 namespace {
@@ -271,7 +350,16 @@ tenorchrome::FootBar tenorchrome::footBarFor(const char* activityName) {
 }
 
 void tenorchrome::noteScreenTitle(const char* title) {
-  snprintf(noted, sizeof(noted), "%s", title ? title : "");
+  const char* value = title ? title : "";
+  const size_t length = std::strlen(value);
+  if (length >= sizeof(noted)) {
+    const char* suffix = value + length - (sizeof(noted) - 4);
+    while ((static_cast<unsigned char>(*suffix) & 0xC0) == 0x80) ++suffix;
+    if (const char* folder = std::strchr(suffix, '/')) suffix = folder;
+    snprintf(noted, sizeof(noted), "\xE2\x80\xA6%s", suffix);
+  } else {
+    snprintf(noted, sizeof(noted), "%s", value);
+  }
   notedGeneration = activityManager.activityGeneration();
 }
 
@@ -332,7 +420,8 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   pen = pen || (reader && shell::isUgly());
 #endif
   if (pen) {
-    ugly::circle(r, ugly::Circle::Object, {x + 8, y + 8, x + SIZE - 8, y + SIZE - 8}, 0, 0, 2);
+    ugly::circle(r, ugly::Circle::Object, {x + 8, y + 8, x + SIZE - 8, y + SIZE - 8}, 0, 0,
+                 backMark.get(activityManager.activityGeneration()), 2);
     const int cx = x + SIZE / 2 - 2, cy = y + SIZE / 2;
     ugly::line(r, cx + 6, cy - 11, cx - 5, cy, 811, 3);
     ugly::line(r, cx - 5, cy, cx + 6, cy + 11, 812, 3);
@@ -367,7 +456,9 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
         ugly::text(r, ugly::Size::S22, cell.x + (cell.width - textWidth) / 2,
                    y + (SIZE + ugly::ascent(ugly::Size::S22)) / 2, name.c_str());
         if (active) ugly::circle(r, ugly::Circle::Row,
-            {cell.x + 8, y + 8, cell.x + cell.width - 8, y + SIZE - 8}, 0, 0, 2);
+            {cell.x + 8, y + 8, cell.x + cell.width - 8, y + SIZE - 8}, 0, 0,
+            readerToolMark.get((static_cast<uint64_t>(activityManager.activityGeneration()) << 32) |
+                               static_cast<uint32_t>(readerFootBar.activeTool)), 2);
         continue;
       }
       const freeink::Icon& icon = iconOf(tool, active);
@@ -382,16 +473,12 @@ void tenorchrome::drawFootBar(const GfxRenderer& r, FootBar bar, const Zone zone
   drawPillRing(r, x, y, SIZE, SIZE, 2, true);
   drawIcon(r, zoneIcon(zone), x + (SIZE - ICON) / 2, y + (SIZE - ICON) / 2);
   HeaderBackTapTarget::setZone(x, y, SIZE, SIZE);
-  // The screen's name in a pill that hugs it, cut with an ellipsis at the bar's end. Read only.
+  // The screen's name in a pill that hugs it. A filesystem path keeps its deepest folders when cut.
   const char* title = screenTitle();
   if (!*title) return;
   constexpr int PAD_LEFT = 18, PAD_RIGHT = 22, font = UI_12_FONT_ID;
   x += SIZE + FOOT_PILL_GAP;
-  const int room = r.getScreenWidth() - FOOT_BACK_X - x - PAD_LEFT - PAD_RIGHT;
-  const std::string name = r.truncatedText(font, title, room, EpdFontFamily::REGULAR);
-  const int width = PAD_LEFT + r.getTextWidth(font, name.c_str(), EpdFontFamily::REGULAR) + PAD_RIGHT;
-  drawPillRing(r, x, y, width, SIZE, 2, true);
-  r.drawText(font, x + PAD_LEFT, y + (SIZE - r.getLineHeight(font)) / 2, name.c_str(), true, EpdFontFamily::REGULAR);
+  drawPathPill(r, font, title, x, y, r.getScreenWidth() - FOOT_BACK_X - x, SIZE, PAD_LEFT, PAD_RIGHT, true);
 }
 
 namespace {
@@ -418,6 +505,12 @@ void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char
     return;
   }
   if (shell::uglyParts()) {
+    if (x3ScreenLayoutEnabled()) {
+      const std::string path = prefix && *prefix ? std::string(prefix) + "/" + (title ? title : "")
+                                                : std::string(title ? title : "");
+      ugly::pathHints(r, path.c_str(), note);
+      return;
+    }
     // The name written across the top and underlined; where it came from goes before it, smaller.
     const int base = HEADER_TOP + headerHeight() - 10;
     int x = 24, right = r.getScreenWidth() - 24;
@@ -783,6 +876,10 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
     return;
   }
   if (trongTrinhDoc ? SETTINGS.readerStatusBarHidden() : SETTINGS.globalStatusBarHidden()) return;
+  if (shell::uglyParts() && !trongTrinhDoc) {
+    ugly::statusBar(r, "", "", "", "");
+    return;
+  }
   const auto spec = SETTINGS.statusBarSpec();
   const bool hienPin = trongTrinhDoc ? spec.showBattery : true;
   const bool hienPhanTram = (trongTrinhDoc ? spec.showBatteryPercent : true) && SETTINGS.batteryPercentShown(trongTrinhDoc);
@@ -825,10 +922,7 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
       right -= 12;
     }
     if (bookmarked) {  // a star in 5 pen strokes
-      static constexpr int8_t STAR[6][2] = {{0, -9}, {5, 7}, {-8, -3}, {8, -3}, {-5, 7}, {0, -9}};
-      const int cx = left + 9, cy = base - 8;
-      for (int i = 0; i < 5; ++i)
-        ugly::line(r, cx + STAR[i][0], cy + STAR[i][1], cx + STAR[i + 1][0], cy + STAR[i + 1][1], 870 + i, 1);
+      ugly::icon(r, ugly::icons::Id::Star, {left, base - 20, 24, 24}, ugly::iconFrameSeed());
       left += 24;
     }
     if (hienTieuDe && right - left > 40) {
@@ -1014,6 +1108,38 @@ int tenorchrome::smallFooterSymbolsTopY(const GfxRenderer& renderer) {
   return statusIconTopY(renderer.getScreenHeight(), false) - 1;
 }
 
+bool tenorchrome::x3ScreenLayoutEnabled() {
+  return !kTouchShell && enabled();
+}
+
+tenorchrome::X3ScreenLayout tenorchrome::x3ScreenLayout(const GfxRenderer& renderer, const int requestedTipHeight) {
+  const int width = renderer.getScreenWidth();
+  const int height = renderer.getScreenHeight();
+  int bandTop = height;
+  int barBottom = height - 16;
+  if (!SETTINGS.globalStatusBarHidden()) {
+    const bool large = SETTINGS.globalStatusBarLarge();
+    const int statusFont = large ? UI_12_FONT_ID : SMALL_FONT_ID;
+    bandTop = std::min(large ? statusIconTopY(height, true) : smallFooterSymbolsTopY(renderer),
+                       statusTextY(height, large) +
+                           renderer.getTextInkTop(statusFont, "0123456789", EpdFontFamily::REGULAR));
+    if (!SETTINGS.tenorButtonSymbols) {
+      const int reserve = UITheme::getInstance().getMetrics().buttonHintsHeight;
+      const int textOffset = normalizedUiTextSize(SETTINGS.uiTextSize) == 0
+                                 ? 4 : std::max(1, (reserve - 5 - renderer.getLineHeight(SMALL_FONT_ID)) / 2);
+      bandTop = std::min(bandTop, height - reserve + textOffset);
+    }
+    barBottom = bandTop - 4;
+  }
+  const int barTop = barBottom - tabHeight();
+  const int tips = SETTINGS.tipsEnabled ? std::max(0, requestedTipHeight) : 0;
+  const int tipTop = tips ? barTop - 4 - tips : barTop;
+  return {{0, 16, width, std::max(0, tipTop - 8 - 16)},
+          {24, tipTop, width - 48, tips},
+          {0, barTop, width, tabHeight()},
+          {0, bandTop, width, height - bandTop}};
+}
+
 bool tenorchrome::compactFooterTips(const bool hasTextHints) {
   return !kTouchShell && enabled() && SETTINGS.tenorButtonSymbols && !SETTINGS.globalStatusBarHidden() &&
          !SETTINGS.globalStatusBarLarge() && !hasTextHints;
@@ -1093,11 +1219,17 @@ int tenorchrome::tipLineCount(const GfxRenderer& renderer, const char* text, con
 }
 
 int tenorchrome::tipHeight(const GfxRenderer& renderer, const char* text, int maxLines) {
+  if (shell::uglyParts()) {
+    if (!text || !*text || maxLines <= 0) return 0;
+    return std::min(maxLines, ugly::paragraph(renderer, ugly::Size::S22, 0, 0,
+                                             renderer.getScreenWidth() - 48, 26, text, false)) * 26;
+  }
   constexpr int font = SMALL_FONT_ID;
   const auto lines = tipLines(renderer, text, maxLines);
   return lines.empty() ? 0 : renderer.getLineHeight(font) + 7 + (static_cast<int>(lines.size()) - 1) * renderer.getLineHeight(font);
 }
 int tenorchrome::uglyTipTop(const GfxRenderer& renderer, const int lines, const int linesAbove) {
+  if (x3ScreenLayoutEnabled()) return x3ScreenLayout(renderer, (lines + linesAbove) * 26).tipRect.y;
   // The last line's baseline stands 14 px over the key bar, the lines 26 px apart.
   const int bottom = renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight - 14;
   return bottom - (lines - 1 + linesAbove) * 26 - ugly::ascent(ugly::Size::S22);
@@ -1105,9 +1237,15 @@ int tenorchrome::uglyTipTop(const GfxRenderer& renderer, const int lines, const 
 
 void tenorchrome::drawTip(const GfxRenderer& renderer, const char* text, int linesAbove, int maxLines,
                           const bool hasTextHints) {
-  // Global status-bar Off also hides contextual footer tips.
-  if (SETTINGS.globalStatusBarHidden() || !tipShown(text)) return;
+  if ((!x3ScreenLayoutEnabled() && SETTINGS.globalStatusBarHidden()) || !tipShown(text)) return;
   if (shell::uglyParts()) {
+    if (x3ScreenLayoutEnabled()) {
+      const int height = tipHeight(renderer, text, maxLines);
+      auto rect = x3ScreenLayout(renderer, height + linesAbove * 26).tipRect;
+      rect.height = std::min(height, rect.height);
+      drawTipInRect(renderer, text, rect, maxLines);
+      return;
+    }
     // Written in hand above the key bar, its key symbols drawn as the marks over the keys.
     const int w = renderer.getScreenWidth();
     const int lines = ugly::paragraph(renderer, ugly::Size::S22, 24, 0, w - 48, 26, text, false);
@@ -1127,4 +1265,34 @@ void tenorchrome::drawTip(const GfxRenderer& renderer, const char* text, int lin
     renderer.drawCenteredText(font, y, line.c_str());
     y += renderer.getLineHeight(font);
   }
+}
+
+void tenorchrome::drawInfoInRect(const GfxRenderer& renderer, const char* text, const X3ScreenRect rect,
+                                const int maxLines) {
+  if (rect.height <= 0 || !text || !*text || maxLines <= 0) return;
+  if (shell::uglyParts()) {
+    const auto clip = renderer.getClipRect();
+    const int left = std::max(rect.x, clip[0]), top = std::max(rect.y, clip[1]);
+    const int bottom = std::min(rect.bottom(), rect.y + maxLines * 26);
+    renderer.setClipRect(left, top, std::max(0, std::min(rect.x + rect.width, clip[0] + clip[2]) - left),
+                        std::max(0, std::min(bottom, clip[1] + clip[3]) - top));
+    ugly::paragraph(renderer, ugly::Size::S22, rect.x, rect.y + ugly::ascent(ugly::Size::S22),
+                    rect.width, 26, text);
+    renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+    return;
+  }
+  const auto lines = tipLines(renderer, text, maxLines);
+  const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  int top = rect.y;
+  for (const auto& line : lines) {
+    if (top + lineHeight > rect.bottom()) break;
+    renderer.drawCenteredText(SMALL_FONT_ID, top, line.c_str());
+    top += lineHeight;
+  }
+}
+
+void tenorchrome::drawTipInRect(const GfxRenderer& renderer, const char* text, const X3ScreenRect rect,
+                               const int maxLines) {
+  if (!tipShown(text)) return;
+  drawInfoInRect(renderer, text, rect, maxLines);
 }

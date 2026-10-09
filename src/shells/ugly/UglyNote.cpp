@@ -18,6 +18,7 @@ void notePaper(const GfxRenderer& r, const char* title) {
   // S38: the S52 pen only knows the letters of the Home page titles.
   const int tw = text(r, Size::S38, TEXT_X, 74, fit(r, Size::S38, title, r.getScreenWidth() - TEXT_X - 30).c_str());
   underline(r, TEXT_X, TEXT_X + tw, 88, 17, 3);
+  pathHints(r, title);
 }
 
 void noteBar(const GfxRenderer& r, const int top, const int percent) {

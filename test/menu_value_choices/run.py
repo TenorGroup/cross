@@ -55,6 +55,8 @@ production += '\n' + method(parent, 'void UiListActivity::showSettingsChoices(Op
 ids = sorted(set(re.findall(r'StrId::(STR_\w+)', source)) | {'STR_SELECT', 'STR_TOGGLE', 'STR_ALIGNMENT'})
 fixture = r'''
 #include <algorithm>
+#include <array>
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
@@ -74,6 +76,15 @@ enum class StrId { // IDS
 const char* tr(StrId id){return id==StrId::STR_SELECT?"Select":"Toggle";}
 constexpr StrId STR_SELECT=StrId::STR_SELECT,STR_TOGGLE=StrId::STR_TOGGLE;
 struct {const char* get(StrId){return "label";}} I18N;
+namespace menucustom {
+struct Pins { int pinCount=0; std::array<std::array<char,64>,4> pins{}; };
+Pins& state(){static Pins pins;return pins;}
+}
+namespace menufavorites {
+struct Descriptor { const char* screen="text"; };
+const Descriptor* find(const char*){static Descriptor item;return &item;}
+StrId label(const std::string&){return StrId::STR_ALIGNMENT;}
+}
 constexpr int ACTION_ROW=1;
 [[maybe_unused]] constexpr int MARGIN_MIN=0,MARGIN_MAX=20,MARGIN_STEP=1;
 constexpr StrId LAYOUT_ROW_NAME_IDS[7]={},STYLE_ROW_NAME_IDS[5]={};
@@ -94,13 +105,15 @@ struct SettingsChoiceActivity {
    :labels(opts),current(selected),callback(cb){}
 };
 struct TextSettingsActivity {
- enum class Tab{Family,Size,Layout,Style,Count};
+ enum class Tab{Family,Size,Layout,Style,Favorites,Count};
  enum class LayoutRow{LineSpacing,LetterSpacing,WordSpacing,ParaSpacing,Alignment,ScreenMargin,ParaIndent,Count};
  enum class StyleRow{FocusReading,Hyphenation,EmbeddedStyle,AntiAliasing,InkWeight,Count};
  struct Row {int count=0,selected=0;};
  struct Name{std::string name="name";};
  Tab tab_=Tab::Layout;Popup optionPopup_;std::vector<fui::ListItem> rowItems_;std::vector<std::string> rowValues_;std::vector<Name> fonts_,sizes_;
  int applied=-1,saves=0,updates=0,selected=3,top=1,ring=1;
+ int favoriteCount_=0;std::array<int,4> favoritePins_{};
+ std::string favoriteKey(int row) const{return menucustom::state().pins[favoritePins_[row]].data();}
  int renderer=0,mappedInput=0;
  struct {fui::Rect publishedRect(int,int16_t){return {16,180,448,350};}} app;
  std::unique_ptr<SettingsChoiceActivity> page;

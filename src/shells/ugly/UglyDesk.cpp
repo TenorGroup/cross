@@ -35,6 +35,15 @@ constexpr int ROW_TOLERANCE = 60;  // objects whose centres lie this close verti
 constexpr homerows::Page PAGES[6] = {homerows::Page::Stats,   homerows::Page::Recent,    homerows::Page::Recent,
                                      homerows::Page::Folder,  homerows::Page::Favorites, homerows::Page::Settings};
 
+#if !FREEINK_DEVICE_X4PRO
+Box deskLabelBox(const GfxRenderer& renderer, const Box object, const char* label, const int rightEdge) {
+  const int span = width(renderer, Size::S22, label);
+  const int left = (object.x0 + rightEdge) / 2 - span / 2;
+  const int baseline = object.y1 + 26;
+  return {left, baseline - ascent(Size::S22), left + span, baseline + 8};
+}
+#endif
+
 #if FREEINK_DEVICE_X4PRO
 // The touch desk is laid out on the 480x800 grid (UglyTouch.h): each object of the X3 picture is lifted
 // whole, unscaled, into its own cell. `dx`, `dy` move the box the X3 picture draws it in (PLACES).
@@ -58,6 +67,7 @@ bool deskAvailable(const GfxRenderer& renderer) {
 }
 
 void Desk::onEnter() {
+  mark_.reset();
   Screen::onEnter();
   ensureFonts(renderer);
   const auto books = homerows::recent(1);
@@ -129,9 +139,10 @@ void Desk::render(RenderLock&&) {
   for (int i = 0; i < COUNT; ++i) {
     const auto& p = PLACES[i];
     const char* label = i == READING && !hasBook ? tr(STR_UGLY_DESK_NO_BOOK) : I18N.get(p.label);
-    const int lw = width(renderer, Size::S22, label);
-    const int lx = (p.box.x0 + p.box.x1) / 2 - lw / 2;
-    const int base = p.box.y1 + 26;
+    const auto labelRect = deskLabelBox(renderer, p.box, label, i == READING ? PLACES[FAVORITES].box.x0 - 24 : p.box.x1);
+    const int lw = labelRect.x1 - labelRect.x0;
+    const int lx = labelRect.x0;
+    const int base = labelRect.y1 - 8;
     text(renderer, Size::S22, lx, base, label);
     ring[i] = {std::min(p.box.x0, lx), p.box.y0, std::max(p.box.x1, lx + lw), base + 8};
   }
@@ -155,7 +166,8 @@ void Desk::render(RenderLock&&) {
   }
 
   // The big open book gets a snugger ring than the small objects.
-  circle(renderer, Circle::Object, ring[selected], selected == READING ? 8 : 16, selected == READING ? 12 : 24);
+  circle(renderer, Circle::Object, ring[selected], selected == READING ? 8 : 16, selected == READING ? 12 : 24, mark_.get(selected), 3);
+  pathHints(renderer, tr(STR_UGLY_DIARY_DESK));
   statusBar(renderer, mappedInput, {true, true, true, true});
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
@@ -223,6 +235,7 @@ bool Desk::onKey(const Key key) {
   const int next = logic::gridStep(centres, COUNT, selected, dir, anchorX, ROW_TOLERANCE);
   if (next == selected) return false;
   selected = next;
+  mark_.get(selected);
   if (dir == logic::GridDir::Left || dir == logic::GridDir::Right) anchorX = centres[selected].x;
   return true;
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include "shells/ugly/UglyMarkSeed.h"
 #include <FreeInkUIGfxRenderer.h>
 #include <GfxRenderer.h>
 
@@ -48,6 +49,7 @@ class KeyboardEntryActivity : public Activity {
   bool preventAutoSleep() override { return true; }
 
  private:
+  mutable ugly::MarkState mark_;
   std::string title;
   std::string text;
   size_t maxLength;
@@ -148,6 +150,7 @@ class KeyboardEntryActivity : public Activity {
   const freeink::ui::KeyboardLayout& currentLayout() const;
   const freeink::ui::KeyboardKey* selectedKey() const;
   int selectedLogicalIndex() const;
+  uint32_t selectionMarkSeed() const;
   void clampSelection();
   void moveSelectionRow(int delta);
   // Column the user last picked on purpose, and the row width it was picked in.
@@ -178,6 +181,7 @@ class KeyboardEntryActivity : public Activity {
   static size_t utf8Next(const std::string& s, size_t pos);
 
   freeink::ui::Rect keyboardRect() const;
+  std::string x3TipText() const;
   int inputTop() const;
   int inputWindowStart(std::string& displayText, int maxWidth) const;
 

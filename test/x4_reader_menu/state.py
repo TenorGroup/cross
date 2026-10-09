@@ -36,6 +36,8 @@ namespace readermenu {
 ''' + tools + r'''
 }
 struct RenderLock {};
+struct EpubReaderMenuActivity { enum class MenuAction { TEXT_SETTINGS }; };
+struct MenuResult {};
 struct Settings {
   int fontPointSize=18,lineSpacing=0,paragraphAlignment=0,dropCapMode=1,writes=0;
   char sdFontFamilyName[32]={};
@@ -134,6 +136,9 @@ class EpubReaderActivity {
  bool textSettingsDirty=false,paintDropped=false;
  std::atomic<uint8_t> textCloseFrame{0};
  static constexpr int PANEL_HOLD_MS=600,PANEL_HOLD_STEP=5;
+ static constexpr int kTextTool=static_cast<int>(readermenu::Tool::TEXT);
+ int textSettingsOpened=0;
+ void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action,MenuResult){assert(action==EpubReaderMenuActivity::MenuAction::TEXT_SETTINGS);++textSettingsOpened;}
  void requestUpdate(){++requests;}
  void clearDeferredReposition(){}
  void paintOverlayPopup(){}
@@ -171,7 +176,8 @@ int main(){
  using D=EpubReaderActivity::TextDepth;using O=EpubReaderActivity::Overlay;using E=ReaderToolbarUi::Event;
  EpubReaderActivity r;
  assert(r.overlay==O::None&&SETTINGS.writes==0);
- r.openOverlay(O::Toolbar);event(r,E::Tool,static_cast<int>(readermenu::Tool::TEXT));assert(r.overlay==O::Text&&r.textDepth==D::Rows);
+ r.openOverlay(O::Toolbar);event(r,E::Tool,static_cast<int>(readermenu::Tool::TEXT));assert(r.overlay==O::None&&r.textSettingsOpened==1&&r.previews==0&&r.requests==0&&!r.toolbarUi&&tenorchrome::note==0);
+ r.openOverlay(O::Text);
  event(r,E::Row,0);assert(r.textDepth==D::Fonts&&fontdoc::soHo(&r.sdFontSystem.registry())==7);
  event(r,E::Row,3);assert(fontdoc::family==3&&r.previews==1&&SETTINGS.writes==0);
  event(r,E::Row,3);assert(r.previews==1);

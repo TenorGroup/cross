@@ -25,6 +25,7 @@ class Activity {
  protected:
   GfxRenderer& renderer;
   MappedInputManager& mappedInput;
+  std::string navigationPrefix;
  public:
   Activity(const char*, GfxRenderer& r, MappedInputManager& i): renderer(r), mappedInput(i) {}
   virtual ~Activity() = default;

@@ -1,4 +1,5 @@
 #pragma once
+#include "shells/ugly/UglyMarkSeed.h"
 #include <string>
 #include <vector>
 
@@ -22,6 +23,16 @@ class Notebook final : public Screen {
       : Screen("UglyNotebook", renderer, mappedInput), page(page), want(page) {}
   void onEnter() override;
   void render(RenderLock&&) override;
+  uint64_t uglyIconPageKey() override {
+#if FREEINK_DEVICE_X4PRO
+    return static_cast<uint64_t>(static_cast<uint8_t>(page)) << 48 |
+           static_cast<uint64_t>(static_cast<uint16_t>(group + 1)) << 32 |
+           static_cast<uint64_t>(static_cast<uint8_t>(pop)) << 24 | static_cast<uint32_t>(topShown());
+#else
+    return static_cast<uint64_t>(static_cast<uint8_t>(page)) << 32 |
+           static_cast<uint32_t>(cursor[static_cast<int>(page)] / std::max(1, rowsPerPage()));
+#endif
+  }
 #if FREEINK_DEVICE_X4PRO
   HomeMenuItem zoneRoot() const override {
     constexpr HomeMenuItem ROOTS[homerows::PAGE_COUNT] = {HomeMenuItem::RECENTS, HomeMenuItem::FILE_BROWSER,
@@ -43,6 +54,7 @@ class Notebook final : public Screen {
   void afterKeys() override;
 
  private:
+  mutable ugly::MarkState mark_;
   // The Folder page keeps its names once, in `folder`; every other page keeps its row texts in `labels`.
   struct Rows {
     std::vector<std::string> labels, values, keys, folder;
@@ -60,7 +72,8 @@ class Notebook final : public Screen {
   void activate(int row);
   int rowCount() const { return static_cast<int>(page == homerows::Page::Folder ? rows.folder.size() : rows.labels.size()); }
   const std::string& labelAt(int row) const { return page == homerows::Page::Folder ? rows.folder[row] : rows.labels[row]; }
-  int rowsPerPage() const;
+  int rowsPerPage(int first = -1, int bottom = -1) const;
+  const char* tip() const;
   const char* subtitle() const;  // the line of abuse the page opened with, else its own note
   int subtitleLines() const;  // the line under the title takes 1 or 2 lines, and the rows start lower after 2
   int firstBaseline() const;

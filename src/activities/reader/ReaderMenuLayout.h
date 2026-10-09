@@ -41,8 +41,9 @@ enum class Action {
 // la ban ghi cu tro toi mot lenh khong con ton tai.
 inline constexpr int ACTION_COUNT = static_cast<int>(Action::TILT_PAGE_TURN) + 1;
 
-enum class Tab : uint8_t { FAVORITES, POSITION, READING, TOOLS };
+enum class Tab : uint8_t { FAVORITES, POSITION, READING, TOOLS, TEXT };
 inline constexpr int TAB_COUNT = 4;
+inline constexpr int X3_TAB_COUNT = 5;
 
 // The tools of the toolbar reader menu (its tabs on the button boards, the X4 Pro's reader bar), in the order they
 // stand from left to right (founder 07/10: Favorites first). The one place that says it: a tool's value is its
@@ -72,6 +73,7 @@ void buildItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, 
 
 // Toolbar More keeps its original order independently of the tab layout.
 void buildMoreItems(std::vector<Item>& items, bool hasFootnotes, bool hasBookmarks, bool hasFrontlight);
+void separateTextTab(std::vector<Item>& items);
 
 // Hai ham duoi ghi CHI SO trong `all` vao `out`, toi da `max` chi so, va tra ve
 // so dong ghi duoc. Tra chi so chu khong tra ban sao vi hai le: man hinh can chi

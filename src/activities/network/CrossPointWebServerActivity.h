@@ -1,4 +1,5 @@
 #pragma once
+#include "activities/X3ActivityLayout.h"
 
 #include <functional>
 #include <memory>
@@ -29,6 +30,9 @@ enum class WebServerActivityState {
  * - Cleans up the server and shuts down WiFi on exit
  */
 class CrossPointWebServerActivity final : public Activity {
+  x3activity::InfoPages x3Info;
+  int x3Step = 0;
+
   WebServerActivityState state = WebServerActivityState::MODE_SELECTION;
 
   // Network mode

@@ -41,7 +41,9 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   freeink::ui::Rect skinTab_{}, skinProgress_{}, skinHint_{};
 
   // --- UiTabListActivity contract ---
-  int tabCount() const override { return textOnly ? 1 : readermenu::TAB_COUNT; }
+  int tabCount() const override {
+    return textOnly ? 1 : tenorchrome::x3ScreenLayoutEnabled() ? readermenu::X3_TAB_COUNT : readermenu::TAB_COUNT;
+  }
   int activeTab() const override { return textOnly ? 0 : static_cast<int>(activeTabId); }
   const char* tabLabel(int index) const override;
   freeink::ui::BitmapRef tabIcon(int index, bool bold) const override;
@@ -50,6 +52,10 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
 
   int listCount() const override { return rowCount; }
   void buildScreen(UiScreen& screen) override;
+  bool ownsX3Chrome() const override { return true; }
+  tenorchrome::X3ScreenLayout screenLayout() const;
+  std::string progressText() const;
+  void drawX3Content() const;
   void activateIndex(int index) override;
   // Popup input runs before any button or touch handling.
   bool handleCustomInput() override;

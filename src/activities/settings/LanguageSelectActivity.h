@@ -1,4 +1,5 @@
 #pragma once
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <GfxRenderer.h>
 #include <I18n.h>
@@ -20,6 +21,10 @@ class LanguageSelectActivity final : public UiListActivity {
   int listCount() const override { return totalItems; }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
+  void drawChrome() override {
+    if (tenorchrome::x3ScreenLayoutEnabled()) x3settings::drawPath(renderer, headerTitle(), icon_tenor_settings_ngon_ngu_40);
+    else UiListActivity::drawChrome();
+  }
   const char* headerTitle() const override;
 
   // Only the languages compiled into this build (custom_i18n_builtin_langs), not the whole enum.

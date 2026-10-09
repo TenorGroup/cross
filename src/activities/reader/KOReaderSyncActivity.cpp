@@ -1,5 +1,7 @@
 #include "KOReaderSyncActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -644,7 +646,7 @@ void KOReaderSyncActivity::renderUgly() {
   ugly::layoutByHand(renderer, uiTarget, [this] { renderUi(); });
   const int chosen = state == SHOWING_RESULT ? selectedOption : 0;
   const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(chosen));
-  if (!box.empty()) uglychrome::marks(renderer, box, {true});
+  if (!box.empty()) uglychrome::marks(renderer, box, {true}, mark_.get((static_cast<uint64_t>(state) << 32) | chosen));
   const auto labels = state == SHOWING_RESULT
                           ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
                           : mappedInput.mapLabels(tr(STR_BACK), tr(STR_UPLOAD), "", "");
@@ -656,6 +658,47 @@ void KOReaderSyncActivity::renderUgly() {
 }
 
 void KOReaderSyncActivity::render(RenderLock&&) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const char* status = state == NO_CREDENTIALS ? tr(STR_NO_CREDENTIALS_MSG) :
+        state == SYNC_FAILED ? tr(STR_SYNC_FAILED_MSG) : state == UPLOAD_COMPLETE ? tr(STR_UPLOAD_SUCCESS) :
+        state == SYNC_COMPLETE ? tr(STR_ALREADY_SYNCED) : state == NO_REMOTE_PROGRESS ? tr(STR_NO_REMOTE_MSG) :
+        statusMessage.c_str();
+    const char* detail = state == NO_CREDENTIALS ? tr(STR_KOREADER_SETUP_HINT) :
+        state == NO_REMOTE_PROGRESS ? tr(STR_UPLOAD_PROMPT) : state == SYNC_FAILED ? statusMessage.c_str() : nullptr;
+    std::string remoteChapter, first, second;
+    char remoteValue[64] = {}, localValue[64] = {};
+    if (state == SHOWING_RESULT) {
+      const int index = epub->getTocIndexForSpineIndex(remotePosition.spineIndex);
+      remoteChapter = index >= 0 ? epub->getTocItem(index).title :
+          std::string(tr(STR_SECTION_PREFIX)) + std::to_string(remotePosition.spineIndex + 1);
+      snprintf(remoteValue, sizeof(remoteValue), tr(STR_PAGE_OVERALL_FORMAT), remotePosition.pageNumber + 1,
+          remoteProgress.percentage * 100);
+      snprintf(localValue, sizeof(localValue), tr(STR_PAGE_TOTAL_OVERALL_FORMAT), localPosition.pageNumber + 1,
+          localPosition.totalPages, localProgress.percentage * 100);
+      first = std::string(selectedOption == 0 ? "> " : "") + tr(STR_APPLY_REMOTE);
+      second = std::string(selectedOption == 1 ? "> " : "") + tr(STR_UPLOAD_LOCAL);
+    }
+    const char* tip = nullptr;
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip, 8));
+    renderer.clearScreen();
+    char localFallback[32];
+    snprintf(localFallback, sizeof(localFallback), "%s%d", tr(STR_SECTION_PREFIX), localPosition.spineIndex + 1);
+    x3Info.draw(renderer, layout.bodyRect, {status, detail,
+        state == SHOWING_RESULT ? tr(STR_REMOTE_LABEL) : nullptr, remoteChapter.c_str(), remoteValue,
+        state == SHOWING_RESULT && !remoteProgress.device.empty() ? tr(STR_DEVICE_NAME) : nullptr,
+        state == SHOWING_RESULT ? remoteProgress.device.c_str() : nullptr,
+        state == SHOWING_RESULT ? tr(STR_LOCAL_LABEL) : nullptr,
+        state == SHOWING_RESULT ? (localChapterName.empty() ? localFallback : localChapterName.c_str()) : nullptr,
+        localValue, first.c_str(), second.c_str()});
+    tenorchrome::drawTipInRect(renderer, tip, layout.tipRect, 8);
+    x3activity::drawBar(renderer, layout.barRect, state == SHOWING_RESULT ? tr(STR_PROGRESS_FOUND) : tr(STR_KOREADER_SYNC), navigationPrefix.c_str());
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+
+    renderer.displayBuffer();
+    return;
+  }
+
   if (shell::uglyParts()) return renderUgly();
   renderer.clearScreen();
 
@@ -735,6 +778,13 @@ bool KOReaderSyncActivity::idleExitDue(const unsigned long now, const bool inter
 }
 
 void KOReaderSyncActivity::loop() {
+  if (tenorchrome::x3ScreenLayoutEnabled() &&
+      x3Info.turn(mappedInput.wasReleased(MappedInputManager::Button::Up) ? -1 :
+                  mappedInput.wasReleased(MappedInputManager::Button::Down) ? 1 : 0)) {
+    requestUpdate();
+    return;
+  }
+
   const bool interaction = mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() ||
                            mappedInput.wasScreenTouchReleased();
   if (idleExitDue(millis(), interaction)) {

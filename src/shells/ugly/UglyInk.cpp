@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "ClockStatus.h"
+#include "components/TenorMenuChrome.h"
 #include "CrossPointSettings.h"
 #include "Epub/converters/DirectPixelWriter.h"
 #include "MappedInputManager.h"
@@ -79,7 +80,8 @@ int encode(const uint32_t cp, char* out) {
 // drawn as the marks over the keys.
 constexpr uint32_t SCRAWL = 0xE000, TICK = 0x2713, MARGIN_PIN = 0xE10A, KEY_FIRST = 0xE100, KEY_LAST = 0xE109;
 bool penDrawn(const uint32_t cp) {
-  return cp == MARGIN_PIN || cp == SCRAWL || cp == TICK || (cp >= KEY_FIRST && cp <= KEY_LAST);
+  return cp == MARGIN_PIN || cp == SCRAWL || cp == TICK || (cp >= KEY_FIRST && cp <= KEY_LAST) ||
+         (cp >= 0x2190 && cp <= 0x2193) || cp == 0x2665 || cp == 0x2764 || cp == 0x2605;
 }
 
 // The baked pen has no degree sign: on the X4 Pro the pen draws it, a small ring, so "180°" stays in one hand.
@@ -163,18 +165,12 @@ void stroke(const GfxRenderer& r, int x0, int y0, int x1, int y1, int w);
 
 // A star of one hasty stroke, some 20 px across, centred on (cx, cy).
 void penStar(const GfxRenderer& r, const int cx, const int cy) {
-  static constexpr int PTS[6][2] = {{0, -10}, {6, 8}, {-10, -3}, {10, -4}, {-6, 8}, {1, -10}};
-  for (int i = 0; i + 1 < 6; ++i)
-    stroke(r, cx + PTS[i][0], cy + PTS[i][1], cx + PTS[i + 1][0], cy + PTS[i + 1][1], 2);
+  icon(r, icons::Id::Star, {cx - 12, cy - 12, 24, 24}, iconFrameSeed());
 }
 
 // The erase key, a tag with a cross in it, of one stroke and one more for the cross, some 20 px across.
 void penErase(const GfxRenderer& r, const int cx, const int cy) {
-  static constexpr int PTS[7][2] = {{-10, 0}, {-4, -8}, {10, -8}, {10, 8}, {-4, 8}, {-10, 1}, {-9, 0}};
-  for (int i = 0; i + 1 < 7; ++i)
-    stroke(r, cx + PTS[i][0], cy + PTS[i][1], cx + PTS[i + 1][0], cy + PTS[i + 1][1], 2);
-  stroke(r, cx - 2, cy - 4, cx + 5, cy + 4, 2);
-  stroke(r, cx - 2, cy + 4, cx + 5, cy - 3, 2);
+  icon(r, icons::Id::Erase, {cx - 12, cy - 12, 24, 24}, iconFrameSeed());
 }
 
 // One key symbol of the UI strings, centred on (cx, cy). The star, the side buttons and the erase key are the keys'
@@ -182,6 +178,12 @@ void penErase(const GfxRenderer& r, const int cx, const int cy) {
 void keyMark(const GfxRenderer& r, const uint32_t cp, const int cx, const int cy) {
   static constexpr Mark KEYS[6] = {Mark::Tick, Mark::Back, Mark::Up, Mark::Down, Mark::Left, Mark::Right};
   if (cp == TICK) return mark(r, Mark::Tick, cx, cy);
+  if (cp >= 0x2190 && cp <= 0x2193) {
+    constexpr Mark ARROWS[] = {Mark::Left, Mark::Up, Mark::Right, Mark::Down};
+    return mark(r, ARROWS[cp - 0x2190], cx, cy);
+  }
+  if (cp == 0x2665 || cp == 0x2764) return heart(r, cx, cy, 24);
+  if (cp == 0x2605) return penStar(r, cx, cy);
   const int id = static_cast<int>(cp - KEY_FIRST);
   if (id < 6) return mark(r, KEYS[id], cx, cy);
   switch (buttonSymbols::resolve(id).shape) {
@@ -320,6 +322,10 @@ void polyline(const GfxRenderer& r, const int (*pts)[2], const int n, const int 
 }
 }  // namespace
 
+void penStroke(const GfxRenderer& r, int x0, int y0, int x1, int y1, int width) {
+  stroke(r, x0, y0, x1, y1, width);
+}
+
 void ensureFonts(GfxRenderer& r) {
   if (r.getFontMap().count(FONT_IDS[0])) return;
   r.insertFont(FONT_IDS[0], EpdFontFamily(&FONT22));
@@ -429,16 +435,53 @@ bool chapterTitle(const GfxRenderer& r, const char* utf8, const int x0, const in
   return false;
 }
 
-void circle(const GfxRenderer& r, const Circle role, const Box& box, const int padX, const int padY, const int w) {
+void circle(const GfxRenderer& r, const Circle role, const Box& box, const int padX, const int padY, const uint32_t seed,
+            const int w) {
   const CirclePoint* pts = role == Circle::Word ? CIRCLE_WORD : role == Circle::Object ? CIRCLE_OBJECT : CIRCLE_ROW;
-  const int n = role == Circle::Word ? CIRCLE_WORD_COUNT : role == Circle::Object ? CIRCLE_OBJECT_COUNT : CIRCLE_ROW_COUNT;
-  const int cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
-  const int rx = (box.x1 - box.x0) / 2 + padX, ry = (box.y1 - box.y0) / 2 + padY;
+  if (w <= 0 || box.x0 >= box.x1 || box.y0 >= box.y1) return;
+  const int margin = w / 2;
+  const bool padded = padX > 0 && padY > 0;
+  const int safeX = padded ? std::max(padX, 34) : padX;
+  const int safeY = padded ? std::max(padY, 19) : padY;
+  const int left = std::max(margin, box.x0 - safeX + margin);
+  const int right = std::min(r.getScreenWidth() - 1 - margin, box.x1 + safeX - margin);
+  const int top = std::max(margin, box.y0 - safeY + margin);
+  const int bottom = std::min(r.getScreenHeight() - 1 - margin, box.y1 + safeY - margin);
+  if (left >= right || top >= bottom) return;
+  const int cx = padded ? (box.x0 + box.x1) / 2 : (left + right) / 2;
+  const int cy = padded ? (box.y0 + box.y1) / 2 : (top + bottom) / 2;
+  int rx = padded ? (box.x1 - box.x0) / 2 + std::max(padX, 28) + logic::wobble(seed, 0, 3) : (right - left) / 2;
+  int ry = padded ? (box.y1 - box.y0) / 2 + std::max(padY, 16) + logic::wobble(seed, 1, 1) : (bottom - top) / 2;
+  const int tilt = -4 + logic::wobble(seed, 2, box.x1 - box.x0 < 200 ? 1 : 2);
+  const int shiftX = logic::wobble(seed, 4, 2), shiftY = logic::wobble(seed, 5, 1);
+  constexpr int SINE[] = {0, 98, 181, 237, 256, 237, 181, 98, 0, -98, -181, -237, -256, -237, -181, -98};
+  const int phase = (logic::wobble(seed, 6, 7) + 16) & 15;
+  const int turn = logic::wobble(seed, 6, 2);
+  const int sine = padded ? turn * 16 : SINE[phase];
+  const int cosine = padded ? (std::abs(turn) == 2 ? 254 : turn ? 255 : 256) : SINE[(phase + 4) & 15];
+  const int count =
+      (role == Circle::Word ? CIRCLE_WORD_COUNT : role == Circle::Object ? CIRCLE_OBJECT_COUNT : CIRCLE_ROW_COUNT) -
+      (logic::wobble(seed, 3, 2) + 2);
+  for (int index = 0; index < count; ++index) {
+    const int ux = (pts[index].x * cosine - pts[index].y * sine) / 256;
+    if (ux < 0) rx = std::min(rx, std::max(1, (cx + shiftX - left) * 256 / -ux));
+    if (ux > 0) rx = std::min(rx, std::max(1, (right - cx - shiftX) * 256 / ux));
+  }
+  for (int index = 0; index < count; ++index) {
+    const int ux = (pts[index].x * cosine - pts[index].y * sine) / 256;
+    const int uy = (pts[index].x * sine + pts[index].y * cosine) / 256;
+    const int centerY = cy + rx * ux / 256 * tilt / 100 + shiftY;
+    if (uy < 0) ry = std::min(ry, std::max(1, (centerY - top) * 256 / -uy));
+    if (uy > 0) ry = std::min(ry, std::max(1, (bottom - centerY) * 256 / uy));
+  }
   int px = 0, py = 0;
-  for (int i = 0; i < n; ++i) {
-    const int ux = rx * pts[i].x / 256;
-    const int x = cx + ux, y = cy + ry * pts[i].y / 256 - ux / 25;  // a hand drawn circle leans a little
-    if (i > 0) stroke(r, px, py, x, y, w);
+  for (int index = 0; index < count; ++index) {
+    const int ux = (pts[index].x * cosine - pts[index].y * sine) / 256;
+    const int uy = (pts[index].x * sine + pts[index].y * cosine) / 256;
+    const int offsetX = rx * ux / 256;
+    const int x = std::clamp(cx + offsetX + shiftX, left, right);
+    const int y = std::clamp(cy + ry * uy / 256 + offsetX * tilt / 100 + shiftY, top, bottom);
+    if (index > 0) stroke(r, px, py, x, y, w);
     px = x;
     py = y;
   }
@@ -478,11 +521,8 @@ namespace {
 // from it, each end and the elbow a little off. The wobble is seeded by where the tick stands, so a tick drawn
 // again at its place is the same pixels (no e-ink flicker) and a tick elsewhere is a little different.
 void penTick(const GfxRenderer& r, const int x, const int y, const int span, const int width) {
-  const uint32_t seed = static_cast<uint32_t>(x) * 73856093u ^ static_cast<uint32_t>(y) * 19349663u;
-  const int jiggle = std::max(1, span / 10);
-  const int ex = x + logic::wobble(seed, 0, jiggle), ey = y + logic::wobble(seed, 1, jiggle);
-  stroke(r, ex - span * 3 / 8 + logic::wobble(seed, 2, jiggle), ey - span * 5 / 16 + logic::wobble(seed, 3, jiggle), ex, ey, width);
-  stroke(r, ex, ey, ex + span * 5 / 8 + logic::wobble(seed, 4, jiggle), ey - span * 3 / 4 + logic::wobble(seed, 5, jiggle), width);
+  (void)width;
+  icon(r, icons::Id::Tick, {x - span / 2, y - span, span, span}, iconFrameSeed());
 }
 }  // namespace
 
@@ -516,26 +556,19 @@ void batteryDigits(const GfxRenderer& renderer, const int batteryX, const int ba
 }
 
 void battery(const GfxRenderer& r, const int x, const int y, const int percent, const bool showNumber) {
-  const int body[5][2] = {{x + 1, y - 9}, {x + 33, y - 10}, {x + 34, y + 8}, {x, y + 9}, {x + 1, y - 9}};
-  polyline(r, body, 5, 2);
-  stroke(r, x + 35, y - 3, x + 39, y - 2, 2);
-  stroke(r, x + 39, y - 2, x + 39, y + 3, 2);
-  stroke(r, x + 39, y + 3, x + 35, y + 3, 2);
+  icon(r, icons::Id::Battery, {x, y - 14, 42, 28}, iconFrameSeed());
   const int level = std::clamp(percent, 0, 100);
   if (showNumber) return batteryDigits(r, x, y, level);
   for (int px = x + 4; px < x + 4 + 26 * level / 100; px += 3) stroke(r, px, y - 6, px + 1, y + 6, 1);
 }
 
 namespace {
-// 1/16 px to px, rounded away from zero.
-int sixteenths(const int v) { return (v + (v < 0 ? -8 : 8)) / 16; }
-
 // The header clock as clockShowInHeader asks: the time, or the time and the day/month (after it, or into
 // `date` when one is given). False when it is hidden or the clock was never set.
-bool clockText(char* out, const size_t size, char* date = nullptr, const size_t dateSize = 0) {
+bool clockText(char* out, const size_t size, char* date = nullptr, const size_t dateSize = 0, const bool footer = false) {
   if (date) *date = 0;
   const uint8_t mode = SETTINGS.clockShowInHeader;
-  if (mode == CrossPointSettings::CLOCK_HEADER_HIDE || !clockstatus::hasValidTime() ||
+  if ((!footer && mode == CrossPointSettings::CLOCK_HEADER_HIDE) || !clockstatus::hasValidTime() ||
       !halClock.formatTime(out, size, SETTINGS.clockFormat == 1))
     return false;
   uint16_t year = 0;
@@ -550,19 +583,17 @@ bool clockText(char* out, const size_t size, char* date = nullptr, const size_t 
 }  // namespace
 
 void mark(const GfxRenderer& r, const Mark m, const int cx, const int cy) {
-  if (m == Mark::Tick) {  // every tick of the shell is the one hand-drawn tick, some 20 px across
-    penTick(r, cx - 2, cy + 6, 20, 2);
-    return;
-  }
-  static constexpr const CirclePoint* TABLES[6] = {MARK_LEFT, MARK_RIGHT, MARK_UP, MARK_DOWN, MARK_TICK, MARK_BACK};
-  static constexpr int COUNTS[6] = {MARK_LEFT_COUNT, MARK_RIGHT_COUNT, MARK_UP_COUNT, MARK_DOWN_COUNT, MARK_TICK_COUNT, MARK_BACK_COUNT};
-  const auto* pts = TABLES[static_cast<int>(m)];
-  const int n = COUNTS[static_cast<int>(m)];
-  for (int i = 1; i < n; ++i)
-    stroke(r, cx + sixteenths(pts[i - 1].x), cy + sixteenths(pts[i - 1].y), cx + sixteenths(pts[i].x), cy + sixteenths(pts[i].y), 2);
+  constexpr icons::Id IDS[] = {icons::Id::Left, icons::Id::Right, icons::Id::Up, icons::Id::Down,
+                              icons::Id::Tick, icons::Id::Back};
+  icon(r, IDS[static_cast<unsigned>(m)], {cx - 12, cy - 12, 24, 24}, iconFrameSeed());
 }
 
-void pageHints(const GfxRenderer& r, const char* before, const char* after, const int baseline) {
+void pageHints(const GfxRenderer& r, const char* before, const char* after, int baseline) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto bar = tenorchrome::x3ScreenLayout(r).barRect;
+    r.fillRect(bar.x, bar.y, bar.width, bar.height, false);
+    baseline = bar.y + (bar.height + ascent(Size::S22)) / 2;
+  }
   const int w = r.getScreenWidth();
   mark(r, Mark::Left, 32, baseline - 7);
   text(r, Size::S22, 52, baseline, before);
@@ -570,26 +601,64 @@ void pageHints(const GfxRenderer& r, const char* before, const char* after, cons
   text(r, Size::S22, w - 52 - width(r, Size::S22, after), baseline, after);
 }
 
-void statusBar(const GfxRenderer& r, const MappedInputManager& input, const Hints hints) {
+void pathHints(const GfxRenderer& r, const char* path, const char* note) {
+  if (!tenorchrome::x3ScreenLayoutEnabled()) return;
+  const auto bar = tenorchrome::x3ScreenLayout(r).barRect;
+  r.fillRect(bar.x, bar.y, bar.width, bar.height, false);
+  const int baseline = bar.y + (bar.height + ascent(Size::S22)) / 2;
+  const auto info = fit(r, Size::S22, note ? note : "", bar.width - 48);
+  const int reserve = info.empty() ? 0 : width(r, Size::S22, info.c_str()) + 16;
+  const int room = std::max(0, bar.width - 48 - reserve);
+  const char* tail = path ? path : "";
+  std::string shown = tail;
+  if (width(r, Size::S22, tail) > room) {
+    const int available = room - width(r, Size::S22, "\xEE\x80\x80");
+    while (*tail && width(r, Size::S22, tail) > available) {
+      ++tail;
+      while (*tail && (static_cast<unsigned char>(*tail) & 0xC0) == 0x80) ++tail;
+    }
+    shown = available >= 0 ? std::string("\xEE\x80\x80") + tail : "";
+  }
+  text(r, Size::S22, 24, baseline, shown.c_str());
+  if (!info.empty()) text(r, Size::S22, bar.width - 24 - width(r, Size::S22, info.c_str()), baseline, info.c_str());
+}
+
+void statusBar(const GfxRenderer& r, const char* btn1, const char* btn2, const char* btn3, const char* btn4) {
+  if (SETTINGS.globalStatusBarHidden()) return;
   const int w = r.getScreenWidth(), h = r.getScreenHeight();
   const int y = h - 20;
   const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
   battery(r, 14, y, level, SETTINGS.batteryPercentShown(false));
   // The date has no room beside the clock (the Down mark): it sits in the gap between the Confirm and Up marks.
-  char clock[12], date[8];
-  if (clockText(clock, sizeof(clock), date, sizeof(date))) {
+  char clock[12] = "", date[8];
+  if (clockText(clock, sizeof(clock), date, sizeof(date), true)) {
     text(r, Size::S22, w - 14 - width(r, Size::S22, clock), y + 8, clock);
     if (*date) text(r, Size::S22, (w >= 528 ? 264 : 240) - width(r, Size::S22, date) / 2, y + 8, date);
   }
   // Front Left and Right walk up and down the screen, so their marks point up and down.
-  const auto labels = input.mapLabels(hints.back ? "b" : "", hints.confirm ? "c" : "", hints.left ? "u" : "", hints.right ? "d" : "");
+  static constexpr Mark MARKS[6] = {Mark::Tick, Mark::Back, Mark::Up, Mark::Down, Mark::Left, Mark::Right};
   static constexpr int WIDE[4] = {105, 197, 331, 423}, NARROW[4] = {98, 186, 294, 382};
   const int* centres = w >= 528 ? WIDE : NARROW;
-  const char* marks[4] = {labels.btn1, labels.btn2, labels.btn3, labels.btn4};
-  for (int i = 0; i < 4; ++i)
-    if (marks[i] && marks[i][0]) {
-      mark(r, marks[i][0] == 'b' ? Mark::Back : marks[i][0] == 'c' ? Mark::Tick : marks[i][0] == 'u' ? Mark::Up : Mark::Down, centres[i], y);
+  const char* words[4] = {btn1, btn2, btn3, btn4};
+  const int leftEnd = 62;
+  const int rightEnd = w - 14 - (*clock ? width(r, Size::S22, clock) + 10 : 0);
+  for (int index = 0; index < 4; ++index) {
+    if (!words[index] || !*words[index]) continue;
+    const int id = buttonSymbols::labelId(words[index]);
+    if (id >= 0) {
+      mark(r, MARKS[id], std::clamp(centres[index], leftEnd + 10, rightEnd - 10), y);
+    } else {
+      const std::string word = fit(r, Size::S22, words[index], std::min(84, rightEnd - leftEnd));
+      const int span = width(r, Size::S22, word.c_str());
+      text(r, Size::S22, std::clamp(centres[index] - span / 2, leftEnd, rightEnd - span), y + 8, word.c_str());
     }
+  }
+}
+
+void statusBar(const GfxRenderer& r, const MappedInputManager& input, const Hints hints) {
+  const auto labels = input.mapLabels(hints.back ? "\xEE\x84\x81" : "", hints.confirm ? "\xEE\x84\x80" : "",
+                                      hints.left ? "\xEE\x84\x82" : "", hints.right ? "\xEE\x84\x83" : "");
+  statusBar(r, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
 #if FREEINK_DEVICE_X4PRO
@@ -610,11 +679,7 @@ void topBar(const GfxRenderer& r, const char* left) {
   if (left && *left) text(r, Size::S22, 24, 34, fit(r, Size::S22, left, std::min(300, clockX - 40)).c_str());
   if (SETTINGS.uglyBatteryHidden) return;
   constexpr int X0 = 412, X1 = 456, Y0 = 12, Y1 = 37;
-  const int body[5][2] = {{X0, Y0 + 1}, {X1, Y0}, {X1 + 1, Y1}, {X0 - 1, Y1 + 1}, {X0, Y0 + 1}};
-  polyline(r, body, 5, 2);
-  stroke(r, X1 + 2, Y0 + 8, X1 + 6, Y0 + 8, 2);
-  stroke(r, X1 + 6, Y0 + 8, X1 + 6, Y1 - 8, 2);
-  stroke(r, X1 + 6, Y1 - 8, X1 + 2, Y1 - 8, 2);
+  icon(r, icons::Id::Battery, {X0 - 3, Y0 - 4, X1 - X0 + 13, Y1 - Y0 + 9}, iconFrameSeed());
   for (int px = X0 + 3; px < X0 + 3 + (X1 - X0 - 6) * level / 100; px += 3) stroke(r, px, Y0 + 4, px + 1, Y1 - 4, 1);
   if (*pct) text(r, Size::S22, 400 - width(r, Size::S22, pct), 34, pct);
 }
@@ -626,11 +691,7 @@ void formTopBar(const GfxRenderer& r) {
   if (SETTINGS.uglyBatteryHidden) return;
   const int x0 = r.getScreenWidth() - 68, x1 = r.getScreenWidth() - 24;
   constexpr int y0 = 12, y1 = 37;
-  const int body[5][2] = {{x0, y0 + 1}, {x1, y0}, {x1 + 1, y1}, {x0 - 1, y1 + 1}, {x0, y0 + 1}};
-  polyline(r, body, 5, 2);
-  stroke(r, x1 + 2, y0 + 8, x1 + 6, y0 + 8, 2);
-  stroke(r, x1 + 6, y0 + 8, x1 + 6, y1 - 8, 2);
-  stroke(r, x1 + 6, y1 - 8, x1 + 2, y1 - 8, 2);
+  icon(r, icons::Id::Battery, {x0 - 3, y0 - 4, x1 - x0 + 13, y1 - y0 + 9}, iconFrameSeed());
   const int level = std::clamp(static_cast<int>(powerManager.getDisplayedBatteryPercentage()), 0, 100);
   for (int x = x0 + 3; x < x0 + 3 + (x1 - x0 - 6) * level / 100; x += 3) stroke(r, x, y0 + 4, x + 1, y1 - 4, 1);
   if (SETTINGS.batteryPercentShown(false)) {
@@ -641,22 +702,22 @@ void formTopBar(const GfxRenderer& r) {
 }
 
 void arrow(const GfxRenderer& r, const int x, const int y, const bool down, const int length) {
-  const int s = down ? 1 : -1;
-  stroke(r, x, y - s * length / 2, x + 1, y + s * length / 2, 2);
-  stroke(r, x - 7, y + s * (length / 2 - 8), x + 1, y + s * length / 2, 2);
-  stroke(r, x + 1, y + s * length / 2, x + 8, y + s * (length / 2 - 9), 2);
+  icon(r, down ? icons::Id::Down : icons::Id::Up, {x - 12, y - length / 2 - 3, 24, length + 6}, iconFrameSeed());
 }
 
 void navRow(const GfxRenderer& r, const char* prev, const char* back, const char* next) {
   constexpr int BASE = 758;
-  if (prev && *prev) text(r, Size::S30, 16, BASE, (std::string("< ") + prev).c_str());
+  if (prev && *prev) {
+    mark(r, Mark::Left, 26, BASE - 10);
+    text(r, Size::S30, 46, BASE, prev);
+  }
   if (back && *back) {
     text(r, Size::S22, 240 - width(r, Size::S22, back) / 2, BASE - 6, back);
     arrow(r, 240, BASE + 12, true, 18);
   }
   if (next && *next) {
-    const std::string after = std::string(next) + " >";
-    text(r, Size::S30, 464 - width(r, Size::S30, after.c_str()), BASE, after.c_str());
+    mark(r, Mark::Right, 454, BASE - 10);
+    text(r, Size::S30, 434 - width(r, Size::S30, next), BASE, next);
   }
 }
 
@@ -717,11 +778,7 @@ void penPath(const GfxRenderer& r, const int16_t* xs, const int16_t* ys, const i
 #endif
 
 void heart(const GfxRenderer& r, const int x, const int y, const int size) {
-  constexpr int path[11][2] = {{0, 11}, {-9, 2}, {-11, -4}, {-8, -9}, {-3, -9}, {0, -4},
-                               {3, -9}, {8, -10}, {12, -4}, {9, 3}, {1, 11}};
-  for (int i = 0; i < 10; ++i)
-    stroke(r, x + path[i][0] * size / 24, y + path[i][1] * size / 24,
-           x + path[i + 1][0] * size / 24, y + path[i + 1][1] * size / 24, 2);
+  icon(r, icons::Id::Heart, {x - size / 2, y - size / 2, size, size}, iconFrameSeed());
 }
 
 }  // namespace ugly

@@ -32,7 +32,8 @@ Favorites favorites() {
       const auto path = filefavorites::pathFor(key);
       out.keys.push_back(key);
       out.values.emplace_back(key.rfind("folder/", 0) == 0 ? tr(STR_HOME_TAB_FOLDER) : "");
-      out.labels.push_back(path.empty() ? tr(STR_DICT_NOT_FOUND) : utf8ComposeNfc(path.substr(path.find_last_of('/') + 1)));
+      out.labels.push_back(path.empty() ? tr(STR_DICT_NOT_FOUND) :
+          path == "/" ? tr(STR_FAVORITE_SD_ROOT) : utf8ComposeNfc(path.substr(path.find_last_of('/') + 1)));
       continue;
     }
     const auto name = menufavorites::label(key);

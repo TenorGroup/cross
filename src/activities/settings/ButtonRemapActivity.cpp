@@ -1,5 +1,7 @@
 #include "ButtonRemapActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <GfxRenderer.h>
 #include <I18n.h>
 
@@ -104,6 +106,32 @@ void ButtonRemapActivity::loop() {
 }
 
 void ButtonRemapActivity::render(RenderLock&&) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    std::string roles[4];
+    for (uint8_t index = 0; index < 4; ++index) {
+      roles[index] = std::string(index == currentStep ? "> " : "") + getRoleName(index) + ": " +
+          (tempMapping[index] == kUnassigned ? tr(STR_UNASSIGNED) : getHardwareName(tempMapping[index]));
+    }
+    const std::string tips = std::string(tr(STR_REMAP_RESET_HINT)) + "\n" + tr(STR_REMAP_CANCEL_HINT);
+    const char* tip = tips.c_str();
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip, 8));
+    renderer.clearScreen();
+    x3Info.draw(renderer, layout.bodyRect, {tr(STR_REMAP_PROMPT), roles[0].c_str(), roles[1].c_str(), roles[2].c_str(), roles[3].c_str(), errorMessage.c_str()});
+    tenorchrome::drawTipInRect(renderer, tip, layout.tipRect, 8);
+    x3activity::drawBar(renderer, layout.barRect, tr(STR_REMAP_FRONT_BUTTONS), navigationPrefix.c_str());
+    const auto labelForHardware = [&](uint8_t hardware) {
+      for (uint8_t index = 0; index < kRoleCount; ++index)
+        if (tempMapping[index] == hardware) return getRoleName(index);
+      return "-";
+    };
+    GUI.drawButtonHints(renderer, labelForHardware(CrossPointSettings::FRONT_HW_BACK),
+        labelForHardware(CrossPointSettings::FRONT_HW_CONFIRM), labelForHardware(CrossPointSettings::FRONT_HW_LEFT),
+        labelForHardware(CrossPointSettings::FRONT_HW_RIGHT));
+
+    renderer.displayBuffer();
+    return;
+  }
+
   const auto labelForHardware = [&](uint8_t hardwareIndex) -> const char* {
     for (uint8_t i = 0; i < kRoleCount; i++) {
       if (tempMapping[i] == hardwareIndex) {
@@ -134,7 +162,7 @@ void ButtonRemapActivity::render(RenderLock&&) {
       row.label = getRoleName(i);
       row.value = tempMapping[i] == kUnassigned ? tr(STR_UNASSIGNED) : getHardwareName(tempMapping[i]);
       row.marks.selected = i == currentStep;
-      uglychrome::row(renderer, box, row);
+      uglychrome::row(renderer, box, row, mark_.get(currentStep));
     }
   } else {
     GUI.drawSubHeader(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight},

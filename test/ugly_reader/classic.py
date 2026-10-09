@@ -8,6 +8,7 @@ while depth:depth+=(s[end]=='{')-(s[end]=='}');end+=1
 painter=s[start:end]
 cpp=r'''
 #include <FreeInkUI.h>
+#include "shells/ugly/UglyMarkSeed.h"
 #include <I18n.h>
 #include <MenuCustomization.h>
 #include <GfxRenderer.h>
@@ -34,6 +35,8 @@ namespace readerugly {
  void text(const GfxRenderer&,fui::Rect box,const char*s,fui::TextAlign=fui::TextAlign::Left){runs.push_back({box,s?s:""});}
 }
 struct EpubReaderMenuActivity {
+ ugly::MarkState mark_,tabMark_;
+ uint64_t selectionMarkKey()const{return(uint64_t(activeTab())<<32)|uint32_t(ringPos());}
  GfxRenderer renderer;std::string name="EpubReaderMenu";
  fui::Rect skinTab_{0,60,528,50},skinProgress_{0,112,528,40},skinHint_{};
  int currentPage=12,totalPages=40,bookProgressPercent=51,rowCount=1,shown=4,first=0;bool pinned=true;

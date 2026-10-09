@@ -1,4 +1,6 @@
 #pragma once
+#include "activities/X3ActivityLayout.h"
+#include "shells/ugly/UglyMarkSeed.h"
 
 #include <cstdint>
 #include <functional>
@@ -53,6 +55,8 @@ enum class WifiSelectionState {
  * The onComplete callback receives true if connected successfully, false if cancelled.
  */
 class WifiSelectionActivity final : public Activity, private UiAppHost {
+  x3activity::InfoPages x3Info;
+  mutable ugly::MarkState mark_;
   ButtonNavigator buttonNavigator;
 
   WifiSelectionState state = WifiSelectionState::SCANNING;

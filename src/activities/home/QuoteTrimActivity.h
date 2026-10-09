@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "QuoteStore.h"
+#include "components/TenorMenuChrome.h"
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
 
@@ -18,6 +19,10 @@ class QuoteTrimActivity final : public Activity {
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;
+  tenorchrome::X3ScreenLayout screenLayout() const;
+  std::string screenTip() const;
+  std::string screenInfo() const;
+  void drawX3Content() const;
 
  private:
   // A word is a span of quote.text, so the layout holds no copies of the words.

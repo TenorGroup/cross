@@ -89,6 +89,9 @@ class HomeActivity final : public UiTabListActivity {
   bool touchRowMovesRing() const override { return activeTabId == Tab::RECENT; }
   bool listFramed() const override { return activeTabId != Tab::RECENT; }  // the card is no list
   bool fileList() const override { return activeTabId == Tab::FOLDER; }
+  bool canSearchFiles() const override { return tenorchrome::kTouchShell && activeTabId == Tab::FOLDER; }
+  const char* fileSearchText() const override { return folderSearchQuery.c_str(); }
+  void openFileSearch() override;
   bool rowOpens(int row) const override;
   bool rowStartsGroup(int row) const override;
   bool supportsFavorites() const override { return activeTabId != Tab::STATS; }
@@ -99,6 +102,10 @@ class HomeActivity final : public UiTabListActivity {
   bool mucQuaNhieu = false;  // the card root holds more names than the heap allows: nothing is listed
   bool favoriteFileMissing = false;
   std::optional<StrId> statsResetTip;
+  const char* homeTipText();
+  const char* homeInfoText();
+  tenorchrome::X3ScreenLayout homeScreenLayout();
+  const char* favoriteHintText() override;
   uint8_t statsPage = 0;
   // The enlarged stats tab starts with a row that turns statsPage in place.
   bool statsTurnRow(const int row) const { return statsRowsEnlarged && row == 0; }
@@ -136,7 +143,7 @@ class HomeActivity final : public UiTabListActivity {
   int preferredTabBarHeight() const override;
   int coverTileTop() const;
   void selectTab(Tab tab);
-  void rebuildRows();
+  void rebuildRows(bool readFolder = true);
   bool buildSettingsGroups(UiScreen& screen);
   static void settingsRow(void* context, uint16_t index, freeink::ui::ListItem& item);
 
@@ -152,6 +159,9 @@ class HomeActivity final : public UiTabListActivity {
 
   // Noi dung goc the nho, cho the Folder. Thu muc mang dau '/' o cuoi.
   std::vector<std::string> mucTheNho;
+  std::string folderSearchQuery;
+  std::vector<uint16_t> folderRowIndices;
+  const std::string& folderEntry(int row) const;
   void docGocTheNho();
 
   std::vector<RecentBook> recentBooks;

@@ -172,15 +172,27 @@ int main(int argc, char** argv) {
   result["catalog"]=catalog.size(); result["checks"]=checks;
   JsonDocument webDoc; deserializeJson(webDoc, before); result["web"]=webDoc;
   bool hasWake=false, hasStart=false;
+  int tipsRows=0;
   for (JsonObjectConst row : webDoc.as<JsonArrayConst>()) {
     const std::string key=row["key"] | "";
     if(key=="wakeIntoBook") hasWake=true;
+    if(key=="tipsEnabled") {
+      ++tipsRows;
+      ok &= check(row["category"]=="STR_CAT_DISPLAY" && row["name"]=="STR_TIPS" &&
+                  row["type"]=="toggle" && row["value"].as<int>()==1,
+                  "web exposes the independent Display tips toggle, enabled by default");
+    }
     if(key=="uglyStartScreen") {
       hasStart=true;
       ok &= check(row["value"].as<int>()==CrossPointSettings::UGLY_START_DIARY,
                   "web start screen defaults to Diary");
     }
   }
+  const bool hasTips=!ugly && !BoardConfig::isX4Pro();
+  ok &= check(tipsRows==(hasTips ? 1 : 0),"tips toggle is shown once on cross button readers only");
+  ok &= check(hasTips ? routes.count("settings/tipsEnabled")==1 && routes.at("settings/tipsEnabled")==0
+                     : !routes.count("settings/tipsEnabled"),
+              "tips pin follows the visible Display row");
   ok &= check(ugly ? hasStart && !hasWake : hasWake && !hasStart,"web has exactly one start row for the shell");
   std::string output; serializeJson(result,output); std::puts(output.c_str());
   return ok?0:1;

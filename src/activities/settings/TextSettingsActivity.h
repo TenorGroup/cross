@@ -25,7 +25,7 @@ class TextSettingsActivity final : public UiTabListActivity {
  public:
   static std::string layoutValueText(int row);
   static std::string styleValueText(int row);
-  enum class Tab : uint8_t { Family, Size, Layout, Style, Count };
+  enum class Tab : uint8_t { Family, Size, Layout, Style, Favorites, Count };
 
   TextSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const SdCardFontRegistry* registry,
                        Tab initialTab = Tab::Family);
@@ -60,8 +60,11 @@ class TextSettingsActivity final : public UiTabListActivity {
 
   // --- UiTabListActivity contract ---
   int listCount() const override;
-  int tabCount() const override { return static_cast<int>(Tab::Count); }
-  int activeTab() const override { return static_cast<int>(tab_); }
+  int tabCount() const override { return tenorchrome::x3ScreenLayoutEnabled() ? 5 : 4; }
+  int activeTab() const override { return displayIndex(tab_); }
+  int displayIndex(Tab tab) const;
+  Tab tabForIndex(int index) const;
+  freeink::ui::BitmapRef tabIcon(int index, bool bold) const override;
   const char* tabLabel(int index) const override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
@@ -102,6 +105,13 @@ class TextSettingsActivity final : public UiTabListActivity {
   int settingsChoiceCount(int row) const override;
   std::string favoriteKey(int row) const override;
   int focusFavorite(const std::string& key) override;
+  const char* favoriteHintText() override;
+  const char* x3TipText();
+  std::string x3InfoText();
+  std::array<uint8_t, 32> favoritePins_{};
+  int favoriteCount_ = 0;
+  void refreshFavoriteRows();
+  std::string screenInfo_;
 
   bool applyFamily(int listIndex);
   bool applySize(int listIndex);

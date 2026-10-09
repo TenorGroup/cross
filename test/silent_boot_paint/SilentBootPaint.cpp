@@ -7,6 +7,12 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include "../../src/shells/ugly/UglyIcons.h"
+#include "../../src/shells/ugly/UglyMarkSeed.h"
+
+namespace shell { bool isUgly() { return false; } }
+namespace ugly { void setIconFrameSeed(uint32_t) {} }
+uint32_t millis() { return 0; }
 
 // The production paint request, waited paint and render task, the flush at the end of
 // ActivityManager::loop() and the tail of a silent boot in setup(), on fake FreeRTOS tasks.
@@ -72,6 +78,8 @@ struct PageScrollbar {
 };
 
 struct Activity {
+  ugly::icons::FrameState uglyIconFrame;
+  uint64_t uglyIconPageKey() { return 0; }
   std::atomic<int> paints{0};
   bool renderIdleUpdate() { return false; }  // no idle-only repaint in this harness
   void render(RenderLock&&) {

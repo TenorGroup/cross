@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include "activities/reader/ReaderMenuLayout.h"
+#include "shells/ugly/UglyMarkSeed.h"
 #undef tr
 const char* testTranslation(StrId id, const char* name) {
   return id == StrId::STR_BLE_LAST_KEY || id == StrId::STR_BLE_BIND_DONE ? "key %s" : name;
@@ -26,7 +27,10 @@ struct TestI18n {
 #undef I18N
 #define I18N TestI18n{}
 #define LOG_INF(...) (void)0
-namespace tenorchrome { constexpr bool kTouchShell = false; }
+namespace tenorchrome {
+constexpr bool kTouchShell = false;
+constexpr bool x3ScreenLayoutEnabled() { return false; }
+}
 #define LOG_ERR(...) (void)0
 // The menu as tenor/cross shows it; the hand-drawn shell is measured in the simulator.
 namespace shell { inline bool uglyParts() { return false; } inline bool isUgly() { return false; } }
@@ -35,6 +39,7 @@ namespace fui {
 struct ListItem {
   const char* label = nullptr;
   const char* value = nullptr;
+  const char* subtitle = nullptr;
   int16_t actionValue = 0;
   bool enabled = true;
   bool isHeader = false;
@@ -123,6 +128,8 @@ struct UiListActivity {
   Nav nav;
   Nav& activeNav() { return nav; }
   virtual int listCount() const = 0;
+  ugly::MarkState mark_;
+  virtual uint64_t selectionMarkKey() { return static_cast<uint32_t>(activeNav().selected); }
   static int kepConTro(int index, int count) { return std::max(0, std::min(index, count - 1)); }
   void stepSelection(int direction);
 };
@@ -136,6 +143,7 @@ struct Popup {
   template <class... Args> void showInFrame(const freeink::ui::Rect&, Args&&... args) {
     show(std::forward<Args>(args)...);
   }
+  void show(const char*, const char* const*, int, int, std::function<void(int)>) {}
 };
 struct BlePageTurnerActivity : UiListActivity {
   static constexpr int ACTION_ROW = 1;
@@ -145,6 +153,7 @@ struct BlePageTurnerActivity : UiListActivity {
   int renderer = 0;
   struct App { void clearTapFlash() {} } app;
   Popup optionPopup;
+  Popup x3Popup;
   std::vector<fui::ListItem> rowItems_;
   std::vector<int16_t> rowCodes_;
   bool rowsDirty = false, bindWaitActive_ = false, bindMode_ = false, finished = false, statusInTip_ = false;

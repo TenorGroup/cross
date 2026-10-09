@@ -1,4 +1,5 @@
 #include "OpdsServerListActivity.h"
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <GfxRenderer.h>
 #include <I18n.h>
@@ -213,16 +214,22 @@ void OpdsServerListActivity::buildScreen(UiScreen& screen) {
   // Content below the GUI.drawHeader band, above the button hints; derived
   // from the safe area so board bezel insets apply (same as LanguageSelect).
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
-  screen.setContentMarginFromScreen(
-      fui::Insets{static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
-                  static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
-                  static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height) + metrics.buttonHintsHeight),
-                  static_cast<int16_t>(safe.x)});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  if (x3settings::beginScreen(screen, renderer)) {
+    tabBandDrawn = true;
+  } else {
+    screen.setContentMarginFromScreen(
+        fui::Insets{static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
+                    static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
+                    static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height) + metrics.buttonHintsHeight),
+                    static_cast<int16_t>(safe.x)});
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
 
   const int itemCount = getItemCount();
   if (itemCount == 0) {
-    screen.centeredText(tr(STR_NO_SERVERS), screen.theme().bodyText);
+    if (tenorchrome::x3ScreenLayoutEnabled())
+      tenorchrome::drawInfoInRect(renderer, tr(STR_NO_SERVERS), tenorchrome::x3ScreenLayout(renderer).bodyRect);
+    else screen.centeredText(tr(STR_NO_SERVERS), screen.theme().bodyText);
     return;
   }
 

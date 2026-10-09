@@ -46,6 +46,7 @@ include_paths = [
     'lib/Epub', 'lib/I18n', 'lib/Logging', 'lib/EpdFont', 'lib/Serialization',
     'lib/KOReaderSync', 'freeink-sdk/libs/hardware/BoardConfig/include', 'lib/BlePageTurner/include',
     'freeink-sdk/libs/ui/FreeInkUI/include',
+    'freeink-sdk/libs/assets/Icons/include',
 ]
 includes = ['-I' + str(ROOT / path) for path in include_paths]
 manifest = {}

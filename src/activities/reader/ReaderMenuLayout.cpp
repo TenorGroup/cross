@@ -4,6 +4,11 @@
 
 namespace readermenu {
 
+void separateTextTab(std::vector<Item>& items) {
+  for (auto& item : items)
+    if (item.action == Action::TEXT_SETTINGS) item.tab = Tab::TEXT;
+}
+
 void buildItems(std::vector<Item>& items, const bool hasFootnotes, const bool hasBookmarks, const bool hasFrontlight,
                 const bool hasTilt) {
   items.clear();

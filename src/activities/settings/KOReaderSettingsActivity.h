@@ -1,4 +1,5 @@
 #pragma once
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <string>
 
@@ -21,6 +22,10 @@ class KOReaderSettingsActivity final : public UiListActivity {
   int settingsChoiceCount(int row) const override { return row >= 3 && row <= 5 ? 2 : 0; }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
+  void drawChrome() override {
+    if (tenorchrome::x3ScreenLayoutEnabled()) x3settings::drawPath(renderer, headerTitle());
+    else UiListActivity::drawChrome();
+  }
   const char* headerTitle() const override;
 
   // Row storage: MENU_ITEMS is a compile-time constant, so fixed-capacity

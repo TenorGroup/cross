@@ -268,8 +268,9 @@ int main(int argc, char** argv) {
                     (at - 1)->valuePtr == &CrossPointSettings::uiShell && at + 1 != activity.displaySettings.end() &&
                     (at + 1)->valuePtr == &CrossPointSettings::screenInverted,
                 "tenor/ugly lists the ugliness row right under the interface row");
-    ok &= check(activity.displaySettings.size() == without + 1 && activity.displaySettings.capacity() == activity.displaySettings.size(),
-                "and reserves exactly one row more");
+    const size_t extra = BoardConfig::hasTouch() ? 1 : 0;
+    ok &= check(activity.displaySettings.size() == without + extra && activity.displaySettings.capacity() == activity.displaySettings.size(),
+                "shell switch keeps exact capacity while exchanging tips for ugliness");
     ok &= check(activity.tabNavs.size() > 0 && at->enumLabels().size() == 2, "two levels");
     SETTINGS.uiShell = 0;
     activity.rebuildSettingsLists();

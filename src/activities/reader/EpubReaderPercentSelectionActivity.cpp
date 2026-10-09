@@ -188,7 +188,7 @@ void EpubReaderPercentSelectionActivity::buildPercentScreen(UiScreen& screen) {
 namespace {
 // tenor/ugly on the button readers: a scrap of paper over the menu, the number written large over a ruler in pen,
 // a jab that follows where the reader wants to go.
-void renderUgly(const GfxRenderer& r, const int percent, const char* hint1, const char* hint2) {
+void renderUgly(const GfxRenderer& r, const int percent, const char* hint1, const char* hint2, uint32_t seed) {
   [[maybe_unused]] const uint32_t started = millis();
   const int w = r.getScreenWidth(), x = 20, right = w - 20, top = r.getScreenHeight() / 2 - 190;
   readerugly::paper(r, {static_cast<int16_t>(x), static_cast<int16_t>(top), static_cast<int16_t>(right - x), 360});
@@ -214,7 +214,7 @@ void renderUgly(const GfxRenderer& r, const int percent, const char* hint1, cons
     ugly::text(r, ugly::Size::S22, tx - ugly::width(r, ugly::Size::S22, at) / 2, cy + 36, at);
   }
   const int kx = x0 + (x1 - x0) * percent / 100;
-  ugly::circle(r, ugly::Circle::Object, {kx - 7, cy - 7, kx + 7, cy + 7}, 0, 0, 3);
+  ugly::circle(r, ugly::Circle::Object, {kx - 7, cy - 7, kx + 7, cy + 7}, 0, 0, seed, 3);
   ugly::text(r, ugly::Size::S22, x + 24, top + 306, hint1);
   ugly::text(r, ugly::Size::S22, x + 24, top + 336, hint2);
 #ifdef UGLY_FRAME_LOG
@@ -228,7 +228,7 @@ void EpubReaderPercentSelectionActivity::render(RenderLock&&) {
     char hint1[64], hint2[64];
     snprintf(hint1, sizeof(hint1), "%s %d%%", I18N.get(StrId::STR_STEP_HINT_FRONT), kSmallStep);
     snprintf(hint2, sizeof(hint2), "%s %d%%", I18N.get(StrId::STR_STEP_HINT_SIDE), kLargeStep);
-    renderUgly(renderer, percent, hint1, hint2);
+    renderUgly(renderer, percent, hint1, hint2, mark_.get(percent));
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "-", "+");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer();

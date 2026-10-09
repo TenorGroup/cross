@@ -30,6 +30,7 @@ struct State {
     order[0] = {0, 1, 4, 2, 3, 5, 6, 7};
     static_assert(settingstabs::TAB_COUNT == MAX_TABS, "Settings order must fit persisted tab slots");
     order[1] = settingstabs::DEFAULT_ORDER;
+    order[3] = {4, 0, 1, 2, 3, 5, 6, 7, 8};
   }
   void normalize(int group, int count) {
     std::array<uint8_t, MAX_TABS> result{};

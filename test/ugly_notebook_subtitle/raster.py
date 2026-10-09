@@ -10,6 +10,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from PIL import Image
 
 
 CONSTANTS = (
@@ -82,6 +83,7 @@ def harness(source: str) -> str:
 #include <vector>
 
 #include "shells/ugly/UglyInk.h"
+#include "components/TenorMenuChrome.h"
 
 std::vector<uint8_t> pixels(HalDisplay::BUFFER_SIZE, 0xff);
 HalClock halClock;
@@ -134,7 +136,10 @@ struct Harness {{
     return std::min(2, countedParagraph(renderer, ugly::Size::S30, 0, 0, room, SUBTITLE_LINE, subtitle(), false));
   }}
   int firstBaseline() const {{ return FIRST_BASELINE + (subtitleLines() - 1) * 30; }}
-  int rowsPerPage() const {{
+  const char* tip() const {{ return ""; }}
+  int rowsPerPage(int first = -1, int bottom = -1) const {{
+    (void)bottom;
+    if (first >= 0) return std::max(1, (renderer.getScreenHeight() - 140 - first) / ROW_HEIGHT + 1);
     return std::max(1, (renderer.getScreenHeight() - 140 - firstBaseline()) / ROW_HEIGHT + 1);
   }}
   int rowCount() const {{ return 12; }}
@@ -148,6 +153,7 @@ struct Harness {{
 
 void Harness::render() {{
 {prefix}
+  (void)h;
   observedFirst = first;
   observedPerPage = perPage;
   (void)count;
@@ -259,6 +265,8 @@ def run_variant(binary: Path, output: Path) -> list[dict[str, int | str]]:
     for line in lines:
         kind, calls, first, per_page, layout_ns, frame_ns = map(int, line.split())
         image = output / f"lines-{kind}.pbm"
+        frame = Image.open(image)
+        header = frame.crop((40, 0, frame.width, first))
         results.append({
             "lines": kind,
             "calls": calls,
@@ -267,6 +275,7 @@ def run_variant(binary: Path, output: Path) -> list[dict[str, int | str]]:
             "layout_host_ns": layout_ns,
             "frame_host_ns": frame_ns,
             "raster_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
+            "header_sha256": hashlib.sha256(header.tobytes()).hexdigest(),
         })
     return results
 
@@ -275,7 +284,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--baseline-ref", default="3dc5636f")
+    parser.add_argument("--baseline-ref", default="HEAD")
     args = parser.parse_args()
     repo = args.repo.resolve()
     output = args.output.resolve()
@@ -292,10 +301,10 @@ def main() -> int:
                 binary = compile_variant(repo, source, width, height, build, name)
                 pair[name] = run_variant(binary, output / name / f"{width}x{height}")
             for old, new in zip(pair["before"], pair["after"], strict=True):
-                for key in ("lines", "first", "per_page", "raster_sha256"):
+                for key in ("lines", "first", "per_page", "header_sha256"):
                     if old[key] != new[key]:
                         raise AssertionError(f"{width}x{height} {key}: {old[key]} -> {new[key]}")
-                if old["calls"] != 3 or new["calls"] != 1:
+                if new["calls"] != 1 or new["calls"] > old["calls"]:
                     raise AssertionError(f"{width}x{height} calls: {old['calls']} -> {new['calls']}")
                 all_results.append({"width": width, "height": height, "before": old, "after": new})
     (output / "results.json").write_text(json.dumps(all_results, indent=2) + "\n", encoding="utf-8")

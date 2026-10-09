@@ -431,6 +431,23 @@ int runUglyStart() {
   return ok ? 0 : 1;
 }
 
+int runTips() {
+  JsonDocument before = readFixture("settings-v1.0.19.json");
+  bool ok = expect(before["tipsEnabled"].isNull(), "old fixture predates tips switch");
+  SETTINGS.fromJson(before.as<JsonVariantConst>());
+  ok = expect(SETTINGS.tipsEnabled == 1, "old settings enable tips") && ok;
+  ok = expect(saved()["tipsEnabled"].as<int>() == 1, "default is saved") && ok;
+  before["tipsEnabled"] = 0;
+  SETTINGS.fromJson(before.as<JsonVariantConst>());
+  ok = expect(SETTINGS.tipsEnabled == 0, "explicit Off survives load") && ok;
+  ok = expect(saved()["tipsEnabled"].as<int>() == 0, "Off survives save") && ok;
+  before.remove("tipsEnabled");
+  SETTINGS.fromJson(before.as<JsonVariantConst>());
+  ok = expect(SETTINGS.tipsEnabled == 1, "old config reload restores default") && ok;
+  std::printf("settings_upgrade=tips:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
 int main(int argc, char** argv) {
   if (argc != 2) return 2;
   const std::string mode = argv[1];
@@ -445,5 +462,6 @@ int main(int argc, char** argv) {
   if (mode == "tap-zones") return runTapZones();
   if (mode == "reader-pins") return runReaderPins();
   if (mode == "no-resident-catalog") return runNoResidentCatalog();
+  if (mode == "tips") return runTips();
   return 2;
 }

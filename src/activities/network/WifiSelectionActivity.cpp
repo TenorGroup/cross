@@ -1,4 +1,6 @@
 #include "WifiSelectionActivity.h"
+#include "activities/X3ActivityLayout.h"
+
 #include "components/PageScrollbar.h"
 
 #include <FontCacheManager.h>
@@ -779,6 +781,13 @@ void WifiSelectionActivity::checkConnectionStatus() {
 }
 
 void WifiSelectionActivity::loop() {
+  if (tenorchrome::x3ScreenLayoutEnabled() &&
+      x3Info.turn(mappedInput.wasReleased(MappedInputManager::Button::Up) ? -1 :
+                  mappedInput.wasReleased(MappedInputManager::Button::Down) ? 1 : 0)) {
+    requestUpdate();
+    return;
+  }
+
   // Keep the release in this activity: the parent's chooser handles Back on
   // release, while this picker cancels scans/connections on press.
   if (completionWaitingForBackRelease) {
@@ -1059,6 +1068,49 @@ std::string WifiSelectionActivity::getSignalStrengthIndicator(const int32_t rssi
 }
 
 void WifiSelectionActivity::render(RenderLock&&) {
+  if (tenorchrome::x3ScreenLayoutEnabled() && !shell::uglyParts()) {
+    if (state == WifiSelectionState::PASSWORD_ENTRY || state == WifiSelectionState::HIDDEN_SSID_ENTRY) return;
+    const bool list = state == WifiSelectionState::NETWORK_LIST;
+    const bool prompt = state == WifiSelectionState::SAVE_PROMPT || state == WifiSelectionState::FORGET_PROMPT;
+    const char* tip = list && networks.empty() ? tr(STR_PRESS_OK_SCAN) : nullptr;
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip));
+    char count[64];
+    snprintf(count, sizeof(count), tr(STR_NETWORKS_FOUND), realNetworkCount);
+    renderer.clearScreen();
+    if (list || prompt) {
+      x3Info.pages = 1;
+      const int height = renderer.getLineHeight(SMALL_FONT_ID);
+      x3activity::InfoPages heading;
+      heading.draw(renderer, {0, layout.bodyRect.y, layout.bodyRect.width, height * 3}, {count, cachedMacAddress.c_str()});
+      if (list && networks.empty()) {
+        tenorchrome::drawInfoInRect(renderer, tr(STR_NO_NETWORKS),
+            {0, layout.bodyRect.y + height * 3, layout.bodyRect.width, height * 3}, 3);
+      } else {
+        renderUi();
+      }
+      if (list) tenorchrome::drawInfoInRect(renderer, tr(STR_NETWORK_LEGEND),
+          {0, layout.bodyRect.bottom() - height * 2, layout.bodyRect.width, height * 2}, 2);
+    } else {
+      const char* status = state == WifiSelectionState::CONNECTED ? tr(STR_CONNECTED) :
+          state == WifiSelectionState::CONNECTION_FAILED ? tr(STR_CONNECTION_FAILED) :
+          state == WifiSelectionState::SCANNING ? (autoConnecting ? tr(STR_FINDING_SAVED_WIFI) : tr(STR_SCANNING)) :
+          autoConnecting ? tr(STR_CONNECTING_SAVED_WIFI) : tr(STR_CONNECTING);
+      const std::string address = state == WifiSelectionState::CONNECTED ? std::string(tr(STR_IP_ADDRESS_PREFIX)) + WiFi.localIP().toString().c_str() : "";
+      x3Info.draw(renderer, layout.bodyRect, {count, cachedMacAddress.c_str(), status, selectedSSID.c_str(),
+          address.c_str(), state == WifiSelectionState::CONNECTION_FAILED ? connectionError.c_str() : nullptr});
+    }
+    tenorchrome::drawTipInRect(renderer, tip, layout.tipRect);
+    x3activity::drawBar(renderer, layout.barRect, tr(STR_WIFI_NETWORKS), navigationPrefix.c_str());
+    const bool saved = list && !networks.empty() && networks[selectedNetworkIndex].hasSavedPassword;
+    const auto labels = mappedInput.mapLabels(autoConnecting ? tr(STR_CANCEL) : tr(STR_BACK),
+        list ? tr(STR_CONNECT) : prompt ? tr(STR_SELECT) : autoConnecting ? tr(STR_SHOW_NETWORKS) : "",
+        prompt ? tr(STR_DIR_LEFT) : saved ? tr(STR_FORGET_BUTTON) : "",
+        prompt ? tr(STR_DIR_RIGHT) : list ? tr(STR_RETRY) : "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer();
+    return;
+  }
+
   // Don't render if we're in a keyboard-entry state - we're just transitioning
   // from the keyboard subactivity back to the main activity
   if (state == WifiSelectionState::PASSWORD_ENTRY || state == WifiSelectionState::HIDDEN_SSID_ENTRY) {
@@ -1140,6 +1192,18 @@ void WifiSelectionActivity::buildListScreen(UiScreen& screen) {
       static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height) + metrics.verticalSpacing * 2),
       static_cast<int16_t>(safe.x)});
 
+  if (shell::uglyParts() && tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tr(STR_UGLY_WIFI_TIP)));
+    const int bottom = screen.body().y + screen.body().height;
+    if (bottom > layout.bodyRect.bottom())
+      screen.takeBottom(static_cast<int16_t>(bottom - layout.bodyRect.bottom()));
+  } else if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const char* tip = state == WifiSelectionState::NETWORK_LIST && networks.empty() ? tr(STR_PRESS_OK_SCAN) : nullptr;
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip));
+    const int height = renderer.getLineHeight(SMALL_FONT_ID);
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(layout.bodyRect.y + height * 3), 0,
+        static_cast<int16_t>(renderer.getScreenHeight() - layout.bodyRect.bottom() + height * 2), 0});
+  }
   if (state == WifiSelectionState::SAVE_PROMPT || state == WifiSelectionState::FORGET_PROMPT) {
     buildPromptDialog(screen);
     return;
@@ -1441,7 +1505,7 @@ void WifiSelectionActivity::renderUglyList() {
     row.label = networkRowItems[i].label;
     row.value = networkRowItems[i].value;
     row.marks.selected = i == selectedNetworkIndex;
-    uglychrome::row(renderer, box, row);
+    uglychrome::row(renderer, box, row, mark_.get(selectedNetworkIndex));
   }
   tenorchrome::drawTip(renderer, tr(STR_UGLY_WIFI_TIP));
   const bool hasSavedPassword = !networks.empty() && networks[selectedNetworkIndex].hasSavedPassword;
@@ -1464,7 +1528,9 @@ void WifiSelectionActivity::renderUglyPrompt() {
                             forget ? tr(STR_UGLY_WIFI_FORGET_YES) : tr(STR_UGLY_WIFI_SAVE_NO)};
   ugly::Box drawn[2];
   ugly::askBox(renderer, mappedInput, forget ? tr(STR_UGLY_WIFI_FORGET_ASK) : tr(STR_UGLY_WIFI_SAVE_ASK), "", answers,
-               forget ? forgetPromptSelection : savePromptSelection, drawn);
+               forget ? forgetPromptSelection : savePromptSelection, drawn,
+               mark_.get((static_cast<uint64_t>(state) << 32) |
+                         static_cast<uint32_t>(forget ? forgetPromptSelection : savePromptSelection)));
   renderer.displayBuffer();
 #ifdef UGLY_FRAME_LOG
   LOG_INF("UGLY", "Wifi ask frame forget=%d sel=%d", forget ? 1 : 0, forget ? forgetPromptSelection : savePromptSelection);

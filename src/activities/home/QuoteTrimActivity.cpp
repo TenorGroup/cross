@@ -1,4 +1,5 @@
 #include "QuoteTrimActivity.h"
+#include "X3FileReaderChrome.h"
 
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
@@ -96,11 +97,16 @@ const char* QuoteTrimActivity::wordText(const Word& word) const {
   return scratch.c_str();
 }
 
-int QuoteTrimActivity::areaTop() const { return quotesHeaderBottom() + TOP_GAP; }
+int QuoteTrimActivity::areaTop() const {
+  return tenorchrome::x3ScreenLayoutEnabled() ? screenLayout().bodyRect.y : quotesHeaderBottom() + TOP_GAP;
+}
 
 int QuoteTrimActivity::linesPerArea() const {
-  const int bottom = renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight -
-                     statusBlockHeight(renderer);
+  const int bottom =
+      tenorchrome::x3ScreenLayoutEnabled()
+          ? screenLayout().bodyRect.bottom() - tenorchrome::tipHeight(renderer, screenInfo().c_str(), 4) - 8
+          : renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight -
+                statusBlockHeight(renderer);
   return std::max(1, (bottom - areaTop()) / renderer.getLineHeight(WORD_FONT_ID));
 }
 
@@ -192,7 +198,11 @@ void QuoteTrimActivity::loop() {
 
 void QuoteTrimActivity::render(RenderLock&&) {
   renderer.clearScreen();
-  drawNavigationHeader(tr(STR_QUOTES_MENU_EDIT));
+  const bool x3 = tenorchrome::x3ScreenLayoutEnabled();
+  if (x3)
+    x3readerchrome::drawPath(renderer, screenLayout().barRect, icon_tenor_reader_tools_40, tr(STR_QUOTES_MENU_EDIT));
+  else
+    drawNavigationHeader(tr(STR_QUOTES_MENU_EDIT));
 
   const int lineHeight = renderer.getLineHeight(WORD_FONT_ID);
   const int ascender = renderer.getFontAscenderSize(WORD_FONT_ID);
@@ -237,6 +247,7 @@ void QuoteTrimActivity::render(RenderLock&&) {
       if (byHand) ugly::text(renderer, ugly::Size::S22, TEXT_X0, y + renderer.getFontAscenderSize(fontId), text);
       else renderer.drawText(fontId, TEXT_X0, y, text);
     };
+    if (x3) continue;
     int y = top + shownLines * lineHeight + STATUS_GAP;
     line(STATUS_FONT_ID, y, keep);
     y += renderer.getLineHeight(STATUS_FONT_ID) + STATUS_STEP_PAD;
@@ -246,6 +257,10 @@ void QuoteTrimActivity::render(RenderLock&&) {
       line(HELP_FONT_ID, y, help);
       y += byHand ? std::max(renderer.getLineHeight(HELP_FONT_ID), 30) : renderer.getLineHeight(HELP_FONT_ID);
     }
+  }
+
+  if (x3) {
+    drawX3Content();
   }
 
   // Back discards the trim, so its hint says Cancel rather than showing the Back symbol.
@@ -260,4 +275,30 @@ void QuoteTrimActivity::render(RenderLock&&) {
     return;
   }
   renderer.displayBuffer();
+}
+
+std::string QuoteTrimActivity::screenTip() const {
+  return std::string(tr(STR_QUOTES_TRIM_HELP_MOVE)) + "\n" + tr(STR_QUOTES_TRIM_HELP_SWITCH) + "\n" +
+         tr(STR_QUOTES_TRIM_HELP_BACK);
+}
+
+std::string QuoteTrimActivity::screenInfo() const {
+  char keep[64];
+  snprintf(keep, sizeof(keep), tr(STR_QUOTES_TRIM_KEEP), last - first + 1, static_cast<int>(words.size()));
+  return std::string(keep) + "\n" + (movingEnd ? tr(STR_QUOTES_TRIM_END) : tr(STR_QUOTES_TRIM_START));
+}
+
+tenorchrome::X3ScreenLayout QuoteTrimActivity::screenLayout() const {
+  const auto tip = screenTip();
+  return tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip.c_str(), 12));
+}
+
+void QuoteTrimActivity::drawX3Content() const {
+  const auto layout = screenLayout();
+  const auto info = screenInfo();
+  const int height = tenorchrome::tipHeight(renderer, info.c_str(), 4);
+  tenorchrome::drawInfoInRect(renderer, info.c_str(),
+                              {layout.bodyRect.x, layout.bodyRect.bottom() - height, layout.bodyRect.width, height}, 4);
+  const auto tip = screenTip();
+  tenorchrome::drawTipInRect(renderer, tip.c_str(), layout.tipRect, 12);
 }

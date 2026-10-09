@@ -66,6 +66,10 @@ constexpr int kLandscapePanelHeightPercent = 88;
 ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& renderer) : UiAppHost(renderer), renderer_(&renderer) {}
 
 void ReaderToolbarUi::begin() {
+  mark_.reset();
+  toolMark_.reset();
+  progressMark_.reset();
+  arrowsMark_.reset();
   resetUi();
   pending_ = Routed{};
   nav_.reset();
@@ -793,9 +797,9 @@ const char* readerugly::notice(const StrId id) {
   return I18N.get(id);
 }
 
-void readerugly::selected(const GfxRenderer& r, const fui::Rect& rect) {
+void readerugly::selected(const GfxRenderer& r, const fui::Rect& rect, uint32_t seed) {
   if (!rect.empty()) ugly::circle(r, ugly::Circle::Row,
-      {rect.x + 5, rect.y + 5, rect.right() - 5, rect.bottom() - 5}, 0, 0, 2);
+      {rect.x + 5, rect.y + 5, rect.right() - 5, rect.bottom() - 5}, 0, 0, seed, 2);
 }
 
 void ReaderToolbarUi::paintUgly() {
@@ -806,13 +810,13 @@ void ReaderToolbarUi::paintUgly() {
       const auto box = app.publishedRect(action, 0);
       ugly::mark(r, action == ACTION_PREV ? ugly::Mark::Left : ugly::Mark::Right,
                  box.x + box.width / 2, box.y + box.height / 2);
-      readerugly::selected(r, box);
+      readerugly::selected(r, box, arrowsMark_.get(model_.progressPermille) + action);
     }
     const auto track = app.publishedRect(ACTION_SCRUB, 0);
     const int cy = track.y + track.height / 2;
     ugly::line(r, track.x, cy, track.right(), cy, 814, 2);
     const int kx = track.x + (track.width - 1) * std::clamp(model_.progressPermille, 0, 1000) / 1000;
-    ugly::circle(r, ugly::Circle::Object, {kx - 6, cy - 6, kx + 6, cy + 6}, 0, 0, 2);
+    ugly::circle(r, ugly::Circle::Object, {kx - 6, cy - 6, kx + 6, cy + 6}, 0, 0, progressMark_.get(model_.progressPermille), 2);
     const int infoWidth = model_.pageInfo ? ugly::width(r, ugly::Size::S22, model_.pageInfo) : 0;
     auto title = skinMeta_;
     title.width = static_cast<int16_t>(std::max(0, title.width - infoWidth - 12));
@@ -870,7 +874,8 @@ void ReaderToolbarUi::paintUgly() {
         }
       }
       const int x = box.x + (box.width - 1) * std::clamp(model_.spacingDraftPermille, 0, 1000) / 1000;
-      ugly::circle(r, ugly::Circle::Object, {x - 8, cy - 8, x + 8, cy + 8}, 0, 0, 2);
+      ugly::circle(r, ugly::Circle::Object, {x - 8, cy - 8, x + 8, cy + 8}, 0, 0,
+                   progressMark_.get((uint64_t{1} << 32) | static_cast<uint32_t>(model_.spacingDraftPermille)), 2);
     } else
 #endif
     {
@@ -909,7 +914,8 @@ void ReaderToolbarUi::paintUgly() {
         }
 #endif
         const auto ink = readerugly::text(r, label, windowLabels_[i].c_str());
-        if (model_.selectedIndex == index) uglychrome::ring(r, ink);
+        if (model_.selectedIndex == index) uglychrome::ring(r, ink,
+            mark_.get((static_cast<uint64_t>(model_.activeTool) << 32) | static_cast<uint32_t>(model_.selectedIndex)));
         if (marked) ugly::tick(r, row.right() - 30, row.y + row.height / 2);
         if (opensNext) ugly::mark(r, ugly::Mark::Right, row.right() - 24, row.y + row.height / 2);
       }
@@ -932,7 +938,7 @@ void ReaderToolbarUi::paintUgly() {
       const auto ink = readerugly::text(r, box.inset(fui::Insets{0, 8, 0, 8}),
                                         I18N.get(readermenu::toolName(static_cast<readermenu::Tool>(tool))),
                                         fui::TextAlign::Center);
-      if (model_.activeTool == tool) uglychrome::ring(r, ink);
+      if (model_.activeTool == tool) uglychrome::ring(r, ink, toolMark_.get(model_.activeTool));
     }
   }
 }

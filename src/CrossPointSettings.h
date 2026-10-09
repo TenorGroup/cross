@@ -305,6 +305,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   bool setReaderStatusItem(int row, uint8_t value);
   // Trang thai thanh trang thai
   uint8_t globalStatusBarMode = GLOBAL_STATUS_BAR_SMALL;
+  uint8_t tipsEnabled = 1;
   uint8_t readerStatusBarMode = READER_STATUS_BAR_DEFAULT;
   // Hai co cua v1.0.2 chi con de doc file cu roi quy doi trong fromJson.
   uint8_t hideReaderStatusBar = 0;

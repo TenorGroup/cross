@@ -9,7 +9,9 @@ struct Spec {
 };
 using Resolver = Spec (*)(int);
 using FontFilter = bool (*)(int);
+using ShapePainter = bool (*)(const GfxRenderer&, int, int, int, int, bool);
 void configure(Resolver resolver, FontFilter filter);
+void configurePainter(ShapePainter painter, bool (*enabled)() = nullptr);
 // Returns -1 for ordinary text. PUA E100-E10F are UI-only inline controls.
 int text(const GfxRenderer& renderer, int font, int x, int y, const char* text, bool draw, bool black,
          EpdFontFamily::Style style, int spacing = 0);

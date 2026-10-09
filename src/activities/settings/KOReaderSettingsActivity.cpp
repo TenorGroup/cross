@@ -1,4 +1,5 @@
 #include "KOReaderSettingsActivity.h"
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <GfxRenderer.h>
 #include <I18n.h>
@@ -119,9 +120,13 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
 void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Content below the GUI.drawHeader band, above the button hints.
-  screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-                                                static_cast<int16_t>(metrics.buttonHintsHeight), 0});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  if (x3settings::beginScreen(screen, renderer)) {
+    tabBandDrawn = true;
+  } else {
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
+                                                  static_cast<int16_t>(metrics.buttonHintsHeight), 0});
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
 
   // rowItems_'s labels/actionValue were set once in the constructor; only the
   // live value text needs refreshing here, by assigning into the existing
@@ -172,10 +177,9 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;               // air between the value and the row edge
-  // Label at the value's font size: both sides of the row read as one unit.
-  // maxLines=2 also marks the style caller-owned (see textStyleUnset).
   props.labelText = uiMenuLabelText(screen.theme());
-  props.labelText.maxLines = 2;
+  props.labelText.maxLines = tenorchrome::x3ScreenLayoutEnabled() ? 1 : 2;
+  props.balanceWrappedLabelWithValue = !tenorchrome::x3ScreenLayoutEnabled();
   props.subtitleText = screen.theme().smallText;
   syncListViewport(screen, props);
   screen.list(props);

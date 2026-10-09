@@ -10,6 +10,7 @@ def method(s,key):
 lists=(a.repo/'src/activities/UiListActivity.cpp').read_text();tabs=(a.repo/'src/activities/UiTabListActivity.cpp').read_text()
 cpp=r'''
 #include <FreeInkUIGfxRenderer.h>
+#include "shells/ugly/UglyMarkSeed.h"
 #include <cassert>
 #include <cstdio>
 namespace fui=freeink::ui;
@@ -36,6 +37,8 @@ struct UiListActivity:UiAppHost {
 };
 struct Screen {fui::Frame<8>& f;fui::DrawTarget& target(){return f.target();}fui::Frame<8>&frame(){return f;}};
 struct UiTabListActivity {
+ ugly::MarkState tabMark_;
+ int activeTab()const{return 0;}
  using UiScreen=Screen;static constexpr fui::ActionId ACTION_TAB=1;
  GfxRenderer renderer;fui::GfxRendererTarget uiTarget{renderer};
  void drawGreyIcon(const GfxRenderer&r,fui::BitmapRef,int,int){++r.draws;}
@@ -68,5 +71,5 @@ int main(){
 '''
 (a.output/'paint.cpp').write_text(cpp)
 sdk=a.repo/'freeink-sdk/libs/ui/FreeInkUI'
-subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined','-I'+str(a.repo/'test/ugly_reader/stubs'),'-I'+str(sdk/'include'),str(a.output/'paint.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(a.output/'paint')],check=True)
+subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined','-I'+str(a.repo/'src'),'-I'+str(a.repo/'test/ugly_reader/stubs'),'-I'+str(sdk/'include'),str(a.output/'paint.cpp'),str(sdk/'src/FreeInkUI.cpp'),'-o',str(a.output/'paint')],check=True)
 subprocess.run([str(a.output/'paint')],check=True)

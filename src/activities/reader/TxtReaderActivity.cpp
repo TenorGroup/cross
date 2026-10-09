@@ -621,9 +621,19 @@ void TxtReaderActivity::renderPage(GfxRenderer& renderer) {
   renderLines();
   renderStatusBar();
 
-  if (SETTINGS.textAntiAliasing) {
+  const auto grayContext = [this] {
+    TextGrayContext context;
+    context.textAntiAliasing = SETTINGS.textAntiAliasing;
+    context.covered = coversPage();
+    context.pageBeingLeft = leaving.load(std::memory_order_acquire);
+    context.pendingExternalTurn = pendingExternalTurn.load(std::memory_order_acquire) != 0;
+    context.nextScreenWaiting = context.pageBeingLeft || context.pendingExternalTurn;
+    context.preview = preview;
+    return context;
+  };
+  if (shouldRunTextGrayscale(grayContext())) {
     ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh);
-    ReaderUtils::renderAntiAliased(renderer, [&renderLines]() { renderLines(); });
+    ReaderUtils::renderAntiAliased(renderer, [&renderLines]() { renderLines(); }, grayContext);
   } else {
     ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
   }

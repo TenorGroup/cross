@@ -1,5 +1,7 @@
 #include "BlePageTurnerActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <BlePageTurner.h>
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
@@ -11,6 +13,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "MenuTiltInput.h"
 #include "activities/reader/ReaderUtils.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
@@ -105,6 +108,16 @@ void BlePageTurnerActivity::onEnter() {
 }
 
 void BlePageTurnerActivity::loop() {
+  if (tenorchrome::x3ScreenLayoutEnabled() && !x3Popup.isActive() && x3Info.turn(
+      mappedInput.wasReleased(MappedInputManager::Button::Left) ? -1 :
+      mappedInput.wasReleased(MappedInputManager::Button::Right) ? 1 : 0)) {
+    requestUpdate();
+    readPendingKeys();
+    return;
+  }
+  if (tenorchrome::x3ScreenLayoutEnabled() && !x3Popup.isActive() &&
+      (mappedInput.wasReleased(MappedInputManager::Button::Up) || mappedInput.wasReleased(MappedInputManager::Button::Down)))
+    x3Info.page = 0;
   UiListActivity::loop();
 
   // Phim cua page turner khong thuoc ve man nay: rut het hang doi. Trong luot gan
@@ -121,7 +134,7 @@ void BlePageTurnerActivity::loop() {
   // Duong giu nut cua may nut bam. Do duoc tren gia lap X3: day la duong chay,
   // con onRowLongPress() khong he duoc goi o may khong cam ung. Lop nen chi doc
   // nhip giu khi man co bat tinh nang ghim, ma man nay khong bat.
-  if (!optionPopup.isActive() && mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700)) {
+  if (!optionPopup.isActive() && !x3Popup.isActive() && mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, 700)) {
     clearBindForRow(nav.selected);
   }
 
@@ -296,6 +309,10 @@ void BlePageTurnerActivity::refreshValues() {
       // Touch: the status line is the row itself; beside a label it was cut to "Tra...".
       if (tenorchrome::kTouchShell)
         item.label = statusValue_.c_str();
+      else if (tenorchrome::x3ScreenLayoutEnabled()) {
+        item.value = nullptr;
+        item.subtitle = statusValue_.c_str();
+      }
       else
         item.value = statusValue_.c_str();
     } else if (code == ROW_SCAN) {
@@ -477,7 +494,10 @@ void BlePageTurnerActivity::openPairedPopup(const int bondIndex) {
     requestUpdate();
   };
   freeink::ui::Rect parentFrame{};
-  if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, nav.selected, parentFrame))
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const char* labels[2] = {I18N.get(options[0]), I18N.get(options[1])};
+    x3Popup.show(tr(STR_BLE_PAIRED_DEVICES), labels, 2, 0, onSelect);
+  } else if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, nav.selected, parentFrame))
     optionPopup.showInFrame(parentFrame, StrId::STR_BLE_PAIRED_DEVICES, options, 2, -1, onSelect);
   else
     optionPopup.show(StrId::STR_BLE_PAIRED_DEVICES, options, 2, -1, onSelect);
@@ -528,7 +548,21 @@ void BlePageTurnerActivity::activateIndex(const int index) {
 }
 
 bool BlePageTurnerActivity::handleCustomInput() {
+  if (tenorchrome::x3ScreenLayoutEnabled() && x3Popup.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
   return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
+}
+
+void BlePageTurnerActivity::pollTilt() {
+  if (tenorchrome::x3ScreenLayoutEnabled() && x3Popup.isActive()) {
+    menutilt::pollTabs(static_cast<uint8_t>(renderer.getOrientation()), false);
+    const auto tilt = menutilt::pollRows(true);
+    if (tilt.previous || tilt.next) {
+      x3Popup.step(tilt.previous ? -1 : 1);
+      requestUpdate();
+    }
+    return;
+  }
+  UiListActivity::pollTilt();
 }
 
 // Duong giu nut cua may cam ung, do lop nen phat su kien hang co co longPress.
@@ -567,12 +601,18 @@ void BlePageTurnerActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Cung bien noi dung voi OpdsServerListActivity: duoi dai header, tren dai nut.
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, nullptr, 8));
+    screen.setContentMarginFromScreen({static_cast<int16_t>(layout.bodyRect.y), 0,
+        static_cast<int16_t>(renderer.getScreenHeight() - layout.bodyRect.bottom()), 0});
+  } else {
   screen.setContentMarginFromScreen(
       fui::Insets{static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
                   static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
                   static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height) + metrics.buttonHintsHeight),
                   static_cast<int16_t>(safe.x)});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
+  if (!tenorchrome::x3ScreenLayoutEnabled()) screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   if (rowsDirty) {
     // Cleared before the rebuild: a row tapped on the loop while it runs (the bindings
@@ -582,8 +622,15 @@ void BlePageTurnerActivity::buildScreen(UiScreen& screen) {
   }
   refreshValues();
   if (shell::uglyParts()) {
-    const int lines = ugly::paragraph(renderer, ugly::Size::S22, 0, 0, renderer.getScreenWidth() - 48, 26, uglyTip(), false);
-    screen.takeBottom(static_cast<int16_t>(lines * 26 + 20));
+    const int height = tenorchrome::tipHeight(renderer, uglyTip());
+    if (tenorchrome::x3ScreenLayoutEnabled()) {
+      const bool info = !bindNotice_.empty() || statusInTip_;
+      const auto layout = tenorchrome::x3ScreenLayout(renderer, info ? 0 : height);
+      const int limit = info ? layout.bodyRect.bottom() - height - 8 : layout.bodyRect.bottom();
+      if (screen.body().bottom() > limit) screen.takeBottom(static_cast<int16_t>(screen.body().bottom() - limit));
+    } else {
+      screen.takeBottom(static_cast<int16_t>(height + 20));
+    }
   }
 
   fui::ListProps props;
@@ -592,6 +639,12 @@ void BlePageTurnerActivity::buildScreen(UiScreen& screen) {
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // nut vat ly do loop() cua lop nen lo
   props.valueInset = 8;
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    props.labelText = uiMenuLabelText(screen.theme());
+    props.labelText.maxLines = 2;
+    props.subtitleText = screen.theme().smallText;
+    props.subtitleText.maxLines = 8;
+  }
   syncListViewport(screen, props);
   screen.list(props);
 }
@@ -602,15 +655,50 @@ const char* BlePageTurnerActivity::uglyTip() const {
 }
 
 void BlePageTurnerActivity::drawFooter() {
+  if (tenorchrome::x3ScreenLayoutEnabled() && !shell::uglyParts()) {
+    UiListActivity::drawFooter();
+    return;
+  }
   UiListActivity::drawFooter();
   if (!shell::uglyParts()) return;
-  tenorchrome::drawTip(renderer, uglyTip());
+  if (tenorchrome::x3ScreenLayoutEnabled() && (!bindNotice_.empty() || statusInTip_)) {
+    const int height = tenorchrome::tipHeight(renderer, uglyTip());
+    const auto body = tenorchrome::x3ScreenLayout(renderer).bodyRect;
+    tenorchrome::drawInfoInRect(renderer, uglyTip(), {24, body.bottom() - height, body.width - 48, height});
+  } else {
+    tenorchrome::drawTip(renderer, uglyTip());
+  }
 #ifdef UGLY_FRAME_LOG
   LOG_INF("UGLY", "BLE tip=\"%s\" status=\"%s\"", uglyTip(), statusValue_.c_str());
 #endif
 }
 
 void BlePageTurnerActivity::render(RenderLock&& lock) {
+  if (tenorchrome::x3ScreenLayoutEnabled() && x3Popup.isActive()) {
+    renderer.clearScreen();
+    drawChrome();
+    const auto frame = x3PopupFrame();
+    x3Popup.draw(renderer, {frame.x, frame.y, frame.width, frame.height});
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer();
+    return;
+  }
   if (optionPopup.processRender(renderer, mappedInput)) return;
   UiListActivity::render(std::move(lock));
+}
+
+freeink::ui::Rect BlePageTurnerActivity::x3PopupFrame() const {
+  const auto body = tenorchrome::x3ScreenLayout(renderer).bodyRect;
+  return {24, static_cast<int16_t>(body.y + body.height / 4), static_cast<int16_t>(body.width - 48),
+          static_cast<int16_t>(body.height / 2)};
+}
+
+void BlePageTurnerActivity::drawChrome() {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, nullptr, 8));
+    x3activity::drawBar(renderer, layout.barRect, headerTitle(), navigationPrefix.c_str());
+    return;
+  }
+  UiListActivity::drawChrome();
 }

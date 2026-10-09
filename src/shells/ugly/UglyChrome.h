@@ -2,6 +2,7 @@
 // The list parts of tenor/ugly for the button readers: rows written in hand where a layout put them. UiListActivity
 // draws every list with these; a screen that lays out its own list (Wi-Fi) calls row() for each of its rows.
 #include <FreeInkUICore.h>
+#include <cstdint>
 
 class GfxRenderer;
 
@@ -21,7 +22,7 @@ void apart(const GfxRenderer& renderer, freeink::ui::Rect& label, const char* la
 
 // The circle on the cursor: round the words written (as words() returned them), padded like the circles of the
 // notebook and the answer sheet. Empty words draw nothing.
-void ring(const GfxRenderer& renderer, const freeink::ui::Rect& words);
+void ring(const GfxRenderer& renderer, const freeink::ui::Rect& words, uint32_t seed);
 
 // The pen marks of a row laid out at `box`: the circle on the cursor row, a tick on the value in use, an arrow on a
 // row that opens another screen, the word On or Off of a switch. The circle goes round the words in `around` (the
@@ -30,7 +31,7 @@ struct Marks {
   bool selected = false, chosen = false, opensNext = false, toggle = false, toggleOn = false;
   freeink::ui::Rect around{};
 };
-void marks(const GfxRenderer& renderer, const freeink::ui::Rect& box, const Marks& marks);
+void marks(const GfxRenderer& renderer, const freeink::ui::Rect& box, const Marks& marks, uint32_t seed);
 // Room the marks take at the row's right end.
 int marksWidth(const GfxRenderer& renderer, const Marks& marks);
 
@@ -44,6 +45,6 @@ struct Row {
   bool locked = false;
   Marks marks;
 };
-void row(const GfxRenderer& renderer, const freeink::ui::Rect& box, const Row& row);
+void row(const GfxRenderer& renderer, const freeink::ui::Rect& box, const Row& row, uint32_t seed);
 
 }  // namespace uglychrome

@@ -1,4 +1,5 @@
 #pragma once
+#include "activities/settings/X3SettingsLayout.h"
 #include <string>
 
 #include "activities/UiListActivity.h"
@@ -23,6 +24,10 @@ class ClockSettingsActivity final : public UiListActivity {
   int listCount() const override { return ITEM_COUNT; }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
+  void drawChrome() override {
+    if (tenorchrome::x3ScreenLayoutEnabled()) x3settings::drawPath(renderer, headerTitle());
+    else UiListActivity::drawChrome();
+  }
   const char* headerTitle() const override;
   int settingsChoiceCount(int row) const override;
   OptionPopup optionPopup_;

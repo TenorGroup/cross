@@ -1,4 +1,5 @@
 #include "InfoUpdateActivity.h"
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <Memory.h>
 
@@ -50,9 +51,13 @@ void InfoUpdateActivity::activateIndex(const int index) {
 
 void InfoUpdateActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-                                                static_cast<int16_t>(metrics.buttonHintsHeight), 0});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  if (x3settings::beginScreen(screen, renderer)) {
+    tabBandDrawn = true;
+  } else {
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
+                                                  static_cast<int16_t>(metrics.buttonHintsHeight), 0});
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
   for (int i = 0; i < ROWS; ++i) {
     rows[i].label = I18N.get(ROW_LABELS[i]);
     rows[i].actionValue = static_cast<int16_t>(i);

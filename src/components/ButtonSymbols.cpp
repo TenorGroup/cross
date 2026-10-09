@@ -45,64 +45,15 @@ int labelId(const char* label) {
   return id;
 }
 
-namespace {
-constexpr int kNutNet = 14;
-
-void veTamGiac(const GfxRenderer& r, const int x, const int y, const int net, const int dir, const bool doc,
-               const bool black) {
-  for (int c = 0; c < net; ++c) {
-    const int dai = net - c;
-    const int le = (dai - 1) / 2;
-    const int half = net / 2;
-    if (doc) {
-      const int py = dir < 0 ? y + half - 1 - c : y - half + c;
-      r.drawLine(x - le, py, x - le + dai - 1, py, black);
-    } else {
-      const int px = dir < 0 ? x + half - c : x - half + c;
-      r.drawLine(px, y - le, px, y - le + dai - 1, black);
-    }
-  }
-}
-
-void veMuiTen(const GfxRenderer& r, const inlineSymbols::Shape shape, const int x, const int y, const bool black,
-              const int net = kNutNet) {
-  if (shape == inlineSymbols::Shape::Up || shape == inlineSymbols::Shape::Down) {
-    veTamGiac(r, x, y, net, shape == inlineSymbols::Shape::Up ? -1 : 1, true, black);
-    return;
-  }
-  const int dir = shape == inlineSymbols::Shape::Right ? 1 : -1;
-  const int ngangY = y - 1;
-  if (shape == inlineSymbols::Shape::Back) {
-    // Shares the return-arrow geometry with inline text hints, so the footer
-    // symbol and the inline one stay the same shape.
-    inlineSymbols::drawShape(r, shape, x, ngangY, net, black);
-    return;
-  }
-  veTamGiac(r, x, ngangY, net, dir, false, black);
-}
-
-}  // namespace
-
 SymbolBounds horizontalBounds(const char* label, const int net) {
   const int id = labelId(label);
   if (id < 0 || id > 5) return {0, 0};
   const auto shape = resolve(id).shape;
-  const int half = net / 2;
-  const int triangleMin = half - net + 1;
-  const int triangleMax = half;
-  if (shape == Shape::Back || shape == Shape::Select) {
-    // Back and Select are bitmap glyphs (see InlineSymbols.cpp); the footer
-    // centers them the same way drawShape() does, so their ink extent is
-    // exactly the glyph width split around that center.
+  if (shape == Shape::Back || shape == Shape::Select || shape == Shape::Up || shape == Shape::Down ||
+      shape == Shape::Left || shape == Shape::Right) {
     const int w = inlineSymbols::glyphWidth(shape, net);
     return {w / 2, w - 1 - w / 2};
   }
-  if (shape == Shape::Up || shape == Shape::Down) {
-    const int rowLeft = (net - 1) / 2;
-    return {rowLeft, net - 1 - rowLeft};
-  }
-  if (shape == Shape::Left) return {-triangleMin, triangleMax};
-  if (shape == Shape::Right) return {half, net - 1 - half};
   return {0, 0};
 }
 
@@ -111,11 +62,7 @@ bool drawLabel(const GfxRenderer& renderer, const char* label, int x, int y, con
   if (id < 0) return false;
   const auto spec = resolve(id);
   if (spec.label) return false;
-  if (spec.shape == inlineSymbols::Shape::Select) {
-    inlineSymbols::drawShape(renderer, spec.shape, x, y, net, true);
-  } else {
-    veMuiTen(renderer, spec.shape, x, y, true, net);
-  }
+  inlineSymbols::drawShape(renderer, spec.shape, x, y, net, true);
   return true;
 }
 }  // namespace buttonSymbols

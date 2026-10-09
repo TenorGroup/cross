@@ -1,4 +1,5 @@
 #pragma once
+#include "shells/ugly/UglyMarkSeed.h"
 
 #include "MappedInputManager.h"
 #include "activities/Activity.h"
@@ -17,6 +18,7 @@ class EpubReaderPercentSelectionActivity final : public Activity, private UiAppH
   void render(RenderLock&&) override;
 
  private:
+  mutable ugly::MarkState mark_;
   // The UiAppHost app hosts the shared slider dialog popup (capsule slider,
   // [-] [+] [Confirm] buttons) drawn over the screen underneath.
   static void percentScreen(UiScreen& screen, void* user);

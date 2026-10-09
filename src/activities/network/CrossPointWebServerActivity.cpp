@@ -1,5 +1,7 @@
 #include "CrossPointWebServerActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <FontCacheManager.h>
@@ -456,6 +458,19 @@ void CrossPointWebServerActivity::stopServerAndLeave() {
 }
 
 void CrossPointWebServerActivity::loop() {
+  if (tenorchrome::x3ScreenLayoutEnabled() && isApMode && state == WebServerActivityState::SERVER_RUNNING &&
+      (mappedInput.wasReleased(MappedInputManager::Button::Left) || mappedInput.wasReleased(MappedInputManager::Button::Right))) {
+    x3Step = 1 - x3Step;
+    requestUpdate();
+    return;
+  }
+  if (tenorchrome::x3ScreenLayoutEnabled() &&
+      x3Info.turn(mappedInput.wasReleased(MappedInputManager::Button::Up) ? -1 :
+                  mappedInput.wasReleased(MappedInputManager::Button::Down) ? 1 : 0)) {
+    requestUpdate();
+    return;
+  }
+
   // Handle different states
   if (state == WebServerActivityState::SERVER_RUNNING) {
     // Main already sampled input for this pass. Preserve that release edge and
@@ -553,6 +568,33 @@ void CrossPointWebServerActivity::loop() {
 }
 
 void CrossPointWebServerActivity::render(RenderLock&&) {
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    if (state != WebServerActivityState::SERVER_RUNNING && state != WebServerActivityState::AP_STARTING) return;
+    const char* tip = state == WebServerActivityState::SERVER_RUNNING ?
+        (isApMode && x3Step == 0 ? tr(STR_CONNECT_WIFI_HINT) : tr(STR_OPEN_URL_HINT)) : nullptr;
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip));
+    renderer.clearScreen();
+    const std::string hostname = std::string("http://") + apHostname() + ".local/";
+    const std::string address = "http://" + connectedIP + "/";
+    auto body = layout.bodyRect;
+    if (state == WebServerActivityState::SERVER_RUNNING) body.height -= QR_CODE_HEIGHT + 32;
+    x3Info.draw(renderer, body, {state == WebServerActivityState::AP_STARTING ? tr(STR_STARTING_HOTSPOT) : nullptr,
+        connectedSSID.c_str(), address.c_str(), hostname.c_str(), isApMode ? (x3Step == 0 ? "1/2" : "2/2") : nullptr});
+    if (state == WebServerActivityState::SERVER_RUNNING) {
+      const std::string payload = isApMode && x3Step == 0 ? std::string("WIFI:T:nopass;S:") + connectedSSID + ";;" :
+          isApMode ? hostname : address;
+      const Rect qr{(renderer.getScreenWidth() - QR_CODE_WIDTH) / 2,
+          layout.bodyRect.bottom() - QR_CODE_HEIGHT - 16, QR_CODE_WIDTH, QR_CODE_HEIGHT};
+      QrUtils::drawQrCode(renderer, qr, payload);
+    }
+    tenorchrome::drawTipInRect(renderer, tip, layout.tipRect);
+    x3activity::drawBar(renderer, layout.barRect, isApMode ? tr(STR_HOTSPOT_MODE) : tr(STR_FILE_TRANSFER), navigationPrefix.c_str());
+    const auto labels = mappedInput.mapLabels(tr(STR_EXIT), "", tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer();
+    return;
+  }
+
   // Only render our own UI when server is running
   // Subactivities handle their own rendering
   if (state == WebServerActivityState::SERVER_RUNNING || state == WebServerActivityState::AP_STARTING) {

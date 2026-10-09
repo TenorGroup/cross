@@ -79,9 +79,10 @@ for path in sorted((repo / 'src').rglob('*')):
         if any(not on_exit < at < on_exit_end for at in calls):
             problems.append(f'{rel}: silentRestartToOta outside onExit')
         sets = code(r'restartIntoInstall = ')
-        popup = text.index('confirmPopup.show(')
-        popup_end = text.index('});', popup)
-        if len(sets) != 1 or not popup < sets[0] < popup_end:
+        choice = text.index('const auto onConfirm =')
+        choice_end = choice + len(block(text, 'const auto onConfirm ='))
+        callbacks = re.findall(r'(?:x3Popup|confirmPopup)\.show\([^;]+;', text[choice_end:])
+        if len(sets) != 1 or not choice < sets[0] < choice_end or len(callbacks) != 2 or any('onConfirm);' not in call for call in callbacks):
             problems.append(f'{rel}: restartIntoInstall set outside the Update choice')
     elif calls:
         problems.append(f'{rel}: silentRestartToOta called')

@@ -11,6 +11,7 @@
 
 #include "MappedInputManager.h"
 #include "ReaderTapZones.h"
+#include "TextGrayPolicy.h"
 #include "activities/ActivityManager.h"
 
 namespace ReaderUtils {
@@ -212,8 +213,15 @@ inline void displayBaseWithRefreshCycle(const GfxRenderer& renderer, int& pagesU
 // the grayscale buffer. Only the content callback is re-rendered - status bars
 // and other overlays should be drawn before calling this.
 // Kept as a template to avoid std::function overhead; instantiated once per reader type.
-template <typename RenderFn>
-void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn) {
+template <typename RenderFn, typename ContextFn>
+void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn, ContextFn&& contextFn) {
+  if (!shouldRunTextGrayscale(contextFn()) ||
+      !hasGrayscaleHeapFloor(ESP.getFreeHeap(), ESP.getMaxAllocHeap())) {
+    LOG_INF("READER", "GRAY_SKIPPED policy_or_heap_floor");
+    if (renderer.grayscaleCapabilities().base == HalDisplay::GrayscaleBase::Combined)
+      renderer.cleanupGrayscaleWithFrameBuffer();
+    return;
+  }
   if (!renderer.storeBwBuffer()) {
     LOG_ERR("READER", "Failed to store BW buffer for anti-aliasing");
     // A combined-base panel may still hold a deferred B/W activation; flush it
@@ -226,13 +234,33 @@ void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn) {
   renderer.clearScreen(0x00);
   renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
   renderFn();
+  if (!shouldRunTextGrayscale(contextFn())) {
+    renderer.setRenderMode(GfxRenderer::BW);
+    renderer.restoreBwBuffer();
+    return;
+  }
   renderer.copyGrayscaleLsbBuffers();
 
+  if (!shouldRunTextGrayscale(contextFn())) {
+    renderer.setRenderMode(GfxRenderer::BW);
+    renderer.restoreBwBuffer();
+    return;
+  }
   renderer.clearScreen(0x00);
   renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
   renderFn();
+  if (!shouldRunTextGrayscale(contextFn())) {
+    renderer.setRenderMode(GfxRenderer::BW);
+    renderer.restoreBwBuffer();
+    return;
+  }
   renderer.copyGrayscaleMsbBuffers();
 
+  if (!shouldRunTextGrayscale(contextFn())) {
+    renderer.setRenderMode(GfxRenderer::BW);
+    renderer.restoreBwBuffer();
+    return;
+  }
   renderer.displayGrayBuffer();
   renderer.setRenderMode(GfxRenderer::BW);
 

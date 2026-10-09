@@ -35,42 +35,8 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
   const GfxRenderer::Orientation orig_orientation = renderer.getOrientation();
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   if (shell::uglyParts()) {
-    // Over each key the pen mark of what it does, or the word in hand when it is not a direction; then the strip.
-    static constexpr ugly::Mark MARKS[6] = {ugly::Mark::Tick, ugly::Mark::Back, ugly::Mark::Up,
-                                            ugly::Mark::Down, ugly::Mark::Left, ugly::Mark::Right};
-    static constexpr int WIDE[4] = {105, 197, 331, 423}, NARROW[4] = {98, 186, 294, 382};
-    const int* centres = renderer.getScreenWidth() >= 528 ? WIDE : NARROW;
-    const int y = renderer.getScreenHeight() - 20;
-    const char* words[4] = {btn1, btn2, btn3, btn4};
-    renderer.fillRect(centres[0] - 46, y - 24, centres[3] - centres[0] + 92, 44, false);
-    // The strip writes the battery at the left end and the clock at the right: a word over a key keeps off both.
-    char clock[12] = "";
-    if (!(clockstatus::hasValidTime() && halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1)))
-      clock[0] = '\0';
-    [[maybe_unused]] int wordsEnd = 0;
-    const int leftEnd = 62, rightEnd = renderer.getScreenWidth() - 14 - (clock[0] ? ugly::width(renderer, ugly::Size::S22, clock) + 10 : 0);
-    for (int i = 0; i < 4; ++i) {
-      if (!words[i] || !*words[i]) continue;
-      const int id = buttonSymbols::labelId(words[i]);
-      if (id >= 0) {
-        // A pen mark spans some 20 px (its table's 132/16 px each side and the 2 px stroke): it keeps off them too.
-        constexpr int MARK_HALF = 10;
-        const int cx = std::clamp(centres[i], leftEnd + MARK_HALF, rightEnd - MARK_HALF);
-        ugly::mark(renderer, MARKS[id], cx, y);
-        wordsEnd = std::max(wordsEnd, cx + MARK_HALF);
-        continue;
-      }
-      const std::string word = ugly::fit(renderer, ugly::Size::S22, words[i], std::min(84, rightEnd - leftEnd));
-      const int w = ugly::width(renderer, ugly::Size::S22, word.c_str());
-      const int x = std::clamp(centres[i] - w / 2, leftEnd, rightEnd - w);
-      ugly::text(renderer, ugly::Size::S22, x, y + 8, word.c_str());
-      wordsEnd = std::max(wordsEnd, x + w);
-    }
-    tenorchrome::drawStatus(renderer);
+    ugly::statusBar(renderer, btn1, btn2, btn3, btn4);
     renderer.setOrientation(orig_orientation);
-#ifdef UGLY_FRAME_LOG
-    LOG_INF("UGLY", "part=keys words_end=%d clock_at=%d", wordsEnd, clock[0] ? rightEnd + 10 : renderer.getScreenWidth());
-#endif
     return;
   }
 
@@ -98,7 +64,10 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
     const bool compactSymbol = tenorchrome::compactFooterTips(bounds.left == 0 && bounds.right == 0);
     // Some screens paint their tip before the footer. Clear only the symbol
     // lane there so the lowered tip's descenders survive either paint order.
-    const int clearTop = compactSymbol ? tenorchrome::smallFooterSymbolsTopY(renderer) : pageHeight - buttonY;
+    const int clearTop = tenorchrome::x3ScreenLayoutEnabled() &&
+                                 (!SETTINGS.tenorButtonSymbols || bounds.left != 0 || bounds.right != 0)
+                             ? tenorchrome::x3ScreenLayout(renderer).buttonBandRect.y
+                             : compactSymbol ? tenorchrome::smallFooterSymbolsTopY(renderer) : pageHeight - buttonY;
     renderer.fillRect(buttonPositions[i], clearTop, buttonWidth, pageHeight - clearTop, grayscale);
   }
 

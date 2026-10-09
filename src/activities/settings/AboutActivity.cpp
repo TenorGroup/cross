@@ -1,4 +1,5 @@
 #include "AboutActivity.h"
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
@@ -191,9 +192,13 @@ void AboutActivity::refreshGaugeRows() {
 
 void AboutActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-                                                static_cast<int16_t>(metrics.buttonHintsHeight), 0});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  if (x3settings::beginScreen(screen, renderer)) {
+    tabBandDrawn = true;
+  } else {
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
+                                                  static_cast<int16_t>(metrics.buttonHintsHeight), 0});
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
 
   const int count = listCount();
   if (hasGauge_) refreshGaugeRows();  // cheap: formats the loop task's cache, no I2C here

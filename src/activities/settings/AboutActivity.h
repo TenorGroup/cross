@@ -1,4 +1,5 @@
 #pragma once
+#include "activities/settings/X3SettingsLayout.h"
 #include <string>
 
 #include "activities/UiListActivity.h"
@@ -23,6 +24,10 @@ class AboutActivity final : public UiListActivity {
   int listCount() const override { return hasGauge_ ? MAX_ITEM_COUNT : ITEM_COUNT; }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int) override {}
+  void drawChrome() override {
+    if (tenorchrome::x3ScreenLayoutEnabled()) x3settings::drawPath(renderer, headerTitle(), icon_tenor_settings_thong_tin_40);
+    else UiListActivity::drawChrome();
+  }
   const char* headerTitle() const override;
   // Refills the gauge rows from HalPowerManager's cache; called from buildScreen() on every
   // render (the first one included) so a screen left open keeps showing the latest

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Regenerates lib/GfxRenderer/InlineSymbolBitmaps.h from the 1-bit reference
-PNGs in lib/GfxRenderer/symbol-sources/. The Back-arrow and Select-tick symbols
+PNGs in lib/GfxRenderer/symbol-sources/. The Back-arrow, Select-tick and chevron symbols
 are drawn as exact bitmaps, not procedurally, so this script is the only place
 their pixels come from.
 
@@ -16,8 +16,8 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 SOURCE_DIR = REPO / 'lib/GfxRenderer/symbol-sources'
 OUTPUT = REPO / 'lib/GfxRenderer/InlineSymbolBitmaps.h'
 
-ARROW_VARIANT = 'B'  # chosen 23/09/2026
-TICK_VARIANT = 'T2'  # chosen 23/09/2026
+ARROW_VARIANT = 'D'
+TICK_VARIANT = 'T3'
 
 
 def read_bitmap(path):
@@ -42,12 +42,13 @@ def read_bitmap(path):
             break
         pos += 12 + length
     raw = zlib.decompress(idat)
-    # Grayscale (color_type 0) or grayscale+alpha (4), 8 bits/channel: the
-    # only two encodings the reference export produced for these glyphs.
+    # Reference exports use 8-bit grayscale or grayscale+alpha; chevrons use 1-bit grayscale.
     channels = {0: 1, 4: 2}[color_type]
-    stride = 1 + width * channels
+    assert bit_depth == 8 or (bit_depth == 1 and color_type == 0), path
+    row_bytes = (width + 7) // 8 if bit_depth == 1 else width * channels
+    stride = 1 + row_bytes
     rows = []
-    prev = bytes(width * channels)
+    prev = bytes(row_bytes)
     for y in range(height):
         start = y * stride
         filter_type = raw[start]
@@ -80,13 +81,14 @@ def read_bitmap(path):
     for y in range(height):
         row = []
         for x in range(width):
-            sample = rows[y][x * channels]
+            sample = ((rows[y][x // 8] >> (7 - x % 8)) & 1) * 255 if bit_depth == 1 else rows[y][x * channels]
             row.append(sample < 128)  # black (ink) => True
         bits.append(row)
     return width, height, bits
 
 
 def emit_glyph(name, width, height, bits):
+    assert 0 < width <= 32
     lines = [f'constexpr uint32_t k{name}Rows[] = {{']
     for row in bits:
         value = 0
@@ -121,9 +123,14 @@ def main():
         emit_glyph('BackNet18', *arrow18[:2], arrow18[2]),
         emit_glyph('SelectNet14', *tick14[:2], tick14[2]),
         emit_glyph('SelectNet18', *tick18[:2], tick18[2]),
-        '}  // namespace inlineSymbolBitmaps',
-        '',
     ]
+    for direction in ('up', 'down', 'left', 'right'):
+        for net in (14, 18):
+            width, height, bits = read_bitmap(SOURCE_DIR / f'CHEV-{direction}-net{net}.png')
+            parts.append(emit_glyph(f'{direction.title()}Net{net}', width, height, bits))
+    from gen_chevron8 import header_parts
+    parts.extend(header_parts())
+    parts.extend(['}  // namespace inlineSymbolBitmaps', ''])
     OUTPUT.write_text('\n'.join(parts))
     print(f'Wrote {OUTPUT} ({OUTPUT.stat().st_size} bytes)')
     for label, (w, h, _) in (('arrow14', arrow14), ('arrow18', arrow18), ('tick14', tick14), ('tick18', tick18)):

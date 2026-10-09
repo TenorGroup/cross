@@ -1,4 +1,5 @@
 #include "QuoteDetailActivity.h"
+#include "X3FileReaderChrome.h"
 
 #include <Epub.h>
 #include <FontCacheManager.h>
@@ -168,6 +169,11 @@ quotedetail::Metrics QuoteDetailActivity::metrics() const {
                                   HINTS_CLEARANCE,
                               tenorchrome::moreBelowChevronTopY(renderer) - CHEVRON_CLEARANCE);
   m.bandBottom = static_cast<int16_t>(bottom - extraTitle);
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto body = screenLayout().bodyRect;
+    m.bandTop = static_cast<int16_t>(body.y + renderer.getLineHeight(SMALL_FONT_ID) + 8);
+    m.bandBottom = static_cast<int16_t>(body.bottom());
+  }
   m.glyphWidth = QUOTE_MARK_GLYPH_WIDTH;
   m.glyphHeight = QUOTE_MARK_GLYPH_HEIGHT;
   m.lineHeight18 = static_cast<int16_t>(renderer.getLineHeight(NOTOSERIF_18_FONT_ID));
@@ -179,6 +185,8 @@ void QuoteDetailActivity::show(const int newIndex) {
   index = newIndex;
   quotePage = 0;
   pages = 1;
+  bodyPages = 1;
+  metaOnLast = 0;
   titleLines.clear();
   chapter.clear();
   when.clear();
@@ -207,6 +215,19 @@ void QuoteDetailActivity::show(const int newIndex) {
   snprintf(page, sizeof(page), tr(STR_QUOTES_DETAIL_PAGE), quote.page + 1);
   pageLine = page;
 
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const int step = renderer.getLineHeight(SMALL_FONT_ID);
+    const int metaCount = visitX3Meta(false);
+    const auto body = endsWithCloseQuote(quote.text) ? quote.text : quote.text + CLOSE_QUOTE;
+    auto largeLines = renderer.wrappedText(NOTOSERIF_18_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
+    size18 = quotedetail::bodyTop(m) + static_cast<int>(largeLines.size()) * m.lineHeight18 + 8 + metaCount * step <=
+             m.bandBottom;
+    lines = size18 ? std::move(largeLines)
+                   : renderer.wrappedText(NOTOSERIF_16_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
+    layoutX3Pages();
+    return;
+  }
+
   // The opening mark is the glyph above the words; the closing one rides on the last word.
   const std::string body = endsWithCloseQuote(quote.text) ? quote.text : quote.text + CLOSE_QUOTE;
   auto lines18 = renderer.wrappedText(NOTOSERIF_18_FONT_ID, body.c_str(), width, BODY_MAX_LINES);
@@ -223,8 +244,11 @@ std::string QuoteDetailActivity::chapterFor(const int width) {
   const auto id = ids[index];
   for (const auto& known : chapters)
     if (known.first == id) return known.second;
-  std::string line = renderer.truncatedText(META_FONT_ID, chapterLine(quote, openBook.get()).c_str(), width);
-  tidyEllipsis(line);
+  std::string line = chapterLine(quote, openBook.get());
+  if (!tenorchrome::x3ScreenLayoutEnabled()) {
+    line = renderer.truncatedText(META_FONT_ID, line.c_str(), width);
+    tidyEllipsis(line);
+  }
   if (chapters.size() >= CHAPTER_CACHE) chapters.erase(chapters.begin());
   chapters.emplace_back(id, line);
   return line;
@@ -431,6 +455,16 @@ void QuoteDetailActivity::loop() {
 }
 
 void QuoteDetailActivity::drawQuote() {
+  const bool x3 = tenorchrome::x3ScreenLayoutEnabled();
+  if (x3) {
+    auto* cache = renderer.getFontCacheManager();
+    auto scope = cache->createPrewarmScope();
+    for (int pass = 0; pass < 2; ++pass) {
+      if (pass == 1) scope.endScanAndPrewarm();
+      drawX3Content();
+    }
+    return;
+  }
   drawNavigationHeader(tr(STR_QUOTES));
   const auto m = metrics();
   char position[24];
@@ -518,6 +552,8 @@ void QuoteDetailActivity::render(RenderLock&&) {
     drawDeleteConfirmation();
   else
     drawQuote();
+  if (tenorchrome::x3ScreenLayoutEnabled())
+    x3readerchrome::drawPath(renderer, screenLayout().barRect, icon_tenor_reader_tools_40, tr(STR_QUOTES));
   // The popup draws its own button hints over the screen under it.
   if (popup.processRender(renderer, mappedInput)) return;
   // Each hint names what its button does now: at either end of the list the arrow that
@@ -535,4 +571,63 @@ void QuoteDetailActivity::render(RenderLock&&) {
     return;
   }
   renderer.displayBuffer();
+}
+
+tenorchrome::X3ScreenLayout QuoteDetailActivity::screenLayout() const { return tenorchrome::x3ScreenLayout(renderer); }
+
+int QuoteDetailActivity::visitX3Meta(const bool paint, const int firstLine, const int top) const {
+  const auto body = screenLayout().bodyRect;
+  const int step = renderer.getLineHeight(SMALL_FONT_ID);
+  int count = 0;
+  for (const char* text : {quote.title.c_str(), chapter.c_str(), when.c_str(), pageLine.c_str()}) {
+    count += x3readerchrome::eachInfoLine(renderer, text, [&](const int offset, const char* line) {
+      const int row = count + offset - firstLine;
+      const int lineTop = top + row * step;
+      if (paint && row >= 0 && lineTop + step <= body.bottom())
+        tenorchrome::drawInfoInRect(renderer, line, {body.x, lineTop, body.width, step}, 1);
+    });
+  }
+  return count;
+}
+
+void QuoteDetailActivity::layoutX3Pages() {
+  const auto area = metrics();
+  const int step = renderer.getLineHeight(SMALL_FONT_ID);
+  const int lineHeight = size18 ? area.lineHeight18 : area.lineHeight16;
+  linesPerPage = std::max(1, quotedetail::linesPerPage(lineHeight, area));
+  bodyPages = std::max(1, (static_cast<int>(lines.size()) + linesPerPage - 1) / linesPerPage);
+  const int lastLines = static_cast<int>(lines.size()) - (bodyPages - 1) * linesPerPage;
+  const int metaTop = quotedetail::bodyTop(area) + lastLines * lineHeight + 8;
+  metaOnLast = std::max(0, (area.bandBottom - metaTop) / step);
+  metaPerPage = std::max(1, (area.bandBottom - quotedetail::bodyTop(area)) / step);
+  pages = bodyPages + (std::max(0, visitX3Meta(false) - metaOnLast) + metaPerPage - 1) / metaPerPage;
+}
+
+void QuoteDetailActivity::drawX3Content() const {
+  const auto body = screenLayout().bodyRect;
+  char position[48];
+  snprintf(position, sizeof(position), "%d/%d, %d/%d", index + 1, static_cast<int>(ids.size()), quotePage + 1, pages);
+  tenorchrome::drawInfoInRect(renderer, position,
+                              {body.x, body.y, body.width, renderer.getLineHeight(SMALL_FONT_ID) + 7});
+  const auto area = metrics();
+  const int top = quotedetail::bodyTop(area);
+  if (!loaded) {
+    tenorchrome::drawInfoInRect(renderer, tr(STR_QUOTES_UNREADABLE), {body.x, top, body.width, body.bottom() - top});
+    return;
+  }
+  if (quotePage < bodyPages) {
+    const int first = quotePage * linesPerPage;
+    const int end = std::min(static_cast<int>(lines.size()), first + linesPerPage);
+    if (quotePage == 0 && loaded) drawQuoteMark(renderer, quotedetail::glyphX(area), quotedetail::glyphY(area));
+    int lineTop = top;
+    const int lineHeight = size18 ? area.lineHeight18 : area.lineHeight16;
+    for (int line = first; line < end; ++line) {
+      renderer.drawText(size18 ? NOTOSERIF_18_FONT_ID : NOTOSERIF_16_FONT_ID, quotedetail::bodyX0(area), lineTop,
+                        lines[line].c_str());
+      lineTop += lineHeight;
+    }
+    if (quotePage + 1 == bodyPages) visitX3Meta(true, 0, lineTop + 8);
+  } else if (loaded) {
+    visitX3Meta(true, metaOnLast + (quotePage - bodyPages) * metaPerPage, top);
+  }
 }

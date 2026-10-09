@@ -1,4 +1,5 @@
 #pragma once
+#include "activities/settings/X3SettingsLayout.h"
 
 #include <GfxRenderer.h>
 
@@ -19,6 +20,10 @@ class KeyboardLayoutsActivity final : public UiListActivity {
   int listCount() const override { return keyboard_layouts::COUNT; }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
+  void drawChrome() override {
+    if (tenorchrome::x3ScreenLayoutEnabled()) x3settings::drawPath(renderer, headerTitle(), icon_tenor_settings_ban_phim_40);
+    else UiListActivity::drawChrome();
+  }
   const char* headerTitle() const override;
 
   bool isLocked(uint8_t i) const;

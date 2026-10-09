@@ -381,9 +381,19 @@ static void run(const std::string& test) {
     Fixture f("aế中", InputType::Password);
     std::atomic<bool> stop{false};
     std::atomic<unsigned> frames{0};
+    std::promise<void> firstFrame;
+    auto ready = firstFrame.get_future();
     auto painter = std::async(std::launch::async, [&] {
+      f.render();
+      ++frames;
+      firstFrame.set_value();
       while (!stop.load()) { f.render(); ++frames; std::this_thread::yield(); }
     });
+    if (ready.wait_for(2s) != std::future_status::ready) {
+      stop = true;
+      painter.get();
+      require(false, "stress render did not start");
+    }
     for (int i = 0; i < 2000; ++i) {
       f.tap(Button::Confirm);
       f.hold(Button::Left);

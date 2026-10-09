@@ -45,6 +45,9 @@ class EpubReaderChapterSelectionActivity final : public UiListActivity {
     return !epub ? 0 : filterNumber ? (searching ? 0 : matchCount + (moreMatches ? 1 : 0)) : epub->getTocItemsCount();
   }
   void buildScreen(UiScreen& screen) override;
+  bool ownsX3Chrome() const override { return true; }
+  tenorchrome::X3ScreenLayout screenLayout() const;
+  void drawX3Content() const;
   void activateIndex(int index) override;
   // Back cancels with a result and Confirm activates on RELEASE here, and a
   // missing epub swallows everything past Back.

@@ -1,4 +1,5 @@
 #pragma once
+#include "activities/X3ActivityLayout.h"
 
 #include <functional>
 #include <memory>
@@ -22,6 +23,8 @@ enum class CalibreConnectState { WIFI_SELECTION, SERVER_STARTING, SERVER_RUNNING
  * but renders Calibre-specific instructions instead of the web transfer UI.
  */
 class CalibreConnectActivity final : public Activity {
+  x3activity::InfoPages x3Info;
+
   CalibreConnectState state = CalibreConnectState::WIFI_SELECTION;
 
   std::unique_ptr<CrossPointWebServer> webServer;

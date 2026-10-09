@@ -158,6 +158,7 @@ void XtcReaderActivity::renderPage() {
   const uint16_t pageWidth = xtc->getPageWidth();
   const uint16_t pageHeight = xtc->getPageHeight();
   const uint8_t bitDepth = xtc->getBitDepth();
+  // XTC 2-bit stores native raster grays, so the glyph AA policy does not change them.
 
   size_t pageBufferSize;
   if (bitDepth == 2) {

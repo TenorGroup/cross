@@ -1,5 +1,7 @@
 #include "OtaUpdateActivity.h"
 
+#include "activities/X3ActivityLayout.h"
+
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
@@ -113,12 +115,16 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 #else
   constexpr int skip = 0, preset = 1;
 #endif
-  confirmPopup.show(tr(STR_NEW_UPDATE), "", options + skip, 2 - skip, preset, [this](const int idx) {
+  const auto onConfirm = [this](const int idx) {
     // Update: this session's heap is short of Wi-Fi plus a 16 KB TLS record in one piece
     // (measured failing 10 of 10 from Home), so onExit restarts and the next boot installs.
     restartIntoInstall = idx + skip == 1;
     finish();
-  });
+  };
+  if (tenorchrome::x3ScreenLayoutEnabled())
+    x3Popup.show(tr(STR_NEW_UPDATE), options + skip, 2 - skip, preset, onConfirm);
+  else
+    confirmPopup.show(tr(STR_NEW_UPDATE), "", options + skip, 2 - skip, preset, onConfirm);
   requestUpdate();
 }
 
@@ -216,6 +222,40 @@ void OtaUpdateActivity::render(RenderLock&&) {
   }
 
   renderer.clearScreen();
+  if (tenorchrome::x3ScreenLayoutEnabled()) {
+    const char* status = state == CHECKING_FOR_UPDATE ? tr(STR_CHECKING_UPDATE) :
+        state == WAITING_CONFIRMATION ? tr(STR_NEW_UPDATE) : state == UPDATE_IN_PROGRESS ? tr(STR_UPDATING) :
+        state == NO_UPDATE ? tr(STR_NO_UPDATE) : state == FAILED ? tr(STR_UPDATE_FAILED) : tr(STR_UPDATE_COMPLETE);
+    const char* detail = state == FAILED ? failedDetail : state == FINISHED ? tr(STR_POWER_ON_HINT) : nullptr;
+    char progress[48] = {};
+    if (state == UPDATE_IN_PROGRESS) snprintf(progress, sizeof(progress), "%d%%, %u / %u B",
+        lastUpdaterPercentage, static_cast<unsigned>(updater.getProcessedSize()), static_cast<unsigned>(updater.getTotalSize()));
+    const char* tip = nullptr;
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip, 8));
+    renderer.clearScreen();
+    if (firstProgressFrame)
+      renderer.drawCenteredText(SMALL_FONT_ID, layout.bodyRect.y, "0123456789 /%", false);
+    auto information = layout.bodyRect;
+    if (state == WAITING_CONFIRMATION) information.height /= 3;
+    x3Info.draw(renderer, information, {status, detail,
+        state == WAITING_CONFIRMATION ? tr(STR_CURRENT_VERSION) : nullptr,
+        state == WAITING_CONFIRMATION ? CROSSPOINT_VERSION : nullptr,
+        state == WAITING_CONFIRMATION ? tr(STR_NEW_VERSION) : nullptr,
+        state == WAITING_CONFIRMATION ? updater.getLatestVersion().c_str() : nullptr, progress});
+    tenorchrome::drawTipInRect(renderer, tip, layout.tipRect, 8);
+    x3activity::drawBar(renderer, layout.barRect, tr(STR_UPDATE), navigationPrefix.c_str());
+    const auto labels = mappedInput.mapLabels(state == NO_UPDATE || state == FAILED ? tr(STR_BACK) : "", "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    if (state == WAITING_CONFIRMATION) {
+      const auto frame = x3PopupFrame();
+      x3Popup.draw(renderer, {frame.x, frame.y, frame.width, frame.height});
+      const auto popupLabels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+      GUI.drawButtonHints(renderer, popupLabels.btn1, popupLabels.btn2, popupLabels.btn3, popupLabels.btn4);
+    }
+    renderer.displayBuffer();
+    return;
+  }
+
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_UPDATE));
   const auto height = renderer.getLineHeight(UI_10_FONT_ID);
@@ -282,6 +322,12 @@ void OtaUpdateActivity::render(RenderLock&&) {
     LOG_INF("OTA", "Frame %u%% heap=%u -> %u largest=%u -> %u", lastUpdaterPercentage, frameHeap, ESP.getFreeHeap(),
             frameLargest, ESP.getMaxAllocHeap());
 #endif
+}
+
+freeink::ui::Rect OtaUpdateActivity::x3PopupFrame() const {
+  const auto body = tenorchrome::x3ScreenLayout(renderer).bodyRect;
+  return {24, static_cast<int16_t>(body.y + body.height / 3), static_cast<int16_t>(body.width - 48),
+          static_cast<int16_t>(body.height * 2 / 3)};
 }
 
 // The waits of an update as notes. The question before installing keeps its drawing until the shared ugly
@@ -453,6 +499,23 @@ void OtaUpdateActivity::loop() {
                            mappedInput.wasScreenTouchReleased();
   if (idleExitDue(millis(), interaction)) {
     finish();
+    return;
+  }
+
+  if (tenorchrome::x3ScreenLayoutEnabled() && state == WAITING_CONFIRMATION) {
+    if (x3Info.turn(mappedInput.wasReleased(MappedInputManager::Button::Left) ? -1 :
+                    mappedInput.wasReleased(MappedInputManager::Button::Right) ? 1 : 0)) {
+      requestUpdate();
+      return;
+    }
+    if (x3Popup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
+    finish();
+    return;
+  }
+  if (tenorchrome::x3ScreenLayoutEnabled() &&
+      x3Info.turn(mappedInput.wasReleased(MappedInputManager::Button::Up) ? -1 :
+                  mappedInput.wasReleased(MappedInputManager::Button::Down) ? 1 : 0)) {
+    requestUpdate();
     return;
   }
 

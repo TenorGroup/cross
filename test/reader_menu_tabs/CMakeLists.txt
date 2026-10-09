@@ -21,3 +21,13 @@ target_link_libraries(ReaderMenuTabsTest PRIVATE
 )
 
 gtest_discover_tests(ReaderMenuTabsTest)
+
+add_executable(ReaderTabsPersistenceTest ReaderTabsPersistenceTest.cpp)
+target_include_directories(ReaderTabsPersistenceTest PRIVATE
+  ${REPO_ROOT}/test/menu_sleep_split/stubs
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/lib/I18n
+  ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src
+)
+target_link_libraries(ReaderTabsPersistenceTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(ReaderTabsPersistenceTest)

@@ -1,4 +1,5 @@
 #include "UiListActivity.h"
+#include "InlineSymbols.h"
 
 #include <CrossPointSettings.h>
 #include <GfxRenderer.h>
@@ -66,17 +67,24 @@ UiListActivity::UiListActivity(const char* name, GfxRenderer& renderer, MappedIn
     : Activity(name, renderer, mappedInput), UiAppHost(renderer), wantsTouchLongPress(wantsTouchLongPress) {}
 
 void UiListActivity::onEnter() {
+  mark_.reset();
   Activity::onEnter();
   PageScrollbar::instance().activate(nullptr);
   activeNav().reset();
+  fileSearchReveal.reset();
+  fileSearchRevealPending = false;
+  fileSearchDragTracked = false;
   resetUi();
   app.on(ACTION_ROW, &UiListActivity::rowActionTrampoline, this);
+  app.on(ACTION_FILE_SEARCH, &UiListActivity::fileSearchTrampoline, this);
   app.setScreen(&UiListActivity::screenTrampoline, this);
   requestUpdate();
 }
 
 void UiListActivity::onResume() {
   PageScrollbar::instance().activate(nullptr);
+  fileSearchRevealPending = false;
+  fileSearchDragTracked = false;
 }
 
 void UiListActivity::screenTrampoline(UiScreen& screen, void* user) {
@@ -136,6 +144,45 @@ bool UiListActivity::routeListTouch() {
   // it costs a second e-ink refresh per tap.
   if (route.routed && app.invalidated()) requestUpdate();
   return static_cast<bool>(route);  // dispatched to the action handler
+}
+
+void UiListActivity::fileSearchTrampoline(const fui::ActionEvent&, void* user) {
+  auto* self = static_cast<UiListActivity*>(user);
+  if (self->canSearchFiles()) self->openFileSearch();
+}
+
+void UiListActivity::buildFileSearch(UiScreen& screen) {
+  if (!tenorchrome::kTouchShell || !canSearchFiles()) return;
+  if (fileSearchReveal.visible(true, *fileSearchText() != '\0')) {
+    const auto band = screen.takeTop(filesearch::SEARCH_HEIGHT, filesearch::SEARCH_GAP);
+    const fui::Rect field{16, band.y, static_cast<int16_t>(renderer.getScreenWidth() - 32), filesearch::SEARCH_HEIGHT};
+    if (uiTarget.paintingEnabled()) {
+      tenorchrome::drawPillRing(renderer, field.x, field.y, field.width, field.height, 2, true);
+      const char* label = *fileSearchText() ? fileSearchText() : tr(STR_SEARCH);
+      const auto text = uiMenuLabelText(screen.theme());
+      screen.target().text(field.inset(fui::Insets{0, 16, 0, 16}), label, text);
+    }
+    screen.frame().hit(field, ACTION_FILE_SEARCH, 0, fui::InputTouch);
+  }
+  fileSearchBody = screen.body();
+  fileSearchBody.height = static_cast<int16_t>(std::max(0, std::min<int>(fileSearchBody.bottom(),
+      tenorchrome::footBackTop(renderer.getScreenHeight()) - 8) - fileSearchBody.y));
+}
+
+bool UiListActivity::routeFileSearchDrag() {
+  if (!tenorchrome::kTouchShell || !canSearchFiles()) return false;
+  filesearch::Drag drag;
+  if (!mappedInput.wasVerticalSwipe(drag.deltaY, drag.heldMs, drag.startX, drag.startY)) return false;
+  drag.insideList = drag.startX >= 16 && drag.startX < renderer.getScreenWidth() - 16 &&
+                    drag.startY >= fileSearchBody.y && drag.startY < fileSearchBody.bottom();
+  drag.blocked = rowMenu.isActive() || (fileSearchDragTracked && fileSearchDragBlocked);
+  const bool atTop = fileSearchDragTracked ? fileSearchDragAtTop : activeNav().top == 0;
+  fileSearchDragTracked = false;
+  auto nextReveal = fileSearchRevealPending ? pendingFileSearchReveal : fileSearchReveal;
+  if (!nextReveal.update(drag, true, atTop, *fileSearchText() != '\0')) return false;
+  pendingFileSearchReveal = nextReveal;
+  fileSearchRevealPending = true;
+  return true;
 }
 
 // A tap on a faded end of a framed list: the row there is a glimpse of the page before or after, so the tap
@@ -254,6 +301,7 @@ void UiListActivity::stepSelection(const int direction) {
   // onListRendered() can correct a page whose wrapped rows fit fewer than estimated.
   n.top = ButtonNavigator::pageTopAfterStep(n.selected, n.top, n.pageRowsFor(count), count);
   n.followPending = true;
+  mark_.get(selectionMarkKey());
 }
 
 bool UiListActivity::applyPage(const int direction) {
@@ -265,6 +313,7 @@ bool UiListActivity::applyPage(const int direction) {
     // Start at the first displayed item. Following the old selection here
     // would pull the viewport back and turn Page Down into a one-row scroll.
     n.selected = n.top;
+    mark_.get(selectionMarkKey());
     n.followOnBuild = false;
     n.followPending = false;
   }
@@ -277,6 +326,7 @@ bool UiListActivity::applyBoundary(const bool last, const bool ring) {
   const int first = kepConTro(n.top, count);
   const int end = kepConTro(first + std::max(1, n.pageRowsFor(count)) - 1, count);
   n.selected = count > 0 ? (last ? end : first) + (ring ? 1 : 0) : 0;
+  mark_.get(selectionMarkKey());
   n.followOnBuild = false;
   n.followPending = false;
   return true;
@@ -379,10 +429,38 @@ void UiListActivity::drawPageScrollbar() {
 }
 
 void UiListActivity::loopInput() {
+  if (tenorchrome::kTouchShell && canSearchFiles()) {
+    uint8_t contacts = 0;
+    int touchX = 0, touchY = 0;
+    if (mappedInput.touchContactsAt(contacts, touchX, touchY) && contacts > 0) {
+      if (!fileSearchDragTracked) {
+        fileSearchDragAtTop = activeNav().top == 0;
+        fileSearchDragBlocked = rowMenu.isActive();
+        fileSearchDragTracked = true;
+      }
+      fileSearchDragBlocked |= contacts != 1 || rowMenu.isActive();
+    } else {
+      int deltaY = 0;
+      unsigned long heldMs = 0;
+      if (!mappedInput.wasVerticalSwipe(deltaY, heldMs)) fileSearchDragTracked = false;
+    }
+  } else {
+    fileSearchDragTracked = false;
+    fileSearchRevealPending = false;
+  }
   // The render task owns the lock for a whole frame (panel refresh included),
   // so the queue is drained with a non-waiting lock and the buttons are read
   // on every pass either way. A press landing mid-frame is queued, not lost.
   const bool panelFree = applyPendingNav();
+
+  if (fileSearchRevealPending) {
+    RenderLock lock(RenderLock::TryTake{});
+    if (lock.acquired()) {
+      fileSearchReveal = pendingFileSearchReveal;
+      fileSearchRevealPending = false;
+      requestUpdate();
+    }
+  }
 
   if (!pendingFavorite.empty()) {
     if (!panelFree) return;  // a one-shot wish, safe to retry next pass
@@ -419,6 +497,7 @@ void UiListActivity::loopInput() {
     return;
   }
   if (handleButtons()) return;
+  if (routeFileSearchDrag()) return;
   if (routeFadedTap()) return;
   if (routeListTouch()) return;
 
@@ -736,7 +815,17 @@ void UiListActivity::renderUi() {
   if (tenorchrome::enabled() && !tenorchrome::kTouchShell) fadeMoreBelow();
   drawPageHints();
   if (favoriteHintY >= 0) {
-    if (const char* hint = favoriteHintText()) tenorchrome::drawTip(renderer, hint, favoriteHintLinesAbove());
+    if (const char* hint = favoriteHintText()) {
+      if ((tabBandDrawn || shell::uglyParts()) && tenorchrome::x3ScreenLayoutEnabled()) {
+        const int height = tenorchrome::tipHeight(renderer, hint);
+        if (favoriteSaveFailed)
+          tenorchrome::drawInfoInRect(renderer, hint, {24, favoriteHintY, renderer.getScreenWidth() - 48, height});
+        else
+          tenorchrome::drawTipInRect(renderer, hint, tenorchrome::x3ScreenLayout(renderer, height).tipRect);
+      } else {
+        tenorchrome::drawTip(renderer, hint, favoriteHintLinesAbove());
+      }
+    }
   }
   drawPageScrollbar();
 }
@@ -744,14 +833,8 @@ void UiListActivity::renderUi() {
 void UiListActivity::drawPageHints() {
   if (!tenorchrome::enabled() || tenorchrome::kTouchShell || !SETTINGS.tenorSideArrows || !showsSideArrows()) return;
   constexpr int cy = 195;
-  const int right = renderer.getScreenWidth() - 1 - 4;  // mirror of column 4 on the left
-  // Paint after the list: drawing during screen construction is covered by
-  // the list background on full-width menus such as Settings.
-  for (int dx = 0; dx <= 6; ++dx) {
-    const int halfHeight = dx * 4 / 6;
-    renderer.drawLine(4 + dx, cy - halfHeight, 4 + dx, cy + halfHeight, true);
-    renderer.drawLine(right - dx, cy - halfHeight, right - dx, cy + halfHeight, true);
-  }
+  inlineSymbols::drawShape(renderer, inlineSymbols::Shape::Left, 7, cy, 8, true);
+  inlineSymbols::drawShape(renderer, inlineSymbols::Shape::Right, renderer.getScreenWidth() - 1 - 7, cy, 8, true);
 }
 
 int UiListActivity::kepConTro(const int chon, const int soDong) {
@@ -766,6 +849,15 @@ void UiListActivity::drawChrome() {
 }
 
 void UiListActivity::drawFooter() {
+  if (shell::uglyParts() && tenorchrome::x3ScreenLayoutEnabled() && favoriteHintY >= 0) {
+    if (const char* hint = favoriteHintText()) {
+      const int height = tenorchrome::tipHeight(renderer, hint);
+      if (favoriteSaveFailed)
+        tenorchrome::drawInfoInRect(renderer, hint, {24, favoriteHintY, renderer.getScreenWidth() - 48, height});
+      else
+        tenorchrome::drawTipInRect(renderer, hint, tenorchrome::x3ScreenLayout(renderer, height).tipRect);
+    }
+  }
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
@@ -849,7 +941,7 @@ bool UiListActivity::renderUglyList() {
     if (box.empty()) {
       for (size_t i = 0; item.label && i < runs.size(); ++i)
         if (runs[i].align == fui::TextAlign::Left && runs[i].text == item.label) {
-          uglychrome::ring(renderer, ink[i]);
+          uglychrome::ring(renderer, ink[i], mark_.get(selectionMarkKey()));
           break;
         }
       continue;
@@ -864,7 +956,7 @@ bool UiListActivity::renderUglyList() {
         break;
       }
     }
-    uglychrome::marks(renderer, box, marks);
+    uglychrome::marks(renderer, box, marks, mark_.get(selectionMarkKey()));
   }
   drawFooter();
   if (tenorchrome::kTouchShell) {
@@ -911,6 +1003,15 @@ void UiListActivity::restoreNavigation(const MenuNavigationState& state) {
 }
 
 void UiListActivity::reserveFixedMenuContent(UiScreen& screen) {
+  if (tenorchrome::x3ScreenLayoutEnabled() && ownsX3Chrome() && !shell::uglyParts()) return;
+  if (shell::uglyParts() && tenorchrome::x3ScreenLayoutEnabled()) {
+    const auto body = tenorchrome::x3ScreenLayout(renderer).bodyRect;
+    if (screen.body().y < body.y) screen.takeTop(static_cast<int16_t>(body.y - screen.body().y));
+    if (screen.body().bottom() > body.bottom())
+      screen.takeBottom(static_cast<int16_t>(screen.body().bottom() - body.bottom()));
+    return;
+  }
+  if (tabBandDrawn && tenorchrome::x3ScreenLayoutEnabled()) return;
   const int top = tabBandDrawn ? tenorchrome::contentTopUnderTabs() : tenorchrome::contentTop();
   if (tenorchrome::enabled() && screen.body().y < top) screen.takeTop(static_cast<int16_t>(top - screen.body().y));
   // Touch: the rows stop above the round back button at the foot, where a screen has one.
@@ -932,6 +1033,19 @@ int UiListActivity::focusFavorite(const std::string& key) {
   return -1;
 }
 void UiListActivity::reserveFavoriteHint(UiScreen& screen) {
+  if (tenorchrome::x3ScreenLayoutEnabled() && ownsX3Chrome() && !shell::uglyParts()) return;
+  if ((tabBandDrawn || shell::uglyParts()) && tenorchrome::x3ScreenLayoutEnabled()) {
+    if (!supportsFavorites() && !favoriteSaveFailed) return;
+    const char* hint = favoriteHintText();
+    if (!hint || (!favoriteSaveFailed && !tenorchrome::tipShown(hint))) return;
+    const int height = tenorchrome::tipHeight(renderer, hint);
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, favoriteSaveFailed ? 0 : height);
+    favoriteHintY = favoriteSaveFailed ? layout.bodyRect.bottom() - height : layout.tipRect.y;
+    const int limit = favoriteSaveFailed ? favoriteHintY - 8 : layout.bodyRect.bottom();
+    const int bottom = screen.body().bottom();
+    if (bottom > limit) screen.takeBottom(static_cast<int16_t>(bottom - limit));
+    return;
+  }
   if (!supportsFavorites() || SETTINGS.globalStatusBarHidden()) return;
   const char* hint = favoriteHintText();
   if (!hint || !tenorchrome::tipShown(hint)) return;

@@ -1,4 +1,6 @@
 #pragma once
+#include "activities/X3ActivityLayout.h"
+#include "activities/X3OptionPopup.h"
 
 #include <BlePageTurner.h>
 
@@ -20,7 +22,11 @@
  * dung" (module bao status().compiledIn = false, xem capNhatTrangThai()).
  */
 class BlePageTurnerActivity final : public UiListActivity {
+  x3activity::InfoPages x3Info;
+  freeink::ui::Rect x3PopupFrame() const;
+
  public:
+  void drawChrome() override;
   BlePageTurnerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : UiListActivity("BlePageTurner", renderer, mappedInput) {}
 
@@ -29,6 +35,7 @@ class BlePageTurnerActivity final : public UiListActivity {
   void render(RenderLock&&) override;
 
  private:
+  bool ownsX3Chrome() const override { return true; }
   // Ma dong. Danh sach dong doi theo trang thai BLE, nen moi dong mang MOT ma
   // on dinh thay vi chi so mang (chi so chet ngay khi bond/quang cao doi).
   enum RowCode : int16_t {
@@ -102,6 +109,8 @@ class BlePageTurnerActivity final : public UiListActivity {
   std::vector<freeink::ui::ListItem> rowItems_;
   std::vector<int16_t> rowCodes_;  // ROW_* of each row, beside rowItems_
   OptionPopup optionPopup;
+  x3activity::TwoChoicePopup x3Popup;
+  void pollTilt() override;
   OptionPopup* tiltPopup() override { return &optionPopup; }
   bool rowsDirty = true;
   // The bind rows are open in place of the main rows; Back closes them.

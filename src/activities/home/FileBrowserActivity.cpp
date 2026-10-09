@@ -1,4 +1,5 @@
 #include "FileBrowserActivity.h"
+#include "X3FileReaderChrome.h"
 
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
@@ -240,7 +241,7 @@ void FileBrowserActivity::applySearch(const std::string& query) {
 }
 
 void FileBrowserActivity::openSearch() {
-  if (kSearchRows == 0) return;
+  if (!canSearchFiles()) return;
   app.clearTapFlash();
   auto keyboard = makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_SEARCH), searchQuery, 48,
                                                            InputType::Text);
@@ -433,6 +434,7 @@ void FileBrowserActivity::activateSelected() {
     if (basepath.back() != '/') basepath += "/";
     basepath += entry.substr(0, entry.length() - 1);
     searchQuery.clear();
+    fileSearchReveal.reset();
     searchSourceFiles.clear();
     loadFiles();
     nav.selected = 0;
@@ -648,6 +650,7 @@ bool FileBrowserActivity::handleCustomInput() {
       RenderLock lock(*this);
       basepath = "/";
       searchQuery.clear();
+      fileSearchReveal.reset();
       searchSourceFiles.clear();
       loadFiles();
       nav.selected = 0;
@@ -677,6 +680,7 @@ bool FileBrowserActivity::handleButtons() {
         rememberDirectory();
         basepath = next;
         searchQuery.clear();
+        fileSearchReveal.reset();
         searchSourceFiles.clear();
         loadFiles();
         nav.reset();
@@ -716,6 +720,7 @@ bool FileBrowserActivity::handleButtons() {
           basepath.replace(basepath.find_last_of('/'), std::string::npos, "");
           if (basepath.empty()) basepath = "/";
           searchQuery.clear();
+          fileSearchReveal.reset();
           searchSourceFiles.clear();
           loadFiles();
 
@@ -754,12 +759,32 @@ std::string getFileExtension(const std::string& filename) {
 
 void FileBrowserActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  // Content below the GUI.drawHeader band, above the button hints.
-  screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-                                                static_cast<int16_t>(metrics.buttonHintsHeight), 0});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  const bool x3 = tenorchrome::x3ScreenLayoutEnabled() && !shell::uglyParts();
+  if (x3) {
+    const auto body = screenLayout().bodyRect;
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(body.y), 0,
+                                                  static_cast<int16_t>(renderer.getScreenHeight() - body.bottom()), 0});
+    if (favoriteSaveFailed) {
+      const int height = tenorchrome::tipHeight(renderer, tr(STR_MENU_SAVE_FAILED));
+      screen.takeBottom(static_cast<int16_t>(height + 8));
+    }
+  } else {
+    // Content below the GUI.drawHeader band, above the button hints.
+    screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
+                                                  static_cast<int16_t>(metrics.buttonHintsHeight), 0});
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  }
 
-  if (mode == Mode::Books && !SETTINGS.globalStatusBarHidden() && !tenorchrome::kTouchShell) {
+  buildFileSearch(screen);
+
+  const bool uglyLayout = shell::uglyParts() && tenorchrome::x3ScreenLayoutEnabled();
+  if (uglyLayout) {
+    const auto layout = tenorchrome::x3ScreenLayout(renderer, mode == Mode::Books && !files.empty()
+                                                               ? tenorchrome::tipHeight(renderer, tr(STR_FILE_SIDE_ACTIONS), 3) + 26
+                                                               : 0);
+    if (screen.body().bottom() > layout.bodyRect.bottom())
+      screen.takeBottom(static_cast<int16_t>(screen.body().bottom() - layout.bodyRect.bottom()));
+  } else if (!x3 && mode == Mode::Books && !SETTINGS.globalStatusBarHidden() && !tenorchrome::kTouchShell) {
     const int actions = tenorchrome::tipHeight(renderer, tr(STR_FILE_SIDE_ACTIONS), 3);
     screen.takeBottom(static_cast<int16_t>(28 + actions));
   }
@@ -768,11 +793,11 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   // deepest directory stays visible.
   const int pathLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
   // Touch: the foot of the screen is for the tab bar, so no path band; the header names the folder.
-  const fui::Rect band = tenorchrome::kTouchShell
+  const fui::Rect band = tenorchrome::kTouchShell || x3 || uglyLayout
                              ? fui::Rect{}
                              : screen.takeBottom(static_cast<int16_t>(pathLineHeight + metrics.verticalSpacing));
   const auto drawPath = [&]() {
-    if (tenorchrome::kTouchShell) return;
+    if (tenorchrome::kTouchShell || x3 || uglyLayout) return;
     if (shell::uglyParts()) {
       // tenor/ugly: a shaky rule and the path in hand, cut on the left so the deepest folder stays.
       const int maxWidth = band.width - metrics.contentSidePadding * 2;
@@ -817,6 +842,7 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
 
   if (files.empty() && searchQuery.empty()) {
     drawPath();
+    if (x3) return;
     screen.centeredText(tooMany ? tr(STR_FOLDER_TOO_MANY)
                                 : mode == Mode::PickFirmware ? tr(STR_NO_BIN_FILES)
                                                              : tr(STR_NO_FILES_FOUND),
@@ -852,13 +878,23 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   drawPath();
   if (files.empty()) {
     screen.list(props, static_cast<int16_t>(metrics.listRowHeight), fui::LayoutAnchor::Top);
-    screen.centeredText(tr(STR_NO_FILES_FOUND), screen.theme().bodyText);
+    if (x3) {
+      const auto body = screenLayout().bodyRect;
+      const int rowHeight = metrics.listRowHeight;
+      tenorchrome::drawInfoInRect(renderer, tr(STR_NO_FILES_FOUND),
+                                  {body.x, body.y + rowHeight, body.width, body.height - rowHeight});
+    } else
+      screen.centeredText(tr(STR_NO_FILES_FOUND), screen.theme().bodyText);
     return;
   }
   screen.list(props);
 }
 
 void FileBrowserActivity::drawChrome() {
+  if (tenorchrome::x3ScreenLayoutEnabled() && !shell::uglyParts()) {
+    x3readerchrome::drawPath(renderer, screenLayout().barRect, icon_tenor_home_folder_40, basepath.c_str());
+    return;
+  }
   const auto pageWidth = renderer.getScreenWidth();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
@@ -869,6 +905,7 @@ void FileBrowserActivity::drawChrome() {
   const std::string prefix = mode == Mode::Books && !root ? label + basepath.substr(0, basepath.rfind('/')) : "";
   if (tenorchrome::enabled()) {
     tenorchrome::drawHeader(renderer, folderName.c_str(), prefix.c_str());
+    if (tenorchrome::kTouchShell) tenorchrome::noteScreenTitle(basepath.c_str());
     // Touch: the status strip says how many items the folder holds.
     if (tenorchrome::kTouchShell && !files.empty()) {
       char count[24];
@@ -882,7 +919,16 @@ void FileBrowserActivity::drawChrome() {
 }
 
 void FileBrowserActivity::drawFooter() {
-  if (mode == Mode::Books && !files.empty()) tenorchrome::drawTip(renderer, tr(STR_FILE_SIDE_ACTIONS), 1, 3);
+  if (shell::uglyParts() && tenorchrome::x3ScreenLayoutEnabled()) {
+    const std::string path = std::string(tr(STR_HOME_TAB_FOLDER)) +
+                             (basepath.empty() || basepath.front() != '/' ? "/" : "") + basepath;
+    ugly::pathHints(renderer, path.c_str());
+    if (mode == Mode::Books && !files.empty()) tenorchrome::drawTip(renderer, tr(STR_FILE_SIDE_ACTIONS), 1, 3);
+  } else if (tenorchrome::x3ScreenLayoutEnabled()) {
+    drawX3Content();
+  } else if (mode == Mode::Books && !files.empty()) {
+    tenorchrome::drawTip(renderer, tr(STR_FILE_SIDE_ACTIONS), 1, 3);
+  }
   const char* backLabel = tr(STR_BACK);
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
@@ -894,6 +940,41 @@ void FileBrowserActivity::drawFooter() {
   const auto labels = mappedInput.mapLabels(backLabel, confirmLabel, listCount() <= 1 ? "" : tr(STR_DIR_UP),
                                             listCount() <= 1 ? "" : tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+std::string FileBrowserActivity::screenTip() {
+  if (mode != Mode::Books || files.empty()) return {};
+  std::string text = tr(STR_FILE_SIDE_ACTIONS);
+  if (!favoriteSaveFailed) {
+    if (const char* hint = favoriteHintText()) {
+      text += "\n";
+      text += hint;
+    }
+  }
+  return text;
+}
+
+tenorchrome::X3ScreenLayout FileBrowserActivity::screenLayout() {
+  const auto tip = screenTip();
+  return tenorchrome::x3ScreenLayout(renderer, tenorchrome::tipHeight(renderer, tip.c_str(), 7));
+}
+
+void FileBrowserActivity::drawX3Content() {
+  const auto layout = screenLayout();
+  const auto tip = screenTip();
+  tenorchrome::drawTipInRect(renderer, tip.c_str(), layout.tipRect, 7);
+  if (files.empty() && searchQuery.empty())
+    tenorchrome::drawInfoInRect(renderer,
+                                tooMany                      ? tr(STR_FOLDER_TOO_MANY)
+                                : mode == Mode::PickFirmware ? tr(STR_NO_BIN_FILES)
+                                                             : tr(STR_NO_FILES_FOUND),
+                                layout.bodyRect);
+  if (favoriteSaveFailed) {
+    const int height = tenorchrome::tipHeight(renderer, tr(STR_MENU_SAVE_FAILED));
+    const auto body = layout.bodyRect;
+    tenorchrome::drawInfoInRect(renderer, tr(STR_MENU_SAVE_FAILED),
+                                {body.x, body.bottom() - height, body.width, height});
+  }
 }
 
 size_t FileBrowserActivity::findEntry(const std::string& name) const {

@@ -2,6 +2,7 @@
 import argparse
 from pathlib import Path
 import subprocess
+import re
 
 
 def method(source, signature):
@@ -50,6 +51,7 @@ struct GfxRenderer {
   int screenWidth=528, screenHeight=792;
   int getScreenWidth() const { return screenWidth; }
   int getScreenHeight() const { return screenHeight; }
+  void fillRect(int,int,int,int,bool) const {}
 };
 struct MappedInputManager {
   struct Labels { const char *btn1,*btn2,*btn3,*btn4; };
@@ -59,7 +61,7 @@ struct MappedInputManager {
 };
 namespace ugly {
 enum class Size { S22 };
-enum class Mark { Back,Tick,Up,Down };
+enum class Mark { Back,Tick,Up,Down,Left,Right };
 struct Hints { bool back,confirm,left,right; };
 struct Draw { int textX,baseline,span; std::string value; };
 std::vector<Draw> draws;
@@ -82,10 +84,21 @@ std::string fit(const GfxRenderer&,Size,const char* value,int) { return value; }
 void mark(const GfxRenderer&,Mark,int centreX,int centreY) { draws.push_back({centreX-12,centreY+8,24,"mark"}); }
 void stroke(const GfxRenderer&,int,int,int,int,int) {}
 void polyline(const GfxRenderer&,const int (*)[2],int,int) {}
+namespace icons { enum class Id { Battery }; struct Rect { int x,y,width,height; }; }
+uint32_t iconFrameSeed() { return 0; }
+void icon(const GfxRenderer&,icons::Id,icons::Rect,uint32_t) {}
 '''
+cpp = cpp.replace('namespace ugly {', '''namespace buttonSymbols {
+int labelId(const char* value) { return static_cast<unsigned char>(value[2]) - 0x80; }
+}
+namespace ugly {''', 1)
 if 'void batteryDigits(' in source:
     cpp += method(source, 'void batteryDigits(') + '\n'
-for signature in ('void battery(', 'bool clockText(', 'void statusBar(', 'void topBar(', 'void formTopBar('):
+for signature in ('void battery(', 'bool clockText('):
+    cpp += method(source, signature) + '\n'
+for match in re.finditer(r'\nvoid statusBar\(', source):
+    cpp += method(source[match.start():], 'void statusBar(') + '\n'
+for signature in ('void topBar(', 'void formTopBar('):
     cpp += method(source, signature) + '\n'
 cpp += r'''
 }
