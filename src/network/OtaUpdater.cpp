@@ -33,6 +33,49 @@ constexpr char latestReleaseUrl[] = "https://cross.tenor.vn/firmware/acceptance-
 constexpr char latestReleaseUrl[] = "https://cross.tenor.vn/firmware/stable.json";
 #endif
 
+class ProductVersionScanner {
+ public:
+  explicit ProductVersionScanner(const char* expected) : expected(expected) {
+    // Reuse the embedded marker so the image still contains exactly one product tag.
+    prefix = std::strchr(board_tag::TAG, ';') + 1;
+    prefixLen = std::strchr(prefix, ':') - prefix + 1;
+  }
+  void feed(const uint8_t* data, size_t len) {
+    for (size_t i = 0; i < len && !bad; ++i) {
+      const char c = static_cast<char>(data[i]);
+      if (capturing) {
+        if (c == ';') {
+          value[valueLen] = '\0';
+          bad = std::strcmp(value, expected) != 0;
+          capturing = false;
+          found = !bad;
+        } else if (c > 0x20 && c < 0x7f && valueLen < sizeof(value) - 1) {
+          value[valueLen++] = c;
+        } else {
+          bad = true;
+        }
+      } else if (c == prefix[prefixMatched]) {
+        if (++prefixMatched == prefixLen) {
+          bad = found;  // A second product tag makes the image ambiguous.
+          capturing = true;
+          valueLen = prefixMatched = 0;
+        }
+      } else {
+        prefixMatched = c == prefix[0] ? 1 : 0;
+      }
+    }
+  }
+  bool rejected() const { return bad; }
+  bool matched() const { return found && !bad && !capturing; }
+
+ private:
+  const char* expected;
+  const char* prefix;
+  size_t prefixLen = 0, prefixMatched = 0, valueLen = 0;
+  char value[32] = {};
+  bool capturing = false, found = false, bad = false;
+};
+
 const char* errorName(const OtaUpdater::OtaUpdaterError err) {
   static const char* const names[] = {"OK",
                                       "NO_UPDATE",
@@ -194,6 +237,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   // the inactive OTA slot, but esp_ota_abort() below means it never becomes
   // the boot target.
   board_tag::Scanner tagScanner;
+  ProductVersionScanner versionScanner(latestVersion.c_str());
   bool cancelled = false;
   HttpDownloader::TransferStats transfer;
   // One block serves every 16 KB record of the image: re-allocating it per record let the heap
@@ -227,6 +271,8 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
               static_cast<int>(board_tag::boardNameLen()), board_tag::boardName());
       return false;  // abort the transfer
     }
+    versionScanner.feed(data, len);
+    if (versionScanner.rejected()) return false;
     if (esp_ota_write(otaHandle, data, len) != ESP_OK) {
       flashOk = false;
       return false;  // abort the transfer
@@ -273,7 +319,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     // A whole part with nothing new: the server has no more bytes; the size check below says so.
     if (ok && !whole) break;
     // What the stream held was wrong, or the user left: asking again cannot help.
-    if (cancelled || wrongChip || tagScanner.mismatch() || !flashOk || !sizeOk || whole) {
+    if (cancelled || wrongChip || tagScanner.mismatch() || versionScanner.rejected() || !flashOk || !sizeOk || whole) {
       fetchOk = false;
       break;
     }
@@ -312,6 +358,11 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     return endAttempt(WRONG_DEVICE_ERROR, "verify");
   }
 
+  if (versionScanner.rejected()) {
+    esp_ota_abort(otaHandle);
+    return endAttempt(INTEGRITY_ERROR, "verify");
+  }
+
   if (!fetchOk || !flashOk) {
     LOG_ERR("OTA", "Firmware install failed (%s)", flashOk ? "download" : "flash write");
     esp_ota_abort(otaHandle);
@@ -320,7 +371,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   }
 
   if (!sizeOk || processedSize != otaSize || hdrLen != sizeof(hdr) || memcmp(digest, otaDigest, sizeof(digest)) != 0 ||
-      !tagScanner.matched()) {
+      !tagScanner.matched() || !versionScanner.matched()) {
     LOG_ERR("OTA", "Integrity check failed: received=%zu expected=%zu tagged=%d", processedSize, otaSize,
             tagScanner.matched());
     esp_ota_abort(otaHandle);

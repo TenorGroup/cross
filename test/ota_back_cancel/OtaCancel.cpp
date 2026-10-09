@@ -221,6 +221,11 @@ void run(const std::string& name) {
   image[12] = 5;
   const char tag[] = "CROSSPOINT-BOARD-V1:x4;";
   std::memcpy(image.data() + 100, tag, sizeof(tag) - 1);
+  const auto tagVersion = [&] {
+    const std::string version = std::string("TENOR-CROSS-VERSION-V1:") + fixtureTag + ";";
+    std::memcpy(image.data() + 200, version.data(), version.size());
+  };
+  tagVersion();
   OtaUpdateActivity activity;
   const auto one = [&](const char* op, bool now) -> const ota_log::Attempt& {
     require(activity.recorded.size() == 1, "the screen did not hand exactly one line to the card log");
@@ -238,6 +243,7 @@ void run(const std::string& name) {
   if (name == "dry-run-keeps-boot-slot" || name == "older-refused-without-dry-run" ||
       name == "dry-run-short-image-released") {
     fixtureTag = "v0.0.1";  // older than any running firmware
+    tagVersion();
     if (name == "dry-run-short-image-released") shortBy = 1024;
     if (name != "older-refused-without-dry-run")
       activity.updater.setDryRun("https://cross.tenor.vn/firmware/test/dry-run.json");

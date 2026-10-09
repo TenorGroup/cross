@@ -369,6 +369,11 @@ void screenCases(const std::string& name) {
   image[12] = 5;
   const char tag[] = "CROSSPOINT-BOARD-V1:x4;";
   std::memcpy(image.data() + 100, tag, sizeof(tag) - 1);
+  const auto tagVersion = [&] {
+    const std::string version = std::string("TENOR-CROSS-VERSION-V1:") + fixtureTag + ";";
+    std::memcpy(image.data() + 200, version.data(), version.size());
+  };
+  tagVersion();
   if (name == "check-alone-arms-nothing" || name == "update-restarts-into-install" ||
       name == "cancel-restarts-home") {
     OtaUpdateActivity screen;
@@ -475,6 +480,7 @@ void screenCases(const std::string& name) {
 #ifdef TENOR_PRESS_PROBE
   if (name == "dry-run-series-one-run-a-boot") {
     fixtureTag = "v0.0.1";  // older than the running firmware: only the dry run takes it
+    tagVersion();
     update_boot::arm(otaBootSlot, 3, 3);
     for (int run = 1; run <= 3; ++run) {
       const auto boot = bootNow();

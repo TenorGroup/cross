@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Package a verified ESP32-C3 application for hosting on cross.tenor.vn."""
+"""Package verified X3/X4 and optional X4 Pro applications for cross.tenor.vn."""
 import argparse
 import hashlib
 import json
 import re
-import shutil
 import struct
 from pathlib import Path
 
@@ -40,13 +39,14 @@ def validate_image(data):
         raise ValueError('Invalid image SHA-256')
 
 
-def package(binary, output):
+def verified_application(binary, chip, board):
     data = binary.read_bytes()
     validate_image(data)
-    if int.from_bytes(data[12:14], 'little') != 5:
-        raise ValueError('Expected ESP32-C3 application')
-    if b'CROSSPOINT-BOARD-V1:x4;' not in data:
-        raise ValueError('Missing combined X3/X4 board tag')
+    if int.from_bytes(data[12:14], 'little') != chip:
+        raise ValueError(f'Expected application chip {chip} for {board}')
+    board_marker = b'CROSSPOINT-BOARD-V1:'
+    if data.count(board_marker) != 1 or board_marker + board.encode() + b';' not in data:
+        raise ValueError(f'Missing or ambiguous {board} board tag')
     marker = b'TENOR-CROSS-VERSION-V1:'
     if data.count(marker) != 1:
         raise ValueError('Missing or ambiguous tenor/cross product version tag')
@@ -59,20 +59,35 @@ def package(binary, output):
         raise ValueError('Use a stable tenor/cross product version')
     if any(int(part) > 99999 for part in version.lstrip('v').split('.')):
         raise ValueError('Release version exceeds firmware version parser limits')
-    sha = hashlib.sha256(data).hexdigest()
+    return data, version, hashlib.sha256(data).hexdigest()
+
+
+def package(binary, output, x4pro_binary=None):
+    images = [(binary, 'x3-x4', 5, 'x4')]
+    if x4pro_binary is not None:
+        images.append((x4pro_binary, 'x4pro', 9, 'x4pro'))
+    verified = [(source, suffix, *verified_application(source, chip, board))
+                for source, suffix, chip, board in images]
+    version = verified[0][3]
+    if any(item[3] != version for item in verified):
+        raise ValueError('Applications must have the same product version')
     folder = output / 'firmware' / version
+    # Check every image and immutable target before writing any of the package.
+    for _, suffix, _, _, sha in verified:
+        target = folder / f'tenor-cross-{version}-{suffix}.bin'
+        if target.exists() and hashlib.sha256(target.read_bytes()).hexdigest() != sha:
+            raise ValueError('Version already contains a different binary; use a new version')
     folder.mkdir(parents=True, exist_ok=True)
-    name = f'tenor-cross-{version}-x3-x4.bin'
-    target = folder / name
-    if target.exists() and hashlib.sha256(target.read_bytes()).hexdigest() != sha:
-        raise ValueError('Version already contains a different binary; use a new version')
-    shutil.copyfile(binary, target)
-    (folder / (name + '.sha256')).write_text(f'{sha}  {name}\n')
-    manifest = {'tag_name': version, 'assets': [{
-        'name': 'tenor-cross-x3-x4.bin',
-        'browser_download_url': f'https://cross.tenor.vn/firmware/{version}/{name}',
-        'size': len(data), 'digest': 'sha256:' + sha,
-    }]}
+    manifest = {'tag_name': version, 'assets': []}
+    for _, suffix, data, _, sha in verified:
+        name = f'tenor-cross-{version}-{suffix}.bin'
+        (folder / name).write_bytes(data)
+        (folder / (name + '.sha256')).write_text(f'{sha}  {name}\n')
+        manifest['assets'].append({
+            'name': f'tenor-cross-{suffix}.bin',
+            'browser_download_url': f'https://cross.tenor.vn/firmware/{version}/{name}',
+            'size': len(data), 'digest': 'sha256:' + sha,
+        })
     # The operator publishes the version directory first, then atomically replaces stable.json.
     staging = output / 'firmware' / 'stable.json.ready'
     staging.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
@@ -84,5 +99,6 @@ if __name__ == '__main__':
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument('binary', type=Path)
     cli.add_argument('output', type=Path)
+    cli.add_argument('--x4pro-binary', type=Path, help='Matching ESP32-S3 X4 Pro application')
     args = cli.parse_args()
-    package(args.binary, args.output)
+    package(args.binary, args.output, args.x4pro_binary)
