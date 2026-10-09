@@ -38,6 +38,7 @@ if not 1 <= args.max_group_bytes <= 65536:
 
 import freetype
 from fontTools.ttLib import TTFont
+from font_features import extract_pnum_subs
 
 GlyphProps = namedtuple("GlyphProps", ["width", "height", "advance_x", "left", "top", "data_length", "data_offset", "code_point"])
 
@@ -210,35 +211,6 @@ def deflate_raw(data):
 def chunks(l, n):
     for i in range(0, len(l), n):
         yield l[i:i + n]
-
-def extract_pnum_subs(font_path):
-    """Extract pnum (proportional figures) GSUB substitutions.
-
-    Parses the font's GSUB table for the 'pnum' feature, which replaces
-    tabular-width figure glyphs with proportional-width alternates.
-    Returns {original_glyph_name: substitute_glyph_name} or empty dict.
-    """
-    font = TTFont(font_path)
-    subs = {}
-    if 'GSUB' not in font:
-        font.close()
-        return subs
-    gsub = font['GSUB'].table
-    pnum_indices = set()
-    if gsub.FeatureList:
-        for fr in gsub.FeatureList.FeatureRecord:
-            if fr.FeatureTag == 'pnum':
-                pnum_indices.update(fr.Feature.LookupListIndex)
-    for li in pnum_indices:
-        lookup = gsub.LookupList.Lookup[li]
-        for st in lookup.SubTable:
-            actual = st
-            if lookup.LookupType == 7 and hasattr(st, 'ExtSubTable'):
-                actual = st.ExtSubTable
-            if hasattr(actual, 'mapping'):
-                subs.update(actual.mapping)
-    font.close()
-    return subs
 
 # Build proportional numeral glyph overrides when --pnum is active.
 # Maps (face_index, codepoint) -> freetype glyph index for the proportional alternate.

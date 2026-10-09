@@ -144,13 +144,14 @@ class RasterSource:
             face = freetype.Face(str(path))
             face.set_char_size(point_size << 6, point_size << 6, 150, 150)
             ligatures = converter.extract_ligature_glyph_indices_fonttools(str(path)) if key == 'path' else {}
-            self.faces.append((face, ligatures))
+            numerals = converter.pnum_glyph_indices(str(path)) if source.get('pnum', False) else {}
+            self.faces.append((face, ligatures, numerals))
         self.fp4 = converter.fp4_from_ft16_16
         self.force_autohint = source.get('force_autohint', False)
 
     def glyph(self, cp, strength):
-        for face, ligatures in self.faces:
-            index = face.get_char_index(cp) or ligatures.get(cp, 0)
+        for face, ligatures, numerals in self.faces:
+            index = numerals.get(cp, face.get_char_index(cp)) or ligatures.get(cp, 0)
             if not index:
                 continue
             flags = freetype.FT_LOAD_NO_BITMAP

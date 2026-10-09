@@ -35,6 +35,7 @@ import hashlib
 from collections import namedtuple
 
 from cpfont_version import CPFONT_VERSION
+from font_features import extract_pnum_subs, pnum_glyph_indices
 
 # --- Unicode interval presets ---
 
@@ -299,7 +300,7 @@ def _extract_pairpos_subtable(subtable, glyph_to_cp, raw_kern):
                         raw_kern[key] = raw_kern.get(key, 0) + xa
 
 
-def extract_kerning_fonttools(font_path, codepoints, ppem):
+def extract_kerning_fonttools(font_path, codepoints, ppem, pnum_subs=None):
     """Extract kerning pairs from a font file using fonttools.
 
     Returns dict of {(leftCp, rightCp): pixel_adjust} for the given
@@ -319,6 +320,8 @@ def extract_kerning_fonttools(font_path, codepoints, ppem):
         gname = cmap.get(cp)
         if gname:
             glyph_to_cps.setdefault(gname, []).append(cp)
+            if pnum_subs and gname in pnum_subs:
+                glyph_to_cps.setdefault(pnum_subs[gname], []).append(cp)
     # Flat dict for membership checks and subtable extraction (uses keys only)
     glyph_to_cp = glyph_to_cps
 
@@ -571,7 +574,7 @@ def extract_ligatures_fonttools(font_path, codepoints):
 
 
 def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=False,
-                         fallback_fontfile=None, embolden_px=0.0):
+                          fallback_fontfile=None, embolden_px=0.0, pnum=False):
     """Rasterize all glyphs for one font style. Returns StyleRasterData."""
     import freetype
     import ctypes
@@ -590,6 +593,8 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
     # Invalid_Size_Handle on some fonts.
     face.set_char_size(size << 6, size << 6, 150, 150)
     ligature_glyph_indices = extract_ligature_glyph_indices_fonttools(fontfile)
+    numeral_indices = pnum_glyph_indices(fontfile) if pnum else {}
+    fallback_numeral_indices = pnum_glyph_indices(fallback_fontfile) if pnum and fallback_fontfile else {}
     fallback_face = None
     if fallback_fontfile:
         fallback_face = freetype.Face(fallback_fontfile)
@@ -613,13 +618,13 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
         return target
 
     def load_glyph(code_point):
-        glyph_index = face.get_char_index(code_point)
+        glyph_index = numeral_indices.get(code_point, face.get_char_index(code_point))
         if glyph_index == 0:
             glyph_index = ligature_glyph_indices.get(code_point, 0)
         if glyph_index > 0:
             return render_glyph(face, glyph_index)
         if fallback_face:
-            fallback_glyph_index = fallback_face.get_char_index(code_point)
+            fallback_glyph_index = fallback_numeral_indices.get(code_point, fallback_face.get_char_index(code_point))
             if fallback_glyph_index > 0:
                 return render_glyph(fallback_face, fallback_glyph_index)
         return None
@@ -759,7 +764,8 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
     ppem = size * 150.0 / 72.0
     all_cps = set(g.code_point for g, _ in all_glyphs)
 
-    kern_map = extract_kerning_fonttools(fontfile, all_cps, ppem)
+    kern_map = extract_kerning_fonttools(fontfile, all_cps, ppem,
+                                       extract_pnum_subs(fontfile) if pnum else None)
     # SMP codepoints (> U+FFFF) cannot be stored in the uint16 kern codepoint
     # field; drop them before class derivation to avoid a downstream
     # struct.error when packing the binary kern tables.
@@ -859,7 +865,8 @@ def style_sections_total_size(sections):
 # --- File writers ---
 
 def generate_cpfont_multistyle(style_fonts, size, intervals, output_path,
-                               force_autohint=False, fallback_style_fonts=None, embolden_px=0.0, style_intervals=None):
+                               force_autohint=False, fallback_style_fonts=None, embolden_px=0.0, style_intervals=None,
+                               pnum=False):
     """Generate a multi-style v4 .cpfont file.
 
     style_fonts: dict of {style_id: fontfile_path} e.g. {0: "Regular.ttf", 2: "Italic.ttf"}
@@ -881,7 +888,7 @@ def generate_cpfont_multistyle(style_fonts, size, intervals, output_path,
         raster_data[style_id] = rasterize_font_style(
             fontfile, size, (style_intervals or {}).get(style_id, intervals), style_id=style_id,
             force_autohint=force_autohint,
-            fallback_fontfile=fallback_fontfile, embolden_px=embolden_px)
+            fallback_fontfile=fallback_fontfile, embolden_px=embolden_px, pnum=pnum)
 
     # Pack binary sections for each style
     packed_sections = {}  # style_id -> tuple of section bytearrays
@@ -989,6 +996,7 @@ def main():
                         help="Tên họ font dùng cho tên file đầu ra (mặc định: lấy từ tên file font).")
     parser.add_argument("--force-autohint", dest="force_autohint", action="store_true",
                         help="Buộc dùng auto-hinter của FreeType thay cho hinting gốc của font.")
+    parser.add_argument("--pnum", action="store_true", help="Use proportional figures, matching builtin reader fonts.")
     parser.add_argument("--trial-weights", action="store_true",
                         help="Dựng bản gốc kèm hai gói độ đậm thử nghiệm, cỡ mặc định 12 đến 26.")
     parser.add_argument("--embolden-px", type=float, default=0.0,
@@ -1131,7 +1139,7 @@ def main():
             total_size += generate_cpfont_multistyle(
                 style_fonts, sz, intervals, output_path,
                 force_autohint=args.force_autohint,
-                fallback_style_fonts=fallback_style_fonts, embolden_px=strength)
+                fallback_style_fonts=fallback_style_fonts, embolden_px=strength, pnum=args.pnum)
             with open(output_path, "rb") as built:
                 digest = hashlib.sha256(built.read()).hexdigest()
             manifest["files"].append({"path": os.path.relpath(output_path, output_dir),
