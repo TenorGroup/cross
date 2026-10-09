@@ -105,7 +105,14 @@ for mode in modes:
     (output / 'activities/settings/SettingsActivity.h').write_text(
         '#pragma once\n#include <functional>\n#include <span>\n#include <string>\n#include <vector>\n'
         '#include <I18n.h>\n#include "CrossPointSettings.h"\n'
-        '#include "activities/settings/SettingsTabs.h"\n' + descriptor)
+        '#include "activities/settings/SettingsTabs.h"\n'
+        '#include "components/SettingsChoiceStyle.h"\n'
+        'namespace tenorchrome {\n'
+        '#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO\n'
+        'constexpr bool kTouchShell = true;\n'
+        '#else\n'
+        'constexpr bool kTouchShell = false;\n'
+        '#endif\n}\n' + descriptor)
     methods = method_slice(sources[paths[2]],
                            'std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe')
     methods += method_slice(sources[paths[2]], 'bool SettingsActivity::listedAsRow(')

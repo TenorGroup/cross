@@ -90,7 +90,6 @@ namespace BoardConfig {
 inline bool hasHomeKey() { return false; }
 }
 namespace tenorchrome {
-#include "TouchShell.inc"
 bool enabled() { return false; }
 void drawSiblingDestinations(GfxRenderer&, const char*, const char*) {}
 void drawTip(GfxRenderer&, const char*, int, int = 4) {}
@@ -161,6 +160,16 @@ struct ListNav {
 struct SettingsActivity {
   static constexpr uint16_t ACTION_ROW = 1;
   bool rowFrameFor(uint16_t, int, freeink::ui::Rect&) const { return false; }
+  void showSettingsChoices(PopupBoundary& popup, StrId title, const std::vector<std::string>& labels,
+                           int selected, int, std::function<void(int)> callback) {
+    static_assert(!tenorchrome::kTouchShell);
+    popup.show(title, labels, selected, std::move(callback));
+  }
+  void showSettingsChoices(PopupBoundary& popup, StrId title, const StrId* labels, int count,
+                           int selected, int, std::function<void(int)> callback) {
+    static_assert(!tenorchrome::kTouchShell);
+    popup.show(title, labels, count, selected, std::move(callback));
+  }
   GfxRenderer renderer;
   MappedInputManager mappedInput;
   PopupBoundary optionPopup;

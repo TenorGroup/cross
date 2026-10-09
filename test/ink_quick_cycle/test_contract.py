@@ -152,6 +152,14 @@ struct TextSettingsActivity {
   bool applyChosenValue(Tab, int, int, bool repaint=true);
   void confirmStyleRow(int);
   void confirmValueRow(Tab,int);
+  void showSettingsChoices(Popup& popup, StrId title, const std::vector<std::string>& values,
+                           int selected, int row, std::function<void(int)> callback) {
+    freeink::ui::Rect frame;
+    if (tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, frame))
+      popup.showInFrame(frame, title, values, selected, std::move(callback));
+    else popup.show(title, values, selected, std::move(callback));
+    requestUpdate();
+  }
   bool rowFrameFor(int,int,freeink::ui::Rect&) { return true; }
 };
 @METHODS@

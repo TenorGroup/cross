@@ -42,7 +42,14 @@ descriptor = header[header.index('enum class SettingType'):header.index('class S
 (out / 'activities/settings/SettingsActivity.h').write_text(
     '#pragma once\n#include <functional>\n#include <span>\n#include <string>\n#include <vector>\n'
     '#include <I18n.h>\n#include "CrossPointSettings.h"\n'
-    '#include "activities/settings/SettingsTabs.h"\n' + descriptor)
+    '#include "activities/settings/SettingsTabs.h"\n'
+    '#include "components/SettingsChoiceStyle.h"\n'
+    'namespace tenorchrome {\n'
+    '#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO\n'
+    'constexpr bool kTouchShell = true;\n'
+    '#else\n'
+    'constexpr bool kTouchShell = false;\n'
+    '#endif\n}\n' + descriptor)
 methods = ''.join(method(source, sig) for sig in [
     'std::vector<SettingInfo>& SettingsActivity::danhSachCuaThe',
     'bool SettingsActivity::listedAsRow(',

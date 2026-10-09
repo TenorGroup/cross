@@ -43,6 +43,13 @@ source = (r / paths[4]).read_text()
 (out / 'activities/settings/SettingsActivity.h').write_text(
     '#pragma once\n#include <functional>\n#include <span>\n#include <string>\n#include <vector>\n#include <I18n.h>\n'
     '#include "CrossPointSettings.h"\n#include "activities/settings/SettingsTabs.h"\n' +
+    '#include "components/SettingsChoiceStyle.h"\n'
+    'namespace tenorchrome {\n'
+    '#if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO\n'
+    'constexpr bool kTouchShell = true;\n'
+    '#else\n'
+    'constexpr bool kTouchShell = false;\n'
+    '#endif\n}\n' +
     header[header.index('enum class SettingType'):header.index('class SettingsActivity final')])
 category = (r / 'test/settings_catalog/category/harness.cpp').read_text()
 boundaries = category[category.index('HalTiltSensor halTiltSensor;'):category.index('struct SettingsActivity {')]

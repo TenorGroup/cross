@@ -66,6 +66,10 @@ struct Target:fui::DrawTarget {
  void text(fui::Rect r,const char*s,fui::TextStyle style)override{fui::layoutText(*this,r,s,style,[&](const char*,fui::Rect run){ink.push_back(run);});}
 };
 namespace freeink::ui {struct GfxRendererTarget {static constexpr int FONT_BODY=1;};}
+struct PageScrollbar {
+ static PageScrollbar& instance(){static PageScrollbar scrollbar;return scrollbar;}
+ void draw(const GfxRenderer&,fui::DrawTarget&,int,int,int,int,const void*){}
+};
 namespace shell {bool isUgly(){return false;}}
 namespace tenorchrome {
 constexpr bool kTouchShell=true;constexpr int FOOT_BACK_X=16,PANEL_RADIUS=20;

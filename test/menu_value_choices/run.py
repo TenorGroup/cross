@@ -44,10 +44,14 @@ def method(text, name):
 
 names = ['void TextSettingsActivity::confirmLayoutRow(', 'void TextSettingsActivity::confirmStyleRow(',
          'int TextSettingsActivity::formIndex(', 'void TextSettingsActivity::rebuildRowItems(',
-         'const char* TextSettingsActivity::confirmLabelText(']
+         'const char* TextSettingsActivity::confirmLabelText(',
+         'int TextSettingsActivity::settingsChoiceCount(']
 if 'void TextSettingsActivity::confirmValueRow(' in source:
     names.append('void TextSettingsActivity::confirmValueRow(')
 production = '\n'.join(method(source, n) for n in names)
+parent = (a.repo / 'src/activities/UiListActivity.cpp').read_text()
+production += '\n' + method(parent, 'void UiListActivity::showSettingsChoices(OptionPopup& popup, const StrId title,').replace(
+    'UiListActivity::', 'TextSettingsActivity::')
 ids = sorted(set(re.findall(r'StrId::(STR_\w+)', source)) | {'STR_SELECT', 'STR_TOGGLE', 'STR_ALIGNMENT'})
 fixture = r'''
 #include <algorithm>
@@ -55,8 +59,10 @@ fixture = r'''
 #include <cstdlib>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <vector>
+#include "components/SettingsChoiceStyle.h"
 #define CHECK(expr) do { if (!(expr)) { std::fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#expr); failures++; } } while(0)
 int failures=0;
 namespace freeink::ui {struct Rect {int x=16,y=180,width=448,height=350;}; struct ListItem {const char* label=nullptr;int actionValue=0;bool opensNext=false;};}
@@ -76,10 +82,16 @@ namespace settingstabs { bool moTrinhChon(int soLuaChon) // POLICY
 }
 struct SettingInfo {StrId nameId=StrId::STR_ALIGNMENT;};
 struct Popup {
- int opened=0,current=-1;bool inFrame=false;fui::Rect frame{};std::vector<std::string> labels;std::function<void(int)> callback;
+ int opened=0,current=-1;bool aligned=false;fui::Rect frame{};std::vector<std::string> labels;std::function<void(int)> callback;
  void show(StrId,const std::vector<std::string>& opts,int selected,std::function<void(int)> cb){opened++;labels=opts;current=selected;callback=cb;}
  void show(StrId,const StrId*,int count,int selected,std::function<void(int)> cb){opened++;labels.assign(count,"label");current=selected;callback=cb;}
- template<class...Args>void showInFrame(fui::Rect rect,Args...args){frame=rect;inFrame=true;show(args...);}
+ void alignValueTo(fui::Rect rect){frame=rect;aligned=true;}
+};
+using OptionPopup=Popup;
+struct SettingsChoiceActivity {
+ std::vector<std::string> labels;int current;std::function<void(int)> callback;
+ SettingsChoiceActivity(int,int,const char*,const std::vector<std::string>& opts,int selected,std::function<void(int)> cb)
+   :labels(opts),current(selected),callback(cb){}
 };
 struct TextSettingsActivity {
  enum class Tab{Family,Size,Layout,Style,Count};
@@ -89,6 +101,10 @@ struct TextSettingsActivity {
  struct Name{std::string name="name";};
  Tab tab_=Tab::Layout;Popup optionPopup_;std::vector<fui::ListItem> rowItems_;std::vector<std::string> rowValues_;std::vector<Name> fonts_,sizes_;
  int applied=-1,saves=0,updates=0,selected=3,top=1,ring=1;
+ int renderer=0,mappedInput=0;
+ struct {fui::Rect publishedRect(int,int16_t){return {16,180,448,350};}} app;
+ std::unique_ptr<SettingsChoiceActivity> page;
+ void startActivityForResult(std::unique_ptr<SettingsChoiceActivity> next,std::nullptr_t){page=std::move(next);}
  static int formIndex(Tab,int);
  static Row formRow(void* context,int question){auto* self=static_cast<TextSettingsActivity*>(context);if(question<2||question>=14)return {};const int counts[]={// COUNTS
  };int n=counts[question-2];return {n,std::min(self->selected,n-1)};}
@@ -99,6 +115,8 @@ struct TextSettingsActivity {
  bool rowFrameFor(int,int,fui::Rect& r){r={16,180,448,350};return true;}
  int ringPos() const{return ring;}
  void requestUpdate(){updates++;}
+ int settingsChoiceCount(int) const;
+ void showSettingsChoices(OptionPopup&,StrId,const std::vector<std::string>&,int,int,std::function<void(int)>);
  void confirmLayoutRow(int);void confirmStyleRow(int);void confirmValueRow(Tab,int);void rebuildRowItems();const char* confirmLabelText() const;
 };
 // PRODUCTION
@@ -109,22 +127,43 @@ int main(){
   tenorchrome::kTouchShell=touch;TextSettingsActivity screen;screen.tab_=tab;screen.rebuildRowItems();
   for(int row=0;row<screen.listCount();row++){
    auto current=TextSettingsActivity::formRow(&screen,TextSettingsActivity::formIndex(tab,row));bool picker=current.count>2;
-   CHECK(screen.rowItems_[row].opensNext==picker);screen.ring=row+1;
-   CHECK(std::string(screen.confirmLabelText())==(picker?"Select":"Toggle"));
+   bool next=touch?current.count>=7:picker;
+   CHECK(screen.rowItems_[row].opensNext==next);screen.ring=row+1;
+   CHECK(std::string(screen.confirmLabelText())==(next?"Select":"Toggle"));
    for(int initial:{0,current.count-1}){
     TextSettingsActivity s;s.tab_=tab;s.selected=initial;int top=s.top;
     if(tab==TextSettingsActivity::Tab::Layout)s.confirmLayoutRow(row);else s.confirmStyleRow(row);
     CHECK(s.selected==initial && s.top==top);
     if(picker){
-     CHECK(s.optionPopup_.opened==1 && s.applied==-1 && s.saves==0);
-     CHECK(s.optionPopup_.current==initial && int(s.optionPopup_.labels.size())==current.count);
-     CHECK(s.optionPopup_.inFrame==touch);
-     if(touch)CHECK(s.optionPopup_.frame.x==16&&s.optionPopup_.frame.y==180&&s.optionPopup_.frame.width==448&&s.optionPopup_.frame.height==350);
-     if(s.optionPopup_.callback)for(int option=0;option<current.count;option++){s.optionPopup_.callback(option);CHECK(s.applied==option);}
+     bool page=touch&&current.count>=7;
+     CHECK(s.optionPopup_.opened==int(!page) && bool(s.page)==page && s.applied==-1 && s.saves==0);
+     int selected=s.page?s.page->current:s.optionPopup_.current;
+     const auto& labels=s.page?s.page->labels:s.optionPopup_.labels;
+     const auto& callback=s.page?s.page->callback:s.optionPopup_.callback;
+     CHECK(selected==initial && int(labels.size())==current.count);
+     CHECK(s.optionPopup_.aligned==(touch&&!page));
+     if(touch&&!page)CHECK(s.optionPopup_.frame.x==16&&s.optionPopup_.frame.y==180&&s.optionPopup_.frame.width==448&&s.optionPopup_.frame.height==350);
+     CHECK(bool(callback));
+     if(callback)for(int option=0;option<current.count;option++){callback(option);CHECK(s.applied==option);}
     } else CHECK(s.optionPopup_.opened==0 && s.applied==(initial+1)%current.count && s.saves==1);
     checked++;
    }
   }
+ }
+ for(bool touch:{false,true})for(int count:{0,1,2,3,6,7,8}){
+  tenorchrome::kTouchShell=touch;
+  CHECK(settingsChoiceStyle(count,touch)==(count<=2?SettingsChoiceStyle::Inline:
+        touch&&count>=7?SettingsChoiceStyle::Page:SettingsChoiceStyle::Popup));
+  if(count<=2)continue;
+  TextSettingsActivity s;std::vector<std::string> labels(count,"choice");
+  s.showSettingsChoices(s.optionPopup_,StrId::STR_ALIGNMENT,labels,count-1,0,[&s](int value){s.applyChosenValue(s.tab_,0,value);});
+  bool page=touch&&count>=7;
+  CHECK(bool(s.page)==page&&s.optionPopup_.opened==int(!page)&&s.updates==1);
+  CHECK(s.optionPopup_.aligned==(touch&&!page));
+  CHECK((s.page?s.page->current:s.optionPopup_.current)==count-1);
+  CHECK((s.page?s.page->labels:s.optionPopup_.labels)==labels);
+  const auto& callback=s.page?s.page->callback:s.optionPopup_.callback;
+  CHECK(bool(callback));if(callback){callback(0);CHECK(s.applied==0&&s.saves==1);}
  }
  TextSettingsActivity invalid;invalid.confirmLayoutRow(-1);invalid.confirmLayoutRow(7);invalid.confirmStyleRow(-1);invalid.confirmStyleRow(5);CHECK(invalid.optionPopup_.opened==0 && invalid.saves==0);
  std::printf("%d activation paths, 12 row cues per profile, all option callbacks: %s\n",checked,failures?"FAIL":"PASS");return failures?1:0;
@@ -135,5 +174,5 @@ fixture = fixture.replace('// COUNTS', ','.join(map(str, row_counts)))
 src = a.output / 'choices.cpp'
 exe = a.output / 'choices'
 src.write_text(fixture)
-subprocess.run([a.cxx, '-std=c++20', '-Wall', '-Wextra', '-Werror', str(src), '-o', str(exe)], check=True)
+subprocess.run([a.cxx, '-std=c++20', '-Wall', '-Wextra', '-Werror', '-I' + str(a.repo / 'src'), str(src), '-o', str(exe)], check=True)
 subprocess.run([str(exe)], check=True)

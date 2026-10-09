@@ -24,6 +24,8 @@ def main() -> int:
     source_root = (args.source_root or here.parents[1]).resolve()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    (output / "components").mkdir(exist_ok=True)
+    (output / "components/PageScrollbar.h").write_text('#pragma once\n#include "TestPlatform.h"\n')
     binary = output / "wifi-power-behavior"
     harness = here / "WifiPowerBehavior.cpp"
     stub_files = sorted((here / "stubs").rglob("*.h"))

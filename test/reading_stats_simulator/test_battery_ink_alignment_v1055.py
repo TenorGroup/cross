@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -115,7 +115,7 @@ def measure(image, board, screen, hidden, large):
             "crop": (0, lane_top, width, lane_bottom)}
 
 
-def run(program, board, output, measure_only=False, baseline=None):
+def run(program, board, output, measure_only=False, baseline=None, allow_scrollbar_relocation=False):
     assert measure_only or not output.exists(), f"output already exists: {output}"
     results = []
     failed = 0
@@ -153,7 +153,17 @@ def run(program, board, output, measure_only=False, baseline=None):
                         crop = ((0, 32 if top else 0, image.width, image.height) if board == "x4pro"
                                 else (0, image.height - 42, image.width, image.height))
                         result["unchanged_pixels"] = before.crop(crop).tobytes() == image.crop(crop).tobytes()
-                        passed &= result["unchanged_pixels"]
+                        unchanged = result["unchanged_pixels"]
+                        if allow_scrollbar_relocation and top and screen in ("settings", "reader-menu"):
+                            diff = ImageChops.difference(before, image)
+                            diff.paste(0, (0, 0, image.width, 32))
+                            regions = ((467, 48, 475, 716),) if screen == "settings" else (
+                                (452, 402, 458, 712), (469, 402, 475, 712))
+                            for region in regions:
+                                diff.paste(0, region)
+                            result["unchanged_outside_scrollbars"] = diff.getbbox() is None
+                            unchanged |= result["unchanged_outside_scrollbars"]
+                        passed &= unchanged
                         if top:
                             before_bounds = measure(before, board, screen, hidden, large)
                             result["same_battery_x"] = result["battery_x"] == before_bounds["battery_x"]
@@ -180,9 +190,12 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--measure-only", action="store_true")
     parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--allow-scrollbar-relocation", action="store_true",
+                        help="Allow scroll55 relocation regions when comparing the combined candidate")
     args = parser.parse_args()
     baseline = args.baseline.resolve() if args.baseline is not None else None
-    raise SystemExit(int(bool(run(args.program, args.board, args.output.resolve(), args.measure_only, baseline))))
+    raise SystemExit(int(bool(run(args.program, args.board, args.output.resolve(), args.measure_only, baseline,
+                                 args.allow_scrollbar_relocation))))
 
 
 if __name__ == "__main__":

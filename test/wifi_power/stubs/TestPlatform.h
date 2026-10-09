@@ -251,6 +251,7 @@ struct ListItem {
   int16_t actionValue = 0;
 };
 struct ListProps {
+  int16_t rowInset = 0;
   ListItem* items = nullptr;
   uint16_t count = 0;
   ActionId action = 0;
@@ -336,6 +337,13 @@ struct ListNav {
 }  // namespace freeink::ui
 
 using UiScreen = freeink::ui::UiScreen;
+class PageScrollbar {
+ public:
+  static PageScrollbar& instance() { static PageScrollbar scrollbar; return scrollbar; }
+  template<class Renderer, class Target, class Rect, class Nav>
+  void drawList(const Renderer&, Target&, const Rect&, const Nav&, int) {}
+  template<class Renderer, class Target> void repaint(const Renderer&, Target&) {}
+};
 
 struct RouteResult {
   bool routed = false;

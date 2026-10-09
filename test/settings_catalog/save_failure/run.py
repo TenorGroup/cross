@@ -80,7 +80,10 @@ for mode in modes:
     (output / 'activities/settings/SettingsActivity.h').write_text(
         '#pragma once\n#include <functional>\n#include <span>\n#include <string>\n#include <vector>\n'
         '#include <I18n.h>\n#include "CrossPointSettings.h"\n'
-        '#include "activities/settings/SettingsTabs.h"\n' + descriptor)
+        '#include "activities/settings/SettingsTabs.h"\n'
+        '#include "components/SettingsChoiceStyle.h"\n'
+        'namespace tenorchrome {\n'
+        '#include "TouchShell.inc"\n}\n' + descriptor)
     state = next((line.strip() for line in header.splitlines()
                   if 'saveFailed' in line and ';' in line), '')
     (output / 'State.inc').write_text(state + '\n')

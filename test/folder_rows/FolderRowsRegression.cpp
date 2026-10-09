@@ -153,6 +153,7 @@ class FileBrowserActivity {
   void* uglyRowCtx_ = nullptr;
   void keepUglyRows(const fui::ListProps& props);
   bool rowOpens(int row) const;
+  int settingsChoiceCount(int) const { return 0; }
   bool listFramed() const;
   void frameRows(fui::ListProps& props);
   static constexpr int ACTION_ROW = 1;

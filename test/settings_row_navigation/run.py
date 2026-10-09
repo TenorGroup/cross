@@ -37,6 +37,8 @@ if "settingOpensNext" not in descriptor:
     "#include <I18n.h>\n"
     '#include "CrossPointSettings.h"\n'
     '#include "activities/settings/SettingsTabs.h"\n'
+    '#include "components/SettingsChoiceStyle.h"\n'
+    'namespace tenorchrome { constexpr bool kTouchShell = false; }\n'
     + descriptor
 )
 
