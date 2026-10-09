@@ -1267,12 +1267,11 @@ void WifiSelectionActivity::buildListScreen(UiScreen& screen) {
   screen.syncListViewport(listNav, props, static_cast<int>(networkRowItems.size()));
 #if defined(FREEINK_DEVICE_X4PRO) && FREEINK_DEVICE_X4PRO
   props.selectedIndex = -1;  // a finger picks the row: no black cursor
-  props.scrollIndicator = false;
 #endif
+  props.scrollIndicator = false;
   const auto viewport = screen.body();
   screen.list(props);
-  if (tenorchrome::kTouchShell)
-    PageScrollbar::instance().drawList(renderer, screen.target(), viewport, listNav,
+  PageScrollbar::instance().drawList(renderer, screen.target(), viewport, listNav,
                                        static_cast<int>(networkRowItems.size()));
 }
 

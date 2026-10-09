@@ -321,6 +321,7 @@ class OptionPopup {
         fui::clampI16(std::min<int>(screen.width * 3 / 4, screen.width - metrics.optionPopupDialogSideMargin * 2));
     const int fullHeight = fui::optionDialogHeight(target, props, width);
     fui::Rect available = screen;
+    int firstOption = 0, visibleOptions = totalOptions;
     const bool small = normalizedUiTextSize(SETTINGS.uiTextSize) == 0;
     if (!small || totalOptions > MAX_OPTIONS || fullHeight > screen.height) {
       available = device.safeRect();
@@ -329,6 +330,8 @@ class OptionPopup {
       const int headerHeight = fui::optionDialogHeight(target, props, width);
       const auto window = optionPopupWindow(totalOptions, selectedIndex, available.height, headerHeight,
                                             props.buttonHeight + props.gap);
+      firstOption = window.first;
+      visibleOptions = window.count;
       int slot = 0;
       if (window.paged) {
         options[slot++] = {tr(STR_PREV_PAGE), ACTION_PAGE,
@@ -358,6 +361,10 @@ class OptionPopup {
     frame.hit(dialogRect, ACTION_CHROME, 0, fui::InputTouch);
     if (shell::isUgly()) renderUgly(renderer, frame, dialogRect, props);
     else fui::optionDialog(frame, dialogRect, props);
+    PageScrollbar::instance().draw(renderer, target, dialogRect.y, dialogRect.bottom(),
+                                   totalOptions * dialogRect.height / std::max(1, visibleOptions),
+                                   firstOption * dialogRect.height / std::max(1, visibleOptions), this, dialogRect.right());
+    PageScrollbar::instance().endPaint(&renderer);
     // Atomically make this generation the one handleInput() reads, now that
     // every hit() call for this frame is done.
     interactions.publish();

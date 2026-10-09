@@ -388,7 +388,7 @@ void UiListActivity::loop() {
 }
 
 void UiListActivity::setPageScrollRegion(const int top, const int bottom, const int length, const int offset) {
-  if (!tenorchrome::kTouchShell || bottom <= top || length <= bottom - top) return;
+  if (bottom <= top || length <= bottom - top) return;
   pageScrollRegion = {top, bottom, length, std::clamp(offset, 0, length - (bottom - top))};
 }
 
@@ -568,6 +568,7 @@ void UiListActivity::navigateButtons() {
 }
 
 void UiListActivity::frameRows(fui::ListProps& props) {
+  props.scrollIndicator = false;
   rowsFramed = tenorchrome::roundFrames() && listFramed();
   if (!rowsFramed) {
     // Buttons (X3/X4): the row past the last full one shows its top, faded (fadeMoreBelow), in place of a "more"
@@ -594,7 +595,6 @@ void UiListActivity::frameRows(fui::ListProps& props) {
   rowsHaveIcons = props.rowProvider ? static_cast<bool>(first.icon) : props.items && props.count > 0 && props.items[0].icon;
   // The edges fade where rows go on (drawRowFrame), in place of the scroll bar; the row past the last
   // full one shows its top in the bottom band.
-  props.scrollIndicator = false;
   props.partialTrailingRow = true;
 }
 
@@ -777,6 +777,12 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
                           listCount(), props);
   keepUglyRows(props);
   measurePageScrollbar(screen, laid);
+  if (!tenorchrome::kTouchShell) {
+    const int height = screen.body().height;
+    const int rows = std::max(1, activeNav().pageRowsFor(listCount()));
+    setPageScrollRegion(screen.body().y, screen.body().bottom(), listCount() * height / rows,
+                        activeNav().top * height / rows);
+  }
 
   activeNav().selected = kepConTro(activeNav().selected, listCount());
   // The touch shell has no cursor row: a tap opens or changes the row, nothing waits "selected".

@@ -195,11 +195,13 @@ void ReaderToolbarUi::buildSheet(UiScreen& screen, const fui::SheetProps& props,
     screen.setContentMarginFromScreen({static_cast<int16_t>(body.y), 0,
                                       static_cast<int16_t>(renderer_->getScreenHeight() - body.bottom()), 0});
   }
+  if (usesX3Bar() && model_.panel) screen.insetContent({0, 16, 0, 16});
   const auto bounds = screen.body();
   const auto sheetHeight = std::min(height, bounds.height);
   const fui::Rect rect{bounds.x, static_cast<int16_t>(bounds.bottom() - sheetHeight), bounds.width, sheetHeight};
   auto themed = props;
   if (themed.radius == fui::RADIUS_INHERIT) themed.radius = screen.theme().sheetRadius;
+  if (usesX3Bar() && model_.panel) themed.radius = tenorchrome::PANEL_RADIUS;
   themed.ruleWidth = 0;
   fui::sheet(screen.frame(), rect, themed);
   // The edge bent round the sheet's top corners (founder 06/10), at the radius of the popups this menu opens
@@ -207,6 +209,8 @@ void ReaderToolbarUi::buildSheet(UiScreen& screen, const fui::SheetProps& props,
   // hints (or the screen's edge) take its bottom line.
   screen.target().stroke(fui::Rect{rect.x, rect.y, rect.width, static_cast<int16_t>(rect.height + themed.radius)},
                          props.rule, static_cast<uint8_t>(props.ruleWidth), themed.radius, fui::CornersTop);
+  if (usesX3Bar() && model_.panel)
+    tenorchrome::drawRoundRing(*renderer_, rect.x, rect.y, rect.width, rect.height, tenorchrome::PANEL_RADIUS, 2, true);
   skinFrame_ = rect;
   const auto content = fui::sheetContentRect(rect, themed);
   screen.insetContent(fui::Insets{static_cast<int16_t>(content.y - bounds.y), 0,
@@ -406,9 +410,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   if (sheetRows < 1) sheetRows = 1;
   sheetRows_ = sheetRows;
   buildSheet(screen, sheetProps, static_cast<int16_t>(chrome + sheetRows * rowStride - rowGap));
-  // No blanket side inset: Screen::list() draws in the content band, and the
-  // scroll track must reach the sheet's edge like a full-screen list's does.
-  // The title insets itself; the rows inset via rowInset below.
+  // The panel leaves the shared scrollbar outside its ring. The title and rows inset themselves.
 
   // Title line: panel name left, page position right when the list spans pages.
   {
@@ -436,10 +438,9 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   // the theme keeps (the buttons: TENOR_PILL_SIDE_PADDING, as in Settings).
   listProps_.labelText = tokens.bodyText;
   listProps_.sidePadding = tokens.listSidePadding;
-  // The list band spans the sheet's full width -- the scroll track hugs the
-  // panel edge (theme bezel inset included) exactly like a full-screen list.
-  // rowInset pulls the rows back to the title's spaceLg alignment.
+  // rowInset aligns the rows with the title inside the panel.
   listProps_.rowInset = tokens.spaceLg;
+  listProps_.scrollIndicator = false;
   const fui::Rect listRect = screen.body();
   skinList_ = listRect;
   const int count = std::max(0, model_.itemCount);
@@ -504,6 +505,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     screen.target().text(listRect.inset(fui::Insets{0, tokens.spaceLg, 0, tokens.spaceLg}), model_.emptyText, hint);
   }
 
+  PageScrollbar::instance().drawList(*renderer_, screen.target(), listRect, nav_, count);
   const int pageRows = nav_.pageRows();
   const int totalPages = pageRows > 0 ? (count + pageRows - 1) / pageRows : 0;
   if (totalPages > 1) {

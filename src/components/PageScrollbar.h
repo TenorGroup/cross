@@ -13,7 +13,7 @@
 
 class PageScrollbar {
  public:
-  // X4 Pro: x 469-474, with 5 clear pixels between the thumb and the frame.
+  // X3: x 517-522; X4 Pro: x 469-474. The thumb clears the frame by 5 pixels.
   static constexpr int PAGE_SCROLLBAR_EDGE_INSET = 5;
 
   static PageScrollbar& instance() {
@@ -22,7 +22,7 @@ class PageScrollbar {
   }
 
   void activate(const void* activity) {
-    if (!tenorchrome::kTouchShell || activityOwner == activity) return;
+    if (activityOwner == activity) return;
     activityOwner = activity;
     regionOwner = nullptr;
     available = false;
@@ -33,7 +33,7 @@ class PageScrollbar {
   void beginPaint() { painted = false; }
 
   void endPaint(const GfxRenderer* renderer = nullptr) {
-    if (painted || !tenorchrome::kTouchShell) return;
+    if (painted) return;
     if (renderer && available.load())
       renderer->fillRect(region.left, region.top, tenorchrome::FRAME_BAR_WIDTH, region.bottom - region.top, false);
     available = false;
@@ -43,8 +43,7 @@ class PageScrollbar {
   }
 
   void draw(const GfxRenderer& renderer, freeink::ui::DrawTarget& target, const int top, const int bottom,
-            const int length, const int offset, const void* owner) {
-    if (!tenorchrome::kTouchShell) return;
+            const int length, const int offset, const void* owner, const int frameRight = 0) {
     painted = true;
     const int height = bottom - top;
     if (height <= 0 || length <= height) {
@@ -57,18 +56,20 @@ class PageScrollbar {
       return;
     }
     const int clampedOffset = std::clamp(offset, 0, length - height);
-    const int left = renderer.getScreenWidth() - PAGE_SCROLLBAR_EDGE_INSET - tenorchrome::FRAME_BAR_WIDTH;
+    const int edgeLeft = renderer.getScreenWidth() - PAGE_SCROLLBAR_EDGE_INSET - tenorchrome::FRAME_BAR_WIDTH;
+    const int left = frameRight > 0 ? std::min(edgeLeft, frameRight + PAGE_SCROLLBAR_EDGE_INSET) : edgeLeft;
     if (available.load() && (regionOwner != owner || region.left != left || region.top != top || region.bottom != bottom))
       renderer.fillRect(region.left, region.top, tenorchrome::FRAME_BAR_WIDTH, region.bottom - region.top, false);
-    if (regionOwner != owner || region.left != left || region.top != top || region.bottom != bottom ||
-        region.length != length || region.offset != clampedOffset)
+    if (tenorchrome::kTouchShell &&
+        (regionOwner != owner || region.left != left || region.top != top || region.bottom != bottom ||
+         region.length != length || region.offset != clampedOffset))
       idle.show(millis());
     region = {left, top, bottom, length, clampedOffset};
     regionOwner = owner;
     available = true;
     cancelIdleRequest();
     renderer.fillRect(left, top, tenorchrome::FRAME_BAR_WIDTH, height, false);
-    if (idle.isVisible()) paint(target);
+    if (!tenorchrome::kTouchShell || idle.isVisible()) paint(target);
   }
 
   void drawList(const GfxRenderer& renderer, freeink::ui::DrawTarget& target, const freeink::ui::Rect viewport,
@@ -105,6 +106,7 @@ class PageScrollbar {
   }
 
   bool renderIdleUpdate(const GfxRenderer& renderer, const MappedInputManager& input) {
+    if (!tenorchrome::kTouchShell) return false;
     const bool hide = hidePending.exchange(false);
     const bool show = showPending.exchange(false);
     if (!hide && !show) return false;
@@ -128,9 +130,9 @@ class PageScrollbar {
   }
 
   void repaint(const GfxRenderer& renderer, freeink::ui::DrawTarget& target) const {
-    if (!tenorchrome::kTouchShell || !available.load()) return;
+    if (!available.load()) return;
     renderer.fillRect(region.left, region.top, tenorchrome::FRAME_BAR_WIDTH, region.bottom - region.top, false);
-    if (idle.isVisible()) paint(target);
+    if (!tenorchrome::kTouchShell || idle.isVisible()) paint(target);
   }
 
  private:

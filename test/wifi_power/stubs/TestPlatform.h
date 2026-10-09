@@ -252,6 +252,7 @@ struct ListItem {
   int16_t actionValue = 0;
 };
 struct ListProps {
+  bool scrollIndicator = true;
   int16_t rowInset = 0;
   ListItem* items = nullptr;
   uint16_t count = 0;

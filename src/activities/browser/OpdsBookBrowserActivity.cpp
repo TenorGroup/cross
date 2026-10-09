@@ -356,11 +356,10 @@ void OpdsBookBrowserActivity::buildBrowsingScreen(UiScreen& screen) {
   props.partialTrailingRow = true;
   if (tenorchrome::kTouchShell) props.rowInset = tenorchrome::FOOT_BACK_X;
   screen.syncListViewport(listNav, props, static_cast<int>(entries.size()));
-  if (tenorchrome::kTouchShell) props.scrollIndicator = false;
+  props.scrollIndicator = false;
   const auto viewport = screen.body();
   screen.list(props);
-  if (tenorchrome::kTouchShell)
-    PageScrollbar::instance().drawList(renderer, screen.target(), viewport, listNav, static_cast<int>(entries.size()));
+  PageScrollbar::instance().drawList(renderer, screen.target(), viewport, listNav, static_cast<int>(entries.size()));
 }
 
 void OpdsBookBrowserActivity::buildDownloadScreen(UiScreen& screen) {

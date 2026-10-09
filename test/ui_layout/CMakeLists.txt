@@ -109,3 +109,5 @@ if(name STREQUAL "sleep_gray_planes")
 endif()
 add_test(NAME UiLayout.${name} COMMAND UiLayout_${name})
 endforeach()
+
+add_test(NAME UiLayout.x3_page_scrollbar COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_x3_page_scrollbar.py" --output "${CMAKE_CURRENT_BINARY_DIR}/x3_page_scrollbar")
