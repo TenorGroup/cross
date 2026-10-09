@@ -45,6 +45,8 @@ std::atomic<bool> readerStartDeferred{false};
 std::atomic<bool> radioIdleStopped{false};
 std::atomic<bool> rearmRequested{false};
 std::atomic<bool> heldForBuild{false};
+bool connectRequested = false;
+std::atomic<Why> startRefusal{Why::Ok};
 // Written by the start (one at a time), read by the main loop once no start is in flight.
 Tracker heapTracker{port::restartMemo()};
 
@@ -54,6 +56,7 @@ struct Visit {
   // Each visit asks for the radio once, so a refusal does not churn allocations.
   bool attempted = false;
   bool reconnectArmed = false;
+  bool manualConnect = false;
   uint32_t retryAtMs = 0;
   uint8_t retries = 0;
 };
@@ -135,6 +138,7 @@ bool beginOwned() {
 
   const Heap heap = host->heap();
   const Why checked = radioVerdict(heapInputs(Phase::BeforeStart, heap, false));
+  startRefusal.store(checked, std::memory_order_relaxed);
   if (checked != Why::Ok) {
     logSkipped("insufficient-internal-heap", heap);
     heapTracker.refused(checked);
@@ -158,6 +162,7 @@ bool beginOwned() {
 
   const Heap after = host->heap();
   const Why started = radioVerdict(heapInputs(Phase::JustStarted, after, host->fileTransferActive()));
+  startRefusal.store(started, std::memory_order_relaxed);
   if (started == Why::HeapInPieces) {
     say(true, "HID begin rolled back (post-init-headroom): free=%zu largest=%zu required_largest=%zu\n",
         after.freeBytes, after.largestBlock, kMinimumLargestBlockBytes);
@@ -276,7 +281,12 @@ void stepLinkNote(const bool entered, const bool acknowledged) {
                !attemptInFlight.load(std::memory_order_acquire);
   in.runningMs = noteRadioUp ? port::nowMs() - noteRadioUpSinceMs : 0;
   in.acknowledged = acknowledged;
-  linkNoteNow.store(nextLinkNote(linkNoteNow.load(std::memory_order_relaxed), in), std::memory_order_relaxed);
+  LinkNote note = nextLinkNote(linkNoteNow.load(std::memory_order_relaxed), in);
+  if (visit.manualConnect && in.refused && note == LinkNote::Failed) {
+    const Why refused = startRefusal.load(std::memory_order_relaxed);
+    if (refused == Why::HeapLow || refused == Why::HeapInPieces) note = LinkNote::LowMemory;
+  }
+  linkNoteNow.store(note, std::memory_order_relaxed);
 }
 
 }  // namespace
@@ -340,6 +350,8 @@ void resetForTests() {
   radioIdleStopped.store(false);
   rearmRequested.store(false);
   heldForBuild.store(false);
+  connectRequested = false;
+  startRefusal.store(Why::Ok);
   heapTracker.fragmentedInRow = 0;
   heapTracker.wanted.store(false);
   visit = Visit{};
@@ -360,6 +372,8 @@ void begin(const Host& h, Config& c) {
   host = &h;
   config = &c;
 }
+
+void requestConnect() { connectRequested = true; }
 
 bool tick(const Scene& s) {
   bool acted = false;
@@ -383,11 +397,33 @@ bool tick(const Scene& s) {
     if (s.visit != visit.id) heldForBuild.store(false, std::memory_order_relaxed);
     visit.attempted = false;
     visit.reconnectArmed = false;
+    visit.manualConnect = false;
     router = Router();  // the settings screen may have changed the tables meanwhile
     visit.retryAtMs = 0;
     visit.retries = 0;
   }
   visit.id = s.visit;
+  const bool requested = connectRequested;
+  if (requested) {
+    connectRequested = false;
+    if (reader && config->enabled) {
+      if (port::connected()) {
+        linkNoteNow.store(LinkNote::Connected, std::memory_order_relaxed);
+      } else {
+        visit.manualConnect = true;
+        radioIdleStopped.store(false, std::memory_order_relaxed);
+        if (!attemptInFlight.load(std::memory_order_acquire) && !port::running()) {
+          visit.attempted = false;
+          visit.reconnectArmed = false;
+          visit.retryAtMs = 0;
+          visit.retries = 0;
+          readerStartDeferred.store(false, std::memory_order_relaxed);
+        }
+        noteRadioUpSinceMs = port::nowMs();
+        linkNoteNow.store(LinkNote::Connecting, std::memory_order_relaxed);
+      }
+    }
+  }
   // A page key or touch in the book grants one fresh start after the idle stop. A radio the
   // book stopped for a starved build waits for the book's own request (afterPaint).
   if (reader && config->enabled && radioIdleStopped.load(std::memory_order_relaxed) &&
@@ -461,12 +497,12 @@ bool tick(const Scene& s) {
     noteRadioUp = true;
     noteRadioUpSinceMs = port::nowMs();
   }
-  stepLinkNote(entered, false);
+  stepLinkNote(entered && !requested, false);
 
   // A heap in pieces keeps the radio off until a restart. Restart into the book only from a
   // shown page with no radio start in flight, no sleep, no card or Wi-Fi session.
-  if (detail::heapRestartWanted() && config->enabled && visit.attempted && reader && s.pageShown && !s.sleeping &&
-      !s.storageBusy && !busy() && !s.wifiOn) {
+  if (detail::heapRestartWanted() && !visit.manualConnect && config->enabled && visit.attempted && reader && s.pageShown &&
+      !s.sleeping && !s.storageBusy && !busy() && !s.wifiOn) {
     const Heap heap = host->heap();
     say(false, "Heap fragmented for radio: free=%u largest=%u; silent restart to reader\n",
         static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.largestBlock));

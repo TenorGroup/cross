@@ -197,6 +197,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     // Runs the reader menu's Save quotation (the quote selector). Appended after the tilt toggle, so
     // every earlier save reads as before; the list shows it at position 6 on a board without an IMU.
     LP_MENU_SAVE_QUOTE = 7,
+    LP_MENU_CONNECT_REMOTE = 8,
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
 

@@ -452,6 +452,9 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // or one from a newer file) keeps the default, as the generic loop's clamp did.
   const uint8_t storedLongPress = doc["longPressMenuFunction"] | longPressMenuFunction;
   if (storedLongPress < LONG_PRESS_MENU_FUNCTION_COUNT &&
+#if !FREEINK_CAP_BLE_HID_HOST
+      storedLongPress != LP_MENU_CONNECT_REMOTE &&
+#endif
       (halTiltSensor.isAvailable() || storedLongPress != LP_MENU_TILT_PAGE_TURN)) {
     longPressMenuFunction = storedLongPress;
   }

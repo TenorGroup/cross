@@ -197,6 +197,7 @@ add_subdirectory(battery_display_smoothing)
 add_subdirectory(http_downloader)
 
 add_subdirectory(ble_integration)
+add_subdirectory(ble_hold_connect)
 
 add_subdirectory(settings_catalog)
 add_subdirectory(overlay_snapshot)

@@ -144,6 +144,7 @@ struct Scene {
 };
 
 void begin(const Host& host, Config& config);
+void requestConnect();
 // Returns true when a remote press acted this pass (the host counts it as user activity).
 bool tick(const Scene& scene);
 // False: the radio is still stopping (or a start is in flight); call again next pass before
@@ -189,7 +190,7 @@ Why why();
 // moment a book is entered until a remote links; Failed when the radio was refused for this
 // visit or ran kLinkNoteFailMs without a link, until the next page turn; None otherwise.
 // nextLinkNote (RadioPolicy.h) decides; tick() and acknowledgeLinkNote() apply it.
-enum class LinkNote : uint8_t { None, Connecting, Failed };
+enum class LinkNote : uint8_t { None, Connecting, Failed, Connected, LowMemory };
 // The note for the book in front. Any task.
 LinkNote linkNote();
 // A page turn was applied in the book: a Failed note gives the title back. Main loop.

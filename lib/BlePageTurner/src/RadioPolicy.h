@@ -116,8 +116,10 @@ constexpr LinkNote nextLinkNote(const LinkNote note, const NoteInputs& in) {
       if (in.linked) return LinkNote::None;
       return in.refused || in.runningMs >= kLinkNoteFailMs ? LinkNote::Failed : LinkNote::Connecting;
     case LinkNote::Failed:
+    case LinkNote::Connected:
+    case LinkNote::LowMemory:
       // Read once: the next page turn gives the title back, whatever the radio does meanwhile.
-      return in.acknowledged ? LinkNote::None : LinkNote::Failed;
+      return in.acknowledged ? LinkNote::None : note;
     case LinkNote::None:
       return LinkNote::None;
   }

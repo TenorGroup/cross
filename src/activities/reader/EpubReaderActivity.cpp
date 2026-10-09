@@ -1429,6 +1429,7 @@ void EpubReaderActivity::loop() {
 
   if (showBookmarkMessage && (millis() - bookmarkMessageTime) >= ReaderUtils::BOOKMARK_MESSAGE_DURATION_MS) {
     showBookmarkMessage = false;
+    if (bleturner::linkNote() != bleturner::LinkNote::Connecting) bleConnectMessage = false;
     requestUpdate();
   }
 
@@ -1580,6 +1581,18 @@ void EpubReaderActivity::loop() {
       case CrossPointSettings::LP_MENU_SAVE_QUOTE:
         // What the reader menu's Save quotation runs: the quote selector on this page.
         openDictionaryWordSelect(true);
+        return;
+      case CrossPointSettings::LP_MENU_CONNECT_REMOTE:
+#if FREEINK_CAP_BLE_HID_HOST
+        if (!SETTINGS.ble.enabled) {
+          SETTINGS.ble.enabled = 1;
+          SETTINGS.saveToFile();
+        }
+        bleturner::requestConnect();
+        bleConnectMessage = true;
+        linkNoteInTitle = true;
+        linkNoteDrawn = bleturner::LinkNote::None;
+#endif
         return;
       case CrossPointSettings::LP_MENU_DISABLED:
       default:
@@ -2168,6 +2181,7 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
     case CrossPointSettings::LP_MENU_FILE_TRANSFER:
     case CrossPointSettings::LP_MENU_TILT_PAGE_TURN:
     case CrossPointSettings::LP_MENU_SAVE_QUOTE:
+    case CrossPointSettings::LP_MENU_CONNECT_REMOTE:
       return ReaderUtils::BOOKMARK_HOLD_MS;
     case CrossPointSettings::LP_MENU_KOSYNC:
       return KOREADER_STORE.hasCredentials() ? ReaderUtils::GO_HOME_MS : 0;
@@ -2178,6 +2192,7 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 }
 
 void EpubReaderActivity::toggleTiltFromReader() {
+  bleConnectMessage = false;
   SETTINGS.toggleTiltPageTurn();
   SETTINGS.saveToFile();
   // Borrow the bookmark popup: same place, same timeout, one line of state.
@@ -2185,6 +2200,15 @@ void EpubReaderActivity::toggleTiltFromReader() {
   showBookmarkMessage = true;
   bookmarkMessageTime = millis();
   requestUpdate();
+}
+
+void EpubReaderActivity::redrawLinkNote() {
+  statusBarStale = true;
+  if (bleConnectMessage && bleturner::linkNote() != bleturner::LinkNote::None) {
+    showBookmarkMessage = true;
+    bookmarkMessageTime = millis();
+    requestUpdate();
+  }
 }
 
 bool EpubReaderActivity::launchKOReaderSync() {
@@ -3184,7 +3208,10 @@ void EpubReaderActivity::renderBook() {
   }
 
   if (showBookmarkMessage) {
-    if (tiltMessage) {
+    if (bleConnectMessage) {
+      std::string text;
+      if (linkNoteTitle(text)) GUI.drawPopup(renderer, text.c_str());
+    } else if (tiltMessage) {
       const std::string text = std::string(tr(STR_TILT_PAGE_TURN)) + ": " +
                                (SETTINGS.tiltPageTurn ? tr(STR_STATE_ON) : tr(STR_STATE_OFF));
       GUI.drawPopup(renderer, text.c_str());
@@ -5950,6 +5977,7 @@ void EpubReaderActivity::loadCachedBookmarks() {
 
 void EpubReaderActivity::addBookmark() {
   tiltMessage = false;
+  bleConnectMessage = false;
   if (!section || !epub) return;
   LOG_DBG("ERS", "Toggle bookmark at spine %d, page %d", currentSpineIndex, section ? section->currentPage : -1);
   int currentPage;

@@ -251,7 +251,19 @@ bool ReaderActivity::linkNoteTitle(std::string& title) const {
   linkNoteDrawn = note;
   linkNoteInTitle = true;
   if (note == bleturner::LinkNote::None) return false;
-  title = note == bleturner::LinkNote::Connecting ? tr(STR_BLE_LINKING) : tr(STR_BLE_LINK_FAILED);
+  switch (note) {
+    case bleturner::LinkNote::Connected: {
+      const auto peer = bleturner::linked();
+      title = std::string(tr(STR_CONNECTED)) + " " + (peer.name[0] ? peer.name : peer.addr);
+      break;
+    }
+    case bleturner::LinkNote::LowMemory:
+      title = tr(STR_BLE_READER_LOW_RAM);
+      break;
+    default:
+      title = note == bleturner::LinkNote::Connecting ? tr(STR_BLE_LINKING) : tr(STR_BLE_LINK_FAILED);
+      break;
+  }
   return true;
 }
 

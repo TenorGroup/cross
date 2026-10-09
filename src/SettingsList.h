@@ -196,10 +196,14 @@ inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& di
 inline SettingInfo buildLongPressMenuSetting(const bool hasTilt) {
   static constexpr StrId LABELS[] = {StrId::STR_KOSYNC,     StrId::STR_DISABLED,        StrId::STR_BOOKMARK_OPTION,
                                      StrId::STR_DICTIONARY, StrId::STR_READER_MENU,     StrId::STR_FILE_TRANSFER,
-                                     StrId::STR_TILT_PAGE_TURN, StrId::STR_QUOTES_SAVE_ACTION};
+                                     StrId::STR_TILT_PAGE_TURN, StrId::STR_QUOTES_SAVE_ACTION,
+                                     StrId::STR_BLE_CONNECT_REMOTE};
   static_assert(std::size(LABELS) == CrossPointSettings::LONG_PRESS_MENU_FUNCTION_COUNT, "one label per function");
   std::vector<StrId> offered;
   for (uint8_t number = 0; number < std::size(LABELS); ++number) {
+#if !FREEINK_CAP_BLE_HID_HOST
+    if (number == CrossPointSettings::LP_MENU_CONNECT_REMOTE) continue;
+#endif
     if (hasTilt || number != CrossPointSettings::LP_MENU_TILT_PAGE_TURN) offered.push_back(LABELS[number]);
   }
   const uint8_t skipped = hasTilt ? 0 : 1;  // list positions after the tilt number sit one lower

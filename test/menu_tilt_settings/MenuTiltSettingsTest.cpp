@@ -42,15 +42,19 @@ bool longPressValuesMatch(const std::vector<SettingInfo>& catalog, const bool ha
                               StrId::STR_DICTIONARY, StrId::STR_READER_MENU, StrId::STR_FILE_TRANSFER};
   if (hasImu) expected.push_back(StrId::STR_TILT_PAGE_TURN);
   expected.push_back(StrId::STR_QUOTES_SAVE_ACTION);
+#if FREEINK_CAP_BLE_HID_HOST
+  expected.push_back(StrId::STR_BLE_CONNECT_REMOTE);
+#endif
   return longPress->enumValues == expected &&
-         expected.size() == (hasImu ? CrossPointSettings::LONG_PRESS_MENU_FUNCTION_COUNT
-                                    : CrossPointSettings::LONG_PRESS_MENU_FUNCTION_COUNT - 1U);
+         expected.size() == CrossPointSettings::LONG_PRESS_MENU_FUNCTION_COUNT - (hasImu ? 0U : 1U) -
+                                (FREEINK_CAP_BLE_HID_HOST ? 0U : 1U);
 }
 
 // Label of each stored Confirm-hold number (0-7), whatever list position a board shows it at.
 constexpr StrId LONG_PRESS_LABELS[] = {StrId::STR_KOSYNC,     StrId::STR_DISABLED,    StrId::STR_BOOKMARK_OPTION,
                                        StrId::STR_DICTIONARY, StrId::STR_READER_MENU, StrId::STR_FILE_TRANSFER,
-                                       StrId::STR_TILT_PAGE_TURN, StrId::STR_QUOTES_SAVE_ACTION};
+                                       StrId::STR_TILT_PAGE_TURN, StrId::STR_QUOTES_SAVE_ACTION,
+                                       StrId::STR_BLE_CONNECT_REMOTE};
 
 // Every stored Confirm-hold number reads back as itself and saves as itself; the list shows its label at the
 // position the board offers it. Without an IMU the tilt number (6) is not offered and falls back to Off, while
@@ -67,7 +71,7 @@ bool longPressStoreKept(const std::vector<SettingInfo>& catalog, const bool hasI
     in["longPressMenuFunction"] = stored;
     SETTINGS.longPressMenuFunction = CrossPointSettings::LP_MENU_DISABLED;
     ok = expect(SETTINGS.fromJson(in.as<JsonVariantConst>()), "Confirm-hold JSON loads") && ok;
-    const bool offered = stored < 8 && (hasImu || stored != 6);
+    const bool offered = stored < 9 && (hasImu || stored != 6) && (FREEINK_CAP_BLE_HID_HOST || stored != 8);
     const uint8_t want = offered ? static_cast<uint8_t>(stored) : CrossPointSettings::LP_MENU_DISABLED;
     ok = expect(SETTINGS.longPressMenuFunction == want, "stored Confirm-hold number is kept, an unoffered one falls to Off") && ok;
     JsonDocument out;

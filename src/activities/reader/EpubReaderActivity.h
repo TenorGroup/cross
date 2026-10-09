@@ -92,7 +92,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool statusBarStale = false;
   void repaintStatusBarAlone();
   // The page turner's link note changed: the main loop redraws the status bar alone as for USB.
-  void redrawLinkNote() override { statusBarStale = true; }
+  void redrawLinkNote() override;
   void saveProgressIfMoved();
 #ifdef TENOR_TURN_TRACE
   TurnTrace pendingManualTurnTrace;
@@ -143,6 +143,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool bookmarkRemoved = false;
   // The bookmark popup slot shows the tilt toggle's new state instead.
   bool tiltMessage = false;
+  bool bleConnectMessage = false;
   std::vector<BookmarkEntry> cachedBookmarks;
   // Anchors of this book's saved quotes, 12 bytes each and capped by the store, read
   // once per book open. Highlights are drawn from these, so no quote text is resident.
