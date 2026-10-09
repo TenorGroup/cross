@@ -12,6 +12,7 @@
 #include <iterator>
 #include <vector>
 #include <unistd.h>
+#include "activities/settings/FontDownloadTransfer.h"
 
 namespace {
 using Bytes = std::vector<uint8_t>;
@@ -122,6 +123,7 @@ class FontPack : public testing::Test {
     cardRoot = std::filesystem::temp_directory_path() / ("font-pack-" + std::to_string(getpid()));
     std::filesystem::remove_all(cardRoot); std::filesystem::create_directories(cardRoot / "fonts/Example");
     cutDuringStage = cutAfterBackup = failPromotion = false; Storage.available = 1ULL << 30;
+    failBackupCleanup = failPackCleanup = false;
     std::ofstream(cardRoot / "fonts/Example/old.txt", std::ios::binary) << "original family";
   }
   void TearDown() override { std::filesystem::remove_all(cardRoot); }
@@ -251,4 +253,140 @@ TEST_F(FontPack, PublishedPackUsesTheSameProductionInstaller) {
   EXPECT_FALSE(std::filesystem::exists(target));
   std::printf("real_pack=%s bytes=%llu install_seconds=%.6f workspace=%zu\n", input.filename().c_str(),
               static_cast<unsigned long long>(std::filesystem::file_size(input)), elapsed, FontPackInstaller::workingSetBytes());
+}
+
+TEST_F(FontPack, ManifestFileClassifier) {
+  using fontdownload::ManifestFileKind;
+  EXPECT_EQ(fontdownload::classifyManifestFile("Example.cpfontpack"), ManifestFileKind::Pack);
+  EXPECT_EQ(fontdownload::classifyManifestFile("Example_14.cpfont"), ManifestFileKind::SingleFont);
+  EXPECT_EQ(fontdownload::classifyManifestFile("weight-6/Example_14.cpfont"), ManifestFileKind::SingleFont);
+  for (const char* name : {"../Example.cpfontpack", "weight-6/Example.cpfontpack", "Example.ttf", "", "X.CPFONTPACK"})
+    EXPECT_EQ(fontdownload::classifyManifestFile(name), ManifestFileKind::Invalid);
+  EXPECT_EQ(fontdownload::classifyManifestFile(nullptr), ManifestFileKind::Invalid);
+  EXPECT_TRUE(fontdownload::packMatchesFamily("Example.cpfontpack", "Example"));
+  EXPECT_FALSE(fontdownload::packMatchesFamily("Other.cpfontpack", "Example"));
+  EXPECT_EQ(fontdownload::requiredPackSpace(68363915), 140922134u);
+  EXPECT_TRUE(fontdownload::canInstallPack(10240 + 5512 + 1024, 8192 + 5512 + 1024, 5512));
+  EXPECT_FALSE(fontdownload::canInstallPack(10240 + 5512 + 1023, 8192 + 5512 + 1024, 5512));
+  EXPECT_FALSE(fontdownload::canInstallPack(10240 + 5512 + 1024, 8192 + 5512 + 1023, 5512));
+}
+
+TEST_F(FontPack, StreamCallsRealInstallerOnceAfterClosingTransport) {
+  const auto bytes = archive(entries());
+  bool cancelled = false;
+  bool transportClosed = false;
+  bool markedInstalled = false;
+  unsigned installs = 0;
+  const auto result = fontdownload::downloadAndInstallPack(
+      "Example.cpfontpack", bytes.size(), crc(bytes), cancelled,
+      [&](const auto& sink) {
+        for (size_t offset = 0; offset < bytes.size();) {
+          const size_t count = std::min<size_t>(1024, bytes.size() - offset);
+          if (!sink(bytes.data() + offset, count)) return false;
+          offset += count;
+        }
+        transportClosed = true;
+        return true;
+      },
+      [&](const char* path) {
+        ++installs;
+        EXPECT_TRUE(transportClosed);
+        EXPECT_FALSE(markedInstalled);
+        EXPECT_FALSE(Storage.exists("/fonts/Example.cpfontpack.tmp"));
+        EXPECT_TRUE(Storage.exists("/fonts/Example/old.txt"));
+        return FontPackInstaller::install(path) == FontPackInstaller::Result::OK;
+      });
+  if (result == fontdownload::TransferResult::OK) markedInstalled = true;
+  EXPECT_EQ(result, fontdownload::TransferResult::OK);
+  EXPECT_EQ(installs, 1u);
+  EXPECT_TRUE(markedInstalled);
+  EXPECT_TRUE(Storage.exists("/fonts/Example/weight-6/Example_14.cpfont"));
+  EXPECT_FALSE(Storage.exists("/fonts/Example/old.txt"));
+}
+
+TEST_F(FontPack, BadStreamCrcNeverCallsInstaller) {
+  const auto bytes = archive(entries());
+  bool cancelled = false;
+  unsigned installs = 0;
+  const auto result = fontdownload::downloadAndInstallPack(
+      "Example.cpfontpack", bytes.size(), crc(bytes) ^ 1, cancelled,
+      [&](const auto& sink) { return sink(bytes.data(), bytes.size()); },
+      [&](const char*) { ++installs; return true; });
+  EXPECT_EQ(result, fontdownload::TransferResult::ChecksumError);
+  EXPECT_EQ(installs, 0u);
+  EXPECT_FALSE(Storage.exists("/fonts/Example.cpfontpack.tmp"));
+  EXPECT_FALSE(Storage.exists("/fonts/Example.cpfontpack"));
+  EXPECT_EQ(read("/fonts/Example/old.txt"), "original family");
+}
+
+TEST_F(FontPack, RealInstallerRollbackKeepsFamilyAndRetainsDownloadedPack) {
+  const auto bytes = archive(entries());
+  bool cancelled = false;
+  failPromotion = true;
+  unsigned installs = 0;
+  const auto result = fontdownload::downloadAndInstallPack(
+      "Example.cpfontpack", bytes.size(), crc(bytes), cancelled,
+      [&](const auto& sink) { return sink(bytes.data(), bytes.size()); },
+      [&](const char* path) { ++installs; return FontPackInstaller::install(path) == FontPackInstaller::Result::OK; });
+  EXPECT_EQ(result, fontdownload::TransferResult::InstallError);
+  EXPECT_EQ(installs, 1u);
+  EXPECT_FALSE(Storage.exists("/fonts/Example.cpfontpack.tmp"));
+  EXPECT_TRUE(Storage.exists("/fonts/Example.cpfontpack"));
+  unchanged();
+}
+
+TEST_F(FontPack, SpaceCheckRejectsBeforeOpeningTransport) {
+  bool cancelled = false;
+  bool fetched = false;
+  bool installed = false;
+  Storage.available = fontdownload::requiredPackSpace(68363915) - 1;
+  std::ofstream(cardRoot / "fonts/Example.cpfontpack.tmp") << "interrupted download";
+  const auto result = fontdownload::downloadAndInstallPack(
+      "Example.cpfontpack", 68363915, 0, cancelled,
+      [&](const auto&) { fetched = true; return true; },
+      [&](const char*) { installed = true; return true; });
+  EXPECT_EQ(result, fontdownload::TransferResult::NoSpace);
+  EXPECT_FALSE(fetched);
+  EXPECT_FALSE(installed);
+  EXPECT_FALSE(Storage.exists("/fonts/Example.cpfontpack.tmp"));
+  EXPECT_EQ(read("/fonts/Example/old.txt"), "original family");
+}
+
+TEST_F(FontPack, MidStreamCancellationRemovesOnlyTemporary) {
+  const auto bytes = archive(entries());
+  bool cancelled = false;
+  bool installed = false;
+  const auto result = fontdownload::downloadAndInstallPack(
+      "Example.cpfontpack", bytes.size(), crc(bytes), cancelled,
+      [&](const auto& sink) {
+        EXPECT_TRUE(sink(bytes.data(), 17));
+        cancelled = true;
+        return sink(bytes.data() + 17, bytes.size() - 17);
+      },
+      [&](const char*) { installed = true; return true; });
+  EXPECT_EQ(result, fontdownload::TransferResult::Aborted);
+  EXPECT_FALSE(installed);
+  EXPECT_FALSE(Storage.exists("/fonts/Example.cpfontpack.tmp"));
+  EXPECT_EQ(read("/fonts/Example/old.txt"), "original family");
+}
+
+TEST_F(FontPack, CleanupFailureReportsTheAlreadyCommittedInstall) {
+  package();
+  failBackupCleanup = true;
+  EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::OK);
+  EXPECT_TRUE(Storage.exists("/fonts/Example/.pack-ready"));
+  EXPECT_TRUE(Storage.exists("/fonts/Example.old/old.txt"));
+  EXPECT_FALSE(Storage.exists("/fonts/Example/old.txt"));
+  failBackupCleanup = false;
+  EXPECT_TRUE(FontPackInstaller::recover("Example"));
+  EXPECT_FALSE(Storage.exists("/fonts/Example.old"));
+}
+
+TEST_F(FontPack, PackageCleanupFailureReportsCommittedFamily) {
+  package();
+  failPackCleanup = true;
+  EXPECT_EQ(FontPackInstaller::install("/fonts/Example.cpfontpack"), FontPackInstaller::Result::OK);
+  EXPECT_TRUE(Storage.exists("/fonts/Example/.pack-ready"));
+  EXPECT_TRUE(Storage.exists("/fonts/Example.cpfontpack"));
+  EXPECT_FALSE(Storage.exists("/fonts/Example/old.txt"));
 }

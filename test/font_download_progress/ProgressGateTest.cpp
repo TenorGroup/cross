@@ -73,9 +73,12 @@ void testPercentAndTerminalUpdatesRemainVisible() {
 
   gate.renderStarted();
   expect(!gate.renderQueued(), "render start must release the queue slot");
-  expect(gate.requestDue(10, 100, 100), "a ten-percent change must paint");
+  expect(!gate.requestDue(10, 100, 100), "a ten-percent change must respect the one-second floor");
+  expect(gate.requestDue(10, 100, 1000), "a ten-percent change must paint after one second");
+  expect(gate.nextPaintDelay(1100) == 900, "installing must wait for the remaining paint interval");
   gate.renderStarted();
-  expect(gate.requestDue(100, 100, 125), "completion must paint even inside the interval");
+  expect(!gate.requestDue(100, 100, 1025), "completion must respect the one-second floor");
+  expect(gate.requestDue(100, 100, 2000), "completion must paint after one second");
 }
 
 void testCallbackContractAvoidsBlockingOnRender() {
@@ -83,8 +86,8 @@ void testCallbackContractAvoidsBlockingOnRender() {
   const std::string sourcePath =
       overridePath ? overridePath : std::string(REPO_ROOT_PATH) + "/src/activities/settings/FontDownloadActivity.cpp";
   const std::string source = readFile(sourcePath);
-  const size_t callback = source.find("downloadUrl_, staging,");
-  const size_t callbackEnd = source.find("&cancelRequested_", callback);
+  const size_t callback = source.find("void FontDownloadActivity::updateDownloadProgress(");
+  const size_t callbackEnd = source.find("\n}\n", callback);
   expect(callback != std::string::npos && callbackEnd != std::string::npos && callback < callbackEnd,
          "font downloader callback must be present");
   const std::string body = source.substr(callback, callbackEnd - callback);
@@ -97,6 +100,18 @@ void testCallbackContractAvoidsBlockingOnRender() {
          "callback must route paint cadence through the gate");
   expect(body.find("RenderLock lock(*this)") == std::string::npos,
          "progress callback must never wait behind an e-ink refresh");
+}
+
+void testForcedPhasePaintsRespectActualRenderTime() {
+  fontdownload::ProgressRenderGate gate;
+  expect(gate.paintDelay(10) == 0, "first phase can paint immediately");
+  gate.paintStarted(100);
+  expect(gate.paintDelay(150) == 950, "forced phase must wait from the actual paint time");
+  gate.reset();
+  expect(gate.paintDelay(500) == 600, "resetting file counters must preserve the paint floor");
+  expect(gate.paintDelay(1100) == 0, "second phase may paint at the one-second floor");
+  gate.paintStarted(1100);
+  expect(gate.paintDelay(1150) == 950, "both bars share the same paint floor");
 }
 
 }  // namespace
@@ -113,5 +128,6 @@ int main(int argc, char** argv) {
   testOneOutstandingPaintDuringSlowRender();
   testPercentAndTerminalUpdatesRemainVisible();
   testCallbackContractAvoidsBlockingOnRender();
+  testForcedPhasePaintsRespectActualRenderTime();
   return EXIT_SUCCESS;
 }

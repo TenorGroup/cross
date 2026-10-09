@@ -412,7 +412,8 @@ FontPackInstaller::Result FontPackInstaller::install(const char* path) {
     Storage.rename(work->backup, work->destination);
     return Result::IO_ERROR;
   }
-  if (!Storage.removeDir(work->backup) || !Storage.remove(path)) return Result::IO_ERROR;
+  if (!Storage.removeDir(work->backup)) LOG_ERR("FONTPACK", "Committed %s; backup retained", work->family);
+  if (!Storage.remove(path)) LOG_ERR("FONTPACK", "Committed %s; package retained", work->family);
   LOG_INF("FONTPACK", "Installed %s entries=%u workspace=%u", work->family, work->info.count, static_cast<unsigned>(sizeof(Workspace)));
   return Result::OK;
 }

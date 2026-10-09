@@ -38,7 +38,7 @@ assert.deepStrictEqual(cpfontFilesOnly([{name:'A.cpfont'},{name:'A.cpfontpack'},
         loaded = main.index('APP_STATE.loadFromFile()', mounted)
         self.assertLess(scan, loaded)
 
-    def test_uploads_use_owner_callback_and_keep_existing_manifest_url(self):
+    def test_uploads_use_owner_callback_and_pin_pack_manifest_url(self):
         server = (ROOT / 'src/network/CrossPointWebServer.cpp').read_text()
         activity = (ROOT / 'src/activities/network/CrossPointWebServerActivity.cpp').read_text()
         self.assertTrue('fontPackApplier' in server)
@@ -48,7 +48,7 @@ assert.deepStrictEqual(cpfontFilesOnly([{name:'A.cpfont'},{name:'A.cpfontpack'},
         self.assertTrue('RenderLock lock(*this)' in owner)
         self.assertTrue('FontPackInstaller::scan()' in owner)
         header = (ROOT / 'src/activities/settings/FontDownloadActivity.h').read_text()
-        self.assertTrue('https://cross.tenor.vn/firmware/v1.0.50/fonts/fonts.json' in header)
+        self.assertTrue('https://cross.tenor.vn/firmware/v1.0.56/fonts/fonts.json' in header)
         self.assertTrue('installDownloadedPack' in header)
 
 

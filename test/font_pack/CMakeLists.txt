@@ -21,6 +21,7 @@ target_include_directories(FontPackInstallerTest PRIVATE
   ${REPO_ROOT}/src ${REPO_ROOT}/lib/EpdFont ${REPO_ROOT}/lib/JsonParser
   ${REPO_ROOT}/lib/Serialization ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/BlePageTurner/include
+  ${REPO_ROOT}/freeink-sdk/libs/hardware/SDCardManager/include
   ${REPO_ROOT}/.pio/libdeps/gh_release/ArduinoJson/src)
 target_link_libraries(FontPackInstallerTest PRIVATE crosspoint_test_common GTest::gtest_main OpenSSL::Crypto)
 gtest_discover_tests(FontPackInstallerTest)

@@ -27,9 +27,7 @@ inline bool preventsAutoSleep(const Phase phase) {
 }  // namespace font_power
 
 #ifndef FONT_MANIFEST_URL
-// Pin the compatible four-weight font pack independently of future app versions.
-// Publication stages this immutable directory before making the firmware available.
-#define FONT_MANIFEST_URL "https://cross.tenor.vn/firmware/v1.0.50/fonts/fonts.json"
+#define FONT_MANIFEST_URL "https://cross.tenor.vn/firmware/v1.0.56/fonts/fonts.json"
 #endif
 
 class FontDownloadActivity final : public UiListActivity {
@@ -43,6 +41,7 @@ class FontDownloadActivity final : public UiListActivity {
   void onExit() override;
   void render(RenderLock&&) override;
   bool preventAutoSleep() override {
+    if (batchRunning_) return true;
     font_power::Phase phase = font_power::Phase::Idle;
     if (state_ == LOADING_MANIFEST) phase = font_power::Phase::LoadingManifest;
     if (state_ == DOWNLOADING) phase = font_power::Phase::Downloading;
@@ -86,6 +85,8 @@ class FontDownloadActivity final : public UiListActivity {
     uint32_t scriptMask = 0;
     bool installed = false;
     bool hasUpdate = false;
+    const char* failureReason = nullptr;
+    uint32_t requiredMb = 0;
   };
 
   static constexpr size_t MAX_SCRIPT_GROUPS = 32;
@@ -126,6 +127,20 @@ class FontDownloadActivity final : public UiListActivity {
   int downloadingFamilyIndex_ = 0;
   std::string errorMessage_;
   bool cancelRequested_ = false;
+  bool installingPack_ = false;
+  bool batchRunning_ = false;
+  bool batchResult_ = false;
+  uint64_t batchTotalBytes_ = 0;
+  uint64_t batchDownloadedBytes_ = 0;
+  uint32_t familyDownloadedBytes_ = 0;
+  uint32_t streamedBytes_ = 0;
+  unsigned batchFamilyIndex_ = 0;
+  unsigned batchFamilyCount_ = 0;
+  unsigned batchSuccessCount_ = 0;
+  unsigned batchFailureCount_ = 0;
+  int resultFailureIndex_ = 0;
+  const char* failureReason_ = nullptr;
+  uint32_t requiredMb_ = 0;
   bool runtimeStarted_ = false;
   static constexpr unsigned long TERMINAL_IDLE_TIMEOUT_MS = 5UL * 60UL * 1000UL;
   unsigned long terminalStateSince_ = 0;
@@ -166,8 +181,10 @@ class FontDownloadActivity final : public UiListActivity {
   void clearManifest();
   void downloadFamily(ManifestFamily& family);
   void downloadAll();
+  void downloadSelected(bool updates);
   void updateAll();
-  static bool computeFileCrc32(const char* path, uint32_t& outCrc);
+  void updateDownloadProgress(size_t downloaded, size_t total);
+  void waitForDownloadPaint();
   bool showDownloadAllRow() const;
   bool showUpdateAllRow() const;
   int specialRowCount() const;
@@ -185,7 +202,7 @@ class FontDownloadActivity final : public UiListActivity {
   void enterGroup(int groupListIndex);
   size_t totalDownloadSize() const;
   size_t totalUpdateSize() const;
-  static std::string formatSize(size_t bytes);
+  static std::string formatSize(uint64_t bytes);
   bool renderUglyNote() const;
   // The group shown in the header of the family list, or null.
   const char* headerSubtitle();

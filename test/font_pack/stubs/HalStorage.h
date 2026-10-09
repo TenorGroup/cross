@@ -12,6 +12,8 @@ struct PowerCut : std::runtime_error { PowerCut() : std::runtime_error("power cu
 inline bool cutDuringStage = false;
 inline bool cutAfterBackup = false;
 inline bool failPromotion = false;
+inline bool failBackupCleanup = false;
+inline bool failPackCleanup = false;
 inline std::filesystem::path cardRoot;
 
 class HalFile {
@@ -74,8 +76,12 @@ struct HostStorage {
   }
   bool openFileForRead(const char*, const char* value, HalFile& file) { return file.open(path(value)); }
   bool openFileForWrite(const char*, const char* value, HalFile& file) { return file.open(path(value), true); }
-  bool remove(const char* value) { return std::filesystem::remove(path(value)); }
+  bool remove(const char* value) {
+    if (failPackCleanup && std::string(value).ends_with(".cpfontpack")) return false;
+    return std::filesystem::remove(path(value));
+  }
   bool removeDir(const char* value) {
+    if (failBackupCleanup && std::string(value).ends_with(".old")) return false;
     std::error_code error; std::filesystem::remove_all(path(value), error); return !error;
   }
   bool rename(const char* from, const char* to) {
