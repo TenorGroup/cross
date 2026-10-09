@@ -585,11 +585,15 @@ statusglyph::Bt bluetoothNow() {
 
 void drawStripMiddle(const GfxRenderer& r, const int y, const int clockEnd, const int batteryX, const int font) {
   int x = batteryX - STRIP_BATTERY_GAP;
-  const int iconY = tenorchrome::TOUCH_STATUS_TOP_INSET +
-                    (tenorchrome::TOUCH_STRIP_HEIGHT - tenorchrome::TOUCH_STATUS_TOP_INSET - STRIP_ICON) / 2;
+  const auto batteryInk = tenorchrome::batteryInkBounds(r, font, y);
   const auto icon = [&](const freeink::Icon& i) {
     x -= STRIP_ICON;
-    drawIcon(r, i, x, iconY);
+    int inkBottom = 0;
+    const int stride = (i.w + 7) / 8;
+    for (int row = 0; row < i.h; ++row)
+      for (int column = 0; column < i.w; ++column)
+        if (((i.bits[row * stride + column / 8] >> (7 - column % 8)) & 1) == 0) inkBottom = row + 1;
+    drawIcon(r, i, x, batteryInk.top + batteryInk.height - inkBottom);
     x -= STRIP_ICON_GAP;
   };
   if (WiFi.getMode() != WIFI_MODE_NULL) icon(icon_status_wifi_18);
@@ -621,8 +625,11 @@ void drawStripMiddle(const GfxRenderer& r, const int y, const int clockEnd, cons
   const int left = clockEnd + STRIP_NOTE_AIR, right = x + STRIP_ICON_GAP - STRIP_NOTE_AIR;
   const int half = std::min(r.getScreenWidth() / 2 - left, right - r.getScreenWidth() / 2);
   if (half <= 0) return;
-  const std::string text = r.truncatedText(font, note, 2 * half);
-  r.drawText(font, r.getScreenWidth() / 2 - r.getTextWidth(font, text.c_str()) / 2, y, text.c_str());
+  const int noteFont = SETTINGS.globalStatusBarLarge() ? UI_12_FONT_ID : SMALL_FONT_ID;
+  const int noteY = tenorchrome::TOUCH_STATUS_TOP_INSET + tenorchrome::HEADER_TOP +
+                    (tenorchrome::headerHeight() - r.getLineHeight(noteFont)) / 2;
+  const std::string text = r.truncatedText(noteFont, note, 2 * half);
+  r.drawText(noteFont, r.getScreenWidth() / 2 - r.getTextWidth(noteFont, text.c_str()) / 2, noteY, text.c_str());
 }
 }  // namespace
 
@@ -827,11 +834,11 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   }
   const bool lon = !trongTrinhDoc && SETTINGS.globalStatusBarLarge();
   const int batteryWidth = lon ? 32 : 26;
-  const int fontChu = lon ? UI_12_FONT_ID : SMALL_FONT_ID;
   // Touch shell: outside the reader the clock and the battery sit on the header row, battery rightmost;
   // the foot of the screen belongs to the tab bar.
   const bool top = kTouchShell && !trongTrinhDoc;
-  const int y = top ? TOUCH_STATUS_TOP_INSET + HEADER_TOP + (headerHeight() - r.getLineHeight(fontChu)) / 2
+  const int fontChu = top ? UI_10_FONT_ID : lon ? UI_12_FONT_ID : SMALL_FONT_ID;
+  const int y = top ? TOUCH_STRIP_HEIGHT - 3 - r.getTextInkBottom(fontChu, "0123456789", EpdFontFamily::REGULAR)
                     : statusTextY(r.getScreenHeight(), lon, paddingBottom);
   const bool swap = SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_LEFT;
   char clock[12] = "--:--";
@@ -849,12 +856,15 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   // muc 5 (ten chuong & pin) khong day pin sang phai nhu khi vang dong ho.
   const bool batteryRight = top || (hienGio && swap);
   const int batteryBlockX = batteryRight ? width - STATUS_CORNER_INSET - batteryBlock : STATUS_CORNER_INSET;
-  if (hienGio)
-    r.drawText(fontChu,
-               top    ? STRIP_LEFT
-               : swap ? STATUS_CORNER_INSET
-                      : width - STATUS_CORNER_INSET - timeWidth,
-               y, clock);
+  if (hienGio) {
+    int clockX = top ? STRIP_LEFT : swap ? STATUS_CORNER_INSET : width - STATUS_CORNER_INSET - timeWidth;
+    if (top) {
+      const auto* oldGlyph = r.getFontMap().at(lon ? UI_12_FONT_ID : SMALL_FONT_ID).getGlyph(clock[0], EpdFontFamily::REGULAR);
+      const auto* newGlyph = r.getFontMap().at(fontChu).getGlyph(clock[0], EpdFontFamily::REGULAR);
+      if (oldGlyph && newGlyph) clockX += oldGlyph->left - newGlyph->left;
+    }
+    r.drawText(fontChu, clockX, y, clock);
+  }
   const int bx = batteryRight ? width - STATUS_CORNER_INSET - batteryWidth : batteryBlockX;
   if (hienPin) {
     // Tong be rong gom ca dau pin 2 px, de vien ngoai dung inset.
