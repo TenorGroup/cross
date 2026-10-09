@@ -10,6 +10,7 @@ class MappedInputManager;
 
 class KeyboardLayoutsActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Keyboard; }
   explicit KeyboardLayoutsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : UiListActivity("KeyboardLayouts", renderer, mappedInput) {}
 

@@ -13,6 +13,7 @@ runner = Path(__file__).with_name('run.py')
 settings = {
     'About', 'BookStats', 'BookStatsLibrary', 'ClearCache', 'ClockSettings', 'FontDownload',
     'InfoUpdate', 'KeyboardLayouts', 'LanguageSelect', 'KOReaderSettings', 'OpdsServerList',
+    'HomeButtonSettings', 'SettingsChoice',
     'OpdsSettings', 'Settings', 'StatusBarSettings', 'TextSettings', 'TimezonePicker',
 }
 lists = {
@@ -25,7 +26,8 @@ forms = {
     'KOReaderAuth', 'KOReaderSync', 'NetworkModeSelection', 'OpdsBookBrowser', 'OtaUpdate',
     'SdFirmwareUpdate', 'WifiSelection',
 }
-covered = settings | lists | forms | {'Home', 'EpubReader', 'ReaderToolbarUi'}
+activities = settings | lists | forms | {'Home'}
+covered = activities | {'EpubReader', 'ReaderToolbarUi'}
 bound = set()
 for path in (root / 'src/activities').rglob('*Activity.cpp'):
     header = path.with_suffix('.h')
@@ -33,7 +35,8 @@ for path in (root / 'src/activities').rglob('*Activity.cpp'):
     if re.search(r'x3ScreenLayout\(|x3settings::beginScreen\(', source):
         bound.add(path.stem.removesuffix('Activity'))
 assert bound <= covered | {'UiList', 'UiTabList'}, sorted(bound - covered)
-assert len(covered) == 45
+assert len(activities) == 45
+assert len(covered) == 47
 toolbar = (root / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
 assert 'ReaderToolbarUi::screenLayout(' in toolbar, 'RED: toolbar lacks the Home body/tip/bar binding'
 subprocess.run([sys.executable, str(Path(__file__).with_name('toolbar_bars.py')),
@@ -50,5 +53,5 @@ subprocess.run(command, check=True)
 subprocess.run([sys.executable, str(runner), '--forms', '--work', str(args.work / 'forms')], check=True)
 subprocess.run([sys.executable, str(runner), '--ugly-contract', '--work', str(args.work / 'ugly')], check=True)
 subprocess.run([sys.executable, str(runner), '--ugly-status-contract', '--work', str(args.work / 'ugly-status')], check=True)
-print('GREEN: 45 X3 screen classes and 4 handwritten screens, 3 sizes x 3 status modes x 2 tips modes, exact Home barRect')
+print('GREEN: 45 X3 activity classes, 2 reader toolbar bindings and 4 handwritten screens, 3 sizes x 3 status modes x 2 tips modes, exact Home barRect')
 print('COVERED:', ', '.join(sorted(covered)))

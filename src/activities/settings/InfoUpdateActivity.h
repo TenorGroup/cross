@@ -17,6 +17,7 @@ bool holds(settingstabs::Action action, bool chip = false);
 
 class InfoUpdateActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::System; }
   InfoUpdateActivity(GfxRenderer& renderer, MappedInputManager& input)
       : UiListActivity("InfoUpdate", renderer, input, /*wantsTouchLongPress=*/true) {}
 

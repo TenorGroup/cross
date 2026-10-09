@@ -30,6 +30,8 @@ class ClockSyncActivity final : public Activity {
   x3activity::InfoPages x3Info;
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Device; }
+  std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_CLOCK_SYNC); }
   explicit ClockSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("ClockSync", renderer, mappedInput) {}
 

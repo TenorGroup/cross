@@ -10,6 +10,7 @@
 // SettingsActivity gates the entry.
 class ClockSettingsActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Device; }
   explicit ClockSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   static constexpr int ITEM_COUNT = 6;

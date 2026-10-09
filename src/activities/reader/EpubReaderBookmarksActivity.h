@@ -28,6 +28,7 @@ class EpubReaderBookmarksActivity final : public UiListActivity {
   OptionPopup* tiltPopup() override { return &confirmPopup; }
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Favorites; }
   explicit EpubReaderBookmarksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                        const std::shared_ptr<Epub>& epub, const std::string& epubPath);
   void onEnter() override;

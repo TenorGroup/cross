@@ -1157,6 +1157,15 @@ bool SettingsActivity::openPendingSettingsSibling() {
   return true;
 }
 
+tenorchrome::X3PathIcon SettingsActivity::navigationIcon() const {
+  using tenorchrome::X3PathIcon;
+  static constexpr X3PathIcon icons[] = {
+      X3PathIcon::Display, X3PathIcon::Reading, X3PathIcon::Controls, X3PathIcon::System,
+      X3PathIcon::Device, X3PathIcon::Keyboard, X3PathIcon::More, X3PathIcon::Sleep, X3PathIcon::Motion};
+  static_assert(std::size(icons) == settingstabs::TAB_COUNT);
+  return icons[activeTab()];
+}
+
 void SettingsActivity::render(RenderLock&&) {
   if (shell::isUgly()) {
     [[maybe_unused]] const uint32_t started = millis();

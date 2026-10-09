@@ -5,6 +5,7 @@
 #include "activities/UiListActivity.h"
 class BookStatsActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Stats; }
   BookStatsActivity(GfxRenderer& r, MappedInputManager& input, std::string path, std::string title);
   void onEnter() override;
   // The expected finish (ngaydocxong::uocTinh on today's date) as the stats show it, here and on

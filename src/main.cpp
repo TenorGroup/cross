@@ -1415,7 +1415,14 @@ static void gaugeLogTick() {
 }
 #endif
 
+#ifdef SIMULATOR
+#include "platform/SimulatorPathScreens.h"
+#endif
+
 void loop() {
+#ifdef SIMULATOR
+  simulatorPathScreen(renderer, mappedInputManager);
+#endif
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;

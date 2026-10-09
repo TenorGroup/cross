@@ -1,5 +1,6 @@
 #pragma once
 #include <Logging.h>
+#include <I18n.h>
 
 #include <cassert>
 #include <memory>
@@ -8,6 +9,7 @@
 
 #include "ActivityManager.h"  // for using the ActivityManager singleton
 #include "ActivityResult.h"
+#include "components/X3NavigationPath.h"
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
 #include "MenuNavigationMemory.h"
@@ -40,6 +42,8 @@ class Activity {
   virtual void onPause() {}
   virtual void onResume() {}
   virtual std::string navigationLabel() const { return {}; }
+  virtual std::string x3NavigationLabel() const { return navigationLabel(); }
+  virtual tenorchrome::X3PathIcon navigationIcon() const { return tenorchrome::X3PathIcon::More; }
   virtual bool selectSettingsSibling(int) { return false; }
   virtual bool openPendingSettingsSibling() { return false; }
   virtual bool saveInputBeforeHome() { return false; }

@@ -23,6 +23,7 @@ struct SettingInfo;
 
 class TextSettingsActivity final : public UiTabListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Reading; }
   static std::string layoutValueText(int row);
   static std::string styleValueText(int row);
   enum class Tab : uint8_t { Family, Size, Layout, Style, Favorites, Count };

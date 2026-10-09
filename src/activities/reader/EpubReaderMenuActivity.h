@@ -11,6 +11,13 @@
 
 class EpubReaderMenuActivity final : public UiTabListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override {
+    static constexpr tenorchrome::X3PathIcon icons[] = {
+        tenorchrome::X3PathIcon::Favorites, tenorchrome::X3PathIcon::Position, tenorchrome::X3PathIcon::Recent,
+        tenorchrome::X3PathIcon::More, tenorchrome::X3PathIcon::Reading};
+    return textOnly ? tenorchrome::X3PathIcon::Reading : icons[activeTab()];
+  }
+  std::string x3NavigationLabel() const override { return tabLabel(activeTab()); }
   // The grouping itself lives in ReaderMenuLayout, which stays clear of device
   // headers so it can be exercised on the host. These aliases keep the names
   // EpubReaderActivity already switches on.

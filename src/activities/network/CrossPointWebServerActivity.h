@@ -78,6 +78,8 @@ class CrossPointWebServerActivity final : public Activity {
   void startWebServer();
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
+  std::string x3NavigationLabel() const override { return I18N.get(isApMode ? StrId::STR_HOTSPOT_MODE : StrId::STR_FILE_TRANSFER); }
 #ifdef TENOR_UI_ACCEPTANCE
   void requestAutoJoinForTest() { autoJoinForTest = true; }
 #endif

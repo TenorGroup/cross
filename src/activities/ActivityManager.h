@@ -14,6 +14,7 @@
 #include "MappedInputManager.h"
 #include "MenuNavigationMemory.h"
 #include "components/FrontlightGesture.h"
+#include "components/X3NavigationPath.h"
 #include "util/ScreenshotInfo.h"
 
 class Activity;    // forward declaration
@@ -116,6 +117,8 @@ class ActivityManager {
   void drawLightGesture(const GfxRenderer& renderer) const;
   // The zone the screen in front belongs to, and where the bar's zone icon leads.
   tenorchrome::Zone footZone() const;
+  std::vector<tenorchrome::X3PathNode> x3NavigationPath(const char* title) const;
+  bool x3NavigationIsFilePath() const;
   void goZoneRoot();
   // True while the zone icon closes the screens above the book: the book does not reopen its menu.
   bool returningToReaderPage() const { return toReaderPage; }

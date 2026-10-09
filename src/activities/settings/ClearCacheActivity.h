@@ -9,6 +9,7 @@
 
 class ClearCacheActivity final : public Activity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::System; }
   explicit ClearCacheActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("ClearCache", renderer, mappedInput) {}
 

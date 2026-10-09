@@ -10,6 +10,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include "components/X3NavigationPath.h"
 
 inline unsigned long testMillis = 0;
 inline unsigned long millis() { return testMillis; }
@@ -76,6 +77,11 @@ inline const char* tr(const StrId id) {
   if (id == STR_TO_PREFIX) return "To: ";
   return "text";
 }
+
+struct TestI18n {
+  const char* get(const StrId id) const { return tr(id); }
+};
+inline TestI18n I18N;
 
 #define LOG_ERR(...)
 #define LOG_INF(...)
@@ -193,6 +199,9 @@ class Activity {
 
   Activity(const char*, GfxRenderer& renderer, MappedInputManager& input) : renderer(renderer), mappedInput(input) {}
   virtual ~Activity() = default;
+  virtual std::string navigationLabel() const { return {}; }
+  virtual std::string x3NavigationLabel() const { return navigationLabel(); }
+  virtual tenorchrome::X3PathIcon navigationIcon() const { return tenorchrome::X3PathIcon::More; }
   virtual void onEnter() {}
   virtual void onExit() {}
   virtual void loop() {}

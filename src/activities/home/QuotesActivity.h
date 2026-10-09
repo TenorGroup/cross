@@ -24,6 +24,8 @@ class Epub;
 
 class QuotesActivity final : public Activity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::More; }
+  std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_QUOTES); }
   // `bookPath` empty opens the list of books; a path opens that book's quotes directly.
   // `insideReader` is true when the reader opened this screen for its own book: only then
   // does editing offer to reselect the quote on the page (finishing with QuoteEditResult).

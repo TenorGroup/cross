@@ -34,6 +34,8 @@ class Epub;
 
 class QuoteDetailActivity final : public Activity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::More; }
+  std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_QUOTES); }
   // `ids` is the list's current order and `index` the quote to open in it. The ids are
   // copied (8 bytes each) so a delete here can close the gap without asking the list.
   // `openBook`, when the reader opened the list, is its loaded book: chapter names of its

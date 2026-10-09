@@ -13,6 +13,7 @@ class MappedInputManager;
  */
 class LanguageSelectActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Language; }
   explicit LanguageSelectActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   void onEnter() override;

@@ -11,6 +11,7 @@
  */
 class KOReaderSettingsActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
   explicit KOReaderSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   static constexpr int MENU_ITEMS = 8;

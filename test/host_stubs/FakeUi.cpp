@@ -31,6 +31,9 @@ void ActivityManager::popActivity() {}
 bool ActivityManager::switchSettingsSibling(int) { return false; }
 void ActivityManager::requestUpdate(bool) {}
 void ActivityManager::requestUpdateAndWait() {}
+std::vector<tenorchrome::X3PathNode> ActivityManager::x3NavigationPath(const char* title) const {
+  return {{tenorchrome::X3PathIcon::Recent, ""}, {tenorchrome::X3PathIcon::More, title ? title : ""}};
+}
 
 // Bo ve: moi lenh ve la khong lam gi. Dung nguon that thi no keo tiep sang tang
 // font, bitmap va chu hai chieu, tuc cai duoi cu dai ra; gia o day cat dut chuoi.
@@ -205,6 +208,7 @@ int tipTopY(const GfxRenderer&, const char*, int, int, bool) { return 700; }
 int tipHeight(const GfxRenderer&, const char*, int) { return 28; }
 void drawTip(const GfxRenderer&, const char*, int, int, bool) {}
 void drawHeader(const GfxRenderer&, const char*, const char*, const char*) {}
+void drawX3ActivityPath(const GfxRenderer&, const char*) {}
 int moreBelowChevronTopY(const GfxRenderer&, int) { return 696; }
 void drawMoreBelowChevron(const GfxRenderer&, int) {}
 void fadeBand(const GfxRenderer&, int, int, bool, int, int) {}

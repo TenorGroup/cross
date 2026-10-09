@@ -4,6 +4,7 @@
 
 class SettingsChoiceActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::More; }
   SettingsChoiceActivity(GfxRenderer& renderer, MappedInputManager& input, std::string title,
                          std::vector<std::string> labels, int selected, std::function<void(int)> onSelect);
   bool remembersNavigation() const override { return false; }

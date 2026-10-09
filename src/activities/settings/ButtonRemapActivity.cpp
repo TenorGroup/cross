@@ -122,7 +122,7 @@ void ButtonRemapActivity::render(RenderLock&&) {
     const auto labelForHardware = [&](uint8_t hardware) {
       for (uint8_t index = 0; index < kRoleCount; ++index)
         if (tempMapping[index] == hardware) return getRoleName(index);
-      return "-";
+      return shell::uglyParts() ? "-" : "";
     };
     GUI.drawButtonHints(renderer, labelForHardware(CrossPointSettings::FRONT_HW_BACK),
         labelForHardware(CrossPointSettings::FRONT_HW_CONFIRM), labelForHardware(CrossPointSettings::FRONT_HW_LEFT),

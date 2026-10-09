@@ -47,6 +47,8 @@ class CalibreConnectActivity final : public Activity {
   void stopWebServer();
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
+  std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_CALIBRE_WIRELESS); }
   explicit CalibreConnectActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("CalibreConnect", renderer, mappedInput) {}
   void onEnter() override;

@@ -9,6 +9,8 @@
 #include "components/icons/tenorHomeTabIcons.h"
 #include "components/icons/tenorSettingsIcons.h"
 #include "fontIds.h"
+#include "activities/X3LegacyPath.h"
+#include "shells/Shell.h"
 
 namespace x3settings {
 template <typename Screen> inline bool beginScreen(Screen& screen, const GfxRenderer& renderer, const char* tip = nullptr,
@@ -27,18 +29,11 @@ template <typename Screen> inline bool beginScreen(Screen& screen, const GfxRend
 
 inline void drawPath(const GfxRenderer& renderer, const char* title,
                      const freeink::Icon& icon = icon_tenor_home_settings_40) {
-  const auto bar = tenorchrome::x3ScreenLayout(renderer).barRect;
-  const int iconLeft = 16;
-  const int pillLeft = iconLeft + icon.w + 12;
-  const int pillMaxWidth = renderer.getScreenWidth() - pillLeft - 16;
-  const int pillTop = bar.y + tenorchrome::BAR_TAB_INSET;
-  const int pillHeight = bar.height - 2 * tenorchrome::BAR_TAB_INSET;
-  const auto clip = renderer.getClipRect();
-  renderer.setClipRect(bar.x, bar.y, bar.width, bar.height);
-  tenorchrome::drawBarIcon(renderer, icon.bits, icon.w, icon.h, iconLeft,
-                           bar.y + (bar.height - icon.h) / 2, false);
-  tenorchrome::drawPathPill(renderer, SMALL_FONT_ID, title, pillLeft, pillTop, pillMaxWidth, pillHeight, 14, 14, false);
-  renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+  if (shell::uglyParts()) {
+    uglylegacy::drawSettingsPath(renderer, title, icon);
+    return;
+  }
+  tenorchrome::drawX3ActivityPath(renderer, title);
 }
 
 inline tenorchrome::X3ScreenRect infoRect(const GfxRenderer& renderer, const char* info, const char* tip = nullptr,

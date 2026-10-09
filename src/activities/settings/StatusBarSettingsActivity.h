@@ -11,6 +11,7 @@
 // Reader status bar configuration activity
 class StatusBarSettingsActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Status; }
   explicit StatusBarSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   // Must equal the number of named rows in the .cpp (static_assert'd there).

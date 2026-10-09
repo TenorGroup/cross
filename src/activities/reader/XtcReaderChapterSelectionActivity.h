@@ -30,6 +30,8 @@ class XtcReaderChapterSelectionActivity final : public UiListActivity {
   int findChapterIndexForPage(uint32_t page) const;
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Position; }
+  std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_SELECT_CHAPTER); }
   explicit XtcReaderChapterSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                              const std::shared_ptr<Xtc>& xtc, uint32_t currentPage);
   void onEnter() override;

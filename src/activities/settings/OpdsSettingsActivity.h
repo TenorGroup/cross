@@ -11,6 +11,7 @@
  */
 class OpdsSettingsActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
   /**
    * @param serverIndex Index into OpdsServerStore, or -1 for a new server
    */

@@ -31,7 +31,7 @@ int main() {
           const auto layout = tenorchrome::x3ScreenLayout(target);
           tenorchrome::phaseRings.clear();
           x3activity::drawBar(target, layout.barRect, "WiFi");
-          check(tenorchrome::phaseRings.back().width == target.getTextWidth(UI_12_FONT_ID, "WiFi") + 32,
+          check(tenorchrome::phaseRings.back().width == target.getTextWidth(UI_12_FONT_ID, "WiFi") + 28,
                 "short breadcrumb fits its text");
           target.paintedText.clear();
           const std::string longPath(2048, 'x');

@@ -6,6 +6,7 @@
 #include "util/Lich30.h"
 class ReadingHistoryActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Stats; }
   ReadingHistoryActivity(GfxRenderer& r, MappedInputManager& i) : UiListActivity("ReadingHistory", r, i) {}
   void onEnter() override;
 

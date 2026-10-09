@@ -2,6 +2,7 @@
 #include <GfxRenderer.h>
 #include <MappedInputManager.h>
 #include <string>
+#include "components/X3NavigationPath.h"
 #include <utility>
 #include "activities/RenderLock.h"
 
@@ -33,6 +34,9 @@ class Activity {
   virtual void onExit() {}
   virtual void loop() {}
   virtual bool saveInputBeforeHome() { return false; }
+  virtual std::string navigationLabel() const { return {}; }
+  virtual std::string x3NavigationLabel() const { return navigationLabel(); }
+  virtual tenorchrome::X3PathIcon navigationIcon() const { return tenorchrome::X3PathIcon::More; }
   virtual bool preventAutoSleep() { return false; }
   virtual void render(RenderLock&&) {}
   void requestUpdate() {}

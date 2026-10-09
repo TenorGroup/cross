@@ -42,10 +42,11 @@ missing = [name for name, source in required if name not in source]
 if missing:
     raise SystemExit("RED: path pill contract missing: " + ", ".join(missing))
 callers = (
-    ("X4 Pro foot bar", function(chrome, "tenorchrome::drawFootBar(")),
-    ("X3 screen path", function(x3_layout, "drawPath(")),
+    ("X4 Pro foot bar", function(chrome, "tenorchrome::drawFootBar("), "drawPathPill("),
+    ("X3 screen path", function(x3_layout, "drawPath("), "drawX3ActivityPath("),
+    ("X3 file path", function(chrome, "tenorchrome::drawX3NavigationPath("), "layoutPathPill("),
 )
-unwired = [name for name, body in callers if "drawPathPill(" not in body]
+unwired = [name for name, body, call in callers if call not in body]
 if unwired:
     raise SystemExit("RED: shared path pill is not wired into: " + ", ".join(unwired))
 browser_chrome = function(browser, "void FileBrowserActivity::drawChrome(")

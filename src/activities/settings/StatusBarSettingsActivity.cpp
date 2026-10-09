@@ -1,5 +1,6 @@
 #include "StatusBarSettingsActivity.h"
 #include "activities/settings/X3SettingsLayout.h"
+#include "activities/settings/SettingsChoiceActivity.h"
 
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
@@ -200,6 +201,17 @@ void StatusBarSettingsActivity::activateIndex(const int index) {
 }
 
 void StatusBarSettingsActivity::handleSelection() {
+  if (tenorchrome::x3ScreenLayoutEnabled() && !shell::uglyParts()) {
+    const int row = nav.selected;
+    std::vector<std::string> labels;
+    labels.reserve(valueCount(row));
+    for (int index = 0; index < valueCount(row); ++index) labels.emplace_back(I18N.get(valuesAt(row)[index]));
+    startActivityForResult(std::make_unique<SettingsChoiceActivity>(renderer, mappedInput, I18N.get(TENOR_NAMES[row]),
+        std::move(labels), SETTINGS.readerStatusItem(row), [this, row](const int selected) {
+          if (applyChosenValue(row, selected)) Activity::finish();
+        }), nullptr);
+    return;
+  }
   if (tenorchrome::kTouchShell) {
     const int row = nav.selected;
     showSettingsChoices(optionPopup_, TENOR_NAMES[row], valuesAt(row), valueCount(row), SETTINGS.readerStatusItem(row),

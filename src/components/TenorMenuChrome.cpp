@@ -27,6 +27,8 @@
 #include "icons/tenorHomeTabIcons.h"
 #include "icons/tenorStatusIcons.h"
 #include "icons/tenorReaderTabIcons.h"
+#include "icons/readerToolbarTabIcons.h"
+#include "icons/tenorSettingsIcons.h"
 #include "UITheme.h"
 #include "fontIds.h"
 #include "themes/TenorRadius.h"
@@ -177,6 +179,88 @@ void tenorchrome::drawPathPill(const GfxRenderer& renderer, const int font, cons
                       layout.text.c_str());
 }
 
+
+namespace {
+const freeink::Icon& x3PathIcon(const tenorchrome::X3PathIcon icon) {
+  using tenorchrome::X3PathIcon;
+  switch (icon) {
+    case X3PathIcon::Recent: return icon_tenor_home_recent_40;
+    case X3PathIcon::File: return icon_tenor_home_folder_40;
+    case X3PathIcon::Favorites: return icon_tenor_home_favorites_40;
+    case X3PathIcon::Stats: return icon_tenor_home_stats_40;
+    case X3PathIcon::Settings: return icon_tenor_home_settings_40;
+    case X3PathIcon::Display: return icon_tenor_settings_hien_thi_b_40;
+    case X3PathIcon::Reading: return icon_tenor_reader_reading_40;
+    case X3PathIcon::Controls: return icon_tenor_settings_dieu_khien_40;
+    case X3PathIcon::System: return icon_tenor_settings_he_thong_b_40;
+    case X3PathIcon::Device: return icon_tenor_settings_thiet_bi_40;
+    case X3PathIcon::Keyboard: return icon_tenor_settings_ban_phim_40;
+    case X3PathIcon::Sleep: return icon_tenor_settings_trang_khuyet_40;
+    case X3PathIcon::Motion: return icon_tenor_settings_cu_chi_40;
+    case X3PathIcon::Status: return icon_tenor_settings_thanh_trang_thai_40;
+    case X3PathIcon::Language: return icon_tenor_settings_ngon_ngu_40;
+    case X3PathIcon::About: return icon_tenor_settings_thong_tin_40;
+    case X3PathIcon::Position: return icon_tenor_reader_position_40;
+    case X3PathIcon::Book: return icon_tenor_reader_reading_40;
+    case X3PathIcon::Network: return icon_tenor_reader_tools_40;
+    case X3PathIcon::More: return icon_reader_tab_more_40;
+  }
+  return icon_tenor_reader_tools_40;
+}
+}
+
+void tenorchrome::drawX3NavigationPath(const GfxRenderer& renderer, const std::vector<X3PathNode>& nodes,
+                                      const bool file) {
+  if (!x3ScreenLayoutEnabled() || shell::uglyParts()) return;
+  const auto bar = x3ScreenLayout(renderer).barRect;
+  const int left = bar.x + 16;
+  const int top = bar.y + BAR_TAB_INSET;
+  const int height = bar.height - 2 * BAR_TAB_INSET;
+  const int available = bar.width - 32;
+  auto pills = layoutX3Navigation(renderer, UI_12_FONT_ID, nodes, available, height);
+#ifdef SIMULATOR
+  LOG_INF("X3PATH", "screen=%s tier=%u bar=%d,%d,%d,%d titleWidth=%d nodes=%u root=%u parent=%u",
+          activityManager.currentName(), SETTINGS.uiTextSize, bar.x, bar.y, bar.width, bar.height,
+          renderer.getTextWidth(UI_12_FONT_ID, nodes.back().title.c_str()), static_cast<unsigned>(nodes.size()),
+          static_cast<unsigned>(nodes.front().icon),
+          static_cast<unsigned>(nodes.size() > 2 ? nodes[nodes.size() - 2].icon : nodes.front().icon));
+#endif
+  if (file && pills.size() == 2) {
+    const auto path = layoutPathPill(renderer, UI_12_FONT_ID, nodes.back().title.c_str(), available - height - X3_PATH_GAP,
+                                    X3_PATH_PADDING, X3_PATH_PADDING);
+    pills.back().text = path.text;
+    pills.back().width = path.width;
+  }
+  const auto clip = renderer.getClipRect();
+  renderer.setClipRect(bar.x, bar.y, bar.width, bar.height);
+  int leftEdge = left;
+  for (const auto& pill : pills) {
+#ifdef SIMULATOR
+    LOG_INF("X3PILL", "x=%d y=%d w=%d h=%d current=%u icon=%u textWidth=%d text=%s", leftEdge, top,
+            pill.width, height, pill.current, static_cast<unsigned>(pill.icon),
+            renderer.getTextWidth(UI_12_FONT_ID, pill.text.c_str()), pill.text.c_str());
+#endif
+    drawPillRing(renderer, leftEdge, top, pill.width, height, pill.current ? 3 : 2, !pill.current);
+    if (!pill.text.empty()) {
+      const int inkTop = renderer.getTextInkTop(UI_12_FONT_ID, pill.text.c_str(), EpdFontFamily::REGULAR);
+      const int inkBottom = renderer.getTextInkBottom(UI_12_FONT_ID, pill.text.c_str(), EpdFontFamily::REGULAR);
+      const int textY = top + (height - inkTop - inkBottom) / 2;
+      const int textX = file && pill.current ? leftEdge + X3_PATH_PADDING
+          : leftEdge + (pill.width - renderer.getTextWidth(UI_12_FONT_ID, pill.text.c_str())) / 2;
+      renderer.drawText(UI_12_FONT_ID, textX, textY, pill.text.c_str());
+    } else if (!pill.current) {
+      const auto& icon = x3PathIcon(pill.icon);
+      drawBarIcon(renderer, icon.bits, icon.w, icon.h, leftEdge + (pill.width - icon.w) / 2,
+                   top + (height - icon.h) / 2, false);
+    }
+    leftEdge += pill.width + X3_PATH_GAP;
+  }
+  renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
+}
+
+void tenorchrome::drawX3ActivityPath(const GfxRenderer& renderer, const char* title) {
+  drawX3NavigationPath(renderer, activityManager.x3NavigationPath(title), activityManager.x3NavigationIsFilePath());
+}
 
 namespace {
 // Screens below another one, with a back to it: the settings groups and what they open, the file and
@@ -536,6 +620,10 @@ void tenorchrome::drawHeader(const GfxRenderer& r, const char* title, const char
 #ifdef UGLY_FRAME_LOG
     LOG_INF("UGLY", "part=header prefix=%s title=%s", from.c_str(), name.c_str());
 #endif
+    return;
+  }
+  if (x3ScreenLayoutEnabled()) {
+    drawX3ActivityPath(r, title);
     return;
   }
   constexpr int x = 18, rightReserve = 18, tracking = 1;

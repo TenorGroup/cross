@@ -183,6 +183,43 @@ HomeMenuItem ActivityManager::zoneOrigin() const {
   return homeMenuOrigin();
 }
 
+std::vector<tenorchrome::X3PathNode> ActivityManager::x3NavigationPath(const char* title) const {
+  using tenorchrome::X3PathIcon;
+  X3PathIcon root = X3PathIcon::Recent;
+  switch (footZone()) {
+    case tenorchrome::Zone::File: root = X3PathIcon::File; break;
+    case tenorchrome::Zone::Favorites: root = X3PathIcon::Favorites; break;
+    case tenorchrome::Zone::Stats: root = X3PathIcon::Stats; break;
+    case tenorchrome::Zone::Settings: root = X3PathIcon::Settings; break;
+    case tenorchrome::Zone::Book: root = X3PathIcon::Book; break;
+    case tenorchrome::Zone::Recent: break;
+  }
+  if (currentActivity && currentActivity->name == "Settings") root = X3PathIcon::Settings;
+  std::vector<tenorchrome::X3PathNode> nodes{{root, ""}};
+  if (x3NavigationIsFilePath()) {
+    nodes.front().icon = X3PathIcon::File;
+  } else {
+    bool reading = false;
+    for (const auto& activity : stackActivities) {
+      if (!activity || activity->isHomeActivity()) continue;
+      if (activity->name == "Settings" && !reading) nodes.front().icon = X3PathIcon::Settings;
+      if (activity->isReaderActivity()) {
+        reading = true;
+        nodes.front().icon = X3PathIcon::Book;
+        continue;
+      }
+      const auto label = activity->x3NavigationLabel();
+      if (!label.empty()) nodes.push_back({activity->navigationIcon(), label});
+    }
+  }
+  nodes.push_back({currentActivity ? currentActivity->navigationIcon() : X3PathIcon::More, title ? title : ""});
+  return nodes;
+}
+
+bool ActivityManager::x3NavigationIsFilePath() const {
+  return currentActivity && currentActivity->name == "FileBrowser";
+}
+
 tenorchrome::Zone ActivityManager::footZone() const {
   if (isReaderActivity()) return tenorchrome::Zone::Book;
   switch (zoneOrigin()) {

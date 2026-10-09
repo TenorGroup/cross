@@ -9,6 +9,7 @@
 // persists it, re-applies the clock's TZ rule, and returns.
 class TimezonePickerActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Device; }
   explicit TimezonePickerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   void onEnter() override;

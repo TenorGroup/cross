@@ -56,16 +56,19 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
   const int iconAnchor = tenorchrome::statusIconTopY(pageHeight, lon) + net / 2;
   const auto corners = tenorchrome::statusCornerBounds(renderer, lon);
   constexpr int cornerGap = 6;
+  bool singleCaptions[4] = {};
 
   // Clear all cells before painting symbols that may extend beyond their original cell.
   for (int i = 0; i < 4; i++) {
     if (labels[i] == nullptr || labels[i][0] == '\0') continue;
+    singleCaptions[i] = tenorchrome::x3ScreenLayoutEnabled() && SETTINGS.tenorButtonSymbols &&
+        renderer.wrappedText(SMALL_FONT_ID, labels[i], buttonWidth - 8, 2).size() == 1;
     const auto bounds = buttonSymbols::horizontalBounds(labels[i], net);
     const bool compactSymbol = tenorchrome::compactFooterTips(bounds.left == 0 && bounds.right == 0);
     // Some screens paint their tip before the footer. Clear only the symbol
     // lane there so the lowered tip's descenders survive either paint order.
     const int clearTop = tenorchrome::x3ScreenLayoutEnabled() &&
-                                 (!SETTINGS.tenorButtonSymbols || bounds.left != 0 || bounds.right != 0)
+                                 (!SETTINGS.tenorButtonSymbols || bounds.left != 0 || bounds.right != 0 || singleCaptions[i])
                              ? tenorchrome::x3ScreenLayout(renderer).buttonBandRect.y
                              : compactSymbol ? tenorchrome::smallFooterSymbolsTopY(renderer) : pageHeight - buttonY;
     renderer.fillRect(buttonPositions[i], clearTop, buttonWidth, pageHeight - clearTop, grayscale);
@@ -84,7 +87,18 @@ void TenorTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const 
     }
     if (!SETTINGS.tenorButtonSymbols ||
         !buttonSymbols::drawLabel(renderer, labels[i], iconX, iconAnchor, net)) {
-      drawHintLabel(renderer, SMALL_FONT_ID, labels[i], x, buttonWidth, top, buttonHeight - vachCao - 2, textYOffset);
+      if (singleCaptions[i]) {
+        const int inkTop = renderer.getTextInkTop(SMALL_FONT_ID, labels[i], EpdFontFamily::REGULAR);
+        const int inkBottom = renderer.getTextInkBottom(SMALL_FONT_ID, labels[i], EpdFontFamily::REGULAR);
+        const int inkHeight = inkBottom - inkTop + 1;
+        const int bandTop = tenorchrome::x3ScreenLayout(renderer).barRect.bottom() + 3;
+        const int lastInkTop = pageHeight - vachCao - 2 - inkHeight;
+        const int inkY = std::clamp(iconAnchor - (inkHeight - 1) / 2, std::min(bandTop, lastInkTop), lastInkTop);
+        renderer.drawText(SMALL_FONT_ID, x + (buttonWidth - 1 - renderer.getTextWidth(SMALL_FONT_ID, labels[i])) / 2,
+                          inkY - inkTop, labels[i]);
+      } else {
+        drawHintLabel(renderer, SMALL_FONT_ID, labels[i], x, buttonWidth, top, buttonHeight - vachCao - 2, textYOffset);
+      }
     }
     renderer.fillRectDither(x, pageHeight - vachCao - 1, buttonWidth, vachCao, Color::LightGray);
   }

@@ -8,6 +8,7 @@
 #include "CrossPointSettings.h"
 #include "UIScale.h"
 class GfxRenderer;
+#include "X3NavigationPath.h"
 namespace tenorchrome {
 constexpr int HEADER_TOP = 5;
 constexpr int HEADER_HEIGHT = 48;
@@ -24,6 +25,8 @@ constexpr bool kTouchShell = false;
 #endif
 inline bool enabled() { return kTouchShell || !gpio.hasTouch(); }
 bool x3ScreenLayoutEnabled();
+void drawX3ActivityPath(const GfxRenderer& renderer, const char* title);
+void drawX3NavigationPath(const GfxRenderer& renderer, const std::vector<X3PathNode>& nodes, bool file);
 // A tip that names a front button (one of the button symbols U+E100..U+E109) has nothing to point at
 // on the touch shell.
 inline bool tipShown(const char* text) {

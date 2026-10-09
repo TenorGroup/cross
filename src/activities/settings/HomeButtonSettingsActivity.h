@@ -6,6 +6,7 @@
 
 class HomeButtonSettingsActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Controls; }
   HomeButtonSettingsActivity(GfxRenderer& renderer, MappedInputManager& input)
       : UiListActivity("HomeButtonSettings", renderer, input) {}
 

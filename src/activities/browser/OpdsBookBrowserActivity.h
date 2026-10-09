@@ -39,6 +39,8 @@ class OpdsBookBrowserActivity final : public Activity, private UiAppHost {
   x3activity::InfoPages x3Info;
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
+  std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_OPDS_BROWSER); }
   enum class BrowserState { CHECK_WIFI, WIFI_SELECTION, LOADING, BROWSING, DOWNLOADING, ERROR, SEARCH_INPUT };
 
   explicit OpdsBookBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, OpdsServer server);

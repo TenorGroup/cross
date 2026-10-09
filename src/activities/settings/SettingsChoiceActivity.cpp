@@ -2,6 +2,8 @@
 
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
+#include "X3SettingsLayout.h"
+#include "shells/Shell.h"
 
 SettingsChoiceActivity::SettingsChoiceActivity(GfxRenderer& renderer, MappedInputManager& input, std::string title,
                                                std::vector<std::string> labels, const int selected,
@@ -17,10 +19,10 @@ void SettingsChoiceActivity::onEnter() {
 
 void SettingsChoiceActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  screen.setContentMarginFromScreen(freeink::ui::Insets{
+  if (shell::uglyParts() || !x3settings::beginScreen(screen, renderer)) screen.setContentMarginFromScreen(freeink::ui::Insets{
       static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
       static_cast<int16_t>(metrics.buttonHintsHeight), 0});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  if (shell::uglyParts() || !tenorchrome::x3ScreenLayoutEnabled()) screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
   for (int index = 0; index < listCount(); ++index) {
     rows_[index].label = labels_[index].c_str();
     rows_[index].actionValue = static_cast<int16_t>(index);

@@ -2,6 +2,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "components/X3NavigationPath.h"
 namespace freeink::ui {
 struct ListItem { const char* label=nullptr; int actionValue=0; };
 struct ListProps { ListItem* items=nullptr; int count=0,action=0; struct Text {int maxLines=0;} labelText; };
@@ -19,6 +20,9 @@ class UiListActivity {
  public:
   UiListActivity(const char*,GfxRenderer& r,MappedInputManager& i):renderer(r),mappedInput(i){}
   virtual ~UiListActivity()=default;
+  virtual std::string navigationLabel() const { return {}; }
+  virtual std::string x3NavigationLabel() const { return navigationLabel(); }
+  virtual tenorchrome::X3PathIcon navigationIcon() const { return tenorchrome::X3PathIcon::More; }
   virtual void onEnter(){}
   void click(int index){activateIndex(index);}
   int rowCount() const {return listCount();}

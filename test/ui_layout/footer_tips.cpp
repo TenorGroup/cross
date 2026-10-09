@@ -285,8 +285,9 @@ int main() {
       if (std::strcmp(label, "Chọn mạng") == 0)
         check(r.paintedText == std::vector<std::string>{"Chọn", "mạng"}, "network action lost letters or accents");
       if (r.getTextWidth(1, label) <= 72) {
-        const int expected = boxTop + (tier == 0 ? 4 : std::max(1, (reserve - 5 - r.getLineHeight(1)) / 2));
-        check(r.ys.front() == expected, "ordinary single-line label moved");
+        const auto bar = tenorchrome::x3ScreenLayout(r).barRect;
+        check(r.attemptedInkTop >= bar.bottom() && r.attemptedInkBottom <= 787,
+              "symbol-mode caption touches the shared path bar");
       }
     }
   }

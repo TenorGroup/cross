@@ -571,6 +571,8 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   if (tabsFocused && !metrics.tabPillFullSlot && !tenorHome) {
     screen.target().fill(tabRect, fui::Paint::dither(fui::Color::LightGray));
   }
+  const bool readerTextPath = tenorchrome::x3ScreenLayoutEnabled() && !shell::uglyParts() &&
+      name == "TextSettings" && activityManager.x3NavigationPath("").front().icon == tenorchrome::X3PathIcon::Book;
   if (shell::uglyParts() && tenorchrome::x3ScreenLayoutEnabled()) {
     if (!uiTarget.paintingEnabled()) {
       if (tabCount() > 1) {
@@ -581,12 +583,14 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
         ugly::pathHints(renderer, headerTitle());
       }
     }
-  } else if (tenorHome)
+  } else if (readerTextPath)
+    tenorchrome::drawX3ActivityPath(renderer, navigationLabel().c_str());
+  else if (tenorHome)
     veThanhTheTenor(screen, theRect, tabs, count, tabProps.text);
   else
     fui::tabBar(screen.frame(), theRect, tabProps);
 
-  if (thanhTheChay && uiTarget.paintingEnabled()) {
+  if (thanhTheChay && uiTarget.paintingEnabled() && !readerTextPath) {
     veMuiTenThe(tabRect, leMuiTen);
   }
   if (!tenorchrome::x3ScreenLayoutEnabled()) screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));

@@ -19,6 +19,7 @@ enum class NetworkMode { JOIN_NETWORK, CONNECT_CALIBRE, CREATE_HOTSPOT, USB_DRIV
  */
 class NetworkModeSelectionActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
   void drawChrome() override;
   explicit NetworkModeSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 

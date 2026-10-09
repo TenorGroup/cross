@@ -26,6 +26,7 @@ class BlePageTurnerActivity final : public UiListActivity {
   freeink::ui::Rect x3PopupFrame() const;
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Controls; }
   void drawChrome() override;
   BlePageTurnerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : UiListActivity("BlePageTurner", renderer, mappedInput) {}

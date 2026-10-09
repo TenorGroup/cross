@@ -32,6 +32,7 @@ inline bool preventsAutoSleep(const Phase phase) {
 
 class FontDownloadActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Reading; }
   explicit FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
 #ifdef FREEINK_TLS_AUDIT

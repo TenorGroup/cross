@@ -3,6 +3,7 @@ import argparse
 import re
 import subprocess
 from phase_two import extend, verify_keyboard
+from shared_path_fixture import extend_path
 
 ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser()
@@ -140,6 +141,11 @@ fixture = fixture.replace('struct GfxRenderer {', '''struct GfxRenderer {
 fixture = '#include <array>\n#include "components/UIScale.h"\n' + fixture
 fixture = fixture.replace('// CHROME_DECLARATIONS', '\n'.join(declarations))
 fixture = fixture.replace('// PRODUCTION_FUNCTIONS', '\n'.join(definitions))
+fixture = extend_path(fixture, chrome, function, False, ROOT)
+if args.shell != 'buttons':
+    fixture = fixture.replace(
+        'void drawPillRing(const GfxRenderer&, int, int, int, int, int, bool);',
+        'inline void drawPillRing(const GfxRenderer&, int, int, int, int, int, bool) {}')
 if args.shell == 'ugly':
     fixture += '''int main() {
       SETTINGS.tipsEnabled = false;
@@ -187,6 +193,7 @@ program = args.work / 'layout'
 subprocess.run(['c++', '-std=c++17', '-O0', '-UNDEBUG', '-I', str(ROOT / 'src'),
                 '-I', str(ROOT / 'lib/EpdFont'), '-I', str(ROOT / 'lib/Utf8'),
                 '-I', str(ROOT / 'lib/GfxRenderer'), str(unit),
+                '-I', str(ROOT / 'freeink-sdk/libs/assets/Icons/include'),
                 str(ROOT / 'lib/Utf8/Utf8.cpp'), str(ROOT / 'lib/EpdFont/EpdFont.cpp'),
                 str(ROOT / 'lib/EpdFont/EpdFontFamily.cpp'),
                 '-o', str(program)], check=True)

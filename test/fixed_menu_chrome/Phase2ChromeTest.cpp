@@ -158,7 +158,9 @@ int phase2ChromeTests() {
           renderer.paintedText.clear();
           const std::string longPath = "/sách/" + std::string(700, 'W') + "/cuối";
           const auto icon = icon_tenor_home_folder_40;
+          activityManager.file = true;
           x3readerchrome::drawPath(renderer, tenorchrome::x3ScreenLayout(renderer).barRect, icon, longPath.c_str());
+          activityManager.file = false;
           phase2Check(renderer.paintedText.size() == 1 && renderer.paintedText[0].substr(0, 3) == "…" &&
                           renderer.paintedText[0].find("/cuối") != std::string::npos,
                       "Path cuts left and preserves UTF8 leaf");

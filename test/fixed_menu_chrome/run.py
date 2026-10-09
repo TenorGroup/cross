@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 import sys
+from shared_path_fixture import extend_path
 
 ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser()
@@ -108,12 +109,20 @@ fixture = fixture.replace('int getLineHeight(int) const { return font().advanceY
 fixture = fixture.replace('{{SMALL_FONT_ID, EpdFontFamily(&fontObject())}}',
                           '{{SMALL_FONT_ID, EpdFontFamily(&fontObject())}, '
                           '{UI_12_FONT_ID, EpdFontFamily(&bodyFontObject())}}')
+fixture = fixture.replace('mutable std::vector<int> ys;',
+                          'mutable std::vector<int> ys, textFontIds;')
+fixture = fixture.replace('void drawText(int, int x, int y, const char* text) const {',
+    'void drawText(int fontId, int x, int y, const char* text) const { textFontIds.push_back(fontId);')
+fixture = fixture.replace('int getTextWidth(int, const char* text,', 'int getTextWidth(int fontId, const char* text,')
+fixture = fixture.replace('EpdFont(&font()).getTextDimensions(text, &width, &height);',
+                          'EpdFont(fontId == UI_12_FONT_ID ? &bodyFontData() : &font()).getTextDimensions(text, &width, &height);')
+fixture = fixture.replace('const auto* g = glyph(next(text));',
+                          'const auto& bitmapFont = fontId == UI_12_FONT_ID ? bodyFontData() : font();\n'
+                          '      const auto* g = fontId == UI_12_FONT_ID ? bodyFontObject().getGlyph(next(text)) : glyph(next(text));')
+fixture = fixture.replace('if (font().bitmap[g->dataOffset', 'if (bitmapFont.bitmap[g->dataOffset')
+fixture = fixture.replace('y + font().ascender - g->top + row', 'y + bitmapFont.ascender - g->top + row')
 if args.phase2:
     fixture = '#include <builtinFonts/notoserif_16_regular.h>\n#include <builtinFonts/notoserif_18_regular.h>\n' + fixture
-    fixture = fixture.replace('mutable std::vector<int> ys;',
-                              'mutable std::vector<int> ys, textFontIds;')
-    fixture = fixture.replace('void drawText(int, int x, int y, const char* text) const {',
-        'void drawText(int fontId, int x, int y, const char* text) const { textFontIds.push_back(fontId);')
     fixture = fixture.replace("if (!std::strchr(text, '|')) return wrappedTextProduction",
                               'if (true) return wrappedTextProduction')
     fixture = fixture.replace('return id == UI_12_FONT_ID ? bodyFontData().advanceY : font().advanceY;',
@@ -437,6 +446,7 @@ else:
     fixture += harness
     for name in ('drawFooter', 'homeTipText', 'homeInfoText', 'homeScreenLayout'):
         fixture += '\n' + function(home_source, f'HomeActivity::{name}(')
+    fixture = extend_path(fixture, chrome, function, True, ROOT)
     adapter_path = 'src/activities/settings/X3SettingsLayout.h'
     if (ROOT / adapter_path).exists():
         adapter = (ROOT / adapter_path).read_text()
@@ -548,6 +558,7 @@ else:
                     declaration = function(read_source(f'src/activities/{directory}/{activity}.h'), 'int tabCount()')
                     fixture += '\n' + declaration.replace('int tabCount()', 'int EpubReaderMenuActivity::tabCount()').replace(' override', '')
         fixture += Path(__file__).with_name('Phase2ChromeTest.cpp').read_text()
+    fixture += Path(__file__).with_name('PathGeometryTest.h').read_text()
     fixture += Path(__file__).with_name('X3ScreenLayoutTest.cpp').read_text()
 args.work.mkdir(parents=True, exist_ok=True)
 unit = args.work / 'layout.cpp'

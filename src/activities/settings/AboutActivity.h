@@ -9,6 +9,7 @@
 // Rows are informational; activating one does nothing.
 class AboutActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::About; }
   explicit AboutActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   static constexpr int ITEM_COUNT = 11;

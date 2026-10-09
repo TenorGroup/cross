@@ -14,6 +14,8 @@
 // the words), Back leaves the quote as it was.
 class QuoteTrimActivity final : public Activity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::More; }
+  std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_QUOTES_MENU_EDIT); }
   QuoteTrimActivity(GfxRenderer& r, MappedInputManager& input, quotes::QuoteId id)
       : Activity("QuoteTrim", r, input), id(id) {}
   void onEnter() override;

@@ -22,6 +22,8 @@ class SdFirmwareUpdateActivity : public Activity {
   x3activity::InfoPages x3Info;
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::System; }
+  std::string x3NavigationLabel() const override { return I18N.get(recoveryMode ? StrId::STR_RECOVERY_MODE : StrId::STR_SD_FIRMWARE_UPDATE); }
   enum class State {
     PICKING,
     VALIDATING,

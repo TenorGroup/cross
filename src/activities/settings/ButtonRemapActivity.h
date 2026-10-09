@@ -12,6 +12,7 @@ class ButtonRemapActivity final : public Activity, private UiAppHost {
   x3activity::InfoPages x3Info;
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Controls; }
   explicit ButtonRemapActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("ButtonRemap", renderer, mappedInput), UiAppHost(renderer) {}
 

@@ -10,36 +10,17 @@
 
 #include "components/TenorMenuChrome.h"
 #include "fontIds.h"
+#include "X3LegacyPath.h"
+#include "shells/Shell.h"
 
 namespace x3activity {
 inline void drawBar(const GfxRenderer& renderer, const tenorchrome::X3ScreenRect rect, const char* title,
                     const char* prefix = "") {
-  title = title ? title : "";
-  prefix = prefix ? prefix : "";
-  const size_t prefixLength = std::strlen(prefix), titleLength = std::strlen(title);
-  const size_t separator = prefixLength ? 1 : 0;
-  const size_t total = prefixLength + separator + titleLength;
-  const auto byteAt = [&](size_t index) {
-    return index < prefixLength ? prefix[index] : index < prefixLength + separator ? '/' :
-        title[index - prefixLength - separator];
-  };
-  char path[512];
-  size_t start = total >= sizeof(path) ? total - sizeof(path) + 1 : 0;
-  while (start < total && (static_cast<unsigned char>(byteAt(start)) & 0xc0) == 0x80) ++start;
-  size_t length = total - start;
-  for (size_t index = 0; index < length; ++index) path[index] = byteAt(start + index);
-  path[length] = 0;
-  while (length && renderer.getTextWidth(UI_12_FONT_ID, path) > rect.width - 80) {
-    size_t next = 1;
-    while (next < length && (static_cast<unsigned char>(path[next]) & 0xc0) == 0x80) ++next;
-    std::memmove(path, path + next, length - next + 1);
-    length -= next;
+  if (shell::uglyParts()) {
+    uglylegacy::drawFormPath(renderer, rect, title, prefix);
+    return;
   }
-  const int height = renderer.getLineHeight(UI_12_FONT_ID) + 16;
-  const int width = std::min(rect.width - 48, renderer.getTextWidth(UI_12_FONT_ID, path) + 32);
-  const int top = rect.y + (rect.height - height) / 2;
-  tenorchrome::drawPillRing(renderer, 24, top, width, height, 2, false);
-  renderer.drawText(UI_12_FONT_ID, 40, top + 8, path);
+  tenorchrome::drawX3ActivityPath(renderer, title);
 }
 
 class InfoPages {

@@ -13,6 +13,8 @@ bool fileSearchMatches(const std::string& entry, const std::string& query);
 
 class FileBrowserActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::File; }
+  std::string x3NavigationLabel() const override { return basepath; }
   // Books = standard reader browser; PickFirmware = filter to .bin only and return path via ActivityResult.
   enum class Mode { Books, PickFirmware };
 

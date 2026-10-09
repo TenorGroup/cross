@@ -5,6 +5,7 @@
 #include "activities/UiListActivity.h"
 class BookStatsLibraryActivity final : public UiListActivity {
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Stats; }
   BookStatsLibraryActivity(GfxRenderer& r, MappedInputManager& i) : UiListActivity("BookStatsLibrary", r, i) {}
   void onEnter() override;
 

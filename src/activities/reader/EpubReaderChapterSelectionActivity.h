@@ -56,6 +56,8 @@ class EpubReaderChapterSelectionActivity final : public UiListActivity {
   void drawChrome() override;
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Position; }
+  std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_SELECT_CHAPTER); }
   explicit EpubReaderChapterSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                               const std::shared_ptr<Epub>& epub, int currentSpineIndex);
   void onEnter() override;

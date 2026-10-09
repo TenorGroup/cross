@@ -56,6 +56,7 @@ int main() {
         check(renderer.paintedText.size() == infoBefore + 1, "information survives tips and status Off");
         ++cases;
 #ifdef X3_SETTINGS_ADAPTER_AVAILABLE
+        checkX3PathGeometry();
         checkSettingsScreenMatrix(renderer);
         UiScreen settingsScreen;
         check(beginScreen(settingsScreen, renderer, "Giu OK: Ghim"), "settings adapter enabled");
@@ -265,6 +266,8 @@ int main() {
   check(!off.paintedText.empty(), "status Off does not hide tips");
   std::printf("%s: %d layout cases with shipped caption fonts\n", failures ? "RED" : "GREEN", cases);
 #ifdef X3_SETTINGS_ADAPTER_AVAILABLE
+  std::printf("%s: %d path glyph-center checks, shared font, height, padding and 8 px gaps\n",
+              failures ? "RED" : "GREEN", pathGeometryCases);
   std::printf("GREEN: %d list recipes (14 classes x 18 combinations x 4 info states), 53 reachable rows each\n", settingsMatrixCases);
 #endif
 #ifdef X3_TEXT_TABS_AVAILABLE

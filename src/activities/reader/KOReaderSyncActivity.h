@@ -45,6 +45,8 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   x3activity::InfoPages x3Info;
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::Network; }
+  std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_KOREADER_SYNC); }
   explicit KOReaderSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& epubPath,
                                 CrossPointPosition localPosition, SavedProgressPosition localKoPos,
                                 std::string localChapterName);

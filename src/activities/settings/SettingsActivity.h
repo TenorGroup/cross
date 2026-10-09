@@ -320,6 +320,7 @@ class SettingsActivity final : public UiTabListActivity {
   void onResume() override;
   bool handleHomeGesture() override;
   std::string navigationLabel() const override { return tabLabel(activeTab()); }
+  tenorchrome::X3PathIcon navigationIcon() const override;
   bool selectSettingsSibling(int direction) override;
   bool openPendingSettingsSibling() override;
   void restoreNavigation(const MenuNavigationState& state) override;

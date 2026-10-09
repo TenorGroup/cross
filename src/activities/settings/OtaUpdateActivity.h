@@ -87,6 +87,8 @@ class OtaUpdateActivity : public Activity {
 #endif
 
  public:
+  tenorchrome::X3PathIcon navigationIcon() const override { return tenorchrome::X3PathIcon::System; }
+  std::string x3NavigationLabel() const override { return I18N.get(StrId::STR_UPDATE); }
   explicit OtaUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                              const update_boot::Request& bootRequest = {})
       : Activity("OtaUpdate", renderer, mappedInput), updater(), boot(bootRequest) {}

@@ -8,6 +8,8 @@
 #include "components/icons/tenorHomeTabIcons.h"
 #include "components/icons/tenorReaderTabIcons.h"
 #include "fontIds.h"
+#include "activities/X3LegacyPath.h"
+#include "shells/Shell.h"
 
 namespace x3readerchrome {
 template <class Visitor>
@@ -41,23 +43,10 @@ inline int eachInfoLine(const GfxRenderer& renderer, const char* text, Visitor v
 
 inline void drawPath(const GfxRenderer& renderer, const tenorchrome::X3ScreenRect bar, const freeink::Icon& icon,
                      const char* path) {
-  const int iconX = bar.x + 18;
-  const int pillX = iconX + icon.w + 12;
-  const int pillWidth = bar.x + bar.width - 18 - pillX;
-  tenorchrome::drawBarIcon(renderer, icon.bits, icon.w, icon.h, iconX, bar.y + (bar.height - icon.h) / 2, true);
-  tenorchrome::drawPillRing(renderer, pillX, bar.y + 6, pillWidth, bar.height - 12, 2, true);
-  const int room = pillWidth - 24;
-  const char* suffix = path ? path : "";
-  const bool clipped = renderer.getTextWidth(SMALL_FONT_ID, suffix) > room || std::strlen(suffix) >= 508;
-  if (clipped) {
-    const int available = room - renderer.getTextWidth(SMALL_FONT_ID, "…");
-    while (*suffix && (std::strlen(suffix) >= 508 || renderer.getTextWidth(SMALL_FONT_ID, suffix) > available)) {
-      ++suffix;
-      while (*suffix && (static_cast<unsigned char>(*suffix) & 0xc0) == 0x80) ++suffix;
-    }
+  if (shell::uglyParts()) {
+    uglylegacy::drawReaderPath(renderer, bar, icon, path);
+    return;
   }
-  char label[512];
-  std::snprintf(label, sizeof(label), "%s%s", clipped ? "…" : "", suffix);
-  renderer.drawText(SMALL_FONT_ID, pillX + 12, bar.y + (bar.height - renderer.getLineHeight(SMALL_FONT_ID)) / 2, label);
+  tenorchrome::drawX3ActivityPath(renderer, path);
 }
 }  // namespace x3readerchrome
