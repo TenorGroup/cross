@@ -10,6 +10,7 @@
 #include <cstdio>
 
 #include "QuoteDetailActivity.h"
+#include "components/PageScrollbar.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "shells/Shell.h"
@@ -266,6 +267,11 @@ void QuoteTrimActivity::render(RenderLock&&) {
   // Back discards the trim, so its hint says Cancel rather than showing the Back symbol.
   const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_QUOTES_SAVE), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  if (tenorchrome::kTouchShell) {
+    auto target = makeUiTarget(renderer);
+    PageScrollbar::instance().draw(renderer, target, top, top + perArea * lineHeight,
+                                   lineCount * lineHeight, firstLine * lineHeight, this);
+  }
 #ifdef UGLY_FRAME_LOG
   if (byHand) LOG_INF("UGLY", "QuoteTrim frame first=%d last=%d end=%d", first, last, movingEnd);
 #endif

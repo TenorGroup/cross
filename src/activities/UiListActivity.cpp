@@ -393,10 +393,14 @@ void UiListActivity::setPageScrollRegion(const int top, const int bottom, const 
 }
 
 void UiListActivity::measurePageScrollbar(UiScreen& screen, const fui::ListProps& props) {
+  if (!tenorchrome::kTouchShell) {
+    const int height = screen.body().height;
+    const int rows = std::max(1, activeNav().pageRowsFor(listCount()));
+    setPageScrollRegion(screen.body().y, screen.body().bottom(), listCount() * height / rows,
+                        activeNav().top * height / rows);
+    return;
+  }
   if (!rowsFramed || shell::isUgly()) return;
-  bool multipleGroups = false;
-  for (int row = 1; row < listCount(); ++row) multipleGroups |= rowStartsGroup(row);
-  if (!multipleGroups) return;
   const auto lines = rowFrameLines(rowFrameGap);
   const int headerHeight = props.headerRowHeight > 0 ? props.headerRowHeight :
                            screen.target().lineHeight(props.headerText.font) + 4;
@@ -777,12 +781,6 @@ void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, c
                           listCount(), props);
   keepUglyRows(props);
   measurePageScrollbar(screen, laid);
-  if (!tenorchrome::kTouchShell) {
-    const int height = screen.body().height;
-    const int rows = std::max(1, activeNav().pageRowsFor(listCount()));
-    setPageScrollRegion(screen.body().y, screen.body().bottom(), listCount() * height / rows,
-                        activeNav().top * height / rows);
-  }
 
   activeNav().selected = kepConTro(activeNav().selected, listCount());
   // The touch shell has no cursor row: a tap opens or changes the row, nothing waits "selected".

@@ -66,7 +66,7 @@ int main(){
    if(offset>=length-height)assert(thumb.bottom()==50+height);
   }
  }
- {Target t;bar.draw(r,t,50,360,620,310,&r,400);assert(t.fills.back().x==405);}
+ {Target t;bar.draw(r,t,50,360,620,310,&r,400);assert(t.fills.back().x==(TOUCH?469:405));}
  now+=3000;
  assert(bar.needsIdleUpdate(input)==bool(TOUCH));
  if(TOUCH){assert(bar.renderIdleUpdate(r,input));assert(r.windows==1);}
@@ -85,7 +85,10 @@ parent = (root / 'src/activities/UiListActivity.cpp').read_text()
 toolbar = (root / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
 popup = (root / 'src/components/OptionPopup.h').read_text()
 assert 'props.scrollIndicator = false;' in parent[parent.index('void UiListActivity::frameRows'):parent.index('namespace {', parent.index('void UiListActivity::frameRows'))]
-assert 'setPageScrollRegion(screen.body().y' in parent[parent.index('void UiListActivity::syncListViewport'):parent.index('void UiListActivity::renderUi')]
+assert 'setPageScrollRegion(screen.body().y' in parent[parent.index('void UiListActivity::measurePageScrollbar'):parent.index('void UiListActivity::drawPageScrollbar')]
+assert 'measurePageScrollbar(screen, laid);' in parent[parent.index('void UiListActivity::syncListViewport'):parent.index('void UiListActivity::renderUi')]
+tabbed = (root / 'src/activities/UiTabListActivity.cpp').read_text()
+assert 'measurePageScrollbar(screen, laid);' in tabbed[tabbed.index('void UiTabListActivity::syncTabListViewport'):]
 panel = toolbar[toolbar.index('void ReaderToolbarUi::buildPanel'):toolbar.index('#if defined(FREEINK_DEVICE_X4PRO)', toolbar.index('  const int pageRows = nav_.pageRows();'))]
 assert 'listProps_.scrollIndicator = false;' in panel
 assert 'PageScrollbar::instance().drawList(' in panel

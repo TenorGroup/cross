@@ -174,6 +174,7 @@ void EndOfBookOptions::buildListScreen(UiScreen& screen) {
   props.selectedIndex = static_cast<int16_t>(selector.load(std::memory_order_relaxed));
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in handleMenuInput()
+  if (tenorchrome::kTouchShell) props.scrollIndicator = false;
   screen.list(props);
 }
 

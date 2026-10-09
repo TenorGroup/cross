@@ -11,6 +11,7 @@
 #include <cstdio>
 
 #include "QuoteDetailActivity.h"
+#include "components/PageScrollbar.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -712,6 +713,14 @@ void QuotesActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), any ? tr(STR_SELECT) : "", any ? tr(STR_DIR_UP) : "",
                                             any ? tr(STR_DIR_DOWN) : "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  if (tenorchrome::kTouchShell) {
+    const auto area = metrics();
+    const int top = quotelist::contentTop(topRowMetrics());
+    const int height = area.bandBottom - top;
+    auto target = makeUiTarget(renderer);
+    PageScrollbar::instance().draw(renderer, target, top, area.bandBottom,
+                                   itemCount() * height / std::max(1, perPage()), page * height, this);
+  }
 #ifdef UGLY_FRAME_LOG
   if (shell::uglyParts()) LOG_INF("UGLY", "Quotes frame books=%d items=%d sel=%d", showsBooks(), itemCount(), selected);
 #endif

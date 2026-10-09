@@ -14,6 +14,7 @@
 #include "QuoteTrimActivity.h"
 #include "components/QuoteMarkGlyph.h"
 #include "components/TenorMenuChrome.h"
+#include "components/PageScrollbar.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "shells/Shell.h"
@@ -562,6 +563,13 @@ void QuoteDetailActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_QUOTES_OPTIONS), hasPrevious ? tr(STR_DIR_LEFT) : "",
                                             hasNext ? tr(STR_DIR_RIGHT) : "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  if (tenorchrome::kTouchShell && !confirmingDelete) {
+    const auto area = metrics();
+    const int top = quotedetail::bodyTop(area);
+    const int height = area.bandBottom - top;
+    auto target = makeUiTarget(renderer);
+    PageScrollbar::instance().draw(renderer, target, top, area.bandBottom, pages * height, quotePage * height, this);
+  }
 #ifdef UGLY_FRAME_LOG
   if (shell::uglyParts()) LOG_INF("UGLY", "QuoteDetail frame quote=%d page=%d", index, quotePage);
 #endif

@@ -57,7 +57,8 @@ class PageScrollbar {
     }
     const int clampedOffset = std::clamp(offset, 0, length - height);
     const int edgeLeft = renderer.getScreenWidth() - PAGE_SCROLLBAR_EDGE_INSET - tenorchrome::FRAME_BAR_WIDTH;
-    const int left = frameRight > 0 ? std::min(edgeLeft, frameRight + PAGE_SCROLLBAR_EDGE_INSET) : edgeLeft;
+    const int left = !tenorchrome::kTouchShell && frameRight > 0
+                         ? std::min(edgeLeft, frameRight + PAGE_SCROLLBAR_EDGE_INSET) : edgeLeft;
     if (available.load() && (regionOwner != owner || region.left != left || region.top != top || region.bottom != bottom))
       renderer.fillRect(region.left, region.top, tenorchrome::FRAME_BAR_WIDTH, region.bottom - region.top, false);
     if (tenorchrome::kTouchShell &&
