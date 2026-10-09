@@ -11,6 +11,7 @@
 #include <memory>
 
 #include "CrossPointSettings.h"
+#include "MenuTiltInput.h"
 #include "ReadingStatsStore.h"
 #include "shells/Shell.h"
 #include "shells/ugly/UglyInk.h"
@@ -74,7 +75,15 @@ void StatusBarSettingsActivity::queueForm(FormEvent event) {
 }
 
 void StatusBarSettingsActivity::pollTilt() {
-  if (!shell::isUgly()) UiListActivity::pollTilt();
+  if (!shell::isUgly()) {
+    UiListActivity::pollTilt();
+    return;
+  }
+  menutilt::pollTabs(static_cast<uint8_t>(renderer.getOrientation()), false);
+  const auto tilt = menutilt::pollRows(visibleItemCount > 0);
+  using Key = ugly::QuestionSheet::Key;
+  if (tilt.previous) queueForm({FormEvent::Type::Key, Key::PreviousQuestion});
+  else if (tilt.next) queueForm({FormEvent::Type::Key, Key::NextQuestion});
 }
 
 bool StatusBarSettingsActivity::handleCustomInput() {

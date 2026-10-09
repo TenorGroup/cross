@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
+#include "MenuTiltInput.h"
 #include "ReadingStatsStore.h"
 #include "SettingsList.h"
 #include "shells/Shell.h"
@@ -229,7 +230,15 @@ void TextSettingsActivity::queueForm(FormEvent event) {
 }
 
 void TextSettingsActivity::pollTilt() {
-  if (!shell::isUgly()) UiTabListActivity::pollTilt();
+  if (!shell::isUgly()) {
+    UiTabListActivity::pollTilt();
+    return;
+  }
+  menutilt::pollTabs(static_cast<uint8_t>(renderer.getOrientation()), false);
+  const auto tilt = menutilt::pollRows(true);
+  using Key = ugly::QuestionSheet::Key;
+  if (tilt.previous) queueForm({FormEvent::Type::Key, Key::PreviousQuestion});
+  else if (tilt.next) queueForm({FormEvent::Type::Key, Key::NextQuestion});
 }
 
 bool TextSettingsActivity::handleCustomInput() {

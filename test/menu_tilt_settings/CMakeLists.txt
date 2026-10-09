@@ -58,6 +58,9 @@ endif()
 
 add_test(NAME MenuTiltSettingsNoImu COMMAND MenuTiltSettingsTest no-imu)
 add_test(NAME MenuTiltSettingsImu COMMAND MenuTiltSettingsTest imu)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME UglyTiltNavigation COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/test/ugly_shell/tilt_navigation.py
+  --repo ${REPO_ROOT} --output ${CMAKE_CURRENT_BINARY_DIR}/ugly-tilt)
 add_test(NAME PowerButtonTapWake COMMAND MenuTiltSettingsTest power)
 add_test(NAME QuickActionPerScreen COMMAND MenuTiltSettingsTest action)
 add_test(NAME ShakeSettingsImu COMMAND MenuTiltSettingsTest shake)

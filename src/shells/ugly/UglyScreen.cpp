@@ -2,6 +2,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "MenuTiltInput.h"
 #include "UglyTouch.h"
 #include "activities/RenderLock.h"
 
@@ -94,6 +95,12 @@ void Screen::readTouch() {
 #endif
 
 void Screen::loop() {
+  const auto tabs = menutilt::pollTabs(static_cast<uint8_t>(renderer.getOrientation()), acceptsTiltTabNavigation());
+  if (tabs.next) push(Key::Right);
+  else if (tabs.previous) push(Key::Left);
+  const auto rows = menutilt::pollRows(true);
+  if (rows.previous) push(Key::Up);
+  else if (rows.next) push(Key::Down);
   using Button = MappedInputManager::Button;
   // As in tenor/cross: the two front buttons (Left, Right) walk up and down, the two edge buttons (Up, Down) go
   // sideways, to the page next door. A hold on a front button is reported once, while it is down, and eats the

@@ -1,5 +1,7 @@
 """Keep the pinned simulator tilt facade aligned with the vertical gesture and shake HAL."""
 from pathlib import Path
+import subprocess
+import sys
 
 Import("env")
 root = Path(env["PROJECT_LIBDEPS_DIR"]) / env["PIOENV"] / "simulator" / "src"
@@ -79,3 +81,7 @@ patch(root / "HalTiltSensor.h", [(
     "  bool wasEdgeTapped() { return false; }\n",
     1,
 )])
+
+subprocess.run([sys.executable,
+                str(Path(env['PROJECT_DIR']) / 'test/reading_stats_simulator/ugly_tilt_fixture.py'),
+                '--hal', str(root / 'HalTiltSensor.h')], check=True)

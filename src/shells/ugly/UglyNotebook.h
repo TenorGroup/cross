@@ -33,6 +33,13 @@ class Notebook final : public Screen {
 
  protected:
   bool onKey(Key key) override;
+  bool acceptsTiltTabNavigation() const override {
+#if FREEINK_DEVICE_X4PRO
+    return group < 0 && pop == Pop::None;
+#else
+    return true;
+#endif
+  }
   void afterKeys() override;
 
  private:

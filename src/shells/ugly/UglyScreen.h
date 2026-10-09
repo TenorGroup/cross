@@ -21,11 +21,13 @@ class Screen : public Activity {
   void loop() final;
   // The three tiers are Home: holding Back does not throw them out to Home again.
   bool isHomeActivity() const override { return true; }
+  bool managesTiltSensor() const override { return true; }
 
  protected:
   Screen(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput) : Activity(name, renderer, mappedInput) {}
   // Runs with the render lock held: change the state, return true when the screen must be drawn again.
   virtual bool onKey(Key key) = 0;
+  virtual bool acceptsTiltTabNavigation() const { return false; }
   // Runs after a pass of keys, with the lock released and the screen staying: the place for work that reads the
   // card, which must never happen under the lock. Ask for the frame yourself when it changes something.
   virtual void afterKeys() {}

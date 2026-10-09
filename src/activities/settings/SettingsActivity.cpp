@@ -24,6 +24,7 @@
 #include "ClearCacheActivity.h"
 #include "ClockSettingsActivity.h"
 #include "CrossPointSettings.h"
+#include "MenuTiltInput.h"
 #include "FontDownloadActivity.h"
 #include "HomeButtonSettingsActivity.h"
 #include "InfoUpdateActivity.h"
@@ -535,7 +536,15 @@ void SettingsActivity::queueForm(FormEvent event) {
 }
 
 void SettingsActivity::pollTilt() {
-  if (!shell::isUgly()) UiTabListActivity::pollTilt();
+  if (!shell::isUgly()) {
+    UiTabListActivity::pollTilt();
+    return;
+  }
+  menutilt::pollTabs(static_cast<uint8_t>(renderer.getOrientation()), false);
+  const auto tilt = menutilt::pollRows(settingsCount > 0);
+  using Key = ugly::QuestionSheet::Key;
+  if (tilt.previous) queueForm({FormEvent::Type::Key, Key::PreviousQuestion});
+  else if (tilt.next) queueForm({FormEvent::Type::Key, Key::NextQuestion});
 }
 
 bool SettingsActivity::handleCustomInput() {

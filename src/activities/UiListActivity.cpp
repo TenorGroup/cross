@@ -10,6 +10,7 @@
 
 #include "MappedInputManager.h"
 #include "MenuCustomization.h"
+#include "MenuTiltInput.h"
 #include "components/OptionPopup.h"
 #include "components/TenorMenuChrome.h"
 #include "components/SettledListRender.h"
@@ -282,8 +283,7 @@ bool UiListActivity::confirmReleased() {
 bool UiListActivity::backReleased() { return mappedInput.wasReleased(MappedInputManager::Button::Back); }
 
 void UiListActivity::pollTilt() {
-  const auto orientation = static_cast<CrossPointOrientation::Value>(renderer.getOrientation());
-  halTiltSensor.update(CrossPointTiltPageTurn::TILT_OFF, static_cast<uint8_t>(orientation), false);
+  menutilt::pollTabs(static_cast<uint8_t>(renderer.getOrientation()), false);
   pollRowTilt();
 }
 
@@ -298,11 +298,9 @@ bool UiListActivity::queueTiltMenuNavigation(const bool up, const bool down) {
 void UiListActivity::pollRowTilt() {
   OptionPopup* const popup = tiltPopup();
   const bool popupOpen = popup != nullptr && popup->isActive();
-  halTiltSensor.configureVerticalGesture(SETTINGS.tiltMenuNavigation, popupOpen || acceptsTiltMenuNavigation());
-  // Measured on the X3 22/09: the gesture the sensor labels Up is the one readers use to go down
-  // a row, so the two readings trade places here.
-  const bool up = halTiltSensor.wasTiltedDown();
-  const bool down = halTiltSensor.wasTiltedUp();
+  const auto tilt = menutilt::pollRows(popupOpen || acceptsTiltMenuNavigation());
+  const bool up = tilt.previous;
+  const bool down = tilt.next;
   if (popupOpen) {
     if (up || down) {
       popup->step(up ? -1 : 1);

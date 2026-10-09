@@ -87,10 +87,21 @@ else:
     require(
         r"void UiTabListActivity::pollTilt\(\)\s*\{\s*"
         r"const bool acceptsTilt\s*=\s*acceptsTiltTabNavigation\(\);\s*"
-        r"const auto orientation\s*=\s*static_cast<CrossPointOrientation::Value>\(renderer\.getOrientation\(\)\);\s*"
-        r"halTiltSensor\.update\(SETTINGS\.tiltTabNavigation, static_cast<uint8_t>\(orientation\), acceptsTilt\);",
+        r"const auto tilt\s*=\s*menutilt::pollTabs\(static_cast<uint8_t>\(renderer\.getOrientation\(\)\), acceptsTilt\);",
         (source_root / "src/activities/UiTabListActivity.cpp").read_text(),
         "tab loop no longer supplies its own tilt setting and target gate",
+    )
+    require(
+        r"inline Step pollTabs\(const uint8_t orientation, const bool active\)\s*\{\s*"
+        r"const uint8_t mode\s*=\s*active \? SETTINGS\.tiltTabNavigation : CrossPointTiltPageTurn::TILT_OFF;\s*"
+        r"halTiltSensor\.update\(mode, orientation, active\);",
+        (source_root / "src/MenuTiltInput.h").read_text(),
+        "shared tab poll no longer supplies the tab setting and target gate",
+    )
+    require(
+        r"bool managesTiltSensor\(\) const override\s*\{\s*return true;\s*\}",
+        (source_root / "src/shells/ugly/UglyScreen.h").read_text(),
+        "ugly screen does not own its tilt update loop",
     )
     require(
         r"bool ActivityManager::isForegroundActivityManagingTiltSensor\(\) const\s*\{\s*"

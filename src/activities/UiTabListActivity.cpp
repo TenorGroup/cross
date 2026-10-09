@@ -9,6 +9,7 @@
 
 #include "MappedInputManager.h"
 #include "MenuCustomization.h"
+#include "MenuTiltInput.h"
 #include "components/TenorMenuChrome.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -124,14 +125,9 @@ UiTabListActivity::UiTabListActivity(const char* name, GfxRenderer& renderer, Ma
 
 void UiTabListActivity::pollTilt() {
   const bool acceptsTilt = acceptsTiltTabNavigation();
-  const auto orientation = static_cast<CrossPointOrientation::Value>(renderer.getOrientation());
-  halTiltSensor.update(SETTINGS.tiltTabNavigation, static_cast<uint8_t>(orientation), acceptsTilt);
+  const auto tilt = menutilt::pollTabs(static_cast<uint8_t>(renderer.getOrientation()), acceptsTilt);
   if (acceptsTilt) {
-    // Measured on the X3 22/09: the sensor's own Normal is the direction
-    // readers find natural for tabs, so the readings pass straight through.
-    const bool forward = halTiltSensor.wasTiltedForward();
-    const bool backward = halTiltSensor.wasTiltedBack();
-    queueTiltTabNavigation(forward, backward);
+    queueTiltTabNavigation(tilt.next, tilt.previous);
   }
   // Row tilt is the other gyro axis, armed after the poll above because that call carries the
   // tab setting alone.
