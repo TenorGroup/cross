@@ -292,6 +292,36 @@ TEST_F(TickTest, FailedPairingKeepsTheChosenRemote) {
   EXPECT_EQ(host().delivered, (std::vector<Action>{Action::NextPage}));
 }
 
+TEST_F(TickTest, FailedConnectRequestDoesNotPromoteCandidate) {
+  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  strcpy(config.peerName, "Free3-R");
+  radio().connecting = true;
+  radio().connectResult = false;
+  EXPECT_FALSE(bleturner::pair("11:22:33:44:55:66", "Remote B"));
+  EXPECT_EQ(radio().connects, (std::vector<std::string>{"11:22:33:44:55:66"}));
+  radio().connecting = false;
+  radio().connected = true;
+  radio().addr = "11:22:33:44:55:66";
+  radio().name = "Remote B";
+  EXPECT_FALSE(bleturner::service());
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  EXPECT_STREQ(config.peerName, "Free3-R");
+}
+
+TEST_F(TickTest, FailedStartDoesNotPromoteCandidate) {
+  strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  strcpy(config.peerName, "Free3-R");
+  radio().beginResult = false;
+  EXPECT_FALSE(bleturner::pair("11:22:33:44:55:66", "Remote B"));
+  EXPECT_TRUE(radio().connects.empty());
+  radio().connected = true;
+  radio().addr = "11:22:33:44:55:66";
+  radio().name = "Remote B";
+  EXPECT_FALSE(bleturner::service());
+  EXPECT_STREQ(config.peerAddr, "7d:de:5c:bd:ae:ca");
+  EXPECT_STREQ(config.peerName, "Free3-R");
+}
+
 TEST_F(TickTest, PairedRemoteBecomesTheChosenOneOnceItLinks) {
   strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
   EXPECT_TRUE(bleturner::pair("11:22:33:44:55:66", "Remote B"));

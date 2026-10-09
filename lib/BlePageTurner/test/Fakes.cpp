@@ -133,7 +133,7 @@ void scan(const uint32_t durationMs) {
 }
 bool connect(const char* addr) {
   theRadio.connects.emplace_back(addr);
-  return true;
+  return theRadio.connectResult;
 }
 void disconnect() { theRadio.connected = false; }
 void forget(const char* addr) { theRadio.forgotten.emplace_back(addr); }

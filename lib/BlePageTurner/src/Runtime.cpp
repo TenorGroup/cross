@@ -591,9 +591,10 @@ bool pair(const char* addr, const char* name) {
   // Only a candidate until it links: a pairing that fails must not replace a bonded choice with
   // an address the stack cannot reconnect (the reader takes presses from the chosen remote only).
   pairing = Pairing{};
+  if (!config->enabled || !switchOn() || !port::connect(addr)) return false;
   strncpy(pairing.addr, addr, sizeof(pairing.addr) - 1);
   strncpy(pairing.name, name, sizeof(pairing.name) - 1);
-  return config->enabled && switchOn() && port::connect(addr);
+  return true;
 }
 
 void disconnect() { port::disconnect(); }

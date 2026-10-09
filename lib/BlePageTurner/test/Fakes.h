@@ -18,6 +18,7 @@ struct Radio {
   bool connecting = false;
   bool scanning = false;
   bool beginResult = true;
+  bool connectResult = true;
   bool endResult = true;
   unsigned beginCalls = 0;
   unsigned endCalls = 0;
