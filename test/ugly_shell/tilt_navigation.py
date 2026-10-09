@@ -64,13 +64,15 @@ bool panelFree=true;
 struct RenderLock { struct TryTake {}; RenderLock(TryTake) {} bool acquired() const { return panelFree; } };
 namespace ugly {
 struct Screen {
-  enum class Key { Up,Down,Left,Right,Confirm,Back,UpHold,DownHold };
+  enum class Key { Up,Down,Left,Right,Confirm,Back,UpHold,DownHold,ConfirmHold };
   static constexpr int QUEUE=8; static constexpr unsigned long HOLD_MS=700;
   Key queue[QUEUE]; uint8_t head=0,count=0; std::function<void()> later;
   MappedInputManager mappedInput;
   struct Renderer { int getOrientation() const { return 3; } } renderer;
   bool tabbed=false; int refreshes=0; std::vector<Key> seen;
   bool acceptsTiltTabNavigation() const { return tabbed; }
+  bool acceptsConfirmHold() const { return false; }
+  bool handleModalInput() { return false; }
   void push(Key); void loop();
   bool onKey(Key key) { seen.push_back(key); return true; }
   void afterKeys() {} void requestUpdate() { ++refreshes; }

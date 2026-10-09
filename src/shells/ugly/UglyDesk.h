@@ -18,6 +18,7 @@ class Desk final : public Screen {
 
  protected:
   bool onKey(Key key) override;
+  bool acceptsTiltTabNavigation() const override { return true; }
 
  private:
   mutable ugly::MarkState mark_;
