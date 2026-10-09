@@ -2394,7 +2394,7 @@ void loop() {
 #else
     const bool radioActive = false;
 #endif
-    if (!radioActive && millis() - lastActivityTime >= HalPowerManager::IDLE_POWER_SAVING_MS) {
+    if (!radioActive && !gpio.rawInputActive() && millis() - lastActivityTime >= HalPowerManager::IDLE_POWER_SAVING_MS) {
       // If we've been inactive for a while, increase the delay to save power
       powerManager.setPowerSaving(true);  // Lower CPU frequency after extended inactivity
       // Sleep in short slices and wake the poll as soon as a button contact closes.
@@ -2403,7 +2403,12 @@ void loop() {
       const unsigned long idleStart = millis();
       while (millis() - idleStart < 50) {
         delay(10);
-        if (gpio.rawInputActive()) break;
+        if (gpio.rawInputActive()) {
+          // Full clock before the press is even committed: at 10 MHz the next pass alone took
+          // 40-60 ms on the X3, so a key after a pause answered 30 ms later than one without.
+          powerManager.setPowerSaving(false);
+          break;
+        }
       }
     } else {
       if (radioActive) powerManager.setPowerSaving(false);
