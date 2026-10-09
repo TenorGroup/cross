@@ -96,6 +96,8 @@ int main(int argc, char** argv) {
   const std::string board=argc>1?argv[1]:"x3";
   const bool imu=argc>2?std::atoi(argv[2]):true;
   const bool optional=argc>3?std::atoi(argv[3]):false;
+  SETTINGS.uiShell=argc>4?std::atoi(argv[4]):0;
+  const bool ugly=SETTINGS.uiShell==1;
   BoardConfig::ACTIVE=board=="x3"?BoardConfig::XTEINK_X3:board=="x4"?BoardConfig::XTEINK_X4:BoardConfig::XTEINK_X4_PRO;
   gpio.x3=board=="x3";
   halTiltSensor.available=imu;
@@ -116,11 +118,14 @@ int main(int argc, char** argv) {
   std::map<std::string,int> occurrences, routes;
   JsonDocument result;
   auto counts=result["counts"].to<JsonArray>();
+  auto inventory=result["rows"].to<JsonArray>();
   for(int tab=0;tab<settingstabs::TAB_COUNT;++tab) {
     const auto& rows=activity.danhSachCuaThe(static_cast<settingstabs::Tab>(tab));
     counts.add(rows.size());
+    auto tabRows=inventory.add<JsonArray>();
     for(const auto& row:rows) {
       const auto key=row.key?std::string("settings/")+row.key:"action/"+std::to_string(static_cast<int>(row.action));
+      tabRows.add(key);
       // A row without key or action (the read-only panel chip row) has no route to collide on.
       if(!row.key && row.action==SettingAction::None) continue;
       ++occurrences[key];
@@ -138,8 +143,13 @@ int main(int argc, char** argv) {
     }
   }
   for(const auto& [key,n]:occurrences) ok &= check(n==1,"each visible row has exactly one tab");
-  const char* moved[]={"sleepScreen","sleepScreenCoverMode","sleepScreenCoverFilter","quickResumeSleepScreen","wakeIntoBook","sleepTimeoutMinutes"};
+  const char* moved[]={"sleepScreen","sleepScreenCoverMode","sleepScreenCoverFilter","quickResumeSleepScreen","sleepTimeoutMinutes"};
   for(const char* key:moved) ok &= check(routes[std::string("settings/")+key]==7,"moved sleep row resolves to tab ID7");
+  ok &= check(ugly ? routes["settings/uglyStartScreen"]==7 && !routes.count("settings/wakeIntoBook")
+                  : routes["settings/wakeIntoBook"]==7 && !routes.count("settings/uglyStartScreen"),
+              "the shell has exactly one start row in Sleep");
+  ok &= check(activity.focusFavorite(ugly ? "settings/wakeIntoBook" : "settings/uglyStartScreen")<0,
+              "a hidden start row pin stays hidden");
   ok &= check(!routes.count("settings/wakeButtons"),"retired wakeButtons row is gone on every board");
   const bool light=BoardConfig::hasPwmFrontlight()||BoardConfig::hasI2cFrontlight();
   ok &= check(light ? routes["settings/frontlightRestoreOnWake"]==7 : !routes.count("settings/frontlightRestoreOnWake"),"restore light belongs to Sleep only on supported board");
@@ -161,6 +171,17 @@ int main(int argc, char** argv) {
   ok &= check(activity.focusFavorite("settings/wakeButtons")<0,"an old wakeButtons pin resolves to no row");
   result["catalog"]=catalog.size(); result["checks"]=checks;
   JsonDocument webDoc; deserializeJson(webDoc, before); result["web"]=webDoc;
+  bool hasWake=false, hasStart=false;
+  for (JsonObjectConst row : webDoc.as<JsonArrayConst>()) {
+    const std::string key=row["key"] | "";
+    if(key=="wakeIntoBook") hasWake=true;
+    if(key=="uglyStartScreen") {
+      hasStart=true;
+      ok &= check(row["value"].as<int>()==CrossPointSettings::UGLY_START_DIARY,
+                  "web start screen defaults to Diary");
+    }
+  }
+  ok &= check(ugly ? hasStart && !hasWake : hasWake && !hasStart,"web has exactly one start row for the shell");
   std::string output; serializeJson(result,output); std::puts(output.c_str());
   return ok?0:1;
 }

@@ -31,3 +31,22 @@ TEST(WakeBook, ABookTakenOffRecentIsNotReopened) {
 TEST(WakeBook, ABookGoneFromTheCardGoesHome) {
   EXPECT_EQ(wakebook::bookToOpen(true, true, "/a.epub", recents, gone), "");
 }
+
+TEST(WakeBook, UglyBookOpensOnANormalColdBoot) {
+  EXPECT_EQ(wakebook::bookToOpen(false, true, "/a.epub", recents, onCard, true), "/a.epub");
+}
+
+TEST(WakeBook, UnsafeColdBootsDoNotReopenTheBook) {
+  EXPECT_EQ(wakebook::bookToOpen(false, true, "/a.epub", recents, onCard, false), "");
+}
+
+TEST(WakeBook, CrossColdBootStillGoesHomeWithWakeIntoBookOn) {
+  EXPECT_EQ(wakebook::bookToOpen(false, true, "/a.epub", recents, onCard), "");
+}
+
+TEST(WakeBook, UglyColdBootUsesTheSameRecentAndCardChecks) {
+  EXPECT_EQ(wakebook::bookToOpen(false, true, "/a.epub", recents, gone, true), "");
+  EXPECT_EQ(wakebook::bookToOpen(false, true, "/c.epub", recents, onCard, true), "");
+  EXPECT_EQ(wakebook::bookToOpen(false, true, "", recents, onCard, true), "");
+  EXPECT_EQ(wakebook::bookToOpen(false, false, "/a.epub", recents, onCard, true), "");
+}

@@ -102,9 +102,10 @@ for profile in ['c3', 'pro', 'persistence']:
     if profile == 'persistence':
         cases = [([], 'persistence')]
     else:
-        cases = [([board, str(imu), str(optional)], f'{board}-{imu}-{optional}')
+        cases = [([board, str(imu), str(optional), str(shell)],
+                  f'{board}-{imu}-{optional}' + ('-ugly' if shell else ''))
                  for board in (['pro'] if profile == 'pro' else ['x3', 'x4'])
-                 for imu in [0, 1] for optional in [0, 1]]
+                 for imu in [0, 1] for optional in [0, 1] for shell in [0, 1]]
     for argv, case in cases:
         run = subprocess.run([str(out/profile), *argv], capture_output=True, text=True)
         (out/(case+'.log')).write_text(run.stdout+run.stderr)
@@ -117,11 +118,19 @@ for profile in ['c3', 'pro', 'persistence']:
             if any(row['key'] in ('uiShell', 'uiUglyLevel', 'uiShellSleepMemo') for row in measured['web']):
                 result['shell_row_on_web'] = True
                 result['exit'] = 1
-            if hashlib.sha256((out/(case+'-web.json')).read_bytes()).hexdigest() != expected_web[case]:
+            if hashlib.sha256((out/(case+'-web.json')).read_bytes()).hexdigest() != expected_web.get(case):
                 result['web_schema_mismatch'] = True
                 result['exit'] = 1
             if a.web_baseline:
-                old = json.loads((a.web_baseline/(case+'-web.json')).read_text())
+                baseline_case = case.removesuffix('-ugly')
+                old = json.loads((a.web_baseline/(baseline_case+'-web.json')).read_text())
+                if case.endswith('-ugly'):
+                    old = [row for row in old if row['key'] != 'wakeIntoBook']
+                    old.append({'category': 'STR_CAT_DISPLAY', 'key': 'uglyStartScreen',
+                                'name': 'STR_UGLY_START_SCREEN',
+                                'options': ['STR_UGLY_START_BOOK', 'STR_UGLY_START_DIARY',
+                                            'STR_UGLY_START_RECENT', 'STR_UGLY_START_DESK'],
+                                'type': 'enum', 'value': 1})
                 if old != measured['web']:
                     result['web_schema_mismatch'] = True
                     result['exit'] = 1

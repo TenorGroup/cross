@@ -104,6 +104,8 @@ for lang in ('vietnamese', 'english', 'chinese'):
         if lang == 'vietnamese':
             check(not re.search(r'không phải .{0,40} mà', value, re.I), '%s: "không phải X mà là Y"' % key)
             check(not re.search(r'\b(%s)\b' % '|'.join(NUMBER_WORDS), value, re.I), '%s: a count in words' % key)
+        if lang in ('english', 'chinese') and key.startswith('STR_UGLY_START_'):
+            check(not any(char in value for char in 'qjJ'), '%s %s uses a missing UI glyph' % (lang, key))
 
 # The voice of the shell stays behind the shell: since every screen is drawn in tenor/ugly (founder 06/10/2026), a
 # screen outside src/shells/ugly may name a STR_UGLY_ string, but only a file that asks the shell first.
@@ -112,6 +114,17 @@ for path in list((repo / 'src').rglob('*.cpp')) + list((repo / 'src').rglob('*.h
     if str(rel).startswith('src/shells/ugly/') or str(rel).startswith('lib/I18n/'):
         continue
     text = path.read_text(errors='ignore')
+    if str(rel) == 'src/SettingsList.h':
+        allowed = {'STR_UGLY_START_SCREEN', 'STR_UGLY_START_BOOK', 'STR_UGLY_START_DIARY',
+                   'STR_UGLY_START_RECENT', 'STR_UGLY_START_DESK'}
+        check(set(re.findall(r'\bSTR_UGLY_\w+', text)) == allowed,
+              'SettingsList.h may only name the shell-filtered start-screen strings')
+        check('!ugly && setting.valuePtr == &CrossPointSettings::uglyStartScreen' in text,
+              'the cross shell must hide the ugly start row')
+        check('settingHiddenOnThisBoard(setting) || settingHiddenInShell(setting)' in text and
+              'v.end(), settingHiddenInShell)' in text,
+              'device and web catalogs must both apply the shell filter')
+        continue
     if 'STR_UGLY_' in text and not re.search(r'shell::(isUgly|uglyParts)\(\)', text):
         check(False, '%s names a STR_UGLY_ string without asking the shell' % rel)
 

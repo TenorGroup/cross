@@ -588,6 +588,20 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   SdFontIdResolver sdFontIdResolver = nullptr;
   void* sdFontResolverCtx = nullptr;
 
+  enum UGLY_START_SCREEN : uint8_t {
+    UGLY_START_BOOK = 0,
+    UGLY_START_DIARY = 1,
+    UGLY_START_RECENT = 2,
+    UGLY_START_DESK = 3,
+    UGLY_START_SCREEN_COUNT
+  };
+  uint8_t uglyStartScreen = UGLY_START_DIARY;
+
+  UGLY_START_SCREEN startScreen(const bool normalBoot) const {
+    if (!normalBoot || uglyStartScreen >= UGLY_START_SCREEN_COUNT) return UGLY_START_DIARY;
+    return static_cast<UGLY_START_SCREEN>(uglyStartScreen);
+  }
+
   // Whether a power-button wake may boot. With Short Power Button = Sleep a tap
   // puts the device to sleep, so a tap must also wake it, on every board;
   // otherwise the press must have been held through verification.

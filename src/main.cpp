@@ -878,9 +878,18 @@ void setup() {
     APP_STATE.openEpubPath.clear();
     APP_STATE.saveToFile();
   }
+  bool normalColdBoot = !isSleepWake;
+#ifndef SIMULATOR
+  normalColdBoot = esp_reset_reason() == ESP_RST_POWERON || esp_reset_reason() == ESP_RST_EXT;
+#endif
+  const bool normalUglyBoot = !recoveryFirmwareMode && !rebootedFromPanic && !updateBoot && !isSilentReboot &&
+                              (isSleepWake || normalColdBoot);
+  const auto uglyStart = SETTINGS.startScreen(normalUglyBoot);
+  const bool bookSetting = shell::isUgly() ? uglyStart == CrossPointSettings::UGLY_START_BOOK : SETTINGS.wakeIntoBook;
   const std::string wakeBook =
-      wakebook::bookToOpen(isSleepWake, SETTINGS.wakeIntoBook, APP_STATE.openEpubPath, RECENT_BOOKS.getBooks(),
-                           [](const std::string& path) { return Storage.exists(path.c_str()); });
+      wakebook::bookToOpen(isSleepWake, bookSetting, APP_STATE.openEpubPath, RECENT_BOOKS.getBooks(),
+                           [](const std::string& path) { return Storage.exists(path.c_str()); },
+                           shell::isUgly() && normalUglyBoot && normalColdBoot);
   const bool wakeToBook = !wakeBook.empty();
 
   setupDisplayAndFonts(resume != BootResume::Splash, !updateBoot);
@@ -1017,7 +1026,12 @@ void setup() {
     // which is the pass that takes the retained sleep frame off the panel.
     activityManager.goToReader(wakeBook);
   } else {
-    activityManager.goHome(HomeMenuItem::RECENT_CONTINUE, needsWakeRefresh);
+    const HomeMenuItem startHome = shell::isUgly() && uglyStart == CrossPointSettings::UGLY_START_RECENT
+                                       ? HomeMenuItem::RECENTS
+                                   : shell::isUgly() && uglyStart == CrossPointSettings::UGLY_START_DESK
+                                       ? HomeMenuItem::DESK
+                                       : HomeMenuItem::RECENT_CONTINUE;
+    activityManager.goHome(startHome, needsWakeRefresh);
   }
 
   if (resume == BootResume::Silent) {

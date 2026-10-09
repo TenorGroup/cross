@@ -11,8 +11,8 @@ namespace wakebook {
 
 template <typename Book, typename Exists>
 std::string bookToOpen(const bool sleepWake, const bool settingOn, const std::string& lastBook,
-                       const std::vector<Book>& recents, Exists&& onCard) {
-  if (!sleepWake || !settingOn || lastBook.empty()) return {};
+                       const std::vector<Book>& recents, Exists&& onCard, const bool normalColdBoot = false) {
+  if ((!sleepWake && !normalColdBoot) || !settingOn || lastBook.empty()) return {};
   const bool inRecents =
       std::any_of(recents.begin(), recents.end(), [&](const Book& b) { return b.path == lastBook; });
   if (!inRecents || !onCard(lastBook)) return {};

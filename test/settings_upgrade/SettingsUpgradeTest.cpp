@@ -392,6 +392,42 @@ int runNoResidentCatalog() {
 
 }  // namespace
 
+int runUglyStart() {
+  JsonDocument before = readFixture("settings-v1.0.19.json");
+  before["uiShell"] = 1;
+  settings_test_io::setNextRead(before);
+  bool ok = expect(SETTINGS.loadFromFile(), "old ugly settings load");
+  ok = expect(saved()["uglyStartScreen"].is<uint8_t>() && saved()["uglyStartScreen"] == 1,
+              "a file without uglyStartScreen defaults to Diary") && ok;
+  ok = expect(SETTINGS.startScreen(true) == CrossPointSettings::UGLY_START_DIARY,
+              "legacy ugly settings start on Diary") && ok;
+  for (uint8_t choice = 0; choice < 4; ++choice) {
+    before["uglyStartScreen"] = choice;
+    settings_test_io::setNextRead(before);
+    ok = expect(SETTINGS.loadFromFile(), "each start screen loads") && ok;
+    ok = expect(saved()["uglyStartScreen"].is<uint8_t>() && saved()["uglyStartScreen"] == choice,
+                "each start screen round trips") && ok;
+    ok = expect(SETTINGS.startScreen(true) == choice, "each value selects its start screen") && ok;
+    ok = expect(SETTINGS.startScreen(false) == CrossPointSettings::UGLY_START_DIARY,
+                "a blocked boot goes to Diary") && ok;
+  }
+  before["uglyStartScreen"] = 255;
+  SETTINGS.uglyStartScreen = CrossPointSettings::UGLY_START_DIARY;
+  settings_test_io::setNextRead(before);
+  ok = expect(SETTINGS.loadFromFile() && SETTINGS.uglyStartScreen == CrossPointSettings::UGLY_START_DIARY,
+              "an invalid start screen falls back to Diary") && ok;
+  SETTINGS.uglyStartScreen = CrossPointSettings::UGLY_START_BOOK;
+  ok = expect(SETTINGS.startScreen(false) == CrossPointSettings::UGLY_START_DIARY,
+              "a cold boot after panic with ugly Book selected goes to Diary") && ok;
+  SETTINGS.uiShell = 0;
+  SETTINGS.uglyStartScreen = CrossPointSettings::UGLY_START_DESK;
+  ok = expect(saved()["uglyStartScreen"] == 3, "cross still saves the ugly start choice") && ok;
+  const auto& catalog = getBaseSettingsList();
+  ok = expect(std::string(catalog.back().key) == "uglyStartScreen", "the new catalog entry is appended") && ok;
+  std::printf("settings_upgrade=ugly-start:%s\n", ok ? "GREEN" : "RED");
+  return ok ? 0 : 1;
+}
+
 int main(int argc, char** argv) {
   if (argc != 2) return 2;
   const std::string mode = argv[1];
@@ -402,6 +438,7 @@ int main(int argc, char** argv) {
   if (mode == "touch-migration") return runTouchMigration();
   if (mode == "legacy-theme") return runLegacyTheme();
   if (mode == "shell") return runShell();
+  if (mode == "ugly-start") return runUglyStart();
   if (mode == "tap-zones") return runTapZones();
   if (mode == "reader-pins") return runReaderPins();
   if (mode == "no-resident-catalog") return runNoResidentCatalog();

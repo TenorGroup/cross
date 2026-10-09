@@ -679,6 +679,10 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
     // on next WiFi connect, which is useful when crossing time zones.
     emit(SettingInfo::Toggle(StrId::STR_CLOCK_SYNCED, &CrossPointSettings::clockHasBeenSynced, "clockHasBeenSynced",
                             StrId::STR_CUSTOMISE_STATUS_BAR));
+    emit(SettingInfo::Enum(StrId::STR_UGLY_START_SCREEN, &CrossPointSettings::uglyStartScreen,
+                          {StrId::STR_UGLY_START_BOOK, StrId::STR_UGLY_START_DIARY,
+                           StrId::STR_UGLY_START_RECENT, StrId::STR_UGLY_START_DESK},
+                          "uglyStartScreen", StrId::STR_CAT_DISPLAY));
 }
 
 inline const std::vector<SettingInfo>& getBaseSettingsList() {
@@ -752,8 +756,14 @@ inline bool settingHiddenOnThisBoard(const SettingInfo& s) {
 // The device category list owns only rows visible in its categories. Font and
 // spacing descriptors stay in Text Settings; their dynamic options are built
 // there when needed. Return -1 for rows hidden in device categories.
+inline bool settingHiddenInShell(const SettingInfo& setting) {
+  const bool ugly = SETTINGS.uiShell == 1;
+  return (ugly && setting.valuePtr == &CrossPointSettings::wakeIntoBook) ||
+         (!ugly && setting.valuePtr == &CrossPointSettings::uglyStartScreen);
+}
+
 inline int deviceSettingsTab(const SettingInfo& setting) {
-  if (settingHiddenOnThisBoard(setting)) return -1;
+  if (settingHiddenOnThisBoard(setting) || settingHiddenInShell(setting)) return -1;
   // X4 Pro: three rows made for front buttons do nothing here. They leave the lists, not the saved file.
   if (BoardConfig::isX4Pro() && (setting.nameId == StrId::STR_SIDE_ARROW_HINTS || setting.nameId == StrId::STR_BUTTON_LABELS ||
                                  setting.nameId == StrId::STR_READER_MENU_STYLE))
@@ -763,6 +773,7 @@ inline int deviceSettingsTab(const SettingInfo& setting) {
       setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||
       setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen ||
       setting.valuePtr == &CrossPointSettings::wakeIntoBook ||
+      setting.valuePtr == &CrossPointSettings::uglyStartScreen ||
       setting.valuePtr == &CrossPointSettings::wakeNotice ||
       setting.valuePtr == &CrossPointSettings::sleepBwFold ||
       setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes ||
@@ -802,6 +813,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                                               const std::vector<DictionaryEntry>* dictionaries = nullptr) {
   std::vector<SettingInfo> v = getBaseSettingsList();
   v.erase(std::remove_if(v.begin(), v.end(), settingHiddenOnThisBoard), v.end());
+  v.erase(std::remove_if(v.begin(), v.end(), settingHiddenInShell), v.end());
   // The web page saves values without shell::changed(), so the shell is chosen on the device only.
   v.erase(std::remove_if(v.begin(), v.end(),
                          [](const SettingInfo& s) {
