@@ -108,6 +108,9 @@ std::vector<std::string> GfxRenderer::wrappedText(int, const char* text, int, in
 // Production Ugly paint is covered by test/ugly_reader/popup.py (96 pairs),
 // native-font checks and simulator captures; these bindings provide no pixel acceptance.
 namespace ugly {
+uint32_t iconFrameSeed() { return 0; }
+bool iconAsset(const GfxRenderer&, const uint8_t*, icons::Rect, uint32_t, int, int, bool) { return false; }
+Box inkBounds(const GfxRenderer&, Box area) { return area; }
 void pageHints(const GfxRenderer&, const char*, const char*, int) {}
 void pathHints(const GfxRenderer&, const char*, const char*) {}
 int width(const GfxRenderer& r, Size, const char* text, bool) { return r.getTextWidth(0, text); }

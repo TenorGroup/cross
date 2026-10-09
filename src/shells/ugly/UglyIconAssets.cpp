@@ -19,7 +19,7 @@
 namespace ugly {
 
 bool iconAsset(const GfxRenderer& renderer, const uint8_t* bits, icons::Rect box, uint32_t seed,
-               int nativeWidth, int nativeHeight) {
+               int nativeWidth, int nativeHeight, bool rowInk) {
   struct Asset { const uint8_t* bits; icons::Id id; int width, height; };
   static constexpr Asset assets[] = {
     {icon_reader_contents_24.bits, icons::Id::Contents, icon_reader_contents_24.w, icon_reader_contents_24.h},
@@ -107,7 +107,8 @@ bool iconAsset(const GfxRenderer& renderer, const uint8_t* bits, icons::Rect box
   for (const auto& asset : assets) {
     if (bits != asset.bits && !(nativeWidth == asset.width && nativeHeight == asset.height &&
         std::memcmp(bits, asset.bits, ((nativeWidth + 7) / 8) * nativeHeight) == 0)) continue;
-    icon(renderer, asset.id, box, seed);
+    if (rowInk) rowIcon(renderer, asset.id, box, seed);
+    else icon(renderer, asset.id, box, seed);
     return true;
   }
   return false;

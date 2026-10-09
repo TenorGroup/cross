@@ -52,6 +52,7 @@ bool chapterTitle(const GfxRenderer& renderer, const char* utf8, int x0, int x1,
 struct Box {
   int x0, y0, x1, y1;
 };
+Box inkBounds(const GfxRenderer& renderer, Box area);
 enum class Circle : uint8_t { Word, Object, Row };
 // A pen circle around a box, padded by padX and padY on each side.
 void circle(const GfxRenderer& renderer, Circle role, const Box& box, int padX, int padY, uint32_t seed, int stroke);

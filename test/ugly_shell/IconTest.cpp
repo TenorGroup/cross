@@ -207,3 +207,35 @@ TEST(UglyIcons, PointBudgetAndGallery) {
     }
   }
 }
+
+TEST(UglyIcons, RowInkHas24PixelBoundsAndCenteredThinStroke) {
+  const auto assets = {icon_folder_32, icon_file_text_32, icon_image_32, icon_book_32,
+                       icon_file_32, icon_wifi_32, icon_library_32, icon_radio_tower_32, icon_bookmark_32};
+  for (const auto& asset : assets) for (uint32_t seed = 0; seed < 40; ++seed) {
+    GfxRenderer renderer;
+    ASSERT_TRUE(ugly::iconAsset(renderer, asset.bits, {20, 20, 24, 24}, seed, 32, 32, true));
+    int x0=64, y0=64, x1=-1, y1=-1;
+    for (int y=0;y<64;++y) for(int x=0;x<64;++x) if(renderer.pixels[y*64+x]) {
+      x0=std::min(x0,x); y0=std::min(y0,y); x1=std::max(x1,x); y1=std::max(y1,y);
+    }
+    EXPECT_EQ(std::max(x1-x0+1,y1-y0+1),24) << seed;
+    EXPECT_LE(std::abs(y0+y1-63),1) << seed;
+    EXPECT_GE(x0,20); EXPECT_LE(x1,43); EXPECT_GE(y0,20); EXPECT_LE(y1,43);
+    GfxRenderer again;
+    ASSERT_TRUE(ugly::iconAsset(again,asset.bits,{20,20,24,24},seed,32,32,true));
+    EXPECT_EQ(hash(renderer),hash(again));
+  }
+}
+
+TEST(UglyIcons, RowCenterMatchesBothTextHeightParities) {
+  for (int height = 12; height <= 34; ++height) for (uint32_t seed = 0; seed < 40; ++seed) {
+    GfxRenderer renderer;
+    ASSERT_TRUE(ugly::iconAsset(renderer, icon_folder_32.bits, ugly::rowInkBox(20, 20, 20 + height),
+                               seed, 32, 32, true));
+    int top = 64, bottom = -1;
+    for (int y = 0; y < 64; ++y) for (int x = 0; x < 64; ++x) if (renderer.pixels[y * 64 + x]) {
+      top = std::min(top, y); bottom = std::max(bottom, y);
+    }
+    EXPECT_LE(std::abs(top + bottom - (39 + height)), 1) << height << ',' << seed;
+  }
+}

@@ -23,4 +23,31 @@ void icon(const GfxRenderer& renderer, icons::Id id, icons::Rect box, uint32_t s
   });
 }
 
+// Fit the vector contour to 24 pixels of ink and keep the small icon's single-pixel pen.
+void rowIcon(const GfxRenderer& renderer, icons::Id id, icons::Rect box, uint32_t seed) {
+  seed ^= static_cast<uint32_t>(box.x) * 73856093u ^ static_cast<uint32_t>(box.y) * 19349663u;
+  icons::Point low{25600, 25600}, high{0, 0};
+  auto walk = [&](auto emit) { icons::walk(id, {0, 0, 100, 100}, seed, emit); };
+  walk([&](auto first, auto second) {
+    for (auto point : {first, second}) {
+      low.x = std::min(low.x, point.x); low.y = std::min(low.y, point.y);
+      high.x = std::max(high.x, point.x); high.y = std::max(high.y, point.y);
+    }
+  });
+  const int span = std::max(high.x - low.x, high.y - low.y);
+  if (span <= 0) return;
+  const int width = ((high.x - low.x) * 23 + span / 2) / span;
+  const int height = ((high.y - low.y) * 23 + span / 2) / span;
+  const int left = box.x + (box.width - width - 1) / 2;
+  const int top = box.y + (box.height - height - 1) / 2;
+  auto pixel = [&](icons::Point point) {
+    return icons::Point{left + ((point.x - low.x) * 23 + span / 2) / span,
+                        top + ((point.y - low.y) * 23 + span / 2) / span};
+  };
+  walk([&](auto first, auto second) {
+    first = pixel(first); second = pixel(second);
+    penStroke(renderer, first.x, first.y, second.x, second.y, 1);
+  });
+}
+
 }

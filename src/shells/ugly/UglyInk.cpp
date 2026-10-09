@@ -334,6 +334,25 @@ void ensureFonts(GfxRenderer& r) {
   r.insertFont(FONT_IDS[3], EpdFontFamily(&FONT52));
 }
 
+// Read the already drawn label before its selection circle is added, in any panel orientation.
+Box inkBounds(const GfxRenderer& r, Box area) {
+  area.x0 = std::max(0, area.x0); area.y0 = std::max(0, area.y0);
+  area.x1 = std::min(r.getScreenWidth(), area.x1); area.y1 = std::min(r.getScreenHeight(), area.y1);
+  Box ink{area.x1, area.y1, area.x0, area.y0};
+  DirectPixelWriter pen;
+  pen.init(const_cast<GfxRenderer&>(r));
+  const int stride = pen.displayWidthBytes * 8;
+  for (int y = area.y0; y < area.y1; ++y) for (int x = area.x0; x < area.x1; ++x) {
+    const int py = pen.phyYBase + x * pen.phyYStepX + y * pen.phyYStepY - pen.originY;
+    if (py < 0 || py >= pen.clipRows) continue;
+    const int bit = py * stride + pen.phyXBase + x * pen.phyXStepX + y * pen.phyXStepY;
+    if (pen.fb[bit >> 3] & (0x80 >> (bit & 7))) continue;
+    ink.x0 = std::min(ink.x0, x); ink.y0 = std::min(ink.y0, y);
+    ink.x1 = std::max(ink.x1, x + 1); ink.y1 = std::max(ink.y1, y + 1);
+  }
+  return ink.x0 < ink.x1 && ink.y0 < ink.y1 ? ink : area;
+}
+
 int text(const GfxRenderer& r, const Size s, const int x, const int baseline, const char* utf8, const bool black,
          const bool straight) {
   return run(r, s, x, baseline, utf8ComposeNfc(utf8), black, true, straight);

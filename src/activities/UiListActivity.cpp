@@ -916,32 +916,55 @@ bool UiListActivity::renderUglyList() {
 #ifdef UGLY_FRAME_LOG
   for (const auto& run : runs) LOG_INF("UGLY", "part=word text=%s", run.text.c_str());
 #endif
+  const int count = listCount(), first = std::max(0, activeNav().top);
+  auto itemAt = [&](int row) {
+    fui::ListItem item;
+    if (uglyRowProvider_) uglyRowProvider_(uglyRowCtx_, static_cast<uint16_t>(row), item);
+    else if (uglyItems_ && row >= uglyItemsFirst_) item = uglyItems_[row - uglyItemsFirst_];
+    return item;
+  };
+  // The circle needs 34 pixels to the label's left, beyond the icon's 24 pixels of ink.
+  for (int row = first; row < count && row < first + 64; ++row) {
+    const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
+    if (box.empty() || !itemAt(row).icon) continue;
+    for (auto& run : runs) {
+      const int mid = run.rect.y + run.rect.height / 2;
+      if (run.align != fui::TextAlign::Left || mid < box.y || mid >= box.bottom()) continue;
+      run.rect.x += 28;
+      run.rect.width = std::max<int16_t>(0, run.rect.width - 28);
+      break;
+    }
+  }
   std::vector<fui::Rect> ink;
   ink.reserve(runs.size());
   for (const auto& run : runs)
     ink.push_back(uglychrome::words(renderer, run.rect, run.text.c_str(), run.align, run.locked, run.lines));
   // The marks go on the rows that took a place on screen. A locked row has no place to choose and gets none, but
   // the cursor can stand on it: there it keeps the circle, round the label.
-  const int count = listCount(), first = std::max(0, activeNav().top);
   for (int row = first; row < count && row < first + 64; ++row) {
     const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
     if (box.empty() && row != activeNav().selected) continue;
-    fui::ListItem item;
-    if (uglyRowProvider_) uglyRowProvider_(uglyRowCtx_, static_cast<uint16_t>(row), item);
-    else if (uglyItems_ && row >= uglyItemsFirst_) item = uglyItems_[row - uglyItemsFirst_];
-    // File names retain the same leading icon slot the normal list laid out.
-    if (name == "FileBrowser" && item.icon && !box.empty()) {
-      for (const auto& run : runs) {
-        const auto& at = run.rect;
+    const auto item = itemAt(row);
+    if (item.icon && !box.empty()) {
+      for (size_t i = 0; i < runs.size(); ++i) {
+        const auto& at = runs[i].rect;
         const int mid = at.y + at.height / 2;
-        if (run.align != fui::TextAlign::Left || mid < box.y || mid >= box.bottom()) continue;
-        const int16_t size = item.icon.width;
-        uiTarget.bitmap({static_cast<int16_t>(at.x - size - 10),
-                         static_cast<int16_t>(box.y + (box.height - size) / 2), size, size},
-                        item.icon, fui::BitmapMode::Contain);
+        if (runs[i].align != fui::TextAlign::Left || mid < box.y || mid >= box.bottom()) continue;
+        const auto bounds = ugly::inkBounds(renderer, {ink[i].x, at.y - 4, ink[i].right(), at.bottom() + 6});
+        ink[i] = {static_cast<int16_t>(bounds.x0), static_cast<int16_t>(bounds.y0),
+                  static_cast<int16_t>(bounds.x1 - bounds.x0), static_cast<int16_t>(bounds.y1 - bounds.y0)};
+        ugly::iconAsset(renderer, item.icon.data,
+                        ugly::rowInkBox(at.x - item.icon.width - 38, bounds.y0, bounds.y1),
+                        ugly::iconFrameSeed(), item.icon.width, item.icon.height, true);
         break;
       }
     }
+  }
+  // Keep every label measurement clear of the selection circles from earlier rows.
+  for (int row = first; row < count && row < first + 64; ++row) {
+    const auto box = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
+    if (box.empty() && row != activeNav().selected) continue;
+    const auto item = itemAt(row);
     if (box.empty()) {
       for (size_t i = 0; item.label && i < runs.size(); ++i)
         if (runs[i].align == fui::TextAlign::Left && runs[i].text == item.label) {

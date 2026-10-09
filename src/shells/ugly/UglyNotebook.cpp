@@ -183,15 +183,12 @@ void Notebook::render(RenderLock&&) {
     if (empty != StrId::STR_NONE_OPT) paragraph(renderer, Size::S30, TEXT_X, first, w - TEXT_X - 30, 44, I18N.get(empty));
   }
   const int top = logic::pageTop(cur, perPage, count);
+  Box selectedLabel{};
   for (int i = 0; i < logic::rowsOnPage(top, perPage, count); ++i) {
     const int row = top + i;
     const int base = first + i * ROW_HEIGHT;
-    const int labelX = TEXT_X + (page == homerows::Page::Folder ? 42 : 0);
+    const int labelX = TEXT_X + (page == homerows::Page::Folder ? 70 : 0);
     int room = w - labelX - 30;
-    if (page == homerows::Page::Folder) {
-      const auto icon = listIconFor(UITheme::getFileIcon(rows.folder[row]), 32);
-      iconAsset(renderer, icon.data, {TEXT_X, base - 27, 32, 32}, iconFrameSeed() ^ static_cast<uint32_t>(row));
-    }
     if (row < static_cast<int>(rows.values.size()) && !rows.values[row].empty()) {
       const int vw = width(renderer, Size::S22, rows.values[row].c_str());
       text(renderer, Size::S22, w - 30 - vw, base, rows.values[row].c_str());
@@ -199,9 +196,17 @@ void Notebook::render(RenderLock&&) {
     }
     const std::string label = fit(renderer, Size::S30, labelAt(row), room);
     const int lw = text(renderer, Size::S30, labelX, base, label.c_str());
-    if (row == cur) circle(renderer, Circle::Row, {labelX, base - 26, labelX + lw, base + 8}, 12, 9,
-                           mark_.get((static_cast<uint64_t>(id(page)) << 32) | static_cast<uint32_t>(cur)), 3);
+    if (page == homerows::Page::Folder) {
+      const auto bounds = inkBounds(renderer, {labelX, base - 38, labelX + lw, base + 10});
+      const auto icon = listIconFor(UITheme::getFileIcon(rows.folder[row]), 32);
+      iconAsset(renderer, icon.data, rowInkBox(TEXT_X, bounds.y0, bounds.y1),
+                iconFrameSeed() ^ static_cast<uint32_t>(row), 32, 32, true);
+    }
+    if (row == cur) selectedLabel = {labelX, base - 26, labelX + lw, base + 8};
   }
+  if (count > 0)
+    circle(renderer, Circle::Row, selectedLabel, 12, 9,
+           mark_.get((static_cast<uint64_t>(id(page)) << 32) | static_cast<uint32_t>(cur)), 3);
   // The pages next door.
   pageHints(renderer, I18N.get(homerows::PAGE_TITLES[menucustom::idAt(0, logic::cycle(pos, -1, homerows::PAGE_COUNT), homerows::PAGE_COUNT)]),
             I18N.get(homerows::PAGE_TITLES[menucustom::idAt(0, logic::cycle(pos, 1, homerows::PAGE_COUNT), homerows::PAGE_COUNT)]), h - 52);
