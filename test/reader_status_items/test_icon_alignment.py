@@ -45,6 +45,7 @@ cpp = r'''
 #include <cstring>
 #include <string>
 #include <vector>
+#include "Utf8.h"
 #include "activities/reader/ReaderStatusLayout.h"
 constexpr int SMALL_FONT_ID = 0;
 struct EpdFontFamily { enum Style { REGULAR }; };
@@ -52,7 +53,7 @@ struct CrossPointSettings {
   enum READER_STATUS_SLOT : unsigned char {
     STATUS_SLOT_NONE = 0, STATUS_SLOT_CLOCK, STATUS_SLOT_BATTERY,
     STATUS_SLOT_CHAPTER_PAGES, STATUS_SLOT_BOOK_PERCENT,
-    STATUS_SLOT_CHAPTER_ETA, STATUS_SLOT_BOOK_ETA, STATUS_SLOT_COUNT
+    STATUS_SLOT_CHAPTER_ETA, STATUS_SLOT_BOOK_ETA, STATUS_SLOT_CHAPTER_NAME, STATUS_SLOT_COUNT
   };
   enum STATUS_BAR_TITLE : unsigned char { BOOK_TITLE = 0, CHAPTER_TITLE, HIDE_TITLE };
   struct StatusBarSpec {
@@ -128,7 +129,7 @@ namespace tenorchrome {
   struct BatteryInkBounds { int top; int height; };
   BatteryInkBounds batteryInkBounds(const GfxRenderer&, int, int);
   int statusTextY(int height, bool) { return height - 24; }
-  void drawReaderSlots(const GfxRenderer&, const char*, int, int, float, bool, bool, int64_t, int64_t);
+  void drawReaderSlots(const GfxRenderer&, const char*, int, int, float, bool, bool, int64_t, int64_t, const char* = nullptr);
 }
 ''' + metric_body + '\n' + body + r'''
 
@@ -192,5 +193,6 @@ with tempfile.TemporaryDirectory(prefix="status-icon-alignment-") as folder:
     source = Path(folder) / "fixture.cpp"
     binary = Path(folder) / "fixture"
     source.write_text(cpp)
-    subprocess.run(["c++", "-std=c++20", "-I", str(repo / "src"), str(source), "-o", str(binary)], check=True)
+    subprocess.run(["c++", "-std=c++20", "-I", str(repo / "src"), "-I", str(repo / "lib/Utf8"),
+                    str(source), str(repo / "lib/Utf8/Utf8.cpp"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)

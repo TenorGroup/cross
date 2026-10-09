@@ -33,12 +33,17 @@ constexpr StrId TOP_VALUES[] = {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_
 constexpr StrId SLOT_VALUES[] = {StrId::STR_STATE_OFF, StrId::STR_CLOCK, StrId::STR_BATTERY,
                                   StrId::STR_CHAPTER_PAGE_COUNT, StrId::STR_BOOK_PROGRESS_PERCENTAGE,
                                   StrId::STR_READER_STATUS_CHAPTER_ETA, StrId::STR_READER_STATUS_BOOK_ETA};
+constexpr StrId CENTER_VALUES[] = {StrId::STR_STATE_OFF, StrId::STR_CLOCK, StrId::STR_BATTERY,
+                                  StrId::STR_CHAPTER_PAGE_COUNT, StrId::STR_BOOK_PROGRESS_PERCENTAGE,
+                                  StrId::STR_READER_STATUS_CHAPTER_ETA, StrId::STR_READER_STATUS_BOOK_ETA,
+                                  StrId::STR_CHAPTER_NAME};
+static_assert(std::size(CENTER_VALUES) == CrossPointSettings::STATUS_SLOT_COUNT);
 constexpr int TENOR_ROW_COUNT = sizeof(TENOR_NAMES) / sizeof(TENOR_NAMES[0]);
 static_assert(TENOR_ROW_COUNT == StatusBarSettingsActivity::MAX_STATUS_BAR_ITEMS,
               "keep StatusBarSettingsActivity::MAX_STATUS_BAR_ITEMS in sync with TENOR_ROWS");
 
-const StrId* valuesAt(const int row) { return row == 0 ? TOP_VALUES : SLOT_VALUES; }
-int valueCount(const int row) { return row == 0 ? std::size(TOP_VALUES) : std::size(SLOT_VALUES); }
+const StrId* valuesAt(const int row) { return row == 0 ? TOP_VALUES : row == 2 ? CENTER_VALUES : SLOT_VALUES; }
+int valueCount(const int row) { return row == 0 ? std::size(TOP_VALUES) : row == 2 ? std::size(CENTER_VALUES) : std::size(SLOT_VALUES); }
 }  // namespace
 
 StatusBarSettingsActivity::StatusBarSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

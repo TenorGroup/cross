@@ -1,4 +1,5 @@
 #include "XtcReaderActivity.h"
+#include "components/TenorMenuChrome.h"
 
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
@@ -76,7 +77,7 @@ XtcReaderActivity::StatusBarInfo XtcReaderActivity::getStatusBarInfo() const {
   std::string title = sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE ? xtc->getTitle() : "";
 
   if (!xtc->hasChapters()) {
-    return StatusBarInfo{bookPage, bookPageCount, std::move(title)};
+    return StatusBarInfo{bookPage, bookPageCount, std::move(title), {}};
   }
 
   const auto& chapters = xtc->getChapters();
@@ -85,7 +86,7 @@ XtcReaderActivity::StatusBarInfo XtcReaderActivity::getStatusBarInfo() const {
   });
 
   if (chapterIt == chapters.end() || chapterIt->endPage < chapterIt->startPage) {
-    return StatusBarInfo{bookPage, bookPageCount, std::move(title)};
+    return StatusBarInfo{bookPage, bookPageCount, std::move(title), {}};
   }
 
   if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
@@ -93,7 +94,8 @@ XtcReaderActivity::StatusBarInfo XtcReaderActivity::getStatusBarInfo() const {
   }
 
   return StatusBarInfo{static_cast<int>(currentPage - chapterIt->startPage) + 1,
-                       static_cast<int>(chapterIt->endPage - chapterIt->startPage) + 1, std::move(title)};
+                       static_cast<int>(chapterIt->endPage - chapterIt->startPage) + 1, std::move(title),
+                       chapterIt->name.empty() ? tr(STR_UNNAMED) : chapterIt->name};
 }
 
 void XtcReaderActivity::renderStatusBarOverlay(GfxRenderer& renderer, const StatusBarOverlayPosition position) const {
@@ -143,6 +145,11 @@ void XtcReaderActivity::renderStatusBarOverlay(GfxRenderer& renderer, const Stat
   const float progress = pageCount > 0 ? (static_cast<float>(displayPage) * 100.0f) / pageCount : 0.0f;
   auto pageInfo = getStatusBarInfo();
   const bool linkNote = sb.showsTitle() && linkNoteTitle(pageInfo.title);
+  if (sb.slotsEnabled) {
+    tenorchrome::drawReaderSlots(renderer, pageInfo.title.c_str(), pageInfo.currentPage, pageInfo.pageCount, progress,
+                                 false, false, -1, -1, pageInfo.chapterName.c_str());
+    return;
+  }
   GUI.drawStatusBar(renderer, progress, pageInfo.currentPage, pageInfo.pageCount, pageInfo.title, paddingBottom, 0,
                     true, false, false, !linkNote);
 }

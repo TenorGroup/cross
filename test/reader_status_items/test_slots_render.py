@@ -38,6 +38,7 @@ cpp = r'''
 #include <cstring>
 #include <string>
 #include <vector>
+#include "Utf8.h"
 #include "activities/reader/ReaderStatusLayout.h"
 constexpr int SMALL_FONT_ID = 0;
 struct EpdFontFamily {enum Style {REGULAR};};
@@ -94,7 +95,7 @@ namespace tenorchrome {
  struct BatteryInkBounds {int top;int height;};
  BatteryInkBounds batteryInkBounds(const GfxRenderer&,int,int);
  int statusTextY(int height,bool){return height-40;}
- void drawReaderSlots(const GfxRenderer&,const char*,int,int,float,bool,bool,int64_t,int64_t);
+ void drawReaderSlots(const GfxRenderer&,const char*,int,int,float,bool,bool,int64_t,int64_t,const char* = nullptr);
 }
 using namespace tenorchrome;
 ''' + metric_body + '\n' + body + r'''
@@ -115,7 +116,8 @@ int main(){
      SETTINGS.spec={};SETTINGS.spec.slotsEnabled=true;SETTINGS.spec.topTitleMode=top;
      SETTINGS.spec.slots[slot]=item;ink.clear();clockstatus::valid=known;
      drawReaderSlots(r,"A long book or chapter title that reaches the right screen edge repeatedly",5,known?25:0,
-                     known?43.0f:-1,false,true,known?5400:-1,known?25200:-1);
+                     known?43.0f:-1,false,true,known?5400:-1,known?25200:-1,
+                     known?"Mở\nđầu một chương có tên dài để kiểm tra cắt giữa UTF-8 chapter end":nullptr);
      const auto lane=readerstatus::cell(screen,slot);
      int bottom=0,header=0;
      for(const auto& painted:ink){
@@ -125,9 +127,15 @@ int main(){
        else{++bottom;assert(painted.x>=lane.x&&painted.x+painted.w<=lane.x+lane.width);}
      }
      assert(header==(top==S::HIDE_TITLE?0:1));
-     assert((bottom==0)==(item==S::STATUS_SLOT_NONE));
-     if(!known&&item!=S::STATUS_SLOT_NONE&&item!=S::STATUS_SLOT_BATTERY){
+     const bool visible=item!=S::STATUS_SLOT_NONE&&(item!=S::STATUS_SLOT_CHAPTER_NAME||slot==1);
+     assert((bottom>0)==visible);
+     if(!known&&visible&&item!=S::STATUS_SLOT_BATTERY){
        assert(bottom==1&&ink.back().text=="-");
+     }
+     if(known&&item==S::STATUS_SLOT_CHAPTER_NAME&&slot==1){
+       const auto& label=ink.back().text;
+       assert(bottom==1&&label.find("…")!=std::string::npos&&label.find('\n')==std::string::npos);
+       assert(label.substr(label.size()-2)=="nd");
      }
      ++cases;
    }
@@ -140,5 +148,6 @@ with tempfile.TemporaryDirectory() as folder:
     source = Path(folder) / 'render.cpp'
     binary = Path(folder) / 'render'
     source.write_text(cpp)
-    subprocess.run(['c++', '-std=c++20', '-I', str(repo / 'src'), str(source), '-o', str(binary)], check=True)
+    subprocess.run(['c++', '-std=c++20', '-I', str(repo / 'src'), '-I', str(repo / 'lib/Utf8'),
+                    str(source), str(repo / 'lib/Utf8/Utf8.cpp'), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)

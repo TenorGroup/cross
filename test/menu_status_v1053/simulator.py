@@ -43,7 +43,8 @@ def portrait(image,orientation):
 def script(profile,orientation):
     actions=['2000:CONFIRM','3000:RIGHT','3500:CONFIRM','4500:CONFIRM']
     # Ten font families force pagination, without changing the selected reader font.
-    actions += [f'{5500+i*350}:DOWN' for i in range(9)]
+    row_button = 'RIGHT' if profile == 'x3' else 'DOWN'
+    actions += [f'{5500+i*350}:{row_button}' for i in range(9)]
     actions += ['9500:BACK','10500:BACK','11500:LEFT','12000:CONFIRM','13000:BACK','14000:RIGHT','14500:RIGHT','15000:CONFIRM']
     shots={2500:'toolbar',4000:'text',5000:'fonts',9000:'fonts-last',12500:'contents',15500:'more'}
     if profile=='x4':

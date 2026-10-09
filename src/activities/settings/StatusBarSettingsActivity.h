@@ -63,7 +63,7 @@ class StatusBarSettingsActivity final : public UiListActivity {
   int choiceRow_ = -1;
   int choiceTop_ = 0, choiceBottom_ = 0, choiceRowHeight_ = 0;
   freeink::ui::ListNav choiceNav_;
-  freeink::ui::ListItem choiceItems_[7]{};
+  freeink::ui::ListItem choiceItems_[CrossPointSettings::STATUS_SLOT_COUNT]{};
 
   int visibleItemCount = 0;
 

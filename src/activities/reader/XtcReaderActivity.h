@@ -16,6 +16,7 @@ class XtcReaderActivity final : public ReaderActivity {
     int currentPage;
     int pageCount;
     std::string title;
+    std::string chapterName;
   };
 
   void renderPage();

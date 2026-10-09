@@ -10,6 +10,7 @@
 #include <WiFi.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <Utf8.h>
 
 #include <algorithm>
 #include <cstring>
@@ -670,7 +671,8 @@ tenorchrome::BatteryInkBounds tenorchrome::batteryInkBounds(const GfxRenderer& r
 
 void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const int currentPage,
                                  const int pageCount, const float bookProgress, const bool estimated,
-                                 const bool bookmarked, const int64_t chapterSeconds, const int64_t bookSeconds) {
+                                 const bool bookmarked, const int64_t chapterSeconds, const int64_t bookSeconds,
+                                 const char* chapterName) {
   using S = CrossPointSettings;
   const auto spec = SETTINGS.statusBarSpec();
   if (SETTINGS.readerStatusBarHidden() || !spec.slotsEnabled) return;
@@ -740,6 +742,15 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
       case S::STATUS_SLOT_BOOK_ETA:
         readerstatus::duration(value, sizeof(value), bookSeconds >= 0, static_cast<uint32_t>(bookSeconds));
         break;
+      case S::STATUS_SLOT_CHAPTER_NAME: {
+        if (slot != 1) continue;
+        std::string name = chapterName && *chapterName ? chapterName : "-";
+        for (char separator : {'\n', '\r', '\t'}) std::replace(name.begin(), name.end(), separator, ' ');
+        const auto label = utf8MiddleEllipsis(name, lane.width, width);
+        const int measured = width(label.c_str());
+        if (measured <= lane.width) text(readerstatus::textX(lane, slot, measured), y, label.c_str());
+        continue;
+      }
       default: continue;
     }
     const auto label = fit(value, lane.width);

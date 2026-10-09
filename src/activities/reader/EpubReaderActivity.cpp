@@ -3905,6 +3905,11 @@ void EpubReaderActivity::renderStatusBar() const {
   }
 
   if (sb.slotsEnabled) {
+    std::string chapterName;
+    if (sb.slots[1] == CrossPointSettings::STATUS_SLOT_CHAPTER_NAME && epub && epub->indexComplete()) {
+      const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
+      if (tocIndex >= 0) chapterName = epub->getTocItem(tocIndex).title;
+    }
     uint32_t chapter = 0, book = 0;
     const auto position = pacePosition();
     const bool chapterKnown = readingPace.estimate(position, false, chapter);
@@ -3912,7 +3917,7 @@ void EpubReaderActivity::renderStatusBar() const {
     tenorchrome::drawReaderSlots(renderer, title.c_str(), currentPage, pageCount, bookProgress,
                                  section ? section->isBuilding() : false, currentPageBookmarked,
                                  chapterKnown ? static_cast<int64_t>(chapter) : -1,
-                                 bookKnown ? static_cast<int64_t>(book) : -1);
+                                 bookKnown ? static_cast<int64_t>(book) : -1, chapterName.c_str());
     return;
   }
   GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true, currentPageBookmarked,

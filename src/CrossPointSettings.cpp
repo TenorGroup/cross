@@ -293,9 +293,9 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   };
   readerStatusSlotsEnabled = statusValue("readerStatusSlotsEnabled", 2, 0);
   readerStatusTop = statusValue("readerStatusTop", STATUS_BAR_TITLE_COUNT, HIDE_TITLE);
-  readerStatusLeft = statusValue("readerStatusLeft", STATUS_SLOT_COUNT, STATUS_SLOT_NONE);
+  readerStatusLeft = statusValue("readerStatusLeft", STATUS_SLOT_CHAPTER_NAME, STATUS_SLOT_NONE);
   readerStatusCenter = statusValue("readerStatusCenter", STATUS_SLOT_COUNT, STATUS_SLOT_NONE);
-  readerStatusRight = statusValue("readerStatusRight", STATUS_SLOT_COUNT, STATUS_SLOT_NONE);
+  readerStatusRight = statusValue("readerStatusRight", STATUS_SLOT_CHAPTER_NAME, STATUS_SLOT_NONE);
   statusBarItemsMode = doc["statusBarItemsMode"] | uint8_t{0xFF};
   if (statusBarItemsMode != readerStatusBarMode) {
     adoptReaderStatusItems();
@@ -635,7 +635,8 @@ uint8_t CrossPointSettings::readerStatusItem(const int row) const {
 }
 
 bool CrossPointSettings::setReaderStatusItem(const int row, const uint8_t value) {
-  const int count = row == 0 ? static_cast<int>(STATUS_BAR_TITLE_COUNT) : static_cast<int>(STATUS_SLOT_COUNT);
+  const int count = row == 0 ? static_cast<int>(STATUS_BAR_TITLE_COUNT)
+                            : row == 2 ? static_cast<int>(STATUS_SLOT_COUNT) : static_cast<int>(STATUS_SLOT_CHAPTER_NAME);
   if (row < 0 || row > 3 || value >= count) return false;
   if (readerStatusBarHidden()) readerStatusBarMode = READER_STATUS_BAR_BOOK_DETAILS;
   adoptReaderStatusItems();
