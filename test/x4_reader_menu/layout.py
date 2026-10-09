@@ -12,8 +12,10 @@ parser.add_argument('--mutate-preview-hit', action='store_true')
 parser.add_argument('--signature', action='store_true')
 parser.add_argument('--expect-fade', action='store_true')
 parser.add_argument('--expect-stepper-ring', action='store_true')
+parser.add_argument('--expect-stepper-center', action='store_true')
 parser.add_argument('--expect-middle-font', action='store_true')
 parser.add_argument('--mutate-stepper-ring', action='store_true')
+parser.add_argument('--mutate-stepper-center', action='store_true')
 parser.add_argument('--mutate-middle-font', action='store_true')
 a = parser.parse_args()
 a.output.mkdir(parents=True, exist_ok=True)
@@ -28,6 +30,12 @@ def method(text, signature):
     return text[start:end]
 
 source = (a.repo / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()
+if a.mutate_stepper_center:
+    source, removed = re.subn(
+        r'(const fui::Rect entryRect\{static_cast<int16_t>\(frame\.right\(\) - )140(\), y, 60, 62\};)',
+        r'\g<1>138\g<2>', source, count=1)
+    if removed != 1:
+        raise SystemExit(f'stepper center mutation expected 1 match, got {removed}')
 if a.mutate_stepper_ring:
     source, removed = re.subn(
         r'\s*tenorchrome::drawPillRing\(\*renderer_, minusRect\.x.*?true\);\n'
@@ -74,6 +82,7 @@ constexpr bool kExpectPreviewHit = EXPECT_PREVIEW_HIT;
 constexpr bool kDumpSignature = DUMP_SIGNATURE;
 constexpr bool kExpectFade = EXPECT_FADE;
 constexpr bool kExpectStepperRing = EXPECT_STEPPER_RING;
+constexpr bool kExpectStepperCenter = EXPECT_STEPPER_CENTER;
 constexpr bool kExpectMiddleFont = EXPECT_MIDDLE_FONT;
 std::string rectSignature(fui::Rect r) {
   return std::to_string(r.x) + "," + std::to_string(r.y) + "," + std::to_string(r.width) + "," +
@@ -160,7 +169,7 @@ void drawPillRing(const GfxRenderer&, int x, int y, int w, int h, int thick, boo
                          std::to_string(h) + "," + std::to_string(thick) + "," + std::to_string(grey));
 }
 ''' + '\n'.join(re.findall(r'^constexpr int (?:READER_BAR_LEFT|READER_TOOL_END_AIR|FRAME_BAR_WIDTH|FRAME_BAR_AIR) = .*?;', chrome, re.M)) + '\n' + method(chrome, 'struct FrameBar') + ';\n' + method(chrome, 'inline FrameBar frameScrollBar') + '\n' + method(chrome, 'struct ReaderToolRect') + ';\n' + method(chrome, 'inline ReaderToolRect readerToolRect') + '\n}\n'
-cpp = cpp.replace('EXPECT_PREVIEW_HIT', str(a.expect_preview_hit).lower()).replace('DUMP_SIGNATURE', str(a.signature).lower()).replace('EXPECT_FADE', str(a.expect_fade).lower()).replace('EXPECT_STEPPER_RING', str(a.expect_stepper_ring).lower()).replace('EXPECT_MIDDLE_FONT', str(a.expect_middle_font).lower())
+cpp = cpp.replace('EXPECT_PREVIEW_HIT', str(a.expect_preview_hit).lower()).replace('DUMP_SIGNATURE', str(a.signature).lower()).replace('EXPECT_FADE', str(a.expect_fade).lower()).replace('EXPECT_STEPPER_RING', str(a.expect_stepper_ring).lower()).replace('EXPECT_STEPPER_CENTER', str(a.expect_stepper_center).lower()).replace('EXPECT_MIDDLE_FONT', str(a.expect_middle_font).lower())
 cpp += header + '\n' + constants + '\n'
 cpp += 'ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& r): UiAppHost(r), renderer_(&r) {}\n'
 cpp += method(source, 'fui::Rect readerFrame') + '\n'
@@ -209,8 +218,16 @@ int main() {
     auto plus=tap(ui,ACTION_SIZE_STEP,1); assert(plus.event==ReaderToolbarUi::Event::SizeStep && plus.value==1);
     auto size=tap(ui,ACTION_SIZE_ENTRY,0); assert(size.event==ReaderToolbarUi::Event::SizeEntry);
     const auto minusRect = ui.app.publishedRect(ACTION_SIZE_STEP, -1);
+    const auto entryRect = ui.app.publishedRect(ACTION_SIZE_ENTRY, 0);
     const auto plusRect = ui.app.publishedRect(ACTION_SIZE_STEP, 1);
     assert(minusRect.x == 260 && minusRect.y == 464 && minusRect.width == 60 && minusRect.height == 62);
+    if (kExpectStepperCenter) {
+      assert(entryRect.x == 324 && entryRect.y == 464 && entryRect.width == 60 && entryRect.height == 62);
+      assert(std::abs((entryRect.x + entryRect.width / 2) -
+                      ((minusRect.x + minusRect.width / 2 + plusRect.x + plusRect.width / 2) / 2)) <= 1 &&
+             "stepper value touch rect must be centered between minus and plus");
+      assert(entryRect.right() <= plusRect.x && "stepper value touch rect must not overlap plus");
+    }
     assert(plusRect.x == 388 && plusRect.y == 464 && plusRect.width == 60 && plusRect.height == 62);
     bool sawPlus = false;
     for (const auto& text : ui.uiTarget.texts) {

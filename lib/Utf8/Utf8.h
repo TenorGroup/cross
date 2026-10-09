@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
-#include <vector>
 #define REPLACEMENT_GLYPH 0xFFFD
 
 uint32_t utf8NextCodepoint(const unsigned char** string);
@@ -26,24 +25,30 @@ std::string utf8MiddleEllipsis(const std::string& input, const int maxWidth, Mea
 
   const auto* begin = reinterpret_cast<const unsigned char*>(input.c_str());
   const auto* cursor = begin;
-  std::vector<size_t> offsets;
-  offsets.reserve(input.size() + 1);
+  int chars = 0;
   while (*cursor) {
-    offsets.push_back(static_cast<size_t>(cursor - begin));
     utf8NextCodepoint(&cursor);
+    ++chars;
   }
-  offsets.push_back(input.size());
-  const int chars = static_cast<int>(offsets.size()) - 1;
   if (chars < 3) return ellipsis;
 
+  const auto offsetAfterChars = [&](const int count) {
+    const auto* at = begin;
+    for (int i = 0; i < count && *at; ++i) utf8NextCodepoint(&at);
+    return static_cast<size_t>(at - begin);
+  };
   const int minHead = chars >= 6 ? 2 : 1;
   const int minTail = chars >= 6 ? 2 : 1;
+  std::string candidate;
+  candidate.reserve(input.size() + 3);
   for (int kept = chars - 1; kept >= minHead + minTail; --kept) {
     const int headChars = std::clamp((kept * 2 + 4) / 5, minHead, kept - minTail);
     const int tailChars = kept - headChars;
-    std::string candidate = input.substr(0, offsets[headChars]);
+    const size_t headOffset = offsetAfterChars(headChars);
+    const size_t tailOffset = offsetAfterChars(chars - tailChars);
+    candidate.assign(input, 0, headOffset);
     candidate += ellipsis;
-    candidate += input.substr(offsets[chars - tailChars]);
+    candidate.append(input, tailOffset, std::string::npos);
     if (measure(candidate.c_str()) <= maxWidth) return candidate;
   }
   return ellipsis;

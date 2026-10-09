@@ -678,7 +678,8 @@ void ReaderToolbarUi::buildX4Panel(UiScreen& screen) {
       stepProps_.label = windowValues_[sizeSlot].c_str();
       stepProps_.action = ACTION_SIZE_ENTRY;
       stepProps_.value = 0;
-      screen.button(stepProps_, {static_cast<int16_t>(frame.right() - 140), y, 72, 62});
+      const fui::Rect entryRect{static_cast<int16_t>(frame.right() - 140), y, 60, 62};
+      screen.button(stepProps_, entryRect);
       stepProps_.label = "+";
       stepProps_.action = ACTION_SIZE_STEP;
       stepProps_.value = 1;
