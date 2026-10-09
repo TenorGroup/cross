@@ -203,7 +203,7 @@ void EndOfBookOptions::renderUgly(GfxRenderer& renderer, const MappedInputManage
     for (size_t i = 0; i < rowCount; ++i) {
       const int base = ask + 76 + static_cast<int>(i) * 52;
       const bool home = i >= names.size();
-      const std::string label = ugly::fit(renderer, ugly::Size::S30, home ? tr(STR_UGLY_DIARY_TITLE) : rowLabels[i], w - 48 - 30);
+      const std::string label = ugly::fit(renderer, ugly::Size::S30, home ? tr(STR_UGLY_ROOT_SCREEN) : rowLabels[i], w - 48 - 30);
       const int lw = ugly::text(renderer, ugly::Size::S30, 48, base, label.c_str());
       if (static_cast<int>(i) == sel) ugly::circle(renderer, ugly::Circle::Row, {48, base - 26, 48 + lw, base + 8}, 12, 9,
                                                  markSeed_.load(std::memory_order_relaxed), 3);

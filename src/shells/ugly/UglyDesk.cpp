@@ -1,4 +1,5 @@
 #include "UglyDesk.h"
+#include "CrossPointSettings.h"
 
 #include <HalDisplay.h>
 #include <I18n.h>
@@ -117,7 +118,7 @@ void Desk::render(RenderLock&&) {
     text(renderer, Size::S52, 410 + c.dx - (today % 100 >= 10 ? 6 : 0), 208 + c.dy, day);
   }
   topBar(renderer, nullptr);
-  navRow(renderer, nullptr, tr(STR_UGLY_X4_BACK_DIARY), nullptr);
+  navRow(renderer, nullptr, SETTINGS.uglyRootIsDesk() ? nullptr : tr(STR_UGLY_X4_BACK_DIARY), nullptr);
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 #ifdef UGLY_FRAME_LOG
   LOG_INF("UGLY", "Desk frame total=%lums", static_cast<unsigned long>(millis() - started));
@@ -226,7 +227,8 @@ bool Desk::onKey(const Key key) {
       open();
       return false;
     case Key::Back:
-      then([this] { activityManager.replaceActivity(makeDiary(renderer, mappedInput, false)); });
+      if (!SETTINGS.uglyRootIsDesk())
+        then([this] { activityManager.replaceActivity(makeRoot(renderer, mappedInput, false)); });
       return false;
     default:
       return false;

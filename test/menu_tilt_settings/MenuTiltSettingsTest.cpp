@@ -450,16 +450,15 @@ int main(int argc, char** argv) {
   // existing row kept its place. v1.0.52 then dropped the UI theme row and added the starting up notice row,
   // v1.0.53 the touch back tap zone and tap zone tip rows, the persisted-only rows of tenor/ugly
   // (uiShellClockMemo, uglyBatteryHidden) and the clock shown once (uiShellClockOnce).
-  // v1.0.55 adds uglyStartScreen to the base catalog; shell filtering hides
-  // wakeIntoBook only in visible settings, so each base count grows by 1.
-  bool ok = expect(catalog.size() == (hasImu ? 107U : 95U), "X3 descriptor count");
+  bool ok = expect(catalog.size() == (hasImu ? 108U : 96U), "X3 descriptor count");
   const SettingInfo* tips = findSetting(catalog, "tipsEnabled");
   ok = expect(tips && tips->type == SettingType::TOGGLE && tips->category == StrId::STR_CAT_DISPLAY &&
                   tips->nameId == StrId::STR_TIPS && tips->valuePtr == &CrossPointSettings::tipsEnabled &&
                   settings.tipsEnabled == 1,
               "Display has an independent tips toggle, enabled by default") && ok;
-  ok = expect(findSetting(catalog, "uglyStartScreen") && findSetting(catalog, "wakeIntoBook"),
-              "base catalog keeps both startup descriptors before shell filtering") && ok;
+  ok = expect(findSetting(catalog, "uglyStartScreen") && findSetting(catalog, "uglyRootScreen") &&
+                  findSetting(catalog, "wakeIntoBook"),
+              "base catalog keeps Root and startup descriptors before shell filtering") && ok;
   ok = expect(longPressValuesMatch(catalog, hasImu), "Confirm-hold list shows Reader menu and appends the new actions") &&
        ok;
   ok = longPressStoreKept(catalog, hasImu) && ok;

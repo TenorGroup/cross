@@ -116,11 +116,12 @@ for path in list((repo / 'src').rglob('*.cpp')) + list((repo / 'src').rglob('*.h
     text = path.read_text(errors='ignore')
     if str(rel) == 'src/SettingsList.h':
         allowed = {'STR_UGLY_START_SCREEN', 'STR_UGLY_START_BOOK', 'STR_UGLY_START_DIARY',
-                   'STR_UGLY_START_RECENT', 'STR_UGLY_START_DESK'}
+                   'STR_UGLY_START_RECENT', 'STR_UGLY_START_DESK', 'STR_UGLY_ROOT_SCREEN'}
         check(set(re.findall(r'\bSTR_UGLY_\w+', text)) == allowed,
               'SettingsList.h may only name the shell-filtered start-screen strings')
-        check('!ugly && setting.valuePtr == &CrossPointSettings::uglyStartScreen' in text,
-              'the cross shell must hide the ugly start row')
+        check(re.search(r'!ugly\s*&&\s*\(setting.valuePtr == &CrossPointSettings::uglyStartScreen\s*\|\|\s*'
+                        r'setting.valuePtr == &CrossPointSettings::uglyRootScreen\)', text) is not None,
+              'the cross shell must hide both ugly Root and Start rows')
         check('settingHiddenOnThisBoard(setting) || settingHiddenInShell(setting)' in text and
               'v.end(), settingHiddenInShell)' in text,
               'device and web catalogs must both apply the shell filter')

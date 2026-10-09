@@ -13,6 +13,7 @@ namespace ugly {
 
 // Tier 1, the diary: the first screen on waking and on leaving a book.
 std::unique_ptr<Activity> makeDiary(GfxRenderer& renderer, MappedInputManager& mappedInput, bool cleanInitialRefresh);
+std::unique_ptr<Activity> makeRoot(GfxRenderer& renderer, MappedInputManager& mappedInput, bool cleanInitialRefresh);
 // Tier 2, the desk. Only the X3 has one (the picture is its 528x792 frame); elsewhere deskAvailable() is false.
 std::unique_ptr<Activity> makeDesk(GfxRenderer& renderer, MappedInputManager& mappedInput);
 bool deskAvailable(const GfxRenderer& renderer);

@@ -4,6 +4,7 @@
 #include "UglyDiary.h"
 #include "UglyNotebook.h"
 #include "UglySwitch.h"
+#include "CrossPointSettings.h"
 
 namespace ugly {
 
@@ -13,6 +14,11 @@ std::unique_ptr<Activity> makeDiary(GfxRenderer& renderer, MappedInputManager& m
 
 std::unique_ptr<Activity> makeDesk(GfxRenderer& renderer, MappedInputManager& mappedInput) {
   return std::make_unique<Desk>(renderer, mappedInput);
+}
+
+std::unique_ptr<Activity> makeRoot(GfxRenderer& renderer, MappedInputManager& mappedInput, const bool cleanInitialRefresh) {
+  if (SETTINGS.uglyRootIsDesk()) return makeDesk(renderer, mappedInput);
+  return makeDiary(renderer, mappedInput, cleanInitialRefresh);
 }
 
 std::unique_ptr<Activity> makeNotebook(GfxRenderer& renderer, MappedInputManager& mappedInput, const homerows::Page page) {
@@ -47,7 +53,7 @@ std::unique_ptr<Activity> makeHome(GfxRenderer& renderer, MappedInputManager& ma
     case HomeMenuItem::RECENT_CONTINUE:
       break;
   }
-  return makeDiary(renderer, mappedInput, cleanInitialRefresh);
+  return makeRoot(renderer, mappedInput, cleanInitialRefresh);
 }
 
 }  // namespace ugly

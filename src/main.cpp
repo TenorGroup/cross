@@ -1030,8 +1030,6 @@ void setup() {
   } else {
     const HomeMenuItem startHome = shell::isUgly() && uglyStart == CrossPointSettings::UGLY_START_RECENT
                                        ? HomeMenuItem::RECENTS
-                                   : shell::isUgly() && uglyStart == CrossPointSettings::UGLY_START_DESK
-                                       ? HomeMenuItem::DESK
                                        : HomeMenuItem::RECENT_CONTINUE;
     activityManager.goHome(startHome, needsWakeRefresh);
   }

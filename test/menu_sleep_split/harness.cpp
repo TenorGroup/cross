@@ -150,6 +150,8 @@ int main(int argc, char** argv) {
               "the shell has exactly one start row in Sleep");
   ok &= check(activity.focusFavorite(ugly ? "settings/wakeIntoBook" : "settings/uglyStartScreen")<0,
               "a hidden start row pin stays hidden");
+  ok &= check(ugly ? routes["settings/uglyRootScreen"]==0 : !routes.count("settings/uglyRootScreen"),
+              "the Root row belongs to Display only in ugly");
   ok &= check(!routes.count("settings/wakeButtons"),"retired wakeButtons row is gone on every board");
   const bool light=BoardConfig::hasPwmFrontlight()||BoardConfig::hasI2cFrontlight();
   ok &= check(light ? routes["settings/frontlightRestoreOnWake"]==7 : !routes.count("settings/frontlightRestoreOnWake"),"restore light belongs to Sleep only on supported board");
@@ -171,7 +173,7 @@ int main(int argc, char** argv) {
   ok &= check(activity.focusFavorite("settings/wakeButtons")<0,"an old wakeButtons pin resolves to no row");
   result["catalog"]=catalog.size(); result["checks"]=checks;
   JsonDocument webDoc; deserializeJson(webDoc, before); result["web"]=webDoc;
-  bool hasWake=false, hasStart=false;
+  bool hasWake=false, hasStart=false, hasRoot=false;
   int tipsRows=0;
   for (JsonObjectConst row : webDoc.as<JsonArrayConst>()) {
     const std::string key=row["key"] | "";
@@ -184,11 +186,17 @@ int main(int argc, char** argv) {
     }
     if(key=="uglyStartScreen") {
       hasStart=true;
-      ok &= check(row["value"].as<int>()==CrossPointSettings::UGLY_START_DIARY,
-                  "web start screen defaults to Diary");
+      ok &= check(row["value"].as<int>()==CrossPointSettings::UGLY_START_ROOT,
+                  "web start screen defaults to Root");
+    }
+    if(key=="uglyRootScreen") {
+      hasRoot=true;
+      ok &= check(row["value"].as<int>()==CrossPointSettings::UGLY_ROOT_DIARY,
+                  "web Root defaults to Diary");
     }
   }
   const bool hasTips=!ugly && !BoardConfig::isX4Pro();
+  ok &= check(hasRoot==ugly,"web exposes Root only in ugly");
   ok &= check(tipsRows==(hasTips ? 1 : 0),"tips toggle is shown once on cross button readers only");
   ok &= check(hasTips ? routes.count("settings/tipsEnabled")==1 && routes.at("settings/tipsEnabled")==0
                      : !routes.count("settings/tipsEnabled"),

@@ -362,7 +362,7 @@ bool Notebook::onKey(const Key key) {
     case Key::Back:
       then([this] {
         activityManager.replaceActivity(deskAvailable(renderer) ? makeDesk(renderer, mappedInput)
-                                                                : makeDiary(renderer, mappedInput, false));
+                                                                : makeRoot(renderer, mappedInput, false));
       });
       return false;
     default:

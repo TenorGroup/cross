@@ -301,13 +301,21 @@ int main(int argc, char** argv) {
                     (at - 1)->valuePtr == &CrossPointSettings::uiShell && at + 1 != activity.displaySettings.end() &&
                     (at + 1)->valuePtr == &CrossPointSettings::screenInverted,
                 "tenor/ugly lists the ugliness row right under the interface row");
-    const size_t extra = BoardConfig::hasTouch() ? 1 : 0;
+    const size_t extra = BoardConfig::hasTouch() ? 2 : 1;
     ok &= check(activity.displaySettings.size() == without + extra && activity.displaySettings.capacity() == activity.displaySettings.size(),
-                "shell switch keeps exact capacity while exchanging tips for ugliness");
+                "shell switch keeps exact capacity while exchanging tips for ugliness and adding Root");
+    const auto root = std::find_if(activity.displaySettings.begin(), activity.displaySettings.end(), [](const auto& row) {
+      return row.valuePtr == &CrossPointSettings::uglyRootScreen;
+    });
+    ok &= check(root != activity.displaySettings.end() && root->enumLabels().size() == 2,
+                "ugly lists Root with exactly Diary and Desk choices");
     ok &= check(activity.tabNavs.size() > 0 && at->enumLabels().size() == 2, "two levels");
     SETTINGS.uiShell = 0;
     activity.rebuildSettingsLists();
     ok &= check(listed() == activity.displaySettings.end(), "and leaving tenor/ugly takes the row away again");
+    ok &= check(std::none_of(activity.displaySettings.begin(), activity.displaySettings.end(), [](const auto& row) {
+                  return row.valuePtr == &CrossPointSettings::uglyRootScreen;
+                }), "leaving ugly hides Root again");
   }
   ok &= dynamicLifetime();
   ok &= longFontNames();

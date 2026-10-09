@@ -592,15 +592,27 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
 
   enum UGLY_START_SCREEN : uint8_t {
     UGLY_START_BOOK = 0,
-    UGLY_START_DIARY = 1,
+    UGLY_START_ROOT = 1,
     UGLY_START_RECENT = 2,
-    UGLY_START_DESK = 3,
     UGLY_START_SCREEN_COUNT
   };
-  uint8_t uglyStartScreen = UGLY_START_DIARY;
+  enum UGLY_ROOT_SCREEN : uint8_t { UGLY_ROOT_DIARY, UGLY_ROOT_DESK, UGLY_ROOT_SCREEN_COUNT };
+  uint8_t uglyStartScreen = UGLY_START_ROOT;
+  uint8_t uglyRootScreen = UGLY_ROOT_DIARY;
+
+  bool uglyRootIsDesk() const { return uglyRootScreen == UGLY_ROOT_DESK; }
+
+  bool migrateUglyRoot(const bool hasRoot, const uint8_t storedStart) {
+    const uint8_t oldRoot = uglyRootScreen;
+    if (!hasRoot && (storedStart == 1 || storedStart == 3))
+      uglyRootScreen = storedStart == 3 ? UGLY_ROOT_DESK : UGLY_ROOT_DIARY;
+    uglyStartScreen = storedStart == UGLY_START_BOOK || storedStart == UGLY_START_RECENT
+                          ? storedStart : static_cast<uint8_t>(UGLY_START_ROOT);
+    return !hasRoot || oldRoot != uglyRootScreen || storedStart != uglyStartScreen;
+  }
 
   UGLY_START_SCREEN startScreen(const bool normalBoot) const {
-    if (!normalBoot || uglyStartScreen >= UGLY_START_SCREEN_COUNT) return UGLY_START_DIARY;
+    if (!normalBoot || uglyStartScreen >= UGLY_START_SCREEN_COUNT) return UGLY_START_ROOT;
     return static_cast<UGLY_START_SCREEN>(uglyStartScreen);
   }
 

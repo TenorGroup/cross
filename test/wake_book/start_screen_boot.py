@@ -14,7 +14,8 @@ settings = (repo / "src/CrossPointSettings.h").read_text()
 main = (repo / "src/main.cpp").read_text()
 fields = settings[settings.index("  enum UGLY_START_SCREEN"):settings.index("  // Whether a power-button wake")]
 boot = main[main.index("  bool normalColdBoot ="):main.index("  setupDisplayAndFonts(resume != BootResume::Splash")]
-home = main[main.index("    const HomeMenuItem startHome ="):main.index("    activityManager.goHome(startHome")]
+home_start = main.index("    const HomeMenuItem startHome =")
+home = main[home_start:main.index(";", home_start) + 1]
 harness = r'''
 #include <cstdlib>
 #include <cstdint>
@@ -73,17 +74,21 @@ int main() {
   int checks = 0;
   for (const auto& context : contexts) {
     currentReset = context.reset;
-    for (uint8_t choice = 0; choice < 4; ++choice) {
-      SETTINGS.uglyStartScreen = choice;
-      const auto result = decide(context.wake, context.recovery, context.panic, context.ota, context.silent);
-      const uint8_t expected = context.allowed ? choice : CrossPointSettings::UGLY_START_DIARY;
-      require(result.screen == expected, context.name);
-      require(result.opensBook == (expected == CrossPointSettings::UGLY_START_BOOK), context.name);
-      const auto expectedHome = expected == CrossPointSettings::UGLY_START_RECENT ? HomeMenuItem::RECENTS
-                              : expected == CrossPointSettings::UGLY_START_DESK ? HomeMenuItem::DESK
-                              : HomeMenuItem::RECENT_CONTINUE;
-      require(result.home == expectedHome, context.name);
-      ++checks;
+    for (uint8_t root = 0; root < CrossPointSettings::UGLY_ROOT_SCREEN_COUNT; ++root) {
+      SETTINGS.uglyRootScreen = root;
+      for (const uint8_t choice : {0, 1, 2, 255}) {
+        SETTINGS.uglyStartScreen = choice;
+        const auto result = decide(context.wake, context.recovery, context.panic, context.ota, context.silent);
+        const uint8_t expected = context.allowed && choice < CrossPointSettings::UGLY_START_SCREEN_COUNT
+                                     ? choice : CrossPointSettings::UGLY_START_ROOT;
+        require(result.screen == expected, context.name);
+        require(result.opensBook == (expected == CrossPointSettings::UGLY_START_BOOK), context.name);
+        const auto expectedHome = expected == CrossPointSettings::UGLY_START_RECENT ? HomeMenuItem::RECENTS
+                                : HomeMenuItem::RECENT_CONTINUE;
+        require(result.home == expectedHome, context.name);
+        require(SETTINGS.uglyRootIsDesk() == (root == CrossPointSettings::UGLY_ROOT_DESK), context.name);
+        ++checks;
+      }
     }
   }
   SETTINGS.uiShell = 0;

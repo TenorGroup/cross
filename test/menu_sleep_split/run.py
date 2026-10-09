@@ -132,12 +132,16 @@ for profile in ['c3', 'pro', 'persistence']:
                 baseline_case = case.removesuffix('-ugly')
                 old = json.loads((a.web_baseline/(baseline_case+'-web.json')).read_text())
                 if case.endswith('-ugly'):
-                    old = [row for row in old if row['key'] != 'wakeIntoBook']
+                    old = [row for row in old if row['key'] not in ('wakeIntoBook', 'tipsEnabled')]
                     old.append({'category': 'STR_CAT_DISPLAY', 'key': 'uglyStartScreen',
                                 'name': 'STR_UGLY_START_SCREEN',
-                                'options': ['STR_UGLY_START_BOOK', 'STR_UGLY_START_DIARY',
-                                            'STR_UGLY_START_RECENT', 'STR_UGLY_START_DESK'],
+                                'options': ['STR_UGLY_START_BOOK', 'STR_UGLY_ROOT_SCREEN',
+                                            'STR_UGLY_START_RECENT'],
                                 'type': 'enum', 'value': 1})
+                    old.append({'category': 'STR_CAT_DISPLAY', 'key': 'uglyRootScreen',
+                                'name': 'STR_UGLY_ROOT_SCREEN',
+                                'options': ['STR_UGLY_START_DIARY', 'STR_UGLY_START_DESK'],
+                                'type': 'enum', 'value': 0})
                 if old != measured['web']:
                     result['web_schema_mismatch'] = True
                     result['exit'] = 1

@@ -687,9 +687,11 @@ inline void forEachBaseSetting(const std::function<void(SettingInfo&&)>& emit) {
     emit(SettingInfo::Toggle(StrId::STR_CLOCK_SYNCED, &CrossPointSettings::clockHasBeenSynced, "clockHasBeenSynced",
                             StrId::STR_CUSTOMISE_STATUS_BAR));
     emit(SettingInfo::Enum(StrId::STR_UGLY_START_SCREEN, &CrossPointSettings::uglyStartScreen,
-                          {StrId::STR_UGLY_START_BOOK, StrId::STR_UGLY_START_DIARY,
-                           StrId::STR_UGLY_START_RECENT, StrId::STR_UGLY_START_DESK},
+                          {StrId::STR_UGLY_START_BOOK, StrId::STR_UGLY_ROOT_SCREEN, StrId::STR_UGLY_START_RECENT},
                           "uglyStartScreen", StrId::STR_CAT_DISPLAY));
+    emit(SettingInfo::Enum(StrId::STR_UGLY_ROOT_SCREEN, &CrossPointSettings::uglyRootScreen,
+                          {StrId::STR_UGLY_START_DIARY, StrId::STR_UGLY_START_DESK},
+                          "uglyRootScreen", StrId::STR_CAT_DISPLAY));
 }
 
 inline const std::vector<SettingInfo>& getBaseSettingsList() {
@@ -768,7 +770,8 @@ inline bool settingHiddenInShell(const SettingInfo& setting) {
   const bool ugly = SETTINGS.uiShell == 1;
   return (ugly && setting.valuePtr == &CrossPointSettings::wakeIntoBook) ||
          (ugly && setting.valuePtr == &CrossPointSettings::tipsEnabled) ||
-         (!ugly && setting.valuePtr == &CrossPointSettings::uglyStartScreen);
+         (!ugly && (setting.valuePtr == &CrossPointSettings::uglyStartScreen ||
+                    setting.valuePtr == &CrossPointSettings::uglyRootScreen));
 }
 
 inline int deviceSettingsTab(const SettingInfo& setting) {

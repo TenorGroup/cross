@@ -401,32 +401,48 @@ int runUglyStart() {
   settings_test_io::setNextRead(before);
   bool ok = expect(SETTINGS.loadFromFile(), "old ugly settings load");
   ok = expect(saved()["uglyStartScreen"].is<uint8_t>() && saved()["uglyStartScreen"] == 1,
-              "a file without uglyStartScreen defaults to Diary") && ok;
-  ok = expect(SETTINGS.startScreen(true) == CrossPointSettings::UGLY_START_DIARY,
-              "legacy ugly settings start on Diary") && ok;
+              "a file without uglyStartScreen defaults to Root") && ok;
+  ok = expect(SETTINGS.startScreen(true) == CrossPointSettings::UGLY_START_ROOT &&
+                  SETTINGS.uglyRootScreen == CrossPointSettings::UGLY_ROOT_DIARY,
+              "legacy ugly settings use Diary as Root") && ok;
   for (uint8_t choice = 0; choice < 4; ++choice) {
     before["uglyStartScreen"] = choice;
     settings_test_io::setNextRead(before);
     ok = expect(SETTINGS.loadFromFile(), "each start screen loads") && ok;
-    ok = expect(saved()["uglyStartScreen"].is<uint8_t>() && saved()["uglyStartScreen"] == choice,
-                "each start screen round trips") && ok;
-    ok = expect(SETTINGS.startScreen(true) == choice, "each value selects its start screen") && ok;
-    ok = expect(SETTINGS.startScreen(false) == CrossPointSettings::UGLY_START_DIARY,
-                "a blocked boot goes to Diary") && ok;
+    const uint8_t expectedStart = choice == 3 ? CrossPointSettings::UGLY_START_ROOT : choice;
+    const uint8_t expectedRoot = choice == 3 ? CrossPointSettings::UGLY_ROOT_DESK : CrossPointSettings::UGLY_ROOT_DIARY;
+    ok = expect(saved()["uglyStartScreen"].is<uint8_t>() && saved()["uglyStartScreen"] == expectedStart,
+                "legacy start choice migrates") && ok;
+    ok = expect(saved()["uglyRootScreen"].is<uint8_t>() && saved()["uglyRootScreen"] == expectedRoot,
+                "legacy Diary and Desk choices select Root") && ok;
+    ok = expect(SETTINGS.startScreen(true) == expectedStart, "migrated value selects its start screen") && ok;
+    ok = expect(SETTINGS.startScreen(false) == CrossPointSettings::UGLY_START_ROOT,
+                "a blocked boot goes to Root") && ok;
   }
   before["uglyStartScreen"] = 255;
-  SETTINGS.uglyStartScreen = CrossPointSettings::UGLY_START_DIARY;
+  SETTINGS.uglyStartScreen = CrossPointSettings::UGLY_START_ROOT;
   settings_test_io::setNextRead(before);
-  ok = expect(SETTINGS.loadFromFile() && SETTINGS.uglyStartScreen == CrossPointSettings::UGLY_START_DIARY,
-              "an invalid start screen falls back to Diary") && ok;
+  ok = expect(SETTINGS.loadFromFile() && SETTINGS.uglyStartScreen == CrossPointSettings::UGLY_START_ROOT,
+              "an invalid start screen falls back to Root") && ok;
+  for (uint8_t root = 0; root < CrossPointSettings::UGLY_ROOT_SCREEN_COUNT; ++root) {
+    before["uglyRootScreen"] = root;
+    for (uint8_t start = 0; start < CrossPointSettings::UGLY_START_SCREEN_COUNT; ++start) {
+      before["uglyStartScreen"] = start;
+      settings_test_io::setNextRead(before);
+      ok = expect(SETTINGS.loadFromFile() && SETTINGS.uglyRootScreen == root && SETTINGS.uglyStartScreen == start,
+                  "all Root and Start combinations round trip") && ok;
+    }
+  }
   SETTINGS.uglyStartScreen = CrossPointSettings::UGLY_START_BOOK;
-  ok = expect(SETTINGS.startScreen(false) == CrossPointSettings::UGLY_START_DIARY,
-              "a cold boot after panic with ugly Book selected goes to Diary") && ok;
+  ok = expect(SETTINGS.startScreen(false) == CrossPointSettings::UGLY_START_ROOT,
+              "a cold boot after panic with ugly Book selected goes to Root") && ok;
   SETTINGS.uiShell = 0;
-  SETTINGS.uglyStartScreen = CrossPointSettings::UGLY_START_DESK;
-  ok = expect(saved()["uglyStartScreen"] == 3, "cross still saves the ugly start choice") && ok;
+  SETTINGS.uglyStartScreen = CrossPointSettings::UGLY_START_ROOT;
+  SETTINGS.uglyRootScreen = CrossPointSettings::UGLY_ROOT_DESK;
+  ok = expect(saved()["uglyStartScreen"] == 1 && saved()["uglyRootScreen"] == 1,
+              "cross still saves ugly Root and Start choices") && ok;
   const auto& catalog = getBaseSettingsList();
-  ok = expect(std::string(catalog.back().key) == "uglyStartScreen", "the new catalog entry is appended") && ok;
+  ok = expect(std::string(catalog.back().key) == "uglyRootScreen", "the Root catalog entry is appended") && ok;
   std::printf("settings_upgrade=ugly-start:%s\n", ok ? "GREEN" : "RED");
   return ok ? 0 : 1;
 }
