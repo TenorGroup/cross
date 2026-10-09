@@ -24,16 +24,22 @@ TEST(BleConfigJsonTest, PickRoundTripsBothPolicies) {
   }
 }
 
-TEST(BleConfigJsonTest, MissingOrInvalidPickResetsToPriority) {
+TEST(BleConfigJsonTest, MissingOrInvalidPickResetsToFirst) {
   for (const char* json : {"{}", "{\"blePick\":7}", "{\"blePick\":-1}", "{\"blePick\":257}",
                            "{\"blePick\":\"1\"}", "{\"blePick\":true}", "{\"blePick\":1.5}"}) {
     JsonDocument file;
     ASSERT_FALSE(deserializeJson(file, json));
     Config loaded;
-    loaded.pick = 1;
+    loaded.pick = 0;
     readJson(loaded, file.as<JsonVariantConst>());
-    EXPECT_EQ(loaded.pick, 0) << json;
+    EXPECT_EQ(loaded.pick, 1) << json;
   }
+  JsonDocument chosen;
+  ASSERT_FALSE(deserializeJson(chosen, "{\"blePick\":0}"));
+  Config kept;
+  readJson(kept, chosen.as<JsonVariantConst>());
+  EXPECT_EQ(kept.pick, 0) << "a saved priority choice is kept";
+  EXPECT_EQ(Config{}.pick, 1) << "a new install picks the first remote to come up";
 }
 
 constexpr uint32_t kNextChapterTap = makeBinding(0x030102, false, Action::NextChapter);

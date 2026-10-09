@@ -36,7 +36,7 @@ struct Heap {
 // blePick, blePeerAddr, blePeerName, blePrevKeyUsage, bleNextKeyUsage and bleRemotes.
 struct Config {
   uint8_t enabled = 0;
-  uint8_t pick = 0;
+  uint8_t pick = 1;  // 1: the first remote to come up; 0: the chosen remote first
   char peerAddr[18] = "";
   char peerName[32] = "";
   // HID usage learned for each direction from the decoded key path; 0 = not learned.

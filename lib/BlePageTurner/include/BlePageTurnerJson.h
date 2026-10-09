@@ -21,7 +21,7 @@ inline void copyField(char* dest, const char* src, const size_t maxLen) {
 
 inline void writeJson(const Config& config, JsonDocument& doc) {
   doc["blePageTurnerEnabled"] = config.enabled;
-  doc["blePick"] = config.pick == 1 ? 1 : 0;
+  doc["blePick"] = config.pick == 0 ? 0 : 1;
   doc["blePeerAddr"] = config.peerAddr;
   doc["blePeerName"] = config.peerName;
   doc["blePrevKeyUsage"] = config.prevKeyUsage;
@@ -46,7 +46,7 @@ inline bool readJson(Config& config, JsonVariantConst doc) {
   // A file without the keys means nobody used the page turner: the defaults stay (off, no
   // remote, nothing learned).
   config.enabled = (doc["blePageTurnerEnabled"] | uint8_t{0}) ? 1 : 0;
-  config.pick = doc["blePick"].is<uint8_t>() && doc["blePick"].as<uint8_t>() == 1 ? 1 : 0;
+  config.pick = doc["blePick"].is<uint8_t>() && doc["blePick"].as<uint8_t>() == 0 ? 0 : 1;
   detail::copyField(config.peerAddr, doc["blePeerAddr"] | "", sizeof(config.peerAddr));
   detail::copyField(config.peerName, doc["blePeerName"] | "", sizeof(config.peerName));
   config.prevKeyUsage = doc["blePrevKeyUsage"] | uint8_t{0};

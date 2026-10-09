@@ -304,6 +304,7 @@ TEST_F(TickTest, SheetCancelsAStartInFlight) {
 }
 
 TEST_F(TickTest, BondedPriorityPolicyIsArmedOnceBeforeTheFirstPoll) {
+  config.pick = 0;
   strcpy(config.peerAddr, "7d:de:5c:bd:ae:ca");
   running();
   pass(fake::reading());
