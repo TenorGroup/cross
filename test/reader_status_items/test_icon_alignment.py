@@ -32,21 +32,10 @@ body = extract_function(
     (repo / "src/components/TenorMenuChrome.cpp").read_text(),
     "void tenorchrome::drawReaderSlots(",
 )
-
-patch_marker = "r.drawRect(x, y + 3, 24, 14, 1, true);"
-if args.green:
-    body = body.replace(patch_marker, "r.drawRect(x, iconTop, 24, 14, 1, true);")
-    body = body.replace("r.fillRect(x + 24, y + 8, 2, 4);", "r.fillRect(x + 24, iconTop + 5, 2, 4);")
-    body = body.replace("drawChargingBolt(r, x, y + 3, 24, 14, false);", "drawChargingBolt(r, x, iconTop, 24, 14, false);")
-    body = body.replace("r.fillRect(x + 2, y + 5, (20 * percent + 50) / 100, 10);",
-                        "r.fillRect(x + 2, iconTop + 2, (20 * percent + 50) / 100, 10);")
-    body = body.replace("inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, 18, 20, 10, true);",
-                        "inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, 18, inlineSymbols::markTopOnCapitals(r, font, 8, 10) + 5, 10, true);")
-    body = body.replace("inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, 6, y + 12, 10, true);",
-                        "inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, 6, markTop + 5, 10, true);")
-    if "const int iconTop =" not in body:
-        body = body.replace("const int y = statusTextY(r.getScreenHeight(), false);",
-                            "const int y = statusTextY(r.getScreenHeight(), false);\n  const int iconTop = inlineSymbols::markTopOnCapitals(r, font, y, 14);\n  const int markTop = inlineSymbols::markTopOnCapitals(r, font, y, 10);")
+metric_body = extract_function(
+    (repo / "src/components/TenorMenuChrome.cpp").read_text(),
+    "tenorchrome::BatteryInkBounds tenorchrome::batteryInkBounds(",
+)
 
 cpp = r'''
 #include <algorithm>
@@ -58,6 +47,7 @@ cpp = r'''
 #include <vector>
 #include "activities/reader/ReaderStatusLayout.h"
 constexpr int SMALL_FONT_ID = 0;
+struct EpdFontFamily { enum Style { REGULAR }; };
 struct CrossPointSettings {
   enum READER_STATUS_SLOT : unsigned char {
     STATUS_SLOT_NONE = 0, STATUS_SLOT_CLOCK, STATUS_SLOT_BATTERY,
@@ -89,9 +79,13 @@ bool rough = false;
 struct GfxRenderer {
   int w = 480;
   int h = 800;
+  int digitTop = 5;
+  int digitBottom = 17;
   int getScreenWidth() const { return w; }
   int getScreenHeight() const { return h; }
   int getTextWidth(int, const char* text) const { return static_cast<int>(std::strlen(text)) * 8; }
+  int getTextInkTop(int, const char* value, int) const { assert(std::strcmp(value, "0123456789") == 0); return digitTop; }
+  int getTextInkBottom(int, const char* value, int) const { assert(std::strcmp(value, "0123456789") == 0); return digitBottom; }
   std::string truncatedText(int, const char* text, int width) const {
     std::string out = text ? text : "";
     while (getTextWidth(0, out.c_str()) > width && !out.empty()) out.pop_back();
@@ -131,15 +125,24 @@ namespace inlineSymbols {
 }
 void drawChargingBolt(const GfxRenderer&, int, int, int, int, bool) {}
 namespace tenorchrome {
+  struct BatteryInkBounds { int top; int height; };
+  BatteryInkBounds batteryInkBounds(const GfxRenderer&, int, int);
   int statusTextY(int height, bool) { return height - 24; }
   void drawReaderSlots(const GfxRenderer&, const char*, int, int, float, bool, bool, int64_t, int64_t);
 }
-''' + body + r'''
+''' + metric_body + '\n' + body + r'''
 
 static double center(const Ink& box) { return box.y + (box.h - 1) / 2.0; }
 
 int main() {
   using S = CrossPointSettings;
+  for (const auto bounds : {std::array<int, 2>{3, 15}, {8, 26}, {10, 34}}) {
+    GfxRenderer renderer;
+    renderer.digitTop = bounds[0];
+    renderer.digitBottom = bounds[1];
+    const auto box = tenorchrome::batteryInkBounds(renderer, SMALL_FONT_ID, 42);
+    assert(box.top == 42 + bounds[0] && box.height == bounds[1] - bounds[0]);
+  }
   int cases = 0;
   for (const char* profile : {"X3", "X4", "X4PRO"}) {
     (void)profile;
@@ -159,7 +162,15 @@ int main() {
         bool sawPin = false, sawBattery = false, sawClock = false;
         for (const auto& box : ink) {
           if (box.kind == Ink::Star) { sawPin = true; minCenter = std::min(minCenter, center(box)); maxCenter = std::max(maxCenter, center(box)); }
-          if (box.kind == Ink::Battery) { sawBattery = true; minCenter = std::min(minCenter, center(box)); maxCenter = std::max(maxCenter, center(box)); }
+          if (box.kind == Ink::Battery) {
+            sawBattery = true;
+            if (box.y != textBaseline + 5 || box.y + box.h != textBaseline + 17) {
+              std::fprintf(stderr, "battery edges diverge: %d..%d, digits %d..%d\n",
+                           box.y, box.y + box.h - 1, textBaseline + 5, textBaseline + 16);
+              return 1;
+            }
+            minCenter = std::min(minCenter, center(box)); maxCenter = std::max(maxCenter, center(box));
+          }
           if (box.kind == Ink::Text && box.baseline == textBaseline) { sawClock = true; minCenter = std::min(minCenter, center(box)); maxCenter = std::max(maxCenter, center(box)); }
         }
         std::printf("profile=%s screen=%d item=%d baseline=%d pin=%.1f battery=%s clock=%s span=%.1f\n",

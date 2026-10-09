@@ -97,7 +97,7 @@ class StatusBarUsbTest(unittest.TestCase):
         cols = [i % w for i in changed]
         x0, y0 = min(cols), min(rows)
         black = {(i % w, i // w) for i in range(w * h) if cable[i] and x0 <= i % w <= max(cols) and y0 <= i // w <= max(rows)}
-        bx, by = min(p[0] for p in black), min(p[1] for p in black)
+        bx, by = (min(cols) + max(cols) + 1 - len(BOLT[0])) // 2, min(rows)
         drawn = ["".join("#" if (bx + i, by + j) in black else "." for i in range(len(BOLT[0])))
                  for j in range(len(BOLT))]
         self.assertEqual(drawn, BOLT, "the battery does not show the charging bolt")

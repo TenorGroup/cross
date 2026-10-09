@@ -53,7 +53,7 @@ class BatteryChargingTest(unittest.TestCase):
         # On the cable the black pixels in that box are exactly the bolt.
         x0, y0 = min(xs), min(ys)
         black = {(x, y) for y in range(y0, max(ys) + 1) for x in range(x0, max(xs) + 1) if cable.getpixel((x, y)) == 0}
-        bx, by = min(p[0] for p in black), min(p[1] for p in black)
+        bx, by = (min(xs) + max(xs) + 1 - len(BOLT[0])) // 2, min(ys)
         drawn = ["".join("#" if (bx + i, by + j) in black else "." for i in range(len(BOLT[0])))
                  for j in range(len(BOLT))]
         self.assertEqual(drawn, BOLT, "the charging mark is not the bolt")

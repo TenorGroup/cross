@@ -25,6 +25,8 @@ enums += method(header, 'enum STATUS_BAR_TITLE') + ';\n'
 spec = method(header, 'struct StatusBarSpec') + ';\n'
 body = method((repo / 'src/components/TenorMenuChrome.cpp').read_text(),
               'void tenorchrome::drawReaderSlots(')
+metric_body = method((repo / 'src/components/TenorMenuChrome.cpp').read_text(),
+                     'tenorchrome::BatteryInkBounds tenorchrome::batteryInkBounds(')
 if a.mutation:
     body = body.replace('case S::STATUS_SLOT_NONE: continue;', 'case S::STATUS_SLOT_NONE: break;')
 
@@ -38,6 +40,7 @@ cpp = r'''
 #include <vector>
 #include "activities/reader/ReaderStatusLayout.h"
 constexpr int SMALL_FONT_ID = 0;
+struct EpdFontFamily {enum Style {REGULAR};};
 struct CrossPointSettings {
  enum {STATUS_BAR_CLOCK_HIDE=0,HIDE_PROGRESS=2,XTC_STATUS_BAR_HIDE=0};
 ''' + enums + spec + r'''
@@ -57,6 +60,8 @@ struct GfxRenderer {
  int getScreenWidth() const {return w;}
  int getScreenHeight() const {return h;}
  int getTextWidth(int,const char* text) const {return strlen(text)*advance;}
+ int getTextInkTop(int,const char*,int) const {return 5;}
+ int getTextInkBottom(int,const char*,int) const {return line-4;}
  std::string truncatedText(int,const char* text,int width) const {
    std::string out=text;
    if(getTextWidth(0,text)<=width)return out;
@@ -86,11 +91,13 @@ namespace inlineSymbols {
 }
 void drawChargingBolt(const GfxRenderer&,int,int,int,int,bool){}
 namespace tenorchrome {
+ struct BatteryInkBounds {int top;int height;};
+ BatteryInkBounds batteryInkBounds(const GfxRenderer&,int,int);
  int statusTextY(int height,bool){return height-40;}
  void drawReaderSlots(const GfxRenderer&,const char*,int,int,float,bool,bool,int64_t,int64_t);
 }
 using namespace tenorchrome;
-''' + body + r'''
+''' + metric_body + '\n' + body + r'''
 int main(){
  using S=CrossPointSettings;
  int cases=0;

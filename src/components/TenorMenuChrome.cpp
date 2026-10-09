@@ -662,6 +662,12 @@ tenorchrome::StatusCornerBounds tenorchrome::statusCornerBounds(const GfxRendere
 // Mot lan chu dung chung cho moi menu va trinh doc. Mot lan ve chi doc dong ho khi
 // duoc phep. Trong trinh doc, thanh nay theo dung sau muc nguoi dung chon
 // (StatusBarSpec); ngoai trinh doc no theo ba muc cua thanh chung.
+tenorchrome::BatteryInkBounds tenorchrome::batteryInkBounds(const GfxRenderer& r, const int font, const int textY) {
+  const int top = r.getTextInkTop(font, "0123456789", EpdFontFamily::REGULAR);
+  const int bottom = r.getTextInkBottom(font, "0123456789", EpdFontFamily::REGULAR);
+  return {textY + top, bottom - top};
+}
+
 void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const int currentPage,
                                  const int pageCount, const float bookProgress, const bool estimated,
                                  const bool bookmarked, const int64_t chapterSeconds, const int64_t bookSeconds) {
@@ -690,7 +696,7 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
                                18, inlineSymbols::markTopOnCapitals(r, font, 8, 10) + 5, 10, true);
   }
   const int y = statusTextY(r.getScreenHeight(), false);
-  const int iconTop = inlineSymbols::markTopOnCapitals(r, font, y, 14);
+  const auto batteryInk = batteryInkBounds(r, font, y);
   const int markTop = inlineSymbols::markTopOnCapitals(r, font, y, 10);
   if (spec.topTitleMode == S::HIDE_TITLE && bookmarked && spec.textLaneVisible(true))
     inlineSymbols::drawShape(r, inlineSymbols::Shape::Star, 6, markTop + 5, 10, true);
@@ -712,10 +718,10 @@ void tenorchrome::drawReaderSlots(const GfxRenderer& r, const char* title, const
         const int x = readerstatus::textX(lane, slot, block);
         if (rough) ugly::battery(r, x, y + 10, percent);
         else {
-          r.drawRect(x, iconTop, 24, 14, 1, true);
-          r.fillRect(x + 24, iconTop + 5, 2, 4);
-          if (gpio.isUsbConnected()) drawChargingBolt(r, x, iconTop, 24, 14, false);
-          else if (percent > 0) r.fillRect(x + 2, iconTop + 2, (20 * percent + 50) / 100, 10);
+          r.drawRect(x, batteryInk.top, 24, batteryInk.height, 1, true);
+          r.fillRect(x + 24, batteryInk.top + (batteryInk.height - 4) / 2, 2, 4);
+          if (gpio.isUsbConnected()) drawChargingBolt(r, x, batteryInk.top, 24, batteryInk.height, false);
+          else if (percent > 0) r.fillRect(x + 2, batteryInk.top + 2, (20 * percent + 50) / 100, batteryInk.height - 4);
         }
         if (value[0]) text(x + iconWidth + 6, y, value);
         continue;
@@ -810,7 +816,6 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   }
   const bool lon = !trongTrinhDoc && SETTINGS.globalStatusBarLarge();
   const int batteryWidth = lon ? 32 : 26;
-  const int batteryHeight = lon ? 18 : 14;
   const int fontChu = lon ? UI_12_FONT_ID : SMALL_FONT_ID;
   // Touch shell: outside the reader the clock and the battery sit on the header row, battery rightmost;
   // the foot of the screen belongs to the tab bar.
@@ -821,7 +826,9 @@ void tenorchrome::drawStatus(const GfxRenderer& r, const char* title, int curren
   char clock[12] = "--:--";
   halClock.formatTime(clock, sizeof(clock), SETTINGS.clockFormat == 1);
   const int timeWidth = r.getTextWidth(fontChu, clock);
-  const int by = top ? y + STATUS_ICON_TOP_OFFSET : statusIconTopY(r.getScreenHeight(), lon, paddingBottom);
+  const auto batteryInk = batteryInkBounds(r, fontChu, y);
+  const int by = batteryInk.top;
+  const int batteryHeight = batteryInk.height;
   const int percent = std::max(0, std::min(100, static_cast<int>(powerManager.getDisplayedBatteryPercentage())));
   char percentage[8];
   snprintf(percentage, sizeof(percentage), "%d", percent);

@@ -83,15 +83,15 @@ void BaseTheme::drawBatteryLightningBolt(const GfxRenderer& renderer, int boltX,
 void BaseTheme::drawBatteryLeft(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
   // Left aligned: icon on left, percentage on right (reader mode)
   const uint16_t percentage = powerManager.getDisplayedBatteryPercentage();
-  const int y = rect.y + 6;
+  const auto batteryInk = tenorchrome::batteryInkBounds(renderer, SMALL_FONT_ID, rect.y);
 
   if (showPercentage) {
     const auto percentageText = std::to_string(percentage) + "%";
     renderer.drawText(SMALL_FONT_ID, rect.x + batteryPercentSpacing + rect.width, rect.y, percentageText.c_str());
   }
 
-  const Rect iconRect{rect.x, y, rect.width, rect.height};
-  drawBatteryOutline(renderer, rect.x, y, rect.width, rect.height);
+  const Rect iconRect{rect.x, batteryInk.top, rect.width, batteryInk.height};
+  drawBatteryOutline(renderer, iconRect.x, iconRect.y, iconRect.width, iconRect.height);
   fillBatteryIcon(renderer, iconRect, percentage);
 }
 
