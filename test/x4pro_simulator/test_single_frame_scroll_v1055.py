@@ -16,6 +16,13 @@ def main():
     for label in ("parent", "child", "back"):
         before = Image.open(args.before / f"{label}.png").convert("L")
         after = Image.open(args.after / f"{label}.png").convert("L")
+        if label in ("parent", "back"):
+            digits = (324, 470, 380, 520)
+            centered = Image.new("L", (56, 50), 255)
+            centered.paste(before.crop(digits), (-6, 0))
+            assert ImageChops.difference(centered, after.crop(digits)).getbbox() is None, \
+                f"{label}: font size did not move exactly 6 px left with the 60 px entry"
+            before.paste(centered, digits)
         diff = ImageChops.difference(before.crop((0, 32, 480, 800)), after.crop((0, 32, 480, 800)))
         for left, right in ((452, 458), (469, 475)):
             diff.paste(0, (left, 0, right, diff.height))

@@ -40,9 +40,11 @@ def check_reader(folder, orientation):
     width = menu.width
     assert ink(menu,(18,12,110,32)) > 0.02, 'no menu clock in the landscape status strip'
     assert ink(menu,(width-34,17,width-8,31)) > 0.02, 'no menu battery in the landscape status strip'
-    assert ink(menu,(width-31,17,width-13,18)) == 1, 'menu battery top border is missing'
-    assert ink(menu,(width-31,30,width-13,31)) == 1, 'menu battery bottom border is missing'
-    assert ink(menu,(width-10,22,width-8,26)) == 1, 'menu battery terminal is missing'
+    assert ink(menu,(width-31,15,width-13,16)) == 1, 'menu battery top border is missing'
+    assert ink(menu,(width-31,28,width-13,29)) == 1, 'menu battery bottom border is missing'
+    assert ink(menu,(width-10,20,width-8,24)) == 1, 'menu battery terminal is missing'
+    assert ink(menu,(width-34,15,width-33,16)) == 0, 'menu battery corner is square'
+    assert ink(menu,(width-34,28,width-33,29)) == 0, 'menu battery bottom corner is square'
     # The menu opens on its Text sheet (foot band, founder 06/10), which covers the page from x 16: the
     # margin left of it is still the stored page.
     page_pixels=list(page.crop((0,38,14,380)).getdata())

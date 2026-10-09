@@ -46,7 +46,7 @@ def check_end(end):
     # The 3 frames: every list's frame, its sides x 16..17 and 462..463 in grey dots, nothing beside them.
     for y in (bottom - 460, bottom - 20):  # the habits panel's straight sides, the rows' frame
         left = [x for x in range(10, 30) if dark(end, x, y)]
-        right = [x for x in range(450, 470) if dark(end, x, y)]
+        right = [x for x in range(450, 469) if dark(end, x, y)]
         assert left and set(left) <= {16, 17} and right and set(right) <= {462, 463}, \
             f'frame at y {y} is not the standard frame: sides at {left} and {right}'
 

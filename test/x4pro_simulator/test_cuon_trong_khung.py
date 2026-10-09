@@ -1,31 +1,25 @@
-"""X4 Pro rule 13 (founder 07/10): on every screen with a round frame and a scroll bar, the bar stays on the frame's
-straight side, clear of its round corners, with 4 px of air from its ring and no text under it. Settings (top and
-end), the reader menu's Contents (top and end), Text and More panels, a long value list.
-
-Measured on the pixels: the frame's right side is its ring at x 461..463 (y s0..s1, the corners curving in above
-and below); the bar's column is x 450..460. In the corner bands (s0 - 4 .. s0 + 6, s1 - 6 .. s1 + 4) that column
-holds the ring alone (its curve keeps right of x 459 there); x 458..460 between the bar and the ring stays white.
-Runs the X4 Pro simulator (pio run -e simulator_x4pro). X4PRO_PROGRAM picks another build.
-"""
+"""X4 Pro rule 14: one external scrollbar, clear of frame corners, hidden after 2000 ms."""
 import tempfile
 from pathlib import Path
+from PIL import ImageChops
 
 from test_thanh_day import run, TABS_X
 from test_menu_chu_14 import TEXT_MENU, OPEN_BOOK
 from test_thanh_dong import toc_book
+from test_shared_scroll_v1055 import check_geometry, difference_outside, thumb
 
 SWIPE = '240,600,240,250,200'
 SETTINGS = f'3000:TAP:{TABS_X[4]},754'
 CONTENTS = OPEN_BOOK + ';9500:TAP:240,775;12000:TAP:226,754'
 SCREENS = [
-    ('Settings', SETTINGS, 4800, None),
-    ('Settings end', SETTINGS + f';4000:SWIPE:{SWIPE};6000:SWIPE:{SWIPE};8000:SWIPE:{SWIPE}', 10000, None),
-    ('Contents', CONTENTS, 14500, toc_book),
+    ('Settings', SETTINGS, 3800, None),
+    ('Settings end', SETTINGS + f';4000:SWIPE:{SWIPE};6000:SWIPE:{SWIPE};8000:SWIPE:{SWIPE}', 9000, None),
+    ('Contents', CONTENTS, 13000, toc_book),
     ('Contents end', CONTENTS + ';' + ';'.join(f'{14000 + 1500 * i}:SWIPE:240,650,240,420,200' for i in range(10)),
-     30000, toc_book),
-    ('Text panel', TEXT_MENU, 11800, None),
-    ('More panel', TEXT_MENU + ';12000:TAP:416,754', 14500, None),
-    ('Value list', SETTINGS + ';4500:TAP:240,303;6500:TAP:240,80;8500:TAP:240,88', 10500, None),
+     28700, toc_book),
+    ('Text panel', TEXT_MENU, 10800, None),
+    ('More panel', TEXT_MENU + ';12000:TAP:416,754', 13000, None),
+    ('Value list', SETTINGS + ';4500:TAP:240,303;6500:TAP:240,80;8500:TAP:240,88', 9600, None),
 ]
 
 
@@ -46,20 +40,18 @@ def sides(image):
     return [r for r in runs if r[1] - r[0] > 30]
 
 
-def check(image):
+def check(image, hidden):
     problems = []
+    top, bottom = (402, 712) if sides(image) and min(s[0] for s in sides(image)) > 350 else (32, 716)
+    try:
+        check_geometry(image, top, bottom, background=hidden)
+    except AssertionError as error:
+        problems.append(str(error))
+    overlay = ImageChops.invert(ImageChops.difference(image, hidden))
     for s0, s1 in sides(image):
-        bar = [y for y in range(s0 + 6, s1 - 5) if any(dark(image, x, y) for x in range(450, 458))]
-        if not bar:
-            continue  # a frame without a bar
-        for lo, hi in ((s0 - 3, s0 + 6), (s1 - 5, s1 + 4)):
-            # The ring's curve keeps right of x 459 in these bands: ink at x 450..457 there is the bar's.
-            hit = [(x, y) for y in range(lo, hi) for x in range(450, 458) if dark(image, x, y)]
-            if hit:
-                problems.append(f'bar in the corner of the frame y {s0}..{s1}: {hit[:4]}')
-        # Rows the bar inks (2 px or more of its column: a ring passing through inks 1).
-        rows = [y for y in range(s0 + 6, s1 - 5) if sum(dark(image, x, y) for x in range(450, 458)) >= 2]
-        crowd = [(x, y) for y in rows for x in range(458, 461) if dark(image, x, y)]
+        rows = [y for y in range(max(top, s0 - 20), min(bottom, s1 + 21))
+                if sum(dark(overlay, x, y) for x in range(469, 475)) >= 2]
+        crowd = [(x, y) for y in rows for x in range(464, 469) if dark(overlay, x, y)]
         if crowd:
             problems.append(f'no air between bar and ring, frame y {s0}..{s1}: {crowd[:4]}')
     return problems
@@ -71,15 +63,22 @@ def main():
     with tempfile.TemporaryDirectory(prefix='x4pro-cuon-khung-') as tmp:
         for name, script, at, books in SCREENS:
             folder = Path(tmp) / name.replace(' ', '-')
-            (shot,) = run(folder, script, [at], write_books=books, settings=dict(readerTapTip=0))
-            frames = [s for s in sides(shot) if any(dark(shot, x, y) for y in range(s[0] + 6, s[1] - 5)
-                                                   for x in range(450, 458))]
+            shot, hidden = run(folder, script, [at, at + 2400], write_books=books, settings=dict(readerTapTip=0))
+            frames = sides(shot)
             if not frames:
-                failures.append(f'{name}: no framed scroll bar found')
+                failures.append(f'{name}: no frame found beside the external scrollbar')
             found += len(frames)
-            failures += [f'{name}: {p}' for p in check(shot)]
+            failures += [f'{name}: {p}' for p in check(shot, hidden)]
+            run_length = longest = 0
+            for y in range(32, 716):
+                run_length = run_length + 1 if sum(dark(hidden, x, y) for x in range(469, 475)) >= 4 else 0
+                longest = max(longest, run_length)
+            if longest >= 20:
+                failures.append(f'{name}: scrollbar remained after 2000 ms')
+            if difference_outside(shot.crop((0, 32, 480, 800)), hidden.crop((0, 32, 480, 800)), (469, 0, 475, 684)):
+                failures.append(f'{name}: idle hide changed content outside the scrollbar')
     assert not failures, '\n'.join(failures)
-    print(f'GREEN: X4 Pro scroll bars on the straight side of their frames, {len(SCREENS)} screens')
+    print(f'GREEN: X4 Pro external scrollbars clear of frames, idle-hidden, {len(SCREENS)} screens')
 
 
 if __name__ == '__main__':

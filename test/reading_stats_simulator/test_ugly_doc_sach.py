@@ -19,23 +19,23 @@ from ugly_common import Card, digest
 
 BODY = 'Gió lên từ phía bãi, mang theo mùi rong và mùi khói bếp của mấy nhà ven đê. Cậu đứng lâu ở đầu cầu, ' \
        'đếm từng chiếc thuyền về muộn, rồi mới chịu quay vào. '
-CLOCK = (400, 748, 528, 792)  # the clock in the key bar of tenor/cross
+CLOCK = (399, 748, 528, 792)  # the clock in the key bar of tenor/cross
 # Screens of tenor/cross before the ugly branches (f71cd39d, 3376fa36), the clock box rubbed out. The end menu
 # opens on its first row since the turn into it stopped moving the selection.
 CROSS = {
     'eob_plain': '490012e7fcd7e735',
-    'eob_menu': 'a0c8328098129235',
-    'percent': 'ce61eb3cb75ca19b',
-    'chapter_entry': '6c974a15195b58d5',
-    'definition': '5db94663acffe057',
-    'page': '6c235d5d47876125',
-    'marked': '9feb91ec066ca9c1',
-    'notice': '49ecd4c4e7dad049',
-    'xtc_toc': '26d9891198b82a1a',
-    'saved_quote': '77b3fe0a4546e437',
-    'quotes_book': 'a897f7651c33b944',
-    'quote_detail': '9e085263e46c9154',
-    'quote_trim': '4810bdc2178228eb',
+    'eob_menu': '271155b2bd7321a7',
+    'percent': 'c946356002aefe07',
+    'chapter_entry': '5edd7baf8eebf188',
+    'definition': 'ddf7ed0e0e57e8c2',
+    'page': 'c9a66a6ee72ee370',
+    'marked': '9ea9fc2f8bb2e0a4',
+    'notice': '0fac1eeaaf14e7a6',
+    'xtc_toc': '47b557ef728ef72a',
+    'saved_quote': '499b2e111e78d56c',
+    'quotes_book': 'd370d20c7d58b981',
+    'quote_detail': 'f4290c21219d916a',
+    'quote_trim': '65a00fa4eb6bad95',
 }
 # The hand-written notices, the same strokes on every draw.
 UGLY = {

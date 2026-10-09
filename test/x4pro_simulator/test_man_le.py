@@ -1,7 +1,7 @@
 """X4 Pro, single screens brought to the dynamic bar's rules (founder audit 06/10). Each check names its screen:
 
 - reader menu: the status strip covers whole lines of the page, no line cut in half under it;
-- Settings card scrolled: the scroll bar stays inside one frame, never across the gaps between frames (rule 13);
+- Settings card scrolled: one external scrollbar spans the page and hides after 2000 ms (rule 14);
 - a held cover: its menu hangs from the cover, the "other book" line under the card stays as it was (rule 7);
 - keyboard: no black key (a finger picks the key, there is no key cursor);
 - Bluetooth: a tap on "Assign buttons" opens the bindings (it reported the row's code, not its index);
@@ -34,7 +34,7 @@ def shoot(tmp, name, script, shots, **kw):
 
 
 def check_reader_strip(tmp):
-    (shot,), log = shoot(tmp, 'strip', f'3000:TAP:{TABS_X[1]},{td.BAR_Y};5000:TAP:240,68;7000:TAP:240,68;'
+    (shot,), log = shoot(tmp, 'strip', f'3000:TAP:{TABS_X[1]},{td.BAR_Y};5000:TAP:240,68;7000:TAP:240,130;'
                          '9500:TAP:240,775', [11500], write_books=td.toc_book)
     assert 'Entering activity: EpubReader' in log, 'never opened the book'
     first = next(y for y in range(STRIP, 200) if any(dark(shot, x, y) for x in range(480)))
@@ -42,15 +42,19 @@ def check_reader_strip(tmp):
 
 
 def check_settings_scroll_bar(tmp):
-    (shot,), _ = shoot(tmp, 'scroll', f'{SETTINGS};5000:SWIPE:240,600,240,300,400', [7500])
+    (shot, hidden), _ = shoot(tmp, 'scroll', f'{SETTINGS};5000:SWIPE:240,600,240,300,400', [6200, 8200])
     # A frame spans its straight left ring (x 16-17, dotted) and a corner radius (20) above and below it; the
     # rows outside every frame are the gaps between frames.
     side = [y for y in range(40, 700) if dark(shot, 16, y) or dark(shot, 17, y)]
     inside = {y + d for y in side for d in range(-22, 23)}
     gaps = [y for y in range(40, 700) if y not in inside]
-    poke = [y for y in gaps if any(dark(shot, x, y) for x in range(446, 462))]
+    poke = [y for y in gaps if any(dark(shot, x, y) for x in range(464, 469))]
     assert gaps, 'no gap between frames on the scrolled Settings card'
     assert not poke, f'the scroll bar runs outside the frames, rows {poke[:4]}..'
+    from test_shared_scroll_v1055 import check_geometry, difference_outside, thumb
+    check_geometry(shot, 32, 716)
+    assert not thumb(hidden, 32, 716), 'the Settings scrollbar remained after 2000 ms'
+    assert not difference_outside(shot.crop((0, 32, 480, 800)), hidden.crop((0, 32, 480, 800)), (469, 0, 475, 684)), 'idle hide changed Settings content'
 
 
 def check_held_cover(tmp):

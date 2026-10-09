@@ -13,7 +13,7 @@ from PIL import ImageChops
 
 from test_thanh_day import run, ink, TABS_X, BAR_TOP
 
-OPEN_BOOK = f'3000:TAP:{TABS_X[1]},{BAR_TOP + 30};5000:TAP:240,68;7000:TAP:240,68'
+OPEN_BOOK = f'3000:TAP:{TABS_X[1]},{BAR_TOP + 30};5000:TAP:240,68;7000:TAP:240,130'
 TEXT_MENU = OPEN_BOOK + ';9500:TAP:240,775'
 ROW_Y = [433, 495, 557, 619, 681]  # the Text panel's rows, 62 px apart
 MINUS = (262, 470, 300, 520)       # the size stepper's "-" on the panel's 2nd slot

@@ -18,7 +18,7 @@ BAR_Y = BAR_TOP + 30
 # lowest full row (Khac is on the next page).
 ROW = [179, 657, 241, 303, 117, 418, 480, 542, 657]
 SYSTEM = 5                               # "He thong" on the Settings card
-SAME = (0, 30, 480, 720)                 # everything under the clock
+SAME = (0, 30, 480, 720)
 
 
 def fresh(tmp, name):
@@ -41,7 +41,11 @@ def require_reader(folder):
 
 
 def same(a, b, box=SAME):
-    return list(a.crop(box).getdata()) == list(b.crop(box).getdata())
+    first, second = a.copy(), b.copy()
+    if box == SAME:
+        first.paste(255, (469, 32, 475, 716))
+        second.paste(255, (469, 32, 475, 716))
+    return list(first.crop(box).getdata()) == list(second.crop(box).getdata())
 
 
 def check_settings_row_tap(tmp):
@@ -76,7 +80,7 @@ def check_back_keeps_list(tmp):
 
 def check_book_zone(tmp):
     # Inline Contents uses the common reader tool bar; foot Back returns to the book page.
-    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
+    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,130'
     folder = fresh(tmp, 'bz')
     page, contents, back = run(folder, f'{open_book};9500:TAP:240,775;'
                               '12000:TAP:226,754;15500:TAP:46,754',
@@ -91,7 +95,7 @@ def check_book_zone(tmp):
 
 def check_reader_menu_back(tmp):
     # The reader menu: "<" at the left of its bar, its cards right of it; "<" closes the menu to the page.
-    page, menu, back = run(fresh(tmp, 'rm'), '3000:TAP:240,300;7000:TAP:240,775;9500:TAP:46,754', [6800, 9300, 12000])
+    page, menu, back = run(fresh(tmp, 'rm'), '3000:TAP:240,300;7000:TAP:240,775;9500:TAP:46,754', [6800, 9300, 12000], settings=dict(readerFavorites=[], readerFavoriteCount=0, readerFavoritesDaDat=1))
     assert ink(menu, (16, 724, 76, 784)) > 0.04, 'the reader menu has no "<" at the foot'
     assert same(page, back, (0, 0, 480, 700)), '"<" in the reader menu did not close it to the page'
 
@@ -106,7 +110,7 @@ def check_keyboard_back(tmp):
 
 def check_chosen_row(tmp):
     # The chapter being read is the chosen row of the contents: a tick at its end, no "Dang doc".
-    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
+    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,130'
     folder = fresh(tmp, 'ch')
     (contents,) = run(folder, f'{open_book};9500:TAP:240,775;12000:TAP:226,754',
                       [17000], write_books=toc_book)
@@ -178,7 +182,7 @@ def check_contents_page(tmp):
     # Five rows fit the approved sheet. Two swipes reach chapters 11..15; tap 15,
     # then open again: current chapter is the first row and carries the chosen tick.
     folder = fresh(tmp, 'cp')
-    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68'
+    open_book = f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,130'
     page3, chapter15, again = run(folder, f'{open_book};9500:TAP:240,775;12000:TAP:226,754;'
         '14500:SWIPE:240,650,240,420,150;17000:SWIPE:240,650,240,420,150;'
         '19500:TAP:240,681;22500:TAP:240,775;25000:TAP:226,754',
@@ -206,7 +210,7 @@ def toc_without_current(sach, empty=False):
 def check_contents_unmatched(tmp):
     for empty in (False,True):
         folder=fresh(tmp,'toc-empty' if empty else 'toc-unmatched')
-        (contents,)=run(folder,f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,68;'
+        (contents,)=run(folder,f'3000:TAP:{TABS_X[1]},{BAR_Y};5000:TAP:240,68;7000:TAP:240,130;'
             '9500:TAP:240,775;12000:TAP:226,754',[14500],write_books=lambda sach: toc_without_current(sach,empty))
         require_reader(folder)
         capture(folder,('contents',),(contents,))

@@ -1,5 +1,4 @@
-"""X4 Pro reader menu: the scroll bar of a long list stays inside the round frame at the end of the list, and
-its thumb has round ends (founder 06/10). Contents of a 24-chapter book, scrolled to its last row."""
+"""X4 Pro Contents: the external scrollbar stays in its track and has round ends."""
 from pathlib import Path
 import tempfile
 
@@ -8,7 +7,7 @@ import test_thanh_dong as td
 
 # readerFrame(screen, 350): x 16..463, y 362..711, corner radius 20.
 RIGHT, BOTTOM, R = 464, 712, 20
-OPEN = f'3000:TAP:{TABS_X[1]},{td.BAR_Y};5000:TAP:240,68;7000:TAP:240,68;9500:TAP:240,775;12000:TAP:226,754'
+OPEN = f'3000:TAP:{TABS_X[1]},{td.BAR_Y};5000:TAP:240,68;7000:TAP:240,130;9500:TAP:240,775;12000:TAP:226,754'
 
 
 def outside_corner(image):
@@ -19,10 +18,10 @@ def outside_corner(image):
 
 
 def thumb_rows(image):
-    """Ink count per row of the scroll bar's columns (just left of the frame's right ring)."""
+    """Ink count per row of the external scrollbar."""
     rows = {}
-    for y in range(402, BOTTOM - 2):
-        n = sum(1 for x in range(RIGHT - 12, RIGHT - 4) if image.getpixel((x, y)) < 128)
+    for y in range(402, BOTTOM):
+        n = sum(1 for x in range(469, 475) if image.getpixel((x, y)) < 128)
         if n:
             rows[y] = n
     return rows
@@ -31,7 +30,7 @@ def thumb_rows(image):
 def main():
     with tempfile.TemporaryDirectory(prefix='x4pro-scroll-') as tmp:
         swipes = ';'.join(f'{14000 + i * 1500}:SWIPE:240,650,240,420,200' for i in range(10))
-        top, end = run(Path(tmp) / 'toc', OPEN + ';' + swipes, [13500, 30000], write_books=td.toc_book,
+        top, end, hidden = run(Path(tmp) / 'toc', OPEN + ';' + swipes, [13000, 28700, 30700], write_books=td.toc_book,
                        settings=dict(readerTapTip=0))
         assert thumb_rows(top), 'no scroll bar on a long contents list'
         poke = outside_corner(end)
@@ -40,7 +39,8 @@ def main():
         ys = sorted(rows)
         middle = max(rows.values())
         assert rows[ys[-1]] < middle and rows[ys[0]] < middle, f'the thumb ends are square: {rows[ys[0]]}/{middle}/{rows[ys[-1]]}'
-    print('GREEN: X4 Pro reader menu scroll bar inside the round frame at the end, round thumb ends')
+        assert not thumb_rows(hidden), 'the Contents scrollbar remained after 2000 ms'
+    print('GREEN: X4 Pro Contents external scrollbar, clear frame corner, round ends and idle hide')
 
 
 if __name__ == '__main__':

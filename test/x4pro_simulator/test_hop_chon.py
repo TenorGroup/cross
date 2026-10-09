@@ -31,12 +31,12 @@ def main():
         folder = Path(tmp)
         # Settings > Reader > Orientation.
         parent, child, picked, closed = run(folder,
-                                            f'{SETTINGS};4500:TAP:240,242;9000:TAP:240,191;10500:TAP:240,191;13000:TAP:46,754',
-                                            [4300, 8500, 11500, 14500])
+                                            f'{SETTINGS};4500:TAP:240,242;9000:TAP:240,204;10500:TAP:240,266;13000:TAP:46,754',
+                                            [8500, 10000, 11500, 14500])
         assert ImageChops.difference(parent, child).crop((30, 40, 450, PANEL_FOOT)).getbbox(), \
             'the Orientation child list did not open inside the parent frame'
         for box in ((16, 40, 464, 46), (16, PANEL_FOOT, 464, BAR_TOP),
-                    (0, 40, 16, BAR_TOP), (464, 40, 480, BAR_TOP)):
+                    (0, 40, 16, BAR_TOP), (464, 40, 469, BAR_TOP), (475, 40, 480, BAR_TOP)):
             assert ImageChops.difference(parent, child).crop(box).getbbox() is None, \
                 f'the Orientation child changed the parent frame at {box}'
         assert not black_rows(child, 40, PANEL_FOOT), 'a black cursor row in the Orientation child list'
@@ -47,8 +47,10 @@ def main():
         f2 = Path(tmp) / 'home'
         f2.mkdir()
         before, gestures = run(f2, f'{SETTINGS};4500:TAP:240,303;6500:TAP:240,80;8500:TAP:240,88', [8300, 10500])
-        assert list(before.crop((0, BAR_TOP, 480, 800)).getdata()) == list(gestures.crop((0, BAR_TOP, 480, 800)).getdata()), \
+        assert list(before.crop((16, BAR_TOP, 76, 800)).getdata()) == list(gestures.crop((16, BAR_TOP, 76, 800)).getdata()), \
             'the list covers the bar at the foot'
+        assert 'Entering activity: SettingsChoices' in (f2 / 'simulator.log').read_text(), 'long choices did not open their own screen'
+        assert ink(gestures, (152, 724, 300, 784)) > 0.04, 'the choice screen has no name in its dynamic bar'
         assert ink(gestures, (30, PANEL_FOOT + 1, 450, BAR_TOP - 1)) == 0, 'the list runs into the gap over the bar'
         assert not black_rows(gestures, 40, PANEL_FOOT), 'a black cursor row in the Tap list'
 
@@ -56,15 +58,15 @@ def main():
         f3 = Path(tmp) / 'sleep'
         f3.mkdir()
         before, sleep, swiped = run(f3, f'{SETTINGS};4500:TAP:240,657;6500:TAP:240,80;9000:SWIPE:240,200,240,500,150',
-                                    [6300, 8500, 11000])
-        assert list(before.crop((0, BAR_TOP, 480, 800)).getdata()) == list(sleep.crop((0, BAR_TOP, 480, 800)).getdata()), \
+                                    [6300, 7800, 10200])
+        assert list(before.crop((16, BAR_TOP, 76, 800)).getdata()) == list(sleep.crop((16, BAR_TOP, 76, 800)).getdata()), \
             'the sleep screen list covers the bar'
         assert not black_rows(sleep, 40, PANEL_FOOT), 'a black cursor row in the sleep screen list'
-        assert ink(sleep, (452, 200, 458, 600)) > 0.2, 'no scroll bar on a list longer than its frame'
+        assert ink(sleep, (469, 200, 475, 600)) > 0.2, 'no external scroll bar on a list longer than its frame'
         # A flick down shows the values above, the list still open over the same rows.
         assert list(sleep.crop((30, 100, 440, 700)).getdata()) != list(swiped.crop((30, 100, 440, 700)).getdata()), \
             'a flick does not scroll the list'
-        assert ink(swiped, (452, 200, 458, 600)) > 0.2, 'the list closed on the flick'
+        assert ink(swiped, (469, 200, 475, 600)) > 0.2, 'the list closed on the flick'
     print('GREEN: X4 Pro value lists hang from their row, framed, ticked, over the bar')
 
 

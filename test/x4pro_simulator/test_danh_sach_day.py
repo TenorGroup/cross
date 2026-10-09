@@ -12,7 +12,7 @@ from test_thanh_day import run, ink, BAR_TOP, TABS_X
 
 BAR_Y = BAR_TOP + 30
 NAMES = ['n' * (i + 1) for i in range(22)]
-ROW_TOP, ROW_STEP = 50, 62   # first row of the file list (under the status strip), row pitch
+ROW_TOP, ROW_STEP = 50, 62
 
 
 def text_width(image, row):
@@ -31,9 +31,9 @@ def main():
         # Under the last row, over the bar: where the arrow sat.
         assert ink(files, (215, 716, 265, 723)) == 0, 'the "more below" arrow is still drawn'
         # Rows above the bar at the foot.
-        widths = [text_width(files, r) for r in range((716 - ROW_TOP) // ROW_STEP)]
+        widths = [text_width(files, r) for r in range(1, (716 - ROW_TOP) // ROW_STEP)]
         shown = sum(1 for w in widths if w > 0)
-        assert shown >= 9, f'only {shown} rows on the first page'
+        assert shown + 1 >= 9, f'only {shown + 1} rows including Search on the first page'
         step = widths[1] - widths[0]
         assert step > 0, f'name widths do not increase: {widths}'
         folder = Path(tmp) / 'b'
@@ -43,7 +43,7 @@ def main():
         first = text_width(turned, 0)
         index = round((first - widths[0]) / step)
         # The edges fade: a flick keeps the last full row as the faded first row of the next page.
-        assert index == shown - 1, f'a flick turned to row {index + 1}, not row {shown} (the last of the {shown} shown)'
+        assert index == shown - 1, f'a flick turned to book {index + 1}, not book {shown} (after the Search row)'
         # A slow drag down of 250 px (1.2 s) moves the list back 4 rows (62 px each), not a page (rule 11).
         folder = Path(tmp) / 'c'
         folder.mkdir()
