@@ -96,6 +96,15 @@ constexpr size_t PARKED_ANCHOR_RESERVE = 4;
 
 using ParkedAnchor = std::pair<std::string, uint16_t>;
 
+void transferParkedAnchors(std::vector<ParkedAnchor>& parked, std::vector<ParkedAnchor>&& anchors) {
+  if (parked.capacity() < anchors.size()) {
+    parked = std::move(anchors);
+    return;
+  }
+  parked.clear();
+  for (auto& anchor : anchors) parked.emplace_back(std::move(anchor));
+}
+
 void releaseParkedAnchorStorage(std::vector<ParkedAnchor>& anchors) {
   std::vector<ParkedAnchor>().swap(anchors);
 }
@@ -1000,12 +1009,7 @@ bool Section::parkAtLastCheckpoint() {
   auto anchors = build.parser->takeAnchors();
   if (anchors.size() < build.checkpointAnchors) return false;
   anchors.resize(build.checkpointAnchors);
-  build.parkedAnchors.clear();
-  if (build.parkedAnchors.capacity() < anchors.size()) {
-    build.parkedAnchors.swap(anchors);
-  } else {
-    for (auto& anchor : anchors) build.parkedAnchors.emplace_back(std::move(anchor));
-  }
+  transferParkedAnchors(build.parkedAnchors, std::move(anchors));
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("SCT", "PARKED_ANCHORS parked data=%08x bytes=%u size=%u capacity=%u",
           static_cast<unsigned>(reinterpret_cast<uintptr_t>(build.parkedAnchors.data())),
@@ -1054,12 +1058,7 @@ bool Section::parkBuild() {
   }
   build_->bytesConsumed = build_->parser->parseBytesConsumed();
   auto anchors = build_->parser->takeAnchors();
-  build_->parkedAnchors.clear();
-  if (build_->parkedAnchors.capacity() < anchors.size()) {
-    build_->parkedAnchors.swap(anchors);
-  } else {
-    for (auto& anchor : anchors) build_->parkedAnchors.emplace_back(std::move(anchor));
-  }
+  transferParkedAnchors(build_->parkedAnchors, std::move(anchors));
 #ifdef TENOR_PRESS_PROBE
   LOG_INF("SCT", "PARKED_ANCHORS parked data=%08x bytes=%u size=%u capacity=%u",
           static_cast<unsigned>(reinterpret_cast<uintptr_t>(build_->parkedAnchors.data())),
