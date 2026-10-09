@@ -15,10 +15,12 @@ policy = (a.repo / 'src/activities/settings/SettingsTabs.cpp').read_text()
 catalog = (a.repo / 'src/SettingsList.h').read_text()
 settings = (a.repo / 'src/CrossPointSettings.h').read_text()
 row_counts = []
+row_toggles = []
 for table in ['LAYOUT_ROW_NAME_IDS', 'STYLE_ROW_NAME_IDS']:
     labels = re.search(table + r'\[\]\s*=\s*\{(.*?)\};', source, re.S).group(1)
     for name in re.findall(r'StrId::(STR_\w+)', labels):
         entry = re.search(r'SettingInfo::(\w+)\(StrId::' + name + r'\b(.*?);', catalog, re.S)
+        row_toggles.append(entry.group(1) == 'Toggle')
         if entry.group(1) == 'Toggle':
             row_counts.append(2)
         elif entry.group(1) == 'Enum':
@@ -45,14 +47,15 @@ def method(text, name):
 names = ['void TextSettingsActivity::confirmLayoutRow(', 'void TextSettingsActivity::confirmStyleRow(',
          'int TextSettingsActivity::formIndex(', 'void TextSettingsActivity::rebuildRowItems(',
          'const char* TextSettingsActivity::confirmLabelText(',
-         'int TextSettingsActivity::settingsChoiceCount(']
+         'int TextSettingsActivity::settingsChoiceCount(',
+         'SettingsChoiceStyle TextSettingsActivity::rowChoiceStyle(']
 if 'void TextSettingsActivity::confirmValueRow(' in source:
     names.append('void TextSettingsActivity::confirmValueRow(')
 production = '\n'.join(method(source, n) for n in names)
 parent = (a.repo / 'src/activities/UiListActivity.cpp').read_text()
 production += '\n' + method(parent, 'void UiListActivity::showSettingsChoices(OptionPopup& popup, const StrId title,').replace(
     'UiListActivity::', 'TextSettingsActivity::')
-ids = sorted(set(re.findall(r'StrId::(STR_\w+)', source)) | {'STR_SELECT', 'STR_TOGGLE', 'STR_ALIGNMENT'})
+ids = sorted(set(re.findall(r'StrId::(STR_\w+)', source)) | {'STR_SELECT', 'STR_TOGGLE', 'STR_ALIGNMENT', 'STR_STATE_ON'})
 fixture = r'''
 #include <algorithm>
 #include <array>
@@ -91,7 +94,12 @@ constexpr StrId LAYOUT_ROW_NAME_IDS[7]={},STYLE_ROW_NAME_IDS[5]={};
 [[maybe_unused]] constexpr StrId ALIGNMENT_IDS[5]={};
 namespace settingstabs { bool moTrinhChon(int soLuaChon) // POLICY
 }
-struct SettingInfo {StrId nameId=StrId::STR_ALIGNMENT;};
+struct SettingInfo {
+ StrId nameId=StrId::STR_ALIGNMENT;int count=5;
+};
+inline SettingsChoiceStyle settingsChoiceStyle(const SettingInfo& setting,bool touch){
+ return settingsChoiceStyle(setting.count,touch,setting.nameId==StrId::STR_STATE_ON);
+}
 struct Popup {
  int opened=0,current=-1;bool aligned=false;fui::Rect frame{};std::vector<std::string> labels;std::function<void(int)> callback;
  void show(StrId,const std::vector<std::string>& opts,int selected,std::function<void(int)> cb){opened++;labels=opts;current=selected;callback=cb;}
@@ -121,7 +129,9 @@ struct TextSettingsActivity {
  static int formIndex(Tab,int);
  static Row formRow(void* context,int question){auto* self=static_cast<TextSettingsActivity*>(context);if(question<2||question>=14)return {};const int counts[]={// COUNTS
  };int n=counts[question-2];return {n,std::min(self->selected,n-1)};}
- static const SettingInfo* formSetting(int question){static SettingInfo info;return question>=2&&question<14?&info:nullptr;}
+ static const SettingInfo* formSetting(int question){static SettingInfo info;const int counts[]={// COUNTS
+ };info.count=question>=2&&question<14?counts[question-2]:2;const bool toggles[]={// TOGGLES
+ };info.nameId=question>=2&&question<14&&toggles[question-2]?StrId::STR_STATE_ON:StrId::STR_ALIGNMENT;return question>=0&&question<14?&info:nullptr;}
  static void formLabel(void*,int,int option,char* buf,size_t n){std::snprintf(buf,n,"value-%d",option);}
  void applyChosenValue(Tab,int,int option){applied=option;saves++;}
  int listCount() const{return tab_==Tab::Layout?7:tab_==Tab::Style?5:0;}
@@ -129,13 +139,18 @@ struct TextSettingsActivity {
  int ringPos() const{return ring;}
  void requestUpdate(){updates++;}
  int settingsChoiceCount(int) const;
+ SettingsChoiceStyle rowChoiceStyle(int) const;
  void showSettingsChoices(OptionPopup&,StrId,const std::vector<std::string>&,int,int,std::function<void(int)>);
  void confirmLayoutRow(int);void confirmStyleRow(int);void confirmValueRow(Tab,int);void rebuildRowItems();const char* confirmLabelText() const;
 };
 // PRODUCTION
 int main(){
- CHECK(!settingstabs::moTrinhChon(0));CHECK(!settingstabs::moTrinhChon(1));CHECK(!settingstabs::moTrinhChon(2));CHECK(settingstabs::moTrinhChon(3));CHECK(settingstabs::moTrinhChon(4));
+ CHECK(!settingstabs::moTrinhChon(0));CHECK(!settingstabs::moTrinhChon(1));CHECK(settingstabs::moTrinhChon(2));CHECK(settingstabs::moTrinhChon(3));CHECK(settingstabs::moTrinhChon(4));
  int checked=0;
+ for(auto tab:{TextSettingsActivity::Tab::Family,TextSettingsActivity::Tab::Size}){
+  TextSettingsActivity s;s.tab_=tab;
+  CHECK(s.rowChoiceStyle(0)==SettingsChoiceStyle::None);
+ }
  for(bool touch:{false,true})for(auto tab:{TextSettingsActivity::Tab::Layout,TextSettingsActivity::Tab::Style}){
   tenorchrome::kTouchShell=touch;TextSettingsActivity screen;screen.tab_=tab;screen.rebuildRowItems();
   for(int row=0;row<screen.listCount();row++){
@@ -165,9 +180,9 @@ int main(){
  }
  for(bool touch:{false,true})for(int count:{0,1,2,3,6,7,8}){
   tenorchrome::kTouchShell=touch;
-  CHECK(settingsChoiceStyle(count,touch)==(count<=2?SettingsChoiceStyle::Inline:
+  CHECK(settingsChoiceStyle(count,touch)==(count<2?SettingsChoiceStyle::None:
         touch&&count>=7?SettingsChoiceStyle::Page:SettingsChoiceStyle::Popup));
-  if(count<=2)continue;
+  if(count<2)continue;
   TextSettingsActivity s;std::vector<std::string> labels(count,"choice");
   s.showSettingsChoices(s.optionPopup_,StrId::STR_ALIGNMENT,labels,count-1,0,[&s](int value){s.applyChosenValue(s.tab_,0,value);});
   bool page=touch&&count>=7;
@@ -182,7 +197,7 @@ int main(){
  std::printf("%d activation paths, 12 row cues per profile, all option callbacks: %s\n",checked,failures?"FAIL":"PASS");return failures?1:0;
 }
 '''
-fixture = fixture.replace('// IDS', ','.join(ids)).replace('// POLICY', method(policy, 'bool moTrinhChon(')[method(policy,'bool moTrinhChon(').index('{'):]).replace('// PRODUCTION', production)
+fixture = fixture.replace('// TOGGLES', ','.join(str(v).lower() for v in row_toggles)).replace('// IDS', ','.join(ids)).replace('// POLICY', method(policy, 'bool moTrinhChon(')[method(policy,'bool moTrinhChon(').index('{'):]).replace('// PRODUCTION', production)
 fixture = fixture.replace('// COUNTS', ','.join(map(str, row_counts)))
 src = a.output / 'choices.cpp'
 exe = a.output / 'choices'

@@ -89,8 +89,8 @@ TEST(SettingsTabs, MoiDongCoDungMotNhaCoThat) {
 
 // --- nguong mo trinh chon ---------------------------------------------------------
 
-TEST(NguongTrinhChon, TuBaTroLenMoiMo) {
-  EXPECT_FALSE(settingstabs::moTrinhChon(2)) << "hai lua chon thi bam mot nhip la xong";
+TEST(NguongTrinhChon, GiaTriTuHaiTroLenMo) {
+  EXPECT_TRUE(settingstabs::moTrinhChon(2));
   EXPECT_TRUE(settingstabs::moTrinhChon(3)) << "3 choices open the picker";
   EXPECT_TRUE(settingstabs::moTrinhChon(4)) << "four choices open the picker";
   EXPECT_TRUE(settingstabs::moTrinhChon(6));

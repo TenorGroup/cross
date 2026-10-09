@@ -108,6 +108,8 @@ class EpubReaderMenuActivity final : public UiTabListActivity {
   // readermenu::DEFAULT_FAVORITES until the reader pins their own.
   std::vector<MenuAction> favorites;
 
+  int settingsChoiceCount(int row) const override;
+  SettingsChoiceStyle rowChoiceStyle(int row) const override;
   OptionPopup optionPopup;
   OptionPopup* tiltPopup() override { return &optionPopup; }
   std::string title = "Reader Menu";

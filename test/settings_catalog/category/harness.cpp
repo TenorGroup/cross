@@ -162,6 +162,30 @@ static bool longFontNames() {
   return ok;
 }
 
+static bool choiceSemantics(const SettingInfo& row) {
+  const auto labels = row.enumLabels();
+  const int count = row.type == SettingType::TOGGLE ? 2 : row.type == SettingType::ENUM
+      ? (row.enumStringValues.empty() ? labels.size() : row.enumStringValues.size())
+      : row.type == SettingType::VALUE ? (row.valueRange.max - row.valueRange.min) / row.valueRange.step + 1 : 0;
+  const bool states = labels.size() == 2 && row.enumStringValues.empty() &&
+      ((labels[0] == StrId::STR_STATE_OFF && labels[1] == StrId::STR_STATE_ON) ||
+       (labels[1] == StrId::STR_STATE_OFF && labels[0] == StrId::STR_STATE_ON));
+  bool ok = true;
+  for (bool touch : {false, true}) {
+    const auto expected = row.type == SettingType::TOGGLE || states ? SettingsChoiceStyle::Inline
+        : count < 2 ? SettingsChoiceStyle::None : touch && count >= 7 ? SettingsChoiceStyle::Page : SettingsChoiceStyle::Popup;
+    const auto actual = settingsChoiceStyle(row, touch);
+    if (actual != expected) {
+      std::fprintf(stderr, "RED choice row=%d count=%d touch=%d expected=%d actual=%d\n",
+                   static_cast<int>(row.nameId), count, touch, static_cast<int>(expected), static_cast<int>(actual));
+      ok = false;
+    }
+    std::fprintf(stderr, "CHOICE %d %d %d %d %d\n", static_cast<int>(row.nameId), static_cast<int>(row.type),
+                 count, touch, static_cast<int>(actual));
+  }
+  return ok;
+}
+
 int main(int argc, char** argv) {
   const bool enforce = argc > 1 && std::string(argv[1]) == "--enforce";
   const std::string board = argc > 2 ? argv[2] : "x3";
@@ -181,6 +205,14 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 8; ++i)
       discovered.push_back({std::to_string(i) + " Dictionary long owned label", "book"});
   const auto& catalog = getBaseSettingsList();
+  for (const auto& row : catalog) ok &= choiceSemantics(row);
+  ok &= choiceSemantics(buildFontFamilySetting(nullptr));
+  ok &= choiceSemantics(buildFontSizeSetting(nullptr));
+  SettingInfo states = SettingInfo::Enum(StrId::STR_NIGHT_MODE, &CrossPointSettings::screenInverted,
+                                        {StrId::STR_STATE_OFF, StrId::STR_STATE_ON});
+  ok &= choiceSemantics(states);
+  std::reverse(states.enumValues.begin(), states.enumValues.end());
+  ok &= choiceSemantics(states);
   ok &= check(!catalog.empty() && catalog.front().valuePtr == &CrossPointSettings::uiTextSize,
               "UI text size is the first catalog row");
   const auto shellRow = std::find_if(catalog.begin(), catalog.end(), [](const auto& row) {
@@ -209,6 +241,7 @@ int main(int argc, char** argv) {
     std::printf("%s{\"size\":%zu,\"capacity\":%zu,\"rows\":[", tab ? "," : "", rows.size(), rows.capacity());
     for (size_t i = 0; i < rows.size(); ++i) {
       const auto& row = rows[i];
+      ok &= choiceSemantics(row);
       ok &= check(!row.inTextSettings, "text-only rows excluded from categories");
       std::printf("%s\"%d:%d:%s\"", i ? "," : "", static_cast<int>(row.nameId), static_cast<int>(row.action), row.key ? row.key : "");
     }

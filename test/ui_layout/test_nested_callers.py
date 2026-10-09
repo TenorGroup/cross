@@ -25,9 +25,9 @@ for filename, popup in [("SettingsActivity.cpp", "optionPopup"), ("TextSettingsA
         assert "rows[i].opensNext = true" in source
     else:
         cues = (ROOT / "src/activities/settings/SettingsActivity.h").read_text() if filename == "SettingsActivity.cpp" else source
-        assert "settingsChoiceStyle(" in cues and "SettingsChoiceStyle::Page" in cues
+        assert ("settingsChoiceStyle(" in cues or "rowChoiceStyle(" in cues) and "SettingsChoiceStyle::Page" in cues
         if filename != "OpdsServerListActivity.cpp":
-            assert "!tenorchrome::kTouchShell && settingstabs::moTrinhChon(" in cues
+            assert "!tenorchrome::kTouchShell" in cues
         else:
             assert "format.opensNext = !tenorchrome::kTouchShell ||" in source
 

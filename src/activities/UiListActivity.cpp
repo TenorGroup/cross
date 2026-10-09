@@ -590,8 +590,19 @@ void UiListActivity::frameRows(fui::ListProps& props) {
   // Touch (C1): the rows sit in a round frame 16 px in from the screen edges, their text 16 px into it.
   props.rowInset = tenorchrome::FOOT_BACK_X;
   props.sidePadding = 16;
+  props.toggleWidth = 46;
+  props.toggleHeight = 26;
+  props.toggleRadius = 13;
+  props.toggleKnobRadius = 9;
+  props.toggleKnobInset = 4;
+  props.toggleBorderWidth = 2;
   for (int row = 0; row < props.count; ++row)
-    if (settingsChoiceCount(row) > 0) { props.chevronColumn = true; break; }
+    if (settingsChoiceCount(row) > 0) {
+      props.chevronColumn = true;
+      props.labelText.centerInkY = true;
+      props.valueText.centerInkY = true;
+      break;
+    }
   // The value in use in a list of choices (ListItem::chosen): bold, with the tick at the row's end.
   props.chosenMark = fui::bitmapFromIcon(icon_row_chosen_24);
   fui::ListItem first;
@@ -812,7 +823,7 @@ void UiListActivity::renderUi() {
   if (tenorchrome::kTouchShell && rowsFramed) {
     for (int row = activeNav().top; row < listCount(); ++row) {
       const auto rect = app.publishedRect(ACTION_ROW, static_cast<int16_t>(row));
-      if (rect.height > 0 && settingsChoiceStyle(settingsChoiceCount(row), true) == SettingsChoiceStyle::Popup)
+      if (rect.height > 0 && rowChoiceStyle(row) == SettingsChoiceStyle::Popup)
         tenorchrome::drawSettingsPopupMark(renderer, rect.right() - 31, rect.y + rect.height / 2);
     }
   }

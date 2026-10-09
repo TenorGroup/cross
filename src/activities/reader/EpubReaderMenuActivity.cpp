@@ -83,9 +83,33 @@ void EpubReaderMenuActivity::rebuildRows() {
     fui::ListItem item;
     item.label = I18N.get(menuItems[rowToItem[r]].labelId);
     item.actionValue = static_cast<int16_t>(r);
-    item.opensNext = readermenu::rowOpens(menuItems[rowToItem[r]].action);
+    const auto style = rowChoiceStyle(r);
+    item.opensNext = tenorchrome::kTouchShell && style != SettingsChoiceStyle::None
+                        ? style == SettingsChoiceStyle::Page : readermenu::rowOpens(menuItems[rowToItem[r]].action);
     menuRowItems[r] = item;
   }
+}
+
+int EpubReaderMenuActivity::settingsChoiceCount(const int row) const {
+  if (row < 0 || row >= rowCount || textOnly) return 0;
+  switch (menuItems[rowToItem[row]].action) {
+    case MenuAction::ROTATE_SCREEN: return orientationLabels.size();
+    case MenuAction::AUTO_PAGE_TURN: return pageTurnLabels.size();
+    case MenuAction::STATUS_BAR: return CrossPointSettings::READER_STATUS_BAR_MODE_COUNT;
+    case MenuAction::FONT_SIZE: return readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName).size();
+    case MenuAction::FONT_FAMILY: return fontdoc::danhSachHo(&sdFontSystem.registry()).size();
+    case MenuAction::NIGHT_MODE:
+    case MenuAction::TILT_PAGE_TURN:
+    case MenuAction::FRONTLIGHT: return 2;
+    default: return 0;
+  }
+}
+
+SettingsChoiceStyle EpubReaderMenuActivity::rowChoiceStyle(const int row) const {
+  if (row < 0 || row >= rowCount) return SettingsChoiceStyle::None;
+  const auto action = menuItems[rowToItem[row]].action;
+  const bool onOff = action == MenuAction::NIGHT_MODE || action == MenuAction::TILT_PAGE_TURN || action == MenuAction::FRONTLIGHT;
+  return settingsChoiceStyle(settingsChoiceCount(row), tenorchrome::kTouchShell, onOff);
 }
 
 const char* EpubReaderMenuActivity::tabLabel(const int index) const {
@@ -270,19 +294,9 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
   }
 
   const auto selectedAction = menuItems[rowToItem[index]].action;
-  freeink::ui::Rect parentFrame{};
-  const bool inFrame = rowFrameFor(ACTION_ROW, index, parentFrame);
   if (selectedAction == MenuAction::ROTATE_SCREEN) {
-    const auto show = [this, &parentFrame, inFrame](auto&& callback) {
-      if (inFrame)
-        optionPopup.showInFrame(parentFrame, StrId::STR_ORIENTATION, orientationLabels.data(),
-                                static_cast<int>(orientationLabels.size()), pendingOrientation,
-                                std::forward<decltype(callback)>(callback));
-      else
-        optionPopup.show(StrId::STR_ORIENTATION, orientationLabels.data(), static_cast<int>(orientationLabels.size()),
-                         pendingOrientation, std::forward<decltype(callback)>(callback));
-    };
-    show([this](int idx) {
+    showSettingsChoices(optionPopup, StrId::STR_ORIENTATION, orientationLabels.data(), orientationLabels.size(),
+                        pendingOrientation, index, [this](int idx) {
                        pendingOrientation = idx;
                        // Rotate the menu immediately. Only the renderer turns;
                        // SETTINGS.orientation stays unchanged so the reader's
@@ -300,12 +314,10 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
                        selectedPageTurnOption = idx;
                        requestUpdate();
                      };
-    if (inFrame)
-      optionPopup.showInFrame(parentFrame, I18N.get(StrId::STR_AUTO_TURN_PAGES_PER_MIN), pageTurnLabels.data(),
-                              static_cast<int>(pageTurnLabels.size()), selectedPageTurnOption, callback);
-    else
-      optionPopup.show(I18N.get(StrId::STR_AUTO_TURN_PAGES_PER_MIN), pageTurnLabels.data(),
-                       static_cast<int>(pageTurnLabels.size()), selectedPageTurnOption, callback);
+    std::vector<std::string> labels;
+    for (const auto* label : pageTurnLabels) labels.emplace_back(label);
+    showSettingsChoices(optionPopup, StrId::STR_AUTO_TURN_PAGES_PER_MIN, labels,
+                        selectedPageTurnOption, index, callback);
     requestUpdate();
     return;
   }
@@ -337,8 +349,7 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
       SETTINGS.readerStatusBarMode = static_cast<uint8_t>(idx);
       SETTINGS.saveToFile();
     };
-    if (inFrame) optionPopup.showInFrame(parentFrame, StrId::STR_HIDE_READER_STATUS_BAR, chu, dangDung, callback);
-    else optionPopup.show(StrId::STR_HIDE_READER_STATUS_BAR, chu, dangDung, callback);
+    showSettingsChoices(optionPopup, StrId::STR_HIDE_READER_STATUS_BAR, chu, dangDung, index, callback);
     requestUpdate();
     return;
   }
@@ -391,9 +402,10 @@ void EpubReaderMenuActivity::chonCoChu(const int row) {
   std::vector<std::string> nhan;
   nhan.reserve(n);
   for (const uint8_t pt : sizes) nhan.push_back(std::to_string(pt) + " pt");
-  freeink::ui::Rect parentFrame{};
-  const bool inFrame = tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, parentFrame);
-  if (!inFrame && !optionPopup.vuaMan(renderer, nhan)) {
+  const auto parentFrame = app.publishedRect(ACTION_ROW, row);
+  const bool inFrame = tenorchrome::kTouchShell && parentFrame.height > 0;
+  if (settingsChoiceStyle(n, tenorchrome::kTouchShell) == SettingsChoiceStyle::Page ||
+      (!inFrame && !optionPopup.vuaMan(renderer, nhan))) {
     dongVoi(MenuAction::FONT_SIZE, 0, -1);  // qua nhieu co cho mot popup: mo man day du
     return;
   }
@@ -423,9 +435,10 @@ void EpubReaderMenuActivity::chonHoFont(const int row) {
   std::vector<std::string> nhan;
   nhan.reserve(n);
   for (const auto& h : ho) nhan.push_back(h.ten);
-  freeink::ui::Rect parentFrame{};
-  const bool inFrame = tenorchrome::kTouchShell && rowFrameFor(ACTION_ROW, row, parentFrame);
-  if (!inFrame && !optionPopup.vuaMan(renderer, nhan)) {
+  const auto parentFrame = app.publishedRect(ACTION_ROW, row);
+  const bool inFrame = tenorchrome::kTouchShell && parentFrame.height > 0;
+  if (settingsChoiceStyle(n, tenorchrome::kTouchShell) == SettingsChoiceStyle::Page ||
+      (!inFrame && !optionPopup.vuaMan(renderer, nhan))) {
     dongVoi(MenuAction::FONT_FAMILY, 0, -1);  // 130 ho khong vua mot popup: man Cai dat van ban co cuon
     return;
   }
@@ -535,6 +548,13 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
     } else if (action == MenuAction::FRONTLIGHT) {
       menuRowItems[r].value = I18N.get(Frontlight.isOn() ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF);
     }
+  }
+
+  for (int row = 0; row < rowCount; ++row) {
+    const auto action = menuItems[rowToItem[row]].action;
+    menuRowItems[row].toggle = tenorchrome::kTouchShell && rowChoiceStyle(row) == SettingsChoiceStyle::Inline;
+    menuRowItems[row].toggleChecked = action == MenuAction::NIGHT_MODE ? SETTINGS.screenInverted
+        : action == MenuAction::TILT_PAGE_TURN ? SETTINGS.tiltPageTurn : Frontlight.isOn();
   }
 
   fui::ListProps props;

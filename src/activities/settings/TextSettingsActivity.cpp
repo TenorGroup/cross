@@ -182,9 +182,8 @@ void TextSettingsActivity::rebuildRowItems() {
         break;
     }
     item.actionValue = static_cast<int16_t>(i);
-    const int count = settingsChoiceCount(i);
-    item.opensNext = settingsChoiceStyle(count, tenorchrome::kTouchShell) == SettingsChoiceStyle::Page ||
-                     (!tenorchrome::kTouchShell && settingstabs::moTrinhChon(count));
+    item.opensNext = rowChoiceStyle(i) == SettingsChoiceStyle::Page ||
+                     (!tenorchrome::kTouchShell && rowChoiceStyle(i) == SettingsChoiceStyle::Popup);
     rowItems_.push_back(item);
   }
 }
@@ -415,7 +414,7 @@ ugly::QuestionSheet::Row TextSettingsActivity::formRow(void* context, const int 
   if (row == 0) {
     out.count = static_cast<int>(self.fonts_.size());
     out.selected = self.currentFamilyIndex_;
-    out.kind = out.count >= 7 ? Kind::Paper : Kind::Choice;
+    out.kind = settingsChoiceStyle(out.count, true) == SettingsChoiceStyle::Page ? Kind::Paper : Kind::Choice;
   } else if (row == 1) {
     out.count = static_cast<int>(self.sizes_.size());
     out.selected = self.currentSizeIndex_;
@@ -435,7 +434,7 @@ ugly::QuestionSheet::Row TextSettingsActivity::formRow(void* context, const int 
     } else {
       out.count = static_cast<int>(setting->enumLabels().size());
       out.selected = value;
-      out.kind = out.count >= 7 ? Kind::Paper : Kind::Choice;
+      out.kind = settingsChoiceStyle(*setting, true) == SettingsChoiceStyle::Page ? Kind::Paper : Kind::Choice;
     }
   }
   out.selected = std::clamp(out.selected, 0, std::max(0, out.count - 1));
@@ -657,7 +656,7 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
         break;
     }
     rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
-    rowItems_[i].toggle = tenorchrome::kTouchShell && settingsChoiceCount(i) == 2;
+    rowItems_[i].toggle = tenorchrome::kTouchShell && rowChoiceStyle(i) == SettingsChoiceStyle::Inline;
     rowItems_[i].toggleChecked = rowItems_[i].toggle && formRow(this, formIndex(tab_, i)).selected;
     // Touch: the font or size in use is the chosen row (bold, a tick), no word.
     rowItems_[i].chosen = tenorchrome::kTouchShell && ((tab_ == Tab::Family && i == currentFamilyIndex_) ||
@@ -855,7 +854,8 @@ void TextSettingsActivity::confirmValueRow(const Tab tab, const int row) {
   const auto current = formRow(this, question);
   const auto* setting = formSetting(question);
   if (!setting || current.count <= 0) return;
-  if (settingstabs::moTrinhChon(current.count)) {
+  const auto style = settingsChoiceStyle(*setting, tenorchrome::kTouchShell);
+  if (style == SettingsChoiceStyle::Popup || style == SettingsChoiceStyle::Page) {
     std::vector<std::string> options;
     options.reserve(current.count);
     for (int option = 0; option < current.count; ++option) {
@@ -868,6 +868,12 @@ void TextSettingsActivity::confirmValueRow(const Tab tab, const int row) {
   } else {
     applyChosenValue(tab, row, (current.selected + 1) % current.count);
   }
+}
+
+SettingsChoiceStyle TextSettingsActivity::rowChoiceStyle(const int row) const {
+  if (tab_ != Tab::Layout && tab_ != Tab::Style) return SettingsChoiceStyle::None;
+  const auto* setting = formSetting(formIndex(tab_, row));
+  return setting ? settingsChoiceStyle(*setting, tenorchrome::kTouchShell) : SettingsChoiceStyle::None;
 }
 
 int TextSettingsActivity::settingsChoiceCount(const int row) const {

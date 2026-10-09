@@ -285,6 +285,7 @@ static bool shellSaveOrderProbe(unsigned& scenarios) {
     persistOk = true;
     const unsigned writesBefore = writes;
     activity.toggleCurrentSetting();
+    activity.optionPopup.choose(toUgly ? 1 : 0);
     ok &= check(static_cast<bool>(activity.childCallback), "both shell directions ask confirmation");
     if (activity.childCallback) activity.childCallback(ActivityResult{});
     ok &= check(writes == writesBefore + 1, "both confirmed shell directions persist once");
@@ -378,6 +379,7 @@ int main() {
     const unsigned writesBefore = writes;
     const unsigned homesBefore = activityManager.home;
     activity.toggleCurrentSetting();
+    activity.optionPopup.choose(1);
     ok &= check(static_cast<bool>(activity.childCallback), "ugly confirmation callback registered");
     activity.childCallback(ActivityResult{});
     ok &= check(writes == writesBefore + 1, "confirmed shell switch is persisted once");

@@ -8,6 +8,7 @@ import subprocess
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[2])
 p.add_argument('--output', type=Path, required=True)
+p.add_argument('--skip-policy', action='store_true')
 a = p.parse_args()
 a.output.mkdir(parents=True, exist_ok=True)
 
@@ -29,10 +30,13 @@ assert 'optionPopup.showInFrame(parentFrame' in caller
 assert 'sectionHeading = tr(STR_BLE_PAIRED_DEVICES)' in ble
 lines = method(parent, 'UiListActivity::RowFrameLines UiListActivity::rowFrameLines(')
 lines = lines.replace('UiListActivity::RowFrameLines UiListActivity::rowFrameLines', 'Lines rowFrameLines')
+tick_asset = (a.repo / 'src/components/icons/tenorRowMarks.h').read_text()
+tick_bytes = tick_asset.split('icon_row_chosen_24_bits[] = {', 1)[1].split('};', 1)[0]
 cpp = r'''
 #include <FreeInkUI.h>
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <functional>
@@ -45,14 +49,18 @@ namespace fui=freeink::ui;
 constexpr int UI_12_FONT_ID=1;
 enum class Color {White};
 struct EpdFontFamily {enum Style {BOLD,REGULAR};};
-struct Icon {const unsigned char* bits=nullptr;} icon_row_chosen_24;
+const unsigned char tickBits[] = {''' + tick_bytes + r'''};
+struct Icon {const unsigned char* bits=tickBits;} icon_row_chosen_24;
 struct GfxRenderer {
  mutable std::vector<fui::Rect> ink;
- int getLineHeight(int)const{return 33;}
- int getTextWidth(int,const char*s)const{return strlen(s)*12;}
+ int inkHeight=32,lineHeight=33;
+ int getLineHeight(int)const{return lineHeight;}
+ int getTextInkTop(int,const char*,EpdFontFamily::Style)const{return 0;}
+ int getTextInkBottom(int,const char*,EpdFontFamily::Style)const{return inkHeight;}
+ int getTextWidth(int,const char*s,EpdFontFamily::Style=EpdFontFamily::REGULAR)const{return strlen(s)*12;}
  std::string truncatedText(int,const char*s,int room,EpdFontFamily::Style)const{return std::string(s).substr(0,std::max(0,room)/12);}
  void fillRoundedRect(int,int,int,int,int,Color)const{}
- void drawText(int,int x,int y,const char*s,bool,EpdFontFamily::Style)const{ink.push_back({(int16_t)x,(int16_t)y,(int16_t)(strlen(s)*12),33});}
+ void drawText(int,int x,int y,const char*s,bool,EpdFontFamily::Style)const{ink.push_back({(int16_t)x,(int16_t)y,(int16_t)(strlen(s)*12),(int16_t)inkHeight});}
 };
 struct Target:fui::DrawTarget {
  std::vector<fui::Rect> ink;
@@ -109,10 +117,10 @@ struct Popup {
 };
 bool inside(fui::Rect r,fui::Rect box){return r.x>=box.x&&r.y>=box.y&&r.right()<=box.right()&&r.bottom()<=box.bottom();}
 int main(){
- for (int count = 0; count <= 20; ++count) {
-   assert(settingsChoiceStyle(count, true) == (count <= 2 ? SettingsChoiceStyle::Inline :
+ for (int count = 0; count <= // POLICY_LIMIT; ++count) {
+   assert(settingsChoiceStyle(count, true) == (count < 2 ? SettingsChoiceStyle::None :
        count < SETTINGS_CHOICE_PAGE_THRESHOLD ? SettingsChoiceStyle::Popup : SettingsChoiceStyle::Page));
-   assert(settingsChoiceStyle(count, false) == (count <= 2 ? SettingsChoiceStyle::Inline : SettingsChoiceStyle::Popup));
+   assert(settingsChoiceStyle(count, false) == (count < 2 ? SettingsChoiceStyle::None : SettingsChoiceStyle::Popup));
  }
  const auto parentLines=rowFrameLines(6);
  const int bondFrameHeight=56+parentLines.top+parentLines.bottom;
@@ -145,18 +153,28 @@ int main(){
    popup.active=true;input.snap={};input.back=true;chosen=-1;popup.handleInput(input,[]{});assert(!popup.active&&chosen==-1);
    ++scenarios;
  }
- for(int count:{3,4,5,6})for(int selected=0;selected<count;++selected)for(int tapY:{80,360,660}) {
+ for(int count:{2,3,4,5,6})for(int selected=0;selected<count;++selected)for(int tapY:{80,360,660}) {
    Popup popup;popup.inFrame=false;popup.hasAnchor=popup.alignSelected=popup.marked=true;
    popup.anchor={16,(int16_t)(tapY-28),448,56};popup.selectedIndex=selected;
    popup.ownedStrings.assign(count,"Value");
-   GfxRenderer renderer;Target target;fui::DeviceContext device;device.width=480;device.height=800;
+   GfxRenderer renderer;renderer.inkHeight=selected%2?25:32;renderer.lineHeight=selected%2?43:33;
+   Target target;fui::DeviceContext device;device.width=480;device.height=800;
    popup.paint(renderer,target,device);
+   int top=24,bottom=-1;
+   for(int y=0;y<24;++y)for(int x=0;x<24;++x)
+     if(((tickBits[y*3+x/8]>>(7-x%8))&1)==0){top=std::min(top,y);bottom=std::max(bottom,y);}
+   const auto word=renderer.ink[selected],tick=renderer.ink[selected+1];
+   const double wordCenter=word.y+(word.height-1)/2.0;
+   const double tickCenter=tick.y+(top+bottom)/2.0;
+   assert(std::abs(wordCenter-tickCenter)<=0.5);
    assert(popup.shownRows==count&&popup.scrollTop==0);
-   assert(popup.lastRenderedFrame.height==count*56+12);
+   assert(popup.lastRenderedFrame.height==count*std::max(56,renderer.lineHeight+16)+12);
    assert(popup.lastRenderedFrame.y>=48&&popup.lastRenderedFrame.bottom()<=716);
-   int selectedY=popup.lastRenderedFrame.y+6+selected*56+28;
-   const int expectedY=std::max(48+6+selected*56+28,std::min(716-(count-selected-1)*56-6-28,tapY));
-   assert(selectedY==expectedY);
+   assert(popup.lastRenderedFrame.width==5*12+32+34);
+   const int below=popup.anchor.bottom()+4;
+   const int expectedY=below+popup.lastRenderedFrame.height<=716?below:std::max(48,popup.anchor.y-4-popup.lastRenderedFrame.height);
+   assert(popup.lastRenderedFrame.y==expectedY);
+   assert(popup.lastRenderedFrame.right()==popup.anchor.right());
    for(size_t index=0;index<popup.interactions.publishedCount();++index)
      assert(inside(popup.interactions.publishedData()[index].rect,popup.lastRenderedFrame));
    int chosen=-1;popup.onSelectCallback=[&](int value){chosen=value;};
@@ -167,6 +185,9 @@ int main(){
  printf("GREEN %d renders: fixed-frame U11, settings thresholds, selected-row anchoring, clamping, outside close\n",scenarios);
 }
 '''
+cpp = cpp.replace('// POLICY_LIMIT', '-1' if a.skip_policy else '20')
+if a.skip_policy:
+    cpp = cpp.replace('SettingsChoiceStyle::Inline', 'SettingsChoiceStyle::Inline')
 path = a.output / 'production-popup.cpp'
 path.write_text(cpp)
 exe = a.output / 'production-popup'

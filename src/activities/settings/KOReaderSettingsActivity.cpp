@@ -37,10 +37,30 @@ int KOReaderSettingsActivity::listCount() const { return MENU_ITEMS; }
 
 const char* KOReaderSettingsActivity::headerTitle() const { return tr(STR_KOREADER_SYNC); }
 
+void KOReaderSettingsActivity::render(RenderLock&& lock) {
+  if (optionPopup_.processRender(renderer, mappedInput)) return;
+  UiListActivity::render(std::move(lock));
+}
+
 void KOReaderSettingsActivity::activateIndex(const int index) {
   // Activation opens a keyboard/sub-activity or repaints a new value; a
   // lingering flash would gray an unrelated row.
   app.clearTapFlash();
+  if (rowChoiceStyle(index) == SettingsChoiceStyle::Popup) {
+    static constexpr StrId matching[] = {StrId::STR_FILENAME, StrId::STR_BINARY};
+    static constexpr StrId behavior[] = {StrId::STR_ASK_EVERY_TIME, StrId::STR_SMART_SYNC};
+    const bool match = index == 3;
+    const int selected = match ? (KOREADER_STORE.getMatchMethod() == DocumentMatchMethod::BINARY)
+                               : (KOREADER_STORE.getSyncBehavior() == KOReaderSyncBehavior::SMART);
+    showSettingsChoices(optionPopup_, menuNames[index], match ? matching : behavior, settingsChoiceCount(index),
+                        selected, index, [this, match](const int value) {
+      if (match) KOREADER_STORE.setMatchMethod(value ? DocumentMatchMethod::BINARY : DocumentMatchMethod::FILENAME);
+      else KOREADER_STORE.setSyncBehavior(value ? KOReaderSyncBehavior::SMART : KOReaderSyncBehavior::ASK_EVERY_TIME);
+      KOREADER_STORE.saveToFile();
+      requestUpdate();
+    });
+    return;
+  }
   if (index == 0) {
     // Username
     startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_KOREADER_USERNAME),
@@ -166,7 +186,7 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
     rowItems_[i].value = accountAction || rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
     rowItems_[i].subtitle = accountAction && !rowValues_[i].empty() ? rowValues_[i].c_str() : nullptr;
     rowItems_[i].toggle = tenorchrome::kTouchShell &&
-        settingsChoiceStyle(settingsChoiceCount(i), true) == SettingsChoiceStyle::Inline && settingsChoiceCount(i) == 2;
+        rowChoiceStyle(i) == SettingsChoiceStyle::Inline && i == 4;
     rowItems_[i].toggleChecked = i == 3 ? KOREADER_STORE.getMatchMethod() == DocumentMatchMethod::BINARY
         : i == 4 ? KOREADER_STORE.getSendMetadata() : KOREADER_STORE.getSyncBehavior() == KOReaderSyncBehavior::SMART;
   }

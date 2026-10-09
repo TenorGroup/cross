@@ -298,8 +298,7 @@ inline const char* keyFor(const char* screen, int tab, int row) {
   return "";
 }
 }
-enum class SettingsChoiceStyle { Inline, Page };
-inline SettingsChoiceStyle settingsChoiceStyle(int, bool) { return SettingsChoiceStyle::Inline; }
+#include "components/SettingsChoiceStyle.h"
 namespace settingstabs { bool moTrinhChon(int) { return false; } }
 namespace readerInk { bool available(int level, int mask) { return (mask & (1 << level)) != 0; } }
 struct { int mask = 15; int availableWeightMask() const { return mask; } } sdFontSystem;
@@ -342,6 +341,7 @@ struct TextSettingsActivity : UiListActivity {
   static Tab formTab(int) { return Tab::Family; }
   static int formLocalRow(int row) { return row; }
   int settingsChoiceCount(int) const { return 0; }
+  SettingsChoiceStyle rowChoiceStyle(int) const { return SettingsChoiceStyle::None; }
   int listCount() const;
   std::string favoriteKey(int row) const;
   void rebuildRowItems();

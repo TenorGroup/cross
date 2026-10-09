@@ -63,6 +63,10 @@ int ClockSettingsActivity::settingsChoiceCount(const int row) const {
   return row == ITEM_FORMAT || row == ITEM_AUTO_TIMEZONE ? 2 : 0;
 }
 
+SettingsChoiceStyle ClockSettingsActivity::rowChoiceStyle(const int row) const {
+  return settingsChoiceStyle(settingsChoiceCount(row), tenorchrome::kTouchShell, row == ITEM_AUTO_TIMEZONE);
+}
+
 void ClockSettingsActivity::render(RenderLock&& lock) {
   if (optionPopup_.processRender(renderer, mappedInput)) return;
   UiListActivity::render(std::move(lock));
@@ -71,12 +75,16 @@ void ClockSettingsActivity::render(RenderLock&& lock) {
 void ClockSettingsActivity::activateIndex(const int index) {
   nav.selected = index;
   app.clearTapFlash();
-  if (tenorchrome::kTouchShell && settingsChoiceStyle(settingsChoiceCount(index), true) == SettingsChoiceStyle::Popup) {
+  if (rowChoiceStyle(index) == SettingsChoiceStyle::Popup) {
     static constexpr StrId headerNames[] = {StrId::STR_HIDE, StrId::STR_CLOCK_HEADER_TIME, StrId::STR_CLOCK_HEADER_TIME_DATE};
-    const bool dst = index == ITEM_DST;
-    showSettingsChoices(optionPopup_, menuNames[index], dst ? dstNames : headerNames, settingsChoiceCount(index),
-                        dst ? SETTINGS.clockDst : SETTINGS.clockShowInHeader, index, [this, dst](const int selected) {
-      if (dst) SETTINGS.clockDst = static_cast<uint8_t>(selected);
+    static constexpr StrId formatNames[] = {StrId::STR_CLOCK_FORMAT_24H, StrId::STR_CLOCK_FORMAT_12H};
+    const auto* labels = index == ITEM_DST ? dstNames : index == ITEM_FORMAT ? formatNames : headerNames;
+    const int current = index == ITEM_DST ? SETTINGS.clockDst
+                        : index == ITEM_FORMAT ? SETTINGS.clockFormat : SETTINGS.clockShowInHeader;
+    showSettingsChoices(optionPopup_, menuNames[index], labels, settingsChoiceCount(index), current, index,
+                        [this, index](const int selected) {
+      if (index == ITEM_DST) SETTINGS.clockDst = static_cast<uint8_t>(selected);
+      else if (index == ITEM_FORMAT) SETTINGS.clockFormat = static_cast<uint8_t>(selected);
       else SETTINGS.clockShowInHeader = static_cast<uint8_t>(selected);
       SETTINGS.saveToFile();
       timezones::applyToClock();
@@ -175,7 +183,7 @@ void ClockSettingsActivity::buildScreen(UiScreen& screen) {
   for (int i = 0; i < ITEM_COUNT; i++) {
     values[i] = giaTriDong(i);
     rowItems_[i].value = values[i].empty() ? nullptr : values[i].c_str();
-    rowItems_[i].toggle = tenorchrome::kTouchShell && settingsChoiceCount(i) == 2;
+    rowItems_[i].toggle = tenorchrome::kTouchShell && rowChoiceStyle(i) == SettingsChoiceStyle::Inline && i == ITEM_AUTO_TIMEZONE;
     rowItems_[i].toggleChecked = i == ITEM_FORMAT ? SETTINGS.clockFormat : SETTINGS.clockAutoTimezone;
   }
   // Manual timezone picking is unreachable while auto timezone drives the zone.

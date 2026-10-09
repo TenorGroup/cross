@@ -511,7 +511,7 @@ void Notebook::tapSetting(const int row, const int pageRow) {
     return;
   }
   const int count = valueCount(s), now = valueNow(s);
-  switch (touch::changeFor(count, settingstabs::moTrinhChon(count))) {
+  switch (touch::changeFor(count, settingsChoiceStyle(s, tenorchrome::kTouchShell) != SettingsChoiceStyle::Inline)) {
     case touch::Change::Tick:
     case touch::Change::Next:
       setValue(row, logic::cycle(now, 1, count));

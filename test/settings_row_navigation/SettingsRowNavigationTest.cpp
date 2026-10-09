@@ -52,12 +52,12 @@ void checkStoredEnums() {
   for (size_t count = 0; count <= labels.size(); count++) {
     auto dynamicLabels = SettingInfo::Enum(StrId::STR_NONE_OPT, &CrossPointSettings::value,
                                           std::vector<StrId>(count, StrId::STR_NONE_OPT));
-    expect(settingOpensNext(dynamicLabels) == (count > 2), "stored enum vector uses the picker threshold");
+    expect(settingOpensNext(dynamicLabels) == (count >= 2), "stored enum vector opens a value picker");
 
     auto staticLabels = baseSetting(SettingType::ENUM);
     staticLabels.valuePtr = &CrossPointSettings::value;
     staticLabels.staticEnumValues = std::span<const StrId>(labels.data(), count);
-    expect(settingOpensNext(staticLabels) == (count > 2), "stored static enum uses the picker threshold");
+    expect(settingOpensNext(staticLabels) == (count >= 2), "stored static enum opens a value picker");
   }
 
   auto labelsWin = SettingInfo::Enum(StrId::STR_NONE_OPT, &CrossPointSettings::value,
@@ -65,7 +65,10 @@ void checkStoredEnums() {
   labelsWin.enumStringValues.assign(5, "value");
   expect(settingOpensNext(labelsWin), "stored enum uses runtime strings as activation does");
   labelsWin.enumStringValues.assign(2, "value");
-  expect(!settingOpensNext(labelsWin), "2 runtime strings stay inline despite 3 translated labels");
+  expect(settingOpensNext(labelsWin), "2 runtime strings open a value picker");
+  const auto states = SettingInfo::Enum(StrId::STR_NONE_OPT, &CrossPointSettings::value,
+                                      {StrId::STR_STATE_OFF, StrId::STR_STATE_ON});
+  expect(!settingOpensNext(states), "off/on enum changes in place");
 }
 
 SettingInfo accessorEnum(const size_t labelCount, const size_t stringCount) {
@@ -78,9 +81,9 @@ SettingInfo accessorEnum(const size_t labelCount, const size_t stringCount) {
 
 void checkAccessorEnums() {
   for (size_t count = 0; count <= 5; count++) {
-    expect(settingOpensNext(accessorEnum(count, 0)) == (count > 2),
+    expect(settingOpensNext(accessorEnum(count, 0)) == (count >= 2),
            "accessor enum falls back to translated labels");
-    expect(settingOpensNext(accessorEnum(0, count)) == (count > 2),
+    expect(settingOpensNext(accessorEnum(0, count)) == (count >= 2),
            "accessor enum uses runtime strings");
   }
   expect(settingOpensNext(accessorEnum(3, 5)), "runtime strings take precedence for accessor enums");

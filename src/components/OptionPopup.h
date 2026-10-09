@@ -78,9 +78,8 @@ class OptionPopup {
     activate(currentIndex, std::move(onSelect));
   }
 
-  // Replace the contents of an already drawn touch frame.  The caller owns
-  // the frame decision and passes the exact ring bounds, so a nested choice
-  // never grows a second popup above or below its parent.
+  // Value choices use the dispatched row as anchor; action dialogs retain
+  // the caller's frame bounds.
   void showInFrame(const freeink::ui::Rect& parentFrame, StrId titleId, const StrId* optionIds,
                    int optionCount, int currentIndex, std::function<void(int)> onSelect) {
     show(titleId, optionIds, optionCount, currentIndex, std::move(onSelect));
@@ -314,11 +313,14 @@ class OptionPopup {
     props.buttonHeight =
         fui::clampI16(target.lineHeight(fui::GfxRendererTarget::FONT_BODY) + metrics.optionPopupSelectionVPadding * 2);
 
-    // Fixed fraction of the screen, clamped by the theme's side margins; the
-    // old max-text-width sizing is gone, long labels wrap inside the buttons.
     const fui::Rect screen = device.screen();
-    const int16_t width =
-        fui::clampI16(std::min<int>(screen.width * 3 / 4, screen.width - metrics.optionPopupDialogSideMargin * 2));
+    int textWidth = renderer.getTextWidth(uiScaleSpec().bodyFontId, title.c_str(), EpdFontFamily::BOLD);
+    for (const auto& label : ownedStrings)
+      textWidth = std::max(textWidth, renderer.getTextWidth(uiScaleSpec().bodyFontId, label.c_str()));
+    const int maxWidth = std::min<int>(screen.width * 3 / 4, screen.width - metrics.optionPopupDialogSideMargin * 2);
+    const auto sized = optionPopupLayout({0, 0, maxWidth, screen.height}, {},
+                                         textWidth + 4 * innerPadding, 1, false);
+    const int16_t width = fui::clampI16(sized.width);
     const int fullHeight = fui::optionDialogHeight(target, props, width);
     fui::Rect available = screen;
     int firstOption = 0, visibleOptions = totalOptions;
@@ -353,7 +355,10 @@ class OptionPopup {
       props.optionCount = static_cast<uint8_t>(slot);
     }
     const int16_t height = fui::optionDialogHeight(target, props, width);
-    const fui::Rect dialogRect = fui::centeredRect(available, fui::Size{width, height});
+    const auto placed = optionPopupLayout({available.x, available.y, available.width, available.height}, {},
+                                          width, height, false);
+    const fui::Rect dialogRect{fui::clampI16(placed.x), fui::clampI16(placed.y),
+                              fui::clampI16(placed.width), fui::clampI16(placed.height)};
     lastRenderedFrame = dialogRect;
 
     // Chrome guard first, options after: route() scans newest-first, so the
@@ -478,34 +483,30 @@ class OptionPopup {
     }
   }
 
-  // Touch shell (dynamic bar rule 7): every list of this popup in one shape. A held row's menu (showAnchored)
-  // hangs from that row, as narrow as its words. A value list hangs from the row tapped to open it, across the
-  // screen in the panel frame (drawPanel), the value in use bold with the tick at its end, as the lists mark it.
+  // Held-row actions and value menus share measured sizing and row anchoring.
   // A question (nothing tapped under it: a confirmation) stands over the bar at the foot, its caption and text
   // inside the frame. Under the bar at most: more rows than fit scroll by a swipe, with the scroll bar.
   template <typename Frame>
   void renderAnchored(const GfxRenderer& renderer, Frame& frame, const freeink::ui::Rect& screen) const {
     namespace fui = freeink::ui;
-    constexpr int font = UI_12_FONT_ID, PAD = 6, RADIUS = 20, GAP = 4, MARK = 24;
+    constexpr int font = UI_12_FONT_ID, PAD = 6, RADIUS = 20, MARK = 24;
     const bool narrow = anchored;
     const int ROW = narrow ? 56 : std::max(56, renderer.getLineHeight(font) + 16);
     const int pad = inFrame ? std::min(PAD, std::max(0, (frameRect.height - ROW) / 2)) : PAD;
     const int TEXT_X = narrow ? 24 : 16;
     const int count = static_cast<int>(ownedStrings.size());
-    const int x = inFrame ? frameRect.x : tenorchrome::FOOT_BACK_X;
-    int w = inFrame ? frameRect.width : screen.width - 2 * x;
-    if (narrow) {
-      int textWidth = 0;
-      for (int i = 0; i < std::min(count, MAX_OPTIONS); ++i)
-        textWidth = std::max(textWidth, renderer.getTextWidth(font, ownedStrings[i].c_str()));
-      w = std::min(w, std::max(180, textWidth + 2 * TEXT_X));
-    }
+    int textWidth = 0;
+    for (const auto& label : ownedStrings)
+      textWidth = std::max(textWidth, renderer.getTextWidth(font, label.c_str(), EpdFontFamily::BOLD));
+    const int maxWidth = screen.width - 2 * tenorchrome::FOOT_BACK_X;
+    const int w = inFrame ? frameRect.width : std::min(maxWidth, textWidth + 2 * TEXT_X + (marked && !narrow ? MARK + 10 : 0));
+    const int captionX = inFrame ? frameRect.x : tenorchrome::FOOT_BACK_X;
     // The caption and the subject of a question, wrapped inside the frame.
     fui::TextStyle head;
     head.font = fui::GfxRendererTarget::FONT_BODY;
     head.maxLines = 6;
     const int lh = frame.target().lineHeight(head.font);
-    const fui::Rect headRect{static_cast<int16_t>(x + TEXT_X), 0, static_cast<int16_t>(w - 2 * TEXT_X), 1};
+    const fui::Rect headRect{static_cast<int16_t>(captionX + TEXT_X), 0, static_cast<int16_t>(w - 2 * TEXT_X), 1};
     // Wrapped once a show (a long warning costs more than the rest of the popup), kept for its repaints.
     if (!headLaid) {
       headLaid = true;
@@ -536,19 +537,12 @@ class OptionPopup {
     shownRows = rows;
     shownPitch = ROW;
     const int h = headH + rows * ROW + 2 * pad;
-    int y = inFrame ? frameRect.y : bottom - h;
-    if (!inFrame && (narrow || hasAnchor)) {
-      const int below = anchor.y + anchor.height + GAP, above = anchor.y - GAP - h;
-      const bool upperHalf = anchor.y + anchor.height / 2 < screen.height / 2;
-      y = upperHalf && below + h <= bottom ? below : above >= top ? above : below + h <= bottom ? below : bottom - h;
-    }
-    if (!inFrame && alignSelected)
-      y = std::max(top, std::min(bottom - h, anchor.y + anchor.height / 2 - pad - headH -
-                                            (selectedIndex - first) * ROW - ROW / 2));
-    y = inFrame ? frameRect.y : std::max(top, y);
-    const fui::Rect box = inFrame
-        ? frameRect
-        : fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w), static_cast<int16_t>(h)};
+    const auto placed = optionPopupLayout({tenorchrome::FOOT_BACK_X, top, maxWidth, bottom - top},
+        hasAnchor ? OptionPopupBox{anchor.x, anchor.y, anchor.width, anchor.height} : OptionPopupBox{},
+        w, h, true, !narrow);
+    const fui::Rect box = inFrame ? frameRect : fui::Rect{fui::clampI16(placed.x), fui::clampI16(placed.y),
+                                                        fui::clampI16(placed.width), fui::clampI16(placed.height)};
+    const int x = box.x, y = box.y;
     lastRenderedFrame = box;
     if (shell::isUgly()) uglyPaper(renderer, box);
     else {
@@ -559,7 +553,7 @@ class OptionPopup {
     int cursor = y + pad + (headH ? PAD + 4 : 0);
     for (size_t i = 0; headH && i < headLines.size(); ++i) {
       head.bold = static_cast<int>(i) < boldLines;
-      frame.target().text(fui::Rect{headRect.x, static_cast<int16_t>(cursor), headRect.width, static_cast<int16_t>(lh)},
+      frame.target().text(fui::Rect{static_cast<int16_t>(x + TEXT_X), static_cast<int16_t>(cursor), headRect.width, static_cast<int16_t>(lh)},
                           headLines[i].c_str(), head);
       cursor += lh;
     }
@@ -575,11 +569,16 @@ class OptionPopup {
         const int room = w - 2 * TEXT_X - (chosen ? MARK + 10 : 0);
         const std::string label = renderer.truncatedText(font, ownedStrings[i].c_str(), room,
                                                          chosen ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
-        renderer.drawText(font, x + TEXT_X, ry + (ROW - renderer.getLineHeight(font)) / 2, label.c_str(), true,
-                          chosen ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
-        if (chosen)
-          tenorchrome::drawBarIcon(renderer, icon_row_chosen_24.bits, MARK, MARK, x + w - TEXT_X - MARK,
-                                   ry + (ROW - MARK) / 2, true);
+        const auto style = chosen ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+        const int inkTop = renderer.getTextInkTop(font, label.c_str(), style);
+        const int inkBottom = renderer.getTextInkBottom(font, label.c_str(), style);
+        const int textY = ry + (ROW - inkTop - inkBottom) / 2;
+        renderer.drawText(font, x + TEXT_X, textY, label.c_str(), true, style);
+        if (chosen) {
+          // The tick's ink center is row 11 inside its 24 px bitmap.
+          const int markY = textY + (inkTop + inkBottom - 1) / 2 - (MARK / 2 - 1);
+          tenorchrome::drawBarIcon(renderer, icon_row_chosen_24.bits, MARK, MARK, x + w - TEXT_X - MARK, markY, true);
+        }
       }
       if (r + 1 < rows) tenorchrome::drawRowRule(renderer, ry + ROW - 1, x + TEXT_X, x + w - TEXT_X);
       frame.hit(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(ry), static_cast<int16_t>(w), static_cast<int16_t>(ROW)},
@@ -612,6 +611,13 @@ class OptionPopup {
 
   void activateInFrame(const freeink::ui::Rect& parentFrame) {
     frameRect = parentFrame;
+    if (tenorchrome::kTouchShell && marked) {
+      alignValueTo(hasAnchor ? anchor : parentFrame);
+      inFrame = false;
+      headLaid = false;
+      scrollTop = -1;
+      return;
+    }
     inFrame = !parentFrame.empty();
     anchored = false;
     hasAnchor = false;

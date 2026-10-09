@@ -425,7 +425,7 @@ ugly::QuestionSheet::Row SettingsActivity::formRow(void* context, const int inde
   } else if (setting.type == SettingType::ENUM && (setting.valuePtr || setting.valueSetter)) {
     row.count = static_cast<int>(setting.enumStringValues.empty() ? setting.enumLabels().size()
                                                                  : setting.enumStringValues.size());
-    row.kind = row.count >= 7 ? Kind::Paper : Kind::Choice;
+    row.kind = settingsChoiceStyle(setting, true) == SettingsChoiceStyle::Page ? Kind::Paper : Kind::Choice;
     row.selected = value;
   } else if (setting.type == SettingType::VALUE && setting.valueRange.step) {
     row.count = (setting.valueRange.max - setting.valueRange.min) / setting.valueRange.step + 1;
@@ -920,7 +920,8 @@ void SettingsActivity::toggleCurrentSetting() {
   } else if (setting.type == SettingType::ENUM) {
     const int count = static_cast<int>(setting.enumStringValues.empty() ? setting.enumLabels().size() : setting.enumStringValues.size());
     if (count <= 0) return;
-    if (settingstabs::moTrinhChon(count)) {
+    const auto style = settingsChoiceStyle(setting, tenorchrome::kTouchShell);
+    if (style == SettingsChoiceStyle::Popup || style == SettingsChoiceStyle::Page) {
       auto onSelect = [this, row](const int index) { applySettingValue(row, static_cast<uint8_t>(index)); };
       if (!setting.enumStringValues.empty()) {
         showSettingsChoices(optionPopup, setting.nameId, setting.enumStringValues, current, row, std::move(onSelect));
@@ -941,6 +942,13 @@ void SettingsActivity::toggleCurrentSetting() {
 void SettingsActivity::noteValue(const StrId name) {
   for (const auto& row : *currentSettings)
     if (row.nameId == name) return shell::valueChanged(row);
+}
+
+SettingsChoiceStyle SettingsActivity::rowChoiceStyle(const int row) const {
+  if (!currentSettings || row < 0 || row >= settingsCount) return SettingsChoiceStyle::None;
+  const auto& setting = (*currentSettings)[row];
+  if (setting.action == SettingAction::Language) return settingsChoiceStyle(getLanguageCount(), tenorchrome::kTouchShell);
+  return settingsChoiceStyle(setting, tenorchrome::kTouchShell);
 }
 
 int SettingsActivity::settingsChoiceCount(const int row) const {
@@ -1068,9 +1076,12 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   for (size_t i = 0; i < settings.size(); i++) {
     rowValues_[i] = settingValueText(settings[i]);
     rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
-    rowItems_[i].toggle = tenorchrome::kTouchShell && settingsChoiceCount(i) == 2;
+    rowItems_[i].toggle = tenorchrome::kTouchShell && rowChoiceStyle(i) == SettingsChoiceStyle::Inline;
+    const auto& setting = settings[i];
+    const uint8_t current = setting.valuePtr ? SETTINGS.*setting.valuePtr : setting.valueGetter ? setting.valueGetter() : 0;
+    const auto labels = setting.enumLabels();
     rowItems_[i].toggleChecked = rowItems_[i].toggle &&
-        (settings[i].valuePtr ? SETTINGS.*settings[i].valuePtr : settings[i].valueGetter ? settings[i].valueGetter() : 0);
+        (setting.type == SettingType::ENUM && current < labels.size() ? labels[current] == StrId::STR_STATE_ON : current != 0);
   }
 
   fui::ListProps props;

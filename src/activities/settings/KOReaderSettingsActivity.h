@@ -21,6 +21,15 @@ class KOReaderSettingsActivity final : public UiListActivity {
   std::string favoriteKey(int row) const override;
   int listCount() const override;
   int settingsChoiceCount(int row) const override { return row >= 3 && row <= 5 ? 2 : 0; }
+  SettingsChoiceStyle rowChoiceStyle(int row) const override {
+    return settingsChoiceStyle(settingsChoiceCount(row), tenorchrome::kTouchShell, row == 4);
+  }
+  OptionPopup optionPopup_;
+  OptionPopup* tiltPopup() override { return &optionPopup_; }
+  bool handleCustomInput() override {
+    return optionPopup_.handleInput(mappedInput, [this] { requestUpdate(); });
+  }
+  void render(RenderLock&& lock) override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   void drawChrome() override {

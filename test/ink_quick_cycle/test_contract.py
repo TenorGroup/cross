@@ -78,6 +78,7 @@ class InkQuickCycleContractTest(unittest.TestCase):
 #include <string>
 #include <vector>
 #include "ReaderInkWeight.h"
+#include "components/SettingsChoiceStyle.h"
 #define LOG_ERR(...) ((void)0)
 struct CrossPointSettings {
   uint8_t readerInkWeight = 0;
@@ -92,13 +93,14 @@ struct SettingInfo {
   StrId nameId;
   uint8_t CrossPointSettings::*valuePtr;
   std::vector<StrId> labels;
+  std::vector<std::string> enumStringValues;
   SettingType type = SettingType::ENUM;
   struct { int min=0, max=0, step=0; } valueRange;
   const std::vector<StrId>& enumLabels() const { return labels; }
   static SettingInfo Enum(StrId id, uint8_t CrossPointSettings::*ptr,
-                          std::vector<StrId> labels, const char*, StrId) { return {id, ptr, labels}; }
+                          std::vector<StrId> labels, const char*, StrId) { return {id, ptr, labels, {}}; }
   template<size_t N> static SettingInfo StaticEnum(StrId id, uint8_t CrossPointSettings::*ptr,
-                          const StrId (&labels)[N], const char*, StrId) { return {id, ptr, {labels, labels+N}}; }
+                          const StrId (&labels)[N], const char*, StrId) { return {id, ptr, {labels, labels+N}, {}}; }
   SettingInfo withTextSettings() { return *this; }
 };
 @INK_LABELS@
@@ -156,6 +158,10 @@ struct TextSettingsActivity {
   bool applyChosenValue(Tab, int, int, bool repaint=true);
   void confirmStyleRow(int);
   void confirmValueRow(Tab,int);
+  SettingsChoiceStyle rowChoiceStyle(int row) const {
+    return settingsChoiceStyle(formRow(const_cast<TextSettingsActivity*>(this), formIndex(Tab::Style, row)).count,
+                               tenorchrome::kTouchShell);
+  }
   void showSettingsChoices(Popup& popup, StrId title, const std::vector<std::string>& values,
                            int selected, int row, std::function<void(int)> callback) {
     freeink::ui::Rect frame;

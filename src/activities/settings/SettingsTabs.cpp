@@ -1,4 +1,5 @@
 #include "SettingsTabs.h"
+#include "components/SettingsChoiceStyle.h"
 
 namespace settingstabs {
 
@@ -63,7 +64,7 @@ Tab nhaCua(const Action action) {
   return Tab::SYSTEM;
 }
 
-bool moTrinhChon(const int soLuaChon) { return soLuaChon > 2; }
+bool moTrinhChon(const int soLuaChon) { return settingsChoiceStyle(soLuaChon, false) == SettingsChoiceStyle::Popup; }
 
 int dongCuaTheCaiDat(StrId* const out, const int max) {
   int n = 0;

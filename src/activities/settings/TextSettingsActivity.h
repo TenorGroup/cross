@@ -104,6 +104,7 @@ class TextSettingsActivity final : public UiTabListActivity {
 
   bool supportsFavorites() const override { return true; }
   int settingsChoiceCount(int row) const override;
+  SettingsChoiceStyle rowChoiceStyle(int row) const override;
   std::string favoriteKey(int row) const override;
   int focusFavorite(const std::string& key) override;
   const char* favoriteHintText() override;

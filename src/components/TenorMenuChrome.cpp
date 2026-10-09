@@ -1155,13 +1155,12 @@ void tenorchrome::drawRowChevron(const GfxRenderer& r, const int x, const int y)
 }
 
 void tenorchrome::drawSettingsPopupMark(const GfxRenderer& renderer, const int x, const int centerY) {
-  for (int direction : {-1, 1}) {
-    for (int offset = -6; offset <= 6; ++offset) {
-      const int tip = direction * (5 + (6 - std::abs(offset)) * 4 / 6);
-      for (int deltaY = -1; deltaY <= 1; ++deltaY)
-        for (int deltaX = -1; deltaX <= 1; ++deltaX)
-          if (deltaX * deltaX + deltaY * deltaY <= 1 && ((x + offset + deltaX + centerY + tip + deltaY) & 1) == 0)
-            renderer.drawPixel(x + 7 + offset + deltaX, centerY + tip + deltaY, true);
+  constexpr int span = 6, depth = 4;
+  for (int offset = -span; offset <= span; ++offset) {
+    const int rise = depth - (std::abs(offset) * depth + span / 2) / span;
+    for (int stroke = 0; stroke < 2; ++stroke) {
+      renderer.drawPixel(x + span + offset, centerY - 3 - rise - stroke, true);
+      renderer.drawPixel(x + span + offset, centerY + 2 + rise + stroke, true);
     }
   }
 }

@@ -97,6 +97,8 @@ int GfxRenderer::getTextWidth(int, const char* text, EpdFontFamily::Style, BidiU
   return text ? static_cast<int>(strlen(text)) * 8 : 0;
 }
 int GfxRenderer::getLineHeight(int) const { return 20; }
+int GfxRenderer::getTextInkTop(int, const char*, EpdFontFamily::Style) const { return 0; }
+int GfxRenderer::getTextInkBottom(int, const char*, EpdFontFamily::Style) const { return 20; }
 int GfxRenderer::getFontAscenderSize(int) const { return 16; }
 // No font is loaded on the host, so a single-glyph label never takes the centred-glyph path.
 const EpdGlyph* EpdFontFamily::getGlyph(uint32_t, Style) const { return nullptr; }

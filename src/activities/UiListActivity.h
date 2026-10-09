@@ -85,6 +85,9 @@ class UiListActivity : public Activity, protected UiAppHost {
                    int anchorValue);
   void renderUi();
   virtual int settingsChoiceCount(int row) const { return 0; }
+  virtual SettingsChoiceStyle rowChoiceStyle(int row) const {
+    return settingsChoiceStyle(settingsChoiceCount(row), tenorchrome::kTouchShell);
+  }
   void showSettingsChoices(OptionPopup& popup, StrId title, const std::vector<std::string>& labels,
                            int selected, int row, std::function<void(int)> onSelect);
   void showSettingsChoices(OptionPopup& popup, StrId title, const StrId* labels, int count,

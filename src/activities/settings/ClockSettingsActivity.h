@@ -31,6 +31,7 @@ class ClockSettingsActivity final : public UiListActivity {
   }
   const char* headerTitle() const override;
   int settingsChoiceCount(int row) const override;
+  SettingsChoiceStyle rowChoiceStyle(int row) const override;
   OptionPopup optionPopup_;
   bool handleCustomInput() override {
     return optionPopup_.handleInput(mappedInput, [this] { requestUpdate(); });

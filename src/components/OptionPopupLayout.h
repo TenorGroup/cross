@@ -22,3 +22,24 @@ inline OptionPopupWindow optionPopupWindow(int total, int selected, int availabl
   const int shown = pagerows::rowsOnPage(first, count, total);
   return {first, shown, paged, paged && shown <= count};  // next: the page keeps its "next page" button
 }
+
+struct OptionPopupBox { int x, y, width, height; };
+// Size from measured content; touch value menus align with the value's right edge.
+inline OptionPopupBox optionPopupLayout(OptionPopupBox available, OptionPopupBox anchor, int contentWidth,
+                                        int height, bool touch, bool valueMenu = true) {
+  const int w = std::max(1, std::min(contentWidth, available.width));
+  const int h = std::max(1, std::min(height, available.height));
+  int x = available.x + (available.width - w) / 2;
+  int y = available.y + (available.height - h) / 2;
+  if (touch) {
+    y = available.y + available.height - h;
+    if (anchor.height > 0) {
+      x = valueMenu ? anchor.x + anchor.width - w : anchor.x;
+      const int below = anchor.y + anchor.height + 4;
+      const int above = anchor.y - 4 - h;
+      y = below + h <= available.y + available.height ? below : above;
+    }
+  }
+  return {std::clamp(x, available.x, available.x + available.width - w),
+          std::clamp(y, available.y, available.y + available.height - h), w, h};
+}
