@@ -158,13 +158,14 @@ void Notebook::render(RenderLock&&) {
   char number[12];
   snprintf(number, sizeof(number), "%d/%d", pos + 1, homerows::PAGE_COUNT);
   text(renderer, Size::S22, w - 30 - width(renderer, Size::S22, number), 60, number);
-  paragraph(renderer, Size::S30, TEXT_X + SUBTITLE_INDENT, SUBTITLE_BASELINE, w - TEXT_X - SUBTITLE_INDENT - SUBTITLE_EDGE, SUBTITLE_LINE,
-            subtitle());
-  const int first = firstBaseline();
+  const int subtitleLineCount =
+      std::min(2, paragraph(renderer, Size::S30, TEXT_X + SUBTITLE_INDENT, SUBTITLE_BASELINE,
+                            w - TEXT_X - SUBTITLE_INDENT - SUBTITLE_EDGE, SUBTITLE_LINE, subtitle()));
+  const int first = FIRST_BASELINE + (subtitleLineCount - 1) * 30;
   line(renderer, TEXT_X, first - 40, w - 30, first - 38, 611);  // a pen rule closes the note off before the first row
 
   const int count = rowCount();
-  const int perPage = rowsPerPage();
+  const int perPage = std::max(1, (h - 140 - first) / ROW_HEIGHT + 1);
   const int cur = cursor[id(page)];
   if (rows.tooMany) {
     char said[160];
