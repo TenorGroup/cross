@@ -24,6 +24,7 @@ inline int outstandingMethods = 0, verifyMode = 0;
 inline bool domainChecked = false;
 inline int autoMethodCalls = 0, tls12MethodCalls = 0, connectCalls = 0;
 inline int caLoadResult = 1;
+inline int domainCheckResult = 1;
 inline std::deque<int> connectErrors;
 inline std::deque<WOLFSSL_ALERT_HISTORY> connectAlerts;
 inline void resetScripts() {
@@ -31,6 +32,7 @@ inline void resetScripts() {
   tls12MethodCalls = 0;
   connectCalls = 0;
   caLoadResult = 1;
+  domainCheckResult = 1;
   connectErrors.clear();
   connectAlerts.clear();
   verifyMode = 0;
@@ -73,7 +75,7 @@ inline WOLFSSL* wolfSSL_new(WOLFSSL_CTX*) { return new WOLFSSL; }
 inline void wolfSSL_free(WOLFSSL* s) { delete s; }
 inline int wolfSSL_check_domain_name(WOLFSSL*, const char*) {
   tls_fixture::domainChecked = true;
-  return WOLFSSL_SUCCESS;
+  return tls_fixture::domainCheckResult;
 }
 inline void wolfSSL_SetIOReadCtx(WOLFSSL*, void*) {}
 inline void wolfSSL_SetIOWriteCtx(WOLFSSL*, void*) {}

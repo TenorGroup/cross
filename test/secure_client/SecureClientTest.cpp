@@ -111,6 +111,36 @@ TEST(SecureClientLifecycle, CaLoadFailureDoesNotFallback) {
   EXPECT_EQ(tls_fixture::outstandingMethods, before);
 }
 
+TEST(SecureClientTrust, HostnameCheckFailureStopsBeforeTls) {
+  resetFixture();
+  wire::replies.push_back("fixture");
+  tls_fixture::domainCheckResult = WOLFSSL_FAILURE;
+  const int before = tls_fixture::outstandingMethods;
+  {
+    freeink::SecureClient client;
+    client.setCACert("fixture");
+    EXPECT_EQ(client.connect("wrong-name.test", 443), 0);
+  }
+  EXPECT_TRUE(tls_fixture::domainChecked);
+  EXPECT_EQ(wire::connectAttempts, 1);
+  EXPECT_EQ(tls_fixture::connectCalls, 0);
+  EXPECT_EQ(tls_fixture::outstandingMethods, before);
+}
+
+TEST(SecureClientTrust, InsecureConnectionSkipsHostnameCheck) {
+  resetFixture();
+  wire::replies.push_back("fixture");
+  tls_fixture::domainCheckResult = WOLFSSL_FAILURE;
+  {
+    freeink::SecureClient client;
+    client.setInsecure();
+    EXPECT_EQ(client.connect("internal.test", 443), 1);
+    EXPECT_EQ(tls_fixture::verifyMode, WOLFSSL_VERIFY_NONE);
+  }
+  EXPECT_FALSE(tls_fixture::domainChecked);
+  EXPECT_EQ(tls_fixture::connectCalls, 1);
+}
+
 TEST(SecureClientLifecycle, MemoryFailureDoesNotFallback) {
   expectOneAttempt(MEMORY_ERROR);
 }
