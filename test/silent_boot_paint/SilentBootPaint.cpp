@@ -65,6 +65,7 @@ std::atomic<bool> frameDrawn{false};
 
 struct Activity {
   std::atomic<int> paints{0};
+  bool renderIdleUpdate() { return false; }  // no idle-only repaint in this harness
   void render(RenderLock&&) {
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
     ++paints;

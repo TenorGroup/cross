@@ -36,6 +36,7 @@ void ActivityManager::requestUpdateAndWait() {}
 // Bai kiem dau vao khong doc diem anh, chi doc trang thai sau moi lan bam.
 void GfxRenderer::clearScreen(unsigned char) const {}
 void GfxRenderer::displayBuffer(HalDisplay::RefreshMode) const {}
+void GfxRenderer::displayWindow(int, int, int, int) const {}
 int GfxRenderer::getScreenWidth() const { return 528; }
 int GfxRenderer::getScreenHeight() const { return 792; }
 void GfxRenderer::tapToLogical(float, float, int& outX, int& outY) const {

@@ -162,6 +162,7 @@ class FileBrowserActivity {
   void decoratePinnedRows(fui::ListProps&);
   void reserveFixedMenuContent(UiScreen&) {}
   void reserveFavoriteHint(UiScreen&) {}
+  void measurePageScrollbar(UiScreen&, const fui::ListProps&) {}  // X4 Pro page scrollbar, not under test here
   fui::ListNav& activeNav() { return nav; }
   static int kepConTro(int selected, int count) { return std::clamp(selected, 0, std::max(0, count - 1)); }
   bool rowIsPinned(int index) const { return index > 0 && index == pinned; }
